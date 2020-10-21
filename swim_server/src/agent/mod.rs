@@ -12,63 +12,136 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+pub mod context;
+pub mod dispatch;
+pub mod lane;
+pub mod lifecycle;
 #[cfg(test)]
 mod tests;
 
-use crate::agent::context::ContextImpl;
+use crate::agent::context::{AgentExecutionContext, ContextImpl};
+use crate::agent::dispatch::error::DispatcherErrors;
+use crate::agent::dispatch::AgentDispatcher;
+use crate::agent::lane::channels::task::{LaneIoError, MapLaneMessageHandler};
+use crate::agent::lane::channels::update::StmRetryStrategy;
+use crate::agent::lane::channels::uplink::spawn::{SpawnerUplinkFactory, UplinkErrorReport};
+use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lane::lifecycle::{ActionLaneLifecycle, StatefulLaneLifecycle};
 use crate::agent::lane::model;
-use crate::agent::lane::model::action::{ActionLane, CommandLane};
+use crate::agent::lane::model::action::{Action, ActionLane, CommandLane};
 use crate::agent::lane::model::map::MapLaneEvent;
 use crate::agent::lane::model::map::{MapLane, MapLaneWatch};
 use crate::agent::lane::model::value::{ValueLane, ValueLaneWatch};
+use crate::agent::lane::model::DeferredLaneView;
 use crate::agent::lifecycle::AgentLifecycle;
+use crate::routing::{ServerRouter, TaggedClientEnvelope, TaggedEnvelope};
 use futures::future::{ready, BoxFuture};
 use futures::sink::drain;
-use futures::stream::{once, repeat, unfold, BoxStream};
+use futures::stream::{once, repeat, unfold, BoxStream, FuturesUnordered};
 use futures::{FutureExt, Stream, StreamExt};
-use futures_util::stream::FuturesUnordered;
 use pin_utils::pin_mut;
 use std::any::Any;
-use std::fmt::Debug;
+use std::collections::HashMap;
+use std::error::Error;
+use std::fmt::{Debug, Display, Formatter};
 use std::future::Future;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use swim_common::form::Form;
+use swim_common::warp::path::RelativePath;
 use swim_runtime::time::clock::Clock;
-use tokio::sync::mpsc;
+use tokio::sync::mpsc::Receiver;
+use tokio::sync::{mpsc, oneshot};
 use tracing::{event, span, Level};
 use tracing_futures::{Instrument, Instrumented};
-use url::Url;
 use utilities::future::SwimStreamExt;
 use utilities::sync::trigger;
+use utilities::uri::RelativeUri;
 
-mod context;
-pub mod lane;
-pub mod lifecycle;
+#[doc(hidden)]
+#[allow(unused_imports)]
+pub use agent_derive::*;
 
 /// Trait that must be implemented for any agent. This is essentially just boilerplate and will
 /// eventually be implemented using a derive macro.
-/// TODO Write derive macro for SwimAgent.
-pub trait SwimAgent<Config>: Sized {
+pub trait SwimAgent<Config>: Any + Send + Sync + Sized {
     /// Create an instance of the agent and life-cycle handles for each of its lanes.
     fn instantiate<Context>(
         configuration: &Config,
-    ) -> (Self, Vec<Box<dyn LaneTasks<Self, Context>>>)
+        exec_conf: &AgentExecutionConfig,
+    ) -> (
+        Self,
+        DynamicLaneTasks<Self, Context>,
+        DynamicAgentIo<Context>,
+    )
     where
-        Context: AgentContext<Self> + Send + Sync + 'static;
+        Context: AgentContext<Self> + AgentExecutionContext + Send + Sync + 'static;
 }
 
+pub type DynamicLaneTasks<Agent, Context> = Vec<Box<dyn LaneTasks<Agent, Context>>>;
+pub type DynamicAgentIo<Context> = HashMap<String, Box<dyn LaneIo<Context>>>;
+
+pub const COMMANDED: &str = "Command received";
+pub const ON_COMMAND: &str = "On command handler";
+pub const RESPONSE_IGNORED: &str = "Response requested from action lane but ignored.";
+pub const ON_EVENT: &str = "On event handler";
+pub const ACTION_RESULT: &str = "Action result";
 const AGENT_TASK: &str = "Agent task";
 const AGENT_START: &str = "Agent start";
 const LANE_START: &str = "Lane start";
 const SCHEDULER_TASK: &str = "Agent scheduler";
+const ROOT_DISPATCHER_TASK: &str = "Agent envelope dispatcher.";
 const LANE_EVENTS: &str = "Lane events";
-const ON_EVENT: &str = "On event handler";
-const COMMANDED: &str = "Command received";
-const ON_COMMAND: &str = "On command handler";
-const ACTION_RESULT: &str = "Action result";
+
+#[derive(Debug)]
+pub struct AgentResult {
+    pub route: RelativeUri,
+    pub dispatcher_errors: DispatcherErrors,
+    pub failed: bool,
+}
+
+impl AgentResult {
+    fn from(
+        route: RelativeUri,
+        result: Result<Result<DispatcherErrors, DispatcherErrors>, oneshot::error::RecvError>,
+    ) -> Self {
+        let (errs, failed) = match result {
+            Ok(Ok(errs)) => (errs, false),
+            Ok(Err(errs)) => (errs, true),
+            _ => (Default::default(), true),
+        };
+        AgentResult {
+            route,
+            dispatcher_errors: errs,
+            failed,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct AgentParameters<Config> {
+    agent_config: Config,
+    execution_config: AgentExecutionConfig,
+    uri: RelativeUri,
+    parameters: HashMap<String, String>,
+}
+
+impl<Config> AgentParameters<Config> {
+    pub fn new(
+        agent_config: Config,
+        execution_config: AgentExecutionConfig,
+        uri: RelativeUri,
+        parameters: HashMap<String, String>,
+    ) -> Self {
+        AgentParameters {
+            agent_config,
+            execution_config,
+            uri,
+            parameters,
+        }
+    }
+}
 
 /// Creates a single, asynchronous task that manages the lifecycle of an agent, all of its lanes
 /// and any events that are scheduled within it.
@@ -77,28 +150,50 @@ const ACTION_RESULT: &str = "Action result";
 ///
 /// * `lifecycle` - Life-cycle event handler for the agent.
 /// * `url` - The node URL for the agent instance.
-/// * `schedule_buffer_size` - The buffer size for the MPSC channel used by the agent to schedule
-/// events.
 /// * `clock` - Clock for timing asynchronous events.
 /// * `stop_trigger` - External trigger to cleanly stop the agent.
-pub async fn run_agent<Config, Clk, Agent, L>(
-    configuration: Config,
+/// * `parameters` - Parameters extracted from the agent node route pattern.
+/// * `incoming_envelopes` - The stream of envelopes routed to the agent.
+pub fn run_agent<Config, Clk, Agent, L, Router>(
     lifecycle: L,
-    url: Url,
-    scheduler_buffer_size: NonZeroUsize,
     clock: Clk,
-    stop_trigger: trigger::Receiver,
-) where
+    parameters: AgentParameters<Config>,
+    incoming_envelopes: impl Stream<Item = TaggedEnvelope> + Send + 'static,
+    router: Router,
+) -> (
+    Arc<Agent>,
+    impl Future<Output = AgentResult> + Send + 'static,
+)
+where
     Clk: Clock,
     Agent: SwimAgent<Config> + Send + Sync + 'static,
-    L: AgentLifecycle<Agent>,
+    L: AgentLifecycle<Agent> + Send + Sync + 'static,
+    Router: ServerRouter + Clone + 'static,
 {
-    let span = span!(Level::INFO, AGENT_TASK, %url);
-    async {
-        let (agent, tasks) = Agent::instantiate::<ContextImpl<Agent, Clk>>(&configuration);
-        let agent_ref = Arc::new(agent);
-        let (tx, rx) = mpsc::channel(scheduler_buffer_size.get());
-        let context = ContextImpl::new(agent_ref, url, tx, clock, stop_trigger.clone());
+    let AgentParameters {
+        agent_config,
+        execution_config,
+        uri,
+        parameters,
+    } = parameters;
+
+    let span = span!(Level::INFO, AGENT_TASK, %uri);
+    let (tripwire, stop_trigger) = trigger::trigger();
+    let (agent, tasks, io_providers) =
+        Agent::instantiate::<ContextImpl<Agent, Clk, Router>>(&agent_config, &execution_config);
+    let agent_ref = Arc::new(agent);
+    let agent_cpy = agent_ref.clone();
+    let task = async move {
+        let (tx, rx) = mpsc::channel(execution_config.scheduler_buffer.get());
+        let context = ContextImpl::new(
+            agent_ref,
+            uri.clone(),
+            tx,
+            clock,
+            stop_trigger.clone(),
+            router,
+            parameters,
+        );
 
         lifecycle
             .on_start(&context)
@@ -116,7 +211,7 @@ pub async fn run_agent<Config, Clk, Agent, L>(
         let task_manager: FuturesUnordered<Instrumented<Eff>> = FuturesUnordered::new();
 
         let scheduler_task = rx
-            .take_until_completes(stop_trigger)
+            .take_until(stop_trigger)
             .for_each_concurrent(None, |eff| eff)
             .boxed()
             .instrument(span!(Level::TRACE, SCHEDULER_TASK));
@@ -131,16 +226,33 @@ pub async fn run_agent<Config, Clk, Agent, L>(
             );
         }
 
+        let dispatcher =
+            AgentDispatcher::new(uri.clone(), execution_config, context.clone(), io_providers);
+
+        let (result_tx, result_rx) = oneshot::channel();
+
+        let dispatch_task = async move {
+            let tripwire = tripwire;
+            let result = dispatcher.run(incoming_envelopes).await;
+            tripwire.trigger();
+            let _ = result_tx.send(result);
+        }
+        .boxed()
+        .instrument(span!(Level::INFO, ROOT_DISPATCHER_TASK));
+        task_manager.push(dispatch_task);
+
         drop(context);
 
         task_manager
             .never_error()
             .forward(drain())
             .map(|_| ()) //Never is an empty type so we can discard the errors.
-            .await
+            .await;
+
+        AgentResult::from(uri, result_rx.await)
     }
-    .instrument(span)
-    .await
+    .instrument(span);
+    (agent_cpy, task)
 }
 
 pub type Eff = BoxFuture<'static, ()>;
@@ -232,11 +344,17 @@ pub trait AgentContext<Agent> {
     /// Access the agent instance.
     fn agent(&self) -> &Agent;
 
-    /// Get the node URL of the agent instance.
-    fn node_url(&self) -> &Url;
+    /// Get the node URI of the agent instance.
+    fn node_uri(&self) -> &RelativeUri;
 
     /// Get a future that will complete when the agent is stopping.
     fn agent_stop_event(&self) -> trigger::Receiver;
+
+    /// Get the value of a parameter extracted from the agent node route.
+    fn parameter(&self, key: &str) -> Option<&String>;
+
+    /// Get a copy of all parameters extracted from the agent node route.
+    fn parameters(&self) -> HashMap<String, String>;
 }
 
 pub trait Lane {
@@ -248,7 +366,6 @@ pub trait Lane {
 /// managed uniformly by the agent. Eventually this trait will be made private and instances will
 /// be generated by the derive macro for [`SwimAgent`].
 ///
-/// TODO Make this trait private after the derive macro has been written for SwimAgent.
 pub trait LaneTasks<Agent, Context: AgentContext<Agent> + Sized + Send + Sync + 'static>:
     Lane + Send + Sync
 {
@@ -263,6 +380,238 @@ pub trait LaneTasks<Agent, Context: AgentContext<Agent> + Sized + Send + Sync + 
         Self: Sized + 'a,
     {
         Box::new(self)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AttachError {
+    /// Could not attach to the lane as the agent hosting it is stopping.
+    AgentStopping,
+    /// The lane stopped reporting its state changes.
+    LaneStoppedReporting,
+    /// Failed to attach to the lane because it does not exist.
+    LaneDoesNotExist(String),
+}
+
+impl Display for AttachError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AttachError::LaneStoppedReporting => write!(
+                f,
+                "Failed to attach as the lane stopped reporting its state."
+            ),
+            AttachError::LaneDoesNotExist(name) => {
+                write!(f, "A lane named \"{}\" does not exist.", name)
+            }
+            AttachError::AgentStopping => {
+                write!(f, "Could not attach to the lane as the agent is stoping.")
+            }
+        }
+    }
+}
+
+impl Error for AttachError {}
+
+/// Lazily initialized envelope IO for a lane.
+pub trait LaneIo<Context: AgentExecutionContext + Sized + Send + Sync + 'static>:
+    Send + Sync
+{
+    /// Attempt to attach the running lane to a stream of envelopes.
+    fn attach(
+        self,
+        route: RelativePath,
+        envelopes: mpsc::Receiver<TaggedClientEnvelope>,
+        config: AgentExecutionConfig,
+        context: Context,
+    ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError>;
+
+    fn attach_boxed(
+        self: Box<Self>,
+        route: RelativePath,
+        envelopes: mpsc::Receiver<TaggedClientEnvelope>,
+        config: AgentExecutionConfig,
+        context: Context,
+    ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError>;
+
+    fn boxed(self) -> Box<dyn LaneIo<Context>>
+    where
+        Self: Sized + 'static,
+    {
+        Box::new(self)
+    }
+}
+
+pub struct ValueLaneIo<T, D> {
+    lane: ValueLane<T>,
+    deferred: D,
+}
+
+impl<T, D> ValueLaneIo<T, D>
+where
+    T: Any + Send + Sync + Form + Debug,
+    D: DeferredLaneView<Arc<T>>,
+{
+    pub fn new(lane: ValueLane<T>, deferred: D) -> Self {
+        ValueLaneIo { lane, deferred }
+    }
+}
+
+impl<T, Context, D> LaneIo<Context> for ValueLaneIo<T, D>
+where
+    T: Any + Send + Sync + Form + Debug,
+    D: DeferredLaneView<Arc<T>>,
+    Context: AgentExecutionContext + Sized + Send + Sync + 'static,
+{
+    fn attach(
+        self,
+        route: RelativePath,
+        envelopes: Receiver<TaggedClientEnvelope>,
+        config: AgentExecutionConfig,
+        context: Context,
+    ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
+        let ValueLaneIo { lane, deferred } = self;
+        let uplink_factory = SpawnerUplinkFactory::new(config.clone());
+        let topic = deferred.attach()?;
+        Ok(lane::channels::task::run_lane_io(
+            lane,
+            uplink_factory,
+            envelopes,
+            topic,
+            config,
+            context,
+            route,
+        )
+        .boxed())
+    }
+
+    fn attach_boxed(
+        self: Box<Self>,
+        route: RelativePath,
+        envelopes: Receiver<TaggedClientEnvelope>,
+        config: AgentExecutionConfig,
+        context: Context,
+    ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
+        (*self).attach(route, envelopes, config, context)
+    }
+}
+
+pub struct MapLaneIo<K, V, D> {
+    lane: MapLane<K, V>,
+    deferred: D,
+}
+
+impl<K, V, D> MapLaneIo<K, V, D>
+where
+    K: Any + Send + Sync + Form + Clone + Debug,
+    V: Any + Send + Sync + Form + Debug,
+    D: DeferredLaneView<MapLaneEvent<K, V>>,
+{
+    pub fn new(lane: MapLane<K, V>, deferred: D) -> Self {
+        MapLaneIo { lane, deferred }
+    }
+}
+
+impl<K, V, Context, D> LaneIo<Context> for MapLaneIo<K, V, D>
+where
+    K: Any + Send + Sync + Form + Clone + Debug,
+    V: Any + Send + Sync + Form + Debug,
+    Context: AgentExecutionContext + Sized + Send + Sync + 'static,
+    D: DeferredLaneView<MapLaneEvent<K, V>>,
+{
+    fn attach(
+        self,
+        route: RelativePath,
+        envelopes: Receiver<TaggedClientEnvelope>,
+        config: AgentExecutionConfig,
+        context: Context,
+    ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
+        let MapLaneIo { lane, deferred } = self;
+
+        let uplink_factory = SpawnerUplinkFactory::new(config.clone());
+
+        let topic = deferred.attach()?;
+
+        let retries = StmRetryStrategy::new(config.retry_strategy);
+
+        let handler = MapLaneMessageHandler::new(lane, move || retries);
+
+        Ok(lane::channels::task::run_lane_io(
+            handler,
+            uplink_factory,
+            envelopes,
+            topic,
+            config,
+            context,
+            route,
+        )
+        .boxed())
+    }
+
+    fn attach_boxed(
+        self: Box<Self>,
+        route: RelativePath,
+        envelopes: Receiver<TaggedClientEnvelope>,
+        config: AgentExecutionConfig,
+        context: Context,
+    ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
+        (*self).attach(route, envelopes, config, context)
+    }
+}
+
+pub struct ActionLaneIo<Command, Response> {
+    lane: ActionLane<Command, Response>,
+    feedback: bool,
+}
+
+impl<Command, Response> ActionLaneIo<Command, Response>
+where
+    Command: Send + Sync + Form + Debug + 'static,
+    Response: Send + Sync + Form + Debug + 'static,
+{
+    pub fn new_action(lane: ActionLane<Command, Response>) -> Self {
+        ActionLaneIo {
+            lane,
+            feedback: true,
+        }
+    }
+
+    pub fn new_command(lane: ActionLane<Command, Response>) -> Self {
+        ActionLaneIo {
+            lane,
+            feedback: false,
+        }
+    }
+}
+
+impl<Command, Response, Context> LaneIo<Context> for ActionLaneIo<Command, Response>
+where
+    Command: Send + Sync + Form + Debug + 'static,
+    Response: Send + Sync + Form + Debug + 'static,
+    Context: AgentExecutionContext + Sized + Send + Sync + 'static,
+{
+    fn attach(
+        self,
+        route: RelativePath,
+        envelopes: Receiver<TaggedClientEnvelope>,
+        config: AgentExecutionConfig,
+        context: Context,
+    ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
+        let ActionLaneIo { lane, feedback } = self;
+
+        Ok(lane::channels::task::run_action_lane_io(
+            lane, feedback, envelopes, config, context, route,
+        )
+        .boxed())
+    }
+
+    fn attach_boxed(
+        self: Box<Self>,
+        route: RelativePath,
+        envelopes: Receiver<TaggedClientEnvelope>,
+        config: AgentExecutionConfig,
+        context: Context,
+    ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
+        (*self).attach(route, envelopes, config, context)
     }
 }
 
@@ -312,7 +661,7 @@ where
                 ..
             }) = *self;
             let model = projection(context.agent());
-            let events = event_stream.take_until_completes(context.agent_stop_event());
+            let events = event_stream.take_until(context.agent_stop_event());
             pin_mut!(events);
             while let Some(event) = events.next().await {
                 lifecycle
@@ -330,31 +679,48 @@ where
 /// #Arguments
 ///
 /// * `name` - The name of the lane.
+/// * `is_public` - Whether the lane is public (with respect to external message routing).
+/// * `config` - Configuration parameters.
 /// * `init` - The initial value of the lane.
 /// * `lifecycle` - Life-cycle event handler for the lane.
 /// * `projection` - A projection from the agent type to this lane.
 pub fn make_value_lane<Agent, Context, T, L>(
     name: impl Into<String>,
+    is_public: bool,
+    config: &AgentExecutionConfig,
     init: T,
     lifecycle: L,
     projection: impl Fn(&Agent) -> &ValueLane<T> + Send + Sync + 'static,
-) -> (ValueLane<T>, impl LaneTasks<Agent, Context>)
+) -> (
+    ValueLane<T>,
+    impl LaneTasks<Agent, Context>,
+    Option<impl LaneIo<Context>>,
+)
 where
     Agent: 'static,
-    Context: AgentContext<Agent> + Send + Sync + 'static,
-    T: Any + Send + Sync + Debug,
+    Context: AgentContext<Agent> + AgentExecutionContext + Send + Sync + 'static,
+    T: Any + Send + Sync + Form + Debug + Default,
     L: for<'l> StatefulLaneLifecycle<'l, ValueLane<T>, Agent>,
     L::WatchStrategy: ValueLaneWatch<T>,
 {
-    let (lane, event_stream) = model::value::make_lane_model(init, lifecycle.create_strategy());
+    let (lane, event_stream, deferred) = if is_public {
+        let (lane, event_stream, deferred) =
+            model::value::make_lane_model_deferred(init, lifecycle.create_strategy(), config);
 
+        (lane, event_stream, Some(deferred))
+    } else {
+        let (lane, event_stream) = model::value::make_lane_model(init, lifecycle.create_strategy());
+
+        (lane, event_stream, None)
+    };
     let tasks = ValueLifecycleTasks(LifecycleTasks {
         name: name.into(),
         lifecycle,
         event_stream,
         projection,
     });
-    (lane, tasks)
+    let lane_io = deferred.map(|d| ValueLaneIo::new(lane.clone(), d));
+    (lane, tasks, lane_io)
 }
 
 impl<L, S, P> Lane for MapLifecycleTasks<L, S, P> {
@@ -383,7 +749,7 @@ where
         lifecycle.on_start(model, context).boxed()
     }
 
-    fn events(self: Box<Self>, context: Context) -> BoxFuture<'static, ()> {
+    fn events(self: Box<Self>, context: Context) -> Eff {
         async move {
             let MapLifecycleTasks(LifecycleTasks {
                 lifecycle,
@@ -392,7 +758,7 @@ where
                 ..
             }) = *self;
             let model = projection(context.agent()).clone();
-            let events = event_stream.take_until_completes(context.agent_stop_event());
+            let events = event_stream.take_until(context.agent_stop_event());
             pin_mut!(events);
             while let Some(event) = events.next().await {
                 lifecycle
@@ -410,22 +776,37 @@ where
 /// #Arguments
 ///
 /// * `name` - The name of the lane.
+/// * `is_public` - Whether the lane is public (with respect to external message routing).
+/// * `config` - Configuration parameters.
 /// * `lifecycle` - Life-cycle event handler for the lane.
 /// * `projection` - A projection from the agent type to this lane.
 pub fn make_map_lane<Agent, Context, K, V, L>(
     name: impl Into<String>,
+    is_public: bool,
+    config: &AgentExecutionConfig,
     lifecycle: L,
     projection: impl Fn(&Agent) -> &MapLane<K, V> + Send + Sync + 'static,
-) -> (MapLane<K, V>, impl LaneTasks<Agent, Context>)
+) -> (
+    MapLane<K, V>,
+    impl LaneTasks<Agent, Context>,
+    Option<impl LaneIo<Context>>,
+)
 where
     Agent: 'static,
-    Context: AgentContext<Agent> + Send + Sync + 'static,
-    K: Any + Form + Send + Sync + Debug,
-    V: Any + Send + Sync + Debug,
+    Context: AgentContext<Agent> + AgentExecutionContext + Send + Sync + 'static,
+    K: Any + Form + Send + Sync + Clone + Debug,
+    V: Any + Form + Send + Sync + Debug,
     L: for<'l> StatefulLaneLifecycle<'l, MapLane<K, V>, Agent>,
     L::WatchStrategy: MapLaneWatch<K, V>,
 {
-    let (lane, event_stream) = model::map::make_lane_model(lifecycle.create_strategy());
+    let (lane, event_stream, deferred) = if is_public {
+        let (lane, event_stream, deferred) =
+            model::map::make_lane_model_deferred(lifecycle.create_strategy(), config);
+        (lane, event_stream, Some(deferred))
+    } else {
+        let (lane, event_stream) = model::map::make_lane_model(lifecycle.create_strategy());
+        (lane, event_stream, None)
+    };
 
     let tasks = MapLifecycleTasks(LifecycleTasks {
         name: name.into(),
@@ -433,7 +814,9 @@ where
         event_stream,
         projection,
     });
-    (lane, tasks)
+
+    let lane_io = deferred.map(|d| MapLaneIo::new(lane.clone(), d));
+    (lane, tasks, lane_io)
 }
 
 impl<L, S, P> Lane for ActionLifecycleTasks<L, S, P> {
@@ -447,7 +830,7 @@ impl<Agent, Context, Command, Response, L, S, P> LaneTasks<Agent, Context>
 where
     Agent: 'static,
     Context: AgentContext<Agent> + Send + Sync + 'static,
-    S: Stream<Item = Command> + Send + Sync + 'static,
+    S: Stream<Item = Action<Command, Response>> + Send + Sync + 'static,
     Command: Any + Send + Sync + Debug,
     Response: Any + Send + Sync + Debug,
     L: for<'l> ActionLaneLifecycle<'l, Command, Response, Agent>,
@@ -457,7 +840,7 @@ where
         ready(()).boxed()
     }
 
-    fn events(self: Box<Self>, context: Context) -> BoxFuture<'static, ()> {
+    fn events(self: Box<Self>, context: Context) -> Eff {
         async move {
             let ActionLifecycleTasks(LifecycleTasks {
                 lifecycle,
@@ -466,9 +849,9 @@ where
                 ..
             }) = *self;
             let model = projection(context.agent()).clone();
-            let events = event_stream.take_until_completes(context.agent_stop_event());
+            let events = event_stream.take_until(context.agent_stop_event());
             pin_mut!(events);
-            while let Some(command) = events.next().await {
+            while let Some(Action { command, responder }) = events.next().await {
                 event!(Level::TRACE, COMMANDED, ?command);
                 //TODO After agents are connected to web-sockets the response will have somewhere to go.
                 let response = lifecycle
@@ -476,6 +859,11 @@ where
                     .instrument(span!(Level::TRACE, ON_COMMAND))
                     .await;
                 event!(Level::TRACE, ACTION_RESULT, ?response);
+                if let Some(tx) = responder {
+                    if tx.send(response).is_err() {
+                        event!(Level::WARN, RESPONSE_IGNORED);
+                    }
+                }
             }
         }
         .boxed()
@@ -492,7 +880,7 @@ impl<Agent, Context, Command, L, S, P> LaneTasks<Agent, Context> for CommandLife
 where
     Agent: 'static,
     Context: AgentContext<Agent> + Send + Sync + 'static,
-    S: Stream<Item = Command> + Send + Sync + 'static,
+    S: Stream<Item = Action<Command, ()>> + Send + Sync + 'static,
     Command: Any + Send + Sync + Debug,
     L: for<'l> ActionLaneLifecycle<'l, Command, (), Agent>,
     P: Fn(&Agent) -> &CommandLane<Command> + Send + Sync + 'static,
@@ -501,7 +889,7 @@ where
         ready(()).boxed()
     }
 
-    fn events(self: Box<Self>, context: Context) -> BoxFuture<'static, ()> {
+    fn events(self: Box<Self>, context: Context) -> Eff {
         async move {
             let CommandLifecycleTasks(LifecycleTasks {
                 lifecycle,
@@ -510,14 +898,19 @@ where
                 ..
             }) = *self;
             let model = projection(context.agent()).clone();
-            let events = event_stream.take_until_completes(context.agent_stop_event());
+            let events = event_stream.take_until(context.agent_stop_event());
             pin_mut!(events);
-            while let Some(command) = events.next().await {
+            while let Some(Action { command, responder }) = events.next().await {
                 event!(Level::TRACE, COMMANDED, ?command);
                 lifecycle
                     .on_command(command, &model, &context)
                     .instrument(span!(Level::TRACE, ON_COMMAND))
                     .await;
+                if let Some(tx) = responder {
+                    if tx.send(()).is_err() {
+                        event!(Level::WARN, RESPONSE_IGNORED);
+                    }
+                }
             }
         }
         .boxed()
@@ -529,26 +922,29 @@ where
 /// #Arguments
 ///
 /// * `name`- The name of the lane.
+/// * `is_public` - Whether the lane is public (with respect to external message routing).
 /// * `lifecycle` - Life-cycle event handler for the lane.
 /// * `projection` - A projection from the agent type to this lane.
 /// * `buffer_size` - Buffer size for the MPSC channel accepting the commands.
 pub fn make_action_lane<Agent, Context, Command, Response, L, S, P>(
     name: impl Into<String>,
+    is_public: bool,
     lifecycle: L,
     projection: impl Fn(&Agent) -> &ActionLane<Command, Response> + Send + Sync + 'static,
     buffer_size: NonZeroUsize,
 ) -> (
     ActionLane<Command, Response>,
     impl LaneTasks<Agent, Context>,
+    Option<impl LaneIo<Context>>,
 )
 where
     Agent: 'static,
-    Context: AgentContext<Agent> + Send + Sync + 'static,
+    Context: AgentContext<Agent> + AgentExecutionContext + Send + Sync + 'static,
     S: Stream<Item = Command> + Send + Sync + 'static,
-    Command: Any + Send + Sync + Debug,
-    Response: Any + Send + Sync + Debug,
+    Command: Any + Send + Sync + Form + Debug,
+    Response: Any + Send + Sync + Form + Debug,
     L: for<'l> ActionLaneLifecycle<'l, Command, Response, Agent>,
-    P: Fn(&Agent) -> &ActionLane<Command, Response> + Send + Sync + 'static,
+    P: Fn(&Agent) -> &ActionLane<Command, Response> + AgentExecutionContext + Send + Sync + 'static,
 {
     let (lane, event_stream) = model::action::make_lane_model(buffer_size);
 
@@ -558,7 +954,13 @@ where
         event_stream,
         projection,
     });
-    (lane, tasks)
+
+    let lane_io = if is_public {
+        Some(ActionLaneIo::new_action(lane.clone()))
+    } else {
+        None
+    };
+    (lane, tasks, lane_io)
 }
 
 /// Create a command lane from a lifecycle.
@@ -566,19 +968,25 @@ where
 /// #Arguments
 ///
 /// * `name` - The name of the lane.
+/// * `is_public` - Whether the lane is public (with respect to external message routing).
 /// * `lifecycle` - Life-cycle event handler for the lane.
 /// * `projection` - A projection from the agent type to this lane.
 /// * `buffer_size` - Buffer size for the MPSC channel accepting the commands.
 pub fn make_command_lane<Agent, Context, Command, L>(
     name: impl Into<String>,
+    is_public: bool,
     lifecycle: L,
     projection: impl Fn(&Agent) -> &CommandLane<Command> + Send + Sync + 'static,
     buffer_size: NonZeroUsize,
-) -> (CommandLane<Command>, impl LaneTasks<Agent, Context>)
+) -> (
+    CommandLane<Command>,
+    impl LaneTasks<Agent, Context>,
+    Option<impl LaneIo<Context>>,
+)
 where
     Agent: 'static,
-    Context: AgentContext<Agent> + Send + Sync + 'static,
-    Command: Any + Send + Sync + Debug,
+    Context: AgentContext<Agent> + AgentExecutionContext + Send + Sync + 'static,
+    Command: Any + Send + Sync + Form + Debug,
     L: for<'l> ActionLaneLifecycle<'l, Command, (), Agent>,
 {
     let (lane, event_stream) = model::action::make_lane_model(buffer_size);
@@ -589,5 +997,12 @@ where
         event_stream,
         projection,
     });
-    (lane, tasks)
+
+    let lane_io = if is_public {
+        Some(ActionLaneIo::new_command(lane.clone()))
+    } else {
+        None
+    };
+
+    (lane, tasks, lane_io)
 }

@@ -12,22 +12,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::model::text::Text;
 use std::fmt::{Display, Formatter};
 
 /// Absolute path to an agent lane, on a specific host.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub struct AbsolutePath {
     pub host: url::Url,
-    pub node: String,
-    pub lane: String,
+    pub node: Text,
+    pub lane: Text,
 }
 
 impl AbsolutePath {
     pub fn new(host: url::Url, node: &str, lane: &str) -> AbsolutePath {
         AbsolutePath {
             host,
-            node: node.to_string(),
-            lane: lane.to_string(),
+            node: node.into(),
+            lane: lane.into(),
         }
     }
 
@@ -67,15 +68,15 @@ impl Display for AbsolutePath {
 /// Relative path to an agent lane, leaving the host unspecified.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub struct RelativePath {
-    pub node: String,
-    pub lane: String,
+    pub node: Text,
+    pub lane: Text,
 }
 
 impl RelativePath {
-    pub fn new(node: &str, lane: &str) -> RelativePath {
+    pub fn new<S: Into<Text>>(node: S, lane: S) -> RelativePath {
         RelativePath {
-            node: node.to_string(),
-            lane: lane.to_string(),
+            node: node.into(),
+            lane: lane.into(),
         }
     }
 

@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::model::schema::attr::AttrSchema;
-use crate::model::schema::item::ItemSchema;
+pub use crate::model::schema::item::ItemSchema;
 use crate::model::schema::range::{
     float_64_range, float_range_to_value, i32_range_as_big_int, i32_range_as_i64,
     i64_range_as_big_int, i64_range_as_i64, i64_range_to_big_int_range, in_big_int_range,
@@ -673,7 +673,7 @@ fn equal_cmp(this: &Value, other: &StandardSchema) -> Option<Ordering> {
             Some(Ordering::Equal)
         }
         (Value::Text(this_val), StandardSchema::Text(TextSchema::Matches(regex)))
-            if regex.is_match(this_val) =>
+            if regex.is_match(this_val.as_str()) =>
         {
             Some(Ordering::Less)
         }
@@ -1385,10 +1385,42 @@ impl StandardSchema {
         ))
     }
 
-    /// Matches unsigned integer values, inclusive below and exclusive above.
-    pub fn uint_range(min: i64, max: i64) -> Self {
-        StandardSchema::InRangeInt(Range::<i64>::bounded(
+    /// Matches unsigned integer values in an inclusive range.
+    pub fn inclusive_uint_range(min: u64, max: u64) -> Self {
+        StandardSchema::InRangeUint(Range::<u64>::bounded(
             Bound::inclusive(min),
+            Bound::inclusive(max),
+        ))
+    }
+
+    /// Matches unsigned integer values in an exclusive range.
+    pub fn exclusive_uint_range(min: u64, max: u64) -> Self {
+        StandardSchema::InRangeUint(Range::<u64>::bounded(
+            Bound::exclusive(min),
+            Bound::exclusive(max),
+        ))
+    }
+
+    /// Matches unsigned integer values, inclusive below and exclusive above.
+    pub fn uint_range(min: u64, max: u64) -> Self {
+        StandardSchema::InRangeUint(Range::<u64>::bounded(
+            Bound::inclusive(min),
+            Bound::exclusive(max),
+        ))
+    }
+
+    /// Matches big integer values in an inclusive range.
+    pub fn inclusive_big_int_range(min: BigInt, max: BigInt) -> Self {
+        StandardSchema::InRangeBigInt(Range::<BigInt>::bounded(
+            Bound::inclusive(min),
+            Bound::inclusive(max),
+        ))
+    }
+
+    /// Matches big integer values in an exclusive range.
+    pub fn exclusive_big_int_range(min: BigInt, max: BigInt) -> Self {
+        StandardSchema::InRangeBigInt(Range::<BigInt>::bounded(
+            Bound::exclusive(min),
             Bound::exclusive(max),
         ))
     }

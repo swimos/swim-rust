@@ -14,7 +14,6 @@
 
 #[cfg(feature = "test_server")]
 mod tests {
-    use swim_client::connections::factory::tungstenite::TungsteniteWsFactory;
     use swim_client::downlink::model::map::{
         MapAction, MapEvent, MapModification, UntypedMapModification,
     };
@@ -39,7 +38,7 @@ mod tests {
         let container = docker.run(SwimTestServer);
         let port = container.get_host_port(9001).unwrap();
         let host = format!("ws://127.0.0.1:{}", port);
-        let mut client = SwimClient::new_with_default(TungsteniteWsFactory::new(5).await).await;
+        let mut client = SwimClient::new_with_default().await;
 
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "id");
 
@@ -56,7 +55,7 @@ mod tests {
         let container = docker.run(SwimTestServer);
         let port = container.get_host_port(9001).unwrap();
         let host = format!("ws://127.0.0.1:{}", port);
-        let mut client = SwimClient::new_with_default(TungsteniteWsFactory::new(5).await).await;
+        let mut client = SwimClient::new_with_default().await;
 
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "id");
 
@@ -78,7 +77,7 @@ mod tests {
         let container = docker.run(SwimTestServer);
         let port = container.get_host_port(9001).unwrap();
         let host = format!("ws://127.0.0.1:{}", port);
-        let mut client = SwimClient::new_with_default(TungsteniteWsFactory::new(5).await).await;
+        let mut client = SwimClient::new_with_default().await;
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "shoppingCart");
 
         let (_, mut recv) = client
@@ -105,7 +104,7 @@ mod tests {
         let container = docker.run(SwimTestServer);
         let port = container.get_host_port(9001).unwrap();
         let host = format!("ws://127.0.0.1:{}", port);
-        let mut client = SwimClient::new_with_default(TungsteniteWsFactory::new(5).await).await;
+        let mut client = SwimClient::new_with_default().await;
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "shoppingCart");
 
         let (mut dl, mut recv) = client
@@ -114,7 +113,7 @@ mod tests {
             .unwrap();
         tokio::time::delay_for(Duration::from_secs(1)).await;
 
-        dl.send_item(MapAction::insert(String::from("milk").into(), 1.into()))
+        dl.send_item(MapAction::update(String::from("milk").into(), 1.into()))
             .await
             .unwrap();
 
@@ -135,7 +134,7 @@ mod tests {
             let TypedViewWithEvent { view, event } = event;
 
             assert_eq!(view.get(&String::from("milk")).unwrap(), 1);
-            assert_eq!(event, MapEvent::Insert(String::from("milk")));
+            assert_eq!(event, MapEvent::Update(String::from("milk")));
         } else {
             panic!("The map downlink did not receive the correct message!")
         }
@@ -148,7 +147,7 @@ mod tests {
         let port = container.get_host_port(9001).unwrap();
         let host = format!("ws://127.0.0.1:{}", port);
 
-        let mut client = SwimClient::new_with_default(TungsteniteWsFactory::new(5).await).await;
+        let mut client = SwimClient::new_with_default().await;
 
         let event_path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "info");
 
@@ -165,7 +164,7 @@ mod tests {
 
         let incoming = event_dl.recv().await.unwrap();
 
-        assert_eq!(incoming, Value::Text("Hello, from Rust!".to_string()));
+        assert_eq!(incoming, Value::text("Hello, from Rust!"));
     }
 
     #[tokio::test]
@@ -175,7 +174,7 @@ mod tests {
         let port = container.get_host_port(9001).unwrap();
         let host = format!("ws://127.0.0.1:{}", port);
 
-        let mut client = SwimClient::new_with_default(TungsteniteWsFactory::new(5).await).await;
+        let mut client = SwimClient::new_with_default().await;
 
         let event_path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "info");
         let command_path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "info");
@@ -207,7 +206,7 @@ mod tests {
         let port = container.get_host_port(9001).unwrap();
         let host = format!("ws://127.0.0.1:{}", port);
 
-        let mut client = SwimClient::new_with_default(TungsteniteWsFactory::new(5).await).await;
+        let mut client = SwimClient::new_with_default().await;
 
         let event_path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "info");
         let command_path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "info");
@@ -236,7 +235,7 @@ mod tests {
         let port = container.get_host_port(9001).unwrap();
         let host = format!("ws://127.0.0.1:{}", port);
 
-        let mut client = SwimClient::new_with_default(TungsteniteWsFactory::new(5).await).await;
+        let mut client = SwimClient::new_with_default().await;
 
         let event_path =
             AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "shoppingCart");
@@ -250,7 +249,7 @@ mod tests {
         let mut command_dl = client.untyped_command_downlink(command_path).await.unwrap();
         command_dl
             .send_item(
-                UntypedMapModification::Insert("milk".to_string().into_value(), 6.into_value())
+                UntypedMapModification::Update("milk".to_string().into_value(), 6.into_value())
                     .as_value(),
             )
             .await
@@ -272,7 +271,7 @@ mod tests {
         let port = container.get_host_port(9001).unwrap();
         let host = format!("ws://127.0.0.1:{}", port);
 
-        let mut client = SwimClient::new_with_default(TungsteniteWsFactory::new(5).await).await;
+        let mut client = SwimClient::new_with_default().await;
 
         let event_path =
             AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "shoppingCart");
@@ -292,13 +291,13 @@ mod tests {
             .await
             .unwrap();
 
-        let item = MapModification::Insert("milk".to_string(), 6i32);
+        let item = MapModification::Update("milk".to_string(), 6i32);
 
         command_dl.send_item(item).await.unwrap();
 
         let incoming = event_dl.recv().await.unwrap();
 
-        assert_eq!(incoming, MapModification::Insert("milk".to_string(), 6i32));
+        assert_eq!(incoming, MapModification::Update("milk".to_string(), 6i32));
     }
 
     #[tokio::test]
@@ -308,7 +307,7 @@ mod tests {
         let port = container.get_host_port(9001).unwrap();
         let host = format!("ws://127.0.0.1:{}", port);
 
-        let mut client = SwimClient::new_with_default(TungsteniteWsFactory::new(5).await).await;
+        let mut client = SwimClient::new_with_default().await;
 
         let event_path =
             AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "shoppingCart");
@@ -326,7 +325,7 @@ mod tests {
         let mut command_dl = client.untyped_command_downlink(command_path).await.unwrap();
         command_dl
             .send_item(
-                UntypedMapModification::Insert("milk".to_string().into_value(), 6.into_value())
+                UntypedMapModification::Update("milk".to_string().into_value(), 6.into_value())
                     .as_value(),
             )
             .await
@@ -344,7 +343,7 @@ mod tests {
         let port = container.get_host_port(9001).unwrap();
         let host = format!("ws://127.0.0.1:{}", port);
 
-        let mut client = SwimClient::new_with_default(TungsteniteWsFactory::new(5).await).await;
+        let mut client = SwimClient::new_with_default().await;
 
         let event_path =
             AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "shoppingCart");
@@ -362,7 +361,7 @@ mod tests {
         let mut command_dl = client.untyped_command_downlink(command_path).await.unwrap();
         command_dl
             .send_item(
-                UntypedMapModification::Insert("milk".to_string().into_value(), 6.into_value())
+                UntypedMapModification::Update("milk".to_string().into_value(), 6.into_value())
                     .as_value(),
             )
             .await
@@ -379,7 +378,7 @@ mod tests {
         let container = docker.run(SwimTestServer);
         let port = container.get_host_port(9001).unwrap();
         let host = format!("ws://127.0.0.1:{}", port);
-        let mut client = SwimClient::new_with_default(TungsteniteWsFactory::new(5).await).await;
+        let mut client = SwimClient::new_with_default().await;
 
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "info");
 
@@ -431,7 +430,7 @@ mod tests {
         let container = docker.run(SwimTestServer);
         let port = container.get_host_port(9001).unwrap();
         let host = format!("ws://127.0.0.1:{}", port);
-        let mut client = SwimClient::new_with_default(TungsteniteWsFactory::new(5).await).await;
+        let mut client = SwimClient::new_with_default().await;
 
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "id");
         let (mut dl, _) = client.value_downlink(path.clone(), 0i64).await.unwrap();
@@ -455,7 +454,7 @@ mod tests {
         let container = docker.run(SwimTestServer);
         let port = container.get_host_port(9001).unwrap();
         let host = format!("ws://127.0.0.1:{}", port);
-        let mut client = SwimClient::new_with_default(TungsteniteWsFactory::new(5).await).await;
+        let mut client = SwimClient::new_with_default().await;
 
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "shoppingCart");
 
@@ -467,7 +466,7 @@ mod tests {
         tokio::time::delay_for(Duration::from_secs(1)).await;
 
         command_dl
-            .send_item(MapModification::Insert("milk".to_string(), 1))
+            .send_item(MapModification::Update("milk".to_string(), 1))
             .await
             .unwrap();
 
@@ -496,7 +495,7 @@ mod tests {
         tokio::time::delay_for(Duration::from_secs(1)).await;
 
         command_dl
-            .send_item(MapModification::Insert("eggs".to_string(), 2))
+            .send_item(MapModification::Update("eggs".to_string(), 2))
             .await
             .unwrap();
 
@@ -508,7 +507,7 @@ mod tests {
 
             assert_eq!(view.get(&String::from("milk")).unwrap(), 1);
             assert_eq!(view.get(&String::from("eggs")).unwrap(), 2);
-            assert_eq!(event, MapEvent::Insert(String::from("eggs")));
+            assert_eq!(event, MapEvent::Update(String::from("eggs")));
         } else {
             panic!("The map downlink did not receive the correct message!")
         }
@@ -518,14 +517,14 @@ mod tests {
             let TypedViewWithEvent { view, event } = event;
 
             assert_eq!(
-                view.get(&Value::Text(String::from("milk"))).unwrap(),
+                view.get(&Value::text("milk")).unwrap(),
                 Value::UInt32Value(1)
             );
             assert_eq!(
-                view.get(&Value::Text(String::from("eggs"))).unwrap(),
+                view.get(&Value::text("eggs")).unwrap(),
                 Value::UInt32Value(2)
             );
-            assert_eq!(event, MapEvent::Insert(Value::Text(String::from("eggs"))));
+            assert_eq!(event, MapEvent::Update(Value::text("eggs")));
         } else {
             panic!("The map downlink did not receive the correct message!")
         }
@@ -537,7 +536,7 @@ mod tests {
         let container = docker.run(SwimTestServer);
         let port = container.get_host_port(9001).unwrap();
         let host = format!("ws://127.0.0.1:{}", port);
-        let mut client = SwimClient::new_with_default(TungsteniteWsFactory::new(5).await).await;
+        let mut client = SwimClient::new_with_default().await;
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "integerMap");
 
         let (mut dl, _) = client.map_downlink::<i64, i64>(path).await.unwrap();
@@ -573,7 +572,7 @@ mod tests {
         let container = docker.run(SwimTestServer);
         let port = container.get_host_port(9001).unwrap();
         let host = format!("ws://127.0.0.1:{}", port);
-        let mut client = SwimClient::new_with_default(TungsteniteWsFactory::new(5).await).await;
+        let mut client = SwimClient::new_with_default().await;
 
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "info");
 
@@ -589,21 +588,18 @@ mod tests {
         let (mut dl, mut recv) = client.value_downlink(path, Value::Extant).await.unwrap();
 
         let message = recv.next().await.unwrap();
-        assert_eq!(message, Event::Remote(Value::Text(String::from("milk"))));
+        assert_eq!(message, Event::Remote(Value::text("milk")));
 
         let mut sender_view = dl.write_only_sender::<String>().await.unwrap();
         let (_, mut sink) = dl.split();
 
         sink.set(String::from("bread").into()).await.unwrap();
         let message = recv.next().await.unwrap();
-        assert_eq!(message, Event::Local(Value::Text(String::from("bread"))));
+        assert_eq!(message, Event::Local(Value::text("bread")));
 
         sender_view.set(String::from("chocolate")).await.unwrap();
         let message = recv.next().await.unwrap();
-        assert_eq!(
-            message,
-            Event::Local(Value::Text(String::from("chocolate")))
-        );
+        assert_eq!(message, Event::Local(Value::text("chocolate")));
     }
 
     #[tokio::test]
@@ -612,7 +608,7 @@ mod tests {
         let container = docker.run(SwimTestServer);
         let port = container.get_host_port(9001).unwrap();
         let host = format!("ws://127.0.0.1:{}", port);
-        let mut client = SwimClient::new_with_default(TungsteniteWsFactory::new(5).await).await;
+        let mut client = SwimClient::new_with_default().await;
 
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "id");
         let (mut dl, _) = client.value_downlink(path.clone(), 0i32).await.unwrap();
@@ -636,7 +632,7 @@ mod tests {
         let container = docker.run(SwimTestServer);
         let port = container.get_host_port(9001).unwrap();
         let host = format!("ws://127.0.0.1:{}", port);
-        let mut client = SwimClient::new_with_default(TungsteniteWsFactory::new(5).await).await;
+        let mut client = SwimClient::new_with_default().await;
 
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "shoppingCart");
 
@@ -648,7 +644,7 @@ mod tests {
         tokio::time::delay_for(Duration::from_secs(1)).await;
 
         command_dl
-            .send_item(MapModification::Insert(
+            .send_item(MapModification::Update(
                 String::from("milk").into(),
                 5.into(),
             ))
@@ -664,7 +660,7 @@ mod tests {
             let TypedViewWithEvent { view, event } = event;
 
             assert_eq!(
-                view.get(&Value::Text(String::from("milk"))).unwrap(),
+                view.get(&Value::text("milk")).unwrap(),
                 Value::UInt32Value(5)
             );
             assert_eq!(event, MapEvent::Initial);
@@ -675,7 +671,7 @@ mod tests {
         let mut sender_view = dl.write_only_sender::<String, i32>().await.unwrap();
         let (_, mut sink) = dl.split();
 
-        sink.insert(String::from("eggs").into(), 3.into())
+        sink.update(String::from("eggs").into(), 3.into())
             .await
             .unwrap();
 
@@ -684,20 +680,20 @@ mod tests {
             let TypedViewWithEvent { view, event } = event;
 
             assert_eq!(
-                view.get(&Value::Text(String::from("milk"))).unwrap(),
+                view.get(&Value::text("milk")).unwrap(),
                 Value::UInt32Value(5)
             );
             assert_eq!(
-                view.get(&Value::Text(String::from("eggs"))).unwrap(),
+                view.get(&Value::text("eggs")).unwrap(),
                 Value::UInt32Value(3)
             );
-            assert_eq!(event, MapEvent::Insert(Value::Text(String::from("eggs"))));
+            assert_eq!(event, MapEvent::Update(Value::text("eggs")));
         } else {
             panic!("The map downlink did not receive the correct message!")
         }
 
         sender_view
-            .insert(String::from("chocolate"), 10)
+            .update(String::from("chocolate"), 10)
             .await
             .unwrap();
 
@@ -706,21 +702,18 @@ mod tests {
             let TypedViewWithEvent { view, event } = event;
 
             assert_eq!(
-                view.get(&Value::Text(String::from("milk"))).unwrap(),
+                view.get(&Value::text("milk")).unwrap(),
                 Value::UInt32Value(5)
             );
             assert_eq!(
-                view.get(&Value::Text(String::from("eggs"))).unwrap(),
+                view.get(&Value::text("eggs")).unwrap(),
                 Value::UInt32Value(3)
             );
             assert_eq!(
-                view.get(&Value::Text(String::from("chocolate"))).unwrap(),
+                view.get(&Value::text("chocolate")).unwrap(),
                 Value::UInt32Value(10)
             );
-            assert_eq!(
-                event,
-                MapEvent::Insert(Value::Text(String::from("chocolate")))
-            );
+            assert_eq!(event, MapEvent::Update(Value::text("chocolate")));
         } else {
             panic!("The map downlink did not receive the correct message!")
         }
@@ -732,7 +725,7 @@ mod tests {
         let container = docker.run(SwimTestServer);
         let port = container.get_host_port(9001).unwrap();
         let host = format!("ws://127.0.0.1:{}", port);
-        let mut client = SwimClient::new_with_default(TungsteniteWsFactory::new(5).await).await;
+        let mut client = SwimClient::new_with_default().await;
 
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "integerMap");
         let (mut dl, _) = client.map_downlink::<i32, i32>(path).await.unwrap();

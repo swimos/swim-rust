@@ -12,6 +12,175 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::agent::AttachError;
+use futures::Stream;
+use std::any::Any;
+use std::marker::PhantomData;
+use std::num::NonZeroUsize;
+use swim_common::topic::{
+    BroadcastSender, BroadcastTopic, MpscTopic, Topic, TransformedTopic, WatchTopic,
+};
+use tokio::sync::{mpsc, oneshot, watch};
+use utilities::future::TransformMut;
+
 pub mod action;
 pub mod map;
 pub mod value;
+
+pub trait DeferredLaneView<T>: Send + Sync {
+    type View: Topic<T> + Send + Sync + 'static;
+
+    fn attach(self) -> Result<Self::View, AttachError>;
+
+    fn transform<Trans>(self, transform: Trans) -> TransformedDeferredLaneView<T, Self, Trans>
+    where
+        Self: Sized,
+        Trans: TransformMut<T> + Clone + Send + 'static,
+        Trans::Out: Stream + Send + 'static,
+    {
+        TransformedDeferredLaneView::new(self, transform)
+    }
+}
+
+pub struct DeferredMpscView<T> {
+    injector: oneshot::Sender<mpsc::Sender<T>>,
+    buffer_size: NonZeroUsize,
+    yield_after: NonZeroUsize,
+}
+
+impl<T> DeferredMpscView<T> {
+    pub fn new(
+        injector: oneshot::Sender<mpsc::Sender<T>>,
+        buffer_size: NonZeroUsize,
+        yield_after: NonZeroUsize,
+    ) -> Self {
+        DeferredMpscView {
+            injector,
+            buffer_size,
+            yield_after,
+        }
+    }
+}
+
+pub struct DeferredWatchView<T> {
+    injector: oneshot::Sender<watch::Sender<Option<T>>>,
+}
+
+impl<T> DeferredWatchView<T> {
+    pub fn new(injector: oneshot::Sender<watch::Sender<Option<T>>>) -> Self {
+        DeferredWatchView { injector }
+    }
+}
+
+pub struct DeferredBroadcastView<T> {
+    injector: oneshot::Sender<BroadcastSender<T>>,
+    buffer_size: NonZeroUsize,
+}
+
+impl<T> DeferredBroadcastView<T> {
+    pub fn new(injector: oneshot::Sender<BroadcastSender<T>>, buffer_size: NonZeroUsize) -> Self {
+        DeferredBroadcastView {
+            injector,
+            buffer_size,
+        }
+    }
+}
+
+impl<T> DeferredLaneView<T> for DeferredMpscView<T>
+where
+    T: Any + Clone + Send + Sync,
+{
+    type View = MpscTopic<T>;
+
+    fn attach(self) -> Result<Self::View, AttachError> {
+        let DeferredMpscView {
+            injector,
+            buffer_size,
+            yield_after,
+        } = self;
+        let (tx, rx) = mpsc::channel(buffer_size.get());
+        if injector.send(tx).is_err() {
+            Err(AttachError::LaneStoppedReporting)
+        } else {
+            let (topic, _) = MpscTopic::new(rx, buffer_size, yield_after);
+            Ok(topic)
+        }
+    }
+}
+
+impl<T> DeferredLaneView<T> for DeferredWatchView<T>
+where
+    T: Any + Clone + Send + Sync,
+{
+    type View = WatchTopic<T>;
+
+    fn attach(self) -> Result<Self::View, AttachError> {
+        let DeferredWatchView { injector } = self;
+        let (tx, rx) = watch::channel(None);
+        if injector.send(tx).is_err() {
+            Err(AttachError::LaneStoppedReporting)
+        } else {
+            let (topic, _) = WatchTopic::new(rx);
+            Ok(topic)
+        }
+    }
+}
+
+impl<T> DeferredLaneView<T> for DeferredBroadcastView<T>
+where
+    T: Any + Clone + Send + Sync,
+{
+    type View = BroadcastTopic<T>;
+
+    fn attach(self) -> Result<Self::View, AttachError> {
+        let DeferredBroadcastView {
+            injector,
+            buffer_size,
+        } = self;
+        let (topic, tx, _) = BroadcastTopic::new(buffer_size.get());
+        if injector.send(tx).is_err() {
+            Err(AttachError::LaneStoppedReporting)
+        } else {
+            Ok(topic)
+        }
+    }
+}
+
+pub struct TransformedDeferredLaneView<T, View: DeferredLaneView<T>, Trans> {
+    _type: PhantomData<fn(T) -> T>,
+    inner: View,
+    transform: Trans,
+}
+
+impl<T, View, Trans> TransformedDeferredLaneView<T, View, Trans>
+where
+    View: DeferredLaneView<T>,
+    Trans: TransformMut<T> + Clone + Send + 'static,
+    Trans::Out: Stream + Send + 'static,
+{
+    pub fn new(inner: View, transform: Trans) -> Self {
+        TransformedDeferredLaneView {
+            _type: PhantomData,
+            inner,
+            transform,
+        }
+    }
+}
+
+impl<T, View, Trans> DeferredLaneView<<<Trans as TransformMut<T>>::Out as Stream>::Item>
+    for TransformedDeferredLaneView<T, View, Trans>
+where
+    T: 'static,
+    View: DeferredLaneView<T>,
+    Trans: TransformMut<T> + Clone + Send + Sync + 'static,
+    Trans::Out: Stream + Send + 'static,
+{
+    type View = TransformedTopic<T, View::View, Trans>;
+
+    fn attach(self) -> Result<Self::View, AttachError> {
+        let TransformedDeferredLaneView {
+            inner, transform, ..
+        } = self;
+        inner.attach().map(|top| top.transform(transform))
+    }
+}

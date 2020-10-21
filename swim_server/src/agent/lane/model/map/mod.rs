@@ -27,20 +27,28 @@ use stm::transaction::{atomically, RetryManager, TransactionError, TransactionRu
 use stm::var::TVar;
 use summary::{clear_summary, remove_summary, update_summary};
 use swim_common::form::{Form, FormErr};
-use swim_common::model::{Attr, Item, Value};
+use swim_common::model::Value;
 
+use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lane::model::map::summary::TransactionSummary;
-use crate::agent::lane::strategy::{Buffered, ChannelObserver, Dropping, Queue};
+use crate::agent::lane::model::{
+    DeferredBroadcastView, DeferredLaneView, DeferredMpscView, DeferredWatchView,
+    TransformedDeferredLaneView,
+};
+use crate::agent::lane::strategy::{
+    Buffered, ChannelObserver, DeferredChannelObserver, Dropping, Queue,
+};
 use crate::agent::lane::{BroadcastStream, InvalidForm, LaneModel};
-use futures::stream::{iter, Flatten, Iter, StreamExt};
+use futures::stream::{iter, Iter};
 use futures::Stream;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
-use stm::var::observer::StaticObserver;
-use tokio::sync::{broadcast, mpsc, watch};
+use stm::var::observer::{self, JoinObserver, StaticObserver};
+use swim_common::topic::BroadcastSender;
+use tokio::sync::{broadcast, mpsc, oneshot, watch};
 use tracing::{event, Level};
-use utilities::future::{SwimStreamExt, Transform, TransformedStream};
+use utilities::future::{FlatmapStream, SwimStreamExt, Transform, TransformedStream};
 
 mod summary;
 
@@ -69,6 +77,15 @@ where
         MapLane {
             map_state: Default::default(),
             summary: Default::default(),
+            transaction_started: TLocal::new(false),
+            _key_type: PhantomData,
+        }
+    }
+
+    fn with_summary(summary: TVar<TransactionSummary<Value, V>>) -> Self {
+        MapLane {
+            map_state: Default::default(),
+            summary,
             transaction_started: TLocal::new(false),
             _key_type: PhantomData,
         }
@@ -117,238 +134,41 @@ where
 {
     let (observer, view) = watch.make_watch();
     let summary = TVar::new_with_observer(Default::default(), observer);
-    let transaction_started = TLocal::new(false);
-    let lane = MapLane {
-        map_state: Default::default(),
-        summary,
-        transaction_started,
-        _key_type: PhantomData,
-    };
+    let lane = MapLane::with_summary(summary);
     (lane, view)
+}
+
+/// Create a new map lane with the specified watch strategy, attaching an additional, deferred
+/// observer channel.
+pub fn make_lane_model_deferred<K, V, W>(
+    watch: W,
+    config: &AgentExecutionConfig,
+) -> (MapLane<K, V>, W::View, W::DeferredView)
+where
+    K: Any + Send + Sync + Form,
+    V: Any + Send + Sync,
+    W: MapLaneWatch<K, V>,
+{
+    let (observer, view, deferred) = watch.make_watch_with_deferred(config);
+    let summary = TVar::new_with_observer(Default::default(), observer);
+    let lane = MapLane::with_summary(summary);
+    (lane, view, deferred)
 }
 
 /// Updates that can be applied to a [`MapLane`].
 /// TODO Add take/drop.
-#[derive(Debug, PartialEq, Eq)]
-pub enum MapUpdate<K, V> {
-    Update(K, Arc<V>),
-    Remove(K),
+#[derive(Debug, PartialEq, Eq, Form)]
+pub enum MapUpdate<K, V>
+where
+    K: Form,
+    V: Form,
+{
+    #[form(tag = "update")]
+    Update(#[form(header, rename = "key")] K, #[form(body)] Arc<V>),
+    #[form(tag = "remove")]
+    Remove(#[form(header, rename = "key")] K),
+    #[form(tag = "clear")]
     Clear,
-}
-
-const UPDATE_TAG: &str = "update";
-const REMOVE_TAG: &str = "remove";
-const CLEAR_TAG: &str = "clear";
-const KEY_SLOT: &str = "key";
-
-const REMOVE_WITH_BODY: &str = "Remove updates should not have a body.";
-const CLEAR_WITH_BODY: &str = "Clear updates should not have a body.";
-
-impl<K: Form, V: Form> Form for MapUpdate<K, V> {
-    fn as_value(&self) -> Value {
-        match self {
-            MapUpdate::Update(k, v) => {
-                let key_slot = (KEY_SLOT, k.as_value());
-                let header = Attr::with_item(UPDATE_TAG, key_slot);
-                let body = v.as_value();
-                body.prepend(header)
-            }
-            MapUpdate::Remove(k) => {
-                let key_slot = (KEY_SLOT, k.as_value());
-                let header = Attr::with_item(REMOVE_TAG, key_slot);
-                Value::of_attr(header)
-            }
-            MapUpdate::Clear => Value::of_attr(CLEAR_TAG),
-        }
-    }
-
-    fn into_value(self) -> Value {
-        match self {
-            MapUpdate::Update(k, v) => {
-                let key_slot = (KEY_SLOT, k.into_value());
-                let header = Attr::with_item(UPDATE_TAG, key_slot);
-                let body = match Arc::try_unwrap(v) {
-                    Ok(v) => v.into_value(),
-                    Err(v) => v.as_value(),
-                };
-                body.prepend(header)
-            }
-            MapUpdate::Remove(k) => {
-                let key_slot = (KEY_SLOT, k.into_value());
-                let header = Attr::with_item(REMOVE_TAG, key_slot);
-                Value::of_attr(header)
-            }
-            MapUpdate::Clear => Value::of_attr(CLEAR_TAG),
-        }
-    }
-
-    fn try_from_value(value: &Value) -> Result<Self, FormErr> {
-        let (head, remainder) = try_decompose_ref(value)?;
-        match head.name.as_str() {
-            UPDATE_TAG => {
-                let key = key_by_ref(head)?;
-                let value = remainder.try_to_value()?;
-                Ok(MapUpdate::Update(key, Arc::new(value)))
-            }
-            REMOVE_TAG => {
-                let key = key_by_ref(head)?;
-                if remainder == BodyType::Missing {
-                    Ok(MapUpdate::Remove(key))
-                } else {
-                    Err(FormErr::Message(REMOVE_WITH_BODY.to_string()))
-                }
-            }
-            CLEAR_TAG => {
-                if remainder == BodyType::Missing {
-                    Ok(MapUpdate::Clear)
-                } else {
-                    Err(FormErr::Message(CLEAR_WITH_BODY.to_string()))
-                }
-            }
-            ow => Err(FormErr::IncorrectType(format!("Not a map update: {}", ow))),
-        }
-    }
-
-    fn try_convert(value: Value) -> Result<Self, FormErr> {
-        let (head, remainder) = try_decompose(value)?;
-        match head.name.as_str() {
-            UPDATE_TAG => {
-                let key = take_key(head)?;
-                let value = V::try_convert(remainder)?;
-                Ok(MapUpdate::Update(key, Arc::new(value)))
-            }
-            REMOVE_TAG => {
-                let key = take_key(head)?;
-                if remainder == Value::Extant {
-                    Ok(MapUpdate::Remove(key))
-                } else {
-                    Err(FormErr::Message(REMOVE_WITH_BODY.to_string()))
-                }
-            }
-            CLEAR_TAG => {
-                if remainder == Value::Extant {
-                    Ok(MapUpdate::Clear)
-                } else {
-                    Err(FormErr::Message(CLEAR_WITH_BODY.to_string()))
-                }
-            }
-            ow => Err(FormErr::IncorrectType(format!(
-                "Invalid tag for map update of kind {}.",
-                ow
-            ))),
-        }
-    }
-}
-
-#[derive(PartialEq, Eq)]
-enum BodyType<'a> {
-    Missing,
-    Single(&'a Value),
-    Record(&'a [Attr], &'a [Item]),
-}
-
-impl<'a> BodyType<'a> {
-    fn try_to_value<V: Form>(self) -> Result<V, FormErr> {
-        match self {
-            BodyType::Missing => Form::try_convert(Value::Extant),
-            BodyType::Single(v) => Form::try_from_value(v),
-            BodyType::Record(attrs, items) => {
-                let mut rec_attrs = Vec::with_capacity(attrs.len());
-                rec_attrs.extend_from_slice(attrs);
-                let mut rec_items = Vec::with_capacity(items.len());
-                rec_items.extend_from_slice(items);
-                V::try_convert(Value::Record(rec_attrs, rec_items))
-            }
-        }
-    }
-}
-
-fn try_decompose_ref(value: &Value) -> Result<(&Attr, BodyType), FormErr> {
-    match value {
-        Value::Record(attrs, items) => {
-            if let Some((head, tail)) = attrs.split_first() {
-                let remainder = if tail.is_empty() {
-                    if items.is_empty() {
-                        BodyType::Missing
-                    } else {
-                        match items.first() {
-                            Some(Item::ValueItem(v)) => BodyType::Single(v),
-                            _ => BodyType::Record(tail, items.as_slice()),
-                        }
-                    }
-                } else {
-                    BodyType::Record(tail, items.as_slice())
-                };
-                Ok((head, remainder))
-            } else {
-                Err(FormErr::Malformatted)
-            }
-        }
-        _ => Err(FormErr::Malformatted),
-    }
-}
-
-fn try_decompose(value: Value) -> Result<(Attr, Value), FormErr> {
-    match value {
-        Value::Record(attrs, mut items) => {
-            let mut attr_it = attrs.into_iter();
-            if let Some(head) = attr_it.next() {
-                let tail = attr_it.collect::<Vec<_>>();
-                let remainder = if tail.is_empty() {
-                    if items.is_empty() {
-                        Value::Extant
-                    } else if matches!(items.first(), Some(Item::ValueItem(_))) {
-                        match items.remove(0) {
-                            Item::ValueItem(v) => v,
-                            _ => unreachable!(),
-                        }
-                    } else {
-                        Value::Record(tail, items)
-                    }
-                } else {
-                    Value::Record(tail, items)
-                };
-                Ok((head, remainder))
-            } else {
-                Err(FormErr::Malformatted)
-            }
-        }
-        _ => Err(FormErr::Malformatted),
-    }
-}
-
-fn take_key<K: Form>(attr: Attr) -> Result<K, FormErr> {
-    let Attr { value, .. } = attr;
-    match value {
-        Value::Record(attrs, mut items) if attrs.is_empty() && items.len() == 1 => {
-            match items.remove(0) {
-                Item::Slot(Value::Text(name), key_value) if name == KEY_SLOT => {
-                    K::try_convert(key_value)
-                }
-                ow => Err(FormErr::Message(format!("Unexpected item: {}", ow))),
-            }
-        }
-        ow => Err(FormErr::Message(format!("Invalid key specifier: {}.", ow))),
-    }
-}
-
-fn key_by_ref<K: Form>(attr: &Attr) -> Result<K, FormErr> {
-    let Attr { name, value } = attr;
-    match value {
-        Value::Record(attrs, items) if attrs.is_empty() && items.len() <= 1 => {
-            match items.first() {
-                Some(Item::Slot(Value::Text(name), key_value)) if name == KEY_SLOT => {
-                    K::try_from_value(key_value)
-                }
-                Some(ow) => Err(FormErr::Message(format!("Unexpected item: {}", ow))),
-                _ => Err(FormErr::Message(format!(
-                    "Invalid tag for map update of kind {}.",
-                    name
-                ))),
-            }
-        }
-        ow => Err(FormErr::Message(format!("Invalid key specifier: {}.", ow))),
-    }
 }
 
 impl<K: Form, V: Form> From<MapUpdate<K, V>> for Value {
@@ -357,7 +177,11 @@ impl<K: Form, V: Form> From<MapUpdate<K, V>> for Value {
     }
 }
 
-impl<K, V> MapUpdate<K, V> {
+impl<K, V> MapUpdate<K, V>
+where
+    K: Form,
+    V: Form,
+{
     pub fn make(event: MapLaneEvent<K, V>) -> Option<MapUpdate<K, V>> {
         match event {
             MapLaneEvent::Update(key, value) => Some(MapUpdate::Update(key, value)),
@@ -369,7 +193,7 @@ impl<K, V> MapUpdate<K, V> {
 }
 
 /// A single event that occurred during a transaction.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum MapLaneEvent<K, V> {
     /// A coordination checkpoint was encountered in the stream. For an explanation of checkpoints,
     /// see [`crate::agent::lane::channels::uplink::map::sync_map_lane`].
@@ -380,6 +204,17 @@ pub enum MapLaneEvent<K, V> {
     Update(K, Arc<V>),
     /// An entry was removed.
     Remove(K),
+}
+
+impl<K: Clone, V> Clone for MapLaneEvent<K, V> {
+    fn clone(&self) -> Self {
+        match self {
+            MapLaneEvent::Checkpoint(id) => MapLaneEvent::Checkpoint(*id),
+            MapLaneEvent::Clear => MapLaneEvent::Clear,
+            MapLaneEvent::Update(k, v) => MapLaneEvent::Update(k.clone(), v.clone()),
+            MapLaneEvent::Remove(k) => MapLaneEvent::Remove(k.clone()),
+        }
+    }
 }
 
 impl<V> MapLaneEvent<Value, V> {
@@ -398,43 +233,96 @@ impl<V> MapLaneEvent<Value, V> {
 pub trait MapLaneWatch<K, V> {
     /// The type of the observer to watch the value of the lane.
     type Obs: StaticObserver<Arc<TransactionSummary<Value, V>>> + Send + Sync + 'static;
+
+    /// The type of the observer to watch the value of the lane with an additional, deferred
+    /// observer.
+    type WithDefObs: StaticObserver<Arc<TransactionSummary<Value, V>>> + Send + Sync + 'static;
+
     /// The type of the stream of values produced by the lane.
     type View: Stream<Item = MapLaneEvent<K, V>> + Send + Sync + 'static;
 
+    type DeferredView: DeferredLaneView<MapLaneEvent<K, V>> + Send + Sync + 'static;
+
     /// Create a linked observer and view stream.
     fn make_watch(&self) -> (Self::Obs, Self::View);
+
+    fn make_watch_with_deferred(
+        &self,
+        config: &AgentExecutionConfig,
+    ) -> (Self::WithDefObs, Self::View, Self::DeferredView);
 }
 
-type MpscEventStream<V> = Flatten<
-    TransformedStream<mpsc::Receiver<Arc<TransactionSummary<Value, V>>>, SummaryToEvents<V>>,
->;
+/// Transforms a transaction summary into a stream of events with typed keys.
+pub struct ToTypedEvents<K, V>(PhantomData<fn(V) -> (K, V)>);
 
-type WatchEventStream<V> = Flatten<
-    TransformedStream<watch::Receiver<Arc<TransactionSummary<Value, V>>>, SummaryToEvents<V>>,
->;
+impl<K, V> Clone for ToTypedEvents<K, V> {
+    fn clone(&self) -> Self {
+        ToTypedEvents::default()
+    }
+}
 
-type BroadcastEventStream<V> = Flatten<
-    TransformedStream<BroadcastStream<Arc<TransactionSummary<Value, V>>>, SummaryToEvents<V>>,
->;
+impl<K, V> Default for ToTypedEvents<K, V> {
+    fn default() -> Self {
+        ToTypedEvents(PhantomData)
+    }
+}
+
+impl<K, V> Transform<Arc<TransactionSummary<Value, V>>> for ToTypedEvents<K, V>
+where
+    K: Any + Send + Sync + Form,
+    V: Any + Send + Sync,
+{
+    type Out = TransformedStream<Iter<std::vec::IntoIter<MapLaneEvent<Value, V>>>, TypeEvents<K>>;
+
+    fn transform(&self, input: Arc<TransactionSummary<Value, V>>) -> Self::Out {
+        iter(input.to_events().into_iter()).transform(TypeEvents::default())
+    }
+}
+
+type SummaryRef<V> = Arc<TransactionSummary<Value, V>>;
+type TransformedChannel<C, K, V> = FlatmapStream<C, ToTypedEvents<K, V>>;
+type TransformedDeferred<D, K, V> =
+    TransformedDeferredLaneView<SummaryRef<V>, D, ToTypedEvents<K, V>>;
+
+type WatchSumSender<V> = watch::Sender<SummaryRef<V>>;
+type WatchOptSumSender<V> = watch::Sender<Option<SummaryRef<V>>>;
 
 impl<K, V> MapLaneWatch<K, V> for Dropping
 where
     K: Any + Send + Sync + Form,
     V: Any + Send + Sync,
 {
-    type Obs = ChannelObserver<watch::Sender<Arc<TransactionSummary<Value, V>>>>;
-    type View = TransformedStream<WatchEventStream<V>, TypeEvents<K>>;
+    type Obs = ChannelObserver<watch::Sender<SummaryRef<V>>>;
+    type WithDefObs = JoinObserver<
+        ChannelObserver<WatchSumSender<V>>,
+        DeferredChannelObserver<WatchOptSumSender<V>>,
+    >;
+    type View = TransformedChannel<watch::Receiver<SummaryRef<V>>, K, V>;
+    type DeferredView = TransformedDeferred<DeferredWatchView<SummaryRef<V>>, K, V>;
 
     fn make_watch(&self) -> (Self::Obs, Self::View) {
         let (tx, rx) = watch::channel(Default::default());
         let observer = ChannelObserver::new(tx);
-        let str = rx
-            .transform(SummaryToEvents::default())
-            .flatten()
-            .transform(TypeEvents::default());
+        let str = rx.transform_flat_map(ToTypedEvents::default());
         (observer, str)
     }
+
+    fn make_watch_with_deferred(
+        &self,
+        _config: &AgentExecutionConfig,
+    ) -> (Self::WithDefObs, Self::View, Self::DeferredView) {
+        let (tx, rx) = watch::channel(Default::default());
+        let observer = ChannelObserver::new(tx);
+        let (tx_init, rx_init) = oneshot::channel();
+        let deferred = DeferredChannelObserver::Uninitialized(rx_init);
+        let joined = observer::join(observer, deferred);
+        let deferred_view = DeferredWatchView::new(tx_init).transform(ToTypedEvents::default());
+        let str = rx.transform_flat_map(ToTypedEvents::default());
+        (joined, str, deferred_view)
+    }
 }
+
+type MpscSumSender<V> = mpsc::Sender<SummaryRef<V>>;
 
 impl<K, V> MapLaneWatch<K, V> for Queue
 where
@@ -442,19 +330,37 @@ where
     V: Any + Send + Sync,
 {
     type Obs = ChannelObserver<mpsc::Sender<Arc<TransactionSummary<Value, V>>>>;
-    type View = TransformedStream<MpscEventStream<V>, TypeEvents<K>>;
+    type WithDefObs =
+        JoinObserver<ChannelObserver<MpscSumSender<V>>, DeferredChannelObserver<MpscSumSender<V>>>;
+    type View = TransformedChannel<mpsc::Receiver<SummaryRef<V>>, K, V>;
+    type DeferredView = TransformedDeferred<DeferredMpscView<SummaryRef<V>>, K, V>;
 
     fn make_watch(&self) -> (Self::Obs, Self::View) {
         let Queue(n) = self;
         let (tx, rx) = mpsc::channel(n.get());
         let observer = ChannelObserver::new(tx);
-        let str = rx
-            .transform(SummaryToEvents::default())
-            .flatten()
-            .transform(TypeEvents::default());
+        let str = rx.transform_flat_map(ToTypedEvents::default());
         (observer, str)
     }
+
+    fn make_watch_with_deferred(
+        &self,
+        config: &AgentExecutionConfig,
+    ) -> (Self::WithDefObs, Self::View, Self::DeferredView) {
+        let Queue(n) = self;
+        let (tx, rx) = mpsc::channel(n.get());
+        let observer = ChannelObserver::new(tx);
+        let (tx_init, rx_init) = oneshot::channel();
+        let deferred = DeferredChannelObserver::Uninitialized(rx_init);
+        let joined = observer::join(observer, deferred);
+        let deferred_view = DeferredMpscView::new(tx_init, *n, config.yield_after)
+            .transform(ToTypedEvents::default());
+        let str = rx.transform_flat_map(ToTypedEvents::default());
+        (joined, str, deferred_view)
+    }
 }
+
+type BroadcastSumSender<V> = broadcast::Sender<SummaryRef<V>>;
 
 impl<K, V> MapLaneWatch<K, V> for Buffered
 where
@@ -462,26 +368,35 @@ where
     V: Any + Send + Sync,
 {
     type Obs = ChannelObserver<broadcast::Sender<Arc<TransactionSummary<Value, V>>>>;
-    type View = TransformedStream<BroadcastEventStream<V>, TypeEvents<K>>;
+    type WithDefObs = JoinObserver<
+        ChannelObserver<BroadcastSumSender<V>>,
+        DeferredChannelObserver<BroadcastSender<SummaryRef<V>>>,
+    >;
+    type View = TransformedChannel<BroadcastStream<SummaryRef<V>>, K, V>;
+    type DeferredView = TransformedDeferred<DeferredBroadcastView<SummaryRef<V>>, K, V>;
 
     fn make_watch(&self) -> (Self::Obs, Self::View) {
         let Buffered(n) = self;
         let (tx, rx) = broadcast::channel(n.get());
         let observer = ChannelObserver::new(tx);
-        let str = BroadcastStream(rx)
-            .transform(SummaryToEvents::default())
-            .flatten()
-            .transform(TypeEvents::default());
+        let str = BroadcastStream(rx).transform_flat_map(ToTypedEvents::default());
         (observer, str)
     }
-}
 
-/// [`Transform`] to break a transaction summary into a sequence of events.
-pub struct SummaryToEvents<V>(PhantomData<fn(V) -> V>);
-
-impl<V> Default for SummaryToEvents<V> {
-    fn default() -> Self {
-        SummaryToEvents(PhantomData)
+    fn make_watch_with_deferred(
+        &self,
+        _config: &AgentExecutionConfig,
+    ) -> (Self::WithDefObs, Self::View, Self::DeferredView) {
+        let Buffered(n) = self;
+        let (tx, rx) = broadcast::channel(n.get());
+        let observer = ChannelObserver::new(tx);
+        let (tx_init, rx_init) = oneshot::channel();
+        let deferred = DeferredChannelObserver::Uninitialized(rx_init);
+        let joined = observer::join(observer, deferred);
+        let deferred_view =
+            DeferredBroadcastView::new(tx_init, *n).transform(ToTypedEvents::default());
+        let str = BroadcastStream(rx).transform_flat_map(ToTypedEvents::default());
+        (joined, str, deferred_view)
     }
 }
 
@@ -491,14 +406,6 @@ pub struct TypeEvents<K>(PhantomData<fn(Value) -> K>);
 impl<K> Default for TypeEvents<K> {
     fn default() -> Self {
         TypeEvents(PhantomData)
-    }
-}
-
-impl<V> Transform<Arc<TransactionSummary<Value, V>>> for SummaryToEvents<V> {
-    type Out = Iter<std::vec::IntoIter<MapLaneEvent<Value, V>>>;
-
-    fn transform(&self, input: Arc<TransactionSummary<Value, V>>) -> Self::Out {
-        iter(input.to_events().into_iter())
     }
 }
 

@@ -1,0 +1,5 @@
+error: Attribute not supported by unit compound types
+  --> $DIR/all_items_unit.rs:19:19
+   |
+19 |     #[form(schema(all_items(num_items = 5)))]
+   |                   ^^^^^^^^^^^^^^^^^^^^^^^^

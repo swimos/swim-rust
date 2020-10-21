@@ -12,22 +12,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::agent::context::AgentExecutionContext;
 use crate::agent::lane::channels::task::{LaneUplinks, UplinkChannels};
 use crate::agent::lane::channels::update::{LaneUpdate, UpdateError};
 use crate::agent::lane::channels::uplink::spawn::{SpawnerUplinkFactory, UplinkErrorReport};
 use crate::agent::lane::channels::uplink::{UplinkAction, UplinkError, UplinkStateMachine};
-use crate::agent::lane::channels::{
-    AgentExecutionConfig, AgentExecutionContext, LaneMessageHandler, TaggedAction,
-};
+use crate::agent::lane::channels::{AgentExecutionConfig, LaneMessageHandler, TaggedAction};
+use crate::agent::Eff;
+use crate::plane::error::ResolutionError;
 use crate::routing::{RoutingAddr, ServerRouter, TaggedEnvelope};
-use futures::future::BoxFuture;
-use futures::future::{join, join3, ready};
+use futures::future::{join, join3, ready, BoxFuture};
 use futures::stream::once;
 use futures::stream::{BoxStream, FusedStream};
 use futures::{FutureExt, Stream, StreamExt};
-use pin_utils::core_reexport::num::NonZeroUsize;
 use pin_utils::pin_mut;
 use std::collections::{HashMap, HashSet};
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use swim_common::form::{Form, FormErr};
@@ -39,9 +39,12 @@ use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
+use url::Url;
+use utilities::uri::RelativeUri;
 
 const INIT: i32 = 42;
 
+#[derive(Debug)]
 struct Message(i32);
 
 impl Form for Message {
@@ -85,11 +88,20 @@ impl<'a> ItemSink<'a, Envelope> for TestSender {
 impl ServerRouter for TestRouter {
     type Sender = TestSender;
 
-    fn get_sender(&mut self, addr: RoutingAddr) -> Result<Self::Sender, RoutingError> {
-        Ok(TestSender {
+    fn get_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Self::Sender, RoutingError>> {
+        ready(Ok(TestSender {
             addr,
             inner: self.0.clone(),
-        })
+        }))
+        .boxed()
+    }
+
+    fn resolve(
+        &mut self,
+        _host: Option<Url>,
+        _route: RelativeUri,
+    ) -> BoxFuture<'static, Result<RoutingAddr, ResolutionError>> {
+        panic!("Unexpected resolution attempt.")
     }
 }
 
@@ -144,7 +156,7 @@ impl LaneUpdate for TestUpdater {
         messages: Messages,
     ) -> BoxFuture<'static, Result<(), UpdateError>>
     where
-        Messages: Stream<Item = Result<Self::Msg, Err>> + Send + 'static,
+        Messages: Stream<Item = Result<(RoutingAddr, Self::Msg), Err>> + Send + 'static,
         Err: Send,
         UpdateError: From<Err>,
     {
@@ -152,7 +164,7 @@ impl LaneUpdate for TestUpdater {
 
         async move {
             pin_mut!(messages);
-            while let Some(Ok(Message(n))) = messages.next().await {
+            while let Some(Ok((_, Message(n)))) = messages.next().await {
                 if tx.send(n).await.is_err() {
                     break;
                 }
@@ -169,10 +181,6 @@ fn default_buffer() -> NonZeroUsize {
 
 fn yield_after() -> NonZeroUsize {
     NonZeroUsize::new(256).unwrap()
-}
-
-fn max_attempts() -> NonZeroUsize {
-    NonZeroUsize::new(2).unwrap()
 }
 
 fn route() -> RelativePath {
@@ -209,10 +217,7 @@ impl UplinkSpawnerOutputs {
         .expect("Timeout awaiting outputs.")
     }
 
-    fn split(
-        self,
-        expected: HashSet<RoutingAddr>,
-    ) -> (UplinkSpawnerSplitOutputs, BoxFuture<'static, ()>) {
+    fn split(self, expected: HashSet<RoutingAddr>) -> (UplinkSpawnerSplitOutputs, Eff) {
         let UplinkSpawnerOutputs {
             _update_rx,
             mut router_rx,
@@ -273,17 +278,10 @@ impl UplinkSpawnerSplitOutputs {
 }
 
 fn make_config() -> AgentExecutionConfig {
-    AgentExecutionConfig {
-        max_concurrency: 1,
-        action_buffer: default_buffer(),
-        update_buffer: default_buffer(),
-        uplink_err_buffer: default_buffer(),
-        max_fatal_uplink_errors: 1,
-        max_uplink_start_attempts: max_attempts(),
-    }
+    AgentExecutionConfig::with(default_buffer(), 1, 1, Duration::from_secs(5))
 }
 
-struct TestContext(mpsc::Sender<TaggedEnvelope>, Sender<BoxFuture<'static, ()>>);
+struct TestContext(mpsc::Sender<TaggedEnvelope>, Sender<Eff>);
 
 impl AgentExecutionContext for TestContext {
     type Router = TestRouter;
@@ -292,7 +290,7 @@ impl AgentExecutionContext for TestContext {
         TestRouter(self.0.clone())
     }
 
-    fn spawner(&self) -> Sender<BoxFuture<'static, ()>> {
+    fn spawner(&self) -> Sender<Eff> {
         self.1.clone()
     }
 }

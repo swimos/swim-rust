@@ -18,8 +18,9 @@ pub mod retryable;
 mod tests;
 
 use futures::never::Never;
+use futures::stream::FusedStream;
 use futures::task::{Context, Poll};
-use futures::{Future, Sink, Stream, TryFuture};
+use futures::{ready, Future, Sink, Stream, TryFuture};
 use pin_project::pin_project;
 use std::marker::PhantomData;
 use std::pin::Pin;
@@ -49,6 +50,14 @@ pub struct TransformedFuture<Fut, Trans> {
     #[pin]
     future: Fut,
     transform: Option<Trans>,
+}
+
+/// A future that transforms another future using a [`Transform`] that results in a second future.
+#[pin_project(project = ChainedFutureProj)]
+#[derive(Debug)]
+pub enum ChainedFuture<Fut1, Fut2, Trans> {
+    First(#[pin] Fut1, Option<Trans>),
+    Second(#[pin] Fut2),
 }
 
 /// Transforms a stream of [`T`] into a stream of [`Result<T, Never>`].
@@ -97,6 +106,17 @@ where
             future,
             transform: Some(transform),
         }
+    }
+}
+
+impl<Fut1, Trans> ChainedFuture<Fut1, Trans::Out, Trans>
+where
+    Fut1: Future,
+    Trans: TransformOnce<Fut1::Output>,
+    Trans::Out: Future,
+{
+    pub fn new(future: Fut1, transform: Trans) -> Self {
+        ChainedFuture::First(future, Some(transform))
     }
 }
 
@@ -149,6 +169,33 @@ where
             Some(trans) => trans.transform(input),
             _ => panic!("Transformed future used more than once."),
         })
+    }
+}
+
+impl<Fut1, Trans> Future for ChainedFuture<Fut1, Trans::Out, Trans>
+where
+    Fut1: Future,
+    Trans: TransformOnce<Fut1::Output>,
+    Trans::Out: Future,
+{
+    type Output = <<Trans as TransformOnce<Fut1::Output>>::Out as Future>::Output;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        loop {
+            match self.as_mut().project() {
+                ChainedFutureProj::First(fut, trans) => {
+                    let res = ready!(fut.poll(cx));
+                    let fut2 = trans
+                        .take()
+                        .expect("Future inconsistent state.")
+                        .transform(res);
+                    self.set(ChainedFuture::Second(fut2));
+                }
+                ChainedFutureProj::Second(fut) => {
+                    return fut.poll(cx);
+                }
+            }
+        }
     }
 }
 
@@ -266,6 +313,38 @@ pub trait SwimFutureExt: Future {
         TransformedFuture::new(self, transform)
     }
 
+    /// Apply a transformation, resulting in another future, to the output of a future.
+    ///
+    ///  # Examples
+    /// ```
+    /// use futures::executor::block_on;
+    /// use futures::future::{ready, Ready};
+    /// use utilities::future::*;
+    /// use std::ops::Add;
+    /// use utilities::future::SwimFutureExt;
+    /// struct Plus(i32);
+    ///
+    /// impl TransformOnce<i32> for Plus {
+    ///     type Out = Ready<i32>;
+    ///
+    ///     fn transform(self, input: i32) -> Self::Out {
+    ///         ready(input + self.0)
+    ///     }
+    /// }
+    ///
+    /// let n: i32 = block_on(ready(2).chain(Plus(3)));
+    /// assert_eq!(n, 5);
+    ///
+    /// ```
+    fn chain<Trans>(self, transform: Trans) -> ChainedFuture<Self, Trans::Out, Trans>
+    where
+        Self: Sized,
+        Trans: TransformOnce<Self::Output>,
+        Trans::Out: Future,
+    {
+        ChainedFuture::First(self, Some(transform))
+    }
+
     /// Discard the result of this future.
     fn unit(self) -> Unit<Self>
     where
@@ -311,6 +390,41 @@ pub struct TransformedStream<Str, Trans> {
     transform: Trans,
 }
 
+/// A stream that transforms another stream using a [`Transform`] that results in a future.
+#[pin_project(project = TransformedStreamFutProj)]
+#[derive(Debug)]
+pub struct TransformedStreamFut<Str, Trans, Fut> {
+    #[pin]
+    stream: Str,
+    transform: Trans,
+    #[pin]
+    current: Option<Fut>,
+    done: bool,
+}
+
+#[pin_project(project = FlatmapStreamProj)]
+#[derive(Debug)]
+pub struct FlatmapStream<Str1: Stream, Trans: TransformMut<Str1::Item>> {
+    #[pin]
+    stream: Str1,
+    transform: Trans,
+    #[pin]
+    current: Option<Trans::Out>,
+    done: bool,
+}
+
+#[pin_project(project = OwningScanProj)]
+#[derive(Debug)]
+pub struct OwningScan<Str, State, F, Fut> {
+    #[pin]
+    stream: Str,
+    scan_fun: F,
+    state: Option<State>,
+    #[pin]
+    current: Option<Fut>,
+    done: bool,
+}
+
 impl<Str, Trans> TransformedStream<Str, Trans>
 where
     Str: Stream,
@@ -318,6 +432,38 @@ where
 {
     pub fn new(stream: Str, transform: Trans) -> Self {
         TransformedStream { stream, transform }
+    }
+}
+
+impl<Str, Trans> TransformedStreamFut<Str, Trans, Trans::Out>
+where
+    Str: Stream,
+    Trans: TransformMut<Str::Item>,
+    Trans::Out: Future,
+{
+    pub fn new(stream: Str, transform: Trans) -> Self {
+        TransformedStreamFut {
+            stream,
+            transform,
+            current: None,
+            done: false,
+        }
+    }
+}
+
+impl<Str, Trans> FlatmapStream<Str, Trans>
+where
+    Str: Stream,
+    Trans: TransformMut<Str::Item>,
+    Trans::Out: Stream,
+{
+    pub fn new(stream: Str, transform: Trans) -> Self {
+        FlatmapStream {
+            stream,
+            transform,
+            current: None,
+            done: false,
+        }
     }
 }
 
@@ -338,6 +484,176 @@ where
     }
 }
 
+impl<Str, Trans> Stream for TransformedStreamFut<Str, Trans, Trans::Out>
+where
+    Str: Stream,
+    Trans: TransformMut<Str::Item>,
+    Trans::Out: Future,
+{
+    type Item = <Trans::Out as Future>::Output;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let TransformedStreamFutProj {
+            mut stream,
+            transform,
+            mut current,
+            done,
+        } = self.project();
+        if *done {
+            return Poll::Ready(None);
+        }
+        loop {
+            if let Some(inner) = current.as_mut().as_pin_mut() {
+                let result = ready!(inner.poll(cx));
+                current.as_mut().set(None);
+                break Poll::Ready(Some(result));
+            } else {
+                let maybe_item = ready!(stream.as_mut().poll_next(cx));
+                if let Some(item) = maybe_item {
+                    current.as_mut().set(Some(transform.transform(item)));
+                } else {
+                    *done = true;
+                    break Poll::Ready(None);
+                }
+            }
+        }
+    }
+}
+
+impl<Str, Trans> FusedStream for TransformedStreamFut<Str, Trans, Trans::Out>
+where
+    Str: Stream,
+    Trans: TransformMut<Str::Item>,
+    Trans::Out: Future,
+{
+    fn is_terminated(&self) -> bool {
+        self.done
+    }
+}
+
+impl<Str, Trans> Stream for FlatmapStream<Str, Trans>
+where
+    Str: Stream,
+    Trans: TransformMut<Str::Item>,
+    Trans::Out: Stream,
+{
+    type Item = <Trans::Out as Stream>::Item;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let FlatmapStreamProj {
+            mut stream,
+            transform,
+            mut current,
+            done,
+        } = self.project();
+        if *done {
+            return Poll::Ready(None);
+        }
+        loop {
+            if let Some(inner) = current.as_mut().as_pin_mut() {
+                let result = ready!(inner.poll_next(cx));
+                if let Some(v) = result {
+                    break Poll::Ready(Some(v));
+                } else {
+                    current.as_mut().set(None);
+                }
+            } else {
+                let maybe_item = ready!(stream.as_mut().poll_next(cx));
+                if let Some(item) = maybe_item {
+                    current.as_mut().set(Some(transform.transform(item)));
+                } else {
+                    *done = true;
+                    break Poll::Ready(None);
+                }
+            }
+        }
+    }
+}
+
+impl<Str, Trans> FusedStream for FlatmapStream<Str, Trans>
+where
+    Str: Stream,
+    Trans: TransformMut<Str::Item>,
+    Trans::Out: Stream,
+{
+    fn is_terminated(&self) -> bool {
+        self.done
+    }
+}
+
+impl<Str, State, F, Fut> OwningScan<Str, State, F, Fut>
+where
+    Str: Stream,
+    F: FnMut(State, Str::Item) -> Fut,
+{
+    pub fn new(stream: Str, init: State, scan_fun: F) -> Self {
+        OwningScan {
+            stream,
+            scan_fun,
+            state: Some(init),
+            current: None,
+            done: false,
+        }
+    }
+}
+
+impl<Str, State, F, Fut, B> Stream for OwningScan<Str, State, F, Fut>
+where
+    Str: Stream,
+    F: FnMut(State, Str::Item) -> Fut,
+    Fut: Future<Output = Option<(State, B)>>,
+{
+    type Item = B;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let OwningScanProj {
+            mut stream,
+            scan_fun,
+            state,
+            mut current,
+            done,
+        } = self.project();
+        loop {
+            if *done {
+                break Poll::Ready(None);
+            }
+            if let Some(fut) = current.as_mut().as_pin_mut() {
+                if let Some((new_state, item)) = ready!(fut.poll(cx)) {
+                    current.set(None);
+                    *state = Some(new_state);
+                    break Poll::Ready(Some(item));
+                } else {
+                    current.set(None);
+                    *done = true;
+                    break Poll::Ready(None);
+                }
+            } else {
+                let maybe_next_input = ready!(stream.as_mut().poll_next(cx));
+                if let Some(next_input) = maybe_next_input {
+                    let prev_state = state.take().expect("Owning scan stream in invalid state.");
+                    let fut = scan_fun(prev_state, next_input);
+                    current.set(Some(fut));
+                } else {
+                    *state = None;
+                    *done = true;
+                    break Poll::Ready(None);
+                }
+            }
+        }
+    }
+}
+
+impl<Str, State, F, Fut, B> FusedStream for OwningScan<Str, State, F, Fut>
+where
+    Str: Stream,
+    F: FnMut(State, Str::Item) -> Fut,
+    Fut: Future<Output = Option<(State, B)>>,
+{
+    fn is_terminated(&self) -> bool {
+        self.done
+    }
+}
+
 /// A stream that runs another stream of [`Result`]s until an error is produces, yielding the
 /// OK values.
 #[pin_project]
@@ -346,22 +662,6 @@ pub struct UntilFailure<Str, Trans> {
     #[pin]
     stream: Str,
     transform: Trans,
-}
-
-/// Stream for the `take_until_completes` combinator.
-#[pin_project]
-#[derive(Debug)]
-pub struct TakeUntil<S, F> {
-    #[pin]
-    stream: S,
-    #[pin]
-    fut: F,
-}
-
-impl<S, F> TakeUntil<S, F> {
-    pub fn new(stream: S, limit: F) -> Self {
-        TakeUntil { stream, fut: limit }
-    }
 }
 
 impl<Str, Trans> UntilFailure<Str, Trans>
@@ -391,20 +691,6 @@ where
     }
 }
 
-impl<S: Stream, F: Future> Stream for TakeUntil<S, F> {
-    type Item = S::Item;
-
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let projected = self.project();
-
-        if let Poll::Ready(_) = projected.fut.poll(cx) {
-            Poll::Ready(None)
-        } else {
-            projected.stream.poll_next(cx)
-        }
-    }
-}
-
 pub trait SwimStreamExt: Stream {
     /// Apply a transformation to the items of a stream.
     ///
@@ -416,6 +702,7 @@ pub trait SwimStreamExt: Stream {
     /// use utilities::future::*;
     /// use std::ops::Add;
     /// use utilities::future::{SwimFutureExt, SwimStreamExt};
+    ///
     /// struct Plus(i32);
     ///
     /// impl TransformMut<i32> for Plus {
@@ -437,6 +724,81 @@ pub trait SwimStreamExt: Stream {
         Trans: TransformMut<Self::Item>,
     {
         TransformedStream::new(self, transform)
+    }
+
+    /// Apply a transformation, resulting in a future, to the items of a stream, evaluating each
+    /// future to produce the elements of the new stream.
+    ///
+    ///  # Examples
+    /// ```
+    /// use futures::executor::block_on;
+    /// use futures::StreamExt;
+    /// use futures::future::{ready, Ready};
+    /// use futures::stream::iter;
+    /// use utilities::future::*;
+    /// use std::ops::Add;
+    /// use utilities::future::{SwimFutureExt, SwimStreamExt};
+    ///
+    /// struct Plus(i32);
+    ///
+    /// impl TransformMut<i32> for Plus {
+    ///     type Out = Ready<i32>;
+    ///
+    ///     fn transform(&mut self, input: i32) -> Self::Out {
+    ///         ready(input + self.0)
+    ///     }
+    /// }
+    ///
+    /// let inputs = iter((0..5).into_iter());
+    ///
+    /// let outputs: Vec<i32> = block_on(inputs.transform_fut(Plus(3)).collect::<Vec<i32>>());
+    /// assert_eq!(outputs, vec![3, 4, 5, 6, 7]);
+    /// ```
+    fn transform_fut<Trans>(self, transform: Trans) -> TransformedStreamFut<Self, Trans, Trans::Out>
+    where
+        Self: Sized,
+        Trans: TransformMut<Self::Item>,
+        Trans::Out: Future,
+    {
+        TransformedStreamFut::new(self, transform)
+    }
+
+    /// Apply a transformation, resulting in a stream for each item, to the items of a stream,
+    /// evaluating each stream to produce the elements of the new stream.
+    ///
+    ///  # Examples
+    /// ```
+    /// use futures::executor::block_on;
+    /// use futures::StreamExt;
+    /// use futures::future::{ready, Ready};
+    /// use futures::stream::{iter, Iter};
+    /// use utilities::future::*;
+    /// use std::ops::Add;
+    /// use utilities::future::{SwimFutureExt, SwimStreamExt};
+    /// use std::iter::{Repeat, Take, repeat};
+    ///
+    /// struct RepeatItems(usize);
+    ///
+    /// impl TransformMut<i32> for RepeatItems {
+    ///     type Out = Iter<Take<Repeat<i32>>>;
+    ///
+    ///     fn transform(&mut self, input: i32) -> Self::Out {
+    ///         iter(repeat(input).take(self.0))
+    ///     }
+    /// }
+    ///
+    /// let inputs = iter((0..3).into_iter());
+    ///
+    /// let outputs: Vec<i32> = block_on(inputs.transform_flat_map(RepeatItems(2)).collect::<Vec<i32>>());
+    /// assert_eq!(outputs, vec![0, 0, 1, 1, 2, 2]);
+    /// ```
+    fn transform_flat_map<Trans>(self, transform: Trans) -> FlatmapStream<Self, Trans>
+    where
+        Self: Sized,
+        Trans: TransformMut<Self::Item>,
+        Trans::Out: Stream,
+    {
+        FlatmapStream::new(self, transform)
     }
 
     /// Transform the items of a stream until an error is encountered, then terminate.
@@ -483,39 +845,36 @@ pub trait SwimStreamExt: Stream {
         NeverErrorStream(self)
     }
 
-    /// Creates a new stream that will produce the values that this stream would produce until
-    /// a future completes.
+    /// Transform the items of a stream with a stateful operation. This differs from `scan` in
+    /// [`futures::FutureExt`] in that ownership of the state is passed through the scan function
+    /// rather than being maintained in the combinator.
     ///
-    /// #Examples
+    ///  # Examples
     /// ```
     /// use futures::executor::block_on;
-    /// use futures::stream::unfold;
-    /// use futures::future::ready;
     /// use futures::StreamExt;
-    /// use utilities::sync::trigger::trigger;
+    /// use futures::future::ready;
+    /// use futures::stream::iter;
+    /// use utilities::future::*;
     /// use utilities::future::SwimStreamExt;
     ///
-    /// let (stop, stop_sig) = trigger();
-    /// let mut maybe_stop = Some(stop);
-    /// let stream = unfold(0i32, |i| ready(Some((i, i + 1))))
-    ///     .then(|i| {
-    ///         if i == 5 {
-    ///             if let Some(stop) = maybe_stop.take() {
-    ///                 stop.trigger();
-    ///             }
-    ///         }
-    ///         ready(i)
-    ///    }).take_until_completes(stop_sig);
-    ///
-    /// assert_eq!(block_on(stream.collect::<Vec<_>>()), vec![0, 1, 2, 3, 4, 5]);
-    ///
+    /// let inputs = iter(vec![1, 2, 3, 4].into_iter());
+    /// let outputs: Vec<(i32, i32)> = block_on(inputs.owning_scan(0, |state, i| {
+    ///     ready(Some((i, (state, i))))
+    /// }).collect::<Vec<_>>());
+    /// assert_eq!(outputs, vec![(0, 1), (1, 2), (2, 3), (3, 4)]);
     /// ```
-    fn take_until_completes<Fut>(self, limit: Fut) -> TakeUntil<Self, Fut>
+    fn owning_scan<State, F, Fut, B>(
+        self,
+        initial_state: State,
+        f: F,
+    ) -> OwningScan<Self, State, F, Fut>
     where
         Self: Sized,
-        Fut: Future,
+        F: FnMut(State, Self::Item) -> Fut,
+        Fut: Future<Output = Option<(State, B)>>,
     {
-        TakeUntil::new(self, limit)
+        OwningScan::new(self, initial_state, f)
     }
 }
 

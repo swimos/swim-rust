@@ -187,3 +187,86 @@ pub mod clock {
         RuntimeClock
     }
 }
+
+pub mod timeout {
+
+    use futures::task::{Context, Poll};
+    use futures::{ready, Future};
+    use pin_project::*;
+    use std::pin::Pin;
+    use std::time::Duration;
+
+    #[cfg(target_arch = "wasm32")]
+    mod dummy {
+
+        use futures::task::{Context, Poll};
+        use futures::Future;
+        use pin_project::*;
+        use std::pin::Pin;
+
+        pub(super) struct DummyErr;
+
+        impl From<std::io::Error> for DummyErr {
+            fn from(_: std::io::Error) -> Self {
+                DummyErr
+            }
+        }
+
+        #[pin_project]
+        pub(super) struct WithDummy<F>(#[pin] F);
+
+        impl<F> WithDummy<F> {
+            pub(super) fn new(future: F) -> Self {
+                WithDummy(future)
+            }
+        }
+
+        impl<F: Future> Future for WithDummy<F> {
+            type Output = Result<F::Output, DummyErr>;
+
+            fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+                self.project().0.poll(cx).map(Ok)
+            }
+        }
+    }
+
+    #[pin_project]
+    pub struct Timeout<F: Future> {
+        #[cfg(not(target_arch = "wasm32"))]
+        #[pin]
+        inner: tokio::time::Timeout<F>,
+        #[cfg(target_arch = "wasm32")]
+        #[pin]
+        inner: wasm_timer::ext::Timeout<dummy::WithDummy<F>>,
+    }
+
+    pub fn timeout<F: Future>(duration: Duration, future: F) -> Timeout<F> {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            Timeout {
+                inner: tokio::time::timeout(duration, future),
+            }
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            Timeout {
+                inner: wasm_timer::ext::TryFutureExt::timeout(
+                    dummy::WithDummy::new(future),
+                    duration,
+                ),
+            }
+        }
+    }
+
+    #[derive(Debug)]
+    pub struct TimeoutExpired;
+
+    impl<F: Future> Future for Timeout<F> {
+        type Output = Result<F::Output, TimeoutExpired>;
+
+        fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+            let result = ready!(self.project().inner.poll(cx));
+            Poll::Ready(result.map_err(|_| TimeoutExpired))
+        }
+    }
+}

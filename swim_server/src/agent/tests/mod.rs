@@ -12,34 +12,115 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+mod data_macro_agent;
+mod derive;
 mod reporting_agent;
+mod reporting_macro_agent;
 pub(crate) mod test_clock;
 
+use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lane::lifecycle::{
     ActionLaneLifecycle, StatefulLaneLifecycle, StatefulLaneLifecycleBase,
 };
-use crate::agent::lane::model::action::{ActionLane, CommandLane};
+use crate::agent::lane::model::action::{Action, ActionLane, CommandLane};
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::ValueLane;
 use crate::agent::lane::strategy::Queue;
 use crate::agent::lane::LaneModel;
 use crate::agent::tests::reporting_agent::{ReportingAgentEvent, TestAgentConfig};
+use crate::agent::tests::stub_router::SingleChannelRouter;
 use crate::agent::tests::test_clock::TestClock;
 use crate::agent::{
     ActionLifecycleTasks, AgentContext, CommandLifecycleTasks, Lane, LaneTasks, LifecycleTasks,
     MapLifecycleTasks, ValueLifecycleTasks,
 };
+use crate::plane::provider::AgentProvider;
 use futures::future::{join, BoxFuture};
 use futures::{Stream, StreamExt};
+use std::collections::HashMap;
 use std::future::Future;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
+use swim_common::sink::item::DiscardingSender;
 use swim_runtime::task;
 use tokio::sync::{mpsc, Mutex};
 use tokio::time::{timeout, Duration};
-use url::Url;
 use utilities::sync::trigger;
 use utilities::sync::trigger::Receiver;
+use utilities::uri::RelativeUri;
+
+mod stub_router {
+    use crate::plane::error::ResolutionError;
+    use crate::routing::{RoutingAddr, ServerRouter, TaggedEnvelope};
+    use futures::future::BoxFuture;
+    use futures::FutureExt;
+    use swim_common::routing::RoutingError;
+    use swim_common::sink::item::{ItemSender, ItemSink};
+    use swim_common::warp::envelope::Envelope;
+    use url::Url;
+    use utilities::uri::RelativeUri;
+
+    #[derive(Clone)]
+    pub struct SingleChannelRouter<Inner>(Inner);
+
+    impl<Inner> SingleChannelRouter<Inner>
+    where
+        Inner: ItemSender<TaggedEnvelope, RoutingError> + Clone,
+    {
+        pub(crate) fn new(sender: Inner) -> Self {
+            SingleChannelRouter(sender)
+        }
+    }
+
+    pub struct SingleChannelSender<Inner> {
+        inner: Inner,
+        destination: RoutingAddr,
+    }
+
+    impl<Inner> SingleChannelSender<Inner>
+    where
+        Inner: ItemSender<TaggedEnvelope, RoutingError>,
+    {
+        fn new(inner: Inner, destination: RoutingAddr) -> Self {
+            SingleChannelSender { inner, destination }
+        }
+    }
+
+    impl<'a, Inner> ItemSink<'a, Envelope> for SingleChannelSender<Inner>
+    where
+        Inner: ItemSink<'a, TaggedEnvelope, Error = RoutingError>,
+    {
+        type Error = RoutingError;
+        type SendFuture = <Inner as ItemSink<'a, TaggedEnvelope>>::SendFuture;
+
+        fn send_item(&'a mut self, value: Envelope) -> Self::SendFuture {
+            let msg = TaggedEnvelope(self.destination, value);
+            self.inner.send_item(msg)
+        }
+    }
+
+    impl<Inner> ServerRouter for SingleChannelRouter<Inner>
+    where
+        Inner: ItemSender<TaggedEnvelope, RoutingError> + Clone + Send + Sync + 'static,
+    {
+        type Sender = SingleChannelSender<Inner>;
+
+        fn get_sender(
+            &mut self,
+            addr: RoutingAddr,
+        ) -> BoxFuture<Result<Self::Sender, RoutingError>> {
+            FutureExt::boxed(async move { Ok(SingleChannelSender::new(self.0.clone(), addr)) })
+        }
+
+        fn resolve(
+            &mut self,
+            _host: Option<Url>,
+            _route: RelativeUri,
+        ) -> BoxFuture<Result<RoutingAddr, ResolutionError>> {
+            panic!("Unexpected resolution attempt.")
+        }
+    }
+}
 
 struct TestAgent<Lane> {
     name: &'static str,
@@ -181,13 +262,17 @@ impl<'a> ActionLaneLifecycle<'a, String, (), TestAgent<CommandLane<String>>>
 
 struct TestContext<Lane> {
     lane: Arc<TestAgent<Lane>>,
-    url: Url,
+    uri: RelativeUri,
     closed: trigger::Receiver,
 }
 
 impl<Lane> TestContext<Lane> {
-    fn new(lane: Arc<TestAgent<Lane>>, url: Url, closed: trigger::Receiver) -> Self {
-        TestContext { lane, url, closed }
+    fn new(lane: Arc<TestAgent<Lane>>, uri: &str, closed: trigger::Receiver) -> Self {
+        TestContext {
+            lane,
+            uri: uri.parse().unwrap(),
+            closed,
+        }
     }
 }
 
@@ -208,12 +293,20 @@ where
         self.lane.as_ref()
     }
 
-    fn node_url(&self) -> &Url {
-        &self.url
+    fn node_uri(&self) -> &RelativeUri {
+        &self.uri
     }
 
     fn agent_stop_event(&self) -> Receiver {
         self.closed.clone()
+    }
+
+    fn parameter(&self, _key: &str) -> Option<&String> {
+        None
+    }
+
+    fn parameters(&self) -> HashMap<String, String> {
+        HashMap::new()
     }
 }
 
@@ -244,7 +337,7 @@ async fn value_lane_start_task() {
         lane: lane.clone(),
     });
 
-    let context = TestContext::new(agent.clone(), Url::parse("test://").unwrap(), stop_sig);
+    let context = TestContext::new(agent.clone(), "/test", stop_sig);
 
     tasks.start(&context).await;
 
@@ -277,7 +370,7 @@ async fn value_lane_events_task() {
         name: "agent",
         lane: lane.clone(),
     });
-    let context = TestContext::new(agent.clone(), Url::parse("test://").unwrap(), stop_sig);
+    let context = TestContext::new(agent.clone(), "/test", stop_sig);
 
     let events = tasks.events(context);
 
@@ -327,7 +420,7 @@ async fn value_lane_events_task_termination() {
         name: "agent",
         lane: lane.clone(),
     });
-    let context = TestContext::new(agent.clone(), Url::parse("test://").unwrap(), stop_sig);
+    let context = TestContext::new(agent.clone(), "/test", stop_sig);
 
     let events = tasks.events(context);
 
@@ -359,7 +452,7 @@ async fn map_lane_start_task() {
         name: "agent",
         lane: lane.clone(),
     });
-    let context = TestContext::new(agent.clone(), Url::parse("test://").unwrap(), stop_sig);
+    let context = TestContext::new(agent.clone(), "/test", stop_sig);
 
     tasks.start(&context).await;
 
@@ -392,7 +485,7 @@ async fn map_lane_events_task() {
         name: "agent",
         lane: lane.clone(),
     });
-    let context = TestContext::new(agent.clone(), Url::parse("test://").unwrap(), stop_sig);
+    let context = TestContext::new(agent.clone(), "/test", stop_sig);
 
     let events = tasks.events(context);
 
@@ -444,7 +537,7 @@ async fn map_lane_events_task_termination() {
         name: "agent",
         lane: lane.clone(),
     });
-    let context = TestContext::new(agent.clone(), Url::parse("test://").unwrap(), stop_sig);
+    let context = TestContext::new(agent.clone(), "/test", stop_sig);
 
     let events = tasks.events(context);
 
@@ -477,7 +570,7 @@ async fn action_lane_events_task() {
         name: "agent",
         lane: lane.clone(),
     });
-    let context = TestContext::new(agent.clone(), Url::parse("test://").unwrap(), stop_sig);
+    let context = TestContext::new(agent.clone(), "/test", stop_sig);
 
     let events = tasks.events(context);
 
@@ -489,7 +582,7 @@ async fn action_lane_events_task() {
 
     let send = async move {
         for x in clones.into_iter() {
-            let _ = tx.send(x).await;
+            let _ = tx.send(Action::forget(x)).await;
         }
         drop(tx);
     };
@@ -527,7 +620,7 @@ async fn action_lane_events_task_termination() {
         name: "agent",
         lane: lane.clone(),
     });
-    let context = TestContext::new(agent.clone(), Url::parse("test://").unwrap(), stop_sig);
+    let context = TestContext::new(agent.clone(), "/test", stop_sig);
 
     let events = tasks.events(context);
 
@@ -560,7 +653,7 @@ async fn command_lane_events_task() {
         name: "agent",
         lane: lane.clone(),
     });
-    let context = TestContext::new(agent.clone(), Url::parse("test://").unwrap(), stop_sig);
+    let context = TestContext::new(agent.clone(), "/test", stop_sig);
 
     let events = tasks.events(context);
 
@@ -572,7 +665,7 @@ async fn command_lane_events_task() {
 
     let send = async move {
         for x in clones.into_iter() {
-            let _ = tx.send(x).await;
+            let _ = tx.send(Action::forget(x)).await;
         }
         drop(tx);
     };
@@ -610,7 +703,7 @@ async fn command_lane_events_task_terminates() {
         name: "agent",
         lane: lane.clone(),
     });
-    let context = TestContext::new(agent.clone(), Url::parse("test://").unwrap(), stop_sig);
+    let context = TestContext::new(agent.clone(), "/test", stop_sig);
 
     let events = tasks.events(context);
 
@@ -626,23 +719,28 @@ async fn agent_loop() {
 
     let config = TestAgentConfig::new(tx);
 
-    let url = Url::parse("test://").unwrap();
+    let uri = "/test".parse().unwrap();
     let buffer_size = NonZeroUsize::new(10).unwrap();
     let clock = TestClock::default();
-    let (stop, stop_sig) = trigger::trigger();
 
     let agent_lifecycle = config.agent_lifecycle();
+
+    let exec_config = AgentExecutionConfig::with(buffer_size, 1, 0, Duration::from_secs(1));
+
+    let (envelope_tx, envelope_rx) = mpsc::channel(buffer_size.get());
+
+    let provider = AgentProvider::new(config, agent_lifecycle);
 
     // The ReportingAgent is carefully contrived such that its lifecycle events all trigger in
     // a specific order. We can then safely expect these events in that order to verify the agent
     // loop.
-    let agent_proc = super::run_agent(
-        config,
-        agent_lifecycle,
-        url,
-        buffer_size,
+    let (_, agent_proc) = provider.run(
+        uri,
+        HashMap::new(),
+        exec_config,
         clock.clone(),
-        stop_sig,
+        envelope_rx,
+        SingleChannelRouter::new(DiscardingSender::default()),
     );
 
     let agent_task = swim_runtime::task::spawn(agent_proc);
@@ -683,7 +781,7 @@ async fn agent_loop() {
     .await;
     expect(&mut rx, ReportingAgentEvent::TotalEvent(3)).await;
 
-    assert!(stop.trigger());
+    drop(envelope_tx);
 
     assert!(agent_task.await.is_ok());
 }

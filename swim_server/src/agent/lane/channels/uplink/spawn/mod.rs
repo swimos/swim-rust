@@ -12,13 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::agent::context::AgentExecutionContext;
 use crate::agent::lane::channels::task::{LaneUplinks, UplinkChannels};
-use crate::agent::lane::channels::uplink::{Uplink, UplinkAction, UplinkError, UplinkMessage};
-use crate::agent::lane::channels::{
-    AgentExecutionConfig, AgentExecutionContext, LaneMessageHandler, OutputMessage, TaggedAction,
+use crate::agent::lane::channels::uplink::{
+    Uplink, UplinkAction, UplinkError, UplinkMessageSender,
 };
+use crate::agent::lane::channels::{
+    AgentExecutionConfig, LaneMessageHandler, OutputMessage, TaggedAction,
+};
+use crate::agent::Eff;
 use crate::routing::{RoutingAddr, ServerRouter};
-use futures::future::{join_all, BoxFuture};
+use futures::future::join_all;
 use futures::{FutureExt, StreamExt};
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
@@ -26,9 +30,7 @@ use std::fmt::{Display, Formatter};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use swim_common::model::Value;
-use swim_common::sink::item::ItemSender;
 use swim_common::topic::Topic;
-use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc;
 use tracing::{event, span, Level};
@@ -40,6 +42,9 @@ mod tests;
 
 const FAILED_ERR_REPORT: &str = "Failed to send error report.";
 const UPLINK_TERMINATED: &str = "An uplink terminated uncleanly.";
+const NEW_UPLINK: &str = "Creating new uplink.";
+const UPLINK_CLEANUP: &str = "Uplink cleanup task.";
+const UPLINK_TASK: &str = "Uplink task.";
 
 /// Creates lane uplinks on demand, replacing them if they fail and reporting any errors that
 /// occur.
@@ -109,7 +114,7 @@ where
     pub async fn run<Router>(
         mut self,
         mut router: Router,
-        mut spawn_tx: mpsc::Sender<BoxFuture<'static, ()>>,
+        mut spawn_tx: mpsc::Sender<Eff>,
         mut error_collector: mpsc::Sender<UplinkErrorReport>,
     ) where
         Router: ServerRouter,
@@ -122,8 +127,11 @@ where
                 let sender = match uplink_senders.entry(addr) {
                     Entry::Occupied(entry) => Some(entry.into_mut()),
                     Entry::Vacant(entry) => {
+                        let span =
+                            span!(Level::TRACE, NEW_UPLINK, lane = ?self.route, endpoint = ?addr);
                         if let Some(handle) = self
                             .make_uplink(addr, error_collector.clone(), &mut spawn_tx, &mut router)
+                            .instrument(span)
                             .await
                         {
                             Some(entry.insert(handle))
@@ -166,7 +174,9 @@ where
                 break;
             }
         }
-        join_all(uplink_senders.into_iter().map(|(_, h)| h.cleanup())).await;
+        join_all(uplink_senders.into_iter().map(|(_, h)| h.cleanup()))
+            .instrument(span!(Level::DEBUG, UPLINK_CLEANUP))
+            .await;
     }
 
     //Create a new uplink state machine and attach it to the router
@@ -174,7 +184,7 @@ where
         &mut self,
         addr: RoutingAddr,
         mut err_tx: mpsc::Sender<UplinkErrorReport>,
-        spawn_tx: &mut mpsc::Sender<BoxFuture<'static, ()>>,
+        spawn_tx: &mut mpsc::Sender<Eff>,
         router: &mut Router,
     ) -> Option<UplinkHandle>
     where
@@ -197,19 +207,8 @@ where
         };
         let uplink = Uplink::new(state_machine, rx.fuse(), updates);
 
-        let route_cpy = route.clone();
-
-        let sink = if let Ok(sender) = router.get_sender(addr) {
-            sender.comap(
-                move |msg: UplinkMessage<OutputMessage<Handler>>| match msg {
-                    UplinkMessage::Linked => Envelope::linked(&route_cpy.node, &route_cpy.lane),
-                    UplinkMessage::Synced => Envelope::synced(&route_cpy.node, &route_cpy.lane),
-                    UplinkMessage::Unlinked => Envelope::unlinked(&route_cpy.node, &route_cpy.lane),
-                    UplinkMessage::Event(ev) => {
-                        Envelope::make_event(&route_cpy.node, &route_cpy.lane, Some(ev.into()))
-                    }
-                },
-            )
+        let sink = if let Ok(sender) = router.get_sender(addr).await {
+            UplinkMessageSender::new(sender, route.clone())
         } else {
             return None;
         };
@@ -223,7 +222,7 @@ where
                 cleanup_tx.trigger();
             }
         }
-        .instrument(span!(Level::INFO, "Lane uplink.", ?route, ?addr));
+        .instrument(span!(Level::INFO, UPLINK_TASK, ?route, ?addr));
         if spawn_tx.send(ul_task.boxed()).await.is_err() {
             return None;
         }
@@ -277,7 +276,7 @@ pub struct UplinkErrorReport {
 }
 
 impl UplinkErrorReport {
-    fn new(error: UplinkError, addr: RoutingAddr) -> Self {
+    pub(crate) fn new(error: UplinkError, addr: RoutingAddr) -> Self {
         UplinkErrorReport { error, addr }
     }
 }
@@ -291,6 +290,12 @@ impl Display for UplinkErrorReport {
 /// Default spawner factory, using [`UplinkSpawner`].
 pub(crate) struct SpawnerUplinkFactory(AgentExecutionConfig);
 
+impl SpawnerUplinkFactory {
+    pub(crate) fn new(config: AgentExecutionConfig) -> Self {
+        SpawnerUplinkFactory(config)
+    }
+}
+
 impl LaneUplinks for SpawnerUplinkFactory {
     fn make_task<Handler, Top, Context>(
         &self,
@@ -298,7 +303,7 @@ impl LaneUplinks for SpawnerUplinkFactory {
         channels: UplinkChannels<Top>,
         route: RelativePath,
         context: &Context,
-    ) -> BoxFuture<'static, ()>
+    ) -> Eff
     where
         Handler: LaneMessageHandler + 'static,
         OutputMessage<Handler>: Into<Value>,

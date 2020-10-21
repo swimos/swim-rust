@@ -21,11 +21,11 @@ use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
 use std::convert::TryFrom;
 use std::iter::FromIterator;
-use swim_common::connections::WsMessage;
 use swim_common::model::parser::parse_single;
 use swim_common::routing::RoutingError;
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
+use swim_common::ws::WsMessage;
 use tokio::sync::mpsc;
 use tracing::level_filters::STATIC_MAX_LEVEL;
 use tracing::{debug, error, span, trace, warn, Level};
@@ -108,6 +108,7 @@ impl IncomingHostTask {
                 IncomingRequest::Subscribe(SubscriberRequest {
                     path: relative_path,
                     subscriber_tx: event_tx,
+                    ..
                 }) => {
                     subscribers
                         .entry(relative_path)

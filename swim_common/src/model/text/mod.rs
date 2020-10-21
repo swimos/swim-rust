@@ -15,14 +15,16 @@
 #[cfg(test)]
 mod tests;
 
+use http::uri::{InvalidUri, Uri};
 use std::borrow::{Borrow, BorrowMut};
 use std::cmp::Ordering;
-use std::convert::Infallible;
+use std::convert::{Infallible, TryFrom};
 use std::fmt::{Debug, Display, Formatter};
 use std::hash::{Hash, Hasher};
 use std::iter::FromIterator;
 use std::str;
 use std::str::FromStr;
+use utilities::uri::{BadRelativeUri, RelativeUri};
 
 const SMALL_SIZE: usize = 3 * std::mem::size_of::<usize>();
 
@@ -273,6 +275,12 @@ impl PartialEq<&Text> for Text {
 impl PartialEq<&mut Text> for Text {
     fn eq(&self, other: &&mut Text) -> bool {
         self.as_str() == other.as_str()
+    }
+}
+
+impl PartialEq<str> for Text {
+    fn eq(&self, other: &str) -> bool {
+        self.as_str() == other
     }
 }
 
@@ -530,4 +538,26 @@ fn small_slice(len: usize, small: &[u8; SMALL_SIZE]) -> &[u8] {
 
 fn small_slice_mut(len: usize, small: &mut [u8; SMALL_SIZE]) -> &mut [u8] {
     &mut small[..len]
+}
+
+impl TryFrom<Text> for Uri {
+    type Error = InvalidUri;
+
+    fn try_from(value: Text) -> Result<Self, Self::Error> {
+        match value {
+            Text(TextInner::Large(string)) => Uri::try_from(string),
+            Text(TextInner::Small(len, bytes)) => Uri::try_from(small_str(len, &bytes)),
+        }
+    }
+}
+
+impl TryFrom<Text> for RelativeUri {
+    type Error = BadRelativeUri;
+
+    fn try_from(value: Text) -> Result<Self, Self::Error> {
+        match value {
+            Text(TextInner::Large(string)) => RelativeUri::try_from(string),
+            Text(TextInner::Small(len, bytes)) => RelativeUri::try_from(small_str(len, &bytes)),
+        }
+    }
 }

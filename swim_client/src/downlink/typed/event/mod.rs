@@ -135,7 +135,7 @@ impl<K: Form, V: Form> TryFrom<ViewWithEvent> for TypedViewWithEvent<K, V> {
 fn type_event<K: Form>(event: MapEvent<Value>) -> Result<MapEvent<K>, FormErr> {
     match event {
         MapEvent::Initial => Ok(MapEvent::Initial),
-        MapEvent::Insert(k) => K::try_convert(k).map(MapEvent::Insert),
+        MapEvent::Update(k) => K::try_convert(k).map(MapEvent::Update),
         MapEvent::Remove(k) => K::try_convert(k).map(MapEvent::Remove),
         MapEvent::Take(n) => Ok(MapEvent::Take(n)),
         MapEvent::Skip(n) => Ok(MapEvent::Skip(n)),

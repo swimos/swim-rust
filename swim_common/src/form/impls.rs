@@ -27,7 +27,9 @@ use num_traits::FromPrimitive;
 
 use crate::form::{Form, FormErr, ValidatedForm};
 use crate::model::blob::Blob;
-use crate::model::schema::StandardSchema;
+use crate::model::schema::slot::SlotSchema;
+use crate::model::schema::{ItemSchema, StandardSchema};
+use crate::model::text::Text;
 use crate::model::{Item, Value, ValueKind};
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicI64, AtomicU32, AtomicU64, Ordering};
 
@@ -88,7 +90,7 @@ impl Form for BigInt {
                     "Failed to parse float into big unsigned integer",
                 ))
             }),
-            Value::Text(t) => BigInt::from_str(&t).map_err(|_| {
+            Value::Text(t) => BigInt::from_str(t.as_str()).map_err(|_| {
                 FormErr::Message(String::from(
                     "Failed to parse text into big unsigned integer",
                 ))
@@ -142,7 +144,7 @@ impl Form for BigUint {
                     "Failed to parse float64 into big unsigned integer",
                 ))
             }),
-            Value::Text(t) => BigUint::from_str(&t).map_err(|_| {
+            Value::Text(t) => BigUint::from_str(t.as_str()).map_err(|_| {
                 FormErr::Message(String::from(
                     "Failed to parse text into big unsigned integer",
                 ))
@@ -380,15 +382,56 @@ impl ValidatedForm for bool {
     }
 }
 
+impl Form for Text {
+    fn as_value(&self) -> Value {
+        Value::Text(self.clone())
+    }
+
+    fn into_value(self) -> Value {
+        Value::Text(self)
+    }
+
+    fn try_from_value(value: &Value) -> Result<Self, FormErr> {
+        match value {
+            Value::Text(txt) => Ok(txt.clone()),
+            v => Err(FormErr::incorrect_type("Value::Text", v)),
+        }
+    }
+
+    fn try_convert(value: Value) -> Result<Self, FormErr> {
+        match value {
+            Value::Text(txt) => Ok(txt),
+            v => Err(FormErr::incorrect_type("Value::Text", &v)),
+        }
+    }
+}
+
+impl ValidatedForm for Text {
+    fn schema() -> StandardSchema {
+        StandardSchema::OfKind(ValueKind::Text)
+    }
+}
+
 impl Form for String {
     fn as_value(&self) -> Value {
-        Value::Text(String::from(self))
+        Value::Text(Text::from(self))
+    }
+
+    fn into_value(self) -> Value {
+        Value::Text(self.into())
     }
 
     fn try_from_value<'f>(value: &Value) -> Result<Self, FormErr> {
         match value {
-            Value::Text(i) => Ok(i.to_owned()),
+            Value::Text(i) => Ok(i.to_string()),
             v => Err(FormErr::incorrect_type("Value::Text", v)),
+        }
+    }
+
+    fn try_convert(value: Value) -> Result<Self, FormErr> {
+        match value {
+            Value::Text(i) => Ok(i.into()),
+            v => Err(FormErr::incorrect_type("Value::Text", &v)),
         }
     }
 }
@@ -477,6 +520,16 @@ macro_rules! impl_seq_form {
                 }
             }
         }
+
+        impl<V $(, $typaram)*> ValidatedForm for $ty<V $(, $typaram)*>
+        where
+            V: ValidatedForm $(+ $tbound1 $(+ $tbound2)*)*,
+            $($typaram: ValidatedForm + $bound $(+ $bound2)*,)*
+        {
+            fn schema() -> StandardSchema {
+                StandardSchema::AllItems(Box::new(ItemSchema::ValueItem(V::schema())))
+            }
+        }
     }
 }
 
@@ -540,6 +593,17 @@ macro_rules! impl_map_form {
                     }
                     v => Err(FormErr::incorrect_type("Value::Record", v)),
                 }
+            }
+        }
+
+        impl<K, V $(, $typaram)*> ValidatedForm for $ty<K, V $(, $typaram)*>
+        where
+            K: ValidatedForm $(+ $kbound1 $(+ $kbound2)*)*,
+            V: ValidatedForm $(+ $vbound1 $(+ $vbound2)*)*,
+            $($typaram: ValidatedForm + $bound $(+ $bound2)*,)*
+        {
+            fn schema() -> StandardSchema {
+                StandardSchema::AllItems(Box::new(ItemSchema::Field(SlotSchema::new(K::schema(), V::schema()))))
             }
         }
     }

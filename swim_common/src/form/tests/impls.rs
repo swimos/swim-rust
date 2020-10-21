@@ -13,15 +13,14 @@
 // limitations under the License.
 
 use std::collections::{BTreeMap, BTreeSet, BinaryHeap, HashSet, LinkedList, VecDeque};
+use std::sync::atomic::{AtomicBool, AtomicI32, AtomicI64, AtomicU32, AtomicU64};
 
 use im::{HashMap as ImHashMap, HashSet as ImHashSet, OrdSet};
+use num_bigint::{BigInt, BigUint};
 
 use crate::form::Form;
-use crate::model::{Attr, Item, Value};
-
 use crate::model::blob::Blob;
-use num_bigint::{BigInt, BigUint};
-use std::sync::atomic::{AtomicBool, AtomicI32, AtomicI64, AtomicU32, AtomicU64};
+use crate::model::{Attr, Item, Value};
 
 mod swim_common {
     pub use crate::*;
@@ -68,17 +67,18 @@ fn blob() {
         Value::Record(
             vec![Attr::of("S")],
             vec![Item::Slot(
-                Value::Text(String::from("b")),
-                Value::Data(Blob::from_vec(vec![89, 109, 120, 118, 89, 109, 74, 53]))
-            )]
+                Value::text("b"),
+                Value::Data(Blob::from_vec(vec![89, 109, 120, 118, 89, 109, 74, 53])),
+            )],
         )
     )
 }
 
 mod primitive {
-    use super::*;
     use std::cell::{Cell, RefCell};
     use std::sync::Arc;
+
+    use super::*;
 
     macro_rules! test_impl {
         ($test_name:ident, $id:ident, $typ:expr, $expected:expr) => {
@@ -102,7 +102,7 @@ mod primitive {
         test_string,
         String,
         String::from("test"),
-        Value::Text(String::from("test"))
+        Value::text("test")
     );
     test_impl!(
         test_bigint,
@@ -204,8 +204,9 @@ mod primitive {
 }
 
 mod collections {
-    use super::*;
     use im::HashMap;
+
+    use super::*;
 
     #[test]
     fn test_opt_none() {
@@ -404,9 +405,10 @@ mod collections {
 }
 
 mod field_collections {
-    use super::*;
     #[allow(unused_imports)]
     use form_derive::*;
+
+    use super::*;
 
     fn expected() -> Value {
         Value::record(vec![
@@ -430,7 +432,7 @@ mod field_collections {
                 let val = Test { member: $initial };
                 let rec = Value::Record(
                     vec![Attr::of("Test")],
-                    vec![Item::Slot(Value::Text(String::from("member")), expected())],
+                    vec![Item::Slot(Value::text("member"), expected())],
                 );
 
                 assert_eq!(val.as_value(), rec);

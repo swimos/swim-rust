@@ -22,6 +22,7 @@ use num_bigint::{BigInt, BigUint};
 
 use token_buffer::*;
 
+use crate::model::text::Text;
 use crate::model::{Attr, Item, Value};
 use core::iter;
 use std::convert::TryFrom;
@@ -416,7 +417,7 @@ pub fn parse_single(repr: &str) -> Result<Value, ParseFailure> {
 /// contains an invalid escape.
 ///
 /// TODO Handle escaped UTF-16 surrogate pairs.
-pub fn unescape(literal: &str) -> Result<String, String> {
+pub fn unescape(literal: &str) -> Result<Text, Text> {
     let mut failed = false;
     let unescaped_string = literal
         .chars()
@@ -479,7 +480,7 @@ pub fn unescape(literal: &str) -> Result<String, String> {
         .flatten()
         .collect();
     if failed {
-        Err(literal.to_owned())
+        Err(literal.into())
     } else {
         Ok(unescaped_string)
     }
@@ -491,7 +492,7 @@ enum ParseTermination {
     EarlyTermination(Value),
 }
 
-trait TokenStr: PartialEq + Borrow<str> + Into<String> + Debug {}
+trait TokenStr: PartialEq + Borrow<str> + Into<Text> + Debug {}
 
 impl<'a> TokenStr for &'a str {}
 
@@ -548,7 +549,7 @@ impl ReconToken<&str> {
 impl<S: TokenStr> ReconToken<S> {
     /// True if, and only if, the token constitutes a ['Value'] in itself.
     fn is_value(&self) -> bool {
-        match self {
+        matches!(self,
             ReconToken::Identifier(_)
             | ReconToken::StringLiteral(_)
             | ReconToken::Int32Literal(_)
@@ -558,13 +559,11 @@ impl<S: TokenStr> ReconToken<S> {
             | ReconToken::Float64Literal(_)
             | ReconToken::BigInt(_)
             | ReconToken::BigUint(_)
-            | ReconToken::BoolLiteral(_) => true,
-            _ => false,
-        }
+            | ReconToken::BoolLiteral(_))
     }
 
     /// Try to get a value from a single token.
-    fn unwrap_value(self) -> Option<Result<Value, String>> {
+    fn unwrap_value(self) -> Option<Result<Value, Text>> {
         match self {
             ReconToken::Identifier(name) => Some(Ok(Value::Text(name.into()))),
             ReconToken::StringLiteral(name) => Some(unescape(name.borrow()).map(Value::Text)),
@@ -1111,7 +1110,7 @@ fn tokenize_iteratee(
 #[derive(Clone, Debug, PartialEq)]
 enum ValueParseState {
     AttributeStart,
-    ReadingAttribute(String),
+    ReadingAttribute(Text),
     AfterAttribute,
     RecordStart(bool),
     InsideBody(bool, bool),
@@ -1265,7 +1264,7 @@ fn pack_attribute_body(
     value: Value,
     mut attrs: Vec<Attr>,
     items: Vec<Item>,
-    name: String,
+    name: Text,
 ) -> Option<Result<Value, BadRecord>> {
     let attr = match value {
         Value::Record(rec_attrs, rec_items) if rec_attrs.is_empty() && rec_items.is_empty() => {
@@ -1475,7 +1474,7 @@ fn update_attr_start<S: TokenStr>(
 
 fn update_reading_attr<S: TokenStr>(
     token: ReconToken<S>,
-    name: String,
+    name: Text,
     mut attrs: Vec<Attr>,
     items: Vec<Item>,
 ) -> StateModification {

@@ -12,14 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use pin_utils::core_reexport::fmt::Formatter;
-use std::fmt::Display;
+use crate::plane::error::ResolutionError;
+use futures::future::BoxFuture;
+use std::fmt::{Display, Formatter};
 use swim_common::routing::RoutingError;
 use swim_common::sink::item::ItemSender;
 use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
+use url::Url;
+use utilities::uri::RelativeUri;
 
 #[cfg(test)]
 mod tests;
+pub mod ws;
 
 /// A key into the server routing table specifying an endpoint to which [`Envelope`]s can be sent.
 /// This is deliberately non-descriptive to allow it to be [`Copy`] and so very cheap to use as a
@@ -37,20 +41,28 @@ enum Location {
 pub struct RoutingAddr(Location);
 
 impl RoutingAddr {
-    pub fn remote(id: u32) -> Self {
+    pub const fn remote(id: u32) -> Self {
         RoutingAddr(Location::RemoteEndpoint(id))
     }
 
-    pub fn local(id: u32) -> Self {
+    pub const fn local(id: u32) -> Self {
         RoutingAddr(Location::Local(id))
+    }
+
+    pub fn is_local(&self) -> bool {
+        matches!(self, RoutingAddr(Location::Local(_)))
+    }
+
+    pub fn is_remote(&self) -> bool {
+        matches!(self, RoutingAddr(Location::RemoteEndpoint(_)))
     }
 }
 
 impl Display for RoutingAddr {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            RoutingAddr(Location::RemoteEndpoint(id)) => write!(f, "Remote Endpoint ({:X})", id),
-            RoutingAddr(Location::Local(id)) => write!(f, "Local consumer ({:X})", id),
+            RoutingAddr(Location::RemoteEndpoint(id)) => write!(f, "Remote({:X})", id),
+            RoutingAddr(Location::Local(id)) => write!(f, "Local({:X})", id),
         }
     }
 }
@@ -64,9 +76,21 @@ pub struct TaggedEnvelope(pub RoutingAddr, pub Envelope);
 #[derive(Debug, Clone, PartialEq)]
 pub struct TaggedClientEnvelope(pub RoutingAddr, pub OutgoingLinkMessage);
 
+impl TaggedClientEnvelope {
+    pub fn lane(&self) -> &str {
+        self.1.path.lane.as_str()
+    }
+}
+
 /// Interface for interacting with the server [`Envelope`] router.
 pub trait ServerRouter: Send + Sync {
     type Sender: ItemSender<Envelope, RoutingError> + Send + 'static;
 
-    fn get_sender(&mut self, addr: RoutingAddr) -> Result<Self::Sender, RoutingError>;
+    fn get_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Self::Sender, RoutingError>>;
+
+    fn resolve(
+        &mut self,
+        host: Option<Url>,
+        route: RelativeUri,
+    ) -> BoxFuture<Result<RoutingAddr, ResolutionError>>;
 }

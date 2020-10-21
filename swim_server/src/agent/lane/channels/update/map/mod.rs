@@ -14,6 +14,7 @@
 
 use crate::agent::lane::channels::update::{LaneUpdate, UpdateError};
 use crate::agent::lane::model::map::{MapLane, MapUpdate};
+use crate::routing::RoutingAddr;
 use futures::future::BoxFuture;
 use futures::{FutureExt, Stream, StreamExt};
 use pin_utils::pin_mut;
@@ -21,6 +22,7 @@ use std::any::Any;
 use std::fmt::Debug;
 use stm::transaction::{RetryManager, TransactionRunner};
 use swim_common::form::Form;
+use tracing::{event, Level};
 
 #[cfg(test)]
 mod tests;
@@ -41,10 +43,12 @@ where
     }
 }
 
+const APPLYING_UPDATE: &str = "Applying map update.";
+
 impl<K, V, F, Ret> LaneUpdate for MapLaneUpdateTask<K, V, F>
 where
     K: Form + Any + Send + Sync + Debug,
-    V: Any + Send + Sync + Debug,
+    V: Any + Form + Send + Sync + Debug,
     F: Fn() -> Ret + Send + Sync + 'static,
     Ret: RetryManager + Send,
 {
@@ -55,7 +59,7 @@ where
         messages: Messages,
     ) -> BoxFuture<'static, Result<(), UpdateError>>
     where
-        Messages: Stream<Item = Result<Self::Msg, Err>> + Send + 'static,
+        Messages: Stream<Item = Result<(RoutingAddr, Self::Msg), Err>> + Send + 'static,
         Err: Send,
         UpdateError: From<Err>,
     {
@@ -64,8 +68,10 @@ where
             pin_mut!(messages);
 
             let mut runner = TransactionRunner::new(1, retries);
-            while let Some(update) = messages.next().await {
-                match update? {
+            while let Some(update_result) = messages.next().await {
+                let (_, update) = update_result?;
+                event!(Level::TRACE, message = APPLYING_UPDATE, ?update);
+                match update {
                     MapUpdate::Update(key, value) => {
                         lane.update_direct(key, value)
                             .apply_with(&mut runner)

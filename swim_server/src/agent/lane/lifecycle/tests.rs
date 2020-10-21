@@ -16,13 +16,14 @@ use super::{StatefulLaneLifecycle, StatefulLaneLifecycleBase};
 use crate::agent::lane::strategy::{Buffered, Dropping, Queue};
 use crate::agent::lane::LaneModel;
 use crate::agent::AgentContext;
+use futures::future::BoxFuture;
 use futures::Stream;
-use futures_util::future::BoxFuture;
+use std::collections::HashMap;
 use std::future::Future;
 use std::num::NonZeroUsize;
 use tokio::time::Duration;
-use url::Url;
 use utilities::sync::trigger::Receiver;
+use utilities::uri::RelativeUri;
 
 struct TestModel;
 
@@ -52,12 +53,20 @@ impl AgentContext<TestAgent> for TestContext {
         panic!("Default lifecycles should do nothing.")
     }
 
-    fn node_url(&self) -> &Url {
+    fn node_uri(&self) -> &RelativeUri {
         panic!("Default lifecycles should do nothing.")
     }
 
     fn agent_stop_event(&self) -> Receiver {
         panic!("Default lifecycles should do nothing.")
+    }
+
+    fn parameter(&self, _key: &str) -> Option<&String> {
+        None
+    }
+
+    fn parameters(&self) -> HashMap<String, String> {
+        HashMap::new()
     }
 }
 

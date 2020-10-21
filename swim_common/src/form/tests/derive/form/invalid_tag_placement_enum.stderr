@@ -1,0 +1,8 @@
+error: Tags are only supported on enumeration variants.
+  --> $DIR/invalid_tag_placement_enum.rs:19:5
+   |
+19 | /     #[form(tag = "Enumeration")]
+20 | |     enum E {
+21 | |         A,
+22 | |     }
+   | |_____^
