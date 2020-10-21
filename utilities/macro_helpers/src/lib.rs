@@ -137,6 +137,7 @@ impl Label {
         }
     }
 
+    // todo: remove clone if it's being called from `into_value` or `try_convert` (and elsewhere)
     pub fn to_name(&self, clone: bool) -> TokenStream2 {
         match self {
             Label::Unmodified(ident) => {
