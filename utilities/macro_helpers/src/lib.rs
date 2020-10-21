@@ -138,7 +138,7 @@ impl Label {
     }
 
     // todo: remove clone if it's being called from `into_value` or `try_convert` (and elsewhere)
-    pub fn to_name(&self) -> TokenStream2 {
+    pub fn to_name(&self, clone: bool) -> TokenStream2 {
         match self {
             Label::Unmodified(ident) => {
                 let name = ident.to_string();
@@ -152,7 +152,10 @@ impl Label {
                 let name = format!("__self_{}", index.index);
                 quote!(#name)
             }
-            Label::Foreign(ident, ..) => quote!(swim_common::form::Tag::as_string(&#ident.clone())),
+            Label::Foreign(ident, ..) => {
+                let maybe_clone = if clone { quote!(.clone()) } else { quote!() };
+                quote!(swim_common::form::Tag::as_string(&#ident#maybe_clone))
+            }
         }
     }
 }

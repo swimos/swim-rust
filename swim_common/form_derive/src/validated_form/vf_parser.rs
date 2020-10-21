@@ -198,16 +198,7 @@ impl<'f> ValidatedField<'f> {
             Label::Anonymous(_) => quote!(
                 swim_common::model::schema::ItemSchema::ValueItem(#field_schema)
             ),
-            Label::Foreign(ident, ..) => {
-                quote! {
-                    swim_common::model::schema::ItemSchema::Field(
-                        swim_common::model::schema::slot::SlotSchema::new(
-                            swim_common::model::schema::StandardSchema::text(swim_common::form::Tag::as_string(&(self.#ident.clone())),
-                            #field_schema,
-                        ))
-                    )
-                }
-            }
+            Label::Foreign(..) => unreachable!("Attempted to derive a tag as an item"),
         }
     }
 }
