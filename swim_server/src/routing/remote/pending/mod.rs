@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::routing::error::ConnectionError;
 use crate::routing::remote::table::HostAndPort;
 use crate::routing::remote::{ResolutionRequest, REQUEST_DROPPED};
 use crate::routing::RoutingAddr;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
-use swim_common::ws::error::ConnectionError;
 
 #[derive(Debug, Default)]
 pub struct PendingRequests(HashMap<HostAndPort, Vec<ResolutionRequest>>);

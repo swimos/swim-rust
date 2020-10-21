@@ -19,8 +19,7 @@ use crate::agent::lane::channels::uplink::spawn::UplinkErrorReport;
 use crate::agent::lane::channels::uplink::UplinkError;
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::{AttachError, Eff, LaneIo};
-use crate::plane::error::ResolutionError;
-use crate::routing::error::SendError;
+use crate::routing::error::{ResolutionError, RouterError, SendError};
 use crate::routing::remote::ConnectionDropped;
 use crate::routing::{Route, RoutingAddr, ServerRouter, TaggedClientEnvelope};
 use futures::future::BoxFuture;
@@ -31,7 +30,6 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use stm::transaction::TransactionError;
 use swim_common::model::Value;
-use swim_common::routing::RoutingError;
 use swim_common::sink::item::ItemSink;
 use swim_common::warp::envelope::{Envelope, OutgoingHeader, OutgoingLinkMessage};
 use swim_common::warp::path::RelativePath;
@@ -107,7 +105,7 @@ impl ServerRouter for MockRouter {
     fn get_sender(
         &mut self,
         addr: RoutingAddr,
-    ) -> BoxFuture<Result<Route<Self::Sender>, RoutingError>> {
+    ) -> BoxFuture<Result<Route<Self::Sender>, ResolutionError>> {
         async move {
             let mut lock = self.0.lock();
             let MockRouterInner {
@@ -134,7 +132,7 @@ impl ServerRouter for MockRouter {
         &mut self,
         _host: Option<Url>,
         _route: RelativeUri,
-    ) -> BoxFuture<'static, Result<RoutingAddr, ResolutionError>> {
+    ) -> BoxFuture<'static, Result<RoutingAddr, RouterError>> {
         panic!("Unexpected resolution attempt.")
     }
 }

@@ -12,14 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::plane::error::ResolutionError;
 use crate::plane::PlaneRequest;
-use crate::routing::error::SendError;
+use crate::routing::error::{ResolutionError, RouterError, SendError};
 use crate::routing::{Route, RoutingAddr, ServerRouter, TaggedEnvelope};
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use swim_common::request::Request;
-use swim_common::routing::RoutingError;
 use swim_common::sink::item::{ItemSink, MpscSend};
 use swim_common::warp::envelope::Envelope;
 use tokio::sync::{mpsc, oneshot};
@@ -90,7 +88,7 @@ impl ServerRouter for PlaneRouter {
     fn get_sender(
         &mut self,
         addr: RoutingAddr,
-    ) -> BoxFuture<Result<Route<Self::Sender>, RoutingError>> {
+    ) -> BoxFuture<Result<Route<Self::Sender>, ResolutionError>> {
         async move {
             let PlaneRouter {
                 tag,
@@ -105,14 +103,14 @@ impl ServerRouter for PlaneRouter {
                 .await
                 .is_err()
             {
-                Err(RoutingError::RouterDropped)
+                Err(ResolutionError::RouterDropped)
             } else {
                 match rx.await {
                     Ok(Ok(Route { sender, on_drop })) => {
                         Ok(Route::new(PlaneRouterSender::new(*tag, sender), on_drop))
                     }
-                    Ok(Err(_)) => Err(RoutingError::HostUnreachable),
-                    Err(_) => Err(RoutingError::RouterDropped),
+                    Ok(Err(err)) => Err(ResolutionError::Unresolvable(err)),
+                    Err(_) => Err(ResolutionError::RouterDropped),
                 }
             }
         }
@@ -123,7 +121,7 @@ impl ServerRouter for PlaneRouter {
         &mut self,
         host: Option<Url>,
         route: RelativeUri,
-    ) -> BoxFuture<Result<RoutingAddr, ResolutionError>> {
+    ) -> BoxFuture<Result<RoutingAddr, RouterError>> {
         async move {
             let PlaneRouter { request_sender, .. } = self;
             let (tx, rx) = oneshot::channel();
@@ -136,12 +134,12 @@ impl ServerRouter for PlaneRouter {
                 .await
                 .is_err()
             {
-                Err(ResolutionError::NoRoute(RoutingError::RouterDropped))
+                Err(RouterError::RouterDropped)
             } else {
                 match rx.await {
                     Ok(Ok(addr)) => Ok(addr),
                     Ok(Err(err)) => Err(err),
-                    Err(_) => Err(ResolutionError::NoRoute(RoutingError::RouterDropped)),
+                    Err(_) => Err(RouterError::RouterDropped),
                 }
             }
         }

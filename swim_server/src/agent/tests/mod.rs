@@ -50,14 +50,12 @@ use utilities::sync::trigger::Receiver;
 use utilities::uri::RelativeUri;
 
 mod stub_router {
-    use crate::plane::error::ResolutionError;
-    use crate::routing::error::SendError;
+    use crate::routing::error::{ResolutionError, RouterError, SendError};
     use crate::routing::remote::ConnectionDropped;
     use crate::routing::{Route, RoutingAddr, ServerRouter, TaggedEnvelope};
     use futures::future::BoxFuture;
     use futures::FutureExt;
     use std::sync::Arc;
-    use swim_common::routing::RoutingError;
     use swim_common::sink::item::{ItemSender, ItemSink};
     use swim_common::warp::envelope::Envelope;
     use url::Url;
@@ -121,7 +119,7 @@ mod stub_router {
         fn get_sender(
             &mut self,
             addr: RoutingAddr,
-        ) -> BoxFuture<Result<Route<Self::Sender>, RoutingError>> {
+        ) -> BoxFuture<Result<Route<Self::Sender>, ResolutionError>> {
             FutureExt::boxed(async move {
                 let SingleChannelRouter { inner, drop_rx, .. } = self;
                 let route = Route::new(
@@ -136,7 +134,7 @@ mod stub_router {
             &mut self,
             _host: Option<Url>,
             _route: RelativeUri,
-        ) -> BoxFuture<Result<RoutingAddr, ResolutionError>> {
+        ) -> BoxFuture<Result<RoutingAddr, RouterError>> {
             panic!("Unexpected resolution attempt.")
         }
     }

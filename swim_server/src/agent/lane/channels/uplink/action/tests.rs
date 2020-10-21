@@ -18,14 +18,12 @@ use crate::agent::lane::channels::uplink::spawn::UplinkErrorReport;
 use crate::agent::lane::channels::uplink::{UplinkAction, UplinkError};
 use crate::agent::lane::channels::TaggedAction;
 use crate::agent::Eff;
-use crate::plane::error::ResolutionError;
-use crate::routing::error::SendError;
+use crate::routing::error::{ResolutionError, RouterError, SendError};
 use crate::routing::remote::ConnectionDropped;
 use crate::routing::{Route, RoutingAddr, ServerRouter, TaggedEnvelope};
 use futures::future::{join, ready, BoxFuture};
 use futures::FutureExt;
 use std::sync::Arc;
-use swim_common::routing::RoutingError;
 use swim_common::sink::item::ItemSink;
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
@@ -62,7 +60,7 @@ impl ServerRouter for TestRouter {
     fn get_sender(
         &mut self,
         addr: RoutingAddr,
-    ) -> BoxFuture<Result<Route<Self::Sender>, RoutingError>> {
+    ) -> BoxFuture<Result<Route<Self::Sender>, ResolutionError>> {
         let TestRouter {
             sender, drop_rx, ..
         } = self;
@@ -77,7 +75,7 @@ impl ServerRouter for TestRouter {
         &mut self,
         _host: Option<Url>,
         _route: RelativeUri,
-    ) -> BoxFuture<'static, Result<RoutingAddr, ResolutionError>> {
+    ) -> BoxFuture<'static, Result<RoutingAddr, RouterError>> {
         panic!("Unexpected resolution attempt.")
     }
 }

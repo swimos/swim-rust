@@ -24,9 +24,10 @@ mod tests;
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::AgentResult;
 use crate::plane::context::PlaneContext;
-use crate::plane::error::{NoAgentAtRoute, ResolutionError, Unresolvable};
+use crate::plane::error::NoAgentAtRoute;
 use crate::plane::router::{PlaneRouter, PlaneRouterFactory};
 use crate::plane::spec::{PlaneSpec, RouteSpec};
+use crate::routing::error::{ConnectionError, RouterError, Unresolvable};
 use crate::routing::remote::ConnectionDropped;
 use crate::routing::{Route, RoutingAddr, TaggedEnvelope};
 use either::Either;
@@ -40,7 +41,7 @@ use std::fmt::Debug;
 use std::ops::Deref;
 use std::sync::{Arc, Weak};
 use swim_common::request::Request;
-use swim_common::routing::RoutingError;
+use swim_common::ws::error::WebSocketError;
 use swim_runtime::time::clock::Clock;
 use tokio::sync::{mpsc, oneshot};
 use tracing::{event, span, Level};
@@ -174,7 +175,7 @@ impl PlaneActiveRoutes {
 type AgentRequest = Request<Result<Arc<dyn Any + Send + Sync>, NoAgentAtRoute>>;
 type EndpointRequest = Request<Result<Route<mpsc::Sender<TaggedEnvelope>>, Unresolvable>>;
 type RoutesRequest = Request<HashSet<RelativeUri>>;
-type ResolutionRequest = Request<Result<RoutingAddr, ResolutionError>>;
+type ResolutionRequest = Request<Result<RoutingAddr, RouterError>>;
 
 /// Requests that can be serviced by the plane event loop.
 #[derive(Debug)]
@@ -459,7 +460,7 @@ pub async fn run_plane<Clk, S>(
                     } else {
                         match resolver.try_open_route(name.clone(), spawner.deref()) {
                             Ok((_, addr)) => Ok(addr),
-                            Err(err) => Err(ResolutionError::NoAgent(err)),
+                            Err(NoAgentAtRoute(uri)) => Err(RouterError::NoAgentAtRoute(uri)),
                         }
                     };
                     if request.send(result).is_err() {
@@ -474,7 +475,9 @@ pub async fn run_plane<Clk, S>(
                     event!(Level::TRACE, RESOLVING, ?host_url, ?name);
                     //TODO Attach external resolution here.
                     if request
-                        .send_err(ResolutionError::NoRoute(RoutingError::HostUnreachable))
+                        .send_err(RouterError::ConnectionFailure(ConnectionError::Websocket(
+                            WebSocketError::Protocol,
+                        )))
                         .is_err()
                     {
                         event!(Level::WARN, DROPPED_REQUEST);

@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::routing::error::ConnectionError;
 use futures::future::ErrInto;
 use futures::stream::FusedStream;
 use futures::task::{Context, Poll};
@@ -20,7 +21,6 @@ use pin_project::pin_project;
 use std::future::Future;
 use std::marker::PhantomData;
 use std::pin::Pin;
-use swim_common::ws::error::ConnectionError;
 use swim_common::ws::WsMessage;
 
 #[cfg(test)]

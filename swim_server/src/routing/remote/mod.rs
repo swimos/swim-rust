@@ -32,11 +32,11 @@ use tracing::{event, Level};
 use url::Url;
 
 use swim_common::request::Request;
-use swim_common::ws::error::{ConnectionError, WebSocketError};
+use swim_common::ws::error::WebSocketError;
 use utilities::sync::trigger;
 use utilities::task::Spawner;
 
-use crate::plane::error::Unresolvable;
+use crate::routing::error::{ConnectionError, Unresolvable};
 use crate::routing::remote::config::ConnectionConfig;
 use crate::routing::remote::state::{DeferredResult, Event, RemoteConnections};
 use crate::routing::remote::table::HostAndPort;
@@ -174,9 +174,7 @@ where
                         }
                         _ => {
                             request.send_err_debug(
-                                ConnectionError::SocketError(WebSocketError::Url(
-                                    host.into_string(),
-                                )),
+                                ConnectionError::Websocket(WebSocketError::Url(host.into_string())),
                                 REQUEST_DROPPED,
                             );
                         }
@@ -220,11 +218,11 @@ where
                     }
                 }
                 Some(Event::Deferred(DeferredResult::Dns {
-                    result: Err(_err),
+                    result: Err(err),
                     host,
                     ..
                 })) => {
-                    state.fail_connection(&host, ConnectionError::ConnectError);
+                    state.fail_connection(&host, ConnectionError::Socket(err.kind()));
                 }
                 Some(Event::Deferred(DeferredResult::Dns {
                     result: Ok(mut addrs),
@@ -233,7 +231,7 @@ where
                     if let Some(sock_addr) = addrs.next() {
                         state.defer_connect_and_handshake(host, sock_addr, addrs);
                     } else {
-                        state.fail_connection(&host, ConnectionError::ConnectError);
+                        state.fail_connection(&host, ConnectionError::Resolution);
                     }
                 }
                 Some(Event::ConnectionClosed(addr, reason)) => {

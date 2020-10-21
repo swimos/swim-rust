@@ -12,12 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::plane::error::{NoAgentAtRoute, ResolutionError, Unresolvable};
 use crate::plane::router::{PlaneRouter, PlaneRouterFactory, PlaneRouterSender};
 use crate::plane::PlaneRequest;
+use crate::routing::error::{ConnectionError, ResolutionError, RouterError, Unresolvable};
 use crate::routing::{Route, RoutingAddr, ServerRouter, TaggedEnvelope};
 use futures::future::join;
-use swim_common::routing::RoutingError;
 use swim_common::sink::item::ItemSink;
 use swim_common::warp::envelope::Envelope;
 use tokio::sync::mpsc;
@@ -86,7 +85,10 @@ async fn plane_router_get_sender() {
 
         let result2 = router.get_sender(RoutingAddr::local(56)).await;
 
-        assert!(matches!(result2, Err(RoutingError::HostUnreachable)));
+        assert!(matches!(
+            result2,
+            Err(ResolutionError::Unresolvable(Unresolvable(_)))
+        ));
     };
 
     join(provider_task, send_task).await;
@@ -123,12 +125,12 @@ async fn plane_router_resolve() {
                     assert!(request.send_ok(addr).is_ok());
                 } else if host.is_some() {
                     assert!(request
-                        .send_err(ResolutionError::NoRoute(RoutingError::HostUnreachable))
+                        .send_err(RouterError::ConnectionFailure(ConnectionError::Warp(
+                            "Boom!".to_string()
+                        )))
                         .is_ok());
                 } else {
-                    assert!(request
-                        .send_err(ResolutionError::NoAgent(NoAgentAtRoute(name)))
-                        .is_ok());
+                    assert!(request.send_err(RouterError::NoAgentAtRoute(name)).is_ok());
                 }
             } else {
                 panic!("Unexpected request {:?}!", req);
@@ -147,13 +149,11 @@ async fn plane_router_resolve() {
             .await;
         assert!(matches!(
             result2,
-            Err(ResolutionError::NoRoute(RoutingError::HostUnreachable))
+            Err(RouterError::ConnectionFailure(ConnectionError::Warp(msg))) if msg == "Boom!"
         ));
 
         let result3 = router.resolve(None, "/node".parse().unwrap()).await;
-        assert!(
-            matches!(result3, Err(ResolutionError::NoAgent(NoAgentAtRoute(name))) if name == "/node")
-        );
+        assert!(matches!(result3, Err(RouterError::NoAgentAtRoute(name)) if name == "/node"));
     };
 
     join(provider_task, send_task).await;

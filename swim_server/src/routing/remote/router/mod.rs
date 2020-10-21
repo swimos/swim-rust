@@ -12,13 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::plane::error::ResolutionError;
+use crate::routing::error::{ResolutionError, RouterError};
 use crate::routing::remote::RoutingRequest;
 use crate::routing::{error, Route, RoutingAddr, ServerRouter, TaggedEnvelope};
 use futures::future::{BoxFuture, Either};
 use futures::FutureExt;
 use swim_common::request::Request;
-use swim_common::routing::RoutingError;
 use swim_common::sink::item::{ItemSender, ItemSink, MpscSend};
 use swim_common::warp::envelope::Envelope;
 use tokio::sync::{mpsc, oneshot};
@@ -90,7 +89,7 @@ impl<Delegate: ServerRouter> ServerRouter for RemoteRouter<Delegate> {
     fn get_sender(
         &mut self,
         addr: RoutingAddr,
-    ) -> BoxFuture<'_, Result<Route<Self::Sender>, RoutingError>> {
+    ) -> BoxFuture<'_, Result<Route<Self::Sender>, ResolutionError>> {
         async move {
             let RemoteRouter {
                 tag,
@@ -101,7 +100,7 @@ impl<Delegate: ServerRouter> ServerRouter for RemoteRouter<Delegate> {
             let request = Request::new(tx);
             let routing_req = RoutingRequest::Endpoint { addr, request };
             if request_tx.send(routing_req).await.is_err() {
-                Err(RoutingError::RouterDropped)
+                Err(ResolutionError::RouterDropped)
             } else {
                 match rx.await {
                     Ok(Ok(Route { sender, on_drop })) => {
@@ -113,7 +112,7 @@ impl<Delegate: ServerRouter> ServerRouter for RemoteRouter<Delegate> {
                         }
                         Err(err) => Err(err),
                     },
-                    Err(_) => Err(RoutingError::RouterDropped),
+                    Err(_) => Err(ResolutionError::RouterDropped),
                 }
             }
         }
@@ -124,7 +123,7 @@ impl<Delegate: ServerRouter> ServerRouter for RemoteRouter<Delegate> {
         &mut self,
         host: Option<Url>,
         route: RelativeUri,
-    ) -> BoxFuture<'_, Result<RoutingAddr, ResolutionError>> {
+    ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
         async move {
             let RemoteRouter {
                 request_tx,
@@ -136,12 +135,12 @@ impl<Delegate: ServerRouter> ServerRouter for RemoteRouter<Delegate> {
                 let request = Request::new(tx);
                 let routing_req = RoutingRequest::ResolveUrl { host: url, request };
                 if request_tx.send(routing_req).await.is_err() {
-                    Err(ResolutionError::NoRoute(RoutingError::RouterDropped))
+                    Err(RouterError::RouterDropped)
                 } else {
                     match rx.await {
                         Ok(Ok(addr)) => Ok(addr),
-                        Ok(Err(err)) => Err(ResolutionError::NoRoute(RoutingError::PoolError(err))),
-                        Err(_) => Err(ResolutionError::NoRoute(RoutingError::RouterDropped)),
+                        Ok(Err(err)) => Err(RouterError::ConnectionFailure(err)),
+                        Err(_) => Err(RouterError::RouterDropped),
                     }
                 }
             } else {

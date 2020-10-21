@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::routing::error::ConnectionError;
 use crate::routing::remote::addresses::RemoteRoutingAddresses;
 use crate::routing::remote::config::ConnectionConfig;
 use crate::routing::remote::pending::PendingRequests;
@@ -27,8 +28,7 @@ use futures::{select_biased, FutureExt};
 use futures_util::stream::TakeUntil;
 use std::future::Future;
 use std::net::SocketAddr;
-use swim_common::ws::error::ConnectionError;
-use tokio::io;
+use std::io;
 use tokio::net::{lookup_host, TcpStream};
 use tokio::sync::mpsc;
 use utilities::future::open_ended::OpenEndedFutures;

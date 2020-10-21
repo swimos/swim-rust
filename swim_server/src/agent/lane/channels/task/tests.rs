@@ -22,8 +22,7 @@ use crate::agent::lane::channels::{
 };
 use crate::agent::lane::model::action::{Action, ActionLane};
 use crate::agent::Eff;
-use crate::plane::error::ResolutionError;
-use crate::routing::error::SendError;
+use crate::routing::error::{ResolutionError, RouterError, SendError};
 use crate::routing::remote::ConnectionDropped;
 use crate::routing::{Route, RoutingAddr, ServerRouter, TaggedClientEnvelope, TaggedEnvelope};
 use futures::future::{join, join3, ready, BoxFuture};
@@ -37,7 +36,6 @@ use std::time::Duration;
 use stm::transaction::TransactionError;
 use swim_common::form::{Form, FormErr};
 use swim_common::model::Value;
-use swim_common::routing::RoutingError;
 use swim_common::sink::item::ItemSink;
 use swim_common::topic::{MpscTopic, Topic};
 use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
@@ -346,7 +344,7 @@ impl ServerRouter for TestRouter {
     fn get_sender(
         &mut self,
         addr: RoutingAddr,
-    ) -> BoxFuture<Result<Route<Self::Sender>, RoutingError>> {
+    ) -> BoxFuture<Result<Route<Self::Sender>, ResolutionError>> {
         let TestRouter {
             sender, drop_rx, ..
         } = self;
@@ -364,7 +362,7 @@ impl ServerRouter for TestRouter {
         &mut self,
         _host: Option<Url>,
         _route: RelativeUri,
-    ) -> BoxFuture<'static, Result<RoutingAddr, ResolutionError>> {
+    ) -> BoxFuture<'static, Result<RoutingAddr, RouterError>> {
         panic!("Unexpected resolution attempt.")
     }
 }
@@ -1271,7 +1269,7 @@ impl ServerRouter for MultiTestRouter {
     fn get_sender(
         &mut self,
         addr: RoutingAddr,
-    ) -> BoxFuture<Result<Route<Self::Sender>, RoutingError>> {
+    ) -> BoxFuture<Result<Route<Self::Sender>, ResolutionError>> {
         async move {
             let mut lock = self.0.lock();
             if let Some(sender) = lock.senders.get(&addr) {
@@ -1292,7 +1290,7 @@ impl ServerRouter for MultiTestRouter {
         &mut self,
         _host: Option<Url>,
         _route: RelativeUri,
-    ) -> BoxFuture<'_, Result<RoutingAddr, ResolutionError>> {
+    ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
         panic!("Unexpected resolution attempt.")
     }
 }

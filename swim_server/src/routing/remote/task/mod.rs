@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::plane::error::ResolutionError;
+use crate::routing::error::{ConnectionError, ResolutionError, RouterError};
 use crate::routing::remote::config::ConnectionConfig;
 use crate::routing::remote::router::RemoteRouter;
 use crate::routing::remote::{ConnectionDropped, RoutingRequest};
@@ -26,11 +26,9 @@ use std::convert::TryFrom;
 use std::str::FromStr;
 use std::time::Duration;
 use swim_common::model::parser::{self, ParseFailure};
-use swim_common::routing::RoutingError;
 use swim_common::sink::item::ItemSink;
 use swim_common::warp::envelope::{Envelope, EnvelopeParseErr};
 use swim_common::warp::path::RelativePath;
-use swim_common::ws::error::ConnectionError;
 use swim_common::ws::WsMessage;
 use tokio::sync::mpsc;
 use tokio::time::{delay_for, Instant};
@@ -52,7 +50,6 @@ const ZERO: Duration = Duration::from_secs(0);
 
 enum Completion {
     Failed(ConnectionError),
-    ProtocolError(String),
     TimedOut,
     StoppedRemotely,
     StoppedLocally,
@@ -60,13 +57,13 @@ enum Completion {
 
 impl From<ParseFailure> for Completion {
     fn from(err: ParseFailure) -> Self {
-        Completion::ProtocolError(err.to_string())
+        Completion::Failed(ConnectionError::Warp(err.to_string()))
     }
 }
 
 impl From<EnvelopeParseErr> for Completion {
     fn from(err: EnvelopeParseErr) -> Self {
-        Completion::ProtocolError(err.to_string())
+        Completion::Failed(ConnectionError::Warp(err.to_string()))
     }
 }
 
@@ -164,7 +161,9 @@ where
 
         if let Some(reason) = match &completion {
             Completion::StoppedLocally => Some(CloseReason::GoingAway),
-            Completion::ProtocolError(err) => Some(CloseReason::ProtocolError(err.clone())),
+            Completion::Failed(ConnectionError::Warp(err)) => {
+                Some(CloseReason::ProtocolError(err.clone()))
+            }
             _ => None,
         } {
             if let Err(_err) = ws_stream.close(Some(reason)).await {
@@ -175,9 +174,6 @@ where
         match completion {
             Completion::Failed(err) => ConnectionDropped::Failed(err),
             Completion::TimedOut => ConnectionDropped::TimedOut(activity_timeout),
-            Completion::ProtocolError(_) => {
-                ConnectionDropped::Failed(ConnectionError::ReceiveMessageError)
-            }
             _ => ConnectionDropped::Closed,
         }
     }
@@ -190,7 +186,7 @@ fn read_envelope(msg: &str) -> Result<Envelope, Completion> {
 enum DispatchError {
     BadNodeUri(BadRelativeUri),
     Unresolvable(ResolutionError),
-    RoutingProblem(RoutingError),
+    RoutingProblem(RouterError),
     ChannelDropped(ConnectionDropped),
 }
 
@@ -216,8 +212,8 @@ impl From<ResolutionError> for DispatchError {
     }
 }
 
-impl From<RoutingError> for DispatchError {
-    fn from(err: RoutingError) -> Self {
+impl From<RouterError> for DispatchError {
+    fn from(err: RouterError) -> Self {
         DispatchError::RoutingProblem(err)
     }
 }

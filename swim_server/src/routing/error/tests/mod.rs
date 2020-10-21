@@ -12,25 +12,29 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::plane::error::{AmbiguousRoutes, NoAgentAtRoute};
-use utilities::route_pattern::RoutePattern;
+use crate::routing::error::Unresolvable;
+use crate::routing::RoutingAddr;
 
 #[test]
-fn no_agent_at_route_display() {
-    let err = NoAgentAtRoute("/test".parse().unwrap());
+fn unresolvable_display() {
+    let err = Unresolvable(RoutingAddr::local(4));
+
     let string = err.to_string();
 
-    assert_eq!(string, "No agent at route: '/test'");
+    assert_eq!(string, "No active endpoint with ID: Local(4)");
 }
 
-#[test]
-fn ambiguous_routes_display() {
-    let err = AmbiguousRoutes::new(
-        RoutePattern::parse_str("/:id").unwrap(),
-        RoutePattern::parse_str("/path").unwrap(),
+/*#[test]
+fn resolution_error_display() {
+    let err = ResolutionError::NoRoute(RoutingError::HostUnreachable);
+
+    assert_eq!(err.to_string(), RoutingError::HostUnreachable.to_string());
+
+    let err = ResolutionError::NoAgent(NoAgentAtRoute("/path".parse().unwrap()));
+
+    assert_eq!(
+        err.to_string(),
+        NoAgentAtRoute("/path".parse().unwrap()).to_string()
     );
-
-    let string = err.to_string();
-
-    assert_eq!(string, "Routes '/:id' and '/path' are ambiguous.");
 }
+*/
