@@ -1,4 +1,3 @@
-use im::{vector, Vector};
 use std::sync::Arc;
 
 #[cfg(test)]
@@ -19,7 +18,7 @@ where
     fn new() -> Self {
         RTree {
             root: Arc::new(Node::Leaf {
-                entries: Vector::new(),
+                entries: Vec::new(),
                 level: 0,
             }),
         }
@@ -31,7 +30,7 @@ where
             match root {
                 Node::Branch { entries: _, level } | Node::Leaf { entries: _, level } => {
                     self.root = Arc::new(Node::Branch {
-                        entries: vector![first_entry, second_entry],
+                        entries: vec![first_entry, second_entry],
                         level: *level + 1,
                     })
                 }
@@ -47,7 +46,7 @@ where
         if root.len() == 1 {
             match root {
                 Node::Branch { entries, level: _ } => {
-                    let Entry { mbb: _, child } = entries.pop_front().unwrap();
+                    let Entry { mbb: _, child } = entries.pop().unwrap();
                     self.root = Arc::new(child);
                 }
                 _ => (),
@@ -80,7 +79,7 @@ where
             match root {
                 Node::Branch { entries: _, level } | Node::Leaf { entries: _, level } => {
                     self.root = Arc::new(Node::Branch {
-                        entries: vector![first_entry, second_entry],
+                        entries: vec![first_entry, second_entry],
                         level: *level + 1,
                     })
                 }
@@ -91,14 +90,8 @@ where
 
 #[derive(Debug, Clone)]
 enum Node<T: Clone + BoundingBox + PartialEq> {
-    Branch {
-        entries: Vector<Entry<T>>,
-        level: i32,
-    },
-    Leaf {
-        entries: Vector<T>,
-        level: i32,
-    },
+    Branch { entries: Vec<Entry<T>>, level: i32 },
+    Leaf { entries: Vec<T>, level: i32 },
 }
 
 impl<T: Clone + BoundingBox + PartialEq> Node<T> {
@@ -134,8 +127,8 @@ impl<T: Clone + BoundingBox + PartialEq> Node<T> {
                 match min_entry.insert(item, min_rect) {
                     Some((first_entry, second_entry)) => {
                         entries.remove(min_entry_idx);
-                        entries.push_back(first_entry);
-                        entries.push_back(second_entry);
+                        entries.push(first_entry);
+                        entries.push(second_entry);
 
                         if entries.len() > MAX_CHILDREN {
                             let split_entries = self.split();
@@ -146,7 +139,7 @@ impl<T: Clone + BoundingBox + PartialEq> Node<T> {
                 }
             }
             Node::Leaf { entries, level: _ } => {
-                entries.push_back(item);
+                entries.push(item);
 
                 if entries.len() > MAX_CHILDREN {
                     let split_entries = self.split();
@@ -164,7 +157,7 @@ impl<T: Clone + BoundingBox + PartialEq> Node<T> {
                 entries,
                 level: current_level,
             } if level == *current_level => {
-                entries.push_back(item);
+                entries.push(item);
 
                 if entries.len() > MAX_CHILDREN {
                     let split_entries = self.split();
@@ -195,8 +188,8 @@ impl<T: Clone + BoundingBox + PartialEq> Node<T> {
                 match min_entry.insert_at_level(item, min_rect, level) {
                     Some((first_entry, second_entry)) => {
                         entries.remove(min_entry_idx);
-                        entries.push_back(first_entry);
-                        entries.push_back(second_entry);
+                        entries.push(first_entry);
+                        entries.push(second_entry);
 
                         if entries.len() > MAX_CHILDREN {
                             let split_entries = self.split();
@@ -311,35 +304,32 @@ impl<T: Clone + BoundingBox + PartialEq> Node<T> {
     }
 }
 
-fn quadratic_split<T: BoundingBox + Clone>(
-    entries: &mut Vector<T>,
-) -> (Vector<T>, Vector<T>, Rect, Rect) {
+fn quadratic_split<T: BoundingBox + Clone>(entries: &mut Vec<T>) -> (Vec<T>, Vec<T>, Rect, Rect) {
     let (first_seed_idx, second_seed_idx) = pick_seeds(entries);
 
-    //Todo avoid creating new vecs
     let first_seed = entries.remove(first_seed_idx);
     let second_seed = entries.remove(second_seed_idx - 1);
 
     let mut first_mbb = first_seed.get_mbb().clone();
-    let mut first_group = vector![first_seed];
+    let mut first_group = vec![first_seed];
 
     let mut second_mbb = second_seed.get_mbb().clone();
-    let mut second_group = vector![second_seed];
+    let mut second_group = vec![second_seed];
 
     while !entries.is_empty() {
         if entries.len() + first_group.len() == MIN_CHILDREN {
-            for item in entries.slice(..) {
+            for item in entries.drain(..) {
                 let expanded_rect = first_mbb.combine_boxes(&item);
 
                 first_mbb = expanded_rect;
-                first_group.push_back(item);
+                first_group.push(item);
             }
         } else if entries.len() + second_group.len() == MIN_CHILDREN {
-            for item in entries.slice(..) {
+            for item in entries.drain(..) {
                 let expanded_rect = second_mbb.combine_boxes(&item);
 
                 second_mbb = expanded_rect;
-                second_group.push_back(item);
+                second_group.push(item);
             }
         } else {
             let (idx, expanded_rect, group) = pick_next(
@@ -355,11 +345,11 @@ fn quadratic_split<T: BoundingBox + Clone>(
             match group {
                 Group::First => {
                     first_mbb = expanded_rect;
-                    first_group.push_back(item);
+                    first_group.push(item);
                 }
                 Group::Second => {
                     second_mbb = expanded_rect;
-                    second_group.push_back(item);
+                    second_group.push(item);
                 }
             };
         }
@@ -368,7 +358,7 @@ fn quadratic_split<T: BoundingBox + Clone>(
     (first_group, second_group, first_mbb, second_mbb)
 }
 
-fn pick_seeds<T>(entries: &Vector<T>) -> (usize, usize)
+fn pick_seeds<T>(entries: &Vec<T>) -> (usize, usize)
 where
     T: BoundingBox + Clone,
 {
@@ -395,7 +385,7 @@ where
 }
 
 fn pick_next<T>(
-    entries: &Vector<T>,
+    entries: &Vec<T>,
     first_mbb: &Rect,
     second_mbb: &Rect,
     first_group_size: usize,
