@@ -202,7 +202,7 @@ impl<'f> ValidatedField<'f> {
                 quote! {
                     swim_common::model::schema::ItemSchema::Field(
                         swim_common::model::schema::slot::SlotSchema::new(
-                            swim_common::model::schema::StandardSchema::text(swim_common::form::Tag::as_string(&(self.#ident.clone())),
+                            swim_common::model::schema::StandardSchema::text(swim_common::form::Tag::as_string(&(self.#ident)),
                             #field_schema,
                         ))
                     )

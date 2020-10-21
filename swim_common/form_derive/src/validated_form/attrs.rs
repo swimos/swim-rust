@@ -102,7 +102,7 @@ pub fn build_head_attribute(
             }
         }
         l => {
-            let name = l.to_name();
+            let name = l.to_name(false);
 
             quote! {
                 swim_common::model::schema::attr::AttrSchema::named(
