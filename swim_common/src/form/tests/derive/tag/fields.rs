@@ -12,19 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-mod enumeration;
-mod impls;
-mod structure;
-mod tag;
-mod validated;
+use form_derive::*;
 
-use trybuild::TestCases;
-
-#[test]
-fn test_derive() {
-    let t = TestCases::new();
-
-    t.compile_fail("src/form/tests/derive/form/*.rs");
-    t.compile_fail("src/form/tests/derive/tag/*.rs");
-    t.compile_fail("src/form/tests/derive/validated_form/*.rs");
+fn main() {
+    #[derive(Tag)]
+    enum E {
+        A,
+        B(i32),
+    }
 }

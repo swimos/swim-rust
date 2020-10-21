@@ -1823,32 +1823,10 @@ fn test_nested() {
 
 #[test]
 fn tagged() {
-    #[derive(Clone)]
+    #[derive(Clone, Tag)]
     enum Level {
         Info,
         Trace,
-    }
-
-    impl Tag for Level {
-        fn from_string(tag: String) -> Result<Self, ()> {
-            match tag.to_lowercase().as_str() {
-                "info" => Ok(Level::Info),
-                "trace" => Ok(Level::Trace),
-                _ => Err(()),
-            }
-        }
-
-        fn as_string(&self) -> String {
-            let s = match self {
-                Level::Trace => "trace",
-                Level::Info => "info",
-            };
-            s.to_string()
-        }
-
-        fn enumerated() -> Vec<Self> {
-            vec![Level::Info, Level::Trace]
-        }
     }
 
     #[derive(Form, ValidatedForm)]

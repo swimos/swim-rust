@@ -467,33 +467,10 @@ fn header_body_replace() {
 
 #[test]
 fn test_enum_tag() {
-    #[derive(Clone, PartialEq, Debug)]
+    #[derive(Clone, PartialEq, Debug, Tag)]
     enum Level {
         Trace,
         Error,
-    }
-
-    impl Tag for Level {
-        fn from_string(tag: String) -> Result<Self, ()> {
-            match tag.to_lowercase().as_str() {
-                "trace" => Ok(Level::Trace),
-                "error" => Ok(Level::Error),
-                _ => Err(()),
-            }
-        }
-
-        fn as_string(&self) -> String {
-            let s = match self {
-                Level::Trace => "trace",
-                Level::Error => "error",
-            };
-
-            s.to_string()
-        }
-
-        fn enumerated() -> Vec<Self> {
-            vec![Level::Trace, Level::Error]
-        }
     }
 
     #[derive(Form, Debug, PartialEq, Clone)]

@@ -71,7 +71,7 @@ impl ToValue for TextSchema {
             TextSchema::Exact(v) => Attr::of(("equal", v.clone())),
             TextSchema::Matches(r) => Attr::of(("matches", r.to_string())),
             TextSchema::Or(vec) => {
-                Attr::with_items("or", vec.iter().map(ToValue::to_value).collect()).into()
+                Attr::with_items("or", vec.iter().map(ToValue::to_value).collect())
             }
         }
         .into()
