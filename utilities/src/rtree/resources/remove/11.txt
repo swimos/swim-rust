@@ -1,14 +1,16 @@
 RTree {
-    root: Leaf {
+    root: Node {
         entries: [
-            Rect {
-                lower_left: Point {
-                    x: 7,
-                    y: 3,
-                },
-                upper_right: Point {
-                    x: 8,
-                    y: 6,
+            Leaf {
+                item: Rect {
+                    lower_left: Point {
+                        x: 7,
+                        y: 3,
+                    },
+                    upper_right: Point {
+                        x: 8,
+                        y: 6,
+                    },
                 },
             },
         ],

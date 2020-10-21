@@ -1,5 +1,5 @@
 RTree {
-    root: Leaf {
+    root: Node {
         entries: [],
         level: 0,
     },

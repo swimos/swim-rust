@@ -1,7 +1,7 @@
 RTree {
-    root: Branch {
+    root: Node {
         entries: [
-            Entry {
+            Branch {
                 mbb: Rect {
                     lower_left: Point {
                         x: 2,
@@ -12,43 +12,49 @@ RTree {
                         y: 6,
                     },
                 },
-                child: Leaf {
+                child: Node {
                     entries: [
-                        Rect {
-                            lower_left: Point {
-                                x: 2,
-                                y: 2,
-                            },
-                            upper_right: Point {
-                                x: 3,
-                                y: 3,
-                            },
-                        },
-                        Rect {
-                            lower_left: Point {
-                                x: 7,
-                                y: 3,
-                            },
-                            upper_right: Point {
-                                x: 8,
-                                y: 6,
+                        Leaf {
+                            item: Rect {
+                                lower_left: Point {
+                                    x: 2,
+                                    y: 2,
+                                },
+                                upper_right: Point {
+                                    x: 3,
+                                    y: 3,
+                                },
                             },
                         },
-                        Rect {
-                            lower_left: Point {
-                                x: 10,
-                                y: 0,
+                        Leaf {
+                            item: Rect {
+                                lower_left: Point {
+                                    x: 7,
+                                    y: 3,
+                                },
+                                upper_right: Point {
+                                    x: 8,
+                                    y: 6,
+                                },
                             },
-                            upper_right: Point {
-                                x: 12,
-                                y: 5,
+                        },
+                        Leaf {
+                            item: Rect {
+                                lower_left: Point {
+                                    x: 10,
+                                    y: 0,
+                                },
+                                upper_right: Point {
+                                    x: 12,
+                                    y: 5,
+                                },
                             },
                         },
                     ],
                     level: 0,
                 },
             },
-            Entry {
+            Branch {
                 mbb: Rect {
                     lower_left: Point {
                         x: 2,
@@ -59,26 +65,30 @@ RTree {
                         y: 16,
                     },
                 },
-                child: Leaf {
+                child: Node {
                     entries: [
-                        Rect {
-                            lower_left: Point {
-                                x: 13,
-                                y: 13,
-                            },
-                            upper_right: Point {
-                                x: 16,
-                                y: 16,
+                        Leaf {
+                            item: Rect {
+                                lower_left: Point {
+                                    x: 13,
+                                    y: 13,
+                                },
+                                upper_right: Point {
+                                    x: 16,
+                                    y: 16,
+                                },
                             },
                         },
-                        Rect {
-                            lower_left: Point {
-                                x: 2,
-                                y: 13,
-                            },
-                            upper_right: Point {
-                                x: 4,
-                                y: 16,
+                        Leaf {
+                            item: Rect {
+                                lower_left: Point {
+                                    x: 2,
+                                    y: 13,
+                                },
+                                upper_right: Point {
+                                    x: 4,
+                                    y: 16,
+                                },
                             },
                         },
                     ],
