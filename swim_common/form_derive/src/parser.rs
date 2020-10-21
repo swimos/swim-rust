@@ -234,36 +234,6 @@ pub fn fields_from_ast<'t>(
                         NestedMeta::Meta(Meta::List(list)) if list.path == SCHEMA_PATH => {
                             // no-op as this is parsed by the validated form derive macro
                         }
-                        // NestedMeta::Meta(Meta::List(list)) if list.path == TAG_PATH => {
-                        //     let nested = &list.nested;
-                        //     match nested.iter().next() {
-                        //         Some(NestedMeta::Meta(Meta::Path(name))) if name == TAG_PLAIN => {
-                        //             match name_opt {
-                        //                 Some(_) => context.error_spanned_by(name, "Duplicate tag"),
-                        //                 None => match &original.ident {
-                        //                     Some(ident) => {
-                        //                         name_opt = Some(Label::Field(ident.clone()));
-                        //                     }
-                        //                     None => ctx.error_spanned_by(
-                        //                         path,
-                        //                         "Cannot apply a tag using an unnamed element",
-                        //                     ),
-                        //                 },
-                        //             }
-                        //         }
-                        //         Some(NestedMeta::Meta(Meta::Path(name))) if name == TAG_ENUM => {
-                        //             unimplemented!()
-                        //         }
-                        //         Some(inner) => {
-                        //             // context.error_spanned_by(inner, "Unknown tag attribute")
-                        //             unimplemented!()
-                        //         }
-                        //         None => {
-                        //             // context.error_spanned_by(nested, "Malformatted tag attribute")
-                        //             unimplemented!()
-                        //         }
-                        //     }
-                        // }
                         NestedMeta::Meta(Meta::Path(path)) if path == TAG_PATH => match name_opt {
                             Some(_) => ctx.error_spanned_by(path, "Duplicate tag"),
                             None => match &original.ident {
