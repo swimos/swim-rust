@@ -1,4 +1,5 @@
 use im::{vector, Vector};
+use std::sync::Arc;
 
 #[cfg(test)]
 mod tests;
@@ -8,7 +9,7 @@ static MIN_CHILDREN: usize = 2;
 
 #[derive(Debug, Clone)]
 struct RTree<T: Clone + BoundingBox + PartialEq> {
-    root: Node<T>,
+    root: Arc<Node<T>>,
 }
 
 impl<T> RTree<T>
@@ -17,34 +18,37 @@ where
 {
     fn new() -> Self {
         RTree {
-            root: Node::Leaf {
+            root: Arc::new(Node::Leaf {
                 entries: Vector::new(),
                 level: 0,
-            },
+            }),
         }
     }
 
     fn insert(&mut self, item: T) {
-        if let Some((first_entry, second_entry)) = self.root.insert(item) {
-            match self.root {
+        let root = Arc::make_mut(&mut self.root);
+        if let Some((first_entry, second_entry)) = root.insert(item) {
+            match root {
                 Node::Branch { entries: _, level } | Node::Leaf { entries: _, level } => {
-                    self.root = Node::Branch {
+                    self.root = Arc::new(Node::Branch {
                         entries: vector![first_entry, second_entry],
-                        level: level + 1,
-                    }
+                        level: *level + 1,
+                    })
                 }
             }
         }
     }
 
     fn remove(&mut self, item: &T) -> Option<T> {
-        let (removed, maybe_orphan_nodes) = self.root.remove(item)?;
+        let root = Arc::make_mut(&mut self.root);
 
-        if self.root.len() == 1 {
-            match &mut self.root {
+        let (removed, maybe_orphan_nodes) = root.remove(item)?;
+
+        if root.len() == 1 {
+            match root {
                 Node::Branch { entries, level: _ } => {
                     let Entry { mbb: _, child } = entries.pop_front().unwrap();
-                    self.root = child;
+                    self.root = Arc::new(child);
                 }
                 _ => (),
             }
@@ -71,13 +75,14 @@ where
     }
 
     fn insert_at_level(&mut self, entry: Entry<T>, level: i32) {
-        if let Some((first_entry, second_entry)) = self.root.insert_at_level(entry, level) {
-            match self.root {
+        let root = Arc::make_mut(&mut self.root);
+        if let Some((first_entry, second_entry)) = root.insert_at_level(entry, level) {
+            match root {
                 Node::Branch { entries: _, level } | Node::Leaf { entries: _, level } => {
-                    self.root = Node::Branch {
+                    self.root = Arc::new(Node::Branch {
                         entries: vector![first_entry, second_entry],
-                        level: level + 1,
-                    }
+                        level: *level + 1,
+                    })
                 }
             }
         }
