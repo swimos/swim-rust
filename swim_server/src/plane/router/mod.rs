@@ -13,40 +13,17 @@
 // limitations under the License.
 
 use crate::plane::PlaneRequest;
-use crate::routing::error::{ResolutionError, RouterError, SendError};
-use crate::routing::{Route, RoutingAddr, ServerRouter, TaggedEnvelope};
+use crate::routing::error::{ResolutionError, RouterError};
+use crate::routing::{Route, RoutingAddr, ServerRouter, ServerRouterFactory, TaggedSender};
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use swim_common::request::Request;
-use swim_common::sink::item::{ItemSink, MpscSend};
-use swim_common::warp::envelope::Envelope;
 use tokio::sync::{mpsc, oneshot};
 use url::Url;
 use utilities::uri::RelativeUri;
 
 #[cfg(test)]
 mod tests;
-/// Sender that attaches a [`RoutingAddr`] to received envelopes before sending them over a channel.
-pub struct PlaneRouterSender {
-    tag: RoutingAddr,
-    inner: mpsc::Sender<TaggedEnvelope>,
-}
-
-impl PlaneRouterSender {
-    fn new(tag: RoutingAddr, inner: mpsc::Sender<TaggedEnvelope>) -> Self {
-        PlaneRouterSender { tag, inner }
-    }
-}
-
-impl<'a> ItemSink<'a, Envelope> for PlaneRouterSender {
-    type Error = SendError;
-    type SendFuture = MpscSend<'a, TaggedEnvelope, SendError>;
-
-    fn send_item(&'a mut self, envelope: Envelope) -> Self::SendFuture {
-        let PlaneRouterSender { tag, inner } = self;
-        MpscSend::new(inner, TaggedEnvelope(*tag, envelope))
-    }
-}
 
 /// Creates [`PlaneRouter`] instances by cloning a channel back to the plane.
 #[derive(Debug)]
@@ -59,10 +36,13 @@ impl PlaneRouterFactory {
     pub(super) fn new(request_sender: mpsc::Sender<PlaneRequest>) -> Self {
         PlaneRouterFactory { request_sender }
     }
+}
 
-    /// Create a router instance for a specific endpoint.
-    pub fn create(&self, tag: RoutingAddr) -> PlaneRouter {
-        PlaneRouter::new(tag, self.request_sender.clone())
+impl ServerRouterFactory for PlaneRouterFactory {
+    type Router = PlaneRouter;
+
+    fn create_for(&self, addr: RoutingAddr) -> Self::Router {
+        PlaneRouter::new(addr, self.request_sender.clone())
     }
 }
 
@@ -83,7 +63,7 @@ impl PlaneRouter {
 }
 
 impl ServerRouter for PlaneRouter {
-    type Sender = PlaneRouterSender;
+    type Sender = TaggedSender;
 
     fn resolve_sender(
         &mut self,
@@ -107,7 +87,7 @@ impl ServerRouter for PlaneRouter {
             } else {
                 match rx.await {
                     Ok(Ok(Route { sender, on_drop })) => {
-                        Ok(Route::new(PlaneRouterSender::new(*tag, sender), on_drop))
+                        Ok(Route::new(TaggedSender::new(*tag, sender), on_drop))
                     }
                     Ok(Err(err)) => Err(ResolutionError::Unresolvable(err)),
                     Err(_) => Err(ResolutionError::RouterDropped),

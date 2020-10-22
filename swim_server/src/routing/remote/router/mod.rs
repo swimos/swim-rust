@@ -14,11 +14,11 @@
 
 use crate::routing::error::{ResolutionError, RouterError};
 use crate::routing::remote::RoutingRequest;
-use crate::routing::{error, Route, RoutingAddr, ServerRouter, TaggedEnvelope};
+use crate::routing::{error, Route, RoutingAddr, ServerRouter, TaggedSender};
 use futures::future::{BoxFuture, Either};
 use futures::FutureExt;
 use swim_common::request::Request;
-use swim_common::sink::item::{ItemSender, ItemSink, MpscSend};
+use swim_common::sink::item::{ItemSender, ItemSink};
 use swim_common::warp::envelope::Envelope;
 use tokio::sync::{mpsc, oneshot};
 use url::Url;
@@ -46,18 +46,15 @@ impl<Delegate> RemoteRouter<Delegate> {
 }
 
 enum RemoteRouterSenderInner<D> {
-    Remote {
-        tag: RoutingAddr,
-        inner: mpsc::Sender<TaggedEnvelope>,
-    },
+    Remote(TaggedSender),
     Delegated(D),
 }
 
 pub struct RemoteRouterSender<D>(RemoteRouterSenderInner<D>);
 
 impl<D: ItemSender<Envelope, error::SendError>> RemoteRouterSender<D> {
-    fn new(tag: RoutingAddr, inner: mpsc::Sender<TaggedEnvelope>) -> Self {
-        RemoteRouterSender(RemoteRouterSenderInner::Remote { tag, inner })
+    fn new(sender: TaggedSender) -> Self {
+        RemoteRouterSender(RemoteRouterSenderInner::Remote(sender))
     }
 
     fn delegate(sender: D) -> Self {
@@ -69,12 +66,12 @@ impl<'a, D: ItemSink<'a, Envelope, Error = error::SendError>> ItemSink<'a, Envel
     for RemoteRouterSender<D>
 {
     type Error = error::SendError;
-    type SendFuture = Either<MpscSend<'a, TaggedEnvelope, error::SendError>, D::SendFuture>;
+    type SendFuture = Either<<TaggedSender as ItemSink<'a, Envelope>>::SendFuture, D::SendFuture>;
 
     fn send_item(&'a mut self, envelope: Envelope) -> Self::SendFuture {
         match self {
-            RemoteRouterSender(RemoteRouterSenderInner::Remote { tag, inner }) => {
-                Either::Left(MpscSend::new(inner, TaggedEnvelope(*tag, envelope)))
+            RemoteRouterSender(RemoteRouterSenderInner::Remote(sender)) => {
+                Either::Left(sender.send_item(envelope))
             }
             RemoteRouterSender(RemoteRouterSenderInner::Delegated(delegate)) => {
                 Either::Right(delegate.send_item(envelope))
@@ -103,9 +100,10 @@ impl<Delegate: ServerRouter> ServerRouter for RemoteRouter<Delegate> {
                 Err(ResolutionError::RouterDropped)
             } else {
                 match rx.await {
-                    Ok(Ok(Route { sender, on_drop })) => {
-                        Ok(Route::new(RemoteRouterSender::new(*tag, sender), on_drop))
-                    }
+                    Ok(Ok(Route { sender, on_drop })) => Ok(Route::new(
+                        RemoteRouterSender::new(TaggedSender::new(*tag, sender)),
+                        on_drop,
+                    )),
                     Ok(Err(_)) => match delegate_router.resolve_sender(addr).await {
                         Ok(Route { sender, on_drop }) => {
                             Ok(Route::new(RemoteRouterSender::delegate(sender), on_drop))

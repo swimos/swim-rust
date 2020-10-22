@@ -29,7 +29,7 @@ use crate::plane::router::{PlaneRouter, PlaneRouterFactory};
 use crate::plane::spec::{PlaneSpec, RouteSpec};
 use crate::routing::error::{ConnectionError, RouterError, Unresolvable};
 use crate::routing::remote::ConnectionDropped;
-use crate::routing::{Route, RoutingAddr, TaggedEnvelope};
+use crate::routing::{Route, RoutingAddr, ServerRouterFactory, TaggedEnvelope};
 use either::Either;
 use futures::future::{join, BoxFuture};
 use futures::{select_biased, FutureExt, StreamExt};
@@ -311,7 +311,7 @@ impl<Clk: Clock> RouteResolver<Clk> {
             execution_config.clone(),
             clock.clone(),
             rx.take_until(stop_trigger.clone()),
-            router_fac.create(addr),
+            router_fac.create_for(addr),
         );
         active_routes.add_endpoint(addr, route, LocalEndpoint::new(Arc::downgrade(&agent), tx));
         if spawner.try_add(task).is_err() {

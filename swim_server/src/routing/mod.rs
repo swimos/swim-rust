@@ -16,8 +16,9 @@ use crate::routing::error::{ResolutionError, RouterError};
 use crate::routing::remote::ConnectionDropped;
 use futures::future::BoxFuture;
 use std::fmt::{Display, Formatter};
-use swim_common::sink::item::ItemSender;
+use swim_common::sink::item::{ItemSender, ItemSink, MpscSend};
 use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
+use tokio::sync::mpsc;
 use url::Url;
 use utilities::sync::promise;
 use utilities::uri::RelativeUri;
@@ -118,4 +119,27 @@ pub trait ServerRouterFactory: Send + Sync {
     type Router: ServerRouter;
 
     fn create_for(&self, addr: RoutingAddr) -> Self::Router;
+}
+
+/// Sender that attaches a [`RoutingAddr`] to received envelopes before sending them over a channel.
+#[derive(Debug, Clone)]
+pub struct TaggedSender {
+    tag: RoutingAddr,
+    inner: mpsc::Sender<TaggedEnvelope>,
+}
+
+impl TaggedSender {
+    pub fn new(tag: RoutingAddr, inner: mpsc::Sender<TaggedEnvelope>) -> Self {
+        TaggedSender { tag, inner }
+    }
+}
+
+impl<'a> ItemSink<'a, Envelope> for TaggedSender {
+    type Error = error::SendError;
+    type SendFuture = MpscSend<'a, TaggedEnvelope, error::SendError>;
+
+    fn send_item(&'a mut self, envelope: Envelope) -> Self::SendFuture {
+        let TaggedSender { tag, inner } = self;
+        MpscSend::new(inner, TaggedEnvelope(*tag, envelope))
+    }
 }

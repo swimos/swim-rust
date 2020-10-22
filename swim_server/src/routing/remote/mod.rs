@@ -45,6 +45,9 @@ use std::fmt::{Display, Formatter};
 use std::io;
 use utilities::errors::Recoverable;
 
+#[cfg(test)]
+pub mod test_fixture;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ConnectionDropped {
     Closed,
