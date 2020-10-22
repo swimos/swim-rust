@@ -16,10 +16,15 @@ use std::num::NonZeroUsize;
 use std::time::Duration;
 use utilities::future::retryable::strategy::RetryStrategy;
 
+/// Configuration parameters for remote connection management.
 #[derive(Debug, Clone, Copy)]
 pub struct ConnectionConfig {
+    /// Buffer size for sending routing requests for a router instance.
     pub router_buffer_size: NonZeroUsize,
+    /// Buffer size for the channel to send data to the task managing a single connection.
     pub channel_buffer_size: NonZeroUsize,
+    /// Time after which to close an inactive connection.
     pub activity_timeout: Duration,
+    /// Strategy for retrying a connection.
     pub connection_retries: RetryStrategy,
 }

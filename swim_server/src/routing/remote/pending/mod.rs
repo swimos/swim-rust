@@ -19,10 +19,16 @@ use crate::routing::RoutingAddr;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 
+#[cfg(test)]
+mod tests;
+
+/// Keeps track of pending routing requests to ensure that two requests for the same point are not
+/// started simultaneously.
 #[derive(Debug, Default)]
 pub struct PendingRequests(HashMap<HostAndPort, Vec<ResolutionRequest>>);
 
 impl PendingRequests {
+    /// Add a new pending request for a specific host/port combination.
     pub fn add(&mut self, host: HostAndPort, request: ResolutionRequest) {
         let PendingRequests(map) = self;
         match map.entry(host) {
@@ -35,6 +41,7 @@ impl PendingRequests {
         }
     }
 
+    /// Complete all requests for a given host/port combination with a successful result.
     pub fn send_ok(&mut self, host: &HostAndPort, addr: RoutingAddr) {
         let PendingRequests(map) = self;
         if let Some(requests) = map.remove(host) {
@@ -44,6 +51,7 @@ impl PendingRequests {
         }
     }
 
+    /// Complete all requests for a given host/port combination with an error.
     pub fn send_err(&mut self, host: &HostAndPort, err: ConnectionError) {
         let PendingRequests(map) = self;
         if let Some(mut requests) = map.remove(host) {

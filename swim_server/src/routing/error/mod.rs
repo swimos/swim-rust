@@ -111,7 +111,7 @@ fn io_fatal(kind: &ErrorKind) -> bool {
     )
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ConnectionError {
     Resolution,
     Socket(io::ErrorKind),

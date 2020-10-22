@@ -45,7 +45,7 @@ use std::fmt::{Display, Formatter};
 use std::io;
 use utilities::errors::Recoverable;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ConnectionDropped {
     Closed,
     TimedOut(Duration),

@@ -14,6 +14,7 @@
 
 use crate::routing::RoutingAddr;
 
+/// Iterator to generate a sequence of distinct remote routing addresses.
 #[derive(Debug, Default)]
 pub struct RemoteRoutingAddresses(u32);
 
@@ -29,5 +30,20 @@ impl Iterator for RemoteRoutingAddresses {
         } else {
             None
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::routing::remote::addresses::RemoteRoutingAddresses;
+
+    #[test]
+    fn generate_addresses() {
+        let mut addrs = RemoteRoutingAddresses::default();
+        let first = addrs.next().unwrap();
+        let second = addrs.next().unwrap();
+        assert!(first.is_remote());
+        assert!(second.is_remote());
+        assert_ne!(first, second);
     }
 }

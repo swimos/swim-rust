@@ -25,6 +25,8 @@ use pin_project::pin_project;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::{lookup_host, TcpListener, TcpStream};
 
+/// Trait for servers that listen for incoming remote connections. This is primarily used to
+/// abstract over [`TcpListener`] for testing purposes.
 pub trait Listener {
     type Socket: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static;
     type AcceptStream: FusedStream<Item = io::Result<(Self::Socket, SocketAddr)>> + Unpin;
@@ -53,9 +55,12 @@ impl Listener for TcpListener {
     }
 }
 
+/// Implementation of [`ExternalConnections`] using [`TcpListener`] and [`TcpStream`] from Tokio.
 #[derive(Debug, Clone, Copy)]
 pub struct TokioNetworking;
 
+/// Trait for types that can create remote network connections asynchronously. This is primarily
+/// used to abstract over [`TcpListener`] and [`TcpStream`] for testing purposes.
 pub trait ExternalConnections: Clone + Send + Sync + 'static {
     type Socket: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static;
     type ListenerType: Listener<Socket = Self::Socket>;

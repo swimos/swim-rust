@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[cfg(test)]
+mod tests;
+
 use crate::routing::remote::ConnectionDropped;
 use crate::routing::{Route, RoutingAddr, TaggedEnvelope};
 use std::collections::{HashMap, HashSet};
@@ -20,6 +23,7 @@ use std::net::SocketAddr;
 use tokio::sync::mpsc;
 use utilities::sync::promise;
 
+/// A combination of host name and port to be used as a key into the routing table.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct HostAndPort(String, u16);
 
@@ -36,6 +40,9 @@ impl Display for HostAndPort {
     }
 }
 
+/// Routing table for active routes to remote hosts. An entry in the table contains a channel
+/// sender which can send envelopes to the task that manages to route and a promise that will
+/// be satisfied when the task stops running.
 #[derive(Debug, Default)]
 pub struct RoutingTable {
     open_sockets: HashMap<SocketAddr, RoutingAddr>,
@@ -44,20 +51,24 @@ pub struct RoutingTable {
 }
 
 impl RoutingTable {
+    /// Try to get the routing key in the table for a given host/port combination.
     pub fn try_resolve(&self, target: &HostAndPort) -> Option<RoutingAddr> {
         self.resolved_forward.get(target).copied()
     }
 
+    /// Try to get a routing key in the table for a resolved socket address.
     pub fn get_resolved(&self, target: &SocketAddr) -> Option<RoutingAddr> {
         self.open_sockets.get(target).copied()
     }
 
+    /// Get the entry in the table associated with a routing key, if it exsits.
     pub fn resolve(&self, addr: RoutingAddr) -> Option<Route<mpsc::Sender<TaggedEnvelope>>> {
         self.endpoints
             .get(&addr)
             .map(|h| Route::new(h.tx.clone(), h.drop_rx.clone()))
     }
 
+    /// Insert an entry into the table.
     pub fn insert(
         &mut self,
         addr: RoutingAddr,
@@ -82,6 +93,9 @@ impl RoutingTable {
         endpoints.insert(addr, Handle::new(tx, sock_addr, hosts));
     }
 
+    /// Associate another hose/port combination with a socket address that already has an entry in
+    /// the table. This will return [`Some`] if and only if there is already an entry for that
+    /// address.
     pub fn add_host(&mut self, host: HostAndPort, sock_addr: SocketAddr) -> Option<RoutingAddr> {
         let RoutingTable {
             open_sockets,
@@ -101,6 +115,8 @@ impl RoutingTable {
         }
     }
 
+    /// Remove an entry from the table, returning the sender for the promise associated with the
+    /// entry (that can then be used to report why the entry is being removed).
     pub fn remove(&mut self, addr: RoutingAddr) -> Option<promise::Sender<ConnectionDropped>> {
         let RoutingTable {
             open_sockets,

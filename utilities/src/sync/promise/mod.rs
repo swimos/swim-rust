@@ -101,6 +101,12 @@ impl Display for PromiseError {
     }
 }
 
+impl<T> Receiver<T> {
+    pub fn same_promise(left: &Self, right: &Self) -> bool {
+        trigger::Receiver::same_receiver(&left.trigger, &right.trigger)
+    }
+}
+
 impl Error for PromiseError {}
 
 impl<T: Send + Sync> Future for Receiver<T> {
