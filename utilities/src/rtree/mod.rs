@@ -1,36 +1,48 @@
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 
 #[cfg(test)]
 mod tests;
 
-static MAX_CHILDREN: usize = 4;
-static MIN_CHILDREN: usize = 2;
-
 #[derive(Debug, Clone)]
 struct RTree<T: Clone + BoundingBox + PartialEq> {
     root: Node<T>,
+    len: usize,
 }
 
 impl<T> RTree<T>
 where
     T: Clone + BoundingBox + PartialEq,
 {
-    fn new() -> Self {
-        RTree { root: Node::new() }
+    fn new(min_children: NonZeroUsize, max_children: NonZeroUsize) -> Self {
+        if min_children.get() > max_children.get() / 2 {
+            panic!("The minimum number of children cannot be more than half of the maximum number of children.")
+        }
+
+        RTree {
+            root: Node::new(min_children.get(), max_children.get()),
+            len: 0,
+        }
+    }
+
+    fn len(&self) -> usize {
+        self.len
     }
 
     fn insert(&mut self, item: T) {
         self.internal_insert(Arc::new(Entry::Leaf { item }), 0);
+        self.len = self.len + 1;
     }
 
     fn remove(&mut self, item: &T) -> Option<T> {
         let (removed, maybe_orphan_nodes) = self.root.remove(item)?;
+        self.len = self.len - 1;
 
         if self.root.len() == 1 && !self.root.is_leaf() {
             let entry_ptr = self.root.entries.pop().unwrap();
 
             let entry = if Arc::strong_count(&entry_ptr) == 1 {
-                Arc::try_unwrap(entry_ptr).unwrap_or_else(|_| unimplemented!())
+                Arc::try_unwrap(entry_ptr).unwrap_or_else(|_| unreachable!())
             } else {
                 (*entry_ptr).clone()
             };
@@ -46,7 +58,10 @@ where
                 match *orphan {
                     Entry::Leaf { .. } => self.internal_insert(orphan, 0),
                     Entry::Branch {
-                        child: Node { ref entries, level },
+                        child:
+                            Node {
+                                ref entries, level, ..
+                            },
                         ..
                     } => {
                         for entry in entries {
@@ -65,6 +80,8 @@ where
             self.root = Node {
                 entries: vec![first_entry, second_entry],
                 level: self.root.level + 1,
+                min_children: self.root.min_children,
+                max_children: self.root.max_children,
             };
         }
     }
@@ -74,13 +91,17 @@ where
 struct Node<T: Clone + BoundingBox + PartialEq> {
     entries: Vec<Arc<Entry<T>>>,
     level: i32,
+    min_children: usize,
+    max_children: usize,
 }
 
 impl<T: Clone + BoundingBox + PartialEq> Node<T> {
-    fn new() -> Self {
+    fn new(min_children: usize, max_children: usize) -> Self {
         Node {
             entries: Vec::new(),
             level: 0,
+            min_children,
+            max_children,
         }
     }
 
@@ -106,7 +127,7 @@ impl<T: Clone + BoundingBox + PartialEq> Node<T> {
             Entry::Branch { .. } if self.level == level => {
                 self.entries.push(item);
 
-                if self.entries.len() > MAX_CHILDREN {
+                if self.entries.len() > self.max_children {
                     let split_entries = self.split();
                     return Some(split_entries);
                 }
@@ -116,7 +137,7 @@ impl<T: Clone + BoundingBox + PartialEq> Node<T> {
                 //If we are at a leaf -> insert
                 if self.is_leaf() {
                     self.entries.push(item);
-                    if self.entries.len() > MAX_CHILDREN {
+                    if self.entries.len() > self.max_children {
                         let split_entries = self.split();
                         return Some(split_entries);
                     }
@@ -149,7 +170,7 @@ impl<T: Clone + BoundingBox + PartialEq> Node<T> {
                             self.entries.push(first_entry);
                             self.entries.push(second_entry);
 
-                            if self.entries.len() > MAX_CHILDREN {
+                            if self.entries.len() > self.max_children {
                                 let split_entries = self.split();
                                 return Some(split_entries);
                             }
@@ -179,7 +200,7 @@ impl<T: Clone + BoundingBox + PartialEq> Node<T> {
 
             let entry_ptr = self.entries.remove(remove_idx?);
             let entry = if Arc::strong_count(&entry_ptr) == 1 {
-                Arc::try_unwrap(entry_ptr).unwrap_or_else(|_| unimplemented!())
+                Arc::try_unwrap(entry_ptr).unwrap_or_else(|_| unreachable!())
             } else {
                 (*entry_ptr).clone()
             };
@@ -200,7 +221,7 @@ impl<T: Clone + BoundingBox + PartialEq> Node<T> {
                     maybe_removed = entry.remove(item);
 
                     if maybe_removed.is_some() {
-                        if entry.len() < MIN_CHILDREN {
+                        if entry.len() < self.min_children {
                             entry_index = Some(idx);
                         }
                         break;
@@ -227,13 +248,16 @@ impl<T: Clone + BoundingBox + PartialEq> Node<T> {
     }
 
     fn split(&mut self) -> (Arc<Entry<T>>, Arc<Entry<T>>) {
-        let (first_group, second_group, first_mbb, second_mbb) = quadratic_split(&mut self.entries);
+        let (first_group, second_group, first_mbb, second_mbb) =
+            quadratic_split(&mut self.entries, self.min_children);
 
         let first_group = Entry::Branch {
             mbb: first_mbb,
             child: Node {
                 entries: first_group,
                 level: self.level,
+                min_children: self.min_children,
+                max_children: self.max_children,
             },
         };
 
@@ -242,6 +266,8 @@ impl<T: Clone + BoundingBox + PartialEq> Node<T> {
             child: Node {
                 entries: second_group,
                 level: self.level,
+                min_children: self.min_children,
+                max_children: self.max_children,
             },
         };
 
@@ -251,6 +277,7 @@ impl<T: Clone + BoundingBox + PartialEq> Node<T> {
 
 fn quadratic_split<T: BoundingBox + Clone + PartialEq>(
     entries: &mut Vec<Arc<Entry<T>>>,
+    min_children: usize,
 ) -> (Vec<Arc<Entry<T>>>, Vec<Arc<Entry<T>>>, Rect, Rect) {
     let (first_seed_idx, second_seed_idx) = pick_seeds(entries);
 
@@ -264,14 +291,14 @@ fn quadratic_split<T: BoundingBox + Clone + PartialEq>(
     let mut second_group = vec![second_seed];
 
     while !entries.is_empty() {
-        if entries.len() + first_group.len() == MIN_CHILDREN {
+        if entries.len() + first_group.len() == min_children {
             for item in entries.drain(..) {
                 let expanded_rect = first_mbb.combine_boxes(item.get_mbb());
 
                 first_mbb = expanded_rect;
                 first_group.push(item);
             }
-        } else if entries.len() + second_group.len() == MIN_CHILDREN {
+        } else if entries.len() + second_group.len() == min_children {
             for item in entries.drain(..) {
                 let expanded_rect = second_mbb.combine_boxes(item.get_mbb());
 

@@ -1,46 +1,10 @@
 use crate::rtree::{BoundingBox, Point, RTree, Rect};
 use std::fs;
-
-#[derive(Debug, PartialEq)]
-struct CloneTracker {
-    mbb: Rect,
-}
-
-impl CloneTracker {
-    fn new(rect: Rect) -> Self {
-        CloneTracker { mbb: rect }
-    }
-}
-
-impl Clone for CloneTracker {
-    fn clone(&self) -> Self {
-        println!("Cloning {:?}", self.mbb);
-        CloneTracker {
-            mbb: self.mbb.clone(),
-        }
-    }
-}
-
-impl BoundingBox for CloneTracker {
-    fn get_mbb(&self) -> &Rect {
-        &self.mbb
-    }
-
-    fn area(&self) -> i32 {
-        self.mbb.area()
-    }
-
-    fn combine_boxes<T: BoundingBox>(&self, other: &T) -> Rect {
-        self.mbb.combine_boxes(other)
-    }
-
-    fn is_covering<T: BoundingBox>(&self, other: &T) -> bool {
-        self.mbb.is_covering(other)
-    }
-}
+use std::num::NonZeroUsize;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[test]
-fn rtree_insert() {
+fn rtree_test() {
     let first = Rect::new(Point::new(0, 0), Point::new(10, 10));
     let second = Rect::new(Point::new(12, 0), Point::new(15, 15));
     let third = Rect::new(Point::new(7, 7), Point::new(14, 14));
@@ -54,7 +18,7 @@ fn rtree_insert() {
     let eleventh = Rect::new(Point::new(10, 0), Point::new(12, 5));
     let twelfth = Rect::new(Point::new(7, 3), Point::new(8, 6));
 
-    let mut tree = RTree::new();
+    let mut tree = RTree::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(4).unwrap());
 
     assert_eq!(
         format!("{:#?}", tree),
@@ -206,44 +170,41 @@ fn rtree_insert() {
     );
 }
 
-#[test]
-fn immutable() {
-    // for i in 0..10 {
-    //     tree.insert(CloneTracker::new(Rect::new(
-    //         Point::new(i, i),
-    //         Point::new(i + 1, i + 1),
-    //     )));
-    // }
+#[derive(Debug, PartialEq)]
+struct CloneTracker {
+    mbb: Rect,
+}
 
-    let mut tree = RTree::new();
+impl CloneTracker {
+    fn new(rect: Rect) -> Self {
+        CloneTracker { mbb: rect }
+    }
+}
 
-    tree.insert(CloneTracker::new(Rect::new(
-        Point::new(0, 0),
-        Point::new(10, 10),
-    )));
+impl Clone for CloneTracker {
+    fn clone(&self) -> Self {
+        CLONE_COUNT.fetch_add(1, Ordering::SeqCst);
 
-    tree.insert(CloneTracker::new(Rect::new(
-        Point::new(12, 0),
-        Point::new(15, 15),
-    )));
+        CloneTracker {
+            mbb: self.mbb.clone(),
+        }
+    }
+}
 
-    tree.insert(CloneTracker::new(Rect::new(
-        Point::new(7, 7),
-        Point::new(14, 14),
-    )));
+impl BoundingBox for CloneTracker {
+    fn get_mbb(&self) -> &Rect {
+        &self.mbb
+    }
 
-    let tree_clone = tree.clone();
+    fn area(&self) -> i32 {
+        self.mbb.area()
+    }
 
-    tree.insert(CloneTracker::new(Rect::new(
-        Point::new(10, 11),
-        Point::new(11, 12),
-    )));
+    fn combine_boxes<T: BoundingBox>(&self, other: &T) -> Rect {
+        self.mbb.combine_boxes(other)
+    }
 
-    // tree.insert(CloneTracker::new(Rect::new(
-    //     Point::new(4, 4),
-    //     Point::new(5, 6),
-    // )));
-
-    eprintln!("tree = {:#?}", tree);
-    eprintln!("copy = {:#?}", tree_clone);
+    fn is_covering<T: BoundingBox>(&self, other: &T) -> bool {
+        self.mbb.is_covering(other)
+    }
 }

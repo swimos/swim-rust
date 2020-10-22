@@ -39,5 +39,8 @@ RTree {
             },
         ],
         level: 0,
+        min_children: 2,
+        max_children: 4,
     },
+    len: 3,
 }

@@ -2,5 +2,8 @@ RTree {
     root: Node {
         entries: [],
         level: 0,
+        min_children: 2,
+        max_children: 4,
     },
+    len: 0,
 }
