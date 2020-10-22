@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 #[cfg(test)]
 mod tests;
 
@@ -18,14 +20,21 @@ where
     }
 
     fn insert(&mut self, item: T) {
-        self.internal_insert(Entry::Leaf { item }, 0);
+        self.internal_insert(Arc::new(Entry::Leaf { item }), 0);
     }
 
     fn remove(&mut self, item: &T) -> Option<T> {
         let (removed, maybe_orphan_nodes) = self.root.remove(item)?;
 
         if self.root.len() == 1 && !self.root.is_leaf() {
-            let entry = self.root.entries.pop().unwrap();
+            let entry_ptr = self.root.entries.pop().unwrap();
+
+            let entry = if Arc::strong_count(&entry_ptr) == 1 {
+                Arc::try_unwrap(entry_ptr).unwrap_or_else(|_| unimplemented!())
+            } else {
+                (*entry_ptr).clone()
+            };
+
             match entry {
                 Entry::Branch { child, .. } => self.root = child,
                 Entry::Leaf { .. } => (),
@@ -34,14 +43,14 @@ where
 
         if maybe_orphan_nodes.is_some() {
             for orphan in maybe_orphan_nodes? {
-                match orphan {
-                    entry @ Entry::Leaf { .. } => self.internal_insert(entry, 0),
+                match *orphan {
+                    Entry::Leaf { .. } => self.internal_insert(orphan, 0),
                     Entry::Branch {
-                        child: Node { entries, level },
+                        child: Node { ref entries, level },
                         ..
                     } => {
                         for entry in entries {
-                            self.internal_insert(entry, level)
+                            self.internal_insert(entry.clone(), level)
                         }
                     }
                 }
@@ -51,7 +60,7 @@ where
         Some(removed)
     }
 
-    fn internal_insert(&mut self, item: Entry<T>, level: i32) {
+    fn internal_insert(&mut self, item: Arc<Entry<T>>, level: i32) {
         if let Some((first_entry, second_entry)) = self.root.insert(item, level) {
             self.root = Node {
                 entries: vec![first_entry, second_entry],
@@ -63,7 +72,7 @@ where
 
 #[derive(Debug, Clone)]
 struct Node<T: Clone + BoundingBox + PartialEq> {
-    entries: Vec<Entry<T>>,
+    entries: Vec<Arc<Entry<T>>>,
     level: i32,
 }
 
@@ -87,11 +96,15 @@ impl<T: Clone + BoundingBox + PartialEq> Node<T> {
         }
     }
 
-    fn insert(&mut self, item: Entry<T>, level: i32) -> Option<(Entry<T>, Entry<T>)> {
-        match item {
+    fn insert(
+        &mut self,
+        item: Arc<Entry<T>>,
+        level: i32,
+    ) -> Option<(Arc<Entry<T>>, Arc<Entry<T>>)> {
+        match *item {
             //If we have a branch and we are at the right level -> insert
-            entry @ Entry::Branch { .. } if self.level == level => {
-                self.entries.push(entry);
+            Entry::Branch { .. } if self.level == level => {
+                self.entries.push(item);
 
                 if self.entries.len() > MAX_CHILDREN {
                     let split_entries = self.split();
@@ -128,6 +141,8 @@ impl<T: Clone + BoundingBox + PartialEq> Node<T> {
                         }
                     }
 
+                    let min_entry = Arc::make_mut(&mut min_entry);
+
                     match min_entry.insert(item, min_rect, level) {
                         Some((first_entry, second_entry)) => {
                             self.entries.remove(min_entry_idx);
@@ -147,14 +162,14 @@ impl<T: Clone + BoundingBox + PartialEq> Node<T> {
         None
     }
 
-    fn remove(&mut self, item: &T) -> Option<(T, Option<Vec<Entry<T>>>)> {
+    fn remove(&mut self, item: &T) -> Option<(T, Option<Vec<Arc<Entry<T>>>>)> {
         if self.is_leaf() {
             //If this is leaf try to find the item
             let mut remove_idx = None;
 
             for (idx, entry) in self.entries.iter().enumerate() {
-                match entry {
-                    Entry::Leaf { item: entry } if entry == item => {
+                match **entry {
+                    Entry::Leaf { item: ref entry } if entry == item => {
                         remove_idx = Some(idx);
                         break;
                     }
@@ -162,7 +177,14 @@ impl<T: Clone + BoundingBox + PartialEq> Node<T> {
                 }
             }
 
-            if let Entry::Leaf { item } = self.entries.remove(remove_idx?) {
+            let entry_ptr = self.entries.remove(remove_idx?);
+            let entry = if Arc::strong_count(&entry_ptr) == 1 {
+                Arc::try_unwrap(entry_ptr).unwrap_or_else(|_| unimplemented!())
+            } else {
+                (*entry_ptr).clone()
+            };
+
+            if let Entry::Leaf { item } = entry {
                 Some((item, None))
             } else {
                 None
@@ -174,6 +196,7 @@ impl<T: Clone + BoundingBox + PartialEq> Node<T> {
 
             for (idx, entry) in self.entries.iter_mut().enumerate() {
                 if entry.get_mbb().is_covering(item) {
+                    let entry = Arc::make_mut(entry);
                     maybe_removed = entry.remove(item);
 
                     if maybe_removed.is_some() {
@@ -203,7 +226,7 @@ impl<T: Clone + BoundingBox + PartialEq> Node<T> {
         }
     }
 
-    fn split(&mut self) -> (Entry<T>, Entry<T>) {
+    fn split(&mut self) -> (Arc<Entry<T>>, Arc<Entry<T>>) {
         let (first_group, second_group, first_mbb, second_mbb) = quadratic_split(&mut self.entries);
 
         let first_group = Entry::Branch {
@@ -222,13 +245,13 @@ impl<T: Clone + BoundingBox + PartialEq> Node<T> {
             },
         };
 
-        (first_group, second_group)
+        (Arc::new(first_group), Arc::new(second_group))
     }
 }
 
 fn quadratic_split<T: BoundingBox + Clone + PartialEq>(
-    entries: &mut Vec<Entry<T>>,
-) -> (Vec<Entry<T>>, Vec<Entry<T>>, Rect, Rect) {
+    entries: &mut Vec<Arc<Entry<T>>>,
+) -> (Vec<Arc<Entry<T>>>, Vec<Arc<Entry<T>>>, Rect, Rect) {
     let (first_seed_idx, second_seed_idx) = pick_seeds(entries);
 
     let first_seed = entries.remove(first_seed_idx);
@@ -282,7 +305,7 @@ fn quadratic_split<T: BoundingBox + Clone + PartialEq>(
     (first_group, second_group, first_mbb, second_mbb)
 }
 
-fn pick_seeds<T>(entries: &Vec<Entry<T>>) -> (usize, usize)
+fn pick_seeds<T>(entries: &Vec<Arc<Entry<T>>>) -> (usize, usize)
 where
     T: BoundingBox + Clone + PartialEq,
 {
@@ -311,7 +334,7 @@ where
 }
 
 fn pick_next<T>(
-    entries: &Vec<Entry<T>>,
+    entries: &Vec<Arc<Entry<T>>>,
     first_mbb: &Rect,
     second_mbb: &Rect,
     first_group_size: usize,
@@ -372,7 +395,7 @@ where
 }
 
 fn calc_preferences<T: Clone + BoundingBox + PartialEq>(
-    item: &Entry<T>,
+    item: &Arc<Entry<T>>,
     first_mbb: &Rect,
     second_mbb: &Rect,
 ) -> (i32, i32, Rect, Rect) {
@@ -447,10 +470,10 @@ impl<T: Clone + BoundingBox + PartialEq> Entry<T> {
 
     fn insert(
         &mut self,
-        item: Entry<T>,
+        item: Arc<Entry<T>>,
         expanded_rect: Rect,
         level: i32,
-    ) -> Option<(Entry<T>, Entry<T>)> {
+    ) -> Option<(Arc<Entry<T>>, Arc<Entry<T>>)> {
         match self {
             Entry::Branch { mbb, child } => {
                 *mbb = expanded_rect;
@@ -460,7 +483,7 @@ impl<T: Clone + BoundingBox + PartialEq> Entry<T> {
         }
     }
 
-    fn remove(&mut self, item: &T) -> Option<(T, Option<Vec<Entry<T>>>)> {
+    fn remove(&mut self, item: &T) -> Option<(T, Option<Vec<Arc<Entry<T>>>>)> {
         match self {
             Entry::Branch { mbb, child } => {
                 let (removed, orphan_nodes) = child.remove(item)?;
@@ -497,7 +520,10 @@ struct Rect {
 
 impl Rect {
     fn new(lower_left: Point, upper_right: Point) -> Self {
-        //Todo check if the positions are correct
+        if lower_left.x > upper_right.x || lower_left.y > upper_right.y {
+            panic!("The first point must be the lower left and the second the upper right.")
+        }
+
         Rect {
             lower_left,
             upper_right,

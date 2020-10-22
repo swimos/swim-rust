@@ -1,5 +1,43 @@
-use crate::rtree::{Point, RTree, Rect};
+use crate::rtree::{BoundingBox, Point, RTree, Rect};
 use std::fs;
+
+#[derive(Debug, PartialEq)]
+struct CloneTracker {
+    mbb: Rect,
+}
+
+impl CloneTracker {
+    fn new(rect: Rect) -> Self {
+        CloneTracker { mbb: rect }
+    }
+}
+
+impl Clone for CloneTracker {
+    fn clone(&self) -> Self {
+        println!("Cloning {:?}", self.mbb);
+        CloneTracker {
+            mbb: self.mbb.clone(),
+        }
+    }
+}
+
+impl BoundingBox for CloneTracker {
+    fn get_mbb(&self) -> &Rect {
+        &self.mbb
+    }
+
+    fn area(&self) -> i32 {
+        self.mbb.area()
+    }
+
+    fn combine_boxes<T: BoundingBox>(&self, other: &T) -> Rect {
+        self.mbb.combine_boxes(other)
+    }
+
+    fn is_covering<T: BoundingBox>(&self, other: &T) -> bool {
+        self.mbb.is_covering(other)
+    }
+}
 
 #[test]
 fn rtree_insert() {
@@ -170,15 +208,42 @@ fn rtree_insert() {
 
 #[test]
 fn immutable() {
-    let mut tree = RTree::new();
-    tree.insert(Rect::new(Point::new(0, 0), Point::new(10, 10)));
-    let tree_copy = tree.clone();
+    // for i in 0..10 {
+    //     tree.insert(CloneTracker::new(Rect::new(
+    //         Point::new(i, i),
+    //         Point::new(i + 1, i + 1),
+    //     )));
+    // }
 
-    tree.insert(Rect::new(Point::new(12, 0), Point::new(15, 15)));
-    tree.insert(Rect::new(Point::new(7, 7), Point::new(14, 14)));
-    tree.insert(Rect::new(Point::new(10, 11), Point::new(11, 12)));
-    tree.insert(Rect::new(Point::new(4, 4), Point::new(5, 6)));
+    let mut tree = RTree::new();
+
+    tree.insert(CloneTracker::new(Rect::new(
+        Point::new(0, 0),
+        Point::new(10, 10),
+    )));
+
+    tree.insert(CloneTracker::new(Rect::new(
+        Point::new(12, 0),
+        Point::new(15, 15),
+    )));
+
+    tree.insert(CloneTracker::new(Rect::new(
+        Point::new(7, 7),
+        Point::new(14, 14),
+    )));
+
+    let tree_clone = tree.clone();
+
+    tree.insert(CloneTracker::new(Rect::new(
+        Point::new(10, 11),
+        Point::new(11, 12),
+    )));
+
+    // tree.insert(CloneTracker::new(Rect::new(
+    //     Point::new(4, 4),
+    //     Point::new(5, 6),
+    // )));
 
     eprintln!("tree = {:#?}", tree);
-    eprintln!("copy = {:#?}", tree_copy);
+    eprintln!("copy = {:#?}", tree_clone);
 }
