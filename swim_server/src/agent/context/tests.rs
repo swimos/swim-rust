@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::agent::context::ContextImpl;
-use crate::agent::meta::log::make_log_handler;
+use crate::agent::meta::make_test_meta_context;
 use crate::agent::tests::test_clock::TestClock;
 use crate::agent::AgentContext;
 use futures::StreamExt;
@@ -25,8 +25,8 @@ use tokio::sync::mpsc;
 use tokio::time::Duration;
 use utilities::sync::trigger;
 
-#[test]
-fn simple_accessors() {
+#[tokio::test]
+async fn simple_accessors() {
     let (tx, _rx) = mpsc::channel(1);
     let (_close, close_sig) = trigger::trigger();
     let agent = Arc::new("agent");
@@ -39,7 +39,7 @@ fn simple_accessors() {
         close_sig.clone(),
         (),
         HashMap::new(),
-        make_log_handler("/node".parse().unwrap()),
+        make_test_meta_context("/node".parse().unwrap()),
     );
     assert!(std::ptr::eq(context.agent(), agent.as_ref()));
     assert_eq!(context.node_uri(), "/node");
@@ -68,7 +68,7 @@ fn create_context(
         close_trigger,
         (),
         HashMap::new(),
-        make_log_handler("/node".parse().unwrap()),
+        make_test_meta_context("/node".parse().unwrap()),
     )
 }
 

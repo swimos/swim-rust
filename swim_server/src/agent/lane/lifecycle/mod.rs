@@ -14,7 +14,6 @@
 
 use crate::agent::lane::model::action::ActionLane;
 use crate::agent::lane::model::demand::DemandLane;
-use crate::agent::lane::model::demand_map::DemandMapLane;
 use crate::agent::lane::strategy::{Buffered, Dropping, Queue};
 use crate::agent::lane::LaneModel;
 use crate::agent::AgentContext;
@@ -240,13 +239,8 @@ where
     ///
     /// # Arguments
     ///
-    /// * `model` - The model of the lane.
     /// * `context` - Context of the agent that owns the lane.
-    fn on_sync<C>(
-        &'a self,
-        model: &'a DemandMapLane<Key, Value>,
-        context: &'a C,
-    ) -> Self::OnSyncFuture
+    fn on_sync<C>(&'a self, context: &'a C) -> Self::OnSyncFuture
     where
         C: AgentContext<Agent> + Send + Sync + 'static;
 
@@ -255,15 +249,9 @@ where
     ///
     /// # Arguments:
     ///
-    /// * `model` - The model of the lane.
     /// * `context` - Context of the agent that owns the lane.
     /// * `key` - The key of the value.
-    fn on_cue<C>(
-        &'a self,
-        model: &'a DemandMapLane<Key, Value>,
-        context: &'a C,
-        key: Key,
-    ) -> Self::OnCueFuture
+    fn on_cue<C>(&'a self, context: &'a C, key: Key) -> Self::OnCueFuture
     where
         C: AgentContext<Agent> + Send + Sync + 'static;
 }

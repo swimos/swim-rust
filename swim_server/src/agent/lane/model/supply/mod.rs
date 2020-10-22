@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::lane::channels::LaneKind;
-use crate::agent::lane::LaneModel;
+use crate::agent::lane::{LaneKind, LaneModel};
 use crate::agent::{AgentContext, Eff, Lane, LaneTasks, StatelessLifecycleTasks};
 use futures::future::ready;
 use futures::future::BoxFuture;

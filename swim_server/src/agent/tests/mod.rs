@@ -27,7 +27,7 @@ use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::ValueLane;
 use crate::agent::lane::strategy::Queue;
 use crate::agent::lane::LaneModel;
-use crate::agent::meta::log::LogLevel;
+use crate::agent::meta::LogLevel;
 use crate::agent::tests::reporting_agent::{ReportingAgentEvent, TestAgentConfig};
 use crate::agent::tests::stub_router::SingleChannelRouter;
 use crate::agent::tests::test_clock::TestClock;

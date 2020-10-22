@@ -18,6 +18,7 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::pin::Pin;
 use std::task::{Context, Poll};
+use swim_common::form::Form;
 use swim_common::form::FormErr;
 use tokio::sync::broadcast;
 
@@ -80,4 +81,19 @@ impl<T: Clone> Stream for BroadcastStream<T> {
             }
         }
     }
+}
+
+/// An enumeration representing the type of a lane.
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Form)]
+pub enum LaneKind {
+    Action,
+    Command,
+    Demand,
+    DemandMap,
+    Map,
+    JoinMap,
+    JoinValue,
+    Supply,
+    Spatial,
+    Value,
 }

@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use super::AgentLifecycle;
-use crate::agent::meta::log::LogLevel;
+use crate::agent::meta::LogLevel;
 use crate::agent::AgentContext;
 use futures::future::BoxFuture;
 use futures::Stream;

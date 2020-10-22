@@ -23,7 +23,8 @@ use swim_common::warp::path::RelativePath;
 
 use crate::agent::lane::channels::uplink::auto::AutoUplinks;
 use crate::agent::lane::channels::uplink::{AddressedUplinkMessage, UplinkAction};
-use crate::agent::lane::channels::{LaneKind, TaggedAction};
+use crate::agent::lane::channels::TaggedAction;
+use crate::agent::lane::LaneKind;
 use crate::agent::RelativeUri;
 use crate::plane::error::ResolutionError;
 use crate::routing::{RoutingAddr, ServerRouter, TaggedAgentEnvelope};

@@ -283,7 +283,8 @@ where
 
                     if let Some(lane_io) = lanes.remove(&identifier) {
                         let (lane_tx, lane_rx) = mpsc::channel(config.lane_buffer.get());
-                        let route = RelativePath::new(agent_route.to_string(), identifier.clone());
+                        let route =
+                            RelativePath::new(agent_route.to_string(), identifier.lane_uri());
                         let task_result =
                             lane_io.attach_boxed(route, lane_rx, config.clone(), context.clone());
                         match task_result {
@@ -315,10 +316,10 @@ where
                         }
                     } else {
                         errors.push(DispatcherError::AttachmentFailed(
-                            AttachError::LaneDoesNotExist(identifier.to_string()),
+                            AttachError::LaneDoesNotExist(identifier.lane_uri()),
                         ));
                         if callback
-                            .send(Err(AttachError::LaneDoesNotExist(identifier.to_string())))
+                            .send(Err(AttachError::LaneDoesNotExist(identifier.lane_uri())))
                             .is_err()
                         {
                             event!(Level::ERROR, message = BAD_CALLBACK, ?identifier);
@@ -538,7 +539,7 @@ impl EnvelopeDispatcher {
                     }
                 },
                 Some(Either::Right(request)) => {
-                    let (addr, envelope, maybe_meta) = request.consume();
+                    let (addr, envelope, identifier_kind) = request.split();
 
                     event!(Level::TRACE, message = ATTEMPT_DISPATCH, ?envelope);
 
@@ -586,11 +587,7 @@ impl EnvelopeDispatcher {
                             event!(Level::TRACE, message = REQUESTING_ATTACH, ?envelope);
                             let (req_tx, req_rx) = oneshot::channel();
                             let label = lane(&envelope).to_string();
-
-                            let identifier = match maybe_meta {
-                                Some(kind) => LaneIdentifier::Meta(kind, label.clone()),
-                                None => LaneIdentifier::Agent(label.clone()),
-                            };
+                            let identifier = LaneIdentifier::from(label.clone(), identifier_kind);
 
                             if open_tx
                                 .send(OpenRequest::new(identifier, req_tx))

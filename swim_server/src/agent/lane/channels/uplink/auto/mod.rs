@@ -16,7 +16,8 @@ use crate::agent::lane::channels::uplink::spawn::UplinkErrorReport;
 use crate::agent::lane::channels::uplink::{
     AddressedUplinkMessage, UplinkAction, UplinkError, UplinkMessage, UplinkMessageSender,
 };
-use crate::agent::lane::channels::{LaneKind, TaggedAction};
+use crate::agent::lane::channels::TaggedAction;
+use crate::agent::lane::LaneKind;
 use crate::routing::{RoutingAddr, ServerRouter};
 use either::Either;
 use futures::{select_biased, Stream, StreamExt};

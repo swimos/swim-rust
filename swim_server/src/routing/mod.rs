@@ -12,13 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::meta::{
-    MetaKind, META_EDGE, META_HOST, META_LANE, META_MESH, META_NODE, META_PART,
-};
+use crate::agent::meta::{MetaKind, META_EDGE, META_HOST, META_MESH, META_NODE, META_PART};
 use crate::plane::error::ResolutionError;
 use futures::future::BoxFuture;
 use std::fmt::{Display, Formatter};
-use swim_common::model::text::Text;
 use swim_common::routing::RoutingError;
 use swim_common::sink::item::ItemSender;
 use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
@@ -79,13 +76,13 @@ pub enum TaggedEnvelope {
 }
 
 impl TaggedEnvelope {
-    pub fn consume(self) -> (RoutingAddr, Envelope, Option<MetaKind>) {
+    pub fn split(self) -> (RoutingAddr, Envelope, LaneIdentifierKind) {
         match self {
-            TaggedEnvelope::MetaEnvelope(TaggedMetaEnvelope(addr, envelope, kind)) => {
-                (addr, envelope, Some(kind))
+            TaggedEnvelope::MetaEnvelope(TaggedMetaEnvelope(addr, envelope, ..)) => {
+                (addr, envelope, LaneIdentifierKind::Meta)
             }
             TaggedEnvelope::AgentEnvelope(TaggedAgentEnvelope(addr, envelope)) => {
-                (addr, envelope, None)
+                (addr, envelope, LaneIdentifierKind::Agent)
             }
         }
     }
@@ -155,7 +152,6 @@ impl MetaPath for RelativePath {
                     META_PART => Ok(MetaKind::Part),
                     META_HOST => Ok(MetaKind::Host),
                     META_NODE => Ok(MetaKind::Node),
-                    META_LANE => Ok(MetaKind::Lane),
                     _ => Err(RelativePath::new(node, lane.clone())),
                 };
 
@@ -177,27 +173,41 @@ impl MetaPath for RelativePath {
 }
 
 #[derive(Hash, Eq, PartialEq, Debug, Clone)]
-pub enum LaneIdentifier {
-    Agent(String),
-    Meta(MetaKind, String),
+pub struct LaneIdentifier {
+    lane_uri: String,
+    kind: LaneIdentifierKind,
 }
 
-impl From<LaneIdentifier> for Text {
-    fn from(identifier: LaneIdentifier) -> Self {
-        let inner = match identifier {
-            LaneIdentifier::Agent(lane) => lane,
-            LaneIdentifier::Meta(_kind, lane) => lane,
-        };
-
-        From::from(inner)
+impl LaneIdentifier {
+    pub fn from(lane_uri: String, kind: LaneIdentifierKind) -> LaneIdentifier {
+        LaneIdentifier { lane_uri, kind }
     }
-}
 
-impl ToString for LaneIdentifier {
-    fn to_string(&self) -> String {
-        match self {
-            LaneIdentifier::Agent(lane) => lane.clone(),
-            LaneIdentifier::Meta(_kind, lane) => lane.clone(),
+    pub fn agent(lane_uri: String) -> LaneIdentifier {
+        LaneIdentifier {
+            lane_uri,
+            kind: LaneIdentifierKind::Agent,
         }
     }
+
+    pub fn meta(lane_uri: String) -> LaneIdentifier {
+        LaneIdentifier {
+            lane_uri,
+            kind: LaneIdentifierKind::Meta,
+        }
+    }
+
+    pub fn kind(&self) -> LaneIdentifierKind {
+        self.kind
+    }
+
+    pub fn lane_uri(&self) -> String {
+        self.lane_uri.clone()
+    }
+}
+
+#[derive(Hash, Eq, PartialEq, Debug, Clone, Copy)]
+pub enum LaneIdentifierKind {
+    Agent,
+    Meta,
 }

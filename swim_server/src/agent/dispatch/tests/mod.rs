@@ -86,13 +86,10 @@ fn make_dispatcher(
 fn lanes(names: Vec<&str>) -> HashMap<LaneIdentifier, MockLane> {
     let mut map = HashMap::new();
     for name in names.iter() {
-        map.insert(LaneIdentifier::Agent(name.to_string()), MockLane);
+        map.insert(LaneIdentifier::agent(name.to_string()), MockLane);
     }
 
-    map.insert(
-        LaneIdentifier::Meta(MetaKind::Node, "swim:meta:node".to_string()),
-        MockLane,
-    );
+    map.insert(LaneIdentifier::meta("swim:meta:node".to_string()), MockLane);
 
     map
 }

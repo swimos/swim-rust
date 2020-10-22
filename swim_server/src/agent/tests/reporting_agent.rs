@@ -120,23 +120,14 @@ impl<'a> DemandMapLaneLifecycle<'a, String, i32, ReportingAgent> for DemandMapLi
     type OnSyncFuture = BoxFuture<'a, Vec<String>>;
     type OnCueFuture = BoxFuture<'a, Option<i32>>;
 
-    fn on_sync<C>(
-        &'a self,
-        _model: &'a DemandMapLane<String, i32>,
-        _context: &'a C,
-    ) -> Self::OnSyncFuture
+    fn on_sync<C>(&'a self, _context: &'a C) -> Self::OnSyncFuture
     where
         C: AgentContext<ReportingAgent> + Send + Sync + 'static,
     {
         Box::pin(ready(Vec::new()))
     }
 
-    fn on_cue<C>(
-        &'a self,
-        _model: &'a DemandMapLane<String, i32>,
-        context: &'a C,
-        key: String,
-    ) -> Self::OnCueFuture
+    fn on_cue<C>(&'a self, context: &'a C, key: String) -> Self::OnCueFuture
     where
         C: AgentContext<ReportingAgent> + Send + Sync + 'static,
     {
@@ -415,12 +406,11 @@ impl SwimAgent<TestAgentConfig> for ReportingAgent {
         );
 
         let (demand_map, demand_map_tasks, _) = agent::make_demand_map_lane(
-            "demand_map",
+            "demand_map".into(),
             false,
             DemandMapLifecycle {
                 inner: inner.clone(),
             },
-            |agent: &ReportingAgent| &agent.demand_map,
             exec_conf.action_buffer.clone(),
         );
 

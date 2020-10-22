@@ -522,6 +522,10 @@ pub fn command_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
             fn name(&self) -> &str {
                 &self.name
             }
+
+            fn kind(&self) -> swim_server::agent::lane::LaneKind {
+                swim_server::agent::lane::LaneKind::Command
+            }
         }
 
         #[automatically_derived]
@@ -709,6 +713,10 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
         {
             fn name(&self) -> &str {
                 &self.name
+            }
+
+            fn kind(&self) -> swim_server::agent::lane::LaneKind {
+                swim_server::agent::lane::LaneKind::Action
             }
         }
 
@@ -930,6 +938,10 @@ pub fn value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
             fn name(&self) -> &str {
                 &self.name
             }
+
+            fn kind(&self) -> swim_server::agent::lane::LaneKind {
+                swim_server::agent::lane::LaneKind::Value
+            }
         }
 
         #[automatically_derived]
@@ -1139,6 +1151,10 @@ pub fn map_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
         {
             fn name(&self) -> &str {
                 &self.name
+            }
+
+            fn kind(&self) -> swim_server::agent::lane::LaneKind {
+                swim_server::agent::lane::LaneKind::Map
             }
         }
 

@@ -17,7 +17,6 @@ use crate::agent::lane::channels::uplink::{UplinkAction, UplinkStateMachine};
 use crate::routing::RoutingAddr;
 use std::num::NonZeroUsize;
 use std::time::Duration;
-use swim_common::form::Form;
 use utilities::future::retryable::strategy::RetryStrategy;
 
 pub mod task;
@@ -124,18 +123,3 @@ pub type InputMessage<Handler> = <<Handler as LaneMessageHandler>::Update as Lan
 /// An [`UplinkAction`] tagged with the key of the endpoint into routing table from which it originated.
 #[derive(Debug)]
 pub struct TaggedAction(RoutingAddr, UplinkAction);
-
-/// An enumeration representing the type of a lane.
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Form)]
-pub enum LaneKind {
-    Action,
-    Command,
-    Demand,
-    DemandMap,
-    Map,
-    JoinMap,
-    JoinValue,
-    Supply,
-    Spatial,
-    Value,
-}

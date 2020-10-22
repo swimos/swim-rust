@@ -26,12 +26,13 @@ use crate::agent::lane::channels::uplink::{
     AddressedUplinkMessage, DemandMapLaneUplink, MapLaneUplink, UplinkAction, ValueLaneUplink,
 };
 use crate::agent::lane::channels::{
-    AgentExecutionConfig, InputMessage, LaneKind, LaneMessageHandler, OutputMessage, TaggedAction,
+    AgentExecutionConfig, InputMessage, LaneMessageHandler, OutputMessage, TaggedAction,
 };
 use crate::agent::lane::model::action::ActionLane;
 use crate::agent::lane::model::demand_map::{DemandMapLane, DemandMapLaneUpdate};
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::ValueLane;
+use crate::agent::lane::LaneKind;
 use crate::agent::Eff;
 use crate::routing::{RoutingAddr, TaggedClientEnvelope};
 use either::Either;

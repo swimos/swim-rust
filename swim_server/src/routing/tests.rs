@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::meta::{META_EDGE, META_HOST, META_LANE, META_MESH, META_NODE, META_PART};
+use crate::agent::meta::{META_EDGE, META_HOST, META_MESH, META_NODE, META_PART};
 use crate::routing::{MetaKind, MetaPath, RoutingAddr};
 use swim_common::warp::path::RelativePath;
 
@@ -40,7 +40,6 @@ fn test_meta_paths() {
     assert(MetaKind::Part, META_PART);
     assert(MetaKind::Host, META_HOST);
     assert(MetaKind::Node, META_NODE);
-    assert(MetaKind::Lane, META_LANE);
 
     let path = RelativePath::new(META_EDGE, "unit");
     assert_eq!(Err(path.clone()), path.into_kind_and_path());

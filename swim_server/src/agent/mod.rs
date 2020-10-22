@@ -29,11 +29,10 @@ use crate::agent::lane::channels::task::{
 };
 use crate::agent::lane::channels::update::StmRetryStrategy;
 use crate::agent::lane::channels::uplink::spawn::{SpawnerUplinkFactory, UplinkErrorReport};
-use crate::agent::lane::channels::{AgentExecutionConfig, LaneKind};
+use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lane::lifecycle::{
     ActionLaneLifecycle, DemandLaneLifecycle, DemandMapLaneLifecycle, StatefulLaneLifecycle,
 };
-use crate::agent::lane::model;
 use crate::agent::lane::model::action::{Action, ActionLane, CommandLane};
 use crate::agent::lane::model::demand::DemandLane;
 use crate::agent::lane::model::demand_map::{
@@ -44,8 +43,9 @@ use crate::agent::lane::model::map::{MapLane, MapLaneWatch};
 use crate::agent::lane::model::supply::{make_lane_model, SupplyLane};
 use crate::agent::lane::model::value::{ValueLane, ValueLaneWatch};
 use crate::agent::lane::model::DeferredLaneView;
+use crate::agent::lane::{model, LaneKind};
 use crate::agent::lifecycle::AgentLifecycle;
-use crate::agent::meta::MetaKind;
+use crate::agent::meta::{open_meta_lanes, LaneInfo, LogLevel};
 use crate::routing::{LaneIdentifier, ServerRouter, TaggedClientEnvelope, TaggedEnvelope};
 use futures::future::{ready, BoxFuture};
 use futures::sink::drain;
@@ -72,8 +72,6 @@ use tracing_futures::{Instrument, Instrumented};
 use utilities::future::SwimStreamExt;
 use utilities::sync::trigger;
 use utilities::uri::RelativeUri;
-
-use crate::agent::meta::log::{open_log_lanes, LogLevel};
 
 #[doc(hidden)]
 #[allow(unused_imports)]
@@ -200,12 +198,23 @@ where
         Agent::instantiate::<ContextImpl<Agent, Clk, Router>>(&agent_config, &execution_config);
     let agent_ref = Arc::new(agent);
     let agent_cpy = agent_ref.clone();
+
+    let lane_summary = tasks
+        .iter()
+        .fold(HashMap::with_capacity(tasks.len()), |mut map, lane| {
+            let lane_name = lane.name().to_string();
+            let lane_info = LaneInfo::new(lane_name.clone(), lane.kind());
+
+            map.insert(lane_name, lane_info);
+            map
+        });
+
     let task = async move {
-        let (log_handler, mut log_tasks, log_io) =
-            open_log_lanes::<Config, Agent, ContextImpl<Agent, Clk, Router>>(
+        let (meta_context, mut meta_tasks, meta_io) =
+            open_meta_lanes::<Config, Agent, ContextImpl<Agent, Clk, Router>>(
                 uri.clone(),
                 &execution_config,
-                MetaKind::Node,
+                lane_summary,
             );
 
         let (tx, rx) = mpsc::channel(execution_config.scheduler_buffer.get());
@@ -217,10 +226,10 @@ where
             stop_trigger.clone(),
             router,
             parameters,
-            log_handler,
+            meta_context,
         );
 
-        tasks.append(&mut log_tasks);
+        tasks.append(&mut meta_tasks);
 
         lifecycle
             .on_start(&context)
@@ -256,15 +265,12 @@ where
 
         let mut io_providers: HashMap<_, _> = io_providers
             .into_iter()
-            .map(|(k, v)| (LaneIdentifier::Agent(k), v))
+            .map(|(k, v)| (LaneIdentifier::agent(k), v))
             .collect();
 
-        log_io
-            .into_iter()
-            .map(|(k, v)| (k, Box::new(v.unwrap())))
-            .for_each(|(k, v)| {
-                io_providers.insert(k, v);
-            });
+        meta_io.into_iter().for_each(|(k, v)| {
+            io_providers.insert(k, v);
+        });
 
         let dispatcher =
             AgentDispatcher::new(uri.clone(), execution_config, context.clone(), io_providers);
@@ -671,7 +677,11 @@ struct ValueLifecycleTasks<L, S, P>(LifecycleTasks<L, S, P>);
 struct MapLifecycleTasks<L, S, P>(LifecycleTasks<L, S, P>);
 struct ActionLifecycleTasks<L, S, P>(LifecycleTasks<L, S, P>);
 struct CommandLifecycleTasks<L, S, P>(LifecycleTasks<L, S, P>);
-struct DemandMapLifecycleTasks<L, S, P>(LifecycleTasks<L, S, P>);
+struct DemandMapLifecycleTasks<L, S> {
+    name: String,
+    lifecycle: L,
+    event_stream: S,
+}
 
 struct DemandLifecycleTasks<L, S, P, Value> {
     tasks: LifecycleTasks<L, S, P>,
@@ -1308,10 +1318,9 @@ where
 /// * `projection` - A projection from the agent type to this lane.
 /// * `buffer_size` - Buffer size for the MPSC channel accepting the commands.
 pub fn make_demand_map_lane<Agent, Context, Key, Value, L>(
-    name: impl Into<String>,
+    name: String,
     is_public: bool,
     lifecycle: L,
-    projection: impl Fn(&Agent) -> &DemandMapLane<Key, Value> + Send + Sync + 'static,
     buffer_size: NonZeroUsize,
 ) -> (
     DemandMapLane<Key, Value>,
@@ -1328,12 +1337,11 @@ where
     let (lifecycle_tx, event_stream) = mpsc::channel(buffer_size.get());
     let (lane, topic) = model::demand_map::make_lane_model(buffer_size, lifecycle_tx);
 
-    let tasks = DemandMapLifecycleTasks(LifecycleTasks {
-        name: name.into(),
+    let tasks = DemandMapLifecycleTasks {
+        name,
         lifecycle,
         event_stream,
-        projection,
-    });
+    };
 
     let lane_io = if is_public {
         Some(DemandMapLaneIo::new(lane.clone(), topic))
@@ -1406,9 +1414,9 @@ where
     }
 }
 
-impl<L, S, P> Lane for DemandMapLifecycleTasks<L, S, P> {
+impl<L, S> Lane for DemandMapLifecycleTasks<L, S> {
     fn name(&self) -> &str {
-        self.0.name.as_str()
+        self.name.as_str()
     }
 
     fn kind(&self) -> LaneKind {
@@ -1416,8 +1424,7 @@ impl<L, S, P> Lane for DemandMapLifecycleTasks<L, S, P> {
     }
 }
 
-impl<Agent, Context, L, S, P, Key, Value> LaneTasks<Agent, Context>
-    for DemandMapLifecycleTasks<L, S, P>
+impl<Agent, Context, L, S, Key, Value> LaneTasks<Agent, Context> for DemandMapLifecycleTasks<L, S>
 where
     Agent: 'static,
     Context: AgentContext<Agent> + Send + Sync + 'static,
@@ -1425,7 +1432,6 @@ where
     Key: Any + Clone + Form + Send + Sync + Debug,
     Value: Any + Clone + Form + Send + Sync + Debug,
     L: for<'l> DemandMapLaneLifecycle<'l, Key, Value, Agent>,
-    P: Fn(&Agent) -> &DemandMapLane<Key, Value> + Send + Sync + 'static,
 {
     fn start<'a>(&'a self, _context: &'a Context) -> BoxFuture<'a, ()> {
         ready(()).boxed()
@@ -1433,14 +1439,12 @@ where
 
     fn events(self: Box<Self>, context: Context) -> BoxFuture<'static, ()> {
         async move {
-            let DemandMapLifecycleTasks(LifecycleTasks {
+            let DemandMapLifecycleTasks {
                 lifecycle,
                 event_stream,
-                projection,
                 ..
-            }) = *self;
+            } = *self;
 
-            let model = projection(context.agent()).clone();
             let events = event_stream.take_until(context.agent_stop_event());
 
             pin_mut!(events);
@@ -1448,14 +1452,12 @@ where
             while let Some(event) = events.next().await {
                 match event {
                     DemandMapLaneEvent::Sync(sender) => {
-                        let keys: Vec<Key> = lifecycle.on_sync(&model, &context).await;
+                        let keys: Vec<Key> = lifecycle.on_sync(&context).await;
                         let keys_len = keys.len();
 
                         let mut values = iter(keys)
                             .fold(Vec::with_capacity(keys_len), |mut results, key| async {
-                                if let Some(value) =
-                                    lifecycle.on_cue(&model, &context, key.clone()).await
-                                {
+                                if let Some(value) = lifecycle.on_cue(&context, key.clone()).await {
                                     results.push(DemandMapLaneUpdate::make(key, value));
                                 }
 
@@ -1468,7 +1470,7 @@ where
                         let _ = sender.send(values);
                     }
                     DemandMapLaneEvent::Cue(sender, key) => {
-                        let value = lifecycle.on_cue(&model, &context, key).await;
+                        let value = lifecycle.on_cue(&context, key).await;
                         let _ = sender.send(value);
                     }
                 }

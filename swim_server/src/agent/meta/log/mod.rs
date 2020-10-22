@@ -15,13 +15,13 @@
 use crate::agent::context::AgentExecutionContext;
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lane::model::supply::SupplyLane;
-use crate::agent::meta::MetaKind;
+use crate::agent::meta::IdentifiedAgentIo;
+use crate::agent::LaneIo;
+use crate::agent::LaneTasks;
 use crate::agent::{make_supply_lane, AgentContext, DynamicLaneTasks, SwimAgent};
-use crate::agent::{LaneIo, LaneTasks};
 use crate::routing::LaneIdentifier;
-use pin_utils::core_reexport::fmt::Formatter;
 use std::collections::HashMap;
-use std::fmt::Debug;
+use std::fmt::{Debug, Formatter};
 use swim_common::form::{Form, Tag};
 use swim_common::model::time::Timestamp;
 use swim_common::model::Value;
@@ -139,11 +139,10 @@ impl LogHandler {
 pub fn open_log_lanes<Config, Agent, Context>(
     uri: RelativeUri,
     exec_conf: &AgentExecutionConfig,
-    meta_kind: MetaKind,
 ) -> (
     LogHandler,
     DynamicLaneTasks<Agent, Context>,
-    HashMap<LaneIdentifier, Option<impl LaneIo<Context>>>,
+    IdentifiedAgentIo<Context>,
 )
 where
     Agent: SwimAgent<Config> + 'static,
@@ -151,24 +150,24 @@ where
 {
     let mut lane_tasks = Vec::with_capacity(6);
     let mut lane_ios = HashMap::with_capacity(6);
-    let mut make_lane = |uri| {
+    let mut make_log_lane = |uri| {
         let (lane, task, io) =
             make_supply_lane::<Agent, Context, LogEntry>(uri, true, exec_conf.lane_buffer);
         lane_tasks.push(task.boxed());
-        lane_ios.insert(LaneIdentifier::Meta(meta_kind, uri.to_string()), io);
+        lane_ios.insert(LaneIdentifier::meta(uri.to_string()), io.unwrap().boxed());
 
         lane
     };
 
-    let handler = LogHandler {
-        uri,
-        trace_lane: make_lane(TRACE_URI),
-        debug_lane: make_lane(DEBUG_URI),
-        info_lane: make_lane(INFO_URI),
-        warn_lane: make_lane(WARN_URI),
-        error_lane: make_lane(ERROR_URI),
-        fail_lane: make_lane(FAIL_URI),
+    let log_handler = LogHandler {
+        uri: uri.clone(),
+        trace_lane: make_log_lane(TRACE_URI),
+        debug_lane: make_log_lane(DEBUG_URI),
+        info_lane: make_log_lane(INFO_URI),
+        warn_lane: make_log_lane(WARN_URI),
+        error_lane: make_log_lane(ERROR_URI),
+        fail_lane: make_log_lane(FAIL_URI),
     };
 
-    (handler, lane_tasks, lane_ios)
+    (log_handler, lane_tasks, lane_ios)
 }

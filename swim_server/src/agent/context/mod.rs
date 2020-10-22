@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::meta::log::{LogHandler, LogLevel};
+use crate::agent::meta::{LogLevel, MetaContext};
 use crate::agent::{AgentContext, Eff};
 use crate::routing::ServerRouter;
 use futures::future::BoxFuture;
@@ -48,7 +48,7 @@ pub(super) struct ContextImpl<Agent, Clk, Router> {
     stop_signal: trigger::Receiver,
     router: Router,
     parameters: HashMap<String, String>,
-    meta_log: LogHandler,
+    meta: MetaContext,
 }
 
 const SCHEDULE: &str = "Schedule";
@@ -67,7 +67,7 @@ impl<Agent, Clk: Clone, Router: Clone> Clone for ContextImpl<Agent, Clk, Router>
             stop_signal: self.stop_signal.clone(),
             router: self.router.clone(),
             parameters: self.parameters.clone(),
-            meta_log: self.meta_log.clone(),
+            meta: self.meta.clone(),
         }
     }
 }
@@ -82,7 +82,7 @@ impl<Agent, Clk, Router> ContextImpl<Agent, Clk, Router> {
         stop_signal: trigger::Receiver,
         router: Router,
         parameters: HashMap<String, String>,
-        meta_log: LogHandler,
+        meta: MetaContext,
     ) -> Self {
         ContextImpl {
             agent_ref,
@@ -93,7 +93,7 @@ impl<Agent, Clk, Router> ContextImpl<Agent, Clk, Router> {
             stop_signal,
             router,
             parameters,
-            meta_log,
+            meta,
         }
     }
 }
@@ -160,7 +160,7 @@ where
     }
 
     fn log<E: Form>(&self, entry: E, level: LogLevel, node: RelativeUri) {
-        self.meta_log.log(entry, level, node);
+        self.meta.log_handler().log(entry, level, node);
     }
 }
 
