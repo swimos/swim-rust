@@ -14,6 +14,7 @@
 
 mod addresses;
 pub mod config;
+pub mod net;
 mod pending;
 mod router;
 mod state;
@@ -24,9 +25,6 @@ use std::net::SocketAddr;
 use std::time::Duration;
 
 use futures::future::BoxFuture;
-use futures::stream::poll_fn;
-use futures::StreamExt;
-use tokio::net::TcpListener;
 use tokio::sync::mpsc;
 use tracing::{event, Level};
 use url::Url;
@@ -38,6 +36,7 @@ use utilities::task::Spawner;
 
 use crate::routing::error::{ConnectionError, Unresolvable};
 use crate::routing::remote::config::ConnectionConfig;
+use crate::routing::remote::net::ExternalConnections;
 use crate::routing::remote::state::{DeferredResult, Event, RemoteConnections};
 use crate::routing::remote::table::HostAndPort;
 use crate::routing::ws::WsConnections;
@@ -95,8 +94,9 @@ pub enum RoutingRequest {
 }
 
 #[derive(Debug)]
-pub struct RemoteConnectionsTask<Ws, Router, Sp> {
-    listener: TcpListener,
+pub struct RemoteConnectionsTask<External: ExternalConnections, Ws, Router, Sp> {
+    external: External,
+    listener: External::ListenerType,
     websockets: Ws,
     delegate_router: Router,
     stop_trigger: trigger::Receiver,
@@ -112,33 +112,38 @@ const FAILED_CLIENT_CONN: &str = "Failed to establish a client connection.";
 const NOT_IN_TABLE: &str = "A connection closed that was not in the routing table.";
 const CLOSED_NO_HANDLES: &str = "A connection closed with no handles remaining.";
 
-impl<Ws, RouterFac, Sp> RemoteConnectionsTask<Ws, RouterFac, Sp>
+impl<External, Ws, RouterFac, Sp> RemoteConnectionsTask<External, Ws, RouterFac, Sp>
 where
-    Ws: WsConnections + Send + Sync + 'static,
+    External: ExternalConnections,
+    Ws: WsConnections<External::Socket> + Send + Sync + 'static,
     RouterFac: ServerRouterFactory + 'static,
     Sp: Spawner<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>> + Send + Unpin,
 {
-    pub fn new(
+    pub async fn new(
         configuration: ConnectionConfig,
-        listener: TcpListener,
+        external: External,
+        bind_addr: SocketAddr,
         websockets: Ws,
         delegate_router: RouterFac,
         stop_trigger: trigger::Receiver,
         spawner: Sp,
-    ) -> Self {
-        RemoteConnectionsTask {
+    ) -> io::Result<Self> {
+        let listener = external.bind(bind_addr).await?;
+        Ok(RemoteConnectionsTask {
+            external,
             listener,
             websockets,
             delegate_router,
             stop_trigger,
             spawner,
             configuration,
-        }
+        })
     }
 
     pub async fn run(self) -> Result<(), io::Error> {
         let RemoteConnectionsTask {
-            mut listener,
+            external,
+            listener,
             websockets,
             delegate_router,
             stop_trigger,
@@ -146,12 +151,11 @@ where
             configuration,
         } = self;
 
-        let listener = poll_fn(move |cx| listener.poll_accept(cx).map(Some)).fuse();
-
         let mut state = RemoteConnections::new(
             &websockets,
             configuration,
             spawner,
+            external,
             listener,
             stop_trigger,
             delegate_router,

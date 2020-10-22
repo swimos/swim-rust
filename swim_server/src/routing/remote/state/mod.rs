@@ -15,6 +15,7 @@
 use crate::routing::error::ConnectionError;
 use crate::routing::remote::addresses::RemoteRoutingAddresses;
 use crate::routing::remote::config::ConnectionConfig;
+use crate::routing::remote::net::{ExternalConnections, Listener};
 use crate::routing::remote::pending::PendingRequests;
 use crate::routing::remote::table::{HostAndPort, RoutingTable};
 use crate::routing::remote::task::TaskFactory;
@@ -22,23 +23,27 @@ use crate::routing::remote::{ConnectionDropped, ResolutionRequest, RoutingReques
 use crate::routing::ws::WsConnections;
 use crate::routing::{RoutingAddr, ServerRouterFactory};
 use futures::future::{BoxFuture, Fuse};
-use futures::stream::FusedStream;
 use futures::StreamExt;
 use futures::{select_biased, FutureExt};
 use futures_util::stream::TakeUntil;
 use std::future::Future;
 use std::io;
 use std::net::SocketAddr;
-use tokio::net::{lookup_host, TcpStream};
+use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::mpsc;
 use utilities::future::open_ended::OpenEndedFutures;
 use utilities::sync::trigger;
 use utilities::task::Spawner;
 
-pub struct RemoteConnections<'a, Ws: WsConnections, Listener, Sp, RouterFac> {
+pub struct RemoteConnections<'a, External, Ws, Sp, RouterFac>
+where
+    External: ExternalConnections,
+    Ws: WsConnections<External::Socket>,
+{
     websockets: &'a Ws,
     spawner: Sp,
-    listener: Listener,
+    listener: <External::ListenerType as Listener>::AcceptStream,
+    external: External,
     requests: TakeUntil<mpsc::Receiver<RoutingRequest>, trigger::Receiver>,
     table: RoutingTable,
     pending: PendingRequests,
@@ -50,10 +55,10 @@ pub struct RemoteConnections<'a, Ws: WsConnections, Listener, Sp, RouterFac> {
     internal_stop: Option<trigger::Sender>,
 }
 
-impl<'a, Ws, Listener, Sp, RouterFac> RemoteConnections<'a, Ws, Listener, Sp, RouterFac>
+impl<'a, External, Ws, Sp, RouterFac> RemoteConnections<'a, External, Ws, Sp, RouterFac>
 where
-    Ws: WsConnections + Send + Sync + 'static,
-    Listener: FusedStream<Item = io::Result<(TcpStream, SocketAddr)>> + Unpin,
+    External: ExternalConnections,
+    Ws: WsConnections<External::Socket> + Send + Sync + 'static,
     Sp: Spawner<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>> + Unpin,
     RouterFac: ServerRouterFactory + 'static,
 {
@@ -61,7 +66,8 @@ where
         websockets: &'a Ws,
         configuration: ConnectionConfig,
         spawner: Sp,
-        listener: Listener,
+        external: External,
+        listener: External::ListenerType,
         stop_trigger: trigger::Receiver,
         delegate_router: RouterFac,
     ) -> Self {
@@ -70,7 +76,8 @@ where
         let tasks = TaskFactory::new(req_tx, stop_rx.clone(), configuration, delegate_router);
         RemoteConnections {
             websockets,
-            listener,
+            listener: listener.into_stream(),
+            external,
             spawner,
             requests: req_rx.take_until(stop_rx),
             table: RoutingTable::default(),
@@ -84,7 +91,7 @@ where
         }
     }
 
-    pub async fn select_next(&mut self) -> Option<Event<Ws::StreamSink>> {
+    pub async fn select_next(&mut self) -> Option<Event<External::Socket, Ws::StreamSink>> {
         let RemoteConnections {
             spawner,
             listener,
@@ -200,7 +207,7 @@ where
         }
     }
 
-    pub fn defer_handshake(&self, stream: TcpStream, peer_addr: SocketAddr) {
+    pub fn defer_handshake(&self, stream: External::Socket, peer_addr: SocketAddr) {
         let websockets = self.websockets;
         self.defer(async move {
             let result = do_handshake(true, stream, websockets).await;
@@ -216,18 +223,21 @@ where
     ) {
         let websockets = self.websockets;
         if let Err(host) = self.check_socket_addr(host, sock_addr) {
+            let external = self.external.clone();
             self.defer(async move {
-                connect_and_handshake(sock_addr, remaining, host, websockets).await
+                connect_and_handshake(external, sock_addr, remaining, host, websockets).await
             });
         }
     }
 
     pub fn defer_dns_lookup(&mut self, target: HostAndPort, request: ResolutionRequest) {
         let target_cpy = target.clone();
+        let external = self.external.clone();
         self.defer(async move {
-            let resolved = lookup_host(target_cpy.to_string())
+            let resolved = external
+                .lookup(target_cpy.to_string())
                 .await
-                .map(|it| it.collect::<Vec<_>>().into_iter());
+                .map(|v| v.into_iter());
             DeferredResult::dns(resolved, target_cpy)
         });
         self.pending.add(target, request);
@@ -301,20 +311,21 @@ enum State {
     ClearingDeferred,
 }
 
-pub enum Event<Snk> {
-    Incoming(io::Result<(TcpStream, SocketAddr)>),
+pub enum Event<Socket, Snk> {
+    Incoming(io::Result<(Socket, SocketAddr)>),
     Request(RoutingRequest),
     Deferred(DeferredResult<Snk>),
     ConnectionClosed(RoutingAddr, ConnectionDropped),
 }
 
-async fn do_handshake<Ws>(
+async fn do_handshake<Socket, Ws>(
     server: bool,
-    socket: TcpStream,
+    socket: Socket,
     websockets: &Ws,
 ) -> Result<Ws::StreamSink, ConnectionError>
 where
-    Ws: WsConnections,
+    Socket: AsyncRead + AsyncWrite + Unpin,
+    Ws: WsConnections<Socket>,
 {
     if server {
         websockets.accept_connection(socket).await
@@ -323,29 +334,31 @@ where
     }
 }
 
-async fn connect_and_handshake<Ws>(
+async fn connect_and_handshake<External: ExternalConnections, Ws>(
+    external: External,
     sock_addr: SocketAddr,
     remaining: SocketAddrIt,
     host: HostAndPort,
     websockets: &Ws,
 ) -> DeferredResult<Ws::StreamSink>
 where
-    Ws: WsConnections,
+    Ws: WsConnections<External::Socket>,
 {
-    match connect_and_handshake_single(sock_addr, websockets).await {
+    match connect_and_handshake_single(external, sock_addr, websockets).await {
         Ok(str) => DeferredResult::outgoing_handshake(Ok((str, sock_addr)), host),
         Err(err) => DeferredResult::failed_connection(err, remaining, host),
     }
 }
 
-async fn connect_and_handshake_single<Ws>(
+async fn connect_and_handshake_single<External: ExternalConnections, Ws>(
+    external: External,
     addr: SocketAddr,
     websockets: &Ws,
 ) -> Result<Ws::StreamSink, ConnectionError>
 where
-    Ws: WsConnections,
+    Ws: WsConnections<External::Socket>,
 {
     websockets
-        .open_connection(TcpStream::connect(addr).await?)
+        .open_connection(external.try_open(addr).await?)
         .await
 }
