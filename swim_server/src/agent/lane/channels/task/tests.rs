@@ -44,6 +44,7 @@ use tokio::sync::mpsc::Sender;
 use tokio::sync::{mpsc, Mutex};
 use url::Url;
 use utilities::sync::trigger;
+use utilities::uri::RelativeUri;
 
 #[test]
 fn lane_io_err_display_update() {
@@ -351,7 +352,7 @@ impl ServerRouter for TestRouter {
     fn resolve(
         &mut self,
         _host: Option<Url>,
-        _route: String,
+        _route: RelativeUri,
     ) -> BoxFuture<'static, Result<RoutingAddr, ResolutionError>> {
         panic!("Unexpected resolution attempt.")
     }
@@ -1233,8 +1234,8 @@ impl ServerRouter for MultiTestRouter {
     fn resolve(
         &mut self,
         _host: Option<Url>,
-        _route: String,
-    ) -> BoxFuture<'static, Result<RoutingAddr, ResolutionError>> {
+        _route: RelativeUri,
+    ) -> BoxFuture<'_, Result<RoutingAddr, ResolutionError>> {
         panic!("Unexpected resolution attempt.")
     }
 }

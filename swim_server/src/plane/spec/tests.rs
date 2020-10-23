@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use crate::agent::context::AgentExecutionContext;
+use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lifecycle::AgentLifecycle;
 use crate::agent::{AgentContext, DynamicAgentIo, DynamicLaneTasks, SwimAgent};
 use crate::plane::context::PlaneContext;
@@ -53,6 +54,7 @@ struct DummyPlaneLifecycle(i32);
 impl SwimAgent<DummyConfig> for DummyAgent {
     fn instantiate<Context>(
         _configuration: &DummyConfig,
+        _exec_conf: &AgentExecutionConfig,
     ) -> (
         Self,
         DynamicLaneTasks<Self, Context>,

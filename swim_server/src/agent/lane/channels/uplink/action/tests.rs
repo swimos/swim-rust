@@ -28,6 +28,7 @@ use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc;
 use url::Url;
+use utilities::uri::RelativeUri;
 
 struct TestContext(TestRouter, mpsc::Sender<Eff>);
 #[derive(Clone, Debug)]
@@ -45,7 +46,7 @@ impl ServerRouter for TestRouter {
     fn resolve(
         &mut self,
         _host: Option<Url>,
-        _route: String,
+        _route: RelativeUri,
     ) -> BoxFuture<'static, Result<RoutingAddr, ResolutionError>> {
         panic!("Unexpected resolution attempt.")
     }

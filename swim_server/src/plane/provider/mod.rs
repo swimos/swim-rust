@@ -25,6 +25,7 @@ use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
 use std::sync::Arc;
 use swim_runtime::time::clock::Clock;
+use utilities::uri::RelativeUri;
 
 /// [`AgentRoute`] implementation that spawns agents with a fixed configuration.
 pub struct AgentProvider<Agent, Config, Lifecycle> {
@@ -63,7 +64,7 @@ where
 
     pub fn run<Clk, Envelopes, Router>(
         &self,
-        uri: String,
+        uri: RelativeUri,
         parameters: HashMap<String, String>,
         execution_config: AgentExecutionConfig,
         clock: Clk,
@@ -107,7 +108,7 @@ where
 {
     fn run_agent(
         &self,
-        uri: String,
+        uri: RelativeUri,
         parameters: HashMap<String, String>,
         execution_config: AgentExecutionConfig,
         clock: Clk,

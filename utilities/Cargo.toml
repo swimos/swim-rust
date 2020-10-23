@@ -7,6 +7,7 @@ edition = "2018"
 [dependencies]
 futures = "0.3.4"
 futures-util = "0.3.4"
+http = "0.2.1"
 parking_lot = "0.11.0"
 percent-encoding = "2.1.0"
 pin-utils = "0.1.0"

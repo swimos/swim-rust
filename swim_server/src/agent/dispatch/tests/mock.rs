@@ -36,6 +36,7 @@ use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::{Receiver, Sender};
 use url::Url;
+use utilities::uri::RelativeUri;
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct MockLane;
@@ -103,7 +104,7 @@ impl ServerRouter for MockRouter {
     fn resolve(
         &mut self,
         _host: Option<Url>,
-        _route: String,
+        _route: RelativeUri,
     ) -> BoxFuture<'static, Result<RoutingAddr, ResolutionError>> {
         panic!("Unexpected resolution attempt.")
     }

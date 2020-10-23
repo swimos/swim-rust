@@ -100,7 +100,7 @@ mod tests {
         use crate::future::retryable::RetryableFuture;
         use std::pin::Pin;
 
-        struct ReadyFactory {}
+        struct ReadyFactory;
 
         impl ReadyFactory {
             fn new() -> Self {
@@ -111,7 +111,7 @@ mod tests {
         #[derive(Debug, Eq, PartialEq)]
         enum FutErr {}
 
-        struct TestFuture {}
+        struct TestFuture;
 
         impl Future for TestFuture {
             type Output = Result<(), FutErr>;
