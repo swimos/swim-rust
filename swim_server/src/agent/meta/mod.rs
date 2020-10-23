@@ -95,8 +95,7 @@ where
         ios.insert(k, v);
     });
 
-    let (info_handler, info_tasks, info_ios) =
-        open_info_lanes(uri.clone(), exec_conf, lanes_summary);
+    let (info_handler, info_tasks, info_ios) = open_info_lanes(uri, exec_conf, lanes_summary);
     info_tasks.into_iter().for_each(|t| {
         tasks.push(t);
     });

@@ -172,9 +172,12 @@ impl MetaPath for RelativePath {
     }
 }
 
+/// An abstraction over both agent lanes and meta lanes.
 #[derive(Hash, Eq, PartialEq, Debug, Clone)]
 pub struct LaneIdentifier {
+    /// The corresponding lane URI.
     lane_uri: String,
+    /// The lane's kind.
     kind: LaneIdentifierKind,
 }
 
@@ -206,8 +209,14 @@ impl LaneIdentifier {
     }
 }
 
+/// An identifier representing either an agent's lanes or its metadata lanes.
 #[derive(Hash, Eq, PartialEq, Debug, Clone, Copy)]
 pub enum LaneIdentifierKind {
+    /// An agent's lane.
     Agent,
+    /// An agent's metadata lanes.
+    ///
+    /// Agent lane requests have their URI's prefixed in the form of `swim:meta:X` and these are
+    /// forwarded to the corresponding meta lanes.
     Meta,
 }

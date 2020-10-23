@@ -134,8 +134,6 @@ where
 
         let (tripwire_tx, tripwire_rx) = trigger::trigger();
 
-        // open_meta_lanes();
-
         let attacher = LaneAttachmentTask::new(agent_route, lanes, &config, context);
         let open_task = attacher
             .run(open_rx, tripwire_tx)

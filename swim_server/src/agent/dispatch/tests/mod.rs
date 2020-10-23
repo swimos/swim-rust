@@ -89,7 +89,7 @@ fn lanes(names: Vec<&str>) -> HashMap<LaneIdentifier, MockLane> {
         map.insert(LaneIdentifier::agent(name.to_string()), MockLane);
     }
 
-    map.insert(LaneIdentifier::meta("swim:meta:node".to_string()), MockLane);
+    map.insert(LaneIdentifier::meta("infoLog".to_string()), MockLane);
 
     map
 }
@@ -133,7 +133,7 @@ async fn dispatch_meta() {
 
     let addr = RoutingAddr::remote(1);
 
-    let link = Envelope::link("/node", "swim:meta:node");
+    let link = Envelope::link("/node", "infoLog");
 
     let assertion_task = async move {
         assert!(envelope_tx
@@ -146,7 +146,7 @@ async fn dispatch_meta() {
             .is_ok());
 
         let mut rx = context.take_receiver(&addr).unwrap();
-        expect_echo(&mut rx, "swim:meta:node", link).await;
+        expect_echo(&mut rx, "infoLog", link).await;
 
         drop(envelope_tx);
         drop(context);

@@ -160,7 +160,7 @@ where
     };
 
     let log_handler = LogHandler {
-        uri: uri.clone(),
+        uri,
         trace_lane: make_log_lane(TRACE_URI),
         debug_lane: make_log_lane(DEBUG_URI),
         info_lane: make_log_lane(INFO_URI),
