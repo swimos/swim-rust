@@ -5,14 +5,14 @@ use std::sync::Arc;
 mod tests;
 
 #[derive(Debug, Clone)]
-struct RTree<T: Clone + BoundingBox + PartialEq> {
+struct RTree<T: Clone + BoundingBox> {
     root: Node<T>,
     len: usize,
 }
 
 impl<T> RTree<T>
 where
-    T: Clone + BoundingBox + PartialEq,
+    T: Clone + BoundingBox,
 {
     fn new(min_children: NonZeroUsize, max_children: NonZeroUsize) -> Self {
         if min_children.get() > max_children.get() / 2 {
@@ -34,8 +34,8 @@ where
         self.len = self.len + 1;
     }
 
-    fn remove(&mut self, item: &T) -> Option<T> {
-        let (removed, maybe_orphan_nodes) = self.root.remove(item)?;
+    fn remove(&mut self, bounding_box: &Rect) -> Option<T> {
+        let (removed, maybe_orphan_nodes) = self.root.remove(bounding_box)?;
         self.len = self.len - 1;
 
         if self.root.len() == 1 && !self.root.is_leaf() {
@@ -88,14 +88,14 @@ where
 }
 
 #[derive(Debug, Clone)]
-struct Node<T: Clone + BoundingBox + PartialEq> {
+struct Node<T: Clone + BoundingBox> {
     entries: Vec<Arc<Entry<T>>>,
     level: i32,
     min_children: usize,
     max_children: usize,
 }
 
-impl<T: Clone + BoundingBox + PartialEq> Node<T> {
+impl<T: Clone + BoundingBox> Node<T> {
     fn new(min_children: usize, max_children: usize) -> Self {
         Node {
             entries: Vec::new(),
@@ -183,14 +183,14 @@ impl<T: Clone + BoundingBox + PartialEq> Node<T> {
         None
     }
 
-    fn remove(&mut self, item: &T) -> Option<(T, Option<Vec<Arc<Entry<T>>>>)> {
+    fn remove(&mut self, bounding_box: &Rect) -> Option<(T, Option<Vec<Arc<Entry<T>>>>)> {
         if self.is_leaf() {
             //If this is leaf try to find the item
             let mut remove_idx = None;
 
             for (idx, entry) in self.entries.iter().enumerate() {
                 match **entry {
-                    Entry::Leaf { item: ref entry } if entry == item => {
+                    Entry::Leaf { item: ref entry } if entry.get_mbb() == bounding_box => {
                         remove_idx = Some(idx);
                         break;
                     }
@@ -216,9 +216,9 @@ impl<T: Clone + BoundingBox + PartialEq> Node<T> {
             let mut maybe_removed = None;
 
             for (idx, entry) in self.entries.iter_mut().enumerate() {
-                if entry.get_mbb().is_covering(item) {
+                if entry.get_mbb().is_covering(bounding_box) {
                     let entry = Arc::make_mut(entry);
-                    maybe_removed = entry.remove(item);
+                    maybe_removed = entry.remove(bounding_box);
 
                     if maybe_removed.is_some() {
                         if entry.len() < self.min_children {
@@ -275,7 +275,7 @@ impl<T: Clone + BoundingBox + PartialEq> Node<T> {
     }
 }
 
-fn quadratic_split<T: BoundingBox + Clone + PartialEq>(
+fn quadratic_split<T: BoundingBox + Clone>(
     entries: &mut Vec<Arc<Entry<T>>>,
     min_children: usize,
 ) -> (Vec<Arc<Entry<T>>>, Vec<Arc<Entry<T>>>, Rect, Rect) {
@@ -334,7 +334,7 @@ fn quadratic_split<T: BoundingBox + Clone + PartialEq>(
 
 fn pick_seeds<T>(entries: &Vec<Arc<Entry<T>>>) -> (usize, usize)
 where
-    T: BoundingBox + Clone + PartialEq,
+    T: BoundingBox + Clone,
 {
     let mut first_idx = 0;
     let mut second_idx = 1;
@@ -368,7 +368,7 @@ fn pick_next<T>(
     second_group_size: usize,
 ) -> (usize, Rect, Group)
 where
-    T: BoundingBox + Clone + PartialEq,
+    T: BoundingBox + Clone,
 {
     let mut entries_iter = entries.iter();
     let item = entries_iter.next().unwrap();
@@ -421,7 +421,7 @@ where
     (item_idx, expanded_rect, group)
 }
 
-fn calc_preferences<T: Clone + BoundingBox + PartialEq>(
+fn calc_preferences<T: Clone + BoundingBox>(
     item: &Arc<Entry<T>>,
     first_mbb: &Rect,
     second_mbb: &Rect,
@@ -475,12 +475,12 @@ enum Group {
 }
 
 #[derive(Debug, Clone)]
-enum Entry<T: Clone + BoundingBox + PartialEq> {
+enum Entry<T: Clone + BoundingBox> {
     Leaf { item: T },
     Branch { mbb: Rect, child: Node<T> },
 }
 
-impl<T: Clone + BoundingBox + PartialEq> Entry<T> {
+impl<T: Clone + BoundingBox> Entry<T> {
     fn len(&self) -> usize {
         match self {
             Entry::Leaf { .. } => 0,
@@ -510,10 +510,10 @@ impl<T: Clone + BoundingBox + PartialEq> Entry<T> {
         }
     }
 
-    fn remove(&mut self, item: &T) -> Option<(T, Option<Vec<Arc<Entry<T>>>>)> {
+    fn remove(&mut self, bounding_box: &Rect) -> Option<(T, Option<Vec<Arc<Entry<T>>>>)> {
         match self {
             Entry::Branch { mbb, child } => {
-                let (removed, orphan_nodes) = child.remove(item)?;
+                let (removed, orphan_nodes) = child.remove(bounding_box)?;
 
                 let removed_mbb = removed.get_mbb();
 

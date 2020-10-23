@@ -1,7 +1,7 @@
 use crate::rtree::{BoundingBox, Point, RTree, Rect};
 use std::fs;
 use std::num::NonZeroUsize;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 
 #[test]
 fn rtree_test() {
@@ -170,23 +170,79 @@ fn rtree_test() {
     );
 }
 
-#[derive(Debug, PartialEq)]
+#[test]
+fn insert_no_clones_test() {
+    let mut tree = RTree::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(4).unwrap());
+    let clone_count = CloneCount::new();
+    let first = Rect::new(Point::new(0, 0), Point::new(10, 10));
+    let second = Rect::new(Point::new(12, 0), Point::new(15, 15));
+
+    tree.insert(CloneTracker::new(first, clone_count.clone()));
+    assert_eq!(clone_count.get(), 0);
+
+    let cloned_tree = tree.clone();
+
+    tree.insert(CloneTracker::new(second, clone_count.clone()));
+    assert_eq!(clone_count.get(), 0);
+
+    assert_eq!(tree.len(), 2);
+    assert_eq!(cloned_tree.len(), 1);
+}
+
+#[test]
+fn clone_on_remove_test() {
+    let mut tree = RTree::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(4).unwrap());
+    let clone_count = CloneCount::new();
+    let first = Rect::new(Point::new(0, 0), Point::new(10, 10));
+
+    tree.insert(CloneTracker::new(first.clone(), clone_count.clone()));
+    assert_eq!(clone_count.get(), 0);
+
+    let cloned_tree = tree.clone();
+
+    tree.remove(&first);
+    assert_eq!(clone_count.get(), 1);
+
+    assert_eq!(tree.len(), 0);
+    assert_eq!(cloned_tree.len(), 1);
+}
+
+#[test]
+fn clone_tracker_test() {
+    let first = Rect::new(Point::new(0, 0), Point::new(10, 10));
+    let clone_count = CloneCount::new();
+
+    let first_clone_tracker = CloneTracker::new(first.clone(), clone_count.clone());
+
+    assert_eq!(clone_count.get(), 0);
+    let _ = first_clone_tracker.clone();
+    assert_eq!(clone_count.get(), 1);
+    let _ = first_clone_tracker.clone();
+    assert_eq!(clone_count.get(), 2);
+}
+
+#[derive(Debug)]
 struct CloneTracker {
     mbb: Rect,
+    clone_count: CloneCount,
 }
 
 impl CloneTracker {
-    fn new(rect: Rect) -> Self {
-        CloneTracker { mbb: rect }
+    fn new(rect: Rect, clone_count: CloneCount) -> Self {
+        CloneTracker {
+            mbb: rect,
+            clone_count,
+        }
     }
 }
 
 impl Clone for CloneTracker {
     fn clone(&self) -> Self {
-        CLONE_COUNT.fetch_add(1, Ordering::SeqCst);
+        self.clone_count.inc();
 
         CloneTracker {
             mbb: self.mbb.clone(),
+            clone_count: self.clone_count.clone(),
         }
     }
 }
@@ -206,5 +262,22 @@ impl BoundingBox for CloneTracker {
 
     fn is_covering<T: BoundingBox>(&self, other: &T) -> bool {
         self.mbb.is_covering(other)
+    }
+}
+
+#[derive(Debug, Clone)]
+struct CloneCount(Arc<Mutex<i32>>);
+
+impl CloneCount {
+    fn new() -> Self {
+        CloneCount(Arc::new(Mutex::new(0)))
+    }
+
+    fn inc(&self) {
+        *self.0.lock().unwrap() += 1;
+    }
+
+    fn get(&self) -> i32 {
+        *self.0.lock().unwrap()
     }
 }
