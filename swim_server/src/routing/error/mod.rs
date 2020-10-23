@@ -71,7 +71,7 @@ impl From<mpsc::error::SendError<TaggedEnvelope>> for SendError {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum RouterError {
     NoAgentAtRoute(RelativeUri),
     ConnectionFailure(ConnectionError),

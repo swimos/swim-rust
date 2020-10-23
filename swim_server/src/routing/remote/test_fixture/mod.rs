@@ -25,14 +25,14 @@ use url::Url;
 use utilities::sync::promise;
 use utilities::uri::RelativeUri;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct LocalRoutesInner {
     routes: HashMap<RoutingAddr, (Route<TaggedSender>, promise::Sender<ConnectionDropped>)>,
     uri_mappings: HashMap<RelativeUri, RoutingAddr>,
     counter: u32,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct LocalRoutes(Arc<Mutex<LocalRoutesInner>>);
 
 impl ServerRouter for LocalRoutes {

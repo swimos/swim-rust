@@ -14,16 +14,20 @@
 
 use crate::routing::error::{ResolutionError, RouterError};
 use crate::routing::remote::RoutingRequest;
-use crate::routing::{error, Route, RoutingAddr, ServerRouter, TaggedSender};
-use futures::future::{BoxFuture, Either};
+use crate::routing::{Route, RoutingAddr, ServerRouter, TaggedSender};
+use futures::future::BoxFuture;
 use futures::FutureExt;
 use swim_common::request::Request;
-use swim_common::sink::item::{ItemSender, ItemSink};
-use swim_common::warp::envelope::Envelope;
+use swim_common::sink::item::either::EitherSink;
 use tokio::sync::{mpsc, oneshot};
 use url::Url;
 use utilities::uri::RelativeUri;
 
+#[cfg(test)]
+mod tests;
+
+/// Router implementation that will route to running [`ConnectionTask`]s for remote addresses and
+/// will delegate to another router instance for local addresses.
 #[derive(Debug)]
 pub struct RemoteRouter<Delegate> {
     tag: RoutingAddr,
@@ -45,43 +49,8 @@ impl<Delegate> RemoteRouter<Delegate> {
     }
 }
 
-enum RemoteRouterSenderInner<D> {
-    Remote(TaggedSender),
-    Delegated(D),
-}
-
-pub struct RemoteRouterSender<D>(RemoteRouterSenderInner<D>);
-
-impl<D: ItemSender<Envelope, error::SendError>> RemoteRouterSender<D> {
-    fn new(sender: TaggedSender) -> Self {
-        RemoteRouterSender(RemoteRouterSenderInner::Remote(sender))
-    }
-
-    fn delegate(sender: D) -> Self {
-        RemoteRouterSender(RemoteRouterSenderInner::Delegated(sender))
-    }
-}
-
-impl<'a, D: ItemSink<'a, Envelope, Error = error::SendError>> ItemSink<'a, Envelope>
-    for RemoteRouterSender<D>
-{
-    type Error = error::SendError;
-    type SendFuture = Either<<TaggedSender as ItemSink<'a, Envelope>>::SendFuture, D::SendFuture>;
-
-    fn send_item(&'a mut self, envelope: Envelope) -> Self::SendFuture {
-        match self {
-            RemoteRouterSender(RemoteRouterSenderInner::Remote(sender)) => {
-                Either::Left(sender.send_item(envelope))
-            }
-            RemoteRouterSender(RemoteRouterSenderInner::Delegated(delegate)) => {
-                Either::Right(delegate.send_item(envelope))
-            }
-        }
-    }
-}
-
 impl<Delegate: ServerRouter> ServerRouter for RemoteRouter<Delegate> {
-    type Sender = RemoteRouterSender<Delegate::Sender>;
+    type Sender = EitherSink<TaggedSender, Delegate::Sender>;
 
     fn resolve_sender(
         &mut self,
@@ -93,25 +62,27 @@ impl<Delegate: ServerRouter> ServerRouter for RemoteRouter<Delegate> {
                 delegate_router,
                 request_tx,
             } = self;
-            let (tx, rx) = oneshot::channel();
-            let request = Request::new(tx);
-            let routing_req = RoutingRequest::Endpoint { addr, request };
-            if request_tx.send(routing_req).await.is_err() {
-                Err(ResolutionError::RouterDropped)
-            } else {
-                match rx.await {
-                    Ok(Ok(Route { sender, on_drop })) => Ok(Route::new(
-                        RemoteRouterSender::new(TaggedSender::new(*tag, sender)),
-                        on_drop,
-                    )),
-                    Ok(Err(_)) => match delegate_router.resolve_sender(addr).await {
-                        Ok(Route { sender, on_drop }) => {
-                            Ok(Route::new(RemoteRouterSender::delegate(sender), on_drop))
-                        }
-                        Err(err) => Err(err),
-                    },
-                    Err(_) => Err(ResolutionError::RouterDropped),
+            if addr.is_remote() {
+                let (tx, rx) = oneshot::channel();
+                let request = Request::new(tx);
+                let routing_req = RoutingRequest::Endpoint { addr, request };
+                if request_tx.send(routing_req).await.is_err() {
+                    Err(ResolutionError::RouterDropped)
+                } else {
+                    match rx.await {
+                        Ok(Ok(Route { sender, on_drop })) => Ok(Route::new(
+                            EitherSink::left(TaggedSender::new(*tag, sender)),
+                            on_drop,
+                        )),
+                        Ok(Err(err)) => Err(ResolutionError::Unresolvable(err)),
+                        Err(_) => Err(ResolutionError::RouterDropped),
+                    }
                 }
+            } else {
+                delegate_router
+                    .resolve_sender(addr)
+                    .await
+                    .map(|Route { sender, on_drop }| Route::new(EitherSink::right(sender), on_drop))
             }
         }
         .boxed()
