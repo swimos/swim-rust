@@ -5,7 +5,7 @@ use std::sync::Arc;
 mod tests;
 
 #[derive(Debug, Clone)]
-struct RTree<T: Clone + BoundingBox> {
+pub struct RTree<T: Clone + BoundingBox> {
     root: Node<T>,
     len: usize,
 }
@@ -14,7 +14,7 @@ impl<T> RTree<T>
 where
     T: Clone + BoundingBox,
 {
-    fn new(min_children: NonZeroUsize, max_children: NonZeroUsize) -> Self {
+    pub fn new(min_children: NonZeroUsize, max_children: NonZeroUsize) -> Self {
         if min_children.get() > max_children.get() / 2 {
             panic!("The minimum number of children cannot be more than half of the maximum number of children.")
         }
@@ -25,18 +25,22 @@ where
         }
     }
 
-    fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.len
     }
 
-    fn insert(&mut self, item: T) {
-        self.internal_insert(Arc::new(Entry::Leaf { item }), 0);
-        self.len = self.len + 1;
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
-    fn remove(&mut self, bounding_box: &Rect) -> Option<T> {
+    pub fn insert(&mut self, item: T) {
+        self.internal_insert(Arc::new(Entry::Leaf { item }), 0);
+        self.len += 1;
+    }
+
+    pub fn remove(&mut self, bounding_box: &Rect) -> Option<T> {
         let (removed, maybe_orphan_nodes) = self.root.remove(bounding_box)?;
-        self.len = self.len - 1;
+        self.len -= 1;
 
         if self.root.len() == 1 && !self.root.is_leaf() {
             let entry_ptr = self.root.entries.pop().unwrap();
@@ -75,7 +79,7 @@ where
         Some(removed)
     }
 
-    fn internal_insert(&mut self, item: Arc<Entry<T>>, level: i32) {
+    fn internal_insert(&mut self, item: EntryPtr<T>, level: i32) {
         if let Some((first_entry, second_entry)) = self.root.insert(item, level) {
             self.root = Node {
                 entries: vec![first_entry, second_entry],
@@ -89,7 +93,7 @@ where
 
 #[derive(Debug, Clone)]
 struct Node<T: Clone + BoundingBox> {
-    entries: Vec<Arc<Entry<T>>>,
+    entries: Vec<EntryPtr<T>>,
     level: i32,
     min_children: usize,
     max_children: usize,
@@ -110,18 +114,10 @@ impl<T: Clone + BoundingBox> Node<T> {
     }
 
     fn is_leaf(&self) -> bool {
-        if self.level == 0 {
-            true
-        } else {
-            false
-        }
+        self.level == 0
     }
 
-    fn insert(
-        &mut self,
-        item: Arc<Entry<T>>,
-        level: i32,
-    ) -> Option<(Arc<Entry<T>>, Arc<Entry<T>>)> {
+    fn insert(&mut self, item: EntryPtr<T>, level: i32) -> Option<(EntryPtr<T>, EntryPtr<T>)> {
         match *item {
             //If we have a branch and we are at the right level -> insert
             Entry::Branch { .. } if self.level == level => {
@@ -164,18 +160,17 @@ impl<T: Clone + BoundingBox> Node<T> {
 
                     let min_entry = Arc::make_mut(&mut min_entry);
 
-                    match min_entry.insert(item, min_rect, level) {
-                        Some((first_entry, second_entry)) => {
-                            self.entries.remove(min_entry_idx);
-                            self.entries.push(first_entry);
-                            self.entries.push(second_entry);
+                    if let Some((first_entry, second_entry)) =
+                        min_entry.insert(item, min_rect, level)
+                    {
+                        self.entries.remove(min_entry_idx);
+                        self.entries.push(first_entry);
+                        self.entries.push(second_entry);
 
-                            if self.entries.len() > self.max_children {
-                                let split_entries = self.split();
-                                return Some(split_entries);
-                            }
+                        if self.entries.len() > self.max_children {
+                            let split_entries = self.split();
+                            return Some(split_entries);
                         }
-                        None => (),
                     }
                 }
             }
@@ -183,7 +178,7 @@ impl<T: Clone + BoundingBox> Node<T> {
         None
     }
 
-    fn remove(&mut self, bounding_box: &Rect) -> Option<(T, Option<Vec<Arc<Entry<T>>>>)> {
+    fn remove(&mut self, bounding_box: &Rect) -> Option<(T, Option<Vec<EntryPtr<T>>>)> {
         if self.is_leaf() {
             //If this is leaf try to find the item
             let mut remove_idx = None;
@@ -231,8 +226,8 @@ impl<T: Clone + BoundingBox> Node<T> {
 
             let (removed, maybe_orphan_nodes) = maybe_removed?;
 
-            if entry_index.is_some() {
-                let orphan = self.entries.remove(entry_index.unwrap());
+            if let Some(entry_index) = entry_index {
+                let orphan = self.entries.remove(entry_index);
 
                 match maybe_orphan_nodes {
                     Some(mut orphan_nodes) => {
@@ -247,7 +242,7 @@ impl<T: Clone + BoundingBox> Node<T> {
         }
     }
 
-    fn split(&mut self) -> (Arc<Entry<T>>, Arc<Entry<T>>) {
+    fn split(&mut self) -> (EntryPtr<T>, EntryPtr<T>) {
         let (first_group, second_group, first_mbb, second_mbb) =
             quadratic_split(&mut self.entries, self.min_children);
 
@@ -276,9 +271,9 @@ impl<T: Clone + BoundingBox> Node<T> {
 }
 
 fn quadratic_split<T: BoundingBox + Clone>(
-    entries: &mut Vec<Arc<Entry<T>>>,
+    entries: &mut Vec<EntryPtr<T>>,
     min_children: usize,
-) -> (Vec<Arc<Entry<T>>>, Vec<Arc<Entry<T>>>, Rect, Rect) {
+) -> (Vec<EntryPtr<T>>, Vec<EntryPtr<T>>, Rect, Rect) {
     let (first_seed_idx, second_seed_idx) = pick_seeds(entries);
 
     let first_seed = entries.remove(first_seed_idx);
@@ -332,7 +327,7 @@ fn quadratic_split<T: BoundingBox + Clone>(
     (first_group, second_group, first_mbb, second_mbb)
 }
 
-fn pick_seeds<T>(entries: &Vec<Arc<Entry<T>>>) -> (usize, usize)
+fn pick_seeds<T>(entries: &[EntryPtr<T>]) -> (usize, usize)
 where
     T: BoundingBox + Clone,
 {
@@ -361,7 +356,7 @@ where
 }
 
 fn pick_next<T>(
-    entries: &Vec<Arc<Entry<T>>>,
+    entries: &[EntryPtr<T>],
     first_mbb: &Rect,
     second_mbb: &Rect,
     first_group_size: usize,
@@ -422,7 +417,7 @@ where
 }
 
 fn calc_preferences<T: Clone + BoundingBox>(
-    item: &Arc<Entry<T>>,
+    item: &EntryPtr<T>,
     first_mbb: &Rect,
     second_mbb: &Rect,
 ) -> (i32, i32, Rect, Rect) {
@@ -452,20 +447,16 @@ fn select_group(
         Group::First
     } else if second_diff < first_diff {
         Group::Second
+    } else if first_mbb.area() < second_mbb.area() {
+        Group::First
+    } else if second_mbb.area() < first_mbb.area() {
+        Group::Second
+    } else if first_group_size < second_group_size {
+        Group::First
+    } else if second_group_size < first_group_size {
+        Group::Second
     } else {
-        if first_mbb.area() < second_mbb.area() {
-            Group::First
-        } else if second_mbb.area() < first_mbb.area() {
-            Group::Second
-        } else {
-            if first_group_size < second_group_size {
-                Group::First
-            } else if second_group_size < first_group_size {
-                Group::Second
-            } else {
-                Group::First
-            }
-        }
+        Group::First
     }
 }
 
@@ -473,6 +464,8 @@ enum Group {
     First,
     Second,
 }
+
+type EntryPtr<T> = Arc<Entry<T>>;
 
 #[derive(Debug, Clone)]
 enum Entry<T: Clone + BoundingBox> {
@@ -497,10 +490,10 @@ impl<T: Clone + BoundingBox> Entry<T> {
 
     fn insert(
         &mut self,
-        item: Arc<Entry<T>>,
+        item: EntryPtr<T>,
         expanded_rect: Rect,
         level: i32,
-    ) -> Option<(Arc<Entry<T>>, Arc<Entry<T>>)> {
+    ) -> Option<(EntryPtr<T>, EntryPtr<T>)> {
         match self {
             Entry::Branch { mbb, child } => {
                 *mbb = expanded_rect;
@@ -510,7 +503,7 @@ impl<T: Clone + BoundingBox> Entry<T> {
         }
     }
 
-    fn remove(&mut self, bounding_box: &Rect) -> Option<(T, Option<Vec<Arc<Entry<T>>>>)> {
+    fn remove(&mut self, bounding_box: &Rect) -> Option<(T, Option<Vec<EntryPtr<T>>>)> {
         match self {
             Entry::Branch { mbb, child } => {
                 let (removed, orphan_nodes) = child.remove(bounding_box)?;
@@ -540,13 +533,13 @@ impl<T: Clone + BoundingBox> Entry<T> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct Rect {
+pub struct Rect {
     lower_left: Point,
     upper_right: Point,
 }
 
 impl Rect {
-    fn new(lower_left: Point, upper_right: Point) -> Self {
+    pub fn new(lower_left: Point, upper_right: Point) -> Self {
         if lower_left.x > upper_right.x || lower_left.y > upper_right.y {
             panic!("The first point must be the lower left and the second the upper right.")
         }
@@ -603,13 +596,11 @@ impl BoundingBox for Rect {
     fn is_covering<T: BoundingBox>(&self, other: &T) -> bool {
         let other_mbb = other.get_mbb();
 
-        if self.lower_left.x > other_mbb.lower_left.x {
-            return false;
-        } else if self.lower_left.y > other_mbb.lower_left.y {
-            return false;
-        } else if self.upper_right.x < other_mbb.upper_right.x {
-            return false;
-        } else if self.upper_right.y < other_mbb.upper_right.y {
+        if self.lower_left.x > other_mbb.lower_left.x
+            || self.lower_left.y > other_mbb.lower_left.y
+            || self.upper_right.x < other_mbb.upper_right.x
+            || self.upper_right.y < other_mbb.upper_right.y
+        {
             return false;
         }
 
@@ -618,18 +609,18 @@ impl BoundingBox for Rect {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct Point {
+pub struct Point {
     x: i32,
     y: i32,
 }
 
 impl Point {
-    fn new(x: i32, y: i32) -> Self {
+    pub fn new(x: i32, y: i32) -> Self {
         Point { x, y }
     }
 }
 
-trait BoundingBox {
+pub trait BoundingBox {
     fn get_mbb(&self) -> &Rect;
     fn area(&self) -> i32;
     // Create a minimum bounding box that contains both items.
