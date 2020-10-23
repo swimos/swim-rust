@@ -193,6 +193,7 @@ fn insert_no_clones_test() {
 fn clone_on_remove_test() {
     let mut tree = RTree::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(4).unwrap());
     let clone_count = CloneCount::new();
+
     let first = Rect::new(Point::new(0, 0), Point::new(10, 10));
 
     tree.insert(CloneTracker::new(first.clone(), clone_count.clone()));
@@ -205,6 +206,99 @@ fn clone_on_remove_test() {
 
     assert_eq!(tree.len(), 0);
     assert_eq!(cloned_tree.len(), 1);
+}
+
+#[test]
+fn split_no_clones_test() {
+    let mut tree = RTree::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(4).unwrap());
+    let clone_count = CloneCount::new();
+
+    let first = Rect::new(Point::new(0, 0), Point::new(10, 10));
+    let second = Rect::new(Point::new(12, 0), Point::new(15, 15));
+    let third = Rect::new(Point::new(7, 7), Point::new(14, 14));
+    let fourth = Rect::new(Point::new(10, 11), Point::new(11, 12));
+    let fifth = Rect::new(Point::new(4, 4), Point::new(5, 6));
+
+    tree.insert(CloneTracker::new(first, clone_count.clone()));
+    assert_eq!(clone_count.get(), 0);
+
+    let first_cloned_tree = tree.clone();
+
+    tree.insert(CloneTracker::new(second, clone_count.clone()));
+    assert_eq!(clone_count.get(), 0);
+
+    let second_cloned_tree = tree.clone();
+
+    tree.insert(CloneTracker::new(third, clone_count.clone()));
+    assert_eq!(clone_count.get(), 0);
+
+    let third_cloned_tree = tree.clone();
+
+    tree.insert(CloneTracker::new(fourth, clone_count.clone()));
+    assert_eq!(clone_count.get(), 0);
+
+    let fourth_cloned_tree = tree.clone();
+
+    tree.insert(CloneTracker::new(fifth, clone_count.clone()));
+    assert_eq!(clone_count.get(), 0);
+
+    assert_eq!(tree.len(), 5);
+    assert_eq!(first_cloned_tree.len(), 1);
+    assert_eq!(second_cloned_tree.len(), 2);
+    assert_eq!(third_cloned_tree.len(), 3);
+    assert_eq!(fourth_cloned_tree.len(), 4);
+}
+
+#[test]
+fn clone_on_merge_test() {
+    let mut tree = RTree::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(4).unwrap());
+    let clone_count = CloneCount::new();
+
+    let first = Rect::new(Point::new(0, 0), Point::new(10, 10));
+    let second = Rect::new(Point::new(12, 0), Point::new(15, 15));
+    let third = Rect::new(Point::new(7, 7), Point::new(14, 14));
+    let fourth = Rect::new(Point::new(10, 11), Point::new(11, 12));
+    let fifth = Rect::new(Point::new(4, 4), Point::new(5, 6));
+
+    tree.insert(CloneTracker::new(first.clone(), clone_count.clone()));
+    tree.insert(CloneTracker::new(second.clone(), clone_count.clone()));
+    tree.insert(CloneTracker::new(third.clone(), clone_count.clone()));
+    tree.insert(CloneTracker::new(fourth.clone(), clone_count.clone()));
+    tree.insert(CloneTracker::new(fifth.clone(), clone_count.clone()));
+
+    assert_eq!(clone_count.get(), 0);
+
+    let first_cloned_tree = tree.clone();
+
+    tree.remove(&first);
+    assert_eq!(clone_count.get(), 1);
+
+    let second_cloned_tree = tree.clone();
+
+    tree.remove(&second);
+    assert_eq!(clone_count.get(), 2);
+
+    let third_cloned_tree = tree.clone();
+
+    tree.remove(&third);
+    assert_eq!(clone_count.get(), 3);
+
+    let fourth_cloned_tree = tree.clone();
+
+    tree.remove(&fourth);
+    assert_eq!(clone_count.get(), 4);
+
+    let fifth_cloned_tree = tree.clone();
+
+    tree.remove(&fifth);
+    assert_eq!(clone_count.get(), 5);
+
+    assert_eq!(tree.len(), 0);
+    assert_eq!(first_cloned_tree.len(), 5);
+    assert_eq!(second_cloned_tree.len(), 4);
+    assert_eq!(third_cloned_tree.len(), 3);
+    assert_eq!(fourth_cloned_tree.len(), 2);
+    assert_eq!(fifth_cloned_tree.len(), 1);
 }
 
 #[test]
