@@ -18,6 +18,7 @@ use std::fmt::{Display, Formatter};
 use std::io;
 use std::io::ErrorKind;
 use swim_common::routing::RoutingError;
+use swim_common::sink::SinkSendError;
 use swim_common::warp::envelope::Envelope;
 use swim_common::ws::error::WebSocketError;
 use tokio::sync::mpsc;
@@ -147,6 +148,12 @@ impl Recoverable for ConnectionError {
 impl From<io::Error> for ConnectionError {
     fn from(err: io::Error) -> Self {
         ConnectionError::Socket(err.kind())
+    }
+}
+
+impl<T> From<SinkSendError<T>> for ConnectionError {
+    fn from(_: SinkSendError<T>) -> Self {
+        ConnectionError::ClosedRemotely
     }
 }
 

@@ -80,13 +80,12 @@ fn envelope(body: &str) -> Envelope {
 
 #[tokio::test]
 async fn resolve_remote_ok() {
-    let delegate = LocalRoutes::default();
+    let our_addr = RoutingAddr::remote(0);
+    let delegate = LocalRoutes::new(our_addr);
     let (req_tx, req_rx) = mpsc::channel(8);
     let (tx, mut rx) = mpsc::channel(8);
     let (stop_tx, stop_rx) = trigger::trigger();
     let url = test_url();
-
-    let our_addr = RoutingAddr::local(0);
 
     let mut router = RemoteRouter::new(our_addr, delegate, req_tx);
     let fake_resolver = fake_resolution(req_rx, url.clone(), tx, stop_rx);
@@ -108,13 +107,12 @@ async fn resolve_remote_ok() {
 
 #[tokio::test]
 async fn resolve_remote_failure() {
-    let delegate = LocalRoutes::default();
+    let our_addr = RoutingAddr::remote(0);
+    let delegate = LocalRoutes::new(our_addr);
     let (req_tx, req_rx) = mpsc::channel(8);
     let (tx, _rx) = mpsc::channel(8);
     let (stop_tx, stop_rx) = trigger::trigger();
     let url = test_url();
-
-    let our_addr = RoutingAddr::local(0);
 
     let mut router = RemoteRouter::new(our_addr, delegate, req_tx);
     let fake_resolver = fake_resolution(req_rx, url.clone(), tx, stop_rx);
@@ -133,13 +131,12 @@ async fn resolve_remote_failure() {
 
 #[tokio::test]
 async fn lookup_remote_failure() {
-    let delegate = LocalRoutes::default();
+    let our_addr = RoutingAddr::remote(0);
+    let delegate = LocalRoutes::new(our_addr);
     let (req_tx, req_rx) = mpsc::channel(8);
     let (tx, _rx) = mpsc::channel(8);
     let (stop_tx, stop_rx) = trigger::trigger();
     let url = test_url();
-
-    let our_addr = RoutingAddr::local(0);
 
     let mut router = RemoteRouter::new(our_addr, delegate, req_tx);
     let fake_resolver = fake_resolution(req_rx, url.clone(), tx, stop_rx);
@@ -161,15 +158,14 @@ async fn lookup_remote_failure() {
 
 #[tokio::test]
 async fn delegate_local_ok() {
-    let delegate = LocalRoutes::default();
+    let our_addr = RoutingAddr::remote(0);
+    let delegate = LocalRoutes::new(our_addr);
     let mut rx = delegate.add(path());
 
     let (req_tx, req_rx) = mpsc::channel(8);
     let (tx, _rx) = mpsc::channel(8);
     let (stop_tx, stop_rx) = trigger::trigger();
     let url = test_url();
-
-    let our_addr = RoutingAddr::local(0);
 
     let mut router = RemoteRouter::new(our_addr, delegate, req_tx);
     let fake_resolver = fake_resolution(req_rx, url.clone(), tx, stop_rx);
@@ -193,14 +189,13 @@ async fn delegate_local_ok() {
 
 #[tokio::test]
 async fn resolve_local_err() {
-    let delegate = LocalRoutes::default();
+    let our_addr = RoutingAddr::remote(0);
+    let delegate = LocalRoutes::new(our_addr);
 
     let (req_tx, req_rx) = mpsc::channel(8);
     let (tx, _rx) = mpsc::channel(8);
     let (stop_tx, stop_rx) = trigger::trigger();
     let url = test_url();
-
-    let our_addr = RoutingAddr::local(0);
 
     let mut router = RemoteRouter::new(our_addr, delegate, req_tx);
     let fake_resolver = fake_resolution(req_rx, url.clone(), tx, stop_rx);
@@ -220,14 +215,13 @@ async fn resolve_local_err() {
 
 #[tokio::test]
 async fn lookup_local_err() {
-    let delegate = LocalRoutes::default();
+    let our_addr = RoutingAddr::remote(0);
+    let delegate = LocalRoutes::new(our_addr);
 
     let (req_tx, req_rx) = mpsc::channel(8);
     let (tx, _rx) = mpsc::channel(8);
     let (stop_tx, stop_rx) = trigger::trigger();
     let url = test_url();
-
-    let our_addr = RoutingAddr::local(0);
 
     let mut router = RemoteRouter::new(our_addr, delegate, req_tx);
     let fake_resolver = fake_resolution(req_rx, url.clone(), tx, stop_rx);

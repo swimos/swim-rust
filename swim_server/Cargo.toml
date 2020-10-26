@@ -35,5 +35,5 @@ agent_derive = { path = "agent_derive" }
 trybuild = "1.0.17"
 
 [dev-dependencies]
-tokio = { version = "0.2.21", features = ["rt-threaded", "macros"] }
+tokio = { version = "0.2.21", features = ["rt-threaded", "macros", "test-util"] }
 tracing = "0.1.16"

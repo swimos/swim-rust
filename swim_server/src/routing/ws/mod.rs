@@ -240,7 +240,7 @@ pub enum CloseReason {
 }
 
 pub trait JoinedStreamSink<T, E>: Stream<Item = Result<T, E>> + Sink<T, Error = E> {
-    type CloseFut: Future<Output = Result<(), E>> + Send + Sync + 'static;
+    type CloseFut: Future<Output = Result<(), E>> + Send + 'static;
 
     fn close(&mut self, reason: Option<CloseReason>) -> Self::CloseFut;
 

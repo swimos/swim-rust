@@ -28,6 +28,7 @@ use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
+use std::future::Future;
 use std::str::FromStr;
 use std::time::Duration;
 use swim_common::model::parser::{self, ParseFailure};
@@ -43,6 +44,7 @@ use utilities::sync::trigger;
 use utilities::task::Spawner;
 use utilities::uri::{BadRelativeUri, RelativeUri};
 
+/// A task that manages reading from and writing to a web-sockets channel.
 pub struct ConnectionTask<Str, Router> {
     ws_stream: Str,
     messages: mpsc::Receiver<TaggedEnvelope>,
@@ -54,6 +56,8 @@ pub struct ConnectionTask<Str, Router> {
 
 const ZERO: Duration = Duration::from_secs(0);
 
+/// Possible ways in which the task can end.
+#[derive(Debug)]
 enum Completion {
     Failed(ConnectionError),
     TimedOut,
@@ -78,6 +82,17 @@ where
     Str: JoinedStreamSink<WsMessage, ConnectionError> + Unpin,
     Router: ServerRouter,
 {
+    /// Create a new task.
+    ///
+    /// #Arguments
+    ///
+    /// * `ws_stream` - The joined sink/stream that implements the web sockets protocol.
+    /// * `router` - Router to route incoming messages to the appropriate destination.
+    /// * `messages`- Stream of messages to be sent into the sink.
+    /// * `stop_signal` - Signals to the task that it should stop.
+    /// * `activity_timeout` - If the task neither sends nor receives a message within this period
+    /// it will stop itself.
+    /// * `retry_strategy` - Retry strategy when attempting to route incoming messages.
     pub fn new(
         ws_stream: Str,
         router: Router,
@@ -143,6 +158,7 @@ where
                                     &mut resolved,
                                     envelope,
                                     retry_strategy,
+                                    delay_for,
                                 )
                                 .await
                                 {
@@ -180,6 +196,9 @@ where
         match completion {
             Completion::Failed(err) => ConnectionDropped::Failed(err),
             Completion::TimedOut => ConnectionDropped::TimedOut(activity_timeout),
+            Completion::StoppedRemotely => {
+                ConnectionDropped::Failed(ConnectionError::ClosedRemotely)
+            }
             _ => ConnectionDropped::Closed,
         }
     }
@@ -189,6 +208,7 @@ fn read_envelope(msg: &str) -> Result<Envelope, Completion> {
     Ok(Envelope::try_from(parser::parse_single(msg)?)?)
 }
 
+/// Error type indicating a failure to route an incoming message.
 #[derive(Debug)]
 enum DispatchError {
     BadNodeUri(BadRelativeUri),
@@ -228,6 +248,7 @@ impl Recoverable for DispatchError {
         match self {
             DispatchError::RoutingProblem(err) => err.is_fatal(),
             DispatchError::Dropped(reason) => !reason.is_recoverable(),
+            DispatchError::Unresolvable(ResolutionError::Unresolvable(_)) => false,
             _ => true,
         }
     }
@@ -251,14 +272,17 @@ impl From<RouterError> for DispatchError {
     }
 }
 
-async fn dispatch_envelope<Router>(
+async fn dispatch_envelope<Router, F, D>(
     router: &mut Router,
     resolved: &mut HashMap<RelativePath, Route<Router::Sender>>,
     mut envelope: Envelope,
     mut retry_strategy: RetryStrategy,
+    delay_fn: F,
 ) -> Result<(), DispatchError>
 where
     Router: ServerRouter,
+    F: Fn(Duration) -> D,
+    D: Future<Output = ()>,
 {
     loop {
         let result = try_dispatch_envelope(router, resolved, envelope).await;
@@ -266,7 +290,7 @@ where
             Err((env, err)) if !err.is_fatal() => {
                 match retry_strategy.next() {
                     Some(Some(dur)) => {
-                        delay_for(dur).await;
+                        delay_fn(dur).await;
                     }
                     None => {
                         break Err(err);
@@ -340,6 +364,7 @@ where
     Ok(router.resolve_sender(target_addr).await?)
 }
 
+/// Factory to create and spawn new connection tasks.
 pub struct TaskFactory<RouterFac> {
     request_tx: mpsc::Sender<RoutingRequest>,
     stop_trigger: trigger::Receiver,
