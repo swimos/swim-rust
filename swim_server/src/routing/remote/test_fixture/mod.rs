@@ -13,17 +13,25 @@
 // limitations under the License.
 
 use crate::routing::error::{ConnectionError, ResolutionError, RouterError, Unresolvable};
+use crate::routing::remote::net::{ExternalConnections, Listener};
 use crate::routing::remote::ConnectionDropped;
-use crate::routing::ws::{CloseReason, JoinedStreamSink};
-use crate::routing::{Route, RoutingAddr, ServerRouter, TaggedEnvelope, TaggedSender};
+use crate::routing::ws::{CloseReason, JoinedStreamSink, WsConnections};
+use crate::routing::{
+    Route, RoutingAddr, ServerRouter, ServerRouterFactory, TaggedEnvelope, TaggedSender,
+};
 use futures::future::{ready, BoxFuture};
+use futures::io::ErrorKind;
+use futures::stream::Fuse;
 use futures::task::{Context, Poll};
 use futures::{ready, FutureExt, Sink, SinkExt, Stream, StreamExt};
 use parking_lot::Mutex;
 use std::collections::HashMap;
+use std::io;
+use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::Arc;
 use swim_common::sink::{MpscSink, SinkSendError};
+use swim_common::ws::WsMessage;
 use tokio::sync::mpsc;
 use url::Url;
 use utilities::sync::promise;
@@ -157,6 +165,15 @@ impl LocalRoutes {
     }
 }
 
+impl ServerRouterFactory for LocalRoutes {
+    type Router = LocalRoutes;
+
+    fn create_for(&self, addr: RoutingAddr) -> Self::Router {
+        let LocalRoutes(_, inner) = self;
+        LocalRoutes(addr, inner.clone())
+    }
+}
+
 pub struct TwoWayMpsc<T, E> {
     tx: MpscSink<T>,
     rx: mpsc::Receiver<Result<T, E>>,
@@ -240,6 +257,195 @@ where
     type CloseFut = BoxFuture<'static, Result<(), E>>;
 
     fn close(&mut self, _reason: Option<CloseReason>) -> Self::CloseFut {
+        ready(Ok(())).boxed()
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct FakeSocket {
+    input: Vec<WsMessage>,
+    offset_in: usize,
+    output: Vec<WsMessage>,
+}
+
+impl FakeSocket {
+    pub fn new(data: Vec<WsMessage>, initial_out_cap: usize) -> Self {
+        FakeSocket {
+            input: data,
+            offset_in: 0,
+            output: Vec::with_capacity(initial_out_cap),
+        }
+    }
+
+    pub fn duplicate(&self) -> Self {
+        let FakeSocket { input, .. } = self;
+        FakeSocket {
+            input: input.clone(),
+            offset_in: 0,
+            output: vec![],
+        }
+    }
+}
+
+#[derive(Debug)]
+struct FakeConnectionsInner {
+    sockets: HashMap<SocketAddr, Result<FakeSocket, io::Error>>,
+    incoming: Option<FakeListener>,
+}
+
+#[derive(Debug, Clone)]
+pub struct FakeConnections {
+    inner: Arc<Mutex<FakeConnectionsInner>>,
+    dns: HashMap<String, Vec<SocketAddr>>,
+}
+
+impl FakeConnections {
+    fn new(
+        sockets: HashMap<SocketAddr, Result<FakeSocket, io::Error>>,
+        dns: HashMap<String, Vec<SocketAddr>>,
+        incoming: Option<mpsc::Receiver<io::Result<(FakeSocket, SocketAddr)>>>,
+    ) -> Self {
+        FakeConnections {
+            inner: Arc::new(Mutex::new(FakeConnectionsInner {
+                sockets,
+                incoming: incoming.map(FakeListener),
+            })),
+            dns,
+        }
+    }
+}
+
+impl ExternalConnections for FakeConnections {
+    type Socket = FakeSocket;
+    type ListenerType = FakeListener;
+
+    fn bind(&self, _addr: SocketAddr) -> BoxFuture<'static, io::Result<Self::ListenerType>> {
+        let result = self
+            .inner
+            .lock()
+            .incoming
+            .take()
+            .map(Ok)
+            .unwrap_or(Err(ErrorKind::AddrNotAvailable.into()));
+        ready(result).boxed()
+    }
+
+    fn try_open(&self, addr: SocketAddr) -> BoxFuture<'static, io::Result<Self::Socket>> {
+        let result = self
+            .inner
+            .lock()
+            .sockets
+            .remove(&addr)
+            .unwrap_or(Err(ErrorKind::NotFound.into()));
+        ready(result).boxed()
+    }
+
+    fn lookup(&self, host: String) -> BoxFuture<'static, io::Result<Vec<SocketAddr>>> {
+        let result = self
+            .dns
+            .get(&host)
+            .map(Clone::clone)
+            .map(Ok)
+            .unwrap_or(Err(ErrorKind::NotFound.into()));
+        ready(result).boxed()
+    }
+}
+
+#[derive(Debug)]
+pub struct FakeListener(mpsc::Receiver<io::Result<(FakeSocket, SocketAddr)>>);
+
+impl Listener for FakeListener {
+    type Socket = FakeSocket;
+    type AcceptStream = Fuse<mpsc::Receiver<io::Result<(Self::Socket, SocketAddr)>>>;
+
+    fn into_stream(self) -> Self::AcceptStream {
+        let FakeListener(rx) = self;
+        rx.fuse()
+    }
+}
+
+struct FakeWebsockets;
+
+impl WsConnections<FakeSocket> for FakeWebsockets {
+    type StreamSink = FakeWebsocket;
+    type Fut = BoxFuture<'static, Result<Self::StreamSink, ConnectionError>>;
+
+    fn open_connection(&self, socket: FakeSocket) -> Self::Fut {
+        ready(Ok(FakeWebsocket::new(socket))).boxed()
+    }
+
+    fn accept_connection(&self, socket: FakeSocket) -> Self::Fut {
+        ready(Ok(FakeWebsocket::new(socket))).boxed()
+    }
+}
+
+pub struct FakeWebsocket {
+    inner: FakeSocket,
+    closed: bool,
+}
+
+impl FakeWebsocket {
+    pub fn new(socket: FakeSocket) -> Self {
+        FakeWebsocket {
+            inner: socket,
+            closed: false,
+        }
+    }
+}
+
+impl Stream for FakeWebsocket {
+    type Item = Result<WsMessage, ConnectionError>;
+
+    fn poll_next(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let FakeSocket {
+            input, offset_in, ..
+        } = &mut self.get_mut().inner;
+        let result = input.get(*offset_in).map(Clone::clone).map(Ok);
+        if result.is_some() {
+            *offset_in += 1;
+        }
+        Poll::Ready(result)
+    }
+}
+
+impl Sink<WsMessage> for FakeWebsocket {
+    type Error = ConnectionError;
+
+    fn poll_ready(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        if self.closed {
+            Poll::Ready(Err(ConnectionError::Closed))
+        } else {
+            Poll::Ready(Ok(()))
+        }
+    }
+
+    fn start_send(self: Pin<&mut Self>, item: WsMessage) -> Result<(), Self::Error> {
+        if self.closed {
+            Err(ConnectionError::Closed)
+        } else {
+            Ok(self.get_mut().inner.output.push(item))
+        }
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        if self.closed {
+            Poll::Ready(Err(ConnectionError::Closed))
+        } else {
+            Poll::Ready(Ok(()))
+        }
+    }
+
+    fn poll_close(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        self.get_mut().closed = true;
+        Poll::Ready(Ok(()))
+    }
+}
+
+impl JoinedStreamSink<WsMessage, ConnectionError> for FakeWebsocket {
+    type CloseFut = BoxFuture<'static, Result<(), ConnectionError>>;
+
+    fn close(&mut self, _reason: Option<CloseReason>) -> Self::CloseFut {
+        self.closed = true;
         ready(Ok(())).boxed()
     }
 }

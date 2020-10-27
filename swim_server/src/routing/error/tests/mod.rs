@@ -68,4 +68,7 @@ fn connection_error_display() {
 
     let string = ConnectionError::Socket(io::ErrorKind::ConnectionRefused).to_string();
     assert_eq!(string, "IO error: 'ConnectionRefused'");
+
+    let string = ConnectionError::Closed.to_string();
+    assert_eq!(string, "The connection has been closed.");
 }

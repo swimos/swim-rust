@@ -22,7 +22,6 @@ use std::future::Future;
 use std::marker::PhantomData;
 use std::pin::Pin;
 use swim_common::ws::WsMessage;
-use tokio::io::{AsyncRead, AsyncWrite};
 
 #[cfg(test)]
 mod tests;
@@ -334,9 +333,9 @@ where
     }
 }
 
-pub trait WsConnections<Sock: AsyncRead + AsyncWrite + Unpin> {
-    type StreamSink: JoinedStreamSink<WsMessage, ConnectionError> + Send + Sync + Unpin + 'static;
-    type Fut: Future<Output = Result<Self::StreamSink, ConnectionError>> + Send + Sync + 'static;
+pub trait WsConnections<Sock: Send + Sync + Unpin> {
+    type StreamSink: JoinedStreamSink<WsMessage, ConnectionError> + Send + Unpin + 'static;
+    type Fut: Future<Output = Result<Self::StreamSink, ConnectionError>> + Send + 'static;
 
     fn open_connection(&self, socket: Sock) -> Self::Fut;
     fn accept_connection(&self, socket: Sock) -> Self::Fut;

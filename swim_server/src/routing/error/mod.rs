@@ -119,6 +119,7 @@ pub enum ConnectionError {
     Websocket(WebSocketError),
     ClosedRemotely,
     Warp(String),
+    Closed,
 }
 
 impl Display for ConnectionError {
@@ -129,6 +130,7 @@ impl Display for ConnectionError {
             ConnectionError::Websocket(err) => write!(f, "Web socket error: '{}'", err),
             ConnectionError::ClosedRemotely => write!(f, "The connection was closed remotely."),
             ConnectionError::Warp(err) => write!(f, "Warp protocol error: '{}'", err),
+            ConnectionError::Closed => write!(f, "The connection has been closed."),
         }
     }
 }

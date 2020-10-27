@@ -29,7 +29,6 @@ use futures_util::stream::TakeUntil;
 use std::future::Future;
 use std::io;
 use std::net::SocketAddr;
-use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::mpsc;
 use utilities::future::open_ended::OpenEndedFutures;
 use utilities::sync::trigger;
@@ -324,7 +323,7 @@ async fn do_handshake<Socket, Ws>(
     websockets: &Ws,
 ) -> Result<Ws::StreamSink, ConnectionError>
 where
-    Socket: AsyncRead + AsyncWrite + Unpin,
+    Socket: Send + Sync + Unpin,
     Ws: WsConnections<Socket>,
 {
     if server {
