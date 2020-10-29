@@ -20,6 +20,8 @@ mod router;
 mod state;
 mod table;
 mod task;
+#[cfg(test)]
+mod tests;
 
 use std::net::SocketAddr;
 use std::time::Duration;
@@ -37,7 +39,7 @@ use utilities::task::Spawner;
 use crate::routing::error::{ConnectionError, Unresolvable};
 use crate::routing::remote::config::ConnectionConfig;
 use crate::routing::remote::net::ExternalConnections;
-use crate::routing::remote::state::{DeferredResult, Event, RemoteConnections};
+use crate::routing::remote::state::{DeferredResult, Event, RemoteConnections, RemoteTasksState};
 use crate::routing::remote::table::HostAndPort;
 use crate::routing::ws::WsConnections;
 use crate::routing::{Route, RoutingAddr, ServerRouterFactory, TaggedEnvelope};
@@ -166,110 +168,113 @@ where
 
         let mut overall_result = Ok(());
 
-        loop {
-            let next = state.select_next().await;
-            match next {
-                Some(Event::Incoming(Ok((stream, peer_addr)))) => {
-                    state.defer_handshake(stream, peer_addr);
-                }
-                Some(Event::Incoming(Err(conn_err))) => {
-                    overall_result = Err(conn_err);
-                    state.stop();
-                }
-                Some(Event::Request(RoutingRequest::Endpoint { addr, request })) => {
-                    let result = if let Some(tx) = state.table().resolve(addr) {
-                        Ok(tx)
-                    } else {
-                        Err(Unresolvable(addr))
-                    };
-                    request.send_debug(result, REQUEST_DROPPED);
-                }
-                Some(Event::Request(RoutingRequest::ResolveUrl { host, request })) => {
-                    match unpack_url(&host) {
-                        Ok(target) => {
-                            if let Some(addr) = state.table().try_resolve(&target) {
-                                request.send_ok_debug(addr, REQUEST_DROPPED);
-                            } else {
-                                state.defer_dns_lookup(target, request);
-                            }
-                        }
-                        _ => {
-                            request.send_err_debug(
-                                ConnectionError::Websocket(WebSocketError::Url(host.into_string())),
-                                REQUEST_DROPPED,
-                            );
-                        }
-                    }
-                }
-                Some(Event::Deferred(DeferredResult::ServerHandshake {
-                    result: Ok(ws_stream),
-                    sock_addr,
-                })) => {
-                    state.spawn_task(sock_addr, ws_stream, None);
-                }
-                Some(Event::Deferred(DeferredResult::ServerHandshake {
-                    result: Err(error),
-                    ..
-                })) => {
-                    event!(Level::ERROR, FAILED_SERVER_CONN, ?error);
-                }
-                Some(Event::Deferred(DeferredResult::ClientHandshake {
-                    result: Ok((ws_stream, sock_addr)),
-                    host,
-                })) => {
-                    state.spawn_task(sock_addr, ws_stream, Some(&host));
-                }
-                Some(Event::Deferred(DeferredResult::ClientHandshake {
-                    result: Err(error),
-                    host,
-                    ..
-                })) => {
-                    event!(Level::ERROR, FAILED_CLIENT_CONN, ?error);
-                    state.fail_connection(&host, error);
-                }
-                Some(Event::Deferred(DeferredResult::FailedConnection {
-                    error,
-                    mut remaining,
-                    host,
-                })) => {
-                    if let Some(sock_addr) = remaining.next() {
-                        state.defer_connect_and_handshake(host, sock_addr, remaining);
-                    } else {
-                        state.fail_connection(&host, error);
-                    }
-                }
-                Some(Event::Deferred(DeferredResult::Dns {
-                    result: Err(err),
-                    host,
-                    ..
-                })) => {
-                    state.fail_connection(&host, ConnectionError::Socket(err.kind()));
-                }
-                Some(Event::Deferred(DeferredResult::Dns {
-                    result: Ok(mut addrs),
-                    host,
-                })) => {
-                    if let Some(sock_addr) = addrs.next() {
-                        state.defer_connect_and_handshake(host, sock_addr, addrs);
-                    } else {
-                        state.fail_connection(&host, ConnectionError::Resolution);
-                    }
-                }
-                Some(Event::ConnectionClosed(addr, reason)) => {
-                    if let Some(tx) = state.table_mut().remove(addr) {
-                        if let Err(reason) = tx.provide(reason) {
-                            event!(Level::TRACE, CLOSED_NO_HANDLES, ?addr, ?reason);
-                        }
-                    } else {
-                        event!(Level::ERROR, NOT_IN_TABLE, ?addr);
-                    }
-                }
-                _ => {
-                    break;
-                }
-            }
+        while let Some(event) = state.select_next().await {
+            update_state(&mut state, &mut overall_result, event);
         }
         overall_result
+    }
+}
+
+fn update_state<State: RemoteTasksState>(
+    state: &mut State,
+    overall_result: &mut Result<(), io::Error>,
+    next: Event<State::Socket, State::WebSocket>,
+) {
+    match next {
+        Event::Incoming(Ok((stream, peer_addr))) => {
+            state.defer_handshake(stream, peer_addr);
+        }
+        Event::Incoming(Err(conn_err)) => {
+            *overall_result = Err(conn_err);
+            state.stop();
+        }
+        Event::Request(RoutingRequest::Endpoint { addr, request }) => {
+            let result = if let Some(tx) = state.table_resolve(addr) {
+                Ok(tx)
+            } else {
+                Err(Unresolvable(addr))
+            };
+            request.send_debug(result, REQUEST_DROPPED);
+        }
+        Event::Request(RoutingRequest::ResolveUrl { host, request }) => match unpack_url(&host) {
+            Ok(target) => {
+                if let Some(addr) = state.table_try_resolve(&target) {
+                    request.send_ok_debug(addr, REQUEST_DROPPED);
+                } else {
+                    state.defer_dns_lookup(target, request);
+                }
+            }
+            _ => {
+                request.send_err_debug(
+                    ConnectionError::Websocket(WebSocketError::Url(host.into_string())),
+                    REQUEST_DROPPED,
+                );
+            }
+        },
+        Event::Deferred(DeferredResult::ServerHandshake {
+            result: Ok(ws_stream),
+            sock_addr,
+        }) => {
+            state.spawn_task(sock_addr, ws_stream, None);
+        }
+        Event::Deferred(DeferredResult::ServerHandshake {
+            result: Err(error), ..
+        }) => {
+            event!(Level::ERROR, FAILED_SERVER_CONN, ?error);
+        }
+        Event::Deferred(DeferredResult::ClientHandshake {
+            result: Ok((ws_stream, sock_addr)),
+            host,
+        }) => {
+            state.spawn_task(sock_addr, ws_stream, Some(&host));
+        }
+        Event::Deferred(DeferredResult::ClientHandshake {
+            result: Err(error),
+            host,
+            ..
+        }) => {
+            event!(Level::ERROR, FAILED_CLIENT_CONN, ?error);
+            state.fail_connection(&host, error);
+        }
+        Event::Deferred(DeferredResult::FailedConnection {
+            error,
+            mut remaining,
+            host,
+        }) => {
+            if let Some(sock_addr) = remaining.next() {
+                state.defer_connect_and_handshake(host, sock_addr, remaining);
+            } else {
+                state.fail_connection(&host, error);
+            }
+        }
+        Event::Deferred(DeferredResult::Dns {
+            result: Err(err),
+            host,
+            ..
+        }) => {
+            state.fail_connection(&host, ConnectionError::Socket(err.kind()));
+        }
+        Event::Deferred(DeferredResult::Dns {
+            result: Ok(mut addrs),
+            host,
+        }) => {
+            if let Some(sock_addr) = addrs.next() {
+                if let Err(host) = state.check_socket_addr(host, sock_addr) {
+                    state.defer_connect_and_handshake(host, sock_addr, addrs);
+                }
+            } else {
+                state.fail_connection(&host, ConnectionError::Resolution);
+            }
+        }
+        Event::ConnectionClosed(addr, reason) => {
+            if let Some(tx) = state.table_remove(addr) {
+                if let Err(reason) = tx.provide(reason) {
+                    event!(Level::TRACE, CLOSED_NO_HANDLES, ?addr, ?reason);
+                }
+            } else {
+                event!(Level::ERROR, NOT_IN_TABLE, ?addr);
+            }
+        }
     }
 }
 

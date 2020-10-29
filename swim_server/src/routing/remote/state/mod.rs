@@ -21,7 +21,7 @@ use crate::routing::remote::table::{HostAndPort, RoutingTable};
 use crate::routing::remote::task::TaskFactory;
 use crate::routing::remote::{ConnectionDropped, ResolutionRequest, RoutingRequest, SocketAddrIt};
 use crate::routing::ws::WsConnections;
-use crate::routing::{RoutingAddr, ServerRouterFactory};
+use crate::routing::{Route, RoutingAddr, ServerRouterFactory, TaggedEnvelope};
 use futures::future::{BoxFuture, Fuse};
 use futures::StreamExt;
 use futures::{select_biased, FutureExt};
@@ -31,8 +31,53 @@ use std::io;
 use std::net::SocketAddr;
 use tokio::sync::mpsc;
 use utilities::future::open_ended::OpenEndedFutures;
-use utilities::sync::trigger;
+use utilities::sync::promise::Sender;
+use utilities::sync::{promise, trigger};
 use utilities::task::Spawner;
+
+//#[cfg(test)]
+//mod tests;
+
+pub trait RemoteTasksState {
+    type Socket;
+    type WebSocket;
+
+    fn stop(&mut self);
+
+    fn next_address(&mut self) -> RoutingAddr;
+
+    fn spawn_task(
+        &mut self,
+        sock_addr: SocketAddr,
+        ws_stream: Self::WebSocket,
+        host: Option<&HostAndPort>,
+    );
+
+    fn check_socket_addr(
+        &mut self,
+        host: HostAndPort,
+        sock_addr: SocketAddr,
+    ) -> Result<(), HostAndPort>;
+
+    fn defer_handshake(&self, stream: Self::Socket, peer_addr: SocketAddr);
+
+    fn defer_connect_and_handshake(
+        &mut self,
+        host: HostAndPort,
+        sock_addr: SocketAddr,
+        remaining: SocketAddrIt,
+    );
+
+    fn defer_dns_lookup(&mut self, target: HostAndPort, request: ResolutionRequest);
+
+    fn fail_connection(&mut self, host: &HostAndPort, error: ConnectionError);
+
+    fn table_resolve(&self, addr: RoutingAddr) -> Option<Route<mpsc::Sender<TaggedEnvelope>>>;
+
+    fn table_try_resolve(&self, target: &HostAndPort) -> Option<RoutingAddr>;
+
+    fn table_remove(&mut self, addr: RoutingAddr) -> Option<promise::Sender<ConnectionDropped>>;
+}
 
 pub struct RemoteConnections<'a, External, Ws, Sp, RouterFac>
 where
@@ -52,6 +97,124 @@ where
     state: State,
     external_stop: Fuse<trigger::Receiver>,
     internal_stop: Option<trigger::Sender>,
+}
+
+impl<'a, External, Ws, Sp, RouterFac> RemoteTasksState
+    for RemoteConnections<'a, External, Ws, Sp, RouterFac>
+where
+    External: ExternalConnections,
+    Ws: WsConnections<External::Socket> + Send + Sync + 'static,
+    Sp: Spawner<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>> + Unpin,
+    RouterFac: ServerRouterFactory + 'static,
+{
+    type Socket = External::Socket;
+    type WebSocket = Ws::StreamSink;
+
+    fn stop(&mut self) {
+        let RemoteConnections {
+            spawner,
+            state,
+            internal_stop,
+            ..
+        } = self;
+        if matches!(*state, State::Running) {
+            if let Some(stop_tx) = internal_stop.take() {
+                stop_tx.trigger();
+            }
+            spawner.stop();
+            *state = State::ClosingConnections;
+        }
+    }
+
+    fn next_address(&mut self) -> RoutingAddr {
+        self.addresses.next().expect("Address counter overflow.")
+    }
+
+    fn spawn_task(
+        &mut self,
+        sock_addr: SocketAddr,
+        ws_stream: Ws::StreamSink,
+        host: Option<&HostAndPort>,
+    ) {
+        let addr = self.next_address();
+        let RemoteConnections {
+            tasks,
+            spawner,
+            table,
+            pending,
+            ..
+        } = self;
+        let msg_tx = tasks.spawn_connection_task(ws_stream, addr, spawner);
+        table.insert(addr, None, sock_addr, msg_tx);
+        if let Some(host) = host {
+            pending.send_ok(host, addr);
+        }
+    }
+
+    fn check_socket_addr(
+        &mut self,
+        host: HostAndPort,
+        sock_addr: SocketAddr,
+    ) -> Result<(), HostAndPort> {
+        let RemoteConnections { table, pending, .. } = self;
+        if let Some(addr) = table.get_resolved(&sock_addr) {
+            pending.send_ok(&host, addr);
+            table.add_host(host, sock_addr);
+            Ok(())
+        } else {
+            Err(host)
+        }
+    }
+
+    fn defer_handshake(&self, stream: External::Socket, peer_addr: SocketAddr) {
+        let websockets = self.websockets;
+        self.defer(async move {
+            let result = do_handshake(true, stream, websockets).await;
+            DeferredResult::incoming_handshake(result, peer_addr)
+        });
+    }
+
+    fn defer_connect_and_handshake(
+        &mut self,
+        host: HostAndPort,
+        sock_addr: SocketAddr,
+        remaining: SocketAddrIt,
+    ) {
+        let websockets = self.websockets;
+        let external = self.external.clone();
+        self.defer(async move {
+            connect_and_handshake(external, sock_addr, remaining, host, websockets).await
+        });
+    }
+
+    fn defer_dns_lookup(&mut self, target: HostAndPort, request: ResolutionRequest) {
+        let target_cpy = target.clone();
+        let external = self.external.clone();
+        self.defer(async move {
+            let resolved = external
+                .lookup(target_cpy.to_string())
+                .await
+                .map(|v| v.into_iter());
+            DeferredResult::dns(resolved, target_cpy)
+        });
+        self.pending.add(target, request);
+    }
+
+    fn fail_connection(&mut self, host: &HostAndPort, error: ConnectionError) {
+        self.pending.send_err(host, error);
+    }
+
+    fn table_resolve(&self, addr: RoutingAddr) -> Option<Route<mpsc::Sender<TaggedEnvelope>>> {
+        self.table.resolve(addr)
+    }
+
+    fn table_try_resolve(&self, target: &HostAndPort) -> Option<RoutingAddr> {
+        self.table.try_resolve(target)
+    }
+
+    fn table_remove(&mut self, addr: RoutingAddr) -> Option<Sender<ConnectionDropped>> {
+        self.table.remove(addr)
+    }
 }
 
 impl<'a, External, Ws, Sp, RouterFac> RemoteConnections<'a, External, Ws, Sp, RouterFac>
@@ -143,115 +306,11 @@ where
         }
     }
 
-    pub fn stop(&mut self) {
-        let RemoteConnections {
-            spawner,
-            state,
-            internal_stop,
-            ..
-        } = self;
-        if matches!(*state, State::Running) {
-            if let Some(stop_tx) = internal_stop.take() {
-                stop_tx.trigger();
-            }
-            spawner.stop();
-            *state = State::ClosingConnections;
-        }
-    }
-
     pub fn defer<F>(&self, fut: F)
     where
         F: Future<Output = DeferredResult<Ws::StreamSink>> + Send + 'a,
     {
         self.deferred.push(fut.boxed());
-    }
-
-    pub fn next_address(&mut self) -> RoutingAddr {
-        self.addresses.next().expect("Address counter overflow.")
-    }
-
-    pub fn spawn_task(
-        &mut self,
-        sock_addr: SocketAddr,
-        ws_stream: Ws::StreamSink,
-        host: Option<&HostAndPort>,
-    ) {
-        let addr = self.next_address();
-        let RemoteConnections {
-            tasks,
-            spawner,
-            table,
-            pending,
-            ..
-        } = self;
-        let msg_tx = tasks.spawn_connection_task(ws_stream, addr, spawner);
-        table.insert(addr, None, sock_addr, msg_tx);
-        if let Some(host) = host {
-            pending.send_ok(host, addr);
-        }
-    }
-
-    pub fn check_socket_addr(
-        &mut self,
-        host: HostAndPort,
-        sock_addr: SocketAddr,
-    ) -> Result<(), HostAndPort> {
-        let RemoteConnections { table, pending, .. } = self;
-        if let Some(addr) = table.get_resolved(&sock_addr) {
-            pending.send_ok(&host, addr);
-            table.add_host(host, sock_addr);
-            Ok(())
-        } else {
-            Err(host)
-        }
-    }
-
-    pub fn defer_handshake(&self, stream: External::Socket, peer_addr: SocketAddr) {
-        let websockets = self.websockets;
-        self.defer(async move {
-            let result = do_handshake(true, stream, websockets).await;
-            DeferredResult::incoming_handshake(result, peer_addr)
-        });
-    }
-
-    pub fn defer_connect_and_handshake(
-        &mut self,
-        host: HostAndPort,
-        sock_addr: SocketAddr,
-        remaining: SocketAddrIt,
-    ) {
-        let websockets = self.websockets;
-        if let Err(host) = self.check_socket_addr(host, sock_addr) {
-            let external = self.external.clone();
-            self.defer(async move {
-                connect_and_handshake(external, sock_addr, remaining, host, websockets).await
-            });
-        }
-    }
-
-    pub fn defer_dns_lookup(&mut self, target: HostAndPort, request: ResolutionRequest) {
-        let target_cpy = target.clone();
-        let external = self.external.clone();
-        self.defer(async move {
-            let resolved = external
-                .lookup(target_cpy.to_string())
-                .await
-                .map(|v| v.into_iter());
-            DeferredResult::dns(resolved, target_cpy)
-        });
-        self.pending.add(target, request);
-    }
-
-    pub fn fail_connection(&mut self, host: &HostAndPort, error: ConnectionError) {
-        self.pending.send_err(host, error);
-    }
-
-    pub fn table(&self) -> &RoutingTable {
-        &self.table
-    }
-
-    pub fn table_mut(&mut self) -> &mut RoutingTable {
-        &mut self.table
     }
 }
 
