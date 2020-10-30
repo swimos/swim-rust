@@ -3,14 +3,15 @@ RTree {
         entries: [
             Leaf {
                 item: Rect {
-                    lower_left: Point {
+                    lower_left: Point2D {
                         x: 7,
                         y: 3,
                     },
-                    upper_right: Point {
+                    upper_right: Point2D {
                         x: 8,
                         y: 6,
                     },
+                    phantom: PhantomData,
                 },
             },
         ],

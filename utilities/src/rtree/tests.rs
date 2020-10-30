@@ -1,22 +1,22 @@
-use crate::rtree::{BoundingBox, Point, RTree, Rect};
+use crate::rtree::{BoundingBox, Point2D, RTree, Rect};
 use std::fs;
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
 
 #[test]
 fn rtree_test() {
-    let first = Rect::new(Point::new(0, 0), Point::new(10, 10));
-    let second = Rect::new(Point::new(12, 0), Point::new(15, 15));
-    let third = Rect::new(Point::new(7, 7), Point::new(14, 14));
-    let fourth = Rect::new(Point::new(10, 11), Point::new(11, 12));
-    let fifth = Rect::new(Point::new(4, 4), Point::new(5, 6));
-    let sixth = Rect::new(Point::new(4, 9), Point::new(5, 11));
-    let seventh = Rect::new(Point::new(13, 0), Point::new(14, 1));
-    let eighth = Rect::new(Point::new(13, 13), Point::new(16, 16));
-    let ninth = Rect::new(Point::new(2, 13), Point::new(4, 16));
-    let tenth = Rect::new(Point::new(2, 2), Point::new(3, 3));
-    let eleventh = Rect::new(Point::new(10, 0), Point::new(12, 5));
-    let twelfth = Rect::new(Point::new(7, 3), Point::new(8, 6));
+    let first = Rect::new(Point2D::new(0, 0), Point2D::new(10, 10));
+    let second = Rect::new(Point2D::new(12, 0), Point2D::new(15, 15));
+    let third = Rect::new(Point2D::new(7, 7), Point2D::new(14, 14));
+    let fourth = Rect::new(Point2D::new(10, 11), Point2D::new(11, 12));
+    let fifth = Rect::new(Point2D::new(4, 4), Point2D::new(5, 6));
+    let sixth = Rect::new(Point2D::new(4, 9), Point2D::new(5, 11));
+    let seventh = Rect::new(Point2D::new(13, 0), Point2D::new(14, 1));
+    let eighth = Rect::new(Point2D::new(13, 13), Point2D::new(16, 16));
+    let ninth = Rect::new(Point2D::new(2, 13), Point2D::new(4, 16));
+    let tenth = Rect::new(Point2D::new(2, 2), Point2D::new(3, 3));
+    let eleventh = Rect::new(Point2D::new(10, 0), Point2D::new(12, 5));
+    let twelfth = Rect::new(Point2D::new(7, 3), Point2D::new(8, 6));
 
     let mut tree = RTree::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(4).unwrap());
 
@@ -174,8 +174,8 @@ fn rtree_test() {
 fn insert_no_clones_test() {
     let mut tree = RTree::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(4).unwrap());
     let clone_count = CloneCount::new();
-    let first = Rect::new(Point::new(0, 0), Point::new(10, 10));
-    let second = Rect::new(Point::new(12, 0), Point::new(15, 15));
+    let first = Rect::new(Point2D::new(0, 0), Point2D::new(10, 10));
+    let second = Rect::new(Point2D::new(12, 0), Point2D::new(15, 15));
 
     tree.insert(CloneTracker::new(first, clone_count.clone()));
     assert_eq!(clone_count.get(), 0);
@@ -194,7 +194,7 @@ fn clone_on_remove_test() {
     let mut tree = RTree::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(4).unwrap());
     let clone_count = CloneCount::new();
 
-    let first = Rect::new(Point::new(0, 0), Point::new(10, 10));
+    let first = Rect::new(Point2D::new(0, 0), Point2D::new(10, 10));
 
     tree.insert(CloneTracker::new(first.clone(), clone_count.clone()));
     assert_eq!(clone_count.get(), 0);
@@ -213,11 +213,11 @@ fn split_no_clones_test() {
     let mut tree = RTree::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(4).unwrap());
     let clone_count = CloneCount::new();
 
-    let first = Rect::new(Point::new(0, 0), Point::new(10, 10));
-    let second = Rect::new(Point::new(12, 0), Point::new(15, 15));
-    let third = Rect::new(Point::new(7, 7), Point::new(14, 14));
-    let fourth = Rect::new(Point::new(10, 11), Point::new(11, 12));
-    let fifth = Rect::new(Point::new(4, 4), Point::new(5, 6));
+    let first = Rect::new(Point2D::new(0, 0), Point2D::new(10, 10));
+    let second = Rect::new(Point2D::new(12, 0), Point2D::new(15, 15));
+    let third = Rect::new(Point2D::new(7, 7), Point2D::new(14, 14));
+    let fourth = Rect::new(Point2D::new(10, 11), Point2D::new(11, 12));
+    let fifth = Rect::new(Point2D::new(4, 4), Point2D::new(5, 6));
 
     tree.insert(CloneTracker::new(first, clone_count.clone()));
     assert_eq!(clone_count.get(), 0);
@@ -254,11 +254,11 @@ fn clone_on_merge_test() {
     let mut tree = RTree::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(4).unwrap());
     let clone_count = CloneCount::new();
 
-    let first = Rect::new(Point::new(0, 0), Point::new(10, 10));
-    let second = Rect::new(Point::new(12, 0), Point::new(15, 15));
-    let third = Rect::new(Point::new(7, 7), Point::new(14, 14));
-    let fourth = Rect::new(Point::new(10, 11), Point::new(11, 12));
-    let fifth = Rect::new(Point::new(4, 4), Point::new(5, 6));
+    let first = Rect::new(Point2D::new(0, 0), Point2D::new(10, 10));
+    let second = Rect::new(Point2D::new(12, 0), Point2D::new(15, 15));
+    let third = Rect::new(Point2D::new(7, 7), Point2D::new(14, 14));
+    let fourth = Rect::new(Point2D::new(10, 11), Point2D::new(11, 12));
+    let fifth = Rect::new(Point2D::new(4, 4), Point2D::new(5, 6));
 
     tree.insert(CloneTracker::new(first.clone(), clone_count.clone()));
     tree.insert(CloneTracker::new(second.clone(), clone_count.clone()));
@@ -303,7 +303,7 @@ fn clone_on_merge_test() {
 
 #[test]
 fn clone_tracker_test() {
-    let first = Rect::new(Point::new(0, 0), Point::new(10, 10));
+    let first = Rect::new(Point2D::new(0, 0), Point2D::new(10, 10));
     let clone_count = CloneCount::new();
 
     let first_clone_tracker = CloneTracker::new(first.clone(), clone_count.clone());
@@ -317,12 +317,12 @@ fn clone_tracker_test() {
 
 #[derive(Debug)]
 struct CloneTracker {
-    mbb: Rect,
+    mbb: Rect<i32, Point2D<i32>>,
     clone_count: CloneCount,
 }
 
 impl CloneTracker {
-    fn new(rect: Rect, clone_count: CloneCount) -> Self {
+    fn new(rect: Rect<i32, Point2D<i32>>, clone_count: CloneCount) -> Self {
         CloneTracker {
             mbb: rect,
             clone_count,
@@ -341,20 +341,23 @@ impl Clone for CloneTracker {
     }
 }
 
-impl BoundingBox for CloneTracker {
-    fn get_mbb(&self) -> &Rect {
+impl BoundingBox<i32, Point2D<i32>> for CloneTracker {
+    fn get_mbb(&self) -> &Rect<i32, Point2D<i32>> {
         &self.mbb
     }
 
-    fn area(&self) -> i32 {
-        self.mbb.area()
+    fn measure(&self) -> i32 {
+        self.mbb.measure()
     }
 
-    fn combine_boxes<T: BoundingBox>(&self, other: &T) -> Rect {
+    fn combine_boxes<T: BoundingBox<i32, Point2D<i32>>>(
+        &self,
+        other: &T,
+    ) -> Rect<i32, Point2D<i32>> {
         self.mbb.combine_boxes(other)
     }
 
-    fn is_covering<T: BoundingBox>(&self, other: &T) -> bool {
+    fn is_covering<T: BoundingBox<i32, Point2D<i32>>>(&self, other: &T) -> bool {
         self.mbb.is_covering(other)
     }
 }

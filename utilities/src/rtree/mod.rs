@@ -1,3 +1,6 @@
+use num::Signed;
+use std::fmt::Debug;
+use std::marker::PhantomData;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
@@ -5,14 +8,21 @@ use std::sync::Arc;
 mod tests;
 
 #[derive(Debug, Clone)]
-pub struct RTree<T: Clone + BoundingBox> {
-    root: Node<T>,
+pub struct RTree<T, P, B>
+where
+    T: Ord + Copy + Clone + Signed,
+    P: Point<T>,
+    B: BoundingBox<T, P>,
+{
+    root: Node<T, P, B>,
     len: usize,
 }
 
-impl<T> RTree<T>
+impl<T, P, B> RTree<T, P, B>
 where
-    T: Clone + BoundingBox,
+    T: Ord + Copy + Clone + Signed,
+    P: Point<T>,
+    B: BoundingBox<T, P>,
 {
     pub fn new(min_children: NonZeroUsize, max_children: NonZeroUsize) -> Self {
         if min_children.get() > max_children.get() / 2 {
@@ -33,12 +43,12 @@ where
         self.len() == 0
     }
 
-    pub fn insert(&mut self, item: T) {
+    pub fn insert(&mut self, item: B) {
         self.internal_insert(Arc::new(Entry::Leaf { item }), 0);
         self.len += 1;
     }
 
-    pub fn remove(&mut self, bounding_box: &Rect) -> Option<T> {
+    pub fn remove(&mut self, bounding_box: &Rect<T, P>) -> Option<B> {
         let (removed, maybe_orphan_nodes) = self.root.remove(bounding_box)?;
         self.len -= 1;
 
@@ -79,7 +89,7 @@ where
         Some(removed)
     }
 
-    fn internal_insert(&mut self, item: EntryPtr<T>, level: i32) {
+    fn internal_insert(&mut self, item: EntryPtr<T, P, B>, level: i32) {
         if let Some((first_entry, second_entry)) = self.root.insert(item, level) {
             self.root = Node {
                 entries: vec![first_entry, second_entry],
@@ -92,14 +102,24 @@ where
 }
 
 #[derive(Debug, Clone)]
-struct Node<T: Clone + BoundingBox> {
-    entries: Vec<EntryPtr<T>>,
+struct Node<T, P, B>
+where
+    T: Ord + Copy + Clone + Signed,
+    P: Point<T>,
+    B: BoundingBox<T, P>,
+{
+    entries: Vec<EntryPtr<T, P, B>>,
     level: i32,
     min_children: usize,
     max_children: usize,
 }
 
-impl<T: Clone + BoundingBox> Node<T> {
+impl<T, P, B> Node<T, P, B>
+where
+    T: Ord + Copy + Clone + Signed,
+    P: Point<T>,
+    B: BoundingBox<T, P>,
+{
     fn new(min_children: usize, max_children: usize) -> Self {
         Node {
             entries: Vec::new(),
@@ -117,7 +137,11 @@ impl<T: Clone + BoundingBox> Node<T> {
         self.level == 0
     }
 
-    fn insert(&mut self, item: EntryPtr<T>, level: i32) -> Option<(EntryPtr<T>, EntryPtr<T>)> {
+    fn insert(
+        &mut self,
+        item: EntryPtr<T, P, B>,
+        level: i32,
+    ) -> Option<(EntryPtr<T, P, B>, EntryPtr<T, P, B>)> {
         match *item {
             //If we have a branch and we are at the right level -> insert
             Entry::Branch { .. } if self.level == level => {
@@ -144,11 +168,11 @@ impl<T: Clone + BoundingBox> Node<T> {
                     let mut min_entry = entries_iter.next().unwrap();
                     let mut min_entry_idx = 0;
                     let mut min_rect = min_entry.get_mbb().combine_boxes(item.get_mbb());
-                    let mut min_diff = min_rect.area() - min_entry.get_mbb().area();
+                    let mut min_diff = min_rect.measure() - min_entry.get_mbb().measure();
 
                     for (entry, idx) in entries_iter.zip(1..) {
                         let expanded_rect = entry.get_mbb().combine_boxes(item.get_mbb());
-                        let diff = expanded_rect.area() - entry.get_mbb().area();
+                        let diff = expanded_rect.measure() - entry.get_mbb().measure();
 
                         if diff < min_diff {
                             min_diff = diff;
@@ -178,7 +202,7 @@ impl<T: Clone + BoundingBox> Node<T> {
         None
     }
 
-    fn remove(&mut self, bounding_box: &Rect) -> Option<(T, Option<Vec<EntryPtr<T>>>)> {
+    fn remove(&mut self, bounding_box: &Rect<T, P>) -> Option<(B, Option<Vec<EntryPtr<T, P, B>>>)> {
         if self.is_leaf() {
             //If this is leaf try to find the item
             let mut remove_idx = None;
@@ -242,7 +266,7 @@ impl<T: Clone + BoundingBox> Node<T> {
         }
     }
 
-    fn split(&mut self) -> (EntryPtr<T>, EntryPtr<T>) {
+    fn split(&mut self) -> (EntryPtr<T, P, B>, EntryPtr<T, P, B>) {
         let (first_group, second_group, first_mbb, second_mbb) =
             quadratic_split(&mut self.entries, self.min_children);
 
@@ -270,10 +294,20 @@ impl<T: Clone + BoundingBox> Node<T> {
     }
 }
 
-fn quadratic_split<T: BoundingBox + Clone>(
-    entries: &mut Vec<EntryPtr<T>>,
+fn quadratic_split<T, P, B>(
+    entries: &mut Vec<EntryPtr<T, P, B>>,
     min_children: usize,
-) -> (Vec<EntryPtr<T>>, Vec<EntryPtr<T>>, Rect, Rect) {
+) -> (
+    Vec<EntryPtr<T, P, B>>,
+    Vec<EntryPtr<T, P, B>>,
+    Rect<T, P>,
+    Rect<T, P>,
+)
+where
+    T: Ord + Copy + Clone + Signed,
+    P: Point<T>,
+    B: BoundingBox<T, P>,
+{
     let (first_seed_idx, second_seed_idx) = pick_seeds(entries);
 
     let first_seed = entries.remove(first_seed_idx);
@@ -327,26 +361,32 @@ fn quadratic_split<T: BoundingBox + Clone>(
     (first_group, second_group, first_mbb, second_mbb)
 }
 
-fn pick_seeds<T>(entries: &[EntryPtr<T>]) -> (usize, usize)
+fn pick_seeds<T, P, B>(entries: &[EntryPtr<T, P, B>]) -> (usize, usize)
 where
-    T: BoundingBox + Clone,
+    T: Ord + Copy + Clone + Signed,
+    P: Point<T>,
+    B: BoundingBox<T, P>,
 {
     let mut first_idx = 0;
     let mut second_idx = 1;
-    let mut max_diff = i32::MIN;
+    let mut max_diff = None;
 
     if entries.len() > 2 {
         for (i, first_item) in entries.iter().enumerate() {
             for (j, second_item) in entries.iter().enumerate().skip(i + 1) {
                 let combined_rect = first_item.get_mbb().combine_boxes(second_item.get_mbb());
-                let diff = combined_rect.area()
-                    - first_item.get_mbb().area()
-                    - second_item.get_mbb().area();
+                let diff = combined_rect.measure()
+                    - first_item.get_mbb().measure()
+                    - second_item.get_mbb().measure();
 
-                if diff > max_diff {
-                    max_diff = diff;
-                    first_idx = i;
-                    second_idx = j;
+                if let Some(max) = max_diff {
+                    if diff > max {
+                        max_diff = Some(diff);
+                        first_idx = i;
+                        second_idx = j;
+                    }
+                } else {
+                    max_diff = Some(diff);
                 }
             }
         }
@@ -355,15 +395,17 @@ where
     (first_idx, second_idx)
 }
 
-fn pick_next<T>(
-    entries: &[EntryPtr<T>],
-    first_mbb: &Rect,
-    second_mbb: &Rect,
+fn pick_next<T, P, B>(
+    entries: &[EntryPtr<T, P, B>],
+    first_mbb: &Rect<T, P>,
+    second_mbb: &Rect<T, P>,
     first_group_size: usize,
     second_group_size: usize,
-) -> (usize, Rect, Group)
+) -> (usize, Rect<T, P>, Group)
 where
-    T: BoundingBox + Clone,
+    T: Ord + Copy + Clone + Signed,
+    P: Point<T>,
+    B: BoundingBox<T, P>,
 {
     let mut entries_iter = entries.iter();
     let item = entries_iter.next().unwrap();
@@ -416,16 +458,21 @@ where
     (item_idx, expanded_rect, group)
 }
 
-fn calc_preferences<T: Clone + BoundingBox>(
-    item: &EntryPtr<T>,
-    first_mbb: &Rect,
-    second_mbb: &Rect,
-) -> (i32, i32, Rect, Rect) {
+fn calc_preferences<T, P, B>(
+    item: &EntryPtr<T, P, B>,
+    first_mbb: &Rect<T, P>,
+    second_mbb: &Rect<T, P>,
+) -> (T, T, Rect<T, P>, Rect<T, P>)
+where
+    T: Ord + Copy + Clone + Signed,
+    P: Point<T>,
+    B: BoundingBox<T, P>,
+{
     let first_expanded_rect = first_mbb.combine_boxes(item.get_mbb());
-    let first_diff = first_expanded_rect.area() - first_mbb.area();
+    let first_diff = first_expanded_rect.measure() - first_mbb.measure();
 
     let second_expanded_rect = second_mbb.combine_boxes(item.get_mbb());
-    let second_diff = second_expanded_rect.area() - second_mbb.area();
+    let second_diff = second_expanded_rect.measure() - second_mbb.measure();
 
     (
         first_diff,
@@ -435,21 +482,25 @@ fn calc_preferences<T: Clone + BoundingBox>(
     )
 }
 
-fn select_group(
-    first_mbb: &Rect,
-    second_mbb: &Rect,
+fn select_group<T, P>(
+    first_mbb: &Rect<T, P>,
+    second_mbb: &Rect<T, P>,
     first_group_size: usize,
     second_group_size: usize,
-    first_diff: i32,
-    second_diff: i32,
-) -> Group {
+    first_diff: T,
+    second_diff: T,
+) -> Group
+where
+    T: Ord + Copy + Clone + Signed,
+    P: Point<T>,
+{
     if first_diff < second_diff {
         Group::First
     } else if second_diff < first_diff {
         Group::Second
-    } else if first_mbb.area() < second_mbb.area() {
+    } else if first_mbb.measure() < second_mbb.measure() {
         Group::First
-    } else if second_mbb.area() < first_mbb.area() {
+    } else if second_mbb.measure() < first_mbb.measure() {
         Group::Second
     } else if first_group_size < second_group_size {
         Group::First
@@ -465,15 +516,30 @@ enum Group {
     Second,
 }
 
-type EntryPtr<T> = Arc<Entry<T>>;
+type EntryPtr<T, P, B> = Arc<Entry<T, P, B>>;
 
 #[derive(Debug, Clone)]
-enum Entry<T: Clone + BoundingBox> {
-    Leaf { item: T },
-    Branch { mbb: Rect, child: Node<T> },
+enum Entry<T, P, B>
+where
+    T: Ord + Copy + Clone + Signed,
+    P: Point<T>,
+    B: BoundingBox<T, P>,
+{
+    Leaf {
+        item: B,
+    },
+    Branch {
+        mbb: Rect<T, P>,
+        child: Node<T, P, B>,
+    },
 }
 
-impl<T: Clone + BoundingBox> Entry<T> {
+impl<T, P, B> Entry<T, P, B>
+where
+    T: Ord + Copy + Clone + Signed,
+    P: Point<T>,
+    B: BoundingBox<T, P>,
+{
     fn len(&self) -> usize {
         match self {
             Entry::Leaf { .. } => 0,
@@ -481,7 +547,7 @@ impl<T: Clone + BoundingBox> Entry<T> {
         }
     }
 
-    fn get_mbb(&self) -> &Rect {
+    fn get_mbb(&self) -> &Rect<T, P> {
         match self {
             Entry::Leaf { item } => item.get_mbb(),
             Entry::Branch { mbb, .. } => mbb,
@@ -490,10 +556,10 @@ impl<T: Clone + BoundingBox> Entry<T> {
 
     fn insert(
         &mut self,
-        item: EntryPtr<T>,
-        expanded_rect: Rect,
+        item: EntryPtr<T, P, B>,
+        expanded_rect: Rect<T, P>,
         level: i32,
-    ) -> Option<(EntryPtr<T>, EntryPtr<T>)> {
+    ) -> Option<(EntryPtr<T, P, B>, EntryPtr<T, P, B>)> {
         match self {
             Entry::Branch { mbb, child } => {
                 *mbb = expanded_rect;
@@ -503,17 +569,15 @@ impl<T: Clone + BoundingBox> Entry<T> {
         }
     }
 
-    fn remove(&mut self, bounding_box: &Rect) -> Option<(T, Option<Vec<EntryPtr<T>>>)> {
+    fn remove(&mut self, bounding_box: &Rect<T, P>) -> Option<(B, Option<Vec<EntryPtr<T, P, B>>>)> {
         match self {
             Entry::Branch { mbb, child } => {
                 let (removed, orphan_nodes) = child.remove(bounding_box)?;
 
                 let removed_mbb = removed.get_mbb();
 
-                if removed_mbb.lower_left.x == mbb.lower_left.x
-                    || removed_mbb.lower_left.y == mbb.lower_left.y
-                    || removed_mbb.upper_right.x == mbb.upper_right.x
-                    || removed_mbb.upper_right.y == mbb.upper_right.y
+                if removed_mbb.lower_left.has_equal(&mbb.lower_left)
+                    || removed_mbb.upper_right.has_equal(&mbb.upper_right)
                 {
                     let mut entries_iter = child.entries.iter();
                     let mut shrunken_mbb = entries_iter.next().unwrap().get_mbb().clone();
@@ -533,97 +597,213 @@ impl<T: Clone + BoundingBox> Entry<T> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Rect {
-    lower_left: Point,
-    upper_right: Point,
+pub struct Rect<T, P>
+where
+    T: Ord + Copy + Clone + Signed,
+    P: Point<T>,
+{
+    lower_left: P,
+    upper_right: P,
+    phantom: PhantomData<T>,
 }
 
-impl Rect {
-    pub fn new(lower_left: Point, upper_right: Point) -> Self {
-        if lower_left.x > upper_right.x || lower_left.y > upper_right.y {
-            panic!("The first point must be the lower left and the second the upper right.")
-        }
+impl<T, P> Rect<T, P>
+where
+    T: Ord + Copy + Clone + Signed,
+    P: Point<T>,
+{
+    pub fn new(lower_left: P, upper_right: P) -> Self {
+        // Todo
+        // if lower_left.x > upper_right.x || lower_left.y > upper_right.y {
+        //     panic!("The first point must be the lower left and the second the upper right.")
+        // }
 
         Rect {
             lower_left,
             upper_right,
+            phantom: PhantomData,
         }
     }
 }
 
-impl BoundingBox for Rect {
-    fn get_mbb(&self) -> &Rect {
+impl<T, P> BoundingBox<T, P> for Rect<T, P>
+where
+    T: Ord + Copy + Clone + Signed,
+    P: Point<T>,
+{
+    fn get_mbb(&self) -> &Rect<T, P> {
         self
     }
 
-    fn area(&self) -> i32 {
-        (self.upper_right.x - self.lower_left.x) * (self.upper_right.y - self.lower_left.y)
+    fn measure(&self) -> T {
+        self.upper_right.diff(&self.lower_left).multiply_coord()
     }
 
-    fn combine_boxes<T: BoundingBox>(&self, other: &T) -> Rect {
+    fn combine_boxes<B: BoundingBox<T, P>>(&self, other: &B) -> Rect<T, P> {
         let other_mbb = other.get_mbb();
 
-        let new_lower_left_x = if self.lower_left.x > other_mbb.lower_left.x {
-            other_mbb.lower_left.x
-        } else {
-            self.lower_left.x
-        };
+        let new_lower_left = self.lower_left.get_lowest(&other_mbb.lower_left);
+        let new_upper_right = self.upper_right.get_highest(&other_mbb.upper_right);
 
-        let new_lower_left_y = if self.lower_left.y > other_mbb.lower_left.y {
-            other_mbb.lower_left.y
-        } else {
-            self.lower_left.y
-        };
-
-        let new_upper_right_x = if self.upper_right.x > other_mbb.upper_right.x {
-            self.upper_right.x
-        } else {
-            other_mbb.upper_right.x
-        };
-
-        let new_upper_right_y = if self.upper_right.y > other_mbb.upper_right.y {
-            self.upper_right.y
-        } else {
-            other_mbb.upper_right.y
-        };
-
-        Rect::new(
-            Point::new(new_lower_left_x, new_lower_left_y),
-            Point::new(new_upper_right_x, new_upper_right_y),
-        )
+        Rect::new(new_lower_left, new_upper_right)
     }
 
-    fn is_covering<T: BoundingBox>(&self, other: &T) -> bool {
+    fn is_covering<B: BoundingBox<T, P>>(&self, other: &B) -> bool {
         let other_mbb = other.get_mbb();
 
-        if self.lower_left.x > other_mbb.lower_left.x
-            || self.lower_left.y > other_mbb.lower_left.y
-            || self.upper_right.x < other_mbb.upper_right.x
-            || self.upper_right.y < other_mbb.upper_right.y
-        {
-            return false;
-        }
-
-        true
+        self.lower_left.has_lower_cords(&other_mbb.lower_left)
+            && self.upper_right.has_higher_cords(&other_mbb.upper_right)
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Point {
-    x: i32,
-    y: i32,
+pub struct Point2D<T: Ord + Clone> {
+    x: T,
+    y: T,
 }
 
-impl Point {
-    pub fn new(x: i32, y: i32) -> Self {
-        Point { x, y }
+impl<T: Ord + Clone> Point2D<T> {
+    pub fn new(x: T, y: T) -> Self {
+        Point2D { x, y }
     }
 }
 
-pub trait BoundingBox {
-    fn get_mbb(&self) -> &Rect;
-    fn area(&self) -> i32;
+impl<T: Ord + Copy + Clone + Signed> Point<T> for Point2D<T> {
+    fn diff(&self, other: &Point2D<T>) -> Point2D<T> {
+        Point2D {
+            x: self.x - other.x,
+            y: self.y - other.y,
+        }
+    }
+
+    fn multiply_coord(&self) -> T {
+        self.x * self.y
+    }
+
+    fn has_equal(&self, other: &Self) -> bool {
+        self.x == other.x || self.y == other.y
+    }
+
+    fn get_lowest(&self, other: &Self) -> Self {
+        let new_lower_x = if self.x > other.x { other.x } else { self.x };
+        let new_lower_y = if self.y > other.y { other.y } else { self.y };
+
+        Point2D {
+            x: new_lower_x,
+            y: new_lower_y,
+        }
+    }
+
+    fn get_highest(&self, other: &Self) -> Self {
+        let new_higher_x = if self.x > other.x { self.x } else { other.x };
+        let new_higher_y = if self.y > other.y { self.y } else { other.y };
+
+        Point2D {
+            x: new_higher_x,
+            y: new_higher_y,
+        }
+    }
+
+    fn has_higher_cords(&self, other: &Self) -> bool {
+        self.x >= other.x && self.y >= other.y
+    }
+
+    fn has_lower_cords(&self, other: &Self) -> bool {
+        self.x <= other.x && self.y <= other.y
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Point3D<T: Ord + Clone> {
+    x: T,
+    y: T,
+    z: T,
+}
+
+impl<T: Ord + Clone> Point3D<T> {
+    pub fn new(x: T, y: T, z: T) -> Self {
+        Point3D { x, y, z }
+    }
+}
+
+impl<T: Ord + Copy + Clone + Signed> Point<T> for Point3D<T> {
+    fn diff(&self, other: &Point3D<T>) -> Point3D<T> {
+        Point3D {
+            x: self.x - other.x,
+            y: self.y - other.y,
+            z: self.z - other.z,
+        }
+    }
+
+    fn multiply_coord(&self) -> T {
+        self.x * self.y * self.z
+    }
+
+    fn has_equal(&self, other: &Self) -> bool {
+        self.x == other.x || self.y == other.y || self.z == other.z
+    }
+
+    fn get_lowest(&self, other: &Self) -> Self {
+        let new_lower_x = if self.x > other.x { other.x } else { self.x };
+        let new_lower_y = if self.y > other.y { other.y } else { self.y };
+        let new_lower_z = if self.z > other.z { other.z } else { self.z };
+
+        Point3D {
+            x: new_lower_x,
+            y: new_lower_y,
+            z: new_lower_z,
+        }
+    }
+
+    fn get_highest(&self, other: &Self) -> Self {
+        let new_higher_x = if self.x > other.x { self.x } else { other.x };
+        let new_higher_y = if self.y > other.y { self.y } else { other.y };
+        let new_higher_z = if self.z > other.z { self.z } else { other.z };
+
+        Point3D {
+            x: new_higher_x,
+            y: new_higher_y,
+            z: new_higher_z,
+        }
+    }
+
+    fn has_higher_cords(&self, other: &Self) -> bool {
+        self.x >= other.x && self.y >= other.y && self.z >= other.z
+    }
+
+    fn has_lower_cords(&self, other: &Self) -> bool {
+        self.x <= other.x && self.y <= other.y && self.z <= other.z
+    }
+}
+
+pub trait Point<T>: Clone + PartialEq + Eq
+where
+    T: Ord + Copy + Clone + Signed,
+{
+    fn diff(&self, other: &Self) -> Self;
+
+    fn multiply_coord(&self) -> T;
+
+    fn has_equal(&self, other: &Self) -> bool;
+
+    fn get_lowest(&self, other: &Self) -> Self;
+
+    fn get_highest(&self, other: &Self) -> Self;
+
+    fn has_higher_cords(&self, other: &Self) -> bool;
+
+    fn has_lower_cords(&self, other: &Self) -> bool;
+}
+
+pub trait BoundingBox<T, P>: Clone
+where
+    T: Ord + Copy + Clone + Signed,
+    P: Point<T>,
+{
+    fn get_mbb(&self) -> &Rect<T, P>;
+    // Area for 2D shapes and volume for 3D.
+    fn measure(&self) -> T;
     // Create a minimum bounding box that contains both items.
-    fn combine_boxes<T: BoundingBox>(&self, other: &T) -> Rect;
-    fn is_covering<T: BoundingBox>(&self, other: &T) -> bool;
+    fn combine_boxes<B: BoundingBox<T, P>>(&self, other: &B) -> Rect<T, P>;
+    fn is_covering<B: BoundingBox<T, P>>(&self, other: &B) -> bool;
 }

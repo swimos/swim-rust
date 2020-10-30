@@ -3,38 +3,41 @@ RTree {
         entries: [
             Leaf {
                 item: Rect {
-                    lower_left: Point {
+                    lower_left: Point2D {
                         x: 2,
                         y: 2,
                     },
-                    upper_right: Point {
+                    upper_right: Point2D {
                         x: 3,
                         y: 3,
                     },
+                    phantom: PhantomData,
                 },
             },
             Leaf {
                 item: Rect {
-                    lower_left: Point {
+                    lower_left: Point2D {
                         x: 7,
                         y: 3,
                     },
-                    upper_right: Point {
+                    upper_right: Point2D {
                         x: 8,
                         y: 6,
                     },
+                    phantom: PhantomData,
                 },
             },
             Leaf {
                 item: Rect {
-                    lower_left: Point {
+                    lower_left: Point2D {
                         x: 10,
                         y: 0,
                     },
-                    upper_right: Point {
+                    upper_right: Point2D {
                         x: 12,
                         y: 5,
                     },
+                    phantom: PhantomData,
                 },
             },
         ],

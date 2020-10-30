@@ -3,64 +3,69 @@ RTree {
         entries: [
             Branch {
                 mbb: Rect {
-                    lower_left: Point {
+                    lower_left: Point2D {
                         x: 7,
                         y: 0,
                     },
-                    upper_right: Point {
+                    upper_right: Point2D {
                         x: 16,
                         y: 16,
                     },
+                    phantom: PhantomData,
                 },
                 child: Node {
                     entries: [
                         Branch {
                             mbb: Rect {
-                                lower_left: Point {
+                                lower_left: Point2D {
                                     x: 12,
                                     y: 0,
                                 },
-                                upper_right: Point {
+                                upper_right: Point2D {
                                     x: 16,
                                     y: 16,
                                 },
+                                phantom: PhantomData,
                             },
                             child: Node {
                                 entries: [
                                     Leaf {
                                         item: Rect {
-                                            lower_left: Point {
+                                            lower_left: Point2D {
                                                 x: 13,
                                                 y: 0,
                                             },
-                                            upper_right: Point {
+                                            upper_right: Point2D {
                                                 x: 14,
                                                 y: 1,
                                             },
+                                            phantom: PhantomData,
                                         },
                                     },
                                     Leaf {
                                         item: Rect {
-                                            lower_left: Point {
+                                            lower_left: Point2D {
                                                 x: 12,
                                                 y: 0,
                                             },
-                                            upper_right: Point {
+                                            upper_right: Point2D {
                                                 x: 15,
                                                 y: 15,
                                             },
+                                            phantom: PhantomData,
                                         },
                                     },
                                     Leaf {
                                         item: Rect {
-                                            lower_left: Point {
+                                            lower_left: Point2D {
                                                 x: 13,
                                                 y: 13,
                                             },
-                                            upper_right: Point {
+                                            upper_right: Point2D {
                                                 x: 16,
                                                 y: 16,
                                             },
+                                            phantom: PhantomData,
                                         },
                                     },
                                 ],
@@ -71,39 +76,42 @@ RTree {
                         },
                         Branch {
                             mbb: Rect {
-                                lower_left: Point {
+                                lower_left: Point2D {
                                     x: 7,
                                     y: 0,
                                 },
-                                upper_right: Point {
+                                upper_right: Point2D {
                                     x: 12,
                                     y: 6,
                                 },
+                                phantom: PhantomData,
                             },
                             child: Node {
                                 entries: [
                                     Leaf {
                                         item: Rect {
-                                            lower_left: Point {
+                                            lower_left: Point2D {
                                                 x: 10,
                                                 y: 0,
                                             },
-                                            upper_right: Point {
+                                            upper_right: Point2D {
                                                 x: 12,
                                                 y: 5,
                                             },
+                                            phantom: PhantomData,
                                         },
                                     },
                                     Leaf {
                                         item: Rect {
-                                            lower_left: Point {
+                                            lower_left: Point2D {
                                                 x: 7,
                                                 y: 3,
                                             },
-                                            upper_right: Point {
+                                            upper_right: Point2D {
                                                 x: 8,
                                                 y: 6,
                                             },
+                                            phantom: PhantomData,
                                         },
                                     },
                                 ],
@@ -114,39 +122,42 @@ RTree {
                         },
                         Branch {
                             mbb: Rect {
-                                lower_left: Point {
+                                lower_left: Point2D {
                                     x: 7,
                                     y: 7,
                                 },
-                                upper_right: Point {
+                                upper_right: Point2D {
                                     x: 14,
                                     y: 14,
                                 },
+                                phantom: PhantomData,
                             },
                             child: Node {
                                 entries: [
                                     Leaf {
                                         item: Rect {
-                                            lower_left: Point {
+                                            lower_left: Point2D {
                                                 x: 7,
                                                 y: 7,
                                             },
-                                            upper_right: Point {
+                                            upper_right: Point2D {
                                                 x: 14,
                                                 y: 14,
                                             },
+                                            phantom: PhantomData,
                                         },
                                     },
                                     Leaf {
                                         item: Rect {
-                                            lower_left: Point {
+                                            lower_left: Point2D {
                                                 x: 10,
                                                 y: 11,
                                             },
-                                            upper_right: Point {
+                                            upper_right: Point2D {
                                                 x: 11,
                                                 y: 12,
                                             },
+                                            phantom: PhantomData,
                                         },
                                     },
                                 ],
@@ -163,52 +174,56 @@ RTree {
             },
             Branch {
                 mbb: Rect {
-                    lower_left: Point {
+                    lower_left: Point2D {
                         x: 0,
                         y: 0,
                     },
-                    upper_right: Point {
+                    upper_right: Point2D {
                         x: 10,
                         y: 16,
                     },
+                    phantom: PhantomData,
                 },
                 child: Node {
                     entries: [
                         Branch {
                             mbb: Rect {
-                                lower_left: Point {
+                                lower_left: Point2D {
                                     x: 2,
                                     y: 9,
                                 },
-                                upper_right: Point {
+                                upper_right: Point2D {
                                     x: 5,
                                     y: 16,
                                 },
+                                phantom: PhantomData,
                             },
                             child: Node {
                                 entries: [
                                     Leaf {
                                         item: Rect {
-                                            lower_left: Point {
+                                            lower_left: Point2D {
                                                 x: 2,
                                                 y: 13,
                                             },
-                                            upper_right: Point {
+                                            upper_right: Point2D {
                                                 x: 4,
                                                 y: 16,
                                             },
+                                            phantom: PhantomData,
                                         },
                                     },
                                     Leaf {
                                         item: Rect {
-                                            lower_left: Point {
+                                            lower_left: Point2D {
                                                 x: 4,
                                                 y: 9,
                                             },
-                                            upper_right: Point {
+                                            upper_right: Point2D {
                                                 x: 5,
                                                 y: 11,
                                             },
+                                            phantom: PhantomData,
                                         },
                                     },
                                 ],
@@ -219,51 +234,55 @@ RTree {
                         },
                         Branch {
                             mbb: Rect {
-                                lower_left: Point {
+                                lower_left: Point2D {
                                     x: 0,
                                     y: 0,
                                 },
-                                upper_right: Point {
+                                upper_right: Point2D {
                                     x: 10,
                                     y: 10,
                                 },
+                                phantom: PhantomData,
                             },
                             child: Node {
                                 entries: [
                                     Leaf {
                                         item: Rect {
-                                            lower_left: Point {
+                                            lower_left: Point2D {
                                                 x: 2,
                                                 y: 2,
                                             },
-                                            upper_right: Point {
+                                            upper_right: Point2D {
                                                 x: 3,
                                                 y: 3,
                                             },
+                                            phantom: PhantomData,
                                         },
                                     },
                                     Leaf {
                                         item: Rect {
-                                            lower_left: Point {
+                                            lower_left: Point2D {
                                                 x: 4,
                                                 y: 4,
                                             },
-                                            upper_right: Point {
+                                            upper_right: Point2D {
                                                 x: 5,
                                                 y: 6,
                                             },
+                                            phantom: PhantomData,
                                         },
                                     },
                                     Leaf {
                                         item: Rect {
-                                            lower_left: Point {
+                                            lower_left: Point2D {
                                                 x: 0,
                                                 y: 0,
                                             },
-                                            upper_right: Point {
+                                            upper_right: Point2D {
                                                 x: 10,
                                                 y: 10,
                                             },
+                                            phantom: PhantomData,
                                         },
                                     },
                                 ],
