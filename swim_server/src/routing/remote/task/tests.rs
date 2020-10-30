@@ -19,8 +19,6 @@ use futures::future::{join, BoxFuture};
 use futures::{FutureExt, StreamExt};
 use http::Uri;
 use parking_lot::Mutex;
-use pin_utils::core_reexport::num::NonZeroUsize;
-use pin_utils::core_reexport::time::Duration;
 use tokio::sync::{mpsc, watch};
 
 use swim_common::model::Value;
@@ -38,6 +36,8 @@ use crate::routing::remote::test_fixture::{LocalRoutes, TwoWayMpsc};
 use crate::routing::remote::ConnectionDropped;
 use crate::routing::{Route, RoutingAddr, TaggedEnvelope, TaggedSender};
 use futures::io::ErrorKind;
+use std::num::NonZeroUsize;
+use std::time::Duration;
 
 #[test]
 fn dispatch_error_display() {

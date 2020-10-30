@@ -24,7 +24,7 @@ use crate::plane::spec::{PlaneBuilder, PlaneSpec, RouteSpec};
 use crate::routing::TaggedEnvelope;
 use futures::future::{ready, BoxFuture, Ready};
 use futures::FutureExt;
-use pin_utils::core_reexport::time::Duration;
+use std::time::Duration;
 use swim_runtime::time::clock::Clock;
 use tokio::sync::mpsc;
 use utilities::route_pattern::RoutePattern;
