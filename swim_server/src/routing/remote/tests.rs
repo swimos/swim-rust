@@ -91,11 +91,11 @@ impl RemoteTasksState for FakeRemoteState {
         &mut self,
         sock_addr: SocketAddr,
         ws_stream: Self::WebSocket,
-        host: Option<&HostAndPort>,
+        host: Option<HostAndPort>,
     ) {
         self.recording
             .get_mut()
-            .push(StateMutation::Spawn(sock_addr, ws_stream, host.cloned()))
+            .push(StateMutation::Spawn(sock_addr, ws_stream, host))
     }
 
     fn check_socket_addr(

@@ -35,8 +35,8 @@ use utilities::sync::promise::Sender;
 use utilities::sync::{promise, trigger};
 use utilities::task::Spawner;
 
-//#[cfg(test)]
-//mod tests;
+#[cfg(test)]
+mod tests;
 
 pub trait RemoteTasksState {
     type Socket;
@@ -50,7 +50,7 @@ pub trait RemoteTasksState {
         &mut self,
         sock_addr: SocketAddr,
         ws_stream: Self::WebSocket,
-        host: Option<&HostAndPort>,
+        host: Option<HostAndPort>,
     );
 
     fn check_socket_addr(
@@ -134,7 +134,7 @@ where
         &mut self,
         sock_addr: SocketAddr,
         ws_stream: Ws::StreamSink,
-        host: Option<&HostAndPort>,
+        host: Option<HostAndPort>,
     ) {
         let addr = self.next_address();
         let RemoteConnections {
@@ -145,9 +145,9 @@ where
             ..
         } = self;
         let msg_tx = tasks.spawn_connection_task(ws_stream, addr, spawner);
-        table.insert(addr, None, sock_addr, msg_tx);
+        table.insert(addr, host.clone(), sock_addr, msg_tx);
         if let Some(host) = host {
-            pending.send_ok(host, addr);
+            pending.send_ok(&host, addr);
         }
     }
 
@@ -269,16 +269,16 @@ where
             match state {
                 State::Running => {
                     let result = select_biased! {
-                        incoming = listener.next() => incoming.map(Event::Incoming),
-                        request = requests.next() => request.map(Event::Request),
-                        def_complete = deferred.next() => def_complete.map(Event::Deferred),
-                        result = spawner.next() => result.map(|(addr, reason)| Event::ConnectionClosed(addr, reason)),
                         _ = &mut external_stop => {
                             if let Some(stop_tx) = internal_stop.take() {
                                 stop_tx.trigger();
                             }
                             None
-                        }
+                        },
+                        incoming = listener.next() => incoming.map(Event::Incoming),
+                        request = requests.next() => request.map(Event::Request),
+                        def_complete = deferred.next() => def_complete.map(Event::Deferred),
+                        result = spawner.next() => result.map(|(addr, reason)| Event::ConnectionClosed(addr, reason)),
                     };
                     if result.is_none() {
                         spawner.stop();
@@ -314,6 +314,7 @@ where
     }
 }
 
+#[derive(Debug)]
 pub enum DeferredResult<Snk> {
     ServerHandshake {
         result: Result<Snk, ConnectionError>,
@@ -363,12 +364,14 @@ impl<Snk> DeferredResult<Snk> {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
 enum State {
     Running,
     ClosingConnections,
     ClearingDeferred,
 }
 
+#[derive(Debug)]
 pub enum Event<Socket, Snk> {
     Incoming(io::Result<(Socket, SocketAddr)>),
     Request(RoutingRequest),

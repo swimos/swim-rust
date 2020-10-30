@@ -279,6 +279,10 @@ impl FakeSocket {
         }
     }
 
+    pub fn trivial() -> Self {
+        Self::new(vec![], 0, true)
+    }
+
     pub fn duplicate(&self) -> Self {
         let FakeSocket {
             input,
@@ -298,12 +302,12 @@ impl FakeSocket {
 struct FakeConnectionsInner {
     sockets: HashMap<SocketAddr, Result<FakeSocket, io::Error>>,
     incoming: Option<FakeListener>,
+    dns: HashMap<String, Vec<SocketAddr>>,
 }
 
 #[derive(Debug, Clone)]
 pub struct FakeConnections {
     inner: Arc<Mutex<FakeConnectionsInner>>,
-    dns: HashMap<String, Vec<SocketAddr>>,
 }
 
 impl FakeConnections {
@@ -316,9 +320,21 @@ impl FakeConnections {
             inner: Arc::new(Mutex::new(FakeConnectionsInner {
                 sockets,
                 incoming: incoming.map(FakeListener),
+                dns,
             })),
-            dns,
         }
+    }
+
+    pub fn add_dns(&self, host: String, sock_addr: SocketAddr) {
+        self.inner.lock().dns.insert(host, vec![sock_addr]);
+    }
+
+    pub fn add_socket(&self, sock_addr: SocketAddr, socket: FakeSocket) {
+        self.inner.lock().sockets.insert(sock_addr, Ok(socket));
+    }
+
+    pub fn add_error(&self, sock_addr: SocketAddr, err: io::Error) {
+        self.inner.lock().sockets.insert(sock_addr, Err(err));
     }
 }
 
@@ -349,6 +365,8 @@ impl ExternalConnections for FakeConnections {
 
     fn lookup(&self, host: String) -> BoxFuture<'static, io::Result<Vec<SocketAddr>>> {
         let result = self
+            .inner
+            .lock()
             .dns
             .get(&host)
             .map(Clone::clone)
@@ -392,6 +410,7 @@ impl WsConnections<FakeSocket> for FakeWebsockets {
     }
 }
 
+#[derive(Debug)]
 pub struct FakeWebsocket {
     inner: FakeSocket,
     closed: bool,

@@ -85,6 +85,7 @@ impl ConnectionDropped {
 type EndpointRequest = Request<Result<Route<mpsc::Sender<TaggedEnvelope>>, Unresolvable>>;
 type ResolutionRequest = Request<Result<RoutingAddr, ConnectionError>>;
 
+#[derive(Debug)]
 pub enum RoutingRequest {
     /// Get channel to route messages to a specified routing address.
     Endpoint {
@@ -226,7 +227,7 @@ fn update_state<State: RemoteTasksState>(
             result: Ok((ws_stream, sock_addr)),
             host,
         }) => {
-            state.spawn_task(sock_addr, ws_stream, Some(&host));
+            state.spawn_task(sock_addr, ws_stream, Some(host));
         }
         Event::Deferred(DeferredResult::ClientHandshake {
             result: Err(error),
