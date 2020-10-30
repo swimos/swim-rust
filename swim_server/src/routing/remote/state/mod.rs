@@ -38,14 +38,17 @@ use utilities::task::Spawner;
 #[cfg(test)]
 mod tests;
 
+/// Trait detailing the operations permissible on the state of the remote connections management
+/// task. This is to allow the state to be decoupled from the state transition function so
+/// the two can be tested separately.
 pub trait RemoteTasksState {
     type Socket;
     type WebSocket;
 
+    /// Explicitly move into the stopping state.
     fn stop(&mut self);
 
-    fn next_address(&mut self) -> RoutingAddr;
-
+    /// Spawn a new connection task, attached to the provided web socket.
     fn spawn_task(
         &mut self,
         sock_addr: SocketAddr,
@@ -53,14 +56,18 @@ pub trait RemoteTasksState {
         host: Option<HostAndPort>,
     );
 
+    /// Check a pair of host/socket address, registering the hose with the address if a connection
+    /// is already open to it and fulfilling any requests for that host.
     fn check_socket_addr(
         &mut self,
         host: HostAndPort,
         sock_addr: SocketAddr,
     ) -> Result<(), HostAndPort>;
 
+    /// Add a deferred web socket handshake.
     fn defer_handshake(&self, stream: Self::Socket, peer_addr: SocketAddr);
 
+    /// Add a deferred new connection followed by a websocket handshake.
     fn defer_connect_and_handshake(
         &mut self,
         host: HostAndPort,
@@ -68,17 +75,33 @@ pub trait RemoteTasksState {
         remaining: SocketAddrIt,
     );
 
+    /// Add a deferred DNS lookup for a host.
     fn defer_dns_lookup(&mut self, target: HostAndPort, request: ResolutionRequest);
 
+    /// Flush out pending state for a failed connection.
     fn fail_connection(&mut self, host: &HostAndPort, error: ConnectionError);
 
+    /// Resolve an entry in the routing table.
     fn table_resolve(&self, addr: RoutingAddr) -> Option<Route<mpsc::Sender<TaggedEnvelope>>>;
 
+    /// Try to resolve a host in the routing table.
     fn table_try_resolve(&self, target: &HostAndPort) -> Option<RoutingAddr>;
 
+    /// Remote an entry from the routing table return the promise to use to indicate why the entry
+    /// was removed.
     fn table_remove(&mut self, addr: RoutingAddr) -> Option<promise::Sender<ConnectionDropped>>;
 }
 
+/// The canonical implementation of [`RemoteTasksState`]. This is, in effect, a stream of events
+/// where the next event is a function of the current state. It does not implement the [`Stream`]
+/// trait to avoid boxing the future crated by the `select_next` function.
+///
+/// # Type Parameters
+///
+/// * `External` - Provides the ability to open sockets.
+/// * `Ws` - Negotiates a web socket connection on top of the sockets provided by `External`.
+/// * `Sp` - Spawner to run the tasks that manage the connections opened by this state machine.
+/// * `Routerfac` - Creates router instances to be provided to the connection management tasks.
 pub struct RemoteConnections<'a, External, Ws, Sp, RouterFac>
 where
     External: ExternalConnections,
@@ -124,10 +147,6 @@ where
             spawner.stop();
             *state = State::ClosingConnections;
         }
-    }
-
-    fn next_address(&mut self) -> RoutingAddr {
-        self.addresses.next().expect("Address counter overflow.")
     }
 
     fn spawn_task(
@@ -224,6 +243,18 @@ where
     Sp: Spawner<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>> + Unpin,
     RouterFac: ServerRouterFactory + 'static,
 {
+    /// Create a new, empty state.
+    ///
+    /// # Arguments
+    ///
+    /// * `webcockets` - Negotiations web socket connections on top of the sockets produced by
+    /// `external.
+    /// * `configuration` - Configuration parameters for the state machine.
+    /// * `spawner` - [`Spawner`] implementation to spawn the tasks that manage the connections.
+    /// * `external` - Provider of remote sockets.
+    /// * `listener` - Server to listen for incoming connections.
+    /// * `stop_trigger`- Trigger to cause the state machine to stop externally.
+    /// * `delegate_router` - Router than handles local routing requests.
     pub fn new(
         websockets: &'a Ws,
         configuration: ConnectionConfig,
@@ -253,6 +284,12 @@ where
         }
     }
 
+    fn next_address(&mut self) -> RoutingAddr {
+        self.addresses.next().expect("Address counter overflow.")
+    }
+
+    /// Select the next event based on the current state (or none if we have reached the terminal
+    /// state).
     pub async fn select_next(&mut self) -> Option<Event<External::Socket, Ws::StreamSink>> {
         let RemoteConnections {
             spawner,
@@ -314,6 +351,8 @@ where
     }
 }
 
+/// The connection manager can defer long running tasks to avoid blocking its main event loop. When
+/// these tasks complete an instance of this type will occur in the event stream.
 #[derive(Debug)]
 pub enum DeferredResult<Snk> {
     ServerHandshake {
@@ -364,18 +403,29 @@ impl<Snk> DeferredResult<Snk> {
     }
 }
 
+/// The current execution state (used to manage clean shutdown).
 #[derive(Debug, PartialEq, Eq)]
 enum State {
+    /// The connection manager is running and all events may occur.
     Running,
+    /// The connection manger is closing and only task termination event and deferred results will
+    /// be handled.
     ClosingConnections,
+    /// All tasks have now terminated and we are waiting for the remaining deferred results to
+    /// complete before stopping.
     ClearingDeferred,
 }
 
+/// Type of events that can be generated by the connection manager.
 #[derive(Debug)]
 pub enum Event<Socket, Snk> {
+    /// An incoming connection has been opened.
     Incoming(io::Result<(Socket, SocketAddr)>),
+    /// A routing request has been received.
     Request(RoutingRequest),
+    /// A task that the manager deferred has completed.
     Deferred(DeferredResult<Snk>),
+    /// A connection task has terminated.
     ConnectionClosed(RoutingAddr, ConnectionDropped),
 }
 

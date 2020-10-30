@@ -48,7 +48,6 @@ impl FakeWebsocket {
     }
 }
 
-const ADDR: RoutingAddr = RoutingAddr::remote(5);
 const RESP: RoutingAddr = RoutingAddr::local(6);
 
 #[derive(Debug, Default)]
@@ -81,10 +80,6 @@ impl RemoteTasksState for FakeRemoteState {
 
     fn stop(&mut self) {
         self.recording.get_mut().push(StateMutation::Stop);
-    }
-
-    fn next_address(&mut self) -> RoutingAddr {
-        ADDR
     }
 
     fn spawn_task(
