@@ -15,25 +15,26 @@
 #[cfg(test)]
 mod tests;
 
+use crate::future::open_ended::OpenEndedFutures;
 use futures::stream::FusedStream;
 use futures::task::{Context, Poll};
 use futures::{ready, Stream, StreamExt};
-use futures_util::stream::FuturesUnordered;
 use std::future::Future;
 use std::pin::Pin;
 use tokio::task::JoinHandle;
 
 /// Trait for task spawners that will concurrently execute futures passed to them.
 pub trait Spawner<F: Future>: FusedStream<Item = F::Output> {
-    /// Add a new future to the spawner.
-    fn add(&self, fut: F);
+    /// Try to add a new future. This should only fail if the spawner is no longer able to
+    /// accept tasks (for example, when closing).
+    fn try_add(&self, fut: F) -> Result<(), F>;
 
     /// Determine if the spawner is running any tasks.
     fn is_empty(&self) -> bool;
 }
 
 #[derive(Debug)]
-pub struct TokioSpawner<Fut: Future>(FuturesUnordered<JoinHandle<Fut::Output>>);
+pub struct TokioSpawner<Fut: Future>(OpenEndedFutures<JoinHandle<Fut::Output>>);
 
 impl<Fut: Future> Default for TokioSpawner<Fut> {
     fn default() -> Self {
@@ -45,14 +46,18 @@ impl<Fut: Future> TokioSpawner<Fut> {
     pub fn new() -> Self {
         Default::default()
     }
+
+    pub fn stop(&mut self) {
+        self.0.stop()
+    }
 }
 
-impl<F> Spawner<F> for FuturesUnordered<F>
+impl<F> Spawner<F> for OpenEndedFutures<F>
 where
     F: Future + Send + 'static,
 {
-    fn add(&self, fut: F) {
-        self.push(fut);
+    fn try_add(&self, fut: F) -> Result<(), F> {
+        self.try_push(fut)
     }
 
     fn is_empty(&self) -> bool {
@@ -100,9 +105,16 @@ where
     Fut: Future + Send + Sync + 'static,
     Fut::Output: Send,
 {
-    fn add(&self, fut: Fut) {
+    fn try_add(&self, fut: Fut) -> Result<(), Fut> {
         let TokioSpawner(inner) = self;
-        inner.push(tokio::task::spawn(fut));
+        if inner.is_stopped() {
+            Err(fut)
+        } else {
+            if inner.try_push(tokio::task::spawn(fut)).is_err() {
+                panic!("Future rejected when not stopped.");
+            }
+            Ok(())
+        }
     }
 
     fn is_empty(&self) -> bool {
