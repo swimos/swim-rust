@@ -86,6 +86,8 @@ impl TaggedClientEnvelope {
     }
 }
 
+/// A single entry in the router consisting of a sender that will push envelopes to the endpoint
+/// and a promise that will be satisfied when the endpoint closes.
 #[derive(Clone, Debug)]
 pub struct Route<Sender> {
     pub sender: Sender,

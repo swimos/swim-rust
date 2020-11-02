@@ -28,6 +28,8 @@ use utilities::uri::RelativeUri;
 #[cfg(test)]
 mod tests;
 
+/// Error type for the [`ServerRouter`] that will return the envelope in the event that routing it
+/// fails.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SendError {
     error: RoutingError,
@@ -72,10 +74,14 @@ impl From<mpsc::error::SendError<TaggedEnvelope>> for SendError {
     }
 }
 
+/// Ways in which the router can fail to provide a route.
 #[derive(Debug, PartialEq, Eq)]
 pub enum RouterError {
+    /// For a local endpoint it can be determined that no agent exists.
     NoAgentAtRoute(RelativeUri),
+    /// Connecting to a remote endpoint failed (the endpoint may or may not exist).
     ConnectionFailure(ConnectionError),
+    /// The router was dropped (the application is likely stopping).
     RouterDropped,
 }
 
@@ -112,13 +118,20 @@ fn io_fatal(kind: &ErrorKind) -> bool {
     )
 }
 
+/// A connection to a remote endpoint failed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ConnectionError {
+    /// The host could not be resolved.
     Resolution,
+    /// An error occurred at the socket level.
     Socket(io::ErrorKind),
+    /// An error occurred at the web socket protocol level.
     Websocket(WebSocketError),
+    /// The remote host closed the connection.
     ClosedRemotely,
+    /// An error ocurred at the Warp protocol level.
     Warp(String),
+    /// The connection was closed locally.
     Closed,
 }
 

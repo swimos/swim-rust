@@ -232,17 +232,25 @@ where
     }
 }
 
+/// Reasons for closing a web socket connection (to be included in the close frame).
 pub enum CloseReason {
     GoingAway,
     ProtocolError(String),
     //TODO Fill in others.
 }
 
+/// Trait form two way channels where the send and receive halves cannot be separated.
+///
+/// #Type Parameters
+///
+/// * `T` - The type of the data both send and received over the channel.
+/// * `E` - Error type for bothe sending and receiving.
 pub trait JoinedStreamSink<T, E>: Stream<Item = Result<T, E>> + Sink<T, Error = E> {
     type CloseFut: Future<Output = Result<(), E>> + Send + 'static;
 
     fn close(&mut self, reason: Option<CloseReason>) -> Self::CloseFut;
 
+    /// Transform both the data and error types using [`Into`].
     fn transform_data<T2, E2>(self) -> TransformedStreamSink<Self, T, T2, E, E2>
     where
         Self: Sized,
@@ -260,6 +268,7 @@ pub trait JoinedStreamSink<T, E>: Stream<Item = Result<T, E>> + Sink<T, Error = 
 
 type Bijection<T1, T2> = (fn(T1) -> T2, fn(T2) -> T1);
 
+/// A [JoinStreamSink] where the data and error type have been transformed by [`Into`].
 #[pin_project]
 pub struct TransformedStreamSink<S, T1, T2, E1, E2> {
     #[pin]
@@ -333,10 +342,13 @@ where
     }
 }
 
+/// Trait to provide a service to negotiate a web socket connection on top of a socket.
 pub trait WsConnections<Sock: Send + Sync + Unpin> {
     type StreamSink: JoinedStreamSink<WsMessage, ConnectionError> + Send + Unpin + 'static;
     type Fut: Future<Output = Result<Self::StreamSink, ConnectionError>> + Send + 'static;
 
+    /// Negotiate a new client connection.
     fn open_connection(&self, socket: Sock) -> Self::Fut;
+    /// Negotiate a new server connection.
     fn accept_connection(&self, socket: Sock) -> Self::Fut;
 }
