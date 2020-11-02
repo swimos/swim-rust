@@ -10,7 +10,7 @@ mod tests;
 #[derive(Debug, Clone)]
 pub struct RTree<T, P, B>
 where
-    T: Ord + Copy + Clone + Signed,
+    T: PartialOrd + Copy + Clone + Signed,
     P: Point<T>,
     B: BoundingBox<T, P>,
 {
@@ -20,7 +20,7 @@ where
 
 impl<T, P, B> RTree<T, P, B>
 where
-    T: Ord + Copy + Clone + Signed,
+    T: PartialOrd + Copy + Clone + Signed,
     P: Point<T>,
     B: BoundingBox<T, P>,
 {
@@ -104,7 +104,7 @@ where
 #[derive(Debug, Clone)]
 struct Node<T, P, B>
 where
-    T: Ord + Copy + Clone + Signed,
+    T: PartialOrd + Copy + Clone + Signed,
     P: Point<T>,
     B: BoundingBox<T, P>,
 {
@@ -116,7 +116,7 @@ where
 
 impl<T, P, B> Node<T, P, B>
 where
-    T: Ord + Copy + Clone + Signed,
+    T: PartialOrd + Copy + Clone + Signed,
     P: Point<T>,
     B: BoundingBox<T, P>,
 {
@@ -295,7 +295,7 @@ fn quadratic_split<T, P, B>(
     min_children: usize,
 ) -> (SplitGroup<T, P, B>, SplitGroup<T, P, B>)
 where
-    T: Ord + Copy + Clone + Signed,
+    T: PartialOrd + Copy + Clone + Signed,
     P: Point<T>,
     B: BoundingBox<T, P>,
 {
@@ -354,7 +354,7 @@ where
 
 fn pick_seeds<T, P, B>(entries: &[EntryPtr<T, P, B>]) -> (usize, usize)
 where
-    T: Ord + Copy + Clone + Signed,
+    T: PartialOrd + Copy + Clone + Signed,
     P: Point<T>,
     B: BoundingBox<T, P>,
 {
@@ -394,7 +394,7 @@ fn pick_next<T, P, B>(
     second_group_size: usize,
 ) -> (usize, Rect<T, P>, Group)
 where
-    T: Ord + Copy + Clone + Signed,
+    T: PartialOrd + Copy + Clone + Signed,
     P: Point<T>,
     B: BoundingBox<T, P>,
 {
@@ -455,7 +455,7 @@ fn calc_preferences<T, P, B>(
     second_mbb: &Rect<T, P>,
 ) -> (T, T, Rect<T, P>, Rect<T, P>)
 where
-    T: Ord + Copy + Clone + Signed,
+    T: PartialOrd + Copy + Clone + Signed,
     P: Point<T>,
     B: BoundingBox<T, P>,
 {
@@ -482,7 +482,7 @@ fn select_group<T, P>(
     second_diff: T,
 ) -> Group
 where
-    T: Ord + Copy + Clone + Signed,
+    T: PartialOrd + Copy + Clone + Signed,
     P: Point<T>,
 {
     if first_diff < second_diff {
@@ -515,7 +515,7 @@ type SplitGroup<T, P, B> = (Vec<EntryPtr<T, P, B>>, Rect<T, P>);
 #[derive(Debug, Clone)]
 enum Entry<T, P, B>
 where
-    T: Ord + Copy + Clone + Signed,
+    T: PartialOrd + Copy + Clone + Signed,
     P: Point<T>,
     B: BoundingBox<T, P>,
 {
@@ -530,7 +530,7 @@ where
 
 impl<T, P, B> Entry<T, P, B>
 where
-    T: Ord + Copy + Clone + Signed,
+    T: PartialOrd + Copy + Clone + Signed,
     P: Point<T>,
     B: BoundingBox<T, P>,
 {
@@ -570,8 +570,8 @@ where
 
                 let removed_mbb = removed.get_mbb();
 
-                if removed_mbb.lower_left.has_equal(&mbb.lower_left)
-                    || removed_mbb.upper_right.has_equal(&mbb.upper_right)
+                if removed_mbb.low.has_equal_cords(&mbb.low)
+                    || removed_mbb.high.has_equal_cords(&mbb.high)
                 {
                     let mut entries_iter = child.entries.iter();
                     let mut shrunken_mbb = entries_iter.next().unwrap().get_mbb().clone();
@@ -590,31 +590,30 @@ where
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Rect<T, P>
 where
-    T: Ord + Copy + Clone + Signed,
+    T: PartialOrd + Copy + Clone + Signed,
     P: Point<T>,
 {
-    lower_left: P,
-    upper_right: P,
+    low: P,
+    high: P,
     phantom: PhantomData<T>,
 }
 
 impl<T, P> Rect<T, P>
 where
-    T: Ord + Copy + Clone + Signed,
+    T: PartialOrd + Copy + Clone + Signed,
     P: Point<T>,
 {
-    pub fn new(lower_left: P, upper_right: P) -> Self {
-        // Todo
-        // if lower_left.x > upper_right.x || lower_left.y > upper_right.y {
-        //     panic!("The first point must be the lower left and the second the upper right.")
-        // }
+    pub fn new(low: P, high: P) -> Self {
+        if low.has_higher_cords(&high) || low.has_equal_cords(&high) {
+            panic!("The first point must be lower than the second.")
+        }
 
         Rect {
-            lower_left,
-            upper_right,
+            low,
+            high,
             phantom: PhantomData,
         }
     }
@@ -622,7 +621,7 @@ where
 
 impl<T, P> BoundingBox<T, P> for Rect<T, P>
 where
-    T: Ord + Copy + Clone + Signed,
+    T: PartialOrd + Copy + Clone + Signed,
     P: Point<T>,
 {
     fn get_mbb(&self) -> &Rect<T, P> {
@@ -630,39 +629,38 @@ where
     }
 
     fn measure(&self) -> T {
-        self.upper_right.diff(&self.lower_left).multiply_coord()
+        self.high.diff(&self.low).multiply_coord()
     }
 
     fn combine_boxes<B: BoundingBox<T, P>>(&self, other: &B) -> Rect<T, P> {
         let other_mbb = other.get_mbb();
 
-        let new_lower_left = self.lower_left.get_lowest(&other_mbb.lower_left);
-        let new_upper_right = self.upper_right.get_highest(&other_mbb.upper_right);
+        let new_low = self.low.get_lowest(&other_mbb.low);
+        let new_high = self.high.get_highest(&other_mbb.high);
 
-        Rect::new(new_lower_left, new_upper_right)
+        Rect::new(new_low, new_high)
     }
 
     fn is_covering<B: BoundingBox<T, P>>(&self, other: &B) -> bool {
         let other_mbb = other.get_mbb();
 
-        self.lower_left.has_lower_cords(&other_mbb.lower_left)
-            && self.upper_right.has_higher_cords(&other_mbb.upper_right)
+        self.low.has_lower_cords(&other_mbb.low) && self.high.has_higher_cords(&other_mbb.high)
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Point2D<T: Ord + Clone> {
+#[derive(Debug, Clone, PartialEq)]
+pub struct Point2D<T: PartialOrd + Clone> {
     x: T,
     y: T,
 }
 
-impl<T: Ord + Clone> Point2D<T> {
+impl<T: PartialOrd + Clone> Point2D<T> {
     pub fn new(x: T, y: T) -> Self {
         Point2D { x, y }
     }
 }
 
-impl<T: Ord + Copy + Clone + Signed> Point<T> for Point2D<T> {
+impl<T: PartialOrd + Copy + Clone + Signed> Point<T> for Point2D<T> {
     fn diff(&self, other: &Point2D<T>) -> Point2D<T> {
         Point2D {
             x: self.x - other.x,
@@ -674,7 +672,7 @@ impl<T: Ord + Copy + Clone + Signed> Point<T> for Point2D<T> {
         self.x * self.y
     }
 
-    fn has_equal(&self, other: &Self) -> bool {
+    fn has_equal_cords(&self, other: &Self) -> bool {
         self.x == other.x || self.y == other.y
     }
 
@@ -707,20 +705,20 @@ impl<T: Ord + Copy + Clone + Signed> Point<T> for Point2D<T> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Point3D<T: Ord + Clone> {
+#[derive(Debug, Clone, PartialEq)]
+pub struct Point3D<T: PartialOrd + Clone> {
     x: T,
     y: T,
     z: T,
 }
 
-impl<T: Ord + Clone> Point3D<T> {
+impl<T: PartialOrd + Clone> Point3D<T> {
     pub fn new(x: T, y: T, z: T) -> Self {
         Point3D { x, y, z }
     }
 }
 
-impl<T: Ord + Copy + Clone + Signed> Point<T> for Point3D<T> {
+impl<T: PartialOrd + Copy + Clone + Signed> Point<T> for Point3D<T> {
     fn diff(&self, other: &Point3D<T>) -> Point3D<T> {
         Point3D {
             x: self.x - other.x,
@@ -733,7 +731,7 @@ impl<T: Ord + Copy + Clone + Signed> Point<T> for Point3D<T> {
         self.x * self.y * self.z
     }
 
-    fn has_equal(&self, other: &Self) -> bool {
+    fn has_equal_cords(&self, other: &Self) -> bool {
         self.x == other.x || self.y == other.y || self.z == other.z
     }
 
@@ -770,15 +768,15 @@ impl<T: Ord + Copy + Clone + Signed> Point<T> for Point3D<T> {
     }
 }
 
-pub trait Point<T>: Clone + PartialEq + Eq
+pub trait Point<T>: Clone + PartialEq
 where
-    T: Ord + Copy + Clone + Signed,
+    T: PartialOrd + Copy + Clone + Signed,
 {
     fn diff(&self, other: &Self) -> Self;
 
     fn multiply_coord(&self) -> T;
 
-    fn has_equal(&self, other: &Self) -> bool;
+    fn has_equal_cords(&self, other: &Self) -> bool;
 
     fn get_lowest(&self, other: &Self) -> Self;
 
@@ -791,7 +789,7 @@ where
 
 pub trait BoundingBox<T, P>: Clone
 where
-    T: Ord + Copy + Clone + Signed,
+    T: PartialOrd + Copy + Clone + Signed,
     P: Point<T>,
 {
     fn get_mbb(&self) -> &Rect<T, P>;

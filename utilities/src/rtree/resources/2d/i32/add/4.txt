@@ -1,0 +1,62 @@
+RTree {
+    root: Node {
+        entries: [
+            Leaf {
+                item: Rect {
+                    low: Point2D {
+                        x: 0,
+                        y: 0,
+                    },
+                    high: Point2D {
+                        x: 10,
+                        y: 10,
+                    },
+                    phantom: PhantomData,
+                },
+            },
+            Leaf {
+                item: Rect {
+                    low: Point2D {
+                        x: 12,
+                        y: 0,
+                    },
+                    high: Point2D {
+                        x: 15,
+                        y: 15,
+                    },
+                    phantom: PhantomData,
+                },
+            },
+            Leaf {
+                item: Rect {
+                    low: Point2D {
+                        x: 7,
+                        y: 7,
+                    },
+                    high: Point2D {
+                        x: 14,
+                        y: 14,
+                    },
+                    phantom: PhantomData,
+                },
+            },
+            Leaf {
+                item: Rect {
+                    low: Point2D {
+                        x: 10,
+                        y: 11,
+                    },
+                    high: Point2D {
+                        x: 11,
+                        y: 12,
+                    },
+                    phantom: PhantomData,
+                },
+            },
+        ],
+        level: 0,
+        min_children: 2,
+        max_children: 4,
+    },
+    len: 4,
+}

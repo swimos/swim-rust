@@ -1,10 +1,10 @@
-use crate::rtree::{BoundingBox, Point2D, RTree, Rect};
+use crate::rtree::{BoundingBox, Point2D, Point3D, RTree, Rect};
 use std::fs;
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
 
 #[test]
-fn rtree_2d_test() {
+fn rtree_2d_i32_test() {
     let first = Rect::new(Point2D::new(0, 0), Point2D::new(10, 10));
     let second = Rect::new(Point2D::new(12, 0), Point2D::new(15, 15));
     let third = Rect::new(Point2D::new(7, 7), Point2D::new(14, 14));
@@ -22,151 +22,484 @@ fn rtree_2d_test() {
 
     assert_eq!(
         format!("{:#?}", tree),
-        fs::read_to_string("src/rtree/resources/0.txt").unwrap()
+        fs::read_to_string("src/rtree/resources/2d/i32/0.txt").unwrap()
     );
 
     tree.insert(first.clone());
     assert_eq!(
         format!("{:#?}", tree),
-        fs::read_to_string("src/rtree/resources/add/1.txt").unwrap()
+        fs::read_to_string("src/rtree/resources/2d/i32/add/1.txt").unwrap()
     );
 
     tree.insert(second.clone());
     assert_eq!(
         format!("{:#?}", tree),
-        fs::read_to_string("src/rtree/resources/add/2.txt").unwrap()
+        fs::read_to_string("src/rtree/resources/2d/i32/add/2.txt").unwrap()
     );
 
     tree.insert(third.clone());
     assert_eq!(
         format!("{:#?}", tree),
-        fs::read_to_string("src/rtree/resources/add/3.txt").unwrap()
+        fs::read_to_string("src/rtree/resources/2d/i32/add/3.txt").unwrap()
     );
 
     tree.insert(fourth.clone());
     assert_eq!(
         format!("{:#?}", tree),
-        fs::read_to_string("src/rtree/resources/add/4.txt").unwrap()
+        fs::read_to_string("src/rtree/resources/2d/i32/add/4.txt").unwrap()
     );
 
     tree.insert(fifth.clone());
     assert_eq!(
         format!("{:#?}", tree),
-        fs::read_to_string("src/rtree/resources/add/5.txt").unwrap()
+        fs::read_to_string("src/rtree/resources/2d/i32/add/5.txt").unwrap()
     );
 
     tree.insert(sixth.clone());
     assert_eq!(
         format!("{:#?}", tree),
-        fs::read_to_string("src/rtree/resources/add/6.txt").unwrap()
+        fs::read_to_string("src/rtree/resources/2d/i32/add/6.txt").unwrap()
     );
 
     tree.insert(seventh.clone());
     assert_eq!(
         format!("{:#?}", tree),
-        fs::read_to_string("src/rtree/resources/add/7.txt").unwrap()
+        fs::read_to_string("src/rtree/resources/2d/i32/add/7.txt").unwrap()
     );
 
     tree.insert(eighth.clone());
     assert_eq!(
         format!("{:#?}", tree),
-        fs::read_to_string("src/rtree/resources/add/8.txt").unwrap()
+        fs::read_to_string("src/rtree/resources/2d/i32/add/8.txt").unwrap()
     );
 
     tree.insert(ninth.clone());
     assert_eq!(
         format!("{:#?}", tree),
-        fs::read_to_string("src/rtree/resources/add/9.txt").unwrap()
+        fs::read_to_string("src/rtree/resources/2d/i32/add/9.txt").unwrap()
     );
 
     tree.insert(tenth.clone());
     assert_eq!(
         format!("{:#?}", tree),
-        fs::read_to_string("src/rtree/resources/add/10.txt").unwrap()
+        fs::read_to_string("src/rtree/resources/2d/i32/add/10.txt").unwrap()
     );
 
     tree.insert(eleventh.clone());
     assert_eq!(
         format!("{:#?}", tree),
-        fs::read_to_string("src/rtree/resources/add/11.txt").unwrap()
+        fs::read_to_string("src/rtree/resources/2d/i32/add/11.txt").unwrap()
     );
 
     tree.insert(twelfth.clone());
     assert_eq!(
         format!("{:#?}", tree),
-        fs::read_to_string("src/rtree/resources/add/12.txt").unwrap()
+        fs::read_to_string("src/rtree/resources/2d/i32/add/12.txt").unwrap()
     );
 
     tree.remove(&first);
     assert_eq!(
         format!("{:#?}", tree),
-        fs::read_to_string("src/rtree/resources/remove/1.txt").unwrap()
+        fs::read_to_string("src/rtree/resources/2d/i32/remove/1.txt").unwrap()
     );
 
     tree.remove(&second);
     assert_eq!(
         format!("{:#?}", tree),
-        fs::read_to_string("src/rtree/resources/remove/2.txt").unwrap()
+        fs::read_to_string("src/rtree/resources/2d/i32/remove/2.txt").unwrap()
     );
 
     tree.remove(&third);
     assert_eq!(
         format!("{:#?}", tree),
-        fs::read_to_string("src/rtree/resources/remove/3.txt").unwrap()
+        fs::read_to_string("src/rtree/resources/2d/i32/remove/3.txt").unwrap()
     );
 
     tree.remove(&fourth);
     assert_eq!(
         format!("{:#?}", tree),
-        fs::read_to_string("src/rtree/resources/remove/4.txt").unwrap()
+        fs::read_to_string("src/rtree/resources/2d/i32/remove/4.txt").unwrap()
     );
 
     tree.remove(&fifth);
     assert_eq!(
         format!("{:#?}", tree),
-        fs::read_to_string("src/rtree/resources/remove/5.txt").unwrap()
+        fs::read_to_string("src/rtree/resources/2d/i32/remove/5.txt").unwrap()
     );
 
     tree.remove(&sixth);
     assert_eq!(
         format!("{:#?}", tree),
-        fs::read_to_string("src/rtree/resources/remove/6.txt").unwrap()
+        fs::read_to_string("src/rtree/resources/2d/i32/remove/6.txt").unwrap()
     );
 
     tree.remove(&seventh);
     assert_eq!(
         format!("{:#?}", tree),
-        fs::read_to_string("src/rtree/resources/remove/7.txt").unwrap()
+        fs::read_to_string("src/rtree/resources/2d/i32/remove/7.txt").unwrap()
     );
 
     tree.remove(&eighth);
     assert_eq!(
         format!("{:#?}", tree),
-        fs::read_to_string("src/rtree/resources/remove/8.txt").unwrap()
+        fs::read_to_string("src/rtree/resources/2d/i32/remove/8.txt").unwrap()
     );
 
     tree.remove(&ninth);
     assert_eq!(
         format!("{:#?}", tree),
-        fs::read_to_string("src/rtree/resources/remove/9.txt").unwrap()
+        fs::read_to_string("src/rtree/resources/2d/i32/remove/9.txt").unwrap()
     );
 
     tree.remove(&tenth);
     assert_eq!(
         format!("{:#?}", tree),
-        fs::read_to_string("src/rtree/resources/remove/10.txt").unwrap()
+        fs::read_to_string("src/rtree/resources/2d/i32/remove/10.txt").unwrap()
     );
 
     tree.remove(&eleventh);
     assert_eq!(
         format!("{:#?}", tree),
-        fs::read_to_string("src/rtree/resources/remove/11.txt").unwrap()
+        fs::read_to_string("src/rtree/resources/2d/i32/remove/11.txt").unwrap()
     );
 
     tree.remove(&twelfth);
     assert_eq!(
         format!("{:#?}", tree),
-        fs::read_to_string("src/rtree/resources/0.txt").unwrap()
+        fs::read_to_string("src/rtree/resources/2d/i32/0.txt").unwrap()
+    );
+}
+
+#[test]
+fn rtree_2d_f32_test() {
+    let first = Rect::new(Point2D::new(0.5, 0.5), Point2D::new(10.5, 10.5));
+    let second = Rect::new(Point2D::new(12.5, 0.5), Point2D::new(15.5, 15.5));
+    let third = Rect::new(Point2D::new(7.5, 7.5), Point2D::new(14.5, 14.5));
+    let fourth = Rect::new(Point2D::new(10.5, 11.5), Point2D::new(11.5, 12.5));
+    let fifth = Rect::new(Point2D::new(4.5, 4.5), Point2D::new(5.5, 6.5));
+    let sixth = Rect::new(Point2D::new(4.5, 9.5), Point2D::new(5.5, 11.5));
+    let seventh = Rect::new(Point2D::new(13.5, 0.5), Point2D::new(14.5, 1.5));
+    let eighth = Rect::new(Point2D::new(13.5, 13.5), Point2D::new(16.5, 16.5));
+    let ninth = Rect::new(Point2D::new(2.5, 13.5), Point2D::new(4.5, 16.5));
+    let tenth = Rect::new(Point2D::new(2.5, 2.5), Point2D::new(3.5, 3.5));
+    let eleventh = Rect::new(Point2D::new(10.5, 0.5), Point2D::new(12.5, 5.5));
+    let twelfth = Rect::new(Point2D::new(7.5, 3.5), Point2D::new(8.5, 6.5));
+
+    let mut tree = RTree::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(4).unwrap());
+
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/2d/f32/0.txt").unwrap()
+    );
+
+    tree.insert(first.clone());
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/2d/f32/add/1.txt").unwrap()
+    );
+
+    tree.insert(second.clone());
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/2d/f32/add/2.txt").unwrap()
+    );
+
+    tree.insert(third.clone());
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/2d/f32/add/3.txt").unwrap()
+    );
+
+    tree.insert(fourth.clone());
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/2d/f32/add/4.txt").unwrap()
+    );
+
+    tree.insert(fifth.clone());
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/2d/f32/add/5.txt").unwrap()
+    );
+
+    tree.insert(sixth.clone());
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/2d/f32/add/6.txt").unwrap()
+    );
+
+    tree.insert(seventh.clone());
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/2d/f32/add/7.txt").unwrap()
+    );
+
+    tree.insert(eighth.clone());
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/2d/f32/add/8.txt").unwrap()
+    );
+
+    tree.insert(ninth.clone());
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/2d/f32/add/9.txt").unwrap()
+    );
+
+    tree.insert(tenth.clone());
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/2d/f32/add/10.txt").unwrap()
+    );
+
+    tree.insert(eleventh.clone());
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/2d/f32/add/11.txt").unwrap()
+    );
+
+    tree.insert(twelfth.clone());
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/2d/f32/add/12.txt").unwrap()
+    );
+
+    tree.remove(&first);
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/2d/f32/remove/1.txt").unwrap()
+    );
+
+    tree.remove(&second);
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/2d/f32/remove/2.txt").unwrap()
+    );
+
+    tree.remove(&third);
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/2d/f32/remove/3.txt").unwrap()
+    );
+
+    tree.remove(&fourth);
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/2d/f32/remove/4.txt").unwrap()
+    );
+
+    tree.remove(&fifth);
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/2d/f32/remove/5.txt").unwrap()
+    );
+
+    tree.remove(&sixth);
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/2d/f32/remove/6.txt").unwrap()
+    );
+
+    tree.remove(&seventh);
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/2d/f32/remove/7.txt").unwrap()
+    );
+
+    tree.remove(&eighth);
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/2d/f32/remove/8.txt").unwrap()
+    );
+
+    tree.remove(&ninth);
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/2d/f32/remove/9.txt").unwrap()
+    );
+
+    tree.remove(&tenth);
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/2d/f32/remove/10.txt").unwrap()
+    );
+
+    tree.remove(&eleventh);
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/2d/f32/remove/11.txt").unwrap()
+    );
+
+    tree.remove(&twelfth);
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/2d/f32/0.txt").unwrap()
+    );
+}
+
+#[test]
+fn rtree_3d_test() {
+    let first = Rect::new(Point3D::new(0, 0, 0), Point3D::new(10, 10, 10));
+    let second = Rect::new(Point3D::new(12, 0, 0), Point3D::new(15, 15, 10));
+    let third = Rect::new(Point3D::new(7, 7, 0), Point3D::new(14, 14, 10));
+    let fourth = Rect::new(Point3D::new(10, 11, 0), Point3D::new(11, 12, 10));
+    let fifth = Rect::new(Point3D::new(4, 4, 0), Point3D::new(5, 6, 10));
+    let sixth = Rect::new(Point3D::new(4, 9, 0), Point3D::new(5, 11, 10));
+    let seventh = Rect::new(Point3D::new(13, 0, 0), Point3D::new(14, 1, 10));
+    let eighth = Rect::new(Point3D::new(13, 13, 0), Point3D::new(16, 16, 10));
+    let ninth = Rect::new(Point3D::new(2, 13, 0), Point3D::new(4, 16, 10));
+    let tenth = Rect::new(Point3D::new(2, 2, 0), Point3D::new(3, 3, 10));
+    let eleventh = Rect::new(Point3D::new(10, 0, 0), Point3D::new(12, 5, 10));
+    let twelfth = Rect::new(Point3D::new(7, 3, 0), Point3D::new(8, 6, 10));
+
+    let mut tree = RTree::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(4).unwrap());
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/3d/0.txt").unwrap()
+    );
+
+    tree.insert(first.clone());
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/3d/add/1.txt").unwrap()
+    );
+
+    tree.insert(second.clone());
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/3d/add/2.txt").unwrap()
+    );
+
+    tree.insert(third.clone());
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/3d/add/3.txt").unwrap()
+    );
+
+    tree.insert(fourth.clone());
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/3d/add/4.txt").unwrap()
+    );
+
+    tree.insert(fifth.clone());
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/3d/add/5.txt").unwrap()
+    );
+
+    tree.insert(sixth.clone());
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/3d/add/6.txt").unwrap()
+    );
+
+    tree.insert(seventh.clone());
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/3d/add/7.txt").unwrap()
+    );
+
+    tree.insert(eighth.clone());
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/3d/add/8.txt").unwrap()
+    );
+
+    tree.insert(ninth.clone());
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/3d/add/9.txt").unwrap()
+    );
+
+    tree.insert(tenth.clone());
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/3d/add/10.txt").unwrap()
+    );
+
+    tree.insert(eleventh.clone());
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/3d/add/11.txt").unwrap()
+    );
+
+    tree.insert(twelfth.clone());
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/3d/add/12.txt").unwrap()
+    );
+
+    tree.remove(&first);
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/3d/remove/1.txt").unwrap()
+    );
+
+    tree.remove(&second);
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/3d/remove/2.txt").unwrap()
+    );
+
+    tree.remove(&third);
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/3d/remove/3.txt").unwrap()
+    );
+
+    tree.remove(&fourth);
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/3d/remove/4.txt").unwrap()
+    );
+
+    tree.remove(&fifth);
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/3d/remove/5.txt").unwrap()
+    );
+
+    tree.remove(&sixth);
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/3d/remove/6.txt").unwrap()
+    );
+
+    tree.remove(&seventh);
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/3d/remove/7.txt").unwrap()
+    );
+
+    tree.remove(&eighth);
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/3d/remove/8.txt").unwrap()
+    );
+
+    tree.remove(&ninth);
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/3d/remove/9.txt").unwrap()
+    );
+
+    tree.remove(&tenth);
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/3d/remove/10.txt").unwrap()
+    );
+
+    tree.remove(&eleventh);
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/3d/remove/11.txt").unwrap()
+    );
+
+    tree.remove(&twelfth);
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/3d/0.txt").unwrap()
     );
 }
 
