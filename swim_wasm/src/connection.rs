@@ -78,18 +78,22 @@ impl WasmWsFactory {
 
     async fn factory_task(mut receiver: mpsc::Receiver<ConnReq>) {
         while let Some(ConnReq { request, url }) = receiver.next().await {
-            let (_ws, wsio) = WsMeta::connect(url, None)
-                .await
-                .map_err(|_| ConnectionError::ConnectError)
-                .unwrap();
+            let connect_result = WsMeta::connect(url, None).await;
 
-            let (sink, stream) = wsio.split();
-            let transformed_sink = TransformedSink::new(sink, SinkTransformer);
-            let transformed_stream = TransformedStream::new(stream, StreamTransformer);
+            match connect_result {
+                Ok((_ws_meta, ws_stream)) => {
+                    let (sink, stream) = ws_stream.split();
+                    let transformed_sink = TransformedSink::new(sink, SinkTransformer);
+                    let transformed_stream = TransformedStream::new(stream, StreamTransformer);
 
-            let res = (transformed_sink, transformed_stream);
+                    let res = (transformed_sink, transformed_stream);
 
-            let _ = request.send(Ok(res));
+                    let _ = request.send(Ok(res));
+                }
+                Err(e) => {
+                    let _ = request.send(Err(WsError(e).into()));
+                }
+            }
         }
     }
 }
