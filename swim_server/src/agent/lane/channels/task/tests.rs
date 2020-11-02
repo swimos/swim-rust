@@ -23,7 +23,9 @@ use crate::agent::lane::channels::{
 use crate::agent::lane::model::action::{Action, ActionLane};
 use crate::agent::Eff;
 use crate::routing::error::{ResolutionError, RouterError, SendError};
-use crate::routing::{Route, RoutingAddr, ServerRouter, TaggedClientEnvelope, TaggedEnvelope, ConnectionDropped};
+use crate::routing::{
+    ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedClientEnvelope, TaggedEnvelope,
+};
 use futures::future::{join, join3, ready, BoxFuture};
 use futures::stream::{BoxStream, FusedStream};
 use futures::{Future, FutureExt, Stream, StreamExt};

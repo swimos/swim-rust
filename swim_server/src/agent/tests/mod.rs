@@ -51,7 +51,7 @@ use utilities::uri::RelativeUri;
 
 mod stub_router {
     use crate::routing::error::{ResolutionError, RouterError, SendError};
-    use crate::routing::{Route, RoutingAddr, ServerRouter, TaggedEnvelope, ConnectionDropped};
+    use crate::routing::{ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedEnvelope};
     use futures::future::BoxFuture;
     use futures::FutureExt;
     use std::sync::Arc;

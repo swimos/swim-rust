@@ -28,7 +28,7 @@ use crate::plane::error::NoAgentAtRoute;
 use crate::plane::router::{PlaneRouter, PlaneRouterFactory};
 use crate::plane::spec::{PlaneSpec, RouteSpec};
 use crate::routing::error::{ConnectionError, RouterError, Unresolvable};
-use crate::routing::{Route, RoutingAddr, ServerRouterFactory, TaggedEnvelope, ConnectionDropped};
+use crate::routing::{ConnectionDropped, Route, RoutingAddr, ServerRouterFactory, TaggedEnvelope};
 use either::Either;
 use futures::future::{join, BoxFuture};
 use futures::{select_biased, FutureExt, StreamExt};

@@ -19,7 +19,7 @@ use crate::agent::lane::channels::uplink::{UplinkAction, UplinkError};
 use crate::agent::lane::channels::TaggedAction;
 use crate::agent::Eff;
 use crate::routing::error::{ResolutionError, RouterError, SendError};
-use crate::routing::{Route, RoutingAddr, ServerRouter, TaggedEnvelope, ConnectionDropped};
+use crate::routing::{ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedEnvelope};
 use futures::future::{join, ready, BoxFuture};
 use futures::FutureExt;
 use std::sync::Arc;

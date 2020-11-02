@@ -20,7 +20,7 @@ use crate::agent::lane::channels::uplink::UplinkError;
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::{AttachError, Eff, LaneIo};
 use crate::routing::error::{ResolutionError, RouterError, SendError};
-use crate::routing::{Route, RoutingAddr, ServerRouter, TaggedClientEnvelope, ConnectionDropped};
+use crate::routing::{ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedClientEnvelope};
 use futures::future::BoxFuture;
 use futures::{FutureExt, TryFutureExt};
 use parking_lot::Mutex;

@@ -12,17 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::routing::error::{ResolutionError, RouterError, ConnectionError};
+use crate::routing::error::{ConnectionError, ResolutionError, RouterError};
 use futures::future::BoxFuture;
 use std::fmt::{Display, Formatter};
+use std::time::Duration;
 use swim_common::sink::item::{ItemSender, ItemSink, MpscSend};
 use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
 use tokio::sync::mpsc;
 use url::Url;
+use utilities::errors::Recoverable;
 use utilities::sync::promise;
 use utilities::uri::RelativeUri;
-use std::time::Duration;
-use utilities::errors::Recoverable;
 
 pub mod error;
 #[cfg(test)]
@@ -145,7 +145,6 @@ impl<'a> ItemSink<'a, Envelope> for TaggedSender {
         MpscSend::new(inner, TaggedEnvelope(*tag, envelope))
     }
 }
-
 
 /// Reasons for a router connection to be dropped.
 #[derive(Debug, Clone, PartialEq, Eq)]
