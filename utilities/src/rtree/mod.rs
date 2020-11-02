@@ -137,11 +137,7 @@ where
         self.level == 0
     }
 
-    fn insert(
-        &mut self,
-        item: EntryPtr<T, P, B>,
-        level: i32,
-    ) -> Option<(EntryPtr<T, P, B>, EntryPtr<T, P, B>)> {
+    fn insert(&mut self, item: EntryPtr<T, P, B>, level: i32) -> MaybeSplit<T, P, B> {
         match *item {
             //If we have a branch and we are at the right level -> insert
             Entry::Branch { .. } if self.level == level => {
@@ -202,7 +198,7 @@ where
         None
     }
 
-    fn remove(&mut self, bounding_box: &Rect<T, P>) -> Option<(B, Option<Vec<EntryPtr<T, P, B>>>)> {
+    fn remove(&mut self, bounding_box: &Rect<T, P>) -> Option<(B, MaybeOrphans<T, P, B>)> {
         if self.is_leaf() {
             //If this is leaf try to find the item
             let mut remove_idx = None;
@@ -267,7 +263,7 @@ where
     }
 
     fn split(&mut self) -> (EntryPtr<T, P, B>, EntryPtr<T, P, B>) {
-        let (first_group, second_group, first_mbb, second_mbb) =
+        let ((first_group, first_mbb), (second_group, second_mbb)) =
             quadratic_split(&mut self.entries, self.min_children);
 
         let first_group = Entry::Branch {
@@ -297,12 +293,7 @@ where
 fn quadratic_split<T, P, B>(
     entries: &mut Vec<EntryPtr<T, P, B>>,
     min_children: usize,
-) -> (
-    Vec<EntryPtr<T, P, B>>,
-    Vec<EntryPtr<T, P, B>>,
-    Rect<T, P>,
-    Rect<T, P>,
-)
+) -> (SplitGroup<T, P, B>, SplitGroup<T, P, B>)
 where
     T: Ord + Copy + Clone + Signed,
     P: Point<T>,
@@ -358,7 +349,7 @@ where
         }
     }
 
-    (first_group, second_group, first_mbb, second_mbb)
+    ((first_group, first_mbb), (second_group, second_mbb))
 }
 
 fn pick_seeds<T, P, B>(entries: &[EntryPtr<T, P, B>]) -> (usize, usize)
@@ -517,6 +508,9 @@ enum Group {
 }
 
 type EntryPtr<T, P, B> = Arc<Entry<T, P, B>>;
+type MaybeOrphans<T, P, B> = Option<Vec<EntryPtr<T, P, B>>>;
+type MaybeSplit<T, P, B> = Option<(EntryPtr<T, P, B>, EntryPtr<T, P, B>)>;
+type SplitGroup<T, P, B> = (Vec<EntryPtr<T, P, B>>, Rect<T, P>);
 
 #[derive(Debug, Clone)]
 enum Entry<T, P, B>
@@ -559,7 +553,7 @@ where
         item: EntryPtr<T, P, B>,
         expanded_rect: Rect<T, P>,
         level: i32,
-    ) -> Option<(EntryPtr<T, P, B>, EntryPtr<T, P, B>)> {
+    ) -> MaybeSplit<T, P, B> {
         match self {
             Entry::Branch { mbb, child } => {
                 *mbb = expanded_rect;
@@ -569,7 +563,7 @@ where
         }
     }
 
-    fn remove(&mut self, bounding_box: &Rect<T, P>) -> Option<(B, Option<Vec<EntryPtr<T, P, B>>>)> {
+    fn remove(&mut self, bounding_box: &Rect<T, P>) -> Option<(B, MaybeOrphans<T, P, B>)> {
         match self {
             Entry::Branch { mbb, child } => {
                 let (removed, orphan_nodes) = child.remove(bounding_box)?;

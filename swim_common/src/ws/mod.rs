@@ -28,8 +28,8 @@ use http::uri::Scheme;
 use http::{Request, Uri};
 
 use crate::ws::error::{ConnectionError, WebSocketError};
-use futures_util::core_reexport::fmt::{Debug, Formatter};
 use std::fmt;
+use std::fmt::{Debug, Formatter};
 
 pub mod error;
 

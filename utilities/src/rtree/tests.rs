@@ -4,7 +4,7 @@ use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
 
 #[test]
-fn rtree_test() {
+fn rtree_2d_test() {
     let first = Rect::new(Point2D::new(0, 0), Point2D::new(10, 10));
     let second = Rect::new(Point2D::new(12, 0), Point2D::new(15, 15));
     let third = Rect::new(Point2D::new(7, 7), Point2D::new(14, 14));
