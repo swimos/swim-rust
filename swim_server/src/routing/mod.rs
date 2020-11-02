@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::routing::error::{ResolutionError, RouterError};
-use crate::routing::remote::ConnectionDropped;
+use crate::routing::error::{ResolutionError, RouterError, ConnectionError};
 use futures::future::BoxFuture;
 use std::fmt::{Display, Formatter};
 use swim_common::sink::item::{ItemSender, ItemSink, MpscSend};
@@ -22,12 +21,13 @@ use tokio::sync::mpsc;
 use url::Url;
 use utilities::sync::promise;
 use utilities::uri::RelativeUri;
+use std::time::Duration;
+use utilities::errors::Recoverable;
 
 pub mod error;
-pub mod remote;
 #[cfg(test)]
 mod tests;
-pub(crate) mod ws;
+pub mod ws;
 
 /// A key into the server routing table specifying an endpoint to which [`Envelope`]s can be sent.
 /// This is deliberately non-descriptive to allow it to be [`Copy`] and so very cheap to use as a
@@ -143,5 +143,45 @@ impl<'a> ItemSink<'a, Envelope> for TaggedSender {
     fn send_item(&'a mut self, envelope: Envelope) -> Self::SendFuture {
         let TaggedSender { tag, inner } = self;
         MpscSend::new(inner, TaggedEnvelope(*tag, envelope))
+    }
+}
+
+
+/// Reasons for a router connection to be dropped.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ConnectionDropped {
+    /// The connection was explicitly closed.
+    Closed,
+    /// No data passed through the connection, in either direction, within the specified duration.
+    TimedOut(Duration),
+    /// A remote connection failed with an error.
+    Failed(ConnectionError),
+    /// A local agent failed.
+    AgentFailed,
+    /// The promise indicating the reason was dropped (this is likely a bug).
+    Unknown,
+}
+
+impl Display for ConnectionDropped {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConnectionDropped::Closed => write!(f, "The connection was explicitly closed."),
+            ConnectionDropped::TimedOut(t) => write!(f, "The connection timed out after {:?}.", t),
+            ConnectionDropped::Failed(err) => write!(f, "The connection failed: '{}'", err),
+            ConnectionDropped::AgentFailed => write!(f, "The agent failed."),
+            ConnectionDropped::Unknown => write!(f, "The reason could not be determined."),
+        }
+    }
+}
+
+impl ConnectionDropped {
+    //The Recoverable trait cannot be implemented as ConnectionDropped is not an Error.
+    pub fn is_recoverable(&self) -> bool {
+        match self {
+            ConnectionDropped::TimedOut(_) => true,
+            ConnectionDropped::Failed(err) => err.is_transient(),
+            ConnectionDropped::AgentFailed => true,
+            _ => false,
+        }
     }
 }

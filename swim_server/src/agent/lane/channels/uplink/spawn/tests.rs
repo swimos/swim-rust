@@ -20,8 +20,7 @@ use crate::agent::lane::channels::uplink::{UplinkAction, UplinkError, UplinkStat
 use crate::agent::lane::channels::{AgentExecutionConfig, LaneMessageHandler, TaggedAction};
 use crate::agent::Eff;
 use crate::routing::error::{ResolutionError, RouterError, SendError};
-use crate::routing::remote::ConnectionDropped;
-use crate::routing::{Route, RoutingAddr, ServerRouter, TaggedEnvelope};
+use crate::routing::{Route, RoutingAddr, ServerRouter, TaggedEnvelope, ConnectionDropped};
 use futures::future::{join, join3, ready, BoxFuture};
 use futures::stream::once;
 use futures::stream::{BoxStream, FusedStream};
