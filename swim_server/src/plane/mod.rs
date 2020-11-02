@@ -288,7 +288,9 @@ impl<Clk: Clock> RouteResolver<Clk> {
             router_fac.create(addr),
         );
         active_routes.add_endpoint(addr, route, LocalEndpoint::new(Arc::downgrade(&agent), tx));
-        spawner.add(task);
+        if spawner.try_add(task).is_err() {
+            panic!("Task spawner terminated unexpectedly.");
+        }
         Ok((agent, addr))
     }
 }

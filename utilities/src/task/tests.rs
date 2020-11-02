@@ -12,26 +12,28 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::future::open_ended::OpenEndedFutures;
 use crate::task::{Spawner, TokioSpawner};
 use futures::future::ready;
-use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use std::collections::HashSet;
 
 #[tokio::test]
-async fn futures_unordered_spawner() {
-    let spawner = FuturesUnordered::new();
+async fn open_ended_futures_spawner() {
+    let mut spawner = OpenEndedFutures::new();
 
     let mut expected: HashSet<i32> = HashSet::new();
 
     assert!(Spawner::is_empty(&spawner));
 
     for i in 0..5 {
-        spawner.add(ready(i));
+        assert!(spawner.try_add(ready(i)).is_ok());
         expected.insert(i);
     }
 
     assert!(!Spawner::is_empty(&spawner));
+
+    spawner.stop();
 
     let results: HashSet<i32> = spawner.collect().await;
 
@@ -40,18 +42,20 @@ async fn futures_unordered_spawner() {
 
 #[tokio::test]
 async fn tokio_task_spawner() {
-    let spawner = TokioSpawner::new();
+    let mut spawner = TokioSpawner::new();
 
     let mut expected: HashSet<i32> = HashSet::new();
 
     assert!(Spawner::is_empty(&spawner));
 
     for i in 0..5 {
-        spawner.add(ready(i));
+        assert!(spawner.try_add(ready(i)).is_ok());
         expected.insert(i);
     }
 
     assert!(!Spawner::is_empty(&spawner));
+
+    spawner.stop();
 
     let results: HashSet<i32> = spawner.collect().await;
 
@@ -63,9 +67,11 @@ async fn tokio_task_spawner() {
 async fn tokio_task_spawner_panic() {
     let mut spawner = TokioSpawner::new();
 
-    spawner.add(async {
-        panic!("Boom!");
-    });
+    assert!(spawner
+        .try_add(async {
+            panic!("Boom!");
+        })
+        .is_ok());
 
     spawner.next().await;
 }
