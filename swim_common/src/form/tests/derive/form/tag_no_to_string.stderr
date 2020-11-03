@@ -1,0 +1,17 @@
+error[E0277]: the trait bound `main::B: swim_common::form::Tag` is not satisfied
+  --> $DIR/tag_no_to_string.rs:21:14
+   |
+21 |     #[derive(Form)]
+   |              ^^^^ the trait `swim_common::form::Tag` is not implemented for `main::B`
+   |
+   = note: required by `swim_common::form::Tag::as_string`
+   = note: this error originates in a derive macro (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `main::B: swim_common::form::Tag` is not satisfied
+  --> $DIR/tag_no_to_string.rs:21:14
+   |
+21 |     #[derive(Form)]
+   |              ^^^^ the trait `swim_common::form::Tag` is not implemented for `main::B`
+   |
+   = note: required by `swim_common::form::Tag::from_string`
+   = note: this error originates in a derive macro (in Nightly builds, run with -Z macro-backtrace for more info)
