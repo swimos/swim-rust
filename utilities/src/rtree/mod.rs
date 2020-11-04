@@ -1,4 +1,5 @@
-use crate::rtree::rect::{BoundingBox, Point, Rect};
+use crate::rtree::rect::{BoundingBox, Point, Point2D, Rect};
+use num::integer::sqrt;
 use num::Signed;
 use std::fmt::Debug;
 use std::num::NonZeroUsize;
@@ -9,6 +10,11 @@ pub mod rect;
 
 #[cfg(test)]
 mod tests;
+
+fn get_center(rect: &Rect<i32, Point2D<i32>>) -> Point2D<i32> {
+    let Point2D { x, y } = rect.get_high().sum(rect.get_low());
+    Point2D::new(x / 2, y / 2)
+}
 
 #[derive(Debug, Clone)]
 pub struct RTree<T, P, B>
@@ -21,9 +27,88 @@ where
     len: usize,
 }
 
+pub fn bulk_load(
+    min_children: NonZeroUsize,
+    max_children: NonZeroUsize,
+    mut items: Vec<Rect<i32, Point2D<i32>>>,
+) -> RTree<i32, Point2D<i32>, Rect<i32, Point2D<i32>>> {
+    if min_children.get() > max_children.get() / 2 {
+        panic!("The minimum number of children cannot be more than half of the maximum number of children.")
+    }
+
+    let items_num = items.len();
+    // We use 50% of the capacity to avoid splitting and merging on insertion / removal
+    let node_capacity = (max_children.get() - min_children.get()) / 2;
+    let leaf_num = items_num / node_capacity;
+
+    let p = sqrt(leaf_num);
+
+    let chunk_size = leaf_num / p;
+
+    // Sort all by x
+    items.sort_by(|first, second| {
+        let Point2D { x: first_x, y: _ } = get_center(first);
+        let Point2D { x: second_x, y: _ } = get_center(second);
+        first_x.cmp(&second_x)
+    });
+
+    //Split into chunks and sort them by y
+    let mut chunks: Vec<_> = items
+        .chunks_mut(chunk_size)
+        .map(|chunk| {
+            chunk.sort_by(|first, second| {
+                let Point2D { x, y: first_y } = get_center(first);
+                let Point2D { x, y: second_y } = get_center(second);
+                first_y.cmp(&second_y)
+            });
+            chunk
+        })
+        .collect();
+
+    let nodes: Vec<_> = chunks
+        .into_iter()
+        .map(|chunk| {
+            let items: Vec<_> = chunk
+                .into_iter()
+                //Todo avoid cloning
+                .map(|item| Arc::new(Entry::Leaf { item: item.clone() }))
+                .collect();
+
+            let node = Node {
+                entries: items,
+                level: 0,
+                min_children: min_children.get(),
+                max_children: max_children.get(),
+            };
+            Arc::new(Entry::Branch {
+                //Todo calculate mbb
+                mbb: rect![(0, 0), (10, 10)],
+                child: node,
+            })
+        })
+        .collect();
+
+    let node = Node {
+        entries: nodes,
+        level: 1,
+        min_children: min_children.get(),
+        max_children: max_children.get(),
+    };
+
+    RTree {
+        root: node,
+        len: items_num,
+    }
+    // Turn each item in the chunks into leaf entry
+    // Each chunk will have mbb and will be a branch entry
+    // eprintln!("chunks = {:#?}", chunks);
+
+    // If the branch entries are more than the node capacity, repeat the algorithm
+}
+
 impl<T, P, B> RTree<T, P, B>
 where
-    T: PartialOrd + Copy + Clone + Signed,
+    T: PartialOrd + Copy + Clone + Signed + Debug,
     P: Point<T>,
     B: BoundingBox<T, P>,
 {

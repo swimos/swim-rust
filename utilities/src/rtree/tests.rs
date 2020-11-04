@@ -1,8 +1,40 @@
 use crate::rtree::rect::{Point2D, Point3D};
-use crate::rtree::{BoundingBox, RTree, Rect};
+use crate::rtree::{BoundingBox, RTree, Rect, bulk_load};
 use std::fs;
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
+
+//Todo add unit tests for search
+// let found = tree.search(&rect!((7, 0), (14, 15)));
+//
+// eprintln!("found = {:#?}", found);
+// assert_eq!(found.unwrap().len(), 5);
+
+#[test]
+fn bulk_load_test() {
+    let rects: Vec<Rect<i32, Point2D<i32>>> = vec![
+        rect!((0, 0), (10, 10)),
+        rect!((12, 0), (15, 15)),
+        rect!((7, 7), (14, 14)),
+        rect!((10, 11), (11, 12)),
+        rect!((4, 4), (5, 6)),
+        rect!((4, 9), (5, 11)),
+        rect!((13, 0), (14, 1)),
+        rect!((13, 13), (16, 16)),
+        rect!((2, 13), (4, 16)),
+        rect!((2, 2), (3, 3)),
+        rect!((10, 0), (12, 5)),
+        rect!((7, 3), (8, 6)),
+    ];
+
+    let rtree = bulk_load(
+        NonZeroUsize::new(2).unwrap(),
+        NonZeroUsize::new(4).unwrap(),
+        rects,
+    );
+
+    eprintln!("rtree = {:#?}", rtree);
+}
 
 #[test]
 fn rtree_2d_i32_test() {

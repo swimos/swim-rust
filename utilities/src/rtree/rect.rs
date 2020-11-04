@@ -73,8 +73,9 @@ where
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Point2D<T: PartialOrd + Clone> {
-    x: T,
-    y: T,
+    //Todo remove pub
+    pub x: T,
+    pub y: T,
 }
 
 impl<T: PartialOrd + Clone> Point2D<T> {
@@ -84,6 +85,13 @@ impl<T: PartialOrd + Clone> Point2D<T> {
 }
 
 impl<T: PartialOrd + Copy + Clone + Signed> Point<T> for Point2D<T> {
+    fn sum(&self, other: &Point2D<T>) -> Point2D<T> {
+        Point2D {
+            x: self.x + other.x,
+            y: self.y + other.y,
+        }
+    }
+
     fn diff(&self, other: &Point2D<T>) -> Point2D<T> {
         Point2D {
             x: self.x - other.x,
@@ -142,6 +150,14 @@ impl<T: PartialOrd + Clone> Point3D<T> {
 }
 
 impl<T: PartialOrd + Copy + Clone + Signed> Point<T> for Point3D<T> {
+    fn sum(&self, other: &Point3D<T>) -> Point3D<T> {
+        Point3D {
+            x: self.x + other.x,
+            y: self.y + other.y,
+            z: self.z + other.z,
+        }
+    }
+
     fn diff(&self, other: &Point3D<T>) -> Point3D<T> {
         Point3D {
             x: self.x - other.x,
@@ -195,6 +211,8 @@ pub trait Point<T>: Clone + PartialEq
 where
     T: PartialOrd + Copy + Clone + Signed,
 {
+    fn sum(&self, other: &Self) -> Self;
+
     fn diff(&self, other: &Self) -> Self;
 
     fn multiply_coord(&self) -> T;
