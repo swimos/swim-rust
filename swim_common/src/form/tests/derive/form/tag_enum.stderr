@@ -1,0 +1,5 @@
+error: Deriving tags is not supported by enumerations. Use #[form(tag = "....")] on this variant instead
+  --> $DIR/tag_enum.rs:21:20
+   |
+21 |             #[form(tag)]
+   |                    ^^^

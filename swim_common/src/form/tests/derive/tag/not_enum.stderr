@@ -1,0 +1,5 @@
+error: Tags can only be derived for enumerations
+  --> $DIR/not_enum.rs:19:5
+   |
+19 |     struct S {
+   |     ^^^^^^
