@@ -27,83 +27,158 @@ where
     len: usize,
 }
 
+//Todo refactor
+fn internal_bulk_load<B>(
+    min_children: usize,
+    max_children: usize,
+    mut items: Vec<EntryPtr<i32, Point2D<i32>, B>>,
+    level: usize,
+) -> Node<i32, Point2D<i32>, B>
+where
+    B: BoundingBox<i32, Point2D<i32>>,
+{
+    let items_num = items.len();
+    // We choose to fill the nodes between the min and max capacity to avoid splits and merges
+    let node_capacity = (max_children + min_children) / 2;
+    let leaf_pages = items_num / node_capacity;
+    let vertical_slices = sqrt(leaf_pages);
+    let chunk_size = node_capacity * vertical_slices;
+
+    // Sort all by x
+    items.sort_by(|first, second| {
+        let Point2D { x: first_x, y: _ } = get_center(first.get_mbb());
+        let Point2D { x: second_x, y: _ } = get_center(second.get_mbb());
+        first_x.cmp(&second_x)
+    });
+
+    let mut chunks = vec![];
+    let mut chunk = vec![];
+    let mut size = 0;
+
+    //Split into chunks and sort them by y
+    for item in items {
+        chunk.push(item);
+        size += 1;
+
+        //Sort by y
+        if size >= chunk_size {
+            chunk.sort_by(|first, second| {
+                let Point2D { x: _, y: first_y } = get_center(first.get_mbb());
+                let Point2D { x: _, y: second_y } = get_center(second.get_mbb());
+                first_y.cmp(&second_y)
+            });
+            chunks.push(chunk);
+            chunk = vec![];
+            size = 0;
+        }
+    }
+
+    if size > 0 {
+        chunk.sort_by(|first, second| {
+            let Point2D { x: _, y: first_y } = get_center(first.get_mbb());
+            let Point2D { x: _, y: second_y } = get_center(second.get_mbb());
+            first_y.cmp(&second_y)
+        });
+        chunks.push(chunk);
+    }
+
+    //Separate into entries
+    let mut entries = vec![];
+
+    for chunk in chunks {
+        let mut items = vec![];
+        let mut size = 0;
+        let mut maybe_mbb: Option<Rect<i32, Point2D<i32>>> = None;
+
+        for item in chunk {
+            match maybe_mbb {
+                Some(mbb) => maybe_mbb = Some(mbb.combine_boxes(item.get_mbb())),
+                None => maybe_mbb = Some(item.get_mbb().clone()),
+            }
+
+            items.push(item);
+            size += 1;
+
+            if size >= node_capacity {
+                let node = Node {
+                    entries: items,
+                    level,
+                    min_children,
+                    max_children,
+                };
+
+                let entry = Arc::new(Entry::Branch {
+                    mbb: maybe_mbb.unwrap(),
+                    child: node,
+                });
+
+                entries.push(entry);
+                items = vec![];
+                maybe_mbb = None;
+                size = 0;
+            }
+        }
+
+        if size > 0 {
+            let node = Node {
+                entries: items,
+                level,
+                min_children,
+                max_children,
+            };
+
+            let entry = Arc::new(Entry::Branch {
+                mbb: maybe_mbb.unwrap(),
+                child: node,
+            });
+
+            entries.push(entry);
+        }
+    }
+
+    if entries.len() > max_children {
+        internal_bulk_load(min_children, max_children, entries, level + 1)
+    } else {
+        Node {
+            entries,
+            level: level + 1,
+            min_children,
+            max_children,
+        }
+    }
+}
+
 pub fn bulk_load(
     min_children: NonZeroUsize,
     max_children: NonZeroUsize,
-    mut items: Vec<Rect<i32, Point2D<i32>>>,
+    items: Vec<Rect<i32, Point2D<i32>>>,
 ) -> RTree<i32, Point2D<i32>, Rect<i32, Point2D<i32>>> {
     if min_children.get() > max_children.get() / 2 {
         panic!("The minimum number of children cannot be more than half of the maximum number of children.")
     }
 
     let items_num = items.len();
-    // We use 50% of the capacity to avoid splitting and merging on insertion / removal
-    let node_capacity = (max_children.get() - min_children.get()) / 2;
-    let leaf_num = items_num / node_capacity;
 
-    let p = sqrt(leaf_num);
-
-    let chunk_size = leaf_num / p;
-
-    // Sort all by x
-    items.sort_by(|first, second| {
-        let Point2D { x: first_x, y: _ } = get_center(first);
-        let Point2D { x: second_x, y: _ } = get_center(second);
-        first_x.cmp(&second_x)
-    });
-
-    //Split into chunks and sort them by y
-    let mut chunks: Vec<_> = items
-        .chunks_mut(chunk_size)
-        .map(|chunk| {
-            chunk.sort_by(|first, second| {
-                let Point2D { x, y: first_y } = get_center(first);
-                let Point2D { x, y: second_y } = get_center(second);
-                first_y.cmp(&second_y)
-            });
-            chunk
-        })
-        .collect();
-
-    let nodes: Vec<_> = chunks
+    let items = items
         .into_iter()
-        .map(|chunk| {
-            let items: Vec<_> = chunk
-                .into_iter()
-                //Todo avoid cloning
-                .map(|item| Arc::new(Entry::Leaf { item: item.clone() }))
-                .collect();
-
-            let node = Node {
-                entries: items,
-                level: 0,
-                min_children: min_children.get(),
-                max_children: max_children.get(),
-            };
-            Arc::new(Entry::Branch {
-                //Todo calculate mbb
-                mbb: rect![(0, 0), (10, 10)],
-                child: node,
-            })
-        })
+        .map(|item| Arc::new(Entry::Leaf { item }))
         .collect();
 
-    let node = Node {
-        entries: nodes,
-        level: 1,
-        min_children: min_children.get(),
-        max_children: max_children.get(),
+    let root = if items_num > max_children.get() {
+        internal_bulk_load(min_children.get(), max_children.get(), items, 0)
+    } else {
+        Node {
+            entries: items,
+            level: 0,
+            min_children: min_children.get(),
+            max_children: max_children.get(),
+        }
     };
 
     RTree {
-        root: node,
+        root,
         len: items_num,
     }
-    // Turn each item in the chunks into leaf entry
-    // Each chunk will have mbb and will be a branch entry
-    // eprintln!("chunks = {:#?}", chunks);
-
-    // If the branch entries are more than the node capacity, repeat the algorithm
 }
 
 impl<T, P, B> RTree<T, P, B>
@@ -181,7 +256,7 @@ where
         Some(removed)
     }
 
-    fn internal_insert(&mut self, item: EntryPtr<T, P, B>, level: i32) {
+    fn internal_insert(&mut self, item: EntryPtr<T, P, B>, level: usize) {
         if let Some((first_entry, second_entry)) = self.root.insert(item, level) {
             self.root = Node {
                 entries: vec![first_entry, second_entry],
@@ -201,7 +276,7 @@ where
     B: BoundingBox<T, P>,
 {
     entries: Vec<EntryPtr<T, P, B>>,
-    level: i32,
+    level: usize,
     min_children: usize,
     max_children: usize,
 }
@@ -259,7 +334,7 @@ where
         }
     }
 
-    fn insert(&mut self, item: EntryPtr<T, P, B>, level: i32) -> MaybeSplit<T, P, B> {
+    fn insert(&mut self, item: EntryPtr<T, P, B>, level: usize) -> MaybeSplit<T, P, B> {
         match *item {
             //If we have a branch and we are at the right level -> insert
             Entry::Branch { .. } if self.level == level => {
@@ -681,7 +756,7 @@ where
         &mut self,
         item: EntryPtr<T, P, B>,
         expanded_rect: Rect<T, P>,
-        level: i32,
+        level: usize,
     ) -> MaybeSplit<T, P, B> {
         match self {
             Entry::Branch { mbb, child } => {
