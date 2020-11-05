@@ -25,6 +25,7 @@ use utilities::sync::promise;
 use utilities::uri::RelativeUri;
 
 pub mod error;
+pub mod remote;
 #[cfg(test)]
 mod tests;
 pub mod ws;
