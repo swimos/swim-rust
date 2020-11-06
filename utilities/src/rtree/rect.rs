@@ -77,9 +77,8 @@ where
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Point2D<C: Coordinate> {
-    //Todo remove pub
-    pub x: C,
-    pub y: C,
+    x: C,
+    y: C,
 }
 
 impl<C: Coordinate> Point2D<C> {
@@ -91,13 +90,17 @@ impl<C: Coordinate> Point2D<C> {
 impl<C: Coordinate> Point<C> for Point2D<C> {
     type Mean = Point2D<f64>;
 
-    fn get_nth_coord(&self, n: usize) -> C {
+    fn get_coord_count() -> u32 {
+        2
+    }
+
+    fn get_nth_coord(&self, n: usize) -> Option<C> {
         if n == 0 {
-            self.x
+            Some(self.x)
         } else if n == 1 {
-            self.y
+            Some(self.y)
         } else {
-            panic!("Coordinate does not exist!")
+            None
         }
     }
 
@@ -175,15 +178,19 @@ impl<C: Coordinate> Point3D<C> {
 impl<C: Coordinate> Point<C> for Point3D<C> {
     type Mean = Point3D<f64>;
 
-    fn get_nth_coord(&self, n: usize) -> C {
+    fn get_coord_count() -> u32 {
+        3
+    }
+
+    fn get_nth_coord(&self, n: usize) -> Option<C> {
         if n == 0 {
-            self.x
+            Some(self.x)
         } else if n == 1 {
-            self.y
+            Some(self.y)
         } else if n == 2 {
-            self.z
+            Some(self.z)
         } else {
-            panic!("Coordinate does not exist!")
+            None
         }
     }
 
@@ -262,7 +269,9 @@ where
 {
     type Mean: Point<f64>;
 
-    fn get_nth_coord(&self, n: usize) -> C;
+    fn get_coord_count() -> u32;
+
+    fn get_nth_coord(&self, n: usize) -> Option<C>;
 
     fn sum(&self, other: &Self) -> Self;
 

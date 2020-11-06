@@ -1,5 +1,5 @@
 use crate::rtree::rect::{BoundingBox, Coordinate, Point, Rect};
-use num::integer::sqrt;
+use num::integer::nth_root;
 use std::fmt::Debug;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -139,11 +139,20 @@ where
         let mut items_num = entries.len();
 
         while items_num > max_children {
-            // We choose to fill the nodes between the min and max capacity to avoid splits and merges
+            // We choose to fill the nodes halfway between the min and max capacity to avoid splits and merges
             let node_capacity = (max_children + min_children) / 2;
             let leaf_pages = items_num / node_capacity;
-            let vertical_slices = sqrt(leaf_pages);
+            let coord_count = P::get_coord_count();
+            let vertical_slices = nth_root(leaf_pages, coord_count);
+            // let chunk_size = node_capacity * nth_root(leaf_pages, coord_count / (coord_count - 1));
+
+            eprintln!("vertical_slices = {:#?}", vertical_slices);
+
             let chunk_size = node_capacity * vertical_slices;
+
+            eprintln!("chunk_size = {:#?}", chunk_size);
+            // eprintln!("chunk_size = {:#?}", chunk_size);
+            // eprintln!("chunk_size_2 = {:#?}", chunk_size_2);
 
             // Sort all by x
             entries.sort_by(|first, second| {
@@ -152,7 +161,8 @@ where
 
                 first_center
                     .get_nth_coord(0)
-                    .partial_cmp(&second_center.get_nth_coord(0))
+                    .unwrap()
+                    .partial_cmp(&second_center.get_nth_coord(0).unwrap())
                     .unwrap()
             });
 
@@ -173,7 +183,8 @@ where
 
                         first_center
                             .get_nth_coord(1)
-                            .partial_cmp(&second_center.get_nth_coord(1))
+                            .unwrap()
+                            .partial_cmp(&second_center.get_nth_coord(1).unwrap())
                             .unwrap()
                     });
                     chunks.push(chunk);
@@ -189,7 +200,8 @@ where
 
                     first_center
                         .get_nth_coord(1)
-                        .partial_cmp(&second_center.get_nth_coord(1))
+                        .unwrap()
+                        .partial_cmp(&second_center.get_nth_coord(1).unwrap())
                         .unwrap()
                 });
                 chunks.push(chunk);
