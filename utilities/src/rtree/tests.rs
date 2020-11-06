@@ -1,5 +1,5 @@
 use crate::rtree::rect::{Point2D, Point3D};
-use crate::rtree::{BoundingBox, RTree, Rect, bulk_load};
+use crate::rtree::{BoundingBox, RTree, Rect};
 use std::fs;
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
@@ -11,7 +11,29 @@ use std::sync::{Arc, Mutex};
 // assert_eq!(found.unwrap().len(), 5);
 
 #[test]
-fn bulk_load_test() {
+fn bulk_load_5_node_test() {
+    let rects: Vec<Rect<i32, Point2D<i32>>> = vec![
+        rect!((0, 0), (10, 10)),
+        rect!((12, 0), (15, 15)),
+        rect!((7, 7), (14, 14)),
+        rect!((10, 11), (11, 12)),
+        rect!((4, 4), (5, 6)),
+    ];
+
+    let rtree: RTree<i32, Point2D<i32>, Rect<i32, Point2D<i32>>> = RTree::bulk_load(
+        NonZeroUsize::new(2).unwrap(),
+        NonZeroUsize::new(4).unwrap(),
+        rects,
+    );
+
+    assert_eq!(
+        format!("{:#?}", rtree),
+        fs::read_to_string("src/rtree/resources/bulk_load/5-node.txt").unwrap()
+    );
+}
+
+#[test]
+fn bulk_load_12_node_test() {
     let rects: Vec<Rect<i32, Point2D<i32>>> = vec![
         rect!((0, 0), (10, 10)),
         rect!((12, 0), (15, 15)),
@@ -27,13 +49,16 @@ fn bulk_load_test() {
         rect!((7, 3), (8, 6)),
     ];
 
-    let rtree = bulk_load(
+    let rtree: RTree<i32, Point2D<i32>, Rect<i32, Point2D<i32>>> = RTree::bulk_load(
         NonZeroUsize::new(2).unwrap(),
         NonZeroUsize::new(4).unwrap(),
         rects,
     );
 
-    eprintln!("rtree = {:#?}", rtree);
+    assert_eq!(
+        format!("{:#?}", rtree),
+        fs::read_to_string("src/rtree/resources/bulk_load/12-node.txt").unwrap()
+    );
 }
 
 #[test]
@@ -710,6 +735,10 @@ impl Clone for CloneTracker {
 impl BoundingBox<i32, Point2D<i32>> for CloneTracker {
     fn get_mbb(&self) -> &Rect<i32, Point2D<i32>> {
         &self.mbb
+    }
+
+    fn get_center(&self) -> Point2D<f64> {
+        self.mbb.get_center()
     }
 
     fn measure(&self) -> i32 {

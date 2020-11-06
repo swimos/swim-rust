@@ -1,21 +1,21 @@
-use num::Signed;
+use num::{Signed, ToPrimitive};
 use std::marker::PhantomData;
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Rect<T, P>
+pub struct Rect<C, P>
 where
-    T: PartialOrd + Copy + Clone + Signed,
-    P: Point<T>,
+    C: Coordinate,
+    P: Point<C>,
 {
     low: P,
     high: P,
-    phantom: PhantomData<T>,
+    phantom: PhantomData<C>,
 }
 
-impl<T, P> Rect<T, P>
+impl<C, P> Rect<C, P>
 where
-    T: PartialOrd + Copy + Clone + Signed,
-    P: Point<T>,
+    C: Coordinate,
+    P: Point<C>,
 {
     pub fn new(low: P, high: P) -> Self {
         if low.has_higher_cords(&high) || low.has_equal_cords(&high) {
@@ -38,20 +38,24 @@ where
     }
 }
 
-impl<T, P> BoundingBox<T, P> for Rect<T, P>
+impl<C, P> BoundingBox<C, P> for Rect<C, P>
 where
-    T: PartialOrd + Copy + Clone + Signed,
-    P: Point<T>,
+    C: Coordinate,
+    P: Point<C>,
 {
-    fn get_mbb(&self) -> &Rect<T, P> {
+    fn get_mbb(&self) -> &Rect<C, P> {
         self
     }
 
-    fn measure(&self) -> T {
+    fn get_center(&self) -> P::Mean {
+        self.get_high().mean(self.get_low())
+    }
+
+    fn measure(&self) -> C {
         self.high.diff(&self.low).multiply_coord()
     }
 
-    fn combine_boxes<B: BoundingBox<T, P>>(&self, other: &B) -> Rect<T, P> {
+    fn combine_boxes<B: BoundingBox<C, P>>(&self, other: &B) -> Rect<C, P> {
         let other_mbb = other.get_mbb();
 
         let new_low = self.low.get_lowest(&other_mbb.low);
@@ -60,46 +64,65 @@ where
         Rect::new(new_low, new_high)
     }
 
-    fn is_covering<B: BoundingBox<T, P>>(&self, other: &B) -> bool {
+    fn is_covering<B: BoundingBox<C, P>>(&self, other: &B) -> bool {
         let other_mbb = other.get_mbb();
         self.low.has_lower_cords(&other_mbb.low) && self.high.has_higher_cords(&other_mbb.high)
     }
 
-    fn is_intersecting<B: BoundingBox<T, P>>(&self, other: &B) -> bool {
+    fn is_intersecting<B: BoundingBox<C, P>>(&self, other: &B) -> bool {
         let other_mbb = other.get_mbb();
         !self.low.has_higher_cords(&other_mbb.high) && !self.high.has_lower_cords(&other_mbb.low)
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Point2D<T: PartialOrd + Clone> {
+pub struct Point2D<C: Coordinate> {
     //Todo remove pub
-    pub x: T,
-    pub y: T,
+    pub x: C,
+    pub y: C,
 }
 
-impl<T: PartialOrd + Clone> Point2D<T> {
-    pub fn new(x: T, y: T) -> Self {
+impl<C: Coordinate> Point2D<C> {
+    pub fn new(x: C, y: C) -> Self {
         Point2D { x, y }
     }
 }
 
-impl<T: PartialOrd + Copy + Clone + Signed> Point<T> for Point2D<T> {
-    fn sum(&self, other: &Point2D<T>) -> Point2D<T> {
+impl<C: Coordinate> Point<C> for Point2D<C> {
+    type Mean = Point2D<f64>;
+
+    fn get_nth_coord(&self, n: usize) -> C {
+        if n == 0 {
+            self.x
+        } else if n == 1 {
+            self.y
+        } else {
+            panic!("Coordinate does not exist!")
+        }
+    }
+
+    fn sum(&self, other: &Point2D<C>) -> Point2D<C> {
         Point2D {
             x: self.x + other.x,
             y: self.y + other.y,
         }
     }
 
-    fn diff(&self, other: &Point2D<T>) -> Point2D<T> {
+    fn diff(&self, other: &Point2D<C>) -> Point2D<C> {
         Point2D {
             x: self.x - other.x,
             y: self.y - other.y,
         }
     }
 
-    fn multiply_coord(&self) -> T {
+    fn mean(&self, other: &Point2D<C>) -> Self::Mean {
+        Point2D {
+            x: (self.x + other.x).to_f64().unwrap() / 2.0,
+            y: (self.y + other.y).to_f64().unwrap() / 2.0,
+        }
+    }
+
+    fn multiply_coord(&self) -> C {
         self.x * self.y
     }
 
@@ -137,20 +160,34 @@ impl<T: PartialOrd + Copy + Clone + Signed> Point<T> for Point2D<T> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Point3D<T: PartialOrd + Clone> {
-    x: T,
-    y: T,
-    z: T,
+pub struct Point3D<C: Coordinate> {
+    x: C,
+    y: C,
+    z: C,
 }
 
-impl<T: PartialOrd + Clone> Point3D<T> {
-    pub fn new(x: T, y: T, z: T) -> Self {
+impl<C: Coordinate> Point3D<C> {
+    pub fn new(x: C, y: C, z: C) -> Self {
         Point3D { x, y, z }
     }
 }
 
-impl<T: PartialOrd + Copy + Clone + Signed> Point<T> for Point3D<T> {
-    fn sum(&self, other: &Point3D<T>) -> Point3D<T> {
+impl<C: Coordinate> Point<C> for Point3D<C> {
+    type Mean = Point3D<f64>;
+
+    fn get_nth_coord(&self, n: usize) -> C {
+        if n == 0 {
+            self.x
+        } else if n == 1 {
+            self.y
+        } else if n == 2 {
+            self.z
+        } else {
+            panic!("Coordinate does not exist!")
+        }
+    }
+
+    fn sum(&self, other: &Point3D<C>) -> Point3D<C> {
         Point3D {
             x: self.x + other.x,
             y: self.y + other.y,
@@ -158,7 +195,7 @@ impl<T: PartialOrd + Copy + Clone + Signed> Point<T> for Point3D<T> {
         }
     }
 
-    fn diff(&self, other: &Point3D<T>) -> Point3D<T> {
+    fn diff(&self, other: &Point3D<C>) -> Point3D<C> {
         Point3D {
             x: self.x - other.x,
             y: self.y - other.y,
@@ -166,7 +203,15 @@ impl<T: PartialOrd + Copy + Clone + Signed> Point<T> for Point3D<T> {
         }
     }
 
-    fn multiply_coord(&self) -> T {
+    fn mean(&self, other: &Self) -> Self::Mean {
+        Point3D {
+            x: (self.x + other.x).to_f64().unwrap() / 2.0,
+            y: (self.y + other.y).to_f64().unwrap() / 2.0,
+            z: (self.z + other.z).to_f64().unwrap() / 2.0,
+        }
+    }
+
+    fn multiply_coord(&self) -> C {
         self.x * self.y * self.z
     }
 
@@ -207,15 +252,25 @@ impl<T: PartialOrd + Copy + Clone + Signed> Point<T> for Point3D<T> {
     }
 }
 
-pub trait Point<T>: Clone + PartialEq
+pub trait Coordinate: PartialOrd + Copy + Signed + ToPrimitive {}
+
+impl<C: PartialOrd + Copy + Signed + ToPrimitive> Coordinate for C {}
+
+pub trait Point<C>: Clone + PartialEq
 where
-    T: PartialOrd + Copy + Clone + Signed,
+    C: Coordinate,
 {
+    type Mean: Point<f64>;
+
+    fn get_nth_coord(&self, n: usize) -> C;
+
     fn sum(&self, other: &Self) -> Self;
 
     fn diff(&self, other: &Self) -> Self;
 
-    fn multiply_coord(&self) -> T;
+    fn mean(&self, other: &Self) -> Self::Mean;
+
+    fn multiply_coord(&self) -> C;
 
     fn has_equal_cords(&self, other: &Self) -> bool;
 
@@ -228,18 +283,19 @@ where
     fn has_lower_cords(&self, other: &Self) -> bool;
 }
 
-pub trait BoundingBox<T, P>: Clone
+pub trait BoundingBox<C, P>: Clone
 where
-    T: PartialOrd + Copy + Clone + Signed,
-    P: Point<T>,
+    C: Coordinate,
+    P: Point<C>,
 {
-    fn get_mbb(&self) -> &Rect<T, P>;
+    fn get_mbb(&self) -> &Rect<C, P>;
+    fn get_center(&self) -> P::Mean;
     // Area for 2D shapes and volume for 3D.
-    fn measure(&self) -> T;
+    fn measure(&self) -> C;
     // Create a minimum bounding box that contains both items.
-    fn combine_boxes<B: BoundingBox<T, P>>(&self, other: &B) -> Rect<T, P>;
-    fn is_covering<B: BoundingBox<T, P>>(&self, other: &B) -> bool;
-    fn is_intersecting<B: BoundingBox<T, P>>(&self, other: &B) -> bool;
+    fn combine_boxes<B: BoundingBox<C, P>>(&self, other: &B) -> Rect<C, P>;
+    fn is_covering<B: BoundingBox<C, P>>(&self, other: &B) -> bool;
+    fn is_intersecting<B: BoundingBox<C, P>>(&self, other: &B) -> bool;
 }
 
 #[macro_export]

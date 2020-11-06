@@ -1,6 +1,5 @@
-use crate::rtree::rect::{BoundingBox, Point, Point2D, Rect};
+use crate::rtree::rect::{BoundingBox, Coordinate, Point, Rect};
 use num::integer::sqrt;
-use num::Signed;
 use std::fmt::Debug;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -11,181 +10,22 @@ pub mod rect;
 #[cfg(test)]
 mod tests;
 
-fn get_center(rect: &Rect<i32, Point2D<i32>>) -> Point2D<i32> {
-    let Point2D { x, y } = rect.get_high().sum(rect.get_low());
-    Point2D::new(x / 2, y / 2)
-}
-
 #[derive(Debug, Clone)]
-pub struct RTree<T, P, B>
+pub struct RTree<C, P, B>
 where
-    T: PartialOrd + Copy + Clone + Signed,
-    P: Point<T>,
-    B: BoundingBox<T, P>,
+    C: Coordinate,
+    P: Point<C>,
+    B: BoundingBox<C, P>,
 {
-    root: Node<T, P, B>,
+    root: Node<C, P, B>,
     len: usize,
 }
 
-//Todo refactor
-fn internal_bulk_load<B>(
-    min_children: usize,
-    max_children: usize,
-    mut items: Vec<EntryPtr<i32, Point2D<i32>, B>>,
-    level: usize,
-) -> Node<i32, Point2D<i32>, B>
+impl<C, P, B> RTree<C, P, B>
 where
-    B: BoundingBox<i32, Point2D<i32>>,
-{
-    let items_num = items.len();
-    // We choose to fill the nodes between the min and max capacity to avoid splits and merges
-    let node_capacity = (max_children + min_children) / 2;
-    let leaf_pages = items_num / node_capacity;
-    let vertical_slices = sqrt(leaf_pages);
-    let chunk_size = node_capacity * vertical_slices;
-
-    // Sort all by x
-    items.sort_by(|first, second| {
-        let Point2D { x: first_x, y: _ } = get_center(first.get_mbb());
-        let Point2D { x: second_x, y: _ } = get_center(second.get_mbb());
-        first_x.cmp(&second_x)
-    });
-
-    let mut chunks = vec![];
-    let mut chunk = vec![];
-    let mut size = 0;
-
-    //Split into chunks and sort them by y
-    for item in items {
-        chunk.push(item);
-        size += 1;
-
-        //Sort by y
-        if size >= chunk_size {
-            chunk.sort_by(|first, second| {
-                let Point2D { x: _, y: first_y } = get_center(first.get_mbb());
-                let Point2D { x: _, y: second_y } = get_center(second.get_mbb());
-                first_y.cmp(&second_y)
-            });
-            chunks.push(chunk);
-            chunk = vec![];
-            size = 0;
-        }
-    }
-
-    if size > 0 {
-        chunk.sort_by(|first, second| {
-            let Point2D { x: _, y: first_y } = get_center(first.get_mbb());
-            let Point2D { x: _, y: second_y } = get_center(second.get_mbb());
-            first_y.cmp(&second_y)
-        });
-        chunks.push(chunk);
-    }
-
-    //Separate into entries
-    let mut entries = vec![];
-
-    for chunk in chunks {
-        let mut items = vec![];
-        let mut size = 0;
-        let mut maybe_mbb: Option<Rect<i32, Point2D<i32>>> = None;
-
-        for item in chunk {
-            match maybe_mbb {
-                Some(mbb) => maybe_mbb = Some(mbb.combine_boxes(item.get_mbb())),
-                None => maybe_mbb = Some(item.get_mbb().clone()),
-            }
-
-            items.push(item);
-            size += 1;
-
-            if size >= node_capacity {
-                let node = Node {
-                    entries: items,
-                    level,
-                    min_children,
-                    max_children,
-                };
-
-                let entry = Arc::new(Entry::Branch {
-                    mbb: maybe_mbb.unwrap(),
-                    child: node,
-                });
-
-                entries.push(entry);
-                items = vec![];
-                maybe_mbb = None;
-                size = 0;
-            }
-        }
-
-        if size > 0 {
-            let node = Node {
-                entries: items,
-                level,
-                min_children,
-                max_children,
-            };
-
-            let entry = Arc::new(Entry::Branch {
-                mbb: maybe_mbb.unwrap(),
-                child: node,
-            });
-
-            entries.push(entry);
-        }
-    }
-
-    if entries.len() > max_children {
-        internal_bulk_load(min_children, max_children, entries, level + 1)
-    } else {
-        Node {
-            entries,
-            level: level + 1,
-            min_children,
-            max_children,
-        }
-    }
-}
-
-pub fn bulk_load(
-    min_children: NonZeroUsize,
-    max_children: NonZeroUsize,
-    items: Vec<Rect<i32, Point2D<i32>>>,
-) -> RTree<i32, Point2D<i32>, Rect<i32, Point2D<i32>>> {
-    if min_children.get() > max_children.get() / 2 {
-        panic!("The minimum number of children cannot be more than half of the maximum number of children.")
-    }
-
-    let items_num = items.len();
-
-    let items = items
-        .into_iter()
-        .map(|item| Arc::new(Entry::Leaf { item }))
-        .collect();
-
-    let root = if items_num > max_children.get() {
-        internal_bulk_load(min_children.get(), max_children.get(), items, 0)
-    } else {
-        Node {
-            entries: items,
-            level: 0,
-            min_children: min_children.get(),
-            max_children: max_children.get(),
-        }
-    };
-
-    RTree {
-        root,
-        len: items_num,
-    }
-}
-
-impl<T, P, B> RTree<T, P, B>
-where
-    T: PartialOrd + Copy + Clone + Signed + Debug,
-    P: Point<T>,
-    B: BoundingBox<T, P>,
+    C: Coordinate,
+    P: Point<C>,
+    B: BoundingBox<C, P>,
 {
     pub fn new(min_children: NonZeroUsize, max_children: NonZeroUsize) -> Self {
         if min_children.get() > max_children.get() / 2 {
@@ -206,7 +46,7 @@ where
         self.len() == 0
     }
 
-    pub fn search(&self, area: &Rect<T, P>) -> Option<Vec<B>> {
+    pub fn search(&self, area: &Rect<C, P>) -> Option<Vec<B>> {
         self.root.search(area)
     }
 
@@ -215,7 +55,7 @@ where
         self.len += 1;
     }
 
-    pub fn remove(&mut self, bounding_box: &Rect<T, P>) -> Option<B> {
+    pub fn remove(&mut self, bounding_box: &Rect<C, P>) -> Option<B> {
         let (removed, maybe_orphan_nodes) = self.root.remove(bounding_box)?;
         self.len -= 1;
 
@@ -256,7 +96,172 @@ where
         Some(removed)
     }
 
-    fn internal_insert(&mut self, item: EntryPtr<T, P, B>, level: usize) {
+    pub fn bulk_load(
+        min_children: NonZeroUsize,
+        max_children: NonZeroUsize,
+        items: Vec<B>,
+    ) -> RTree<C, P, B> {
+        if min_children.get() > max_children.get() / 2 {
+            panic!("The minimum number of children cannot be more than half of the maximum number of children.")
+        }
+
+        let items_num = items.len();
+
+        let items = items
+            .into_iter()
+            .map(|item| Arc::new(Entry::Leaf { item }))
+            .collect();
+
+        let root = if items_num > max_children.get() {
+            RTree::internal_bulk_load(min_children.get(), max_children.get(), items, 0)
+        } else {
+            Node {
+                entries: items,
+                level: 0,
+                min_children: min_children.get(),
+                max_children: max_children.get(),
+            }
+        };
+
+        RTree {
+            root,
+            len: items_num,
+        }
+    }
+
+    //Todo refactor
+    fn internal_bulk_load(
+        min_children: usize,
+        max_children: usize,
+        mut entries: Vec<EntryPtr<C, P, B>>,
+        mut level: usize,
+    ) -> Node<C, P, B> {
+        let mut items_num = entries.len();
+
+        while items_num > max_children {
+            // We choose to fill the nodes between the min and max capacity to avoid splits and merges
+            let node_capacity = (max_children + min_children) / 2;
+            let leaf_pages = items_num / node_capacity;
+            let vertical_slices = sqrt(leaf_pages);
+            let chunk_size = node_capacity * vertical_slices;
+
+            // Sort all by x
+            entries.sort_by(|first, second| {
+                let first_center = first.get_mbb().get_center();
+                let second_center = second.get_mbb().get_center();
+
+                first_center
+                    .get_nth_coord(0)
+                    .partial_cmp(&second_center.get_nth_coord(0))
+                    .unwrap()
+            });
+
+            let mut chunks = vec![];
+            let mut chunk = vec![];
+            let mut size = 0;
+
+            //Split into chunks and sort them by y
+            for item in entries {
+                chunk.push(item);
+                size += 1;
+
+                //Sort by y
+                if size >= chunk_size {
+                    chunk.sort_by(|first, second| {
+                        let first_center = first.get_mbb().get_center();
+                        let second_center = second.get_mbb().get_center();
+
+                        first_center
+                            .get_nth_coord(1)
+                            .partial_cmp(&second_center.get_nth_coord(1))
+                            .unwrap()
+                    });
+                    chunks.push(chunk);
+                    chunk = vec![];
+                    size = 0;
+                }
+            }
+
+            if size > 0 {
+                chunk.sort_by(|first, second| {
+                    let first_center = first.get_mbb().get_center();
+                    let second_center = second.get_mbb().get_center();
+
+                    first_center
+                        .get_nth_coord(1)
+                        .partial_cmp(&second_center.get_nth_coord(1))
+                        .unwrap()
+                });
+                chunks.push(chunk);
+            }
+
+            //Separate into entries
+            entries = vec![];
+
+            for chunk in chunks {
+                let mut items = vec![];
+                let mut size = 0;
+                let mut maybe_mbb = None;
+
+                for item in chunk {
+                    match maybe_mbb {
+                        None => maybe_mbb = Some(item.get_mbb().clone()),
+                        Some(mbb) => maybe_mbb = Some(mbb.combine_boxes(item.get_mbb())),
+                    }
+
+                    items.push(item);
+                    size += 1;
+
+                    if size >= node_capacity {
+                        let node = Node {
+                            entries: items,
+                            level,
+                            min_children,
+                            max_children,
+                        };
+
+                        let entry = Arc::new(Entry::Branch {
+                            mbb: maybe_mbb.unwrap(),
+                            child: node,
+                        });
+
+                        entries.push(entry);
+                        items = vec![];
+                        maybe_mbb = None;
+                        size = 0;
+                    }
+                }
+
+                if size > 0 {
+                    let node = Node {
+                        entries: items,
+                        level,
+                        min_children,
+                        max_children,
+                    };
+
+                    let entry = Arc::new(Entry::Branch {
+                        mbb: maybe_mbb.unwrap(),
+                        child: node,
+                    });
+
+                    entries.push(entry);
+                }
+            }
+
+            level += 1;
+            items_num = entries.len();
+        }
+
+        Node {
+            entries,
+            level,
+            min_children,
+            max_children,
+        }
+    }
+
+    fn internal_insert(&mut self, item: EntryPtr<C, P, B>, level: usize) {
         if let Some((first_entry, second_entry)) = self.root.insert(item, level) {
             self.root = Node {
                 entries: vec![first_entry, second_entry],
@@ -269,23 +274,23 @@ where
 }
 
 #[derive(Debug, Clone)]
-struct Node<T, P, B>
+struct Node<C, P, B>
 where
-    T: PartialOrd + Copy + Clone + Signed,
-    P: Point<T>,
-    B: BoundingBox<T, P>,
+    C: Coordinate,
+    P: Point<C>,
+    B: BoundingBox<C, P>,
 {
-    entries: Vec<EntryPtr<T, P, B>>,
+    entries: Vec<EntryPtr<C, P, B>>,
     level: usize,
     min_children: usize,
     max_children: usize,
 }
 
-impl<T, P, B> Node<T, P, B>
+impl<C, P, B> Node<C, P, B>
 where
-    T: PartialOrd + Copy + Clone + Signed,
-    P: Point<T>,
-    B: BoundingBox<T, P>,
+    C: Coordinate,
+    P: Point<C>,
+    B: BoundingBox<C, P>,
 {
     fn new(min_children: usize, max_children: usize) -> Self {
         Node {
@@ -304,7 +309,7 @@ where
         self.level == 0
     }
 
-    pub fn search(&self, area: &Rect<T, P>) -> Option<Vec<B>> {
+    pub fn search(&self, area: &Rect<C, P>) -> Option<Vec<B>> {
         let mut found = vec![];
 
         if self.is_leaf() {
@@ -334,7 +339,7 @@ where
         }
     }
 
-    fn insert(&mut self, item: EntryPtr<T, P, B>, level: usize) -> MaybeSplit<T, P, B> {
+    fn insert(&mut self, item: EntryPtr<C, P, B>, level: usize) -> MaybeSplit<C, P, B> {
         match *item {
             //If we have a branch and we are at the right level -> insert
             Entry::Branch { .. } if self.level == level => {
@@ -395,7 +400,7 @@ where
         None
     }
 
-    fn remove(&mut self, bounding_box: &Rect<T, P>) -> Option<(B, MaybeOrphans<T, P, B>)> {
+    fn remove(&mut self, bounding_box: &Rect<C, P>) -> Option<(B, MaybeOrphans<C, P, B>)> {
         if self.is_leaf() {
             //If this is leaf try to find the item
             let mut remove_idx = None;
@@ -459,7 +464,7 @@ where
         }
     }
 
-    fn split(&mut self) -> (EntryPtr<T, P, B>, EntryPtr<T, P, B>) {
+    fn split(&mut self) -> (EntryPtr<C, P, B>, EntryPtr<C, P, B>) {
         let ((first_group, first_mbb), (second_group, second_mbb)) =
             quadratic_split(&mut self.entries, self.min_children);
 
@@ -487,14 +492,14 @@ where
     }
 }
 
-fn quadratic_split<T, P, B>(
-    entries: &mut Vec<EntryPtr<T, P, B>>,
+fn quadratic_split<C, P, B>(
+    entries: &mut Vec<EntryPtr<C, P, B>>,
     min_children: usize,
-) -> (SplitGroup<T, P, B>, SplitGroup<T, P, B>)
+) -> (SplitGroup<C, P, B>, SplitGroup<C, P, B>)
 where
-    T: PartialOrd + Copy + Clone + Signed,
-    P: Point<T>,
-    B: BoundingBox<T, P>,
+    C: Coordinate,
+    P: Point<C>,
+    B: BoundingBox<C, P>,
 {
     let (first_seed_idx, second_seed_idx) = pick_seeds(entries);
 
@@ -549,11 +554,11 @@ where
     ((first_group, first_mbb), (second_group, second_mbb))
 }
 
-fn pick_seeds<T, P, B>(entries: &[EntryPtr<T, P, B>]) -> (usize, usize)
+fn pick_seeds<C, P, B>(entries: &[EntryPtr<C, P, B>]) -> (usize, usize)
 where
-    T: PartialOrd + Copy + Clone + Signed,
-    P: Point<T>,
-    B: BoundingBox<T, P>,
+    C: Coordinate,
+    P: Point<C>,
+    B: BoundingBox<C, P>,
 {
     let mut first_idx = 0;
     let mut second_idx = 1;
@@ -583,17 +588,17 @@ where
     (first_idx, second_idx)
 }
 
-fn pick_next<T, P, B>(
-    entries: &[EntryPtr<T, P, B>],
-    first_mbb: &Rect<T, P>,
-    second_mbb: &Rect<T, P>,
+fn pick_next<C, P, B>(
+    entries: &[EntryPtr<C, P, B>],
+    first_mbb: &Rect<C, P>,
+    second_mbb: &Rect<C, P>,
     first_group_size: usize,
     second_group_size: usize,
-) -> (usize, Rect<T, P>, Group)
+) -> (usize, Rect<C, P>, Group)
 where
-    T: PartialOrd + Copy + Clone + Signed,
-    P: Point<T>,
-    B: BoundingBox<T, P>,
+    C: Coordinate,
+    P: Point<C>,
+    B: BoundingBox<C, P>,
 {
     let mut entries_iter = entries.iter();
     let item = entries_iter.next().unwrap();
@@ -646,15 +651,15 @@ where
     (item_idx, expanded_rect, group)
 }
 
-fn calc_preferences<T, P, B>(
-    item: &EntryPtr<T, P, B>,
-    first_mbb: &Rect<T, P>,
-    second_mbb: &Rect<T, P>,
-) -> (T, T, Rect<T, P>, Rect<T, P>)
+fn calc_preferences<C, P, B>(
+    item: &EntryPtr<C, P, B>,
+    first_mbb: &Rect<C, P>,
+    second_mbb: &Rect<C, P>,
+) -> (C, C, Rect<C, P>, Rect<C, P>)
 where
-    T: PartialOrd + Copy + Clone + Signed,
-    P: Point<T>,
-    B: BoundingBox<T, P>,
+    C: Coordinate,
+    P: Point<C>,
+    B: BoundingBox<C, P>,
 {
     let first_expanded_rect = first_mbb.combine_boxes(item.get_mbb());
     let first_diff = first_expanded_rect.measure() - first_mbb.measure();
@@ -670,17 +675,17 @@ where
     )
 }
 
-fn select_group<T, P>(
-    first_mbb: &Rect<T, P>,
-    second_mbb: &Rect<T, P>,
+fn select_group<C, P>(
+    first_mbb: &Rect<C, P>,
+    second_mbb: &Rect<C, P>,
     first_group_size: usize,
     second_group_size: usize,
-    first_diff: T,
-    second_diff: T,
+    first_diff: C,
+    second_diff: C,
 ) -> Group
 where
-    T: PartialOrd + Copy + Clone + Signed,
-    P: Point<T>,
+    C: Coordinate,
+    P: Point<C>,
 {
     if first_diff < second_diff {
         Group::First
@@ -704,32 +709,32 @@ enum Group {
     Second,
 }
 
-type EntryPtr<T, P, B> = Arc<Entry<T, P, B>>;
-type MaybeOrphans<T, P, B> = Option<Vec<EntryPtr<T, P, B>>>;
-type MaybeSplit<T, P, B> = Option<(EntryPtr<T, P, B>, EntryPtr<T, P, B>)>;
-type SplitGroup<T, P, B> = (Vec<EntryPtr<T, P, B>>, Rect<T, P>);
+type EntryPtr<C, P, B> = Arc<Entry<C, P, B>>;
+type MaybeOrphans<C, P, B> = Option<Vec<EntryPtr<C, P, B>>>;
+type MaybeSplit<C, P, B> = Option<(EntryPtr<C, P, B>, EntryPtr<C, P, B>)>;
+type SplitGroup<C, P, B> = (Vec<EntryPtr<C, P, B>>, Rect<C, P>);
 
 #[derive(Debug, Clone)]
-enum Entry<T, P, B>
+enum Entry<C, P, B>
 where
-    T: PartialOrd + Copy + Clone + Signed,
-    P: Point<T>,
-    B: BoundingBox<T, P>,
+    C: Coordinate,
+    P: Point<C>,
+    B: BoundingBox<C, P>,
 {
     Leaf {
         item: B,
     },
     Branch {
-        mbb: Rect<T, P>,
-        child: Node<T, P, B>,
+        mbb: Rect<C, P>,
+        child: Node<C, P, B>,
     },
 }
 
-impl<T, P, B> Entry<T, P, B>
+impl<C, P, B> Entry<C, P, B>
 where
-    T: PartialOrd + Copy + Clone + Signed,
-    P: Point<T>,
-    B: BoundingBox<T, P>,
+    C: Coordinate,
+    P: Point<C>,
+    B: BoundingBox<C, P>,
 {
     fn len(&self) -> usize {
         match self {
@@ -738,14 +743,14 @@ where
         }
     }
 
-    fn search(&self, area: &Rect<T, P>) -> Option<Vec<B>> {
+    fn search(&self, area: &Rect<C, P>) -> Option<Vec<B>> {
         match self {
             Entry::Branch { child, .. } => child.search(area),
             Entry::Leaf { .. } => unreachable!(),
         }
     }
 
-    fn get_mbb(&self) -> &Rect<T, P> {
+    fn get_mbb(&self) -> &Rect<C, P> {
         match self {
             Entry::Leaf { item } => item.get_mbb(),
             Entry::Branch { mbb, .. } => mbb,
@@ -754,10 +759,10 @@ where
 
     fn insert(
         &mut self,
-        item: EntryPtr<T, P, B>,
-        expanded_rect: Rect<T, P>,
+        item: EntryPtr<C, P, B>,
+        expanded_rect: Rect<C, P>,
         level: usize,
-    ) -> MaybeSplit<T, P, B> {
+    ) -> MaybeSplit<C, P, B> {
         match self {
             Entry::Branch { mbb, child } => {
                 *mbb = expanded_rect;
@@ -767,7 +772,7 @@ where
         }
     }
 
-    fn remove(&mut self, bounding_box: &Rect<T, P>) -> Option<(B, MaybeOrphans<T, P, B>)> {
+    fn remove(&mut self, bounding_box: &Rect<C, P>) -> Option<(B, MaybeOrphans<C, P, B>)> {
         match self {
             Entry::Branch { mbb, child } => {
                 let (removed, orphan_nodes) = child.remove(bounding_box)?;
