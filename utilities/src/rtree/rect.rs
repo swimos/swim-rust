@@ -1,7 +1,8 @@
 use num::traits::real::Real;
 use std::fmt::Debug;
+use std::ops::Sub;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Rect<P>
 where
     P: Point,
@@ -46,7 +47,7 @@ where
     }
 
     fn measure(&self) -> P::Type {
-        self.high.diff(&self.low).multiply_coord()
+        self.high.sub(self.low).multiply_coord()
     }
 
     fn combine_boxes<B: BoundingBox<Point = Self::Point>>(&self, other: &B) -> Rect<P> {
@@ -69,7 +70,7 @@ where
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Point2D<T: Real> {
     x: T,
     y: T,
@@ -78,6 +79,17 @@ pub struct Point2D<T: Real> {
 impl<T: Real> Point2D<T> {
     pub fn new(x: T, y: T) -> Self {
         Point2D { x, y }
+    }
+}
+
+impl<T: Real + Debug> Sub for Point2D<T> {
+    type Output = Self;
+
+    fn sub(self, rhs: Self) -> Self {
+        Point2D {
+            x: self.x - rhs.x,
+            y: self.y - rhs.y,
+        }
     }
 }
 
@@ -95,20 +107,6 @@ impl<T: Real + Debug> Point for Point2D<T> {
             Some(self.y)
         } else {
             None
-        }
-    }
-
-    fn sum(&self, other: &Point2D<T>) -> Point2D<T> {
-        Point2D {
-            x: self.x + other.x,
-            y: self.y + other.y,
-        }
-    }
-
-    fn diff(&self, other: &Point2D<T>) -> Point2D<T> {
-        Point2D {
-            x: self.x - other.x,
-            y: self.y - other.y,
         }
     }
 
@@ -156,7 +154,7 @@ impl<T: Real + Debug> Point for Point2D<T> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Point3D<T: Real> {
     x: T,
     y: T,
@@ -166,6 +164,18 @@ pub struct Point3D<T: Real> {
 impl<T: Real> Point3D<T> {
     pub fn new(x: T, y: T, z: T) -> Self {
         Point3D { x, y, z }
+    }
+}
+
+impl<T: Real + Debug> Sub for Point3D<T> {
+    type Output = Self;
+
+    fn sub(self, rhs: Self) -> Self {
+        Point3D {
+            x: self.x - rhs.x,
+            y: self.y - rhs.y,
+            z: self.z - rhs.z,
+        }
     }
 }
 
@@ -185,22 +195,6 @@ impl<T: Real + Debug> Point for Point3D<T> {
             Some(self.z)
         } else {
             None
-        }
-    }
-
-    fn sum(&self, other: &Point3D<T>) -> Point3D<T> {
-        Point3D {
-            x: self.x + other.x,
-            y: self.y + other.y,
-            z: self.z + other.z,
-        }
-    }
-
-    fn diff(&self, other: &Point3D<T>) -> Point3D<T> {
-        Point3D {
-            x: self.x - other.x,
-            y: self.y - other.y,
-            z: self.z - other.z,
         }
     }
 
@@ -253,16 +247,12 @@ impl<T: Real + Debug> Point for Point3D<T> {
     }
 }
 
-pub trait Point: Clone + PartialEq + Debug {
+pub trait Point: Copy + Clone + PartialEq + Debug + Sub<Output = Self> {
     type Type: Real;
 
     fn get_coord_count() -> u32;
 
     fn get_nth_coord(&self, n: usize) -> Option<Self::Type>;
-
-    fn sum(&self, other: &Self) -> Self;
-
-    fn diff(&self, other: &Self) -> Self;
 
     fn mean(&self, other: &Self) -> Self;
 
