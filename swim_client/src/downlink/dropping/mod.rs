@@ -18,7 +18,7 @@ use crate::downlink::raw::{DownlinkTask, DownlinkTaskHandle};
 use crate::downlink::topic::{DownlinkReceiver, DownlinkTopic, MakeReceiver};
 use crate::downlink::{
     raw, Command, Downlink, DownlinkError, DownlinkInternals, DroppedError, Event, Message,
-    StateMachine, StoppedFuture,
+    StateMachine,
 };
 use futures::future::Ready;
 use futures::{Stream, StreamExt};
@@ -31,6 +31,7 @@ use swim_common::topic::{Topic, TopicError, WatchTopic, WatchTopicReceiver};
 use swim_runtime::task::spawn;
 use tokio::sync::{mpsc, watch};
 use utilities::future::{SwimFutureExt, TransformedFuture};
+use utilities::sync::promise;
 
 /// A downlink where subscribers observe the latest output record whenever the poll the receiver
 /// stream.
@@ -109,7 +110,7 @@ impl<Act, Upd> DroppingDownlink<Act, Upd> {
     }
 
     /// Get a future that will complete when the downlink stops running.
-    pub fn await_stopped(&self) -> StoppedFuture {
+    pub fn await_stopped(&self) -> promise::Receiver<Result<(), DownlinkError>> {
         self.internal.task.await_stopped()
     }
 }
@@ -221,7 +222,7 @@ where
 
     let event_sink = item::for_watch_sender::<_, DroppedError>(event_tx);
 
-    let (stopped_tx, stopped_rx) = watch::channel(None);
+    let (stopped_tx, stopped_rx) = promise::promise();
 
     let completed = Arc::new(AtomicBool::new(false));
 

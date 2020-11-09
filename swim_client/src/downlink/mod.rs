@@ -14,7 +14,6 @@
 
 use tokio::sync::mpsc;
 
-use futures::StreamExt;
 use std::fmt::{Debug, Display, Formatter};
 use swim_common::sink::item;
 use tokio::sync::broadcast;
@@ -33,9 +32,6 @@ pub mod watch_adapter;
 
 pub(self) use self::raw::create_downlink;
 use crate::downlink::raw::DownlinkTaskHandle;
-use futures::task::{Context, Poll};
-use futures::Future;
-use std::pin::Pin;
 use swim_common::model::schema::StandardSchema;
 use swim_common::model::Value;
 use swim_common::request::TryRequest;
@@ -65,28 +61,6 @@ pub(in crate::downlink) trait DownlinkInternals: Send + Sync + Debug {
 impl DownlinkInternals for DownlinkTaskHandle {
     fn task_handle(&self) -> &DownlinkTaskHandle {
         self
-    }
-}
-
-/// A future that completes after a downlink task has terminated.
-pub struct StoppedFuture(watch::Receiver<Option<Result<(), DownlinkError>>>);
-
-impl Future for StoppedFuture {
-    type Output = Result<(), DownlinkError>;
-
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let mut receiver = Pin::new(&mut self.get_mut().0);
-        loop {
-            match receiver.poll_next_unpin(cx) {
-                Poll::Ready(None) => break Poll::Ready(Err(DownlinkError::DroppedChannel)),
-                Poll::Ready(Some(maybe)) => {
-                    if let Some(result) = maybe {
-                        break Poll::Ready(result);
-                    }
-                }
-                Poll::Pending => break Poll::Pending,
-            };
-        }
     }
 }
 

@@ -27,7 +27,7 @@ use crate::downlink::typed::event::TypedViewWithEvent;
 use crate::downlink::typed::topic::{
     ApplyForm, ApplyFormsMap, TryTransformTopic, WrapUntilFailure,
 };
-use crate::downlink::{Downlink, Event, StoppedFuture};
+use crate::downlink::{Downlink, Event, DownlinkError};
 use std::cmp::Ordering;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
@@ -38,6 +38,7 @@ use swim_common::model::Value;
 use swim_common::sink::item::ItemSink;
 use swim_common::topic::Topic;
 use utilities::future::{SwimFutureExt, TransformedFuture, UntilFailure};
+use utilities::sync::promise;
 
 /// A wrapper around a value downlink, applying a [`Form`] to the values.
 #[derive(Debug)]
@@ -82,7 +83,7 @@ where
     }
 
     /// Get a future that will complete when the downlink stops running.
-    pub fn await_stopped(&self) -> StoppedFuture {
+    pub fn await_stopped(&self) -> promise::Receiver<Result<(), DownlinkError>> {
         self.inner.await_stopped()
     }
 }
@@ -270,7 +271,7 @@ where
     }
 
     /// Get a future that will complete when the downlink stops running.
-    pub fn await_stopped(&self) -> StoppedFuture {
+    pub fn await_stopped(&self) -> promise::Receiver<Result<(), DownlinkError>> {
         self.inner.await_stopped()
     }
 }

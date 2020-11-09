@@ -15,7 +15,7 @@
 use crate::configuration::downlink::OnInvalidMessage;
 use crate::downlink::{
     Command, DownlinkError, DownlinkInternals, DownlinkState, DroppedError, Event, Message,
-    Operation, Response, StateMachine, StoppedFuture,
+    Operation, Response, StateMachine,
 };
 use futures::stream::FusedStream;
 use futures::task::{Context, Poll};
@@ -34,6 +34,7 @@ use swim_runtime::task::{spawn, TaskHandle};
 use tokio::sync::{mpsc, watch};
 use tracing::{instrument, trace};
 use utilities::ptr::data_ptr_eq;
+use utilities::sync::promise;
 
 #[cfg(test)]
 pub mod tests;
@@ -165,7 +166,7 @@ where
 
     let event_sink = item::for_mpsc_sender::<_, DroppedError>(event_tx);
 
-    let (stopped_tx, stopped_rx) = watch::channel(None);
+    let (stopped_tx, stopped_rx) = promise::promise();
 
     let completed = Arc::new(AtomicBool::new(false));
 
@@ -199,14 +200,14 @@ where
 #[derive(Debug)]
 pub(in crate::downlink) struct DownlinkTaskHandle {
     join_handle: TaskHandle<Result<(), DownlinkError>>,
-    stop_await: watch::Receiver<Option<Result<(), DownlinkError>>>,
+    stop_await: promise::Receiver<Result<(), DownlinkError>>,
     completed: Arc<AtomicBool>,
 }
 
 impl DownlinkTaskHandle {
     pub(in crate::downlink) fn new(
         join_handle: TaskHandle<Result<(), DownlinkError>>,
-        stop_await: watch::Receiver<Option<Result<(), DownlinkError>>>,
+        stop_await: promise::Receiver<Result<(), DownlinkError>>,
         completed: Arc<AtomicBool>,
     ) -> DownlinkTaskHandle {
         DownlinkTaskHandle {
@@ -222,8 +223,8 @@ impl DownlinkTaskHandle {
     }
 
     /// Get a future that will complete when the downlink stops running.
-    pub fn await_stopped(&self) -> StoppedFuture {
-        StoppedFuture(self.stop_await.clone())
+    pub fn await_stopped(&self) -> promise::Receiver<Result<(), DownlinkError>> {
+        self.stop_await.clone()
     }
 }
 
@@ -233,7 +234,7 @@ pub(in crate::downlink) struct DownlinkTask<Commands, Events> {
     cmd_sink: Commands,
     ev_sink: Events,
     completed: Arc<AtomicBool>,
-    stop_event: watch::Sender<Option<Result<(), DownlinkError>>>,
+    stop_event: promise::Sender<Result<(), DownlinkError>>,
     on_invalid: OnInvalidMessage,
 }
 
@@ -264,7 +265,7 @@ impl<Commands, Events> DownlinkTask<Commands, Events> {
         cmd_sink: Commands,
         ev_sink: Events,
         completed: Arc<AtomicBool>,
-        stop_event: watch::Sender<Option<Result<(), DownlinkError>>>,
+        stop_event: promise::Sender<Result<(), DownlinkError>>,
         on_invalid: OnInvalidMessage,
     ) -> Self {
         DownlinkTask {
@@ -406,7 +407,7 @@ impl<Commands, Events> DownlinkTask<Commands, Events> {
 
         let _ = cmd_sink.send_item(Command::Unlink).await;
         completed.store(true, Ordering::Release);
-        let _ = stop_event.broadcast(Some(result.clone()));
+        let _ = stop_event.provide(result.clone());
         result
     }
 }

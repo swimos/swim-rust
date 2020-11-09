@@ -21,6 +21,7 @@ use std::time::Instant;
 use swim_common::routing::RoutingError;
 use swim_common::sink::item::*;
 use tokio::stream::StreamExt;
+use utilities::sync::promise::PromiseError;
 
 struct State(i32);
 
@@ -413,8 +414,10 @@ async fn errors_propagate() {
 
     let stop_res = dl_tx.task.task_handle().await_stopped().await;
 
-    assert!(stop_res.is_err());
-    assert_eq!(stop_res.err().unwrap(), DownlinkError::TransitionError);
+    assert!(stop_res.is_ok());
+    let r = stop_res.unwrap();
+
+    assert!(matches!(&*r, Err(DownlinkError::TransitionError)));
 }
 
 #[tokio::test]
@@ -439,8 +442,10 @@ async fn terminates_on_invalid() {
 
     let stop_res = dl_tx.task.task_handle().await_stopped().await;
 
-    assert!(stop_res.is_err());
-    assert_eq!(stop_res.err().unwrap(), DownlinkError::MalformedMessage);
+    assert!(stop_res.is_ok());
+    let r = stop_res.unwrap();
+    assert!(r.is_err());
+    assert!(matches!(&*r, Err(DownlinkError::MalformedMessage)));
 }
 
 #[tokio::test]
@@ -538,7 +543,7 @@ async fn terminates_when_router_dropped() {
         .is_ok());
 
     let stop_res = dl_tx.task.task_handle().await_stopped().await;
-    assert_eq!(stop_res.err().unwrap(), DownlinkError::DroppedChannel);
+    assert_eq!(stop_res.err().unwrap(), PromiseError);
 }
 
 #[tokio::test]

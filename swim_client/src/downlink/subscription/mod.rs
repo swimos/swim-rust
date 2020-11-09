@@ -26,7 +26,7 @@ use crate::downlink::typed::{
 };
 use crate::downlink::watch_adapter::map::KeyedWatch;
 use crate::downlink::watch_adapter::value::ValuePump;
-use crate::downlink::{raw, Command, DownlinkError, Message, StoppedFuture};
+use crate::downlink::{raw, Command, DownlinkError, Message};
 use crate::router::{Router, RouterEvent};
 use either::Either;
 use futures::stream::Fuse;
@@ -57,6 +57,8 @@ use tokio::sync::oneshot::error::RecvError;
 use tokio::sync::{mpsc, oneshot};
 use tracing::{error, info, instrument, trace_span};
 use utilities::future::{SwimFutureExt, TransformOnce, TransformedFuture, UntilFailure};
+use utilities::sync::promise;
+use utilities::sync::promise::PromiseError;
 
 pub mod envelopes;
 #[cfg(test)]
@@ -482,7 +484,7 @@ pub enum DownlinkSpecifier {
     },
 }
 
-type StopEvents = FuturesUnordered<TransformedFuture<StoppedFuture, MakeStopEvent>>;
+type StopEvents = FuturesUnordered<TransformedFuture<promise::Receiver<Result<(), DownlinkError>>, MakeStopEvent>>;
 
 struct ValueHandle {
     ptr: AnyWeakValueDownlink,
@@ -553,15 +555,21 @@ impl MakeStopEvent {
     }
 }
 
-impl TransformOnce<std::result::Result<(), DownlinkError>> for MakeStopEvent {
+impl TransformOnce<Result<Arc<Result<(), DownlinkError>>, PromiseError>> for MakeStopEvent {
     type Out = DownlinkStoppedEvent;
 
-    fn transform(self, input: std::result::Result<(), DownlinkError>) -> Self::Out {
+    fn transform(self, input: Result<Arc<Result<(), DownlinkError>>, PromiseError>) -> Self::Out {
         let MakeStopEvent { kind, path } = self;
+        let error = match input {
+            Ok(r) => {
+                (*r).clone().err()
+            },
+            _ => Some(DownlinkError::DroppedChannel),
+        };
         DownlinkStoppedEvent {
             kind,
             path,
-            error: input.err(),
+            error,
         }
     }
 }

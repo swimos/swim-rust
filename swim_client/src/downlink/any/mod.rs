@@ -20,7 +20,7 @@ use crate::downlink::dropping::{
 };
 use crate::downlink::queue::{QueueDownlink, QueueReceiver, QueueTopicReceiver, WeakQueueDownlink};
 use crate::downlink::topic::{DownlinkTopic, MakeReceiver};
-use crate::downlink::{raw, StoppedFuture};
+use crate::downlink::raw;
 use crate::downlink::{Downlink, DownlinkError, Event};
 use futures::future::{ErrInto, Ready};
 use futures::task::{Context, Poll};
@@ -35,6 +35,7 @@ use swim_common::topic::{BroadcastTopic, MpscTopic, Topic, TopicError, WatchTopi
 use tokio::macros::support::Pin;
 use tokio::sync::{mpsc, oneshot};
 use utilities::future::TransformedFuture;
+use utilities::sync::promise;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TopicKind {
@@ -120,7 +121,7 @@ impl<Act, Upd> AnyDownlink<Act, Upd> {
     }
 
     /// Get a future that will complete when the downlink stops running.
-    pub fn await_stopped(&self) -> StoppedFuture {
+    pub fn await_stopped(&self) -> promise::Receiver<Result<(), DownlinkError>> {
         match self {
             AnyDownlink::Queue(qdl) => qdl.await_stopped(),
             AnyDownlink::Dropping(ddl) => ddl.await_stopped(),

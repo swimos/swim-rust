@@ -19,7 +19,7 @@ use crate::downlink::raw::{DownlinkTask, DownlinkTaskHandle};
 use crate::downlink::topic::{DownlinkReceiver, DownlinkTopic, MakeReceiver};
 use crate::downlink::{
     Command, Downlink, DownlinkError, DownlinkInternals, DroppedError, Event, Message,
-    StateMachine, StoppedFuture,
+    StateMachine,
 };
 use futures::future::ErrInto;
 use futures::{Stream, StreamExt};
@@ -33,8 +33,9 @@ use swim_common::routing::RoutingError;
 use swim_common::sink::item::{self, ItemSender, ItemSink, MpscSend};
 use swim_common::topic::{MpscTopic, MpscTopicReceiver, Topic, TopicError};
 use swim_runtime::task::spawn;
-use tokio::sync::{mpsc, watch};
+use tokio::sync::mpsc;
 use utilities::future::TransformedFuture;
+use utilities::sync::promise;
 
 /// A downlink where subscribers consume via independent queues that will block if any one falls
 /// behind.
@@ -113,7 +114,7 @@ impl<Act, Upd> QueueDownlink<Act, Upd> {
     }
 
     /// Get a future that will complete when the downlink stops running.
-    pub fn await_stopped(&self) -> StoppedFuture {
+    pub fn await_stopped(&self) -> promise::Receiver<Result<(), DownlinkError>> {
         self.internal.task.await_stopped()
     }
 }
@@ -229,7 +230,7 @@ where
 
     let event_sink = item::for_mpsc_sender::<_, DroppedError>(event_tx);
 
-    let (stopped_tx, stopped_rx) = watch::channel(None);
+    let (stopped_tx, stopped_rx) = promise::promise();
 
     let completed = Arc::new(AtomicBool::new(false));
 
