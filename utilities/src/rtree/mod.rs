@@ -471,7 +471,7 @@ where
 
     fn split(&mut self) -> (EntryPtr<B>, EntryPtr<B>) {
         let ((first_group, first_mbb), (second_group, second_mbb)) =
-            quadratic_split(&mut self.entries, self.min_children);
+            split(&mut self.entries, self.min_children);
 
         let first_group = Entry::Branch {
             mbb: first_mbb,
@@ -497,14 +497,11 @@ where
     }
 }
 
-fn quadratic_split<B>(
-    entries: &mut Vec<EntryPtr<B>>,
-    min_children: usize,
-) -> (SplitGroup<B>, SplitGroup<B>)
+fn split<B>(entries: &mut Vec<EntryPtr<B>>, min_children: usize) -> (SplitGroup<B>, SplitGroup<B>)
 where
     B: BoundingBox,
 {
-    let (first_seed_idx, second_seed_idx) = pick_seeds(entries);
+    let (first_seed_idx, second_seed_idx) = quadratic_pick_seeds(entries);
 
     let first_seed = entries.remove(first_seed_idx);
     let second_seed = entries.remove(second_seed_idx - 1);
@@ -557,7 +554,7 @@ where
     ((first_group, first_mbb), (second_group, second_mbb))
 }
 
-fn pick_seeds<B>(entries: &[EntryPtr<B>]) -> (usize, usize)
+fn quadratic_pick_seeds<B>(entries: &[EntryPtr<B>]) -> (usize, usize)
 where
     B: BoundingBox,
 {
@@ -584,6 +581,83 @@ where
                 }
             }
         }
+    }
+
+    (first_idx, second_idx)
+}
+
+fn linear_pick_seeds<B>(entries: &[EntryPtr<B>]) -> (usize, usize)
+where
+    B: BoundingBox,
+{
+    let mut first_idx = 0;
+    let mut second_idx = 1;
+
+    let mut dim_points: Vec<(<B::Point as Point>::Type, <B::Point as Point>::Type)> = vec![];
+    let mut max_low_sides: Vec<(usize, <B::Point as Point>::Type)> = vec![];
+    let mut min_high_sides: Vec<(usize, <B::Point as Point>::Type)> = vec![];
+
+    if entries.len() > 2 {
+        for (i, item) in entries.iter().enumerate() {
+            let mbb = item.get_mbb();
+
+            //Todo change to usize
+            for dim in 0..mbb.get_coord_count() {
+                let low_dim = mbb.get_low().get_nth_coord(dim).unwrap();
+                let high_dim = mbb.get_high().get_nth_coord(dim).unwrap();
+
+                match dim_points.get_mut(dim as usize) {
+                    Some((min_low, max_high)) => {
+                        if low_dim < *min_low {
+                            *min_low = low_dim
+                        }
+
+                        if high_dim > *max_high {
+                            *max_high = high_dim
+                        }
+                    }
+                    None => dim_points.push((low_dim, high_dim)),
+                }
+
+                match max_low_sides.get_mut(dim as usize) {
+                    Some((idx, max_low_dim)) => {
+                        if low_dim > *max_low_dim {
+                            *idx = i;
+                            *max_low_dim = low_dim
+                        }
+                    }
+                    None => max_low_sides.push((i, low_dim)),
+                }
+
+                match min_high_sides.get_mut(dim as usize) {
+                    Some((idx, min_high_dim)) => {
+                        if high_dim > *min_high_dim {
+                            *idx = i;
+                            *min_high_dim = high_dim
+                        }
+                    }
+                    None => min_high_sides.push((i, high_dim)),
+                }
+            }
+        }
+
+        let dim_lengths: Vec<_> = dim_points
+            .into_iter()
+            .map(|(low, high)| (high - low).abs())
+            .collect();
+
+        let side_separations: Vec<_> = max_low_sides
+            .into_iter()
+            .zip(min_high_sides.into_iter())
+            .map(|((idx_low, low), (idx_high, high))| (idx_low, idx_high, (high - low).abs()))
+            .collect();
+
+        //Todo get max from this
+        let normalised_separations: Vec<_> = side_separations
+            .into_iter()
+            .zip(dim_lengths.into_iter())
+            .map(|((f, s, separation), dim_len)| (f, s, dim_len / separation))
+            .collect();
     }
 
     (first_idx, second_idx)

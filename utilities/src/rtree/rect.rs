@@ -100,7 +100,7 @@ impl<T: Real + Debug> Point for Point2D<T> {
         2
     }
 
-    fn get_nth_coord(&self, n: usize) -> Option<T> {
+    fn get_nth_coord(&self, n: u32) -> Option<T> {
         if n == 0 {
             Some(self.x)
         } else if n == 1 {
@@ -186,7 +186,7 @@ impl<T: Real + Debug> Point for Point3D<T> {
         3
     }
 
-    fn get_nth_coord(&self, n: usize) -> Option<T> {
+    fn get_nth_coord(&self, n: u32) -> Option<T> {
         if n == 0 {
             Some(self.x)
         } else if n == 1 {
@@ -252,7 +252,7 @@ pub trait Point: Copy + Clone + PartialEq + Debug + Sub<Output = Self> {
 
     fn get_coord_count() -> u32;
 
-    fn get_nth_coord(&self, n: usize) -> Option<Self::Type>;
+    fn get_nth_coord(&self, n: u32) -> Option<Self::Type>;
 
     fn mean(&self, other: &Self) -> Self;
 
@@ -274,6 +274,9 @@ pub trait BoundingBox: Clone + Debug {
 
     fn get_mbb(&self) -> &Rect<Self::Point>;
     fn get_center(&self) -> Self::Point;
+    fn get_coord_count(&self) -> u32 {
+        Self::Point::get_coord_count()
+    }
     // Area for 2D shapes and volume for 3D.
     fn measure(&self) -> <Self::Point as Point>::Type;
     // Create a minimum bounding box that contains both items.
