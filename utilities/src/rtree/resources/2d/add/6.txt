@@ -4,12 +4,12 @@ RTree {
             Branch {
                 mbb: Rect {
                     low: Point2D {
-                        x: 0.0,
-                        y: 0.0,
+                        x: 7.5,
+                        y: 0.5,
                     },
                     high: Point2D {
-                        x: 14.0,
-                        y: 14.0,
+                        x: 15.5,
+                        y: 15.5,
                     },
                 },
                 child: Node {
@@ -17,36 +17,36 @@ RTree {
                         Leaf {
                             item: Rect {
                                 low: Point2D {
-                                    x: 4.0,
-                                    y: 4.0,
+                                    x: 12.5,
+                                    y: 0.5,
                                 },
                                 high: Point2D {
-                                    x: 5.0,
-                                    y: 6.0,
+                                    x: 15.5,
+                                    y: 15.5,
                                 },
                             },
                         },
                         Leaf {
                             item: Rect {
                                 low: Point2D {
-                                    x: 0.0,
-                                    y: 0.0,
+                                    x: 7.5,
+                                    y: 7.5,
                                 },
                                 high: Point2D {
-                                    x: 10.0,
-                                    y: 10.0,
+                                    x: 14.5,
+                                    y: 14.5,
                                 },
                             },
                         },
                         Leaf {
                             item: Rect {
                                 low: Point2D {
-                                    x: 7.0,
-                                    y: 7.0,
+                                    x: 10.5,
+                                    y: 11.5,
                                 },
                                 high: Point2D {
-                                    x: 14.0,
-                                    y: 14.0,
+                                    x: 11.5,
+                                    y: 12.5,
                                 },
                             },
                         },
@@ -59,12 +59,12 @@ RTree {
             Branch {
                 mbb: Rect {
                     low: Point2D {
-                        x: 10.0,
-                        y: 0.0,
+                        x: 0.5,
+                        y: 0.5,
                     },
                     high: Point2D {
-                        x: 15.0,
-                        y: 15.0,
+                        x: 10.5,
+                        y: 11.5,
                     },
                 },
                 child: Node {
@@ -72,24 +72,36 @@ RTree {
                         Leaf {
                             item: Rect {
                                 low: Point2D {
-                                    x: 12.0,
-                                    y: 0.0,
+                                    x: 4.5,
+                                    y: 4.5,
                                 },
                                 high: Point2D {
-                                    x: 15.0,
-                                    y: 15.0,
+                                    x: 5.5,
+                                    y: 6.5,
                                 },
                             },
                         },
                         Leaf {
                             item: Rect {
                                 low: Point2D {
-                                    x: 10.0,
-                                    y: 11.0,
+                                    x: 0.5,
+                                    y: 0.5,
                                 },
                                 high: Point2D {
-                                    x: 11.0,
-                                    y: 12.0,
+                                    x: 10.5,
+                                    y: 10.5,
+                                },
+                            },
+                        },
+                        Leaf {
+                            item: Rect {
+                                low: Point2D {
+                                    x: 4.5,
+                                    y: 9.5,
+                                },
+                                high: Point2D {
+                                    x: 5.5,
+                                    y: 11.5,
                                 },
                             },
                         },
@@ -104,5 +116,5 @@ RTree {
         min_children: 2,
         max_children: 4,
     },
-    len: 5,
+    len: 6,
 }

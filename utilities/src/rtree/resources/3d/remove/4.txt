@@ -4,63 +4,59 @@ RTree {
             Branch {
                 mbb: Rect {
                     low: Point3D {
-                        x: 7,
-                        y: 0,
-                        z: 0,
+                        x: 7.0,
+                        y: 0.0,
+                        z: 0.0,
                     },
                     high: Point3D {
-                        x: 16,
-                        y: 16,
-                        z: 10,
+                        x: 16.0,
+                        y: 16.0,
+                        z: 10.0,
                     },
-                    phantom: PhantomData,
                 },
                 child: Node {
                     entries: [
                         Branch {
                             mbb: Rect {
                                 low: Point3D {
-                                    x: 13,
-                                    y: 0,
-                                    z: 0,
+                                    x: 13.0,
+                                    y: 0.0,
+                                    z: 0.0,
                                 },
                                 high: Point3D {
-                                    x: 16,
-                                    y: 16,
-                                    z: 10,
+                                    x: 16.0,
+                                    y: 16.0,
+                                    z: 10.0,
                                 },
-                                phantom: PhantomData,
                             },
                             child: Node {
                                 entries: [
                                     Leaf {
                                         item: Rect {
                                             low: Point3D {
-                                                x: 13,
-                                                y: 0,
-                                                z: 0,
+                                                x: 13.0,
+                                                y: 0.0,
+                                                z: 0.0,
                                             },
                                             high: Point3D {
-                                                x: 14,
-                                                y: 1,
-                                                z: 10,
+                                                x: 14.0,
+                                                y: 1.0,
+                                                z: 10.0,
                                             },
-                                            phantom: PhantomData,
                                         },
                                     },
                                     Leaf {
                                         item: Rect {
                                             low: Point3D {
-                                                x: 13,
-                                                y: 13,
-                                                z: 0,
+                                                x: 13.0,
+                                                y: 13.0,
+                                                z: 0.0,
                                             },
                                             high: Point3D {
-                                                x: 16,
-                                                y: 16,
-                                                z: 10,
+                                                x: 16.0,
+                                                y: 16.0,
+                                                z: 10.0,
                                             },
-                                            phantom: PhantomData,
                                         },
                                     },
                                 ],
@@ -72,47 +68,44 @@ RTree {
                         Branch {
                             mbb: Rect {
                                 low: Point3D {
-                                    x: 7,
-                                    y: 0,
-                                    z: 0,
+                                    x: 7.0,
+                                    y: 0.0,
+                                    z: 0.0,
                                 },
                                 high: Point3D {
-                                    x: 12,
-                                    y: 6,
-                                    z: 10,
+                                    x: 12.0,
+                                    y: 6.0,
+                                    z: 10.0,
                                 },
-                                phantom: PhantomData,
                             },
                             child: Node {
                                 entries: [
                                     Leaf {
                                         item: Rect {
                                             low: Point3D {
-                                                x: 10,
-                                                y: 0,
-                                                z: 0,
+                                                x: 10.0,
+                                                y: 0.0,
+                                                z: 0.0,
                                             },
                                             high: Point3D {
-                                                x: 12,
-                                                y: 5,
-                                                z: 10,
+                                                x: 12.0,
+                                                y: 5.0,
+                                                z: 10.0,
                                             },
-                                            phantom: PhantomData,
                                         },
                                     },
                                     Leaf {
                                         item: Rect {
                                             low: Point3D {
-                                                x: 7,
-                                                y: 3,
-                                                z: 0,
+                                                x: 7.0,
+                                                y: 3.0,
+                                                z: 0.0,
                                             },
                                             high: Point3D {
-                                                x: 8,
-                                                y: 6,
-                                                z: 10,
+                                                x: 8.0,
+                                                y: 6.0,
+                                                z: 10.0,
                                             },
-                                            phantom: PhantomData,
                                         },
                                     },
                                 ],
@@ -130,63 +123,59 @@ RTree {
             Branch {
                 mbb: Rect {
                     low: Point3D {
-                        x: 2,
-                        y: 2,
-                        z: 0,
+                        x: 2.0,
+                        y: 2.0,
+                        z: 0.0,
                     },
                     high: Point3D {
-                        x: 5,
-                        y: 16,
-                        z: 10,
+                        x: 5.0,
+                        y: 16.0,
+                        z: 10.0,
                     },
-                    phantom: PhantomData,
                 },
                 child: Node {
                     entries: [
                         Branch {
                             mbb: Rect {
                                 low: Point3D {
-                                    x: 2,
-                                    y: 9,
-                                    z: 0,
+                                    x: 2.0,
+                                    y: 9.0,
+                                    z: 0.0,
                                 },
                                 high: Point3D {
-                                    x: 5,
-                                    y: 16,
-                                    z: 10,
+                                    x: 5.0,
+                                    y: 16.0,
+                                    z: 10.0,
                                 },
-                                phantom: PhantomData,
                             },
                             child: Node {
                                 entries: [
                                     Leaf {
                                         item: Rect {
                                             low: Point3D {
-                                                x: 2,
-                                                y: 13,
-                                                z: 0,
+                                                x: 2.0,
+                                                y: 13.0,
+                                                z: 0.0,
                                             },
                                             high: Point3D {
-                                                x: 4,
-                                                y: 16,
-                                                z: 10,
+                                                x: 4.0,
+                                                y: 16.0,
+                                                z: 10.0,
                                             },
-                                            phantom: PhantomData,
                                         },
                                     },
                                     Leaf {
                                         item: Rect {
                                             low: Point3D {
-                                                x: 4,
-                                                y: 9,
-                                                z: 0,
+                                                x: 4.0,
+                                                y: 9.0,
+                                                z: 0.0,
                                             },
                                             high: Point3D {
-                                                x: 5,
-                                                y: 11,
-                                                z: 10,
+                                                x: 5.0,
+                                                y: 11.0,
+                                                z: 10.0,
                                             },
-                                            phantom: PhantomData,
                                         },
                                     },
                                 ],
@@ -198,47 +187,44 @@ RTree {
                         Branch {
                             mbb: Rect {
                                 low: Point3D {
-                                    x: 2,
-                                    y: 2,
-                                    z: 0,
+                                    x: 2.0,
+                                    y: 2.0,
+                                    z: 0.0,
                                 },
                                 high: Point3D {
-                                    x: 5,
-                                    y: 6,
-                                    z: 10,
+                                    x: 5.0,
+                                    y: 6.0,
+                                    z: 10.0,
                                 },
-                                phantom: PhantomData,
                             },
                             child: Node {
                                 entries: [
                                     Leaf {
                                         item: Rect {
                                             low: Point3D {
-                                                x: 2,
-                                                y: 2,
-                                                z: 0,
+                                                x: 2.0,
+                                                y: 2.0,
+                                                z: 0.0,
                                             },
                                             high: Point3D {
-                                                x: 3,
-                                                y: 3,
-                                                z: 10,
+                                                x: 3.0,
+                                                y: 3.0,
+                                                z: 10.0,
                                             },
-                                            phantom: PhantomData,
                                         },
                                     },
                                     Leaf {
                                         item: Rect {
                                             low: Point3D {
-                                                x: 4,
-                                                y: 4,
-                                                z: 0,
+                                                x: 4.0,
+                                                y: 4.0,
+                                                z: 0.0,
                                             },
                                             high: Point3D {
-                                                x: 5,
-                                                y: 6,
-                                                z: 10,
+                                                x: 5.0,
+                                                y: 6.0,
+                                                z: 10.0,
                                             },
-                                            phantom: PhantomData,
                                         },
                                     },
                                 ],

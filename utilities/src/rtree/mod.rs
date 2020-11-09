@@ -1,5 +1,6 @@
-use crate::rtree::rect::{BoundingBox, Coordinate, Point, Rect};
+use crate::rtree::rect::{BoundingBox, Point, Rect};
 use num::integer::nth_root;
+use num::traits::real::Real;
 use std::fmt::Debug;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -11,21 +12,17 @@ pub mod rect;
 mod tests;
 
 #[derive(Debug, Clone)]
-pub struct RTree<C, P, B>
+pub struct RTree<B>
 where
-    C: Coordinate,
-    P: Point<C>,
-    B: BoundingBox<C, P>,
+    B: BoundingBox,
 {
-    root: Node<C, P, B>,
+    root: Node<B>,
     len: usize,
 }
 
-impl<C, P, B> RTree<C, P, B>
+impl<B> RTree<B>
 where
-    C: Coordinate,
-    P: Point<C>,
-    B: BoundingBox<C, P>,
+    B: BoundingBox,
 {
     pub fn new(min_children: NonZeroUsize, max_children: NonZeroUsize) -> Self {
         if min_children.get() > max_children.get() / 2 {
@@ -46,7 +43,7 @@ where
         self.len() == 0
     }
 
-    pub fn search(&self, area: &Rect<C, P>) -> Option<Vec<B>> {
+    pub fn search(&self, area: &Rect<B::Point>) -> Option<Vec<B>> {
         self.root.search(area)
     }
 
@@ -55,7 +52,7 @@ where
         self.len += 1;
     }
 
-    pub fn remove(&mut self, bounding_box: &Rect<C, P>) -> Option<B> {
+    pub fn remove(&mut self, bounding_box: &Rect<B::Point>) -> Option<B> {
         let (removed, maybe_orphan_nodes) = self.root.remove(bounding_box)?;
         self.len -= 1;
 
@@ -100,7 +97,7 @@ where
         min_children: NonZeroUsize,
         max_children: NonZeroUsize,
         items: Vec<B>,
-    ) -> RTree<C, P, B> {
+    ) -> RTree<B> {
         if min_children.get() > max_children.get() / 2 {
             panic!("The minimum number of children cannot be more than half of the maximum number of children.")
         }
@@ -133,24 +130,24 @@ where
     fn internal_bulk_load(
         min_children: usize,
         max_children: usize,
-        mut entries: Vec<EntryPtr<C, P, B>>,
+        mut entries: Vec<EntryPtr<B>>,
         mut level: usize,
-    ) -> Node<C, P, B> {
+    ) -> Node<B> {
         let mut items_num = entries.len();
 
         while items_num > max_children {
             // We choose to fill the nodes halfway between the min and max capacity to avoid splits and merges
             let node_capacity = (max_children + min_children) / 2;
             let leaf_pages = items_num / node_capacity;
-            let coord_count = P::get_coord_count();
+            let coord_count = B::Point::get_coord_count();
             let vertical_slices = nth_root(leaf_pages, coord_count);
             // let chunk_size = node_capacity * nth_root(leaf_pages, coord_count / (coord_count - 1));
 
-            eprintln!("vertical_slices = {:#?}", vertical_slices);
+            // eprintln!("vertical_slices = {:#?}", vertical_slices);
 
             let chunk_size = node_capacity * vertical_slices;
 
-            eprintln!("chunk_size = {:#?}", chunk_size);
+            // eprintln!("chunk_size = {:#?}", chunk_size);
             // eprintln!("chunk_size = {:#?}", chunk_size);
             // eprintln!("chunk_size_2 = {:#?}", chunk_size_2);
 
@@ -273,7 +270,7 @@ where
         }
     }
 
-    fn internal_insert(&mut self, item: EntryPtr<C, P, B>, level: usize) {
+    fn internal_insert(&mut self, item: EntryPtr<B>, level: usize) {
         if let Some((first_entry, second_entry)) = self.root.insert(item, level) {
             self.root = Node {
                 entries: vec![first_entry, second_entry],
@@ -286,23 +283,19 @@ where
 }
 
 #[derive(Debug, Clone)]
-struct Node<C, P, B>
+struct Node<B>
 where
-    C: Coordinate,
-    P: Point<C>,
-    B: BoundingBox<C, P>,
+    B: BoundingBox,
 {
-    entries: Vec<EntryPtr<C, P, B>>,
+    entries: Vec<EntryPtr<B>>,
     level: usize,
     min_children: usize,
     max_children: usize,
 }
 
-impl<C, P, B> Node<C, P, B>
+impl<B> Node<B>
 where
-    C: Coordinate,
-    P: Point<C>,
-    B: BoundingBox<C, P>,
+    B: BoundingBox,
 {
     fn new(min_children: usize, max_children: usize) -> Self {
         Node {
@@ -321,7 +314,7 @@ where
         self.level == 0
     }
 
-    pub fn search(&self, area: &Rect<C, P>) -> Option<Vec<B>> {
+    pub fn search(&self, area: &Rect<B::Point>) -> Option<Vec<B>> {
         let mut found = vec![];
 
         if self.is_leaf() {
@@ -351,7 +344,7 @@ where
         }
     }
 
-    fn insert(&mut self, item: EntryPtr<C, P, B>, level: usize) -> MaybeSplit<C, P, B> {
+    fn insert(&mut self, item: EntryPtr<B>, level: usize) -> MaybeSplit<B> {
         match *item {
             //If we have a branch and we are at the right level -> insert
             Entry::Branch { .. } if self.level == level => {
@@ -412,7 +405,7 @@ where
         None
     }
 
-    fn remove(&mut self, bounding_box: &Rect<C, P>) -> Option<(B, MaybeOrphans<C, P, B>)> {
+    fn remove(&mut self, bounding_box: &Rect<B::Point>) -> Option<(B, MaybeOrphans<B>)> {
         if self.is_leaf() {
             //If this is leaf try to find the item
             let mut remove_idx = None;
@@ -476,7 +469,7 @@ where
         }
     }
 
-    fn split(&mut self) -> (EntryPtr<C, P, B>, EntryPtr<C, P, B>) {
+    fn split(&mut self) -> (EntryPtr<B>, EntryPtr<B>) {
         let ((first_group, first_mbb), (second_group, second_mbb)) =
             quadratic_split(&mut self.entries, self.min_children);
 
@@ -504,14 +497,12 @@ where
     }
 }
 
-fn quadratic_split<C, P, B>(
-    entries: &mut Vec<EntryPtr<C, P, B>>,
+fn quadratic_split<B>(
+    entries: &mut Vec<EntryPtr<B>>,
     min_children: usize,
-) -> (SplitGroup<C, P, B>, SplitGroup<C, P, B>)
+) -> (SplitGroup<B>, SplitGroup<B>)
 where
-    C: Coordinate,
-    P: Point<C>,
-    B: BoundingBox<C, P>,
+    B: BoundingBox,
 {
     let (first_seed_idx, second_seed_idx) = pick_seeds(entries);
 
@@ -566,11 +557,9 @@ where
     ((first_group, first_mbb), (second_group, second_mbb))
 }
 
-fn pick_seeds<C, P, B>(entries: &[EntryPtr<C, P, B>]) -> (usize, usize)
+fn pick_seeds<B>(entries: &[EntryPtr<B>]) -> (usize, usize)
 where
-    C: Coordinate,
-    P: Point<C>,
-    B: BoundingBox<C, P>,
+    B: BoundingBox,
 {
     let mut first_idx = 0;
     let mut second_idx = 1;
@@ -600,17 +589,15 @@ where
     (first_idx, second_idx)
 }
 
-fn pick_next<C, P, B>(
-    entries: &[EntryPtr<C, P, B>],
-    first_mbb: &Rect<C, P>,
-    second_mbb: &Rect<C, P>,
+fn pick_next<B>(
+    entries: &[EntryPtr<B>],
+    first_mbb: &Rect<B::Point>,
+    second_mbb: &Rect<B::Point>,
     first_group_size: usize,
     second_group_size: usize,
-) -> (usize, Rect<C, P>, Group)
+) -> (usize, Rect<B::Point>, Group)
 where
-    C: Coordinate,
-    P: Point<C>,
-    B: BoundingBox<C, P>,
+    B: BoundingBox,
 {
     let mut entries_iter = entries.iter();
     let item = entries_iter.next().unwrap();
@@ -621,7 +608,7 @@ where
 
     let mut max_preference_diff = (first_preference - second_preference).abs();
 
-    let mut group = select_group(
+    let mut group = select_group::<B>(
         first_mbb,
         second_mbb,
         first_group_size,
@@ -644,7 +631,7 @@ where
             max_preference_diff = preference_diff;
             item_idx = idx;
 
-            group = select_group(
+            group = select_group::<B>(
                 first_mbb,
                 second_mbb,
                 first_group_size,
@@ -663,15 +650,18 @@ where
     (item_idx, expanded_rect, group)
 }
 
-fn calc_preferences<C, P, B>(
-    item: &EntryPtr<C, P, B>,
-    first_mbb: &Rect<C, P>,
-    second_mbb: &Rect<C, P>,
-) -> (C, C, Rect<C, P>, Rect<C, P>)
+fn calc_preferences<B>(
+    item: &EntryPtr<B>,
+    first_mbb: &Rect<B::Point>,
+    second_mbb: &Rect<B::Point>,
+) -> (
+    <B::Point as Point>::Type,
+    <B::Point as Point>::Type,
+    Rect<B::Point>,
+    Rect<B::Point>,
+)
 where
-    C: Coordinate,
-    P: Point<C>,
-    B: BoundingBox<C, P>,
+    B: BoundingBox,
 {
     let first_expanded_rect = first_mbb.combine_boxes(item.get_mbb());
     let first_diff = first_expanded_rect.measure() - first_mbb.measure();
@@ -687,17 +677,16 @@ where
     )
 }
 
-fn select_group<C, P>(
-    first_mbb: &Rect<C, P>,
-    second_mbb: &Rect<C, P>,
+fn select_group<B>(
+    first_mbb: &Rect<B::Point>,
+    second_mbb: &Rect<B::Point>,
     first_group_size: usize,
     second_group_size: usize,
-    first_diff: C,
-    second_diff: C,
+    first_diff: <B::Point as Point>::Type,
+    second_diff: <B::Point as Point>::Type,
 ) -> Group
 where
-    C: Coordinate,
-    P: Point<C>,
+    B: BoundingBox,
 {
     if first_diff < second_diff {
         Group::First
@@ -721,32 +710,23 @@ enum Group {
     Second,
 }
 
-type EntryPtr<C, P, B> = Arc<Entry<C, P, B>>;
-type MaybeOrphans<C, P, B> = Option<Vec<EntryPtr<C, P, B>>>;
-type MaybeSplit<C, P, B> = Option<(EntryPtr<C, P, B>, EntryPtr<C, P, B>)>;
-type SplitGroup<C, P, B> = (Vec<EntryPtr<C, P, B>>, Rect<C, P>);
+type EntryPtr<B> = Arc<Entry<B>>;
+type MaybeOrphans<B> = Option<Vec<EntryPtr<B>>>;
+type MaybeSplit<B> = Option<(EntryPtr<B>, EntryPtr<B>)>;
+type SplitGroup<B> = (Vec<EntryPtr<B>>, Rect<<B as BoundingBox>::Point>);
 
 #[derive(Debug, Clone)]
-enum Entry<C, P, B>
+enum Entry<B>
 where
-    C: Coordinate,
-    P: Point<C>,
-    B: BoundingBox<C, P>,
+    B: BoundingBox,
 {
-    Leaf {
-        item: B,
-    },
-    Branch {
-        mbb: Rect<C, P>,
-        child: Node<C, P, B>,
-    },
+    Leaf { item: B },
+    Branch { mbb: Rect<B::Point>, child: Node<B> },
 }
 
-impl<C, P, B> Entry<C, P, B>
+impl<B> Entry<B>
 where
-    C: Coordinate,
-    P: Point<C>,
-    B: BoundingBox<C, P>,
+    B: BoundingBox,
 {
     fn len(&self) -> usize {
         match self {
@@ -755,14 +735,14 @@ where
         }
     }
 
-    fn search(&self, area: &Rect<C, P>) -> Option<Vec<B>> {
+    fn search(&self, area: &Rect<B::Point>) -> Option<Vec<B>> {
         match self {
             Entry::Branch { child, .. } => child.search(area),
             Entry::Leaf { .. } => unreachable!(),
         }
     }
 
-    fn get_mbb(&self) -> &Rect<C, P> {
+    fn get_mbb(&self) -> &Rect<B::Point> {
         match self {
             Entry::Leaf { item } => item.get_mbb(),
             Entry::Branch { mbb, .. } => mbb,
@@ -771,10 +751,10 @@ where
 
     fn insert(
         &mut self,
-        item: EntryPtr<C, P, B>,
-        expanded_rect: Rect<C, P>,
+        item: EntryPtr<B>,
+        expanded_rect: Rect<B::Point>,
         level: usize,
-    ) -> MaybeSplit<C, P, B> {
+    ) -> MaybeSplit<B> {
         match self {
             Entry::Branch { mbb, child } => {
                 *mbb = expanded_rect;
@@ -784,7 +764,7 @@ where
         }
     }
 
-    fn remove(&mut self, bounding_box: &Rect<C, P>) -> Option<(B, MaybeOrphans<C, P, B>)> {
+    fn remove(&mut self, bounding_box: &Rect<B::Point>) -> Option<(B, MaybeOrphans<B>)> {
         match self {
             Entry::Branch { mbb, child } => {
                 let (removed, orphan_nodes) = child.remove(bounding_box)?;

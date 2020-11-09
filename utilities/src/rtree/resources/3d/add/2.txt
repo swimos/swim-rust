@@ -4,31 +4,29 @@ RTree {
             Leaf {
                 item: Rect {
                     low: Point3D {
-                        x: 0,
-                        y: 0,
-                        z: 0,
+                        x: 0.0,
+                        y: 0.0,
+                        z: 0.0,
                     },
                     high: Point3D {
-                        x: 10,
-                        y: 10,
-                        z: 10,
+                        x: 10.0,
+                        y: 10.0,
+                        z: 10.0,
                     },
-                    phantom: PhantomData,
                 },
             },
             Leaf {
                 item: Rect {
                     low: Point3D {
-                        x: 12,
-                        y: 0,
-                        z: 0,
+                        x: 12.0,
+                        y: 0.0,
+                        z: 0.0,
                     },
                     high: Point3D {
-                        x: 15,
-                        y: 15,
-                        z: 10,
+                        x: 15.0,
+                        y: 15.0,
+                        z: 10.0,
                     },
-                    phantom: PhantomData,
                 },
             },
         ],
