@@ -36,6 +36,7 @@ use tokio::sync::mpsc;
 use tokio::time::timeout;
 use utilities::future::SwimStreamExt;
 use utilities::sync::trigger;
+use swim_common::sink::item;
 
 struct ReportingStream<S> {
     notify: VecDeque<trigger::Sender>,
@@ -88,7 +89,7 @@ async fn uplink_not_linked() {
 
     let (tx_event, rx_event) = mpsc::channel(5);
 
-    let uplink_task = uplink.run_uplink(tx_event);
+    let uplink_task = uplink.run_uplink(item::for_mpsc_sender(tx_event));
 
     let send_task = async move {
         lane.store(12).await;
@@ -130,7 +131,7 @@ async fn uplink_open_to_linked() {
 
     let (tx_event, rx_event) = mpsc::channel(5);
 
-    let uplink_task = uplink.run_uplink(tx_event);
+    let uplink_task = uplink.run_uplink(item::for_mpsc_sender(tx_event));
 
     let send_task = async move {
         lane.store(12).await;
@@ -178,7 +179,7 @@ async fn uplink_open_to_synced() {
 
     let (tx_event, rx_event) = mpsc::channel(5);
 
-    let uplink_task = uplink.run_uplink(tx_event);
+    let uplink_task = uplink.run_uplink(item::for_mpsc_sender(tx_event));
 
     let send_task = async move {
         lane.store(12).await;

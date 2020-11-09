@@ -18,7 +18,7 @@ use crate::downlink::any::AnyDownlink;
 use crate::downlink::raw::{DownlinkTask, DownlinkTaskHandle};
 use crate::downlink::topic::{DownlinkReceiver, DownlinkTopic, MakeReceiver};
 use crate::downlink::{
-    Command, Downlink, DownlinkError, DownlinkInternals, DroppedError, Event, Message,
+    Command, Downlink, DownlinkError, DownlinkInternals, Event, Message,
     StateMachine,
 };
 use futures::future::ErrInto;
@@ -30,7 +30,7 @@ use std::sync::{Arc, Weak};
 use swim_common::request::request_future::SendAndAwait;
 use swim_common::request::Request;
 use swim_common::routing::RoutingError;
-use swim_common::sink::item::{self, ItemSender, ItemSink, MpscSend};
+use swim_common::sink::item::{self, ItemSender};
 use swim_common::topic::{MpscTopic, MpscTopicReceiver, Topic, TopicError};
 use swim_runtime::task::spawn;
 use tokio::sync::mpsc;
@@ -117,6 +117,10 @@ impl<Act, Upd> QueueDownlink<Act, Upd> {
     pub fn await_stopped(&self) -> promise::Receiver<Result<(), DownlinkError>> {
         self.internal.task.await_stopped()
     }
+
+    pub async fn send_item(&mut self, value: Act) -> Result<(), DownlinkError> {
+        Ok(self.input.send(value).await?)
+    }
 }
 
 impl<Act, Upd> QueueDownlink<Act, Upd>
@@ -173,18 +177,6 @@ where
     }
 }
 
-impl<'a, Act, Upd> ItemSink<'a, Act> for QueueDownlink<Act, Upd>
-where
-    Act: Send + 'static,
-{
-    type Error = DownlinkError;
-    type SendFuture = MpscSend<'a, Act, DownlinkError>;
-
-    fn send_item(&'a mut self, value: Act) -> Self::SendFuture {
-        MpscSend::new(&mut self.input, value)
-    }
-}
-
 impl<Act, Upd> Downlink<Act, Event<Upd>> for QueueDownlink<Act, Upd>
 where
     Act: Send + 'static,
@@ -228,7 +220,7 @@ where
     let (act_tx, act_rx) = mpsc::channel::<A>(config.buffer_size.get());
     let (event_tx, event_rx) = mpsc::channel::<Event<Machine::Ev>>(config.buffer_size.get());
 
-    let event_sink = item::for_mpsc_sender::<_, DroppedError>(event_tx);
+    let event_sink = item::for_mpsc_sender(event_tx).map_err_into();
 
     let (stopped_tx, stopped_rx) = promise::promise();
 

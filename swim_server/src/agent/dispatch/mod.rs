@@ -36,7 +36,6 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::num::NonZeroUsize;
 use std::pin::Pin;
-use swim_common::sink::item::ItemSink;
 use swim_common::warp::envelope::OutgoingLinkMessage;
 use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc::error::TrySendError;
@@ -561,7 +560,7 @@ impl EnvelopeDispatcher {
                                 match pending.enqueue(envelope.lane().to_string(), envelope) {
                                     Ok(false) => {
                                         event!(Level::TRACE, message = STALLED);
-                                        let _ = stalled_tx.send_item(true);
+                                        let _ = stalled_tx.broadcast(true);
                                         *stalled = true;
                                     }
                                     Err(_) => {
@@ -617,7 +616,7 @@ impl EnvelopeDispatcher {
             mut await_new,
             mut pending,
             mut stalled,
-            mut stalled_tx,
+            stalled_tx,
             yield_after,
             ..
         } = self;
@@ -656,7 +655,7 @@ impl EnvelopeDispatcher {
                     }
                     if stalled && did_dispatch {
                         event!(Level::TRACE, message = NO_LONGER_STALLED);
-                        let _ = stalled_tx.send_item(false);
+                        let _ = stalled_tx.broadcast(false);
                         stalled = false;
                     }
                 }
@@ -674,7 +673,7 @@ impl EnvelopeDispatcher {
                     }
                     if pending.clear(&label) && stalled {
                         event!(Level::TRACE, message = NO_LONGER_STALLED);
-                        let _ = stalled_tx.send_item(false);
+                        let _ = stalled_tx.broadcast(false);
                         stalled = false;
                     }
                 }

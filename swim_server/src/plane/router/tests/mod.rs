@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::plane::error::{NoAgentAtRoute, ResolutionError, Unresolvable};
-use crate::plane::router::{PlaneRouter, PlaneRouterFactory, PlaneRouterSender};
+use crate::plane::router::{PlaneRouter, PlaneRouterFactory};
 use crate::plane::PlaneRequest;
 use crate::routing::{RoutingAddr, ServerRouter, TaggedEnvelope};
 use futures::future::join;
@@ -22,26 +22,6 @@ use swim_common::sink::item::ItemSink;
 use swim_common::warp::envelope::Envelope;
 use tokio::sync::mpsc;
 use url::Url;
-
-#[tokio::test]
-async fn plane_router_sender() {
-    let (tx, mut rx) = mpsc::channel(8);
-    let mut sender = PlaneRouterSender::new(RoutingAddr::remote(7), tx);
-
-    assert!(sender
-        .send_item(Envelope::linked("/node", "lane"))
-        .await
-        .is_ok());
-
-    let received = rx.recv().await;
-    assert_eq!(
-        received,
-        Some(TaggedEnvelope(
-            RoutingAddr::remote(7),
-            Envelope::linked("/node", "lane")
-        ))
-    );
-}
 
 #[tokio::test]
 async fn plane_router_get_sender() {

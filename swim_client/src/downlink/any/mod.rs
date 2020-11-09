@@ -30,7 +30,7 @@ use pin_project::pin_project;
 use std::fmt::{Display, Formatter};
 use swim_common::request::request_future::{RequestFuture, Sequenced};
 use swim_common::request::Request;
-use swim_common::sink::item::{ItemSink, MpscSend};
+use swim_common::sink::item::ItemSink;
 use swim_common::topic::{BroadcastTopic, MpscTopic, Topic, TopicError, WatchTopic};
 use tokio::macros::support::Pin;
 use tokio::sync::{mpsc, oneshot};
@@ -128,6 +128,14 @@ impl<Act, Upd> AnyDownlink<Act, Upd> {
             AnyDownlink::Buffered(bdl) => bdl.await_stopped(),
         }
     }
+
+    pub async fn send_item(&mut self, value: Act) -> Result<(), DownlinkError> {
+        match self {
+            AnyDownlink::Queue(qdl) => qdl.send_item(value).await,
+            AnyDownlink::Dropping(ddl) => ddl.send_item(value).await,
+            AnyDownlink::Buffered(bdl) => bdl.send_item(value).await,
+        }
+    }
 }
 
 impl<Act, Upd> Clone for AnyDownlink<Act, Upd> {
@@ -221,22 +229,6 @@ where
             AnyDownlink::Queue(qdl) => AnySubFuture::Queue(qdl.subscribe()),
             AnyDownlink::Dropping(ddl) => AnySubFuture::Dropping(ddl.subscribe()),
             AnyDownlink::Buffered(bdl) => AnySubFuture::Buffered(bdl.subscribe()),
-        }
-    }
-}
-
-impl<'a, Act, Upd> ItemSink<'a, Act> for AnyDownlink<Act, Upd>
-where
-    Act: Send + 'static,
-{
-    type Error = DownlinkError;
-    type SendFuture = MpscSend<'a, Act, DownlinkError>;
-
-    fn send_item(&'a mut self, value: Act) -> Self::SendFuture {
-        match self {
-            AnyDownlink::Queue(qdl) => qdl.send_item(value),
-            AnyDownlink::Dropping(ddl) => ddl.send_item(value),
-            AnyDownlink::Buffered(bdl) => bdl.send_item(value),
         }
     }
 }

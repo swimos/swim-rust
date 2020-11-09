@@ -25,10 +25,11 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use swim_common::model::Value;
 use swim_common::routing::RoutingError;
-use swim_common::sink::item::{ItemSender, ItemSink, MpscSend};
+use swim_common::sink::item::{ItemSender, ItemSink};
 use swim_runtime::task::{spawn, TaskHandle};
 use tokio::sync::{mpsc, oneshot};
 use utilities::lru_cache::LruCache;
+use swim_common::sink::item;
 
 /// Stream adapter that removes per-key back-pressure from modifications over a map downlink. If
 /// the produces pushes in changes, sequentially, to the same key the consumer will only observe
@@ -43,15 +44,6 @@ pub struct KeyedWatch {
     sender: mpsc::Sender<UntypedMapModification<Arc<Value>>>,
     _consume_task: TaskHandle<()>,
     _produce_task: TaskHandle<()>,
-}
-
-impl<'a> ItemSink<'a, UntypedMapModification<Arc<Value>>> for KeyedWatch {
-    type Error = RoutingError;
-    type SendFuture = MpscSend<'a, UntypedMapModification<Arc<Value>>, RoutingError>;
-
-    fn send_item(&'a mut self, value: UntypedMapModification<Arc<Value>>) -> Self::SendFuture {
-        MpscSend::new(&mut self.sender, value)
-    }
 }
 
 impl KeyedWatch {
@@ -82,6 +74,15 @@ impl KeyedWatch {
             _consume_task: spawn(consumer.run()),
             _produce_task: spawn(producer.run()),
         }
+    }
+
+    pub async fn send_item(&mut self, value: UntypedMapModification<Arc<Value>>) -> Result<(), RoutingError> {
+       Ok(self.sender.send(value).await?)
+    }
+
+    pub fn into_item_sender(self) -> impl ItemSender<UntypedMapModification<Arc<Value>>, RoutingError> {
+        let KeyedWatch { sender, ..} = self;
+        item::for_mpsc_sender(sender).map_err_into()
     }
 }
 
@@ -167,7 +168,7 @@ impl ConsumerTask {
 
                     let (tx_flush, rx_flush) = oneshot::channel();
                     if bridge
-                        .send_item(BridgeMessage::Flush(tx_flush))
+                        .send(BridgeMessage::Flush(tx_flush))
                         .await
                         .is_err()
                     {

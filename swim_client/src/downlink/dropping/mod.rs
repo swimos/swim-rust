@@ -17,7 +17,7 @@ use crate::downlink::any::AnyDownlink;
 use crate::downlink::raw::{DownlinkTask, DownlinkTaskHandle};
 use crate::downlink::topic::{DownlinkReceiver, DownlinkTopic, MakeReceiver};
 use crate::downlink::{
-    raw, Command, Downlink, DownlinkError, DownlinkInternals, DroppedError, Event, Message,
+    raw, Command, Downlink, DownlinkError, DownlinkInternals, Event, Message,
     StateMachine,
 };
 use futures::future::Ready;
@@ -26,7 +26,7 @@ use std::fmt::{Debug, Formatter};
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Weak};
 use swim_common::routing::RoutingError;
-use swim_common::sink::item::{self, ItemSender, ItemSink, MpscSend};
+use swim_common::sink::item::{self, ItemSender};
 use swim_common::topic::{Topic, TopicError, WatchTopic, WatchTopicReceiver};
 use swim_runtime::task::spawn;
 use tokio::sync::{mpsc, watch};
@@ -150,6 +150,15 @@ where
     }
 }
 
+impl<Act, Upd> DroppingDownlink<Act, Upd> {
+
+    pub async fn send_item(&mut self, value: Act) -> Result<(), DownlinkError> {
+        Ok(self.input.send(value).await?)
+    }
+
+}
+
+
 impl<Act, Upd> Topic<Event<Upd>> for DroppingDownlink<Act, Upd>
 where
     Act: Send + 'static,
@@ -163,18 +172,6 @@ where
         self.topic
             .subscribe()
             .transform(MakeReceiver::new(self.internal.clone()))
-    }
-}
-
-impl<'a, Act, Upd> ItemSink<'a, Act> for DroppingDownlink<Act, Upd>
-where
-    Act: Send + 'static,
-{
-    type Error = DownlinkError;
-    type SendFuture = MpscSend<'a, Act, DownlinkError>;
-
-    fn send_item(&'a mut self, value: Act) -> Self::SendFuture {
-        MpscSend::new(&mut self.input, value)
     }
 }
 
@@ -220,7 +217,7 @@ where
     let (act_tx, act_rx) = mpsc::channel::<A>(config.buffer_size.get());
     let (event_tx, event_rx) = watch::channel::<Option<Event<Machine::Ev>>>(None);
 
-    let event_sink = item::for_watch_sender::<_, DroppedError>(event_tx);
+    let event_sink = item::for_watch_sender(event_tx).map_err_into();
 
     let (stopped_tx, stopped_rx) = promise::promise();
 

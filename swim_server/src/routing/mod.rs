@@ -16,11 +16,12 @@ use crate::plane::error::ResolutionError;
 use futures::future::BoxFuture;
 use std::fmt::{Display, Formatter};
 use swim_common::routing::RoutingError;
-use swim_common::sink::item::ItemSender;
 use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
 use url::Url;
 use utilities::uri::RelativeUri;
+use tokio::sync::mpsc;
 
+pub mod error;
 #[cfg(test)]
 mod tests;
 pub mod ws;
@@ -84,13 +85,29 @@ impl TaggedClientEnvelope {
 
 /// Interface for interacting with the server [`Envelope`] router.
 pub trait ServerRouter: Send + Sync {
-    type Sender: ItemSender<Envelope, RoutingError> + Send + 'static;
 
-    fn get_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Self::Sender, RoutingError>>;
+    fn get_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<TaggedSender, RoutingError>>;
 
     fn resolve(
         &mut self,
         host: Option<Url>,
         route: RelativeUri,
     ) -> BoxFuture<Result<RoutingAddr, ResolutionError>>;
+}
+
+/// Sender that attaches a [`RoutingAddr`] to received envelopes before sending them over a channel.
+#[derive(Debug, Clone)]
+pub struct TaggedSender {
+    tag: RoutingAddr,
+    inner: mpsc::Sender<TaggedEnvelope>,
+}
+
+impl TaggedSender {
+    pub fn new(tag: RoutingAddr, inner: mpsc::Sender<TaggedEnvelope>) -> Self {
+        TaggedSender { tag, inner }
+    }
+
+    pub async fn send_item(&mut self, envelope: Envelope) -> Result<(), error::SendError> {
+        Ok(self.inner.send(TaggedEnvelope(self.tag, envelope)).await?)
+    }
 }

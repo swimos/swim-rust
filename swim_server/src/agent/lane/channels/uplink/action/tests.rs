@@ -19,7 +19,7 @@ use crate::agent::lane::channels::uplink::{UplinkAction, UplinkError};
 use crate::agent::lane::channels::TaggedAction;
 use crate::agent::Eff;
 use crate::plane::error::ResolutionError;
-use crate::routing::{RoutingAddr, ServerRouter, TaggedEnvelope};
+use crate::routing::{RoutingAddr, ServerRouter, TaggedEnvelope, TaggedSender};
 use futures::future::{join, ready, BoxFuture};
 use futures::FutureExt;
 use swim_common::routing::RoutingError;
@@ -37,9 +37,8 @@ struct TestRouter(mpsc::Sender<TaggedEnvelope>);
 struct TestSender(RoutingAddr, mpsc::Sender<TaggedEnvelope>);
 
 impl ServerRouter for TestRouter {
-    type Sender = TestSender;
 
-    fn get_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Self::Sender, RoutingError>> {
+    fn get_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<TaggedSender, RoutingError>> {
         ready(Ok(TestSender(addr, self.0.clone()))).boxed()
     }
 

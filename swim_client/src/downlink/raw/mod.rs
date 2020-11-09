@@ -29,7 +29,7 @@ use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use swim_common::routing::RoutingError;
-use swim_common::sink::item::{self, ItemSender, ItemSink, MpscSend};
+use swim_common::sink::item::{self, ItemSender, ItemSink};
 use swim_runtime::task::{spawn, TaskHandle};
 use tokio::sync::{mpsc, watch};
 use tracing::{instrument, trace};
@@ -64,19 +64,6 @@ impl<S> Sender<S> {
 impl<T> Sender<mpsc::Sender<T>> {
     pub async fn send(&mut self, value: T) -> Result<(), mpsc::error::SendError<T>> {
         self.set_sink.send(value).await
-    }
-}
-
-impl<'a, T> ItemSink<'a, T> for Sender<mpsc::Sender<T>>
-where
-    T: Send + 'static,
-{
-    type Error = DownlinkError;
-    type SendFuture = MpscSend<'a, T, DownlinkError>;
-
-    fn send_item(&'a mut self, value: T) -> Self::SendFuture {
-        let send: MpscSend<'a, T, DownlinkError> = MpscSend::new(&mut self.set_sink, value);
-        send
     }
 }
 
@@ -164,7 +151,7 @@ where
     let (act_tx, act_rx) = mpsc::channel::<A>(buffer_size.get());
     let (event_tx, event_rx) = mpsc::channel::<Event<Machine::Ev>>(buffer_size.get());
 
-    let event_sink = item::for_mpsc_sender::<_, DroppedError>(event_tx);
+    let event_sink = item::for_mpsc_sender(event_tx).map_err_into();
 
     let (stopped_tx, stopped_rx) = promise::promise();
 

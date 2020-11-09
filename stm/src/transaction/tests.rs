@@ -16,21 +16,21 @@ use super::atomically;
 use crate::local::TLocal;
 use crate::stm::{self, Abort, Catch, Choice, Constant, Retry, Stm, StmEither, VecStm};
 use crate::transaction::{RetryManager, TransactionError};
-use crate::var::tests::TestObserver;
 use crate::var::TVar;
 use futures::future::{ready, Ready};
 use futures::stream::{empty, Empty};
 use futures::task::Poll;
-use futures::Stream;
+use futures::{Stream, StreamExt, FutureExt};
 use std::any::Any;
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::Context;
-use tokio::sync::oneshot;
+use tokio::sync::{oneshot, mpsc};
 use tokio::task::JoinHandle;
 use tokio::time::{timeout, Duration};
+use std::convert::identity;
 
 struct ExactlyOnce;
 
@@ -891,11 +891,15 @@ fn dyn_stm_erases_stack_size() {
 
 #[tokio::test(threaded_scheduler)]
 async fn observe_transaction_outcome() {
-    let observer = TestObserver::new(None);
-    let var = TVar::new_with_observer(12, observer.clone());
+    let (tx, mut rx) = mpsc::channel(8);
+
+    let var = TVar::new_with_observer(12, tx.into());
 
     let stm = var.get().and_then(|i| var.put(*i + 1));
     let result = atomically(&stm, ExactlyOnce).await;
     assert!(result.is_ok());
-    assert_eq!(observer.get(), Some(Arc::new(13)));
+
+    let observed = rx.next().now_or_never().and_then(identity);
+
+    assert_eq!(observed, Some(Arc::new(13)));
 }

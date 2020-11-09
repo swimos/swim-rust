@@ -191,7 +191,7 @@ async fn make_test_dl_custom_on_invalid(
     let downlink = create_downlink(
         TestStateMachine::new(dl_start_state, start_response),
         rx_in,
-        for_mpsc_sender::<Command<i32>, RoutingError>(tx_out),
+        for_mpsc_sender(tx_out).map_err_into(),
         NonZeroUsize::new(10).unwrap(),
         NonZeroUsize::new(256).unwrap(),
         on_invalid,

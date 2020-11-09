@@ -27,7 +27,7 @@ use std::num::NonZeroUsize;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Weak};
 use swim_common::routing::RoutingError;
-use swim_common::sink::item::{ItemSender, ItemSink, MpscSend};
+use swim_common::sink::item::ItemSender;
 use swim_common::topic::{BroadcastReceiver, BroadcastSender, BroadcastTopic, Topic, TopicError};
 use swim_runtime::task::spawn;
 use tokio::sync::mpsc;
@@ -116,6 +116,10 @@ impl<Act, Upd> BufferedDownlink<Act, Upd> {
     pub fn await_stopped(&self) -> promise::Receiver<Result<(), DownlinkError>> {
         self.internal.task.await_stopped()
     }
+
+    pub async fn send_item(&mut self, value: Act) -> Result<(), DownlinkError> {
+        Ok(self.input.send(value).await?)
+    }
 }
 
 pub type BufferedTopicReceiver<T> = BroadcastReceiver<Event<T>>;
@@ -166,18 +170,6 @@ where
         self.topic
             .subscribe()
             .transform(MakeReceiver::new(self.internal.clone()))
-    }
-}
-
-impl<'a, Act, Upd> ItemSink<'a, Act> for BufferedDownlink<Act, Upd>
-where
-    Act: Send + 'static,
-{
-    type Error = DownlinkError;
-    type SendFuture = MpscSend<'a, Act, DownlinkError>;
-
-    fn send_item(&'a mut self, value: Act) -> Self::SendFuture {
-        MpscSend::new(&mut self.input, value)
     }
 }
 

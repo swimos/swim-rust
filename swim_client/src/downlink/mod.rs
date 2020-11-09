@@ -36,19 +36,18 @@ use swim_common::model::schema::StandardSchema;
 use swim_common::model::Value;
 use swim_common::request::TryRequest;
 use swim_common::routing::RoutingError;
-use swim_common::sink::item::ItemSender;
 use swim_common::topic::Topic;
 use swim_common::ws::error::ConnectionError;
 use tracing::{instrument, trace};
 
 /// Shared trait for all Warp downlinks. `Act` is the type of actions that can be performed on the
 /// downlink locally and `Upd` is the type of updates that an be observed on the client side.
-pub trait Downlink<Act, Upd>: Topic<Upd> + ItemSender<Act, DownlinkError> {
+pub trait Downlink<Act, Upd>: Topic<Upd> {
     /// Type of the topic which can be used to subscribe to the downlink.
     type DlTopic: Topic<Upd>;
 
     /// Type of the sink that can be used to apply actions to the downlink.
-    type DlSink: ItemSender<Act, DownlinkError>;
+    type DlSink;
 
     /// Split the downlink into a topic and sink.
     fn split(self) -> (Self::DlTopic, Self::DlSink);

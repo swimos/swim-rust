@@ -23,7 +23,7 @@ use crate::agent::lane::channels::{
 use crate::agent::lane::model::action::{Action, ActionLane};
 use crate::agent::Eff;
 use crate::plane::error::ResolutionError;
-use crate::routing::{RoutingAddr, ServerRouter, TaggedClientEnvelope, TaggedEnvelope};
+use crate::routing::{RoutingAddr, ServerRouter, TaggedClientEnvelope, TaggedEnvelope, TaggedSender};
 use futures::future::{join, join3, ready, BoxFuture};
 use futures::stream::{BoxStream, FusedStream};
 use futures::{Future, FutureExt, Stream, StreamExt};
@@ -339,9 +339,8 @@ impl<'a> ItemSink<'a, Envelope> for TestSender {
 }
 
 impl ServerRouter for TestRouter {
-    type Sender = TestSender;
 
-    fn get_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Self::Sender, RoutingError>> {
+    fn get_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<TaggedSender, RoutingError>> {
         ready(Ok(TestSender {
             addr,
             inner: self.0.clone(),
@@ -1211,9 +1210,8 @@ impl AgentExecutionContext for MultiTestContext {
 }
 
 impl ServerRouter for MultiTestRouter {
-    type Sender = TestSender;
 
-    fn get_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Self::Sender, RoutingError>> {
+    fn get_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<TaggedSender, RoutingError>> {
         async move {
             let mut lock = self.0.lock();
             if let Some(sender) = lock.senders.get(&addr) {

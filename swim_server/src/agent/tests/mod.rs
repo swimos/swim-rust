@@ -51,7 +51,7 @@ use utilities::uri::RelativeUri;
 
 mod stub_router {
     use crate::plane::error::ResolutionError;
-    use crate::routing::{RoutingAddr, ServerRouter, TaggedEnvelope};
+    use crate::routing::{RoutingAddr, ServerRouter, TaggedEnvelope, TaggedSender};
     use futures::future::BoxFuture;
     use futures::FutureExt;
     use swim_common::routing::RoutingError;
@@ -103,12 +103,11 @@ mod stub_router {
     where
         Inner: ItemSender<TaggedEnvelope, RoutingError> + Clone + Send + Sync + 'static,
     {
-        type Sender = SingleChannelSender<Inner>;
 
         fn get_sender(
             &mut self,
             addr: RoutingAddr,
-        ) -> BoxFuture<Result<Self::Sender, RoutingError>> {
+        ) -> BoxFuture<Result<TaggedSender, RoutingError>> {
             FutureExt::boxed(async move { Ok(SingleChannelSender::new(self.0.clone(), addr)) })
         }
 

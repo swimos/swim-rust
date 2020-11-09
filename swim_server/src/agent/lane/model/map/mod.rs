@@ -36,7 +36,7 @@ use crate::agent::lane::model::{
     TransformedDeferredLaneView,
 };
 use crate::agent::lane::strategy::{
-    Buffered, ChannelObserver, DeferredChannelObserver, Dropping, Queue,
+    Buffered, Dropping, Queue,
 };
 use crate::agent::lane::{BroadcastStream, InvalidForm, LaneModel};
 use futures::stream::{iter, Iter};
@@ -44,7 +44,7 @@ use futures::Stream;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
-use stm::var::observer::{self, JoinObserver, StaticObserver};
+use stm::var::observer;
 use swim_common::topic::BroadcastSender;
 use tokio::sync::{broadcast, mpsc, oneshot, watch};
 use tracing::{event, Level};

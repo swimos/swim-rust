@@ -20,7 +20,7 @@ use crate::agent::lane::channels::uplink::UplinkError;
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::{AttachError, Eff, LaneIo};
 use crate::plane::error::ResolutionError;
-use crate::routing::{RoutingAddr, ServerRouter, TaggedClientEnvelope};
+use crate::routing::{RoutingAddr, ServerRouter, TaggedClientEnvelope, TaggedSender};
 use futures::future::BoxFuture;
 use futures::{FutureExt, TryFutureExt};
 use parking_lot::Mutex;
@@ -77,9 +77,8 @@ impl MockRouterInner {
 pub struct MockRouter(Arc<Mutex<MockRouterInner>>);
 
 impl ServerRouter for MockRouter {
-    type Sender = MockSender;
 
-    fn get_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Self::Sender, RoutingError>> {
+    fn get_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<TaggedSender, RoutingError>> {
         async move {
             let mut lock = self.0.lock();
             let MockRouterInner {
@@ -169,7 +168,7 @@ impl LaneIo<MockExecutionContext> for MockLane {
             return Err(AttachError::LaneStoppedReporting);
         }
         Ok(async move {
-            let mut senders: HashMap<RoutingAddr, MockSender> = HashMap::new();
+            let mut senders: HashMap<RoutingAddr, TaggedSender> = HashMap::new();
 
             let err = loop {
                 let next = envelopes.recv().await;

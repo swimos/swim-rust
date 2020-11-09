@@ -213,7 +213,7 @@ where
             return None;
         };
         let ul_task = async move {
-            if let Err(err) = uplink.run_uplink(sink).await {
+            if let Err(err) = uplink.run_uplink(sink.into_item_sender()).await {
                 let report = UplinkErrorReport::new(err, addr);
                 if let Err(mpsc::error::SendError(report)) = err_tx.send(report).await {
                     event!(Level::ERROR, message = FAILED_ERR_REPORT, ?report);

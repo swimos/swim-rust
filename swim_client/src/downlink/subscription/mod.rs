@@ -47,7 +47,6 @@ use swim_common::request::Request;
 use swim_common::routing::RoutingError;
 use swim_common::sink::item::either::EitherSink;
 use swim_common::sink::item::ItemSender;
-use swim_common::sink::item::ItemSink;
 use swim_common::topic::Topic;
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::AbsolutePath;
@@ -59,6 +58,7 @@ use tracing::{error, info, instrument, trace_span};
 use utilities::future::{SwimFutureExt, TransformOnce, TransformedFuture, UntilFailure};
 use utilities::sync::promise;
 use utilities::sync::promise::PromiseError;
+use swim_common::sink::item;
 
 pub mod envelopes;
 #[cfg(test)]
@@ -609,7 +609,9 @@ where
         let updates = incoming.map(map_router_events);
 
         let sink_path = path.clone();
-        let cmd_sink = sink.comap(move |cmd: Command<SharedValue>| {
+        let cmd_sink = item::for_mpsc_sender(sink)
+            .map_err_into()
+            .comap(move |cmd: Command<SharedValue>| {
             envelopes::value_envelope(&sink_path, cmd).1.into()
         });
 
@@ -666,7 +668,9 @@ where
         let (dl, rec) = match config.back_pressure {
             BackpressureMode::Propagate => {
                 let cmd_sink =
-                    sink.comap(move |cmd: Command<UntypedMapModification<Arc<Value>>>| {
+                    item::for_mpsc_sender(sink)
+                        .map_err_into()
+                        .comap(move |cmd: Command<UntypedMapModification<Arc<Value>>>| {
                         envelopes::map_envelope(&sink_path, cmd).1.into()
                     });
                 map_downlink_for_sink(key_schema, value_schema, cmd_sink, updates, &config)
@@ -679,11 +683,14 @@ where
             } => {
                 let sink_path_duplicate = sink_path.clone();
                 let direct_sink =
-                    sink.clone()
+                    item::for_mpsc_sender(sink.clone())
+                        .map_err_into()
                         .comap(move |cmd: Command<UntypedMapModification<Arc<Value>>>| {
                             envelopes::map_envelope(&sink_path_duplicate, cmd).1.into()
                         });
-                let action_sink = sink.comap(move |act: UntypedMapModification<Arc<Value>>| {
+                let action_sink = item::for_mpsc_sender(sink)
+                    .map_err_into()
+                    .comap(move |act: UntypedMapModification<Arc<Value>>| {
                     envelopes::map_envelope(&sink_path, Command::Action(act))
                         .1
                         .into()
@@ -698,7 +705,8 @@ where
                 )
                 .await;
 
-                let either_sink = EitherSink::new(direct_sink, pressure_release).comap(
+                let either_sink = EitherSink::new(
+                    direct_sink, pressure_release.into_item_sender()).comap(
                     move |cmd: Command<UntypedMapModification<Arc<Value>>>| match cmd {
                         Command::Action(act) => Either::Right(act),
                         ow => Either::Left(ow),
@@ -730,7 +738,8 @@ where
 
         let path_cpy = path.clone();
 
-        let cmd_sink = sink
+        let cmd_sink = item::for_mpsc_sender(sink)
+            .map_err_into()
             .comap(move |cmd: Command<Value>| envelopes::command_envelope(&path_cpy, cmd).1.into());
 
         let dl = match config.back_pressure {
@@ -776,7 +785,8 @@ where
         let config = self.config.config_for(&path);
 
         let path_cpy = path.clone();
-        let cmd_sink = sink
+        let cmd_sink = item::for_mpsc_sender(sink)
+            .map_err_into()
             .comap(move |cmd: Command<Value>| envelopes::command_envelope(&path_cpy, cmd).1.into());
 
         let (dl, rec) =
@@ -1114,7 +1124,7 @@ where
     ) -> RequestResult<()> {
         self.router
             .general_sink()
-            .send_item((path.host, envelope))
+            .send((path.host, envelope))
             .map_err(|_| SubscriptionError::ConnectionError)
             .await?;
         Ok(())

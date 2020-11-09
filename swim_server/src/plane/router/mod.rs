@@ -14,40 +14,17 @@
 
 use crate::plane::error::ResolutionError;
 use crate::plane::PlaneRequest;
-use crate::routing::{RoutingAddr, ServerRouter, TaggedEnvelope};
+use crate::routing::{RoutingAddr, ServerRouter, TaggedSender};
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use swim_common::request::Request;
 use swim_common::routing::RoutingError;
-use swim_common::sink::item::{ItemSink, MpscSend};
-use swim_common::warp::envelope::Envelope;
 use tokio::sync::{mpsc, oneshot};
 use url::Url;
 use utilities::uri::RelativeUri;
 
 #[cfg(test)]
 mod tests;
-/// Sender that attaches a [`RoutingAddr`] to received envelopes before sending them over a channel.
-pub struct PlaneRouterSender {
-    tag: RoutingAddr,
-    inner: mpsc::Sender<TaggedEnvelope>,
-}
-
-impl PlaneRouterSender {
-    fn new(tag: RoutingAddr, inner: mpsc::Sender<TaggedEnvelope>) -> Self {
-        PlaneRouterSender { tag, inner }
-    }
-}
-
-impl<'a> ItemSink<'a, Envelope> for PlaneRouterSender {
-    type Error = RoutingError;
-    type SendFuture = MpscSend<'a, TaggedEnvelope, RoutingError>;
-
-    fn send_item(&'a mut self, envelope: Envelope) -> Self::SendFuture {
-        let PlaneRouterSender { tag, inner } = self;
-        MpscSend::new(inner, TaggedEnvelope(*tag, envelope))
-    }
-}
 
 /// Creates [`PlaneRouter`] instances by cloning a channel back to the plane.
 #[derive(Debug)]
@@ -84,9 +61,8 @@ impl PlaneRouter {
 }
 
 impl ServerRouter for PlaneRouter {
-    type Sender = PlaneRouterSender;
 
-    fn get_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Self::Sender, RoutingError>> {
+    fn get_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<TaggedSender, RoutingError>> {
         async move {
             let PlaneRouter {
                 tag,
@@ -104,7 +80,7 @@ impl ServerRouter for PlaneRouter {
                 Err(RoutingError::RouterDropped)
             } else {
                 match rx.await {
-                    Ok(Ok(sender)) => Ok(PlaneRouterSender::new(*tag, sender)),
+                    Ok(Ok(sender)) => Ok(TaggedSender::new(*tag, sender)),
                     Ok(Err(_)) => Err(RoutingError::HostUnreachable),
                     Err(_) => Err(RoutingError::RouterDropped),
                 }
