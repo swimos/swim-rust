@@ -1,5 +1,5 @@
 use crate::rtree::rect::{Point2D, Point3D};
-use crate::rtree::{BoundingBox, RTree, Rect};
+use crate::rtree::{BoundingBox, RTree, Rect, Strategy};
 use std::fs;
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
@@ -23,6 +23,7 @@ fn bulk_load_5_node_test() {
     let rtree = RTree::bulk_load(
         NonZeroUsize::new(2).unwrap(),
         NonZeroUsize::new(4).unwrap(),
+        Strategy::Quadratic,
         rects,
     );
 
@@ -52,6 +53,7 @@ fn bulk_load_12_node_test() {
     let rtree = RTree::bulk_load(
         NonZeroUsize::new(2).unwrap(),
         NonZeroUsize::new(4).unwrap(),
+        Strategy::Quadratic,
         rects,
     );
 
@@ -76,7 +78,11 @@ fn rtree_2d_test() {
     let eleventh = rect!((10.5, 0.5), (12.5, 5.5));
     let twelfth = rect!((7.5, 3.5), (8.5, 6.5));
 
-    let mut tree = RTree::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(4).unwrap());
+    let mut tree = RTree::new(
+        NonZeroUsize::new(2).unwrap(),
+        NonZeroUsize::new(4).unwrap(),
+        Strategy::Quadratic,
+    );
 
     assert_eq!(
         format!("{:#?}", tree),
@@ -243,7 +249,11 @@ fn rtree_3d_test() {
     let eleventh = rect!((10.0, 0.0, 0.0), (12.0, 5.0, 10.0));
     let twelfth = rect!((7.0, 3.0, 0.0), (8.0, 6.0, 10.0));
 
-    let mut tree = RTree::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(4).unwrap());
+    let mut tree = RTree::new(
+        NonZeroUsize::new(2).unwrap(),
+        NonZeroUsize::new(4).unwrap(),
+        Strategy::Quadratic,
+    );
     assert_eq!(
         format!("{:#?}", tree),
         fs::read_to_string("src/rtree/resources/3d/0.txt").unwrap()
@@ -396,7 +406,11 @@ fn rtree_3d_test() {
 
 #[test]
 fn insert_no_clones_test() {
-    let mut tree = RTree::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(4).unwrap());
+    let mut tree = RTree::new(
+        NonZeroUsize::new(2).unwrap(),
+        NonZeroUsize::new(4).unwrap(),
+        Strategy::Quadratic,
+    );
     let clone_count = CloneCount::new();
     let first = rect!((0.0, 0.0), (10.0, 10.0));
     let second = rect!((12.0, 0.0), (15.0, 15.0));
@@ -415,7 +429,11 @@ fn insert_no_clones_test() {
 
 #[test]
 fn clone_on_remove_test() {
-    let mut tree = RTree::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(4).unwrap());
+    let mut tree = RTree::new(
+        NonZeroUsize::new(2).unwrap(),
+        NonZeroUsize::new(4).unwrap(),
+        Strategy::Quadratic,
+    );
     let clone_count = CloneCount::new();
 
     let first = rect!((0.0, 0.0), (10.0, 10.0));
@@ -434,7 +452,11 @@ fn clone_on_remove_test() {
 
 #[test]
 fn split_no_clones_test() {
-    let mut tree = RTree::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(4).unwrap());
+    let mut tree = RTree::new(
+        NonZeroUsize::new(2).unwrap(),
+        NonZeroUsize::new(4).unwrap(),
+        Strategy::Quadratic,
+    );
     let clone_count = CloneCount::new();
 
     let first = rect!((0.0, 0.0), (10.0, 10.0));
@@ -475,7 +497,11 @@ fn split_no_clones_test() {
 
 #[test]
 fn clone_on_merge_test() {
-    let mut tree = RTree::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(4).unwrap());
+    let mut tree = RTree::new(
+        NonZeroUsize::new(2).unwrap(),
+        NonZeroUsize::new(4).unwrap(),
+        Strategy::Quadratic,
+    );
     let clone_count = CloneCount::new();
 
     let first = rect!((0.0, 0.0), (10.0, 10.0));

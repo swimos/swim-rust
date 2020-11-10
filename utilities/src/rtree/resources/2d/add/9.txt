@@ -66,6 +66,7 @@ RTree {
                     level: 0,
                     min_children: 2,
                     max_children: 4,
+                    split_strat: Quadratic,
                 },
             },
             Branch {
@@ -109,6 +110,7 @@ RTree {
                     level: 0,
                     min_children: 2,
                     max_children: 4,
+                    split_strat: Quadratic,
                 },
             },
             Branch {
@@ -164,12 +166,14 @@ RTree {
                     level: 0,
                     min_children: 2,
                     max_children: 4,
+                    split_strat: Quadratic,
                 },
             },
         ],
         level: 1,
         min_children: 2,
         max_children: 4,
+        split_strat: Quadratic,
     },
     len: 9,
 }

@@ -24,13 +24,17 @@ impl<B> RTree<B>
 where
     B: BoundingBox,
 {
-    pub fn new(min_children: NonZeroUsize, max_children: NonZeroUsize) -> Self {
+    pub fn new(
+        min_children: NonZeroUsize,
+        max_children: NonZeroUsize,
+        split_strat: Strategy,
+    ) -> Self {
         if min_children.get() > max_children.get() / 2 {
             panic!("The minimum number of children cannot be more than half of the maximum number of children.")
         }
 
         RTree {
-            root: Node::new(min_children.get(), max_children.get()),
+            root: Node::new_root(min_children.get(), max_children.get(), split_strat),
             len: 0,
         }
     }
@@ -96,6 +100,7 @@ where
     pub fn bulk_load(
         min_children: NonZeroUsize,
         max_children: NonZeroUsize,
+        split_strat: Strategy,
         items: Vec<B>,
     ) -> RTree<B> {
         if min_children.get() > max_children.get() / 2 {
@@ -110,13 +115,20 @@ where
             .collect();
 
         let root = if items_num > max_children.get() {
-            RTree::internal_bulk_load(min_children.get(), max_children.get(), items, 0)
+            RTree::internal_bulk_load(
+                min_children.get(),
+                max_children.get(),
+                split_strat,
+                items,
+                0,
+            )
         } else {
             Node {
                 entries: items,
                 level: 0,
                 min_children: min_children.get(),
                 max_children: max_children.get(),
+                split_strat,
             }
         };
 
@@ -130,6 +142,7 @@ where
     fn internal_bulk_load(
         min_children: usize,
         max_children: usize,
+        split_strat: Strategy,
         mut entries: Vec<EntryPtr<B>>,
         mut level: usize,
     ) -> Node<B> {
@@ -140,7 +153,7 @@ where
             let node_capacity = (max_children + min_children) / 2;
             let leaf_pages = items_num / node_capacity;
             let coord_count = B::Point::get_coord_count();
-            let vertical_slices = nth_root(leaf_pages, coord_count);
+            let vertical_slices = nth_root(leaf_pages, coord_count as u32);
             // let chunk_size = node_capacity * nth_root(leaf_pages, coord_count / (coord_count - 1));
 
             // eprintln!("vertical_slices = {:#?}", vertical_slices);
@@ -227,6 +240,7 @@ where
                             level,
                             min_children,
                             max_children,
+                            split_strat,
                         };
 
                         let entry = Arc::new(Entry::Branch {
@@ -247,6 +261,7 @@ where
                         level,
                         min_children,
                         max_children,
+                        split_strat,
                     };
 
                     let entry = Arc::new(Entry::Branch {
@@ -267,6 +282,7 @@ where
             level,
             min_children,
             max_children,
+            split_strat,
         }
     }
 
@@ -277,6 +293,7 @@ where
                 level: self.root.level + 1,
                 min_children: self.root.min_children,
                 max_children: self.root.max_children,
+                split_strat: self.root.split_strat,
             };
         }
     }
@@ -291,18 +308,20 @@ where
     level: usize,
     min_children: usize,
     max_children: usize,
+    split_strat: Strategy,
 }
 
 impl<B> Node<B>
 where
     B: BoundingBox,
 {
-    fn new(min_children: usize, max_children: usize) -> Self {
+    fn new_root(min_children: usize, max_children: usize, split_strat: Strategy) -> Self {
         Node {
             entries: Vec::new(),
             level: 0,
             min_children,
             max_children,
+            split_strat,
         }
     }
 
@@ -471,7 +490,7 @@ where
 
     fn split(&mut self) -> (EntryPtr<B>, EntryPtr<B>) {
         let ((first_group, first_mbb), (second_group, second_mbb)) =
-            split(&mut self.entries, self.min_children);
+            split(&mut self.entries, self.min_children, self.split_strat);
 
         let first_group = Entry::Branch {
             mbb: first_mbb,
@@ -480,6 +499,7 @@ where
                 level: self.level,
                 min_children: self.min_children,
                 max_children: self.max_children,
+                split_strat: self.split_strat,
             },
         };
 
@@ -490,6 +510,7 @@ where
                 level: self.level,
                 min_children: self.min_children,
                 max_children: self.max_children,
+                split_strat: self.split_strat,
             },
         };
 
@@ -497,14 +518,22 @@ where
     }
 }
 
-fn split<B>(entries: &mut Vec<EntryPtr<B>>, min_children: usize) -> (SplitGroup<B>, SplitGroup<B>)
+fn split<B>(
+    entries: &mut Vec<EntryPtr<B>>,
+    min_children: usize,
+    split_strat: Strategy,
+) -> (SplitGroup<B>, SplitGroup<B>)
 where
     B: BoundingBox,
 {
-    let (first_seed_idx, second_seed_idx) = quadratic_pick_seeds(entries);
+    let (first_seed_idx, second_seed_idx) = match split_strat {
+        Strategy::Linear => linear_pick_seeds(entries),
+        Strategy::Quadratic => quadratic_pick_seeds(entries),
+    };
 
+    // second_seed_idx > first_seed_idx
+    let second_seed = entries.remove(second_seed_idx);
     let first_seed = entries.remove(first_seed_idx);
-    let second_seed = entries.remove(second_seed_idx - 1);
 
     let mut first_mbb = first_seed.get_mbb().clone();
     let mut first_group = vec![first_seed];
@@ -528,13 +557,16 @@ where
                 second_group.push(item);
             }
         } else {
-            let (idx, expanded_rect, group) = pick_next(
-                entries,
-                &first_mbb,
-                &second_mbb,
-                first_group.len(),
-                second_group.len(),
-            );
+            let (idx, expanded_rect, group) = match split_strat {
+                Strategy::Linear => pick_next_linear(entries, &first_mbb),
+                Strategy::Quadratic => pick_next_quadratic(
+                    entries,
+                    &first_mbb,
+                    &second_mbb,
+                    first_group.len(),
+                    second_group.len(),
+                ),
+            };
 
             let item = entries.remove(idx);
 
@@ -586,84 +618,7 @@ where
     (first_idx, second_idx)
 }
 
-fn linear_pick_seeds<B>(entries: &[EntryPtr<B>]) -> (usize, usize)
-where
-    B: BoundingBox,
-{
-    let mut first_idx = 0;
-    let mut second_idx = 1;
-
-    let mut dim_points: Vec<(<B::Point as Point>::Type, <B::Point as Point>::Type)> = vec![];
-    let mut max_low_sides: Vec<(usize, <B::Point as Point>::Type)> = vec![];
-    let mut min_high_sides: Vec<(usize, <B::Point as Point>::Type)> = vec![];
-
-    if entries.len() > 2 {
-        for (i, item) in entries.iter().enumerate() {
-            let mbb = item.get_mbb();
-
-            //Todo change to usize
-            for dim in 0..mbb.get_coord_count() {
-                let low_dim = mbb.get_low().get_nth_coord(dim).unwrap();
-                let high_dim = mbb.get_high().get_nth_coord(dim).unwrap();
-
-                match dim_points.get_mut(dim as usize) {
-                    Some((min_low, max_high)) => {
-                        if low_dim < *min_low {
-                            *min_low = low_dim
-                        }
-
-                        if high_dim > *max_high {
-                            *max_high = high_dim
-                        }
-                    }
-                    None => dim_points.push((low_dim, high_dim)),
-                }
-
-                match max_low_sides.get_mut(dim as usize) {
-                    Some((idx, max_low_dim)) => {
-                        if low_dim > *max_low_dim {
-                            *idx = i;
-                            *max_low_dim = low_dim
-                        }
-                    }
-                    None => max_low_sides.push((i, low_dim)),
-                }
-
-                match min_high_sides.get_mut(dim as usize) {
-                    Some((idx, min_high_dim)) => {
-                        if high_dim > *min_high_dim {
-                            *idx = i;
-                            *min_high_dim = high_dim
-                        }
-                    }
-                    None => min_high_sides.push((i, high_dim)),
-                }
-            }
-        }
-
-        let dim_lengths: Vec<_> = dim_points
-            .into_iter()
-            .map(|(low, high)| (high - low).abs())
-            .collect();
-
-        let side_separations: Vec<_> = max_low_sides
-            .into_iter()
-            .zip(min_high_sides.into_iter())
-            .map(|((idx_low, low), (idx_high, high))| (idx_low, idx_high, (high - low).abs()))
-            .collect();
-
-        //Todo get max from this
-        let normalised_separations: Vec<_> = side_separations
-            .into_iter()
-            .zip(dim_lengths.into_iter())
-            .map(|((f, s, separation), dim_len)| (f, s, dim_len / separation))
-            .collect();
-    }
-
-    (first_idx, second_idx)
-}
-
-fn pick_next<B>(
+fn pick_next_quadratic<B>(
     entries: &[EntryPtr<B>],
     first_mbb: &Rect<B::Point>,
     second_mbb: &Rect<B::Point>,
@@ -724,6 +679,114 @@ where
     (item_idx, expanded_rect, group)
 }
 
+fn linear_pick_seeds<B>(entries: &[EntryPtr<B>]) -> (usize, usize)
+where
+    B: BoundingBox,
+{
+    let mut first_idx = 0;
+    let mut second_idx = 1;
+
+    let mut dim_points: Vec<(<B::Point as Point>::Type, <B::Point as Point>::Type)> = vec![];
+    let mut max_low_sides: Vec<(usize, <B::Point as Point>::Type)> = vec![];
+    let mut min_high_sides: Vec<(usize, <B::Point as Point>::Type)> = vec![];
+
+    if entries.len() > 2 {
+        for (i, item) in entries.iter().enumerate() {
+            let mbb = item.get_mbb();
+
+            for dim in 0..mbb.get_coord_count() {
+                let low_dim = mbb.get_low().get_nth_coord(dim).unwrap();
+                let high_dim = mbb.get_high().get_nth_coord(dim).unwrap();
+
+                match dim_points.get_mut(dim) {
+                    Some((min_low, max_high)) => {
+                        if low_dim < *min_low {
+                            *min_low = low_dim
+                        }
+
+                        if high_dim > *max_high {
+                            *max_high = high_dim
+                        }
+                    }
+                    None => dim_points.push((low_dim, high_dim)),
+                }
+
+                match max_low_sides.get_mut(dim) {
+                    Some((idx, max_low_dim)) => {
+                        if low_dim > *max_low_dim {
+                            *idx = i;
+                            *max_low_dim = low_dim
+                        }
+                    }
+                    None => max_low_sides.push((i, low_dim)),
+                }
+
+                match min_high_sides.get_mut(dim) {
+                    Some((idx, min_high_dim)) => {
+                        if high_dim > *min_high_dim {
+                            *idx = i;
+                            *min_high_dim = high_dim
+                        }
+                    }
+                    None => min_high_sides.push((i, high_dim)),
+                }
+            }
+        }
+
+        let dim_lengths: Vec<_> = dim_points
+            .into_iter()
+            .map(|(low, high)| (high - low).abs())
+            .collect();
+
+        let side_separations: Vec<_> = max_low_sides
+            .into_iter()
+            .zip(min_high_sides.into_iter())
+            .map(|((idx_low, low), (idx_high, high))| (idx_low, idx_high, (high - low).abs()))
+            .collect();
+
+        let normalised_separations = side_separations
+            .into_iter()
+            .zip(dim_lengths.into_iter())
+            .map(|((f, s, separation), dim_len)| (f, s, dim_len / separation))
+            .max_by(|(_, _, norm_sep_1), (_, _, norm_sep_2)| {
+                norm_sep_1.partial_cmp(norm_sep_2).unwrap()
+            })
+            .unwrap();
+
+        first_idx = normalised_separations.0;
+        second_idx = normalised_separations.1;
+    }
+
+    let (first_idx, second_idx) = if first_idx > second_idx {
+        (second_idx, first_idx)
+    } else if first_idx == second_idx {
+        //Not sure how to handle this case so just select the first element in the list
+        if first_idx == 0 {
+            (first_idx, 1)
+        } else {
+            (0, second_idx)
+        }
+    } else {
+        (first_idx, second_idx)
+    };
+
+    (first_idx, second_idx)
+}
+
+fn pick_next_linear<B>(
+    entries: &[EntryPtr<B>],
+    mbb: &Rect<B::Point>,
+) -> (usize, Rect<B::Point>, Group)
+where
+    B: BoundingBox,
+{
+    (
+        0,
+        mbb.combine_boxes(entries.get(0).unwrap().get_mbb()),
+        Group::First,
+    )
+}
+
 fn calc_preferences<B>(
     item: &EntryPtr<B>,
     first_mbb: &Rect<B::Point>,
@@ -777,6 +840,12 @@ where
     } else {
         Group::First
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum Strategy {
+    Linear,
+    Quadratic,
 }
 
 enum Group {

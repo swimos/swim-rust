@@ -96,11 +96,11 @@ impl<T: Real + Debug> Sub for Point2D<T> {
 impl<T: Real + Debug> Point for Point2D<T> {
     type Type = T;
 
-    fn get_coord_count() -> u32 {
+    fn get_coord_count() -> usize {
         2
     }
 
-    fn get_nth_coord(&self, n: u32) -> Option<T> {
+    fn get_nth_coord(&self, n: usize) -> Option<T> {
         if n == 0 {
             Some(self.x)
         } else if n == 1 {
@@ -182,11 +182,11 @@ impl<T: Real + Debug> Sub for Point3D<T> {
 impl<T: Real + Debug> Point for Point3D<T> {
     type Type = T;
 
-    fn get_coord_count() -> u32 {
+    fn get_coord_count() -> usize {
         3
     }
 
-    fn get_nth_coord(&self, n: u32) -> Option<T> {
+    fn get_nth_coord(&self, n: usize) -> Option<T> {
         if n == 0 {
             Some(self.x)
         } else if n == 1 {
@@ -250,9 +250,9 @@ impl<T: Real + Debug> Point for Point3D<T> {
 pub trait Point: Copy + Clone + PartialEq + Debug + Sub<Output = Self> {
     type Type: Real;
 
-    fn get_coord_count() -> u32;
+    fn get_coord_count() -> usize;
 
-    fn get_nth_coord(&self, n: u32) -> Option<Self::Type>;
+    fn get_nth_coord(&self, n: usize) -> Option<Self::Type>;
 
     fn mean(&self, other: &Self) -> Self;
 
@@ -274,7 +274,7 @@ pub trait BoundingBox: Clone + Debug {
 
     fn get_mbb(&self) -> &Rect<Self::Point>;
     fn get_center(&self) -> Self::Point;
-    fn get_coord_count(&self) -> u32 {
+    fn get_coord_count(&self) -> usize {
         Self::Point::get_coord_count()
     }
     // Area for 2D shapes and volume for 3D.
