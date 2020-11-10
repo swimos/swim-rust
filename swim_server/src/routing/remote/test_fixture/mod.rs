@@ -229,7 +229,7 @@ where
 {
     type CloseFut = BoxFuture<'static, Result<(), E>>;
 
-    fn close(&mut self, _reason: Option<CloseReason>) -> Self::CloseFut {
+    fn close(self, _reason: Option<CloseReason>) -> Self::CloseFut {
         ready(Ok(())).boxed()
     }
 }

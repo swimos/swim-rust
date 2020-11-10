@@ -79,27 +79,6 @@ impl Display for CertificateError {
     }
 }
 
-#[cfg(feature = "tls")]
-impl From<native_tls::Error> for WebSocketError {
-    fn from(e: native_tls::Error) -> Self {
-        WebSocketError::Tls(e.to_string())
-    }
-}
-
-#[cfg(feature = "tls")]
-impl From<std::io::Error> for CertificateError {
-    fn from(e: std::io::Error) -> Self {
-        CertificateError::Io(e.to_string())
-    }
-}
-
-#[cfg(feature = "tls")]
-impl From<CertificateError> for WebSocketError {
-    fn from(e: CertificateError) -> Self {
-        WebSocketError::CertificateError(e)
-    }
-}
-
 impl WebSocketError {
     /// Creates a new `WebSocketError::Url` error detailing that the `found` scheme is unsupported.
     pub fn unsupported_scheme<I>(scheme: I) -> WebSocketError

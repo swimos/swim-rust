@@ -14,14 +14,13 @@
 
 use crate::connections::factory::tungstenite::{CompressionConfig, MaybeTlsStream, TError};
 use http::{Request, Response};
-use native_tls::TlsConnector;
 use std::borrow::Cow;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use swim_common::ws::error::{ConnectionError, WebSocketError};
+use swim_common::ws::tls::connect_tls;
 use swim_common::ws::{Protocol, WsMessage};
 use tokio::net::TcpStream;
-use tokio_tls::TlsConnector as TokioTlsConnector;
 use tokio_tungstenite::stream::Stream as StreamSwitcher;
 use tokio_tungstenite::tungstenite::extensions::deflate::DeflateExt;
 use tokio_tungstenite::tungstenite::extensions::uncompressed::UncompressedExt;
@@ -165,7 +164,6 @@ pub fn get_stream_type<T>(
 
 pub async fn build_stream(
     host: &str,
-    domain: String,
     stream_type: Protocol,
 ) -> Result<MaybeTlsStream<TcpStream>, WebSocketError> {
     let socket = TcpStream::connect(host)
@@ -174,19 +172,10 @@ pub async fn build_stream(
 
     match stream_type {
         Protocol::PlainText => Ok(StreamSwitcher::Plain(socket)),
-        Protocol::Tls(certificate) => {
-            let mut tls_conn_builder = TlsConnector::builder();
-            tls_conn_builder.add_root_certificate(certificate);
-
-            let connector = tls_conn_builder.build()?;
-            let stream = TokioTlsConnector::from(connector);
-            let connected = stream.connect(&domain, socket).await;
-
-            match connected {
-                Ok(s) => Ok(StreamSwitcher::Tls(s)),
-                Err(e) => Err(WebSocketError::Tls(e.to_string())),
-            }
-        }
+        Protocol::Tls(certificate) => match connect_tls(host, certificate).await {
+            Ok(s) => Ok(StreamSwitcher::Tls(s)),
+            Err(e) => Err(WebSocketError::Tls(e.0)),
+        },
     }
 }
 

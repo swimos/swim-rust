@@ -26,13 +26,15 @@ pin-project = "0.4.20"
 pin-utils = "0.1.0"
 tokio = { version = "0.2.21", features = ["stream", "rt-core", "net"] }
 url = "2.1.1"
-swim_common = { path = "../swim_common" }
+swim_common = { path = "../swim_common", features = ["tls"] }
 utilities = { path = "../utilities" }
 swim_runtime = { path = "../swim_runtime" }
 stm = { path = "../stm" }
 tracing-futures = "0.2.4"
 agent_derive = { path = "agent_derive" }
 trybuild = "1.0.17"
+tokio-tungstenite = { version = "0.11.0", git = "https://github.com/swimos/tokio-tungstenite/", features = ["tls", "deflate"] }
+
 
 [dev-dependencies]
 tokio = { version = "0.2.21", features = ["rt-threaded", "macros", "test-util"] }

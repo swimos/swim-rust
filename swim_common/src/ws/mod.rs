@@ -12,15 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#[cfg(feature = "tls")]
-use {
-    crate::ws::error::CertificateError,
-    native_tls::Certificate,
-    std::fs::File,
-    std::io::{BufReader, Read},
-    std::path::Path,
-};
-
 use std::str::FromStr;
 
 use futures::{Future, Sink, Stream};
@@ -28,10 +19,17 @@ use http::uri::Scheme;
 use http::{Request, Uri};
 
 use crate::ws::error::{ConnectionError, WebSocketError};
+use crate::ws::tls::build_x509_certificate;
 use std::fmt;
 use std::fmt::{Debug, Formatter};
+use tokio_tungstenite::tungstenite::Message;
+
+#[cfg(feature = "tls")]
+use {crate::ws::error::CertificateError, native_tls::Certificate, std::path::Path};
 
 pub mod error;
+#[cfg(feature = "tls")]
+pub mod tls;
 
 /// An enumeration representing a WebSocket message. Variants are based on IETF RFC-6455
 /// (The WebSocket Protocol) and may be Text (0x1) or Binary (0x2).
@@ -137,18 +135,6 @@ pub fn maybe_resolve_scheme<T>(request: Request<T>) -> Result<Request<T>, WebSoc
     Ok(Request::from_parts(request_parts, request_t))
 }
 
-#[cfg(feature = "tls")]
-pub fn build_x509_certificate(path: impl AsRef<Path>) -> Result<Certificate, CertificateError> {
-    let mut reader = BufReader::new(File::open(path)?);
-    let mut buf = vec![];
-    reader.read_to_end(&mut buf)?;
-
-    match Certificate::from_pem(&buf) {
-        Ok(cert) => Ok(cert),
-        Err(e) => Err(CertificateError::SSL(e.to_string())),
-    }
-}
-
 #[derive(Copy, Clone, PartialOrd, PartialEq)]
 pub enum CompressionKind {
     None,
@@ -160,5 +146,27 @@ pub enum CompressionKind {
 impl CompressionKind {
     pub fn is_compressed(&self) -> bool {
         *self != CompressionKind::None
+    }
+}
+
+impl From<Message> for WsMessage {
+    fn from(message: Message) -> Self {
+        match message {
+            Message::Text(msg) => WsMessage::Text(msg),
+            Message::Binary(data) => WsMessage::Binary(data),
+            _ => {
+                // Other message types are handled by tungstenite itself.
+                unreachable!()
+            }
+        }
+    }
+}
+
+impl From<WsMessage> for Message {
+    fn from(message: WsMessage) -> Self {
+        match message {
+            WsMessage::Text(msg) => Message::Text(msg),
+            WsMessage::Binary(data) => Message::Binary(data),
+        }
     }
 }

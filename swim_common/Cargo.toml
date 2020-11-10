@@ -6,7 +6,7 @@ edition = "2018"
 
 [features]
 default = []
-tls = ["native-tls"]
+tls = ["native-tls", "tokio-native-tls", "tokio-tls"]
 
 [dependencies]
 swim_runtime = { path = "../swim_runtime" }
@@ -31,6 +31,16 @@ base64 = "0.12.3"
 form_derive = { path = "form_derive" }
 im = "14.2.0"
 chrono = "0.4"
+tokio-tungstenite = { version = "0.11.0", git = "https://github.com/swimos/tokio-tungstenite/", features = ["tls", "deflate"] }
+
+
+[dependencies.tokio-native-tls]
+version = "0.1"
+optional = true
+
+[dependencies.tokio-tls]
+version = "0.3"
+optional = true
 
 [dependencies.native-tls]
 version = "0.2"

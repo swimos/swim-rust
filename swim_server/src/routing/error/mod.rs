@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use crate::routing::{RoutingAddr, TaggedEnvelope};
+use http::StatusCode;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::io;
@@ -129,10 +130,14 @@ pub enum ConnectionError {
     Websocket(WebSocketError),
     /// The remote host closed the connection.
     ClosedRemotely,
-    /// An error ocurred at the Warp protocol level.
+    /// An error occurred at the Warp protocol level.
     Warp(String),
     /// The connection was closed locally.
     Closed,
+    /// The connection failed with the following status code.
+    Http(StatusCode),
+    /// An error with its cause as a string.
+    Message(String),
 }
 
 impl Display for ConnectionError {
@@ -144,6 +149,8 @@ impl Display for ConnectionError {
             ConnectionError::ClosedRemotely => write!(f, "The connection was closed remotely."),
             ConnectionError::Warp(err) => write!(f, "Warp protocol error: '{}'", err),
             ConnectionError::Closed => write!(f, "The connection has been closed."),
+            ConnectionError::Http(code) => write!(f, "The connection failed with: {}", code),
+            ConnectionError::Message(msg) => write!(f, "{}", msg),
         }
     }
 }
