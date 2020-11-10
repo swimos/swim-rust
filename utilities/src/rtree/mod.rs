@@ -146,23 +146,12 @@ where
         mut entries: Vec<EntryPtr<B>>,
         mut level: usize,
     ) -> Node<B> {
-        let mut items_num = entries.len();
+        let mut entries_count = entries.len(); //24
 
-        while items_num > max_children {
+        while entries_count > max_children {
             // We choose to fill the nodes halfway between the min and max capacity to avoid splits and merges
             let node_capacity = (max_children + min_children) / 2;
-            let leaf_pages = items_num / node_capacity;
             let coord_count = B::Point::get_coord_count();
-            let vertical_slices = nth_root(leaf_pages, coord_count as u32);
-            // let chunk_size = node_capacity * nth_root(leaf_pages, coord_count / (coord_count - 1));
-
-            // eprintln!("vertical_slices = {:#?}", vertical_slices);
-
-            let chunk_size = node_capacity * vertical_slices;
-
-            // eprintln!("chunk_size = {:#?}", chunk_size);
-            // eprintln!("chunk_size = {:#?}", chunk_size);
-            // eprintln!("chunk_size_2 = {:#?}", chunk_size_2);
 
             // Sort all by x
             entries.sort_by(|first, second| {
@@ -176,62 +165,75 @@ where
                     .unwrap()
             });
 
-            let mut chunks = vec![];
-            let mut chunk = vec![];
-            let mut size = 0;
+            let mut slices = vec![entries];
 
-            //Split into chunks and sort them by y
-            for item in entries {
-                chunk.push(item);
-                size += 1;
+            for dim in 1..coord_count {
+                let entries_count = slices.get(0).unwrap().len();
+                let leaf_pages = entries_count / node_capacity;
+                let coord_count = coord_count - dim + 1;
+                let vertical_slices = nth_root(leaf_pages, coord_count as u32);
+                let slice_size = node_capacity * vertical_slices.pow((coord_count - 1) as u32);
 
-                //Sort by y
-                if size >= chunk_size {
-                    chunk.sort_by(|first, second| {
+                let mut axis_slices = vec![];
+                let mut slice = vec![];
+                let mut size = 0;
+
+                //Split into chunks and sort them by n-th dimension
+                for entries in slices {
+                    for entry in entries {
+                        slice.push(entry);
+                        size += 1;
+
+                        //Sort by n-th dim
+                        if size >= slice_size {
+                            slice.sort_by(|first, second| {
+                                let first_center = first.get_mbb().get_center();
+                                let second_center = second.get_mbb().get_center();
+
+                                first_center
+                                    .get_nth_coord(dim)
+                                    .unwrap()
+                                    .partial_cmp(&second_center.get_nth_coord(dim).unwrap())
+                                    .unwrap()
+                            });
+                            axis_slices.push(slice);
+                            slice = vec![];
+                            size = 0;
+                        }
+                    }
+                }
+                if size > 0 {
+                    slice.sort_by(|first, second| {
                         let first_center = first.get_mbb().get_center();
                         let second_center = second.get_mbb().get_center();
 
                         first_center
-                            .get_nth_coord(1)
+                            .get_nth_coord(dim)
                             .unwrap()
-                            .partial_cmp(&second_center.get_nth_coord(1).unwrap())
+                            .partial_cmp(&second_center.get_nth_coord(dim).unwrap())
                             .unwrap()
                     });
-                    chunks.push(chunk);
-                    chunk = vec![];
-                    size = 0;
+                    axis_slices.push(slice);
                 }
-            }
 
-            if size > 0 {
-                chunk.sort_by(|first, second| {
-                    let first_center = first.get_mbb().get_center();
-                    let second_center = second.get_mbb().get_center();
-
-                    first_center
-                        .get_nth_coord(1)
-                        .unwrap()
-                        .partial_cmp(&second_center.get_nth_coord(1).unwrap())
-                        .unwrap()
-                });
-                chunks.push(chunk);
+                slices = axis_slices;
             }
 
             //Separate into entries
             entries = vec![];
 
-            for chunk in chunks {
+            for slice in slices {
                 let mut items = vec![];
                 let mut size = 0;
                 let mut maybe_mbb = None;
 
-                for item in chunk {
+                for entry in slice {
                     match maybe_mbb {
-                        None => maybe_mbb = Some(item.get_mbb().clone()),
-                        Some(mbb) => maybe_mbb = Some(mbb.combine_boxes(item.get_mbb())),
+                        None => maybe_mbb = Some(entry.get_mbb().clone()),
+                        Some(mbb) => maybe_mbb = Some(mbb.combine_boxes(entry.get_mbb())),
                     }
 
-                    items.push(item);
+                    items.push(entry);
                     size += 1;
 
                     if size >= node_capacity {
@@ -274,7 +276,7 @@ where
             }
 
             level += 1;
-            items_num = entries.len();
+            entries_count = entries.len();
         }
 
         Node {
