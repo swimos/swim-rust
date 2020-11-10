@@ -43,6 +43,7 @@ use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::{mpsc, oneshot, watch};
 use tracing::{event, span, Level};
 use tracing_futures::Instrument;
+use utilities::errors::Recoverable;
 use utilities::sync::trigger;
 use utilities::uri::RelativeUri;
 

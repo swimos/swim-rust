@@ -17,6 +17,7 @@ use crate::ws::error::ConnectionError;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use tokio::sync::mpsc::error::SendError;
+use utilities::errors::Recoverable;
 
 // An error returned by the router
 #[derive(Clone, Debug, PartialEq)]
@@ -33,22 +34,14 @@ pub enum RoutingError {
     CloseError,
 }
 
-impl RoutingError {
-    /// Returns whether or not the router can recover from the error.
-    /// Inverse of [`is_fatal`].
-    pub fn is_transient(&self) -> bool {
+impl Recoverable for RoutingError {
+    fn is_fatal(&self) -> bool {
         match &self {
-            RoutingError::ConnectionError => true,
-            RoutingError::HostUnreachable => true,
-            RoutingError::PoolError(ConnectionError::ConnectionRefused) => true,
-            _ => false,
+            RoutingError::ConnectionError => false,
+            RoutingError::HostUnreachable => false,
+            RoutingError::PoolError(ConnectionError::ConnectionRefused) => false,
+            _ => true,
         }
-    }
-
-    /// Returns whether or not the error is unrecoverable.
-    /// Inverse of [`is_transient`].
-    pub fn is_fatal(&self) -> bool {
-        !self.is_transient()
     }
 }
 

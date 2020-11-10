@@ -53,6 +53,10 @@ impl<Fut> OpenEndedFutures<Fut> {
         self.waker.wake();
     }
 
+    pub fn len(&self) -> usize {
+        self.inner.len()
+    }
+
     pub fn is_empty(&self) -> bool {
         self.inner.is_empty()
     }
@@ -73,6 +77,12 @@ impl<Fut> OpenEndedFutures<Fut> {
                 self.waker.wake();
             }
             Ok(())
+        }
+    }
+
+    pub fn push(&self, fut: Fut) {
+        if self.try_push(fut).is_err() {
+            panic!("Future pushed after closed.")
         }
     }
 }
