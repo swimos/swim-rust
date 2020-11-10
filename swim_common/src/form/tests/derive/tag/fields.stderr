@@ -1,0 +1,5 @@
+error: Tagged variants cannot contain fields
+  --> $DIR/fields.rs:21:9
+   |
+21 |         B(i32),
+   |         ^
