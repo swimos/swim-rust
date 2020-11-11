@@ -209,11 +209,8 @@ async fn next_attachment_event(
                     }
                 },
                 maybe_request = requests.next() => {
-                    match maybe_request {
-                        Some(req) => {
-                            break Some(LaneTaskEvent::Request(req));
-                        },
-                        _ => {},
+                    if let Some(req) = maybe_request {
+                        break Some(LaneTaskEvent::Request(req));
                     }
                 }
             }
