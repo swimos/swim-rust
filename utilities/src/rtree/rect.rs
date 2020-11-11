@@ -23,11 +23,11 @@ where
         Rect { low, high }
     }
 
-    pub fn get_low(&self) -> &P {
+    pub(in crate) fn get_low(&self) -> &P {
         &self.low
     }
 
-    pub fn get_high(&self) -> &P {
+    pub(in crate) fn get_high(&self) -> &P {
         &self.high
     }
 }
@@ -248,7 +248,7 @@ impl<T: Real + Debug> Point for Point3D<T> {
 }
 
 pub trait Point: Copy + Clone + PartialEq + Debug + Sub<Output = Self> {
-    type Type: Real;
+    type Type: Real + Debug;
 
     fn get_coord_count() -> usize;
 

@@ -11,6 +11,12 @@ pub mod rect;
 #[cfg(test)]
 mod tests;
 
+#[derive(Debug, Clone, Copy)]
+pub enum Strategy {
+    Linear,
+    Quadratic,
+}
+
 #[derive(Debug, Clone)]
 pub struct RTree<B>
 where
@@ -29,9 +35,7 @@ where
         max_children: NonZeroUsize,
         split_strat: Strategy,
     ) -> Self {
-        if min_children.get() > max_children.get() / 2 {
-            panic!("The minimum number of children cannot be more than half of the maximum number of children.")
-        }
+        check_children(&min_children, &max_children);
 
         RTree {
             root: Node::new_root(min_children.get(), max_children.get(), split_strat),
@@ -64,7 +68,7 @@ where
             let entry_ptr = self.root.entries.pop().unwrap();
 
             let entry = if Arc::strong_count(&entry_ptr) == 1 {
-                Arc::try_unwrap(entry_ptr).unwrap_or_else(|_| unreachable!())
+                Arc::try_unwrap(entry_ptr).unwrap()
             } else {
                 (*entry_ptr).clone()
             };
@@ -103,9 +107,7 @@ where
         split_strat: Strategy,
         items: Vec<B>,
     ) -> RTree<B> {
-        if min_children.get() > max_children.get() / 2 {
-            panic!("The minimum number of children cannot be more than half of the maximum number of children.")
-        }
+        check_children(&min_children, &max_children);
 
         let items_num = items.len();
 
@@ -135,6 +137,18 @@ where
         RTree {
             root,
             len: items_num,
+        }
+    }
+
+    fn internal_insert(&mut self, item: EntryPtr<B>, level: usize) {
+        if let Some((first_entry, second_entry)) = self.root.insert(item, level) {
+            self.root = Node {
+                entries: vec![first_entry, second_entry],
+                level: self.root.level + 1,
+                min_children: self.root.min_children,
+                max_children: self.root.max_children,
+                split_strat: self.root.split_strat,
+            };
         }
     }
 
@@ -287,17 +301,11 @@ where
             split_strat,
         }
     }
+}
 
-    fn internal_insert(&mut self, item: EntryPtr<B>, level: usize) {
-        if let Some((first_entry, second_entry)) = self.root.insert(item, level) {
-            self.root = Node {
-                entries: vec![first_entry, second_entry],
-                level: self.root.level + 1,
-                min_children: self.root.min_children,
-                max_children: self.root.max_children,
-                split_strat: self.root.split_strat,
-            };
-        }
+fn check_children(min_children: &NonZeroUsize, max_children: &NonZeroUsize) {
+    if min_children.get() > max_children.get() / 2 {
+        panic!("The minimum number of children cannot be more than half of the maximum number of children.")
     }
 }
 
@@ -335,7 +343,7 @@ where
         self.level == 0
     }
 
-    pub fn search(&self, area: &Rect<B::Point>) -> Option<Vec<B>> {
+    fn search(&self, area: &Rect<B::Point>) -> Option<Vec<B>> {
         let mut found = vec![];
 
         if self.is_leaf() {
@@ -443,7 +451,7 @@ where
 
             let entry_ptr = self.entries.remove(remove_idx?);
             let entry = if Arc::strong_count(&entry_ptr) == 1 {
-                Arc::try_unwrap(entry_ptr).unwrap_or_else(|_| unreachable!())
+                Arc::try_unwrap(entry_ptr).unwrap()
             } else {
                 (*entry_ptr).clone()
             };
@@ -688,7 +696,8 @@ where
     let mut first_idx = 0;
     let mut second_idx = 1;
 
-    let mut dim_points: Vec<(<B::Point as Point>::Type, <B::Point as Point>::Type)> = vec![];
+    let mut dim_boundary_points: Vec<(<B::Point as Point>::Type, <B::Point as Point>::Type)> =
+        vec![];
     let mut max_low_sides: Vec<(usize, <B::Point as Point>::Type)> = vec![];
     let mut min_high_sides: Vec<(usize, <B::Point as Point>::Type)> = vec![];
 
@@ -700,7 +709,7 @@ where
                 let low_dim = mbb.get_low().get_nth_coord(dim).unwrap();
                 let high_dim = mbb.get_high().get_nth_coord(dim).unwrap();
 
-                match dim_points.get_mut(dim) {
+                match dim_boundary_points.get_mut(dim) {
                     Some((min_low, max_high)) => {
                         if low_dim < *min_low {
                             *min_low = low_dim
@@ -710,7 +719,7 @@ where
                             *max_high = high_dim
                         }
                     }
-                    None => dim_points.push((low_dim, high_dim)),
+                    None => dim_boundary_points.push((low_dim, high_dim)),
                 }
 
                 match max_low_sides.get_mut(dim) {
@@ -725,7 +734,7 @@ where
 
                 match min_high_sides.get_mut(dim) {
                     Some((idx, min_high_dim)) => {
-                        if high_dim > *min_high_dim {
+                        if high_dim < *min_high_dim {
                             *idx = i;
                             *min_high_dim = high_dim
                         }
@@ -735,7 +744,7 @@ where
             }
         }
 
-        let dim_lengths: Vec<_> = dim_points
+        let dim_lengths: Vec<_> = dim_boundary_points
             .into_iter()
             .map(|(low, high)| (high - low).abs())
             .collect();
@@ -746,17 +755,21 @@ where
             .map(|((idx_low, low), (idx_high, high))| (idx_low, idx_high, (high - low).abs()))
             .collect();
 
-        let normalised_separations = side_separations
+        let normalised_separations: Vec<_> = side_separations
             .into_iter()
             .zip(dim_lengths.into_iter())
-            .map(|((f, s, separation), dim_len)| (f, s, dim_len / separation))
+            .map(|((f, s, separation), dim_len)| (f, s, separation / dim_len))
+            .collect();
+
+        let max_separation = normalised_separations
+            .into_iter()
             .max_by(|(_, _, norm_sep_1), (_, _, norm_sep_2)| {
                 norm_sep_1.partial_cmp(norm_sep_2).unwrap()
             })
             .unwrap();
 
-        first_idx = normalised_separations.0;
-        second_idx = normalised_separations.1;
+        first_idx = max_separation.0;
+        second_idx = max_separation.1;
     }
 
     let (first_idx, second_idx) = if first_idx > second_idx {
@@ -842,12 +855,6 @@ where
     } else {
         Group::First
     }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum Strategy {
-    Linear,
-    Quadratic,
 }
 
 enum Group {

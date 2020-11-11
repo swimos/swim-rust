@@ -107,7 +107,178 @@ fn bulk_load_24_node_3d_test() {
 }
 
 #[test]
-fn rtree_2d_test() {
+fn rtree_2d_linear_test() {
+    let first = rect!((0.5, 0.5), (10.5, 10.5));
+    let second = rect!((12.5, 0.5), (15.5, 15.5));
+    let third = rect!((7.5, 7.5), (14.5, 14.5));
+    let fourth = rect!((10.5, 11.5), (11.5, 12.5));
+    let fifth = rect!((4.5, 4.5), (5.5, 6.5));
+    let sixth = rect!((4.5, 9.5), (5.5, 11.5));
+    let seventh = rect!((13.5, 0.5), (14.5, 1.5));
+    let eighth = rect!((13.5, 13.5), (16.5, 16.5));
+    let ninth = rect!((2.5, 13.5), (4.5, 16.5));
+    let tenth = rect!((2.5, 2.5), (3.5, 3.5));
+    let eleventh = rect!((3.5, 11.5), (4.5, 6.5));
+    let twelfth = rect!((0.5, 0.5), (5.5, 5.5));
+
+    let mut tree = RTree::new(
+        NonZeroUsize::new(2).unwrap(),
+        NonZeroUsize::new(4).unwrap(),
+        Strategy::Linear,
+    );
+
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/2d/linear/0.txt").unwrap()
+    );
+
+    tree.insert(first.clone());
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/2d/linear/add/1.txt").unwrap()
+    );
+
+    tree.insert(second.clone());
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/2d/linear/add/2.txt").unwrap()
+    );
+
+    tree.insert(third.clone());
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/2d/linear/add/3.txt").unwrap()
+    );
+
+    tree.insert(fourth.clone());
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/2d/linear/add/4.txt").unwrap()
+    );
+
+    tree.insert(fifth.clone());
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/2d/linear/add/5.txt").unwrap()
+    );
+
+    tree.insert(sixth.clone());
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/2d/linear/add/6.txt").unwrap()
+    );
+
+    tree.insert(seventh.clone());
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/2d/linear/add/7.txt").unwrap()
+    );
+
+    tree.insert(eighth.clone());
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/2d/linear/add/8.txt").unwrap()
+    );
+
+    tree.insert(ninth.clone());
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/2d/linear/add/9.txt").unwrap()
+    );
+
+    tree.insert(tenth.clone());
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/2d/linear/add/10.txt").unwrap()
+    );
+
+    tree.insert(eleventh.clone());
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/2d/linear/add/11.txt").unwrap()
+    );
+
+    tree.insert(twelfth.clone());
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/2d/linear/add/12.txt").unwrap()
+    );
+
+    tree.remove(&first);
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/2d/linear/remove/1.txt").unwrap()
+    );
+
+    tree.remove(&second);
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/2d/linear/remove/2.txt").unwrap()
+    );
+
+    tree.remove(&third);
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/2d/linear/remove/3.txt").unwrap()
+    );
+
+    tree.remove(&fourth);
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/2d/linear/remove/4.txt").unwrap()
+    );
+
+    tree.remove(&fifth);
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/2d/linear/remove/5.txt").unwrap()
+    );
+
+    tree.remove(&sixth);
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/2d/linear/remove/6.txt").unwrap()
+    );
+
+    tree.remove(&seventh);
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/2d/linear/remove/7.txt").unwrap()
+    );
+
+    tree.remove(&eighth);
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/2d/linear/remove/8.txt").unwrap()
+    );
+
+    tree.remove(&ninth);
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/2d/linear/remove/9.txt").unwrap()
+    );
+
+    tree.remove(&tenth);
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/2d/linear/remove/10.txt").unwrap()
+    );
+
+    tree.remove(&eleventh);
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/2d/linear/remove/11.txt").unwrap()
+    );
+
+    tree.remove(&twelfth);
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string("src/rtree/resources/2d/linear/0.txt").unwrap()
+    );
+}
+
+#[test]
+fn rtree_2d_quadratic_test() {
     let first = rect!((0.5, 0.5), (10.5, 10.5));
     let second = rect!((12.5, 0.5), (15.5, 15.5));
     let third = rect!((7.5, 7.5), (14.5, 14.5));
@@ -129,151 +300,151 @@ fn rtree_2d_test() {
 
     assert_eq!(
         format!("{:#?}", tree),
-        fs::read_to_string("src/rtree/resources/2d/0.txt").unwrap()
+        fs::read_to_string("src/rtree/resources/2d/quadratic/0.txt").unwrap()
     );
 
     tree.insert(first.clone());
     assert_eq!(
         format!("{:#?}", tree),
-        fs::read_to_string("src/rtree/resources/2d/add/1.txt").unwrap()
+        fs::read_to_string("src/rtree/resources/2d/quadratic/add/1.txt").unwrap()
     );
 
     tree.insert(second.clone());
     assert_eq!(
         format!("{:#?}", tree),
-        fs::read_to_string("src/rtree/resources/2d/add/2.txt").unwrap()
+        fs::read_to_string("src/rtree/resources/2d/quadratic/add/2.txt").unwrap()
     );
 
     tree.insert(third.clone());
     assert_eq!(
         format!("{:#?}", tree),
-        fs::read_to_string("src/rtree/resources/2d/add/3.txt").unwrap()
+        fs::read_to_string("src/rtree/resources/2d/quadratic/add/3.txt").unwrap()
     );
 
     tree.insert(fourth.clone());
     assert_eq!(
         format!("{:#?}", tree),
-        fs::read_to_string("src/rtree/resources/2d/add/4.txt").unwrap()
+        fs::read_to_string("src/rtree/resources/2d/quadratic/add/4.txt").unwrap()
     );
 
     tree.insert(fifth.clone());
     assert_eq!(
         format!("{:#?}", tree),
-        fs::read_to_string("src/rtree/resources/2d/add/5.txt").unwrap()
+        fs::read_to_string("src/rtree/resources/2d/quadratic/add/5.txt").unwrap()
     );
 
     tree.insert(sixth.clone());
     assert_eq!(
         format!("{:#?}", tree),
-        fs::read_to_string("src/rtree/resources/2d/add/6.txt").unwrap()
+        fs::read_to_string("src/rtree/resources/2d/quadratic/add/6.txt").unwrap()
     );
 
     tree.insert(seventh.clone());
     assert_eq!(
         format!("{:#?}", tree),
-        fs::read_to_string("src/rtree/resources/2d/add/7.txt").unwrap()
+        fs::read_to_string("src/rtree/resources/2d/quadratic/add/7.txt").unwrap()
     );
 
     tree.insert(eighth.clone());
     assert_eq!(
         format!("{:#?}", tree),
-        fs::read_to_string("src/rtree/resources/2d/add/8.txt").unwrap()
+        fs::read_to_string("src/rtree/resources/2d/quadratic/add/8.txt").unwrap()
     );
 
     tree.insert(ninth.clone());
     assert_eq!(
         format!("{:#?}", tree),
-        fs::read_to_string("src/rtree/resources/2d/add/9.txt").unwrap()
+        fs::read_to_string("src/rtree/resources/2d/quadratic/add/9.txt").unwrap()
     );
 
     tree.insert(tenth.clone());
     assert_eq!(
         format!("{:#?}", tree),
-        fs::read_to_string("src/rtree/resources/2d/add/10.txt").unwrap()
+        fs::read_to_string("src/rtree/resources/2d/quadratic/add/10.txt").unwrap()
     );
 
     tree.insert(eleventh.clone());
     assert_eq!(
         format!("{:#?}", tree),
-        fs::read_to_string("src/rtree/resources/2d/add/11.txt").unwrap()
+        fs::read_to_string("src/rtree/resources/2d/quadratic/add/11.txt").unwrap()
     );
 
     tree.insert(twelfth.clone());
     assert_eq!(
         format!("{:#?}", tree),
-        fs::read_to_string("src/rtree/resources/2d/add/12.txt").unwrap()
+        fs::read_to_string("src/rtree/resources/2d/quadratic/add/12.txt").unwrap()
     );
 
     tree.remove(&first);
     assert_eq!(
         format!("{:#?}", tree),
-        fs::read_to_string("src/rtree/resources/2d/remove/1.txt").unwrap()
+        fs::read_to_string("src/rtree/resources/2d/quadratic/remove/1.txt").unwrap()
     );
 
     tree.remove(&second);
     assert_eq!(
         format!("{:#?}", tree),
-        fs::read_to_string("src/rtree/resources/2d/remove/2.txt").unwrap()
+        fs::read_to_string("src/rtree/resources/2d/quadratic/remove/2.txt").unwrap()
     );
 
     tree.remove(&third);
     assert_eq!(
         format!("{:#?}", tree),
-        fs::read_to_string("src/rtree/resources/2d/remove/3.txt").unwrap()
+        fs::read_to_string("src/rtree/resources/2d/quadratic/remove/3.txt").unwrap()
     );
 
     tree.remove(&fourth);
     assert_eq!(
         format!("{:#?}", tree),
-        fs::read_to_string("src/rtree/resources/2d/remove/4.txt").unwrap()
+        fs::read_to_string("src/rtree/resources/2d/quadratic/remove/4.txt").unwrap()
     );
 
     tree.remove(&fifth);
     assert_eq!(
         format!("{:#?}", tree),
-        fs::read_to_string("src/rtree/resources/2d/remove/5.txt").unwrap()
+        fs::read_to_string("src/rtree/resources/2d/quadratic/remove/5.txt").unwrap()
     );
 
     tree.remove(&sixth);
     assert_eq!(
         format!("{:#?}", tree),
-        fs::read_to_string("src/rtree/resources/2d/remove/6.txt").unwrap()
+        fs::read_to_string("src/rtree/resources/2d/quadratic/remove/6.txt").unwrap()
     );
 
     tree.remove(&seventh);
     assert_eq!(
         format!("{:#?}", tree),
-        fs::read_to_string("src/rtree/resources/2d/remove/7.txt").unwrap()
+        fs::read_to_string("src/rtree/resources/2d/quadratic/remove/7.txt").unwrap()
     );
 
     tree.remove(&eighth);
     assert_eq!(
         format!("{:#?}", tree),
-        fs::read_to_string("src/rtree/resources/2d/remove/8.txt").unwrap()
+        fs::read_to_string("src/rtree/resources/2d/quadratic/remove/8.txt").unwrap()
     );
 
     tree.remove(&ninth);
     assert_eq!(
         format!("{:#?}", tree),
-        fs::read_to_string("src/rtree/resources/2d/remove/9.txt").unwrap()
+        fs::read_to_string("src/rtree/resources/2d/quadratic/remove/9.txt").unwrap()
     );
 
     tree.remove(&tenth);
     assert_eq!(
         format!("{:#?}", tree),
-        fs::read_to_string("src/rtree/resources/2d/remove/10.txt").unwrap()
+        fs::read_to_string("src/rtree/resources/2d/quadratic/remove/10.txt").unwrap()
     );
 
     tree.remove(&eleventh);
     assert_eq!(
         format!("{:#?}", tree),
-        fs::read_to_string("src/rtree/resources/2d/remove/11.txt").unwrap()
+        fs::read_to_string("src/rtree/resources/2d/quadratic/remove/11.txt").unwrap()
     );
 
     tree.remove(&twelfth);
     assert_eq!(
         format!("{:#?}", tree),
-        fs::read_to_string("src/rtree/resources/2d/0.txt").unwrap()
+        fs::read_to_string("src/rtree/resources/2d/quadratic/0.txt").unwrap()
     );
 }
 
