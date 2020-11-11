@@ -32,11 +32,11 @@ use std::task::{Context, Poll};
 use std::time::Duration;
 use stm::transaction::TransactionError;
 use swim_common::form::FormErr;
+use swim_common::sink::item;
 use tokio::sync::mpsc;
 use tokio::time::timeout;
 use utilities::future::SwimStreamExt;
 use utilities::sync::trigger;
-use swim_common::sink::item;
 
 struct ReportingStream<S> {
     notify: VecDeque<trigger::Sender>,

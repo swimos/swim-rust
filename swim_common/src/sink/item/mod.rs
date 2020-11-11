@@ -15,8 +15,7 @@
 use std::future::Future;
 
 use futures::future::{ready, BoxFuture, Ready};
-use futures::{FutureExt, TryFuture};
-use std::marker::PhantomData;
+use futures::FutureExt;
 use tokio::sync::{broadcast, mpsc, watch};
 
 pub mod comap;
@@ -33,37 +32,6 @@ pub trait ItemSink<'a, T> {
 
     /// Attempt to send an item into the sink.
     fn send_item(&'a mut self, value: T) -> Self::SendFuture;
-}
-
-/// Sender that discards everything sent to it.
-#[derive(Debug)]
-pub struct DiscardingSender<E>(PhantomData<E>);
-
-impl<E> DiscardingSender<E> {
-    pub fn new() -> Self {
-        DiscardingSender(PhantomData)
-    }
-}
-
-impl<E> Default for DiscardingSender<E> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl<E> Clone for DiscardingSender<E> {
-    fn clone(&self) -> Self {
-        Default::default()
-    }
-}
-
-impl<'a, T, E: Send + 'static> ItemSink<'a, T> for DiscardingSender<E> {
-    type Error = E;
-    type SendFuture = Ready<Result<(), E>>;
-
-    fn send_item(&'a mut self, _value: T) -> Self::SendFuture {
-        ready(Ok(()))
-    }
 }
 
 pub trait ItemSender<T, E>: for<'a> ItemSink<'a, T, Error = E> {
@@ -203,13 +171,9 @@ pub struct FnMutSender<S, F> {
 }
 
 impl<S, F> FnMutSender<S, F> {
-
     pub fn new(sender: S, send_op: F) -> Self {
-        FnMutSender {
-            sender, send_op,
-        }
+        FnMutSender { sender, send_op }
     }
-
 }
 
 impl<'a, T, E, S, F, Fut> ItemSink<'a, T> for FnMutSender<S, F>

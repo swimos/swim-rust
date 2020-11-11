@@ -27,7 +27,7 @@ use crate::downlink::typed::event::TypedViewWithEvent;
 use crate::downlink::typed::topic::{
     ApplyForm, ApplyFormsMap, TryTransformTopic, WrapUntilFailure,
 };
-use crate::downlink::{Downlink, Event, DownlinkError};
+use crate::downlink::{Downlink, DownlinkError, Event};
 use std::cmp::Ordering;
 use std::error::Error;
 use std::fmt::{Display, Formatter};

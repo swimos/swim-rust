@@ -17,9 +17,9 @@ use futures::future::BoxFuture;
 use std::fmt::{Display, Formatter};
 use swim_common::routing::RoutingError;
 use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
+use tokio::sync::mpsc;
 use url::Url;
 use utilities::uri::RelativeUri;
-use tokio::sync::mpsc;
 
 pub mod error;
 #[cfg(test)]
@@ -85,7 +85,6 @@ impl TaggedClientEnvelope {
 
 /// Interface for interacting with the server [`Envelope`] router.
 pub trait ServerRouter: Send + Sync {
-
     fn get_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<TaggedSender, RoutingError>>;
 
     fn resolve(

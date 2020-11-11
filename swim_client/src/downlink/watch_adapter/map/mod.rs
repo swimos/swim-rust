@@ -25,11 +25,11 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use swim_common::model::Value;
 use swim_common::routing::RoutingError;
-use swim_common::sink::item::{ItemSender, ItemSink};
+use swim_common::sink::item;
+use swim_common::sink::item::ItemSender;
 use swim_runtime::task::{spawn, TaskHandle};
 use tokio::sync::{mpsc, oneshot};
 use utilities::lru_cache::LruCache;
-use swim_common::sink::item;
 
 /// Stream adapter that removes per-key back-pressure from modifications over a map downlink. If
 /// the produces pushes in changes, sequentially, to the same key the consumer will only observe
@@ -76,12 +76,17 @@ impl KeyedWatch {
         }
     }
 
-    pub async fn send_item(&mut self, value: UntypedMapModification<Arc<Value>>) -> Result<(), RoutingError> {
-       Ok(self.sender.send(value).await?)
+    pub async fn send_item(
+        &mut self,
+        value: UntypedMapModification<Arc<Value>>,
+    ) -> Result<(), RoutingError> {
+        Ok(self.sender.send(value).await?)
     }
 
-    pub fn into_item_sender(self) -> impl ItemSender<UntypedMapModification<Arc<Value>>, RoutingError> {
-        let KeyedWatch { sender, ..} = self;
+    pub fn into_item_sender(
+        self,
+    ) -> impl ItemSender<UntypedMapModification<Arc<Value>>, RoutingError> {
+        let KeyedWatch { sender, .. } = self;
         item::for_mpsc_sender(sender).map_err_into()
     }
 }
@@ -167,11 +172,7 @@ impl ConsumerTask {
                     //Evicted sender must not be dropped until the flush completes.
 
                     let (tx_flush, rx_flush) = oneshot::channel();
-                    if bridge
-                        .send(BridgeMessage::Flush(tx_flush))
-                        .await
-                        .is_err()
-                    {
+                    if bridge.send(BridgeMessage::Flush(tx_flush)).await.is_err() {
                         return false;
                     }
                     //Wait for the flush to complete

@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::routing::TaggedEnvelope;
+use std::error::Error;
+use std::fmt::{Display, Formatter};
 use swim_common::routing::RoutingError;
 use swim_common::warp::envelope::Envelope;
-use std::fmt::{Formatter, Display};
-use std::error::Error;
 use tokio::sync::mpsc;
-use crate::routing::TaggedEnvelope;
 
 /// Error type for the [`ServerRouter`] that will return the envelope in the event that routing it
 /// fails.

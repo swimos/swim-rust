@@ -29,7 +29,7 @@ use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use swim_common::routing::RoutingError;
-use swim_common::sink::item::{self, ItemSender, ItemSink};
+use swim_common::sink::item::{self, ItemSender};
 use swim_runtime::task::{spawn, TaskHandle};
 use tokio::sync::{mpsc, watch};
 use tracing::{instrument, trace};

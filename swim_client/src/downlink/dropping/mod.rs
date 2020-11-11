@@ -17,8 +17,7 @@ use crate::downlink::any::AnyDownlink;
 use crate::downlink::raw::{DownlinkTask, DownlinkTaskHandle};
 use crate::downlink::topic::{DownlinkReceiver, DownlinkTopic, MakeReceiver};
 use crate::downlink::{
-    raw, Command, Downlink, DownlinkError, DownlinkInternals, Event, Message,
-    StateMachine,
+    raw, Command, Downlink, DownlinkError, DownlinkInternals, Event, Message, StateMachine,
 };
 use futures::future::Ready;
 use futures::{Stream, StreamExt};
@@ -151,13 +150,10 @@ where
 }
 
 impl<Act, Upd> DroppingDownlink<Act, Upd> {
-
     pub async fn send_item(&mut self, value: Act) -> Result<(), DownlinkError> {
         Ok(self.input.send(value).await?)
     }
-
 }
-
 
 impl<Act, Upd> Topic<Event<Upd>> for DroppingDownlink<Act, Upd>
 where

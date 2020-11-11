@@ -13,10 +13,10 @@
 // limitations under the License.
 
 use crate::var::TVar;
+use futures::{FutureExt, StreamExt};
+use std::convert::identity;
 use std::sync::Arc;
 use tokio::sync::mpsc;
-use futures::{StreamExt, FutureExt};
-use std::convert::identity;
 
 #[tokio::test]
 async fn var_get() {
@@ -48,7 +48,6 @@ async fn var_store_arc() {
     let n = var.load().await;
     assert!(Arc::ptr_eq(&replacement, &n));
 }
-
 
 #[tokio::test]
 async fn observe_var_store() {

@@ -19,8 +19,8 @@ use crate::downlink::dropping::{
     DroppingDownlink, DroppingReceiver, DroppingTopicReceiver, WeakDroppingDownlink,
 };
 use crate::downlink::queue::{QueueDownlink, QueueReceiver, QueueTopicReceiver, WeakQueueDownlink};
-use crate::downlink::topic::{DownlinkTopic, MakeReceiver};
 use crate::downlink::raw;
+use crate::downlink::topic::{DownlinkTopic, MakeReceiver};
 use crate::downlink::{Downlink, DownlinkError, Event};
 use futures::future::{ErrInto, Ready};
 use futures::task::{Context, Poll};
@@ -30,7 +30,6 @@ use pin_project::pin_project;
 use std::fmt::{Display, Formatter};
 use swim_common::request::request_future::{RequestFuture, Sequenced};
 use swim_common::request::Request;
-use swim_common::sink::item::ItemSink;
 use swim_common::topic::{BroadcastTopic, MpscTopic, Topic, TopicError, WatchTopic};
 use tokio::macros::support::Pin;
 use tokio::sync::{mpsc, oneshot};

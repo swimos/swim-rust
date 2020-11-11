@@ -72,10 +72,7 @@ async fn open_connection(
     url: &url::Url,
     node: &str,
     lane: &str,
-) -> (
-    mpsc::Sender<Envelope>,
-    mpsc::Receiver<RouterEvent>,
-) {
+) -> (mpsc::Sender<Envelope>, mpsc::Receiver<RouterEvent>) {
     router
         .connection_for(&AbsolutePath::new(url.clone(), node, lane))
         .await
@@ -1269,10 +1266,7 @@ async fn test_single_direct_message_existing_connection() {
 
     let mut general_sink = router.general_sink();
 
-    assert!(general_sink
-        .send((url.clone(), command_env))
-        .await
-        .is_ok());
+    assert!(general_sink.send((url.clone(), command_env)).await.is_ok());
 
     let mut pool_handlers: HashMap<_, _> = pool_handlers_rx.take(1).collect().await;
 
@@ -1310,10 +1304,7 @@ async fn test_single_direct_message_new_connection() {
 
     let mut general_sink = router.general_sink();
 
-    assert!(general_sink
-        .send((url.clone(), command_env))
-        .await
-        .is_ok());
+    assert!(general_sink.send((url.clone(), command_env)).await.is_ok());
 
     let mut pool_handlers: HashMap<_, _> = pool_handlers_rx.take(1).collect().await;
 
@@ -1356,15 +1347,9 @@ async fn test_multiple_direct_messages_existing_connection() {
 
     let mut general_sink = router.general_sink();
 
-    assert!(general_sink
-        .send((url.clone(), first_env))
-        .await
-        .is_ok());
+    assert!(general_sink.send((url.clone(), first_env)).await.is_ok());
 
-    assert!(general_sink
-        .send((url.clone(), second_env))
-        .await
-        .is_ok());
+    assert!(general_sink.send((url.clone(), second_env)).await.is_ok());
 
     let mut pool_handlers: HashMap<_, _> = pool_handlers_rx.take(1).collect().await;
 
@@ -1419,20 +1404,11 @@ async fn test_multiple_direct_messages_new_connection() {
 
     let mut general_sink = router.general_sink();
 
-    assert!(general_sink
-        .send((url.clone(), first_env))
-        .await
-        .is_ok());
+    assert!(general_sink.send((url.clone(), first_env)).await.is_ok());
 
-    assert!(general_sink
-        .send((url.clone(), second_env))
-        .await
-        .is_ok());
+    assert!(general_sink.send((url.clone(), second_env)).await.is_ok());
 
-    assert!(general_sink
-        .send((url.clone(), third_env))
-        .await
-        .is_ok());
+    assert!(general_sink.send((url.clone(), third_env)).await.is_ok());
 
     let mut pool_handlers: HashMap<_, _> = pool_handlers_rx.take(1).collect().await;
 

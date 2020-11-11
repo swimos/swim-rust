@@ -16,17 +16,15 @@ use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lane::model::{
     DeferredBroadcastView, DeferredLaneView, DeferredMpscView, DeferredWatchView,
 };
-use crate::agent::lane::strategy::{
-    Buffered, Dropping, Queue,
-};
+use crate::agent::lane::strategy::{Buffered, Dropping, Queue};
 use crate::agent::lane::{BroadcastStream, LaneModel};
 use futures::Stream;
 use std::any::Any;
 use std::sync::Arc;
 use stm::stm::Stm;
+use stm::var::observer::Observer;
 use stm::var::TVar;
 use tokio::sync::{broadcast, mpsc, oneshot, watch};
-use stm::var::observer::Observer;
 
 #[cfg(test)]
 mod tests;
@@ -126,7 +124,6 @@ impl<T: Any + Send + Sync> ValueLane<T> {
 
 /// Adapts a watch strategy for use with a [`ValueLane`].
 pub trait ValueLaneWatch<T> {
-
     /// The type of the stream of values produced by the lane.
     type View: Stream<Item = Arc<T>> + Send + Sync + 'static;
 
@@ -142,15 +139,12 @@ pub trait ValueLaneWatch<T> {
     ) -> (Observer<T>, Self::View, Self::DeferredView);
 }
 
-type MpscArcSender<T> = mpsc::Sender<Arc<T>>;
-
 impl<T> ValueLaneWatch<T> for Queue
 where
     T: Any + Send + Sync,
 {
-
     type View = mpsc::Receiver<Arc<T>>;
-    type DeferredView = DeferredMpscView<Arc<T>>;
+    type DeferredView = DeferredMpscView<T>;
 
     fn make_watch(&self, _init: &Arc<T>) -> (Observer<T>, Self::View) {
         let Queue(n) = self;
@@ -172,15 +166,12 @@ where
     }
 }
 
-type WatchArcSender<T> = watch::Sender<Arc<T>>;
-type WatchOptArcSender<T> = watch::Sender<Option<Arc<T>>>;
-
 impl<T> ValueLaneWatch<T> for Dropping
 where
     T: Any + Default + Send + Sync,
 {
     type View = watch::Receiver<Arc<T>>;
-    type DeferredView = DeferredWatchView<Arc<T>>;
+    type DeferredView = DeferredWatchView<T>;
 
     fn make_watch(&self, init: &Arc<T>) -> (Observer<T>, Self::View) {
         let (tx, rx) = watch::channel(init.clone());
@@ -200,14 +191,12 @@ where
     }
 }
 
-type BroadcastArcSender<T> = broadcast::Sender<Arc<T>>;
-
 impl<T> ValueLaneWatch<T> for Buffered
 where
     T: Any + Default + Send + Sync,
 {
     type View = BroadcastStream<Arc<T>>;
-    type DeferredView = DeferredBroadcastView<Arc<T>>;
+    type DeferredView = DeferredBroadcastView<T>;
 
     fn make_watch(&self, _init: &Arc<T>) -> (Observer<T>, Self::View) {
         let Buffered(n) = self;

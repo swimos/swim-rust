@@ -35,13 +35,13 @@ use crate::agent::{
     MapLifecycleTasks, ValueLifecycleTasks,
 };
 use crate::plane::provider::AgentProvider;
+use crate::routing::RoutingAddr;
 use futures::future::{join, BoxFuture};
 use futures::{Stream, StreamExt};
 use std::collections::HashMap;
 use std::future::Future;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-use swim_common::sink::item::DiscardingSender;
 use swim_runtime::task;
 use tokio::sync::{mpsc, Mutex};
 use tokio::time::{timeout, Duration};
@@ -55,60 +55,30 @@ mod stub_router {
     use futures::future::BoxFuture;
     use futures::FutureExt;
     use swim_common::routing::RoutingError;
-    use swim_common::sink::item::{ItemSender, ItemSink};
-    use swim_common::warp::envelope::Envelope;
+    use tokio::sync::mpsc;
     use url::Url;
     use utilities::uri::RelativeUri;
 
     #[derive(Clone)]
-    pub struct SingleChannelRouter<Inner>(Inner);
+    pub struct SingleChannelRouter(RoutingAddr, mpsc::Sender<TaggedEnvelope>);
 
-    impl<Inner> SingleChannelRouter<Inner>
-    where
-        Inner: ItemSender<TaggedEnvelope, RoutingError> + Clone,
-    {
-        pub(crate) fn new(sender: Inner) -> Self {
-            SingleChannelRouter(sender)
+    impl SingleChannelRouter {
+        pub(crate) fn new(router_addr: RoutingAddr) -> Self {
+            let (tx, mut rx) = mpsc::channel(16);
+            tokio::spawn(async move { while let Some(_) = rx.recv().await {} });
+            SingleChannelRouter(router_addr, tx)
         }
     }
 
-    pub struct SingleChannelSender<Inner> {
-        inner: Inner,
-        destination: RoutingAddr,
-    }
-
-    impl<Inner> SingleChannelSender<Inner>
-    where
-        Inner: ItemSender<TaggedEnvelope, RoutingError>,
-    {
-        fn new(inner: Inner, destination: RoutingAddr) -> Self {
-            SingleChannelSender { inner, destination }
-        }
-    }
-
-    impl<'a, Inner> ItemSink<'a, Envelope> for SingleChannelSender<Inner>
-    where
-        Inner: ItemSink<'a, TaggedEnvelope, Error = RoutingError>,
-    {
-        type Error = RoutingError;
-        type SendFuture = <Inner as ItemSink<'a, TaggedEnvelope>>::SendFuture;
-
-        fn send_item(&'a mut self, value: Envelope) -> Self::SendFuture {
-            let msg = TaggedEnvelope(self.destination, value);
-            self.inner.send_item(msg)
-        }
-    }
-
-    impl<Inner> ServerRouter for SingleChannelRouter<Inner>
-    where
-        Inner: ItemSender<TaggedEnvelope, RoutingError> + Clone + Send + Sync + 'static,
-    {
-
+    impl ServerRouter for SingleChannelRouter {
         fn get_sender(
             &mut self,
-            addr: RoutingAddr,
+            _addr: RoutingAddr,
         ) -> BoxFuture<Result<TaggedSender, RoutingError>> {
-            FutureExt::boxed(async move { Ok(SingleChannelSender::new(self.0.clone(), addr)) })
+            let SingleChannelRouter(router_addr, sender) = self;
+            let router_addr = *router_addr;
+            let sender = sender.clone();
+            async move { Ok(TaggedSender::new(router_addr, sender)) }.boxed()
         }
 
         fn resolve(
@@ -739,7 +709,7 @@ async fn agent_loop() {
         exec_config,
         clock.clone(),
         envelope_rx,
-        SingleChannelRouter::new(DiscardingSender::default()),
+        SingleChannelRouter::new(RoutingAddr::local(1024)),
     );
 
     let agent_task = swim_runtime::task::spawn(agent_proc);

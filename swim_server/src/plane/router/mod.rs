@@ -61,7 +61,6 @@ impl PlaneRouter {
 }
 
 impl ServerRouter for PlaneRouter {
-
     fn get_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<TaggedSender, RoutingError>> {
         async move {
             let PlaneRouter {

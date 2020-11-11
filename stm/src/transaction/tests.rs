@@ -20,17 +20,17 @@ use crate::var::TVar;
 use futures::future::{ready, Ready};
 use futures::stream::{empty, Empty};
 use futures::task::Poll;
-use futures::{Stream, StreamExt, FutureExt};
+use futures::{FutureExt, Stream, StreamExt};
 use std::any::Any;
+use std::convert::identity;
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::Context;
-use tokio::sync::{oneshot, mpsc};
+use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 use tokio::time::{timeout, Duration};
-use std::convert::identity;
 
 struct ExactlyOnce;
 

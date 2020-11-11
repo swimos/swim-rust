@@ -162,6 +162,10 @@ impl<T> BroadcastSender<T> {
             _ => Err(broadcast::SendError(value)), //The topic and all subscribers have been dropped.
         }
     }
+
+    pub fn try_into_inner(self) -> Option<broadcast::Sender<T>> {
+        self.sender.upgrade().map(|tx| (*tx).clone())
+    }
 }
 
 impl<'a, T: Send + 'a> ItemSink<'a, T> for BroadcastSender<T> {

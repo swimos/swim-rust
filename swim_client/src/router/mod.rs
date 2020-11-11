@@ -15,9 +15,9 @@
 use std::collections::HashMap;
 use std::ops::Deref;
 
-use futures::{stream, FutureExt};
 use futures::stream::FuturesUnordered;
 use futures::Future;
+use futures::{stream, FutureExt};
 use tokio::stream::StreamExt;
 use tokio::sync::oneshot;
 use tokio::sync::{mpsc, watch};
@@ -34,8 +34,8 @@ use crate::configuration::router::RouterParams;
 use crate::connections::{ConnectionPool, ConnectionSender};
 use crate::router::incoming::{IncomingHostTask, IncomingRequest};
 use crate::router::outgoing::OutgoingHostTask;
-use swim_common::routing::RoutingError;
 use futures::future::BoxFuture;
+use swim_common::routing::RoutingError;
 
 pub mod incoming;
 pub mod outgoing;
@@ -47,8 +47,7 @@ mod tests;
 /// The Router is responsible for routing messages between the downlinks and the connections from the
 /// connection pool. It can be used to obtain a connection for a downlink or to send direct messages.
 pub trait Router: Send {
-    type ConnectionFut: Future<Output = Result<(mpsc::Sender<Envelope>, mpsc::Receiver<RouterEvent>), RequestError>>
-        + Send;
+    type ConnectionFut: Future<Output = Result<ConnectionChannel, RequestError>> + Send;
 
     /// For full duplex connections
     fn connection_for(&mut self, target: &AbsolutePath) -> Self::ConnectionFut;
@@ -57,10 +56,7 @@ pub trait Router: Send {
     fn general_sink(&mut self) -> mpsc::Sender<(url::Url, Envelope)>;
 }
 
-type RouterConnRequest = (
-    AbsolutePath,
-    oneshot::Sender<(mpsc::Sender<Envelope>, mpsc::Receiver<RouterEvent>)>,
-);
+type RouterConnRequest = (AbsolutePath, oneshot::Sender<ConnectionChannel>);
 
 type RouterMessageRequest = (url::Url, Envelope);
 type CloseSender = watch::Sender<Option<CloseResponseSender>>;
@@ -541,11 +537,13 @@ fn combine_host_streams(
     )
 }
 
+type ConnectionChannel = (mpsc::Sender<Envelope>, mpsc::Receiver<RouterEvent>);
+
 impl<Pool: ConnectionPool> Router for SwimRouter<Pool> {
-    type ConnectionFut = BoxFuture<'static, Result<(mpsc::Sender<Envelope>, mpsc::Receiver<RouterEvent>), RequestError>>;
+    type ConnectionFut = BoxFuture<'static, Result<ConnectionChannel, RequestError>>;
 
     fn connection_for(&mut self, target: &AbsolutePath) -> Self::ConnectionFut {
-        let mut tx =  self.router_connection_request_tx.clone();
+        let mut tx = self.router_connection_request_tx.clone();
         let path = target.clone();
         async move {
             let (resp_tx, resp_rx) = oneshot::channel();
@@ -554,7 +552,8 @@ impl<Pool: ConnectionPool> Router for SwimRouter<Pool> {
             } else {
                 Err(RequestError)
             }
-        }.boxed()
+        }
+        .boxed()
     }
 
     fn general_sink(&mut self) -> mpsc::Sender<(url::Url, Envelope)> {

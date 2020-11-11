@@ -13,8 +13,8 @@
 // limitations under the License.
 
 use crate::routing::{RoutingAddr, TaggedEnvelope, TaggedSender};
-use tokio::sync::mpsc;
 use swim_common::warp::envelope::Envelope;
+use tokio::sync::mpsc;
 
 #[tokio::test]
 async fn tagged_sender() {

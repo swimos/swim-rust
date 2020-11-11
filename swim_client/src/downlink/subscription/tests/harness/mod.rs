@@ -27,12 +27,11 @@ pub struct StubRouter {
 }
 
 impl Router for StubRouter {
-
     type ConnectionFut =
         Ready<Result<(mpsc::Sender<Envelope>, mpsc::Receiver<RouterEvent>), RequestError>>;
 
     fn connection_for(&mut self, _target: &AbsolutePath) -> Self::ConnectionFut {
-        let (tx,rx) = mpsc::channel(32);
+        let (tx, rx) = mpsc::channel(32);
         self.inner.push(tx);
         ready(Ok((self.specific_tx.clone(), rx)))
     }
@@ -43,8 +42,10 @@ impl Router for StubRouter {
 }
 
 impl StubRouter {
-    pub fn new(specific_tx: mpsc::Sender<Envelope>,
-               general_tx: mpsc::Sender<(url::Url, Envelope)>,) -> Self {
+    pub fn new(
+        specific_tx: mpsc::Sender<Envelope>,
+        general_tx: mpsc::Sender<(url::Url, Envelope)>,
+    ) -> Self {
         StubRouter {
             specific_tx,
             general_tx,

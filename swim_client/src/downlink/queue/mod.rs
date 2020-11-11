@@ -18,8 +18,7 @@ use crate::downlink::any::AnyDownlink;
 use crate::downlink::raw::{DownlinkTask, DownlinkTaskHandle};
 use crate::downlink::topic::{DownlinkReceiver, DownlinkTopic, MakeReceiver};
 use crate::downlink::{
-    Command, Downlink, DownlinkError, DownlinkInternals, Event, Message,
-    StateMachine,
+    Command, Downlink, DownlinkError, DownlinkInternals, Event, Message, StateMachine,
 };
 use futures::future::ErrInto;
 use futures::{Stream, StreamExt};

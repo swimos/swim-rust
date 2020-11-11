@@ -62,7 +62,7 @@ impl Form for Message {
 struct TestHandler(mpsc::Sender<i32>, i32);
 struct TestStateMachine(i32);
 struct TestUpdater(mpsc::Sender<i32>);
-struct TestRouter(mpsc::Sender<TaggedEnvelope>);
+struct TestRouter(mpsc::Sender<TaggedEnvelope>, RoutingAddr);
 
 struct TestSender {
     addr: RoutingAddr,
@@ -86,13 +86,9 @@ impl<'a> ItemSink<'a, Envelope> for TestSender {
 }
 
 impl ServerRouter for TestRouter {
-
-    fn get_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<TaggedSender, RoutingError>> {
-        ready(Ok(TestSender {
-            addr,
-            inner: self.0.clone(),
-        }))
-        .boxed()
+    fn get_sender(&mut self, _addr: RoutingAddr) -> BoxFuture<Result<TaggedSender, RoutingError>> {
+        let TestRouter(sender, router_addr) = self;
+        ready(Ok(TaggedSender::new(*router_addr, sender.clone()))).boxed()
     }
 
     fn resolve(
@@ -280,13 +276,13 @@ fn make_config() -> AgentExecutionConfig {
     AgentExecutionConfig::with(default_buffer(), 1, 1, Duration::from_secs(5))
 }
 
-struct TestContext(mpsc::Sender<TaggedEnvelope>, Sender<Eff>);
+struct TestContext(mpsc::Sender<TaggedEnvelope>, Sender<Eff>, RoutingAddr);
 
 impl AgentExecutionContext for TestContext {
     type Router = TestRouter;
 
     fn router_handle(&self) -> Self::Router {
-        TestRouter(self.0.clone())
+        TestRouter(self.0.clone(), self.2.clone())
     }
 
     fn spawner(&self) -> Sender<Eff> {
@@ -317,7 +313,7 @@ fn make_test_harness() -> (
 
     let channels = UplinkChannels::new(topic, rx_act, error_tx);
 
-    let context = TestContext(tx_router, spawn_tx);
+    let context = TestContext(tx_router, spawn_tx, RoutingAddr::local(1024));
 
     let spawner_task = factory.make_task(handler, channels, route(), &context);
 

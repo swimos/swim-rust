@@ -51,7 +51,7 @@ fn make_dispatcher(
         .map(|(name, lane)| (name, lane.boxed()))
         .collect();
 
-    let context = MockExecutionContext::new(buffer_size, spawn_tx);
+    let context = MockExecutionContext::new(RoutingAddr::local(1024), buffer_size, spawn_tx);
 
     let config = AgentExecutionConfig::with(
         NonZeroUsize::new(8).unwrap(),
@@ -88,7 +88,7 @@ fn lanes(names: Vec<&str>) -> HashMap<String, MockLane> {
     map
 }
 
-async fn expect_echo(rx: &mut mpsc::Receiver<Envelope>, lane: &str, envelope: Envelope) {
+async fn expect_echo(rx: &mut mpsc::Receiver<TaggedEnvelope>, lane: &str, envelope: Envelope) {
     let route = RelativePath::new("/node", lane);
     let maybe_envelope = rx.recv().await;
     assert!(maybe_envelope.is_some());
@@ -100,7 +100,7 @@ async fn expect_echo(rx: &mut mpsc::Receiver<Envelope>, lane: &str, envelope: En
     }) = envelope.into_outgoing()
     {
         let expected = mock::echo(&route, header, body);
-        assert_eq!(rec_envelope, expected);
+        assert_eq!(rec_envelope.1, expected);
     } else {
         panic!("Cannot echo incoming envelope.")
     }

@@ -16,8 +16,8 @@ use tokio::sync::mpsc;
 
 use super::*;
 use std::time::Duration;
-use tokio::time::timeout;
 use swim_common::sink::item;
+use tokio::time::timeout;
 
 const TIMEOUT: Duration = Duration::from_secs(30);
 

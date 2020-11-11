@@ -17,9 +17,9 @@ use futures::Stream;
 use std::any::Any;
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
-use swim_common::topic::{
-    BroadcastSender, BroadcastTopic, MpscTopic, Topic, TransformedTopic, WatchTopic,
-};
+use std::sync::Arc;
+use stm::var::observer::ObsSender;
+use swim_common::topic::{BroadcastTopic, MpscTopic, Topic, TransformedTopic, WatchTopic};
 use tokio::sync::{mpsc, oneshot, watch};
 use utilities::future::TransformMut;
 
@@ -43,14 +43,14 @@ pub trait DeferredLaneView<T>: Send + Sync {
 }
 
 pub struct DeferredMpscView<T> {
-    injector: oneshot::Sender<mpsc::Sender<T>>,
+    injector: oneshot::Sender<ObsSender<T>>,
     buffer_size: NonZeroUsize,
     yield_after: NonZeroUsize,
 }
 
 impl<T> DeferredMpscView<T> {
     pub fn new(
-        injector: oneshot::Sender<mpsc::Sender<T>>,
+        injector: oneshot::Sender<ObsSender<T>>,
         buffer_size: NonZeroUsize,
         yield_after: NonZeroUsize,
     ) -> Self {
@@ -63,22 +63,22 @@ impl<T> DeferredMpscView<T> {
 }
 
 pub struct DeferredWatchView<T> {
-    injector: oneshot::Sender<watch::Sender<Option<T>>>,
+    injector: oneshot::Sender<ObsSender<T>>,
 }
 
 impl<T> DeferredWatchView<T> {
-    pub fn new(injector: oneshot::Sender<watch::Sender<Option<T>>>) -> Self {
+    pub fn new(injector: oneshot::Sender<ObsSender<T>>) -> Self {
         DeferredWatchView { injector }
     }
 }
 
 pub struct DeferredBroadcastView<T> {
-    injector: oneshot::Sender<BroadcastSender<T>>,
+    injector: oneshot::Sender<ObsSender<T>>,
     buffer_size: NonZeroUsize,
 }
 
 impl<T> DeferredBroadcastView<T> {
-    pub fn new(injector: oneshot::Sender<BroadcastSender<T>>, buffer_size: NonZeroUsize) -> Self {
+    pub fn new(injector: oneshot::Sender<ObsSender<T>>, buffer_size: NonZeroUsize) -> Self {
         DeferredBroadcastView {
             injector,
             buffer_size,
@@ -86,11 +86,11 @@ impl<T> DeferredBroadcastView<T> {
     }
 }
 
-impl<T> DeferredLaneView<T> for DeferredMpscView<T>
+impl<T> DeferredLaneView<Arc<T>> for DeferredMpscView<T>
 where
-    T: Any + Clone + Send + Sync,
+    T: Any + Send + Sync,
 {
-    type View = MpscTopic<T>;
+    type View = MpscTopic<Arc<T>>;
 
     fn attach(self) -> Result<Self::View, AttachError> {
         let DeferredMpscView {
@@ -98,8 +98,8 @@ where
             buffer_size,
             yield_after,
         } = self;
-        let (tx, rx) = mpsc::channel(buffer_size.get());
-        if injector.send(tx).is_err() {
+        let (tx, rx) = mpsc::channel::<Arc<T>>(buffer_size.get());
+        if injector.send(tx.into()).is_err() {
             Err(AttachError::LaneStoppedReporting)
         } else {
             let (topic, _) = MpscTopic::new(rx, buffer_size, yield_after);
@@ -108,16 +108,16 @@ where
     }
 }
 
-impl<T> DeferredLaneView<T> for DeferredWatchView<T>
+impl<T> DeferredLaneView<Arc<T>> for DeferredWatchView<T>
 where
-    T: Any + Clone + Send + Sync,
+    T: Any + Send + Sync,
 {
-    type View = WatchTopic<T>;
+    type View = WatchTopic<Arc<T>>;
 
     fn attach(self) -> Result<Self::View, AttachError> {
         let DeferredWatchView { injector } = self;
         let (tx, rx) = watch::channel(None);
-        if injector.send(tx).is_err() {
+        if injector.send(tx.into()).is_err() {
             Err(AttachError::LaneStoppedReporting)
         } else {
             let (topic, _) = WatchTopic::new(rx);
@@ -126,11 +126,11 @@ where
     }
 }
 
-impl<T> DeferredLaneView<T> for DeferredBroadcastView<T>
+impl<T> DeferredLaneView<Arc<T>> for DeferredBroadcastView<T>
 where
-    T: Any + Clone + Send + Sync,
+    T: Any + Send + Sync,
 {
-    type View = BroadcastTopic<T>;
+    type View = BroadcastTopic<Arc<T>>;
 
     fn attach(self) -> Result<Self::View, AttachError> {
         let DeferredBroadcastView {
@@ -138,7 +138,8 @@ where
             buffer_size,
         } = self;
         let (topic, tx, _) = BroadcastTopic::new(buffer_size.get());
-        if injector.send(tx).is_err() {
+        let tx = tx.try_into_inner().unwrap(); //TODO Make this better.
+        if injector.send(tx.into()).is_err() {
             Err(AttachError::LaneStoppedReporting)
         } else {
             Ok(topic)

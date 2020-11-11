@@ -12,15 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use futures::StreamExt;
 use std::sync::Arc;
 use stm::var::observer::Observer;
 use tokio::sync::{broadcast, mpsc, oneshot, watch};
-use futures::StreamExt;
 
 #[tokio::test]
 async fn channel_observer_send_mpsc() {
     let (tx, mut rx) = mpsc::channel(5);
-    let mut observer: Observer<i32> = tx.into;
+    let mut observer: Observer<i32> = tx.into();
 
     let value = Arc::new(4);
 
@@ -142,7 +142,9 @@ async fn deferred_mpsc_dropped_sender() {
 
     drop(observer);
     let received: Vec<Arc<i32>> = prim_rx.collect().await;
-    assert!(matches!(received.as_slice(), [r1, r2] if Arc::ptr_eq(r1, &v1) && Arc::ptr_eq(r2, &v2)));
+    assert!(
+        matches!(received.as_slice(), [r1, r2] if Arc::ptr_eq(r1, &v1) && Arc::ptr_eq(r2, &v2))
+    );
 }
 
 #[tokio::test]
@@ -184,5 +186,7 @@ async fn deferred_watch_dropped_sender() {
 
     drop(observer);
     let received: Vec<Arc<i32>> = prim_rx.collect().await;
-    assert!(matches!(received.as_slice(), [r1, r2] if Arc::ptr_eq(r1, &v1) && Arc::ptr_eq(r2, &v2)));
+    assert!(
+        matches!(received.as_slice(), [r1, r2] if Arc::ptr_eq(r1, &v1) && Arc::ptr_eq(r2, &v2))
+    );
 }

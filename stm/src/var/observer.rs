@@ -13,20 +13,17 @@
 // limitations under the License.
 
 use crate::var::Contents;
+use futures::future::BoxFuture;
 use futures::FutureExt;
 use futures_util::future::ready;
 use std::any::Any;
 use std::sync::Arc;
-use tokio::sync::{mpsc, oneshot, broadcast, watch};
-use futures::future::BoxFuture;
 use tokio::sync::oneshot::error::TryRecvError;
+use tokio::sync::{broadcast, mpsc, oneshot, watch};
 
 /// Type erased observer to be passed into [`TVarInner`].
 pub(super) trait RawObserver {
-    fn notify_raw(
-        &mut self,
-        value: Contents,
-    ) -> BoxFuture<()>;
+    fn notify_raw(&mut self, value: Contents) -> BoxFuture<()>;
 }
 
 pub(super) type DynObserver = Box<dyn RawObserver + Send + Sync + 'static>;
@@ -53,18 +50,15 @@ struct SingleObs<T> {
 }
 
 impl<T> SingleObs<T> {
-
     fn new(sender: ObsSender<T>) -> Self {
         SingleObs {
             sender,
             is_dead: false,
         }
     }
-
 }
 
 impl<T> SingleObs<T> {
-
     pub async fn notify(&mut self, value: Arc<T>) {
         let SingleObs { sender, is_dead } = self;
         if !*is_dead {
@@ -78,12 +72,12 @@ impl<T> SingleObs<T> {
                     if tx.send(value).is_err() {
                         *is_dead = true;
                     }
-                },
+                }
                 ObsSender::Watch(tx) => {
                     if tx.broadcast(value).is_err() {
                         *is_dead = true;
                     }
-                },
+                }
                 ObsSender::WatchOption(tx) => {
                     if tx.broadcast(Some(value)).is_err() {
                         *is_dead = true;
@@ -92,7 +86,6 @@ impl<T> SingleObs<T> {
             }
         }
     }
-
 }
 
 enum DeferredObserver<T> {
@@ -106,32 +99,40 @@ pub struct Observer<T> {
     deferred: DeferredObserver<T>,
 }
 
-impl<T> From<mpsc::Sender<Arc<T>>> for Observer<T> {
+impl<T> From<mpsc::Sender<Arc<T>>> for ObsSender<T> {
     fn from(tx: mpsc::Sender<Arc<T>>) -> Self {
-        Observer::new(ObsSender::Mpsc(tx))
+        ObsSender::Mpsc(tx)
     }
 }
 
-impl<T> From<broadcast::Sender<Arc<T>>> for Observer<T> {
+impl<T> From<broadcast::Sender<Arc<T>>> for ObsSender<T> {
     fn from(tx: broadcast::Sender<Arc<T>>) -> Self {
-        Observer::new(ObsSender::Broadcast(tx))
+        ObsSender::Broadcast(tx)
     }
 }
 
-impl<T> From<watch::Sender<Arc<T>>> for Observer<T> {
+impl<T> From<watch::Sender<Arc<T>>> for ObsSender<T> {
     fn from(tx: watch::Sender<Arc<T>>) -> Self {
-        Observer::new(ObsSender::Watch(tx))
+        ObsSender::Watch(tx)
     }
 }
 
-impl<T> From<watch::Sender<Option<Arc<T>>>> for Observer<T> {
+impl<T> From<watch::Sender<Option<Arc<T>>>> for ObsSender<T> {
     fn from(tx: watch::Sender<Option<Arc<T>>>) -> Self {
-        Observer::new(ObsSender::WatchOption(tx))
+        ObsSender::WatchOption(tx)
+    }
+}
+
+impl<T, S> From<S> for Observer<T>
+where
+    S: Into<ObsSender<T>>,
+{
+    fn from(tx: S) -> Self {
+        Observer::new(tx.into())
     }
 }
 
 impl<T> Observer<T> {
-
     pub fn new(sender: ObsSender<T>) -> Self {
         Observer {
             primary: SingleObs::new(sender),
@@ -139,7 +140,10 @@ impl<T> Observer<T> {
         }
     }
 
-    pub fn new_with_deferred(sender: ObsSender<T>, deferred: oneshot::Receiver<ObsSender<T>>) -> Self {
+    pub fn new_with_deferred(
+        sender: ObsSender<T>,
+        deferred: oneshot::Receiver<ObsSender<T>>,
+    ) -> Self {
         Observer {
             primary: SingleObs::new(sender),
             deferred: DeferredObserver::Waiting(deferred),
@@ -149,23 +153,21 @@ impl<T> Observer<T> {
     pub async fn notify(&mut self, value: Arc<T>) {
         let Observer { primary, deferred } = self;
         match deferred {
-            DeferredObserver::Waiting(rx) => {
-                match rx.try_recv() {
-                    Ok(tx) => {
-                        let mut sender = SingleObs::new(tx);
-                        sender.notify(value.clone()).await;
-                        *deferred = DeferredObserver::Initialized(sender);
-                    }
-                    Err(TryRecvError::Closed) => {
-                        *deferred = DeferredObserver::Empty;
-                    },
-                    _ => {},
+            DeferredObserver::Waiting(rx) => match rx.try_recv() {
+                Ok(tx) => {
+                    let mut sender = SingleObs::new(tx);
+                    sender.notify(value.clone()).await;
+                    *deferred = DeferredObserver::Initialized(sender);
                 }
+                Err(TryRecvError::Closed) => {
+                    *deferred = DeferredObserver::Empty;
+                }
+                _ => {}
             },
             DeferredObserver::Initialized(sender) => {
                 sender.notify(value.clone()).await;
             }
-            _ => {},
+            _ => {}
         }
         primary.notify(value).await;
     }

@@ -23,7 +23,9 @@ use crate::agent::lane::channels::{
 use crate::agent::lane::model::action::{Action, ActionLane};
 use crate::agent::Eff;
 use crate::plane::error::ResolutionError;
-use crate::routing::{RoutingAddr, ServerRouter, TaggedClientEnvelope, TaggedEnvelope, TaggedSender};
+use crate::routing::{
+    RoutingAddr, ServerRouter, TaggedClientEnvelope, TaggedEnvelope, TaggedSender,
+};
 use futures::future::{join, join3, ready, BoxFuture};
 use futures::stream::{BoxStream, FusedStream};
 use futures::{Future, FutureExt, Stream, StreamExt};
@@ -36,7 +38,6 @@ use stm::transaction::TransactionError;
 use swim_common::form::{Form, FormErr};
 use swim_common::model::Value;
 use swim_common::routing::RoutingError;
-use swim_common::sink::item::ItemSink;
 use swim_common::topic::{MpscTopic, Topic};
 use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
 use swim_common::warp::path::RelativePath;
@@ -305,6 +306,7 @@ struct TestContext(
     mpsc::Sender<Eff>,
     mpsc::Sender<TaggedEnvelope>,
     Arc<Mutex<Option<trigger::Sender>>>,
+    RoutingAddr,
 );
 
 impl TestContext {
@@ -315,37 +317,12 @@ impl TestContext {
     }
 }
 
-struct TestRouter(mpsc::Sender<TaggedEnvelope>);
-
-struct TestSender {
-    addr: RoutingAddr,
-    inner: mpsc::Sender<TaggedEnvelope>,
-}
-
-impl<'a> ItemSink<'a, Envelope> for TestSender {
-    type Error = RoutingError;
-    type SendFuture = BoxFuture<'a, Result<(), Self::Error>>;
-
-    fn send_item(&'a mut self, value: Envelope) -> Self::SendFuture {
-        let tagged = TaggedEnvelope(self.addr, value);
-        async move {
-            self.inner
-                .send(tagged)
-                .await
-                .map_err(|_| RoutingError::RouterDropped)
-        }
-        .boxed()
-    }
-}
+struct TestRouter(RoutingAddr, mpsc::Sender<TaggedEnvelope>);
 
 impl ServerRouter for TestRouter {
-
-    fn get_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<TaggedSender, RoutingError>> {
-        ready(Ok(TestSender {
-            addr,
-            inner: self.0.clone(),
-        }))
-        .boxed()
+    fn get_sender(&mut self, _addr: RoutingAddr) -> BoxFuture<Result<TaggedSender, RoutingError>> {
+        let TestRouter(router_addr, tx) = self;
+        ready(Ok(TaggedSender::new(*router_addr, tx.clone()))).boxed()
     }
 
     fn resolve(
@@ -361,7 +338,7 @@ impl AgentExecutionContext for TestContext {
     type Router = TestRouter;
 
     fn router_handle(&self) -> Self::Router {
-        TestRouter(self.1.clone())
+        TestRouter(self.3, self.1.clone())
     }
 
     fn spawner(&self) -> Sender<Eff> {
@@ -491,7 +468,12 @@ fn make_context() -> (
     let (router_tx, router_rx) = mpsc::channel(5);
     let (stop_tx, stop_rx) = trigger::trigger();
 
-    let context = TestContext(spawn_tx, router_tx, Arc::new(Mutex::new(Some(stop_tx))));
+    let context = TestContext(
+        spawn_tx,
+        router_tx,
+        Arc::new(Mutex::new(Some(stop_tx))),
+        RoutingAddr::local(1024),
+    );
     let spawn_task = spawn_rx
         .take_until(stop_rx)
         .for_each_concurrent(None, |t| t)
@@ -1165,10 +1147,21 @@ async fn handle_action_lane_update_failure() {
     ));
 }
 
-#[derive(Default, Debug)]
+#[derive(Debug)]
 struct MultiTestContextInner {
+    router_addr: RoutingAddr,
     senders: HashMap<RoutingAddr, mpsc::Sender<TaggedEnvelope>>,
     receivers: HashMap<RoutingAddr, mpsc::Receiver<TaggedEnvelope>>,
+}
+
+impl MultiTestContextInner {
+    fn new(router_addr: RoutingAddr) -> Self {
+        MultiTestContextInner {
+            router_addr,
+            senders: HashMap::new(),
+            receivers: HashMap::new(),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -1178,8 +1171,13 @@ struct MultiTestContext(
 );
 
 impl MultiTestContext {
-    fn new(spawner: mpsc::Sender<Eff>) -> Self {
-        MultiTestContext(Default::default(), spawner)
+    fn new(router_addr: RoutingAddr, spawner: mpsc::Sender<Eff>) -> Self {
+        MultiTestContext(
+            Arc::new(parking_lot::Mutex::new(MultiTestContextInner::new(
+                router_addr,
+            ))),
+            spawner,
+        )
     }
 
     fn take_receiver(&self, addr: RoutingAddr) -> Option<mpsc::Receiver<TaggedEnvelope>> {
@@ -1194,7 +1192,7 @@ impl MultiTestContext {
     }
 }
 
-#[derive(Default, Debug, Clone)]
+#[derive(Debug, Clone)]
 struct MultiTestRouter(Arc<parking_lot::Mutex<MultiTestContextInner>>);
 
 impl AgentExecutionContext for MultiTestContext {
@@ -1210,20 +1208,16 @@ impl AgentExecutionContext for MultiTestContext {
 }
 
 impl ServerRouter for MultiTestRouter {
-
     fn get_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<TaggedSender, RoutingError>> {
         async move {
             let mut lock = self.0.lock();
             if let Some(sender) = lock.senders.get(&addr) {
-                Ok(TestSender {
-                    addr,
-                    inner: sender.clone(),
-                })
+                Ok(TaggedSender::new(lock.router_addr, sender.clone()))
             } else {
                 let (tx, rx) = mpsc::channel(5);
                 lock.senders.insert(addr, tx.clone());
                 lock.receivers.insert(addr, rx);
-                Ok(TestSender { addr, inner: tx })
+                Ok(TaggedSender::new(lock.router_addr, tx))
             }
         }
         .boxed()
@@ -1241,7 +1235,7 @@ impl ServerRouter for MultiTestRouter {
 fn make_multi_context() -> (MultiTestContext, BoxFuture<'static, ()>) {
     let (spawn_tx, spawn_rx) = mpsc::channel(5);
 
-    let context = MultiTestContext::new(spawn_tx);
+    let context = MultiTestContext::new(RoutingAddr::local(1024), spawn_tx);
     let spawn_task = spawn_rx.for_each_concurrent(None, |t| t).boxed();
 
     (context, spawn_task)

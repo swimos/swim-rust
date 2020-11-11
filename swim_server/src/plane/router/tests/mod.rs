@@ -18,7 +18,6 @@ use crate::plane::PlaneRequest;
 use crate::routing::{RoutingAddr, ServerRouter, TaggedEnvelope};
 use futures::future::join;
 use swim_common::routing::RoutingError;
-use swim_common::sink::item::ItemSink;
 use swim_common::warp::envelope::Envelope;
 use tokio::sync::mpsc;
 use url::Url;
