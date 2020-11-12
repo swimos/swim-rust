@@ -15,9 +15,9 @@
 use std::io::ErrorKind;
 use std::ops::Deref;
 
-use futures::future::ErrInto as FutErrInto;
+use futures::future::BoxFuture;
 use futures::stream::{SplitSink, SplitStream};
-use futures::StreamExt;
+use futures::{FutureExt, StreamExt};
 use http::{HeaderValue, Request, Response, Uri};
 use tokio::net::TcpStream;
 use tokio_tls::TlsStream;
@@ -33,18 +33,15 @@ use crate::connections::factory::stream::{
 use http::header::SEC_WEBSOCKET_PROTOCOL;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
-use swim_common::request::request_future::SendAndAwait;
 use swim_common::ws::error::{ConnectionError, WebSocketError};
 use swim_common::ws::{maybe_resolve_scheme, Protocol, WebsocketFactory};
 use tokio_tungstenite::tungstenite::extensions::deflate::DeflateConfig;
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use tokio_tungstenite::tungstenite::Message;
-use utilities::errors::FlattenErrors;
 use utilities::future::{TransformedSink, TransformedStream};
 
 type TungSink = TransformedSink<SplitSink<WsConnection, Message>, SinkTransformer>;
 type TungStream = TransformedStream<SplitStream<WsConnection>, StreamTransformer>;
-type ConnectionFuture = SendAndAwait<ConnReq, Result<(TungSink, TungStream), ConnectionError>>;
 
 pub type MaybeTlsStream<S> = StreamSwitcher<S, TlsStream<S>>;
 pub type WsConnection = WebSocketStream<MaybeTlsStream<TcpStream>, CompressionSwitcher>;
@@ -146,9 +143,11 @@ impl TungsteniteWsFactory {
 impl WebsocketFactory for TungsteniteWsFactory {
     type WsStream = TungStream;
     type WsSink = TungSink;
-    type ConnectFut = FlattenErrors<FutErrInto<ConnectionFuture, ConnectionError>>;
 
-    fn connect(&mut self, url: Url) -> Self::ConnectFut {
+    fn connect(
+        &mut self,
+        url: Url,
+    ) -> BoxFuture<Result<(Self::WsSink, Self::WsStream), ConnectionError>> {
         let config = match self.host_configurations.entry(url.clone()) {
             Entry::Occupied(o) => o.get().clone(),
             Entry::Vacant(v) => v
@@ -159,7 +158,7 @@ impl WebsocketFactory for TungsteniteWsFactory {
                 .clone(),
         };
 
-        self.inner.connect_using(url, config)
+        self.inner.connect_using(url, config).boxed()
     }
 }
 

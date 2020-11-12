@@ -17,15 +17,15 @@ use std::fmt::{Display, Formatter};
 use std::pin::Pin;
 use std::sync::{Arc, Weak};
 
-use crate::request::request_future::{send_and_await, RequestError, SendAndAwait};
+use crate::request::request_future::{send_and_await, RequestError};
 use crate::request::Request;
 use crate::sink::item::ItemSink;
 use either::Either;
+use futures::future::Ready;
 use futures::future::{ready, BoxFuture};
-use futures::future::{ErrInto, Ready};
 use futures::stream::BoxStream;
 use futures::task::{Context, Poll};
-use futures::{future, ready, Future, FutureExt, Stream, StreamExt, TryFutureExt};
+use futures::{future, ready, Future, FutureExt, Stream, StreamExt};
 use futures_util::select_biased;
 use pin_project::pin_project;
 use std::marker::PhantomData;
@@ -33,9 +33,7 @@ use std::num::NonZeroUsize;
 use swim_runtime::task::{spawn, TaskHandle};
 use tokio::sync::broadcast::RecvError;
 use tokio::sync::{broadcast, mpsc, watch};
-use utilities::future::{
-    FlatmapStream, SwimFutureExt, SwimStreamExt, TransformMut, TransformOnce, TransformedFuture,
-};
+use utilities::future::{FlatmapStream, SwimStreamExt, TransformMut, TransformOnce};
 
 #[cfg(test)]
 mod tests;
@@ -63,10 +61,9 @@ impl From<RequestError> for TopicError {
 /// asynchronously using the `subscribe` method. Each subscription can be consumed as a stream.
 pub trait Topic<T> {
     type Receiver: Stream<Item = T> + Send + 'static;
-    type Fut: Future<Output = Result<Self::Receiver, TopicError>> + Send + 'static;
 
     /// Asynchronously add a new subscriber to the topic.
-    fn subscribe(&mut self) -> Self::Fut;
+    fn subscribe(&mut self) -> BoxFuture<Result<Self::Receiver, TopicError>>;
 
     /// Box the topic so that it can be subscribed to dynamically and will hand out boxed
     /// streams to subscribers.
@@ -303,14 +300,14 @@ impl<T: Clone + Send> Stream for WatchTopicReceiver<T> {
 
 impl<T: Clone + Send + Sync + 'static> Topic<T> for WatchTopic<T> {
     type Receiver = WatchTopicReceiver<T>;
-    type Fut = Ready<Result<Self::Receiver, TopicError>>;
 
-    fn subscribe(&mut self) -> Self::Fut {
+    fn subscribe(&mut self) -> BoxFuture<Result<Self::Receiver, TopicError>> {
         ready(Ok(WatchTopicReceiver {
             receiver: WatchStream {
                 inner: self.receiver.clone(),
             },
         }))
+        .boxed()
     }
 }
 
@@ -343,27 +340,25 @@ impl<T: Clone> Clone for BroadcastReceiver<T> {
 
 impl<T: Clone + Send + 'static> Topic<T> for BroadcastTopic<T> {
     type Receiver = BroadcastReceiver<T>;
-    type Fut = Ready<Result<Self::Receiver, TopicError>>;
 
-    fn subscribe(&mut self) -> Self::Fut {
+    fn subscribe(&mut self) -> BoxFuture<Result<Self::Receiver, TopicError>> {
         let result = Ok(BroadcastReceiver {
             sender: self.sender.clone(),
             receiver: self.sender.subscribe(),
         });
-        ready(result)
+        ready(result).boxed()
     }
 }
 
 impl<T: Clone + Send + 'static> Topic<T> for MpscTopic<T> {
     type Receiver = MpscTopicReceiver<T>;
-    type Fut = ErrInto<SendAndAwait<Request<Self::Receiver>, Self::Receiver>, TopicError>;
 
-    fn subscribe(&mut self) -> Self::Fut {
-        let MpscTopic { sub_sender, .. } = self;
-
-        let fut: SendAndAwait<Request<Self::Receiver>, Self::Receiver> = send_and_await(sub_sender);
-
-        TryFutureExt::err_into::<TopicError>(fut)
+    fn subscribe(&mut self) -> BoxFuture<Result<Self::Receiver, TopicError>> {
+        async move {
+            let MpscTopic { sub_sender, .. } = self;
+            Ok(send_and_await(sub_sender).await?)
+        }
+        .boxed()
     }
 }
 
@@ -469,29 +464,22 @@ struct BoxingTopic<Top>(Top);
 
 impl<T: Send + 'static, Top: Topic<T>> Topic<T> for BoxingTopic<Top> {
     type Receiver = BoxStream<'static, T>;
-    type Fut = BoxFuture<'static, Result<Self::Receiver, TopicError>>;
 
-    fn subscribe(&mut self) -> Self::Fut {
-        FutureExt::boxed(BoxResult {
+    fn subscribe(&mut self) -> BoxFuture<Result<Self::Receiver, TopicError>> {
+        BoxResult {
             f: self.0.subscribe(),
-        })
+        }
+        .boxed()
     }
 }
 
 /// The type of boxed topics.
-pub type BoxTopic<T> = Box<
-    dyn Topic<
-        T,
-        Receiver = BoxStream<'static, T>,
-        Fut = BoxFuture<'static, Result<BoxStream<'static, T>, TopicError>>,
-    >,
->;
+pub type BoxTopic<T> = Box<dyn Topic<T, Receiver = BoxStream<'static, T>>>;
 
 impl<T: Clone + 'static> Topic<T> for BoxTopic<T> {
     type Receiver = BoxStream<'static, T>;
-    type Fut = BoxFuture<'static, Result<BoxStream<'static, T>, TopicError>>;
 
-    fn subscribe(&mut self) -> Self::Fut {
+    fn subscribe(&mut self) -> BoxFuture<Result<BoxStream<'static, T>, TopicError>> {
         (**self).subscribe()
     }
 
@@ -545,16 +533,20 @@ where
 impl<T, Top, Trans> Topic<<<Trans as TransformMut<T>>::Out as Stream>::Item>
     for TransformedTopic<T, Top, Trans>
 where
-    Top: Topic<T>,
+    Top: Topic<T> + Send,
     Trans: TransformMut<T> + Clone + Send + 'static,
     Trans::Out: Stream + Send + 'static,
 {
     type Receiver = FlatmapStream<Top::Receiver, Trans>;
-    type Fut = TransformedFuture<Top::Fut, ApplyTopicTransform<Trans>>;
 
-    fn subscribe(&mut self) -> Self::Fut {
-        self.inner
-            .subscribe()
-            .transform(ApplyTopicTransform(self.transform.clone()))
+    fn subscribe(&mut self) -> BoxFuture<Result<Self::Receiver, TopicError>> {
+        let trans = self.transform.clone();
+        async move {
+            self.inner
+                .subscribe()
+                .await
+                .map(|rec| rec.transform_flat_map(trans))
+        }
+        .boxed()
     }
 }

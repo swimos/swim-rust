@@ -19,9 +19,8 @@ use crate::downlink::topic::{DownlinkReceiver, DownlinkTopic, MakeReceiver};
 use crate::downlink::{
     raw, Command, Downlink, DownlinkError, DownlinkInternals, Event, Message, StateMachine,
 };
-use futures::future::Ready;
-use futures::Stream;
-use futures_util::stream::StreamExt;
+use futures::future::BoxFuture;
+use futures::{FutureExt, Stream, StreamExt};
 use std::fmt::{Debug, Formatter};
 use std::num::NonZeroUsize;
 use std::sync::atomic::AtomicBool;
@@ -33,7 +32,7 @@ use swim_runtime::task::spawn;
 use tokio::sync::mpsc;
 use tracing::trace_span;
 use tracing_futures::Instrument;
-use utilities::future::{SwimFutureExt, TransformedFuture};
+use utilities::future::SwimFutureExt;
 use utilities::sync::promise;
 
 /// A downlink where subscribers consume via a shared queue that will start dropping (the oldest)
@@ -163,13 +162,12 @@ where
     Upd: Clone + Send + Sync + 'static,
 {
     type Receiver = BufferedReceiver<Upd>;
-    type Fut =
-        TransformedFuture<Ready<Result<BufferedTopicReceiver<Upd>, TopicError>>, MakeReceiver>;
 
-    fn subscribe(&mut self) -> Self::Fut {
+    fn subscribe(&mut self) -> BoxFuture<Result<Self::Receiver, TopicError>> {
         self.topic
             .subscribe()
             .transform(MakeReceiver::new(self.internal.clone()))
+            .boxed()
     }
 }
 

@@ -23,11 +23,12 @@ use {
 
 use std::str::FromStr;
 
-use futures::{Future, Sink, Stream};
+use futures::{Sink, Stream};
 use http::uri::Scheme;
 use http::{Request, Uri};
 
 use crate::ws::error::{ConnectionError, WebSocketError};
+use futures::future::BoxFuture;
 use std::fmt;
 use std::fmt::{Debug, Formatter};
 
@@ -70,12 +71,11 @@ pub trait WebsocketFactory: Send + Sync {
     /// Type of the sink for outgoing messages.
     type WsSink: Sink<WsMessage> + Unpin + Send + 'static;
 
-    type ConnectFut: Future<Output = Result<(Self::WsSink, Self::WsStream), ConnectionError>>
-        + Send
-        + 'static;
-
     /// Open a connection to the provided remote URL.
-    fn connect(&mut self, url: url::Url) -> Self::ConnectFut;
+    fn connect(
+        &mut self,
+        url: url::Url,
+    ) -> BoxFuture<Result<(Self::WsSink, Self::WsStream), ConnectionError>>;
 }
 
 #[derive(Clone)]

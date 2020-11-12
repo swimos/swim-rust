@@ -15,7 +15,6 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
-use futures::future::ErrInto as FutErrInto;
 use futures::task::{Context, Poll};
 use futures::Sink;
 use futures_util::stream::Stream;
@@ -23,15 +22,11 @@ use std::pin::Pin;
 use tokio::sync::mpsc;
 use url::Url;
 
-use swim_common::request::request_future::SendAndAwait;
-
-use crate::connections::factory::async_factory;
 use crate::connections::factory::async_factory::AsyncFactory;
 
 use super::*;
 use crate::connections::factory::tungstenite::{CompressionConfig, HostConfig};
 use swim_common::ws::Protocol;
-use utilities::errors::FlattenErrors;
 
 #[tokio::test]
 async fn test_connection_pool_send_single_message_single_connection() {
@@ -439,7 +434,7 @@ async fn test_connection_pool_close() {
     );
 
     // When
-    assert!(connection_pool.close().unwrap().await.is_ok());
+    assert!(connection_pool.close().await.is_ok());
 
     // Then
     assert!(writer_rx.recv().await.is_none());
@@ -694,23 +689,23 @@ impl TestConnectionFactory {
     }
 }
 
-type ConnReq = async_factory::ConnReq<TestWriteStream, TestReadStream>;
-type ConnectionFuture =
-    SendAndAwait<ConnReq, Result<(TestWriteStream, TestReadStream), ConnectionError>>;
-
 impl WebsocketFactory for TestConnectionFactory {
     type WsStream = TestReadStream;
     type WsSink = TestWriteStream;
-    type ConnectFut = FlattenErrors<FutErrInto<ConnectionFuture, ConnectionError>>;
 
-    fn connect(&mut self, url: Url) -> Self::ConnectFut {
-        self.inner.connect_using(
-            url,
-            HostConfig {
-                protocol: Protocol::PlainText,
-                compression_config: CompressionConfig::Uncompressed,
-            },
-        )
+    fn connect(
+        &mut self,
+        url: Url,
+    ) -> BoxFuture<Result<(Self::WsSink, Self::WsStream), ConnectionError>> {
+        self.inner
+            .connect_using(
+                url,
+                HostConfig {
+                    protocol: Protocol::PlainText,
+                    compression_config: CompressionConfig::Uncompressed,
+                },
+            )
+            .boxed()
     }
 }
 

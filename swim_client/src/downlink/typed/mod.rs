@@ -28,6 +28,8 @@ use crate::downlink::typed::topic::{
     ApplyForm, ApplyFormsMap, TryTransformTopic, WrapUntilFailure,
 };
 use crate::downlink::{Downlink, DownlinkError, Event};
+use futures::future::BoxFuture;
+use futures::FutureExt;
 use std::cmp::Ordering;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
@@ -36,8 +38,8 @@ use swim_common::form::{Form, ValidatedForm};
 use swim_common::model::schema::StandardSchema;
 use swim_common::model::Value;
 use swim_common::sink::item::ItemSink;
-use swim_common::topic::Topic;
-use utilities::future::{SwimFutureExt, TransformedFuture, UntilFailure};
+use swim_common::topic::{Topic, TopicError};
+use utilities::future::{SwimFutureExt, UntilFailure};
 use utilities::sync::promise;
 
 /// A wrapper around a value downlink, applying a [`Form`] to the values.
@@ -296,12 +298,12 @@ where
     T: Form + Send + 'static,
 {
     type Receiver = UntilFailure<Inner::Receiver, ApplyForm<T>>;
-    type Fut = TransformedFuture<Inner::Fut, WrapUntilFailure<ApplyForm<T>>>;
 
-    fn subscribe(&mut self) -> Self::Fut {
+    fn subscribe(&mut self) -> BoxFuture<Result<Self::Receiver, TopicError>> {
         self.inner
             .subscribe()
             .transform(WrapUntilFailure::new(ApplyForm::new()))
+            .boxed()
     }
 }
 
@@ -312,12 +314,12 @@ where
     V: Form + Send + 'static,
 {
     type Receiver = UntilFailure<Inner::Receiver, ApplyFormsMap<K, V>>;
-    type Fut = TransformedFuture<Inner::Fut, WrapUntilFailure<ApplyFormsMap<K, V>>>;
 
-    fn subscribe(&mut self) -> Self::Fut {
+    fn subscribe(&mut self) -> BoxFuture<Result<Self::Receiver, TopicError>> {
         self.inner
             .subscribe()
             .transform(WrapUntilFailure::new(ApplyFormsMap::new()))
+            .boxed()
     }
 }
 
