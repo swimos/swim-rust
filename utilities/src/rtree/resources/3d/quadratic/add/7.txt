@@ -1,0 +1,153 @@
+RTree {
+    root: Node {
+        entries: [
+            Branch {
+                mbb: Rect {
+                    low: Point3D {
+                        x: 7.0,
+                        y: 0.0,
+                        z: 0.0,
+                    },
+                    high: Point3D {
+                        x: 15.0,
+                        y: 10.0,
+                        z: 15.0,
+                    },
+                },
+                child: Node {
+                    entries: [
+                        Leaf {
+                            item: Rect {
+                                low: Point3D {
+                                    x: 12.0,
+                                    y: 0.0,
+                                    z: 0.0,
+                                },
+                                high: Point3D {
+                                    x: 15.0,
+                                    y: 10.0,
+                                    z: 15.0,
+                                },
+                            },
+                        },
+                        Leaf {
+                            item: Rect {
+                                low: Point3D {
+                                    x: 7.0,
+                                    y: 0.0,
+                                    z: 7.0,
+                                },
+                                high: Point3D {
+                                    x: 14.0,
+                                    y: 10.0,
+                                    z: 14.0,
+                                },
+                            },
+                        },
+                        Leaf {
+                            item: Rect {
+                                low: Point3D {
+                                    x: 10.0,
+                                    y: 0.0,
+                                    z: 11.0,
+                                },
+                                high: Point3D {
+                                    x: 11.0,
+                                    y: 10.0,
+                                    z: 12.0,
+                                },
+                            },
+                        },
+                        Leaf {
+                            item: Rect {
+                                low: Point3D {
+                                    x: 13.0,
+                                    y: 0.0,
+                                    z: 0.0,
+                                },
+                                high: Point3D {
+                                    x: 14.0,
+                                    y: 10.0,
+                                    z: 1.0,
+                                },
+                            },
+                        },
+                    ],
+                    level: 0,
+                    min_children: 2,
+                    max_children: 4,
+                    split_strat: Quadratic,
+                },
+            },
+            Branch {
+                mbb: Rect {
+                    low: Point3D {
+                        x: 0.0,
+                        y: 0.0,
+                        z: 0.0,
+                    },
+                    high: Point3D {
+                        x: 10.0,
+                        y: 10.0,
+                        z: 11.0,
+                    },
+                },
+                child: Node {
+                    entries: [
+                        Leaf {
+                            item: Rect {
+                                low: Point3D {
+                                    x: 4.0,
+                                    y: 0.0,
+                                    z: 4.0,
+                                },
+                                high: Point3D {
+                                    x: 5.0,
+                                    y: 10.0,
+                                    z: 6.0,
+                                },
+                            },
+                        },
+                        Leaf {
+                            item: Rect {
+                                low: Point3D {
+                                    x: 0.0,
+                                    y: 0.0,
+                                    z: 0.0,
+                                },
+                                high: Point3D {
+                                    x: 10.0,
+                                    y: 10.0,
+                                    z: 10.0,
+                                },
+                            },
+                        },
+                        Leaf {
+                            item: Rect {
+                                low: Point3D {
+                                    x: 4.0,
+                                    y: 0.0,
+                                    z: 9.0,
+                                },
+                                high: Point3D {
+                                    x: 5.0,
+                                    y: 10.0,
+                                    z: 11.0,
+                                },
+                            },
+                        },
+                    ],
+                    level: 0,
+                    min_children: 2,
+                    max_children: 4,
+                    split_strat: Quadratic,
+                },
+            },
+        ],
+        level: 1,
+        min_children: 2,
+        max_children: 4,
+        split_strat: Quadratic,
+    },
+    len: 7,
+}
