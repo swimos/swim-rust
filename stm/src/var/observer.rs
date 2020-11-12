@@ -74,12 +74,12 @@ impl<T> SingleObs<T> {
                     }
                 }
                 ObsSender::Watch(tx) => {
-                    if tx.broadcast(value).is_err() {
+                    if tx.send(value).is_err() {
                         *is_dead = true;
                     }
                 }
                 ObsSender::WatchOption(tx) => {
-                    if tx.broadcast(Some(value)).is_err() {
+                    if tx.send(Some(value)).is_err() {
                         *is_dead = true;
                     }
                 }

@@ -72,7 +72,7 @@ where
 
 pub type MpscErr<T> = mpsc::error::SendError<T>;
 pub type WatchErr<T> = watch::error::SendError<T>;
-pub type BroadcastErr<T> = broadcast::SendError<T>;
+pub type BroadcastErr<T> = broadcast::error::SendError<T>;
 
 pub mod map_err {
     use crate::sink::item::ItemSink;
@@ -208,7 +208,7 @@ fn watch_send_op<'a, T: Send + 'static>(
 fn broadcast_send_op<'a, T: Send + 'static>(
     tx: &'a mut broadcast::Sender<T>,
     t: T,
-) -> impl Future<Output = Result<(), broadcast::SendError<T>>> + Send + 'a {
+) -> impl Future<Output = Result<(), broadcast::error::SendError<T>>> + Send + 'a {
     ready(tx.send(t).map(|_| ()))
 }
 
@@ -226,6 +226,6 @@ pub fn for_watch_sender<T: Send + 'static>(
 
 pub fn for_broadcast_sender<T: Send + 'static>(
     tx: broadcast::Sender<T>,
-) -> impl ItemSender<T, broadcast::SendError<T>> {
+) -> impl ItemSender<T, broadcast::error::SendError<T>> {
     FnMutSender::new(tx, broadcast_send_op)
 }

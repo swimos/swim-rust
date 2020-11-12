@@ -31,7 +31,7 @@ use pin_project::pin_project;
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
 use swim_runtime::task::{spawn, TaskHandle};
-use tokio::sync::broadcast::RecvError;
+use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::{broadcast, mpsc, watch};
 use utilities::future::{
     FlatmapStream, SwimFutureExt, SwimStreamExt, TransformMut, TransformOnce, TransformedFuture,
@@ -98,9 +98,10 @@ pub struct WatchStream<T> {
 
 impl<T: Clone> WatchStream<T> {
     pub async fn recv(&mut self) -> Option<T> {
-        match self.inner.recv().await {
-            Some(Some(t)) => Some(t),
-            _ => None,
+        if self.inner.changed().await.is_err() {
+            None
+        } else {
+            (*self.inner.borrow()).clone()
         }
     }
 }
@@ -151,7 +152,7 @@ pub struct BroadcastSender<T> {
 }
 
 impl<T> BroadcastSender<T> {
-    pub fn send(&self, value: T) -> Result<(), broadcast::SendError<T>> {
+    pub fn send(&self, value: T) -> Result<(), broadcast::error::SendError<T>> {
         match self.sender.upgrade() {
             Some(inner) => {
                 //A failure here just means that there are no subscribers so we can safely
@@ -159,7 +160,7 @@ impl<T> BroadcastSender<T> {
                 let _ = broadcast::Sender::send(&*inner, value);
                 Ok(())
             }
-            _ => Err(broadcast::SendError(value)), //The topic and all subscribers have been dropped.
+            _ => Err(broadcast::error::SendError(value)), //The topic and all subscribers have been dropped.
         }
     }
 
@@ -169,7 +170,7 @@ impl<T> BroadcastSender<T> {
 }
 
 impl<'a, T: Send + 'a> ItemSink<'a, T> for BroadcastSender<T> {
-    type Error = broadcast::SendError<T>;
+    type Error = broadcast::error::SendError<T>;
     type SendFuture = Ready<Result<(), Self::Error>>;
 
     fn send_item(&'a mut self, value: T) -> Self::SendFuture {

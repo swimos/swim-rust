@@ -9,14 +9,14 @@ futures = "0.3.4"
 futures-util = "0.3.4"
 pin-utils = "0.1.0"
 pin-project = "0.4.8"
-tokio = { version = "0.2.21", features = ["sync", "rt-core", "stream"] }
+tokio = { version = "0.3.3", features = ["sync", "rt", "stream"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-tokio = { version = "0.2.21", features = ["time"] }
+tokio = { version = "0.3.3", features = ["time"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-timer = "0.2.4"
 wasm-bindgen-futures = "0.4.14"
 
 [dev-dependencies]
-tokio = { version = "0.2.21", features = [ "rt-threaded", "macros"] }
+tokio = { version = "0.3.3", features = [ "rt-multi-thread", "macros"] }

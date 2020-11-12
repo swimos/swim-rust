@@ -24,7 +24,7 @@ pub mod delay {
     pub struct Delay {
         #[cfg(not(target_arch = "wasm32"))]
         #[pin]
-        inner: tokio::time::Delay,
+        inner: tokio::time::Sleep,
         #[cfg(target_arch = "wasm32")]
         #[pin]
         inner: wasm_timer::Delay,
@@ -55,7 +55,7 @@ pub mod delay {
         #[cfg(not(target_arch = "wasm32"))]
         {
             Delay {
-                inner: tokio::time::delay_for(duration),
+                inner: tokio::time::sleep(duration),
             }
         }
 

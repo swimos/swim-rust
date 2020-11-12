@@ -25,7 +25,7 @@ fn yield_after() -> NonZeroUsize {
     NonZeroUsize::new(256).unwrap()
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn single_pass_through() {
     let (tx, mut rx) = mpsc::channel::<i32>(5);
 
@@ -41,7 +41,7 @@ async fn single_pass_through() {
     assert_eq!(value, 6);
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn send_multiple() {
     let (tx, mut rx) = mpsc::channel::<i32>(5);
 
@@ -81,7 +81,7 @@ async fn send_multiple() {
     assert_eq!(prev, Some(9));
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn send_multiple_chunks() {
     let (tx, mut rx) = mpsc::channel::<i32>(5);
 
