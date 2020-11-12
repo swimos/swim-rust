@@ -37,7 +37,7 @@ pub trait RetrySendError: Clone {
 }
 
 /// A retryable request using something such as an [`tokio::sync::mpsc::Sender`] to execute the
-/// requests. Between failed retries, both the [`Sender`] and payload must be returned to successfuly
+/// requests. Between failed retries, both the [`Sender`] and payload must be returned to successfully
 /// execute another request. The payload may be extracted using the [`Unwrapper`] function. Errors
 /// such as Tokio's [`SendError`] contain the payload in the newtype.
 #[pin_project]
