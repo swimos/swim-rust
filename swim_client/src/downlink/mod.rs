@@ -157,8 +157,8 @@ impl From<item::SendError> for DownlinkError {
     }
 }
 
-impl<T> From<broadcast::SendError<T>> for DownlinkError {
-    fn from(_: broadcast::SendError<T>) -> Self {
+impl<T> From<broadcast::error::SendError<T>> for DownlinkError {
+    fn from(_: broadcast::error::SendError<T>) -> Self {
         DownlinkError::DroppedChannel
     }
 }
@@ -490,8 +490,8 @@ impl<T> From<watch::error::SendError<T>> for DroppedError {
     }
 }
 
-impl<T> From<broadcast::SendError<T>> for DroppedError {
-    fn from(_: broadcast::SendError<T>) -> Self {
+impl<T> From<broadcast::error::SendError<T>> for DroppedError {
+    fn from(_: broadcast::error::SendError<T>) -> Self {
         DroppedError
     }
 }

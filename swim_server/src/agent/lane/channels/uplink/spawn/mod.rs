@@ -115,7 +115,7 @@ where
         mut self,
         mut router: Router,
         mut spawn_tx: mpsc::Sender<Eff>,
-        mut error_collector: mpsc::Sender<UplinkErrorReport>,
+        error_collector: mpsc::Sender<UplinkErrorReport>,
     ) where
         Router: ServerRouter,
     {
@@ -183,7 +183,7 @@ where
     async fn make_uplink<Router>(
         &mut self,
         addr: RoutingAddr,
-        mut err_tx: mpsc::Sender<UplinkErrorReport>,
+        err_tx: mpsc::Sender<UplinkErrorReport>,
         spawn_tx: &mut mpsc::Sender<Eff>,
         router: &mut Router,
     ) -> Option<UplinkHandle>

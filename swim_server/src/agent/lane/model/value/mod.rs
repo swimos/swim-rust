@@ -17,7 +17,7 @@ use crate::agent::lane::model::{
     DeferredBroadcastView, DeferredLaneView, DeferredMpscView, DeferredWatchView,
 };
 use crate::agent::lane::strategy::{Buffered, Dropping, Queue};
-use crate::agent::lane::{BroadcastStream, LaneModel};
+use crate::agent::lane::LaneModel;
 use futures::Stream;
 use std::any::Any;
 use std::sync::Arc;
@@ -25,6 +25,8 @@ use stm::stm::Stm;
 use stm::var::observer::Observer;
 use stm::var::TVar;
 use tokio::sync::{broadcast, mpsc, oneshot, watch};
+use utilities::sync::{watch_rx_to_stream, broadcast_rx_to_stream};
+use utilities::future::{SyncBoxStream, sync_boxed};
 
 #[cfg(test)]
 mod tests;
@@ -127,7 +129,7 @@ pub trait ValueLaneWatch<T> {
     /// The type of the stream of values produced by the lane.
     type View: Stream<Item = Arc<T>> + Send + Sync + 'static;
 
-    type DeferredView: DeferredLaneView<Arc<T>> + Send + Sync + 'static;
+    type DeferredView: DeferredLaneView<Arc<T>> + Send + 'static;
 
     /// Create a linked observer and view stream.
     fn make_watch(&self, init: &Arc<T>) -> (Observer<T>, Self::View);
@@ -170,12 +172,12 @@ impl<T> ValueLaneWatch<T> for Dropping
 where
     T: Any + Default + Send + Sync,
 {
-    type View = watch::Receiver<Arc<T>>;
+    type View = SyncBoxStream<Arc<T>>;
     type DeferredView = DeferredWatchView<T>;
 
     fn make_watch(&self, init: &Arc<T>) -> (Observer<T>, Self::View) {
         let (tx, rx) = watch::channel(init.clone());
-        (tx.into(), rx)
+        (tx.into(), sync_boxed(watch_rx_to_stream(rx)))
     }
 
     fn make_watch_with_deferred(
@@ -187,7 +189,7 @@ where
         let (tx_init, rx_init) = oneshot::channel();
         let joined = Observer::new_with_deferred(tx.into(), rx_init);
         let deferred_view = DeferredWatchView::new(tx_init);
-        (joined, rx, deferred_view)
+        (joined, sync_boxed(watch_rx_to_stream(rx)), deferred_view)
     }
 }
 
@@ -195,13 +197,13 @@ impl<T> ValueLaneWatch<T> for Buffered
 where
     T: Any + Default + Send + Sync,
 {
-    type View = BroadcastStream<Arc<T>>;
+    type View = SyncBoxStream<Arc<T>>;
     type DeferredView = DeferredBroadcastView<T>;
 
     fn make_watch(&self, _init: &Arc<T>) -> (Observer<T>, Self::View) {
         let Buffered(n) = self;
         let (tx, rx) = broadcast::channel(n.get());
-        (tx.into(), BroadcastStream::new(rx))
+        (tx.into(), sync_boxed(broadcast_rx_to_stream(rx)))
     }
 
     fn make_watch_with_deferred(
@@ -214,6 +216,6 @@ where
         let (tx_init, rx_init) = oneshot::channel();
         let joined = Observer::new_with_deferred(tx.into(), rx_init);
         let deferred_view = DeferredBroadcastView::new(tx_init, *n);
-        (joined, BroadcastStream::new(rx), deferred_view)
+        (joined, sync_boxed(broadcast_rx_to_stream(rx)), deferred_view)
     }
 }

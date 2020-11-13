@@ -16,7 +16,6 @@ use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::task::{Context, Poll};
 
 use futures::future::BoxFuture;
 use futures::select;
@@ -25,7 +24,7 @@ use futures::{FutureExt, Sink, Stream, StreamExt};
 use futures_util::future::TryFutureExt;
 use futures_util::TryStreamExt;
 use tokio::sync::mpsc;
-use tokio::sync::mpsc::error::{ClosedError, SendError, TrySendError};
+use tokio::sync::mpsc::error::{SendError, TrySendError};
 use tokio::sync::oneshot;
 #[allow(unused_imports)]
 #[cfg(feature = "websocket")]
@@ -154,7 +153,7 @@ impl ConnectionPool for SwimConnPool {
 
     /// Stops the pool from accepting new connection requests and closes down all existing
     /// connections.
-    fn close(mut self) -> BoxFuture<'static, Result<Result<(), ConnectionError>, ConnectionError>> {
+    fn close(self) -> BoxFuture<'static, Result<Result<(), ConnectionError>, ConnectionError>> {
         let handle = self
             .connection_requests_handle
             .lock()
@@ -364,7 +363,7 @@ where
         let ReceiveTask {
             stopped,
             mut read_stream,
-            mut tx,
+            tx,
         } = self;
 
         loop {
@@ -488,10 +487,6 @@ impl ConnectionSender {
     /// `SendError` if it failed.
     pub async fn send_message(&mut self, message: WsMessage) -> Result<(), SendError<WsMessage>> {
         self.tx.send(message).await
-    }
-
-    pub fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), ClosedError>> {
-        self.tx.poll_ready(cx)
     }
 
     pub fn try_send(&mut self, message: WsMessage) -> Result<(), TrySendError<WsMessage>> {

@@ -111,7 +111,7 @@ pub(crate) fn new_request(
 }
 
 async fn acquire_sender(
-    mut sender: mpsc::Sender<ConnectionRequest>,
+    sender: mpsc::Sender<ConnectionRequest>,
     is_retry: bool,
 ) -> SendResult<mpsc::Sender<ConnectionRequest>, ConnectionSender, MpscRetryErr> {
     let (connection_tx, connection_rx) = oneshot::channel();

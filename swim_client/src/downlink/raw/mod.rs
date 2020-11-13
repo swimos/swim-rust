@@ -69,7 +69,7 @@ impl<T> Sender<mpsc::Sender<T>> {
 
 impl<T> Sender<watch::Sender<T>> {
     pub fn send(&mut self, value: T) -> Result<(), watch::error::SendError<T>> {
-        self.set_sink.broadcast(value)
+        self.set_sink.send(value)
     }
 }
 

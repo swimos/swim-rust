@@ -20,7 +20,7 @@ use futures::stream::{SplitSink, SplitStream};
 use futures::{FutureExt, StreamExt};
 use http::{HeaderValue, Request, Response, Uri};
 use tokio::net::TcpStream;
-use tokio_tls::TlsStream;
+use tokio_native_tls::TlsStream;
 use tokio_tungstenite::stream::Stream as StreamSwitcher;
 use tokio_tungstenite::*;
 use tokio_tungstenite::{client_async_with_config, WebSocketStream};

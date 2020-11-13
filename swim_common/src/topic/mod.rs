@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use std::error::Error;
-use std::fmt::{Display, Formatter};
+use std::fmt::{Display, Formatter, Debug};
 use std::pin::Pin;
 use std::sync::{Arc, Weak};
 
@@ -25,15 +25,15 @@ use futures::future::Ready;
 use futures::future::{ready, BoxFuture};
 use futures::stream::BoxStream;
 use futures::task::{Context, Poll};
-use futures::{future, ready, Future, FutureExt, Stream, StreamExt};
+use futures::{future, Future, FutureExt, Stream, StreamExt};
 use futures_util::select_biased;
 use pin_project::pin_project;
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
 use swim_runtime::task::{spawn, TaskHandle};
-use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::{broadcast, mpsc, watch};
 use utilities::future::{FlatmapStream, SwimStreamExt, TransformMut, TransformOnce};
+use utilities::sync::{watch_option_rx_to_stream, broadcast_rx_to_stream};
 
 #[cfg(test)]
 mod tests;
@@ -88,33 +88,6 @@ pub trait Topic<T> {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct WatchStream<T> {
-    inner: watch::Receiver<Option<T>>,
-}
-
-impl<T: Clone> WatchStream<T> {
-    pub async fn recv(&mut self) -> Option<T> {
-        if self.inner.changed().await.is_err() {
-            None
-        } else {
-            (*self.inner.borrow()).clone()
-        }
-    }
-}
-
-impl<T: Clone> Stream for WatchStream<T> {
-    type Item = T;
-
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        match self.get_mut().inner.poll_next_unpin(cx) {
-            Poll::Ready(None) => Poll::Ready(None),
-            Poll::Ready(Some(Some(t))) => Poll::Ready(Some(t)),
-            _ => Poll::Pending,
-        }
-    }
-}
-
 /// A topic implementation backed by a Tokio watch channel. Subscribers will only see the latest
 /// output record since the last time the polled and so may (and likely will) miss outputs.
 #[derive(Debug)]
@@ -128,11 +101,6 @@ impl<T> Clone for WatchTopic<T> {
             receiver: self.receiver.clone(),
         }
     }
-}
-
-#[derive(Clone, Debug)]
-pub struct WatchTopicReceiver<T> {
-    receiver: WatchStream<T>,
 }
 
 /// A topic implementation backed by a Tokio broadcast channel. The topic has an intermediate
@@ -183,7 +151,10 @@ impl<T> Clone for BroadcastTopic<T> {
     }
 }
 
-impl<T: Clone> BroadcastTopic<T> {
+impl<T> BroadcastTopic<T>
+where
+    T: Clone + Send + 'static,
+{
     pub fn new(
         buffer_size: usize,
     ) -> (BroadcastTopic<T>, BroadcastSender<T>, BroadcastReceiver<T>) {
@@ -192,21 +163,34 @@ impl<T: Clone> BroadcastTopic<T> {
         let topic = BroadcastTopic {
             sender: inner.clone(),
         };
-        let rec = BroadcastReceiver {
-            sender: inner.clone(),
-            receiver: rx,
-        };
+        let rec = broadcast_rx_to_stream(rx).boxed();
         let sender = BroadcastSender {
             sender: Arc::downgrade(&inner),
         };
-        (topic, sender, rec)
+        (topic, sender, rec.into())
     }
 }
 
-#[derive(Debug)]
-pub struct BroadcastReceiver<T> {
-    sender: Arc<broadcast::Sender<T>>,
-    receiver: broadcast::Receiver<T>,
+pub struct BroadcastReceiver<T>(BoxStream<'static, T>);
+
+impl<T> From<BoxStream<'static, T>> for BroadcastReceiver<T> {
+    fn from(inner: BoxStream<'static, T>) -> Self {
+        BroadcastReceiver(inner)
+    }
+}
+
+impl<T> Stream for BroadcastReceiver<T> {
+    type Item = T;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        self.0.poll_next_unpin(cx)
+    }
+}
+
+impl<T> Debug for BroadcastReceiver<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("BroadcastReceiver").finish()
+    }
 }
 
 type SubRequest<T> = Request<MpscTopicReceiver<T>>;
@@ -280,74 +264,58 @@ impl<T: Clone + Send + Sync + 'static> MpscTopic<T> {
     }
 }
 
-impl<T: Clone + Send> WatchTopic<T> {
+pub struct WatchTopicReceiver<T>(BoxStream<'static, T>);
+
+impl<T> From<BoxStream<'static, T>> for WatchTopicReceiver<T> {
+    fn from(inner: BoxStream<'static, T>) -> Self {
+        WatchTopicReceiver(inner)
+    }
+}
+
+impl<T> Stream for WatchTopicReceiver<T> {
+    type Item = T;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        self.0.poll_next_unpin(cx)
+    }
+}
+
+impl<T> Debug for WatchTopicReceiver<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("WatchTopicReceiver").finish()
+    }
+}
+
+impl<T> WatchTopic<T>
+where
+    T: Send + Sync + Clone + 'static,
+{
     pub fn new(receiver: watch::Receiver<Option<T>>) -> (Self, WatchTopicReceiver<T>) {
         let duplicate = receiver.clone();
         let topic = WatchTopic { receiver };
-        let rec = WatchTopicReceiver {
-            receiver: WatchStream { inner: duplicate },
-        };
-        (topic, rec)
+        let rec = watch_option_rx_to_stream(duplicate).boxed();
+        (topic, rec.into())
     }
 }
 
-impl<T: Clone + Send> Stream for WatchTopicReceiver<T> {
-    type Item = T;
 
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        self.get_mut().receiver.poll_next_unpin(cx)
-    }
-}
 
 impl<T: Clone + Send + Sync + 'static> Topic<T> for WatchTopic<T> {
     type Receiver = WatchTopicReceiver<T>;
 
     fn subscribe(&mut self) -> BoxFuture<Result<Self::Receiver, TopicError>> {
-        ready(Ok(WatchTopicReceiver {
-            receiver: WatchStream {
-                inner: self.receiver.clone(),
-            },
-        }))
+        ready(Ok(watch_option_rx_to_stream(self.receiver.clone()).boxed().into()))
         .boxed()
     }
 }
 
-impl<T: Clone> Stream for BroadcastReceiver<T> {
-    type Item = T;
-
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let mut pinned_rec = Pin::new(&mut self.get_mut().receiver);
-        loop {
-            match ready!(pinned_rec.as_mut().poll_next(cx)) {
-                Some(Ok(t)) => return Poll::Ready(Some(t)),
-                Some(Err(RecvError::Lagged(_))) => {
-                    continue;
-                }
-                _ => return Poll::Ready(None),
-            }
-        }
-    }
-}
-
-impl<T: Clone> Clone for BroadcastReceiver<T> {
-    fn clone(&self) -> Self {
-        let BroadcastReceiver { sender, .. } = self;
-        BroadcastReceiver {
-            sender: sender.clone(),
-            receiver: sender.subscribe(),
-        }
-    }
-}
-
-impl<T: Clone + Send + 'static> Topic<T> for BroadcastTopic<T> {
+impl<T: Clone + Send + Sync + 'static> Topic<T> for BroadcastTopic<T> {
     type Receiver = BroadcastReceiver<T>;
 
     fn subscribe(&mut self) -> BoxFuture<Result<Self::Receiver, TopicError>> {
-        let result = Ok(BroadcastReceiver {
-            sender: self.sender.clone(),
-            receiver: self.sender.subscribe(),
-        });
-        ready(result).boxed()
+        let rx = self.sender.subscribe();
+        ready(Ok(broadcast_rx_to_stream(rx).boxed().into()))
+            .boxed()
     }
 }
 

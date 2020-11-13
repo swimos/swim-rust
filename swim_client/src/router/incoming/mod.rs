@@ -29,6 +29,8 @@ use swim_common::ws::WsMessage;
 use tokio::sync::mpsc;
 use tracing::level_filters::STATIC_MAX_LEVEL;
 use tracing::{debug, error, span, trace, warn, Level};
+use utilities::sync::watch_rx_to_stream;
+use pin_utils::pin_mut;
 
 //-------------------------------Connection Pool to Downlink------------------------------------
 
@@ -69,7 +71,9 @@ impl IncomingHostTask {
         let mut subscribers: HashMap<RelativePath, Vec<mpsc::Sender<RouterEvent>>> = HashMap::new();
         let mut connection: Option<mpsc::Receiver<WsMessage>> = None;
 
-        let mut rx = combine_incoming_streams(task_rx, close_rx);
+        let rx = combine_incoming_streams(task_rx, close_rx);
+
+        pin_mut!(rx);
 
         loop {
             let task = if let Some(message_rx) = connection.as_mut() {
@@ -287,7 +291,7 @@ fn combine_incoming_streams(
     task_rx: mpsc::Receiver<IncomingRequest>,
     close_rx: CloseReceiver,
 ) -> impl stream::Stream<Item = IncomingRequest> + Send + 'static {
-    let close_requests = close_rx.map(IncomingRequest::Close);
+    let close_requests = watch_rx_to_stream(close_rx).map(IncomingRequest::Close);
     stream::select(task_rx, close_requests)
 }
 

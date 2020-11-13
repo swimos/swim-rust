@@ -73,8 +73,8 @@ impl<T: Clone> Stream for BroadcastStream<T> {
         let mut projected = self.project();
         loop {
             match ready!(projected.0.as_mut().poll_next(cx)) {
-                Some(Err(broadcast::RecvError::Closed)) => break Poll::Ready(None),
-                Some(Err(broadcast::RecvError::Lagged(_))) => {}
+                Some(Err(broadcast::error::RecvError::Closed)) => break Poll::Ready(None),
+                Some(Err(broadcast::error::RecvError::Lagged(_))) => {}
                 Some(Ok(t)) => break Poll::Ready(Some(t)),
                 _ => break Poll::Ready(None),
             }

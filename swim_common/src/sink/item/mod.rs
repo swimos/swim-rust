@@ -122,7 +122,7 @@ pub struct WatchSink<T>(watch::Sender<Option<T>>);
 
 impl<T> WatchSink<T> {
     pub fn broadcast(&self, value: T) -> Result<(), SendError> {
-        match self.0.broadcast(Some(value)) {
+        match self.0.send(Some(value)) {
             Ok(_) => Ok(()),
             Err(_) => Err(SendError {}),
         }

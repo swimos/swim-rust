@@ -267,7 +267,7 @@ where
             if let Some(event) = maybe_event {
                 match event {
                     Either::Left(BridgeMessage::Register(receiver)) => {
-                        key_streams.push(receiver);
+                        key_streams.push(Box::pin(receiver.into_stream()));
                     }
                     Either::Left(BridgeMessage::Special(action, cb)) => {
                         if !producer_handle_special(&mut sink, action, cb, &mut key_streams).await {

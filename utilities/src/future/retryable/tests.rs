@@ -47,7 +47,7 @@ where
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let projected = self.project();
         let mut current: Pin<&mut Option<Fut>> = projected.current;
-        if let Some(fut) = current.as_pin_mut() {
+        if let Some(fut) = current.as_mut().as_pin_mut() {
             let result = fut.poll(cx);
             if result.is_ready() {
                 current.set(None);

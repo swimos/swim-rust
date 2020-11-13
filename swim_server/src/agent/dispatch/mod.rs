@@ -473,7 +473,7 @@ impl EnvelopeDispatcher {
             let next = select_next(selector, await_new, &mut envelopes, *stalled).await;
 
             match next {
-                Some(Either::Left((label, Ok(mut sender)))) => {
+                Some(Either::Left((label, Ok(sender)))) => {
                     event!(Level::DEBUG, message = SENDER_SELECTED, ?label);
 
                     let mut did_dispatch = false;
@@ -508,7 +508,7 @@ impl EnvelopeDispatcher {
                         if did_dispatch {
                             event!(Level::TRACE, message = NO_LONGER_STALLED);
                             *stalled = false;
-                            let _ = stalled_tx.broadcast(false);
+                            let _ = stalled_tx.send(false);
                         } else {
                             event!(Level::TRACE, message = STALL_NOT_RES);
                         }
@@ -520,7 +520,7 @@ impl EnvelopeDispatcher {
                         if *stalled && will_accept {
                             event!(Level::TRACE, message = NO_LONGER_STALLED);
                             *stalled = false;
-                            let _ = stalled_tx.broadcast(false);
+                            let _ = stalled_tx.send(false);
                         }
                     }
                     _ => {
@@ -531,7 +531,7 @@ impl EnvelopeDispatcher {
                     event!(Level::TRACE, message = ATTEMPT_DISPATCH, ?envelope);
                     if let Ok(envelope) = envelope.into_outgoing() {
                         if let Some(entry) = idle_senders.get_mut(lane(&envelope)) {
-                            let maybe_pending = if let Some(mut sender) = entry.take() {
+                            let maybe_pending = if let Some(sender) = entry.take() {
                                 match sender.try_send(TaggedClientEnvelope(addr, envelope)) {
                                     Err(TrySendError::Full(envelope)) => {
                                         event!(
@@ -560,7 +560,7 @@ impl EnvelopeDispatcher {
                                 match pending.enqueue(envelope.lane().to_string(), envelope) {
                                     Ok(false) => {
                                         event!(Level::TRACE, message = STALLED);
-                                        let _ = stalled_tx.broadcast(true);
+                                        let _ = stalled_tx.send(true);
                                         *stalled = true;
                                     }
                                     Err(_) => {
@@ -587,7 +587,7 @@ impl EnvelopeDispatcher {
                             match pending.enqueue(label, TaggedClientEnvelope(addr, envelope)) {
                                 Ok(false) => {
                                     event!(Level::TRACE, message = STALLED);
-                                    let _ = stalled_tx.broadcast(true);
+                                    let _ = stalled_tx.send(true);
                                     *stalled = true;
                                 }
                                 Err(_) => {
@@ -627,7 +627,7 @@ impl EnvelopeDispatcher {
             let next = select_next_no_envelopes(&mut selector, &mut await_new).await;
 
             match next {
-                Some((label, Ok(mut sender))) => {
+                Some((label, Ok(sender))) => {
                     event!(Level::DEBUG, message = SENDER_SELECTED, ?label);
                     let mut did_dispatch: bool = false;
                     while let Some(envelope) = pending.pop(&label) {
@@ -655,7 +655,7 @@ impl EnvelopeDispatcher {
                     }
                     if stalled && did_dispatch {
                         event!(Level::TRACE, message = NO_LONGER_STALLED);
-                        let _ = stalled_tx.broadcast(false);
+                        let _ = stalled_tx.send(false);
                         stalled = false;
                     }
                 }
@@ -673,7 +673,7 @@ impl EnvelopeDispatcher {
                     }
                     if pending.clear(&label) && stalled {
                         event!(Level::TRACE, message = NO_LONGER_STALLED);
-                        let _ = stalled_tx.broadcast(false);
+                        let _ = stalled_tx.send(false);
                         stalled = false;
                     }
                 }

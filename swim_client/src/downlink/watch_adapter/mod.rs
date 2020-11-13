@@ -12,10 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use futures::task::{Context, Poll};
-use futures::{ready, Stream};
+use futures::Stream;
+use futures::stream::unfold;
 use pin_project::pin_project;
-use std::pin::Pin;
 use tokio::sync::watch;
 
 pub mod map;
@@ -47,7 +46,7 @@ impl<T: Clone> EpochSender<T> {
 
     fn broadcast(&mut self, value: T) -> Result<(), watch::error::SendError<(u64, T)>> {
         let current_epoch = self.epoch;
-        self.inner.broadcast((current_epoch, value))?;
+        self.inner.send((current_epoch, value))?;
         self.epoch += 1;
         Ok(())
     }
@@ -71,12 +70,37 @@ impl<T: Clone> EpochReceiver<T> {
 
     async fn recv(&mut self) -> Option<T> {
         loop {
-            let (epoch, value) = self.inner.recv().await?;
-            if epoch != self.prev_epoch {
-                self.prev_epoch = epoch;
-                return Some(value);
+            if self.inner.changed().await.is_ok() {
+                let (epoch, value) = &*self.inner.borrow();
+                if *epoch != self.prev_epoch {
+                    self.prev_epoch = *epoch;
+                    return Some(value.clone());
+                }
+            } else {
+                return None;
             }
         }
+    }
+
+    fn into_stream(self) -> impl Stream<Item = T> {
+        let EpochReceiver { inner, prev_epoch } = self;
+        unfold((inner, prev_epoch), move |(mut inner, prev_epoch)| {
+            async move {
+                loop {
+                    if inner.changed().await.is_ok() {
+                        let contents = inner.borrow();
+                        let epoch = contents.0;
+                        if epoch != prev_epoch {
+                            let value = contents.1.clone();
+                            drop(contents);
+                            break Some((value, (inner, epoch)));
+                        }
+                    } else {
+                        break None;
+                    }
+                }
+            }
+        })
     }
 }
 
@@ -86,29 +110,6 @@ impl<T: Clone> EpochReceiver<Option<T>> {
             let next = self.recv().await?;
             if next.is_some() {
                 break next;
-            }
-        }
-    }
-}
-
-impl<T: Clone> Stream for EpochReceiver<T> {
-    type Item = T;
-
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let projected = self.project();
-        let mut inner = projected.inner;
-        let prev_epoch = projected.prev_epoch;
-        loop {
-            match ready!(inner.as_mut().poll_next(cx)) {
-                Some((epoch, value)) => {
-                    if epoch != *prev_epoch {
-                        *prev_epoch = epoch;
-                        break Poll::Ready(Some(value));
-                    }
-                }
-                _ => {
-                    break Poll::Ready(None);
-                }
             }
         }
     }

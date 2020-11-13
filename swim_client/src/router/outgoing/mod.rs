@@ -23,6 +23,8 @@ use tracing::{error, info, span, trace, Level};
 
 use crate::router::retry::new_request;
 use utilities::future::retryable::RetryableFuture;
+use utilities::sync::watch_rx_to_stream;
+use pin_utils::pin_mut;
 
 //----------------------------------Downlink to Connection Pool---------------------------------
 
@@ -71,7 +73,9 @@ impl OutgoingHostTask {
             config,
         } = self;
 
-        let mut rx = combine_outgoing_streams(envelope_rx, close_rx);
+        let rx = combine_outgoing_streams(envelope_rx, close_rx);
+
+        pin_mut!(rx);
 
         loop {
             let task = rx.next().await.ok_or(RoutingError::ConnectionError)?;
@@ -113,7 +117,7 @@ fn combine_outgoing_streams(
     close_rx: CloseReceiver,
 ) -> impl stream::Stream<Item = OutgoingRequest> + Send + 'static {
     let envelope_requests = envelope_rx.map(OutgoingRequest::Message);
-    let close_requests = close_rx.map(OutgoingRequest::Close);
+    let close_requests = watch_rx_to_stream(close_rx).map(OutgoingRequest::Close);
     stream::select(envelope_requests, close_requests)
 }
 

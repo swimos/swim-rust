@@ -944,3 +944,12 @@ pub trait SwimSinkExt<Item>: Sink<Item> {
 }
 
 impl<S> SwimStreamExt for S where S: Stream {}
+
+pub type SyncBoxStream<T> = Pin<Box<dyn Stream<Item = T> + Send + Sync + 'static>>;
+
+pub fn sync_boxed<Str, T>(stream: Str) -> SyncBoxStream<T>
+    where
+        Str: Stream<Item = T> + Send + Sync + 'static,
+{
+    Box::pin(stream)
+}

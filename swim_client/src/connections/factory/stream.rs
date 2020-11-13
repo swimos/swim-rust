@@ -21,7 +21,7 @@ use std::fmt::{Display, Formatter};
 use swim_common::ws::error::{ConnectionError, WebSocketError};
 use swim_common::ws::{Protocol, WsMessage};
 use tokio::net::TcpStream;
-use tokio_tls::TlsConnector as TokioTlsConnector;
+use tokio_native_tls::TlsConnector as TokioTlsConnector;
 use tokio_tungstenite::stream::Stream as StreamSwitcher;
 use tokio_tungstenite::tungstenite::extensions::deflate::DeflateExt;
 use tokio_tungstenite::tungstenite::extensions::uncompressed::UncompressedExt;
