@@ -1,6 +1,6 @@
 use crate::rtree::rect::{BoundingBox, Point, Rect};
-use num::integer::nth_root;
 use num::traits::real::Real;
+use num::traits::Pow;
 use std::fmt::Debug;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -51,7 +51,7 @@ where
         self.len() == 0
     }
 
-    pub fn search(&self, area: &Rect<B::Point>) -> Option<Vec<B>> {
+    pub fn search(&self, area: &Rect<B::Point>) -> Option<Vec<&B>> {
         self.root.search(area)
     }
 
@@ -116,23 +116,13 @@ where
             .map(|item| Arc::new(Entry::Leaf { item }))
             .collect();
 
-        let root = if items_num > max_children.get() {
-            RTree::internal_bulk_load(
-                min_children.get(),
-                max_children.get(),
-                split_strat,
-                items,
-                0,
-            )
-        } else {
-            Node {
-                entries: items,
-                level: 0,
-                min_children: min_children.get(),
-                max_children: max_children.get(),
-                split_strat,
-            }
-        };
+        let root = RTree::internal_bulk_load(
+            min_children.get(),
+            max_children.get(),
+            split_strat,
+            items,
+            0,
+        );
 
         RTree {
             root,
@@ -180,13 +170,11 @@ where
             });
 
             let mut slices = vec![entries];
-
             for dim in 1..coord_count {
                 let entries_count = slices.get(0).unwrap().len();
-                let leaf_pages = entries_count / node_capacity;
                 let coord_count = coord_count - dim + 1;
-                let vertical_slices = nth_root(leaf_pages, coord_count as u32);
-                let slice_size = node_capacity * vertical_slices.pow((coord_count - 1) as u32);
+
+                let slice_size = calculate_slice_size(node_capacity, coord_count, entries_count);
 
                 let mut axis_slices = vec![];
                 let mut slice = vec![];
@@ -303,6 +291,22 @@ where
     }
 }
 
+fn calculate_slice_size(node_capacity: usize, coord_count: usize, entries_count: usize) -> usize {
+    let leaf_pages = (entries_count as f64 / node_capacity as f64).ceil();
+
+    let vertical_slices = if coord_count == 2 {
+        leaf_pages.sqrt()
+    } else if coord_count == 3 {
+        leaf_pages.cbrt()
+    } else {
+        panic!("Only 2D and 3D data is supported!")
+    };
+
+    let slice_size = node_capacity * (vertical_slices.pow((coord_count - 1) as f64) as usize);
+
+    slice_size as usize
+}
+
 fn check_children(min_children: &NonZeroUsize, max_children: &NonZeroUsize) {
     if min_children.get() > max_children.get() / 2 {
         panic!("The minimum number of children cannot be more than half of the maximum number of children.")
@@ -343,14 +347,14 @@ where
         self.level == 0
     }
 
-    fn search(&self, area: &Rect<B::Point>) -> Option<Vec<B>> {
+    fn search(&self, area: &Rect<B::Point>) -> Option<Vec<&B>> {
         let mut found = vec![];
 
         if self.is_leaf() {
             for entry in &self.entries {
                 match **entry {
                     Entry::Leaf { item: ref entry } if area.is_covering(entry.get_mbb()) => {
-                        found.push(entry.clone());
+                        found.push(entry);
                     }
                     _ => (),
                 }
@@ -358,7 +362,7 @@ where
         } else {
             for entry in &self.entries {
                 if area.is_intersecting(entry.get_mbb()) {
-                    match entry.clone().search(area) {
+                    match entry.search(area) {
                         None => {}
                         Some(matching) => found.extend(matching),
                     }
@@ -887,7 +891,7 @@ where
         }
     }
 
-    fn search(&self, area: &Rect<B::Point>) -> Option<Vec<B>> {
+    fn search(&self, area: &Rect<B::Point>) -> Option<Vec<&B>> {
         match self {
             Entry::Branch { child, .. } => child.search(area),
             Entry::Leaf { .. } => unreachable!(),
