@@ -4,12 +4,6 @@ use std::fs;
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
 
-//Todo add unit tests for search
-// let found = tree.search(&rect!((7, 0), (14, 15)));
-//
-// eprintln!("found = {:#?}", found);
-// assert_eq!(found.unwrap().len(), 5);
-
 fn test_tree<B: BoundingBox>(mut tree: RTree<B>, rects: Vec<B>, path: String) {
     assert_eq!(
         format!("{:#?}", tree),
@@ -31,101 +25,6 @@ fn test_tree<B: BoundingBox>(mut tree: RTree<B>, rects: Vec<B>, path: String) {
             fs::read_to_string(format!("{}/remove/{}.txt", path, idx + 1)).unwrap()
         );
     }
-}
-
-#[test]
-fn bulk_load_5_node_2d_test() {
-    let rects = vec![
-        rect!((0.0, 0.0), (10.0, 10.0)),
-        rect!((12.0, 0.0), (15.0, 15.0)),
-        rect!((7.0, 7.0), (14.0, 14.0)),
-        rect!((10.0, 11.0), (11.0, 12.0)),
-        rect!((4.0, 4.0), (5.0, 6.0)),
-    ];
-
-    let rtree = RTree::bulk_load(
-        NonZeroUsize::new(2).unwrap(),
-        NonZeroUsize::new(4).unwrap(),
-        Strategy::Quadratic,
-        rects,
-    );
-
-    assert_eq!(
-        format!("{:#?}", rtree),
-        fs::read_to_string("src/rtree/resources/bulk_load/5-node-2d.txt").unwrap()
-    );
-}
-
-#[test]
-fn bulk_load_12_node_2d_test() {
-    let rects = vec![
-        rect!((0.0, 0.0), (10.0, 10.0)),
-        rect!((12.0, 0.0), (15.0, 15.0)),
-        rect!((7.0, 7.0), (14.0, 14.0)),
-        rect!((10.0, 11.0), (11.0, 12.0)),
-        rect!((4.0, 4.0), (5.0, 6.0)),
-        rect!((4.0, 9.0), (5.0, 11.0)),
-        rect!((13.0, 0.0), (14.0, 1.0)),
-        rect!((13.0, 13.0), (16.0, 16.0)),
-        rect!((2.0, 13.0), (4.0, 16.0)),
-        rect!((2.0, 2.0), (3.0, 3.0)),
-        rect!((10.0, 0.0), (12.0, 5.0)),
-        rect!((7.0, 3.0), (8.0, 6.0)),
-    ];
-
-    let rtree = RTree::bulk_load(
-        NonZeroUsize::new(2).unwrap(),
-        NonZeroUsize::new(4).unwrap(),
-        Strategy::Quadratic,
-        rects,
-    );
-
-    assert_eq!(
-        format!("{:#?}", rtree),
-        fs::read_to_string("src/rtree/resources/bulk_load/12-node-2d.txt").unwrap()
-    );
-}
-
-#[test]
-fn bulk_load_24_node_3d_test() {
-    let rects = vec![
-        rect!((0.0, 0.0, 7.0), (10.0, 10.0, 15.0)),
-        rect!((12.0, 0.0, 3.0), (15.0, 15.0, 11.0)),
-        rect!((7.0, 7.0, 3.0), (14.0, 14.0, 7.0)),
-        rect!((10.0, 11.0, 4.0), (11.0, 12.0, 9.0)),
-        rect!((4.0, 4.0, 3.0), (5.0, 6.0, 5.0)),
-        rect!((4.0, 9.0, 1.0), (5.0, 11.0, 6.0)),
-        rect!((13.0, 0.0, 19.0), (14.0, 1.0, 20.0)),
-        rect!((13.0, 13.0, 7.0), (16.0, 16.0, 11.0)),
-        rect!((2.0, 13.0, 11.0), (4.0, 16.0, 14.0)),
-        rect!((2.0, 2.0, 10.0), (3.0, 3.0, 22.0)),
-        rect!((10.0, 0.0, 13.0), (12.0, 5.0, 17.0)),
-        rect!((7.0, 3.0, 11.0), (8.0, 6.0, 19.0)),
-        rect!((1.0, 1.0, 0.0), (11.0, 11.0, 4.0)),
-        rect!((13.0, 1.0, 10.0), (16.0, 16.0, 31.0)),
-        rect!((8.0, 8.0, 1.0), (15.0, 15.0, 5.0)),
-        rect!((11.0, 12.0, 10.0), (12.0, 13.0, 12.0)),
-        rect!((5.0, 5.0, 7.0), (6.0, 7.0, 11.0)),
-        rect!((5.0, 10.0, 15.0), (6.0, 12.0, 16.0)),
-        rect!((14.0, 1.0, 14.0), (15.0, 2.0, 15.0)),
-        rect!((14.0, 14.0, 13.0), (17.0, 17.0, 15.0)),
-        rect!((3.0, 14.0, 11.0), (5.0, 17.0, 17.0)),
-        rect!((3.0, 3.0, 9.0), (4.0, 4.0, 14.0)),
-        rect!((11.0, 1.0, 5.0), (13.0, 6.0, 15.0)),
-        rect!((8.0, 4.0, 3.0), (9.0, 7.0, 13.0)),
-    ];
-
-    let rtree = RTree::bulk_load(
-        NonZeroUsize::new(2).unwrap(),
-        NonZeroUsize::new(4).unwrap(),
-        Strategy::Quadratic,
-        rects,
-    );
-
-    assert_eq!(
-        format!("{:#?}", rtree),
-        fs::read_to_string("src/rtree/resources/bulk_load/24-node-3d.txt").unwrap()
-    );
 }
 
 #[test]
@@ -240,6 +139,144 @@ fn rtree_3d_quadratic_test() {
     );
 }
 
+//Todo add unit tests for search
+// let found = tree.search(&rect!((7, 0), (14, 15)));
+//
+// eprintln!("found = {:#?}", found);
+// assert_eq!(found.unwrap().len(), 5);
+
+#[test]
+fn bulk_load_3_node_2d_test() {
+    let rects = vec![
+        rect!((0.0, 0.0), (10.0, 10.0)),
+        rect!((12.0, 0.0), (15.0, 15.0)),
+        rect!((7.0, 7.0), (14.0, 14.0)),
+    ];
+
+    let rtree = RTree::bulk_load(
+        NonZeroUsize::new(2).unwrap(),
+        NonZeroUsize::new(4).unwrap(),
+        Strategy::Quadratic,
+        rects,
+    );
+
+    assert_eq!(
+        format!("{:#?}", rtree),
+        fs::read_to_string("src/rtree/resources/bulk_load/3-node-2d.txt").unwrap()
+    );
+}
+
+#[test]
+fn bulk_load_5_node_2d_test() {
+    let rects = vec![
+        rect!((0.0, 0.0), (10.0, 10.0)),
+        rect!((12.0, 0.0), (15.0, 15.0)),
+        rect!((7.0, 7.0), (14.0, 14.0)),
+        rect!((10.0, 11.0), (11.0, 12.0)),
+        rect!((4.0, 4.0), (5.0, 6.0)),
+    ];
+
+    let rtree = RTree::bulk_load(
+        NonZeroUsize::new(2).unwrap(),
+        NonZeroUsize::new(4).unwrap(),
+        Strategy::Quadratic,
+        rects,
+    );
+
+    assert_eq!(
+        format!("{:#?}", rtree),
+        fs::read_to_string("src/rtree/resources/bulk_load/5-node-2d.txt").unwrap()
+    );
+}
+
+#[test]
+fn bulk_load_12_node_2d_test() {
+    let rects = vec![
+        rect!((0.0, 0.0), (10.0, 10.0)),
+        rect!((12.0, 0.0), (15.0, 15.0)),
+        rect!((7.0, 7.0), (14.0, 14.0)),
+        rect!((10.0, 11.0), (11.0, 12.0)),
+        rect!((4.0, 4.0), (5.0, 6.0)),
+        rect!((4.0, 9.0), (5.0, 11.0)),
+        rect!((13.0, 0.0), (14.0, 1.0)),
+        rect!((13.0, 13.0), (16.0, 16.0)),
+        rect!((2.0, 13.0), (4.0, 16.0)),
+        rect!((2.0, 2.0), (3.0, 3.0)),
+        rect!((10.0, 0.0), (12.0, 5.0)),
+        rect!((7.0, 3.0), (8.0, 6.0)),
+    ];
+
+    let rtree = RTree::bulk_load(
+        NonZeroUsize::new(2).unwrap(),
+        NonZeroUsize::new(4).unwrap(),
+        Strategy::Quadratic,
+        rects,
+    );
+
+    assert_eq!(
+        format!("{:#?}", rtree),
+        fs::read_to_string("src/rtree/resources/bulk_load/12-node-2d.txt").unwrap()
+    );
+}
+
+#[test]
+fn bulk_load_24_node_3d_test() {
+    let rects = vec![
+        rect!((0.0, 0.0, 7.0), (10.0, 10.0, 15.0)),
+        rect!((12.0, 0.0, 3.0), (15.0, 15.0, 11.0)),
+        rect!((7.0, 7.0, 3.0), (14.0, 14.0, 7.0)),
+        rect!((10.0, 11.0, 4.0), (11.0, 12.0, 9.0)),
+        rect!((4.0, 4.0, 3.0), (5.0, 6.0, 5.0)),
+        rect!((4.0, 9.0, 1.0), (5.0, 11.0, 6.0)),
+        rect!((13.0, 0.0, 19.0), (14.0, 1.0, 20.0)),
+        rect!((13.0, 13.0, 7.0), (16.0, 16.0, 11.0)),
+        rect!((2.0, 13.0, 11.0), (4.0, 16.0, 14.0)),
+        rect!((2.0, 2.0, 10.0), (3.0, 3.0, 22.0)),
+        rect!((10.0, 0.0, 13.0), (12.0, 5.0, 17.0)),
+        rect!((7.0, 3.0, 11.0), (8.0, 6.0, 19.0)),
+        rect!((1.0, 1.0, 0.0), (11.0, 11.0, 4.0)),
+        rect!((13.0, 1.0, 10.0), (16.0, 16.0, 31.0)),
+        rect!((8.0, 8.0, 1.0), (15.0, 15.0, 5.0)),
+        rect!((11.0, 12.0, 10.0), (12.0, 13.0, 12.0)),
+        rect!((5.0, 5.0, 7.0), (6.0, 7.0, 11.0)),
+        rect!((5.0, 10.0, 15.0), (6.0, 12.0, 16.0)),
+        rect!((14.0, 1.0, 14.0), (15.0, 2.0, 15.0)),
+        rect!((14.0, 14.0, 13.0), (17.0, 17.0, 15.0)),
+        rect!((3.0, 14.0, 11.0), (5.0, 17.0, 17.0)),
+        rect!((3.0, 3.0, 9.0), (4.0, 4.0, 14.0)),
+        rect!((11.0, 1.0, 5.0), (13.0, 6.0, 15.0)),
+        rect!((8.0, 4.0, 3.0), (9.0, 7.0, 13.0)),
+    ];
+
+    let rtree = RTree::bulk_load(
+        NonZeroUsize::new(2).unwrap(),
+        NonZeroUsize::new(4).unwrap(),
+        Strategy::Quadratic,
+        rects,
+    );
+
+    assert_eq!(
+        format!("{:#?}", rtree),
+        fs::read_to_string("src/rtree/resources/bulk_load/24-node-3d.txt").unwrap()
+    );
+}
+
+//Todo
+//search none 2d
+//search single 2d
+//search multiple 2d
+
+//search none 3d
+//search single 3d
+//search multiple 3d
+
+//linear split no clone
+//search single no clone
+//search multiple no clone
+
+//bulk-load 2d no clone
+//bulk-load 3d no clone
+
 #[test]
 fn insert_no_clones_test() {
     let mut tree = RTree::new(
@@ -287,7 +324,7 @@ fn clone_on_remove_test() {
 }
 
 #[test]
-fn split_no_clones_test() {
+fn quadratic_split_no_clones_test() {
     let mut tree = RTree::new(
         NonZeroUsize::new(2).unwrap(),
         NonZeroUsize::new(4).unwrap(),

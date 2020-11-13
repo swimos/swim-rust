@@ -1,6 +1,7 @@
 use crate::rtree::rect::{BoundingBox, Point, Rect};
 use num::traits::real::Real;
 use num::traits::Pow;
+use std::cmp::Ordering;
 use std::fmt::Debug;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -150,14 +151,14 @@ where
         mut entries: Vec<EntryPtr<B>>,
         mut level: usize,
     ) -> Node<B> {
-        let mut entries_count = entries.len(); //24
+        let mut entries_count = entries.len();
 
         while entries_count > max_children {
-            // We choose to fill the nodes halfway between the min and max capacity to avoid splits and merges
+            // We choose to fill the nodes halfway between the min and max capacity to avoid splits and merges after a single insert/remove
             let node_capacity = (max_children + min_children) / 2;
             let coord_count = B::Point::get_coord_count();
 
-            // Sort all by x
+            // Sort all by the first dimension
             entries.sort_by(|first, second| {
                 let first_center = first.get_mbb().get_center();
                 let second_center = second.get_mbb().get_center();
@@ -170,24 +171,22 @@ where
             });
 
             let mut slices = vec![entries];
+
+            //Split and sort by every dimension after the first
             for dim in 1..coord_count {
                 let entries_count = slices.get(0).unwrap().len();
                 let coord_count = coord_count - dim + 1;
-
-                let slice_size = calculate_slice_size(node_capacity, coord_count, entries_count);
-
                 let mut axis_slices = vec![];
                 let mut slice = vec![];
-                let mut size = 0;
+                let slice_size = calculate_slice_size(node_capacity, coord_count, entries_count);
 
-                //Split into chunks and sort them by n-th dimension
-                for entries in slices {
-                    for entry in entries {
-                        slice.push(entry);
-                        size += 1;
+                for items in slices {
+                    let items_size = items.len();
 
-                        //Sort by n-th dim
-                        if size >= slice_size {
+                    for (i, item) in items.into_iter().enumerate() {
+                        slice.push(item);
+
+                        if (i + 1) % slice_size == 0 || (i + 1) == items_size {
                             slice.sort_by(|first, second| {
                                 let first_center = first.get_mbb().get_center();
                                 let second_center = second.get_mbb().get_center();
@@ -200,45 +199,30 @@ where
                             });
                             axis_slices.push(slice);
                             slice = vec![];
-                            size = 0;
                         }
                     }
-                }
-                if size > 0 {
-                    slice.sort_by(|first, second| {
-                        let first_center = first.get_mbb().get_center();
-                        let second_center = second.get_mbb().get_center();
-
-                        first_center
-                            .get_nth_coord(dim)
-                            .unwrap()
-                            .partial_cmp(&second_center.get_nth_coord(dim).unwrap())
-                            .unwrap()
-                    });
-                    axis_slices.push(slice);
                 }
 
                 slices = axis_slices;
             }
 
-            //Separate into entries
+            //Pack into entries
             entries = vec![];
 
             for slice in slices {
                 let mut items = vec![];
-                let mut size = 0;
+                let slice_size = slice.len();
                 let mut maybe_mbb = None;
 
-                for entry in slice {
+                for (i, entry) in slice.into_iter().enumerate() {
                     match maybe_mbb {
-                        None => maybe_mbb = Some(entry.get_mbb().clone()),
+                        None => maybe_mbb = Some(*entry.get_mbb()),
                         Some(mbb) => maybe_mbb = Some(mbb.combine_boxes(entry.get_mbb())),
                     }
 
                     items.push(entry);
-                    size += 1;
 
-                    if size >= node_capacity {
+                    if (i + 1) % node_capacity == 0 || (i + 1) == slice_size {
                         let node = Node {
                             entries: items,
                             level,
@@ -255,25 +239,7 @@ where
                         entries.push(entry);
                         items = vec![];
                         maybe_mbb = None;
-                        size = 0;
                     }
-                }
-
-                if size > 0 {
-                    let node = Node {
-                        entries: items,
-                        level,
-                        min_children,
-                        max_children,
-                        split_strat,
-                    };
-
-                    let entry = Arc::new(Entry::Branch {
-                        mbb: maybe_mbb.unwrap(),
-                        child: node,
-                    });
-
-                    entries.push(entry);
                 }
             }
 
@@ -291,6 +257,42 @@ where
     }
 }
 
+fn into_slices<Input, Output, F>(
+    items: Vec<Input>,
+    slice_size: usize,
+    transform: F,
+) -> Vec<Vec<Output>>
+where
+    Input: BoundingBox,
+    F: Fn(Vec<Input>) -> Vec<Output>,
+{
+    let mut output = vec![];
+
+    let mut slice = vec![];
+    let items_size = items.len();
+
+    for (i, item) in items.into_iter().enumerate() {
+        slice.push(item);
+
+        if (i + 1) % slice_size == 0 || (i + 1) == items_size {
+            output.push(transform(slice));
+            slice = vec![];
+            // slice.sort_by(|first, second| {
+            //     let first_center = first.get_mbb().get_center();
+            //     let second_center = second.get_mbb().get_center();
+            //
+            //     first_center
+            //         .get_nth_coord(dim)
+            //         .unwrap()
+            //         .partial_cmp(&second_center.get_nth_coord(dim).unwrap())
+            //         .unwrap()
+            // });
+        }
+    }
+
+    output
+}
+
 fn calculate_slice_size(node_capacity: usize, coord_count: usize, entries_count: usize) -> usize {
     let leaf_pages = (entries_count as f64 / node_capacity as f64).ceil();
 
@@ -303,7 +305,6 @@ fn calculate_slice_size(node_capacity: usize, coord_count: usize, entries_count:
     };
 
     let slice_size = node_capacity * (vertical_slices.pow((coord_count - 1) as f64) as usize);
-
     slice_size as usize
 }
 
@@ -549,10 +550,10 @@ where
     let second_seed = entries.remove(second_seed_idx);
     let first_seed = entries.remove(first_seed_idx);
 
-    let mut first_mbb = first_seed.get_mbb().clone();
+    let mut first_mbb = *first_seed.get_mbb();
     let mut first_group = vec![first_seed];
 
-    let mut second_mbb = second_seed.get_mbb().clone();
+    let mut second_mbb = *second_seed.get_mbb();
     let mut second_group = vec![second_seed];
 
     while !entries.is_empty() {
@@ -776,17 +777,11 @@ where
         second_idx = max_separation.1;
     }
 
-    let (first_idx, second_idx) = if first_idx > second_idx {
-        (second_idx, first_idx)
-    } else if first_idx == second_idx {
-        //Not sure how to handle this case so just select the first element in the list
-        if first_idx == 0 {
-            (first_idx, 1)
-        } else {
-            (0, second_idx)
-        }
-    } else {
-        (first_idx, second_idx)
+    let (first_idx, second_idx) = match first_idx.cmp(&second_idx) {
+        Ordering::Less => (first_idx, second_idx),
+        Ordering::Greater => (second_idx, first_idx),
+        Ordering::Equal if first_idx == 0 => (first_idx, 1),
+        Ordering::Equal => (0, second_idx),
     };
 
     (first_idx, second_idx)
@@ -931,7 +926,7 @@ where
                     || removed_mbb.get_high().has_equal_cords(mbb.get_high())
                 {
                     let mut entries_iter = child.entries.iter();
-                    let mut shrunken_mbb = entries_iter.next().unwrap().get_mbb().clone();
+                    let mut shrunken_mbb = *entries_iter.next().unwrap().get_mbb();
                     shrunken_mbb = entries_iter.fold(shrunken_mbb, |acc, entry| {
                         entry.get_mbb().combine_boxes(&acc)
                     });
