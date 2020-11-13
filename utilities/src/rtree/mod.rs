@@ -143,7 +143,6 @@ where
         }
     }
 
-    //Todo refactor
     fn internal_bulk_load(
         min_children: usize,
         max_children: usize,
@@ -177,30 +176,24 @@ where
                 let entries_count = slices.get(0).unwrap().len();
                 let coord_count = coord_count - dim + 1;
                 let mut axis_slices = vec![];
-                let mut slice = vec![];
                 let slice_size = calculate_slice_size(node_capacity, coord_count, entries_count);
 
                 for items in slices {
-                    let items_size = items.len();
+                    let sort_by_dim = |mut items: Vec<EntryPtr<B>>| {
+                        items.sort_by(|first, second| {
+                            let first_center = first.get_mbb().get_center();
+                            let second_center = second.get_mbb().get_center();
 
-                    for (i, item) in items.into_iter().enumerate() {
-                        slice.push(item);
+                            first_center
+                                .get_nth_coord(dim)
+                                .unwrap()
+                                .partial_cmp(&second_center.get_nth_coord(dim).unwrap())
+                                .unwrap()
+                        });
+                        items
+                    };
 
-                        if (i + 1) % slice_size == 0 || (i + 1) == items_size {
-                            slice.sort_by(|first, second| {
-                                let first_center = first.get_mbb().get_center();
-                                let second_center = second.get_mbb().get_center();
-
-                                first_center
-                                    .get_nth_coord(dim)
-                                    .unwrap()
-                                    .partial_cmp(&second_center.get_nth_coord(dim).unwrap())
-                                    .unwrap()
-                            });
-                            axis_slices.push(slice);
-                            slice = vec![];
-                        }
-                    }
+                    axis_slices.extend(into_slices(items, slice_size, sort_by_dim));
                 }
 
                 slices = axis_slices;
@@ -210,37 +203,25 @@ where
             entries = vec![];
 
             for slice in slices {
-                let mut items = vec![];
-                let slice_size = slice.len();
-                let mut maybe_mbb = None;
+                let construct_entry = |items: Vec<EntryPtr<B>>| {
+                    let mut items_iter = items.iter();
+                    let first_mbb = *items_iter.next().unwrap().get_mbb();
+                    let mbb = items
+                        .iter()
+                        .fold(first_mbb, |acc, item| acc.combine_boxes(item.get_mbb()));
 
-                for (i, entry) in slice.into_iter().enumerate() {
-                    match maybe_mbb {
-                        None => maybe_mbb = Some(*entry.get_mbb()),
-                        Some(mbb) => maybe_mbb = Some(mbb.combine_boxes(entry.get_mbb())),
-                    }
+                    let node = Node {
+                        entries: items,
+                        level,
+                        min_children,
+                        max_children,
+                        split_strat,
+                    };
 
-                    items.push(entry);
+                    Arc::new(Entry::Branch { mbb, child: node })
+                };
 
-                    if (i + 1) % node_capacity == 0 || (i + 1) == slice_size {
-                        let node = Node {
-                            entries: items,
-                            level,
-                            min_children,
-                            max_children,
-                            split_strat,
-                        };
-
-                        let entry = Arc::new(Entry::Branch {
-                            mbb: maybe_mbb.unwrap(),
-                            child: node,
-                        });
-
-                        entries.push(entry);
-                        items = vec![];
-                        maybe_mbb = None;
-                    }
-                }
+                entries.extend(into_slices(slice, node_capacity, construct_entry));
             }
 
             level += 1;
@@ -257,36 +238,20 @@ where
     }
 }
 
-fn into_slices<Input, Output, F>(
-    items: Vec<Input>,
-    slice_size: usize,
-    transform: F,
-) -> Vec<Vec<Output>>
+fn into_slices<Input, Output, F>(items: Vec<Input>, slice_size: usize, transform: F) -> Vec<Output>
 where
-    Input: BoundingBox,
-    F: Fn(Vec<Input>) -> Vec<Output>,
+    F: Fn(Vec<Input>) -> Output,
 {
     let mut output = vec![];
-
     let mut slice = vec![];
-    let items_size = items.len();
+    let total_size = items.len();
 
     for (i, item) in items.into_iter().enumerate() {
         slice.push(item);
 
-        if (i + 1) % slice_size == 0 || (i + 1) == items_size {
+        if (i + 1) % slice_size == 0 || (i + 1) == total_size {
             output.push(transform(slice));
             slice = vec![];
-            // slice.sort_by(|first, second| {
-            //     let first_center = first.get_mbb().get_center();
-            //     let second_center = second.get_mbb().get_center();
-            //
-            //     first_center
-            //         .get_nth_coord(dim)
-            //         .unwrap()
-            //         .partial_cmp(&second_center.get_nth_coord(dim).unwrap())
-            //         .unwrap()
-            // });
         }
     }
 
@@ -647,7 +612,7 @@ where
     let item = entries_iter.next().unwrap();
     let mut item_idx = 0;
 
-    let (first_preference, second_preference, first_expanded_rect, second_expanded_rect) =
+    let ((first_preference, first_expanded_rect), (second_preference, second_expanded_rect)) =
         calc_preferences(item, first_mbb, second_mbb);
 
     let mut max_preference_diff = (first_preference - second_preference).abs();
@@ -667,7 +632,7 @@ where
     };
 
     for (item, idx) in entries_iter.zip(1..) {
-        let (first_preference, second_preference, first_expanded_rect, second_expanded_rect) =
+        let ((first_preference, first_expanded_rect), (second_preference, second_expanded_rect)) =
             calc_preferences(item, first_mbb, second_mbb);
         let preference_diff = (first_preference - second_preference).abs();
 
@@ -694,6 +659,8 @@ where
     (item_idx, expanded_rect, group)
 }
 
+type PointType<B> = <<B as BoundingBox>::Point as Point>::Type;
+
 fn linear_pick_seeds<B>(entries: &[EntryPtr<B>]) -> (usize, usize)
 where
     B: BoundingBox,
@@ -701,10 +668,9 @@ where
     let mut first_idx = 0;
     let mut second_idx = 1;
 
-    let mut dim_boundary_points: Vec<(<B::Point as Point>::Type, <B::Point as Point>::Type)> =
-        vec![];
-    let mut max_low_sides: Vec<(usize, <B::Point as Point>::Type)> = vec![];
-    let mut min_high_sides: Vec<(usize, <B::Point as Point>::Type)> = vec![];
+    let mut dim_boundary_points: Vec<(PointType<B>, PointType<B>)> = vec![];
+    let mut max_low_sides: Vec<(usize, PointType<B>)> = vec![];
+    let mut min_high_sides: Vec<(usize, PointType<B>)> = vec![];
 
     if entries.len() > 2 {
         for (i, item) in entries.iter().enumerate() {
@@ -801,16 +767,16 @@ where
     )
 }
 
+type Preference<B> = (
+    (PointType<B>, Rect<<B as BoundingBox>::Point>),
+    (PointType<B>, Rect<<B as BoundingBox>::Point>),
+);
+
 fn calc_preferences<B>(
     item: &EntryPtr<B>,
     first_mbb: &Rect<B::Point>,
     second_mbb: &Rect<B::Point>,
-) -> (
-    <B::Point as Point>::Type,
-    <B::Point as Point>::Type,
-    Rect<B::Point>,
-    Rect<B::Point>,
-)
+) -> Preference<B>
 where
     B: BoundingBox,
 {
@@ -821,10 +787,8 @@ where
     let second_diff = second_expanded_rect.measure() - second_mbb.measure();
 
     (
-        first_diff,
-        second_diff,
-        first_expanded_rect,
-        second_expanded_rect,
+        (first_diff, first_expanded_rect),
+        (second_diff, second_expanded_rect),
     )
 }
 
