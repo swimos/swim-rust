@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::connections::{ConnectionPool, ConnectionReceiver, ConnectionSender};
+use crate::connections::{Connection, ConnectionPool, ConnectionSender};
 use crate::router::{Router, RouterEvent, SwimRouter};
-use futures::future::{ready, Ready};
-use futures_util::StreamExt;
+use futures::future::{ready, BoxFuture};
+use futures::{FutureExt, StreamExt};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -1815,22 +1815,18 @@ impl TestPool {
 }
 
 impl ConnectionPool for TestPool {
-    type ConnFut = Ready<
-        Result<
-            Result<(ConnectionSender, Option<ConnectionReceiver>), ConnectionError>,
-            RequestError,
-        >,
-    >;
-
-    type CloseFut = Ready<Result<Result<(), ConnectionError>, ConnectionError>>;
-
-    fn request_connection(&mut self, host_url: url::Url, recreate: bool) -> Self::ConnFut {
+    fn request_connection(
+        &mut self,
+        host_url: url::Url,
+        recreate: bool,
+    ) -> BoxFuture<Result<Result<Connection, ConnectionError>, RequestError>> {
         let host_url_string = host_url.to_string();
         if host_url == self.permanent_error_url {
             self.log_request(host_url, recreate);
             return ready(Ok(Err(ConnectionError::SocketError(WebSocketError::Url(
                 host_url_string,
-            )))));
+            )))))
+            .boxed();
         }
 
         if !recreate && self.connections.lock().unwrap().get(&host_url).is_some() {
@@ -1844,7 +1840,7 @@ impl ConnectionPool for TestPool {
 
             self.log_request(host_url, recreate);
 
-            ready(Ok(Ok((ConnectionSender::new(sender_tx), None))))
+            ready(Ok(Ok((ConnectionSender::new(sender_tx), None)))).boxed()
         } else {
             let (sender_tx, receiver_rx) = self.create_connection(host_url, recreate);
 
@@ -1852,10 +1848,11 @@ impl ConnectionPool for TestPool {
                 ConnectionSender::new(sender_tx),
                 Some(receiver_rx),
             ))))
+            .boxed()
         }
     }
 
-    fn close(self) -> Result<Self::CloseFut, ConnectionError> {
-        Ok(ready(Ok(Ok(()))))
+    fn close(self) -> BoxFuture<'static, Result<Result<(), ConnectionError>, ConnectionError>> {
+        ready(Ok(Ok(()))).boxed()
     }
 }

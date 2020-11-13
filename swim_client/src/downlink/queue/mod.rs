@@ -20,14 +20,12 @@ use crate::downlink::topic::{DownlinkReceiver, DownlinkTopic, MakeReceiver};
 use crate::downlink::{
     Command, Downlink, DownlinkError, DownlinkInternals, Event, Message, StateMachine,
 };
-use futures::future::ErrInto;
-use futures::{Stream, StreamExt};
+use futures::future::BoxFuture;
+use futures::{FutureExt, Stream, StreamExt};
 use std::fmt::{Debug, Formatter};
 use std::num::NonZeroUsize;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Weak};
-use swim_common::request::request_future::SendAndAwait;
-use swim_common::request::Request;
 use swim_common::routing::RoutingError;
 use swim_common::sink::item::{self, ItemSender};
 use swim_common::topic::{MpscTopic, MpscTopicReceiver, Topic, TopicError};
@@ -157,22 +155,16 @@ where
     }
 }
 
-type EventReceiver<Upd> = MpscTopicReceiver<Event<Upd>>;
-
-type OpenReceiver<Upd> =
-    ErrInto<SendAndAwait<Request<EventReceiver<Upd>>, EventReceiver<Upd>>, TopicError>;
-
 impl<Act, Upd> Topic<Event<Upd>> for QueueDownlink<Act, Upd>
 where
     Act: Send + 'static,
     Upd: Clone + Send + Sync + 'static,
 {
     type Receiver = QueueReceiver<Upd>;
-    type Fut = TransformedFuture<OpenReceiver<Upd>, MakeReceiver>;
 
-    fn subscribe(&mut self) -> Self::Fut {
+    fn subscribe(&mut self) -> BoxFuture<Result<Self::Receiver, TopicError>> {
         let attach = MakeReceiver::new(self.internal.clone());
-        TransformedFuture::new(self.topic.subscribe(), attach)
+        TransformedFuture::new(self.topic.subscribe(), attach).boxed()
     }
 }
 

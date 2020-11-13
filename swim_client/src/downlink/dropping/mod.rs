@@ -19,8 +19,8 @@ use crate::downlink::topic::{DownlinkReceiver, DownlinkTopic, MakeReceiver};
 use crate::downlink::{
     raw, Command, Downlink, DownlinkError, DownlinkInternals, Event, Message, StateMachine,
 };
-use futures::future::Ready;
-use futures::{Stream, StreamExt};
+use futures::future::BoxFuture;
+use futures::{FutureExt, Stream, StreamExt};
 use std::fmt::{Debug, Formatter};
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Weak};
@@ -29,7 +29,7 @@ use swim_common::sink::item::{self, ItemSender};
 use swim_common::topic::{Topic, TopicError, WatchTopic, WatchTopicReceiver};
 use swim_runtime::task::spawn;
 use tokio::sync::{mpsc, watch};
-use utilities::future::{SwimFutureExt, TransformedFuture};
+use utilities::future::SwimFutureExt;
 use utilities::sync::promise;
 
 /// A downlink where subscribers observe the latest output record whenever the poll the receiver
@@ -161,13 +161,12 @@ where
     Upd: Clone + Send + Sync + 'static,
 {
     type Receiver = DroppingReceiver<Upd>;
-    type Fut =
-        TransformedFuture<Ready<Result<DroppingTopicReceiver<Upd>, TopicError>>, MakeReceiver>;
 
-    fn subscribe(&mut self) -> Self::Fut {
+    fn subscribe(&mut self) -> BoxFuture<Result<Self::Receiver, TopicError>> {
         self.topic
             .subscribe()
             .transform(MakeReceiver::new(self.internal.clone()))
+            .boxed()
     }
 }
 

@@ -136,12 +136,9 @@ impl<Pool: ConnectionPool> SwimRouter<Pool> {
 
         self.connection_pool
             .close()
-            .map_err(|_| RoutingError::CloseError)?
             .await
             .map_err(|_| RoutingError::CloseError)?
-            .map_err(|_| RoutingError::CloseError)?;
-
-        Ok(())
+            .map_err(|_| RoutingError::CloseError)
     }
 }
 
