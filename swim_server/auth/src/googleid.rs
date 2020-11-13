@@ -14,14 +14,20 @@
 
 use crate::{AuthenticationError, Authenticator};
 use biscuit::jwk::JWKSet;
-use biscuit::Empty;
+use biscuit::{CompactJson, Empty};
 use chrono::{DateTime, FixedOffset, Utc};
 use futures::FutureExt;
 use futures_util::future::BoxFuture;
 use http::header::{CACHE_CONTROL, EXPIRES};
 use im::HashSet;
 use reqwest::header::HeaderMap;
+use serde::{Deserialize, Serialize};
+use swim_common::form::Form;
 
+use crate::policy::PolicyDirective;
+use biscuit::jws::Compact;
+use swim_common::model::Value;
+use tokio::time::delay_for;
 use url::Url;
 use utilities::future::retryable::strategy::RetryStrategy;
 
@@ -52,26 +58,21 @@ impl KeyCacheStrategy {
                     dir if dir.starts_with(MAX_AGE_DIRECTIVE) => {
                         let mut value_opt = dir.split('=').skip(1);
 
-                        match value_opt.next() {
-                            Some(time) => {
-                                return match time.parse() {
-                                    Ok(seconds) => {
-                                        let expires =
-                                            Utc::now() + chrono::Duration::seconds(seconds);
-                                        Ok(KeyCacheStrategy::RevalidateAt(expires.into()))
-                                    }
-                                    Err(e) => Err(AuthenticationError::malformatted(
-                                        "Failed to parse max-age value",
-                                        e,
-                                    )),
+                        return match value_opt.next() {
+                            Some(time) => match time.parse() {
+                                Ok(seconds) => {
+                                    let expires = Utc::now() + chrono::Duration::seconds(seconds);
+                                    Ok(KeyCacheStrategy::RevalidateAt(expires.into()))
                                 }
-                            }
-                            None => {
-                                return Err(AuthenticationError::MalformattedResponse(
-                                    "Missing max-age value".into(),
-                                ))
-                            }
-                        }
+                                Err(e) => Err(AuthenticationError::malformatted(
+                                    "Failed to parse max-age value",
+                                    e,
+                                )),
+                            },
+                            None => Err(AuthenticationError::MalformattedResponse(
+                                "Missing max-age value".into(),
+                            )),
+                        };
                     }
                     _ => {}
                 }
@@ -86,14 +87,14 @@ impl KeyCacheStrategy {
                         return Err(AuthenticationError::malformatted(
                             "Failed to parse expiry time",
                             e,
-                        ))
+                        ));
                     }
                 },
                 Err(e) => {
                     return Err(AuthenticationError::malformatted(
                         "Failed to parse expiry time",
                         e,
-                    ))
+                    ));
                 }
             },
             None => Ok(KeyCacheStrategy::NoStore),
@@ -150,7 +151,7 @@ impl GoogleIdAuthenticator {
         }
     }
 
-    // todo: refactor into a key store with a channel to prevent multiple, simultaneous refreshes
+    // todo: refactor into a key store with a channel to prevent multiple, simultaneous, refreshes
     async fn refresh_keys(&mut self) -> Result<(), AuthenticationError> {
         let mut has_errored = false;
 
@@ -175,7 +176,7 @@ impl GoogleIdAuthenticator {
                     match self.retry_strategy.next() {
                         Some(Some(duration)) => {
                             has_errored = true;
-                            tokio::time::delay_for(duration).await;
+                            delay_for(duration).await;
                         }
                         _ => return Err(AuthenticationError::ServerError),
                     }
@@ -186,26 +187,126 @@ impl GoogleIdAuthenticator {
     }
 }
 
-pub struct GoogleId;
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+pub struct GoogleId {
+    email_verified: bool,
+    #[serde(rename = "azp")]
+    authorised_party: String,
+    #[serde(rename = "hd")]
+    hosted_domain: Url,
+    email: String,
+    name: String,
+    picture: Url,
+    given_name: String,
+    family_name: String,
+    locale: String,
+}
 
-impl Authenticator for GoogleIdAuthenticator {
-    type Token = GoogleId;
-    type AuthenticateFuture = BoxFuture<'static, Result<Self::Token, AuthenticationError>>;
+impl CompactJson for GoogleId {}
 
-    fn authenticate(&self) -> Self::AuthenticateFuture {
-        async { Err(AuthenticationError::MalformattedResponse("".into())) }.boxed()
+#[derive(Form)]
+#[form(tag = "googleId")]
+pub struct GoogleIdCredentials(String);
+
+impl<'s> Authenticator<'s> for GoogleIdAuthenticator {
+    type Credentials = GoogleIdCredentials;
+    type AuthenticateFuture = BoxFuture<'s, Result<PolicyDirective, AuthenticationError>>;
+
+    fn authenticate(&'s mut self, credentials: GoogleIdCredentials) -> Self::AuthenticateFuture {
+        async move {
+            self.refresh_keys().await?;
+
+            let compact: Compact<GoogleId, Empty> = Compact::new_encoded(&credentials.0);
+            let decode_result = compact.decode_with_jwks(&self.keys);
+
+            println!("{:?}", decode_result);
+
+            Ok(PolicyDirective::allow(Value::Extant))
+        }
+        .boxed()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::googleid::GoogleIdAuthenticator;
+    use crate::googleid::{GoogleId, GoogleIdCredentials};
+    use biscuit::jwa::SignatureAlgorithm;
+    use biscuit::jws::{Compact, RegisteredHeader, Secret};
+    use biscuit::{ClaimsSet, Empty, RegisteredClaims, SingleOrMultiple};
+    use std::str::FromStr;
+
+    fn expected_biscuit() -> Compact<ClaimsSet<GoogleId>, Empty> {
+        let expected_claims = ClaimsSet::<GoogleId> {
+            registered: RegisteredClaims {
+                issuer: Some(FromStr::from_str("accounts.google.com").unwrap()),
+                subject: Some(FromStr::from_str("117614620700092979612").unwrap()),
+                audience: Some(SingleOrMultiple::Single(
+                    FromStr::from_str(
+                        "339656303991-hjc1rr2vv0lclnqg0jq76r4qar9c8p62.apps.googleusercontent.com",
+                    )
+                    .unwrap(),
+                )),
+                not_before: None,
+                ..Default::default()
+            },
+            private: GoogleId {
+                email_verified: false,
+                authorised_party: "".to_string(),
+                hosted_domain: "https://swim.ai/".parse().unwrap(),
+                email: "tom@swim.ai".to_string(),
+                name: "Tom".to_string(),
+                picture: "https://www.swim.ai/images/marlin-swim-blue.svg"
+                    .parse()
+                    .unwrap(),
+                given_name: "Tom".to_string(),
+                family_name: "Tom".to_string(),
+                locale: "EN".to_string(),
+            },
+        };
+
+        Compact::new_decoded(
+            From::from(RegisteredHeader {
+                algorithm: SignatureAlgorithm::RS256,
+                ..Default::default()
+            }),
+            expected_claims,
+        )
+    }
+
+    fn expected_token() -> String {
+        "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJhY2NvdW50cy5nb29nbGUuY29tIiwic3ViIjoiMTE3N\
+        jE0NjIwNzAwMDkyOTc5NjEyIiwiYXVkIjoiMzM5NjU2MzAzOTkxLWhqYzFycjJ2djBsY2xucWcwanE3NnI0cWFyOWM4\
+        cDYyLmFwcHMuZ29vZ2xldXNlcmNvbnRlbnQuY29tIiwiZW1haWxfdmVyaWZpZWQiOmZhbHNlLCJhenAiOiIiLCJoZCI\
+        6Imh0dHBzOi8vc3dpbS5haS8iLCJlbWFpbCI6InRvbUBzd2ltLmFpIiwibmFtZSI6IlRvbSIsInBpY3R1cmUiOiJodH\
+        RwczovL3d3dy5zd2ltLmFpL2ltYWdlcy9tYXJsaW4tc3dpbS1ibHVlLnN2ZyIsImdpdmVuX25hbWUiOiJUb20iLCJmY\
+        W1pbHlfbmFtZSI6IlRvbSIsImxvY2FsZSI6IkVOIn0.USLIq07s92Ah4tMdJuxG-eiGwVxedFz8OBaI7r4GLLLzmJxq\
+        FDdPbX_RuS7yejU9L22C45X7siqsWXcFwqenkNcwKcDArAxdyR5rjL8iOoC5i8s6i754zbLsxdqq5yuWBG18vqXFl7D\
+        A0m2r8U60lUbdJh7kXDQNWn9hGfn4YjCnSEgCGkBVJQop_yIip-aTVzhahFEF4OFdMGBROHkUBeO5_FY_gV4PG5Qkc3\
+        tNvt6GNZU6PkeSu0dhuivnmNkqBwyAjywnL4_nqNmRivvv2YYviKug80xR-n-jSO3Sm0Nj-8x44gLDzQAbxrYJwOzsu\
+        MIe7Z7BTEC4lsNfpMfJWA"
+            .into()
+    }
+
+    #[test]
+    fn test_signing() {
+        let private_key = Secret::rsa_keypair_from_file("test/private_key.der").unwrap();
+        let biscuit = expected_biscuit();
+        let encoded_biscuit = biscuit.into_encoded(&private_key).expect("Encode error");
+        let token = encoded_biscuit.unwrap_encoded().to_string();
+
+        assert_eq!(token, expected_token())
+    }
 
     #[tokio::test]
-    async fn t() {
-        let mut authenticator = GoogleIdAuthenticator::new();
-        let _r = authenticator.refresh_keys().await;
+    async fn test_decode() {
+        let secret = Secret::public_key_from_file("test/public_key.der").unwrap();
+        let credentials = GoogleIdCredentials(expected_token());
 
-        println!("{:?}", authenticator);
+        let compact: Compact<ClaimsSet<GoogleId>, Empty> =
+            biscuit::jws::Compact::new_encoded(&credentials.0);
+        let algorithm = SignatureAlgorithm::RS256;
+        let decoded_biscuit = compact.decode(&secret, algorithm).expect("Decode failure");
+
+        assert_eq!(decoded_biscuit, expected_biscuit());
     }
 }

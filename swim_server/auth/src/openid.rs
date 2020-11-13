@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use im::HashSet;
+// use im::HashSet;
 
-pub struct OpenIdAuthenticator {
-    issuers: HashSet<String>,
-    audiences: HashSet<String>,
-    public_keys: HashSet<String>,
-}
+// pub struct OpenIdAuthenticator {
+//     issuers: HashSet<String>,
+//     audiences: HashSet<String>,
+//     public_keys: HashSet<String>,
+// }

@@ -12,13 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::policy::PolicyDirective;
 use futures::Future;
 use std::fmt::Display;
+use swim_common::form::Form;
 
 pub mod googleid;
 pub mod openid;
 pub mod policy;
 
+#[derive(Debug)]
 pub enum AuthenticationError {
     MalformattedResponse(String),
     ServerError,
@@ -30,9 +33,9 @@ impl AuthenticationError {
     }
 }
 
-pub trait Authenticator {
-    type Token;
-    type AuthenticateFuture: Future<Output = Result<Self::Token, AuthenticationError>> + 'static;
+pub trait Authenticator<'s> {
+    type Credentials: Form;
+    type AuthenticateFuture: Future<Output = Result<PolicyDirective, AuthenticationError>> + 's;
 
-    fn authenticate(&self) -> Self::AuthenticateFuture;
+    fn authenticate(&'s mut self, credentials: Self::Credentials) -> Self::AuthenticateFuture;
 }

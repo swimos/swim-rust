@@ -10,13 +10,14 @@ utilities = { path = "../../utilities" }
 
 tokio = { version = "0.2.21", features = ["time"] }
 jwt = "0.11.0"
+serde = "1.0.117"
 serde_json = "1.0.59"
 futures = "0.3.4"
 futures-util = "0.3.4"
 im = "15.0.0"
 reqwest = "0.10.8"
 http = "0.2.1"
-url = "2.1.1"
+url = { version = "2.1.1", features = ["serde"] }
 biscuit = "0.4.2"
 chrono = "0.4"
 

@@ -236,7 +236,7 @@ where
 pub enum CloseReason {
     GoingAway,
     ProtocolError(String),
-    //TODO Fill in others.
+    Forbidden, //TODO Fill in others.
 }
 
 /// Trait form two way channels where the send and receive halves cannot be separated.

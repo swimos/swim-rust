@@ -14,11 +14,36 @@
 
 use swim_common::model::Value;
 
+#[derive(Debug)]
 pub struct PolicyDirective {
     value: Value,
     policy: Policy,
 }
 
+impl PolicyDirective {
+    pub fn allow(value: Value) -> PolicyDirective {
+        PolicyDirective {
+            value,
+            policy: Policy::Allow,
+        }
+    }
+
+    pub fn deny(value: Value) -> PolicyDirective {
+        PolicyDirective {
+            value,
+            policy: Policy::Deny,
+        }
+    }
+
+    pub fn forbid(value: Value) -> PolicyDirective {
+        PolicyDirective {
+            value,
+            policy: Policy::Forbid,
+        }
+    }
+}
+
+#[derive(Debug, PartialOrd, PartialEq, Eq)]
 pub enum Policy {
     Allow,
     Deny,
