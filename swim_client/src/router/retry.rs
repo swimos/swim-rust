@@ -28,6 +28,7 @@ use utilities::future::retryable::request::{RetrySendError, RetryableRequest, Se
 
 use swim_common::ws::WsMessage;
 use tracing::trace;
+use utilities::errors::Recoverable;
 
 #[pin_project]
 struct LoggingRetryable<F> {

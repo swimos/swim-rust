@@ -43,6 +43,7 @@ use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::{mpsc, oneshot, watch};
 use tracing::{event, span, Level};
 use tracing_futures::Instrument;
+use utilities::errors::Recoverable;
 use utilities::sync::trigger;
 use utilities::uri::RelativeUri;
 
@@ -208,11 +209,8 @@ async fn next_attachment_event(
                     }
                 },
                 maybe_request = requests.next() => {
-                    match maybe_request {
-                        Some(req) => {
-                            break Some(LaneTaskEvent::Request(req));
-                        },
-                        _ => {},
+                    if let Some(req) = maybe_request {
+                        break Some(LaneTaskEvent::Request(req));
                     }
                 }
             }

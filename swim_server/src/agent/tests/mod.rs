@@ -50,25 +50,35 @@ use utilities::sync::trigger::Receiver;
 use utilities::uri::RelativeUri;
 
 mod stub_router {
-    use crate::plane::error::ResolutionError;
-    use crate::routing::{RoutingAddr, ServerRouter, TaggedEnvelope};
+    use crate::routing::error::{ResolutionError, RouterError, SendError};
+    use crate::routing::{ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedEnvelope};
     use futures::future::BoxFuture;
     use futures::FutureExt;
-    use swim_common::routing::RoutingError;
+    use std::sync::Arc;
     use swim_common::sink::item::{ItemSender, ItemSink};
     use swim_common::warp::envelope::Envelope;
     use url::Url;
+    use utilities::sync::promise;
     use utilities::uri::RelativeUri;
 
     #[derive(Clone)]
-    pub struct SingleChannelRouter<Inner>(Inner);
+    pub struct SingleChannelRouter<Inner> {
+        inner: Inner,
+        _drop_tx: Arc<promise::Sender<ConnectionDropped>>,
+        drop_rx: promise::Receiver<ConnectionDropped>,
+    }
 
     impl<Inner> SingleChannelRouter<Inner>
     where
-        Inner: ItemSender<TaggedEnvelope, RoutingError> + Clone,
+        Inner: ItemSender<TaggedEnvelope, SendError> + Clone,
     {
         pub(crate) fn new(sender: Inner) -> Self {
-            SingleChannelRouter(sender)
+            let (tx, rx) = promise::promise();
+            SingleChannelRouter {
+                inner: sender,
+                _drop_tx: Arc::new(tx),
+                drop_rx: rx,
+            }
         }
     }
 
@@ -79,7 +89,7 @@ mod stub_router {
 
     impl<Inner> SingleChannelSender<Inner>
     where
-        Inner: ItemSender<TaggedEnvelope, RoutingError>,
+        Inner: ItemSender<TaggedEnvelope, SendError>,
     {
         fn new(inner: Inner, destination: RoutingAddr) -> Self {
             SingleChannelSender { inner, destination }
@@ -88,9 +98,9 @@ mod stub_router {
 
     impl<'a, Inner> ItemSink<'a, Envelope> for SingleChannelSender<Inner>
     where
-        Inner: ItemSink<'a, TaggedEnvelope, Error = RoutingError>,
+        Inner: ItemSink<'a, TaggedEnvelope, Error = SendError>,
     {
-        type Error = RoutingError;
+        type Error = SendError;
         type SendFuture = <Inner as ItemSink<'a, TaggedEnvelope>>::SendFuture;
 
         fn send_item(&'a mut self, value: Envelope) -> Self::SendFuture {
@@ -101,22 +111,29 @@ mod stub_router {
 
     impl<Inner> ServerRouter for SingleChannelRouter<Inner>
     where
-        Inner: ItemSender<TaggedEnvelope, RoutingError> + Clone + Send + Sync + 'static,
+        Inner: ItemSender<TaggedEnvelope, SendError> + Clone + Send + Sync + 'static,
     {
         type Sender = SingleChannelSender<Inner>;
 
-        fn get_sender(
+        fn resolve_sender(
             &mut self,
             addr: RoutingAddr,
-        ) -> BoxFuture<Result<Self::Sender, RoutingError>> {
-            FutureExt::boxed(async move { Ok(SingleChannelSender::new(self.0.clone(), addr)) })
+        ) -> BoxFuture<Result<Route<Self::Sender>, ResolutionError>> {
+            FutureExt::boxed(async move {
+                let SingleChannelRouter { inner, drop_rx, .. } = self;
+                let route = Route::new(
+                    SingleChannelSender::new(inner.clone(), addr),
+                    drop_rx.clone(),
+                );
+                Ok(route)
+            })
         }
 
-        fn resolve(
+        fn lookup(
             &mut self,
             _host: Option<Url>,
             _route: RelativeUri,
-        ) -> BoxFuture<Result<RoutingAddr, ResolutionError>> {
+        ) -> BoxFuture<Result<RoutingAddr, RouterError>> {
             panic!("Unexpected resolution attempt.")
         }
     }

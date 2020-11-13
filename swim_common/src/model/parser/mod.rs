@@ -401,13 +401,13 @@ pub fn parse_document_iteratee(
 pub fn parse_single(repr: &str) -> Result<Value, ParseFailure> {
     let mut value_iter = parse_all(repr);
     match value_iter.next() {
-        Some(res @ Ok(_)) => match value_iter.next() {
-            Some(v) => {
-                println!("{:?}", v);
+        Some(res @ Ok(_)) => {
+            if value_iter.next().is_some() {
                 Err(ParseFailure::UnconsumedInput)
+            } else {
+                res
             }
-            _ => res,
-        },
+        }
         Some(err @ Err(_)) => err,
         _ => Err(ParseFailure::IncompleteRecord),
     }
