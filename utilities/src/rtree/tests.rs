@@ -27,6 +27,54 @@ fn test_tree<B: BoundingBox>(mut tree: RTree<B>, rects: Vec<B>, path: String) {
     }
 }
 
+fn build_2d_search_tree() -> RTree<Rect<Point2D<f64>>> {
+    let rects = vec![
+        rect!((0.0, 0.0), (10.0, 10.0)),
+        rect!((12.0, 0.0), (15.0, 15.0)),
+        rect!((7.0, 7.0), (14.0, 14.0)),
+        rect!((10.0, 11.0), (11.0, 12.0)),
+        rect!((4.0, 4.0), (5.0, 6.0)),
+        rect!((4.0, 9.0), (5.0, 11.0)),
+        rect!((13.0, 0.0), (14.0, 1.0)),
+        rect!((13.0, 13.0), (16.0, 16.0)),
+        rect!((2.0, 13.0), (4.0, 16.0)),
+        rect!((2.0, 2.0), (3.0, 3.0)),
+        rect!((10.0, 0.0), (12.0, 5.0)),
+        rect!((7.0, 3.0), (8.0, 6.0)),
+    ];
+
+    RTree::bulk_load(
+        NonZeroUsize::new(2).unwrap(),
+        NonZeroUsize::new(4).unwrap(),
+        Strategy::Quadratic,
+        rects,
+    )
+}
+
+fn build_3d_search_tree() -> RTree<Rect<Point3D<f64>>> {
+    let rects = vec![
+        rect!((0.0, 0.0, 0.0), (10.0, 10.0, 10.0)),
+        rect!((12.0, 0.0, 0.0), (15.0, 10.0, 15.0)),
+        rect!((7.0, 0.0, 7.0), (14.0, 10.0, 14.0)),
+        rect!((10.0, 0.0, 11.0), (11.0, 10.0, 12.0)),
+        rect!((4.0, 0.0, 4.0), (5.0, 10.0, 6.0)),
+        rect!((4.0, 0.0, 9.0), (5.0, 10.0, 11.0)),
+        rect!((13.0, 0.0, 0.0), (14.0, 10.0, 1.0)),
+        rect!((13.0, 0.0, 13.0), (16.0, 10.0, 16.0)),
+        rect!((2.0, 0.0, 13.0), (4.0, 10.0, 16.0)),
+        rect!((2.0, 0.0, 2.0), (3.0, 10.0, 3.0)),
+        rect!((10.0, 0.0, 0.0), (12.0, 10.0, 5.0)),
+        rect!((7.0, 0.0, 3.0), (8.0, 10.0, 6.0)),
+    ];
+
+    RTree::bulk_load(
+        NonZeroUsize::new(2).unwrap(),
+        NonZeroUsize::new(4).unwrap(),
+        Strategy::Quadratic,
+        rects,
+    )
+}
+
 #[test]
 fn rtree_2d_linear_test() {
     let rects = vec![
@@ -138,12 +186,6 @@ fn rtree_3d_quadratic_test() {
         String::from("src/rtree/resources/3d/quadratic/"),
     );
 }
-
-//Todo add unit tests for search
-// let found = tree.search(&rect!((7, 0), (14, 15)));
-//
-// eprintln!("found = {:#?}", found);
-// assert_eq!(found.unwrap().len(), 5);
 
 #[test]
 fn bulk_load_3_node_2d_test() {
@@ -261,21 +303,51 @@ fn bulk_load_24_node_3d_test() {
     );
 }
 
-//Todo
-//search none 2d
-//search single 2d
-//search multiple 2d
+#[test]
+fn search_no_results_2d_test() {
+    let tree = build_2d_search_tree();
+    let found = tree.search(&rect!((6.0, 11.0), (7.0, 13.0)));
+    assert!(found.is_none());
+}
 
-//search none 3d
-//search single 3d
-//search multiple 3d
+#[test]
+fn search_single_result_2d_test() {
+    let tree = build_2d_search_tree();
+    let found = tree.search(&rect!((6.0, 1.0), (9.0, 6.0))).unwrap();
+    assert_eq!(found.len(), 1);
+}
 
-//linear split no clone
-//search single no clone
-//search multiple no clone
+#[test]
+fn search_multiple_results_2d_test() {
+    let tree = build_2d_search_tree();
+    let found = tree.search(&rect!((7.0, 0.0), (14.0, 15.0))).unwrap();
+    assert_eq!(found.len(), 5);
+}
 
-//bulk-load 2d no clone
-//bulk-load 3d no clone
+#[test]
+fn search_no_results_3d_test() {
+    let tree = build_3d_search_tree();
+    let found = tree.search(&rect!((0.0, 15.0, 0.0), (20.0, 20.0, 20.0)));
+    assert!(found.is_none());
+}
+
+#[test]
+fn search_single_result_3d_test() {
+    let tree = build_3d_search_tree();
+    let found = tree
+        .search(&rect!((10.0, 0.0, 11.0), (11.0, 10.0, 12.0)))
+        .unwrap();
+    assert_eq!(found.len(), 1);
+}
+
+#[test]
+fn search_multiple_results_3d_test() {
+    let tree = build_3d_search_tree();
+    let found = tree
+        .search(&rect!((0.0, 0.0, 0.0), (20.0, 20.0, 20.0)))
+        .unwrap();
+    assert_eq!(found.len(), 12);
+}
 
 #[test]
 fn insert_no_clones_test() {
@@ -321,6 +393,50 @@ fn clone_on_remove_test() {
 
     assert_eq!(tree.len(), 0);
     assert_eq!(cloned_tree.len(), 1);
+}
+#[test]
+fn linear_split_no_clones_test() {
+    let mut tree = RTree::new(
+        NonZeroUsize::new(2).unwrap(),
+        NonZeroUsize::new(4).unwrap(),
+        Strategy::Linear,
+    );
+    let clone_count = CloneCount::new();
+
+    let first = rect!((0.0, 0.0), (10.0, 10.0));
+    let second = rect!((12.0, 0.0), (15.0, 15.0));
+    let third = rect!((7.0, 7.0), (14.0, 14.0));
+    let fourth = rect!((10.0, 11.0), (11.0, 12.0));
+    let fifth = rect!((4.0, 4.0), (5.0, 6.0));
+
+    tree.insert(CloneTracker::new(first, clone_count.clone()));
+    assert_eq!(clone_count.get(), 0);
+
+    let first_cloned_tree = tree.clone();
+
+    tree.insert(CloneTracker::new(second, clone_count.clone()));
+    assert_eq!(clone_count.get(), 0);
+
+    let second_cloned_tree = tree.clone();
+
+    tree.insert(CloneTracker::new(third, clone_count.clone()));
+    assert_eq!(clone_count.get(), 0);
+
+    let third_cloned_tree = tree.clone();
+
+    tree.insert(CloneTracker::new(fourth, clone_count.clone()));
+    assert_eq!(clone_count.get(), 0);
+
+    let fourth_cloned_tree = tree.clone();
+
+    tree.insert(CloneTracker::new(fifth, clone_count.clone()));
+    assert_eq!(clone_count.get(), 0);
+
+    assert_eq!(tree.len(), 5);
+    assert_eq!(first_cloned_tree.len(), 1);
+    assert_eq!(second_cloned_tree.len(), 2);
+    assert_eq!(third_cloned_tree.len(), 3);
+    assert_eq!(fourth_cloned_tree.len(), 4);
 }
 
 #[test]
@@ -422,6 +538,98 @@ fn clone_on_merge_test() {
     assert_eq!(third_cloned_tree.len(), 3);
     assert_eq!(fourth_cloned_tree.len(), 2);
     assert_eq!(fifth_cloned_tree.len(), 1);
+}
+
+#[test]
+fn bulk_load_no_clone() {
+    let clone_count = CloneCount::new();
+
+    let items = vec![
+        CloneTracker::new(rect!((0.0, 0.0), (10.0, 10.0)), clone_count.clone()),
+        CloneTracker::new(rect!((12.0, 0.0), (15.0, 15.0)), clone_count.clone()),
+        CloneTracker::new(rect!((7.0, 7.0), (14.0, 14.0)), clone_count.clone()),
+        CloneTracker::new(rect!((10.0, 11.0), (11.0, 12.0)), clone_count.clone()),
+        CloneTracker::new(rect!((4.0, 4.0), (5.0, 6.0)), clone_count.clone()),
+        CloneTracker::new(rect!((4.0, 9.0), (5.0, 11.0)), clone_count.clone()),
+        CloneTracker::new(rect!((13.0, 0.0), (14.0, 1.0)), clone_count.clone()),
+        CloneTracker::new(rect!((13.0, 13.0), (16.0, 16.0)), clone_count.clone()),
+        CloneTracker::new(rect!((2.0, 13.0), (4.0, 16.0)), clone_count.clone()),
+        CloneTracker::new(rect!((2.0, 2.0), (3.0, 3.0)), clone_count.clone()),
+        CloneTracker::new(rect!((10.0, 0.0), (12.0, 5.0)), clone_count.clone()),
+        CloneTracker::new(rect!((7.0, 3.0), (8.0, 6.0)), clone_count.clone()),
+    ];
+
+    let rtree = RTree::bulk_load(
+        NonZeroUsize::new(2).unwrap(),
+        NonZeroUsize::new(4).unwrap(),
+        Strategy::Linear,
+        items,
+    );
+
+    assert_eq!(clone_count.get(), 0);
+    assert_eq!(rtree.len(), 12);
+}
+
+#[test]
+fn search_single_no_clone() {
+    let clone_count = CloneCount::new();
+
+    let items = vec![
+        CloneTracker::new(rect!((0.0, 0.0), (10.0, 10.0)), clone_count.clone()),
+        CloneTracker::new(rect!((12.0, 0.0), (15.0, 15.0)), clone_count.clone()),
+        CloneTracker::new(rect!((7.0, 7.0), (14.0, 14.0)), clone_count.clone()),
+        CloneTracker::new(rect!((10.0, 11.0), (11.0, 12.0)), clone_count.clone()),
+        CloneTracker::new(rect!((4.0, 4.0), (5.0, 6.0)), clone_count.clone()),
+        CloneTracker::new(rect!((4.0, 9.0), (5.0, 11.0)), clone_count.clone()),
+        CloneTracker::new(rect!((13.0, 0.0), (14.0, 1.0)), clone_count.clone()),
+        CloneTracker::new(rect!((13.0, 13.0), (16.0, 16.0)), clone_count.clone()),
+        CloneTracker::new(rect!((2.0, 13.0), (4.0, 16.0)), clone_count.clone()),
+        CloneTracker::new(rect!((2.0, 2.0), (3.0, 3.0)), clone_count.clone()),
+        CloneTracker::new(rect!((10.0, 0.0), (12.0, 5.0)), clone_count.clone()),
+        CloneTracker::new(rect!((7.0, 3.0), (8.0, 6.0)), clone_count.clone()),
+    ];
+
+    let rtree = RTree::bulk_load(
+        NonZeroUsize::new(2).unwrap(),
+        NonZeroUsize::new(4).unwrap(),
+        Strategy::Linear,
+        items,
+    );
+
+    let found = rtree.search(&rect!((2.0, 2.0), (4.0, 4.0))).unwrap();
+    assert_eq!(clone_count.get(), 0);
+    assert_eq!(found.len(), 1);
+}
+
+#[test]
+fn search_multiple_no_clone() {
+    let clone_count = CloneCount::new();
+
+    let items = vec![
+        CloneTracker::new(rect!((0.0, 0.0), (10.0, 10.0)), clone_count.clone()),
+        CloneTracker::new(rect!((12.0, 0.0), (15.0, 15.0)), clone_count.clone()),
+        CloneTracker::new(rect!((7.0, 7.0), (14.0, 14.0)), clone_count.clone()),
+        CloneTracker::new(rect!((10.0, 11.0), (11.0, 12.0)), clone_count.clone()),
+        CloneTracker::new(rect!((4.0, 4.0), (5.0, 6.0)), clone_count.clone()),
+        CloneTracker::new(rect!((4.0, 9.0), (5.0, 11.0)), clone_count.clone()),
+        CloneTracker::new(rect!((13.0, 0.0), (14.0, 1.0)), clone_count.clone()),
+        CloneTracker::new(rect!((13.0, 13.0), (16.0, 16.0)), clone_count.clone()),
+        CloneTracker::new(rect!((2.0, 13.0), (4.0, 16.0)), clone_count.clone()),
+        CloneTracker::new(rect!((2.0, 2.0), (3.0, 3.0)), clone_count.clone()),
+        CloneTracker::new(rect!((10.0, 0.0), (12.0, 5.0)), clone_count.clone()),
+        CloneTracker::new(rect!((7.0, 3.0), (8.0, 6.0)), clone_count.clone()),
+    ];
+
+    let rtree = RTree::bulk_load(
+        NonZeroUsize::new(2).unwrap(),
+        NonZeroUsize::new(4).unwrap(),
+        Strategy::Linear,
+        items,
+    );
+
+    let found = rtree.search(&rect!((2.0, 2.0), (10.0, 10.0))).unwrap();
+    assert_eq!(clone_count.get(), 0);
+    assert_eq!(found.len(), 3);
 }
 
 #[test]
