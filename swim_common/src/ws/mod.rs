@@ -62,6 +62,9 @@ impl From<Vec<u8>> for WsMessage {
     }
 }
 
+pub type ConnResult<Snk, Str> = Result<(Snk, Str), ConnectionError>;
+pub type ConnFuture<'a, Snk, Str> = BoxFuture<'a, ConnResult<Snk, Str>>;
+
 /// Trait for factories that asynchronously create web socket connections. This exists primarily
 /// to allow for alternative implementations to be provided during testing.
 pub trait WebsocketFactory: Send + Sync {
@@ -75,7 +78,7 @@ pub trait WebsocketFactory: Send + Sync {
     fn connect(
         &mut self,
         url: url::Url,
-    ) -> BoxFuture<Result<(Self::WsSink, Self::WsStream), ConnectionError>>;
+    ) -> ConnFuture<Self::WsSink, Self::WsStream>;
 }
 
 #[derive(Clone)]

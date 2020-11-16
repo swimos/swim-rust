@@ -25,7 +25,7 @@ pub enum DispatcherError {
 
 impl DispatcherError {
     pub fn is_fatal(&self) -> bool {
-        !matches!(
+        matches!(
             self,
             DispatcherError::AttachmentFailed(AttachError::LaneDoesNotExist(_))
         )
