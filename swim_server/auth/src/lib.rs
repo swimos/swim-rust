@@ -47,13 +47,19 @@ impl AuthenticationError {
     }
 }
 
+/// A trait for defining authenticators that validates a remote host's credentials against some
+/// authentication implementation.
 pub trait Authenticator<'s>: Form {
+    /// The type of the structure that this authenticator requires.
     type Credentials: Form;
+    /// A future that resolves to either a policy for the remote host or an associated error.
     type AuthenticateFuture: Future<Output = Result<PolicyDirective, AuthenticationError>> + 's;
 
+    /// Attempt to authenticate the remote host.
     fn authenticate(&'s mut self, credentials: Self::Credentials) -> Self::AuthenticateFuture;
 }
 
+/// An authenticator that will always allow the remote host.
 pub struct AlwaysAllowAuthenticator;
 impl<'s> Authenticator<'s> for AlwaysAllowAuthenticator {
     type Credentials = Value;
@@ -80,6 +86,7 @@ impl Form for AlwaysAllowAuthenticator {
     }
 }
 
+/// An authenticator that will always deny the remote host.
 pub struct AlwaysDenyAuthenticator;
 impl<'s> Authenticator<'s> for AlwaysDenyAuthenticator {
     type Credentials = Value;
@@ -106,6 +113,7 @@ impl Form for AlwaysDenyAuthenticator {
     }
 }
 
+/// An authenticator that will always forbid the remote host.
 pub struct AlwaysForbidAuthenticator;
 impl<'s> Authenticator<'s> for AlwaysForbidAuthenticator {
     type Credentials = Value;
@@ -168,13 +176,17 @@ impl Expired for TokenDirective {
     }
 }
 
+/// A store that contains mapped identifiers to a given directive. The store is lazy and will only
+/// check if tokens have expired following a get invocation.
 #[derive(Debug, PartialEq)]
 struct TokenStore {
+    /// An allowed time expiry skew for the tokens.
     skew: i64,
     tokens: HashMap<String, TokenDirective>,
 }
 
 impl TokenStore {
+    /// Creates a new token store that permits the provided time skew on token expiration.
     pub fn new(skew: i64) -> TokenStore {
         TokenStore {
             skew,
@@ -184,6 +196,7 @@ impl TokenStore {
 }
 
 impl TokenStore {
+    /// Insert (and overwrite) the token at the provided key.
     pub fn insert(&mut self, token: Token, policy: PolicyDirective) {
         let id = token.id.clone();
         let token_directive = TokenDirective { token, policy };
@@ -191,6 +204,9 @@ impl TokenStore {
         self.tokens.insert(id, token_directive);
     }
 
+    /// Gets a reference to the provided `TokenDirective` using the key.
+    ///
+    /// This operation will also prune any expired tokens.
     pub fn get(&mut self, key: &str) -> Option<&TokenDirective> {
         let TokenStore { skew, tokens } = self;
 

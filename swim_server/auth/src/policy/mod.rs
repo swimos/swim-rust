@@ -42,11 +42,11 @@ impl PolicyDirective {
         }
     }
 
-    pub fn allows(&self) -> bool {
+    pub fn allowed(&self) -> bool {
         matches!(self.policy, PolicyEffect::Allow)
     }
 
-    pub fn denies(&self) -> bool {
+    pub fn denied(&self) -> bool {
         matches!(self.policy, PolicyEffect::Deny)
     }
 
