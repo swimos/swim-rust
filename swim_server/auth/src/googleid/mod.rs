@@ -88,7 +88,7 @@ impl<'s> Authenticator<'s> for GoogleIdAuthenticator {
     type Credentials = GoogleIdCredentials;
     type AuthenticateFuture = BoxFuture<'s, Result<PolicyDirective, AuthenticationError>>;
 
-    /// Verifies tha that the provided Google ID token is valid.
+    /// Verifies that the provided Google ID token is valid.
     ///
     /// Verifies that the RS256 signature was signed using the public keys from the provided
     /// `public_key_uri`, that the time that the expiry time of the token is valid (providing a

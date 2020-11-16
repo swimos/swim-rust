@@ -94,7 +94,7 @@ impl GoogleKeyStore {
         match self.strategy {
             KeyStoreStrategy::NoStore => true,
             KeyStoreStrategy::RevalidateAt(expires) => {
-                !expires.lt(&Into::<DateTime<FixedOffset>>::into(Utc::now()))
+                expires.lt(&Into::<DateTime<FixedOffset>>::into(Utc::now()))
             }
         }
     }
@@ -115,8 +115,6 @@ impl GoogleKeyStore {
                         return match value_opt.next() {
                             Some(time) => match time.parse::<i64>() {
                                 Ok(seconds) => {
-                                    // Revalidate five minutes before the expiry time of the
-                                    // certificates
                                     let expires = Utc::now()
                                         + chrono::Duration::seconds(
                                             seconds - self.permitted_cert_exp_skew,
