@@ -33,7 +33,7 @@ use http::header::SEC_WEBSOCKET_PROTOCOL;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use swim_common::ws::error::{ConnectionError, WebSocketError};
-use swim_common::ws::{maybe_resolve_scheme, Protocol, WebsocketFactory, ConnFuture};
+use swim_common::ws::{maybe_resolve_scheme, ConnFuture, Protocol, WebsocketFactory};
 use tokio_tungstenite::tungstenite::extensions::deflate::DeflateConfig;
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use tokio_tungstenite::tungstenite::Message;
@@ -143,10 +143,7 @@ impl WebsocketFactory for TungsteniteWsFactory {
     type WsStream = TungStream;
     type WsSink = TungSink;
 
-    fn connect(
-        &mut self,
-        url: Url,
-    ) -> ConnFuture<Self::WsSink, Self::WsStream> {
+    fn connect(&mut self, url: Url) -> ConnFuture<Self::WsSink, Self::WsStream> {
         let config = match self.host_configurations.entry(url.clone()) {
             Entry::Occupied(o) => o.get().clone(),
             Entry::Vacant(v) => v

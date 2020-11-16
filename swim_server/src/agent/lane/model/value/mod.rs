@@ -25,8 +25,8 @@ use stm::stm::Stm;
 use stm::var::observer::Observer;
 use stm::var::TVar;
 use tokio::sync::{broadcast, mpsc, oneshot, watch};
-use utilities::sync::{watch_rx_to_stream, broadcast_rx_to_stream};
-use utilities::future::{SyncBoxStream, sync_boxed};
+use utilities::future::{sync_boxed, SyncBoxStream};
+use utilities::sync::{broadcast_rx_to_stream, watch_rx_to_stream};
 
 #[cfg(test)]
 mod tests;
@@ -216,6 +216,10 @@ where
         let (tx_init, rx_init) = oneshot::channel();
         let joined = Observer::new_with_deferred(tx.into(), rx_init);
         let deferred_view = DeferredBroadcastView::new(tx_init, *n);
-        (joined, sync_boxed(broadcast_rx_to_stream(rx)), deferred_view)
+        (
+            joined,
+            sync_boxed(broadcast_rx_to_stream(rx)),
+            deferred_view,
+        )
     }
 }

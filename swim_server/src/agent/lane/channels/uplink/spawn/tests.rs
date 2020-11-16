@@ -155,7 +155,7 @@ impl LaneUpdate for TestUpdater {
         Err: Send,
         UpdateError: From<Err>,
     {
-        let TestUpdater(mut tx) = self;
+        let TestUpdater(tx) = self;
 
         async move {
             pin_mut!(messages);

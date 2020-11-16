@@ -75,10 +75,7 @@ pub trait WebsocketFactory: Send + Sync {
     type WsSink: Sink<WsMessage> + Unpin + Send + 'static;
 
     /// Open a connection to the provided remote URL.
-    fn connect(
-        &mut self,
-        url: url::Url,
-    ) -> ConnFuture<Self::WsSink, Self::WsStream>;
+    fn connect(&mut self, url: url::Url) -> ConnFuture<Self::WsSink, Self::WsStream>;
 }
 
 #[derive(Clone)]

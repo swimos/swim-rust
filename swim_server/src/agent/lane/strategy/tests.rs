@@ -16,6 +16,7 @@ use futures::StreamExt;
 use std::sync::Arc;
 use stm::var::observer::Observer;
 use tokio::sync::{broadcast, mpsc, oneshot, watch};
+use utilities::sync::watch_rx_to_stream;
 
 #[tokio::test]
 async fn channel_observer_send_mpsc() {
@@ -46,27 +47,31 @@ async fn channel_observer_send_after_drop_mpsc() {
 
 #[tokio::test]
 async fn channel_observer_send_watch() {
-    let (tx, mut rx) = watch::channel(Arc::new(0));
+    let (tx, rx) = watch::channel(Arc::new(0));
+    let rx = watch_rx_to_stream(rx);
+    pin_utils::pin_mut!(rx);
     let mut observer: Observer<i32> = tx.into();
 
-    let init = rx.recv().await;
+    let init = rx.next().await;
     assert!(matches!(init, Some(v) if *v == 0));
 
     let value = Arc::new(4);
 
     observer.notify(value.clone()).await;
 
-    let received = rx.recv().await;
+    let received = rx.next().await;
 
     assert!(matches!(received, Some(v) if Arc::ptr_eq(&v, &value)));
 }
 
 #[tokio::test]
 async fn channel_observer_send_after_drop_watch() {
-    let (tx, mut rx) = watch::channel(Arc::new(0));
+    let (tx, rx) = watch::channel(Arc::new(0));
+    let mut rx = Box::pin(watch_rx_to_stream(rx));
+
     let mut observer: Observer<i32> = tx.into();
 
-    let init = rx.recv().await;
+    let init = rx.next().await;
     assert!(matches!(init, Some(v) if *v == 0));
 
     drop(rx);
@@ -158,15 +163,17 @@ async fn deferred_watch_observer_nominal() {
 
     observer.notify(v1).await;
 
-    let (tx, mut rx) = watch::channel(Arc::new(0));
-    let _ = rx.recv().await;
+    let (tx, rx) = watch::channel(Arc::new(0));
+    let rx = watch_rx_to_stream(rx);
+    pin_utils::pin_mut!(rx);
+    let _ = rx.next().await;
 
     assert!(channel_tx.send(tx.into()).is_ok());
 
     let v2 = Arc::new(13);
     observer.notify(v2.clone()).await;
 
-    assert!(matches!(rx.recv().await, Some(v) if Arc::ptr_eq(&v, &v2)));
+    assert!(matches!(rx.next().await, Some(v) if Arc::ptr_eq(&v, &v2)));
 }
 
 #[tokio::test]

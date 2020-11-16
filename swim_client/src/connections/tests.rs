@@ -451,7 +451,7 @@ async fn test_connection_send_single_message() {
 
     let mut factory = TestConnectionFactory::new(test_data).await;
 
-    let mut connection = SwimConnection::new(host, buffer_size, &mut factory)
+    let connection = SwimConnection::new(host, buffer_size, &mut factory)
         .await
         .unwrap();
 
@@ -632,7 +632,7 @@ impl Sink<WsMessage> for TestWriteStream {
         }
     }
 
-    fn start_send(mut self: Pin<&mut Self>, item: WsMessage) -> Result<(), Self::Error> {
+    fn start_send(self: Pin<&mut Self>, item: WsMessage) -> Result<(), Self::Error> {
         if self.error {
             Err(())
         } else {

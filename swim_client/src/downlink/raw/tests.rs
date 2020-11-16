@@ -222,7 +222,7 @@ async fn sync_on_startup() {
 
 #[tokio::test]
 async fn event_on_sync() {
-    let (dl, mut messages, _commands) = make_test_sync_dl().await;
+    let (dl, messages, _commands) = make_test_sync_dl().await;
     let (_dl_tx, mut dl_rx) = dl.split();
 
     assert!(messages.send(Ok(Message::Linked)).await.is_ok());
@@ -234,7 +234,7 @@ async fn event_on_sync() {
 
 #[tokio::test]
 async fn ignore_update_before_link() {
-    let (dl, mut messages, _commands) = make_test_sync_dl().await;
+    let (dl, messages, _commands) = make_test_sync_dl().await;
     let (_dl_tx, mut dl_rx) = dl.split();
 
     assert!(messages
@@ -250,7 +250,7 @@ async fn ignore_update_before_link() {
 
 #[tokio::test]
 async fn apply_updates_between_link_and_sync() {
-    let (dl, mut messages, _commands) = make_test_sync_dl().await;
+    let (dl, messages, _commands) = make_test_sync_dl().await;
     let (_dl_tx, mut dl_rx) = dl.split();
 
     assert!(messages.send(Ok(Message::Linked)).await.is_ok());
@@ -422,7 +422,7 @@ async fn errors_propagate() {
 
 #[tokio::test]
 async fn terminates_on_invalid() {
-    let (dl, mut messages, _commands) = make_test_dl_custom_on_invalid(
+    let (dl, messages, _commands) = make_test_dl_custom_on_invalid(
         OnInvalidMessage::Terminate,
         DownlinkState::Synced,
         Response::for_command(Command::Sync),
@@ -473,7 +473,7 @@ async fn continues_on_invalid() {
 
 #[tokio::test]
 async fn unlinks_on_unreachable_host() {
-    let (dl, mut messages, mut commands) = make_test_sync_dl().await;
+    let (dl, messages, mut commands) = make_test_sync_dl().await;
     let (_dl_tx, mut dl_rx) = dl.split();
 
     let first_cmd = commands.next().await;
@@ -495,7 +495,7 @@ async fn unlinks_on_unreachable_host() {
 
 #[tokio::test]
 async fn queues_on_unreachable_host() {
-    let (dl, mut messages, mut commands) = make_test_sync_dl().await;
+    let (dl, messages, mut commands) = make_test_sync_dl().await;
     let (mut dl_tx, dl_rx) = dl.split();
     let mut events = dl_rx.event_stream;
 
@@ -531,7 +531,7 @@ async fn queues_on_unreachable_host() {
 
 #[tokio::test]
 async fn terminates_when_router_dropped() {
-    let (dl, mut messages, mut commands) = make_test_sync_dl().await;
+    let (dl, messages, mut commands) = make_test_sync_dl().await;
     let (dl_tx, _dl_rx) = dl.split();
     let first_cmd = commands.next().await;
 
@@ -548,7 +548,7 @@ async fn terminates_when_router_dropped() {
 
 #[tokio::test]
 async fn action_received_before_synced() {
-    let (dl, mut messages, mut commands) = make_test_dl_custom_on_invalid(
+    let (dl, messages, mut commands) = make_test_dl_custom_on_invalid(
         OnInvalidMessage::Terminate,
         DownlinkState::Linked,
         Response::for_command(Command::Link),

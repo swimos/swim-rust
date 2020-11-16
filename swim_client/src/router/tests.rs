@@ -103,7 +103,7 @@ async fn test_route_single_outgoing_message_to_single_downlink() {
     let (pool, pool_handlers_rx) = TestPool::new();
     let mut router = SwimRouter::new(Default::default(), pool.clone());
 
-    let (mut sink, _) = open_connection(&mut router, &url, "foo", "bar").await;
+    let (sink, _) = open_connection(&mut router, &url, "foo", "bar").await;
 
     let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
     let _ = sink.send(envelope).await.unwrap();
@@ -131,8 +131,8 @@ async fn test_route_single_outgoing_message_to_multiple_downlinks_same_host() {
     let (pool, pool_handlers_rx) = TestPool::new();
     let mut router = SwimRouter::new(Default::default(), pool.clone());
 
-    let (mut first_sink, _) = open_connection(&mut router, &url, "foo_node", "foo_lane").await;
-    let (mut second_sink, _) = open_connection(&mut router, &url, "foo_node", "foo_lane").await;
+    let (first_sink, _) = open_connection(&mut router, &url, "foo_node", "foo_lane").await;
+    let (second_sink, _) = open_connection(&mut router, &url, "foo_node", "foo_lane").await;
 
     let env = Envelope::make_event(
         String::from("oof"),
@@ -171,9 +171,8 @@ async fn test_route_single_outgoing_message_to_multiple_downlinks_different_host
     let (pool, pool_handlers_rx) = TestPool::new();
     let mut router = SwimRouter::new(Default::default(), pool.clone());
 
-    let (mut first_sink, _) =
-        open_connection(&mut router, &first_url, "first_foo", "first_bar").await;
-    let (mut second_sink, _) =
+    let (first_sink, _) = open_connection(&mut router, &first_url, "first_foo", "first_bar").await;
+    let (second_sink, _) =
         open_connection(&mut router, &second_url, "second_foo", "second_bar").await;
 
     let env = Envelope::make_event(
@@ -213,7 +212,7 @@ async fn test_route_multiple_outgoing_messages_to_single_downlink() {
     let (pool, pool_handlers_rx) = TestPool::new();
     let mut router = SwimRouter::new(Default::default(), pool.clone());
 
-    let (mut sink, _) = open_connection(&mut router, &url, "foo", "bar").await;
+    let (sink, _) = open_connection(&mut router, &url, "foo", "bar").await;
 
     let first_env = Envelope::make_event(
         String::from("foo"),
@@ -257,8 +256,8 @@ async fn test_route_multiple_outgoing_messages_to_multiple_downlinks_same_host()
     let (pool, pool_handlers_rx) = TestPool::new();
     let mut router = SwimRouter::new(Default::default(), pool.clone());
 
-    let (mut first_sink, _) = open_connection(&mut router, &url, "foo_node", "foo_lane").await;
-    let (mut second_sink, _) = open_connection(&mut router, &url, "foo_node", "foo_lane").await;
+    let (first_sink, _) = open_connection(&mut router, &url, "foo_node", "foo_lane").await;
+    let (second_sink, _) = open_connection(&mut router, &url, "foo_node", "foo_lane").await;
 
     let first_env = Envelope::make_event(
         String::from("first_foo"),
@@ -315,10 +314,8 @@ async fn test_route_multiple_outgoing_messages_to_multiple_downlinks_different_h
     let (pool, pool_handlers_rx) = TestPool::new();
     let mut router = SwimRouter::new(Default::default(), pool.clone());
 
-    let (mut first_sink, _) =
-        open_connection(&mut router, &first_url, "foo_node", "foo_lane").await;
-    let (mut second_sink, _) =
-        open_connection(&mut router, &second_url, "foo_node", "foo_lane").await;
+    let (first_sink, _) = open_connection(&mut router, &first_url, "foo_node", "foo_lane").await;
+    let (second_sink, _) = open_connection(&mut router, &second_url, "foo_node", "foo_lane").await;
 
     let first_env = Envelope::make_event(
         String::from("first_foo"),
@@ -375,7 +372,7 @@ async fn test_route_single_incoming_message_to_single_downlink() {
     let (pool, pool_handlers_rx) = TestPool::new();
     let mut router = SwimRouter::new(Default::default(), pool.clone());
 
-    let (mut sink, mut stream) = open_connection(&mut router, &url, "foo", "bar").await;
+    let (sink, mut stream) = open_connection(&mut router, &url, "foo", "bar").await;
 
     let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
 
@@ -415,7 +412,7 @@ async fn test_route_single_incoming_message_to_multiple_downlinks_same_host_same
     let (pool, pool_handlers_rx) = TestPool::new();
     let mut router = SwimRouter::new(Default::default(), pool.clone());
 
-    let (mut first_sink, mut first_stream) = open_connection(&mut router, &url, "foo", "bar").await;
+    let (first_sink, mut first_stream) = open_connection(&mut router, &url, "foo", "bar").await;
     let (_, mut second_stream) = open_connection(&mut router, &url, "foo", "bar").await;
 
     let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
@@ -466,7 +463,7 @@ async fn test_route_single_incoming_message_to_multiple_downlinks_same_host_diff
     let (pool, pool_handlers_rx) = TestPool::new();
     let mut router = SwimRouter::new(Default::default(), pool.clone());
 
-    let (mut first_sink, mut first_stream) = open_connection(&mut router, &url, "oof", "rab").await;
+    let (first_sink, mut first_stream) = open_connection(&mut router, &url, "oof", "rab").await;
     let (_, mut second_stream) = open_connection(&mut router, &url, "foo", "bar").await;
 
     let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
@@ -512,9 +509,9 @@ async fn test_route_single_incoming_message_to_multiple_downlinks_different_host
     let (pool, pool_handlers_rx) = TestPool::new();
     let mut router = SwimRouter::new(Default::default(), pool.clone());
 
-    let (mut first_sink, mut first_stream) =
+    let (first_sink, mut first_stream) =
         open_connection(&mut router, &first_url, "foo", "bar").await;
-    let (mut second_sink, mut second_stream) =
+    let (second_sink, mut second_stream) =
         open_connection(&mut router, &second_url, "foo", "bar").await;
 
     let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
@@ -583,13 +580,13 @@ async fn test_route_single_incoming_message_to_multiple_downlinks_different_host
     let (pool, pool_handlers_rx) = TestPool::new();
     let mut router = SwimRouter::new(Default::default(), pool.clone());
 
-    let (mut first_sink, mut first_stream) =
+    let (first_sink, mut first_stream) =
         open_connection(&mut router, &first_url, "foo", "bar").await;
 
-    let (mut second_sink, mut second_stream) =
+    let (second_sink, mut second_stream) =
         open_connection(&mut router, &second_url, "oof", "rab").await;
 
-    let (mut third_sink, mut third_stream) =
+    let (third_sink, mut third_stream) =
         open_connection(&mut router, &third_url, "ofo", "abr").await;
 
     let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
@@ -676,7 +673,7 @@ async fn test_route_multiple_incoming_messages_to_single_downlink() {
     let (pool, pool_handlers_rx) = TestPool::new();
     let mut router = SwimRouter::new(Default::default(), pool.clone());
 
-    let (mut sink, mut stream) = open_connection(&mut router, &url, "foo", "bar").await;
+    let (sink, mut stream) = open_connection(&mut router, &url, "foo", "bar").await;
 
     let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
     let _ = sink.send(envelope.clone()).await.unwrap();
@@ -737,8 +734,7 @@ async fn test_route_multiple_incoming_messages_to_multiple_downlinks_same_host_s
     let (pool, pool_handlers_rx) = TestPool::new();
     let mut router = SwimRouter::new(Default::default(), pool.clone());
 
-    let (mut first_sink, mut first_stream) =
-        open_connection(&mut router, &url, "room", "five").await;
+    let (first_sink, mut first_stream) = open_connection(&mut router, &url, "room", "five").await;
     let (_, mut second_stream) = open_connection(&mut router, &url, "room", "five").await;
 
     let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
@@ -811,8 +807,7 @@ async fn test_route_multiple_incoming_messages_to_multiple_downlinks_same_host_d
     let (pool, pool_handlers_rx) = TestPool::new();
     let mut router = SwimRouter::new(Default::default(), pool.clone());
 
-    let (mut first_sink, mut first_stream) =
-        open_connection(&mut router, &url, "room", "five").await;
+    let (first_sink, mut first_stream) = open_connection(&mut router, &url, "room", "five").await;
     let (_, mut second_stream) = open_connection(&mut router, &url, "room", "six").await;
 
     let envelope = Envelope::sync(String::from("room"), String::from("seven"));
@@ -885,10 +880,10 @@ async fn test_route_multiple_incoming_message_to_multiple_downlinks_different_ho
     let (pool, pool_handlers_rx) = TestPool::new();
     let mut router = SwimRouter::new(Default::default(), pool.clone());
 
-    let (mut first_sink, mut first_stream) =
+    let (first_sink, mut first_stream) =
         open_connection(&mut router, &first_url, "building", "1").await;
 
-    let (mut second_sink, mut second_stream) =
+    let (second_sink, mut second_stream) =
         open_connection(&mut router, &second_url, "building", "1").await;
 
     let envelope = Envelope::sync(String::from("building"), String::from("1"));
@@ -993,13 +988,13 @@ async fn test_route_multiple_incoming_message_to_multiple_downlinks_different_ho
     let (pool, pool_handlers_rx) = TestPool::new();
     let mut router = SwimRouter::new(Default::default(), pool.clone());
 
-    let (mut first_sink, mut first_stream) =
+    let (first_sink, mut first_stream) =
         open_connection(&mut router, &first_url, "building", "1").await;
 
-    let (mut second_sink, mut second_stream) =
+    let (second_sink, mut second_stream) =
         open_connection(&mut router, &second_url, "room", "2").await;
 
-    let (mut third_sink, mut third_stream) =
+    let (third_sink, mut third_stream) =
         open_connection(&mut router, &third_url, "building", "3").await;
 
     let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
@@ -1158,7 +1153,7 @@ async fn test_route_incoming_unsopported_message() {
     let (pool, pool_handlers_rx) = TestPool::new();
     let mut router = SwimRouter::new(Default::default(), pool.clone());
 
-    let (mut sink, mut stream) = open_connection(&mut router, &url, "foo", "bar").await;
+    let (sink, mut stream) = open_connection(&mut router, &url, "foo", "bar").await;
 
     let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
     let _ = sink.send(envelope.clone()).await.unwrap();
@@ -1203,7 +1198,7 @@ async fn test_route_incoming_message_of_no_interest() {
     let (pool, pool_handlers_rx) = TestPool::new();
     let mut router = SwimRouter::new(Default::default(), pool.clone());
 
-    let (mut sink, mut stream) = open_connection(&mut router, &url, "foo", "bar").await;
+    let (sink, mut stream) = open_connection(&mut router, &url, "foo", "bar").await;
 
     let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
     let _ = sink.send(envelope.clone()).await.unwrap();
@@ -1253,7 +1248,7 @@ async fn test_single_direct_message_existing_connection() {
     let (pool, pool_handlers_rx) = TestPool::new();
     let mut router = SwimRouter::new(Default::default(), pool.clone());
 
-    let (mut sink, _) = open_connection(&mut router, &url, "foo", "bar").await;
+    let (sink, _) = open_connection(&mut router, &url, "foo", "bar").await;
 
     let sync_env = Envelope::sync(String::from("room"), String::from("seven"));
     let _ = sink.send(sync_env).await.unwrap();
@@ -1264,7 +1259,7 @@ async fn test_single_direct_message_existing_connection() {
         Some(Value::text("Test Command")),
     );
 
-    let mut general_sink = router.general_sink();
+    let general_sink = router.general_sink();
 
     assert!(general_sink.send((url.clone(), command_env)).await.is_ok());
 
@@ -1302,7 +1297,7 @@ async fn test_single_direct_message_new_connection() {
         Some(Value::text("Test Command")),
     );
 
-    let mut general_sink = router.general_sink();
+    let general_sink = router.general_sink();
 
     assert!(general_sink.send((url.clone(), command_env)).await.is_ok());
 
@@ -1328,7 +1323,7 @@ async fn test_multiple_direct_messages_existing_connection() {
     let (pool, pool_handlers_rx) = TestPool::new();
     let mut router = SwimRouter::new(Default::default(), pool.clone());
 
-    let (mut sink, _) = open_connection(&mut router, &url, "building", "swim").await;
+    let (sink, _) = open_connection(&mut router, &url, "building", "swim").await;
 
     let sync_env = Envelope::sync(String::from("building"), String::from("swim"));
     let _ = sink.send(sync_env).await.unwrap();
@@ -1345,7 +1340,7 @@ async fn test_multiple_direct_messages_existing_connection() {
         Some(Value::text("Second")),
     );
 
-    let mut general_sink = router.general_sink();
+    let general_sink = router.general_sink();
 
     assert!(general_sink.send((url.clone(), first_env)).await.is_ok());
 
@@ -1402,7 +1397,7 @@ async fn test_multiple_direct_messages_new_connection() {
         Some(Value::text("Third")),
     );
 
-    let mut general_sink = router.general_sink();
+    let general_sink = router.general_sink();
 
     assert!(general_sink.send((url.clone(), first_env)).await.is_ok());
 
@@ -1462,7 +1457,7 @@ async fn test_multiple_direct_messages_different_connections() {
         Some(Value::text("Third")),
     );
 
-    let mut general_sink = router.general_sink();
+    let general_sink = router.general_sink();
 
     assert!(general_sink
         .send((first_url.clone(), first_env))
@@ -1551,7 +1546,7 @@ async fn test_route_incoming_parse_message_error() {
     let (pool, pool_handlers_rx) = TestPool::new();
     let mut router = SwimRouter::new(Default::default(), pool.clone());
 
-    let (mut sink, mut stream) = open_connection(&mut router, &url, "foo", "bar").await;
+    let (sink, mut stream) = open_connection(&mut router, &url, "foo", "bar").await;
 
     let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
     let _ = sink.send(envelope.clone()).await.unwrap();
@@ -1596,7 +1591,7 @@ async fn test_route_incoming_parse_envelope_error() {
     let (pool, pool_handlers_rx) = TestPool::new();
     let mut router = SwimRouter::new(Default::default(), pool.clone());
 
-    let (mut sink, mut stream) = open_connection(&mut router, &url, "foo", "bar").await;
+    let (sink, mut stream) = open_connection(&mut router, &url, "foo", "bar").await;
 
     let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
     let _ = sink.send(envelope.clone()).await.unwrap();
@@ -1628,7 +1623,7 @@ async fn test_route_incoming_unreachable_host() {
     let (pool, _) = TestPool::new();
     let mut router = SwimRouter::new(Default::default(), pool.clone());
 
-    let (mut sink, mut stream) = open_connection(&mut router, &url, "foo", "bar").await;
+    let (sink, mut stream) = open_connection(&mut router, &url, "foo", "bar").await;
 
     let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
     let _ = sink.send(envelope.clone()).await.unwrap();
@@ -1651,7 +1646,7 @@ async fn test_route_incoming_connection_closed_single() {
     let (pool, pool_handlers_rx) = TestPool::new();
     let mut router = SwimRouter::new(Default::default(), pool.clone());
 
-    let (mut sink, mut stream) = open_connection(&mut router, &url, "foo", "bar").await;
+    let (sink, mut stream) = open_connection(&mut router, &url, "foo", "bar").await;
 
     let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
     let _ = sink.send(envelope.clone()).await.unwrap();
@@ -1681,7 +1676,7 @@ async fn test_route_incoming_connection_closed_multiple_same_host() {
     let (pool, pool_handlers_rx) = TestPool::new();
     let mut router = SwimRouter::new(Default::default(), pool.clone());
 
-    let (mut first_sink, mut first_stream) = open_connection(&mut router, &url, "foo", "bar").await;
+    let (first_sink, mut first_stream) = open_connection(&mut router, &url, "foo", "bar").await;
     let (_, mut second_stream) = open_connection(&mut router, &url, "oof", "rab").await;
 
     let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
@@ -1721,9 +1716,9 @@ async fn test_route_incoming_connection_closed_multiple_different_hosts() {
     let (pool, pool_handlers_rx) = TestPool::new();
     let mut router = SwimRouter::new(Default::default(), pool.clone());
 
-    let (mut first_sink, mut first_stream) =
+    let (first_sink, mut first_stream) =
         open_connection(&mut router, &first_url, "foo", "bar").await;
-    let (mut second_sink, mut second_stream) =
+    let (second_sink, mut second_stream) =
         open_connection(&mut router, &second_url, "foo", "bar").await;
 
     let envelope = Envelope::sync(String::from("foo"), String::from("bar"));

@@ -209,7 +209,7 @@ async fn produce_available() {
 async fn consume_available() {
     let test_stream = TestWsStream::default();
 
-    let (mut tx, rx) = mpsc::channel(8);
+    let (tx, rx) = mpsc::channel(8);
 
     assert!(tx.send(1).await.is_ok());
     test_stream.stage_consume(1);
@@ -227,7 +227,7 @@ async fn consume_available() {
 async fn both_available() {
     let test_stream = TestWsStream::default();
 
-    let (mut tx, rx) = mpsc::channel(8);
+    let (tx, rx) = mpsc::channel(8);
 
     test_stream.stage_produce(56);
     assert!(tx.send(4).await.is_ok());
@@ -264,7 +264,7 @@ async fn produce_error() {
 async fn consume_error_on_ready() {
     let test_stream = TestWsStream::default();
 
-    let (mut tx, rx) = mpsc::channel(8);
+    let (tx, rx) = mpsc::channel(8);
 
     assert!(tx.send(0).await.is_ok());
     test_stream.stage_consume_error(0, "Boom!");
@@ -282,7 +282,7 @@ async fn consume_error_on_ready() {
 async fn consume_error_on_send() {
     let test_stream = TestWsStream::default();
 
-    let (mut tx, rx) = mpsc::channel(8);
+    let (tx, rx) = mpsc::channel(8);
 
     assert!(tx.send(0).await.is_ok());
     test_stream.stage_consume_error_on_send(0, "Boom!");
@@ -302,7 +302,7 @@ async fn alternates_produce_and_consume() {
 
     let staging = test_stream.clone();
 
-    let (mut tx, rx) = mpsc::channel(8);
+    let (tx, rx) = mpsc::channel(8);
 
     assert!(tx.send(1).await.is_ok());
     assert!(tx.send(2).await.is_ok());
@@ -383,7 +383,7 @@ async fn production_and_consumption_stop_after_close() {
 
     let staging = test_stream.clone();
 
-    let (mut tx, rx) = mpsc::channel(8);
+    let (tx, rx) = mpsc::channel(8);
 
     assert!(tx.send(1).await.is_ok());
 

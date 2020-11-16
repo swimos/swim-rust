@@ -321,7 +321,7 @@ async fn value_lane_start_task() {
 
 #[tokio::test]
 async fn value_lane_events_task() {
-    let (mut tx, rx) = mpsc::channel(5);
+    let (tx, rx) = mpsc::channel(5);
     let (_stop, stop_sig) = trigger::trigger();
 
     let lifecycle: TestLifecycle<ValueLane<String>> = TestLifecycle::default();
@@ -436,7 +436,7 @@ async fn map_lane_start_task() {
 
 #[tokio::test]
 async fn map_lane_events_task() {
-    let (mut tx, rx) = mpsc::channel(5);
+    let (tx, rx) = mpsc::channel(5);
     let (_stop, stop_sig) = trigger::trigger();
 
     let lifecycle: TestLifecycle<MapLane<String, String>> = TestLifecycle::default();
@@ -519,7 +519,7 @@ async fn map_lane_events_task_termination() {
 #[tokio::test]
 async fn action_lane_events_task() {
     let (tx_lane, _rx_lane) = mpsc::channel(5);
-    let (mut tx, rx) = mpsc::channel(5);
+    let (tx, rx) = mpsc::channel(5);
     let (_stop, stop_sig) = trigger::trigger();
 
     let lifecycle: TestLifecycle<ActionLane<String, usize>> = TestLifecycle::default();
@@ -602,7 +602,7 @@ async fn action_lane_events_task_termination() {
 #[tokio::test]
 async fn command_lane_events_task() {
     let (tx_lane, _rx_lane) = mpsc::channel(5);
-    let (mut tx, rx) = mpsc::channel(5);
+    let (tx, rx) = mpsc::channel(5);
     let (_stop, stop_sig) = trigger::trigger();
 
     let lifecycle: TestLifecycle<CommandLane<String>> = TestLifecycle::default();

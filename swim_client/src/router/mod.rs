@@ -18,13 +18,13 @@ use std::ops::Deref;
 use futures::stream::FuturesUnordered;
 use futures::Future;
 use futures::{stream, FutureExt};
+use pin_utils::pin_mut;
 use tokio::stream::StreamExt;
 use tokio::sync::oneshot;
 use tokio::sync::{mpsc, watch};
 use tracing::trace_span;
 use tracing::{span, Level};
 use tracing_futures::Instrument;
-use pin_utils::pin_mut;
 
 use swim_common::request::request_future::RequestError;
 use swim_common::warp::envelope::{Envelope, IncomingLinkMessage};
@@ -546,7 +546,7 @@ impl<Pool: ConnectionPool> Router for SwimRouter<Pool> {
     type ConnectionFut = BoxFuture<'static, Result<ConnectionChannel, RequestError>>;
 
     fn connection_for(&mut self, target: &AbsolutePath) -> Self::ConnectionFut {
-        let mut tx = self.router_connection_request_tx.clone();
+        let tx = self.router_connection_request_tx.clone();
         let path = target.clone();
         async move {
             let (resp_tx, resp_rx) = oneshot::channel();

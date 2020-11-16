@@ -123,7 +123,7 @@ where
             .instrument(span!(Level::DEBUG, SCHEDULE, index))
             .boxed();
 
-        let mut sender = self.scheduler.clone();
+        let sender = self.scheduler.clone();
         Box::pin(async move {
             //TODO Handle this.
             if sender.send(schedule_effect).await.is_err() {

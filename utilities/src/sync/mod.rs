@@ -12,54 +12,54 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use tokio::sync::{watch, broadcast};
 use futures::future::ready;
-use futures::{Stream, StreamExt};
 use futures::stream::unfold;
+use futures::{Stream, StreamExt};
+use tokio::sync::{broadcast, watch};
 
 pub mod promise;
 pub mod rwlock;
 pub mod trigger;
 
 pub fn watch_rx_to_stream<T>(rx: watch::Receiver<T>) -> impl Stream<Item = T> + Send + 'static
-    where
-        T: Send + Sync + Clone + 'static,
+where
+    T: Send + Sync + Clone + 'static,
 {
-    unfold(rx, |mut rx| {
-        async move {
-            if rx.changed().await.is_err() {
-                None
-            } else {
-                let current = (*rx.borrow()).clone();
-                Some((current, rx))
-            }
+    unfold(rx, |mut rx| async move {
+        if rx.changed().await.is_err() {
+            None
+        } else {
+            let current = (*rx.borrow()).clone();
+            Some((current, rx))
         }
     })
 }
 
-pub fn watch_option_rx_to_stream<T>(rx: watch::Receiver<Option<T>>) -> impl Stream<Item = T> + Send + 'static
-    where
-        T: Send + Sync + Clone + 'static,
+pub fn watch_option_rx_to_stream<T>(
+    rx: watch::Receiver<Option<T>>,
+) -> impl Stream<Item = T> + Send + 'static
+where
+    T: Send + Sync + Clone + 'static,
 {
-    unfold(rx, |mut rx| {
-        async move {
-            loop {
-                if rx.changed().await.is_err() {
-                    break None;
-                } else {
-                    let current = (*rx.borrow()).clone();
-                    if let Some(v) = current {
-                        break Some((v, rx));
-                    }
+    unfold(rx, |mut rx| async move {
+        loop {
+            if rx.changed().await.is_err() {
+                break None;
+            } else {
+                let current = (*rx.borrow()).clone();
+                if let Some(v) = current {
+                    break Some((v, rx));
                 }
             }
         }
     })
 }
 
-pub fn broadcast_rx_to_stream<T>(rx: broadcast::Receiver<T>) -> impl Stream<Item = T> + Send + 'static
-    where
-        T: Clone + Send + 'static,
+pub fn broadcast_rx_to_stream<T>(
+    rx: broadcast::Receiver<T>,
+) -> impl Stream<Item = T> + Send + 'static
+where
+    T: Clone + Send + 'static,
 {
     rx.into_stream().filter_map(|r| ready(r.ok()))
 }

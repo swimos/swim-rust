@@ -128,12 +128,12 @@ mod tests {
     }
 
     mod tokio {
-        use crate::future::retryable::factory::{ResetabbleFutureFactory, FutureFactory};
+        use crate::future::retryable::factory::{FutureFactory, ResetabbleFutureFactory};
 
         use crate::future::retryable::RetryableFuture;
+        use futures::future::BoxFuture;
         use futures::FutureExt;
         use tokio::sync::mpsc;
-        use futures::future::BoxFuture;
 
         #[derive(Copy, Clone, Eq, PartialEq, Debug)]
         enum SendErr {
@@ -154,7 +154,8 @@ mod tests {
                     } else {
                         Ok(value)
                     }
-                }.boxed()
+                }
+                .boxed()
             }
         }
 

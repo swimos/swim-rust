@@ -74,7 +74,7 @@ async fn check_receive(
 async fn immediate_unlink_action_lane() {
     let route = RelativePath::new("node", "lane");
     let (response_tx, response_rx) = mpsc::channel(5);
-    let (mut action_tx, action_rx) = mpsc::channel(5);
+    let (action_tx, action_rx) = mpsc::channel(5);
     let (router_tx, mut router_rx) = mpsc::channel(5);
     let (error_tx, _error_rx) = mpsc::channel(5);
 
@@ -110,7 +110,7 @@ async fn immediate_unlink_action_lane() {
 async fn link_to_action_lane() {
     let route = RelativePath::new("node", "lane");
     let (response_tx, response_rx) = mpsc::channel(5);
-    let (mut action_tx, action_rx) = mpsc::channel(5);
+    let (action_tx, action_rx) = mpsc::channel(5);
     let (router_tx, mut router_rx) = mpsc::channel(5);
     let (error_tx, _error_rx) = mpsc::channel(5);
 
@@ -153,7 +153,7 @@ async fn link_to_action_lane() {
 async fn sync_with_action_lane() {
     let route = RelativePath::new("node", "lane");
     let (response_tx, response_rx) = mpsc::channel(5);
-    let (mut action_tx, action_rx) = mpsc::channel(5);
+    let (action_tx, action_rx) = mpsc::channel(5);
     let (router_tx, mut router_rx) = mpsc::channel(5);
     let (error_tx, _error_rx) = mpsc::channel(5);
 
@@ -202,7 +202,7 @@ async fn sync_with_action_lane() {
 async fn sync_after_link_on_action_lane() {
     let route = RelativePath::new("node", "lane");
     let (response_tx, response_rx) = mpsc::channel(5);
-    let (mut action_tx, action_rx) = mpsc::channel(5);
+    let (action_tx, action_rx) = mpsc::channel(5);
     let (router_tx, mut router_rx) = mpsc::channel(5);
     let (error_tx, _error_rx) = mpsc::channel(5);
 
@@ -256,8 +256,8 @@ async fn sync_after_link_on_action_lane() {
 #[tokio::test]
 async fn link_to_and_receive_from_action_lane() {
     let route = RelativePath::new("node", "lane");
-    let (mut response_tx, response_rx) = mpsc::channel(5);
-    let (mut action_tx, action_rx) = mpsc::channel(5);
+    let (response_tx, response_rx) = mpsc::channel(5);
+    let (action_tx, action_rx) = mpsc::channel(5);
     let (router_tx, mut router_rx) = mpsc::channel(5);
     let (error_tx, _error_rx) = mpsc::channel(5);
 
@@ -315,8 +315,8 @@ async fn link_to_and_receive_from_action_lane() {
 #[tokio::test]
 async fn link_twice_to_action_lane() {
     let route = RelativePath::new("node", "lane");
-    let (mut response_tx, response_rx) = mpsc::channel(5);
-    let (mut action_tx, action_rx) = mpsc::channel(5);
+    let (response_tx, response_rx) = mpsc::channel(5);
+    let (action_tx, action_rx) = mpsc::channel(5);
     let (router_tx, mut router_rx) = mpsc::channel(5);
     let (error_tx, _error_rx) = mpsc::channel(5);
 
@@ -389,8 +389,8 @@ async fn link_twice_to_action_lane() {
 #[tokio::test]
 async fn no_messages_after_unlink_from_action_lane() {
     let route = RelativePath::new("node", "lane");
-    let (mut response_tx, response_rx) = mpsc::channel(5);
-    let (mut action_tx, action_rx) = mpsc::channel(5);
+    let (response_tx, response_rx) = mpsc::channel(5);
+    let (action_tx, action_rx) = mpsc::channel(5);
     let (router_tx, mut router_rx) = mpsc::channel(5);
     let (error_tx, _error_rx) = mpsc::channel(5);
 
@@ -465,7 +465,7 @@ async fn no_messages_after_unlink_from_action_lane() {
 async fn report_errors_from_action_lane() {
     let route = RelativePath::new("node", "lane");
     let (response_tx, response_rx) = mpsc::channel(5);
-    let (mut action_tx, action_rx) = mpsc::channel(5);
+    let (action_tx, action_rx) = mpsc::channel(5);
     let (router_tx, router_rx) = mpsc::channel(5);
     let (error_tx, mut error_rx) = mpsc::channel(5);
 

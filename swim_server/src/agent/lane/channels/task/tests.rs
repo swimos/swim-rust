@@ -165,14 +165,14 @@ impl LaneUplinks for TestUplinkSpawner {
         Context: AgentExecutionContext,
     {
         let TestUplinkSpawner {
-            mut respond_tx,
+            respond_tx,
             fail_on,
             fatal_errors,
         } = self.clone();
 
         let UplinkChannels {
             mut actions,
-            mut error_collector,
+            error_collector,
             ..
         } = channels;
 
@@ -858,7 +858,7 @@ fn make_command_lane_task<Context: AgentExecutionContext + Send + Sync + 'static
     mpsc::Receiver<i32>,
     TaskInput,
 ) {
-    let (mut collector_tx, collector_rx) = mpsc::channel(5);
+    let (collector_tx, collector_rx) = mpsc::channel(5);
     let (feedback_tx, mut feedback_rx) = mpsc::channel::<Action<i32, ()>>(5);
 
     let mock_lifecycle = async move {

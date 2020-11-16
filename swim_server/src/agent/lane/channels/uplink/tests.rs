@@ -79,7 +79,7 @@ async fn uplink_not_linked() {
 
     let events = ReportingStream::new(events, vec![on_event_tx]);
 
-    let (mut tx_action, rx_action) = mpsc::channel::<UplinkAction>(5);
+    let (tx_action, rx_action) = mpsc::channel::<UplinkAction>(5);
 
     let uplink = Uplink::new(
         ValueLaneUplink::new(lane.clone()),
@@ -121,7 +121,7 @@ async fn uplink_open_to_linked() {
 
     let events = ReportingStream::new(events, vec![on_event_tx_1, on_event_tx_2]);
 
-    let (mut tx_action, rx_action) = mpsc::channel::<UplinkAction>(5);
+    let (tx_action, rx_action) = mpsc::channel::<UplinkAction>(5);
 
     let uplink = Uplink::new(
         ValueLaneUplink::new(lane.clone()),
@@ -169,7 +169,7 @@ async fn uplink_open_to_synced() {
 
     let events = ReportingStream::new(events, vec![on_event_tx]);
 
-    let (mut tx_action, rx_action) = mpsc::channel::<UplinkAction>(5);
+    let (tx_action, rx_action) = mpsc::channel::<UplinkAction>(5);
 
     let uplink = Uplink::new(
         ValueLaneUplink::new(lane.clone()),
@@ -248,7 +248,7 @@ async fn value_state_machine_sync_from_events() {
 
     let uplink = ValueLaneUplink::new(lane.clone());
 
-    let (mut tx_fake, rx_fake) = mpsc::channel(5);
+    let (tx_fake, rx_fake) = mpsc::channel(5);
 
     let mut rx_fake = rx_fake.fuse();
 

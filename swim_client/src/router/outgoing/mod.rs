@@ -22,9 +22,9 @@ use tokio::sync::mpsc;
 use tracing::{error, info, span, trace, Level};
 
 use crate::router::retry::new_request;
+use pin_utils::pin_mut;
 use utilities::future::retryable::RetryableFuture;
 use utilities::sync::watch_rx_to_stream;
-use pin_utils::pin_mut;
 
 //----------------------------------Downlink to Connection Pool---------------------------------
 
@@ -144,7 +144,7 @@ mod route_tests {
     async fn permanent_error() {
         let config = router_config(RetryStrategy::none());
         let (task_request_tx, mut task_request_rx) = mpsc::channel(config.buffer_size().get());
-        let (mut envelope_tx, envelope_rx) = mpsc::channel(config.buffer_size().get());
+        let (envelope_tx, envelope_rx) = mpsc::channel(config.buffer_size().get());
         let (_close_tx, close_rx) = watch::channel(None);
 
         let outgoing_task = OutgoingHostTask::new(envelope_rx, task_request_tx, close_rx, config);
@@ -168,7 +168,7 @@ mod route_tests {
         let (close_tx, close_rx) = watch::channel(None);
 
         let (task_request_tx, mut task_request_rx) = mpsc::channel(config.buffer_size().get());
-        let (mut envelope_tx, envelope_rx) = mpsc::channel(config.buffer_size().get());
+        let (envelope_tx, envelope_rx) = mpsc::channel(config.buffer_size().get());
 
         let outgoing_task = OutgoingHostTask::new(envelope_rx, task_request_tx, close_rx, config);
 
@@ -188,7 +188,7 @@ mod route_tests {
             .send(Ok(ConnectionSender::new(dummy_tx)));
 
         let (response_tx, mut _response_rx) = mpsc::channel(config.buffer_size().get());
-        close_tx.broadcast(Some(response_tx)).unwrap();
+        close_tx.send(Some(response_tx)).unwrap();
 
         let task_result = handle.await.unwrap();
         assert_eq!(task_result, Ok(()));

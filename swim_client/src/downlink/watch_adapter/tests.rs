@@ -51,7 +51,7 @@ async fn receive_defined() {
 async fn receive_stream() {
     let (tx, rx) = super::channel(-4);
 
-    let handle = tokio::task::spawn(async move { rx.collect::<Vec<_>>().await });
+    let handle = tokio::task::spawn(async move { rx.into_stream().collect::<Vec<_>>().await });
     drop(tx);
 
     let output = handle.await.unwrap();
@@ -92,7 +92,7 @@ async fn in_order_no_duplicates_recv() {
 async fn in_order_no_duplicates_stream() {
     let (mut tx, rx) = super::channel(0);
 
-    let handle = tokio::task::spawn(async move { rx.collect::<Vec<_>>().await });
+    let handle = tokio::task::spawn(async move { rx.into_stream().collect::<Vec<_>>().await });
     for i in 1..1000 {
         assert!(tx.broadcast(i).is_ok());
     }

@@ -23,7 +23,7 @@ use swim_common::request::Request;
 
 use std::ops::Deref;
 use swim_common::ws::error::{ConnectionError, WebSocketError};
-use swim_common::ws::{WebsocketFactory, WsMessage, ConnFuture};
+use swim_common::ws::{ConnFuture, WebsocketFactory, WsMessage};
 use utilities::future::{TransformMut, TransformedSink, TransformedStream};
 
 /// A transformer that converts from a [`common::connections::WsMessage`] to [`ws_stream_wasm::WsMessage`].
@@ -102,10 +102,7 @@ impl WebsocketFactory for WasmWsFactory {
     type WsStream = WasmWsStream;
     type WsSink = WasmWsSink;
 
-    fn connect(
-        &mut self,
-        url: Url,
-    ) -> ConnFuture<'_, Self::WsSink, Self::WsStream> {
+    fn connect(&mut self, url: Url) -> ConnFuture<'_, Self::WsSink, Self::WsStream> {
         async move {
             let (tx, rx) = oneshot::channel();
             let req = ConnReq {

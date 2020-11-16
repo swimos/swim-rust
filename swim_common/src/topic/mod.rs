@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use std::error::Error;
-use std::fmt::{Display, Formatter, Debug};
+use std::fmt::{Debug, Display, Formatter};
 use std::pin::Pin;
 use std::sync::{Arc, Weak};
 
@@ -33,7 +33,7 @@ use std::num::NonZeroUsize;
 use swim_runtime::task::{spawn, TaskHandle};
 use tokio::sync::{broadcast, mpsc, watch};
 use utilities::future::{FlatmapStream, SwimStreamExt, TransformMut, TransformOnce};
-use utilities::sync::{watch_option_rx_to_stream, broadcast_rx_to_stream};
+use utilities::sync::{broadcast_rx_to_stream, watch_option_rx_to_stream};
 
 #[cfg(test)]
 mod tests;
@@ -298,13 +298,13 @@ where
     }
 }
 
-
-
 impl<T: Clone + Send + Sync + 'static> Topic<T> for WatchTopic<T> {
     type Receiver = WatchTopicReceiver<T>;
 
     fn subscribe(&mut self) -> BoxFuture<Result<Self::Receiver, TopicError>> {
-        ready(Ok(watch_option_rx_to_stream(self.receiver.clone()).boxed().into()))
+        ready(Ok(watch_option_rx_to_stream(self.receiver.clone())
+            .boxed()
+            .into()))
         .boxed()
     }
 }
@@ -314,8 +314,7 @@ impl<T: Clone + Send + Sync + 'static> Topic<T> for BroadcastTopic<T> {
 
     fn subscribe(&mut self) -> BoxFuture<Result<Self::Receiver, TopicError>> {
         let rx = self.sender.subscribe();
-        ready(Ok(broadcast_rx_to_stream(rx).boxed().into()))
-            .boxed()
+        ready(Ok(broadcast_rx_to_stream(rx).boxed().into())).boxed()
     }
 }
 

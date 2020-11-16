@@ -116,7 +116,7 @@ async fn dispatch_nothing() {
 
 #[tokio::test]
 async fn dispatch_single() {
-    let (mut envelope_tx, envelope_rx) = mpsc::channel::<TaggedEnvelope>(8);
+    let (envelope_tx, envelope_rx) = mpsc::channel::<TaggedEnvelope>(8);
 
     let (task, context) = make_dispatcher(8, 10, lanes(vec!["lane"]), envelope_rx);
 
@@ -143,7 +143,7 @@ async fn dispatch_single() {
 
 #[tokio::test]
 async fn dispatch_two_lanes() {
-    let (mut envelope_tx, envelope_rx) = mpsc::channel::<TaggedEnvelope>(8);
+    let (envelope_tx, envelope_rx) = mpsc::channel::<TaggedEnvelope>(8);
 
     let (task, context) = make_dispatcher(8, 10, lanes(vec!["lane_a", "lane_b"]), envelope_rx);
 
@@ -179,7 +179,7 @@ async fn dispatch_two_lanes() {
 
 #[tokio::test]
 async fn dispatch_multiple_same_lane() {
-    let (mut envelope_tx, envelope_rx) = mpsc::channel::<TaggedEnvelope>(8);
+    let (envelope_tx, envelope_rx) = mpsc::channel::<TaggedEnvelope>(8);
 
     let (task, context) = make_dispatcher(8, 10, lanes(vec!["lane"]), envelope_rx);
 
@@ -218,7 +218,7 @@ async fn dispatch_multiple_same_lane() {
 
 #[tokio::test]
 async fn blocked_lane() {
-    let (mut envelope_tx, envelope_rx) = mpsc::channel::<TaggedEnvelope>(8);
+    let (envelope_tx, envelope_rx) = mpsc::channel::<TaggedEnvelope>(8);
 
     let (task, context) = make_dispatcher(1, 10, lanes(vec!["lane_a", "lane_b"]), envelope_rx);
 
@@ -278,7 +278,7 @@ async fn blocked_lane() {
 
 #[tokio::test]
 async fn flush_pending() {
-    let (mut envelope_tx, envelope_rx) = mpsc::channel::<TaggedEnvelope>(8);
+    let (envelope_tx, envelope_rx) = mpsc::channel::<TaggedEnvelope>(8);
 
     let (task, context) = make_dispatcher(1, 10, lanes(vec!["lane_a", "lane_b"]), envelope_rx);
 
@@ -336,7 +336,7 @@ async fn flush_pending() {
 
 #[tokio::test]
 async fn dispatch_to_non_existent() {
-    let (mut envelope_tx, envelope_rx) = mpsc::channel::<TaggedEnvelope>(8);
+    let (envelope_tx, envelope_rx) = mpsc::channel::<TaggedEnvelope>(8);
 
     let (task, context) = make_dispatcher(8, 10, lanes(vec!["lane"]), envelope_rx);
 
@@ -362,7 +362,7 @@ async fn dispatch_to_non_existent() {
 
 #[tokio::test]
 async fn failed_lane_task() {
-    let (mut envelope_tx, envelope_rx) = mpsc::channel::<TaggedEnvelope>(8);
+    let (envelope_tx, envelope_rx) = mpsc::channel::<TaggedEnvelope>(8);
 
     let (task, context) = make_dispatcher(8, 10, lanes(vec!["lane"]), envelope_rx);
 
@@ -398,7 +398,7 @@ async fn failed_lane_task() {
 
 #[tokio::test]
 async fn fatal_failed_attachment() {
-    let (mut envelope_tx, envelope_rx) = mpsc::channel::<TaggedEnvelope>(8);
+    let (envelope_tx, envelope_rx) = mpsc::channel::<TaggedEnvelope>(8);
 
     let (task, context) = make_dispatcher(8, 10, lanes(vec![mock::POISON_PILL]), envelope_rx);
 

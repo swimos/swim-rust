@@ -36,7 +36,7 @@ use crate::agent::lane::model::{
     TransformedDeferredLaneView,
 };
 use crate::agent::lane::strategy::{Buffered, Dropping, Queue};
-use crate::agent::lane::{BroadcastStream, InvalidForm, LaneModel};
+use crate::agent::lane::{InvalidForm, LaneModel};
 use futures::stream::{iter, Iter};
 use futures::{Stream, StreamExt};
 use std::collections::HashMap;
@@ -45,8 +45,10 @@ use std::hash::Hash;
 use stm::var::observer::{ObsSender, Observer};
 use tokio::sync::{broadcast, mpsc, oneshot, watch};
 use tracing::{event, Level};
-use utilities::future::{FlatmapStream, SwimStreamExt, Transform, TransformedStream, SyncBoxStream, sync_boxed};
-use utilities::sync::watch_rx_to_stream;
+use utilities::future::{
+    sync_boxed, FlatmapStream, SwimStreamExt, SyncBoxStream, Transform, TransformedStream,
+};
+use utilities::sync::{broadcast_rx_to_stream, watch_rx_to_stream};
 
 mod summary;
 
@@ -311,12 +313,15 @@ where
     }
 }
 
-fn type_events<K, V>(summary: Arc<TransactionSummary<Value, V>>) -> impl Stream<Item = MapLaneEvent<K, V>> + Send + 'static
+fn type_events<K, V>(
+    summary: Arc<TransactionSummary<Value, V>>,
+) -> impl Stream<Item = MapLaneEvent<K, V>> + Send + 'static
 where
     K: Any + Send + Sync + Form,
     V: Any + Send + Sync,
 {
-    iter(summary.to_events().into_iter()).map(|e| e.try_into_typed().expect("Key form is inconsistent."))
+    iter(summary.to_events().into_iter())
+        .map(|e| e.try_into_typed().expect("Key form is inconsistent."))
 }
 
 impl<K, V> MapLaneWatch<K, V> for Queue
@@ -359,7 +364,7 @@ where
     K: Any + Send + Sync + Form,
     V: Any + Send + Sync,
 {
-    type View = TransformedChannel<BroadcastStream<SummaryRef<V>>, K, V>;
+    type View = TransformedChannel<SyncBoxStream<SummaryRef<V>>, K, V>;
     type DeferredView =
         TransformedDeferred<DeferredBroadcastView<TransactionSummary<Value, V>>, K, V>;
 
@@ -367,7 +372,8 @@ where
         let Buffered(n) = self;
         let (tx, rx) = broadcast::channel(n.get());
         let observer = tx.into();
-        let str = BroadcastStream(rx).transform_flat_map(ToTypedEvents::default());
+        let str =
+            sync_boxed(broadcast_rx_to_stream(rx)).transform_flat_map(ToTypedEvents::default());
         (observer, str)
     }
 
@@ -385,7 +391,8 @@ where
         let joined = Observer::new_with_deferred(tx.into(), rx_init);
         let deferred_view =
             DeferredBroadcastView::new(tx_init, *n).transform(ToTypedEvents::default());
-        let str = BroadcastStream(rx).transform_flat_map(ToTypedEvents::default());
+        let str =
+            sync_boxed(broadcast_rx_to_stream(rx)).transform_flat_map(ToTypedEvents::default());
         (joined, str, deferred_view)
     }
 }

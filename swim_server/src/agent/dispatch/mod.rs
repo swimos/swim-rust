@@ -453,7 +453,7 @@ impl EnvelopeDispatcher {
                         } else {
                             event!(Level::TRACE, message = REQUESTING_ATTACH, ?envelope);
                             let (req_tx, req_rx) = oneshot::channel();
-                            let (mut uplink_tx, uplink_rx) = mpsc::channel(lane_buffer.get());
+                            let (uplink_tx, uplink_rx) = mpsc::channel(lane_buffer.get());
 
                             let label = lane(&envelope).to_string();
 

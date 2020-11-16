@@ -19,9 +19,8 @@ use tokio::sync::mpsc;
 
 use crate::future::retryable::strategy::RetryStrategy;
 use crate::future::retryable::{ResettableFuture, RetryableFuture};
-use std::num::NonZeroUsize;
 use pin_project::pin_project;
-
+use std::num::NonZeroUsize;
 
 #[pin_project]
 struct MpscSender<F, Fut> {
@@ -63,7 +62,6 @@ impl<F, Fut> ResettableFuture for MpscSender<F, Fut>
 where
     F: Fn(mpsc::Sender<i32>, i32) -> Fut,
     Fut: Future<Output = Result<i32, SendErr>>,
-
 {
     fn reset(self: Pin<&mut Self>) -> bool {
         let mut projected = self.project();
@@ -89,7 +87,7 @@ async fn test() {
         tx,
         make_fut: send,
         current: None,
-        value: p
+        value: p,
     };
 
     let retry: Result<i32, SendErr> = RetryableFuture::new(

@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use futures::Stream;
 use futures::stream::unfold;
+use futures::Stream;
 use pin_project::pin_project;
 use tokio::sync::watch;
 
@@ -84,8 +84,9 @@ impl<T: Clone> EpochReceiver<T> {
 
     fn into_stream(self) -> impl Stream<Item = T> {
         let EpochReceiver { inner, prev_epoch } = self;
-        unfold((inner, prev_epoch), move |(mut inner, prev_epoch)| {
-            async move {
+        unfold(
+            (inner, prev_epoch),
+            move |(mut inner, prev_epoch)| async move {
                 loop {
                     if inner.changed().await.is_ok() {
                         let contents = inner.borrow();
@@ -99,8 +100,8 @@ impl<T: Clone> EpochReceiver<T> {
                         break None;
                     }
                 }
-            }
-        })
+            },
+        )
     }
 }
 

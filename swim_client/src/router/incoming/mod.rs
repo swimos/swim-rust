@@ -19,6 +19,7 @@ use futures::future::ready;
 use futures::stream;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
+use pin_utils::pin_mut;
 use std::convert::TryFrom;
 use std::iter::FromIterator;
 use swim_common::model::parser::parse_single;
@@ -30,7 +31,6 @@ use tokio::sync::mpsc;
 use tracing::level_filters::STATIC_MAX_LEVEL;
 use tracing::{debug, error, span, trace, warn, Level};
 use utilities::sync::watch_rx_to_stream;
-use pin_utils::pin_mut;
 
 //-------------------------------Connection Pool to Downlink------------------------------------
 
