@@ -842,3 +842,57 @@ pub trait Tag: Sized {
     /// Returns an enumeration representing all of tag's variants.  
     fn enumerated() -> Vec<Self>;
 }
+
+/// Maps an option to a Form error variant and returns if it is an error. This is useful when
+/// manually deriving Value -> T implementations.
+/// ```
+/// use swim_common::model::{Value, Item};
+/// use swim_common::form::{FormErr, Form};
+/// use swim_common::ok;
+///
+/// struct Person{
+///    name: String,
+///    age: i32
+/// }
+///
+/// impl Form for Person {
+///     fn as_value(&self) -> Value {
+///         unimplemented!()
+///     }
+///
+///     fn try_from_value(value: &Value) -> Result<Self, FormErr> {
+///         match value {
+///             Value::Record(_attrs, items)=> {
+///                 let mut item_iter = items.iter();
+///                 let mut name_opt= None;
+///                 let mut age_opt = None;
+///                     
+///                 while let Some(item) = item_iter.next() {
+///                     match item {
+///                         Item::Slot(Value::Text(id), Value::Text(name))=> if id == "name" {
+///                             name_opt = Some(name.to_string());
+///                         }
+///                         Item::Slot(Value::Text(id), Value::Int32Value(age))=> if id =="age" {
+///                             age_opt = Some(*age);                     
+///                         }
+///                         _ => panic!()          
+///                     }
+///                 }       
+///                 
+///                 Ok(Person {
+///                     name: ok!(name_opt),
+///                     age: ok!(age_opt),
+///                 })
+///             }
+///             _ => panic!()
+///         }
+///     }   
+/// }
+///
+/// ```
+#[macro_export]
+macro_rules! ok {
+    ($e:expr) => {{
+        $e.ok_or(FormErr::Malformatted)?
+    }};
+}

@@ -90,6 +90,14 @@ impl GoogleKeyStore {
         }
     }
 
+    pub(crate) fn cert_skew(&self) -> i64 {
+        self.permitted_cert_exp_skew
+    }
+
+    pub(crate) fn key_url(&self) -> Url {
+        self.public_key_url.clone()
+    }
+
     fn stale(&self) -> bool {
         match self.strategy {
             KeyStoreStrategy::NoStore => true,
