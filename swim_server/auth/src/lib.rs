@@ -143,7 +143,7 @@ impl TokenStore {
         self.tokens.insert(id, token_directive);
     }
 
-    pub fn get(&mut self, key: &String) -> Option<&TokenDirective> {
+    pub fn get(&mut self, key: &str) -> Option<&TokenDirective> {
         let TokenStore { skew, tokens } = self;
 
         tokens.retain(|_k, token| !token.expired(*skew));
