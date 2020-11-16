@@ -16,7 +16,7 @@ use biscuit::jwk::JWKSet;
 use biscuit::Empty;
 use chrono::{DateTime, FixedOffset, Utc};
 use http::header::{CACHE_CONTROL, EXPIRES};
-use http::HeaderMap;
+use http::{HeaderMap, HeaderValue};
 use serde::export::Formatter;
 use std::fmt::Display;
 use tokio::time::delay_for;
@@ -60,6 +60,7 @@ impl Default for GoogleKeyStore {
     }
 }
 
+#[derive(Debug, PartialEq)]
 pub enum GoogleKeyStoreError {
     ServerError,
     UpdateError(String),
@@ -216,4 +217,54 @@ impl From<serde_json::Error> for GoogleKeyStoreError {
     fn from(e: serde_json::Error) -> Self {
         GoogleKeyStoreError::UpdateError(e.to_string())
     }
+}
+
+#[test]
+fn store_no_cache() {
+    let authenticator = GoogleKeyStore::new(Url::parse(GOOGLE_JWK_CERTS_URL).unwrap(), 30);
+
+    let mut header_map = HeaderMap::new();
+    header_map.insert(
+        CACHE_CONTROL,
+        HeaderValue::from_static(NO_STORE_CACHEABILITY),
+    );
+
+    let parse_result = authenticator.parse_response(&header_map);
+    assert_eq!(parse_result, Ok(KeyStoreStrategy::NoStore));
+}
+
+#[test]
+fn store_revalidate() {
+    let authenticator = GoogleKeyStore::new(Url::parse(GOOGLE_JWK_CERTS_URL).unwrap(), 30);
+    let grace_period = 30;
+
+    let mut header_map = HeaderMap::new();
+    header_map.insert(
+        CACHE_CONTROL,
+        HeaderValue::from_str(&format!("{}={}", MAX_AGE_DIRECTIVE, grace_period)).unwrap(),
+    );
+
+    let start = Utc::now();
+
+    let parse_result = authenticator.parse_response(&header_map);
+    match parse_result {
+        Ok(KeyStoreStrategy::RevalidateAt(expires)) => {
+            assert!(start < expires && expires < Utc::now() + chrono::Duration::seconds(30));
+        }
+        _ => panic!("Expected a revalidation strategy"),
+    }
+}
+
+#[test]
+fn store_unknown_directive() {
+    let authenticator = GoogleKeyStore::new(Url::parse(GOOGLE_JWK_CERTS_URL).unwrap(), 30);
+
+    let mut header_map = HeaderMap::new();
+    header_map.insert(CACHE_CONTROL, HeaderValue::from_static("only-if-cached"));
+
+    let parse_result = authenticator
+        .parse_response(&header_map)
+        .expect("Expected a valid key store strategy");
+
+    assert_eq!(parse_result, KeyStoreStrategy::NoStore)
 }
