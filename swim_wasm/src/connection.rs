@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use futures::future::BoxFuture;
 use futures::stream::{SplitSink, SplitStream};
 use futures::{FutureExt, StreamExt};
 use tokio::sync::{mpsc, oneshot};
@@ -24,7 +23,7 @@ use swim_common::request::Request;
 
 use std::ops::Deref;
 use swim_common::ws::error::{ConnectionError, WebSocketError};
-use swim_common::ws::{WebsocketFactory, WsMessage};
+use swim_common::ws::{WebsocketFactory, WsMessage, ConnFuture};
 use utilities::future::{TransformMut, TransformedSink, TransformedStream};
 
 /// A transformer that converts from a [`common::connections::WsMessage`] to [`ws_stream_wasm::WsMessage`].
@@ -106,7 +105,7 @@ impl WebsocketFactory for WasmWsFactory {
     fn connect(
         &mut self,
         url: Url,
-    ) -> BoxFuture<Result<(Self::WsSink, Self::WsStream), ConnectionError>> {
+    ) -> ConnFuture<'_, Self::WsSink, Self::WsStream> {
         async move {
             let (tx, rx) = oneshot::channel();
             let req = ConnReq {
