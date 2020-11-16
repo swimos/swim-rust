@@ -14,7 +14,7 @@
 
 use swim_common::model::Value;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PolicyDirective {
     value: Value,
     policy: PolicyEffect,
@@ -55,7 +55,7 @@ impl PolicyDirective {
     }
 }
 
-#[derive(Debug, PartialOrd, PartialEq, Eq)]
+#[derive(Debug, PartialOrd, PartialEq, Eq, Copy, Clone)]
 pub enum PolicyEffect {
     Allow,
     Deny,
