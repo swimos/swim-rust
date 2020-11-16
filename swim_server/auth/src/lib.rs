@@ -20,9 +20,9 @@ use futures::Future;
 use futures_util::future::Ready;
 use std::collections::HashMap;
 use std::fmt::Display;
-use swim_common::form::Form;
+use swim_common::form::{Form, FormErr};
 use swim_common::model::time::Timestamp;
-use swim_common::model::Value;
+use swim_common::model::{Attr, Value};
 
 pub mod googleid;
 pub mod policy;
@@ -47,7 +47,7 @@ impl AuthenticationError {
     }
 }
 
-pub trait Authenticator<'s> {
+pub trait Authenticator<'s>: Form {
     type Credentials: Form;
     type AuthenticateFuture: Future<Output = Result<PolicyDirective, AuthenticationError>> + 's;
 
@@ -64,6 +64,22 @@ impl<'s> Authenticator<'s> for AlwaysAllowAuthenticator {
     }
 }
 
+impl Form for AlwaysAllowAuthenticator {
+    fn as_value(&self) -> Value {
+        Value::of_attr("allow")
+    }
+
+    fn try_from_value(value: &Value) -> Result<Self, FormErr> {
+        match value {
+            Value::Record(attrs, items) if items.is_empty() => match attrs.first() {
+                Some(Attr { name, .. }) if name == "allow" => Ok(AlwaysAllowAuthenticator),
+                _ => Err(FormErr::MismatchedTag),
+            },
+            v => Err(FormErr::incorrect_type("Value::Record", v)),
+        }
+    }
+}
+
 pub struct AlwaysDenyAuthenticator;
 impl<'s> Authenticator<'s> for AlwaysDenyAuthenticator {
     type Credentials = Value;
@@ -74,6 +90,22 @@ impl<'s> Authenticator<'s> for AlwaysDenyAuthenticator {
     }
 }
 
+impl Form for AlwaysDenyAuthenticator {
+    fn as_value(&self) -> Value {
+        Value::of_attr("deny")
+    }
+
+    fn try_from_value(value: &Value) -> Result<Self, FormErr> {
+        match value {
+            Value::Record(attrs, items) if items.is_empty() => match attrs.first() {
+                Some(Attr { name, .. }) if name == "deny" => Ok(AlwaysDenyAuthenticator),
+                _ => Err(FormErr::MismatchedTag),
+            },
+            v => Err(FormErr::incorrect_type("Value::Record", v)),
+        }
+    }
+}
+
 pub struct AlwaysForbidAuthenticator;
 impl<'s> Authenticator<'s> for AlwaysForbidAuthenticator {
     type Credentials = Value;
@@ -81,6 +113,22 @@ impl<'s> Authenticator<'s> for AlwaysForbidAuthenticator {
 
     fn authenticate(&'s mut self, credentials: Self::Credentials) -> Self::AuthenticateFuture {
         ready(Ok(PolicyDirective::forbid(credentials)))
+    }
+}
+
+impl Form for AlwaysForbidAuthenticator {
+    fn as_value(&self) -> Value {
+        Value::of_attr("forbid")
+    }
+
+    fn try_from_value(value: &Value) -> Result<Self, FormErr> {
+        match value {
+            Value::Record(attrs, items) if items.is_empty() => match attrs.first() {
+                Some(Attr { name, .. }) if name == "forbid" => Ok(AlwaysForbidAuthenticator),
+                _ => Err(FormErr::MismatchedTag),
+            },
+            v => Err(FormErr::incorrect_type("Value::Record", v)),
+        }
     }
 }
 
