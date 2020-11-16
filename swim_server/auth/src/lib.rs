@@ -156,7 +156,7 @@ impl Expired for Token {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct TokenDirective {
     token: Token,
     policy: PolicyDirective,
@@ -168,7 +168,7 @@ impl Expired for TokenDirective {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 struct TokenStore {
     skew: i64,
     tokens: HashMap<String, TokenDirective>,

@@ -28,7 +28,7 @@ const NO_STORE_CACHEABILITY: &str = "no-store";
 pub const DEFAULT_CERT_SKEW: i64 = 30;
 pub const GOOGLE_JWK_CERTS_URL: &str = "https://www.googleapis.com/oauth2/v3/certs";
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 enum KeyStoreStrategy {
     /// Don't cache anything and always fetch the latest value when it's accessed.
     NoStore,
@@ -36,7 +36,7 @@ enum KeyStoreStrategy {
     RevalidateAt(DateTime<FixedOffset>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct GoogleKeyStore {
     strategy: KeyStoreStrategy,
     /// Number of seconds before the public key certificate expiry time before forcing a refresh.

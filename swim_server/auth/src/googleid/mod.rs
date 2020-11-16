@@ -45,7 +45,7 @@ const DEFAULT_TOKEN_SKEW: i64 = 5;
 
 /// An authenticator for validating Google ID tokens.
 /// See https://developers.google.com/identity/sign-in/web/ for more information
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct GoogleIdAuthenticator {
     /// Number of seconds beyond the token's expiry time that are permitted.
     token_skew: i64,
@@ -89,9 +89,8 @@ impl Form for GoogleIdAuthenticator {
                 let mut opt_public_key_uri = None;
                 let mut opt_emails = None;
                 let mut opt_audiences = None;
-                let mut item_iter = items.iter();
 
-                while let Some(item) = item_iter.next() {
+                for item in items {
                     match item {
                         Item::Slot(Value::Text(name), Value::Int64Value(skew))
                             if name == "token_skew" =>
