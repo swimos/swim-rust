@@ -17,34 +17,46 @@ use swim_common::model::Value;
 #[derive(Debug)]
 pub struct PolicyDirective {
     value: Value,
-    policy: Policy,
+    policy: PolicyEffect,
 }
 
 impl PolicyDirective {
     pub fn allow(value: Value) -> PolicyDirective {
         PolicyDirective {
             value,
-            policy: Policy::Allow,
+            policy: PolicyEffect::Allow,
         }
     }
 
     pub fn deny(value: Value) -> PolicyDirective {
         PolicyDirective {
             value,
-            policy: Policy::Deny,
+            policy: PolicyEffect::Deny,
         }
     }
 
     pub fn forbid(value: Value) -> PolicyDirective {
         PolicyDirective {
             value,
-            policy: Policy::Forbid,
+            policy: PolicyEffect::Forbid,
         }
+    }
+
+    pub fn allows(&self) -> bool {
+        matches!(self.policy, PolicyEffect::Allow)
+    }
+
+    pub fn denies(&self) -> bool {
+        matches!(self.policy, PolicyEffect::Deny)
+    }
+
+    pub fn forbidden(&self) -> bool {
+        matches!(self.policy, PolicyEffect::Forbid)
     }
 }
 
 #[derive(Debug, PartialOrd, PartialEq, Eq)]
-pub enum Policy {
+pub enum PolicyEffect {
     Allow,
     Deny,
     Forbid,

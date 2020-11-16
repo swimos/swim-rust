@@ -14,6 +14,7 @@
 
 use crate::policy::PolicyDirective;
 use futures::Future;
+use im::HashSet;
 use std::fmt::Display;
 use swim_common::form::Form;
 
@@ -21,10 +22,9 @@ pub mod googleid;
 pub mod openid;
 pub mod policy;
 
-#[derive(Debug)]
 pub enum AuthenticationError {
-    MalformattedResponse(String),
     ServerError,
+    MalformattedResponse(String),
 }
 
 impl AuthenticationError {
@@ -35,7 +35,16 @@ impl AuthenticationError {
 
 pub trait Authenticator<'s> {
     type Credentials: Form;
+    type StartFuture: Future<Output = Result<(), AuthenticationError>>;
     type AuthenticateFuture: Future<Output = Result<PolicyDirective, AuthenticationError>> + 's;
 
+    fn start(&'s mut self) -> Self::StartFuture;
+
     fn authenticate(&'s mut self, credentials: Self::Credentials) -> Self::AuthenticateFuture;
+}
+
+pub trait VerifyOpenIdToken {
+    fn verify_audience(&self, audiences: &HashSet<String>) -> Result<(), AuthenticationError>;
+
+    fn verify_email(&self, emails: &HashSet<String>) -> Result<(), AuthenticationError>;
 }

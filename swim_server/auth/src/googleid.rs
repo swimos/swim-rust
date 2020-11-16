@@ -14,7 +14,7 @@
 
 use crate::{AuthenticationError, Authenticator};
 use biscuit::jwk::JWKSet;
-use biscuit::{CompactJson, Empty};
+use biscuit::{ClaimsSet, CompactJson, Empty, SingleOrMultiple};
 use chrono::{DateTime, FixedOffset, Utc};
 use futures::FutureExt;
 use futures_util::future::BoxFuture;
@@ -26,14 +26,18 @@ use swim_common::form::Form;
 
 use crate::policy::PolicyDirective;
 use biscuit::jws::Compact;
+use std::num::NonZeroUsize;
 use swim_common::model::Value;
 use tokio::time::delay_for;
 use url::Url;
 use utilities::future::retryable::strategy::RetryStrategy;
 
+const DEFAULT_SKEW_TIME: usize = 5;
 const GOOGLE_JWK_CERTS_URL: &str = "https://www.googleapis.com/oauth2/v3/certs";
 const MAX_AGE_DIRECTIVE: &str = "max-age";
 const NO_STORE_CACHEABILITY: &str = "no-store";
+
+type StdHashSet<T> = std::collections::HashSet<T>;
 
 #[derive(Debug, PartialEq, Eq, Hash)]
 struct PublicKeyDef;
@@ -45,6 +49,15 @@ pub enum KeyCacheStrategy {
 }
 
 impl KeyCacheStrategy {
+    fn stale(&self) -> bool {
+        match self {
+            KeyCacheStrategy::NoStore => true,
+            KeyCacheStrategy::RevalidateAt(expires) => {
+                !expires.lt(&Into::<DateTime<FixedOffset>>::into(Utc::now()))
+            }
+        }
+    }
+
     fn from_headers(headers: &HeaderMap) -> Result<KeyCacheStrategy, AuthenticationError> {
         let cache_control_headers = headers.get_all(CACHE_CONTROL);
 
@@ -104,10 +117,10 @@ impl KeyCacheStrategy {
 
 #[derive(Debug)]
 pub struct GoogleIdAuthenticator {
-    last_refresh: u32,
+    permitted_clock_skew_time: usize,
     key_cache_strategy: KeyCacheStrategy,
-    audiences: HashSet<String>,
     emails: HashSet<String>,
+    audiences: HashSet<String>,
     keys: JWKSet<Empty>,
     public_key_uri: Url,
     retry_strategy: RetryStrategy,
@@ -126,12 +139,12 @@ impl From<serde_json::Error> for AuthenticationError {
 }
 
 impl GoogleIdAuthenticator {
-    pub fn new() -> GoogleIdAuthenticator {
+    pub fn new(emails: HashSet<String>, audience: HashSet<String>) -> GoogleIdAuthenticator {
         GoogleIdAuthenticator {
-            last_refresh: 0,
+            permitted_clock_skew_time: DEFAULT_SKEW_TIME,
             key_cache_strategy: KeyCacheStrategy::NoStore,
-            audiences: Default::default(),
-            emails: Default::default(),
+            emails,
+            audiences: audience,
             keys: JWKSet { keys: Vec::new() },
             public_key_uri: Url::parse(GOOGLE_JWK_CERTS_URL)
                 .expect("Failed to parse Google JWK certificate URL"),
@@ -139,20 +152,12 @@ impl GoogleIdAuthenticator {
         }
     }
 
-    pub fn using_key_url(public_key_uri: Url) -> GoogleIdAuthenticator {
-        GoogleIdAuthenticator {
-            last_refresh: 0,
-            key_cache_strategy: KeyCacheStrategy::NoStore,
-            audiences: Default::default(),
-            emails: Default::default(),
-            keys: JWKSet { keys: Vec::new() },
-            public_key_uri,
-            retry_strategy: RetryStrategy::default(),
+    // todo: refactor into a key store with a channel
+    async fn refresh_keys(&mut self, force: bool) -> Result<(), AuthenticationError> {
+        if !force && !self.key_cache_strategy.stale() {
+            return Ok(());
         }
-    }
 
-    // todo: refactor into a key store with a channel to prevent multiple, simultaneous, refreshes
-    async fn refresh_keys(&mut self) -> Result<(), AuthenticationError> {
         let mut has_errored = false;
 
         loop {
@@ -187,7 +192,7 @@ impl GoogleIdAuthenticator {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Form)]
 pub struct GoogleId {
     email_verified: bool,
     #[serde(rename = "azp")]
@@ -210,20 +215,119 @@ pub struct GoogleIdCredentials(String);
 
 impl<'s> Authenticator<'s> for GoogleIdAuthenticator {
     type Credentials = GoogleIdCredentials;
+    type StartFuture = BoxFuture<'s, Result<(), AuthenticationError>>;
     type AuthenticateFuture = BoxFuture<'s, Result<PolicyDirective, AuthenticationError>>;
+
+    fn start(&'s mut self) -> Self::StartFuture {
+        async move { self.refresh_keys(true).await }.boxed()
+    }
 
     fn authenticate(&'s mut self, credentials: GoogleIdCredentials) -> Self::AuthenticateFuture {
         async move {
-            self.refresh_keys().await?;
+            self.refresh_keys(false).await?;
 
-            let compact: Compact<GoogleId, Empty> = Compact::new_encoded(&credentials.0);
-            let decode_result = compact.decode_with_jwks(&self.keys);
+            let jwt: Compact<ClaimsSet<GoogleId>, Empty> = Compact::new_encoded(&credentials.0);
 
-            println!("{:?}", decode_result);
+            match jwt.decode_with_jwks(&self.keys) {
+                Ok(token) => {
+                    let (_header, token) = token.unwrap_decoded();
+                    let ClaimsSet {
+                        registered: registered_claims,
+                        private: private_claims,
+                        ..
+                    } = token;
 
-            Ok(PolicyDirective::allow(Value::Extant))
+                    match &registered_claims.audience {
+                        Some(SingleOrMultiple::Single(audience)) => {
+                            if !self.audiences.contains(&audience.as_ref().to_string()) {
+                                return Ok(PolicyDirective::forbid(Value::Extant));
+                            }
+                        }
+                        Some(SingleOrMultiple::Multiple(audiences)) => {
+                            let matched_audience = audiences
+                                .iter()
+                                .map(|a| a.as_ref().to_string())
+                                .any(|aud| self.audiences.contains(&aud));
+
+                            if !matched_audience {
+                                return Ok(PolicyDirective::forbid(Value::Extant));
+                            }
+                        }
+                        None => return Ok(PolicyDirective::forbid(Value::Extant)),
+                    }
+
+                    return if self.emails.contains(&private_claims.email) {
+                        Ok(PolicyDirective::allow(private_claims.into_value()))
+                    } else {
+                        Ok(PolicyDirective::deny(Value::Extant))
+                    };
+                }
+                Err(_) => Err(AuthenticationError::MalformattedResponse(
+                    "Failed to decode JWT".into(),
+                )),
+            }
         }
         .boxed()
+    }
+}
+
+#[derive(Default)]
+pub struct GoogleIdAuthenticatorConfigBuilder {
+    permitted_clock_skew_time: Option<usize>,
+    permitted_issuers: Option<StdHashSet<String>>,
+    emails: Option<StdHashSet<String>>,
+    audiences: Option<StdHashSet<String>>,
+    key_issuer_url: Option<Url>,
+}
+
+impl GoogleIdAuthenticatorConfigBuilder {
+    pub fn permitted_clock_skew_time(mut self, duration: NonZeroUsize) -> Self {
+        self.permitted_clock_skew_time = Some(duration.get());
+        self
+    }
+
+    pub fn permitted_issuers(mut self, issuers: StdHashSet<String>) -> Self {
+        self.permitted_issuers = Some(issuers);
+        self
+    }
+
+    pub fn emails(mut self, emails: StdHashSet<String>) -> Self {
+        self.emails = Some(emails);
+        self
+    }
+
+    pub fn audiences(mut self, audiences: StdHashSet<String>) -> Self {
+        self.audiences = Some(audiences);
+        self
+    }
+
+    pub fn key_issuer_url(mut self, url: Url) -> Self {
+        self.key_issuer_url = Some(url);
+        self
+    }
+
+    pub async fn build(self) -> Result<GoogleIdAuthenticator, AuthenticationError> {
+        let mut authenticator = GoogleIdAuthenticator {
+            permitted_clock_skew_time: self.permitted_clock_skew_time.unwrap_or(DEFAULT_SKEW_TIME),
+            key_cache_strategy: KeyCacheStrategy::NoStore,
+            emails: self
+                .emails
+                .expect("At least one email must be provided")
+                .into(),
+            audiences: self
+                .audiences
+                .expect("At least one audience must be provided")
+                .into(),
+            keys: JWKSet { keys: Vec::new() },
+            public_key_uri: self.key_issuer_url.unwrap_or_else(|| {
+                Url::parse(GOOGLE_JWK_CERTS_URL)
+                    .expect("Failed to parse Google JWK certificate URL")
+            }),
+            retry_strategy: RetryStrategy::default(),
+        };
+
+        authenticator.refresh_keys(true).await?;
+        Ok(authenticator)
     }
 }
 
@@ -236,7 +340,7 @@ mod tests {
     use std::str::FromStr;
 
     fn expected_biscuit() -> Compact<ClaimsSet<GoogleId>, Empty> {
-        let expected_claims = ClaimsSet::<GoogleId> {
+        let expected_claims = ClaimsSet {
             registered: RegisteredClaims {
                 issuer: Some(FromStr::from_str("accounts.google.com").unwrap()),
                 subject: Some(FromStr::from_str("117614620700092979612").unwrap()),
@@ -301,9 +405,7 @@ mod tests {
     async fn test_decode() {
         let secret = Secret::public_key_from_file("test/public_key.der").unwrap();
         let credentials = GoogleIdCredentials(expected_token());
-
-        let compact: Compact<ClaimsSet<GoogleId>, Empty> =
-            biscuit::jws::Compact::new_encoded(&credentials.0);
+        let compact: Compact<ClaimsSet<GoogleId>, Empty> = Compact::new_encoded(&credentials.0);
         let algorithm = SignatureAlgorithm::RS256;
         let decoded_biscuit = compact.decode(&secret, algorithm).expect("Decode failure");
 
