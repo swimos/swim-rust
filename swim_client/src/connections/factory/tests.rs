@@ -13,12 +13,13 @@
 // limitations under the License.
 
 use super::async_factory::*;
-use crate::connections::factory::tungstenite::{CompressionConfig, HostConfig};
+use crate::connections::factory::tungstenite::HostConfig;
 use futures::task::{Context, Poll};
 use futures::{Sink, Stream};
 use std::pin::Pin;
 use swim_common::ws::error::ConnectionError;
 use swim_common::ws::{Protocol, WsMessage};
+use tokio_tungstenite::tungstenite::extensions::compression::WsCompression;
 
 #[derive(Debug, PartialEq, Eq)]
 struct TestSink(url::Url);
@@ -86,7 +87,7 @@ async fn successfully_open() {
             url.clone(),
             HostConfig {
                 protocol: Protocol::PlainText,
-                compression_config: CompressionConfig::Uncompressed,
+                compression_level: WsCompression::None(None),
             },
         )
         .await;
@@ -105,7 +106,7 @@ async fn fail_to_open() {
             url.clone(),
             HostConfig {
                 protocol: Protocol::PlainText,
-                compression_config: CompressionConfig::Uncompressed,
+                compression_level: WsCompression::None(None),
             },
         )
         .await;
