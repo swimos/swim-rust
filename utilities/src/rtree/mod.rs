@@ -59,7 +59,7 @@ where
     /// # Example:
     /// ```
     /// use utilities::rtree::{Point2D, Rect, RTree, Strategy, rect};
-    /// use futures_util::core_reexport::num::NonZeroUsize;
+    /// use std::num::NonZeroUsize;
     /// let mut rtree = RTree::new(NonZeroUsize::new(5).unwrap(), NonZeroUsize::new(10).unwrap(), Strategy::Linear);
     ///
     /// rtree.insert(rect!((0.0, 0.0), (1.0, 1.0)));
@@ -70,7 +70,7 @@ where
     /// # Panics:
     /// ```should_panic
     /// # use utilities::rtree::{Point2D, Rect, RTree, Strategy};
-    /// # use futures_util::core_reexport::num::NonZeroUsize;
+    /// # use std::num::NonZeroUsize;
     /// #
     /// // min cannot be greater than half of max
     /// let rtree: RTree<Rect<Point2D<f64>>> = RTree::new(NonZeroUsize::new(6).unwrap(), NonZeroUsize::new(10).unwrap(), Strategy::Linear);
@@ -93,7 +93,7 @@ where
     /// # Example:
     /// ```
     /// use utilities::rtree::{Point2D, Rect, RTree, Strategy, rect};
-    /// use futures_util::core_reexport::num::NonZeroUsize;
+    /// use std::num::NonZeroUsize;
     /// let mut rtree = RTree::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(5).unwrap(), Strategy::Linear);
     ///
     /// rtree.insert(rect!((0.0, 0.0), (1.0, 1.0)));
@@ -111,7 +111,7 @@ where
     /// # Example:
     /// ```
     /// use utilities::rtree::{Point2D, Rect, RTree, Strategy, rect};
-    /// use futures_util::core_reexport::num::NonZeroUsize;
+    /// use std::num::NonZeroUsize;
     /// let mut rtree = RTree::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(5).unwrap(), Strategy::Linear);
     ///
     /// assert!(rtree.is_empty());
@@ -130,7 +130,7 @@ where
     /// # Example:
     /// ```
     /// use utilities::rtree::{Point2D, Rect, RTree, Strategy, rect};
-    /// use futures_util::core_reexport::num::NonZeroUsize;
+    /// use std::num::NonZeroUsize;
     /// let mut rtree = RTree::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(5).unwrap(), Strategy::Linear);
     ///
     /// let first_item = rect!((0.0, 0.0), (1.0, 1.0));
@@ -157,7 +157,7 @@ where
     /// # Example:
     /// ```
     /// use utilities::rtree::{Point2D, Rect, RTree, Strategy, rect};
-    /// use futures_util::core_reexport::num::NonZeroUsize;
+    /// use std::num::NonZeroUsize;
     /// let mut rtree = RTree::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(5).unwrap(), Strategy::Linear);
     ///
     /// rtree.insert(rect!((0.0, 0.0), (1.0, 1.0)));
@@ -178,7 +178,7 @@ where
     /// # Example:
     /// ```
     /// use utilities::rtree::{Point2D, Rect, RTree, Strategy, rect};
-    /// use futures_util::core_reexport::num::NonZeroUsize;
+    /// use std::num::NonZeroUsize;
     /// let mut rtree = RTree::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(5).unwrap(), Strategy::Linear);
     ///
     /// let first_item = rect!((0.0, 0.0), (1.0, 1.0));
@@ -256,7 +256,7 @@ where
     /// # Example:
     /// ```
     /// use utilities::rtree::{Point2D, Rect, RTree, Strategy, rect};          
-    /// use futures_util::core_reexport::num::NonZeroUsize;
+    /// use std::num::NonZeroUsize;
     ///
     /// let items = vec![
     ///         rect!((0.0, 0.0), (10.0, 10.0)),
