@@ -13,19 +13,18 @@
 // limitations under the License.
 
 use crate::googleid::GoogleIdAuthenticator;
-use crate::policy::PolicyDirective;
-use chrono::{Duration, Utc};
+use crate::policy::{IssuedPolicy, PolicyDirective};
+use crate::token::Token;
 use futures::future::ready;
 use futures::Future;
 use futures_util::future::Ready;
-use std::collections::HashMap;
 use std::fmt::Display;
 use swim_common::form::{Form, FormErr};
-use swim_common::model::time::Timestamp;
 use swim_common::model::{Attr, Value};
 
 pub mod googleid;
 pub mod policy;
+mod token;
 
 pub enum AgentAuthenticator {
     AlwaysAllow(AlwaysAllowAuthenticator),
@@ -38,24 +37,24 @@ pub enum AgentAuthenticator {
 pub enum AuthenticationError {
     KeyStoreError(String),
     ServerError,
-    MalformattedResponse(String),
+    Malformatted(String),
 }
 
 impl AuthenticationError {
     pub fn malformatted<A: Display>(msg: &str, cause: A) -> AuthenticationError {
-        AuthenticationError::MalformattedResponse(format!("{}: {}", msg, cause))
+        AuthenticationError::Malformatted(format!("{}: {}", msg, cause))
     }
 }
 
-/// A trait for defining authenticators that validates a remote host's credentials against some
-/// authentication implementation.
+/// A trait for defining authenticators that validates a remote host or user credentials against
+/// some authentication implementation.
 pub trait Authenticator<'s>: Form {
     /// The type of the structure that this authenticator requires.
     type Credentials: Form;
     /// A future that resolves to either a policy for the remote host or an associated error.
-    type AuthenticateFuture: Future<Output = Result<PolicyDirective, AuthenticationError>> + 's;
+    type AuthenticateFuture: Future<Output = Result<IssuedPolicy, AuthenticationError>> + 's;
 
-    /// Attempt to authenticate the remote host.
+    /// Attempt to authenticate the remote host or user.
     fn authenticate(&'s mut self, credentials: Self::Credentials) -> Self::AuthenticateFuture;
 }
 
@@ -63,10 +62,13 @@ pub trait Authenticator<'s>: Form {
 pub struct AlwaysAllowAuthenticator;
 impl<'s> Authenticator<'s> for AlwaysAllowAuthenticator {
     type Credentials = Value;
-    type AuthenticateFuture = Ready<Result<PolicyDirective, AuthenticationError>>;
+    type AuthenticateFuture = Ready<Result<IssuedPolicy, AuthenticationError>>;
 
     fn authenticate(&'s mut self, credentials: Self::Credentials) -> Self::AuthenticateFuture {
-        ready(Ok(PolicyDirective::allow(credentials)))
+        ready(Ok(IssuedPolicy::new(
+            Token::empty(),
+            PolicyDirective::allow(credentials),
+        )))
     }
 }
 
@@ -90,10 +92,13 @@ impl Form for AlwaysAllowAuthenticator {
 pub struct AlwaysDenyAuthenticator;
 impl<'s> Authenticator<'s> for AlwaysDenyAuthenticator {
     type Credentials = Value;
-    type AuthenticateFuture = Ready<Result<PolicyDirective, AuthenticationError>>;
+    type AuthenticateFuture = Ready<Result<IssuedPolicy, AuthenticationError>>;
 
     fn authenticate(&'s mut self, credentials: Self::Credentials) -> Self::AuthenticateFuture {
-        ready(Ok(PolicyDirective::deny(credentials)))
+        ready(Ok(IssuedPolicy::new(
+            Token::empty(),
+            PolicyDirective::deny(credentials),
+        )))
     }
 }
 
@@ -117,10 +122,13 @@ impl Form for AlwaysDenyAuthenticator {
 pub struct AlwaysForbidAuthenticator;
 impl<'s> Authenticator<'s> for AlwaysForbidAuthenticator {
     type Credentials = Value;
-    type AuthenticateFuture = Ready<Result<PolicyDirective, AuthenticationError>>;
+    type AuthenticateFuture = Ready<Result<IssuedPolicy, AuthenticationError>>;
 
     fn authenticate(&'s mut self, credentials: Self::Credentials) -> Self::AuthenticateFuture {
-        ready(Ok(PolicyDirective::forbid(credentials)))
+        ready(Ok(IssuedPolicy::new(
+            Token::empty(),
+            PolicyDirective::forbid(credentials),
+        )))
     }
 }
 
@@ -137,80 +145,5 @@ impl Form for AlwaysForbidAuthenticator {
             },
             v => Err(FormErr::incorrect_type("Value::Record", v)),
         }
-    }
-}
-
-#[derive(Clone, PartialEq, Eq, Debug, Ord, PartialOrd, Hash)]
-pub struct Token {
-    id: String,
-    expires: Timestamp,
-}
-
-impl Token {
-    pub fn new(id: String, expires: Timestamp) -> Token {
-        Token { id, expires }
-    }
-}
-
-pub trait Expired {
-    fn expired(&self, skew: i64) -> bool;
-}
-
-impl Expired for Token {
-    fn expired(&self, skew: i64) -> bool {
-        self.expires
-            .as_ref()
-            .lt(&(Utc::now() + Duration::seconds(skew)))
-    }
-}
-
-#[derive(Debug, PartialEq)]
-pub struct TokenDirective {
-    token: Token,
-    policy: PolicyDirective,
-}
-
-impl Expired for TokenDirective {
-    fn expired(&self, skew: i64) -> bool {
-        self.token.expired(skew)
-    }
-}
-
-/// A store that contains mapped identifiers to a given directive. The store is lazy and will only
-/// check if tokens have expired following a get invocation.
-#[derive(Debug, PartialEq)]
-struct TokenStore {
-    /// An allowed time expiry skew for the tokens.
-    skew: i64,
-    tokens: HashMap<String, TokenDirective>,
-}
-
-impl TokenStore {
-    /// Creates a new token store that permits the provided time skew on token expiration.
-    pub fn new(skew: i64) -> TokenStore {
-        TokenStore {
-            skew,
-            tokens: Default::default(),
-        }
-    }
-}
-
-impl TokenStore {
-    /// Insert (and overwrite) the token at the provided key.
-    pub fn insert(&mut self, token: Token, policy: PolicyDirective) {
-        let id = token.id.clone();
-        let token_directive = TokenDirective { token, policy };
-
-        self.tokens.insert(id, token_directive);
-    }
-
-    /// Gets a reference to the provided `TokenDirective` using the key.
-    ///
-    /// This operation will also prune any expired tokens.
-    pub fn get(&mut self, key: &str) -> Option<&TokenDirective> {
-        let TokenStore { skew, tokens } = self;
-
-        tokens.retain(|_k, token| !token.expired(*skew));
-        tokens.get(key)
     }
 }

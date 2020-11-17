@@ -13,7 +13,6 @@
 // limitations under the License.
 
 use std::num::NonZeroI64;
-use std::ops::Deref;
 
 use biscuit::jws::Compact;
 use biscuit::{ClaimsSet, CompactJson, Empty, SingleOrMultiple};
@@ -31,8 +30,10 @@ use swim_common::ok;
 use crate::googleid::store::{
     GoogleKeyStore, GoogleKeyStoreError, DEFAULT_CERT_SKEW, GOOGLE_JWK_CERTS_URL,
 };
-use crate::policy::PolicyDirective;
-use crate::{AuthenticationError, Authenticator, Token, TokenStore};
+use crate::policy::{IssuedPolicy, PolicyDirective};
+use crate::token::Token;
+use crate::{AuthenticationError, Authenticator};
+use std::ops::Deref;
 
 mod store;
 #[cfg(test)]
@@ -50,7 +51,6 @@ pub struct GoogleIdAuthenticator {
     /// Number of seconds beyond the token's expiry time that are permitted.
     token_skew: i64,
     key_store: GoogleKeyStore,
-    tokens_store: TokenStore,
     emails: HashSet<String>,
     audiences: HashSet<String>,
 }
@@ -118,7 +118,6 @@ impl Form for GoogleIdAuthenticator {
                 Ok(GoogleIdAuthenticator {
                     token_skew: ok!(opt_token_skew),
                     key_store: GoogleKeyStore::new(ok!(opt_public_key_uri), ok!(opt_cert_skew)),
-                    tokens_store: TokenStore::new(ok!(opt_token_skew)),
                     emails: ok!(opt_emails),
                     audiences: ok!(opt_audiences),
                 })
@@ -130,13 +129,13 @@ impl Form for GoogleIdAuthenticator {
 
 impl From<reqwest::Error> for AuthenticationError {
     fn from(e: reqwest::Error) -> Self {
-        AuthenticationError::MalformattedResponse(e.to_string())
+        AuthenticationError::Malformatted(e.to_string())
     }
 }
 
 impl From<serde_json::Error> for AuthenticationError {
     fn from(e: serde_json::Error) -> Self {
-        AuthenticationError::MalformattedResponse(e.to_string())
+        AuthenticationError::Malformatted(e.to_string())
     }
 }
 
@@ -163,7 +162,7 @@ pub struct GoogleIdCredentials(String);
 
 impl<'s> Authenticator<'s> for GoogleIdAuthenticator {
     type Credentials = GoogleIdCredentials;
-    type AuthenticateFuture = BoxFuture<'s, Result<PolicyDirective, AuthenticationError>>;
+    type AuthenticateFuture = BoxFuture<'s, Result<IssuedPolicy, AuthenticationError>>;
 
     /// Verifies that the provided Google ID token is valid.
     ///
@@ -177,10 +176,6 @@ impl<'s> Authenticator<'s> for GoogleIdAuthenticator {
     /// decoding the JWT.
     fn authenticate(&'s mut self, credentials: GoogleIdCredentials) -> Self::AuthenticateFuture {
         async move {
-            if let Some(directive) = self.tokens_store.get(&credentials.0) {
-                return Ok(directive.policy.clone());
-            }
-
             let jwt: Compact<ClaimsSet<GoogleId>, Empty> = Compact::new_encoded(&credentials.0);
             let keys = self.key_store.keys().await?;
 
@@ -197,13 +192,13 @@ impl<'s> Authenticator<'s> for GoogleIdAuthenticator {
                     let expiry_timestamp = match &registered.expiry {
                         Some(expiry_time) => {
                             if expiry_time.lt(&(Utc::now() + Duration::seconds(self.token_skew))) {
-                                return Ok(PolicyDirective::deny(Value::Extant));
+                                return Ok(IssuedPolicy::deny(Value::Extant));
                             } else {
                                 let expiry_timestamp = expiry_time.deref().clone().into();
                                 expiry_timestamp
                             }
                         }
-                        None => return Ok(PolicyDirective::deny(Value::Extant)),
+                        None => return Ok(IssuedPolicy::deny(Value::Extant)),
                     };
 
                     // Check that the issuer of the token is one of the expected Google issuers
@@ -211,17 +206,17 @@ impl<'s> Authenticator<'s> for GoogleIdAuthenticator {
                         Some(uri) => {
                             let uri = uri.as_ref();
                             if ![GOOGLE_ISS1, GOOGLE_ISS2].contains(&uri) {
-                                return Ok(PolicyDirective::deny(Value::Extant));
+                                return Ok(IssuedPolicy::deny(Value::Extant));
                             }
                         }
-                        None => return Ok(PolicyDirective::deny(Value::Extant)),
+                        None => return Ok(IssuedPolicy::deny(Value::Extant)),
                     }
 
                     // Check the token's audience ID matches ours
                     match &registered.audience {
                         Some(SingleOrMultiple::Single(audience)) => {
                             if !self.audiences.contains(&audience.as_ref().to_string()) {
-                                return Ok(PolicyDirective::forbid(Value::Extant));
+                                return Ok(IssuedPolicy::forbid(Value::Extant));
                             }
                         }
                         Some(SingleOrMultiple::Multiple(audiences)) => {
@@ -231,24 +226,23 @@ impl<'s> Authenticator<'s> for GoogleIdAuthenticator {
                                 .any(|aud| self.audiences.contains(&aud));
 
                             if !matched_audience {
-                                return Ok(PolicyDirective::forbid(Value::Extant));
+                                return Ok(IssuedPolicy::forbid(Value::Extant));
                             }
                         }
-                        None => return Ok(PolicyDirective::forbid(Value::Extant)),
+                        None => return Ok(IssuedPolicy::forbid(Value::Extant)),
                     }
 
                     // Check that the email of the token matches one of the configured emails
                     return if self.emails.contains(&private.email) {
+                        let token = Token::new(private.email.clone(), Some(expiry_timestamp));
                         let policy = PolicyDirective::allow(private.into_value());
-                        let token = Token::new(credentials.0, expiry_timestamp);
-                        self.tokens_store.insert(token, policy.clone());
 
-                        Ok(policy)
+                        Ok(IssuedPolicy::new(token, policy))
                     } else {
-                        Ok(PolicyDirective::deny(Value::Extant))
+                        Ok(IssuedPolicy::deny(Value::Extant))
                     };
                 }
-                Err(_) => Err(AuthenticationError::MalformattedResponse(
+                Err(_) => Err(AuthenticationError::Malformatted(
                     "Failed to decode JWT".into(),
                 )),
             }
@@ -318,7 +312,6 @@ impl GoogleIdAuthenticatorBuilder {
             audiences: self
                 .audiences
                 .expect("At least one audience must be provided"),
-            tokens_store: TokenStore::new(token_skew),
         }
     }
 }

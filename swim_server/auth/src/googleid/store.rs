@@ -16,7 +16,7 @@ use biscuit::jwk::JWKSet;
 use biscuit::Empty;
 use chrono::{DateTime, FixedOffset, Utc};
 use http::header::{CACHE_CONTROL, EXPIRES};
-use http::{HeaderMap, HeaderValue};
+use http::HeaderMap;
 use serde::export::Formatter;
 use std::fmt::Display;
 use tokio::time::delay_for;
@@ -226,7 +226,7 @@ fn store_no_cache() {
     let mut header_map = HeaderMap::new();
     header_map.insert(
         CACHE_CONTROL,
-        HeaderValue::from_static(NO_STORE_CACHEABILITY),
+        http::HeaderValue::from_static(NO_STORE_CACHEABILITY),
     );
 
     let parse_result = authenticator.parse_response(&header_map);
@@ -241,7 +241,7 @@ fn store_revalidate() {
     let mut header_map = HeaderMap::new();
     header_map.insert(
         CACHE_CONTROL,
-        HeaderValue::from_str(&format!("{}={}", MAX_AGE_DIRECTIVE, grace_period)).unwrap(),
+        http::HeaderValue::from_str(&format!("{}={}", MAX_AGE_DIRECTIVE, grace_period)).unwrap(),
     );
 
     let start = Utc::now();
@@ -260,7 +260,10 @@ fn store_unknown_directive() {
     let authenticator = GoogleKeyStore::new(Url::parse(GOOGLE_JWK_CERTS_URL).unwrap(), 30);
 
     let mut header_map = HeaderMap::new();
-    header_map.insert(CACHE_CONTROL, HeaderValue::from_static("only-if-cached"));
+    header_map.insert(
+        CACHE_CONTROL,
+        http::HeaderValue::from_static("only-if-cached"),
+    );
 
     let parse_result = authenticator
         .parse_response(&header_map)

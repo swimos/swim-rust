@@ -14,7 +14,6 @@
 
 use crate::googleid::store::{GoogleKeyStore, GOOGLE_JWK_CERTS_URL};
 use crate::googleid::{GoogleId, GoogleIdAuthenticator, GoogleIdCredentials};
-use crate::TokenStore;
 use biscuit::jwa::SignatureAlgorithm;
 use biscuit::jws::{Compact, RegisteredHeader, Secret};
 use biscuit::{ClaimsSet, Empty, RegisteredClaims, SingleOrMultiple};
@@ -108,10 +107,6 @@ fn test_form() {
     let authenticator = GoogleIdAuthenticator {
         token_skew: 5,
         key_store: GoogleKeyStore::new(Url::parse(GOOGLE_JWK_CERTS_URL).unwrap(), 30),
-        tokens_store: TokenStore {
-            skew: 5,
-            tokens: Default::default(),
-        },
         emails,
         audiences,
     };

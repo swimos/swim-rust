@@ -12,12 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::token::{Expired, Token};
 use swim_common::model::Value;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PolicyDirective {
     value: Value,
     policy: PolicyEffect,
+}
+
+impl Default for PolicyDirective {
+    fn default() -> Self {
+        PolicyDirective::allow(Value::Extant)
+    }
 }
 
 impl PolicyDirective {
@@ -60,4 +67,45 @@ pub enum PolicyEffect {
     Allow,
     Deny,
     Forbid,
+}
+
+pub struct IssuedPolicy {
+    token: Token,
+    policy: PolicyDirective,
+}
+
+impl IssuedPolicy {
+    pub fn new(token: Token, policy: PolicyDirective) -> IssuedPolicy {
+        IssuedPolicy { token, policy }
+    }
+
+    pub fn allow(value: Value) -> IssuedPolicy {
+        IssuedPolicy::new(Token::empty(), PolicyDirective::allow(value))
+    }
+
+    pub fn deny(value: Value) -> IssuedPolicy {
+        IssuedPolicy::new(Token::empty(), PolicyDirective::deny(value))
+    }
+
+    pub fn forbid(value: Value) -> IssuedPolicy {
+        IssuedPolicy::new(Token::empty(), PolicyDirective::forbid(value))
+    }
+
+    pub fn policy(&self) -> &PolicyDirective {
+        &self.policy
+    }
+
+    pub fn value(&self) -> &Value {
+        &self.policy.value
+    }
+
+    pub fn into_policy_value(self) -> Value {
+        self.policy.value
+    }
+}
+
+impl Expired for IssuedPolicy {
+    fn expired(&self, skew: i64) -> bool {
+        self.token.expired(skew)
+    }
 }
