@@ -2,6 +2,14 @@ use num::traits::real::Real;
 use std::fmt::Debug;
 use std::ops::Sub;
 
+/// An n-dimensional rectangle defined by two points.
+///
+/// The number of dimensions are dictated by the type of the points that are used.
+/// The low point is the point that has the lowest coordinates in all dimensions and the highest
+/// point is the point has the highest coordinates in all dimensions.
+///
+/// For example, in a 2D rectangle, the low point is the lower-left corner and the high point
+/// is the upper-right corner.
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Rect<P>
 where
@@ -15,6 +23,18 @@ impl<P> Rect<P>
 where
     P: Point,
 {
+    /// Creates an n-dimensional rectangle from two points.
+    ///
+    /// The first point must be the lowest point (in all dimensions) of the hyperrecatngle, and the second
+    /// point must be the highest point (in all dimensions) of the hyperrecatngle.
+    /// The high point must be strictly higher than the low point, in all dimensions.
+    ///
+    /// Todo examples
+    /// # Example:
+    ///
+    /// # Macro:
+    /// Rectangles that use [`Point2D`](struct.Point2D.html) or [`Point3D`](struct.Point3D.html) can also be crated using the [`rect`](../macro.rect.html) macro,
+    /// subject to the same restrictions described above.
     pub fn new(low: P, high: P) -> Self {
         if low.has_higher_cords(&high) || low.has_equal_cords(&high) {
             panic!("The first point must be lower than the second.")
@@ -70,6 +90,7 @@ where
     }
 }
 
+/// A 2D Point with real number coordinates.
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Point2D<T: Real> {
     x: T,
@@ -77,6 +98,10 @@ pub struct Point2D<T: Real> {
 }
 
 impl<T: Real> Point2D<T> {
+    /// Creates a new 2D Point from two coordinates, x an y.
+    ///
+    /// # Example:
+    /// Todo example
     pub fn new(x: T, y: T) -> Self {
         Point2D { x, y }
     }
@@ -154,6 +179,7 @@ impl<T: Real + Debug> Point for Point2D<T> {
     }
 }
 
+/// A 3D Point with real number coordinates.
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Point3D<T: Real> {
     x: T,
@@ -162,6 +188,10 @@ pub struct Point3D<T: Real> {
 }
 
 impl<T: Real> Point3D<T> {
+    /// Creates a new 3D Point from two coordinates, x an y.
+    ///
+    /// # Example:
+    /// Todo example
     pub fn new(x: T, y: T, z: T) -> Self {
         Point3D { x, y, z }
     }
@@ -247,44 +277,79 @@ impl<T: Real + Debug> Point for Point3D<T> {
     }
 }
 
+/// A trait for implementing a custom point.
+///
+/// The associated type of the point must be a [`Real`] number.
 pub trait Point: Copy + Clone + PartialEq + Debug + Sub<Output = Self> {
     type Type: Real + Debug;
 
+    /// Returns the number of dimensions of the point.
     fn get_coord_count() -> usize;
 
+    // Returns the n-th coordinate of the point, or none if the point
+    // has less than n coordinates.
     fn get_nth_coord(&self, n: usize) -> Option<Self::Type>;
 
+    /// Calculates the mean point between two points.
     fn mean(&self, other: &Self) -> Self;
 
+    /// Multiplies all the coordinates of the point together.
     fn multiply_coord(&self) -> Self::Type;
 
+    /// Checks if two points have at least one equal coordinate.
     fn has_equal_cords(&self, other: &Self) -> bool;
 
+    /// Returns a point from the lowest coordinate of two points for each dimension.
     fn get_lowest(&self, other: &Self) -> Self;
 
+    /// Returns a point from the highest coordinate of two points for each dimension.
     fn get_highest(&self, other: &Self) -> Self;
 
+    /// Checks if the coordinates of a given point are greater or equal
+    /// to the corresponding coordinates of a different point.
     fn has_higher_cords(&self, other: &Self) -> bool;
 
+    /// Checks if the coordinates of a given point are lower or equal
+    /// to the corresponding coordinates of a different point.
     fn has_lower_cords(&self, other: &Self) -> bool;
 }
 
+/// A trait for implementing custom objects that can be bound by a box.
+///
+/// The associated type of the bounding box object must be a [`Point`](trait.Point.html).
 pub trait BoundingBox: Clone + Debug {
     type Point: Point;
 
+    /// Returns the minimum bounding box.
     fn get_mbb(&self) -> &Rect<Self::Point>;
+
+    /// Calculates the center of the bounding box of the object.
     fn get_center(&self) -> Self::Point;
+
+    /// Returns the number of dimensions of the object.
     fn get_coord_count(&self) -> usize {
         Self::Point::get_coord_count()
     }
-    // Area for 2D shapes and volume for 3D.
+
+    /// Calculates the area for 2D objects and volume for 3D objects.
     fn measure(&self) -> <Self::Point as Point>::Type;
-    // Create a minimum bounding box that contains both items.
+
+    /// Calculates a minimum bounding box that contains both items.
     fn combine_boxes<B: BoundingBox<Point = Self::Point>>(&self, other: &B) -> Rect<Self::Point>;
+
+    /// Checks if a bounding box is completely covering another bounding box.
     fn is_covering<B: BoundingBox<Point = Self::Point>>(&self, other: &B) -> bool;
+
+    /// Checks if two bounding boxes are intersecting.
     fn is_intersecting<B: BoundingBox<Point = Self::Point>>(&self, other: &B) -> bool;
 }
 
+///Creates a [`Rect`](rtree/struct.Rect.html) from coordinates.
+///
+/// The macro supports the creation of rectangles using [`Point2D`](rtree/struct.Point2D.html) and [`Point3D`](rtree/struct.Point3D.html).
+///
+/// # Example:
+/// Todo add examples
 #[macro_export]
 macro_rules! rect {
     ( ($low_x:expr, $low_y:expr), ($high_x:expr, $high_y:expr)) => {

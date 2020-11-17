@@ -1,4 +1,4 @@
-use crate::rtree::rect::{Point2D, Point3D};
+use crate::rtree::rectangles::{Point2D, Point3D};
 use crate::rtree::{BoundingBox, RTree, Rect, Strategy};
 use std::fs;
 use std::num::NonZeroUsize;
@@ -394,6 +394,7 @@ fn clone_on_remove_test() {
     assert_eq!(tree.len(), 0);
     assert_eq!(cloned_tree.len(), 1);
 }
+
 #[test]
 fn linear_split_no_clones_test() {
     let mut tree = RTree::new(

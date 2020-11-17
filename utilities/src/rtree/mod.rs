@@ -1,4 +1,8 @@
-use crate::rtree::rect::{BoundingBox, Point, Rect};
+//! Immutable R-tree implementation.
+//!
+//! The crate provides traits for implementing custom 2D and 3D objects that can be stored in the R-tree.
+pub use super::rect;
+pub use crate::rtree::rectangles::*;
 use num::traits::real::Real;
 use num::traits::Pow;
 use std::cmp::Ordering;
@@ -7,17 +11,22 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 
 #[macro_use]
-pub mod rect;
+mod rectangles;
 
 #[cfg(test)]
 mod tests;
 
+/// The strategy that will be used to split the nodes of the [`RTree`](struct.RTree.html), once the maximum capacity is reached.
+///
+/// The two supported strategies run in linear and quadratic time.
 #[derive(Debug, Clone, Copy)]
 pub enum Strategy {
     Linear,
     Quadratic,
 }
 
+/// Immutable tree data structure for efficient storage and retrieval of multi-dimensional information.
+/// Todo
 #[derive(Debug, Clone)]
 pub struct RTree<B>
 where
@@ -31,6 +40,7 @@ impl<B> RTree<B>
 where
     B: BoundingBox,
 {
+    ///Todo
     pub fn new(
         min_children: NonZeroUsize,
         max_children: NonZeroUsize,
@@ -44,23 +54,28 @@ where
         }
     }
 
+    ///Todo
     pub fn len(&self) -> usize {
         self.len
     }
 
+    ///Todo
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
+    ///Todo
     pub fn search(&self, area: &Rect<B::Point>) -> Option<Vec<&B>> {
         self.root.search(area)
     }
 
+    ///Todo
     pub fn insert(&mut self, item: B) {
         self.internal_insert(Arc::new(Entry::Leaf { item }), 0);
         self.len += 1;
     }
 
+    ///Todo
     pub fn remove(&mut self, bounding_box: &Rect<B::Point>) -> Option<B> {
         let (removed, maybe_orphan_nodes) = self.root.remove(bounding_box)?;
         self.len -= 1;
@@ -102,6 +117,7 @@ where
         Some(removed)
     }
 
+    ///Todo
     pub fn bulk_load(
         min_children: NonZeroUsize,
         max_children: NonZeroUsize,
