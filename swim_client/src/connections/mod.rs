@@ -230,7 +230,7 @@ where
 
         loop {
             let request: RequestType = select! {
-                _timer = prune_timer.next() => Some(RequestType::Prune),
+                _ = prune_timer.next() => Some(RequestType::Prune),
                 req = fused_requests.next() => req,
             }
             .ok_or(ConnectionError::ConnectError)?;
