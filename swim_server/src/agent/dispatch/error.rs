@@ -16,6 +16,7 @@ use crate::agent::lane::channels::task::LaneIoError;
 use crate::agent::AttachError;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
+use utilities::errors::Recoverable;
 
 #[derive(Debug)]
 pub enum DispatcherError {
@@ -23,9 +24,9 @@ pub enum DispatcherError {
     LaneTaskFailed(LaneIoError),
 }
 
-impl DispatcherError {
-    pub fn is_fatal(&self) -> bool {
-        matches!(
+impl Recoverable for DispatcherError {
+    fn is_fatal(&self) -> bool {
+        !matches!(
             self,
             DispatcherError::AttachmentFailed(AttachError::LaneDoesNotExist(_))
         )
@@ -77,11 +78,6 @@ impl DispatcherErrors {
         errors.push(error);
     }
 
-    pub fn is_fatal(&self) -> bool {
-        let DispatcherErrors(is_fatal, _) = self;
-        *is_fatal
-    }
-
     pub fn is_empty(&self) -> bool {
         let DispatcherErrors(_, errors) = self;
         errors.is_empty()
@@ -90,6 +86,13 @@ impl DispatcherErrors {
     pub fn errors(&self) -> &[DispatcherError] {
         let DispatcherErrors(_, errors) = self;
         errors.as_slice()
+    }
+}
+
+impl Recoverable for DispatcherErrors {
+    fn is_fatal(&self) -> bool {
+        let DispatcherErrors(is_fatal, _) = self;
+        *is_fatal
     }
 }
 

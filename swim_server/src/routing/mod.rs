@@ -12,16 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::plane::error::ResolutionError;
+use crate::routing::error::{ConnectionError, ResolutionError, RouterError};
 use futures::future::BoxFuture;
 use std::fmt::{Display, Formatter};
-use swim_common::routing::RoutingError;
+use std::time::Duration;
 use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
 use tokio::sync::mpsc;
 use url::Url;
+use utilities::errors::Recoverable;
+use utilities::sync::promise;
 use utilities::uri::RelativeUri;
 
 pub mod error;
+pub mod remote;
 #[cfg(test)]
 mod tests;
 pub mod ws;
@@ -83,15 +86,40 @@ impl TaggedClientEnvelope {
     }
 }
 
+/// A single entry in the router consisting of a sender that will push envelopes to the endpoint
+/// and a promise that will be satisfied when the endpoint closes.
+#[derive(Clone, Debug)]
+pub struct Route {
+    pub sender: TaggedSender,
+    pub on_drop: promise::Receiver<ConnectionDropped>,
+}
+
+impl Route {
+    pub fn new(sender: TaggedSender, on_drop: promise::Receiver<ConnectionDropped>) -> Self {
+        Route { sender, on_drop }
+    }
+}
+
 /// Interface for interacting with the server [`Envelope`] router.
 pub trait ServerRouter: Send + Sync {
-    fn get_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<TaggedSender, RoutingError>>;
 
-    fn resolve(
+    fn resolve_sender(
+        &mut self,
+        addr: RoutingAddr,
+    ) -> BoxFuture<Result<Route, ResolutionError>>;
+
+    fn lookup(
         &mut self,
         host: Option<Url>,
         route: RelativeUri,
-    ) -> BoxFuture<Result<RoutingAddr, ResolutionError>>;
+    ) -> BoxFuture<Result<RoutingAddr, RouterError>>;
+}
+
+/// Create router instances bound to particular routing addresses.
+pub trait ServerRouterFactory: Send + Sync {
+    type Router: ServerRouter;
+
+    fn create_for(&self, addr: RoutingAddr) -> Self::Router;
 }
 
 /// Sender that attaches a [`RoutingAddr`] to received envelopes before sending them over a channel.
@@ -108,5 +136,44 @@ impl TaggedSender {
 
     pub async fn send_item(&mut self, envelope: Envelope) -> Result<(), error::SendError> {
         Ok(self.inner.send(TaggedEnvelope(self.tag, envelope)).await?)
+    }
+}
+
+/// Reasons for a router connection to be dropped.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ConnectionDropped {
+    /// The connection was explicitly closed.
+    Closed,
+    /// No data passed through the connection, in either direction, within the specified duration.
+    TimedOut(Duration),
+    /// A remote connection failed with an error.
+    Failed(ConnectionError),
+    /// A local agent failed.
+    AgentFailed,
+    /// The promise indicating the reason was dropped (this is likely a bug).
+    Unknown,
+}
+
+impl Display for ConnectionDropped {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConnectionDropped::Closed => write!(f, "The connection was explicitly closed."),
+            ConnectionDropped::TimedOut(t) => write!(f, "The connection timed out after {:?}.", t),
+            ConnectionDropped::Failed(err) => write!(f, "The connection failed: '{}'", err),
+            ConnectionDropped::AgentFailed => write!(f, "The agent failed."),
+            ConnectionDropped::Unknown => write!(f, "The reason could not be determined."),
+        }
+    }
+}
+
+impl ConnectionDropped {
+    //The Recoverable trait cannot be implemented as ConnectionDropped is not an Error.
+    pub fn is_recoverable(&self) -> bool {
+        match self {
+            ConnectionDropped::TimedOut(_) => true,
+            ConnectionDropped::Failed(err) => err.is_transient(),
+            ConnectionDropped::AgentFailed => true,
+            _ => false,
+        }
     }
 }

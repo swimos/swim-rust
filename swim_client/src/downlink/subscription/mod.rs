@@ -46,7 +46,7 @@ use swim_common::request::request_future::RequestError;
 use swim_common::request::Request;
 use swim_common::routing::RoutingError;
 use swim_common::sink::item;
-use swim_common::sink::item::either::EitherSink;
+use swim_common::sink::item::either::SplitSink;
 use swim_common::sink::item::ItemSender;
 use swim_common::topic::Topic;
 use swim_common::warp::envelope::Envelope;
@@ -619,7 +619,7 @@ where
             BackpressureMode::Release { yield_after, .. } => {
                 let pressure_release = ValuePump::new(cmd_sink.clone(), yield_after).await;
 
-                let either_sink = EitherSink::new(cmd_sink, pressure_release).comap(
+                let either_sink = SplitSink::new(cmd_sink, pressure_release).comap(
                     move |cmd: Command<SharedValue>| match cmd {
                         act @ Command::Action(_) => Either::Right(act),
                         ow => Either::Left(ow),
@@ -700,13 +700,12 @@ where
                 )
                 .await;
 
-                let either_sink = EitherSink::new(direct_sink, pressure_release.into_item_sender())
-                    .comap(
-                        move |cmd: Command<UntypedMapModification<Arc<Value>>>| match cmd {
-                            Command::Action(act) => Either::Right(act),
-                            ow => Either::Left(ow),
-                        },
-                    );
+                let either_sink = SplitSink::new(direct_sink, pressure_release.into_item_sender()).comap(
+                    move |cmd: Command<UntypedMapModification<Arc<Value>>>| match cmd {
+                        Command::Action(act) => Either::Right(act),
+                        ow => Either::Left(ow),
+                    },
+                );
                 map_downlink_for_sink(key_schema, value_schema, either_sink, updates, &config)
             }
         };
@@ -745,12 +744,13 @@ where
             BackpressureMode::Release { yield_after, .. } => {
                 let pressure_release = ValuePump::new(cmd_sink.clone(), yield_after).await;
 
-                let either_sink = EitherSink::new(cmd_sink, pressure_release).comap(
-                    move |cmd: Command<Value>| match cmd {
-                        act @ Command::Action(_) => Either::Right(act),
-                        ow => Either::Left(ow),
-                    },
-                );
+                let either_sink =
+                    SplitSink::new(cmd_sink, pressure_release).comap(move |cmd: Command<Value>| {
+                        match cmd {
+                            act @ Command::Action(_) => Either::Right(act),
+                            ow => Either::Left(ow),
+                        }
+                    });
 
                 command_downlink_for_sink(either_sink, schema.clone(), &config)
             }

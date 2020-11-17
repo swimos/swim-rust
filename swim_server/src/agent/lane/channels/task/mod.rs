@@ -49,6 +49,7 @@ use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc;
 use tracing::{event, span, Level};
 use tracing_futures::Instrument;
+use utilities::errors::Recoverable;
 use utilities::sync::trigger;
 
 /// Aggregate error report combining lane update errors and lane uplink errors.

@@ -15,10 +15,10 @@
 use super::*;
 
 #[tokio::test]
-async fn send_left() {
+async fn split_send_left() {
     let left: Vec<i32> = vec![];
     let right: Vec<String> = vec![];
-    let mut either_sink = EitherSink::new(left, right);
+    let mut either_sink = SplitSink::new(left, right);
     let result = either_sink.send_item(Either::Left(7)).await;
     assert!(result.is_ok());
     let expected: Vec<i32> = vec![7];
@@ -27,10 +27,10 @@ async fn send_left() {
 }
 
 #[tokio::test]
-async fn send_right() {
+async fn split_send_right() {
     let left: Vec<i32> = vec![];
     let right: Vec<String> = vec![];
-    let mut either_sink = EitherSink::new(left, right);
+    let mut either_sink = SplitSink::new(left, right);
     let result = either_sink
         .send_item(Either::Right("hello".to_string()))
         .await;
@@ -41,10 +41,10 @@ async fn send_right() {
 }
 
 #[tokio::test]
-async fn send_both() {
+async fn split_send_both() {
     let left: Vec<i32> = vec![];
     let right: Vec<String> = vec![];
-    let mut either_sink = EitherSink::new(left, right);
+    let mut either_sink = SplitSink::new(left, right);
     let result = either_sink.send_item(Either::Left(7)).await;
     assert!(result.is_ok());
     let result = either_sink
@@ -58,10 +58,10 @@ async fn send_both() {
 }
 
 #[tokio::test]
-async fn send_interleaved() {
+async fn split_send_interleaved() {
     let left: Vec<i32> = vec![];
     let right: Vec<String> = vec![];
-    let mut either_sink = EitherSink::new(left, right);
+    let mut either_sink = SplitSink::new(left, right);
 
     let inputs = vec![
         Either::Left(12),
@@ -79,4 +79,22 @@ async fn send_interleaved() {
     assert_eq!(&either_sink.left, &expected_left);
     let expected_right: Vec<String> = vec!["hello".to_string(), "world".to_string()];
     assert_eq!(&either_sink.right, &expected_right);
+}
+
+#[tokio::test]
+async fn either_send_left() {
+    let left: Vec<i32> = vec![];
+    let mut either_sink: EitherSink<Vec<i32>, Vec<i32>> = EitherSink::left(left);
+    let result = either_sink.send_item(7).await;
+    assert!(result.is_ok());
+    assert!(matches!(either_sink, EitherSink(Either::Left(v)) if v == vec![7]));
+}
+
+#[tokio::test]
+async fn either_send_right() {
+    let right: Vec<i32> = vec![];
+    let mut either_sink: EitherSink<Vec<i32>, Vec<i32>> = EitherSink::right(right);
+    let result = either_sink.send_item(7).await;
+    assert!(result.is_ok());
+    assert!(matches!(either_sink, EitherSink(Either::Right(v)) if v == vec![7]));
 }

@@ -12,25 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::plane::error::{AmbiguousRoutes, NoAgentAtRoute};
-use utilities::route_pattern::RoutePattern;
+use super::TransitionError;
 
 #[test]
-fn no_agent_at_route_display() {
-    let err = NoAgentAtRoute("/test".parse().unwrap());
-    let string = err.to_string();
+fn transition_error_display() {
+    let string = TransitionError::ReceiverDropped.to_string();
+    assert_eq!(string, "Observer of the update was dropped.");
 
-    assert_eq!(string, "No agent at route: '/test'");
-}
+    let string = TransitionError::SideEffectFailed.to_string();
+    assert_eq!(string, "A side effect failed to complete.");
 
-#[test]
-fn ambiguous_routes_display() {
-    let err = AmbiguousRoutes::new(
-        RoutePattern::parse_str("/:id").unwrap(),
-        RoutePattern::parse_str("/path").unwrap(),
-    );
-
-    let string = err.to_string();
-
-    assert_eq!(string, "Routes '/:id' and '/path' are ambiguous.");
+    let string = TransitionError::IllegalTransition("Bad".to_string()).to_string();
+    assert_eq!(string, "An illegal transition was attempted: 'Bad'");
 }

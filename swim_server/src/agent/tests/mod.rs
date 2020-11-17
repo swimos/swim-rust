@@ -50,42 +50,62 @@ use utilities::sync::trigger::Receiver;
 use utilities::uri::RelativeUri;
 
 mod stub_router {
-    use crate::plane::error::ResolutionError;
-    use crate::routing::{RoutingAddr, ServerRouter, TaggedEnvelope, TaggedSender};
+    use crate::routing::error::{ResolutionError, RouterError};
+    use crate::routing::{ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedEnvelope, TaggedSender};
     use futures::future::BoxFuture;
-    use futures::FutureExt;
-    use swim_common::routing::RoutingError;
-    use tokio::sync::mpsc;
+    use futures::{FutureExt, StreamExt};
+    use std::sync::Arc;
     use url::Url;
+    use utilities::sync::promise;
     use utilities::uri::RelativeUri;
+    use tokio::sync::mpsc;
 
     #[derive(Clone)]
-    pub struct SingleChannelRouter(RoutingAddr, mpsc::Sender<TaggedEnvelope>);
+    pub struct SingleChannelRouter {
+        router_addr: RoutingAddr,
+        inner: mpsc::Sender<TaggedEnvelope>,
+        _drop_tx: Arc<promise::Sender<ConnectionDropped>>,
+        drop_rx: promise::Receiver<ConnectionDropped>,
+    }
 
-    impl SingleChannelRouter {
+    impl SingleChannelRouter
+    {
         pub(crate) fn new(router_addr: RoutingAddr) -> Self {
-            let (tx, mut rx) = mpsc::channel(16);
-            tokio::spawn(async move { while let Some(_) = rx.recv().await {} });
-            SingleChannelRouter(router_addr, tx)
+            let (tx, rx) = promise::promise();
+            let (env_tx, mut env_rx) = mpsc::channel(16);
+            tokio::spawn(async move {
+               while let Some(_) = env_rx.next().await {}
+            });
+            SingleChannelRouter {
+                router_addr,
+                inner: env_tx,
+                _drop_tx: Arc::new(tx),
+                drop_rx: rx,
+            }
         }
     }
 
     impl ServerRouter for SingleChannelRouter {
-        fn get_sender(
+
+        fn resolve_sender(
             &mut self,
-            _addr: RoutingAddr,
-        ) -> BoxFuture<Result<TaggedSender, RoutingError>> {
-            let SingleChannelRouter(router_addr, sender) = self;
-            let router_addr = *router_addr;
-            let sender = sender.clone();
-            async move { Ok(TaggedSender::new(router_addr, sender)) }.boxed()
+            addr: RoutingAddr,
+        ) -> BoxFuture<Result<Route, ResolutionError>> {
+            async move {
+                let SingleChannelRouter { inner, drop_rx, .. } = self;
+                let route = Route::new(
+                    TaggedSender::new(addr, inner.clone()),
+                    drop_rx.clone(),
+                );
+                Ok(route)
+            }.boxed()
         }
 
-        fn resolve(
+        fn lookup(
             &mut self,
             _host: Option<Url>,
             _route: RelativeUri,
-        ) -> BoxFuture<Result<RoutingAddr, ResolutionError>> {
+        ) -> BoxFuture<Result<RoutingAddr, RouterError>> {
             panic!("Unexpected resolution attempt.")
         }
     }

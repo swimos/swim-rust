@@ -33,6 +33,7 @@ use swim_common::sink::item::{self, ItemSender};
 use swim_runtime::task::{spawn, TaskHandle};
 use tokio::sync::{mpsc, watch};
 use tracing::{instrument, trace};
+use utilities::errors::Recoverable;
 use utilities::ptr::data_ptr_eq;
 use utilities::sync::promise;
 

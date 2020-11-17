@@ -12,16 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::plane::error::ResolutionError;
 use crate::plane::PlaneRequest;
-use crate::routing::{RoutingAddr, ServerRouter, TaggedSender};
+use crate::routing::error::{ResolutionError, RouterError};
+use crate::routing::{Route, RoutingAddr, ServerRouter, ServerRouterFactory, TaggedSender};
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use swim_common::request::Request;
-use swim_common::routing::RoutingError;
 use tokio::sync::{mpsc, oneshot};
 use url::Url;
 use utilities::uri::RelativeUri;
+use crate::routing::remote::RawRoute;
 
 #[cfg(test)]
 mod tests;
@@ -37,10 +37,13 @@ impl PlaneRouterFactory {
     pub(super) fn new(request_sender: mpsc::Sender<PlaneRequest>) -> Self {
         PlaneRouterFactory { request_sender }
     }
+}
 
-    /// Create a router instance for a specific endpoint.
-    pub fn create(&self, tag: RoutingAddr) -> PlaneRouter {
-        PlaneRouter::new(tag, self.request_sender.clone())
+impl ServerRouterFactory for PlaneRouterFactory {
+    type Router = PlaneRouter;
+
+    fn create_for(&self, addr: RoutingAddr) -> Self::Router {
+        PlaneRouter::new(addr, self.request_sender.clone())
     }
 }
 
@@ -61,7 +64,11 @@ impl PlaneRouter {
 }
 
 impl ServerRouter for PlaneRouter {
-    fn get_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<TaggedSender, RoutingError>> {
+
+    fn resolve_sender(
+        &mut self,
+        addr: RoutingAddr,
+    ) -> BoxFuture<Result<Route, ResolutionError>> {
         async move {
             let PlaneRouter {
                 tag,
@@ -76,23 +83,25 @@ impl ServerRouter for PlaneRouter {
                 .await
                 .is_err()
             {
-                Err(RoutingError::RouterDropped)
+                Err(ResolutionError::RouterDropped)
             } else {
                 match rx.await {
-                    Ok(Ok(sender)) => Ok(TaggedSender::new(*tag, sender)),
-                    Ok(Err(_)) => Err(RoutingError::HostUnreachable),
-                    Err(_) => Err(RoutingError::RouterDropped),
+                    Ok(Ok(RawRoute { sender, on_drop })) => {
+                        Ok(Route::new(TaggedSender::new(*tag, sender), on_drop))
+                    }
+                    Ok(Err(err)) => Err(ResolutionError::Unresolvable(err)),
+                    Err(_) => Err(ResolutionError::RouterDropped),
                 }
             }
         }
         .boxed()
     }
 
-    fn resolve(
+    fn lookup(
         &mut self,
         host: Option<Url>,
         route: RelativeUri,
-    ) -> BoxFuture<Result<RoutingAddr, ResolutionError>> {
+    ) -> BoxFuture<Result<RoutingAddr, RouterError>> {
         async move {
             let PlaneRouter { request_sender, .. } = self;
             let (tx, rx) = oneshot::channel();
@@ -105,12 +114,12 @@ impl ServerRouter for PlaneRouter {
                 .await
                 .is_err()
             {
-                Err(ResolutionError::NoRoute(RoutingError::RouterDropped))
+                Err(RouterError::RouterDropped)
             } else {
                 match rx.await {
                     Ok(Ok(addr)) => Ok(addr),
                     Ok(Err(err)) => Err(err),
-                    Err(_) => Err(ResolutionError::NoRoute(RoutingError::RouterDropped)),
+                    Err(_) => Err(RouterError::RouterDropped),
                 }
             }
         }

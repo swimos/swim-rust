@@ -25,8 +25,9 @@ use url::Url;
 use crate::connections::factory::async_factory::AsyncFactory;
 
 use super::*;
-use crate::connections::factory::tungstenite::{CompressionConfig, HostConfig};
-use swim_common::ws::Protocol;
+use crate::connections::factory::tungstenite::HostConfig;
+use swim_common::ws::{Protocol, ConnFuture};
+use tokio_tungstenite::tungstenite::extensions::compression::WsCompression;
 
 #[tokio::test]
 async fn test_connection_pool_send_single_message_single_connection() {
@@ -693,19 +694,14 @@ impl WebsocketFactory for TestConnectionFactory {
     type WsStream = TestReadStream;
     type WsSink = TestWriteStream;
 
-    fn connect(
-        &mut self,
-        url: Url,
-    ) -> BoxFuture<Result<(Self::WsSink, Self::WsStream), ConnectionError>> {
-        self.inner
-            .connect_using(
-                url,
-                HostConfig {
-                    protocol: Protocol::PlainText,
-                    compression_config: CompressionConfig::Uncompressed,
-                },
-            )
-            .boxed()
+    fn connect(&mut self, url: Url) -> ConnFuture<Self::WsSink, Self::WsStream> {
+        self.inner.connect_using(
+            url,
+            HostConfig {
+                protocol: Protocol::PlainText,
+                compression_level: WsCompression::None(None),
+            },
+        ).boxed()
     }
 }
 

@@ -12,139 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::connections::factory::tungstenite::{CompressionConfig, MaybeTlsStream, TError};
-use http::{Request, Response};
+use crate::connections::factory::tungstenite::{MaybeTlsStream, TError};
+use http::Request;
 use native_tls::TlsConnector;
-use std::borrow::Cow;
-use std::error::Error;
-use std::fmt::{Display, Formatter};
 use swim_common::ws::error::{ConnectionError, WebSocketError};
 use swim_common::ws::{Protocol, WsMessage};
 use tokio::net::TcpStream;
 use tokio_native_tls::TlsConnector as TokioTlsConnector;
 use tokio_tungstenite::stream::Stream as StreamSwitcher;
-use tokio_tungstenite::tungstenite::extensions::deflate::DeflateExt;
-use tokio_tungstenite::tungstenite::extensions::uncompressed::UncompressedExt;
-use tokio_tungstenite::tungstenite::extensions::WebSocketExtension;
-use tokio_tungstenite::tungstenite::protocol::frame::Frame;
 use tokio_tungstenite::tungstenite::Message;
 use utilities::future::TransformMut;
-
-/// A Tungstenite WebSocket extension that is either `DeflateExt` or `UncompressedExt`.
-pub enum CompressionSwitcher {
-    Compressed(DeflateExt),
-    Uncompressed(UncompressedExt),
-}
-
-const MAX_MESSAGE_SIZE: usize = 64 << 20;
-
-impl CompressionSwitcher {
-    pub fn from_config(config: CompressionConfig) -> CompressionSwitcher {
-        match config {
-            CompressionConfig::Uncompressed => {
-                CompressionSwitcher::Uncompressed(UncompressedExt::new(Some(MAX_MESSAGE_SIZE)))
-            }
-            CompressionConfig::Deflate(config) => {
-                CompressionSwitcher::Compressed(DeflateExt::new(config))
-            }
-        }
-    }
-}
-
-impl Default for CompressionSwitcher {
-    fn default() -> Self {
-        CompressionSwitcher::Uncompressed(UncompressedExt::default())
-    }
-}
-
-#[derive(Debug)]
-pub struct CompressionError(String);
-
-impl Error for CompressionError {}
-
-impl From<CompressionError> for TError {
-    fn from(e: CompressionError) -> Self {
-        TError::ExtensionError(Cow::from(e.to_string()))
-    }
-}
-
-impl Display for CompressionError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("CompressionError")
-            .field("error", &self.0)
-            .finish()
-    }
-}
-
-impl WebSocketExtension for CompressionSwitcher {
-    type Error = CompressionError;
-
-    fn new(max_message_size: Option<usize>) -> Self {
-        CompressionSwitcher::Uncompressed(UncompressedExt::new(max_message_size))
-    }
-
-    fn enabled(&self) -> bool {
-        match self {
-            CompressionSwitcher::Uncompressed(ext) => ext.enabled(),
-            CompressionSwitcher::Compressed(ext) => ext.enabled(),
-        }
-    }
-
-    fn on_make_request<T>(&mut self, request: Request<T>) -> Request<T> {
-        match self {
-            CompressionSwitcher::Uncompressed(ext) => ext.on_make_request(request),
-            CompressionSwitcher::Compressed(ext) => ext.on_make_request(request),
-        }
-    }
-
-    fn on_receive_request<T>(
-        &mut self,
-        request: &Request<T>,
-        response: &mut Response<T>,
-    ) -> Result<(), Self::Error> {
-        match self {
-            CompressionSwitcher::Uncompressed(ext) => ext
-                .on_receive_request(request, response)
-                .map_err(|e| CompressionError(e.to_string())),
-            CompressionSwitcher::Compressed(ext) => ext
-                .on_receive_request(request, response)
-                .map_err(|e| CompressionError(e.to_string())),
-        }
-    }
-
-    fn on_response<T>(&mut self, response: &Response<T>) -> Result<(), Self::Error> {
-        match self {
-            CompressionSwitcher::Uncompressed(ext) => ext
-                .on_response(response)
-                .map_err(|e| CompressionError(e.to_string())),
-            CompressionSwitcher::Compressed(ext) => ext
-                .on_response(response)
-                .map_err(|e| CompressionError(e.to_string())),
-        }
-    }
-
-    fn on_send_frame(&mut self, frame: Frame) -> Result<Frame, Self::Error> {
-        match self {
-            CompressionSwitcher::Uncompressed(ext) => ext
-                .on_send_frame(frame)
-                .map_err(|e| CompressionError(e.to_string())),
-            CompressionSwitcher::Compressed(ext) => ext
-                .on_send_frame(frame)
-                .map_err(|e| CompressionError(e.to_string())),
-        }
-    }
-
-    fn on_receive_frame(&mut self, frame: Frame) -> Result<Option<Message>, Self::Error> {
-        match self {
-            CompressionSwitcher::Uncompressed(ext) => ext
-                .on_receive_frame(frame)
-                .map_err(|e| CompressionError(e.to_string())),
-            CompressionSwitcher::Compressed(ext) => ext
-                .on_receive_frame(frame)
-                .map_err(|e| CompressionError(e.to_string())),
-        }
-    }
-}
 
 pub fn get_stream_type<T>(
     request: &Request<T>,

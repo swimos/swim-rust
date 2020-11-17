@@ -16,10 +16,9 @@ use std::io::ErrorKind;
 use std::ops::Deref;
 
 use futures::stream::{SplitSink, SplitStream};
-use futures::{FutureExt, StreamExt};
+use futures::{StreamExt, FutureExt};
 use http::{HeaderValue, Request, Response, Uri};
 use tokio::net::TcpStream;
-use tokio_native_tls::TlsStream;
 use tokio_tungstenite::stream::Stream as StreamSwitcher;
 use tokio_tungstenite::*;
 use tokio_tungstenite::{client_async_with_config, WebSocketStream};
@@ -27,37 +26,33 @@ use url::Url;
 
 use super::async_factory;
 use crate::connections::factory::stream::{
-    build_stream, get_stream_type, CompressionSwitcher, SinkTransformer, StreamTransformer,
+    build_stream, get_stream_type, SinkTransformer, StreamTransformer,
 };
 use http::header::SEC_WEBSOCKET_PROTOCOL;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use swim_common::ws::error::{ConnectionError, WebSocketError};
-use swim_common::ws::{maybe_resolve_scheme, ConnFuture, Protocol, WebsocketFactory};
-use tokio_tungstenite::tungstenite::extensions::deflate::DeflateConfig;
+use swim_common::ws::{maybe_resolve_scheme, Protocol, WebsocketFactory, ConnFuture};
+use tokio_tungstenite::tungstenite::extensions::compression::WsCompression;
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use tokio_tungstenite::tungstenite::Message;
 use utilities::future::{TransformedSink, TransformedStream};
+use tokio_native_tls::TlsStream;
 
 type TungSink = TransformedSink<SplitSink<WsConnection, Message>, SinkTransformer>;
 type TungStream = TransformedStream<SplitStream<WsConnection>, StreamTransformer>;
 
 pub type MaybeTlsStream<S> = StreamSwitcher<S, TlsStream<S>>;
-pub type WsConnection = WebSocketStream<MaybeTlsStream<TcpStream>, CompressionSwitcher>;
+pub type WsConnection = WebSocketStream<MaybeTlsStream<TcpStream>>;
 pub type ConnReq = async_factory::ConnReq<TungSink, TungStream>;
 
 const WARP0_PROTO: &str = "warp0";
+const MAX_MESSAGE_SIZE: usize = 64 << 20;
 
 async fn connect(
     url: Url,
     config: &mut HostConfig,
-) -> Result<
-    (
-        WebSocketStream<MaybeTlsStream<TcpStream>, CompressionSwitcher>,
-        Response<()>,
-    ),
-    ConnectionError,
-> {
+) -> Result<(WebSocketStream<MaybeTlsStream<TcpStream>>, Response<()>), ConnectionError> {
     let uri: Uri = url
         .as_str()
         .parse()
@@ -95,12 +90,13 @@ async fn connect(
     match client_async_with_config(
         request,
         stream,
-        Some(WebSocketConfig::default_with_encoder(
-            CompressionSwitcher::from_config(config.compression_config.clone()),
-        )),
+        Some(WebSocketConfig {
+            compression: config.compression_level,
+            ..Default::default()
+        }),
     )
-    .await
-    .map_err(TungsteniteError)
+        .await
+        .map_err(TungsteniteError)
     {
         Ok((stream, response)) => Ok((stream, response)),
         Err(e) => Err(e.into()),
@@ -108,15 +104,9 @@ async fn connect(
 }
 
 #[derive(Clone)]
-pub enum CompressionConfig {
-    Uncompressed,
-    Deflate(DeflateConfig),
-}
-
-#[derive(Clone)]
 pub struct HostConfig {
     pub protocol: Protocol,
-    pub compression_config: CompressionConfig,
+    pub compression_level: WsCompression,
 }
 
 impl TungsteniteWsFactory {
@@ -149,7 +139,7 @@ impl WebsocketFactory for TungsteniteWsFactory {
             Entry::Vacant(v) => v
                 .insert(HostConfig {
                     protocol: Protocol::PlainText,
-                    compression_config: CompressionConfig::Uncompressed,
+                    compression_level: WsCompression::None(Some(MAX_MESSAGE_SIZE)),
                 })
                 .clone(),
         };

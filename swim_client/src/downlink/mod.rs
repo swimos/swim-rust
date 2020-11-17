@@ -26,12 +26,15 @@ pub mod model;
 pub mod queue;
 pub mod raw;
 pub mod subscription;
+#[cfg(test)]
+mod tests;
 pub mod topic;
 pub mod typed;
 pub mod watch_adapter;
 
 pub(self) use self::raw::create_downlink;
 use crate::downlink::raw::DownlinkTaskHandle;
+use std::error::Error;
 use swim_common::model::schema::StandardSchema;
 use swim_common::model::Value;
 use swim_common::request::TryRequest;
@@ -39,6 +42,7 @@ use swim_common::routing::RoutingError;
 use swim_common::topic::Topic;
 use swim_common::ws::error::ConnectionError;
 use tracing::{instrument, trace};
+use utilities::errors::Recoverable;
 
 /// Shared trait for all Warp downlinks. `Act` is the type of actions that can be performed on the
 /// downlink locally and `Upd` is the type of updates that an be observed on the client side.
@@ -271,12 +275,25 @@ pub enum TransitionError {
     IllegalTransition(String),
 }
 
+impl Display for TransitionError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TransitionError::ReceiverDropped => write!(f, "Observer of the update was dropped."),
+            TransitionError::SideEffectFailed => write!(f, "A side effect failed to complete."),
+            TransitionError::IllegalTransition(err) => {
+                write!(f, "An illegal transition was attempted: '{}'", err)
+            }
+        }
+    }
+}
+
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct UpdateFailure(String);
 
-impl TransitionError {
-    /// On encountering a fatal transition error, a downlink will terminate.
-    pub fn is_fatal(&self) -> bool {
+impl Error for TransitionError {}
+
+impl Recoverable for TransitionError {
+    fn is_fatal(&self) -> bool {
         matches!(self, TransitionError::IllegalTransition(_))
     }
 }

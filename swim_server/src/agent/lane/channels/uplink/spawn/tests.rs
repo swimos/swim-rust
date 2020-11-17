@@ -19,8 +19,8 @@ use crate::agent::lane::channels::uplink::spawn::{SpawnerUplinkFactory, UplinkEr
 use crate::agent::lane::channels::uplink::{UplinkAction, UplinkError, UplinkStateMachine};
 use crate::agent::lane::channels::{AgentExecutionConfig, LaneMessageHandler, TaggedAction};
 use crate::agent::Eff;
-use crate::plane::error::ResolutionError;
-use crate::routing::{RoutingAddr, ServerRouter, TaggedEnvelope, TaggedSender};
+use crate::routing::error::{ResolutionError, RouterError, SendError};
+use crate::routing::{ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedEnvelope, TaggedSender};
 use futures::future::{join, join3, ready, BoxFuture};
 use futures::stream::once;
 use futures::stream::{BoxStream, FusedStream};
@@ -32,7 +32,6 @@ use std::sync::Arc;
 use std::time::Duration;
 use swim_common::form::{Form, FormErr};
 use swim_common::model::Value;
-use swim_common::routing::RoutingError;
 use swim_common::sink::item::ItemSink;
 use swim_common::topic::MpscTopic;
 use swim_common::warp::envelope::Envelope;
@@ -40,6 +39,7 @@ use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
 use url::Url;
+use utilities::sync::promise;
 use utilities::uri::RelativeUri;
 
 const INIT: i32 = 42;
@@ -62,7 +62,10 @@ impl Form for Message {
 struct TestHandler(mpsc::Sender<i32>, i32);
 struct TestStateMachine(i32);
 struct TestUpdater(mpsc::Sender<i32>);
-struct TestRouter(mpsc::Sender<TaggedEnvelope>, RoutingAddr);
+struct TestRouter {
+    sender: mpsc::Sender<TaggedEnvelope>,
+    drop_rx: promise::Receiver<ConnectionDropped>,
+}
 
 struct TestSender {
     addr: RoutingAddr,
@@ -70,32 +73,36 @@ struct TestSender {
 }
 
 impl<'a> ItemSink<'a, Envelope> for TestSender {
-    type Error = RoutingError;
+    type Error = SendError;
     type SendFuture = BoxFuture<'a, Result<(), Self::Error>>;
 
     fn send_item(&'a mut self, value: Envelope) -> Self::SendFuture {
         let tagged = TaggedEnvelope(self.addr, value);
-        async move {
-            self.inner
-                .send(tagged)
-                .await
-                .map_err(|_| RoutingError::RouterDropped)
-        }
-        .boxed()
+        async move { self.inner.send(tagged).await.map_err(Into::into) }.boxed()
     }
 }
 
 impl ServerRouter for TestRouter {
-    fn get_sender(&mut self, _addr: RoutingAddr) -> BoxFuture<Result<TaggedSender, RoutingError>> {
-        let TestRouter(sender, router_addr) = self;
-        ready(Ok(TaggedSender::new(*router_addr, sender.clone()))).boxed()
+
+    fn resolve_sender(
+        &mut self,
+        addr: RoutingAddr,
+    ) -> BoxFuture<Result<Route, ResolutionError>> {
+        let TestRouter {
+            sender, drop_rx, ..
+        } = self;
+        ready(Ok(Route::new(
+            TaggedSender::new(addr, sender.clone()),
+            drop_rx.clone(),
+        )))
+        .boxed()
     }
 
-    fn resolve(
+    fn lookup(
         &mut self,
         _host: Option<Url>,
         _route: RelativeUri,
-    ) -> BoxFuture<'static, Result<RoutingAddr, ResolutionError>> {
+    ) -> BoxFuture<'static, Result<RoutingAddr, RouterError>> {
         panic!("Unexpected resolution attempt.")
     }
 }
@@ -276,17 +283,40 @@ fn make_config() -> AgentExecutionConfig {
     AgentExecutionConfig::with(default_buffer(), 1, 1, Duration::from_secs(5))
 }
 
-struct TestContext(mpsc::Sender<TaggedEnvelope>, Sender<Eff>, RoutingAddr);
+struct TestContext {
+    spawner: mpsc::Sender<Eff>,
+    messages: mpsc::Sender<TaggedEnvelope>,
+    _drop_tx: promise::Sender<ConnectionDropped>,
+    drop_rx: promise::Receiver<ConnectionDropped>,
+}
+
+impl TestContext {
+    fn new(spawner: mpsc::Sender<Eff>, messages: mpsc::Sender<TaggedEnvelope>) -> Self {
+        let (drop_tx, drop_rx) = promise::promise();
+        TestContext {
+            spawner,
+            messages,
+            _drop_tx: drop_tx,
+            drop_rx,
+        }
+    }
+}
 
 impl AgentExecutionContext for TestContext {
     type Router = TestRouter;
 
     fn router_handle(&self) -> Self::Router {
-        TestRouter(self.0.clone(), self.2.clone())
+        let TestContext {
+            messages, drop_rx, ..
+        } = self;
+        TestRouter {
+            sender: messages.clone(),
+            drop_rx: drop_rx.clone(),
+        }
     }
 
     fn spawner(&self) -> Sender<Eff> {
-        self.1.clone()
+        self.spawner.clone()
     }
 }
 
@@ -313,7 +343,7 @@ fn make_test_harness() -> (
 
     let channels = UplinkChannels::new(topic, rx_act, error_tx);
 
-    let context = TestContext(tx_router, spawn_tx, RoutingAddr::local(1024));
+    let context = TestContext::new(spawn_tx, tx_router);
 
     let spawner_task = factory.make_task(handler, channels, route(), &context);
 

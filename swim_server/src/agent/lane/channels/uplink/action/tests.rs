@@ -18,31 +18,61 @@ use crate::agent::lane::channels::uplink::spawn::UplinkErrorReport;
 use crate::agent::lane::channels::uplink::{UplinkAction, UplinkError};
 use crate::agent::lane::channels::TaggedAction;
 use crate::agent::Eff;
-use crate::plane::error::ResolutionError;
-use crate::routing::{RoutingAddr, ServerRouter, TaggedEnvelope, TaggedSender};
+use crate::routing::error::{ResolutionError, RouterError};
+use crate::routing::{ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedEnvelope, TaggedSender};
 use futures::future::{join, ready, BoxFuture};
 use futures::FutureExt;
-use swim_common::routing::RoutingError;
+use std::sync::Arc;
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc;
 use url::Url;
+use utilities::sync::promise;
 use utilities::uri::RelativeUri;
 
-struct TestContext(TestRouter, mpsc::Sender<Eff>, RoutingAddr);
+struct TestContext(TestRouter, mpsc::Sender<Eff>);
 #[derive(Clone, Debug)]
-struct TestRouter(mpsc::Sender<TaggedEnvelope>, RoutingAddr);
+struct TestRouter {
+    router_addr: RoutingAddr,
+    sender: mpsc::Sender<TaggedEnvelope>,
+    _drop_tx: Arc<promise::Sender<ConnectionDropped>>,
+    drop_rx: promise::Receiver<ConnectionDropped>,
+}
+
+impl TestRouter {
+    fn new(router_addr: RoutingAddr, sender: mpsc::Sender<TaggedEnvelope>) -> Self {
+        let (drop_tx, drop_rx) = promise::promise();
+        TestRouter {
+            router_addr,
+            sender,
+            _drop_tx: Arc::new(drop_tx),
+            drop_rx,
+        }
+    }
+}
+
 
 impl ServerRouter for TestRouter {
-    fn get_sender(&mut self, _addr: RoutingAddr) -> BoxFuture<Result<TaggedSender, RoutingError>> {
-        ready(Ok(TaggedSender::new(self.1, self.0.clone()))).boxed()
+
+    fn resolve_sender(
+        &mut self,
+        addr: RoutingAddr,
+    ) -> BoxFuture<Result<Route, ResolutionError>> {
+        let TestRouter {
+            sender, drop_rx, ..
+        } = self;
+        ready(Ok(Route::new(
+            TaggedSender::new(addr, sender.clone()),
+            drop_rx.clone(),
+        )))
+        .boxed()
     }
 
-    fn resolve(
+    fn lookup(
         &mut self,
         _host: Option<Url>,
         _route: RelativeUri,
-    ) -> BoxFuture<'static, Result<RoutingAddr, ResolutionError>> {
+    ) -> BoxFuture<'static, Result<RoutingAddr, RouterError>> {
         panic!("Unexpected resolution attempt.")
     }
 }
@@ -80,7 +110,7 @@ async fn immediate_unlink_action_lane() {
 
     let uplinks: ActionLaneUplinks<i32> = ActionLaneUplinks::new(response_rx, route.clone());
 
-    let router = TestRouter(router_tx, RoutingAddr::local(1024));
+    let router = TestRouter::new(RoutingAddr::local(1024), router_tx);
 
     let uplinks_task = uplinks.run(action_rx, router, error_tx);
 
@@ -116,7 +146,7 @@ async fn link_to_action_lane() {
 
     let uplinks: ActionLaneUplinks<i32> = ActionLaneUplinks::new(response_rx, route.clone());
 
-    let router = TestRouter(router_tx, RoutingAddr::local(1024));
+    let router = TestRouter::new(RoutingAddr::local(1024), router_tx);
 
     let uplinks_task = uplinks.run(action_rx, router, error_tx);
 
@@ -159,7 +189,7 @@ async fn sync_with_action_lane() {
 
     let uplinks: ActionLaneUplinks<i32> = ActionLaneUplinks::new(response_rx, route.clone());
 
-    let router = TestRouter(router_tx, RoutingAddr::local(1024));
+    let router = TestRouter::new(RoutingAddr::local(1024), router_tx);
 
     let uplinks_task = uplinks.run(action_rx, router, error_tx);
 
@@ -208,7 +238,7 @@ async fn sync_after_link_on_action_lane() {
 
     let uplinks: ActionLaneUplinks<i32> = ActionLaneUplinks::new(response_rx, route.clone());
 
-    let router = TestRouter(router_tx, RoutingAddr::local(1024));
+    let router = TestRouter::new(RoutingAddr::local(1024), router_tx);
 
     let uplinks_task = uplinks.run(action_rx, router, error_tx);
 
@@ -263,7 +293,7 @@ async fn link_to_and_receive_from_action_lane() {
 
     let uplinks: ActionLaneUplinks<i32> = ActionLaneUplinks::new(response_rx, route.clone());
 
-    let router = TestRouter(router_tx, RoutingAddr::local(1024));
+    let router = TestRouter::new(RoutingAddr::local(1024), router_tx);
 
     let uplinks_task = uplinks.run(action_rx, router, error_tx);
 
@@ -322,7 +352,7 @@ async fn link_twice_to_action_lane() {
 
     let uplinks: ActionLaneUplinks<i32> = ActionLaneUplinks::new(response_rx, route.clone());
 
-    let router = TestRouter(router_tx, RoutingAddr::local(1024));
+    let router = TestRouter::new(RoutingAddr::local(1024), router_tx);
 
     let uplinks_task = uplinks.run(action_rx, router, error_tx);
 
@@ -396,7 +426,7 @@ async fn no_messages_after_unlink_from_action_lane() {
 
     let uplinks: ActionLaneUplinks<i32> = ActionLaneUplinks::new(response_rx, route.clone());
 
-    let router = TestRouter(router_tx, RoutingAddr::local(1024));
+    let router = TestRouter::new(RoutingAddr::local(1024), router_tx);
 
     let uplinks_task = uplinks.run(action_rx, router, error_tx);
 
@@ -471,7 +501,7 @@ async fn report_errors_from_action_lane() {
 
     let uplinks: ActionLaneUplinks<i32> = ActionLaneUplinks::new(response_rx, route.clone());
 
-    let router = TestRouter(router_tx, RoutingAddr::local(1024));
+    let router = TestRouter::new(RoutingAddr::local(1024), router_tx);
 
     let uplinks_task = uplinks.run(action_rx, router, error_tx);
 
