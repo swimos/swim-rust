@@ -16,7 +16,7 @@ use std::io::ErrorKind;
 use std::ops::Deref;
 
 use futures::stream::{SplitSink, SplitStream};
-use futures::{StreamExt, FutureExt};
+use futures::{FutureExt, StreamExt};
 use http::{HeaderValue, Request, Response, Uri};
 use tokio::net::TcpStream;
 use tokio_tungstenite::stream::Stream as StreamSwitcher;
@@ -32,12 +32,12 @@ use http::header::SEC_WEBSOCKET_PROTOCOL;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use swim_common::ws::error::{ConnectionError, WebSocketError};
-use swim_common::ws::{maybe_resolve_scheme, Protocol, WebsocketFactory, ConnFuture};
+use swim_common::ws::{maybe_resolve_scheme, ConnFuture, Protocol, WebsocketFactory};
+use tokio_native_tls::TlsStream;
 use tokio_tungstenite::tungstenite::extensions::compression::WsCompression;
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use tokio_tungstenite::tungstenite::Message;
 use utilities::future::{TransformedSink, TransformedStream};
-use tokio_native_tls::TlsStream;
 
 type TungSink = TransformedSink<SplitSink<WsConnection, Message>, SinkTransformer>;
 type TungStream = TransformedStream<SplitStream<WsConnection>, StreamTransformer>;
@@ -95,8 +95,8 @@ async fn connect(
             ..Default::default()
         }),
     )
-        .await
-        .map_err(TungsteniteError)
+    .await
+    .map_err(TungsteniteError)
     {
         Ok((stream, response)) => Ok((stream, response)),
         Err(e) => Err(e.into()),

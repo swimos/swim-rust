@@ -19,7 +19,9 @@ use crate::agent::lane::channels::uplink::{UplinkAction, UplinkError};
 use crate::agent::lane::channels::TaggedAction;
 use crate::agent::Eff;
 use crate::routing::error::{ResolutionError, RouterError};
-use crate::routing::{ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedEnvelope, TaggedSender};
+use crate::routing::{
+    ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedEnvelope, TaggedSender,
+};
 use futures::future::{join, ready, BoxFuture};
 use futures::FutureExt;
 use std::sync::Arc;
@@ -51,13 +53,8 @@ impl TestRouter {
     }
 }
 
-
 impl ServerRouter for TestRouter {
-
-    fn resolve_sender(
-        &mut self,
-        addr: RoutingAddr,
-    ) -> BoxFuture<Result<Route, ResolutionError>> {
+    fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>> {
         let TestRouter {
             sender, drop_rx, ..
         } = self;

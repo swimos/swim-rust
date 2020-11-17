@@ -700,12 +700,13 @@ where
                 )
                 .await;
 
-                let either_sink = SplitSink::new(direct_sink, pressure_release.into_item_sender()).comap(
-                    move |cmd: Command<UntypedMapModification<Arc<Value>>>| match cmd {
-                        Command::Action(act) => Either::Right(act),
-                        ow => Either::Left(ow),
-                    },
-                );
+                let either_sink = SplitSink::new(direct_sink, pressure_release.into_item_sender())
+                    .comap(
+                        move |cmd: Command<UntypedMapModification<Arc<Value>>>| match cmd {
+                            Command::Action(act) => Either::Right(act),
+                            ow => Either::Left(ow),
+                        },
+                    );
                 map_downlink_for_sink(key_schema, value_schema, either_sink, updates, &config)
             }
         };

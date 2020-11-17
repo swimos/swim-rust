@@ -14,6 +14,7 @@
 
 use crate::plane::PlaneRequest;
 use crate::routing::error::{ResolutionError, RouterError};
+use crate::routing::remote::RawRoute;
 use crate::routing::{Route, RoutingAddr, ServerRouter, ServerRouterFactory, TaggedSender};
 use futures::future::BoxFuture;
 use futures::FutureExt;
@@ -21,7 +22,6 @@ use swim_common::request::Request;
 use tokio::sync::{mpsc, oneshot};
 use url::Url;
 use utilities::uri::RelativeUri;
-use crate::routing::remote::RawRoute;
 
 #[cfg(test)]
 mod tests;
@@ -64,11 +64,7 @@ impl PlaneRouter {
 }
 
 impl ServerRouter for PlaneRouter {
-
-    fn resolve_sender(
-        &mut self,
-        addr: RoutingAddr,
-    ) -> BoxFuture<Result<Route, ResolutionError>> {
+    fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>> {
         async move {
             let PlaneRouter {
                 tag,

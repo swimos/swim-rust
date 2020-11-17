@@ -28,6 +28,7 @@ use crate::plane::error::NoAgentAtRoute;
 use crate::plane::router::{PlaneRouter, PlaneRouterFactory};
 use crate::plane::spec::{PlaneSpec, RouteSpec};
 use crate::routing::error::{ConnectionError, RouterError, Unresolvable};
+use crate::routing::remote::RawRoute;
 use crate::routing::{ConnectionDropped, RoutingAddr, ServerRouterFactory, TaggedEnvelope};
 use either::Either;
 use futures::future::{join, BoxFuture};
@@ -50,7 +51,6 @@ use utilities::route_pattern::RoutePattern;
 use utilities::sync::{promise, trigger};
 use utilities::task::Spawner;
 use utilities::uri::RelativeUri;
-use crate::routing::remote::RawRoute;
 
 /// Trait for agent routes. An agent route can construct and run any number of instances of a
 /// [`SwimAgent`] type.

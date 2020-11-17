@@ -15,13 +15,13 @@
 use crate::plane::router::{PlaneRouter, PlaneRouterFactory};
 use crate::plane::PlaneRequest;
 use crate::routing::error::{ConnectionError, ResolutionError, RouterError, Unresolvable};
+use crate::routing::remote::RawRoute;
 use crate::routing::{RoutingAddr, ServerRouter, ServerRouterFactory, TaggedEnvelope};
 use futures::future::join;
 use swim_common::warp::envelope::Envelope;
 use tokio::sync::mpsc;
 use url::Url;
 use utilities::sync::promise;
-use crate::routing::remote::RawRoute;
 
 #[tokio::test]
 async fn plane_router_get_sender() {

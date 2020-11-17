@@ -19,7 +19,11 @@ use crate::agent::lane::channels::uplink::spawn::UplinkErrorReport;
 use crate::agent::lane::channels::uplink::UplinkError;
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::{AttachError, Eff, LaneIo};
-use crate::routing::{RoutingAddr, ServerRouter, TaggedClientEnvelope, TaggedEnvelope, TaggedSender, ConnectionDropped, Route};
+use crate::routing::error::{ResolutionError, RouterError};
+use crate::routing::{
+    ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedClientEnvelope, TaggedEnvelope,
+    TaggedSender,
+};
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use parking_lot::Mutex;
@@ -35,7 +39,6 @@ use tokio::sync::mpsc::{Receiver, Sender};
 use url::Url;
 use utilities::sync::promise;
 use utilities::uri::RelativeUri;
-use crate::routing::error::{ResolutionError, RouterError};
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct MockLane;
@@ -88,10 +91,7 @@ impl MockRouterInner {
 pub struct MockRouter(Arc<Mutex<MockRouterInner>>);
 
 impl ServerRouter for MockRouter {
-    fn resolve_sender(
-        &mut self,
-        addr: RoutingAddr,
-    ) -> BoxFuture<Result<Route, ResolutionError>> {
+    fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>> {
         async move {
             let mut lock = self.0.lock();
             let MockRouterInner {
@@ -105,7 +105,10 @@ impl ServerRouter for MockRouter {
                 Entry::Vacant(entry) => {
                     let (tx, rx) = mpsc::channel(*buffer_size);
                     let (drop_tx, drop_rx) = promise::promise();
-                    entry.insert(Route::new(TaggedSender::new(*router_addr, tx.clone()), drop_rx.clone()));
+                    entry.insert(Route::new(
+                        TaggedSender::new(*router_addr, tx.clone()),
+                        drop_rx.clone(),
+                    ));
                     receivers.insert(addr, RouteReceiver::new(rx, drop_tx));
                     Route::new(TaggedSender::new(*router_addr, tx), drop_rx)
                 }

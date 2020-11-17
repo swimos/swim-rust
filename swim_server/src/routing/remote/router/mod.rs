@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::routing::error::{ResolutionError, RouterError};
-use crate::routing::remote::{RoutingRequest, RawRoute};
+use crate::routing::remote::{RawRoute, RoutingRequest};
 use crate::routing::{Route, RoutingAddr, ServerRouter, TaggedSender};
 use futures::future::BoxFuture;
 use futures::FutureExt;
@@ -49,7 +49,6 @@ impl<Delegate> RemoteRouter<Delegate> {
 }
 
 impl<Delegate: ServerRouter> ServerRouter for RemoteRouter<Delegate> {
-
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,
@@ -68,17 +67,15 @@ impl<Delegate: ServerRouter> ServerRouter for RemoteRouter<Delegate> {
                     Err(ResolutionError::RouterDropped)
                 } else {
                     match rx.await {
-                        Ok(Ok(RawRoute { sender, on_drop })) => Ok(
-                            Route::new(TaggedSender::new(*tag, sender), on_drop)
-                        ),
+                        Ok(Ok(RawRoute { sender, on_drop })) => {
+                            Ok(Route::new(TaggedSender::new(*tag, sender), on_drop))
+                        }
                         Ok(Err(err)) => Err(ResolutionError::Unresolvable(err)),
                         Err(_) => Err(ResolutionError::RouterDropped),
                     }
                 }
             } else {
-                delegate_router
-                    .resolve_sender(addr)
-                    .await
+                delegate_router.resolve_sender(addr).await
             }
         }
         .boxed()

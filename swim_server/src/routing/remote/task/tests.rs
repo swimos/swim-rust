@@ -15,12 +15,12 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use futures::channel::mpsc as fut_mpsc;
 use futures::future::{join, BoxFuture};
-use futures::{FutureExt, StreamExt, SinkExt};
+use futures::{FutureExt, SinkExt, StreamExt};
 use http::Uri;
 use parking_lot::Mutex;
 use tokio::sync::{mpsc, watch};
-use futures::channel::{mpsc as fut_mpsc};
 
 use swim_common::model::Value;
 use swim_common::warp::envelope::Envelope;
@@ -33,8 +33,8 @@ use utilities::uri::{BadRelativeUri, RelativeUri, UriIsAbsolute};
 
 use crate::routing::error::{ConnectionError, ResolutionError, RouterError};
 use crate::routing::remote::task::{ConnectionTask, DispatchError};
-use crate::routing::remote::test_fixture::LocalRoutes;
 use crate::routing::remote::test_fixture::fake_channel::TwoWayMpsc;
+use crate::routing::remote::test_fixture::LocalRoutes;
 use crate::routing::{ConnectionDropped, Route, RoutingAddr, TaggedEnvelope, TaggedSender};
 use futures::io::ErrorKind;
 use std::num::NonZeroUsize;

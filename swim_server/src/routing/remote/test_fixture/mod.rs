@@ -51,7 +51,6 @@ impl LocalRoutes {
 }
 
 impl ServerRouter for LocalRoutes {
-
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,
@@ -152,13 +151,13 @@ impl ServerRouterFactory for LocalRoutes {
 
 pub mod fake_channel {
 
+    use crate::routing::ws::{CloseReason, JoinedStreamSink};
     use futures::channel::mpsc;
-    use futures::{Sink, SinkExt, Stream, StreamExt, ready, FutureExt};
     use futures::future::ready;
+    use futures::future::BoxFuture;
+    use futures::{ready, FutureExt, Sink, SinkExt, Stream, StreamExt};
     use std::pin::Pin;
     use std::task::{Context, Poll};
-    use crate::routing::ws::{JoinedStreamSink, CloseReason};
-    use futures::future::BoxFuture;
 
     pub struct TwoWayMpsc<T, E> {
         tx: mpsc::Sender<T>,
@@ -167,13 +166,13 @@ pub mod fake_channel {
     }
 
     impl<T, E> TwoWayMpsc<T, E>
-        where
-            T: Send + Sync + 'static,
-            E: Send + Sync + 'static,
+    where
+        T: Send + Sync + 'static,
+        E: Send + Sync + 'static,
     {
         pub fn new<F>(tx: mpsc::Sender<T>, rx: mpsc::Receiver<Result<T, E>>, failures: F) -> Self
-            where
-                F: Fn(&T) -> Option<E> + Send + Unpin + 'static,
+        where
+            F: Fn(&T) -> Option<E> + Send + Unpin + 'static,
         {
             TwoWayMpsc {
                 tx,
@@ -184,10 +183,10 @@ pub mod fake_channel {
     }
 
     impl<T, E> Sink<T> for TwoWayMpsc<T, E>
-        where
-            T: Send + Sync + 'static,
-            E: Send + Sync + 'static,
-            E: From<mpsc::SendError>,
+    where
+        T: Send + Sync + 'static,
+        E: Send + Sync + 'static,
+        E: From<mpsc::SendError>,
     {
         type Error = E;
 
@@ -214,10 +213,10 @@ pub mod fake_channel {
     }
 
     impl<T, E> Stream for TwoWayMpsc<T, E>
-        where
-            T: Send + Sync + 'static,
-            E: Send + Sync + 'static,
-            E: From<mpsc::SendError>,
+    where
+        T: Send + Sync + 'static,
+        E: Send + Sync + 'static,
+        E: From<mpsc::SendError>,
     {
         type Item = Result<T, E>;
 
@@ -227,10 +226,10 @@ pub mod fake_channel {
     }
 
     impl<T, E> JoinedStreamSink<T, E> for TwoWayMpsc<T, E>
-        where
-            T: Send + Sync + 'static,
-            E: Send + Sync + 'static,
-            E: From<mpsc::SendError>,
+    where
+        T: Send + Sync + 'static,
+        E: Send + Sync + 'static,
+        E: From<mpsc::SendError>,
     {
         type CloseFut = BoxFuture<'static, Result<(), E>>;
 
@@ -238,5 +237,4 @@ pub mod fake_channel {
             ready(Ok(())).boxed()
         }
     }
-
 }

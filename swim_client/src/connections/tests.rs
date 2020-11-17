@@ -26,7 +26,7 @@ use crate::connections::factory::async_factory::AsyncFactory;
 
 use super::*;
 use crate::connections::factory::tungstenite::HostConfig;
-use swim_common::ws::{Protocol, ConnFuture};
+use swim_common::ws::{ConnFuture, Protocol};
 use tokio_tungstenite::tungstenite::extensions::compression::WsCompression;
 
 #[tokio::test]
@@ -695,13 +695,15 @@ impl WebsocketFactory for TestConnectionFactory {
     type WsSink = TestWriteStream;
 
     fn connect(&mut self, url: Url) -> ConnFuture<Self::WsSink, Self::WsStream> {
-        self.inner.connect_using(
-            url,
-            HostConfig {
-                protocol: Protocol::PlainText,
-                compression_level: WsCompression::None(None),
-            },
-        ).boxed()
+        self.inner
+            .connect_using(
+                url,
+                HostConfig {
+                    protocol: Protocol::PlainText,
+                    compression_level: WsCompression::None(None),
+                },
+            )
+            .boxed()
     }
 }
 

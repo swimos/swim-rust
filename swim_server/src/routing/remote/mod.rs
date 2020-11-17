@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::routing::error::{ConnectionError, Unresolvable};
-use crate::routing::{RoutingAddr, TaggedEnvelope, ConnectionDropped};
+use crate::routing::{ConnectionDropped, RoutingAddr, TaggedEnvelope};
 use swim_common::request::Request;
 use tokio::sync::mpsc;
 use url::Url;
@@ -32,14 +32,12 @@ pub struct RawRoute {
 }
 
 impl RawRoute {
-
-    pub fn new(sender: mpsc::Sender<TaggedEnvelope>,
-               on_drop: promise::Receiver<ConnectionDropped>) -> Self {
-        RawRoute {
-            sender, on_drop,
-        }
+    pub fn new(
+        sender: mpsc::Sender<TaggedEnvelope>,
+        on_drop: promise::Receiver<ConnectionDropped>,
+    ) -> Self {
+        RawRoute { sender, on_drop }
     }
-
 }
 
 type EndpointRequest = Request<Result<RawRoute, Unresolvable>>;
