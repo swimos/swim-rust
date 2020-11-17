@@ -28,7 +28,7 @@ const NO_STORE_CACHEABILITY: &str = "no-store";
 pub const DEFAULT_CERT_SKEW: i64 = 30;
 pub const GOOGLE_JWK_CERTS_URL: &str = "https://www.googleapis.com/oauth2/v3/certs";
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 enum KeyStoreStrategy {
     /// Don't cache anything and always fetch the latest value when it's accessed.
     NoStore,
@@ -36,7 +36,7 @@ enum KeyStoreStrategy {
     RevalidateAt(DateTime<FixedOffset>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct GoogleKeyStore {
     strategy: KeyStoreStrategy,
     /// Number of seconds before the public key certificate expiry time before forcing a refresh.
@@ -60,6 +60,7 @@ impl Default for GoogleKeyStore {
     }
 }
 
+#[derive(Debug, PartialEq)]
 pub enum GoogleKeyStoreError {
     ServerError,
     UpdateError(String),
@@ -88,6 +89,14 @@ impl GoogleKeyStore {
             public_key_url,
             certs: JWKSet { keys: vec![] },
         }
+    }
+
+    pub(crate) fn cert_skew(&self) -> i64 {
+        self.permitted_cert_exp_skew
+    }
+
+    pub(crate) fn key_url(&self) -> Url {
+        self.public_key_url.clone()
     }
 
     fn stale(&self) -> bool {
@@ -208,4 +217,57 @@ impl From<serde_json::Error> for GoogleKeyStoreError {
     fn from(e: serde_json::Error) -> Self {
         GoogleKeyStoreError::UpdateError(e.to_string())
     }
+}
+
+#[test]
+fn store_no_cache() {
+    let authenticator = GoogleKeyStore::new(Url::parse(GOOGLE_JWK_CERTS_URL).unwrap(), 30);
+
+    let mut header_map = HeaderMap::new();
+    header_map.insert(
+        CACHE_CONTROL,
+        http::HeaderValue::from_static(NO_STORE_CACHEABILITY),
+    );
+
+    let parse_result = authenticator.parse_response(&header_map);
+    assert_eq!(parse_result, Ok(KeyStoreStrategy::NoStore));
+}
+
+#[test]
+fn store_revalidate() {
+    let authenticator = GoogleKeyStore::new(Url::parse(GOOGLE_JWK_CERTS_URL).unwrap(), 30);
+    let grace_period = 30;
+
+    let mut header_map = HeaderMap::new();
+    header_map.insert(
+        CACHE_CONTROL,
+        http::HeaderValue::from_str(&format!("{}={}", MAX_AGE_DIRECTIVE, grace_period)).unwrap(),
+    );
+
+    let start = Utc::now();
+
+    let parse_result = authenticator.parse_response(&header_map);
+    match parse_result {
+        Ok(KeyStoreStrategy::RevalidateAt(expires)) => {
+            assert!(start < expires && expires < Utc::now() + chrono::Duration::seconds(30));
+        }
+        _ => panic!("Expected a revalidation strategy"),
+    }
+}
+
+#[test]
+fn store_unknown_directive() {
+    let authenticator = GoogleKeyStore::new(Url::parse(GOOGLE_JWK_CERTS_URL).unwrap(), 30);
+
+    let mut header_map = HeaderMap::new();
+    header_map.insert(
+        CACHE_CONTROL,
+        http::HeaderValue::from_static("only-if-cached"),
+    );
+
+    let parse_result = authenticator
+        .parse_response(&header_map)
+        .expect("Expected a valid key store strategy");
+
+    assert_eq!(parse_result, KeyStoreStrategy::NoStore)
 }

@@ -12,11 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::googleid::{GoogleId, GoogleIdCredentials};
+use crate::googleid::store::{GoogleKeyStore, GOOGLE_JWK_CERTS_URL};
+use crate::googleid::{GoogleId, GoogleIdAuthenticator, GoogleIdCredentials};
 use biscuit::jwa::SignatureAlgorithm;
 use biscuit::jws::{Compact, RegisteredHeader, Secret};
 use biscuit::{ClaimsSet, Empty, RegisteredClaims, SingleOrMultiple};
+use im::HashSet;
 use std::str::FromStr;
+use swim_common::form::Form;
+use swim_common::model::{Attr, Item, Value};
+use url::Url;
 
 fn expected_biscuit() -> Compact<ClaimsSet<GoogleId>, Empty> {
     let expected_claims = ClaimsSet {
@@ -89,4 +94,37 @@ async fn test_decode() {
     let decoded_biscuit = compact.decode(&secret, algorithm).expect("Decode failure");
 
     assert_eq!(decoded_biscuit, expected_biscuit());
+}
+
+#[test]
+fn test_form() {
+    let mut emails = HashSet::new();
+    emails.insert("tom@swim.ai".to_string());
+
+    let mut audiences = HashSet::new();
+    audiences.insert("an audience".to_string());
+
+    let authenticator = GoogleIdAuthenticator {
+        token_skew: 5,
+        key_store: GoogleKeyStore::new(Url::parse(GOOGLE_JWK_CERTS_URL).unwrap(), 30),
+        emails,
+        audiences,
+    };
+
+    let value = Value::Record(
+        vec![Attr::of("googleId")],
+        vec![
+            Item::of(("token_skew", 5i64)),
+            Item::of(("cert_skew", 30i64)),
+            Item::of(("publicKeyUri", GOOGLE_JWK_CERTS_URL)),
+            Item::of(("emails", Value::from_vec(vec!["tom@swim.ai"]))),
+            Item::of(("audiences", Value::from_vec(vec!["an audience"]))),
+        ],
+    );
+
+    assert_eq!(authenticator.as_value(), value);
+    assert_eq!(
+        GoogleIdAuthenticator::try_from_value(&value),
+        Ok(authenticator)
+    );
 }

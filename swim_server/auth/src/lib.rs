@@ -13,19 +13,18 @@
 // limitations under the License.
 
 use crate::googleid::GoogleIdAuthenticator;
-use crate::policy::PolicyDirective;
-use chrono::{Duration, Utc};
+use crate::policy::{IssuedPolicy, PolicyDirective};
+use crate::token::Token;
 use futures::future::ready;
 use futures::Future;
 use futures_util::future::Ready;
-use std::collections::HashMap;
 use std::fmt::Display;
-use swim_common::form::Form;
-use swim_common::model::time::Timestamp;
-use swim_common::model::Value;
+use swim_common::form::{Form, FormErr};
+use swim_common::model::{Attr, Value};
 
 pub mod googleid;
 pub mod policy;
+mod token;
 
 pub enum AgentAuthenticator {
     AlwaysAllow(AlwaysAllowAuthenticator),
@@ -38,115 +37,113 @@ pub enum AgentAuthenticator {
 pub enum AuthenticationError {
     KeyStoreError(String),
     ServerError,
-    MalformattedResponse(String),
+    Malformatted(String),
 }
 
 impl AuthenticationError {
     pub fn malformatted<A: Display>(msg: &str, cause: A) -> AuthenticationError {
-        AuthenticationError::MalformattedResponse(format!("{}: {}", msg, cause))
+        AuthenticationError::Malformatted(format!("{}: {}", msg, cause))
     }
 }
 
-pub trait Authenticator<'s> {
+/// A trait for defining authenticators that validates a remote host or user credentials against
+/// some authentication implementation.
+pub trait Authenticator<'s>: Form {
+    /// The type of the structure that this authenticator requires.
     type Credentials: Form;
-    type AuthenticateFuture: Future<Output = Result<PolicyDirective, AuthenticationError>> + 's;
+    /// A future that resolves to either a policy for the remote host or an associated error.
+    type AuthenticateFuture: Future<Output = Result<IssuedPolicy, AuthenticationError>> + 's;
 
+    /// Attempt to authenticate the remote host or user.
     fn authenticate(&'s mut self, credentials: Self::Credentials) -> Self::AuthenticateFuture;
 }
 
+/// An authenticator that will always allow the remote host.
 pub struct AlwaysAllowAuthenticator;
 impl<'s> Authenticator<'s> for AlwaysAllowAuthenticator {
     type Credentials = Value;
-    type AuthenticateFuture = Ready<Result<PolicyDirective, AuthenticationError>>;
+    type AuthenticateFuture = Ready<Result<IssuedPolicy, AuthenticationError>>;
 
     fn authenticate(&'s mut self, credentials: Self::Credentials) -> Self::AuthenticateFuture {
-        ready(Ok(PolicyDirective::allow(credentials)))
+        ready(Ok(IssuedPolicy::new(
+            Token::empty(),
+            PolicyDirective::allow(credentials),
+        )))
     }
 }
 
-pub struct AlwaysDenyAuthenticator;
-impl<'s> Authenticator<'s> for AlwaysDenyAuthenticator {
-    type Credentials = Value;
-    type AuthenticateFuture = Ready<Result<PolicyDirective, AuthenticationError>>;
-
-    fn authenticate(&'s mut self, credentials: Self::Credentials) -> Self::AuthenticateFuture {
-        ready(Ok(PolicyDirective::deny(credentials)))
+impl Form for AlwaysAllowAuthenticator {
+    fn as_value(&self) -> Value {
+        Value::of_attr("allow")
     }
-}
 
-pub struct AlwaysForbidAuthenticator;
-impl<'s> Authenticator<'s> for AlwaysForbidAuthenticator {
-    type Credentials = Value;
-    type AuthenticateFuture = Ready<Result<PolicyDirective, AuthenticationError>>;
-
-    fn authenticate(&'s mut self, credentials: Self::Credentials) -> Self::AuthenticateFuture {
-        ready(Ok(PolicyDirective::forbid(credentials)))
-    }
-}
-
-#[derive(Clone, PartialEq, Eq, Debug, Ord, PartialOrd, Hash)]
-pub struct Token {
-    id: String,
-    expires: Timestamp,
-}
-
-impl Token {
-    pub fn new(id: String, expires: Timestamp) -> Token {
-        Token { id, expires }
-    }
-}
-
-pub trait Expired {
-    fn expired(&self, skew: i64) -> bool;
-}
-
-impl Expired for Token {
-    fn expired(&self, skew: i64) -> bool {
-        self.expires
-            .as_ref()
-            .lt(&(Utc::now() + Duration::seconds(skew)))
-    }
-}
-
-#[derive(Debug)]
-pub struct TokenDirective {
-    token: Token,
-    policy: PolicyDirective,
-}
-
-impl Expired for TokenDirective {
-    fn expired(&self, skew: i64) -> bool {
-        self.token.expired(skew)
-    }
-}
-
-#[derive(Debug)]
-struct TokenStore {
-    skew: i64,
-    tokens: HashMap<String, TokenDirective>,
-}
-
-impl TokenStore {
-    pub fn new(skew: i64) -> TokenStore {
-        TokenStore {
-            skew,
-            tokens: Default::default(),
+    fn try_from_value(value: &Value) -> Result<Self, FormErr> {
+        match value {
+            Value::Record(attrs, items) if items.is_empty() => match attrs.first() {
+                Some(Attr { name, .. }) if name == "allow" => Ok(AlwaysAllowAuthenticator),
+                _ => Err(FormErr::MismatchedTag),
+            },
+            v => Err(FormErr::incorrect_type("Value::Record", v)),
         }
     }
 }
 
-impl TokenStore {
-    pub fn insert(&mut self, token: Token, policy: PolicyDirective) {
-        let id = token.id.clone();
-        let token_directive = TokenDirective { token, policy };
+/// An authenticator that will always deny the remote host.
+pub struct AlwaysDenyAuthenticator;
+impl<'s> Authenticator<'s> for AlwaysDenyAuthenticator {
+    type Credentials = Value;
+    type AuthenticateFuture = Ready<Result<IssuedPolicy, AuthenticationError>>;
 
-        self.tokens.insert(id, token_directive);
+    fn authenticate(&'s mut self, credentials: Self::Credentials) -> Self::AuthenticateFuture {
+        ready(Ok(IssuedPolicy::new(
+            Token::empty(),
+            PolicyDirective::deny(credentials),
+        )))
+    }
+}
+
+impl Form for AlwaysDenyAuthenticator {
+    fn as_value(&self) -> Value {
+        Value::of_attr("deny")
     }
 
-    pub fn get(&mut self, key: &str) -> Option<&TokenDirective> {
-        let TokenStore { skew, tokens } = self;
+    fn try_from_value(value: &Value) -> Result<Self, FormErr> {
+        match value {
+            Value::Record(attrs, items) if items.is_empty() => match attrs.first() {
+                Some(Attr { name, .. }) if name == "deny" => Ok(AlwaysDenyAuthenticator),
+                _ => Err(FormErr::MismatchedTag),
+            },
+            v => Err(FormErr::incorrect_type("Value::Record", v)),
+        }
+    }
+}
 
-        tokens.retain(|_k, token| !token.expired(*skew));
-        tokens.get(key)
+/// An authenticator that will always forbid the remote host.
+pub struct AlwaysForbidAuthenticator;
+impl<'s> Authenticator<'s> for AlwaysForbidAuthenticator {
+    type Credentials = Value;
+    type AuthenticateFuture = Ready<Result<IssuedPolicy, AuthenticationError>>;
+
+    fn authenticate(&'s mut self, credentials: Self::Credentials) -> Self::AuthenticateFuture {
+        ready(Ok(IssuedPolicy::new(
+            Token::empty(),
+            PolicyDirective::forbid(credentials),
+        )))
+    }
+}
+
+impl Form for AlwaysForbidAuthenticator {
+    fn as_value(&self) -> Value {
+        Value::of_attr("forbid")
+    }
+
+    fn try_from_value(value: &Value) -> Result<Self, FormErr> {
+        match value {
+            Value::Record(attrs, items) if items.is_empty() => match attrs.first() {
+                Some(Attr { name, .. }) if name == "forbid" => Ok(AlwaysForbidAuthenticator),
+                _ => Err(FormErr::MismatchedTag),
+            },
+            v => Err(FormErr::incorrect_type("Value::Record", v)),
+        }
     }
 }
