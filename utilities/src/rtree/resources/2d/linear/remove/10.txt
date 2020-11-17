@@ -17,11 +17,11 @@ RTree {
                 item: Rect {
                     low: Point2D {
                         x: 3.5,
-                        y: 11.5,
+                        y: 6.5,
                     },
                     high: Point2D {
                         x: 4.5,
-                        y: 6.5,
+                        y: 11.5,
                     },
                 },
             },

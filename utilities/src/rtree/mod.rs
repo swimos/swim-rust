@@ -1,6 +1,6 @@
 //! Immutable R-tree implementation.
 //!
-//! The crate provides traits for implementing custom 2D and 3D objects that can be stored in the R-tree.
+//! The module provides traits for implementing custom 2D and 3D objects that can be stored in the R-tree.
 pub use super::rect;
 pub use crate::rtree::rectangles::*;
 use num::traits::real::Real;
@@ -26,7 +26,11 @@ pub enum Strategy {
 }
 
 /// Immutable tree data structure for efficient storage and retrieval of multi-dimensional information.
-/// Todo
+///
+/// The R-tree can be created by incrementally inserting elements and supports
+/// two different node splitting strategies: Linear and Quadratic.
+///
+/// An R-tree can also be created by bulk-loading elements using the Sort-Tile-Recursive (STR).
 #[derive(Debug, Clone)]
 pub struct RTree<B>
 where
@@ -40,7 +44,37 @@ impl<B> RTree<B>
 where
     B: BoundingBox,
 {
-    ///Todo
+    /// Creates a new R-rtree.
+    ///
+    /// Each node of the tree has a minimum and maximum capacity specified by
+    /// `min_children` and `max_children` respectively. The minimum capacity must be less than or equal to
+    /// half of the maximum capacity. i.e. `min <= max / 2`
+    ///
+    /// If the maximum capacity in a node is exceeded, the node is split into two using the provided
+    /// split strategy.
+    ///
+    /// If a node has less elements that the minimum capacity after removal, the remaining elements
+    /// in the node are merged back with the rest of the tree.
+    ///
+    /// # Example:
+    /// ```
+    /// use utilities::rtree::{Point2D, Rect, RTree, Strategy, rect};
+    /// use futures_util::core_reexport::num::NonZeroUsize;
+    /// let mut rtree = RTree::new(NonZeroUsize::new(5).unwrap(), NonZeroUsize::new(10).unwrap(), Strategy::Linear);
+    ///
+    /// rtree.insert(rect!((0.0, 0.0), (1.0, 1.0)));
+    ///
+    /// assert_eq!(rtree.len(), 1)
+    /// ```
+    ///
+    /// # Panics:
+    /// ```should_panic
+    /// # use utilities::rtree::{Point2D, Rect, RTree, Strategy};
+    /// # use futures_util::core_reexport::num::NonZeroUsize;
+    /// #
+    /// // min cannot be greater than half of max
+    /// let rtree: RTree<Rect<Point2D<f64>>> = RTree::new(NonZeroUsize::new(6).unwrap(), NonZeroUsize::new(10).unwrap(), Strategy::Linear);
+    /// ```
     pub fn new(
         min_children: NonZeroUsize,
         max_children: NonZeroUsize,
@@ -54,28 +88,120 @@ where
         }
     }
 
-    ///Todo
+    /// Returns the number of items in the tree.
+    ///
+    /// # Example:
+    /// ```
+    /// use utilities::rtree::{Point2D, Rect, RTree, Strategy, rect};
+    /// use futures_util::core_reexport::num::NonZeroUsize;
+    /// let mut rtree = RTree::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(5).unwrap(), Strategy::Linear);
+    ///
+    /// rtree.insert(rect!((0.0, 0.0), (1.0, 1.0)));
+    /// assert_eq!(rtree.len(), 1);
+    ///
+    /// rtree.insert(rect!((0.0, 0.0), (2.0, 2.0)));
+    /// assert_eq!(rtree.len(), 2);
+    /// ```
     pub fn len(&self) -> usize {
         self.len
     }
 
-    ///Todo
+    /// Returns whether or not the tree has any items.
+    ///
+    /// # Example:
+    /// ```
+    /// use utilities::rtree::{Point2D, Rect, RTree, Strategy, rect};
+    /// use futures_util::core_reexport::num::NonZeroUsize;
+    /// let mut rtree = RTree::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(5).unwrap(), Strategy::Linear);
+    ///
+    /// assert!(rtree.is_empty());
+    ///
+    /// rtree.insert(rect!((0.0, 0.0), (1.0, 1.0)));
+    ///
+    /// assert!(!rtree.is_empty());
+    /// ```
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
-    ///Todo
+    /// Returns a list of all elements that are enclosed completely by the given area.
+    /// If no such entries are found, `None` is returned.
+    ///
+    /// # Example:
+    /// ```
+    /// use utilities::rtree::{Point2D, Rect, RTree, Strategy, rect};
+    /// use futures_util::core_reexport::num::NonZeroUsize;
+    /// let mut rtree = RTree::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(5).unwrap(), Strategy::Linear);
+    ///
+    /// let first_item = rect!((0.0, 0.0), (1.0, 1.0));
+    /// let second_item = rect!((0.0, 0.0), (2.0, 2.0));
+    ///
+    /// rtree.insert(first_item.clone());
+    /// rtree.insert(second_item.clone());
+    ///
+    /// let maybe_found = rtree.search(&rect!((0.0, 0.0), (1.5, 1.5)));
+    /// assert_eq!(maybe_found.unwrap(), vec![&first_item]);
+    ///
+    /// let maybe_found = rtree.search(&rect!((-10.0, -20.0), (-5.0, -10.0)));
+    /// assert!(maybe_found.is_none());
+    ///
+    /// let maybe_found = rtree.search(&rect!((0.0, 0.0), (3.0, 3.0)));
+    /// assert_eq!(maybe_found.unwrap(), vec![&first_item, &second_item]);
+    /// ```
     pub fn search(&self, area: &Rect<B::Point>) -> Option<Vec<&B>> {
         self.root.search(area)
     }
 
-    ///Todo
+    /// Inserts a new item in the tree.
+    ///
+    /// # Example:
+    /// ```
+    /// use utilities::rtree::{Point2D, Rect, RTree, Strategy, rect};
+    /// use futures_util::core_reexport::num::NonZeroUsize;
+    /// let mut rtree = RTree::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(5).unwrap(), Strategy::Linear);
+    ///
+    /// rtree.insert(rect!((0.0, 0.0), (1.0, 1.0)));
+    /// assert_eq!(rtree.len(), 1);
+    ///
+    /// rtree.insert(rect!((0.0, 0.0), (2.0, 2.0)));
+    /// assert_eq!(rtree.len(), 2);
+    /// ```
     pub fn insert(&mut self, item: B) {
         self.internal_insert(Arc::new(Entry::Leaf { item }), 0);
         self.len += 1;
     }
 
-    ///Todo
+    /// Removes and returns an item from the tree that has bounding box equal to the given bounding box.
+    /// If no such item is found, `None` is returned.
+    /// If multiple items have a matching bounding box, only the first one is returned.
+    ///
+    /// # Example:
+    /// ```
+    /// use utilities::rtree::{Point2D, Rect, RTree, Strategy, rect};
+    /// use futures_util::core_reexport::num::NonZeroUsize;
+    /// let mut rtree = RTree::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(5).unwrap(), Strategy::Linear);
+    ///
+    /// let first_item = rect!((0.0, 0.0), (1.0, 1.0));
+    /// let second_item = rect!((0.0, 0.0), (2.0, 2.0));
+    ///
+    /// rtree.insert(first_item.clone());
+    /// assert_eq!(rtree.len(), 1);
+    ///
+    /// rtree.insert(second_item.clone());
+    /// assert_eq!(rtree.len(), 2);
+    ///
+    /// let maybe_removed = rtree.remove(&rect!((0.0, 0.0), (2.0, 2.0)));
+    /// assert_eq!(maybe_removed.unwrap(), second_item);
+    /// assert_eq!(rtree.len(), 1);
+    ///
+    /// let maybe_removed = rtree.remove(&rect!((50.0, 60.0), (60.0, 70.0)));
+    /// assert!(maybe_removed.is_none());
+    /// assert_eq!(rtree.len(), 1);
+    ///
+    /// let maybe_removed = rtree.remove(&rect!((0.0, 0.0), (1.0, 1.0)));
+    /// assert_eq!(maybe_removed.unwrap(), first_item);
+    /// assert_eq!(rtree.len(), 0);
+    /// ```
     pub fn remove(&mut self, bounding_box: &Rect<B::Point>) -> Option<B> {
         let (removed, maybe_orphan_nodes) = self.root.remove(bounding_box)?;
         self.len -= 1;
@@ -117,7 +243,45 @@ where
         Some(removed)
     }
 
-    ///Todo
+    /// Creates a new R-tree from a list of items.
+    ///
+    /// The items are loaded into the tree using the Sort-Tile-Recursive (STR) algorithm.
+    ///
+    /// Each node of the tree has a minimum and maximum capacity specified by
+    /// `min_children` and `max_children` respectively. The minimum capacity must be less than or equal to
+    /// half of the maximum capacity. i.e. `min <= max / 2`
+    ///
+    /// The split strategy defines which algorithm will be used when a node needs to be split into two.
+    ///
+    /// # Example:
+    /// ```
+    /// use utilities::rtree::{Point2D, Rect, RTree, Strategy, rect};          
+    /// use futures_util::core_reexport::num::NonZeroUsize;
+    ///
+    /// let items = vec![
+    ///         rect!((0.0, 0.0), (10.0, 10.0)),
+    ///         rect!((12.0, 0.0), (15.0, 15.0)),
+    ///         rect!((7.0, 7.0), (14.0, 14.0)),
+    ///         rect!((10.0, 11.0), (11.0, 12.0)),
+    ///         rect!((4.0, 4.0), (5.0, 6.0)),
+    ///         rect!((4.0, 9.0), (5.0, 11.0)),
+    ///         rect!((13.0, 0.0), (14.0, 1.0)),
+    ///         rect!((13.0, 13.0), (16.0, 16.0)),
+    ///         rect!((2.0, 13.0), (4.0, 16.0)),
+    ///         rect!((2.0, 2.0), (3.0, 3.0)),
+    ///         rect!((10.0, 0.0), (12.0, 5.0)),
+    ///         rect!((7.0, 3.0), (8.0, 6.0)),
+    ///     ];
+    ///
+    /// let rtree = RTree::bulk_load(
+    ///     NonZeroUsize::new(2).unwrap(),
+    ///     NonZeroUsize::new(4).unwrap(),
+    ///     Strategy::Quadratic,
+    ///     items,
+    /// );
+    ///
+    /// assert_eq!(rtree.len(), 12);
+    /// ```
     pub fn bulk_load(
         min_children: NonZeroUsize,
         max_children: NonZeroUsize,

@@ -193,7 +193,7 @@ RTree {
                                 low: Point3D {
                                     x: 2.5,
                                     y: 10.5,
-                                    z: 11.5,
+                                    z: 6.5,
                                 },
                                 high: Point3D {
                                     x: 4.5,
@@ -222,12 +222,12 @@ RTree {
                                             low: Point3D {
                                                 x: 3.5,
                                                 y: 10.5,
-                                                z: 11.5,
+                                                z: 6.5,
                                             },
                                             high: Point3D {
                                                 x: 4.5,
                                                 y: 12.6,
-                                                z: 6.5,
+                                                z: 11.5,
                                             },
                                         },
                                     },

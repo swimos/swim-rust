@@ -29,14 +29,47 @@ where
     /// point must be the highest point (in all dimensions) of the hyperrecatngle.
     /// The high point must be strictly higher than the low point, in all dimensions.
     ///
-    /// Todo examples
-    /// # Example:
-    ///
     /// # Macro:
     /// Rectangles that use [`Point2D`](struct.Point2D.html) or [`Point3D`](struct.Point3D.html) can also be crated using the [`rect`](../macro.rect.html) macro,
     /// subject to the same restrictions described above.
+    /// # Examples:
+    /// ```
+    /// use utilities::rtree::{Rect, Point2D, rect, Point3D};
+    ///
+    /// let rect_2d = Rect::new(Point2D::new(0.0, 0.0), Point2D::new(1.0, 1.0));
+    /// let rect_3d = Rect::new(Point3D::new(0.0, 0.0, 0.0), Point3D::new(1.0, 1.0, 1.0));
+    ///
+    /// let macro_rect_2d = rect!((0.0, 0.0), (1.0, 1.0));
+    /// let macro_rect_3d = rect!((0.0, 0.0, 0.0), (1.0, 1.0, 1.0));
+    ///
+    /// assert_eq!(rect_2d, macro_rect_2d);
+    /// assert_eq!(rect_3d, macro_rect_3d);
+    /// ```
+    ///
+    /// # Panics:
+    /// If the high point is not strictly higher than the low in all dimensions, the code will panic.
+    /// ```should_panic
+    /// # use utilities::rtree::{Rect, Point2D};
+    /// #
+    /// // The low point has higher x coordinate
+    /// Rect::new(Point2D::new(2.0, 0.0), Point2D::new(1.0, 1.0));
+    /// ```
+    ///
+    /// ```should_panic
+    /// # use utilities::rtree::{Rect, Point2D, Point3D};
+    /// #
+    /// // The low and high points have equal z coordinate
+    /// Rect::new(Point3D::new(0.0, 0.0, 10.0), Point3D::new(1.0, 1.0, 10.0));
+    /// ```
+    ///
+    /// ```should_panic
+    /// # use utilities::rtree::{Rect, rect, Point2D};
+    /// #
+    /// // The low point has higher y coordinate
+    /// rect!((0.0, 5.0), (1.0, 1.0));
+    /// ```
     pub fn new(low: P, high: P) -> Self {
-        if low.has_higher_cords(&high) || low.has_equal_cords(&high) {
+        if !low.has_lower_cords(&high) || low.has_equal_cords(&high) {
             panic!("The first point must be lower than the second.")
         }
 
@@ -101,7 +134,10 @@ impl<T: Real> Point2D<T> {
     /// Creates a new 2D Point from two coordinates, x an y.
     ///
     /// # Example:
-    /// Todo example
+    /// ```
+    /// use utilities::rtree::Point2D;
+    /// Point2D::new(0.0, 10.0);
+    /// ```
     pub fn new(x: T, y: T) -> Self {
         Point2D { x, y }
     }
@@ -191,7 +227,10 @@ impl<T: Real> Point3D<T> {
     /// Creates a new 3D Point from two coordinates, x an y.
     ///
     /// # Example:
-    /// Todo example
+    /// ```
+    /// use utilities::rtree::Point3D;
+    /// Point3D::new(3.5, 1.5, 15.5);
+    /// ```
     pub fn new(x: T, y: T, z: T) -> Self {
         Point3D { x, y, z }
     }
@@ -349,7 +388,18 @@ pub trait BoundingBox: Clone + Debug {
 /// The macro supports the creation of rectangles using [`Point2D`](rtree/struct.Point2D.html) and [`Point3D`](rtree/struct.Point3D.html).
 ///
 /// # Example:
-/// Todo add examples
+/// ```
+/// use utilities::rtree::{Rect, Point2D, rect, Point3D};
+///
+/// let rect_2d = Rect::new(Point2D::new(0.0, 10.0), Point2D::new(1.0, 11.0));
+/// let rect_3d = Rect::new(Point3D::new(10.0, 2.0, 15.0), Point3D::new(11.0, 3.0, 16.0));
+///
+/// let macro_rect_2d = rect!((0.0, 10.0), (1.0, 11.0));
+/// let macro_rect_3d = rect!((10.0, 2.0, 15.0), (11.0, 3.0, 16.0));
+///
+/// assert_eq!(rect_2d, macro_rect_2d);
+/// assert_eq!(rect_3d, macro_rect_3d);
+/// ```
 #[macro_export]
 macro_rules! rect {
     ( ($low_x:expr, $low_y:expr), ($high_x:expr, $high_y:expr)) => {
