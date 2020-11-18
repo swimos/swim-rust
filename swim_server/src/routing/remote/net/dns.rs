@@ -39,8 +39,8 @@ impl HttpResolver for GetAddressInfoResolver {
 }
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub enum Resolver {
+    #[cfg(not(feature = "trust-dns"))]
     GetAddressInfo(GetAddressInfoResolver),
     #[cfg(feature = "trust-dns")]
     TrustDns(trust_dns_impl::TrustDnsResolver),
@@ -64,6 +64,7 @@ impl HttpResolver for Resolver {
 
     fn resolve(&self, host: HostAndPort) -> Self::ResolveFuture {
         match self {
+            #[cfg(not(feature = "trust-dns"))]
             Resolver::GetAddressInfo(resolver) => resolver.resolve(host).boxed(),
             #[cfg(feature = "trust-dns")]
             Resolver::TrustDns(resolver) => resolver.resolve(host).boxed(),
