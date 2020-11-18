@@ -19,8 +19,11 @@ use tokio::sync::mpsc;
 use url::Url;
 use utilities::sync::promise;
 
+pub mod addresses;
 mod config;
+pub mod pending;
 pub mod router;
+pub mod table;
 pub mod task;
 #[cfg(test)]
 mod test_fixture;
@@ -57,3 +60,5 @@ pub enum RoutingRequest {
         request: ResolutionRequest,
     },
 }
+
+const REQUEST_DROPPED: &str = "The receiver of a routing request was dropped before it completed.";
