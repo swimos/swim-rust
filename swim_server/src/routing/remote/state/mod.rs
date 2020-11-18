@@ -211,7 +211,7 @@ where
         let external = self.external.clone();
         self.defer(async move {
             let resolved = external
-                .lookup(target_cpy.to_string())
+                .lookup(target_cpy.clone())
                 .await
                 .map(|v| v.into_iter());
             DeferredResult::dns(resolved, target_cpy)

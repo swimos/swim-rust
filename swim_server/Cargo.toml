@@ -8,6 +8,7 @@ edition = "2018"
 default = []
 debug = ["log_verbose"]
 log_verbose = []
+trust-dns = ["trust-dns-resolver", "lazy_static"]
 
 [target.'cfg(log_verbose)'.dependencies]
 tracing = { version = "0.1.13", features = ["max_level_debug"] }
@@ -33,6 +34,8 @@ stm = { path = "../stm" }
 tracing-futures = "0.2.4"
 agent_derive = { path = "agent_derive" }
 trybuild = "1.0.17"
+trust-dns-resolver = { version = "0.19", optional = true }
+lazy_static = { version = "1.4.0", optional = true }
 
 [dev-dependencies]
 tokio = { version = "0.2.21", features = ["rt-threaded", "macros", "test-util"] }

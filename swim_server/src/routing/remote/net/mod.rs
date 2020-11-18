@@ -16,13 +16,17 @@ use std::io;
 use std::net::SocketAddr;
 use std::pin::Pin;
 
+use crate::routing::remote::net::dns::{HttpResolver, Resolver};
+use crate::routing::remote::table::HostAndPort;
 use futures::future::BoxFuture;
 use futures::stream::{Fuse, FusedStream};
 use futures::task::{Context, Poll};
 use futures::FutureExt;
 use futures::{Stream, StreamExt};
 use pin_project::pin_project;
-use tokio::net::{lookup_host, TcpListener, TcpStream};
+use tokio::net::{TcpListener, TcpStream};
+
+mod dns;
 
 /// Trait for servers that listen for incoming remote connections. This is primarily used to
 /// abstract over [`TcpListener`] for testing purposes.
@@ -55,8 +59,18 @@ impl Listener for TcpListener {
 }
 
 /// Implementation of [`ExternalConnections`] using [`TcpListener`] and [`TcpStream`] from Tokio.
-#[derive(Debug, Clone, Copy)]
-pub struct TokioNetworking;
+#[derive(Debug, Clone)]
+pub struct TokioNetworking {
+    resolver: Resolver,
+}
+
+impl TokioNetworking {
+    pub async fn new() -> TokioNetworking {
+        TokioNetworking {
+            resolver: Resolver::new().await,
+        }
+    }
+}
 
 /// Trait for types that can create remote network connections asynchronously. This is primarily
 /// used to abstract over [`TcpListener`] and [`TcpStream`] for testing purposes.
@@ -66,7 +80,7 @@ pub trait ExternalConnections: Clone + Send + Sync + 'static {
 
     fn bind(&self, addr: SocketAddr) -> BoxFuture<'static, io::Result<Self::ListenerType>>;
     fn try_open(&self, addr: SocketAddr) -> BoxFuture<'static, io::Result<Self::Socket>>;
-    fn lookup(&self, host: String) -> BoxFuture<'static, io::Result<Vec<SocketAddr>>>;
+    fn lookup(&self, host: HostAndPort) -> BoxFuture<'static, io::Result<Vec<SocketAddr>>>;
 }
 
 impl ExternalConnections for TokioNetworking {
@@ -81,9 +95,7 @@ impl ExternalConnections for TokioNetworking {
         TcpStream::connect(addr).boxed()
     }
 
-    fn lookup(&self, host: String) -> BoxFuture<'static, io::Result<Vec<SocketAddr>>> {
-        lookup_host(host)
-            .map(|r| r.map(|it| it.collect::<Vec<_>>()))
-            .boxed()
+    fn lookup(&self, host: HostAndPort) -> BoxFuture<'static, io::Result<Vec<SocketAddr>>> {
+        self.resolver.resolve(host).boxed()
     }
 }
