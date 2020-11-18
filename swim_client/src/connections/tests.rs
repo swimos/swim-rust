@@ -29,8 +29,9 @@ use crate::connections::factory::async_factory;
 use crate::connections::factory::async_factory::AsyncFactory;
 
 use super::*;
-use crate::connections::factory::tungstenite::{CompressionConfig, HostConfig};
+use crate::connections::factory::tungstenite::HostConfig;
 use swim_common::ws::Protocol;
+use tokio_tungstenite::tungstenite::extensions::compression::WsCompression;
 use utilities::errors::FlattenErrors;
 
 #[tokio::test]
@@ -708,7 +709,7 @@ impl WebsocketFactory for TestConnectionFactory {
             url,
             HostConfig {
                 protocol: Protocol::PlainText,
-                compression_config: CompressionConfig::Uncompressed,
+                compression_level: WsCompression::None(None),
             },
         )
     }

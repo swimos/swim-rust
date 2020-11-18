@@ -43,6 +43,10 @@ impl FormErr {
     pub fn incorrect_type(expected: &'static str, actual: &Value) -> FormErr {
         FormErr::IncorrectType(format!("Expected: {}, found: {}", expected, actual.kind()))
     }
+
+    pub fn message<I: Into<String>>(msg: I) -> FormErr {
+        FormErr::Message(msg.into())
+    }
 }
 
 impl Error for FormErr {}
@@ -532,7 +536,7 @@ pub trait Form: Sized {
 /// ## Attributes
 /// The `ValidatedForm` macro supports attributes in the path of `#[form(schema(..))]`.
 ///
-/// The derivo macro supports all the attributes that the `Form` derive macro supports. With the
+/// The derive macro supports all the attributes that the `Form` derive macro supports. With the
 /// exception of any field marked as `#[form(skip)]` may not also contain a schema.
 ///
 /// Similar to the `Form` derive, `ValidatedForm` derivation supports attributes at `struct`,
@@ -780,4 +784,61 @@ impl ValidatedForm for Value {
     fn schema() -> StandardSchema {
         StandardSchema::Anything
     }
+}
+
+/// A tag for a field in a form. When deriving the `Form` trait, a field that is annotated with
+/// `#[form(tag)]` will be converted into a string and replace the original structure's name.
+///
+/// ```
+/// use swim_common::form::{Form, Tag};
+/// use swim_common::model::{Value, Item, Attr};
+/// use swim_common::model::time::Timestamp;
+///
+/// #[derive(Tag, Clone)]
+/// enum Level {
+///     Info,
+///     Warn
+/// }
+///
+/// #[derive(Form)]
+/// struct LogEntry {
+///     #[form(tag)]
+///     level: Level,
+///     #[form(header)]
+///     time: Timestamp,
+///     message: String,
+/// }
+///
+/// let now = Timestamp::now();
+///
+/// let entry = LogEntry {
+///     level: Level::Info,
+///     time: now,
+///     message: String::from("message"),
+/// };
+///
+/// assert_eq!(
+///     entry.as_value(),
+///     Value::Record(
+///         vec![Attr::of((
+///             "info",
+///             Value::from_vec(vec![Item::Slot(Value::text("time"), now.as_value())])
+///         ))],
+///         vec![Item::Slot(Value::text("message"), Value::text("message"))]
+///     )
+/// )
+///
+/// ```
+///
+/// Tags can only be derived for enumerations and no variants may contain fields. The tagged
+/// structure must also implement `Clone`.
+pub trait Tag: Sized {
+    /// Produces an instance of this structure from the provided string.
+    fn from_string(tag: String) -> Result<Self, ()>;
+
+    /// Converts this instance into a string.
+    fn as_string(&self) -> String;
+
+    /// Returns an enumeration representing all of tag's variants.  
+    fn enumerated() -> Vec<Self>;
 }

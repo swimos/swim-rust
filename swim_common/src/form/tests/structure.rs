@@ -12,7 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::form::Form;
+use crate::form::{Form, Tag};
+use crate::model::time::Timestamp;
 use crate::model::{Attr, Item, Value};
 
 mod swim_common {
@@ -462,4 +463,41 @@ fn header_body_replace() {
         Ok(ex.clone())
     );
     assert_eq!(ex.into_value(), expected);
+}
+
+#[test]
+fn test_enum_tag() {
+    #[derive(Clone, PartialEq, Debug, Tag)]
+    enum Level {
+        Trace,
+        Error,
+    }
+
+    #[derive(Form, Debug, PartialEq, Clone)]
+    struct LogEntry<F: Form> {
+        #[form(tag)]
+        level: Level,
+        #[form(header)]
+        time: Timestamp,
+        message: F,
+    }
+
+    let now = Timestamp::now();
+
+    let entry = LogEntry {
+        level: Level::Error,
+        time: now,
+        message: String::from("Not good"),
+    };
+
+    assert_eq!(
+        entry.as_value(),
+        Value::Record(
+            vec![Attr::of((
+                "error",
+                Value::from_vec(vec![Item::Slot(Value::text("time"), now.as_value())])
+            ))],
+            vec![Item::Slot(Value::text("message"), Value::text("Not good"))]
+        )
+    )
 }

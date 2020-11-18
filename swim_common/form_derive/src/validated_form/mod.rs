@@ -38,7 +38,7 @@ pub fn build_validated_form(
 ) -> Result<proc_macro2::TokenStream, Vec<syn::Error>> {
     let mut context = Context::default();
     let type_contents = match build_type_contents(&mut context, &input) {
-        Some(cont) => type_contents_to_validated(&mut context, &input.ident, cont),
+        Some(cont) => type_contents_to_validated(&mut context, cont),
         None => return Err(context.check().unwrap_err()),
     };
 
