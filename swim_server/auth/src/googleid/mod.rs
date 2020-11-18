@@ -33,6 +33,7 @@ use crate::googleid::store::{
 use crate::policy::{IssuedPolicy, PolicyDirective};
 use crate::token::Token;
 use crate::{AuthenticationError, Authenticator};
+use biscuit::jwa::SignatureAlgorithm;
 use std::ops::Deref;
 
 mod store;
@@ -179,7 +180,7 @@ impl<'s> Authenticator<'s> for GoogleIdAuthenticator {
             let jwt: Compact<ClaimsSet<GoogleId>, Empty> = Compact::new_encoded(&credentials.0);
             let keys = self.key_store.keys().await?;
 
-            match jwt.decode_with_jwks(keys) {
+            match jwt.decode_with_jwks(keys, Some(SignatureAlgorithm::RS256)) {
                 Ok(token) => {
                     let (_header, token) = token.unwrap_decoded();
                     let ClaimsSet {
@@ -215,15 +216,13 @@ impl<'s> Authenticator<'s> for GoogleIdAuthenticator {
                     // Check the token's audience ID matches ours
                     match &registered.audience {
                         Some(SingleOrMultiple::Single(audience)) => {
-                            if !self.audiences.contains(&audience.as_ref().to_string()) {
+                            if !self.audiences.contains(audience) {
                                 return Ok(IssuedPolicy::forbid(Value::Extant));
                             }
                         }
                         Some(SingleOrMultiple::Multiple(audiences)) => {
-                            let matched_audience = audiences
-                                .iter()
-                                .map(|a| a.as_ref().to_string())
-                                .any(|aud| self.audiences.contains(&aud));
+                            let matched_audience =
+                                audiences.iter().any(|aud| self.audiences.contains(aud));
 
                             if !matched_audience {
                                 return Ok(IssuedPolicy::forbid(Value::Extant));
