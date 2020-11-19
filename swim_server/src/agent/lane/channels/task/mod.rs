@@ -501,16 +501,16 @@ fn combine_results(
 
 /// An error handling strategy for an uplink.
 enum UplinkErrorHandler {
-    /// Sinks any errors that occur.
-    Sink,
+    /// Discards any errors that occur.
+    Discard,
     /// Accumulates any errors that occur.
     Collect(UplinkErrorAcc),
 }
 
 impl UplinkErrorHandler {
-    /// Creates a new `UplinkErrorHandler` that sinks any errors that occur.
-    pub fn sink() -> UplinkErrorHandler {
-        UplinkErrorHandler::Sink
+    /// Creates a new `UplinkErrorHandler` that discards any errors that occur.
+    pub fn discard() -> UplinkErrorHandler {
+        UplinkErrorHandler::Discard
     }
 
     /// Creates a new `UplinkErrorHandler` that collects any errors that occur.
@@ -518,21 +518,21 @@ impl UplinkErrorHandler {
         UplinkErrorHandler::Collect(UplinkErrorAcc::new(route, max_fatal))
     }
 
-    /// Reports a new error to the underlying handler. For sinks, the error is dropped and `Ok(())`
-    /// is returned. For a collector, the error is accumalted and if maximum number of fatal errors
-    /// is exceeded then an error is returned.
+    /// Reports a new error to the underlying handler. For a discarder, the error is dropped and
+    /// `Ok(())` is returned. For a collector, the error is accumulated and if maximum number of
+    /// fatal errors is exceeded then an error is returned.
     pub fn add(&mut self, error: UplinkErrorReport) -> Result<(), ()> {
         match self {
-            UplinkErrorHandler::Sink => Ok(()),
+            UplinkErrorHandler::Discard => Ok(()),
             UplinkErrorHandler::Collect(acc) => acc.add(error),
         }
     }
 
-    /// Takes any accumulated errors and returns them. For a sink, this returns an empty vector.
-    /// For a collector it returns any errors that were accumulated.
+    /// Takes any accumulated errors and returns them. For a discarder, this returns an empty
+    /// vector. For a collector it returns any errors that were accumulated.
     pub fn take_errors(self) -> Vec<UplinkErrorReport> {
         match self {
-            UplinkErrorHandler::Sink => Vec::new(),
+            UplinkErrorHandler::Discard => Vec::new(),
             UplinkErrorHandler::Collect(acc) => acc.take_errors(),
         }
     }
@@ -614,7 +614,7 @@ where
         envelopes,
         uplink_tx,
         err_rx,
-        UplinkErrorHandler::sink(),
+        UplinkErrorHandler::discard(),
         on_command_strategy,
     );
 
@@ -667,7 +667,15 @@ where
                     OutgoingHeader::Unlink => {
                         send_action(&mut actions, &route, addr, UplinkAction::Unlink).await
                     }
-                    OutgoingHeader::Command => on_command_handler.on_command(body, addr).await,
+                    OutgoingHeader::Command => match body {
+                        Some(value) => {
+                            let maybe_command = Cmd::try_convert(value).map(|cmd| (addr, cmd));
+                            on_command_handler.on_command(maybe_command, addr).await
+                        }
+                        None => {
+                            break false;
+                        }
+                    },
                 };
                 if !sent {
                     break false;
@@ -726,10 +734,14 @@ where
     }
 
     /// Handle the message and return whether or not the operation was successful.
-    async fn on_command(&mut self, payload: Option<Value>, address: RoutingAddr) -> bool {
+    async fn on_command(
+        &mut self,
+        maybe_command: Result<(RoutingAddr, F), FormErr>,
+        address: RoutingAddr,
+    ) -> bool {
         match self {
             OnCommandStrategy::Drop => true,
-            OnCommandStrategy::Send(handler) => handler.send(payload, address).await,
+            OnCommandStrategy::Send(handler) => handler.send(maybe_command, address).await,
         }
     }
 }
@@ -753,15 +765,22 @@ where
         OnCommandHandler { sender, route }
     }
 
-    /// Attempt to convert the `payload` to `F`, otherwise map it to `Value::Extant` and forward
-    /// the result to the underlying sender. Returns whether the forwarding operation was
+    /// Forwards the value to the underlying sender and returns whether the forwarding operation was
     /// successful.
-    async fn send(&mut self, payload: Option<Value>, address: RoutingAddr) -> bool {
+    async fn send(
+        &mut self,
+        maybe_command: Result<(RoutingAddr, F), FormErr>,
+        address: RoutingAddr,
+    ) -> bool {
         let OnCommandHandler { sender, route } = self;
-        let command = F::try_convert(payload.unwrap_or(Value::Extant)).map(|cmd| (address, cmd));
+        event!(
+            Level::TRACE,
+            DISPATCH_COMMAND,
+            ?route,
+            ?address,
+            ?maybe_command
+        );
 
-        event!(Level::TRACE, DISPATCH_COMMAND, ?route, ?address, ?command);
-
-        sender.send(command).await.is_ok()
+        sender.send(maybe_command).await.is_ok()
     }
 }
