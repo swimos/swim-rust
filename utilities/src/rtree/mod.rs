@@ -206,7 +206,7 @@ where
         let (removed, maybe_orphan_nodes) = self.root.remove(bounding_box)?;
         self.len -= 1;
 
-        if self.root.len() == 1 && !self.root.is_leaf() {
+        if self.root.num_entries() == 1 && !self.root.is_leaf() {
             let entry_ptr = self.root.entries.pop().unwrap();
 
             let entry = if Arc::strong_count(&entry_ptr) == 1 {
@@ -349,16 +349,16 @@ where
                     .unwrap()
             });
 
-            let mut slices = vec![entries];
+            let mut chunks = vec![entries];
 
             //Split and sort by every dimension after the first
             for dim in 1..coord_count {
-                let entries_count = slices.get(0).unwrap().len();
+                let entries_count = chunks.get(0).unwrap().len();
                 let coord_count = coord_count - dim + 1;
-                let mut axis_slices = vec![];
-                let slice_size = calculate_slice_size(node_capacity, coord_count, entries_count);
+                let mut axis_chunks = vec![];
+                let chunk_size = calculate_chunk_size(node_capacity, coord_count, entries_count);
 
-                for items in slices {
+                for items in chunks {
                     let sort_by_dim = |mut items: Vec<EntryPtr<B>>| {
                         items.sort_by(|first, second| {
                             let first_center = first.get_mbb().get_center();
@@ -373,16 +373,16 @@ where
                         items
                     };
 
-                    axis_slices.extend(into_slices(items, slice_size, sort_by_dim));
+                    axis_chunks.extend(into_chunks(items, chunk_size, sort_by_dim));
                 }
 
-                slices = axis_slices;
+                chunks = axis_chunks;
             }
 
             //Pack into entries
             entries = vec![];
 
-            for slice in slices {
+            for chunk in chunks {
                 let construct_entry = |items: Vec<EntryPtr<B>>| {
                     let mut items_iter = items.iter();
                     let first_mbb = *items_iter.next().unwrap().get_mbb();
@@ -401,7 +401,7 @@ where
                     Arc::new(Entry::Branch { mbb, child: node })
                 };
 
-                entries.extend(into_slices(slice, node_capacity, construct_entry));
+                entries.extend(into_chunks(chunk, node_capacity, construct_entry));
             }
 
             level += 1;
@@ -418,30 +418,30 @@ where
     }
 }
 
-fn into_slices<Input, Output, F>(items: Vec<Input>, slice_size: usize, transform: F) -> Vec<Output>
+fn into_chunks<Input, Output, F>(items: Vec<Input>, chunk_size: usize, transform: F) -> Vec<Output>
 where
     F: Fn(Vec<Input>) -> Output,
 {
     let mut output = vec![];
-    let mut slice = vec![];
+    let mut chunk = vec![];
     let total_size = items.len();
 
     for (i, item) in items.into_iter().enumerate() {
-        slice.push(item);
+        chunk.push(item);
 
-        if (i + 1) % slice_size == 0 || (i + 1) == total_size {
-            output.push(transform(slice));
-            slice = vec![];
+        if (i + 1) % chunk_size == 0 || (i + 1) == total_size {
+            output.push(transform(chunk));
+            chunk = vec![];
         }
     }
 
     output
 }
 
-fn calculate_slice_size(node_capacity: usize, coord_count: usize, entries_count: usize) -> usize {
+fn calculate_chunk_size(node_capacity: usize, coord_count: usize, entries_count: usize) -> usize {
     let leaf_pages = (entries_count as f64 / node_capacity as f64).ceil();
 
-    let vertical_slices = if coord_count == 2 {
+    let vertical_chunks = if coord_count == 2 {
         leaf_pages.sqrt()
     } else if coord_count == 3 {
         leaf_pages.cbrt()
@@ -449,14 +449,12 @@ fn calculate_slice_size(node_capacity: usize, coord_count: usize, entries_count:
         panic!("Only 2D and 3D data is supported!")
     };
 
-    let slice_size = node_capacity * (vertical_slices.pow((coord_count - 1) as f64) as usize);
-    slice_size as usize
+    let chunk_size = node_capacity * (vertical_chunks.pow((coord_count - 1) as f64) as usize);
+    chunk_size as usize
 }
 
 fn check_children(min_children: &NonZeroUsize, max_children: &NonZeroUsize) {
-    if min_children.get() > max_children.get() / 2 {
-        panic!("The minimum number of children cannot be more than half of the maximum number of children.")
-    }
+    assert!(min_children.get() <= max_children.get() / 2, "The minimum number of children cannot be more than half of the maximum number of children.");
 }
 
 #[derive(Debug, Clone)]
@@ -485,7 +483,7 @@ where
         }
     }
 
-    fn len(&self) -> usize {
+    fn num_entries(&self) -> usize {
         self.entries.len()
     }
 
@@ -792,8 +790,12 @@ where
     let item = entries_iter.next().unwrap();
     let mut item_idx = 0;
 
-    let ((first_preference, first_expanded_rect), (second_preference, second_expanded_rect)) =
-        calc_preferences(item, first_mbb, second_mbb);
+    let SplitPreference {
+        first_preference,
+        first_expanded_rect,
+        second_preference,
+        second_expanded_rect,
+    } = calc_preferences(item, first_mbb, second_mbb);
 
     let mut max_preference_diff = (first_preference - second_preference).abs();
 
@@ -812,8 +814,13 @@ where
     };
 
     for (item, idx) in entries_iter.zip(1..) {
-        let ((first_preference, first_expanded_rect), (second_preference, second_expanded_rect)) =
-            calc_preferences(item, first_mbb, second_mbb);
+        let SplitPreference {
+            first_preference,
+            first_expanded_rect,
+            second_preference,
+            second_expanded_rect,
+        } = calc_preferences(item, first_mbb, second_mbb);
+
         let preference_diff = (first_preference - second_preference).abs();
 
         if max_preference_diff <= preference_diff {
@@ -947,16 +954,18 @@ where
     )
 }
 
-type Preference<B> = (
-    (PointType<B>, Rect<<B as BoxBounded>::Point>),
-    (PointType<B>, Rect<<B as BoxBounded>::Point>),
-);
+struct SplitPreference<B, T> {
+    first_preference: T,
+    first_expanded_rect: B,
+    second_preference: T,
+    second_expanded_rect: B,
+}
 
 fn calc_preferences<B>(
     item: &EntryPtr<B>,
     first_mbb: &Rect<B::Point>,
     second_mbb: &Rect<B::Point>,
-) -> Preference<B>
+) -> SplitPreference<Rect<B::Point>, PointType<B>>
 where
     B: BoxBounded,
 {
@@ -966,10 +975,12 @@ where
     let second_expanded_rect = second_mbb.combine_boxes(item.get_mbb());
     let second_diff = second_expanded_rect.measure() - second_mbb.measure();
 
-    (
-        (first_diff, first_expanded_rect),
-        (second_diff, second_expanded_rect),
-    )
+    SplitPreference {
+        first_preference: first_diff,
+        first_expanded_rect,
+        second_preference: second_diff,
+        second_expanded_rect,
+    }
 }
 
 fn select_group<B>(
@@ -1026,7 +1037,7 @@ where
     fn len(&self) -> usize {
         match self {
             Entry::Leaf { .. } => 0,
-            Entry::Branch { child, .. } => child.len(),
+            Entry::Branch { child, .. } => child.num_entries(),
         }
     }
 

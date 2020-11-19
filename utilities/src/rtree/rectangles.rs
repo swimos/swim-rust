@@ -78,6 +78,42 @@ where
     }
 }
 
+impl<P> Rect<P>
+where
+    P: Point,
+{
+    /// Calculates a minimum bounding box that contains both items.
+    pub(in crate) fn combine_boxes<B: BoxBounded<Point = <Self as BoxBounded>::Point>>(
+        &self,
+        other: &B,
+    ) -> Rect<P> {
+        let other_mbb = other.get_mbb();
+
+        let new_low = self.low.get_lowest(&other_mbb.low);
+        let new_high = self.high.get_highest(&other_mbb.high);
+
+        Rect::new(new_low, new_high)
+    }
+
+    /// Checks if a bounding box is completely covering another bounding box.
+    pub(in crate) fn is_covering<B: BoxBounded<Point = <Self as BoxBounded>::Point>>(
+        &self,
+        other: &B,
+    ) -> bool {
+        let other_mbb = other.get_mbb();
+        self.low <= other_mbb.low && self.high >= other_mbb.high
+    }
+
+    /// Checks if two bounding boxes are intersecting.
+    pub(in crate) fn is_intersecting<B: BoxBounded<Point = <Self as BoxBounded>::Point>>(
+        &self,
+        other: &B,
+    ) -> bool {
+        let other_mbb = other.get_mbb();
+        !(self.low > other_mbb.high || self.high < other_mbb.low)
+    }
+}
+
 impl<P> BoxBounded for Rect<P>
 where
     P: Point,
@@ -94,25 +130,6 @@ where
 
     fn measure(&self) -> P::Type {
         self.high.sub(self.low).multiply_coord()
-    }
-
-    fn combine_boxes<B: BoxBounded<Point = Self::Point>>(&self, other: &B) -> Rect<P> {
-        let other_mbb = other.get_mbb();
-
-        let new_low = self.low.get_lowest(&other_mbb.low);
-        let new_high = self.high.get_highest(&other_mbb.high);
-
-        Rect::new(new_low, new_high)
-    }
-
-    fn is_covering<B: BoxBounded<Point = Self::Point>>(&self, other: &B) -> bool {
-        let other_mbb = other.get_mbb();
-        &self.low <= &other_mbb.low && &self.high >= &other_mbb.high
-    }
-
-    fn is_intersecting<B: BoxBounded<Point = Self::Point>>(&self, other: &B) -> bool {
-        let other_mbb = other.get_mbb();
-        !(&self.low > &other_mbb.high || &self.high < &other_mbb.low)
     }
 }
 
@@ -369,15 +386,6 @@ pub trait BoxBounded: Clone + Debug {
 
     /// Calculates the area for 2D objects and volume for 3D objects.
     fn measure(&self) -> <Self::Point as Point>::Type;
-
-    /// Calculates a minimum bounding box that contains both items.
-    fn combine_boxes<B: BoxBounded<Point = Self::Point>>(&self, other: &B) -> Rect<Self::Point>;
-
-    /// Checks if a bounding box is completely covering another bounding box.
-    fn is_covering<B: BoxBounded<Point = Self::Point>>(&self, other: &B) -> bool;
-
-    /// Checks if two bounding boxes are intersecting.
-    fn is_intersecting<B: BoxBounded<Point = Self::Point>>(&self, other: &B) -> bool;
 }
 
 ///Creates a [`Rect`](rtree/struct.Rect.html) from coordinates.

@@ -687,18 +687,6 @@ impl BoxBounded for CloneTracker {
     fn measure(&self) -> f64 {
         self.mbb.measure()
     }
-
-    fn combine_boxes<B: BoxBounded<Point = Self::Point>>(&self, other: &B) -> Rect<Self::Point> {
-        self.mbb.combine_boxes(other)
-    }
-
-    fn is_covering<B: BoxBounded<Point = Self::Point>>(&self, other: &B) -> bool {
-        self.mbb.is_covering(other)
-    }
-
-    fn is_intersecting<B: BoxBounded<Point = Self::Point>>(&self, other: &B) -> bool {
-        self.mbb.is_intersecting(other)
-    }
 }
 
 #[derive(Debug, Clone)]
