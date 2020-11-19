@@ -70,7 +70,7 @@ where
     /// rect!((0.0, 5.0), (1.0, 1.0));
     /// ```
     pub fn new(low: P, high: P) -> Self {
-        if low > high || low.has_any_matching_coords(&high) {
+        if !(low < high) || low.has_any_matching_coords(&high) {
             panic!("The first point must be lower than the second.")
         }
 
