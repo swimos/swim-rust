@@ -1,10 +1,10 @@
 use crate::rtree::rectangles::{Point2D, Point3D};
-use crate::rtree::{BoundingBox, RTree, Rect, Strategy};
+use crate::rtree::{BoxBounded, RTree, Rect, SplitStrategy};
 use std::fs;
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
 
-fn test_tree<B: BoundingBox>(mut tree: RTree<B>, rects: Vec<B>, path: String) {
+fn test_tree<B: BoxBounded>(mut tree: RTree<B>, rects: Vec<B>, path: String) {
     assert_eq!(
         format!("{:#?}", tree),
         fs::read_to_string(format!("{}/add/0.txt", path)).unwrap()
@@ -46,7 +46,7 @@ fn build_2d_search_tree() -> RTree<Rect<Point2D<f64>>> {
     RTree::bulk_load(
         NonZeroUsize::new(2).unwrap(),
         NonZeroUsize::new(4).unwrap(),
-        Strategy::Quadratic,
+        SplitStrategy::Quadratic,
         rects,
     )
 }
@@ -70,7 +70,7 @@ fn build_3d_search_tree() -> RTree<Rect<Point3D<f64>>> {
     RTree::bulk_load(
         NonZeroUsize::new(2).unwrap(),
         NonZeroUsize::new(4).unwrap(),
-        Strategy::Quadratic,
+        SplitStrategy::Quadratic,
         rects,
     )
 }
@@ -95,7 +95,7 @@ fn rtree_2d_linear_test() {
     let tree = RTree::new(
         NonZeroUsize::new(2).unwrap(),
         NonZeroUsize::new(4).unwrap(),
-        Strategy::Linear,
+        SplitStrategy::Linear,
     );
 
     test_tree(tree, rects, String::from("src/rtree/resources/2d/linear"));
@@ -121,7 +121,7 @@ fn rtree_3d_linear_test() {
     let tree = RTree::new(
         NonZeroUsize::new(2).unwrap(),
         NonZeroUsize::new(4).unwrap(),
-        Strategy::Linear,
+        SplitStrategy::Linear,
     );
 
     test_tree(tree, rects, String::from("src/rtree/resources/3d/linear"));
@@ -147,7 +147,7 @@ fn rtree_2d_quadratic_test() {
     let tree = RTree::new(
         NonZeroUsize::new(2).unwrap(),
         NonZeroUsize::new(4).unwrap(),
-        Strategy::Quadratic,
+        SplitStrategy::Quadratic,
     );
 
     test_tree(
@@ -177,7 +177,7 @@ fn rtree_3d_quadratic_test() {
     let tree = RTree::new(
         NonZeroUsize::new(2).unwrap(),
         NonZeroUsize::new(4).unwrap(),
-        Strategy::Quadratic,
+        SplitStrategy::Quadratic,
     );
 
     test_tree(
@@ -198,7 +198,7 @@ fn bulk_load_3_node_2d_test() {
     let rtree = RTree::bulk_load(
         NonZeroUsize::new(2).unwrap(),
         NonZeroUsize::new(4).unwrap(),
-        Strategy::Quadratic,
+        SplitStrategy::Quadratic,
         rects,
     );
 
@@ -221,7 +221,7 @@ fn bulk_load_5_node_2d_test() {
     let rtree = RTree::bulk_load(
         NonZeroUsize::new(2).unwrap(),
         NonZeroUsize::new(4).unwrap(),
-        Strategy::Quadratic,
+        SplitStrategy::Quadratic,
         rects,
     );
 
@@ -251,7 +251,7 @@ fn bulk_load_12_node_2d_test() {
     let rtree = RTree::bulk_load(
         NonZeroUsize::new(2).unwrap(),
         NonZeroUsize::new(4).unwrap(),
-        Strategy::Quadratic,
+        SplitStrategy::Quadratic,
         rects,
     );
 
@@ -293,7 +293,7 @@ fn bulk_load_24_node_3d_test() {
     let rtree = RTree::bulk_load(
         NonZeroUsize::new(2).unwrap(),
         NonZeroUsize::new(4).unwrap(),
-        Strategy::Quadratic,
+        SplitStrategy::Quadratic,
         rects,
     );
 
@@ -354,7 +354,7 @@ fn insert_no_clones_test() {
     let mut tree = RTree::new(
         NonZeroUsize::new(2).unwrap(),
         NonZeroUsize::new(4).unwrap(),
-        Strategy::Quadratic,
+        SplitStrategy::Quadratic,
     );
     let clone_count = CloneCount::new();
     let first = rect!((0.0, 0.0), (10.0, 10.0));
@@ -377,7 +377,7 @@ fn clone_on_remove_test() {
     let mut tree = RTree::new(
         NonZeroUsize::new(2).unwrap(),
         NonZeroUsize::new(4).unwrap(),
-        Strategy::Quadratic,
+        SplitStrategy::Quadratic,
     );
     let clone_count = CloneCount::new();
 
@@ -400,7 +400,7 @@ fn linear_split_no_clones_test() {
     let mut tree = RTree::new(
         NonZeroUsize::new(2).unwrap(),
         NonZeroUsize::new(4).unwrap(),
-        Strategy::Linear,
+        SplitStrategy::Linear,
     );
     let clone_count = CloneCount::new();
 
@@ -445,7 +445,7 @@ fn quadratic_split_no_clones_test() {
     let mut tree = RTree::new(
         NonZeroUsize::new(2).unwrap(),
         NonZeroUsize::new(4).unwrap(),
-        Strategy::Quadratic,
+        SplitStrategy::Quadratic,
     );
     let clone_count = CloneCount::new();
 
@@ -490,7 +490,7 @@ fn clone_on_merge_test() {
     let mut tree = RTree::new(
         NonZeroUsize::new(2).unwrap(),
         NonZeroUsize::new(4).unwrap(),
-        Strategy::Quadratic,
+        SplitStrategy::Quadratic,
     );
     let clone_count = CloneCount::new();
 
@@ -563,7 +563,7 @@ fn bulk_load_no_clone() {
     let rtree = RTree::bulk_load(
         NonZeroUsize::new(2).unwrap(),
         NonZeroUsize::new(4).unwrap(),
-        Strategy::Linear,
+        SplitStrategy::Linear,
         items,
     );
 
@@ -593,7 +593,7 @@ fn search_single_no_clone() {
     let rtree = RTree::bulk_load(
         NonZeroUsize::new(2).unwrap(),
         NonZeroUsize::new(4).unwrap(),
-        Strategy::Linear,
+        SplitStrategy::Linear,
         items,
     );
 
@@ -624,7 +624,7 @@ fn search_multiple_no_clone() {
     let rtree = RTree::bulk_load(
         NonZeroUsize::new(2).unwrap(),
         NonZeroUsize::new(4).unwrap(),
-        Strategy::Linear,
+        SplitStrategy::Linear,
         items,
     );
 
@@ -673,7 +673,7 @@ impl Clone for CloneTracker {
     }
 }
 
-impl BoundingBox for CloneTracker {
+impl BoxBounded for CloneTracker {
     type Point = Point2D<f64>;
 
     fn get_mbb(&self) -> &Rect<Self::Point> {
@@ -688,15 +688,15 @@ impl BoundingBox for CloneTracker {
         self.mbb.measure()
     }
 
-    fn combine_boxes<B: BoundingBox<Point = Self::Point>>(&self, other: &B) -> Rect<Self::Point> {
+    fn combine_boxes<B: BoxBounded<Point = Self::Point>>(&self, other: &B) -> Rect<Self::Point> {
         self.mbb.combine_boxes(other)
     }
 
-    fn is_covering<B: BoundingBox<Point = Self::Point>>(&self, other: &B) -> bool {
+    fn is_covering<B: BoxBounded<Point = Self::Point>>(&self, other: &B) -> bool {
         self.mbb.is_covering(other)
     }
 
-    fn is_intersecting<B: BoundingBox<Point = Self::Point>>(&self, other: &B) -> bool {
+    fn is_intersecting<B: BoxBounded<Point = Self::Point>>(&self, other: &B) -> bool {
         self.mbb.is_intersecting(other)
     }
 }

@@ -20,7 +20,7 @@ mod tests;
 ///
 /// The two supported strategies run in linear and quadratic time.
 #[derive(Debug, Clone, Copy)]
-pub enum Strategy {
+pub enum SplitStrategy {
     Linear,
     Quadratic,
 }
@@ -34,7 +34,7 @@ pub enum Strategy {
 #[derive(Debug, Clone)]
 pub struct RTree<B>
 where
-    B: BoundingBox,
+    B: BoxBounded,
 {
     root: Node<B>,
     len: usize,
@@ -42,7 +42,7 @@ where
 
 impl<B> RTree<B>
 where
-    B: BoundingBox,
+    B: BoxBounded,
 {
     /// Creates a new R-rtree.
     ///
@@ -58,9 +58,9 @@ where
     ///
     /// # Example:
     /// ```
-    /// use utilities::rtree::{Point2D, Rect, RTree, Strategy, rect};
+    /// use utilities::rtree::{Point2D, Rect, RTree, SplitStrategy, rect};
     /// use std::num::NonZeroUsize;
-    /// let mut rtree = RTree::new(NonZeroUsize::new(5).unwrap(), NonZeroUsize::new(10).unwrap(), Strategy::Linear);
+    /// let mut rtree = RTree::new(NonZeroUsize::new(5).unwrap(), NonZeroUsize::new(10).unwrap(), SplitStrategy::Linear);
     ///
     /// rtree.insert(rect!((0.0, 0.0), (1.0, 1.0)));
     ///
@@ -69,16 +69,16 @@ where
     ///
     /// # Panics:
     /// ```should_panic
-    /// # use utilities::rtree::{Point2D, Rect, RTree, Strategy};
+    /// # use utilities::rtree::{Point2D, Rect, RTree, SplitStrategy};
     /// # use std::num::NonZeroUsize;
     /// #
     /// // min cannot be greater than half of max
-    /// let rtree: RTree<Rect<Point2D<f64>>> = RTree::new(NonZeroUsize::new(6).unwrap(), NonZeroUsize::new(10).unwrap(), Strategy::Linear);
+    /// let rtree: RTree<Rect<Point2D<f64>>> = RTree::new(NonZeroUsize::new(6).unwrap(), NonZeroUsize::new(10).unwrap(), SplitStrategy::Linear);
     /// ```
     pub fn new(
         min_children: NonZeroUsize,
         max_children: NonZeroUsize,
-        split_strat: Strategy,
+        split_strat: SplitStrategy,
     ) -> Self {
         check_children(&min_children, &max_children);
 
@@ -92,9 +92,9 @@ where
     ///
     /// # Example:
     /// ```
-    /// use utilities::rtree::{Point2D, Rect, RTree, Strategy, rect};
+    /// use utilities::rtree::{Point2D, Rect, RTree, SplitStrategy, rect};
     /// use std::num::NonZeroUsize;
-    /// let mut rtree = RTree::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(5).unwrap(), Strategy::Linear);
+    /// let mut rtree = RTree::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(5).unwrap(), SplitStrategy::Linear);
     ///
     /// rtree.insert(rect!((0.0, 0.0), (1.0, 1.0)));
     /// assert_eq!(rtree.len(), 1);
@@ -110,9 +110,9 @@ where
     ///
     /// # Example:
     /// ```
-    /// use utilities::rtree::{Point2D, Rect, RTree, Strategy, rect};
+    /// use utilities::rtree::{Point2D, Rect, RTree, SplitStrategy, rect};
     /// use std::num::NonZeroUsize;
-    /// let mut rtree = RTree::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(5).unwrap(), Strategy::Linear);
+    /// let mut rtree = RTree::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(5).unwrap(), SplitStrategy::Linear);
     ///
     /// assert!(rtree.is_empty());
     ///
@@ -129,9 +129,9 @@ where
     ///
     /// # Example:
     /// ```
-    /// use utilities::rtree::{Point2D, Rect, RTree, Strategy, rect};
+    /// use utilities::rtree::{Point2D, Rect, RTree, SplitStrategy, rect};
     /// use std::num::NonZeroUsize;
-    /// let mut rtree = RTree::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(5).unwrap(), Strategy::Linear);
+    /// let mut rtree = RTree::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(5).unwrap(), SplitStrategy::Linear);
     ///
     /// let first_item = rect!((0.0, 0.0), (1.0, 1.0));
     /// let second_item = rect!((0.0, 0.0), (2.0, 2.0));
@@ -156,9 +156,9 @@ where
     ///
     /// # Example:
     /// ```
-    /// use utilities::rtree::{Point2D, Rect, RTree, Strategy, rect};
+    /// use utilities::rtree::{Point2D, Rect, RTree, SplitStrategy, rect};
     /// use std::num::NonZeroUsize;
-    /// let mut rtree = RTree::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(5).unwrap(), Strategy::Linear);
+    /// let mut rtree = RTree::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(5).unwrap(), SplitStrategy::Linear);
     ///
     /// rtree.insert(rect!((0.0, 0.0), (1.0, 1.0)));
     /// assert_eq!(rtree.len(), 1);
@@ -173,13 +173,13 @@ where
 
     /// Removes and returns an item from the tree that has bounding box equal to the given bounding box.
     /// If no such item is found, `None` is returned.
-    /// If multiple items have a matching bounding box, only the first one is returned.
+    /// If multiple items have a matching bounding box, only the first one is removed.
     ///
     /// # Example:
     /// ```
-    /// use utilities::rtree::{Point2D, Rect, RTree, Strategy, rect};
+    /// use utilities::rtree::{Point2D, Rect, RTree, SplitStrategy, rect};
     /// use std::num::NonZeroUsize;
-    /// let mut rtree = RTree::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(5).unwrap(), Strategy::Linear);
+    /// let mut rtree = RTree::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(5).unwrap(), SplitStrategy::Linear);
     ///
     /// let first_item = rect!((0.0, 0.0), (1.0, 1.0));
     /// let second_item = rect!((0.0, 0.0), (2.0, 2.0));
@@ -255,7 +255,7 @@ where
     ///
     /// # Example:
     /// ```
-    /// use utilities::rtree::{Point2D, Rect, RTree, Strategy, rect};          
+    /// use utilities::rtree::{Point2D, Rect, RTree, SplitStrategy, rect};          
     /// use std::num::NonZeroUsize;
     ///
     /// let items = vec![
@@ -276,7 +276,7 @@ where
     /// let rtree = RTree::bulk_load(
     ///     NonZeroUsize::new(2).unwrap(),
     ///     NonZeroUsize::new(4).unwrap(),
-    ///     Strategy::Quadratic,
+    ///     SplitStrategy::Quadratic,
     ///     items,
     /// );
     ///
@@ -285,7 +285,7 @@ where
     pub fn bulk_load(
         min_children: NonZeroUsize,
         max_children: NonZeroUsize,
-        split_strat: Strategy,
+        split_strat: SplitStrategy,
         items: Vec<B>,
     ) -> RTree<B> {
         check_children(&min_children, &max_children);
@@ -326,7 +326,7 @@ where
     fn internal_bulk_load(
         min_children: usize,
         max_children: usize,
-        split_strat: Strategy,
+        split_strat: SplitStrategy,
         mut entries: Vec<EntryPtr<B>>,
         mut level: usize,
     ) -> Node<B> {
@@ -462,20 +462,20 @@ fn check_children(min_children: &NonZeroUsize, max_children: &NonZeroUsize) {
 #[derive(Debug, Clone)]
 struct Node<B>
 where
-    B: BoundingBox,
+    B: BoxBounded,
 {
     entries: Vec<EntryPtr<B>>,
     level: usize,
     min_children: usize,
     max_children: usize,
-    split_strat: Strategy,
+    split_strat: SplitStrategy,
 }
 
 impl<B> Node<B>
 where
-    B: BoundingBox,
+    B: BoxBounded,
 {
-    fn new_root(min_children: usize, max_children: usize, split_strat: Strategy) -> Self {
+    fn new_root(min_children: usize, max_children: usize, split_strat: SplitStrategy) -> Self {
         Node {
             entries: Vec::new(),
             level: 0,
@@ -681,14 +681,14 @@ where
 fn split<B>(
     entries: &mut Vec<EntryPtr<B>>,
     min_children: usize,
-    split_strat: Strategy,
+    split_strat: SplitStrategy,
 ) -> (SplitGroup<B>, SplitGroup<B>)
 where
-    B: BoundingBox,
+    B: BoxBounded,
 {
     let (first_seed_idx, second_seed_idx) = match split_strat {
-        Strategy::Linear => linear_pick_seeds(entries),
-        Strategy::Quadratic => quadratic_pick_seeds(entries),
+        SplitStrategy::Linear => linear_pick_seeds(entries),
+        SplitStrategy::Quadratic => quadratic_pick_seeds(entries),
     };
 
     // second_seed_idx > first_seed_idx
@@ -718,8 +718,8 @@ where
             }
         } else {
             let (idx, expanded_rect, group) = match split_strat {
-                Strategy::Linear => pick_next_linear(entries, &first_mbb),
-                Strategy::Quadratic => pick_next_quadratic(
+                SplitStrategy::Linear => pick_next_linear(entries, &first_mbb),
+                SplitStrategy::Quadratic => pick_next_quadratic(
                     entries,
                     &first_mbb,
                     &second_mbb,
@@ -748,7 +748,7 @@ where
 
 fn quadratic_pick_seeds<B>(entries: &[EntryPtr<B>]) -> (usize, usize)
 where
-    B: BoundingBox,
+    B: BoxBounded,
 {
     let mut first_idx = 0;
     let mut second_idx = 1;
@@ -786,7 +786,7 @@ fn pick_next_quadratic<B>(
     second_group_size: usize,
 ) -> (usize, Rect<B::Point>, Group)
 where
-    B: BoundingBox,
+    B: BoxBounded,
 {
     let mut entries_iter = entries.iter();
     let item = entries_iter.next().unwrap();
@@ -839,11 +839,11 @@ where
     (item_idx, expanded_rect, group)
 }
 
-type PointType<B> = <<B as BoundingBox>::Point as Point>::Type;
+type PointType<B> = <<B as BoxBounded>::Point as Point>::Type;
 
 fn linear_pick_seeds<B>(entries: &[EntryPtr<B>]) -> (usize, usize)
 where
-    B: BoundingBox,
+    B: BoxBounded,
 {
     let mut first_idx = 0;
     let mut second_idx = 1;
@@ -857,8 +857,8 @@ where
             let mbb = item.get_mbb();
 
             for dim in 0..mbb.get_coord_count() {
-                let low_dim = mbb.get_low().get_nth_coord(dim).unwrap();
-                let high_dim = mbb.get_high().get_nth_coord(dim).unwrap();
+                let low_dim = mbb.low.get_nth_coord(dim).unwrap();
+                let high_dim = mbb.high.get_nth_coord(dim).unwrap();
 
                 match dim_boundary_points.get_mut(dim) {
                     Some((min_low, max_high)) => {
@@ -938,7 +938,7 @@ fn pick_next_linear<B>(
     mbb: &Rect<B::Point>,
 ) -> (usize, Rect<B::Point>, Group)
 where
-    B: BoundingBox,
+    B: BoxBounded,
 {
     (
         0,
@@ -948,8 +948,8 @@ where
 }
 
 type Preference<B> = (
-    (PointType<B>, Rect<<B as BoundingBox>::Point>),
-    (PointType<B>, Rect<<B as BoundingBox>::Point>),
+    (PointType<B>, Rect<<B as BoxBounded>::Point>),
+    (PointType<B>, Rect<<B as BoxBounded>::Point>),
 );
 
 fn calc_preferences<B>(
@@ -958,7 +958,7 @@ fn calc_preferences<B>(
     second_mbb: &Rect<B::Point>,
 ) -> Preference<B>
 where
-    B: BoundingBox,
+    B: BoxBounded,
 {
     let first_expanded_rect = first_mbb.combine_boxes(item.get_mbb());
     let first_diff = first_expanded_rect.measure() - first_mbb.measure();
@@ -981,7 +981,7 @@ fn select_group<B>(
     second_diff: <B::Point as Point>::Type,
 ) -> Group
 where
-    B: BoundingBox,
+    B: BoxBounded,
 {
     if first_diff < second_diff {
         Group::First
@@ -1008,12 +1008,12 @@ enum Group {
 type EntryPtr<B> = Arc<Entry<B>>;
 type MaybeOrphans<B> = Option<Vec<EntryPtr<B>>>;
 type MaybeSplit<B> = Option<(EntryPtr<B>, EntryPtr<B>)>;
-type SplitGroup<B> = (Vec<EntryPtr<B>>, Rect<<B as BoundingBox>::Point>);
+type SplitGroup<B> = (Vec<EntryPtr<B>>, Rect<<B as BoxBounded>::Point>);
 
 #[derive(Debug, Clone)]
 enum Entry<B>
 where
-    B: BoundingBox,
+    B: BoxBounded,
 {
     Leaf { item: B },
     Branch { mbb: Rect<B::Point>, child: Node<B> },
@@ -1021,7 +1021,7 @@ where
 
 impl<B> Entry<B>
 where
-    B: BoundingBox,
+    B: BoxBounded,
 {
     fn len(&self) -> usize {
         match self {
@@ -1066,8 +1066,8 @@ where
 
                 let removed_mbb = removed.get_mbb();
 
-                if removed_mbb.get_low().has_equal_cords(mbb.get_low())
-                    || removed_mbb.get_high().has_equal_cords(mbb.get_high())
+                if removed_mbb.low.has_any_matching_coords(&mbb.low)
+                    || removed_mbb.high.has_any_matching_coords(&mbb.high)
                 {
                     let mut entries_iter = child.entries.iter();
                     let mut shrunken_mbb = *entries_iter.next().unwrap().get_mbb();

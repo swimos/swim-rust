@@ -1,4 +1,5 @@
 use num::traits::real::Real;
+use std::cmp::Ordering;
 use std::fmt::Debug;
 use std::ops::Sub;
 
@@ -15,8 +16,8 @@ pub struct Rect<P>
 where
     P: Point,
 {
-    low: P,
-    high: P,
+    pub(in crate) low: P,
+    pub(in crate) high: P,
 }
 
 impl<P> Rect<P>
@@ -69,23 +70,15 @@ where
     /// rect!((0.0, 5.0), (1.0, 1.0));
     /// ```
     pub fn new(low: P, high: P) -> Self {
-        if !low.has_lower_cords(&high) || low.has_equal_cords(&high) {
+        if low > high || low.has_any_matching_coords(&high) {
             panic!("The first point must be lower than the second.")
         }
 
         Rect { low, high }
     }
-
-    pub(in crate) fn get_low(&self) -> &P {
-        &self.low
-    }
-
-    pub(in crate) fn get_high(&self) -> &P {
-        &self.high
-    }
 }
 
-impl<P> BoundingBox for Rect<P>
+impl<P> BoxBounded for Rect<P>
 where
     P: Point,
 {
@@ -96,14 +89,14 @@ where
     }
 
     fn get_center(&self) -> P {
-        self.get_high().mean(self.get_low())
+        self.high.mean(&self.low)
     }
 
     fn measure(&self) -> P::Type {
         self.high.sub(self.low).multiply_coord()
     }
 
-    fn combine_boxes<B: BoundingBox<Point = Self::Point>>(&self, other: &B) -> Rect<P> {
+    fn combine_boxes<B: BoxBounded<Point = Self::Point>>(&self, other: &B) -> Rect<P> {
         let other_mbb = other.get_mbb();
 
         let new_low = self.low.get_lowest(&other_mbb.low);
@@ -112,14 +105,14 @@ where
         Rect::new(new_low, new_high)
     }
 
-    fn is_covering<B: BoundingBox<Point = Self::Point>>(&self, other: &B) -> bool {
+    fn is_covering<B: BoxBounded<Point = Self::Point>>(&self, other: &B) -> bool {
         let other_mbb = other.get_mbb();
-        self.low.has_lower_cords(&other_mbb.low) && self.high.has_higher_cords(&other_mbb.high)
+        &self.low <= &other_mbb.low && &self.high >= &other_mbb.high
     }
 
-    fn is_intersecting<B: BoundingBox<Point = Self::Point>>(&self, other: &B) -> bool {
+    fn is_intersecting<B: BoxBounded<Point = Self::Point>>(&self, other: &B) -> bool {
         let other_mbb = other.get_mbb();
-        !self.low.has_higher_cords(&other_mbb.high) && !self.high.has_lower_cords(&other_mbb.low)
+        !(&self.low > &other_mbb.high || &self.high < &other_mbb.low)
     }
 }
 
@@ -128,6 +121,20 @@ where
 pub struct Point2D<T: Real> {
     x: T,
     y: T,
+}
+
+impl<T: Real> PartialOrd for Point2D<T> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        if self.x == other.x && self.y == other.y {
+            Some(Ordering::Equal)
+        } else if self.x >= other.x && self.y >= other.y {
+            Some(Ordering::Greater)
+        } else if self.x <= other.x && self.y <= other.y {
+            Some(Ordering::Less)
+        } else {
+            None
+        }
+    }
 }
 
 impl<T: Real> Point2D<T> {
@@ -182,7 +189,7 @@ impl<T: Real + Debug> Point for Point2D<T> {
         self.x * self.y
     }
 
-    fn has_equal_cords(&self, other: &Self) -> bool {
+    fn has_any_matching_coords(&self, other: &Self) -> bool {
         self.x == other.x || self.y == other.y
     }
 
@@ -205,14 +212,6 @@ impl<T: Real + Debug> Point for Point2D<T> {
             y: new_higher_y,
         }
     }
-
-    fn has_higher_cords(&self, other: &Self) -> bool {
-        self.x >= other.x && self.y >= other.y
-    }
-
-    fn has_lower_cords(&self, other: &Self) -> bool {
-        self.x <= other.x && self.y <= other.y
-    }
 }
 
 /// A 3D Point with real number coordinates.
@@ -221,6 +220,20 @@ pub struct Point3D<T: Real> {
     x: T,
     y: T,
     z: T,
+}
+
+impl<T: Real> PartialOrd for Point3D<T> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        if self.x == other.x && self.y == other.y && self.z == other.z {
+            Some(Ordering::Equal)
+        } else if self.x >= other.x && self.y >= other.y && self.z >= other.z {
+            Some(Ordering::Greater)
+        } else if self.x <= other.x && self.y <= other.y && self.z <= other.z {
+            Some(Ordering::Less)
+        } else {
+            None
+        }
+    }
 }
 
 impl<T: Real> Point3D<T> {
@@ -279,7 +292,7 @@ impl<T: Real + Debug> Point for Point3D<T> {
         self.x * self.y * self.z
     }
 
-    fn has_equal_cords(&self, other: &Self) -> bool {
+    fn has_any_matching_coords(&self, other: &Self) -> bool {
         self.x == other.x || self.y == other.y || self.z == other.z
     }
 
@@ -306,20 +319,12 @@ impl<T: Real + Debug> Point for Point3D<T> {
             z: new_higher_z,
         }
     }
-
-    fn has_higher_cords(&self, other: &Self) -> bool {
-        self.x >= other.x && self.y >= other.y && self.z >= other.z
-    }
-
-    fn has_lower_cords(&self, other: &Self) -> bool {
-        self.x <= other.x && self.y <= other.y && self.z <= other.z
-    }
 }
 
 /// A trait for implementing a custom point.
 ///
 /// The associated type of the point must be a [`Real`] number.
-pub trait Point: Copy + Clone + PartialEq + Debug + Sub<Output = Self> {
+pub trait Point: Copy + Clone + PartialEq + PartialOrd + Debug + Sub<Output = Self> {
     type Type: Real + Debug;
 
     /// Returns the number of dimensions of the point.
@@ -336,27 +341,19 @@ pub trait Point: Copy + Clone + PartialEq + Debug + Sub<Output = Self> {
     fn multiply_coord(&self) -> Self::Type;
 
     /// Checks if two points have at least one equal coordinate.
-    fn has_equal_cords(&self, other: &Self) -> bool;
+    fn has_any_matching_coords(&self, other: &Self) -> bool;
 
     /// Returns a point from the lowest coordinate of two points for each dimension.
     fn get_lowest(&self, other: &Self) -> Self;
 
     /// Returns a point from the highest coordinate of two points for each dimension.
     fn get_highest(&self, other: &Self) -> Self;
-
-    /// Checks if the coordinates of a given point are greater or equal
-    /// to the corresponding coordinates of a different point.
-    fn has_higher_cords(&self, other: &Self) -> bool;
-
-    /// Checks if the coordinates of a given point are lower or equal
-    /// to the corresponding coordinates of a different point.
-    fn has_lower_cords(&self, other: &Self) -> bool;
 }
 
 /// A trait for implementing custom objects that can be bound by a box.
 ///
-/// The associated type of the bounding box object must be a [`Point`](trait.Point.html).
-pub trait BoundingBox: Clone + Debug {
+/// The associated type of the box bounded object must be a [`Point`](trait.Point.html).
+pub trait BoxBounded: Clone + Debug {
     type Point: Point;
 
     /// Returns the minimum bounding box.
@@ -374,13 +371,13 @@ pub trait BoundingBox: Clone + Debug {
     fn measure(&self) -> <Self::Point as Point>::Type;
 
     /// Calculates a minimum bounding box that contains both items.
-    fn combine_boxes<B: BoundingBox<Point = Self::Point>>(&self, other: &B) -> Rect<Self::Point>;
+    fn combine_boxes<B: BoxBounded<Point = Self::Point>>(&self, other: &B) -> Rect<Self::Point>;
 
     /// Checks if a bounding box is completely covering another bounding box.
-    fn is_covering<B: BoundingBox<Point = Self::Point>>(&self, other: &B) -> bool;
+    fn is_covering<B: BoxBounded<Point = Self::Point>>(&self, other: &B) -> bool;
 
     /// Checks if two bounding boxes are intersecting.
-    fn is_intersecting<B: BoundingBox<Point = Self::Point>>(&self, other: &B) -> bool;
+    fn is_intersecting<B: BoxBounded<Point = Self::Point>>(&self, other: &B) -> bool;
 }
 
 ///Creates a [`Rect`](rtree/struct.Rect.html) from coordinates.
