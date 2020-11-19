@@ -14,23 +14,22 @@
 
 use futures::FutureExt;
 use futures_util::future::BoxFuture;
-use tokio::net::TcpStream;
-use tokio_tungstenite::tungstenite::extensions::uncompressed::UncompressedExt;
 use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
 use tokio_tungstenite::tungstenite::protocol::{CloseFrame, WebSocketConfig};
-use tokio_tungstenite::tungstenite::Message;
+use tokio_tungstenite::tungstenite::{Error, Message};
 use tokio_tungstenite::WebSocketStream;
-use url::Url;
 
 use swim_common::ws::WsMessage;
 
 use crate::routing::error::ConnectionError;
 use crate::routing::ws::{CloseReason, JoinedStreamSink, TransformedStreamSink, WsConnections};
 use swim_common::ws::error::WebSocketError;
+use tokio::io::AsyncWrite;
+use tokio::prelude::AsyncRead;
 
 type TError = tokio_tungstenite::tungstenite::Error;
-type TransformedWsStream<S, E> =
-    TransformedStreamSink<WebSocketStream<S, E>, Message, WsMessage, TError, ConnectionError>;
+type TransformedWsStream<S> =
+    TransformedStreamSink<WebSocketStream<S>, Message, WsMessage, TError, ConnectionError>;
 
 const DEFAULT_CLOSE_MSG: &str = "Closing connection";
 
@@ -38,7 +37,10 @@ pub struct TungsteniteWsConnections {
     config: WebSocketConfig,
 }
 
-impl JoinedStreamSink<Message, TError> for WebSocketStream<TcpStream, UncompressedExt> {
+impl<S> JoinedStreamSink<Message, TError> for WebSocketStream<S>
+where
+    S: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
+{
     type CloseFut = BoxFuture<'static, Result<(), TError>>;
 
     fn close(mut self, reason: Option<CloseReason>) -> Self::CloseFut {
@@ -63,31 +65,39 @@ impl JoinedStreamSink<Message, TError> for WebSocketStream<TcpStream, Uncompress
 impl From<TError> for ConnectionError {
     fn from(e: TError) -> Self {
         match e {
-            TError::ConnectionClosed => ConnectionError::Closed,
+            TError::AlreadyClosed | TError::ConnectionClosed => ConnectionError::Closed,
             TError::Url(url) => ConnectionError::Websocket(WebSocketError::Url(url.to_string())),
             TError::HttpFormat(err) => ConnectionError::Warp(err.to_string()),
             TError::Http(code) => ConnectionError::Http(code),
             TError::Io(e) => ConnectionError::Socket(e.kind()),
-            e => ConnectionError::Message(e.to_string()),
+            Error::Tls(e) => ConnectionError::Websocket(WebSocketError::Tls(e.to_string())),
+            Error::Protocol(_) => ConnectionError::Websocket(WebSocketError::Protocol),
+            Error::SendQueueFull(_) | Error::Capacity(_) => {
+                ConnectionError::Websocket(WebSocketError::Capacity)
+            }
+            Error::Utf8 => ConnectionError::Websocket(WebSocketError::Protocol),
+            Error::ExtensionError(e) => {
+                ConnectionError::Websocket(WebSocketError::Extension(e.to_string()))
+            }
         }
     }
 }
 
-/*
-   todo: once the new tungstenite deflate API has been merged, provide the config to Tungstenite
-    and remove the extension type parameters.
-
-   todo: URL specific configurations
-*/
-impl WsConnections<TcpStream> for TungsteniteWsConnections {
-    type StreamSink = TransformedWsStream<TcpStream, UncompressedExt>;
+impl<S> WsConnections<S> for TungsteniteWsConnections
+where
+    S: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
+{
+    type StreamSink = TransformedWsStream<S>;
     type Fut = BoxFuture<'static, Result<Self::StreamSink, ConnectionError>>;
 
-    fn open_connection(&self, socket: TcpStream, url: Url) -> Self::Fut {
-        let TungsteniteWsConnections { config: _config } = self;
-        async {
+    fn open_connection(&self, stream: S, addr: String) -> Self::Fut {
+        let TungsteniteWsConnections { config } = self;
+        let config = config.clone();
+
+        async move {
             let connect_result =
-                tokio_tungstenite::client_async_with_config(url, socket, None).await;
+                tokio_tungstenite::client_async_with_config(addr, stream, Some(config.clone()))
+                    .await;
             match connect_result {
                 Ok((stream, response)) => {
                     if response.status().is_success() {
@@ -103,10 +113,13 @@ impl WsConnections<TcpStream> for TungsteniteWsConnections {
         .boxed()
     }
 
-    fn accept_connection(&self, socket: TcpStream) -> Self::Fut {
-        let TungsteniteWsConnections { config: _config } = self;
-        async {
-            let accept_result = tokio_tungstenite::accept_async_with_config(socket, None).await;
+    fn accept_connection(&self, stream: S) -> Self::Fut {
+        let TungsteniteWsConnections { config } = self;
+        let config = config.clone();
+
+        async move {
+            let accept_result =
+                tokio_tungstenite::accept_async_with_config(stream, Some(config.clone())).await;
             match accept_result {
                 Ok(stream) => Ok(TransformedStreamSink::new(stream)),
                 Err(e) => Err(e.into()),

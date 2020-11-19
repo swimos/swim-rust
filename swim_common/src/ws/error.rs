@@ -58,6 +58,12 @@ pub enum WebSocketError {
     /// An error from building or reading a certificate
     #[cfg(feature = "tls")]
     CertificateError(CertificateError),
+    /// A UTF-8 encoding error
+    Utf8,
+    /// A capacity was exhausted.
+    Capacity,
+    /// A WebSocket extension error.
+    Extension(String),
 }
 
 #[cfg(feature = "tls")]
@@ -96,7 +102,7 @@ impl WebSocketError {
 
 impl Display for WebSocketError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match &self {
+        match self {
             WebSocketError::Url(url) => write!(f, "An invalid URL ({}) was supplied", url),
             WebSocketError::Protocol => write!(f, "A protocol error occurred."),
             WebSocketError::Message(msg) => write!(f, "{}", msg),
@@ -111,6 +117,9 @@ impl Display for WebSocketError {
                 "An error was produced while trying to build the certificate: {}",
                 e
             ),
+            WebSocketError::Utf8 => write!(f, "UTF-8 encoding error"),
+            WebSocketError::Capacity => write!(f, "WebSocket buffer capacity exhausted"),
+            WebSocketError::Extension(e) => write!(f, "An extension error occured: {}", e),
         }
     }
 }

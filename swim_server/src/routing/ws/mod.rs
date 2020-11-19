@@ -22,7 +22,6 @@ use std::future::Future;
 use std::marker::PhantomData;
 use std::pin::Pin;
 use swim_common::ws::WsMessage;
-use url::Url;
 
 #[cfg(test)]
 mod tests;
@@ -361,7 +360,7 @@ pub trait WsConnections<Sock: Send + Sync + Unpin> {
     type Fut: Future<Output = Result<Self::StreamSink, ConnectionError>> + Send + 'static;
 
     /// Negotiate a new client connection.
-    fn open_connection(&self, socket: Sock, url: Url) -> Self::Fut;
+    fn open_connection(&self, socket: Sock, addr: String) -> Self::Fut;
 
     /// Negotiate a new server connection.
     fn accept_connection(&self, socket: Sock) -> Self::Fut;

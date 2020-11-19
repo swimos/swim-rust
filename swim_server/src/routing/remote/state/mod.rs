@@ -188,7 +188,7 @@ where
     fn defer_handshake(&self, stream: External::Socket, peer_addr: SocketAddr) {
         let websockets = self.websockets;
         self.defer(async move {
-            let result = do_handshake(true, stream, websockets).await;
+            let result = websockets.accept_connection(stream).await;
             DeferredResult::incoming_handshake(result, peer_addr)
         });
     }
@@ -429,35 +429,37 @@ pub enum Event<Socket, Snk> {
     ConnectionClosed(RoutingAddr, ConnectionDropped),
 }
 
-async fn do_handshake<Socket, Ws>(
-    server: bool,
-    socket: Socket,
-    websockets: &Ws,
-) -> Result<Ws::StreamSink, ConnectionError>
-where
-    Socket: Send + Sync + Unpin,
-    Ws: WsConnections<Socket>,
-{
-    if server {
-        websockets.accept_connection(socket).await
-    } else {
-        websockets.open_connection(socket).await
-    }
-}
+// async fn do_handshake<Socket, Ws>(
+//     server: bool,
+//     socket: Socket,
+//     websockets: &Ws,
+// ) -> Result<Ws::StreamSink, ConnectionError>
+// where
+//     Socket: Send + Sync + Unpin,
+//     Ws: WsConnections<Socket>,
+// {
+//     if server {
+//         websockets.accept_connection(socket).await
+//     } else {
+//         websockets.open_connection(socket).await
+//     }
+// }
 
 async fn connect_and_handshake<External: ExternalConnections, Ws>(
     external: External,
     sock_addr: SocketAddr,
     remaining: SocketAddrIt,
-    host: HostAndPort,
+    host_port: HostAndPort,
     websockets: &Ws,
 ) -> DeferredResult<Ws::StreamSink>
 where
     Ws: WsConnections<External::Socket>,
 {
-    match connect_and_handshake_single(external, sock_addr, websockets).await {
-        Ok(str) => DeferredResult::outgoing_handshake(Ok((str, sock_addr)), host),
-        Err(err) => DeferredResult::failed_connection(err, remaining, host),
+    match connect_and_handshake_single(external, sock_addr, websockets, host_port.host().clone())
+        .await
+    {
+        Ok(str) => DeferredResult::outgoing_handshake(Ok((str, sock_addr)), host_port),
+        Err(err) => DeferredResult::failed_connection(err, remaining, host_port),
     }
 }
 
@@ -465,11 +467,12 @@ async fn connect_and_handshake_single<External: ExternalConnections, Ws>(
     external: External,
     addr: SocketAddr,
     websockets: &Ws,
+    host: String,
 ) -> Result<Ws::StreamSink, ConnectionError>
 where
     Ws: WsConnections<External::Socket>,
 {
     websockets
-        .open_connection(external.try_open(addr).await?)
+        .open_connection(external.try_open(addr).await?, host)
         .await
 }

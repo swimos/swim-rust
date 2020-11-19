@@ -136,8 +136,6 @@ pub enum ConnectionError {
     Closed,
     /// The connection failed with the following status code.
     Http(StatusCode),
-    /// An error with its cause as a string.
-    Message(String),
 }
 
 impl Display for ConnectionError {
@@ -150,7 +148,6 @@ impl Display for ConnectionError {
             ConnectionError::Warp(err) => write!(f, "Warp protocol error: '{}'", err),
             ConnectionError::Closed => write!(f, "The connection has been closed."),
             ConnectionError::Http(code) => write!(f, "The connection failed with: {}", code),
-            ConnectionError::Message(msg) => write!(f, "{}", msg),
         }
     }
 }
