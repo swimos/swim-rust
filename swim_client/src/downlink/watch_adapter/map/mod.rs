@@ -16,7 +16,6 @@
 mod tests;
 
 use crate::downlink::model::map::UntypedMapModification;
-use crate::downlink::watch_adapter::{EpochReceiver, EpochSender};
 use either::Either;
 use futures::stream::SelectAll;
 use futures::{select_biased, Stream};
@@ -28,8 +27,9 @@ use swim_common::routing::RoutingError;
 use swim_common::sink::item;
 use swim_common::sink::item::ItemSender;
 use swim_runtime::task::{spawn, TaskHandle};
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot, broadcast};
 use utilities::lru_cache::LruCache;
+use tokio::sync::broadcast::error::RecvError;
 
 /// Stream adapter that removes per-key back-pressure from modifications over a map downlink. If
 /// the produces pushes in changes, sequentially, to the same key the consumer will only observe
@@ -105,7 +105,7 @@ enum SpecialAction {
 
 #[derive(Debug)]
 enum BridgeMessage {
-    Register(EpochReceiver<Mod>),
+    Register(broadcast::Receiver<Mod>),
     Special(SpecialAction, oneshot::Sender<()>),
     Flush(oneshot::Sender<()>),
 }
@@ -115,7 +115,7 @@ pub struct ConsumerTask {
     input: mpsc::Receiver<Mod>,
     bridge: mpsc::Sender<BridgeMessage>,
     yield_after: NonZeroUsize,
-    senders: LruCache<Value, EpochSender<Mod>>,
+    senders: LruCache<Value, broadcast::Sender<Mod>>,
 }
 
 impl ConsumerTask {
@@ -164,9 +164,10 @@ impl ConsumerTask {
         } = self;
         let KeyedAction(key, action) = keyed;
         match senders.get_mut(&key) {
-            Some(sender) => sender.broadcast(action).is_ok(),
+            Some(sender) => sender.send(action).is_ok(),
             _ => {
-                let (tx, rx) = super::channel(action);
+                let (tx, rx) = broadcast::channel(1);
+                tx.send(action).expect("Open channel rejected value.");
 
                 if let Some((_, _evicted)) = senders.insert(key, tx) {
                     //Evicted sender must not be dropped until the flush completes.
@@ -258,15 +259,27 @@ where
             let maybe_event: Option<Either<BridgeMessage, Mod>> = if key_streams.is_empty() {
                 bridge_fused.next().await.map(Either::Left)
             } else {
-                select_biased! {
-                    message = bridge_fused.next() => message.map(Either::Left),
-                    output = key_streams.next() => output.map(Either::Right),
+                loop {
+                    select_biased! {
+                        message = bridge_fused.next() => {
+                            break message.map(Either::Left);
+                        },
+                        output = key_streams.next() => {
+                            match output {
+                                Some(Ok(v)) => {
+                                    break Some(Either::Right(v));
+                                }
+                                _ => {},
+                            }
+                        },
+                    }
                 }
             };
 
             if let Some(event) = maybe_event {
                 match event {
                     Either::Left(BridgeMessage::Register(receiver)) => {
+                        //TODO Get rid of this allocation.
                         key_streams.push(Box::pin(receiver.into_stream()));
                     }
                     Either::Left(BridgeMessage::Special(action, cb)) => {
@@ -304,13 +317,15 @@ where
 
 async fn flush_key_streams<Str, Snk>(sink: &mut Snk, key_streams: &mut Str) -> bool
 where
-    Str: Stream<Item = Mod> + Unpin + Sync + 'static,
+    Str: Stream<Item = Result<Mod, RecvError>> + Unpin + Sync + 'static,
     Snk: ItemSender<Mod, RoutingError>,
 {
-    while let Some(Some(modification)) = key_streams.next().now_or_never() {
-        if let Err(RoutingError::RouterDropped) = sink.send_item(modification).await {
-            //Router was dropped.
-            return false;
+    while let Some(Some(r)) = key_streams.next().now_or_never() {
+        if let Ok(modification) = r {
+            if let Err(RoutingError::RouterDropped) = sink.send_item(modification).await {
+                //Router was dropped.
+                return false;
+            }
         }
     }
     true
@@ -323,7 +338,7 @@ async fn producer_handle_special<Str, Snk>(
     key_streams: &mut Str,
 ) -> bool
 where
-    Str: Stream<Item = Mod> + Unpin + Sync + 'static,
+    Str: Stream<Item = Result<Mod, RecvError>> + Unpin + Sync + 'static,
     Snk: ItemSender<Mod, RoutingError>,
 {
     //Drain all of the keyed streams of immediately available values to
