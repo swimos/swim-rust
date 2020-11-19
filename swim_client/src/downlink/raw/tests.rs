@@ -21,7 +21,6 @@ use std::time::Instant;
 use swim_common::routing::RoutingError;
 use swim_common::sink::item::*;
 use tokio::stream::StreamExt;
-use utilities::sync::promise::PromiseError;
 
 struct State(i32);
 
@@ -543,7 +542,9 @@ async fn terminates_when_router_dropped() {
         .is_ok());
 
     let stop_res = dl_tx.task.task_handle().await_stopped().await;
-    assert_eq!(stop_res.err().unwrap(), PromiseError);
+    assert!(stop_res.is_ok());
+    let inner_result = (*stop_res.unwrap()).clone();
+    assert_eq!(inner_result, Err(DownlinkError::DroppedChannel));
 }
 
 #[tokio::test]
