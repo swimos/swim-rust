@@ -34,7 +34,6 @@ use either::Either;
 use futures::future::{join, join3};
 use futures::{select, Stream, StreamExt};
 use pin_utils::pin_mut;
-use pin_utils::pin_mut;
 use std::any::Any;
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};

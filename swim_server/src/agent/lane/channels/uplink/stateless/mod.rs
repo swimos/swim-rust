@@ -288,9 +288,9 @@ where
 
         match uplinks.entry(addr) {
             Entry::Occupied(_) => Ok(()),
-            Entry::Vacant(vacant) => match router.get_sender(addr).await {
+            Entry::Vacant(vacant) => match router.resolve_sender(addr).await {
                 Ok(sender) => {
-                    vacant.insert(UplinkMessageSender::new(sender, route.clone()));
+                    vacant.insert(UplinkMessageSender::new(sender.sender, route.clone()));
                     Ok(())
                 }
                 _ => Err(RouterStopping),
