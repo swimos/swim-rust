@@ -31,6 +31,23 @@ struct MpscSender<F, Fut> {
     value: i32,
 }
 
+impl<F, Fut> MpscSender<F, Fut>
+where
+    F: Fn(mpsc::Sender<i32>, i32) -> Fut,
+{
+
+    fn new(tx: mpsc::Sender<i32>, value: i32, make_fut: F) -> Self {
+        let init = make_fut(tx.clone(), value);
+        MpscSender {
+            tx,
+            make_fut,
+            current: Some(init),
+            value,
+        }
+    }
+
+}
+
 #[derive(Eq, PartialEq, Debug)]
 enum SendErr {
     Err,
@@ -65,7 +82,7 @@ where
 {
     fn reset(self: Pin<&mut Self>) -> bool {
         let mut projected = self.project();
-        let fut = (projected.make_fut)(projected.tx.clone(), projected.value.clone());
+        let fut = (projected.make_fut)(projected.tx.clone(), *projected.value);
         projected.current.set(Some(fut));
         true
     }
@@ -83,12 +100,7 @@ async fn send(tx: mpsc::Sender<i32>, value: i32) -> Result<i32, SendErr> {
 async fn test() {
     let p = 5;
     let (tx, mut rx) = mpsc::channel(1);
-    let sender = MpscSender {
-        tx,
-        make_fut: send,
-        current: None,
-        value: p,
-    };
+    let sender = MpscSender::new(tx, p, send);
 
     let retry: Result<i32, SendErr> = RetryableFuture::new(
         sender,
