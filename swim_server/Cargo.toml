@@ -33,6 +33,7 @@ stm = { path = "../stm" }
 tracing-futures = "0.2.4"
 agent_derive = { path = "agent_derive" }
 trybuild = "1.0.17"
+auth = { path = "auth" }
 
 [dev-dependencies]
 tokio = { version = "0.3.3", features = ["rt-multi-thread", "macros", "test-util"] }
