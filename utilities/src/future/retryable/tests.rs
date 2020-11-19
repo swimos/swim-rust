@@ -35,7 +35,6 @@ impl<F, Fut> MpscSender<F, Fut>
 where
     F: Fn(mpsc::Sender<i32>, i32) -> Fut,
 {
-
     fn new(tx: mpsc::Sender<i32>, value: i32, make_fut: F) -> Self {
         let init = make_fut(tx.clone(), value);
         MpscSender {
@@ -45,7 +44,6 @@ where
             value,
         }
     }
-
 }
 
 #[derive(Eq, PartialEq, Debug)]

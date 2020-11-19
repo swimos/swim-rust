@@ -19,8 +19,8 @@ use std::marker::PhantomData;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use stm::var::observer::ObsSender;
-use swim_common::topic::{BroadcastTopic, MpscTopic, Topic, TransformedTopic, WatchTopic};
-use tokio::sync::{mpsc, oneshot, watch};
+use swim_common::topic::{BroadcastTopic, MpscTopic, Topic, TransformedTopic};
+use tokio::sync::{mpsc, oneshot};
 use utilities::future::TransformMut;
 
 pub mod action;
@@ -62,16 +62,6 @@ impl<T> DeferredMpscView<T> {
     }
 }
 
-pub struct DeferredWatchView<T> {
-    injector: oneshot::Sender<ObsSender<T>>,
-}
-
-impl<T> DeferredWatchView<T> {
-    pub fn new(injector: oneshot::Sender<ObsSender<T>>) -> Self {
-        DeferredWatchView { injector }
-    }
-}
-
 pub struct DeferredBroadcastView<T> {
     injector: oneshot::Sender<ObsSender<T>>,
     buffer_size: NonZeroUsize,
@@ -103,24 +93,6 @@ where
             Err(AttachError::LaneStoppedReporting)
         } else {
             let (topic, _) = MpscTopic::new(rx, buffer_size, yield_after);
-            Ok(topic)
-        }
-    }
-}
-
-impl<T> DeferredLaneView<Arc<T>> for DeferredWatchView<T>
-where
-    T: Any + Send + Sync,
-{
-    type View = WatchTopic<Arc<T>>;
-
-    fn attach(self) -> Result<Self::View, AttachError> {
-        let DeferredWatchView { injector } = self;
-        let (tx, rx) = watch::channel(None);
-        if injector.send(tx.into()).is_err() {
-            Err(AttachError::LaneStoppedReporting)
-        } else {
-            let (topic, _) = WatchTopic::new(rx);
             Ok(topic)
         }
     }

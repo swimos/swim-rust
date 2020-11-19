@@ -19,7 +19,7 @@ use futures_util::future::ready;
 use std::any::Any;
 use std::sync::Arc;
 use tokio::sync::oneshot::error::TryRecvError;
-use tokio::sync::{broadcast, mpsc, oneshot, watch};
+use tokio::sync::{broadcast, mpsc, oneshot};
 
 /// Type erased observer to be passed into [`TVarInner`].
 pub(super) trait RawObserver {
@@ -40,8 +40,6 @@ impl<T: Any + Send + Sync> RawObserver for Observer<T> {
 pub enum ObsSender<T> {
     Mpsc(mpsc::Sender<Arc<T>>),
     Broadcast(broadcast::Sender<Arc<T>>),
-    Watch(watch::Sender<Arc<T>>),
-    WatchOption(watch::Sender<Option<Arc<T>>>),
 }
 
 struct SingleObs<T> {
@@ -73,16 +71,6 @@ impl<T> SingleObs<T> {
                         *is_dead = true;
                     }
                 }
-                ObsSender::Watch(tx) => {
-                    if tx.send(value).is_err() {
-                        *is_dead = true;
-                    }
-                }
-                ObsSender::WatchOption(tx) => {
-                    if tx.send(Some(value)).is_err() {
-                        *is_dead = true;
-                    }
-                }
             }
         }
     }
@@ -108,18 +96,6 @@ impl<T> From<mpsc::Sender<Arc<T>>> for ObsSender<T> {
 impl<T> From<broadcast::Sender<Arc<T>>> for ObsSender<T> {
     fn from(tx: broadcast::Sender<Arc<T>>) -> Self {
         ObsSender::Broadcast(tx)
-    }
-}
-
-impl<T> From<watch::Sender<Arc<T>>> for ObsSender<T> {
-    fn from(tx: watch::Sender<Arc<T>>) -> Self {
-        ObsSender::Watch(tx)
-    }
-}
-
-impl<T> From<watch::Sender<Option<Arc<T>>>> for ObsSender<T> {
-    fn from(tx: watch::Sender<Option<Arc<T>>>) -> Self {
-        ObsSender::WatchOption(tx)
     }
 }
 

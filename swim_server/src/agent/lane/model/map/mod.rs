@@ -32,23 +32,22 @@ use swim_common::model::Value;
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lane::model::map::summary::TransactionSummary;
 use crate::agent::lane::model::{
-    DeferredBroadcastView, DeferredLaneView, DeferredMpscView, DeferredWatchView,
-    TransformedDeferredLaneView,
+    DeferredBroadcastView, DeferredLaneView, DeferredMpscView, TransformedDeferredLaneView,
 };
-use crate::agent::lane::strategy::{Buffered, Dropping, Queue};
+use crate::agent::lane::strategy::{Buffered, Queue};
 use crate::agent::lane::{InvalidForm, LaneModel};
 use futures::stream::{iter, Iter};
-use futures::{Stream, StreamExt};
+use futures::Stream;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
-use stm::var::observer::{ObsSender, Observer};
-use tokio::sync::{broadcast, mpsc, oneshot, watch};
+use stm::var::observer::Observer;
+use tokio::sync::{broadcast, mpsc, oneshot};
 use tracing::{event, Level};
 use utilities::future::{
     sync_boxed, FlatmapStream, SwimStreamExt, SyncBoxStream, Transform, TransformedStream,
 };
-use utilities::sync::{broadcast_rx_to_stream, watch_rx_to_stream};
+use utilities::sync::broadcast_rx_to_stream;
 
 mod summary;
 
@@ -280,49 +279,6 @@ type SummaryRef<V> = Arc<TransactionSummary<Value, V>>;
 type TransformedChannel<C, K, V> = FlatmapStream<C, ToTypedEvents<K, V>>;
 type TransformedDeferred<D, K, V> =
     TransformedDeferredLaneView<SummaryRef<V>, D, ToTypedEvents<K, V>>;
-
-impl<K, V> MapLaneWatch<K, V> for Dropping
-where
-    K: Any + Send + Sync + Form,
-    V: Any + Send + Sync,
-{
-    type View = SyncBoxStream<MapLaneEvent<K, V>>;
-    type DeferredView = TransformedDeferred<DeferredWatchView<TransactionSummary<Value, V>>, K, V>;
-
-    fn make_watch(&self) -> (Observer<TransactionSummary<Value, V>>, Self::View) {
-        let (tx, rx) = watch::channel(Default::default());
-        let observer = Observer::new(ObsSender::Watch(tx));
-        let str = sync_boxed(watch_rx_to_stream(rx).flat_map(type_events));
-        (observer, str)
-    }
-
-    fn make_watch_with_deferred(
-        &self,
-        _config: &AgentExecutionConfig,
-    ) -> (
-        Observer<TransactionSummary<Value, V>>,
-        Self::View,
-        Self::DeferredView,
-    ) {
-        let (tx, rx) = watch::channel(Default::default());
-        let (tx_init, rx_init) = oneshot::channel();
-        let joined = Observer::new_with_deferred(ObsSender::Watch(tx), rx_init);
-        let deferred_view = DeferredWatchView::new(tx_init).transform(ToTypedEvents::default());
-        let str = sync_boxed(watch_rx_to_stream(rx).flat_map(type_events));
-        (joined, str, deferred_view)
-    }
-}
-
-fn type_events<K, V>(
-    summary: Arc<TransactionSummary<Value, V>>,
-) -> impl Stream<Item = MapLaneEvent<K, V>> + Send + 'static
-where
-    K: Any + Send + Sync + Form,
-    V: Any + Send + Sync,
-{
-    iter(summary.to_events().into_iter())
-        .map(|e| e.try_into_typed().expect("Key form is inconsistent."))
-}
 
 impl<K, V> MapLaneWatch<K, V> for Queue
 where

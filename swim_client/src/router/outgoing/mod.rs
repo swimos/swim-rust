@@ -82,7 +82,8 @@ impl OutgoingHostTask {
                     }
                 },
                 maybe_env = envelope_rx.next() => maybe_env.map(OutgoingRequest::Message),
-            }.ok_or(RoutingError::ConnectionError)?;
+            }
+            .ok_or(RoutingError::ConnectionError)?;
 
             let span = span!(Level::TRACE, "outgoing_event");
             let _enter = span.enter();

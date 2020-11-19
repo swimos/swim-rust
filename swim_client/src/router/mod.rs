@@ -16,9 +16,9 @@ use std::collections::HashMap;
 use std::ops::Deref;
 
 use futures::stream::FuturesUnordered;
-use futures::{Future, FutureExt, select_biased, StreamExt};
-use tokio::sync::oneshot;
+use futures::{select_biased, Future, FutureExt, StreamExt};
 use tokio::sync::mpsc;
+use tokio::sync::oneshot;
 use tracing::trace_span;
 use tracing::{span, Level};
 use tracing_futures::Instrument;
@@ -206,7 +206,6 @@ impl<Pool: ConnectionPool> TaskManager<Pool> {
         let mut host_managers: HashMap<url::Url, HostManagerHandle> = HashMap::new();
 
         loop {
-
             let task = select_biased! {
                 closed = &mut close_trigger => {
                     match closed {
@@ -266,7 +265,6 @@ impl<Pool: ConnectionPool> TaskManager<Pool> {
 
                 RouterTask::Close(close_rx) => {
                     if let Some(close_response_tx) = close_rx {
-
                         let futures = FuturesUnordered::new();
 
                         host_managers
@@ -440,7 +438,6 @@ impl<Pool: ConnectionPool> HostManager<Pool> {
         let mut stream_registrator_rx = stream_registrator_rx.fuse();
 
         loop {
-
             let task = select_biased! {
                 closed = &mut close_trigger => {
                     match closed {
@@ -450,7 +447,8 @@ impl<Pool: ConnectionPool> HostManager<Pool> {
                 },
                 maybe_req = connection_request_rx.next() => maybe_req.map(HostTask::Connect),
                 maybe_reg = stream_registrator_rx.next() => maybe_reg.map(HostTask::Subscribe),
-            }.ok_or(RoutingError::ConnectionError)?;
+            }
+            .ok_or(RoutingError::ConnectionError)?;
 
             match task {
                 HostTask::Connect(ConnectionRequest {
@@ -505,7 +503,6 @@ impl<Pool: ConnectionPool> HostManager<Pool> {
                 }
                 HostTask::Close(close_rx) => {
                     if let Some(close_response_tx) = close_rx {
-
                         let futures = FuturesUnordered::new();
 
                         futures.push(incoming_handle);

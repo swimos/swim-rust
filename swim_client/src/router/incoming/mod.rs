@@ -17,7 +17,7 @@ use std::collections::HashMap;
 use crate::router::{CloseReceiver, CloseResponseSender, RouterEvent, SubscriberRequest};
 use futures::future::ready;
 use futures::stream::FuturesUnordered;
-use futures::{StreamExt, FutureExt};
+use futures::{FutureExt, StreamExt};
 use std::convert::TryFrom;
 use std::iter::FromIterator;
 use swim_common::model::parser::parse_single;
@@ -63,7 +63,10 @@ impl IncomingHostTask {
     }
 
     pub async fn run(self) -> Result<(), RoutingError> {
-        let IncomingHostTask { mut task_rx, close_rx } = self;
+        let IncomingHostTask {
+            mut task_rx,
+            close_rx,
+        } = self;
 
         let mut subscribers: HashMap<RelativePath, Vec<mpsc::Sender<RouterEvent>>> = HashMap::new();
         let mut connection: Option<mpsc::Receiver<WsMessage>> = None;
@@ -165,7 +168,6 @@ impl IncomingHostTask {
                 }
 
                 IncomingRequest::Unreachable(err) => {
-
                     trace!("Unreachable Host");
                     broadcast_all(&mut subscribers, RouterEvent::Unreachable(err.to_string()))
                         .await?;

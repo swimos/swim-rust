@@ -13,10 +13,8 @@
 // limitations under the License.
 
 use crate::agent::lane::channels::AgentExecutionConfig;
-use crate::agent::lane::model::{
-    DeferredBroadcastView, DeferredLaneView, DeferredMpscView, DeferredWatchView,
-};
-use crate::agent::lane::strategy::{Buffered, Dropping, Queue};
+use crate::agent::lane::model::{DeferredBroadcastView, DeferredLaneView, DeferredMpscView};
+use crate::agent::lane::strategy::{Buffered, Queue};
 use crate::agent::lane::LaneModel;
 use futures::Stream;
 use std::any::Any;
@@ -24,9 +22,9 @@ use std::sync::Arc;
 use stm::stm::Stm;
 use stm::var::observer::Observer;
 use stm::var::TVar;
-use tokio::sync::{broadcast, mpsc, oneshot, watch};
+use tokio::sync::{broadcast, mpsc, oneshot};
 use utilities::future::{sync_boxed, SyncBoxStream};
-use utilities::sync::{broadcast_rx_to_stream, watch_rx_to_stream};
+use utilities::sync::broadcast_rx_to_stream;
 
 #[cfg(test)]
 mod tests;
@@ -165,31 +163,6 @@ where
         let joined = Observer::new_with_deferred(tx.into(), rx_init);
         let deferred_view = DeferredMpscView::new(tx_init, *n, config.yield_after);
         (joined, rx, deferred_view)
-    }
-}
-
-impl<T> ValueLaneWatch<T> for Dropping
-where
-    T: Any + Default + Send + Sync,
-{
-    type View = SyncBoxStream<Arc<T>>;
-    type DeferredView = DeferredWatchView<T>;
-
-    fn make_watch(&self, init: &Arc<T>) -> (Observer<T>, Self::View) {
-        let (tx, rx) = watch::channel(init.clone());
-        (tx.into(), sync_boxed(watch_rx_to_stream(rx)))
-    }
-
-    fn make_watch_with_deferred(
-        &self,
-        init: &Arc<T>,
-        _config: &AgentExecutionConfig,
-    ) -> (Observer<T>, Self::View, Self::DeferredView) {
-        let (tx, rx) = watch::channel::<Arc<T>>(init.clone());
-        let (tx_init, rx_init) = oneshot::channel();
-        let joined = Observer::new_with_deferred(tx.into(), rx_init);
-        let deferred_view = DeferredWatchView::new(tx_init);
-        (joined, sync_boxed(watch_rx_to_stream(rx)), deferred_view)
     }
 }
 

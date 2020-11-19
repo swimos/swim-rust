@@ -21,20 +21,6 @@ pub mod promise;
 pub mod rwlock;
 pub mod trigger;
 
-pub fn watch_rx_to_stream<T>(rx: watch::Receiver<T>) -> impl Stream<Item = T> + Send + 'static
-where
-    T: Send + Sync + Clone + 'static,
-{
-    unfold(rx, |mut rx| async move {
-        if rx.changed().await.is_err() {
-            None
-        } else {
-            let current = (*rx.borrow()).clone();
-            Some((current, rx))
-        }
-    })
-}
-
 pub fn watch_option_rx_to_stream<T>(
     rx: watch::Receiver<Option<T>>,
 ) -> impl Stream<Item = T> + Send + 'static

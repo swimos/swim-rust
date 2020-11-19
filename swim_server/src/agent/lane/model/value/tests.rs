@@ -43,21 +43,6 @@ async fn value_lane_set_queue() {
 }
 
 #[tokio::test]
-async fn value_lane_set_dropping() {
-    let (lane, mut events) = make_lane_model(3, Dropping);
-
-    let init_event = events.next().await;
-    assert!(matches!(init_event, Some(v) if *v == 3));
-
-    let result = atomically(&lane.set(7), ExactlyOnce).await;
-
-    assert!(result.is_ok());
-
-    let event = events.next().await;
-    assert!(matches!(event, Some(v) if *v == 7));
-}
-
-#[tokio::test]
 async fn value_lane_set_buffered() {
     let (lane, mut events) = make_lane_model(0, Buffered::default());
 
@@ -86,28 +71,6 @@ async fn value_lane_compound_transaction_queue() {
 
     let event2 = events.try_recv();
     assert!(matches!(event2, Err(TryRecvError::Empty)));
-}
-
-#[tokio::test]
-async fn value_lane_compound_transaction_dropping() {
-    let (lane, mut events) = make_lane_model(5, Dropping);
-
-    let init_event = events.next().await;
-    assert!(matches!(init_event, Some(v) if *v == 5));
-
-    let stm = lane
-        .get()
-        .and_then(|i| lane.set(-1).followed_by(lane.set(*i + 1)));
-
-    let result = atomically(&stm, ExactlyOnce).await;
-
-    assert!(result.is_ok());
-
-    let event = events.next().await;
-    assert!(matches!(event, Some(v) if *v == 6));
-
-    let event2 = events.next().now_or_never();
-    assert!(event2.is_none());
 }
 
 #[tokio::test]
