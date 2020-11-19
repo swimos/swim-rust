@@ -36,6 +36,7 @@ agent_derive = { path = "agent_derive" }
 trybuild = "1.0.17"
 trust-dns-resolver = { version = "0.19", optional = true }
 lazy_static = { version = "1.4.0", optional = true }
+auth = { path = "auth" }
 
 [dev-dependencies]
 tokio = { version = "0.2.21", features = ["rt-threaded", "macros", "test-util"] }
