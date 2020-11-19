@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::fmt::Debug;
 use tokio::sync::oneshot;
 use tracing::{event, Level};
 
@@ -38,13 +39,13 @@ impl<T> Request<T> {
         }
     }
 
-    pub fn send_debug<M: tracing::Value>(self, data: T, message: M) {
+    pub fn send_debug<M: tracing::Value + Debug>(self, data: T, message: M) {
         if self.satisfy.send(data).is_err() {
             event!(Level::DEBUG, message);
         }
     }
 
-    pub fn send_warn<M: tracing::Value>(self, data: T, message: M) {
+    pub fn send_warn<M: tracing::Value + Debug>(self, data: T, message: M) {
         if self.satisfy.send(data).is_err() {
             event!(Level::WARN, message);
         }
@@ -56,11 +57,11 @@ impl<T, E> Request<Result<T, E>> {
         self.send(Ok(data))
     }
 
-    pub fn send_ok_debug<M: tracing::Value>(self, data: T, message: M) {
+    pub fn send_ok_debug<M: tracing::Value + Debug>(self, data: T, message: M) {
         self.send_debug(Ok(data), message)
     }
 
-    pub fn send_ok_warn<M: tracing::Value>(self, data: T, message: M) {
+    pub fn send_ok_warn<M: tracing::Value + Debug>(self, data: T, message: M) {
         self.send_warn(Ok(data), message)
     }
 
@@ -68,11 +69,11 @@ impl<T, E> Request<Result<T, E>> {
         self.send(Err(err))
     }
 
-    pub fn send_err_debug<M: tracing::Value>(self, err: E, message: M) {
+    pub fn send_err_debug<M: tracing::Value + Debug>(self, err: E, message: M) {
         self.send_debug(Err(err), message)
     }
 
-    pub fn send_err_warn<M: tracing::Value>(self, err: E, message: M) {
+    pub fn send_err_warn<M: tracing::Value + Debug>(self, err: E, message: M) {
         self.send_warn(Err(err), message)
     }
 }
