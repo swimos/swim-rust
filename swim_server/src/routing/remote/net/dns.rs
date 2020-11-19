@@ -20,12 +20,19 @@ use std::io;
 use std::net::SocketAddr;
 use tokio::net::lookup_host;
 
+/// A trait for defining DNS resolvers.
 pub trait HttpResolver {
+    /// A future which resolves to either a vector of resolved socket addresses for the provided
+    /// host and port, or an IO error.
     type ResolveFuture: Future<Output = io::Result<Vec<SocketAddr>>> + 'static;
 
+    /// Perform a DNS query for A and AAAA records for the provided address. This *may* resolve to
+    /// multiple IP addresses.
     fn resolve(&self, host: HostAndPort) -> Self::ResolveFuture;
 }
 
+/// A resolver which will use the operating system's `getaddrinfo` function to resolve the provided
+/// host to an IP address and map the results to a `SocketAddr`.
 #[derive(Clone, Debug)]
 pub struct GetAddressInfoResolver;
 
@@ -33,8 +40,10 @@ impl HttpResolver for GetAddressInfoResolver {
     type ResolveFuture = BoxFuture<'static, io::Result<Vec<SocketAddr>>>;
 
     fn resolve(&self, host: HostAndPort) -> Self::ResolveFuture {
-        let (host, _port) = host.split();
-        Box::pin(lookup_host(host).map(|r| r.map(|it| it.collect::<Vec<_>>())))
+        let (host, port) = host.split();
+        Box::pin(
+            lookup_host(format!("{}:{}", host, port)).map(|r| r.map(|it| it.collect::<Vec<_>>())),
+        )
     }
 }
 
@@ -83,6 +92,7 @@ mod trust_dns_impl {
         system_conf, AsyncResolver, TokioConnection, TokioConnectionProvider,
     };
 
+    /// A DNS resolver built using the Trust-DNS Proto library.
     #[derive(Clone, Debug)]
     pub struct TrustDnsResolver {
         inner: AsyncResolver<TokioConnection, TokioConnectionProvider>,
