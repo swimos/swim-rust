@@ -12,42 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::plane::error::ResolutionError;
 use crate::plane::PlaneRequest;
-use crate::routing::{RoutingAddr, ServerRouter, TaggedEnvelope};
+use crate::routing::error::{ResolutionError, RouterError};
+use crate::routing::{Route, RoutingAddr, ServerRouter, ServerRouterFactory, TaggedSender};
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use swim_common::request::Request;
-use swim_common::routing::RoutingError;
-use swim_common::sink::item::{ItemSink, MpscSend};
-use swim_common::warp::envelope::Envelope;
 use tokio::sync::{mpsc, oneshot};
 use url::Url;
 use utilities::uri::RelativeUri;
 
 #[cfg(test)]
 mod tests;
-/// Sender that attaches a [`RoutingAddr`] to received envelopes before sending them over a channel.
-pub struct PlaneRouterSender {
-    tag: RoutingAddr,
-    inner: mpsc::Sender<TaggedEnvelope>,
-}
-
-impl PlaneRouterSender {
-    fn new(tag: RoutingAddr, inner: mpsc::Sender<TaggedEnvelope>) -> Self {
-        PlaneRouterSender { tag, inner }
-    }
-}
-
-impl<'a> ItemSink<'a, Envelope> for PlaneRouterSender {
-    type Error = RoutingError;
-    type SendFuture = MpscSend<'a, TaggedEnvelope, RoutingError>;
-
-    fn send_item(&'a mut self, envelope: Envelope) -> Self::SendFuture {
-        let PlaneRouterSender { tag, inner } = self;
-        MpscSend::new(inner, TaggedEnvelope(*tag, envelope))
-    }
-}
 
 /// Creates [`PlaneRouter`] instances by cloning a channel back to the plane.
 #[derive(Debug)]
@@ -60,10 +36,13 @@ impl PlaneRouterFactory {
     pub(super) fn new(request_sender: mpsc::Sender<PlaneRequest>) -> Self {
         PlaneRouterFactory { request_sender }
     }
+}
 
-    /// Create a router instance for a specific endpoint.
-    pub fn create(&self, tag: RoutingAddr) -> PlaneRouter {
-        PlaneRouter::new(tag, self.request_sender.clone())
+impl ServerRouterFactory for PlaneRouterFactory {
+    type Router = PlaneRouter;
+
+    fn create_for(&self, addr: RoutingAddr) -> Self::Router {
+        PlaneRouter::new(addr, self.request_sender.clone())
     }
 }
 
@@ -84,9 +63,12 @@ impl PlaneRouter {
 }
 
 impl ServerRouter for PlaneRouter {
-    type Sender = PlaneRouterSender;
+    type Sender = TaggedSender;
 
-    fn get_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Self::Sender, RoutingError>> {
+    fn resolve_sender(
+        &mut self,
+        addr: RoutingAddr,
+    ) -> BoxFuture<Result<Route<Self::Sender>, ResolutionError>> {
         async move {
             let PlaneRouter {
                 tag,
@@ -101,23 +83,25 @@ impl ServerRouter for PlaneRouter {
                 .await
                 .is_err()
             {
-                Err(RoutingError::RouterDropped)
+                Err(ResolutionError::RouterDropped)
             } else {
                 match rx.await {
-                    Ok(Ok(sender)) => Ok(PlaneRouterSender::new(*tag, sender)),
-                    Ok(Err(_)) => Err(RoutingError::HostUnreachable),
-                    Err(_) => Err(RoutingError::RouterDropped),
+                    Ok(Ok(Route { sender, on_drop })) => {
+                        Ok(Route::new(TaggedSender::new(*tag, sender), on_drop))
+                    }
+                    Ok(Err(err)) => Err(ResolutionError::Unresolvable(err)),
+                    Err(_) => Err(ResolutionError::RouterDropped),
                 }
             }
         }
         .boxed()
     }
 
-    fn resolve(
+    fn lookup(
         &mut self,
         host: Option<Url>,
         route: RelativeUri,
-    ) -> BoxFuture<Result<RoutingAddr, ResolutionError>> {
+    ) -> BoxFuture<Result<RoutingAddr, RouterError>> {
         async move {
             let PlaneRouter { request_sender, .. } = self;
             let (tx, rx) = oneshot::channel();
@@ -130,12 +114,12 @@ impl ServerRouter for PlaneRouter {
                 .await
                 .is_err()
             {
-                Err(ResolutionError::NoRoute(RoutingError::RouterDropped))
+                Err(RouterError::RouterDropped)
             } else {
                 match rx.await {
                     Ok(Ok(addr)) => Ok(addr),
                     Ok(Err(err)) => Err(err),
-                    Err(_) => Err(ResolutionError::NoRoute(RoutingError::RouterDropped)),
+                    Err(_) => Err(RouterError::RouterDropped),
                 }
             }
         }

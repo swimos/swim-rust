@@ -12,28 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::any::Any;
-use std::error::Error;
-use std::fmt::{Debug, Display, Formatter};
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
-
-use either::Either;
-use futures::future::{join, join3};
-use futures::{select, Stream, StreamExt};
-use pin_utils::pin_mut;
-use tokio::sync::mpsc;
-use tracing::{event, span, Level};
-use tracing_futures::Instrument;
-
-use stm::transaction::RetryManager;
-use swim_common::form::{Form, FormErr};
-use swim_common::model::Value;
-use swim_common::topic::Topic;
-use swim_common::warp::envelope::{OutgoingHeader, OutgoingLinkMessage};
-use swim_common::warp::path::RelativePath;
-use utilities::sync::trigger;
-
 use crate::agent::context::AgentExecutionContext;
 use crate::agent::lane::channels::update::action::ActionLaneUpdateTask;
 use crate::agent::lane::channels::update::map::MapLaneUpdateTask;
@@ -52,6 +30,27 @@ use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::ValueLane;
 use crate::agent::Eff;
 use crate::routing::{RoutingAddr, TaggedClientEnvelope};
+use either::Either;
+use futures::future::{join, join3};
+use futures::{select, Stream, StreamExt};
+use pin_utils::pin_mut;
+use pin_utils::pin_mut;
+use std::any::Any;
+use std::error::Error;
+use std::fmt::{Debug, Display, Formatter};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+use stm::transaction::RetryManager;
+use swim_common::form::{Form, FormErr};
+use swim_common::model::Value;
+use swim_common::topic::Topic;
+use swim_common::warp::envelope::{OutgoingHeader, OutgoingLinkMessage};
+use swim_common::warp::path::RelativePath;
+use tokio::sync::mpsc;
+use tracing::{event, span, Level};
+use tracing_futures::Instrument;
+use utilities::errors::Recoverable;
+use utilities::sync::trigger;
 
 #[cfg(test)]
 mod tests;

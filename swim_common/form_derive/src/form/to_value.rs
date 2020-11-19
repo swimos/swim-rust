@@ -89,7 +89,7 @@ fn build_struct_as_value(
     fn_factory: fn(&Ident) -> TokenStream2,
     requires_deref: bool,
 ) -> TokenStream2 {
-    let structure_name_str = descriptor.name.to_string();
+    let structure_name_str = descriptor.label.to_name(requires_deref);
     let (headers, attributes, items) = compute_as_value(&fields, &mut descriptor, fn_factory);
     let field_names: Vec<_> = fields.iter().map(|f| &f.label).collect();
     let self_deconstruction = deconstruct_type(compound_type, &field_names, requires_deref);
@@ -110,13 +110,14 @@ fn build_variant_as_value(
     requires_deref: bool,
     structure_name: &Ident,
 ) -> TokenStream2 {
-    let variant_name_str = variant_name.to_string();
+    let variant_original_ident = variant_name.original();
+    let variant_name_str = variant_name.to_name(requires_deref);
     let (headers, attributes, items) = compute_as_value(&fields, &mut descriptor, fn_factory);
     let field_names: Vec<_> = fields.iter().map(|f| &f.label).collect();
     let self_deconstruction = deconstruct_type(compound_type, &field_names, requires_deref);
 
     quote! {
-        #structure_name::#variant_name #self_deconstruction => {
+        #structure_name::#variant_original_ident #self_deconstruction => {
             let mut attrs = vec![swim_common::model::Attr::of((#variant_name_str #headers)), #attributes];
             swim_common::model::Value::Record(attrs, #items)
         },
@@ -131,13 +132,13 @@ fn compute_as_value(
     let (mut headers, mut items, attributes) = fields
         .iter()
         .fold((TokenStream2::new(), TokenStream2::new(), TokenStream2::new()), |(mut headers, mut items, mut attributes), f| {
-            let name = &f.label;
+            let label = &f.label;
             let manifest = &descriptor.manifest;
 
             match &f.kind {
                 FieldKind::Skip => {}
                 FieldKind::Slot if !manifest.replaces_body => {
-                    match name {
+                    match label {
                         un @ Label::Anonymous(_) => {
                             let ident = un.as_ident();
                             let func = fn_factory(&ident);
@@ -151,8 +152,8 @@ fn compute_as_value(
                     }
                 }
                 FieldKind::Attr => {
-                    let name_str = name.to_string();
-                    let func = fn_factory(&name.as_ident());
+                    let name_str = label.to_string();
+                    let func = fn_factory(&label.as_ident());
 
                     attributes = quote!(#attributes swim_common::model::Attr::of((#name_str.to_string(), #func)),);
                 }
@@ -169,7 +170,7 @@ fn compute_as_value(
                     });
                 }
                 FieldKind::HeaderBody => {
-                    let func = fn_factory(&name.as_ident());
+                    let func = fn_factory(&label.as_ident());
 
                     if manifest.has_header_fields {
                         headers = quote!(#headers swim_common::model::Item::ValueItem(#func),);
@@ -177,8 +178,11 @@ fn compute_as_value(
                         headers = quote!(, #func);
                     }
                 }
+                FieldKind::Tagged => {
+                    // no-op as the field is being promoted to the tag and ignored
+                }
                 _ => {
-                    match name {
+                    match label {
                         un @ Label::Anonymous(_) => {
                             let ident = un.as_ident();
                             let func = fn_factory(&ident);

@@ -32,6 +32,7 @@ use swim_common::sink::item::{ItemSender, ItemSink};
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
 use tracing::{event, span, Level};
+use utilities::errors::Recoverable;
 
 #[cfg(test)]
 mod tests;
@@ -119,8 +120,8 @@ fn trans_err_fatal(err: &TransactionError) -> bool {
         TransactionError::HighContention { .. } | TransactionError::TooManyAttempts { .. } )
 }
 
-impl UplinkError {
-    pub fn is_fatal(&self) -> bool {
+impl Recoverable for UplinkError {
+    fn is_fatal(&self) -> bool {
         match self {
             UplinkError::LaneStoppedReporting | UplinkError::InconsistentForm(_) => true,
             UplinkError::FailedTransaction(err) => trans_err_fatal(err),

@@ -24,10 +24,11 @@ mod tests;
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::AgentResult;
 use crate::plane::context::PlaneContext;
-use crate::plane::error::{NoAgentAtRoute, ResolutionError, Unresolvable};
+use crate::plane::error::NoAgentAtRoute;
 use crate::plane::router::{PlaneRouter, PlaneRouterFactory};
 use crate::plane::spec::{PlaneSpec, RouteSpec};
-use crate::routing::{RoutingAddr, TaggedEnvelope};
+use crate::routing::error::{ConnectionError, RouterError, Unresolvable};
+use crate::routing::{ConnectionDropped, Route, RoutingAddr, ServerRouterFactory, TaggedEnvelope};
 use either::Either;
 use futures::future::{join, BoxFuture};
 use futures::{select_biased, FutureExt, StreamExt};
@@ -39,14 +40,14 @@ use std::fmt::Debug;
 use std::ops::Deref;
 use std::sync::{Arc, Weak};
 use swim_common::request::Request;
-use swim_common::routing::RoutingError;
+use swim_common::ws::error::WebSocketError;
 use swim_runtime::time::clock::Clock;
 use tokio::sync::{mpsc, oneshot};
 use tracing::{event, span, Level};
 use tracing_futures::Instrument;
 use url::Url;
 use utilities::route_pattern::RoutePattern;
-use utilities::sync::trigger;
+use utilities::sync::{promise, trigger};
 use utilities::task::Spawner;
 use utilities::uri::RelativeUri;
 
@@ -88,6 +89,8 @@ type BoxAgentRoute<Clk, Envelopes, Router> = Box<dyn AgentRoute<Clk, Envelopes, 
 struct LocalEndpoint {
     agent_handle: Weak<dyn Any + Send + Sync>,
     channel: mpsc::Sender<TaggedEnvelope>,
+    drop_tx: promise::Sender<ConnectionDropped>,
+    drop_rx: promise::Receiver<ConnectionDropped>,
 }
 
 impl LocalEndpoint {
@@ -95,10 +98,20 @@ impl LocalEndpoint {
         agent_handle: Weak<dyn Any + Send + Sync>,
         channel: mpsc::Sender<TaggedEnvelope>,
     ) -> Self {
+        let (drop_tx, drop_rx) = promise::promise();
         LocalEndpoint {
             agent_handle,
             channel,
+            drop_tx,
+            drop_rx,
         }
+    }
+
+    fn route(&self) -> Route<mpsc::Sender<TaggedEnvelope>> {
+        let LocalEndpoint {
+            channel, drop_rx, ..
+        } = self;
+        Route::new(channel.clone(), drop_rx.clone())
     }
 }
 
@@ -144,12 +157,24 @@ impl PlaneActiveRoutes {
     fn addr_for_route(&self, route: &RelativeUri) -> Option<RoutingAddr> {
         self.local_routes.get(route).copied()
     }
+
+    fn remove_endpoint(&mut self, route: &RelativeUri) -> Option<LocalEndpoint> {
+        let PlaneActiveRoutes {
+            local_endpoints,
+            local_routes,
+        } = self;
+        if let Some(addr) = local_routes.remove(route) {
+            local_endpoints.remove(&addr)
+        } else {
+            None
+        }
+    }
 }
 
 type AgentRequest = Request<Result<Arc<dyn Any + Send + Sync>, NoAgentAtRoute>>;
-type EndpointRequest = Request<Result<mpsc::Sender<TaggedEnvelope>, Unresolvable>>;
+type EndpointRequest = Request<Result<Route<mpsc::Sender<TaggedEnvelope>>, Unresolvable>>;
 type RoutesRequest = Request<HashSet<RelativeUri>>;
-type ResolutionRequest = Request<Result<RoutingAddr, ResolutionError>>;
+type ResolutionRequest = Request<Result<RoutingAddr, RouterError>>;
 
 /// Requests that can be serviced by the plane event loop.
 #[derive(Debug)]
@@ -285,10 +310,12 @@ impl<Clk: Clock> RouteResolver<Clk> {
             execution_config.clone(),
             clock.clone(),
             rx.take_until(stop_trigger.clone()),
-            router_fac.create(addr),
+            router_fac.create_for(addr),
         );
         active_routes.add_endpoint(addr, route, LocalEndpoint::new(Arc::downgrade(&agent), tx));
-        spawner.add(task);
+        if spawner.try_add(task).is_err() {
+            panic!("Task spawner terminated unexpectedly.");
+        }
         Ok((agent, addr))
     }
 }
@@ -404,7 +431,7 @@ pub async fn run_plane<Clk, S>(
                         let result = if let Some(tx) = resolver
                             .active_routes
                             .get_endpoint(&id)
-                            .map(|ep| ep.channel.clone())
+                            .map(LocalEndpoint::route)
                         {
                             Ok(tx)
                         } else {
@@ -432,7 +459,7 @@ pub async fn run_plane<Clk, S>(
                     } else {
                         match resolver.try_open_route(name.clone(), spawner.deref()) {
                             Ok((_, addr)) => Ok(addr),
-                            Err(err) => Err(ResolutionError::NoAgent(err)),
+                            Err(NoAgentAtRoute(uri)) => Err(RouterError::NoAgentAtRoute(uri)),
                         }
                     };
                     if request.send(result).is_err() {
@@ -447,7 +474,9 @@ pub async fn run_plane<Clk, S>(
                     event!(Level::TRACE, RESOLVING, ?host_url, ?name);
                     //TODO Attach external resolution here.
                     if request
-                        .send_err(ResolutionError::NoRoute(RoutingError::HostUnreachable))
+                        .send_err(RouterError::ConnectionFailure(ConnectionError::Websocket(
+                            WebSocketError::Protocol,
+                        )))
                         .is_err()
                     {
                         event!(Level::WARN, DROPPED_REQUEST);
@@ -467,6 +496,15 @@ pub async fn run_plane<Clk, S>(
                     dispatcher_errors,
                     failed,
                 })) => {
+                    if let Some(LocalEndpoint { drop_tx, .. }) =
+                        resolver.active_routes.remove_endpoint(&route)
+                    {
+                        let _ = if failed {
+                            drop_tx.provide(ConnectionDropped::AgentFailed)
+                        } else {
+                            drop_tx.provide(ConnectionDropped::Closed)
+                        };
+                    }
                     if failed {
                         event!(Level::ERROR, AGENT_TASK_FAILED, ?route, ?dispatcher_errors);
                     } else {

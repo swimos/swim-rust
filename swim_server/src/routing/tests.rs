@@ -12,7 +12,30 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::routing::RoutingAddr;
+use crate::routing::{RoutingAddr, TaggedEnvelope, TaggedSender};
+use swim_common::sink::item::ItemSink;
+use swim_common::warp::envelope::Envelope;
+use tokio::sync::mpsc;
+
+#[tokio::test]
+async fn tagged_sender() {
+    let (tx, mut rx) = mpsc::channel(8);
+    let mut sender = TaggedSender::new(RoutingAddr::remote(7), tx);
+
+    assert!(sender
+        .send_item(Envelope::linked("/node", "lane"))
+        .await
+        .is_ok());
+
+    let received = rx.recv().await;
+    assert_eq!(
+        received,
+        Some(TaggedEnvelope(
+            RoutingAddr::remote(7),
+            Envelope::linked("/node", "lane")
+        ))
+    );
+}
 
 #[test]
 fn routing_addr_display() {
