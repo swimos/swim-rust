@@ -16,7 +16,7 @@ use std::io;
 use std::net::SocketAddr;
 use std::pin::Pin;
 
-use crate::routing::remote::net::dns::{HttpResolver, Resolver};
+use crate::routing::remote::net::dns::{DnsResolver, Resolver};
 use crate::routing::remote::table::HostAndPort;
 use futures::future::BoxFuture;
 use futures::stream::{Fuse, FusedStream};

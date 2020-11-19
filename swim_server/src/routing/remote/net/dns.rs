@@ -21,7 +21,7 @@ use std::net::SocketAddr;
 use tokio::net::lookup_host;
 
 /// A trait for defining DNS resolvers.
-pub trait HttpResolver {
+pub trait DnsResolver {
     /// A future which resolves to either a vector of resolved socket addresses for the provided
     /// host and port, or an IO error.
     type ResolveFuture: Future<Output = io::Result<Vec<SocketAddr>>> + 'static;
@@ -36,7 +36,7 @@ pub trait HttpResolver {
 #[derive(Clone, Debug)]
 pub struct GetAddressInfoResolver;
 
-impl HttpResolver for GetAddressInfoResolver {
+impl DnsResolver for GetAddressInfoResolver {
     type ResolveFuture = BoxFuture<'static, io::Result<Vec<SocketAddr>>>;
 
     fn resolve(&self, host: HostAndPort) -> Self::ResolveFuture {
@@ -68,7 +68,7 @@ impl Resolver {
     }
 }
 
-impl HttpResolver for Resolver {
+impl DnsResolver for Resolver {
     type ResolveFuture = BoxFuture<'static, io::Result<Vec<SocketAddr>>>;
 
     fn resolve(&self, host: HostAndPort) -> Self::ResolveFuture {
@@ -83,7 +83,7 @@ impl HttpResolver for Resolver {
 
 #[cfg(feature = "trust-dns")]
 mod trust_dns_impl {
-    use crate::routing::remote::net::dns::HttpResolver;
+    use crate::routing::remote::net::dns::DnsResolver;
     use crate::routing::remote::table::HostAndPort;
     use futures::future::BoxFuture;
     use std::io;
@@ -110,7 +110,7 @@ mod trust_dns_impl {
         }
     }
 
-    impl HttpResolver for TrustDnsResolver {
+    impl DnsResolver for TrustDnsResolver {
         type ResolveFuture = BoxFuture<'static, io::Result<Vec<SocketAddr>>>;
 
         fn resolve(&self, host_and_port: HostAndPort) -> Self::ResolveFuture {
