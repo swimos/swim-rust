@@ -25,8 +25,9 @@ use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::AbsolutePath;
 use swim_common::ws::error::{ConnectionError, WebSocketError};
 use swim_common::ws::WsMessage;
-use tokio::sync::{mpsc, watch};
+use tokio::sync::mpsc;
 use tokio::time::timeout;
+use utilities::sync::promise;
 
 async fn get_message(
     pool_handlers: &mut HashMap<url::Url, PoolHandler>,
@@ -1523,7 +1524,7 @@ async fn test_router_close_error() {
         configuration,
     } = router;
 
-    let (close_tx, close_rx) = watch::channel(None);
+    let (close_tx, close_rx) = promise::promise();
 
     drop(close_rx);
 
