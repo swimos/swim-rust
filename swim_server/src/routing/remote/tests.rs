@@ -15,7 +15,9 @@
 use crate::routing::error::ConnectionError;
 use crate::routing::remote::state::{DeferredResult, Event, RemoteTasksState};
 use crate::routing::remote::table::{HostAndPort, RoutingTable};
-use crate::routing::remote::{ConnectionDropped, ResolutionRequest, RoutingRequest, SocketAddrIt, Unresolvable, RawRoute};
+use crate::routing::remote::{
+    ConnectionDropped, RawRoute, ResolutionRequest, RoutingRequest, SocketAddrIt, Unresolvable,
+};
 use crate::routing::{RoutingAddr, TaggedEnvelope};
 use futures::{FutureExt, StreamExt};
 use std::cell::RefCell;

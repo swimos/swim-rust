@@ -42,7 +42,7 @@ use crate::routing::remote::net::ExternalConnections;
 use crate::routing::remote::state::{DeferredResult, Event, RemoteConnections, RemoteTasksState};
 use crate::routing::remote::table::HostAndPort;
 use crate::routing::ws::WsConnections;
-use crate::routing::{ConnectionDropped,RoutingAddr, ServerRouterFactory, TaggedEnvelope};
+use crate::routing::{ConnectionDropped, RoutingAddr, ServerRouterFactory, TaggedEnvelope};
 use std::io;
 
 #[cfg(test)]

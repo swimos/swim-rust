@@ -187,7 +187,6 @@ pub mod fake_channel {
         failures: Box<dyn Fn(&T) -> Option<E> + Send + Unpin>,
     }
 
-
     impl<T, E> TwoWayMpsc<T, E>
     where
         T: Send + Sync + 'static,
