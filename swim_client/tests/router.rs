@@ -32,7 +32,7 @@ mod tests {
         trace::init_trace(vec!["client::router=trace"]);
     }
 
-    #[tokio::test(core_threads = 2)]
+    #[tokio::test(worker_threads = 2)]
     async fn secure() {
         init_trace();
 
@@ -61,7 +61,7 @@ mod tests {
         tokio::time::delay_for(Duration::from_secs(5)).await;
     }
 
-    #[tokio::test(core_threads = 2)]
+    #[tokio::test(worker_threads = 2)]
     async fn normal_receive() {
         init_trace();
 
@@ -90,7 +90,7 @@ mod tests {
         tokio::time::delay_for(Duration::from_secs(5)).await;
     }
 
-    #[tokio::test(core_threads = 2)]
+    #[tokio::test(worker_threads = 2)]
     async fn not_interested_receive() {
         init_trace();
 
@@ -118,7 +118,7 @@ mod tests {
         tokio::time::delay_for(Duration::from_secs(5)).await;
     }
 
-    #[tokio::test(core_threads = 2)]
+    #[tokio::test(worker_threads = 2)]
     async fn not_found_receive() {
         init_trace();
 
@@ -146,7 +146,7 @@ mod tests {
         tokio::time::delay_for(Duration::from_secs(5)).await;
     }
 
-    #[tokio::test(core_threads = 2)]
+    #[tokio::test(worker_threads = 2)]
     async fn send_commands() {
         init_trace();
 
@@ -207,7 +207,7 @@ mod tests {
         tokio::time::delay_for(Duration::from_secs(5)).await;
     }
 
-    #[tokio::test(core_threads = 2)]
+    #[tokio::test(worker_threads = 2)]
     #[ignore]
     pub async fn server_stops_between_requests() {
         init_trace();

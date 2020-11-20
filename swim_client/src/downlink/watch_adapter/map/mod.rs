@@ -265,11 +265,8 @@ where
                             break message.map(Either::Left);
                         },
                         output = key_streams.next() => {
-                            match output {
-                                Some(Ok(v)) => {
-                                    break Some(Either::Right(v));
-                                }
-                                _ => {},
+                            if let Some(Ok(v)) = output {
+                                break Some(Either::Right(v));
                             }
                         },
                     }
