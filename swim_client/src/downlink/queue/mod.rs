@@ -126,7 +126,7 @@ where
     Upd: Clone + Send + Sync + 'static,
 {
     pub fn from_raw(
-        raw: raw::RawDownlink<mpsc::Sender<Act>, mpsc::Receiver<Event<Upd>>>,
+        raw: raw::RawDownlink<Act, mpsc::Receiver<Event<Upd>>>,
         buffer_size: NonZeroUsize,
         yield_after: NonZeroUsize,
     ) -> (QueueDownlink<Act, Upd>, QueueReceiver<Upd>) {
@@ -174,7 +174,7 @@ where
     Upd: Clone + Send + Sync + 'static,
 {
     type DlTopic = DownlinkTopic<MpscTopic<Event<Upd>>>;
-    type DlSink = raw::Sender<mpsc::Sender<Act>>;
+    type DlSink = raw::Sender<Act>;
 
     fn split(self) -> (Self::DlTopic, Self::DlSink) {
         let QueueDownlink {

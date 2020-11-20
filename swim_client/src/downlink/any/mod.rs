@@ -25,7 +25,6 @@ use pin_project::pin_project;
 use std::fmt::{Display, Formatter};
 use swim_common::topic::{BroadcastTopic, MpscTopic, Topic, TopicError, WatchTopic};
 use tokio::macros::support::Pin;
-use tokio::sync::mpsc;
 use utilities::sync::promise;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -223,7 +222,7 @@ where
     Act: Send + 'static,
 {
     type DlTopic = AnyDownlinkTopic<Upd>;
-    type DlSink = raw::Sender<mpsc::Sender<Act>>;
+    type DlSink = raw::Sender<Act>;
 
     fn split(self) -> (Self::DlTopic, Self::DlSink) {
         match self {

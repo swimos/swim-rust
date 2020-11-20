@@ -177,7 +177,7 @@ where
     Upd: Clone + Send + Sync + 'static,
 {
     type DlTopic = DownlinkTopic<BroadcastTopic<Event<Upd>>>;
-    type DlSink = raw::Sender<mpsc::Sender<Act>>;
+    type DlSink = raw::Sender<Act>;
 
     fn split(self) -> (Self::DlTopic, Self::DlSink) {
         let BufferedDownlink {

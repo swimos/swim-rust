@@ -70,7 +70,7 @@ pub type TypedValueDownlink<T> = ValueDownlink<AnyValueDownlink, T>;
 pub type AnyMapDownlink = AnyDownlink<MapAction, ViewWithEvent>;
 pub type TypedMapDownlink<K, V> = MapDownlink<AnyMapDownlink, K, V>;
 
-pub type AnyCommandDownlink = raw::Sender<mpsc::Sender<Value>>;
+pub type AnyCommandDownlink = raw::Sender<Value>;
 pub type TypedCommandDownlink<T> = CommandDownlink<AnyCommandDownlink, T>;
 
 pub type AnyEventDownlink = AnyEventReceiver<Value>;

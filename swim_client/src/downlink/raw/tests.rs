@@ -181,7 +181,7 @@ async fn make_test_dl_custom_on_invalid(
     dl_start_state: DownlinkState,
     start_response: Response<i32, i32>,
 ) -> (
-    RawDownlink<Snk<AddTo>, Str<Event<i32>>>,
+    RawDownlink<AddTo, Str<Event<i32>>>,
     Snk<Result<Message<Msg>, RoutingError>>,
     Str<Command<i32>>,
 ) {
@@ -199,7 +199,7 @@ async fn make_test_dl_custom_on_invalid(
 }
 
 async fn make_test_sync_dl() -> (
-    RawDownlink<Snk<AddTo>, Str<Event<i32>>>,
+    RawDownlink<AddTo, Str<Event<i32>>>,
     Snk<Result<Message<Msg>, RoutingError>>,
     Str<Command<i32>>,
 ) {

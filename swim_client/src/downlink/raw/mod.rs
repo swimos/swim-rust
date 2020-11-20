@@ -31,7 +31,7 @@ use std::sync::Arc;
 use swim_common::routing::RoutingError;
 use swim_common::sink::item::{self, ItemSender};
 use swim_runtime::task::{spawn, TaskHandle};
-use tokio::sync::{mpsc, watch};
+use tokio::sync::mpsc;
 use tracing::{instrument, trace};
 use utilities::errors::Recoverable;
 use utilities::ptr::data_ptr_eq;
@@ -41,15 +41,30 @@ use utilities::sync::promise;
 pub mod tests;
 
 #[derive(Debug, Clone)]
-pub struct Sender<S> {
+pub struct Sender<T> {
     /// A sink for local actions (sets, insertions, etc.)
-    set_sink: S,
+    set_sink: mpsc::Sender<T>,
     /// The task running the downlink.
     task: Arc<dyn DownlinkInternals>,
 }
 
-impl<S> Sender<S> {
-    pub(in crate::downlink) fn new(set_sink: S, task: Arc<dyn DownlinkInternals>) -> Sender<S> {
+impl<T> AsRef<mpsc::Sender<T>> for Sender<T> {
+    fn as_ref(&self) -> &mpsc::Sender<T> {
+        &self.set_sink
+    }
+}
+
+impl<T> AsMut<mpsc::Sender<T>> for Sender<T> {
+    fn as_mut(&mut self) -> &mut mpsc::Sender<T> {
+        &mut self.set_sink
+    }
+}
+
+impl<T> Sender<T> {
+    pub(in crate::downlink) fn new(
+        set_sink: mpsc::Sender<T>,
+        task: Arc<dyn DownlinkInternals>,
+    ) -> Sender<T> {
         Sender { set_sink, task }
     }
 
@@ -62,15 +77,9 @@ impl<S> Sender<S> {
     }
 }
 
-impl<T> Sender<mpsc::Sender<T>> {
+impl<T> Sender<T> {
     pub async fn send(&mut self, value: T) -> Result<(), mpsc::error::SendError<T>> {
         self.set_sink.send(value).await
-    }
-}
-
-impl<T> Sender<watch::Sender<T>> {
-    pub fn send(&mut self, value: T) -> Result<(), watch::error::SendError<T>> {
-        self.set_sink.send(value)
     }
 }
 
@@ -91,19 +100,19 @@ impl<R: Stream + Unpin> Stream for Receiver<R> {
 }
 
 /// Type containing the components of a running downlink.
-pub struct RawDownlink<S, R> {
-    pub(in crate::downlink) sender: S,
+pub struct RawDownlink<T, R> {
+    pub(in crate::downlink) sender: mpsc::Sender<T>,
     pub(in crate::downlink) receiver: R,
     pub(in crate::downlink) task: DownlinkTaskHandle,
 }
 
-impl<S, R> RawDownlink<S, R> {
+impl<T, R> RawDownlink<T, R> {
     //Private as downlinks should only be created by methods in this module and its children.
     pub(in crate::downlink) fn new(
-        set_sink: S,
+        set_sink: mpsc::Sender<T>,
         event_stream: R,
         task: DownlinkTaskHandle,
-    ) -> RawDownlink<S, R> {
+    ) -> RawDownlink<T, R> {
         RawDownlink {
             receiver: event_stream,
             sender: set_sink,
@@ -111,7 +120,7 @@ impl<S, R> RawDownlink<S, R> {
         }
     }
 
-    pub fn split(self) -> (Sender<S>, Receiver<R>) {
+    pub fn split(self) -> (Sender<T>, Receiver<R>) {
         let RawDownlink {
             sender,
             receiver,
@@ -138,7 +147,7 @@ pub(in crate::downlink) fn create_downlink<M, A, State, Machine, Updates, Comman
     buffer_size: NonZeroUsize,
     yield_after: NonZeroUsize,
     on_invalid: OnInvalidMessage,
-) -> RawDownlink<mpsc::Sender<A>, mpsc::Receiver<Event<Machine::Ev>>>
+) -> RawDownlink<A, mpsc::Receiver<Event<Machine::Ev>>>
 where
     M: Send + 'static,
     A: Send + 'static,

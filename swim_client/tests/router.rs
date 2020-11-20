@@ -19,7 +19,6 @@ mod tests {
     use swim_client::connections::SwimConnPool;
     use swim_client::router::{Router, SwimRouter};
     use swim_common::model::Value;
-    use swim_common::sink::item::ItemSink;
     use swim_common::warp::envelope::Envelope;
     use swim_common::warp::path::AbsolutePath;
     use test_server::clients::Cli;
@@ -32,7 +31,7 @@ mod tests {
         trace::init_trace(vec!["client::router=trace"]);
     }
 
-    #[tokio::test(worker_threads = 2)]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn secure() {
         init_trace();
 
@@ -50,18 +49,18 @@ mod tests {
         let mut router = SwimRouter::new(config, pool);
 
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "/unit/foo", "info");
-        let (mut sink, _stream) = router.connection_for(&path).await.unwrap();
+        let (sink, _stream) = router.connection_for(&path).await.unwrap();
 
         let sync = Envelope::sync(String::from("/unit/foo"), String::from("info"));
 
-        sink.send_item(sync).await.unwrap();
+        sink.send(sync).await.unwrap();
 
-        tokio::time::delay_for(Duration::from_secs(5)).await;
+        tokio::time::sleep(Duration::from_secs(5)).await;
         let _ = router.close().await;
-        tokio::time::delay_for(Duration::from_secs(5)).await;
+        tokio::time::sleep(Duration::from_secs(5)).await;
     }
 
-    #[tokio::test(worker_threads = 2)]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn normal_receive() {
         init_trace();
 
@@ -79,18 +78,18 @@ mod tests {
         let mut router = SwimRouter::new(config, pool);
 
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "/unit/foo", "info");
-        let (mut sink, _stream) = router.connection_for(&path).await.unwrap();
+        let (sink, _stream) = router.connection_for(&path).await.unwrap();
 
         let sync = Envelope::sync(String::from("/unit/foo"), String::from("info"));
 
-        sink.send_item(sync).await.unwrap();
+        sink.send(sync).await.unwrap();
 
-        tokio::time::delay_for(Duration::from_secs(5)).await;
+        tokio::time::sleep(Duration::from_secs(5)).await;
         let _ = router.close().await;
-        tokio::time::delay_for(Duration::from_secs(5)).await;
+        tokio::time::sleep(Duration::from_secs(5)).await;
     }
 
-    #[tokio::test(worker_threads = 2)]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn not_interested_receive() {
         init_trace();
 
@@ -107,18 +106,18 @@ mod tests {
         let mut router = SwimRouter::new(config, pool);
 
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "foo", "bar");
-        let (mut sink, _stream) = router.connection_for(&path).await.unwrap();
+        let (sink, _stream) = router.connection_for(&path).await.unwrap();
 
         let sync = Envelope::sync(String::from("/unit/foo"), String::from("info"));
 
-        sink.send_item(sync).await.unwrap();
+        sink.send(sync).await.unwrap();
 
-        tokio::time::delay_for(Duration::from_secs(5)).await;
+        tokio::time::sleep(Duration::from_secs(5)).await;
         let _ = router.close().await;
-        tokio::time::delay_for(Duration::from_secs(5)).await;
+        tokio::time::sleep(Duration::from_secs(5)).await;
     }
 
-    #[tokio::test(worker_threads = 2)]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn not_found_receive() {
         init_trace();
 
@@ -135,18 +134,18 @@ mod tests {
         let mut router = SwimRouter::new(config, pool);
 
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "foo", "bar");
-        let (mut sink, _stream) = router.connection_for(&path).await.unwrap();
+        let (sink, _stream) = router.connection_for(&path).await.unwrap();
 
         let sync = Envelope::sync(String::from("non_existent"), String::from("non_existent"));
 
-        sink.send_item(sync).await.unwrap();
+        sink.send(sync).await.unwrap();
 
-        tokio::time::delay_for(Duration::from_secs(5)).await;
+        tokio::time::sleep(Duration::from_secs(5)).await;
         let _ = router.close().await;
-        tokio::time::delay_for(Duration::from_secs(5)).await;
+        tokio::time::sleep(Duration::from_secs(5)).await;
     }
 
-    #[tokio::test(worker_threads = 2)]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn send_commands() {
         init_trace();
 
@@ -182,32 +181,32 @@ mod tests {
             Some(Value::text("Bye, World!")),
         );
 
-        let mut router_sink = router.general_sink();
+        let router_sink = router.general_sink();
 
         router_sink
-            .send_item((url.clone(), first_message))
+            .send((url.clone(), first_message))
             .await
             .unwrap();
 
-        tokio::time::delay_for(Duration::from_secs(1)).await;
+        tokio::time::sleep(Duration::from_secs(1)).await;
 
         router_sink
-            .send_item((url.clone(), second_message))
+            .send((url.clone(), second_message))
             .await
             .unwrap();
 
-        tokio::time::delay_for(Duration::from_secs(1)).await;
+        tokio::time::sleep(Duration::from_secs(1)).await;
 
-        router_sink.send_item((url, third_message)).await.unwrap();
+        router_sink.send((url, third_message)).await.unwrap();
 
-        tokio::time::delay_for(Duration::from_secs(1)).await;
+        tokio::time::sleep(Duration::from_secs(1)).await;
 
-        tokio::time::delay_for(Duration::from_secs(1)).await;
+        tokio::time::sleep(Duration::from_secs(1)).await;
         let _ = router.close().await;
-        tokio::time::delay_for(Duration::from_secs(5)).await;
+        tokio::time::sleep(Duration::from_secs(5)).await;
     }
 
-    #[tokio::test(worker_threads = 2)]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     #[ignore]
     pub async fn server_stops_between_requests() {
         init_trace();
@@ -225,11 +224,11 @@ mod tests {
         let mut router = SwimRouter::new(config, pool);
 
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "/unit/foo", "info");
-        let (mut sink, _stream) = router.connection_for(&path).await.unwrap();
+        let (sink, _stream) = router.connection_for(&path).await.unwrap();
         let sync = Envelope::sync(String::from("/unit/foo"), String::from("info"));
 
         println!("Sending item");
-        sink.send_item(sync).await.unwrap();
+        sink.send(sync).await.unwrap();
         println!("Sent item");
 
         docker.stop(container.id());
@@ -237,10 +236,10 @@ mod tests {
         let sync = Envelope::sync(String::from("/unit/foo"), String::from("info"));
 
         println!("Sending second item");
-        let _ = sink.send_item(sync).await;
+        let _ = sink.send(sync).await;
         println!("Sent second item");
-        tokio::time::delay_for(Duration::from_secs(10)).await;
+        tokio::time::sleep(Duration::from_secs(10)).await;
         let _ = router.close().await;
-        tokio::time::delay_for(Duration::from_secs(5)).await;
+        tokio::time::sleep(Duration::from_secs(5)).await;
     }
 }

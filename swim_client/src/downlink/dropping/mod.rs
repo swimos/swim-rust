@@ -123,7 +123,7 @@ where
     Upd: Clone + Send + Sync + 'static,
 {
     pub fn from_raw(
-        raw: raw::RawDownlink<mpsc::Sender<Act>, watch::Receiver<Option<Event<Upd>>>>,
+        raw: raw::RawDownlink<Act, watch::Receiver<Option<Event<Upd>>>>,
     ) -> (DroppingDownlink<Act, Upd>, DroppingReceiver<Upd>) {
         let raw::RawDownlink {
             receiver,
@@ -176,7 +176,7 @@ where
     Upd: Clone + Send + Sync + 'static,
 {
     type DlTopic = DownlinkTopic<WatchTopic<Event<Upd>>>;
-    type DlSink = raw::Sender<mpsc::Sender<Act>>;
+    type DlSink = raw::Sender<Act>;
 
     fn split(self) -> (Self::DlTopic, Self::DlSink) {
         let DroppingDownlink {
