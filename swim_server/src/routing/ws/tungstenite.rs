@@ -34,6 +34,7 @@ type TransformedWsStream<S> =
 const DEFAULT_CLOSE_MSG: &str = "Closing connection";
 
 pub struct TungsteniteWsConnections {
+    // external: TokioNetworking,
     config: WebSocketConfig,
 }
 
@@ -91,7 +92,7 @@ where
     type Fut = BoxFuture<'static, Result<Self::StreamSink, ConnectionError>>;
 
     fn open_connection(&self, stream: S, addr: String) -> Self::Fut {
-        let TungsteniteWsConnections { config } = self;
+        let TungsteniteWsConnections { config, .. } = self;
         let config = config.clone();
 
         async move {
@@ -114,7 +115,7 @@ where
     }
 
     fn accept_connection(&self, stream: S) -> Self::Fut {
-        let TungsteniteWsConnections { config } = self;
+        let TungsteniteWsConnections { config, .. } = self;
         let config = config.clone();
 
         async move {

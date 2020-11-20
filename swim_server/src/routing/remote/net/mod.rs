@@ -24,6 +24,9 @@ use futures::{Stream, StreamExt};
 use pin_project::pin_project;
 use tokio::net::{lookup_host, TcpListener, TcpStream};
 
+mod tokio_plaintext;
+mod tokio_tls;
+
 /// Trait for servers that listen for incoming remote connections. This is primarily used to
 /// abstract over [`TcpListener`] for testing purposes.
 pub trait Listener {

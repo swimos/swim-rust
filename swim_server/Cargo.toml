@@ -34,7 +34,9 @@ tracing-futures = "0.2.4"
 agent_derive = { path = "agent_derive" }
 trybuild = "1.0.17"
 tokio-tungstenite = { version = "0.10.1", git = "https://github.com/swimos/tokio-tungstenite/", branch = "v10-deflate", features = ["tls", "deflate"] }
-
+tokio-tls = "0.3"
+tokio-native-tls = "0.1"
+native-tls = { version = "0.2", features = ["vendored"] }
 
 [dev-dependencies]
 tokio = { version = "0.2.21", features = ["rt-threaded", "macros", "test-util"] }
