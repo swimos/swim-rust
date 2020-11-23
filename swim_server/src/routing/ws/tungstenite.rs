@@ -93,12 +93,11 @@ where
 
     fn open_connection(&self, stream: S, addr: String) -> Self::Fut {
         let TungsteniteWsConnections { config, .. } = self;
-        let config = config.clone();
+        let config = *config;
 
         async move {
             let connect_result =
-                tokio_tungstenite::client_async_with_config(addr, stream, Some(config.clone()))
-                    .await;
+                tokio_tungstenite::client_async_with_config(addr, stream, Some(config)).await;
             match connect_result {
                 Ok((stream, response)) => {
                     if response.status().is_success() {
@@ -116,11 +115,11 @@ where
 
     fn accept_connection(&self, stream: S) -> Self::Fut {
         let TungsteniteWsConnections { config, .. } = self;
-        let config = config.clone();
+        let config = *config;
 
         async move {
             let accept_result =
-                tokio_tungstenite::accept_async_with_config(stream, Some(config.clone())).await;
+                tokio_tungstenite::accept_async_with_config(stream, Some(config)).await;
             match accept_result {
                 Ok(stream) => Ok(TransformedStreamSink::new(stream)),
                 Err(e) => Err(e.into()),
