@@ -188,7 +188,7 @@ where
     fn defer_handshake(&self, stream: External::Socket, peer_addr: SocketAddr) {
         let websockets = self.websockets;
         self.defer(async move {
-            let result = do_handshake(true, stream, websockets, peer_addr.clone()).await;
+            let result = do_handshake(true, stream, websockets, peer_addr).await;
             DeferredResult::incoming_handshake(result, peer_addr)
         });
     }
