@@ -188,7 +188,7 @@ where
     fn defer_handshake(&self, stream: External::Socket, peer_addr: SocketAddr) {
         let websockets = self.websockets;
         self.defer(async move {
-            let result = websockets.accept_connection(stream).await;
+            let result = do_handshake(true, stream, websockets, peer_addr.clone()).await;
             DeferredResult::incoming_handshake(result, peer_addr)
         });
     }
@@ -429,21 +429,24 @@ pub enum Event<Socket, Snk> {
     ConnectionClosed(RoutingAddr, ConnectionDropped),
 }
 
-// async fn do_handshake<Socket, Ws>(
-//     server: bool,
-//     socket: Socket,
-//     websockets: &Ws,
-// ) -> Result<Ws::StreamSink, ConnectionError>
-// where
-//     Socket: Send + Sync + Unpin,
-//     Ws: WsConnections<Socket>,
-// {
-//     if server {
-//         websockets.accept_connection(socket).await
-//     } else {
-//         websockets.open_connection(socket).await
-//     }
-// }
+async fn do_handshake<Socket, Ws>(
+    server: bool,
+    socket: Socket,
+    websockets: &Ws,
+    peer_addr: SocketAddr,
+) -> Result<Ws::StreamSink, ConnectionError>
+where
+    Socket: Send + Sync + Unpin,
+    Ws: WsConnections<Socket>,
+{
+    if server {
+        websockets.accept_connection(socket).await
+    } else {
+        websockets
+            .open_connection(socket, peer_addr.to_string())
+            .await
+    }
+}
 
 async fn connect_and_handshake<External: ExternalConnections, Ws>(
     external: External,
