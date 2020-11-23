@@ -424,7 +424,7 @@ impl Display for SubscriptionError {
             SubscriptionError::IncompatibleValueSchema {
                 path,
                 existing,
-                requested
+                requested,
             } => {
                 write!(f, "A downlink was requested to {} with schema {} but one is already running with schema {}.",
                        path, existing, requested)
@@ -433,7 +433,7 @@ impl Display for SubscriptionError {
                 is_key,
                 path,
                 existing,
-                requested
+                requested,
             } => {
                 let key_or_val = if *is_key { "key" } else { "value" };
                 write!(f, "A map downlink was requested to {} with {} schema {} but one is already running with schema {}.",
