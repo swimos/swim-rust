@@ -37,6 +37,7 @@ tokio-tungstenite = { version = "0.10.1", git = "https://github.com/swimos/tokio
 tokio-tls = "0.3"
 tokio-native-tls = "0.1"
 native-tls = { version = "0.2", features = ["vendored"] }
+auth = { path = "auth" }
 
 [dev-dependencies]
 tokio = { version = "0.2.21", features = ["rt-threaded", "macros", "test-util"] }
