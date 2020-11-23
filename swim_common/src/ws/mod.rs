@@ -19,11 +19,14 @@ use http::uri::Scheme;
 use http::{Request, Uri};
 
 use crate::ws::error::{ConnectionError, WebSocketError};
-use crate::ws::tls::build_x509_certificate;
 use std::fmt;
 use std::fmt::{Debug, Formatter};
+
+#[cfg(feature = "tungstenite")]
 use tokio_tungstenite::tungstenite::Message;
 
+#[cfg(feature = "tls")]
+use crate::ws::tls::build_x509_certificate;
 #[cfg(feature = "tls")]
 use {crate::ws::error::CertificateError, native_tls::Certificate, std::path::Path};
 
@@ -149,6 +152,7 @@ impl CompressionKind {
     }
 }
 
+#[cfg(feature = "tungstenite")]
 impl From<Message> for WsMessage {
     fn from(message: Message) -> Self {
         match message {
@@ -162,6 +166,7 @@ impl From<Message> for WsMessage {
     }
 }
 
+#[cfg(feature = "tungstenite")]
 impl From<WsMessage> for Message {
     fn from(message: WsMessage) -> Self {
         match message {
