@@ -372,7 +372,7 @@ impl ExternalConnections for FakeConnections {
             .inner
             .lock()
             .dns
-            .get(host_and_port.host())
+            .get(&host_and_port.to_string())
             .map(Clone::clone)
             .map(Ok)
             .unwrap_or(Err(ErrorKind::NotFound.into()));
