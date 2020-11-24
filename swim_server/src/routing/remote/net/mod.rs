@@ -18,6 +18,7 @@ use std::task::Context;
 
 use crate::routing::remote::net::plain::TokioPlainTextNetworking;
 use crate::routing::remote::net::tls::{TlsListener, TlsStream, TokioTlsNetworking};
+use crate::routing::remote::table::HostAndPort;
 use either::Either;
 use futures::stream::{Fuse, FusedStream, StreamExt};
 use futures::FutureExt;
@@ -38,6 +39,8 @@ const HTTPS_PORT: u16 = 443;
 
 type IoResult<T> = io::Result<T>;
 
+mod dns;
+
 /// Trait for servers that listen for incoming remote connections. This is primarily used to
 /// abstract over [`TcpListener`] for testing purposes.
 pub trait Listener {
@@ -55,7 +58,7 @@ pub trait ExternalConnections: Clone + Send + Sync + 'static {
 
     fn bind(&self, addr: SocketAddr) -> BoxFuture<'static, IoResult<Self::ListenerType>>;
     fn try_open(&self, addr: SocketAddr) -> BoxFuture<'static, IoResult<Self::Socket>>;
-    fn lookup(&self, host: String) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>>;
+    fn lookup(&self, host: HostAndPort) -> BoxFuture<'static, io::Result<Vec<SocketAddr>>>;
 }
 
 enum MaybeTlsListener {

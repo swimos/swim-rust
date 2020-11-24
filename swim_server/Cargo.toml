@@ -8,6 +8,7 @@ edition = "2018"
 default = []
 debug = ["log_verbose"]
 log_verbose = []
+trust-dns = ["trust-dns-resolver"]
 
 [target.'cfg(log_verbose)'.dependencies]
 tracing = { version = "0.1.13", features = ["max_level_debug"] }
@@ -38,6 +39,7 @@ tokio-tls = "0.3"
 tokio-native-tls = "0.1"
 native-tls = { version = "0.2", features = ["vendored"] }
 auth = { path = "auth" }
+trust-dns-resolver = { version = "0.19", optional = true }
 
 [dev-dependencies]
 tokio = { version = "0.2.21", features = ["rt-threaded", "macros", "test-util"] }
