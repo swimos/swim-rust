@@ -15,18 +15,29 @@
 use std::net::SocketAddr;
 use std::pin::Pin;
 
+use crate::routing::remote::net::dns::{DnsResolver, Resolver};
 use crate::routing::remote::net::{ExternalConnections, IoResult, Listener};
+use crate::routing::remote::table::HostAndPort;
 use futures::future::BoxFuture;
 use futures::stream::Fuse;
 use futures::task::{Context, Poll};
 use futures::FutureExt;
 use futures::{Stream, StreamExt};
 use pin_project::pin_project;
-use tokio::net::{lookup_host, TcpListener, TcpStream};
+use std::sync::Arc;
+use tokio::net::{TcpListener, TcpStream};
 
 /// Implementation of [`ExternalConnections`] using [`TcpListener`] and [`TcpStream`] from Tokio.
-#[derive(Debug, Clone, Copy)]
-pub struct TokioPlainTextNetworking;
+#[derive(Debug, Clone)]
+pub struct TokioPlainTextNetworking {
+    resolver: Arc<Resolver>,
+}
+
+impl TokioPlainTextNetworking {
+    pub fn new(resolver: Arc<Resolver>) -> TokioPlainTextNetworking {
+        TokioPlainTextNetworking { resolver }
+    }
+}
 
 impl ExternalConnections for TokioPlainTextNetworking {
     type Socket = TcpStream;
@@ -40,10 +51,8 @@ impl ExternalConnections for TokioPlainTextNetworking {
         TcpStream::connect(addr).boxed()
     }
 
-    fn lookup(&self, host: String) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>> {
-        lookup_host(host)
-            .map(|r| r.map(|it| it.collect::<Vec<_>>()))
-            .boxed()
+    fn lookup(&self, host: HostAndPort) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>> {
+        self.resolver.resolve(host).boxed()
     }
 }
 

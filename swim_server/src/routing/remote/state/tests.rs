@@ -306,8 +306,8 @@ async fn connections_state_defer_dns_good() {
             assert_eq!(it.collect::<Vec<_>>(), vec![sa]);
             assert_eq!(host, target);
         }
-        _ => {
-            panic!("Unexpected event.");
+        e => {
+            panic!("Unexpected event. {:?}", e);
         }
     }
 

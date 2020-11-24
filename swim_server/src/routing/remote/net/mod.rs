@@ -16,6 +16,7 @@ use std::net::SocketAddr;
 use std::pin::Pin;
 use std::task::Context;
 
+use crate::routing::remote::net::dns::{DnsResolver, Resolver};
 use crate::routing::remote::net::plain::TokioPlainTextNetworking;
 use crate::routing::remote::net::tls::{TlsListener, TlsStream, TokioTlsNetworking};
 use crate::routing::remote::table::HostAndPort;
@@ -28,7 +29,7 @@ use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::macros::support::Poll;
-use tokio::net::{lookup_host, TcpListener, TcpStream};
+use tokio::net::{TcpListener, TcpStream};
 use url::Url;
 
 pub mod plain;
@@ -103,22 +104,26 @@ impl Stream for EitherStream {
 
 #[derive(Clone)]
 struct TokioNetworking {
-    plain: TokioPlainTextNetworking,
-    tls: Arc<TokioTlsNetworking>,
+    resolver: Arc<Resolver>,
+    plain_text_networking: TokioPlainTextNetworking,
+    tls_networking: Arc<TokioTlsNetworking>,
 }
 
 impl TokioNetworking {
     #[allow(dead_code)]
-    pub fn new<I, A>(identities: I) -> Result<TokioNetworking, ()>
+    pub async fn new<I, A>(identities: I) -> Result<TokioNetworking, ()>
     where
         I: IntoIterator<Item = (A, Url)>,
         A: AsRef<PathBuf>,
     {
-        let tls = TokioTlsNetworking::new(identities)?;
+        let resolver = Arc::new(Resolver::new().await);
+        let tls_networking = TokioTlsNetworking::new(identities, resolver.clone())?;
+        let plain_text_networking = TokioPlainTextNetworking::new(resolver.clone());
 
         Ok(TokioNetworking {
-            plain: TokioPlainTextNetworking,
-            tls: Arc::new(tls),
+            resolver,
+            plain_text_networking,
+            tls_networking: Arc::new(tls_networking),
         })
     }
 }
@@ -131,9 +136,19 @@ impl ExternalConnections for TokioNetworking {
         let this = self.clone();
 
         if addr.port() == HTTPS_PORT {
-            Box::pin(async move { this.tls.bind(addr).await.map(MaybeTlsListener::Tls) })
+            Box::pin(async move {
+                this.tls_networking
+                    .bind(addr)
+                    .await
+                    .map(MaybeTlsListener::Tls)
+            })
         } else {
-            Box::pin(async move { this.plain.bind(addr).await.map(MaybeTlsListener::PlainText) })
+            Box::pin(async move {
+                this.plain_text_networking
+                    .bind(addr)
+                    .await
+                    .map(MaybeTlsListener::PlainText)
+            })
         }
     }
 
@@ -141,15 +156,18 @@ impl ExternalConnections for TokioNetworking {
         let this = self.clone();
 
         if addr.port() == HTTPS_PORT {
-            Box::pin(async move { this.tls.try_open(addr).await.map(Either::Right) })
+            Box::pin(async move { this.tls_networking.try_open(addr).await.map(Either::Right) })
         } else {
-            Box::pin(async move { this.plain.try_open(addr).await.map(Either::Left) })
+            Box::pin(async move {
+                this.plain_text_networking
+                    .try_open(addr)
+                    .await
+                    .map(Either::Left)
+            })
         }
     }
 
-    fn lookup(&self, host: String) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>> {
-        lookup_host(host)
-            .map(|r| r.map(|it| it.collect::<Vec<_>>()))
-            .boxed()
+    fn lookup(&self, host: HostAndPort) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>> {
+        self.resolver.resolve(host).boxed()
     }
 }

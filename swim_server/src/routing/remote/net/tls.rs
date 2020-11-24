@@ -27,16 +27,19 @@ use futures::{select, Stream};
 use futures_util::future::BoxFuture;
 use native_tls::{Identity, TlsConnector};
 use tokio::macros::support::Poll;
-use tokio::net::{lookup_host, TcpListener, TcpStream};
+use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio_tls::TlsAcceptor;
 use tokio_tls::TlsConnector as TokioTlsConnector;
 use tracing::{event, Level};
 
+use crate::routing::remote::net::dns::{DnsResolver, Resolver};
 use crate::routing::remote::net::{ExternalConnections, IoResult, Listener};
+use crate::routing::remote::table::HostAndPort;
 use im::HashMap;
 use std::path::PathBuf;
+use std::sync::Arc;
 use url::Url;
 
 pub type TlsStream = tokio_tls::TlsStream<TcpStream>;
@@ -57,16 +60,18 @@ impl Listener for TlsListener {
 
 #[derive(Clone)]
 pub struct TokioTlsNetworking {
+    resolver: Arc<Resolver>,
     identities: HashMap<Url, Identity>,
 }
 
 impl TokioTlsNetworking {
-    pub fn new<I, A>(_identities: I) -> Result<TokioTlsNetworking, ()>
+    pub fn new<I, A>(_identities: I, resolver: Arc<Resolver>) -> Result<TokioTlsNetworking, ()>
     where
         I: IntoIterator<Item = (A, Url)>,
         A: AsRef<PathBuf>,
     {
         Ok(TokioTlsNetworking {
+            resolver,
             identities: HashMap::new(),
         })
     }
@@ -106,10 +111,8 @@ impl ExternalConnections for TokioTlsNetworking {
         })
     }
 
-    fn lookup(&self, host: String) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>> {
-        lookup_host(host)
-            .map(|r| r.map(|it| it.collect::<Vec<_>>()))
-            .boxed()
+    fn lookup(&self, host: HostAndPort) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>> {
+        self.resolver.resolve(host).boxed()
     }
 }
 
