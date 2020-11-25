@@ -30,6 +30,10 @@ impl HostAndPort {
     pub fn new(host: String, port: u16) -> Self {
         HostAndPort(host, port)
     }
+
+    pub fn host(&self) -> &String {
+        &self.0
+    }
 }
 
 impl Display for HostAndPort {

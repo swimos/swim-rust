@@ -6,7 +6,7 @@ edition = "2018"
 
 [features]
 default = ["websocket"]
-websocket = ["tokio-tungstenite", "http", "tokio-tls", "native-tls", "tokio-native-tls", "swim_common/tls"]
+websocket = ["tokio-tungstenite", "http", "tokio-tls",  "swim_common/tls"]
 debug = ["log_verbose"]
 log_verbose = []
 test-server = ["test_server"]
@@ -23,17 +23,8 @@ branch = "v10-deflate"
 features = ["tls", "deflate"]
 optional = true
 
-[dependencies.native-tls]
-version = "0.2"
-features = ["vendored"]
-optional = true
-
 [dependencies.http]
 version = "0.2"
-optional = true
-
-[dependencies.tokio-native-tls]
-version = "0.1"
 optional = true
 
 [dependencies.tokio-tls]
