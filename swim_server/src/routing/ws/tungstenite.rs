@@ -35,7 +35,7 @@ const DEFAULT_CLOSE_MSG: &str = "Closing connection";
 
 pub struct TungsteniteWsConnections {
     // external: TokioNetworking,
-    config: WebSocketConfig,
+    pub(crate) config: WebSocketConfig,
 }
 
 impl<S> JoinedStreamSink<Message, TError> for WebSocketStream<S>

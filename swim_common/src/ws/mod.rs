@@ -160,6 +160,7 @@ impl From<Message> for WsMessage {
             Message::Binary(data) => WsMessage::Binary(data),
             _ => {
                 // Other message types are handled by tungstenite itself.
+                // Todo this is reached when the WS is closed
                 unreachable!()
             }
         }

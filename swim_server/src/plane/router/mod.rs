@@ -33,7 +33,7 @@ pub struct PlaneRouterFactory {
 
 impl PlaneRouterFactory {
     /// Create a factory from a channel back to the owning plane.
-    pub(super) fn new(request_sender: mpsc::Sender<PlaneRequest>) -> Self {
+    pub(in crate) fn new(request_sender: mpsc::Sender<PlaneRequest>) -> Self {
         PlaneRouterFactory { request_sender }
     }
 }
@@ -54,7 +54,7 @@ pub struct PlaneRouter {
 }
 
 impl PlaneRouter {
-    fn new(tag: RoutingAddr, request_sender: mpsc::Sender<PlaneRequest>) -> Self {
+    pub(in crate) fn new(tag: RoutingAddr, request_sender: mpsc::Sender<PlaneRequest>) -> Self {
         PlaneRouter {
             tag,
             request_sender,

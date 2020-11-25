@@ -24,6 +24,7 @@ use swim_runtime::time::timeout;
 use utilities::future::open_ended::OpenEndedFutures;
 use utilities::route_pattern::RoutePattern;
 use utilities::sync::trigger;
+use tokio::sync::mpsc;
 
 mod fixture;
 
@@ -62,6 +63,7 @@ fn make_spec<Clk: Clock>() -> (PlaneSpec<Clk, EnvChannel, PlaneRouter>, trigger:
 #[tokio::test]
 async fn plane_event_loop() {
     let (spec, done_rx) = make_spec();
+    let (context_tx, context_rx) = mpsc::channel(8);
 
     let (stop_tx, stop_rx) = trigger::trigger();
     let config = fixture::make_config();
@@ -70,8 +72,8 @@ async fn plane_event_loop() {
         swim_runtime::time::clock::runtime_clock(),
         spec,
         stop_rx,
-        OpenEndedFutures::new(),
-    );
+        OpenEndedFutures::new()
+        , context_tx, context_rx);
 
     let completion_task = async move {
         let result = timeout::timeout(Duration::from_secs(10), done_rx).await;

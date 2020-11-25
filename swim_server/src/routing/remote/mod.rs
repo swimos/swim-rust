@@ -16,7 +16,7 @@ mod addresses;
 pub mod config;
 pub mod net;
 mod pending;
-mod router;
+pub(crate) mod router;
 mod state;
 mod table;
 mod task;

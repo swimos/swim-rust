@@ -16,7 +16,7 @@ pub mod context;
 pub mod error;
 pub mod lifecycle;
 pub(crate) mod provider;
-mod router;
+pub(crate) mod router;
 pub mod spec;
 #[cfg(test)]
 mod tests;
@@ -178,7 +178,7 @@ type ResolutionRequest = Request<Result<RoutingAddr, RouterError>>;
 
 /// Requests that can be serviced by the plane event loop.
 #[derive(Debug)]
-enum PlaneRequest {
+pub enum PlaneRequest {
     /// Get a handle to an agent (starting it where necessary).
     Agent {
         name: RelativeUri,
@@ -352,6 +352,8 @@ pub async fn run_plane<Clk, S>(
     spec: PlaneSpec<Clk, EnvChannel, PlaneRouter>,
     stop_trigger: trigger::Receiver,
     spawner: S,
+    context_tx: mpsc::Sender<PlaneRequest>,
+    context_rx: mpsc::Receiver<PlaneRequest>,
 ) where
     Clk: Clock,
     S: Spawner<BoxFuture<'static, AgentResult>>,
@@ -359,7 +361,6 @@ pub async fn run_plane<Clk, S>(
     event!(Level::DEBUG, STARTING);
     pin_mut!(spawner);
 
-    let (context_tx, context_rx) = mpsc::channel(8);
     let mut context = ContextImpl::new(context_tx.clone(), spec.routes());
 
     let mut requests = context_rx.take_until(stop_trigger.clone()).fuse();
