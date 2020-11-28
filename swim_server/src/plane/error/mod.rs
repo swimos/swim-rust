@@ -15,10 +15,8 @@
 #[cfg(test)]
 mod tests;
 
-use crate::routing::RoutingAddr;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
-use swim_common::routing::RoutingError;
 use utilities::route_pattern::RoutePattern;
 use utilities::uri::RelativeUri;
 
@@ -34,20 +32,6 @@ impl Display for NoAgentAtRoute {
 }
 
 impl Error for NoAgentAtRoute {}
-
-/// Error indicating that a routing address is invalid. (Typically, this should not occur and
-/// suggests a bug).
-#[derive(Debug, Clone, Copy)]
-pub struct Unresolvable(pub RoutingAddr);
-
-impl Display for Unresolvable {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let Unresolvable(addr) = self;
-        write!(f, "No active endpoint with ID: {}", addr)
-    }
-}
-
-impl Error for Unresolvable {}
 
 /// Indicates that ambiguous routes were specified when defining a plane.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -66,30 +50,3 @@ impl Display for AmbiguousRoutes {
 }
 
 impl Error for AmbiguousRoutes {}
-
-/// General error type for a failed agent resolution.
-#[derive(Debug, Clone, PartialEq)]
-pub enum ResolutionError {
-    /// Local error where we can be sure that there is no agent for a specified route.
-    NoAgent(NoAgentAtRoute),
-    /// We failed to route a message to a remote endpoint.
-    NoRoute(RoutingError),
-}
-
-impl Display for ResolutionError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ResolutionError::NoAgent(err) => err.fmt(f),
-            ResolutionError::NoRoute(err) => err.fmt(f),
-        }
-    }
-}
-
-impl Error for ResolutionError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            ResolutionError::NoAgent(err) => Some(err),
-            ResolutionError::NoRoute(err) => Some(err),
-        }
-    }
-}

@@ -18,6 +18,8 @@ use crate::model::text::Text;
 use crate::model::{Attr, Item, Value};
 use crate::warp::path::RelativePath;
 use either::Either;
+use std::error::Error;
+use std::fmt::{Display, Formatter};
 
 #[cfg(test)]
 mod tests;
@@ -564,6 +566,26 @@ pub enum EnvelopeParseErr {
     DuplicateHeader(Text),
     UnknownTag(Text),
 }
+
+impl Display for EnvelopeParseErr {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            EnvelopeParseErr::MissingHeader(name) => {
+                write!(f, "Required header '{}' was missing.", name)
+            }
+            EnvelopeParseErr::UnexpectedKey(name) => write!(f, "Unexpected key: '{}'.", name),
+            EnvelopeParseErr::DuplicateKey(name) => write!(f, "Duplicate key: '{}'.", name),
+            EnvelopeParseErr::UnexpectedType(v) => {
+                write!(f, "Value of unexpected kind: '{}'.", v.kind())
+            }
+            EnvelopeParseErr::DuplicateHeader(name) => write!(f, "Duplicate header: '{}'.", name),
+            EnvelopeParseErr::UnknownTag(name) => write!(f, "Unknown tag in envelope: '{}'.", name),
+            _ => write!(f, "Envelope was malformed."),
+        }
+    }
+}
+
+impl Error for EnvelopeParseErr {}
 
 /// Attempt to parse a ['Value'] in to an ['Envelope']. Returning either the parsed [`Envelope`] or
 /// an [`EnvelopeParseErr`] detailing the failure cause.

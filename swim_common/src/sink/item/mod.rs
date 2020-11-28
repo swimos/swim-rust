@@ -17,6 +17,7 @@ use std::future::Future;
 use futures::future::{ready, BoxFuture, Ready};
 use futures::task::{Context, Poll};
 use futures::{future, FutureExt};
+use std::convert::Infallible;
 use std::marker::PhantomData;
 use std::pin::Pin;
 use tokio::sync::{broadcast, mpsc, watch};
@@ -290,8 +291,8 @@ impl<'a, T, E: 'a> ItemSink<'a, T> for BoxItemSink<T, E> {
 
 impl<'a, T> ItemSink<'a, T> for Vec<T> {
     //TODO Ideally this should be ! but that is still experimental.
-    type Error = ();
-    type SendFuture = Ready<Result<(), ()>>;
+    type Error = Infallible;
+    type SendFuture = Ready<Result<(), Infallible>>;
 
     fn send_item(&'a mut self, value: T) -> Self::SendFuture {
         self.push(value);

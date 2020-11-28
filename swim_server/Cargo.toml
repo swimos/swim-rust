@@ -24,7 +24,7 @@ im = "15.0.0"
 parking_lot = "0.11.0"
 pin-project = "0.4.20"
 pin-utils = "0.1.0"
-tokio = { version = "0.2.21", features = ["stream", "rt-core"] }
+tokio = { version = "0.2.21", features = ["stream", "rt-core", "net"] }
 url = "2.1.1"
 swim_common = { path = "../swim_common" }
 utilities = { path = "../utilities" }
@@ -33,7 +33,8 @@ stm = { path = "../stm" }
 tracing-futures = "0.2.4"
 agent_derive = { path = "agent_derive" }
 trybuild = "1.0.17"
+auth = { path = "auth" }
 
 [dev-dependencies]
-tokio = { version = "0.2.21", features = ["rt-threaded", "macros"] }
+tokio = { version = "0.2.21", features = ["rt-threaded", "macros", "test-util"] }
 tracing = "0.1.16"
