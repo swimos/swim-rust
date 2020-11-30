@@ -12,7 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::plane::PlaneRequest;
 use crate::routing::error::{ConnectionError, ResolutionError, RouterError};
+use crate::routing::remote::RoutingRequest;
 use futures::future::BoxFuture;
 use std::fmt::{Display, Formatter};
 use std::time::Duration;
@@ -29,6 +31,119 @@ pub mod remote;
 #[cfg(test)]
 mod tests;
 pub mod ws;
+
+#[derive(Debug, Clone)]
+pub(crate) struct SuperRouterFactory {
+    plane_sender: mpsc::Sender<PlaneRequest>,
+    remote_sender: mpsc::Sender<RoutingRequest>,
+}
+
+impl SuperRouterFactory {
+    pub(in crate) fn new(
+        plane_sender: mpsc::Sender<PlaneRequest>,
+        remote_sender: mpsc::Sender<RoutingRequest>,
+    ) -> Self {
+        SuperRouterFactory {
+            plane_sender,
+            remote_sender,
+        }
+    }
+}
+
+impl ServerRouterFactory for SuperRouterFactory {
+    type Router = SuperRouter;
+
+    fn create_for(&self, addr: RoutingAddr) -> Self::Router {
+        SuperRouter::new(addr, self.plane_sender.clone(), self.remote_sender.clone())
+    }
+}
+
+// Todo change name
+#[derive(Debug, Clone)]
+pub(crate) struct SuperRouter {
+    addr: RoutingAddr,
+    plane_sender: mpsc::Sender<PlaneRequest>,
+    remote_sender: mpsc::Sender<RoutingRequest>,
+}
+
+impl SuperRouter {
+    pub fn new(
+        addr: RoutingAddr,
+        plane_sender: mpsc::Sender<PlaneRequest>,
+        remote_sender: mpsc::Sender<RoutingRequest>,
+    ) -> Self {
+        SuperRouter {
+            addr,
+            plane_sender,
+            remote_sender,
+        }
+    }
+}
+
+impl ServerRouter for SuperRouter {
+    type Sender = TaggedSender;
+
+    fn resolve_sender(
+        &mut self,
+        addr: RoutingAddr,
+    ) -> BoxFuture<'_, Result<Route<Self::Sender>, ResolutionError>> {
+        //Todo
+        unimplemented!()
+        // async move {
+        //     let SuperRouter {
+        //         addr: tag,
+        //         plane_sender,
+        //         remote_sender,
+        //     } = self;
+        //     let (tx, rx) = oneshot::channel();
+        //
+        //     if addr.is_local() {
+        //         if plane_sender
+        //             .send(PlaneRequest::Endpoint {
+        //                 id: addr,
+        //                 request: Request::new(tx),
+        //             })
+        //             .await
+        //             .is_err()
+        //         {
+        //             Err(ResolutionError::RouterDropped)
+        //         } else {
+        //             match rx.await {
+        //                 Ok(Ok(Route { sender, on_drop })) => {
+        //                     Ok(Route::new(TaggedSender::new(*tag, sender), on_drop))
+        //                 }
+        //                 Ok(Err(err)) => Err(ResolutionError::Unresolvable(err)),
+        //                 Err(_) => Err(ResolutionError::RouterDropped),
+        //             }
+        //         }
+        //     } else {
+        //         let request = Request::new(tx);
+        //         let routing_req = RoutingRequest::Endpoint { addr, request };
+        //         if remote_sender.send(routing_req).await.is_err() {
+        //             Err(ResolutionError::RouterDropped)
+        //         } else {
+        //             match rx.await {
+        //                 Ok(Ok(Route { sender, on_drop })) => {
+        //                     Ok(Route::new(TaggedSender::new(*tag, sender), on_drop))
+        //                 }
+        //                 Ok(Err(err)) => Err(ResolutionError::Unresolvable(err)),
+        //                 Err(_) => Err(ResolutionError::RouterDropped),
+        //             }
+        //         }
+        //     }
+        // }
+        // .boxed()
+    }
+
+    fn lookup(
+        &mut self,
+        host: Option<Url>,
+        route: RelativeUri,
+    ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
+        //Todo
+        unimplemented!()
+    }
+}
 
 /// A key into the server routing table specifying an endpoint to which [`Envelope`]s can be sent.
 /// This is deliberately non-descriptive to allow it to be [`Copy`] and so very cheap to use as a
