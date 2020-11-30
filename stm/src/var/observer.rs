@@ -13,88 +13,138 @@
 // limitations under the License.
 
 use crate::var::Contents;
-use futures::future;
+use futures::future::BoxFuture;
+use futures::FutureExt;
 use futures_util::future::ready;
 use std::any::Any;
-use std::future::Future;
-use std::marker::PhantomData;
-use std::pin::Pin;
 use std::sync::Arc;
-use utilities::future::{SwimFutureExt, Unit};
-
-/// An observer to watch for changes to the value of a [`TVar`].
-pub trait Observer<'a, T> {
-    type RecFuture: Future<Output = ()> + Send + 'a;
-
-    /// Called by the [`TVar`] each time the value changes.
-    fn notify(&'a mut self, value: T) -> Self::RecFuture;
-}
-
-/// An observer that can be applied over any lifetime.
-pub trait StaticObserver<T>: for<'a> Observer<'a, T> {}
-
-impl<T, O> StaticObserver<T> for O where O: for<'a> Observer<'a, T> {}
+use tokio::sync::oneshot::error::TryRecvError;
+use tokio::sync::{broadcast, mpsc, oneshot};
 
 /// Type erased observer to be passed into [`TVarInner`].
 pub(super) trait RawObserver {
-    fn notify_raw<'a>(
-        &'a mut self,
-        value: Contents,
-    ) -> Pin<Box<dyn Future<Output = ()> + Send + 'a>>;
+    fn notify_raw(&mut self, value: Contents) -> BoxFuture<()>;
 }
 
 pub(super) type DynObserver = Box<dyn RawObserver + Send + Sync + 'static>;
 
-/// Wraps an observer to erase its type.
-pub(super) struct RawWrapper<T, Obs>(Obs, PhantomData<fn(T)>);
-
-impl<T, Obs> RawWrapper<T, Obs> {
-    pub(super) fn new(observer: Obs) -> Self {
-        RawWrapper(observer, PhantomData)
-    }
-}
-
-impl<Obs, T> RawObserver for RawWrapper<T, Obs>
-where
-    T: Any + Send + Sync,
-    Obs: StaticObserver<Arc<T>>,
-{
-    fn notify_raw<'a>(
-        &'a mut self,
-        value: Contents,
-    ) -> Pin<Box<dyn Future<Output = ()> + Send + 'a>> {
-        let RawWrapper(observer, _) = self;
+impl<T: Any + Send + Sync> RawObserver for Observer<T> {
+    fn notify_raw(&mut self, value: Contents) -> BoxFuture<'_, ()> {
         match value.downcast::<T>() {
-            Ok(t) => Box::pin(observer.notify(t)),
-            Err(_) => Box::pin(ready(())),
+            Ok(t) => self.notify(t).boxed(),
+            Err(_) => ready(()).boxed(),
         }
     }
 }
 
-/// An observer that forwards to two other observers.
-pub struct JoinObserver<Obs1, Obs2>(Obs1, Obs2);
-
-/// Where the observed type is cloneable, create an observer that will forward copies to two other
-/// observers.
-pub fn join<T, Obs1, Obs2>(obs1: Obs1, obs2: Obs2) -> JoinObserver<Obs1, Obs2>
-where
-    T: Clone,
-    Obs1: for<'a> Observer<'a, T>,
-    Obs2: for<'a> Observer<'a, T>,
-{
-    JoinObserver(obs1, obs2)
+pub enum ObsSender<T> {
+    Mpsc(mpsc::Sender<Arc<T>>),
+    Broadcast(broadcast::Sender<Arc<T>>),
 }
 
-impl<'a, T, Obs1, Obs2> Observer<'a, T> for JoinObserver<Obs1, Obs2>
-where
-    T: Clone,
-    Obs1: Observer<'a, T>,
-    Obs2: Observer<'a, T>,
-{
-    type RecFuture = Unit<future::Join<Obs1::RecFuture, Obs2::RecFuture>>;
+struct SingleObs<T> {
+    sender: ObsSender<T>,
+    is_dead: bool,
+}
 
-    fn notify(&'a mut self, value: T) -> Self::RecFuture {
-        let JoinObserver(first, second) = self;
-        future::join(first.notify(value.clone()), second.notify(value)).unit()
+impl<T> SingleObs<T> {
+    fn new(sender: ObsSender<T>) -> Self {
+        SingleObs {
+            sender,
+            is_dead: false,
+        }
+    }
+}
+
+impl<T> SingleObs<T> {
+    pub async fn notify(&mut self, value: Arc<T>) {
+        let SingleObs { sender, is_dead } = self;
+        if !*is_dead {
+            match sender {
+                ObsSender::Mpsc(tx) => {
+                    if tx.send(value).await.is_err() {
+                        *is_dead = true;
+                    }
+                }
+                ObsSender::Broadcast(tx) => {
+                    if tx.send(value).is_err() {
+                        *is_dead = true;
+                    }
+                }
+            }
+        }
+    }
+}
+
+enum DeferredObserver<T> {
+    Empty,
+    Waiting(oneshot::Receiver<ObsSender<T>>),
+    Initialized(SingleObs<T>),
+}
+
+pub struct Observer<T> {
+    primary: SingleObs<T>,
+    deferred: DeferredObserver<T>,
+}
+
+impl<T> From<mpsc::Sender<Arc<T>>> for ObsSender<T> {
+    fn from(tx: mpsc::Sender<Arc<T>>) -> Self {
+        ObsSender::Mpsc(tx)
+    }
+}
+
+impl<T> From<broadcast::Sender<Arc<T>>> for ObsSender<T> {
+    fn from(tx: broadcast::Sender<Arc<T>>) -> Self {
+        ObsSender::Broadcast(tx)
+    }
+}
+
+impl<T, S> From<S> for Observer<T>
+where
+    S: Into<ObsSender<T>>,
+{
+    fn from(tx: S) -> Self {
+        Observer::new(tx.into())
+    }
+}
+
+impl<T> Observer<T> {
+    pub fn new(sender: ObsSender<T>) -> Self {
+        Observer {
+            primary: SingleObs::new(sender),
+            deferred: DeferredObserver::Empty,
+        }
+    }
+
+    pub fn new_with_deferred(
+        sender: ObsSender<T>,
+        deferred: oneshot::Receiver<ObsSender<T>>,
+    ) -> Self {
+        Observer {
+            primary: SingleObs::new(sender),
+            deferred: DeferredObserver::Waiting(deferred),
+        }
+    }
+
+    pub async fn notify(&mut self, value: Arc<T>) {
+        let Observer { primary, deferred } = self;
+        match deferred {
+            DeferredObserver::Waiting(rx) => match rx.try_recv() {
+                Ok(tx) => {
+                    let mut sender = SingleObs::new(tx);
+                    sender.notify(value.clone()).await;
+                    *deferred = DeferredObserver::Initialized(sender);
+                }
+                Err(TryRecvError::Closed) => {
+                    *deferred = DeferredObserver::Empty;
+                }
+                _ => {}
+            },
+            DeferredObserver::Initialized(sender) => {
+                sender.notify(value.clone()).await;
+            }
+            _ => {}
+        }
+        primary.notify(value).await;
     }
 }

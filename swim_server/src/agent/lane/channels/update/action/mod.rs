@@ -82,7 +82,7 @@ where
             } = self;
             let mut commander = lane.commander();
             match feedback {
-                Some(mut resp_tx) => {
+                Some(resp_tx) => {
                     let messages = messages.fuse();
                     pin_mut!(messages);
                     //TODO This maintains a total order of responses whereas all we need is a total order per address.

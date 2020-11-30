@@ -24,6 +24,7 @@ use crate::agent::tests::stub_router::SingleChannelRouter;
 use crate::agent::tests::test_clock::TestClock;
 use crate::agent::{AgentContext, LaneTasks};
 use crate::plane::provider::AgentProvider;
+use crate::routing::RoutingAddr;
 use crate::{
     action_lifecycle, agent_lifecycle, command_lifecycle, map_lifecycle, value_lifecycle, SwimAgent,
 };
@@ -36,7 +37,6 @@ use std::sync::Arc;
 use std::time::Duration;
 use stm::stm::Stm;
 use stm::transaction::atomically;
-use swim_common::sink::item::DiscardingSender;
 use tokio::sync::{mpsc, Mutex};
 use utilities::uri::RelativeUri;
 
@@ -536,7 +536,7 @@ async fn agent_loop() {
         exec_config,
         clock.clone(),
         envelope_rx,
-        SingleChannelRouter::new(DiscardingSender::default()),
+        SingleChannelRouter::new(RoutingAddr::local(1024)),
     );
 
     let agent_task = swim_runtime::task::spawn(agent_proc);

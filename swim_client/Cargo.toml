@@ -6,7 +6,7 @@ edition = "2018"
 
 [features]
 default = ["websocket"]
-websocket = ["tokio-tungstenite", "http", "tokio-tls", "native-tls", "tokio-native-tls", "swim_common/tls"]
+websocket = ["tokio-tungstenite", "http", "native-tls", "tokio-native-tls", "swim_common/tls"]
 debug = ["log_verbose"]
 log_verbose = []
 test-server = ["test_server"]
@@ -17,9 +17,9 @@ features = ["enabled"]
 optional = true
 
 [dependencies.tokio-tungstenite]
-version = "0.10.1"
+version = "0.12.0"
 git = "https://github.com/swimos/tokio-tungstenite/"
-branch = "v10-deflate"
+branch = "tokio-0.3-deflate"
 features = ["tls", "deflate"]
 optional = true
 
@@ -33,11 +33,7 @@ version = "0.2"
 optional = true
 
 [dependencies.tokio-native-tls]
-version = "0.1"
-optional = true
-
-[dependencies.tokio-tls]
-version = "0.3"
+version = "0.2"
 optional = true
 
 [target.'cfg(log_verbose)'.dependencies]
@@ -64,8 +60,8 @@ url = "2.1.1"
 rand = "0.7.3"
 tracing-subscriber = "0.2.11"
 tracing-futures = "0.2.4"
-tokio = { version = "0.2.21", features = ["sync", "stream", "rt-core", "macros", "time"] }
+tokio = { version = "0.3.3", features = ["sync", "stream", "rt", "macros", "time"] }
 num-bigint = "0.3"
 
 [dev-dependencies]
-tokio = { version = "0.2.21", features = ["rt-threaded"] }
+tokio = { version = "0.3.3", features = ["rt-multi-thread"] }

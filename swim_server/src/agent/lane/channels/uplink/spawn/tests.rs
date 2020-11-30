@@ -20,7 +20,9 @@ use crate::agent::lane::channels::uplink::{UplinkAction, UplinkError, UplinkStat
 use crate::agent::lane::channels::{AgentExecutionConfig, LaneMessageHandler, TaggedAction};
 use crate::agent::Eff;
 use crate::routing::error::{ResolutionError, RouterError, SendError};
-use crate::routing::{ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedEnvelope};
+use crate::routing::{
+    ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedEnvelope, TaggedSender,
+};
 use futures::future::{join, join3, ready, BoxFuture};
 use futures::stream::once;
 use futures::stream::{BoxStream, FusedStream};
@@ -83,20 +85,12 @@ impl<'a> ItemSink<'a, Envelope> for TestSender {
 }
 
 impl ServerRouter for TestRouter {
-    type Sender = TestSender;
-
-    fn resolve_sender(
-        &mut self,
-        addr: RoutingAddr,
-    ) -> BoxFuture<Result<Route<Self::Sender>, ResolutionError>> {
+    fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>> {
         let TestRouter {
             sender, drop_rx, ..
         } = self;
         ready(Ok(Route::new(
-            TestSender {
-                addr,
-                inner: sender.clone(),
-            },
+            TaggedSender::new(addr, sender.clone()),
             drop_rx.clone(),
         )))
         .boxed()
@@ -166,7 +160,7 @@ impl LaneUpdate for TestUpdater {
         Err: Send,
         UpdateError: From<Err>,
     {
-        let TestUpdater(mut tx) = self;
+        let TestUpdater(tx) = self;
 
         async move {
             pin_mut!(messages);

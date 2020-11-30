@@ -34,12 +34,11 @@ use std::future::Future;
 use std::str::FromStr;
 use std::time::Duration;
 use swim_common::model::parser::{self, ParseFailure};
-use swim_common::sink::item::ItemSink;
 use swim_common::warp::envelope::{Envelope, EnvelopeParseErr};
 use swim_common::warp::path::RelativePath;
 use swim_common::ws::WsMessage;
 use tokio::sync::mpsc;
-use tokio::time::{delay_for, Instant};
+use tokio::time::{sleep, Instant};
 use utilities::errors::Recoverable;
 use utilities::future::retryable::strategy::RetryStrategy;
 use utilities::sync::trigger;
@@ -130,9 +129,9 @@ where
 
         let mut stop_fused = stop_signal.fuse();
         let mut select_stream = selector.fuse();
-        let mut timeout = delay_for(activity_timeout);
+        let mut timeout = sleep(activity_timeout);
 
-        let mut resolved: HashMap<RelativePath, Route<Router::Sender>> = HashMap::new();
+        let mut resolved: HashMap<RelativePath, Route> = HashMap::new();
 
         let completion = loop {
             timeout.reset(
@@ -160,7 +159,7 @@ where
                                     &mut resolved,
                                     envelope,
                                     retry_strategy,
-                                    delay_for,
+                                    sleep,
                                 )
                                 .await
                                 {
@@ -276,7 +275,7 @@ impl From<RouterError> for DispatchError {
 
 async fn dispatch_envelope<Router, F, D>(
     router: &mut Router,
-    resolved: &mut HashMap<RelativePath, Route<Router::Sender>>,
+    resolved: &mut HashMap<RelativePath, Route>,
     mut envelope: Envelope,
     mut retry_strategy: RetryStrategy,
     delay_fn: F,
@@ -313,7 +312,7 @@ where
 
 async fn try_dispatch_envelope<Router>(
     router: &mut Router,
-    resolved: &mut HashMap<RelativePath, Route<Router::Sender>>,
+    resolved: &mut HashMap<RelativePath, Route>,
     envelope: Envelope,
 ) -> Result<(), (Envelope, DispatchError)>
 where
@@ -356,7 +355,7 @@ where
 async fn get_route<Router>(
     router: &mut Router,
     target: &RelativePath,
-) -> Result<Route<Router::Sender>, DispatchError>
+) -> Result<Route, DispatchError>
 where
     Router: ServerRouter,
 {

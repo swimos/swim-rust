@@ -12,14 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use futures::{ready, Stream};
-use pin_project::pin_project;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
-use std::pin::Pin;
-use std::task::{Context, Poll};
 use swim_common::form::FormErr;
-use tokio::sync::broadcast;
 
 pub mod channels;
 pub mod lifecycle;
@@ -53,31 +48,5 @@ impl Display for InvalidForm {
 impl Error for InvalidForm {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         Some(&self.0)
-    }
-}
-
-/// A stream of values from a [`broadcast::Receiver`] that discards any `Lagged` errors.
-#[pin_project]
-pub struct BroadcastStream<T>(#[pin] broadcast::Receiver<T>);
-
-impl<T> BroadcastStream<T> {
-    pub fn new(rx: broadcast::Receiver<T>) -> Self {
-        BroadcastStream(rx)
-    }
-}
-
-impl<T: Clone> Stream for BroadcastStream<T> {
-    type Item = T;
-
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let mut projected = self.project();
-        loop {
-            match ready!(projected.0.as_mut().poll_next(cx)) {
-                Some(Err(broadcast::RecvError::Closed)) => break Poll::Ready(None),
-                Some(Err(broadcast::RecvError::Lagged(_))) => {}
-                Some(Ok(t)) => break Poll::Ready(Some(t)),
-                _ => break Poll::Ready(None),
-            }
-        }
     }
 }

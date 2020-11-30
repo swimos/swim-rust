@@ -18,23 +18,22 @@ use crate::downlink::raw::{DownlinkTask, DownlinkTaskHandle};
 use crate::downlink::topic::{DownlinkReceiver, DownlinkTopic, MakeReceiver};
 use crate::downlink::{
     raw, Command, Downlink, DownlinkError, DownlinkInternals, Event, Message, StateMachine,
-    StoppedFuture,
 };
-use futures::future::Ready;
-use futures::Stream;
-use futures_util::stream::StreamExt;
+use futures::future::BoxFuture;
+use futures::{FutureExt, Stream, StreamExt};
 use std::fmt::{Debug, Formatter};
 use std::num::NonZeroUsize;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Weak};
 use swim_common::routing::RoutingError;
-use swim_common::sink::item::{ItemSender, ItemSink, MpscSend};
+use swim_common::sink::item::ItemSender;
 use swim_common::topic::{BroadcastReceiver, BroadcastSender, BroadcastTopic, Topic, TopicError};
 use swim_runtime::task::spawn;
-use tokio::sync::{mpsc, watch};
+use tokio::sync::mpsc;
 use tracing::trace_span;
 use tracing_futures::Instrument;
-use utilities::future::{SwimFutureExt, TransformedFuture};
+use utilities::future::SwimFutureExt;
+use utilities::sync::promise;
 
 /// A downlink where subscribers consume via a shared queue that will start dropping (the oldest)
 /// records if any fall behind.
@@ -113,8 +112,12 @@ impl<Act, Upd> BufferedDownlink<Act, Upd> {
     }
 
     /// Get a future that will complete when the downlink stops running.
-    pub fn await_stopped(&self) -> StoppedFuture {
+    pub fn await_stopped(&self) -> promise::Receiver<Result<(), DownlinkError>> {
         self.internal.task.await_stopped()
+    }
+
+    pub async fn send_item(&mut self, value: Act) -> Result<(), DownlinkError> {
+        Ok(self.input.send(value).await?)
     }
 }
 
@@ -159,25 +162,12 @@ where
     Upd: Clone + Send + Sync + 'static,
 {
     type Receiver = BufferedReceiver<Upd>;
-    type Fut =
-        TransformedFuture<Ready<Result<BufferedTopicReceiver<Upd>, TopicError>>, MakeReceiver>;
 
-    fn subscribe(&mut self) -> Self::Fut {
+    fn subscribe(&mut self) -> BoxFuture<Result<Self::Receiver, TopicError>> {
         self.topic
             .subscribe()
             .transform(MakeReceiver::new(self.internal.clone()))
-    }
-}
-
-impl<'a, Act, Upd> ItemSink<'a, Act> for BufferedDownlink<Act, Upd>
-where
-    Act: Send + 'static,
-{
-    type Error = DownlinkError;
-    type SendFuture = MpscSend<'a, Act, DownlinkError>;
-
-    fn send_item(&'a mut self, value: Act) -> Self::SendFuture {
-        MpscSend::new(&mut self.input, value)
+            .boxed()
     }
 }
 
@@ -187,7 +177,7 @@ where
     Upd: Clone + Send + Sync + 'static,
 {
     type DlTopic = DownlinkTopic<BroadcastTopic<Event<Upd>>>;
-    type DlSink = raw::Sender<mpsc::Sender<Act>>;
+    type DlSink = raw::Sender<Act>;
 
     fn split(self) -> (Self::DlTopic, Self::DlSink) {
         let BufferedDownlink {
@@ -226,7 +216,7 @@ where
 
         let event_sink = event_tx.map_err_into();
 
-        let (stopped_tx, stopped_rx) = watch::channel(None);
+        let (stopped_tx, stopped_rx) = promise::promise();
 
         let completed = Arc::new(AtomicBool::new(false));
 

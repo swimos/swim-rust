@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::agent::lane::model::map::{make_lane_model, MapLane, MapLaneEvent, MapUpdate};
-use crate::agent::lane::strategy::{Buffered, Dropping, Queue};
+use crate::agent::lane::strategy::{Buffered, Queue};
 use crate::agent::lane::tests::ExactlyOnce;
 use futures::{FutureExt, Stream, StreamExt};
 use std::collections::HashMap;
@@ -75,12 +75,6 @@ async fn update_direct_queue() {
 }
 
 #[tokio::test]
-async fn update_direct_dropping() {
-    let (lane, mut events) = make_lane_model(Dropping);
-    update_direct(&lane, &mut events).await;
-}
-
-#[tokio::test]
 async fn update_direct_buffered() {
     let (lane, mut events) = make_lane_model(Buffered::default());
     update_direct(&lane, &mut events).await;
@@ -100,12 +94,6 @@ where
 #[tokio::test]
 async fn remove_direct_not_contained_queue() {
     let (lane, events) = make_lane_model(Queue::default());
-    remove_direct_not_contained(lane, events).await;
-}
-
-#[tokio::test]
-async fn remove_direct_not_contained_dropping() {
-    let (lane, events) = make_lane_model(Dropping);
     remove_direct_not_contained(lane, events).await;
 }
 
@@ -134,12 +122,6 @@ async fn remove_direct_contained_queue() {
 }
 
 #[tokio::test]
-async fn remove_direct_contained_dropping() {
-    let (lane, events) = make_lane_model(Dropping);
-    remove_direct_contained(lane, events).await;
-}
-
-#[tokio::test]
 async fn remove_direct_contained_buffered() {
     let (lane, events) = make_lane_model(Buffered::default());
     remove_direct_contained(lane, events).await;
@@ -159,12 +141,6 @@ where
 #[tokio::test]
 async fn clear_direct_empty_queue() {
     let (lane, events) = make_lane_model(Queue::default());
-    clear_direct_empty(lane, events).await;
-}
-
-#[tokio::test]
-async fn clear_direct_empty_dropping() {
-    let (lane, events) = make_lane_model(Dropping);
     clear_direct_empty(lane, events).await;
 }
 
@@ -189,12 +165,6 @@ where
 #[tokio::test]
 async fn clear_direct_nonempty_queue() {
     let (lane, events) = make_lane_model(Queue::default());
-    clear_direct_nonempty(lane, events).await;
-}
-
-#[tokio::test]
-async fn clear_direct_nonempty_dropping() {
-    let (lane, events) = make_lane_model(Dropping);
     clear_direct_nonempty(lane, events).await;
 }
 
@@ -315,12 +285,6 @@ async fn update_compound_queue() {
 }
 
 #[tokio::test]
-async fn update_compound_dropping() {
-    let (lane, mut events) = make_lane_model(Dropping);
-    update_compound(&lane, &mut events).await;
-}
-
-#[tokio::test]
 async fn update_compound_buffered() {
     let (lane, mut events) = make_lane_model(Buffered::default());
     update_direct(&lane, &mut events).await;
@@ -340,12 +304,6 @@ where
 #[tokio::test]
 async fn remove_compound_not_contained_queue() {
     let (lane, events) = make_lane_model(Queue::default());
-    remove_compound_not_contained(lane, events).await;
-}
-
-#[tokio::test]
-async fn remove_compound_not_contained_dropping() {
-    let (lane, events) = make_lane_model(Dropping);
     remove_compound_not_contained(lane, events).await;
 }
 
@@ -374,12 +332,6 @@ async fn remove_compound_contained_queue() {
 }
 
 #[tokio::test]
-async fn remove_compound_contained_dropping() {
-    let (lane, events) = make_lane_model(Dropping);
-    remove_compound_contained(lane, events).await;
-}
-
-#[tokio::test]
 async fn remove_compound_contained_buffered() {
     let (lane, events) = make_lane_model(Buffered::default());
     remove_compound_contained(lane, events).await;
@@ -399,12 +351,6 @@ where
 #[tokio::test]
 async fn clear_compound_empty_queue() {
     let (lane, events) = make_lane_model(Queue::default());
-    clear_compound_empty(lane, events).await;
-}
-
-#[tokio::test]
-async fn clear_compound_empty_dropping() {
-    let (lane, events) = make_lane_model(Dropping);
     clear_compound_empty(lane, events).await;
 }
 
@@ -429,12 +375,6 @@ where
 #[tokio::test]
 async fn clear_compound_nonempty_queue() {
     let (lane, events) = make_lane_model(Queue::default());
-    clear_compound_nonempty(lane, events).await;
-}
-
-#[tokio::test]
-async fn clear_compound_nonempty_dropping() {
-    let (lane, events) = make_lane_model(Dropping);
     clear_compound_nonempty(lane, events).await;
 }
 
@@ -475,12 +415,6 @@ async fn double_set_queue() {
 }
 
 #[tokio::test]
-async fn double_set_dropping() {
-    let (lane, events) = make_lane_model(Dropping);
-    double_set(lane, events).await;
-}
-
-#[tokio::test]
 async fn double_set_buffered() {
     let (lane, events) = make_lane_model(Buffered::default());
     double_set(lane, events).await;
@@ -515,12 +449,6 @@ where
 #[tokio::test]
 async fn transaction_with_clear_queue() {
     let (lane, events) = make_lane_model(Queue::default());
-    transaction_with_clear(lane, events).await;
-}
-
-#[tokio::test]
-async fn transaction_with_clear_dropping() {
-    let (lane, events) = make_lane_model(Dropping);
     transaction_with_clear(lane, events).await;
 }
 
@@ -577,12 +505,6 @@ async fn modify_if_defined_direct_queue() {
 }
 
 #[tokio::test]
-async fn modify_if_defined_direct_dropping() {
-    let (lane, events) = make_lane_model(Dropping);
-    modify_if_defined_direct(lane, events).await;
-}
-
-#[tokio::test]
 async fn modify_if_defined_direct_buffered() {
     let (lane, events) = make_lane_model(Buffered::default());
     modify_if_defined_direct(lane, events).await;
@@ -617,12 +539,6 @@ async fn modify_direct_some_queue() {
 }
 
 #[tokio::test]
-async fn modify_direct_some_dropping() {
-    let (lane, events) = make_lane_model(Dropping);
-    modify_direct_some(lane, events).await;
-}
-
-#[tokio::test]
 async fn modify_direct_some_buffered() {
     let (lane, events) = make_lane_model(Buffered::default());
     modify_direct_some(lane, events).await;
@@ -653,12 +569,6 @@ where
 #[tokio::test]
 async fn modify_direct_none_queue() {
     let (lane, events) = make_lane_model(Queue::default());
-    modify_direct_none(lane, events).await;
-}
-
-#[tokio::test]
-async fn modify_direct_none_dropping() {
-    let (lane, events) = make_lane_model(Dropping);
     modify_direct_none(lane, events).await;
 }
 

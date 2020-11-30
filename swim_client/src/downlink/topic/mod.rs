@@ -13,8 +13,9 @@
 // limitations under the License.
 
 use crate::downlink::DownlinkInternals;
+use futures::future::BoxFuture;
 use futures::task::{Context, Poll};
-use futures::Stream;
+use futures::{FutureExt, Stream};
 use pin_project::pin_project;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -95,11 +96,10 @@ where
     Inner: Topic<T>,
 {
     type Receiver = DownlinkReceiver<Inner::Receiver>;
-    type Fut = TransformedFuture<Inner::Fut, MakeReceiver>;
 
-    fn subscribe(&mut self) -> Self::Fut {
+    fn subscribe(&mut self) -> BoxFuture<Result<Self::Receiver, TopicError>> {
         let DownlinkTopic { inner, task } = self;
         let attach = MakeReceiver::new(task.clone());
-        TransformedFuture::new(inner.subscribe(), attach)
+        TransformedFuture::new(inner.subscribe(), attach).boxed()
     }
 }
