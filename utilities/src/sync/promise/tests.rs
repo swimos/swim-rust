@@ -38,7 +38,7 @@ async fn await_promise() {
     join(send_task, receive_task).await;
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn await_promise_threaded() {
     for _ in 0..10000 {
         let (tx, rx) = super::promise();

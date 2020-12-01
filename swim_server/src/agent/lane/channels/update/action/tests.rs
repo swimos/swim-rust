@@ -24,7 +24,7 @@ use tokio::sync::mpsc;
 #[tokio::test]
 async fn cmd_no_feedback() {
     let (act_tx, mut act_rx) = mpsc::channel(5);
-    let (mut msg_tx, msg_rx) = mpsc::channel::<Result<(RoutingAddr, i32), UpdateError>>(5);
+    let (msg_tx, msg_rx) = mpsc::channel::<Result<(RoutingAddr, i32), UpdateError>>(5);
 
     let lane: ActionLane<i32, ()> = ActionLane::new(act_tx);
 
@@ -52,7 +52,7 @@ async fn cmd_no_feedback() {
 #[tokio::test]
 async fn failure_no_feedback() {
     let (act_tx, _act_rx) = mpsc::channel(5);
-    let (mut msg_tx, msg_rx) = mpsc::channel::<Result<(RoutingAddr, i32), UpdateError>>(5);
+    let (msg_tx, msg_rx) = mpsc::channel::<Result<(RoutingAddr, i32), UpdateError>>(5);
 
     let lane: ActionLane<i32, ()> = ActionLane::new(act_tx);
 
@@ -106,7 +106,7 @@ async fn check_feedback(
 #[tokio::test]
 async fn cmd_with_feedback() {
     let (act_tx, mut act_rx) = mpsc::channel(5);
-    let (mut msg_tx, msg_rx) = mpsc::channel::<Result<(RoutingAddr, i32), UpdateError>>(5);
+    let (msg_tx, msg_rx) = mpsc::channel::<Result<(RoutingAddr, i32), UpdateError>>(5);
     let (feedback_tx, mut feedback_rx) = mpsc::channel(5);
 
     let lane: ActionLane<i32, i32> = ActionLane::new(act_tx);
@@ -133,7 +133,7 @@ async fn cmd_with_feedback() {
 #[tokio::test]
 async fn multiple_cmd_with_feedback() {
     let (act_tx, mut act_rx) = mpsc::channel(5);
-    let (mut msg_tx, msg_rx) = mpsc::channel::<Result<(RoutingAddr, i32), UpdateError>>(5);
+    let (msg_tx, msg_rx) = mpsc::channel::<Result<(RoutingAddr, i32), UpdateError>>(5);
     let (feedback_tx, mut feedback_rx) = mpsc::channel(5);
 
     let lane: ActionLane<i32, i32> = ActionLane::new(act_tx);
@@ -164,7 +164,7 @@ async fn multiple_cmd_with_feedback() {
 #[tokio::test]
 async fn multiple_cmd_with_out_of_order_feedback() {
     let (act_tx, mut act_rx) = mpsc::channel(5);
-    let (mut msg_tx, msg_rx) = mpsc::channel::<Result<(RoutingAddr, i32), UpdateError>>(5);
+    let (msg_tx, msg_rx) = mpsc::channel::<Result<(RoutingAddr, i32), UpdateError>>(5);
     let (feedback_tx, mut feedback_rx) = mpsc::channel(5);
 
     let lane: ActionLane<i32, i32> = ActionLane::new(act_tx);
@@ -202,7 +202,7 @@ async fn multiple_cmd_with_out_of_order_feedback() {
 #[tokio::test]
 async fn cleanup_on_error() {
     let (act_tx, mut act_rx) = mpsc::channel(5);
-    let (mut msg_tx, msg_rx) = mpsc::channel::<Result<(RoutingAddr, i32), UpdateError>>(5);
+    let (msg_tx, msg_rx) = mpsc::channel::<Result<(RoutingAddr, i32), UpdateError>>(5);
     let (feedback_tx, mut feedback_rx) = mpsc::channel(5);
 
     let lane: ActionLane<i32, i32> = ActionLane::new(act_tx);
@@ -242,7 +242,7 @@ async fn cleanup_on_error() {
 #[tokio::test]
 async fn fail_on_feedback_dropped() {
     let (act_tx, mut act_rx) = mpsc::channel(5);
-    let (mut msg_tx, msg_rx) = mpsc::channel::<Result<(RoutingAddr, i32), UpdateError>>(5);
+    let (msg_tx, msg_rx) = mpsc::channel::<Result<(RoutingAddr, i32), UpdateError>>(5);
     let (feedback_tx, feedback_rx) = mpsc::channel(5);
 
     let lane: ActionLane<i32, i32> = ActionLane::new(act_tx);

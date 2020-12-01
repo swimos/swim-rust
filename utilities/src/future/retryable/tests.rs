@@ -19,15 +19,31 @@ use tokio::sync::mpsc;
 
 use crate::future::retryable::strategy::RetryStrategy;
 use crate::future::retryable::{ResettableFuture, RetryableFuture};
+use pin_project::pin_project;
 use std::num::NonZeroUsize;
-use tokio::sync::mpsc::error::TrySendError;
 
-struct MpscSender<P>
+#[pin_project]
+struct MpscSender<F, Fut> {
+    tx: mpsc::Sender<i32>,
+    make_fut: F,
+    #[pin]
+    current: Option<Fut>,
+    value: i32,
+}
+
+impl<F, Fut> MpscSender<F, Fut>
 where
-    P: Clone,
+    F: Fn(mpsc::Sender<i32>, i32) -> Fut,
 {
-    tx: mpsc::Sender<P>,
-    p: P,
+    fn new(tx: mpsc::Sender<i32>, value: i32, make_fut: F) -> Self {
+        let init = make_fut(tx.clone(), value);
+        MpscSender {
+            tx,
+            make_fut,
+            current: Some(init),
+            value,
+        }
+    }
 }
 
 #[derive(Eq, PartialEq, Debug)]
@@ -35,34 +51,46 @@ enum SendErr {
     Err,
 }
 
-impl<P> Future for MpscSender<P>
+impl<F, Fut> Future for MpscSender<F, Fut>
 where
-    P: Clone + Unpin,
+    F: Fn(mpsc::Sender<i32>, i32) -> Fut,
+    Fut: Future<Output = Result<i32, SendErr>>,
 {
-    type Output = Result<P, SendErr>;
+    type Output = Result<i32, SendErr>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let MpscSender { tx, p } = self.get_mut();
-
-        match tx.poll_ready(cx) {
-            Poll::Ready(Ok(_)) => match tx.try_send(p.clone()) {
-                Ok(_) => Poll::Ready(Ok(p.clone())),
-                Err(TrySendError::Closed(_)) => Poll::Ready(Err(SendErr::Err)),
-                Err(TrySendError::Full(_)) => unreachable!(),
-            },
-
-            Poll::Ready(Err(_)) => Poll::Ready(Err(SendErr::Err)),
-            Poll::Pending => Poll::Pending,
+        let projected = self.project();
+        let mut current: Pin<&mut Option<Fut>> = projected.current;
+        if let Some(fut) = current.as_mut().as_pin_mut() {
+            let result = fut.poll(cx);
+            if result.is_ready() {
+                current.set(None);
+            }
+            result
+        } else {
+            panic!("Used twice!");
         }
     }
 }
 
-impl<P> ResettableFuture for MpscSender<P>
+impl<F, Fut> ResettableFuture for MpscSender<F, Fut>
 where
-    P: Clone + Unpin,
+    F: Fn(mpsc::Sender<i32>, i32) -> Fut,
+    Fut: Future<Output = Result<i32, SendErr>>,
 {
     fn reset(self: Pin<&mut Self>) -> bool {
+        let mut projected = self.project();
+        let fut = (projected.make_fut)(projected.tx.clone(), *projected.value);
+        projected.current.set(Some(fut));
         true
+    }
+}
+
+async fn send(tx: mpsc::Sender<i32>, value: i32) -> Result<i32, SendErr> {
+    if tx.send(value).await.is_err() {
+        Err(SendErr::Err)
+    } else {
+        Ok(value)
     }
 }
 
@@ -70,7 +98,7 @@ where
 async fn test() {
     let p = 5;
     let (tx, mut rx) = mpsc::channel(1);
-    let sender = MpscSender { tx, p };
+    let sender = MpscSender::new(tx, p, send);
 
     let retry: Result<i32, SendErr> = RetryableFuture::new(
         sender,

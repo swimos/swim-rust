@@ -12,13 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::lane::{BroadcastStream, InvalidForm};
+use crate::agent::lane::InvalidForm;
 use futures::future::{ready, Ready};
 use futures::stream::{empty, Empty};
-use futures::StreamExt;
 use stm::transaction::RetryManager;
 use swim_common::form::FormErr;
-use tokio::sync::broadcast;
 
 #[derive(Clone, Debug)]
 pub struct ExactlyOnce;
@@ -44,24 +42,4 @@ fn format_invalid_form() {
         str,
         "Lane form implementation is inconsistent: Malformatted"
     );
-}
-
-#[tokio::main]
-#[test]
-async fn broadcast_stream_send() {
-    let (tx, rx) = broadcast::channel(1);
-    let mut stream = BroadcastStream(rx);
-    assert!(tx.send(2).is_ok());
-    let received = stream.next().await;
-    assert_eq!(received, Some(2));
-}
-
-#[tokio::test]
-async fn broadcast_stream_lag() {
-    let (tx, rx) = broadcast::channel(1);
-    let mut stream = BroadcastStream(rx);
-    assert!(tx.send(2).is_ok());
-    assert!(tx.send(3).is_ok());
-    let received = stream.next().await;
-    assert_eq!(received, Some(3));
 }

@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use super::{StatefulLaneLifecycle, StatefulLaneLifecycleBase};
-use crate::agent::lane::strategy::{Buffered, Dropping, Queue};
+use crate::agent::lane::strategy::{Buffered, Queue};
 use crate::agent::lane::LaneModel;
 use crate::agent::AgentContext;
 use futures::future::BoxFuture;
@@ -86,22 +86,6 @@ async fn default_queue_lifecycle() {
     //We just check the life-cycle events don't generate panics.
     queue.on_start(&model, &context).await;
     queue.on_event(&(), &model, &context).await;
-}
-
-#[tokio::test]
-async fn default_dropping_lifecycle() {
-    let dropping = Dropping;
-
-    let strategy = dropping.create_strategy();
-
-    assert_eq!(strategy, dropping);
-
-    let model = TestModel;
-    let context = TestContext;
-
-    //We just check the life-cycle events don't generate panics.
-    dropping.on_start(&model, &context).await;
-    dropping.on_event(&(), &model, &context).await;
 }
 
 #[tokio::test]

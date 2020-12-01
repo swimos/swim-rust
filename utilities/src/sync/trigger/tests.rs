@@ -121,7 +121,7 @@ fn drop_after_pending() {
     assert!(!arc_waker.is_woken());
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn trigger_threaded() {
     let (tx, rx) = super::trigger();
 

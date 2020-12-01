@@ -15,8 +15,9 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use futures::channel::mpsc as fut_mpsc;
 use futures::future::{join, BoxFuture};
-use futures::{FutureExt, StreamExt};
+use futures::{FutureExt, SinkExt, StreamExt};
 use http::Uri;
 use parking_lot::Mutex;
 use tokio::sync::{mpsc, watch};
@@ -32,7 +33,8 @@ use utilities::uri::{BadRelativeUri, RelativeUri, UriIsAbsolute};
 
 use crate::routing::error::{ConnectionError, ResolutionError, RouterError};
 use crate::routing::remote::task::{ConnectionTask, DispatchError};
-use crate::routing::remote::test_fixture::{LocalRoutes, TwoWayMpsc};
+use crate::routing::remote::test_fixture::fake_channel::TwoWayMpsc;
+use crate::routing::remote::test_fixture::LocalRoutes;
 use crate::routing::{ConnectionDropped, Route, RoutingAddr, TaggedEnvelope, TaggedSender};
 use futures::io::ErrorKind;
 use std::num::NonZeroUsize;
@@ -356,8 +358,8 @@ async fn dispatch_after_immediate_retry() {
 struct TaskFixture {
     router: LocalRoutes,
     task: BoxFuture<'static, ConnectionDropped>,
-    sock_in: mpsc::Sender<Result<WsMessage, ConnectionError>>,
-    sock_out: mpsc::Receiver<WsMessage>,
+    sock_in: fut_mpsc::Sender<Result<WsMessage, ConnectionError>>,
+    sock_out: fut_mpsc::Receiver<WsMessage>,
     envelope_tx: mpsc::Sender<TaggedEnvelope>,
     stop_trigger: trigger::Sender,
     send_error_tx: watch::Sender<Option<ConnectionError>>,
@@ -367,8 +369,8 @@ impl TaskFixture {
     fn new() -> Self {
         let addr = RoutingAddr::remote(0);
         let router = LocalRoutes::new(addr);
-        let (tx_in, rx_in) = mpsc::channel(8);
-        let (tx_out, rx_out) = mpsc::channel(8);
+        let (tx_in, rx_in) = fut_mpsc::channel(8);
+        let (tx_out, rx_out) = fut_mpsc::channel(8);
 
         let (env_tx, env_rx) = mpsc::channel(8);
         let (stop_tx, stop_rx) = trigger::trigger();
@@ -406,7 +408,7 @@ fn message_for(env: Envelope) -> WsMessage {
 async fn task_send_message() {
     let TaskFixture {
         task,
-        mut envelope_tx,
+        envelope_tx,
         mut sock_out,
         stop_trigger,
         router: _router,
@@ -434,7 +436,7 @@ async fn task_send_message() {
 async fn task_send_message_failure() {
     let TaskFixture {
         task,
-        mut envelope_tx,
+        envelope_tx,
         sock_out: _sock_out,
         stop_trigger: _stop_trigger,
         router: _router,
@@ -449,7 +451,7 @@ async fn task_send_message_failure() {
         let tagged = TaggedEnvelope(RoutingAddr::local(100), env_cpy.clone());
 
         assert!(send_error_tx
-            .broadcast(Some(ConnectionError::Socket(ErrorKind::ConnectionReset)))
+            .send(Some(ConnectionError::Socket(ErrorKind::ConnectionReset)))
             .is_ok());
         assert!(envelope_tx.send(tagged).await.is_ok());
     };
@@ -580,7 +582,7 @@ async fn task_stopped_remotely() {
 async fn task_timeout() {
     let TaskFixture {
         task,
-        mut envelope_tx,
+        envelope_tx,
         mut sock_out,
         stop_trigger: _stop_trigger,
         router: _router,

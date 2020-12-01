@@ -12,29 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::downlink::buffered::{
-    BufferedDownlink, BufferedReceiver, BufferedTopicReceiver, WeakBufferedDownlink,
-};
-use crate::downlink::dropping::{
-    DroppingDownlink, DroppingReceiver, DroppingTopicReceiver, WeakDroppingDownlink,
-};
-use crate::downlink::queue::{QueueDownlink, QueueReceiver, QueueTopicReceiver, WeakQueueDownlink};
-use crate::downlink::topic::{DownlinkTopic, MakeReceiver};
-use crate::downlink::{raw, StoppedFuture};
+use crate::downlink::buffered::{BufferedDownlink, BufferedReceiver, WeakBufferedDownlink};
+use crate::downlink::dropping::{DroppingDownlink, DroppingReceiver, WeakDroppingDownlink};
+use crate::downlink::queue::{QueueDownlink, QueueReceiver, WeakQueueDownlink};
+use crate::downlink::raw;
+use crate::downlink::topic::DownlinkTopic;
 use crate::downlink::{Downlink, DownlinkError, Event};
-use futures::future::{ErrInto, Ready};
+use futures::future::BoxFuture;
 use futures::task::{Context, Poll};
-use futures::{Future, Stream};
-use futures_util::StreamExt;
+use futures::{FutureExt, Stream, StreamExt};
 use pin_project::pin_project;
 use std::fmt::{Display, Formatter};
-use swim_common::request::request_future::{RequestFuture, Sequenced};
-use swim_common::request::Request;
-use swim_common::sink::item::{ItemSink, MpscSend};
 use swim_common::topic::{BroadcastTopic, MpscTopic, Topic, TopicError, WatchTopic};
 use tokio::macros::support::Pin;
-use tokio::sync::{mpsc, oneshot};
-use utilities::future::TransformedFuture;
+use utilities::sync::promise;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TopicKind {
@@ -120,11 +111,19 @@ impl<Act, Upd> AnyDownlink<Act, Upd> {
     }
 
     /// Get a future that will complete when the downlink stops running.
-    pub fn await_stopped(&self) -> StoppedFuture {
+    pub fn await_stopped(&self) -> promise::Receiver<Result<(), DownlinkError>> {
         match self {
             AnyDownlink::Queue(qdl) => qdl.await_stopped(),
             AnyDownlink::Dropping(ddl) => ddl.await_stopped(),
             AnyDownlink::Buffered(bdl) => bdl.await_stopped(),
+        }
+    }
+
+    pub async fn send_item(&mut self, value: Act) -> Result<(), DownlinkError> {
+        match self {
+            AnyDownlink::Queue(qdl) => qdl.send_item(value).await,
+            AnyDownlink::Dropping(ddl) => ddl.send_item(value).await,
+            AnyDownlink::Buffered(bdl) => bdl.send_item(value).await,
         }
     }
 }
@@ -173,70 +172,23 @@ impl<Upd: Clone + Send> Stream for AnyReceiver<Upd> {
     }
 }
 
-pub type QueueSubFuture<Upd> = TransformedFuture<
-    ErrInto<
-        Sequenced<
-            RequestFuture<Request<QueueTopicReceiver<Upd>>>,
-            oneshot::Receiver<QueueTopicReceiver<Upd>>,
-        >,
-        TopicError,
-    >,
-    MakeReceiver,
->;
-pub type DroppingSubFuture<Upd> =
-    TransformedFuture<Ready<Result<DroppingTopicReceiver<Upd>, TopicError>>, MakeReceiver>;
-pub type BufferedSubFuture<Upd> =
-    TransformedFuture<Ready<Result<BufferedTopicReceiver<Upd>, TopicError>>, MakeReceiver>;
-
-#[pin_project(project = AnySubFutureProj)]
-pub enum AnySubFuture<Upd: Send + 'static> {
-    Queue(#[pin] QueueSubFuture<Upd>),
-    Dropping(#[pin] DroppingSubFuture<Upd>),
-    Buffered(#[pin] BufferedSubFuture<Upd>),
-}
-
-impl<Upd: Clone + Send> Future for AnySubFuture<Upd> {
-    type Output = Result<AnyReceiver<Upd>, TopicError>;
-
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        match self.project() {
-            AnySubFutureProj::Queue(fut) => fut.poll(cx).map(|r| r.map(AnyReceiver::Queue)),
-            AnySubFutureProj::Dropping(fut) => fut.poll(cx).map(|r| r.map(AnyReceiver::Dropping)),
-            AnySubFutureProj::Buffered(fut) => fut.poll(cx).map(|r| r.map(AnyReceiver::Buffered)),
-        }
-    }
-}
-
 impl<Act, Upd> Topic<Event<Upd>> for AnyDownlink<Act, Upd>
 where
     Act: Send + 'static,
     Upd: Clone + Send + Sync + 'static,
 {
     type Receiver = AnyReceiver<Upd>;
-    type Fut = AnySubFuture<Upd>;
 
-    fn subscribe(&mut self) -> Self::Fut {
-        match self {
-            AnyDownlink::Queue(qdl) => AnySubFuture::Queue(qdl.subscribe()),
-            AnyDownlink::Dropping(ddl) => AnySubFuture::Dropping(ddl.subscribe()),
-            AnyDownlink::Buffered(bdl) => AnySubFuture::Buffered(bdl.subscribe()),
+    fn subscribe(&mut self) -> BoxFuture<Result<Self::Receiver, TopicError>> {
+        async move {
+            let rec = match self {
+                AnyDownlink::Queue(qdl) => AnyReceiver::Queue(qdl.subscribe().await?),
+                AnyDownlink::Dropping(ddl) => AnyReceiver::Dropping(ddl.subscribe().await?),
+                AnyDownlink::Buffered(bdl) => AnyReceiver::Buffered(bdl.subscribe().await?),
+            };
+            Ok(rec)
         }
-    }
-}
-
-impl<'a, Act, Upd> ItemSink<'a, Act> for AnyDownlink<Act, Upd>
-where
-    Act: Send + 'static,
-{
-    type Error = DownlinkError;
-    type SendFuture = MpscSend<'a, Act, DownlinkError>;
-
-    fn send_item(&'a mut self, value: Act) -> Self::SendFuture {
-        match self {
-            AnyDownlink::Queue(qdl) => qdl.send_item(value),
-            AnyDownlink::Dropping(ddl) => ddl.send_item(value),
-            AnyDownlink::Buffered(bdl) => bdl.send_item(value),
-        }
+        .boxed()
     }
 }
 
@@ -251,14 +203,17 @@ where
     Upd: Clone + Send + Sync + 'static,
 {
     type Receiver = AnyReceiver<Upd>;
-    type Fut = AnySubFuture<Upd>;
 
-    fn subscribe(&mut self) -> Self::Fut {
-        match self {
-            AnyDownlinkTopic::Queue(qdl) => AnySubFuture::Queue(qdl.subscribe()),
-            AnyDownlinkTopic::Dropping(ddl) => AnySubFuture::Dropping(ddl.subscribe()),
-            AnyDownlinkTopic::Buffered(bdl) => AnySubFuture::Buffered(bdl.subscribe()),
+    fn subscribe(&mut self) -> BoxFuture<Result<Self::Receiver, TopicError>> {
+        async move {
+            let rec = match self {
+                AnyDownlinkTopic::Queue(qdl) => AnyReceiver::Queue(qdl.subscribe().await?),
+                AnyDownlinkTopic::Dropping(ddl) => AnyReceiver::Dropping(ddl.subscribe().await?),
+                AnyDownlinkTopic::Buffered(bdl) => AnyReceiver::Buffered(bdl.subscribe().await?),
+            };
+            Ok(rec)
         }
+        .boxed()
     }
 }
 impl<Act, Upd> Downlink<Act, Event<Upd>> for AnyDownlink<Act, Upd>
@@ -267,7 +222,7 @@ where
     Act: Send + 'static,
 {
     type DlTopic = AnyDownlinkTopic<Upd>;
-    type DlSink = raw::Sender<mpsc::Sender<Act>>;
+    type DlSink = raw::Sender<Act>;
 
     fn split(self) -> (Self::DlTopic, Self::DlSink) {
         match self {

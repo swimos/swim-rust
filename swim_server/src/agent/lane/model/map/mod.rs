@@ -32,23 +32,22 @@ use swim_common::model::Value;
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lane::model::map::summary::TransactionSummary;
 use crate::agent::lane::model::{
-    DeferredBroadcastView, DeferredLaneView, DeferredMpscView, DeferredWatchView,
-    TransformedDeferredLaneView,
+    DeferredBroadcastView, DeferredLaneView, DeferredMpscView, TransformedDeferredLaneView,
 };
-use crate::agent::lane::strategy::{
-    Buffered, ChannelObserver, DeferredChannelObserver, Dropping, Queue,
-};
-use crate::agent::lane::{BroadcastStream, InvalidForm, LaneModel};
+use crate::agent::lane::strategy::{Buffered, Queue};
+use crate::agent::lane::{InvalidForm, LaneModel};
 use futures::stream::{iter, Iter};
 use futures::Stream;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
-use stm::var::observer::{self, JoinObserver, StaticObserver};
-use swim_common::topic::BroadcastSender;
-use tokio::sync::{broadcast, mpsc, oneshot, watch};
+use stm::var::observer::Observer;
+use tokio::sync::{broadcast, mpsc, oneshot};
 use tracing::{event, Level};
-use utilities::future::{FlatmapStream, SwimStreamExt, Transform, TransformedStream};
+use utilities::future::{
+    sync_boxed, FlatmapStream, SwimStreamExt, SyncBoxStream, Transform, TransformedStream,
+};
+use utilities::sync::broadcast_rx_to_stream;
 
 mod summary;
 
@@ -231,25 +230,22 @@ impl<V> MapLaneEvent<Value, V> {
 
 /// Adapts a watch strategy for use with a [`ValueLane`].
 pub trait MapLaneWatch<K, V> {
-    /// The type of the observer to watch the value of the lane.
-    type Obs: StaticObserver<Arc<TransactionSummary<Value, V>>> + Send + Sync + 'static;
-
-    /// The type of the observer to watch the value of the lane with an additional, deferred
-    /// observer.
-    type WithDefObs: StaticObserver<Arc<TransactionSummary<Value, V>>> + Send + Sync + 'static;
-
     /// The type of the stream of values produced by the lane.
     type View: Stream<Item = MapLaneEvent<K, V>> + Send + Sync + 'static;
 
-    type DeferredView: DeferredLaneView<MapLaneEvent<K, V>> + Send + Sync + 'static;
+    type DeferredView: DeferredLaneView<MapLaneEvent<K, V>> + Send + 'static;
 
     /// Create a linked observer and view stream.
-    fn make_watch(&self) -> (Self::Obs, Self::View);
+    fn make_watch(&self) -> (Observer<TransactionSummary<Value, V>>, Self::View);
 
     fn make_watch_with_deferred(
         &self,
         config: &AgentExecutionConfig,
-    ) -> (Self::WithDefObs, Self::View, Self::DeferredView);
+    ) -> (
+        Observer<TransactionSummary<Value, V>>,
+        Self::View,
+        Self::DeferredView,
+    );
 }
 
 /// Transforms a transaction summary into a stream of events with typed keys.
@@ -284,61 +280,18 @@ type TransformedChannel<C, K, V> = FlatmapStream<C, ToTypedEvents<K, V>>;
 type TransformedDeferred<D, K, V> =
     TransformedDeferredLaneView<SummaryRef<V>, D, ToTypedEvents<K, V>>;
 
-type WatchSumSender<V> = watch::Sender<SummaryRef<V>>;
-type WatchOptSumSender<V> = watch::Sender<Option<SummaryRef<V>>>;
-
-impl<K, V> MapLaneWatch<K, V> for Dropping
-where
-    K: Any + Send + Sync + Form,
-    V: Any + Send + Sync,
-{
-    type Obs = ChannelObserver<watch::Sender<SummaryRef<V>>>;
-    type WithDefObs = JoinObserver<
-        ChannelObserver<WatchSumSender<V>>,
-        DeferredChannelObserver<WatchOptSumSender<V>>,
-    >;
-    type View = TransformedChannel<watch::Receiver<SummaryRef<V>>, K, V>;
-    type DeferredView = TransformedDeferred<DeferredWatchView<SummaryRef<V>>, K, V>;
-
-    fn make_watch(&self) -> (Self::Obs, Self::View) {
-        let (tx, rx) = watch::channel(Default::default());
-        let observer = ChannelObserver::new(tx);
-        let str = rx.transform_flat_map(ToTypedEvents::default());
-        (observer, str)
-    }
-
-    fn make_watch_with_deferred(
-        &self,
-        _config: &AgentExecutionConfig,
-    ) -> (Self::WithDefObs, Self::View, Self::DeferredView) {
-        let (tx, rx) = watch::channel(Default::default());
-        let observer = ChannelObserver::new(tx);
-        let (tx_init, rx_init) = oneshot::channel();
-        let deferred = DeferredChannelObserver::Uninitialized(rx_init);
-        let joined = observer::join(observer, deferred);
-        let deferred_view = DeferredWatchView::new(tx_init).transform(ToTypedEvents::default());
-        let str = rx.transform_flat_map(ToTypedEvents::default());
-        (joined, str, deferred_view)
-    }
-}
-
-type MpscSumSender<V> = mpsc::Sender<SummaryRef<V>>;
-
 impl<K, V> MapLaneWatch<K, V> for Queue
 where
     K: Any + Send + Sync + Form,
     V: Any + Send + Sync,
 {
-    type Obs = ChannelObserver<mpsc::Sender<Arc<TransactionSummary<Value, V>>>>;
-    type WithDefObs =
-        JoinObserver<ChannelObserver<MpscSumSender<V>>, DeferredChannelObserver<MpscSumSender<V>>>;
     type View = TransformedChannel<mpsc::Receiver<SummaryRef<V>>, K, V>;
-    type DeferredView = TransformedDeferred<DeferredMpscView<SummaryRef<V>>, K, V>;
+    type DeferredView = TransformedDeferred<DeferredMpscView<TransactionSummary<Value, V>>, K, V>;
 
-    fn make_watch(&self) -> (Self::Obs, Self::View) {
+    fn make_watch(&self) -> (Observer<TransactionSummary<Value, V>>, Self::View) {
         let Queue(n) = self;
         let (tx, rx) = mpsc::channel(n.get());
-        let observer = ChannelObserver::new(tx);
+        let observer = tx.into();
         let str = rx.transform_flat_map(ToTypedEvents::default());
         (observer, str)
     }
@@ -346,13 +299,15 @@ where
     fn make_watch_with_deferred(
         &self,
         config: &AgentExecutionConfig,
-    ) -> (Self::WithDefObs, Self::View, Self::DeferredView) {
+    ) -> (
+        Observer<TransactionSummary<Value, V>>,
+        Self::View,
+        Self::DeferredView,
+    ) {
         let Queue(n) = self;
         let (tx, rx) = mpsc::channel(n.get());
-        let observer = ChannelObserver::new(tx);
         let (tx_init, rx_init) = oneshot::channel();
-        let deferred = DeferredChannelObserver::Uninitialized(rx_init);
-        let joined = observer::join(observer, deferred);
+        let joined = Observer::new_with_deferred(tx.into(), rx_init);
         let deferred_view = DeferredMpscView::new(tx_init, *n, config.yield_after)
             .transform(ToTypedEvents::default());
         let str = rx.transform_flat_map(ToTypedEvents::default());
@@ -360,42 +315,40 @@ where
     }
 }
 
-type BroadcastSumSender<V> = broadcast::Sender<SummaryRef<V>>;
-
 impl<K, V> MapLaneWatch<K, V> for Buffered
 where
     K: Any + Send + Sync + Form,
     V: Any + Send + Sync,
 {
-    type Obs = ChannelObserver<broadcast::Sender<Arc<TransactionSummary<Value, V>>>>;
-    type WithDefObs = JoinObserver<
-        ChannelObserver<BroadcastSumSender<V>>,
-        DeferredChannelObserver<BroadcastSender<SummaryRef<V>>>,
-    >;
-    type View = TransformedChannel<BroadcastStream<SummaryRef<V>>, K, V>;
-    type DeferredView = TransformedDeferred<DeferredBroadcastView<SummaryRef<V>>, K, V>;
+    type View = TransformedChannel<SyncBoxStream<SummaryRef<V>>, K, V>;
+    type DeferredView =
+        TransformedDeferred<DeferredBroadcastView<TransactionSummary<Value, V>>, K, V>;
 
-    fn make_watch(&self) -> (Self::Obs, Self::View) {
+    fn make_watch(&self) -> (Observer<TransactionSummary<Value, V>>, Self::View) {
         let Buffered(n) = self;
         let (tx, rx) = broadcast::channel(n.get());
-        let observer = ChannelObserver::new(tx);
-        let str = BroadcastStream(rx).transform_flat_map(ToTypedEvents::default());
+        let observer = tx.into();
+        let str =
+            sync_boxed(broadcast_rx_to_stream(rx)).transform_flat_map(ToTypedEvents::default());
         (observer, str)
     }
 
     fn make_watch_with_deferred(
         &self,
         _config: &AgentExecutionConfig,
-    ) -> (Self::WithDefObs, Self::View, Self::DeferredView) {
+    ) -> (
+        Observer<TransactionSummary<Value, V>>,
+        Self::View,
+        Self::DeferredView,
+    ) {
         let Buffered(n) = self;
         let (tx, rx) = broadcast::channel(n.get());
-        let observer = ChannelObserver::new(tx);
         let (tx_init, rx_init) = oneshot::channel();
-        let deferred = DeferredChannelObserver::Uninitialized(rx_init);
-        let joined = observer::join(observer, deferred);
+        let joined = Observer::new_with_deferred(tx.into(), rx_init);
         let deferred_view =
             DeferredBroadcastView::new(tx_init, *n).transform(ToTypedEvents::default());
-        let str = BroadcastStream(rx).transform_flat_map(ToTypedEvents::default());
+        let str =
+            sync_boxed(broadcast_rx_to_stream(rx)).transform_flat_map(ToTypedEvents::default());
         (joined, str, deferred_view)
     }
 }

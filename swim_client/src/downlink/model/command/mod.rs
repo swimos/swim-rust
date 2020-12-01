@@ -20,7 +20,6 @@ use swim_common::model::schema::{Schema, StandardSchema};
 use swim_common::model::Value;
 use swim_common::routing::RoutingError;
 use swim_common::sink::item::ItemSender;
-use tokio::sync::mpsc::Sender;
 
 #[cfg(test)]
 mod tests;
@@ -29,7 +28,7 @@ pub fn create_downlink<Commands>(
     schema: StandardSchema,
     cmd_sender: Commands,
     config: &DownlinkParams,
-) -> raw::Sender<Sender<Value>>
+) -> raw::Sender<Value>
 where
     Commands: ItemSender<Command<Value>, RoutingError> + Send + 'static,
 {

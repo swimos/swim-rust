@@ -15,13 +15,12 @@
 use crate::routing::error::{ConnectionError, ResolutionError, RouterError, Unresolvable};
 use crate::routing::remote::router::RemoteRouter;
 use crate::routing::remote::test_fixture::LocalRoutes;
-use crate::routing::remote::RoutingRequest;
+use crate::routing::remote::{RawRoute, RoutingRequest};
 use crate::routing::{Route, RoutingAddr, ServerRouter, TaggedEnvelope};
 use futures::future::join;
 use futures::io::ErrorKind;
 use futures::{FutureExt, StreamExt};
 use swim_common::model::Value;
-use swim_common::sink::item::ItemSink;
 use swim_common::warp::envelope::Envelope;
 use tokio::sync::mpsc;
 use url::Url;
@@ -46,7 +45,7 @@ async fn fake_resolution(
             RoutingRequest::Endpoint { addr, request } => {
                 if resolved && addr == ADDR {
                     assert!(request
-                        .send_ok(Route::new(sender.clone(), drop_rx.clone()))
+                        .send_ok(RawRoute::new(sender.clone(), drop_rx.clone()))
                         .is_ok());
                 } else {
                     assert!(request.send_err(Unresolvable(addr)).is_ok());

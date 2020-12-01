@@ -213,8 +213,8 @@ where
         ..
     } = config;
 
-    let (mut act_tx, act_rx) = mpsc::channel(action_buffer.get());
-    let (mut upd_tx, upd_rx) = mpsc::channel(update_buffer.get());
+    let (act_tx, act_rx) = mpsc::channel(action_buffer.get());
+    let (upd_tx, upd_rx) = mpsc::channel(update_buffer.get());
     let (err_tx, err_rx) = mpsc::channel(uplink_err_buffer.get());
 
     let spawner_channels = UplinkChannels::new(events, act_rx, err_tx);
@@ -366,7 +366,7 @@ where
 
 async fn simple_action_envelope_task<Command>(
     envelopes: impl Stream<Item = TaggedClientEnvelope>,
-    mut commands: mpsc::Sender<Result<(RoutingAddr, Command), FormErr>>,
+    commands: mpsc::Sender<Result<(RoutingAddr, Command), FormErr>>,
 ) where
     Command: Send + Sync + Form + 'static,
 {
@@ -392,7 +392,7 @@ async fn action_envelope_task_with_uplinks<Command>(
     route: RelativePath,
     config: AgentExecutionConfig,
     envelopes: impl Stream<Item = TaggedClientEnvelope>,
-    mut commands: mpsc::Sender<Result<(RoutingAddr, Command), FormErr>>,
+    commands: mpsc::Sender<Result<(RoutingAddr, Command), FormErr>>,
     mut actions: mpsc::Sender<TaggedAction>,
     err_rx: mpsc::Receiver<UplinkErrorReport>,
 ) -> (bool, Vec<UplinkErrorReport>)

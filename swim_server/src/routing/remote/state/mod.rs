@@ -19,9 +19,9 @@ use crate::routing::remote::net::{ExternalConnections, Listener};
 use crate::routing::remote::pending::PendingRequests;
 use crate::routing::remote::table::{HostAndPort, RoutingTable};
 use crate::routing::remote::task::TaskFactory;
-use crate::routing::remote::{ResolutionRequest, RoutingRequest, SocketAddrIt};
+use crate::routing::remote::{RawRoute, ResolutionRequest, RoutingRequest, SocketAddrIt};
 use crate::routing::ws::WsConnections;
-use crate::routing::{ConnectionDropped, Route, RoutingAddr, ServerRouterFactory, TaggedEnvelope};
+use crate::routing::{ConnectionDropped, RoutingAddr, ServerRouterFactory};
 use futures::future::{BoxFuture, Fuse};
 use futures::StreamExt;
 use futures::{select_biased, FutureExt};
@@ -82,7 +82,7 @@ pub trait RemoteTasksState {
     fn fail_connection(&mut self, host: &HostAndPort, error: ConnectionError);
 
     /// Resolve an entry in the routing table.
-    fn table_resolve(&self, addr: RoutingAddr) -> Option<Route<mpsc::Sender<TaggedEnvelope>>>;
+    fn table_resolve(&self, addr: RoutingAddr) -> Option<RawRoute>;
 
     /// Try to resolve a host in the routing table.
     fn table_try_resolve(&self, target: &HostAndPort) -> Option<RoutingAddr>;
@@ -223,7 +223,7 @@ where
         self.pending.send_err(host, error);
     }
 
-    fn table_resolve(&self, addr: RoutingAddr) -> Option<Route<mpsc::Sender<TaggedEnvelope>>> {
+    fn table_resolve(&self, addr: RoutingAddr) -> Option<RawRoute> {
         self.table.resolve(addr)
     }
 
