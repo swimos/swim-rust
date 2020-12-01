@@ -61,7 +61,7 @@ impl ServerRouterFactory for SuperRouterFactory {
     }
 }
 
-// Todo change name
+// Todo maybe change name
 #[derive(Debug, Clone)]
 pub(crate) struct SuperRouter {
     addr: RoutingAddr,
@@ -144,57 +144,28 @@ impl ServerRouter for SuperRouter {
         route: RelativeUri,
     ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
         async move {
-            let SuperRouter {
-                plane_sender,
-                remote_sender,
-                ..
-            } = self;
+            let SuperRouter { plane_sender, .. } = self;
 
-            if host.is_none() {
-                let (tx, rx) = oneshot::channel();
-                if plane_sender
-                    .send(PlaneRequest::Resolve {
-                        host,
-                        name: route.clone(),
-                        request: Request::new(tx),
-                    })
-                    .await
-                    .is_err()
-                {
-                    Err(RouterError::NoAgentAtRoute(route))
-                } else {
-                    match rx.await {
-                        Ok(Ok(addr)) => Ok(addr),
-                        Ok(Err(err)) => Err(err),
-                        Err(_) => Err(RouterError::RouterDropped),
-                    }
-                }
+            let (tx, rx) = oneshot::channel();
+            if plane_sender
+                .send(PlaneRequest::Resolve {
+                    host,
+                    name: route.clone(),
+                    request: Request::new(tx),
+                })
+                .await
+                .is_err()
+            {
+                Err(RouterError::NoAgentAtRoute(route))
             } else {
-                unimplemented!()
+                match rx.await {
+                    Ok(Ok(addr)) => Ok(addr),
+                    Ok(Err(err)) => Err(err),
+                    Err(_) => Err(RouterError::RouterDropped),
+                }
             }
         }
         .boxed()
-
-        //     let (tx, rx) = oneshot::channel();
-        //     if request_sender
-        //         .send(PlaneRequest::Resolve {
-        //             host,
-        //             name: route,
-        //             request: Request::new(tx),
-        //         })
-        //         .await
-        //         .is_err()
-        //     {
-        //         Err(RouterError::RouterDropped)
-        //     } else {
-        //         match rx.await {
-        //             Ok(Ok(addr)) => Ok(addr),
-        //             Ok(Err(err)) => Err(err),
-        //             Err(_) => Err(RouterError::RouterDropped),
-        //         }
-        //     }
-        // }
-        //     .boxed()
     }
 }
 
