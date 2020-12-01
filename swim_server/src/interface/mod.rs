@@ -1,8 +1,10 @@
-use crate::agent::action_lifecycle;
 use crate::agent::command_lifecycle;
 use crate::agent::lane::channels::AgentExecutionConfig;
-use crate::agent::lane::lifecycle::LaneLifecycle;
-use crate::agent::lane::model::action::{ActionLane, CommandLane};
+use crate::agent::lane::lifecycle::{LaneLifecycle, StatefulLaneLifecycleBase};
+use crate::agent::lane::model::action::CommandLane;
+use crate::agent::lane::model::value::ValueLane;
+use crate::agent::lane::strategy::Queue;
+use crate::agent::value_lifecycle;
 use crate::agent::AgentContext;
 use crate::agent::SwimAgent;
 use crate::agent_lifecycle;
@@ -17,6 +19,7 @@ use futures::join;
 use futures_util::core_reexport::time::Duration;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::num::NonZeroUsize;
+use std::sync::Arc;
 use tokio::sync::mpsc;
 use tracing::{event, Level};
 use utilities::future::open_ended::OpenEndedFutures;
@@ -33,8 +36,8 @@ mod swim_server {
 pub struct RustAgent {
     #[lifecycle(public, name = "EchoLifecycle")]
     echo: CommandLane<String>,
-    #[lifecycle(public, name = "IncrementLifecycle")]
-    increment: ActionLane<i32, i32>,
+    #[lifecycle(public, name = "CounterLifecycle")]
+    counter: ValueLane<i32>,
 }
 
 #[derive(Debug, Clone)]
@@ -48,7 +51,7 @@ impl RustAgentLifecycle {
     where
         Context: AgentContext<RustAgent> + Sized + Send + Sync,
     {
-        event!(Level::DEBUG, "Agent Foo started!");
+        event!(Level::DEBUG, "Rust agent has started!");
     }
 }
 
@@ -74,27 +77,36 @@ impl LaneLifecycle<RustAgentConfig> for EchoLifecycle {
     }
 }
 
-#[action_lifecycle(agent = "RustAgent", command_type = "i32", response_type = "i32")]
-struct IncrementLifecycle;
+#[value_lifecycle(agent = "RustAgent", event_type = "i32")]
+struct CounterLifecycle;
 
-impl IncrementLifecycle {
-    async fn on_command<Context>(
-        &self,
-        command: i32,
-        _model: &ActionLane<i32, i32>,
-        _context: &Context,
-    ) -> i32
+impl CounterLifecycle {
+    async fn on_start<Context>(&self, _model: &ValueLane<i32>, _context: &Context)
+    where
+        Context: AgentContext<RustAgent> + Sized + Send + Sync,
+    {
+        event!(Level::DEBUG, "Counter lane has started!");
+    }
+
+    async fn on_event<Context>(&self, event: &Arc<i32>, _model: &ValueLane<i32>, _context: &Context)
     where
         Context: AgentContext<RustAgent> + Sized + Send + Sync + 'static,
     {
-        event!(Level::DEBUG, "Incrementing: {}", command);
-        command + 1
+        event!(Level::DEBUG, "Event received: {}", event);
     }
 }
 
-impl LaneLifecycle<RustAgentConfig> for IncrementLifecycle {
+impl LaneLifecycle<RustAgentConfig> for CounterLifecycle {
     fn create(_config: &RustAgentConfig) -> Self {
-        IncrementLifecycle {}
+        CounterLifecycle {}
+    }
+}
+
+impl StatefulLaneLifecycleBase for CounterLifecycle {
+    type WatchStrategy = Queue;
+
+    fn create_strategy(&self) -> Self::WatchStrategy {
+        Queue::default()
     }
 }
 
