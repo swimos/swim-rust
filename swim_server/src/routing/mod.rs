@@ -16,11 +16,14 @@ use crate::plane::PlaneRequest;
 use crate::routing::error::{ConnectionError, ResolutionError, RouterError};
 use crate::routing::remote::RoutingRequest;
 use futures::future::BoxFuture;
+use futures::FutureExt;
 use std::fmt::{Display, Formatter};
 use std::time::Duration;
+use swim_common::request::Request;
 use swim_common::sink::item::{ItemSender, ItemSink, MpscSend};
 use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
 use tokio::sync::mpsc;
+use tokio::sync::oneshot;
 use url::Url;
 use utilities::errors::Recoverable;
 use utilities::sync::promise;
@@ -87,52 +90,52 @@ impl ServerRouter for SuperRouter {
         &mut self,
         addr: RoutingAddr,
     ) -> BoxFuture<'_, Result<Route<Self::Sender>, ResolutionError>> {
-        //Todo
-        unimplemented!()
-        // async move {
-        //     let SuperRouter {
-        //         addr: tag,
-        //         plane_sender,
-        //         remote_sender,
-        //     } = self;
-        //     let (tx, rx) = oneshot::channel();
-        //
-        //     if addr.is_local() {
-        //         if plane_sender
-        //             .send(PlaneRequest::Endpoint {
-        //                 id: addr,
-        //                 request: Request::new(tx),
-        //             })
-        //             .await
-        //             .is_err()
-        //         {
-        //             Err(ResolutionError::RouterDropped)
-        //         } else {
-        //             match rx.await {
-        //                 Ok(Ok(Route { sender, on_drop })) => {
-        //                     Ok(Route::new(TaggedSender::new(*tag, sender), on_drop))
-        //                 }
-        //                 Ok(Err(err)) => Err(ResolutionError::Unresolvable(err)),
-        //                 Err(_) => Err(ResolutionError::RouterDropped),
-        //             }
-        //         }
-        //     } else {
-        //         let request = Request::new(tx);
-        //         let routing_req = RoutingRequest::Endpoint { addr, request };
-        //         if remote_sender.send(routing_req).await.is_err() {
-        //             Err(ResolutionError::RouterDropped)
-        //         } else {
-        //             match rx.await {
-        //                 Ok(Ok(Route { sender, on_drop })) => {
-        //                     Ok(Route::new(TaggedSender::new(*tag, sender), on_drop))
-        //                 }
-        //                 Ok(Err(err)) => Err(ResolutionError::Unresolvable(err)),
-        //                 Err(_) => Err(ResolutionError::RouterDropped),
-        //             }
-        //         }
-        //     }
-        // }
-        // .boxed()
+        async move {
+            let SuperRouter {
+                plane_sender,
+                remote_sender,
+                addr: tag,
+            } = self;
+
+            if addr.is_remote() {
+                let (tx, rx) = oneshot::channel();
+                let request = Request::new(tx);
+                if remote_sender
+                    .send(RoutingRequest::Endpoint { addr, request })
+                    .await
+                    .is_err()
+                {
+                    Err(ResolutionError::RouterDropped)
+                } else {
+                    match rx.await {
+                        Ok(Ok(Route { sender, on_drop })) => {
+                            Ok(Route::new(TaggedSender::new(*tag, sender), on_drop))
+                        }
+                        Ok(Err(err)) => Err(ResolutionError::Unresolvable(err)),
+                        Err(_) => Err(ResolutionError::RouterDropped),
+                    }
+                }
+            } else {
+                let (tx, rx) = oneshot::channel();
+                let request = Request::new(tx);
+                if plane_sender
+                    .send(PlaneRequest::Endpoint { id: addr, request })
+                    .await
+                    .is_err()
+                {
+                    Err(ResolutionError::RouterDropped)
+                } else {
+                    match rx.await {
+                        Ok(Ok(Route { sender, on_drop })) => {
+                            Ok(Route::new(TaggedSender::new(*tag, sender), on_drop))
+                        }
+                        Ok(Err(err)) => Err(ResolutionError::Unresolvable(err)),
+                        Err(_) => Err(ResolutionError::RouterDropped),
+                    }
+                }
+            }
+        }
+        .boxed()
     }
 
     fn lookup(
@@ -140,8 +143,58 @@ impl ServerRouter for SuperRouter {
         host: Option<Url>,
         route: RelativeUri,
     ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
-        //Todo
-        unimplemented!()
+        async move {
+            let SuperRouter {
+                plane_sender,
+                remote_sender,
+                ..
+            } = self;
+
+            if host.is_none() {
+                let (tx, rx) = oneshot::channel();
+                if plane_sender
+                    .send(PlaneRequest::Resolve {
+                        host,
+                        name: route.clone(),
+                        request: Request::new(tx),
+                    })
+                    .await
+                    .is_err()
+                {
+                    Err(RouterError::NoAgentAtRoute(route))
+                } else {
+                    match rx.await {
+                        Ok(Ok(addr)) => Ok(addr),
+                        Ok(Err(err)) => Err(err),
+                        Err(_) => Err(RouterError::RouterDropped),
+                    }
+                }
+            } else {
+                unimplemented!()
+            }
+        }
+        .boxed()
+
+        //     let (tx, rx) = oneshot::channel();
+        //     if request_sender
+        //         .send(PlaneRequest::Resolve {
+        //             host,
+        //             name: route,
+        //             request: Request::new(tx),
+        //         })
+        //         .await
+        //         .is_err()
+        //     {
+        //         Err(RouterError::RouterDropped)
+        //     } else {
+        //         match rx.await {
+        //             Ok(Ok(addr)) => Ok(addr),
+        //             Ok(Err(err)) => Err(err),
+        //             Err(_) => Err(RouterError::RouterDropped),
+        //         }
+        //     }
+        // }
+        //     .boxed()
     }
 }
 

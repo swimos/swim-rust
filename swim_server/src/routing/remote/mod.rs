@@ -74,6 +74,8 @@ pub struct RemoteConnectionsTask<External: ExternalConnections, Ws, Router, Sp> 
     stop_trigger: trigger::Receiver,
     spawner: Sp,
     configuration: ConnectionConfig,
+    remote_tx: mpsc::Sender<RoutingRequest>,
+    remote_rx: mpsc::Receiver<RoutingRequest>,
 }
 
 type SocketAddrIt = std::vec::IntoIter<SocketAddr>;
@@ -108,6 +110,8 @@ where
         delegate_router: RouterFac,
         stop_trigger: trigger::Receiver,
         spawner: Sp,
+        remote_tx: mpsc::Sender<RoutingRequest>,
+        remote_rx: mpsc::Receiver<RoutingRequest>,
     ) -> io::Result<Self> {
         let listener = external.bind(bind_addr).await?;
         Ok(RemoteConnectionsTask {
@@ -118,6 +122,8 @@ where
             stop_trigger,
             spawner,
             configuration,
+            remote_tx,
+            remote_rx,
         })
     }
 
@@ -130,6 +136,8 @@ where
             stop_trigger,
             spawner,
             configuration,
+            remote_tx,
+            remote_rx,
         } = self;
 
         let mut state = RemoteConnections::new(
@@ -140,6 +148,8 @@ where
             listener,
             stop_trigger,
             delegate_router,
+            remote_tx,
+            remote_rx,
         );
 
         let mut overall_result = Ok(());

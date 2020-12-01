@@ -14,7 +14,7 @@
 
 use crate::routing::error::{ResolutionError, RouterError};
 use crate::routing::remote::RoutingRequest;
-use crate::routing::{Route, RoutingAddr, ServerRouter, ServerRouterFactory, TaggedSender};
+use crate::routing::{Route, RoutingAddr, ServerRouter, TaggedSender};
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use swim_common::request::Request;
@@ -25,37 +25,6 @@ use utilities::uri::RelativeUri;
 
 #[cfg(test)]
 mod tests;
-
-/// Creates [RemoteRouter`] instances.
-#[derive(Debug)]
-pub struct RemoteRouterFactory<DelegateFac: ServerRouterFactory> {
-    request_sender: mpsc::Sender<RoutingRequest>,
-    delegate_fac: DelegateFac,
-}
-
-impl<DelegateFac: ServerRouterFactory> RemoteRouterFactory<DelegateFac> {
-    pub(in crate) fn new(
-        request_sender: mpsc::Sender<RoutingRequest>,
-        delegate_fac: DelegateFac,
-    ) -> Self {
-        RemoteRouterFactory {
-            request_sender,
-            delegate_fac,
-        }
-    }
-}
-
-impl<DelegateFac: ServerRouterFactory> ServerRouterFactory for RemoteRouterFactory<DelegateFac> {
-    type Router = RemoteRouter<DelegateFac::Router>;
-
-    fn create_for(&self, addr: RoutingAddr) -> Self::Router {
-        RemoteRouter::new(
-            addr,
-            self.delegate_fac.create_for(addr),
-            self.request_sender.clone(),
-        )
-    }
-}
 
 /// Router implementation that will route to running [`ConnectionTask`]s for remote addresses and
 /// will delegate to another router instance for local addresses.

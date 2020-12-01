@@ -263,9 +263,10 @@ where
         listener: External::ListenerType,
         stop_trigger: trigger::Receiver,
         delegate_router: RouterFac,
+        req_tx: mpsc::Sender<RoutingRequest>,
+        req_rx: mpsc::Receiver<RoutingRequest>,
     ) -> Self {
         let (stop_tx, stop_rx) = trigger::trigger();
-        let (req_tx, req_rx) = mpsc::channel(configuration.router_buffer_size.get());
         let tasks = TaskFactory::new(req_tx, stop_rx.clone(), configuration, delegate_router);
         RemoteConnections {
             websockets,

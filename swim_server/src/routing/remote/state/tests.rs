@@ -65,6 +65,7 @@ fn make_state(
     let router = LocalRoutes::new(addr);
 
     let (stop_tx, stop_rx) = trigger::trigger();
+    let (remote_tx, remote_rx) = mpsc::channel(8);
 
     let connections = RemoteConnections::new(
         ws,
@@ -74,6 +75,8 @@ fn make_state(
         FakeListener::new(incoming),
         stop_rx,
         router.clone(),
+        remote_tx,
+        remote_rx,
     );
 
     TestFixture {
