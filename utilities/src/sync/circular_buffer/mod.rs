@@ -95,6 +95,16 @@ enum InnerQueue<T> {
     Large(QueueChannel<SegQueue<T>>),
 }
 
+impl<T> InnerQueue<T> {
+    fn waker(&self) -> &AtomicWaker {
+        match self {
+            InnerQueue::One(chan_queue) => &chan_queue.waker,
+            InnerQueue::Small(chan_queue) => &chan_queue.waker,
+            InnerQueue::Large(chan_queue) => &chan_queue.waker,
+        }
+    }
+}
+
 #[derive(Debug)]
 struct Inner<T> {
     queue: InnerQueue<T>,
@@ -117,6 +127,7 @@ impl<T> Drop for Sender<T> {
     fn drop(&mut self) {
         let Sender(inner) = self;
         inner.sender_active.store(false, Ordering::Release);
+        inner.queue.waker().wake();
     }
 }
 

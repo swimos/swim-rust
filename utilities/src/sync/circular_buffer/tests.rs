@@ -13,12 +13,15 @@
 // limitations under the License.
 
 use crate::sync::circular_buffer::error::{RecvError, SendError};
-use crate::sync::circular_buffer::{InternalQueue, OneItemQueue, QueueChannel, LARGE_BOUNDARY};
-use crossbeam_queue::{ArrayQueue, SegQueue};
+use crate::sync::circular_buffer::{InternalQueue, OneItemQueue, LARGE_BOUNDARY};
+use futures::task::ArcWake;
 use futures::StreamExt;
-use std::mem::size_of;
+use std::future::Future;
 use std::num::NonZeroUsize;
+use std::pin::Pin;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::task::{Context, Poll};
 use tokio::sync::Barrier;
 
 #[test]
@@ -304,4 +307,42 @@ async fn small_send_and_receive_many() {
 #[tokio::test(flavor = "multi_thread")]
 async fn large_send_and_receive_many() {
     send_and_receive_many(LARGE_BOUNDARY + 1, 10000).await;
+}
+
+struct WakeObserver(AtomicBool);
+
+impl WakeObserver {
+    fn new() -> Self {
+        WakeObserver(AtomicBool::new(false))
+    }
+}
+
+impl ArcWake for WakeObserver {
+    fn wake_by_ref(arc_self: &Arc<Self>) {
+        let WakeObserver(flag) = &**arc_self;
+        flag.store(true, Ordering::SeqCst);
+    }
+}
+
+#[test]
+fn receiver_wake_on_sender_dropped() {
+    let (tx, mut rx) = super::channel::<i32>(NonZeroUsize::new(5).unwrap());
+
+    let obs = Arc::new(WakeObserver::new());
+
+    let waker = futures::task::waker(obs.clone());
+    let mut context = Context::from_waker(&waker);
+
+    let mut recv_fut = rx.recv();
+
+    let mut pinned = Pin::new(&mut recv_fut);
+
+    assert!(pinned.as_mut().poll(&mut context).is_pending());
+
+    drop(tx);
+
+    let WakeObserver(flag) = &*obs;
+    assert!(flag.load(Ordering::SeqCst));
+
+    assert_eq!(pinned.poll(&mut context), Poll::Ready(Err(RecvError)));
 }
