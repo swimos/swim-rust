@@ -24,7 +24,7 @@ im = "15.0.0"
 parking_lot = "0.11.0"
 pin-project = "0.4.20"
 pin-utils = "0.1.0"
-tokio = { version = "0.2.21", features = ["stream", "rt-core", "net"] }
+tokio = { version = "0.3.3", features = ["stream", "rt", "net"] }
 url = "2.1.1"
 swim_common = { path = "../swim_common", features = ["tls"] }
 utilities = { path = "../utilities" }
@@ -40,5 +40,5 @@ native-tls = { version = "0.2", features = ["vendored"] }
 auth = { path = "auth" }
 
 [dev-dependencies]
-tokio = { version = "0.2.21", features = ["rt-threaded", "macros", "test-util"] }
+tokio = { version = "0.3.3", features = ["rt-multi-thread", "macros", "test-util"] }
 tracing = "0.1.16"

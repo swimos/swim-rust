@@ -15,7 +15,8 @@
 #[cfg(test)]
 mod tests;
 
-use crate::routing::{ConnectionDropped, Route, RoutingAddr, TaggedEnvelope};
+use crate::routing::remote::RawRoute;
+use crate::routing::{ConnectionDropped, RoutingAddr, TaggedEnvelope};
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
 use std::net::SocketAddr;
@@ -65,10 +66,10 @@ impl RoutingTable {
     }
 
     /// Get the entry in the table associated with a routing key, if it exsits.
-    pub fn resolve(&self, addr: RoutingAddr) -> Option<Route<mpsc::Sender<TaggedEnvelope>>> {
+    pub fn resolve(&self, addr: RoutingAddr) -> Option<RawRoute> {
         self.endpoints
             .get(&addr)
-            .map(|h| Route::new(h.tx.clone(), h.drop_rx.clone()))
+            .map(|h| RawRoute::new(h.tx.clone(), h.drop_rx.clone()))
     }
 
     /// Insert an entry into the table.

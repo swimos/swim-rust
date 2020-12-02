@@ -23,14 +23,13 @@ use futures::future::{ready, BoxFuture};
 use futures::io::ErrorKind;
 use futures::stream::Fuse;
 use futures::task::{AtomicWaker, Context, Poll};
-use futures::{ready, FutureExt, Sink, SinkExt, Stream, StreamExt};
+use futures::{FutureExt, Sink, Stream, StreamExt};
 use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::io;
 use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::Arc;
-use swim_common::sink::{MpscSink, SinkSendError};
 use swim_common::ws::WsMessage;
 use tokio::sync::mpsc;
 use url::Url;
@@ -39,7 +38,7 @@ use utilities::uri::RelativeUri;
 
 #[derive(Debug)]
 struct Entry {
-    route: Route<TaggedSender>,
+    route: Route,
     on_drop: promise::Sender<ConnectionDropped>,
     countdown: u8,
 }
@@ -61,12 +60,10 @@ impl LocalRoutes {
 }
 
 impl ServerRouter for LocalRoutes {
-    type Sender = TaggedSender;
-
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,
-    ) -> BoxFuture<'_, Result<Route<Self::Sender>, ResolutionError>> {
+    ) -> BoxFuture<'_, Result<Route, ResolutionError>> {
         let lock = self.1.lock();
         let result = if let Some(Entry {
             route, countdown, ..
@@ -174,90 +171,93 @@ impl ServerRouterFactory for LocalRoutes {
     }
 }
 
-pub struct TwoWayMpsc<T, E> {
-    tx: MpscSink<T>,
-    rx: mpsc::Receiver<Result<T, E>>,
-    failures: Box<dyn Fn(&T) -> Option<E> + Send + Unpin>,
-}
+pub mod fake_channel {
 
-impl<T, E> TwoWayMpsc<T, E>
-where
-    T: Send + Sync + 'static,
-    E: Send + Sync + 'static,
-{
-    pub fn new<F>(tx: mpsc::Sender<T>, rx: mpsc::Receiver<Result<T, E>>, failures: F) -> Self
+    use crate::routing::ws::{CloseReason, JoinedStreamSink};
+    use futures::channel::mpsc;
+    use futures::future::ready;
+    use futures::future::BoxFuture;
+    use futures::{ready, FutureExt, Sink, SinkExt, Stream, StreamExt};
+    use std::pin::Pin;
+    use std::task::{Context, Poll};
+
+    pub struct TwoWayMpsc<T, E> {
+        tx: mpsc::Sender<T>,
+        rx: mpsc::Receiver<Result<T, E>>,
+        failures: Box<dyn Fn(&T) -> Option<E> + Send + Unpin>,
+    }
+
+    impl<T, E> TwoWayMpsc<T, E>
     where
-        F: Fn(&T) -> Option<E> + Send + Unpin + 'static,
+        T: Send + Sync + 'static,
+        E: Send + Sync + 'static,
     {
-        TwoWayMpsc {
-            tx: MpscSink::wrap(tx),
-            rx,
-            failures: Box::new(failures),
+        pub fn new<F>(tx: mpsc::Sender<T>, rx: mpsc::Receiver<Result<T, E>>, failures: F) -> Self
+        where
+            F: Fn(&T) -> Option<E> + Send + Unpin + 'static,
+        {
+            TwoWayMpsc {
+                tx,
+                rx,
+                failures: Box::new(failures),
+            }
         }
     }
 
-    pub fn no_send_errors<F>(tx: mpsc::Sender<T>, rx: mpsc::Receiver<Result<T, E>>) -> Self {
-        TwoWayMpsc {
-            tx: MpscSink::wrap(tx),
-            rx,
-            failures: Box::new(|_| None),
+    impl<T, E> Sink<T> for TwoWayMpsc<T, E>
+    where
+        T: Send + Sync + 'static,
+        E: Send + Sync + 'static,
+        E: From<mpsc::SendError>,
+    {
+        type Error = E;
+
+        fn poll_ready(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+            Poll::Ready(Ok(ready!(self.get_mut().tx.poll_ready_unpin(cx))?))
+        }
+
+        fn start_send(self: Pin<&mut Self>, item: T) -> Result<(), Self::Error> {
+            if let Some(err) = (self.as_ref().get_ref().failures)(&item) {
+                Err(err)
+            } else {
+                self.get_mut().tx.start_send_unpin(item)?;
+                Ok(())
+            }
+        }
+
+        fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+            Poll::Ready(Ok(ready!(self.get_mut().tx.poll_flush_unpin(cx))?))
+        }
+
+        fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+            Poll::Ready(Ok(ready!(self.get_mut().tx.poll_close_unpin(cx))?))
         }
     }
-}
 
-impl<T, E> Sink<T> for TwoWayMpsc<T, E>
-where
-    T: Send + Sync + 'static,
-    E: Send + Sync + 'static,
-    E: From<SinkSendError<T>>,
-{
-    type Error = E;
+    impl<T, E> Stream for TwoWayMpsc<T, E>
+    where
+        T: Send + Sync + 'static,
+        E: Send + Sync + 'static,
+        E: From<mpsc::SendError>,
+    {
+        type Item = Result<T, E>;
 
-    fn poll_ready(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        Poll::Ready(Ok(ready!(self.get_mut().tx.poll_ready_unpin(cx))?))
-    }
-
-    fn start_send(self: Pin<&mut Self>, item: T) -> Result<(), Self::Error> {
-        if let Some(err) = (self.as_ref().get_ref().failures)(&item) {
-            Err(err)
-        } else {
-            self.get_mut().tx.start_send_unpin(item)?;
-            Ok(())
+        fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+            self.get_mut().rx.poll_next_unpin(cx)
         }
     }
 
-    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        Poll::Ready(Ok(ready!(self.get_mut().tx.poll_flush_unpin(cx))?))
-    }
+    impl<T, E> JoinedStreamSink<T, E> for TwoWayMpsc<T, E>
+    where
+        T: Send + Sync + 'static,
+        E: Send + Sync + 'static,
+        E: From<mpsc::SendError>,
+    {
+        type CloseFut = BoxFuture<'static, Result<(), E>>;
 
-    fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        Poll::Ready(Ok(ready!(self.get_mut().tx.poll_close_unpin(cx))?))
-    }
-}
-
-impl<T, E> Stream for TwoWayMpsc<T, E>
-where
-    T: Send + Sync + 'static,
-    E: Send + Sync + 'static,
-    E: From<SinkSendError<T>>,
-{
-    type Item = Result<T, E>;
-
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        self.get_mut().rx.poll_next_unpin(cx)
-    }
-}
-
-impl<T, E> JoinedStreamSink<T, E> for TwoWayMpsc<T, E>
-where
-    T: Send + Sync + 'static,
-    E: Send + Sync + 'static,
-    E: From<SinkSendError<T>>,
-{
-    type CloseFut = BoxFuture<'static, Result<(), E>>;
-
-    fn close(self, _reason: Option<CloseReason>) -> Self::CloseFut {
-        ready(Ok(())).boxed()
+        fn close(self, _reason: Option<CloseReason>) -> Self::CloseFut {
+            ready(Ok(())).boxed()
+        }
     }
 }
 

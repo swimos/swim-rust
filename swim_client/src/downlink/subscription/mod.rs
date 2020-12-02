@@ -26,7 +26,7 @@ use crate::downlink::typed::{
 };
 use crate::downlink::watch_adapter::map::KeyedWatch;
 use crate::downlink::watch_adapter::value::ValuePump;
-use crate::downlink::{raw, Command, DownlinkError, Message, StoppedFuture};
+use crate::downlink::{raw, Command, DownlinkError, Message};
 use crate::router::{Router, RouterEvent};
 use either::Either;
 use futures::stream::Fuse;
@@ -45,9 +45,9 @@ use swim_common::model::Value;
 use swim_common::request::request_future::RequestError;
 use swim_common::request::Request;
 use swim_common::routing::RoutingError;
+use swim_common::sink::item;
 use swim_common::sink::item::either::SplitSink;
 use swim_common::sink::item::ItemSender;
-use swim_common::sink::item::ItemSink;
 use swim_common::topic::Topic;
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::AbsolutePath;
@@ -57,6 +57,8 @@ use tokio::sync::oneshot::error::RecvError;
 use tokio::sync::{mpsc, oneshot};
 use tracing::{error, info, instrument, trace_span};
 use utilities::future::{SwimFutureExt, TransformOnce, TransformedFuture, UntilFailure};
+use utilities::sync::promise;
+use utilities::sync::promise::PromiseError;
 
 pub mod envelopes;
 #[cfg(test)]
@@ -68,7 +70,7 @@ pub type TypedValueDownlink<T> = ValueDownlink<AnyValueDownlink, T>;
 pub type AnyMapDownlink = AnyDownlink<MapAction, ViewWithEvent>;
 pub type TypedMapDownlink<K, V> = MapDownlink<AnyMapDownlink, K, V>;
 
-pub type AnyCommandDownlink = raw::Sender<mpsc::Sender<Value>>;
+pub type AnyCommandDownlink = raw::Sender<Value>;
 pub type TypedCommandDownlink<T> = CommandDownlink<AnyCommandDownlink, T>;
 
 pub type AnyEventDownlink = AnyEventReceiver<Value>;
@@ -424,7 +426,7 @@ impl Display for SubscriptionError {
             SubscriptionError::IncompatibleValueSchema {
                 path,
                 existing,
-                requested
+                requested,
             } => {
                 write!(f, "A downlink was requested to {} with schema {} but one is already running with schema {}.",
                        path, existing, requested)
@@ -433,7 +435,7 @@ impl Display for SubscriptionError {
                 is_key,
                 path,
                 existing,
-                requested
+                requested,
             } => {
                 let key_or_val = if *is_key { "key" } else { "value" };
                 write!(f, "A map downlink was requested to {} with {} schema {} but one is already running with schema {}.",
@@ -482,7 +484,9 @@ pub enum DownlinkSpecifier {
     },
 }
 
-type StopEvents = FuturesUnordered<TransformedFuture<StoppedFuture, MakeStopEvent>>;
+type StopEvents = FuturesUnordered<
+    TransformedFuture<promise::Receiver<Result<(), DownlinkError>>, MakeStopEvent>,
+>;
 
 struct ValueHandle {
     ptr: AnyWeakValueDownlink,
@@ -553,16 +557,16 @@ impl MakeStopEvent {
     }
 }
 
-impl TransformOnce<std::result::Result<(), DownlinkError>> for MakeStopEvent {
+impl TransformOnce<Result<Arc<Result<(), DownlinkError>>, PromiseError>> for MakeStopEvent {
     type Out = DownlinkStoppedEvent;
 
-    fn transform(self, input: std::result::Result<(), DownlinkError>) -> Self::Out {
+    fn transform(self, input: Result<Arc<Result<(), DownlinkError>>, PromiseError>) -> Self::Out {
         let MakeStopEvent { kind, path } = self;
-        DownlinkStoppedEvent {
-            kind,
-            path,
-            error: input.err(),
-        }
+        let error = match input {
+            Ok(r) => (*r).clone().err(),
+            _ => Some(DownlinkError::DroppedChannel),
+        };
+        DownlinkStoppedEvent { kind, path, error }
     }
 }
 
@@ -601,9 +605,12 @@ where
         let updates = incoming.map(map_router_events);
 
         let sink_path = path.clone();
-        let cmd_sink = sink.comap(move |cmd: Command<SharedValue>| {
-            envelopes::value_envelope(&sink_path, cmd).1.into()
-        });
+        let cmd_sink =
+            item::for_mpsc_sender(sink)
+                .map_err_into()
+                .comap(move |cmd: Command<SharedValue>| {
+                    envelopes::value_envelope(&sink_path, cmd).1.into()
+                });
 
         let (dl, rec) = match config.back_pressure {
             BackpressureMode::Propagate => {
@@ -657,10 +664,11 @@ where
 
         let (dl, rec) = match config.back_pressure {
             BackpressureMode::Propagate => {
-                let cmd_sink =
-                    sink.comap(move |cmd: Command<UntypedMapModification<Arc<Value>>>| {
+                let cmd_sink = item::for_mpsc_sender(sink).map_err_into().comap(
+                    move |cmd: Command<UntypedMapModification<Arc<Value>>>| {
                         envelopes::map_envelope(&sink_path, cmd).1.into()
-                    });
+                    },
+                );
                 map_downlink_for_sink(key_schema, value_schema, cmd_sink, updates, &config)
             }
             BackpressureMode::Release {
@@ -670,16 +678,18 @@ where
                 yield_after,
             } => {
                 let sink_path_duplicate = sink_path.clone();
-                let direct_sink =
-                    sink.clone()
-                        .comap(move |cmd: Command<UntypedMapModification<Arc<Value>>>| {
-                            envelopes::map_envelope(&sink_path_duplicate, cmd).1.into()
-                        });
-                let action_sink = sink.comap(move |act: UntypedMapModification<Arc<Value>>| {
-                    envelopes::map_envelope(&sink_path, Command::Action(act))
-                        .1
-                        .into()
-                });
+                let direct_sink = item::for_mpsc_sender(sink.clone()).map_err_into().comap(
+                    move |cmd: Command<UntypedMapModification<Arc<Value>>>| {
+                        envelopes::map_envelope(&sink_path_duplicate, cmd).1.into()
+                    },
+                );
+                let action_sink = item::for_mpsc_sender(sink).map_err_into().comap(
+                    move |act: UntypedMapModification<Arc<Value>>| {
+                        envelopes::map_envelope(&sink_path, Command::Action(act))
+                            .1
+                            .into()
+                    },
+                );
 
                 let pressure_release = KeyedWatch::new(
                     action_sink,
@@ -690,12 +700,13 @@ where
                 )
                 .await;
 
-                let either_sink = SplitSink::new(direct_sink, pressure_release).comap(
-                    move |cmd: Command<UntypedMapModification<Arc<Value>>>| match cmd {
-                        Command::Action(act) => Either::Right(act),
-                        ow => Either::Left(ow),
-                    },
-                );
+                let either_sink = SplitSink::new(direct_sink, pressure_release.into_item_sender())
+                    .comap(
+                        move |cmd: Command<UntypedMapModification<Arc<Value>>>| match cmd {
+                            Command::Action(act) => Either::Right(act),
+                            ow => Either::Left(ow),
+                        },
+                    );
                 map_downlink_for_sink(key_schema, value_schema, either_sink, updates, &config)
             }
         };
@@ -722,7 +733,8 @@ where
 
         let path_cpy = path.clone();
 
-        let cmd_sink = sink
+        let cmd_sink = item::for_mpsc_sender(sink)
+            .map_err_into()
             .comap(move |cmd: Command<Value>| envelopes::command_envelope(&path_cpy, cmd).1.into());
 
         let dl = match config.back_pressure {
@@ -769,7 +781,8 @@ where
         let config = self.config.config_for(&path);
 
         let path_cpy = path.clone();
-        let cmd_sink = sink
+        let cmd_sink = item::for_mpsc_sender(sink)
+            .map_err_into()
             .comap(move |cmd: Command<Value>| envelopes::command_envelope(&path_cpy, cmd).1.into());
 
         let (dl, rec) =
@@ -1107,7 +1120,7 @@ where
     ) -> RequestResult<()> {
         self.router
             .general_sink()
-            .send_item((path.host, envelope))
+            .send((path.host, envelope))
             .map_err(|_| SubscriptionError::ConnectionError)
             .await?;
         Ok(())

@@ -32,6 +32,7 @@ use std::task::{Context, Poll};
 use std::time::Duration;
 use stm::transaction::TransactionError;
 use swim_common::form::FormErr;
+use swim_common::sink::item;
 use tokio::sync::mpsc;
 use tokio::time::timeout;
 use utilities::future::SwimStreamExt;
@@ -78,7 +79,7 @@ async fn uplink_not_linked() {
 
     let events = ReportingStream::new(events, vec![on_event_tx]);
 
-    let (mut tx_action, rx_action) = mpsc::channel::<UplinkAction>(5);
+    let (tx_action, rx_action) = mpsc::channel::<UplinkAction>(5);
 
     let uplink = Uplink::new(
         ValueLaneUplink::new(lane.clone()),
@@ -88,7 +89,7 @@ async fn uplink_not_linked() {
 
     let (tx_event, rx_event) = mpsc::channel(5);
 
-    let uplink_task = uplink.run_uplink(tx_event);
+    let uplink_task = uplink.run_uplink(item::for_mpsc_sender(tx_event));
 
     let send_task = async move {
         lane.store(12).await;
@@ -120,7 +121,7 @@ async fn uplink_open_to_linked() {
 
     let events = ReportingStream::new(events, vec![on_event_tx_1, on_event_tx_2]);
 
-    let (mut tx_action, rx_action) = mpsc::channel::<UplinkAction>(5);
+    let (tx_action, rx_action) = mpsc::channel::<UplinkAction>(5);
 
     let uplink = Uplink::new(
         ValueLaneUplink::new(lane.clone()),
@@ -130,7 +131,7 @@ async fn uplink_open_to_linked() {
 
     let (tx_event, rx_event) = mpsc::channel(5);
 
-    let uplink_task = uplink.run_uplink(tx_event);
+    let uplink_task = uplink.run_uplink(item::for_mpsc_sender(tx_event));
 
     let send_task = async move {
         lane.store(12).await;
@@ -168,7 +169,7 @@ async fn uplink_open_to_synced() {
 
     let events = ReportingStream::new(events, vec![on_event_tx]);
 
-    let (mut tx_action, rx_action) = mpsc::channel::<UplinkAction>(5);
+    let (tx_action, rx_action) = mpsc::channel::<UplinkAction>(5);
 
     let uplink = Uplink::new(
         ValueLaneUplink::new(lane.clone()),
@@ -178,7 +179,7 @@ async fn uplink_open_to_synced() {
 
     let (tx_event, rx_event) = mpsc::channel(5);
 
-    let uplink_task = uplink.run_uplink(tx_event);
+    let uplink_task = uplink.run_uplink(item::for_mpsc_sender(tx_event));
 
     let send_task = async move {
         lane.store(12).await;
@@ -247,7 +248,7 @@ async fn value_state_machine_sync_from_events() {
 
     let uplink = ValueLaneUplink::new(lane.clone());
 
-    let (mut tx_fake, rx_fake) = mpsc::channel(5);
+    let (tx_fake, rx_fake) = mpsc::channel(5);
 
     let mut rx_fake = rx_fake.fuse();
 

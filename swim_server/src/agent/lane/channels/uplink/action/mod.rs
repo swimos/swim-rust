@@ -17,7 +17,7 @@ use crate::agent::lane::channels::uplink::{
     UplinkAction, UplinkError, UplinkMessage, UplinkMessageSender,
 };
 use crate::agent::lane::channels::TaggedAction;
-use crate::routing::{RoutingAddr, ServerRouter};
+use crate::routing::{RoutingAddr, ServerRouter, TaggedSender};
 use either::Either;
 use futures::{select_biased, Stream, StreamExt};
 use pin_utils::pin_mut;
@@ -25,7 +25,6 @@ use std::collections::{hash_map::Entry, HashMap};
 use std::marker::PhantomData;
 use swim_common::form::Form;
 use swim_common::model::Value;
-use swim_common::sink::item::ItemSink;
 use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc;
 use tracing::{event, Level};
@@ -152,7 +151,7 @@ impl<R: Form> From<RespMsg<R>> for Value {
 /// Wraps a map of uplinks and provides compound operations on them to the uplink task.
 struct ActionUplinks<Msg, Router: ServerRouter> {
     router: Router,
-    uplinks: HashMap<RoutingAddr, UplinkMessageSender<Router::Sender>>,
+    uplinks: HashMap<RoutingAddr, UplinkMessageSender<TaggedSender>>,
     err_tx: mpsc::Sender<UplinkErrorReport>,
     route: RelativePath,
     _input: PhantomData<fn(Msg)>,
@@ -163,7 +162,7 @@ struct RouterStopping;
 impl<Msg, Router> ActionUplinks<Msg, Router>
 where
     Router: ServerRouter,
-    Msg: Form,
+    Msg: Form + Send + 'static,
 {
     fn new(router: Router, err_tx: mpsc::Sender<UplinkErrorReport>, route: RelativePath) -> Self {
         ActionUplinks {
@@ -181,7 +180,7 @@ where
         addr: RoutingAddr,
     ) -> Result<
         (
-            &mut UplinkMessageSender<Router::Sender>,
+            &mut UplinkMessageSender<TaggedSender>,
             &mut mpsc::Sender<UplinkErrorReport>,
         ),
         RouterStopping,

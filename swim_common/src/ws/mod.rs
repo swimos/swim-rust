@@ -14,11 +14,12 @@
 
 use std::str::FromStr;
 
-use futures::{Future, Sink, Stream};
+use futures::{Sink, Stream};
 use http::uri::Scheme;
 use http::{Request, Uri};
 
 use crate::ws::error::{ConnectionError, WebSocketError};
+use futures::future::BoxFuture;
 use std::fmt;
 use std::fmt::{Debug, Formatter};
 
@@ -62,6 +63,9 @@ impl From<Vec<u8>> for WsMessage {
     }
 }
 
+pub type ConnResult<Snk, Str> = Result<(Snk, Str), ConnectionError>;
+pub type ConnFuture<'a, Snk, Str> = BoxFuture<'a, ConnResult<Snk, Str>>;
+
 /// Trait for factories that asynchronously create web socket connections. This exists primarily
 /// to allow for alternative implementations to be provided during testing.
 pub trait WebsocketFactory: Send + Sync {
@@ -71,12 +75,8 @@ pub trait WebsocketFactory: Send + Sync {
     /// Type of the sink for outgoing messages.
     type WsSink: Sink<WsMessage> + Unpin + Send + 'static;
 
-    type ConnectFut: Future<Output = Result<(Self::WsSink, Self::WsStream), ConnectionError>>
-        + Send
-        + 'static;
-
     /// Open a connection to the provided remote URL.
-    fn connect(&mut self, url: url::Url) -> Self::ConnectFut;
+    fn connect(&mut self, url: url::Url) -> ConnFuture<Self::WsSink, Self::WsStream>;
 }
 
 #[derive(Clone)]

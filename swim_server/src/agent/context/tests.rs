@@ -74,7 +74,7 @@ async fn send_single_to_scheduler() {
     let clock = TestClock::default();
     let context = create_context(1, clock.clone(), close_sig);
 
-    let (mut defer_tx, mut defer_rx) = mpsc::channel(5);
+    let (defer_tx, mut defer_rx) = mpsc::channel(5);
     context
         .defer(
             async move {
@@ -102,7 +102,7 @@ async fn send_multiple_to_scheduler() {
     context
         .periodically(
             move || {
-                let mut tx = defer_tx.clone();
+                let tx = defer_tx.clone();
                 i += 1;
                 let c = i;
                 async move {

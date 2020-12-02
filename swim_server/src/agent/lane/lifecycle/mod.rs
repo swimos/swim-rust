@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::agent::lane::model::action::ActionLane;
-use crate::agent::lane::strategy::{Buffered, Dropping, Queue};
+use crate::agent::lane::strategy::{Buffered, Queue};
 use crate::agent::lane::LaneModel;
 use crate::agent::AgentContext;
 use futures::future::{ready, Ready};
@@ -106,36 +106,6 @@ impl StatefulLaneLifecycleBase for Queue {
 }
 
 impl<'a, Model: LaneModel, Agent> StatefulLaneLifecycle<'a, Model, Agent> for Queue {
-    type StartFuture = Ready<()>;
-    type EventFuture = Ready<()>;
-
-    fn on_start<C: AgentContext<Agent>>(
-        &'a self,
-        _model: &'a Model,
-        _context: &'a C,
-    ) -> Self::StartFuture {
-        ready(())
-    }
-
-    fn on_event<C: AgentContext<Agent>>(
-        &'a self,
-        _event: &'a Model::Event,
-        _model: &'a Model,
-        _context: &'a C,
-    ) -> Self::EventFuture {
-        ready(())
-    }
-}
-
-impl StatefulLaneLifecycleBase for Dropping {
-    type WatchStrategy = Self;
-
-    fn create_strategy(&self) -> Self::WatchStrategy {
-        self.clone()
-    }
-}
-
-impl<'a, Model: LaneModel, Agent> StatefulLaneLifecycle<'a, Model, Agent> for Dropping {
     type StartFuture = Ready<()>;
     type EventFuture = Ready<()>;
 

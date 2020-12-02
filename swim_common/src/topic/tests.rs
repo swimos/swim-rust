@@ -28,7 +28,7 @@ pub async fn receive_from_watch_topic() {
     assert!(maybe_rx.is_ok());
     let mut rx2 = maybe_rx.unwrap();
 
-    let send_result = tx.broadcast(Some(5));
+    let send_result = tx.send(Some(5));
     assert!(send_result.is_ok());
 
     let n1 = rx1.next().await;
@@ -47,12 +47,12 @@ pub async fn miss_record_from_watch_topic() {
     assert!(maybe_rx.is_ok());
     let mut rx2 = maybe_rx.unwrap();
 
-    let send_result1 = tx.broadcast(Some(5));
+    let send_result1 = tx.send(Some(5));
     assert!(send_result1.is_ok());
 
     let n1 = rx1.next().await;
 
-    let send_result2 = tx.broadcast(Some(10));
+    let send_result2 = tx.send(Some(10));
     assert!(send_result2.is_ok());
 
     let n2 = rx2.next().await;
@@ -72,7 +72,7 @@ pub async fn single_receiver_dropped_for_watch_topic() {
 
     drop(rx1);
 
-    let send_result = tx.broadcast(Some(5));
+    let send_result = tx.send(Some(5));
     assert!(send_result.is_ok());
 
     let n2 = rx2.next().await;
@@ -92,7 +92,7 @@ pub async fn all_receivers_dropped_for_watch_topic() {
     drop(rx1);
     drop(rx2);
 
-    let send_result = tx.broadcast(Some(5));
+    let send_result = tx.send(Some(5));
     assert!(send_result.is_ok());
 
     let new_rx = topic.subscribe().await;
@@ -212,7 +212,7 @@ fn yield_after() -> NonZeroUsize {
 
 #[tokio::test]
 pub async fn single_receiver_mpsc_topic() {
-    let (mut tx, rx) = mpsc::channel::<i32>(5);
+    let (tx, rx) = mpsc::channel::<i32>(5);
     let (_topic, mut rx) = MpscTopic::new(rx, buffer_size(), yield_after());
 
     let send_result = tx.send(7).await;
@@ -225,7 +225,7 @@ pub async fn single_receiver_mpsc_topic() {
 
 #[tokio::test]
 pub async fn multiple_receivers_mpsc_topic() {
-    let (mut tx, rx) = mpsc::channel::<i32>(5);
+    let (tx, rx) = mpsc::channel::<i32>(5);
     let (mut topic, mut rx1) = MpscTopic::new(rx, buffer_size(), yield_after());
 
     let maybe_rx = topic.subscribe().await;
@@ -244,7 +244,7 @@ pub async fn multiple_receivers_mpsc_topic() {
 
 #[tokio::test]
 pub async fn multiple_receivers_multiple_records_mpsc_topic() {
-    let (mut tx, rx) = mpsc::channel::<i32>(5);
+    let (tx, rx) = mpsc::channel::<i32>(5);
     let (mut topic, rx1) = MpscTopic::new(rx, buffer_size(), yield_after());
 
     let maybe_rx = topic.subscribe().await;
@@ -267,7 +267,7 @@ pub async fn multiple_receivers_multiple_records_mpsc_topic() {
 
 #[tokio::test]
 pub async fn first_receiver_dropped_for_mpsc_topic() {
-    let (mut tx, rx) = mpsc::channel::<i32>(5);
+    let (tx, rx) = mpsc::channel::<i32>(5);
     let (mut topic, rx1) = MpscTopic::new(rx, buffer_size(), yield_after());
 
     let maybe_rx = topic.subscribe().await;
@@ -286,7 +286,7 @@ pub async fn first_receiver_dropped_for_mpsc_topic() {
 
 #[tokio::test]
 pub async fn additional_receiver_dropped_for_mpsc_topic() {
-    let (mut tx, rx) = mpsc::channel::<i32>(5);
+    let (tx, rx) = mpsc::channel::<i32>(5);
     let (mut topic, mut rx1) = MpscTopic::new(rx, buffer_size(), yield_after());
 
     let maybe_rx = topic.subscribe().await;
@@ -305,7 +305,7 @@ pub async fn additional_receiver_dropped_for_mpsc_topic() {
 
 #[tokio::test]
 pub async fn all_receivers_dropped_for_mpsc_topic() {
-    let (mut tx, rx) = mpsc::channel::<i32>(5);
+    let (tx, rx) = mpsc::channel::<i32>(5);
     let (mut topic, rx1) = MpscTopic::new(rx, buffer_size(), yield_after());
 
     let maybe_rx = topic.subscribe().await;
@@ -332,7 +332,7 @@ impl Transform<i32> for Repeater {
 
 #[tokio::test]
 pub async fn transform_topic() {
-    let (mut tx, rx) = mpsc::channel::<i32>(5);
+    let (tx, rx) = mpsc::channel::<i32>(5);
     let (topic, _) = MpscTopic::new(rx, buffer_size(), yield_after());
     let mut transformed = topic.transform(Repeater(2));
 

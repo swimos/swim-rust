@@ -16,7 +16,7 @@
 pub(crate) mod tests;
 
 use crate::ptr::Addressed;
-use crate::var::observer::{DynObserver, RawWrapper, StaticObserver};
+use crate::var::observer::{DynObserver, Observer};
 use futures::future::FutureExt;
 use futures::ready;
 use parking_lot::Mutex;
@@ -93,15 +93,14 @@ impl TVarInner {
 
     /// Create a transactional variable with an observer than will be notified
     /// each time the value changes.
-    pub fn from_arc_with_observer<T, Obs>(value: Arc<T>, observer: Obs) -> Self
+    pub fn from_arc_with_observer<T>(value: Arc<T>, observer: Observer<T>) -> Self
     where
         T: Any + Send + Sync,
-        Obs: StaticObserver<Arc<T>> + Send + Sync + 'static,
     {
         TVarInner {
             guarded: RwLock::new(TVarGuarded {
                 content: value,
-                observer: Some(Box::new(RawWrapper::new(observer))),
+                observer: Some(Box::new(observer)),
                 wakers: Default::default(),
             }),
         }
@@ -109,10 +108,9 @@ impl TVarInner {
 
     /// Create a transactional variable with an observer than will be notified
     /// each time the value changes.
-    pub fn new_with_observer<T, Obs>(value: T, observer: Obs) -> Self
+    pub fn new_with_observer<T>(value: T, observer: Observer<T>) -> Self
     where
         T: Any + Send + Sync,
-        Obs: StaticObserver<Arc<T>> + Send + Sync + 'static,
     {
         Self::from_arc_with_observer(Arc::new(value), observer)
     }
@@ -269,17 +267,11 @@ impl<T: Any + Send + Sync> TVar<T> {
         TVar(TVarInner::from_arc(initial), PhantomData)
     }
 
-    pub fn new_with_observer<Obs>(initial: T, observer: Obs) -> Self
-    where
-        Obs: StaticObserver<Arc<T>> + Send + Sync + 'static,
-    {
+    pub fn new_with_observer(initial: T, observer: Observer<T>) -> Self {
         TVar(TVarInner::new_with_observer(initial, observer), PhantomData)
     }
 
-    pub fn from_arc_with_observer<Obs>(initial: Arc<T>, observer: Obs) -> Self
-    where
-        Obs: StaticObserver<Arc<T>> + Send + Sync + 'static,
-    {
+    pub fn from_arc_with_observer(initial: Arc<T>, observer: Observer<T>) -> Self {
         TVar(
             TVarInner::from_arc_with_observer(initial, observer),
             PhantomData,

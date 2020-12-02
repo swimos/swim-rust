@@ -147,7 +147,7 @@ async fn sync_map_lane_replace_value() {
         results
     };
 
-    let mut fake_tx_copy = fake_tx.clone();
+    let fake_tx_copy = fake_tx.clone();
 
     let stream_faker = async move {
         let event = events.next().await.unwrap();
@@ -213,7 +213,7 @@ async fn sync_map_lane_remove_value() {
         results
     };
 
-    let mut fake_tx_copy = fake_tx.clone();
+    let fake_tx_copy = fake_tx.clone();
 
     let stream_faker = async move {
         let event = events.next().await.unwrap();
@@ -275,7 +275,7 @@ async fn sync_map_lane_clear() {
         results
     };
 
-    let mut fake_tx_copy = fake_tx.clone();
+    let fake_tx_copy = fake_tx.clone();
 
     let stream_faker = async move {
         let event = events.next().await.unwrap();
