@@ -25,21 +25,21 @@ use futures::FutureExt;
 use futures::StreamExt;
 use futures::{select, Stream};
 use futures_util::future::BoxFuture;
-use native_tls::{Identity, TlsConnector};
 use tokio::macros::support::Poll;
 use tokio::net::{lookup_host, TcpListener, TcpStream};
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
-use tokio_tls::TlsAcceptor;
-use tokio_tls::TlsConnector as TokioTlsConnector;
+use tokio_native_tls::native_tls::{Identity, TlsConnector as NativeTlsConnector};
+use tokio_native_tls::{TlsAcceptor, TlsConnector};
 use tracing::{event, Level};
 
 use crate::routing::remote::net::{ExternalConnections, IoResult, Listener};
 use im::HashMap;
+use pin_project::pin_project;
 use std::path::PathBuf;
 use url::Url;
 
-pub type TlsStream = tokio_tls::TlsStream<TcpStream>;
+pub type TlsStream = tokio_native_tls::TlsStream<TcpStream>;
 pub type TlsHandshakeResult = IoResult<(TlsStream, SocketAddr)>;
 type TcpHandshakeResult = io::Result<(TcpStream, SocketAddr)>;
 
@@ -92,12 +92,12 @@ impl ExternalConnections for TokioTlsNetworking {
                todo:    Following the Tokio 0.3 PR being merged, sort out the certificate loading
                         here and in the client using the `tokio-rustls` crate
             */
-            let tls_conn_builder = TlsConnector::builder();
+            let tls_conn_builder = NativeTlsConnector::builder();
 
             let connector = tls_conn_builder
                 .build()
                 .map_err(|e| io::Error::new(ErrorKind::PermissionDenied, e.to_string()))?;
-            let stream = TokioTlsConnector::from(connector);
+            let stream = TlsConnector::from(connector);
 
             stream
                 .connect(&host, socket)
@@ -113,8 +113,10 @@ impl ExternalConnections for TokioTlsNetworking {
     }
 }
 
+#[pin_project]
 pub struct TlsListener {
     _jh: JoinHandle<()>,
+    #[pin]
     receiver: mpsc::Receiver<TlsHandshakeResult>,
 }
 
@@ -122,7 +124,9 @@ impl TlsListener {
     fn new(listener: TcpListener) -> TlsListener {
         // todo
         let cert = Identity::from_pkcs12(&[1, 2], "pw").unwrap();
-        let tls_acceptor = native_tls::TlsAcceptor::builder(cert).build().unwrap();
+        let tls_acceptor = tokio_native_tls::native_tls::TlsAcceptor::builder(cert)
+            .build()
+            .unwrap();
         let tls_acceptor = TlsAcceptor::from(tls_acceptor);
 
         let (jh, pending_rx) = PendingTlsConnections::accept(listener, tls_acceptor);
@@ -137,8 +141,8 @@ impl TlsListener {
 impl Stream for TlsListener {
     type Item = IoResult<(TlsStream, SocketAddr)>;
 
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        self.receiver.poll_recv(cx)
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        self.project().receiver.poll_next(cx)
     }
 }
 
@@ -147,7 +151,7 @@ struct TcpListenerWithPeer(TcpListener);
 impl Stream for TcpListenerWithPeer {
     type Item = IoResult<(TcpStream, SocketAddr)>;
 
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         self.0.poll_accept(cx).map(Some)
     }
 }
@@ -180,7 +184,7 @@ impl PendingTlsConnections {
         let PendingTlsConnections {
             listener,
             acceptor,
-            mut sender,
+            sender,
         } = self;
 
         let mut fused_accept = listener.fuse();

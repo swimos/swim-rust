@@ -6,7 +6,7 @@ edition = "2018"
 
 [features]
 default = ["websocket"]
-websocket = ["tokio-tungstenite", "http", "native-tls", "tokio-native-tls", "swim_common/tls"]
+websocket = ["tokio-tungstenite", "http", "tokio-native-tls", "swim_common/tls"]
 debug = ["log_verbose"]
 log_verbose = []
 test-server = ["test_server"]
@@ -26,9 +26,6 @@ optional = true
 [dependencies.http]
 version = "0.2"
 optional = true
-
-[dependencies.tokio-tls]
-version = "0.3"
 
 [dependencies.tokio-native-tls]
 version = "0.2"

@@ -29,7 +29,9 @@ use tokio_tungstenite::tungstenite::Message;
 #[cfg(feature = "tls")]
 use crate::ws::tls::build_x509_certificate;
 #[cfg(feature = "tls")]
-use {crate::ws::error::CertificateError, native_tls::Certificate, std::path::Path};
+use {
+    crate::ws::error::CertificateError, std::path::Path, tokio_native_tls::native_tls::Certificate,
+};
 
 pub mod error;
 #[cfg(feature = "tls")]

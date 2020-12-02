@@ -33,10 +33,8 @@ stm = { path = "../stm" }
 tracing-futures = "0.2.4"
 agent_derive = { path = "agent_derive" }
 trybuild = "1.0.17"
-tokio-tungstenite = { version = "0.10.1", git = "https://github.com/swimos/tokio-tungstenite/", branch = "v10-deflate", features = ["tls", "deflate"] }
-tokio-tls = "0.3"
-tokio-native-tls = "0.1"
-native-tls = { version = "0.2", features = ["vendored"] }
+tokio-tungstenite = { version = "0.12.0", git = "https://github.com/swimos/tokio-tungstenite/", branch = "tokio-0.3-deflate", features = ["tls", "deflate"] }
+tokio-native-tls = "0.2"
 auth = { path = "auth" }
 
 [dev-dependencies]
