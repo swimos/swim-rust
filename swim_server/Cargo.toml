@@ -42,3 +42,4 @@ auth = { path = "auth" }
 [dev-dependencies]
 tokio = { version = "0.2.21", features = ["rt-threaded", "macros", "test-util"] }
 tracing = "0.1.16"
+async-std = "1.7.0"
