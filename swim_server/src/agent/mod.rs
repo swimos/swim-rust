@@ -1214,7 +1214,7 @@ where
                         projection,
                         ..
                     },
-                mut response_tx,
+                response_tx,
             } = *self;
 
             let model = projection(context.agent()).clone();
