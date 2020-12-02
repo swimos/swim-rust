@@ -4,31 +4,158 @@ use crate::agent::lane::lifecycle::{LaneLifecycle, StatefulLaneLifecycleBase};
 use crate::agent::lane::model::action::CommandLane;
 use crate::agent::lane::model::value::ValueLane;
 use crate::agent::lane::strategy::Queue;
+use crate::agent::lifecycle::AgentLifecycle;
 use crate::agent::value_lifecycle;
 use crate::agent::AgentContext;
 use crate::agent::SwimAgent;
 use crate::agent_lifecycle;
-use crate::plane::run_plane;
+use crate::plane::error::AmbiguousRoutes;
+use crate::plane::lifecycle::PlaneLifecycle;
+use crate::plane::router::PlaneRouter;
 use crate::plane::spec::PlaneBuilder;
+use crate::plane::{run_plane, EnvChannel};
 use crate::routing::remote::config::ConnectionConfig;
 use crate::routing::remote::net::plain::TokioPlainTextNetworking;
 use crate::routing::remote::RemoteConnectionsTask;
 use crate::routing::ws::tungstenite::TungsteniteWsConnections;
-use crate::routing::SuperRouterFactory;
+use crate::routing::{SuperRouter, SuperRouterFactory};
 use futures::join;
-use futures_util::core_reexport::time::Duration;
+use std::fmt::Debug;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-use std::num::NonZeroUsize;
 use std::sync::Arc;
+use swim_runtime::time::clock::RuntimeClock;
 use tokio::sync::mpsc;
+use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use tracing::{event, Level};
 use utilities::future::open_ended::OpenEndedFutures;
 use utilities::route_pattern::RoutePattern;
 use utilities::sync::trigger;
 use utilities::trace::init_trace;
 
+pub struct SwimServer {
+    address: SocketAddr,
+    conn_config: ConnectionConfig,
+    agent_config: AgentExecutionConfig,
+    websocket_config: WebSocketConfig,
+    routes: PlaneBuilder<RuntimeClock, EnvChannel, PlaneRouter<SuperRouter>>,
+    plane_lifecycle: Option<Box<dyn PlaneLifecycle>>,
+}
+
+impl SwimServer {
+    pub fn new(
+        address: SocketAddr,
+        conn_config: ConnectionConfig,
+        agent_config: AgentExecutionConfig,
+        websocket_config: WebSocketConfig,
+        plane_lifecycle: Option<Box<dyn PlaneLifecycle>>,
+    ) -> SwimServer {
+        SwimServer {
+            address,
+            conn_config,
+            agent_config,
+            websocket_config,
+            routes: PlaneBuilder::new(),
+            plane_lifecycle,
+        }
+    }
+
+    pub fn new_with_default(address: SocketAddr) -> SwimServer {
+        let conn_config = ConnectionConfig::default();
+        let agent_config = AgentExecutionConfig::default();
+        let websocket_config = WebSocketConfig::default();
+
+        SwimServer {
+            address,
+            conn_config,
+            agent_config,
+            websocket_config,
+            routes: PlaneBuilder::new(),
+            plane_lifecycle: None,
+        }
+    }
+
+    pub fn add_route<Agent, Config, Lifecycle>(
+        &mut self,
+        route: RoutePattern,
+        config: Config,
+        lifecycle: Lifecycle,
+    ) -> Result<(), AmbiguousRoutes>
+    where
+        Agent: SwimAgent<Config> + Send + Sync + Debug + 'static,
+        Config: Send + Sync + Clone + Debug + 'static,
+        Lifecycle: AgentLifecycle<Agent> + Send + Sync + Clone + Debug + 'static,
+    {
+        self.routes.add_route(route, config, lifecycle)
+    }
+
+    pub async fn run(self) {
+        let SwimServer {
+            address,
+            conn_config,
+            agent_config,
+            websocket_config,
+            routes,
+            plane_lifecycle,
+        } = self;
+
+        let spec = match plane_lifecycle {
+            Some(pl) => routes.build_with_lifecycle(pl),
+            None => routes.build(),
+        };
+
+        let (plane_tx, plane_rx) = mpsc::channel(agent_config.lane_attachment_buffer.get());
+        let (remote_tx, remote_rx) = mpsc::channel(conn_config.router_buffer_size.get());
+        let super_router_fac = SuperRouterFactory::new(plane_tx.clone(), remote_tx.clone());
+
+        let (_plane_stop_tx, plane_stop_rx) = trigger::trigger();
+        let (_conn_stop_tx, conn_stop_rx) = trigger::trigger();
+
+        let clock = swim_runtime::time::clock::runtime_clock();
+
+        let plane_future = run_plane(
+            agent_config,
+            clock,
+            spec,
+            plane_stop_rx,
+            OpenEndedFutures::new(),
+            plane_tx,
+            plane_rx,
+            super_router_fac.clone(),
+        );
+
+        let connections_future = RemoteConnectionsTask::new(
+            conn_config,
+            TokioPlainTextNetworking {},
+            address,
+            TungsteniteWsConnections {
+                config: websocket_config,
+            },
+            super_router_fac,
+            conn_stop_rx,
+            OpenEndedFutures::new(),
+            remote_tx,
+            remote_rx,
+        )
+        .await
+        .expect("The server could not start.")
+        .run();
+
+        join!(connections_future, plane_future);
+    }
+}
+
+pub struct ServerHandle {
+    stop_trigger: trigger::Sender,
+}
+
+impl ServerHandle {
+    pub fn stop(self) -> bool {
+        self.stop_trigger.trigger()
+    }
+}
+
 mod swim_server {
-    pub use crate::*;
+    pub(in crate) use crate::*;
 }
 
 #[derive(Debug, SwimAgent)]
@@ -111,66 +238,20 @@ impl StatefulLaneLifecycleBase for CounterLifecycle {
 }
 
 #[tokio::test]
+// #[ignore]
 async fn ws_plane() {
     init_trace(vec!["swim_server::interface"]);
 
-    let mut spec = PlaneBuilder::new();
-    spec.add_route(
-        RoutePattern::parse_str("/rust").unwrap(),
-        RustAgentConfig {},
-        RustAgentLifecycle {},
-    )
-    .unwrap();
-    let spec = spec.build();
-
-    let conn_config = ConnectionConfig {
-        router_buffer_size: NonZeroUsize::new(10).unwrap(),
-        channel_buffer_size: NonZeroUsize::new(10).unwrap(),
-        activity_timeout: Duration::new(30, 00),
-        connection_retries: Default::default(),
-    };
-
-    let agent_config = AgentExecutionConfig::default();
-
-    let (plane_tx, plane_rx) = mpsc::channel(agent_config.lane_attachment_buffer.get());
-    let (remote_tx, remote_rx) = mpsc::channel(conn_config.router_buffer_size.get());
-
-    let super_router_fac = SuperRouterFactory::new(plane_tx.clone(), remote_tx.clone());
-
-    let clock = swim_runtime::time::clock::runtime_clock();
-    let (_stop_tx, stop_rx) = trigger::trigger();
-
-    let plane = run_plane(
-        agent_config,
-        clock,
-        spec,
-        stop_rx,
-        OpenEndedFutures::new(),
-        plane_tx,
-        plane_rx,
-        super_router_fac.clone(),
-    );
-
-    let external = TokioPlainTextNetworking {};
     let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
-    let ws = TungsteniteWsConnections {
-        config: Default::default(),
-    };
+    let mut swim_server = SwimServer::new_with_default(address);
 
-    let (_stop_tx, stop_rx) = trigger::trigger();
-    let spawner = OpenEndedFutures::new();
+    swim_server
+        .add_route(
+            RoutePattern::parse_str("/rust").unwrap(),
+            RustAgentConfig {},
+            RustAgentLifecycle {},
+        )
+        .unwrap();
 
-    let connections = RemoteConnectionsTask::new(
-        conn_config,
-        external,
-        address,
-        ws,
-        super_router_fac,
-        stop_rx,
-        spawner,
-        remote_tx,
-        remote_rx,
-    );
-
-    let _ = join!(connections.await.unwrap().run(), plane);
+    swim_server.run().await;
 }

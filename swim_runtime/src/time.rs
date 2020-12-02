@@ -172,7 +172,7 @@ pub mod clock {
     }
 
     #[derive(Debug, Clone)]
-    struct RuntimeClock;
+    pub struct RuntimeClock;
 
     impl Clock for RuntimeClock {
         type DelayFuture = delay::Delay;
@@ -183,7 +183,7 @@ pub mod clock {
     }
 
     /// A clock that uses delays as provided by the runtime.
-    pub fn runtime_clock() -> impl Clock {
+    pub fn runtime_clock() -> RuntimeClock {
         RuntimeClock
     }
 }

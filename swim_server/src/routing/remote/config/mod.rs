@@ -28,3 +28,14 @@ pub struct ConnectionConfig {
     /// Strategy for retrying a connection.
     pub connection_retries: RetryStrategy,
 }
+
+impl Default for ConnectionConfig {
+    fn default() -> Self {
+        ConnectionConfig {
+            router_buffer_size: NonZeroUsize::new(10).unwrap(),
+            channel_buffer_size: NonZeroUsize::new(10).unwrap(),
+            activity_timeout: Duration::new(30, 00),
+            connection_retries: Default::default(),
+        }
+    }
+}
