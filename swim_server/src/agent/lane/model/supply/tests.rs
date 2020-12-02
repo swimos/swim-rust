@@ -34,7 +34,7 @@ async fn receive_events() {
     let values: Vec<i32> = (0..=100).collect();
 
     for v in values {
-        let mut supplier = lane.supplier();
+        let supplier = lane.supplier();
         assert!(supplier.send(v).await.is_ok());
     }
 

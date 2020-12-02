@@ -625,7 +625,7 @@ async fn read_waiting_on_write() {
     join(read, write).await;
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn read_waiting_on_write_threaded() {
     for _ in 0..REPEATS {
         let (tx, rx) = oneshot::channel();
@@ -691,7 +691,7 @@ async fn write_waiting_on_write() {
     assert_eq!(i, 2);
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn write_waiting_on_write_threaded() {
     for _ in 0..REPEATS {
         let (tx, rx) = oneshot::channel();
@@ -763,7 +763,7 @@ async fn write_waiting_on_single_read() {
     assert_eq!(i, 2);
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn write_waiting_on_single_read_threaded() {
     for _ in 0..REPEATS {
         let (tx, rx) = oneshot::channel();
@@ -842,7 +842,7 @@ async fn write_waiting_on_multiple_reads() {
     assert_eq!(i, 2);
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn write_waiting_on_multiple_reads_threaded() {
     let num_readers = 10;
 
@@ -947,7 +947,7 @@ async fn multiple_writes_waiting_on_multiple_reads() {
     assert_eq!(i, 3);
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn multiple_writes_waiting_on_multiple_reads_threaded() {
     for _ in 0..REPEATS {
         let num_readers = 10;

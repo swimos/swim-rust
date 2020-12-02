@@ -12,10 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::routing::ws::{SelectorResult, WsStreamSelector};
+use crate::routing::ws::{CloseReason, JoinedStreamSink, SelectorResult, WsStreamSelector};
+use futures::future::{ready, Ready};
 use futures::stream::FusedStream;
 use futures::task::{AtomicWaker, Context, Poll};
-use futures::{Sink, Stream, StreamExt};
+use futures::{Sink, SinkExt, Stream, StreamExt};
 use parking_lot::Mutex;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -209,7 +210,7 @@ async fn produce_available() {
 async fn consume_available() {
     let test_stream = TestWsStream::default();
 
-    let (mut tx, rx) = mpsc::channel(8);
+    let (tx, rx) = mpsc::channel(8);
 
     assert!(tx.send(1).await.is_ok());
     test_stream.stage_consume(1);
@@ -227,7 +228,7 @@ async fn consume_available() {
 async fn both_available() {
     let test_stream = TestWsStream::default();
 
-    let (mut tx, rx) = mpsc::channel(8);
+    let (tx, rx) = mpsc::channel(8);
 
     test_stream.stage_produce(56);
     assert!(tx.send(4).await.is_ok());
@@ -264,7 +265,7 @@ async fn produce_error() {
 async fn consume_error_on_ready() {
     let test_stream = TestWsStream::default();
 
-    let (mut tx, rx) = mpsc::channel(8);
+    let (tx, rx) = mpsc::channel(8);
 
     assert!(tx.send(0).await.is_ok());
     test_stream.stage_consume_error(0, "Boom!");
@@ -282,7 +283,7 @@ async fn consume_error_on_ready() {
 async fn consume_error_on_send() {
     let test_stream = TestWsStream::default();
 
-    let (mut tx, rx) = mpsc::channel(8);
+    let (tx, rx) = mpsc::channel(8);
 
     assert!(tx.send(0).await.is_ok());
     test_stream.stage_consume_error_on_send(0, "Boom!");
@@ -302,7 +303,7 @@ async fn alternates_produce_and_consume() {
 
     let staging = test_stream.clone();
 
-    let (mut tx, rx) = mpsc::channel(8);
+    let (tx, rx) = mpsc::channel(8);
 
     assert!(tx.send(1).await.is_ok());
     assert!(tx.send(2).await.is_ok());
@@ -383,7 +384,7 @@ async fn production_and_consumption_stop_after_close() {
 
     let staging = test_stream.clone();
 
-    let (mut tx, rx) = mpsc::channel(8);
+    let (tx, rx) = mpsc::channel(8);
 
     assert!(tx.send(1).await.is_ok());
 
@@ -425,4 +426,125 @@ async fn error_on_close() {
     let result = selector.next().await;
     assert!(result.is_none());
     assert!(selector.is_terminated());
+}
+
+struct TestStreamSink {
+    input: Vec<i32>,
+    input_index: usize,
+    outputs: Vec<i32>,
+    max_outputs: usize,
+}
+
+impl TestStreamSink {
+    fn new(input: Vec<i32>, max_outputs: usize) -> Self {
+        TestStreamSink {
+            input,
+            input_index: 0,
+            outputs: vec![],
+            max_outputs,
+        }
+    }
+}
+
+impl Stream for TestStreamSink {
+    type Item = Result<i32, ()>;
+
+    fn poll_next(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let TestStreamSink {
+            input, input_index, ..
+        } = self.get_mut();
+        if let Some(n) = input.get(*input_index) {
+            *input_index += 1;
+            Poll::Ready(Some(if *n >= 0 { Ok(*n) } else { Err(()) }))
+        } else {
+            Poll::Ready(None)
+        }
+    }
+}
+
+impl Sink<i32> for TestStreamSink {
+    type Error = ();
+
+    fn poll_ready(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn start_send(self: Pin<&mut Self>, item: i32) -> Result<(), Self::Error> {
+        let TestStreamSink {
+            outputs,
+            max_outputs,
+            ..
+        } = self.get_mut();
+        if outputs.len() < *max_outputs {
+            outputs.push(item);
+            Ok(())
+        } else {
+            Err(())
+        }
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn poll_close(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
+    }
+}
+
+impl JoinedStreamSink<i32, ()> for TestStreamSink {
+    type CloseFut = Ready<Result<(), ()>>;
+
+    fn close(self, _reason: Option<CloseReason>) -> Self::CloseFut {
+        ready(Ok(()))
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct Wrapped(i32);
+#[derive(Debug, PartialEq, Eq)]
+struct TestErr;
+
+impl From<i32> for Wrapped {
+    fn from(n: i32) -> Self {
+        Wrapped(n)
+    }
+}
+
+impl From<Wrapped> for i32 {
+    fn from(w: Wrapped) -> Self {
+        let Wrapped(n) = w;
+        n
+    }
+}
+
+impl From<()> for TestErr {
+    fn from(_: ()) -> Self {
+        TestErr
+    }
+}
+
+impl From<TestErr> for () {
+    fn from(_: TestErr) {}
+}
+
+#[tokio::test]
+async fn joined_stream_sink_trans_stream() {
+    let test_str_snk = TestStreamSink::new(vec![1, 2, -3], 0);
+    let transformed = test_str_snk.transform_data::<Wrapped, TestErr>();
+
+    let results = transformed.collect::<Vec<_>>().await;
+    assert_eq!(results, vec![Ok(Wrapped(1)), Ok(Wrapped(2)), Err(TestErr)]);
+}
+
+#[tokio::test]
+async fn joined_stream_sink_trans_sink() {
+    let test_str_snk = TestStreamSink::new(vec![], 2);
+    let mut transformed = test_str_snk.transform_data::<Wrapped, TestErr>();
+
+    assert!(transformed.send(Wrapped(3)).await.is_ok());
+    assert!(transformed.send(Wrapped(7)).await.is_ok());
+    assert_eq!(transformed.send(Wrapped(3)).await, Err(TestErr));
+
+    assert_eq!(transformed.str_sink.outputs, vec![3, 7]);
 }

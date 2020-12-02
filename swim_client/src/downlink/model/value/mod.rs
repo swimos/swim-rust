@@ -133,7 +133,7 @@ pub fn create_raw_downlink<Updates, Commands>(
     buffer_size: NonZeroUsize,
     yield_after: NonZeroUsize,
     on_invalid: OnInvalidMessage,
-) -> RawDownlink<mpsc::Sender<Action>, mpsc::Receiver<Event<SharedValue>>>
+) -> RawDownlink<Action, mpsc::Receiver<Event<SharedValue>>>
 where
     Updates: Stream<Item = ValueItemResult> + Send + 'static,
     Commands: ItemSender<Command<SharedValue>, RoutingError> + Send + 'static,

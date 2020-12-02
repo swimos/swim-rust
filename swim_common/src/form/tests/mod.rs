@@ -15,7 +15,7 @@
 mod enumeration;
 mod impls;
 mod structure;
-#[allow(warnings)]
+mod tag;
 mod validated;
 
 use trybuild::TestCases;
@@ -24,27 +24,7 @@ use trybuild::TestCases;
 fn test_derive() {
     let t = TestCases::new();
 
-    t.compile_fail("src/form/tests/derive/form/empty_tag.rs");
-    t.compile_fail("src/form/tests/derive/form/double_kind.rs");
-    t.compile_fail("src/form/tests/derive/form/double_body_attr.rs");
-    t.compile_fail("src/form/tests/derive/form/double_header_body_attr.rs");
-    t.compile_fail("src/form/tests/derive/form/incorrect_rename_type.rs");
-    t.compile_fail("src/form/tests/derive/form/incorrect_tag_type.rs");
-    t.compile_fail("src/form/tests/derive/form/incorrect_tag_type_enum.rs");
-    t.compile_fail("src/form/tests/derive/form/invalid_tag_placement_enum.rs");
-    t.compile_fail("src/form/tests/derive/form/unknown_field_attr.rs");
-    t.compile_fail("src/form/tests/derive/form/unknown_container_attr.rs");
-    t.compile_fail("src/form/tests/derive/form/union.rs");
-
-    t.compile_fail("src/form/tests/derive/validated_form/all_items_op_arg_count.rs");
-    t.compile_fail("src/form/tests/derive/validated_form/all_items_unit.rs");
-    t.compile_fail("src/form/tests/derive/validated_form/all_items_skipped.rs");
-    t.compile_fail("src/form/tests/derive/validated_form/and_op_arg_count.rs");
-    t.compile_fail("src/form/tests/derive/validated_form/or_op_arg_count.rs");
-    t.compile_fail("src/form/tests/derive/validated_form/not_op_arg_count.rs");
-    t.compile_fail("src/form/tests/derive/validated_form/invalid_container_of_kind.rs");
-    t.compile_fail("src/form/tests/derive/validated_form/trailing_schema.rs");
-    t.compile_fail("src/form/tests/derive/validated_form/nothing_attr_on_field.rs");
-    t.compile_fail("src/form/tests/derive/validated_form/invalid_range.rs");
-    t.compile_fail("src/form/tests/derive/validated_form/schema_skipped_field.rs");
+    t.compile_fail("src/form/tests/derive/form/*.rs");
+    t.compile_fail("src/form/tests/derive/tag/*.rs");
+    t.compile_fail("src/form/tests/derive/validated_form/*.rs");
 }

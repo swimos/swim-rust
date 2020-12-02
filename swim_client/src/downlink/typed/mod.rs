@@ -20,6 +20,7 @@ pub mod topic;
 use crate::downlink::any::{AnyDownlink, AnyEventReceiver, TopicKind};
 use crate::downlink::model::map::{MapAction, ViewWithEvent};
 use crate::downlink::model::value::{Action, SharedValue};
+use crate::downlink::subscription::AnyCommandDownlink;
 use crate::downlink::typed::action::{MapActions, ValueActions};
 use crate::downlink::typed::any::map::AnyMapDownlink;
 use crate::downlink::typed::any::value::AnyValueDownlink;
@@ -27,7 +28,9 @@ use crate::downlink::typed::event::TypedViewWithEvent;
 use crate::downlink::typed::topic::{
     ApplyForm, ApplyFormsMap, TryTransformTopic, WrapUntilFailure,
 };
-use crate::downlink::{Downlink, Event, StoppedFuture};
+use crate::downlink::{raw, Downlink, DownlinkError, Event};
+use futures::future::BoxFuture;
+use futures::FutureExt;
 use std::cmp::Ordering;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
@@ -36,8 +39,9 @@ use swim_common::form::{Form, ValidatedForm};
 use swim_common::model::schema::StandardSchema;
 use swim_common::model::Value;
 use swim_common::sink::item::ItemSink;
-use swim_common::topic::Topic;
-use utilities::future::{SwimFutureExt, TransformedFuture, UntilFailure};
+use swim_common::topic::{Topic, TopicError};
+use utilities::future::{SwimFutureExt, UntilFailure};
+use utilities::sync::promise;
 
 /// A wrapper around a value downlink, applying a [`Form`] to the values.
 #[derive(Debug)]
@@ -82,14 +86,18 @@ where
     }
 
     /// Get a future that will complete when the downlink stops running.
-    pub fn await_stopped(&self) -> StoppedFuture {
+    pub fn await_stopped(&self) -> promise::Receiver<Result<(), DownlinkError>> {
         self.inner.await_stopped()
+    }
+
+    pub async fn send_item(&mut self, value: Action) -> Result<(), DownlinkError> {
+        self.inner.send_item(value).await
     }
 }
 
 impl<T, Inner> ValueDownlink<Inner, T>
 where
-    Inner: Downlink<Action, Event<SharedValue>> + Clone,
+    Inner: Downlink<Action, Event<SharedValue>, DlSink = raw::Sender<Action>> + Clone,
     T: ValidatedForm + Send + 'static,
 {
     /// Create a read-only view for a value downlink that converts all received values to a new type.
@@ -117,7 +125,7 @@ where
     /// The type of the sender must have an equal or lesser schema than the original downlink.
     pub async fn write_only_sender<ViewType: ValidatedForm>(
         &mut self,
-    ) -> Result<ValueActions<Inner::DlSink, ViewType>, ValueViewError> {
+    ) -> Result<ValueActions<raw::Sender<Action>, ViewType>, ValueViewError> {
         let schema_cmp = ViewType::schema().partial_cmp(&T::schema());
 
         if schema_cmp.is_some() && schema_cmp != Some(Ordering::Greater) {
@@ -270,8 +278,12 @@ where
     }
 
     /// Get a future that will complete when the downlink stops running.
-    pub fn await_stopped(&self) -> StoppedFuture {
+    pub fn await_stopped(&self) -> promise::Receiver<Result<(), DownlinkError>> {
         self.inner.await_stopped()
+    }
+
+    pub async fn send_item(&mut self, action: MapAction) -> Result<(), DownlinkError> {
+        self.inner.send_item(action).await
     }
 }
 
@@ -295,12 +307,12 @@ where
     T: Form + Send + 'static,
 {
     type Receiver = UntilFailure<Inner::Receiver, ApplyForm<T>>;
-    type Fut = TransformedFuture<Inner::Fut, WrapUntilFailure<ApplyForm<T>>>;
 
-    fn subscribe(&mut self) -> Self::Fut {
+    fn subscribe(&mut self) -> BoxFuture<Result<Self::Receiver, TopicError>> {
         self.inner
             .subscribe()
             .transform(WrapUntilFailure::new(ApplyForm::new()))
+            .boxed()
     }
 }
 
@@ -311,12 +323,12 @@ where
     V: Form + Send + 'static,
 {
     type Receiver = UntilFailure<Inner::Receiver, ApplyFormsMap<K, V>>;
-    type Fut = TransformedFuture<Inner::Fut, WrapUntilFailure<ApplyFormsMap<K, V>>>;
 
-    fn subscribe(&mut self) -> Self::Fut {
+    fn subscribe(&mut self) -> BoxFuture<Result<Self::Receiver, TopicError>> {
         self.inner
             .subscribe()
             .transform(WrapUntilFailure::new(ApplyFormsMap::new()))
+            .boxed()
     }
 }
 
@@ -420,11 +432,11 @@ where
 
 impl<Inner, T> Downlink<Action, Event<T>> for ValueDownlink<Inner, T>
 where
-    Inner: Downlink<Action, Event<SharedValue>>,
+    Inner: Downlink<Action, Event<SharedValue>, DlSink = raw::Sender<Action>>,
     T: Form + Send + 'static,
 {
     type DlTopic = TryTransformTopic<SharedValue, Inner::DlTopic, ApplyForm<T>>;
-    type DlSink = ValueActions<Inner::DlSink, T>;
+    type DlSink = ValueActions<raw::Sender<Action>, T>;
 
     fn split(self) -> (Self::DlTopic, Self::DlSink) {
         let (inner_topic, inner_sink) = self.inner.split();
@@ -470,16 +482,9 @@ where
     }
 }
 
-impl<'a, Inner, T> ItemSink<'a, T> for CommandDownlink<Inner, T>
-where
-    Inner: ItemSink<'a, Value>,
-    T: Form + Send + 'static,
-{
-    type Error = Inner::Error;
-    type SendFuture = Inner::SendFuture;
-
-    fn send_item(&'a mut self, item: T) -> Self::SendFuture {
-        self.inner.send_item(item.into_value())
+impl<T: Form> CommandDownlink<AnyCommandDownlink, T> {
+    pub async fn send_item(&mut self, item: T) -> Result<(), DownlinkError> {
+        self.inner.send(item.into_value()).await.map_err(Into::into)
     }
 }
 

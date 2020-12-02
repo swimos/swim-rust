@@ -55,6 +55,18 @@ pub enum StructureKind {
     Struct,
 }
 
+impl StructureKind {
+    pub fn is_struct(&self) -> bool {
+        matches!(self, StructureKind::Struct)
+    }
+    pub fn is_enum(&self) -> bool {
+        matches!(self, StructureKind::Enum)
+    }
+    pub fn is_union(&self) -> bool {
+        matches!(self, StructureKind::Union)
+    }
+}
+
 impl From<&syn::Data> for StructureKind {
     fn from(data: &Data) -> Self {
         match &data {
@@ -77,13 +89,15 @@ pub enum CompoundTypeKind {
 /// elements that may have been renamed when transmuting.
 #[derive(Clone)]
 pub enum Label {
-    /// A named element containing its identifier.
-    Named(Ident),
+    /// A named element containing its original identifier as written in source.
+    Unmodified(Ident),
     /// A renamed element containing its new identifier and original identifier. This element may
     /// have previously been named or anonymous.
     Renamed { new_label: String, old_label: Ident },
     /// An anonymous element containing its index in the parent structure.
     Anonymous(Index),
+    /// A field that will be used to get the label, along with that field's type.
+    Foreign(Ident, TokenStream2, Ident),
 }
 
 impl Debug for Label {
@@ -93,15 +107,54 @@ impl Debug for Label {
 }
 
 impl Label {
+    pub fn is_foreign(&self) -> bool {
+        matches!(self, Label::Foreign(_, _, _))
+    }
+
+    pub fn is_modified(&self) -> bool {
+        !matches!(self, Label::Unmodified(_))
+    }
+
     /// Returns this [`FieldName`] represented as an [`Ident`]ifier. For renamed fields, this function
     /// returns the original field identifier represented and not the new name. For unnamed fields,
     /// this function returns a new identifier in the format of `__self_index`, where `index` is
     /// the ordinal of the field.
     pub fn as_ident(&self) -> Ident {
         match self {
-            Label::Named(ident) => ident.clone(),
+            Label::Unmodified(ident) => ident.clone(),
             Label::Renamed { old_label, .. } => old_label.clone(),
             Label::Anonymous(index) => Ident::new(&format!("__self_{}", index.index), index.span),
+            Label::Foreign(ident, ..) => ident.clone(),
+        }
+    }
+
+    pub fn original(&self) -> Ident {
+        match self {
+            Label::Unmodified(ident) => ident.clone(),
+            Label::Renamed { old_label, .. } => old_label.clone(),
+            Label::Anonymous(index) => Ident::new(&format!("__self_{}", index.index), index.span),
+            Label::Foreign(_ident, _ts, original) => original.clone(),
+        }
+    }
+
+    pub fn to_name(&self, clone: bool) -> TokenStream2 {
+        match self {
+            Label::Unmodified(ident) => {
+                let name = ident.to_string();
+                quote!(#name)
+            }
+            Label::Renamed { new_label, .. } => {
+                let name = new_label.to_string();
+                quote!(#name)
+            }
+            Label::Anonymous(index) => {
+                let name = format!("__self_{}", index.index);
+                quote!(#name)
+            }
+            Label::Foreign(ident, ..) => {
+                let maybe_clone = if clone { quote!(.clone()) } else { quote!() };
+                quote!(swim_common::form::Tag::as_string(&#ident#maybe_clone))
+            }
         }
     }
 }
@@ -109,9 +162,10 @@ impl Label {
 impl ToString for Label {
     fn to_string(&self) -> String {
         match self {
-            Label::Named(ident) => ident.to_string(),
+            Label::Unmodified(ident) => ident.to_string(),
             Label::Renamed { new_label, .. } => new_label.to_string(),
             Label::Anonymous(index) => format!("__self_{}", index.index),
+            Label::Foreign(ident, ..) => ident.to_string(),
         }
     }
 }
@@ -119,9 +173,10 @@ impl ToString for Label {
 impl ToTokens for Label {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         match self {
-            Label::Named(ident) => ident.to_tokens(tokens),
+            Label::Unmodified(ident) => ident.to_tokens(tokens),
             Label::Renamed { old_label, .. } => old_label.to_tokens(tokens),
             Label::Anonymous(index) => index.to_tokens(tokens),
+            Label::Foreign(ident, ..) => ident.to_tokens(tokens),
         }
     }
 }
@@ -175,11 +230,14 @@ pub fn deconstruct_type(
     let fields: Vec<_> = fields
         .iter()
         .map(|name| match &name {
-            Label::Named(ident) => {
+            Label::Unmodified(ident) => {
                 quote! { #ident }
             }
             Label::Renamed { old_label, .. } => {
                 quote! { #old_label }
+            }
+            Label::Foreign(ident, ..) => {
+                quote! { #ident }
             }
             un @ Label::Anonymous(_) => {
                 let binding = &un.as_ident();

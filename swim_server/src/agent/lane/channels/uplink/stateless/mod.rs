@@ -18,7 +18,7 @@ use crate::agent::lane::channels::uplink::{
     UplinkMessageSender,
 };
 use crate::agent::lane::channels::TaggedAction;
-use crate::routing::{RoutingAddr, ServerRouter};
+use crate::routing::{RoutingAddr, ServerRouter, TaggedSender};
 use either::Either;
 use futures::{select_biased, Stream, StreamExt};
 use pin_utils::pin_mut;
@@ -26,7 +26,6 @@ use std::collections::{hash_map::Entry, HashMap};
 use std::marker::PhantomData;
 use swim_common::form::Form;
 use swim_common::model::Value;
-use swim_common::sink::item::ItemSink;
 use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc;
 use tracing::{event, Level};
@@ -47,19 +46,19 @@ fn format_debug_event(uplink_kind: UplinkKind, msg: &'static str) {
 
 /// Automatically links and syncs (no-op) uplinks. Either sending events directly to an uplink or
 /// broadcasting them to all uplinks.
-pub struct AutoUplinks<S> {
+pub struct StatelessUplinks<S> {
     producer: S,
     route: RelativePath,
     uplink_kind: UplinkKind,
 }
 
-impl<S, F> AutoUplinks<S>
+impl<S, F> StatelessUplinks<S>
 where
     S: Stream<Item = AddressedUplinkMessage<F>>,
     F: Send + Sync + Form + 'static,
 {
     pub fn new(producer: S, route: RelativePath, uplink_kind: UplinkKind) -> Self {
-        AutoUplinks {
+        StatelessUplinks {
             producer,
             route,
             uplink_kind,
@@ -67,7 +66,7 @@ where
     }
 }
 
-impl<S, F> AutoUplinks<S>
+impl<S, F> StatelessUplinks<S>
 where
     S: Stream<Item = AddressedUplinkMessage<F>>,
     F: Send + Sync + Form + 'static,
@@ -80,7 +79,7 @@ where
     ) where
         Router: ServerRouter,
     {
-        let AutoUplinks {
+        let StatelessUplinks {
             route,
             producer,
             uplink_kind,
@@ -186,7 +185,7 @@ impl<R: Form> From<RespMsg<R>> for Value {
 /// Wraps a map of uplinks and provides compound operations on them to the uplink task.
 struct Uplinks<Msg, Router: ServerRouter> {
     router: Router,
-    uplinks: HashMap<RoutingAddr, UplinkMessageSender<Router::Sender>>,
+    uplinks: HashMap<RoutingAddr, UplinkMessageSender<TaggedSender>>,
     err_tx: mpsc::Sender<UplinkErrorReport>,
     route: RelativePath,
     _input: PhantomData<Msg>,
@@ -197,7 +196,7 @@ struct RouterStopping;
 impl<Msg, Router> Uplinks<Msg, Router>
 where
     Router: ServerRouter,
-    Msg: Form,
+    Msg: Form + Send + 'static,
 {
     fn new(router: Router, err_tx: mpsc::Sender<UplinkErrorReport>, route: RelativePath) -> Self {
         Uplinks {
@@ -231,7 +230,7 @@ where
         addr: RoutingAddr,
     ) -> Result<
         (
-            &mut UplinkMessageSender<Router::Sender>,
+            &mut UplinkMessageSender<TaggedSender>,
             &mut mpsc::Sender<UplinkErrorReport>,
         ),
         RouterStopping,
@@ -248,9 +247,9 @@ where
         } = self;
         match uplinks.entry(addr) {
             Entry::Occupied(entry) => Ok((entry.into_mut(), err_tx)),
-            Entry::Vacant(vacant) => match router.get_sender(addr).await {
+            Entry::Vacant(vacant) => match router.resolve_sender(addr).await {
                 Ok(sender) => Ok((
-                    vacant.insert(UplinkMessageSender::new(sender, route.clone())),
+                    vacant.insert(UplinkMessageSender::new(sender.sender, route.clone())),
                     err_tx,
                 )),
                 _ => Err(RouterStopping),
@@ -288,9 +287,9 @@ where
 
         match uplinks.entry(addr) {
             Entry::Occupied(_) => Ok(()),
-            Entry::Vacant(vacant) => match router.get_sender(addr).await {
+            Entry::Vacant(vacant) => match router.resolve_sender(addr).await {
                 Ok(sender) => {
-                    vacant.insert(UplinkMessageSender::new(sender, route.clone()));
+                    vacant.insert(UplinkMessageSender::new(sender.sender, route.clone()));
                     Ok(())
                 }
                 _ => Err(RouterStopping),
@@ -314,8 +313,8 @@ where
             }
             uplinks.remove(&addr);
             Ok(())
-        } else if let Ok(sender) = router.get_sender(addr).await {
-            let mut sender = UplinkMessageSender::new(sender, route.clone());
+        } else if let Ok(sender) = router.resolve_sender(addr).await {
+            let mut sender = UplinkMessageSender::new(sender.sender, route.clone());
             let _ = sender.send_item(msg).await;
             Ok(())
         } else {

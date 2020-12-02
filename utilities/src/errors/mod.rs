@@ -14,6 +14,7 @@
 
 use futures::task::{Context, Poll};
 use futures::Future;
+use std::error::Error;
 use std::pin::Pin;
 
 pub struct FlattenErrors<F> {
@@ -37,5 +38,14 @@ where
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let f = &mut self.get_mut().inner;
         Pin::new(f).poll(cx).map(|r| r.and_then(|r2| r2))
+    }
+}
+
+/// A trait from errors for which it is potentially possible to recover.
+pub trait Recoverable: Error {
+    fn is_fatal(&self) -> bool;
+
+    fn is_transient(&self) -> bool {
+        !self.is_fatal()
     }
 }

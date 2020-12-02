@@ -14,7 +14,6 @@
 
 use tokio::sync::mpsc;
 
-use futures::StreamExt;
 use std::fmt::{Debug, Display, Formatter};
 use swim_common::sink::item;
 use tokio::sync::broadcast;
@@ -27,32 +26,32 @@ pub mod model;
 pub mod queue;
 pub mod raw;
 pub mod subscription;
+#[cfg(test)]
+mod tests;
 pub mod topic;
 pub mod typed;
 pub mod watch_adapter;
 
 pub(self) use self::raw::create_downlink;
 use crate::downlink::raw::DownlinkTaskHandle;
-use futures::task::{Context, Poll};
-use futures::Future;
-use std::pin::Pin;
+use std::error::Error;
 use swim_common::model::schema::StandardSchema;
 use swim_common::model::Value;
 use swim_common::request::TryRequest;
 use swim_common::routing::RoutingError;
-use swim_common::sink::item::ItemSender;
 use swim_common::topic::Topic;
 use swim_common::ws::error::ConnectionError;
 use tracing::{instrument, trace};
+use utilities::errors::Recoverable;
 
 /// Shared trait for all Warp downlinks. `Act` is the type of actions that can be performed on the
 /// downlink locally and `Upd` is the type of updates that an be observed on the client side.
-pub trait Downlink<Act, Upd>: Topic<Upd> + ItemSender<Act, DownlinkError> {
+pub trait Downlink<Act, Upd>: Topic<Upd> {
     /// Type of the topic which can be used to subscribe to the downlink.
     type DlTopic: Topic<Upd>;
 
     /// Type of the sink that can be used to apply actions to the downlink.
-    type DlSink: ItemSender<Act, DownlinkError>;
+    type DlSink;
 
     /// Split the downlink into a topic and sink.
     fn split(self) -> (Self::DlTopic, Self::DlSink);
@@ -65,28 +64,6 @@ pub(in crate::downlink) trait DownlinkInternals: Send + Sync + Debug {
 impl DownlinkInternals for DownlinkTaskHandle {
     fn task_handle(&self) -> &DownlinkTaskHandle {
         self
-    }
-}
-
-/// A future that completes after a downlink task has terminated.
-pub struct StoppedFuture(watch::Receiver<Option<Result<(), DownlinkError>>>);
-
-impl Future for StoppedFuture {
-    type Output = Result<(), DownlinkError>;
-
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let mut receiver = Pin::new(&mut self.get_mut().0);
-        loop {
-            match receiver.poll_next_unpin(cx) {
-                Poll::Ready(None) => break Poll::Ready(Err(DownlinkError::DroppedChannel)),
-                Poll::Ready(Some(maybe)) => {
-                    if let Some(result) = maybe {
-                        break Poll::Ready(result);
-                    }
-                }
-                Poll::Pending => break Poll::Pending,
-            };
-        }
     }
 }
 
@@ -184,8 +161,8 @@ impl From<item::SendError> for DownlinkError {
     }
 }
 
-impl<T> From<broadcast::SendError<T>> for DownlinkError {
-    fn from(_: broadcast::SendError<T>) -> Self {
+impl<T> From<broadcast::error::SendError<T>> for DownlinkError {
+    fn from(_: broadcast::error::SendError<T>) -> Self {
         DownlinkError::DroppedChannel
     }
 }
@@ -298,12 +275,25 @@ pub enum TransitionError {
     IllegalTransition(String),
 }
 
+impl Display for TransitionError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TransitionError::ReceiverDropped => write!(f, "Observer of the update was dropped."),
+            TransitionError::SideEffectFailed => write!(f, "A side effect failed to complete."),
+            TransitionError::IllegalTransition(err) => {
+                write!(f, "An illegal transition was attempted: '{}'", err)
+            }
+        }
+    }
+}
+
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct UpdateFailure(String);
 
-impl TransitionError {
-    /// On encountering a fatal transition error, a downlink will terminate.
-    pub fn is_fatal(&self) -> bool {
+impl Error for TransitionError {}
+
+impl Recoverable for TransitionError {
+    fn is_fatal(&self) -> bool {
         matches!(self, TransitionError::IllegalTransition(_))
     }
 }
@@ -517,8 +507,8 @@ impl<T> From<watch::error::SendError<T>> for DroppedError {
     }
 }
 
-impl<T> From<broadcast::SendError<T>> for DroppedError {
-    fn from(_: broadcast::SendError<T>) -> Self {
+impl<T> From<broadcast::error::SendError<T>> for DroppedError {
+    fn from(_: broadcast::error::SendError<T>) -> Self {
         DroppedError
     }
 }

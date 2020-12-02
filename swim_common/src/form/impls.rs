@@ -32,6 +32,7 @@ use crate::model::schema::{ItemSchema, StandardSchema};
 use crate::model::text::Text;
 use crate::model::{Item, Value, ValueKind};
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicI64, AtomicU32, AtomicU64, Ordering};
+use url::Url;
 
 impl Form for Blob {
     fn as_value(&self) -> Value {
@@ -811,5 +812,21 @@ impl Form for AtomicU64 {
 impl ValidatedForm for AtomicU64 {
     fn schema() -> StandardSchema {
         StandardSchema::OfKind(ValueKind::UInt64)
+    }
+}
+
+impl Form for Url {
+    fn as_value(&self) -> Value {
+        Value::Text(self.as_str().into())
+    }
+
+    fn try_from_value(value: &Value) -> Result<Self, FormErr> {
+        match value {
+            Value::Text(url) => match Url::parse(url.as_str()) {
+                Ok(url) => Ok(url),
+                Err(_) => Err(FormErr::Malformatted),
+            },
+            v => Err(FormErr::incorrect_type("Value::Text", v)),
+        }
     }
 }

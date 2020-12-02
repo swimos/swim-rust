@@ -35,7 +35,7 @@ pub mod attr;
 mod item;
 mod range;
 pub mod slot;
-mod text;
+pub mod text;
 
 #[cfg(test)]
 mod tests;
