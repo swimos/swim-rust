@@ -26,6 +26,8 @@ use swim_common::ws::WsMessage;
 #[cfg(test)]
 mod tests;
 
+pub mod tungstenite;
+
 #[derive(Debug)]
 enum State {
     Active,
@@ -239,16 +241,16 @@ pub enum CloseReason {
     //TODO Fill in others.
 }
 
-/// Trait form two way channels where the send and receive halves cannot be separated.
+/// Trait for two way channels where the send and receive halves cannot be separated.
 ///
 /// #Type Parameters
 ///
 /// * `T` - The type of the data both send and received over the channel.
-/// * `E` - Error type for bothe sending and receiving.
+/// * `E` - Error type for both sending and receiving.
 pub trait JoinedStreamSink<T, E>: Stream<Item = Result<T, E>> + Sink<T, Error = E> {
     type CloseFut: Future<Output = Result<(), E>> + Send + 'static;
 
-    fn close(&mut self, reason: Option<CloseReason>) -> Self::CloseFut;
+    fn close(self, reason: Option<CloseReason>) -> Self::CloseFut;
 
     /// Transform both the data and error types using [`Into`].
     fn transform_data<T2, E2>(self) -> TransformedStreamSink<Self, T, T2, E, E2>
@@ -275,6 +277,16 @@ pub struct TransformedStreamSink<S, T1, T2, E1, E2> {
     str_sink: S,
     _bijection: PhantomData<Bijection<T1, T2>>,
     _errors: PhantomData<fn(E1) -> E2>,
+}
+
+impl<S, T1, T2, E1, E2> TransformedStreamSink<S, T1, T2, E1, E2> {
+    pub fn new(str_sink: S) -> Self {
+        TransformedStreamSink {
+            str_sink,
+            _bijection: Default::default(),
+            _errors: Default::default(),
+        }
+    }
 }
 
 impl<T1, T2, E1, E2, S> Stream for TransformedStreamSink<S, T1, T2, E1, E2>
@@ -337,7 +349,7 @@ where
 {
     type CloseFut = ErrInto<S::CloseFut, E2>;
 
-    fn close(&mut self, reason: Option<CloseReason>) -> Self::CloseFut {
+    fn close(self, reason: Option<CloseReason>) -> Self::CloseFut {
         self.str_sink.close(reason).err_into()
     }
 }
@@ -348,7 +360,8 @@ pub trait WsConnections<Sock: Send + Sync + Unpin> {
     type Fut: Future<Output = Result<Self::StreamSink, ConnectionError>> + Send + 'static;
 
     /// Negotiate a new client connection.
-    fn open_connection(&self, socket: Sock) -> Self::Fut;
+    fn open_connection(&self, socket: Sock, addr: String) -> Self::Fut;
+
     /// Negotiate a new server connection.
     fn accept_connection(&self, socket: Sock) -> Self::Fut;
 }

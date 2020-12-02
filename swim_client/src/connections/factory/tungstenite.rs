@@ -85,7 +85,7 @@ async fn connect(
     };
 
     let host = format!("{}:{}", domain, port);
-    let stream = build_stream(&host, domain, stream_type).await?;
+    let stream = build_stream(&host, stream_type).await?;
 
     match client_async_with_config(
         request,
