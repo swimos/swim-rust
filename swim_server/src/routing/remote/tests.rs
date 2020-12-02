@@ -16,16 +16,15 @@ use crate::routing::error::ConnectionError;
 use crate::routing::remote::state::{DeferredResult, Event, RemoteTasksState};
 use crate::routing::remote::table::{HostAndPort, RoutingTable};
 use crate::routing::remote::{
-    ConnectionDropped, ResolutionRequest, RoutingRequest, SocketAddrIt, Unresolvable,
+    ConnectionDropped, RawRoute, ResolutionRequest, RoutingRequest, SocketAddrIt, Unresolvable,
 };
-use crate::routing::{Route, RoutingAddr, TaggedEnvelope};
+use crate::routing::{RoutingAddr, TaggedEnvelope};
 use futures::{FutureExt, StreamExt};
 use std::cell::RefCell;
 use std::io::ErrorKind;
 use std::net::SocketAddr;
 use swim_common::model::Value;
 use swim_common::request::Request;
-use swim_common::sink::item::ItemSink;
 use swim_common::warp::envelope::Envelope;
 use tokio::sync::{mpsc, oneshot};
 use utilities::sync::promise::Sender;
@@ -141,7 +140,7 @@ impl RemoteTasksState for FakeRemoteState {
             .push(StateMutation::FailConnection(host.clone(), error));
     }
 
-    fn table_resolve(&self, addr: RoutingAddr) -> Option<Route<mpsc::Sender<TaggedEnvelope>>> {
+    fn table_resolve(&self, addr: RoutingAddr) -> Option<RawRoute> {
         self.table.resolve(addr)
     }
 
@@ -222,8 +221,8 @@ async fn transition_request_endpoint_in_table() {
 
     let result = req_rx.await;
     match result {
-        Ok(Ok(Route { mut sender, .. })) => {
-            assert!(sender.send_item(envelope.clone()).await.is_ok());
+        Ok(Ok(RawRoute { sender, .. })) => {
+            assert!(sender.send(envelope.clone()).await.is_ok());
             assert_eq!(route_rx.next().now_or_never(), Some(Some(envelope)))
         }
         ow => {

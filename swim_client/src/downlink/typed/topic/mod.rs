@@ -19,12 +19,13 @@ use crate::downlink::model::map::ViewWithEvent;
 use crate::downlink::model::value::SharedValue;
 use crate::downlink::typed::event::TypedViewWithEvent;
 use crate::downlink::Event;
-use futures::Stream;
+use futures::future::BoxFuture;
+use futures::{FutureExt, Stream};
 use std::convert::TryInto;
 use std::marker::PhantomData;
 use swim_common::form::{Form, FormErr};
 use swim_common::topic::{Topic, TopicError};
-use utilities::future::{SwimFutureExt, Transform, TransformedFuture, UntilFailure};
+use utilities::future::{SwimFutureExt, Transform, UntilFailure};
 
 /// A transformation that attempts to apply a form to an [`Event<Value>`].
 #[derive(Debug)]
@@ -136,11 +137,11 @@ where
     Trans: Transform<Event<In>, Out = Result<Event<Out>, Err>> + Clone + Send + 'static,
 {
     type Receiver = UntilFailure<Top::Receiver, Trans>;
-    type Fut = TransformedFuture<Top::Fut, WrapUntilFailure<Trans>>;
 
-    fn subscribe(&mut self) -> Self::Fut {
+    fn subscribe(&mut self) -> BoxFuture<Result<Self::Receiver, TopicError>> {
         self.topic
             .subscribe()
             .transform(WrapUntilFailure::new(self.transform.clone()))
+            .boxed()
     }
 }

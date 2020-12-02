@@ -18,7 +18,7 @@ use native_tls::TlsConnector;
 use swim_common::ws::error::{ConnectionError, WebSocketError};
 use swim_common::ws::{Protocol, WsMessage};
 use tokio::net::TcpStream;
-use tokio_tls::TlsConnector as TokioTlsConnector;
+use tokio_native_tls::TlsConnector as TokioTlsConnector;
 use tokio_tungstenite::stream::Stream as StreamSwitcher;
 use tokio_tungstenite::tungstenite::Message;
 use utilities::future::TransformMut;

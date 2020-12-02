@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[cfg(test)]
+mod tests;
+
 use crate::agent::context::AgentExecutionContext;
 use crate::agent::lane::channels::update::action::ActionLaneUpdateTask;
 use crate::agent::lane::channels::update::map::MapLaneUpdateTask;
@@ -215,8 +218,8 @@ where
         ..
     } = config;
 
-    let (mut act_tx, act_rx) = mpsc::channel(action_buffer.get());
-    let (mut upd_tx, upd_rx) = mpsc::channel(update_buffer.get());
+    let (act_tx, act_rx) = mpsc::channel(action_buffer.get());
+    let (upd_tx, upd_rx) = mpsc::channel(update_buffer.get());
     let (err_tx, err_rx) = mpsc::channel(uplink_err_buffer.get());
 
     let spawner_channels = UplinkChannels::new(events, act_rx, err_tx);
@@ -368,7 +371,7 @@ where
 
 async fn simple_action_envelope_task<Command>(
     envelopes: impl Stream<Item = TaggedClientEnvelope>,
-    mut commands: mpsc::Sender<Result<(RoutingAddr, Command), FormErr>>,
+    commands: mpsc::Sender<Result<(RoutingAddr, Command), FormErr>>,
 ) where
     Command: Send + Sync + Form + 'static,
 {
@@ -388,6 +391,75 @@ async fn simple_action_envelope_task<Command>(
             break;
         }
     }
+}
+
+async fn action_envelope_task_with_uplinks<Command>(
+    route: RelativePath,
+    config: AgentExecutionConfig,
+    envelopes: impl Stream<Item = TaggedClientEnvelope>,
+    commands: mpsc::Sender<Result<(RoutingAddr, Command), FormErr>>,
+    mut actions: mpsc::Sender<TaggedAction>,
+    err_rx: mpsc::Receiver<UplinkErrorReport>,
+) -> (bool, Vec<UplinkErrorReport>)
+where
+    Command: Send + Sync + Form + Debug + 'static,
+{
+    pin_mut!(envelopes);
+
+    let envelopes = envelopes.fuse();
+    let mut err_rx = err_rx.fuse();
+    pin_mut!(envelopes);
+
+    let mut err_acc = UplinkErrorAcc::new(route.clone(), config.max_fatal_uplink_errors);
+
+    let mut failed: bool = loop {
+        let envelope_or_err: Option<Either<TaggedClientEnvelope, UplinkErrorReport>> = select! {
+            maybe_env = envelopes.next() => maybe_env.map(Either::Left),
+            maybe_err = err_rx.next() => maybe_err.map(Either::Right),
+        };
+
+        match envelope_or_err {
+            Some(Either::Left(TaggedClientEnvelope(addr, envelope))) => {
+                let OutgoingLinkMessage { header, body, .. } = envelope;
+                let sent = match header {
+                    OutgoingHeader::Link(_) => {
+                        send_action(&mut actions, &route, addr, UplinkAction::Link).await
+                    }
+                    OutgoingHeader::Sync(_) => {
+                        send_action(&mut actions, &route, addr, UplinkAction::Sync).await
+                    }
+                    OutgoingHeader::Unlink => {
+                        send_action(&mut actions, &route, addr, UplinkAction::Unlink).await
+                    }
+                    OutgoingHeader::Command => {
+                        let command = Command::try_convert(body.unwrap_or(Value::Extant))
+                            .map(|cmd| (addr, cmd));
+                        event!(Level::TRACE, DISPATCH_COMMAND, ?route, ?addr, ?command);
+                        commands.send(command).await.is_ok()
+                    }
+                };
+                if !sent {
+                    break false;
+                }
+            }
+            Some(Either::Right(error)) => {
+                if err_acc.add(error).is_err() {
+                    break true;
+                }
+            }
+            _ => {
+                break false;
+            }
+        }
+    };
+    drop(commands);
+    drop(actions);
+    while let Some(error) = err_rx.next().await {
+        if err_acc.add(error).is_err() {
+            failed = true;
+        }
+    }
+    (failed, err_acc.take_errors())
 }
 
 async fn send_action(

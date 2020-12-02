@@ -16,16 +16,15 @@ use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::task::{Context, Poll};
 
-use futures::future::ErrInto as FutErrInto;
+use futures::future::BoxFuture;
+use futures::select;
 use futures::stream;
-use futures::{select, Future};
-use futures::{Sink, Stream, StreamExt};
+use futures::{FutureExt, Sink, Stream, StreamExt};
 use futures_util::future::TryFutureExt;
 use futures_util::TryStreamExt;
 use tokio::sync::mpsc;
-use tokio::sync::mpsc::error::{ClosedError, SendError, TrySendError};
+use tokio::sync::mpsc::error::{SendError, TrySendError};
 use tokio::sync::oneshot;
 #[allow(unused_imports)]
 #[cfg(feature = "websocket")]
@@ -33,7 +32,7 @@ use tokio_tungstenite::tungstenite;
 use tracing::{instrument, trace};
 use url::Host;
 
-use swim_common::request::request_future::{RequestError, RequestFuture, Sequenced};
+use swim_common::request::request_future::RequestError;
 
 use crate::configuration::router::ConnectionPoolParams;
 
@@ -61,12 +60,13 @@ pub struct ConnectionRequest {
 /// Connection pool is responsible for managing the opening and closing of connections
 /// to remote hosts.
 pub trait ConnectionPool: Clone + Send + 'static {
-    type ConnFut: Future<Output = Result<Result<Connection, ConnectionError>, RequestError>> + Send;
-    type CloseFut: Future<Output = Result<Result<(), ConnectionError>, ConnectionError>> + Send;
+    fn request_connection(
+        &mut self,
+        host_url: url::Url,
+        recreate: bool,
+    ) -> BoxFuture<Result<Result<Connection, ConnectionError>, RequestError>>;
 
-    fn request_connection(&mut self, host_url: url::Url, recreate: bool) -> Self::ConnFut;
-
-    fn close(self) -> Result<Self::CloseFut, ConnectionError>;
+    fn close(self) -> BoxFuture<'static, Result<Result<(), ConnectionError>, ConnectionError>>;
 }
 
 type ConnectionPoolSharedHandle = Arc<Mutex<Option<TaskHandle<Result<(), ConnectionError>>>>>;
@@ -115,22 +115,9 @@ impl SwimConnPool {
     }
 }
 
-type Connection = (ConnectionSender, Option<ConnectionReceiver>);
-
-type ConnectionFut = Sequenced<
-    RequestFuture<ConnectionRequest>,
-    oneshot::Receiver<Result<Connection, ConnectionError>>,
->;
-
-type CloseFut = Sequenced<
-    FutErrInto<RequestFuture<()>, ConnectionError>,
-    TaskHandle<Result<(), ConnectionError>>,
->;
+pub type Connection = (ConnectionSender, Option<ConnectionReceiver>);
 
 impl ConnectionPool for SwimConnPool {
-    type ConnFut = ConnectionFut;
-    type CloseFut = CloseFut;
-
     /// Sends and asynchronous request for a connection to a specific host.
     ///
     /// # Arguments
@@ -148,34 +135,38 @@ impl ConnectionPool for SwimConnPool {
         &mut self,
         host_url: url::Url,
         recreate_connection: bool,
-    ) -> Self::ConnFut {
-        let (tx, rx) = oneshot::channel();
-        let conn_request = RequestFuture::new(
-            self.connection_request_tx.clone(),
-            ConnectionRequest {
-                host_url,
-                tx,
-                recreate_connection,
-            },
-        );
+    ) -> BoxFuture<Result<Result<Connection, ConnectionError>, RequestError>> {
+        async move {
+            let (tx, rx) = oneshot::channel();
 
-        Sequenced::new(conn_request, rx)
+            self.connection_request_tx
+                .send(ConnectionRequest {
+                    host_url,
+                    tx,
+                    recreate_connection,
+                })
+                .await?;
+            Ok(rx.await?)
+        }
+        .boxed()
     }
 
     /// Stops the pool from accepting new connection requests and closes down all existing
     /// connections.
-    fn close(self) -> Result<Self::CloseFut, ConnectionError> {
-        let close_request =
-            TryFutureExt::err_into::<ConnectionError>(RequestFuture::new(self.stop_request_tx, ()));
-
+    fn close(self) -> BoxFuture<'static, Result<Result<(), ConnectionError>, ConnectionError>> {
         let handle = self
             .connection_requests_handle
             .lock()
-            .map_err(|_| ConnectionError::AlreadyClosedError)?
-            .take()
-            .ok_or(ConnectionError::AlreadyClosedError)?;
-
-        Ok(Sequenced::new(close_request, handle))
+            .map(|mut h| h.take())
+            .map_err(|_| ConnectionError::AlreadyClosedError);
+        async move {
+            self.stop_request_tx.send(()).await?;
+            handle?
+                .ok_or(ConnectionError::AlreadyClosedError)?
+                .await
+                .map_err(Into::into)
+        }
+        .boxed()
     }
 }
 
@@ -372,7 +363,7 @@ where
         let ReceiveTask {
             stopped,
             mut read_stream,
-            mut tx,
+            tx,
         } = self;
 
         loop {
@@ -496,10 +487,6 @@ impl ConnectionSender {
     /// `SendError` if it failed.
     pub async fn send_message(&mut self, message: WsMessage) -> Result<(), SendError<WsMessage>> {
         self.tx.send(message).await
-    }
-
-    pub fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), ClosedError>> {
-        self.tx.poll_ready(cx)
     }
 
     pub fn try_send(&mut self, message: WsMessage) -> Result<(), TrySendError<WsMessage>> {

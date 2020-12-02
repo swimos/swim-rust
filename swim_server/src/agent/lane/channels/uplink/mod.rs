@@ -15,7 +15,7 @@
 use crate::agent::lane::channels::uplink::map::MapLaneSyncError;
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent, MapUpdate};
 use crate::agent::lane::model::value::ValueLane;
-use crate::routing::RoutingAddr;
+use crate::routing::{error, RoutingAddr, TaggedSender};
 use futures::future::ready;
 use futures::stream::{BoxStream, FusedStream};
 use futures::{select, select_biased, FutureExt, StreamExt};
@@ -28,7 +28,7 @@ use std::sync::Arc;
 use stm::transaction::{RetryManager, TransactionError};
 use swim_common::form::{Form, FormErr};
 use swim_common::model::Value;
-use swim_common::sink::item::{ItemSender, ItemSink};
+use swim_common::sink::item::{FnMutSender, ItemSender};
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
 use tracing::{event, span, Level};
@@ -523,15 +523,18 @@ impl<S> UplinkMessageSender<S> {
     }
 }
 
-impl<'a, Msg, S> ItemSink<'a, UplinkMessage<Msg>> for UplinkMessageSender<S>
-where
-    S: ItemSink<'a, Envelope>,
-    Msg: Into<Value>,
-{
-    type Error = S::Error;
-    type SendFuture = S::SendFuture;
+impl UplinkMessageSender<TaggedSender> {
+    pub fn into_item_sender<Msg>(self) -> impl ItemSender<UplinkMessage<Msg>, error::SendError>
+    where
+        Msg: Into<Value> + Send + 'static,
+    {
+        FnMutSender::new(self, UplinkMessageSender::send_item)
+    }
 
-    fn send_item(&'a mut self, msg: UplinkMessage<Msg>) -> Self::SendFuture {
+    pub async fn send_item<Msg>(&mut self, msg: UplinkMessage<Msg>) -> Result<(), error::SendError>
+    where
+        Msg: Into<Value> + Send + 'static,
+    {
         let UplinkMessageSender { inner, route } = self;
         let envelope = match msg {
             UplinkMessage::Linked => Envelope::linked(&route.node, &route.lane),
@@ -541,6 +544,6 @@ where
                 Envelope::make_event(&route.node, &route.lane, Some(ev.into()))
             }
         };
-        inner.send_item(envelope)
+        inner.send_item(envelope).await
     }
 }
