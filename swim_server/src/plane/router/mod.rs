@@ -14,6 +14,7 @@
 
 use crate::plane::PlaneRequest;
 use crate::routing::error::{ResolutionError, RouterError};
+use crate::routing::remote::RawRoute;
 use crate::routing::{Route, RoutingAddr, ServerRouter, ServerRouterFactory, TaggedSender};
 use futures::future::BoxFuture;
 use futures::FutureExt;
@@ -106,7 +107,7 @@ impl<Delegate: ServerRouter> ServerRouter for PlaneRouter<Delegate> {
                     Err(ResolutionError::RouterDropped)
                 } else {
                     match rx.await {
-                        Ok(Ok(Route { sender, on_drop })) => Ok(Route::new(
+                        Ok(Ok(RawRoute { sender, on_drop })) => Ok(Route::new(
                             EitherSink::left(TaggedSender::new(*tag, sender)),
                             on_drop,
                         )),

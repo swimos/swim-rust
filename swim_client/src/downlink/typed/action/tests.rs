@@ -17,55 +17,43 @@ mod value {
     use crate::downlink::model::value::{Action, SharedValue};
     use crate::downlink::typed::action::ValueActions;
     use crate::downlink::DownlinkError;
-    use futures::future::{ready, Ready};
+    use futures::future::join;
+    use std::future::Future;
+    use std::sync::Arc;
     use swim_common::model::Value;
-    use swim_common::sink::item::ItemSink;
+    use tokio::sync::mpsc;
+    use tokio::sync::mpsc::Sender;
 
-    struct TestValueDl(SharedValue);
-
-    impl TestValueDl {
-        fn new(n: i32) -> TestValueDl {
-            TestValueDl(SharedValue::new(Value::Int32Value(n)))
-        }
-
-        fn actions(n: i32) -> ValueActions<TestValueDl, i32> {
-            ValueActions::new(TestValueDl::new(n))
-        }
-    }
-
-    impl<'a> ItemSink<'a, Action> for TestValueDl {
-        type Error = DownlinkError;
-        type SendFuture = Ready<Result<(), Self::Error>>;
-
-        fn send_item(&'a mut self, value: Action) -> Self::SendFuture {
-            let TestValueDl(state) = self;
-            let result = match value {
+    async fn responder(mut state: SharedValue, mut rx: mpsc::Receiver<Action>) {
+        while let Some(value) = rx.recv().await {
+            match value {
                 Action::Set(v, maybe_cb) => {
                     if matches!(v, Value::Int32Value(_)) {
-                        *state = SharedValue::new(v);
+                        state = SharedValue::new(v);
                         if let Some(cb) = maybe_cb {
                             let _ = cb.send_ok(());
                         }
-                        Ok(())
                     } else {
-                        Err(DownlinkError::InvalidAction)
+                        if let Some(cb) = maybe_cb {
+                            let _ = cb.send_err(DownlinkError::InvalidAction);
+                        }
                     }
                 }
                 Action::Get(cb) => {
                     let _ = cb.send_ok(state.clone());
-                    Ok(())
                 }
                 Action::Update(f, maybe_cb) => {
                     let old = state.clone();
                     let new = f(state.as_ref());
                     if matches!(new, Value::Int32Value(_)) {
-                        *state = SharedValue::new(new);
+                        state = SharedValue::new(new);
                         if let Some(cb) = maybe_cb {
                             let _ = cb.send_ok(old);
                         }
-                        Ok(())
                     } else {
-                        Err(DownlinkError::InvalidAction)
+                        if let Some(cb) = maybe_cb {
+                            let _ = cb.send_err(DownlinkError::InvalidAction);
+                        }
                     }
                 }
                 Action::TryUpdate(f, maybe_cb) => {
@@ -73,94 +61,136 @@ mod value {
                     let maybe_new = f(state.as_ref());
                     match maybe_new {
                         Ok(new @ Value::Int32Value(_)) => {
-                            *state = SharedValue::new(new);
+                            state = SharedValue::new(new);
                             if let Some(cb) = maybe_cb {
                                 let _ = cb.send_ok(Ok(old));
                             }
-                            Ok(())
                         }
-                        Ok(_) => Err(DownlinkError::InvalidAction),
+                        Ok(_) => {
+                            if let Some(cb) = maybe_cb {
+                                let _ = cb.send_err(DownlinkError::InvalidAction);
+                            }
+                        }
                         Err(err) => {
                             if let Some(cb) = maybe_cb {
                                 let _ = cb.send_ok(Err(err));
                             }
-                            Ok(())
                         }
                     }
                 }
             };
-            ready(result)
         }
+    }
+
+    struct Actions(mpsc::Sender<Action>);
+    impl AsMut<mpsc::Sender<Action>> for Actions {
+        fn as_mut(&mut self) -> &mut Sender<Action> {
+            &mut self.0
+        }
+    }
+
+    fn make_actions(init: i32) -> (ValueActions<Actions, i32>, impl Future<Output = ()>) {
+        let (tx, rx) = mpsc::channel(8);
+        let actions = ValueActions::new(Actions(tx));
+        let task = responder(Arc::new(init.into()), rx);
+        (actions, task)
     }
 
     #[tokio::test]
     async fn value_get() {
-        let mut actions = TestValueDl::actions(2);
+        let (mut actions, responder) = make_actions(2);
 
-        let n = actions.get().await;
-        assert_eq!(n, Ok(2));
+        let assertions = async move {
+            let n = actions.get().await;
+            assert_eq!(n, Ok(2));
+        };
+        join(assertions, responder).await;
     }
 
     #[tokio::test]
     async fn value_set() {
-        let mut actions = TestValueDl::actions(2);
+        let (mut actions, responder) = make_actions(2);
 
-        let result = actions.set(7).await;
-        assert_eq!(result, Ok(()));
+        let assertions = async move {
+            let result = actions.set(7).await;
+            assert_eq!(result, Ok(()));
 
-        let n = actions.get().await;
-        assert_eq!(n, Ok(7));
+            let n = actions.get().await;
+            assert_eq!(n, Ok(7));
+        };
+        join(assertions, responder).await;
     }
 
     #[tokio::test]
     async fn invalid_value_set() {
-        let dl = TestValueDl::new(2);
-        let mut actions: ValueActions<TestValueDl, String> = ValueActions::new(dl);
+        let (tx, rx) = mpsc::channel(8);
 
-        let result = actions.set("hello".to_string()).await;
-        assert_eq!(result, Err(DownlinkError::InvalidAction));
+        let task = responder(Arc::new(2.into()), rx);
+
+        let mut actions: ValueActions<Actions, String> = ValueActions::new(Actions(tx));
+
+        let assertions = async move {
+            let result = actions.set("hello".to_string()).await;
+            assert_eq!(result, Err(DownlinkError::InvalidAction));
+        };
+        join(assertions, task).await;
     }
 
     #[tokio::test]
     async fn value_set_and_forget() {
-        let mut actions = TestValueDl::actions(2);
+        let (mut actions, responder) = make_actions(2);
 
-        let result = actions.set_and_forget(7).await;
-        assert_eq!(result, Ok(()));
+        let assertions = async move {
+            let result = actions.set_and_forget(7).await;
+            assert_eq!(result, Ok(()));
 
-        let n = actions.get().await;
-        assert_eq!(n, Ok(7));
+            let n = actions.get().await;
+            assert_eq!(n, Ok(7));
+        };
+        join(assertions, responder).await;
     }
 
     #[tokio::test]
     async fn value_update() {
-        let mut actions = TestValueDl::actions(2);
+        let (mut actions, responder) = make_actions(2);
 
-        let result = actions.update(|n| n + 2).await;
-        assert_eq!(result, Ok(2));
+        let assertions = async move {
+            let result = actions.update(|n| n + 2).await;
+            assert_eq!(result, Ok(2));
 
-        let n = actions.get().await;
-        assert_eq!(n, Ok(4));
+            let n = actions.get().await;
+            assert_eq!(n, Ok(4));
+        };
+        join(assertions, responder).await;
     }
 
     #[tokio::test]
     async fn invalid_value_update() {
-        let dl = TestValueDl::new(2);
-        let mut actions: ValueActions<TestValueDl, Value> = ValueActions::new(dl);
+        let (tx, rx) = mpsc::channel(8);
 
-        let result = actions.update(|_| Value::Extant).await;
-        assert_eq!(result, Err(DownlinkError::InvalidAction));
+        let task = responder(Arc::new(2.into()), rx);
+
+        let mut actions: ValueActions<Actions, Value> = ValueActions::new(Actions(tx));
+
+        let assertions = async move {
+            let result = actions.update(|_| Value::Extant).await;
+            assert_eq!(result, Err(DownlinkError::InvalidAction));
+        };
+        join(assertions, task).await;
     }
 
     #[tokio::test]
     async fn value_update_and_forget() {
-        let mut actions = TestValueDl::actions(2);
+        let (mut actions, responder) = make_actions(2);
 
-        let result = actions.update_and_forget(|n| n + 2).await;
-        assert_eq!(result, Ok(()));
+        let assertions = async move {
+            let result = actions.update_and_forget(|n| n + 2).await;
+            assert_eq!(result, Ok(()));
 
-        let n = actions.get().await;
-        assert_eq!(n, Ok(4));
+            let n = actions.get().await;
+            assert_eq!(n, Ok(4));
+        };
+        join(assertions, responder).await;
     }
 }
 
@@ -169,35 +199,21 @@ mod map {
     use crate::downlink::model::map::{MapAction, ValMap};
     use crate::downlink::typed::action::MapActions;
     use crate::downlink::DownlinkError;
-    use futures::future::{ready, Ready};
+    use futures::future::join;
     use im::OrdMap;
+    use std::future::Future;
     use std::sync::Arc;
     use swim_common::model::Value;
-    use swim_common::sink::item::ItemSink;
+    use tokio::sync::mpsc;
 
-    struct TestMapDl(ValMap);
+    async fn responder(init: OrdMap<i32, i32>, mut rx: mpsc::Receiver<MapAction>) {
+        let mut state: ValMap = init
+            .iter()
+            .map(|(k, v)| (Value::Int32Value(*k), Value::Int32Value(*v)))
+            .collect();
 
-    impl TestMapDl {
-        fn new(map: OrdMap<i32, i32>) -> Self {
-            TestMapDl(
-                map.iter()
-                    .map(|(k, v)| (Value::Int32Value(*k), Value::Int32Value(*v)))
-                    .collect(),
-            )
-        }
-
-        fn actions(map: OrdMap<i32, i32>) -> MapActions<TestMapDl, i32, i32> {
-            MapActions::new(TestMapDl::new(map))
-        }
-    }
-
-    impl<'a> ItemSink<'a, MapAction> for TestMapDl {
-        type Error = DownlinkError;
-        type SendFuture = Ready<Result<(), Self::Error>>;
-
-        fn send_item(&'a mut self, value: MapAction) -> Self::SendFuture {
-            let TestMapDl(state) = self;
-            let result = match value {
+        while let Some(value) = rx.recv().await {
+            match value {
                 MapAction::Update { key, value, old } => {
                     if matches!((&key, &value), (Value::Int32Value(_), Value::Int32Value(_))) {
                         let old_val = state.get(&key).map(Clone::clone);
@@ -205,9 +221,10 @@ mod map {
                         if let Some(cb) = old {
                             let _ = cb.send_ok(old_val);
                         }
-                        Ok(())
                     } else {
-                        Err(DownlinkError::InvalidAction)
+                        if let Some(cb) = old {
+                            let _ = cb.send_err(DownlinkError::InvalidAction);
+                        }
                     }
                 }
                 MapAction::Remove { key, old } => {
@@ -217,32 +234,31 @@ mod map {
                         if let Some(cb) = old {
                             let _ = cb.send_ok(old_val);
                         }
-                        Ok(())
                     } else {
-                        Err(DownlinkError::InvalidAction)
+                        if let Some(cb) = old {
+                            let _ = cb.send_err(DownlinkError::InvalidAction);
+                        }
                     }
                 }
                 MapAction::Take { n, before, after } => {
                     let map_before = state.clone();
-                    *state = state.take(n);
+                    state = state.take(n);
                     if let Some(cb) = before {
                         let _ = cb.send_ok(map_before);
                     }
                     if let Some(cb) = after {
                         let _ = cb.send_ok(state.clone());
                     }
-                    Ok(())
                 }
                 MapAction::Skip { n, before, after } => {
                     let map_before = state.clone();
-                    *state = state.skip(n);
+                    state = state.skip(n);
                     if let Some(cb) = before {
                         let _ = cb.send_ok(map_before);
                     }
                     if let Some(cb) = after {
                         let _ = cb.send_ok(state.clone());
                     }
-                    Ok(())
                 }
                 MapAction::Clear { before } => {
                     let map_before = state.clone();
@@ -250,18 +266,15 @@ mod map {
                     if let Some(cb) = before {
                         let _ = cb.send_ok(map_before);
                     }
-                    Ok(())
                 }
                 MapAction::Get { request } => {
                     let _ = request.send_ok(state.clone());
-                    Ok(())
                 }
                 MapAction::GetByKey { key, request } => {
                     if matches!(&key, Value::Int32Value(_)) {
                         let _ = request.send_ok(state.get(&key).map(Clone::clone));
-                        Ok(())
                     } else {
-                        Err(DownlinkError::InvalidAction)
+                        let _ = request.send_err(DownlinkError::InvalidAction);
                     }
                 }
                 MapAction::Modify {
@@ -287,9 +300,13 @@ mod map {
                         if let Some(cb) = after {
                             let _ = cb.send_ok(replacement);
                         }
-                        Ok(())
                     } else {
-                        Err(DownlinkError::InvalidAction)
+                        if let Some(cb) = before {
+                            let _ = cb.send_err(DownlinkError::InvalidAction);
+                        }
+                        if let Some(cb) = after {
+                            let _ = cb.send_err(DownlinkError::InvalidAction);
+                        }
                     }
                 }
                 MapAction::TryModify {
@@ -322,14 +339,33 @@ mod map {
                         if let Some(cb) = after {
                             let _ = cb.send_ok(after_val);
                         }
-                        Ok(())
                     } else {
-                        Err(DownlinkError::InvalidAction)
+                        if let Some(cb) = before {
+                            let _ = cb.send_err(DownlinkError::InvalidAction);
+                        }
+                        if let Some(cb) = after {
+                            let _ = cb.send_err(DownlinkError::InvalidAction);
+                        }
                     }
                 }
-            };
-            ready(result)
+            }
         }
+    }
+
+    struct Actions(mpsc::Sender<MapAction>);
+    impl AsMut<mpsc::Sender<MapAction>> for Actions {
+        fn as_mut(&mut self) -> &mut mpsc::Sender<MapAction> {
+            &mut self.0
+        }
+    }
+
+    fn make_actions(
+        init: OrdMap<i32, i32>,
+    ) -> (MapActions<Actions, i32, i32>, impl Future<Output = ()>) {
+        let (tx, rx) = mpsc::channel(8);
+        let actions = MapActions::new(Actions(tx));
+        let task = responder(init, rx);
+        (actions, task)
     }
 
     fn make_map() -> OrdMap<i32, i32> {
@@ -342,258 +378,331 @@ mod map {
 
     #[tokio::test]
     async fn map_view() {
-        let mut actions = TestMapDl::actions(make_map());
+        let (mut actions, responder) = make_actions(make_map());
 
-        let result = actions.view().await;
-        assert!(result.is_ok());
+        let assertions = async move {
+            let result = actions.view().await;
+            assert!(result.is_ok());
 
-        let map = result.unwrap().as_ord_map();
+            let map = result.unwrap().as_ord_map();
 
-        assert_eq!(map, make_map());
+            assert_eq!(map, make_map());
+        };
+        join(assertions, responder).await;
     }
 
     #[tokio::test]
     async fn map_get() {
-        let mut actions = TestMapDl::actions(make_map());
+        let (mut actions, responder) = make_actions(make_map());
 
-        let result = actions.get(2).await;
-        assert!(result.is_ok());
+        let assertions = async move {
+            let result = actions.get(2).await;
+            assert!(result.is_ok());
 
-        let map = result.unwrap();
+            let map = result.unwrap();
 
-        assert_eq!(map, Some(4));
+            assert_eq!(map, Some(4));
+        };
+
+        join(assertions, responder).await;
     }
 
     #[tokio::test]
     async fn map_insert() {
-        let mut actions = TestMapDl::actions(make_map());
+        let (mut actions, responder) = make_actions(make_map());
 
-        let result = actions.update(4, 8).await;
-        assert!(result.is_ok());
+        let assertions = async move {
+            let result = actions.update(4, 8).await;
+            assert!(result.is_ok());
 
-        let map = result.unwrap();
+            let map = result.unwrap();
 
-        assert_eq!(map, None);
+            assert_eq!(map, None);
 
-        let result = actions.get(4).await;
-        assert_eq!(result, Ok(Some(8)));
+            let result = actions.get(4).await;
+            assert_eq!(result, Ok(Some(8)));
+        };
+
+        join(assertions, responder).await;
     }
 
     #[tokio::test]
     async fn map_invalid_key_update() {
-        let dl = TestMapDl::new(make_map());
-        let mut actions: MapActions<TestMapDl, String, i32> = MapActions::new(dl);
+        let (tx, rx) = mpsc::channel(8);
+        let mut actions: MapActions<Actions, String, i32> = MapActions::new(Actions(tx));
+        let task = responder(make_map(), rx);
 
-        let result = actions.update("bad".to_string(), 8).await;
-        assert_eq!(result, Err(DownlinkError::InvalidAction));
+        let assertions = async move {
+            let result = actions.update("bad".to_string(), 8).await;
+            assert_eq!(result, Err(DownlinkError::InvalidAction));
+        };
+
+        join(assertions, task).await;
     }
 
     #[tokio::test]
     async fn map_invalid_value_update() {
-        let dl = TestMapDl::new(make_map());
-        let mut actions: MapActions<TestMapDl, i32, String> = MapActions::new(dl);
+        let (tx, rx) = mpsc::channel(8);
+        let mut actions: MapActions<Actions, i32, String> = MapActions::new(Actions(tx));
+        let task = responder(make_map(), rx);
 
-        let result = actions.update(4, "bad".to_string()).await;
-        assert_eq!(result, Err(DownlinkError::InvalidAction));
+        let assertions = async move {
+            let result = actions.update(4, "bad".to_string()).await;
+            assert_eq!(result, Err(DownlinkError::InvalidAction));
+        };
+
+        join(assertions, task).await;
     }
 
     #[tokio::test]
     async fn map_insert_and_forget() {
-        let mut actions = TestMapDl::actions(make_map());
+        let (mut actions, responder) = make_actions(make_map());
 
-        let result = actions.insert_and_forget(4, 8).await;
-        assert_eq!(result, Ok(()));
+        let assertions = async move {
+            let result = actions.insert_and_forget(4, 8).await;
+            assert_eq!(result, Ok(()));
 
-        let result = actions.get(4).await;
-        assert_eq!(result, Ok(Some(8)));
+            let result = actions.get(4).await;
+            assert_eq!(result, Ok(Some(8)));
+        };
+
+        join(assertions, responder).await;
     }
 
     #[tokio::test]
     async fn map_remove() {
-        let mut actions = TestMapDl::actions(make_map());
+        let (mut actions, responder) = make_actions(make_map());
 
-        let result = actions.remove(2).await;
-        assert!(result.is_ok());
+        let assertions = async move {
+            let result = actions.remove(2).await;
+            assert!(result.is_ok());
 
-        let map = result.unwrap();
+            let map = result.unwrap();
 
-        assert_eq!(map, Some(4));
+            assert_eq!(map, Some(4));
 
-        let result = actions.get(2).await;
-        assert_eq!(result, Ok(None));
+            let result = actions.get(2).await;
+            assert_eq!(result, Ok(None));
+        };
+
+        join(assertions, responder).await;
     }
 
     #[tokio::test]
     async fn map_invalid_remove() {
-        let dl = TestMapDl::new(make_map());
-        let mut actions: MapActions<TestMapDl, String, i32> = MapActions::new(dl);
+        let (tx, rx) = mpsc::channel(8);
+        let mut actions: MapActions<Actions, String, i32> = MapActions::new(Actions(tx));
+        let task = responder(make_map(), rx);
 
-        let result = actions.remove("bad".to_string()).await;
-        assert_eq!(result, Err(DownlinkError::InvalidAction));
+        let assertions = async move {
+            let result = actions.remove("bad".to_string()).await;
+            assert_eq!(result, Err(DownlinkError::InvalidAction));
+        };
+
+        join(assertions, task).await;
     }
 
     #[tokio::test]
     async fn map_remove_and_forget() {
-        let mut actions = TestMapDl::actions(make_map());
+        let (mut actions, responder) = make_actions(make_map());
 
-        let result = actions.remove_and_forget(2).await;
-        assert_eq!(result, Ok(()));
+        let assertions = async move {
+            let result = actions.remove_and_forget(2).await;
+            assert_eq!(result, Ok(()));
 
-        let result = actions.get(2).await;
-        assert_eq!(result, Ok(None));
+            let result = actions.get(2).await;
+            assert_eq!(result, Ok(None));
+        };
+
+        join(assertions, responder).await;
     }
 
     #[tokio::test]
     async fn map_clear() {
-        let mut actions = TestMapDl::actions(make_map());
+        let (mut actions, responder) = make_actions(make_map());
 
-        let result = actions.clear().await;
-        assert_eq!(result, Ok(()));
+        let assertions = async move {
+            let result = actions.clear().await;
+            assert_eq!(result, Ok(()));
 
-        let result = actions.view().await;
-        let map = result.unwrap();
+            let result = actions.view().await;
+            let map = result.unwrap();
 
-        assert!(map.is_empty());
+            assert!(map.is_empty());
+        };
+
+        join(assertions, responder).await;
     }
 
     #[tokio::test]
     async fn map_clear_and_forget() {
-        let mut actions = TestMapDl::actions(make_map());
+        let (mut actions, responder) = make_actions(make_map());
 
-        let result = actions.clear_and_forget().await;
-        assert_eq!(result, Ok(()));
+        let assertions = async move {
+            let result = actions.clear_and_forget().await;
+            assert_eq!(result, Ok(()));
 
-        let result = actions.view().await;
-        let map = result.unwrap();
+            let result = actions.view().await;
+            let map = result.unwrap();
 
-        assert!(map.is_empty());
+            assert!(map.is_empty());
+        };
+
+        join(assertions, responder).await;
     }
 
     #[tokio::test]
     async fn map_remove_all() {
-        let mut actions = TestMapDl::actions(make_map());
+        let (mut actions, responder) = make_actions(make_map());
 
-        let result = actions.remove_all().await;
-        assert!(result.is_ok());
+        let assertions = async move {
+            let result = actions.remove_all().await;
+            assert!(result.is_ok());
 
-        let map = result.unwrap().as_ord_map();
+            let map = result.unwrap().as_ord_map();
 
-        assert_eq!(map, make_map());
+            assert_eq!(map, make_map());
 
-        let result = actions.view().await;
-        assert!(result.is_ok());
-        let map = result.unwrap();
+            let result = actions.view().await;
+            assert!(result.is_ok());
+            let map = result.unwrap();
 
-        assert!(map.is_empty());
+            assert!(map.is_empty());
+        };
+        join(assertions, responder).await;
     }
 
     #[tokio::test]
     async fn map_take() {
-        let mut actions = TestMapDl::actions(make_map());
+        let (mut actions, responder) = make_actions(make_map());
 
-        let result = actions.take(1).await;
-        assert_eq!(result, Ok(()));
+        let assertions = async move {
+            let result = actions.take(1).await;
+            assert_eq!(result, Ok(()));
 
-        let result = actions.view().await;
-        assert!(result.is_ok());
-        let map = result.unwrap().as_ord_map();
+            let result = actions.view().await;
+            assert!(result.is_ok());
+            let map = result.unwrap().as_ord_map();
 
-        let mut expected = OrdMap::new();
-        expected.insert(1, 2);
-        assert_eq!(map, expected);
+            let mut expected = OrdMap::new();
+            expected.insert(1, 2);
+            assert_eq!(map, expected);
+        };
+
+        join(assertions, responder).await;
     }
 
     #[tokio::test]
     async fn map_take_and_forget() {
-        let mut actions = TestMapDl::actions(make_map());
+        let (mut actions, responder) = make_actions(make_map());
 
-        let result = actions.take_and_forget(1).await;
-        assert_eq!(result, Ok(()));
+        let assertions = async move {
+            let result = actions.take_and_forget(1).await;
+            assert_eq!(result, Ok(()));
 
-        let result = actions.view().await;
-        assert!(result.is_ok());
-        let map = result.unwrap().as_ord_map();
+            let result = actions.view().await;
+            assert!(result.is_ok());
+            let map = result.unwrap().as_ord_map();
 
-        let mut expected = OrdMap::new();
-        expected.insert(1, 2);
-        assert_eq!(map, expected);
+            let mut expected = OrdMap::new();
+            expected.insert(1, 2);
+            assert_eq!(map, expected);
+        };
+
+        join(assertions, responder).await;
     }
 
     #[tokio::test]
     async fn map_take_and_get() {
-        let mut actions = TestMapDl::actions(make_map());
+        let (mut actions, responder) = make_actions(make_map());
 
-        let result = actions.take_and_get(1).await;
+        let assertions = async move {
+            let result = actions.take_and_get(1).await;
 
-        let mut expected = OrdMap::new();
-        expected.insert(1, 2);
+            let mut expected = OrdMap::new();
+            expected.insert(1, 2);
 
-        assert!(result.is_ok());
+            assert!(result.is_ok());
 
-        let (before, after) = result.unwrap();
+            let (before, after) = result.unwrap();
 
-        assert_eq!(before.as_ord_map(), make_map());
-        assert_eq!(after.as_ord_map(), expected.clone());
+            assert_eq!(before.as_ord_map(), make_map());
+            assert_eq!(after.as_ord_map(), expected.clone());
 
-        let result = actions.view().await;
-        assert!(result.is_ok());
-        let map = result.unwrap().as_ord_map();
+            let result = actions.view().await;
+            assert!(result.is_ok());
+            let map = result.unwrap().as_ord_map();
 
-        assert_eq!(map, expected);
+            assert_eq!(map, expected);
+        };
+
+        join(assertions, responder).await;
     }
 
     #[tokio::test]
     async fn map_skip() {
-        let mut actions = TestMapDl::actions(make_map());
+        let (mut actions, responder) = make_actions(make_map());
 
-        let result = actions.skip(2).await;
-        assert_eq!(result, Ok(()));
+        let assertions = async move {
+            let result = actions.skip(2).await;
+            assert_eq!(result, Ok(()));
 
-        let result = actions.view().await;
-        assert!(result.is_ok());
-        let map = result.unwrap().as_ord_map();
+            let result = actions.view().await;
+            assert!(result.is_ok());
+            let map = result.unwrap().as_ord_map();
 
-        let mut expected = OrdMap::new();
-        expected.insert(3, 6);
-        assert_eq!(map, expected);
+            let mut expected = OrdMap::new();
+            expected.insert(3, 6);
+            assert_eq!(map, expected);
+        };
+
+        join(assertions, responder).await;
     }
 
     #[tokio::test]
     async fn map_skip_and_forget() {
-        let mut actions = TestMapDl::actions(make_map());
+        let (mut actions, responder) = make_actions(make_map());
 
-        let result = actions.skip_and_forget(2).await;
-        assert_eq!(result, Ok(()));
+        let assertions = async move {
+            let result = actions.skip_and_forget(2).await;
+            assert_eq!(result, Ok(()));
 
-        let result = actions.view().await;
-        assert!(result.is_ok());
-        let map = result.unwrap().as_ord_map();
+            let result = actions.view().await;
+            assert!(result.is_ok());
+            let map = result.unwrap().as_ord_map();
 
-        let mut expected = OrdMap::new();
-        expected.insert(3, 6);
-        assert_eq!(map, expected);
+            let mut expected = OrdMap::new();
+            expected.insert(3, 6);
+            assert_eq!(map, expected);
+        };
+
+        join(assertions, responder).await;
     }
 
     #[tokio::test]
     async fn map_skip_and_get() {
-        let mut actions = TestMapDl::actions(make_map());
+        let (mut actions, responder) = make_actions(make_map());
 
-        let result = actions.skip_and_get(2).await;
+        let assertions = async move {
+            let result = actions.skip_and_get(2).await;
 
-        let mut expected = OrdMap::new();
-        expected.insert(3, 6);
+            let mut expected = OrdMap::new();
+            expected.insert(3, 6);
 
-        assert!(result.is_ok());
+            assert!(result.is_ok());
 
-        let (before, after) = result.unwrap();
+            let (before, after) = result.unwrap();
 
-        assert_eq!(before.as_ord_map(), make_map());
-        assert_eq!(after.as_ord_map(), expected.clone());
+            assert_eq!(before.as_ord_map(), make_map());
+            assert_eq!(after.as_ord_map(), expected.clone());
 
-        let result = actions.view().await;
-        assert!(result.is_ok());
-        let map = result.unwrap().as_ord_map();
+            let result = actions.view().await;
+            assert!(result.is_ok());
+            let map = result.unwrap().as_ord_map();
 
-        assert_eq!(map, expected);
+            assert_eq!(map, expected);
+        };
+
+        join(assertions, responder).await;
     }
 }

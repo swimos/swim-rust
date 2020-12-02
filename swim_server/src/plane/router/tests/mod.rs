@@ -15,12 +15,12 @@
 use crate::plane::router::{PlaneRouter, PlaneRouterFactory};
 use crate::plane::PlaneRequest;
 use crate::routing::error::{ConnectionError, ResolutionError, RouterError, Unresolvable};
+use crate::routing::remote::RawRoute;
 use crate::routing::{
-    Route, RoutingAddr, ServerRouter, ServerRouterFactory, SuperRouter, SuperRouterFactory,
+    RoutingAddr, ServerRouter, ServerRouterFactory, SuperRouter, SuperRouterFactory,
     TaggedEnvelope,
 };
 use futures::future::join;
-use swim_common::sink::item::ItemSink;
 use swim_common::warp::envelope::Envelope;
 use tokio::sync::mpsc;
 use url::Url;
@@ -44,7 +44,7 @@ async fn plane_router_get_sender() {
             if let PlaneRequest::Endpoint { id, request } = req {
                 if id == addr {
                     assert!(request
-                        .send_ok(Route::new(send_tx.clone(), drop_rx.clone()))
+                        .send_ok(RawRoute::new(send_tx.clone(), drop_rx.clone()))
                         .is_ok());
                 } else {
                     assert!(request.send_err(Unresolvable(id)).is_ok());

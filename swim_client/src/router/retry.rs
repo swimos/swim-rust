@@ -112,7 +112,7 @@ pub(crate) fn new_request(
 }
 
 async fn acquire_sender(
-    mut sender: mpsc::Sender<ConnectionRequest>,
+    sender: mpsc::Sender<ConnectionRequest>,
     is_retry: bool,
 ) -> SendResult<mpsc::Sender<ConnectionRequest>, ConnectionSender, MpscRetryErr> {
     let (connection_tx, connection_rx) = oneshot::channel();
@@ -193,7 +193,7 @@ mod tests {
         let retryable = new_retryable(
             payload.clone(),
             tx,
-            |mut sender: mpsc::Sender<WsMessage>, payload, _is_retry| async move {
+            |sender: mpsc::Sender<WsMessage>, payload, _is_retry| async move {
                 let _ = sender.send(payload.clone()).await;
                 Ok(((), Some(sender)))
             },
@@ -210,7 +210,7 @@ mod tests {
         let retryable = new_retryable(
             payload.clone(),
             tx,
-            |mut sender: mpsc::Sender<WsMessage>, payload, is_retry| async move {
+            |sender: mpsc::Sender<WsMessage>, payload, is_retry| async move {
                 if is_retry {
                     let _ = sender.send(payload.clone().into()).await;
                     Ok(((), Some(sender)))

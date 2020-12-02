@@ -17,9 +17,11 @@ use crate::downlink::model::value::SharedValue;
 use crate::downlink::typed::event::TypedViewWithEvent;
 use crate::downlink::typed::topic::{ApplyForm, ApplyFormsMap, TryTransformTopic};
 use crate::downlink::Event;
-use futures::future::{ready, Ready};
+use futures::future::ready;
+use futures::future::BoxFuture;
 use futures::stream::StreamExt;
-use futures_util::stream::{iter, Iter};
+use futures::stream::{iter, Iter};
+use futures::FutureExt;
 use im::OrdMap;
 use std::num::ParseIntError;
 use std::sync::Arc;
@@ -92,11 +94,10 @@ struct TestTopic(Vec<Event<String>>);
 
 impl Topic<Event<String>> for TestTopic {
     type Receiver = Iter<IntoIter<Event<String>>>;
-    type Fut = Ready<Result<Self::Receiver, TopicError>>;
 
-    fn subscribe(&mut self) -> Self::Fut {
+    fn subscribe(&mut self) -> BoxFuture<Result<Self::Receiver, TopicError>> {
         let TestTopic(strings) = self;
-        ready(Ok(iter(strings.clone().into_iter())))
+        ready(Ok(iter(strings.clone().into_iter()))).boxed()
     }
 }
 

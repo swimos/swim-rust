@@ -24,8 +24,7 @@ use swim_common::ws::WsMessage;
 use crate::routing::error::ConnectionError;
 use crate::routing::ws::{CloseReason, JoinedStreamSink, TransformedStreamSink, WsConnections};
 use swim_common::ws::error::WebSocketError;
-use tokio::io::AsyncWrite;
-use tokio::prelude::AsyncRead;
+use tokio::io::{AsyncRead, AsyncWrite};
 
 type TError = tokio_tungstenite::tungstenite::Error;
 type TransformedWsStream<S> =
@@ -69,7 +68,7 @@ impl From<TError> for ConnectionError {
             TError::AlreadyClosed | TError::ConnectionClosed => ConnectionError::Closed,
             TError::Url(url) => ConnectionError::Websocket(WebSocketError::Url(url.to_string())),
             TError::HttpFormat(err) => ConnectionError::Warp(err.to_string()),
-            TError::Http(code) => ConnectionError::Http(code),
+            TError::Http(response) => ConnectionError::Http(response.status()),
             TError::Io(e) => ConnectionError::Socket(e.kind()),
             Error::Tls(e) => ConnectionError::Websocket(WebSocketError::Tls(e.to_string())),
             Error::Protocol(_) => ConnectionError::Websocket(WebSocketError::Protocol),

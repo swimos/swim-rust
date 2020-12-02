@@ -18,6 +18,7 @@ use http::uri::InvalidUri;
 use std::fmt;
 use std::fmt::{Display, Formatter};
 use swim_runtime::task::TaskError;
+use tokio::sync::{mpsc, oneshot};
 
 const UNSUPPORTED_SCHEME: &str = "Unsupported URL scheme";
 const MISSING_SCHEME: &str = "Missing URL scheme";
@@ -171,6 +172,18 @@ impl From<WebSocketError> for ConnectionError {
 
 impl From<RequestError> for ConnectionError {
     fn from(_: RequestError) -> Self {
+        ConnectionError::ConnectError
+    }
+}
+
+impl<T> From<mpsc::error::SendError<T>> for ConnectionError {
+    fn from(_: mpsc::error::SendError<T>) -> Self {
+        ConnectionError::ConnectError
+    }
+}
+
+impl From<oneshot::error::RecvError> for ConnectionError {
+    fn from(_: oneshot::error::RecvError) -> Self {
         ConnectionError::ConnectError
     }
 }

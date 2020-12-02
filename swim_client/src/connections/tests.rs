@@ -15,7 +15,6 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
-use futures::future::ErrInto as FutErrInto;
 use futures::task::{Context, Poll};
 use futures::Sink;
 use futures_util::stream::Stream;
@@ -23,16 +22,12 @@ use std::pin::Pin;
 use tokio::sync::mpsc;
 use url::Url;
 
-use swim_common::request::request_future::SendAndAwait;
-
-use crate::connections::factory::async_factory;
 use crate::connections::factory::async_factory::AsyncFactory;
 
 use super::*;
 use crate::connections::factory::tungstenite::HostConfig;
-use swim_common::ws::Protocol;
+use swim_common::ws::{ConnFuture, Protocol};
 use tokio_tungstenite::tungstenite::extensions::compression::WsCompression;
-use utilities::errors::FlattenErrors;
 
 #[tokio::test]
 async fn test_connection_pool_send_single_message_single_connection() {
@@ -440,7 +435,7 @@ async fn test_connection_pool_close() {
     );
 
     // When
-    assert!(connection_pool.close().unwrap().await.is_ok());
+    assert!(connection_pool.close().await.is_ok());
 
     // Then
     assert!(writer_rx.recv().await.is_none());
@@ -457,7 +452,7 @@ async fn test_connection_send_single_message() {
 
     let mut factory = TestConnectionFactory::new(test_data).await;
 
-    let mut connection = SwimConnection::new(host, buffer_size, &mut factory)
+    let connection = SwimConnection::new(host, buffer_size, &mut factory)
         .await
         .unwrap();
 
@@ -638,7 +633,7 @@ impl Sink<WsMessage> for TestWriteStream {
         }
     }
 
-    fn start_send(mut self: Pin<&mut Self>, item: WsMessage) -> Result<(), Self::Error> {
+    fn start_send(self: Pin<&mut Self>, item: WsMessage) -> Result<(), Self::Error> {
         if self.error {
             Err(())
         } else {
@@ -695,23 +690,20 @@ impl TestConnectionFactory {
     }
 }
 
-type ConnReq = async_factory::ConnReq<TestWriteStream, TestReadStream>;
-type ConnectionFuture =
-    SendAndAwait<ConnReq, Result<(TestWriteStream, TestReadStream), ConnectionError>>;
-
 impl WebsocketFactory for TestConnectionFactory {
     type WsStream = TestReadStream;
     type WsSink = TestWriteStream;
-    type ConnectFut = FlattenErrors<FutErrInto<ConnectionFuture, ConnectionError>>;
 
-    fn connect(&mut self, url: Url) -> Self::ConnectFut {
-        self.inner.connect_using(
-            url,
-            HostConfig {
-                protocol: Protocol::PlainText,
-                compression_level: WsCompression::None(None),
-            },
-        )
+    fn connect(&mut self, url: Url) -> ConnFuture<Self::WsSink, Self::WsStream> {
+        self.inner
+            .connect_using(
+                url,
+                HostConfig {
+                    protocol: Protocol::PlainText,
+                    compression_level: WsCompression::None(None),
+                },
+            )
+            .boxed()
     }
 }
 

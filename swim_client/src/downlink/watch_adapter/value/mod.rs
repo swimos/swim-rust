@@ -17,6 +17,8 @@ use std::num::NonZeroUsize;
 use swim_common::routing::RoutingError;
 use swim_common::sink::item::{ItemSender, ItemSink};
 use swim_runtime::task::{spawn, TaskHandle};
+use tokio::sync::broadcast;
+use tokio::sync::broadcast::error::RecvError;
 
 #[cfg(test)]
 mod tests;
@@ -24,7 +26,7 @@ mod tests;
 /// Joins a watch receiver to an MPSC sender to prevent back-pressure propagating between
 /// two queues.
 pub struct ValuePump<T> {
-    sender: super::EpochSender<Option<T>>,
+    sender: broadcast::Sender<T>,
     _task: TaskHandle<()>,
 }
 
@@ -35,7 +37,8 @@ impl<'a, T: Clone> ItemSink<'a, T> for ValuePump<T> {
     fn send_item(&'a mut self, value: T) -> Self::SendFuture {
         ready(
             self.sender
-                .broadcast(Some(value))
+                .send(value)
+                .map(|_| ())
                 .map_err(|_| RoutingError::RouterDropped),
         )
     }
@@ -49,7 +52,7 @@ where
     where
         Snk: ItemSender<T, RoutingError> + Send + 'static,
     {
-        let (tx, rx) = super::channel(None);
+        let (tx, rx) = broadcast::channel(1);
         let task = ValuePumpTask::new(rx, sink, yield_after);
         ValuePump {
             sender: tx,
@@ -59,7 +62,7 @@ where
 }
 
 struct ValuePumpTask<T, Snk> {
-    receiver: super::EpochReceiver<Option<T>>,
+    receiver: broadcast::Receiver<T>,
     sender: Snk,
     yield_after: NonZeroUsize,
 }
@@ -69,7 +72,7 @@ where
     T: Clone,
     Snk: ItemSender<T, RoutingError>,
 {
-    fn new(rx: super::EpochReceiver<Option<T>>, sink: Snk, yield_after: NonZeroUsize) -> Self {
+    fn new(rx: broadcast::Receiver<T>, sink: Snk, yield_after: NonZeroUsize) -> Self {
         ValuePumpTask {
             receiver: rx,
             sender: sink,
@@ -85,9 +88,17 @@ where
         } = self;
         let yield_mod = yield_after.get();
         let mut iteration_count: usize = 0;
-        while let Some(value) = receiver.recv_defined().await {
-            if sender.send_item(value).await.is_err() {
-                break;
+        loop {
+            match receiver.recv().await {
+                Ok(value) => {
+                    if sender.send_item(value).await.is_err() {
+                        break;
+                    }
+                }
+                Err(RecvError::Closed) => {
+                    break;
+                }
+                _ => {}
             }
             iteration_count += 1;
             if iteration_count % yield_mod == 0 {

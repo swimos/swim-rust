@@ -176,6 +176,12 @@ impl<T> From<SinkSendError<T>> for ConnectionError {
     }
 }
 
+impl From<futures::channel::mpsc::SendError> for ConnectionError {
+    fn from(_: futures::channel::mpsc::SendError) -> Self {
+        ConnectionError::ClosedRemotely
+    }
+}
+
 /// General error type for a failed agent resolution.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ResolutionError {

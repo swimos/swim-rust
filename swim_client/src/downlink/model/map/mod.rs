@@ -570,7 +570,7 @@ pub fn create_raw_downlink<Updates, Commands>(
     buffer_size: NonZeroUsize,
     yield_after: NonZeroUsize,
     on_invalid: OnInvalidMessage,
-) -> RawDownlink<mpsc::Sender<MapAction>, mpsc::Receiver<Event<ViewWithEvent>>>
+) -> RawDownlink<MapAction, mpsc::Receiver<Event<ViewWithEvent>>>
 where
     Updates: Stream<Item = MapItemResult> + Send + 'static,
     Commands:

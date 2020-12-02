@@ -12,20 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::ws::error::WebSocketError;
-use native_tls::{Certificate, TlsConnector};
-use tokio::net::TcpStream;
-use tokio_tls::{TlsConnector as TokioTlsConnector, TlsStream};
-
 use crate::ws::error::CertificateError;
+use crate::ws::error::WebSocketError;
 use std::fs::File;
 use std::io::{BufReader, Read};
 use std::path::Path;
+use tokio_native_tls::{native_tls::Certificate, TlsConnector as TokioTlsConnector, TlsStream};
+
+use tokio::net::TcpStream;
+use tokio_native_tls::native_tls::TlsConnector;
 
 pub struct TlsError(pub String);
 
-impl From<native_tls::Error> for TlsError {
-    fn from(e: native_tls::Error) -> Self {
+impl From<tokio_native_tls::native_tls::Error> for TlsError {
+    fn from(e: tokio_native_tls::native_tls::Error) -> Self {
         TlsError(e.to_string())
     }
 }
