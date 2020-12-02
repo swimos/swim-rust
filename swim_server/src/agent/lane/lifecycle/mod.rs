@@ -15,7 +15,7 @@
 use crate::agent::lane::model::action::ActionLane;
 use crate::agent::lane::model::demand::DemandLane;
 use crate::agent::lane::model::demand_map::DemandMapLane;
-use crate::agent::lane::strategy::{Buffered, Dropping, Queue};
+use crate::agent::lane::strategy::{Buffered, Queue};
 use crate::agent::lane::LaneModel;
 use crate::agent::AgentContext;
 use futures::future::{ready, Ready};

@@ -77,7 +77,7 @@ where
     Value: Form,
 {
     /// Syncs this lane. Called by the uplink.
-    pub(crate) async fn sync(mut self) -> Result<Vec<DemandMapLaneUpdate<Key, Value>>, ()> {
+    pub(crate) async fn sync(self) -> Result<Vec<DemandMapLaneUpdate<Key, Value>>, ()> {
         let (tx, rx) = oneshot::channel();
 
         if self
