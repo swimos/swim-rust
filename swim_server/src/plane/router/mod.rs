@@ -19,7 +19,6 @@ use crate::routing::{Route, RoutingAddr, ServerRouter, ServerRouterFactory, Tagg
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use swim_common::request::Request;
-use swim_common::sink::item::either::EitherSink;
 use tokio::sync::{mpsc, oneshot};
 use url::Url;
 use utilities::uri::RelativeUri;
@@ -82,12 +81,7 @@ impl<Delegate> PlaneRouter<Delegate> {
 }
 
 impl<Delegate: ServerRouter> ServerRouter for PlaneRouter<Delegate> {
-    type Sender = EitherSink<TaggedSender, Delegate::Sender>;
-
-    fn resolve_sender(
-        &mut self,
-        addr: RoutingAddr,
-    ) -> BoxFuture<Result<Route<Self::Sender>, ResolutionError>> {
+    fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>> {
         async move {
             let PlaneRouter {
                 tag,
@@ -107,19 +101,15 @@ impl<Delegate: ServerRouter> ServerRouter for PlaneRouter<Delegate> {
                     Err(ResolutionError::RouterDropped)
                 } else {
                     match rx.await {
-                        Ok(Ok(RawRoute { sender, on_drop })) => Ok(Route::new(
-                            EitherSink::left(TaggedSender::new(*tag, sender)),
-                            on_drop,
-                        )),
+                        Ok(Ok(RawRoute { sender, on_drop })) => {
+                            Ok(Route::new(TaggedSender::new(*tag, sender), on_drop))
+                        }
                         Ok(Err(err)) => Err(ResolutionError::Unresolvable(err)),
                         Err(_) => Err(ResolutionError::RouterDropped),
                     }
                 }
             } else {
-                delegate_router
-                    .resolve_sender(addr)
-                    .await
-                    .map(|Route { sender, on_drop }| Route::new(EitherSink::right(sender), on_drop))
+                delegate_router.resolve_sender(addr).await
             }
         }
         .boxed()

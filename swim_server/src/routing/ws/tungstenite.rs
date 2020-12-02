@@ -68,7 +68,7 @@ impl From<TError> for ConnectionError {
             TError::AlreadyClosed | TError::ConnectionClosed => ConnectionError::Closed,
             TError::Url(url) => ConnectionError::Websocket(WebSocketError::Url(url.to_string())),
             TError::HttpFormat(err) => ConnectionError::Warp(err.to_string()),
-            TError::Http(response) => ConnectionError::Http(response.status()),
+            TError::Http(response) => ConnectionError::Http(response),
             TError::Io(e) => ConnectionError::Socket(e.kind()),
             Error::Tls(e) => ConnectionError::Websocket(WebSocketError::Tls(e.to_string())),
             Error::Protocol(_) => ConnectionError::Websocket(WebSocketError::Protocol),

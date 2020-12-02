@@ -22,7 +22,7 @@ use crate::plane::lifecycle::PlaneLifecycle;
 use crate::plane::router::PlaneRouter;
 use crate::plane::spec::{PlaneBuilder, PlaneSpec, RouteSpec};
 use crate::routing::error::{ResolutionError, RouterError};
-use crate::routing::{Route, RoutingAddr, ServerRouter, TaggedEnvelope, TaggedSender};
+use crate::routing::{Route, RoutingAddr, ServerRouter, TaggedEnvelope};
 use futures::future::{ready, BoxFuture, Ready};
 use futures::FutureExt;
 use std::time::Duration;
@@ -58,12 +58,10 @@ struct DummyPlaneLifecycle(i32);
 struct DummyDelegate;
 
 impl ServerRouter for DummyDelegate {
-    type Sender = TaggedSender;
-
     fn resolve_sender(
         &mut self,
         _addr: RoutingAddr,
-    ) -> BoxFuture<'_, Result<Route<Self::Sender>, ResolutionError>> {
+    ) -> BoxFuture<'_, Result<Route, ResolutionError>> {
         unimplemented!()
     }
 

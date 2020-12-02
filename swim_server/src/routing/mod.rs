@@ -14,13 +14,12 @@
 
 use crate::plane::PlaneRequest;
 use crate::routing::error::{ConnectionError, ResolutionError, RouterError};
-use crate::routing::remote::RoutingRequest;
+use crate::routing::remote::{RawRoute, RoutingRequest};
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use std::fmt::{Display, Formatter};
 use std::time::Duration;
 use swim_common::request::Request;
-use swim_common::sink::item::{ItemSender, ItemSink, MpscSend};
 use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
@@ -84,12 +83,10 @@ impl SuperRouter {
 }
 
 impl ServerRouter for SuperRouter {
-    type Sender = TaggedSender;
-
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,
-    ) -> BoxFuture<'_, Result<Route<Self::Sender>, ResolutionError>> {
+    ) -> BoxFuture<'_, Result<Route, ResolutionError>> {
         async move {
             let SuperRouter {
                 plane_sender,
@@ -108,7 +105,7 @@ impl ServerRouter for SuperRouter {
                     Err(ResolutionError::RouterDropped)
                 } else {
                     match rx.await {
-                        Ok(Ok(Route { sender, on_drop })) => {
+                        Ok(Ok(RawRoute { sender, on_drop })) => {
                             Ok(Route::new(TaggedSender::new(*tag, sender), on_drop))
                         }
                         Ok(Err(err)) => Err(ResolutionError::Unresolvable(err)),
@@ -126,7 +123,7 @@ impl ServerRouter for SuperRouter {
                     Err(ResolutionError::RouterDropped)
                 } else {
                     match rx.await {
-                        Ok(Ok(Route { sender, on_drop })) => {
+                        Ok(Ok(RawRoute { sender, on_drop })) => {
                             Ok(Route::new(TaggedSender::new(*tag, sender), on_drop))
                         }
                         Ok(Err(err)) => Err(ResolutionError::Unresolvable(err)),
