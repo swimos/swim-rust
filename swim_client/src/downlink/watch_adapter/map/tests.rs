@@ -17,6 +17,7 @@ use tokio::sync::mpsc;
 use super::*;
 use std::collections::BTreeMap;
 use std::time::Duration;
+use swim_common::sink::item;
 use tokio::time::timeout;
 
 const TIMEOUT: Duration = Duration::from_secs(30);
@@ -78,12 +79,11 @@ fn yield_after() -> NonZeroUsize {
     NonZeroUsize::new(256).unwrap()
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn single_pass_through() {
     let (tx, mut rx) = mpsc::channel(5);
-
     let mut watcher = KeyedWatch::new(
-        tx.map_err_into(),
+        item::for_mpsc_sender(tx).map_err_into(),
         buffer_size(),
         buffer_size(),
         max_active_keys(),
@@ -102,12 +102,12 @@ async fn single_pass_through() {
     assert_eq!(output.unwrap(), Some(update(1, 5)));
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn multiple_one_key() {
     let (tx, rx) = mpsc::channel(5);
 
     let mut watcher = KeyedWatch::new(
-        tx.map_err_into(),
+        item::for_mpsc_sender(tx).map_err_into(),
         buffer_size(),
         buffer_size(),
         max_active_keys(),
@@ -134,12 +134,12 @@ async fn multiple_one_key() {
     assert!(output.unwrap().is_ok());
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn multiple_keys() {
     let (tx, rx) = mpsc::channel(5);
 
     let mut watcher = KeyedWatch::new(
-        tx.map_err_into(),
+        item::for_mpsc_sender(tx).map_err_into(),
         buffer_size(),
         buffer_size(),
         max_active_keys(),
@@ -167,12 +167,12 @@ async fn multiple_keys() {
     assert!(output.unwrap().is_ok());
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn multiple_keys_multiple_values() {
     let (tx, rx) = mpsc::channel(5);
 
     let mut watcher = KeyedWatch::new(
-        tx.map_err_into(),
+        item::for_mpsc_sender(tx).map_err_into(),
         buffer_size(),
         buffer_size(),
         max_active_keys(),
@@ -199,12 +199,12 @@ async fn multiple_keys_multiple_values() {
     assert!(output.unwrap().is_ok());
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn single_clear() {
     let (tx, mut rx) = mpsc::channel(5);
 
     let mut watcher = KeyedWatch::new(
-        tx.map_err_into(),
+        item::for_mpsc_sender(tx).map_err_into(),
         buffer_size(),
         buffer_size(),
         max_active_keys(),
@@ -223,12 +223,12 @@ async fn single_clear() {
     assert_eq!(output.unwrap(), Some(UntypedMapModification::Clear));
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn single_take() {
     let (tx, mut rx) = mpsc::channel(5);
 
     let mut watcher = KeyedWatch::new(
-        tx.map_err_into(),
+        item::for_mpsc_sender(tx).map_err_into(),
         buffer_size(),
         buffer_size(),
         max_active_keys(),
@@ -247,12 +247,12 @@ async fn single_take() {
     assert_eq!(output.unwrap(), Some(UntypedMapModification::Take(4)));
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn single_skip() {
     let (tx, mut rx) = mpsc::channel(5);
 
     let mut watcher = KeyedWatch::new(
-        tx.map_err_into(),
+        item::for_mpsc_sender(tx).map_err_into(),
         buffer_size(),
         buffer_size(),
         max_active_keys(),
@@ -271,12 +271,12 @@ async fn single_skip() {
     assert_eq!(output.unwrap(), Some(UntypedMapModification::Skip(4)));
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn special_action_ordering() {
     let (tx, rx) = mpsc::channel(5);
 
     let mut watcher = KeyedWatch::new(
-        tx.map_err_into(),
+        item::for_mpsc_sender(tx).map_err_into(),
         buffer_size(),
         buffer_size(),
         max_active_keys(),
@@ -310,12 +310,12 @@ async fn special_action_ordering() {
     assert!(output.unwrap().is_ok());
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn overflow_active_keys() {
     let (tx, rx) = mpsc::channel(5);
 
     let mut watcher = KeyedWatch::new(
-        tx.map_err_into(),
+        item::for_mpsc_sender(tx).map_err_into(),
         buffer_size(),
         buffer_size(),
         max_active_keys(),

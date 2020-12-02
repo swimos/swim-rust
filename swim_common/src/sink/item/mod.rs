@@ -15,10 +15,8 @@
 use std::future::Future;
 
 use futures::future::{ready, BoxFuture, Ready};
-use futures::task::{Context, Poll};
-use futures::{future, FutureExt};
-use std::marker::PhantomData;
-use std::pin::Pin;
+use futures::FutureExt;
+use std::convert::Infallible;
 use tokio::sync::{broadcast, mpsc, watch};
 
 pub mod comap;
@@ -35,37 +33,6 @@ pub trait ItemSink<'a, T> {
 
     /// Attempt to send an item into the sink.
     fn send_item(&'a mut self, value: T) -> Self::SendFuture;
-}
-
-/// Sender that discards everything sent to it.
-#[derive(Debug)]
-pub struct DiscardingSender<E>(PhantomData<E>);
-
-impl<E> DiscardingSender<E> {
-    pub fn new() -> Self {
-        DiscardingSender(PhantomData)
-    }
-}
-
-impl<E> Default for DiscardingSender<E> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl<E> Clone for DiscardingSender<E> {
-    fn clone(&self) -> Self {
-        Default::default()
-    }
-}
-
-impl<'a, T, E: Send + 'static> ItemSink<'a, T> for DiscardingSender<E> {
-    type Error = E;
-    type SendFuture = Ready<Result<(), E>>;
-
-    fn send_item(&'a mut self, _value: T) -> Self::SendFuture {
-        ready(Ok(()))
-    }
 }
 
 pub trait ItemSender<T, E>: for<'a> ItemSink<'a, T, Error = E> {
@@ -106,90 +73,7 @@ where
 
 pub type MpscErr<T> = mpsc::error::SendError<T>;
 pub type WatchErr<T> = watch::error::SendError<T>;
-pub type BroadcastErr<T> = broadcast::SendError<T>;
-
-/// Wrap an [`mpsc::Sender`] as an item sink. It is not possible to implement the trait
-/// directly as the `send` method returns an anonymous type.
-pub fn for_mpsc_sender<T: Send + 'static, Err: From<MpscErr<T>> + Send + 'static>(
-    sender: mpsc::Sender<T>,
-) -> impl ItemSender<T, Err> {
-    sender.map_err_into()
-}
-
-pub fn for_watch_sender<T: Clone + Send + 'static, Err: From<SendError> + Send + 'static>(
-    sender: watch::Sender<Option<T>>,
-) -> impl ItemSender<T, Err> {
-    WatchSink(sender).map_err_into()
-}
-
-pub fn for_broadcast_sender<
-    T: Clone + Send + 'static,
-    Err: From<BroadcastErr<T>> + Send + 'static,
->(
-    sender: broadcast::Sender<T>,
-) -> impl ItemSender<T, Err> {
-    sender.map_err_into()
-}
-
-pub struct MpscSend<'a, T, E> {
-    sender: Pin<&'a mut mpsc::Sender<T>>,
-    value: Option<T>,
-    _err: PhantomData<E>,
-}
-
-impl<'a, T, E> Unpin for MpscSend<'a, T, E> {}
-
-impl<'a, T, E> MpscSend<'a, T, E> {
-    pub fn new(sender: &'a mut mpsc::Sender<T>, value: T) -> MpscSend<'a, T, E> {
-        MpscSend {
-            sender: Pin::new(sender),
-            value: Some(value),
-            _err: PhantomData,
-        }
-    }
-}
-
-impl<'a, T, E> Future for MpscSend<'a, T, E>
-where
-    E: From<mpsc::error::SendError<T>>,
-{
-    type Output = Result<(), E>;
-
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let MpscSend { sender, value, .. } = self.get_mut();
-
-        match sender.poll_ready(cx) {
-            Poll::Ready(Ok(_)) => match value.take() {
-                Some(t) => match sender.try_send(t) {
-                    Ok(_) => Poll::Ready(Ok(())),
-                    Err(mpsc::error::TrySendError::Closed(t)) => {
-                        Poll::Ready(Err(mpsc::error::SendError(t).into()))
-                    }
-                    Err(mpsc::error::TrySendError::Full(_)) => unreachable!(),
-                },
-                _ => panic!("Send future evaluated twice."),
-            },
-            Poll::Ready(Err(_)) => match value.take() {
-                Some(t) => Poll::Ready(Err(mpsc::error::SendError(t).into())),
-                _ => panic!("Send future evaluated twice."),
-            },
-            Poll::Pending => Poll::Pending,
-        }
-    }
-}
-
-impl<'a, T: Send + 'a> ItemSink<'a, T> for mpsc::Sender<T> {
-    type Error = mpsc::error::SendError<T>;
-    type SendFuture = MpscSend<'a, T, mpsc::error::SendError<T>>;
-
-    fn send_item(&'a mut self, value: T) -> Self::SendFuture {
-        MpscSend {
-            sender: Pin::new(self),
-            value: Some(value),
-            _err: PhantomData,
-        }
-    }
-}
+pub type BroadcastErr<T> = broadcast::error::SendError<T>;
 
 pub mod map_err {
     use crate::sink::item::ItemSink;
@@ -197,10 +81,19 @@ pub mod map_err {
     use futures_util::future::TryFutureExt;
     use std::marker::PhantomData;
 
-    #[derive(Clone, Debug)]
+    #[derive(Debug)]
     pub struct SenderErrInto<Sender, E> {
         sender: Sender,
         _target: PhantomData<E>,
+    }
+
+    impl<Sender: Clone, E> Clone for SenderErrInto<Sender, E> {
+        fn clone(&self) -> Self {
+            SenderErrInto {
+                sender: self.sender.clone(),
+                _target: PhantomData,
+            }
+        }
     }
 
     impl<Sender, E> SenderErrInto<Sender, E> {
@@ -230,37 +123,10 @@ pub struct WatchSink<T>(watch::Sender<Option<T>>);
 
 impl<T> WatchSink<T> {
     pub fn broadcast(&self, value: T) -> Result<(), SendError> {
-        match self.0.broadcast(Some(value)) {
+        match self.0.send(Some(value)) {
             Ok(_) => Ok(()),
             Err(_) => Err(SendError {}),
         }
-    }
-}
-
-impl<'a, T: Send + 'a> ItemSink<'a, T> for WatchSink<T> {
-    type Error = SendError;
-    type SendFuture = Ready<Result<(), Self::Error>>;
-
-    fn send_item(&'a mut self, value: T) -> Self::SendFuture {
-        future::ready(self.broadcast(value))
-    }
-}
-
-impl<'a, T: Send + 'a> ItemSink<'a, T> for watch::Sender<T> {
-    type Error = WatchErr<T>;
-    type SendFuture = Ready<Result<(), Self::Error>>;
-
-    fn send_item(&'a mut self, value: T) -> Self::SendFuture {
-        future::ready(self.broadcast(value))
-    }
-}
-
-impl<'a, T: Send + 'a> ItemSink<'a, T> for broadcast::Sender<T> {
-    type Error = BroadcastErr<T>;
-    type SendFuture = Ready<Result<(), Self::Error>>;
-
-    fn send_item(&'a mut self, value: T) -> Self::SendFuture {
-        future::ready(self.send(value).map(|_| ()))
     }
 }
 
@@ -290,11 +156,77 @@ impl<'a, T, E: 'a> ItemSink<'a, T> for BoxItemSink<T, E> {
 
 impl<'a, T> ItemSink<'a, T> for Vec<T> {
     //TODO Ideally this should be ! but that is still experimental.
-    type Error = ();
-    type SendFuture = Ready<Result<(), ()>>;
+    type Error = Infallible;
+    type SendFuture = Ready<Result<(), Infallible>>;
 
     fn send_item(&'a mut self, value: T) -> Self::SendFuture {
         self.push(value);
         ready(Ok(()))
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct FnMutSender<S, F> {
+    sender: S,
+    send_op: F,
+}
+
+impl<S, F> FnMutSender<S, F> {
+    pub fn new(sender: S, send_op: F) -> Self {
+        FnMutSender { sender, send_op }
+    }
+}
+
+impl<'a, T, E, S, F, Fut> ItemSink<'a, T> for FnMutSender<S, F>
+where
+    S: 'static,
+    F: FnMut(&'a mut S, T) -> Fut,
+    Fut: Future<Output = Result<(), E>> + Send + 'a,
+{
+    type Error = E;
+    type SendFuture = Fut;
+
+    fn send_item(&'a mut self, value: T) -> Self::SendFuture {
+        let FnMutSender { sender, send_op } = self;
+        send_op(sender, value)
+    }
+}
+
+fn mpsc_send_op<'a, T: Send + 'static>(
+    tx: &'a mut mpsc::Sender<T>,
+    t: T,
+) -> impl Future<Output = Result<(), mpsc::error::SendError<T>>> + Send + 'a {
+    tx.send(t)
+}
+
+fn watch_send_op<'a, T: Send + 'static>(
+    tx: &'a mut WatchSink<T>,
+    t: T,
+) -> impl Future<Output = Result<(), SendError>> + Send + 'a {
+    ready(tx.broadcast(t))
+}
+
+fn broadcast_send_op<'a, T: Send + 'static>(
+    tx: &'a mut broadcast::Sender<T>,
+    t: T,
+) -> impl Future<Output = Result<(), broadcast::error::SendError<T>>> + Send + 'a {
+    ready(tx.send(t).map(|_| ()))
+}
+
+pub fn for_mpsc_sender<T: Send + 'static>(
+    tx: mpsc::Sender<T>,
+) -> impl ItemSender<T, mpsc::error::SendError<T>> + Clone {
+    FnMutSender::new(tx, mpsc_send_op)
+}
+
+pub fn for_watch_sender<T: Send + 'static>(
+    tx: watch::Sender<Option<T>>,
+) -> impl ItemSender<T, SendError> {
+    FnMutSender::new(WatchSink(tx), watch_send_op)
+}
+
+pub fn for_broadcast_sender<T: Send + 'static>(
+    tx: broadcast::Sender<T>,
+) -> impl ItemSender<T, broadcast::error::SendError<T>> {
+    FnMutSender::new(tx, broadcast_send_op)
 }

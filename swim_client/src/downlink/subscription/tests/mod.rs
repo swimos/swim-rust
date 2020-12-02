@@ -63,7 +63,11 @@ fn per_lane_config() -> ConfigHierarchy {
 }
 
 async fn dl_manager(conf: ConfigHierarchy) -> Downlinks {
-    let router = harness::StubRouter::new();
+    let (general_tx, mut general_rx) = mpsc::channel(32);
+    let (specific_tx, mut specific_rx) = mpsc::channel(32);
+    let router = harness::StubRouter::new(specific_tx, general_tx);
+    tokio::spawn(async move { while let Some(_) = general_rx.recv().await {} });
+    tokio::spawn(async move { while let Some(_) = specific_rx.recv().await {} });
     Downlinks::new(Arc::new(conf), router).await
 }
 

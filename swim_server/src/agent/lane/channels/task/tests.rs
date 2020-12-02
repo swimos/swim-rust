@@ -22,8 +22,11 @@ use crate::agent::lane::channels::{
 };
 use crate::agent::lane::model::action::{Action, ActionLane};
 use crate::agent::Eff;
-use crate::plane::error::ResolutionError;
-use crate::routing::{RoutingAddr, ServerRouter, TaggedClientEnvelope, TaggedEnvelope};
+use crate::routing::error::{ResolutionError, RouterError, SendError};
+use crate::routing::{
+    ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedClientEnvelope, TaggedEnvelope,
+    TaggedSender,
+};
 use futures::future::{join, join3, ready, BoxFuture};
 use futures::stream::{BoxStream, FusedStream};
 use futures::{Future, FutureExt, Stream, StreamExt};
@@ -35,7 +38,6 @@ use std::time::Duration;
 use stm::transaction::TransactionError;
 use swim_common::form::{Form, FormErr};
 use swim_common::model::Value;
-use swim_common::routing::RoutingError;
 use swim_common::sink::item::ItemSink;
 use swim_common::topic::{MpscTopic, Topic};
 use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
@@ -43,7 +45,7 @@ use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::{mpsc, Mutex};
 use url::Url;
-use utilities::sync::trigger;
+use utilities::sync::{promise, trigger};
 use utilities::uri::RelativeUri;
 
 #[test]
@@ -164,14 +166,14 @@ impl LaneUplinks for TestUplinkSpawner {
         Context: AgentExecutionContext,
     {
         let TestUplinkSpawner {
-            mut respond_tx,
+            respond_tx,
             fail_on,
             fatal_errors,
         } = self.clone();
 
         let UplinkChannels {
             mut actions,
-            mut error_collector,
+            error_collector,
             ..
         } = channels;
 
@@ -301,59 +303,60 @@ impl LaneMessageHandler for TestHandler {
 }
 
 #[derive(Clone)]
-struct TestContext(
-    mpsc::Sender<Eff>,
-    mpsc::Sender<TaggedEnvelope>,
-    Arc<Mutex<Option<trigger::Sender>>>,
-);
+struct TestContext {
+    scheduler: mpsc::Sender<Eff>,
+    messages: mpsc::Sender<TaggedEnvelope>,
+    trigger: Arc<Mutex<Option<trigger::Sender>>>,
+    _drop_tx: Arc<promise::Sender<ConnectionDropped>>,
+    drop_rx: promise::Receiver<ConnectionDropped>,
+}
 
 impl TestContext {
     async fn stop(&self) {
-        if let Some(tx) = self.2.lock().await.take() {
+        if let Some(tx) = self.trigger.lock().await.take() {
             tx.trigger();
         }
     }
 }
 
-struct TestRouter(mpsc::Sender<TaggedEnvelope>);
+struct TestRouter {
+    sender: mpsc::Sender<TaggedEnvelope>,
+    drop_rx: promise::Receiver<ConnectionDropped>,
+}
 
+#[derive(Clone, Debug)]
 struct TestSender {
     addr: RoutingAddr,
     inner: mpsc::Sender<TaggedEnvelope>,
 }
 
 impl<'a> ItemSink<'a, Envelope> for TestSender {
-    type Error = RoutingError;
+    type Error = SendError;
     type SendFuture = BoxFuture<'a, Result<(), Self::Error>>;
 
     fn send_item(&'a mut self, value: Envelope) -> Self::SendFuture {
         let tagged = TaggedEnvelope(self.addr, value);
-        async move {
-            self.inner
-                .send(tagged)
-                .await
-                .map_err(|_| RoutingError::RouterDropped)
-        }
-        .boxed()
+        async move { self.inner.send(tagged).await.map_err(Into::into) }.boxed()
     }
 }
 
 impl ServerRouter for TestRouter {
-    type Sender = TestSender;
-
-    fn get_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Self::Sender, RoutingError>> {
-        ready(Ok(TestSender {
-            addr,
-            inner: self.0.clone(),
-        }))
+    fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>> {
+        let TestRouter {
+            sender, drop_rx, ..
+        } = self;
+        ready(Ok(Route::new(
+            TaggedSender::new(addr, sender.clone()),
+            drop_rx.clone(),
+        )))
         .boxed()
     }
 
-    fn resolve(
+    fn lookup(
         &mut self,
         _host: Option<Url>,
         _route: RelativeUri,
-    ) -> BoxFuture<'static, Result<RoutingAddr, ResolutionError>> {
+    ) -> BoxFuture<'static, Result<RoutingAddr, RouterError>> {
         panic!("Unexpected resolution attempt.")
     }
 }
@@ -362,11 +365,17 @@ impl AgentExecutionContext for TestContext {
     type Router = TestRouter;
 
     fn router_handle(&self) -> Self::Router {
-        TestRouter(self.1.clone())
+        let TestContext {
+            messages, drop_rx, ..
+        } = self;
+        TestRouter {
+            sender: messages.clone(),
+            drop_rx: drop_rx.clone(),
+        }
     }
 
     fn spawner(&self) -> Sender<Eff> {
-        self.0.clone()
+        self.scheduler.clone()
     }
 }
 
@@ -492,7 +501,15 @@ fn make_context() -> (
     let (router_tx, router_rx) = mpsc::channel(5);
     let (stop_tx, stop_rx) = trigger::trigger();
 
-    let context = TestContext(spawn_tx, router_tx, Arc::new(Mutex::new(Some(stop_tx))));
+    let (drop_tx, drop_rx) = promise::promise();
+
+    let context = TestContext {
+        scheduler: spawn_tx,
+        messages: router_tx,
+        trigger: Arc::new(Mutex::new(Some(stop_tx))),
+        _drop_tx: Arc::new(drop_tx),
+        drop_rx,
+    };
     let spawn_task = spawn_rx
         .take_until(stop_rx)
         .for_each_concurrent(None, |t| t)
@@ -877,7 +894,7 @@ fn make_command_lane_task<Context: AgentExecutionContext + Send + Sync + 'static
     mpsc::Receiver<i32>,
     TaskInput,
 ) {
-    let (mut collector_tx, collector_rx) = mpsc::channel(5);
+    let (collector_tx, collector_rx) = mpsc::channel(5);
     let (feedback_tx, mut feedback_rx) = mpsc::channel::<Action<i32, ()>>(5);
 
     let mock_lifecycle = async move {
@@ -1166,10 +1183,46 @@ async fn handle_action_lane_update_failure() {
     ));
 }
 
-#[derive(Default, Debug)]
+#[derive(Debug)]
+struct RouteReceiver {
+    receiver: Option<mpsc::Receiver<TaggedEnvelope>>,
+    _drop_tx: promise::Sender<ConnectionDropped>,
+}
+
+impl RouteReceiver {
+    fn new(
+        receiver: mpsc::Receiver<TaggedEnvelope>,
+        drop_tx: promise::Sender<ConnectionDropped>,
+    ) -> Self {
+        RouteReceiver {
+            receiver: Some(receiver),
+            _drop_tx: drop_tx,
+        }
+    }
+
+    fn taken(drop_tx: promise::Sender<ConnectionDropped>) -> Self {
+        RouteReceiver {
+            receiver: None,
+            _drop_tx: drop_tx,
+        }
+    }
+}
+
+#[derive(Debug)]
 struct MultiTestContextInner {
-    senders: HashMap<RoutingAddr, mpsc::Sender<TaggedEnvelope>>,
-    receivers: HashMap<RoutingAddr, mpsc::Receiver<TaggedEnvelope>>,
+    router_addr: RoutingAddr,
+    senders: HashMap<RoutingAddr, Route>,
+    receivers: HashMap<RoutingAddr, RouteReceiver>,
+}
+
+impl MultiTestContextInner {
+    fn new(router_addr: RoutingAddr) -> Self {
+        MultiTestContextInner {
+            router_addr,
+            senders: HashMap::new(),
+            receivers: HashMap::new(),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -1179,23 +1232,33 @@ struct MultiTestContext(
 );
 
 impl MultiTestContext {
-    fn new(spawner: mpsc::Sender<Eff>) -> Self {
-        MultiTestContext(Default::default(), spawner)
+    fn new(router_addr: RoutingAddr, spawner: mpsc::Sender<Eff>) -> Self {
+        MultiTestContext(
+            Arc::new(parking_lot::Mutex::new(MultiTestContextInner::new(
+                router_addr,
+            ))),
+            spawner,
+        )
     }
 
     fn take_receiver(&self, addr: RoutingAddr) -> Option<mpsc::Receiver<TaggedEnvelope>> {
         let mut lock = self.0.lock();
         if lock.senders.contains_key(&addr) {
-            lock.receivers.remove(&addr)
+            lock.receivers
+                .get_mut(&addr)
+                .and_then(|rr| rr.receiver.take())
         } else {
             let (tx, rx) = mpsc::channel(5);
-            lock.senders.insert(addr, tx);
+            let (drop_tx, drop_rx) = promise::promise();
+            lock.senders
+                .insert(addr, Route::new(TaggedSender::new(addr, tx), drop_rx));
+            lock.receivers.insert(addr, RouteReceiver::taken(drop_tx));
             Some(rx)
         }
     }
 }
 
-#[derive(Default, Debug, Clone)]
+#[derive(Debug, Clone)]
 struct MultiTestRouter(Arc<parking_lot::Mutex<MultiTestContextInner>>);
 
 impl AgentExecutionContext for MultiTestContext {
@@ -1211,31 +1274,28 @@ impl AgentExecutionContext for MultiTestContext {
 }
 
 impl ServerRouter for MultiTestRouter {
-    type Sender = TestSender;
-
-    fn get_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Self::Sender, RoutingError>> {
+    fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>> {
         async move {
             let mut lock = self.0.lock();
             if let Some(sender) = lock.senders.get(&addr) {
-                Ok(TestSender {
-                    addr,
-                    inner: sender.clone(),
-                })
+                Ok(sender.clone())
             } else {
                 let (tx, rx) = mpsc::channel(5);
-                lock.senders.insert(addr, tx.clone());
-                lock.receivers.insert(addr, rx);
-                Ok(TestSender { addr, inner: tx })
+                let (drop_tx, drop_rx) = promise::promise();
+                let route = Route::new(TaggedSender::new(addr, tx), drop_rx);
+                lock.senders.insert(addr, route.clone());
+                lock.receivers.insert(addr, RouteReceiver::new(rx, drop_tx));
+                Ok(route)
             }
         }
         .boxed()
     }
 
-    fn resolve(
+    fn lookup(
         &mut self,
         _host: Option<Url>,
         _route: RelativeUri,
-    ) -> BoxFuture<'_, Result<RoutingAddr, ResolutionError>> {
+    ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
         panic!("Unexpected resolution attempt.")
     }
 }
@@ -1243,7 +1303,7 @@ impl ServerRouter for MultiTestRouter {
 fn make_multi_context() -> (MultiTestContext, BoxFuture<'static, ()>) {
     let (spawn_tx, spawn_rx) = mpsc::channel(5);
 
-    let context = MultiTestContext::new(spawn_tx);
+    let context = MultiTestContext::new(RoutingAddr::local(1024), spawn_tx);
     let spawn_task = spawn_rx.for_each_concurrent(None, |t| t).boxed();
 
     (context, spawn_task)

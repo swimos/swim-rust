@@ -23,7 +23,6 @@ mod tests {
     use swim_client::interface::SwimClient;
     use swim_common::form::Form;
     use swim_common::model::{Attr, Item, Value};
-    use swim_common::sink::item::ItemSink;
     use swim_common::topic::Topic;
     use swim_common::warp::path::AbsolutePath;
     use test_server::clients::Cli;
@@ -42,8 +41,8 @@ mod tests {
 
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "id");
 
-        let (_, mut recv) = client.value_downlink(path.clone(), 0).await.unwrap();
-        tokio::time::delay_for(Duration::from_secs(1)).await;
+        let (_, mut recv) = client.value_downlink::<i32>(path.clone(), 0).await.unwrap();
+        tokio::time::sleep(Duration::from_secs(1)).await;
 
         let message = recv.next().await.unwrap();
         assert_eq!(message, Event::Remote(0));
@@ -60,7 +59,7 @@ mod tests {
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "id");
 
         let (mut dl, mut recv) = client.value_downlink(path.clone(), 0).await.unwrap();
-        tokio::time::delay_for(Duration::from_secs(1)).await;
+        tokio::time::sleep(Duration::from_secs(1)).await;
 
         dl.send_item(Action::set(10.into_value())).await.unwrap();
 
@@ -84,7 +83,7 @@ mod tests {
             .map_downlink::<String, i32>(path.clone())
             .await
             .unwrap();
-        tokio::time::delay_for(Duration::from_secs(1)).await;
+        tokio::time::sleep(Duration::from_secs(1)).await;
 
         let message = recv.next().await.unwrap();
 
@@ -111,7 +110,7 @@ mod tests {
             .map_downlink::<String, i32>(path.clone())
             .await
             .unwrap();
-        tokio::time::delay_for(Duration::from_secs(1)).await;
+        tokio::time::sleep(Duration::from_secs(1)).await;
 
         dl.send_item(MapAction::update(String::from("milk").into(), 1.into()))
             .await
@@ -154,13 +153,10 @@ mod tests {
         let command_path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "info");
 
         let mut event_dl = client.untyped_event_downlink(event_path).await.unwrap();
-        tokio::time::delay_for(Duration::from_secs(1)).await;
+        tokio::time::sleep(Duration::from_secs(1)).await;
 
         let mut command_dl = client.untyped_command_downlink(command_path).await.unwrap();
-        command_dl
-            .send_item("Hello, from Rust!".into())
-            .await
-            .unwrap();
+        command_dl.send("Hello, from Rust!".into()).await.unwrap();
 
         let incoming = event_dl.recv().await.unwrap();
 
@@ -183,7 +179,7 @@ mod tests {
             .event_downlink::<String>(event_path, Default::default())
             .await
             .unwrap();
-        tokio::time::delay_for(Duration::from_secs(1)).await;
+        tokio::time::sleep(Duration::from_secs(1)).await;
 
         let mut command_dl = client
             .command_downlink::<String>(command_path)
@@ -215,13 +211,10 @@ mod tests {
             .event_downlink::<i32>(event_path, Default::default())
             .await
             .unwrap();
-        tokio::time::delay_for(Duration::from_secs(1)).await;
+        tokio::time::sleep(Duration::from_secs(1)).await;
 
         let mut command_dl = client.untyped_command_downlink(command_path).await.unwrap();
-        command_dl
-            .send_item("Hello, from Rust!".into())
-            .await
-            .unwrap();
+        command_dl.send("Hello, from Rust!".into()).await.unwrap();
 
         let incoming = event_dl.recv().await;
 
@@ -244,11 +237,11 @@ mod tests {
             AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "shoppingCart");
 
         let mut event_dl = client.untyped_event_downlink(event_path).await.unwrap();
-        tokio::time::delay_for(Duration::from_secs(1)).await;
+        tokio::time::sleep(Duration::from_secs(1)).await;
 
         let mut command_dl = client.untyped_command_downlink(command_path).await.unwrap();
         command_dl
-            .send_item(
+            .send(
                 UntypedMapModification::Update("milk".to_string().into_value(), 6.into_value())
                     .as_value(),
             )
@@ -284,7 +277,7 @@ mod tests {
             .await
             .unwrap();
 
-        tokio::time::delay_for(Duration::from_secs(1)).await;
+        tokio::time::sleep(Duration::from_secs(1)).await;
 
         let mut command_dl = client
             .command_downlink::<MapModification<String, i32>>(command_path)
@@ -320,11 +313,11 @@ mod tests {
             .await
             .unwrap();
 
-        tokio::time::delay_for(Duration::from_secs(1)).await;
+        tokio::time::sleep(Duration::from_secs(1)).await;
 
         let mut command_dl = client.untyped_command_downlink(command_path).await.unwrap();
         command_dl
-            .send_item(
+            .send(
                 UntypedMapModification::Update("milk".to_string().into_value(), 6.into_value())
                     .as_value(),
             )
@@ -356,11 +349,11 @@ mod tests {
             .await
             .unwrap();
 
-        tokio::time::delay_for(Duration::from_secs(1)).await;
+        tokio::time::sleep(Duration::from_secs(1)).await;
 
         let mut command_dl = client.untyped_command_downlink(command_path).await.unwrap();
         command_dl
-            .send_item(
+            .send(
                 UntypedMapModification::Update("milk".to_string().into_value(), 6.into_value())
                     .as_value(),
             )
@@ -387,7 +380,7 @@ mod tests {
             .await
             .unwrap();
 
-        tokio::time::delay_for(Duration::from_secs(1)).await;
+        tokio::time::sleep(Duration::from_secs(1)).await;
 
         command_dl
             .send_item("Hello, String!".to_string())
@@ -407,7 +400,7 @@ mod tests {
             .await
             .unwrap();
 
-        tokio::time::delay_for(Duration::from_secs(1)).await;
+        tokio::time::sleep(Duration::from_secs(1)).await;
 
         command_dl
             .send_item("Hello, Value!".to_string())
@@ -463,14 +456,14 @@ mod tests {
             .await
             .unwrap();
 
-        tokio::time::delay_for(Duration::from_secs(1)).await;
+        tokio::time::sleep(Duration::from_secs(1)).await;
 
         command_dl
             .send_item(MapModification::Update("milk".to_string(), 1))
             .await
             .unwrap();
 
-        tokio::time::delay_for(Duration::from_secs(1)).await;
+        tokio::time::sleep(Duration::from_secs(1)).await;
 
         let (mut dl, mut recv) = client.map_downlink::<String, i32>(path).await.unwrap();
 
@@ -492,14 +485,14 @@ mod tests {
             .await
             .unwrap();
 
-        tokio::time::delay_for(Duration::from_secs(1)).await;
+        tokio::time::sleep(Duration::from_secs(1)).await;
 
         command_dl
             .send_item(MapModification::Update("eggs".to_string(), 2))
             .await
             .unwrap();
 
-        tokio::time::delay_for(Duration::from_secs(1)).await;
+        tokio::time::sleep(Duration::from_secs(1)).await;
 
         let message = recv.next().await.unwrap();
         if let Event::Remote(event) = message {
@@ -581,9 +574,9 @@ mod tests {
             .await
             .unwrap();
 
-        tokio::time::delay_for(Duration::from_secs(1)).await;
+        tokio::time::sleep(Duration::from_secs(1)).await;
         command_dl.send_item(String::from("milk")).await.unwrap();
-        tokio::time::delay_for(Duration::from_secs(1)).await;
+        tokio::time::sleep(Duration::from_secs(1)).await;
 
         let (mut dl, mut recv) = client.value_downlink(path, Value::Extant).await.unwrap();
 
@@ -641,7 +634,7 @@ mod tests {
             .await
             .unwrap();
 
-        tokio::time::delay_for(Duration::from_secs(1)).await;
+        tokio::time::sleep(Duration::from_secs(1)).await;
 
         command_dl
             .send_item(MapModification::Update(
@@ -651,7 +644,7 @@ mod tests {
             .await
             .unwrap();
 
-        tokio::time::delay_for(Duration::from_secs(1)).await;
+        tokio::time::sleep(Duration::from_secs(1)).await;
 
         let (mut dl, mut recv) = client.map_downlink::<Value, Value>(path).await.unwrap();
 

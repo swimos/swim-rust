@@ -19,53 +19,67 @@ use crate::agent::lane::channels::uplink::spawn::UplinkErrorReport;
 use crate::agent::lane::channels::uplink::UplinkError;
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::{AttachError, Eff, LaneIo};
-use crate::plane::error::ResolutionError;
-use crate::routing::{RoutingAddr, ServerRouter, TaggedClientEnvelope};
+use crate::routing::error::{ResolutionError, RouterError};
+use crate::routing::{
+    ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedClientEnvelope, TaggedEnvelope,
+    TaggedSender,
+};
 use futures::future::BoxFuture;
-use futures::{FutureExt, TryFutureExt};
+use futures::FutureExt;
 use parking_lot::Mutex;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::sync::Arc;
 use stm::transaction::TransactionError;
 use swim_common::model::Value;
-use swim_common::routing::RoutingError;
-use swim_common::sink::item::ItemSink;
 use swim_common::warp::envelope::{Envelope, OutgoingHeader, OutgoingLinkMessage};
 use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::{Receiver, Sender};
 use url::Url;
+use utilities::sync::promise;
 use utilities::uri::RelativeUri;
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct MockLane;
 
-#[derive(Debug, Clone)]
-pub struct MockSender(mpsc::Sender<Envelope>);
+#[derive(Debug)]
+struct RouteReceiver {
+    receiver: Option<mpsc::Receiver<TaggedEnvelope>>,
+    _drop_tx: promise::Sender<ConnectionDropped>,
+}
 
-impl<'a> ItemSink<'a, Envelope> for MockSender {
-    type Error = RoutingError;
-    type SendFuture = BoxFuture<'a, Result<(), RoutingError>>;
+impl RouteReceiver {
+    fn new(
+        receiver: mpsc::Receiver<TaggedEnvelope>,
+        drop_tx: promise::Sender<ConnectionDropped>,
+    ) -> Self {
+        RouteReceiver {
+            receiver: Some(receiver),
+            _drop_tx: drop_tx,
+        }
+    }
 
-    fn send_item(&'a mut self, value: Envelope) -> Self::SendFuture {
-        self.0
-            .send(value)
-            .map_err(|_| RoutingError::RouterDropped)
-            .boxed()
+    fn taken(drop_tx: promise::Sender<ConnectionDropped>) -> Self {
+        RouteReceiver {
+            receiver: None,
+            _drop_tx: drop_tx,
+        }
     }
 }
 
 #[derive(Debug)]
 struct MockRouterInner {
+    router_addr: RoutingAddr,
     buffer_size: usize,
-    senders: HashMap<RoutingAddr, mpsc::Sender<Envelope>>,
-    receivers: HashMap<RoutingAddr, mpsc::Receiver<Envelope>>,
+    senders: HashMap<RoutingAddr, Route>,
+    receivers: HashMap<RoutingAddr, RouteReceiver>,
 }
 
 impl MockRouterInner {
-    fn new(buffer_size: usize) -> Self {
+    fn new(router_addr: RoutingAddr, buffer_size: usize) -> Self {
         MockRouterInner {
+            router_addr,
             buffer_size,
             senders: Default::default(),
             receivers: Default::default(),
@@ -77,35 +91,38 @@ impl MockRouterInner {
 pub struct MockRouter(Arc<Mutex<MockRouterInner>>);
 
 impl ServerRouter for MockRouter {
-    type Sender = MockSender;
-
-    fn get_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Self::Sender, RoutingError>> {
+    fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>> {
         async move {
             let mut lock = self.0.lock();
             let MockRouterInner {
+                router_addr,
                 buffer_size,
                 senders,
                 receivers,
             } = &mut *lock;
-            let tx = match senders.entry(addr) {
+            let route = match senders.entry(addr) {
                 Entry::Occupied(entry) => entry.get().clone(),
                 Entry::Vacant(entry) => {
                     let (tx, rx) = mpsc::channel(*buffer_size);
-                    entry.insert(tx.clone());
-                    receivers.insert(addr, rx);
-                    tx
+                    let (drop_tx, drop_rx) = promise::promise();
+                    entry.insert(Route::new(
+                        TaggedSender::new(*router_addr, tx.clone()),
+                        drop_rx.clone(),
+                    ));
+                    receivers.insert(addr, RouteReceiver::new(rx, drop_tx));
+                    Route::new(TaggedSender::new(*router_addr, tx), drop_rx)
                 }
             };
-            Ok(MockSender(tx))
+            Ok(route)
         }
         .boxed()
     }
 
-    fn resolve(
+    fn lookup(
         &mut self,
         _host: Option<Url>,
         _route: RelativeUri,
-    ) -> BoxFuture<'static, Result<RoutingAddr, ResolutionError>> {
+    ) -> BoxFuture<'static, Result<RoutingAddr, RouterError>> {
         panic!("Unexpected resolution attempt.")
     }
 }
@@ -129,25 +146,29 @@ impl AgentExecutionContext for MockExecutionContext {
 }
 
 impl MockExecutionContext {
-    pub fn new(buffer_size: usize, spawner: mpsc::Sender<Eff>) -> Self {
+    pub fn new(router_addr: RoutingAddr, buffer_size: usize, spawner: mpsc::Sender<Eff>) -> Self {
         MockExecutionContext {
-            router: Arc::new(Mutex::new(MockRouterInner::new(buffer_size))),
+            router: Arc::new(Mutex::new(MockRouterInner::new(router_addr, buffer_size))),
             spawner,
         }
     }
 
-    pub fn take_receiver(&self, addr: &RoutingAddr) -> Option<mpsc::Receiver<Envelope>> {
+    pub fn take_receiver(&self, addr: &RoutingAddr) -> Option<mpsc::Receiver<TaggedEnvelope>> {
         let mut lock = self.router.lock();
         let MockRouterInner {
+            router_addr,
             buffer_size,
             senders,
             receivers,
+            ..
         } = &mut *lock;
         match senders.entry(*addr) {
-            Entry::Occupied(_) => receivers.remove(addr),
+            Entry::Occupied(_) => receivers.get_mut(addr).and_then(|rr| rr.receiver.take()),
             Entry::Vacant(entry) => {
                 let (tx, rx) = mpsc::channel(*buffer_size);
-                entry.insert(tx);
+                let (drop_tx, drop_rx) = promise::promise();
+                entry.insert(Route::new(TaggedSender::new(*router_addr, tx), drop_rx));
+                receivers.insert(*addr, RouteReceiver::taken(drop_tx));
                 Some(rx)
             }
         }
@@ -169,7 +190,7 @@ impl LaneIo<MockExecutionContext> for MockLane {
             return Err(AttachError::LaneStoppedReporting);
         }
         Ok(async move {
-            let mut senders: HashMap<RoutingAddr, MockSender> = HashMap::new();
+            let mut senders: HashMap<RoutingAddr, TaggedSender> = HashMap::new();
 
             let err = loop {
                 let next = envelopes.recv().await;
@@ -193,8 +214,8 @@ impl LaneIo<MockExecutionContext> for MockLane {
                         let sender = match senders.entry(addr) {
                             Entry::Occupied(entry) => entry.into_mut(),
                             Entry::Vacant(entry) => {
-                                if let Ok(sender) = router.get_sender(addr).await {
-                                    entry.insert(sender)
+                                if let Ok(sender) = router.resolve_sender(addr).await {
+                                    entry.insert(sender.sender)
                                 } else {
                                     break Some(LaneIoError::for_uplink_errors(
                                         route.clone(),

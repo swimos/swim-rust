@@ -15,7 +15,7 @@
 use crate::configuration::downlink::OnInvalidMessage;
 use crate::downlink::{
     Command, DownlinkError, DownlinkInternals, DownlinkState, DroppedError, Event, Message,
-    Operation, Response, StateMachine, StoppedFuture,
+    Operation, Response, StateMachine,
 };
 use futures::stream::FusedStream;
 use futures::task::{Context, Poll};
@@ -29,25 +29,42 @@ use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use swim_common::routing::RoutingError;
-use swim_common::sink::item::{self, ItemSender, ItemSink, MpscSend};
+use swim_common::sink::item::{self, ItemSender};
 use swim_runtime::task::{spawn, TaskHandle};
-use tokio::sync::{mpsc, watch};
+use tokio::sync::mpsc;
 use tracing::{instrument, trace};
+use utilities::errors::Recoverable;
 use utilities::ptr::data_ptr_eq;
+use utilities::sync::promise;
 
 #[cfg(test)]
 pub mod tests;
 
 #[derive(Debug, Clone)]
-pub struct Sender<S> {
+pub struct Sender<T> {
     /// A sink for local actions (sets, insertions, etc.)
-    set_sink: S,
+    set_sink: mpsc::Sender<T>,
     /// The task running the downlink.
     task: Arc<dyn DownlinkInternals>,
 }
 
-impl<S> Sender<S> {
-    pub(in crate::downlink) fn new(set_sink: S, task: Arc<dyn DownlinkInternals>) -> Sender<S> {
+impl<T> AsRef<mpsc::Sender<T>> for Sender<T> {
+    fn as_ref(&self) -> &mpsc::Sender<T> {
+        &self.set_sink
+    }
+}
+
+impl<T> AsMut<mpsc::Sender<T>> for Sender<T> {
+    fn as_mut(&mut self) -> &mut mpsc::Sender<T> {
+        &mut self.set_sink
+    }
+}
+
+impl<T> Sender<T> {
+    pub(in crate::downlink) fn new(
+        set_sink: mpsc::Sender<T>,
+        task: Arc<dyn DownlinkInternals>,
+    ) -> Sender<T> {
         Sender { set_sink, task }
     }
 
@@ -60,28 +77,9 @@ impl<S> Sender<S> {
     }
 }
 
-impl<T> Sender<mpsc::Sender<T>> {
+impl<T> Sender<T> {
     pub async fn send(&mut self, value: T) -> Result<(), mpsc::error::SendError<T>> {
         self.set_sink.send(value).await
-    }
-}
-
-impl<'a, T> ItemSink<'a, T> for Sender<mpsc::Sender<T>>
-where
-    T: Send + 'static,
-{
-    type Error = DownlinkError;
-    type SendFuture = MpscSend<'a, T, DownlinkError>;
-
-    fn send_item(&'a mut self, value: T) -> Self::SendFuture {
-        let send: MpscSend<'a, T, DownlinkError> = MpscSend::new(&mut self.set_sink, value);
-        send
-    }
-}
-
-impl<T> Sender<watch::Sender<T>> {
-    pub fn send(&mut self, value: T) -> Result<(), watch::error::SendError<T>> {
-        self.set_sink.broadcast(value)
     }
 }
 
@@ -102,19 +100,19 @@ impl<R: Stream + Unpin> Stream for Receiver<R> {
 }
 
 /// Type containing the components of a running downlink.
-pub struct RawDownlink<S, R> {
-    pub(in crate::downlink) sender: S,
+pub struct RawDownlink<T, R> {
+    pub(in crate::downlink) sender: mpsc::Sender<T>,
     pub(in crate::downlink) receiver: R,
     pub(in crate::downlink) task: DownlinkTaskHandle,
 }
 
-impl<S, R> RawDownlink<S, R> {
+impl<T, R> RawDownlink<T, R> {
     //Private as downlinks should only be created by methods in this module and its children.
     pub(in crate::downlink) fn new(
-        set_sink: S,
+        set_sink: mpsc::Sender<T>,
         event_stream: R,
         task: DownlinkTaskHandle,
-    ) -> RawDownlink<S, R> {
+    ) -> RawDownlink<T, R> {
         RawDownlink {
             receiver: event_stream,
             sender: set_sink,
@@ -122,7 +120,7 @@ impl<S, R> RawDownlink<S, R> {
         }
     }
 
-    pub fn split(self) -> (Sender<S>, Receiver<R>) {
+    pub fn split(self) -> (Sender<T>, Receiver<R>) {
         let RawDownlink {
             sender,
             receiver,
@@ -149,7 +147,7 @@ pub(in crate::downlink) fn create_downlink<M, A, State, Machine, Updates, Comman
     buffer_size: NonZeroUsize,
     yield_after: NonZeroUsize,
     on_invalid: OnInvalidMessage,
-) -> RawDownlink<mpsc::Sender<A>, mpsc::Receiver<Event<Machine::Ev>>>
+) -> RawDownlink<A, mpsc::Receiver<Event<Machine::Ev>>>
 where
     M: Send + 'static,
     A: Send + 'static,
@@ -163,9 +161,9 @@ where
     let (act_tx, act_rx) = mpsc::channel::<A>(buffer_size.get());
     let (event_tx, event_rx) = mpsc::channel::<Event<Machine::Ev>>(buffer_size.get());
 
-    let event_sink = item::for_mpsc_sender::<_, DroppedError>(event_tx);
+    let event_sink = item::for_mpsc_sender(event_tx).map_err_into();
 
-    let (stopped_tx, stopped_rx) = watch::channel(None);
+    let (stopped_tx, stopped_rx) = promise::promise();
 
     let completed = Arc::new(AtomicBool::new(false));
 
@@ -199,14 +197,14 @@ where
 #[derive(Debug)]
 pub(in crate::downlink) struct DownlinkTaskHandle {
     join_handle: TaskHandle<Result<(), DownlinkError>>,
-    stop_await: watch::Receiver<Option<Result<(), DownlinkError>>>,
+    stop_await: promise::Receiver<Result<(), DownlinkError>>,
     completed: Arc<AtomicBool>,
 }
 
 impl DownlinkTaskHandle {
     pub(in crate::downlink) fn new(
         join_handle: TaskHandle<Result<(), DownlinkError>>,
-        stop_await: watch::Receiver<Option<Result<(), DownlinkError>>>,
+        stop_await: promise::Receiver<Result<(), DownlinkError>>,
         completed: Arc<AtomicBool>,
     ) -> DownlinkTaskHandle {
         DownlinkTaskHandle {
@@ -222,8 +220,8 @@ impl DownlinkTaskHandle {
     }
 
     /// Get a future that will complete when the downlink stops running.
-    pub fn await_stopped(&self) -> StoppedFuture {
-        StoppedFuture(self.stop_await.clone())
+    pub fn await_stopped(&self) -> promise::Receiver<Result<(), DownlinkError>> {
+        self.stop_await.clone()
     }
 }
 
@@ -233,7 +231,7 @@ pub(in crate::downlink) struct DownlinkTask<Commands, Events> {
     cmd_sink: Commands,
     ev_sink: Events,
     completed: Arc<AtomicBool>,
-    stop_event: watch::Sender<Option<Result<(), DownlinkError>>>,
+    stop_event: promise::Sender<Result<(), DownlinkError>>,
     on_invalid: OnInvalidMessage,
 }
 
@@ -264,7 +262,7 @@ impl<Commands, Events> DownlinkTask<Commands, Events> {
         cmd_sink: Commands,
         ev_sink: Events,
         completed: Arc<AtomicBool>,
-        stop_event: watch::Sender<Option<Result<(), DownlinkError>>>,
+        stop_event: promise::Sender<Result<(), DownlinkError>>,
         on_invalid: OnInvalidMessage,
     ) -> Self {
         DownlinkTask {
@@ -406,7 +404,7 @@ impl<Commands, Events> DownlinkTask<Commands, Events> {
 
         let _ = cmd_sink.send_item(Command::Unlink).await;
         completed.store(true, Ordering::Release);
-        let _ = stop_event.broadcast(Some(result.clone()));
+        let _ = stop_event.provide(result.clone());
         result
     }
 }

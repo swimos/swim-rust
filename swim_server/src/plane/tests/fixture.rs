@@ -30,7 +30,6 @@ use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
-use swim_common::sink::item::ItemSink;
 use swim_common::warp::envelope::Envelope;
 use swim_runtime::time::clock::Clock;
 use utilities::sync::trigger;
@@ -112,8 +111,8 @@ impl<Clk: Clock> AgentRoute<Clk, EnvChannel, PlaneRouter> for SendAgentRoute {
         let task = async move {
             let target_node: RelativeUri =
                 format!("/{}/{}", RECEIVER_PREFIX, target).parse().unwrap();
-            let addr = router.resolve(None, target_node.clone()).await.unwrap();
-            let mut tx = router.get_sender(addr).await.unwrap();
+            let addr = router.lookup(None, target_node.clone()).await.unwrap();
+            let mut tx = router.resolve_sender(addr).await.unwrap().sender;
             assert!(tx
                 .send_item(Envelope::make_event(
                     target_node.to_string(),

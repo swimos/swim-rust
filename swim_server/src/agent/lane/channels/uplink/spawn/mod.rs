@@ -115,7 +115,7 @@ where
         mut self,
         mut router: Router,
         mut spawn_tx: mpsc::Sender<Eff>,
-        mut error_collector: mpsc::Sender<UplinkErrorReport>,
+        error_collector: mpsc::Sender<UplinkErrorReport>,
     ) where
         Router: ServerRouter,
     {
@@ -183,7 +183,7 @@ where
     async fn make_uplink<Router>(
         &mut self,
         addr: RoutingAddr,
-        mut err_tx: mpsc::Sender<UplinkErrorReport>,
+        err_tx: mpsc::Sender<UplinkErrorReport>,
         spawn_tx: &mut mpsc::Sender<Eff>,
         router: &mut Router,
     ) -> Option<UplinkHandle>
@@ -207,13 +207,13 @@ where
         };
         let uplink = Uplink::new(state_machine, rx.fuse(), updates);
 
-        let sink = if let Ok(sender) = router.get_sender(addr).await {
-            UplinkMessageSender::new(sender, route.clone())
+        let sink = if let Ok(sender) = router.resolve_sender(addr).await {
+            UplinkMessageSender::new(sender.sender, route.clone())
         } else {
             return None;
         };
         let ul_task = async move {
-            if let Err(err) = uplink.run_uplink(sink).await {
+            if let Err(err) = uplink.run_uplink(sink.into_item_sender()).await {
                 let report = UplinkErrorReport::new(err, addr);
                 if let Err(mpsc::error::SendError(report)) = err_tx.send(report).await {
                     event!(Level::ERROR, message = FAILED_ERR_REPORT, ?report);

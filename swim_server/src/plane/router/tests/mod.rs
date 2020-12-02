@@ -12,36 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::plane::error::{NoAgentAtRoute, ResolutionError, Unresolvable};
-use crate::plane::router::{PlaneRouter, PlaneRouterFactory, PlaneRouterSender};
+use crate::plane::router::{PlaneRouter, PlaneRouterFactory};
 use crate::plane::PlaneRequest;
-use crate::routing::{RoutingAddr, ServerRouter, TaggedEnvelope};
+use crate::routing::error::{ConnectionError, ResolutionError, RouterError, Unresolvable};
+use crate::routing::remote::RawRoute;
+use crate::routing::{RoutingAddr, ServerRouter, ServerRouterFactory, TaggedEnvelope};
 use futures::future::join;
-use swim_common::routing::RoutingError;
-use swim_common::sink::item::ItemSink;
 use swim_common::warp::envelope::Envelope;
 use tokio::sync::mpsc;
 use url::Url;
-
-#[tokio::test]
-async fn plane_router_sender() {
-    let (tx, mut rx) = mpsc::channel(8);
-    let mut sender = PlaneRouterSender::new(RoutingAddr::remote(7), tx);
-
-    assert!(sender
-        .send_item(Envelope::linked("/node", "lane"))
-        .await
-        .is_ok());
-
-    let received = rx.recv().await;
-    assert_eq!(
-        received,
-        Some(TaggedEnvelope(
-            RoutingAddr::remote(7),
-            Envelope::linked("/node", "lane")
-        ))
-    );
-}
+use utilities::sync::promise;
 
 #[tokio::test]
 async fn plane_router_get_sender() {
@@ -49,6 +29,7 @@ async fn plane_router_get_sender() {
 
     let (req_tx, mut req_rx) = mpsc::channel(8);
     let (send_tx, mut send_rx) = mpsc::channel(8);
+    let (_drop_tx, drop_rx) = promise::promise();
 
     let mut router = PlaneRouter::new(addr, req_tx);
 
@@ -56,7 +37,9 @@ async fn plane_router_get_sender() {
         while let Some(req) = req_rx.recv().await {
             if let PlaneRequest::Endpoint { id, request } = req {
                 if id == addr {
-                    assert!(request.send_ok(send_tx.clone()).is_ok());
+                    assert!(request
+                        .send_ok(RawRoute::new(send_tx.clone(), drop_rx.clone()))
+                        .is_ok());
                 } else {
                     assert!(request.send_err(Unresolvable(id)).is_ok());
                 }
@@ -67,10 +50,11 @@ async fn plane_router_get_sender() {
     };
 
     let send_task = async move {
-        let result1 = router.get_sender(addr).await;
+        let result1 = router.resolve_sender(addr).await;
         assert!(result1.is_ok());
         let mut sender = result1.unwrap();
         assert!(sender
+            .sender
             .send_item(Envelope::linked("/node", "lane"))
             .await
             .is_ok());
@@ -79,9 +63,12 @@ async fn plane_router_get_sender() {
             Some(TaggedEnvelope(addr, Envelope::linked("/node", "lane")))
         );
 
-        let result2 = router.get_sender(RoutingAddr::local(56)).await;
+        let result2 = router.resolve_sender(RoutingAddr::local(56)).await;
 
-        assert!(matches!(result2, Err(RoutingError::HostUnreachable)));
+        assert!(matches!(
+            result2,
+            Err(ResolutionError::Unresolvable(Unresolvable(_)))
+        ));
     };
 
     join(provider_task, send_task).await;
@@ -91,7 +78,7 @@ async fn plane_router_get_sender() {
 async fn plane_router_factory() {
     let (req_tx, _req_rx) = mpsc::channel(8);
     let fac = PlaneRouterFactory::new(req_tx);
-    let router = fac.create(RoutingAddr::local(56));
+    let router = fac.create_for(RoutingAddr::local(56));
     assert_eq!(router.tag, RoutingAddr::local(56));
 }
 
@@ -118,12 +105,12 @@ async fn plane_router_resolve() {
                     assert!(request.send_ok(addr).is_ok());
                 } else if host.is_some() {
                     assert!(request
-                        .send_err(ResolutionError::NoRoute(RoutingError::HostUnreachable))
+                        .send_err(RouterError::ConnectionFailure(ConnectionError::Warp(
+                            "Boom!".to_string()
+                        )))
                         .is_ok());
                 } else {
-                    assert!(request
-                        .send_err(ResolutionError::NoAgent(NoAgentAtRoute(name)))
-                        .is_ok());
+                    assert!(request.send_err(RouterError::NoAgentAtRoute(name)).is_ok());
                 }
             } else {
                 panic!("Unexpected request {:?}!", req);
@@ -132,23 +119,21 @@ async fn plane_router_resolve() {
     };
 
     let send_task = async move {
-        let result1 = router.resolve(Some(host), "/node".parse().unwrap()).await;
+        let result1 = router.lookup(Some(host), "/node".parse().unwrap()).await;
         assert!(matches!(result1, Ok(a) if a == addr));
 
         let other_host = Url::parse("warp://other").unwrap();
 
         let result2 = router
-            .resolve(Some(other_host), "/node".parse().unwrap())
+            .lookup(Some(other_host), "/node".parse().unwrap())
             .await;
         assert!(matches!(
             result2,
-            Err(ResolutionError::NoRoute(RoutingError::HostUnreachable))
+            Err(RouterError::ConnectionFailure(ConnectionError::Warp(msg))) if msg == "Boom!"
         ));
 
-        let result3 = router.resolve(None, "/node".parse().unwrap()).await;
-        assert!(
-            matches!(result3, Err(ResolutionError::NoAgent(NoAgentAtRoute(name))) if name == "/node")
-        );
+        let result3 = router.lookup(None, "/node".parse().unwrap()).await;
+        assert!(matches!(result3, Err(RouterError::NoAgentAtRoute(name)) if name == "/node"));
     };
 
     join(provider_task, send_task).await;

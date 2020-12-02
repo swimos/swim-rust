@@ -17,20 +17,20 @@ use crate::downlink::any::AnyDownlink;
 use crate::downlink::raw::{DownlinkTask, DownlinkTaskHandle};
 use crate::downlink::topic::{DownlinkReceiver, DownlinkTopic, MakeReceiver};
 use crate::downlink::{
-    raw, Command, Downlink, DownlinkError, DownlinkInternals, DroppedError, Event, Message,
-    StateMachine, StoppedFuture,
+    raw, Command, Downlink, DownlinkError, DownlinkInternals, Event, Message, StateMachine,
 };
-use futures::future::Ready;
-use futures::{Stream, StreamExt};
+use futures::future::BoxFuture;
+use futures::{FutureExt, Stream, StreamExt};
 use std::fmt::{Debug, Formatter};
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Weak};
 use swim_common::routing::RoutingError;
-use swim_common::sink::item::{self, ItemSender, ItemSink, MpscSend};
+use swim_common::sink::item::{self, ItemSender};
 use swim_common::topic::{Topic, TopicError, WatchTopic, WatchTopicReceiver};
 use swim_runtime::task::spawn;
 use tokio::sync::{mpsc, watch};
-use utilities::future::{SwimFutureExt, TransformedFuture};
+use utilities::future::SwimFutureExt;
+use utilities::sync::promise;
 
 /// A downlink where subscribers observe the latest output record whenever the poll the receiver
 /// stream.
@@ -109,7 +109,7 @@ impl<Act, Upd> DroppingDownlink<Act, Upd> {
     }
 
     /// Get a future that will complete when the downlink stops running.
-    pub fn await_stopped(&self) -> StoppedFuture {
+    pub fn await_stopped(&self) -> promise::Receiver<Result<(), DownlinkError>> {
         self.internal.task.await_stopped()
     }
 }
@@ -123,7 +123,7 @@ where
     Upd: Clone + Send + Sync + 'static,
 {
     pub fn from_raw(
-        raw: raw::RawDownlink<mpsc::Sender<Act>, watch::Receiver<Option<Event<Upd>>>>,
+        raw: raw::RawDownlink<Act, watch::Receiver<Option<Event<Upd>>>>,
     ) -> (DroppingDownlink<Act, Upd>, DroppingReceiver<Upd>) {
         let raw::RawDownlink {
             receiver,
@@ -149,31 +149,24 @@ where
     }
 }
 
+impl<Act, Upd> DroppingDownlink<Act, Upd> {
+    pub async fn send_item(&mut self, value: Act) -> Result<(), DownlinkError> {
+        Ok(self.input.send(value).await?)
+    }
+}
+
 impl<Act, Upd> Topic<Event<Upd>> for DroppingDownlink<Act, Upd>
 where
     Act: Send + 'static,
     Upd: Clone + Send + Sync + 'static,
 {
     type Receiver = DroppingReceiver<Upd>;
-    type Fut =
-        TransformedFuture<Ready<Result<DroppingTopicReceiver<Upd>, TopicError>>, MakeReceiver>;
 
-    fn subscribe(&mut self) -> Self::Fut {
+    fn subscribe(&mut self) -> BoxFuture<Result<Self::Receiver, TopicError>> {
         self.topic
             .subscribe()
             .transform(MakeReceiver::new(self.internal.clone()))
-    }
-}
-
-impl<'a, Act, Upd> ItemSink<'a, Act> for DroppingDownlink<Act, Upd>
-where
-    Act: Send + 'static,
-{
-    type Error = DownlinkError;
-    type SendFuture = MpscSend<'a, Act, DownlinkError>;
-
-    fn send_item(&'a mut self, value: Act) -> Self::SendFuture {
-        MpscSend::new(&mut self.input, value)
+            .boxed()
     }
 }
 
@@ -183,7 +176,7 @@ where
     Upd: Clone + Send + Sync + 'static,
 {
     type DlTopic = DownlinkTopic<WatchTopic<Event<Upd>>>;
-    type DlSink = raw::Sender<mpsc::Sender<Act>>;
+    type DlSink = raw::Sender<Act>;
 
     fn split(self) -> (Self::DlTopic, Self::DlSink) {
         let DroppingDownlink {
@@ -219,9 +212,9 @@ where
     let (act_tx, act_rx) = mpsc::channel::<A>(config.buffer_size.get());
     let (event_tx, event_rx) = watch::channel::<Option<Event<Machine::Ev>>>(None);
 
-    let event_sink = item::for_watch_sender::<_, DroppedError>(event_tx);
+    let event_sink = item::for_watch_sender(event_tx).map_err_into();
 
-    let (stopped_tx, stopped_rx) = watch::channel(None);
+    let (stopped_tx, stopped_rx) = promise::promise();
 
     let completed = Arc::new(AtomicBool::new(false));
 

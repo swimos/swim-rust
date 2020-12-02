@@ -7475,3 +7475,24 @@ fn big_int_range_schema() {
     assert!(!schema.matches(&Value::Int32Value(-1)));
     assert!(!schema.matches(&Value::Int64Value(i64::max_value())));
 }
+
+#[test]
+fn text_or() {
+    let schema = StandardSchema::Text(TextSchema::Or(vec![
+        TextSchema::Exact(String::from("trace")),
+        TextSchema::Exact(String::from("debug")),
+        TextSchema::Exact(String::from("warn")),
+        TextSchema::Exact(String::from("error")),
+        TextSchema::Exact(String::from("fail")),
+    ]));
+
+    assert!(schema.matches(&Value::text("trace")));
+    assert!(schema.matches(&Value::text("debug")));
+    assert!(schema.matches(&Value::text("warn")));
+    assert!(schema.matches(&Value::text("error")));
+    assert!(schema.matches(&Value::text("fail")));
+
+    assert!(!schema.matches(&Value::text("super-high-level")));
+    assert!(!schema.matches(&Value::empty_record()));
+    assert!(!schema.matches(&Value::Int32Value(i32::max_value())));
+}
