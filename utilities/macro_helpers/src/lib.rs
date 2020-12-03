@@ -153,3 +153,7 @@ impl Attributes for Vec<Attribute> {
             .collect()
     }
 }
+
+pub trait SynOriginal {
+    fn original(&self) -> &syn::Field;
+}

@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::{CompoundTypeKind, Label};
-use syn::DeriveInput;
+use crate::{CompoundTypeKind, Label, SynOriginal};
 use syn::Variant;
+use syn::{DeriveInput, Field};
 
 /// An enumeration representing the contents of an input.
 #[derive(Clone)]
@@ -70,6 +70,12 @@ pub struct FormField<'a> {
     pub label: Label,
     /// The kind of the field from its attribute.
     pub kind: FieldKind,
+}
+
+impl<'a> SynOriginal for FormField<'a> {
+    fn original(&self) -> &Field {
+        &self.original
+    }
 }
 
 impl<'a> FormField<'a> {

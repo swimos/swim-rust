@@ -16,9 +16,9 @@ use num_bigint::BigInt;
 use proc_macro2::TokenStream;
 use quote::ToTokens;
 use syn::export::TokenStream2;
-use syn::{ExprPath, Meta, NestedMeta, Type};
+use syn::{ExprPath, Field, Meta, NestedMeta, Type};
 
-use macro_helpers::{Attributes, CompoundTypeKind, Context, Label, Symbol};
+use macro_helpers::{Attributes, CompoundTypeKind, Context, Label, Symbol, SynOriginal};
 
 use crate::form::form_parser::FormDescriptor;
 use crate::parser::{FORM_PATH, SCHEMA_PATH, TAG_PATH};
@@ -141,6 +141,12 @@ impl ValidatedFormDescriptor {
 pub struct ValidatedField<'f> {
     pub form_field: FormField<'f>,
     pub field_schema: StandardSchema,
+}
+
+impl<'f> SynOriginal for ValidatedField<'f> {
+    fn original(&self) -> &Field {
+        &self.form_field.original
+    }
 }
 
 impl<'f> ValidatedField<'f> {

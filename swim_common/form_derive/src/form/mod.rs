@@ -12,13 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use syn::DeriveInput;
+use syn::{DeriveInput, Generics};
 
 use from_value::from_value;
 use macro_helpers::Context;
 use to_value::to_value;
 
-use crate::form::form_parser::build_type_contents;
+use crate::form::form_parser::{build_type_contents, FormDescriptor};
+use macro_helpers::form::{FormField, TypeContents};
+use macro_helpers::generics::add_bound;
 
 pub mod form_parser;
 mod from_value;
@@ -31,6 +33,8 @@ pub fn build_derive_form(input: DeriveInput) -> Result<proc_macro2::TokenStream,
         Some(cont) => cont,
         None => return Err(context.check().unwrap_err()),
     };
+
+    let generics = build_generics(&type_contents, &input.generics);
 
     let from_value_body = from_value(
         &type_contents,
@@ -59,7 +63,7 @@ pub fn build_derive_form(input: DeriveInput) -> Result<proc_macro2::TokenStream,
 
     context.check()?;
 
-    let (impl_generics, ty_generics, where_clause) = &input.generics.split_for_impl();
+    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
     let ts = quote! {
         impl #impl_generics swim_common::form::Form for #structure_name #ty_generics #where_clause
@@ -93,33 +97,21 @@ pub fn build_derive_form(input: DeriveInput) -> Result<proc_macro2::TokenStream,
     Ok(ts)
 }
 
-//
-// fn build_generics(type_contents: &TypeContents<FormDescriptor, FormField>) -> Generics {
-//     match type_contents {
-//         TypeContents::Enum(repr) => {}
-//         TypeContents::Struct(repr) => repr.fields.get(0).unwrap().original.ty,
-//     }
-//
-//     let generics = match *cont.attrs.default() {
-//         attr::Default::Default => {
-//             bound::with_self_bound(cont, &generics, &parse_quote!(_serde::export::Default))
-//         }
-//         attr::Default::None | attr::Default::Path(_) => generics,
-//     };
-//
-//     let generics = bound::with_bound(
-//         cont,
-//         &generics,
-//         needs_deserialize_bound,
-//         &parse_quote!(_serde::Deserialize<#delife>),
-//     );
-//
-//     bound::with_bound(
-//         cont,
-//         &generics,
-//         requires_default,
-//         &parse_quote!(_serde::export::Default),
-//     );
-//
-//     unimplemented!()
-// }
+fn build_generics(
+    type_contents: &TypeContents<FormDescriptor, FormField>,
+    generics: &Generics,
+) -> Generics {
+    let generics = add_bound(
+        type_contents,
+        generics,
+        |f| !f.is_skipped(),
+        &parse_quote!(swim_common::form::Form),
+    );
+
+    add_bound(
+        type_contents,
+        &generics,
+        |f| f.is_skipped(),
+        &parse_quote!(std::default::Default),
+    )
+}

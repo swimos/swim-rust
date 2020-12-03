@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use syn::DeriveInput;
+use syn::{DeriveInput, Generics};
 
 use macro_helpers::{CompoundTypeKind, Context, Label};
 
@@ -23,6 +23,7 @@ use crate::validated_form::vf_parser::{
     type_contents_to_validated, StandardSchema, ValidatedField, ValidatedFormDescriptor,
 };
 use macro_helpers::form::{EnumRepr, TypeContents};
+use macro_helpers::generics::add_bound;
 use proc_macro2::TokenStream;
 use syn::export::TokenStream2;
 
@@ -44,8 +45,10 @@ pub fn build_validated_form(
 
     context.check()?;
 
+    let generics = build_generics(&type_contents, &input.generics);
+
     let structure_name = &input.ident;
-    let (impl_generics, ty_generics, where_clause) = &input.generics.split_for_impl();
+    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let type_contents = type_contents_to_tokens(&type_contents);
 
     let ts = quote! {
@@ -220,4 +223,23 @@ fn derive_compound_schema(
     };
 
     build_head_attribute(ident, remainder, fields, manifest)
+}
+
+fn build_generics(
+    type_contents: &TypeContents<ValidatedFormDescriptor, ValidatedField>,
+    generics: &Generics,
+) -> Generics {
+    let generics = add_bound(
+        type_contents,
+        generics,
+        |f| !f.form_field.is_skipped(),
+        &parse_quote!(swim_common::form::ValidatedForm),
+    );
+
+    add_bound(
+        type_contents,
+        &generics,
+        |f| f.form_field.is_skipped(),
+        &parse_quote!(std::default::Default),
+    )
 }
