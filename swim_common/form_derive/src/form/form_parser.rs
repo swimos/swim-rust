@@ -14,7 +14,8 @@
 
 use crate::parser::{parse_struct, FieldManifest, FORM_PATH, SCHEMA_PATH, TAG_PATH};
 use macro_helpers::form::{EnumRepr, EnumVariant, FormField, StructRepr, TypeContents};
-use macro_helpers::{Attributes, Context, Label, StructureKind};
+use macro_helpers::label::Label;
+use macro_helpers::{Attributes, Context, StructureKind};
 use proc_macro2::Ident;
 use syn::{Data, Lit, Meta, NestedMeta};
 

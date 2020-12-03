@@ -14,7 +14,8 @@
 
 use crate::form::form_parser::FormDescriptor;
 use macro_helpers::form::{EnumRepr, EnumVariant, FieldKind, FormField, StructRepr, TypeContents};
-use macro_helpers::{deconstruct_type, CompoundTypeKind, Label};
+use macro_helpers::label::Label;
+use macro_helpers::{deconstruct_type, CompoundTypeKind};
 use proc_macro2::Ident;
 use syn::export::TokenStream2;
 

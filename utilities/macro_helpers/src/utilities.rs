@@ -15,7 +15,7 @@
 use crate::label::Label;
 use crate::{CompoundTypeKind, Context, Symbol};
 use proc_macro2::TokenStream;
-use syn::Lit;
+use syn::{Attribute, Lit};
 use syn::{ExprPath, Meta};
 
 /// Consumes a vector of errors and produces a compiler error.
@@ -78,11 +78,11 @@ pub fn deconstruct_type(
 }
 
 /// Returns a vector of metadata for the provided [`Attribute`] that matches the provided
-/// [`Symbol`]. An error that is encountered is added to the [`Context`] and a [`Result::Err`] is
+/// [`Symbol`]. An error that is encountered is added to the [`Context`] and an `Err` is
 /// returned.
 pub fn get_attribute_meta(
     ctx: &mut Context,
-    attr: &syn::Attribute,
+    attr: &Attribute,
     path: Symbol,
 ) -> Result<Vec<syn::NestedMeta>, ()> {
     if attr.path != path {

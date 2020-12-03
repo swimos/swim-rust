@@ -31,10 +31,9 @@ use std::fmt::{Debug, Display};
 
 use proc_macro2::Ident;
 use quote::ToTokens;
-use syn::NestedMeta;
+use syn::{NestedMeta, Path};
 
-use syn::export::{Formatter, TokenStream2};
-use syn::{Attribute, Data, ExprPath, Index, Lit, Meta, Path};
+use syn::{Attribute, Data};
 pub use utilities::*;
 
 #[derive(Copy, Clone)]
@@ -131,7 +130,7 @@ impl Context {
 }
 
 /// A trait for retrieving attributes on a field or compound type that are prefixed by the provided
-/// [`symbol`]. For example calling this on a [`DeriveInput`] that represents the following:
+/// `symbol`. For example calling this on a [`syn::DeriveInput`] that represents the following:
 ///```compile_fail
 ///struct Person {
 ///    #[form(skip)]
@@ -139,7 +138,7 @@ impl Context {
 ///    age: i32,
 /// }
 ///```
-/// will return a [`Vec`] that contains the [`NestedMeta`] for the field [`name`].
+/// will return a [`Vec`] that contains the [`NestedMeta`] for the field.
 pub trait Attributes {
     /// Returns a vector of [`NestedMeta`] for all attributes that contain a path that matches the
     /// provided symbol or an empty vector if there are no matches.

@@ -14,7 +14,7 @@
 
 use syn::{DeriveInput, Generics};
 
-use macro_helpers::{CompoundTypeKind, Context, Label};
+use macro_helpers::{CompoundTypeKind, Context};
 
 use crate::form::form_parser::build_type_contents;
 use crate::parser::FieldManifest;
@@ -24,6 +24,7 @@ use crate::validated_form::vf_parser::{
 };
 use macro_helpers::form::{EnumRepr, TypeContents};
 use macro_helpers::generics::add_bound;
+use macro_helpers::label::Label;
 use proc_macro2::TokenStream;
 use syn::export::TokenStream2;
 

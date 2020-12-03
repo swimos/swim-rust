@@ -12,7 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::{CompoundTypeKind, Label, SynOriginal};
+use crate::label::Label;
+use crate::{CompoundTypeKind, SynOriginal};
 use syn::Variant;
 use syn::{DeriveInput, Field};
 
@@ -105,7 +106,7 @@ impl<'a> FormField<'a> {
 }
 
 /// Enumeration of ways in which fields can be serialized in Recon documents. Unannotated fields
-/// are assumed to be annotated as [`Item::Slot`].
+/// are assumed to be annotated as `Item::Slot`.
 #[derive(PartialEq, Debug, Eq, Hash, Copy, Clone)]
 pub enum FieldKind {
     /// The field should be written as a slot in the tag attribute.
@@ -113,7 +114,7 @@ pub enum FieldKind {
     /// The field should be written as an attribute.
     Attr,
     /// The field should be written as a slot in the main body (or the header if another field is
-    /// marked as [`FieldKind::Body`]
+    /// marked as `FieldKind::Body`
     Slot,
     /// The field should be used to form the entire body of the record, all other fields that are
     /// marked as slots will be promoted to headers. At most one field may be marked with this.

@@ -48,7 +48,7 @@ impl Label {
         !matches!(self, Label::Unmodified(_))
     }
 
-    /// Returns this [`FieldName`] represented as an [`Ident`]ifier. For renamed fields, this function
+    /// Returns this [`Label`] represented as an `Ident`ifier. For renamed fields, this function
     /// returns the original field identifier represented and not the new name. For unnamed fields,
     /// this function returns a new identifier in the format of `__self_index`, where `index` is
     /// the ordinal of the field.

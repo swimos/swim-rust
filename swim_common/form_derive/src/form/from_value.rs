@@ -16,11 +16,12 @@ use proc_macro2::Ident;
 use syn::export::TokenStream2;
 use syn::spanned::Spanned;
 
-use macro_helpers::{CompoundTypeKind, Label};
+use macro_helpers::CompoundTypeKind;
 
 use crate::form::form_parser::FormDescriptor;
 use crate::parser::FieldManifest;
 use macro_helpers::form::{EnumRepr, FieldKind, FormField, TypeContents};
+use macro_helpers::label::Label;
 
 pub fn from_value(
     type_contents: &TypeContents<FormDescriptor, FormField<'_>>,

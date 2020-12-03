@@ -14,10 +14,9 @@
 
 use syn::export::TokenStream2;
 
-use macro_helpers::Label;
-
 use crate::parser::FieldManifest;
 use crate::validated_form::vf_parser::{StandardSchema, ValidatedField};
+use macro_helpers::label::Label;
 
 /// Builds a `StandardSchema::HeadAttribute` schema for the compound type.
 ///
