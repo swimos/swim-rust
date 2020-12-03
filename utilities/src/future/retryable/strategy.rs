@@ -31,9 +31,9 @@ pub enum RetryStrategy {
     None(IntervalStrategy),
 }
 
-/// Interval strategy parameters with either a defined number of retries to attempt or an indefinate number of
-/// retries. Sleeping for the given [`delay`] in between each request. Immediate retry strategies are
-/// backed by this.
+/// Interval strategy parameters with either a defined number of retries to attempt or an indefinite
+/// number of retries. Sleeping for the given `delay` in between each request. Immediate retry
+/// strategies are backed by this.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct IntervalStrategy {
     retry: Quantity<usize>,
@@ -73,8 +73,8 @@ impl Default for RetryStrategy {
 }
 
 impl RetryStrategy {
-    /// Builds a truncated exponential retry strategy with a [`max_interval`] between the requests and
-    /// a [`max_backoff`] duration that the requests will be attempted for.
+    /// Builds a truncated exponential retry strategy with a `max_interval` between the requests and
+    /// a `max_backoff` duration that the requests will be attempted for.
     pub fn exponential(max_interval: Duration, max_backoff: Quantity<Duration>) -> RetryStrategy {
         RetryStrategy::Exponential(ExponentialStrategy {
             start: None,
@@ -84,7 +84,7 @@ impl RetryStrategy {
         })
     }
 
-    /// Builds an immediate retry strategy that will attempt ([`retries`]) requests with no delay
+    /// Builds an immediate retry strategy that will attempt (`retries`) requests with no delay
     /// in between the requests.
     pub fn immediate(retries: NonZeroUsize) -> RetryStrategy {
         RetryStrategy::Immediate(IntervalStrategy {
@@ -93,7 +93,7 @@ impl RetryStrategy {
         })
     }
 
-    /// Builds an interval retry strategy that will attempt ([`retries`]) requests with [`delay`]
+    /// Builds an interval retry strategy that will attempt (`retries`) requests with `delay`
     /// sleep in between the requests.
     pub fn interval(delay: Duration, retries: Quantity<NonZeroUsize>) -> RetryStrategy {
         let retries = {

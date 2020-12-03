@@ -498,7 +498,7 @@ pub struct ConnectionPoolParams {
     /// How long a connection can be inactive for before it will be pruned.
     idle_timeout: Duration,
     /// How frequently the connection pool reaper will run. Connections that have not been used for
-    /// [`idle_timeout`] will be removed.
+    /// `idle_timeout` will be removed.
     conn_reaper_frequency: Duration,
     /// The size of the connection pool request buffer.
     buffer_size: NonZeroUsize,

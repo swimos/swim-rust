@@ -20,7 +20,7 @@ use std::sync::Arc;
 use utilities::route_pattern::RoutePattern;
 use utilities::uri::RelativeUri;
 
-/// The context that is available in [`PlaneLifecycle`] event handlers.
+/// The context that is available in [`crate::plane::lifecycle::PlaneLifecycle`] event handlers.
 pub trait PlaneContext: Send + Sync {
     /// Get a reference to an agent in this plane.
     ///

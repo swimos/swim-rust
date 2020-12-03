@@ -19,7 +19,7 @@ use pin_project::pin_project;
 use crate::future::retryable::ResettableFuture;
 use std::pin::Pin;
 
-/// A [`ResetabbleFuture`] which uses the provided factory for resets.
+/// A [`ResettableFuture`] which uses the provided factory for resets.
 #[pin_project]
 pub struct ResetabbleFutureFactory<F, O, E>
 where
@@ -34,8 +34,8 @@ impl<F, O, E> ResetabbleFutureFactory<F, O, E>
 where
     F: FutureFactory<O, E>,
 {
-    /// Wraps the given [`FutureFactory`] with a [`ResetabbleFuture`] implementation. Allowing it to
-    /// be used with a [`RetryableFuture`].
+    /// Wraps the given [`FutureFactory`] with a [`ResettableFuture`] implementation. Allowing it to
+    /// be used with a [`crate::future::retryable::RetryableFuture`].
     pub fn wrap(mut factory: F) -> Self {
         let current = factory.future();
 
@@ -43,7 +43,7 @@ where
     }
 }
 
-/// A factory which produces a new future with a [`'static`] lifetime each time [`future`] is invoked.
+/// A factory which produces a new future with a [`'static`] lifetime each time `future` is invoked.
 pub trait FutureFactory<Ok, Err> {
     type Future: Future<Output = Result<Ok, Err>> + 'static;
 
