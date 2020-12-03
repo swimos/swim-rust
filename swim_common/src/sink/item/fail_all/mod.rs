@@ -21,7 +21,7 @@ pub struct FailAll<T, E> {
     _phantom: PhantomData<T>,
 }
 
-/// Create an [`ItemSender`] that fails for any input.
+/// Create an [`crate::sink::item::ItemSender`] that fails for any input.
 pub fn fail_all<T, E: Clone>(error: E) -> FailAll<T, E> {
     FailAll {
         error,

@@ -337,7 +337,7 @@ const PLANE_STOPPING: &str = "The plane is stopping.";
 const ON_STOP_EVENT: &str = "Running plane on_stop handler.";
 const PLANE_STOPPED: &str = "The plane has stopped.";
 
-/// The main event loop for a plane. Handles [`PlaneRequests`] until the external stop trigger is
+/// The main event loop for a plane. Handles `PlaneRequest`s until the external stop trigger is
 /// fired. This task is infallible and will merely report if one of its agents fails rather than
 /// stopping.
 ///
