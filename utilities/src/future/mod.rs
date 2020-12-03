@@ -61,7 +61,7 @@ pub enum ChainedFuture<Fut1, Fut2, Trans> {
     Second(#[pin] Fut2),
 }
 
-/// Transforms a stream of [`T`] into a stream of [`Result<T, Never>`].
+/// Transforms a stream of `T` into a stream of [`Result<T, Never>`].
 #[pin_project]
 #[derive(Debug)]
 pub struct NeverErrorStream<Str>(#[pin] Str);
@@ -837,7 +837,7 @@ pub trait SwimStreamExt: Stream {
         UntilFailure::new(self, transform)
     }
 
-    /// Transform this stream into an infallible [`TryStream`].
+    /// Transform this stream into an infallible [`NeverErrorStream`].
     ///
     fn never_error(self) -> NeverErrorStream<Self>
     where

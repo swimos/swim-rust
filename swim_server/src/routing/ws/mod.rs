@@ -270,7 +270,7 @@ pub trait JoinedStreamSink<T, E>: Stream<Item = Result<T, E>> + Sink<T, Error = 
 
 type Bijection<T1, T2> = (fn(T1) -> T2, fn(T2) -> T1);
 
-/// A [JoinStreamSink] where the data and error type have been transformed by [`Into`].
+/// A [`JoinedStreamSink`] where the data and error type have been transformed by [`Into`].
 #[pin_project]
 pub struct TransformedStreamSink<S, T1, T2, E1, E2> {
     #[pin]

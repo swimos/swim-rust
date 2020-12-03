@@ -31,9 +31,10 @@ use std::fmt::{Debug, Display};
 
 use proc_macro2::Ident;
 use quote::ToTokens;
-use syn::{Attribute, Data, NestedMeta, Path};
+use syn::NestedMeta;
 
-pub use label::Label;
+use syn::export::{Formatter, TokenStream2};
+use syn::{Attribute, Data, ExprPath, Index, Lit, Meta, Path};
 pub use utilities::*;
 
 #[derive(Copy, Clone)]

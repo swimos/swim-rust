@@ -37,9 +37,9 @@ pub trait RetrySendError: Clone {
 }
 
 /// A retryable request using something such as an [`tokio::sync::mpsc::Sender`] to execute the
-/// requests. Between failed retries, both the [`Sender`] and payload must be returned to successfuly
-/// execute another request. The payload may be extracted using the [`Unwrapper`] function. Errors
-/// such as Tokio's [`SendError`] contain the payload in the newtype.
+/// requests. Between failed retries, both the [`tokio::sync::mpsc::Sender`] and payload must be
+/// returned to successfully execute another request. The payload may be extracted using the
+/// `Unwrapper` function. Errors such as Tokio's `SendError` contain the payload in the newtype.
 #[pin_project]
 pub struct RetryableRequest<Sender, Fut, Fac, Unwrapper, Err>
 where
@@ -49,7 +49,7 @@ where
     sender: Option<Sender>,
     /// A factory that accepts a sender, a payload, and a boolean indicating whether or not the current
     /// request is a retry. If the factory is returning a chained future, be mindful that the payload
-    /// mut be returned by the last future. If it does not, then the [`unwrapper`] will fail to extract
+    /// mut be returned by the last future. If it does not, then the `unwrapper` will fail to extract
     /// it.
     fac: Fac,
     /// A future returned by the factory.

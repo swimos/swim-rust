@@ -23,8 +23,8 @@ pub use self::wasm::TaskHandle;
 #[derive(Debug)]
 pub struct TaskError;
 
-/// Spawns a new asynchronous task on the current runtime. a [`JoinHandle`] is returned
-/// that corresponds to the current runtime. See the documentation for the underlying executor for
+/// Spawns a new asynchronous task on the current runtime. a `TaskHandle` is returned that
+/// corresponds to the current runtime. See the documentation for the underlying executor for
 /// guarantees that are made about the executing of the task.
 pub fn spawn<F>(f: F) -> TaskHandle<F::Output>
 where
