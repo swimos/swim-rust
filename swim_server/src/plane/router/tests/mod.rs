@@ -17,8 +17,7 @@ use crate::plane::PlaneRequest;
 use crate::routing::error::{ConnectionError, ResolutionError, RouterError, Unresolvable};
 use crate::routing::remote::RawRoute;
 use crate::routing::{
-    RoutingAddr, ServerRouter, ServerRouterFactory, SuperRouter, SuperRouterFactory,
-    TaggedEnvelope,
+    RoutingAddr, ServerRouter, ServerRouterFactory, SuperRouter, SuperRouterFactory, TaggedEnvelope,
 };
 use futures::future::join;
 use swim_common::warp::envelope::Envelope;

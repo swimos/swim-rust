@@ -347,14 +347,15 @@ const PLANE_STOPPED: &str = "The plane has stopped.";
 /// * `spec` - The specification for the plane.
 /// * `stop_trigger` - Trigger to fire externally when the plane should stop.
 /// * `spawner` - Spawns tasks to run the agents for the plane.
+/// * `context_channel` - Transmitter and receiver for plane requests.
+/// * `delegate_fac` - Factory for creating delegate routers.
 pub async fn run_plane<Clk, S, DelegateFac: ServerRouterFactory>(
     execution_config: AgentExecutionConfig,
     clock: Clk,
     spec: PlaneSpec<Clk, EnvChannel, PlaneRouter<DelegateFac::Router>>,
     stop_trigger: trigger::Receiver,
     spawner: S,
-    context_tx: mpsc::Sender<PlaneRequest>,
-    context_rx: mpsc::Receiver<PlaneRequest>,
+    context_channel: (mpsc::Sender<PlaneRequest>, mpsc::Receiver<PlaneRequest>),
     delegate_fac: DelegateFac,
 ) where
     Clk: Clock,
@@ -363,6 +364,7 @@ pub async fn run_plane<Clk, S, DelegateFac: ServerRouterFactory>(
     event!(Level::DEBUG, STARTING);
     pin_mut!(spawner);
 
+    let (context_tx, context_rx) = context_channel;
     let mut context = ContextImpl::new(context_tx.clone(), spec.routes());
 
     let mut requests = context_rx.take_until(stop_trigger.clone()).fuse();
@@ -545,13 +547,14 @@ pub async fn run_plane<Clk, S, DelegateFac: ServerRouterFactory>(
 }
 
 type PlaneAgentRoute<Clk, Delegate> = BoxAgentRoute<Clk, EnvChannel, PlaneRouter<Delegate>>;
+type Params = HashMap<String, String>;
 
 /// Find the appropriate specification for a route along with any parameters derived from the
 /// route pattern.
 fn route_for<'a, Clk, Delegate>(
     route: &RelativeUri,
     routes: &'a [RouteSpec<Clk, EnvChannel, PlaneRouter<Delegate>>],
-) -> Result<(&'a PlaneAgentRoute<Clk, Delegate>, HashMap<String, String>), NoAgentAtRoute> {
+) -> Result<(&'a PlaneAgentRoute<Clk, Delegate>, Params), NoAgentAtRoute> {
     //TODO This could be a lot more efficient though it would probably only matter for planes with a large number of routes.
     let matched = routes
         .iter()

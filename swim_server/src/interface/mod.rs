@@ -132,8 +132,7 @@ impl SwimServer {
             spec,
             plane_stop_rx,
             OpenEndedFutures::new(),
-            plane_tx,
-            plane_rx,
+            (plane_tx, plane_rx),
             super_router_fac.clone(),
         );
 
@@ -147,8 +146,7 @@ impl SwimServer {
             super_router_fac,
             conn_stop_rx,
             OpenEndedFutures::new(),
-            remote_tx,
-            remote_rx,
+            (remote_tx, remote_rx),
         )
         .await
         .expect("The server could not start.")

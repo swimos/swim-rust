@@ -118,6 +118,7 @@ where
     RouterFac: ServerRouterFactory + 'static,
     Sp: Spawner<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>> + Send + Unpin,
 {
+    #[allow(clippy::too_many_arguments)]
     pub async fn new(
         configuration: ConnectionConfig,
         external: External,
@@ -126,9 +127,10 @@ where
         delegate_router: RouterFac,
         stop_trigger: trigger::Receiver,
         spawner: Sp,
-        remote_tx: mpsc::Sender<RoutingRequest>,
-        remote_rx: mpsc::Receiver<RoutingRequest>,
+        remote_channel: (mpsc::Sender<RoutingRequest>, mpsc::Receiver<RoutingRequest>),
     ) -> io::Result<Self> {
+        let (remote_tx, remote_rx) = remote_channel;
+
         let listener = external.bind(bind_addr).await?;
         Ok(RemoteConnectionsTask {
             external,
@@ -164,8 +166,7 @@ where
             listener,
             stop_trigger,
             delegate_router,
-            remote_tx,
-            remote_rx,
+            (remote_tx, remote_rx),
         );
 
         let mut overall_result = Ok(());

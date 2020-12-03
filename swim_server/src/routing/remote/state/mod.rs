@@ -255,6 +255,8 @@ where
     /// * `listener` - Server to listen for incoming connections.
     /// * `stop_trigger`- Trigger to cause the state machine to stop externally.
     /// * `delegate_router` - Router than handles local routing requests.
+    /// * `req_channel` - Transmitter and receiver for routing requests.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         websockets: &'a Ws,
         configuration: ConnectionConfig,
@@ -263,9 +265,9 @@ where
         listener: External::ListenerType,
         stop_trigger: trigger::Receiver,
         delegate_router: RouterFac,
-        req_tx: mpsc::Sender<RoutingRequest>,
-        req_rx: mpsc::Receiver<RoutingRequest>,
+        req_channel: (mpsc::Sender<RoutingRequest>, mpsc::Receiver<RoutingRequest>),
     ) -> Self {
+        let (req_tx, req_rx) = req_channel;
         let (stop_tx, stop_rx) = trigger::trigger();
         let tasks = TaskFactory::new(req_tx, stop_rx.clone(), configuration, delegate_router);
         RemoteConnections {

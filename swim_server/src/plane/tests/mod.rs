@@ -17,7 +17,7 @@ use crate::plane::router::PlaneRouter;
 use crate::plane::spec::{PlaneSpec, RouteSpec};
 use crate::plane::tests::fixture::{ReceiveAgentRoute, SendAgentRoute, TestLifecycle};
 use crate::plane::{AgentRoute, EnvChannel};
-use crate::routing::{SuperRouterFactory, ServerRouter};
+use crate::routing::{ServerRouter, SuperRouterFactory};
 use futures::future::join;
 use std::time::Duration;
 use swim_runtime::time::clock::Clock;
@@ -81,8 +81,7 @@ async fn plane_event_loop() {
         spec,
         stop_rx,
         OpenEndedFutures::new(),
-        context_tx,
-        context_rx,
+        (context_tx, context_rx),
         super_router_fac,
     );
 
