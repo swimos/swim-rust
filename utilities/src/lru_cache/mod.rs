@@ -295,7 +295,7 @@ impl<K: Hash + Eq, V, S: BuildHasher> LruCache<K, V, S> {
     /// entry is replaced, no eviction occurs and the old entry is returned. If there is spare
     /// capacity in the cache, a new entry is created and nothing returned. If the cache is full,
     /// the least recently accessed entry is evicted and returned and a new entry inserted. In any
-    /// case, the entry associated with [`key`] is moved to the head of the queue and becomes the
+    /// case, the entry associated with `key` is moved to the head of the queue and becomes the
     /// most recently used entry.
     pub fn insert(&mut self, key: K, value: V) -> Option<(K, V)> {
         let LruCache {

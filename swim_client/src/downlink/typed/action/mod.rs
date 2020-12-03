@@ -239,7 +239,7 @@ where
     }
 
     /// Remove all elements of the map and return its previous contents. This is equivalent to
-    /// [`clear`] aside from returning the previous contents of the map to the caller.
+    /// `clear` aside from returning the previous contents of the map to the caller.
     pub async fn remove_all(&mut self) -> Result<TypedMapView<K, V>, DownlinkError> {
         self.clear_internal().await.map(TypedMapView::new)
     }

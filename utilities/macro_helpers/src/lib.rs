@@ -13,7 +13,7 @@ use std::fmt::{Debug, Display};
 use proc_macro2::{Ident, TokenStream};
 use quote::ToTokens;
 use syn::export::{Formatter, TokenStream2};
-use syn::{Data, ExprPath, Index, Lit, Meta, Path};
+use syn::{Attribute, Data, ExprPath, Index, Lit, Meta, Path};
 
 #[derive(Copy, Clone)]
 pub struct Symbol(pub &'static str);
@@ -115,7 +115,7 @@ impl Label {
         !matches!(self, Label::Unmodified(_))
     }
 
-    /// Returns this [`FieldName`] represented as an [`Ident`]ifier. For renamed fields, this function
+    /// Returns this `Label` represented as an `Ident`ifier. For renamed fields, this function
     /// returns the original field identifier represented and not the new name. For unnamed fields,
     /// this function returns a new identifier in the format of `__self_index`, where `index` is
     /// the ordinal of the field.
@@ -263,12 +263,12 @@ pub fn deconstruct_type(
     }
 }
 
-/// Returns a vector of metadata for the provided [`Attribute`] that matches the provided
+/// Returns a vector of metadata for the provided `Attribute` that matches the provided
 /// [`Symbol`]. An error that is encountered is added to the [`Context`] and a [`Result::Err`] is
 /// returned.
 pub fn get_attribute_meta(
     ctx: &mut Context,
-    attr: &syn::Attribute,
+    attr: &Attribute,
     path: Symbol,
 ) -> Result<Vec<syn::NestedMeta>, ()> {
     if attr.path != path {
