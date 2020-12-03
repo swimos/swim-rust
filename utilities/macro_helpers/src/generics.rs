@@ -18,8 +18,8 @@ use std::collections::HashSet;
 use syn::punctuated::Pair;
 use syn::visit::{visit_path, Visit};
 use syn::{
-    visit, Field, Generics, Ident, Macro, Path, PredicateType, TraitBound, TraitBoundModifier,
-    Type, TypeParamBound, TypePath, WherePredicate,
+    Field, Generics, Ident, Path, PredicateType, TraitBound, TraitBoundModifier, Type,
+    TypeParamBound, TypePath, WherePredicate,
 };
 
 #[allow(unused_imports)]
