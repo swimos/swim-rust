@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::agent::lane::channels::update::{LaneUpdate, UpdateError};
-use crate::agent::lane::model::map::{MapLane, MapUpdate};
+use crate::agent::lane::model::map::MapLane;
 use crate::routing::RoutingAddr;
 use futures::future::BoxFuture;
 use futures::{FutureExt, Stream, StreamExt};
@@ -21,8 +21,9 @@ use pin_utils::pin_mut;
 use std::any::Any;
 use std::fmt::Debug;
 use stm::transaction::{RetryManager, TransactionRunner};
-use swim_common::form::Form;
+use swim_common::form::ValidatedForm;
 use tracing::{event, Level};
+use swim_warp::model::map::MapUpdate;
 
 #[cfg(test)]
 mod tests;
@@ -47,8 +48,8 @@ const APPLYING_UPDATE: &str = "Applying map update.";
 
 impl<K, V, F, Ret> LaneUpdate for MapLaneUpdateTask<K, V, F>
 where
-    K: Form + Any + Send + Sync + Debug,
-    V: Any + Form + Send + Sync + Debug,
+    K: ValidatedForm + Any + Send + Sync + Debug, //TODO Relax to Form.
+    V: Any + ValidatedForm + Send + Sync + Debug, //TODO Relax to Form.
     F: Fn() -> Ret + Send + Sync + 'static,
     Ret: RetryManager + Send,
 {
@@ -82,6 +83,9 @@ where
                     }
                     MapUpdate::Clear => {
                         lane.clear_direct().apply_with(&mut runner).await?;
+                    }
+                    _ => {
+                        panic!("Take and drop not yet supported.")
                     }
                 }
             }

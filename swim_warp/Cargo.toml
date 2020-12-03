@@ -1,0 +1,26 @@
+[package]
+name = "swim_warp"
+version = "0.1.0"
+authors = ["Swim.AI developers info@swim.ai"]
+edition = "2018"
+
+[features]
+default = []
+debug = ["log_verbose"]
+log_verbose = []
+
+[target.'cfg(log_verbose)'.dependencies]
+tracing = { version = "0.1.16", features = ["max_level_debug"] }
+
+[target.'cfg(not(log_verbose))'.dependencies]
+tracing = "0.1.16"
+
+[dependencies]
+
+futures = "0.3.4"
+swim_common = { path = "../swim_common" }
+utilities = { path = "../utilities" }
+swim_runtime = { path = "../swim_runtime" }
+
+[dev-dependencies]
+tracing = "0.1.16"

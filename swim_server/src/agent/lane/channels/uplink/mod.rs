@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::agent::lane::channels::uplink::map::MapLaneSyncError;
-use crate::agent::lane::model::map::{MapLane, MapLaneEvent, MapUpdate};
+use crate::agent::lane::model::map::{MapLane, MapLaneEvent, make_update};
 use crate::agent::lane::model::value::ValueLane;
 use crate::routing::{error, TaggedSender};
 use futures::future::ready;
@@ -26,13 +26,14 @@ use std::fmt::{Debug, Display, Formatter};
 use std::ops::Deref;
 use std::sync::Arc;
 use stm::transaction::{RetryManager, TransactionError};
-use swim_common::form::{Form, FormErr};
+use swim_common::form::{Form, FormErr, ValidatedForm};
 use swim_common::model::Value;
 use swim_common::sink::item::{FnMutSender, ItemSender};
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
 use tracing::{event, span, Level};
 use utilities::errors::Recoverable;
+use swim_warp::model::map::MapUpdate;
 
 #[cfg(test)]
 mod tests;
@@ -448,15 +449,15 @@ where
 
 impl<K, V, Retries, F> UplinkStateMachine<MapLaneEvent<K, V>> for MapLaneUplink<K, V, F>
 where
-    K: Form + Any + Send + Sync + Debug,
-    V: Any + Form + Send + Sync + Debug,
+    K: ValidatedForm + Any + Send + Sync + Debug, //TODO Relax to Form.
+    V: Any + ValidatedForm + Send + Sync + Debug, //TODO Relax to Form.
     F: Fn() -> Retries + Send + Sync + 'static,
     Retries: RetryManager + Send + 'static,
 {
     type Msg = MapUpdate<K, V>;
 
     fn message_for(&self, event: MapLaneEvent<K, V>) -> Result<Option<Self::Msg>, UplinkError> {
-        Ok(MapUpdate::make(event))
+        Ok(make_update(event))
     }
 
     fn sync_lane<'a, Updates>(
@@ -470,7 +471,7 @@ where
         Box::pin(
             map::sync_map_lane(*id, lane, updates, retries()).filter_map(|r| {
                 ready(match r {
-                    Ok(event) => MapUpdate::make(event).map(Ok),
+                    Ok(event) => make_update(event).map(Ok),
                     Err(err) => Some(Err(err.into())),
                 })
             }),

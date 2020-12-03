@@ -48,7 +48,7 @@ use std::future::Future;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
-use swim_common::form::Form;
+use swim_common::form::{Form, ValidatedForm};
 use swim_common::warp::path::RelativePath;
 use swim_runtime::time::clock::Clock;
 use tokio::sync::mpsc::Receiver;
@@ -513,8 +513,8 @@ where
 
 impl<K, V, Context, D> LaneIo<Context> for MapLaneIo<K, V, D>
 where
-    K: Any + Send + Sync + Form + Clone + Debug,
-    V: Any + Send + Sync + Form + Debug,
+    K: Any + Send + Sync + ValidatedForm + Clone + Debug, //TODO Relax to Form.
+    V: Any + Send + Sync + ValidatedForm + Debug, //TODO Relax to Form.
     Context: AgentExecutionContext + Sized + Send + Sync + 'static,
     D: DeferredLaneView<MapLaneEvent<K, V>>,
 {
@@ -794,8 +794,8 @@ pub fn make_map_lane<Agent, Context, K, V, L>(
 where
     Agent: 'static,
     Context: AgentContext<Agent> + AgentExecutionContext + Send + Sync + 'static,
-    K: Any + Form + Send + Sync + Clone + Debug,
-    V: Any + Form + Send + Sync + Debug,
+    K: Any + ValidatedForm + Send + Sync + Clone + Debug, //TODO Relax to Form.
+    V: Any + ValidatedForm + Send + Sync + Debug, //TODO Relax to Form.
     L: for<'l> StatefulLaneLifecycle<'l, MapLane<K, V>, Agent>,
     L::WatchStrategy: MapLaneWatch<K, V>,
 {

@@ -15,7 +15,7 @@
 use crate::agent::lane::channels::update::map::MapLaneUpdateTask;
 use crate::agent::lane::channels::update::{LaneUpdate, UpdateError};
 use crate::agent::lane::model::map;
-use crate::agent::lane::model::map::{MapLaneEvent, MapUpdate};
+use crate::agent::lane::model::map::MapLaneEvent;
 use crate::agent::lane::strategy::Queue;
 use crate::agent::lane::tests::ExactlyOnce;
 use crate::routing::RoutingAddr;
@@ -25,6 +25,7 @@ use futures::StreamExt;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::timeout;
+use swim_warp::model::map::MapUpdate;
 
 #[tokio::test]
 async fn update_task_map_lane_update() {

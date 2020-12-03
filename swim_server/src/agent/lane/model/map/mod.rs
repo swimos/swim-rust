@@ -26,7 +26,7 @@ use stm::stm::{abort, left, right, Constant, Stm, VecStm, UNIT};
 use stm::transaction::{atomically, RetryManager, TransactionError, TransactionRunner};
 use stm::var::TVar;
 use summary::{clear_summary, remove_summary, update_summary};
-use swim_common::form::{Form, FormErr};
+use swim_common::form::{Form, FormErr, ValidatedForm};
 use swim_common::model::Value;
 
 use crate::agent::lane::channels::AgentExecutionConfig;
@@ -48,6 +48,7 @@ use utilities::future::{
     sync_boxed, FlatmapStream, SwimStreamExt, SyncBoxStream, Transform, TransformedStream,
 };
 use utilities::sync::broadcast_rx_to_stream;
+use swim_warp::model::map::MapUpdate;
 
 mod summary;
 
@@ -154,40 +155,13 @@ where
     (lane, view, deferred)
 }
 
-/// Updates that can be applied to a [`MapLane`].
-/// TODO Add take/drop.
-#[derive(Debug, PartialEq, Eq, Form)]
-pub enum MapUpdate<K, V>
-where
-    K: Form,
-    V: Form,
-{
-    #[form(tag = "update")]
-    Update(#[form(header, rename = "key")] K, #[form(body)] Arc<V>),
-    #[form(tag = "remove")]
-    Remove(#[form(header, rename = "key")] K),
-    #[form(tag = "clear")]
-    Clear,
-}
-
-impl<K: Form, V: Form> From<MapUpdate<K, V>> for Value {
-    fn from(event: MapUpdate<K, V>) -> Self {
-        event.into_value()
-    }
-}
-
-impl<K, V> MapUpdate<K, V>
-where
-    K: Form,
-    V: Form,
-{
-    pub fn make(event: MapLaneEvent<K, V>) -> Option<MapUpdate<K, V>> {
-        match event {
-            MapLaneEvent::Update(key, value) => Some(MapUpdate::Update(key, value)),
-            MapLaneEvent::Clear => Some(MapUpdate::Clear),
-            MapLaneEvent::Remove(key) => Some(MapUpdate::Remove(key)),
-            MapLaneEvent::Checkpoint(_) => None,
-        }
+//TODO Relax to Form.
+pub fn make_update<K: ValidatedForm, V: ValidatedForm>(event: MapLaneEvent<K, V>) -> Option<MapUpdate<K, V>> {
+    match event {
+        MapLaneEvent::Update(key, value) => Some(MapUpdate::Update(key, value)),
+        MapLaneEvent::Clear => Some(MapUpdate::Clear),
+        MapLaneEvent::Remove(key) => Some(MapUpdate::Remove(key)),
+        MapLaneEvent::Checkpoint(_) => None,
     }
 }
 

@@ -17,7 +17,7 @@ use crate::agent::lane::channels::uplink::{
     MapLaneUplink, Uplink, UplinkAction, UplinkError, UplinkMessage, UplinkStateMachine,
     ValueLaneUplink,
 };
-use crate::agent::lane::model::map::{MapLaneEvent, MapUpdate};
+use crate::agent::lane::model::map::MapLaneEvent;
 use crate::agent::lane::model::{map, value};
 use crate::agent::lane::strategy::Queue;
 use crate::agent::lane::tests::ExactlyOnce;
@@ -25,7 +25,7 @@ use futures::future::join;
 use futures::ready;
 use futures::sink::drain;
 use futures::{Stream, StreamExt};
-use std::collections::{HashMap, VecDeque};
+use std::collections::{VecDeque, BTreeMap};
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
@@ -37,6 +37,7 @@ use tokio::sync::mpsc;
 use tokio::time::timeout;
 use utilities::future::SwimStreamExt;
 use utilities::sync::trigger;
+use swim_warp::model::map::MapUpdate;
 
 struct ReportingStream<S> {
     notify: VecDeque<trigger::Sender>,
@@ -296,8 +297,8 @@ async fn map_state_machine_message_for() {
 
 fn into_map(
     events: Vec<Result<MapUpdate<i32, i32>, UplinkError>>,
-) -> Result<HashMap<i32, i32>, UplinkError> {
-    let mut map = HashMap::new();
+) -> Result<BTreeMap<i32, i32>, UplinkError> {
+    let mut map = BTreeMap::new();
 
     for event in events.into_iter() {
         match event? {
@@ -309,6 +310,18 @@ fn into_map(
             }
             MapUpdate::Clear => {
                 map.clear();
+            }
+            MapUpdate::Take(n) => {
+                let discard = map.keys().skip(n).map(|k| *k).collect::<Vec<_>>();
+                for k in discard {
+                    map.remove(&k);
+                }
+            }
+            MapUpdate::Drop(n) => {
+                let discard = map.keys().take(n).map(|k| *k).collect::<Vec<_>>();
+                for k in discard {
+                    map.remove(&k);
+                }
             }
         }
     }
@@ -354,7 +367,7 @@ async fn map_state_machine_sync() {
 
     assert!(results.is_ok());
 
-    let mut expected = HashMap::new();
+    let mut expected = BTreeMap::new();
     expected.insert(1, 2);
     expected.insert(2, 5);
     assert_eq!(results.unwrap(), expected);

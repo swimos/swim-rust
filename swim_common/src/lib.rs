@@ -14,6 +14,7 @@
 
 #![allow(clippy::match_wild_err_arm)]
 
+pub mod backpressure;
 pub mod configuration;
 pub mod form;
 pub mod model;
