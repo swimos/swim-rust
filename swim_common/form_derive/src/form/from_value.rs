@@ -20,8 +20,8 @@ use macro_helpers::CompoundTypeKind;
 
 use crate::form::form_parser::FormDescriptor;
 use crate::parser::FieldManifest;
-use macro_helpers::form::{EnumRepr, FieldKind, FormField, TypeContents};
-use macro_helpers::label::Label;
+use macro_helpers::Label;
+use macro_helpers::{EnumRepr, FieldKind, FormField, TypeContents};
 
 pub fn from_value(
     type_contents: &TypeContents<FormDescriptor, FormField<'_>>,

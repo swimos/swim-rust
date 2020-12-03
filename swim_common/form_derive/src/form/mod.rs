@@ -19,8 +19,8 @@ use macro_helpers::Context;
 use to_value::to_value;
 
 use crate::form::form_parser::{build_type_contents, FormDescriptor};
-use macro_helpers::form::{FormField, TypeContents};
-use macro_helpers::generics::add_bound;
+use macro_helpers::add_bound;
+use macro_helpers::{FormField, TypeContents};
 
 pub mod form_parser;
 mod from_value;

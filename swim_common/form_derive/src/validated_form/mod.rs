@@ -22,9 +22,9 @@ use crate::validated_form::attrs::{build_attrs, build_head_attribute};
 use crate::validated_form::vf_parser::{
     type_contents_to_validated, StandardSchema, ValidatedField, ValidatedFormDescriptor,
 };
-use macro_helpers::form::{EnumRepr, TypeContents};
-use macro_helpers::generics::add_bound;
-use macro_helpers::label::Label;
+use macro_helpers::add_bound;
+use macro_helpers::Label;
+use macro_helpers::{EnumRepr, TypeContents};
 use proc_macro2::TokenStream;
 use syn::export::TokenStream2;
 

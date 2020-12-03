@@ -17,9 +17,9 @@ use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::{Lit, Meta, NestedMeta};
 
-use macro_helpers::form::{FieldKind, FormField};
-use macro_helpers::label::Label;
+use macro_helpers::Label;
 use macro_helpers::{Attributes, CompoundTypeKind, Context, StructureKind, Symbol};
+use macro_helpers::{FieldKind, FormField};
 use syn::export::ToTokens;
 
 pub const FORM_PATH: Symbol = Symbol("form");

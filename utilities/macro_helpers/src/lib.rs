@@ -12,16 +12,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod form;
-pub mod generics;
-pub mod label;
+mod form;
+mod generics;
+mod label;
 mod utilities;
+
+pub use form::*;
+pub use generics::*;
+pub use label::Label;
+pub use utilities::*;
 
 extern crate proc_macro;
 extern crate proc_macro2;
+
 #[allow(unused_imports)]
 #[macro_use]
 extern crate quote;
+
 #[allow(unused_imports)]
 #[macro_use]
 extern crate syn;

@@ -24,8 +24,8 @@ use crate::form::form_parser::FormDescriptor;
 use crate::parser::{FORM_PATH, SCHEMA_PATH, TAG_PATH};
 use crate::validated_form::meta_parse::parse_schema_meta;
 use crate::validated_form::range::Range;
-use macro_helpers::form::{EnumRepr, EnumVariant, FormField, StructRepr, TypeContents};
-use macro_helpers::label::Label;
+use macro_helpers::Label;
+use macro_helpers::{EnumRepr, EnumVariant, FormField, StructRepr, TypeContents};
 
 pub const ANYTHING_PATH: Symbol = Symbol("anything");
 pub const NOTHING_PATH: Symbol = Symbol("nothing");
