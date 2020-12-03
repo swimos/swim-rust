@@ -19,7 +19,8 @@ use syn::spanned::Spanned;
 use macro_helpers::{CompoundTypeKind, Label};
 
 use crate::form::form_parser::FormDescriptor;
-use crate::parser::{FieldKind, FieldManifest, FormField, TypeContents};
+use crate::parser::FieldManifest;
+use macro_helpers::form::{EnumRepr, FieldKind, FormField, TypeContents};
 
 pub fn from_value(
     type_contents: &TypeContents<FormDescriptor, FormField<'_>>,
@@ -62,7 +63,7 @@ pub fn from_value(
                 }
             }
         }
-        TypeContents::Enum(variants) => {
+        TypeContents::Enum(EnumRepr { variants, .. }) => {
             let arms = variants.iter().fold(TokenStream2::new(), |ts, variant| {
                 let original_ident = variant.name.original();
                 let variant_name_str = variant.name.to_string();

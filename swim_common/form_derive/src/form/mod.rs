@@ -92,3 +92,34 @@ pub fn build_derive_form(input: DeriveInput) -> Result<proc_macro2::TokenStream,
 
     Ok(ts)
 }
+
+//
+// fn build_generics(type_contents: &TypeContents<FormDescriptor, FormField>) -> Generics {
+//     match type_contents {
+//         TypeContents::Enum(repr) => {}
+//         TypeContents::Struct(repr) => repr.fields.get(0).unwrap().original.ty,
+//     }
+//
+//     let generics = match *cont.attrs.default() {
+//         attr::Default::Default => {
+//             bound::with_self_bound(cont, &generics, &parse_quote!(_serde::export::Default))
+//         }
+//         attr::Default::None | attr::Default::Path(_) => generics,
+//     };
+//
+//     let generics = bound::with_bound(
+//         cont,
+//         &generics,
+//         needs_deserialize_bound,
+//         &parse_quote!(_serde::Deserialize<#delife>),
+//     );
+//
+//     bound::with_bound(
+//         cont,
+//         &generics,
+//         requires_default,
+//         &parse_quote!(_serde::export::Default),
+//     );
+//
+//     unimplemented!()
+// }

@@ -18,14 +18,13 @@ use quote::ToTokens;
 use syn::export::TokenStream2;
 use syn::{ExprPath, Meta, NestedMeta, Type};
 
-use macro_helpers::{CompoundTypeKind, Context, Label, Symbol};
+use macro_helpers::{Attributes, CompoundTypeKind, Context, Label, Symbol};
 
 use crate::form::form_parser::FormDescriptor;
-use crate::parser::{
-    Attributes, EnumVariant, FormField, StructRepr, TypeContents, FORM_PATH, SCHEMA_PATH, TAG_PATH,
-};
+use crate::parser::{FORM_PATH, SCHEMA_PATH, TAG_PATH};
 use crate::validated_form::meta_parse::parse_schema_meta;
 use crate::validated_form::range::Range;
+use macro_helpers::form::{EnumRepr, EnumVariant, FormField, StructRepr, TypeContents};
 
 pub const ANYTHING_PATH: Symbol = Symbol("anything");
 pub const NOTHING_PATH: Symbol = Symbol("nothing");
@@ -359,7 +358,7 @@ pub fn type_contents_to_validated<'f>(
                 descriptor,
             }
         }),
-        TypeContents::Enum(variants) => {
+        TypeContents::Enum(EnumRepr { input, variants }) => {
             let variants = variants
                 .into_iter()
                 .map(|variant| {
@@ -386,7 +385,7 @@ pub fn type_contents_to_validated<'f>(
                 })
                 .collect();
 
-            TypeContents::Enum(variants)
+            TypeContents::Enum(EnumRepr { input, variants })
         }
     }
 }
