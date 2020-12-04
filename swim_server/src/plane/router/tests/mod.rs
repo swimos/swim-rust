@@ -27,7 +27,7 @@ use utilities::sync::promise;
 
 #[tokio::test]
 async fn plane_router_get_sender() {
-    let addr = RoutingAddr::remote(5);
+    let addr = RoutingAddr::local(5);
 
     let (req_tx, mut req_rx) = mpsc::channel(8);
     let (send_tx, mut send_rx) = mpsc::channel(8);
