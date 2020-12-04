@@ -21,9 +21,6 @@ use utilities::future::open_ended::OpenEndedFutures;
 use utilities::route_pattern::RoutePattern;
 use utilities::sync::trigger;
 
-#[cfg(test)]
-mod tests;
-
 pub struct SwimServer {
     address: SocketAddr,
     conn_config: ConnectionConfig,

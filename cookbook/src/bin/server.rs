@@ -1,26 +1,20 @@
-use crate::agent::command_lifecycle;
-use crate::agent::lane::lifecycle::{LaneLifecycle, StatefulLaneLifecycleBase};
-use crate::agent::lane::model::action::CommandLane;
-use crate::agent::lane::model::value::ValueLane;
-use crate::agent::lane::strategy::Queue;
-use crate::agent::value_lifecycle;
-use crate::agent::AgentContext;
-use crate::agent::SwimAgent;
-use crate::agent_lifecycle;
-use crate::interface::SwimServer;
 use async_std::task;
 use futures::join;
 use std::fmt::Debug;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 use std::time::Duration;
-use tracing::{event, Level};
-use utilities::route_pattern::RoutePattern;
-use utilities::trace::init_trace;
-
-mod swim_server {
-    pub(in crate) use crate::*;
-}
+use swim_server::agent::command_lifecycle;
+use swim_server::agent::lane::lifecycle::{LaneLifecycle, StatefulLaneLifecycleBase};
+use swim_server::agent::lane::model::action::CommandLane;
+use swim_server::agent::lane::model::value::ValueLane;
+use swim_server::agent::lane::strategy::Queue;
+use swim_server::agent::value_lifecycle;
+use swim_server::agent::AgentContext;
+use swim_server::agent::SwimAgent;
+use swim_server::agent_lifecycle;
+use swim_server::interface::SwimServer;
+use swim_server::RoutePattern;
 
 #[derive(Debug, SwimAgent)]
 #[agent(config = "RustAgentConfig")]
@@ -42,7 +36,7 @@ impl RustAgentLifecycle {
     where
         Context: AgentContext<RustAgent> + Sized + Send + Sync,
     {
-        event!(Level::DEBUG, "Rust agent has started!");
+        println!("Rust agent has started!");
     }
 }
 
@@ -58,7 +52,7 @@ impl EchoLifecycle {
     ) where
         Context: AgentContext<RustAgent> + Sized + Send + Sync + 'static,
     {
-        event!(Level::DEBUG, "Command received: {}", command);
+        println!("Command received: {}", command);
     }
 }
 
@@ -76,14 +70,14 @@ impl CounterLifecycle {
     where
         Context: AgentContext<RustAgent> + Sized + Send + Sync,
     {
-        event!(Level::DEBUG, "Counter lane has started!");
+        println!("Counter lane has started!");
     }
 
     async fn on_event<Context>(&self, event: &Arc<i32>, _model: &ValueLane<i32>, _context: &Context)
     where
         Context: AgentContext<RustAgent> + Sized + Send + Sync + 'static,
     {
-        event!(Level::DEBUG, "Event received: {}", event);
+        println!("Event received: {}", event);
     }
 }
 
@@ -101,11 +95,8 @@ impl StatefulLaneLifecycleBase for CounterLifecycle {
     }
 }
 
-#[tokio::test]
-#[ignore]
-async fn run_server() {
-    init_trace(vec!["swim_server::interface"]);
-
+#[tokio::main]
+async fn main() {
     let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
     let (mut swim_server, server_handle) = SwimServer::new_with_default(address);
 

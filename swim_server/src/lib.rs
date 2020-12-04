@@ -19,3 +19,4 @@ pub mod interface;
 pub mod plane;
 pub mod routing;
 pub use agent_derive::*;
+pub use utilities::route_pattern::RoutePattern;
