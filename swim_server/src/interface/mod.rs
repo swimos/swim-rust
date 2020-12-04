@@ -1,3 +1,20 @@
+// Copyright 2015-2020 SWIM.AI inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+//! Interface for creating and running Swim server instances.
+//!
+//! The module provides methods and structures for creating and running Swim server instances.
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lifecycle::AgentLifecycle;
 use crate::agent::SwimAgent;
@@ -21,6 +38,9 @@ use utilities::future::open_ended::OpenEndedFutures;
 use utilities::route_pattern::RoutePattern;
 use utilities::sync::trigger;
 
+/// Swim server instance.
+///
+/// The Swim server runs a plane and its agents and a task for remote connections asynchronously.
 pub struct SwimServer {
     address: SocketAddr,
     conn_config: ConnectionConfig,
@@ -33,6 +53,31 @@ pub struct SwimServer {
 }
 
 impl SwimServer {
+    /// Creates a new Swim server instance.
+    ///
+    /// # Arguments
+    /// * `address` - The address on which the server will run.
+    /// * `conn_config` - Configuration parameters for remote connections.
+    /// * `agent_config` - Configuration parameters controlling how agents and lanes are executed.
+    /// * `websocket_config` - Configuration for WebSocket connections.
+    /// * `plane_lifecycle` - Custom lifecycle for the server plane.
+    ///
+    /// # Example
+    /// ```
+    /// use std::net::{SocketAddr, IpAddr, Ipv4Addr};
+    /// use swim_server::interface::SwimServer;
+    /// use swim_server::routing::remote::config::ConnectionConfig;
+    /// use swim_server::agent::lane::channels::AgentExecutionConfig;
+    /// use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
+    ///
+    /// let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
+    /// let conn_config = ConnectionConfig::default();
+    /// let agent_config = AgentExecutionConfig::default();
+    /// let websocket_config = WebSocketConfig::default();
+    /// let plane_lifecycle = None;      
+    ///
+    /// let (mut swim_server, server_handle) = SwimServer::new(address, conn_config, agent_config, websocket_config, plane_lifecycle);
+    /// ```
     pub fn new(
         address: SocketAddr,
         conn_config: ConnectionConfig,
@@ -61,6 +106,19 @@ impl SwimServer {
         )
     }
 
+    /// Creates a new Swim server instance with default configuration.
+    ///
+    /// # Arguments
+    /// * `address` - The address on which the server will run.
+    ///
+    /// # Example
+    /// ```
+    /// use std::net::{SocketAddr, IpAddr, Ipv4Addr};
+    /// use swim_server::interface::SwimServer;
+    ///
+    /// let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
+    /// let (mut swim_server, server_handle) = SwimServer::new_with_default(address);
+    /// ```
     pub fn new_with_default(address: SocketAddr) -> (SwimServer, ServerHandle) {
         let conn_config = ConnectionConfig::default();
         let agent_config = AgentExecutionConfig::default();
@@ -86,6 +144,50 @@ impl SwimServer {
         )
     }
 
+    /// Adds an agent to a given route on the Swim server plane.
+    ///
+    /// # Arguments
+    /// * `route` - The route for the agent.
+    /// * `config` - Configuration for the agent.
+    /// * `lifecycle` - Lifecycle of the agent.
+    ///
+    /// # Example
+    /// ```
+    /// use std::net::{SocketAddr, IpAddr, Ipv4Addr};
+    /// use swim_server::interface::SwimServer;
+    /// use swim_server::RoutePattern;
+    /// use swim_server::agent_lifecycle;
+    /// use swim_server::agent::SwimAgent;
+    /// use swim_server::agent::AgentContext;
+    ///
+    /// #[derive(Debug, SwimAgent)]
+    /// #[agent(config = "RustAgentConfig")]
+    /// pub struct RustAgent;
+    ///
+    /// #[derive(Debug, Clone)]
+    /// pub struct RustAgentConfig;
+    ///
+    /// #[agent_lifecycle(agent = "RustAgent")]
+    /// struct RustAgentLifecycle;
+    ///
+    /// impl RustAgentLifecycle {
+    ///     async fn on_start<Context>(&self, _context: &Context)
+    ///         where
+    ///             Context: AgentContext<RustAgent> + Sized + Send + Sync,
+    ///     {
+    ///         println!("Rust agent has started!");
+    ///     }
+    /// }
+    ///
+    /// let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
+    /// let (mut swim_server, server_handle) = SwimServer::new_with_default(address);
+    ///
+    /// let result = swim_server.add_route(
+    ///                             RoutePattern::parse_str("/rust").unwrap(),
+    ///                             RustAgentConfig {},
+    ///                             RustAgentLifecycle {});
+    /// assert!(result.is_ok());
+    /// ```
     pub fn add_route<Agent, Config, Lifecycle>(
         &mut self,
         route: RoutePattern,
@@ -100,6 +202,13 @@ impl SwimServer {
         self.routes.add_route(route, config, lifecycle)
     }
 
+    /// Runs the Swim server instance.
+    ///
+    /// Runs the plane and remote connections tasks of the server asynchronously
+    /// and returns any errors from the connections task.
+    ///
+    /// # Panics
+    /// The task will panic if the address provided to the server is already being used.
     pub async fn run(self) -> Result<(), io::Error> {
         let SwimServer {
             address,
@@ -146,19 +255,40 @@ impl SwimServer {
             (remote_tx, remote_rx),
         )
         .await
-        .expect("The server could not start.")
+        .unwrap_or_else(|_| panic!("The address \"{}\" is already in use.", address))
         .run();
 
         join!(connections_future, plane_future).0
     }
 }
 
+/// Handle for stopping a server instance.
+///
+/// The handle is returned when a new server instance is created and is used for terminating
+/// the server.
 pub struct ServerHandle {
     stop_plane_trigger: trigger::Sender,
     stop_conn_trigger: trigger::Sender,
 }
 
 impl ServerHandle {
+    /// Terminates the associated server instance.
+    ///
+    /// Returns `true` if all sever tasks have been successfully notified to terminate
+    /// and `false` otherwise.
+    ///
+    /// # Example:
+    /// ```
+    /// use std::net::{SocketAddr, IpAddr, Ipv4Addr};
+    /// use swim_server::interface::SwimServer;
+    ///
+    /// let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
+    /// let (mut swim_server, server_handle) = SwimServer::new_with_default(address);
+    ///
+    /// let success = server_handle.stop();
+    ///
+    /// assert!(success);
+    /// ```
     pub fn stop(self) -> bool {
         self.stop_plane_trigger.trigger() && self.stop_conn_trigger.trigger()
     }
