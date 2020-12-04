@@ -38,7 +38,7 @@ use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::pin::Pin;
 use std::sync::Arc;
-use swim_common::backpressure;
+use swim_warp::backpressure;
 use swim_common::form::ValidatedForm;
 use swim_common::model::schema::StandardSchema;
 use swim_common::model::Value;

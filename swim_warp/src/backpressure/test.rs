@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::sink::item::for_mpsc_sender;
+use swim_common::sink::item::for_mpsc_sender;
 use futures::StreamExt;
 use std::num::NonZeroUsize;
 use std::sync::Arc;

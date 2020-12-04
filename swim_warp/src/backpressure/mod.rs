@@ -16,10 +16,10 @@ pub mod map;
 #[cfg(test)]
 mod test;
 
-use crate::sink::item::ItemSender;
 use futures::StreamExt;
 use std::num::NonZeroUsize;
 use utilities::sync::circular_buffer;
+use swim_common::sink::item::ItemSender;
 
 pub async fn release_pressure<T, E, Snk>(
     mut rx: circular_buffer::Receiver<T>,
