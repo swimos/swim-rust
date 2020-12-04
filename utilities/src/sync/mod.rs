@@ -17,6 +17,7 @@ use futures::stream::unfold;
 use futures::{Stream, StreamExt};
 use tokio::sync::{broadcast, watch};
 
+pub mod circular_buffer;
 pub mod promise;
 pub mod rwlock;
 pub mod trigger;
