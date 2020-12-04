@@ -865,7 +865,6 @@ where
             pin_mut!(events);
             while let Some(Action { command, responder }) = events.next().await {
                 event!(Level::TRACE, COMMANDED, ?command);
-                //TODO After agents are connected to web-sockets the response will have somewhere to go.
                 let response = lifecycle
                     .on_command(command, &model, &context)
                     .instrument(span!(Level::TRACE, ON_COMMAND))
