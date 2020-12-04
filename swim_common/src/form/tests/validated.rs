@@ -539,10 +539,7 @@ fn generic_value() {
     }
 
     #[derive(Form, ValidatedForm)]
-    struct S<F>
-    where
-        F: ValidatedForm,
-    {
+    struct S<F> {
         #[form(schema(equal = "expected"))]
         f: F,
     }

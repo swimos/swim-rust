@@ -13,12 +13,11 @@
 // limitations under the License.
 
 use crate::routing::error::{ResolutionError, RouterError};
-use crate::routing::remote::RoutingRequest;
+use crate::routing::remote::{RawRoute, RoutingRequest};
 use crate::routing::{Route, RoutingAddr, ServerRouter, TaggedSender};
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use swim_common::request::Request;
-use swim_common::sink::item::either::EitherSink;
 use tokio::sync::{mpsc, oneshot};
 use url::Url;
 use utilities::uri::RelativeUri;
@@ -50,12 +49,10 @@ impl<Delegate> RemoteRouter<Delegate> {
 }
 
 impl<Delegate: ServerRouter> ServerRouter for RemoteRouter<Delegate> {
-    type Sender = EitherSink<TaggedSender, Delegate::Sender>;
-
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,
-    ) -> BoxFuture<'_, Result<Route<Self::Sender>, ResolutionError>> {
+    ) -> BoxFuture<'_, Result<Route, ResolutionError>> {
         async move {
             let RemoteRouter {
                 tag,
@@ -70,19 +67,15 @@ impl<Delegate: ServerRouter> ServerRouter for RemoteRouter<Delegate> {
                     Err(ResolutionError::RouterDropped)
                 } else {
                     match rx.await {
-                        Ok(Ok(Route { sender, on_drop })) => Ok(Route::new(
-                            EitherSink::left(TaggedSender::new(*tag, sender)),
-                            on_drop,
-                        )),
+                        Ok(Ok(RawRoute { sender, on_drop })) => {
+                            Ok(Route::new(TaggedSender::new(*tag, sender), on_drop))
+                        }
                         Ok(Err(err)) => Err(ResolutionError::Unresolvable(err)),
                         Err(_) => Err(ResolutionError::RouterDropped),
                     }
                 }
             } else {
-                delegate_router
-                    .resolve_sender(addr)
-                    .await
-                    .map(|Route { sender, on_drop }| Route::new(EitherSink::right(sender), on_drop))
+                delegate_router.resolve_sender(addr).await
             }
         }
         .boxed()

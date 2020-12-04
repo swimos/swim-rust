@@ -5,21 +5,22 @@ authors = ["Swim.AI developers info@swim.ai"]
 edition = "2018"
 
 [features]
-default = []
-tls = ["native-tls"]
+default = ["tungstenite"]
+tungstenite = ["tokio-tungstenite"]
+tls = ["tokio-native-tls"]
 
 [dependencies]
 swim_runtime = { path = "../swim_runtime" }
 pin-utils = "0.1.0"
-bytes = "0.5.3"
+bytes = "0.6.0"
 either = "1.5.3"
 futures = "0.3.4"
 futures-util = "0.3.4"
 http = "0.2.1"
 pin-project = "0.4.20"
-tokio = { version = "0.2.21", features = ["sync", "rt-core"] }
+tokio = { version = "0.3.3", features = ["sync", "rt", "stream"] }
 regex = "1.3.6"
-tokio-util = { version = "0.3.1", features = ["codec"] }
+tokio-util = { version = "0.5.0", features = ["codec"] }
 utilities = { path = "../utilities" }
 url = "2.1.1"
 tracing = { version = "0.1.13"}
@@ -31,14 +32,14 @@ base64 = "0.12.3"
 form_derive = { path = "form_derive" }
 im = "15.0.0"
 chrono = "0.4"
+tokio-tungstenite = { version = "0.12.0", git = "https://github.com/swimos/tokio-tungstenite/", branch = "tokio-0.3-deflate", features = ["tls", "deflate"], optional = true }
 
-[dependencies.native-tls]
+[dependencies.tokio-native-tls]
 version = "0.2"
-features = ["vendored"]
 optional = true
 
 [dev-dependencies]
-tokio = { version = "0.2.21", features = ["fs", "macros"] }
+tokio = { version = "0.3.3", features = ["fs", "macros"] }
 rand = "0.7"
 num-bigint = { version = "0.3", features = ["rand"] }
 trybuild = "1.0.17"

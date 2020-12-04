@@ -14,8 +14,7 @@
 
 use crate::configuration::router::RouterParams;
 use crate::router::{CloseReceiver, CloseResponseSender, ConnectionRequest};
-use futures::stream;
-use futures::StreamExt;
+use futures::{select, FutureExt, StreamExt};
 use swim_common::routing::RoutingError;
 use swim_common::warp::envelope::Envelope;
 use tokio::sync::mpsc;
@@ -71,10 +70,20 @@ impl OutgoingHostTask {
             config,
         } = self;
 
-        let mut rx = combine_outgoing_streams(envelope_rx, close_rx);
+        let mut close_trigger = close_rx.fuse();
+        let mut envelope_rx = envelope_rx.fuse();
 
         loop {
-            let task = rx.next().await.ok_or(RoutingError::ConnectionError)?;
+            let task = select! {
+                closed = &mut close_trigger => {
+                    match closed {
+                        Ok(tx) => Some(OutgoingRequest::Close(Some((*tx).clone()))),
+                        _ => Some(OutgoingRequest::Close(None)),
+                    }
+                },
+                maybe_env = envelope_rx.next() => maybe_env.map(OutgoingRequest::Message),
+            }
+            .ok_or(RoutingError::ConnectionError)?;
 
             let span = span!(Level::TRACE, "outgoing_event");
             let _enter = span.enter();
@@ -98,7 +107,6 @@ impl OutgoingHostTask {
                 OutgoingRequest::Close(close_rx) => {
                     if close_rx.is_some() {
                         info!("Closing");
-                        drop(rx);
                         break Ok(());
                     }
                 }
@@ -106,15 +114,6 @@ impl OutgoingHostTask {
             trace!("Completed outgoing request");
         }
     }
-}
-
-fn combine_outgoing_streams(
-    envelope_rx: mpsc::Receiver<Envelope>,
-    close_rx: CloseReceiver,
-) -> impl stream::Stream<Item = OutgoingRequest> + Send + 'static {
-    let envelope_requests = envelope_rx.map(OutgoingRequest::Message);
-    let close_requests = close_rx.map(OutgoingRequest::Close);
-    stream::select(envelope_requests, close_requests)
 }
 
 #[cfg(test)]
@@ -127,7 +126,7 @@ mod route_tests {
 
     use crate::configuration::router::RouterParamBuilder;
     use crate::connections::ConnectionSender;
-    use tokio::sync::watch;
+    use utilities::sync::promise;
 
     fn router_config(strategy: RetryStrategy) -> RouterParams {
         RouterParamBuilder::new()
@@ -140,8 +139,8 @@ mod route_tests {
     async fn permanent_error() {
         let config = router_config(RetryStrategy::none());
         let (task_request_tx, mut task_request_rx) = mpsc::channel(config.buffer_size().get());
-        let (mut envelope_tx, envelope_rx) = mpsc::channel(config.buffer_size().get());
-        let (_close_tx, close_rx) = watch::channel(None);
+        let (envelope_tx, envelope_rx) = mpsc::channel(config.buffer_size().get());
+        let (_close_tx, close_rx) = promise::promise();
 
         let outgoing_task = OutgoingHostTask::new(envelope_rx, task_request_tx, close_rx, config);
         let handle = tokio::spawn(outgoing_task.run());
@@ -161,10 +160,10 @@ mod route_tests {
     #[tokio::test]
     async fn transient_error() {
         let config = router_config(RetryStrategy::immediate(NonZeroUsize::new(1).unwrap()));
-        let (close_tx, close_rx) = watch::channel(None);
+        let (close_tx, close_rx) = promise::promise();
 
         let (task_request_tx, mut task_request_rx) = mpsc::channel(config.buffer_size().get());
-        let (mut envelope_tx, envelope_rx) = mpsc::channel(config.buffer_size().get());
+        let (envelope_tx, envelope_rx) = mpsc::channel(config.buffer_size().get());
 
         let outgoing_task = OutgoingHostTask::new(envelope_rx, task_request_tx, close_rx, config);
 
@@ -184,7 +183,7 @@ mod route_tests {
             .send(Ok(ConnectionSender::new(dummy_tx)));
 
         let (response_tx, mut _response_rx) = mpsc::channel(config.buffer_size().get());
-        close_tx.broadcast(Some(response_tx)).unwrap();
+        assert!(close_tx.provide(response_tx).is_ok());
 
         let task_result = handle.await.unwrap();
         assert_eq!(task_result, Ok(()));

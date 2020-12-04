@@ -12,18 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use syn::DeriveInput;
+use syn::{DeriveInput, Generics};
 
-use macro_helpers::{CompoundTypeKind, Context, Label};
+use macro_helpers::{CompoundTypeKind, Context};
 
 use crate::form::form_parser::build_type_contents;
-use crate::parser::{FieldManifest, TypeContents};
+use crate::parser::FieldManifest;
 use crate::validated_form::attrs::{build_attrs, build_head_attribute};
 use crate::validated_form::vf_parser::{
     type_contents_to_validated, StandardSchema, ValidatedField, ValidatedFormDescriptor,
 };
+use macro_helpers::add_bound;
+use macro_helpers::Label;
+use macro_helpers::{EnumRepr, TypeContents};
 use proc_macro2::TokenStream;
-use quote::ToTokens;
 use syn::export::TokenStream2;
 
 mod attrs;
@@ -44,8 +46,11 @@ pub fn build_validated_form(
 
     context.check()?;
 
+    let generics = build_generics(&type_contents, &input.generics);
+
     let structure_name = &input.ident;
-    let (impl_generics, ty_generics, where_clause) = &input.generics.split_for_impl();
+    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+    let type_contents = type_contents_to_tokens(&type_contents);
 
     let ts = quote! {
         impl #impl_generics swim_common::form::ValidatedForm for #structure_name #ty_generics #where_clause
@@ -57,6 +62,44 @@ pub fn build_validated_form(
     };
 
     Ok(ts)
+}
+
+fn type_contents_to_tokens(
+    type_contents: &TypeContents<'_, ValidatedFormDescriptor, ValidatedField>,
+) -> TokenStream {
+    match type_contents {
+        TypeContents::Struct(repr) => {
+            let schema = derive_compound_schema(
+                &repr.fields,
+                &repr.compound_type,
+                &repr.descriptor,
+                &repr.descriptor.label,
+            );
+
+            quote!(#schema)
+        }
+        TypeContents::Enum(EnumRepr { variants, .. }) => {
+            let schemas = variants.iter().fold(TokenStream2::new(), |ts, variant| {
+                let schema = derive_compound_schema(
+                    &variant.fields,
+                    &variant.compound_type,
+                    &variant.descriptor,
+                    &variant.name,
+                );
+
+                quote! {
+                    #ts
+                    #schema,
+                }
+            });
+
+            quote! {
+                swim_common::model::schema::StandardSchema::Or(vec![
+                    #schemas
+                ])
+            }
+        }
+    }
 }
 
 /// Derives a container schema for the provided `StandardSchema`
@@ -183,42 +226,21 @@ fn derive_compound_schema(
     build_head_attribute(ident, remainder, fields, manifest)
 }
 
-impl<'t> ToTokens for TypeContents<'t, ValidatedFormDescriptor, ValidatedField<'t>> {
-    fn to_tokens(&self, tokens: &mut TokenStream) {
-        match self {
-            TypeContents::Struct(repr) => {
-                let schema = derive_compound_schema(
-                    &repr.fields,
-                    &repr.compound_type,
-                    &repr.descriptor,
-                    &repr.descriptor.label,
-                );
+fn build_generics(
+    type_contents: &TypeContents<ValidatedFormDescriptor, ValidatedField>,
+    generics: &Generics,
+) -> Generics {
+    let generics = add_bound(
+        type_contents,
+        generics,
+        |f| !f.form_field.is_skipped(),
+        &parse_quote!(swim_common::form::ValidatedForm),
+    );
 
-                schema.to_tokens(tokens);
-            }
-            TypeContents::Enum(variants) => {
-                let schemas = variants.iter().fold(TokenStream2::new(), |ts, variant| {
-                    let schema = derive_compound_schema(
-                        &variant.fields,
-                        &variant.compound_type,
-                        &variant.descriptor,
-                        &variant.name,
-                    );
-
-                    quote! {
-                        #ts
-                        #schema,
-                    }
-                });
-
-                let schemas = quote! {
-                    swim_common::model::schema::StandardSchema::Or(vec![
-                        #schemas
-                    ])
-                };
-
-                schemas.to_tokens(tokens);
-            }
-        }
-    }
+    add_bound(
+        type_contents,
+        &generics,
+        |f| f.form_field.is_skipped(),
+        &parse_quote!(std::default::Default),
+    )
 }

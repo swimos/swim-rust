@@ -28,7 +28,8 @@ use crate::plane::error::NoAgentAtRoute;
 use crate::plane::router::{PlaneRouter, PlaneRouterFactory};
 use crate::plane::spec::{PlaneSpec, RouteSpec};
 use crate::routing::error::{ConnectionError, RouterError, Unresolvable};
-use crate::routing::{ConnectionDropped, Route, RoutingAddr, ServerRouterFactory, TaggedEnvelope};
+use crate::routing::remote::RawRoute;
+use crate::routing::{ConnectionDropped, RoutingAddr, ServerRouterFactory, TaggedEnvelope};
 use either::Either;
 use futures::future::{join, BoxFuture};
 use futures::{select_biased, FutureExt, StreamExt};
@@ -107,11 +108,11 @@ impl LocalEndpoint {
         }
     }
 
-    fn route(&self) -> Route<mpsc::Sender<TaggedEnvelope>> {
+    fn route(&self) -> RawRoute {
         let LocalEndpoint {
             channel, drop_rx, ..
         } = self;
-        Route::new(channel.clone(), drop_rx.clone())
+        RawRoute::new(channel.clone(), drop_rx.clone())
     }
 }
 
@@ -172,7 +173,7 @@ impl PlaneActiveRoutes {
 }
 
 type AgentRequest = Request<Result<Arc<dyn Any + Send + Sync>, NoAgentAtRoute>>;
-type EndpointRequest = Request<Result<Route<mpsc::Sender<TaggedEnvelope>>, Unresolvable>>;
+type EndpointRequest = Request<Result<RawRoute, Unresolvable>>;
 type RoutesRequest = Request<HashSet<RelativeUri>>;
 type ResolutionRequest = Request<Result<RoutingAddr, RouterError>>;
 
@@ -336,7 +337,7 @@ const PLANE_STOPPING: &str = "The plane is stopping.";
 const ON_STOP_EVENT: &str = "Running plane on_stop handler.";
 const PLANE_STOPPED: &str = "The plane has stopped.";
 
-/// The main event loop for a plane. Handles [`PlaneRequests`] until the external stop trigger is
+/// The main event loop for a plane. Handles `PlaneRequest`s until the external stop trigger is
 /// fired. This task is infallible and will merely report if one of its agents fails rather than
 /// stopping.
 ///

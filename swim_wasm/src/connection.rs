@@ -12,24 +12,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use futures::future::ErrInto as FutErrInto;
 use futures::stream::{SplitSink, SplitStream};
-use futures::{StreamExt, TryFutureExt};
+use futures::{FutureExt, StreamExt};
 use tokio::sync::{mpsc, oneshot};
 use url::Url;
 use wasm_bindgen_futures::spawn_local;
 use ws_stream_wasm::{WsErr, WsMessage as WasmMessage, WsMeta, WsStream};
 
-use swim_common::request::request_future::{RequestFuture, SendAndAwait, Sequenced};
 use swim_common::request::Request;
 
 use std::ops::Deref;
 use swim_common::ws::error::{ConnectionError, WebSocketError};
-use swim_common::ws::{WebsocketFactory, WsMessage};
-use utilities::errors::FlattenErrors;
+use swim_common::ws::{ConnFuture, WebsocketFactory, WsMessage};
 use utilities::future::{TransformMut, TransformedSink, TransformedStream};
 
-/// A transformer that converts from a [`common::connections::WsMessage`] to [`ws_stream_wasm::WsMessage`].
+/// A transformer that converts from a [`swim_common::ws::WsMessage`] to
+/// [`ws_stream_wasm::WsMessage`].
 pub struct SinkTransformer;
 impl TransformMut<WsMessage> for SinkTransformer {
     type Out = WasmMessage;
@@ -42,7 +40,8 @@ impl TransformMut<WsMessage> for SinkTransformer {
     }
 }
 
-/// A transformer that converts from a [`ws_stream_wasm::WsMessage`] to [`common::connections::WsMessage`].
+/// A transformer that converts from a [`ws_stream_wasm::WsMessage`] to
+/// [`swim_common::ws::WsMessage`].
 pub struct StreamTransformer;
 impl TransformMut<WasmMessage> for StreamTransformer {
     type Out = Result<WsMessage, ConnectionError>;
@@ -50,7 +49,7 @@ impl TransformMut<WasmMessage> for StreamTransformer {
     fn transform(&mut self, input: WasmMessage) -> Self::Out {
         match input {
             WasmMessage::Text(s) => Ok(WsMessage::Text(s)),
-            WasmMessage::Binary(_) => panic!("Unsupported message type"),
+            WasmMessage::Binary(data) => Ok(WsMessage::Binary(data)),
         }
     }
 }
@@ -68,7 +67,8 @@ pub struct ConnReq {
 }
 
 impl WasmWsFactory {
-    /// Creates a new WASM WebSocket connection factory using the provided [`buffer_size`] for message requests.
+    /// Creates a new WASM WebSocket connection factory using the provided `buffer_size` for message
+    /// requests.
     pub fn new(buffer_size: usize) -> Self {
         let (tx, rx) = mpsc::channel(buffer_size);
         spawn_local(Self::factory_task(rx));
@@ -98,28 +98,25 @@ impl WasmWsFactory {
     }
 }
 
-pub type ConnectionFuture =
-    SendAndAwait<ConnReq, Result<(WasmWsSink, WasmWsStream), ConnectionError>>;
 type WasmWsSink = TransformedSink<SplitSink<WsStream, WasmMessage>, SinkTransformer>;
 type WasmWsStream = TransformedStream<SplitStream<WsStream>, StreamTransformer>;
 
 impl WebsocketFactory for WasmWsFactory {
     type WsStream = WasmWsStream;
     type WsSink = WasmWsSink;
-    type ConnectFut = FlattenErrors<FutErrInto<ConnectionFuture, ConnectionError>>;
 
-    fn connect(&mut self, url: Url) -> Self::ConnectFut {
-        let (tx, rx) = oneshot::channel();
-        let req = ConnReq {
-            request: Request::new(tx),
-            url,
-        };
+    fn connect(&mut self, url: Url) -> ConnFuture<'_, Self::WsSink, Self::WsStream> {
+        async move {
+            let (tx, rx) = oneshot::channel();
+            let req = ConnReq {
+                request: Request::new(tx),
+                url,
+            };
 
-        let req_fut = RequestFuture::new(self.sender.clone(), req);
-
-        FlattenErrors::new(TryFutureExt::err_into::<ConnectionError>(Sequenced::new(
-            req_fut, rx,
-        )))
+            self.sender.send(req).await?;
+            Ok(rx.await??)
+        }
+        .boxed()
     }
 }
 

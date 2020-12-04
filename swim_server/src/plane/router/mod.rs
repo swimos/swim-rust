@@ -14,6 +14,7 @@
 
 use crate::plane::PlaneRequest;
 use crate::routing::error::{ResolutionError, RouterError};
+use crate::routing::remote::RawRoute;
 use crate::routing::{Route, RoutingAddr, ServerRouter, ServerRouterFactory, TaggedSender};
 use futures::future::BoxFuture;
 use futures::FutureExt;
@@ -63,12 +64,7 @@ impl PlaneRouter {
 }
 
 impl ServerRouter for PlaneRouter {
-    type Sender = TaggedSender;
-
-    fn resolve_sender(
-        &mut self,
-        addr: RoutingAddr,
-    ) -> BoxFuture<Result<Route<Self::Sender>, ResolutionError>> {
+    fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>> {
         async move {
             let PlaneRouter {
                 tag,
@@ -86,7 +82,7 @@ impl ServerRouter for PlaneRouter {
                 Err(ResolutionError::RouterDropped)
             } else {
                 match rx.await {
-                    Ok(Ok(Route { sender, on_drop })) => {
+                    Ok(Ok(RawRoute { sender, on_drop })) => {
                         Ok(Route::new(TaggedSender::new(*tag, sender), on_drop))
                     }
                     Ok(Err(err)) => Err(ResolutionError::Unresolvable(err)),

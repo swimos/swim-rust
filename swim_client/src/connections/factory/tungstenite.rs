@@ -15,12 +15,10 @@
 use std::io::ErrorKind;
 use std::ops::Deref;
 
-use futures::future::ErrInto as FutErrInto;
 use futures::stream::{SplitSink, SplitStream};
-use futures::StreamExt;
+use futures::{FutureExt, StreamExt};
 use http::{HeaderValue, Request, Response, Uri};
 use tokio::net::TcpStream;
-use tokio_tls::TlsStream;
 use tokio_tungstenite::stream::Stream as StreamSwitcher;
 use tokio_tungstenite::*;
 use tokio_tungstenite::{client_async_with_config, WebSocketStream};
@@ -33,18 +31,16 @@ use crate::connections::factory::stream::{
 use http::header::SEC_WEBSOCKET_PROTOCOL;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
-use swim_common::request::request_future::SendAndAwait;
 use swim_common::ws::error::{ConnectionError, WebSocketError};
-use swim_common::ws::{maybe_resolve_scheme, Protocol, WebsocketFactory};
+use swim_common::ws::{maybe_resolve_scheme, ConnFuture, Protocol, WebsocketFactory};
+use tokio_native_tls::TlsStream;
 use tokio_tungstenite::tungstenite::extensions::compression::WsCompression;
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use tokio_tungstenite::tungstenite::Message;
-use utilities::errors::FlattenErrors;
 use utilities::future::{TransformedSink, TransformedStream};
 
 type TungSink = TransformedSink<SplitSink<WsConnection, Message>, SinkTransformer>;
 type TungStream = TransformedStream<SplitStream<WsConnection>, StreamTransformer>;
-type ConnectionFuture = SendAndAwait<ConnReq, Result<(TungSink, TungStream), ConnectionError>>;
 
 pub type MaybeTlsStream<S> = StreamSwitcher<S, TlsStream<S>>;
 pub type WsConnection = WebSocketStream<MaybeTlsStream<TcpStream>>;
@@ -89,7 +85,7 @@ async fn connect(
     };
 
     let host = format!("{}:{}", domain, port);
-    let stream = build_stream(&host, domain, stream_type).await?;
+    let stream = build_stream(&host, stream_type).await?;
 
     match client_async_with_config(
         request,
@@ -136,9 +132,8 @@ impl TungsteniteWsFactory {
 impl WebsocketFactory for TungsteniteWsFactory {
     type WsStream = TungStream;
     type WsSink = TungSink;
-    type ConnectFut = FlattenErrors<FutErrInto<ConnectionFuture, ConnectionError>>;
 
-    fn connect(&mut self, url: Url) -> Self::ConnectFut {
+    fn connect(&mut self, url: Url) -> ConnFuture<Self::WsSink, Self::WsStream> {
         let config = match self.host_configurations.entry(url.clone()) {
             Entry::Occupied(o) => o.get().clone(),
             Entry::Vacant(v) => v
@@ -149,11 +144,12 @@ impl WebsocketFactory for TungsteniteWsFactory {
                 .clone(),
         };
 
-        self.inner.connect_using(url, config)
+        self.inner.connect_using(url, config).boxed()
     }
 }
 
-/// Specialized [`AsyncFactory`] that creates tungstenite-tokio connections.
+/// Specialized [`crate::connections::factory::async_factory::AsyncFactory`] that creates
+/// tungstenite-tokio connections.
 pub struct TungsteniteWsFactory {
     inner: async_factory::AsyncFactory<TungSink, TungStream>,
     host_configurations: HashMap<Url, HostConfig>,

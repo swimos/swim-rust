@@ -15,7 +15,8 @@
 #[cfg(test)]
 mod tests;
 
-use crate::routing::{ConnectionDropped, Route, RoutingAddr, TaggedEnvelope};
+use crate::routing::remote::RawRoute;
+use crate::routing::{ConnectionDropped, RoutingAddr, TaggedEnvelope};
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
 use std::net::SocketAddr;
@@ -29,6 +30,10 @@ pub struct HostAndPort(String, u16);
 impl HostAndPort {
     pub fn new(host: String, port: u16) -> Self {
         HostAndPort(host, port)
+    }
+
+    pub fn host(&self) -> &String {
+        &self.0
     }
 }
 
@@ -61,10 +66,10 @@ impl RoutingTable {
     }
 
     /// Get the entry in the table associated with a routing key, if it exsits.
-    pub fn resolve(&self, addr: RoutingAddr) -> Option<Route<mpsc::Sender<TaggedEnvelope>>> {
+    pub fn resolve(&self, addr: RoutingAddr) -> Option<RawRoute> {
         self.endpoints
             .get(&addr)
-            .map(|h| Route::new(h.tx.clone(), h.drop_rx.clone()))
+            .map(|h| RawRoute::new(h.tx.clone(), h.drop_rx.clone()))
     }
 
     /// Insert an entry into the table.

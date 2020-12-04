@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-/// [`Delay`] is a future that will complete at a specific time.
 pub mod delay {
     use futures::task::{Context, Poll};
     use futures::Future;
@@ -20,11 +19,12 @@ pub mod delay {
     use std::pin::Pin;
     use std::time::Duration;
 
+    /// `Delay` is a future that will complete at a specific time.
     #[pin_project]
     pub struct Delay {
         #[cfg(not(target_arch = "wasm32"))]
         #[pin]
-        inner: tokio::time::Delay,
+        inner: tokio::time::Sleep,
         #[cfg(target_arch = "wasm32")]
         #[pin]
         inner: wasm_timer::Delay,
@@ -55,7 +55,7 @@ pub mod delay {
         #[cfg(not(target_arch = "wasm32"))]
         {
             Delay {
-                inner: tokio::time::delay_for(duration),
+                inner: tokio::time::sleep(duration),
             }
         }
 
@@ -68,7 +68,6 @@ pub mod delay {
     }
 }
 
-/// [`Interval`] is a stream that yields a value when the provided [`period`] elapses.
 pub mod interval {
     use futures::task::{Context, Poll};
     use futures::Stream;
@@ -76,6 +75,7 @@ pub mod interval {
     use std::pin::Pin;
     use std::time::Duration;
 
+    /// [`Interval`] is a stream that yields a value when the provided period elapses.
     #[pin_project(project = IntervalProject)]
     #[derive(Debug)]
     pub struct Interval {
@@ -102,7 +102,7 @@ pub mod interval {
         }
     }
 
-    /// Create a new [`Interval`] that will yield a value each time the provided [`period`] elapses.
+    /// Create a new [`Interval`] that will yield a value each time the provided `period` elapses.
     pub fn interval(period: Duration) -> Interval {
         #[cfg(not(target_arch = "wasm32"))]
         {
@@ -118,10 +118,10 @@ pub mod interval {
     }
 }
 
-/// An [`Instant`] is a measurement of the system clock.
 pub mod instant {
     use std::time::Duration;
 
+    /// An [`Instant`] is a measurement of the system clock.
     #[derive(Clone, Copy, Eq, PartialEq, PartialOrd, Ord)]
     pub struct Instant {
         #[cfg(not(target_arch = "wasm32"))]

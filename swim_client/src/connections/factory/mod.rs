@@ -19,20 +19,16 @@ pub mod stream;
 pub mod tungstenite;
 
 pub mod async_factory {
-    use futures::future::ErrInto as FutErrInto;
     use futures::stream::StreamExt;
-    use futures::TryFutureExt;
     use futures::{Future, Sink, Stream};
     use tokio::sync::{mpsc, oneshot};
 
-    use swim_common::request::request_future::{RequestFuture, SendAndAwait, Sequenced};
     use swim_common::request::Request;
 
     use crate::connections::factory::tungstenite::HostConfig;
     use swim_common::ws::error::ConnectionError;
     use swim_common::ws::WsMessage;
     use swim_runtime::task::{spawn, TaskHandle};
-    use utilities::errors::FlattenErrors;
 
     /// A request for a new connection.
     pub struct ConnReq<Snk, Str> {
@@ -93,29 +89,24 @@ pub mod async_factory {
         }
     }
 
-    pub type ConnectionFuture<Str, Snk> =
-        SendAndAwait<ConnReq<Snk, Str>, Result<(Snk, Str), ConnectionError>>;
-
     impl<Snk, Str> AsyncFactory<Snk, Str>
     where
         Str: Stream<Item = Result<WsMessage, ConnectionError>> + Unpin + Send + 'static,
         Snk: Sink<WsMessage> + Unpin + Send + 'static,
     {
-        pub fn connect_using(
+        pub async fn connect_using(
             &mut self,
             url: url::Url,
             config: HostConfig,
-        ) -> FlattenErrors<FutErrInto<ConnectionFuture<Str, Snk>, ConnectionError>> {
+        ) -> Result<(Snk, Str), ConnectionError> {
             let (tx, rx) = oneshot::channel();
             let req = ConnReq {
                 request: Request::new(tx),
                 url,
                 config,
             };
-            let req_fut = RequestFuture::new(self.sender.clone(), req);
-            FlattenErrors::new(TryFutureExt::err_into::<ConnectionError>(Sequenced::new(
-                req_fut, rx,
-            )))
+            self.sender.send(req).await?;
+            Ok(rx.await??)
         }
     }
 }

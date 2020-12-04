@@ -18,6 +18,7 @@ use http::uri::InvalidUri;
 use std::fmt;
 use std::fmt::{Display, Formatter};
 use swim_runtime::task::TaskError;
+use tokio::sync::{mpsc, oneshot};
 
 const UNSUPPORTED_SCHEME: &str = "Unsupported URL scheme";
 const MISSING_SCHEME: &str = "Missing URL scheme";
@@ -58,6 +59,12 @@ pub enum WebSocketError {
     /// An error from building or reading a certificate
     #[cfg(feature = "tls")]
     CertificateError(CertificateError),
+    /// A UTF-8 encoding error
+    Utf8,
+    /// A capacity was exhausted.
+    Capacity,
+    /// A WebSocket extension error.
+    Extension(String),
 }
 
 #[cfg(feature = "tls")]
@@ -79,27 +86,6 @@ impl Display for CertificateError {
     }
 }
 
-#[cfg(feature = "tls")]
-impl From<native_tls::Error> for WebSocketError {
-    fn from(e: native_tls::Error) -> Self {
-        WebSocketError::Tls(e.to_string())
-    }
-}
-
-#[cfg(feature = "tls")]
-impl From<std::io::Error> for CertificateError {
-    fn from(e: std::io::Error) -> Self {
-        CertificateError::Io(e.to_string())
-    }
-}
-
-#[cfg(feature = "tls")]
-impl From<CertificateError> for WebSocketError {
-    fn from(e: CertificateError) -> Self {
-        WebSocketError::CertificateError(e)
-    }
-}
-
 impl WebSocketError {
     /// Creates a new `WebSocketError::Url` error detailing that the `found` scheme is unsupported.
     pub fn unsupported_scheme<I>(scheme: I) -> WebSocketError
@@ -117,7 +103,7 @@ impl WebSocketError {
 
 impl Display for WebSocketError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match &self {
+        match self {
             WebSocketError::Url(url) => write!(f, "An invalid URL ({}) was supplied", url),
             WebSocketError::Protocol => write!(f, "A protocol error occurred."),
             WebSocketError::Message(msg) => write!(f, "{}", msg),
@@ -132,6 +118,9 @@ impl Display for WebSocketError {
                 "An error was produced while trying to build the certificate: {}",
                 e
             ),
+            WebSocketError::Utf8 => write!(f, "UTF-8 encoding error"),
+            WebSocketError::Capacity => write!(f, "WebSocket buffer capacity exhausted"),
+            WebSocketError::Extension(e) => write!(f, "An extension error occured: {}", e),
         }
     }
 }
@@ -183,6 +172,18 @@ impl From<WebSocketError> for ConnectionError {
 
 impl From<RequestError> for ConnectionError {
     fn from(_: RequestError) -> Self {
+        ConnectionError::ConnectError
+    }
+}
+
+impl<T> From<mpsc::error::SendError<T>> for ConnectionError {
+    fn from(_: mpsc::error::SendError<T>) -> Self {
+        ConnectionError::ConnectError
+    }
+}
+
+impl From<oneshot::error::RecvError> for ConnectionError {
+    fn from(_: oneshot::error::RecvError) -> Self {
         ConnectionError::ConnectError
     }
 }

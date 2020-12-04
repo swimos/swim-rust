@@ -40,6 +40,7 @@ pub enum UpdateError {
     FailedTransaction(TransactionError),
     BadEnvelopeBody(FormErr),
     FeedbackChannelDropped,
+    OperationNotSupported,
 }
 
 impl Display for UpdateError {
@@ -53,6 +54,9 @@ impl Display for UpdateError {
             }
             UpdateError::FeedbackChannelDropped => {
                 write!(f, "Action lane feedback channel dropped.")
+            }
+            UpdateError::OperationNotSupported => {
+                write!(f, "The requested operation is not supported by this lane")
             }
         }
     }

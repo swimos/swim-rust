@@ -1,5 +1,5 @@
-error[E0599]: no variant or associated item named `ThisIsntValid` found for enum `swim_common::model::ValueKind` in the current scope
+error[E0599]: no variant or associated item named `ThisIsntValid` found for enum `ValueKind` in the current scope
   --> $DIR/invalid_container_of_kind.rs:20:48
    |
 20 |     #[form(schema(all_items(of_kind(ValueKind::ThisIsntValid))))]
-   |                                                ^^^^^^^^^^^^^ variant or associated item not found in `swim_common::model::ValueKind`
+   |                                                ^^^^^^^^^^^^^ variant or associated item not found in `ValueKind`

@@ -12,26 +12,30 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#[cfg(feature = "tls")]
-use {
-    crate::ws::error::CertificateError,
-    native_tls::Certificate,
-    std::fs::File,
-    std::io::{BufReader, Read},
-    std::path::Path,
-};
-
 use std::str::FromStr;
 
-use futures::{Future, Sink, Stream};
+use futures::{Sink, Stream};
 use http::uri::Scheme;
 use http::{Request, Uri};
 
 use crate::ws::error::{ConnectionError, WebSocketError};
+use futures::future::BoxFuture;
 use std::fmt;
 use std::fmt::{Debug, Formatter};
 
+#[cfg(feature = "tungstenite")]
+use tokio_tungstenite::tungstenite::Message;
+
+#[cfg(feature = "tls")]
+use crate::ws::tls::build_x509_certificate;
+#[cfg(feature = "tls")]
+use {
+    crate::ws::error::CertificateError, std::path::Path, tokio_native_tls::native_tls::Certificate,
+};
+
 pub mod error;
+#[cfg(feature = "tls")]
+pub mod tls;
 
 /// An enumeration representing a WebSocket message. Variants are based on IETF RFC-6455
 /// (The WebSocket Protocol) and may be Text (0x1) or Binary (0x2).
@@ -61,6 +65,9 @@ impl From<Vec<u8>> for WsMessage {
     }
 }
 
+pub type ConnResult<Snk, Str> = Result<(Snk, Str), ConnectionError>;
+pub type ConnFuture<'a, Snk, Str> = BoxFuture<'a, ConnResult<Snk, Str>>;
+
 /// Trait for factories that asynchronously create web socket connections. This exists primarily
 /// to allow for alternative implementations to be provided during testing.
 pub trait WebsocketFactory: Send + Sync {
@@ -70,12 +77,8 @@ pub trait WebsocketFactory: Send + Sync {
     /// Type of the sink for outgoing messages.
     type WsSink: Sink<WsMessage> + Unpin + Send + 'static;
 
-    type ConnectFut: Future<Output = Result<(Self::WsSink, Self::WsStream), ConnectionError>>
-        + Send
-        + 'static;
-
     /// Open a connection to the provided remote URL.
-    fn connect(&mut self, url: url::Url) -> Self::ConnectFut;
+    fn connect(&mut self, url: url::Url) -> ConnFuture<Self::WsSink, Self::WsStream>;
 }
 
 #[derive(Clone)]
@@ -137,18 +140,6 @@ pub fn maybe_resolve_scheme<T>(request: Request<T>) -> Result<Request<T>, WebSoc
     Ok(Request::from_parts(request_parts, request_t))
 }
 
-#[cfg(feature = "tls")]
-pub fn build_x509_certificate(path: impl AsRef<Path>) -> Result<Certificate, CertificateError> {
-    let mut reader = BufReader::new(File::open(path)?);
-    let mut buf = vec![];
-    reader.read_to_end(&mut buf)?;
-
-    match Certificate::from_pem(&buf) {
-        Ok(cert) => Ok(cert),
-        Err(e) => Err(CertificateError::SSL(e.to_string())),
-    }
-}
-
 #[derive(Copy, Clone, PartialOrd, PartialEq)]
 pub enum CompressionKind {
     None,
@@ -160,5 +151,29 @@ pub enum CompressionKind {
 impl CompressionKind {
     pub fn is_compressed(&self) -> bool {
         *self != CompressionKind::None
+    }
+}
+
+#[cfg(feature = "tungstenite")]
+impl From<Message> for WsMessage {
+    fn from(message: Message) -> Self {
+        match message {
+            Message::Text(msg) => WsMessage::Text(msg),
+            Message::Binary(data) => WsMessage::Binary(data),
+            _ => {
+                // Other message types are handled by tungstenite itself.
+                unreachable!()
+            }
+        }
+    }
+}
+
+#[cfg(feature = "tungstenite")]
+impl From<WsMessage> for Message {
+    fn from(message: WsMessage) -> Self {
+        match message {
+            WsMessage::Text(msg) => Message::Text(msg),
+            WsMessage::Binary(data) => Message::Binary(data),
+        }
     }
 }

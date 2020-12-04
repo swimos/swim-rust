@@ -16,16 +16,16 @@ use num_bigint::BigInt;
 use proc_macro2::TokenStream;
 use quote::ToTokens;
 use syn::export::TokenStream2;
-use syn::{ExprPath, Meta, NestedMeta, Type};
+use syn::{ExprPath, Field, Meta, NestedMeta, Type};
 
-use macro_helpers::{CompoundTypeKind, Context, Label, Symbol};
+use macro_helpers::{Attributes, CompoundTypeKind, Context, Symbol, SynOriginal};
 
 use crate::form::form_parser::FormDescriptor;
-use crate::parser::{
-    Attributes, EnumVariant, FormField, StructRepr, TypeContents, FORM_PATH, SCHEMA_PATH, TAG_PATH,
-};
+use crate::parser::{FORM_PATH, SCHEMA_PATH, TAG_PATH};
 use crate::validated_form::meta_parse::parse_schema_meta;
 use crate::validated_form::range::Range;
+use macro_helpers::Label;
+use macro_helpers::{EnumRepr, EnumVariant, FormField, StructRepr, TypeContents};
 
 pub const ANYTHING_PATH: Symbol = Symbol("anything");
 pub const NOTHING_PATH: Symbol = Symbol("nothing");
@@ -142,6 +142,12 @@ impl ValidatedFormDescriptor {
 pub struct ValidatedField<'f> {
     pub form_field: FormField<'f>,
     pub field_schema: StandardSchema,
+}
+
+impl<'f> SynOriginal for ValidatedField<'f> {
+    fn original(&self) -> &Field {
+        &self.form_field.original
+    }
 }
 
 impl<'f> ValidatedField<'f> {
@@ -359,7 +365,7 @@ pub fn type_contents_to_validated<'f>(
                 descriptor,
             }
         }),
-        TypeContents::Enum(variants) => {
+        TypeContents::Enum(EnumRepr { input, variants }) => {
             let variants = variants
                 .into_iter()
                 .map(|variant| {
@@ -386,7 +392,7 @@ pub fn type_contents_to_validated<'f>(
                 })
                 .collect();
 
-            TypeContents::Enum(variants)
+            TypeContents::Enum(EnumRepr { input, variants })
         }
     }
 }
