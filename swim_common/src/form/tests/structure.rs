@@ -45,10 +45,7 @@ fn test_transmute() {
 #[test]
 fn test_transmute_generic() {
     #[derive(Form, Debug, PartialEq, Clone)]
-    struct S<F>
-    where
-        F: Form,
-    {
+    struct S<F> {
         f: F,
     }
 
@@ -500,4 +497,70 @@ fn test_enum_tag() {
             vec![Item::Slot(Value::text("message"), Value::text("Not good"))]
         )
     )
+}
+
+#[test]
+fn test_transmute_generic_default() {
+    #[derive(Form, Debug, PartialEq, Clone)]
+    struct Valid;
+
+    #[derive(Default, Debug, PartialEq, Clone)]
+    struct Skipped;
+
+    #[derive(Form, Debug, PartialEq, Clone)]
+    struct S<A, B> {
+        a: A,
+        #[form(skip)]
+        b: B,
+    }
+
+    let s = S {
+        a: Valid,
+        b: Skipped,
+    };
+
+    let rec = Value::Record(
+        vec![Attr::of("S")],
+        vec![Item::Slot(
+            Value::text("a"),
+            Value::Record(vec![Attr::of("Valid")], vec![]),
+        )],
+    );
+    assert_eq!(s.as_value(), rec);
+    assert_eq!(S::try_from_value(&rec), Ok(s.clone()));
+    assert_eq!(S::try_convert(rec.clone()), Ok(s.clone()));
+    assert_eq!(s.into_value(), rec);
+}
+
+#[test]
+fn generic_duplicated_bound() {
+    #[derive(Form)]
+    struct Valid;
+
+    #[derive(Form, Debug, PartialEq, Clone)]
+    struct S<A: Form> {
+        a: A,
+    }
+
+    let s = S { a: Valid };
+
+    let _ = s.as_value();
+}
+
+#[test]
+fn generic_duplicated_bound_2() {
+    #[derive(Form)]
+    struct Valid;
+
+    #[derive(Form, Debug, PartialEq, Clone)]
+    struct S<A>
+    where
+        A: Form,
+    {
+        a: A,
+    }
+
+    let s = S { a: Valid };
+
+    let _ = s.as_value();
 }

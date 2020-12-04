@@ -1,0 +1,18 @@
+error[E0599]: no method named `as_value` found for struct `S<Valid, Skipped>` in the current scope
+  --> $DIR/generic_no_default.rs:35:15
+   |
+21 |     struct Skipped;
+   |     --------------- doesn't satisfy `Skipped: Default`
+...
+24 |     struct S<A, B> {
+   |     --------------
+   |     |
+   |     method `as_value` not found for this
+   |     doesn't satisfy `S<Valid, Skipped>: Form`
+...
+35 |     let _ = s.as_value();
+   |               ^^^^^^^^ method not found in `S<Valid, Skipped>`
+   |
+   = note: the method `as_value` exists but the following trait bounds were not satisfied:
+           `Skipped: Default`
+           which is required by `S<Valid, Skipped>: Form`

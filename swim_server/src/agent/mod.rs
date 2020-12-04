@@ -22,7 +22,7 @@ mod tests;
 use crate::agent::context::{AgentExecutionContext, ContextImpl};
 use crate::agent::dispatch::error::DispatcherErrors;
 use crate::agent::dispatch::AgentDispatcher;
-use crate::agent::lane::channels::task::{LaneIoError, MapLaneMessageHandler};
+use crate::agent::lane::channels::task::{run_supply_lane_io, LaneIoError, MapLaneMessageHandler};
 use crate::agent::lane::channels::update::StmRetryStrategy;
 use crate::agent::lane::channels::uplink::spawn::{SpawnerUplinkFactory, UplinkErrorReport};
 use crate::agent::lane::channels::AgentExecutionConfig;
@@ -31,6 +31,7 @@ use crate::agent::lane::model;
 use crate::agent::lane::model::action::{Action, ActionLane, CommandLane};
 use crate::agent::lane::model::map::MapLaneEvent;
 use crate::agent::lane::model::map::{MapLane, MapLaneWatch};
+use crate::agent::lane::model::supply::{make_lane_model, SupplyLane};
 use crate::agent::lane::model::value::{ValueLane, ValueLaneWatch};
 use crate::agent::lane::model::DeferredLaneView;
 use crate::agent::lifecycle::AgentLifecycle;
@@ -627,6 +628,10 @@ struct MapLifecycleTasks<L, S, P>(LifecycleTasks<L, S, P>);
 struct ActionLifecycleTasks<L, S, P>(LifecycleTasks<L, S, P>);
 struct CommandLifecycleTasks<L, S, P>(LifecycleTasks<L, S, P>);
 
+struct StatelessLifecycleTasks {
+    name: String,
+}
+
 impl<L, S, P> Lane for ValueLifecycleTasks<L, S, P> {
     fn name(&self) -> &str {
         self.0.name.as_str()
@@ -1004,4 +1009,77 @@ where
     };
 
     (lane, tasks, lane_io)
+}
+
+/// Create a new supply lane.
+///
+/// # Arguments
+///
+/// * `name` - The name of the lane.
+/// * `is_public` - Whether the lane is public (with respect to external message routing).
+/// * `buffer_size` - Buffer size for the MPSC channel accepting the events.
+pub fn make_supply_lane<Agent, Context, T>(
+    name: impl Into<String>,
+    is_public: bool,
+    buffer_size: NonZeroUsize,
+) -> (
+    SupplyLane<T>,
+    impl LaneTasks<Agent, Context>,
+    Option<impl LaneIo<Context>>,
+)
+where
+    Agent: 'static,
+    Context: AgentContext<Agent> + AgentExecutionContext + Send + Sync + 'static,
+    T: Any + Clone + Send + Sync + Form + Debug,
+{
+    let (lane, event_stream) = make_lane_model(buffer_size);
+
+    let tasks = StatelessLifecycleTasks { name: name.into() };
+
+    let lane_io = if is_public {
+        Some(SupplyLaneIo::new(event_stream))
+    } else {
+        None
+    };
+
+    (lane, tasks, lane_io)
+}
+
+struct SupplyLaneIo<S> {
+    stream: S,
+}
+
+impl<S> SupplyLaneIo<S> {
+    fn new(stream: S) -> Self {
+        SupplyLaneIo { stream }
+    }
+}
+
+impl<S, Item, Context> LaneIo<Context> for SupplyLaneIo<S>
+where
+    S: Stream<Item = Item> + Send + Sync + 'static,
+    Item: Send + Sync + Form + Debug + 'static,
+    Context: AgentExecutionContext + Sized + Send + Sync + 'static,
+{
+    fn attach(
+        self,
+        route: RelativePath,
+        envelopes: Receiver<TaggedClientEnvelope>,
+        config: AgentExecutionConfig,
+        context: Context,
+    ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
+        let SupplyLaneIo { stream, .. } = self;
+
+        Ok(run_supply_lane_io(envelopes, config, context, route, stream).boxed())
+    }
+
+    fn attach_boxed(
+        self: Box<Self>,
+        route: RelativePath,
+        envelopes: Receiver<TaggedClientEnvelope>,
+        config: AgentExecutionConfig,
+        context: Context,
+    ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
+        (*self).attach(route, envelopes, config, context)
+    }
 }

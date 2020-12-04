@@ -85,7 +85,7 @@ async fn connect(
     };
 
     let host = format!("{}:{}", domain, port);
-    let stream = build_stream(&host, domain, stream_type).await?;
+    let stream = build_stream(&host, stream_type).await?;
 
     match client_async_with_config(
         request,
@@ -148,7 +148,8 @@ impl WebsocketFactory for TungsteniteWsFactory {
     }
 }
 
-/// Specialized [`AsyncFactory`] that creates tungstenite-tokio connections.
+/// Specialized [`crate::connections::factory::async_factory::AsyncFactory`] that creates
+/// tungstenite-tokio connections.
 pub struct TungsteniteWsFactory {
     inner: async_factory::AsyncFactory<TungSink, TungStream>,
     host_configurations: HashMap<Url, HostConfig>,

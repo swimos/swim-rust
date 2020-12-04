@@ -43,10 +43,7 @@ fn test_transmute_single_variant() {
 #[test]
 fn test_generic() {
     #[derive(Form, Debug, PartialEq, Clone)]
-    enum S<F>
-    where
-        F: Form,
-    {
+    enum S<F> {
         A { f: F },
     }
 
@@ -54,6 +51,31 @@ fn test_generic() {
     let rec = Value::Record(
         vec![Attr::of("A")],
         vec![Item::Slot(Value::text("f"), Value::Int32Value(1))],
+    );
+
+    assert_eq!(s.as_value(), rec);
+    assert_eq!(S::try_from_value(&rec), Ok(s.clone()));
+    assert_eq!(S::try_convert(rec), Ok(s));
+}
+
+#[test]
+fn test_generic_skip() {
+    #[derive(Form, Debug, PartialEq, Clone)]
+    enum S<F, G> {
+        A {
+            f: F,
+        },
+        B {
+            #[form(skip)]
+            g: G,
+            i: i32,
+        },
+    }
+
+    let s = S::B::<i32, i32> { g: 0, i: 1 };
+    let rec = Value::Record(
+        vec![Attr::of("B")],
+        vec![Item::Slot(Value::text("i"), Value::Int32Value(1))],
     );
 
     assert_eq!(s.as_value(), rec);
