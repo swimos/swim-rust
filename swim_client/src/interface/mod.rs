@@ -168,7 +168,7 @@ impl SwimClient {
         Ok(SwimClient::new(config, connection_factory).await)
     }
 
-    /// Creates a new Swim Client and associates the provided [`configuration`] with the downlinks.
+    /// Creates a new Swim Client and associates the provided `configuration` with the downlinks.
     /// The provided configuration is used when opening new downlinks.
     pub async fn new<C, Fac>(configuration: C, connection_factory: Fac) -> Self
     where
@@ -196,7 +196,7 @@ impl SwimClient {
         }
     }
 
-    /// Sends a command directly to the provided [`target`] lane.
+    /// Sends a command directly to the provided `target` lane.
     pub async fn send_command<T: Form>(
         &mut self,
         target: AbsolutePath,
@@ -214,7 +214,7 @@ impl SwimClient {
             .map_err(ClientError::SubscriptionError)
     }
 
-    /// Opens a new typed value downlink at the provided path and initialises it with [`initial`].
+    /// Opens a new typed value downlink at the provided path and initialises it with `initial`.
     pub async fn value_downlink<T>(
         &mut self,
         path: AbsolutePath,
@@ -273,7 +273,8 @@ impl SwimClient {
             .map_err(ClientError::SubscriptionError)
     }
 
-    /// Opens a new untyped value downlink at the provided path and initialises it with [`initial`] value.
+    /// Opens a new untyped value downlink at the provided path and initialises it with `initial`
+    /// value.
     pub async fn untyped_value_downlink(
         &mut self,
         path: AbsolutePath,
