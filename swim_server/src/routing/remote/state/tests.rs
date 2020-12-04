@@ -75,8 +75,7 @@ fn make_state(
         FakeListener::new(incoming),
         stop_rx,
         router.clone(),
-        remote_tx,
-        remote_rx,
+        (remote_tx, remote_rx),
     );
 
     TestFixture {
