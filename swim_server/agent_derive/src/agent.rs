@@ -399,6 +399,6 @@ impl ToTokens for ConfigType {
     }
 }
 
-pub fn get_task_var_name(name: &str) -> Ident {
+fn get_task_var_name(name: &str) -> Ident {
     Ident::new(&format!("{}_task", name), Span::call_site())
 }
