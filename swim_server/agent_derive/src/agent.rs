@@ -182,7 +182,7 @@ pub fn derive_agent_lifecycle(args: AttributeArgs, input: DeriveInput) -> TokenS
 
     };
 
-    let wrapped = as_const("AgentLifecycle", lifecycle_name, private_derived.into());
+    let wrapped = as_const("AgentLifecycle", lifecycle_name, private_derived);
     let derived = quote! {
         #pub_derived
 
