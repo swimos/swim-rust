@@ -40,6 +40,7 @@ pub enum ConnectionError {
     ConnectionRefused,
     /// Not an error. Closed event by the WebSocket
     Closed,
+    Warp(String),
 }
 
 /// An error that occurred within the underlying WebSocket.
@@ -160,6 +161,7 @@ impl Display for ConnectionError {
             ConnectionError::ConnectionRefused => {
                 write!(f, "The connection was refused by the host")
             }
+            ConnectionError::Warp(msg) => write!(f, "WARP protocol error: {}", msg),
         }
     }
 }
