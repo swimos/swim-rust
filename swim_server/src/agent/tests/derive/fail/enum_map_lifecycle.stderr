@@ -1,5 +1,5 @@
 error: Lifecycle cannot be created from Enum.
-  --> $DIR/enum_map_lifecycle.rs:10:10
+  --> $DIR/enum_map_lifecycle.rs:24:10
    |
-10 |     enum MapLifecycle {}
+24 |     enum MapLifecycle {}
    |          ^^^^^^^^^^^^
