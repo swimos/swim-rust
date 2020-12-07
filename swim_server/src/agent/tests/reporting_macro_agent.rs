@@ -26,7 +26,7 @@ use crate::agent::AgentContext;
 use crate::plane::provider::AgentProvider;
 use crate::routing::RoutingAddr;
 use crate::{agent_lifecycle, command_lifecycle, map_lifecycle, value_lifecycle, SwimAgent};
-use futures::{FutureExt, StreamExt};
+use futures::StreamExt;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::fmt::Debug;

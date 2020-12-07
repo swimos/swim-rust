@@ -111,24 +111,27 @@ pub fn derive_swim_agent(input: DeriveInput) -> Result<TokenStream, TokenStream>
         .map(|agent_field| &agent_field.lifecycle_ast);
 
     Ok(quote! {
-        use swim_server::agent::LaneTasks as _;
         use std::collections::HashMap;
         use std::boxed::Box;
 
+        use swim_server::agent::{LaneTasks, SwimAgent, AgentContext, LaneIo};
+        use swim_server::agent::lane::channels::AgentExecutionConfig;
+        use swim_server::agent::context::AgentExecutionContext;
+
         #[automatically_derived]
-        impl swim_server::agent::SwimAgent<#config_type> for #agent_name {
-            fn instantiate<Context: swim_server::agent::AgentContext<Self> + swim_server::agent::context::AgentExecutionContext>(
+        impl SwimAgent<#config_type> for #agent_name {
+            fn instantiate<Context: AgentContext<Self> + AgentExecutionContext>(
                 configuration: &#config_type,
-                exec_conf: &swim_server::agent::lane::channels::AgentExecutionConfig,
+                exec_conf: &AgentExecutionConfig,
             ) -> (
                 Self,
-                Vec<Box<dyn swim_server::agent::LaneTasks<Self, Context>>>,
-                HashMap<String, Box<dyn swim_server::agent::LaneIo<Context>>>,
+                Vec<Box<dyn LaneTasks<Self, Context>>>,
+                HashMap<String, Box<dyn LaneIo<Context>>>,
             )
                 where
-                    Context: swim_server::agent::AgentContext<Self> + swim_server::agent::context::AgentExecutionContext + Send + Sync + 'static,
+                    Context: AgentContext<Self> + AgentExecutionContext + Send + Sync + 'static,
             {
-                let mut io_map: HashMap<String, Box<dyn swim_server::agent::LaneIo<Context>>> = HashMap::new();
+                let mut io_map: HashMap<String, Box<dyn LaneIo<Context>>> = HashMap::new();
 
                 #(#lifecycles_ast)*
 
@@ -143,7 +146,8 @@ pub fn derive_swim_agent(input: DeriveInput) -> Result<TokenStream, TokenStream>
                 (agent, tasks, io_map)
             }
         }
-    }.into())
+    }
+    .into())
 }
 
 pub fn derive_agent_lifecycle(args: AttributeArgs, input: DeriveInput) -> TokenStream {
@@ -168,13 +172,17 @@ pub fn derive_agent_lifecycle(args: AttributeArgs, input: DeriveInput) -> TokenS
     };
 
     let private_derived = quote! {
-        use futures::FutureExt as _;
+        use futures::FutureExt;
+        use futures::future::BoxFuture;
+
+        use swim_server::agent::lifecycle::AgentLifecycle;
+        use swim_server::agent::AgentContext;
 
         #[automatically_derived]
-        impl swim_server::agent::lifecycle::AgentLifecycle<#agent_name> for #lifecycle_name {
-            fn on_start<'a, C>(&'a self, context: &'a C) -> futures::future::BoxFuture<'a, ()>
+        impl AgentLifecycle<#agent_name> for #lifecycle_name {
+            fn on_start<'a, C>(&'a self, context: &'a C) -> BoxFuture<'a, ()>
             where
-                C: swim_server::agent::AgentContext<#agent_name> + Send + Sync + 'a,
+                C: AgentContext<#agent_name> + Send + Sync + 'a,
             {
                 self.#on_start_func(context).boxed()
             }
@@ -221,12 +229,73 @@ fn create_lane(
         lane_name_lit: &lane_name_lit,
     };
 
-    match lane_type {
-        LaneType::Command => (create_command_lane(lane_data), task_variable),
-        LaneType::Action => (create_action_lane(lane_data), task_variable),
-        LaneType::Value => (create_value_lane(lane_data), task_variable),
-        LaneType::Map => (create_map_lane(lane_data), task_variable),
-    }
+    let ts = match lane_type {
+        LaneType::Command => {
+            let model = quote!(let (#lane_name, event_stream) = swim_server::agent::lane::model::action::make_lane_model(exec_conf.action_buffer.clone()););
+
+            build_lane_io(
+                lane_data,
+                quote! {
+                    #model
+
+                    io_map.insert (
+                        #lane_name_lit.to_string(),
+                        Box::new(swim_server::agent::ActionLaneIo::new_command(#lane_name.clone()))
+                    );
+                },
+                model,
+            )
+        }
+        LaneType::Action => {
+            let model = quote!(let (#lane_name, event_stream) = swim_server::agent::lane::model::action::make_lane_model(exec_conf.action_buffer.clone()););
+
+            build_lane_io(
+                lane_data,
+                quote! {
+                    #model
+
+                    io_map.insert (
+                        #lane_name_lit.to_string(),
+                        Box::new(swim_server::agent::ActionLaneIo::new_action(#lane_name.clone()))
+                    );
+                },
+                model,
+            )
+        }
+        LaneType::Value => {
+            let model = quote!(let (#lane_name, event_stream, deferred) = swim_server::agent::lane::model::value::make_lane_model_deferred(Default::default(), lifecycle.create_strategy(), exec_conf););
+
+            build_lane_io(
+                lane_data,
+                quote! {
+                    #model
+
+                    io_map.insert (
+                        #lane_name_lit.to_string(),
+                        Box::new(swim_server::agent::ValueLaneIo::new(#lane_name.clone(), deferred))
+                    );
+                },
+                model,
+            )
+        }
+        LaneType::Map => {
+            let model = quote!(let (#lane_name, event_stream, deferred) = swim_server::agent::lane::model::map::make_lane_model_deferred(lifecycle.create_strategy(), exec_conf););
+
+            build_lane_io(
+                lane_data,
+                quote! {
+                    #model
+
+                    io_map.insert (
+                        #lane_name_lit.to_string(), Box::new(swim_server::agent::MapLaneIo::new(#lane_name.clone(), deferred))
+                    );
+                },
+                model,
+            )
+        }
+    };
+
+    (ts, task_variable)
 }
 
 pub fn get_agent_data(args: SwimAgentAttrs) -> (AgentName, ConfigType, Vec<AgentField>) {
@@ -264,7 +333,7 @@ pub fn get_agent_data(args: SwimAgentAttrs) -> (AgentName, ConfigType, Vec<Agent
     (agent_name, config_type, agent_fields)
 }
 
-pub(crate) struct LaneData<'a> {
+pub struct LaneData<'a> {
     agent_name: &'a Ident,
     is_public: bool,
     lifecycle: &'a Ident,
@@ -274,7 +343,11 @@ pub(crate) struct LaneData<'a> {
     lane_name_lit: &'a Literal,
 }
 
-fn create_command_lane(lane_data: LaneData) -> proc_macro2::TokenStream {
+fn build_lane_io(
+    lane_data: LaneData,
+    public_ts: proc_macro2::TokenStream,
+    private_ts: proc_macro2::TokenStream,
+) -> proc_macro2::TokenStream {
     let LaneData {
         agent_name,
         is_public,
@@ -285,135 +358,7 @@ fn create_command_lane(lane_data: LaneData) -> proc_macro2::TokenStream {
         lane_name_lit,
     } = lane_data;
 
-    let io = if is_public {
-        Some(quote! {
-            io_map.insert (
-                #lane_name_lit.to_string(),
-                std::boxed::Box::new(swim_server::agent::ActionLaneIo::new_command(#lane_name.clone()))
-            );
-        })
-    } else {
-        None
-    };
-
-    quote! {
-        let lifecycle = #lifecycle::create(configuration);
-        let (#lane_name, event_stream) = swim_server::agent::lane::model::action::make_lane_model(exec_conf.action_buffer.clone());
-        let #task_variable = #task_structure {
-            lifecycle,
-            name: #lane_name_lit.into(),
-            event_stream,
-            projection: |agent: &#agent_name| &agent.#lane_name,
-        };
-
-        #io
-    }
-}
-
-fn create_action_lane(lane_data: LaneData) -> proc_macro2::TokenStream {
-    let LaneData {
-        agent_name,
-        is_public,
-        lifecycle,
-        lane_name,
-        task_variable,
-        task_structure,
-        lane_name_lit,
-    } = lane_data;
-
-    let io = if is_public {
-        Some(quote! {
-            io_map.insert (
-                #lane_name_lit.to_string(),
-                std::boxed::Box::new(swim_server::agent::ActionLaneIo::new_action(#lane_name.clone()))
-            );
-        })
-    } else {
-        None
-    };
-
-    quote! {
-        let lifecycle = #lifecycle::create(configuration);
-        let (#lane_name, event_stream) = swim_server::agent::lane::model::action::make_lane_model(exec_conf.action_buffer.clone());
-        let #task_variable = #task_structure {
-            lifecycle,
-            name: #lane_name_lit.into(),
-            event_stream,
-            projection: |agent: &#agent_name| &agent.#lane_name,
-        };
-
-        #io
-    }
-}
-
-fn create_value_lane(lane_data: LaneData) -> proc_macro2::TokenStream {
-    let LaneData {
-        agent_name,
-        is_public,
-        lifecycle,
-        lane_name,
-        task_variable,
-        task_structure,
-        lane_name_lit,
-    } = lane_data;
-
-    let lane_creation = if is_public {
-        quote! {
-            let (#lane_name, event_stream, deferred) =
-                swim_server::agent::lane::model::value::make_lane_model_deferred(std::default::Default::default(), lifecycle.create_strategy(), exec_conf);
-
-            io_map.insert (
-                #lane_name_lit.to_string(),
-                std::boxed::Box::new(swim_server::agent::ValueLaneIo::new(#lane_name.clone(), deferred))
-            );
-        }
-    } else {
-        quote! {
-            let (#lane_name, event_stream) =
-                swim_server::agent::lane::model::value::make_lane_model(std::default::Default::default(), lifecycle.create_strategy());
-        }
-    };
-
-    quote! {
-        let lifecycle = #lifecycle::create(configuration);
-
-        #lane_creation
-
-        let #task_variable = #task_structure {
-            lifecycle,
-            name: #lane_name_lit.into(),
-            event_stream,
-            projection: |agent: &#agent_name| &agent.#lane_name,
-        };
-    }
-}
-
-fn create_map_lane(lane_data: LaneData) -> proc_macro2::TokenStream {
-    let LaneData {
-        agent_name,
-        is_public,
-        lifecycle,
-        lane_name,
-        task_variable,
-        task_structure,
-        lane_name_lit,
-    } = lane_data;
-
-    let lane_creation = if is_public {
-        quote! {
-            let (#lane_name, event_stream, deferred) =
-                swim_server::agent::lane::model::map::make_lane_model_deferred(lifecycle.create_strategy(), exec_conf);
-
-            io_map.insert (
-                #lane_name_lit.to_string(), std::boxed::Box::new(swim_server::agent::MapLaneIo::new(#lane_name.clone(), deferred))
-            );
-        }
-    } else {
-        quote! {
-            let (#lane_name, event_stream) =
-                swim_server::agent::lane::model::map::make_lane_model(lifecycle.create_strategy());
-        }
-    };
+    let lane_creation = if is_public { public_ts } else { private_ts };
 
     quote! {
         let lifecycle = #lifecycle::create(configuration);
@@ -454,6 +399,6 @@ impl ToTokens for ConfigType {
     }
 }
 
-pub(crate) fn get_task_var_name(name: &str) -> Ident {
+pub fn get_task_var_name(name: &str) -> Ident {
     Ident::new(&format!("{}_task", name), Span::call_site())
 }

@@ -15,10 +15,10 @@
 use crate::internals::{default_on_event, default_on_start};
 use crate::utils::{get_task_struct_name, validate_input_ast, InputAstType};
 use darling::FromMeta;
-use macro_helpers::string_to_ident;
+use macro_helpers::{as_const, string_to_ident};
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, AttributeArgs, DeriveInput, Ident};
+use syn::{AttributeArgs, DeriveInput, Ident};
 
 #[derive(Debug, FromMeta)]
 pub struct ValueAttrs {
@@ -32,10 +32,7 @@ pub struct ValueAttrs {
     pub on_event: Ident,
 }
 
-pub fn derive_value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
-    let input_ast = parse_macro_input!(input as DeriveInput);
-    let attr_args = parse_macro_input!(args as AttributeArgs);
-
+pub fn derive_value_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput) -> TokenStream {
     if let Err(error) = validate_input_ast(&input_ast, InputAstType::Lifecycle) {
         return TokenStream::from(quote! {#error});
     }
@@ -47,35 +44,47 @@ pub fn derive_value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStr
         }
     };
 
-    let lifecycle_name = &input_ast.ident;
+    let lifecycle_name = input_ast.ident.clone();
     let task_name = get_task_struct_name(&input_ast.ident.to_string());
     let agent_name = &args.agent;
     let event_type = &args.event_type;
     let on_start_func = &args.on_start;
     let on_event_func = &args.on_event;
 
-    let output_ast = quote! {
-        use futures::FutureExt as _;
-        use futures::StreamExt as _;
-
+    let public_derived = quote! {
         #input_ast
 
         struct #task_name<T, S>
         where
-            T: core::ops::Fn(&#agent_name) -> &swim_server::agent::lane::model::value::ValueLane<#event_type> + core::marker::Send + core::marker::Sync + 'static,
-            S: futures::Stream<Item = std::sync::Arc<#event_type>> + core::marker::Send + core::marker::Sync + 'static
+            T: core::ops::Fn(&#agent_name) -> &swim_server::agent::lane::model::value::ValueLane<#event_type> + Send + Sync + 'static,
+            S: futures::Stream<Item = std::sync::Arc<#event_type>> + Send + Sync + 'static
         {
             lifecycle: #lifecycle_name,
             name: String,
             event_stream: S,
             projection: T,
         }
+    };
+
+    let private_derived = quote! {
+        use futures::FutureExt as _;
+        use futures::StreamExt as _;
+        use futures::Stream;
+        use futures::future::{ready, BoxFuture};
+
+        use swim_server::agent::lane::model::value::ValueLane;
+        use swim_server::agent::{Lane, LaneTasks};
+        use swim_server::agent::AgentContext;
+        use swim_server::agent::context::AgentExecutionContext;
+
+        use core::pin::Pin;
+        use std::sync::Arc;
 
         #[automatically_derived]
-        impl<T, S> swim_server::agent::Lane for #task_name<T, S>
+        impl<T, S> Lane for #task_name<T, S>
         where
-            T: core::ops::Fn(&#agent_name) -> &swim_server::agent::lane::model::value::ValueLane<#event_type> + core::marker::Send + core::marker::Sync + 'static,
-            S: futures::Stream<Item = std::sync::Arc<#event_type>> + core::marker::Send + core::marker::Sync + 'static
+            T: Fn(&#agent_name) -> &ValueLane<#event_type> + Send + Sync + 'static,
+            S: Stream<Item = Arc<#event_type>> + Send + Sync + 'static
         {
             fn name(&self) -> &str {
                 &self.name
@@ -83,20 +92,20 @@ pub fn derive_value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStr
         }
 
         #[automatically_derived]
-        impl<Context, T, S> swim_server::agent::LaneTasks<#agent_name, Context> for #task_name<T, S>
+        impl<Context, T, S> LaneTasks<#agent_name, Context> for #task_name<T, S>
         where
-            Context: swim_server::agent::AgentContext<#agent_name> + swim_server::agent::context::AgentExecutionContext + core::marker::Send + core::marker::Sync + 'static,
-            T: core::ops::Fn(&#agent_name) -> &swim_server::agent::lane::model::value::ValueLane<#event_type> + core::marker::Send + core::marker::Sync + 'static,
-            S: futures::Stream<Item = std::sync::Arc<#event_type>> + core::marker::Send + core::marker::Sync + 'static
+            Context: AgentContext<#agent_name> + AgentExecutionContext + Send + Sync + 'static,
+            T: Fn(&#agent_name) -> &ValueLane<#event_type> + Send + Sync + 'static,
+            S: Stream<Item = Arc<#event_type>> + Send + Sync + 'static
         {
-            fn start<'a>(&'a self, context: &'a Context) -> futures::future::BoxFuture<'a, ()> {
+            fn start<'a>(&'a self, context: &'a Context) -> BoxFuture<'a, ()> {
                 let #task_name { lifecycle, projection, .. } = self;
 
                 let model = projection(context.agent());
                 lifecycle.#on_start_func(model, context).boxed()
             }
 
-            fn events(self: Box<Self>, context: Context) -> futures::future::BoxFuture<'static, ()> {
+            fn events(self: Box<Self>, context: Context) -> BoxFuture<'static, ()> {
                 async move {
                     let #task_name {
                         lifecycle,
@@ -107,9 +116,9 @@ pub fn derive_value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStr
 
                     let model = projection(context.agent()).clone();
                     let mut events = event_stream.take_until(context.agent_stop_event());
-                    let mut events = unsafe { core::pin::Pin::new_unchecked(&mut events) };
+                    let mut events = unsafe { Pin::new_unchecked(&mut events) };
 
-                    while let std::option::Option::Some(event) = events.next().await {
+                    while let Some(event) = events.next().await {
                         tracing_futures::Instrument::instrument(
                                 lifecycle.#on_event_func(&event, &model, &context),
                                 tracing::span!(tracing::Level::TRACE, swim_server::agent::ON_EVENT, ?event)
@@ -122,5 +131,13 @@ pub fn derive_value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStr
 
     };
 
-    TokenStream::from(output_ast)
+    let wrapped = as_const("ValueLifecycle", lifecycle_name, private_derived);
+
+    let derived = quote! {
+        #public_derived
+
+        #wrapped
+    };
+
+    derived.into()
 }

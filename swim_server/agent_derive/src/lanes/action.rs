@@ -18,7 +18,7 @@ use darling::FromMeta;
 use macro_helpers::{as_const, string_to_ident};
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, AttributeArgs, DeriveInput, Ident};
+use syn::{AttributeArgs, DeriveInput, Ident};
 
 #[derive(Debug, FromMeta)]
 pub struct ActionAttrs {
@@ -32,10 +32,7 @@ pub struct ActionAttrs {
     pub on_command: Ident,
 }
 
-pub fn derive_action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
-    let input_ast = parse_macro_input!(input as DeriveInput);
-    let attr_args = parse_macro_input!(args as AttributeArgs);
-
+pub fn derive_action_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput) -> TokenStream {
     if let Err(error) = validate_input_ast(&input_ast, InputAstType::Lifecycle) {
         return TokenStream::from(quote! {#error});
     }

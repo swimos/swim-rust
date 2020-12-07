@@ -28,7 +28,7 @@ use crate::routing::RoutingAddr;
 use crate::{
     action_lifecycle, agent_lifecycle, command_lifecycle, map_lifecycle, value_lifecycle, SwimAgent,
 };
-use futures::{FutureExt, StreamExt};
+use futures::StreamExt;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::fmt::Debug;

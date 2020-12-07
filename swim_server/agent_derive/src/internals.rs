@@ -13,7 +13,9 @@
 // limitations under the License.
 
 use macro_helpers::str_to_ident;
+use proc_macro::TokenStream;
 use proc_macro2::Ident;
+use syn::{parse_macro_input, AttributeArgs, DeriveInput};
 
 pub fn default_on_command() -> Ident {
     str_to_ident("on_command")
@@ -25,4 +27,14 @@ pub fn default_on_start() -> Ident {
 
 pub fn default_on_event() -> Ident {
     str_to_ident("on_event")
+}
+
+pub fn derive<F>(args: TokenStream, input: TokenStream, f: F) -> TokenStream
+where
+    F: Fn(AttributeArgs, DeriveInput) -> TokenStream,
+{
+    let input = parse_macro_input!(input as DeriveInput);
+    let args = parse_macro_input!(args as AttributeArgs);
+
+    f(args, input)
 }
