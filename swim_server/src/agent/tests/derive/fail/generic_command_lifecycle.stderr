@@ -1,5 +1,5 @@
 error: Lifecycle cannot have generic parameters.
-  --> $DIR/generic_command_lifecycle.rs:10:12
+  --> $DIR/generic_command_lifecycle.rs:24:12
    |
-10 |     struct CommandLifecycle<T> {
+24 |     struct CommandLifecycle<T> {
    |            ^^^^^^^^^^^^^^^^
