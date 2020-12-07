@@ -67,17 +67,30 @@
 //!     }
 //! }
 //! ```
+
 use crate::agent::{derive_agent_lifecycle, derive_swim_agent};
 use crate::lanes::action::derive_action_lifecycle;
 use crate::lanes::command::derive_command_lifecycle;
 use crate::lanes::map::derive_map_lifecycle;
 use crate::lanes::value::derive_value_lifecycle;
+
+use macro_helpers::as_const;
 use proc_macro::TokenStream;
+use syn::{parse_macro_input, AttributeArgs, DeriveInput};
 
 mod agent;
 mod internals;
 mod lanes;
 mod utils;
+
+macro_rules! unpack {
+    ($f:ident) => {
+        match $f {
+            Ok(derived) => derived,
+            Err(ts) => return ts,
+        }
+    };
+}
 
 /// A derive attribute for creating swim agents.
 ///
@@ -250,7 +263,12 @@ mod utils;
 /// ```
 #[proc_macro_derive(SwimAgent, attributes(lifecycle, agent))]
 pub fn swim_agent(input: TokenStream) -> TokenStream {
-    derive_swim_agent(input)
+    let input_ast = parse_macro_input!(input as DeriveInput);
+    let ident = input_ast.ident.clone();
+    let result = derive_swim_agent(input_ast);
+    let derived = unpack!(result);
+
+    as_const("SwimAgent", ident, derived.into()).into()
 }
 
 /// An attribute for creating agent lifecycles for swim agents.
@@ -309,6 +327,9 @@ pub fn swim_agent(input: TokenStream) -> TokenStream {
 /// ```
 #[proc_macro_attribute]
 pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
+    let args = parse_macro_input!(args as AttributeArgs);
+    let input = parse_macro_input!(input as DeriveInput);
+
     derive_agent_lifecycle(args, input)
 }
 
@@ -399,6 +420,9 @@ pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// ```
 #[proc_macro_attribute]
 pub fn command_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    let args = parse_macro_input!(args as AttributeArgs);
+
     derive_command_lifecycle(args, input)
 }
 

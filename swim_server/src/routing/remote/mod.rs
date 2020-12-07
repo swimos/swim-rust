@@ -116,6 +116,7 @@ where
     RouterFac: ServerRouterFactory + 'static,
     Sp: Spawner<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>> + Send + Unpin,
 {
+    #[allow(dead_code)]
     pub async fn new(
         configuration: ConnectionConfig,
         external: External,
@@ -137,6 +138,7 @@ where
         })
     }
 
+    #[allow(dead_code)]
     pub async fn run(self) -> Result<(), io::Error> {
         let RemoteConnectionsTask {
             external,

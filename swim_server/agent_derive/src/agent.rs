@@ -15,12 +15,12 @@
 use crate::internals::default_on_start;
 use crate::utils::{get_task_struct_name, validate_input_ast, InputAstType};
 use darling::{ast, FromDeriveInput, FromField, FromMeta};
-use macro_helpers::string_to_ident;
+use macro_helpers::{as_const, string_to_ident};
 use proc_macro::TokenStream;
 use proc_macro2::{Delimiter, Group, Ident, Literal, Span};
 use quote::{quote, ToTokens};
 use syn::export::TokenStream2;
-use syn::{parse_macro_input, AttributeArgs, DeriveInput, Path, Type, TypePath};
+use syn::{AttributeArgs, DeriveInput, Path, Type, TypePath};
 
 type AgentName = Ident;
 
@@ -86,17 +86,15 @@ pub struct SwimAgentAttrs {
     pub generics: syn::Generics,
 }
 
-pub fn derive_swim_agent(input: TokenStream) -> TokenStream {
-    let input_ast = parse_macro_input!(input as DeriveInput);
-
-    if let Err(error) = validate_input_ast(&input_ast, InputAstType::Agent) {
-        return TokenStream::from(quote! {#error});
+pub fn derive_swim_agent(input: DeriveInput) -> Result<TokenStream, TokenStream> {
+    if let Err(error) = validate_input_ast(&input, InputAstType::Agent) {
+        return Err(TokenStream::from(quote! {#error}));
     }
 
-    let args = match SwimAgentAttrs::from_derive_input(&input_ast) {
+    let args = match SwimAgentAttrs::from_derive_input(&input) {
         Ok(args) => args,
         Err(e) => {
-            return TokenStream::from(e.write_errors());
+            return Err(TokenStream::from(e.write_errors()));
         }
     };
 
@@ -112,8 +110,10 @@ pub fn derive_swim_agent(input: TokenStream) -> TokenStream {
         .iter()
         .map(|agent_field| &agent_field.lifecycle_ast);
 
-    let output_ast = quote! {
+    Ok(quote! {
         use swim_server::agent::LaneTasks as _;
+        use std::collections::HashMap;
+        use std::boxed::Box;
 
         #[automatically_derived]
         impl swim_server::agent::SwimAgent<#config_type> for #agent_name {
@@ -122,13 +122,13 @@ pub fn derive_swim_agent(input: TokenStream) -> TokenStream {
                 exec_conf: &swim_server::agent::lane::channels::AgentExecutionConfig,
             ) -> (
                 Self,
-                std::vec::Vec<std::boxed::Box<dyn swim_server::agent::LaneTasks<Self, Context>>>,
-                std::collections::HashMap<std::string::String, std::boxed::Box<dyn swim_server::agent::LaneIo<Context>>>,
+                Vec<Box<dyn swim_server::agent::LaneTasks<Self, Context>>>,
+                HashMap<String, Box<dyn swim_server::agent::LaneIo<Context>>>,
             )
                 where
-                    Context: swim_server::agent::AgentContext<Self> + swim_server::agent::context::AgentExecutionContext + core::marker::Send + core::marker::Sync + 'static,
+                    Context: swim_server::agent::AgentContext<Self> + swim_server::agent::context::AgentExecutionContext + Send + Sync + 'static,
             {
-                let mut io_map: std::collections::HashMap<std::string::String, std::boxed::Box<dyn swim_server::agent::LaneIo<Context>>> = std::collections::HashMap::new();
+                let mut io_map: HashMap<String, Box<dyn swim_server::agent::LaneIo<Context>>> = HashMap::new();
 
                 #(#lifecycles_ast)*
 
@@ -143,42 +143,38 @@ pub fn derive_swim_agent(input: TokenStream) -> TokenStream {
                 (agent, tasks, io_map)
             }
         }
-
-    };
-
-    TokenStream::from(output_ast)
+    }.into())
 }
 
-pub fn derive_agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
-    let input_ast = parse_macro_input!(input as DeriveInput);
-    let attr_args = parse_macro_input!(args as AttributeArgs);
-
-    if let Err(error) = validate_input_ast(&input_ast, InputAstType::Lifecycle) {
+pub fn derive_agent_lifecycle(args: AttributeArgs, input: DeriveInput) -> TokenStream {
+    if let Err(error) = validate_input_ast(&input, InputAstType::Lifecycle) {
         return TokenStream::from(quote! {#error});
     }
 
-    let args = match AgentAttrs::from_list(&attr_args) {
+    let args = match AgentAttrs::from_list(&args) {
         Ok(args) => args,
         Err(e) => {
             return TokenStream::from(e.write_errors());
         }
     };
 
-    let lifecycle_name = &input_ast.ident;
+    let lifecycle_name = input.ident.clone();
     let agent_name = &args.agent;
     let on_start_func = &args.on_start;
 
-    let output_ast = quote! {
-        use futures::FutureExt as _;
+    let pub_derived = quote! {
+        #[derive(Clone, Debug)]
+        #input
+    };
 
-        #[derive(core::clone::Clone, core::fmt::Debug)]
-        #input_ast
+    let private_derived = quote! {
+        use futures::FutureExt as _;
 
         #[automatically_derived]
         impl swim_server::agent::lifecycle::AgentLifecycle<#agent_name> for #lifecycle_name {
             fn on_start<'a, C>(&'a self, context: &'a C) -> futures::future::BoxFuture<'a, ()>
             where
-                C: swim_server::agent::AgentContext<#agent_name> + core::marker::Send + core::marker::Sync + 'a,
+                C: swim_server::agent::AgentContext<#agent_name> + Send + Sync + 'a,
             {
                 self.#on_start_func(context).boxed()
             }
@@ -186,7 +182,14 @@ pub fn derive_agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStr
 
     };
 
-    TokenStream::from(output_ast)
+    let wrapped = as_const("AgentLifecycle", lifecycle_name, private_derived.into());
+    let derived = quote! {
+        #pub_derived
+
+        #wrapped
+    };
+
+    derived.into()
 }
 
 #[derive(Debug)]

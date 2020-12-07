@@ -18,4 +18,5 @@ pub mod agent;
 pub mod plane;
 pub mod routing;
 
+#[allow(unused_imports)]
 pub use agent_derive::*;

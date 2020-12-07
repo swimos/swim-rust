@@ -15,7 +15,7 @@
 use crate::internals::default_on_command;
 use crate::utils::{get_task_struct_name, validate_input_ast, InputAstType};
 use darling::FromMeta;
-use macro_helpers::string_to_ident;
+use macro_helpers::{as_const, string_to_ident};
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{parse_macro_input, AttributeArgs, DeriveInput, Ident};
@@ -47,35 +47,47 @@ pub fn derive_action_lifecycle(args: TokenStream, input: TokenStream) -> TokenSt
         }
     };
 
-    let lifecycle_name = &input_ast.ident;
+    let lifecycle_name = input_ast.ident.clone();
     let task_name = get_task_struct_name(&input_ast.ident.to_string());
     let agent_name = &args.agent;
     let command_type = &args.command_type;
     let response_type = &args.response_type;
     let on_command_func = &args.on_command;
 
-    let output_ast = quote! {
-        use futures::FutureExt as _;
-        use futures::StreamExt as _;
-
+    let public_derived = quote! {
         #input_ast
 
         struct #task_name<T, S>
         where
-            T: core::ops::Fn(&#agent_name) -> &swim_server::agent::lane::model::action::ActionLane<#command_type, #response_type> + core::marker::Send + core::marker::Sync + 'static,
-            S: futures::Stream<Item = swim_server::agent::lane::model::action::Action<#command_type, #response_type>> + core::marker::Send + core::marker::Sync + 'static
+            T: core::ops::Fn(&#agent_name) -> &swim_server::agent::lane::model::action::ActionLane<#command_type, #response_type> + Send + Sync + 'static,
+            S: futures::Stream<Item = swim_server::agent::lane::model::action::Action<#command_type, #response_type>> + Send + Sync + 'static
         {
             lifecycle: #lifecycle_name,
             name: String,
             event_stream: S,
             projection: T,
         }
+    };
+
+    let private_derived = quote! {
+        use futures::FutureExt as _;
+        use futures::StreamExt as _;
+        use futures::Stream;
+        use futures::future::{ready, BoxFuture};
+
+        use swim_server::agent::lane::model::action::CommandLane;
+        use swim_server::agent::lane::model::action::Action;
+        use swim_server::agent::{Lane, LaneTasks};
+        use swim_server::agent::AgentContext;
+        use swim_server::agent::context::AgentExecutionContext;
+
+        use core::pin::Pin;
 
         #[automatically_derived]
-        impl<T, S> swim_server::agent::Lane for #task_name<T, S>
+        impl<T, S> Lane for #task_name<T, S>
         where
-            T: core::ops::Fn(&#agent_name) -> &swim_server::agent::lane::model::action::ActionLane<#command_type, #response_type> + core::marker::Send + core::marker::Sync + 'static,
-            S: futures::Stream<Item = swim_server::agent::lane::model::action::Action<#command_type, #response_type>> + core::marker::Send + core::marker::Sync + 'static
+            T: Fn(&#agent_name) -> &ActionLane<#command_type, #response_type> + Send + Sync + 'static,
+            S: Stream<Item = Action<#command_type, #response_type>> + Send + Sync + 'static
         {
             fn name(&self) -> &str {
                 &self.name
@@ -83,17 +95,17 @@ pub fn derive_action_lifecycle(args: TokenStream, input: TokenStream) -> TokenSt
         }
 
         #[automatically_derived]
-        impl<Context, T, S> swim_server::agent::LaneTasks<#agent_name, Context> for #task_name<T, S>
+        impl<Context, T, S> LaneTasks<#agent_name, Context> for #task_name<T, S>
         where
-            Context: swim_server::agent::AgentContext<#agent_name> + swim_server::agent::context::AgentExecutionContext + core::marker::Send + core::marker::Sync + 'static,
-            T: core::ops::Fn(&#agent_name) -> &swim_server::agent::lane::model::action::ActionLane<#command_type, #response_type> + core::marker::Send + core::marker::Sync + 'static,
-            S: futures::Stream<Item = swim_server::agent::lane::model::action::Action<#command_type, #response_type>> + core::marker::Send + core::marker::Sync + 'static
+            Context: AgentContext<#agent_name> + AgentExecutionContext + Send + Sync + 'static,
+            T: Fn(&#agent_name) -> &ActionLane<#command_type, #response_type> + Send + Sync + 'static,
+            S: Stream<Item = Action<#command_type, #response_type>> + Send + Sync + 'static
         {
-            fn start<'a>(&'a self, _context: &'a Context) -> futures::future::BoxFuture<'a, ()> {
-                futures::future::ready(()).boxed()
+            fn start<'a>(&'a self, _context: &'a Context) -> BoxFuture<'a, ()> {
+                ready(()).boxed()
             }
 
-            fn events(self: Box<Self>, context: Context) -> futures::future::BoxFuture<'static, ()> {
+            fn events(self: Box<Self>, context: Context) -> BoxFuture<'static, ()> {
                 async move {
                     let #task_name {
                         lifecycle,
@@ -104,10 +116,10 @@ pub fn derive_action_lifecycle(args: TokenStream, input: TokenStream) -> TokenSt
 
                     let model = projection(context.agent()).clone();
                     let mut events = event_stream.take_until(context.agent_stop_event());
-                    let mut events = unsafe { core::pin::Pin::new_unchecked(&mut events) };
+                    let mut events = unsafe { Pin::new_unchecked(&mut events) };
 
-                    while let std::option::Option::Some(action) = events.next().await {
-                        let(command, responder) = action.destruct();
+                    while let Some(action) = events.next().await {
+                        let (command, responder) = action.destruct();
 
                         tracing::event!(tracing::Level::TRACE, commanded = swim_server::agent::COMMANDED, ?command);
 
@@ -118,7 +130,7 @@ pub fn derive_action_lifecycle(args: TokenStream, input: TokenStream) -> TokenSt
 
                         tracing::event!(tracing::Level::TRACE, action_result = swim_server::agent::ACTION_RESULT, ?response);
 
-                        if let std::option::Option::Some(tx) = responder {
+                        if let Some(tx) = responder {
                             if tx.send(response).is_err() {
                                 tracing::event!(tracing::Level::WARN, response_ingored = swim_server::agent::RESPONSE_IGNORED);
                             }
@@ -131,5 +143,13 @@ pub fn derive_action_lifecycle(args: TokenStream, input: TokenStream) -> TokenSt
 
     };
 
-    TokenStream::from(output_ast)
+    let wrapped = as_const("ActionLifecycle", lifecycle_name, private_derived);
+
+    let derived = quote! {
+        #public_derived
+
+        #wrapped
+    };
+
+    derived.into()
 }
