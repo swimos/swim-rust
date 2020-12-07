@@ -586,16 +586,17 @@ impl UplinkErrorAcc {
     }
 }
 
-pub async fn run_supply_lane_io<S, Item>(
+pub async fn run_auto_lane_io<S, Item>(
     envelopes: impl Stream<Item = TaggedClientEnvelope>,
     config: AgentExecutionConfig,
     context: impl AgentExecutionContext,
     route: RelativePath,
     stream: S,
+    uplink_kind: UplinkKind,
 ) -> Result<Vec<UplinkErrorReport>, LaneIoError>
 where
     S: Stream<Item = Item> + Send + Sync + 'static,
-    Item: Send + Sync + Form + Debug + 'static,
+    Item: Send + Sync + Form + 'static,
 {
     let span = span!(Level::INFO, LANE_IO_TASK, ?route);
     let _enter = span.enter();
@@ -603,7 +604,7 @@ where
     let (uplink_tx, uplink_rx) = mpsc::channel(config.action_buffer.get());
     let (err_tx, err_rx) = mpsc::channel(config.uplink_err_buffer.get());
     let stream = stream.map(AddressedUplinkMessage::broadcast);
-    let uplinks = StatelessUplinks::new(stream, route.clone(), UplinkKind::Supply);
+    let uplinks = StatelessUplinks::new(stream, route.clone(), uplink_kind);
 
     let on_command_strategy = OnCommandStrategy::<Dropping>::dropping();
 
@@ -627,6 +628,28 @@ where
     } else {
         Ok(uplink_errs)
     }
+}
+
+pub async fn run_supply_lane_io<S, Item>(
+    envelopes: impl Stream<Item = TaggedClientEnvelope>,
+    config: AgentExecutionConfig,
+    context: impl AgentExecutionContext,
+    route: RelativePath,
+    stream: S,
+) -> Result<Vec<UplinkErrorReport>, LaneIoError>
+where
+    S: Stream<Item = Item> + Send + Sync + 'static,
+    Item: Send + Sync + Form + 'static,
+{
+    run_auto_lane_io(
+        envelopes,
+        config,
+        context,
+        route,
+        stream,
+        UplinkKind::Supply,
+    )
+    .await
 }
 
 async fn action_envelope_task_with_uplinks<Cmd>(
@@ -781,4 +804,25 @@ where
 
         sender.send(maybe_command).await.is_ok()
     }
+}
+
+pub async fn run_demand_lane_io<Value>(
+    envelopes: impl Stream<Item = TaggedClientEnvelope>,
+    config: AgentExecutionConfig,
+    context: impl AgentExecutionContext,
+    route: RelativePath,
+    response_rx: mpsc::Receiver<Value>,
+) -> Result<Vec<UplinkErrorReport>, LaneIoError>
+where
+    Value: Send + Sync + Form + 'static,
+{
+    run_auto_lane_io(
+        envelopes,
+        config,
+        context,
+        route,
+        response_rx,
+        UplinkKind::Demand,
+    )
+    .await
 }

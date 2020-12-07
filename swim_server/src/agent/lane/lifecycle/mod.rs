@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use crate::agent::lane::model::action::ActionLane;
+use crate::agent::lane::model::demand::DemandLane;
 use crate::agent::lane::strategy::{Buffered, Queue};
 use crate::agent::lane::LaneModel;
 use crate::agent::AgentContext;
@@ -174,4 +175,12 @@ pub trait LaneLifecycle<Config> {
     /// * `config` - Swim agent config.
 
     fn create(config: &Config) -> Self;
+}
+
+pub trait DemandLaneLifecycle<'a, Value, Agent>: Send + Sync + 'static {
+    type OnCueFuture: Future<Output = Option<Value>> + Send + 'a;
+
+    fn on_cue<C>(&'a self, model: &'a DemandLane<Value>, context: &'a C) -> Self::OnCueFuture
+    where
+        C: AgentContext<Agent> + Send + Sync + 'static;
 }

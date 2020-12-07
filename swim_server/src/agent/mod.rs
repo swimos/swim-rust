@@ -26,9 +26,12 @@ use crate::agent::lane::channels::task::{run_supply_lane_io, LaneIoError, MapLan
 use crate::agent::lane::channels::update::StmRetryStrategy;
 use crate::agent::lane::channels::uplink::spawn::{SpawnerUplinkFactory, UplinkErrorReport};
 use crate::agent::lane::channels::AgentExecutionConfig;
-use crate::agent::lane::lifecycle::{ActionLaneLifecycle, StatefulLaneLifecycle};
+use crate::agent::lane::lifecycle::{
+    ActionLaneLifecycle, DemandLaneLifecycle, StatefulLaneLifecycle,
+};
 use crate::agent::lane::model;
 use crate::agent::lane::model::action::{Action, ActionLane, CommandLane};
+use crate::agent::lane::model::demand::DemandLane;
 use crate::agent::lane::model::map::MapLaneEvent;
 use crate::agent::lane::model::map::{MapLane, MapLaneWatch};
 use crate::agent::lane::model::supply::{make_lane_model, SupplyLane};
@@ -627,6 +630,10 @@ struct ValueLifecycleTasks<L, S, P>(LifecycleTasks<L, S, P>);
 struct MapLifecycleTasks<L, S, P>(LifecycleTasks<L, S, P>);
 struct ActionLifecycleTasks<L, S, P>(LifecycleTasks<L, S, P>);
 struct CommandLifecycleTasks<L, S, P>(LifecycleTasks<L, S, P>);
+struct DemandLifecycleTasks<L, S, P, Value> {
+    tasks: LifecycleTasks<L, S, P>,
+    response_tx: mpsc::Sender<Value>,
+}
 
 struct StatelessLifecycleTasks {
     name: String,
@@ -1068,7 +1075,7 @@ where
         config: AgentExecutionConfig,
         context: Context,
     ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
-        let SupplyLaneIo { stream, .. } = self;
+        let SupplyLaneIo { stream } = self;
 
         Ok(run_supply_lane_io(envelopes, config, context, route, stream).boxed())
     }
@@ -1081,5 +1088,145 @@ where
         context: Context,
     ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
         (*self).attach(route, envelopes, config, context)
+    }
+}
+
+/// Create a new demand lane.
+///
+/// # Arguments
+///
+/// * `name` - The name of the lane.
+/// * `lifecycle` - Life-cycle event handler for the lane.
+/// * `projection` - A projection from the agent type to this lane.
+/// * `buffer_size` - Buffer size for the MPSC channel accepting the commands.
+pub fn make_demand_lane<Agent, Context, Value, L>(
+    name: impl Into<String>,
+    lifecycle: L,
+    projection: impl Fn(&Agent) -> &DemandLane<Value> + Send + Sync + 'static,
+    buffer_size: NonZeroUsize,
+) -> (
+    DemandLane<Value>,
+    impl LaneTasks<Agent, Context>,
+    impl LaneIo<Context>,
+)
+where
+    Agent: 'static,
+    Context: AgentContext<Agent> + AgentExecutionContext + Send + Sync + 'static,
+    Value: Any + Send + Sync + Form + Debug,
+    L: for<'l> DemandLaneLifecycle<'l, Value, Agent>,
+{
+    let (lane, cue_stream) = model::demand::make_lane_model(buffer_size);
+    let (response_tx, response_rx) = mpsc::channel(buffer_size.get());
+
+    let tasks = DemandLifecycleTasks {
+        tasks: LifecycleTasks {
+            name: name.into(),
+            lifecycle,
+            event_stream: cue_stream,
+            projection,
+        },
+        response_tx,
+    };
+
+    let lane_io = DemandLaneIo::new(response_rx);
+
+    (lane, tasks, lane_io)
+}
+
+struct DemandLaneIo<Value> {
+    response_rx: mpsc::Receiver<Value>,
+}
+
+impl<Value> DemandLaneIo<Value>
+where
+    Value: Send + Sync + 'static,
+{
+    fn new(response_rx: mpsc::Receiver<Value>) -> DemandLaneIo<Value> {
+        DemandLaneIo { response_rx }
+    }
+}
+
+impl<Value, Context> LaneIo<Context> for DemandLaneIo<Value>
+where
+    Value: Form + Send + Sync + 'static,
+    Context: AgentExecutionContext + Sized + Send + Sync + 'static,
+{
+    fn attach(
+        self,
+        route: RelativePath,
+        envelopes: Receiver<TaggedClientEnvelope>,
+        config: AgentExecutionConfig,
+        context: Context,
+    ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
+        let DemandLaneIo { response_rx } = self;
+
+        Ok(
+            lane::channels::task::run_demand_lane_io(
+                envelopes,
+                config,
+                context,
+                route,
+                response_rx,
+            )
+            .boxed(),
+        )
+    }
+
+    fn attach_boxed(
+        self: Box<Self>,
+        route: RelativePath,
+        envelopes: Receiver<TaggedClientEnvelope>,
+        config: AgentExecutionConfig,
+        context: Context,
+    ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
+        (*self).attach(route, envelopes, config, context)
+    }
+}
+
+impl<L, S, P, Value> Lane for DemandLifecycleTasks<L, S, P, Value> {
+    fn name(&self) -> &str {
+        self.tasks.name.as_str()
+    }
+}
+
+impl<Agent, Context, L, S, P, Value> LaneTasks<Agent, Context>
+    for DemandLifecycleTasks<L, S, P, Value>
+where
+    Agent: 'static,
+    Context: AgentContext<Agent> + Send + Sync + 'static,
+    S: Stream<Item = ()> + Send + Sync + 'static,
+    Value: Any + Send + Sync + Debug,
+    L: for<'l> DemandLaneLifecycle<'l, Value, Agent>,
+    P: Fn(&Agent) -> &DemandLane<Value> + Send + Sync + 'static,
+{
+    fn start<'a>(&'a self, _context: &'a Context) -> BoxFuture<'a, ()> {
+        ready(()).boxed()
+    }
+
+    fn events(self: Box<Self>, context: Context) -> BoxFuture<'static, ()> {
+        async move {
+            let DemandLifecycleTasks {
+                tasks:
+                    LifecycleTasks {
+                        lifecycle,
+                        event_stream,
+                        projection,
+                        ..
+                    },
+                response_tx,
+            } = *self;
+
+            let model = projection(context.agent()).clone();
+            let events = event_stream.take_until(context.agent_stop_event());
+
+            pin_mut!(events);
+
+            while events.next().await.is_some() {
+                if let Some(value) = lifecycle.on_cue(&model, &context).await {
+                    let _ = response_tx.send(value).await;
+                }
+            }
+        }
+        .boxed()
     }
 }
