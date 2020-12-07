@@ -390,7 +390,7 @@ pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 
         #[automatically_derived]
         impl swim_server::agent::lifecycle::AgentLifecycle<#agent_name> for #lifecycle_name {
-            fn on_start<'a, C>(&'a self, context: &'a C) -> futures::future::BoxFuture<'a, ()>
+            fn start<'a, C>(&'a self, context: &'a C) -> futures::future::BoxFuture<'a, ()>
             where
                 C: swim_server::agent::AgentContext<#agent_name> + core::marker::Send + core::marker::Sync + 'a,
             {

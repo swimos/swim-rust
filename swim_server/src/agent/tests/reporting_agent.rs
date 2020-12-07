@@ -102,7 +102,7 @@ struct ActionLifecycle {
 }
 
 impl AgentLifecycle<ReportingAgent> for ReportingAgentLifecycle {
-    fn on_start<'a, C: AgentContext<ReportingAgent>>(&'a self, context: &'a C) -> BoxFuture<'a, ()>
+    fn start<'a, C: AgentContext<ReportingAgent>>(&'a self, context: &'a C) -> BoxFuture<'a, ()>
     where
         C: AgentContext<ReportingAgent> + Send + Sync + 'a,
     {

@@ -197,7 +197,7 @@ where
         );
 
         lifecycle
-            .on_start(&context)
+            .start(&context)
             .instrument(span!(Level::DEBUG, AGENT_START))
             .await;
 
