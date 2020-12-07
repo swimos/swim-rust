@@ -12,24 +12,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::internals::{default_on_event, default_on_start, to_ident};
+use crate::internals::{default_on_event, default_on_start};
 use crate::utils::{get_task_struct_name, validate_input_ast, InputAstType};
 use darling::FromMeta;
+use macro_helpers::string_to_ident;
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{parse_macro_input, AttributeArgs, DeriveInput, Ident};
 
 #[derive(Debug, FromMeta)]
 pub struct ValueAttrs {
-    #[darling(map = "to_ident")]
+    #[darling(map = "string_to_ident")]
     pub agent: Ident,
-    #[darling(map = "to_ident")]
+    #[darling(map = "string_to_ident")]
     pub event_type: Ident,
-    #[darling(default = "default_on_start")]
-    #[darling(map = "to_ident")]
+    #[darling(default = "default_on_start", map = "string_to_ident")]
     pub on_start: Ident,
-    #[darling(default = "default_on_event")]
-    #[darling(map = "to_ident")]
+    #[darling(default = "default_on_event", map = "string_to_ident")]
     pub on_event: Ident,
 }
 

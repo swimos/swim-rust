@@ -12,23 +12,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::internals::{default_on_command, to_ident};
+use crate::internals::default_on_command;
 use crate::utils::{get_task_struct_name, validate_input_ast, InputAstType};
 use darling::FromMeta;
+use macro_helpers::string_to_ident;
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{parse_macro_input, AttributeArgs, DeriveInput, Ident};
 
 #[derive(Debug, FromMeta)]
 pub struct ActionAttrs {
-    #[darling(map = "to_ident")]
+    #[darling(map = "string_to_ident")]
     pub agent: Ident,
-    #[darling(map = "to_ident")]
+    #[darling(map = "string_to_ident")]
     pub command_type: Ident,
-    #[darling(map = "to_ident")]
+    #[darling(map = "string_to_ident")]
     pub response_type: Ident,
-    #[darling(default = "default_on_command")]
-    #[darling(map = "to_ident")]
+    #[darling(default = "default_on_command", map = "string_to_ident")]
     pub on_command: Ident,
 }
 

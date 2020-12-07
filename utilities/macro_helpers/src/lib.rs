@@ -36,7 +36,7 @@ extern crate syn;
 use core::fmt;
 use std::fmt::{Debug, Display};
 
-use proc_macro2::Ident;
+use proc_macro2::{Ident, Span};
 use quote::ToTokens;
 use syn::{NestedMeta, Path};
 
@@ -163,4 +163,12 @@ impl Attributes for Vec<Attribute> {
 
 pub trait SynOriginal {
     fn original(&self) -> &syn::Field;
+}
+
+pub fn str_to_ident(s: &str) -> Ident {
+    Ident::new(s, Span::call_site())
+}
+
+pub fn string_to_ident(s: String) -> Ident {
+    str_to_ident(&s)
 }

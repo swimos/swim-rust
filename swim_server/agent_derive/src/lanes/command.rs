@@ -14,21 +14,21 @@
 
 use crate::utils::{get_task_struct_name, validate_input_ast, InputAstType};
 use darling::FromMeta;
+use macro_helpers::string_to_ident;
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{parse_macro_input, AttributeArgs, DeriveInput};
 
-use crate::internals::{default_on_command, to_ident};
+use crate::internals::default_on_command;
 use proc_macro2::Ident;
 
 #[derive(Debug, FromMeta)]
 pub struct CommandAttrs {
-    #[darling(map = "to_ident")]
+    #[darling(map = "string_to_ident")]
     pub agent: Ident,
-    #[darling(map = "to_ident")]
+    #[darling(map = "string_to_ident")]
     pub command_type: Ident,
-    #[darling(default = "default_on_command")]
-    #[darling(map = "to_ident")]
+    #[darling(default = "default_on_command", map = "string_to_ident")]
     pub on_command: Ident,
 }
 

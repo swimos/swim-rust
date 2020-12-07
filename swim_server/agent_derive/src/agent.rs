@@ -12,13 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::internals::{default_on_start, to_ident};
+use crate::internals::default_on_start;
 use crate::utils::{get_task_struct_name, validate_input_ast, InputAstType};
 use darling::{ast, FromDeriveInput, FromField, FromMeta};
+use macro_helpers::string_to_ident;
 use proc_macro::TokenStream;
 use proc_macro2::{Delimiter, Group, Ident, Literal, Span};
 use quote::{quote, ToTokens};
+use syn::export::TokenStream2;
 use syn::{parse_macro_input, AttributeArgs, DeriveInput, Path, Type, TypePath};
+
 type AgentName = Ident;
 
 const COMMAND_LANE: &str = "CommandLane";
@@ -28,10 +31,9 @@ const MAP_LANE: &str = "MapLane";
 
 #[derive(Debug, FromMeta)]
 pub struct AgentAttrs {
-    #[darling(map = "to_ident")]
+    #[darling(map = "string_to_ident")]
     pub agent: Ident,
-    #[darling(default = "default_on_start")]
-    #[darling(map = "to_ident")]
+    #[darling(default = "default_on_start", map = "string_to_ident")]
     pub on_start: Ident,
 }
 
@@ -78,8 +80,7 @@ pub enum LaneType {
 #[darling(attributes(agent))]
 pub struct SwimAgentAttrs {
     pub ident: syn::Ident,
-    #[darling(default = "default_config")]
-    #[darling(map = "parse_config")]
+    #[darling(default = "default_config", map = "parse_config")]
     pub config: ConfigType,
     pub data: ast::Data<(), LifecycleAttrs>,
     pub generics: syn::Generics,
@@ -426,8 +427,9 @@ fn create_map_lane(lane_data: LaneData) -> proc_macro2::TokenStream {
 }
 
 pub fn parse_config(value: String) -> ConfigType {
-    ConfigType::Struct(to_ident(value))
+    ConfigType::Struct(string_to_ident(value))
 }
+
 pub fn default_config() -> ConfigType {
     ConfigType::Unit
 }
@@ -437,7 +439,6 @@ pub enum ConfigType {
     Struct(Ident),
     Unit,
 }
-use syn::export::TokenStream2;
 
 impl ToTokens for ConfigType {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {

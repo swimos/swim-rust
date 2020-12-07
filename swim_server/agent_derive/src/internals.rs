@@ -12,20 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use proc_macro2::{Ident, Span};
+use macro_helpers::str_to_ident;
+use proc_macro2::Ident;
 
 pub fn default_on_command() -> Ident {
-    to_ident("on_command".to_string())
+    str_to_ident("on_command")
 }
 
 pub fn default_on_start() -> Ident {
-    to_ident("on_start".to_string())
+    str_to_ident("on_start")
 }
 
 pub fn default_on_event() -> Ident {
-    to_ident("on_event".to_string())
-}
-
-pub fn to_ident(value: String) -> Ident {
-    Ident::new(&value, Span::call_site())
+    str_to_ident("on_event")
 }
