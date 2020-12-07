@@ -22,17 +22,17 @@ use quote::quote;
 use syn::{AttributeArgs, DeriveInput, Ident};
 
 #[derive(Debug, FromMeta)]
-pub struct MapAttrs {
+struct MapAttrs {
     #[darling(map = "string_to_ident")]
-    pub agent: Ident,
+    agent: Ident,
     #[darling(map = "string_to_ident")]
-    pub key_type: Ident,
+    key_type: Ident,
     #[darling(map = "string_to_ident")]
-    pub value_type: Ident,
+    value_type: Ident,
     #[darling(default = "default_on_start", map = "string_to_ident")]
-    pub on_start: Ident,
+    on_start: Ident,
     #[darling(default = "default_on_event", map = "string_to_ident")]
-    pub on_event: Ident,
+    on_event: Ident,
 }
 
 pub fn derive_map_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput) -> TokenStream {

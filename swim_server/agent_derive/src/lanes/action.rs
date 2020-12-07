@@ -22,15 +22,15 @@ use quote::quote;
 use syn::{AttributeArgs, DeriveInput, Ident};
 
 #[derive(Debug, FromMeta)]
-pub struct ActionAttrs {
+struct ActionAttrs {
     #[darling(map = "string_to_ident")]
-    pub agent: Ident,
+    agent: Ident,
     #[darling(map = "string_to_ident")]
-    pub command_type: Ident,
+    command_type: Ident,
     #[darling(map = "string_to_ident")]
-    pub response_type: Ident,
+    response_type: Ident,
     #[darling(default = "default_on_command", map = "string_to_ident")]
-    pub on_command: Ident,
+    on_command: Ident,
 }
 
 pub fn derive_action_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput) -> TokenStream {

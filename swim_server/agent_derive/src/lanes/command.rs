@@ -24,13 +24,13 @@ use crate::lanes::derive_lane;
 use proc_macro2::Ident;
 
 #[derive(Debug, FromMeta)]
-pub struct CommandAttrs {
+struct CommandAttrs {
     #[darling(map = "string_to_ident")]
-    pub agent: Ident,
+    agent: Ident,
     #[darling(map = "string_to_ident")]
-    pub command_type: Ident,
+    command_type: Ident,
     #[darling(default = "default_on_command", map = "string_to_ident")]
-    pub on_command: Ident,
+    on_command: Ident,
 }
 
 pub fn derive_command_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput) -> TokenStream {
