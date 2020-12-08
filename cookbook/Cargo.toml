@@ -18,3 +18,20 @@ tracing-futures = "0.2.4"
 swim_client = { path = "../swim_client" }
 swim_common = { path = "../swim_common" }
 swim_server = { path = "../swim_server"}
+stm = { path = "../stm"}
+
+[[bin]]
+name = "command_lanes_server"
+path = "src/command_lanes/server.rs"
+
+[[bin]]
+name = "command_lanes_client"
+path = "src/command_lanes/client.rs"
+
+[[bin]]
+name = "value_lanes_server"
+path = "src/value_lanes/server.rs"
+
+[[bin]]
+name = "value_lanes_client"
+path = "src/value_lanes/client.rs"

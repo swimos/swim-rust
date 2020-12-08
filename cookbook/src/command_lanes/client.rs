@@ -12,17 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use async_std::task;
 use std::time::Duration;
 use swim_client::downlink::typed::SchemaViolations;
 use swim_client::interface::SwimClient;
 use swim_common::warp::path::AbsolutePath;
-use tokio::task;
 
 #[tokio::main]
 async fn main() {
     let mut client = SwimClient::new_with_default().await;
     let host_uri = url::Url::parse(&"ws://127.0.0.1:9001".to_string()).unwrap();
-    let node_uri = "unit/foo";
+    let node_uri = "/unit/foo";
     let lane_uri = "publish";
 
     let path = AbsolutePath::new(host_uri, node_uri, lane_uri);
@@ -47,8 +47,8 @@ async fn main() {
         .send_command(path, msg)
         .await
         .expect("Failed to send a command!");
-    tokio::time::delay_for(Duration::from_secs(2)).await;
+    task::sleep(Duration::from_secs(2)).await;
 
     println!("Stopping client in 2 seconds");
-    tokio::time::delay_for(Duration::from_secs(2)).await;
+    task::sleep(Duration::from_secs(2)).await;
 }

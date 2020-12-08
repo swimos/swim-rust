@@ -11,12 +11,3 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-
-#![allow(clippy::match_wild_err_arm)]
-
-pub mod agent;
-pub mod interface;
-pub mod plane;
-pub mod routing;
-pub use agent_derive::*;
-pub use utilities::*;
