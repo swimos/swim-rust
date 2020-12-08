@@ -16,7 +16,7 @@ use std::convert::TryFrom;
 
 use crate::model::Item::ValueItem;
 use crate::model::{Attr, Item, Value};
-use crate::warp::envelope::{Envelope, EnvelopeParseErr};
+use crate::warp::envelope::{Envelope, EnvelopeParseErr, CMD_TAG, UNLINK_TAG, SYNC_TAG, LINK_TAG, AUTH_TAG, DEAUTHED_TAG, LINKED_TAG, SYNCED_TAG, UNLINKED_TAG, AUTHED_TAG, DEAUTH_TAG, EVENT_TAG};
 
 fn run_test(record: Value, expected: Envelope) {
     let e = Envelope::try_from(record);
@@ -623,6 +623,7 @@ fn tag() {
 #[test]
 fn auth_to_value() {
     let env = Envelope::make_auth(Some(test_body()));
+    assert_eq!(env.tag(), AUTH_TAG);
     let value: Value = env.into();
     let expected = Value::of_attrs(vec![Attr::of("auth"), Attr::of(TEST_TAG)]);
     assert_eq!(value, expected);
@@ -631,6 +632,7 @@ fn auth_to_value() {
 #[test]
 fn deauth_to_value() {
     let env = Envelope::make_deauth(Some(test_body()));
+    assert_eq!(env.tag(), DEAUTH_TAG);
     let value: Value = env.into();
     let expected = Value::of_attrs(vec![Attr::of("deauth"), Attr::of(TEST_TAG)]);
     assert_eq!(value, expected);
@@ -639,6 +641,7 @@ fn deauth_to_value() {
 #[test]
 fn authed_to_value() {
     let env = Envelope::make_authed(Some(test_body()));
+    assert_eq!(env.tag(), AUTHED_TAG);
     let value: Value = env.into();
     let expected = Value::of_attrs(vec![Attr::of("authed"), Attr::of(TEST_TAG)]);
     assert_eq!(value, expected);
@@ -647,6 +650,7 @@ fn authed_to_value() {
 #[test]
 fn deauthed_to_value() {
     let env = Envelope::make_deauthed(Some(test_body()));
+    assert_eq!(env.tag(), DEAUTHED_TAG);
     let value: Value = env.into();
     let expected = Value::of_attrs(vec![Attr::of("deauthed"), Attr::of(TEST_TAG)]);
     assert_eq!(value, expected);
@@ -655,6 +659,7 @@ fn deauthed_to_value() {
 #[test]
 fn link_no_params_to_value() {
     let env = Envelope::make_link(TEST_NODE, TEST_LANE, None, None, Some(test_body()));
+    assert_eq!(env.tag(), LINK_TAG);
     let value: Value = env.into();
     let link_attr = Attr::with_items("link", vec![("node", TEST_NODE), ("lane", TEST_LANE)]);
     let expected = Value::of_attrs(vec![link_attr, Attr::of(TEST_TAG)]);
@@ -687,6 +692,7 @@ fn link_with_params_to_value() {
 #[test]
 fn sync_no_params_to_value() {
     let env = Envelope::make_sync(TEST_NODE, TEST_LANE, None, None, Some(test_body()));
+    assert_eq!(env.tag(), SYNC_TAG);
     let value: Value = env.into();
     let link_attr = Attr::with_items("sync", vec![("node", TEST_NODE), ("lane", TEST_LANE)]);
     let expected = Value::of_attrs(vec![link_attr, Attr::of(TEST_TAG)]);
@@ -719,6 +725,7 @@ fn sync_with_params_to_value() {
 #[test]
 fn unlink_to_value() {
     let env = Envelope::make_unlink(TEST_NODE, TEST_LANE, Some(test_body()));
+    assert_eq!(env.tag(), UNLINK_TAG);
     let value: Value = env.into();
     let link_attr = Attr::with_items("unlink", vec![("node", TEST_NODE), ("lane", TEST_LANE)]);
     let expected = Value::of_attrs(vec![link_attr, Attr::of(TEST_TAG)]);
@@ -728,6 +735,7 @@ fn unlink_to_value() {
 #[test]
 fn command_to_value() {
     let env = Envelope::make_command(TEST_NODE, TEST_LANE, Some(test_body()));
+    assert_eq!(env.tag(), CMD_TAG);
     let value: Value = env.into();
     let link_attr = Attr::with_items("command", vec![("node", TEST_NODE), ("lane", TEST_LANE)]);
     let expected = Value::of_attrs(vec![link_attr, Attr::of(TEST_TAG)]);
@@ -737,6 +745,7 @@ fn command_to_value() {
 #[test]
 fn linked_no_params_to_value() {
     let env = Envelope::make_linked(TEST_NODE, TEST_LANE, None, None, Some(test_body()));
+    assert_eq!(env.tag(), LINKED_TAG);
     let value: Value = env.into();
     let link_attr = Attr::with_items("linked", vec![("node", TEST_NODE), ("lane", TEST_LANE)]);
     let expected = Value::of_attrs(vec![link_attr, Attr::of(TEST_TAG)]);
@@ -769,6 +778,7 @@ fn linked_with_params_to_value() {
 #[test]
 fn synced_to_value() {
     let env = Envelope::make_synced(TEST_NODE, TEST_LANE, Some(test_body()));
+    assert_eq!(env.tag(), SYNCED_TAG);
     let value: Value = env.into();
     let link_attr = Attr::with_items("synced", vec![("node", TEST_NODE), ("lane", TEST_LANE)]);
     let expected = Value::of_attrs(vec![link_attr, Attr::of(TEST_TAG)]);
@@ -778,6 +788,7 @@ fn synced_to_value() {
 #[test]
 fn unlinked_to_value() {
     let env = Envelope::make_unlinked(TEST_NODE, TEST_LANE, Some(test_body()));
+    assert_eq!(env.tag(), UNLINKED_TAG);
     let value: Value = env.into();
     let link_attr = Attr::with_items("unlinked", vec![("node", TEST_NODE), ("lane", TEST_LANE)]);
     let expected = Value::of_attrs(vec![link_attr, Attr::of(TEST_TAG)]);
@@ -787,6 +798,7 @@ fn unlinked_to_value() {
 #[test]
 fn event_to_value() {
     let env = Envelope::make_event(TEST_NODE, TEST_LANE, Some(test_body()));
+    assert_eq!(env.tag(), EVENT_TAG);
     let value: Value = env.into();
     let link_attr = Attr::with_items("event", vec![("node", TEST_NODE), ("lane", TEST_LANE)]);
     let expected = Value::of_attrs(vec![link_attr, Attr::of(TEST_TAG)]);
