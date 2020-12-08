@@ -27,7 +27,6 @@ use swim_server::agent::SwimAgent;
 use swim_server::agent_lifecycle;
 use swim_server::future::retryable::strategy::RetryStrategy;
 use swim_server::uri::RelativeUri;
-use swim_server::agent::lane::channels::LaneMessageHandler;
 
 #[derive(Debug, SwimAgent)]
 #[agent(config = "UnitAgentConfig")]
