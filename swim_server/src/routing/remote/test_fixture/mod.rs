@@ -256,7 +256,7 @@ pub mod fake_channel {
     {
         type CloseFut = BoxFuture<'static, Result<(), E>>;
 
-        fn close(&mut self, _reason: Option<CloseReason>) -> Self::CloseFut {
+        fn close(self, _reason: Option<CloseReason>) -> Self::CloseFut {
             ready(Ok(())).boxed()
         }
     }
@@ -405,7 +405,7 @@ impl WsConnections<FakeSocket> for FakeWebsockets {
     type StreamSink = FakeWebsocket;
     type Fut = BoxFuture<'static, Result<Self::StreamSink, ConnectionError>>;
 
-    fn open_connection(&self, socket: FakeSocket) -> Self::Fut {
+    fn open_connection(&self, socket: FakeSocket, _host: String) -> Self::Fut {
         ready(Ok(FakeWebsocket::new(socket))).boxed()
     }
 
@@ -501,9 +501,9 @@ impl Sink<WsMessage> for FakeWebsocket {
 impl JoinedStreamSink<WsMessage, ConnectionError> for FakeWebsocket {
     type CloseFut = BoxFuture<'static, Result<(), ConnectionError>>;
 
-    fn close(&mut self, _reason: Option<CloseReason>) -> Self::CloseFut {
-        let FakeWebsocket { closed, waker, .. } = self;
-        *closed = true;
+    fn close(self, _reason: Option<CloseReason>) -> Self::CloseFut {
+        let FakeWebsocket { waker, .. } = self;
+
         waker.wake();
         ready(Ok(())).boxed()
     }

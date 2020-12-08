@@ -12,64 +12,45 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::io;
 use std::net::SocketAddr;
 use std::pin::Pin;
+use std::task::Context;
 
 use crate::routing::remote::net::dns::{DnsResolver, Resolver};
 use crate::routing::remote::table::HostAndPort;
 use futures::future::BoxFuture;
 use futures::stream::{Fuse, FusedStream};
 use futures::task::{Context, Poll};
+use crate::routing::remote::net::plain::TokioPlainTextNetworking;
+use crate::routing::remote::net::tls::{TlsListener, TlsStream, TokioTlsNetworking};
+use either::Either;
+use futures::stream::{Fuse, FusedStream, StreamExt};
 use futures::FutureExt;
-use futures::{Stream, StreamExt};
-use pin_project::pin_project;
-use tokio::net::{TcpListener, TcpStream};
+use futures::Stream;
+use futures_util::future::BoxFuture;
+use std::io;
+use std::path::PathBuf;
+use std::sync::Arc;
+use tokio::macros::support::Poll;
+use tokio::net::{lookup_host, TcpListener, TcpStream};
+use url::Url;
 
 mod dns;
+pub mod plain;
+pub mod tls;
+
+/// HTTP protocol over TLS/SSL
+const HTTPS_PORT: u16 = 443;
+
+type IoResult<T> = io::Result<T>;
 
 /// Trait for servers that listen for incoming remote connections. This is primarily used to
 /// abstract over [`TcpListener`] for testing purposes.
 pub trait Listener {
     type Socket: Unpin + Send + Sync + 'static;
-    type AcceptStream: FusedStream<Item = io::Result<(Self::Socket, SocketAddr)>> + Unpin;
+    type AcceptStream: FusedStream<Item = IoResult<(Self::Socket, SocketAddr)>> + Unpin;
 
     fn into_stream(self) -> Self::AcceptStream;
-}
-
-#[pin_project]
-#[derive(Debug)]
-pub struct WithPeer(#[pin] TcpListener);
-
-impl Stream for WithPeer {
-    type Item = io::Result<(TcpStream, SocketAddr)>;
-
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        self.project().0.poll_accept(cx).map(Some)
-    }
-}
-
-impl Listener for TcpListener {
-    type Socket = TcpStream;
-    type AcceptStream = Fuse<WithPeer>;
-
-    fn into_stream(self) -> Self::AcceptStream {
-        WithPeer(self).fuse()
-    }
-}
-
-/// Implementation of [`ExternalConnections`] using [`TcpListener`] and [`TcpStream`] from Tokio.
-#[derive(Debug, Clone)]
-pub struct TokioNetworking {
-    resolver: Resolver,
-}
-
-impl TokioNetworking {
-    pub async fn new() -> TokioNetworking {
-        TokioNetworking {
-            resolver: Resolver::new().await,
-        }
-    }
 }
 
 /// Trait for types that can create remote network connections asynchronously. This is primarily
@@ -78,21 +59,95 @@ pub trait ExternalConnections: Clone + Send + Sync + 'static {
     type Socket: Unpin + Send + Sync + 'static;
     type ListenerType: Listener<Socket = Self::Socket>;
 
-    fn bind(&self, addr: SocketAddr) -> BoxFuture<'static, io::Result<Self::ListenerType>>;
-    fn try_open(&self, addr: SocketAddr) -> BoxFuture<'static, io::Result<Self::Socket>>;
-    fn lookup(&self, host: HostAndPort) -> BoxFuture<'static, io::Result<Vec<SocketAddr>>>;
+    fn bind(&self, addr: SocketAddr) -> BoxFuture<'static, IoResult<Self::ListenerType>>;
+    fn try_open(&self, addr: SocketAddr) -> BoxFuture<'static, IoResult<Self::Socket>>;
+    fn lookup(&self, host: HostAndPort) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>>;
+}
+
+enum MaybeTlsListener {
+    PlainText(TcpListener),
+    Tls(TlsListener),
+}
+
+impl Listener for MaybeTlsListener {
+    type Socket = Either<TcpStream, TlsStream>;
+    type AcceptStream = Fuse<EitherStream>;
+
+    fn into_stream(self) -> Self::AcceptStream {
+        EitherStream(self).fuse()
+    }
+}
+
+struct EitherStream(MaybeTlsListener);
+
+impl Stream for EitherStream {
+    type Item = IoResult<(Either<TcpStream, TlsStream>, SocketAddr)>;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        match &mut self.0 {
+            MaybeTlsListener::PlainText(listener) => match listener.poll_accept(cx) {
+                Poll::Ready(Ok((stream, addr))) => {
+                    Poll::Ready(Some(Ok((Either::Left(stream), addr))))
+                }
+                Poll::Ready(Err(e)) => Poll::Ready(Some(Err(e))),
+                Poll::Pending => Poll::Pending,
+            },
+            MaybeTlsListener::Tls(ref mut listener) => match listener.poll_next_unpin(cx) {
+                Poll::Ready(Some(Ok((stream, addr)))) => {
+                    Poll::Ready(Some(Ok((Either::Right(stream), addr))))
+                }
+                Poll::Ready(None) => Poll::Ready(None),
+                Poll::Ready(Some(Err(e))) => Poll::Ready(Some(Err(e))),
+                Poll::Pending => Poll::Pending,
+            },
+        }
+    }
+}
+
+#[derive(Clone)]
+struct TokioNetworking {
+    plain: TokioPlainTextNetworking,
+    tls: Arc<TokioTlsNetworking>,
+}
+
+impl TokioNetworking {
+    #[allow(dead_code)]
+    pub fn new<I, A>(identities: I) -> Result<TokioNetworking, ()>
+    where
+        I: IntoIterator<Item = (A, Url)>,
+        A: AsRef<PathBuf>,
+    {
+        let tls = TokioTlsNetworking::new(identities)?;
+
+        Ok(TokioNetworking {
+            plain: TokioPlainTextNetworking,
+            tls: Arc::new(tls),
+        })
+    }
 }
 
 impl ExternalConnections for TokioNetworking {
-    type Socket = TcpStream;
-    type ListenerType = TcpListener;
+    type Socket = Either<TcpStream, TlsStream>;
+    type ListenerType = MaybeTlsListener;
 
-    fn bind(&self, addr: SocketAddr) -> BoxFuture<'static, io::Result<Self::ListenerType>> {
-        TcpListener::bind(addr).boxed()
+    fn bind(&self, addr: SocketAddr) -> BoxFuture<'static, IoResult<Self::ListenerType>> {
+        let this = self.clone();
+
+        if addr.port() == HTTPS_PORT {
+            Box::pin(async move { this.tls.bind(addr).await.map(MaybeTlsListener::Tls) })
+        } else {
+            Box::pin(async move { this.plain.bind(addr).await.map(MaybeTlsListener::PlainText) })
+        }
     }
 
-    fn try_open(&self, addr: SocketAddr) -> BoxFuture<'static, io::Result<Self::Socket>> {
-        TcpStream::connect(addr).boxed()
+    fn try_open(&self, addr: SocketAddr) -> BoxFuture<'static, IoResult<Self::Socket>> {
+        let this = self.clone();
+
+        if addr.port() == HTTPS_PORT {
+            Box::pin(async move { this.tls.try_open(addr).await.map(Either::Right) })
+        } else {
+            Box::pin(async move { this.plain.try_open(addr).await.map(Either::Left) })
+        }
     }
 
     fn lookup(&self, host: HostAndPort) -> BoxFuture<'static, io::Result<Vec<SocketAddr>>> {

@@ -37,5 +37,13 @@ jobs:
           cargo build --no-default-features --target wasm32-unknown-unknown --verbose
         env:
           RUST_BACKTRACE: 1
-        displayName: Client WASM build
+        displayName: swim_client WASM build
         workingDirectory: $(Build.SourcesDirectory)/swim_client
+
+      - script: |
+          rustup target add wasm32-unknown-unknown
+          cargo build --no-default-features --target wasm32-unknown-unknown --verbose
+        env:
+          RUST_BACKTRACE: 1
+        displayName: swim_wasm build
+        workingDirectory: $(Build.SourcesDirectory)/swim_wasm

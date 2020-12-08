@@ -1,5 +1,5 @@
 error: Lifecycle cannot be created from Union.
-  --> $DIR/union_command_lifecycle.rs:10:11
+  --> $DIR/union_command_lifecycle.rs:24:11
    |
-10 |     union CommandLifecycle {
+24 |     union CommandLifecycle {
    |           ^^^^^^^^^^^^^^^^

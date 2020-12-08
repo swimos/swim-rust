@@ -30,7 +30,7 @@ use tracing::{event, Level};
 #[cfg(test)]
 mod tests;
 
-/// Asynchronous task to set a stream of values into a [`ValueLane`].
+/// Asynchronous task to set a stream of values into a [`crate::agent::lane::model::value::ValueLane`].
 pub struct ActionLaneUpdateTask<Command, Response> {
     lane: ActionLane<Command, Response>,
     feedback: Option<mpsc::Sender<(RoutingAddr, Response)>>,

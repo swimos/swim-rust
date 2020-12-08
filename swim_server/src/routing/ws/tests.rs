@@ -495,7 +495,7 @@ impl Sink<i32> for TestStreamSink {
 impl JoinedStreamSink<i32, ()> for TestStreamSink {
     type CloseFut = Ready<Result<(), ()>>;
 
-    fn close(&mut self, _reason: Option<CloseReason>) -> Self::CloseFut {
+    fn close(self, _reason: Option<CloseReason>) -> Self::CloseFut {
         ready(Ok(()))
     }
 }

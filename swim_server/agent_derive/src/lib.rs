@@ -1,3 +1,17 @@
+// Copyright 2015-2020 SWIM.AI inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 //! Agent derive is a library for creating swim agents and lifecycles for them and their lanes, by annotating structs and asynchronous functions.
 //!
 //! The minimum requirements for creating lifecycles is to provide the name of the swim agent
@@ -302,7 +316,7 @@ pub fn swim_agent(input: TokenStream) -> TokenStream {
 /// By default, it expects an async method named `on_start`, but a method with a custom name can be provided
 /// using the `on_start` attribute.
 /// # Example
-/// Agent lifecycle for [`TestAgent`], created with the default name for the `on_start` action.
+/// Agent lifecycle for `TestAgent`, created with the default name for the `on_start` action.
 /// ```rust
 /// use swim_server::agent_lifecycle;
 /// use swim_server::agent::AgentContext;
@@ -325,7 +339,7 @@ pub fn swim_agent(input: TokenStream) -> TokenStream {
 /// #
 /// # pub struct TestAgentConfig;
 /// ```
-/// Agent lifecycle for `TestAgent`, created with a custom name for the `on_start` action.
+/// Agent lifecycle for`TestAgent`, created with a custom name for the `on_start` action.
 /// ```rust
 /// use swim_server::agent_lifecycle;
 /// use swim_server::agent::AgentContext;
@@ -392,12 +406,12 @@ pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// An attribute for creating lifecycles for command lanes on swim agents.
 ///
 /// The attribute requires the name of the swim agent with which this lifecycle will be used and the
-/// type of the [`CommandLane`] to which it will be applied.
+/// type of the `CommandLane` to which it will be applied.
 ///
 /// By default, it expects an async method named `on_command`, but a method with a custom name can be provided
 /// using the `on_command` attribute.
 /// # Example
-/// Command lifecycle for a [`CommandLane`] with type [`String`] on the [`TestAgent`], created with the default name for the `on_command` action.
+/// Command lifecycle for a `CommandLane` with type [`String`] on the `TestAgent`, created with the default name for the `on_command` action.
 /// ```
 /// use swim_server::command_lifecycle;
 /// use swim_server::agent::lane::lifecycle::LaneLifecycle;
@@ -435,7 +449,7 @@ pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// #
 /// # pub struct TestAgentConfig;
 /// ```
-/// Command lifecycle for a [`CommandLane`] with type [`String`] on the [`TestAgent`], created with a custom name for the `on_command` action.
+/// Command lifecycle for a `CommandLane` with type [`String`] on the `TestAgent`, created with a custom name for the `on_command` action.
 /// ```rust
 /// use swim_server::command_lifecycle;
 /// use swim_server::agent::lane::lifecycle::LaneLifecycle;
@@ -577,12 +591,12 @@ pub fn command_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// An attribute for creating lifecycles for action lanes on swim agents.
 ///
 /// The attribute requires the name of the swim agent with which this lifecycle will be used and the
-/// types of the [`ActionLane`] to which it will be applied.
+/// types of the `ActionLane` to which it will be applied.
 ///
 /// By default, it expects an async method named `on_command`, but a method with a custom name can be provided
 /// using the `on_command` attribute.
 /// # Example
-/// Action lifecycle for an [`ActionLane`] with types [`String`] and [`i32`] on the [`TestAgent`], created with the default name for the `on_command` action.
+/// Action lifecycle for an `ActionLane` with types [`String`] and [`i32`] on the `TestAgent`, created with the default name for the `on_command` action.
 /// ```rust
 /// use swim_server::action_lifecycle;
 /// use swim_server::agent::lane::lifecycle::LaneLifecycle;
@@ -619,7 +633,8 @@ pub fn command_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// #
 /// # pub struct TestAgentConfig;
 /// ```
-/// Action lifecycle for an [`ActionLane`] with types [`String`] and [`i32`] on the [`TestAgent`], created with a custom name for the `on_command` action.
+/// Action lifecycle for an `ActionLane` with types [`String`] and [`i32`] on the`TestAgent`,
+/// created with a custom name for the `on_command` action.
 /// ```rust
 /// use swim_server::action_lifecycle;
 /// use swim_server::agent::lane::lifecycle::LaneLifecycle;
@@ -767,12 +782,14 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// An attribute for creating lifecycles for value lanes on swim agents.
 ///
 /// The attribute requires the name of the swim agent with which this lifecycle will be used and the
-/// type of the [`ValueLane`] to which it will be applied.
+/// type of the `ValueLane` to which it will be applied.
 ///
-/// By default, it expects async methods named `on_start` and `on_event`, but methods with custom names can be provided
-/// using the `on_start` and `on_event` attributes.
+/// By default, it expects async methods named `on_start` and `on_event`, but methods with custom
+/// names can be provided using the `on_start` and `on_event` attributes.
+///
 /// # Example
-/// Value lifecycle for a [`ValueLane`] with type [`i32`] on the [`TestAgent`], created with the default names for the `on_start` and `on_event` actions.
+/// Value lifecycle for a `ValueLane` with type [`i32`] on the
+/// `TestAgent`, created with the default names for the `on_start` and `on_event` actions.
 /// ```rust
 /// use swim_server::value_lifecycle;
 /// use swim_server::agent::lane::lifecycle::{StatefulLaneLifecycleBase, LaneLifecycle};
@@ -824,7 +841,8 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// #
 /// # pub struct TestAgentConfig;
 /// ```
-/// Value lifecycle for a [`ValueLane`] with type [`i32`] on the [`TestAgent`], created with custom names for the `on_start` and `on_event` actions.
+/// Value lifecycle for a `ValueLane` with type [`i32`] on the `TestAgent`, created with custom
+/// names for the `on_start` and `on_event` actions.
 /// ```rust
 /// use swim_server::value_lifecycle;
 /// use swim_server::agent::lane::lifecycle::{StatefulLaneLifecycleBase, LaneLifecycle};
@@ -978,12 +996,13 @@ pub fn value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// An attribute for creating lifecycles for map lanes on swim agents.
 ///
 /// The attribute requires the name of the swim agent with which this lifecycle will be used and the
-/// type of the [`MapLane`] to which it will be applied.
+/// type of the `MapLane` to which it will be applied.
 ///
 /// By default, it expects async methods named `on_start` and `on_event`, but methods with custom names can be provided
 /// using the `on_start` and `on_event` attributes.
 /// # Example
-/// Map lifecycle for a [`MapLane`] with types [`String`] and [`i32`] on the [`TestAgent`], created with the default names for the `on_start` and `on_event` actions.
+/// Map lifecycle for a `MapLane` with types [`String`] and
+/// [`i32`] on the `TestAgent`, created with the default names for the `on_start` and `on_event` actions.
 /// ```rust
 /// use swim_server::map_lifecycle;
 /// use swim_server::agent::lane::lifecycle::{StatefulLaneLifecycleBase, LaneLifecycle};
@@ -1034,7 +1053,9 @@ pub fn value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// #
 /// # pub struct TestAgentConfig;
 /// ```
-/// Map lifecycle for a [`MapLane`] with types [`String`] and [`i32`] on the [`TestAgent`], created with custom names for the `on_start` and `on_event` actions.
+/// Map lifecycle for a `MapLane` with types [`String`] and [`i32`] on the `TestAgent`, created with
+/// custom names for the `on_start` and `on_event` actions.
+///
 /// ```rust
 /// use swim_server::map_lifecycle;
 /// use swim_server::agent::lane::lifecycle::{StatefulLaneLifecycleBase, LaneLifecycle};

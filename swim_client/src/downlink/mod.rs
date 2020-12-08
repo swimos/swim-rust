@@ -205,8 +205,7 @@ impl<A> Event<A> {
         }
     }
 
-    /// Maps [`Event<A>`] to [`Result<Event<B>, Err>`]
-    /// by applying a transformation function [`Func`].
+    /// Maps `Event<A>` to `Result<Event<B>, Err>` by applying a transformation function `Func`.
     pub fn try_transform<B, Err, Func>(self, mut func: Func) -> Result<Event<B>, Err>
     where
         Func: FnMut(A) -> Result<B, Err>,
