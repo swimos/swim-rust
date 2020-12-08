@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use async_std::task;
 use futures::StreamExt;
 use std::time::Duration;
 use swim_client::downlink::model::map::MapEvent;
@@ -21,7 +22,6 @@ use swim_client::downlink::Downlink;
 use swim_client::downlink::Event::Remote;
 use swim_client::interface::SwimClient;
 use swim_common::warp::path::AbsolutePath;
-use tokio::task;
 
 async fn did_update(
     map_recv: TypedMapReceiver<String, i32>,
@@ -62,9 +62,9 @@ async fn did_update(
 async fn main() {
     let mut client = SwimClient::new_with_default().await;
     let host_uri = url::Url::parse(&"ws://127.0.0.1:9001".to_string()).unwrap();
-    let node_uri = "unit/foo";
-    let cart_lane = "shoppingCart";
-    let add_lane = "addItem";
+    let node_uri = "/unit/foo";
+    let cart_lane = "shopping_cart";
+    let add_lane = "add_item";
 
     let path = AbsolutePath::new(host_uri.clone(), node_uri, cart_lane);
 
@@ -88,22 +88,22 @@ async fn main() {
         .await
         .expect("Failed to send command!");
 
-    tokio::time::delay_for(Duration::from_secs(2)).await;
+    task::sleep(Duration::from_secs(2)).await;
 
     dl_sink
         .update("FromClientLink".to_string(), 25)
         .await
         .expect("Failed to send message!");
 
-    tokio::time::delay_for(Duration::from_secs(2)).await;
+    task::sleep(Duration::from_secs(2)).await;
 
     dl_sink
         .remove("FromClientLink".to_string())
         .await
         .expect("Failed to send message!");
 
-    tokio::time::delay_for(Duration::from_secs(2)).await;
+    task::sleep(Duration::from_secs(2)).await;
 
     println!("Stopping client in 2 seconds");
-    tokio::time::delay_for(Duration::from_secs(2)).await;
+    task::sleep(Duration::from_secs(2)).await;
 }
