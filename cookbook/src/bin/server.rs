@@ -123,7 +123,7 @@ async fn main() {
         .unwrap();
 
     let stop = async {
-        task::sleep(Duration::from_secs(3600)).await;
+        task::sleep(Duration::from_secs(60)).await;
         server_handle.stop();
     };
 
