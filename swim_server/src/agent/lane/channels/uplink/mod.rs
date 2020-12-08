@@ -13,11 +13,13 @@
 // limitations under the License.
 
 use crate::agent::lane::channels::uplink::map::MapLaneSyncError;
+use crate::agent::lane::model::demand_map::{DemandMapLane, DemandMapLaneUpdate};
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent, MapUpdate};
 use crate::agent::lane::model::value::ValueLane;
 use crate::routing::{error, RoutingAddr, TaggedSender};
 use futures::future::ready;
-use futures::stream::{BoxStream, FusedStream};
+use futures::stream::BoxStream;
+use futures::stream::FusedStream;
 use futures::{select, select_biased, FutureExt, StreamExt};
 use pin_utils::pin_mut;
 use std::any::Any;
@@ -545,5 +547,62 @@ impl UplinkMessageSender<TaggedSender> {
             }
         };
         inner.send_item(envelope).await
+    }
+}
+
+pub struct DemandMapLaneUplink<Key, Value>
+where
+    Key: Form,
+    Value: Form,
+{
+    lane: DemandMapLane<Key, Value>,
+}
+
+impl<Key, Value> DemandMapLaneUplink<Key, Value>
+where
+    Key: Clone + Form,
+    Value: Clone + Form,
+{
+    pub fn new(lane: DemandMapLane<Key, Value>) -> DemandMapLaneUplink<Key, Value> {
+        DemandMapLaneUplink { lane }
+    }
+}
+
+impl<Key, Value> UplinkStateMachine<DemandMapLaneUpdate<Key, Value>>
+    for DemandMapLaneUplink<Key, Value>
+where
+    Key: Any + Clone + Form + Send + Sync + Debug,
+    Value: Any + Clone + Form + Send + Sync + Debug,
+{
+    type Msg = DemandMapLaneUpdate<Key, Value>;
+
+    fn message_for(
+        &self,
+        event: DemandMapLaneUpdate<Key, Value>,
+    ) -> Result<Option<Self::Msg>, UplinkError> {
+        Ok(Some(event))
+    }
+
+    fn sync_lane<'a, Updates>(
+        &'a self,
+        _updates: &'a mut Updates,
+    ) -> BoxStream<'a, Result<Self::Msg, UplinkError>>
+    where
+        Updates: FusedStream<Item = DemandMapLaneUpdate<Key, Value>> + Send + Unpin + 'a,
+    {
+        let DemandMapLaneUplink { lane, .. } = self;
+
+        let controller = lane.controller();
+        let sync_fut = controller.sync();
+
+        Box::pin(
+            futures::stream::once(sync_fut)
+                .filter_map(|r| match r {
+                    Ok(v) => ready(Some(v.into_iter())),
+                    Err(_) => ready(None),
+                })
+                .flat_map(|v| futures::stream::iter(v).map(Ok))
+                .fuse(),
+        )
     }
 }

@@ -748,8 +748,14 @@ async fn agent_loop() {
     )
     .await;
     expect(&mut rx, ReportingAgentEvent::TotalEvent(1)).await;
+    expect(
+        &mut rx,
+        ReportingAgentEvent::DemandMapLaneEvent("Name0".to_string(), 1),
+    )
+    .await;
 
     clock.advance_when_blocked(Duration::from_secs(1)).await;
+
     expect(&mut rx, ReportingAgentEvent::Command("Name1".to_string())).await;
     expect(&mut rx, ReportingAgentEvent::DemandLaneEvent(1)).await;
     expect(
@@ -758,6 +764,11 @@ async fn agent_loop() {
     )
     .await;
     expect(&mut rx, ReportingAgentEvent::TotalEvent(2)).await;
+    expect(
+        &mut rx,
+        ReportingAgentEvent::DemandMapLaneEvent("Name1".to_string(), 1),
+    )
+    .await;
 
     clock.advance_when_blocked(Duration::from_secs(1)).await;
     expect(&mut rx, ReportingAgentEvent::Command("Name2".to_string())).await;
@@ -768,6 +779,11 @@ async fn agent_loop() {
     )
     .await;
     expect(&mut rx, ReportingAgentEvent::TotalEvent(3)).await;
+    expect(
+        &mut rx,
+        ReportingAgentEvent::DemandMapLaneEvent("Name2".to_string(), 1),
+    )
+    .await;
 
     drop(envelope_tx);
 
