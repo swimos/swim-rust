@@ -25,6 +25,10 @@ pub fn default_on_cue() -> Ident {
     str_to_ident("on_cue")
 }
 
+pub fn default_on_sync() -> Ident {
+    str_to_ident("on_sync")
+}
+
 pub fn default_on_start() -> Ident {
     str_to_ident("on_start")
 }

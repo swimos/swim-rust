@@ -78,6 +78,7 @@ use crate::lanes::value::derive_value_lifecycle;
 
 use crate::internals::derive;
 use crate::lanes::demand::derive_demand_lifecycle;
+use crate::lanes::demand_map::derive_demand_map_lifecycle;
 use macro_helpers::as_const;
 use proc_macro::TokenStream;
 use syn::{parse_macro_input, DeriveInput};
@@ -789,19 +790,19 @@ pub fn map_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// The attribute requires the name of the swim agent with which this lifecycle will be used and the
 /// type of the `DemandLane` to which it will be applied.
 ///
-/// By default, it expects async methods named `on_start` and `on_event`, but methods with custom
-/// names can be provided using the `on_start` and `on_event` attributes.
+/// By default, it expects an async method named `on_cue`, but methods with custom names can be
+/// provided using the `on_cue` and `on_event` attributes.
 ///
-/// Demand lifecycle for a `DemandLane` with type [`i32`] on the `TestAgent`, created with custom
+/// Demand lifecycle for a `DemandMapLane` with type [`i32`] on the `TestAgent`, created with custom
 /// names for the `on_cue` action.
 ///
 /// ```rust
 /// use swim_server::demand_lifecycle;
 /// use swim_server::agent::lane::lifecycle::{StatefulLaneLifecycleBase, LaneLifecycle};
 /// use swim_server::agent::lane::model::demand::DemandLane;
-/// use std::sync::Arc;
 /// use swim_server::agent::AgentContext;
 /// # use swim_server::SwimAgent;
+/// # use tokio;
 ///
 /// #[demand_lifecycle(
 ///     agent = "TestAgent",
@@ -837,4 +838,68 @@ pub fn map_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 pub fn demand_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
     derive(args, input, derive_demand_lifecycle)
+}
+
+/// An attribute for creating lifecycles for demand map lanes on swim agents.
+///
+/// The attribute requires the name of the swim agent with which this lifecycle will be used and the
+/// type of the `DemandMapLane` to which it will be applied.
+///
+/// By default, it expects async methods named `on_cue` and `on_sync`, but methods with custom
+/// names can be provided using the `on_cue` and `on_sync` attributes.
+///
+/// Demand lifecycle for a `DemandMapLane` with a key type of `String` and a value type of `i32`
+/// on the `TestAgent`
+///
+/// ```rust
+/// use swim_server::demand_map_lifecycle;
+/// use swim_server::agent::lane::lifecycle::LaneLifecycle;
+/// use swim_server::agent::lane::model::demand_map::DemandMapLane;
+/// use swim_server::agent::AgentContext;
+/// # use swim_server::SwimAgent;
+/// # use tokio;
+///
+/// #[demand_map_lifecycle(agent = "TestAgent", key_type = "String", value_type = "i32")]
+/// struct TestDemandLifecycle;
+///
+/// impl TestDemandLifecycle {
+///     async fn on_sync<Context>(
+///        &self,
+///        _model: &DemandMapLane<String, i32>,
+///        _context: &Context,
+///    ) -> Vec<String>
+///    where
+///        Context: AgentContext<TestAgent> + Sized + Send + Sync,
+///    {
+///        Vec::new()
+///    }
+///
+///    async fn on_cue<Context>(
+///        &self,
+///        _model: &DemandMapLane<String, i32>,
+///        context: &Context,
+///        key: String,
+///    ) -> Option<i32>
+///    where
+///        Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
+///    {
+///        Some(1)
+///    }
+/// }
+///
+/// impl LaneLifecycle<TestAgentConfig> for TestDemandLifecycle {
+///     fn create(_config: &TestAgentConfig) -> Self {
+///         TestDemandLifecycle {}
+///     }
+/// }
+///
+/// # #[derive(Debug, SwimAgent)]
+/// # #[agent(config = "TestAgentConfig")]
+/// # pub struct TestAgent;
+/// #
+/// # pub struct TestAgentConfig;
+/// ```
+#[proc_macro_attribute]
+pub fn demand_map_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
+    derive(args, input, derive_demand_map_lifecycle)
 }

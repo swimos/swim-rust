@@ -1283,7 +1283,7 @@ where
     (lane, tasks, lane_io)
 }
 
-struct DemandMapLaneIo<Key, Value>
+pub struct DemandMapLaneIo<Key, Value>
 where
     Key: Debug + Form + Send + Sync + 'static,
     Value: Debug + Form + Send + Sync + 'static,
@@ -1297,7 +1297,7 @@ where
     Key: Debug + Form + Send + Sync + 'static,
     Value: Debug + Form + Send + Sync + 'static,
 {
-    fn new(
+    pub fn new(
         lane: DemandMapLane<Key, Value>,
         topic: MpscTopic<DemandMapLaneUpdate<Key, Value>>,
     ) -> DemandMapLaneIo<Key, Value> {

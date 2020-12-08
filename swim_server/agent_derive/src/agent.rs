@@ -29,6 +29,7 @@ const ACTION_LANE: &str = "ActionLane";
 const VALUE_LANE: &str = "ValueLane";
 const MAP_LANE: &str = "MapLane";
 const DEMAND_LANE: &str = "DemandLane";
+const DEMAND_MAP_LANE: &str = "DemandMapLane";
 
 #[derive(Debug, FromMeta)]
 pub struct AgentAttrs {
@@ -62,6 +63,7 @@ impl LifecycleAttrs {
                     VALUE_LANE => Some(LaneType::Value),
                     MAP_LANE => Some(LaneType::Map),
                     DEMAND_LANE => Some(LaneType::Demand),
+                    DEMAND_MAP_LANE => Some(LaneType::DemandMap),
                     _ => None,
                 };
             }
@@ -77,6 +79,7 @@ pub enum LaneType {
     Value,
     Map,
     Demand,
+    DemandMap,
 }
 
 #[derive(Debug, FromDeriveInput)]
@@ -298,6 +301,7 @@ fn create_lane(
             )
         }
         LaneType::Demand => build_demand_lane_io(lane_data),
+        LaneType::DemandMap => build_demand_map_lane_io(lane_data),
     };
 
     (ts, task_variable)
@@ -407,6 +411,39 @@ fn build_demand_lane_io(lane_data: LaneData) -> proc_macro2::TokenStream {
         io_map.insert (
             #lane_name_lit.to_string(), Box::new(swim_server::agent::DemandLaneIo::new(response_rx))
         );
+    }
+}
+
+fn build_demand_map_lane_io(lane_data: LaneData) -> proc_macro2::TokenStream {
+    let LaneData {
+        agent_name,
+        is_public,
+        lifecycle,
+        lane_name,
+        task_variable,
+        task_structure,
+        lane_name_lit,
+    } = lane_data;
+
+    quote! {
+        let buffer_size = exec_conf.action_buffer.clone();
+        let (lifecycle_tx, event_stream) = tokio::sync::mpsc::channel(buffer_size.get());
+        let lifecycle = #lifecycle::create(configuration);
+
+        let #task_variable = #task_structure {
+            lifecycle,
+            name: #lane_name_lit.into(),
+            event_stream,
+            projection: |agent: &#agent_name| &agent.#lane_name,
+        };
+
+        let (#lane_name, topic) = swim_server::agent::model::demand_map::make_lane_model(buffer_size, lifecycle_tx);
+
+        if #is_public {
+            io_map.insert (
+                #lane_name_lit.to_string(), Box::new(swim_server::agent::DemandMapLaneIo::new(#lane_name.clone(), topic))
+            );
+        }
     }
 }
 
