@@ -26,17 +26,20 @@ use futures::StreamExt;
 use futures::{select, Stream};
 use futures_util::future::BoxFuture;
 use tokio::macros::support::Poll;
-use tokio::net::{lookup_host, TcpListener, TcpStream};
+use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio_native_tls::native_tls::{Identity, TlsConnector as NativeTlsConnector};
 use tokio_native_tls::{TlsAcceptor, TlsConnector};
 use tracing::{event, Level};
 
+use crate::routing::remote::net::dns::{DnsResolver, Resolver};
 use crate::routing::remote::net::{ExternalConnections, IoResult, Listener};
+use crate::routing::remote::table::HostAndPort;
 use im::HashMap;
 use pin_project::pin_project;
 use std::path::PathBuf;
+use std::sync::Arc;
 use url::Url;
 
 pub type TlsStream = tokio_native_tls::TlsStream<TcpStream>;
@@ -57,16 +60,18 @@ impl Listener for TlsListener {
 
 #[derive(Clone)]
 pub struct TokioTlsNetworking {
+    resolver: Arc<Resolver>,
     identities: HashMap<Url, Identity>,
 }
 
 impl TokioTlsNetworking {
-    pub fn new<I, A>(_identities: I) -> Result<TokioTlsNetworking, ()>
+    pub fn new<I, A>(_identities: I, resolver: Arc<Resolver>) -> Result<TokioTlsNetworking, ()>
     where
         I: IntoIterator<Item = (A, Url)>,
         A: AsRef<PathBuf>,
     {
         Ok(TokioTlsNetworking {
+            resolver,
             identities: HashMap::new(),
         })
     }
@@ -87,11 +92,6 @@ impl ExternalConnections for TokioTlsNetworking {
         Box::pin(async move {
             let host = addr.to_string();
             let socket = TcpStream::connect(addr).await?;
-
-            /*
-               todo:    Following the Tokio 0.3 PR being merged, sort out the certificate loading
-                        here and in the client using the `tokio-rustls` crate
-            */
             let tls_conn_builder = NativeTlsConnector::builder();
 
             let connector = tls_conn_builder
@@ -106,10 +106,8 @@ impl ExternalConnections for TokioTlsNetworking {
         })
     }
 
-    fn lookup(&self, host: String) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>> {
-        lookup_host(host)
-            .map(|r| r.map(|it| it.collect::<Vec<_>>()))
-            .boxed()
+    fn lookup(&self, host: HostAndPort) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>> {
+        self.resolver.resolve(host)
     }
 }
 

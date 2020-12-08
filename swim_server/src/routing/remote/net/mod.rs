@@ -14,25 +14,21 @@
 
 use std::net::SocketAddr;
 use std::pin::Pin;
-use std::task::Context;
 
 use crate::routing::remote::net::dns::{DnsResolver, Resolver};
-use crate::routing::remote::table::HostAndPort;
-use futures::future::BoxFuture;
-use futures::stream::{Fuse, FusedStream};
-use futures::task::{Context, Poll};
 use crate::routing::remote::net::plain::TokioPlainTextNetworking;
 use crate::routing::remote::net::tls::{TlsListener, TlsStream, TokioTlsNetworking};
+use crate::routing::remote::table::HostAndPort;
 use either::Either;
 use futures::stream::{Fuse, FusedStream, StreamExt};
+use futures::task::{Context, Poll};
 use futures::FutureExt;
 use futures::Stream;
 use futures_util::future::BoxFuture;
 use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::macros::support::Poll;
-use tokio::net::{lookup_host, TcpListener, TcpStream};
+use tokio::net::{TcpListener, TcpStream};
 use url::Url;
 
 mod dns;
@@ -106,21 +102,25 @@ impl Stream for EitherStream {
 
 #[derive(Clone)]
 struct TokioNetworking {
+    resolver: Arc<Resolver>,
     plain: TokioPlainTextNetworking,
     tls: Arc<TokioTlsNetworking>,
 }
 
 impl TokioNetworking {
     #[allow(dead_code)]
-    pub fn new<I, A>(identities: I) -> Result<TokioNetworking, ()>
+    pub async fn new<I, A>(identities: I) -> Result<TokioNetworking, ()>
     where
         I: IntoIterator<Item = (A, Url)>,
         A: AsRef<PathBuf>,
     {
-        let tls = TokioTlsNetworking::new(identities)?;
+        let resolver = Arc::new(Resolver::new().await);
+        let tls = TokioTlsNetworking::new(identities, resolver.clone())?;
+        let plain = TokioPlainTextNetworking::new(resolver.clone());
 
         Ok(TokioNetworking {
-            plain: TokioPlainTextNetworking,
+            resolver,
+            plain,
             tls: Arc::new(tls),
         })
     }

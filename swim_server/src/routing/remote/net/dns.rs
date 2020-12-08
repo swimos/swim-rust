@@ -88,21 +88,21 @@ mod trust_dns_impl {
     use futures::future::BoxFuture;
     use std::io;
     use std::net::{SocketAddr, ToSocketAddrs};
-    use trust_dns_resolver::{
-        system_conf, AsyncResolver, TokioConnection, TokioConnectionProvider,
-    };
+    use tokio_compat_02::FutureExt;
+    use trust_dns_resolver::{system_conf, TokioAsyncResolver};
 
     /// A DNS resolver built using the Trust-DNS Proto library.
     #[derive(Clone, Debug)]
     pub struct TrustDnsResolver {
-        inner: AsyncResolver<TokioConnection, TokioConnectionProvider>,
+        inner: TokioAsyncResolver,
     }
 
     impl TrustDnsResolver {
         pub async fn new() -> TrustDnsResolver {
             let (config, opts) = system_conf::read_system_conf()
                 .expect("Failed to retrieve host system configuration file for Trust DNS resolver");
-            let resolver = AsyncResolver::new(config, opts, tokio::runtime::Handle::current())
+            let resolver = TokioAsyncResolver::tokio(config, opts)
+                .compat()
                 .await
                 .unwrap();
 
