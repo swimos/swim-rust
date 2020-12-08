@@ -77,6 +77,7 @@ use crate::lanes::map::derive_map_lifecycle;
 use crate::lanes::value::derive_value_lifecycle;
 
 use crate::internals::derive;
+use crate::lanes::demand::derive_demand_lifecycle;
 use macro_helpers::as_const;
 use proc_macro::TokenStream;
 use syn::{parse_macro_input, DeriveInput};
@@ -781,4 +782,59 @@ pub fn value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 pub fn map_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
     derive(args, input, derive_map_lifecycle)
+}
+
+/// An attribute for creating lifecycles for demand lanes on swim agents.
+///
+/// The attribute requires the name of the swim agent with which this lifecycle will be used and the
+/// type of the `DemandLane` to which it will be applied.
+///
+/// By default, it expects async methods named `on_start` and `on_event`, but methods with custom
+/// names can be provided using the `on_start` and `on_event` attributes.
+///
+/// Demand lifecycle for a `DemandLane` with type [`i32`] on the `TestAgent`, created with custom
+/// names for the `on_cue` action.
+///
+/// ```rust
+/// use swim_server::demand_lifecycle;
+/// use swim_server::agent::lane::lifecycle::{StatefulLaneLifecycleBase, LaneLifecycle};
+/// use swim_server::agent::lane::model::demand::DemandLane;
+/// use std::sync::Arc;
+/// use swim_server::agent::AgentContext;
+/// # use swim_server::SwimAgent;
+///
+/// #[demand_lifecycle(
+///     agent = "TestAgent",
+///     event_type = "i32",
+///     on_cue = "custom_on_cue"
+/// )]
+/// struct TestDemandLifecycle;
+///
+/// impl TestDemandLifecycle {
+///     async fn custom_on_cue<Context>(
+///         &self,
+///         _model: &DemandLane<i32>,
+///         _context: &Context,
+///     ) -> Option<i32> where
+///         Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
+///     {
+///         Some(1)
+///     }
+/// }
+///
+/// impl LaneLifecycle<TestAgentConfig> for TestDemandLifecycle {
+///     fn create(_config: &TestAgentConfig) -> Self {
+///         TestDemandLifecycle {}
+///     }
+/// }
+///
+/// # #[derive(Debug, SwimAgent)]
+/// # #[agent(config = "TestAgentConfig")]
+/// # pub struct TestAgent;
+/// #
+/// # pub struct TestAgentConfig;
+/// ```
+#[proc_macro_attribute]
+pub fn demand_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
+    derive(args, input, derive_demand_lifecycle)
 }

@@ -57,6 +57,25 @@ pub fn derive_value_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput) 
         let model = projection(context.agent());
         lifecycle.#on_start_func(model, context).boxed()
     };
+    let on_event = quote! {
+        let #task_name {
+            lifecycle,
+            event_stream,
+            projection,
+            ..
+        } = *self;
+
+        let model = projection(context.agent()).clone();
+        let mut events = event_stream.take_until(context.agent_stop_event());
+        let mut events = unsafe { Pin::new_unchecked(&mut events) };
+
+        while let Some(event) = events.next().await {
+              tracing_futures::Instrument::instrument(
+                lifecycle.#on_event_func(&event, &model, &context),
+                tracing::span!(tracing::Level::TRACE, swim_server::agent::ON_EVENT, ?event)
+            ).await;
+        }
+    };
 
     derive_lane(
         "ValueLifecycle",
@@ -67,14 +86,10 @@ pub fn derive_value_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput) 
         quote!(swim_server::agent::lane::model::value::ValueLane<#event_type>),
         quote!(std::sync::Arc<#event_type>),
         Some(on_start),
-        quote! {
-            tracing_futures::Instrument::instrument(
-                lifecycle.#on_event_func(&event, &model, &context),
-                tracing::span!(tracing::Level::TRACE, swim_server::agent::ON_EVENT, ?event)
-            ).await;
-        },
+        on_event,
         quote! {
             use swim_server::agent::lane::model::value::ValueLane;
         },
+        None,
     )
 }

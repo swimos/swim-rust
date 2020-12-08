@@ -631,7 +631,10 @@ struct MapLifecycleTasks<L, S, P>(LifecycleTasks<L, S, P>);
 struct ActionLifecycleTasks<L, S, P>(LifecycleTasks<L, S, P>);
 struct CommandLifecycleTasks<L, S, P>(LifecycleTasks<L, S, P>);
 struct DemandLifecycleTasks<L, S, P, Value> {
-    tasks: LifecycleTasks<L, S, P>,
+    name: String,
+    lifecycle: L,
+    event_stream: S,
+    projection: P,
     response_tx: mpsc::Sender<Value>,
 }
 
@@ -1119,12 +1122,10 @@ where
     let (response_tx, response_rx) = mpsc::channel(buffer_size.get());
 
     let tasks = DemandLifecycleTasks {
-        tasks: LifecycleTasks {
-            name: name.into(),
-            lifecycle,
-            event_stream: cue_stream,
-            projection,
-        },
+        name: name.into(),
+        lifecycle,
+        event_stream: cue_stream,
+        projection,
         response_tx,
     };
 
@@ -1133,7 +1134,7 @@ where
     (lane, tasks, lane_io)
 }
 
-struct DemandLaneIo<Value> {
+pub struct DemandLaneIo<Value> {
     response_rx: mpsc::Receiver<Value>,
 }
 
@@ -1141,7 +1142,7 @@ impl<Value> DemandLaneIo<Value>
 where
     Value: Send + Sync + 'static,
 {
-    fn new(response_rx: mpsc::Receiver<Value>) -> DemandLaneIo<Value> {
+    pub fn new(response_rx: mpsc::Receiver<Value>) -> DemandLaneIo<Value> {
         DemandLaneIo { response_rx }
     }
 }
@@ -1185,7 +1186,7 @@ where
 
 impl<L, S, P, Value> Lane for DemandLifecycleTasks<L, S, P, Value> {
     fn name(&self) -> &str {
-        self.tasks.name.as_str()
+        self.name.as_str()
     }
 }
 
@@ -1206,14 +1207,11 @@ where
     fn events(self: Box<Self>, context: Context) -> BoxFuture<'static, ()> {
         async move {
             let DemandLifecycleTasks {
-                tasks:
-                    LifecycleTasks {
-                        lifecycle,
-                        event_stream,
-                        projection,
-                        ..
-                    },
+                lifecycle,
+                event_stream,
+                projection,
                 response_tx,
+                ..
             } = *self;
 
             let model = projection(context.agent()).clone();

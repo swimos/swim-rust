@@ -19,6 +19,7 @@ use syn::{DeriveInput, Ident};
 
 pub mod action;
 pub mod command;
+pub mod demand;
 pub mod map;
 pub mod value;
 
@@ -34,6 +35,7 @@ pub fn derive_lane(
     on_start: Option<TokenStream>,
     on_event: TokenStream,
     imports: TokenStream,
+    field: Option<TokenStream>,
 ) -> proc_macro::TokenStream {
     let public_derived = quote! {
         #input_ast
@@ -47,6 +49,7 @@ pub fn derive_lane(
             name: String,
             event_stream: S,
             projection: T,
+            #field
         }
     };
 
@@ -92,20 +95,7 @@ pub fn derive_lane(
 
             fn events(self: Box<Self>, context: Context) -> BoxFuture<'static, ()> {
                 async move {
-                    let #task_name {
-                        lifecycle,
-                        event_stream,
-                        projection,
-                        ..
-                    } = *self;
-
-                    let model = projection(context.agent()).clone();
-                    let mut events = event_stream.take_until(context.agent_stop_event());
-                    let mut events = unsafe { Pin::new_unchecked(&mut events) };
-
-                    while let Some(event) = events.next().await {
-                        #on_event
-                    }
+                    #on_event
                 }
                 .boxed()
             }
