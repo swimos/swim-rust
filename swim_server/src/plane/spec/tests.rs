@@ -91,7 +91,7 @@ impl SwimAgent<DummyConfig> for DummyAgent {
 }
 
 impl AgentLifecycle<DummyAgent> for DummyLifecycle {
-    fn on_start<'a, C>(&'a self, _context: &'a C) -> BoxFuture<'a, ()>
+    fn start<'a, C>(&'a self, _context: &'a C) -> BoxFuture<'a, ()>
     where
         C: AgentContext<DummyAgent> + Send + Sync + 'a,
     {
