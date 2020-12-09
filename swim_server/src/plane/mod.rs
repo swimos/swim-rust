@@ -27,7 +27,6 @@ use crate::plane::context::PlaneContext;
 use crate::plane::error::NoAgentAtRoute;
 use crate::plane::router::{PlaneRouter, PlaneRouterFactory};
 use crate::plane::spec::{PlaneSpec, RouteSpec};
-use crate::routing::error::{ConnectionError, RouterError, Unresolvable};
 use crate::routing::remote::RawRoute;
 use crate::routing::{ConnectionDropped, RoutingAddr, ServerRouterFactory, TaggedEnvelope};
 use either::Either;
@@ -41,7 +40,8 @@ use std::fmt::Debug;
 use std::ops::Deref;
 use std::sync::{Arc, Weak};
 use swim_common::request::Request;
-use swim_common::ws::error::WebSocketError;
+use swim_common::routing::server::{RouterError, ServerConnectionError, Unresolvable};
+use swim_common::routing::ws::WebSocketError;
 use swim_runtime::time::clock::Clock;
 use tokio::sync::{mpsc, oneshot};
 use tracing::{event, span, Level};
@@ -436,7 +436,7 @@ pub async fn run_plane<Clk, S>(
                         {
                             Ok(tx)
                         } else {
-                            Err(Unresolvable(id))
+                            Err(Unresolvable(id.to_string()))
                         };
                         if request.send(result).is_err() {
                             event!(Level::WARN, DROPPED_REQUEST);
@@ -444,7 +444,7 @@ pub async fn run_plane<Clk, S>(
                     } else {
                         event!(Level::TRACE, GETTING_REMOTE_ENDPOINT, ?id);
                         //TODO Attach external routing here.
-                        if request.send_err(Unresolvable(id)).is_err() {
+                        if request.send_err(Unresolvable(id.to_string())).is_err() {
                             event!(Level::WARN, DROPPED_REQUEST);
                         }
                     }
@@ -475,9 +475,9 @@ pub async fn run_plane<Clk, S>(
                     event!(Level::TRACE, RESOLVING, ?host_url, ?name);
                     //TODO Attach external resolution here.
                     if request
-                        .send_err(RouterError::ConnectionFailure(ConnectionError::Websocket(
-                            WebSocketError::Protocol,
-                        )))
+                        .send_err(RouterError::ConnectionFailure(
+                            ServerConnectionError::Websocket(WebSocketError::Protocol),
+                        ))
                         .is_err()
                     {
                         event!(Level::WARN, DROPPED_REQUEST);

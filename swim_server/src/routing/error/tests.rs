@@ -15,7 +15,7 @@
 use crate::routing::error::{ConnectionError, ResolutionError, RouterError, Unresolvable};
 use crate::routing::RoutingAddr;
 use std::io;
-use swim_common::ws::error::WebSocketError;
+use swim_common::routing::ws::WebSocketError;
 use utilities::uri::RelativeUri;
 
 #[test]

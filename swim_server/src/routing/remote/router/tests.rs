@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::routing::error::{ConnectionError, ResolutionError, RouterError, Unresolvable};
 use crate::routing::remote::router::RemoteRouter;
 use crate::routing::remote::test_fixture::LocalRoutes;
 use crate::routing::remote::{RawRoute, RoutingRequest};
@@ -21,6 +20,8 @@ use futures::future::join;
 use futures::io::ErrorKind;
 use futures::{FutureExt, StreamExt};
 use swim_common::model::Value;
+use swim_common::routing::server::ResolutionError;
+use swim_common::routing::server::{RouterError, ServerConnectionError, Unresolvable};
 use swim_common::warp::envelope::Envelope;
 use tokio::sync::mpsc;
 use url::Url;
@@ -48,7 +49,7 @@ async fn fake_resolution(
                         .send_ok(RawRoute::new(sender.clone(), drop_rx.clone()))
                         .is_ok());
                 } else {
-                    assert!(request.send_err(Unresolvable(addr)).is_ok());
+                    assert!(request.send_err(Unresolvable(addr.to_string())).is_ok());
                 }
             }
             RoutingRequest::ResolveUrl { host, request } => {
@@ -57,7 +58,7 @@ async fn fake_resolution(
                     assert!(request.send_ok(ADDR).is_ok());
                 } else {
                     assert!(request
-                        .send_err(ConnectionError::Socket(ErrorKind::NotFound))
+                        .send_err(ServerConnectionError::Socket(ErrorKind::NotFound))
                         .is_ok());
                 }
             }
@@ -120,7 +121,7 @@ async fn resolve_remote_failure() {
         let other_addr = RoutingAddr::remote(56);
         let result = router.resolve_sender(other_addr).await;
         assert!(
-            matches!(result, Err(ResolutionError::Unresolvable(Unresolvable(a))) if a == other_addr)
+            matches!(result, Err(ResolutionError::Unresolvable(Unresolvable(a))) if a == other_addr.to_string())
         );
         drop(stop_tx);
     };
@@ -145,9 +146,9 @@ async fn lookup_remote_failure() {
         let result = router.lookup(Some(other_url), path()).await;
         assert_eq!(
             result,
-            Err(RouterError::ConnectionFailure(ConnectionError::Socket(
-                ErrorKind::NotFound
-            )))
+            Err(RouterError::ConnectionFailure(
+                ServerConnectionError::Socket(ErrorKind::NotFound)
+            ))
         );
         drop(stop_tx);
     };
@@ -204,7 +205,7 @@ async fn resolve_local_err() {
 
         let result = router.resolve_sender(local_addr).await;
         assert!(
-            matches!(result, Err(ResolutionError::Unresolvable(Unresolvable(a))) if a == local_addr)
+            matches!(result, Err(ResolutionError::Unresolvable(Unresolvable(a))) if a == local_addr.to_string())
         );
         drop(stop_tx);
     };

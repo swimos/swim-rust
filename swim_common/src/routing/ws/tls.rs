@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::ws::error::CertificateError;
-use crate::ws::error::WebSocketError;
+use crate::routing::ws::error::CertificateError;
+use crate::routing::ws::error::WebSocketError;
 use std::fs::File;
 use std::io::{BufReader, Read};
 use std::path::Path;

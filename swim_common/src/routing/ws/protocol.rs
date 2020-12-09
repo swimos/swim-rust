@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::ws::error::CertificateError;
-use crate::ws::tls::build_x509_certificate;
+use crate::routing::ws::error::CertificateError;
+use crate::routing::ws::tls::build_x509_certificate;
 use std::fmt;
 use std::fmt::{Debug, Formatter};
 use std::path::Path;
@@ -138,6 +138,12 @@ pub enum WsMessage {
 pub struct CloseReason {
     code: CloseCode,
     reason: String,
+}
+
+impl CloseReason {
+    pub fn new(code: CloseCode, reason: String) -> CloseReason {
+        CloseReason { code, reason }
+    }
 }
 
 #[derive(Debug, Ord, PartialOrd, PartialEq, Eq, Clone)]

@@ -31,10 +31,10 @@ use crate::connections::factory::stream::{
 use http::header::SEC_WEBSOCKET_PROTOCOL;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
-use swim_common::ws::error::{ConnectionError, WebSocketError};
-use swim_common::ws::protocol::Protocol;
-use swim_common::ws::utils::maybe_resolve_scheme;
-use swim_common::ws::{ConnFuture, WebsocketFactory};
+use swim_common::routing::ws::maybe_resolve_scheme;
+use swim_common::routing::ws::Protocol;
+use swim_common::routing::ws::{ConnFuture, WebsocketFactory};
+use swim_common::routing::ws::{ConnectionError, WebSocketError};
 use tokio_native_tls::TlsStream;
 use tokio_tungstenite::tungstenite::extensions::compression::WsCompression;
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
@@ -209,7 +209,7 @@ impl From<TungsteniteError> for ConnectionError {
 
 #[cfg(test)]
 mod tests {
-    use swim_common::ws::error::ConnectionError;
+    use swim_common::routing::ws::ConnectionError;
 
     use crate::configuration::router::ConnectionPoolParams;
     use crate::connections::factory::tungstenite::TungsteniteWsFactory;

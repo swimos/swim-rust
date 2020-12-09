@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::routing::error::ConnectionError;
 use crate::routing::remote::pending::PendingRequests;
 use crate::routing::remote::table::HostAndPort;
 use crate::routing::RoutingAddr;
 use futures::future::join;
 use swim_common::request::Request;
+use swim_common::routing::server::ServerConnectionError;
 use tokio::sync::oneshot;
 
 #[tokio::test]
@@ -28,10 +28,10 @@ async fn add_single_and_send_err() {
 
     let mut pending = PendingRequests::default();
     pending.add(key.clone(), req);
-    pending.send_err(&key, ConnectionError::ClosedRemotely);
+    pending.send_err(&key, ServerConnectionError::ClosedRemotely);
 
     let result = rx.await;
-    assert_eq!(result, Ok(Err(ConnectionError::ClosedRemotely)));
+    assert_eq!(result, Ok(Err(ServerConnectionError::ClosedRemotely)));
 }
 
 #[tokio::test]
@@ -45,15 +45,15 @@ async fn add_two_and_send_err() {
     let mut pending = PendingRequests::default();
     pending.add(key.clone(), req1);
     pending.add(key.clone(), req2);
-    pending.send_err(&key, ConnectionError::ClosedRemotely);
+    pending.send_err(&key, ServerConnectionError::ClosedRemotely);
 
     let results = join(rx1, rx2).await;
 
     assert_eq!(
         results,
         (
-            Ok(Err(ConnectionError::ClosedRemotely)),
-            Ok(Err(ConnectionError::ClosedRemotely))
+            Ok(Err(ServerConnectionError::ClosedRemotely)),
+            Ok(Err(ServerConnectionError::ClosedRemotely))
         )
     );
 }

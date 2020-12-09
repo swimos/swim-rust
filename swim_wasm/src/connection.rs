@@ -22,9 +22,9 @@ use ws_stream_wasm::{WsErr, WsMessage as WasmMessage, WsMeta, WsStream};
 use swim_common::request::Request;
 
 use std::ops::Deref;
-use swim_common::ws::error::{ConnectionError, WebSocketError};
-use swim_common::ws::protocol::WsMessage;
-use swim_common::ws::{ConnFuture, WebsocketFactory};
+use swim_common::routing::ws::WsMessage;
+use swim_common::routing::ws::{ConnFuture, WebsocketFactory};
+use swim_common::routing::ws::{ConnectionError, WebSocketError};
 use utilities::future::{TransformMut, TransformedSink, TransformedStream};
 
 /// A transformer that converts from a [`swim_common::ws::WsMessage`] to

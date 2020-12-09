@@ -21,7 +21,7 @@ use pin_project::pin_project;
 use std::future::Future;
 use std::marker::PhantomData;
 use std::pin::Pin;
-use swim_common::ws::protocol::WsMessage;
+use swim_common::routing::ws::protocol::WsMessage;
 
 #[cfg(test)]
 mod tests;

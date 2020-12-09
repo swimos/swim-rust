@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::ws::error::WebSocketError;
+use crate::routing::ws::error::WebSocketError;
 use http::uri::Scheme;
 use http::{Request, Uri};
 use std::str::FromStr;

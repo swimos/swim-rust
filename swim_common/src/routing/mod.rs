@@ -12,8 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+pub mod server;
+pub mod ws;
+
 use crate::request::request_future::RequestError;
-use crate::ws::error::ConnectionError;
+use crate::routing::ws::ConnectionError;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use tokio::sync::mpsc::error::SendError;

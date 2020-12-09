@@ -30,7 +30,6 @@ use utilities::future::retryable::strategy::{Quantity, RetryStrategy};
 use utilities::sync::{promise, trigger};
 use utilities::uri::{BadRelativeUri, RelativeUri, UriIsAbsolute};
 
-use crate::routing::error::{ConnectionError, ResolutionError, RouterError};
 use crate::routing::remote::task::{ConnectionTask, DispatchError};
 use crate::routing::remote::test_fixture::fake_channel::TwoWayMpsc;
 use crate::routing::remote::test_fixture::LocalRoutes;
@@ -38,7 +37,8 @@ use crate::routing::{ConnectionDropped, Route, RoutingAddr, TaggedEnvelope, Tagg
 use futures::io::ErrorKind;
 use std::num::NonZeroUsize;
 use std::time::Duration;
-use swim_common::ws::protocol::WsMessage;
+use swim_common::routing::server::{ResolutionError, RouterError, ServerConnectionError};
+use swim_common::routing::ws::WsMessage;
 
 #[test]
 fn dispatch_error_display() {
@@ -358,11 +358,11 @@ async fn dispatch_after_immediate_retry() {
 struct TaskFixture {
     router: LocalRoutes,
     task: BoxFuture<'static, ConnectionDropped>,
-    sock_in: fut_mpsc::Sender<Result<WsMessage, ConnectionError>>,
+    sock_in: fut_mpsc::Sender<Result<WsMessage, ServerConnectionError>>,
     sock_out: fut_mpsc::Receiver<WsMessage>,
     envelope_tx: mpsc::Sender<TaggedEnvelope>,
     stop_trigger: trigger::Sender,
-    send_error_tx: watch::Sender<Option<ConnectionError>>,
+    send_error_tx: watch::Sender<Option<ServerConnectionError>>,
 }
 
 impl TaskFixture {
@@ -451,7 +451,9 @@ async fn task_send_message_failure() {
         let tagged = TaggedEnvelope(RoutingAddr::local(100), env_cpy.clone());
 
         assert!(send_error_tx
-            .send(Some(ConnectionError::Socket(ErrorKind::ConnectionReset)))
+            .send(Some(ServerConnectionError::Socket(
+                ErrorKind::ConnectionReset
+            )))
             .is_ok());
         assert!(envelope_tx.send(tagged).await.is_ok());
     };
@@ -461,7 +463,9 @@ async fn task_send_message_failure() {
         result,
         Ok(
             (
-                ConnectionDropped::Failed(ConnectionError::Socket(ErrorKind::ConnectionReset)),
+                ConnectionDropped::Failed(
+                    ServerConnectionError::Socket(ErrorKind::ConnectionReset),
+                ),
                 _
             ),
         )
@@ -532,7 +536,9 @@ async fn task_receive_error() {
 
     let test_case = async move {
         assert!(sock_in
-            .send(Err(ConnectionError::Socket(ErrorKind::ConnectionReset)))
+            .send(Err(ServerConnectionError::Socket(
+                ErrorKind::ConnectionReset
+            )))
             .await
             .is_ok());
     };
@@ -542,7 +548,9 @@ async fn task_receive_error() {
         result,
         Ok(
             (
-                ConnectionDropped::Failed(ConnectionError::Socket(ErrorKind::ConnectionReset)),
+                ConnectionDropped::Failed(
+                    ServerConnectionError::Socket(ErrorKind::ConnectionReset),
+                ),
                 _
             ),
         )
@@ -571,7 +579,7 @@ async fn task_stopped_remotely() {
         result,
         Ok(
             (
-                ConnectionDropped::Failed(ConnectionError::ClosedRemotely),
+                ConnectionDropped::Failed(ServerConnectionError::ClosedRemotely),
                 _
             ),
         )
@@ -629,6 +637,6 @@ async fn task_receive_bad_message() {
     let result = timeout::timeout(Duration::from_secs(5), join(task, test_case)).await;
     assert!(matches!(
         result,
-        Ok((ConnectionDropped::Failed(ConnectionError::Warp(_)), _))
+        Ok((ConnectionDropped::Failed(ServerConnectionError::Warp(_)), _))
     ));
 }

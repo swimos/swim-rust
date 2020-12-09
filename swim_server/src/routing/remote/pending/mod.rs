@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::routing::error::ConnectionError;
 use crate::routing::remote::table::HostAndPort;
 use crate::routing::remote::{ResolutionRequest, REQUEST_DROPPED};
 use crate::routing::RoutingAddr;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+use swim_common::routing::server::ServerConnectionError;
 
 #[cfg(test)]
 mod tests;
@@ -52,7 +52,7 @@ impl PendingRequests {
     }
 
     /// Complete all requests for a given host/port combination with an error.
-    pub fn send_err(&mut self, host: &HostAndPort, err: ConnectionError) {
+    pub fn send_err(&mut self, host: &HostAndPort, err: ServerConnectionError) {
         let PendingRequests(map) = self;
         if let Some(mut requests) = map.remove(host) {
             let first = requests.pop();

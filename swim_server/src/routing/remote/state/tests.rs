@@ -14,7 +14,7 @@
 
 use crate::routing::remote::config::ConnectionConfig;
 use crate::routing::remote::state::{
-    ConnectionError, DeferredResult, Event, RemoteConnections, RemoteTasksState, State,
+    DeferredResult, Event, RemoteConnections, RemoteTasksState, State,
 };
 use crate::routing::remote::table::HostAndPort;
 use crate::routing::remote::test_fixture::{
@@ -30,6 +30,7 @@ use std::net::SocketAddr;
 use std::num::NonZeroUsize;
 use std::time::Duration;
 use swim_common::request::Request;
+use swim_common::routing::server::ServerConnectionError;
 use swim_runtime::time::timeout::timeout;
 use tokio::sync::{mpsc, oneshot};
 use utilities::future::open_ended::OpenEndedFutures;
@@ -263,7 +264,7 @@ async fn connections_state_defer_connect_failed() {
         }))) => {
             assert_eq!(
                 error,
-                ConnectionError::Socket(ErrorKind::ConnectionReset.into())
+                ServerConnectionError::Socket(ErrorKind::ConnectionReset.into())
             );
             assert!(remaining.next().is_none());
             assert_eq!(host, target);
@@ -384,13 +385,18 @@ async fn connections_failure_triggers_pending() {
         .pending
         .add(target.clone(), Request::new(req_tx));
 
-    connections.fail_connection(&target, ConnectionError::Socket(ErrorKind::ConnectionReset));
+    connections.fail_connection(
+        &target,
+        ServerConnectionError::Socket(ErrorKind::ConnectionReset),
+    );
 
     let result = timeout(Duration::from_secs(5), req_rx).await;
 
     assert!(matches!(
         result,
-        Ok(Ok(Err(ConnectionError::Socket(ErrorKind::ConnectionReset))))
+        Ok(Ok(Err(ServerConnectionError::Socket(
+            ErrorKind::ConnectionReset
+        ))))
     ));
 }
 

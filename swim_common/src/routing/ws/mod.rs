@@ -14,18 +14,21 @@
 
 use futures::{Future, Sink, Stream};
 
-use crate::ws::error::ConnectionError;
 use futures::future::BoxFuture;
 
-use crate::ws::protocol::WsMessage;
-use crate::ws::stream::JoinedStreamSink;
+mod error;
+mod protocol;
+mod stream;
+mod utils;
 
-pub mod error;
-pub mod protocol;
-pub mod stream;
+use crate::routing::server::ServerConnectionError;
+pub use error::*;
+pub use protocol::*;
+pub use stream::*;
+pub use utils::*;
+
 #[cfg(feature = "tls")]
 pub mod tls;
-pub mod utils;
 
 pub type ConnResult<Snk, Str> = Result<(Snk, Str), ConnectionError>;
 pub type ConnFuture<'a, Snk, Str> = BoxFuture<'a, ConnResult<Snk, Str>>;
@@ -45,8 +48,8 @@ pub trait WebsocketFactory: Send + Sync {
 
 /// Trait to provide a service to negotiate a web socket connection on top of a socket.
 pub trait WsConnections<Sock: Send + Sync + Unpin> {
-    type StreamSink: JoinedStreamSink<WsMessage, ConnectionError> + Send + Unpin + 'static;
-    type Fut: Future<Output = Result<Self::StreamSink, ConnectionError>> + Send + 'static;
+    type StreamSink: JoinedStreamSink<WsMessage, ServerConnectionError> + Send + Unpin + 'static;
+    type Fut: Future<Output = Result<Self::StreamSink, ServerConnectionError>> + Send + 'static;
 
     /// Negotiate a new client connection.
     fn open_connection(&self, socket: Sock, addr: String) -> Self::Fut;

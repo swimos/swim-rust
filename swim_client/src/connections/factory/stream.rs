@@ -14,9 +14,9 @@
 
 use crate::connections::factory::tungstenite::{MaybeTlsStream, TError};
 use http::Request;
-use swim_common::ws::error::{ConnectionError, WebSocketError};
-use swim_common::ws::protocol::{Protocol, WsMessage};
-use swim_common::ws::tls::connect_tls;
+use swim_common::routing::ws::tls::connect_tls;
+use swim_common::routing::ws::{ConnectionError, WebSocketError};
+use swim_common::routing::ws::{Protocol, WsMessage};
 use tokio::net::TcpStream;
 use tokio_tungstenite::stream::Stream as StreamSwitcher;
 use tokio_tungstenite::tungstenite::Message;

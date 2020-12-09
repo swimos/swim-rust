@@ -12,16 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::routing::{RoutingAddr, TaggedEnvelope};
+use crate::routing::ws::WebSocketError;
+use crate::routing::RoutingError;
+use crate::sink::SinkSendError;
+use crate::warp::envelope::Envelope;
 use http::StatusCode;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::io;
 use std::io::ErrorKind;
-use swim_common::routing::ws::WebSocketError;
-use swim_common::routing::RoutingError;
-use swim_common::sink::SinkSendError;
-use swim_common::warp::envelope::Envelope;
 use tokio::sync::mpsc;
 use utilities::errors::Recoverable;
 use utilities::uri::RelativeUri;
@@ -65,23 +64,13 @@ impl From<mpsc::error::SendError<Envelope>> for SendError {
     }
 }
 
-impl From<mpsc::error::SendError<TaggedEnvelope>> for SendError {
-    fn from(err: mpsc::error::SendError<TaggedEnvelope>) -> Self {
-        let mpsc::error::SendError(TaggedEnvelope(_, envelope)) = err;
-        SendError {
-            error: RoutingError::RouterDropped,
-            envelope,
-        }
-    }
-}
-
 /// Ways in which the router can fail to provide a route.
 #[derive(Debug, PartialEq, Eq)]
 pub enum RouterError {
     /// For a local endpoint it can be determined that no agent exists.
     NoAgentAtRoute(RelativeUri),
     /// Connecting to a remote endpoint failed (the endpoint may or may not exist).
-    ConnectionFailure(ConnectionError),
+    ConnectionFailure(ServerConnectionError),
     /// The router was dropped (the application is likely stopping).
     RouterDropped,
 }
@@ -121,7 +110,7 @@ fn io_fatal(kind: &ErrorKind) -> bool {
 
 /// A connection to a remote endpoint failed.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ConnectionError {
+pub enum ServerConnectionError {
     /// The host could not be resolved.
     Resolution,
     /// An error occurred at the socket level.
@@ -138,51 +127,51 @@ pub enum ConnectionError {
     Http(StatusCode),
 }
 
-impl Display for ConnectionError {
+impl Display for ServerConnectionError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            ConnectionError::Resolution => {
+            ServerConnectionError::Resolution => {
                 write!(f, "The specified host could not be resolved.")
             }
-            ConnectionError::Socket(err) => write!(f, "IO error: '{:?}'", err),
-            ConnectionError::Websocket(err) => write!(f, "Web socket error: '{}'", err),
-            ConnectionError::ClosedRemotely => {
+            ServerConnectionError::Socket(err) => write!(f, "IO error: '{:?}'", err),
+            ServerConnectionError::Websocket(err) => write!(f, "Web socket error: '{}'", err),
+            ServerConnectionError::ClosedRemotely => {
                 write!(f, "The connection was closed remotely.")
             }
-            ConnectionError::Warp(err) => write!(f, "Warp protocol error: '{}'", err),
-            ConnectionError::Closed => write!(f, "The connection has been closed."),
-            ConnectionError::Http(code) => write!(f, "The connection failed with: {}", code),
+            ServerConnectionError::Warp(err) => write!(f, "Warp protocol error: '{}'", err),
+            ServerConnectionError::Closed => write!(f, "The connection has been closed."),
+            ServerConnectionError::Http(code) => write!(f, "The connection failed with: {}", code),
         }
     }
 }
 
-impl Error for ConnectionError {}
+impl Error for ServerConnectionError {}
 
-impl Recoverable for ConnectionError {
+impl Recoverable for ServerConnectionError {
     fn is_fatal(&self) -> bool {
         match self {
-            ConnectionError::Socket(err) => io_fatal(err),
-            ConnectionError::Warp(_) => false,
+            ServerConnectionError::Socket(err) => io_fatal(err),
+            ServerConnectionError::Warp(_) => false,
             _ => true,
         }
     }
 }
 
-impl From<io::Error> for ConnectionError {
+impl From<io::Error> for ServerConnectionError {
     fn from(err: io::Error) -> Self {
-        ConnectionError::Socket(err.kind())
+        ServerConnectionError::Socket(err.kind())
     }
 }
 
-impl<T> From<SinkSendError<T>> for ConnectionError {
+impl<T> From<SinkSendError<T>> for ServerConnectionError {
     fn from(_: SinkSendError<T>) -> Self {
-        ConnectionError::ClosedRemotely
+        ServerConnectionError::ClosedRemotely
     }
 }
 
-impl From<futures::channel::mpsc::SendError> for ConnectionError {
+impl From<futures::channel::mpsc::SendError> for ServerConnectionError {
     fn from(_: futures::channel::mpsc::SendError) -> Self {
-        ConnectionError::ClosedRemotely
+        ServerConnectionError::ClosedRemotely
     }
 }
 
@@ -215,8 +204,8 @@ impl Error for ResolutionError {
 
 /// Error indicating that a routing address is invalid. (Typically, this should not occur and
 /// suggests a bug).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Unresolvable(pub RoutingAddr);
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Unresolvable(pub String);
 
 impl Display for Unresolvable {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {

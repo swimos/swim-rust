@@ -12,10 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::routing::error::{ConnectionError, ResolutionError, RouterError, Unresolvable};
 use crate::routing::remote::net::{ExternalConnections, Listener};
 use crate::routing::remote::ConnectionDropped;
-use crate::routing::ws::{CloseReason, JoinedStreamSink, WsConnections};
 use crate::routing::{
     Route, RoutingAddr, ServerRouter, ServerRouterFactory, TaggedEnvelope, TaggedSender,
 };
@@ -30,7 +28,10 @@ use std::io;
 use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::Arc;
-use swim_common::ws::protocol::WsMessage;
+use swim_common::routing::server::{
+    ResolutionError, RouterError, ServerConnectionError, Unresolvable,
+};
+use swim_common::routing::ws::{CloseReason, JoinedStreamSink, WsConnections, WsMessage};
 use tokio::sync::mpsc;
 use url::Url;
 use utilities::sync::promise;
@@ -72,10 +73,14 @@ impl ServerRouter for LocalRoutes {
             if *countdown == 0 {
                 Ok(route.clone())
             } else {
-                Err(ResolutionError::Unresolvable(Unresolvable(addr)))
+                Err(ResolutionError::Unresolvable(Unresolvable(
+                    addr.to_string(),
+                )))
             }
         } else {
-            Err(ResolutionError::Unresolvable(Unresolvable(addr)))
+            Err(ResolutionError::Unresolvable(Unresolvable(
+                addr.to_string(),
+            )))
         };
         ready(result).boxed()
     }
@@ -87,7 +92,9 @@ impl ServerRouter for LocalRoutes {
     ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
         let mut lock = self.1.lock();
         let result = if host.is_some() {
-            Err(RouterError::ConnectionFailure(ConnectionError::Resolution))
+            Err(RouterError::ConnectionFailure(
+                ServerConnectionError::Resolution,
+            ))
         } else {
             if let Some((addr, countdown)) = lock.uri_mappings.get_mut(&route) {
                 if *countdown == 0 {
@@ -99,7 +106,7 @@ impl ServerRouter for LocalRoutes {
                         *countdown -= 1;
                     }
                     // A non-fatal error that will allow a retry.
-                    Err(RouterError::ConnectionFailure(ConnectionError::Warp(
+                    Err(RouterError::ConnectionFailure(ServerConnectionError::Warp(
                         "Oh no!".to_string(),
                     )))
                 }
@@ -173,13 +180,13 @@ impl ServerRouterFactory for LocalRoutes {
 
 pub mod fake_channel {
 
-    use crate::routing::ws::{CloseReason, JoinedStreamSink};
     use futures::channel::mpsc;
     use futures::future::ready;
     use futures::future::BoxFuture;
     use futures::{ready, FutureExt, Sink, SinkExt, Stream, StreamExt};
     use std::pin::Pin;
     use std::task::{Context, Poll};
+    use swim_common::routing::ws::{CloseReason, JoinedStreamSink};
 
     pub struct TwoWayMpsc<T, E> {
         tx: mpsc::Sender<T>,
@@ -399,7 +406,7 @@ pub(crate) struct FakeWebsockets;
 
 impl WsConnections<FakeSocket> for FakeWebsockets {
     type StreamSink = FakeWebsocket;
-    type Fut = BoxFuture<'static, Result<Self::StreamSink, ConnectionError>>;
+    type Fut = BoxFuture<'static, Result<Self::StreamSink, ServerConnectionError>>;
 
     fn open_connection(&self, socket: FakeSocket, _host: String) -> Self::Fut {
         ready(Ok(FakeWebsocket::new(socket))).boxed()
@@ -428,7 +435,7 @@ impl FakeWebsocket {
 }
 
 impl Stream for FakeWebsocket {
-    type Item = Result<WsMessage, ConnectionError>;
+    type Item = Result<WsMessage, ServerConnectionError>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let FakeWebsocket {
@@ -460,11 +467,11 @@ impl Stream for FakeWebsocket {
 }
 
 impl Sink<WsMessage> for FakeWebsocket {
-    type Error = ConnectionError;
+    type Error = ServerConnectionError;
 
     fn poll_ready(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         if self.closed {
-            Poll::Ready(Err(ConnectionError::Closed))
+            Poll::Ready(Err(ServerConnectionError::Closed))
         } else {
             Poll::Ready(Ok(()))
         }
@@ -472,7 +479,7 @@ impl Sink<WsMessage> for FakeWebsocket {
 
     fn start_send(self: Pin<&mut Self>, item: WsMessage) -> Result<(), Self::Error> {
         if self.closed {
-            Err(ConnectionError::Closed)
+            Err(ServerConnectionError::Closed)
         } else {
             Ok(self.get_mut().inner.output.push(item))
         }
@@ -480,7 +487,7 @@ impl Sink<WsMessage> for FakeWebsocket {
 
     fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         if self.closed {
-            Poll::Ready(Err(ConnectionError::Closed))
+            Poll::Ready(Err(ServerConnectionError::Closed))
         } else {
             Poll::Ready(Ok(()))
         }
@@ -494,8 +501,8 @@ impl Sink<WsMessage> for FakeWebsocket {
     }
 }
 
-impl JoinedStreamSink<WsMessage, ConnectionError> for FakeWebsocket {
-    type CloseFut = BoxFuture<'static, Result<(), ConnectionError>>;
+impl JoinedStreamSink<WsMessage, ServerConnectionError> for FakeWebsocket {
+    type CloseFut = BoxFuture<'static, Result<(), ServerConnectionError>>;
 
     fn close(self, _reason: Option<CloseReason>) -> Self::CloseFut {
         let FakeWebsocket { waker, .. } = self;

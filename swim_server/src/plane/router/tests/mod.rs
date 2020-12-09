@@ -14,10 +14,11 @@
 
 use crate::plane::router::{PlaneRouter, PlaneRouterFactory};
 use crate::plane::PlaneRequest;
-use crate::routing::error::{ConnectionError, ResolutionError, RouterError, Unresolvable};
 use crate::routing::remote::RawRoute;
 use crate::routing::{RoutingAddr, ServerRouter, ServerRouterFactory, TaggedEnvelope};
 use futures::future::join;
+use swim_common::routing::server::ResolutionError;
+use swim_common::routing::server::{RouterError, ServerConnectionError, Unresolvable};
 use swim_common::warp::envelope::Envelope;
 use tokio::sync::mpsc;
 use url::Url;
@@ -41,7 +42,7 @@ async fn plane_router_get_sender() {
                         .send_ok(RawRoute::new(send_tx.clone(), drop_rx.clone()))
                         .is_ok());
                 } else {
-                    assert!(request.send_err(Unresolvable(id)).is_ok());
+                    assert!(request.send_err(Unresolvable(id.to_string())).is_ok());
                 }
             } else {
                 panic!("Unexpected request {:?}!", req);
@@ -105,7 +106,7 @@ async fn plane_router_resolve() {
                     assert!(request.send_ok(addr).is_ok());
                 } else if host.is_some() {
                     assert!(request
-                        .send_err(RouterError::ConnectionFailure(ConnectionError::Warp(
+                        .send_err(RouterError::ConnectionFailure(ServerConnectionError::Warp(
                             "Boom!".to_string()
                         )))
                         .is_ok());
@@ -129,7 +130,7 @@ async fn plane_router_resolve() {
             .await;
         assert!(matches!(
             result2,
-            Err(RouterError::ConnectionFailure(ConnectionError::Warp(msg))) if msg == "Boom!"
+            Err(RouterError::ConnectionFailure(ServerConnectionError::Warp(msg))) if msg == "Boom!"
         ));
 
         let result3 = router.lookup(None, "/node".parse().unwrap()).await;

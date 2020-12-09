@@ -22,7 +22,6 @@ use crate::agent::lane::channels::{
 };
 use crate::agent::lane::model::action::{Action, ActionLane};
 use crate::agent::Eff;
-use crate::routing::error::{ResolutionError, RouterError, SendError};
 use crate::routing::{
     ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedClientEnvelope, TaggedEnvelope,
     TaggedSender,
@@ -38,6 +37,8 @@ use std::time::Duration;
 use stm::transaction::TransactionError;
 use swim_common::form::{Form, FormErr};
 use swim_common::model::Value;
+use swim_common::routing::server::{ResolutionError, RouterError, SendError};
+use swim_common::routing::RoutingError;
 use swim_common::sink::item::ItemSink;
 use swim_common::topic::{MpscTopic, Topic};
 use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
@@ -336,7 +337,13 @@ impl<'a> ItemSink<'a, Envelope> for TestSender {
 
     fn send_item(&'a mut self, value: Envelope) -> Self::SendFuture {
         let tagged = TaggedEnvelope(self.addr, value);
-        async move { self.inner.send(tagged).await.map_err(Into::into) }.boxed()
+        async move {
+            self.inner.send(tagged).await.map_err(|err| {
+                let TaggedEnvelope(_, envelope) = err.0;
+                SendError::new(RoutingError::RouterDropped, envelope)
+            })
+        }
+        .boxed()
     }
 }
 
