@@ -36,7 +36,7 @@ use std::time::Duration;
 use swim_common::model::parser::{self, ParseFailure};
 use swim_common::warp::envelope::{Envelope, EnvelopeParseErr};
 use swim_common::warp::path::RelativePath;
-use swim_common::ws::WsMessage;
+use swim_common::ws::protocol::WsMessage;
 use tokio::sync::mpsc;
 use tokio::time::{sleep, Instant};
 use utilities::errors::Recoverable;
@@ -170,7 +170,7 @@ where
                                 break c;
                             }
                         },
-                        WsMessage::Binary(_) => {}
+                        _ => {}
                     },
                     Err(err) => {
                         break Completion::Failed(err);

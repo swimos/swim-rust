@@ -43,3 +43,4 @@ tokio = { version = "0.3.3", features = ["fs", "macros"] }
 rand = "0.7"
 num-bigint = { version = "0.3", features = ["rand"] }
 trybuild = "1.0.17"
+parking_lot = "0.11.0"

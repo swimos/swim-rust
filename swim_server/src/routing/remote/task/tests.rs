@@ -25,7 +25,6 @@ use tokio::sync::{mpsc, watch};
 use swim_common::model::Value;
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
-use swim_common::ws::WsMessage;
 use swim_runtime::time::timeout;
 use utilities::future::retryable::strategy::{Quantity, RetryStrategy};
 use utilities::sync::{promise, trigger};
@@ -39,6 +38,7 @@ use crate::routing::{ConnectionDropped, Route, RoutingAddr, TaggedEnvelope, Tagg
 use futures::io::ErrorKind;
 use std::num::NonZeroUsize;
 use std::time::Duration;
+use swim_common::ws::protocol::WsMessage;
 
 #[test]
 fn dispatch_error_display() {

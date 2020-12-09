@@ -27,7 +27,7 @@ pub mod async_factory {
 
     use crate::connections::factory::tungstenite::HostConfig;
     use swim_common::ws::error::ConnectionError;
-    use swim_common::ws::WsMessage;
+    use swim_common::ws::protocol::WsMessage;
     use swim_runtime::task::{spawn, TaskHandle};
 
     /// A request for a new connection.

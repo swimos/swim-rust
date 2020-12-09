@@ -26,7 +26,8 @@ use crate::connections::factory::async_factory::AsyncFactory;
 
 use super::*;
 use crate::connections::factory::tungstenite::HostConfig;
-use swim_common::ws::{ConnFuture, Protocol};
+use swim_common::ws::protocol::Protocol;
+use swim_common::ws::ConnFuture;
 use tokio_tungstenite::tungstenite::extensions::compression::WsCompression;
 
 #[tokio::test]

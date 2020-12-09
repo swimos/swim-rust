@@ -19,11 +19,10 @@ use tokio_tungstenite::tungstenite::protocol::{CloseFrame, WebSocketConfig};
 use tokio_tungstenite::tungstenite::{Error, Message};
 use tokio_tungstenite::WebSocketStream;
 
-use swim_common::ws::WsMessage;
-
 use crate::routing::error::ConnectionError;
 use crate::routing::ws::{CloseReason, JoinedStreamSink, TransformedStreamSink, WsConnections};
 use swim_common::ws::error::WebSocketError;
+use swim_common::ws::protocol::WsMessage;
 use tokio::io::{AsyncRead, AsyncWrite};
 
 type TError = tokio_tungstenite::tungstenite::Error;

@@ -23,7 +23,8 @@ use swim_common::request::Request;
 
 use std::ops::Deref;
 use swim_common::ws::error::{ConnectionError, WebSocketError};
-use swim_common::ws::{ConnFuture, WebsocketFactory, WsMessage};
+use swim_common::ws::protocol::WsMessage;
+use swim_common::ws::{ConnFuture, WebsocketFactory};
 use utilities::future::{TransformMut, TransformedSink, TransformedStream};
 
 /// A transformer that converts from a [`swim_common::ws::WsMessage`] to
@@ -36,6 +37,11 @@ impl TransformMut<WsMessage> for SinkTransformer {
         match input {
             WsMessage::Binary(v) => WasmMessage::Binary(v),
             WsMessage::Text(v) => WasmMessage::Text(v),
+            m => {
+                // todo: Wasm-stream-sink doesn't provide the functionality to handle ping, pong,
+                //  and close frames. Reliance on this crate needs to be removed and rewritten.
+                panic!("Unable to handle {:?} messages", m)
+            }
         }
     }
 }

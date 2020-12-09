@@ -24,7 +24,7 @@ use swim_common::model::parser::parse_single;
 use swim_common::routing::RoutingError;
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
-use swim_common::ws::WsMessage;
+use swim_common::ws::protocol::WsMessage;
 use tokio::sync::mpsc;
 use tracing::level_filters::STATIC_MAX_LEVEL;
 use tracing::{debug, error, span, trace, warn, Level};
@@ -133,7 +133,7 @@ impl IncomingHostTask {
                     let value = {
                         match &message {
                             WsMessage::Text(s) => parse_single(&s),
-                            WsMessage::Binary(_) => unimplemented!("Binary not supported yet"),
+                            _ => unimplemented!("Only text messages are implemented"),
                         }
                     };
 

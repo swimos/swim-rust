@@ -18,7 +18,7 @@ use futures::task::{Context, Poll};
 use futures::{Sink, Stream};
 use std::pin::Pin;
 use swim_common::ws::error::ConnectionError;
-use swim_common::ws::{Protocol, WsMessage};
+use swim_common::ws::protocol::{Protocol, WsMessage};
 use tokio_tungstenite::tungstenite::extensions::compression::WsCompression;
 
 #[derive(Debug, PartialEq, Eq)]

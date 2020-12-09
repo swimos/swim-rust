@@ -24,7 +24,7 @@ use swim_common::request::request_future::RequestError;
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::AbsolutePath;
 use swim_common::ws::error::{ConnectionError, WebSocketError};
-use swim_common::ws::WsMessage;
+use swim_common::ws::protocol::WsMessage;
 use tokio::sync::mpsc;
 use tokio::time::timeout;
 use utilities::sync::promise;

@@ -454,7 +454,8 @@ impl SwimConnection {
 }
 
 use swim_common::ws::error::ConnectionError;
-use swim_common::ws::{WebsocketFactory, WsMessage};
+use swim_common::ws::protocol::WsMessage;
+use swim_common::ws::WebsocketFactory;
 use swim_runtime::task::*;
 use swim_runtime::time::instant::Instant;
 use swim_runtime::time::interval::interval;

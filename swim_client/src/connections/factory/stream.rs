@@ -15,8 +15,8 @@
 use crate::connections::factory::tungstenite::{MaybeTlsStream, TError};
 use http::Request;
 use swim_common::ws::error::{ConnectionError, WebSocketError};
+use swim_common::ws::protocol::{Protocol, WsMessage};
 use swim_common::ws::tls::connect_tls;
-use swim_common::ws::{Protocol, WsMessage};
 use tokio::net::TcpStream;
 use tokio_tungstenite::stream::Stream as StreamSwitcher;
 use tokio_tungstenite::tungstenite::Message;
@@ -61,10 +61,7 @@ impl TransformMut<WsMessage> for SinkTransformer {
     type Out = Message;
 
     fn transform(&mut self, input: WsMessage) -> Self::Out {
-        match input {
-            WsMessage::Text(s) => Message::Text(s),
-            WsMessage::Binary(v) => Message::Binary(v),
-        }
+        input.into()
     }
 }
 
@@ -74,11 +71,7 @@ impl TransformMut<Result<Message, TError>> for StreamTransformer {
 
     fn transform(&mut self, input: Result<Message, TError>) -> Self::Out {
         match input {
-            Ok(i) => match i {
-                Message::Text(s) => Ok(WsMessage::Text(s)),
-                Message::Binary(v) => Ok(WsMessage::Binary(v)),
-                _ => Err(ConnectionError::ReceiveMessageError),
-            },
+            Ok(i) => Ok(i.into()),
             Err(_) => Err(ConnectionError::ConnectError),
         }
     }
