@@ -38,7 +38,7 @@ use std::error::Error;
 use swim_common::model::schema::StandardSchema;
 use swim_common::model::Value;
 use swim_common::request::TryRequest;
-use swim_common::routing::ws::ConnectionError;
+use swim_common::routing::ConnectionError;
 use swim_common::routing::RoutingError;
 use swim_common::topic::Topic;
 use tracing::{instrument, trace};

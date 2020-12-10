@@ -18,9 +18,12 @@ use std::fmt;
 use std::fmt::{Debug, Formatter};
 use std::path::Path;
 use tokio_native_tls::native_tls::Certificate;
-use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode as TungCloseCode;
-use tokio_tungstenite::tungstenite::protocol::CloseFrame;
-use tokio_tungstenite::tungstenite::Message;
+
+#[cfg(feature = "tungstenite")]
+use {
+    tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode as TungCloseCode,
+    tokio_tungstenite::tungstenite::protocol::CloseFrame, tokio_tungstenite::tungstenite::Message,
+};
 
 #[derive(Clone)]
 pub enum Protocol {
@@ -91,6 +94,7 @@ impl<'t> From<CloseFrame<'t>> for CloseReason {
     }
 }
 
+#[cfg(feature = "tungstenite")]
 impl<'t> From<CloseReason> for CloseFrame<'t> {
     fn from(reason: CloseReason) -> Self {
         let CloseReason { code, reason } = reason;

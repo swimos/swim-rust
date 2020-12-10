@@ -21,7 +21,7 @@ mod protocol;
 mod stream;
 mod utils;
 
-use crate::routing::server::ServerConnectionError;
+use crate::routing::error::ConnectionError;
 pub use error::*;
 pub use protocol::*;
 pub use stream::*;
@@ -48,8 +48,8 @@ pub trait WebsocketFactory: Send + Sync {
 
 /// Trait to provide a service to negotiate a web socket connection on top of a socket.
 pub trait WsConnections<Sock: Send + Sync + Unpin> {
-    type StreamSink: JoinedStreamSink<WsMessage, ServerConnectionError> + Send + Unpin + 'static;
-    type Fut: Future<Output = Result<Self::StreamSink, ServerConnectionError>> + Send + 'static;
+    type StreamSink: JoinedStreamSink<WsMessage, ConnectionError> + Send + Unpin + 'static;
+    type Fut: Future<Output = Result<Self::StreamSink, ConnectionError>> + Send + 'static;
 
     /// Negotiate a new client connection.
     fn open_connection(&self, socket: Sock, addr: String) -> Self::Fut;

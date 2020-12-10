@@ -27,8 +27,8 @@ use futures_util::stream::TakeUntil;
 use std::future::Future;
 use std::io;
 use std::net::SocketAddr;
-use swim_common::routing::server::ServerConnectionError;
 use swim_common::routing::ws::WsConnections;
+use swim_common::routing::ConnectionError;
 use tokio::sync::mpsc;
 use utilities::future::open_ended::OpenEndedFutures;
 use utilities::sync::promise::Sender;
@@ -79,7 +79,7 @@ pub trait RemoteTasksState {
     fn defer_dns_lookup(&mut self, target: HostAndPort, request: ResolutionRequest);
 
     /// Flush out pending state for a failed connection.
-    fn fail_connection(&mut self, host: &HostAndPort, error: ServerConnectionError);
+    fn fail_connection(&mut self, host: &HostAndPort, error: ConnectionError);
 
     /// Resolve an entry in the routing table.
     fn table_resolve(&self, addr: RoutingAddr) -> Option<RawRoute>;
@@ -219,7 +219,7 @@ where
         self.pending.add(target, request);
     }
 
-    fn fail_connection(&mut self, host: &HostAndPort, error: ServerConnectionError) {
+    fn fail_connection(&mut self, host: &HostAndPort, error: ConnectionError) {
         self.pending.send_err(host, error);
     }
 
@@ -356,15 +356,15 @@ where
 #[derive(Debug)]
 pub enum DeferredResult<Snk> {
     ServerHandshake {
-        result: Result<Snk, ServerConnectionError>,
+        result: Result<Snk, ConnectionError>,
         sock_addr: SocketAddr,
     },
     ClientHandshake {
-        result: Result<(Snk, SocketAddr), ServerConnectionError>,
+        result: Result<(Snk, SocketAddr), ConnectionError>,
         host: HostAndPort,
     },
     FailedConnection {
-        error: ServerConnectionError,
+        error: ConnectionError,
         remaining: SocketAddrIt,
         host: HostAndPort,
     },
@@ -375,15 +375,12 @@ pub enum DeferredResult<Snk> {
 }
 
 impl<Snk> DeferredResult<Snk> {
-    fn incoming_handshake(
-        result: Result<Snk, ServerConnectionError>,
-        sock_addr: SocketAddr,
-    ) -> Self {
+    fn incoming_handshake(result: Result<Snk, ConnectionError>, sock_addr: SocketAddr) -> Self {
         DeferredResult::ServerHandshake { result, sock_addr }
     }
 
     fn outgoing_handshake(
-        result: Result<(Snk, SocketAddr), ServerConnectionError>,
+        result: Result<(Snk, SocketAddr), ConnectionError>,
         host: HostAndPort,
     ) -> Self {
         DeferredResult::ClientHandshake { result, host }
@@ -394,7 +391,7 @@ impl<Snk> DeferredResult<Snk> {
     }
 
     fn failed_connection(
-        error: ServerConnectionError,
+        error: ConnectionError,
         remaining: std::vec::IntoIter<SocketAddr>,
         host: HostAndPort,
     ) -> Self {
@@ -437,7 +434,7 @@ async fn do_handshake<Socket, Ws>(
     socket: Socket,
     websockets: &Ws,
     peer_addr: SocketAddr,
-) -> Result<Ws::StreamSink, ServerConnectionError>
+) -> Result<Ws::StreamSink, ConnectionError>
 where
     Socket: Send + Sync + Unpin,
     Ws: WsConnections<Socket>,
@@ -474,7 +471,7 @@ async fn connect_and_handshake_single<External: ExternalConnections, Ws>(
     addr: SocketAddr,
     websockets: &Ws,
     host: String,
-) -> Result<Ws::StreamSink, ServerConnectionError>
+) -> Result<Ws::StreamSink, ConnectionError>
 where
     Ws: WsConnections<External::Socket>,
 {

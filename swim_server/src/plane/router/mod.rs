@@ -13,12 +13,12 @@
 // limitations under the License.
 
 use crate::plane::PlaneRequest;
+use crate::routing::error::{ResolutionError, RouterError};
 use crate::routing::remote::RawRoute;
 use crate::routing::{Route, RoutingAddr, ServerRouter, ServerRouterFactory, TaggedSender};
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use swim_common::request::Request;
-use swim_common::routing::server::{ResolutionError, RouterError};
 use tokio::sync::{mpsc, oneshot};
 use url::Url;
 use utilities::uri::RelativeUri;

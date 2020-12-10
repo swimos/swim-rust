@@ -14,20 +14,21 @@
 
 use futures::stream::{SplitSink, SplitStream};
 use futures::{FutureExt, StreamExt};
+use std::io::ErrorKind;
+use swim_common::request::Request;
 use tokio::sync::{mpsc, oneshot};
 use url::Url;
 use wasm_bindgen_futures::spawn_local;
-use ws_stream_wasm::{WsErr, WsMessage as WasmMessage, WsMeta, WsStream};
-
-use swim_common::request::Request;
+use ws_stream_wasm::{CloseEvent, WsErr, WsMessage as WasmMessage, WsMeta, WsStream};
 
 use std::ops::Deref;
+use swim_common::routing::ws::WebSocketError;
 use swim_common::routing::ws::WsMessage;
 use swim_common::routing::ws::{ConnFuture, WebsocketFactory};
-use swim_common::routing::ws::{ConnectionError, WebSocketError};
+use swim_common::routing::{ConnectionError, ConnectionErrorKind};
 use utilities::future::{TransformMut, TransformedSink, TransformedStream};
 
-/// A transformer that converts from a [`swim_common::ws::WsMessage`] to
+/// A transformer that converts from a [`swim_common::routing::ws::WsMessage`] to
 /// [`ws_stream_wasm::WsMessage`].
 pub struct SinkTransformer;
 impl TransformMut<WsMessage> for SinkTransformer {
@@ -47,7 +48,7 @@ impl TransformMut<WsMessage> for SinkTransformer {
 }
 
 /// A transformer that converts from a [`ws_stream_wasm::WsMessage`] to
-/// [`swim_common::ws::WsMessage`].
+/// [`swim_common::routing::ws::WsMessage`].
 pub struct StreamTransformer;
 impl TransformMut<WasmMessage> for StreamTransformer {
     type Out = Result<WsMessage, ConnectionError>;
@@ -119,7 +120,10 @@ impl WebsocketFactory for WasmWsFactory {
                 url,
             };
 
-            self.sender.send(req).await?;
+            self.sender
+                .send(req)
+                .await
+                .map_err(|_| ConnectionError::new(ConnectionErrorKind::Closed))?;
             Ok(rx.await??)
         }
         .boxed()
@@ -141,14 +145,22 @@ impl Deref for WsError {
 impl From<WsError> for ConnectionError {
     fn from(e: WsError) -> Self {
         match &*e {
-            WsErr::InvalidUrl { supplied } => {
-                ConnectionError::SocketError(WebSocketError::Url(supplied.clone()))
+            WsErr::InvalidUrl { supplied } => ConnectionError::new(ConnectionErrorKind::Websocket(
+                WebSocketError::Url(supplied.clone()),
+            )),
+            WsErr::ConnectionFailed { event } => {
+                let CloseEvent { reason, .. } = event;
+                ConnectionError::with_cause(ConnectionErrorKind::Closed, reason.clone().into())
             }
-            WsErr::ConnectionFailed { .. } => ConnectionError::ConnectError,
-            WsErr::InvalidCloseCode { .. } => ConnectionError::AlreadyClosedError,
-            WsErr::ForbiddenPort => ConnectionError::SocketError(WebSocketError::Protocol),
-            WsErr::ConnectionNotOpen => ConnectionError::AlreadyClosedError,
-            _ => ConnectionError::ConnectError,
+            WsErr::InvalidCloseCode { .. } => ConnectionError::new(ConnectionErrorKind::Closed),
+            WsErr::ForbiddenPort => {
+                ConnectionError::new(ConnectionErrorKind::Websocket(WebSocketError::Protocol))
+            }
+            WsErr::ConnectionNotOpen => ConnectionError::new(ConnectionErrorKind::Closed),
+            e => ConnectionError::with_cause(
+                ConnectionErrorKind::Socket(ErrorKind::Other),
+                e.to_string().into(),
+            ),
         }
     }
 }

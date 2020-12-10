@@ -12,13 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::routing::error::{ResolutionError, RouterError};
 use futures::future::BoxFuture;
 use std::fmt::{Display, Formatter};
 use std::time::Duration;
-use swim_common::routing::server::{
-    ResolutionError, RouterError, SendError, ServerConnectionError,
-};
 use swim_common::routing::RoutingError;
+use swim_common::routing::{ConnectionError, SendError};
 use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
 use tokio::sync::mpsc;
 use url::Url;
@@ -26,6 +25,7 @@ use utilities::errors::Recoverable;
 use utilities::sync::promise;
 use utilities::uri::RelativeUri;
 
+pub mod error;
 pub mod remote;
 #[cfg(test)]
 mod tests;
@@ -151,7 +151,7 @@ pub enum ConnectionDropped {
     /// No data passed through the connection, in either direction, within the specified duration.
     TimedOut(Duration),
     /// A remote connection failed with an error.
-    Failed(ServerConnectionError),
+    Failed(ConnectionError),
     /// A local agent failed.
     AgentFailed,
     /// The promise indicating the reason was dropped (this is likely a bug).

@@ -24,7 +24,7 @@ use std::io::ErrorKind;
 use std::net::SocketAddr;
 use swim_common::model::Value;
 use swim_common::request::Request;
-use swim_common::routing::server::ServerConnectionError;
+use swim_common::routing::{ConnectionError, ConnectionErrorKind};
 use swim_common::warp::envelope::Envelope;
 use tokio::sync::{mpsc, oneshot};
 use utilities::sync::promise::Sender;
@@ -69,7 +69,7 @@ enum StateMutation {
     DeferHandshake(FakeSocket, SocketAddr),
     DeferConnect(HostAndPort, SocketAddr, Vec<SocketAddr>),
     DeferDns(HostAndPort),
-    FailConnection(HostAndPort, ServerConnectionError),
+    FailConnection(HostAndPort, ConnectionError),
     TableRemove(RoutingAddr),
 }
 
@@ -134,7 +134,7 @@ impl RemoteTasksState for FakeRemoteState {
         assert!(request.send_ok(RESP).is_ok());
     }
 
-    fn fail_connection(&mut self, host: &HostAndPort, error: ServerConnectionError) {
+    fn fail_connection(&mut self, host: &HostAndPort, error: ConnectionError) {
         self.recording
             .get_mut()
             .push(StateMutation::FailConnection(host.clone(), error));
@@ -249,7 +249,7 @@ async fn transition_request_endpoint_not_in_table() {
     assert!(result.is_ok());
 
     let result = req_rx.await;
-    assert!(matches!(result, Ok(Err(Unresolvable(a))) if a == addr.to_string()));
+    assert!(matches!(result, Ok(Err(Unresolvable(a))) if a == addr));
 }
 
 #[tokio::test]
@@ -370,7 +370,7 @@ fn transition_deferred_dns_empty() {
 
     state.check(vec![StateMutation::FailConnection(
         host,
-        ServerConnectionError::Resolution,
+        ConnectionError::new(ConnectionErrorKind::Resolution),
     )]);
     assert!(result.is_ok());
 }
@@ -391,7 +391,7 @@ fn transition_deferred_dns_failed() {
 
     state.check(vec![StateMutation::FailConnection(
         host,
-        ServerConnectionError::Socket(ErrorKind::NotFound),
+        ConnectionError::new(ConnectionErrorKind::Socket(ErrorKind::NotFound)),
     )]);
     assert!(result.is_ok());
 }
@@ -447,9 +447,9 @@ fn transition_deferred_client_handshake_success() {
 fn transition_deferred_server_handshake_failed() {
     let sa = sock_addr();
 
-    let handshake_response = Err(ServerConnectionError::Socket(
+    let handshake_response = Err(ConnectionError::new(ConnectionErrorKind::Socket(
         ErrorKind::ConnectionReset.into(),
-    ));
+    )));
 
     let mut state = FakeRemoteState::default();
     let mut result = Ok(());
@@ -468,9 +468,9 @@ fn transition_deferred_server_handshake_failed() {
 fn transition_deferred_client_handshake_failed() {
     let host = HostAndPort::new("my_host".to_string(), 80);
 
-    let handshake_response = Err(ServerConnectionError::Socket(
+    let handshake_response = Err(ConnectionError::new(ConnectionErrorKind::Socket(
         ErrorKind::ConnectionReset.into(),
-    ));
+    )));
 
     let mut state = FakeRemoteState::default();
     let mut result = Ok(());
@@ -483,7 +483,9 @@ fn transition_deferred_client_handshake_failed() {
 
     state.check(vec![StateMutation::FailConnection(
         host,
-        ServerConnectionError::Socket(ErrorKind::ConnectionReset.into()),
+        ConnectionError::new(ConnectionErrorKind::Socket(
+            ErrorKind::ConnectionReset.into(),
+        )),
     )]);
     assert!(result.is_ok());
 }
@@ -497,7 +499,7 @@ fn transition_deferred_connection_failed_with_remaining() {
     let mut result = Ok(());
 
     let event = Event::Deferred(DeferredResult::FailedConnection {
-        error: ServerConnectionError::Socket(ErrorKind::ConnectionReset),
+        error: ConnectionError::new(ConnectionErrorKind::Socket(ErrorKind::ConnectionReset)),
         remaining: vec![sa].into_iter(),
         host: host.clone(),
     });
@@ -515,7 +517,7 @@ fn transition_deferred_connection_failed_no_remaining() {
     let mut result = Ok(());
 
     let event = Event::Deferred(DeferredResult::FailedConnection {
-        error: ServerConnectionError::Socket(ErrorKind::ConnectionReset),
+        error: ConnectionError::new(ConnectionErrorKind::Socket(ErrorKind::ConnectionReset)),
         remaining: vec![].into_iter(),
         host: host.clone(),
     });
@@ -523,7 +525,7 @@ fn transition_deferred_connection_failed_no_remaining() {
 
     state.check(vec![StateMutation::FailConnection(
         host,
-        ServerConnectionError::Socket(ErrorKind::ConnectionReset),
+        ConnectionError::new(ConnectionErrorKind::Socket(ErrorKind::ConnectionReset)),
     )]);
     assert!(result.is_ok());
 }

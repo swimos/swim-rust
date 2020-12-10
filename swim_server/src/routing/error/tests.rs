@@ -12,10 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::routing::error::{ConnectionError, ResolutionError, RouterError, Unresolvable};
+use crate::routing::error::{ResolutionError, RouterError, Unresolvable};
 use crate::routing::RoutingAddr;
-use std::io;
-use swim_common::routing::ws::WebSocketError;
+use swim_common::routing::{ConnectionError, ConnectionErrorKind};
 use utilities::uri::RelativeUri;
 
 #[test]
@@ -42,7 +41,9 @@ fn router_error_display() {
     let string = RouterError::NoAgentAtRoute(uri).to_string();
     assert_eq!(string, "No agent at: '/name'");
 
-    let string = RouterError::ConnectionFailure(ConnectionError::ClosedRemotely).to_string();
+    let string =
+        RouterError::ConnectionFailure(ConnectionError::new(ConnectionErrorKind::ClosedRemotely))
+            .to_string();
     assert_eq!(
         string,
         "Failed to route to requested endpoint: 'The connection was closed remotely.'"
@@ -50,25 +51,4 @@ fn router_error_display() {
 
     let string = RouterError::RouterDropped.to_string();
     assert_eq!(string, "The router channel was dropped.");
-}
-
-#[test]
-fn connection_error_display() {
-    let string = ConnectionError::ClosedRemotely.to_string();
-    assert_eq!(string, "The connection was closed remotely.");
-
-    let string = ConnectionError::Resolution.to_string();
-    assert_eq!(string, "The specified host could not be resolved.");
-
-    let string = ConnectionError::Warp("Bad".to_string()).to_string();
-    assert_eq!(string, "Warp protocol error: 'Bad'");
-
-    let string = ConnectionError::Websocket(WebSocketError::Protocol).to_string();
-    assert_eq!(string, "Web socket error: 'A protocol error occurred.'");
-
-    let string = ConnectionError::Socket(io::ErrorKind::ConnectionRefused).to_string();
-    assert_eq!(string, "IO error: 'ConnectionRefused'");
-
-    let string = ConnectionError::Closed.to_string();
-    assert_eq!(string, "The connection has been closed.");
 }

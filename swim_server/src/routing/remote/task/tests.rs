@@ -30,6 +30,7 @@ use utilities::future::retryable::strategy::{Quantity, RetryStrategy};
 use utilities::sync::{promise, trigger};
 use utilities::uri::{BadRelativeUri, RelativeUri, UriIsAbsolute};
 
+use crate::routing::error::{ResolutionError, RouterError};
 use crate::routing::remote::task::{ConnectionTask, DispatchError};
 use crate::routing::remote::test_fixture::fake_channel::TwoWayMpsc;
 use crate::routing::remote::test_fixture::LocalRoutes;
@@ -37,8 +38,8 @@ use crate::routing::{ConnectionDropped, Route, RoutingAddr, TaggedEnvelope, Tagg
 use futures::io::ErrorKind;
 use std::num::NonZeroUsize;
 use std::time::Duration;
-use swim_common::routing::server::{ResolutionError, RouterError, ServerConnectionError};
 use swim_common::routing::ws::WsMessage;
+use swim_common::routing::{ConnectionError, ConnectionErrorKind};
 
 #[test]
 fn dispatch_error_display() {
@@ -358,11 +359,11 @@ async fn dispatch_after_immediate_retry() {
 struct TaskFixture {
     router: LocalRoutes,
     task: BoxFuture<'static, ConnectionDropped>,
-    sock_in: fut_mpsc::Sender<Result<WsMessage, ServerConnectionError>>,
+    sock_in: fut_mpsc::Sender<Result<WsMessage, ConnectionError>>,
     sock_out: fut_mpsc::Receiver<WsMessage>,
     envelope_tx: mpsc::Sender<TaggedEnvelope>,
     stop_trigger: trigger::Sender,
-    send_error_tx: watch::Sender<Option<ServerConnectionError>>,
+    send_error_tx: watch::Sender<Option<ConnectionError>>,
 }
 
 impl TaskFixture {
@@ -451,25 +452,16 @@ async fn task_send_message_failure() {
         let tagged = TaggedEnvelope(RoutingAddr::local(100), env_cpy.clone());
 
         assert!(send_error_tx
-            .send(Some(ServerConnectionError::Socket(
+            .send(Some(ConnectionError::new(ConnectionErrorKind::Socket(
                 ErrorKind::ConnectionReset
-            )))
+            ))))
             .is_ok());
         assert!(envelope_tx.send(tagged).await.is_ok());
     };
 
     let result = timeout::timeout(Duration::from_secs(5), join(task, test_case)).await;
-    assert!(matches!(
-        result,
-        Ok(
-            (
-                ConnectionDropped::Failed(
-                    ServerConnectionError::Socket(ErrorKind::ConnectionReset),
-                ),
-                _
-            ),
-        )
-    ));
+    let _err = ConnectionError::new(ConnectionErrorKind::Socket(ErrorKind::ConnectionReset));
+    assert!(matches!(result, Ok((ConnectionDropped::Failed(_err), _))));
 }
 
 #[tokio::test]
@@ -536,25 +528,16 @@ async fn task_receive_error() {
 
     let test_case = async move {
         assert!(sock_in
-            .send(Err(ServerConnectionError::Socket(
+            .send(Err(ConnectionError::new(ConnectionErrorKind::Socket(
                 ErrorKind::ConnectionReset
-            )))
+            ))))
             .await
             .is_ok());
     };
 
     let result = timeout::timeout(Duration::from_secs(5), join(task, test_case)).await;
-    assert!(matches!(
-        result,
-        Ok(
-            (
-                ConnectionDropped::Failed(
-                    ServerConnectionError::Socket(ErrorKind::ConnectionReset),
-                ),
-                _
-            ),
-        )
-    ));
+    let _err = ConnectionError::new(ConnectionErrorKind::Socket(ErrorKind::ConnectionReset));
+    assert!(matches!(result, Ok((ConnectionDropped::Failed(_err), _))));
 }
 
 #[tokio::test]
@@ -575,15 +558,8 @@ async fn task_stopped_remotely() {
     };
 
     let result = timeout::timeout(Duration::from_secs(5), join(task, test_case)).await;
-    assert!(matches!(
-        result,
-        Ok(
-            (
-                ConnectionDropped::Failed(ServerConnectionError::ClosedRemotely),
-                _
-            ),
-        )
-    ));
+    let _err = ConnectionError::new(ConnectionErrorKind::ClosedRemotely);
+    assert!(matches!(result, Ok((ConnectionDropped::Failed(_err), _))));
 }
 
 #[tokio::test]
@@ -635,8 +611,6 @@ async fn task_receive_bad_message() {
     };
 
     let result = timeout::timeout(Duration::from_secs(5), join(task, test_case)).await;
-    assert!(matches!(
-        result,
-        Ok((ConnectionDropped::Failed(ServerConnectionError::Warp(_)), _))
-    ));
+    let _err = ConnectionError::new(ConnectionErrorKind::Warp);
+    assert!(matches!(result, Ok((ConnectionDropped::Failed(_err), _))));
 }

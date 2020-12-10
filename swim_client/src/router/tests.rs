@@ -21,8 +21,9 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use swim_common::model::Value;
 use swim_common::request::request_future::RequestError;
+use swim_common::routing::ws::WebSocketError;
 use swim_common::routing::ws::WsMessage;
-use swim_common::routing::ws::{ConnectionError, WebSocketError};
+use swim_common::routing::{ConnectionError, ConnectionErrorKind};
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::AbsolutePath;
 use tokio::sync::mpsc;
@@ -1631,7 +1632,9 @@ async fn test_route_incoming_unreachable_host() {
 
     assert_eq!(
         stream.recv().await.unwrap(),
-        RouterEvent::Unreachable("An error was produced by the web socket: An invalid URL (ws://unreachable/) was supplied".to_string())
+        RouterEvent::Unreachable(
+            "Websocket error: \"An invalid URL (ws://unreachable/) was supplied\"".to_string()
+        )
     );
 
     assert_eq!(get_request_count(&pool), 1);
@@ -1819,9 +1822,9 @@ impl ConnectionPool for TestPool {
         let host_url_string = host_url.to_string();
         if host_url == self.permanent_error_url {
             self.log_request(host_url, recreate);
-            return ready(Ok(Err(ConnectionError::SocketError(WebSocketError::Url(
-                host_url_string,
-            )))))
+            return ready(Ok(Err(ConnectionError::new(
+                ConnectionErrorKind::Websocket(WebSocketError::Url(host_url_string)),
+            ))))
             .boxed();
         }
 

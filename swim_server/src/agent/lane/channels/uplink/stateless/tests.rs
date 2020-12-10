@@ -28,7 +28,7 @@ use swim_common::warp::path::RelativePath;
 use crate::agent::lane::channels::uplink::stateless::StatelessUplinks;
 use crate::agent::lane::channels::uplink::{AddressedUplinkMessage, UplinkAction, UplinkKind};
 use crate::agent::lane::channels::TaggedAction;
-use swim_common::routing::server::{ResolutionError, RouterError};
+use crate::routing::error::{ResolutionError, RouterError};
 use url::Url;
 use utilities::sync::promise;
 use utilities::uri::RelativeUri;

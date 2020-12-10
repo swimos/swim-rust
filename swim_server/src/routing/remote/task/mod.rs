@@ -15,6 +15,7 @@
 #[cfg(test)]
 mod tests;
 
+use crate::routing::error::{ResolutionError, RouterError};
 use crate::routing::remote::config::ConnectionConfig;
 use crate::routing::remote::router::RemoteRouter;
 use crate::routing::remote::RoutingRequest;
@@ -32,10 +33,10 @@ use std::future::Future;
 use std::str::FromStr;
 use std::time::Duration;
 use swim_common::model::parser::{self, ParseFailure};
-use swim_common::routing::server::{ResolutionError, RouterError, ServerConnectionError};
 use swim_common::routing::ws::selector::{SelectorResult, WsStreamSelector};
 use swim_common::routing::ws::{CloseCode, CloseReason};
 use swim_common::routing::ws::{JoinedStreamSink, WsMessage};
+use swim_common::routing::{ConnectionError, ConnectionErrorKind};
 use swim_common::warp::envelope::{Envelope, EnvelopeParseErr};
 use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc;
@@ -61,7 +62,7 @@ const ZERO: Duration = Duration::from_secs(0);
 /// Possible ways in which the task can end.
 #[derive(Debug)]
 enum Completion {
-    Failed(ServerConnectionError),
+    Failed(ConnectionError),
     TimedOut,
     StoppedRemotely,
     StoppedLocally,
@@ -69,19 +70,25 @@ enum Completion {
 
 impl From<ParseFailure> for Completion {
     fn from(err: ParseFailure) -> Self {
-        Completion::Failed(ServerConnectionError::Warp(err.to_string()))
+        Completion::Failed(ConnectionError::with_cause(
+            ConnectionErrorKind::Warp,
+            err.to_string().into(),
+        ))
     }
 }
 
 impl From<EnvelopeParseErr> for Completion {
     fn from(err: EnvelopeParseErr) -> Self {
-        Completion::Failed(ServerConnectionError::Warp(err.to_string()))
+        Completion::Failed(ConnectionError::with_cause(
+            ConnectionErrorKind::Warp,
+            err.to_string().into(),
+        ))
     }
 }
 
 impl<Str, Router> ConnectionTask<Str, Router>
 where
-    Str: JoinedStreamSink<WsMessage, ServerConnectionError> + Unpin,
+    Str: JoinedStreamSink<WsMessage, ConnectionError> + Unpin,
     Router: ServerRouter,
 {
     /// Create a new task.
@@ -140,7 +147,7 @@ where
                     .checked_add(activity_timeout)
                     .expect("Timer overflow."),
             );
-            let next: Option<Result<SelectorResult<WsMessage>, ServerConnectionError>> = select_biased! {
+            let next: Option<Result<SelectorResult<WsMessage>, ConnectionError>> = select_biased! {
                 _ = stop_fused => {
                     break Completion::StoppedLocally;
                 },
@@ -171,7 +178,10 @@ where
                                 break c;
                             }
                         },
-                        _ => {}
+                        WsMessage::Binary(_) => {}
+                        _ => {
+                            todo!()
+                        }
                     },
                     Err(err) => {
                         break Completion::Failed(err);
@@ -188,9 +198,13 @@ where
                 CloseCode::GoingAway,
                 "Stopped locally".to_string(),
             )),
-            Completion::Failed(ServerConnectionError::Warp(err)) => {
-                Some(CloseReason::new(CloseCode::ProtocolError, err.clone()))
-            }
+            Completion::Failed(e) if e.kind == ConnectionErrorKind::Warp => Some(CloseReason::new(
+                CloseCode::ProtocolError,
+                e.cause
+                    .clone()
+                    .unwrap_or_else(|| "WARP error".into())
+                    .into(),
+            )),
             _ => None,
         } {
             if let Err(_err) = ws_stream.close(Some(reason)).await {
@@ -202,7 +216,7 @@ where
             Completion::Failed(err) => ConnectionDropped::Failed(err),
             Completion::TimedOut => ConnectionDropped::TimedOut(activity_timeout),
             Completion::StoppedRemotely => {
-                ConnectionDropped::Failed(ServerConnectionError::ClosedRemotely)
+                ConnectionDropped::Failed(ConnectionError::new(ConnectionErrorKind::ClosedRemotely))
             }
             _ => ConnectionDropped::Closed,
         }
@@ -403,7 +417,7 @@ where
         spawner: &Sp,
     ) -> mpsc::Sender<TaggedEnvelope>
     where
-        Str: JoinedStreamSink<WsMessage, ServerConnectionError> + Send + Unpin + 'static,
+        Str: JoinedStreamSink<WsMessage, ConnectionError> + Send + Unpin + 'static,
         Sp: Spawner<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>>,
     {
         let TaskFactory {

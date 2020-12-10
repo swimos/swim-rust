@@ -12,35 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::request::request_future::RequestError;
-use futures::io::Error;
-use http::uri::InvalidUri;
 use std::fmt;
 use std::fmt::{Display, Formatter};
-use swim_runtime::task::TaskError;
-use tokio::sync::{mpsc, oneshot};
 
 const UNSUPPORTED_SCHEME: &str = "Unsupported URL scheme";
 const MISSING_SCHEME: &str = "Missing URL scheme";
-
-/// Connection error types returned by the connection pool and the connections.
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub enum ConnectionError {
-    /// Error that occurred when connecting to a remote host.
-    ConnectError,
-    /// A WebSocket error.  
-    SocketError(WebSocketError),
-    /// Error that occurred when sending messages.
-    SendMessageError,
-    /// Error that occurred when receiving messages.
-    ReceiveMessageError,
-    /// Error that occurred when closing down connections.
-    AlreadyClosedError,
-    /// The connection was refused by the host.
-    ConnectionRefused,
-    /// Not an error. Closed event by the WebSocket
-    Closed,
-}
 
 /// An error that occurred within the underlying WebSocket.
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -122,97 +98,5 @@ impl Display for WebSocketError {
             WebSocketError::Capacity => write!(f, "WebSocket buffer capacity exhausted"),
             WebSocketError::Extension(e) => write!(f, "An extension error occured: {}", e),
         }
-    }
-}
-
-#[cfg(feature = "tls")]
-impl From<CertificateError> for ConnectionError {
-    fn from(e: CertificateError) -> Self {
-        ConnectionError::SocketError(WebSocketError::CertificateError(e))
-    }
-}
-
-impl From<std::io::Error> for ConnectionError {
-    fn from(err: Error) -> Self {
-        ConnectionError::SocketError(WebSocketError::Message(err.to_string()))
-    }
-}
-
-impl Display for ConnectionError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match &self {
-            ConnectionError::ConnectError => {
-                write!(f, "An error was produced during a connection.")
-            }
-            ConnectionError::SocketError(wse) => {
-                write!(f, "An error was produced by the web socket: {}", wse)
-            }
-            ConnectionError::SendMessageError => {
-                write!(f, "An error occurred when sending a message.")
-            }
-            ConnectionError::ReceiveMessageError => {
-                write!(f, "An error occurred when receiving a message.")
-            }
-            ConnectionError::AlreadyClosedError => {
-                write!(f, "An error occurred when closing down connections.")
-            }
-            ConnectionError::Closed => write!(f, "The WebSocket closed successfully."),
-            ConnectionError::ConnectionRefused => {
-                write!(f, "The connection was refused by the host")
-            }
-        }
-    }
-}
-
-impl From<WebSocketError> for ConnectionError {
-    fn from(e: WebSocketError) -> Self {
-        ConnectionError::SocketError(e)
-    }
-}
-
-impl From<RequestError> for ConnectionError {
-    fn from(_: RequestError) -> Self {
-        ConnectionError::ConnectError
-    }
-}
-
-impl<T> From<mpsc::error::SendError<T>> for ConnectionError {
-    fn from(_: mpsc::error::SendError<T>) -> Self {
-        ConnectionError::ConnectError
-    }
-}
-
-impl From<oneshot::error::RecvError> for ConnectionError {
-    fn from(_: oneshot::error::RecvError) -> Self {
-        ConnectionError::ConnectError
-    }
-}
-
-impl ConnectionError {
-    /// Returns whether or not the error kind is deemed to be transient.
-    pub fn is_transient(&self) -> bool {
-        match &self {
-            ConnectionError::SocketError(_) => false,
-            ConnectionError::ConnectionRefused => true,
-            _ => true,
-        }
-    }
-}
-
-impl From<TaskError> for ConnectionError {
-    fn from(_: TaskError) -> Self {
-        ConnectionError::ConnectError
-    }
-}
-
-impl From<InvalidUri> for WebSocketError {
-    fn from(e: InvalidUri) -> Self {
-        WebSocketError::Url(e.to_string())
-    }
-}
-
-impl From<http::Error> for ConnectionError {
-    fn from(e: http::Error) -> Self {
-        ConnectionError::SocketError(WebSocketError::Url(e.to_string()))
     }
 }

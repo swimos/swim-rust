@@ -12,15 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::connections::factory::tungstenite::{MaybeTlsStream, TError};
+use crate::connections::factory::tungstenite::MaybeTlsStream;
 use http::Request;
 use swim_common::routing::ws::tls::connect_tls;
-use swim_common::routing::ws::{ConnectionError, WebSocketError};
+use swim_common::routing::ws::WebSocketError;
 use swim_common::routing::ws::{Protocol, WsMessage};
+use swim_common::routing::ConnectionError;
 use tokio::net::TcpStream;
 use tokio_tungstenite::stream::Stream as StreamSwitcher;
 use tokio_tungstenite::tungstenite::Message;
 use utilities::future::TransformMut;
+
+use swim_common::routing::{TError, TungsteniteError};
 
 pub fn get_stream_type<T>(
     request: &Request<T>,
@@ -57,6 +60,7 @@ pub async fn build_stream(
 }
 
 pub struct SinkTransformer;
+
 impl TransformMut<WsMessage> for SinkTransformer {
     type Out = Message;
 
@@ -66,13 +70,14 @@ impl TransformMut<WsMessage> for SinkTransformer {
 }
 
 pub struct StreamTransformer;
+
 impl TransformMut<Result<Message, TError>> for StreamTransformer {
     type Out = Result<WsMessage, ConnectionError>;
 
     fn transform(&mut self, input: Result<Message, TError>) -> Self::Out {
         match input {
-            Ok(i) => Ok(i.into()),
-            Err(_) => Err(ConnectionError::ConnectError),
+            Ok(r) => Ok(r.into()),
+            Err(e) => Err(TungsteniteError(e).into()),
         }
     }
 }

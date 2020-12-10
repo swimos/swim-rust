@@ -13,12 +13,8 @@
 // limitations under the License.
 
 use crate::routing::{RoutingAddr, TaggedEnvelope, TaggedSender};
-use swim_common::routing::server::{
-    ResolutionError, RouterError, ServerConnectionError, Unresolvable,
-};
 use swim_common::warp::envelope::Envelope;
 use tokio::sync::mpsc;
-use utilities::uri::RelativeUri;
 
 #[tokio::test]
 async fn tagged_sender() {
@@ -47,39 +43,4 @@ fn routing_addr_display() {
 
     let string = format!("{}", RoutingAddr::local(0x1a));
     assert_eq!(string, "Local(1A)");
-}
-
-#[test]
-fn unresolvable_display() {
-    let err = Unresolvable(RoutingAddr::local(4).to_string());
-
-    let string = err.to_string();
-
-    assert_eq!(string, "No active endpoint with ID: Local(4)");
-}
-
-#[test]
-fn resolution_error_display() {
-    let string =
-        ResolutionError::Unresolvable(Unresolvable(RoutingAddr::local(4).to_string())).to_string();
-    assert_eq!(string, "Address Local(4) could not be resolved.");
-
-    let string = ResolutionError::RouterDropped.to_string();
-    assert_eq!(string, "The router channel was dropped.");
-}
-
-#[test]
-fn router_error_display() {
-    let uri: RelativeUri = "/name".parse().unwrap();
-    let string = RouterError::NoAgentAtRoute(uri).to_string();
-    assert_eq!(string, "No agent at: '/name'");
-
-    let string = RouterError::ConnectionFailure(ServerConnectionError::ClosedRemotely).to_string();
-    assert_eq!(
-        string,
-        "Failed to route to requested endpoint: 'The connection was closed remotely.'"
-    );
-
-    let string = RouterError::RouterDropped.to_string();
-    assert_eq!(string, "The router channel was dropped.");
 }

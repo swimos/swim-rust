@@ -12,27 +12,31 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::routing::server::ServerConnectionError;
 use crate::routing::ws::WebSocketError;
+use crate::routing::{ConnectionError, ConnectionErrorKind};
 use std::io;
 
 #[test]
 fn connection_error_display() {
-    let string = ServerConnectionError::ClosedRemotely.to_string();
+    let string = ConnectionError::new(ConnectionErrorKind::ClosedRemotely).to_string();
     assert_eq!(string, "The connection was closed remotely.");
 
-    let string = ServerConnectionError::Resolution.to_string();
+    let string = ConnectionError::new(ConnectionErrorKind::Resolution).to_string();
     assert_eq!(string, "The specified host could not be resolved.");
 
-    let string = ServerConnectionError::Warp("Bad".to_string()).to_string();
-    assert_eq!(string, "Warp protocol error: 'Bad'");
+    let string = ConnectionError::with_cause(ConnectionErrorKind::Warp, "Bad".into()).to_string();
+    assert_eq!(string, "WARP error. Caused by: Bad");
 
-    let string = ServerConnectionError::Websocket(WebSocketError::Protocol).to_string();
-    assert_eq!(string, "Web socket error: 'A protocol error occurred.'");
+    let string =
+        ConnectionError::new(ConnectionErrorKind::Websocket(WebSocketError::Protocol)).to_string();
+    assert_eq!(string, "Websocket error: \"A protocol error occurred.\"");
 
-    let string = ServerConnectionError::Socket(io::ErrorKind::ConnectionRefused).to_string();
+    let string = ConnectionError::new(ConnectionErrorKind::Socket(
+        io::ErrorKind::ConnectionRefused,
+    ))
+    .to_string();
     assert_eq!(string, "IO error: 'ConnectionRefused'");
 
-    let string = ServerConnectionError::Closed.to_string();
+    let string = ConnectionError::new(ConnectionErrorKind::Closed).to_string();
     assert_eq!(string, "The connection has been closed.");
 }

@@ -158,11 +158,11 @@ impl ConnectionPool for SwimConnPool {
             .connection_requests_handle
             .lock()
             .map(|mut h| h.take())
-            .map_err(|_| ConnectionError::AlreadyClosedError);
+            .map_err(|_| ConnectionError::new(ConnectionErrorKind::Closed));
         async move {
             self.stop_request_tx.send(()).await?;
             handle?
-                .ok_or(ConnectionError::AlreadyClosedError)?
+                .ok_or_else(|| ConnectionError::new(ConnectionErrorKind::Closed))?
                 .await
                 .map_err(Into::into)
         }
@@ -224,7 +224,7 @@ where
                 _ = prune_timer.next() => Some(RequestType::Prune),
                 req = fused_requests.next() => req,
             }
-            .ok_or(ConnectionError::ConnectError)?;
+            .ok_or_else(|| ConnectionError::new(ConnectionErrorKind::Closed))?;
 
             match request {
                 RequestType::NewConnection(conn_req) => {
@@ -262,7 +262,7 @@ where
                     } else {
                         let inner_connection = connections
                             .get_mut(&host)
-                            .ok_or(ConnectionError::ConnectError)?;
+                            .ok_or_else(|| ConnectionError::new(ConnectionErrorKind::Resolution))?;
                         inner_connection.last_accessed = Instant::now();
 
                         Ok(((inner_connection.as_conenction_sender()), None))
@@ -270,7 +270,7 @@ where
 
                     request_tx
                         .send(connection_channel)
-                        .map_err(|_| ConnectionError::ConnectError)?;
+                        .map_err(|_| ConnectionError::new(ConnectionErrorKind::Closed))?;
                 }
 
                 RequestType::Prune => {
@@ -331,10 +331,10 @@ where
             .forward(write_sink)
             .map_err(|_| {
                 stopped.store(true, Ordering::Release);
-                ConnectionError::SendMessageError
+                ConnectionError::new(ConnectionErrorKind::Closed)
             })
             .await
-            .map_err(|_| ConnectionError::SendMessageError)
+            .map_err(|_| ConnectionError::new(ConnectionErrorKind::Closed))
     }
 }
 
@@ -372,13 +372,13 @@ where
                 .await
                 .map_err(|_| {
                     stopped.store(true, Ordering::Release);
-                    ConnectionError::ReceiveMessageError
+                    ConnectionError::new(ConnectionErrorKind::Closed)
                 })?
-                .ok_or(ConnectionError::ReceiveMessageError)?;
+                .ok_or_else(|| ConnectionError::new(ConnectionErrorKind::Closed))?;
 
             tx.send(message)
                 .await
-                .map_err(|_| ConnectionError::ReceiveMessageError)?;
+                .map_err(|_| ConnectionError::new(ConnectionErrorKind::Closed))?;
         }
     }
 }
@@ -402,7 +402,10 @@ impl InnerConnection {
         let sender = ConnectionSender {
             tx: conn.tx.clone(),
         };
-        let receiver = conn.rx.take().ok_or(ConnectionError::ConnectError)?;
+        let receiver = conn
+            .rx
+            .take()
+            .ok_or_else(|| ConnectionError::new(ConnectionErrorKind::Closed))?;
 
         let inner = InnerConnection {
             conn,
@@ -453,9 +456,9 @@ impl SwimConnection {
     }
 }
 
-use swim_common::routing::ws::ConnectionError;
 use swim_common::routing::ws::WebsocketFactory;
 use swim_common::routing::ws::WsMessage;
+use swim_common::routing::{ConnectionError, ConnectionErrorKind};
 use swim_runtime::task::*;
 use swim_runtime::time::instant::Instant;
 use swim_runtime::time::interval::interval;
