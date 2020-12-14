@@ -18,8 +18,7 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use tokio::sync::mpsc;
 
-/// Error type for the [`crate::routing::ServerRouter`] that will return the envelope in the event that
-/// routing it fails.
+/// Error type for the routers that will return the envelope in the event that routing it fails.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SendError {
     error: RoutingError,
