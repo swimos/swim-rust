@@ -49,7 +49,9 @@ impl ProtocolError {
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum ProtocolErrorKind {
+    /// A WebSocket violation occurred.
     WebSocket,
+    /// A WARP violation occurred.
     Warp,
 }
 

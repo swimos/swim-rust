@@ -20,6 +20,7 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use utilities::errors::Recoverable;
 
+/// A HTTP error produced when attempting to execute a request or read a response.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct HttpError {
     kind: HttpErrorKind,
@@ -48,10 +49,16 @@ impl HttpError {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum HttpErrorKind {
+    /// The peer returned the following status code or a request was attempted using an illegal
+    /// status code.
     StatusCode(Option<StatusCode>),
+    /// An invalid header name was returned or requested.
     InvalidHeaderName,
+    /// An invalid header value was returned or requested.
     InvalidHeaderValue,
+    /// An invalid URI was read.
     InvalidUri(InvalidUriError),
+    /// The peer does not support the requested method or a malformatted method was read.
     InvalidMethod,
 }
 
@@ -117,10 +124,15 @@ impl InvalidUriError {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum InvalidUriErrorKind {
+    /// A malformatted scheme was provided.
     InvalidScheme,
+    /// A malformatted port was provided.
     InvalidPort,
+    /// The request is missing a scheme.
     MissingScheme,
+    /// The URI was malformatted.
     Malformatted,
+    /// The provided scheme is not supported.
     UnsupportedScheme,
 }
 

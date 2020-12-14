@@ -38,8 +38,11 @@ impl TlsError {
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum TlsErrorKind {
+    /// An IO error was produced when attempting to read a certificate or in the connection.
     IO,
+    /// An OpenSSL error.
     SSL,
+    /// The provided certificate is invalid.
     InvalidCertificate,
 }
 

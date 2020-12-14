@@ -43,10 +43,14 @@ impl CapacityError {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum CapacityErrorKind {
+    /// The read buffer is full.
     ReadFull,
+    /// The write buffer is full.
     WriteFull,
+    /// A buffer is either full or has overflown.
     Ambiguous,
     #[cfg(feature = "tungstenite")]
+    /// A Tokio Tungstenite buffer is full. Contains the message that was attempted to be written.
     Full(tokio_tungstenite::tungstenite::Message),
 }
 

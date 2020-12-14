@@ -61,11 +61,17 @@ impl CloseError {
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum CloseErrorKind {
+    /// The channel is closed.
     Closed,
+    /// An unexpected close event occurred.
     Unexpected,
+    /// An invalid close code was supplied to the channel.
     InvalidCloseCode,
+    /// The callee attempted to close an already closed channel.
     AlreadyClosed,
+    /// The channel closed successfully. This is not an error.
     Normal,
+    /// The channel was closed by a peer.
     ClosedRemotely,
 }
 

@@ -51,7 +51,9 @@ impl ResolutionError {
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum ResolutionErrorKind {
+    /// Unable to resolve the requested peer.
     Unresolvable,
+    /// The router has been dropped. This typically indicates that the application is stopping.
     RouterDropped,
 }
 

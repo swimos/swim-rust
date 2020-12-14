@@ -37,7 +37,9 @@ impl EncodingError {
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum EncodingErrorKind {
+    /// An invalid encoding was read.
     Invalid,
+    /// Unsupported encoding.
     Unsupported,
 }
 

@@ -50,17 +50,27 @@ use {std::ops::Deref, tokio_tungstenite::tungstenite};
 #[cfg(test)]
 mod tests;
 
+/// An error denoting that a connection error has occurred.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ConnectionError {
+    /// A configuration error.
     Configuration(ConfigurationError),
+    /// A HTTP detailing either a malformatted request/response or a peer error.
     Http(HttpError),
+    /// A TLS error that may be produced when reading a certificate or through a connection.
     #[cfg(feature = "tls")]
     Tls(TlsError),
+    /// An error detailing that there has been a read/write buffer overflow.
     Capacity(CapacityError),
+    /// A connection protocol error.
     Protocol(ProtocolError),
+    /// An error produced when closing a connection or a normal close code.
     Closed(CloseError),
+    /// An IO error produced during a read/write operation.
     Io(IoError),
+    /// An unsupported encoding error or an illegal type error.
     Encoding(EncodingError),
+    /// An error produced when attempting to resolve a peer.
     Resolution(ResolutionError),
 }
 
