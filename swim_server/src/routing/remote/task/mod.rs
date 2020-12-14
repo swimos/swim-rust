@@ -15,7 +15,7 @@
 #[cfg(test)]
 mod tests;
 
-use crate::routing::error::{ResolutionError, RouterError};
+use crate::routing::error::RouterError;
 use crate::routing::remote::config::ConnectionConfig;
 use crate::routing::remote::router::RemoteRouter;
 use crate::routing::remote::RoutingRequest;
@@ -34,9 +34,11 @@ use std::str::FromStr;
 use std::time::Duration;
 use swim_common::model::parser::{self, ParseFailure};
 use swim_common::routing::ws::selector::{SelectorResult, WsStreamSelector};
-use swim_common::routing::ws::{CloseCode, CloseReason};
-use swim_common::routing::ws::{JoinedStreamSink, WsMessage};
-use swim_common::routing::{ConnectionError, ConnectionErrorKind};
+use swim_common::routing::ws::{CloseCode, CloseReason, JoinedStreamSink, WsMessage};
+use swim_common::routing::{
+    CloseError, CloseErrorKind, ConnectionError, ProtocolError, ProtocolErrorKind, ResolutionError,
+    ResolutionErrorKind,
+};
 use swim_common::warp::envelope::{Envelope, EnvelopeParseErr};
 use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc;
@@ -70,19 +72,19 @@ enum Completion {
 
 impl From<ParseFailure> for Completion {
     fn from(err: ParseFailure) -> Self {
-        Completion::Failed(ConnectionError::with_cause(
-            ConnectionErrorKind::Warp,
-            err.to_string().into(),
-        ))
+        Completion::Failed(ConnectionError::Protocol(ProtocolError::new(
+            ProtocolErrorKind::Warp,
+            Some(err.to_string()),
+        )))
     }
 }
 
 impl From<EnvelopeParseErr> for Completion {
     fn from(err: EnvelopeParseErr) -> Self {
-        Completion::Failed(ConnectionError::with_cause(
-            ConnectionErrorKind::Warp,
-            err.to_string().into(),
-        ))
+        Completion::Failed(ConnectionError::Protocol(ProtocolError::new(
+            ProtocolErrorKind::Warp,
+            Some(err.to_string()),
+        )))
     }
 }
 
@@ -198,13 +200,14 @@ where
                 CloseCode::GoingAway,
                 "Stopped locally".to_string(),
             )),
-            Completion::Failed(e) if e.kind == ConnectionErrorKind::Warp => Some(CloseReason::new(
-                CloseCode::ProtocolError,
-                e.cause
-                    .clone()
-                    .unwrap_or_else(|| "WARP error".into())
-                    .into(),
-            )),
+            Completion::Failed(ConnectionError::Protocol(e))
+                if e.kind() == ProtocolErrorKind::Warp =>
+            {
+                Some(CloseReason::new(
+                    CloseCode::ProtocolError,
+                    e.cause().clone().unwrap_or_else(|| "WARP error".into()),
+                ))
+            }
             _ => None,
         } {
             if let Err(_err) = ws_stream.close(Some(reason)).await {
@@ -215,9 +218,9 @@ where
         match completion {
             Completion::Failed(err) => ConnectionDropped::Failed(err),
             Completion::TimedOut => ConnectionDropped::TimedOut(activity_timeout),
-            Completion::StoppedRemotely => {
-                ConnectionDropped::Failed(ConnectionError::new(ConnectionErrorKind::ClosedRemotely))
-            }
+            Completion::StoppedRemotely => ConnectionDropped::Failed(ConnectionError::Closed(
+                CloseError::new(CloseErrorKind::ClosedRemotely, None),
+            )),
             _ => ConnectionDropped::Closed,
         }
     }
@@ -267,7 +270,9 @@ impl Recoverable for DispatchError {
         match self {
             DispatchError::RoutingProblem(err) => err.is_fatal(),
             DispatchError::Dropped(reason) => !reason.is_recoverable(),
-            DispatchError::Unresolvable(ResolutionError::Unresolvable(_)) => false,
+            DispatchError::Unresolvable(e) if e.kind() == ResolutionErrorKind::Unresolvable => {
+                false
+            }
             _ => true,
         }
     }

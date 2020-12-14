@@ -56,33 +56,6 @@ impl Recoverable for RouterError {
     }
 }
 
-/// General error type for a failed agent resolution.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ResolutionError {
-    Unresolvable(Unresolvable),
-    RouterDropped,
-}
-
-impl Display for ResolutionError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ResolutionError::Unresolvable(Unresolvable(id)) => {
-                write!(f, "Address {} could not be resolved.", id)
-            }
-            ResolutionError::RouterDropped => write!(f, "The router channel was dropped."),
-        }
-    }
-}
-
-impl Error for ResolutionError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            ResolutionError::Unresolvable(err) => Some(err),
-            ResolutionError::RouterDropped => None,
-        }
-    }
-}
-
 /// Error indicating that a routing address is invalid. (Typically, this should not occur and
 /// suggests a bug).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

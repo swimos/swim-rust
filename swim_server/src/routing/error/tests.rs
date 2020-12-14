@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::routing::error::{ResolutionError, RouterError, Unresolvable};
+use crate::routing::error::{RouterError, Unresolvable};
 use crate::routing::RoutingAddr;
-use swim_common::routing::{ConnectionError, ConnectionErrorKind};
+use swim_common::routing::{CloseError, CloseErrorKind, ConnectionError, ResolutionError};
 use utilities::uri::RelativeUri;
 
 #[test]
@@ -28,10 +28,10 @@ fn unresolvable_display() {
 
 #[test]
 fn resolution_error_display() {
-    let string = ResolutionError::Unresolvable(Unresolvable(RoutingAddr::local(4))).to_string();
+    let string = ResolutionError::unresolvable(RoutingAddr::local(4).to_string()).to_string();
     assert_eq!(string, "Address Local(4) could not be resolved.");
 
-    let string = ResolutionError::RouterDropped.to_string();
+    let string = ResolutionError::router_dropped().to_string();
     assert_eq!(string, "The router channel was dropped.");
 }
 
@@ -41,9 +41,11 @@ fn router_error_display() {
     let string = RouterError::NoAgentAtRoute(uri).to_string();
     assert_eq!(string, "No agent at: '/name'");
 
-    let string =
-        RouterError::ConnectionFailure(ConnectionError::new(ConnectionErrorKind::ClosedRemotely))
-            .to_string();
+    let string = RouterError::ConnectionFailure(ConnectionError::Closed(CloseError::new(
+        CloseErrorKind::ClosedRemotely,
+        None,
+    )))
+    .to_string();
     assert_eq!(
         string,
         "Failed to route to requested endpoint: 'The connection was closed remotely.'"

@@ -25,13 +25,16 @@ use crate::connections::factory::stream::{
     build_stream, get_stream_type, SinkTransformer, StreamTransformer,
 };
 use http::header::SEC_WEBSOCKET_PROTOCOL;
+use http::uri::InvalidUri;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use swim_common::routing::ws::maybe_resolve_scheme;
 use swim_common::routing::ws::Protocol;
-use swim_common::routing::ws::WebSocketError;
 use swim_common::routing::ws::{ConnFuture, WebsocketFactory};
-use swim_common::routing::{ConnectionError, ConnectionErrorKind, TungsteniteError};
+use swim_common::routing::{
+    ConnectionError, HttpError, HttpErrorKind, InvalidUriError, InvalidUriErrorKind,
+    TungsteniteError,
+};
 use tokio_native_tls::TlsStream;
 use tokio_tungstenite::tungstenite::extensions::compression::WsCompression;
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
@@ -52,10 +55,19 @@ async fn connect(
     url: Url,
     config: &mut HostConfig,
 ) -> Result<(WebSocketStream<MaybeTlsStream<TcpStream>>, Response<()>), ConnectionError> {
-    let uri: Uri = url.as_str().parse().map_err(|e| {
-        ConnectionError::new(ConnectionErrorKind::Websocket(WebSocketError::from(e)))
+    let url = url.as_str();
+    let uri: Uri = url.parse().map_err(|e: InvalidUri| {
+        ConnectionError::Http(HttpError::new(
+            HttpErrorKind::InvalidUri(InvalidUriError::new(
+                InvalidUriErrorKind::Malformatted,
+                Some(url.to_string()),
+            )),
+            Some(e.to_string()),
+        ))
     })?;
-    let mut request = Request::get(uri).body(())?;
+    let mut request = Request::get(uri)
+        .body(())
+        .map_err(|e| ConnectionError::Http(HttpError::from(e)))?;
 
     request.headers_mut().insert(
         SEC_WEBSOCKET_PROTOCOL,
@@ -78,7 +90,10 @@ async fn connect(
     let domain = match request.uri().host() {
         Some(d) => d.to_string(),
         None => {
-            return Err(WebSocketError::Url(String::from("Malformatted URI. Missing host")).into());
+            return Err(ConnectionError::Http(HttpError::invalid_url(
+                request.uri().to_string(),
+                Some("Malformatted URI. Missing host".into()),
+            )));
         }
     };
 
@@ -179,8 +194,10 @@ mod tests {
     use crate::configuration::router::ConnectionPoolParams;
     use crate::connections::factory::tungstenite::TungsteniteWsFactory;
     use crate::connections::{ConnectionPool, SwimConnPool};
-    use swim_common::routing::ws::WebSocketError;
-    use swim_common::routing::{ConnectionError, ConnectionErrorKind};
+
+    use swim_common::routing::{
+        ConnectionError, HttpError, HttpErrorKind, InvalidUriError, InvalidUriErrorKind,
+    };
 
     #[tokio::test]
     async fn invalid_protocol() {
@@ -196,14 +213,13 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(
-            rx.err().unwrap(),
-            ConnectionError {
-                kind: ConnectionErrorKind::Websocket(WebSocketError::Url(
-                    "Unsupported URL scheme: xyz".into()
-                )),
-                cause: None
-            }
-        );
+        let expected = ConnectionError::Http(HttpError::new(
+            HttpErrorKind::InvalidUri(InvalidUriError::new(
+                InvalidUriErrorKind::UnsupportedScheme,
+                Some("xyz".into()),
+            )),
+            None,
+        ));
+        assert_eq!(rx.err().unwrap(), expected);
     }
 }

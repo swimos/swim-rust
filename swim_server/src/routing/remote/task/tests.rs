@@ -30,7 +30,7 @@ use utilities::future::retryable::strategy::{Quantity, RetryStrategy};
 use utilities::sync::{promise, trigger};
 use utilities::uri::{BadRelativeUri, RelativeUri, UriIsAbsolute};
 
-use crate::routing::error::{ResolutionError, RouterError};
+use crate::routing::error::RouterError;
 use crate::routing::remote::task::{ConnectionTask, DispatchError};
 use crate::routing::remote::test_fixture::fake_channel::TwoWayMpsc;
 use crate::routing::remote::test_fixture::LocalRoutes;
@@ -39,7 +39,9 @@ use futures::io::ErrorKind;
 use std::num::NonZeroUsize;
 use std::time::Duration;
 use swim_common::routing::ws::WsMessage;
-use swim_common::routing::{ConnectionError, ConnectionErrorKind};
+use swim_common::routing::{
+    CloseError, CloseErrorKind, ConnectionError, IoError, ProtocolError, ResolutionError,
+};
 
 #[test]
 fn dispatch_error_display() {
@@ -52,7 +54,7 @@ fn dispatch_error_display() {
         "Invalid relative URI: ''swim://localhost/hello' is an absolute URI.'"
     );
 
-    let string = DispatchError::Unresolvable(ResolutionError::RouterDropped).to_string();
+    let string = DispatchError::Unresolvable(ResolutionError::router_dropped()).to_string();
     assert_eq!(
         string,
         "Could not resolve a router endpoint: 'The router channel was dropped.'"
@@ -452,15 +454,16 @@ async fn task_send_message_failure() {
         let tagged = TaggedEnvelope(RoutingAddr::local(100), env_cpy.clone());
 
         assert!(send_error_tx
-            .send(Some(ConnectionError::new(ConnectionErrorKind::Socket(
-                ErrorKind::ConnectionReset
+            .send(Some(ConnectionError::Io(IoError::new(
+                ErrorKind::ConnectionReset,
+                None
             ))))
             .is_ok());
         assert!(envelope_tx.send(tagged).await.is_ok());
     };
 
     let result = timeout::timeout(Duration::from_secs(5), join(task, test_case)).await;
-    let _err = ConnectionError::new(ConnectionErrorKind::Socket(ErrorKind::ConnectionReset));
+    let _err = ConnectionError::Io(IoError::new(ErrorKind::ConnectionReset, None));
     assert!(matches!(result, Ok((ConnectionDropped::Failed(_err), _))));
 }
 
@@ -528,15 +531,16 @@ async fn task_receive_error() {
 
     let test_case = async move {
         assert!(sock_in
-            .send(Err(ConnectionError::new(ConnectionErrorKind::Socket(
-                ErrorKind::ConnectionReset
+            .send(Err(ConnectionError::Io(IoError::new(
+                ErrorKind::ConnectionReset,
+                None
             ))))
             .await
             .is_ok());
     };
 
     let result = timeout::timeout(Duration::from_secs(5), join(task, test_case)).await;
-    let _err = ConnectionError::new(ConnectionErrorKind::Socket(ErrorKind::ConnectionReset));
+    let _err = ConnectionError::Io(IoError::new(ErrorKind::ConnectionReset, None));
     assert!(matches!(result, Ok((ConnectionDropped::Failed(_err), _))));
 }
 
@@ -558,7 +562,7 @@ async fn task_stopped_remotely() {
     };
 
     let result = timeout::timeout(Duration::from_secs(5), join(task, test_case)).await;
-    let _err = ConnectionError::new(ConnectionErrorKind::ClosedRemotely);
+    let _err = ConnectionError::Closed(CloseError::new(CloseErrorKind::ClosedRemotely, None));
     assert!(matches!(result, Ok((ConnectionDropped::Failed(_err), _))));
 }
 
@@ -611,6 +615,6 @@ async fn task_receive_bad_message() {
     };
 
     let result = timeout::timeout(Duration::from_secs(5), join(task, test_case)).await;
-    let _err = ConnectionError::new(ConnectionErrorKind::Warp);
+    let _err = ConnectionError::Protocol(ProtocolError::warp(None));
     assert!(matches!(result, Ok((ConnectionDropped::Failed(_err), _))));
 }

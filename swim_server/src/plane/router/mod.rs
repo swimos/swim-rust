@@ -13,12 +13,13 @@
 // limitations under the License.
 
 use crate::plane::PlaneRequest;
-use crate::routing::error::{ResolutionError, RouterError};
+use crate::routing::error::RouterError;
 use crate::routing::remote::RawRoute;
 use crate::routing::{Route, RoutingAddr, ServerRouter, ServerRouterFactory, TaggedSender};
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use swim_common::request::Request;
+use swim_common::routing::ResolutionError;
 use tokio::sync::{mpsc, oneshot};
 use url::Url;
 use utilities::uri::RelativeUri;
@@ -79,14 +80,14 @@ impl ServerRouter for PlaneRouter {
                 .await
                 .is_err()
             {
-                Err(ResolutionError::RouterDropped)
+                Err(ResolutionError::router_dropped())
             } else {
                 match rx.await {
                     Ok(Ok(RawRoute { sender, on_drop })) => {
                         Ok(Route::new(TaggedSender::new(*tag, sender), on_drop))
                     }
-                    Ok(Err(err)) => Err(ResolutionError::Unresolvable(err)),
-                    Err(_) => Err(ResolutionError::RouterDropped),
+                    Ok(Err(err)) => Err(ResolutionError::unresolvable(err.to_string())),
+                    Err(_) => Err(ResolutionError::router_dropped()),
                 }
             }
         }

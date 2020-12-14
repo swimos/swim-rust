@@ -32,7 +32,7 @@ use tracing::{event, Level};
 use url::Url;
 use utilities::sync::promise;
 
-use swim_common::routing::ws::{WebSocketError, WsConnections};
+use swim_common::routing::{ConnectionError, HttpError, ResolutionError, ResolutionErrorKind};
 use utilities::sync::trigger;
 use utilities::task::Spawner;
 
@@ -43,7 +43,7 @@ use crate::routing::remote::state::{DeferredResult, Event, RemoteConnections, Re
 use crate::routing::remote::table::HostAndPort;
 use crate::routing::{ConnectionDropped, RoutingAddr, ServerRouterFactory, TaggedEnvelope};
 use std::io;
-use swim_common::routing::{ConnectionError, ConnectionErrorKind};
+use swim_common::routing::ws::WsConnections;
 
 #[cfg(test)]
 pub mod test_fixture;
@@ -199,9 +199,7 @@ fn update_state<State: RemoteTasksState>(
             }
             _ => {
                 request.send_err_debug(
-                    ConnectionError::new(ConnectionErrorKind::Websocket(WebSocketError::Url(
-                        host.into_string(),
-                    ))),
+                    ConnectionError::Http(HttpError::invalid_url(host.to_string(), None)),
                     REQUEST_DROPPED,
                 );
             }
@@ -247,10 +245,7 @@ fn update_state<State: RemoteTasksState>(
             host,
             ..
         }) => {
-            state.fail_connection(
-                &host,
-                ConnectionError::new(ConnectionErrorKind::Socket(err.kind())),
-            );
+            state.fail_connection(&host, ConnectionError::Io(err.into()));
         }
         Event::Deferred(DeferredResult::Dns {
             result: Ok(mut addrs),
@@ -261,7 +256,15 @@ fn update_state<State: RemoteTasksState>(
                     state.defer_connect_and_handshake(host, sock_addr, addrs);
                 }
             } else {
-                state.fail_connection(&host, ConnectionError::new(ConnectionErrorKind::Resolution));
+                let host_err = host.to_string();
+
+                state.fail_connection(
+                    &host,
+                    ConnectionError::Resolution(ResolutionError::new(
+                        ResolutionErrorKind::Unresolvable,
+                        Some(host_err),
+                    )),
+                );
             }
         }
         Event::ConnectionClosed(addr, reason) => {

@@ -12,12 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::routing::error::{ResolutionError, RouterError};
+use crate::routing::error::RouterError;
 use futures::future::BoxFuture;
 use std::fmt::{Display, Formatter};
 use std::time::Duration;
 use swim_common::routing::RoutingError;
-use swim_common::routing::{ConnectionError, SendError};
+use swim_common::routing::SendError;
+use swim_common::routing::{ConnectionError, ResolutionError};
 use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
 use tokio::sync::mpsc;
 use url::Url;

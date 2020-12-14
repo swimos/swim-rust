@@ -22,7 +22,7 @@ use crate::agent::lane::channels::{
 };
 use crate::agent::lane::model::action::{Action, ActionLane};
 use crate::agent::Eff;
-use crate::routing::error::{ResolutionError, RouterError};
+use crate::routing::error::RouterError;
 use crate::routing::{
     ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedClientEnvelope, TaggedEnvelope,
     TaggedSender,
@@ -38,6 +38,7 @@ use std::time::Duration;
 use stm::transaction::TransactionError;
 use swim_common::form::{Form, FormErr};
 use swim_common::model::Value;
+use swim_common::routing::ResolutionError;
 use swim_common::routing::RoutingError;
 use swim_common::routing::SendError;
 use swim_common::sink::item::ItemSink;

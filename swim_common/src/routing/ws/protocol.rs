@@ -12,13 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::routing::ws::error::CertificateError;
-use crate::routing::ws::tls::build_x509_certificate;
 use std::fmt;
 use std::fmt::{Debug, Formatter};
-use std::path::Path;
-use tokio_native_tls::native_tls::Certificate;
 
+#[cfg(feature = "tls")]
+use {
+    crate::routing::ws::tls::build_x509_certificate, crate::routing::TlsError, std::path::Path,
+    tokio_native_tls::native_tls::Certificate,
+};
 #[cfg(feature = "tungstenite")]
 use {
     tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode as TungCloseCode,
@@ -46,7 +47,7 @@ impl PartialEq for Protocol {
 
 impl Protocol {
     #[cfg(feature = "tls")]
-    pub fn tls(path: impl AsRef<Path>) -> Result<Protocol, CertificateError> {
+    pub fn tls(path: impl AsRef<Path>) -> Result<Protocol, TlsError> {
         let cert = build_x509_certificate(path)?;
         Ok(Protocol::Tls(cert))
     }

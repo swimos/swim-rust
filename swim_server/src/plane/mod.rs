@@ -41,8 +41,7 @@ use std::fmt::Debug;
 use std::ops::Deref;
 use std::sync::{Arc, Weak};
 use swim_common::request::Request;
-use swim_common::routing::ws::WebSocketError;
-use swim_common::routing::{ConnectionError, ConnectionErrorKind};
+use swim_common::routing::{ConnectionError, ProtocolError, ProtocolErrorKind};
 use swim_runtime::time::clock::Clock;
 use tokio::sync::{mpsc, oneshot};
 use tracing::{event, span, Level};
@@ -476,8 +475,8 @@ pub async fn run_plane<Clk, S>(
                     event!(Level::TRACE, RESOLVING, ?host_url, ?name);
                     //TODO Attach external resolution here.
                     if request
-                        .send_err(RouterError::ConnectionFailure(ConnectionError::new(
-                            ConnectionErrorKind::Websocket(WebSocketError::Protocol),
+                        .send_err(RouterError::ConnectionFailure(ConnectionError::Protocol(
+                            ProtocolError::new(ProtocolErrorKind::WebSocket, None),
                         )))
                         .is_err()
                     {

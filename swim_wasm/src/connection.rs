@@ -13,19 +13,20 @@
 // limitations under the License.
 
 use futures::stream::{SplitSink, SplitStream};
-use futures::{FutureExt, StreamExt};
+use futures::{FutureExt, StreamExt, TryFutureExt};
 use std::io::ErrorKind;
 use swim_common::request::Request;
 use tokio::sync::{mpsc, oneshot};
 use url::Url;
 use wasm_bindgen_futures::spawn_local;
-use ws_stream_wasm::{CloseEvent, WsErr, WsMessage as WasmMessage, WsMeta, WsStream};
+use ws_stream_wasm::{WsErr, WsMessage as WasmMessage, WsMeta, WsStream};
 
 use std::ops::Deref;
-use swim_common::routing::ws::WebSocketError;
-use swim_common::routing::ws::WsMessage;
-use swim_common::routing::ws::{ConnFuture, WebsocketFactory};
-use swim_common::routing::{ConnectionError, ConnectionErrorKind};
+use swim_common::routing::ws::{ConnFuture, WebsocketFactory, WsMessage};
+use swim_common::routing::{
+    CloseError, CloseErrorKind, ConnectionError, EncodingError, EncodingErrorKind, HttpError,
+    HttpErrorKind, InvalidUriError, InvalidUriErrorKind, IoError, StatusCode,
+};
 use utilities::future::{TransformMut, TransformedSink, TransformedStream};
 
 /// A transformer that converts from a [`swim_common::routing::ws::WsMessage`] to
@@ -120,11 +121,17 @@ impl WebsocketFactory for WasmWsFactory {
                 url,
             };
 
-            self.sender
-                .send(req)
-                .await
-                .map_err(|_| ConnectionError::new(ConnectionErrorKind::Closed))?;
-            Ok(rx.await??)
+            self.sender.send(req).await.map_err(|_| {
+                ConnectionError::Closed(CloseError::new(
+                    CloseErrorKind::Unexpected,
+                    Some("WebSocket factory closed".into()),
+                ))
+            })?;
+            Ok(rx
+                .map_err(|_| {
+                    ConnectionError::Closed(CloseError::new(CloseErrorKind::Unexpected, None))
+                })
+                .await??)
         }
         .boxed()
     }
@@ -144,23 +151,50 @@ impl Deref for WsError {
 
 impl From<WsError> for ConnectionError {
     fn from(e: WsError) -> Self {
-        match &*e {
-            WsErr::InvalidUrl { supplied } => ConnectionError::new(ConnectionErrorKind::Websocket(
-                WebSocketError::Url(supplied.clone()),
+        match e.0 {
+            WsErr::InvalidUrl { supplied } => ConnectionError::Http(HttpError::new(
+                HttpErrorKind::InvalidUri(InvalidUriError::new(
+                    InvalidUriErrorKind::Malformatted,
+                    Some(supplied),
+                )),
+                None,
             )),
-            WsErr::ConnectionFailed { event } => {
-                let CloseEvent { reason, .. } = event;
-                ConnectionError::with_cause(ConnectionErrorKind::Closed, reason.clone().into())
+            WsErr::ConnectionFailed { event: _ } => {
+                todo!()
             }
-            WsErr::InvalidCloseCode { .. } => ConnectionError::new(ConnectionErrorKind::Closed),
-            WsErr::ForbiddenPort => {
-                ConnectionError::new(ConnectionErrorKind::Websocket(WebSocketError::Protocol))
+            WsErr::InvalidCloseCode { supplied: _ } => todo!(),
+            WsErr::ForbiddenPort => ConnectionError::Http(HttpError::new(
+                HttpErrorKind::StatusCode(Some(StatusCode::FORBIDDEN)),
+                None,
+            )),
+            WsErr::ConnectionNotOpen => ConnectionError::Closed(CloseError::new(
+                CloseErrorKind::Unexpected,
+                Some("No open connection".into()),
+            )),
+            WsErr::InvalidWsState { supplied } => ConnectionError::Io(IoError::new(
+                ErrorKind::InvalidInput,
+                Some(format!(
+                    "Invalid WebSocket state. Supplied state: {}",
+                    supplied
+                )),
+            )),
+            WsErr::ReasonStringToLong => ConnectionError::Io(IoError::new(
+                ErrorKind::InvalidInput,
+                Some("Supplied close reason was too long".into()),
+            )),
+            WsErr::InvalidEncoding => {
+                ConnectionError::Encoding(EncodingError::new(EncodingErrorKind::Invalid, None))
             }
-            WsErr::ConnectionNotOpen => ConnectionError::new(ConnectionErrorKind::Closed),
-            e => ConnectionError::with_cause(
-                ConnectionErrorKind::Socket(ErrorKind::Other),
-                e.to_string().into(),
-            ),
+            WsErr::CantDecodeBlob => {
+                ConnectionError::Encoding(EncodingError::new(EncodingErrorKind::Invalid, None))
+            }
+            WsErr::UnknownDataType => {
+                ConnectionError::Encoding(EncodingError::new(EncodingErrorKind::Unsupported, None))
+            }
+            e => {
+                // WsErr is marked with #[non_exhaustive]
+                ConnectionError::Io(IoError::new(ErrorKind::Other, Some(format!("{:?}", e))))
+            }
         }
     }
 }

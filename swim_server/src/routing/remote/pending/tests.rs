@@ -17,7 +17,7 @@ use crate::routing::remote::table::HostAndPort;
 use crate::routing::RoutingAddr;
 use futures::future::join;
 use swim_common::request::Request;
-use swim_common::routing::{ConnectionError, ConnectionErrorKind};
+use swim_common::routing::{CloseError, CloseErrorKind, ConnectionError};
 use tokio::sync::oneshot;
 
 #[tokio::test]
@@ -30,15 +30,16 @@ async fn add_single_and_send_err() {
     pending.add(key.clone(), req);
     pending.send_err(
         &key,
-        ConnectionError::new(ConnectionErrorKind::ClosedRemotely),
+        ConnectionError::Closed(CloseError::new(CloseErrorKind::ClosedRemotely, None)),
     );
 
     let result = rx.await;
     assert_eq!(
         result,
-        Ok(Err(ConnectionError::new(
-            ConnectionErrorKind::ClosedRemotely
-        )))
+        Ok(Err(ConnectionError::Closed(CloseError::new(
+            CloseErrorKind::ClosedRemotely,
+            None,
+        ))))
     );
 }
 
@@ -55,7 +56,7 @@ async fn add_two_and_send_err() {
     pending.add(key.clone(), req2);
     pending.send_err(
         &key,
-        ConnectionError::new(ConnectionErrorKind::ClosedRemotely),
+        ConnectionError::Closed(CloseError::new(CloseErrorKind::ClosedRemotely, None)),
     );
 
     let results = join(rx1, rx2).await;
@@ -63,12 +64,14 @@ async fn add_two_and_send_err() {
     assert_eq!(
         results,
         (
-            Ok(Err(ConnectionError::new(
-                ConnectionErrorKind::ClosedRemotely
-            ))),
-            Ok(Err(ConnectionError::new(
-                ConnectionErrorKind::ClosedRemotely
-            )))
+            Ok(Err(ConnectionError::Closed(CloseError::new(
+                CloseErrorKind::ClosedRemotely,
+                None,
+            )))),
+            Ok(Err(ConnectionError::Closed(CloseError::new(
+                CloseErrorKind::ClosedRemotely,
+                None,
+            ))))
         )
     );
 }

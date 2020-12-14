@@ -24,7 +24,7 @@ use std::io::ErrorKind;
 use std::net::SocketAddr;
 use swim_common::model::Value;
 use swim_common::request::Request;
-use swim_common::routing::{ConnectionError, ConnectionErrorKind};
+use swim_common::routing::{ConnectionError, IoError, ResolutionError, ResolutionErrorKind};
 use swim_common::warp::envelope::Envelope;
 use tokio::sync::{mpsc, oneshot};
 use utilities::sync::promise::Sender;
@@ -368,10 +368,12 @@ fn transition_deferred_dns_empty() {
     });
     super::update_state(&mut state, &mut result, event);
 
-    state.check(vec![StateMutation::FailConnection(
-        host,
-        ConnectionError::new(ConnectionErrorKind::Resolution),
-    )]);
+    let err = ConnectionError::Resolution(ResolutionError::new(
+        ResolutionErrorKind::Unresolvable,
+        Some(host.to_string()),
+    ));
+
+    state.check(vec![StateMutation::FailConnection(host, err)]);
     assert!(result.is_ok());
 }
 
@@ -391,7 +393,7 @@ fn transition_deferred_dns_failed() {
 
     state.check(vec![StateMutation::FailConnection(
         host,
-        ConnectionError::new(ConnectionErrorKind::Socket(ErrorKind::NotFound)),
+        ConnectionError::Io(IoError::new(ErrorKind::NotFound, None)),
     )]);
     assert!(result.is_ok());
 }
@@ -447,8 +449,9 @@ fn transition_deferred_client_handshake_success() {
 fn transition_deferred_server_handshake_failed() {
     let sa = sock_addr();
 
-    let handshake_response = Err(ConnectionError::new(ConnectionErrorKind::Socket(
-        ErrorKind::ConnectionReset.into(),
+    let handshake_response = Err(ConnectionError::Io(IoError::new(
+        ErrorKind::ConnectionReset,
+        None,
     )));
 
     let mut state = FakeRemoteState::default();
@@ -468,8 +471,9 @@ fn transition_deferred_server_handshake_failed() {
 fn transition_deferred_client_handshake_failed() {
     let host = HostAndPort::new("my_host".to_string(), 80);
 
-    let handshake_response = Err(ConnectionError::new(ConnectionErrorKind::Socket(
-        ErrorKind::ConnectionReset.into(),
+    let handshake_response = Err(ConnectionError::Io(IoError::new(
+        ErrorKind::ConnectionReset,
+        None,
     )));
 
     let mut state = FakeRemoteState::default();
@@ -483,9 +487,7 @@ fn transition_deferred_client_handshake_failed() {
 
     state.check(vec![StateMutation::FailConnection(
         host,
-        ConnectionError::new(ConnectionErrorKind::Socket(
-            ErrorKind::ConnectionReset.into(),
-        )),
+        ConnectionError::Io(IoError::new(ErrorKind::ConnectionReset, None)),
     )]);
     assert!(result.is_ok());
 }
@@ -499,7 +501,7 @@ fn transition_deferred_connection_failed_with_remaining() {
     let mut result = Ok(());
 
     let event = Event::Deferred(DeferredResult::FailedConnection {
-        error: ConnectionError::new(ConnectionErrorKind::Socket(ErrorKind::ConnectionReset)),
+        error: ConnectionError::Io(IoError::new(ErrorKind::ConnectionReset, None)),
         remaining: vec![sa].into_iter(),
         host: host.clone(),
     });
@@ -517,7 +519,7 @@ fn transition_deferred_connection_failed_no_remaining() {
     let mut result = Ok(());
 
     let event = Event::Deferred(DeferredResult::FailedConnection {
-        error: ConnectionError::new(ConnectionErrorKind::Socket(ErrorKind::ConnectionReset)),
+        error: ConnectionError::Io(IoError::new(ErrorKind::ConnectionReset, None)),
         remaining: vec![].into_iter(),
         host: host.clone(),
     });
@@ -525,7 +527,7 @@ fn transition_deferred_connection_failed_no_remaining() {
 
     state.check(vec![StateMutation::FailConnection(
         host,
-        ConnectionError::new(ConnectionErrorKind::Socket(ErrorKind::ConnectionReset)),
+        ConnectionError::Io(IoError::new(ErrorKind::ConnectionReset, None)),
     )]);
     assert!(result.is_ok());
 }

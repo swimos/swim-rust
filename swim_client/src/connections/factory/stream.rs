@@ -15,46 +15,54 @@
 use crate::connections::factory::tungstenite::MaybeTlsStream;
 use http::Request;
 use swim_common::routing::ws::tls::connect_tls;
-use swim_common::routing::ws::WebSocketError;
 use swim_common::routing::ws::{Protocol, WsMessage};
-use swim_common::routing::ConnectionError;
+use swim_common::routing::{
+    ConnectionError, InvalidUriError, InvalidUriErrorKind, TError, TungsteniteError,
+};
 use tokio::net::TcpStream;
 use tokio_tungstenite::stream::Stream as StreamSwitcher;
 use tokio_tungstenite::tungstenite::Message;
 use utilities::future::TransformMut;
 
-use swim_common::routing::{TError, TungsteniteError};
-
 pub fn get_stream_type<T>(
     request: &Request<T>,
     protocol: &Protocol,
-) -> Result<Protocol, WebSocketError> {
+) -> Result<Protocol, InvalidUriError> {
     match request.uri().scheme_str() {
         Some("ws") => Ok(Protocol::PlainText),
         Some("wss") => match protocol {
-            Protocol::PlainText => Err(WebSocketError::BadConfiguration(
-                "Attempted to connect to a secure WebSocket without a TLS configuration".into(),
+            Protocol::PlainText => Err(InvalidUriError::new(
+                InvalidUriErrorKind::InvalidScheme,
+                Some(
+                    "Attempted to connect to a secure WebSocket without a TLS configuration".into(),
+                ),
             )),
             tls => Ok(tls.clone()),
         },
-        Some(s) => Err(WebSocketError::unsupported_scheme(s)),
-        None => Err(WebSocketError::missing_scheme()),
+        Some(s) => Err(InvalidUriError::new(
+            InvalidUriErrorKind::UnsupportedScheme,
+            Some(s.into()),
+        )),
+        None => Err(InvalidUriError::new(
+            InvalidUriErrorKind::MissingScheme,
+            None,
+        )),
     }
 }
 
 pub async fn build_stream(
     host: &str,
     stream_type: Protocol,
-) -> Result<MaybeTlsStream<TcpStream>, WebSocketError> {
+) -> Result<MaybeTlsStream<TcpStream>, ConnectionError> {
     let socket = TcpStream::connect(host)
         .await
-        .map_err(|e| WebSocketError::Message(e.to_string()))?;
+        .map_err(|e| ConnectionError::Io(e.into()))?;
 
     match stream_type {
         Protocol::PlainText => Ok(StreamSwitcher::Plain(socket)),
         Protocol::Tls(certificate) => match connect_tls(host, certificate).await {
             Ok(s) => Ok(StreamSwitcher::Tls(s)),
-            Err(e) => Err(WebSocketError::Tls(e.0)),
+            Err(e) => Err(e.into()),
         },
     }
 }

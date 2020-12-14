@@ -26,8 +26,11 @@ use crate::connections::factory::async_factory::AsyncFactory;
 
 use super::*;
 use crate::connections::factory::tungstenite::HostConfig;
+use swim_common::routing::ws::ConnFuture;
 use swim_common::routing::ws::Protocol;
-use swim_common::routing::ws::{ConnFuture, WebSocketError};
+use swim_common::routing::{
+    CapacityError, CapacityErrorKind, CloseErrorKind, ProtocolError, ProtocolErrorKind,
+};
 use tokio_tungstenite::tungstenite::extensions::compression::WsCompression;
 
 #[tokio::test]
@@ -567,7 +570,7 @@ async fn test_connection_receive_message_error() {
     assert!(result.is_err());
     assert_eq!(
         result.err().unwrap(),
-        ConnectionError::new(ConnectionErrorKind::Closed)
+        ConnectionError::Closed(CloseError::unexpected())
     );
 }
 
@@ -592,7 +595,7 @@ async fn test_new_connection_send_message_error() {
     assert!(result.is_err());
     assert_eq!(
         result.err().unwrap(),
-        ConnectionError::new(ConnectionErrorKind::Closed)
+        ConnectionError::Closed(CloseError::unexpected())
     );
 }
 
@@ -607,14 +610,15 @@ impl Stream for TestReadStream {
 
     fn poll_next(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         if self.error {
-            Poll::Ready(Some(Err(ConnectionError::new(
-                ConnectionErrorKind::Websocket(WebSocketError::Protocol),
-            ))))
+            Poll::Ready(Some(Err(ConnectionError::Protocol(ProtocolError::new(
+                ProtocolErrorKind::WebSocket,
+                None,
+            )))))
         } else {
             let message = self.items.drain(0..1).next();
-            Poll::Ready(Some(
-                message.ok_or(ConnectionError::new(ConnectionErrorKind::Closed)),
-            ))
+            Poll::Ready(Some(message.ok_or(ConnectionError::Closed(
+                CloseError::new(CloseErrorKind::Normal, None),
+            ))))
         }
     }
 }
@@ -736,7 +740,10 @@ impl MultipleTestData {
     ) -> Result<(TestWriteStream, TestReadStream), ConnectionError> {
         let i = self.n.fetch_add(1, Ordering::AcqRel);
         if i >= self.connections.len() {
-            Err(ConnectionError::new(ConnectionErrorKind::ConnectError))
+            Err(ConnectionError::Capacity(CapacityError::new(
+                CapacityErrorKind::Ambiguous,
+                None,
+            )))
         } else {
             let maybe_conn = &self.connections[i];
             match maybe_conn {
@@ -753,7 +760,10 @@ impl MultipleTestData {
                     };
                     Ok((output, input))
                 }
-                _ => Err(ConnectionError::new(ConnectionErrorKind::ConnectError)),
+                _ => Err(ConnectionError::Capacity(CapacityError::new(
+                    CapacityErrorKind::Ambiguous,
+                    None,
+                ))),
             }
         }
     }

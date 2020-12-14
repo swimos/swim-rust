@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::routing::error::{ResolutionError, RouterError, Unresolvable};
+use crate::routing::error::RouterError;
 use crate::routing::remote::net::{ExternalConnections, Listener};
 use crate::routing::remote::ConnectionDropped;
 use crate::routing::{
@@ -23,6 +23,7 @@ use futures::io::ErrorKind;
 use futures::stream::Fuse;
 use futures::task::{AtomicWaker, Context, Poll};
 use futures::{FutureExt, Sink, Stream, StreamExt};
+use http::StatusCode;
 use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::io;
@@ -30,7 +31,9 @@ use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::Arc;
 use swim_common::routing::ws::{CloseReason, JoinedStreamSink, WsConnections, WsMessage};
-use swim_common::routing::{ConnectionError, ConnectionErrorKind};
+use swim_common::routing::{
+    CloseError, ConnectionError, HttpError, HttpErrorKind, ResolutionError, ResolutionErrorKind,
+};
 use tokio::sync::mpsc;
 use url::Url;
 use utilities::sync::promise;
@@ -72,10 +75,10 @@ impl ServerRouter for LocalRoutes {
             if *countdown == 0 {
                 Ok(route.clone())
             } else {
-                Err(ResolutionError::Unresolvable(Unresolvable(addr)))
+                Err(ResolutionError::unresolvable(addr.to_string()))
             }
         } else {
-            Err(ResolutionError::Unresolvable(Unresolvable(addr)))
+            Err(ResolutionError::unresolvable(addr.to_string()))
         };
         ready(result).boxed()
     }
@@ -87,8 +90,8 @@ impl ServerRouter for LocalRoutes {
     ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
         let mut lock = self.1.lock();
         let result = if host.is_some() {
-            Err(RouterError::ConnectionFailure(ConnectionError::new(
-                ConnectionErrorKind::Resolution,
+            Err(RouterError::ConnectionFailure(ConnectionError::Resolution(
+                ResolutionError::new(ResolutionErrorKind::Unresolvable, None),
             )))
         } else {
             if let Some((addr, countdown)) = lock.uri_mappings.get_mut(&route) {
@@ -101,9 +104,8 @@ impl ServerRouter for LocalRoutes {
                         *countdown -= 1;
                     }
                     // A non-fatal error that will allow a retry.
-                    Err(RouterError::ConnectionFailure(ConnectionError::with_cause(
-                        ConnectionErrorKind::Warp,
-                        "Oh no!".into(),
+                    Err(RouterError::ConnectionFailure(ConnectionError::Http(
+                        HttpError::new(HttpErrorKind::StatusCode(Some(StatusCode::OK)), None),
                     )))
                 }
             } else {
@@ -467,7 +469,7 @@ impl Sink<WsMessage> for FakeWebsocket {
 
     fn poll_ready(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         if self.closed {
-            Poll::Ready(Err(ConnectionError::new(ConnectionErrorKind::Closed)))
+            Poll::Ready(Err(ConnectionError::Closed(CloseError::closed())))
         } else {
             Poll::Ready(Ok(()))
         }
@@ -475,7 +477,7 @@ impl Sink<WsMessage> for FakeWebsocket {
 
     fn start_send(self: Pin<&mut Self>, item: WsMessage) -> Result<(), Self::Error> {
         if self.closed {
-            Err(ConnectionError::new(ConnectionErrorKind::Closed))
+            Err(ConnectionError::Closed(CloseError::closed()))
         } else {
             Ok(self.get_mut().inner.output.push(item))
         }
@@ -483,7 +485,7 @@ impl Sink<WsMessage> for FakeWebsocket {
 
     fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         if self.closed {
-            Poll::Ready(Err(ConnectionError::new(ConnectionErrorKind::Closed)))
+            Poll::Ready(Err(ConnectionError::Closed(CloseError::closed())))
         } else {
             Poll::Ready(Ok(()))
         }

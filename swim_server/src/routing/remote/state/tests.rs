@@ -30,7 +30,7 @@ use std::net::SocketAddr;
 use std::num::NonZeroUsize;
 use std::time::Duration;
 use swim_common::request::Request;
-use swim_common::routing::{ConnectionError, ConnectionErrorKind};
+use swim_common::routing::{ConnectionError, IoError};
 use swim_runtime::time::timeout::timeout;
 use tokio::sync::{mpsc, oneshot};
 use utilities::future::open_ended::OpenEndedFutures;
@@ -264,9 +264,7 @@ async fn connections_state_defer_connect_failed() {
         }))) => {
             assert_eq!(
                 error,
-                ConnectionError::new(ConnectionErrorKind::Socket(
-                    ErrorKind::ConnectionReset.into()
-                ))
+                ConnectionError::Io(IoError::new(ErrorKind::ConnectionReset, None))
             );
             assert!(remaining.next().is_none());
             assert_eq!(host, target);
@@ -389,11 +387,11 @@ async fn connections_failure_triggers_pending() {
 
     connections.fail_connection(
         &target,
-        ConnectionError::new(ConnectionErrorKind::Socket(ErrorKind::ConnectionReset)),
+        ConnectionError::Io(IoError::new(ErrorKind::ConnectionReset, None)),
     );
 
     let result = timeout(Duration::from_secs(5), req_rx).await;
-    let _err = ConnectionError::new(ConnectionErrorKind::Socket(ErrorKind::ConnectionReset));
+    let _err = ConnectionError::Io(IoError::new(ErrorKind::ConnectionReset, None));
     assert!(matches!(result, Ok(Ok(Err(_err)))));
 }
 

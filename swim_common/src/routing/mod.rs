@@ -19,7 +19,6 @@ pub mod ws;
 use crate::request::request_future::RequestError;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
-use std::io::ErrorKind;
 use tokio::sync::mpsc::error::SendError as MpscSendError;
 use utilities::errors::Recoverable;
 
@@ -43,11 +42,7 @@ impl Recoverable for RoutingError {
         match &self {
             RoutingError::ConnectionError => false,
             RoutingError::HostUnreachable => false,
-            RoutingError::PoolError(e)
-                if e.kind == ConnectionErrorKind::Socket(ErrorKind::ConnectionRefused) =>
-            {
-                false
-            }
+            RoutingError::PoolError(e) => e.is_fatal(),
             _ => true,
         }
     }

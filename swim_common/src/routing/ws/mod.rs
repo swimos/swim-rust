@@ -16,13 +16,11 @@ use futures::{Future, Sink, Stream};
 
 use futures::future::BoxFuture;
 
-mod error;
 mod protocol;
 mod stream;
 mod utils;
 
-use crate::routing::error::ConnectionError;
-pub use error::*;
+use crate::routing::ConnectionError;
 pub use protocol::*;
 pub use stream::*;
 pub use utils::*;
