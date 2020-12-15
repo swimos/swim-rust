@@ -19,6 +19,7 @@ use swim_client::downlink::Downlink;
 use swim_client::downlink::Event::Remote;
 use swim_client::interface::SwimClient;
 use swim_common::warp::path::AbsolutePath;
+use swim_runtime::time::delay::delay_for;
 use tokio::task;
 
 async fn did_set(value_recv: TypedValueReceiver<String>, initial_value: String) {
@@ -69,15 +70,15 @@ async fn main() {
         .send_command(path, "Hello from command, world!".to_string())
         .await
         .expect("Failed to send command!");
-    tokio::time::delay_for(Duration::from_secs(2)).await;
+    delay_for(Duration::from_secs(2)).await;
 
     // ...or a downlink set()
     dl_sink
         .set("Hello from link, world!".to_string())
         .await
         .expect("Failed to send message!");
-    tokio::time::delay_for(Duration::from_secs(2)).await;
+    delay_for(Duration::from_secs(2)).await;
 
     println!("Stopping client in 2 seconds");
-    tokio::time::delay_for(Duration::from_secs(2)).await;
+    delay_for(Duration::from_secs(2)).await;
 }
