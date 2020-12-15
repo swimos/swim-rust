@@ -17,6 +17,7 @@ use std::time::Duration;
 use swim_client::downlink::Downlink;
 use swim_client::interface::SwimClient;
 use swim_common::warp::path::AbsolutePath;
+use swim_runtime::time::delay::delay_for;
 
 #[tokio::main]
 async fn main() {
@@ -42,7 +43,7 @@ async fn main() {
         .await
         .expect("Failed to send message!");
 
-    tokio::time::delay_for(Duration::from_secs(2)).await;
+    delay_for(Duration::from_secs(2)).await;
 
     drop(_dl_topic);
     drop(dl_sink);
@@ -69,5 +70,5 @@ async fn main() {
     }
 
     println!("Stopping client in 2 seconds");
-    tokio::time::delay_for(Duration::from_secs(2)).await;
+    delay_for(Duration::from_secs(2)).await;
 }
