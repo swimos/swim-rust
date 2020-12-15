@@ -806,15 +806,15 @@ where
     }
 }
 
-pub async fn run_demand_lane_io<Value>(
+pub async fn run_demand_lane_io<Event>(
     envelopes: impl Stream<Item = TaggedClientEnvelope>,
     config: AgentExecutionConfig,
     context: impl AgentExecutionContext,
     route: RelativePath,
-    response_rx: mpsc::Receiver<Value>,
+    response_rx: mpsc::Receiver<Event>,
 ) -> Result<Vec<UplinkErrorReport>, LaneIoError>
 where
-    Value: Send + Sync + Form + 'static,
+    Event: Send + Sync + Form + 'static,
 {
     run_auto_lane_io(
         envelopes,

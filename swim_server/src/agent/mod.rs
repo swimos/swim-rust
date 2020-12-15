@@ -630,9 +630,9 @@ struct ValueLifecycleTasks<L, S, P>(LifecycleTasks<L, S, P>);
 struct MapLifecycleTasks<L, S, P>(LifecycleTasks<L, S, P>);
 struct ActionLifecycleTasks<L, S, P>(LifecycleTasks<L, S, P>);
 struct CommandLifecycleTasks<L, S, P>(LifecycleTasks<L, S, P>);
-struct DemandLifecycleTasks<L, S, P, Value> {
+struct DemandLifecycleTasks<L, S, P, Event> {
     tasks: LifecycleTasks<L, S, P>,
-    response_tx: mpsc::Sender<Value>,
+    response_tx: mpsc::Sender<Event>,
 }
 
 struct StatelessLifecycleTasks {
