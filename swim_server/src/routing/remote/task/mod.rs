@@ -171,7 +171,9 @@ where
                                 break c;
                             }
                         },
-                        _ => {}
+                        _e => {
+                            // todo
+                        }
                     },
                     Err(err) => {
                         break Completion::Failed(err);

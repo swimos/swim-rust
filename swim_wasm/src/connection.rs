@@ -27,7 +27,7 @@ use swim_common::routing::ws::{ConnFuture, WebsocketFactory};
 use swim_common::routing::ws::{ConnectionError, WebSocketError};
 use utilities::future::{TransformMut, TransformedSink, TransformedStream};
 
-/// A transformer that converts from a [`swim_common::ws::WsMessage`] to
+/// A transformer that converts from a [`swim_common::routing::ws::WsMessage`] to
 /// [`ws_stream_wasm::WsMessage`].
 pub struct SinkTransformer;
 impl TransformMut<WsMessage> for SinkTransformer {
@@ -47,7 +47,7 @@ impl TransformMut<WsMessage> for SinkTransformer {
 }
 
 /// A transformer that converts from a [`ws_stream_wasm::WsMessage`] to
-/// [`swim_common::ws::WsMessage`].
+/// [`swim_common::routing::ws::WsMessage`].
 pub struct StreamTransformer;
 impl TransformMut<WasmMessage> for StreamTransformer {
     type Out = Result<WsMessage, ConnectionError>;
