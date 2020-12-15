@@ -85,10 +85,20 @@ impl Display for CapacityError {
 
 impl Recoverable for CapacityError {
     fn is_fatal(&self) -> bool {
-        !matches!(
-            self.kind,
-            CapacityErrorKind::ReadFull | CapacityErrorKind::WriteFull | CapacityErrorKind::Full(_)
-        )
+        #[cfg(not(feature = "tungstenite"))]
+        {
+            !matches!(
+                self.kind,
+                CapacityErrorKind::ReadFull | CapacityErrorKind::WriteFull
+            )
+        }
+        #[cfg(feature = "tungstenite")]
+        {
+            !matches!(
+                self.kind,
+                CapacityErrorKind::ReadFull | CapacityErrorKind::WriteFull | CapacityErrorKind::Full(_)
+            )
+        }
     }
 }
 
