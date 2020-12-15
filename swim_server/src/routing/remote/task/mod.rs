@@ -180,9 +180,8 @@ where
                                 break c;
                             }
                         },
-                        WsMessage::Binary(_) => {}
-                        _ => {
-                            todo!()
+                        _e => {
+                            // todo
                         }
                     },
                     Err(err) => {
