@@ -133,7 +133,10 @@ impl IncomingHostTask {
                     let value = {
                         match &message {
                             WsMessage::Text(s) => parse_single(&s),
-                            _ => unimplemented!("Only text messages are implemented"),
+                            m => {
+                                error!("Unimplemented message type received: {:?}", m);
+                                continue;
+                            }
                         }
                     };
 

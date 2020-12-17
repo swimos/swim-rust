@@ -264,7 +264,10 @@ async fn connections_state_defer_connect_failed() {
         }))) => {
             assert_eq!(
                 error,
-                ConnectionError::Io(IoError::new(ErrorKind::ConnectionReset, None))
+                ConnectionError::Io(IoError::new(
+                    ErrorKind::ConnectionReset,
+                    Some("connection reset".to_string())
+                ))
             );
             assert!(remaining.next().is_none());
             assert_eq!(host, target);

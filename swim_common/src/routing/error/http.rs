@@ -67,25 +67,35 @@ impl Error for HttpError {}
 impl Display for HttpError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         let HttpError { kind, cause } = self;
-        let cause = format_cause(cause);
 
         match kind {
-            HttpErrorKind::StatusCode(code) => match code {
-                Some(code) => {
-                    write!(f, "HTTP error. Status code: {}.{}", code, cause)
+            HttpErrorKind::StatusCode(code) => {
+                let cause = format_cause(cause);
+                match code {
+                    Some(code) => {
+                        write!(f, "HTTP error. Status code: {}.{}", code, cause)
+                    }
+                    None => write!(f, "HTTP error.{}", cause),
                 }
-                None => write!(f, "HTTP error.{}", cause),
-            },
+            }
             HttpErrorKind::InvalidHeaderName => {
+                let cause = format_cause(cause);
                 write!(f, "Invalid HTTP header name.{}", cause)
             }
             HttpErrorKind::InvalidHeaderValue => {
+                let cause = format_cause(cause);
                 write!(f, "Invalid HTTP header value.{}", cause)
             }
-            HttpErrorKind::InvalidUri(e) => {
-                write!(f, "{}", e)
-            }
+            HttpErrorKind::InvalidUri(e) => match cause {
+                Some(cause) => {
+                    write!(f, "{}. Caused by: {}", e, cause)
+                }
+                None => {
+                    write!(f, "{}", e)
+                }
+            },
             HttpErrorKind::InvalidMethod => {
+                let cause = format_cause(cause);
                 write!(f, "Invalid HTTP method.{}", cause)
             }
         }
@@ -147,7 +157,7 @@ impl Display for InvalidUriError {
             InvalidUriErrorKind::InvalidScheme => write!(f, "Invalid scheme.{}", cause),
             InvalidUriErrorKind::InvalidPort => write!(f, "Invalid port.{}", cause),
             InvalidUriErrorKind::MissingScheme => write!(f, "Missing scheme.{}", cause),
-            InvalidUriErrorKind::Malformatted => write!(f, "Malformatted URL.{}", cause),
+            InvalidUriErrorKind::Malformatted => write!(f, "Malformatted URI.{}", cause),
             InvalidUriErrorKind::UnsupportedScheme => write!(f, "Unsupported scheme.{}", cause),
         }
     }
@@ -212,4 +222,194 @@ impl From<http::Error> for HttpError {
             _ => unreachable!(),
         }
     }
+}
+
+#[test]
+fn test_http_error() {
+    assert_eq!(
+        HttpError::new(HttpErrorKind::StatusCode(None), None).to_string(),
+        "HTTP error."
+    );
+    assert_eq!(
+        HttpError::new(
+            HttpErrorKind::StatusCode(Some(StatusCode::IM_A_TEAPOT)),
+            None
+        )
+        .to_string(),
+        "HTTP error. Status code: 418 I'm a teapot."
+    );
+    assert_eq!(
+        HttpError::new(HttpErrorKind::InvalidHeaderName, None).to_string(),
+        "Invalid HTTP header name."
+    );
+    assert_eq!(
+        HttpError::new(HttpErrorKind::InvalidHeaderValue, None).to_string(),
+        "Invalid HTTP header value."
+    );
+    assert_eq!(
+        HttpError::new(
+            HttpErrorKind::InvalidUri(InvalidUriError::new(
+                InvalidUriErrorKind::UnsupportedScheme,
+                None
+            )),
+            None
+        )
+        .to_string(),
+        "Unsupported scheme."
+    );
+    assert_eq!(
+        HttpError::new(HttpErrorKind::InvalidMethod, None).to_string(),
+        "Invalid HTTP method."
+    );
+
+    assert_eq!(
+        HttpError::new(
+            HttpErrorKind::StatusCode(None),
+            Some("Unknown status code".to_string())
+        )
+        .to_string(),
+        "HTTP error. Unknown status code"
+    );
+    assert_eq!(
+        HttpError::new(
+            HttpErrorKind::StatusCode(Some(StatusCode::IM_A_TEAPOT)),
+            Some("Teapots don't understand HTTP".to_string())
+        )
+        .to_string(),
+        "HTTP error. Status code: 418 I'm a teapot. Teapots don't understand HTTP"
+    );
+    assert_eq!(
+        HttpError::new(
+            HttpErrorKind::InvalidHeaderName,
+            Some("permessage--deflate".to_string())
+        )
+        .to_string(),
+        "Invalid HTTP header name. permessage--deflate"
+    );
+    assert_eq!(
+        HttpError::new(
+            HttpErrorKind::InvalidHeaderValue,
+            Some("application//json".to_string())
+        )
+        .to_string(),
+        "Invalid HTTP header value. application//json"
+    );
+    assert_eq!(
+        HttpError::new(
+            HttpErrorKind::InvalidUri(InvalidUriError::new(
+                InvalidUriErrorKind::UnsupportedScheme,
+                Some("xyz".to_string())
+            )),
+            None
+        )
+        .to_string(),
+        "Unsupported scheme. xyz"
+    );
+    assert_eq!(
+        HttpError::new(
+            HttpErrorKind::InvalidUri(InvalidUriError::new(
+                InvalidUriErrorKind::UnsupportedScheme,
+                Some("xyz".to_string())
+            )),
+            Some("Bad URI".to_string())
+        )
+        .to_string(),
+        "Unsupported scheme. xyz. Caused by: Bad URI"
+    );
+    assert_eq!(
+        HttpError::new(HttpErrorKind::InvalidMethod, Some("GETT".to_string())).to_string(),
+        "Invalid HTTP method. GETT"
+    );
+
+    assert!(HttpError::new(HttpErrorKind::InvalidMethod, None).is_fatal());
+    assert!(HttpError::new(HttpErrorKind::InvalidHeaderName, None).is_fatal());
+    assert!(HttpError::new(HttpErrorKind::InvalidHeaderValue, None).is_fatal());
+    assert!(
+        !HttpError::new(HttpErrorKind::StatusCode(Some(StatusCode::CONTINUE)), None).is_fatal()
+    );
+    assert!(HttpError::new(
+        HttpErrorKind::StatusCode(Some(StatusCode::IM_A_TEAPOT)),
+        None
+    )
+    .is_fatal());
+    assert!(!HttpError::new(
+        HttpErrorKind::StatusCode(Some(StatusCode::TEMPORARY_REDIRECT)),
+        None
+    )
+    .is_fatal());
+    assert!(HttpError::new(
+        HttpErrorKind::InvalidUri(InvalidUriError::new(
+            InvalidUriErrorKind::UnsupportedScheme,
+            None
+        )),
+        None
+    )
+    .is_fatal());
+}
+
+#[test]
+fn test_invalid_uri_error() {
+    assert_eq!(
+        InvalidUriError::new(InvalidUriErrorKind::InvalidScheme, None).to_string(),
+        "Invalid scheme."
+    );
+    assert_eq!(
+        InvalidUriError::new(InvalidUriErrorKind::InvalidPort, None).to_string(),
+        "Invalid port."
+    );
+    assert_eq!(
+        InvalidUriError::new(InvalidUriErrorKind::MissingScheme, None).to_string(),
+        "Missing scheme."
+    );
+    assert_eq!(
+        InvalidUriError::new(InvalidUriErrorKind::Malformatted, None).to_string(),
+        "Malformatted URI."
+    );
+    assert_eq!(
+        InvalidUriError::new(InvalidUriErrorKind::UnsupportedScheme, None).to_string(),
+        "Unsupported scheme."
+    );
+    assert_eq!(
+        InvalidUriError::new(
+            InvalidUriErrorKind::InvalidScheme,
+            Some("htt p".to_string())
+        )
+        .to_string(),
+        "Invalid scheme. htt p"
+    );
+    assert_eq!(
+        InvalidUriError::new(InvalidUriErrorKind::InvalidPort, Some("90O1".to_string()))
+            .to_string(),
+        "Invalid port. 90O1"
+    );
+    assert_eq!(
+        InvalidUriError::new(
+            InvalidUriErrorKind::MissingScheme,
+            Some("Expected a valid scheme".to_string())
+        )
+        .to_string(),
+        "Missing scheme. Expected a valid scheme"
+    );
+    assert_eq!(
+        InvalidUriError::new(
+            InvalidUriErrorKind::Malformatted,
+            Some("http://localhost::9001".to_string())
+        )
+        .to_string(),
+        "Malformatted URI. http://localhost::9001"
+    );
+    assert_eq!(
+        InvalidUriError::new(
+            InvalidUriErrorKind::UnsupportedScheme,
+            Some("xyz".to_string())
+        )
+        .to_string(),
+        "Unsupported scheme. xyz"
+    );
+
+    assert!(InvalidUriError::new(InvalidUriErrorKind::InvalidScheme, None).is_fatal());
+    assert!(InvalidUriError::new(InvalidUriErrorKind::InvalidPort, None).is_fatal());
+    assert!(InvalidUriError::new(InvalidUriErrorKind::MissingScheme, None).is_fatal());
+    assert!(InvalidUriError::new(InvalidUriErrorKind::Malformatted, None).is_fatal());
+    assert!(InvalidUriError::new(InvalidUriErrorKind::UnsupportedScheme, None).is_fatal());
 }

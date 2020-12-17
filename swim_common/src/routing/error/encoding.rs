@@ -33,6 +33,14 @@ impl EncodingError {
     pub fn kind(&self) -> EncodingErrorKind {
         self.kind
     }
+
+    pub fn invalid() -> EncodingError {
+        EncodingError::new(EncodingErrorKind::Invalid, None)
+    }
+
+    pub fn unsupported() -> EncodingError {
+        EncodingError::new(EncodingErrorKind::Unsupported, None)
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -71,4 +79,29 @@ impl From<EncodingError> for ConnectionError {
     fn from(e: EncodingError) -> Self {
         ConnectionError::Encoding(e)
     }
+}
+
+#[test]
+fn tests() {
+    assert_eq!(EncodingError::invalid().to_string(), "Invalid encoding.");
+    assert_eq!(
+        EncodingError::unsupported().to_string(),
+        "Unsupported encoding."
+    );
+
+    assert!(EncodingError::invalid().is_fatal());
+    assert!(EncodingError::unsupported().is_fatal());
+
+    assert_eq!(
+        EncodingError::new(
+            EncodingErrorKind::Invalid,
+            Some("Invalid byte sequence".to_string())
+        )
+        .to_string(),
+        "Invalid encoding. Invalid byte sequence"
+    );
+    assert_eq!(
+        EncodingError::new(EncodingErrorKind::Unsupported, Some("latin-1".to_string())).to_string(),
+        "Unsupported encoding. latin-1"
+    );
 }

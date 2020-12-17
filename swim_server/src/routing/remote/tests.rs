@@ -393,7 +393,10 @@ fn transition_deferred_dns_failed() {
 
     state.check(vec![StateMutation::FailConnection(
         host,
-        ConnectionError::Io(IoError::new(ErrorKind::NotFound, None)),
+        ConnectionError::Io(IoError::new(
+            ErrorKind::NotFound,
+            Some("entity not found".to_string()),
+        )),
     )]);
     assert!(result.is_ok());
 }

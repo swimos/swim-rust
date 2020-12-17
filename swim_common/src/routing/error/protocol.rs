@@ -80,3 +80,23 @@ impl From<ProtocolError> for ConnectionError {
         ConnectionError::Protocol(e)
     }
 }
+
+#[test]
+fn test_protocol_error() {
+    assert_eq!(ProtocolError::warp(None).to_string(), "WARP violation.");
+    assert_eq!(
+        ProtocolError::websocket(None).to_string(),
+        "WebSocket protocol violation."
+    );
+    assert_eq!(
+        ProtocolError::warp(Some("Unexpected link message".to_string())).to_string(),
+        "WARP violation. Unexpected link message"
+    );
+    assert_eq!(
+        ProtocolError::websocket(Some("No extension negotiated".to_string())).to_string(),
+        "WebSocket protocol violation. No extension negotiated"
+    );
+
+    assert!(ProtocolError::warp(None).is_fatal());
+    assert!(ProtocolError::websocket(None).is_fatal());
+}

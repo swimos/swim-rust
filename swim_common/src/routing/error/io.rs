@@ -61,12 +61,37 @@ impl From<IoError> for ConnectionError {
 
 impl From<std::io::Error> for IoError {
     fn from(e: std::io::Error) -> Self {
-        IoError::new(e.kind(), e.source().map(ToString::to_string))
+        IoError::new(e.kind(), Some(e.to_string()))
     }
 }
 
 impl From<std::io::Error> for ConnectionError {
     fn from(e: std::io::Error) -> Self {
-        ConnectionError::Io(IoError::new(e.kind(), e.source().map(ToString::to_string)))
+        ConnectionError::Io(e.into())
     }
+}
+
+#[test]
+fn test_io_error() {
+    assert_eq!(
+        IoError::new(ErrorKind::ConnectionAborted, None).to_string(),
+        "IO error: ConnectionAborted."
+    );
+    assert_eq!(
+        IoError::new(
+            ErrorKind::ConnectionAborted,
+            Some("Aborted by peer".to_string())
+        )
+        .to_string(),
+        "IO error: ConnectionAborted. Aborted by peer"
+    );
+
+    assert!(IoError::new(ErrorKind::ConnectionAborted, None).is_fatal());
+
+    let error: IoError =
+        std::io::Error::new(ErrorKind::ConnectionAborted, "Aborted by peer").into();
+    assert_eq!(
+        error,
+        IoError::new(ErrorKind::ConnectionAborted, Some("Aborted by peer".into()))
+    );
 }

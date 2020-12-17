@@ -12,11 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::routing::error::FmtResult;
-use crate::routing::{format_cause, ConnectionError};
 use std::error::Error;
 use std::fmt::{Display, Formatter};
+
 use utilities::errors::Recoverable;
+
+use crate::routing::error::FmtResult;
+use crate::routing::{format_cause, ConnectionError};
 
 type NativeTlsError = tokio_native_tls::native_tls::Error;
 
@@ -93,4 +95,51 @@ impl From<TlsError> for ConnectionError {
     fn from(e: TlsError) -> Self {
         ConnectionError::Tls(e)
     }
+}
+
+#[test]
+fn test_tls_error() {
+    assert_eq!(
+        TlsError::new(TlsErrorKind::IO, None).to_string(),
+        "An IO error was produced during a TLS operation."
+    );
+    assert_eq!(
+        TlsError::new(TlsErrorKind::SSL, None).to_string(),
+        "SSL error."
+    );
+    assert_eq!(
+        TlsError::new(TlsErrorKind::InvalidCertificate, None).to_string(),
+        "Invalid certificate."
+    );
+
+    assert_eq!(
+        TlsError::new(TlsErrorKind::IO, Some("Broken pipe".to_string())).to_string(),
+        "An IO error was produced during a TLS operation. Broken pipe"
+    );
+    assert_eq!(
+        TlsError::new(TlsErrorKind::SSL, Some("Handshake failure".to_string())).to_string(),
+        "SSL error. Handshake failure"
+    );
+    assert_eq!(
+        TlsError::new(
+            TlsErrorKind::InvalidCertificate,
+            Some("Certificate has expired".to_string())
+        )
+        .to_string(),
+        "Invalid certificate. Certificate has expired"
+    );
+
+    assert!(TlsError::new(TlsErrorKind::IO, None).is_fatal());
+    assert!(TlsError::new(TlsErrorKind::SSL, None).is_fatal());
+    assert!(TlsError::new(TlsErrorKind::InvalidCertificate, None).is_fatal());
+
+    let e: TlsError = tokio_native_tls::native_tls::Certificate::from_der(&Vec::new())
+        .err()
+        .unwrap()
+        .into();
+
+    matches!(e, TlsError {
+        kind:TlsErrorKind::SSL,
+        ..
+    });
 }

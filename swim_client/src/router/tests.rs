@@ -1631,7 +1631,7 @@ async fn test_route_incoming_unreachable_host() {
 
     assert_eq!(
         stream.recv().await.unwrap(),
-        RouterEvent::Unreachable("Malformatted URL. ws://unreachable/".to_string())
+        RouterEvent::Unreachable("Malformatted URI. ws://unreachable/".to_string())
     );
 
     assert_eq!(get_request_count(&pool), 1);

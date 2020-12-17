@@ -14,7 +14,6 @@
 
 mod capacity;
 mod closed;
-mod configuration;
 mod encoding;
 mod http;
 mod io;
@@ -27,7 +26,6 @@ mod tls;
 pub use self::http::*;
 pub use capacity::*;
 pub use closed::*;
-pub use configuration::*;
 pub use encoding::*;
 pub use io::*;
 pub use protocol::*;
@@ -53,8 +51,6 @@ mod tests;
 /// An error denoting that a connection error has occurred.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ConnectionError {
-    /// A configuration error.
-    Configuration(ConfigurationError),
     /// A HTTP detailing either a malformatted request/response or a peer error.
     Http(HttpError),
     /// A TLS error that may be produced when reading a certificate or through a connection.
@@ -77,7 +73,6 @@ pub enum ConnectionError {
 impl Recoverable for ConnectionError {
     fn is_fatal(&self) -> bool {
         match self {
-            ConnectionError::Configuration(e) => e.is_fatal(),
             ConnectionError::Http(e) => e.is_fatal(),
             #[cfg(feature = "tls")]
             ConnectionError::Tls(e) => e.is_fatal(),
@@ -99,7 +94,6 @@ impl Error for ConnectionError {}
 impl Display for ConnectionError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {
-            ConnectionError::Configuration(e) => write!(f, "{}", e),
             ConnectionError::Http(e) => write!(f, "{}", e),
             #[cfg(feature = "tls")]
             ConnectionError::Tls(e) => write!(f, "{}", e),

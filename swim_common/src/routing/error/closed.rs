@@ -19,8 +19,13 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use utilities::errors::Recoverable;
 
+use tokio::sync::mpsc::error::RecvError as MpscRecvError;
 use tokio::sync::mpsc::error::SendError as MpscSendError;
-use tokio::sync::oneshot::error::RecvError as MpscRecvError;
+use tokio::sync::mpsc::error::TryRecvError as MpscTryRecvError;
+use tokio::sync::mpsc::error::TrySendError as MpscTrySendError;
+
+use tokio::sync::oneshot::error::RecvError as OneshotRecvError;
+use tokio::sync::oneshot::error::TryRecvError as OneshotTryRecvError;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct CloseError {
@@ -117,14 +122,193 @@ impl From<CloseError> for ConnectionError {
     }
 }
 
-impl<T> From<MpscSendError<T>> for ConnectionError {
+impl<T> From<MpscSendError<T>> for CloseError {
     fn from(_: MpscSendError<T>) -> Self {
-        ConnectionError::Closed(CloseError::new(CloseErrorKind::Unexpected, None))
+        CloseError::new(CloseErrorKind::Unexpected, None)
+    }
+}
+
+impl From<MpscRecvError> for CloseError {
+    fn from(_: MpscRecvError) -> Self {
+        CloseError::new(CloseErrorKind::Unexpected, None)
+    }
+}
+
+impl From<MpscTryRecvError> for CloseError {
+    fn from(_: MpscTryRecvError) -> Self {
+        CloseError::new(CloseErrorKind::Unexpected, None)
+    }
+}
+
+impl<T> From<MpscTrySendError<T>> for CloseError {
+    fn from(_: MpscTrySendError<T>) -> Self {
+        CloseError::new(CloseErrorKind::Unexpected, None)
+    }
+}
+
+impl<T> From<MpscSendError<T>> for ConnectionError {
+    fn from(e: MpscSendError<T>) -> Self {
+        ConnectionError::Closed(e.into())
     }
 }
 
 impl From<MpscRecvError> for ConnectionError {
-    fn from(_: MpscRecvError) -> Self {
-        ConnectionError::Closed(CloseError::new(CloseErrorKind::Unexpected, None))
+    fn from(e: MpscRecvError) -> Self {
+        ConnectionError::Closed(e.into())
+    }
+}
+
+impl From<MpscTryRecvError> for ConnectionError {
+    fn from(e: MpscTryRecvError) -> Self {
+        ConnectionError::Closed(e.into())
+    }
+}
+
+impl<T> From<MpscTrySendError<T>> for ConnectionError {
+    fn from(e: MpscTrySendError<T>) -> Self {
+        ConnectionError::Closed(e.into())
+    }
+}
+
+impl From<OneshotRecvError> for CloseError {
+    fn from(_: OneshotRecvError) -> Self {
+        CloseError::new(CloseErrorKind::Unexpected, None)
+    }
+}
+
+impl From<OneshotTryRecvError> for CloseError {
+    fn from(_: OneshotTryRecvError) -> Self {
+        CloseError::new(CloseErrorKind::Unexpected, None)
+    }
+}
+
+impl From<OneshotRecvError> for ConnectionError {
+    fn from(e: OneshotRecvError) -> Self {
+        ConnectionError::Closed(e.into())
+    }
+}
+
+impl From<OneshotTryRecvError> for ConnectionError {
+    fn from(e: OneshotTryRecvError) -> Self {
+        ConnectionError::Closed(e.into())
+    }
+}
+
+#[test]
+fn test_recoverable() {
+    assert!(CloseError::new(CloseErrorKind::Closed, None).is_fatal());
+    assert!(CloseError::new(CloseErrorKind::Unexpected, None).is_fatal());
+    assert!(CloseError::new(CloseErrorKind::InvalidCloseCode, None).is_fatal());
+    assert!(CloseError::new(CloseErrorKind::AlreadyClosed, None).is_fatal());
+    assert!(CloseError::new(CloseErrorKind::Normal, None).is_fatal());
+    assert!(CloseError::new(CloseErrorKind::ClosedRemotely, None).is_fatal());
+}
+
+#[test]
+fn test_display() {
+    assert_eq!(
+        CloseError::unexpected().to_string(),
+        "Unexpected close event."
+    );
+    assert_eq!(
+        CloseError::already_closed().to_string(),
+        "Channel already closed."
+    );
+    assert_eq!(CloseError::closed().to_string(), "Channel closed.");
+
+    assert_eq!(
+        CloseError::new(CloseErrorKind::Closed, None).to_string(),
+        "Channel closed."
+    );
+    assert_eq!(
+        CloseError::new(CloseErrorKind::Unexpected, None).to_string(),
+        "Unexpected close event."
+    );
+    assert_eq!(
+        CloseError::new(CloseErrorKind::InvalidCloseCode, None).to_string(),
+        "Invalid close code."
+    );
+    assert_eq!(
+        CloseError::new(CloseErrorKind::AlreadyClosed, None).to_string(),
+        "Channel already closed."
+    );
+    assert_eq!(
+        CloseError::new(CloseErrorKind::Normal, None).to_string(),
+        "The connection has been closed."
+    );
+    assert_eq!(
+        CloseError::new(CloseErrorKind::ClosedRemotely, None).to_string(),
+        "The connection was closed remotely."
+    );
+
+    assert_eq!(
+        CloseError::new(CloseErrorKind::Closed, Some("Closed normally.".to_string())).to_string(),
+        "Channel closed. Closed normally."
+    );
+    assert_eq!(
+        CloseError::new(
+            CloseErrorKind::Unexpected,
+            Some("That wasn't supposed to happen.".to_string())
+        )
+        .to_string(),
+        "Unexpected close event. That wasn't supposed to happen."
+    );
+    assert_eq!(
+        CloseError::new(
+            CloseErrorKind::InvalidCloseCode,
+            Some(format!("Received closed code 0xf"))
+        )
+        .to_string(),
+        "Invalid close code. Received closed code 0xf"
+    );
+    assert_eq!(
+        CloseError::new(
+            CloseErrorKind::AlreadyClosed,
+            Some("Closed by another process".to_string())
+        )
+        .to_string(),
+        "Channel already closed. Closed by another process"
+    );
+    assert_eq!(
+        CloseError::new(CloseErrorKind::Normal, Some("No error".to_string())).to_string(),
+        "The connection has been closed. No error"
+    );
+    assert_eq!(
+        CloseError::new(
+            CloseErrorKind::ClosedRemotely,
+            Some("Closed by peer".to_string())
+        )
+        .to_string(),
+        "The connection was closed remotely. Closed by peer"
+    );
+}
+
+#[tokio::test]
+async fn test_from() {
+    use tokio::sync::mpsc;
+
+    {
+        let (tx, mut rx): (mpsc::Sender<i32>, mpsc::Receiver<i32>) = mpsc::channel(1);
+        drop(tx);
+
+        let next = rx.try_recv();
+        let err: CloseError = next.unwrap_err().into();
+
+        assert_eq!(err, CloseError::unexpected());
+    }
+
+    {
+        let (tx, rx): (mpsc::Sender<i32>, mpsc::Receiver<i32>) = mpsc::channel(1);
+        drop(rx);
+
+        let next = tx.send(1).await;
+        let err: CloseError = next.unwrap_err().into();
+
+        assert_eq!(err, CloseError::unexpected());
+
+        let next = tx.try_send(1);
+        let err: CloseError = next.unwrap_err().into();
+
+        assert_eq!(err, CloseError::unexpected());
     }
 }

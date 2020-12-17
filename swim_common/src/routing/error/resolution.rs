@@ -90,3 +90,30 @@ impl From<ResolutionError> for ConnectionError {
         ConnectionError::Resolution(e)
     }
 }
+
+#[test]
+fn test_resolution_error() {
+    assert_eq!(
+        ResolutionError::unresolvable("http://swim.ai".to_string()).to_string(),
+        "Address http://swim.ai could not be resolved."
+    );
+    assert_eq!(
+        ResolutionError::new(ResolutionErrorKind::Unresolvable, None).to_string(),
+        "Address could not be resolved."
+    );
+    assert_eq!(
+        ResolutionError::router_dropped().to_string(),
+        "The router channel was dropped."
+    );
+    assert_eq!(
+        ResolutionError::new(
+            ResolutionErrorKind::RouterDropped,
+            Some("Server stopping".to_string())
+        )
+        .to_string(),
+        "The router channel was dropped. Server stopping"
+    );
+
+    assert!(ResolutionError::router_dropped().is_fatal());
+    assert!(ResolutionError::unresolvable("swim.ai".to_string()).is_fatal());
+}
