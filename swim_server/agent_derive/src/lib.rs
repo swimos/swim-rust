@@ -802,6 +802,7 @@ pub fn map_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// use std::sync::Arc;
 /// use swim_server::agent::AgentContext;
 /// # use swim_server::SwimAgent;
+/// # use tokio;
 ///
 /// #[demand_lifecycle(
 ///     agent = "TestAgent",
