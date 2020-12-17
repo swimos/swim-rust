@@ -1,3 +1,17 @@
+// Copyright 2015-2020 SWIM.AI inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 use futures::StreamExt;
 use std::time::Duration;
 use swim_client::downlink::model::map::MapEvent;
@@ -7,6 +21,7 @@ use swim_client::downlink::Event::Remote;
 use swim_client::interface::SwimClient;
 use swim_common::model::Value;
 use swim_common::warp::path::AbsolutePath;
+use swim_runtime::time::delay::delay_for;
 use tokio::task;
 
 async fn did_update(map_recv: TypedMapReceiver<i32, bool>, default: bool) {
@@ -52,7 +67,7 @@ async fn main() {
 
     task::spawn(did_update(map_recv, false));
 
-    tokio::time::delay_for(Duration::from_secs(2)).await;
+    delay_for(Duration::from_secs(2)).await;
 
     let first_room_uri = AbsolutePath::new(host_uri.clone(), first_room_node, switch_lane);
     let second_room_uri = AbsolutePath::new(host_uri.clone(), second_room_node, switch_lane);
@@ -63,43 +78,43 @@ async fn main() {
         .await
         .expect("Failed to send command!");
 
-    tokio::time::delay_for(Duration::from_secs(1)).await;
+    delay_for(Duration::from_secs(1)).await;
 
     client
         .send_command(second_room_uri.clone(), Value::Extant)
         .await
         .expect("Failed to send command!");
 
-    tokio::time::delay_for(Duration::from_secs(1)).await;
+    delay_for(Duration::from_secs(1)).await;
 
     client
         .send_command(third_room_uri.clone(), Value::Extant)
         .await
         .expect("Failed to send command!");
 
-    tokio::time::delay_for(Duration::from_secs(1)).await;
+    delay_for(Duration::from_secs(1)).await;
 
     client
         .send_command(second_room_uri.clone(), Value::Extant)
         .await
         .expect("Failed to send command!");
 
-    tokio::time::delay_for(Duration::from_secs(1)).await;
+    delay_for(Duration::from_secs(1)).await;
 
     client
         .send_command(second_room_uri, Value::Extant)
         .await
         .expect("Failed to send command!");
 
-    tokio::time::delay_for(Duration::from_secs(1)).await;
+    delay_for(Duration::from_secs(1)).await;
 
     client
         .send_command(third_room_uri, Value::Extant)
         .await
         .expect("Failed to send command!");
 
-    tokio::time::delay_for(Duration::from_secs(1)).await;
+    delay_for(Duration::from_secs(1)).await;
 
     println!("Stopping client in 2 seconds");
-    tokio::time::delay_for(Duration::from_secs(2)).await;
+    delay_for(Duration::from_secs(2)).await;
 }

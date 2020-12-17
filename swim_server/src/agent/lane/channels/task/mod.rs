@@ -178,8 +178,8 @@ const UPLINK_FAILED: &str = "An uplink failed with a non-fatal error.";
 const UPLINK_FATAL: &str = "An uplink failed with a fatal error.";
 const TOO_MANY_FAILURES: &str = "Terminating after too many failed uplinks.";
 
-/// Run the [`Envelope`] IO for a lane, updating the state of the lane and creating uplinks to
-/// remote subscribers.
+/// Run the [`swim_common::warp::envelope::Envelope`] IO for a lane, updating the state of the lane
+/// and creating uplinks to remote subscribers.
 ///
 /// #Arguments
 /// * `message_handler` - Creates the update task for the lane and new uplink state machines.
@@ -403,9 +403,9 @@ async fn send_action(
     sender.send(TaggedAction(addr, action)).await.is_ok()
 }
 
-/// Run the [`Envelope`] IO for an action lane. This is different to the standard `run_lane_io` as
-/// the update and uplink components of an action lane are interleaved and different uplinks will
-/// receive entirely different messages.
+/// Run the [`swim_common::warp::envelope::Envelope`] IO for an action lane. This is different to
+/// the standard `run_lane_io` as the update and uplink components of an action lane are interleaved
+/// and different uplinks will receive entirely different messages.
 ///
 /// #Arguments
 /// * `lane` - The action lane.
@@ -809,15 +809,15 @@ where
     }
 }
 
-pub async fn run_demand_lane_io<Value>(
+pub async fn run_demand_lane_io<Event>(
     envelopes: impl Stream<Item = TaggedClientEnvelope>,
     config: AgentExecutionConfig,
     context: impl AgentExecutionContext,
     route: RelativePath,
-    response_rx: mpsc::Receiver<Value>,
+    response_rx: mpsc::Receiver<Event>,
 ) -> Result<Vec<UplinkErrorReport>, LaneIoError>
 where
-    Value: Send + Sync + Form + 'static,
+    Event: Send + Sync + Form + 'static,
 {
     run_auto_lane_io(
         envelopes,

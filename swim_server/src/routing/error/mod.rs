@@ -29,8 +29,8 @@ use utilities::uri::RelativeUri;
 #[cfg(test)]
 mod tests;
 
-/// Error type for the [`ServerRouter`] that will return the envelope in the event that routing it
-/// fails.
+/// Error type for the [`crate::routing::ServerRouter`] that will return the envelope in the event that
+/// routing it fails.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SendError {
     error: RoutingError,

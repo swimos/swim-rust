@@ -12,11 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::parser::{
-    parse_struct, Attributes, EnumVariant, FieldManifest, FormField, StructRepr, TypeContents,
-    FORM_PATH, SCHEMA_PATH, TAG_PATH,
-};
-use macro_helpers::{Context, Label, StructureKind};
+use crate::parser::{parse_struct, FieldManifest, FORM_PATH, SCHEMA_PATH, TAG_PATH};
+use macro_helpers::Label;
+use macro_helpers::{Attributes, Context, StructureKind};
+use macro_helpers::{EnumRepr, EnumVariant, FormField, StructRepr, TypeContents};
 use proc_macro2::Ident;
 use syn::{Data, Lit, Meta, NestedMeta};
 
@@ -60,7 +59,7 @@ pub fn build_type_contents<'t>(
                 })
                 .collect();
 
-            TypeContents::Enum(variants)
+            TypeContents::Enum(EnumRepr { input, variants })
         }
         Data::Struct(data) => {
             let attributes = input.attrs.get_attributes(context, FORM_PATH);

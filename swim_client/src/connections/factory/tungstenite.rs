@@ -148,7 +148,8 @@ impl WebsocketFactory for TungsteniteWsFactory {
     }
 }
 
-/// Specialized [`AsyncFactory`] that creates tungstenite-tokio connections.
+/// Specialized [`crate::connections::factory::async_factory::AsyncFactory`] that creates
+/// tungstenite-tokio connections.
 pub struct TungsteniteWsFactory {
     inner: async_factory::AsyncFactory<TungSink, TungStream>,
     host_configurations: HashMap<Url, HostConfig>,

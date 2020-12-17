@@ -13,8 +13,9 @@
 // limitations under the License.
 
 use crate::form::form_parser::FormDescriptor;
-use crate::parser::{EnumVariant, FieldKind, FormField, StructRepr, TypeContents};
-use macro_helpers::{deconstruct_type, CompoundTypeKind, Label};
+use macro_helpers::Label;
+use macro_helpers::{deconstruct_type, CompoundTypeKind};
+use macro_helpers::{EnumRepr, EnumVariant, FieldKind, FormField, StructRepr, TypeContents};
 use proc_macro2::Ident;
 use syn::export::TokenStream2;
 
@@ -38,7 +39,7 @@ pub fn to_value(
             fn_factory,
             requires_deref,
         ),
-        TypeContents::Enum(variants) => {
+        TypeContents::Enum(EnumRepr { variants, .. }) => {
             let arms = variants
                 .into_iter()
                 .fold(Vec::new(), |mut as_value_arms, variant| {
@@ -131,12 +132,12 @@ fn compute_as_value(
 ) -> (TokenStream2, TokenStream2, TokenStream2) {
     let (mut headers, mut items, attributes) = fields
         .iter()
+        .filter(|f| !f.is_skipped())
         .fold((TokenStream2::new(), TokenStream2::new(), TokenStream2::new()), |(mut headers, mut items, mut attributes), f| {
             let label = &f.label;
             let manifest = &descriptor.manifest;
 
             match &f.kind {
-                FieldKind::Skip => {}
                 FieldKind::Slot if !manifest.replaces_body => {
                     match label {
                         un @ Label::Anonymous(_) => {
