@@ -742,6 +742,7 @@ async fn agent_loop() {
 
     clock.advance_when_blocked(Duration::from_secs(1)).await;
     expect(&mut rx, ReportingAgentEvent::Command("Name0".to_string())).await;
+    expect(&mut rx, ReportingAgentEvent::DemandLaneEvent(0)).await;
     expect(
         &mut rx,
         ReportingAgentEvent::DataEvent(MapLaneEvent::Update("Name0".to_string(), 1.into())),
@@ -751,6 +752,7 @@ async fn agent_loop() {
 
     clock.advance_when_blocked(Duration::from_secs(1)).await;
     expect(&mut rx, ReportingAgentEvent::Command("Name1".to_string())).await;
+    expect(&mut rx, ReportingAgentEvent::DemandLaneEvent(1)).await;
     expect(
         &mut rx,
         ReportingAgentEvent::DataEvent(MapLaneEvent::Update("Name1".to_string(), 1.into())),
@@ -760,6 +762,7 @@ async fn agent_loop() {
 
     clock.advance_when_blocked(Duration::from_secs(1)).await;
     expect(&mut rx, ReportingAgentEvent::Command("Name2".to_string())).await;
+    expect(&mut rx, ReportingAgentEvent::DemandLaneEvent(2)).await;
     expect(
         &mut rx,
         ReportingAgentEvent::DataEvent(MapLaneEvent::Update("Name2".to_string(), 1.into())),
