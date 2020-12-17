@@ -177,10 +177,10 @@ pub trait LaneLifecycle<Config> {
     fn create(config: &Config) -> Self;
 }
 
-pub trait DemandLaneLifecycle<'a, Value, Agent>: Send + Sync + 'static {
-    type OnCueFuture: Future<Output = Option<Value>> + Send + 'a;
+pub trait DemandLaneLifecycle<'a, Event, Agent>: Send + Sync + 'static {
+    type OnCueFuture: Future<Output = Option<Event>> + Send + 'a;
 
-    fn on_cue<C>(&'a self, model: &'a DemandLane<Value>, context: &'a C) -> Self::OnCueFuture
+    fn on_cue<C>(&'a self, model: &'a DemandLane<Event>, context: &'a C) -> Self::OnCueFuture
     where
         C: AgentContext<Agent> + Send + Sync + 'static;
 }

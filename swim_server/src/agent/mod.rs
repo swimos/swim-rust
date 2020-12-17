@@ -630,12 +630,12 @@ struct ValueLifecycleTasks<L, S, P>(LifecycleTasks<L, S, P>);
 struct MapLifecycleTasks<L, S, P>(LifecycleTasks<L, S, P>);
 struct ActionLifecycleTasks<L, S, P>(LifecycleTasks<L, S, P>);
 struct CommandLifecycleTasks<L, S, P>(LifecycleTasks<L, S, P>);
-struct DemandLifecycleTasks<L, S, P, Value> {
+struct DemandLifecycleTasks<L, S, P, Event> {
     name: String,
     lifecycle: L,
     event_stream: S,
     projection: P,
-    response_tx: mpsc::Sender<Value>,
+    response_tx: mpsc::Sender<Event>,
 }
 
 struct StatelessLifecycleTasks {
@@ -1102,21 +1102,21 @@ where
 /// * `lifecycle` - Life-cycle event handler for the lane.
 /// * `projection` - A projection from the agent type to this lane.
 /// * `buffer_size` - Buffer size for the MPSC channel accepting the commands.
-pub fn make_demand_lane<Agent, Context, Value, L>(
+pub fn make_demand_lane<Agent, Context, Event, L>(
     name: impl Into<String>,
     lifecycle: L,
-    projection: impl Fn(&Agent) -> &DemandLane<Value> + Send + Sync + 'static,
+    projection: impl Fn(&Agent) -> &DemandLane<Event> + Send + Sync + 'static,
     buffer_size: NonZeroUsize,
 ) -> (
-    DemandLane<Value>,
+    DemandLane<Event>,
     impl LaneTasks<Agent, Context>,
     impl LaneIo<Context>,
 )
 where
     Agent: 'static,
     Context: AgentContext<Agent> + AgentExecutionContext + Send + Sync + 'static,
-    Value: Any + Send + Sync + Form + Debug,
-    L: for<'l> DemandLaneLifecycle<'l, Value, Agent>,
+    Event: Any + Send + Sync + Form + Debug,
+    L: for<'l> DemandLaneLifecycle<'l, Event, Agent>,
 {
     let (lane, cue_stream) = model::demand::make_lane_model(buffer_size);
     let (response_tx, response_rx) = mpsc::channel(buffer_size.get());
@@ -1134,22 +1134,22 @@ where
     (lane, tasks, lane_io)
 }
 
-pub struct DemandLaneIo<Value> {
-    response_rx: mpsc::Receiver<Value>,
+struct DemandLaneIo<Event> {
+    response_rx: mpsc::Receiver<Event>,
 }
 
-impl<Value> DemandLaneIo<Value>
+impl<Event> DemandLaneIo<Event>
 where
-    Value: Send + Sync + 'static,
+    Event: Send + Sync + 'static,
 {
-    pub fn new(response_rx: mpsc::Receiver<Value>) -> DemandLaneIo<Value> {
+    fn new(response_rx: mpsc::Receiver<Event>) -> DemandLaneIo<Event> {
         DemandLaneIo { response_rx }
     }
 }
 
-impl<Value, Context> LaneIo<Context> for DemandLaneIo<Value>
+impl<Event, Context> LaneIo<Context> for DemandLaneIo<Event>
 where
-    Value: Form + Send + Sync + 'static,
+    Event: Form + Send + Sync + 'static,
     Context: AgentExecutionContext + Sized + Send + Sync + 'static,
 {
     fn attach(
@@ -1184,21 +1184,21 @@ where
     }
 }
 
-impl<L, S, P, Value> Lane for DemandLifecycleTasks<L, S, P, Value> {
+impl<L, S, P, Event> Lane for DemandLifecycleTasks<L, S, P, Event> {
     fn name(&self) -> &str {
         self.name.as_str()
     }
 }
 
-impl<Agent, Context, L, S, P, Value> LaneTasks<Agent, Context>
-    for DemandLifecycleTasks<L, S, P, Value>
+impl<Agent, Context, L, S, P, Event> LaneTasks<Agent, Context>
+    for DemandLifecycleTasks<L, S, P, Event>
 where
     Agent: 'static,
     Context: AgentContext<Agent> + Send + Sync + 'static,
     S: Stream<Item = ()> + Send + Sync + 'static,
-    Value: Any + Send + Sync + Debug,
-    L: for<'l> DemandLaneLifecycle<'l, Value, Agent>,
-    P: Fn(&Agent) -> &DemandLane<Value> + Send + Sync + 'static,
+    Event: Any + Send + Sync + Debug,
+    L: for<'l> DemandLaneLifecycle<'l, Event, Agent>,
+    P: Fn(&Agent) -> &DemandLane<Event> + Send + Sync + 'static,
 {
     fn start<'a>(&'a self, _context: &'a Context) -> BoxFuture<'a, ()> {
         ready(()).boxed()
