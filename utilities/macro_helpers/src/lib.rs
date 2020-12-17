@@ -36,7 +36,7 @@ extern crate syn;
 use core::fmt;
 use std::fmt::{Debug, Display};
 
-use proc_macro2::Ident;
+use proc_macro2::{Ident, Span, TokenStream};
 use quote::ToTokens;
 use syn::{NestedMeta, Path};
 
@@ -163,4 +163,27 @@ impl Attributes for Vec<Attribute> {
 
 pub trait SynOriginal {
     fn original(&self) -> &syn::Field;
+}
+
+pub fn str_to_ident(s: &str) -> Ident {
+    Ident::new(s, Span::call_site())
+}
+
+pub fn string_to_ident(s: String) -> Ident {
+    str_to_ident(&s)
+}
+
+pub fn as_const(trait_name: &str, typ: Ident, exec: TokenStream) -> TokenStream {
+    let const_name = format_ident!(
+        "__IMPL_{}__FOR__{}__",
+        trait_name,
+        typ.to_string().trim_start_matches("r#").to_string()
+    );
+
+    quote! {
+        #[doc(hidden)]
+        const #const_name: () = {
+            #exec
+        };
+    }
 }
