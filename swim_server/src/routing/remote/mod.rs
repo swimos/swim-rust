@@ -159,9 +159,16 @@ where
         );
 
         let mut overall_result = Ok(());
+        let mut iteration_count: usize = 0;
+        let yield_mod = configuration.yield_after.get();
 
         while let Some(event) = state.select_next().await {
             update_state(&mut state, &mut overall_result, event);
+
+            iteration_count += 1;
+            if iteration_count % yield_mod == 0 {
+                tokio::task::yield_now().await;
+            }
         }
         overall_result
     }

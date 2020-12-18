@@ -27,4 +27,6 @@ pub struct ConnectionConfig {
     pub activity_timeout: Duration,
     /// Strategy for retrying a connection.
     pub connection_retries: RetryStrategy,
+    /// The number of events to process before yielding execution back to the runtime.
+    pub yield_after: NonZeroUsize,
 }

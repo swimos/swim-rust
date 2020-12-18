@@ -387,6 +387,7 @@ impl TaskFixture {
             stop_rx,
             Duration::from_secs(30),
             RetryStrategy::immediate(NonZeroUsize::new(1).unwrap()),
+            NonZeroUsize::new(256).unwrap(),
         )
         .run()
         .boxed();
