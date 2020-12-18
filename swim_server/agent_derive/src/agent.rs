@@ -28,6 +28,7 @@ const COMMAND_LANE: &str = "CommandLane";
 const ACTION_LANE: &str = "ActionLane";
 const VALUE_LANE: &str = "ValueLane";
 const MAP_LANE: &str = "MapLane";
+const DEMAND_LANE: &str = "DemandLane";
 
 #[derive(Debug, FromMeta)]
 pub struct AgentAttrs {
@@ -60,6 +61,7 @@ impl LifecycleAttrs {
                     ACTION_LANE => Some(LaneType::Action),
                     VALUE_LANE => Some(LaneType::Value),
                     MAP_LANE => Some(LaneType::Map),
+                    DEMAND_LANE => Some(LaneType::Demand),
                     _ => None,
                 };
             }
@@ -74,6 +76,7 @@ pub enum LaneType {
     Action,
     Value,
     Map,
+    Demand,
 }
 
 #[derive(Debug, FromDeriveInput)]
@@ -110,7 +113,7 @@ pub fn derive_swim_agent(input: DeriveInput) -> Result<TokenStream, TokenStream>
         .iter()
         .map(|agent_field| &agent_field.lifecycle_ast);
 
-    Ok(quote! {
+    let derived = quote! {
         use std::collections::HashMap;
         use std::boxed::Box;
 
@@ -146,8 +149,9 @@ pub fn derive_swim_agent(input: DeriveInput) -> Result<TokenStream, TokenStream>
                 (agent, tasks, io_map)
             }
         }
-    }
-    .into())
+    };
+
+    Ok(derived.into())
 }
 
 pub fn derive_agent_lifecycle(args: AttributeArgs, input: DeriveInput) -> TokenStream {
@@ -293,6 +297,7 @@ fn create_lane(
                 model,
             )
         }
+        LaneType::Demand => build_demand_lane_io(lane_data),
     };
 
     (ts, task_variable)
@@ -371,6 +376,37 @@ fn build_lane_io(
             event_stream,
             projection: |agent: &#agent_name| &agent.#lane_name,
         };
+    }
+}
+
+fn build_demand_lane_io(lane_data: LaneData) -> proc_macro2::TokenStream {
+    let LaneData {
+        agent_name,
+        lifecycle,
+        lane_name,
+        task_variable,
+        task_structure,
+        lane_name_lit,
+        ..
+    } = lane_data;
+
+    quote! {
+        let buffer_size = exec_conf.action_buffer.clone();
+        let (#lane_name, event_stream) = swim_server::agent::lane::model::demand::make_lane_model(buffer_size);
+        let (response_tx, response_rx) = tokio::sync::mpsc::channel(buffer_size.get());
+        let lifecycle = #lifecycle::create(configuration);
+
+        let #task_variable = #task_structure {
+            lifecycle,
+            name: #lane_name_lit.into(),
+            event_stream,
+            projection: |agent: &#agent_name| &agent.#lane_name,
+            response_tx,
+        };
+
+        io_map.insert (
+            #lane_name_lit.to_string(), Box::new(swim_server::agent::DemandLaneIo::new(response_rx))
+        );
     }
 }
 

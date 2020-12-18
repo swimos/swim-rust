@@ -15,6 +15,7 @@
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lane::lifecycle::{LaneLifecycle, StatefulLaneLifecycleBase};
 use crate::agent::lane::model::action::CommandLane;
+use crate::agent::lane::model::demand::DemandLane;
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::ValueLane;
 use crate::agent::lane::strategy::Queue;
@@ -25,7 +26,9 @@ use crate::agent::tests::test_clock::TestClock;
 use crate::agent::AgentContext;
 use crate::plane::provider::AgentProvider;
 use crate::routing::RoutingAddr;
-use crate::{agent_lifecycle, command_lifecycle, map_lifecycle, value_lifecycle, SwimAgent};
+use crate::{
+    agent_lifecycle, command_lifecycle, demand_lifecycle, map_lifecycle, value_lifecycle, SwimAgent,
+};
 use futures::StreamExt;
 use std::collections::HashMap;
 use std::convert::TryFrom;
@@ -56,6 +59,8 @@ pub struct ReportingAgent {
     total: ValueLane<i32>,
     #[lifecycle(name = "ActionLifecycle")]
     action: CommandLane<String>,
+    #[lifecycle(name = "DemandLifecycle")]
+    demand: DemandLane<i32>,
 }
 
 /// Type of the events that will be reported by the agent.
@@ -66,6 +71,7 @@ pub enum ReportingAgentEvent {
     TransactionFailed,
     DataEvent(MapLaneEvent<String, i32>),
     TotalEvent(i32),
+    DemandLaneEvent(i32),
 }
 
 /// Collects the events from the agent life-cycles.
@@ -112,6 +118,7 @@ impl ReportingAgentLifecycle {
 
         let mut count = 0;
         let cmd = context.agent().action.clone();
+        let demander: DemandLane<i32> = context.agent().demand.clone();
 
         context
             .periodically(
@@ -121,9 +128,11 @@ impl ReportingAgentLifecycle {
 
                     let key = format!("Name{}", index);
                     let mut commander = cmd.commander();
+                    let mut demand_controller = demander.controller();
 
                     Box::pin(async move {
                         commander.command(key).await;
+                        demand_controller.cue().await;
                     })
                 },
                 Duration::from_secs(1),
@@ -264,6 +273,33 @@ impl StatefulLaneLifecycleBase for TotalLifecycle {
     }
 }
 
+#[demand_lifecycle(agent = "ReportingAgent", event_type = "i32")]
+struct DemandLifecycle {
+    event_handler: EventCollectorHandler,
+}
+
+impl LaneLifecycle<TestAgentConfig> for DemandLifecycle {
+    fn create(config: &TestAgentConfig) -> Self {
+        let event_handler = EventCollectorHandler(config.collector.clone());
+        DemandLifecycle { event_handler }
+    }
+}
+
+impl DemandLifecycle {
+    async fn on_cue<Context>(&self, _model: &DemandLane<i32>, context: &Context) -> Option<i32>
+    where
+        Context: AgentContext<ReportingAgent> + Sized + Send + Sync + 'static,
+    {
+        let total = *context.agent().total.load().await;
+
+        self.event_handler
+            .push(ReportingAgentEvent::DemandLaneEvent(total))
+            .await;
+
+        Some(total)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct TestAgentConfig {
     collector: Arc<Mutex<EventCollector>>,
@@ -328,6 +364,7 @@ async fn agent_loop() {
 
     clock.advance_when_blocked(Duration::from_secs(1)).await;
     expect(&mut rx, ReportingAgentEvent::Command("Name0".to_string())).await;
+    expect(&mut rx, ReportingAgentEvent::DemandLaneEvent(0)).await;
     expect(
         &mut rx,
         ReportingAgentEvent::DataEvent(MapLaneEvent::Update("Name0".to_string(), 1.into())),
@@ -337,6 +374,7 @@ async fn agent_loop() {
 
     clock.advance_when_blocked(Duration::from_secs(1)).await;
     expect(&mut rx, ReportingAgentEvent::Command("Name1".to_string())).await;
+    expect(&mut rx, ReportingAgentEvent::DemandLaneEvent(1)).await;
     expect(
         &mut rx,
         ReportingAgentEvent::DataEvent(MapLaneEvent::Update("Name1".to_string(), 1.into())),
@@ -346,6 +384,7 @@ async fn agent_loop() {
 
     clock.advance_when_blocked(Duration::from_secs(1)).await;
     expect(&mut rx, ReportingAgentEvent::Command("Name2".to_string())).await;
+    expect(&mut rx, ReportingAgentEvent::DemandLaneEvent(2)).await;
     expect(
         &mut rx,
         ReportingAgentEvent::DataEvent(MapLaneEvent::Update("Name2".to_string(), 1.into())),
@@ -354,5 +393,6 @@ async fn agent_loop() {
     expect(&mut rx, ReportingAgentEvent::TotalEvent(3)).await;
 
     drop(envelope_tx);
+
     assert!(agent_task.await.is_ok());
 }
