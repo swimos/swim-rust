@@ -830,15 +830,16 @@ where
     .await
 }
 
-pub struct UnitLaneUpdateTask<T>(PhantomData<T>);
+/// Asynchronous stub for compliance with `LaneUpdate`. `DemandMapLane`s do not support updates.
+pub struct DemandMapLaneUpdateTask<T>(PhantomData<T>);
 
-impl<T> Default for UnitLaneUpdateTask<T> {
+impl<T> Default for DemandMapLaneUpdateTask<T> {
     fn default() -> Self {
-        UnitLaneUpdateTask(PhantomData::default())
+        DemandMapLaneUpdateTask(PhantomData::default())
     }
 }
 
-impl<T> LaneUpdate for UnitLaneUpdateTask<T>
+impl<T> LaneUpdate for DemandMapLaneUpdateTask<T>
 where
     T: Debug + Send + 'static,
 {
@@ -857,6 +858,7 @@ where
     }
 }
 
+/// A `DemandMapLane` uplink producer and update handler.
 pub struct DemandMapLaneMessageHandler<Key, Value>
 where
     Key: Form,
@@ -882,7 +884,7 @@ where
 {
     type Event = DemandMapLaneUpdate<Key, Value>;
     type Uplink = DemandMapLaneUplink<Key, Value>;
-    type Update = UnitLaneUpdateTask<Value>;
+    type Update = DemandMapLaneUpdateTask<Value>;
 
     fn make_uplink(&self, _addr: RoutingAddr) -> Self::Uplink {
         let DemandMapLaneMessageHandler { lane } = self;
@@ -890,6 +892,6 @@ where
     }
 
     fn make_update(&self) -> Self::Update {
-        UnitLaneUpdateTask::default()
+        DemandMapLaneUpdateTask::default()
     }
 }
