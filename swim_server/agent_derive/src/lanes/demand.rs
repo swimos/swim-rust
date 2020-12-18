@@ -12,33 +12,31 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::internals::default_on_cue;
+use crate::lanes::derive_lane;
 use crate::utils::{get_task_struct_name, validate_input_ast, InputAstType};
 use darling::FromMeta;
 use macro_helpers::string_to_ident;
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{AttributeArgs, DeriveInput};
-
-use crate::internals::default_on_command;
-use crate::lanes::derive_lane;
-use proc_macro2::Ident;
+use syn::{AttributeArgs, DeriveInput, Ident};
 
 #[derive(Debug, FromMeta)]
-struct CommandAttrs {
+struct DemandAttrs {
     #[darling(map = "string_to_ident")]
     agent: Ident,
     #[darling(map = "string_to_ident")]
-    command_type: Ident,
-    #[darling(default = "default_on_command", map = "string_to_ident")]
-    on_command: Ident,
+    event_type: Ident,
+    #[darling(default = "default_on_cue", map = "string_to_ident")]
+    on_cue: Ident,
 }
 
-pub fn derive_command_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput) -> TokenStream {
+pub fn derive_demand_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput) -> TokenStream {
     if let Err(error) = validate_input_ast(&input_ast, InputAstType::Lifecycle) {
         return TokenStream::from(quote! {#error});
     }
 
-    let args = match CommandAttrs::from_list(&attr_args) {
+    let args = match DemandAttrs::from_list(&attr_args) {
         Ok(args) => args,
         Err(e) => {
             return TokenStream::from(e.write_errors());
@@ -48,13 +46,17 @@ pub fn derive_command_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput
     let lifecycle_name = input_ast.ident.clone();
     let task_name = get_task_struct_name(&input_ast.ident.to_string());
     let agent_name = args.agent.clone();
-    let command_type = &args.command_type;
-    let on_command_func = &args.on_command;
+    let event_type = &args.event_type;
+    let on_cue_func = &args.on_cue;
+    let extra_field = Some(quote! {
+        response_tx: tokio::sync::mpsc::Sender<#event_type>
+    });
     let on_event = quote! {
         let #task_name {
             lifecycle,
             event_stream,
             projection,
+            response_tx,
             ..
         } = *self;
 
@@ -63,37 +65,25 @@ pub fn derive_command_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput
         let mut events = unsafe { Pin::new_unchecked(&mut events) };
 
         while let Some(event) = events.next().await {
-            let (command, responder) = event.destruct();
-
-            tracing::event!(tracing::Level::TRACE, commanded = swim_server::agent::COMMANDED, ?command);
-
-            tracing_futures::Instrument::instrument(
-                lifecycle.#on_command_func(command, &model, &context),
-                tracing::span!(tracing::Level::TRACE, swim_server::agent::ON_COMMAND)
-            ).await;
-
-            if let Some(tx) = responder {
-                if tx.send(()).is_err() {
-                    tracing::event!(tracing::Level::WARN, response_ingored = swim_server::agent::RESPONSE_IGNORED);
-                }
+            if let Some(value) = lifecycle.#on_cue_func(&model, &context).await {
+                let _ = response_tx.send(value).await;
             }
         }
     };
 
     derive_lane(
-        "CommandLifecycle",
+        "DemandLifecycle",
         lifecycle_name,
         task_name,
         agent_name,
         input_ast,
-        quote!(swim_server::agent::lane::model::action::CommandLane<#command_type>),
-        quote!(swim_server::agent::lane::model::action::Action<#command_type, ()>),
+        quote!(swim_server::agent::lane::model::demand::DemandLane<#event_type>),
+        quote!(()),
         None,
         on_event,
         quote! {
-            use swim_server::agent::lane::model::action::CommandLane;
-            use swim_server::agent::lane::model::action::Action;
+            use swim_server::agent::lane::model::demand::DemandLane;
         },
-        None,
+        extra_field,
     )
 }
