@@ -12,15 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::io::ErrorKind;
-use std::ops::Deref;
-
 use futures::stream::{SplitSink, SplitStream};
 use futures::{FutureExt, StreamExt};
 use http::{HeaderValue, Request, Response, Uri};
 use tokio::net::TcpStream;
 use tokio_tungstenite::stream::Stream as StreamSwitcher;
-use tokio_tungstenite::*;
 use tokio_tungstenite::{client_async_with_config, WebSocketStream};
 use url::Url;
 
@@ -29,10 +25,16 @@ use crate::connections::factory::stream::{
     build_stream, get_stream_type, SinkTransformer, StreamTransformer,
 };
 use http::header::SEC_WEBSOCKET_PROTOCOL;
+use http::uri::InvalidUri;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
-use swim_common::ws::error::{ConnectionError, WebSocketError};
-use swim_common::ws::{maybe_resolve_scheme, ConnFuture, Protocol, WebsocketFactory};
+use swim_common::routing::ws::maybe_resolve_scheme;
+use swim_common::routing::ws::Protocol;
+use swim_common::routing::ws::{ConnFuture, WebsocketFactory};
+use swim_common::routing::{
+    ConnectionError, HttpError, HttpErrorKind, InvalidUriError, InvalidUriErrorKind,
+    TungsteniteError,
+};
 use tokio_native_tls::TlsStream;
 use tokio_tungstenite::tungstenite::extensions::compression::WsCompression;
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
@@ -53,11 +55,19 @@ async fn connect(
     url: Url,
     config: &mut HostConfig,
 ) -> Result<(WebSocketStream<MaybeTlsStream<TcpStream>>, Response<()>), ConnectionError> {
-    let uri: Uri = url
-        .as_str()
-        .parse()
-        .map_err(|e| ConnectionError::SocketError(WebSocketError::from(e)))?;
-    let mut request = Request::get(uri).body(())?;
+    let url = url.as_str();
+    let uri: Uri = url.parse().map_err(|e: InvalidUri| {
+        ConnectionError::Http(HttpError::new(
+            HttpErrorKind::InvalidUri(InvalidUriError::new(
+                InvalidUriErrorKind::Malformatted,
+                Some(url.to_string()),
+            )),
+            Some(e.to_string()),
+        ))
+    })?;
+    let mut request = Request::get(uri)
+        .body(())
+        .map_err(|e| ConnectionError::Http(HttpError::from(e)))?;
 
     request.headers_mut().insert(
         SEC_WEBSOCKET_PROTOCOL,
@@ -80,7 +90,10 @@ async fn connect(
     let domain = match request.uri().host() {
         Some(d) => d.to_string(),
         None => {
-            return Err(WebSocketError::Url(String::from("Malformatted URI. Missing host")).into());
+            return Err(ConnectionError::Http(HttpError::invalid_url(
+                request.uri().to_string(),
+                Some("Malformatted URI. Missing host".into()),
+            )));
         }
     };
 
@@ -176,42 +189,15 @@ async fn open_conn(
     }
 }
 
-pub type TError = tungstenite::error::Error;
-
-#[derive(Debug)]
-struct TungsteniteError(tungstenite::error::Error);
-
-impl Deref for TungsteniteError {
-    type Target = TError;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl From<TungsteniteError> for ConnectionError {
-    fn from(e: TungsteniteError) -> Self {
-        match e.deref() {
-            TError::ConnectionClosed => ConnectionError::Closed,
-            TError::Url(url) => ConnectionError::SocketError(WebSocketError::Url(url.to_string())),
-            TError::HttpFormat(_) | TError::Http(_) => {
-                ConnectionError::SocketError(WebSocketError::Protocol)
-            }
-            TError::Io(e) if e.kind() == ErrorKind::ConnectionRefused => {
-                ConnectionError::ConnectionRefused
-            }
-            _ => ConnectionError::ConnectError,
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use swim_common::ws::error::ConnectionError;
-
     use crate::configuration::router::ConnectionPoolParams;
     use crate::connections::factory::tungstenite::TungsteniteWsFactory;
     use crate::connections::{ConnectionPool, SwimConnPool};
+
+    use swim_common::routing::{
+        ConnectionError, HttpError, HttpErrorKind, InvalidUriError, InvalidUriErrorKind,
+    };
 
     #[tokio::test]
     async fn invalid_protocol() {
@@ -227,6 +213,13 @@ mod tests {
             .await
             .unwrap();
 
-        assert!(matches!(rx.err().unwrap(), ConnectionError::SocketError(_)));
+        let expected = ConnectionError::Http(HttpError::new(
+            HttpErrorKind::InvalidUri(InvalidUriError::new(
+                InvalidUriErrorKind::UnsupportedScheme,
+                Some("xyz".into()),
+            )),
+            None,
+        ));
+        assert_eq!(rx.err().unwrap(), expected);
     }
 }

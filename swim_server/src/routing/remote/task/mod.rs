@@ -15,11 +15,10 @@
 #[cfg(test)]
 mod tests;
 
-use crate::routing::error::{ConnectionError, ResolutionError, RouterError};
+use crate::routing::error::RouterError;
 use crate::routing::remote::config::ConnectionConfig;
 use crate::routing::remote::router::RemoteRouter;
 use crate::routing::remote::RoutingRequest;
-use crate::routing::ws::{CloseReason, JoinedStreamSink, SelectorResult, WsStreamSelector};
 use crate::routing::{
     ConnectionDropped, Route, RoutingAddr, ServerRouter, ServerRouterFactory, TaggedEnvelope,
 };
@@ -34,9 +33,14 @@ use std::future::Future;
 use std::str::FromStr;
 use std::time::Duration;
 use swim_common::model::parser::{self, ParseFailure};
+use swim_common::routing::ws::selector::{SelectorResult, WsStreamSelector};
+use swim_common::routing::ws::{CloseCode, CloseReason, JoinedStreamSink, WsMessage};
+use swim_common::routing::{
+    CloseError, CloseErrorKind, ConnectionError, ProtocolError, ProtocolErrorKind, ResolutionError,
+    ResolutionErrorKind,
+};
 use swim_common::warp::envelope::{Envelope, EnvelopeParseErr};
 use swim_common::warp::path::RelativePath;
-use swim_common::ws::WsMessage;
 use tokio::sync::mpsc;
 use tokio::time::{sleep, Instant};
 use utilities::errors::Recoverable;
@@ -68,13 +72,19 @@ enum Completion {
 
 impl From<ParseFailure> for Completion {
     fn from(err: ParseFailure) -> Self {
-        Completion::Failed(ConnectionError::Warp(err.to_string()))
+        Completion::Failed(ConnectionError::Protocol(ProtocolError::new(
+            ProtocolErrorKind::Warp,
+            Some(err.to_string()),
+        )))
     }
 }
 
 impl From<EnvelopeParseErr> for Completion {
     fn from(err: EnvelopeParseErr) -> Self {
-        Completion::Failed(ConnectionError::Warp(err.to_string()))
+        Completion::Failed(ConnectionError::Protocol(ProtocolError::new(
+            ProtocolErrorKind::Warp,
+            Some(err.to_string()),
+        )))
     }
 }
 
@@ -170,7 +180,9 @@ where
                                 break c;
                             }
                         },
-                        WsMessage::Binary(_) => {}
+                        _e => {
+                            // todo
+                        }
                     },
                     Err(err) => {
                         break Completion::Failed(err);
@@ -183,9 +195,17 @@ where
         };
 
         if let Some(reason) = match &completion {
-            Completion::StoppedLocally => Some(CloseReason::GoingAway),
-            Completion::Failed(ConnectionError::Warp(err)) => {
-                Some(CloseReason::ProtocolError(err.clone()))
+            Completion::StoppedLocally => Some(CloseReason::new(
+                CloseCode::GoingAway,
+                "Stopped locally".to_string(),
+            )),
+            Completion::Failed(ConnectionError::Protocol(e))
+                if e.kind() == ProtocolErrorKind::Warp =>
+            {
+                Some(CloseReason::new(
+                    CloseCode::ProtocolError,
+                    e.cause().clone().unwrap_or_else(|| "WARP error".into()),
+                ))
             }
             _ => None,
         } {
@@ -197,9 +217,9 @@ where
         match completion {
             Completion::Failed(err) => ConnectionDropped::Failed(err),
             Completion::TimedOut => ConnectionDropped::TimedOut(activity_timeout),
-            Completion::StoppedRemotely => {
-                ConnectionDropped::Failed(ConnectionError::ClosedRemotely)
-            }
+            Completion::StoppedRemotely => ConnectionDropped::Failed(ConnectionError::Closed(
+                CloseError::new(CloseErrorKind::ClosedRemotely, None),
+            )),
             _ => ConnectionDropped::Closed,
         }
     }
@@ -249,7 +269,9 @@ impl Recoverable for DispatchError {
         match self {
             DispatchError::RoutingProblem(err) => err.is_fatal(),
             DispatchError::Dropped(reason) => !reason.is_recoverable(),
-            DispatchError::Unresolvable(ResolutionError::Unresolvable(_)) => false,
+            DispatchError::Unresolvable(e) if e.kind() == ResolutionErrorKind::Unresolvable => {
+                false
+            }
             _ => true,
         }
     }
