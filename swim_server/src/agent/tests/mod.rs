@@ -50,13 +50,14 @@ use utilities::sync::trigger::Receiver;
 use utilities::uri::RelativeUri;
 
 mod stub_router {
-    use crate::routing::error::{ResolutionError, RouterError};
+    use crate::routing::error::RouterError;
     use crate::routing::{
         ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedEnvelope, TaggedSender,
     };
     use futures::future::BoxFuture;
     use futures::{FutureExt, StreamExt};
     use std::sync::Arc;
+    use swim_common::routing::ResolutionError;
     use tokio::sync::mpsc;
     use url::Url;
     use utilities::sync::promise;
