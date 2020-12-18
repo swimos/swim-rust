@@ -26,13 +26,13 @@ use tokio::sync::mpsc;
 ///
 /// * `T` - The type of the events produced.
 #[derive(Debug)]
-pub struct DemandLane<Value> {
+pub struct DemandLane<Event> {
     sender: mpsc::Sender<()>,
     id: Arc<()>,
-    _pd: PhantomData<Value>,
+    _pd: PhantomData<Event>,
 }
 
-impl<Value> Clone for DemandLane<Value> {
+impl<Event> Clone for DemandLane<Event> {
     fn clone(&self) -> Self {
         DemandLane {
             sender: self.sender.clone(),
@@ -42,8 +42,8 @@ impl<Value> Clone for DemandLane<Value> {
     }
 }
 
-impl<Value> DemandLane<Value> {
-    pub(crate) fn new(sender: mpsc::Sender<()>) -> DemandLane<Value> {
+impl<Event> DemandLane<Event> {
+    pub(crate) fn new(sender: mpsc::Sender<()>) -> DemandLane<Event> {
         DemandLane {
             sender,
             id: Default::default(),
@@ -52,7 +52,7 @@ impl<Value> DemandLane<Value> {
     }
 
     /// Create a new `DemandLaneController` that can be used to cue a value.
-    pub fn controller(&self) -> DemandLaneController<Value> {
+    pub fn controller(&self) -> DemandLaneController<Event> {
         DemandLaneController::new(self.sender.clone())
     }
 }
@@ -62,13 +62,13 @@ impl<Value> DemandLane<Value> {
 /// # Type Parameters
 ///
 /// * `T` - The type of the events produced by the `DemandLane`.
-pub struct DemandLaneController<Value> {
+pub struct DemandLaneController<Event> {
     tx: mpsc::Sender<()>,
-    _pd: PhantomData<Value>,
+    _pd: PhantomData<Event>,
 }
 
-impl<Value> DemandLaneController<Value> {
-    fn new(tx: mpsc::Sender<()>) -> DemandLaneController<Value> {
+impl<Event> DemandLaneController<Event> {
+    fn new(tx: mpsc::Sender<()>) -> DemandLaneController<Event> {
         DemandLaneController {
             tx,
             _pd: Default::default(),
@@ -81,7 +81,7 @@ impl<Value> DemandLaneController<Value> {
     }
 }
 
-impl<Value> LaneModel for DemandLane<Value> {
+impl<Event> LaneModel for DemandLane<Event> {
     type Event = ();
 
     fn same_lane(this: &Self, other: &Self) -> bool {
@@ -91,11 +91,11 @@ impl<Value> LaneModel for DemandLane<Value> {
 
 /// Create a new demand lane model. Returns a new demand lane model and a stream of unit values that
 /// represent a cue request.
-pub fn make_lane_model<Value>(
+pub fn make_lane_model<Event>(
     buffer_size: NonZeroUsize,
-) -> (DemandLane<Value>, impl Stream<Item = ()> + Send + 'static)
+) -> (DemandLane<Event>, impl Stream<Item = ()> + Send + 'static)
 where
-    Value: Send + Sync + 'static,
+    Event: Send + Sync + 'static,
 {
     let (tx, rx) = mpsc::channel(buffer_size.get());
     let lane = DemandLane::new(tx);
