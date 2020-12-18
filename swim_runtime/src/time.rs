@@ -122,7 +122,7 @@ pub mod instant {
     use std::time::Duration;
 
     /// An [`Instant`] is a measurement of the system clock.
-    #[derive(Clone, Copy, Eq, PartialEq, PartialOrd, Ord)]
+    #[derive(Clone, Copy, Eq, PartialEq, PartialOrd, Ord, Debug)]
     pub struct Instant {
         #[cfg(not(target_arch = "wasm32"))]
         inner: tokio::time::Instant,

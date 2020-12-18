@@ -50,6 +50,12 @@ pub struct AgentExecutionConfig {
     pub retry_strategy: RetryStrategy,
     /// Time to wait for action lane responses when stopping.
     pub cleanup_timeout: Duration,
+    /// The amount of time an agent can be idle before it is stopped. Upon an agent being shutdown,
+    /// its state is flushed to the database.
+    // todo: this needs to be linked to the persistence engine.
+    pub agent_timeout: Duration,
+    /// How often the idle agent prune task should run.
+    pub reaper_task_interval: Duration,
     /// The buffer size for the MPSC channel used by the agent to schedule events.
     pub scheduler_buffer: NonZeroUsize,
 }
@@ -62,6 +68,8 @@ impl AgentExecutionConfig {
         max_pending_envelopes: usize,
         error_threshold: usize,
         cleanup_timeout: Duration,
+        agent_timeout: Duration,
+        reaper_task_interval: Duration,
     ) -> Self {
         AgentExecutionConfig {
             max_pending_envelopes,
@@ -76,6 +84,8 @@ impl AgentExecutionConfig {
             yield_after: DEFAULT_YIELD_COUNT,
             retry_strategy: Default::default(),
             cleanup_timeout,
+            agent_timeout,
+            reaper_task_interval,
             scheduler_buffer: default_buffer,
         }
     }
@@ -98,6 +108,8 @@ impl Default for AgentExecutionConfig {
             yield_after: DEFAULT_YIELD_COUNT,
             retry_strategy: RetryStrategy::default(),
             cleanup_timeout: Duration::from_secs(30),
+            agent_timeout: Duration::from_secs(60 * 5),
+            reaper_task_interval: Duration::from_secs(30),
             scheduler_buffer: default_buffer,
         }
     }

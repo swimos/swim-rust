@@ -30,7 +30,6 @@ use crate::plane::spec::{PlaneSpec, RouteSpec};
 use crate::routing::error::{ConnectionError, RouterError, Unresolvable};
 use crate::routing::remote::RawRoute;
 use crate::routing::{ConnectionDropped, RoutingAddr, ServerRouterFactory, TaggedEnvelope};
-use either::Either;
 use futures::future::{join, BoxFuture};
 use futures::{select_biased, FutureExt, StreamExt};
 use futures_util::stream::TakeUntil;
@@ -40,9 +39,12 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::ops::Deref;
 use std::sync::{Arc, Weak};
+use std::time::Duration;
 use swim_common::request::Request;
 use swim_common::ws::error::WebSocketError;
 use swim_runtime::time::clock::Clock;
+use swim_runtime::time::instant::Instant;
+use swim_runtime::time::interval::interval;
 use tokio::sync::{mpsc, oneshot};
 use tracing::{event, span, Level};
 use tracing_futures::Instrument;
@@ -92,6 +94,7 @@ struct LocalEndpoint {
     channel: mpsc::Sender<TaggedEnvelope>,
     drop_tx: promise::Sender<ConnectionDropped>,
     drop_rx: promise::Receiver<ConnectionDropped>,
+    last_accessed: Instant,
 }
 
 impl LocalEndpoint {
@@ -105,6 +108,7 @@ impl LocalEndpoint {
             channel,
             drop_tx,
             drop_rx,
+            last_accessed: Instant::now(),
         }
     }
 
@@ -261,6 +265,7 @@ impl PlaneContext for ContextImpl {
         .boxed()
     }
 }
+
 /// Contains the specifications of all routes that are within a plane and maintains the map of
 /// currently active routes.
 struct RouteResolver<Clk> {
@@ -319,6 +324,13 @@ impl<Clk: Clock> RouteResolver<Clk> {
         }
         Ok((agent, addr))
     }
+
+    /// Prunes any endpoints that have not been accessed for `max_idle`.
+    fn prune_idle(&mut self, max_idle: Duration) {
+        self.active_routes
+            .local_endpoints
+            .retain(|_addr, endpoint| endpoint.last_accessed.elapsed() < max_idle);
+    }
 }
 
 const DROPPED_REQUEST: &str = "A plane request was dropped before it could be fulfilled.";
@@ -336,6 +348,16 @@ const PROVIDING_ROUTES: &str = "Providing all running routes in the plane.";
 const PLANE_STOPPING: &str = "The plane is stopping.";
 const ON_STOP_EVENT: &str = "Running plane on_stop handler.";
 const PLANE_STOPPED: &str = "The plane has stopped.";
+
+/// A plane task to run.
+enum PlaneTask {
+    /// Handle a `PlaneRequest`
+    Request(Option<PlaneRequest>),
+    /// Handle the output of a future from the `Spawner`.
+    SpawnResult(Option<AgentResult>),
+    /// Prune any inactive endpoints.
+    Prune,
+}
 
 /// The main event loop for a plane. Handles `PlaneRequest`s until the external stop trigger is
 /// fired. This task is infallible and will merely report if one of its agents fails rather than
@@ -380,6 +402,9 @@ pub async fn run_plane<Clk, S>(
     .instrument(span!(Level::DEBUG, PLANE_START_TASK));
 
     let event_loop = async move {
+        let mut prune_timer = interval(execution_config.cleanup_timeout).fuse();
+        let agent_timeout = execution_config.agent_timeout;
+
         let mut resolver = RouteResolver {
             clock,
             execution_config,
@@ -393,23 +418,24 @@ pub async fn run_plane<Clk, S>(
         let mut stopping = false;
 
         loop {
-            let req_or_res = if stopping {
+            let plane_task = if stopping {
                 if spawner.is_empty() {
-                    Either::Right(None)
+                    PlaneTask::SpawnResult(None)
                 } else {
-                    Either::Right(spawner.next().await)
+                    PlaneTask::SpawnResult(spawner.next().await)
                 }
             } else if spawner.is_empty() {
-                Either::Left(requests.next().await)
+                PlaneTask::Request(requests.next().await)
             } else {
                 select_biased! {
-                    request = requests.next() => Either::Left(request),
-                    result = spawner.next() => Either::Right(result),
+                    request = requests.next() => PlaneTask::Request(request),
+                    result = spawner.next() => PlaneTask::SpawnResult(result),
+                    _ = prune_timer.next() => PlaneTask::Prune,
                 }
             };
 
-            match req_or_res {
-                Either::Left(Some(PlaneRequest::Agent { name, request })) => {
+            match plane_task {
+                PlaneTask::Request(Some(PlaneRequest::Agent { name, request })) => {
                     event!(Level::TRACE, GETTING_HANDLE, ?name);
                     let result = if let Some(agent) = resolver
                         .active_routes
@@ -426,7 +452,7 @@ pub async fn run_plane<Clk, S>(
                         event!(Level::WARN, DROPPED_REQUEST);
                     }
                 }
-                Either::Left(Some(PlaneRequest::Endpoint { id, request })) => {
+                PlaneTask::Request(Some(PlaneRequest::Endpoint { id, request })) => {
                     if id.is_local() {
                         event!(Level::TRACE, GETTING_LOCAL_ENDPOINT, ?id);
                         let result = if let Some(tx) = resolver
@@ -449,7 +475,7 @@ pub async fn run_plane<Clk, S>(
                         }
                     }
                 }
-                Either::Left(Some(PlaneRequest::Resolve {
+                PlaneTask::Request(Some(PlaneRequest::Resolve {
                     host: None,
                     name,
                     request,
@@ -467,7 +493,7 @@ pub async fn run_plane<Clk, S>(
                         event!(Level::WARN, DROPPED_REQUEST);
                     }
                 }
-                Either::Left(Some(PlaneRequest::Resolve {
+                PlaneTask::Request(Some(PlaneRequest::Resolve {
                     host: Some(host_url),
                     name,
                     request,
@@ -483,7 +509,7 @@ pub async fn run_plane<Clk, S>(
                         event!(Level::WARN, DROPPED_REQUEST);
                     }
                 }
-                Either::Left(Some(PlaneRequest::Routes(request))) => {
+                PlaneTask::Request(Some(PlaneRequest::Routes(request))) => {
                     event!(Level::TRACE, PROVIDING_ROUTES);
                     if request
                         .send(resolver.active_routes.routes().map(Clone::clone).collect())
@@ -492,7 +518,14 @@ pub async fn run_plane<Clk, S>(
                         event!(Level::WARN, DROPPED_REQUEST);
                     }
                 }
-                Either::Right(Some(AgentResult {
+                PlaneTask::Request(None) => {
+                    event!(Level::DEBUG, PLANE_STOPPING);
+                    stopping = true;
+                    if spawner.is_empty() {
+                        break;
+                    }
+                }
+                PlaneTask::SpawnResult(Some(AgentResult {
                     route,
                     dispatcher_errors,
                     failed,
@@ -517,13 +550,7 @@ pub async fn run_plane<Clk, S>(
                         );
                     }
                 }
-                Either::Left(None) => {
-                    event!(Level::DEBUG, PLANE_STOPPING);
-                    stopping = true;
-                    if spawner.is_empty() {
-                        break;
-                    }
-                }
+                PlaneTask::Prune => resolver.prune_idle(agent_timeout),
                 _ => {
                     if stopping {
                         break;

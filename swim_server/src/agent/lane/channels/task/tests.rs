@@ -384,7 +384,14 @@ fn default_buffer() -> NonZeroUsize {
 }
 
 fn make_config() -> AgentExecutionConfig {
-    AgentExecutionConfig::with(default_buffer(), 1, 1, Duration::from_secs(5))
+    AgentExecutionConfig::with(
+        default_buffer(),
+        1,
+        1,
+        Duration::from_secs(5),
+        Duration::from_secs(30),
+        Duration::from_secs(30),
+    )
 }
 
 fn route() -> RelativePath {

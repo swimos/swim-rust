@@ -82,6 +82,8 @@ pub fn make_config() -> AgentExecutionConfig {
         yield_after: NonZeroUsize::new(2048).unwrap(),
         retry_strategy: Default::default(),
         cleanup_timeout: Duration::from_secs(1),
+        agent_timeout: Duration::from_secs(30),
+        reaper_task_interval: Duration::from_secs(30),
         scheduler_buffer: buffer_size,
     }
 }
