@@ -640,7 +640,10 @@ struct CommandLifecycleTasks<L, S, P>(LifecycleTasks<L, S, P>);
 struct DemandMapLifecycleTasks<L, S, P>(LifecycleTasks<L, S, P>);
 
 struct DemandLifecycleTasks<L, S, P, Event> {
-    tasks: LifecycleTasks<L, S, P>,
+    name: String,
+    lifecycle: L,
+    event_stream: S,
+    projection: P,
     response_tx: mpsc::Sender<Event>,
 }
 
@@ -1128,12 +1131,10 @@ where
     let (response_tx, response_rx) = mpsc::channel(buffer_size.get());
 
     let tasks = DemandLifecycleTasks {
-        tasks: LifecycleTasks {
-            name: name.into(),
-            lifecycle,
-            event_stream: cue_stream,
-            projection,
-        },
+        name: name.into(),
+        lifecycle,
+        event_stream: cue_stream,
+        projection,
         response_tx,
     };
 
@@ -1194,7 +1195,7 @@ where
 
 impl<L, S, P, Event> Lane for DemandLifecycleTasks<L, S, P, Event> {
     fn name(&self) -> &str {
-        self.tasks.name.as_str()
+        self.name.as_str()
     }
 }
 
@@ -1215,14 +1216,11 @@ where
     fn events(self: Box<Self>, context: Context) -> BoxFuture<'static, ()> {
         async move {
             let DemandLifecycleTasks {
-                tasks:
-                    LifecycleTasks {
-                        lifecycle,
-                        event_stream,
-                        projection,
-                        ..
-                    },
+                lifecycle,
+                event_stream,
+                projection,
                 response_tx,
+                ..
             } = *self;
 
             let model = projection(context.agent()).clone();

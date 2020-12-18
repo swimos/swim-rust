@@ -22,15 +22,15 @@ use quote::quote;
 use syn::{AttributeArgs, DeriveInput, Ident};
 
 #[derive(Debug, FromMeta)]
-pub struct ActionAttrs {
+struct ActionAttrs {
     #[darling(map = "string_to_ident")]
-    pub agent: Ident,
+    agent: Ident,
     #[darling(map = "string_to_ident")]
-    pub command_type: Ident,
+    command_type: Ident,
     #[darling(map = "string_to_ident")]
-    pub response_type: Ident,
+    response_type: Ident,
     #[darling(default = "default_on_command", map = "string_to_ident")]
-    pub on_command: Ident,
+    on_command: Ident,
 }
 
 pub fn derive_action_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput) -> TokenStream {
@@ -51,6 +51,37 @@ pub fn derive_action_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput)
     let command_type = &args.command_type;
     let response_type = &args.response_type;
     let on_command_func = &args.on_command;
+    let on_event = quote! {
+        let #task_name {
+            lifecycle,
+            event_stream,
+            projection,
+            ..
+        } = *self;
+
+        let model = projection(context.agent()).clone();
+        let mut events = event_stream.take_until(context.agent_stop_event());
+        let mut events = unsafe { Pin::new_unchecked(&mut events) };
+
+        while let Some(event) = events.next().await {
+            let (command, responder) = event.destruct();
+
+            tracing::event!(tracing::Level::TRACE, commanded = swim_server::agent::COMMANDED, ?command);
+
+            let response = tracing_futures::Instrument::instrument(
+                lifecycle.#on_command_func(command, &model, &context),
+                tracing::span!(tracing::Level::TRACE, swim_server::agent::ON_COMMAND)
+            ).await;
+
+            tracing::event!(tracing::Level::TRACE, action_result = swim_server::agent::ACTION_RESULT, ?response);
+
+            if let Some(tx) = responder {
+                if tx.send(response).is_err() {
+                    tracing::event!(tracing::Level::WARN, response_ingored = swim_server::agent::RESPONSE_IGNORED);
+                }
+            }
+        }
+    };
 
     derive_lane(
         "ActionLifecycle",
@@ -61,27 +92,11 @@ pub fn derive_action_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput)
         quote!(swim_server::agent::lane::model::action::ActionLane<#command_type, #response_type>),
         quote!(swim_server::agent::lane::model::action::Action<#command_type, #response_type>),
         None,
+        on_event,
         quote! {
-            let (command, responder) = event.destruct();
-
-            tracing::event!(tracing::Level::TRACE, commanded = swim_server::agent::COMMANDED, ?command);
-
-            let response = tracing_futures::Instrument::instrument(
-                    lifecycle.#on_command_func(command, &model, &context),
-                    tracing::span!(tracing::Level::TRACE, swim_server::agent::ON_COMMAND)
-                ).await;
-
-            tracing::event!(tracing::Level::TRACE, action_result = swim_server::agent::ACTION_RESULT, ?response);
-
-            if let Some(tx) = responder {
-                if tx.send(response).is_err() {
-                    tracing::event!(tracing::Level::WARN, response_ingored = swim_server::agent::RESPONSE_IGNORED);
-                }
-            }
-        },
-        quote! {
-            use swim_server::agent::lane::model::action::CommandLane;
+            use swim_server::agent::lane::model::action::ActionLane;
             use swim_server::agent::lane::model::action::Action;
         },
+        None,
     )
 }
