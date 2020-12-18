@@ -21,10 +21,10 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use swim_common::model::Value;
 use swim_common::request::request_future::RequestError;
+use swim_common::routing::ws::WsMessage;
+use swim_common::routing::{ConnectionError, HttpError};
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::AbsolutePath;
-use swim_common::ws::error::{ConnectionError, WebSocketError};
-use swim_common::ws::WsMessage;
 use tokio::sync::mpsc;
 use tokio::time::timeout;
 use utilities::sync::promise;
@@ -1631,7 +1631,7 @@ async fn test_route_incoming_unreachable_host() {
 
     assert_eq!(
         stream.recv().await.unwrap(),
-        RouterEvent::Unreachable("An error was produced by the web socket: An invalid URL (ws://unreachable/) was supplied".to_string())
+        RouterEvent::Unreachable("Malformatted URI. ws://unreachable/".to_string())
     );
 
     assert_eq!(get_request_count(&pool), 1);
@@ -1819,8 +1819,9 @@ impl ConnectionPool for TestPool {
         let host_url_string = host_url.to_string();
         if host_url == self.permanent_error_url {
             self.log_request(host_url, recreate);
-            return ready(Ok(Err(ConnectionError::SocketError(WebSocketError::Url(
+            return ready(Ok(Err(ConnectionError::Http(HttpError::invalid_url(
                 host_url_string,
+                None,
             )))))
             .boxed();
         }

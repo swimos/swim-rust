@@ -16,7 +16,7 @@ use crate::agent::lane::channels::uplink::map::MapLaneSyncError;
 use crate::agent::lane::model::demand_map::{DemandMapLane, DemandMapLaneUpdate};
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent, MapUpdate};
 use crate::agent::lane::model::value::ValueLane;
-use crate::routing::{error, RoutingAddr, TaggedSender};
+use crate::routing::{RoutingAddr, TaggedSender};
 use futures::future::ready;
 use futures::stream::BoxStream;
 use futures::stream::FusedStream;
@@ -30,6 +30,7 @@ use std::sync::Arc;
 use stm::transaction::{RetryManager, TransactionError};
 use swim_common::form::{Form, FormErr};
 use swim_common::model::Value;
+use swim_common::routing::SendError;
 use swim_common::sink::item::{FnMutSender, ItemSender};
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
@@ -526,14 +527,14 @@ impl<S> UplinkMessageSender<S> {
 }
 
 impl UplinkMessageSender<TaggedSender> {
-    pub fn into_item_sender<Msg>(self) -> impl ItemSender<UplinkMessage<Msg>, error::SendError>
+    pub fn into_item_sender<Msg>(self) -> impl ItemSender<UplinkMessage<Msg>, SendError>
     where
         Msg: Into<Value> + Send + 'static,
     {
         FnMutSender::new(self, UplinkMessageSender::send_item)
     }
 
-    pub async fn send_item<Msg>(&mut self, msg: UplinkMessage<Msg>) -> Result<(), error::SendError>
+    pub async fn send_item<Msg>(&mut self, msg: UplinkMessage<Msg>) -> Result<(), SendError>
     where
         Msg: Into<Value> + Send + 'static,
     {

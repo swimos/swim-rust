@@ -34,9 +34,9 @@ use crate::downlink::subscription::{
 use crate::downlink::typed::SchemaViolations;
 use crate::downlink::DownlinkError;
 use crate::router::SwimRouter;
+use swim_common::routing::ws::WebsocketFactory;
 use swim_common::routing::RoutingError;
 use swim_common::warp::envelope::Envelope;
-use swim_common::ws::WebsocketFactory;
 
 #[cfg(feature = "websocket")]
 use {

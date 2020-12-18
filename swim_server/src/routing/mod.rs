@@ -12,10 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::routing::error::{ConnectionError, ResolutionError, RouterError};
+use crate::routing::error::RouterError;
 use futures::future::BoxFuture;
 use std::fmt::{Display, Formatter};
 use std::time::Duration;
+use swim_common::routing::RoutingError;
+use swim_common::routing::SendError;
+use swim_common::routing::{ConnectionError, ResolutionError};
 use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
 use tokio::sync::mpsc;
 use url::Url;
@@ -27,7 +30,6 @@ pub mod error;
 pub mod remote;
 #[cfg(test)]
 mod tests;
-pub mod ws;
 
 /// A key into the server routing table specifying an endpoint to which [`Envelope`]s can be sent.
 /// This is deliberately non-descriptive to allow it to be [`Copy`] and so very cheap to use as a
@@ -130,8 +132,15 @@ impl TaggedSender {
         TaggedSender { tag, inner }
     }
 
-    pub async fn send_item(&mut self, envelope: Envelope) -> Result<(), error::SendError> {
-        Ok(self.inner.send(TaggedEnvelope(self.tag, envelope)).await?)
+    pub async fn send_item(&mut self, envelope: Envelope) -> Result<(), SendError> {
+        Ok(self
+            .inner
+            .send(TaggedEnvelope(self.tag, envelope))
+            .await
+            .map_err(|e| {
+                let TaggedEnvelope(_addr, env) = e.0;
+                SendError::new(RoutingError::CloseError, env)
+            })?)
     }
 }
 
