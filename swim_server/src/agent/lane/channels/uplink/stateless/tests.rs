@@ -112,7 +112,7 @@ async fn immediate_unlink_stateless_uplinks() {
 
     let router = TestRouter::new(RoutingAddr::local(1024), router_tx);
 
-    let uplinks_task = uplinks.run(action_rx, router, error_tx);
+    let uplinks_task = uplinks.run(action_rx, router, error_tx, 256);
 
     let addr = RoutingAddr::remote(7);
 
@@ -148,7 +148,7 @@ async fn sync_with_stateless_uplinks() {
 
     let router = TestRouter::new(RoutingAddr::local(1024), router_tx);
 
-    let uplinks_task = uplinks.run(action_rx, router, error_tx);
+    let uplinks_task = uplinks.run(action_rx, router, error_tx, 256);
 
     let addr = RoutingAddr::remote(7);
 
@@ -191,7 +191,7 @@ async fn sync_with_action_lane() {
 
     let router = TestRouter::new(RoutingAddr::local(1024), router_tx);
 
-    let uplinks_task = uplinks.run(action_rx, router, error_tx);
+    let uplinks_task = uplinks.run(action_rx, router, error_tx, 256);
 
     let addr = RoutingAddr::remote(7);
 
@@ -240,7 +240,7 @@ async fn sync_after_link_on_stateless_uplinks() {
 
     let router = TestRouter::new(RoutingAddr::local(1024), router_tx);
 
-    let uplinks_task = uplinks.run(action_rx, router, error_tx);
+    let uplinks_task = uplinks.run(action_rx, router, error_tx, 256);
 
     let addr = RoutingAddr::remote(7);
 
@@ -295,7 +295,7 @@ async fn link_to_and_receive_from_broadcast_uplinks() {
 
     let router = TestRouter::new(RoutingAddr::local(1024), router_tx);
 
-    let uplinks_task = uplinks.run(action_rx, router, error_tx);
+    let uplinks_task = uplinks.run(action_rx, router, error_tx, 256);
 
     let addr = RoutingAddr::remote(7);
 
@@ -360,7 +360,7 @@ async fn link_to_and_receive_from_addressed_uplinks() {
 
     let router = TestRouter::new(RoutingAddr::local(1024), router_tx);
 
-    let uplinks_task = uplinks.run(action_rx, router, error_tx);
+    let uplinks_task = uplinks.run(action_rx, router, error_tx, 256);
 
     let addr1 = RoutingAddr::remote(7);
     let addr2 = RoutingAddr::remote(13);
@@ -438,7 +438,7 @@ async fn link_twice_to_stateless_uplinks() {
 
     let router = TestRouter::new(RoutingAddr::local(1024), router_tx);
 
-    let uplinks_task = uplinks.run(action_rx, router, error_tx);
+    let uplinks_task = uplinks.run(action_rx, router, error_tx, 256);
 
     let addrs = vec![RoutingAddr::remote(7), RoutingAddr::remote(8)];
 
@@ -499,7 +499,7 @@ async fn no_messages_after_unlink_from_stateless_uplinks() {
 
     let router = TestRouter::new(RoutingAddr::local(1024), router_tx);
 
-    let uplinks_task = uplinks.run(action_rx, router, error_tx);
+    let uplinks_task = uplinks.run(action_rx, router, error_tx, 256);
 
     let addr1 = RoutingAddr::remote(7);
     let addr2 = RoutingAddr::remote(8);
@@ -581,7 +581,7 @@ async fn send_no_uplink_stateless_uplinks() {
     let router = TestRouter::new(RoutingAddr::local(1024), router_tx);
 
     let uplinks = StatelessUplinks::new(producer_rx, route.clone(), UplinkKind::Supply);
-    let uplinks_task = uplinks.run(action_rx, router, error_tx);
+    let uplinks_task = uplinks.run(action_rx, router, error_tx, 256);
 
     let addr = RoutingAddr::remote(7);
 

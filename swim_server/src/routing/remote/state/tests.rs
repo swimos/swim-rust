@@ -60,6 +60,7 @@ fn make_state(
         channel_buffer_size: buffer_size,
         activity_timeout: Duration::from_secs(30),
         connection_retries: RetryStrategy::none(),
+        yield_after: NonZeroUsize::new(256).unwrap(),
     };
 
     let fake_connections = FakeConnections::new(HashMap::new(), HashMap::new(), None);
