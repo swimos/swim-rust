@@ -19,6 +19,7 @@ use crate::routing::{error, RoutingAddr, TaggedSender};
 use futures::future::ready;
 use futures::stream::{BoxStream, FusedStream};
 use futures::{select, select_biased, FutureExt, StreamExt};
+use pin_utils::core_reexport::num::NonZeroUsize;
 use pin_utils::pin_mut;
 use std::any::Any;
 use std::error::Error;
@@ -192,14 +193,22 @@ pub struct Uplink<SM, Actions, Updates> {
     actions: Actions,
     /// Stream of updates to the lane.
     updates: Updates,
+    /// The number of events to process before yielding execution back to the runtime.
+    yield_after: NonZeroUsize,
 }
 
 impl<SM, Actions, Updates> Uplink<SM, Actions, Updates> {
-    pub fn new(state_machine: SM, actions: Actions, updates: Updates) -> Self {
+    pub fn new(
+        state_machine: SM,
+        actions: Actions,
+        updates: Updates,
+        yield_after: NonZeroUsize,
+    ) -> Self {
         Uplink {
             state_machine,
             actions,
             updates,
+            yield_after,
         }
     }
 }
@@ -249,12 +258,15 @@ where
             state_machine,
             actions,
             updates,
+            yield_after,
         } = self;
 
         pin_mut!(actions);
         pin_mut!(updates);
 
         let mut state = UplinkState::Opened;
+        let mut iteration_count: usize = 0;
+        let yield_after = yield_after.get();
 
         loop {
             if state == UplinkState::Opened {
@@ -304,6 +316,11 @@ where
                         }
                     },
                 }
+            }
+
+            iteration_count += 1;
+            if iteration_count % yield_after == 0 {
+                tokio::task::yield_now().await;
             }
         }
     }

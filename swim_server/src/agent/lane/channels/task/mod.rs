@@ -243,6 +243,9 @@ where
 
         let mut err_acc = UplinkErrorAcc::new(route_cpy.clone(), max_fatal_uplink_errors);
 
+        let yield_after = config.yield_after.get();
+        let mut iteration_count: usize = 0;
+
         let failed: bool = loop {
             let envelope_or_err: Option<Either<TaggedClientEnvelope, UplinkErrorReport>> = select! {
                 maybe_env = envelopes.next() => maybe_env.map(Either::Left),
@@ -290,6 +293,11 @@ where
                 _ => {
                     break false;
                 }
+            }
+
+            iteration_count += 1;
+            if iteration_count % yield_after == 0 {
+                tokio::task::yield_now().await;
             }
         };
         (failed, err_acc.take_errors())
@@ -369,10 +377,12 @@ where
 async fn simple_action_envelope_task<Command>(
     envelopes: impl Stream<Item = TaggedClientEnvelope>,
     commands: mpsc::Sender<Result<(RoutingAddr, Command), FormErr>>,
+    yield_after: usize,
 ) where
     Command: Send + Sync + Form + 'static,
 {
     pin_mut!(envelopes);
+    let mut iteration_count: usize = 0;
 
     while let Some(TaggedClientEnvelope(addr, envelope)) = envelopes.next().await {
         let OutgoingLinkMessage { header, body, .. } = envelope;
@@ -386,6 +396,11 @@ async fn simple_action_envelope_task<Command>(
         };
         if !sent {
             break;
+        }
+
+        iteration_count += 1;
+        if iteration_count % yield_after == 0 {
+            tokio::task::yield_now().await;
         }
     }
 }
@@ -431,6 +446,8 @@ where
     let (upd_done_tx, upd_done_rx) = trigger::trigger();
     let envelopes = envelopes.take_until(upd_done_rx);
 
+    let yield_after = config.yield_after.get();
+
     if feedback {
         let (feedback_tx, feedback_rx) = mpsc::channel(config.feedback_buffer.get());
         let feedback_rx =
@@ -450,7 +467,7 @@ where
 
         let uplinks = StatelessUplinks::new(feedback_rx, route.clone(), UplinkKind::Action);
         let uplink_task = uplinks
-            .run(uplink_rx, context.router_handle(), err_tx)
+            .run(uplink_rx, context.router_handle(), err_tx, yield_after)
             .instrument(span!(Level::INFO, UPLINK_SPAWN_TASK, ?route));
 
         let error_handler =
@@ -463,6 +480,7 @@ where
             err_rx,
             error_handler,
             OnCommandStrategy::Send(OnCommandHandler::new(update_tx, route.clone())),
+            yield_after,
         );
 
         let (upd_result, _, (uplink_fatal, uplink_errs)) =
@@ -476,7 +494,7 @@ where
             result
         }
         .instrument(span!(Level::INFO, UPDATE_TASK, ?route));
-        let envelope_task = simple_action_envelope_task(envelopes, update_tx);
+        let envelope_task = simple_action_envelope_task(envelopes, update_tx, yield_after);
         let (upd_result, _) = join(update_task, envelope_task).await;
         combine_results(route, upd_result.err(), false, vec![])
     }
@@ -607,6 +625,7 @@ where
     let uplinks = StatelessUplinks::new(stream, route.clone(), uplink_kind);
 
     let on_command_strategy = OnCommandStrategy::<Dropping>::dropping();
+    let yield_after = config.yield_after.get();
 
     let envelope_task = action_envelope_task_with_uplinks(
         route.clone(),
@@ -615,10 +634,11 @@ where
         err_rx,
         UplinkErrorHandler::discard(),
         on_command_strategy,
+        yield_after,
     );
 
     let uplink_task = uplinks
-        .run(uplink_rx, context.router_handle(), err_tx)
+        .run(uplink_rx, context.router_handle(), err_tx, yield_after)
         .instrument(span!(Level::INFO, UPLINK_SPAWN_TASK, ?route));
 
     let (_, (uplink_fatal, uplink_errs)) = join(uplink_task, envelope_task).await;
@@ -659,6 +679,7 @@ async fn action_envelope_task_with_uplinks<Cmd>(
     err_rx: mpsc::Receiver<UplinkErrorReport>,
     mut err_handler: UplinkErrorHandler,
     mut on_command_handler: OnCommandStrategy<Cmd>,
+    yield_after: usize,
 ) -> (bool, Vec<UplinkErrorReport>)
 where
     Cmd: Send + Sync + Form + Debug + 'static,
@@ -668,6 +689,8 @@ where
     let envelopes = envelopes.fuse();
     let mut err_rx = err_rx.fuse();
     pin_mut!(envelopes);
+
+    let mut iteration_count: usize = 0;
 
     let mut failed: bool = loop {
         let envelope_or_err: Option<Either<TaggedClientEnvelope, UplinkErrorReport>> = select! {
@@ -710,6 +733,11 @@ where
             _ => {
                 break false;
             }
+        }
+
+        iteration_count += 1;
+        if iteration_count % yield_after == 0 {
+            tokio::task::yield_now().await;
         }
     };
 
