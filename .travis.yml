@@ -7,6 +7,7 @@ branches:
   only:
     - master
     - server-prototype
+    - ws-move
 
 jobs:
   include:

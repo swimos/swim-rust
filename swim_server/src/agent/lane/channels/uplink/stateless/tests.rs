@@ -14,7 +14,6 @@
 
 use crate::agent::context::AgentExecutionContext;
 use crate::agent::Eff;
-use crate::routing::error::{ResolutionError, RouterError};
 use crate::routing::{
     ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedEnvelope, TaggedSender,
 };
@@ -29,6 +28,8 @@ use swim_common::warp::path::RelativePath;
 use crate::agent::lane::channels::uplink::stateless::StatelessUplinks;
 use crate::agent::lane::channels::uplink::{AddressedUplinkMessage, UplinkAction, UplinkKind};
 use crate::agent::lane::channels::TaggedAction;
+use crate::routing::error::RouterError;
+use swim_common::routing::ResolutionError;
 use url::Url;
 use utilities::sync::promise;
 use utilities::uri::RelativeUri;
