@@ -14,10 +14,11 @@
 
 use crate::plane::router::{PlaneRouter, PlaneRouterFactory};
 use crate::plane::PlaneRequest;
-use crate::routing::error::{ConnectionError, ResolutionError, RouterError, Unresolvable};
-use crate::routing::{Route, RoutingAddr, ServerRouter, ServerRouterFactory, TaggedEnvelope};
+use crate::routing::error::{RouterError, Unresolvable};
+use crate::routing::remote::RawRoute;
+use crate::routing::{RoutingAddr, ServerRouter, ServerRouterFactory, TaggedEnvelope};
 use futures::future::join;
-use swim_common::sink::item::ItemSink;
+use swim_common::routing::{ConnectionError, ProtocolError, ResolutionErrorKind};
 use swim_common::warp::envelope::Envelope;
 use tokio::sync::mpsc;
 use url::Url;
@@ -38,7 +39,7 @@ async fn plane_router_get_sender() {
             if let PlaneRequest::Endpoint { id, request } = req {
                 if id == addr {
                     assert!(request
-                        .send_ok(Route::new(send_tx.clone(), drop_rx.clone()))
+                        .send_ok(RawRoute::new(send_tx.clone(), drop_rx.clone()))
                         .is_ok());
                 } else {
                     assert!(request.send_err(Unresolvable(id)).is_ok());
@@ -66,8 +67,8 @@ async fn plane_router_get_sender() {
         let result2 = router.resolve_sender(RoutingAddr::local(56)).await;
 
         assert!(matches!(
-            result2,
-            Err(ResolutionError::Unresolvable(Unresolvable(_)))
+            result2.err().unwrap().kind(),
+            ResolutionErrorKind::Unresolvable
         ));
     };
 
@@ -105,8 +106,8 @@ async fn plane_router_resolve() {
                     assert!(request.send_ok(addr).is_ok());
                 } else if host.is_some() {
                     assert!(request
-                        .send_err(RouterError::ConnectionFailure(ConnectionError::Warp(
-                            "Boom!".to_string()
+                        .send_err(RouterError::ConnectionFailure(ConnectionError::Protocol(
+                            ProtocolError::warp(Some("Boom!".into()))
                         )))
                         .is_ok());
                 } else {
@@ -127,10 +128,12 @@ async fn plane_router_resolve() {
         let result2 = router
             .lookup(Some(other_host), "/node".parse().unwrap())
             .await;
-        assert!(matches!(
-            result2,
-            Err(RouterError::ConnectionFailure(ConnectionError::Warp(msg))) if msg == "Boom!"
+
+        let _expected = RouterError::ConnectionFailure(ConnectionError::Protocol(
+            ProtocolError::warp(Some("Boom!".into())),
         ));
+
+        assert!(matches!(result2, Err(_expected)));
 
         let result3 = router.lookup(None, "/node".parse().unwrap()).await;
         assert!(matches!(result3, Err(RouterError::NoAgentAtRoute(name)) if name == "/node"));

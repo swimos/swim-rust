@@ -13,7 +13,8 @@
 // limitations under the License.
 
 use crate::routing::remote::table::{HostAndPort, RoutingTable};
-use crate::routing::{ConnectionDropped, Route, RoutingAddr, TaggedEnvelope};
+use crate::routing::remote::RawRoute;
+use crate::routing::{ConnectionDropped, RoutingAddr, TaggedEnvelope};
 use futures::StreamExt;
 use std::time::Duration;
 use swim_common::warp::envelope::Envelope;
@@ -38,10 +39,7 @@ async fn insert_and_retrieve() {
     assert_eq!(table.try_resolve(&hp), Some(addr));
     assert_eq!(table.get_resolved(&sock_addr), Some(addr));
 
-    let Route {
-        mut sender,
-        on_drop: _,
-    } = table.resolve(addr).unwrap();
+    let RawRoute { sender, on_drop: _ } = table.resolve(addr).unwrap();
 
     let env = TaggedEnvelope(addr, Envelope::unlink("node", "lane"));
 
@@ -78,7 +76,7 @@ async fn remove_entry() {
 
     table.insert(addr, Some(hp.clone()), sock_addr, tx);
 
-    let Route {
+    let RawRoute {
         sender: _sender,
         on_drop,
     } = table.resolve(addr).unwrap();

@@ -60,6 +60,7 @@ pub struct UplinkSpawner<Handler, Top> {
     actions: mpsc::Receiver<TaggedAction>,
     action_buffer_size: NonZeroUsize,
     max_start_attempts: NonZeroUsize,
+    yield_after: NonZeroUsize,
     route: RelativePath,
 }
 
@@ -79,6 +80,8 @@ where
     /// * `action_buffer_size` - Size of the action queue for each uplink.
     /// * `max_start_attempts` - The maximum number of times the spawner will attempt to create a
     /// new uplink before giving up.
+    /// * `yield_after` - The number of actions to process before yielding execution back to the
+    /// runtime.
     /// * `route` - The route of the lane (for labelling outgoing envelopes).
     ///
     pub fn new(
@@ -87,6 +90,7 @@ where
         rx: mpsc::Receiver<TaggedAction>,
         action_buffer_size: NonZeroUsize,
         max_start_attempts: NonZeroUsize,
+        yield_after: NonZeroUsize,
         route: RelativePath,
     ) -> Self {
         UplinkSpawner {
@@ -95,11 +99,12 @@ where
             actions: rx,
             action_buffer_size,
             max_start_attempts,
+            yield_after,
             route,
         }
     }
 
-    /// Run the uplink spawner as an asycn task.
+    /// Run the uplink spawner as an async task.
     ///
     /// #Arguments
     ///
@@ -115,11 +120,13 @@ where
         mut self,
         mut router: Router,
         mut spawn_tx: mpsc::Sender<Eff>,
-        mut error_collector: mpsc::Sender<UplinkErrorReport>,
+        error_collector: mpsc::Sender<UplinkErrorReport>,
     ) where
         Router: ServerRouter,
     {
         let mut uplink_senders: HashMap<RoutingAddr, UplinkHandle> = HashMap::new();
+        let mut iteration_count: usize = 0;
+        let yield_mod = self.yield_after.get();
 
         while let Some(TaggedAction(addr, mut action)) = self.actions.recv().await {
             let mut attempts = 0;
@@ -172,6 +179,11 @@ where
             };
             if is_done {
                 break;
+            } else {
+                iteration_count += 1;
+                if iteration_count % yield_mod == 0 {
+                    tokio::task::yield_now().await;
+                }
             }
         }
         join_all(uplink_senders.into_iter().map(|(_, h)| h.cleanup()))
@@ -183,7 +195,7 @@ where
     async fn make_uplink<Router>(
         &mut self,
         addr: RoutingAddr,
-        mut err_tx: mpsc::Sender<UplinkErrorReport>,
+        err_tx: mpsc::Sender<UplinkErrorReport>,
         spawn_tx: &mut mpsc::Sender<Eff>,
         router: &mut Router,
     ) -> Option<UplinkHandle>
@@ -195,6 +207,7 @@ where
             topic,
             action_buffer_size,
             route,
+            yield_after,
             ..
         } = self;
         let (tx, rx) = mpsc::channel(action_buffer_size.get());
@@ -205,7 +218,7 @@ where
         } else {
             return None;
         };
-        let uplink = Uplink::new(state_machine, rx.fuse(), updates);
+        let uplink = Uplink::new(state_machine, rx.fuse(), updates, *yield_after);
 
         let sink = if let Ok(sender) = router.resolve_sender(addr).await {
             UplinkMessageSender::new(sender.sender, route.clone())
@@ -213,7 +226,7 @@ where
             return None;
         };
         let ul_task = async move {
-            if let Err(err) = uplink.run_uplink(sink).await {
+            if let Err(err) = uplink.run_uplink(sink.into_item_sender()).await {
                 let report = UplinkErrorReport::new(err, addr);
                 if let Err(mpsc::error::SendError(report)) = err_tx.send(report).await {
                     event!(Level::ERROR, message = FAILED_ERR_REPORT, ?report);
@@ -267,7 +280,7 @@ impl UplinkHandle {
     }
 }
 
-/// An error report, generated when an uplink failes, specifying the reason for the failure and the
+/// An error report, generated when an uplink fails, specifying the reason for the failure and the
 /// endpoint to which the uplink was attached.
 #[derive(Debug)]
 pub struct UplinkErrorReport {
@@ -313,6 +326,7 @@ impl LaneUplinks for SpawnerUplinkFactory {
         let SpawnerUplinkFactory(AgentExecutionConfig {
             action_buffer,
             max_uplink_start_attempts,
+            yield_after,
             ..
         }) = self;
 
@@ -328,6 +342,7 @@ impl LaneUplinks for SpawnerUplinkFactory {
             actions,
             *action_buffer,
             *max_uplink_start_attempts,
+            *yield_after,
             route,
         );
 

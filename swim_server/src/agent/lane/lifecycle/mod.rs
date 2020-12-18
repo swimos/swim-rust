@@ -13,7 +13,8 @@
 // limitations under the License.
 
 use crate::agent::lane::model::action::ActionLane;
-use crate::agent::lane::strategy::{Buffered, Dropping, Queue};
+use crate::agent::lane::model::demand::DemandLane;
+use crate::agent::lane::strategy::{Buffered, Queue};
 use crate::agent::lane::LaneModel;
 use crate::agent::AgentContext;
 use futures::future::{ready, Ready};
@@ -127,36 +128,6 @@ impl<'a, Model: LaneModel, Agent> StatefulLaneLifecycle<'a, Model, Agent> for Qu
     }
 }
 
-impl StatefulLaneLifecycleBase for Dropping {
-    type WatchStrategy = Self;
-
-    fn create_strategy(&self) -> Self::WatchStrategy {
-        self.clone()
-    }
-}
-
-impl<'a, Model: LaneModel, Agent> StatefulLaneLifecycle<'a, Model, Agent> for Dropping {
-    type StartFuture = Ready<()>;
-    type EventFuture = Ready<()>;
-
-    fn on_start<C: AgentContext<Agent>>(
-        &'a self,
-        _model: &'a Model,
-        _context: &'a C,
-    ) -> Self::StartFuture {
-        ready(())
-    }
-
-    fn on_event<C: AgentContext<Agent>>(
-        &'a self,
-        _event: &'a Model::Event,
-        _model: &'a Model,
-        _context: &'a C,
-    ) -> Self::EventFuture {
-        ready(())
-    }
-}
-
 impl StatefulLaneLifecycleBase for Buffered {
     type WatchStrategy = Self;
 
@@ -204,4 +175,12 @@ pub trait LaneLifecycle<Config> {
     /// * `config` - Swim agent config.
 
     fn create(config: &Config) -> Self;
+}
+
+pub trait DemandLaneLifecycle<'a, Event, Agent>: Send + Sync + 'static {
+    type OnCueFuture: Future<Output = Option<Event>> + Send + 'a;
+
+    fn on_cue<C>(&'a self, model: &'a DemandLane<Event>, context: &'a C) -> Self::OnCueFuture
+    where
+        C: AgentContext<Agent> + Send + Sync + 'static;
 }

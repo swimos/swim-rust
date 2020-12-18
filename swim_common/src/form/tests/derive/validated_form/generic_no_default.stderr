@@ -1,0 +1,18 @@
+error[E0599]: no method named `as_value` found for struct `S<main::Invalid>` in the current scope
+  --> $DIR/generic_no_default.rs:29:37
+   |
+19 |     struct Invalid;
+   |     --------------- doesn't satisfy `main::Invalid: Default`
+...
+23 |     struct S<F> {
+   |     -----------
+   |     |
+   |     method `as_value` not found for this
+   |     doesn't satisfy `S<main::Invalid>: Form`
+...
+29 |     let _s = S { a: 1, f: Invalid }.as_value();
+   |                                     ^^^^^^^^ method not found in `S<main::Invalid>`
+   |
+   = note: the method `as_value` exists but the following trait bounds were not satisfied:
+           `main::Invalid: Default`
+           which is required by `S<main::Invalid>: Form`

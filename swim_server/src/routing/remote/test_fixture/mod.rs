@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::routing::error::{ConnectionError, ResolutionError, RouterError, Unresolvable};
+use crate::routing::error::RouterError;
 use crate::routing::remote::net::{ExternalConnections, Listener};
+use crate::routing::remote::table::HostAndPort;
 use crate::routing::remote::ConnectionDropped;
-use crate::routing::ws::{CloseReason, JoinedStreamSink, WsConnections};
 use crate::routing::{
     Route, RoutingAddr, ServerRouter, ServerRouterFactory, TaggedEnvelope, TaggedSender,
 };
@@ -23,15 +23,18 @@ use futures::future::{ready, BoxFuture};
 use futures::io::ErrorKind;
 use futures::stream::Fuse;
 use futures::task::{AtomicWaker, Context, Poll};
-use futures::{ready, FutureExt, Sink, SinkExt, Stream, StreamExt};
+use futures::{FutureExt, Sink, Stream, StreamExt};
+use http::StatusCode;
 use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::io;
 use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::Arc;
-use swim_common::sink::{MpscSink, SinkSendError};
-use swim_common::ws::WsMessage;
+use swim_common::routing::ws::{CloseReason, JoinedStreamSink, WsConnections, WsMessage};
+use swim_common::routing::{
+    CloseError, ConnectionError, HttpError, HttpErrorKind, ResolutionError, ResolutionErrorKind,
+};
 use tokio::sync::mpsc;
 use url::Url;
 use utilities::sync::promise;
@@ -39,7 +42,7 @@ use utilities::uri::RelativeUri;
 
 #[derive(Debug)]
 struct Entry {
-    route: Route<TaggedSender>,
+    route: Route,
     on_drop: promise::Sender<ConnectionDropped>,
     countdown: u8,
 }
@@ -61,12 +64,10 @@ impl LocalRoutes {
 }
 
 impl ServerRouter for LocalRoutes {
-    type Sender = TaggedSender;
-
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,
-    ) -> BoxFuture<'_, Result<Route<Self::Sender>, ResolutionError>> {
+    ) -> BoxFuture<'_, Result<Route, ResolutionError>> {
         let lock = self.1.lock();
         let result = if let Some(Entry {
             route, countdown, ..
@@ -75,10 +76,10 @@ impl ServerRouter for LocalRoutes {
             if *countdown == 0 {
                 Ok(route.clone())
             } else {
-                Err(ResolutionError::Unresolvable(Unresolvable(addr)))
+                Err(ResolutionError::unresolvable(addr.to_string()))
             }
         } else {
-            Err(ResolutionError::Unresolvable(Unresolvable(addr)))
+            Err(ResolutionError::unresolvable(addr.to_string()))
         };
         ready(result).boxed()
     }
@@ -90,7 +91,9 @@ impl ServerRouter for LocalRoutes {
     ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
         let mut lock = self.1.lock();
         let result = if host.is_some() {
-            Err(RouterError::ConnectionFailure(ConnectionError::Resolution))
+            Err(RouterError::ConnectionFailure(ConnectionError::Resolution(
+                ResolutionError::new(ResolutionErrorKind::Unresolvable, None),
+            )))
         } else {
             if let Some((addr, countdown)) = lock.uri_mappings.get_mut(&route) {
                 if *countdown == 0 {
@@ -102,8 +105,8 @@ impl ServerRouter for LocalRoutes {
                         *countdown -= 1;
                     }
                     // A non-fatal error that will allow a retry.
-                    Err(RouterError::ConnectionFailure(ConnectionError::Warp(
-                        "Oh no!".to_string(),
+                    Err(RouterError::ConnectionFailure(ConnectionError::Http(
+                        HttpError::new(HttpErrorKind::StatusCode(Some(StatusCode::OK)), None),
                     )))
                 }
             } else {
@@ -174,90 +177,93 @@ impl ServerRouterFactory for LocalRoutes {
     }
 }
 
-pub struct TwoWayMpsc<T, E> {
-    tx: MpscSink<T>,
-    rx: mpsc::Receiver<Result<T, E>>,
-    failures: Box<dyn Fn(&T) -> Option<E> + Send + Unpin>,
-}
+pub mod fake_channel {
 
-impl<T, E> TwoWayMpsc<T, E>
-where
-    T: Send + Sync + 'static,
-    E: Send + Sync + 'static,
-{
-    pub fn new<F>(tx: mpsc::Sender<T>, rx: mpsc::Receiver<Result<T, E>>, failures: F) -> Self
+    use futures::channel::mpsc;
+    use futures::future::ready;
+    use futures::future::BoxFuture;
+    use futures::{ready, FutureExt, Sink, SinkExt, Stream, StreamExt};
+    use std::pin::Pin;
+    use std::task::{Context, Poll};
+    use swim_common::routing::ws::{CloseReason, JoinedStreamSink};
+
+    pub struct TwoWayMpsc<T, E> {
+        tx: mpsc::Sender<T>,
+        rx: mpsc::Receiver<Result<T, E>>,
+        failures: Box<dyn Fn(&T) -> Option<E> + Send + Unpin>,
+    }
+
+    impl<T, E> TwoWayMpsc<T, E>
     where
-        F: Fn(&T) -> Option<E> + Send + Unpin + 'static,
+        T: Send + Sync + 'static,
+        E: Send + Sync + 'static,
     {
-        TwoWayMpsc {
-            tx: MpscSink::wrap(tx),
-            rx,
-            failures: Box::new(failures),
+        pub fn new<F>(tx: mpsc::Sender<T>, rx: mpsc::Receiver<Result<T, E>>, failures: F) -> Self
+        where
+            F: Fn(&T) -> Option<E> + Send + Unpin + 'static,
+        {
+            TwoWayMpsc {
+                tx,
+                rx,
+                failures: Box::new(failures),
+            }
         }
     }
 
-    pub fn no_send_errors<F>(tx: mpsc::Sender<T>, rx: mpsc::Receiver<Result<T, E>>) -> Self {
-        TwoWayMpsc {
-            tx: MpscSink::wrap(tx),
-            rx,
-            failures: Box::new(|_| None),
+    impl<T, E> Sink<T> for TwoWayMpsc<T, E>
+    where
+        T: Send + Sync + 'static,
+        E: Send + Sync + 'static,
+        E: From<mpsc::SendError>,
+    {
+        type Error = E;
+
+        fn poll_ready(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+            Poll::Ready(Ok(ready!(self.get_mut().tx.poll_ready_unpin(cx))?))
+        }
+
+        fn start_send(self: Pin<&mut Self>, item: T) -> Result<(), Self::Error> {
+            if let Some(err) = (self.as_ref().get_ref().failures)(&item) {
+                Err(err)
+            } else {
+                self.get_mut().tx.start_send_unpin(item)?;
+                Ok(())
+            }
+        }
+
+        fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+            Poll::Ready(Ok(ready!(self.get_mut().tx.poll_flush_unpin(cx))?))
+        }
+
+        fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+            Poll::Ready(Ok(ready!(self.get_mut().tx.poll_close_unpin(cx))?))
         }
     }
-}
 
-impl<T, E> Sink<T> for TwoWayMpsc<T, E>
-where
-    T: Send + Sync + 'static,
-    E: Send + Sync + 'static,
-    E: From<SinkSendError<T>>,
-{
-    type Error = E;
+    impl<T, E> Stream for TwoWayMpsc<T, E>
+    where
+        T: Send + Sync + 'static,
+        E: Send + Sync + 'static,
+        E: From<mpsc::SendError>,
+    {
+        type Item = Result<T, E>;
 
-    fn poll_ready(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        Poll::Ready(Ok(ready!(self.get_mut().tx.poll_ready_unpin(cx))?))
-    }
-
-    fn start_send(self: Pin<&mut Self>, item: T) -> Result<(), Self::Error> {
-        if let Some(err) = (self.as_ref().get_ref().failures)(&item) {
-            Err(err)
-        } else {
-            self.get_mut().tx.start_send_unpin(item)?;
-            Ok(())
+        fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+            self.get_mut().rx.poll_next_unpin(cx)
         }
     }
 
-    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        Poll::Ready(Ok(ready!(self.get_mut().tx.poll_flush_unpin(cx))?))
-    }
+    impl<T, E> JoinedStreamSink<T, E> for TwoWayMpsc<T, E>
+    where
+        T: Send + Sync + 'static,
+        E: Send + Sync + 'static,
+        E: From<mpsc::SendError>,
+    {
+        type CloseFut = BoxFuture<'static, Result<(), E>>;
 
-    fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        Poll::Ready(Ok(ready!(self.get_mut().tx.poll_close_unpin(cx))?))
-    }
-}
-
-impl<T, E> Stream for TwoWayMpsc<T, E>
-where
-    T: Send + Sync + 'static,
-    E: Send + Sync + 'static,
-    E: From<SinkSendError<T>>,
-{
-    type Item = Result<T, E>;
-
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        self.get_mut().rx.poll_next_unpin(cx)
-    }
-}
-
-impl<T, E> JoinedStreamSink<T, E> for TwoWayMpsc<T, E>
-where
-    T: Send + Sync + 'static,
-    E: Send + Sync + 'static,
-    E: From<SinkSendError<T>>,
-{
-    type CloseFut = BoxFuture<'static, Result<(), E>>;
-
-    fn close(&mut self, _reason: Option<CloseReason>) -> Self::CloseFut {
-        ready(Ok(())).boxed()
+        fn close(self, _reason: Option<CloseReason>) -> Self::CloseFut {
+            ready(Ok(())).boxed()
+        }
     }
 }
 
@@ -363,12 +369,15 @@ impl ExternalConnections for FakeConnections {
         ready(result).boxed()
     }
 
-    fn lookup(&self, host: String) -> BoxFuture<'static, io::Result<Vec<SocketAddr>>> {
+    fn lookup(
+        &self,
+        host_and_port: HostAndPort,
+    ) -> BoxFuture<'static, io::Result<Vec<SocketAddr>>> {
         let result = self
             .inner
             .lock()
             .dns
-            .get(&host)
+            .get(&host_and_port.to_string())
             .map(Clone::clone)
             .map(Ok)
             .unwrap_or(Err(ErrorKind::NotFound.into()));
@@ -401,7 +410,7 @@ impl WsConnections<FakeSocket> for FakeWebsockets {
     type StreamSink = FakeWebsocket;
     type Fut = BoxFuture<'static, Result<Self::StreamSink, ConnectionError>>;
 
-    fn open_connection(&self, socket: FakeSocket) -> Self::Fut {
+    fn open_connection(&self, socket: FakeSocket, _host: String) -> Self::Fut {
         ready(Ok(FakeWebsocket::new(socket))).boxed()
     }
 
@@ -464,7 +473,7 @@ impl Sink<WsMessage> for FakeWebsocket {
 
     fn poll_ready(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         if self.closed {
-            Poll::Ready(Err(ConnectionError::Closed))
+            Poll::Ready(Err(ConnectionError::Closed(CloseError::closed())))
         } else {
             Poll::Ready(Ok(()))
         }
@@ -472,7 +481,7 @@ impl Sink<WsMessage> for FakeWebsocket {
 
     fn start_send(self: Pin<&mut Self>, item: WsMessage) -> Result<(), Self::Error> {
         if self.closed {
-            Err(ConnectionError::Closed)
+            Err(ConnectionError::Closed(CloseError::closed()))
         } else {
             Ok(self.get_mut().inner.output.push(item))
         }
@@ -480,7 +489,7 @@ impl Sink<WsMessage> for FakeWebsocket {
 
     fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         if self.closed {
-            Poll::Ready(Err(ConnectionError::Closed))
+            Poll::Ready(Err(ConnectionError::Closed(CloseError::closed())))
         } else {
             Poll::Ready(Ok(()))
         }
@@ -497,9 +506,9 @@ impl Sink<WsMessage> for FakeWebsocket {
 impl JoinedStreamSink<WsMessage, ConnectionError> for FakeWebsocket {
     type CloseFut = BoxFuture<'static, Result<(), ConnectionError>>;
 
-    fn close(&mut self, _reason: Option<CloseReason>) -> Self::CloseFut {
-        let FakeWebsocket { closed, waker, .. } = self;
-        *closed = true;
+    fn close(self, _reason: Option<CloseReason>) -> Self::CloseFut {
+        let FakeWebsocket { waker, .. } = self;
+
         waker.wake();
         ready(Ok(())).boxed()
     }

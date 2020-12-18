@@ -16,16 +16,15 @@ use std::collections::HashMap;
 
 use crate::router::{CloseReceiver, CloseResponseSender, RouterEvent, SubscriberRequest};
 use futures::future::ready;
-use futures::stream;
 use futures::stream::FuturesUnordered;
-use futures::stream::StreamExt;
+use futures::{FutureExt, StreamExt};
 use std::convert::TryFrom;
 use std::iter::FromIterator;
 use swim_common::model::parser::parse_single;
+use swim_common::routing::ws::WsMessage;
 use swim_common::routing::RoutingError;
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
-use swim_common::ws::WsMessage;
 use tokio::sync::mpsc;
 use tracing::level_filters::STATIC_MAX_LEVEL;
 use tracing::{debug, error, span, trace, warn, Level};
@@ -64,21 +63,26 @@ impl IncomingHostTask {
     }
 
     pub async fn run(self) -> Result<(), RoutingError> {
-        let IncomingHostTask { task_rx, close_rx } = self;
+        let IncomingHostTask {
+            mut task_rx,
+            close_rx,
+        } = self;
 
         let mut subscribers: HashMap<RelativePath, Vec<mpsc::Sender<RouterEvent>>> = HashMap::new();
         let mut connection: Option<mpsc::Receiver<WsMessage>> = None;
 
-        let mut rx = combine_incoming_streams(task_rx, close_rx);
+        let mut close_trigger = close_rx.fuse();
 
         loop {
             let task = if let Some(message_rx) = connection.as_mut() {
                 let result = tokio::select! {
-
-                    task = rx.next() => {
-                        task
-                    }
-
+                    closed = &mut close_trigger => {
+                        match closed {
+                            Ok(tx) => Some(IncomingRequest::Close(Some((*tx).clone()))),
+                            _ => Some(IncomingRequest::Close(None)),
+                        }
+                    },
+                    task = task_rx.next() => task,
                     maybe_message = message_rx.recv() => {
                         match maybe_message{
                             Some(message) => Some(IncomingRequest::Message(message)),
@@ -90,7 +94,16 @@ impl IncomingHostTask {
 
                 result.ok_or(RoutingError::ConnectionError)?
             } else {
-                rx.next().await.ok_or(RoutingError::ConnectionError)?
+                let result = tokio::select! {
+                    closed = &mut close_trigger => {
+                        match closed {
+                            Ok(tx) => Some(IncomingRequest::Close(Some((*tx).clone()))),
+                            _ => Some(IncomingRequest::Close(None)),
+                        }
+                    },
+                    task = task_rx.next() => task,
+                };
+                result.ok_or(RoutingError::ConnectionError)?
             };
 
             let span = span!(Level::TRACE, "incoming_event");
@@ -120,7 +133,10 @@ impl IncomingHostTask {
                     let value = {
                         match &message {
                             WsMessage::Text(s) => parse_single(&s),
-                            WsMessage::Binary(_) => unimplemented!("Binary not supported yet"),
+                            m => {
+                                error!("Unimplemented message type received: {:?}", m);
+                                continue;
+                            }
                         }
                     };
 
@@ -155,7 +171,6 @@ impl IncomingHostTask {
                 }
 
                 IncomingRequest::Unreachable(err) => {
-                    drop(rx);
                     trace!("Unreachable Host");
                     broadcast_all(&mut subscribers, RouterEvent::Unreachable(err.to_string()))
                         .await?;
@@ -174,7 +189,6 @@ impl IncomingHostTask {
 
                 IncomingRequest::Close(close_rx) => {
                     if close_rx.is_some() {
-                        drop(rx);
                         trace!("Closing Router");
                         broadcast_all(&mut subscribers, RouterEvent::Stopping).await?;
 
@@ -281,14 +295,6 @@ async fn broadcast_destination(
     };
 
     Ok(())
-}
-
-fn combine_incoming_streams(
-    task_rx: mpsc::Receiver<IncomingRequest>,
-    close_rx: CloseReceiver,
-) -> impl stream::Stream<Item = IncomingRequest> + Send + 'static {
-    let close_requests = close_rx.map(IncomingRequest::Close);
-    stream::select(task_rx, close_requests)
 }
 
 fn remove_unreachable(

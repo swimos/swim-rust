@@ -19,8 +19,10 @@ use crate::agent::lane::channels::uplink::spawn::{SpawnerUplinkFactory, UplinkEr
 use crate::agent::lane::channels::uplink::{UplinkAction, UplinkError, UplinkStateMachine};
 use crate::agent::lane::channels::{AgentExecutionConfig, LaneMessageHandler, TaggedAction};
 use crate::agent::Eff;
-use crate::routing::error::{ResolutionError, RouterError, SendError};
-use crate::routing::{ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedEnvelope};
+use crate::routing::error::RouterError;
+use crate::routing::{
+    ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedEnvelope, TaggedSender,
+};
 use futures::future::{join, join3, ready, BoxFuture};
 use futures::stream::once;
 use futures::stream::{BoxStream, FusedStream};
@@ -32,6 +34,9 @@ use std::sync::Arc;
 use std::time::Duration;
 use swim_common::form::{Form, FormErr};
 use swim_common::model::Value;
+use swim_common::routing::ResolutionError;
+use swim_common::routing::RoutingError;
+use swim_common::routing::SendError;
 use swim_common::sink::item::ItemSink;
 use swim_common::topic::MpscTopic;
 use swim_common::warp::envelope::Envelope;
@@ -78,25 +83,23 @@ impl<'a> ItemSink<'a, Envelope> for TestSender {
 
     fn send_item(&'a mut self, value: Envelope) -> Self::SendFuture {
         let tagged = TaggedEnvelope(self.addr, value);
-        async move { self.inner.send(tagged).await.map_err(Into::into) }.boxed()
+        async move {
+            self.inner.send(tagged).await.map_err(|err| {
+                let TaggedEnvelope(_, envelope) = err.0;
+                SendError::new(RoutingError::RouterDropped, envelope)
+            })
+        }
+        .boxed()
     }
 }
 
 impl ServerRouter for TestRouter {
-    type Sender = TestSender;
-
-    fn resolve_sender(
-        &mut self,
-        addr: RoutingAddr,
-    ) -> BoxFuture<Result<Route<Self::Sender>, ResolutionError>> {
+    fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>> {
         let TestRouter {
             sender, drop_rx, ..
         } = self;
         ready(Ok(Route::new(
-            TestSender {
-                addr,
-                inner: sender.clone(),
-            },
+            TaggedSender::new(addr, sender.clone()),
             drop_rx.clone(),
         )))
         .boxed()
@@ -166,7 +169,7 @@ impl LaneUpdate for TestUpdater {
         Err: Send,
         UpdateError: From<Err>,
     {
-        let TestUpdater(mut tx) = self;
+        let TestUpdater(tx) = self;
 
         async move {
             pin_mut!(messages);

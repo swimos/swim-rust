@@ -7,6 +7,7 @@ branches:
   only:
     - master
     - server-prototype
+    - ws-move
 
 jobs:
   include:
@@ -36,7 +37,7 @@ jobs:
         - cargo test --workspace
 
 rust:
-  - 1.47.0
+  - 1.48.0
 
 cache:
   directories:

@@ -12,24 +12,25 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use futures::future::ErrInto as FutErrInto;
 use futures::stream::{SplitSink, SplitStream};
-use futures::{StreamExt, TryFutureExt};
+use futures::{FutureExt, StreamExt, TryFutureExt};
+use std::io::ErrorKind;
+use swim_common::request::Request;
 use tokio::sync::{mpsc, oneshot};
 use url::Url;
 use wasm_bindgen_futures::spawn_local;
 use ws_stream_wasm::{WsErr, WsMessage as WasmMessage, WsMeta, WsStream};
 
-use swim_common::request::request_future::{RequestFuture, SendAndAwait, Sequenced};
-use swim_common::request::Request;
-
 use std::ops::Deref;
-use swim_common::ws::error::{ConnectionError, WebSocketError};
-use swim_common::ws::{WebsocketFactory, WsMessage};
-use utilities::errors::FlattenErrors;
+use swim_common::routing::ws::{ConnFuture, WebsocketFactory, WsMessage};
+use swim_common::routing::{
+    CloseError, CloseErrorKind, ConnectionError, EncodingError, EncodingErrorKind, HttpError,
+    HttpErrorKind, InvalidUriError, InvalidUriErrorKind, IoError, StatusCode,
+};
 use utilities::future::{TransformMut, TransformedSink, TransformedStream};
 
-/// A transformer that converts from a [`common::connections::WsMessage`] to [`ws_stream_wasm::WsMessage`].
+/// A transformer that converts from a [`swim_common::routing::ws::WsMessage`] to
+/// [`ws_stream_wasm::WsMessage`].
 pub struct SinkTransformer;
 impl TransformMut<WsMessage> for SinkTransformer {
     type Out = WasmMessage;
@@ -38,11 +39,17 @@ impl TransformMut<WsMessage> for SinkTransformer {
         match input {
             WsMessage::Binary(v) => WasmMessage::Binary(v),
             WsMessage::Text(v) => WasmMessage::Text(v),
+            m => {
+                // todo: Wasm-stream-sink doesn't provide the functionality to handle ping, pong,
+                //  and close frames. Reliance on this crate needs to be removed and rewritten.
+                panic!("Unable to handle {:?} messages", m)
+            }
         }
     }
 }
 
-/// A transformer that converts from a [`ws_stream_wasm::WsMessage`] to [`common::connections::WsMessage`].
+/// A transformer that converts from a [`ws_stream_wasm::WsMessage`] to
+/// [`swim_common::routing::ws::WsMessage`].
 pub struct StreamTransformer;
 impl TransformMut<WasmMessage> for StreamTransformer {
     type Out = Result<WsMessage, ConnectionError>;
@@ -50,7 +57,7 @@ impl TransformMut<WasmMessage> for StreamTransformer {
     fn transform(&mut self, input: WasmMessage) -> Self::Out {
         match input {
             WasmMessage::Text(s) => Ok(WsMessage::Text(s)),
-            WasmMessage::Binary(_) => panic!("Unsupported message type"),
+            WasmMessage::Binary(data) => Ok(WsMessage::Binary(data)),
         }
     }
 }
@@ -68,7 +75,8 @@ pub struct ConnReq {
 }
 
 impl WasmWsFactory {
-    /// Creates a new WASM WebSocket connection factory using the provided [`buffer_size`] for message requests.
+    /// Creates a new WASM WebSocket connection factory using the provided `buffer_size` for message
+    /// requests.
     pub fn new(buffer_size: usize) -> Self {
         let (tx, rx) = mpsc::channel(buffer_size);
         spawn_local(Self::factory_task(rx));
@@ -98,28 +106,34 @@ impl WasmWsFactory {
     }
 }
 
-pub type ConnectionFuture =
-    SendAndAwait<ConnReq, Result<(WasmWsSink, WasmWsStream), ConnectionError>>;
 type WasmWsSink = TransformedSink<SplitSink<WsStream, WasmMessage>, SinkTransformer>;
 type WasmWsStream = TransformedStream<SplitStream<WsStream>, StreamTransformer>;
 
 impl WebsocketFactory for WasmWsFactory {
     type WsStream = WasmWsStream;
     type WsSink = WasmWsSink;
-    type ConnectFut = FlattenErrors<FutErrInto<ConnectionFuture, ConnectionError>>;
 
-    fn connect(&mut self, url: Url) -> Self::ConnectFut {
-        let (tx, rx) = oneshot::channel();
-        let req = ConnReq {
-            request: Request::new(tx),
-            url,
-        };
+    fn connect(&mut self, url: Url) -> ConnFuture<'_, Self::WsSink, Self::WsStream> {
+        async move {
+            let (tx, rx) = oneshot::channel();
+            let req = ConnReq {
+                request: Request::new(tx),
+                url,
+            };
 
-        let req_fut = RequestFuture::new(self.sender.clone(), req);
-
-        FlattenErrors::new(TryFutureExt::err_into::<ConnectionError>(Sequenced::new(
-            req_fut, rx,
-        )))
+            self.sender.send(req).await.map_err(|_| {
+                ConnectionError::Closed(CloseError::new(
+                    CloseErrorKind::Unexpected,
+                    Some("WebSocket factory closed".into()),
+                ))
+            })?;
+            Ok(rx
+                .map_err(|_| {
+                    ConnectionError::Closed(CloseError::new(CloseErrorKind::Unexpected, None))
+                })
+                .await??)
+        }
+        .boxed()
     }
 }
 
@@ -137,15 +151,50 @@ impl Deref for WsError {
 
 impl From<WsError> for ConnectionError {
     fn from(e: WsError) -> Self {
-        match &*e {
-            WsErr::InvalidUrl { supplied } => {
-                ConnectionError::SocketError(WebSocketError::Url(supplied.clone()))
+        match e.0 {
+            WsErr::InvalidUrl { supplied } => ConnectionError::Http(HttpError::new(
+                HttpErrorKind::InvalidUri(InvalidUriError::new(
+                    InvalidUriErrorKind::Malformatted,
+                    Some(supplied),
+                )),
+                None,
+            )),
+            WsErr::ConnectionFailed { event: _ } => {
+                todo!()
             }
-            WsErr::ConnectionFailed { .. } => ConnectionError::ConnectError,
-            WsErr::InvalidCloseCode { .. } => ConnectionError::AlreadyClosedError,
-            WsErr::ForbiddenPort => ConnectionError::SocketError(WebSocketError::Protocol),
-            WsErr::ConnectionNotOpen => ConnectionError::AlreadyClosedError,
-            _ => ConnectionError::ConnectError,
+            WsErr::InvalidCloseCode { supplied: _ } => todo!(),
+            WsErr::ForbiddenPort => ConnectionError::Http(HttpError::new(
+                HttpErrorKind::StatusCode(Some(StatusCode::FORBIDDEN)),
+                None,
+            )),
+            WsErr::ConnectionNotOpen => ConnectionError::Closed(CloseError::new(
+                CloseErrorKind::Unexpected,
+                Some("No open connection".into()),
+            )),
+            WsErr::InvalidWsState { supplied } => ConnectionError::Io(IoError::new(
+                ErrorKind::InvalidInput,
+                Some(format!(
+                    "Invalid WebSocket state. Supplied state: {}",
+                    supplied
+                )),
+            )),
+            WsErr::ReasonStringToLong => ConnectionError::Io(IoError::new(
+                ErrorKind::InvalidInput,
+                Some("Supplied close reason was too long".into()),
+            )),
+            WsErr::InvalidEncoding => {
+                ConnectionError::Encoding(EncodingError::new(EncodingErrorKind::Invalid, None))
+            }
+            WsErr::CantDecodeBlob => {
+                ConnectionError::Encoding(EncodingError::new(EncodingErrorKind::Invalid, None))
+            }
+            WsErr::UnknownDataType => {
+                ConnectionError::Encoding(EncodingError::new(EncodingErrorKind::Unsupported, None))
+            }
+            e => {
+                // WsErr is marked with #[non_exhaustive]
+                ConnectionError::Io(IoError::new(ErrorKind::Other, Some(format!("{:?}", e))))
+            }
         }
     }
 }

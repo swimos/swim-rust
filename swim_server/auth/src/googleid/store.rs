@@ -19,7 +19,7 @@ use http::header::{CACHE_CONTROL, EXPIRES};
 use http::HeaderMap;
 use serde::export::Formatter;
 use std::fmt::Display;
-use tokio::time::delay_for;
+use swim_runtime::time::delay::delay_for;
 use url::Url;
 use utilities::future::retryable::strategy::RetryStrategy;
 

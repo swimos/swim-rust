@@ -19,7 +19,7 @@ use pin_project::pin_project;
 use crate::future::retryable::ResettableFuture;
 use std::pin::Pin;
 
-/// A [`ResetabbleFuture`] which uses the provided factory for resets.
+/// A [`ResettableFuture`] which uses the provided factory for resets.
 #[pin_project]
 pub struct ResetabbleFutureFactory<F, O, E>
 where
@@ -34,8 +34,8 @@ impl<F, O, E> ResetabbleFutureFactory<F, O, E>
 where
     F: FutureFactory<O, E>,
 {
-    /// Wraps the given [`FutureFactory`] with a [`ResetabbleFuture`] implementation. Allowing it to
-    /// be used with a [`RetryableFuture`].
+    /// Wraps the given [`FutureFactory`] with a [`ResettableFuture`] implementation. Allowing it to
+    /// be used with a [`crate::future::retryable::RetryableFuture`].
     pub fn wrap(mut factory: F) -> Self {
         let current = factory.future();
 
@@ -43,25 +43,12 @@ where
     }
 }
 
-/// A factory which produces a new future with a [`'static`] lifetime each time [`future`] is invoked.
+/// A factory which produces a new future with a [`'static`] lifetime each time `future` is invoked.
 pub trait FutureFactory<Ok, Err> {
     type Future: Future<Output = Result<Ok, Err>> + 'static;
 
     /// Creates a new future.
     fn future(&mut self) -> Self::Future;
-}
-
-/// Blanket implementation for futures that implement clone. Enabling a future to be used with
-/// [`ResetabbleFuture`]s and therefore as a [`RetryableFuture`].
-impl<F, Ok, Err> FutureFactory<Ok, Err> for F
-where
-    F: Future<Output = Result<Ok, Err>> + 'static + Clone,
-{
-    type Future = Self;
-
-    fn future(&mut self) -> Self::Future {
-        self.clone()
-    }
 }
 
 impl<F, O, E> ResettableFuture for ResetabbleFutureFactory<F, O, E>
@@ -141,14 +128,12 @@ mod tests {
     }
 
     mod tokio {
-        use crate::future::retryable::factory::ResetabbleFutureFactory;
+        use crate::future::retryable::factory::{FutureFactory, ResetabbleFutureFactory};
 
         use crate::future::retryable::RetryableFuture;
-        use futures::task::{Context, Poll};
-        use futures::Future;
-        use std::pin::Pin;
+        use futures::future::BoxFuture;
+        use futures::FutureExt;
         use tokio::sync::mpsc;
-        use tokio::sync::mpsc::error::TrySendError;
 
         #[derive(Copy, Clone, Eq, PartialEq, Debug)]
         enum SendErr {
@@ -156,33 +141,21 @@ mod tests {
         }
 
         #[derive(Clone)]
-        struct TestSender<P>
-        where
-            P: Clone,
-        {
-            tx: mpsc::Sender<P>,
-            payload: P,
-        }
+        struct Send(mpsc::Sender<i32>, i32);
 
-        impl<P> Future for TestSender<P>
-        where
-            P: Clone + Unpin,
-        {
-            type Output = Result<P, SendErr>;
+        impl FutureFactory<i32, SendErr> for Send {
+            type Future = BoxFuture<'static, Result<i32, SendErr>>;
 
-            fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-                let TestSender { tx, payload } = self.get_mut();
-
-                match tx.poll_ready(cx) {
-                    Poll::Ready(Ok(_)) => match tx.try_send(payload.clone()) {
-                        Ok(_) => Poll::Ready(Ok(payload.clone())),
-                        Err(TrySendError::Closed(_)) => Poll::Ready(Err(SendErr::Err)),
-                        Err(TrySendError::Full(_)) => unreachable!(),
-                    },
-
-                    Poll::Ready(Err(_)) => Poll::Ready(Err(SendErr::Err)),
-                    Poll::Pending => Poll::Pending,
+            fn future(&mut self) -> Self::Future {
+                let Send(tx, value) = self.clone();
+                async move {
+                    if tx.send(value).await.is_err() {
+                        Err(SendErr::Err)
+                    } else {
+                        Ok(value)
+                    }
                 }
+                .boxed()
             }
         }
 
@@ -190,7 +163,7 @@ mod tests {
         async fn test_send() {
             let payload = 5;
             let (tx, mut rx) = mpsc::channel(1);
-            let wrapper = ResetabbleFutureFactory::wrap(TestSender { tx, payload });
+            let wrapper = ResetabbleFutureFactory::wrap(Send(tx, payload));
             let retry = RetryableFuture::new(wrapper, Default::default()).await;
             let result = rx.recv().await;
 

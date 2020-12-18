@@ -12,11 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::routing::error::{ConnectionError, ResolutionError, RouterError};
+use crate::routing::error::RouterError;
 use futures::future::BoxFuture;
 use std::fmt::{Display, Formatter};
 use std::time::Duration;
-use swim_common::sink::item::{ItemSender, ItemSink, MpscSend};
+use swim_common::routing::RoutingError;
+use swim_common::routing::SendError;
+use swim_common::routing::{ConnectionError, ResolutionError};
 use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
 use tokio::sync::mpsc;
 use url::Url;
@@ -28,7 +30,6 @@ pub mod error;
 pub mod remote;
 #[cfg(test)]
 mod tests;
-pub mod ws;
 
 /// A key into the server routing table specifying an endpoint to which [`Envelope`]s can be sent.
 /// This is deliberately non-descriptive to allow it to be [`Copy`] and so very cheap to use as a
@@ -90,25 +91,20 @@ impl TaggedClientEnvelope {
 /// A single entry in the router consisting of a sender that will push envelopes to the endpoint
 /// and a promise that will be satisfied when the endpoint closes.
 #[derive(Clone, Debug)]
-pub struct Route<Sender> {
-    pub sender: Sender,
+pub struct Route {
+    pub sender: TaggedSender,
     pub on_drop: promise::Receiver<ConnectionDropped>,
 }
 
-impl<Sender> Route<Sender> {
-    pub fn new(sender: Sender, on_drop: promise::Receiver<ConnectionDropped>) -> Self {
+impl Route {
+    pub fn new(sender: TaggedSender, on_drop: promise::Receiver<ConnectionDropped>) -> Self {
         Route { sender, on_drop }
     }
 }
 
 /// Interface for interacting with the server [`Envelope`] router.
 pub trait ServerRouter: Send + Sync {
-    type Sender: ItemSender<Envelope, error::SendError> + Send + 'static;
-
-    fn resolve_sender(
-        &mut self,
-        addr: RoutingAddr,
-    ) -> BoxFuture<Result<Route<Self::Sender>, ResolutionError>>;
+    fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>>;
 
     fn lookup(
         &mut self,
@@ -135,15 +131,16 @@ impl TaggedSender {
     pub fn new(tag: RoutingAddr, inner: mpsc::Sender<TaggedEnvelope>) -> Self {
         TaggedSender { tag, inner }
     }
-}
 
-impl<'a> ItemSink<'a, Envelope> for TaggedSender {
-    type Error = error::SendError;
-    type SendFuture = MpscSend<'a, TaggedEnvelope, error::SendError>;
-
-    fn send_item(&'a mut self, envelope: Envelope) -> Self::SendFuture {
-        let TaggedSender { tag, inner } = self;
-        MpscSend::new(inner, TaggedEnvelope(*tag, envelope))
+    pub async fn send_item(&mut self, envelope: Envelope) -> Result<(), SendError> {
+        Ok(self
+            .inner
+            .send(TaggedEnvelope(self.tag, envelope))
+            .await
+            .map_err(|e| {
+                let TaggedEnvelope(_addr, env) = e.0;
+                SendError::new(RoutingError::CloseError, env)
+            })?)
     }
 }
 

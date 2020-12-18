@@ -1,0 +1,21 @@
+error[E0599]: no method named `as_value` found for struct `S<Valid, main::Invalid>` in the current scope
+  --> $DIR/generic.rs:34:15
+   |
+21 |     struct Invalid;
+   |     --------------- doesn't satisfy `main::Invalid: Form`
+...
+24 |     struct S<A, B> {
+   |     --------------
+   |     |
+   |     method `as_value` not found for this
+   |     doesn't satisfy `S<Valid, main::Invalid>: Form`
+...
+34 |     let _ = s.as_value();
+   |               ^^^^^^^^ method not found in `S<Valid, main::Invalid>`
+   |
+   = note: the method `as_value` exists but the following trait bounds were not satisfied:
+           `main::Invalid: Form`
+           which is required by `S<Valid, main::Invalid>: Form`
+   = help: items from traits can only be used if the trait is implemented and in scope
+   = note: the following trait defines an item `as_value`, perhaps you need to implement it:
+           candidate #1: `Form`

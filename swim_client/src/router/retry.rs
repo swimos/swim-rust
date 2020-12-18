@@ -26,7 +26,7 @@ use std::pin::Pin;
 use swim_common::routing::RoutingError;
 use utilities::future::retryable::request::{RetrySendError, RetryableRequest, SendResult};
 
-use swim_common::ws::WsMessage;
+use swim_common::routing::ws::WsMessage;
 use tracing::trace;
 use utilities::errors::Recoverable;
 
@@ -112,7 +112,7 @@ pub(crate) fn new_request(
 }
 
 async fn acquire_sender(
-    mut sender: mpsc::Sender<ConnectionRequest>,
+    sender: mpsc::Sender<ConnectionRequest>,
     is_retry: bool,
 ) -> SendResult<mpsc::Sender<ConnectionRequest>, ConnectionSender, MpscRetryErr> {
     let (connection_tx, connection_rx) = oneshot::channel();
@@ -182,7 +182,7 @@ mod tests {
     use crate::router::retry::MpscRetryErr;
     use crate::router::RoutingError;
     use futures::Future;
-    use swim_common::ws::WsMessage;
+    use swim_common::routing::ws::WsMessage;
     use tokio::sync::mpsc;
     use utilities::future::retryable::request::{RetryableRequest, SendResult};
 
@@ -193,7 +193,7 @@ mod tests {
         let retryable = new_retryable(
             payload.clone(),
             tx,
-            |mut sender: mpsc::Sender<WsMessage>, payload, _is_retry| async move {
+            |sender: mpsc::Sender<WsMessage>, payload, _is_retry| async move {
                 let _ = sender.send(payload.clone()).await;
                 Ok(((), Some(sender)))
             },
@@ -210,7 +210,7 @@ mod tests {
         let retryable = new_retryable(
             payload.clone(),
             tx,
-            |mut sender: mpsc::Sender<WsMessage>, payload, is_retry| async move {
+            |sender: mpsc::Sender<WsMessage>, payload, is_retry| async move {
                 if is_retry {
                     let _ = sender.send(payload.clone().into()).await;
                     Ok(((), Some(sender)))

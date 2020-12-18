@@ -14,34 +14,42 @@
 
 use crate::router::{Router, RouterEvent};
 use futures::future::{ready, Ready};
-use futures::stream::{pending, Pending};
 use swim_common::request::request_future::RequestError;
-use swim_common::routing::RoutingError;
-use swim_common::sink::item::drop_all::{drop_all, DropAll};
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::AbsolutePath;
+use tokio::sync::mpsc;
 
 /// A mock [`Router`] where connections produce no data and all outputs are silently dropped.
-pub struct StubRouter;
+pub struct StubRouter {
+    specific_tx: mpsc::Sender<Envelope>,
+    general_tx: mpsc::Sender<(url::Url, Envelope)>,
+    inner: Vec<mpsc::Sender<RouterEvent>>,
+}
 
 impl Router for StubRouter {
-    type ConnectionStream = Pending<RouterEvent>;
-    type ConnectionSink = DropAll<Envelope, RoutingError>;
-    type GeneralSink = DropAll<(url::Url, Envelope), RoutingError>;
     type ConnectionFut =
-        Ready<Result<(Self::ConnectionSink, Self::ConnectionStream), RequestError>>;
+        Ready<Result<(mpsc::Sender<Envelope>, mpsc::Receiver<RouterEvent>), RequestError>>;
 
     fn connection_for(&mut self, _target: &AbsolutePath) -> Self::ConnectionFut {
-        ready(Ok((drop_all(), pending())))
+        let (tx, rx) = mpsc::channel(32);
+        self.inner.push(tx);
+        ready(Ok((self.specific_tx.clone(), rx)))
     }
 
-    fn general_sink(&mut self) -> Self::GeneralSink {
-        drop_all()
+    fn general_sink(&mut self) -> mpsc::Sender<(url::Url, Envelope)> {
+        self.general_tx.clone()
     }
 }
 
 impl StubRouter {
-    pub fn new() -> Self {
-        StubRouter {}
+    pub fn new(
+        specific_tx: mpsc::Sender<Envelope>,
+        general_tx: mpsc::Sender<(url::Url, Envelope)>,
+    ) -> Self {
+        StubRouter {
+            specific_tx,
+            general_tx,
+            inner: vec![],
+        }
     }
 }

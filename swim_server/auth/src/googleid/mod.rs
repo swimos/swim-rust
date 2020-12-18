@@ -232,14 +232,14 @@ impl<'s> Authenticator<'s> for GoogleIdAuthenticator {
                     }
 
                     // Check that the email of the token matches one of the configured emails
-                    return if self.emails.contains(&private.email) {
+                    if self.emails.contains(&private.email) {
                         let token = Token::new(private.email.clone(), Some(expiry_timestamp));
                         let policy = PolicyDirective::allow(private.into_value());
 
                         Ok(IssuedPolicy::new(token, policy))
                     } else {
                         Ok(IssuedPolicy::deny(Value::Extant))
-                    };
+                    }
                 }
                 Err(_) => Err(AuthenticationError::Malformatted(
                     "Failed to decode JWT".into(),

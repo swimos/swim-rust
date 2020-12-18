@@ -30,7 +30,7 @@ use tracing::{event, Level};
 #[cfg(test)]
 mod tests;
 
-/// Asynchronous task to set a stream of values into a [`ValueLane`].
+/// Asynchronous task to set a stream of values into a [`crate::agent::lane::model::value::ValueLane`].
 pub struct ActionLaneUpdateTask<Command, Response> {
     lane: ActionLane<Command, Response>,
     feedback: Option<mpsc::Sender<(RoutingAddr, Response)>>,
@@ -82,7 +82,7 @@ where
             } = self;
             let mut commander = lane.commander();
             match feedback {
-                Some(mut resp_tx) => {
+                Some(resp_tx) => {
                     let messages = messages.fuse();
                     pin_mut!(messages);
                     //TODO This maintains a total order of responses whereas all we need is a total order per address.

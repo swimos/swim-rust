@@ -12,16 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::routing::error::{ConnectionError, ResolutionError, RouterError, Unresolvable};
+use crate::routing::error::{RouterError, Unresolvable};
 use crate::routing::remote::router::RemoteRouter;
 use crate::routing::remote::test_fixture::LocalRoutes;
-use crate::routing::remote::RoutingRequest;
+use crate::routing::remote::{RawRoute, RoutingRequest};
 use crate::routing::{Route, RoutingAddr, ServerRouter, TaggedEnvelope};
 use futures::future::join;
 use futures::io::ErrorKind;
 use futures::{FutureExt, StreamExt};
 use swim_common::model::Value;
-use swim_common::sink::item::ItemSink;
+use swim_common::routing::{ConnectionError, IoError, ResolutionError};
 use swim_common::warp::envelope::Envelope;
 use tokio::sync::mpsc;
 use url::Url;
@@ -46,7 +46,7 @@ async fn fake_resolution(
             RoutingRequest::Endpoint { addr, request } => {
                 if resolved && addr == ADDR {
                     assert!(request
-                        .send_ok(Route::new(sender.clone(), drop_rx.clone()))
+                        .send_ok(RawRoute::new(sender.clone(), drop_rx.clone()))
                         .is_ok());
                 } else {
                     assert!(request.send_err(Unresolvable(addr)).is_ok());
@@ -58,7 +58,7 @@ async fn fake_resolution(
                     assert!(request.send_ok(ADDR).is_ok());
                 } else {
                     assert!(request
-                        .send_err(ConnectionError::Socket(ErrorKind::NotFound))
+                        .send_err(ConnectionError::Io(IoError::new(ErrorKind::NotFound, None)))
                         .is_ok());
                 }
             }
@@ -120,9 +120,9 @@ async fn resolve_remote_failure() {
     let task = async move {
         let other_addr = RoutingAddr::remote(56);
         let result = router.resolve_sender(other_addr).await;
-        assert!(
-            matches!(result, Err(ResolutionError::Unresolvable(Unresolvable(a))) if a == other_addr)
-        );
+        let _expected = ResolutionError::unresolvable(other_addr.to_string());
+
+        assert!(matches!(result, Err(_expected)));
         drop(stop_tx);
     };
 
@@ -146,8 +146,8 @@ async fn lookup_remote_failure() {
         let result = router.lookup(Some(other_url), path()).await;
         assert_eq!(
             result,
-            Err(RouterError::ConnectionFailure(ConnectionError::Socket(
-                ErrorKind::NotFound
+            Err(RouterError::ConnectionFailure(ConnectionError::Io(
+                IoError::new(ErrorKind::NotFound, None)
             )))
         );
         drop(stop_tx);
@@ -202,11 +202,10 @@ async fn resolve_local_err() {
 
     let task = async move {
         let local_addr = RoutingAddr::local(0);
-
         let result = router.resolve_sender(local_addr).await;
-        assert!(
-            matches!(result, Err(ResolutionError::Unresolvable(Unresolvable(a))) if a == local_addr)
-        );
+        let _expected = ResolutionError::unresolvable(local_addr.to_string());
+
+        assert!(matches!(result, Err(_expected)));
         drop(stop_tx);
     };
 

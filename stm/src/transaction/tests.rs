@@ -16,19 +16,19 @@ use super::atomically;
 use crate::local::TLocal;
 use crate::stm::{self, Abort, Catch, Choice, Constant, Retry, Stm, StmEither, VecStm};
 use crate::transaction::{RetryManager, TransactionError};
-use crate::var::tests::TestObserver;
 use crate::var::TVar;
 use futures::future::{ready, Ready};
 use futures::stream::{empty, Empty};
 use futures::task::Poll;
-use futures::Stream;
+use futures::{FutureExt, Stream, StreamExt};
 use std::any::Any;
+use std::convert::identity;
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::Context;
-use tokio::sync::oneshot;
+use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 use tokio::time::{timeout, Duration};
 
@@ -147,7 +147,7 @@ impl Stream for Forever {
     }
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn constant_transaction() {
     let stm = Constant(3);
 
@@ -203,7 +203,7 @@ fn assert_aborts_with<T: Debug, E: Any + Error + Eq>(
     }
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn immediate_abort() {
     let stm: Abort<TestError, i32> = stm::abort(TestError::new("Boom"));
 
@@ -212,7 +212,7 @@ async fn immediate_abort() {
     assert_aborts_with(result, TestError::new("Boom"));
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn map_constant_transaction() {
     let stm = Constant(2).map(|n| n * 2);
 
@@ -221,7 +221,7 @@ async fn map_constant_transaction() {
     assert!(matches!(result, Ok(4)));
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn and_then_constant_transaction() {
     let stm = Constant(5).and_then(|n| {
         if n % 2 == 0 {
@@ -236,7 +236,7 @@ async fn and_then_constant_transaction() {
     assert!(matches!(result, Ok("Odd")));
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn followed_constant_transaction() {
     let stm = Constant(5).followed_by(Constant(10));
 
@@ -245,7 +245,7 @@ async fn followed_constant_transaction() {
     assert!(matches!(result, Ok(10)));
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn either_constant_transaction() {
     let stm_left: StmEither<Constant<i32>, Constant<i32>> = StmEither::Left(Constant(2));
     let result_left = atomically(&stm_left, ExactlyOnce).await;
@@ -256,14 +256,14 @@ async fn either_constant_transaction() {
     assert!(matches!(result_right, Ok(4)));
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn invalid_retry() {
     let stm = stm::retry::<i32>();
     let result = atomically(&stm, ExactlyOnce).await;
     assert!(matches!(result, Err(TransactionError::InvalidRetry)));
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn single_read() {
     let var = TVar::new(2);
     let stm = var.get();
@@ -272,7 +272,7 @@ async fn single_read() {
     assert!(matches!(result, Ok(v) if Arc::ptr_eq(&v, &content)));
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn single_put() {
     let var = TVar::new(2);
     let stm = var.put(5);
@@ -284,7 +284,7 @@ async fn single_put() {
     assert_eq!(*after, 5);
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn get_and_set() {
     let var = TVar::new(2);
     let stm = var.get().and_then(|n| var.put(*n + 1));
@@ -294,7 +294,7 @@ async fn get_and_set() {
     assert_eq!(*after, 3);
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn set_get_and_set() {
     let var = TVar::new(2);
     let stm = var
@@ -306,7 +306,7 @@ async fn set_get_and_set() {
     assert_eq!(*after, 13);
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn increment_concurrently() {
     let var = TVar::new(0);
     let var_copy = var.clone();
@@ -336,7 +336,7 @@ async fn increment_concurrently() {
     assert_eq!(*after, 20);
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn simple_retry() {
     let var = TVar::new(0i32);
 
@@ -364,7 +364,7 @@ async fn simple_retry() {
     assert!(matches!(result, Ok(Ok(s)) if s == "Done"));
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn fail_after_retry() {
     let var = TVar::new(0i32);
 
@@ -395,7 +395,7 @@ async fn fail_after_retry() {
     ));
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn eventual_retry() {
     let var = TVar::new(0i32);
 
@@ -435,7 +435,7 @@ async fn eventual_retry() {
     assert!(matches!(result, Ok(Ok(s)) if s == "Done"));
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn boxed_transaction() {
     let stm = Box::new(Constant(3));
 
@@ -444,7 +444,7 @@ async fn boxed_transaction() {
     assert!(matches!(result, Ok(3)));
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn ref_transaction() {
     let stm = Constant(3);
 
@@ -453,7 +453,7 @@ async fn ref_transaction() {
     assert!(matches!(result, Ok(3)));
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn arc_transaction() {
     let stm = Arc::new(Constant(3));
 
@@ -462,7 +462,7 @@ async fn arc_transaction() {
     assert!(matches!(result, Ok(3)));
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn dyn_boxed_transaction() {
     let stm = Constant(3).boxed();
 
@@ -471,28 +471,28 @@ async fn dyn_boxed_transaction() {
     assert!(matches!(result, Ok(3)));
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn catch_no_abort() {
     let stm = Catch::new(Constant(0), |_: TestError| Constant(1));
     let result = atomically(&stm, ExactlyOnce).await;
     assert!(matches!(result, Ok(0)));
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn catch_abort_different_error() {
     let stm = Catch::new(stm::abort(NumericError(3)), |_: TestError| Constant(1));
     let result = atomically(&stm, ExactlyOnce).await;
     assert_aborts_with(result, NumericError(3));
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn recover_from_abort() {
     let stm = Catch::new(stm::abort(NumericError(3)), |NumericError(i)| Constant(i));
     let result = atomically(&stm, ExactlyOnce).await;
     assert!(matches!(result, Ok(3)));
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn stores_rolled_back_on_abort1() {
     let var = TVar::new(0);
     let stm = Catch::new(
@@ -503,7 +503,7 @@ async fn stores_rolled_back_on_abort1() {
     assert!(matches!(result, Ok(v) if v == Arc::new(0)));
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn stores_rolled_back_on_abort2() {
     let var = TVar::new(0);
     let stm = var.put(1).followed_by(Catch::new(
@@ -514,7 +514,7 @@ async fn stores_rolled_back_on_abort2() {
     assert!(matches!(result, Ok(v) if v == Arc::new(1)));
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn stores_rolled_back_on_abort3() {
     let var = TVar::new(0);
     let stm = Catch::new(
@@ -527,7 +527,7 @@ async fn stores_rolled_back_on_abort3() {
     assert!(matches!(result, Ok(v) if v == Arc::new(0)));
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn stores_rolled_back_on_abort4() {
     let var = TVar::new(0);
     let stm = var.get().and_then(|i| {
@@ -540,7 +540,7 @@ async fn stores_rolled_back_on_abort4() {
     assert!(matches!(result, Ok(v) if v == Arc::new(0)));
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn stores_rolled_back_on_abort5() {
     let var = TVar::new(0);
 
@@ -554,42 +554,42 @@ async fn stores_rolled_back_on_abort5() {
     assert!(matches!(result, Ok(v) if v == Arc::new(1)));
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn choice_first_success() {
     let stm = Choice::new(Constant(0), Constant(1));
     let result = atomically(&stm, ExactlyOnce).await;
     assert!(matches!(result, Ok(0)));
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn choice_fallback() {
     let stm = Choice::new(stm::retry(), Constant(1));
     let result = atomically(&stm, ExactlyOnce).await;
     assert!(matches!(result, Ok(1)));
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn retry_both_choice_branches() {
     let stm = Choice::new(stm::retry::<i32>(), stm::retry::<i32>());
     let result = atomically(&stm, ExactlyOnce).await;
     assert!(matches!(result, Err(TransactionError::InvalidRetry)));
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn abort_propagates_choice_first() {
     let stm = Choice::new(stm::abort(NumericError(0)), Constant(1));
     let result = atomically(&stm, ExactlyOnce).await;
     assert!(matches!(result, Err(TransactionError::Aborted { .. })));
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn abort_propagates_choice_second() {
     let stm = Choice::new(stm::retry::<i32>(), stm::abort(NumericError(0)));
     let result = atomically(&stm, ExactlyOnce).await;
     assert!(matches!(result, Err(TransactionError::Aborted { .. })));
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn stores_rolled_back_on_retry1() {
     let var = TVar::new(0);
     let stm = Choice::new(var.put(1).followed_by(stm::retry()), var.get());
@@ -597,7 +597,7 @@ async fn stores_rolled_back_on_retry1() {
     assert!(matches!(result, Ok(v) if v == Arc::new(0)));
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn stores_rolled_back_on_retry2() {
     let var = TVar::new(0);
     let stm = var
@@ -607,7 +607,7 @@ async fn stores_rolled_back_on_retry2() {
     assert!(matches!(result, Ok(v) if v == Arc::new(1)));
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn stores_rolled_back_on_retry3() {
     let var = TVar::new(0);
     let stm = Choice::new(
@@ -620,7 +620,7 @@ async fn stores_rolled_back_on_retry3() {
     assert!(matches!(result, Ok(v) if v == Arc::new(0)));
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn stores_rolled_back_on_retry4() {
     let var = TVar::new(0);
     let stm = var
@@ -630,7 +630,7 @@ async fn stores_rolled_back_on_retry4() {
     assert!(matches!(result, Ok(v) if v == Arc::new(0)));
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn stores_rolled_back_on_retry5() {
     let var = TVar::new(0);
 
@@ -671,7 +671,7 @@ impl RetryExample {
     }
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn wait_on_var_before_choice() {
     let vars: RetryExample = Default::default();
     let vars_copy = vars.clone();
@@ -692,7 +692,7 @@ async fn wait_on_var_before_choice() {
     assert!(matches!(result, Ok(Ok(s)) if s == "a"));
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn wait_on_var_choice_first() {
     let vars: RetryExample = Default::default();
     let vars_copy = vars.clone();
@@ -713,7 +713,7 @@ async fn wait_on_var_choice_first() {
     assert!(matches!(result, Ok(Ok(s)) if s == "b"));
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn wait_on_var_choice_second() {
     let vars: RetryExample = Default::default();
     let vars_copy = vars.clone();
@@ -734,7 +734,7 @@ async fn wait_on_var_choice_second() {
     assert!(matches!(result, Ok(Ok(s)) if s == "c"));
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn read_default_from_local() {
     let local = TLocal::new(3);
     let stm = local.get();
@@ -742,7 +742,7 @@ async fn read_default_from_local() {
     assert!(matches!(result, Ok(v) if v == Arc::new(3)));
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn write_to_local() {
     let local = TLocal::new(0);
     let stm = local.put(2).followed_by(local.get());
@@ -750,7 +750,7 @@ async fn write_to_local() {
     assert!(matches!(result, Ok(v) if v == Arc::new(2)));
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn modify_local() {
     let local = TLocal::new(0);
     let stm = local
@@ -761,7 +761,7 @@ async fn modify_local() {
     assert!(matches!(result, Ok(v) if v == Arc::new(1)));
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn changes_to_locals_not_persisted() {
     let local = TLocal::new(0);
     let put_stm = local.put(7);
@@ -773,7 +773,7 @@ async fn changes_to_locals_not_persisted() {
     assert!(matches!(after, Ok(v) if v == Arc::new(0)));
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn locals_rolled_back_on_retry() {
     let local = TLocal::new(0);
     let branching = Choice::new(local.put(2).followed_by(stm::retry()), local.get());
@@ -783,7 +783,7 @@ async fn locals_rolled_back_on_retry() {
     assert!(matches!(result, Ok(v) if v == Arc::new(1)));
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn locals_rolled_back_on_abort() {
     let local = TLocal::new(0);
     let recovering = Catch::new(
@@ -798,14 +798,14 @@ async fn locals_rolled_back_on_abort() {
     assert!(matches!(result, Ok(v) if v == Arc::new(1)));
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn empty_vector_stm() {
     let stm: VecStm<Constant<i32>> = VecStm::new(vec![]);
     let result = atomically(&stm, ExactlyOnce).await;
     assert!(matches!(result, Ok(v) if v.is_empty()));
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn vector_stm() {
     let stm = VecStm::new(vec![Constant(1), Constant(2), Constant(3)]);
     let result = atomically(&stm, ExactlyOnce).await;
@@ -889,13 +889,17 @@ fn dyn_stm_erases_stack_size() {
     assert!(stack_size(&Constant(1).boxed().map(|i| i * 2)).is_none());
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn observe_transaction_outcome() {
-    let observer = TestObserver::new(None);
-    let var = TVar::new_with_observer(12, observer.clone());
+    let (tx, mut rx) = mpsc::channel(8);
+
+    let var = TVar::new_with_observer(12, tx.into());
 
     let stm = var.get().and_then(|i| var.put(*i + 1));
     let result = atomically(&stm, ExactlyOnce).await;
     assert!(result.is_ok());
-    assert_eq!(observer.get(), Some(Arc::new(13)));
+
+    let observed = rx.next().now_or_never().and_then(identity);
+
+    assert_eq!(observed, Some(Arc::new(13)));
 }

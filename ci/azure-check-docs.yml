@@ -10,5 +10,5 @@ jobs:
           rust_version: ${{ parameters.rust }}
 
       - script: |
-          RUSTDOCFLAGS="--cfg docsrs" cargo doc --lib --no-deps --all-features
+          RUSTDOCFLAGS="--cfg docsrs -Dwarnings" cargo doc --lib --no-deps --all-features
         displayName: Check docs

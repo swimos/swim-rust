@@ -15,9 +15,11 @@
 use crate::agent::lane::channels::uplink::map::MapLaneSyncError;
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent, MapUpdate};
 use crate::agent::lane::model::value::ValueLane;
+use crate::routing::{RoutingAddr, TaggedSender};
 use futures::future::ready;
 use futures::stream::{BoxStream, FusedStream};
 use futures::{select, select_biased, FutureExt, StreamExt};
+use pin_utils::core_reexport::num::NonZeroUsize;
 use pin_utils::pin_mut;
 use std::any::Any;
 use std::error::Error;
@@ -27,7 +29,8 @@ use std::sync::Arc;
 use stm::transaction::{RetryManager, TransactionError};
 use swim_common::form::{Form, FormErr};
 use swim_common::model::Value;
-use swim_common::sink::item::{ItemSender, ItemSink};
+use swim_common::routing::SendError;
+use swim_common::sink::item::{FnMutSender, ItemSender};
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
 use tracing::{event, span, Level};
@@ -36,9 +39,24 @@ use utilities::errors::Recoverable;
 #[cfg(test)]
 mod tests;
 
-pub mod action;
 pub mod map;
 pub(crate) mod spawn;
+pub mod stateless;
+
+/// An enumeration representing the type of an uplink.
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum UplinkKind {
+    Action,
+    Command,
+    Demand,
+    DemandMap,
+    Map,
+    JoinMap,
+    JoinValue,
+    Supply,
+    Spatial,
+    Value,
+}
 
 /// State change requests to an uplink.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -63,6 +81,25 @@ pub enum UplinkMessage<Ev> {
     Synced,
     Unlinked,
     Event(Ev),
+}
+
+/// An addressed uplink message. Either to be broadcast to all uplinks or to a single address.
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum AddressedUplinkMessage<Ev> {
+    /// Broadcast the `UplinkMessage` to all uplinks.
+    Broadcast(Ev),
+    /// Send the `UplinkMessage` to the `RoutingAddr`.
+    Addressed { message: Ev, address: RoutingAddr },
+}
+
+impl<Ev> AddressedUplinkMessage<Ev> {
+    pub fn broadcast(message: Ev) -> AddressedUplinkMessage<Ev> {
+        AddressedUplinkMessage::Broadcast(message)
+    }
+
+    pub fn addressed(message: Ev, address: RoutingAddr) -> AddressedUplinkMessage<Ev> {
+        AddressedUplinkMessage::Addressed { message, address }
+    }
 }
 
 /// Error conditions for the task running an uplink.
@@ -157,14 +194,22 @@ pub struct Uplink<SM, Actions, Updates> {
     actions: Actions,
     /// Stream of updates to the lane.
     updates: Updates,
+    /// The number of events to process before yielding execution back to the runtime.
+    yield_after: NonZeroUsize,
 }
 
 impl<SM, Actions, Updates> Uplink<SM, Actions, Updates> {
-    pub fn new(state_machine: SM, actions: Actions, updates: Updates) -> Self {
+    pub fn new(
+        state_machine: SM,
+        actions: Actions,
+        updates: Updates,
+        yield_after: NonZeroUsize,
+    ) -> Self {
         Uplink {
             state_machine,
             actions,
             updates,
+            yield_after,
         }
     }
 }
@@ -214,12 +259,15 @@ where
             state_machine,
             actions,
             updates,
+            yield_after,
         } = self;
 
         pin_mut!(actions);
         pin_mut!(updates);
 
         let mut state = UplinkState::Opened;
+        let mut iteration_count: usize = 0;
+        let yield_mod = yield_after.get();
 
         loop {
             if state == UplinkState::Opened {
@@ -269,6 +317,11 @@ where
                         }
                     },
                 }
+            }
+
+            iteration_count += 1;
+            if iteration_count % yield_mod == 0 {
+                tokio::task::yield_now().await;
             }
         }
     }
@@ -488,15 +541,18 @@ impl<S> UplinkMessageSender<S> {
     }
 }
 
-impl<'a, Msg, S> ItemSink<'a, UplinkMessage<Msg>> for UplinkMessageSender<S>
-where
-    S: ItemSink<'a, Envelope>,
-    Msg: Into<Value>,
-{
-    type Error = S::Error;
-    type SendFuture = S::SendFuture;
+impl UplinkMessageSender<TaggedSender> {
+    pub fn into_item_sender<Msg>(self) -> impl ItemSender<UplinkMessage<Msg>, SendError>
+    where
+        Msg: Into<Value> + Send + 'static,
+    {
+        FnMutSender::new(self, UplinkMessageSender::send_item)
+    }
 
-    fn send_item(&'a mut self, msg: UplinkMessage<Msg>) -> Self::SendFuture {
+    pub async fn send_item<Msg>(&mut self, msg: UplinkMessage<Msg>) -> Result<(), SendError>
+    where
+        Msg: Into<Value> + Send + 'static,
+    {
         let UplinkMessageSender { inner, route } = self;
         let envelope = match msg {
             UplinkMessage::Linked => Envelope::linked(&route.node, &route.lane),
@@ -506,6 +562,6 @@ where
                 Envelope::make_event(&route.node, &route.lane, Some(ev.into()))
             }
         };
-        inner.send_item(envelope)
+        inner.send_item(envelope).await
     }
 }

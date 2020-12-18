@@ -35,13 +35,13 @@ use crate::agent::{
     MapLifecycleTasks, ValueLifecycleTasks,
 };
 use crate::plane::provider::AgentProvider;
+use crate::routing::RoutingAddr;
 use futures::future::{join, BoxFuture};
 use futures::{Stream, StreamExt};
 use std::collections::HashMap;
 use std::future::Future;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-use swim_common::sink::item::DiscardingSender;
 use swim_runtime::task;
 use tokio::sync::{mpsc, Mutex};
 use tokio::time::{timeout, Duration};
@@ -50,83 +50,52 @@ use utilities::sync::trigger::Receiver;
 use utilities::uri::RelativeUri;
 
 mod stub_router {
-    use crate::routing::error::{ResolutionError, RouterError, SendError};
-    use crate::routing::{ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedEnvelope};
+    use crate::routing::error::RouterError;
+    use crate::routing::{
+        ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedEnvelope, TaggedSender,
+    };
     use futures::future::BoxFuture;
-    use futures::FutureExt;
+    use futures::{FutureExt, StreamExt};
     use std::sync::Arc;
-    use swim_common::sink::item::{ItemSender, ItemSink};
-    use swim_common::warp::envelope::Envelope;
+    use swim_common::routing::ResolutionError;
+    use tokio::sync::mpsc;
     use url::Url;
     use utilities::sync::promise;
     use utilities::uri::RelativeUri;
 
     #[derive(Clone)]
-    pub struct SingleChannelRouter<Inner> {
-        inner: Inner,
+    pub struct SingleChannelRouter {
+        router_addr: RoutingAddr,
+        inner: mpsc::Sender<TaggedEnvelope>,
         _drop_tx: Arc<promise::Sender<ConnectionDropped>>,
         drop_rx: promise::Receiver<ConnectionDropped>,
     }
 
-    impl<Inner> SingleChannelRouter<Inner>
-    where
-        Inner: ItemSender<TaggedEnvelope, SendError> + Clone,
-    {
-        pub(crate) fn new(sender: Inner) -> Self {
+    impl SingleChannelRouter {
+        pub(crate) fn new(router_addr: RoutingAddr) -> Self {
             let (tx, rx) = promise::promise();
+            let (env_tx, mut env_rx) = mpsc::channel(16);
+            tokio::spawn(async move { while let Some(_) = env_rx.next().await {} });
             SingleChannelRouter {
-                inner: sender,
+                router_addr,
+                inner: env_tx,
                 _drop_tx: Arc::new(tx),
                 drop_rx: rx,
             }
         }
     }
 
-    pub struct SingleChannelSender<Inner> {
-        inner: Inner,
-        destination: RoutingAddr,
-    }
-
-    impl<Inner> SingleChannelSender<Inner>
-    where
-        Inner: ItemSender<TaggedEnvelope, SendError>,
-    {
-        fn new(inner: Inner, destination: RoutingAddr) -> Self {
-            SingleChannelSender { inner, destination }
-        }
-    }
-
-    impl<'a, Inner> ItemSink<'a, Envelope> for SingleChannelSender<Inner>
-    where
-        Inner: ItemSink<'a, TaggedEnvelope, Error = SendError>,
-    {
-        type Error = SendError;
-        type SendFuture = <Inner as ItemSink<'a, TaggedEnvelope>>::SendFuture;
-
-        fn send_item(&'a mut self, value: Envelope) -> Self::SendFuture {
-            let msg = TaggedEnvelope(self.destination, value);
-            self.inner.send_item(msg)
-        }
-    }
-
-    impl<Inner> ServerRouter for SingleChannelRouter<Inner>
-    where
-        Inner: ItemSender<TaggedEnvelope, SendError> + Clone + Send + Sync + 'static,
-    {
-        type Sender = SingleChannelSender<Inner>;
-
+    impl ServerRouter for SingleChannelRouter {
         fn resolve_sender(
             &mut self,
             addr: RoutingAddr,
-        ) -> BoxFuture<Result<Route<Self::Sender>, ResolutionError>> {
-            FutureExt::boxed(async move {
+        ) -> BoxFuture<Result<Route, ResolutionError>> {
+            async move {
                 let SingleChannelRouter { inner, drop_rx, .. } = self;
-                let route = Route::new(
-                    SingleChannelSender::new(inner.clone(), addr),
-                    drop_rx.clone(),
-                );
+                let route = Route::new(TaggedSender::new(addr, inner.clone()), drop_rx.clone());
                 Ok(route)
-            })
+            }
+            .boxed()
         }
 
         fn lookup(
@@ -369,7 +338,7 @@ async fn value_lane_start_task() {
 
 #[tokio::test]
 async fn value_lane_events_task() {
-    let (mut tx, rx) = mpsc::channel(5);
+    let (tx, rx) = mpsc::channel(5);
     let (_stop, stop_sig) = trigger::trigger();
 
     let lifecycle: TestLifecycle<ValueLane<String>> = TestLifecycle::default();
@@ -484,7 +453,7 @@ async fn map_lane_start_task() {
 
 #[tokio::test]
 async fn map_lane_events_task() {
-    let (mut tx, rx) = mpsc::channel(5);
+    let (tx, rx) = mpsc::channel(5);
     let (_stop, stop_sig) = trigger::trigger();
 
     let lifecycle: TestLifecycle<MapLane<String, String>> = TestLifecycle::default();
@@ -567,7 +536,7 @@ async fn map_lane_events_task_termination() {
 #[tokio::test]
 async fn action_lane_events_task() {
     let (tx_lane, _rx_lane) = mpsc::channel(5);
-    let (mut tx, rx) = mpsc::channel(5);
+    let (tx, rx) = mpsc::channel(5);
     let (_stop, stop_sig) = trigger::trigger();
 
     let lifecycle: TestLifecycle<ActionLane<String, usize>> = TestLifecycle::default();
@@ -650,7 +619,7 @@ async fn action_lane_events_task_termination() {
 #[tokio::test]
 async fn command_lane_events_task() {
     let (tx_lane, _rx_lane) = mpsc::channel(5);
-    let (mut tx, rx) = mpsc::channel(5);
+    let (tx, rx) = mpsc::channel(5);
     let (_stop, stop_sig) = trigger::trigger();
 
     let lifecycle: TestLifecycle<CommandLane<String>> = TestLifecycle::default();
@@ -757,7 +726,7 @@ async fn agent_loop() {
         exec_config,
         clock.clone(),
         envelope_rx,
-        SingleChannelRouter::new(DiscardingSender::default()),
+        SingleChannelRouter::new(RoutingAddr::local(1024)),
     );
 
     let agent_task = swim_runtime::task::spawn(agent_proc);
@@ -773,6 +742,7 @@ async fn agent_loop() {
 
     clock.advance_when_blocked(Duration::from_secs(1)).await;
     expect(&mut rx, ReportingAgentEvent::Command("Name0".to_string())).await;
+    expect(&mut rx, ReportingAgentEvent::DemandLaneEvent(0)).await;
     expect(
         &mut rx,
         ReportingAgentEvent::DataEvent(MapLaneEvent::Update("Name0".to_string(), 1.into())),
@@ -782,6 +752,7 @@ async fn agent_loop() {
 
     clock.advance_when_blocked(Duration::from_secs(1)).await;
     expect(&mut rx, ReportingAgentEvent::Command("Name1".to_string())).await;
+    expect(&mut rx, ReportingAgentEvent::DemandLaneEvent(1)).await;
     expect(
         &mut rx,
         ReportingAgentEvent::DataEvent(MapLaneEvent::Update("Name1".to_string(), 1.into())),
@@ -791,6 +762,7 @@ async fn agent_loop() {
 
     clock.advance_when_blocked(Duration::from_secs(1)).await;
     expect(&mut rx, ReportingAgentEvent::Command("Name2".to_string())).await;
+    expect(&mut rx, ReportingAgentEvent::DemandLaneEvent(2)).await;
     expect(
         &mut rx,
         ReportingAgentEvent::DataEvent(MapLaneEvent::Update("Name2".to_string(), 1.into())),

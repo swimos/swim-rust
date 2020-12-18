@@ -7,6 +7,7 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+macro_helpers = { path = "../../utilities/macro_helpers" }
 syn = "1.0.39"
 quote = "1.0.7"
 proc-macro2 = "1.0.19"
@@ -16,7 +17,8 @@ darling = "0.10.2"
 proc-macro = true
 
 [dev-dependencies]
-swim_server = {path = "../../swim_server"}
+swim_server = { path = "../../swim_server" }
+tokio = { version = "0.3.3", features = ["sync"] }
 futures = "0.3.4"
 tracing = "0.1.16"
 tracing-futures = "0.2.4"

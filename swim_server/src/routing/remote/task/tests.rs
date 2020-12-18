@@ -15,8 +15,9 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use futures::channel::mpsc as fut_mpsc;
 use futures::future::{join, BoxFuture};
-use futures::{FutureExt, StreamExt};
+use futures::{FutureExt, SinkExt, StreamExt};
 use http::Uri;
 use parking_lot::Mutex;
 use tokio::sync::{mpsc, watch};
@@ -24,19 +25,23 @@ use tokio::sync::{mpsc, watch};
 use swim_common::model::Value;
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
-use swim_common::ws::WsMessage;
 use swim_runtime::time::timeout;
 use utilities::future::retryable::strategy::{Quantity, RetryStrategy};
 use utilities::sync::{promise, trigger};
 use utilities::uri::{BadRelativeUri, RelativeUri, UriIsAbsolute};
 
-use crate::routing::error::{ConnectionError, ResolutionError, RouterError};
+use crate::routing::error::RouterError;
 use crate::routing::remote::task::{ConnectionTask, DispatchError};
-use crate::routing::remote::test_fixture::{LocalRoutes, TwoWayMpsc};
+use crate::routing::remote::test_fixture::fake_channel::TwoWayMpsc;
+use crate::routing::remote::test_fixture::LocalRoutes;
 use crate::routing::{ConnectionDropped, Route, RoutingAddr, TaggedEnvelope, TaggedSender};
 use futures::io::ErrorKind;
 use std::num::NonZeroUsize;
 use std::time::Duration;
+use swim_common::routing::ws::WsMessage;
+use swim_common::routing::{
+    CloseError, CloseErrorKind, ConnectionError, IoError, ProtocolError, ResolutionError,
+};
 
 #[test]
 fn dispatch_error_display() {
@@ -49,7 +54,7 @@ fn dispatch_error_display() {
         "Invalid relative URI: ''swim://localhost/hello' is an absolute URI.'"
     );
 
-    let string = DispatchError::Unresolvable(ResolutionError::RouterDropped).to_string();
+    let string = DispatchError::Unresolvable(ResolutionError::router_dropped()).to_string();
     assert_eq!(
         string,
         "Could not resolve a router endpoint: 'The router channel was dropped.'"
@@ -356,8 +361,8 @@ async fn dispatch_after_immediate_retry() {
 struct TaskFixture {
     router: LocalRoutes,
     task: BoxFuture<'static, ConnectionDropped>,
-    sock_in: mpsc::Sender<Result<WsMessage, ConnectionError>>,
-    sock_out: mpsc::Receiver<WsMessage>,
+    sock_in: fut_mpsc::Sender<Result<WsMessage, ConnectionError>>,
+    sock_out: fut_mpsc::Receiver<WsMessage>,
     envelope_tx: mpsc::Sender<TaggedEnvelope>,
     stop_trigger: trigger::Sender,
     send_error_tx: watch::Sender<Option<ConnectionError>>,
@@ -367,8 +372,8 @@ impl TaskFixture {
     fn new() -> Self {
         let addr = RoutingAddr::remote(0);
         let router = LocalRoutes::new(addr);
-        let (tx_in, rx_in) = mpsc::channel(8);
-        let (tx_out, rx_out) = mpsc::channel(8);
+        let (tx_in, rx_in) = fut_mpsc::channel(8);
+        let (tx_out, rx_out) = fut_mpsc::channel(8);
 
         let (env_tx, env_rx) = mpsc::channel(8);
         let (stop_tx, stop_rx) = trigger::trigger();
@@ -382,6 +387,7 @@ impl TaskFixture {
             stop_rx,
             Duration::from_secs(30),
             RetryStrategy::immediate(NonZeroUsize::new(1).unwrap()),
+            NonZeroUsize::new(256).unwrap(),
         )
         .run()
         .boxed();
@@ -406,7 +412,7 @@ fn message_for(env: Envelope) -> WsMessage {
 async fn task_send_message() {
     let TaskFixture {
         task,
-        mut envelope_tx,
+        envelope_tx,
         mut sock_out,
         stop_trigger,
         router: _router,
@@ -434,7 +440,7 @@ async fn task_send_message() {
 async fn task_send_message_failure() {
     let TaskFixture {
         task,
-        mut envelope_tx,
+        envelope_tx,
         sock_out: _sock_out,
         stop_trigger: _stop_trigger,
         router: _router,
@@ -449,21 +455,17 @@ async fn task_send_message_failure() {
         let tagged = TaggedEnvelope(RoutingAddr::local(100), env_cpy.clone());
 
         assert!(send_error_tx
-            .broadcast(Some(ConnectionError::Socket(ErrorKind::ConnectionReset)))
+            .send(Some(ConnectionError::Io(IoError::new(
+                ErrorKind::ConnectionReset,
+                None
+            ))))
             .is_ok());
         assert!(envelope_tx.send(tagged).await.is_ok());
     };
 
     let result = timeout::timeout(Duration::from_secs(5), join(task, test_case)).await;
-    assert!(matches!(
-        result,
-        Ok(
-            (
-                ConnectionDropped::Failed(ConnectionError::Socket(ErrorKind::ConnectionReset)),
-                _
-            ),
-        )
-    ));
+    let _err = ConnectionError::Io(IoError::new(ErrorKind::ConnectionReset, None));
+    assert!(matches!(result, Ok((ConnectionDropped::Failed(_err), _))));
 }
 
 #[tokio::test]
@@ -530,21 +532,17 @@ async fn task_receive_error() {
 
     let test_case = async move {
         assert!(sock_in
-            .send(Err(ConnectionError::Socket(ErrorKind::ConnectionReset)))
+            .send(Err(ConnectionError::Io(IoError::new(
+                ErrorKind::ConnectionReset,
+                None
+            ))))
             .await
             .is_ok());
     };
 
     let result = timeout::timeout(Duration::from_secs(5), join(task, test_case)).await;
-    assert!(matches!(
-        result,
-        Ok(
-            (
-                ConnectionDropped::Failed(ConnectionError::Socket(ErrorKind::ConnectionReset)),
-                _
-            ),
-        )
-    ));
+    let _err = ConnectionError::Io(IoError::new(ErrorKind::ConnectionReset, None));
+    assert!(matches!(result, Ok((ConnectionDropped::Failed(_err), _))));
 }
 
 #[tokio::test]
@@ -565,22 +563,15 @@ async fn task_stopped_remotely() {
     };
 
     let result = timeout::timeout(Duration::from_secs(5), join(task, test_case)).await;
-    assert!(matches!(
-        result,
-        Ok(
-            (
-                ConnectionDropped::Failed(ConnectionError::ClosedRemotely),
-                _
-            ),
-        )
-    ));
+    let _err = ConnectionError::Closed(CloseError::new(CloseErrorKind::ClosedRemotely, None));
+    assert!(matches!(result, Ok((ConnectionDropped::Failed(_err), _))));
 }
 
 #[tokio::test]
 async fn task_timeout() {
     let TaskFixture {
         task,
-        mut envelope_tx,
+        envelope_tx,
         mut sock_out,
         stop_trigger: _stop_trigger,
         router: _router,
@@ -625,8 +616,6 @@ async fn task_receive_bad_message() {
     };
 
     let result = timeout::timeout(Duration::from_secs(5), join(task, test_case)).await;
-    assert!(matches!(
-        result,
-        Ok((ConnectionDropped::Failed(ConnectionError::Warp(_)), _))
-    ));
+    let _err = ConnectionError::Protocol(ProtocolError::warp(None));
+    assert!(matches!(result, Ok((ConnectionDropped::Failed(_err), _))));
 }

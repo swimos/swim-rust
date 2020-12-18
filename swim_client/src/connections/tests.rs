@@ -15,7 +15,6 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
-use futures::future::ErrInto as FutErrInto;
 use futures::task::{Context, Poll};
 use futures::Sink;
 use futures_util::stream::Stream;
@@ -23,16 +22,16 @@ use std::pin::Pin;
 use tokio::sync::mpsc;
 use url::Url;
 
-use swim_common::request::request_future::SendAndAwait;
-
-use crate::connections::factory::async_factory;
 use crate::connections::factory::async_factory::AsyncFactory;
 
 use super::*;
 use crate::connections::factory::tungstenite::HostConfig;
-use swim_common::ws::Protocol;
+use swim_common::routing::ws::ConnFuture;
+use swim_common::routing::ws::Protocol;
+use swim_common::routing::{
+    CapacityError, CapacityErrorKind, CloseErrorKind, ProtocolError, ProtocolErrorKind,
+};
 use tokio_tungstenite::tungstenite::extensions::compression::WsCompression;
-use utilities::errors::FlattenErrors;
 
 #[tokio::test]
 async fn test_connection_pool_send_single_message_single_connection() {
@@ -440,7 +439,7 @@ async fn test_connection_pool_close() {
     );
 
     // When
-    assert!(connection_pool.close().unwrap().await.is_ok());
+    assert!(connection_pool.close().await.is_ok());
 
     // Then
     assert!(writer_rx.recv().await.is_none());
@@ -457,7 +456,7 @@ async fn test_connection_send_single_message() {
 
     let mut factory = TestConnectionFactory::new(test_data).await;
 
-    let mut connection = SwimConnection::new(host, buffer_size, &mut factory)
+    let connection = SwimConnection::new(host, buffer_size, &mut factory)
         .await
         .unwrap();
 
@@ -569,7 +568,10 @@ async fn test_connection_receive_message_error() {
     let result = connection._receive_handle.await.unwrap();
     // Then
     assert!(result.is_err());
-    assert_eq!(result.err().unwrap(), ConnectionError::ReceiveMessageError);
+    assert_eq!(
+        result.err().unwrap(),
+        ConnectionError::Closed(CloseError::unexpected())
+    );
 }
 
 #[tokio::test]
@@ -591,7 +593,10 @@ async fn test_new_connection_send_message_error() {
     let result = connection._send_handle.await.unwrap();
     // Then
     assert!(result.is_err());
-    assert_eq!(result.err().unwrap(), ConnectionError::SendMessageError);
+    assert_eq!(
+        result.err().unwrap(),
+        ConnectionError::Closed(CloseError::unexpected())
+    );
 }
 
 #[derive(Clone)]
@@ -605,18 +610,15 @@ impl Stream for TestReadStream {
 
     fn poll_next(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         if self.error {
-            Poll::Ready(Some(Err(ConnectionError::from(
-                ConnectionError::ReceiveMessageError,
-            ))))
+            Poll::Ready(Some(Err(ConnectionError::Protocol(ProtocolError::new(
+                ProtocolErrorKind::WebSocket,
+                None,
+            )))))
         } else {
-            if self.items.is_empty() {
-                Poll::Ready(None)
-            } else {
-                let message = self.items.drain(0..1).next();
-                Poll::Ready(Some(
-                    message.ok_or(ConnectionError::from(ConnectionError::SendMessageError)),
-                ))
-            }
+            let message = self.items.drain(0..1).next();
+            Poll::Ready(Some(message.ok_or(ConnectionError::Closed(
+                CloseError::new(CloseErrorKind::Normal, None),
+            ))))
         }
     }
 }
@@ -638,7 +640,7 @@ impl Sink<WsMessage> for TestWriteStream {
         }
     }
 
-    fn start_send(mut self: Pin<&mut Self>, item: WsMessage) -> Result<(), Self::Error> {
+    fn start_send(self: Pin<&mut Self>, item: WsMessage) -> Result<(), Self::Error> {
         if self.error {
             Err(())
         } else {
@@ -695,23 +697,20 @@ impl TestConnectionFactory {
     }
 }
 
-type ConnReq = async_factory::ConnReq<TestWriteStream, TestReadStream>;
-type ConnectionFuture =
-    SendAndAwait<ConnReq, Result<(TestWriteStream, TestReadStream), ConnectionError>>;
-
 impl WebsocketFactory for TestConnectionFactory {
     type WsStream = TestReadStream;
     type WsSink = TestWriteStream;
-    type ConnectFut = FlattenErrors<FutErrInto<ConnectionFuture, ConnectionError>>;
 
-    fn connect(&mut self, url: Url) -> Self::ConnectFut {
-        self.inner.connect_using(
-            url,
-            HostConfig {
-                protocol: Protocol::PlainText,
-                compression_level: WsCompression::None(None),
-            },
-        )
+    fn connect(&mut self, url: Url) -> ConnFuture<Self::WsSink, Self::WsStream> {
+        self.inner
+            .connect_using(
+                url,
+                HostConfig {
+                    protocol: Protocol::PlainText,
+                    compression_level: WsCompression::None(None),
+                },
+            )
+            .boxed()
     }
 }
 
@@ -741,7 +740,10 @@ impl MultipleTestData {
     ) -> Result<(TestWriteStream, TestReadStream), ConnectionError> {
         let i = self.n.fetch_add(1, Ordering::AcqRel);
         if i >= self.connections.len() {
-            Err(ConnectionError::from(ConnectionError::ConnectError))
+            Err(ConnectionError::Capacity(CapacityError::new(
+                CapacityErrorKind::Ambiguous,
+                None,
+            )))
         } else {
             let maybe_conn = &self.connections[i];
             match maybe_conn {
@@ -758,7 +760,10 @@ impl MultipleTestData {
                     };
                     Ok((output, input))
                 }
-                _ => Err(ConnectionError::from(ConnectionError::ConnectError)),
+                _ => Err(ConnectionError::Capacity(CapacityError::new(
+                    CapacityErrorKind::Ambiguous,
+                    None,
+                ))),
             }
         }
     }
