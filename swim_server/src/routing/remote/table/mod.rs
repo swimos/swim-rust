@@ -35,6 +35,15 @@ impl HostAndPort {
     pub fn host(&self) -> &String {
         &self.0
     }
+
+    pub fn port(&self) -> u16 {
+        self.1
+    }
+
+    pub fn split(self) -> (String, u16) {
+        let HostAndPort(host, port) = self;
+        (host, port)
+    }
 }
 
 impl Display for HostAndPort {

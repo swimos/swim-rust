@@ -14,6 +14,7 @@
 
 use crate::routing::error::{ConnectionError, ResolutionError, RouterError, Unresolvable};
 use crate::routing::remote::net::{ExternalConnections, Listener};
+use crate::routing::remote::table::HostAndPort;
 use crate::routing::remote::ConnectionDropped;
 use crate::routing::ws::{CloseReason, JoinedStreamSink, WsConnections};
 use crate::routing::{
@@ -363,12 +364,15 @@ impl ExternalConnections for FakeConnections {
         ready(result).boxed()
     }
 
-    fn lookup(&self, host: String) -> BoxFuture<'static, io::Result<Vec<SocketAddr>>> {
+    fn lookup(
+        &self,
+        host_and_port: HostAndPort,
+    ) -> BoxFuture<'static, io::Result<Vec<SocketAddr>>> {
         let result = self
             .inner
             .lock()
             .dns
-            .get(&host)
+            .get(&host_and_port.to_string())
             .map(Clone::clone)
             .map(Ok)
             .unwrap_or(Err(ErrorKind::NotFound.into()));
