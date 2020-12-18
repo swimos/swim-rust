@@ -240,7 +240,7 @@ where
         let requests = requests.fuse();
         pin_mut!(requests);
 
-        let yield_after = config.yield_after.get();
+        let yield_mod = config.yield_after.get();
         let mut iteration_count: usize = 0;
 
         let mut errors = DispatcherErrors::new();
@@ -323,7 +323,7 @@ where
             }
 
             iteration_count += 1;
-            if iteration_count % yield_after == 0 {
+            if iteration_count % yield_mod == 0 {
                 tokio::task::yield_now().await;
             }
         }
@@ -424,7 +424,7 @@ impl EnvelopeDispatcher {
         let envelopes = envelopes.fuse();
         pin_mut!(envelopes);
 
-        let yield_after = yield_after.get();
+        let yield_mod = yield_after.get();
         let mut iteration_count: usize = 0;
 
         loop {
@@ -483,7 +483,7 @@ impl EnvelopeDispatcher {
             }
 
             iteration_count += 1;
-            if iteration_count % yield_after == 0 {
+            if iteration_count % yield_mod == 0 {
                 tokio::task::yield_now().await;
             }
         }
@@ -497,7 +497,7 @@ impl EnvelopeDispatcher {
             ..
         } = self;
 
-        let yield_after = yield_after.get();
+        let yield_mod = yield_after.get();
         let mut iteration_count: usize = 0;
         loop {
             match await_new.next().await {
@@ -520,7 +520,7 @@ impl EnvelopeDispatcher {
                 }
             }
             iteration_count += 1;
-            if iteration_count % yield_after == 0 {
+            if iteration_count % yield_mod == 0 {
                 tokio::task::yield_now().await;
             }
         }

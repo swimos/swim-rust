@@ -126,7 +126,7 @@ where
     {
         let mut uplink_senders: HashMap<RoutingAddr, UplinkHandle> = HashMap::new();
         let mut iteration_count: usize = 0;
-        let yield_after = self.yield_after.get();
+        let yield_mod = self.yield_after.get();
 
         while let Some(TaggedAction(addr, mut action)) = self.actions.recv().await {
             let mut attempts = 0;
@@ -181,7 +181,7 @@ where
                 break;
             } else {
                 iteration_count += 1;
-                if iteration_count % yield_after == 0 {
+                if iteration_count % yield_mod == 0 {
                     tokio::task::yield_now().await;
                 }
             }

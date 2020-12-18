@@ -139,7 +139,7 @@ where
         let mut timeout = sleep(activity_timeout);
 
         let mut resolved: HashMap<RelativePath, Route> = HashMap::new();
-        let yield_after = yield_after.get();
+        let yield_mod = yield_after.get();
         let mut iteration_count: usize = 0;
 
         let completion = loop {
@@ -188,7 +188,7 @@ where
                 }
 
                 iteration_count += 1;
-                if iteration_count % yield_after == 0 {
+                if iteration_count % yield_mod == 0 {
                     tokio::task::yield_now().await;
                 }
             } else {

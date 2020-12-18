@@ -243,7 +243,7 @@ where
 
         let mut err_acc = UplinkErrorAcc::new(route_cpy.clone(), max_fatal_uplink_errors);
 
-        let yield_after = config.yield_after.get();
+        let yield_mod = config.yield_after.get();
         let mut iteration_count: usize = 0;
 
         let failed: bool = loop {
@@ -296,7 +296,7 @@ where
             }
 
             iteration_count += 1;
-            if iteration_count % yield_after == 0 {
+            if iteration_count % yield_mod == 0 {
                 tokio::task::yield_now().await;
             }
         };
@@ -377,7 +377,7 @@ where
 async fn simple_action_envelope_task<Command>(
     envelopes: impl Stream<Item = TaggedClientEnvelope>,
     commands: mpsc::Sender<Result<(RoutingAddr, Command), FormErr>>,
-    yield_after: usize,
+    yield_mod: usize,
 ) where
     Command: Send + Sync + Form + 'static,
 {
@@ -399,7 +399,7 @@ async fn simple_action_envelope_task<Command>(
         }
 
         iteration_count += 1;
-        if iteration_count % yield_after == 0 {
+        if iteration_count % yield_mod == 0 {
             tokio::task::yield_now().await;
         }
     }
@@ -679,7 +679,7 @@ async fn action_envelope_task_with_uplinks<Cmd>(
     err_rx: mpsc::Receiver<UplinkErrorReport>,
     mut err_handler: UplinkErrorHandler,
     mut on_command_handler: OnCommandStrategy<Cmd>,
-    yield_after: usize,
+    yield_mod: usize,
 ) -> (bool, Vec<UplinkErrorReport>)
 where
     Cmd: Send + Sync + Form + Debug + 'static,
@@ -736,7 +736,7 @@ where
         }
 
         iteration_count += 1;
-        if iteration_count % yield_after == 0 {
+        if iteration_count % yield_mod == 0 {
             tokio::task::yield_now().await;
         }
     };

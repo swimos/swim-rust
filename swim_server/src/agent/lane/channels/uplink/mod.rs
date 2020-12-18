@@ -266,7 +266,7 @@ where
 
         let mut state = UplinkState::Opened;
         let mut iteration_count: usize = 0;
-        let yield_after = yield_after.get();
+        let yield_mod = yield_after.get();
 
         loop {
             if state == UplinkState::Opened {
@@ -319,7 +319,7 @@ where
             }
 
             iteration_count += 1;
-            if iteration_count % yield_after == 0 {
+            if iteration_count % yield_mod == 0 {
                 tokio::task::yield_now().await;
             }
         }

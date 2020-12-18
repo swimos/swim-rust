@@ -76,7 +76,7 @@ where
         uplink_actions: impl Stream<Item = TaggedAction>,
         router: Router,
         err_tx: mpsc::Sender<UplinkErrorReport>,
-        yield_after: usize,
+        yield_mod: usize,
     ) where
         Router: ServerRouter,
     {
@@ -172,7 +172,7 @@ where
             }
 
             iteration_count += 1;
-            if iteration_count % yield_after == 0 {
+            if iteration_count % yield_mod == 0 {
                 tokio::task::yield_now().await;
             }
         }
