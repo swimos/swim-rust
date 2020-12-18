@@ -24,6 +24,7 @@ use crate::routing::{
 };
 use futures::future::BoxFuture;
 use futures::{select_biased, FutureExt, StreamExt};
+use pin_utils::core_reexport::num::NonZeroUsize;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::convert::TryFrom;
@@ -57,6 +58,7 @@ pub struct ConnectionTask<Str, Router> {
     stop_signal: trigger::Receiver,
     activity_timeout: Duration,
     retry_strategy: RetryStrategy,
+    yield_after: NonZeroUsize,
 }
 
 const ZERO: Duration = Duration::from_secs(0);
@@ -104,6 +106,8 @@ where
     /// * `activity_timeout` - If the task neither sends nor receives a message within this period
     /// it will stop itself.
     /// * `retry_strategy` - Retry strategy when attempting to route incoming messages.
+    /// * `yield_after` - The number of events to process before yielding execution back to the
+    /// runtime.
     pub fn new(
         ws_stream: Str,
         router: Router,
@@ -111,6 +115,7 @@ where
         stop_signal: trigger::Receiver,
         activity_timeout: Duration,
         retry_strategy: RetryStrategy,
+        yield_after: NonZeroUsize,
     ) -> Self {
         assert!(activity_timeout > ZERO);
         ConnectionTask {
@@ -120,6 +125,7 @@ where
             stop_signal,
             activity_timeout,
             retry_strategy,
+            yield_after,
         }
     }
 
@@ -131,6 +137,7 @@ where
             stop_signal,
             activity_timeout,
             retry_strategy,
+            yield_after,
         } = self;
         let outgoing_payloads = messages
             .map(|TaggedEnvelope(_, envelope)| WsMessage::Text(envelope.into_value().to_string()));
@@ -142,6 +149,8 @@ where
         let mut timeout = sleep(activity_timeout);
 
         let mut resolved: HashMap<RelativePath, Route> = HashMap::new();
+        let yield_mod = yield_after.get();
+        let mut iteration_count: usize = 0;
 
         let completion = loop {
             timeout.reset(
@@ -188,6 +197,11 @@ where
                         break Completion::Failed(err);
                     }
                     _ => {}
+                }
+
+                iteration_count += 1;
+                if iteration_count % yield_mod == 0 {
+                    tokio::task::yield_now().await;
                 }
             } else {
                 break Completion::StoppedRemotely;
@@ -438,6 +452,7 @@ where
             stop_trigger.clone(),
             configuration.activity_timeout,
             configuration.connection_retries,
+            configuration.yield_after,
         );
 
         spawner.add(
