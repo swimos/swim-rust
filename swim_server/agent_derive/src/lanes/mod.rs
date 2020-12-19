@@ -20,6 +20,7 @@ use syn::{DeriveInput, Ident};
 pub mod action;
 pub mod command;
 pub mod demand;
+pub mod demand_map;
 pub mod map;
 pub mod value;
 

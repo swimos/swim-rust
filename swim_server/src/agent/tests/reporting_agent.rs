@@ -130,7 +130,6 @@ impl<'a> DemandMapLaneLifecycle<'a, String, i32, ReportingAgent> for DemandMapLi
     {
         Box::pin(ready(Vec::new()))
     }
-
     fn on_cue<C>(
         &'a self,
         _model: &'a DemandMapLane<String, i32>,
