@@ -20,23 +20,26 @@ use crate::agent::lane::channels::update::{LaneUpdate, UpdateError};
 use crate::agent::lane::channels::uplink::spawn::UplinkErrorReport;
 use crate::agent::lane::channels::uplink::stateless::StatelessUplinks;
 use crate::agent::lane::channels::uplink::{
-    AddressedUplinkMessage, MapLaneUplink, UplinkAction, UplinkKind, ValueLaneUplink,
+    AddressedUplinkMessage, DemandMapLaneUplink, MapLaneUplink, UplinkAction, UplinkKind,
+    ValueLaneUplink,
 };
 use crate::agent::lane::channels::{
     AgentExecutionConfig, InputMessage, LaneMessageHandler, OutputMessage, TaggedAction,
 };
 use crate::agent::lane::model::action::ActionLane;
+use crate::agent::lane::model::demand_map::{DemandMapLane, DemandMapLaneUpdate};
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::ValueLane;
 use crate::agent::Eff;
 use crate::routing::{RoutingAddr, TaggedClientEnvelope};
 use either::Either;
-use futures::future::{join, join3};
+use futures::future::{join, join3, ready, BoxFuture};
 use futures::{select, Stream, StreamExt};
 use pin_utils::pin_mut;
 use std::any::Any;
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
+use std::marker::PhantomData;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use stm::transaction::RetryManager;
@@ -853,4 +856,70 @@ where
         UplinkKind::Demand,
     )
     .await
+}
+
+/// Asynchronous stub for compliance with `LaneUpdate`. `DemandMapLane`s do not support updates.
+pub struct DemandMapLaneUpdateTask<T>(PhantomData<T>);
+
+impl<T> Default for DemandMapLaneUpdateTask<T> {
+    fn default() -> Self {
+        DemandMapLaneUpdateTask(PhantomData::default())
+    }
+}
+
+impl<T> LaneUpdate for DemandMapLaneUpdateTask<T>
+where
+    T: Debug + Send + 'static,
+{
+    type Msg = T;
+
+    fn run_update<Messages, Err>(
+        self,
+        _messages: Messages,
+    ) -> BoxFuture<'static, Result<(), UpdateError>>
+    where
+        Messages: Stream<Item = Result<(RoutingAddr, Self::Msg), Err>> + Send + 'static,
+        Err: Send,
+        UpdateError: From<Err>,
+    {
+        Box::pin(ready(Err(UpdateError::OperationNotSupported)))
+    }
+}
+
+/// A `DemandMapLane` uplink producer and update handler.
+pub struct DemandMapLaneMessageHandler<Key, Value>
+where
+    Key: Form,
+    Value: Form,
+{
+    lane: DemandMapLane<Key, Value>,
+}
+
+impl<Key, Value> DemandMapLaneMessageHandler<Key, Value>
+where
+    Key: Form,
+    Value: Form,
+{
+    pub fn new(lane: DemandMapLane<Key, Value>) -> DemandMapLaneMessageHandler<Key, Value> {
+        DemandMapLaneMessageHandler { lane }
+    }
+}
+
+impl<Key, Value> LaneMessageHandler for DemandMapLaneMessageHandler<Key, Value>
+where
+    Key: Any + Clone + Form + Send + Sync + Debug,
+    Value: Any + Clone + Form + Send + Sync + Debug,
+{
+    type Event = DemandMapLaneUpdate<Key, Value>;
+    type Uplink = DemandMapLaneUplink<Key, Value>;
+    type Update = DemandMapLaneUpdateTask<Value>;
+
+    fn make_uplink(&self, _addr: RoutingAddr) -> Self::Uplink {
+        let DemandMapLaneMessageHandler { lane } = self;
+        DemandMapLaneUplink::new(lane.clone())
+    }
+
+    fn make_update(&self) -> Self::Update {
+        DemandMapLaneUpdateTask::default()
+    }
 }

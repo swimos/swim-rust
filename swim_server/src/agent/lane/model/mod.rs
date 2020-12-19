@@ -25,6 +25,7 @@ use utilities::future::TransformMut;
 
 pub mod action;
 pub mod demand;
+pub mod demand_map;
 pub mod map;
 pub mod supply;
 pub mod value;

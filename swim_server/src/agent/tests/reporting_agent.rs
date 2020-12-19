@@ -16,10 +16,12 @@ use crate::agent;
 use crate::agent::context::AgentExecutionContext;
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lane::lifecycle::{
-    ActionLaneLifecycle, DemandLaneLifecycle, StatefulLaneLifecycle, StatefulLaneLifecycleBase,
+    ActionLaneLifecycle, DemandLaneLifecycle, DemandMapLaneLifecycle, StatefulLaneLifecycle,
+    StatefulLaneLifecycleBase,
 };
 use crate::agent::lane::model::action::CommandLane;
 use crate::agent::lane::model::demand::DemandLane;
+use crate::agent::lane::model::demand_map::DemandMapLane;
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::ValueLane;
 use crate::agent::lane::strategy::Queue;
@@ -46,6 +48,7 @@ pub struct ReportingAgent {
     total: ValueLane<i32>,
     action: CommandLane<String>,
     demand: DemandLane<i32>,
+    demand_map: DemandMapLane<String, i32>,
 }
 
 /// Type of the events that will be reported by the agent.
@@ -54,6 +57,7 @@ pub enum ReportingAgentEvent {
     AgentStart,
     Command(String),
     DemandLaneEvent(i32),
+    DemandMapLaneEvent(String, i32),
     TransactionFailed,
     DataEvent(MapLaneEvent<String, i32>),
     TotalEvent(i32),
@@ -106,6 +110,54 @@ struct ActionLifecycle {
 #[derive(Debug)]
 struct DemandLifecycle {
     inner: ReportingLifecycleInner,
+}
+#[derive(Debug)]
+struct DemandMapLifecycle {
+    inner: ReportingLifecycleInner,
+}
+
+impl<'a> DemandMapLaneLifecycle<'a, String, i32, ReportingAgent> for DemandMapLifecycle {
+    type OnSyncFuture = BoxFuture<'a, Vec<String>>;
+    type OnCueFuture = BoxFuture<'a, Option<i32>>;
+
+    fn on_sync<C>(
+        &'a self,
+        _model: &'a DemandMapLane<String, i32>,
+        _context: &'a C,
+    ) -> Self::OnSyncFuture
+    where
+        C: AgentContext<ReportingAgent> + Send + Sync + 'static,
+    {
+        Box::pin(ready(Vec::new()))
+    }
+
+    fn on_cue<C>(
+        &'a self,
+        _model: &'a DemandMapLane<String, i32>,
+        context: &'a C,
+        key: String,
+    ) -> Self::OnCueFuture
+    where
+        C: AgentContext<ReportingAgent> + Send + Sync + 'static,
+    {
+        Box::pin(async move {
+            let result = atomically(&context.agent().data.get(key.clone()), ExactlyOnce).await;
+            match result {
+                Ok(Some(value)) => {
+                    self.inner
+                        .push(ReportingAgentEvent::DemandMapLaneEvent(key, *value))
+                        .await;
+                    Some(*value)
+                }
+                _ => {
+                    self.inner
+                        .push(ReportingAgentEvent::TransactionFailed)
+                        .await;
+                    None
+                }
+            }
+        })
+    }
 }
 
 impl<'a> DemandLaneLifecycle<'a, i32, ReportingAgent> for DemandLifecycle {
@@ -226,7 +278,7 @@ impl<'a> StatefulLaneLifecycle<'a, MapLane<String, i32>, ReportingAgent> for Dat
             self.inner
                 .push(ReportingAgentEvent::DataEvent(event.clone()))
                 .await;
-            if let MapLaneEvent::Update(_, v) = event {
+            if let MapLaneEvent::Update(key, v) = event {
                 let i = **v;
 
                 let total = &context.agent().total;
@@ -237,6 +289,14 @@ impl<'a> StatefulLaneLifecycle<'a, MapLane<String, i32>, ReportingAgent> for Dat
                     self.inner
                         .push(ReportingAgentEvent::TransactionFailed)
                         .await;
+                } else {
+                    let mut controller = context.agent().demand_map.controller();
+
+                    if controller.cue(key.clone()).await.is_err() {
+                        self.inner
+                            .push(ReportingAgentEvent::TransactionFailed)
+                            .await;
+                    }
                 }
             }
         })
@@ -354,11 +414,22 @@ impl SwimAgent<TestAgentConfig> for ReportingAgent {
             exec_conf.action_buffer.clone(),
         );
 
+        let (demand_map, demand_map_tasks, _) = agent::make_demand_map_lane(
+            "demand_map",
+            false,
+            DemandMapLifecycle {
+                inner: inner.clone(),
+            },
+            |agent: &ReportingAgent| &agent.demand_map,
+            exec_conf.action_buffer.clone(),
+        );
+
         let agent = ReportingAgent {
             data,
             total,
             action,
             demand,
+            demand_map,
         };
 
         let tasks = vec![
@@ -366,6 +437,7 @@ impl SwimAgent<TestAgentConfig> for ReportingAgent {
             total_tasks.boxed(),
             action_tasks.boxed(),
             demand_tasks.boxed(),
+            demand_map_tasks.boxed(),
         ];
 
         (agent, tasks, HashMap::new())
