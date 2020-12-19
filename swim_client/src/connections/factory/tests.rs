@@ -17,8 +17,8 @@ use crate::connections::factory::tungstenite::HostConfig;
 use futures::task::{Context, Poll};
 use futures::{Sink, Stream};
 use std::pin::Pin;
-use swim_common::ws::error::ConnectionError;
-use swim_common::ws::{Protocol, WsMessage};
+use swim_common::routing::ws::{Protocol, WsMessage};
+use swim_common::routing::{ConnectionError, HttpError};
 use tokio_tungstenite::tungstenite::extensions::compression::WsCompression;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -60,7 +60,10 @@ async fn open_conn(
     _config: HostConfig,
 ) -> Result<(TestSink, TestStream), ConnectionError> {
     if url.scheme() == "fail" {
-        Err(ConnectionError::ConnectError)
+        Err(ConnectionError::Http(HttpError::invalid_url(
+            url.to_string(),
+            None,
+        )))
     } else {
         Ok((TestSink(url.clone()), TestStream(url)))
     }
@@ -112,5 +115,9 @@ async fn fail_to_open() {
         .await;
     assert!(result.is_err());
     let err = result.err().unwrap();
-    assert_eq!(err, ConnectionError::ConnectError);
+
+    assert_eq!(
+        err,
+        ConnectionError::Http(HttpError::invalid_url("fail://127.0.0.1".into(), None))
+    );
 }

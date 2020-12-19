@@ -638,6 +638,7 @@ struct MapLifecycleTasks<L, S, P>(LifecycleTasks<L, S, P>);
 struct ActionLifecycleTasks<L, S, P>(LifecycleTasks<L, S, P>);
 struct CommandLifecycleTasks<L, S, P>(LifecycleTasks<L, S, P>);
 struct DemandMapLifecycleTasks<L, S, P>(LifecycleTasks<L, S, P>);
+
 struct DemandLifecycleTasks<L, S, P, Event> {
     name: String,
     lifecycle: L,
