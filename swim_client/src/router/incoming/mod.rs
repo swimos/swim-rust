@@ -21,10 +21,10 @@ use futures::{FutureExt, StreamExt};
 use std::convert::TryFrom;
 use std::iter::FromIterator;
 use swim_common::model::parser::parse_single;
+use swim_common::routing::ws::WsMessage;
 use swim_common::routing::RoutingError;
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
-use swim_common::ws::WsMessage;
 use tokio::sync::mpsc;
 use tracing::level_filters::STATIC_MAX_LEVEL;
 use tracing::{debug, error, span, trace, warn, Level};
@@ -133,7 +133,10 @@ impl IncomingHostTask {
                     let value = {
                         match &message {
                             WsMessage::Text(s) => parse_single(&s),
-                            WsMessage::Binary(_) => unimplemented!("Binary not supported yet"),
+                            m => {
+                                error!("Unimplemented message type received: {:?}", m);
+                                continue;
+                            }
                         }
                     };
 

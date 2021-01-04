@@ -22,13 +22,13 @@ use crate::agent::lane::tests::ExactlyOnce;
 use crate::agent::lifecycle::AgentLifecycle;
 use crate::agent::tests::stub_router::SingleChannelRouter;
 use crate::agent::tests::test_clock::TestClock;
-use crate::agent::{AgentContext, LaneTasks};
+use crate::agent::AgentContext;
 use crate::plane::provider::AgentProvider;
 use crate::routing::RoutingAddr;
 use crate::{
     action_lifecycle, agent_lifecycle, command_lifecycle, map_lifecycle, value_lifecycle, SwimAgent,
 };
-use futures::{FutureExt, StreamExt};
+use futures::StreamExt;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::fmt::Debug;

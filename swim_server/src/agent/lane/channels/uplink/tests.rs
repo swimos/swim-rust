@@ -38,6 +38,7 @@ use tokio::time::timeout;
 use utilities::future::SwimStreamExt;
 use utilities::sync::trigger;
 use swim_warp::model::map::MapUpdate;
+use std::num::NonZeroUsize;
 
 struct ReportingStream<S> {
     notify: VecDeque<trigger::Sender>,
@@ -86,6 +87,7 @@ async fn uplink_not_linked() {
         ValueLaneUplink::new(lane.clone()),
         rx_action.fuse(),
         events.fuse(),
+        NonZeroUsize::new(256).unwrap(),
     );
 
     let (tx_event, rx_event) = mpsc::channel(5);
@@ -128,6 +130,7 @@ async fn uplink_open_to_linked() {
         ValueLaneUplink::new(lane.clone()),
         rx_action.fuse(),
         events.fuse(),
+        NonZeroUsize::new(256).unwrap(),
     );
 
     let (tx_event, rx_event) = mpsc::channel(5);
@@ -176,6 +179,7 @@ async fn uplink_open_to_synced() {
         ValueLaneUplink::new(lane.clone()),
         rx_action.fuse(),
         events.fuse(),
+        NonZeroUsize::new(256).unwrap(),
     );
 
     let (tx_event, rx_event) = mpsc::channel(5);

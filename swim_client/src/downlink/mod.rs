@@ -38,9 +38,9 @@ use std::error::Error;
 use swim_common::model::schema::StandardSchema;
 use swim_common::model::Value;
 use swim_common::request::TryRequest;
+use swim_common::routing::ConnectionError;
 use swim_common::routing::RoutingError;
 use swim_common::topic::Topic;
-use swim_common::ws::error::ConnectionError;
 use tracing::{instrument, trace};
 use utilities::errors::Recoverable;
 
@@ -205,8 +205,7 @@ impl<A> Event<A> {
         }
     }
 
-    /// Maps [`Event<A>`] to [`Result<Event<B>, Err>`]
-    /// by applying a transformation function [`Func`].
+    /// Maps `Event<A>` to `Result<Event<B>, Err>` by applying a transformation function `Func`.
     pub fn try_transform<B, Err, Func>(self, mut func: Func) -> Result<Event<B>, Err>
     where
         Func: FnMut(A) -> Result<B, Err>,

@@ -15,9 +15,11 @@
 use proc_macro2::Ident;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
-use syn::{Attribute, DeriveInput, Lit, Meta, NestedMeta, Variant};
+use syn::{Lit, Meta, NestedMeta};
 
-use macro_helpers::{get_attribute_meta, CompoundTypeKind, Context, Label, StructureKind, Symbol};
+use macro_helpers::Label;
+use macro_helpers::{Attributes, CompoundTypeKind, Context, StructureKind, Symbol};
+use macro_helpers::{FieldKind, FormField};
 use syn::export::ToTokens;
 
 pub const FORM_PATH: Symbol = Symbol("form");
@@ -30,78 +32,6 @@ pub const RENAME_PATH: Symbol = Symbol("rename");
 pub const TAG_PATH: Symbol = Symbol("tag");
 pub const SKIP_PATH: Symbol = Symbol("skip");
 pub const SCHEMA_PATH: Symbol = Symbol("schema");
-
-/// An enumeration representing the contents of an input.
-#[derive(Clone)]
-pub enum TypeContents<'t, D, F> {
-    /// An enumeration input. Containing a vector of enumeration variants.
-    Enum(Vec<EnumVariant<'t, D, F>>),
-    /// A struct input containing its representation.
-    Struct(StructRepr<'t, D, F>),
-}
-
-/// A representation of a parsed struct from the AST.
-#[derive(Clone)]
-pub struct StructRepr<'t, D, F> {
-    pub input: &'t DeriveInput,
-    /// The struct's type: tuple, named, unit.
-    pub compound_type: CompoundTypeKind,
-    /// The field members of the struct.
-    pub fields: Vec<F>,
-    /// A form descriptor
-    pub descriptor: D,
-}
-
-/// A representation of a parsed enumeration from the AST.
-#[derive(Clone)]
-pub struct EnumVariant<'t, D, F> {
-    pub syn_variant: &'t Variant,
-    /// The name of the variant.
-    pub name: Label,
-    /// The variant's type: tuple, named, unit.
-    pub compound_type: CompoundTypeKind,
-    /// The field members of the variant.
-    pub fields: Vec<F>,
-    /// A form descriptor
-    pub descriptor: D,
-}
-
-/// A representation of a parsed field for a form from the AST.
-#[derive(Clone)]
-pub struct FormField<'a> {
-    /// The original field from the [`DeriveInput`].
-    pub original: &'a syn::Field,
-    /// The name of the field.
-    pub label: Label,
-    /// The kind of the field from its attribute.
-    pub kind: FieldKind,
-}
-
-impl<'a> FormField<'a> {
-    pub fn is_skipped(&self) -> bool {
-        self.kind == FieldKind::Skip && !self.label.is_foreign()
-    }
-
-    pub fn is_attr(&self) -> bool {
-        self.kind == FieldKind::Attr
-    }
-
-    pub fn is_slot(&self) -> bool {
-        self.kind == FieldKind::Slot
-    }
-
-    pub fn is_body(&self) -> bool {
-        self.kind == FieldKind::Body
-    }
-
-    pub fn is_header_body(&self) -> bool {
-        self.kind == FieldKind::HeaderBody
-    }
-
-    pub fn is_header(&self) -> bool {
-        self.kind == FieldKind::Header
-    }
-}
 
 /// Parse a structure's fields from the [`DeriveInput`]'s fields. Returns the type of the fields,
 /// parsed fields that contain a name and kind, and a derived [`FieldManifest]`. Any errors
@@ -284,61 +214,6 @@ pub fn fields_from_ast<'t>(
     }
 
     (fields, manifest)
-}
-
-/// A trait for retrieving attributes on a field or compound type that are prefixed by the provided
-/// [`symbol`]. For example calling this on a [`DeriveInput`] that represents the following:
-///```compile_fail
-///struct Person {
-///    #[form(skip)]
-///    name: String,
-///    age: i32,
-/// }
-///```
-/// will return a [`Vector`] that contains the [`NestedMeta`] for the field [`name`].
-pub trait Attributes {
-    /// Returns a vector of [`NestedMeta`] for all attributes that contain a path that matches the
-    /// provided symbol or an empty vector if there are no matches.
-    fn get_attributes(&self, ctx: &mut Context, symbol: Symbol) -> Vec<NestedMeta>;
-}
-
-impl Attributes for Vec<Attribute> {
-    fn get_attributes(&self, ctx: &mut Context, symbol: Symbol) -> Vec<NestedMeta> {
-        self.iter()
-            .flat_map(|a| get_attribute_meta(ctx, a, symbol))
-            .flatten()
-            .collect()
-    }
-}
-
-/// Enumeration of ways in which fields can be serialized in Recon documents. Unannotated fields
-/// are assumed to be annotated as [`Item::Slot`].
-#[derive(PartialEq, Debug, Eq, Hash, Copy, Clone)]
-pub enum FieldKind {
-    /// The field should be written as a slot in the tag attribute.
-    Header,
-    /// The field should be written as an attribute.
-    Attr,
-    /// The field should be written as a slot in the main body (or the header if another field is
-    /// marked as [`FieldKind::Body`]
-    Slot,
-    /// The field should be used to form the entire body of the record, all other fields that are
-    /// marked as slots will be promoted to headers. At most one field may be marked with this.
-    Body,
-    /// The field should be moved into the body of the tag attribute (unlabelled). If there are no
-    /// header fields it will form the entire body of the tag, otherwise it will be the first item
-    /// of the tag body. At most one field may be marked with this.
-    HeaderBody,
-    /// The field will be ignored during transformations. The decorated field must implement
-    /// [`Default`].
-    Skip,
-    Tagged,
-}
-
-impl Default for FieldKind {
-    fn default() -> Self {
-        FieldKind::Slot
-    }
 }
 
 /// A structure representing what fields in the compound type are annotated with.

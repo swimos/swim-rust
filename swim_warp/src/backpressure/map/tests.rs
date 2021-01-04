@@ -18,11 +18,11 @@ use tokio::sync::mpsc;
 use super::*;
 use std::collections::BTreeMap;
 use std::time::Duration;
-use swim_common::sink::item;
 use tokio::time::timeout;
 use std::sync::Arc;
 use swim_common::model::Value;
 use swim_common::sink::item::for_mpsc_sender;
+use swim_common::sink::item;
 
 const TIMEOUT: Duration = Duration::from_secs(30);
 const SHORT_TIMEOUT: Duration = Duration::from_secs(5);
@@ -110,37 +110,40 @@ async fn single_pass_through() {
     drop(tx_in);
     assert!(matches!(release_result.await, Ok(Ok(_))));
 }
-/*
+
 #[tokio::test(flavor = "multi_thread")]
 async fn multiple_one_key() {
-    let (tx, rx) = mpsc::channel(5);
-
-    let mut watcher = KeyedWatch::new(
-        item::for_mpsc_sender(tx).map_err_into(),
-        buffer_size(),
+    let (tx_in, rx_in) = mpsc::channel(8);
+    let (tx_out, rx_out) = mpsc::channel(8);
+    let release_task = super::release_pressure(
+        rx_in,
+        for_mpsc_sender(tx_out),
+        yield_after(),
         buffer_size(),
         max_active_keys(),
-        yield_after(),
-    )
-        .await;
+        buffer_size());
+
+    let release_result = tokio::task::spawn(release_task);
 
     let modifications = vec![update(1, 5), remove(1), update(1, 8)];
 
     let mut expected = BTreeMap::new();
     expected.insert(1, 8);
 
-    let receiver = tokio::task::spawn(validate_receive(rx, expected));
+    let receiver = tokio::task::spawn(validate_receive(rx_out, expected));
 
     for m in modifications.into_iter() {
-        let result = watcher.send_item(m).await;
+        let result = tx_in.send(m).await;
         assert!(result.is_ok());
     }
 
     let output = timeout(TIMEOUT, receiver).await.unwrap();
 
     assert!(output.is_ok());
-
     assert!(output.unwrap().is_ok());
+
+    drop(tx_in);
+    assert!(matches!(release_result.await, Ok(Ok(_))));
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -176,6 +179,8 @@ async fn multiple_keys() {
     assert!(output.unwrap().is_ok());
 }
 
+
+/*
 #[tokio::test(flavor = "multi_thread")]
 async fn multiple_keys_multiple_values() {
     let (tx, rx) = mpsc::channel(5);

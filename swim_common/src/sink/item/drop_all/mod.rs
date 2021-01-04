@@ -26,7 +26,8 @@ impl<T, E> Clone for DropAll<T, E> {
     }
 }
 
-/// Create an [`ItemSender`] that does nothing with its inputs and always succeeds.
+/// Create an [`crate::sink::item::ItemSender`] that does nothing with its inputs and always
+/// succeeds.
 pub fn drop_all<T, E>() -> DropAll<T, E> {
     DropAll {
         _phantom: PhantomData,

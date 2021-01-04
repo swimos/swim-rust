@@ -6,7 +6,7 @@ edition = "2018"
 
 [features]
 default = ["websocket"]
-websocket = ["tokio-tungstenite", "http", "native-tls", "tokio-native-tls", "swim_common/tls"]
+websocket = ["tokio-tungstenite", "http", "tokio-native-tls", "swim_common/tls", "swim_common/tungstenite"]
 debug = ["log_verbose"]
 log_verbose = []
 test-server = ["test_server"]
@@ -21,11 +21,6 @@ version = "0.12.0"
 git = "https://github.com/swimos/tokio-tungstenite/"
 branch = "tokio-0.3-deflate"
 features = ["tls", "deflate"]
-optional = true
-
-[dependencies.native-tls]
-version = "0.2"
-features = ["vendored"]
 optional = true
 
 [dependencies.http]
@@ -66,3 +61,25 @@ num-bigint = "0.3"
 
 [dev-dependencies]
 tokio = { version = "0.3.3", features = ["rt-multi-thread"] }
+
+
+[[example]]
+name = "command_lane"
+
+[[example]]
+name = "downlinks"
+
+[[example]]
+name = "join_map_lanes"
+
+[[example]]
+name = "join_value_lanes"
+
+[[example]]
+name = "map_lanes"
+
+[[example]]
+name = "timer"
+
+[[example]]
+name = "value_lanes"

@@ -1,13 +1,29 @@
-//! Agent derive is a library for creating swim agents and lifecycles for them and their lanes, by annotating structs and asynchronous functions.
+// Copyright 2015-2020 SWIM.AI inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+//! Agent derive is a library for creating swim agents and lifecycles for them and their lanes, by
+//! annotating structs and asynchronous functions.
 //!
-//! The minimum requirements for creating lifecycles is to provide the name of the swim agent
-//! for which they will be used, the input/output types of the lanes that they will be applied to, and the corresponding
-//! lifecycles functions.
+//! The minimum requirements for creating lifecycles is to provide the name of the swim agent for
+//! which they will be used, the input/output types of the lanes that they will be applied to, and
+//! the corresponding lifecycles functions.
 //!
 //! It is also possible to provide a configuration struct for the swim agent.
 //!
 //! # Example
 //! Creating a custom swim agent with a single command lane and a configuration struct.
+//!
 //! ```rust
 //! use swim_server::agent::AgentContext;
 //! use swim_server::agent::lane::model::action::CommandLane;
@@ -53,32 +69,48 @@
 //!     }
 //! }
 //! ```
-use crate::args::{ActionAttrs, AgentAttrs, CommandAttrs, MapAttrs, SwimAgentAttrs, ValueAttrs};
-use crate::utils::{get_agent_data, get_task_struct_name, validate_input_ast, InputAstType};
-use darling::{FromDeriveInput, FromMeta};
-use proc_macro::TokenStream;
-use quote::quote;
-use syn::{parse_macro_input, AttributeArgs, DeriveInput};
 
-mod args;
+use crate::agent::{derive_agent_lifecycle, derive_swim_agent};
+use crate::lanes::action::derive_action_lifecycle;
+use crate::lanes::command::derive_command_lifecycle;
+use crate::lanes::map::derive_map_lifecycle;
+use crate::lanes::value::derive_value_lifecycle;
+
+use crate::internals::derive;
+use crate::lanes::demand::derive_demand_lifecycle;
+use crate::lanes::demand_map::derive_demand_map_lifecycle;
+use macro_helpers::as_const;
+use proc_macro::TokenStream;
+use syn::{parse_macro_input, DeriveInput};
+
+mod agent;
+mod internals;
+mod lanes;
 mod utils;
 
 /// A derive attribute for creating swim agents.
 ///
-/// If the swim agent has configuration, it can be provided from the `config` attribute of the `agent` annotation.
+/// If the swim agent has configuration, it can be provided from the `config` attribute of the
+/// `agent` annotation.
 ///
-/// If the swim agent has lanes, they can be annotated with the appropriate lifecycle attributes which require
-/// a correct lifecycle struct to be provided.
-/// The lifecycles are private by default, and can be made public with the additional `public` attribute.
+/// If the swim agent has lanes, they can be annotated with the appropriate lifecycle attributes
+/// which require a correct lifecycle struct to be provided.
+///
+/// The lifecycles are private by default, and can be made public with the additional `public`
+/// attribute.
+///
 /// # Example
 /// Minimal swim agent without any lanes or configuration.
+///
 /// ```rust
 /// use swim_server::SwimAgent;
 ///
 /// #[derive(Debug, SwimAgent)]
 /// pub struct TestAgent;
 /// ```
+///
 /// Swim agent with multiple lanes of different types and custom configuration.
+///
 /// ```rust
 /// use swim_server::SwimAgent;
 /// use swim_server::agent::lane::model::action::{ActionLane, CommandLane};
@@ -96,7 +128,7 @@ mod utils;
 /// pub struct TestAgent {
 ///     #[lifecycle(name = "TestCommandLifecycle")]
 ///     command: CommandLane<String>,
-///     //This is public.
+///     // This is public.
 ///     #[lifecycle(public, name = "TestActionLifecycle")]
 ///     action: ActionLane<String, i32>,
 ///     #[lifecycle(name = "TestValueLifecycle")]
@@ -108,9 +140,9 @@ mod utils;
 /// pub struct TestAgentConfig;
 /// #
 /// # #[command_lifecycle(
-/// # agent = "TestAgent",
-/// # command_type = "String",
-/// # on_command = "on_command"
+/// #     agent = "TestAgent",
+/// #     command_type = "String",
+/// #     on_command = "on_command"
 /// # )]
 /// # struct TestCommandLifecycle;
 /// #
@@ -234,75 +266,25 @@ mod utils;
 #[proc_macro_derive(SwimAgent, attributes(lifecycle, agent))]
 pub fn swim_agent(input: TokenStream) -> TokenStream {
     let input_ast = parse_macro_input!(input as DeriveInput);
-
-    if let Err(error) = validate_input_ast(&input_ast, InputAstType::Agent) {
-        return TokenStream::from(quote! {#error});
-    }
-
-    let args = match SwimAgentAttrs::from_derive_input(&input_ast) {
-        Ok(args) => args,
-        Err(e) => {
-            return TokenStream::from(e.write_errors());
-        }
+    let ident = input_ast.ident.clone();
+    let derived = match derive_swim_agent(input_ast) {
+        Ok(derived) => derived,
+        Err(ts) => return ts,
     };
 
-    let (agent_name, config_type, agent_fields) = get_agent_data(args);
-
-    let lanes = agent_fields
-        .iter()
-        .map(|agent_field| &agent_field.lane_name);
-    let tasks = agent_fields
-        .iter()
-        .map(|agent_field| &agent_field.task_name);
-    let lifecycles_ast = agent_fields
-        .iter()
-        .map(|agent_field| &agent_field.lifecycle_ast);
-
-    let output_ast = quote! {
-        use swim_server::agent::LaneTasks as _;
-
-        #[automatically_derived]
-        impl swim_server::agent::SwimAgent<#config_type> for #agent_name {
-            fn instantiate<Context: swim_server::agent::AgentContext<Self> + swim_server::agent::context::AgentExecutionContext>(
-                configuration: &#config_type,
-                exec_conf: &swim_server::agent::lane::channels::AgentExecutionConfig,
-            ) -> (
-                Self,
-                std::vec::Vec<std::boxed::Box<dyn swim_server::agent::LaneTasks<Self, Context>>>,
-                std::collections::HashMap<std::string::String, std::boxed::Box<dyn swim_server::agent::LaneIo<Context>>>,
-            )
-                where
-                    Context: swim_server::agent::AgentContext<Self> + swim_server::agent::context::AgentExecutionContext + core::marker::Send + core::marker::Sync + 'static,
-            {
-                let mut io_map: std::collections::HashMap<std::string::String, std::boxed::Box<dyn swim_server::agent::LaneIo<Context>>> = std::collections::HashMap::new();
-
-                #(#lifecycles_ast)*
-
-                let agent = #agent_name {
-                    #(#lanes),*
-                };
-
-                let tasks = std::vec![
-                    #(#tasks.boxed()),*
-                ];
-
-                (agent, tasks, io_map)
-            }
-        }
-
-    };
-
-    TokenStream::from(output_ast)
+    as_const("SwimAgent", ident, derived.into()).into()
 }
 
 /// An attribute for creating agent lifecycles for swim agents.
 ///
 /// The attribute requires the name of the swim agent with which this lifecycle will be used.
 ///
-/// By default, it expects an async method named `on_start`, but a method with a custom name can be provided
+/// By default, it expects an async method named `on_start`, but a method with a custom name can be
 /// using the `on_start` attribute.
+///
 /// # Example
-/// Agent lifecycle for [`TestAgent`], created with the default name for the `on_start` action.
+/// Agent lifecycle for `TestAgent`, created with the default name for the `on_start` action.
+///
 /// ```rust
 /// use swim_server::agent_lifecycle;
 /// use swim_server::agent::AgentContext;
@@ -319,13 +301,16 @@ pub fn swim_agent(input: TokenStream) -> TokenStream {
 ///         println!("Agent started");
 ///     }
 /// }
+///
 /// # #[derive(Debug, SwimAgent)]
 /// # #[agent(config = "TestAgentConfig")]
 /// # pub struct TestAgent;
 /// #
 /// # pub struct TestAgentConfig;
 /// ```
-/// Agent lifecycle for `TestAgent`, created with a custom name for the `on_start` action.
+///
+/// Agent lifecycle for`TestAgent`, created with a custom name for the `on_start` action.
+///
 /// ```rust
 /// use swim_server::agent_lifecycle;
 /// use swim_server::agent::AgentContext;
@@ -350,54 +335,21 @@ pub fn swim_agent(input: TokenStream) -> TokenStream {
 /// ```
 #[proc_macro_attribute]
 pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
-    let input_ast = parse_macro_input!(input as DeriveInput);
-    let attr_args = parse_macro_input!(args as AttributeArgs);
-
-    if let Err(error) = validate_input_ast(&input_ast, InputAstType::Lifecycle) {
-        return TokenStream::from(quote! {#error});
-    }
-
-    let args = match AgentAttrs::from_list(&attr_args) {
-        Ok(args) => args,
-        Err(e) => {
-            return TokenStream::from(e.write_errors());
-        }
-    };
-
-    let lifecycle_name = &input_ast.ident;
-    let agent_name = &args.agent;
-    let on_start_func = &args.on_start;
-
-    let output_ast = quote! {
-        use futures::FutureExt as _;
-
-        #[derive(core::clone::Clone, core::fmt::Debug)]
-        #input_ast
-
-        #[automatically_derived]
-        impl swim_server::agent::lifecycle::AgentLifecycle<#agent_name> for #lifecycle_name {
-            fn on_start<'a, C>(&'a self, context: &'a C) -> futures::future::BoxFuture<'a, ()>
-            where
-                C: swim_server::agent::AgentContext<#agent_name> + core::marker::Send + core::marker::Sync + 'a,
-            {
-                self.#on_start_func(context).boxed()
-            }
-        }
-
-    };
-
-    TokenStream::from(output_ast)
+    derive(args, input, derive_agent_lifecycle)
 }
 
 /// An attribute for creating lifecycles for command lanes on swim agents.
 ///
 /// The attribute requires the name of the swim agent with which this lifecycle will be used and the
-/// type of the [`CommandLane`] to which it will be applied.
+/// type of the `CommandLane` to which it will be applied.
 ///
-/// By default, it expects an async method named `on_command`, but a method with a custom name can be provided
-/// using the `on_command` attribute.
+/// By default, it expects an async method named `on_command`, but a method with a custom name can
+/// be provided using the `on_command` attribute.
+///
 /// # Example
-/// Command lifecycle for a [`CommandLane`] with type [`String`] on the [`TestAgent`], created with the default name for the `on_command` action.
+/// Command lifecycle for a `CommandLane` with type [`String`] on the `TestAgent`, created with the
+/// default name for the `on_command` action.
+///
 /// ```
 /// use swim_server::command_lifecycle;
 /// use swim_server::agent::lane::lifecycle::LaneLifecycle;
@@ -435,7 +387,10 @@ pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// #
 /// # pub struct TestAgentConfig;
 /// ```
-/// Command lifecycle for a [`CommandLane`] with type [`String`] on the [`TestAgent`], created with a custom name for the `on_command` action.
+///
+/// Command lifecycle for a `CommandLane` with type [`String`] on the `TestAgent`, created with a
+/// custom name for the `on_command` action.
+///
 /// ```rust
 /// use swim_server::command_lifecycle;
 /// use swim_server::agent::lane::lifecycle::LaneLifecycle;
@@ -476,113 +431,21 @@ pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// ```
 #[proc_macro_attribute]
 pub fn command_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
-    let input_ast = parse_macro_input!(input as DeriveInput);
-    let attr_args = parse_macro_input!(args as AttributeArgs);
-
-    if let Err(error) = validate_input_ast(&input_ast, InputAstType::Lifecycle) {
-        return TokenStream::from(quote! {#error});
-    }
-
-    let args = match CommandAttrs::from_list(&attr_args) {
-        Ok(args) => args,
-        Err(e) => {
-            return TokenStream::from(e.write_errors());
-        }
-    };
-
-    let lifecycle_name = &input_ast.ident;
-    let task_name = get_task_struct_name(&input_ast.ident.to_string());
-    let agent_name = &args.agent;
-    let command_type = &args.command_type;
-    let on_command_func = &args.on_command;
-
-    let output_ast = quote! {
-        use futures::FutureExt as _;
-        use futures::StreamExt as _;
-
-        #input_ast
-
-        struct #task_name<T, S>
-        where
-            T: core::ops::Fn(&#agent_name) -> &swim_server::agent::lane::model::action::CommandLane<#command_type> + core::marker::Send + core::marker::Sync + 'static,
-            S: futures::Stream<Item = swim_server::agent::lane::model::action::Action<#command_type, ()>> + core::marker::Send + core::marker::Sync + 'static
-        {
-            lifecycle: #lifecycle_name,
-            name: String,
-            event_stream: S,
-            projection: T,
-        }
-
-        #[automatically_derived]
-        impl<T, S> swim_server::agent::Lane for #task_name<T, S>
-        where
-            T: core::ops::Fn(&#agent_name) -> &swim_server::agent::lane::model::action::CommandLane<#command_type> + core::marker::Send + core::marker::Sync + 'static,
-            S: futures::Stream<Item = swim_server::agent::lane::model::action::Action<#command_type, ()>> + core::marker::Send + core::marker::Sync + 'static
-        {
-            fn name(&self) -> &str {
-                &self.name
-            }
-        }
-
-        #[automatically_derived]
-        impl<Context, T, S> swim_server::agent::LaneTasks<#agent_name, Context> for #task_name<T, S>
-        where
-            Context: swim_server::agent::AgentContext<#agent_name> + swim_server::agent::context::AgentExecutionContext + core::marker::Send + core::marker::Sync + 'static,
-            T: core::ops::Fn(&#agent_name) -> &swim_server::agent::lane::model::action::CommandLane<#command_type> + core::marker::Send + core::marker::Sync + 'static,
-            S: futures::Stream<Item = swim_server::agent::lane::model::action::Action<#command_type, ()>> + core::marker::Send + core::marker::Sync + 'static
-        {
-            fn start<'a>(&'a self, _context: &'a Context) -> futures::future::BoxFuture<'a, ()> {
-                futures::future::ready(()).boxed()
-            }
-
-            fn events(self: Box<Self>, context: Context) -> futures::future::BoxFuture<'static, ()> {
-                async move {
-                    let #task_name {
-                        lifecycle,
-                        event_stream,
-                        projection,
-                        ..
-                    } = *self;
-
-                    let model = projection(context.agent()).clone();
-                    let mut events = event_stream.take_until(context.agent_stop_event());
-                    let mut events = unsafe { core::pin::Pin::new_unchecked(&mut events) };
-
-                    while let std::option::Option::Some(action) = events.next().await {
-                        let(command, responder) = action.destruct();
-
-                        tracing::event!(tracing::Level::TRACE, commanded = swim_server::agent::COMMANDED, ?command);
-
-                        tracing_futures::Instrument::instrument(
-                            lifecycle.#on_command_func(command, &model, &context),
-                            tracing::span!(tracing::Level::TRACE, swim_server::agent::ON_COMMAND)
-                        ).await;
-
-                        if let std::option::Option::Some(tx) = responder {
-                            if tx.send(()).is_err() {
-                                tracing::event!(tracing::Level::WARN, response_ingored = swim_server::agent::RESPONSE_IGNORED);
-                            }
-                        }
-                    }
-                }
-                .boxed()
-            }
-        }
-
-    };
-
-    TokenStream::from(output_ast)
+    derive(args, input, derive_command_lifecycle)
 }
 
 /// An attribute for creating lifecycles for action lanes on swim agents.
 ///
 /// The attribute requires the name of the swim agent with which this lifecycle will be used and the
-/// types of the [`ActionLane`] to which it will be applied.
+/// types of the `ActionLane` to which it will be applied.
 ///
-/// By default, it expects an async method named `on_command`, but a method with a custom name can be provided
-/// using the `on_command` attribute.
+/// By default, it expects an async method named `on_command`, but a method with a custom name can
+/// be provided using the `on_command` attribute.
+///
 /// # Example
-/// Action lifecycle for an [`ActionLane`] with types [`String`] and [`i32`] on the [`TestAgent`], created with the default name for the `on_command` action.
+/// Action lifecycle for an `ActionLane` with types [`String`] and [`i32`] on the `TestAgent`,
+/// created with the default name for the `on_command` action.
+///
 /// ```rust
 /// use swim_server::action_lifecycle;
 /// use swim_server::agent::lane::lifecycle::LaneLifecycle;
@@ -619,7 +482,10 @@ pub fn command_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// #
 /// # pub struct TestAgentConfig;
 /// ```
-/// Action lifecycle for an [`ActionLane`] with types [`String`] and [`i32`] on the [`TestAgent`], created with a custom name for the `on_command` action.
+///
+/// Action lifecycle for an `ActionLane` with types [`String`] and [`i32`] on the`TestAgent`,
+/// created with a custom name for the `on_command` action.
+///
 /// ```rust
 /// use swim_server::action_lifecycle;
 /// use swim_server::agent::lane::lifecycle::LaneLifecycle;
@@ -663,116 +529,21 @@ pub fn command_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// ```
 #[proc_macro_attribute]
 pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
-    let input_ast = parse_macro_input!(input as DeriveInput);
-    let attr_args = parse_macro_input!(args as AttributeArgs);
-
-    if let Err(error) = validate_input_ast(&input_ast, InputAstType::Lifecycle) {
-        return TokenStream::from(quote! {#error});
-    }
-
-    let args = match ActionAttrs::from_list(&attr_args) {
-        Ok(args) => args,
-        Err(e) => {
-            return TokenStream::from(e.write_errors());
-        }
-    };
-
-    let lifecycle_name = &input_ast.ident;
-    let task_name = get_task_struct_name(&input_ast.ident.to_string());
-    let agent_name = &args.agent;
-    let command_type = &args.command_type;
-    let response_type = &args.response_type;
-    let on_command_func = &args.on_command;
-
-    let output_ast = quote! {
-        use futures::FutureExt as _;
-        use futures::StreamExt as _;
-
-        #input_ast
-
-        struct #task_name<T, S>
-        where
-            T: core::ops::Fn(&#agent_name) -> &swim_server::agent::lane::model::action::ActionLane<#command_type, #response_type> + core::marker::Send + core::marker::Sync + 'static,
-            S: futures::Stream<Item = swim_server::agent::lane::model::action::Action<#command_type, #response_type>> + core::marker::Send + core::marker::Sync + 'static
-        {
-            lifecycle: #lifecycle_name,
-            name: String,
-            event_stream: S,
-            projection: T,
-        }
-
-        #[automatically_derived]
-        impl<T, S> swim_server::agent::Lane for #task_name<T, S>
-        where
-            T: core::ops::Fn(&#agent_name) -> &swim_server::agent::lane::model::action::ActionLane<#command_type, #response_type> + core::marker::Send + core::marker::Sync + 'static,
-            S: futures::Stream<Item = swim_server::agent::lane::model::action::Action<#command_type, #response_type>> + core::marker::Send + core::marker::Sync + 'static
-        {
-            fn name(&self) -> &str {
-                &self.name
-            }
-        }
-
-        #[automatically_derived]
-        impl<Context, T, S> swim_server::agent::LaneTasks<#agent_name, Context> for #task_name<T, S>
-        where
-            Context: swim_server::agent::AgentContext<#agent_name> + swim_server::agent::context::AgentExecutionContext + core::marker::Send + core::marker::Sync + 'static,
-            T: core::ops::Fn(&#agent_name) -> &swim_server::agent::lane::model::action::ActionLane<#command_type, #response_type> + core::marker::Send + core::marker::Sync + 'static,
-            S: futures::Stream<Item = swim_server::agent::lane::model::action::Action<#command_type, #response_type>> + core::marker::Send + core::marker::Sync + 'static
-        {
-            fn start<'a>(&'a self, _context: &'a Context) -> futures::future::BoxFuture<'a, ()> {
-                futures::future::ready(()).boxed()
-            }
-
-            fn events(self: Box<Self>, context: Context) -> futures::future::BoxFuture<'static, ()> {
-                async move {
-                    let #task_name {
-                        lifecycle,
-                        event_stream,
-                        projection,
-                        ..
-                    } = *self;
-
-                    let model = projection(context.agent()).clone();
-                    let mut events = event_stream.take_until(context.agent_stop_event());
-                    let mut events = unsafe { core::pin::Pin::new_unchecked(&mut events) };
-
-                    while let std::option::Option::Some(action) = events.next().await {
-                        let(command, responder) = action.destruct();
-
-                        tracing::event!(tracing::Level::TRACE, commanded = swim_server::agent::COMMANDED, ?command);
-
-                        let response = tracing_futures::Instrument::instrument(
-                                lifecycle.#on_command_func(command, &model, &context),
-                                tracing::span!(tracing::Level::TRACE, swim_server::agent::ON_COMMAND)
-                            ).await;
-
-                        tracing::event!(tracing::Level::TRACE, action_result = swim_server::agent::ACTION_RESULT, ?response);
-
-                        if let std::option::Option::Some(tx) = responder {
-                            if tx.send(response).is_err() {
-                                tracing::event!(tracing::Level::WARN, response_ingored = swim_server::agent::RESPONSE_IGNORED);
-                            }
-                        }
-                    }
-                }
-                .boxed()
-            }
-        }
-
-    };
-
-    TokenStream::from(output_ast)
+    derive(args, input, derive_action_lifecycle)
 }
 
 /// An attribute for creating lifecycles for value lanes on swim agents.
 ///
 /// The attribute requires the name of the swim agent with which this lifecycle will be used and the
-/// type of the [`ValueLane`] to which it will be applied.
+/// type of the `ValueLane` to which it will be applied.
 ///
-/// By default, it expects async methods named `on_start` and `on_event`, but methods with custom names can be provided
-/// using the `on_start` and `on_event` attributes.
+/// By default, it expects async methods named `on_start` and `on_event`, but methods with custom
+/// names can be provided using the `on_start` and `on_event` attributes.
+///
 /// # Example
-/// Value lifecycle for a [`ValueLane`] with type [`i32`] on the [`TestAgent`], created with the default names for the `on_start` and `on_event` actions.
+/// Value lifecycle for a `ValueLane` with type [`i32`] on the `TestAgent`, created with the default
+/// names for the `on_start` and `on_event` actions.
+///
 /// ```rust
 /// use swim_server::value_lifecycle;
 /// use swim_server::agent::lane::lifecycle::{StatefulLaneLifecycleBase, LaneLifecycle};
@@ -824,7 +595,10 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// #
 /// # pub struct TestAgentConfig;
 /// ```
-/// Value lifecycle for a [`ValueLane`] with type [`i32`] on the [`TestAgent`], created with custom names for the `on_start` and `on_event` actions.
+///
+/// Value lifecycle for a `ValueLane` with type [`i32`] on the `TestAgent`, created with custom
+/// names for the `on_start` and `on_event` actions.
+///
 /// ```rust
 /// use swim_server::value_lifecycle;
 /// use swim_server::agent::lane::lifecycle::{StatefulLaneLifecycleBase, LaneLifecycle};
@@ -883,107 +657,21 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// ```
 #[proc_macro_attribute]
 pub fn value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
-    let input_ast = parse_macro_input!(input as DeriveInput);
-    let attr_args = parse_macro_input!(args as AttributeArgs);
-
-    if let Err(error) = validate_input_ast(&input_ast, InputAstType::Lifecycle) {
-        return TokenStream::from(quote! {#error});
-    }
-
-    let args = match ValueAttrs::from_list(&attr_args) {
-        Ok(args) => args,
-        Err(e) => {
-            return TokenStream::from(e.write_errors());
-        }
-    };
-
-    let lifecycle_name = &input_ast.ident;
-    let task_name = get_task_struct_name(&input_ast.ident.to_string());
-    let agent_name = &args.agent;
-    let event_type = &args.event_type;
-    let on_start_func = &args.on_start;
-    let on_event_func = &args.on_event;
-
-    let output_ast = quote! {
-        use futures::FutureExt as _;
-        use futures::StreamExt as _;
-
-        #input_ast
-
-        struct #task_name<T, S>
-        where
-            T: core::ops::Fn(&#agent_name) -> &swim_server::agent::lane::model::value::ValueLane<#event_type> + core::marker::Send + core::marker::Sync + 'static,
-            S: futures::Stream<Item = std::sync::Arc<#event_type>> + core::marker::Send + core::marker::Sync + 'static
-        {
-            lifecycle: #lifecycle_name,
-            name: String,
-            event_stream: S,
-            projection: T,
-        }
-
-        #[automatically_derived]
-        impl<T, S> swim_server::agent::Lane for #task_name<T, S>
-        where
-            T: core::ops::Fn(&#agent_name) -> &swim_server::agent::lane::model::value::ValueLane<#event_type> + core::marker::Send + core::marker::Sync + 'static,
-            S: futures::Stream<Item = std::sync::Arc<#event_type>> + core::marker::Send + core::marker::Sync + 'static
-        {
-            fn name(&self) -> &str {
-                &self.name
-            }
-        }
-
-        #[automatically_derived]
-        impl<Context, T, S> swim_server::agent::LaneTasks<#agent_name, Context> for #task_name<T, S>
-        where
-            Context: swim_server::agent::AgentContext<#agent_name> + swim_server::agent::context::AgentExecutionContext + core::marker::Send + core::marker::Sync + 'static,
-            T: core::ops::Fn(&#agent_name) -> &swim_server::agent::lane::model::value::ValueLane<#event_type> + core::marker::Send + core::marker::Sync + 'static,
-            S: futures::Stream<Item = std::sync::Arc<#event_type>> + core::marker::Send + core::marker::Sync + 'static
-        {
-            fn start<'a>(&'a self, context: &'a Context) -> futures::future::BoxFuture<'a, ()> {
-                let #task_name { lifecycle, projection, .. } = self;
-
-                let model = projection(context.agent());
-                lifecycle.#on_start_func(model, context).boxed()
-            }
-
-            fn events(self: Box<Self>, context: Context) -> futures::future::BoxFuture<'static, ()> {
-                async move {
-                    let #task_name {
-                        lifecycle,
-                        event_stream,
-                        projection,
-                        ..
-                    } = *self;
-
-                    let model = projection(context.agent()).clone();
-                    let mut events = event_stream.take_until(context.agent_stop_event());
-                    let mut events = unsafe { core::pin::Pin::new_unchecked(&mut events) };
-
-                    while let std::option::Option::Some(event) = events.next().await {
-                        tracing_futures::Instrument::instrument(
-                                lifecycle.#on_event_func(&event, &model, &context),
-                                tracing::span!(tracing::Level::TRACE, swim_server::agent::ON_EVENT, ?event)
-                        ).await;
-                    }
-                }
-                .boxed()
-            }
-        }
-
-    };
-
-    TokenStream::from(output_ast)
+    derive(args, input, derive_value_lifecycle)
 }
 
 /// An attribute for creating lifecycles for map lanes on swim agents.
 ///
 /// The attribute requires the name of the swim agent with which this lifecycle will be used and the
-/// type of the [`MapLane`] to which it will be applied.
+/// type of the `MapLane` to which it will be applied.
 ///
-/// By default, it expects async methods named `on_start` and `on_event`, but methods with custom names can be provided
-/// using the `on_start` and `on_event` attributes.
+/// By default, it expects async methods named `on_start` and `on_event`, but methods with custom
+/// names can be provided using the `on_start` and `on_event` attributes.
+///
 /// # Example
-/// Map lifecycle for a [`MapLane`] with types [`String`] and [`i32`] on the [`TestAgent`], created with the default names for the `on_start` and `on_event` actions.
+/// Map lifecycle for a `MapLane` with types [`String`] and [`i32`] on the `TestAgent`, created with
+/// the default names for the `on_start` and `on_event` actions.
+///
 /// ```rust
 /// use swim_server::map_lifecycle;
 /// use swim_server::agent::lane::lifecycle::{StatefulLaneLifecycleBase, LaneLifecycle};
@@ -1034,7 +722,9 @@ pub fn value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// #
 /// # pub struct TestAgentConfig;
 /// ```
-/// Map lifecycle for a [`MapLane`] with types [`String`] and [`i32`] on the [`TestAgent`], created with custom names for the `on_start` and `on_event` actions.
+/// Map lifecycle for a `MapLane` with types [`String`] and [`i32`] on the `TestAgent`, created with
+/// custom names for the `on_start` and `on_event` actions.
+///
 /// ```rust
 /// use swim_server::map_lifecycle;
 /// use swim_server::agent::lane::lifecycle::{StatefulLaneLifecycleBase, LaneLifecycle};
@@ -1092,95 +782,124 @@ pub fn value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// ```
 #[proc_macro_attribute]
 pub fn map_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
-    let input_ast = parse_macro_input!(input as DeriveInput);
-    let attr_args = parse_macro_input!(args as AttributeArgs);
+    derive(args, input, derive_map_lifecycle)
+}
 
-    if let Err(error) = validate_input_ast(&input_ast, InputAstType::Lifecycle) {
-        return TokenStream::from(quote! {#error});
-    }
+/// An attribute for creating lifecycles for demand lanes on swim agents.
+///
+/// The attribute requires the name of the swim agent with which this lifecycle will be used and the
+/// type of the `DemandLane` to which it will be applied.
+///
+/// By default, it expects an async method named `on_cue`, but methods with custom names can be
+/// provided using the `on_cue` and `on_event` attributes.
+///
+/// Demand lifecycle for a `DemandMapLane` with type [`i32`] on the `TestAgent`, created with custom
+/// names for the `on_cue` action.
+///
+/// ```rust
+/// use swim_server::demand_lifecycle;
+/// use swim_server::agent::lane::lifecycle::{StatefulLaneLifecycleBase, LaneLifecycle};
+/// use swim_server::agent::lane::model::demand::DemandLane;
+/// use swim_server::agent::AgentContext;
+/// # use swim_server::SwimAgent;
+/// # use tokio;
+///
+/// #[demand_lifecycle(
+///     agent = "TestAgent",
+///     event_type = "i32",
+///     on_cue = "custom_on_cue"
+/// )]
+/// struct TestDemandLifecycle;
+///
+/// impl TestDemandLifecycle {
+///     async fn custom_on_cue<Context>(
+///         &self,
+///         _model: &DemandLane<i32>,
+///         _context: &Context,
+///     ) -> Option<i32> where
+///         Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
+///     {
+///         Some(1)
+///     }
+/// }
+///
+/// impl LaneLifecycle<TestAgentConfig> for TestDemandLifecycle {
+///     fn create(_config: &TestAgentConfig) -> Self {
+///         TestDemandLifecycle {}
+///     }
+/// }
+///
+/// # #[derive(Debug, SwimAgent)]
+/// # #[agent(config = "TestAgentConfig")]
+/// # pub struct TestAgent;
+/// #
+/// # pub struct TestAgentConfig;
+/// ```
+#[proc_macro_attribute]
+pub fn demand_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
+    derive(args, input, derive_demand_lifecycle)
+}
 
-    let args = match MapAttrs::from_list(&attr_args) {
-        Ok(args) => args,
-        Err(e) => {
-            return TokenStream::from(e.write_errors());
-        }
-    };
-
-    let lifecycle_name = &input_ast.ident;
-    let task_name = get_task_struct_name(&input_ast.ident.to_string());
-    let agent_name = &args.agent;
-    let key_type = &args.key_type;
-    let value_type = &args.value_type;
-    let on_start_func = &args.on_start;
-    let on_event_func = &args.on_event;
-
-    let output_ast = quote! {
-        use futures::FutureExt as _;
-        use futures::StreamExt as _;
-
-        #input_ast
-
-        struct #task_name<T, S>
-        where
-            T: core::ops::Fn(&#agent_name) -> &swim_server::agent::lane::model::map::MapLane<#key_type, #value_type> + core::marker::Send + core::marker::Sync + 'static,
-            S: futures::Stream<Item = swim_server::agent::lane::model::map::MapLaneEvent<#key_type, #value_type>> + core::marker::Send + core::marker::Sync + 'static
-        {
-            lifecycle: #lifecycle_name,
-            name: String,
-            event_stream: S,
-            projection: T,
-        }
-
-        #[automatically_derived]
-        impl<T, S> swim_server::agent::Lane for #task_name<T, S>
-        where
-            T: core::ops::Fn(&#agent_name) -> &swim_server::agent::lane::model::map::MapLane<#key_type, #value_type> + core::marker::Send + core::marker::Sync + 'static,
-            S: futures::Stream<Item = swim_server::agent::lane::model::map::MapLaneEvent<#key_type, #value_type>> + core::marker::Send + core::marker::Sync + 'static
-        {
-            fn name(&self) -> &str {
-                &self.name
-            }
-        }
-
-        #[automatically_derived]
-        impl<Context, T, S> swim_server::agent::LaneTasks<#agent_name, Context> for #task_name<T, S>
-        where
-            Context: swim_server::agent::AgentContext<#agent_name> + swim_server::agent::context::AgentExecutionContext + core::marker::Send + core::marker::Sync + 'static,
-            T: core::ops::Fn(&#agent_name) -> &swim_server::agent::lane::model::map::MapLane<#key_type, #value_type> + core::marker::Send + core::marker::Sync + 'static,
-            S: futures::Stream<Item = swim_server::agent::lane::model::map::MapLaneEvent<#key_type, #value_type>> + core::marker::Send + core::marker::Sync + 'static
-        {
-            fn start<'a>(&'a self, context: &'a Context) -> futures::future::BoxFuture<'a, ()> {
-                let #task_name { lifecycle, projection, .. } = self;
-
-                let model = projection(context.agent());
-                lifecycle.#on_start_func(model, context).boxed()
-            }
-
-            fn events(self: Box<Self>, context: Context) -> futures::future::BoxFuture<'static, ()> {
-                async move {
-                    let #task_name {
-                        lifecycle,
-                        event_stream,
-                        projection,
-                        ..
-                    } = *self;
-
-                    let model = projection(context.agent()).clone();
-                    let mut events = event_stream.take_until(context.agent_stop_event());
-                    let mut events = unsafe { core::pin::Pin::new_unchecked(&mut events) };
-
-                    while let std::option::Option::Some(event) = events.next().await {
-                        tracing_futures::Instrument::instrument(
-                                lifecycle.#on_event_func(&event, &model, &context),
-                                tracing::span!(tracing::Level::TRACE, swim_server::agent::ON_EVENT, ?event)
-                        ).await;
-                    }
-                }
-                .boxed()
-            }
-        }
-
-    };
-
-    TokenStream::from(output_ast)
+/// An attribute for creating lifecycles for demand map lanes on swim agents.
+///
+/// The attribute requires the name of the swim agent with which this lifecycle will be used and the
+/// type of the `DemandMapLane` to which it will be applied.
+///
+/// By default, it expects async methods named `on_cue` and `on_sync`, but methods with custom
+/// names can be provided using the `on_cue` and `on_sync` attributes.
+///
+/// Demand lifecycle for a `DemandMapLane` with a key type of `String` and a value type of `i32`
+/// on the `TestAgent`
+///
+/// ```rust
+/// use swim_server::demand_map_lifecycle;
+/// use swim_server::agent::lane::lifecycle::LaneLifecycle;
+/// use swim_server::agent::lane::model::demand_map::DemandMapLane;
+/// use swim_server::agent::AgentContext;
+/// # use swim_server::SwimAgent;
+/// # use tokio;
+///
+/// #[demand_map_lifecycle(agent = "TestAgent", key_type = "String", value_type = "i32")]
+/// struct TestDemandLifecycle;
+///
+/// impl TestDemandLifecycle {
+///     async fn on_sync<Context>(
+///        &self,
+///        _model: &DemandMapLane<String, i32>,
+///        _context: &Context,
+///    ) -> Vec<String>
+///    where
+///        Context: AgentContext<TestAgent> + Sized + Send + Sync,
+///    {
+///        Vec::new()
+///    }
+///
+///    async fn on_cue<Context>(
+///        &self,
+///        _model: &DemandMapLane<String, i32>,
+///        context: &Context,
+///        key: String,
+///    ) -> Option<i32>
+///    where
+///        Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
+///    {
+///        Some(1)
+///    }
+/// }
+///
+/// impl LaneLifecycle<TestAgentConfig> for TestDemandLifecycle {
+///     fn create(_config: &TestAgentConfig) -> Self {
+///         TestDemandLifecycle {}
+///     }
+/// }
+///
+/// # #[derive(Debug, SwimAgent)]
+/// # #[agent(config = "TestAgentConfig")]
+/// # pub struct TestAgent;
+/// #
+/// # pub struct TestAgentConfig;
+/// ```
+#[proc_macro_attribute]
+pub fn demand_map_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
+    derive(args, input, derive_demand_map_lifecycle)
 }

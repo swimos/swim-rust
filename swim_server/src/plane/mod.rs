@@ -27,7 +27,7 @@ use crate::plane::context::PlaneContext;
 use crate::plane::error::NoAgentAtRoute;
 use crate::plane::router::{PlaneRouter, PlaneRouterFactory};
 use crate::plane::spec::{PlaneSpec, RouteSpec};
-use crate::routing::error::{ConnectionError, RouterError, Unresolvable};
+use crate::routing::error::{RouterError, Unresolvable};
 use crate::routing::remote::RawRoute;
 use crate::routing::{ConnectionDropped, RoutingAddr, ServerRouterFactory, TaggedEnvelope};
 use either::Either;
@@ -41,7 +41,7 @@ use std::fmt::Debug;
 use std::ops::Deref;
 use std::sync::{Arc, Weak};
 use swim_common::request::Request;
-use swim_common::ws::error::WebSocketError;
+use swim_common::routing::{ConnectionError, ProtocolError, ProtocolErrorKind};
 use swim_runtime::time::clock::Clock;
 use tokio::sync::{mpsc, oneshot};
 use tracing::{event, span, Level};
@@ -337,7 +337,7 @@ const PLANE_STOPPING: &str = "The plane is stopping.";
 const ON_STOP_EVENT: &str = "Running plane on_stop handler.";
 const PLANE_STOPPED: &str = "The plane has stopped.";
 
-/// The main event loop for a plane. Handles [`PlaneRequests`] until the external stop trigger is
+/// The main event loop for a plane. Handles `PlaneRequest`s until the external stop trigger is
 /// fired. This task is infallible and will merely report if one of its agents fails rather than
 /// stopping.
 ///
@@ -475,8 +475,8 @@ pub async fn run_plane<Clk, S>(
                     event!(Level::TRACE, RESOLVING, ?host_url, ?name);
                     //TODO Attach external resolution here.
                     if request
-                        .send_err(RouterError::ConnectionFailure(ConnectionError::Websocket(
-                            WebSocketError::Protocol,
+                        .send_err(RouterError::ConnectionFailure(ConnectionError::Protocol(
+                            ProtocolError::new(ProtocolErrorKind::WebSocket, None),
                         )))
                         .is_err()
                     {

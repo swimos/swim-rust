@@ -202,7 +202,7 @@ impl<V> MapLaneEvent<Value, V> {
     }
 }
 
-/// Adapts a watch strategy for use with a [`ValueLane`].
+/// Adapts a watch strategy for use with a [`crate::agent::lane::model::value::ValueLane`].
 pub trait MapLaneWatch<K, V> {
     /// The type of the stream of values produced by the lane.
     type View: Stream<Item = MapLaneEvent<K, V>> + Send + Sync + 'static;

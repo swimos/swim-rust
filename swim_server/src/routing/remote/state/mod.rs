@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::routing::error::ConnectionError;
 use crate::routing::remote::addresses::RemoteRoutingAddresses;
 use crate::routing::remote::config::ConnectionConfig;
 use crate::routing::remote::net::{ExternalConnections, Listener};
@@ -20,7 +19,6 @@ use crate::routing::remote::pending::PendingRequests;
 use crate::routing::remote::table::{HostAndPort, RoutingTable};
 use crate::routing::remote::task::TaskFactory;
 use crate::routing::remote::{RawRoute, ResolutionRequest, RoutingRequest, SocketAddrIt};
-use crate::routing::ws::WsConnections;
 use crate::routing::{ConnectionDropped, RoutingAddr, ServerRouterFactory};
 use futures::future::{BoxFuture, Fuse};
 use futures::StreamExt;
@@ -29,6 +27,8 @@ use futures_util::stream::TakeUntil;
 use std::future::Future;
 use std::io;
 use std::net::SocketAddr;
+use swim_common::routing::ws::WsConnections;
+use swim_common::routing::ConnectionError;
 use tokio::sync::mpsc;
 use utilities::future::open_ended::OpenEndedFutures;
 use utilities::sync::promise::Sender;
@@ -188,7 +188,7 @@ where
     fn defer_handshake(&self, stream: External::Socket, peer_addr: SocketAddr) {
         let websockets = self.websockets;
         self.defer(async move {
-            let result = do_handshake(true, stream, websockets).await;
+            let result = do_handshake(true, stream, websockets, peer_addr).await;
             DeferredResult::incoming_handshake(result, peer_addr)
         });
     }
@@ -211,7 +211,7 @@ where
         let external = self.external.clone();
         self.defer(async move {
             let resolved = external
-                .lookup(target_cpy.to_string())
+                .lookup(target_cpy.clone())
                 .await
                 .map(|v| v.into_iter());
             DeferredResult::dns(resolved, target_cpy)
@@ -433,6 +433,7 @@ async fn do_handshake<Socket, Ws>(
     server: bool,
     socket: Socket,
     websockets: &Ws,
+    peer_addr: SocketAddr,
 ) -> Result<Ws::StreamSink, ConnectionError>
 where
     Socket: Send + Sync + Unpin,
@@ -441,7 +442,9 @@ where
     if server {
         websockets.accept_connection(socket).await
     } else {
-        websockets.open_connection(socket).await
+        websockets
+            .open_connection(socket, peer_addr.to_string())
+            .await
     }
 }
 
@@ -449,15 +452,17 @@ async fn connect_and_handshake<External: ExternalConnections, Ws>(
     external: External,
     sock_addr: SocketAddr,
     remaining: SocketAddrIt,
-    host: HostAndPort,
+    host_port: HostAndPort,
     websockets: &Ws,
 ) -> DeferredResult<Ws::StreamSink>
 where
     Ws: WsConnections<External::Socket>,
 {
-    match connect_and_handshake_single(external, sock_addr, websockets).await {
-        Ok(str) => DeferredResult::outgoing_handshake(Ok((str, sock_addr)), host),
-        Err(err) => DeferredResult::failed_connection(err, remaining, host),
+    match connect_and_handshake_single(external, sock_addr, websockets, host_port.host().clone())
+        .await
+    {
+        Ok(str) => DeferredResult::outgoing_handshake(Ok((str, sock_addr)), host_port),
+        Err(err) => DeferredResult::failed_connection(err, remaining, host_port),
     }
 }
 
@@ -465,11 +470,12 @@ async fn connect_and_handshake_single<External: ExternalConnections, Ws>(
     external: External,
     addr: SocketAddr,
     websockets: &Ws,
+    host: String,
 ) -> Result<Ws::StreamSink, ConnectionError>
 where
     Ws: WsConnections<External::Socket>,
 {
     websockets
-        .open_connection(external.try_open(addr).await?)
+        .open_connection(external.try_open(addr).await?, host)
         .await
 }

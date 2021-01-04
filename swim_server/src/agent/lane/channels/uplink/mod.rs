@@ -13,11 +13,13 @@
 // limitations under the License.
 
 use crate::agent::lane::channels::uplink::map::MapLaneSyncError;
+use crate::agent::lane::model::demand_map::{DemandMapLane, DemandMapLaneUpdate};
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent, make_update};
 use crate::agent::lane::model::value::ValueLane;
-use crate::routing::{error, TaggedSender};
+use crate::routing::{RoutingAddr, TaggedSender};
 use futures::future::ready;
-use futures::stream::{BoxStream, FusedStream};
+use futures::stream::BoxStream;
+use futures::stream::FusedStream;
 use futures::{select, select_biased, FutureExt, StreamExt};
 use pin_utils::pin_mut;
 use std::any::Any;
@@ -28,19 +30,36 @@ use std::sync::Arc;
 use stm::transaction::{RetryManager, TransactionError};
 use swim_common::form::{Form, FormErr, ValidatedForm};
 use swim_common::model::Value;
+use swim_common::routing::SendError;
 use swim_common::sink::item::{FnMutSender, ItemSender};
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
 use tracing::{event, span, Level};
 use utilities::errors::Recoverable;
 use swim_warp::model::map::MapUpdate;
+use std::num::NonZeroUsize;
 
 #[cfg(test)]
 mod tests;
 
-pub mod action;
 pub mod map;
 pub(crate) mod spawn;
+pub mod stateless;
+
+/// An enumeration representing the type of an uplink.
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum UplinkKind {
+    Action,
+    Command,
+    Demand,
+    DemandMap,
+    Map,
+    JoinMap,
+    JoinValue,
+    Supply,
+    Spatial,
+    Value,
+}
 
 /// State change requests to an uplink.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -65,6 +84,25 @@ pub enum UplinkMessage<Ev> {
     Synced,
     Unlinked,
     Event(Ev),
+}
+
+/// An addressed uplink message. Either to be broadcast to all uplinks or to a single address.
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum AddressedUplinkMessage<Ev> {
+    /// Broadcast the `UplinkMessage` to all uplinks.
+    Broadcast(Ev),
+    /// Send the `UplinkMessage` to the `RoutingAddr`.
+    Addressed { message: Ev, address: RoutingAddr },
+}
+
+impl<Ev> AddressedUplinkMessage<Ev> {
+    pub fn broadcast(message: Ev) -> AddressedUplinkMessage<Ev> {
+        AddressedUplinkMessage::Broadcast(message)
+    }
+
+    pub fn addressed(message: Ev, address: RoutingAddr) -> AddressedUplinkMessage<Ev> {
+        AddressedUplinkMessage::Addressed { message, address }
+    }
 }
 
 /// Error conditions for the task running an uplink.
@@ -159,14 +197,22 @@ pub struct Uplink<SM, Actions, Updates> {
     actions: Actions,
     /// Stream of updates to the lane.
     updates: Updates,
+    /// The number of events to process before yielding execution back to the runtime.
+    yield_after: NonZeroUsize,
 }
 
 impl<SM, Actions, Updates> Uplink<SM, Actions, Updates> {
-    pub fn new(state_machine: SM, actions: Actions, updates: Updates) -> Self {
+    pub fn new(
+        state_machine: SM,
+        actions: Actions,
+        updates: Updates,
+        yield_after: NonZeroUsize,
+    ) -> Self {
         Uplink {
             state_machine,
             actions,
             updates,
+            yield_after,
         }
     }
 }
@@ -216,12 +262,15 @@ where
             state_machine,
             actions,
             updates,
+            yield_after,
         } = self;
 
         pin_mut!(actions);
         pin_mut!(updates);
 
         let mut state = UplinkState::Opened;
+        let mut iteration_count: usize = 0;
+        let yield_mod = yield_after.get();
 
         loop {
             if state == UplinkState::Opened {
@@ -271,6 +320,11 @@ where
                         }
                     },
                 }
+            }
+
+            iteration_count += 1;
+            if iteration_count % yield_mod == 0 {
+                tokio::task::yield_now().await;
             }
         }
     }
@@ -491,14 +545,14 @@ impl<S> UplinkMessageSender<S> {
 }
 
 impl UplinkMessageSender<TaggedSender> {
-    pub fn into_item_sender<Msg>(self) -> impl ItemSender<UplinkMessage<Msg>, error::SendError>
+    pub fn into_item_sender<Msg>(self) -> impl ItemSender<UplinkMessage<Msg>, SendError>
     where
         Msg: Into<Value> + Send + 'static,
     {
         FnMutSender::new(self, UplinkMessageSender::send_item)
     }
 
-    pub async fn send_item<Msg>(&mut self, msg: UplinkMessage<Msg>) -> Result<(), error::SendError>
+    pub async fn send_item<Msg>(&mut self, msg: UplinkMessage<Msg>) -> Result<(), SendError>
     where
         Msg: Into<Value> + Send + 'static,
     {
@@ -512,5 +566,62 @@ impl UplinkMessageSender<TaggedSender> {
             }
         };
         inner.send_item(envelope).await
+    }
+}
+
+pub struct DemandMapLaneUplink<Key, Value>
+where
+    Key: Form,
+    Value: Form,
+{
+    lane: DemandMapLane<Key, Value>,
+}
+
+impl<Key, Value> DemandMapLaneUplink<Key, Value>
+where
+    Key: Clone + Form,
+    Value: Clone + Form,
+{
+    pub fn new(lane: DemandMapLane<Key, Value>) -> DemandMapLaneUplink<Key, Value> {
+        DemandMapLaneUplink { lane }
+    }
+}
+
+impl<Key, Value> UplinkStateMachine<DemandMapLaneUpdate<Key, Value>>
+    for DemandMapLaneUplink<Key, Value>
+where
+    Key: Any + Clone + Form + Send + Sync + Debug,
+    Value: Any + Clone + Form + Send + Sync + Debug,
+{
+    type Msg = DemandMapLaneUpdate<Key, Value>;
+
+    fn message_for(
+        &self,
+        event: DemandMapLaneUpdate<Key, Value>,
+    ) -> Result<Option<Self::Msg>, UplinkError> {
+        Ok(Some(event))
+    }
+
+    fn sync_lane<'a, Updates>(
+        &'a self,
+        _updates: &'a mut Updates,
+    ) -> BoxStream<'a, Result<Self::Msg, UplinkError>>
+    where
+        Updates: FusedStream<Item = DemandMapLaneUpdate<Key, Value>> + Send + Unpin + 'a,
+    {
+        let DemandMapLaneUplink { lane, .. } = self;
+
+        let controller = lane.controller();
+        let sync_fut = controller.sync();
+
+        Box::pin(
+            futures::stream::once(sync_fut)
+                .filter_map(|r| match r {
+                    Ok(v) => ready(Some(v.into_iter())),
+                    Err(_) => ready(None),
+                })
+                .flat_map(|v| futures::stream::iter(v).map(Ok))
+                .fuse(),
+        )
     }
 }

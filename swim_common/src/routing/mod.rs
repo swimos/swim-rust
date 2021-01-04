@@ -12,11 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+mod error;
+pub use error::*;
+pub mod ws;
+
 use crate::request::request_future::RequestError;
-use crate::ws::error::ConnectionError;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
-use tokio::sync::mpsc::error::SendError;
+use tokio::sync::mpsc::error::SendError as MpscSendError;
 use utilities::errors::Recoverable;
 use utilities::sync::circular_buffer;
 
@@ -40,7 +43,7 @@ impl Recoverable for RoutingError {
         match &self {
             RoutingError::ConnectionError => false,
             RoutingError::HostUnreachable => false,
-            RoutingError::PoolError(ConnectionError::ConnectionRefused) => false,
+            RoutingError::PoolError(e) => e.is_fatal(),
             _ => true,
         }
     }
@@ -60,8 +63,8 @@ impl Display for RoutingError {
 
 impl Error for RoutingError {}
 
-impl<T> From<SendError<T>> for RoutingError {
-    fn from(_: SendError<T>) -> Self {
+impl<T> From<MpscSendError<T>> for RoutingError {
+    fn from(_: MpscSendError<T>) -> Self {
         RoutingError::RouterDropped
     }
 }

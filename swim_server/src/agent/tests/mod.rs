@@ -50,13 +50,14 @@ use utilities::sync::trigger::Receiver;
 use utilities::uri::RelativeUri;
 
 mod stub_router {
-    use crate::routing::error::{ResolutionError, RouterError};
+    use crate::routing::error::RouterError;
     use crate::routing::{
         ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedEnvelope, TaggedSender,
     };
     use futures::future::BoxFuture;
     use futures::{FutureExt, StreamExt};
     use std::sync::Arc;
+    use swim_common::routing::ResolutionError;
     use tokio::sync::mpsc;
     use url::Url;
     use utilities::sync::promise;
@@ -741,30 +742,49 @@ async fn agent_loop() {
 
     clock.advance_when_blocked(Duration::from_secs(1)).await;
     expect(&mut rx, ReportingAgentEvent::Command("Name0".to_string())).await;
+    expect(&mut rx, ReportingAgentEvent::DemandLaneEvent(0)).await;
     expect(
         &mut rx,
         ReportingAgentEvent::DataEvent(MapLaneEvent::Update("Name0".to_string(), 1.into())),
     )
     .await;
     expect(&mut rx, ReportingAgentEvent::TotalEvent(1)).await;
+    expect(
+        &mut rx,
+        ReportingAgentEvent::DemandMapLaneEvent("Name0".to_string(), 1),
+    )
+    .await;
 
     clock.advance_when_blocked(Duration::from_secs(1)).await;
+
     expect(&mut rx, ReportingAgentEvent::Command("Name1".to_string())).await;
+    expect(&mut rx, ReportingAgentEvent::DemandLaneEvent(1)).await;
     expect(
         &mut rx,
         ReportingAgentEvent::DataEvent(MapLaneEvent::Update("Name1".to_string(), 1.into())),
     )
     .await;
     expect(&mut rx, ReportingAgentEvent::TotalEvent(2)).await;
+    expect(
+        &mut rx,
+        ReportingAgentEvent::DemandMapLaneEvent("Name1".to_string(), 1),
+    )
+    .await;
 
     clock.advance_when_blocked(Duration::from_secs(1)).await;
     expect(&mut rx, ReportingAgentEvent::Command("Name2".to_string())).await;
+    expect(&mut rx, ReportingAgentEvent::DemandLaneEvent(2)).await;
     expect(
         &mut rx,
         ReportingAgentEvent::DataEvent(MapLaneEvent::Update("Name2".to_string(), 1.into())),
     )
     .await;
     expect(&mut rx, ReportingAgentEvent::TotalEvent(3)).await;
+    expect(
+        &mut rx,
+        ReportingAgentEvent::DemandMapLaneEvent("Name2".to_string(), 1),
+    )
+    .await;
 
     drop(envelope_tx);
 

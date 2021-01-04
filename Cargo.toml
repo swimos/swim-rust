@@ -9,7 +9,3 @@ members = [
     "stm",
     "utilities",
 ]
-
-exclude = [
-    "cookbook",
-]

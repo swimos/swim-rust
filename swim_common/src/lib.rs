@@ -22,7 +22,6 @@ pub mod routing;
 pub mod sink;
 pub mod topic;
 pub mod warp;
-pub mod ws;
 
 #[allow(unused_imports)]
 #[macro_use]
