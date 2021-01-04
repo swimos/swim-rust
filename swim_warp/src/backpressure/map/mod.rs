@@ -160,12 +160,10 @@ where
         let event: Either<Action<K, V>, TransmitEvent<K, V>> = if buffers.is_empty() {
             if stopped {
                 break;
+            } else if let Some(action) = bridge_rx.next().await {
+                Either::Left(action)
             } else {
-                if let Some(action) = bridge_rx.next().await {
-                    Either::Left(action)
-                } else {
-                    break;
-                }
+                break;
             }
         } else {
             select_biased! {
@@ -308,7 +306,7 @@ fn take_queued<K: Hash + Eq + Clone, B>(
 ) -> Option<B> {
     if queued_buffers.contains_key(key) {
         if let Entry::Occupied(mut entry) = queued_buffers.entry(key.clone()) {
-            if entry.get().len() < 1 {
+            if entry.get().is_empty() {
                 entry.remove().pop_front()
             } else {
                 entry.get_mut().pop_front()
