@@ -370,8 +370,7 @@ pub fn create_raw_downlink<Updates, Commands>(
 ) -> RawDownlink<MapAction, mpsc::Receiver<Event<ViewWithEvent>>>
 where
     Updates: Stream<Item = MapItemResult> + Send + 'static,
-    Commands:
-        ItemSender<Command<UntypedMapModification<Value>>, RoutingError> + Send + 'static,
+    Commands: ItemSender<Command<UntypedMapModification<Value>>, RoutingError> + Send + 'static,
 {
     crate::downlink::create_downlink(
         MapStateMachine::new(
@@ -400,8 +399,7 @@ pub fn create_queue_downlink<Updates, Commands>(
 )
 where
     Updates: Stream<Item = MapItemResult> + Send + 'static,
-    Commands:
-        ItemSender<Command<UntypedMapModification<Value>>, RoutingError> + Send + 'static,
+    Commands: ItemSender<Command<UntypedMapModification<Value>>, RoutingError> + Send + 'static,
 {
     queue::make_downlink(
         MapStateMachine::new(
@@ -428,8 +426,7 @@ pub fn create_dropping_downlink<Updates, Commands>(
 )
 where
     Updates: Stream<Item = MapItemResult> + Send + 'static,
-    Commands:
-        ItemSender<Command<UntypedMapModification<Value>>, RoutingError> + Send + 'static,
+    Commands: ItemSender<Command<UntypedMapModification<Value>>, RoutingError> + Send + 'static,
 {
     dropping::make_downlink(
         MapStateMachine::new(
@@ -456,8 +453,7 @@ pub fn create_buffered_downlink<Updates, Commands>(
 )
 where
     Updates: Stream<Item = MapItemResult> + Send + 'static,
-    Commands:
-        ItemSender<Command<UntypedMapModification<Value>>, RoutingError> + Send + 'static,
+    Commands: ItemSender<Command<UntypedMapModification<Value>>, RoutingError> + Send + 'static,
 {
     buffered::make_downlink(
         MapStateMachine::new(
@@ -528,7 +524,10 @@ impl SyncStateMachine<MapModel, UntypedMapModification<Value>, MapAction> for Ma
                         state.state.insert(k, v);
                         Ok(())
                     } else {
-                        Err(DownlinkError::SchemaViolation((*v).clone(), self.value_schema.clone()))
+                        Err(DownlinkError::SchemaViolation(
+                            (*v).clone(),
+                            self.value_schema.clone(),
+                        ))
                     }
                 } else {
                     Err(DownlinkError::SchemaViolation(k, self.key_schema.clone()))
@@ -569,7 +568,10 @@ impl SyncStateMachine<MapModel, UntypedMapModification<Value>, MapAction> for Ma
                         state.state.insert(k.clone(), v);
                         Ok(Some(ViewWithEvent::update(&state.state, k)))
                     } else {
-                        Err(DownlinkError::SchemaViolation((*v).clone(), self.value_schema.clone()))
+                        Err(DownlinkError::SchemaViolation(
+                            (*v).clone(),
+                            self.value_schema.clone(),
+                        ))
                     }
                 } else {
                     Err(DownlinkError::SchemaViolation(k, self.key_schema.clone()))

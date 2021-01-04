@@ -82,9 +82,7 @@ impl KeyedWatch {
         Ok(self.sender.send(value).await?)
     }
 
-    pub fn into_item_sender(
-        self,
-    ) -> impl ItemSender<UntypedMapModification<Value>, RoutingError> {
+    pub fn into_item_sender(self) -> impl ItemSender<UntypedMapModification<Value>, RoutingError> {
         let KeyedWatch { sender, .. } = self;
         item::for_mpsc_sender(sender).map_err_into()
     }

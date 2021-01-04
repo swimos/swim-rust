@@ -17,20 +17,20 @@ mod tests;
 
 use crate::model::map::MapUpdate;
 use either::Either;
+use futures::future::join;
+use futures::stream::FuturesUnordered;
+use futures::{select_biased, StreamExt};
+use std::collections::hash_map::Entry;
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::future::Future;
+use std::hash::Hash;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
+use swim_common::form::ValidatedForm;
 use swim_common::sink::item::ItemSender;
 use tokio::sync::mpsc;
 use utilities::lru_cache::LruCache;
 use utilities::sync::{circular_buffer, trigger};
-use std::hash::Hash;
-use futures::future::join;
-use futures::{select_biased, StreamExt};
-use swim_common::form::ValidatedForm;
-use futures::stream::FuturesUnordered;
-use std::collections::{HashSet, HashMap, VecDeque};
-use std::collections::hash_map::Entry;
-use std::future::Future;
 
 enum SpecialAction {
     Clear,
@@ -66,7 +66,7 @@ enum Action<K, V> {
     Evict {
         key: K,
         on_handled: trigger::Sender,
-    }
+    },
 }
 
 //TODO Remove ValidatedForm constraint.
@@ -97,8 +97,7 @@ async fn feed_buffers<K, V>(
     yield_after: NonZeroUsize,
     cache_size: NonZeroUsize,
     buffer_size: NonZeroUsize,
-)
-where
+) where
     K: Hash + Eq + Clone + ValidatedForm + Send + Sync,
     V: Send + Sync + ValidatedForm,
 {
@@ -137,9 +136,11 @@ where
 
 type TransmitEvent<K, V> = (K, Option<(Option<Arc<V>>, BridgeBufferReceiver<V>)>);
 
-async fn consume_buffers<K, V, E, Snk>(bridge_rx: mpsc::Receiver<Action<K, V>>,
-                                       mut sink: Snk,
-                                       yield_after: NonZeroUsize) -> Result<(), E>
+async fn consume_buffers<K, V, E, Snk>(
+    bridge_rx: mpsc::Receiver<Action<K, V>>,
+    mut sink: Snk,
+    yield_after: NonZeroUsize,
+) -> Result<(), E>
 where
     K: Hash + Eq + Clone + ValidatedForm + Send + Sync,
     V: ValidatedForm + Send + Sync,
@@ -186,9 +187,7 @@ where
             Either::Left(Action::Register { key, values }) => {
                 if active_keys.contains(&key) {
                     match queued_buffers.entry(key) {
-                        Entry::Occupied(mut entry) => {
-                            entry.get_mut().push_back(values)
-                        },
+                        Entry::Occupied(mut entry) => entry.get_mut().push_back(values),
                         Entry::Vacant(entry) => {
                             let mut queue = VecDeque::new();
                             queue.push_back(values);
@@ -199,24 +198,40 @@ where
                     active_keys.insert(key.clone());
                     buffers.push(take_event(key, values));
                 }
-            },
+            }
             Either::Left(Action::Special { kind, on_handled }) => {
                 if matches!(kind, SpecialAction::Clear) {
                     buffers = FuturesUnordered::new();
                 } else {
-                    drain(&mut buffers, &mut queued_buffers, &mut active_keys, &mut sink, take_event, None).await?;
+                    drain(
+                        &mut buffers,
+                        &mut queued_buffers,
+                        &mut active_keys,
+                        &mut sink,
+                        take_event,
+                        None,
+                    )
+                    .await?;
                 }
                 sink.send_item(kind.into()).await?;
                 on_handled.trigger();
             }
-            Either::Left(Action::Evict { key, on_handled}) => {
-                drain(&mut buffers, &mut queued_buffers, &mut active_keys, &mut sink, take_event, Some(key)).await?;
+            Either::Left(Action::Evict { key, on_handled }) => {
+                drain(
+                    &mut buffers,
+                    &mut queued_buffers,
+                    &mut active_keys,
+                    &mut sink,
+                    take_event,
+                    Some(key),
+                )
+                .await?;
                 on_handled.trigger();
             }
             Either::Right((key, Some((value, remainder)))) => {
                 dispatch_event(key.clone(), value, &mut sink).await?;
                 buffers.push(take_event(key, remainder));
-            },
+            }
             Either::Right((key, _)) => {
                 if let Some(values) = take_queued(&mut queued_buffers, &key) {
                     buffers.push(take_event(key, values));
@@ -234,7 +249,11 @@ where
     Ok(())
 }
 
-async fn dispatch_event<K, V, E, Snk>(key: K, value: Option<Arc<V>>, sink: &mut Snk) -> Result<(), E>
+async fn dispatch_event<K, V, E, Snk>(
+    key: K,
+    value: Option<Arc<V>>,
+    sink: &mut Snk,
+) -> Result<(), E>
 where
     K: ValidatedForm,
     V: ValidatedForm,
@@ -248,12 +267,14 @@ where
     sink.send_item(update).await
 }
 
-async fn drain<K, V, E, Snk, F>(buffers: &mut FuturesUnordered<F>,
-                                queued_buffers: &mut HashMap<K, VecDeque<BridgeBufferReceiver<V>>>,
-                                active_keys: &mut HashSet<K>,
-                                sink: &mut Snk,
-                                take: impl Fn(K, BridgeBufferReceiver<V>) -> F,
-                                stop_on: Option<K>) -> Result<(), E>
+async fn drain<K, V, E, Snk, F>(
+    buffers: &mut FuturesUnordered<F>,
+    queued_buffers: &mut HashMap<K, VecDeque<BridgeBufferReceiver<V>>>,
+    active_keys: &mut HashSet<K>,
+    sink: &mut Snk,
+    take: impl Fn(K, BridgeBufferReceiver<V>) -> F,
+    stop_on: Option<K>,
+) -> Result<(), E>
 where
     K: Hash + Eq + Clone + ValidatedForm + Send + Sync,
     V: ValidatedForm + Send + Sync,
@@ -265,7 +286,7 @@ where
             (key, Some((value, remainder))) => {
                 dispatch_event(key.clone(), value, sink).await?;
                 buffers.push(take(key, remainder));
-            },
+            }
             (key, _) => {
                 if let Some(values) = take_queued(queued_buffers, &key) {
                     buffers.push(take(key, values));
@@ -281,7 +302,10 @@ where
     Ok(())
 }
 
-fn take_queued<K: Hash + Eq + Clone, B>(queued_buffers: &mut HashMap<K, VecDeque<B>>, key: &K) -> Option<B> {
+fn take_queued<K: Hash + Eq + Clone, B>(
+    queued_buffers: &mut HashMap<K, VecDeque<B>>,
+    key: &K,
+) -> Option<B> {
     if queued_buffers.contains_key(key) {
         if let Entry::Occupied(mut entry) = queued_buffers.entry(key.clone()) {
             if entry.get().len() < 1 {
@@ -297,8 +321,7 @@ fn take_queued<K: Hash + Eq + Clone, B>(queued_buffers: &mut HashMap<K, VecDeque
     }
 }
 
-async fn take_event<K, V>(key: K,
-                          mut rx: BridgeBufferReceiver<V>) -> TransmitEvent<K, V>
+async fn take_event<K, V>(key: K, mut rx: BridgeBufferReceiver<V>) -> TransmitEvent<K, V>
 where
     V: Send + Sync,
 {
@@ -311,11 +334,13 @@ where
 
 type InternalSender<V> = circular_buffer::Sender<Option<Arc<V>>>;
 
-async fn transmit<K, V>(senders: &mut LruCache<K, InternalSender<V>>,
-                        bridge_tx: &mut mpsc::Sender<Action<K, V>>,
-                        buffer_size: NonZeroUsize,
-                        key: K, value: Option<Arc<V>>)
-where
+async fn transmit<K, V>(
+    senders: &mut LruCache<K, InternalSender<V>>,
+    bridge_tx: &mut mpsc::Sender<Action<K, V>>,
+    buffer_size: NonZeroUsize,
+    key: K,
+    value: Option<Arc<V>>,
+) where
     K: Hash + Eq + Clone + ValidatedForm + Send + Sync,
     V: ValidatedForm + Send + Sync,
 {
@@ -326,21 +351,35 @@ where
         tx.try_send(value).ok().expect(INTERNAL_ERROR);
         if let Some((evicted, _)) = senders.insert(key.clone(), tx) {
             let (sync_tx, sync_rx) = trigger::trigger();
-            bridge_tx.send(Action::Evict { key: evicted, on_handled: sync_tx}).await.ok().expect(INTERNAL_ERROR);
+            bridge_tx
+                .send(Action::Evict {
+                    key: evicted,
+                    on_handled: sync_tx,
+                })
+                .await
+                .ok()
+                .expect(INTERNAL_ERROR);
             sync_rx.await.expect(INTERNAL_ERROR);
         }
-        bridge_tx.send(Action::Register { key, values: rx }).await.ok().expect(INTERNAL_ERROR);
+        bridge_tx
+            .send(Action::Register { key, values: rx })
+            .await
+            .ok()
+            .expect(INTERNAL_ERROR);
     }
 }
 
 async fn transmit_special<K, V>(tx: &mut mpsc::Sender<Action<K, V>>, action: SpecialAction)
-    where
-        K: Hash + Eq + Clone + ValidatedForm + Send + Sync,
-        V: ValidatedForm + Send + Sync,
+where
+    K: Hash + Eq + Clone + ValidatedForm + Send + Sync,
+    V: ValidatedForm + Send + Sync,
 {
     let (sync_tx, sync_rx) = trigger::trigger();
-    tx.try_send(Action::Special { kind: action, on_handled: sync_tx })
-        .ok()
-        .expect(INTERNAL_ERROR);
+    tx.try_send(Action::Special {
+        kind: action,
+        on_handled: sync_tx,
+    })
+    .ok()
+    .expect(INTERNAL_ERROR);
     sync_rx.await.expect(INTERNAL_ERROR);
 }

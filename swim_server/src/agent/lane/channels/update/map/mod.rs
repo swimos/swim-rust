@@ -22,8 +22,8 @@ use std::any::Any;
 use std::fmt::Debug;
 use stm::transaction::{RetryManager, TransactionRunner};
 use swim_common::form::ValidatedForm;
-use tracing::{event, Level};
 use swim_warp::model::map::MapUpdate;
+use tracing::{event, Level};
 
 #[cfg(test)]
 mod tests;

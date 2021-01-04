@@ -15,9 +15,9 @@
 use crate::downlink::model::command::CommandStateMachine;
 use crate::downlink::model::map::MapModification;
 use crate::downlink::{Command, DownlinkState, Operation, Response, StateMachine};
+use std::sync::Arc;
 use swim_common::form::{Form, ValidatedForm};
 use swim_common::model::{Attr, Item, Value};
-use std::sync::Arc;
 
 #[test]
 fn test_handle_value_action_valid() {
@@ -55,7 +55,8 @@ fn test_handle_value_action_invalid() {
 fn test_handle_map_action_valid() {
     let action = MapModification::Update("Foo".to_string(), Arc::new(3)).into_value();
 
-    let machine = CommandStateMachine::new(<MapModification<String, i32> as ValidatedForm>::schema());
+    let machine =
+        CommandStateMachine::new(<MapModification<String, i32> as ValidatedForm>::schema());
     let response = machine
         .handle_operation(
             &mut DownlinkState::Unlinked,

@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swim_common::sink::item::for_mpsc_sender;
 use futures::StreamExt;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
+use swim_common::sink::item::for_mpsc_sender;
 use swim_runtime::time::timeout::timeout;
 use tokio::sync::{mpsc, Barrier};
 use utilities::sync::circular_buffer;

@@ -17,10 +17,10 @@ use tokio::sync::oneshot;
 
 use super::*;
 use crate::downlink::{DownlinkState, Operation, Response, StateMachine, UpdateFailure};
+use swim_common::form::{Form, FormErr, ValidatedForm};
 use swim_common::model::schema::Schema;
+use swim_common::model::{Attr, Item, ValueKind};
 use swim_common::request::Request;
-use swim_common::model::{ValueKind, Item, Attr};
-use swim_common::form::{ValidatedForm, Form, FormErr};
 
 fn make_model_with(key: i32, value: String) -> MapModel {
     let k = Value::Int32Value(key);
@@ -92,9 +92,7 @@ fn linked_message() {
     }
 }
 
-fn only_event(
-    response: &Response<ViewWithEvent, UntypedMapModification<Value>>,
-) -> &ViewWithEvent {
+fn only_event(response: &Response<ViewWithEvent, UntypedMapModification<Value>>) -> &ViewWithEvent {
     match response {
         Response {
             event: Some(Event::Remote(ev)),
@@ -168,7 +166,10 @@ fn insert_message_unlinked() {
     let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
-        Operation::Message(Message::Action(UntypedMapModification::Update(k, Arc::new(v)))),
+        Operation::Message(Message::Action(UntypedMapModification::Update(
+            k,
+            Arc::new(v),
+        ))),
     );
 
     assert!(maybe_response.is_ok());
@@ -1719,7 +1720,10 @@ pub fn simple_insert_from_value() {
 
 #[test]
 pub fn complex_insert_to_value() {
-    let body = Arc::new(Value::Record(vec![Attr::of(("complex", 0))], vec![Item::slot("a", true)]));
+    let body = Arc::new(Value::Record(
+        vec![Attr::of(("complex", 0))],
+        vec![Item::slot("a", true)],
+    ));
     let attr = Attr::of(("update", Value::record(vec![Item::slot("key", "hello")])));
     let expected = Value::Record(
         vec![attr, Attr::of(("complex", 0))],
@@ -1743,7 +1747,10 @@ pub fn complex_insert_to_value() {
 
 #[test]
 pub fn complex_insert_from_value() {
-    let body = Arc::new(Value::Record(vec![Attr::of(("complex", 0))], vec![Item::slot("a", true)]));
+    let body = Arc::new(Value::Record(
+        vec![Attr::of(("complex", 0))],
+        vec![Item::slot("a", true)],
+    ));
     let attr = Attr::of(("update", Value::record(vec![Item::slot("key", "hello")])));
     let rep = Value::Record(
         vec![attr, Attr::of(("complex", 0))],

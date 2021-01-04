@@ -25,7 +25,8 @@ use futures::future::join;
 use futures::ready;
 use futures::sink::drain;
 use futures::{Stream, StreamExt};
-use std::collections::{VecDeque, BTreeMap};
+use std::collections::{BTreeMap, VecDeque};
+use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
@@ -33,12 +34,11 @@ use std::time::Duration;
 use stm::transaction::TransactionError;
 use swim_common::form::FormErr;
 use swim_common::sink::item;
+use swim_warp::model::map::MapUpdate;
 use tokio::sync::mpsc;
 use tokio::time::timeout;
 use utilities::future::SwimStreamExt;
 use utilities::sync::trigger;
-use swim_warp::model::map::MapUpdate;
-use std::num::NonZeroUsize;
 
 struct ReportingStream<S> {
     notify: VecDeque<trigger::Sender>,

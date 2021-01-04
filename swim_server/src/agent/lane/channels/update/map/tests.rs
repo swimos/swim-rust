@@ -24,8 +24,8 @@ use futures::stream::once;
 use futures::StreamExt;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::time::timeout;
 use swim_warp::model::map::MapUpdate;
+use tokio::time::timeout;
 
 #[tokio::test]
 async fn update_task_map_lane_update() {

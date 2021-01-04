@@ -31,9 +31,9 @@ use crate::model::schema::slot::SlotSchema;
 use crate::model::schema::{ItemSchema, StandardSchema};
 use crate::model::text::Text;
 use crate::model::{Item, Value, ValueKind};
+use std::mem::size_of;
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicI64, AtomicU32, AtomicU64, Ordering};
 use url::Url;
-use std::mem::size_of;
 
 impl Form for Blob {
     fn as_value(&self) -> Value {
@@ -370,7 +370,7 @@ impl ValidatedForm for usize {
         match size_of::<usize>() {
             4 => StandardSchema::OfKind(ValueKind::UInt32),
             8 => StandardSchema::OfKind(ValueKind::UInt64),
-            _ => panic!("Unsupported word size.")
+            _ => panic!("Unsupported word size."),
         }
     }
 }

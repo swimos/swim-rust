@@ -20,9 +20,9 @@ use swim_common::model::Value;
 /// Updates that can be applied to a [`MapLane`].
 #[derive(Debug, PartialEq, Eq, Form, ValidatedForm, Clone)]
 pub enum MapUpdate<K, V>
-    where
-        K: ValidatedForm,
-        V: ValidatedForm,
+where
+    K: ValidatedForm,
+    V: ValidatedForm,
 {
     #[form(tag = "update")]
     Update(#[form(header, rename = "key")] K, #[form(body)] Arc<V>),

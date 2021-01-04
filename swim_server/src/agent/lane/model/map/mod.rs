@@ -42,13 +42,13 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
 use stm::var::observer::Observer;
+use swim_warp::model::map::MapUpdate;
 use tokio::sync::{broadcast, mpsc, oneshot};
 use tracing::{event, Level};
 use utilities::future::{
     sync_boxed, FlatmapStream, SwimStreamExt, SyncBoxStream, Transform, TransformedStream,
 };
 use utilities::sync::broadcast_rx_to_stream;
-use swim_warp::model::map::MapUpdate;
 
 mod summary;
 
@@ -156,7 +156,9 @@ where
 }
 
 //TODO Relax to Form.
-pub fn make_update<K: ValidatedForm, V: ValidatedForm>(event: MapLaneEvent<K, V>) -> Option<MapUpdate<K, V>> {
+pub fn make_update<K: ValidatedForm, V: ValidatedForm>(
+    event: MapLaneEvent<K, V>,
+) -> Option<MapUpdate<K, V>> {
     match event {
         MapLaneEvent::Update(key, value) => Some(MapUpdate::Update(key, value)),
         MapLaneEvent::Clear => Some(MapUpdate::Clear),

@@ -14,7 +14,7 @@
 
 use crate::agent::lane::channels::uplink::map::MapLaneSyncError;
 use crate::agent::lane::model::demand_map::{DemandMapLane, DemandMapLaneUpdate};
-use crate::agent::lane::model::map::{MapLane, MapLaneEvent, make_update};
+use crate::agent::lane::model::map::{make_update, MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::ValueLane;
 use crate::routing::{RoutingAddr, TaggedSender};
 use futures::future::ready;
@@ -25,6 +25,7 @@ use pin_utils::pin_mut;
 use std::any::Any;
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
+use std::num::NonZeroUsize;
 use std::ops::Deref;
 use std::sync::Arc;
 use stm::transaction::{RetryManager, TransactionError};
@@ -34,10 +35,9 @@ use swim_common::routing::SendError;
 use swim_common::sink::item::{FnMutSender, ItemSender};
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
+use swim_warp::model::map::MapUpdate;
 use tracing::{event, span, Level};
 use utilities::errors::Recoverable;
-use swim_warp::model::map::MapUpdate;
-use std::num::NonZeroUsize;
 
 #[cfg(test)]
 mod tests;

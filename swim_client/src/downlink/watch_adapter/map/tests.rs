@@ -16,10 +16,10 @@ use tokio::sync::mpsc;
 
 use super::*;
 use std::collections::BTreeMap;
+use std::sync::Arc;
 use std::time::Duration;
 use swim_common::sink::item;
 use tokio::time::timeout;
-use std::sync::Arc;
 
 const TIMEOUT: Duration = Duration::from_secs(30);
 const SHORT_TIMEOUT: Duration = Duration::from_secs(5);
