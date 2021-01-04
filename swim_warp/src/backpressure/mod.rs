@@ -20,6 +20,7 @@ use std::num::NonZeroUsize;
 use swim_common::sink::item::ItemSender;
 use utilities::sync::{circular_buffer, trigger};
 
+#[derive(Debug)]
 pub enum Flushable<T> {
     Value(T),
     Flush(trigger::Sender),
@@ -31,13 +32,13 @@ impl<T> From<T> for Flushable<T> {
     }
 }
 
-pub async fn release_pressure<T, E, Snk>(
-    mut rx: circular_buffer::Receiver<T>,
+pub async fn release_pressure<T, M, E, Snk>(
+    mut rx: circular_buffer::Receiver<M>,
     mut sink: Snk,
     yield_after: NonZeroUsize,
 ) -> Result<(), E>
 where
-    T: Into<Flushable<T>> + Send + Sync,
+    M: Into<Flushable<T>> + Send + Sync,
     Snk: ItemSender<T, E>,
 {
     let mut iteration_count: usize = 0;
