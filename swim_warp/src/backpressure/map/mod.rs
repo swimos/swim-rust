@@ -15,6 +15,7 @@
 #[cfg(test)]
 mod tests;
 
+use crate::backpressure::Flushable;
 use crate::model::map::MapUpdate;
 use either::Either;
 use futures::future::join;
@@ -67,11 +68,14 @@ enum Action<K, V> {
         key: K,
         on_handled: trigger::Sender,
     },
+    Flush {
+        on_handled: trigger::Sender,
+    },
 }
 
 //TODO Remove ValidatedForm constraint.
 pub async fn release_pressure<K, V, E, Snk>(
-    rx: mpsc::Receiver<MapUpdate<K, V>>,
+    rx: mpsc::Receiver<impl Into<Flushable<MapUpdate<K, V>>>>,
     sink: Snk,
     yield_after: NonZeroUsize,
     bridge_buffer: NonZeroUsize,
@@ -92,7 +96,7 @@ where
 const INTERNAL_ERROR: &str = "Internal channel dropped.";
 
 async fn feed_buffers<K, V>(
-    mut rx: mpsc::Receiver<MapUpdate<K, V>>,
+    mut rx: mpsc::Receiver<impl Into<Flushable<MapUpdate<K, V>>>>,
     mut bridge_tx: mpsc::Sender<Action<K, V>>,
     yield_after: NonZeroUsize,
     cache_size: NonZeroUsize,
@@ -106,24 +110,31 @@ async fn feed_buffers<K, V>(
     let yield_mod = yield_after.get();
 
     while let Some(update) = rx.recv().await {
-        match update {
-            MapUpdate::Update(k, v) => {
-                transmit(&mut senders, &mut bridge_tx, buffer_size, k, Some(v)).await;
-            }
-            MapUpdate::Remove(k) => {
-                transmit(&mut senders, &mut bridge_tx, buffer_size, k, None).await;
-            }
-            MapUpdate::Clear => {
+        match update.into() {
+            Flushable::Value(update) => match update {
+                MapUpdate::Update(k, v) => {
+                    transmit(&mut senders, &mut bridge_tx, buffer_size, k, Some(v)).await;
+                }
+                MapUpdate::Remove(k) => {
+                    transmit(&mut senders, &mut bridge_tx, buffer_size, k, None).await;
+                }
+                MapUpdate::Clear => {
+                    senders.clear();
+                    transmit_special(&mut bridge_tx, SpecialAction::Clear).await;
+                }
+                MapUpdate::Take(n) => {
+                    senders.clear();
+                    transmit_special(&mut bridge_tx, SpecialAction::Take(n)).await;
+                }
+                MapUpdate::Drop(n) => {
+                    senders.clear();
+                    transmit_special(&mut bridge_tx, SpecialAction::Drop(n)).await;
+                }
+            },
+            Flushable::Flush(tx) => {
                 senders.clear();
-                transmit_special(&mut bridge_tx, SpecialAction::Clear).await;
-            }
-            MapUpdate::Take(n) => {
-                senders.clear();
-                transmit_special(&mut bridge_tx, SpecialAction::Take(n)).await;
-            }
-            MapUpdate::Drop(n) => {
-                senders.clear();
-                transmit_special(&mut bridge_tx, SpecialAction::Drop(n)).await;
+                transmit_flush(&mut bridge_tx).await;
+                tx.trigger();
             }
         }
 
@@ -222,6 +233,18 @@ where
                     &mut sink,
                     take_event,
                     Some(key),
+                )
+                .await?;
+                on_handled.trigger();
+            }
+            Either::Left(Action::Flush { on_handled }) => {
+                drain(
+                    &mut buffers,
+                    &mut queued_buffers,
+                    &mut active_keys,
+                    &mut sink,
+                    take_event,
+                    None,
                 )
                 .await?;
                 on_handled.trigger();
@@ -380,4 +403,18 @@ where
     .ok()
     .expect(INTERNAL_ERROR);
     sync_rx.await.expect(INTERNAL_ERROR);
+}
+
+async fn transmit_flush<K, V>(tx: &mut mpsc::Sender<Action<K, V>>)
+where
+    K: Hash + Eq + Clone + ValidatedForm + Send + Sync,
+    V: ValidatedForm + Send + Sync,
+{
+    let (flush_tx, flush_rx) = trigger::trigger();
+    tx.try_send(Action::Flush {
+        on_handled: flush_tx,
+    })
+    .ok()
+    .expect(INTERNAL_ERROR);
+    flush_rx.await.expect(INTERNAL_ERROR);
 }

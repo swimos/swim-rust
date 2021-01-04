@@ -16,10 +16,20 @@ pub mod map;
 #[cfg(test)]
 mod test;
 
-use futures::StreamExt;
 use std::num::NonZeroUsize;
 use swim_common::sink::item::ItemSender;
-use utilities::sync::circular_buffer;
+use utilities::sync::{circular_buffer, trigger};
+
+pub enum Flushable<T> {
+    Value(T),
+    Flush(trigger::Sender),
+}
+
+impl<T> From<T> for Flushable<T> {
+    fn from(v: T) -> Self {
+        Flushable::Value(v)
+    }
+}
 
 pub async fn release_pressure<T, E, Snk>(
     mut rx: circular_buffer::Receiver<T>,
@@ -27,19 +37,25 @@ pub async fn release_pressure<T, E, Snk>(
     yield_after: NonZeroUsize,
 ) -> Result<(), E>
 where
-    T: Send + Sync,
+    T: Into<Flushable<T>> + Send + Sync,
     Snk: ItemSender<T, E>,
 {
     let mut iteration_count: usize = 0;
     let yield_mod = yield_after.get();
-    while let Some(value) = rx.next().await {
-        if let Err(e) = sink.send_item(value).await {
-            return Err(e);
-        } else {
-            iteration_count = iteration_count.wrapping_add(1);
-            if iteration_count % yield_mod == 0 {
-                tokio::task::yield_now().await;
+    while let Ok(value) = rx.recv().await {
+        match value.into() {
+            Flushable::Value(v) => {
+                if let Err(e) = sink.send_item(v).await {
+                    return Err(e);
+                }
             }
+            Flushable::Flush(tx) => {
+                tx.trigger();
+            }
+        }
+        iteration_count = iteration_count.wrapping_add(1);
+        if iteration_count % yield_mod == 0 {
+            tokio::task::yield_now().await;
         }
     }
     Ok(())
