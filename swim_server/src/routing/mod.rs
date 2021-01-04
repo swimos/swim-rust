@@ -13,13 +13,16 @@
 // limitations under the License.
 
 use crate::plane::PlaneRequest;
-use crate::routing::error::{ConnectionError, ResolutionError, RouterError};
+use crate::routing::error::RouterError;
 use crate::routing::remote::{RawRoute, RoutingRequest};
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use std::fmt::{Display, Formatter};
 use std::time::Duration;
 use swim_common::request::Request;
+use swim_common::routing::RoutingError;
+use swim_common::routing::SendError;
+use swim_common::routing::{ConnectionError, ResolutionError};
 use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
@@ -32,7 +35,6 @@ pub mod error;
 pub mod remote;
 #[cfg(test)]
 mod tests;
-pub mod ws;
 
 #[derive(Debug, Clone)]
 pub(crate) struct SuperRouterFactory {
@@ -102,14 +104,14 @@ impl ServerRouter for SuperRouter {
                     .await
                     .is_err()
                 {
-                    Err(ResolutionError::RouterDropped)
+                    Err(ResolutionError::router_dropped())
                 } else {
                     match rx.await {
                         Ok(Ok(RawRoute { sender, on_drop })) => {
                             Ok(Route::new(TaggedSender::new(*tag, sender), on_drop))
                         }
-                        Ok(Err(err)) => Err(ResolutionError::Unresolvable(err)),
-                        Err(_) => Err(ResolutionError::RouterDropped),
+                        Ok(Err(_)) => Err(ResolutionError::unresolvable(addr.to_string())),
+                        Err(_) => Err(ResolutionError::router_dropped()),
                     }
                 }
             } else {
@@ -120,14 +122,14 @@ impl ServerRouter for SuperRouter {
                     .await
                     .is_err()
                 {
-                    Err(ResolutionError::RouterDropped)
+                    Err(ResolutionError::router_dropped())
                 } else {
                     match rx.await {
                         Ok(Ok(RawRoute { sender, on_drop })) => {
                             Ok(Route::new(TaggedSender::new(*tag, sender), on_drop))
                         }
-                        Ok(Err(err)) => Err(ResolutionError::Unresolvable(err)),
-                        Err(_) => Err(ResolutionError::RouterDropped),
+                        Ok(Err(_)) => Err(ResolutionError::unresolvable(addr.to_string())),
+                        Err(_) => Err(ResolutionError::router_dropped()),
                     }
                 }
             }
@@ -267,8 +269,15 @@ impl TaggedSender {
         TaggedSender { tag, inner }
     }
 
-    pub async fn send_item(&mut self, envelope: Envelope) -> Result<(), error::SendError> {
-        Ok(self.inner.send(TaggedEnvelope(self.tag, envelope)).await?)
+    pub async fn send_item(&mut self, envelope: Envelope) -> Result<(), SendError> {
+        Ok(self
+            .inner
+            .send(TaggedEnvelope(self.tag, envelope))
+            .await
+            .map_err(|e| {
+                let TaggedEnvelope(_addr, env) = e.0;
+                SendError::new(RoutingError::CloseError, env)
+            })?)
     }
 }
 

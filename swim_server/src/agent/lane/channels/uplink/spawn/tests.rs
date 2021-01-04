@@ -19,7 +19,7 @@ use crate::agent::lane::channels::uplink::spawn::{SpawnerUplinkFactory, UplinkEr
 use crate::agent::lane::channels::uplink::{UplinkAction, UplinkError, UplinkStateMachine};
 use crate::agent::lane::channels::{AgentExecutionConfig, LaneMessageHandler, TaggedAction};
 use crate::agent::Eff;
-use crate::routing::error::{ResolutionError, RouterError, SendError};
+use crate::routing::error::RouterError;
 use crate::routing::{
     ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedEnvelope, TaggedSender,
 };
@@ -34,6 +34,9 @@ use std::sync::Arc;
 use std::time::Duration;
 use swim_common::form::{Form, FormErr};
 use swim_common::model::Value;
+use swim_common::routing::ResolutionError;
+use swim_common::routing::RoutingError;
+use swim_common::routing::SendError;
 use swim_common::sink::item::ItemSink;
 use swim_common::topic::MpscTopic;
 use swim_common::warp::envelope::Envelope;
@@ -80,7 +83,13 @@ impl<'a> ItemSink<'a, Envelope> for TestSender {
 
     fn send_item(&'a mut self, value: Envelope) -> Self::SendFuture {
         let tagged = TaggedEnvelope(self.addr, value);
-        async move { self.inner.send(tagged).await.map_err(Into::into) }.boxed()
+        async move {
+            self.inner.send(tagged).await.map_err(|err| {
+                let TaggedEnvelope(_, envelope) = err.0;
+                SendError::new(RoutingError::RouterDropped, envelope)
+            })
+        }
+        .boxed()
     }
 }
 

@@ -14,7 +14,7 @@
 
 use crate::routing::remote::config::ConnectionConfig;
 use crate::routing::remote::state::{
-    ConnectionError, DeferredResult, Event, RemoteConnections, RemoteTasksState, State,
+    DeferredResult, Event, RemoteConnections, RemoteTasksState, State,
 };
 use crate::routing::remote::table::HostAndPort;
 use crate::routing::remote::test_fixture::{
@@ -30,6 +30,7 @@ use std::net::SocketAddr;
 use std::num::NonZeroUsize;
 use std::time::Duration;
 use swim_common::request::Request;
+use swim_common::routing::{ConnectionError, IoError};
 use swim_runtime::time::timeout::timeout;
 use tokio::sync::{mpsc, oneshot};
 use utilities::future::open_ended::OpenEndedFutures;
@@ -59,6 +60,7 @@ fn make_state(
         channel_buffer_size: buffer_size,
         activity_timeout: Duration::from_secs(30),
         connection_retries: RetryStrategy::none(),
+        yield_after: NonZeroUsize::new(256).unwrap(),
     };
 
     let fake_connections = FakeConnections::new(HashMap::new(), HashMap::new(), None);
@@ -265,7 +267,10 @@ async fn connections_state_defer_connect_failed() {
         }))) => {
             assert_eq!(
                 error,
-                ConnectionError::Socket(ErrorKind::ConnectionReset.into())
+                ConnectionError::Io(IoError::new(
+                    ErrorKind::ConnectionReset,
+                    Some("connection reset".to_string())
+                ))
             );
             assert!(remaining.next().is_none());
             assert_eq!(host, target);
@@ -386,14 +391,14 @@ async fn connections_failure_triggers_pending() {
         .pending
         .add(target.clone(), Request::new(req_tx));
 
-    connections.fail_connection(&target, ConnectionError::Socket(ErrorKind::ConnectionReset));
+    connections.fail_connection(
+        &target,
+        ConnectionError::Io(IoError::new(ErrorKind::ConnectionReset, None)),
+    );
 
     let result = timeout(Duration::from_secs(5), req_rx).await;
-
-    assert!(matches!(
-        result,
-        Ok(Ok(Err(ConnectionError::Socket(ErrorKind::ConnectionReset))))
-    ));
+    let _err = ConnectionError::Io(IoError::new(ErrorKind::ConnectionReset, None));
+    assert!(matches!(result, Ok(Ok(Err(_err)))));
 }
 
 #[tokio::test]

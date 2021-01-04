@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::routing::error::ConnectionError;
 use crate::routing::remote::addresses::RemoteRoutingAddresses;
 use crate::routing::remote::config::ConnectionConfig;
 use crate::routing::remote::net::{ExternalConnections, Listener};
@@ -20,7 +19,6 @@ use crate::routing::remote::pending::PendingRequests;
 use crate::routing::remote::table::{HostAndPort, RoutingTable};
 use crate::routing::remote::task::TaskFactory;
 use crate::routing::remote::{RawRoute, ResolutionRequest, RoutingRequest, SocketAddrIt};
-use crate::routing::ws::WsConnections;
 use crate::routing::{ConnectionDropped, RoutingAddr, ServerRouterFactory};
 use futures::future::{BoxFuture, Fuse};
 use futures::StreamExt;
@@ -29,6 +27,8 @@ use futures_util::stream::TakeUntil;
 use std::future::Future;
 use std::io;
 use std::net::SocketAddr;
+use swim_common::routing::ws::WsConnections;
+use swim_common::routing::ConnectionError;
 use tokio::sync::mpsc;
 use utilities::future::open_ended::OpenEndedFutures;
 use utilities::sync::promise::Sender;
@@ -211,7 +211,7 @@ where
         let external = self.external.clone();
         self.defer(async move {
             let resolved = external
-                .lookup(target_cpy.to_string())
+                .lookup(target_cpy.clone())
                 .await
                 .map(|v| v.into_iter());
             DeferredResult::dns(resolved, target_cpy)

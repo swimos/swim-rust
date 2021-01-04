@@ -14,19 +14,19 @@
 
 use futures::FutureExt;
 use futures_util::future::BoxFuture;
-use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
 use tokio_tungstenite::tungstenite::protocol::{CloseFrame, WebSocketConfig};
-use tokio_tungstenite::tungstenite::{Error, Message};
+use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::WebSocketStream;
 
-use swim_common::ws::WsMessage;
-
-use crate::routing::error::ConnectionError;
-use crate::routing::ws::{CloseReason, JoinedStreamSink, TransformedStreamSink, WsConnections};
-use swim_common::ws::error::WebSocketError;
+use crate::routing::error::{ConnectionError, TError};
+use crate::routing::ws::WsMessage;
+use crate::routing::ws::{
+    CloseCode, CloseReason, JoinedStreamSink, TransformedStreamSink, WsConnections,
+};
+use crate::routing::{HttpError, HttpErrorKind, TungsteniteError};
 use tokio::io::{AsyncRead, AsyncWrite};
+use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode as TungCloseCode;
 
-type TError = tokio_tungstenite::tungstenite::Error;
 type TransformedWsStream<S> =
     TransformedStreamSink<WebSocketStream<S>, Message, WsMessage, TError, ConnectionError>;
 
@@ -34,7 +34,7 @@ const DEFAULT_CLOSE_MSG: &str = "Closing connection";
 
 pub struct TungsteniteWsConnections {
     // external: TokioNetworking,
-    pub(crate) config: WebSocketConfig,
+    pub config: WebSocketConfig,
 }
 
 impl<S> JoinedStreamSink<Message, TError> for WebSocketStream<S>
@@ -46,9 +46,15 @@ where
     fn close(mut self, reason: Option<CloseReason>) -> Self::CloseFut {
         async move {
             let (code, reason) = match reason {
-                Some(CloseReason::GoingAway) => (CloseCode::Away, None),
-                Some(CloseReason::ProtocolError(e)) => (CloseCode::Protocol, Some(e.into())),
-                None => (CloseCode::Abnormal, None),
+                Some(CloseReason {
+                    code: CloseCode::GoingAway,
+                    ..
+                }) => (TungCloseCode::Away, None),
+                Some(CloseReason {
+                    code: CloseCode::ProtocolError,
+                    reason,
+                }) => (TungCloseCode::Protocol, Some(reason.into())),
+                _ => (TungCloseCode::Abnormal, None),
             };
 
             let close_frame = CloseFrame {
@@ -64,22 +70,7 @@ where
 
 impl From<TError> for ConnectionError {
     fn from(e: TError) -> Self {
-        match e {
-            TError::AlreadyClosed | TError::ConnectionClosed => ConnectionError::Closed,
-            TError::Url(url) => ConnectionError::Websocket(WebSocketError::Url(url.to_string())),
-            TError::HttpFormat(err) => ConnectionError::Warp(err.to_string()),
-            TError::Http(response) => ConnectionError::Http(response.status()),
-            TError::Io(e) => ConnectionError::Socket(e.kind()),
-            Error::Tls(e) => ConnectionError::Websocket(WebSocketError::Tls(e.to_string())),
-            Error::Protocol(_) => ConnectionError::Websocket(WebSocketError::Protocol),
-            Error::SendQueueFull(_) | Error::Capacity(_) => {
-                ConnectionError::Websocket(WebSocketError::Capacity)
-            }
-            Error::Utf8 => ConnectionError::Websocket(WebSocketError::Protocol),
-            Error::ExtensionError(e) => {
-                ConnectionError::Websocket(WebSocketError::Extension(e.to_string()))
-            }
-        }
+        ConnectionError::from(TungsteniteError(e))
     }
 }
 
@@ -102,7 +93,10 @@ where
                     if response.status().is_success() {
                         Ok(TransformedStreamSink::new(stream))
                     } else {
-                        Err(ConnectionError::Http(response.status()))
+                        Err(ConnectionError::Http(HttpError::new(
+                            HttpErrorKind::StatusCode(Some(response.status())),
+                            None,
+                        )))
                     }
                 }
 

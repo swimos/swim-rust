@@ -25,6 +25,7 @@ use futures::future::join;
 use futures::ready;
 use futures::sink::drain;
 use futures::{Stream, StreamExt};
+use pin_utils::core_reexport::num::NonZeroUsize;
 use std::collections::{HashMap, VecDeque};
 use std::pin::Pin;
 use std::sync::Arc;
@@ -85,6 +86,7 @@ async fn uplink_not_linked() {
         ValueLaneUplink::new(lane.clone()),
         rx_action.fuse(),
         events.fuse(),
+        NonZeroUsize::new(256).unwrap(),
     );
 
     let (tx_event, rx_event) = mpsc::channel(5);
@@ -127,6 +129,7 @@ async fn uplink_open_to_linked() {
         ValueLaneUplink::new(lane.clone()),
         rx_action.fuse(),
         events.fuse(),
+        NonZeroUsize::new(256).unwrap(),
     );
 
     let (tx_event, rx_event) = mpsc::channel(5);
@@ -175,6 +178,7 @@ async fn uplink_open_to_synced() {
         ValueLaneUplink::new(lane.clone()),
         rx_action.fuse(),
         events.fuse(),
+        NonZeroUsize::new(256).unwrap(),
     );
 
     let (tx_event, rx_event) = mpsc::channel(5);

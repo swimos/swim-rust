@@ -21,11 +21,12 @@ use crate::plane::error::AmbiguousRoutes;
 use crate::plane::lifecycle::PlaneLifecycle;
 use crate::plane::router::PlaneRouter;
 use crate::plane::spec::{PlaneBuilder, PlaneSpec, RouteSpec};
-use crate::routing::error::{ResolutionError, RouterError};
+use crate::routing::error::RouterError;
 use crate::routing::{Route, RoutingAddr, ServerRouter, TaggedEnvelope};
 use futures::future::{ready, BoxFuture, Ready};
 use futures::FutureExt;
 use std::time::Duration;
+use swim_common::routing::ResolutionError;
 use swim_runtime::time::clock::Clock;
 use tokio::sync::mpsc;
 use url::Url;
@@ -48,12 +49,16 @@ type BuilderType =
 
 #[derive(Debug)]
 struct DummyAgent;
+
 #[derive(Clone, Debug)]
 struct DummyConfig(i32);
+
 #[derive(Clone, Debug)]
 struct DummyLifecycle(i32);
+
 #[derive(Clone, Debug)]
 struct DummyPlaneLifecycle(i32);
+
 #[derive(Clone, Debug)]
 struct DummyDelegate;
 
