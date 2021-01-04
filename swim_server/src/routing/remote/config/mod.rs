@@ -27,6 +27,8 @@ pub struct ConnectionConfig {
     pub activity_timeout: Duration,
     /// Strategy for retrying a connection.
     pub connection_retries: RetryStrategy,
+    /// The number of events to process before yielding execution back to the runtime.
+    pub yield_after: NonZeroUsize,
 }
 
 impl Default for ConnectionConfig {
@@ -36,6 +38,7 @@ impl Default for ConnectionConfig {
             channel_buffer_size: NonZeroUsize::new(10).unwrap(),
             activity_timeout: Duration::new(30, 00),
             connection_retries: Default::default(),
+            yield_after: NonZeroUsize::new(256).unwrap(),
         }
     }
 }

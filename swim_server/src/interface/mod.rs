@@ -24,13 +24,15 @@ use crate::plane::router::PlaneRouter;
 use crate::plane::spec::PlaneBuilder;
 use crate::plane::{run_plane, EnvChannel};
 use crate::routing::remote::config::ConnectionConfig;
+use crate::routing::remote::net::dns::Resolver;
 use crate::routing::remote::net::plain::TokioPlainTextNetworking;
 use crate::routing::remote::RemoteConnectionsTask;
-use crate::routing::ws::tungstenite::TungsteniteWsConnections;
 use crate::routing::{SuperRouter, SuperRouterFactory};
 use futures::{io, join};
 use std::fmt::Debug;
 use std::net::SocketAddr;
+use std::sync::Arc;
+use swim_common::routing::ws::tungstenite::TungsteniteWsConnections;
 use swim_runtime::time::clock::RuntimeClock;
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
@@ -244,7 +246,7 @@ impl SwimServer {
 
         let connections_future = RemoteConnectionsTask::new(
             conn_config,
-            TokioPlainTextNetworking {},
+            TokioPlainTextNetworking::new(Arc::new(Resolver::new().await)),
             address,
             TungsteniteWsConnections {
                 config: websocket_config,

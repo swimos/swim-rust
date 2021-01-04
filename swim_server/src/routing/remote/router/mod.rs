@@ -12,12 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::routing::error::{ResolutionError, RouterError};
+use crate::routing::error::RouterError;
 use crate::routing::remote::{RawRoute, RoutingRequest};
 use crate::routing::{Route, RoutingAddr, ServerRouter, TaggedSender};
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use swim_common::request::Request;
+use swim_common::routing::ResolutionError;
 use tokio::sync::{mpsc, oneshot};
 use url::Url;
 use utilities::uri::RelativeUri;
@@ -64,14 +65,14 @@ impl<Delegate: ServerRouter> ServerRouter for RemoteRouter<Delegate> {
                 let request = Request::new(tx);
                 let routing_req = RoutingRequest::Endpoint { addr, request };
                 if request_tx.send(routing_req).await.is_err() {
-                    Err(ResolutionError::RouterDropped)
+                    Err(ResolutionError::router_dropped())
                 } else {
                     match rx.await {
                         Ok(Ok(RawRoute { sender, on_drop })) => {
                             Ok(Route::new(TaggedSender::new(*tag, sender), on_drop))
                         }
-                        Ok(Err(err)) => Err(ResolutionError::Unresolvable(err)),
-                        Err(_) => Err(ResolutionError::RouterDropped),
+                        Ok(Err(err)) => Err(ResolutionError::unresolvable(err.to_string())),
+                        Err(_) => Err(ResolutionError::router_dropped()),
                     }
                 }
             } else {

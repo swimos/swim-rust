@@ -47,8 +47,8 @@ struct RustAgentLifecycle;
 
 impl RustAgentLifecycle {
     async fn on_start<Context>(&self, _context: &Context)
-    where
-        Context: AgentContext<RustAgent> + Sized + Send + Sync,
+        where
+            Context: AgentContext<RustAgent> + Sized + Send + Sync,
     {
         println!("Rust agent has started!");
     }
@@ -81,15 +81,15 @@ struct CounterLifecycle;
 
 impl CounterLifecycle {
     async fn on_start<Context>(&self, _model: &ValueLane<i32>, _context: &Context)
-    where
-        Context: AgentContext<RustAgent> + Sized + Send + Sync,
+        where
+            Context: AgentContext<RustAgent> + Sized + Send + Sync,
     {
         println!("Counter lane has started!");
     }
 
     async fn on_event<Context>(&self, event: &Arc<i32>, _model: &ValueLane<i32>, _context: &Context)
-    where
-        Context: AgentContext<RustAgent> + Sized + Send + Sync + 'static,
+        where
+            Context: AgentContext<RustAgent> + Sized + Send + Sync + 'static,
     {
         println!("Event received: {}", event);
     }

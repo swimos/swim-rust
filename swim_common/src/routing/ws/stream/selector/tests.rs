@@ -12,7 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::routing::ws::{CloseReason, JoinedStreamSink, SelectorResult, WsStreamSelector};
+use crate::routing::ws::protocol::CloseReason;
+use crate::routing::ws::stream::selector::{SelectorResult, WsStreamSelector};
+use crate::routing::ws::stream::JoinedStreamSink;
 use futures::future::{ready, Ready};
 use futures::stream::FusedStream;
 use futures::task::{AtomicWaker, Context, Poll};
