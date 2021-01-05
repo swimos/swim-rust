@@ -646,12 +646,6 @@ where
     }
 }
 
-impl<R> Stm for dyn DynamicStm<Result = R, TransFuture = BoxedTransactionFuture<R>> {
-    fn required_stack() -> Option<usize> {
-        None
-    }
-}
-
 /// Boxes the type of future returned by an [`Stm`] instance, hiding its concrete type.
 pub struct BoxedStm<S: ?Sized>(S);
 

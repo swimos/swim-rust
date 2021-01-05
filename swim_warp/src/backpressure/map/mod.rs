@@ -15,12 +15,12 @@
 #[cfg(test)]
 mod tests;
 
-use crate::backpressure::Flushable;
 use crate::model::map::MapUpdate;
 use either::Either;
 use futures::future::join;
 use futures::stream::FuturesUnordered;
-use futures::{select_biased, StreamExt};
+use futures::{select_biased, Stream, StreamExt};
+use pin_utils::pin_mut;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::future::Future;
@@ -32,6 +32,22 @@ use swim_common::sink::item::ItemSender;
 use tokio::sync::mpsc;
 use utilities::lru_cache::LruCache;
 use utilities::sync::{circular_buffer, trigger};
+
+pub trait MapUpdateMessage<K: ValidatedForm, V: ValidatedForm>: Sized {
+    fn discriminate(self) -> Either<MapUpdate<K, V>, Self>;
+
+    fn repack(update: MapUpdate<K, V>) -> Self;
+}
+
+impl<K: ValidatedForm, V: ValidatedForm> MapUpdateMessage<K, V> for MapUpdate<K, V> {
+    fn discriminate(self) -> Either<MapUpdate<K, V>, Self> {
+        Either::Left(self)
+    }
+
+    fn repack(update: MapUpdate<K, V>) -> Self {
+        update
+    }
+}
 
 enum SpecialAction {
     Clear,
@@ -55,7 +71,7 @@ where
 
 type BridgeBufferReceiver<V> = circular_buffer::Receiver<Option<Arc<V>>>;
 
-enum Action<K, V> {
+enum Action<M, K, V> {
     Register {
         key: K,
         values: BridgeBufferReceiver<V>,
@@ -69,13 +85,13 @@ enum Action<K, V> {
         on_handled: trigger::Sender,
     },
     Flush {
-        on_handled: trigger::Sender,
+        message: M,
     },
 }
 
 //TODO Remove ValidatedForm constraint.
-pub async fn release_pressure<K, V, E, Snk>(
-    rx: mpsc::Receiver<impl Into<Flushable<MapUpdate<K, V>>>>,
+pub async fn release_pressure<M, K, V, E, Snk>(
+    rx: impl Stream<Item = M>,
     sink: Snk,
     yield_after: NonZeroUsize,
     bridge_buffer: NonZeroUsize,
@@ -85,7 +101,8 @@ pub async fn release_pressure<K, V, E, Snk>(
 where
     K: Hash + Eq + Clone + ValidatedForm + Send + Sync,
     V: Send + ValidatedForm + Sync,
-    Snk: ItemSender<MapUpdate<K, V>, E>,
+    M: MapUpdateMessage<K, V>,
+    Snk: ItemSender<M, E>,
 {
     let (bridge_tx, bridge_rx) = mpsc::channel(bridge_buffer.get());
     let feed = feed_buffers(rx, bridge_tx, yield_after, cache_size, buffer_size);
@@ -95,23 +112,26 @@ where
 
 const INTERNAL_ERROR: &str = "Internal channel dropped.";
 
-async fn feed_buffers<K, V>(
-    mut rx: mpsc::Receiver<impl Into<Flushable<MapUpdate<K, V>>>>,
-    mut bridge_tx: mpsc::Sender<Action<K, V>>,
+async fn feed_buffers<M, K, V>(
+    rx: impl Stream<Item = M>,
+    mut bridge_tx: mpsc::Sender<Action<M, K, V>>,
     yield_after: NonZeroUsize,
     cache_size: NonZeroUsize,
     buffer_size: NonZeroUsize,
 ) where
     K: Hash + Eq + Clone + ValidatedForm + Send + Sync,
     V: Send + Sync + ValidatedForm,
+    M: MapUpdateMessage<K, V>,
 {
     let mut senders = LruCache::new(cache_size);
     let mut iteration_count: usize = 0;
     let yield_mod = yield_after.get();
 
-    while let Some(update) = rx.recv().await {
-        match update.into() {
-            Flushable::Value(update) => match update {
+    pin_mut!(rx);
+
+    while let Some(update) = rx.next().await {
+        match update.discriminate() {
+            Either::Left(update) => match update {
                 MapUpdate::Update(k, v) => {
                     transmit(&mut senders, &mut bridge_tx, buffer_size, k, Some(v)).await;
                 }
@@ -131,10 +151,9 @@ async fn feed_buffers<K, V>(
                     transmit_special(&mut bridge_tx, SpecialAction::Drop(n)).await;
                 }
             },
-            Flushable::Flush(tx) => {
+            Either::Right(message) => {
                 senders.clear();
-                transmit_flush(&mut bridge_tx).await;
-                tx.trigger();
+                transmit_flush(&mut bridge_tx, message).await;
             }
         }
 
@@ -147,15 +166,16 @@ async fn feed_buffers<K, V>(
 
 type TransmitEvent<K, V> = (K, Option<(Option<Arc<V>>, BridgeBufferReceiver<V>)>);
 
-async fn consume_buffers<K, V, E, Snk>(
-    bridge_rx: mpsc::Receiver<Action<K, V>>,
+async fn consume_buffers<M, K, V, E, Snk>(
+    bridge_rx: mpsc::Receiver<Action<M, K, V>>,
     mut sink: Snk,
     yield_after: NonZeroUsize,
 ) -> Result<(), E>
 where
     K: Hash + Eq + Clone + ValidatedForm + Send + Sync,
     V: ValidatedForm + Send + Sync,
-    Snk: ItemSender<MapUpdate<K, V>, E>,
+    M: MapUpdateMessage<K, V>,
+    Snk: ItemSender<M, E>,
 {
     let mut iteration_count: usize = 0;
     let yield_mod = yield_after.get();
@@ -168,7 +188,7 @@ where
     let mut bridge_rx = bridge_rx.fuse();
     let mut stopped = false;
     loop {
-        let event: Either<Action<K, V>, TransmitEvent<K, V>> = if buffers.is_empty() {
+        let event: Either<Action<M, K, V>, TransmitEvent<K, V>> = if buffers.is_empty() {
             if stopped {
                 break;
             } else if let Some(action) = bridge_rx.next().await {
@@ -222,7 +242,8 @@ where
                     )
                     .await?;
                 }
-                sink.send_item(kind.into()).await?;
+                sink.send_item(MapUpdateMessage::repack(kind.into()))
+                    .await?;
                 on_handled.trigger();
             }
             Either::Left(Action::Evict { key, on_handled }) => {
@@ -237,7 +258,7 @@ where
                 .await?;
                 on_handled.trigger();
             }
-            Either::Left(Action::Flush { on_handled }) => {
+            Either::Left(Action::Flush { message }) => {
                 drain(
                     &mut buffers,
                     &mut queued_buffers,
@@ -247,7 +268,7 @@ where
                     None,
                 )
                 .await?;
-                on_handled.trigger();
+                sink.send_item(message).await?;
             }
             Either::Right((key, Some((value, remainder)))) => {
                 dispatch_event(key.clone(), value, &mut sink).await?;
@@ -270,7 +291,7 @@ where
     Ok(())
 }
 
-async fn dispatch_event<K, V, E, Snk>(
+async fn dispatch_event<M, K, V, E, Snk>(
     key: K,
     value: Option<Arc<V>>,
     sink: &mut Snk,
@@ -278,17 +299,18 @@ async fn dispatch_event<K, V, E, Snk>(
 where
     K: ValidatedForm,
     V: ValidatedForm,
-    Snk: ItemSender<MapUpdate<K, V>, E>,
+    M: MapUpdateMessage<K, V>,
+    Snk: ItemSender<M, E>,
 {
     let update = if let Some(v) = value {
         MapUpdate::Update(key, v)
     } else {
         MapUpdate::Remove(key)
     };
-    sink.send_item(update).await
+    sink.send_item(MapUpdateMessage::repack(update)).await
 }
 
-async fn drain<K, V, E, Snk, F>(
+async fn drain<M, K, V, E, Snk, F>(
     buffers: &mut FuturesUnordered<F>,
     queued_buffers: &mut HashMap<K, VecDeque<BridgeBufferReceiver<V>>>,
     active_keys: &mut HashSet<K>,
@@ -299,7 +321,8 @@ async fn drain<K, V, E, Snk, F>(
 where
     K: Hash + Eq + Clone + ValidatedForm + Send + Sync,
     V: ValidatedForm + Send + Sync,
-    Snk: ItemSender<MapUpdate<K, V>, E>,
+    M: MapUpdateMessage<K, V>,
+    Snk: ItemSender<M, E>,
     F: Future<Output = TransmitEvent<K, V>>,
 {
     while let Some(event) = buffers.next().await {
@@ -355,9 +378,9 @@ where
 
 type InternalSender<V> = circular_buffer::Sender<Option<Arc<V>>>;
 
-async fn transmit<K, V>(
+async fn transmit<M, K, V>(
     senders: &mut LruCache<K, InternalSender<V>>,
-    bridge_tx: &mut mpsc::Sender<Action<K, V>>,
+    bridge_tx: &mut mpsc::Sender<Action<M, K, V>>,
     buffer_size: NonZeroUsize,
     key: K,
     value: Option<Arc<V>>,
@@ -390,7 +413,7 @@ async fn transmit<K, V>(
     }
 }
 
-async fn transmit_special<K, V>(tx: &mut mpsc::Sender<Action<K, V>>, action: SpecialAction)
+async fn transmit_special<M, K, V>(tx: &mut mpsc::Sender<Action<M, K, V>>, action: SpecialAction)
 where
     K: Hash + Eq + Clone + ValidatedForm + Send + Sync,
     V: ValidatedForm + Send + Sync,
@@ -405,16 +428,12 @@ where
     sync_rx.await.expect(INTERNAL_ERROR);
 }
 
-async fn transmit_flush<K, V>(tx: &mut mpsc::Sender<Action<K, V>>)
+async fn transmit_flush<M, K, V>(tx: &mut mpsc::Sender<Action<M, K, V>>, message: M)
 where
     K: Hash + Eq + Clone + ValidatedForm + Send + Sync,
     V: ValidatedForm + Send + Sync,
 {
-    let (flush_tx, flush_rx) = trigger::trigger();
-    tx.try_send(Action::Flush {
-        on_handled: flush_tx,
-    })
-    .ok()
-    .expect(INTERNAL_ERROR);
-    flush_rx.await.expect(INTERNAL_ERROR);
+    tx.try_send(Action::Flush { message })
+        .ok()
+        .expect(INTERNAL_ERROR);
 }

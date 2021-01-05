@@ -14,6 +14,8 @@
 
 use crate::agent::lane::channels::uplink::UplinkMessage;
 use futures::future::join;
+use futures::{Stream, StreamExt};
+use pin_utils::pin_mut;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::num::NonZeroUsize;
@@ -23,11 +25,10 @@ use swim_common::sink::item::ItemSender;
 use swim_warp::backpressure::map::release_pressure as release_pressure_map;
 use swim_warp::backpressure::{release_pressure, Flushable};
 use swim_warp::model::map::MapUpdate;
-use tokio::sync::mpsc;
 use utilities::sync::{circular_buffer, trigger};
 
 pub async fn value_uplink_release_backpressure<T, E, Snk>(
-    mut messages: mpsc::Receiver<UplinkMessage<Arc<T>>>,
+    messages: impl Stream<Item = UplinkMessage<Arc<T>>>,
     mut sink: Snk,
     buffer_size: NonZeroUsize,
     yield_after: NonZeroUsize,
@@ -42,7 +43,8 @@ where
     let out_task = release_pressure(internal_rx, sink.clone(), yield_after);
 
     let in_task = async move {
-        while let Some(msg) = messages.recv().await {
+        pin_mut!(messages);
+        while let Some(msg) = messages.next().await {
             match msg {
                 event_msg @ UplinkMessage::Event(_) => {
                     internal_tx
@@ -73,8 +75,8 @@ const INTERNAL_ERROR: &str = "Internal channel error.";
 
 //TODO Remove ValidatedForm constraint.
 pub async fn map_uplink_release_backpressure<K, V, E, Snk>(
-    mut messages: mpsc::Receiver<UplinkMessage<MapUpdate<K, V>>>,
-    mut sink: Snk,
+    messages: impl Stream<Item = UplinkMessage<MapUpdate<K, V>>>,
+    sink: Snk,
     buffer_size: NonZeroUsize,
     bridge_buffer_size: NonZeroUsize,
     cache_size: NonZeroUsize,
@@ -85,43 +87,13 @@ where
     V: ValidatedForm + Send + Sync + Debug,
     Snk: ItemSender<UplinkMessage<MapUpdate<K, V>>, E> + Clone,
 {
-    let (internal_tx, internal_rx) = mpsc::channel(buffer_size.get());
-
-    let out_task = release_pressure_map(
-        internal_rx,
-        sink.clone().comap(UplinkMessage::Event),
+    release_pressure_map(
+        messages,
+        sink.clone(),
         yield_after,
         bridge_buffer_size,
         cache_size,
         buffer_size,
-    );
-
-    let in_task = async move {
-        while let Some(msg) = messages.recv().await {
-            match msg {
-                UplinkMessage::Event(event_msg) => {
-                    internal_tx
-                        .send(Flushable::Value(event_msg))
-                        .await
-                        .expect(INTERNAL_ERROR);
-                }
-                ow => {
-                    let (flush_tx, flush_rx) = trigger::trigger();
-                    internal_tx
-                        .send(Flushable::Flush(flush_tx))
-                        .await
-                        .expect(INTERNAL_ERROR);
-                    let _ = flush_rx.await;
-                    sink.send_item(ow).await?;
-                }
-            }
-        }
-        Ok(())
-    };
-
-    match join(in_task, out_task).await {
-        (Err(e), _) => Err(e),
-        (_, Err(e)) => Err(e),
-        _ => Ok(()),
-    }
+    )
+    .await
 }

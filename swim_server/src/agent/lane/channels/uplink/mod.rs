@@ -17,6 +17,7 @@ use crate::agent::lane::model::demand_map::{DemandMapLane, DemandMapLaneUpdate};
 use crate::agent::lane::model::map::{make_update, MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::ValueLane;
 use crate::routing::{RoutingAddr, TaggedSender};
+use either::Either;
 use futures::future::ready;
 use futures::stream::BoxStream;
 use futures::stream::FusedStream;
@@ -35,6 +36,7 @@ use swim_common::routing::SendError;
 use swim_common::sink::item::{FnMutSender, ItemSender};
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
+use swim_warp::backpressure::map::MapUpdateMessage;
 use swim_warp::model::map::MapUpdate;
 use tracing::{event, span, Level};
 use utilities::errors::Recoverable;
@@ -85,6 +87,19 @@ pub enum UplinkMessage<Ev> {
     Synced,
     Unlinked,
     Event(Ev),
+}
+
+impl<K: ValidatedForm, V: ValidatedForm> MapUpdateMessage<K, V> for UplinkMessage<MapUpdate<K, V>> {
+    fn discriminate(self) -> Either<MapUpdate<K, V>, Self> {
+        match self {
+            UplinkMessage::Event(update) => Either::Left(update),
+            ow => Either::Right(ow),
+        }
+    }
+
+    fn repack(update: MapUpdate<K, V>) -> Self {
+        UplinkMessage::Event(update)
+    }
 }
 
 /// An addressed uplink message. Either to be broadcast to all uplinks or to a single address.
