@@ -27,10 +27,10 @@ pub trait PlaneContext: Send + Sync {
     /// #Notes
     ///
     /// This will cause the agent to start if has not already.
-    fn get_agent_ref<'a>(
-        &'a mut self,
+    fn get_agent_ref(
+        &mut self,
         route: RelativeUri,
-    ) -> BoxFuture<'a, Result<Arc<dyn Any + Send + Sync>, NoAgentAtRoute>>;
+    ) -> BoxFuture<'_, Result<Arc<dyn Any + Send + Sync>, NoAgentAtRoute>>;
 
     /// Get the patterns for all of the possible routes in this plane.
     fn routes(&self) -> &Vec<RoutePattern>;
