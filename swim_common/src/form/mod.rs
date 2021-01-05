@@ -834,13 +834,24 @@ impl ValidatedForm for Value {
 /// structure must also implement `Clone`.
 pub trait Tag: Sized {
     /// Produces an instance of this structure from the provided string.
-    fn from_string(tag: String) -> Result<Self, ()>;
+    fn from_string(tag: String) -> Result<Self, TagConversionError>;
 
     /// Converts this instance into a string.
     fn as_string(&self) -> String;
 
     /// Returns an enumeration representing all of tag's variants.  
     fn enumerated() -> Vec<Self>;
+}
+
+/// An error produced when attempting to build a structure's tag or variant from a provided String
+/// fails.
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Debug)]
+pub struct TagConversionError(pub String);
+
+impl Display for TagConversionError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "TagConversionError: {}", self.0)
+    }
 }
 
 /// Maps an option to a Form error variant and returns if it is an error. This is useful when

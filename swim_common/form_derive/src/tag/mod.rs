@@ -53,7 +53,7 @@ pub fn build_tag(input: DeriveInput) -> Result<proc_macro2::TokenStream, Vec<syn
 
     let ts = quote! {
         impl swim_common::form::Tag for #structure_name {
-            fn from_string(tag: String) -> Result<Self, ()> {
+            fn from_string(tag: String) -> Result<Self, swim_common::form::TagConversionError> {
                 #from_string
             }
 
@@ -82,7 +82,7 @@ fn derive_from_string(compound_name: &Ident, variants: &[Ident]) -> TokenStream2
     quote! {
         match tag.to_lowercase().as_str() {
             #ts
-            _ => Err(())
+            s => Err(swim_common::form::TagConversionError(format!("Unknown variant or struct: {}", s)))
         }
     }
 }

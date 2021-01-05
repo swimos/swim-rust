@@ -50,6 +50,7 @@ mod token_buffer;
 /// assert!(!is_identifier_start('@'));
 ///
 /// ```
+#[allow(clippy::manual_range_contains)]
 pub fn is_identifier_start(c: char) -> bool {
     c >= 'A' && c <= 'Z'
         || c == '_'
@@ -85,7 +86,7 @@ pub fn is_identifier_start(c: char) -> bool {
 ///
 /// ```
 pub fn is_identifier_char(c: char) -> bool {
-    is_identifier_start(c) || c == '-' || c >= '0' && c <= '9'
+    is_identifier_start(c) || c == '-' || ('0'..='9').contains(&c)
 }
 
 /// Determine if a string is a valid Recon identifier.
@@ -1051,9 +1052,9 @@ fn final_token<T: TokenStr, B: TokenBuffer<T>>(
 }
 
 /// Tokenize a string held entirely in memory.
-fn tokenize_str<'a>(
-    repr: &'a str,
-) -> impl Iterator<Item = Result<LocatedReconToken<&'a str>, BadToken>> + 'a {
+fn tokenize_str(
+    repr: &str,
+) -> impl Iterator<Item = Result<LocatedReconToken<&str>, BadToken>> + '_ {
     let following = repr
         .char_indices()
         .skip(1)
