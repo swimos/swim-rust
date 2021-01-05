@@ -39,13 +39,53 @@ pub fn build_derive_form(input: DeriveInput) -> Result<proc_macro2::TokenStream,
     let from_value_body = from_value(
         &type_contents,
         &structure_name,
-        |value| parse_quote!(swim_common::form::Form::try_from_value(#value)),
+        |value| {
+            parse_quote! {
+                match #value {
+                    swim_common::model::Value::Record(attrs, ref items) if items.len() == 1 => {
+                        match items.first() {
+                            Some(swim_common::model::Item::ValueItem(item)) => {
+                                swim_common::form::Form::try_from_value(item)
+                            }
+                            Some(swim_common::model::Item::Slot(key, value)) => {
+                                // Form isn't implemented for tuples.
+                                return Err(swim_common::form::FormErr::Malformatted);
+                            }
+                            None => {
+                                unreachable!()
+                            }
+                        }
+                    }
+                    value => swim_common::form::Form::try_from_value(value)
+                }
+            }
+        },
         false,
     );
     let try_convert_body = from_value(
         &type_contents,
         &structure_name,
-        |value| parse_quote!(swim_common::form::Form::try_convert(#value)),
+        |value| {
+            parse_quote! {
+                match #value {
+                    swim_common::model::Value::Record(attrs, mut items) if items.len() == 1 => {
+                        match items.pop() {
+                            Some(swim_common::model::Item::ValueItem(item)) => {
+                                swim_common::form::Form::try_convert(item)
+                            }
+                            Some(swim_common::model::Item::Slot(key, value)) => {
+                                // Form isn't implemented for tuples.
+                                return Err(swim_common::form::FormErr::Malformatted);
+                            }
+                            None => {
+                                unreachable!()
+                            }
+                        }
+                    }
+                    value => swim_common::form::Form::try_convert(value)
+                }
+            }
+        },
         true,
     );
     let as_value_body = to_value(
