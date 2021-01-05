@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use async_std::task;
 use futures::StreamExt;
 use std::time::Duration;
 use swim_client::downlink::model::map::MapEvent;
@@ -20,8 +21,6 @@ use swim_client::downlink::typed::event::TypedViewWithEvent;
 use swim_client::downlink::Event::Remote;
 use swim_client::interface::SwimClient;
 use swim_common::warp::path::AbsolutePath;
-use swim_runtime::time::delay::delay_for;
-use tokio::task;
 
 const THRESHOLD: i32 = 1000;
 
@@ -66,8 +65,8 @@ async fn main() {
 
     task::spawn(did_update(map_recv, 0));
 
-    delay_for(Duration::from_secs(2)).await;
+    task::sleep(Duration::from_secs(2)).await;
 
     println!("Stopping client in 2 seconds");
-    delay_for(Duration::from_secs(2)).await;
+    task::sleep(Duration::from_secs(2)).await;
 }

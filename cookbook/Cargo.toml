@@ -21,6 +21,14 @@ swim_server = { path = "../swim_server" }
 stm = { path = "../stm" }
 
 [[bin]]
+name = "downlinks_server"
+path = "src/downlinks/server.rs"
+
+[[bin]]
+name = "downlinks_client"
+path = "src/downlinks/client.rs"
+
+[[bin]]
 name = "command_lanes_server"
 path = "src/command_lanes/server.rs"
 
@@ -43,3 +51,19 @@ path = "src/map_lanes/server.rs"
 [[bin]]
 name = "map_lanes_client"
 path = "src/map_lanes/client.rs"
+
+[[bin]]
+name = "timers_server"
+path = "src/timers/server.rs"
+
+[[bin]]
+name = "timers_client"
+path = "src/timers/client.rs"
+
+[[bin]]
+name = "join_value_lanes_client"
+path = "src/join_value_lanes/client.rs"
+
+[[bin]]
+name = "join_map_lanes_client"
+path = "src/join_map_lanes/client.rs"

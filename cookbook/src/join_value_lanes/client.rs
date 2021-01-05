@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use async_std::task;
 use futures::StreamExt;
 use std::time::Duration;
 use swim_client::downlink::model::map::MapEvent;
@@ -21,8 +22,6 @@ use swim_client::downlink::Event::Remote;
 use swim_client::interface::SwimClient;
 use swim_common::model::Value;
 use swim_common::warp::path::AbsolutePath;
-use swim_runtime::time::delay::delay_for;
-use tokio::task;
 
 async fn did_update(map_recv: TypedMapReceiver<i32, bool>, default: bool) {
     map_recv
@@ -67,7 +66,7 @@ async fn main() {
 
     task::spawn(did_update(map_recv, false));
 
-    delay_for(Duration::from_secs(2)).await;
+    task::sleep(Duration::from_secs(2)).await;
 
     let first_room_uri = AbsolutePath::new(host_uri.clone(), first_room_node, switch_lane);
     let second_room_uri = AbsolutePath::new(host_uri.clone(), second_room_node, switch_lane);
@@ -78,43 +77,43 @@ async fn main() {
         .await
         .expect("Failed to send command!");
 
-    delay_for(Duration::from_secs(1)).await;
+    task::sleep(Duration::from_secs(1)).await;
 
     client
         .send_command(second_room_uri.clone(), Value::Extant)
         .await
         .expect("Failed to send command!");
 
-    delay_for(Duration::from_secs(1)).await;
+    task::sleep(Duration::from_secs(1)).await;
 
     client
         .send_command(third_room_uri.clone(), Value::Extant)
         .await
         .expect("Failed to send command!");
 
-    delay_for(Duration::from_secs(1)).await;
+    task::sleep(Duration::from_secs(1)).await;
 
     client
         .send_command(second_room_uri.clone(), Value::Extant)
         .await
         .expect("Failed to send command!");
 
-    delay_for(Duration::from_secs(1)).await;
+    task::sleep(Duration::from_secs(1)).await;
 
     client
         .send_command(second_room_uri, Value::Extant)
         .await
         .expect("Failed to send command!");
 
-    delay_for(Duration::from_secs(1)).await;
+    task::sleep(Duration::from_secs(1)).await;
 
     client
         .send_command(third_room_uri, Value::Extant)
         .await
         .expect("Failed to send command!");
 
-    delay_for(Duration::from_secs(1)).await;
+    task::sleep(Duration::from_secs(1)).await;
 
     println!("Stopping client in 2 seconds");
-    delay_for(Duration::from_secs(2)).await;
+    task::sleep(Duration::from_secs(2)).await;
 }

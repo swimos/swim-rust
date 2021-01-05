@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use async_std::task;
 use rand::seq::SliceRandom;
 use std::time::Duration;
 use swim_client::downlink::Downlink;
 use swim_client::interface::SwimClient;
 use swim_common::warp::path::AbsolutePath;
-use swim_runtime::time::delay::delay_for;
 
 #[tokio::main]
 async fn main() {
@@ -28,7 +28,7 @@ async fn main() {
     let path = AbsolutePath::new(
         host_uri.clone(),
         &*format!("{}{}", node_uri_prefix, "0"),
-        "shoppingCart",
+        "shopping_cart",
     );
 
     let (map_downlink, _) = client
@@ -43,7 +43,7 @@ async fn main() {
         .await
         .expect("Failed to send message!");
 
-    delay_for(Duration::from_secs(2)).await;
+    task::sleep(Duration::from_secs(2)).await;
 
     drop(_dl_topic);
     drop(dl_sink);
@@ -54,7 +54,7 @@ async fn main() {
         let path = AbsolutePath::new(
             host_uri.clone(),
             &*format!("{}{}", node_uri_prefix, (i % 3).to_string()),
-            "addItem",
+            "add_item",
         );
 
         client
@@ -70,5 +70,5 @@ async fn main() {
     }
 
     println!("Stopping client in 2 seconds");
-    delay_for(Duration::from_secs(2)).await;
+    task::sleep(Duration::from_secs(2)).await;
 }
