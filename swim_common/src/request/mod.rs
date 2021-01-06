@@ -12,13 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#![allow(clippy::result_unit_err)]
-
 use std::fmt::Debug;
 use tokio::sync::oneshot;
 use tracing::{event, Level};
 
 pub mod request_future;
+
+/// An error produced when the message could not be sent.
+pub struct RequestErr;
 
 /// An asynchronous request for an agent to provide a value.
 #[derive(Debug)]
@@ -26,7 +27,7 @@ pub struct Request<T> {
     satisfy: oneshot::Sender<T>,
 }
 
-/// An asycnhronous request for an agent to provide a value or fail.
+/// An asynchronous request for an agent to provide a value or fail.
 pub type TryRequest<T, E> = Request<Result<T, E>>;
 
 impl<T> Request<T> {
@@ -34,10 +35,10 @@ impl<T> Request<T> {
         Request { satisfy: sender }
     }
 
-    pub fn send(self, data: T) -> Result<(), ()> {
+    pub fn send(self, data: T) -> Result<(), RequestErr> {
         match self.satisfy.send(data) {
             Ok(_) => Ok(()),
-            Err(_) => Err(()),
+            Err(_) => Err(RequestErr),
         }
     }
 
@@ -55,7 +56,7 @@ impl<T> Request<T> {
 }
 
 impl<T, E> Request<Result<T, E>> {
-    pub fn send_ok(self, data: T) -> Result<(), ()> {
+    pub fn send_ok(self, data: T) -> Result<(), RequestErr> {
         self.send(Ok(data))
     }
 
@@ -67,7 +68,7 @@ impl<T, E> Request<Result<T, E>> {
         self.send_warn(Ok(data), message)
     }
 
-    pub fn send_err(self, err: E) -> Result<(), ()> {
+    pub fn send_err(self, err: E) -> Result<(), RequestErr> {
         self.send(Err(err))
     }
 
