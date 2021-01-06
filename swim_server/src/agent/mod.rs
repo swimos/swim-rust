@@ -29,7 +29,8 @@ use crate::agent::lane::channels::update::StmRetryStrategy;
 use crate::agent::lane::channels::uplink::spawn::{SpawnerUplinkFactory, UplinkErrorReport};
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lane::lifecycle::{
-    ActionLaneLifecycle, DemandLaneLifecycle, DemandMapLaneLifecycle, StatefulLaneLifecycle,
+    ActionLaneLifecycle, CommandLaneLifecycle, DemandLaneLifecycle, DemandMapLaneLifecycle,
+    StatefulLaneLifecycle,
 };
 use crate::agent::lane::model;
 use crate::agent::lane::model::action::{Action, ActionLane, CommandLane};
@@ -569,9 +570,16 @@ where
     }
 }
 
+pub enum FeedbackMode {
+    // Sends uplink responses only to the original sender.
+    SenderOnly,
+    // Broadcasts uplink responses to all subscribers.
+    Broadcast,
+}
+
 pub struct ActionLaneIo<Command, Response> {
     lane: ActionLane<Command, Response>,
-    feedback: bool,
+    feedback_mode: Option<FeedbackMode>,
 }
 
 impl<Command, Response> ActionLaneIo<Command, Response>
@@ -582,14 +590,14 @@ where
     pub fn new_action(lane: ActionLane<Command, Response>) -> Self {
         ActionLaneIo {
             lane,
-            feedback: true,
+            feedback_mode: Some(FeedbackMode::SenderOnly),
         }
     }
 
     pub fn new_command(lane: ActionLane<Command, Response>) -> Self {
         ActionLaneIo {
             lane,
-            feedback: false,
+            feedback_mode: Some(FeedbackMode::Broadcast),
         }
     }
 }
@@ -607,10 +615,18 @@ where
         config: AgentExecutionConfig,
         context: Context,
     ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
-        let ActionLaneIo { lane, feedback } = self;
+        let ActionLaneIo {
+            lane,
+            feedback_mode,
+        } = self;
 
         Ok(lane::channels::task::run_action_lane_io(
-            lane, feedback, envelopes, config, context, route,
+            lane,
+            feedback_mode,
+            envelopes,
+            config,
+            context,
+            route,
         )
         .boxed())
     }
@@ -903,9 +919,9 @@ impl<Agent, Context, Command, L, S, P> LaneTasks<Agent, Context> for CommandLife
 where
     Agent: 'static,
     Context: AgentContext<Agent> + Send + Sync + 'static,
-    S: Stream<Item = Action<Command, ()>> + Send + Sync + 'static,
-    Command: Any + Send + Sync + Debug,
-    L: for<'l> ActionLaneLifecycle<'l, Command, (), Agent>,
+    S: Stream<Item = Action<Command, Command>> + Send + Sync + 'static,
+    Command: Any + Send + Sync + Debug + Clone,
+    L: for<'l> CommandLaneLifecycle<'l, Command, Agent>,
     P: Fn(&Agent) -> &CommandLane<Command> + Send + Sync + 'static,
 {
     fn start<'a>(&'a self, _context: &'a Context) -> BoxFuture<'a, ()> {
@@ -926,11 +942,11 @@ where
             while let Some(Action { command, responder }) = events.next().await {
                 event!(Level::TRACE, COMMANDED, ?command);
                 lifecycle
-                    .on_command(command, &model, &context)
+                    .on_command(command.clone(), &model, &context)
                     .instrument(span!(Level::TRACE, ON_COMMAND))
                     .await;
                 if let Some(tx) = responder {
-                    if tx.send(()).is_err() {
+                    if tx.send(command).is_err() {
                         event!(Level::WARN, RESPONSE_IGNORED);
                     }
                 }
@@ -1009,8 +1025,8 @@ pub fn make_command_lane<Agent, Context, Command, L>(
 where
     Agent: 'static,
     Context: AgentContext<Agent> + AgentExecutionContext + Send + Sync + 'static,
-    Command: Any + Send + Sync + Form + Debug,
-    L: for<'l> ActionLaneLifecycle<'l, Command, (), Agent>,
+    Command: Any + Send + Sync + Form + Debug + Clone,
+    L: for<'l> CommandLaneLifecycle<'l, Command, Agent>,
 {
     let (lane, event_stream) = model::action::make_lane_model(buffer_size);
 

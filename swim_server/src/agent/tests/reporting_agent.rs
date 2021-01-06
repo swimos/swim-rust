@@ -16,7 +16,7 @@ use crate::agent;
 use crate::agent::context::AgentExecutionContext;
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lane::lifecycle::{
-    ActionLaneLifecycle, DemandLaneLifecycle, DemandMapLaneLifecycle, StatefulLaneLifecycle,
+    CommandLaneLifecycle, DemandLaneLifecycle, DemandMapLaneLifecycle, StatefulLaneLifecycle,
     StatefulLaneLifecycleBase,
 };
 use crate::agent::lane::model::action::CommandLane;
@@ -213,7 +213,7 @@ impl AgentLifecycle<ReportingAgent> for ReportingAgentLifecycle {
     }
 }
 
-impl<'a> ActionLaneLifecycle<'a, String, (), ReportingAgent> for ActionLifecycle {
+impl<'a> CommandLaneLifecycle<'a, String, ReportingAgent> for ActionLifecycle {
     type ResponseFuture = BoxFuture<'a, ()>;
 
     fn on_command<C>(

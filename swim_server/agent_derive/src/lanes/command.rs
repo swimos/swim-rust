@@ -68,12 +68,12 @@ pub fn derive_command_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput
             tracing::event!(tracing::Level::TRACE, commanded = swim_server::agent::COMMANDED, ?command);
 
             tracing_futures::Instrument::instrument(
-                lifecycle.#on_command_func(command, &model, &context),
+                lifecycle.#on_command_func(command.clone(), &model, &context),
                 tracing::span!(tracing::Level::TRACE, swim_server::agent::ON_COMMAND)
             ).await;
 
             if let Some(tx) = responder {
-                if tx.send(()).is_err() {
+                if tx.send(command).is_err() {
                     tracing::event!(tracing::Level::WARN, response_ingored = swim_server::agent::RESPONSE_IGNORED);
                 }
             }
@@ -87,7 +87,7 @@ pub fn derive_command_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput
         agent_name,
         input_ast,
         quote!(swim_server::agent::lane::model::action::CommandLane<#command_type>),
-        quote!(swim_server::agent::lane::model::action::Action<#command_type, ()>),
+        quote!(swim_server::agent::lane::model::action::Action<#command_type, #command_type>),
         None,
         on_event,
         quote! {

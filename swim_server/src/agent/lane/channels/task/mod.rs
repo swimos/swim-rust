@@ -30,7 +30,7 @@ use crate::agent::lane::model::action::ActionLane;
 use crate::agent::lane::model::demand_map::{DemandMapLane, DemandMapLaneUpdate};
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::ValueLane;
-use crate::agent::Eff;
+use crate::agent::{Eff, FeedbackMode};
 use crate::routing::{RoutingAddr, TaggedClientEnvelope};
 use either::Either;
 use futures::future::{join, join3, ready, BoxFuture};
@@ -432,7 +432,7 @@ async fn send_action(
 /// * `route` - The route to this lane for outgoing envelope labelling.
 pub async fn run_action_lane_io<Command, Response>(
     lane: ActionLane<Command, Response>,
-    feedback: bool,
+    feedback_mode: Option<FeedbackMode>,
     envelopes: impl Stream<Item = TaggedClientEnvelope>,
     config: AgentExecutionConfig,
     context: impl AgentExecutionContext,
@@ -451,10 +451,17 @@ where
 
     let yield_after = config.yield_after.get();
 
-    if feedback {
+    if let Some(mode) = feedback_mode {
         let (feedback_tx, feedback_rx) = mpsc::channel(config.feedback_buffer.get());
-        let feedback_rx =
-            feedback_rx.map(|(addr, item)| AddressedUplinkMessage::addressed(item, addr));
+
+        let feedback_map = match mode {
+            FeedbackMode::SenderOnly => {
+                |(address, message)| AddressedUplinkMessage::Addressed { message, address }
+            }
+            FeedbackMode::Broadcast => |(_, message)| AddressedUplinkMessage::Broadcast(message),
+        };
+
+        let feedback_rx = feedback_rx.map(feedback_map);
         let (uplink_tx, uplink_rx) = mpsc::channel(config.action_buffer.get());
         let (err_tx, err_rx) = mpsc::channel(config.uplink_err_buffer.get());
 

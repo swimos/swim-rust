@@ -20,7 +20,7 @@ pub(crate) mod test_clock;
 
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lane::lifecycle::{
-    ActionLaneLifecycle, StatefulLaneLifecycle, StatefulLaneLifecycleBase,
+    ActionLaneLifecycle, CommandLaneLifecycle, StatefulLaneLifecycle, StatefulLaneLifecycleBase,
 };
 use crate::agent::lane::model::action::{Action, ActionLane, CommandLane};
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
@@ -223,7 +223,7 @@ impl<'a> ActionLaneLifecycle<'a, String, usize, TestAgent<ActionLane<String, usi
     }
 }
 
-impl<'a> ActionLaneLifecycle<'a, String, (), TestAgent<CommandLane<String>>>
+impl<'a> CommandLaneLifecycle<'a, String, TestAgent<CommandLane<String>>>
     for TestLifecycle<CommandLane<String>>
 {
     type ResponseFuture = BoxFuture<'a, ()>;

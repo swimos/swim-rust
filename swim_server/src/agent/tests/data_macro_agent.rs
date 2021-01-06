@@ -133,7 +133,7 @@ struct DataAgentLifecycle {
 
 enum DataAgentCommander {
     ActionLaneCommander(Commander<String, i32>),
-    CommandLaneCommander(Commander<String, ()>),
+    CommandLaneCommander(Commander<String, String>),
 }
 
 impl DataAgentCommander {

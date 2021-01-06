@@ -149,8 +149,8 @@ impl<Command, Response> LaneModel for ActionLane<Command, Response> {
     }
 }
 
-/// An action lane model that produces no response.
-pub type CommandLane<Command> = ActionLane<Command, ()>;
+/// An action lane model that broadcasts events to all subscribers.
+pub type CommandLane<Command> = ActionLane<Command, Command>;
 
 struct TypeOf<T: ?Sized>(PhantomData<T>);
 
