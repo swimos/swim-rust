@@ -97,3 +97,59 @@ where
     )
     .await
 }
+
+pub mod example {
+    use either::Either;
+    use futures::stream::unfold;
+    use futures::{Stream, StreamExt};
+
+    pub enum Peeled<'a, S, T> {
+        Value(T),
+        Completed(&'a mut S),
+    }
+
+    pub fn peel<S>(n: usize, str: &mut S) -> impl Stream<Item = Peeled<S, S::Item>>
+    where
+        S: Stream + Unpin,
+    {
+        unfold((n, Some(str)), |(n, maybe_str)| async move {
+            match maybe_str {
+                Some(str) => {
+                    if n == 0 {
+                        Some((Peeled::Completed(str), (n, None)))
+                    } else {
+                        match str.next().await {
+                            Some(v) => Some((Peeled::Value(v), (n - 1, Some(str)))),
+                            _ => Some((Peeled::Completed(str), (n - 1, None))),
+                        }
+                    }
+                }
+                _ => None,
+            }
+        })
+    }
+
+    pub fn borrower<'a, S, F, S2, T>(str: &'a mut S, f: &'a F) -> impl Stream<Item = Option<T>> + 'a
+    where
+        S: Stream + Unpin,
+        F: Fn(S::Item) -> Either<S2, T> + 'a,
+        S2: Stream<Item = Peeled<'a, S, T>> + 'a + Unpin,
+    {
+        let state: Either<&'a mut S, S2> = Either::Left(str);
+
+        unfold(state, move |state| async move {
+            match state {
+                Either::Left(str) => match str.next().await.map(f) {
+                    Some(Either::Left(str2)) => Some((None, Either::Right(str2))),
+                    Some(Either::Right(v)) => Some((Some(v), Either::Left(str))),
+                    _ => None,
+                },
+                Either::Right(mut str) => match str.next().await {
+                    Some(Peeled::Value(v)) => Some((Some(v), Either::Right(str))),
+                    Some(Peeled::Completed(str1)) => Some((None, Either::Left(str1))),
+                    _ => None,
+                },
+            }
+        })
+    }
+}

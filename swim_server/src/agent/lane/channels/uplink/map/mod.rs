@@ -17,9 +17,9 @@ mod tests;
 
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use either::Either;
+use futures::future::ready;
 use futures::stream::{unfold, FusedStream, FuturesUnordered};
-use futures::{select_biased, FutureExt, StreamExt};
-use futures::{Stream, TryFutureExt};
+use futures::{select_biased, FutureExt, Stream, StreamExt, TryFutureExt};
 use im::OrdMap;
 use std::any::Any;
 use std::collections::HashMap;
@@ -32,6 +32,7 @@ use stm::var::TVar;
 use swim_common::form::{Form, FormErr};
 use swim_common::model::Value;
 
+use crate::agent::lane::channels::uplink::PeelResult;
 use tracing::{event, span, Level};
 use tracing_futures::Instrument;
 use utilities::sync::trigger;
@@ -73,7 +74,7 @@ enum MapLaneSyncState<R, CF, GF> {
     Complete,
 }
 
-type UnfoldResult<'a, R, Ev, State> = Option<(R, (&'a mut Ev, State))>;
+type UnfoldResult<'a, R, Ev, State> = Option<(PeelResult<'a, Ev, R>, (Option<&'a mut Ev>, State))>;
 
 impl<R, CF, GF> MapLaneSyncState<R, CF, GF> {
     //Create a return value for the unfold function causing the stream to yield a map event.
@@ -82,7 +83,7 @@ impl<R, CF, GF> MapLaneSyncState<R, CF, GF> {
         events: &mut Ev,
         event: MapLaneEvent<K, V>,
     ) -> UnfoldResult<EventResult<K, V>, Ev, Self> {
-        Some((Ok(event), (events, self)))
+        Some((PeelResult::Output(Ok(event)), (Some(events), self)))
     }
 
     // Create a return value for an unfold function causing the stream to terminate with an error.
@@ -91,7 +92,7 @@ impl<R, CF, GF> MapLaneSyncState<R, CF, GF> {
         events: &mut Ev,
         error: MapLaneSyncError,
     ) -> UnfoldResult<EventResult<K, V>, Ev, Self> {
-        Some((Err(error), (events, self)))
+        Some((PeelResult::Output(Err(error)), (Some(events), self)))
     }
 }
 
@@ -218,129 +219,154 @@ where
     Events: FusedStream<Item = MapLaneEvent<K, V>> + Send + Unpin,
     Retries: RetryManager + Send + 'static,
 {
-    let init = (events, MapLaneSyncState::Init(retry));
+    StreamExt::filter_map(sync_map_lane_peel(id, lane, events, retry), |r| {
+        ready(r.output())
+    })
+}
 
-    unfold(init, move |(events, mut state)| async move {
-        'outer: loop {
-            state = match state {
-                MapLaneSyncState::Init(retries) => {
-                    MapLaneSyncState::Checkpointing(Box::pin(initialize(id, lane, retries).fuse()))
-                }
-                MapLaneSyncState::Checkpointing(mut chk_fut) => {
-                    let event_or_cp = select_biased! {
+/// An alternative form of [`sync_map_lane`] that takes ownership of the reference to the underlying
+/// update stream and returns it before the stream terminates. This allows the synchronization stream
+/// to be used in places where it must persist outside of the scope of a function owning the reference
+/// (which would be disallowed by the borrow checker with the basic version of the function).
+pub fn sync_map_lane_peel<'a, K, V, Events, Retries>(
+    id: u64,
+    lane: &'a MapLane<K, V>,
+    events: &'a mut Events,
+    retry: Retries,
+) -> impl Stream<Item = PeelResult<'a, Events, EventResult<K, V>>> + 'a
+where
+    K: Form + Send + Sync + Debug + 'static,
+    V: Any + Send + Sync,
+    Events: FusedStream<Item = MapLaneEvent<K, V>> + Send + Unpin,
+    Retries: RetryManager + Send + 'static,
+{
+    let init = (Some(events), MapLaneSyncState::Init(retry));
+
+    unfold(init, move |(maybe_events, mut state)| async move {
+        if let Some(events) = maybe_events {
+            'outer: loop {
+                state = match state {
+                    MapLaneSyncState::Init(retries) => {
+                        MapLaneSyncState::Checkpointing(Box::pin(initialize(id, lane, retries).fuse()))
+                    }
+                    MapLaneSyncState::Checkpointing(mut chk_fut) => {
+                        let event_or_cp = select_biased! {
                         maybe_event = events.next() => Either::Left(maybe_event),
                         cp = &mut chk_fut => Either::Right(cp),
                     };
-                    match event_or_cp {
-                        Either::Left(Some(MapLaneEvent::Checkpoint(cp_id))) if cp_id == id => {
-                            event!(Level::TRACE, message = OBSERVED_CHECKPOINT, id = cp_id);
-                            match chk_fut.await {
-                                Ok(cp) => {
-                                    event!(Level::TRACE, message = OBTAINED_CHECKPOINT, id, checkpoint = ?cp);
-                                    from_checkpoint(true, cp)
-                                }
-                                Err(error) => {
-                                    event!(Level::ERROR, message = CHECKPOINT_FAILED, id, ?error);
-                                    break MapLaneSyncState::Complete.yield_error(events, error);
+                        match event_or_cp {
+                            Either::Left(Some(MapLaneEvent::Checkpoint(cp_id))) if cp_id == id => {
+                                event!(Level::TRACE, message = OBSERVED_CHECKPOINT, id = cp_id);
+                                match chk_fut.await {
+                                    Ok(cp) => {
+                                        event!(Level::TRACE, message = OBTAINED_CHECKPOINT, id, checkpoint = ?cp);
+                                        from_checkpoint(true, cp)
+                                    }
+                                    Err(error) => {
+                                        event!(Level::ERROR, message = CHECKPOINT_FAILED, id, ?error);
+                                        break MapLaneSyncState::Complete.yield_error(events, error);
+                                    }
                                 }
                             }
-                        }
-                        Either::Left(Some(ev)) => {
-                            break MapLaneSyncState::Checkpointing(chk_fut).yield_event(events, ev);
-                        }
-                        Either::Left(_) => {
-                            //No more events.
-                            event!(Level::WARN, message = LANE_STOPPED, id);
-                            break None;
-                        }
-                        Either::Right(Ok(cp)) => {
-                            event!(Level::TRACE, message = OBTAINED_CHECKPOINT, id, checkpoint = ?cp);
-                            from_checkpoint(false, cp)
-                        }
-                        Either::Right(Err(error)) => {
-                            event!(Level::ERROR, message = CHECKPOINT_FAILED, id, ?error);
-                            break MapLaneSyncState::Complete.yield_error(events, error);
-                        }
-                    }
-                }
-                MapLaneSyncState::Awaiting {
-                    seen_marker: false,
-                    pending,
-                    cancellers,
-                } => match events.next().await {
-                    Some(MapLaneEvent::Checkpoint(cp_id)) if cp_id == id => {
-                        event!(Level::TRACE, message = OBSERVED_CHECKPOINT, id = cp_id);
-                        MapLaneSyncState::Awaiting {
-                            seen_marker: true,
-                            pending,
-                            cancellers,
+                            Either::Left(Some(ev)) => {
+                                break MapLaneSyncState::Checkpointing(chk_fut).yield_event(events, ev);
+                            }
+                            Either::Left(_) => {
+                                //No more events.
+                                event!(Level::WARN, message = LANE_STOPPED, id);
+                                break Some((PeelResult::Complete(events), (None, MapLaneSyncState::Complete)));
+                            }
+                            Either::Right(Ok(cp)) => {
+                                event!(Level::TRACE, message = OBTAINED_CHECKPOINT, id, checkpoint = ?cp);
+                                from_checkpoint(false, cp)
+                            }
+                            Either::Right(Err(error)) => {
+                                event!(Level::ERROR, message = CHECKPOINT_FAILED, id, ?error);
+                                break MapLaneSyncState::Complete.yield_error(events, error);
+                            }
                         }
                     }
-                    Some(event) => {
-                        let new_state = MapLaneSyncState::Awaiting {
-                            seen_marker: false,
-                            pending,
-                            cancellers,
-                        };
-                        break 'outer new_state.yield_event(events, event);
-                    }
-                    _ => {
-                        event!(Level::WARN, message = LANE_STOPPED, id);
-                        break 'outer None;
-                    }
-                },
-                MapLaneSyncState::Awaiting {
-                    mut pending,
-                    mut cancellers,
-                    ..
-                } => loop {
-                    let next = select_biased! {
-                        maybe_loaded = pending.next() => Either::Right(maybe_loaded),
-                        maybe_event = events.next() => Either::Left(maybe_event),
-                    };
-                    match next {
-                        Either::Left(Some(event)) => {
-                            handle_event(&event, &mut cancellers);
-                            let new_state = if cancellers.is_empty() {
-                                event!(Level::TRACE, message = SYNC_COMPLETE, id);
-                                MapLaneSyncState::Complete
-                            } else {
-                                MapLaneSyncState::Awaiting {
-                                    seen_marker: true,
-                                    pending,
-                                    cancellers,
-                                }
+                    MapLaneSyncState::Awaiting {
+                        seen_marker: false,
+                        pending,
+                        cancellers,
+                    } => match events.next().await {
+                        Some(MapLaneEvent::Checkpoint(cp_id)) if cp_id == id => {
+                            event!(Level::TRACE, message = OBSERVED_CHECKPOINT, id = cp_id);
+                            MapLaneSyncState::Awaiting {
+                                seen_marker: true,
+                                pending,
+                                cancellers,
+                            }
+                        }
+                        Some(event) => {
+                            let new_state = MapLaneSyncState::Awaiting {
+                                seen_marker: false,
+                                pending,
+                                cancellers,
                             };
                             break 'outer new_state.yield_event(events, event);
                         }
-                        Either::Right(Some(Some((key, value)))) => {
-                            cancellers.remove(&key);
-                            let result = match Form::try_convert(key) {
-                                Ok(typed_key) => {
-                                    let event = MapLaneEvent::Update(typed_key, value);
-                                    let new_state = MapLaneSyncState::Awaiting {
+                        _ => {
+                            event!(Level::WARN, message = LANE_STOPPED, id);
+                            break 'outer Some((PeelResult::Complete(events), (None, MapLaneSyncState::Complete)));
+                        }
+                    },
+                    MapLaneSyncState::Awaiting {
+                        mut pending,
+                        mut cancellers,
+                        ..
+                    } => loop {
+                        let next = select_biased! {
+                        maybe_loaded = pending.next() => Either::Right(maybe_loaded),
+                        maybe_event = events.next() => Either::Left(maybe_event),
+                    };
+                        match next {
+                            Either::Left(Some(event)) => {
+                                handle_event(&event, &mut cancellers);
+                                let new_state = if cancellers.is_empty() {
+                                    event!(Level::TRACE, message = SYNC_COMPLETE, id);
+                                    MapLaneSyncState::Complete
+                                } else {
+                                    MapLaneSyncState::Awaiting {
                                         seen_marker: true,
                                         pending,
                                         cancellers,
-                                    };
-                                    new_state.yield_event(events, event)
-                                }
-                                Err(err) => MapLaneSyncState::Complete
-                                    .yield_error(events, MapLaneSyncError::InconsistentForm(err)),
-                            };
-                            break 'outer result;
+                                    }
+                                };
+                                break 'outer new_state.yield_event(events, event);
+                            }
+                            Either::Right(Some(Some((key, value)))) => {
+                                cancellers.remove(&key);
+                                let result = match Form::try_convert(key) {
+                                    Ok(typed_key) => {
+                                        let event = MapLaneEvent::Update(typed_key, value);
+                                        let new_state = MapLaneSyncState::Awaiting {
+                                            seen_marker: true,
+                                            pending,
+                                            cancellers,
+                                        };
+                                        new_state.yield_event(events, event)
+                                    }
+                                    Err(err) => MapLaneSyncState::Complete
+                                        .yield_error(events, MapLaneSyncError::InconsistentForm(err)),
+                                };
+                                break 'outer result;
+                            }
+                            Either::Left(None) | Either::Right(None) => {
+                                event!(Level::WARN, message = LANE_STOPPED, id);
+                                break 'outer Some((PeelResult::Complete(events), (None, MapLaneSyncState::Complete)));
+                            }
+                            _ => {}
                         }
-                        Either::Left(None) | Either::Right(None) => {
-                            event!(Level::WARN, message = LANE_STOPPED, id);
-                            break 'outer None;
-                        }
-                        _ => {}
+                    },
+                    MapLaneSyncState::Complete => {
+                        break Some((PeelResult::Complete(events), (None, MapLaneSyncState::Complete)));
                     }
-                },
-                MapLaneSyncState::Complete => {
-                    break None;
                 }
             }
+        } else {
+            None
         }
     }).boxed()
 }

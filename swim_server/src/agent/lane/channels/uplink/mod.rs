@@ -395,6 +395,24 @@ where
     }
 }
 
+/// Item type for streams that peel values from another stream (by reference), returning the
+/// reference to the undelying stream before terminating.
+pub enum PeelResult<'a, U, T> {
+    /// An output peeled from the underlying stream.
+    Output(T),
+    /// Returning the underlying stream (the stream should return None after this).
+    Complete(&'a mut U),
+}
+
+impl<'a, U, T> PeelResult<'a, U, T> {
+    fn output(self) -> Option<T> {
+        match self {
+            PeelResult::Output(v) => Some(v),
+            _ => None,
+        }
+    }
+}
+
 /// Trait encoding the differences in uplink behaviour for different kinds of lanes.
 pub trait UplinkStateMachine<Event> {
     type Msg: Any + Send + Sync + Debug;
