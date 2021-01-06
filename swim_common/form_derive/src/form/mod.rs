@@ -43,16 +43,13 @@ pub fn build_derive_form(input: DeriveInput) -> Result<proc_macro2::TokenStream,
             parse_quote! {
                 match #value {
                     swim_common::model::Value::Record(attrs, ref items) if items.len() == 1 => {
-                        match items.first() {
-                            Some(swim_common::model::Item::ValueItem(item)) => {
+                        match &items[0] {
+                            swim_common::model::Item::ValueItem(ref item) => {
                                 swim_common::form::Form::try_from_value(item)
                             }
-                            Some(swim_common::model::Item::Slot(key, value)) => {
+                            swim_common::model::Item::Slot(key, value) => {
                                 // Form isn't implemented for tuples.
                                 return Err(swim_common::form::FormErr::Malformatted);
-                            }
-                            None => {
-                                unreachable!()
                             }
                         }
                     }
