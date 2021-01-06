@@ -157,7 +157,7 @@ impl SwimServer {
     /// ```
     /// use std::net::{SocketAddr, IpAddr, Ipv4Addr};
     /// use swim_server::interface::SwimServer;
-    /// use swim_server::RoutePattern;
+    /// use utilities::route_pattern::RoutePattern;
     /// use swim_server::agent_lifecycle;
     /// use swim_server::agent::SwimAgent;
     /// use swim_server::agent::AgentContext;
