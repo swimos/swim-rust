@@ -50,24 +50,23 @@ mod token_buffer;
 /// assert!(!is_identifier_start('@'));
 ///
 /// ```
-#[allow(clippy::manual_range_contains)]
 pub fn is_identifier_start(c: char) -> bool {
-    c >= 'A' && c <= 'Z'
+    ('A'..='Z').contains(&c)
         || c == '_'
-        || c >= 'a' && c <= 'z'
+        || ('a'..='z').contains(&c)
         || c == '\u{b7}'
-        || c >= '\u{c0}' && c <= '\u{d6}'
-        || c >= '\u{d8}' && c <= '\u{f6}'
-        || c >= '\u{f8}' && c <= '\u{37d}'
-        || c >= '\u{37f}' && c <= '\u{1fff}'
-        || c >= '\u{200c}' && c <= '\u{200d}'
-        || c >= '\u{203f}' && c <= '\u{2040}'
-        || c >= '\u{2070}' && c <= '\u{218f}'
-        || c >= '\u{2c00}' && c <= '\u{2fef}'
-        || c >= '\u{3001}' && c <= '\u{d7ff}'
-        || c >= '\u{f900}' && c <= '\u{fdcf}'
-        || c >= '\u{fdf0}' && c <= '\u{fffd}'
-        || c >= '\u{10000}' && c <= '\u{effff}'
+        || ('\u{c0}'..='\u{d6}').contains(&c)
+        || ('\u{d8}'..='\u{f6}').contains(&c)
+        || ('\u{f8}'..='\u{37d}').contains(&c)
+        || ('\u{37f}'..='\u{1fff}').contains(&c)
+        || ('\u{200c}'..='\u{200d}').contains(&c)
+        || ('\u{203f}'..='\u{2040}').contains(&c)
+        || ('\u{2070}'..='\u{218f}').contains(&c)
+        || ('\u{2c00}'..='\u{2fef}').contains(&c)
+        || ('\u{3001}'..='\u{d7ff}').contains(&c)
+        || ('\u{f900}'..='\u{fdcf}').contains(&c)
+        || ('\u{fdf0}'..='\u{fffd}').contains(&c)
+        || ('\u{10000}'..='\u{effff}').contains(&c)
 }
 
 /// Determine if a character is valid after the start of an identifier.
