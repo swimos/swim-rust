@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use proc_macro2::Ident;
-use syn::export::TokenStream2;
+use proc_macro2::TokenStream as TokenStream2;
 use syn::spanned::Spanned;
 use syn::{Data, DeriveInput};
 
