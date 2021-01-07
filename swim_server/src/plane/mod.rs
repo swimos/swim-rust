@@ -151,7 +151,7 @@ impl PlaneActiveRoutes {
         local_endpoints.insert(addr, endpoint);
     }
 
-    fn routes<'a>(&'a self) -> impl Iterator<Item = &'a RelativeUri> + 'a {
+    fn routes(&self) -> impl Iterator<Item = &RelativeUri> {
         self.local_routes.keys()
     }
 
@@ -213,10 +213,10 @@ impl ContextImpl {
 }
 
 impl PlaneContext for ContextImpl {
-    fn get_agent_ref<'a>(
-        &'a mut self,
+    fn get_agent_ref(
+        &mut self,
         route: RelativeUri,
-    ) -> BoxFuture<'a, Result<Arc<dyn Any + Send + Sync>, NoAgentAtRoute>> {
+    ) -> BoxFuture<'_, Result<Arc<dyn Any + Send + Sync>, NoAgentAtRoute>> {
         let (tx, rx) = oneshot::channel();
         async move {
             if self

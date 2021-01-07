@@ -35,6 +35,7 @@ pub enum Protocol {
 
 impl PartialEq for Protocol {
     fn eq(&self, other: &Self) -> bool {
+        #[allow(clippy::match_like_matches_macro)]
         match (self, other) {
             (Protocol::PlainText, Protocol::PlainText) => true,
             #[cfg(feature = "tls")]
