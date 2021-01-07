@@ -138,7 +138,7 @@ impl<T> ExecResult<T> {
 /// the instance and will mean that execution will involve dynamic dispatch and some allocation
 /// optimizations will not be possible. However, it may be preferable to using nested [`StmEither`]s
 /// where branches have many different types.
-pub type BoxStm<R> = Box<dyn DynamicStm<Result = R, TransFuture = BoxedTransactionFuture<R>>>;
+pub struct DynStm<R>(Box<dyn DynamicStm<Result = R, TransFuture = BoxedTransactionFuture<R>>>);
 
 /// Minimum required contract for executing an [`Stm`] instance through a dyn reference.
 pub trait DynamicStm: Send + Sync + private::Sealed {
@@ -219,11 +219,11 @@ pub trait Stm: DynamicStm {
 
     /// Box this instance, hiding its concrete type and forcing it to be executed by dynamic
     /// dispatch.
-    fn boxed(self) -> BoxStm<Self::Result>
+    fn boxed(self) -> DynStm<Self::Result>
     where
         Self: Sized + 'static,
     {
-        Box::new(BoxedStm(self))
+        DynStm(Box::new(BoxedStm(self)))
     }
 }
 
@@ -646,7 +646,17 @@ where
     }
 }
 
-impl<R> Stm for dyn DynamicStm<Result = R, TransFuture = BoxedTransactionFuture<R>> {
+impl<R: Send + Sync> DynamicStm for DynStm<R> {
+    type Result = R;
+    type TransFuture = BoxedTransactionFuture<R>;
+
+    fn runner(&self) -> Self::TransFuture {
+        let DynStm(inner) = self;
+        (**inner).runner()
+    }
+}
+
+impl<R: Send + Sync> Stm for DynStm<R> {
     fn required_stack() -> Option<usize> {
         None
     }
@@ -705,7 +715,8 @@ mod private {
     use super::Retry;
     use crate::local::{TLocalRead, TLocalWrite};
     use crate::stm::{
-        Abort, AndThen, BoxedStm, Catch, Choice, Constant, MapStm, Sequence, StmEither, VecStm,
+        Abort, AndThen, BoxedStm, Catch, Choice, Constant, DynStm, MapStm, Sequence, StmEither,
+        VecStm,
     };
     use crate::var::{TVarRead, TVarWrite};
     use std::ops::Deref;
@@ -733,4 +744,5 @@ mod private {
         SRef::Target: Sealed,
     {
     }
+    impl<R> Sealed for DynStm<R> {}
 }

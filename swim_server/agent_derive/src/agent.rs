@@ -17,9 +17,9 @@ use crate::utils::{get_task_struct_name, validate_input_ast, InputAstType};
 use darling::{ast, FromDeriveInput, FromField, FromMeta};
 use macro_helpers::{as_const, string_to_ident};
 use proc_macro::TokenStream;
+use proc_macro2::TokenStream as TokenStream2;
 use proc_macro2::{Delimiter, Group, Ident, Literal, Span};
 use quote::{quote, ToTokens};
-use syn::export::TokenStream2;
 use syn::{AttributeArgs, DeriveInput, Path, Type, TypePath};
 
 type AgentName = Ident;
