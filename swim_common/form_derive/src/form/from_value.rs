@@ -348,9 +348,53 @@ fn parse_elements(
                 }
                 FieldKind::Body => {
                     let fn_call = if into {
-                        fn_factory(quote!(rec))
+                        quote! {
+                            match rec {
+                                swim_common::model::Value::Record(attrs, mut items) if items.len() == 1 => {
+                                    if attrs.len() > 0 {
+                                        return Err(swim_common::form::FormErr::Malformatted);
+                                    }
+
+                                    match items.pop() {
+                                        Some(swim_common::model::Item::ValueItem(value)) => {
+                                            swim_common::form::Form::try_convert(value)
+                                        }
+                                        _ => {
+                                            return Err(swim_common::form::FormErr::Malformatted);
+                                        }
+                                    }
+                                }
+                                // The target type _may_ be a Value instance
+                                value @ swim_common::model::Value::Record(_, _) => {
+                                    swim_common::form::Form::try_convert(value)
+                                }
+                                value => swim_common::form::Form::try_convert(value)
+                            }
+                        }
                     } else {
-                        fn_factory(quote!(&rec))
+                        quote! {
+                            match &rec {
+                                swim_common::model::Value::Record(attrs, ref items) if items.len() == 1 => {
+                                    if attrs.len() > 0 {
+                                        return Err(swim_common::form::FormErr::Malformatted);
+                                    }
+
+                                    match &items.as_slice() {
+                                        &[swim_common::model::Item::ValueItem(item)] => {
+                                            swim_common::form::Form::try_from_value(item)
+                                        }
+                                        _ => {
+                                            return Err(swim_common::form::FormErr::Malformatted);
+                                        }
+                                    }
+                                }
+                                // The target type _may_ be a Value instance
+                                value @ swim_common::model::Value::Record(_, _) => {
+                                    swim_common::form::Form::try_from_value(value)
+                                }
+                                value => swim_common::form::Form::try_from_value(value)
+                            }
+                        }
                     };
 
                     items = quote! {

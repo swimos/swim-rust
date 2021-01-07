@@ -39,54 +39,14 @@ pub fn build_derive_form(input: DeriveInput) -> Result<proc_macro2::TokenStream,
     let from_value_body = from_value(
         &type_contents,
         &structure_name,
-        |value| {
-            parse_quote! {
-                match #value {
-                    swim_common::model::Value::Record(attrs, ref items) => {
-                        if attrs.len() > 0 {
-                            return Err(swim_common::form::FormErr::Malformatted);
-                        }
-
-                        match &items.as_slice() {
-                            &[swim_common::model::Item::ValueItem(item)] => {
-                                swim_common::form::Form::try_from_value(item)
-                            }
-                            _ => {
-                                return Err(swim_common::form::FormErr::Malformatted);
-                            }
-                        }
-                    }
-                    value => swim_common::form::Form::try_from_value(value)
-                }
-            }
-        },
+        |value| parse_quote!(swim_common::form::Form::try_from_value(#value)),
         false,
     );
 
     let try_convert_body = from_value(
         &type_contents,
         &structure_name,
-        |value| {
-            parse_quote! {
-                match #value {
-                    swim_common::model::Value::Record(attrs, mut items) => {
-                        if attrs.len() > 0 {
-                            return Err(swim_common::form::FormErr::Malformatted);
-                        }
-
-                         match (items.len(), items.pop()) {
-                            (1, Some(swim_common::model::Item::ValueItem(value))) => {
-                                swim_common::form::Form::try_convert(value)
-                            }
-                            _ => {
-                                return Err(swim_common::form::FormErr::Malformatted);
-                            }
-                        }
-                    }
-                    value => swim_common::form::Form::try_convert(value)
-                }
-            }
-        },
+        |value| parse_quote!(swim_common::form::Form::try_convert(#value)),
         true,
     );
     let as_value_body = to_value(
