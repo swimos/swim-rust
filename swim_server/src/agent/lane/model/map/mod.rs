@@ -612,9 +612,9 @@ fn compound_map_transaction<'a, S: Stm + 'a, V: Any + Send + Sync>(
 }
 
 //Clears the underlying map state.
-fn clear_lane<'a, V: Any + Send + Sync>(
-    content: &'a TVar<OrdMap<Value, V>>,
-) -> impl Stm<Result = bool> + 'a {
+fn clear_lane<V: Any + Send + Sync>(
+    content: &TVar<OrdMap<Value, V>>,
+) -> impl Stm<Result = bool> + '_ {
     content.get().and_then(move |map| {
         if map.is_empty() {
             left(Constant(false))
@@ -625,11 +625,11 @@ fn clear_lane<'a, V: Any + Send + Sync>(
 }
 
 //Applies an update to the underlying map state.
-fn update_lane<'a, V: Any + Send + Sync>(
-    content: &'a TVar<OrdMap<Value, TVar<V>>>,
+fn update_lane<V: Any + Send + Sync>(
+    content: &TVar<OrdMap<Value, TVar<V>>>,
     key: Value,
     value: Arc<V>,
-) -> impl Stm<Result = ()> + 'a {
+) -> impl Stm<Result = ()> + '_ {
     content.get().and_then(move |map| match map.get(&key) {
         Some(var) => left(var.put_arc(value.clone())),
         _ => {
@@ -641,10 +641,10 @@ fn update_lane<'a, V: Any + Send + Sync>(
 }
 
 //Applies a removal to the underlying map state.
-fn remove_lane<'a, V: Any + Send + Sync>(
-    content: &'a TVar<OrdMap<Value, TVar<V>>>,
+fn remove_lane<V: Any + Send + Sync>(
+    content: &TVar<OrdMap<Value, TVar<V>>>,
     key: Value,
-) -> impl Stm<Result = bool> + 'a {
+) -> impl Stm<Result = bool> + '_ {
     content.get().and_then(move |map| {
         if map.contains_key(&key) {
             let new_map = map.without(&key);

@@ -65,15 +65,15 @@ pub struct TokioTlsNetworking {
 }
 
 impl TokioTlsNetworking {
-    pub fn new<I, A>(_identities: I, resolver: Arc<Resolver>) -> Result<TokioTlsNetworking, ()>
+    pub fn new<I, A>(_identities: I, resolver: Arc<Resolver>) -> TokioTlsNetworking
     where
         I: IntoIterator<Item = (A, Url)>,
         A: AsRef<PathBuf>,
     {
-        Ok(TokioTlsNetworking {
+        TokioTlsNetworking {
             resolver,
             identities: HashMap::new(),
-        })
+        }
     }
 }
 
