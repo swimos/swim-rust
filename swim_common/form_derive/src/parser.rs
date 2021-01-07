@@ -20,7 +20,7 @@ use syn::{Lit, Meta, NestedMeta};
 use macro_helpers::Label;
 use macro_helpers::{Attributes, CompoundTypeKind, Context, StructureKind, Symbol};
 use macro_helpers::{FieldKind, FormField};
-use syn::export::ToTokens;
+use quote::ToTokens;
 
 pub const FORM_PATH: Symbol = Symbol("form");
 pub const HEADER_PATH: Symbol = Symbol("header");

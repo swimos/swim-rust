@@ -17,7 +17,7 @@ use macro_helpers::Label;
 use macro_helpers::{deconstruct_type, CompoundTypeKind};
 use macro_helpers::{EnumRepr, EnumVariant, FieldKind, FormField, StructRepr, TypeContents};
 use proc_macro2::Ident;
-use syn::export::TokenStream2;
+use proc_macro2::TokenStream as TokenStream2;
 
 pub fn to_value(
     type_contents: TypeContents<FormDescriptor, FormField<'_>>,

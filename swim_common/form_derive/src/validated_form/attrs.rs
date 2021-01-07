@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use syn::export::TokenStream2;
+use proc_macro2::TokenStream as TokenStream2;
 
 use crate::parser::FieldManifest;
 use crate::validated_form::vf_parser::{StandardSchema, ValidatedField};
