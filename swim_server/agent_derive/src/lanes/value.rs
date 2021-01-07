@@ -14,7 +14,7 @@
 
 use crate::internals::{default_on_event, default_on_start};
 use crate::lanes::derive_lane;
-use crate::utils::{get_task_struct_name, validate_input_ast, InputAstType};
+use crate::utils::{add_previous_value, get_task_struct_name, validate_input_ast, InputAstType};
 use darling::FromMeta;
 use macro_helpers::string_to_ident;
 use proc_macro::TokenStream;
@@ -31,9 +31,11 @@ struct ValueAttrs {
     on_start: Ident,
     #[darling(default = "default_on_event", map = "string_to_ident")]
     on_event: Ident,
+    #[darling(default)]
+    previous_value: bool,
 }
 
-pub fn derive_value_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput) -> TokenStream {
+pub fn derive_value_lifecycle(attr_args: AttributeArgs, mut input_ast: DeriveInput) -> TokenStream {
     if let Err(error) = validate_input_ast(&input_ast, InputAstType::Lifecycle) {
         return TokenStream::from(quote! {#error});
     }
@@ -57,9 +59,17 @@ pub fn derive_value_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput) 
         let model = projection(context.agent());
         lifecycle.#on_start_func(model, context).boxed()
     };
+
+    let update_previous = if args.previous_value {
+        add_previous_value(&mut input_ast, event_type);
+        quote! {lifecycle.previous_value = event;}
+    } else {
+        quote! {}
+    };
+
     let on_event = quote! {
         let #task_name {
-            lifecycle,
+            mut lifecycle,
             event_stream,
             projection,
             ..
@@ -74,6 +84,7 @@ pub fn derive_value_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput) 
                 lifecycle.#on_event_func(&event, &model, &context),
                 tracing::span!(tracing::Level::TRACE, swim_server::agent::ON_EVENT, ?event)
             ).await;
+            #update_previous
         }
     };
 

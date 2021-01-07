@@ -14,9 +14,11 @@
 
 use core::fmt;
 use proc_macro2::{Ident, Span};
+use quote::quote;
 use quote::quote_spanned;
 use quote::ToTokens;
 use std::fmt::{Display, Formatter};
+use syn::parse::Parser;
 use syn::{Data, DeriveInput};
 
 const SWIM_AGENT: &str = "Swim agent";
@@ -78,5 +80,21 @@ pub fn validate_input_ast(input_ast: &DeriveInput, ty: InputAstType) -> Result<(
                 Ok(())
             }
         }
+    }
+}
+
+pub fn add_previous_value(input_ast: &mut DeriveInput, value_type: &Ident) {
+    match &mut input_ast.data {
+        syn::Data::Struct(ref mut struct_data) => match &mut struct_data.fields {
+            syn::Fields::Named(fields) => {
+                fields.named.push(
+                    syn::Field::parse_named
+                        .parse2(quote! { previous_value: std::sync::Arc<#value_type> })
+                        .unwrap(),
+                );
+            }
+            _ => (),
+        },
+        _ => panic!("`previous_value` has to be used with structs "),
     }
 }
