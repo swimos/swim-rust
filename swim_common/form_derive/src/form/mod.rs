@@ -42,13 +42,16 @@ pub fn build_derive_form(input: DeriveInput) -> Result<proc_macro2::TokenStream,
         |value| {
             parse_quote! {
                 match #value {
-                    swim_common::model::Value::Record(attrs, ref items) if items.len() == 1 => {
-                        match &items[0] {
-                            swim_common::model::Item::ValueItem(ref item) => {
+                    swim_common::model::Value::Record(attrs, ref items) => {
+                        if attrs.len() > 0 {
+                            return Err(swim_common::form::FormErr::Malformatted);
+                        }
+
+                        match &items.as_slice() {
+                            &[swim_common::model::Item::ValueItem(item)] => {
                                 swim_common::form::Form::try_from_value(item)
                             }
-                            swim_common::model::Item::Slot(key, value) => {
-                                // Form isn't implemented for tuples.
+                            _ => {
                                 return Err(swim_common::form::FormErr::Malformatted);
                             }
                         }
@@ -59,23 +62,24 @@ pub fn build_derive_form(input: DeriveInput) -> Result<proc_macro2::TokenStream,
         },
         false,
     );
+
     let try_convert_body = from_value(
         &type_contents,
         &structure_name,
         |value| {
             parse_quote! {
                 match #value {
-                    swim_common::model::Value::Record(attrs, mut items) if items.len() == 1 => {
-                        match items.pop() {
-                            Some(swim_common::model::Item::ValueItem(item)) => {
-                                swim_common::form::Form::try_convert(item)
+                    swim_common::model::Value::Record(attrs, mut items) => {
+                        if attrs.len() > 0 {
+                            return Err(swim_common::form::FormErr::Malformatted);
+                        }
+
+                         match (items.len(), items.pop()) {
+                            (1, Some(swim_common::model::Item::ValueItem(value))) => {
+                                swim_common::form::Form::try_convert(value)
                             }
-                            Some(swim_common::model::Item::Slot(key, value)) => {
-                                // Form isn't implemented for tuples.
+                            _ => {
                                 return Err(swim_common::form::FormErr::Malformatted);
-                            }
-                            None => {
-                                unreachable!()
                             }
                         }
                     }

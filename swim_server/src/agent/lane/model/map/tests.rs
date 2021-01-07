@@ -624,7 +624,7 @@ fn test_derive_map_update() {
 }
 
 #[test]
-fn test_map_update_form_convert() {
+fn test_map_update_form() {
     let update = MapUpdate::Update(100, Arc::new(200));
     let value = update.into_value();
 
@@ -635,22 +635,9 @@ fn test_map_update_form_convert() {
 
     assert_eq!(value, expected_value);
 
-    let converted_update: MapUpdate<i32, i32> = Form::try_convert(value).unwrap();
-    assert_eq!(MapUpdate::Update(100, Arc::new(200)), converted_update);
-}
-
-#[test]
-fn test_map_update_form_try_from_value() {
-    let update = MapUpdate::Update(100, Arc::new(200));
-    let value = update.as_value();
-
-    let expected_value = Value::Record(
-        vec![Attr::of(("update", Value::from_vec(vec![("key", 100i32)])))],
-        vec![Item::ValueItem(Value::Int32Value(200))],
-    );
-
-    assert_eq!(value, expected_value);
-
     let converted_update: MapUpdate<i32, i32> = Form::try_from_value(&value).unwrap();
+    assert_eq!(MapUpdate::Update(100, Arc::new(200)), converted_update);
+
+    let converted_update: MapUpdate<i32, i32> = Form::try_convert(value).unwrap();
     assert_eq!(MapUpdate::Update(100, Arc::new(200)), converted_update);
 }
