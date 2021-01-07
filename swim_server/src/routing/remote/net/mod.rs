@@ -115,7 +115,7 @@ impl TokioNetworking {
         A: AsRef<PathBuf>,
     {
         let resolver = Arc::new(Resolver::new().await);
-        let tls = TokioTlsNetworking::new(identities, resolver.clone())?;
+        let tls = TokioTlsNetworking::new(identities, resolver.clone());
         let plain = TokioPlainTextNetworking::new(resolver.clone());
 
         Ok(TokioNetworking {

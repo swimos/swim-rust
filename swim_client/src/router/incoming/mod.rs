@@ -19,7 +19,6 @@ use futures::future::ready;
 use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
 use std::convert::TryFrom;
-use std::iter::FromIterator;
 use swim_common::model::parser::parse_single;
 use swim_common::routing::ws::WsMessage;
 use swim_common::routing::RoutingError;
@@ -279,12 +278,11 @@ async fn broadcast_destination(
                 destination_subs.remove(0);
             }
         } else {
-            let futures = FuturesUnordered::from_iter(
-                destination_subs
-                    .iter_mut()
-                    .enumerate()
-                    .map(|(index, sender)| index_sender(sender, event.clone(), index)),
-            );
+            let futures: FuturesUnordered<_> = destination_subs
+                .iter_mut()
+                .enumerate()
+                .map(|(index, sender)| index_sender(sender, event.clone(), index))
+                .collect();
 
             for index in futures.filter_map(ready).collect::<Vec<_>>().await {
                 destination_subs.remove(index);

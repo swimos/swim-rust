@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::form::Tag;
+use crate::form::{Tag, TagConversionError};
 
 mod swim_common {
     pub use crate::*;
@@ -41,5 +41,10 @@ fn test_derivation() {
     assert_eq!(Ok(Level::Error), Level::from_string("error".to_string()));
     assert_eq!(Ok(Level::Error), Level::from_string("ERROR".to_string()));
 
-    assert_eq!(Err(()), Level::from_string("trace".to_string()));
+    assert_eq!(
+        Err(TagConversionError(
+            "Unknown variant or struct: trace".to_string()
+        )),
+        Level::from_string("trace".to_string())
+    );
 }
