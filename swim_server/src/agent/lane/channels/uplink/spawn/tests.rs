@@ -16,7 +16,9 @@ use crate::agent::context::AgentExecutionContext;
 use crate::agent::lane::channels::task::{LaneUplinks, UplinkChannels};
 use crate::agent::lane::channels::update::{LaneUpdate, UpdateError};
 use crate::agent::lane::channels::uplink::spawn::{SpawnerUplinkFactory, UplinkErrorReport};
-use crate::agent::lane::channels::uplink::{UplinkAction, UplinkError, UplinkStateMachine};
+use crate::agent::lane::channels::uplink::{
+    PeelResult, UplinkAction, UplinkError, UplinkStateMachine,
+};
 use crate::agent::lane::channels::{AgentExecutionConfig, LaneMessageHandler, TaggedAction};
 use crate::agent::Eff;
 use crate::routing::error::RouterError;
@@ -24,7 +26,7 @@ use crate::routing::{
     ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedEnvelope, TaggedSender,
 };
 use futures::future::{join, join3, ready, BoxFuture};
-use futures::stream::once;
+use futures::stream::iter;
 use futures::stream::{BoxStream, FusedStream};
 use futures::{FutureExt, Stream, StreamExt};
 use pin_utils::pin_mut;
@@ -147,13 +149,20 @@ impl UplinkStateMachine<i32> for TestStateMachine {
 
     fn sync_lane<'a, Updates>(
         &'a self,
-        _updates: &'a mut Updates,
-    ) -> BoxStream<'a, Result<Self::Msg, UplinkError>>
+        updates: &'a mut Updates,
+    ) -> BoxStream<'a, PeelResult<'a, Updates, Result<Self::Msg, UplinkError>>>
     where
         Updates: FusedStream<Item = i32> + Send + Unpin + 'a,
     {
         let TestStateMachine(n) = self;
-        once(ready(Ok(Message(*n)))).boxed()
+        iter(
+            vec![
+                PeelResult::Output(Ok(Message(*n))),
+                PeelResult::Complete(updates),
+            ]
+            .into_iter(),
+        )
+        .boxed()
     }
 }
 

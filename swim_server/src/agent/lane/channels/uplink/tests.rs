@@ -14,8 +14,8 @@
 
 use crate::agent::lane::channels::uplink::map::MapLaneSyncError;
 use crate::agent::lane::channels::uplink::{
-    MapLaneUplink, Uplink, UplinkAction, UplinkError, UplinkMessage, UplinkStateMachine,
-    ValueLaneUplink,
+    MapLaneUplink, PeelResult, Uplink, UplinkAction, UplinkError, UplinkMessage,
+    UplinkStateMachine, ValueLaneUplink,
 };
 use crate::agent::lane::model::map::MapLaneEvent;
 use crate::agent::lane::model::{map, value};
@@ -244,7 +244,9 @@ async fn value_state_machine_sync_from_var() {
 
     let event_vec = sync_events.unwrap();
 
-    assert!(matches!(event_vec.as_slice(), [Ok(v)] if **v == 7));
+    assert!(
+        matches!(event_vec.as_slice(), [PeelResult::Output(Ok(v)), PeelResult::Complete(_)] if **v == 7)
+    );
 }
 
 #[tokio::test]
@@ -275,7 +277,9 @@ async fn value_state_machine_sync_from_events() {
 
     let event_vec = sync_result.unwrap();
 
-    assert!(matches!(event_vec.as_slice(), [Ok(v)] if Arc::ptr_eq(&v.0, &event)));
+    assert!(
+        matches!(event_vec.as_slice(), [PeelResult::Output(Ok(v)), PeelResult::Complete(_)] if Arc::ptr_eq(&v.0, &event))
+    );
 }
 
 #[tokio::test]
@@ -367,7 +371,12 @@ async fn map_state_machine_sync() {
 
     let sync_vec = sync_events.unwrap();
 
-    let results = into_map(sync_vec);
+    let sync_values = sync_vec
+        .into_iter()
+        .filter_map(|peel_result| peel_result.output())
+        .collect();
+
+    let results = into_map(sync_values);
 
     assert!(results.is_ok());
 
