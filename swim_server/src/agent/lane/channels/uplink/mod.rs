@@ -25,7 +25,6 @@ use pin_utils::pin_mut;
 use std::any::Any;
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
-use std::num::NonZeroUsize;
 use std::ops::Deref;
 use std::sync::Arc;
 use stm::transaction::{RetryManager, TransactionError};
@@ -37,7 +36,7 @@ use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
 use swim_warp::backpressure::map::MapUpdateMessage;
 use swim_warp::model::map::MapUpdate;
-use tracing::{event, span, Level};
+use tracing::{event, Level};
 use utilities::errors::Recoverable;
 
 #[cfg(test)]
@@ -224,22 +223,14 @@ pub struct Uplink<SM, Actions, Updates> {
     actions: Actions,
     /// Stream of updates to the lane.
     updates: Updates,
-    /// The number of events to process before yielding execution back to the runtime.
-    yield_after: NonZeroUsize,
 }
 
 impl<SM, Actions, Updates> Uplink<SM, Actions, Updates> {
-    pub fn new(
-        state_machine: SM,
-        actions: Actions,
-        updates: Updates,
-        yield_after: NonZeroUsize,
-    ) -> Self {
+    pub fn new(state_machine: SM, actions: Actions, updates: Updates) -> Self {
         Uplink {
             state_machine,
             actions,
             updates,
-            yield_after,
         }
     }
 }

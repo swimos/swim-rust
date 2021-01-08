@@ -26,7 +26,6 @@ use futures::ready;
 use futures::sink::drain;
 use futures::{Stream, StreamExt};
 use std::collections::{BTreeMap, VecDeque};
-use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
@@ -87,7 +86,6 @@ async fn uplink_not_linked() {
         ValueLaneUplink::new(lane.clone()),
         rx_action.fuse(),
         events.fuse(),
-        NonZeroUsize::new(256).unwrap(),
     );
 
     let (tx_event, rx_event) = mpsc::channel(5);
@@ -130,7 +128,6 @@ async fn uplink_open_to_linked() {
         ValueLaneUplink::new(lane.clone()),
         rx_action.fuse(),
         events.fuse(),
-        NonZeroUsize::new(256).unwrap(),
     );
 
     let (tx_event, rx_event) = mpsc::channel(5);
@@ -179,7 +176,6 @@ async fn uplink_open_to_synced() {
         ValueLaneUplink::new(lane.clone()),
         rx_action.fuse(),
         events.fuse(),
-        NonZeroUsize::new(256).unwrap(),
     );
 
     let (tx_event, rx_event) = mpsc::channel(5);
