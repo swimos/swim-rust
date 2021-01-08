@@ -77,9 +77,20 @@ pub fn derive_value_lifecycle(attr_args: AttributeArgs, mut input_ast: DeriveInp
 
         let model = projection(context.agent()).clone();
         let mut events = event_stream.take_until(context.agent_stop_event());
-        let mut events = unsafe { Pin::new_unchecked(&mut events) };
 
-        while let Some(event) = events.next().await {
+        let mut scan_stream = events.owning_scan(None, |prev_val, event| async move {
+            Some((
+                Some(event.clone()),
+                ValueLaneEvent {
+                    previous: prev_val,
+                    current: event,
+                },
+            ))
+        });
+
+        let mut scan_stream = unsafe { Pin::new_unchecked(&mut scan_stream) };
+
+        while let Some(event) = scan_stream.next().await {
               tracing_futures::Instrument::instrument(
                 lifecycle.#on_event_func(&event, &model, &context),
                 tracing::span!(tracing::Level::TRACE, swim_server::agent::ON_EVENT, ?event)
@@ -100,6 +111,8 @@ pub fn derive_value_lifecycle(attr_args: AttributeArgs, mut input_ast: DeriveInp
         on_event,
         quote! {
             use swim_server::agent::lane::model::value::ValueLane;
+            use swim_server::agent::lane::model::value::ValueLaneEvent;
+            use swim_server::future::SwimStreamExt;
         },
         None,
     )
