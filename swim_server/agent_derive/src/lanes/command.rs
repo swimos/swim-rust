@@ -86,13 +86,13 @@ pub fn derive_command_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput
         task_name,
         agent_name,
         input_ast,
-        quote!(swim_server::agent::lane::model::action::CommandLane<#command_type>),
-        quote!(swim_server::agent::lane::model::action::Action<#command_type, #command_type>),
+        quote!(swim_server::agent::lane::model::command::CommandLane<#command_type>),
+        quote!(swim_server::agent::lane::model::command::Command<#command_type>),
         None,
         on_event,
         quote! {
-            use swim_server::agent::lane::model::action::CommandLane;
-            use swim_server::agent::lane::model::action::Action;
+            use swim_server::agent::lane::model::command::CommandLane;
+            use swim_server::agent::lane::model::command::Command;
         },
         None,
     )

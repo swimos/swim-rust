@@ -14,9 +14,11 @@
 
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lane::lifecycle::{LaneLifecycle, StatefulLaneLifecycleBase};
-use crate::agent::lane::model::action::{ActionLane, CommandLane, Commander};
+use crate::agent::lane::model::action::ActionLane;
+use crate::agent::lane::model::command::CommandLane;
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::ValueLane;
+use crate::agent::lane::model::{action, command};
 use crate::agent::lane::strategy::Queue;
 use crate::agent::lane::tests::ExactlyOnce;
 use crate::agent::lifecycle::AgentLifecycle;
@@ -132,8 +134,8 @@ struct DataAgentLifecycle {
 }
 
 enum DataAgentCommander {
-    ActionLaneCommander(Commander<String, i32>),
-    CommandLaneCommander(Commander<String, String>),
+    ActionLaneCommander(action::Commander<String, i32>),
+    CommandLaneCommander(command::Commander<String>),
 }
 
 impl DataAgentCommander {

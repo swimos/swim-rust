@@ -12,147 +12,144 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#[cfg(test)]
-mod tests;
-
 use crate::agent::lane::model::type_of;
 use crate::agent::lane::LaneModel;
 use futures::Stream;
-use std::any::Any;
 use std::fmt::{Debug, Formatter};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot};
 use tracing::{event, Level};
 
-/// Model for a lane that can receive commands and optionally produce responses.
+#[cfg(test)]
+mod tests;
+
+/// Model for a lane that can receive commands and broadcasts responses to all subscribers.
 ///
 /// #Type Parameters
 ///
-/// * `Command` - The type of commands that the lane can handle.
-/// * `Response` - The type of messages that will be received by a subscriber to the lane.
-pub struct ActionLane<Command, Response> {
-    sender: mpsc::Sender<Action<Command, Response>>,
+/// * `T` - The type of commands that the lane can handle.
+pub struct CommandLane<T> {
+    sender: mpsc::Sender<Command<T>>,
     id: Arc<()>,
 }
 
 #[derive(Debug)]
-pub struct Action<Command, Response> {
-    pub(crate) command: Command,
-    pub(crate) responder: Option<oneshot::Sender<Response>>,
+pub struct Command<T> {
+    pub(crate) command: T,
+    pub(crate) responder: Option<oneshot::Sender<T>>,
 }
 
-impl<Command, Response> Action<Command, Response> {
-    pub(crate) fn forget(command: Command) -> Self {
-        Action {
+impl<T> Command<T> {
+    pub(crate) fn forget(command: T) -> Self {
+        Command {
             command,
             responder: None,
         }
     }
 
-    pub(crate) fn new(command: Command, responder: oneshot::Sender<Response>) -> Self {
-        Action {
+    pub(crate) fn new(command: T, responder: oneshot::Sender<T>) -> Self {
+        Command {
             command,
             responder: Some(responder),
         }
     }
 
-    pub fn destruct(self) -> (Command, Option<oneshot::Sender<Response>>) {
-        let Action { command, responder } = self;
+    pub fn destruct(self) -> (T, Option<oneshot::Sender<T>>) {
+        let Command { command, responder } = self;
         (command, responder)
     }
 }
 
-impl<Command, Response> ActionLane<Command, Response>
+impl<T> CommandLane<T>
 where
-    Command: Send + Sync + 'static,
+    T: Send + Sync + 'static,
 {
-    pub(crate) fn new(sender: mpsc::Sender<Action<Command, Response>>) -> Self {
-        ActionLane {
+    pub(crate) fn new(sender: mpsc::Sender<Command<T>>) -> Self {
+        CommandLane {
             sender,
             id: Default::default(),
         }
     }
 }
 
-impl<Command, Response> Clone for ActionLane<Command, Response> {
+impl<T> Clone for CommandLane<T> {
     fn clone(&self) -> Self {
-        ActionLane {
+        CommandLane {
             sender: self.sender.clone(),
             id: self.id.clone(),
         }
     }
 }
 
-/// Handle to send commands to a [`ActionLane`].
+/// Handle to send commands to a [`CommandLane`].
 /// #Type Parameters
 ///
-/// * `Command` - The type of commands that the lane can handle.
+/// * `T` - The type of commands that the lane can handle.
 #[derive(Clone, Debug)]
-pub struct Commander<Command, Response>(mpsc::Sender<Action<Command, Response>>);
+pub struct Commander<T>(mpsc::Sender<Command<T>>);
 
 const SENDING_COMMAND: &str = "Sending command";
 
-impl<Command: Debug, Response> ActionLane<Command, Response> {
+impl<T: Debug> CommandLane<T> {
     /// Create a [`Commander`] that can send multiple commands to the lane.
-    pub fn commander(&self) -> Commander<Command, Response> {
+    pub fn commander(&self) -> Commander<T> {
         Commander(self.sender.clone())
     }
 }
 
-impl<Command: Debug, Response> Commander<Command, Response> {
+impl<T: Debug> Commander<T> {
     /// Asynchronously send a command to the lane.
-    pub async fn command(&mut self, cmd: Command) {
+    pub async fn command(&mut self, cmd: T) {
         event!(Level::TRACE, SENDING_COMMAND, ?cmd);
         let Commander(tx) = self;
-        if tx.send(Action::forget(cmd)).await.is_err() {
+        if tx.send(Command::forget(cmd)).await.is_err() {
             panic!("Lane commanded after the agent stopped.")
         }
     }
 
-    pub async fn command_and_await(&mut self, cmd: Command) -> oneshot::Receiver<Response> {
+    pub async fn command_and_await(&mut self, cmd: T) -> oneshot::Receiver<T> {
         let (resp_tx, resp_rx) = oneshot::channel();
         event!(Level::TRACE, SENDING_COMMAND, ?cmd);
         let Commander(tx) = self;
-        if tx.send(Action::new(cmd, resp_tx)).await.is_err() {
+        if tx.send(Command::new(cmd, resp_tx)).await.is_err() {
             panic!("Lane commanded after the agent stopped.")
         }
         resp_rx
     }
 }
 
-/// Create a new action lane model and a stream of the received commands.
+/// Create a new command lane model and a stream of the received commands.
 ///
 /// #Arguments
 ///
 /// * `buffer_size` - Buffer size for the MPSC channel that transmits the commands.
-pub fn make_lane_model<Command, Response>(
+pub fn make_lane_model<T>(
     buffer_size: NonZeroUsize,
 ) -> (
-    ActionLane<Command, Response>,
-    impl Stream<Item = Action<Command, Response>> + Send + 'static,
+    CommandLane<T>,
+    impl Stream<Item = Command<T>> + Send + 'static,
 )
 where
-    Command: Send + Sync + 'static,
-    Response: Send + Sync + 'static,
+    T: Send + Sync + 'static,
 {
     let (tx, rx) = mpsc::channel(buffer_size.get());
-    let lane = ActionLane::new(tx);
+    let lane = CommandLane::new(tx);
     (lane, rx)
 }
 
-impl<Command, Response> LaneModel for ActionLane<Command, Response> {
-    type Event = Command;
+impl<T> LaneModel for CommandLane<T> {
+    type Event = T;
 
     fn same_lane(this: &Self, other: &Self) -> bool {
         Arc::ptr_eq(&this.id, &other.id)
     }
 }
 
-impl<Command, Response: Any> Debug for ActionLane<Command, Response> {
+impl<T> Debug for CommandLane<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.debug_tuple("ActionLane")
-            .field(&type_of::<fn(Command) -> Response>())
+        f.debug_tuple("CommandLane")
+            .field(&type_of::<fn(T) -> T>())
             .finish()
     }
 }

@@ -20,8 +20,9 @@ use crate::agent::lane::channels::uplink::{UplinkAction, UplinkError, UplinkStat
 use crate::agent::lane::channels::{
     AgentExecutionConfig, LaneMessageHandler, OutputMessage, TaggedAction,
 };
-use crate::agent::lane::model::action::{Action, ActionLane, CommandLane};
-use crate::agent::{Eff, FeedbackMode};
+use crate::agent::lane::model::action::{Action, ActionLane};
+use crate::agent::lane::model::command::{Command, CommandLane};
+use crate::agent::Eff;
 use crate::routing::error::RouterError;
 use crate::routing::{
     ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedClientEnvelope, TaggedEnvelope,
@@ -885,14 +886,7 @@ fn make_action_lane_task<Context: AgentExecutionContext + Send + Sync + 'static>
 
     let lane: ActionLane<i32, i32> = ActionLane::new(feedback_tx);
 
-    let task = super::run_action_lane_io(
-        lane,
-        Some(FeedbackMode::SenderOnly),
-        envelope_rx,
-        config,
-        context,
-        route(),
-    );
+    let task = super::run_action_lane_io(lane, envelope_rx, config, context, route());
 
     let input = TaskInput {
         envelope_tx,
@@ -909,10 +903,10 @@ fn make_command_lane_task<Context: AgentExecutionContext + Send + Sync + 'static
     impl Future<Output = Result<Vec<UplinkErrorReport>, LaneIoError>>,
     TaskInput,
 ) {
-    let (feedback_tx, mut feedback_rx) = mpsc::channel::<Action<i32, i32>>(5);
+    let (feedback_tx, mut feedback_rx) = mpsc::channel::<Command<i32>>(5);
 
     let mock_lifecycle = async move {
-        while let Some(Action { command, responder }) = feedback_rx.recv().await {
+        while let Some(Command { command, responder }) = feedback_rx.recv().await {
             if let Some(responder) = responder {
                 assert!(responder.send(command * 2).is_ok());
             }
@@ -920,16 +914,9 @@ fn make_command_lane_task<Context: AgentExecutionContext + Send + Sync + 'static
     };
     let (envelope_tx, envelope_rx) = mpsc::channel::<TaggedClientEnvelope>(5);
 
-    let lane: CommandLane<i32> = ActionLane::new(feedback_tx);
+    let lane: CommandLane<i32> = CommandLane::new(feedback_tx);
 
-    let task = super::run_action_lane_io(
-        lane,
-        Some(FeedbackMode::Broadcast),
-        envelope_rx,
-        config,
-        context,
-        route(),
-    );
+    let task = super::run_command_lane_io(lane, envelope_rx, config, context, route());
 
     let input = TaskInput {
         envelope_tx,

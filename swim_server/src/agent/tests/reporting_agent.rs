@@ -19,7 +19,7 @@ use crate::agent::lane::lifecycle::{
     CommandLaneLifecycle, DemandLaneLifecycle, DemandMapLaneLifecycle, StatefulLaneLifecycle,
     StatefulLaneLifecycleBase,
 };
-use crate::agent::lane::model::action::CommandLane;
+use crate::agent::lane::model::command::CommandLane;
 use crate::agent::lane::model::demand::DemandLane;
 use crate::agent::lane::model::demand_map::DemandMapLane;
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};

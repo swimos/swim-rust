@@ -12,7 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::lane::model::action::{ActionLane, CommandLane};
+use crate::agent::lane::model::action::ActionLane;
+use crate::agent::lane::model::command::CommandLane;
 use crate::agent::lane::model::demand::DemandLane;
 use crate::agent::lane::model::demand_map::DemandMapLane;
 use crate::agent::lane::strategy::{Buffered, Queue};

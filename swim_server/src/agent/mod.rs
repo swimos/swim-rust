@@ -33,7 +33,8 @@ use crate::agent::lane::lifecycle::{
     StatefulLaneLifecycle,
 };
 use crate::agent::lane::model;
-use crate::agent::lane::model::action::{Action, ActionLane, CommandLane};
+use crate::agent::lane::model::action::{Action, ActionLane};
+use crate::agent::lane::model::command::{Command, CommandLane};
 use crate::agent::lane::model::demand::DemandLane;
 use crate::agent::lane::model::demand_map::{
     DemandMapLane, DemandMapLaneEvent, DemandMapLaneUpdate,
@@ -570,16 +571,8 @@ where
     }
 }
 
-pub enum FeedbackMode {
-    // Sends uplink responses only to the original sender.
-    SenderOnly,
-    // Broadcasts uplink responses to all subscribers.
-    Broadcast,
-}
-
 pub struct ActionLaneIo<Command, Response> {
     lane: ActionLane<Command, Response>,
-    feedback_mode: Option<FeedbackMode>,
 }
 
 impl<Command, Response> ActionLaneIo<Command, Response>
@@ -587,18 +580,8 @@ where
     Command: Send + Sync + Form + Debug + 'static,
     Response: Send + Sync + Form + Debug + 'static,
 {
-    pub fn new_action(lane: ActionLane<Command, Response>) -> Self {
-        ActionLaneIo {
-            lane,
-            feedback_mode: Some(FeedbackMode::SenderOnly),
-        }
-    }
-
-    pub fn new_command(lane: ActionLane<Command, Response>) -> Self {
-        ActionLaneIo {
-            lane,
-            feedback_mode: Some(FeedbackMode::Broadcast),
-        }
+    pub fn new(lane: ActionLane<Command, Response>) -> Self {
+        ActionLaneIo { lane }
     }
 }
 
@@ -615,20 +598,56 @@ where
         config: AgentExecutionConfig,
         context: Context,
     ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
-        let ActionLaneIo {
-            lane,
-            feedback_mode,
-        } = self;
+        let ActionLaneIo { lane } = self;
 
-        Ok(lane::channels::task::run_action_lane_io(
-            lane,
-            feedback_mode,
-            envelopes,
-            config,
-            context,
-            route,
+        Ok(
+            lane::channels::task::run_action_lane_io(lane, envelopes, config, context, route)
+                .boxed(),
         )
-        .boxed())
+    }
+
+    fn attach_boxed(
+        self: Box<Self>,
+        route: RelativePath,
+        envelopes: Receiver<TaggedClientEnvelope>,
+        config: AgentExecutionConfig,
+        context: Context,
+    ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
+        (*self).attach(route, envelopes, config, context)
+    }
+}
+
+pub struct CommandLaneIo<T> {
+    lane: CommandLane<T>,
+}
+
+impl<T> CommandLaneIo<T>
+where
+    T: Send + Sync + Form + Debug + 'static,
+{
+    pub fn new(lane: CommandLane<T>) -> Self {
+        CommandLaneIo { lane }
+    }
+}
+
+impl<T, Context> LaneIo<Context> for CommandLaneIo<T>
+where
+    T: Send + Sync + Form + Debug + 'static,
+    Context: AgentExecutionContext + Sized + Send + Sync + 'static,
+{
+    fn attach(
+        self,
+        route: RelativePath,
+        envelopes: Receiver<TaggedClientEnvelope>,
+        config: AgentExecutionConfig,
+        context: Context,
+    ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
+        let CommandLaneIo { lane } = self;
+
+        Ok(
+            lane::channels::task::run_command_lane_io(lane, envelopes, config, context, route)
+                .boxed(),
+        )
     }
 
     fn attach_boxed(
@@ -915,14 +934,14 @@ impl<L, S, P> Lane for CommandLifecycleTasks<L, S, P> {
     }
 }
 
-impl<Agent, Context, Command, L, S, P> LaneTasks<Agent, Context> for CommandLifecycleTasks<L, S, P>
+impl<Agent, Context, T, L, S, P> LaneTasks<Agent, Context> for CommandLifecycleTasks<L, S, P>
 where
     Agent: 'static,
     Context: AgentContext<Agent> + Send + Sync + 'static,
-    S: Stream<Item = Action<Command, Command>> + Send + Sync + 'static,
-    Command: Any + Send + Sync + Debug + Clone,
-    L: for<'l> CommandLaneLifecycle<'l, Command, Agent>,
-    P: Fn(&Agent) -> &CommandLane<Command> + Send + Sync + 'static,
+    S: Stream<Item = Command<T>> + Send + Sync + 'static,
+    T: Any + Send + Sync + Debug + Clone,
+    L: for<'l> CommandLaneLifecycle<'l, T, Agent>,
+    P: Fn(&Agent) -> &CommandLane<T> + Send + Sync + 'static,
 {
     fn start<'a>(&'a self, _context: &'a Context) -> BoxFuture<'a, ()> {
         ready(()).boxed()
@@ -939,7 +958,7 @@ where
             let model = projection(context.agent()).clone();
             let events = event_stream.take_until(context.agent_stop_event());
             pin_mut!(events);
-            while let Some(Action { command, responder }) = events.next().await {
+            while let Some(Command { command, responder }) = events.next().await {
                 event!(Level::TRACE, COMMANDED, ?command);
                 lifecycle
                     .on_command(command.clone(), &model, &context)
@@ -995,7 +1014,7 @@ where
     });
 
     let lane_io = if is_public {
-        Some(ActionLaneIo::new_action(lane.clone()))
+        Some(ActionLaneIo::new(lane.clone()))
     } else {
         None
     };
@@ -1011,24 +1030,24 @@ where
 /// * `lifecycle` - Life-cycle event handler for the lane.
 /// * `projection` - A projection from the agent type to this lane.
 /// * `buffer_size` - Buffer size for the MPSC channel accepting the commands.
-pub fn make_command_lane<Agent, Context, Command, L>(
+pub fn make_command_lane<Agent, Context, T, L>(
     name: impl Into<String>,
     is_public: bool,
     lifecycle: L,
-    projection: impl Fn(&Agent) -> &CommandLane<Command> + Send + Sync + 'static,
+    projection: impl Fn(&Agent) -> &CommandLane<T> + Send + Sync + 'static,
     buffer_size: NonZeroUsize,
 ) -> (
-    CommandLane<Command>,
+    CommandLane<T>,
     impl LaneTasks<Agent, Context>,
     Option<impl LaneIo<Context>>,
 )
 where
     Agent: 'static,
     Context: AgentContext<Agent> + AgentExecutionContext + Send + Sync + 'static,
-    Command: Any + Send + Sync + Form + Debug + Clone,
-    L: for<'l> CommandLaneLifecycle<'l, Command, Agent>,
+    T: Any + Send + Sync + Form + Debug + Clone,
+    L: for<'l> CommandLaneLifecycle<'l, T, Agent>,
 {
-    let (lane, event_stream) = model::action::make_lane_model(buffer_size);
+    let (lane, event_stream) = model::command::make_lane_model(buffer_size);
 
     let tasks = CommandLifecycleTasks(LifecycleTasks {
         name: name.into(),
@@ -1038,7 +1057,7 @@ where
     });
 
     let lane_io = if is_public {
-        Some(ActionLaneIo::new_command(lane.clone()))
+        Some(CommandLaneIo::new(lane.clone()))
     } else {
         None
     };

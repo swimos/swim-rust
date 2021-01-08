@@ -22,7 +22,8 @@ use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lane::lifecycle::{
     ActionLaneLifecycle, CommandLaneLifecycle, StatefulLaneLifecycle, StatefulLaneLifecycleBase,
 };
-use crate::agent::lane::model::action::{Action, ActionLane, CommandLane};
+use crate::agent::lane::model::action::{Action, ActionLane};
+use crate::agent::lane::model::command::{Command, CommandLane};
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::ValueLane;
 use crate::agent::lane::strategy::Queue;
@@ -651,7 +652,7 @@ async fn command_lane_events_task() {
 
     let send = async move {
         for x in clones.into_iter() {
-            let _ = tx.send(Action::forget(x)).await;
+            let _ = tx.send(Command::forget(x)).await;
         }
         drop(tx);
     };

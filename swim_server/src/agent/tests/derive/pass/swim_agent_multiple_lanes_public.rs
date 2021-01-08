@@ -12,9 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::agent::lane::model::command::CommandLane;
 use std::sync::Arc;
 use swim_server::agent::lane::lifecycle::{LaneLifecycle, StatefulLaneLifecycleBase};
-use swim_server::agent::lane::model::action::{ActionLane, CommandLane};
+use swim_server::agent::lane::model::action::ActionLane;
 use swim_server::agent::lane::model::map::{MapLane, MapLaneEvent};
 use swim_server::agent::lane::model::value::ValueLane;
 use swim_server::agent::lane::strategy::Queue;

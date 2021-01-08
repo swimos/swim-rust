@@ -26,7 +26,7 @@
 //!
 //! ```rust
 //! use swim_server::agent::AgentContext;
-//! use swim_server::agent::lane::model::action::CommandLane;
+//! use swim_server::agent::lane::model::command::CommandLane;
 //! use swim_server::agent::lane::lifecycle::LaneLifecycle;
 //! use swim_server::{command_lifecycle, SwimAgent};
 //!
@@ -113,7 +113,8 @@ mod utils;
 ///
 /// ```rust
 /// use swim_server::SwimAgent;
-/// use swim_server::agent::lane::model::action::{ActionLane, CommandLane};
+/// use swim_server::agent::lane::model::action::ActionLane;
+/// use swim_server::agent::lane::model::command::CommandLane;
 /// use swim_server::agent::lane::model::map::MapLane;
 /// use swim_server::agent::lane::model::value::ValueLane;
 /// # use std::sync::Arc;
@@ -353,7 +354,7 @@ pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// ```
 /// use swim_server::command_lifecycle;
 /// use swim_server::agent::lane::lifecycle::LaneLifecycle;
-/// use swim_server::agent::lane::model::action::CommandLane;
+/// use swim_server::agent::lane::model::command::CommandLane;
 /// use swim_server::agent::AgentContext;
 /// # use swim_server::SwimAgent;
 ///
@@ -394,7 +395,7 @@ pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// ```rust
 /// use swim_server::command_lifecycle;
 /// use swim_server::agent::lane::lifecycle::LaneLifecycle;
-/// use swim_server::agent::lane::model::action::CommandLane;
+/// use swim_server::agent::lane::model::command::CommandLane;
 /// use swim_server::agent::AgentContext;
 /// # use swim_server::SwimAgent;
 ///

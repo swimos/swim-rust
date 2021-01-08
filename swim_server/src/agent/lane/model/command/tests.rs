@@ -12,23 +12,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::lane::model::action::Action;
+use crate::agent::lane::model::command::Command;
 use futures::StreamExt;
 use std::num::NonZeroUsize;
 
 #[tokio::test]
 async fn send_command() {
     let n = NonZeroUsize::new(5).unwrap();
-    let (model, mut events) = super::make_lane_model::<i32, i32>(n);
+    let (model, mut events) = super::make_lane_model::<i32>(n);
     let mut commander = model.commander();
     commander.command(3).await;
     let event = events.next().await;
-    assert!(matches!(event, Some(Action { command: 3, .. })));
+    assert!(matches!(event, Some(Command { command: 3, .. })));
 }
 
 #[tokio::test]
-async fn debug_action_lane() {
+async fn debug_command_lane() {
     let n = NonZeroUsize::new(5).unwrap();
-    let (model, _events) = super::make_lane_model::<i32, i32>(n);
-    assert_eq!(format!("{:?}", model), "ActionLane(fn(i32) -> i32)");
+    let (model, _events) = super::make_lane_model::<i32>(n);
+    assert_eq!(format!("{:?}", model), "CommandLane(fn(i32) -> i32)");
 }

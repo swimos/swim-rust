@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use swim_server::agent::lane::lifecycle::LaneLifecycle;
-use swim_server::agent::lane::model::action::CommandLane;
+use crate::agent::lane::model::command::CommandLane;
 use swim_server::agent::AgentContext;
 use swim_server::{command_lifecycle, SwimAgent};
 
