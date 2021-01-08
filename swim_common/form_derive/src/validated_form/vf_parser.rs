@@ -14,8 +14,8 @@
 
 use num_bigint::BigInt;
 use proc_macro2::TokenStream;
+use proc_macro2::TokenStream as TokenStream2;
 use quote::ToTokens;
-use syn::export::TokenStream2;
 use syn::{ExprPath, Field, Meta, NestedMeta, Type};
 
 use macro_helpers::{Attributes, CompoundTypeKind, Context, Symbol, SynOriginal};

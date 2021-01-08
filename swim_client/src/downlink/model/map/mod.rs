@@ -626,7 +626,7 @@ where
         Some(req) => {
             let prev = data_state.clone();
             update(data_state);
-            req.send_ok(prev)
+            req.send_ok(prev).map_err(|_| ())
         }
         _ => {
             update(data_state);
@@ -648,7 +648,7 @@ where
         Some(req) => {
             let prev = data_state.get(key).cloned();
             update(data_state);
-            req.send_ok(prev)
+            req.send_ok(prev).map_err(|_| ())
         }
         _ => {
             update(data_state);

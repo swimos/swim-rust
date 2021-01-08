@@ -26,7 +26,7 @@ use macro_helpers::add_bound;
 use macro_helpers::Label;
 use macro_helpers::{EnumRepr, TypeContents};
 use proc_macro2::TokenStream;
-use syn::export::TokenStream2;
+use proc_macro2::TokenStream as TokenStream2;
 
 mod attrs;
 mod meta_parse;

@@ -136,11 +136,11 @@ const ENTRY_PREEMPTED: &str = "The value for key was preempted.";
 const MAP_CLEARED: &str = "The map was cleared whilst synchronizing.";
 
 //Move from the initial state, initiating a checkpoint transaction.
-fn initialize<'a, K, V, Retries>(
+fn initialize<K, V, Retries>(
     id: u64,
-    lane: &'a MapLane<K, V>,
+    lane: &MapLane<K, V>,
     retry: Retries,
-) -> impl Future<Output = Result<Checkpoint<V>, MapLaneSyncError>> + 'a
+) -> impl Future<Output = Result<Checkpoint<V>, MapLaneSyncError>> + '_
 where
     K: Form + Send + Sync,
     V: Any + Send + Sync,
