@@ -14,11 +14,9 @@
 
 use core::fmt;
 use proc_macro2::{Ident, Span};
-use quote::quote;
 use quote::quote_spanned;
 use quote::ToTokens;
 use std::fmt::{Display, Formatter};
-use syn::parse::{Parse, Parser};
 use syn::{Data, DeriveInput};
 
 const SWIM_AGENT: &str = "Swim agent";
@@ -79,26 +77,6 @@ pub fn validate_input_ast(input_ast: &DeriveInput, ty: InputAstType) -> Result<(
             } else {
                 Ok(())
             }
-        }
-    }
-}
-
-pub fn add_previous_value(input_ast: &mut DeriveInput, value_type: &Ident) {
-    if let syn::Data::Struct(ref mut struct_data) = &mut input_ast.data {
-        if let syn::Fields::Named(fields) = &mut struct_data.fields {
-            fields.named.push(
-                syn::Field::parse_named
-                    .parse2(quote! { previous_value: std::sync::Arc<#value_type> })
-                    .unwrap(),
-            );
-        } else if let syn::Fields::Unit = &mut struct_data.fields {
-            let fields = Parse::parse
-                .parse2(quote! { {previous_value: std::sync::Arc<#value_type>} })
-                .unwrap();
-
-            struct_data.fields = syn::Fields::Named(fields)
-        } else {
-            panic!("Structs with unnamed fields are not supported")
         }
     }
 }

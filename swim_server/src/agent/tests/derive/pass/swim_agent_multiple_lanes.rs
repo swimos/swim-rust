@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::agent::lane::model::value::ValueLaneEvent;
 use swim_server::agent::lane::lifecycle::{LaneLifecycle, StatefulLaneLifecycleBase};
 use swim_server::agent::lane::model::action::{ActionLane, CommandLane};
 use swim_server::agent::lane::model::map::{MapLane, MapLaneEvent};
@@ -21,7 +22,6 @@ use swim_server::agent::AgentContext;
 use swim_server::{
     action_lifecycle, agent_lifecycle, command_lifecycle, map_lifecycle, value_lifecycle, SwimAgent,
 };
-use crate::agent::lane::model::value::ValueLaneEvent;
 
 mod swim_server {
     pub use crate::*;
