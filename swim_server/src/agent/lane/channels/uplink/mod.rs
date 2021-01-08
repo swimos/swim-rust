@@ -18,9 +18,10 @@ use crate::agent::lane::model::map::{make_update, MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::ValueLane;
 use crate::routing::{RoutingAddr, TaggedSender};
 use either::Either;
-use futures::future::ready;
+use futures::future::{ready, BoxFuture};
 use futures::stream::{once, unfold, BoxStream, FusedStream};
 use futures::{select, select_biased, FutureExt, Stream, StreamExt};
+use futures_util::core_reexport::num::NonZeroUsize;
 use pin_utils::pin_mut;
 use std::any::Any;
 use std::error::Error;
@@ -241,13 +242,14 @@ const UPLINK_FAILED: &str = "Uplink task failed.";
 impl<SM, Actions, Updates> Uplink<SM, Actions, Updates>
 where
     Updates: FusedStream + Send,
+    Updates::Item: Send,
     SM: UplinkStateMachine<Updates::Item> + 'static,
-    Actions: FusedStream<Item = UplinkAction>,
+    Actions: FusedStream<Item = UplinkAction> + Send,
 {
     /// Run the uplink as an asynchronous task.
     pub async fn run_uplink<Sender, SendErr>(self, mut sender: Sender) -> Result<(), UplinkError>
     where
-        Sender: ItemSender<UplinkMessage<SM::Msg>, SendErr>,
+        Sender: ItemSender<UplinkMessage<SM::Msg>, SendErr> + Send + Sync,
     {
         let Uplink {
             state_machine,
@@ -258,24 +260,10 @@ where
         pin_mut!(actions);
         pin_mut!(updates);
         let update_stream = as_stream(&state_machine, &mut actions, &mut updates);
-        pin_mut!(update_stream);
 
-        let completion = loop {
-            match update_stream.next().await {
-                Some(Ok(msg)) => {
-                    let result = send_msg(&mut sender, msg).await;
-                    if result.is_err() {
-                        break result;
-                    }
-                }
-                Some(Err(e)) => {
-                    break Err(e);
-                }
-                _ => {
-                    break Ok(());
-                }
-            }
-        };
+        let completion = state_machine
+            .send_message_stream(update_stream, &mut sender)
+            .await;
         let attempt_unlink = match &completion {
             Ok(_) => false,
             Err(error) => {
@@ -458,7 +446,7 @@ impl<'a, U, T> PeelResult<'a, U, T> {
 }
 
 /// Trait encoding the differences in uplink behaviour for different kinds of lanes.
-pub trait UplinkStateMachine<Event> {
+pub trait UplinkStateMachine<Event>: Send + Sync {
     type Msg: Any + Send + Sync + Debug;
 
     /// Create a message to send to the subscriber from a lane event (where appropriate).
@@ -473,16 +461,65 @@ pub trait UplinkStateMachine<Event> {
     ) -> BoxStream<'a, PeelResult<'a, Updates, Result<Self::Msg, UplinkError>>>
     where
         Updates: FusedStream<Item = Event> + Send + Unpin + 'a;
+
+    fn send_message_stream<'a, Messages, Sender, SendErr>(
+        &'a self,
+        message_stream: Messages,
+        sender: &'a mut Sender,
+    ) -> BoxFuture<'a, Result<(), UplinkError>>
+    where
+        Messages: Stream<Item = Result<UplinkMessage<Self::Msg>, UplinkError>> + Send + 'a,
+        Sender: ItemSender<UplinkMessage<Self::Msg>, SendErr> + Send + Sync + 'a,
+    {
+        async move {
+            pin_mut!(message_stream);
+            loop {
+                match message_stream.next().await {
+                    Some(Ok(msg)) => {
+                        let result = send_msg(sender, msg).await;
+                        if result.is_err() {
+                            break result;
+                        }
+                    }
+                    Some(Err(e)) => {
+                        break Err(e);
+                    }
+                    _ => {
+                        break Ok(());
+                    }
+                }
+            }
+        }
+        .boxed()
+    }
 }
 
-pub struct ValueLaneUplink<T>(ValueLane<T>);
+pub struct SimpleBackpressureConfig {
+    buffer_size: NonZeroUsize,
+    yield_after: NonZeroUsize,
+}
+
+pub struct KeyedBackpressureConfig {
+    buffer_size: NonZeroUsize,
+    yield_after: NonZeroUsize,
+    bridge_buffer_size: NonZeroUsize,
+    cache_size: NonZeroUsize,
+}
+
+pub struct ValueLaneUplink<T> {
+    lane: ValueLane<T>,
+    backpressure_config: Option<SimpleBackpressureConfig>,
+}
 
 impl<T> ValueLaneUplink<T>
 where
     T: Any + Send + Sync,
 {
-    pub fn new(lane: ValueLane<T>) -> Self {
-        ValueLaneUplink(lane)
+    pub fn new(lane: ValueLane<T>, backpressure_config: Option<SimpleBackpressureConfig>) -> Self {
+        ValueLaneUplink {
+            lane,
+            backpressure_config,
+        }
     }
 }
 
@@ -538,7 +575,7 @@ where
     where
         Updates: FusedStream<Item = Arc<T>> + Send + Unpin + 'a,
     {
-        let ValueLaneUplink(lane) = self;
+        let ValueLaneUplink { lane, .. } = self;
         let str = unfold(
             (false, Some(updates)),
             move |(synced, maybe_updates)| async move {

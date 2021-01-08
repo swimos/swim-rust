@@ -320,7 +320,7 @@ where
     type Update = ValueLaneUpdateTask<T>;
 
     fn make_uplink(&self, _addr: RoutingAddr) -> Self::Uplink {
-        ValueLaneUplink::new((*self).clone())
+        ValueLaneUplink::new((*self).clone(), None) //TODO Feed in configuration.
     }
 
     fn make_update(&self) -> Self::Update {
