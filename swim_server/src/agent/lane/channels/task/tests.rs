@@ -1468,7 +1468,7 @@ async fn command_lane_multiple_links() {
             &expected_addr,
             Envelope::make_event(&route.node, &route.lane, Some(6.into())),
         )
-            .await;
+        .await;
 
         drop(input);
 
