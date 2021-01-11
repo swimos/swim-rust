@@ -31,7 +31,8 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
 use stm::transaction::TransactionError;
-use swim_common::form::FormErr;
+use swim_common::form::{Form, FormErr};
+use swim_common::model::Value;
 use swim_common::sink::item;
 use swim_warp::model::map::MapUpdate;
 use tokio::sync::mpsc;
@@ -282,15 +283,21 @@ async fn value_state_machine_sync_from_events() {
 async fn map_state_machine_message_for() {
     let (lane, _events) = map::make_lane_model::<i32, i32, Queue>(Queue::default());
 
-    let map_uplink = MapLaneUplink::new(lane, 1, || ExactlyOnce);
+    let map_uplink = MapLaneUplink::new(lane, 1, || ExactlyOnce, None);
 
     let value = Arc::new(4);
 
     let update = map_uplink.message_for(MapLaneEvent::Update(3, value.clone()));
-    assert!(matches!(update, Ok(Some(MapUpdate::Update(3, v))) if Arc::ptr_eq(&v, &value)));
+
+    assert!(
+        matches!(update, Ok(Some(MapUpdate::Update(Value::Int32Value(3), v))) if Arc::ptr_eq(&v, &value))
+    );
 
     let remove = map_uplink.message_for(MapLaneEvent::Remove(2));
-    assert!(matches!(remove, Ok(Some(MapUpdate::Remove(2)))));
+    assert!(matches!(
+        remove,
+        Ok(Some(MapUpdate::Remove(Value::Int32Value(1))))
+    ));
 
     let clear = map_uplink.message_for(MapLaneEvent::Clear);
     assert!(matches!(clear, Ok(Some(MapUpdate::Clear))));
@@ -300,17 +307,17 @@ async fn map_state_machine_message_for() {
 }
 
 fn into_map(
-    events: Vec<Result<MapUpdate<i32, i32>, UplinkError>>,
+    events: Vec<Result<MapUpdate<Value, i32>, UplinkError>>,
 ) -> Result<BTreeMap<i32, i32>, UplinkError> {
     let mut map = BTreeMap::new();
 
     for event in events.into_iter() {
         match event? {
             MapUpdate::Update(k, v) => {
-                map.insert(k, *v);
+                map.insert(i32::try_convert(k).unwrap(), *v);
             }
             MapUpdate::Remove(k) => {
-                map.remove(&k);
+                map.remove(&i32::try_convert(k).unwrap());
             }
             MapUpdate::Clear => {
                 map.clear();
@@ -355,7 +362,7 @@ async fn map_state_machine_sync() {
         .await
         .is_ok());
 
-    let map_uplink = MapLaneUplink::new(lane, 1, || ExactlyOnce);
+    let map_uplink = MapLaneUplink::new(lane, 1, || ExactlyOnce, None);
 
     let sync_events = timeout(
         Duration::from_secs(10),

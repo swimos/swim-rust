@@ -12,7 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::lane::channels::uplink::backpressure::SimpleBackpressureConfig;
+use crate::agent::lane::channels::uplink::backpressure::{
+    KeyedBackpressureConfig, SimpleBackpressureConfig,
+};
 use crate::agent::lane::channels::uplink::map::MapLaneSyncError;
 use crate::agent::lane::model::demand_map::{DemandMapLane, DemandMapLaneUpdate};
 use crate::agent::lane::model::map::{make_update, MapLane, MapLaneEvent};
@@ -635,6 +637,7 @@ pub struct MapLaneUplink<K, V, F> {
     id: u64,
     /// A factory for retry strategies to be used for the checkpoint transactions.
     retries: F,
+    backpressure_config: Option<KeyedBackpressureConfig>,
 }
 
 impl<K, V, F, Retries> MapLaneUplink<K, V, F>
@@ -644,8 +647,18 @@ where
     F: Fn() -> Retries + Send + Sync + 'static,
     Retries: RetryManager + Send + 'static,
 {
-    pub fn new(lane: MapLane<K, V>, id: u64, retries: F) -> Self {
-        MapLaneUplink { lane, id, retries }
+    pub fn new(
+        lane: MapLane<K, V>,
+        id: u64,
+        retries: F,
+        backpressure_config: Option<KeyedBackpressureConfig>,
+    ) -> Self {
+        MapLaneUplink {
+            lane,
+            id,
+            retries,
+            backpressure_config,
+        }
     }
 }
 
@@ -656,7 +669,7 @@ where
     F: Fn() -> Retries + Send + Sync + 'static,
     Retries: RetryManager + Send + 'static,
 {
-    type Msg = MapUpdate<K, V>;
+    type Msg = MapUpdate<Value, V>;
 
     fn message_for(&self, event: MapLaneEvent<K, V>) -> Result<Option<Self::Msg>, UplinkError> {
         Ok(make_update(event))
@@ -669,7 +682,9 @@ where
     where
         Updates: FusedStream<Item = MapLaneEvent<K, V>> + Send + Unpin + 'a,
     {
-        let MapLaneUplink { lane, id, retries } = self;
+        let MapLaneUplink {
+            lane, id, retries, ..
+        } = self;
         Box::pin(
             map::sync_map_lane_peel(*id, lane, updates, retries()).filter_map(|r| {
                 ready(match r {
@@ -681,6 +696,27 @@ where
                 })
             }),
         )
+    }
+
+    fn send_message_stream<'a, Messages, Sender, SendErr>(
+        &'a self,
+        message_stream: Messages,
+        sender: Sender,
+    ) -> BoxFuture<'a, Result<(), UplinkError>>
+    where
+        Messages:
+            Stream<Item = Result<UplinkMessage<MapUpdate<Value, V>>, UplinkError>> + Send + 'a,
+        Sender: ItemSender<UplinkMessage<MapUpdate<Value, V>>, SendErr> + Send + Sync + Clone + 'a,
+        SendErr: Send + 'a,
+    {
+        async move {
+            if let Some(config) = self.backpressure_config {
+                backpressure::map_uplink_release_backpressure(message_stream, sender, config).await
+            } else {
+                default_send_message_stream(message_stream, sender).await
+            }
+        }
+        .boxed()
     }
 }
 

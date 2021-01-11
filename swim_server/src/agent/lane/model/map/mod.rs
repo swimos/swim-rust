@@ -158,11 +158,11 @@ where
 //TODO Relax to Form.
 pub fn make_update<K: ValidatedForm, V: ValidatedForm>(
     event: MapLaneEvent<K, V>,
-) -> Option<MapUpdate<K, V>> {
+) -> Option<MapUpdate<Value, V>> {
     match event {
-        MapLaneEvent::Update(key, value) => Some(MapUpdate::Update(key, value)),
+        MapLaneEvent::Update(key, value) => Some(MapUpdate::Update(key.into_value(), value)),
         MapLaneEvent::Clear => Some(MapUpdate::Clear),
-        MapLaneEvent::Remove(key) => Some(MapUpdate::Remove(key)),
+        MapLaneEvent::Remove(key) => Some(MapUpdate::Remove(key.into_value())),
         MapLaneEvent::Checkpoint(_) => None,
     }
 }

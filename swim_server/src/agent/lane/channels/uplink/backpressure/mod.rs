@@ -14,6 +14,7 @@
 
 use crate::agent::lane::channels::uplink::{UplinkError, UplinkMessage, ValueLaneEvent};
 use futures::future::join;
+use futures::stream::unfold;
 use futures::{Stream, StreamExt};
 use pin_utils::pin_mut;
 use std::fmt::Debug;
@@ -24,6 +25,7 @@ use swim_common::sink::item::ItemSender;
 use swim_warp::backpressure::map::release_pressure as release_pressure_map;
 use swim_warp::backpressure::{release_pressure, Flushable};
 use swim_warp::model::map::MapUpdate;
+use tokio::sync::oneshot;
 use utilities::sync::{circular_buffer, trigger};
 
 #[derive(Clone, Copy, Debug)]
@@ -94,22 +96,51 @@ const INTERNAL_ERROR: &str = "Internal channel error.";
 
 //TODO Remove ValidatedForm constraint.
 pub async fn map_uplink_release_backpressure<K, V, E, Snk>(
-    messages: impl Stream<Item = UplinkMessage<MapUpdate<K, V>>>,
+    messages: impl Stream<Item = Result<UplinkMessage<MapUpdate<K, V>>, UplinkError>>,
     sink: Snk,
     config: KeyedBackpressureConfig,
-) -> Result<(), E>
+) -> Result<(), UplinkError>
 where
     K: ValidatedForm + Hash + Eq + Clone + Send + Sync + Debug,
     V: ValidatedForm + Send + Sync + Debug,
     Snk: ItemSender<UplinkMessage<MapUpdate<K, V>>, E> + Clone,
 {
-    release_pressure_map(
-        messages,
+    let (result_tx, result_rx) = oneshot::channel();
+    pin_mut!(messages);
+    let good_messages = unfold(
+        (messages, Some(result_tx)),
+        |(mut messages, mut maybe_tx)| async move {
+            match messages.next().await {
+                Some(Ok(msg)) => Some((msg, (messages, maybe_tx))),
+                Some(Err(e)) => {
+                    if let Some(tx) = maybe_tx.take() {
+                        let _ = tx.send(Err(e));
+                    }
+                    None
+                }
+                _ => {
+                    if let Some(tx) = maybe_tx.take() {
+                        let _ = tx.send(Ok(()));
+                    }
+                    None
+                }
+            }
+        },
+    );
+
+    let task_result = release_pressure_map(
+        good_messages,
         sink.clone(),
         config.yield_after,
         config.bridge_buffer_size,
         config.cache_size,
         config.buffer_size,
     )
-    .await
+    .await;
+
+    match (result_rx.await, task_result) {
+        (Ok(r), _) => r,
+        (_, Ok(_)) => Ok(()),
+        _ => Err(UplinkError::ChannelDropped),
+    }
 }
