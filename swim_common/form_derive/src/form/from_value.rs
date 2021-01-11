@@ -411,9 +411,7 @@ fn parse_elements(
             (headers, header_body, items, attrs)
         });
 
-    if !items.is_empty()
-    /*&& !field_manifest.replaces_body*/
-    {
+    if !items.is_empty() {
         if into {
             items = quote! {
                 let mut items_iter = items.into_iter();
