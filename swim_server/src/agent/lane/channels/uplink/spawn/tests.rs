@@ -296,7 +296,7 @@ impl UplinkSpawnerSplitOutputs {
 }
 
 fn make_config() -> AgentExecutionConfig {
-    AgentExecutionConfig::with(default_buffer(), 1, 1, Duration::from_secs(5))
+    AgentExecutionConfig::with(default_buffer(), 1, 1, Duration::from_secs(5), None)
 }
 
 struct TestContext {

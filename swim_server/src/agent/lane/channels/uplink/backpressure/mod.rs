@@ -28,18 +28,18 @@ use swim_warp::model::map::MapUpdate;
 use tokio::sync::oneshot;
 use utilities::sync::{circular_buffer, trigger};
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SimpleBackpressureConfig {
-    buffer_size: NonZeroUsize,
-    yield_after: NonZeroUsize,
+    pub buffer_size: NonZeroUsize,
+    pub yield_after: NonZeroUsize,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct KeyedBackpressureConfig {
-    buffer_size: NonZeroUsize,
-    yield_after: NonZeroUsize,
-    bridge_buffer_size: NonZeroUsize,
-    cache_size: NonZeroUsize,
+    pub buffer_size: NonZeroUsize,
+    pub yield_after: NonZeroUsize,
+    pub bridge_buffer_size: NonZeroUsize,
+    pub cache_size: NonZeroUsize,
 }
 
 pub async fn value_uplink_release_backpressure<T, E, Snk>(

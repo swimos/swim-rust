@@ -17,6 +17,9 @@ use crate::agent::lane::channels::update::action::ActionLaneUpdateTask;
 use crate::agent::lane::channels::update::map::MapLaneUpdateTask;
 use crate::agent::lane::channels::update::value::ValueLaneUpdateTask;
 use crate::agent::lane::channels::update::{LaneUpdate, UpdateError};
+use crate::agent::lane::channels::uplink::backpressure::{
+    KeyedBackpressureConfig, SimpleBackpressureConfig,
+};
 use crate::agent::lane::channels::uplink::spawn::UplinkErrorReport;
 use crate::agent::lane::channels::uplink::stateless::StatelessUplinks;
 use crate::agent::lane::channels::uplink::{
@@ -311,7 +314,21 @@ where
     combine_results(route, upd_res.err(), upl_fatal, upl_errs)
 }
 
-impl<T> LaneMessageHandler for ValueLane<T>
+pub struct ValueLaneMessageHandler<T> {
+    lane: ValueLane<T>,
+    backpressure_config: Option<SimpleBackpressureConfig>,
+}
+
+impl<T> ValueLaneMessageHandler<T> {
+    pub fn new(lane: ValueLane<T>, backpressure_config: Option<SimpleBackpressureConfig>) -> Self {
+        ValueLaneMessageHandler {
+            lane,
+            backpressure_config,
+        }
+    }
+}
+
+impl<T> LaneMessageHandler for ValueLaneMessageHandler<T>
 where
     T: Any + Send + Sync + Debug,
 {
@@ -320,11 +337,11 @@ where
     type Update = ValueLaneUpdateTask<T>;
 
     fn make_uplink(&self, _addr: RoutingAddr) -> Self::Uplink {
-        ValueLaneUplink::new((*self).clone(), None) //TODO Feed in configuration.
+        ValueLaneUplink::new(self.lane.clone(), self.backpressure_config)
     }
 
     fn make_update(&self) -> Self::Update {
-        ValueLaneUpdateTask::new((*self).clone())
+        ValueLaneUpdateTask::new(self.lane.clone())
     }
 }
 
@@ -334,6 +351,7 @@ pub struct MapLaneMessageHandler<K, V, F> {
     lane: MapLane<K, V>,
     uplink_counter: AtomicU64,
     retries: F,
+    backpressure_config: Option<KeyedBackpressureConfig>,
 }
 
 impl<K, V, F, Ret> MapLaneMessageHandler<K, V, F>
@@ -341,11 +359,16 @@ where
     F: Fn() -> Ret + Clone + Send + Sync + 'static,
     Ret: RetryManager + Send + Sync + 'static,
 {
-    pub fn new(lane: MapLane<K, V>, retries: F) -> Self {
+    pub fn new(
+        lane: MapLane<K, V>,
+        retries: F,
+        backpressure_config: Option<KeyedBackpressureConfig>,
+    ) -> Self {
         MapLaneMessageHandler {
             lane,
             uplink_counter: AtomicU64::new(1),
             retries,
+            backpressure_config,
         }
     }
 }
@@ -366,9 +389,10 @@ where
             lane,
             uplink_counter,
             retries,
+            backpressure_config,
         } = self;
         let i = uplink_counter.fetch_add(1, Ordering::Relaxed);
-        MapLaneUplink::new((*lane).clone(), i, retries.clone(), None) //TODO Add configuration.
+        MapLaneUplink::new((*lane).clone(), i, retries.clone(), *backpressure_config)
     }
 
     fn make_update(&self) -> Self::Update {
