@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use async_std::task;
 use std::fmt::Debug;
 use std::sync::Arc;
 use std::time::Duration;
@@ -52,9 +51,14 @@ impl UnitAgentLifecycle {
     {
         let minutes = context.agent().minutes.clone();
 
-        tokio::spawn(async move {
-            timer(1, minutes).await;
-        });
+        let effect = move || {
+            let min = minutes.clone();
+            async move { increment_time(&min).await }
+        };
+
+        context
+            .periodically(effect, Duration::new(1, 0), None)
+            .await;
     }
 }
 
@@ -116,14 +120,7 @@ impl LaneLifecycle<UnitAgentConfig> for PublishLifecycle {
     }
 }
 
-async fn timer(delay: u64, minutes: ValueLane<i32>) {
-    loop {
-        update_minutes(&minutes).await;
-        task::sleep(Duration::from_secs(delay)).await;
-    }
-}
-
-async fn update_minutes(minutes: &ValueLane<i32>) {
+async fn increment_time(minutes: &ValueLane<i32>) {
     let current_value = atomically(
         &minutes.get(),
         StmRetryStrategy::new(RetryStrategy::default()),
