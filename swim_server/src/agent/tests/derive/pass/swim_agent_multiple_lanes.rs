@@ -15,7 +15,7 @@
 use std::sync::Arc;
 use swim_server::agent::lane::lifecycle::{LaneLifecycle, StatefulLaneLifecycleBase};
 use swim_server::agent::lane::model::action::ActionLane;
-use crate::agent::lane::model::command::CommandLane;
+use swim_server::agent::lane::model::command::CommandLane;
 use swim_server::agent::lane::model::map::{MapLane, MapLaneEvent};
 use swim_server::agent::lane::model::value::ValueLane;
 use swim_server::agent::lane::strategy::Queue;

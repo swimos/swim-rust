@@ -926,6 +926,22 @@ fn make_command_lane_task<Context: AgentExecutionContext + Send + Sync + 'static
     (join(mock_lifecycle, task).map(|(_, r)| r), input)
 }
 
+async fn expect_broadcast_envelopes(
+    count: i32,
+    router_rx: &mut mpsc::Receiver<TaggedEnvelope>,
+    expected_addr: &HashMap<RoutingAddr, i32>,
+    expected_envelope: Envelope,
+) {
+    let mut received_addr = HashMap::new();
+    for _ in 0..count {
+        let TaggedEnvelope(addr, env) = router_rx.recv().await.expect("Channel closed");
+        *received_addr.entry(addr).or_insert(0) += 1;
+        assert_eq!(env, expected_envelope);
+    }
+
+    assert_eq!(received_addr, *expected_addr);
+}
+
 async fn expect_envelope(
     router_rx: &mut mpsc::Receiver<TaggedEnvelope>,
     expected_addr: RoutingAddr,
@@ -1434,35 +1450,25 @@ async fn command_lane_multiple_links() {
 
         input.send_command(addr1, 2).await;
 
-        expect_envelope(
-            &mut router_rx,
-            addr1,
-            Envelope::make_event(&route.node, &route.lane, Some(4.into())),
-        )
-        .await;
+        let expected_addr: HashMap<_, _> = [(addr1, 1), (addr2, 1)].iter().cloned().collect();
 
-        expect_envelope(
+        expect_broadcast_envelopes(
+            2,
             &mut router_rx,
-            addr2,
+            &expected_addr,
             Envelope::make_event(&route.node, &route.lane, Some(4.into())),
         )
         .await;
 
         input.send_command(addr2, 3).await;
 
-        expect_envelope(
+        expect_broadcast_envelopes(
+            2,
             &mut router_rx,
-            addr1,
+            &expected_addr,
             Envelope::make_event(&route.node, &route.lane, Some(6.into())),
         )
-        .await;
-
-        expect_envelope(
-            &mut router_rx,
-            addr2,
-            Envelope::make_event(&route.node, &route.lane, Some(6.into())),
-        )
-        .await;
+            .await;
 
         drop(input);
 
