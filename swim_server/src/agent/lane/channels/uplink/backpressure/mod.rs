@@ -12,14 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::lane::channels::uplink::UplinkMessage;
+use crate::agent::lane::channels::uplink::{UplinkError, UplinkMessage, ValueLaneEvent};
 use futures::future::join;
 use futures::{Stream, StreamExt};
 use pin_utils::pin_mut;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::num::NonZeroUsize;
-use std::sync::Arc;
 use swim_common::form::ValidatedForm;
 use swim_common::sink::item::ItemSender;
 use swim_warp::backpressure::map::release_pressure as release_pressure_map;
@@ -27,25 +26,43 @@ use swim_warp::backpressure::{release_pressure, Flushable};
 use swim_warp::model::map::MapUpdate;
 use utilities::sync::{circular_buffer, trigger};
 
-pub async fn value_uplink_release_backpressure<T, E, Snk>(
-    messages: impl Stream<Item = UplinkMessage<Arc<T>>>,
-    mut sink: Snk,
+#[derive(Clone, Copy, Debug)]
+pub struct SimpleBackpressureConfig {
     buffer_size: NonZeroUsize,
     yield_after: NonZeroUsize,
-) -> Result<(), E>
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct KeyedBackpressureConfig {
+    buffer_size: NonZeroUsize,
+    yield_after: NonZeroUsize,
+    bridge_buffer_size: NonZeroUsize,
+    cache_size: NonZeroUsize,
+}
+
+pub async fn value_uplink_release_backpressure<T, E, Snk>(
+    messages: impl Stream<Item = Result<UplinkMessage<ValueLaneEvent<T>>, UplinkError>>,
+    mut sink: Snk,
+    config: SimpleBackpressureConfig,
+) -> Result<(), UplinkError>
 where
     T: Send + Sync + Debug,
-    Snk: ItemSender<UplinkMessage<Arc<T>>, E> + Clone,
+    Snk: ItemSender<UplinkMessage<ValueLaneEvent<T>>, E> + Clone,
 {
+    let SimpleBackpressureConfig {
+        buffer_size,
+        yield_after,
+    } = config;
+
     let (mut internal_tx, internal_rx) =
-        circular_buffer::channel::<Flushable<UplinkMessage<Arc<T>>>>(buffer_size);
+        circular_buffer::channel::<Flushable<UplinkMessage<ValueLaneEvent<T>>>>(buffer_size);
 
     let out_task = release_pressure(internal_rx, sink.clone(), yield_after);
 
     let in_task = async move {
         pin_mut!(messages);
         while let Some(msg) = messages.next().await {
-            match msg {
+            match msg? {
                 event_msg @ UplinkMessage::Event(_) => {
                     internal_tx
                         .try_send(Flushable::Value(event_msg))
@@ -57,7 +74,9 @@ where
                         .try_send(Flushable::Flush(flush_tx))
                         .expect(INTERNAL_ERROR);
                     let _ = flush_rx.await;
-                    sink.send_item(ow).await?;
+                    sink.send_item(ow)
+                        .await
+                        .map_err(|_| UplinkError::ChannelDropped)?;
                 }
             }
         }
@@ -66,7 +85,7 @@ where
 
     match join(in_task, out_task).await {
         (Err(e), _) => Err(e),
-        (_, Err(e)) => Err(e),
+        (_, Err(_)) => Err(UplinkError::ChannelDropped),
         _ => Ok(()),
     }
 }
@@ -77,10 +96,7 @@ const INTERNAL_ERROR: &str = "Internal channel error.";
 pub async fn map_uplink_release_backpressure<K, V, E, Snk>(
     messages: impl Stream<Item = UplinkMessage<MapUpdate<K, V>>>,
     sink: Snk,
-    buffer_size: NonZeroUsize,
-    bridge_buffer_size: NonZeroUsize,
-    cache_size: NonZeroUsize,
-    yield_after: NonZeroUsize,
+    config: KeyedBackpressureConfig,
 ) -> Result<(), E>
 where
     K: ValidatedForm + Hash + Eq + Clone + Send + Sync + Debug,
@@ -90,10 +106,10 @@ where
     release_pressure_map(
         messages,
         sink.clone(),
-        yield_after,
-        bridge_buffer_size,
-        cache_size,
-        buffer_size,
+        config.yield_after,
+        config.bridge_buffer_size,
+        config.cache_size,
+        config.buffer_size,
     )
     .await
 }

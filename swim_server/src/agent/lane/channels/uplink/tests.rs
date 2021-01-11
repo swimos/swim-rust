@@ -83,7 +83,7 @@ async fn uplink_not_linked() {
     let (tx_action, rx_action) = mpsc::channel::<UplinkAction>(5);
 
     let uplink = Uplink::new(
-        ValueLaneUplink::new(lane.clone()),
+        ValueLaneUplink::new(lane.clone(), None),
         rx_action.fuse(),
         events.fuse(),
     );
@@ -125,7 +125,7 @@ async fn uplink_open_to_linked() {
     let (tx_action, rx_action) = mpsc::channel::<UplinkAction>(5);
 
     let uplink = Uplink::new(
-        ValueLaneUplink::new(lane.clone()),
+        ValueLaneUplink::new(lane.clone(), None),
         rx_action.fuse(),
         events.fuse(),
     );
@@ -173,7 +173,7 @@ async fn uplink_open_to_synced() {
     let (tx_action, rx_action) = mpsc::channel::<UplinkAction>(5);
 
     let uplink = Uplink::new(
-        ValueLaneUplink::new(lane.clone()),
+        ValueLaneUplink::new(lane.clone(), None),
         rx_action.fuse(),
         events.fuse(),
     );
@@ -213,7 +213,7 @@ async fn uplink_open_to_synced() {
 async fn value_state_machine_message_for() {
     let (lane, _events) = value::make_lane_model::<i32, Queue>(0, Queue::default());
 
-    let uplink = ValueLaneUplink::new(lane);
+    let uplink = ValueLaneUplink::new(lane, None);
 
     let event = Arc::new(4);
 
@@ -226,7 +226,7 @@ async fn value_state_machine_message_for() {
 async fn value_state_machine_sync_from_var() {
     let (lane, events) = value::make_lane_model::<i32, Queue>(7, Queue::default());
 
-    let uplink = ValueLaneUplink::new(lane);
+    let uplink = ValueLaneUplink::new(lane, None);
 
     let mut events = events.fuse();
 
@@ -249,7 +249,7 @@ async fn value_state_machine_sync_from_var() {
 async fn value_state_machine_sync_from_events() {
     let (lane, _events) = value::make_lane_model::<i32, Queue>(7, Queue::default());
 
-    let uplink = ValueLaneUplink::new(lane.clone());
+    let uplink = ValueLaneUplink::new(lane.clone(), None);
 
     let (tx_fake, rx_fake) = mpsc::channel(5);
 

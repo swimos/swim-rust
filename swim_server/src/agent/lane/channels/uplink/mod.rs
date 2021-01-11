@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::agent::lane::channels::uplink::backpressure::SimpleBackpressureConfig;
 use crate::agent::lane::channels::uplink::map::MapLaneSyncError;
 use crate::agent::lane::model::demand_map::{DemandMapLane, DemandMapLaneUpdate};
 use crate::agent::lane::model::map::{make_update, MapLane, MapLaneEvent};
@@ -21,7 +22,6 @@ use either::Either;
 use futures::future::{ready, BoxFuture};
 use futures::stream::{once, unfold, BoxStream, FusedStream};
 use futures::{select, select_biased, FutureExt, Stream, StreamExt};
-use futures_util::core_reexport::num::NonZeroUsize;
 use pin_utils::pin_mut;
 use std::any::Any;
 use std::error::Error;
@@ -249,7 +249,8 @@ where
     /// Run the uplink as an asynchronous task.
     pub async fn run_uplink<Sender, SendErr>(self, mut sender: Sender) -> Result<(), UplinkError>
     where
-        Sender: ItemSender<UplinkMessage<SM::Msg>, SendErr> + Send + Sync,
+        Sender: ItemSender<UplinkMessage<SM::Msg>, SendErr> + Send + Sync + Clone,
+        SendErr: Send,
     {
         let Uplink {
             state_machine,
@@ -262,7 +263,7 @@ where
         let update_stream = as_stream(&state_machine, &mut actions, &mut updates);
 
         let completion = state_machine
-            .send_message_stream(update_stream, &mut sender)
+            .send_message_stream(update_stream, sender.clone())
             .await;
         let attempt_unlink = match &completion {
             Ok(_) => false,
@@ -465,45 +466,43 @@ pub trait UplinkStateMachine<Event>: Send + Sync {
     fn send_message_stream<'a, Messages, Sender, SendErr>(
         &'a self,
         message_stream: Messages,
-        sender: &'a mut Sender,
+        sender: Sender,
     ) -> BoxFuture<'a, Result<(), UplinkError>>
     where
         Messages: Stream<Item = Result<UplinkMessage<Self::Msg>, UplinkError>> + Send + 'a,
-        Sender: ItemSender<UplinkMessage<Self::Msg>, SendErr> + Send + Sync + 'a,
+        Sender: ItemSender<UplinkMessage<Self::Msg>, SendErr> + Send + Sync + Clone + 'a,
+        SendErr: Send + 'a,
     {
-        async move {
-            pin_mut!(message_stream);
-            loop {
-                match message_stream.next().await {
-                    Some(Ok(msg)) => {
-                        let result = send_msg(sender, msg).await;
-                        if result.is_err() {
-                            break result;
-                        }
-                    }
-                    Some(Err(e)) => {
-                        break Err(e);
-                    }
-                    _ => {
-                        break Ok(());
-                    }
-                }
-            }
-        }
-        .boxed()
+        default_send_message_stream(message_stream, sender).boxed()
     }
 }
 
-pub struct SimpleBackpressureConfig {
-    buffer_size: NonZeroUsize,
-    yield_after: NonZeroUsize,
-}
-
-pub struct KeyedBackpressureConfig {
-    buffer_size: NonZeroUsize,
-    yield_after: NonZeroUsize,
-    bridge_buffer_size: NonZeroUsize,
-    cache_size: NonZeroUsize,
+async fn default_send_message_stream<Msg, Messages, Sender, SendErr>(
+    message_stream: Messages,
+    mut sender: Sender,
+) -> Result<(), UplinkError>
+where
+    Msg: Any + Send + Sync + Debug,
+    Messages: Stream<Item = Result<UplinkMessage<Msg>, UplinkError>> + Send,
+    Sender: ItemSender<UplinkMessage<Msg>, SendErr> + Send + Sync,
+{
+    pin_mut!(message_stream);
+    loop {
+        match message_stream.next().await {
+            Some(Ok(msg)) => {
+                let result = send_msg(&mut sender, msg).await;
+                if result.is_err() {
+                    break result;
+                }
+            }
+            Some(Err(e)) => {
+                break Err(e);
+            }
+            _ => {
+                break Ok(());
+            }
+        }
+    }
 }
 
 pub struct ValueLaneUplink<T> {
@@ -604,6 +603,27 @@ where
         );
         Box::pin(str)
     }
+
+    fn send_message_stream<'a, Messages, Sender, SendErr>(
+        &'a self,
+        message_stream: Messages,
+        sender: Sender,
+    ) -> BoxFuture<'a, Result<(), UplinkError>>
+    where
+        Messages: Stream<Item = Result<UplinkMessage<Self::Msg>, UplinkError>> + Send + 'a,
+        Sender: ItemSender<UplinkMessage<Self::Msg>, SendErr> + Send + Sync + Clone + 'a,
+        SendErr: Send + 'a,
+    {
+        async move {
+            if let Some(config) = self.backpressure_config {
+                backpressure::value_uplink_release_backpressure(message_stream, sender, config)
+                    .await
+            } else {
+                default_send_message_stream(message_stream, sender).await
+            }
+        }
+        .boxed()
+    }
 }
 
 /// Uplink for a [`MapLane`].
@@ -664,6 +684,7 @@ where
     }
 }
 
+#[derive(Debug, Clone)]
 pub(crate) struct UplinkMessageSender<S> {
     inner: S,
     route: RelativePath,
@@ -676,7 +697,7 @@ impl<S> UplinkMessageSender<S> {
 }
 
 impl UplinkMessageSender<TaggedSender> {
-    pub fn into_item_sender<Msg>(self) -> impl ItemSender<UplinkMessage<Msg>, SendError>
+    pub fn into_item_sender<Msg>(self) -> impl ItemSender<UplinkMessage<Msg>, SendError> + Clone
     where
         Msg: Into<Value> + Send + 'static,
     {
