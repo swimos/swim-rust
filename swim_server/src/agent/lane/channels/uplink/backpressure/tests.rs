@@ -17,14 +17,14 @@ use crate::agent::lane::channels::uplink::backpressure::{
 };
 use crate::agent::lane::channels::uplink::{UplinkError, UplinkMessage, ValueLaneEvent};
 use futures::future::{join3, join_all};
-use futures_util::core_reexport::num::NonZeroUsize;
-use futures_util::core_reexport::time::Duration;
 use std::collections::HashMap;
 use std::sync::Arc;
 use swim_common::sink::item;
 use swim_runtime::time::timeout::timeout;
 use swim_warp::model::map::MapUpdate;
 use tokio::sync::mpsc;
+use std::time::Duration;
+use std::num::NonZeroUsize;
 
 const TIMEOUT: Duration = Duration::from_secs(10);
 
