@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[cfg(test)]
+mod tests;
+
 use crate::agent::lane::channels::uplink::{UplinkError, UplinkMessage, ValueLaneEvent};
 use futures::future::join;
 use futures::stream::unfold;
