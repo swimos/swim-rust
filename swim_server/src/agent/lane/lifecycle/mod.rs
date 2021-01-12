@@ -63,7 +63,7 @@ pub trait StatefulLaneLifecycle<'a, Model: LaneModel, Agent>: StatefulLaneLifecy
     /// * `model` - The model of the lane.
     /// * `context` - Context of the agent that owns the lane.
     fn on_event<C>(
-        &'a self,
+        &'a mut self,
         event: &'a Model::Event,
         model: &'a Model,
         context: &'a C,
@@ -122,7 +122,7 @@ impl<'a, Model: LaneModel, Agent> StatefulLaneLifecycle<'a, Model, Agent> for Qu
     }
 
     fn on_event<C: AgentContext<Agent>>(
-        &'a self,
+        &'a mut self,
         _event: &'a Model::Event,
         _model: &'a Model,
         _context: &'a C,
@@ -152,7 +152,7 @@ impl<'a, Model: LaneModel, Agent> StatefulLaneLifecycle<'a, Model, Agent> for Bu
     }
 
     fn on_event<C: AgentContext<Agent>>(
-        &'a self,
+        &'a mut self,
         _event: &'a Model::Event,
         _model: &'a Model,
         _context: &'a C,

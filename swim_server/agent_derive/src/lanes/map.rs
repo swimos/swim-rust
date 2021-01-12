@@ -61,7 +61,7 @@ pub fn derive_map_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput) ->
     };
     let on_event = quote! {
         let #task_name {
-            lifecycle,
+            mut lifecycle,
             event_stream,
             projection,
             ..

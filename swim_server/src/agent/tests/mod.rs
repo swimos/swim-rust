@@ -182,7 +182,7 @@ where
     }
 
     fn on_event<C>(
-        &'a self,
+        &'a mut self,
         event: &'a Lane::Event,
         model: &'a Lane,
         context: &'a C,
