@@ -44,8 +44,7 @@ use utilities::errors::Recoverable;
 
 #[cfg(test)]
 mod tests;
-//TODO Make this private.
-pub mod backpressure;
+pub(crate) mod backpressure;
 pub mod map;
 pub(crate) mod spawn;
 pub mod stateless;

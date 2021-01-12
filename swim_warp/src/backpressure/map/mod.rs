@@ -33,9 +33,15 @@ use tokio::sync::mpsc;
 use utilities::lru_cache::LruCache;
 use utilities::sync::{circular_buffer, trigger};
 
+/// Trait for types that may consist of either or map lane update or messages of a different type.
+/// The purpose of this is to allow streams of updates and streams of warp messages (including
+/// linked, synced messages etc, to be treated uniformly.
 pub trait MapUpdateMessage<K: ValidatedForm, V: ValidatedForm>: Sized {
+
+    /// Discriminate between map updates and other messages.
     fn discriminate(self) -> Either<MapUpdate<K, V>, Self>;
 
+    /// Repack a map update into the overall message type.
     fn repack(update: MapUpdate<K, V>) -> Self;
 }
 
@@ -49,6 +55,7 @@ impl<K: ValidatedForm, V: ValidatedForm> MapUpdateMessage<K, V> for MapUpdate<K,
     }
 }
 
+/// Map updates that do not have an associated key.
 enum SpecialAction {
     Clear,
     Take(usize),
@@ -71,25 +78,49 @@ where
 
 type BridgeBufferReceiver<V> = circular_buffer::Receiver<Option<Arc<V>>>;
 
+/// A message type that is used by the input task to communicate with the output task.
 enum Action<M, K, V> {
+    /// Register a new channel for a key.
     Register {
         key: K,
         values: BridgeBufferReceiver<V>,
     },
+    /// Perform a special action, providing a callback for when it has completed.
     Special {
         kind: SpecialAction,
         on_handled: trigger::Sender,
     },
+    /// Evict a key from the output task providing a callback for when the channel for that key
+    /// has been removed and flushed.
     Evict {
         key: K,
         on_handled: trigger::Sender,
     },
+    /// Flush all pending buffers and emit a message.
     Flush {
         message: M,
     },
 }
 
 //TODO Remove ValidatedForm constraint.
+/// Consume a stream of keyed messages with one task that pushes them into a circular buffer (for
+/// each key). A second task then consumes the buffers and writes the messages to a sink. If the
+/// second tasks does not keep up with the first, for a give key, some messages will be discarded.
+/// Up to a fixed maximum number of keys are kept active at any one time. Messages that are not map
+/// updates will cause the intermediate buffers to flush before they are emitted.
+///
+/// #Arguments
+///
+/// * `rx` - The stream of incoming messages.
+/// * `sink` - Sink to which the output task writes.
+/// * `yield_after` - The input and output tasks will yield to the runtime after this many
+/// iterations of their event loops.
+/// * `bridge_buffer` - Buffer size for the communication channel between the input and output
+/// tasks.
+/// * `cache_size` - The maximum number of active keys. If this number would be exceeded, the least
+/// recently used key is evicted and flushed before another channel can be opened (effectively
+/// stalling the stream until the flush completes).
+/// * `buffer_size` - Size of the circular buffer used for each key.
 pub async fn release_pressure<M, K, V, E, Snk>(
     rx: impl Stream<Item = M>,
     sink: Snk,

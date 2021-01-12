@@ -28,20 +28,31 @@ use swim_warp::model::map::MapUpdate;
 use tokio::sync::oneshot;
 use utilities::sync::{circular_buffer, trigger};
 
+/// Configuration for the value lane back-pressure release.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SimpleBackpressureConfig {
+    /// Buffer size for the channel connecting the input and output tasks.
     pub buffer_size: NonZeroUsize,
+    /// Number of loop iterations after which the input and output tasks will yield.
     pub yield_after: NonZeroUsize,
 }
 
+/// Configuration for the map lane back-pressure release.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct KeyedBackpressureConfig {
+    /// Buffer size for the channels connecting the input and output tasks.
     pub buffer_size: NonZeroUsize,
+    /// Number of loop iterations after which the input and output tasks will yield.
     pub yield_after: NonZeroUsize,
+    /// Buffer size for the communication side channel between the input and output tasks.
     pub bridge_buffer_size: NonZeroUsize,
+    /// Number of keys for maintain a channel for at any one time.
     pub cache_size: NonZeroUsize,
 }
 
+/// Consume a stream of messages from a [`ValueLane`] with one task that pushes them into a
+/// circular buffer. A second task then consumes the buffer and writes the values to a sink.
+/// If the second tasks does not keep up with the first, some messages will be discarded.
 pub async fn value_uplink_release_backpressure<T, E, Snk>(
     messages: impl Stream<Item = Result<UplinkMessage<ValueLaneEvent<T>>, UplinkError>>,
     mut sink: Snk,
@@ -94,7 +105,11 @@ where
 
 const INTERNAL_ERROR: &str = "Internal channel error.";
 
-//TODO Remove ValidatedForm constraint.
+/// TODO Remove ValidatedForm constraint.
+/// Consume a stream of messages from a [`MapLane`] with one task that pushes them into a
+/// circular buffer (for each key). A second task then consumes the buffers and writes the messages
+/// to a sink. If the second tasks does not keep up with the first, for a give key, some messages
+/// will be discarded. Up to a fixed maximum number of keys are kept active at any one time.
 pub async fn map_uplink_release_backpressure<K, V, E, Snk>(
     messages: impl Stream<Item = Result<UplinkMessage<MapUpdate<K, V>>, UplinkError>>,
     sink: Snk,
@@ -107,6 +122,8 @@ where
 {
     let (result_tx, result_rx) = oneshot::channel();
     pin_mut!(messages);
+    //Filters out only valid messages and termintes the stream on an error, reserving the error to
+    //be reported.
     let good_messages = unfold(
         (messages, Some(result_tx)),
         |(mut messages, mut maybe_tx)| async move {
