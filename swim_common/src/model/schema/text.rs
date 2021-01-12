@@ -26,7 +26,7 @@ pub enum TextSchema {
     /// Matches only a specific string.
     Exact(String),
     /// Matches a string against a regular expression.
-    Matches(Regex),
+    Matches(Box<Regex>),
     /// A logical OR of text schemas
     Or(Vec<TextSchema>),
 }
@@ -39,7 +39,7 @@ impl TextSchema {
 
     /// A schema that accepts strings matching a regular expression.
     pub fn regex(string: &str) -> Result<TextSchema, RegexError> {
-        Regex::new(string).map(TextSchema::Matches)
+        Regex::new(string).map(Box::new).map(TextSchema::Matches)
     }
 
     /// A schema that performs a logical OR over a number of text schemas.
