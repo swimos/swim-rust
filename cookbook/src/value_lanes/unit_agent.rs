@@ -45,9 +45,10 @@ pub struct UnitAgentLifecycle;
 
 impl UnitAgentLifecycle {
     async fn on_start<Context>(&self, _context: &Context)
-        where
-            Context: AgentContext<UnitAgent> + Sized + Send + Sync,
-    {}
+    where
+        Context: AgentContext<UnitAgent> + Sized + Send + Sync,
+    {
+    }
 }
 
 #[value_lifecycle(agent = "UnitAgent", event_type = "String")]
@@ -55,9 +56,10 @@ struct InfoLifecycle;
 
 impl InfoLifecycle {
     async fn on_start<Context>(&self, _model: &ValueLane<String>, _context: &Context)
-        where
-            Context: AgentContext<UnitAgent> + Sized + Send + Sync,
-    {}
+    where
+        Context: AgentContext<UnitAgent> + Sized + Send + Sync,
+    {
+    }
 
     async fn on_event<Context>(
         &self,
@@ -100,10 +102,13 @@ impl PublishInfoLifecycle {
         Context: AgentContext<UnitAgent> + Sized + Send + Sync + 'static,
     {
         let _ = atomically(
-            &context.agent().info.set(command),
+            &context
+                .agent()
+                .info
+                .set(format!("from publishInfo: {} ", command)),
             StmRetryStrategy::new(RetryStrategy::default()),
         )
-            .await;
+        .await;
     }
 }
 
