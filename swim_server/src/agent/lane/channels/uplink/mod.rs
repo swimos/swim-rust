@@ -42,12 +42,12 @@ use swim_warp::model::map::MapUpdate;
 use tracing::{event, Level};
 use utilities::errors::Recoverable;
 
-#[cfg(test)]
-mod tests;
 pub(crate) mod backpressure;
 pub mod map;
 pub(crate) mod spawn;
 pub mod stateless;
+#[cfg(test)]
+mod tests;
 
 /// An enumeration representing the type of an uplink.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]

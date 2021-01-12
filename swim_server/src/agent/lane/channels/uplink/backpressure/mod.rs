@@ -125,7 +125,7 @@ where
 {
     let (result_tx, result_rx) = oneshot::channel();
     pin_mut!(messages);
-    //Filters out only valid messages and termintes the stream on an error, reserving the error to
+    //Filters out only valid messages and terminates the stream on an error, reserving the error to
     //be reported.
     let good_messages = unfold(
         (messages, Some(result_tx)),

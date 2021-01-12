@@ -37,7 +37,6 @@ use utilities::sync::{circular_buffer, trigger};
 /// The purpose of this is to allow streams of updates and streams of warp messages (including
 /// linked, synced messages etc, to be treated uniformly.
 pub trait MapUpdateMessage<K: ValidatedForm, V: ValidatedForm>: Sized {
-
     /// Discriminate between map updates and other messages.
     fn discriminate(self) -> Either<MapUpdate<K, V>, Self>;
 
@@ -92,14 +91,9 @@ enum Action<M, K, V> {
     },
     /// Evict a key from the output task providing a callback for when the channel for that key
     /// has been removed and flushed.
-    Evict {
-        key: K,
-        on_handled: trigger::Sender,
-    },
+    Evict { key: K, on_handled: trigger::Sender },
     /// Flush all pending buffers and emit a message.
-    Flush {
-        message: M,
-    },
+    Flush { message: M },
 }
 
 //TODO Remove ValidatedForm constraint.
