@@ -13,7 +13,6 @@
 // limitations under the License.
 
 use proc_macro2::Ident;
-use syn::export::TokenStream2;
 use syn::spanned::Spanned;
 
 use macro_helpers::CompoundTypeKind;
@@ -22,6 +21,7 @@ use crate::form::form_parser::FormDescriptor;
 use crate::parser::FieldManifest;
 use macro_helpers::Label;
 use macro_helpers::{EnumRepr, FieldKind, FormField, TypeContents};
+use proc_macro2::TokenStream as TokenStream2;
 
 pub fn from_value(
     type_contents: &TypeContents<FormDescriptor, FormField<'_>>,

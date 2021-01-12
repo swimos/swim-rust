@@ -173,7 +173,7 @@ impl RoutePattern {
     }
 
     /// Get the parameter names present in a pattern.
-    pub fn parameters<'a>(&'a self) -> impl Iterator<Item = &'a str> + 'a {
+    pub fn parameters(&self) -> impl Iterator<Item = &str> + '_ {
         let RoutePattern { pattern, segments } = self;
         segments
             .iter()
