@@ -130,19 +130,33 @@ fn build_attr_quote(
         quote!(iter)
     };
 
-    let value_match_expr = quote! {
-        match value {
-            swim_common::model::Value::Record(_attrs, items) => {
-                let mut iter_items = items.#iterator();
-                while let Some(item) = iter_items.next() {
-                    match item {
-                        #headers
-                        i => return Err(swim_common::form::FormErr::message(format!("Unexpected item in tag body: {:?}", i))),
+    let value_match_expr = if headers.is_empty() {
+        quote! {
+            match value {
+                swim_common::model::Value::Record(_attrs, items) => {
+                    if !items.is_empty() {
+                        return Err(swim_common::form::FormErr::message(format!("Expected an empty record as header body")))
                     }
                 }
+                swim_common::model::Value::Extant => {},
+                #header_body
             }
-            swim_common::model::Value::Extant => {},
-            #header_body
+        }
+    } else {
+        quote! {
+            match value {
+                swim_common::model::Value::Record(_attrs, items) => {
+                    let mut iter_items = items.#iterator();
+                    while let Some(item) = iter_items.next() {
+                        match item {
+                            #headers
+                            i => return Err(swim_common::form::FormErr::message(format!("Unexpected item in tag body: {:?}", i))),
+                        }
+                    }
+                }
+                swim_common::model::Value::Extant => {},
+                #header_body
+            }
         }
     };
 
@@ -170,14 +184,12 @@ fn build_attr_quote(
                 }
             }
         }
-        label => {
-            let name_str = label.to_string();
-
+        _ => {
             quote! {
                 let mut attr_it = attrs.#iterator();
 
                 match attr_it.next() {
-                    Some(swim_common::model::Attr { name, value }) if name == #name_str => {
+                    Some(swim_common::model::Attr { name, value }) => {
                         #value_match_expr
                     },
                     _ => {
@@ -188,13 +200,23 @@ fn build_attr_quote(
         }
     };
 
-    quote! {
-        #name_check
+    if attributes.is_empty() {
+        quote! {
+            #name_check
 
-        while let Some(swim_common::model::Attr { name, value }) = attr_it.next() {
-            match name.as_str() {
-                #attributes
-                _ => return Err(swim_common::form::FormErr::Malformatted),
+            if let Some(_) = attr_it.next() {
+                return Err(swim_common::form::FormErr::Malformatted);
+            }
+        }
+    } else {
+        quote! {
+            #name_check
+
+            while let Some(swim_common::model::Attr { name, value }) = attr_it.next() {
+                match name.as_str() {
+                    #attributes
+                    _ => return Err(swim_common::form::FormErr::Malformatted),
+                }
             }
         }
     }
@@ -348,16 +370,15 @@ fn parse_elements(
                 }
                 FieldKind::Body => {
                     let fn_call = if into {
-                        fn_factory(quote!(rec))
+                        fn_factory(quote!(value))
                     } else {
-                        fn_factory(quote!(&rec))
+                        fn_factory(quote!(&value))
                     };
 
                     items = quote! {
-                        #ident = {
-                            let rec = swim_common::model::Value::Record(Vec::new(), items.to_vec());
-                            std::option::Option::Some(#fn_call?)
-                        };
+                        swim_common::model::Item::ValueItem(value) if #ident.is_none() => {
+                            #ident = std::option::Option::Some(#fn_call?);
+                        }
                     };
                 }
                 FieldKind::Tagged => {
@@ -369,19 +390,19 @@ fn parse_elements(
                     match &f.label {
                         Label::Anonymous(_) => {
                             headers = quote! {
-                                swim_common::model::Item::ValueItem(v) => {
+                                #headers
+                                swim_common::model::Item::ValueItem(v) if #ident.is_none() => {
                                     #ident = std::option::Option::Some(#fn_call?);
                                 }
-                                #headers
                             };
                         }
                         fi => {
                             let ident_str = fi.to_string();
                             headers = quote! {
+                                #headers
                                 swim_common::model::Item::Slot(swim_common::model::Value::Text(name), v) if name == #ident_str => {
                                     #ident = std::option::Option::Some(#fn_call?);
                                 }
-                                #headers
                             };
                         }
                     }
@@ -390,7 +411,7 @@ fn parse_elements(
             (headers, header_body, items, attrs)
         });
 
-    if !items.is_empty() && !field_manifest.replaces_body {
+    if !items.is_empty() {
         if into {
             items = quote! {
                 let mut items_iter = items.into_iter();

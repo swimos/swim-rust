@@ -164,10 +164,7 @@ fn compute_as_value(
                     let func = fn_factory(&ident);
 
                     items = quote!({
-                        match #func {
-                            swim_common::model::Value::Record(_attrs, items) => items,
-                            v => vec![swim_common::model::Item::ValueItem(v)]
-                        }
+                        vec![swim_common::model::Item::ValueItem(#func)]
                     });
                 }
                 FieldKind::HeaderBody => {
