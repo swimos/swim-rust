@@ -14,6 +14,7 @@
 
 #[cfg(feature = "test_server")]
 mod tests {
+    use std::sync::Arc;
     use swim_client::downlink::model::map::{
         MapAction, MapEvent, MapModification, UntypedMapModification,
     };
@@ -30,7 +31,6 @@ mod tests {
     use test_server::SwimTestServer;
     use tokio::stream::StreamExt;
     use tokio::time::Duration;
-    use std::sync::Arc;
 
     #[tokio::test]
     async fn test_value_dl_recv() {
@@ -243,8 +243,11 @@ mod tests {
         let mut command_dl = client.untyped_command_downlink(command_path).await.unwrap();
         command_dl
             .send(
-                UntypedMapModification::Update("milk".to_string().into_value(), Arc::new(6.into_value()))
-                    .as_value(),
+                UntypedMapModification::Update(
+                    "milk".to_string().into_value(),
+                    Arc::new(6.into_value()),
+                )
+                .as_value(),
             )
             .await
             .unwrap();
@@ -291,7 +294,10 @@ mod tests {
 
         let incoming = event_dl.recv().await.unwrap();
 
-        assert_eq!(incoming, MapModification::Update("milk".to_string(), Arc::new(6i32)));
+        assert_eq!(
+            incoming,
+            MapModification::Update("milk".to_string(), Arc::new(6i32))
+        );
     }
 
     #[tokio::test]
@@ -319,8 +325,11 @@ mod tests {
         let mut command_dl = client.untyped_command_downlink(command_path).await.unwrap();
         command_dl
             .send(
-                UntypedMapModification::Update("milk".to_string().into_value(), Arc::new(6.into_value()))
-                    .as_value(),
+                UntypedMapModification::Update(
+                    "milk".to_string().into_value(),
+                    Arc::new(6.into_value()),
+                )
+                .as_value(),
             )
             .await
             .unwrap();
@@ -355,8 +364,11 @@ mod tests {
         let mut command_dl = client.untyped_command_downlink(command_path).await.unwrap();
         command_dl
             .send(
-                UntypedMapModification::Update("milk".to_string().into_value(), Arc::new(6.into_value()))
-                    .as_value(),
+                UntypedMapModification::Update(
+                    "milk".to_string().into_value(),
+                    Arc::new(6.into_value()),
+                )
+                .as_value(),
             )
             .await
             .unwrap();
