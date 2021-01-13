@@ -179,7 +179,7 @@ type ResolutionRequest = Request<Result<RoutingAddr, RouterError>>;
 
 /// Requests that can be serviced by the plane event loop.
 #[derive(Debug)]
-pub enum PlaneRequest {
+pub(crate) enum PlaneRequest {
     /// Get a handle to an agent (starting it where necessary).
     Agent {
         name: RelativeUri,
@@ -349,7 +349,7 @@ const PLANE_STOPPED: &str = "The plane has stopped.";
 /// * `spawner` - Spawns tasks to run the agents for the plane.
 /// * `context_channel` - Transmitter and receiver for plane requests.
 /// * `delegate_fac` - Factory for creating delegate routers.
-pub async fn run_plane<Clk, S, DelegateFac: ServerRouterFactory>(
+pub(crate) async fn run_plane<Clk, S, DelegateFac: ServerRouterFactory>(
     execution_config: AgentExecutionConfig,
     clock: Clk,
     spec: PlaneSpec<Clk, EnvChannel, PlaneRouter<DelegateFac::Router>>,

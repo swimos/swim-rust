@@ -17,7 +17,7 @@ use crate::plane::router::PlaneRouter;
 use crate::plane::spec::{PlaneSpec, RouteSpec};
 use crate::plane::tests::fixture::{ReceiveAgentRoute, SendAgentRoute, TestLifecycle};
 use crate::plane::{AgentRoute, EnvChannel};
-use crate::routing::{ServerRouter, SuperRouterFactory};
+use crate::routing::{ServerRouter, TopLevelRouterFactory};
 use futures::future::join;
 use std::time::Duration;
 use swim_runtime::time::clock::Clock;
@@ -73,7 +73,7 @@ async fn plane_event_loop() {
     let config = fixture::make_config();
 
     let (remote_tx, _remote_rx) = mpsc::channel(8);
-    let super_router_fac = SuperRouterFactory::new(context_tx.clone(), remote_tx);
+    let super_router_fac = TopLevelRouterFactory::new(context_tx.clone(), remote_tx);
 
     let plane_task = super::run_plane(
         config,

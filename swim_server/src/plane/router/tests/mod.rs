@@ -17,7 +17,8 @@ use crate::plane::PlaneRequest;
 use crate::routing::error::{RouterError, Unresolvable};
 use crate::routing::remote::RawRoute;
 use crate::routing::{
-    RoutingAddr, ServerRouter, ServerRouterFactory, SuperRouter, SuperRouterFactory, TaggedEnvelope,
+    RoutingAddr, ServerRouter, ServerRouterFactory, TaggedEnvelope, TopLevelRouter,
+    TopLevelRouterFactory,
 };
 use futures::future::join;
 use swim_common::routing::{ConnectionError, ProtocolError, ResolutionErrorKind};
@@ -35,7 +36,7 @@ async fn plane_router_get_sender() {
     let (_drop_tx, drop_rx) = promise::promise();
 
     let (remote_tx, _remote_rx) = mpsc::channel(8);
-    let super_router = SuperRouter::new(addr, req_tx.clone(), remote_tx);
+    let super_router = TopLevelRouter::new(addr, req_tx.clone(), remote_tx);
 
     let mut router = PlaneRouter::new(addr, super_router, req_tx);
 
@@ -85,7 +86,7 @@ async fn plane_router_factory() {
     let (req_tx, _req_rx) = mpsc::channel(8);
 
     let (remote_tx, _remote_rx) = mpsc::channel(8);
-    let super_router_factory = SuperRouterFactory::new(req_tx.clone(), remote_tx);
+    let super_router_factory = TopLevelRouterFactory::new(req_tx.clone(), remote_tx);
 
     let fac = PlaneRouterFactory::new(req_tx, super_router_factory);
     let router = fac.create_for(RoutingAddr::local(56));
@@ -100,7 +101,7 @@ async fn plane_router_resolve() {
     let (req_tx, mut req_rx) = mpsc::channel(8);
 
     let (remote_tx, _remote_rx) = mpsc::channel(8);
-    let super_router = SuperRouter::new(addr, req_tx.clone(), remote_tx);
+    let super_router = TopLevelRouter::new(addr, req_tx.clone(), remote_tx);
 
     let mut router = PlaneRouter::new(addr, super_router, req_tx);
 
