@@ -157,11 +157,7 @@ where
 /// Updates that can be applied to a [`MapLane`].
 /// TODO Add take/drop.
 #[derive(Debug, PartialEq, Eq, Form)]
-pub enum MapUpdate<K, V>
-where
-    K: Form,
-    V: Form,
-{
+pub enum MapUpdate<K, V> {
     #[form(tag = "update")]
     Update(#[form(header, name = "key")] K, #[form(body)] Arc<V>),
     #[form(tag = "remove")]
