@@ -254,9 +254,9 @@ fn test_tuple() {
 fn test_rename() {
     #[derive(Form, Debug, PartialEq, Clone)]
     enum S {
-        A(#[form(rename = "A::a")] i32, i64),
+        A(#[form(name = "A::a")] i32, i64),
         B {
-            #[form(rename = "B::a")]
+            #[form(name = "B::a")]
             a: i32,
             b: i64,
         },

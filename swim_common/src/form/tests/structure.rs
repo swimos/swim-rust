@@ -184,7 +184,7 @@ fn test_rename() {
     #[derive(Form, Debug, PartialEq, Clone)]
     #[form(tag = "Structure")]
     struct S {
-        #[form(rename = "field_a")]
+        #[form(name = "field_a")]
         a: i32,
         b: i64,
     }

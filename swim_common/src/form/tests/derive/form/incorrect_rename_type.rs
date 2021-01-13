@@ -17,7 +17,7 @@ use form_derive::*;
 fn main() {
     #[derive(Form)]
     struct S {
-        #[form(rename = 13)]
+        #[form(name = 13)]
         a: i32,
     }
 }
