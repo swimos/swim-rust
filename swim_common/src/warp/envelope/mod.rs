@@ -504,12 +504,14 @@ impl Envelope {
         let headers = Value::Record(Vec::new(), headers);
         let attr = Attr::of((tag, headers));
 
-        let body_vec = match self.body {
-            None => vec![],
-            Some(body) => vec![Item::ValueItem(body)],
-        };
-
-        Value::Record(vec![attr], body_vec)
+        match self.body {
+            None => Value::of_attr(attr),
+            Some(Value::Record(mut attrs, items)) => {
+                attrs.insert(0, attr);
+                Value::Record(attrs, items)
+            }
+            Some(value) => Value::Record(vec![attr], vec![Item::ValueItem(value)]),
+        }
     }
 
     pub fn link<S: Into<Text>>(node: S, lane: S) -> Self {
