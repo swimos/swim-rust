@@ -28,6 +28,7 @@ use swim_server::agent::AgentContext;
 use swim_server::agent::SwimAgent;
 use swim_server::agent_lifecycle;
 use swim_server::interface::SwimServer;
+use swim_server::plane::spec::PlaneBuilder;
 use swim_server::RoutePattern;
 
 #[derive(Debug, SwimAgent)]
@@ -47,8 +48,8 @@ struct RustAgentLifecycle;
 
 impl RustAgentLifecycle {
     async fn on_start<Context>(&self, _context: &Context)
-        where
-            Context: AgentContext<RustAgent> + Sized + Send + Sync,
+    where
+        Context: AgentContext<RustAgent> + Sized + Send + Sync,
     {
         println!("Rust agent has started!");
     }
@@ -81,15 +82,15 @@ struct CounterLifecycle;
 
 impl CounterLifecycle {
     async fn on_start<Context>(&self, _model: &ValueLane<i32>, _context: &Context)
-        where
-            Context: AgentContext<RustAgent> + Sized + Send + Sync,
+    where
+        Context: AgentContext<RustAgent> + Sized + Send + Sync,
     {
         println!("Counter lane has started!");
     }
 
     async fn on_event<Context>(&self, event: &Arc<i32>, _model: &ValueLane<i32>, _context: &Context)
-        where
-            Context: AgentContext<RustAgent> + Sized + Send + Sync + 'static,
+    where
+        Context: AgentContext<RustAgent> + Sized + Send + Sync + 'static,
     {
         println!("Event received: {}", event);
     }
@@ -114,13 +115,16 @@ async fn main() {
     let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
     let (mut swim_server, server_handle) = SwimServer::new_with_default(address);
 
-    swim_server
+    let mut plane_builder = PlaneBuilder::new();
+    plane_builder
         .add_route(
             RoutePattern::parse_str("/rust").unwrap(),
             RustAgentConfig {},
             RustAgentLifecycle {},
         )
         .unwrap();
+
+    swim_server.add_plane(plane_builder.build());
 
     let stop = async {
         task::sleep(Duration::from_secs(60)).await;

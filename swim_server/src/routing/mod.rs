@@ -63,14 +63,14 @@ impl ServerRouterFactory for TopLevelRouterFactory {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct TopLevelRouter {
+pub struct TopLevelRouter {
     addr: RoutingAddr,
     plane_sender: mpsc::Sender<PlaneRequest>,
     remote_sender: mpsc::Sender<RoutingRequest>,
 }
 
 impl TopLevelRouter {
-    pub fn new(
+    pub(crate) fn new(
         addr: RoutingAddr,
         plane_sender: mpsc::Sender<PlaneRequest>,
         remote_sender: mpsc::Sender<RoutingRequest>,

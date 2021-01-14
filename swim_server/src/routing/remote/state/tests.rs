@@ -14,7 +14,7 @@
 
 use crate::routing::remote::config::ConnectionConfig;
 use crate::routing::remote::state::{
-    DeferredResult, Event, RemoteConnections, RemoteTasksState, State,
+    DeferredResult, Event, RemoteConnectionChannels, RemoteConnections, RemoteTasksState, State,
 };
 use crate::routing::remote::table::HostAndPort;
 use crate::routing::remote::test_fixture::{
@@ -75,9 +75,12 @@ fn make_state(
         OpenEndedFutures::new(),
         fake_connections.clone(),
         FakeListener::new(incoming),
-        stop_rx,
         router.clone(),
-        (remote_tx, remote_rx),
+        RemoteConnectionChannels {
+            request_tx: remote_tx,
+            request_rx: remote_rx,
+            stop_trigger: stop_rx,
+        },
     );
 
     TestFixture {

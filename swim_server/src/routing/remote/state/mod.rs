@@ -18,7 +18,9 @@ use crate::routing::remote::net::{ExternalConnections, Listener};
 use crate::routing::remote::pending::PendingRequests;
 use crate::routing::remote::table::{HostAndPort, RoutingTable};
 use crate::routing::remote::task::TaskFactory;
-use crate::routing::remote::{RawRoute, ResolutionRequest, RoutingRequest, SocketAddrIt};
+use crate::routing::remote::{
+    RawRoute, RemoteConnectionChannels, ResolutionRequest, RoutingRequest, SocketAddrIt,
+};
 use crate::routing::{ConnectionDropped, RoutingAddr, ServerRouterFactory};
 use futures::future::{BoxFuture, Fuse};
 use futures::StreamExt;
@@ -256,26 +258,29 @@ where
     /// * `stop_trigger`- Trigger to cause the state machine to stop externally.
     /// * `delegate_router` - Router than handles local routing requests.
     /// * `req_channel` - Transmitter and receiver for routing requests.
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         websockets: &'a Ws,
         configuration: ConnectionConfig,
         spawner: Sp,
         external: External,
         listener: External::ListenerType,
-        stop_trigger: trigger::Receiver,
         delegate_router: RouterFac,
-        req_channel: (mpsc::Sender<RoutingRequest>, mpsc::Receiver<RoutingRequest>),
+        channels: RemoteConnectionChannels,
     ) -> Self {
-        let (req_tx, req_rx) = req_channel;
+        let RemoteConnectionChannels {
+            request_tx,
+            request_rx,
+            stop_trigger,
+        } = channels;
+
         let (stop_tx, stop_rx) = trigger::trigger();
-        let tasks = TaskFactory::new(req_tx, stop_rx.clone(), configuration, delegate_router);
+        let tasks = TaskFactory::new(request_tx, stop_rx.clone(), configuration, delegate_router);
         RemoteConnections {
             websockets,
             listener: listener.into_stream(),
             external,
             spawner,
-            requests: req_rx.take_until(stop_rx),
+            requests: request_rx.take_until(stop_rx),
             table: RoutingTable::default(),
             pending: PendingRequests::default(),
             addresses: RemoteRoutingAddresses::default(),

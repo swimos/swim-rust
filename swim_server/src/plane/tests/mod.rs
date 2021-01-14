@@ -73,7 +73,7 @@ async fn plane_event_loop() {
     let config = fixture::make_config();
 
     let (remote_tx, _remote_rx) = mpsc::channel(8);
-    let super_router_fac = TopLevelRouterFactory::new(context_tx.clone(), remote_tx);
+    let top_level_router_fac = TopLevelRouterFactory::new(context_tx.clone(), remote_tx);
 
     let plane_task = super::run_plane(
         config,
@@ -82,7 +82,7 @@ async fn plane_event_loop() {
         stop_rx,
         OpenEndedFutures::new(),
         (context_tx, context_rx),
-        super_router_fac,
+        top_level_router_fac,
     );
 
     let completion_task = async move {
