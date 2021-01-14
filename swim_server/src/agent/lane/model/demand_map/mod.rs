@@ -54,6 +54,14 @@ where
     pub fn make(key: Key, value: Value) -> DemandMapLaneUpdate<Key, Value> {
         DemandMapLaneUpdate(key, Arc::new(value))
     }
+
+    pub(crate) fn key(&self) -> &Key {
+        &self.0
+    }
+
+    pub(crate) fn value(&self) -> &Value {
+        &self.1
+    }
 }
 
 pub enum DemandMapLaneEvent<Key, Value>

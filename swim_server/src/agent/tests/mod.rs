@@ -17,19 +17,22 @@ mod derive;
 mod reporting_agent;
 mod reporting_macro_agent;
 pub(crate) mod test_clock;
-
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lane::lifecycle::{
     ActionLaneLifecycle, StatefulLaneLifecycle, StatefulLaneLifecycleBase,
 };
 use crate::agent::lane::model::action::{Action, ActionLane, CommandLane};
+use crate::agent::lane::model::demand_map::DemandMapLaneUpdate;
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
+use crate::agent::lane::model::supply::SupplyLane;
 use crate::agent::lane::model::value::ValueLane;
 use crate::agent::lane::strategy::Queue;
 use crate::agent::lane::LaneModel;
+use crate::agent::meta::lane::MetaDemandMapLifecycleTasks;
 use crate::agent::tests::reporting_agent::{ReportingAgentEvent, TestAgentConfig};
 use crate::agent::tests::stub_router::SingleChannelRouter;
 use crate::agent::tests::test_clock::TestClock;
+use crate::agent::DemandMapLaneEvent;
 use crate::agent::{
     ActionLifecycleTasks, AgentContext, CommandLifecycleTasks, Lane, LaneTasks, LifecycleTasks,
     MapLifecycleTasks, ValueLifecycleTasks,
@@ -43,7 +46,7 @@ use std::future::Future;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use swim_runtime::task;
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{mpsc, oneshot, Mutex};
 use tokio::time::{timeout, Duration};
 use utilities::sync::trigger;
 use utilities::sync::trigger::Receiver;
@@ -298,6 +301,89 @@ where
 
 fn proj<Lane>() -> impl Fn(&TestAgent<Lane>) -> &Lane {
     |agent: &TestAgent<Lane>| &agent.lane
+}
+
+#[tokio::test]
+async fn test_meta_lanes() {
+    let mut map = HashMap::new();
+    map.insert("1".to_string(), 1);
+    map.insert("2".to_string(), 2);
+    map.insert("3".to_string(), 3);
+
+    let (tx, rx) = mpsc::channel(3);
+    let task = MetaDemandMapLifecycleTasks::new("lane".to_string(), map, rx);
+
+    let (_stop, stop_sig) = trigger::trigger();
+    let agent = Arc::new(TestAgent {
+        name: "agent",
+        lane: ValueLane::new(()),
+    });
+
+    let context = TestContext::new(agent.clone(), "/test", stop_sig);
+
+    let event_task = task.boxed().events(context);
+    let assert_task = async move {
+        let (sync_tx, sync_rx) = oneshot::channel();
+        let result = tx.clone().send(DemandMapLaneEvent::Sync(sync_tx)).await;
+        assert!(result.is_ok());
+
+        let expected = (1..=3)
+            .into_iter()
+            .map(|i| DemandMapLaneUpdate::make(i.to_string(), i))
+            .collect::<Vec<_>>();
+
+        match sync_rx.await {
+            Ok(mut updates) => {
+                updates.sort_by(|l, r| l.key().cmp(r.key()));
+
+                assert_eq!(expected, updates);
+            }
+            Err(e) => {
+                panic!("Failed to sync with log lanes: {:?}", e);
+            }
+        }
+
+        let (sync_tx, sync_rx) = oneshot::channel();
+        let send_result = tx
+            .send(DemandMapLaneEvent::Cue(sync_tx, 4.to_string()))
+            .await;
+        assert!(send_result.is_ok());
+
+        match sync_rx.await {
+            Ok(None) => {}
+            Ok(Some(value)) => {
+                panic!("Expected no value to be returned. Got {}", value)
+            }
+            Err(e) => {
+                panic!("Expected a result. {:?}", e)
+            }
+        }
+
+        futures::stream::iter(expected)
+            .for_each(move |update| {
+                let tx = tx.clone();
+
+                async move {
+                    let (sync_tx, sync_rx) = oneshot::channel();
+                    let send_result = tx
+                        .send(DemandMapLaneEvent::Cue(sync_tx, update.key().clone()))
+                        .await;
+                    assert!(send_result.is_ok());
+
+                    match sync_rx.await {
+                        Ok(Some(value)) => {
+                            assert_eq!(value, *update.value());
+                        }
+                        r => {
+                            panic!("Expected cue to return {}. Got {:?}", update.value(), r)
+                        }
+                    }
+                }
+            })
+            .await;
+    };
+
+    let _ = join(event_task, assert_task).await;
 }
 
 #[tokio::test]
