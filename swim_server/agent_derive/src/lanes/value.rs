@@ -91,5 +91,6 @@ pub fn derive_value_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput) 
             use swim_server::agent::lane::model::value::ValueLane;
         },
         None,
+        quote!(Value),
     )
 }

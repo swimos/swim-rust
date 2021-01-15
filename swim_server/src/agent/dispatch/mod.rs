@@ -22,7 +22,7 @@ use crate::agent::lane::channels::task::LaneIoError;
 use crate::agent::lane::channels::uplink::spawn::UplinkErrorReport;
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::{AttachError, LaneIo};
-use crate::routing::{TaggedClientEnvelope, TaggedEnvelope};
+use crate::routing::{LaneIdentifier, TaggedClientEnvelope, TaggedEnvelope};
 use either::Either;
 use futures::future::{join, BoxFuture};
 use futures::stream::{FusedStream, FuturesUnordered};
@@ -50,23 +50,27 @@ pub struct AgentDispatcher<Context> {
     agent_route: RelativeUri,
     config: AgentExecutionConfig,
     context: Context,
-    lanes: HashMap<String, Box<dyn LaneIo<Context>>>,
+    lanes: HashMap<LaneIdentifier, Box<dyn LaneIo<Context>>>,
 }
 
 //A request to attach a lane to the dispatcher.
 struct OpenRequest {
-    name: String,
+    identifier: LaneIdentifier,
     rx: mpsc::Receiver<TaggedClientEnvelope>,
     callback: oneshot::Sender<Result<(), AttachError>>,
 }
 
 impl OpenRequest {
     fn new(
-        name: String,
+        identifier: LaneIdentifier,
         rx: mpsc::Receiver<TaggedClientEnvelope>,
         callback: oneshot::Sender<Result<(), AttachError>>,
     ) -> Self {
-        OpenRequest { name, rx, callback }
+        OpenRequest {
+            identifier,
+            rx,
+            callback,
+        }
     }
 }
 
@@ -90,7 +94,7 @@ where
         agent_route: RelativeUri,
         config: AgentExecutionConfig,
         context: Context,
-        lanes: HashMap<String, Box<dyn LaneIo<Context>>>,
+        lanes: HashMap<LaneIdentifier, Box<dyn LaneIo<Context>>>,
     ) -> Self {
         AgentDispatcher {
             agent_route,
@@ -151,7 +155,7 @@ where
 // A task that attaches the lanes to the dispatcher when the first envelope is routed to them.
 struct LaneAttachmentTask<'a, Context> {
     agent_route: RelativeUri,
-    lanes: HashMap<String, Box<dyn LaneIo<Context>>>,
+    lanes: HashMap<LaneIdentifier, Box<dyn LaneIo<Context>>>,
     config: &'a AgentExecutionConfig,
     context: Context,
 }
@@ -209,7 +213,7 @@ where
 {
     fn new(
         agent_route: RelativeUri,
-        lanes: HashMap<String, Box<dyn LaneIo<Context>>>,
+        lanes: HashMap<LaneIdentifier, Box<dyn LaneIo<Context>>>,
         config: &'a AgentExecutionConfig,
         context: Context,
     ) -> Self {
@@ -250,35 +254,38 @@ where
 
             match next {
                 Some(LaneTaskEvent::Request(OpenRequest {
-                    name,
+                    identifier,
                     rx: lane_rx,
                     callback,
                 })) => {
                     event!(
                         Level::DEBUG,
                         message = "Attachment requested for lane.",
-                        ?name
+                        ?identifier
                     );
-                    if let Some(lane_io) = lanes.remove(&name) {
-                        let route = RelativePath::new(agent_route.to_string(), name.clone());
+                    if let Some(lane_io) = lanes.remove(&identifier) {
+                        let route = RelativePath::new(
+                            agent_route.to_string(),
+                            identifier.lane_uri().to_string(),
+                        );
                         let task_result =
                             lane_io.attach_boxed(route, lane_rx, config.clone(), context.clone());
                         match task_result {
                             Ok(task) => {
                                 lane_io_tasks.push(task);
                                 if callback.send(Ok(())).is_err() {
-                                    event!(Level::ERROR, message = BAD_CALLBACK, ?name);
+                                    event!(Level::ERROR, message = BAD_CALLBACK, ?identifier);
                                 }
                             }
                             Err(error) => {
                                 event!(
                                     Level::ERROR,
                                     message = "Attaching to a lane failed.",
-                                    ?name,
+                                    ?identifier,
                                     ?error
                                 );
                                 if callback.send(Err(error.clone())).is_err() {
-                                    event!(Level::ERROR, message = BAD_CALLBACK, ?name);
+                                    event!(Level::ERROR, message = BAD_CALLBACK, ?identifier);
                                 }
                                 let dispatch_err = DispatcherError::AttachmentFailed(error);
                                 if dispatch_err.is_fatal() {
@@ -292,13 +299,15 @@ where
                         }
                     } else {
                         errors.push(DispatcherError::AttachmentFailed(
-                            AttachError::LaneDoesNotExist(name.clone()),
+                            AttachError::LaneDoesNotExist(identifier.lane_uri().to_string()),
                         ));
                         if callback
-                            .send(Err(AttachError::LaneDoesNotExist(name.clone())))
+                            .send(Err(AttachError::LaneDoesNotExist(
+                                identifier.lane_uri().to_string(),
+                            )))
                             .is_err()
                         {
-                            event!(Level::ERROR, message = BAD_CALLBACK, ?name);
+                            event!(Level::ERROR, message = BAD_CALLBACK, ?identifier);
                         }
                     }
                 }
@@ -440,8 +449,11 @@ impl EnvelopeDispatcher {
                         break false;
                     }
                 }
-                Some(Either::Right(TaggedEnvelope(addr, envelope))) => {
+                Some(Either::Right(request)) => {
+                    let (addr, envelope, identifier_kind) = request.split();
+
                     event!(Level::TRACE, message = ATTEMPT_DISPATCH, ?envelope);
+
                     if let Ok(envelope) = envelope.into_outgoing() {
                         if let Some(sender) = senders.get_mut(lane(&envelope)) {
                             if sender
@@ -457,9 +469,10 @@ impl EnvelopeDispatcher {
                             let (uplink_tx, uplink_rx) = mpsc::channel(lane_buffer.get());
 
                             let label = lane(&envelope).to_string();
+                            let identifier = LaneIdentifier::from(label.clone(), identifier_kind);
 
                             if open_tx
-                                .send(OpenRequest::new(label.clone(), uplink_rx, req_tx))
+                                .send(OpenRequest::new(identifier, uplink_rx, req_tx))
                                 .await
                                 .is_err()
                             {

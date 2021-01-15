@@ -49,12 +49,10 @@ pub struct InfoHandler {
 
 #[cfg(test)]
 pub fn make_info_handler() -> InfoHandler {
-    use crate::agent::lane::model::demand_map::make_lane_model;
-    use std::num::NonZeroUsize;
     use tokio::sync::mpsc;
 
     InfoHandler {
-        info_lane: make_lane_model(NonZeroUsize::new(5).unwrap(), mpsc::channel(1).0).0,
+        info_lane: DemandMapLane::new(mpsc::channel(1).0, mpsc::channel(1).0),
     }
 }
 

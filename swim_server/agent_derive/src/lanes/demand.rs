@@ -85,5 +85,6 @@ pub fn derive_demand_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput)
             use swim_server::agent::lane::model::demand::DemandLane;
         },
         extra_field,
+        quote!(Demand),
     )
 }

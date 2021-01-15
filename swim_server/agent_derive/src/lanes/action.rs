@@ -98,5 +98,6 @@ pub fn derive_action_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput)
             use swim_server::agent::lane::model::action::Action;
         },
         None,
+        quote!(Action),
     )
 }

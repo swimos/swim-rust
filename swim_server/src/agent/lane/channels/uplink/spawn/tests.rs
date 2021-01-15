@@ -21,7 +21,8 @@ use crate::agent::lane::channels::{AgentExecutionConfig, LaneMessageHandler, Tag
 use crate::agent::Eff;
 use crate::routing::error::RouterError;
 use crate::routing::{
-    ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedEnvelope, TaggedSender,
+    ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedAgentEnvelope, TaggedEnvelope,
+    TaggedSender,
 };
 use futures::future::{join, join3, ready, BoxFuture};
 use futures::stream::once;
@@ -82,12 +83,12 @@ impl<'a> ItemSink<'a, Envelope> for TestSender {
     type SendFuture = BoxFuture<'a, Result<(), Self::Error>>;
 
     fn send_item(&'a mut self, value: Envelope) -> Self::SendFuture {
-        let tagged = TaggedEnvelope(self.addr, value);
+        let tagged = TaggedEnvelope::agent(TaggedAgentEnvelope(self.addr, value));
         async move {
-            self.inner.send(tagged).await.map_err(|err| {
-                let TaggedEnvelope(_, envelope) = err.0;
-                SendError::new(RoutingError::RouterDropped, envelope)
-            })
+            self.inner
+                .send(tagged)
+                .await
+                .map_err(|err| SendError::new(RoutingError::RouterDropped, err.0.into_envelope()))
         }
         .boxed()
     }
@@ -239,9 +240,11 @@ impl UplinkSpawnerOutputs {
             rxs.insert(*addr, rx);
         }
         let task = async move {
-            while let Some(TaggedEnvelope(addr, envelope)) = router_rx.next().await {
+            while let Some(envelope) = router_rx.next().await {
+                let addr = envelope.addr();
+
                 if let Some(tx) = txs.get_mut(&addr) {
-                    assert!(tx.send(envelope).await.is_ok());
+                    assert!(tx.send(envelope.into_envelope()).await.is_ok());
                 } else {
                     panic!("Unexpected address: {}", addr);
                 }
@@ -382,14 +385,14 @@ async fn link_to_lane() {
 
         assert_eq!(
             outputs.take_router_events(1).await,
-            vec![TaggedEnvelope(addr, Envelope::linked("node", "lane"))]
+            vec![TaggedAgentEnvelope(addr, Envelope::linked("node", "lane")).into()]
         );
 
         drop(inputs);
 
         assert_eq!(
             outputs.take_router_events(1).await,
-            vec![TaggedEnvelope(addr, Envelope::unlinked("node", "lane"))]
+            vec![TaggedAgentEnvelope(addr, Envelope::unlinked("node", "lane")).into()]
         );
     };
 
@@ -408,7 +411,7 @@ async fn immediate_unlink() {
 
         assert_eq!(
             outputs.take_router_events(1).await,
-            vec![TaggedEnvelope(addr, Envelope::unlinked("node", "lane"))]
+            vec![TaggedAgentEnvelope(addr, Envelope::unlinked("node", "lane")).into()]
         );
     };
 
@@ -430,19 +433,19 @@ async fn receive_event() {
         inputs.action(addr, UplinkAction::Link).await;
         assert_eq!(
             outputs.take_router_events(1).await,
-            vec![TaggedEnvelope(addr, Envelope::linked("node", "lane"))]
+            vec![TaggedAgentEnvelope(addr, Envelope::linked("node", "lane")).into()]
         );
         inputs.generate_event(13).await;
         assert_eq!(
             outputs.take_router_events(1).await,
-            vec![TaggedEnvelope(addr, event_envelope(13))]
+            vec![TaggedAgentEnvelope(addr, event_envelope(13)).into()]
         );
 
         drop(inputs);
 
         assert_eq!(
             outputs.take_router_events(1).await,
-            vec![TaggedEnvelope(addr, Envelope::unlinked("node", "lane"))]
+            vec![TaggedAgentEnvelope(addr, Envelope::unlinked("node", "lane")).into()]
         );
     };
 
@@ -462,9 +465,9 @@ async fn sync_with_lane() {
         assert_eq!(
             outputs.take_router_events(3).await,
             vec![
-                TaggedEnvelope(addr, Envelope::linked("node", "lane")),
-                TaggedEnvelope(addr, event_envelope(INIT)),
-                TaggedEnvelope(addr, Envelope::synced("node", "lane"))
+                TaggedAgentEnvelope(addr, Envelope::linked("node", "lane")).into(),
+                TaggedAgentEnvelope(addr, event_envelope(INIT)).into(),
+                TaggedAgentEnvelope(addr, Envelope::synced("node", "lane")).into()
             ]
         );
 
@@ -472,7 +475,7 @@ async fn sync_with_lane() {
 
         assert_eq!(
             outputs.take_router_events(1).await,
-            vec![TaggedEnvelope(addr, Envelope::unlinked("node", "lane"))]
+            vec![TaggedAgentEnvelope(addr, Envelope::unlinked("node", "lane")).into()]
         );
     };
 
@@ -492,23 +495,23 @@ async fn receive_event_after_sync() {
         assert_eq!(
             outputs.take_router_events(3).await,
             vec![
-                TaggedEnvelope(addr, Envelope::linked("node", "lane")),
-                TaggedEnvelope(addr, event_envelope(INIT)),
-                TaggedEnvelope(addr, Envelope::synced("node", "lane"))
+                TaggedAgentEnvelope(addr, Envelope::linked("node", "lane")).into(),
+                TaggedAgentEnvelope(addr, event_envelope(INIT)).into(),
+                TaggedAgentEnvelope(addr, Envelope::synced("node", "lane")).into()
             ]
         );
 
         inputs.generate_event(13).await;
         assert_eq!(
             outputs.take_router_events(1).await,
-            vec![TaggedEnvelope(addr, event_envelope(13))]
+            vec![TaggedAgentEnvelope(addr, event_envelope(13)).into()]
         );
 
         drop(inputs);
 
         assert_eq!(
             outputs.take_router_events(1).await,
-            vec![TaggedEnvelope(addr, Envelope::unlinked("node", "lane"))]
+            vec![TaggedAgentEnvelope(addr, Envelope::unlinked("node", "lane")).into()]
         );
     };
 
@@ -526,26 +529,26 @@ async fn relink_for_same_addr() {
         inputs.action(addr, UplinkAction::Link).await;
         assert_eq!(
             outputs.take_router_events(1).await,
-            vec![TaggedEnvelope(addr, Envelope::linked("node", "lane"))]
+            vec![TaggedAgentEnvelope(addr, Envelope::linked("node", "lane")).into()]
         );
 
         inputs.action(addr, UplinkAction::Unlink).await;
         assert_eq!(
             outputs.take_router_events(1).await,
-            vec![TaggedEnvelope(addr, Envelope::unlinked("node", "lane"))]
+            vec![TaggedAgentEnvelope(addr, Envelope::unlinked("node", "lane")).into()]
         );
 
         inputs.action(addr, UplinkAction::Link).await;
         assert_eq!(
             outputs.take_router_events(1).await,
-            vec![TaggedEnvelope(addr, Envelope::linked("node", "lane"))]
+            vec![TaggedAgentEnvelope(addr, Envelope::linked("node", "lane")).into()]
         );
 
         drop(inputs);
 
         assert_eq!(
             outputs.take_router_events(1).await,
-            vec![TaggedEnvelope(addr, Envelope::unlinked("node", "lane"))]
+            vec![TaggedAgentEnvelope(addr, Envelope::unlinked("node", "lane")).into()]
         );
     };
 
@@ -625,12 +628,12 @@ async fn uplink_failure() {
         inputs.action(addr, UplinkAction::Link).await;
         assert_eq!(
             outputs.take_router_events(1).await,
-            vec![TaggedEnvelope(addr, Envelope::linked("node", "lane"))]
+            vec![TaggedAgentEnvelope(addr, Envelope::linked("node", "lane")).into()]
         );
         inputs.generate_event(-1).await;
         assert_eq!(
             outputs.take_router_events(1).await,
-            vec![TaggedEnvelope(addr, Envelope::unlinked("node", "lane"))]
+            vec![TaggedAgentEnvelope(addr, Envelope::unlinked("node", "lane")).into()]
         );
 
         drop(inputs);

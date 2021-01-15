@@ -94,10 +94,10 @@ async fn check_receive(
     expected_addr: RoutingAddr,
     expected: Envelope,
 ) {
-    let TaggedEnvelope(rec_addr, envelope) = rx.recv().await.unwrap();
+    let env = rx.recv().await.unwrap();
 
-    assert_eq!(rec_addr, expected_addr);
-    assert_eq!(envelope, expected);
+    assert_eq!(env.addr(), expected_addr);
+    assert_eq!(env.into_envelope(), expected);
 }
 
 #[tokio::test]
@@ -416,9 +416,12 @@ async fn link_to_and_receive_from_addressed_uplinks() {
         let addrs = vec![addr1, addr2];
 
         for _ in &addrs {
-            let TaggedEnvelope(rec_addr, envelope) = router_rx.recv().await.unwrap();
-            assert_eq!(envelope, Envelope::unlinked(&route.node, &route.lane));
-            assert!(addrs.contains(&rec_addr));
+            let env = router_rx.recv().await.unwrap();
+            assert!(addrs.contains(&env.addr()));
+            assert_eq!(
+                env.into_envelope(),
+                Envelope::unlinked(&route.node, &route.lane)
+            );
         }
     };
 
@@ -466,11 +469,11 @@ async fn link_twice_to_stateless_uplinks() {
                 .is_ok());
 
             for _ in &addrs {
-                let TaggedEnvelope(rec_addr, envelope) = router_rx.recv().await.unwrap();
+                let env = router_rx.recv().await.unwrap();
                 let expected = Envelope::make_event(&route.node, &route.lane, Some(v.into()));
 
-                assert!(addrs.contains(&rec_addr));
-                assert_eq!(envelope, expected);
+                assert!(addrs.contains(&env.addr()));
+                assert_eq!(env.into_envelope(), expected);
             }
         }
 
@@ -478,9 +481,12 @@ async fn link_twice_to_stateless_uplinks() {
         drop(response_tx);
 
         for _ in &addrs {
-            let TaggedEnvelope(rec_addr, envelope) = router_rx.recv().await.unwrap();
-            assert_eq!(envelope, Envelope::unlinked(&route.node, &route.lane));
-            assert!(addrs.contains(&rec_addr));
+            let env = router_rx.recv().await.unwrap();
+            assert!(addrs.contains(&env.addr()));
+            assert_eq!(
+                env.into_envelope(),
+                Envelope::unlinked(&route.node, &route.lane)
+            );
         }
     };
 

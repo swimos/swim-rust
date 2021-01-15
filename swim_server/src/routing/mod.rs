@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::agent::meta::MetaKind;
 use crate::routing::error::RouterError;
 use futures::future::BoxFuture;
 use std::fmt::{Display, Formatter};
@@ -75,7 +76,72 @@ impl Display for RoutingAddr {
 
 /// An [`Envelope`] tagged with the key of the endpoint into routing table from which it originated.
 #[derive(Debug, Clone, PartialEq)]
-pub struct TaggedEnvelope(pub RoutingAddr, pub Envelope);
+pub struct TaggedAgentEnvelope(pub RoutingAddr, pub Envelope);
+
+impl From<TaggedAgentEnvelope> for TaggedEnvelope {
+    fn from(env: TaggedAgentEnvelope) -> Self {
+        TaggedEnvelope::AgentEnvelope(env)
+    }
+}
+
+/// An [`Envelope`] for a meta lane, tagged with the key of the endpoint into routing table from
+/// which it originated.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TaggedMetaEnvelope(pub RoutingAddr, pub Envelope, pub MetaKind);
+
+impl From<TaggedMetaEnvelope> for TaggedEnvelope {
+    fn from(env: TaggedMetaEnvelope) -> Self {
+        TaggedEnvelope::MetaEnvelope(env)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum TaggedEnvelope {
+    AgentEnvelope(TaggedAgentEnvelope),
+    MetaEnvelope(TaggedMetaEnvelope),
+}
+
+impl TaggedEnvelope {
+    pub fn agent(envelope: TaggedAgentEnvelope) -> TaggedEnvelope {
+        TaggedEnvelope::AgentEnvelope(envelope)
+    }
+
+    pub fn meta(meta: TaggedMetaEnvelope) -> TaggedEnvelope {
+        TaggedEnvelope::MetaEnvelope(meta)
+    }
+
+    pub fn split(self) -> (RoutingAddr, Envelope, LaneIdentifierKind) {
+        match self {
+            TaggedEnvelope::MetaEnvelope(TaggedMetaEnvelope(addr, envelope, ..)) => {
+                (addr, envelope, LaneIdentifierKind::Meta)
+            }
+            TaggedEnvelope::AgentEnvelope(TaggedAgentEnvelope(addr, envelope)) => {
+                (addr, envelope, LaneIdentifierKind::Agent)
+            }
+        }
+    }
+
+    pub fn addr(&self) -> RoutingAddr {
+        match self {
+            TaggedEnvelope::AgentEnvelope(inner) => inner.0,
+            TaggedEnvelope::MetaEnvelope(inner) => inner.0,
+        }
+    }
+
+    pub fn envelope(&self) -> &Envelope {
+        match self {
+            TaggedEnvelope::AgentEnvelope(inner) => &inner.1,
+            TaggedEnvelope::MetaEnvelope(inner) => &inner.1,
+        }
+    }
+
+    pub fn into_envelope(self) -> Envelope {
+        match self {
+            TaggedEnvelope::AgentEnvelope(inner) => inner.1,
+            TaggedEnvelope::MetaEnvelope(inner) => inner.1,
+        }
+    }
+}
 
 /// An [`OutgoingLinkMessage`] tagged with the key of the endpoint into routing table from which it
 /// originated.
@@ -135,12 +201,11 @@ impl TaggedSender {
     pub async fn send_item(&mut self, envelope: Envelope) -> Result<(), SendError> {
         Ok(self
             .inner
-            .send(TaggedEnvelope(self.tag, envelope))
+            .send(TaggedEnvelope::agent(TaggedAgentEnvelope(
+                self.tag, envelope,
+            )))
             .await
-            .map_err(|e| {
-                let TaggedEnvelope(_addr, env) = e.0;
-                SendError::new(RoutingError::CloseError, env)
-            })?)
+            .map_err(|e| SendError::new(RoutingError::CloseError, e.0.into_envelope()))?)
     }
 }
 
@@ -182,7 +247,6 @@ impl ConnectionDropped {
         }
     }
 }
-
 
 /// An abstraction over both agent lanes and meta lanes.
 #[derive(Hash, Eq, PartialEq, Debug, Clone)]

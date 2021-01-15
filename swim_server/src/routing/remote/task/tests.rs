@@ -34,7 +34,9 @@ use crate::routing::error::RouterError;
 use crate::routing::remote::task::{ConnectionTask, DispatchError};
 use crate::routing::remote::test_fixture::fake_channel::TwoWayMpsc;
 use crate::routing::remote::test_fixture::LocalRoutes;
-use crate::routing::{ConnectionDropped, Route, RoutingAddr, TaggedEnvelope, TaggedSender};
+use crate::routing::{
+    ConnectionDropped, Route, RoutingAddr, TaggedAgentEnvelope, TaggedEnvelope, TaggedSender,
+};
 use futures::io::ErrorKind;
 use std::num::NonZeroUsize;
 use std::time::Duration;
@@ -98,7 +100,7 @@ async fn try_dispatch_in_map() {
     assert!(result.is_ok());
 
     let received = rx.next().now_or_never();
-    assert_eq!(received, Some(Some(TaggedEnvelope(addr, env))));
+    assert_eq!(received, Some(Some(TaggedAgentEnvelope(addr, env).into())));
 }
 
 #[tokio::test]
@@ -117,7 +119,7 @@ async fn try_dispatch_from_router() {
     assert!(result.is_ok());
 
     let received = rx.next().now_or_never();
-    assert_eq!(received, Some(Some(TaggedEnvelope(addr, env))));
+    assert_eq!(received, Some(Some(TaggedAgentEnvelope(addr, env).into())));
 
     assert!(resolved.contains_key(&path));
 }
@@ -238,7 +240,7 @@ async fn dispatch_immediate_success() {
     assert!(result.is_ok());
 
     let received = rx.next().now_or_never();
-    assert_eq!(received, Some(Some(TaggedEnvelope(addr, env))));
+    assert_eq!(received, Some(Some(TaggedAgentEnvelope(addr, env).into())));
 
     assert!(resolved.contains_key(&path));
 }
@@ -316,7 +318,7 @@ async fn dispatch_after_retry() {
     assert!(result.is_ok());
 
     let received = rx.next().now_or_never();
-    assert_eq!(received, Some(Some(TaggedEnvelope(addr, env))));
+    assert_eq!(received, Some(Some(TaggedAgentEnvelope(addr, env).into())));
 
     assert!(resolved.contains_key(&path));
 }
@@ -353,7 +355,7 @@ async fn dispatch_after_immediate_retry() {
     assert!(result.is_ok());
 
     let received = rx.next().now_or_never();
-    assert_eq!(received, Some(Some(TaggedEnvelope(addr, env))));
+    assert_eq!(received, Some(Some(TaggedAgentEnvelope(addr, env).into())));
 
     assert!(resolved.contains_key(&path));
 }
@@ -424,7 +426,7 @@ async fn task_send_message() {
     let env_cpy = envelope.clone();
 
     let test_case = async move {
-        let tagged = TaggedEnvelope(RoutingAddr::local(100), env_cpy.clone());
+        let tagged = TaggedAgentEnvelope(RoutingAddr::local(100), env_cpy.clone()).into();
         assert!(envelope_tx.send(tagged).await.is_ok());
 
         let message = sock_out.next().await;
@@ -452,7 +454,7 @@ async fn task_send_message_failure() {
     let env_cpy = envelope.clone();
 
     let test_case = async move {
-        let tagged = TaggedEnvelope(RoutingAddr::local(100), env_cpy.clone());
+        let tagged = TaggedAgentEnvelope(RoutingAddr::local(100), env_cpy.clone()).into();
 
         assert!(send_error_tx
             .send(Some(ConnectionError::Io(IoError::new(
@@ -486,7 +488,7 @@ async fn task_receive_message_with_route() {
 
     let test_case = async move {
         assert!(sock_in.send(Ok(message_for(env_cpy.clone()))).await.is_ok());
-        assert!(matches!(rx.next().await, Some(TaggedEnvelope(_, env)) if env == env_cpy));
+        assert!(matches!(rx.next().await, Some(env) if env.envelope() == &env_cpy));
         stop_trigger.trigger();
     };
 
@@ -583,7 +585,7 @@ async fn task_timeout() {
     let env_cpy = envelope.clone();
 
     let test_case = async move {
-        let tagged = TaggedEnvelope(RoutingAddr::local(100), env_cpy.clone());
+        let tagged = TaggedAgentEnvelope(RoutingAddr::local(100), env_cpy.clone()).into();
         tokio::time::pause();
         assert!(envelope_tx.send(tagged).await.is_ok());
 

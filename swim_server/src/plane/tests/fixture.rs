@@ -166,14 +166,17 @@ impl<Clk: Clock> AgentRoute<Clk, EnvChannel, PlaneRouter> for ReceiveAgentRoute 
 
             let mut times_seen = 0;
 
-            while let Some(TaggedEnvelope(_, env)) = incoming_envelopes.next().await {
-                if env == expected_envelope {
-                    times_seen += 1;
-                    if let Some(tx) = done_sender.take() {
-                        tx.trigger();
+            while let Some(env) = incoming_envelopes.next().await {
+                match env {
+                    TaggedEnvelope::AgentEnvelope(env) if env.1 == expected_envelope => {
+                        times_seen += 1;
+                        if let Some(tx) = done_sender.take() {
+                            tx.trigger();
+                        }
                     }
-                } else {
-                    panic!("Expected {:?}, received {:?}.", expected_envelope, env);
+                    _ => {
+                        panic!("Expected {:?}, received {:?}.", expected_envelope, env);
+                    }
                 }
             }
             AgentResult {

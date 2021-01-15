@@ -53,12 +53,11 @@ pub struct LogEntry {
     message: Value,
     #[form(tag)]
     level: LogLevel,
-    node: RelativeUri,
     lane: RelativeUri,
 }
 
 impl LogEntry {
-    pub fn make<F>(message: F, level: LogLevel, lane: RelativeUri, node: RelativeUri) -> LogEntry
+    pub fn make<F>(message: F, level: LogLevel, lane: RelativeUri) -> LogEntry
     where
         F: Form,
     {
@@ -67,7 +66,6 @@ impl LogEntry {
             message: message.into_value(),
             level,
             lane,
-            node,
         }
     }
 }
@@ -107,8 +105,8 @@ pub(crate) fn make_log_handler(uri: RelativeUri) -> LogHandler {
 }
 
 impl LogHandler {
-    pub fn log<E: Form>(&self, entry: E, level: LogLevel, node: RelativeUri) {
-        let entry = LogEntry::make(entry, level, self.uri.clone(), node);
+    pub fn log<E: Form>(&self, entry: E, level: LogLevel) {
+        let entry = LogEntry::make(entry, level, self.uri.clone());
 
         let sender = match level {
             LogLevel::Trace => self.trace_lane.supplier(),

@@ -18,9 +18,12 @@ use crate::agent::dispatch::AgentDispatcher;
 use crate::agent::lane::channels::task::LaneIoError;
 use crate::agent::lane::channels::update::UpdateError;
 use crate::agent::lane::channels::AgentExecutionConfig;
+use crate::agent::meta::MetaKind;
 use crate::agent::AttachError;
 use crate::agent::LaneIo;
-use crate::routing::{RoutingAddr, TaggedEnvelope};
+use crate::routing::{
+    LaneIdentifier, RoutingAddr, TaggedAgentEnvelope, TaggedEnvelope, TaggedMetaEnvelope,
+};
 use futures::future::{join, BoxFuture};
 use futures::{FutureExt, Stream, StreamExt};
 use std::collections::HashMap;
@@ -46,7 +49,7 @@ fn make_dispatcher(
 
     let boxed_lanes = lanes
         .into_iter()
-        .map(|(name, lane)| (name, lane.boxed()))
+        .map(|(name, lane)| (LaneIdentifier::agent(name), lane.boxed()))
         .collect();
 
     let context = MockExecutionContext::new(RoutingAddr::local(1024), buffer_size, spawn_tx);
@@ -95,7 +98,7 @@ async fn expect_echo(rx: &mut mpsc::Receiver<TaggedEnvelope>, lane: &str, envelo
     }) = envelope.into_outgoing()
     {
         let expected = mock::echo(&route, header, body);
-        assert_eq!(rec_envelope.1, expected);
+        assert_eq!(rec_envelope.into_envelope(), expected);
     } else {
         panic!("Cannot echo incoming envelope.")
     }
@@ -115,6 +118,37 @@ async fn dispatch_nothing() {
 }
 
 #[tokio::test]
+async fn dispatch_meta() {
+    let (envelope_tx, envelope_rx) = mpsc::channel::<TaggedEnvelope>(8);
+
+    let (task, context) = make_dispatcher(8, 10, lanes(vec!["lane"]), envelope_rx);
+
+    let addr = RoutingAddr::remote(1);
+
+    let link = Envelope::link("/node", "infoLog");
+
+    let assertion_task = async move {
+        assert!(envelope_tx
+            .send(TaggedEnvelope::meta(TaggedMetaEnvelope(
+                addr,
+                link.clone(),
+                MetaKind::Node
+            )))
+            .await
+            .is_ok());
+
+        let mut rx = context.take_receiver(&addr).unwrap();
+        expect_echo(&mut rx, "infoLog", link).await;
+
+        drop(envelope_tx);
+        drop(context);
+    };
+
+    let (result, _) = join(task, assertion_task).await;
+    assert!(matches!(result, Ok(errs) if errs.is_empty()));
+}
+
+#[tokio::test]
 async fn dispatch_single() {
     let (envelope_tx, envelope_rx) = mpsc::channel::<TaggedEnvelope>(8);
 
@@ -126,7 +160,7 @@ async fn dispatch_single() {
 
     let assertion_task = async move {
         assert!(envelope_tx
-            .send(TaggedEnvelope(addr, link.clone()))
+            .send(TaggedAgentEnvelope(addr, link.clone()).into())
             .await
             .is_ok());
 
@@ -155,11 +189,11 @@ async fn dispatch_two_lanes() {
 
     let assertion_task = async move {
         assert!(envelope_tx
-            .send(TaggedEnvelope(addr1, link.clone()))
+            .send(TaggedAgentEnvelope(addr1, link.clone()).into())
             .await
             .is_ok());
         assert!(envelope_tx
-            .send(TaggedEnvelope(addr2, sync.clone()))
+            .send(TaggedAgentEnvelope(addr2, sync.clone()).into())
             .await
             .is_ok());
 
@@ -191,11 +225,11 @@ async fn dispatch_multiple_same_lane() {
 
     let assertion_task = async move {
         assert!(envelope_tx
-            .send(TaggedEnvelope(addr, link.clone()))
+            .send(TaggedAgentEnvelope(addr, link.clone()).into())
             .await
             .is_ok());
         assert!(envelope_tx
-            .send(TaggedEnvelope(addr, cmd1.clone()))
+            .send(TaggedAgentEnvelope(addr, cmd1.clone()).into())
             .await
             .is_ok());
 
@@ -204,7 +238,7 @@ async fn dispatch_multiple_same_lane() {
         expect_echo(&mut rx, "lane", cmd1).await;
 
         assert!(envelope_tx
-            .send(TaggedEnvelope(addr, cmd2.clone()))
+            .send(TaggedAgentEnvelope(addr, cmd2.clone()).into())
             .await
             .is_ok());
         expect_echo(&mut rx, "lane", cmd2).await;
@@ -233,7 +267,7 @@ async fn blocked_lane() {
 
     let assertion_task = async move {
         assert!(envelope_tx
-            .send(TaggedEnvelope(addr1, cmd1.clone()))
+            .send(TaggedAgentEnvelope(addr1, cmd1.clone()).into())
             .await
             .is_ok());
         let mut rx1 = context.take_receiver(&addr1).unwrap();
@@ -241,20 +275,20 @@ async fn blocked_lane() {
         //Lane A is now attached.
 
         assert!(envelope_tx
-            .send(TaggedEnvelope(addr1, cmd2.clone()))
+            .send(TaggedAgentEnvelope(addr1, cmd2.clone()).into())
             .await
             .is_ok());
         assert!(envelope_tx
-            .send(TaggedEnvelope(addr1, cmd3.clone()))
+            .send(TaggedAgentEnvelope(addr1, cmd3.clone()).into())
             .await
             .is_ok());
         assert!(envelope_tx
-            .send(TaggedEnvelope(addr1, cmd4.clone()))
+            .send(TaggedAgentEnvelope(addr1, cmd4.clone()).into())
             .await
             .is_ok());
 
         assert!(envelope_tx
-            .send(TaggedEnvelope(addr2, link.clone()))
+            .send(TaggedAgentEnvelope(addr2, link.clone()).into())
             .await
             .is_ok());
 
@@ -293,7 +327,7 @@ async fn flush_pending() {
     let assertion_task = async move {
         let cmd0 = Envelope::make_command("/node", "lane_a", Some(0.into()));
         assert!(envelope_tx
-            .send(TaggedEnvelope(addr1, cmd0.clone()))
+            .send(TaggedAgentEnvelope(addr1, cmd0.clone()).into())
             .await
             .is_ok());
         let mut rx1 = context.take_receiver(&addr1).unwrap();
@@ -304,13 +338,13 @@ async fn flush_pending() {
         for i in 0..n {
             let cmd = Envelope::make_command("/node", "lane_a", Some((i + 1).into()));
             assert!(envelope_tx
-                .send(TaggedEnvelope(addr1, cmd.clone()))
+                .send(TaggedAgentEnvelope(addr1, cmd.clone()).into())
                 .await
                 .is_ok());
         }
 
         assert!(envelope_tx
-            .send(TaggedEnvelope(addr2, link.clone()))
+            .send(TaggedAgentEnvelope(addr2, link.clone()).into())
             .await
             .is_ok());
 
@@ -345,7 +379,10 @@ async fn dispatch_to_non_existent() {
     let link = Envelope::link("/node", "other");
 
     let assertion_task = async move {
-        assert!(envelope_tx.send(TaggedEnvelope(addr, link)).await.is_ok());
+        assert!(envelope_tx
+            .send(TaggedAgentEnvelope(addr, link).into())
+            .await
+            .is_ok());
 
         drop(envelope_tx);
         drop(context);
@@ -371,7 +408,10 @@ async fn failed_lane_task() {
     let cmd = Envelope::make_command("/node", "lane", Some(mock::POISON_PILL.into()));
 
     let assertion_task = async move {
-        assert!(envelope_tx.send(TaggedEnvelope(addr, cmd)).await.is_ok());
+        assert!(envelope_tx
+            .send(TaggedAgentEnvelope(addr, cmd).into())
+            .await
+            .is_ok());
         drop(context);
     };
 
@@ -407,7 +447,10 @@ async fn fatal_failed_attachment() {
     let link = Envelope::link("/node", mock::POISON_PILL);
 
     let assertion_task = async move {
-        assert!(envelope_tx.send(TaggedEnvelope(addr, link)).await.is_ok());
+        assert!(envelope_tx
+            .send(TaggedAgentEnvelope(addr, link).into())
+            .await
+            .is_ok());
         drop(context);
     };
 

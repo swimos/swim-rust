@@ -17,6 +17,7 @@ use crate::agent::lane::model::demand_map;
 use crate::agent::lane::model::demand_map::{
     DemandMapLane, DemandMapLaneEvent, DemandMapLaneUpdate,
 };
+use crate::agent::lane::LaneKind;
 use crate::agent::{AgentContext, DemandMapLaneIo, Lane, LaneIo, LaneTasks};
 use futures::future::ready;
 use futures::future::BoxFuture;
@@ -38,6 +39,7 @@ pub(crate) struct MetaDemandMapLifecycleTasks<S, K, V> {
 }
 
 impl<S, K, V> MetaDemandMapLifecycleTasks<S, K, V> {
+    #[cfg(test)]
     pub(crate) fn new(name: String, map: HashMap<K, V>, event_stream: S) -> Self {
         MetaDemandMapLifecycleTasks {
             name,
@@ -84,6 +86,10 @@ where
 impl<L, S, P> Lane for MetaDemandMapLifecycleTasks<L, S, P> {
     fn name(&self) -> &str {
         self.name.as_str()
+    }
+
+    fn kind(&self) -> LaneKind {
+        LaneKind::DemandMap
     }
 }
 

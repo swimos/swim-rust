@@ -55,10 +55,12 @@ where
         DemandMapLaneUpdate(key, Arc::new(value))
     }
 
+    #[cfg(test)]
     pub(crate) fn key(&self) -> &Key {
         &self.0
     }
 
+    #[cfg(test)]
     pub(crate) fn value(&self) -> &Value {
         &self.1
     }

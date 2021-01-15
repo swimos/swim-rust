@@ -24,8 +24,8 @@ use crate::agent::lane::model::action::{Action, ActionLane};
 use crate::agent::Eff;
 use crate::routing::error::RouterError;
 use crate::routing::{
-    ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedClientEnvelope, TaggedEnvelope,
-    TaggedSender,
+    ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedAgentEnvelope, TaggedClientEnvelope,
+    TaggedEnvelope, TaggedSender,
 };
 use futures::future::{join, join3, ready, BoxFuture};
 use futures::stream::{BoxStream, FusedStream};
@@ -338,12 +338,12 @@ impl<'a> ItemSink<'a, Envelope> for TestSender {
     type SendFuture = BoxFuture<'a, Result<(), Self::Error>>;
 
     fn send_item(&'a mut self, value: Envelope) -> Self::SendFuture {
-        let tagged = TaggedEnvelope(self.addr, value);
+        let tagged = TaggedEnvelope::AgentEnvelope(TaggedAgentEnvelope(self.addr, value));
         async move {
-            self.inner.send(tagged).await.map_err(|err| {
-                let TaggedEnvelope(_, envelope) = err.0;
-                SendError::new(RoutingError::RouterDropped, envelope)
-            })
+            self.inner
+                .send(tagged)
+                .await
+                .map_err(|err| SendError::new(RoutingError::RouterDropped, err.0.into_envelope()))
         }
         .boxed()
     }
@@ -935,9 +935,9 @@ async fn expect_envelope(
     expected_addr: RoutingAddr,
     expected_envelope: Envelope,
 ) {
-    let TaggedEnvelope(addr, env) = router_rx.recv().await.expect("Channel closed");
-    assert_eq!(addr, expected_addr);
-    assert_eq!(env, expected_envelope);
+    let env = router_rx.recv().await.expect("Channel closed");
+    assert_eq!(env.addr(), expected_addr);
+    assert_eq!(env.into_envelope(), expected_envelope);
 }
 
 #[tokio::test]
@@ -1142,14 +1142,18 @@ async fn action_lane_multiple_links() {
 
         let expected_unlink = Envelope::unlinked(&route.node, &route.lane);
 
-        let TaggedEnvelope(rec_addr1, env) = router_rx.recv().await.expect("Channel closed");
-        assert!(rec_addr1 == addr1 || rec_addr1 == addr2);
-        assert_eq!(env, expected_unlink);
+        let envelope_1 = router_rx.recv().await.expect("Channel closed");
+        let rec_addr1 = envelope_1.addr();
 
-        let TaggedEnvelope(rec_addr2, env) = router_rx.recv().await.expect("Channel closed");
+        assert!(rec_addr1 == addr1 || rec_addr1 == addr2);
+        assert_eq!(envelope_1.into_envelope(), expected_unlink);
+
+        let envelope_2 = router_rx.recv().await.expect("Channel closed");
+        let rec_addr2 = envelope_2.addr();
+
         assert!(rec_addr2 == addr1 || rec_addr2 == addr2);
         assert_ne!(rec_addr1, rec_addr2);
-        assert_eq!(env, expected_unlink);
+        assert_eq!(envelope_2.into_envelope(), expected_unlink);
     };
 
     let (_, result, _) = join3(spawn_task, task, io_task).await;

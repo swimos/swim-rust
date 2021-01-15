@@ -139,8 +139,8 @@ where
             retry_strategy,
             yield_after,
         } = self;
-        let outgoing_payloads = messages
-            .map(|TaggedEnvelope(_, envelope)| WsMessage::Text(envelope.into_value().to_string()));
+        let outgoing_payloads =
+            messages.map(|e| WsMessage::Text(e.into_envelope().into_value().to_string()));
 
         let selector = WsStreamSelector::new(&mut ws_stream, outgoing_payloads);
 

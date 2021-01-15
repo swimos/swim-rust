@@ -25,7 +25,6 @@ fn test_log_entry() {
         String::from("message"),
         LogLevel::Error,
         RelativeUri::from_str("/lane").unwrap(),
-        RelativeUri::from_str("/node").unwrap(),
     );
 
     match entry.into_value() {

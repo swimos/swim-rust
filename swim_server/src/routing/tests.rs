@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::routing::{RoutingAddr, TaggedEnvelope, TaggedSender};
+use crate::routing::{RoutingAddr, TaggedAgentEnvelope, TaggedEnvelope, TaggedSender};
 use swim_common::warp::envelope::Envelope;
 use tokio::sync::mpsc;
 
@@ -29,10 +29,10 @@ async fn tagged_sender() {
     let received = rx.recv().await;
     assert_eq!(
         received,
-        Some(TaggedEnvelope(
+        Some(TaggedEnvelope::agent(TaggedAgentEnvelope(
             RoutingAddr::remote(7),
             Envelope::linked("/node", "lane")
-        ))
+        )))
     );
 }
 

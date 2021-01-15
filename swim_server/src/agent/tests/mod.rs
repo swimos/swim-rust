@@ -24,11 +24,11 @@ use crate::agent::lane::lifecycle::{
 use crate::agent::lane::model::action::{Action, ActionLane, CommandLane};
 use crate::agent::lane::model::demand_map::DemandMapLaneUpdate;
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
-use crate::agent::lane::model::supply::SupplyLane;
 use crate::agent::lane::model::value::ValueLane;
 use crate::agent::lane::strategy::Queue;
 use crate::agent::lane::LaneModel;
 use crate::agent::meta::lane::MetaDemandMapLifecycleTasks;
+use crate::agent::meta::LogLevel;
 use crate::agent::tests::reporting_agent::{ReportingAgentEvent, TestAgentConfig};
 use crate::agent::tests::stub_router::SingleChannelRouter;
 use crate::agent::tests::test_clock::TestClock;
@@ -45,6 +45,7 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
+use swim_common::form::Form;
 use swim_runtime::task;
 use tokio::sync::{mpsc, oneshot, Mutex};
 use tokio::time::{timeout, Duration};
@@ -296,6 +297,10 @@ where
 
     fn parameters(&self) -> HashMap<String, String> {
         HashMap::new()
+    }
+
+    fn log<E: Form>(&self, _entry: E, _level: LogLevel) {
+        panic!("Unexpected log event")
     }
 }
 
