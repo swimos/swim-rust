@@ -18,7 +18,7 @@ use proc_macro2::{Ident, Span};
 use quote::ToTokens;
 use quote::{quote, quote_spanned};
 use std::fmt::{Display, Formatter};
-use syn::{Data, DeriveInput};
+use syn::{Data, DeriveInput, Fields};
 
 const SWIM_AGENT: &str = "Swim agent";
 const LIFECYCLE: &str = "Lifecycle";
@@ -109,5 +109,16 @@ pub fn validate_input_ast(input_ast: &DeriveInput, ty: InputAstType) -> Result<(
                 Ok(())
             }
         }
+    }
+}
+
+pub fn has_fields(input_ast: &DeriveInput) -> bool {
+    match input_ast.data {
+        Data::Struct(ref input_struct) => match input_struct.fields {
+            Fields::Named(ref named_fields) => !named_fields.named.is_empty(),
+            Fields::Unnamed(ref unnamed_fields) => !unnamed_fields.unnamed.is_empty(),
+            Fields::Unit => false,
+        },
+        _ => unreachable!(),
     }
 }

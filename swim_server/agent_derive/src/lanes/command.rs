@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::utils::{get_task_struct_name, validate_input_ast, InputAstType};
+use crate::utils::{get_task_struct_name, has_fields, validate_input_ast, InputAstType};
 use darling::FromMeta;
 use macro_helpers::string_to_ident;
 use proc_macro::TokenStream;
@@ -46,6 +46,7 @@ pub fn derive_command_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput
     };
 
     let lifecycle_name = input_ast.ident.clone();
+    let has_fields = has_fields(&input_ast);
     let task_name = get_task_struct_name(&input_ast.ident.to_string());
     let agent_name = args.agent.clone();
     let command_type = &args.command_type;
@@ -83,6 +84,7 @@ pub fn derive_command_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput
     derive_lane(
         "CommandLifecycle",
         lifecycle_name,
+        has_fields,
         task_name,
         agent_name,
         input_ast,
@@ -93,6 +95,7 @@ pub fn derive_command_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput
         quote! {
             use swim_server::agent::lane::model::action::CommandLane;
             use swim_server::agent::lane::model::action::Action;
+            use swim_server::agent::lane::lifecycle::LaneLifecycle;
         },
         None,
         None,

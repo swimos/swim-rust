@@ -13,7 +13,6 @@
 // limitations under the License.
 
 use std::sync::Arc;
-use swim_server::agent::lane::lifecycle::LaneLifecycle;
 use swim_server::agent::lane::model::action::{ActionLane, CommandLane};
 use swim_server::agent::lane::model::map::{MapLane, MapLaneEvent};
 use swim_server::agent::lane::model::value::ValueLane;
@@ -96,12 +95,6 @@ fn main() {
         }
     }
 
-    impl LaneLifecycle<TestAgentConfig> for CommandLifecycle1 {
-        fn create(_config: &TestAgentConfig) -> Self {
-            CommandLifecycle1 {}
-        }
-    }
-
     // ----------------------- Command Lifecycle 2 -----------------------
 
     #[command_lifecycle(agent = "TestAgent", command_type = "i32", on_command = "on_command")]
@@ -117,12 +110,6 @@ fn main() {
             Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
         {
             unimplemented!()
-        }
-    }
-
-    impl LaneLifecycle<TestAgentConfig> for CommandLifecycle2 {
-        fn create(_config: &TestAgentConfig) -> Self {
-            CommandLifecycle2 {}
         }
     }
 
@@ -145,12 +132,6 @@ fn main() {
         }
     }
 
-    impl LaneLifecycle<TestAgentConfig> for ActionLifecycle1 {
-        fn create(_config: &TestAgentConfig) -> Self {
-            ActionLifecycle1 {}
-        }
-    }
-
     // ----------------------- Action Lifecycle 2 -----------------------
 
     #[action_lifecycle(agent = "TestAgent", command_type = "i64", response_type = "i64")]
@@ -170,12 +151,6 @@ fn main() {
         }
     }
 
-    impl LaneLifecycle<TestAgentConfig> for ActionLifecycle2 {
-        fn create(_config: &TestAgentConfig) -> Self {
-            ActionLifecycle2 {}
-        }
-    }
-
     // ----------------------- Action Lifecycle 2 -----------------------
 
     #[action_lifecycle(agent = "TestAgent", command_type = "String", response_type = "String")]
@@ -192,12 +167,6 @@ fn main() {
             Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
         {
             unimplemented!()
-        }
-    }
-
-    impl LaneLifecycle<TestAgentConfig> for ActionLifecycle3 {
-        fn create(_config: &TestAgentConfig) -> Self {
-            ActionLifecycle3 {}
         }
     }
 
@@ -226,12 +195,6 @@ fn main() {
         }
     }
 
-    impl LaneLifecycle<TestAgentConfig> for ValueLifecycle1 {
-        fn create(_config: &TestAgentConfig) -> Self {
-            ValueLifecycle1 {}
-        }
-    }
-
     // ----------------------- Value Lifecycle 2 -----------------------
 
     #[value_lifecycle(agent = "TestAgent", event_type = "String")]
@@ -254,12 +217,6 @@ fn main() {
             Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
         {
             unimplemented!()
-        }
-    }
-
-    impl LaneLifecycle<TestAgentConfig> for ValueLifecycle2 {
-        fn create(_config: &TestAgentConfig) -> Self {
-            ValueLifecycle2 {}
         }
     }
 
@@ -288,12 +245,6 @@ fn main() {
         }
     }
 
-    impl LaneLifecycle<TestAgentConfig> for MapLifecycle1 {
-        fn create(_config: &TestAgentConfig) -> Self {
-            MapLifecycle1 {}
-        }
-    }
-
     // ----------------------- Map Lifecycle 1 -----------------------
 
     #[map_lifecycle(agent = "TestAgent", key_type = "i32", value_type = "String")]
@@ -316,12 +267,6 @@ fn main() {
             Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
         {
             unimplemented!()
-        }
-    }
-
-    impl LaneLifecycle<TestAgentConfig> for MapLifecycle2 {
-        fn create(_config: &TestAgentConfig) -> Self {
-            MapLifecycle2 {}
         }
     }
 }

@@ -13,7 +13,6 @@
 // limitations under the License.
 
 use std::sync::Arc;
-use swim_server::agent::lane::lifecycle::LaneLifecycle;
 use swim_server::agent::lane::model::action::{ActionLane, CommandLane};
 use swim_server::agent::lane::model::map::{MapLane, MapLaneEvent};
 use swim_server::agent::lane::model::value::ValueLane;
@@ -82,12 +81,6 @@ fn main() {
         }
     }
 
-    impl LaneLifecycle<TestAgentConfig> for CommandLifecycle {
-        fn create(_config: &TestAgentConfig) -> Self {
-            CommandLifecycle {}
-        }
-    }
-
     // ----------------------- Action Lifecycle -----------------------
 
     #[action_lifecycle(agent = "TestAgent", command_type = "String", response_type = "i32")]
@@ -104,12 +97,6 @@ fn main() {
             Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
         {
             unimplemented!()
-        }
-    }
-
-    impl LaneLifecycle<TestAgentConfig> for ActionLifecycle {
-        fn create(_config: &TestAgentConfig) -> Self {
-            ActionLifecycle {}
         }
     }
 
@@ -138,12 +125,6 @@ fn main() {
         }
     }
 
-    impl LaneLifecycle<TestAgentConfig> for ValueLifecycle {
-        fn create(_config: &TestAgentConfig) -> Self {
-            ValueLifecycle {}
-        }
-    }
-
     // ----------------------- Map Lifecycle -----------------------
 
     #[map_lifecycle(agent = "TestAgent", key_type = "String", value_type = "i32")]
@@ -166,12 +147,6 @@ fn main() {
             Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
         {
             unimplemented!()
-        }
-    }
-
-    impl LaneLifecycle<TestAgentConfig> for MapLifecycle {
-        fn create(_config: &TestAgentConfig) -> Self {
-            MapLifecycle {}
         }
     }
 }
