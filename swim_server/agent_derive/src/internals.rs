@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::utils::WatchStrategy;
 use macro_helpers::str_to_ident;
 use proc_macro::TokenStream;
 use proc_macro2::Ident;
@@ -35,6 +36,30 @@ pub fn default_on_start() -> Ident {
 
 pub fn default_on_event() -> Ident {
     str_to_ident("on_event")
+}
+
+pub fn default_watch_strategy() -> WatchStrategy {
+    WatchStrategy {
+        ty: str_to_ident("Queue"),
+        param: None,
+    }
+}
+
+pub fn parse_strategy(s: String) -> WatchStrategy {
+    let mut split = s.split('(');
+    let ty = split.next().unwrap();
+
+    let param = if let Some(rest) = split.next() {
+        let param_str = rest.split(')').next().unwrap();
+        Some(param_str.parse().unwrap())
+    } else {
+        None
+    };
+
+    WatchStrategy {
+        ty: str_to_ident(ty),
+        param,
+    }
 }
 
 pub fn derive<F>(args: TokenStream, input: TokenStream, f: F) -> TokenStream

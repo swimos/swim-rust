@@ -37,6 +37,7 @@ pub fn derive_lane(
     on_event: TokenStream,
     imports: TokenStream,
     field: Option<TokenStream>,
+    watch_strategy: Option<TokenStream>,
 ) -> proc_macro::TokenStream {
     let public_derived = quote! {
         #input_ast
@@ -101,6 +102,8 @@ pub fn derive_lane(
                 .boxed()
             }
         }
+
+        #watch_strategy
     };
 
     let wrapped = as_const(trait_name, typ, private_derived);

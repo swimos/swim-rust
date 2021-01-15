@@ -95,5 +95,6 @@ pub fn derive_command_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput
             use swim_server::agent::lane::model::action::Action;
         },
         None,
+        None,
     )
 }

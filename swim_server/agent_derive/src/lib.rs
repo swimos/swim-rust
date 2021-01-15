@@ -218,14 +218,6 @@ mod utils;
 /// #     }
 /// # }
 /// #
-/// # impl StatefulLaneLifecycleBase for TestValueLifecycle {
-/// #     type WatchStrategy = Queue;
-/// #
-/// #     fn create_strategy(&self) -> Self::WatchStrategy {
-/// #         Queue::default()
-/// #     }
-/// # }
-/// #
 /// # #[map_lifecycle(agent = "TestAgent", key_type = "String", value_type = "i32")]
 /// # struct TestMapLifecycle;
 /// #
@@ -252,14 +244,6 @@ mod utils;
 /// # impl LaneLifecycle<TestAgentConfig> for TestMapLifecycle {
 /// #     fn create(_config: &TestAgentConfig) -> Self {
 /// #         TestMapLifecycle {}
-/// #     }
-/// # }
-/// #
-/// # impl StatefulLaneLifecycleBase for TestMapLifecycle {
-/// #     type WatchStrategy = Queue;
-/// #
-/// #     fn create_strategy(&self) -> Self::WatchStrategy {
-/// #         Queue::default()
 /// #     }
 /// # }
 /// ```
@@ -582,13 +566,6 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///     }
 /// }
 ///
-/// impl StatefulLaneLifecycleBase for TestValueLifecycle {
-///     type WatchStrategy = Queue;
-///
-///     fn create_strategy(&self) -> Self::WatchStrategy {
-///         Queue::default()
-///     }
-/// }
 /// # #[derive(Debug, SwimAgent)]
 /// # #[agent(config = "TestAgentConfig")]
 /// # pub struct TestAgent;
@@ -642,13 +619,6 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///     }
 /// }
 ///
-/// impl StatefulLaneLifecycleBase for TestValueLifecycle {
-///     type WatchStrategy = Queue;
-///
-///     fn create_strategy(&self) -> Self::WatchStrategy {
-///         Queue::default()
-///     }
-/// }
 /// # #[derive(Debug, SwimAgent)]
 /// # #[agent(config = "TestAgentConfig")]
 /// # pub struct TestAgent;
@@ -709,13 +679,6 @@ pub fn value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///     }
 /// }
 ///
-/// impl StatefulLaneLifecycleBase for TestMapLifecycle {
-///     type WatchStrategy = Queue;
-///
-///     fn create_strategy(&self) -> Self::WatchStrategy {
-///         Queue::default()
-///     }
-/// }
 /// # #[derive(Debug, SwimAgent)]
 /// # #[agent(config = "TestAgentConfig")]
 /// # pub struct TestAgent;
@@ -767,13 +730,6 @@ pub fn value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///     }
 /// }
 ///
-/// impl StatefulLaneLifecycleBase for TestMapLifecycle {
-///     type WatchStrategy = Queue;
-///
-///     fn create_strategy(&self) -> Self::WatchStrategy {
-///         Queue::default()
-///     }
-/// }
 /// # #[derive(Debug, SwimAgent)]
 /// # #[agent(config = "TestAgentConfig")]
 /// # pub struct TestAgent;
