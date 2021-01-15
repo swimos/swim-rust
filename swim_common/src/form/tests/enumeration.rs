@@ -22,11 +22,11 @@ mod swim_common {
 #[test]
 fn test_transmute_single_variant() {
     #[derive(Form, Debug, PartialEq, Clone)]
-    enum S {
+    enum SingleEnum {
         A { a: i32, b: i64 },
     }
 
-    let s = S::A { a: 1, b: 2 };
+    let s = SingleEnum::A { a: 1, b: 2 };
     let rec = Value::Record(
         vec![Attr::of("A")],
         vec![
@@ -36,8 +36,8 @@ fn test_transmute_single_variant() {
     );
 
     assert_eq!(s.as_value(), rec);
-    assert_eq!(S::try_from_value(&rec), Ok(s.clone()));
-    assert_eq!(S::try_convert(rec), Ok(s));
+    assert_eq!(SingleEnum::try_from_value(&rec), Ok(s.clone()));
+    assert_eq!(SingleEnum::try_convert(rec), Ok(s));
 }
 
 #[test]
@@ -254,9 +254,9 @@ fn test_tuple() {
 fn test_rename() {
     #[derive(Form, Debug, PartialEq, Clone)]
     enum S {
-        A(#[form(rename = "A::a")] i32, i64),
+        A(#[form(name = "A::a")] i32, i64),
         B {
-            #[form(rename = "B::a")]
+            #[form(name = "B::a")]
             a: i32,
             b: i64,
         },
@@ -292,29 +292,63 @@ fn test_rename() {
 
 #[test]
 fn body_replaces() {
-    #[derive(Form, Debug, PartialEq, Clone)]
+    #[derive(Debug, PartialEq, Clone, Form)]
     enum BodyReplace {
         A(i32, #[form(body)] Value),
     }
 
-    let body = vec![
-        Item::ValueItem(Value::Int32Value(7)),
-        Item::ValueItem(Value::BooleanValue(true)),
-    ];
+    let body = Value::Record(
+        vec![],
+        vec![
+            Item::ValueItem(Value::Int32Value(7)),
+            Item::ValueItem(Value::BooleanValue(true)),
+        ],
+    );
 
     let rec = Value::Record(
         vec![Attr::of((
             "A",
             Value::Record(Vec::new(), vec![Item::ValueItem(Value::Int32Value(1033))]),
         ))],
-        body.clone(),
+        vec![Item::ValueItem(body.clone())],
     );
 
-    let br = BodyReplace::A(1033, Value::Record(Vec::new(), body));
+    let br = BodyReplace::A(1033, body);
 
     assert_eq!(br.as_value(), rec);
     assert_eq!(BodyReplace::try_from_value(&rec), Ok(br.clone()));
     assert_eq!(BodyReplace::try_convert(rec), Ok(br));
+}
+
+#[test]
+fn body_replaces2() {
+    #[derive(Form, Debug, PartialEq, Clone)]
+    enum BodyReplace2 {
+        A(i32, i32, i32, #[form(body)] i32),
+    }
+
+    let body = vec![Item::ValueItem(Value::Int32Value(4))];
+
+    let rec = Value::Record(
+        vec![Attr::of((
+            "A",
+            Value::Record(
+                Vec::new(),
+                vec![
+                    Item::ValueItem(Value::Int32Value(1)),
+                    Item::ValueItem(Value::Int32Value(2)),
+                    Item::ValueItem(Value::Int32Value(3)),
+                ],
+            ),
+        ))],
+        body.clone(),
+    );
+
+    let br = BodyReplace2::A(1, 2, 3, 4);
+
+    assert_eq!(br.as_value(), rec);
+    assert_eq!(BodyReplace2::try_from_value(&rec), Ok(br.clone()));
+    assert_eq!(BodyReplace2::try_convert(rec), Ok(br));
 }
 
 #[test]

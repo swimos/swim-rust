@@ -160,7 +160,7 @@ impl Display for FormErr {
 /// #[derive(Form, PartialEq, Debug)]
 /// struct Food {
 ///     name: String,
-///     #[form(rename = "quality")]
+///     #[form(name = "quality")]
 ///     rating: i32,
 /// }
 /// let food = Food {
