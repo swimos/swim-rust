@@ -70,6 +70,12 @@
 //! }
 //! ```
 
+macro_rules! syn_ok {
+    ($e:expr, $span: expr, $msg: tt) => {
+        $e.ok_or(vec![syn::Error::new_spanned($span, $msg)])?
+    };
+}
+
 use crate::agent::{derive_agent_lifecycle, derive_swim_agent};
 use crate::lanes::action::derive_action_lifecycle;
 use crate::lanes::command::derive_command_lifecycle;
@@ -79,7 +85,7 @@ use crate::lanes::value::derive_value_lifecycle;
 use crate::internals::derive;
 use crate::lanes::demand::derive_demand_lifecycle;
 use crate::lanes::demand_map::derive_demand_map_lifecycle;
-use macro_helpers::as_const;
+use macro_helpers::{as_const, to_compile_errors};
 use proc_macro::TokenStream;
 use syn::{parse_macro_input, DeriveInput};
 
@@ -269,7 +275,7 @@ pub fn swim_agent(input: TokenStream) -> TokenStream {
     let ident = input_ast.ident.clone();
     let derived = match derive_swim_agent(input_ast) {
         Ok(derived) => derived,
-        Err(ts) => return ts,
+        Err(ts) => return to_compile_errors(ts).into(),
     };
 
     as_const("SwimAgent", ident, derived.into()).into()

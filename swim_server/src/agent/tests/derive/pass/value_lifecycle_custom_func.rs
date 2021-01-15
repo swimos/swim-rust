@@ -29,10 +29,10 @@ fn main() {
     pub struct TestAgentConfig;
 
     #[value_lifecycle(
-        agent = "TestAgent",
-        event_type = "i32",
-        on_start = "custom_on_start",
-        on_event = "custom_on_event"
+        agent(TestAgent),
+        event_type(i32),
+        on_start(custom_on_start),
+        on_event(custom_on_event)
     )]
     struct ValueLifecycle;
 

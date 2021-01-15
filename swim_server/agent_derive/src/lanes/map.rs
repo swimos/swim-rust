@@ -15,45 +15,69 @@
 use crate::internals::{default_on_event, default_on_start};
 use crate::lanes::derive_lane;
 use crate::utils::{get_task_struct_name, validate_input_ast, InputAstType};
-use darling::FromMeta;
-use macro_helpers::string_to_ident;
-use proc_macro::TokenStream;
-use quote::quote;
-use syn::{AttributeArgs, DeriveInput, Ident};
+use macro_helpers::{Context, Symbol};
+use proc_macro2::TokenStream as TokenStream2;
+use quote::{quote, ToTokens};
+use syn::spanned::Spanned;
+use syn::{AttributeArgs, DeriveInput, Ident, Meta, NestedMeta};
+const AGENT_PATH: Symbol = Symbol("agent");
+const KEY_TYPE: Symbol = Symbol("key_type");
+const VALUE_TYPE: Symbol = Symbol("value_type");
+const ON_START: Symbol = Symbol("on_start");
+const ON_EVENT: Symbol = Symbol("on_event");
 
-#[derive(Debug, FromMeta)]
-struct MapAttrs {
-    #[darling(map = "string_to_ident")]
-    agent: Ident,
-    #[darling(map = "string_to_ident")]
-    key_type: Ident,
-    #[darling(map = "string_to_ident")]
-    value_type: Ident,
-    #[darling(default = "default_on_start", map = "string_to_ident")]
-    on_start: Ident,
-    #[darling(default = "default_on_event", map = "string_to_ident")]
-    on_event: Ident,
-}
+pub fn derive_map_lifecycle(
+    attr_args: AttributeArgs,
+    input_ast: DeriveInput,
+) -> Result<TokenStream2, Vec<syn::Error>> {
+    let mut context = Context::default();
 
-pub fn derive_map_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput) -> TokenStream {
-    if let Err(error) = validate_input_ast(&input_ast, InputAstType::Lifecycle) {
-        return TokenStream::from(quote! {#error});
+    if let Err(_) = validate_input_ast(&input_ast, InputAstType::Lifecycle, &mut context) {
+        return Err(context.check().unwrap_err());
     }
 
-    let args = match MapAttrs::from_list(&attr_args) {
-        Ok(args) => args,
-        Err(e) => {
-            return TokenStream::from(e.write_errors());
-        }
-    };
+    let mut agent_opt = None;
+    let mut key_type_opt = None;
+    let mut value_type_opt = None;
+    let mut on_start_func = default_on_start();
+    let mut on_event_func = default_on_event();
 
+    attr_args.iter().for_each(|meta| match meta {
+        NestedMeta::Meta(Meta::List(list)) if list.path == AGENT_PATH => {
+            agent_opt = Some(Ident::new(
+                &list.nested.to_token_stream().to_string(),
+                list.span(),
+            ));
+        }
+        NestedMeta::Meta(Meta::List(list)) if list.path == KEY_TYPE => {
+            key_type_opt = Some(Ident::new(
+                &list.nested.to_token_stream().to_string(),
+                list.span(),
+            ));
+        }
+        NestedMeta::Meta(Meta::List(list)) if list.path == VALUE_TYPE => {
+            value_type_opt = Some(Ident::new(
+                &list.nested.to_token_stream().to_string(),
+                list.span(),
+            ));
+        }
+        NestedMeta::Meta(Meta::List(list)) if list.path == ON_EVENT => {
+            on_event_func = Ident::new(&list.nested.to_token_stream().to_string(), list.span());
+        }
+        NestedMeta::Meta(Meta::List(list)) if list.path == ON_START => {
+            on_start_func = Ident::new(&list.nested.to_token_stream().to_string(), list.span());
+        }
+        nm => {
+            context.error_spanned_by(nm, "Unknown parameter");
+        }
+    });
+
+    let agent_name = syn_ok!(agent_opt, &input_ast, "Agent identity must be provided");
     let lifecycle_name = input_ast.ident.clone();
     let task_name = get_task_struct_name(&input_ast.ident.to_string());
-    let agent_name = args.agent.clone();
-    let key_type = &args.key_type;
-    let value_type = &args.value_type;
-    let on_start_func = &args.on_start;
-    let on_event_func = &args.on_event;
+    let key_type = syn_ok!(key_type_opt, &input_ast, "Key type must be provided");
+    let value_type = syn_ok!(value_type_opt, &input_ast, "Value type must be provided");
+
     let on_start = quote! {
         let #task_name { lifecycle, projection, .. } = self;
         let model = projection(context.agent());
@@ -79,7 +103,7 @@ pub fn derive_map_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput) ->
         }
     };
 
-    derive_lane(
+    Ok(derive_lane(
         "MapLifecycle",
         lifecycle_name,
         task_name,
@@ -95,4 +119,5 @@ pub fn derive_map_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput) ->
         },
         None,
     )
+    .into())
 }

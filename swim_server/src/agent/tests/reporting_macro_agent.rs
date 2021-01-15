@@ -53,17 +53,17 @@ mod swim_server {
 /// will be inserted into the the `data` lane with keys "Name0", "Name1" and so forth. For each
 /// entry inserted, the value of the `total` lane will be incremented by the inserted value.
 #[derive(Debug, SwimAgent)]
-#[agent(config = "TestAgentConfig")]
+#[agent(config(TestAgentConfig))]
 pub struct ReportingAgent {
-    #[lifecycle(public, name = "DataLifecycle")]
+    #[lifecycle(public, name(DataLifecycle))]
     data: MapLane<String, i32>,
-    #[lifecycle(name = "TotalLifecycle")]
+    #[lifecycle(name(TotalLifecycle))]
     total: ValueLane<i32>,
-    #[lifecycle(name = "ActionLifecycle")]
+    #[lifecycle(name(ActionLifecycle))]
     action: CommandLane<String>,
-    #[lifecycle(name = "DemandLifecycle")]
+    #[lifecycle(name(DemandLifecycle))]
     demand: DemandLane<i32>,
-    #[lifecycle(name = "DemandMapLifecycle")]
+    #[lifecycle(name(DemandMapLifecycle))]
     demand_map: DemandMapLane<String, i32>,
 }
 
@@ -107,7 +107,7 @@ impl EventCollectorHandler {
     }
 }
 
-#[agent_lifecycle(agent = "ReportingAgent", on_start = "agent_on_start")]
+#[agent_lifecycle(agent(ReportingAgent), on_start(agent_on_start))]
 struct ReportingAgentLifecycle {
     event_handler: EventCollectorHandler,
 }
@@ -147,7 +147,7 @@ impl ReportingAgentLifecycle {
     }
 }
 
-#[command_lifecycle(agent = "ReportingAgent", command_type = "String")]
+#[command_lifecycle(agent(ReportingAgent), command_type(String))]
 struct ActionLifecycle {
     event_handler: EventCollectorHandler,
 }
@@ -186,7 +186,7 @@ impl LaneLifecycle<TestAgentConfig> for ActionLifecycle {
     }
 }
 
-#[map_lifecycle(agent = "ReportingAgent", key_type = "String", value_type = "i32")]
+#[map_lifecycle(agent(ReportingAgent), key_type(String), value_type(i32))]
 struct DataLifecycle {
     event_handler: EventCollectorHandler,
 }
@@ -248,7 +248,7 @@ impl StatefulLaneLifecycleBase for DataLifecycle {
     }
 }
 
-#[value_lifecycle(agent = "ReportingAgent", event_type = "i32")]
+#[value_lifecycle(agent(ReportingAgent), event_type(i32))]
 struct TotalLifecycle {
     event_handler: EventCollectorHandler,
 }
@@ -286,7 +286,7 @@ impl StatefulLaneLifecycleBase for TotalLifecycle {
     }
 }
 
-#[demand_lifecycle(agent = "ReportingAgent", event_type = "i32")]
+#[demand_lifecycle(agent(ReportingAgent), event_type(i32))]
 struct DemandLifecycle {
     event_handler: EventCollectorHandler,
 }
@@ -313,7 +313,7 @@ impl DemandLifecycle {
     }
 }
 
-#[demand_map_lifecycle(agent = "ReportingAgent", key_type = "String", value_type = "i32")]
+#[demand_map_lifecycle(agent(ReportingAgent), key_type(String), value_type(i32))]
 struct DemandMapLifecycle {
     event_handler: EventCollectorHandler,
 }

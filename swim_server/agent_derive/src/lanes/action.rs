@@ -15,42 +15,73 @@
 use crate::internals::default_on_command;
 use crate::lanes::derive_lane;
 use crate::utils::{get_task_struct_name, validate_input_ast, InputAstType};
-use darling::FromMeta;
-use macro_helpers::string_to_ident;
-use proc_macro::TokenStream;
-use quote::quote;
-use syn::{AttributeArgs, DeriveInput, Ident};
+use macro_helpers::{Context, Symbol};
+use proc_macro2::TokenStream as TokenStream2;
+use quote::{quote, ToTokens};
+use syn::spanned::Spanned;
+use syn::{AttributeArgs, DeriveInput, Ident, Meta, NestedMeta};
 
-#[derive(Debug, FromMeta)]
-struct ActionAttrs {
-    #[darling(map = "string_to_ident")]
-    agent: Ident,
-    #[darling(map = "string_to_ident")]
-    command_type: Ident,
-    #[darling(map = "string_to_ident")]
-    response_type: Ident,
-    #[darling(default = "default_on_command", map = "string_to_ident")]
-    on_command: Ident,
-}
+const AGENT_PATH: Symbol = Symbol("agent");
+const COMMAND_TYPE: Symbol = Symbol("command_type");
+const RESPONSE_TYPE: Symbol = Symbol("response_type");
+const ON_COMMAND: Symbol = Symbol("on_command");
 
-pub fn derive_action_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput) -> TokenStream {
-    if let Err(error) = validate_input_ast(&input_ast, InputAstType::Lifecycle) {
-        return TokenStream::from(quote! {#error});
+pub fn derive_action_lifecycle(
+    attr_args: AttributeArgs,
+    input_ast: DeriveInput,
+) -> Result<TokenStream2, Vec<syn::Error>> {
+    let mut context = Context::default();
+
+    if validate_input_ast(&input_ast, InputAstType::Lifecycle, &mut context).is_err() {
+        return Err(context.check().unwrap_err());
     }
 
-    let args = match ActionAttrs::from_list(&attr_args) {
-        Ok(args) => args,
-        Err(e) => {
-            return TokenStream::from(e.write_errors());
+    let mut agent_opt = None;
+    let mut command_type_opt = None;
+    let mut response_type_opt = None;
+    let mut on_command_func = default_on_command();
+
+    attr_args.iter().for_each(|meta| match meta {
+        NestedMeta::Meta(Meta::List(list)) if list.path == AGENT_PATH => {
+            agent_opt = Some(Ident::new(
+                &list.nested.to_token_stream().to_string(),
+                list.span(),
+            ));
         }
-    };
+        NestedMeta::Meta(Meta::List(list)) if list.path == COMMAND_TYPE => {
+            command_type_opt = Some(Ident::new(
+                &list.nested.to_token_stream().to_string(),
+                list.span(),
+            ));
+        }
+        NestedMeta::Meta(Meta::List(list)) if list.path == RESPONSE_TYPE => {
+            response_type_opt = Some(Ident::new(
+                &list.nested.to_token_stream().to_string(),
+                list.span(),
+            ));
+        }
+        NestedMeta::Meta(Meta::List(list)) if list.path == ON_COMMAND => {
+            on_command_func = Ident::new(&list.nested.to_token_stream().to_string(), list.span());
+        }
+        nm => {
+            context.error_spanned_by(nm, "Unknown parameter");
+        }
+    });
 
     let lifecycle_name = input_ast.ident.clone();
     let task_name = get_task_struct_name(&input_ast.ident.to_string());
-    let agent_name = args.agent.clone();
-    let command_type = &args.command_type;
-    let response_type = &args.response_type;
-    let on_command_func = &args.on_command;
+    let agent_name = syn_ok!(agent_opt, &input_ast, "Agent identity must be provided");
+    let command_type = syn_ok!(
+        command_type_opt,
+        &input_ast,
+        "Command type must be provided"
+    );
+    let response_type = syn_ok!(
+        response_type_opt,
+        &input_ast,
+        "Response type must be provided"
+    );
+
     let on_event = quote! {
         let #task_name {
             lifecycle,
@@ -83,7 +114,7 @@ pub fn derive_action_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput)
         }
     };
 
-    derive_lane(
+    Ok(derive_lane(
         "ActionLifecycle",
         lifecycle_name,
         task_name,
@@ -99,4 +130,5 @@ pub fn derive_action_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput)
         },
         None,
     )
+    .into())
 }

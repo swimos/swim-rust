@@ -28,11 +28,11 @@ fn main() {
     pub struct TestAgentConfig;
 
     #[map_lifecycle(
-        agent = "TestAgent",
-        key_type = "String",
-        value_type = "i32",
-        on_start = "map_on_start",
-        on_event = "map_on_event"
+        agent(TestAgent),
+        key_type(String),
+        value_type(i32),
+        on_start(map_on_start),
+        on_event(map_on_event)
     )]
     struct MapLifecycle;
 

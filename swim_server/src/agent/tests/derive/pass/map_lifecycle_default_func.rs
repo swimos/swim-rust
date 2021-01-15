@@ -27,7 +27,7 @@ fn main() {
     #[derive(Debug)]
     pub struct TestAgentConfig;
 
-    #[map_lifecycle(agent = "TestAgent", key_type = "String", value_type = "i32")]
+    #[map_lifecycle(agent(TestAgent), key_type(String), value_type(i32))]
     struct MapLifecycle;
 
     impl MapLifecycle {

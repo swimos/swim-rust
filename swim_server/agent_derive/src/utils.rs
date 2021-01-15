@@ -13,9 +13,8 @@
 // limitations under the License.
 
 use core::fmt;
+use macro_helpers::Context;
 use proc_macro2::{Ident, Span};
-use quote::quote_spanned;
-use quote::ToTokens;
 use std::fmt::{Display, Formatter};
 use syn::{Data, DeriveInput};
 
@@ -41,39 +40,25 @@ impl Display for InputAstType {
     }
 }
 
-#[derive(Debug)]
-pub enum InputAstError {
-    UnionError(InputAstType, Span),
-    EnumError(InputAstType, Span),
-    GenericError(InputAstType, Span),
-}
-
-impl ToTokens for InputAstError {
-    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
-        *tokens = match self {
-            InputAstError::EnumError(ty, span) => {
-                let message = format! {"{} cannot be created from Enum.", ty};
-                quote_spanned! { *span => compile_error!(#message); }
-            }
-            InputAstError::UnionError(ty, span) => {
-                let message = format! {"{} cannot be created from Union.", ty};
-                quote_spanned! { *span => compile_error!(#message); }
-            }
-            InputAstError::GenericError(ty, span) => {
-                let message = format! {"{} cannot have generic parameters.", ty};
-                quote_spanned! { *span => compile_error!(#message); }
-            }
-        };
-    }
-}
-
-pub fn validate_input_ast(input_ast: &DeriveInput, ty: InputAstType) -> Result<(), InputAstError> {
-    match input_ast.data {
-        Data::Enum(_) => Err(InputAstError::EnumError(ty, input_ast.ident.span())),
-        Data::Union(_) => Err(InputAstError::UnionError(ty, input_ast.ident.span())),
+pub fn validate_input_ast(
+    input_ast: &DeriveInput,
+    ty: InputAstType,
+    context: &mut Context,
+) -> Result<(), ()> {
+    match &input_ast.data {
+        Data::Enum(_) => {
+            context.error_spanned_by(input_ast, format!("{} cannot be created from Enum.", ty));
+            Err(())
+        }
+        Data::Union(_) => {
+            context.error_spanned_by(input_ast, format!("{} cannot be created from Union.", ty));
+            Err(())
+        }
         _ => {
             if !input_ast.generics.params.is_empty() {
-                Err(InputAstError::GenericError(ty, input_ast.ident.span()))
+                context
+                    .error_spanned_by(input_ast, format!("{} cannot have generic parameters.", ty));
+                Err(())
             } else {
                 Ok(())
             }

@@ -15,6 +15,7 @@
 #![allow(clippy::match_wild_err_arm)]
 
 pub mod agent;
+pub mod macros;
 pub mod plane;
 pub mod routing;
 

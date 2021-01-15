@@ -14,15 +14,16 @@
 
 use crate::internals::default_on_start;
 use crate::utils::{get_task_struct_name, validate_input_ast, InputAstType};
-use darling::{ast, FromDeriveInput, FromField, FromMeta};
-use macro_helpers::{as_const, string_to_ident};
-use proc_macro::TokenStream;
+use macro_helpers::{as_const, string_to_ident, Attributes, Context, Symbol};
 use proc_macro2::TokenStream as TokenStream2;
 use proc_macro2::{Delimiter, Group, Ident, Literal, Span};
 use quote::{quote, ToTokens};
-use syn::{AttributeArgs, DeriveInput, Path, Type, TypePath};
+use syn::spanned::Spanned;
+use syn::{AttributeArgs, Data, DataStruct, DeriveInput, Meta, NestedMeta, Path, Type, TypePath};
 
 type AgentName = Ident;
+
+const AGENT_PATH: Symbol = Symbol("agent");
 
 const COMMAND_LANE: &str = "CommandLane";
 const ACTION_LANE: &str = "ActionLane";
@@ -31,22 +32,18 @@ const MAP_LANE: &str = "MapLane";
 const DEMAND_LANE: &str = "DemandLane";
 const DEMAND_MAP_LANE: &str = "DemandMapLane";
 
-#[derive(Debug, FromMeta)]
+#[derive(Debug)]
 pub struct AgentAttrs {
-    #[darling(map = "string_to_ident")]
     pub agent: Ident,
-    #[darling(default = "default_on_start", map = "string_to_ident")]
     pub on_start: Ident,
 }
 
-#[derive(Debug, FromField)]
-#[darling(attributes(lifecycle))]
+#[derive(Debug)]
 pub struct LifecycleAttrs {
-    pub ident: Option<syn::Ident>,
+    pub ident: syn::Ident,
     pub ty: syn::Type,
-    #[darling(default)]
     pub public: bool,
-    pub name: Option<String>,
+    pub name: syn::Ident,
 }
 
 impl LifecycleAttrs {
@@ -82,29 +79,93 @@ pub enum LaneType {
     DemandMap,
 }
 
-#[derive(Debug, FromDeriveInput)]
-#[darling(attributes(agent))]
+#[derive(Debug)]
 pub struct SwimAgentAttrs {
     pub ident: syn::Ident,
-    #[darling(default = "default_config", map = "parse_config")]
     pub config: ConfigType,
-    pub data: ast::Data<(), LifecycleAttrs>,
-    pub generics: syn::Generics,
+    pub data: Vec<LifecycleAttrs>,
 }
 
-pub fn derive_swim_agent(input: DeriveInput) -> Result<TokenStream, TokenStream> {
-    if let Err(error) = validate_input_ast(&input, InputAstType::Agent) {
-        return Err(TokenStream::from(quote! {#error}));
+pub fn derive_swim_agent(input: DeriveInput) -> Result<TokenStream2, Vec<syn::Error>> {
+    let mut context = Context::default();
+
+    if let Err(_) = validate_input_ast(&input, InputAstType::Agent, &mut context) {
+        return Err(context.check().unwrap_err());
     }
 
-    let args = match SwimAgentAttrs::from_derive_input(&input) {
-        Ok(args) => args,
-        Err(e) => {
-            return Err(TokenStream::from(e.write_errors()));
-        }
+    let mut context = Context::default();
+    let ident = input.ident.clone();
+    let mut config = default_config();
+    let mut lifecycles = Vec::new();
+
+    input
+        .attrs
+        .get_attributes(&mut context, Symbol("agent"))
+        .iter()
+        .for_each(|attr| match attr {
+            NestedMeta::Meta(Meta::List(list)) if list.path == Symbol("config") => {
+                if let Some(meta) = list.nested.last() {
+                    config = parse_config(meta.to_token_stream().to_string());
+                }
+            }
+            m => {
+                panic!("Expected config, found: {:?}", m);
+            }
+        });
+
+    match &input.data {
+        Data::Struct(DataStruct { fields, .. }) => fields.iter().for_each(|field| {
+            let attributes = field
+                .attrs
+                .get_attributes(&mut context, Symbol("lifecycle"));
+
+            let field_ident = field.ident.clone();
+            let field_ty = field.ty.clone();
+            let mut field_public = false;
+            let mut field_name = None;
+
+            attributes.iter().for_each(|attr| match attr {
+                NestedMeta::Meta(Meta::List(list)) if list.path == Symbol("name") => {
+                    match list.nested.last() {
+                        Some(NestedMeta::Meta(Meta::Path(name_path))) => {
+                            field_name = Some(Ident::new(
+                                &name_path.to_token_stream().to_string(),
+                                Span::call_site(),
+                            ));
+                        }
+                        m => {
+                            panic!("Expected name found {:?}", m);
+                        }
+                    }
+                }
+                NestedMeta::Meta(Meta::Path(path)) if path == Symbol("public") => {
+                    field_public = true;
+                }
+                m => {
+                    panic!("Expected public found {:?}", m)
+                }
+            });
+
+            lifecycles.push(LifecycleAttrs {
+                ident: field_ident.expect("Missing ident"),
+                ty: field_ty,
+                public: field_public,
+                name: field_name.expect("Missing name"),
+            })
+        }),
+        _ => panic!("Only structs are supported"),
+    }
+
+    let args = SwimAgentAttrs {
+        ident,
+        config,
+        data: lifecycles,
     };
 
-    let (agent_name, config_type, agent_fields) = get_agent_data(args);
+    let (agent_name, config_type, agent_fields) = match get_agent_data(&mut context, args) {
+        Ok(r) => r,
+        Err(_) => return Err(context.check().unwrap_err()),
+    };
 
     let lanes = agent_fields
         .iter()
@@ -157,21 +218,36 @@ pub fn derive_swim_agent(input: DeriveInput) -> Result<TokenStream, TokenStream>
     Ok(derived.into())
 }
 
-pub fn derive_agent_lifecycle(args: AttributeArgs, input: DeriveInput) -> TokenStream {
-    if let Err(error) = validate_input_ast(&input, InputAstType::Lifecycle) {
-        return TokenStream::from(quote! {#error});
+pub fn derive_agent_lifecycle(
+    attr_args: AttributeArgs,
+    input: DeriveInput,
+) -> Result<TokenStream2, Vec<syn::Error>> {
+    let mut context = Context::default();
+
+    if let Err(_) = validate_input_ast(&input, InputAstType::Lifecycle, &mut context) {
+        return Err(context.check().unwrap_err());
     }
 
-    let args = match AgentAttrs::from_list(&args) {
-        Ok(args) => args,
-        Err(e) => {
-            return TokenStream::from(e.write_errors());
+    let mut agent_opt = None;
+    let mut on_start_func = default_on_start();
+
+    attr_args.iter().for_each(|meta| match meta {
+        NestedMeta::Meta(Meta::List(list)) if list.path == AGENT_PATH => {
+            agent_opt = Some(Ident::new(
+                &list.nested.to_token_stream().to_string(),
+                list.span(),
+            ));
         }
-    };
+        NestedMeta::Meta(Meta::List(list)) if list.path == Symbol("on_start") => {
+            on_start_func = Ident::new(&list.nested.to_token_stream().to_string(), list.span());
+        }
+        nm => {
+            context.error_spanned_by(nm, "Unknown parameter");
+        }
+    });
 
     let lifecycle_name = input.ident.clone();
-    let agent_name = &args.agent;
-    let on_start_func = &args.on_start;
+    let agent_name = syn_ok!(agent_opt, &input, "Agent identity must be provided");
 
     let pub_derived = quote! {
         #[derive(Clone, Debug)]
@@ -204,7 +280,7 @@ pub fn derive_agent_lifecycle(args: AttributeArgs, input: DeriveInput) -> TokenS
         #wrapped
     };
 
-    derived.into()
+    Ok(derived.into())
 }
 
 #[derive(Debug)]
@@ -307,7 +383,10 @@ fn create_lane(
     (ts, task_variable)
 }
 
-pub fn get_agent_data(args: SwimAgentAttrs) -> (AgentName, ConfigType, Vec<AgentField>) {
+pub fn get_agent_data(
+    context: &mut Context,
+    args: SwimAgentAttrs,
+) -> Result<(AgentName, ConfigType, Vec<AgentField>), ()> {
     let SwimAgentAttrs {
         ident: agent_name,
         data: fields,
@@ -315,31 +394,36 @@ pub fn get_agent_data(args: SwimAgentAttrs) -> (AgentName, ConfigType, Vec<Agent
         ..
     } = args;
 
-    let mut agent_fields = Vec::new();
+    let agent_fields =
+        fields
+            .into_iter()
+            .try_fold(Vec::new(), |mut vec, field| match field.get_lane_type() {
+                Some(lane_type) => {
+                    let LifecycleAttrs {
+                        ident,
+                        public,
+                        name,
+                        ..
+                    } = field;
 
-    fields.map_struct_fields(|field| {
-        if let (Some(lane_type), Some(lane_name), Some(lifecycle_name)) =
-            (field.get_lane_type(), field.ident, field.name)
-        {
-            let lifecycle_name = Ident::new(&lifecycle_name, Span::call_site());
+                    let (lifecycle_ast, task_name) =
+                        create_lane(&lane_type, public, &agent_name, &name, &ident);
 
-            let (lifecycle_ast, task_name) = create_lane(
-                &lane_type,
-                field.public,
-                &agent_name,
-                &lifecycle_name,
-                &lane_name,
-            );
+                    vec.push(AgentField {
+                        lane_name: ident,
+                        task_name,
+                        lifecycle_ast,
+                    });
 
-            agent_fields.push(AgentField {
-                lane_name,
-                task_name,
-                lifecycle_ast,
-            });
-        }
-    });
+                    Ok(vec)
+                }
+                None => {
+                    context.error_spanned_by(field.ident, "Unknown lane type");
+                    Err(())
+                }
+            })?;
 
-    (agent_name, config_type, agent_fields)
+    Ok((agent_name, config_type, agent_fields))
 }
 
 pub struct LaneData<'a> {

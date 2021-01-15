@@ -28,10 +28,10 @@ fn main() {
     pub struct TestAgentConfig;
 
     #[action_lifecycle(
-        agent = "TestAgent",
-        command_type = "f32",
-        response_type = "i32",
-        on_command = "action_command"
+        agent(TestAgent),
+        command_type(f32),
+        response_type(i32),
+        on_command(action_command)
     )]
     struct ActionLifecycle;
 

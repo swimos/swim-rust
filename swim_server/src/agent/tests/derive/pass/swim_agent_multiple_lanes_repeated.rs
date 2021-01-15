@@ -32,29 +32,29 @@ fn main() {
     // ----------------------- Agent derivation -----------------------
 
     #[derive(Debug, SwimAgent)]
-    #[agent(config = "TestAgentConfig")]
+    #[agent(config(TestAgentConfig))]
     pub struct TestAgent {
-        #[lifecycle(public, name = "CommandLifecycle1")]
+        #[lifecycle(public, name(CommandLifecycle1))]
         command_1: CommandLane<String>,
-        #[lifecycle(public, name = "CommandLifecycle2")]
+        #[lifecycle(public, name(CommandLifecycle2))]
         command_2: CommandLane<i32>,
-        #[lifecycle(name = "ActionLifecycle1")]
+        #[lifecycle(name(ActionLifecycle1))]
         action_1: ActionLane<i32, i32>,
-        #[lifecycle(name = "ActionLifecycle2")]
+        #[lifecycle(name(ActionLifecycle2))]
         action_2: ActionLane<i64, i64>,
-        #[lifecycle(name = "ActionLifecycle3")]
+        #[lifecycle(name(ActionLifecycle3))]
         action_3: ActionLane<String, String>,
-        #[lifecycle(public, name = "ValueLifecycle1")]
+        #[lifecycle(public, name(ValueLifecycle1))]
         value_1: ValueLane<i32>,
-        #[lifecycle(name = "ValueLifecycle2")]
+        #[lifecycle(name(ValueLifecycle2))]
         value_2: ValueLane<String>,
-        #[lifecycle(public, name = "MapLifecycle1")]
+        #[lifecycle(public, name(MapLifecycle1))]
         map_1: MapLane<String, i32>,
-        #[lifecycle(name = "MapLifecycle2")]
+        #[lifecycle(name(MapLifecycle2))]
         map_2: MapLane<i32, String>,
-        #[lifecycle(name = "MapLifecycle2")]
+        #[lifecycle(name(MapLifecycle2))]
         map_3: MapLane<i32, String>,
-        #[lifecycle(public, name = "MapLifecycle1")]
+        #[lifecycle(public, name(MapLifecycle1))]
         map_4: MapLane<String, i32>,
     }
 
@@ -63,7 +63,7 @@ fn main() {
 
     // ----------------------- Agent Lifecycle -----------------------
 
-    #[agent_lifecycle(agent = "TestAgent", on_start = "agent_on_start")]
+    #[agent_lifecycle(agent(TestAgent), on_start(agent_on_start))]
     struct TestAgentLifecycle;
 
     impl TestAgentLifecycle {
@@ -77,11 +77,7 @@ fn main() {
 
     // ----------------------- Command Lifecycle 1 -----------------------
 
-    #[command_lifecycle(
-        agent = "TestAgent",
-        command_type = "String",
-        on_command = "on_command"
-    )]
+    #[command_lifecycle(agent(TestAgent), command_type(String), on_command(on_command))]
     struct CommandLifecycle1;
 
     impl CommandLifecycle1 {
@@ -105,7 +101,7 @@ fn main() {
 
     // ----------------------- Command Lifecycle 2 -----------------------
 
-    #[command_lifecycle(agent = "TestAgent", command_type = "i32", on_command = "on_command")]
+    #[command_lifecycle(agent(TestAgent), command_type(i32), on_command(on_command))]
     struct CommandLifecycle2;
 
     impl CommandLifecycle2 {
@@ -129,7 +125,7 @@ fn main() {
 
     // ----------------------- Action Lifecycle 1 -----------------------
 
-    #[action_lifecycle(agent = "TestAgent", command_type = "i32", response_type = "i32")]
+    #[action_lifecycle(agent(TestAgent), command_type(i32), response_type(i32))]
     struct ActionLifecycle1;
 
     impl ActionLifecycle1 {
@@ -154,7 +150,7 @@ fn main() {
 
     // ----------------------- Action Lifecycle 2 -----------------------
 
-    #[action_lifecycle(agent = "TestAgent", command_type = "i64", response_type = "i64")]
+    #[action_lifecycle(agent(TestAgent), command_type(i64), response_type(i64))]
     struct ActionLifecycle2;
 
     impl ActionLifecycle2 {
@@ -179,7 +175,7 @@ fn main() {
 
     // ----------------------- Action Lifecycle 2 -----------------------
 
-    #[action_lifecycle(agent = "TestAgent", command_type = "String", response_type = "String")]
+    #[action_lifecycle(agent(TestAgent), command_type(String), response_type(String))]
     struct ActionLifecycle3;
 
     impl ActionLifecycle3 {
@@ -204,7 +200,7 @@ fn main() {
 
     // ----------------------- Value Lifecycle 1 -----------------------
 
-    #[value_lifecycle(agent = "TestAgent", event_type = "i32")]
+    #[value_lifecycle(agent(TestAgent), event_type(i32))]
     struct ValueLifecycle1;
 
     impl ValueLifecycle1 {
@@ -243,7 +239,7 @@ fn main() {
 
     // ----------------------- Value Lifecycle 2 -----------------------
 
-    #[value_lifecycle(agent = "TestAgent", event_type = "String")]
+    #[value_lifecycle(agent(TestAgent), event_type(String))]
     struct ValueLifecycle2;
 
     impl ValueLifecycle2 {
@@ -282,7 +278,7 @@ fn main() {
 
     // ----------------------- Map Lifecycle 1 -----------------------
 
-    #[map_lifecycle(agent = "TestAgent", key_type = "String", value_type = "i32")]
+    #[map_lifecycle(agent(TestAgent), key_type(String), value_type(i32))]
     struct MapLifecycle1;
 
     impl MapLifecycle1 {
@@ -321,7 +317,7 @@ fn main() {
 
     // ----------------------- Map Lifecycle 1 -----------------------
 
-    #[map_lifecycle(agent = "TestAgent", key_type = "i32", value_type = "String")]
+    #[map_lifecycle(agent(TestAgent), key_type(i32), value_type(String))]
     struct MapLifecycle2;
 
     impl MapLifecycle2 {

@@ -27,7 +27,7 @@ fn main() {
     #[derive(Debug)]
     pub struct TestAgentConfig;
 
-    #[command_lifecycle(agent = "TestAgent", command_type = "i32")]
+    #[command_lifecycle(agent(TestAgent), command_type(i32))]
     struct CommandLifecycle;
 
     impl CommandLifecycle {

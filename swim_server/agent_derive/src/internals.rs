@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use macro_helpers::str_to_ident;
+use macro_helpers::{str_to_ident, to_compile_errors};
 use proc_macro::TokenStream;
-use proc_macro2::Ident;
+use proc_macro2::{Ident, TokenStream as TokenStream2};
 use syn::{parse_macro_input, AttributeArgs, DeriveInput};
 
 pub fn default_on_command() -> Ident {
@@ -39,10 +39,10 @@ pub fn default_on_event() -> Ident {
 
 pub fn derive<F>(args: TokenStream, input: TokenStream, f: F) -> TokenStream
 where
-    F: Fn(AttributeArgs, DeriveInput) -> TokenStream,
+    F: Fn(AttributeArgs, DeriveInput) -> Result<TokenStream2, Vec<syn::Error>>,
 {
     let input = parse_macro_input!(input as DeriveInput);
     let args = parse_macro_input!(args as AttributeArgs);
 
-    f(args, input)
+    f(args, input).unwrap_or_else(to_compile_errors).into()
 }
