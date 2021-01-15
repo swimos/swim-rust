@@ -26,10 +26,10 @@ use swim_server::uri::RelativeUri;
 #[derive(Debug, SwimAgent)]
 #[agent(config = "UnitAgentConfig")]
 pub struct UnitAgent {
-    #[lifecycle(public, name = "PublishLifecycle")]
-    publish: CommandLane<i32>,
-    #[lifecycle(public, name = "PublishValueLifecycle")]
-    publish_value: ActionLane<Value, Value>,
+    #[lifecycle(name = "PublishLifecycle")]
+    pub publish: CommandLane<i32>,
+    #[lifecycle(name = "PublishValueLifecycle")]
+    pub publish_value: ActionLane<Value, Value>,
 }
 
 #[derive(Debug, Clone)]

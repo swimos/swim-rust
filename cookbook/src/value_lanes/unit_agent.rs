@@ -31,10 +31,10 @@ use swim_server::uri::RelativeUri;
 #[derive(Debug, SwimAgent)]
 #[agent(config = "UnitAgentConfig")]
 pub struct UnitAgent {
-    #[lifecycle(public, name = "InfoLifecycle")]
-    info: ValueLane<String>,
-    #[lifecycle(public, name = "PublishInfoLifecycle")]
-    publish_info: CommandLane<String>,
+    #[lifecycle(name = "InfoLifecycle")]
+    pub info: ValueLane<String>,
+    #[lifecycle(name = "PublishInfoLifecycle")]
+    pub publish_info: CommandLane<String>,
 }
 
 #[derive(Debug, Clone)]

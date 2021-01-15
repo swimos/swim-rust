@@ -31,10 +31,10 @@ use swim_server::uri::RelativeUri;
 #[derive(Debug, SwimAgent)]
 #[agent(config = "UnitAgentConfig")]
 pub struct UnitAgent {
-    #[lifecycle(public, name = "ShoppingCartLifecycle")]
-    shopping_cart: MapLane<String, i32>,
-    #[lifecycle(public, name = "AddItemLifecycle")]
-    add_item: CommandLane<String>,
+    #[lifecycle(name = "ShoppingCartLifecycle")]
+    pub shopping_cart: MapLane<String, i32>,
+    #[lifecycle(name = "AddItemLifecycle")]
+    pub add_item: CommandLane<String>,
 }
 
 #[derive(Debug, Clone)]

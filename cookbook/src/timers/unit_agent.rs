@@ -32,10 +32,10 @@ use swim_server::future::retryable::strategy::RetryStrategy;
 #[derive(Debug, SwimAgent)]
 #[agent(config = "UnitAgentConfig")]
 pub struct UnitAgent {
-    #[lifecycle(public, name = "MinutesLifecycle")]
-    minutes: ValueLane<i32>,
-    #[lifecycle(public, name = "PublishLifecycle")]
-    publish: CommandLane<Value>,
+    #[lifecycle(name = "MinutesLifecycle")]
+    pub minutes: ValueLane<i32>,
+    #[lifecycle(name = "PublishLifecycle")]
+    pub publish: CommandLane<Value>,
 }
 
 #[derive(Debug, Clone)]
