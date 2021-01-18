@@ -113,7 +113,7 @@ pub fn derive_lane(
             #[automatically_derived]
             impl<T> swim_server::agent::lane::lifecycle::LaneLifecycle<T> for #typ {
                fn create(_config: &T) -> Self {
-                   #typ
+                   #typ{}
                }
             }
         })
