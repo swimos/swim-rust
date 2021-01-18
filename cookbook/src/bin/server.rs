@@ -27,7 +27,7 @@ use swim_server::agent::value_lifecycle;
 use swim_server::agent::AgentContext;
 use swim_server::agent::SwimAgent;
 use swim_server::agent_lifecycle;
-use swim_server::interface::SwimServer;
+use swim_server::interface::SwimServerBuilder;
 use swim_server::plane::spec::PlaneBuilder;
 use swim_server::RoutePattern;
 
@@ -109,7 +109,6 @@ impl StatefulLaneLifecycleBase for CounterLifecycle {
 #[tokio::main]
 async fn main() {
     let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
-    let (mut swim_server, server_handle) = SwimServer::new_with_default(address);
 
     let mut plane_builder = PlaneBuilder::new();
     plane_builder
@@ -120,7 +119,9 @@ async fn main() {
         )
         .unwrap();
 
-    swim_server.add_plane(plane_builder.build());
+    let mut swim_server_builder = SwimServerBuilder::default();
+    swim_server_builder.add_plane(plane_builder.build());
+    let (swim_server, server_handle) = swim_server_builder.bind_to(address).build().unwrap();
 
     let stop = async {
         task::sleep(Duration::from_secs(60)).await;
