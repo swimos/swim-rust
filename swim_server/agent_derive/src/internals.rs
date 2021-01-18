@@ -38,20 +38,21 @@ pub fn default_on_event() -> Ident {
     str_to_ident("on_event")
 }
 
-pub fn default_watch_strategy() -> WatchStrategy {
-    WatchStrategy {
-        ty: str_to_ident("Queue"),
-        param: None,
-    }
+pub fn default_watch_strategy() -> String {
+    "Queue".to_string()
 }
 
-pub fn parse_strategy(s: String) -> WatchStrategy {
+pub fn parse_strategy(s: String, lifecycle_name: Ident) -> WatchStrategy {
     let mut split = s.split('(');
     let ty = split.next().unwrap();
 
     let param = if let Some(rest) = split.next() {
         let param_str = rest.split(')').next().unwrap();
-        Some(param_str.parse().unwrap())
+
+        match param_str.parse() {
+            Ok(v) if v > 0 => Some(v),
+            _ => panic!("The size of {} must be a valid non-negative integer", ty),
+        }
     } else {
         None
     };
@@ -59,6 +60,7 @@ pub fn parse_strategy(s: String) -> WatchStrategy {
     WatchStrategy {
         ty: str_to_ident(ty),
         param,
+        lifecycle_name,
     }
 }
 

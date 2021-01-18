@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::agent::lane::lifecycle::StatefulLaneLifecycleBase;
+use crate::agent::lane::strategy::Buffered;
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 use swim_server::agent::lane::model::value::ValueLane;
 use swim_server::agent::AgentContext;
@@ -50,4 +53,6 @@ fn main() {
             unimplemented!()
         }
     }
+    let strat = ValueLifecycle.create_strategy();
+    assert_eq!(strat, Buffered(NonZeroUsize::new(15).unwrap()))
 }

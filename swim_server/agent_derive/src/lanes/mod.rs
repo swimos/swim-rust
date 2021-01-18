@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::utils::WatchStrategy;
 use macro_helpers::as_const;
 use proc_macro2::TokenStream;
 use quote::quote;
@@ -37,7 +38,7 @@ pub fn derive_lane(
     on_event: TokenStream,
     imports: TokenStream,
     field: Option<TokenStream>,
-    watch_strategy: Option<TokenStream>,
+    watch_strategy: Option<WatchStrategy>,
 ) -> proc_macro::TokenStream {
     let public_derived = quote! {
         #input_ast

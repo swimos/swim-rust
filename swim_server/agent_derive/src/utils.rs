@@ -14,7 +14,7 @@
 
 use core::fmt;
 use darling::FromMeta;
-use proc_macro2::{Ident, Span};
+use proc_macro2::{Ident, Span, TokenStream};
 use quote::ToTokens;
 use quote::{quote, quote_spanned};
 use std::fmt::{Display, Formatter};
@@ -31,12 +31,14 @@ pub fn get_task_struct_name(name: &str) -> Ident {
 pub struct WatchStrategy {
     pub ty: Ident,
     pub param: Option<usize>,
+    pub lifecycle_name: Ident,
 }
 
-impl WatchStrategy {
-    pub fn convert_to_tokens(&self, lifecycle_name: &Ident) -> proc_macro2::TokenStream {
+impl ToTokens for WatchStrategy {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
         let watch_strat_type = &self.ty;
         let watch_strat_param = &self.param;
+        let lifecycle_name = &self.lifecycle_name;
 
         let create = if watch_strat_param.is_none() {
             quote! {swim_server::agent::lane::strategy::#watch_strat_type::default()}
@@ -44,7 +46,7 @@ impl WatchStrategy {
             quote! {swim_server::agent::lane::strategy::#watch_strat_type(std::num::NonZeroUsize::new(#watch_strat_param).unwrap())}
         };
 
-        quote! {
+        quote! (
             #[automatically_derived]
             impl swim_server::agent::lane::lifecycle::StatefulLaneLifecycleBase for #lifecycle_name {
                 type WatchStrategy = swim_server::agent::lane::strategy::#watch_strat_type;
@@ -53,7 +55,7 @@ impl WatchStrategy {
                     #create
                 }
             }
-        }
+        ).to_tokens(tokens);
     }
 }
 

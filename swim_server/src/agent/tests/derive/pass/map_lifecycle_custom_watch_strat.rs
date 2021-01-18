@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::agent::lane::lifecycle::StatefulLaneLifecycleBase;
+use crate::agent::lane::strategy::Queue;
+use std::num::NonZeroUsize;
 use swim_server::agent::lane::model::map::{MapLane, MapLaneEvent};
 use swim_server::agent::AgentContext;
 use swim_server::map_lifecycle;
@@ -54,4 +57,7 @@ fn main() {
             unimplemented!()
         }
     }
+
+    let strat = MapLifecycle.create_strategy();
+    assert_eq!(strat, Queue(NonZeroUsize::new(35).unwrap()))
 }

@@ -1,0 +1,12 @@
+error: custom attribute panicked
+  --> $DIR/map_watch_strategy.rs:23:5
+   |
+23 | /     #[map_lifecycle(
+24 | |         agent = "TestAgent",
+25 | |         key_type = "String",
+26 | |         value_type = "i32",
+27 | |         watch_strat = "Buffered(0)"
+28 | |     )]
+   | |______^
+   |
+   = help: message: The size of Buffered must be a valid non-negative integer

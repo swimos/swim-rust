@@ -1,0 +1,7 @@
+error: custom attribute panicked
+  --> $DIR/value_watch_strategy.rs:23:5
+   |
+23 |     #[value_lifecycle(agent = "TestAgent", event_type = "i32", watch_strat = "Queue(-10)")]
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: message: The size of Queue must be a valid non-negative integer
