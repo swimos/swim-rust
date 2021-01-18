@@ -32,16 +32,12 @@ use swim_server::plane::spec::PlaneBuilder;
 use swim_server::RoutePattern;
 
 #[derive(Debug, SwimAgent)]
-#[agent(config = "RustAgentConfig")]
 pub struct RustAgent {
     #[lifecycle(public, name = "EchoLifecycle")]
     echo: CommandLane<String>,
     #[lifecycle(public, name = "CounterLifecycle")]
     counter: ValueLane<i32>,
 }
-
-#[derive(Debug, Clone)]
-pub struct RustAgentConfig;
 
 #[agent_lifecycle(agent = "RustAgent")]
 struct RustAgentLifecycle;
@@ -71,8 +67,8 @@ impl EchoLifecycle {
     }
 }
 
-impl LaneLifecycle<RustAgentConfig> for EchoLifecycle {
-    fn create(_config: &RustAgentConfig) -> Self {
+impl LaneLifecycle<()> for EchoLifecycle {
+    fn create(_config: &()) -> Self {
         EchoLifecycle {}
     }
 }
@@ -96,8 +92,8 @@ impl CounterLifecycle {
     }
 }
 
-impl LaneLifecycle<RustAgentConfig> for CounterLifecycle {
-    fn create(_config: &RustAgentConfig) -> Self {
+impl LaneLifecycle<()> for CounterLifecycle {
+    fn create(_config: &()) -> Self {
         CounterLifecycle {}
     }
 }
@@ -119,7 +115,7 @@ async fn main() {
     plane_builder
         .add_route(
             RoutePattern::parse_str("/rust").unwrap(),
-            RustAgentConfig {},
+            (),
             RustAgentLifecycle {},
         )
         .unwrap();
