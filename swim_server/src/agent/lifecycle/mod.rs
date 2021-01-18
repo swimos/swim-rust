@@ -30,13 +30,13 @@ pub trait AgentLifecycle<Agent> {
     /// #Arguments
     ///
     /// * `context` - Context of the agent.
-    fn start<'a, C>(&'a self, context: &'a C) -> BoxFuture<'a, ()>
+    fn starting<'a, C>(&'a self, context: &'a C) -> BoxFuture<'a, ()>
     where
         C: AgentContext<Agent> + Send + Sync + 'a;
 }
 
 impl<Agent> AgentLifecycle<Agent> for () {
-    fn start<'a, C>(&'a self, _context: &'a C) -> BoxFuture<'a, ()>
+    fn starting<'a, C>(&'a self, _context: &'a C) -> BoxFuture<'a, ()>
     where
         C: AgentContext<Agent> + Send + Sync + 'a,
     {
