@@ -33,10 +33,10 @@ use swim_server::RoutePattern;
 
 #[derive(Debug, SwimAgent)]
 pub struct RustAgent {
-    #[lifecycle(public, name = "EchoLifecycle")]
-    echo: CommandLane<String>,
-    #[lifecycle(public, name = "CounterLifecycle")]
-    counter: ValueLane<i32>,
+    #[lifecycle(name = "EchoLifecycle")]
+    pub echo: CommandLane<String>,
+    #[lifecycle(name = "CounterLifecycle")]
+    pub counter: ValueLane<i32>,
 }
 
 #[agent_lifecycle(agent = "RustAgent")]
