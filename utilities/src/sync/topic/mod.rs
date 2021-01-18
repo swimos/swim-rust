@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[cfg(test)]
+mod tests;
+
 use std::cell::UnsafeCell;
 use std::future::Future;
 use std::ops::Deref;
@@ -59,6 +62,9 @@ struct Inner<T> {
     writer_waiter: AtomicWaker,
 }
 
+unsafe impl<T> Send for Inner<T> {}
+unsafe impl<T> Sync for Inner<T> {}
+
 pub fn channel<T>(n: NonZeroUsize) -> (Sender<T>, Receiver<T>) {
     let n = n.get();
     let inner = Arc::new(Inner {
@@ -89,6 +95,7 @@ pub struct Sender<T> {
     inner: Arc<Inner<T>>,
 }
 
+#[derive(Debug, PartialEq, Eq)]
 pub enum TrySendError<T> {
     NoReceivers(T),
     NoCapacity(T),
@@ -126,10 +133,10 @@ impl<T> Sender<T> {
             return Err(TrySendError::NoReceivers(value));
         }
         let target = lock.write_offset.load(Ordering::Acquire);
-        let next = next_slot(target, *capacity);
-        if next == read {
+        if target == read {
             Err(TrySendError::NoCapacity(value))
         } else {
+            let next = next_slot(target, *capacity);
             lock.write_offset.store(next, Ordering::Release);
             let expected_readers = lock.num_rx;
             let entry = &entries[target];
@@ -197,7 +204,7 @@ impl<T> Clone for Receiver<T> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct EntryGuard<'a, T> {
     value: &'a T,
 }
@@ -229,11 +236,10 @@ impl<T> Drop for Receiver<T> {
         while i != write_offset {
             let entry = &entries[i];
             let prev = entry.pending.fetch_sub(1, Ordering::Release);
-            debug_assert!(prev != 0);
             if prev == 1 {
                 new_floor = Some(i);
             }
-            i = next_slot(*read_offset, *capacity);
+            i = next_slot(i, *capacity);
         }
         if let Some(floor) = new_floor {
             read_floor.store(floor, Ordering::Release);
@@ -283,16 +289,16 @@ impl<'a, T> Future for TopicSend<'a, T> {
                 this.value.take().expect("Send future polled twice."),
             )));
         }
-        let target = lock.write_ofset.load(Ordering::Acquire);
-        let next = next_slot(target, this.inner.capacity);
-        if next == read {
+        let target = lock.write_offset.load(Ordering::Acquire);
+        if target == read {
             this.inner.writer_waiter.register(cx.waker());
             let new_read = this.inner.read_floor.load(Ordering::Acquire);
-            if next == new_read {
+            if target == new_read {
                 return Poll::Pending;
             }
         }
-        lock.write_ofset.store(next, Ordering::Release);
+        let next = next_slot(target, this.inner.capacity);
+        lock.write_offset.store(next, Ordering::Release);
         let expected_readers = lock.num_rx;
         let entry = &this.inner.entries[target];
         entry.pending.store(expected_readers, Ordering::Relaxed);
