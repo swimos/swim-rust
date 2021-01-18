@@ -31,7 +31,7 @@ use std::fmt::{Debug, Display, Formatter};
 use std::ops::Deref;
 use std::sync::Arc;
 use stm::transaction::{RetryManager, TransactionError};
-use swim_common::form::{Form, FormErr, ValidatedForm};
+use swim_common::form::{Form, FormErr};
 use swim_common::model::Value;
 use swim_common::routing::SendError;
 use swim_common::sink::item::{FnMutSender, ItemSender};
@@ -102,7 +102,7 @@ pub enum UplinkMessage<Ev> {
     Event(Ev),
 }
 
-impl<K: ValidatedForm, V: ValidatedForm> MapUpdateMessage<K, V> for UplinkMessage<MapUpdate<K, V>> {
+impl<K, V> MapUpdateMessage<K, V> for UplinkMessage<MapUpdate<K, V>> {
     fn discriminate(self) -> Either<MapUpdate<K, V>, Self> {
         match self {
             UplinkMessage::Event(update) => Either::Left(update),
@@ -663,8 +663,8 @@ where
 
 impl<K, V, Retries, F> UplinkStateMachine<MapLaneEvent<K, V>> for MapLaneUplink<K, V, F>
 where
-    K: ValidatedForm + Any + Send + Sync + Debug, //TODO Relax to Form.
-    V: Any + ValidatedForm + Send + Sync + Debug, //TODO Relax to Form.
+    K: Form + Any + Send + Sync + Debug,
+    V: Any + Form + Send + Sync + Debug,
     F: Fn() -> Retries + Send + Sync + 'static,
     Retries: RetryManager + Send + 'static,
 {

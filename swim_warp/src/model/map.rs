@@ -19,15 +19,11 @@ use swim_common::model::Value;
 
 /// Updates that can be applied to a [`MapLane`].
 #[derive(Debug, PartialEq, Eq, Form, ValidatedForm, Clone)]
-pub enum MapUpdate<K, V>
-where
-    K: ValidatedForm,
-    V: ValidatedForm,
-{
+pub enum MapUpdate<K, V> {
     #[form(tag = "update")]
-    Update(#[form(header, rename = "key")] K, #[form(body)] Arc<V>),
+    Update(#[form(header, name = "key")] K, #[form(body)] Arc<V>),
     #[form(tag = "remove")]
-    Remove(#[form(header, rename = "key")] K),
+    Remove(#[form(header, name = "key")] K),
     #[form(tag = "clear")]
     Clear,
     #[form(tag = "take")]
@@ -36,7 +32,7 @@ where
     Drop(#[form(header_body)] usize),
 }
 
-impl<K: ValidatedForm, V: ValidatedForm> From<MapUpdate<K, V>> for Value {
+impl<K: Form, V: Form> From<MapUpdate<K, V>> for Value {
     fn from(event: MapUpdate<K, V>) -> Self {
         event.into_value()
     }

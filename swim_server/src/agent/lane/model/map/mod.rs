@@ -26,7 +26,7 @@ use stm::stm::{abort, left, right, Constant, Stm, VecStm, UNIT};
 use stm::transaction::{atomically, RetryManager, TransactionError, TransactionRunner};
 use stm::var::TVar;
 use summary::{clear_summary, remove_summary, update_summary};
-use swim_common::form::{Form, FormErr, ValidatedForm};
+use swim_common::form::{Form, FormErr};
 use swim_common::model::Value;
 
 use crate::agent::lane::channels::AgentExecutionConfig;
@@ -155,33 +155,12 @@ where
     (lane, view, deferred)
 }
 
-//TODO Relax to Form.
-pub fn make_update<K: Form, V: Form>(
-    event: MapLaneEvent<K, V>,
-) -> Option<MapUpdate<Value, V>> {
+pub fn make_update<K: Form, V: Form>(event: MapLaneEvent<K, V>) -> Option<MapUpdate<Value, V>> {
     match event {
         MapLaneEvent::Update(key, value) => Some(MapUpdate::Update(key.into_value(), value)),
         MapLaneEvent::Clear => Some(MapUpdate::Clear),
         MapLaneEvent::Remove(key) => Some(MapUpdate::Remove(key.into_value())),
         MapLaneEvent::Checkpoint(_) => None,
-    }
-}
-
-/// Updates that can be applied to a [`MapLane`].
-/// TODO Add take/drop.
-#[derive(Debug, PartialEq, Eq, Form)]
-pub enum MapUpdate<K, V> {
-    #[form(tag = "update")]
-    Update(#[form(header, name = "key")] K, #[form(body)] Arc<V>),
-    #[form(tag = "remove")]
-    Remove(#[form(header, name = "key")] K),
-    #[form(tag = "clear")]
-    Clear,
-}
-
-impl<K: Form, V: Form> From<MapUpdate<K, V>> for Value {
-    fn from(event: MapUpdate<K, V>) -> Self {
-        event.into_value()
     }
 }
 

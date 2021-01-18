@@ -27,7 +27,6 @@ use std::future::Future;
 use std::hash::Hash;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-use swim_common::form::ValidatedForm;
 use swim_common::sink::item::ItemSender;
 use tokio::sync::mpsc;
 use utilities::lru_cache::LruCache;
@@ -36,7 +35,7 @@ use utilities::sync::{circular_buffer, trigger};
 /// Trait for types that may consist of either or map lane update or messages of a different type.
 /// The purpose of this is to allow streams of updates and streams of warp messages (including
 /// linked, synced messages etc, to be treated uniformly.
-pub trait MapUpdateMessage<K: ValidatedForm, V: ValidatedForm>: Sized {
+pub trait MapUpdateMessage<K, V>: Sized {
     /// Discriminate between map updates and other messages.
     fn discriminate(self) -> Either<MapUpdate<K, V>, Self>;
 
@@ -44,7 +43,7 @@ pub trait MapUpdateMessage<K: ValidatedForm, V: ValidatedForm>: Sized {
     fn repack(update: MapUpdate<K, V>) -> Self;
 }
 
-impl<K: ValidatedForm, V: ValidatedForm> MapUpdateMessage<K, V> for MapUpdate<K, V> {
+impl<K, V> MapUpdateMessage<K, V> for MapUpdate<K, V> {
     fn discriminate(self) -> Either<MapUpdate<K, V>, Self> {
         Either::Left(self)
     }
@@ -61,11 +60,7 @@ enum SpecialAction {
     Drop(usize),
 }
 
-impl<K, V> From<SpecialAction> for MapUpdate<K, V>
-where
-    K: ValidatedForm,
-    V: ValidatedForm,
-{
+impl<K, V> From<SpecialAction> for MapUpdate<K, V> {
     fn from(action: SpecialAction) -> Self {
         match action {
             SpecialAction::Clear => MapUpdate::Clear,
@@ -96,7 +91,6 @@ enum Action<M, K, V> {
     Flush { message: M },
 }
 
-//TODO Remove ValidatedForm constraint.
 /// Consume a stream of keyed messages with one task that pushes them into a circular buffer (for
 /// each key). A second task then consumes the buffers and writes the messages to a sink. If the
 /// second tasks does not keep up with the first, for a give key, some messages will be discarded.
@@ -124,8 +118,8 @@ pub async fn release_pressure<M, K, V, E, Snk>(
     buffer_size: NonZeroUsize,
 ) -> Result<(), E>
 where
-    K: Hash + Eq + Clone + ValidatedForm + Send + Sync,
-    V: Send + ValidatedForm + Sync,
+    K: Hash + Eq + Clone + Send + Sync,
+    V: Send + Sync,
     M: MapUpdateMessage<K, V>,
     Snk: ItemSender<M, E>,
 {
@@ -144,8 +138,8 @@ async fn feed_buffers<M, K, V>(
     cache_size: NonZeroUsize,
     buffer_size: NonZeroUsize,
 ) where
-    K: Hash + Eq + Clone + ValidatedForm + Send + Sync,
-    V: Send + Sync + ValidatedForm,
+    K: Hash + Eq + Clone + Send + Sync,
+    V: Send + Sync,
     M: MapUpdateMessage<K, V>,
 {
     let mut senders = LruCache::new(cache_size);
@@ -197,8 +191,8 @@ async fn consume_buffers<M, K, V, E, Snk>(
     yield_after: NonZeroUsize,
 ) -> Result<(), E>
 where
-    K: Hash + Eq + Clone + ValidatedForm + Send + Sync,
-    V: ValidatedForm + Send + Sync,
+    K: Hash + Eq + Clone + Send + Sync,
+    V: Send + Sync,
     M: MapUpdateMessage<K, V>,
     Snk: ItemSender<M, E>,
 {
@@ -322,8 +316,6 @@ async fn dispatch_event<M, K, V, E, Snk>(
     sink: &mut Snk,
 ) -> Result<(), E>
 where
-    K: ValidatedForm,
-    V: ValidatedForm,
     M: MapUpdateMessage<K, V>,
     Snk: ItemSender<M, E>,
 {
@@ -344,8 +336,8 @@ async fn drain<M, K, V, E, Snk, F>(
     stop_on: Option<K>,
 ) -> Result<(), E>
 where
-    K: Hash + Eq + Clone + ValidatedForm + Send + Sync,
-    V: ValidatedForm + Send + Sync,
+    K: Hash + Eq + Clone + Send + Sync,
+    V: Send + Sync,
     M: MapUpdateMessage<K, V>,
     Snk: ItemSender<M, E>,
     F: Future<Output = TransmitEvent<K, V>>,
@@ -410,8 +402,8 @@ async fn transmit<M, K, V>(
     key: K,
     value: Option<Arc<V>>,
 ) where
-    K: Hash + Eq + Clone + ValidatedForm + Send + Sync,
-    V: ValidatedForm + Send + Sync,
+    K: Hash + Eq + Clone + Send + Sync,
+    V: Send + Sync,
 {
     if let Some(tx) = senders.get_mut(&key) {
         tx.try_send(value).ok().expect(INTERNAL_ERROR);
@@ -440,8 +432,8 @@ async fn transmit<M, K, V>(
 
 async fn transmit_special<M, K, V>(tx: &mut mpsc::Sender<Action<M, K, V>>, action: SpecialAction)
 where
-    K: Hash + Eq + Clone + ValidatedForm + Send + Sync,
-    V: ValidatedForm + Send + Sync,
+    K: Hash + Eq + Clone + Send + Sync,
+    V: Send + Sync,
 {
     let (sync_tx, sync_rx) = trigger::trigger();
     tx.try_send(Action::Special {
@@ -455,8 +447,8 @@ where
 
 async fn transmit_flush<M, K, V>(tx: &mut mpsc::Sender<Action<M, K, V>>, message: M)
 where
-    K: Hash + Eq + Clone + ValidatedForm + Send + Sync,
-    V: ValidatedForm + Send + Sync,
+    K: Hash + Eq + Clone + Send + Sync,
+    V: Send + Sync,
 {
     tx.try_send(Action::Flush { message })
         .ok()

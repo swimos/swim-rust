@@ -159,9 +159,10 @@ impl From<TungsteniteError> for ConnectionError {
                 )),
                 None,
             )),
-            TError::Http(e) => {
-                ConnectionError::Http(HttpError::new(HttpErrorKind::StatusCode(Some(e.status())), None))
-            }
+            TError::Http(e) => ConnectionError::Http(HttpError::new(
+                HttpErrorKind::StatusCode(Some(e.status())),
+                None,
+            )),
             TError::HttpFormat(e) => ConnectionError::Http(HttpError::new(
                 HttpErrorKind::InvalidUri(InvalidUriError::new(
                     InvalidUriErrorKind::Malformatted,

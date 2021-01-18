@@ -46,7 +46,7 @@ use std::marker::PhantomData;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use stm::transaction::RetryManager;
-use swim_common::form::{Form, FormErr, ValidatedForm};
+use swim_common::form::{Form, FormErr};
 use swim_common::model::Value;
 use swim_common::topic::Topic;
 use swim_common::warp::envelope::{OutgoingHeader, OutgoingLinkMessage};
@@ -375,8 +375,8 @@ where
 
 impl<K, V, F, Ret> LaneMessageHandler for MapLaneMessageHandler<K, V, F>
 where
-    K: Any + ValidatedForm + Send + Sync + Debug, //TODO Relax to Form.
-    V: Any + ValidatedForm + Send + Sync + Debug, //TODO Relax to Form.
+    K: Any + Form + Send + Sync + Debug,
+    V: Any + Form + Send + Sync + Debug,
     F: Fn() -> Ret + Clone + Send + Sync + 'static,
     Ret: RetryManager + Send + Sync + 'static,
 {

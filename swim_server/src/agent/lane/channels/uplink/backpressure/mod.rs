@@ -23,7 +23,7 @@ use pin_utils::pin_mut;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::num::NonZeroUsize;
-use swim_common::form::ValidatedForm;
+use swim_common::form::Form;
 use swim_common::sink::item::ItemSender;
 use swim_warp::backpressure::map::release_pressure as release_pressure_map;
 use swim_warp::backpressure::{release_pressure, Flushable};
@@ -108,7 +108,6 @@ where
 
 const INTERNAL_ERROR: &str = "Internal channel error.";
 
-/// TODO Remove ValidatedForm constraint.
 /// Consume a stream of messages from a [`MapLane`] with one task that pushes them into a
 /// circular buffer (for each key). A second task then consumes the buffers and writes the messages
 /// to a sink. If the second tasks does not keep up with the first, for a give key, some messages
@@ -119,8 +118,8 @@ pub async fn map_uplink_release_backpressure<K, V, E, Snk>(
     config: KeyedBackpressureConfig,
 ) -> Result<(), UplinkError>
 where
-    K: ValidatedForm + Hash + Eq + Clone + Send + Sync + Debug,
-    V: ValidatedForm + Send + Sync + Debug,
+    K: Form + Hash + Eq + Clone + Send + Sync + Debug,
+    V: Form + Send + Sync + Debug,
     Snk: ItemSender<UplinkMessage<MapUpdate<K, V>>, E> + Clone,
 {
     let (result_tx, result_rx) = oneshot::channel();

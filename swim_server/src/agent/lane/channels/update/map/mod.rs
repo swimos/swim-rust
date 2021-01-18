@@ -21,7 +21,7 @@ use pin_utils::pin_mut;
 use std::any::Any;
 use std::fmt::Debug;
 use stm::transaction::{RetryManager, TransactionRunner};
-use swim_common::form::ValidatedForm;
+use swim_common::form::Form;
 use swim_warp::model::map::MapUpdate;
 use tracing::{event, Level};
 
@@ -48,8 +48,8 @@ const APPLYING_UPDATE: &str = "Applying map update.";
 
 impl<K, V, F, Ret> LaneUpdate for MapLaneUpdateTask<K, V, F>
 where
-    K: ValidatedForm + Any + Send + Sync + Debug, //TODO Relax to Form.
-    V: Any + ValidatedForm + Send + Sync + Debug, //TODO Relax to Form.
+    K: Form + Any + Send + Sync + Debug,
+    V: Any + Form + Send + Sync + Debug,
     F: Fn() -> Ret + Send + Sync + 'static,
     Ret: RetryManager + Send,
 {
