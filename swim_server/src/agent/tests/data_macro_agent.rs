@@ -47,10 +47,10 @@ mod swim_server {
 #[derive(Debug, SwimAgent)]
 #[agent(config = "DataAgentConfig")]
 pub struct DataAgent {
-    #[lifecycle(public, name = "MapLifecycle1")]
-    map_1: MapLane<String, i32>,
-    #[lifecycle(public, name = "MapLifecycle2")]
-    map_2: MapLane<String, f64>,
+    #[lifecycle(name = "MapLifecycle1")]
+    pub map_1: MapLane<String, i32>,
+    #[lifecycle(name = "MapLifecycle2")]
+    pub map_2: MapLane<String, f64>,
     #[lifecycle(name = "ValueLifecycle1")]
     value_1: ValueLane<i32>,
     #[lifecycle(name = "ValueLifecycle2")]
