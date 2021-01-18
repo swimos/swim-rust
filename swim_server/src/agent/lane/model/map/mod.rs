@@ -156,7 +156,7 @@ where
 }
 
 //TODO Relax to Form.
-pub fn make_update<K: ValidatedForm, V: ValidatedForm>(
+pub fn make_update<K: Form, V: Form>(
     event: MapLaneEvent<K, V>,
 ) -> Option<MapUpdate<Value, V>> {
     match event {
@@ -164,6 +164,24 @@ pub fn make_update<K: ValidatedForm, V: ValidatedForm>(
         MapLaneEvent::Clear => Some(MapUpdate::Clear),
         MapLaneEvent::Remove(key) => Some(MapUpdate::Remove(key.into_value())),
         MapLaneEvent::Checkpoint(_) => None,
+    }
+}
+
+/// Updates that can be applied to a [`MapLane`].
+/// TODO Add take/drop.
+#[derive(Debug, PartialEq, Eq, Form)]
+pub enum MapUpdate<K, V> {
+    #[form(tag = "update")]
+    Update(#[form(header, name = "key")] K, #[form(body)] Arc<V>),
+    #[form(tag = "remove")]
+    Remove(#[form(header, name = "key")] K),
+    #[form(tag = "clear")]
+    Clear,
+}
+
+impl<K: Form, V: Form> From<MapUpdate<K, V>> for Value {
+    fn from(event: MapUpdate<K, V>) -> Self {
+        event.into_value()
     }
 }
 

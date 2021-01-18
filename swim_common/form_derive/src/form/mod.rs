@@ -42,6 +42,7 @@ pub fn build_derive_form(input: DeriveInput) -> Result<proc_macro2::TokenStream,
         |value| parse_quote!(swim_common::form::Form::try_from_value(#value)),
         false,
     );
+
     let try_convert_body = from_value(
         &type_contents,
         &structure_name,
