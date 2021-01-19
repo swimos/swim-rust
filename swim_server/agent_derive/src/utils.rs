@@ -28,15 +28,15 @@ pub fn get_task_struct_name(name: &str) -> Ident {
 }
 
 #[derive(Debug, FromMeta)]
-pub struct CallbackFunc {
-    pub name: Ident,
-    pub kind: CallbackKind,
+pub enum Callback {
+    Custom(Ident),
+    Empty,
 }
 
-#[derive(Debug, FromMeta)]
-pub enum CallbackKind {
-    Custom,
-    Empty,
+impl Default for Callback {
+    fn default() -> Self {
+        Callback::Empty
+    }
 }
 
 #[derive(Debug)]

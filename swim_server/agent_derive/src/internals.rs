@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::utils::{CallbackFunc, CallbackKind};
+use crate::utils::Callback;
 use macro_helpers::str_to_ident;
 use proc_macro::TokenStream;
 use proc_macro2::Ident;
@@ -40,24 +40,11 @@ pub fn default_on_event_ident() -> Ident {
     str_to_ident(DEFAULT_ON_EVENT)
 }
 
-pub fn default_on_event() -> CallbackFunc {
-    CallbackFunc {
-        name: str_to_ident(DEFAULT_ON_EVENT),
-        kind: CallbackKind::Custom,
-    }
-}
-
-pub fn parse_callback(s: String) -> CallbackFunc {
-    if s == "None" {
-        CallbackFunc {
-            name: str_to_ident(DEFAULT_ON_EVENT),
-            kind: CallbackKind::Empty,
-        }
+pub fn parse_callback(callback: darling::Result<String>) -> Callback {
+    if let Ok(name) = callback {
+        Callback::Custom(str_to_ident(&name))
     } else {
-        CallbackFunc {
-            name: str_to_ident(&s),
-            kind: CallbackKind::Custom,
-        }
+        Callback::Custom(str_to_ident(DEFAULT_ON_EVENT))
     }
 }
 

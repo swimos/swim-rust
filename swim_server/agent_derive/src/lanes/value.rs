@@ -12,11 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::internals::{default_on_event, default_on_start, parse_callback};
+use crate::internals::{default_on_start, parse_callback};
 use crate::lanes::derive_lane;
-use crate::utils::{
-    get_task_struct_name, validate_input_ast, CallbackFunc, CallbackKind, InputAstType,
-};
+use crate::utils::{get_task_struct_name, validate_input_ast, Callback, InputAstType};
 use darling::FromMeta;
 use macro_helpers::string_to_ident;
 use proc_macro::TokenStream;
@@ -31,8 +29,8 @@ struct ValueAttrs {
     event_type: Ident,
     #[darling(default = "default_on_start", map = "string_to_ident")]
     on_start: Ident,
-    #[darling(default = "default_on_event", map = "parse_callback")]
-    on_event: CallbackFunc,
+    #[darling(default, map = "parse_callback")]
+    on_event: Callback,
 }
 
 pub fn derive_value_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput) -> TokenStream {
@@ -52,8 +50,6 @@ pub fn derive_value_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput) 
     let agent_name = args.agent.clone();
     let event_type = &args.event_type;
     let on_start_func = &args.on_start;
-    let on_event_func_name = &args.on_event.name;
-    let on_event_func_kind = &args.on_event.kind;
 
     let on_start = quote! {
         let #task_name { lifecycle, projection, .. } = self;
@@ -61,11 +57,11 @@ pub fn derive_value_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput) 
         lifecycle.#on_start_func(model, context).boxed()
     };
 
-    let on_event = match on_event_func_kind {
-        CallbackKind::Empty => {
+    let on_event = match &args.on_event {
+        Callback::Empty => {
             quote! {}
         }
-        CallbackKind::Custom => {
+        Callback::Custom(on_event_func_name) => {
             quote! {
                 let #task_name {
                     lifecycle,
