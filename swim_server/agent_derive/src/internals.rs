@@ -12,10 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::utils::{CallbackFunc, CallbackKind};
 use macro_helpers::str_to_ident;
 use proc_macro::TokenStream;
 use proc_macro2::Ident;
 use syn::{parse_macro_input, AttributeArgs, DeriveInput};
+
+const DEFAULT_ON_EVENT: &str = "on_event";
 
 pub fn default_on_command() -> Ident {
     str_to_ident("on_command")
@@ -33,8 +36,29 @@ pub fn default_on_start() -> Ident {
     str_to_ident("on_start")
 }
 
-pub fn default_on_event() -> Ident {
-    str_to_ident("on_event")
+pub fn default_on_event_ident() -> Ident {
+    str_to_ident(DEFAULT_ON_EVENT)
+}
+
+pub fn default_on_event() -> CallbackFunc {
+    CallbackFunc {
+        name: str_to_ident(DEFAULT_ON_EVENT),
+        kind: CallbackKind::Custom,
+    }
+}
+
+pub fn parse_callback(s: String) -> CallbackFunc {
+    if s == "None" {
+        CallbackFunc {
+            name: str_to_ident(DEFAULT_ON_EVENT),
+            kind: CallbackKind::Empty,
+        }
+    } else {
+        CallbackFunc {
+            name: str_to_ident(&s),
+            kind: CallbackKind::Custom,
+        }
+    }
 }
 
 pub fn derive<F>(args: TokenStream, input: TokenStream, f: F) -> TokenStream

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::internals::{default_on_event, default_on_start};
+use crate::internals::{default_on_event_ident, default_on_start};
 use crate::lanes::derive_lane;
 use crate::utils::{get_task_struct_name, validate_input_ast, InputAstType};
 use darling::FromMeta;
@@ -31,7 +31,7 @@ struct MapAttrs {
     value_type: Ident,
     #[darling(default = "default_on_start", map = "string_to_ident")]
     on_start: Ident,
-    #[darling(default = "default_on_event", map = "string_to_ident")]
+    #[darling(default = "default_on_event_ident", map = "string_to_ident")]
     on_event: Ident,
 }
 

@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use core::fmt;
+use darling::FromMeta;
 use proc_macro2::{Ident, Span};
 use quote::quote_spanned;
 use quote::ToTokens;
@@ -24,6 +25,18 @@ const LIFECYCLE: &str = "Lifecycle";
 
 pub fn get_task_struct_name(name: &str) -> Ident {
     Ident::new(&format!("{}Task", name), Span::call_site())
+}
+
+#[derive(Debug, FromMeta)]
+pub struct CallbackFunc {
+    pub name: Ident,
+    pub kind: CallbackKind,
+}
+
+#[derive(Debug, FromMeta)]
+pub enum CallbackKind {
+    Custom,
+    Empty,
 }
 
 #[derive(Debug)]
