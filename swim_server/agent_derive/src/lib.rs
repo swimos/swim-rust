@@ -35,8 +35,8 @@
 //! #[derive(Debug, SwimAgent)]
 //! #[agent(config = "TestAgentConfig")]
 //! pub struct TestAgent {
-//!     #[lifecycle(public, name = "TestCommandLifecycle")]
-//!     command: CommandLane<String>,
+//!     #[lifecycle(name = "TestCommandLifecycle")]
+//!     pub command: CommandLane<String>,
 //! }
 //!
 //! #[derive(Debug)]
@@ -128,8 +128,8 @@ mod utils;
 ///     #[lifecycle(name = "TestCommandLifecycle")]
 ///     command: CommandLane<String>,
 ///     // This is public.
-///     #[lifecycle(public, name = "TestActionLifecycle")]
-///     action: ActionLane<String, i32>,
+///     #[lifecycle(name = "TestActionLifecycle")]
+///     pub action: ActionLane<String, i32>,
 ///     #[lifecycle(name = "TestValueLifecycle")]
 ///     value: ValueLane<i32>,
 ///     #[lifecycle(name = "TestMapLifecycle")]
