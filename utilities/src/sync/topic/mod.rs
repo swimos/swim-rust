@@ -30,6 +30,167 @@ use pin_utils::core_reexport::num::NonZeroUsize;
 
 use crate::sync::ReadWaiters;
 
+/// Create a single producer, multiple observer channel. The channel consists of a circular buffer
+/// into which each of the entries is written. All observers will observe a reference to an entry
+/// in the buffer for each call to [`Receiver::recv`] or [`Receiver::try_recv`] and a slot will only
+/// be released to be written again after all observers have observed it.
+///
+/// # Arguments
+/// * `n` - The capacity of the internal buffer.
+pub fn channel<T>(n: NonZeroUsize) -> (Sender<T>, Receiver<T>) {
+    let n = n.get();
+    let inner = Arc::new(Inner::new(n));
+    (
+        Sender {
+            inner: inner.clone(),
+        },
+        Receiver {
+            inner,
+            read_offset: n,
+        },
+    )
+}
+
+/// The send end of the channel.
+#[derive(Debug)]
+pub struct Sender<T> {
+    inner: Arc<Inner<T>>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum TrySendError<T> {
+    /// There are no longer any active receivers.
+    NoReceivers(T),
+    /// There is no free capacity in the buffer.
+    NoCapacity(T),
+}
+
+/// Indicates that there are no longer any active receivers.
+#[derive(Debug, PartialEq, Eq)]
+pub struct SendError<T>(pub T);
+
+pub enum TryRecvError {
+    /// The send end of the channel has been dropped.
+    Closed,
+    /// No new values are available in the buffer.
+    NoValue,
+}
+
+impl<T> Sender<T> {
+    /// Send a value into the channel, waiting for free capacity if the buffer is full.
+    pub fn send(&mut self, value: T) -> TopicSend<T> {
+        let Sender { inner } = self;
+        TopicSend {
+            inner: &*inner,
+            value: Some(value),
+        }
+    }
+
+    /// Attempt to send a a value into the channel, returning an error immediately if the buffer
+    /// is full.
+    pub fn try_send(&mut self, value: T) -> Result<(), TrySendError<T>> {
+        //&mut self is required for the safety guarantee below.
+        let Inner {
+            capacity,
+            entries,
+            guarded,
+            read_floor,
+            read_waiters,
+            ..
+        } = &*self.inner;
+        let read = read_floor.load(Ordering::Acquire);
+        let lock = guarded.read();
+        if lock.num_rx == 0 {
+            return Err(TrySendError::NoReceivers(value));
+        }
+        let target = lock.write_offset.load(Ordering::Acquire);
+        if target == read {
+            Err(TrySendError::NoCapacity(value))
+        } else {
+            let next = next_slot(target, *capacity);
+            lock.write_offset.store(next, Ordering::Release);
+            let expected_readers = lock.num_rx;
+            let entry = &entries[target];
+            entry.pending.store(expected_readers, Ordering::Relaxed);
+            // Safety: We know we are between the write offset and a previously stored version
+            // of the reader floor. The reader floor cannot advance past the current write offset
+            // and there is only one writer so we can guarantee that we have exclusive access
+            // to this entry.
+            let data_ref = unsafe { &mut *entry.data.get() };
+            *data_ref = Some(value);
+            drop(lock);
+            read_waiters.lock().wake_all();
+            Ok(())
+        }
+    }
+}
+
+impl<T> Drop for Sender<T> {
+    fn drop(&mut self) {
+        self.inner.active.store(false, Ordering::Release);
+        self.inner.writer_waiter.take();
+        self.inner.read_waiters.lock().wake_all();
+    }
+}
+
+/// The receiver end of the channel
+#[derive(Debug)]
+pub struct Receiver<T> {
+    inner: Arc<Inner<T>>,
+    read_offset: usize,
+}
+
+impl<T> Receiver<T> {
+    /// Observe the next value from the channel, waiting until one becomes available.
+    pub fn recv(&mut self) -> TopicReceive<T> {
+        TopicReceive {
+            receiver: self,
+            slot_and_epoch: None,
+        }
+    }
+
+    /// Attempt to observe the next value from the channel, returning an error immediately if none
+    /// are available.
+    pub fn try_recv(&mut self) -> Result<EntryGuard<T>, TryRecvError> {
+        try_advance_reader(&mut &mut *self, None)
+    }
+}
+
+impl<T: Clone> Receiver<T> {
+    /// Convert the receiver into a stream where the observed values can be cloned.
+    pub fn into_stream(self) -> ReceiverStream<T>
+    where
+        T: Clone,
+    {
+        ReceiverStream {
+            receiver: self,
+            slot_and_epoch: None,
+        }
+    }
+}
+
+impl<T> Clone for Receiver<T> {
+    fn clone(&self) -> Self {
+        let Receiver { inner, .. } = self;
+        let new_inner = inner.clone();
+        let Inner {
+            capacity, guarded, ..
+        } = &**inner;
+        let mut lock = guarded.write();
+        let offset = prev_slot(lock.write_offset.load(Ordering::Acquire), *capacity);
+        lock.num_rx = lock.num_rx.checked_add(1).expect("Receiver overflow.");
+        // The write offset cannot advance while we hold a write lock on the guarded section of
+        // the internal state. This means that it is impossible for an entry to be added that
+        // expects to be read by the new receiver. Therefore it is consistent to use the write
+        // offset that we just read as the starting offset of the new receiver.
+        drop(lock);
+        Receiver {
+            inner: new_inner,
+            read_offset: offset,
+        }
+    }
+}
+
 #[derive(Debug)]
 struct Entry<T> {
     data: UnsafeCell<Option<T>>,
@@ -62,147 +223,25 @@ struct Inner<T> {
     writer_waiter: AtomicWaker,
 }
 
+impl<T> Inner<T> {
+    fn new(n: usize) -> Self {
+        Inner {
+            capacity: n,
+            entries: (0..(n + 1)).map(|_| Entry::default()).collect(),
+            guarded: parking_lot::RwLock::new(Guarded {
+                write_offset: AtomicUsize::new(0),
+                num_rx: 1,
+            }),
+            read_floor: AtomicUsize::new(n),
+            active: AtomicBool::new(true),
+            read_waiters: Default::default(),
+            writer_waiter: Default::default(),
+        }
+    }
+}
+
 unsafe impl<T> Send for Inner<T> {}
 unsafe impl<T> Sync for Inner<T> {}
-
-pub fn channel<T>(n: NonZeroUsize) -> (Sender<T>, Receiver<T>) {
-    let n = n.get();
-    let inner = Arc::new(Inner {
-        capacity: n,
-        entries: (0..(n + 1)).map(|_| Entry::default()).collect(),
-        guarded: parking_lot::RwLock::new(Guarded {
-            write_offset: AtomicUsize::new(0),
-            num_rx: 1,
-        }),
-        read_floor: AtomicUsize::new(n),
-        active: AtomicBool::new(true),
-        read_waiters: Default::default(),
-        writer_waiter: Default::default(),
-    });
-    (
-        Sender {
-            inner: inner.clone(),
-        },
-        Receiver {
-            inner,
-            read_offset: n,
-        },
-    )
-}
-
-#[derive(Debug)]
-pub struct Sender<T> {
-    inner: Arc<Inner<T>>,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub enum TrySendError<T> {
-    NoReceivers(T),
-    NoCapacity(T),
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct SendError<T>(pub T);
-
-pub enum TryRecvError {
-    Closed,
-    NoValue,
-}
-
-impl<T> Sender<T> {
-    pub fn send(&mut self, value: T) -> TopicSend<T> {
-        let Sender { inner } = self;
-        TopicSend {
-            inner: &*inner,
-            value: Some(value),
-        }
-    }
-
-    pub fn try_send(&mut self, value: T) -> Result<(), TrySendError<T>> {
-        let Inner {
-            capacity,
-            entries,
-            guarded,
-            read_floor,
-            read_waiters,
-            ..
-        } = &*self.inner;
-        let read = read_floor.load(Ordering::Acquire);
-        let lock = guarded.read();
-        if lock.num_rx == 0 {
-            return Err(TrySendError::NoReceivers(value));
-        }
-        let target = lock.write_offset.load(Ordering::Acquire);
-        if target == read {
-            Err(TrySendError::NoCapacity(value))
-        } else {
-            let next = next_slot(target, *capacity);
-            lock.write_offset.store(next, Ordering::Release);
-            let expected_readers = lock.num_rx;
-            let entry = &entries[target];
-            entry.pending.store(expected_readers, Ordering::Relaxed);
-            let data_ref = unsafe { &mut *entry.data.get() };
-            *data_ref = Some(value);
-            drop(lock);
-            read_waiters.lock().wake_all();
-            Ok(())
-        }
-    }
-}
-
-impl<T> Drop for Sender<T> {
-    fn drop(&mut self) {
-        self.inner.active.store(false, Ordering::Release);
-        self.inner.writer_waiter.take();
-        self.inner.read_waiters.lock().wake_all();
-    }
-}
-
-#[derive(Debug)]
-pub struct Receiver<T> {
-    inner: Arc<Inner<T>>,
-    read_offset: usize,
-}
-
-impl<T> Receiver<T> {
-    pub fn recv(&mut self) -> TopicReceive<T> {
-        TopicReceive {
-            receiver: self,
-            slot_and_epoch: None,
-        }
-    }
-
-    pub fn try_recv(&mut self) -> Result<EntryGuard<T>, TryRecvError> {
-        try_advance_reader(&mut &mut *self, None)
-    }
-}
-
-impl<T: Clone> Receiver<T> {
-    pub fn into_stream(self) -> ReceiverStream<T> {
-        ReceiverStream {
-            receiver: self,
-            slot_and_epoch: None,
-        }
-    }
-}
-
-impl<T> Clone for Receiver<T> {
-    fn clone(&self) -> Self {
-        let Receiver { inner, .. } = self;
-        let new_inner = inner.clone();
-        let Inner {
-            capacity, guarded, ..
-        } = &**inner;
-        let mut lock = guarded.write();
-        let offset = prev_slot(lock.write_offset.load(Ordering::Acquire), *capacity);
-        lock.num_rx = lock.num_rx.checked_add(1).expect("Receiver overflow.");
-        drop(lock);
-        Receiver {
-            inner: new_inner,
-            read_offset: offset,
-        }
-    }
-}
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct EntryGuard<'a, T> {
@@ -233,6 +272,9 @@ impl<T> Drop for Receiver<T> {
         let write_offset = lock.write_offset.load(Ordering::Relaxed);
         let mut i = next_slot(*read_offset, *capacity);
         let mut new_floor = None;
+        // We must decrement the counter on all entries that were expecting to be read by this
+        // receiver. As we hold an exclusive lock on the write offset, no new entries can be
+        // added while this is done.
         while i != write_offset {
             let entry = &entries[i];
             let prev = entry.pending.fetch_sub(1, Ordering::Release);
@@ -301,6 +343,10 @@ impl<'a, T> Future for TopicSend<'a, T> {
         let expected_readers = lock.num_rx;
         let entry = &this.inner.entries[target];
         entry.pending.store(expected_readers, Ordering::Relaxed);
+        // Safety: We know we are between the write offset and a previously stored version
+        // of the reader floor. The reader floor cannot advance past the current write offset
+        // and there is only one writer so we can guarantee that we have exclusive access
+        // to this entry.
         let data_ref = unsafe { &mut *entry.data.get() };
         *data_ref = Some(this.value.take().expect("Send future polled twice."));
         lock.write_offset.store(next, Ordering::Release);
@@ -359,6 +405,9 @@ fn try_advance_reader<'a, 'b, T>(
         read_floor.store(target, Ordering::Release);
         writer_waiter.wake();
     }
+    // Safety: We know we are between the read floor and a previously stored version
+    // of the write offset. The write offset cannot advance past the current read floor
+    // and only the unique writer can modify entries so it is safe to read this entry.
     let value = unsafe { &*entry.data.get() }
         .as_ref()
         .expect("Inconsistent entries.");
@@ -381,6 +430,7 @@ impl<'a, T> Future for TopicReceive<'a, T> {
     }
 }
 
+/// Wraps a [`Receiver`] as a stream that will clone the values it observes.
 pub struct ReceiverStream<T> {
     receiver: Receiver<T>,
     slot_and_epoch: Option<(usize, u64)>,
@@ -401,6 +451,14 @@ impl<T: Clone> Stream for ReceiverStream<T> {
             Ok(value) => Poll::Ready(Some((*value).clone())),
             Err(TryRecvError::Closed) => Poll::Ready(None),
             _ => Poll::Pending,
+        }
+    }
+}
+
+impl<T> Drop for ReceiverStream<T> {
+    fn drop(&mut self) {
+        if let Some((slot, epoch)) = self.slot_and_epoch.take() {
+            self.receiver.inner.read_waiters.lock().remove(slot, epoch)
         }
     }
 }
