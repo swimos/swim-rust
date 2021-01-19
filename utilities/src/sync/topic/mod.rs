@@ -298,12 +298,12 @@ impl<'a, T> Future for TopicSend<'a, T> {
             }
         }
         let next = next_slot(target, this.inner.capacity);
-        lock.write_offset.store(next, Ordering::Release);
         let expected_readers = lock.num_rx;
         let entry = &this.inner.entries[target];
         entry.pending.store(expected_readers, Ordering::Relaxed);
         let data_ref = unsafe { &mut *entry.data.get() };
         *data_ref = Some(this.value.take().expect("Send future polled twice."));
+        lock.write_offset.store(next, Ordering::Release);
         drop(lock);
         this.inner.read_waiters.lock().wake_all();
         Poll::Ready(Ok(()))
