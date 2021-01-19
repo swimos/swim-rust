@@ -109,7 +109,7 @@ pub fn derive_swim_agent(input: DeriveInput) -> Result<TokenStream2, Vec<syn::Er
                 }
             }
             m => {
-                panic!("Expected config, found: {:?}", m);
+                context.error_spanned_by(m, "Configuration must be provided as 'config(Name)`");
             }
         });
 
@@ -134,7 +134,7 @@ pub fn derive_swim_agent(input: DeriveInput) -> Result<TokenStream2, Vec<syn::Er
                             ));
                         }
                         m => {
-                            panic!("Expected name found {:?}", m);
+                            context.error_spanned_by(m, "Name must be provided as 'name(Name)`");
                         }
                     }
                 }
@@ -142,7 +142,7 @@ pub fn derive_swim_agent(input: DeriveInput) -> Result<TokenStream2, Vec<syn::Er
                     field_public = true;
                 }
                 m => {
-                    panic!("Expected public found {:?}", m)
+                    context.error_spanned_by(m, "Visibility must be provided as 'public");
                 }
             });
 
@@ -153,7 +153,7 @@ pub fn derive_swim_agent(input: DeriveInput) -> Result<TokenStream2, Vec<syn::Er
                 name: field_name.expect("Missing name"),
             })
         }),
-        _ => panic!("Only structs are supported"),
+        _ => context.error_spanned_by(input, "Only structs are supported"),
     }
 
     let args = SwimAgentAttrs {
@@ -166,6 +166,8 @@ pub fn derive_swim_agent(input: DeriveInput) -> Result<TokenStream2, Vec<syn::Er
         Ok(r) => r,
         Err(_) => return Err(context.check().unwrap_err()),
     };
+
+    context.check()?;
 
     let lanes = agent_fields
         .iter()

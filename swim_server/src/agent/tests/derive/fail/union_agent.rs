@@ -19,7 +19,7 @@ fn main() {
     pub struct TestAgentConfig;
 
     #[derive(SwimAgent)]
-    #[agent(config = "TestAgentConfig")]
+    #[agent(config(TestAgentConfig))]
     union TestAgent {
         field: i32,
     }

@@ -20,6 +20,6 @@ fn main() {
     #[derive(Debug)]
     pub struct TestAgentConfig;
 
-    #[agent_lifecycle(agent = "TestAgent")]
+    #[agent_lifecycle(agent(TestAgent))]
     enum TestAgentLifecycle {}
 }

@@ -12,7 +12,6 @@ macro_helpers = { path = "../../utilities/macro_helpers" }
 syn = "1.0.39"
 quote = "1.0.7"
 proc-macro2 = "1.0.19"
-darling = "0.10.2"
 
 [dev-dependencies]
 swim_server = { path = "../../swim_server" }

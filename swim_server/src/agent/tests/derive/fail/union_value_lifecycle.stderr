@@ -1,5 +1,7 @@
 error: Lifecycle cannot be created from Union.
-  --> $DIR/union_value_lifecycle.rs:24:11
+  --> $DIR/union_value_lifecycle.rs:24:5
    |
-24 |     union ValueLifecycle {
-   |           ^^^^^^^^^^^^^^
+24 | /     union ValueLifecycle {
+25 | |         field: i32,
+26 | |     }
+   | |_____^

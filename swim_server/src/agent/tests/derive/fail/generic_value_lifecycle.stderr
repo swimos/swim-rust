@@ -1,5 +1,7 @@
 error: Lifecycle cannot have generic parameters.
-  --> $DIR/generic_value_lifecycle.rs:24:12
+  --> $DIR/generic_value_lifecycle.rs:24:5
    |
-24 |     struct ValueLifecycle<T> {
-   |            ^^^^^^^^^^^^^^
+24 | /     struct ValueLifecycle<T> {
+25 | |         field: T,
+26 | |     }
+   | |_____^

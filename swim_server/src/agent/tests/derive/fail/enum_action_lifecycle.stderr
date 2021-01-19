@@ -1,5 +1,5 @@
 error: Lifecycle cannot be created from Enum.
-  --> $DIR/enum_action_lifecycle.rs:24:10
+  --> $DIR/enum_action_lifecycle.rs:24:5
    |
 24 |     enum ActionLifecycle {}
-   |          ^^^^^^^^^^^^^^^
+   |     ^^^^^^^^^^^^^^^^^^^^^^^

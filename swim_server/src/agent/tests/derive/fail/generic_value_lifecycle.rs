@@ -20,8 +20,8 @@ fn main() {
     #[derive(Debug)]
     pub struct TestAgentConfig;
 
-    #[value_lifecycle(agent = "TestAgent", event_type = "i32")]
+    #[value_lifecycle(agent(TestAgent), event_type(i32))]
     struct ValueLifecycle<T> {
-        field: T
+        field: T,
     }
 }

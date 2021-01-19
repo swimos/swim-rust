@@ -1,5 +1,6 @@
 error: Swim agent cannot be created from Enum.
-  --> $DIR/enum_agent.rs:23:10
+  --> $DIR/enum_agent.rs:22:5
    |
-23 |     enum TestAgent {}
-   |          ^^^^^^^^^
+22 | /     #[agent(config(TestAgentConfig))]
+23 | |     enum TestAgent {}
+   | |_____________________^

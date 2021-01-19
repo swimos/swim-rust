@@ -1,5 +1,8 @@
 error: Swim agent cannot be created from Union.
-  --> $DIR/union_agent.rs:23:11
+  --> $DIR/union_agent.rs:22:5
    |
-23 |     union TestAgent {
-   |           ^^^^^^^^^
+22 | /     #[agent(config(TestAgentConfig))]
+23 | |     union TestAgent {
+24 | |         field: i32,
+25 | |     }
+   | |_____^

@@ -1,5 +1,7 @@
 error: Lifecycle cannot have generic parameters.
-  --> $DIR/generic_map_lifecycle.rs:24:12
+  --> $DIR/generic_map_lifecycle.rs:24:5
    |
-24 |     struct MapLifecycle<T> {
-   |            ^^^^^^^^^^^^
+24 | /     struct MapLifecycle<T> {
+25 | |         field: T,
+26 | |     }
+   | |_____^

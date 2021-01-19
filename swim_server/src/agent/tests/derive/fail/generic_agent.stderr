@@ -1,5 +1,8 @@
 error: Swim agent cannot have generic parameters.
-  --> $DIR/generic_agent.rs:23:16
+  --> $DIR/generic_agent.rs:22:5
    |
-23 |     pub struct TestAgent<S> {
-   |                ^^^^^^^^^
+22 | /     #[agent(config(TestAgentConfig))]
+23 | |     pub struct TestAgent<S> {
+24 | |         field: S,
+25 | |     }
+   | |_____^

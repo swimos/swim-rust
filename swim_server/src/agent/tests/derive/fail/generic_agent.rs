@@ -19,7 +19,7 @@ fn main() {
     pub struct TestAgentConfig;
 
     #[derive(Debug, SwimAgent)]
-    #[agent(config = "TestAgentConfig")]
+    #[agent(config(TestAgentConfig))]
     pub struct TestAgent<S> {
         field: S,
     }

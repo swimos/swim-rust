@@ -1,5 +1,7 @@
 error: Lifecycle cannot have generic parameters.
-  --> $DIR/generic_command_lifecycle.rs:24:12
+  --> $DIR/generic_command_lifecycle.rs:24:5
    |
-24 |     struct CommandLifecycle<T> {
-   |            ^^^^^^^^^^^^^^^^
+24 | /     struct CommandLifecycle<T> {
+25 | |         field: T,
+26 | |     }
+   | |_____^

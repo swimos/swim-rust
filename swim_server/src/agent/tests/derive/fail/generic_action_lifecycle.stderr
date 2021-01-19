@@ -1,5 +1,7 @@
 error: Lifecycle cannot have generic parameters.
-  --> $DIR/generic_action_lifecycle.rs:24:12
+  --> $DIR/generic_action_lifecycle.rs:24:5
    |
-24 |     struct ActionLifecycle<T> {
-   |            ^^^^^^^^^^^^^^^
+24 | /     struct ActionLifecycle<T> {
+25 | |         field: T,
+26 | |     }
+   | |_____^

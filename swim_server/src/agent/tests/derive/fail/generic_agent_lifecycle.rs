@@ -20,8 +20,8 @@ fn main() {
     #[derive(Debug)]
     pub struct TestAgentConfig;
 
-    #[agent_lifecycle(agent = "TestAgent")]
+    #[agent_lifecycle(agent(TestAgent))]
     struct TestAgentLifecycle<T> {
-        field: T
+        field: T,
     }
 }
