@@ -129,7 +129,12 @@ fn main() {
 
     // ----------------------- Action Lifecycle 1 -----------------------
 
-    #[action_lifecycle(agent = "TestAgent", command_type = "i32", response_type = "i32", on_command)]
+    #[action_lifecycle(
+        agent = "TestAgent",
+        command_type = "i32",
+        response_type = "i32",
+        on_command
+    )]
     struct ActionLifecycle1;
 
     impl ActionLifecycle1 {
@@ -154,7 +159,12 @@ fn main() {
 
     // ----------------------- Action Lifecycle 2 -----------------------
 
-    #[action_lifecycle(agent = "TestAgent", command_type = "i64", response_type = "i64", on_command)]
+    #[action_lifecycle(
+        agent = "TestAgent",
+        command_type = "i64",
+        response_type = "i64",
+        on_command
+    )]
     struct ActionLifecycle2;
 
     impl ActionLifecycle2 {
@@ -179,7 +189,12 @@ fn main() {
 
     // ----------------------- Action Lifecycle 2 -----------------------
 
-    #[action_lifecycle(agent = "TestAgent", command_type = "String", response_type = "String", on_command)]
+    #[action_lifecycle(
+        agent = "TestAgent",
+        command_type = "String",
+        response_type = "String",
+        on_command
+    )]
     struct ActionLifecycle3;
 
     impl ActionLifecycle3 {
@@ -282,7 +297,13 @@ fn main() {
 
     // ----------------------- Map Lifecycle 1 -----------------------
 
-    #[map_lifecycle(agent = "TestAgent", key_type = "String", value_type = "i32", on_start, on_event)]
+    #[map_lifecycle(
+        agent = "TestAgent",
+        key_type = "String",
+        value_type = "i32",
+        on_start,
+        on_event
+    )]
     struct MapLifecycle1;
 
     impl MapLifecycle1 {
@@ -321,7 +342,13 @@ fn main() {
 
     // ----------------------- Map Lifecycle 1 -----------------------
 
-    #[map_lifecycle(agent = "TestAgent", key_type = "i32", value_type = "String", on_start, on_event)]
+    #[map_lifecycle(
+        agent = "TestAgent",
+        key_type = "i32",
+        value_type = "String",
+        on_start,
+        on_event
+    )]
     struct MapLifecycle2;
 
     impl MapLifecycle2 {
