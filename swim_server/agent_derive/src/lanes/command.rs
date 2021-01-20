@@ -12,14 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::utils::{get_task_struct_name, validate_input_ast, InputAstType};
+use crate::utils::{
+    get_task_struct_name, validate_input_ast, CallbackKind, InputAstType, LaneTasksImpl,
+};
 use darling::FromMeta;
 use macro_helpers::string_to_ident;
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{AttributeArgs, DeriveInput};
 
-use crate::internals::default_on_command;
+use crate::internals::parse_callback;
 use crate::lanes::derive_lane;
 use proc_macro2::Ident;
 
@@ -29,8 +31,8 @@ struct CommandAttrs {
     agent: Ident,
     #[darling(map = "string_to_ident")]
     command_type: Ident,
-    #[darling(default = "default_on_command", map = "string_to_ident")]
-    on_command: Ident,
+    #[darling(default)]
+    on_command: Option<darling::Result<String>>,
 }
 
 pub fn derive_command_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput) -> TokenStream {
@@ -49,35 +51,10 @@ pub fn derive_command_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput
     let task_name = get_task_struct_name(&input_ast.ident.to_string());
     let agent_name = args.agent.clone();
     let command_type = &args.command_type;
-    let on_command_func = &args.on_command;
-    let on_event = quote! {
-        let #task_name {
-            lifecycle,
-            event_stream,
-            projection,
-            ..
-        } = *self;
-
-        let model = projection(context.agent()).clone();
-        let mut events = event_stream.take_until(context.agent_stop_event());
-        let mut events = unsafe { Pin::new_unchecked(&mut events) };
-
-        while let Some(event) = events.next().await {
-            let (command, responder) = event.destruct();
-
-            tracing::event!(tracing::Level::TRACE, commanded = swim_server::agent::COMMANDED, ?command);
-
-            tracing_futures::Instrument::instrument(
-                lifecycle.#on_command_func(command, &model, &context),
-                tracing::span!(tracing::Level::TRACE, swim_server::agent::ON_COMMAND)
-            ).await;
-
-            if let Some(tx) = responder {
-                if tx.send(()).is_err() {
-                    tracing::event!(tracing::Level::WARN, response_ingored = swim_server::agent::RESPONSE_IGNORED);
-                }
-            }
-        }
+    let on_command_callback =
+        parse_callback(&args.on_command, task_name.clone(), CallbackKind::Command);
+    let lane_tasks_impl = LaneTasksImpl::Command {
+        on_command: on_command_callback,
     };
 
     derive_lane(
@@ -88,8 +65,7 @@ pub fn derive_command_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput
         input_ast,
         quote!(swim_server::agent::lane::model::action::CommandLane<#command_type>),
         quote!(swim_server::agent::lane::model::action::Action<#command_type, ()>),
-        None,
-        on_event,
+        lane_tasks_impl,
         quote! {
             use swim_server::agent::lane::model::action::CommandLane;
             use swim_server::agent::lane::model::action::Action;

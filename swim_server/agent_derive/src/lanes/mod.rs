@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::utils::LaneTasksImpl;
 use macro_helpers::as_const;
 use proc_macro2::TokenStream;
 use quote::quote;
@@ -33,8 +34,7 @@ pub fn derive_lane(
     input_ast: DeriveInput,
     lane_type: TokenStream,
     item_type: TokenStream,
-    on_start: Option<TokenStream>,
-    on_event: TokenStream,
+    lane_tasks_impl: LaneTasksImpl,
     imports: TokenStream,
     field: Option<TokenStream>,
 ) -> proc_macro::TokenStream {
@@ -53,10 +53,6 @@ pub fn derive_lane(
             #field
         }
     };
-
-    let on_start = on_start.unwrap_or(quote! {
-        ready(()).boxed()
-    });
 
     let private_derived = quote! {
         use futures::FutureExt as _;
@@ -90,16 +86,7 @@ pub fn derive_lane(
             T: Fn(&#agent_name) -> &#lane_type + Send + Sync + 'static,
             S: Stream<Item = #item_type> + Send + Sync + 'static
         {
-            fn start<'a>(&'a self, context: &'a Context) -> BoxFuture<'a, ()> {
-                #on_start
-            }
-
-            fn events(self: Box<Self>, context: Context) -> BoxFuture<'static, ()> {
-                async move {
-                    #on_event
-                }
-                .boxed()
-            }
+            #lane_tasks_impl
         }
     };
 

@@ -147,7 +147,7 @@ impl ReportingAgentLifecycle {
     }
 }
 
-#[command_lifecycle(agent = "ReportingAgent", command_type = "String")]
+#[command_lifecycle(agent = "ReportingAgent", command_type = "String", on_command)]
 struct ActionLifecycle {
     event_handler: EventCollectorHandler,
 }
@@ -186,7 +186,13 @@ impl LaneLifecycle<TestAgentConfig> for ActionLifecycle {
     }
 }
 
-#[map_lifecycle(agent = "ReportingAgent", key_type = "String", value_type = "i32")]
+#[map_lifecycle(
+    agent = "ReportingAgent",
+    key_type = "String",
+    value_type = "i32",
+    on_start,
+    on_event
+)]
 struct DataLifecycle {
     event_handler: EventCollectorHandler,
 }
@@ -248,7 +254,7 @@ impl StatefulLaneLifecycleBase for DataLifecycle {
     }
 }
 
-#[value_lifecycle(agent = "ReportingAgent", event_type = "i32")]
+#[value_lifecycle(agent = "ReportingAgent", event_type = "i32", on_start, on_event)]
 struct TotalLifecycle {
     event_handler: EventCollectorHandler,
 }
@@ -286,7 +292,7 @@ impl StatefulLaneLifecycleBase for TotalLifecycle {
     }
 }
 
-#[demand_lifecycle(agent = "ReportingAgent", event_type = "i32")]
+#[demand_lifecycle(agent = "ReportingAgent", event_type = "i32", on_cue)]
 struct DemandLifecycle {
     event_handler: EventCollectorHandler,
 }
@@ -313,7 +319,13 @@ impl DemandLifecycle {
     }
 }
 
-#[demand_map_lifecycle(agent = "ReportingAgent", key_type = "String", value_type = "i32")]
+#[demand_map_lifecycle(
+    agent = "ReportingAgent",
+    key_type = "String",
+    value_type = "i32",
+    on_sync,
+    on_cue
+)]
 struct DemandMapLifecycle {
     event_handler: EventCollectorHandler,
 }

@@ -12,39 +12,81 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::utils::Callback;
+use crate::utils::{Callback, CallbackKind};
 use macro_helpers::str_to_ident;
 use proc_macro::TokenStream;
 use proc_macro2::Ident;
 use syn::{parse_macro_input, AttributeArgs, DeriveInput};
 
+const DEFAULT_ON_START: &str = "on_start";
+const DEFAULT_ON_COMMAND: &str = "on_command";
 const DEFAULT_ON_EVENT: &str = "on_event";
+const DEFAULT_ON_CUE: &str = "on_cue";
+const DEFAULT_ON_SYNC: &str = "on_sync";
 
 pub fn default_on_command() -> Ident {
-    str_to_ident("on_command")
+    str_to_ident(DEFAULT_ON_COMMAND)
 }
 
 pub fn default_on_cue() -> Ident {
-    str_to_ident("on_cue")
+    str_to_ident(DEFAULT_ON_CUE)
 }
 
 pub fn default_on_sync() -> Ident {
-    str_to_ident("on_sync")
+    str_to_ident(DEFAULT_ON_SYNC)
 }
 
 pub fn default_on_start() -> Ident {
-    str_to_ident("on_start")
+    str_to_ident(DEFAULT_ON_START)
 }
 
-pub fn default_on_event_ident() -> Ident {
+pub fn default_on_event() -> Ident {
     str_to_ident(DEFAULT_ON_EVENT)
 }
 
-pub fn parse_callback(callback: darling::Result<String>) -> Callback {
-    if let Ok(name) = callback {
-        Callback::Custom(str_to_ident(&name))
+pub fn parse_callback(
+    callback: &Option<darling::Result<String>>,
+    task_name: Ident,
+    kind: CallbackKind,
+) -> Option<Callback> {
+    if let Some(name) = callback {
+        if let Ok(name) = name {
+            Some(Callback {
+                task_name,
+                func_name: str_to_ident(&name),
+                kind,
+            })
+        } else {
+            match kind {
+                CallbackKind::Start => Some(Callback {
+                    task_name,
+                    func_name: default_on_start(),
+                    kind,
+                }),
+                CallbackKind::Command => Some(Callback {
+                    task_name,
+                    func_name: default_on_command(),
+                    kind,
+                }),
+                CallbackKind::Event => Some(Callback {
+                    task_name,
+                    func_name: default_on_event(),
+                    kind,
+                }),
+                CallbackKind::Cue => Some(Callback {
+                    task_name,
+                    func_name: default_on_cue(),
+                    kind,
+                }),
+                CallbackKind::Sync => Some(Callback {
+                    task_name,
+                    func_name: default_on_sync(),
+                    kind,
+                }),
+            }
+        }
     } else {
-        Callback::Custom(str_to_ident(DEFAULT_ON_EVENT))
+        None
     }
 }
 
