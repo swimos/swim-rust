@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[cfg(test)]
+mod tests;
+
 mod info;
 pub(crate) mod lane;
 pub(crate) mod log;
@@ -28,6 +31,7 @@ use crate::agent::{AgentContext, DynamicLaneTasks, SwimAgent};
 use crate::routing::LaneIdentifier;
 use std::collections::HashMap;
 use std::fmt::Debug;
+use swim_common::warp::path::RelativePath;
 use utilities::uri::RelativeUri;
 
 pub const META_EDGE: &str = "swim:meta:edge";
@@ -70,6 +74,47 @@ pub enum MetaKind {
     Part,
     Host,
     Node,
+    Uplink,
+}
+
+pub(crate) trait MetaPath {
+    fn into_kind_and_path(self) -> Result<(MetaKind, RelativePath), RelativePath>;
+}
+
+impl MetaPath for RelativePath {
+    fn into_kind_and_path(self) -> Result<(MetaKind, RelativePath), RelativePath> {
+        let RelativePath { node, lane } = self;
+        let index = node.as_str().find('/');
+
+        match index {
+            Some(index) => {
+                let node = node.as_str();
+                let (meta_kind, node_uri) = node.split_at(index);
+
+                let r = match meta_kind {
+                    META_EDGE => Ok(MetaKind::Edge),
+                    META_MESH => Ok(MetaKind::Mesh),
+                    META_PART => Ok(MetaKind::Part),
+                    META_HOST => Ok(MetaKind::Host),
+                    META_NODE => Ok(MetaKind::Node),
+                    _ => Err(RelativePath::new(node, lane.as_ref())),
+                };
+
+                match r {
+                    Ok(kind) => {
+                        let node_uri = &node_uri[1..];
+                        if node_uri.is_empty() {
+                            return Err(RelativePath::new(node, lane.as_ref()));
+                        }
+
+                        Ok((kind, RelativePath::new(node_uri, lane.as_ref())))
+                    }
+                    Err(e) => Err(e),
+                }
+            }
+            None => Err(RelativePath::new(node, lane)),
+        }
+    }
 }
 
 pub fn open_meta_lanes<Config, Agent, Context>(

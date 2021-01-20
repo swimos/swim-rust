@@ -239,3 +239,6 @@ async fn lookup_local_err() {
 
     join(fake_resolver, task).await;
 }
+
+#[tokio::test]
+async fn delegate_meta_request() {}

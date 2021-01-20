@@ -39,7 +39,7 @@ mod mock;
 fn make_dispatcher(
     buffer_size: usize,
     max_pending: usize,
-    lanes: HashMap<String, MockLane>,
+    lanes: HashMap<LaneIdentifier, MockLane>,
     envelopes: impl Stream<Item = TaggedEnvelope> + Send + 'static,
 ) -> (
     BoxFuture<'static, Result<DispatcherErrors, DispatcherErrors>>,
@@ -49,7 +49,7 @@ fn make_dispatcher(
 
     let boxed_lanes = lanes
         .into_iter()
-        .map(|(name, lane)| (LaneIdentifier::agent(name), lane.boxed()))
+        .map(|(name, lane)| (name, lane.boxed()))
         .collect();
 
     let context = MockExecutionContext::new(RoutingAddr::local(1024), buffer_size, spawn_tx);
@@ -78,11 +78,14 @@ fn make_dispatcher(
     )
 }
 
-fn lanes(names: Vec<&str>) -> HashMap<String, MockLane> {
+fn lanes(names: Vec<&str>) -> HashMap<LaneIdentifier, MockLane> {
     let mut map = HashMap::new();
     for name in names.iter() {
-        map.insert(name.to_string(), MockLane);
+        map.insert(LaneIdentifier::agent(name.to_string()), MockLane);
     }
+
+    map.insert(LaneIdentifier::meta("infoLog".to_string()), MockLane);
+
     map
 }
 

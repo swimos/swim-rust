@@ -12,20 +12,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::meta::MetaKind;
-use crate::routing::error::RouterError;
-use futures::future::BoxFuture;
 use std::fmt::{Display, Formatter};
 use std::time::Duration;
+
+use futures::future::BoxFuture;
+use tokio::sync::mpsc;
+use url::Url;
+
 use swim_common::routing::RoutingError;
 use swim_common::routing::SendError;
 use swim_common::routing::{ConnectionError, ResolutionError};
-use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
-use tokio::sync::mpsc;
-use url::Url;
+use swim_common::warp::envelope::{Envelope, EnvelopeHeader, OutgoingLinkMessage};
 use utilities::errors::Recoverable;
 use utilities::sync::promise;
 use utilities::uri::RelativeUri;
+
+use crate::agent::meta::{MetaKind, MetaPath};
+use crate::routing::error::RouterError;
 
 pub mod error;
 pub mod remote;
@@ -199,11 +202,33 @@ impl TaggedSender {
     }
 
     pub async fn send_item(&mut self, envelope: Envelope) -> Result<(), SendError> {
-        Ok(self
-            .inner
-            .send(TaggedEnvelope::agent(TaggedAgentEnvelope(
-                self.tag, envelope,
-            )))
+        let TaggedSender { tag, inner } = self;
+        let Envelope { header, body } = envelope;
+
+        let request = if let EnvelopeHeader::IncomingLink(header, path) = header {
+            match path.into_kind_and_path() {
+                Ok((kind, path)) => TaggedEnvelope::meta(TaggedMetaEnvelope(
+                    *tag,
+                    Envelope {
+                        header: EnvelopeHeader::IncomingLink(header, path),
+                        body,
+                    },
+                    kind,
+                )),
+                Err(path) => TaggedEnvelope::agent(TaggedAgentEnvelope(
+                    *tag,
+                    Envelope {
+                        header: EnvelopeHeader::IncomingLink(header, path),
+                        body,
+                    },
+                )),
+            }
+        } else {
+            TaggedEnvelope::agent(TaggedAgentEnvelope(*tag, Envelope { header, body }))
+        };
+
+        Ok(inner
+            .send(request)
             .await
             .map_err(|e| SendError::new(RoutingError::CloseError, e.0.into_envelope()))?)
     }
