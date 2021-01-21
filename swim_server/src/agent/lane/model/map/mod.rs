@@ -159,9 +159,9 @@ where
 #[derive(Debug, PartialEq, Eq, Form)]
 pub enum MapUpdate<K, V> {
     #[form(tag = "update")]
-    Update(#[form(header, rename = "key")] K, #[form(body)] Arc<V>),
+    Update(#[form(header, name = "key")] K, #[form(body)] Arc<V>),
     #[form(tag = "remove")]
-    Remove(#[form(header, rename = "key")] K),
+    Remove(#[form(header, name = "key")] K),
     #[form(tag = "clear")]
     Clear,
 }

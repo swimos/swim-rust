@@ -34,28 +34,28 @@ fn main() {
     #[derive(Debug, SwimAgent)]
     #[agent(config = "TestAgentConfig")]
     pub struct TestAgent {
-        #[lifecycle(public, name = "CommandLifecycle1")]
-        command_1: CommandLane<String>,
-        #[lifecycle(public, name = "CommandLifecycle2")]
-        command_2: CommandLane<i32>,
+        #[lifecycle(name = "CommandLifecycle1")]
+        pub command_1: CommandLane<String>,
+        #[lifecycle(name = "CommandLifecycle2")]
+        pub command_2: CommandLane<i32>,
         #[lifecycle(name = "ActionLifecycle1")]
         action_1: ActionLane<i32, i32>,
         #[lifecycle(name = "ActionLifecycle2")]
         action_2: ActionLane<i64, i64>,
         #[lifecycle(name = "ActionLifecycle3")]
         action_3: ActionLane<String, String>,
-        #[lifecycle(public, name = "ValueLifecycle1")]
-        value_1: ValueLane<i32>,
+        #[lifecycle(name = "ValueLifecycle1")]
+        pub value_1: ValueLane<i32>,
         #[lifecycle(name = "ValueLifecycle2")]
         value_2: ValueLane<String>,
-        #[lifecycle(public, name = "MapLifecycle1")]
-        map_1: MapLane<String, i32>,
+        #[lifecycle(name = "MapLifecycle1")]
+        pub map_1: MapLane<String, i32>,
         #[lifecycle(name = "MapLifecycle2")]
         map_2: MapLane<i32, String>,
         #[lifecycle(name = "MapLifecycle2")]
         map_3: MapLane<i32, String>,
-        #[lifecycle(public, name = "MapLifecycle1")]
-        map_4: MapLane<String, i32>,
+        #[lifecycle(name = "MapLifecycle1")]
+        pub map_4: MapLane<String, i32>,
     }
 
     #[derive(Debug)]

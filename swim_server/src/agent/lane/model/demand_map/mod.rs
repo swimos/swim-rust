@@ -29,7 +29,7 @@ mod tests;
 #[derive(Form, Debug, Clone, PartialEq)]
 #[form(tag = "update")]
 pub struct DemandMapLaneUpdate<Key, Value>(
-    #[form(header, rename = "key")] Key,
+    #[form(header, name = "key")] Key,
     #[form(body)] Arc<Value>,
 )
 where

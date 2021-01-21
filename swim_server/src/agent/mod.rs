@@ -230,7 +230,7 @@ where
         tasks.append(&mut meta_tasks);
 
         lifecycle
-            .on_start(&context)
+            .starting(&context)
             .instrument(span!(Level::DEBUG, AGENT_START))
             .await;
 

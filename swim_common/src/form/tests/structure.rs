@@ -184,7 +184,7 @@ fn test_rename() {
     #[derive(Form, Debug, PartialEq, Clone)]
     #[form(tag = "Structure")]
     struct S {
-        #[form(rename = "field_a")]
+        #[form(name = "field_a")]
         a: i32,
         b: i64,
     }
@@ -213,7 +213,7 @@ fn body_replaces() {
     }
 
     let body = Value::Record(
-        vec![],
+        vec![Attr::of("attr2")],
         vec![
             Item::Slot(Value::text("a"), Value::Int32Value(7)),
             Item::Slot(Value::text("b"), Value::BooleanValue(true)),
@@ -221,14 +221,20 @@ fn body_replaces() {
     );
 
     let rec = Value::Record(
-        vec![Attr::of((
-            "BodyReplace",
-            Value::Record(
-                Vec::new(),
-                vec![Item::Slot(Value::text("n"), Value::Int32Value(1033))],
-            ),
-        ))],
-        vec![Item::ValueItem(body.clone())],
+        vec![
+            Attr::of((
+                "BodyReplace",
+                Value::Record(
+                    Vec::new(),
+                    vec![Item::Slot(Value::text("n"), Value::Int32Value(1033))],
+                ),
+            )),
+            Attr::of("attr2"),
+        ],
+        vec![
+            Item::Slot(Value::text("a"), Value::Int32Value(7)),
+            Item::Slot(Value::text("b"), Value::BooleanValue(true)),
+        ],
     );
 
     let br = BodyReplace { n: 1033, body };
