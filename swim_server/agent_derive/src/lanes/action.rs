@@ -13,10 +13,10 @@
 // limitations under the License.
 
 use crate::lanes::derive_lane;
-use crate::utils::parse_callback;
 use crate::utils::{
     get_task_struct_name, validate_input_ast, CallbackKind, InputAstType, LaneTasksImpl,
 };
+use crate::utils::{parse_callback, Callback};
 use darling::FromMeta;
 use macro_helpers::string_to_ident;
 use proc_macro::TokenStream;
@@ -72,5 +72,42 @@ pub fn derive_action_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput)
             use swim_server::agent::lane::model::action::Action;
         },
         None,
+    )
+}
+
+pub fn derive_events_body(on_command: &Callback) -> proc_macro2::TokenStream {
+    let task_name = &on_command.task_name;
+    let on_action_func = &on_command.func_name;
+
+    quote!(
+        let #task_name {
+            lifecycle,
+            event_stream,
+            projection,
+            ..
+        } = *self;
+
+        let model = projection(context.agent()).clone();
+        let mut events = event_stream.take_until(context.agent_stop_event());
+        let mut events = unsafe { Pin::new_unchecked(&mut events) };
+
+        while let Some(event) = events.next().await {
+            let (command, responder) = event.destruct();
+
+            tracing::event!(tracing::Level::TRACE, commanded = swim_server::agent::COMMANDED, ?command);
+
+            let response = tracing_futures::Instrument::instrument(
+                lifecycle.#on_action_func(command, &model, &context),
+                tracing::span!(tracing::Level::TRACE, swim_server::agent::ON_COMMAND)
+            ).await;
+
+            tracing::event!(tracing::Level::TRACE, action_result = swim_server::agent::ACTION_RESULT, ?response);
+
+            if let Some(tx) = responder {
+                if tx.send(response).is_err() {
+                    tracing::event!(tracing::Level::WARN, response_ingored = swim_server::agent::RESPONSE_IGNORED);
+                }
+            }
+        }
     )
 }

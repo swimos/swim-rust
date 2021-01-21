@@ -14,7 +14,7 @@
 
 use crate::lanes::derive_lane;
 use crate::utils::{
-    get_task_struct_name, parse_callback, validate_input_ast, CallbackKind, InputAstType,
+    get_task_struct_name, parse_callback, validate_input_ast, Callback, CallbackKind, InputAstType,
     LaneTasksImpl,
 };
 use darling::FromMeta;
@@ -75,5 +75,41 @@ pub fn derive_map_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput) ->
             use swim_server::agent::lane::model::map::MapLaneEvent;
         },
         None,
+    )
+}
+
+pub fn derive_start_body(on_start: &Callback) -> proc_macro2::TokenStream {
+    let task_name = &on_start.task_name;
+    let on_start_func = &on_start.func_name;
+
+    quote!(
+        let #task_name { lifecycle, projection, .. } = self;
+        let model = projection(context.agent());
+        lifecycle.#on_start_func(model, context).boxed()
+    )
+}
+
+pub fn derive_events_body(on_event: &Callback) -> proc_macro2::TokenStream {
+    let task_name = &on_event.task_name;
+    let on_event_func_name = &on_event.func_name;
+
+    quote!(
+        let #task_name {
+            lifecycle,
+            event_stream,
+            projection,
+            ..
+        } = *self;
+
+        let model = projection(context.agent()).clone();
+        let mut events = event_stream.take_until(context.agent_stop_event());
+        let mut events = unsafe { Pin::new_unchecked(&mut events) };
+
+        while let Some(event) = events.next().await {
+              tracing_futures::Instrument::instrument(
+                lifecycle.#on_event_func_name(&event, &model, &context),
+                tracing::span!(tracing::Level::TRACE, swim_server::agent::ON_EVENT, ?event)
+            ).await;
+        }
     )
 }
