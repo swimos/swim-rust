@@ -354,9 +354,6 @@ async fn try_dispatch_envelope<Router>(
 where
     Router: ServerRouter,
 {
-    http::Uri::builder().
-
-
     if let Some(target) = envelope.header.relative_path().as_ref() {
         let Route { sender, .. } = if let Some(route) = resolved.get_mut(target) {
             route
