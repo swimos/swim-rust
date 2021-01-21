@@ -433,7 +433,7 @@ where
     }
     .instrument(span!(Level::INFO, UPDATE_TASK, ?route));
 
-    let uplinks = StatelessUplinks::new(feedback_rx, route.clone(), UplinkKind::Action);
+    let uplinks = StatelessUplinks::new(feedback_rx, route.clone(), UplinkKind::Command);
     let uplink_task = uplinks
         .run(uplink_rx, context.router_handle(), err_tx, yield_after)
         .instrument(span!(Level::INFO, UPLINK_SPAWN_TASK, ?route));
