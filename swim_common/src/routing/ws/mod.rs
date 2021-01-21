@@ -18,6 +18,7 @@ use futures::future::BoxFuture;
 
 mod protocol;
 mod stream;
+#[cfg(feature = "tungstenite")]
 pub mod tungstenite;
 pub mod utils;
 
