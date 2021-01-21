@@ -457,7 +457,7 @@ impl Envelope {
     pub fn tag(&self) -> &'static str {
         match self.header {
             EnvelopeHeader::IncomingLink(IncomingHeader::Linked(_), _) => LINKED_TAG,
-            EnvelopeHeader::IncomingLink(IncomingHeader::Synced, _) => SYNC_TAG,
+            EnvelopeHeader::IncomingLink(IncomingHeader::Synced, _) => SYNCED_TAG,
             EnvelopeHeader::IncomingLink(IncomingHeader::Unlinked, _) => UNLINKED_TAG,
             EnvelopeHeader::IncomingLink(IncomingHeader::Event, _) => EVENT_TAG,
             EnvelopeHeader::OutgoingLink(OutgoingHeader::Link(_), _) => LINK_TAG,

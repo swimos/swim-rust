@@ -29,66 +29,88 @@ mod tests;
 
 /// Creates [`PlaneRouter`] instances by cloning a channel back to the plane.
 #[derive(Debug)]
-pub struct PlaneRouterFactory {
+pub struct PlaneRouterFactory<DelegateFac: ServerRouterFactory> {
     request_sender: mpsc::Sender<PlaneRequest>,
+    delegate_fac: DelegateFac,
 }
 
-impl PlaneRouterFactory {
+impl<DelegateFac: ServerRouterFactory> PlaneRouterFactory<DelegateFac> {
     /// Create a factory from a channel back to the owning plane.
-    pub(super) fn new(request_sender: mpsc::Sender<PlaneRequest>) -> Self {
-        PlaneRouterFactory { request_sender }
+    pub(in crate) fn new(
+        request_sender: mpsc::Sender<PlaneRequest>,
+        delegate_fac: DelegateFac,
+    ) -> Self {
+        PlaneRouterFactory {
+            request_sender,
+            delegate_fac,
+        }
     }
 }
 
-impl ServerRouterFactory for PlaneRouterFactory {
-    type Router = PlaneRouter;
+impl<DelegateFac: ServerRouterFactory> ServerRouterFactory for PlaneRouterFactory<DelegateFac> {
+    type Router = PlaneRouter<DelegateFac::Router>;
 
     fn create_for(&self, addr: RoutingAddr) -> Self::Router {
-        PlaneRouter::new(addr, self.request_sender.clone())
+        PlaneRouter::new(
+            addr,
+            self.delegate_fac.create_for(addr),
+            self.request_sender.clone(),
+        )
     }
 }
 
 /// An implementation of [`ServerRouter`] tied to a plane.
 #[derive(Debug, Clone)]
-pub struct PlaneRouter {
+pub struct PlaneRouter<Delegate> {
     tag: RoutingAddr,
+    delegate_router: Delegate,
     request_sender: mpsc::Sender<PlaneRequest>,
 }
 
-impl PlaneRouter {
-    fn new(tag: RoutingAddr, request_sender: mpsc::Sender<PlaneRequest>) -> Self {
+impl<Delegate> PlaneRouter<Delegate> {
+    pub(in crate) fn new(
+        tag: RoutingAddr,
+        delegate_router: Delegate,
+        request_sender: mpsc::Sender<PlaneRequest>,
+    ) -> Self {
         PlaneRouter {
             tag,
+            delegate_router,
             request_sender,
         }
     }
 }
 
-impl ServerRouter for PlaneRouter {
+impl<Delegate: ServerRouter> ServerRouter for PlaneRouter<Delegate> {
     fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>> {
         async move {
             let PlaneRouter {
                 tag,
+                delegate_router,
                 request_sender,
             } = self;
             let (tx, rx) = oneshot::channel();
-            if request_sender
-                .send(PlaneRequest::Endpoint {
-                    id: addr,
-                    request: Request::new(tx),
-                })
-                .await
-                .is_err()
-            {
-                Err(ResolutionError::router_dropped())
-            } else {
-                match rx.await {
-                    Ok(Ok(RawRoute { sender, on_drop })) => {
-                        Ok(Route::new(TaggedSender::new(*tag, sender), on_drop))
+            if addr.is_local() {
+                if request_sender
+                    .send(PlaneRequest::Endpoint {
+                        id: addr,
+                        request: Request::new(tx),
+                    })
+                    .await
+                    .is_err()
+                {
+                    Err(ResolutionError::router_dropped())
+                } else {
+                    match rx.await {
+                        Ok(Ok(RawRoute { sender, on_drop })) => {
+                            Ok(Route::new(TaggedSender::new(*tag, sender), on_drop))
+                        }
+                        Ok(Err(err)) => Err(ResolutionError::unresolvable(err.to_string())),
+                        Err(_) => Err(ResolutionError::router_dropped()),
                     }
-                    Ok(Err(err)) => Err(ResolutionError::unresolvable(err.to_string())),
-                    Err(_) => Err(ResolutionError::router_dropped()),
                 }
+            } else {
+                delegate_router.resolve_sender(addr).await
             }
         }
         .boxed()
