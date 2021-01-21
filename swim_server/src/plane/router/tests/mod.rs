@@ -58,7 +58,7 @@ async fn plane_router_get_sender() {
         let mut sender = result1.unwrap();
         assert!(sender
             .sender
-            .send_item(Envelope::linked("/node", "lane"))
+            .transform_and_send(Envelope::linked("/node", "lane"))
             .await
             .is_ok());
         assert_eq!(

@@ -29,6 +29,7 @@ use utilities::uri::RelativeUri;
 
 use crate::agent::meta::{MetaKind, MetaPath};
 use crate::routing::error::RouterError;
+use swim_common::warp::path::RelativePath;
 
 pub mod error;
 pub mod remote;
@@ -77,6 +78,59 @@ impl Display for RoutingAddr {
     }
 }
 
+pub enum ServerEnvelope {
+    AgentEnvelope(Envelope),
+    MetaEnvelope(Envelope, MetaKind),
+}
+
+impl ServerEnvelope {
+    pub fn agent(envelope: Envelope) -> ServerEnvelope {
+        ServerEnvelope::AgentEnvelope(envelope)
+    }
+
+    pub fn meta(envelope: Envelope, kind: MetaKind) -> ServerEnvelope {
+        ServerEnvelope::MetaEnvelope(envelope, kind)
+    }
+
+    pub fn relative_path(&self) -> Option<RelativePath> {
+        match self {
+            ServerEnvelope::AgentEnvelope(inner) => inner.header.relative_path(),
+            ServerEnvelope::MetaEnvelope(inner, _) => inner.header.relative_path(),
+        }
+    }
+
+    pub fn into_envelope(self) -> Envelope {
+        match self {
+            ServerEnvelope::AgentEnvelope(inner) => inner,
+            ServerEnvelope::MetaEnvelope(inner, _) => inner,
+        }
+    }
+}
+
+impl From<Envelope> for ServerEnvelope {
+    fn from(envelope: Envelope) -> ServerEnvelope {
+        let Envelope { header, body } = envelope;
+
+        if let EnvelopeHeader::IncomingLink(header, path) = header {
+            match path.into_kind_and_path() {
+                Ok((kind, path)) => ServerEnvelope::meta(
+                    Envelope {
+                        header: EnvelopeHeader::IncomingLink(header, path),
+                        body,
+                    },
+                    kind,
+                ),
+                Err(path) => ServerEnvelope::agent(Envelope {
+                    header: EnvelopeHeader::IncomingLink(header, path),
+                    body,
+                }),
+            }
+        } else {
+            ServerEnvelope::agent(Envelope { header, body })
+        }
+    }
+}
+
 /// An [`Envelope`] tagged with the key of the endpoint into routing table from which it originated.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TaggedAgentEnvelope(pub RoutingAddr, pub Envelope);
@@ -121,6 +175,13 @@ impl TaggedEnvelope {
             TaggedEnvelope::AgentEnvelope(TaggedAgentEnvelope(addr, envelope)) => {
                 (addr, envelope, LaneIdentifierKind::Agent)
             }
+        }
+    }
+
+    pub fn relative_path(&self) -> Option<RelativePath> {
+        match self {
+            TaggedEnvelope::AgentEnvelope(inner) => inner.1.header.relative_path(),
+            TaggedEnvelope::MetaEnvelope(inner) => inner.1.header.relative_path(),
         }
     }
 
@@ -201,34 +262,25 @@ impl TaggedSender {
         TaggedSender { tag, inner }
     }
 
-    pub async fn send_item(&mut self, envelope: Envelope) -> Result<(), SendError> {
-        let TaggedSender { tag, inner } = self;
-        let Envelope { header, body } = envelope;
+    pub async fn transform_and_send(&mut self, envelope: Envelope) -> Result<(), SendError> {
+        self.send_item(ServerEnvelope::AgentEnvelope(envelope))
+            .await
+    }
 
-        let request = if let EnvelopeHeader::IncomingLink(header, path) = header {
-            match path.into_kind_and_path() {
-                Ok((kind, path)) => TaggedEnvelope::meta(TaggedMetaEnvelope(
-                    *tag,
-                    Envelope {
-                        header: EnvelopeHeader::IncomingLink(header, path),
-                        body,
-                    },
-                    kind,
-                )),
-                Err(path) => TaggedEnvelope::agent(TaggedAgentEnvelope(
-                    *tag,
-                    Envelope {
-                        header: EnvelopeHeader::IncomingLink(header, path),
-                        body,
-                    },
-                )),
+    pub async fn send_item(&mut self, envelope: ServerEnvelope) -> Result<(), SendError> {
+        let TaggedSender { tag, inner } = self;
+
+        let envelope = match envelope {
+            ServerEnvelope::AgentEnvelope(envelope) => {
+                TaggedEnvelope::agent(TaggedAgentEnvelope(*tag, envelope))
             }
-        } else {
-            TaggedEnvelope::agent(TaggedAgentEnvelope(*tag, Envelope { header, body }))
+            ServerEnvelope::MetaEnvelope(envelope, kind) => {
+                TaggedEnvelope::meta(TaggedMetaEnvelope(*tag, envelope, kind))
+            }
         };
 
         Ok(inner
-            .send(request)
+            .send(envelope)
             .await
             .map_err(|e| SendError::new(RoutingError::CloseError, e.0.into_envelope()))?)
     }

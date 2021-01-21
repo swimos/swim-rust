@@ -228,7 +228,7 @@ impl LaneIo<MockExecutionContext> for MockLane {
                                 }
                             }
                         };
-                        if sender.send_item(response).await.is_err() {
+                        if sender.transform_and_send(response).await.is_err() {
                             break Some(LaneIoError::for_uplink_errors(
                                 route.clone(),
                                 vec![UplinkErrorReport::new(UplinkError::ChannelDropped, addr)],

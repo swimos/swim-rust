@@ -96,7 +96,7 @@ async fn resolve_remote_ok() {
         let result = router.resolve_sender(ADDR).await;
         assert!(result.is_ok());
         let Route { mut sender, .. } = result.unwrap();
-        assert!(sender.send_item(envelope("a")).await.is_ok());
+        assert!(sender.transform_and_send(envelope("a")).await.is_ok());
         drop(stop_tx);
         let result = rx.next().now_or_never();
         assert_eq!(
@@ -181,7 +181,7 @@ async fn delegate_local_ok() {
         let result = router.resolve_sender(local_addr).await;
         assert!(result.is_ok());
         let Route { mut sender, .. } = result.unwrap();
-        assert!(sender.send_item(envelope("a")).await.is_ok());
+        assert!(sender.transform_and_send(envelope("a")).await.is_ok());
         drop(stop_tx);
         let result = rx.next().now_or_never();
         assert_eq!(

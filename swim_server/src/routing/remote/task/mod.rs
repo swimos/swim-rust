@@ -20,7 +20,8 @@ use crate::routing::remote::config::ConnectionConfig;
 use crate::routing::remote::router::RemoteRouter;
 use crate::routing::remote::RoutingRequest;
 use crate::routing::{
-    ConnectionDropped, Route, RoutingAddr, ServerRouter, ServerRouterFactory, TaggedEnvelope,
+    ConnectionDropped, Route, RoutingAddr, ServerEnvelope, ServerRouter, ServerRouterFactory,
+    TaggedEnvelope,
 };
 use futures::future::BoxFuture;
 use futures::{select_biased, FutureExt, StreamExt};
@@ -354,7 +355,9 @@ async fn try_dispatch_envelope<Router>(
 where
     Router: ServerRouter,
 {
-    if let Some(target) = envelope.header.relative_path().as_ref() {
+    let server_envelope: ServerEnvelope = envelope.into();
+
+    if let Some(target) = server_envelope.relative_path().as_ref() {
         let Route { sender, .. } = if let Some(route) = resolved.get_mut(target) {
             route
         } else {
@@ -365,11 +368,11 @@ where
                     Entry::Vacant(entry) => entry.insert(route),
                 },
                 Err(err) => {
-                    return Err((envelope, err));
+                    return Err((server_envelope.into_envelope(), err));
                 }
             }
         };
-        if let Err(err) = sender.send_item(envelope).await {
+        if let Err(err) = sender.send_item(server_envelope).await {
             if let Some(Route { on_drop, .. }) = resolved.remove(target) {
                 let reason = on_drop
                     .await

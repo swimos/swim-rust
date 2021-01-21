@@ -114,7 +114,7 @@ impl<Clk: Clock> AgentRoute<Clk, EnvChannel, PlaneRouter> for SendAgentRoute {
             let addr = router.lookup(None, target_node.clone()).await.unwrap();
             let mut tx = router.resolve_sender(addr).await.unwrap().sender;
             assert!(tx
-                .send_item(Envelope::make_event(
+                .transform_and_send(Envelope::make_event(
                     target_node.to_string(),
                     LANE_NAME.to_string(),
                     Some(MESSAGE.into())
