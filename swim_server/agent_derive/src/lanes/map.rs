@@ -12,13 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::internals::{
-    default_on_event, default_on_start, default_watch_strategy, parse_strategy,
-};
+use crate::internals::{default_on_event, default_on_start};
 use crate::lanes::derive_lane;
-use crate::utils::{
-    get_task_struct_name, has_fields, validate_input_ast, InputAstType, WatchStrategy,
-};
+use crate::utils::{get_task_struct_name, has_fields, validate_input_ast, InputAstType};
 use darling::FromMeta;
 use macro_helpers::string_to_ident;
 use proc_macro::TokenStream;
@@ -37,8 +33,6 @@ struct MapAttrs {
     on_start: Ident,
     #[darling(default = "default_on_event", map = "string_to_ident")]
     on_event: Ident,
-    #[darling(default = "default_watch_strategy", map = "parse_strategy")]
-    watch_strat: WatchStrategy,
 }
 
 pub fn derive_map_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput) -> TokenStream {
@@ -61,8 +55,6 @@ pub fn derive_map_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput) ->
     let value_type = &args.value_type;
     let on_start_func = &args.on_start;
     let on_event_func = &args.on_event;
-    let watch_strat = args.watch_strat.convert_to_tokens(&lifecycle_name);
-
     let on_start = quote! {
         let #task_name { lifecycle, projection, .. } = self;
         let model = projection(context.agent());
@@ -102,11 +94,8 @@ pub fn derive_map_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput) ->
         quote! {
             use swim_server::agent::lane::model::map::MapLane;
             use swim_server::agent::lane::model::map::MapLaneEvent;
-            use swim_server::agent::lane::strategy::*;
-            use std::num::NonZeroUsize;
-            use swim_server::agent::lane::lifecycle::{LaneLifecycle, StatefulLaneLifecycleBase};
+            use swim_server::agent::lane::lifecycle::LaneLifecycle;
         },
         None,
-        Some(watch_strat),
     )
 }

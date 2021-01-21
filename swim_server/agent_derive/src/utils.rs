@@ -13,10 +13,9 @@
 // limitations under the License.
 
 use core::fmt;
-use darling::FromMeta;
 use proc_macro2::{Ident, Span};
+use quote::quote_spanned;
 use quote::ToTokens;
-use quote::{quote, quote_spanned};
 use std::fmt::{Display, Formatter};
 use syn::{Data, DeriveInput, Fields};
 
@@ -25,36 +24,6 @@ const LIFECYCLE: &str = "Lifecycle";
 
 pub fn get_task_struct_name(name: &str) -> Ident {
     Ident::new(&format!("{}Task", name), Span::call_site())
-}
-
-#[derive(Debug, FromMeta)]
-pub struct WatchStrategy {
-    pub ty: Ident,
-    pub param: Option<usize>,
-}
-
-impl WatchStrategy {
-    pub fn convert_to_tokens(&self, lifecycle_name: &Ident) -> proc_macro2::TokenStream {
-        let watch_strat_type = &self.ty;
-        let watch_strat_param = &self.param;
-
-        let create = if watch_strat_param.is_none() {
-            quote! {swim_server::agent::lane::strategy::#watch_strat_type::default()}
-        } else {
-            quote! {swim_server::agent::lane::strategy::#watch_strat_type(std::num::NonZeroUsize::new(#watch_strat_param).unwrap())}
-        };
-
-        quote! {
-            #[automatically_derived]
-            impl swim_server::agent::lane::lifecycle::StatefulLaneLifecycleBase for #lifecycle_name {
-                type WatchStrategy = swim_server::agent::lane::strategy::#watch_strat_type;
-
-                fn create_strategy(&self) -> Self::WatchStrategy {
-                    #create
-                }
-            }
-        }
-    }
 }
 
 #[derive(Debug)]

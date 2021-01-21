@@ -98,6 +98,5 @@ pub fn derive_command_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput
             use swim_server::agent::lane::lifecycle::LaneLifecycle;
         },
         None,
-        None,
     )
 }

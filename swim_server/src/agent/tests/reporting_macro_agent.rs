@@ -13,12 +13,13 @@
 // limitations under the License.
 
 use crate::agent::lane::channels::AgentExecutionConfig;
-use crate::agent::lane::lifecycle::LaneLifecycle;
+use crate::agent::lane::lifecycle::{LaneLifecycle, StatefulLaneLifecycleBase};
 use crate::agent::lane::model::action::CommandLane;
 use crate::agent::lane::model::demand::DemandLane;
 use crate::agent::lane::model::demand_map::DemandMapLane;
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::ValueLane;
+use crate::agent::lane::strategy::Queue;
 use crate::agent::lane::tests::ExactlyOnce;
 use crate::agent::lifecycle::AgentLifecycle;
 use crate::agent::tests::stub_router::SingleChannelRouter;
@@ -239,6 +240,14 @@ impl LaneLifecycle<TestAgentConfig> for DataLifecycle {
     }
 }
 
+impl StatefulLaneLifecycleBase for DataLifecycle {
+    type WatchStrategy = Queue;
+
+    fn create_strategy(&self) -> Self::WatchStrategy {
+        Queue::default()
+    }
+}
+
 #[value_lifecycle(agent = "ReportingAgent", event_type = "i32")]
 struct TotalLifecycle {
     event_handler: EventCollectorHandler,
@@ -266,6 +275,14 @@ impl LaneLifecycle<TestAgentConfig> for TotalLifecycle {
     fn create(config: &TestAgentConfig) -> Self {
         let event_handler = EventCollectorHandler(config.collector.clone());
         TotalLifecycle { event_handler }
+    }
+}
+
+impl StatefulLaneLifecycleBase for TotalLifecycle {
+    type WatchStrategy = Queue;
+
+    fn create_strategy(&self) -> Self::WatchStrategy {
+        Queue::default()
     }
 }
 
