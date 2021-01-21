@@ -293,7 +293,7 @@ impl SwimServer {
             },
         )
         .await
-        .unwrap_or_else(|_| panic!("The address \"{}\" is already in use.", address))
+        .unwrap_or_else(|err| panic!("Could not connect to \"{}\": {}", address, err))
         .run();
 
         join!(connections_future, plane_future).0
