@@ -474,10 +474,6 @@ where
                         if validated_field.form_field.is_body()
                             && validated_field.field_schema.is_assigned()
                         {
-                            println!(
-                                "{:?}",
-                                validated_field.field_schema.to_token_stream().to_string()
-                            );
                             context.error_spanned_by(
                                 validated_field.form_field.original,
                                 "Fields marked as #[form(body)] cannot contain a schema",
