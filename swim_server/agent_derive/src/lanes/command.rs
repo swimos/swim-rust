@@ -13,7 +13,8 @@
 // limitations under the License.
 
 use crate::utils::{
-    get_task_struct_name, validate_input_ast, CallbackKind, InputAstType, LaneTasksImpl,
+    get_task_struct_name, parse_callback, validate_input_ast, CallbackKind, InputAstType,
+    LaneTasksImpl,
 };
 use darling::FromMeta;
 use macro_helpers::string_to_ident;
@@ -21,7 +22,6 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::{AttributeArgs, DeriveInput};
 
-use crate::internals::parse_callback;
 use crate::lanes::derive_lane;
 use proc_macro2::Ident;
 

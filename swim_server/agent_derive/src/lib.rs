@@ -76,15 +76,14 @@ use crate::lanes::command::derive_command_lifecycle;
 use crate::lanes::map::derive_map_lifecycle;
 use crate::lanes::value::derive_value_lifecycle;
 
-use crate::internals::derive;
 use crate::lanes::demand::derive_demand_lifecycle;
 use crate::lanes::demand_map::derive_demand_map_lifecycle;
+use crate::utils::derive;
 use macro_helpers::as_const;
 use proc_macro::TokenStream;
 use syn::{parse_macro_input, DeriveInput};
 
 mod agent;
-mod internals;
 mod lanes;
 mod utils;
 

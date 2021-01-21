@@ -13,17 +13,89 @@
 // limitations under the License.
 
 use core::fmt;
+use macro_helpers::str_to_ident;
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::ToTokens;
 use quote::{quote, quote_spanned};
 use std::fmt::{Display, Formatter};
-use syn::{Data, DeriveInput};
+use syn::{parse_macro_input, AttributeArgs, Data, DeriveInput};
 
 const SWIM_AGENT: &str = "Swim agent";
 const LIFECYCLE: &str = "Lifecycle";
+const DEFAULT_ON_START: &str = "on_start";
+const DEFAULT_ON_COMMAND: &str = "on_command";
+const DEFAULT_ON_EVENT: &str = "on_event";
+const DEFAULT_ON_CUE: &str = "on_cue";
+const DEFAULT_ON_SYNC: &str = "on_sync";
+
+pub fn default_on_command() -> Ident {
+    str_to_ident(DEFAULT_ON_COMMAND)
+}
+
+pub fn default_on_cue() -> Ident {
+    str_to_ident(DEFAULT_ON_CUE)
+}
+
+pub fn default_on_sync() -> Ident {
+    str_to_ident(DEFAULT_ON_SYNC)
+}
+
+pub fn default_on_start() -> Ident {
+    str_to_ident(DEFAULT_ON_START)
+}
+
+pub fn default_on_event() -> Ident {
+    str_to_ident(DEFAULT_ON_EVENT)
+}
 
 pub fn get_task_struct_name(name: &str) -> Ident {
     Ident::new(&format!("{}Task", name), Span::call_site())
+}
+
+pub fn parse_callback(
+    callback: &Option<darling::Result<String>>,
+    task_name: Ident,
+    kind: CallbackKind,
+) -> Option<Callback> {
+    if let Some(name) = callback {
+        if let Ok(name) = name {
+            Some(Callback {
+                task_name,
+                func_name: str_to_ident(&name),
+                kind,
+            })
+        } else {
+            match kind {
+                CallbackKind::Start => Some(Callback {
+                    task_name,
+                    func_name: default_on_start(),
+                    kind,
+                }),
+                CallbackKind::Command => Some(Callback {
+                    task_name,
+                    func_name: default_on_command(),
+                    kind,
+                }),
+                CallbackKind::Event => Some(Callback {
+                    task_name,
+                    func_name: default_on_event(),
+                    kind,
+                }),
+                CallbackKind::Cue => Some(Callback {
+                    task_name,
+                    func_name: default_on_cue(),
+                    kind,
+                }),
+                CallbackKind::Sync => Some(Callback {
+                    task_name,
+                    func_name: default_on_sync(),
+                    kind,
+                }),
+            }
+        }
+    } else {
+        None
+    }
 }
 
 #[derive(Debug)]
@@ -516,4 +588,18 @@ pub fn validate_input_ast(input_ast: &DeriveInput, ty: InputAstType) -> Result<(
             }
         }
     }
+}
+
+pub fn derive<F>(
+    args: proc_macro::TokenStream,
+    input: proc_macro::TokenStream,
+    f: F,
+) -> proc_macro::TokenStream
+where
+    F: Fn(AttributeArgs, DeriveInput) -> proc_macro::TokenStream,
+{
+    let input = parse_macro_input!(input as DeriveInput);
+    let args = parse_macro_input!(args as AttributeArgs);
+
+    f(args, input)
 }

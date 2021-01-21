@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::internals::default_on_start;
+use crate::utils::default_on_start;
 use crate::utils::{get_task_struct_name, validate_input_ast, InputAstType};
 use darling::{ast, FromDeriveInput, FromField, FromMeta};
 use macro_helpers::{as_const, string_to_ident};

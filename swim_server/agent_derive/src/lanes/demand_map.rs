@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::internals::parse_callback;
 use crate::lanes::derive_lane;
+use crate::utils::parse_callback;
 use crate::utils::{
     get_task_struct_name, validate_input_ast, CallbackKind, InputAstType, LaneTasksImpl,
 };
