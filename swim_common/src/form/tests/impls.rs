@@ -21,6 +21,7 @@ use num_bigint::{BigInt, BigUint};
 use crate::form::Form;
 use crate::model::blob::Blob;
 use crate::model::{Attr, Item, Value};
+use std::sync::Arc;
 
 mod swim_common {
     pub use crate::*;
@@ -477,4 +478,50 @@ mod field_collections {
         ll.push_back(5);
         ll
     });
+}
+
+#[test]
+fn test_map_modification() {
+    #[derive(Clone, PartialEq, Form, Debug)]
+    enum FormMapUpdate<K, V> {
+        Update(#[form(header, name = "key")] K, #[form(body)] Arc<V>),
+    }
+
+    let body = Arc::new(Value::Record(
+        vec![Attr::of(("complex", 0))],
+        vec![Item::slot("a", true)],
+    ));
+    let attr = Attr::of(("Update", Value::record(vec![Item::slot("key", "hello")])));
+    let expected = Value::Record(
+        vec![attr, Attr::of(("complex", 0))],
+        vec![Item::slot("a", true)],
+    );
+    assert_eq!(
+        Form::into_value(FormMapUpdate::Update(Value::text("hello"), body.clone())),
+        expected
+    );
+    assert_eq!(
+        Form::as_value(&FormMapUpdate::Update(Value::text("hello"), body.clone())),
+        expected
+    );
+
+    let body = Arc::new(Value::Record(
+        vec![Attr::of(("complex", 0))],
+        vec![Item::slot("a", true)],
+    ));
+    let attr = Attr::of(("Update", Value::record(vec![Item::slot("key", "hello")])));
+    let rep = Value::Record(
+        vec![attr, Attr::of(("complex", 0))],
+        vec![Item::slot("a", true)],
+    );
+    let result1 = FormMapUpdate::try_from_value(&rep);
+    assert_eq!(
+        result1,
+        Ok(FormMapUpdate::Update(Value::text("hello"), body.clone()))
+    );
+    let result2 = FormMapUpdate::try_convert(rep);
+    assert_eq!(
+        result2,
+        Ok(FormMapUpdate::Update(Value::text("hello"), body.clone()))
+    );
 }
