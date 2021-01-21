@@ -289,7 +289,7 @@ pub fn swim_agent(input: TokenStream) -> TokenStream {
 /// use swim_server::agent::AgentContext;
 /// # use swim_server::SwimAgent;
 ///
-/// #[agent_lifecycle(agent = "TestAgent")]
+/// #[agent_lifecycle(agent = "TestAgent", on_start)]
 /// struct TestAgentLifecycle;
 ///
 /// impl TestAgentLifecycle {

@@ -101,7 +101,7 @@ impl SwimServerBuilder {
     /// #[derive(Debug, Clone)]
     /// pub struct RustAgentConfig;
     ///
-    /// #[agent_lifecycle(agent = "RustAgent")]
+    /// #[agent_lifecycle(agent = "RustAgent", on_start)]
     /// struct RustAgentLifecycle;
     ///
     /// impl RustAgentLifecycle {
@@ -157,7 +157,7 @@ impl SwimServerBuilder {
     /// #[derive(Debug, Clone)]
     /// pub struct RustAgentConfig;
     ///
-    /// #[agent_lifecycle(agent = "RustAgent")]
+    /// #[agent_lifecycle(agent = "RustAgent", on_start)]
     /// struct RustAgentLifecycle;
     ///
     /// impl RustAgentLifecycle {

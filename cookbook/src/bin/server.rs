@@ -39,7 +39,7 @@ pub struct RustAgent {
     pub counter: ValueLane<i32>,
 }
 
-#[agent_lifecycle(agent = "RustAgent")]
+#[agent_lifecycle(agent = "RustAgent", on_start)]
 struct RustAgentLifecycle;
 
 impl RustAgentLifecycle {
@@ -51,7 +51,7 @@ impl RustAgentLifecycle {
     }
 }
 
-#[command_lifecycle(agent = "RustAgent", command_type = "String")]
+#[command_lifecycle(agent = "RustAgent", command_type = "String", on_command)]
 struct EchoLifecycle;
 
 impl EchoLifecycle {
@@ -73,7 +73,7 @@ impl LaneLifecycle<()> for EchoLifecycle {
     }
 }
 
-#[value_lifecycle(agent = "RustAgent", event_type = "i32")]
+#[value_lifecycle(agent = "RustAgent", event_type = "i32", on_start, on_event)]
 struct CounterLifecycle;
 
 impl CounterLifecycle {

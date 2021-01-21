@@ -23,7 +23,7 @@ mod swim_server {
 fn main() {
     struct TestAgent;
 
-    #[agent_lifecycle(agent = "TestAgent")]
+    #[agent_lifecycle(agent = "TestAgent", on_start)]
     struct TestAgentLifecycle;
 
     impl TestAgentLifecycle {

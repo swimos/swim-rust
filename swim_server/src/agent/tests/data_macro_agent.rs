@@ -126,7 +126,7 @@ impl EventCollectorHandler {
 
 // ------------------------------ Agent Lifecycle -------------------------------
 
-#[agent_lifecycle(agent = "DataAgent")]
+#[agent_lifecycle(agent = "DataAgent", on_start)]
 struct DataAgentLifecycle {
     event_handler: EventCollectorHandler,
 }
