@@ -1596,13 +1596,13 @@ fn form_enum_attrs() {
     enum E {
         #[form(tag = "Enumeration")]
         A {
-            #[form(rename = "integer")]
+            #[form(name = "integer")]
             a: i32,
             #[form(body, schema(equal = "i64_eq"))]
             b: i64,
             #[form(skip)]
             c: i32,
-            #[form(schema(int_range = "0..=11"), rename = "ranged_integer")]
+            #[form(schema(int_range = "0..=11"), name = "ranged_integer")]
             d: i32,
         },
     }

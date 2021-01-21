@@ -35,8 +35,8 @@ fn main() {
     #[derive(Debug, SwimAgent)]
     #[agent(config = "TestAgentConfig")]
     pub struct TestAgent {
-        #[lifecycle(public, name = "CommandLifecycle")]
-        command: CommandLane<String>,
+        #[lifecycle(name = "CommandLifecycle")]
+        pub command: CommandLane<String>,
         #[lifecycle(name = "ActionLifecycle")]
         action: ActionLane<String, i32>,
         #[lifecycle(name = "ValueLifecycle")]

@@ -55,8 +55,8 @@ mod swim_server {
 #[derive(Debug, SwimAgent)]
 #[agent(config = "TestAgentConfig")]
 pub struct ReportingAgent {
-    #[lifecycle(public, name = "DataLifecycle")]
-    data: MapLane<String, i32>,
+    #[lifecycle(name = "DataLifecycle")]
+    pub data: MapLane<String, i32>,
     #[lifecycle(name = "TotalLifecycle")]
     total: ValueLane<i32>,
     #[lifecycle(name = "ActionLifecycle")]

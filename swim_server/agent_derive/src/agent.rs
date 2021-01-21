@@ -20,7 +20,7 @@ use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use proc_macro2::{Delimiter, Group, Ident, Literal, Span};
 use quote::{quote, ToTokens};
-use syn::{AttributeArgs, DeriveInput, Path, Type, TypePath};
+use syn::{AttributeArgs, DeriveInput, Path, Type, TypePath, Visibility};
 
 type AgentName = Ident;
 
@@ -44,8 +44,7 @@ pub struct AgentAttrs {
 pub struct LifecycleAttrs {
     pub ident: Option<syn::Ident>,
     pub ty: syn::Type,
-    #[darling(default)]
-    pub public: bool,
+    pub vis: syn::Visibility,
     pub name: Option<String>,
 }
 
@@ -322,10 +321,11 @@ pub fn get_agent_data(args: SwimAgentAttrs) -> (AgentName, ConfigType, Vec<Agent
             (field.get_lane_type(), field.ident, field.name)
         {
             let lifecycle_name = Ident::new(&lifecycle_name, Span::call_site());
+            let is_public = matches!(field.vis, Visibility::Public(_));
 
             let (lifecycle_ast, task_name) = create_lane(
                 &lane_type,
-                field.public,
+                is_public,
                 &agent_name,
                 &lifecycle_name,
                 &lane_name,
