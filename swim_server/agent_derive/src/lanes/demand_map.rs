@@ -57,7 +57,7 @@ pub fn derive_demand_map_lifecycle(
     let agent_name = args.agent.clone();
     let key_type = &args.key_type;
     let value_type = &args.value_type;
-    let on_sync_callback = parse_callback(&args.on_cue, task_name.clone(), CallbackKind::Sync);
+    let on_sync_callback = parse_callback(&args.on_sync, task_name.clone(), CallbackKind::Sync);
     let on_cue_callback = parse_callback(&args.on_cue, task_name.clone(), CallbackKind::Cue);
     let lane_tasks_impl = LaneTasksImpl::DemandMap {
         on_sync: on_sync_callback,
