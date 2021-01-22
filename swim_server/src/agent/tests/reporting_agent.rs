@@ -76,7 +76,7 @@ impl EventCollector {
 }
 
 #[derive(Clone, Debug)]
-struct ReportingLifecycleInner(Arc<Mutex<EventCollector>>);
+pub(crate) struct ReportingLifecycleInner(Arc<Mutex<EventCollector>>);
 
 impl ReportingLifecycleInner {
     /// Push an event into the channel.

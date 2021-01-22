@@ -31,7 +31,7 @@ pub fn derive_command_lifecycle(
 ) -> Result<TokenStream2, Vec<syn::Error>> {
     let mut context = Context::default();
 
-    if let Err(_) = validate_input_ast(&input_ast, InputAstType::Lifecycle, &mut context) {
+    if validate_input_ast(&input_ast, InputAstType::Lifecycle, &mut context).is_err() {
         return Err(context.check().unwrap_err());
     }
 

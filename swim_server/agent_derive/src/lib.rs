@@ -278,7 +278,7 @@ pub fn swim_agent(input: TokenStream) -> TokenStream {
         Err(ts) => return to_compile_errors(ts).into(),
     };
 
-    as_const("SwimAgent", ident, derived.into()).into()
+    as_const("SwimAgent", ident, derived).into()
 }
 
 /// An attribute for creating agent lifecycles for swim agents.

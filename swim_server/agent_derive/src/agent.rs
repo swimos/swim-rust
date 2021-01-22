@@ -19,7 +19,7 @@ use proc_macro2::TokenStream as TokenStream2;
 use proc_macro2::{Delimiter, Group, Ident, Literal, Span};
 use quote::{quote, ToTokens};
 use syn::spanned::Spanned;
-use syn::{AttributeArgs, Data, DataStruct, DeriveInput, Meta, NestedMeta, Path, Type, TypePath};
+use syn::{AttributeArgs, Data, DataStruct, DeriveInput, Meta, NestedMeta, Type};
 
 type AgentName = Ident;
 
@@ -48,25 +48,29 @@ pub struct LifecycleAttrs {
 
 impl LifecycleAttrs {
     pub fn get_lane_type(&self) -> Option<LaneType> {
-        if let Type::Path(TypePath {
-            path: Path { segments, .. },
-            ..
-        }) = &self.ty
-        {
-            if let Some(path_segment) = segments.last() {
-                return match path_segment.ident.to_string().as_str() {
-                    COMMAND_LANE => Some(LaneType::Command),
-                    ACTION_LANE => Some(LaneType::Action),
-                    VALUE_LANE => Some(LaneType::Value),
-                    MAP_LANE => Some(LaneType::Map),
-                    DEMAND_LANE => Some(LaneType::Demand),
-                    DEMAND_MAP_LANE => Some(LaneType::DemandMap),
-                    _ => None,
-                };
-            }
+        let mut ty = &self.ty;
+        while let Type::Group(group) = ty {
+            ty = &group.elem;
         }
 
-        None
+        match ty {
+            Type::Path(type_path) => {
+                if let Some(path_segment) = type_path.path.segments.last() {
+                    return match path_segment.ident.to_string().as_str() {
+                        COMMAND_LANE => Some(LaneType::Command),
+                        ACTION_LANE => Some(LaneType::Action),
+                        VALUE_LANE => Some(LaneType::Value),
+                        MAP_LANE => Some(LaneType::Map),
+                        DEMAND_LANE => Some(LaneType::Demand),
+                        DEMAND_MAP_LANE => Some(LaneType::DemandMap),
+                        _ => None,
+                    };
+                }
+                None
+            }
+
+            _ => None,
+        }
     }
 }
 
@@ -89,7 +93,7 @@ pub struct SwimAgentAttrs {
 pub fn derive_swim_agent(input: DeriveInput) -> Result<TokenStream2, Vec<syn::Error>> {
     let mut context = Context::default();
 
-    if let Err(_) = validate_input_ast(&input, InputAstType::Agent, &mut context) {
+    if validate_input_ast(&input, InputAstType::Agent, &mut context).is_err() {
         return Err(context.check().unwrap_err());
     }
 
@@ -186,6 +190,7 @@ pub fn derive_swim_agent(input: DeriveInput) -> Result<TokenStream2, Vec<syn::Er
         use swim_server::agent::{LaneTasks, SwimAgent, AgentContext, LaneIo};
         use swim_server::agent::lane::channels::AgentExecutionConfig;
         use swim_server::agent::context::AgentExecutionContext;
+        use swim_server::agent::lane::lifecycle::{LaneLifecycle, StatefulLaneLifecycleBase};
 
         #[automatically_derived]
         impl SwimAgent<#config_type> for #agent_name {
@@ -217,7 +222,7 @@ pub fn derive_swim_agent(input: DeriveInput) -> Result<TokenStream2, Vec<syn::Er
         }
     };
 
-    Ok(derived.into())
+    Ok(derived)
 }
 
 pub fn derive_agent_lifecycle(
@@ -226,7 +231,7 @@ pub fn derive_agent_lifecycle(
 ) -> Result<TokenStream2, Vec<syn::Error>> {
     let mut context = Context::default();
 
-    if let Err(_) = validate_input_ast(&input, InputAstType::Lifecycle, &mut context) {
+    if validate_input_ast(&input, InputAstType::Lifecycle, &mut context).is_err() {
         return Err(context.check().unwrap_err());
     }
 
@@ -282,7 +287,7 @@ pub fn derive_agent_lifecycle(
         #wrapped
     };
 
-    Ok(derived.into())
+    Ok(derived)
 }
 
 #[derive(Debug)]

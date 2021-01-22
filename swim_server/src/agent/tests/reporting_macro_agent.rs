@@ -22,6 +22,7 @@ use crate::agent::lane::model::value::ValueLane;
 use crate::agent::lane::strategy::Queue;
 use crate::agent::lane::tests::ExactlyOnce;
 use crate::agent::lifecycle::AgentLifecycle;
+use crate::agent::tests::reporting_agent::ReportingAgentEvent;
 use crate::agent::tests::stub_router::SingleChannelRouter;
 use crate::agent::tests::test_clock::TestClock;
 use crate::agent::AgentContext;
@@ -67,18 +68,6 @@ pub struct ReportingAgent {
     demand_map: DemandMapLane<String, i32>,
 }
 
-/// Type of the events that will be reported by the agent.
-#[derive(Debug, PartialEq, Eq)]
-pub enum ReportingAgentEvent {
-    AgentStart,
-    Command(String),
-    TransactionFailed,
-    DataEvent(MapLaneEvent<String, i32>),
-    TotalEvent(i32),
-    DemandLaneEvent(i32),
-    DemandMapLaneEvent(String, i32),
-}
-
 /// Collects the events from the agent life-cycles.
 #[derive(Debug)]
 pub struct EventCollector {
@@ -92,11 +81,11 @@ impl EventCollector {
 }
 
 #[derive(Clone, Debug)]
-struct EventCollectorHandler(Arc<Mutex<EventCollector>>);
+pub struct EventCollectorHandler(pub Arc<Mutex<EventCollector>>);
 
 impl EventCollectorHandler {
     /// Push an event into the channel.
-    async fn push(&self, event: ReportingAgentEvent) {
+    pub async fn push(&self, event: ReportingAgentEvent) {
         self.0
             .lock()
             .await
