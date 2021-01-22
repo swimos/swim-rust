@@ -135,7 +135,7 @@ async fn dispatch_meta() {
             .send(TaggedEnvelope::meta(TaggedMetaEnvelope(
                 addr,
                 link.clone(),
-                MetaKind::Node
+                MetaKind::Node("foo".into())
             )))
             .await
             .is_ok());

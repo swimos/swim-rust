@@ -31,6 +31,10 @@ use std::hash::Hash;
 use std::num::NonZeroUsize;
 use swim_common::form::Form;
 use tokio::sync::mpsc;
+use tracing::{event, Level};
+
+const CUE_ERR: &str = "Failed to cue message";
+const SYNC_ERR: &str = "Failed to sync";
 
 pub(crate) struct MetaDemandMapLifecycleTasks<S, K, V> {
     name: String,
@@ -128,11 +132,15 @@ where
                             },
                         );
 
-                        let _ = sender.send(results);
+                        if sender.send(results).is_err() {
+                            event!(Level::ERROR, SYNC_ERR)
+                        }
                     }
                     DemandMapLaneEvent::Cue(sender, key) => {
                         let value = map.get(&key).map(Clone::clone);
-                        let _ = sender.send(value);
+                        if sender.send(value).is_err() {
+                            event!(Level::ERROR, CUE_ERR)
+                        }
                     }
                 }
             }

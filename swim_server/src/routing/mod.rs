@@ -32,6 +32,7 @@ use utilities::sync::promise;
 use utilities::uri::RelativeUri;
 
 use crate::agent::meta::{MetaKind, MetaPath};
+use crate::plane::PlaneRequest;
 use crate::routing::error::RouterError;
 use swim_common::warp::path::RelativePath;
 

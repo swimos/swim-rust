@@ -16,6 +16,8 @@
 mod tests;
 
 mod info;
+mod parse;
+
 pub(crate) mod lane;
 pub(crate) mod log;
 
@@ -31,6 +33,7 @@ use crate::agent::{AgentContext, DynamicLaneTasks, SwimAgent};
 use crate::routing::LaneIdentifier;
 use std::collections::HashMap;
 use std::fmt::Debug;
+use swim_common::model::text::Text;
 use swim_common::warp::path::RelativePath;
 use utilities::uri::RelativeUri;
 
@@ -67,13 +70,14 @@ impl MetaContext {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum MetaKind {
     Edge,
     Mesh,
     Part,
     Host,
-    Node,
+    Node(Text),
+    Lane { node_uri: Text, lane_uri: Text },
     Uplink,
 }
 
@@ -96,7 +100,7 @@ impl MetaPath for RelativePath {
                     META_MESH => Ok(MetaKind::Mesh),
                     META_PART => Ok(MetaKind::Part),
                     META_HOST => Ok(MetaKind::Host),
-                    META_NODE => Ok(MetaKind::Node),
+                    META_NODE => Ok(MetaKind::Node("".into())),
                     _ => Err(RelativePath::new(node, lane.as_ref())),
                 };
 
@@ -107,6 +111,7 @@ impl MetaPath for RelativePath {
                             return Err(RelativePath::new(node, lane.as_ref()));
                         }
 
+                        // todo return decoded uri as third arg
                         Ok((kind, RelativePath::new(node_uri, lane.as_ref())))
                     }
                     Err(e) => Err(e),

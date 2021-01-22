@@ -31,7 +31,7 @@ fn test_meta_paths() {
     assert(MetaKind::Mesh, META_MESH);
     assert(MetaKind::Part, META_PART);
     assert(MetaKind::Host, META_HOST);
-    assert(MetaKind::Node, META_NODE);
+    assert(MetaKind::Node("foo".into()), META_NODE);
 
     let path = RelativePath::new(META_EDGE, "unit");
     assert_eq!(Err(path.clone()), path.into_kind_and_path());

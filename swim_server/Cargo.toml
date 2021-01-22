@@ -39,6 +39,7 @@ tokio-native-tls = "0.2"
 trust-dns-resolver = { version = "0.19", optional = true }
 tokio-compat-02 = { version = "0.1.2", optional = true }
 auth = { path = "auth" }
+percent-encoding = "2.1.0"
 
 [dev-dependencies]
 tokio = { version = "0.3.3", features = ["rt-multi-thread", "macros", "test-util"] }
