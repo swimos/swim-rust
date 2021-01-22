@@ -100,7 +100,7 @@ pub fn derive_value_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput) 
         on_event,
         quote! {
             use swim_server::agent::lane::model::value::{ValueLane, ValueLaneEvent};
-            use utilities::future::SwimStreamExt;
+            use swim_server::SwimStreamExt;
         },
         None,
     )

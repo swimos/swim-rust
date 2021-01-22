@@ -16,12 +16,11 @@ use async_std::task;
 use futures::join;
 use std::fmt::Debug;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-use std::sync::Arc;
 use std::time::Duration;
 use swim_server::agent::command_lifecycle;
 use swim_server::agent::lane::lifecycle::{LaneLifecycle, StatefulLaneLifecycleBase};
 use swim_server::agent::lane::model::action::CommandLane;
-use swim_server::agent::lane::model::value::ValueLane;
+use swim_server::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 use swim_server::agent::lane::strategy::Queue;
 use swim_server::agent::value_lifecycle;
 use swim_server::agent::AgentContext;
@@ -84,11 +83,15 @@ impl CounterLifecycle {
         println!("Counter lane has started!");
     }
 
-    async fn on_event<Context>(&self, event: &Arc<i32>, _model: &ValueLane<i32>, _context: &Context)
-    where
+    async fn on_event<Context>(
+        &self,
+        event: &ValueLaneEvent<i32>,
+        _model: &ValueLane<i32>,
+        _context: &Context,
+    ) where
         Context: AgentContext<RustAgent> + Sized + Send + Sync + 'static,
     {
-        println!("Event received: {}", event);
+        println!("Event received: {}", event.current);
     }
 }
 
