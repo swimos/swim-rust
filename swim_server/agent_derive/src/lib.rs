@@ -115,8 +115,7 @@ mod utils;
 /// use swim_server::SwimAgent;
 /// use swim_server::agent::lane::model::action::{ActionLane, CommandLane};
 /// use swim_server::agent::lane::model::map::MapLane;
-/// use swim_server::agent::lane::model::value::ValueLane;
-/// # use std::sync::Arc;
+/// use swim_server::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 /// # use swim_server::agent::lane::lifecycle::{LaneLifecycle, StatefulLaneLifecycleBase};
 /// # use swim_server::agent::lane::model::map::MapLaneEvent;
 /// # use swim_server::agent::lane::strategy::Queue;
@@ -202,13 +201,13 @@ mod utils;
 /// #
 /// #     async fn on_event<Context>(
 /// #         &self,
-/// #         event: &Arc<i32>,
+/// #         event: &ValueLaneEvent<i32>,
 /// #         _model: &ValueLane<i32>,
 /// #         _context: &Context,
 /// #     ) where
 /// #         Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
 /// #     {
-/// #         println!("Event received: {}", event);
+/// #         println!("Event received: {}", event.current);
 /// #     }
 /// # }
 /// #
@@ -548,8 +547,7 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// use swim_server::value_lifecycle;
 /// use swim_server::agent::lane::lifecycle::{StatefulLaneLifecycleBase, LaneLifecycle};
 /// use swim_server::agent::lane::strategy::Queue;
-/// use swim_server::agent::lane::model::value::ValueLane;
-/// use std::sync::Arc;
+/// use swim_server::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 /// use swim_server::agent::AgentContext;
 /// # use swim_server::SwimAgent;
 ///
@@ -566,13 +564,13 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 ///     async fn on_event<Context>(
 ///         &self,
-///         event: &Arc<i32>,
+///         event: &ValueLaneEvent<i32>,
 ///         _model: &ValueLane<i32>,
 ///         _context: &Context,
 ///     ) where
 ///         Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
 ///     {
-///         println!("Event received: {}", event);
+///         println!("Event received: {}", event.current);
 ///     }
 /// }
 ///
@@ -603,8 +601,7 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// use swim_server::value_lifecycle;
 /// use swim_server::agent::lane::lifecycle::{StatefulLaneLifecycleBase, LaneLifecycle};
 /// use swim_server::agent::lane::strategy::Queue;
-/// use swim_server::agent::lane::model::value::ValueLane;
-/// use std::sync::Arc;
+/// use swim_server::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 /// use swim_server::agent::AgentContext;
 /// # use swim_server::SwimAgent;
 ///
@@ -626,13 +623,13 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 ///     async fn custom_on_event<Context>(
 ///         &self,
-///         event: &Arc<i32>,
+///         event: &ValueLaneEvent<i32>,
 ///         _model: &ValueLane<i32>,
 ///         _context: &Context,
 ///     ) where
 ///         Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
 ///     {
-///         println!("Event received: {}", event);
+///         println!("Event received: {}", event.current);
 ///     }
 /// }
 ///

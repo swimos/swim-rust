@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::sync::Arc;
+use crate::agent::lane::model::value::ValueLaneEvent;
 use swim_server::agent::lane::lifecycle::{LaneLifecycle, StatefulLaneLifecycleBase};
 use swim_server::agent::lane::model::action::{ActionLane, CommandLane};
 use swim_server::agent::lane::model::map::{MapLane, MapLaneEvent};
@@ -217,7 +217,7 @@ fn main() {
 
         async fn on_event<Context>(
             &self,
-            _event: &Arc<i32>,
+            _event: &ValueLaneEvent<i32>,
             _model: &ValueLane<i32>,
             _context: &Context,
         ) where
@@ -256,7 +256,7 @@ fn main() {
 
         async fn on_event<Context>(
             &self,
-            _event: &Arc<String>,
+            _event: &ValueLaneEvent<String>,
             _model: &ValueLane<String>,
             _context: &Context,
         ) where
