@@ -16,7 +16,7 @@ mod addresses;
 pub mod config;
 pub mod net;
 mod pending;
-mod router;
+pub(crate) mod router;
 mod state;
 mod table;
 mod task;
@@ -81,6 +81,12 @@ pub enum RoutingRequest {
     },
 }
 
+pub struct RemoteConnectionChannels {
+    pub(crate) request_tx: mpsc::Sender<RoutingRequest>,
+    pub(crate) request_rx: mpsc::Receiver<RoutingRequest>,
+    pub(crate) stop_trigger: trigger::Receiver,
+}
+
 #[derive(Debug)]
 pub struct RemoteConnectionsTask<External: ExternalConnections, Ws, Router, Sp> {
     external: External,
@@ -90,6 +96,8 @@ pub struct RemoteConnectionsTask<External: ExternalConnections, Ws, Router, Sp> 
     stop_trigger: trigger::Receiver,
     spawner: Sp,
     configuration: ConnectionConfig,
+    remote_tx: mpsc::Sender<RoutingRequest>,
+    remote_rx: mpsc::Receiver<RoutingRequest>,
 }
 
 type SocketAddrIt = std::vec::IntoIter<SocketAddr>;
@@ -122,9 +130,15 @@ where
         bind_addr: SocketAddr,
         websockets: Ws,
         delegate_router: RouterFac,
-        stop_trigger: trigger::Receiver,
         spawner: Sp,
+        channels: RemoteConnectionChannels,
     ) -> io::Result<Self> {
+        let RemoteConnectionChannels {
+            request_tx: remote_tx,
+            request_rx: remote_rx,
+            stop_trigger,
+        } = channels;
+
         let listener = external.bind(bind_addr).await?;
         Ok(RemoteConnectionsTask {
             external,
@@ -134,6 +148,8 @@ where
             stop_trigger,
             spawner,
             configuration,
+            remote_tx,
+            remote_rx,
         })
     }
 
@@ -146,6 +162,8 @@ where
             stop_trigger,
             spawner,
             configuration,
+            remote_tx,
+            remote_rx,
         } = self;
 
         let mut state = RemoteConnections::new(
@@ -154,8 +172,12 @@ where
             spawner,
             external,
             listener,
-            stop_trigger,
             delegate_router,
+            RemoteConnectionChannels {
+                request_tx: remote_tx,
+                request_rx: remote_rx,
+                stop_trigger,
+            },
         );
 
         let mut overall_result = Ok(());
