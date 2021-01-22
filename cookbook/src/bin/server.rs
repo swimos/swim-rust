@@ -19,7 +19,7 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 use std::time::Duration;
 use swim_server::agent::command_lifecycle;
-use swim_server::agent::lane::lifecycle::{LaneLifecycle, StatefulLaneLifecycleBase};
+use swim_server::agent::lane::lifecycle::StatefulLaneLifecycleBase;
 use swim_server::agent::lane::model::action::CommandLane;
 use swim_server::agent::lane::model::value::ValueLane;
 use swim_server::agent::lane::strategy::Queue;
@@ -67,12 +67,6 @@ impl EchoLifecycle {
     }
 }
 
-impl LaneLifecycle<()> for EchoLifecycle {
-    fn create(_config: &()) -> Self {
-        EchoLifecycle {}
-    }
-}
-
 #[value_lifecycle(agent = "RustAgent", event_type = "i32")]
 struct CounterLifecycle;
 
@@ -89,12 +83,6 @@ impl CounterLifecycle {
         Context: AgentContext<RustAgent> + Sized + Send + Sync + 'static,
     {
         println!("Event received: {}", event);
-    }
-}
-
-impl LaneLifecycle<()> for CounterLifecycle {
-    fn create(_config: &()) -> Self {
-        CounterLifecycle {}
     }
 }
 
