@@ -14,9 +14,9 @@
 
 use crate::internals::{default_on_event, default_on_start};
 use crate::lanes::derive_lane;
-use crate::utils::{get_task_struct_name, has_fields, validate_input_ast, InputAstType};
+use crate::utils::{get_task_struct_name, validate_input_ast, InputAstType};
 use darling::FromMeta;
-use macro_helpers::string_to_ident;
+use macro_helpers::{has_fields, string_to_ident};
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{AttributeArgs, DeriveInput, Ident};
@@ -48,7 +48,7 @@ pub fn derive_map_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput) ->
     };
 
     let lifecycle_name = input_ast.ident.clone();
-    let has_fields = has_fields(&input_ast);
+    let has_fields = has_fields(&input_ast.data);
     let task_name = get_task_struct_name(&input_ast.ident.to_string());
     let agent_name = args.agent.clone();
     let key_type = &args.key_type;

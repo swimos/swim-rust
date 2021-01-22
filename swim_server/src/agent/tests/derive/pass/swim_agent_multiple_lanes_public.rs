@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swim_server::agent::lane::model::value::ValueLaneEvent;
 use swim_server::agent::lane::lifecycle::StatefulLaneLifecycleBase;
 use swim_server::agent::lane::model::action::{ActionLane, CommandLane};
 use swim_server::agent::lane::model::map::{MapLane, MapLaneEvent};
 use swim_server::agent::lane::model::value::ValueLane;
+use swim_server::agent::lane::model::value::ValueLaneEvent;
 use swim_server::agent::lane::strategy::Queue;
 use swim_server::agent::AgentContext;
 use swim_server::{
