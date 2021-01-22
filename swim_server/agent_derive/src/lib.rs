@@ -46,7 +46,8 @@
 //!
 //! #[command_lifecycle(
 //!     agent = "TestAgent",
-//!     command_type = "String"
+//!     command_type = "String",
+//!     on_command
 //! )]
 //! struct TestCommandLifecycle;
 //!
@@ -141,7 +142,7 @@ mod utils;
 /// # #[command_lifecycle(
 /// #     agent = "TestAgent",
 /// #     command_type = "String",
-/// #     on_command = "on_command"
+/// #     on_command
 /// # )]
 /// # struct TestCommandLifecycle;
 /// #
@@ -164,7 +165,7 @@ mod utils;
 /// #     }
 /// # }
 /// #
-/// # #[action_lifecycle(agent = "TestAgent", command_type = "String", response_type = "i32")]
+/// # #[action_lifecycle(agent = "TestAgent", command_type = "String", response_type = "i32", on_command)]
 /// # struct TestActionLifecycle;
 /// #
 /// # impl TestActionLifecycle {
@@ -188,7 +189,7 @@ mod utils;
 /// #     }
 /// # }
 /// #
-/// # #[value_lifecycle(agent = "TestAgent", event_type = "i32")]
+/// # #[value_lifecycle(agent = "TestAgent", event_type = "i32", on_start, on_event)]
 /// # struct TestValueLifecycle;
 /// #
 /// # impl TestValueLifecycle {
@@ -225,7 +226,7 @@ mod utils;
 /// #     }
 /// # }
 /// #
-/// # #[map_lifecycle(agent = "TestAgent", key_type = "String", value_type = "i32")]
+/// # #[map_lifecycle(agent = "TestAgent", key_type = "String", value_type = "i32", on_start, on_event)]
 /// # struct TestMapLifecycle;
 /// #
 /// # impl TestMapLifecycle {
@@ -358,7 +359,8 @@ pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// #[command_lifecycle(
 ///     agent = "TestAgent",
-///     command_type = "String"
+///     command_type = "String",
+///     on_command
 /// )]
 /// struct TestCommandLifecycle;
 ///
@@ -452,7 +454,7 @@ pub fn command_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// use swim_server::agent::AgentContext;
 /// # use swim_server::SwimAgent;
 ///
-/// #[action_lifecycle(agent = "TestAgent", command_type = "String", response_type = "i32")]
+/// #[action_lifecycle(agent = "TestAgent", command_type = "String", response_type = "i32", on_command)]
 /// struct TestActionLifecycle;
 ///
 /// impl TestActionLifecycle {
@@ -552,7 +554,7 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// use swim_server::agent::AgentContext;
 /// # use swim_server::SwimAgent;
 ///
-/// #[value_lifecycle(agent = "TestAgent", event_type = "i32")]
+/// #[value_lifecycle(agent = "TestAgent", event_type = "i32", on_start, on_event)]
 /// struct TestValueLifecycle;
 ///
 /// impl TestValueLifecycle {
@@ -679,7 +681,7 @@ pub fn value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// use swim_server::agent::AgentContext;
 /// # use swim_server::SwimAgent;
 ///
-/// #[map_lifecycle(agent = "TestAgent", key_type = "String", value_type = "i32")]
+/// #[map_lifecycle(agent = "TestAgent", key_type = "String", value_type = "i32", on_start, on_event)]
 /// struct TestMapLifecycle;
 ///
 /// impl TestMapLifecycle {
@@ -858,7 +860,7 @@ pub fn demand_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// # use swim_server::SwimAgent;
 /// # use tokio;
 ///
-/// #[demand_map_lifecycle(agent = "TestAgent", key_type = "String", value_type = "i32")]
+/// #[demand_map_lifecycle(agent = "TestAgent", key_type = "String", value_type = "i32", on_sync, on_cue)]
 /// struct TestDemandLifecycle;
 ///
 /// impl TestDemandLifecycle {
