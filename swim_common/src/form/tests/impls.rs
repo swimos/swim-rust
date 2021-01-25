@@ -21,6 +21,8 @@ use num_bigint::{BigInt, BigUint};
 use crate::form::Form;
 use crate::model::blob::Blob;
 use crate::model::{Attr, Item, Value};
+use crate::record;
+use std::fmt::Debug;
 use std::sync::Arc;
 
 mod swim_common {
@@ -478,6 +480,49 @@ mod field_collections {
         ll.push_back(5);
         ll
     });
+}
+
+#[test]
+fn test_tuples() {
+    fn run_test<F: Form + PartialEq + Debug + Clone>(form: F, expected: Value) {
+        assert_eq!(form.as_value(), expected);
+        assert_eq!(form.clone().into_value(), expected);
+        assert_eq!(F::try_from_value(&expected), Ok(form.clone()));
+        assert_eq!(F::try_convert(expected), Ok(form));
+    }
+
+    run_test((1, 2), record!(1i32, 2i32));
+    run_test((1, 2, 3), record!(1i32, 2i32, 3i32));
+    run_test((1, 2, 3, 4), record!(1i32, 2i32, 3i32, 4i32));
+    run_test((1, 2, 3, 4, 5), record!(1i32, 2i32, 3i32, 4i32, 5i32));
+    run_test(
+        (1, 2, 3, 4, 5, 6),
+        record!(1i32, 2i32, 3i32, 4i32, 5i32, 6i32),
+    );
+    run_test(
+        (1, 2, 3, 4, 5, 6, 7),
+        record!(1i32, 2i32, 3i32, 4i32, 5i32, 6i32, 7i32),
+    );
+    run_test(
+        (1, 2, 3, 4, 5, 6, 7, 8),
+        record!(1i32, 2i32, 3i32, 4i32, 5i32, 6i32, 7i32, 8i32),
+    );
+    run_test(
+        (1, 2, 3, 4, 5, 6, 7, 8, 9),
+        record!(1i32, 2i32, 3i32, 4i32, 5i32, 6i32, 7i32, 8i32, 9i32),
+    );
+    run_test(
+        (1, 2, 3, 4, 5, 6, 7, 8, 9, 10),
+        record!(1i32, 2i32, 3i32, 4i32, 5i32, 6i32, 7i32, 8i32, 9i32, 10i32),
+    );
+    run_test(
+        (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11),
+        record!(1i32, 2i32, 3i32, 4i32, 5i32, 6i32, 7i32, 8i32, 9i32, 10i32, 11i32),
+    );
+    run_test(
+        (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12),
+        record!(1i32, 2i32, 3i32, 4i32, 5i32, 6i32, 7i32, 8i32, 9i32, 10i32, 11i32, 12i32),
+    );
 }
 
 #[test]
