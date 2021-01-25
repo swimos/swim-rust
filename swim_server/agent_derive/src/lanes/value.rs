@@ -18,7 +18,7 @@ use crate::utils::{
     LaneTasksImpl,
 };
 use darling::FromMeta;
-use macro_helpers::string_to_ident;
+use macro_helpers::{has_fields, string_to_ident};
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{AttributeArgs, DeriveInput, Ident};
@@ -48,6 +48,7 @@ pub fn derive_value_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput) 
     };
 
     let lifecycle_name = input_ast.ident.clone();
+    let has_fields = has_fields(&input_ast.data);
     let task_name = get_task_struct_name(&input_ast.ident.to_string());
     let agent_name = args.agent.clone();
     let event_type = &args.event_type;
@@ -61,6 +62,7 @@ pub fn derive_value_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput) 
 
     derive_lane(
         "ValueLifecycle",
+        has_fields,
         lifecycle_name,
         task_name,
         agent_name,
@@ -100,9 +102,20 @@ pub fn derive_events_body(on_event: &Callback) -> proc_macro2::TokenStream {
 
         let model = projection(context.agent()).clone();
         let mut events = event_stream.take_until(context.agent_stop_event());
-        let mut events = unsafe { Pin::new_unchecked(&mut events) };
 
-        while let Some(event) = events.next().await {
+        let mut scan_stream = events.owning_scan(None, |prev_val, event| async move {
+            Some((
+                Some(event.clone()),
+                ValueLaneEvent {
+                    previous: prev_val,
+                    current: event,
+                },
+            ))
+        });
+
+        let mut scan_stream = unsafe { Pin::new_unchecked(&mut scan_stream) };
+
+        while let Some(event) = scan_stream.next().await {
               tracing_futures::Instrument::instrument(
                 lifecycle.#on_event_func_name(&event, &model, &context),
                 tracing::span!(tracing::Level::TRACE, swim_server::agent::ON_EVENT, ?event)

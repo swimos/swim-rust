@@ -18,7 +18,7 @@ use crate::utils::{
 };
 use crate::utils::{parse_callback, Callback};
 use darling::FromMeta;
-use macro_helpers::string_to_ident;
+use macro_helpers::{has_fields, string_to_ident};
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{AttributeArgs, DeriveInput, Ident};
@@ -53,6 +53,7 @@ pub fn derive_demand_map_lifecycle(
     };
 
     let lifecycle_name = input_ast.ident.clone();
+    let has_fields = has_fields(&input_ast.data);
     let task_name = get_task_struct_name(&input_ast.ident.to_string());
     let agent_name = args.agent.clone();
     let key_type = &args.key_type;
@@ -67,6 +68,7 @@ pub fn derive_demand_map_lifecycle(
     derive_lane(
         "DemandMapLifecycle",
         lifecycle_name,
+        has_fields,
         task_name,
         agent_name,
         input_ast,
@@ -74,6 +76,7 @@ pub fn derive_demand_map_lifecycle(
         quote!(swim_server::agent::lane::model::demand_map::DemandMapLaneEvent<#key_type, #value_type>),
         lane_tasks_impl,
         quote! {
+            use swim_server::agent::lane::lifecycle::LaneLifecycle;
             use swim_server::agent::lane::model::demand_map::{DemandMapLane, DemandMapLaneEvent, DemandMapLaneUpdate};
             use futures::stream::iter;
         },

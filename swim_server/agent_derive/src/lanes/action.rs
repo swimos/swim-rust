@@ -18,7 +18,7 @@ use crate::utils::{
 };
 use crate::utils::{parse_callback, Callback};
 use darling::FromMeta;
-use macro_helpers::string_to_ident;
+use macro_helpers::{has_fields, string_to_ident};
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{AttributeArgs, DeriveInput, Ident};
@@ -48,6 +48,7 @@ pub fn derive_action_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput)
     };
 
     let lifecycle_name = input_ast.ident.clone();
+    let has_fields = has_fields(&input_ast.data);
     let task_name = get_task_struct_name(&input_ast.ident.to_string());
     let agent_name = args.agent.clone();
     let command_type = &args.command_type;
@@ -61,6 +62,7 @@ pub fn derive_action_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput)
     derive_lane(
         "ActionLifecycle",
         lifecycle_name,
+        has_fields,
         task_name,
         agent_name,
         input_ast,
