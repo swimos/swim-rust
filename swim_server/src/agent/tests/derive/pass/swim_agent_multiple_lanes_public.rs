@@ -100,7 +100,7 @@ fn main() {
     // ----------------------- Command Lifecycle 2 -----------------------
 
     #[command_lifecycle(agent = "TestAgent", command_type = "i32", on_command = "on_command")]
-    struct CommandLifecycle2;
+    struct CommandLifecycle2 {}
 
     impl CommandLifecycle2 {
         async fn on_command<Context>(
@@ -147,7 +147,7 @@ fn main() {
         response_type = "i64",
         on_command
     )]
-    struct ActionLifecycle2;
+    struct ActionLifecycle2 {}
 
     impl ActionLifecycle2 {
         async fn on_command<Context>(
@@ -223,7 +223,7 @@ fn main() {
     // ----------------------- Value Lifecycle 2 -----------------------
 
     #[value_lifecycle(agent = "TestAgent", event_type = "String", on_start, on_event)]
-    struct ValueLifecycle2;
+    struct ValueLifecycle2 {}
 
     impl ValueLifecycle2 {
         async fn on_start<Context>(&self, _model: &ValueLane<String>, _context: &Context)
@@ -301,7 +301,7 @@ fn main() {
         on_start,
         on_event
     )]
-    struct MapLifecycle2;
+    struct MapLifecycle2 {}
 
     impl MapLifecycle2 {
         async fn on_start<Context>(&self, _model: &MapLane<i32, String>, _context: &Context)

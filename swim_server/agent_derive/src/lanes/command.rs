@@ -71,6 +71,7 @@ pub fn derive_command_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput
         quote! {
             use swim_server::agent::lane::model::action::CommandLane;
             use swim_server::agent::lane::model::action::Action;
+            use swim_server::agent::lane::lifecycle::LaneLifecycle;
         },
         None,
     )

@@ -412,12 +412,6 @@ pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// )]
 /// struct TestCommandLifecycle;
 ///
-/// impl LaneLifecycle<TestAgentConfig> for TestCommandLifecycle {
-///     fn create(_config: &TestAgentConfig) -> Self {
-///         TestCommandLifecycle {}
-///     }
-/// }
-///
 /// # #[derive(Debug, SwimAgent)]
 /// # #[agent(config = "TestAgentConfig")]
 /// # pub struct TestAgent;
@@ -670,12 +664,6 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// )]
 /// struct TestValueLifecycle;
 ///
-/// impl LaneLifecycle<TestAgentConfig> for TestValueLifecycle {
-///     fn create(_config: &TestAgentConfig) -> Self {
-///         TestValueLifecycle {}
-///     }
-/// }
-///
 /// impl StatefulLaneLifecycleBase for TestValueLifecycle {
 ///     type WatchStrategy = Queue;
 ///
@@ -821,12 +809,6 @@ pub fn value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// #[map_lifecycle(agent = "TestAgent", key_type = "String", value_type = "i32")]
 /// struct TestMapLifecycle;
 ///
-/// impl LaneLifecycle<TestAgentConfig> for TestMapLifecycle {
-///     fn create(_config: &TestAgentConfig) -> Self {
-///         TestMapLifecycle {}
-///     }
-/// }
-///
 /// impl StatefulLaneLifecycleBase for TestMapLifecycle {
 ///     type WatchStrategy = Queue;
 ///
@@ -886,12 +868,6 @@ pub fn map_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///     }
 /// }
 ///
-/// impl LaneLifecycle<TestAgentConfig> for TestDemandLifecycle {
-///     fn create(_config: &TestAgentConfig) -> Self {
-///         TestDemandLifecycle {}
-///     }
-/// }
-///
 /// # #[derive(Debug, SwimAgent)]
 /// # #[agent(config = "TestAgentConfig")]
 /// # pub struct TestAgent;
@@ -948,12 +924,6 @@ pub fn map_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// #[demand_lifecycle(agent = "TestAgent", event_type = "i32")]
 /// struct TestDemandLifecycle;
-///
-/// impl LaneLifecycle<TestAgentConfig> for TestDemandLifecycle {
-///     fn create(_config: &TestAgentConfig) -> Self {
-///         TestDemandLifecycle {}
-///     }
-/// }
 ///
 /// # #[derive(Debug, SwimAgent)]
 /// # #[agent(config = "TestAgentConfig")]
@@ -1067,12 +1037,6 @@ pub fn demand_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///    }
 /// }
 ///
-/// impl LaneLifecycle<TestAgentConfig> for TestDemandLifecycle {
-///     fn create(_config: &TestAgentConfig) -> Self {
-///         TestDemandLifecycle {}
-///     }
-/// }
-///
 /// # #[derive(Debug, SwimAgent)]
 /// # #[agent(config = "TestAgentConfig")]
 /// # pub struct TestAgent;
@@ -1093,12 +1057,6 @@ pub fn demand_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// #[demand_map_lifecycle(agent = "TestAgent", key_type = "String", value_type = "i32")]
 /// struct TestDemandLifecycle;
-///
-/// impl LaneLifecycle<TestAgentConfig> for TestDemandLifecycle {
-///     fn create(_config: &TestAgentConfig) -> Self {
-///         TestDemandLifecycle {}
-///     }
-/// }
 ///
 /// # #[derive(Debug, SwimAgent)]
 /// # #[agent(config = "TestAgentConfig")]

@@ -72,6 +72,7 @@ pub fn derive_action_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput)
         quote! {
             use swim_server::agent::lane::model::action::ActionLane;
             use swim_server::agent::lane::model::action::Action;
+            use swim_server::agent::lane::lifecycle::LaneLifecycle;
         },
         None,
     )

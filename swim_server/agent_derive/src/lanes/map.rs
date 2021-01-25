@@ -75,6 +75,7 @@ pub fn derive_map_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput) ->
         quote! {
             use swim_server::agent::lane::model::map::MapLane;
             use swim_server::agent::lane::model::map::MapLaneEvent;
+            use swim_server::agent::lane::lifecycle::LaneLifecycle;
         },
         None,
     )

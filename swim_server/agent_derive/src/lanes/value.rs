@@ -62,8 +62,8 @@ pub fn derive_value_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput) 
 
     derive_lane(
         "ValueLifecycle",
-        has_fields,
         lifecycle_name,
+        has_fields,
         task_name,
         agent_name,
         input_ast,
@@ -71,7 +71,9 @@ pub fn derive_value_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput) 
         quote!(std::sync::Arc<#event_type>),
         lane_tasks_impl,
         quote! {
-            use swim_server::agent::lane::model::value::ValueLane;
+            use swim_server::agent::lane::model::value::{ValueLane, ValueLaneEvent};
+            use swim_server::SwimStreamExt;
+            use swim_server::agent::lane::lifecycle::LaneLifecycle;
         },
         None,
     )
