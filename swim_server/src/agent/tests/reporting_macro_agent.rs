@@ -18,7 +18,7 @@ use crate::agent::lane::model::action::CommandLane;
 use crate::agent::lane::model::demand::DemandLane;
 use crate::agent::lane::model::demand_map::DemandMapLane;
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
-use crate::agent::lane::model::value::ValueLane;
+use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 use crate::agent::lane::strategy::Queue;
 use crate::agent::lane::tests::ExactlyOnce;
 use crate::agent::lifecycle::AgentLifecycle;
@@ -55,8 +55,8 @@ mod swim_server {
 #[derive(Debug, SwimAgent)]
 #[agent(config = "TestAgentConfig")]
 pub struct ReportingAgent {
-    #[lifecycle(public, name = "DataLifecycle")]
-    data: MapLane<String, i32>,
+    #[lifecycle(name = "DataLifecycle")]
+    pub data: MapLane<String, i32>,
     #[lifecycle(name = "TotalLifecycle")]
     total: ValueLane<i32>,
     #[lifecycle(name = "ActionLifecycle")]
@@ -260,11 +260,15 @@ impl TotalLifecycle {
     {
     }
 
-    async fn on_event<Context>(&self, event: &Arc<i32>, _model: &ValueLane<i32>, _context: &Context)
-    where
+    async fn on_event<Context>(
+        &self,
+        event: &ValueLaneEvent<i32>,
+        _model: &ValueLane<i32>,
+        _context: &Context,
+    ) where
         Context: AgentContext<ReportingAgent> + Sized + Send + Sync + 'static,
     {
-        let n = **event;
+        let n = *event.current;
         self.event_handler
             .push(ReportingAgentEvent::TotalEvent(n))
             .await;

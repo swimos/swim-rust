@@ -23,6 +23,7 @@ use crate::model::blob::Blob;
 use crate::model::{Attr, Item, Value};
 use crate::record;
 use std::fmt::Debug;
+use std::sync::Arc;
 
 mod swim_common {
     pub use crate::*;
@@ -521,5 +522,51 @@ fn test_tuples() {
     run_test(
         (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12),
         record!(1i32, 2i32, 3i32, 4i32, 5i32, 6i32, 7i32, 8i32, 9i32, 10i32, 11i32, 12i32),
+    );
+}
+
+#[test]
+fn test_map_modification() {
+    #[derive(Clone, PartialEq, Form, Debug)]
+    enum FormMapUpdate<K, V> {
+        Update(#[form(header, name = "key")] K, #[form(body)] Arc<V>),
+    }
+
+    let body = Arc::new(Value::Record(
+        vec![Attr::of(("complex", 0))],
+        vec![Item::slot("a", true)],
+    ));
+    let attr = Attr::of(("Update", Value::record(vec![Item::slot("key", "hello")])));
+    let expected = Value::Record(
+        vec![attr, Attr::of(("complex", 0))],
+        vec![Item::slot("a", true)],
+    );
+    assert_eq!(
+        Form::into_value(FormMapUpdate::Update(Value::text("hello"), body.clone())),
+        expected
+    );
+    assert_eq!(
+        Form::as_value(&FormMapUpdate::Update(Value::text("hello"), body.clone())),
+        expected
+    );
+
+    let body = Arc::new(Value::Record(
+        vec![Attr::of(("complex", 0))],
+        vec![Item::slot("a", true)],
+    ));
+    let attr = Attr::of(("Update", Value::record(vec![Item::slot("key", "hello")])));
+    let rep = Value::Record(
+        vec![attr, Attr::of(("complex", 0))],
+        vec![Item::slot("a", true)],
+    );
+    let result1 = FormMapUpdate::try_from_value(&rep);
+    assert_eq!(
+        result1,
+        Ok(FormMapUpdate::Update(Value::text("hello"), body.clone()))
+    );
+    let result2 = FormMapUpdate::try_convert(rep);
+    assert_eq!(
+        result2,
+        Ok(FormMapUpdate::Update(Value::text("hello"), body.clone()))
     );
 }
