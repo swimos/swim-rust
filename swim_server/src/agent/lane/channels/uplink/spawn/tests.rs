@@ -38,13 +38,12 @@ use swim_common::routing::ResolutionError;
 use swim_common::routing::RoutingError;
 use swim_common::routing::SendError;
 use swim_common::sink::item::ItemSink;
-use swim_common::topic::MpscTopic;
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
-use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
+use tokio::sync::{mpsc, Barrier};
 use url::Url;
-use utilities::sync::promise;
+use utilities::sync::{promise, topic};
 use utilities::uri::RelativeUri;
 
 const INIT: i32 = 42;
@@ -188,18 +187,13 @@ fn default_buffer() -> NonZeroUsize {
     NonZeroUsize::new(5).unwrap()
 }
 
-fn yield_after() -> NonZeroUsize {
-    NonZeroUsize::new(256).unwrap()
-}
-
 fn route() -> RelativePath {
     RelativePath::new("node", "lane")
 }
 
-#[derive(Clone)]
 struct UplinkSpawnerInputs {
     action_tx: mpsc::Sender<TaggedAction>,
-    event_tx: mpsc::Sender<i32>,
+    event_tx: topic::Sender<i32>,
 }
 
 impl UplinkSpawnerInputs {
@@ -334,7 +328,7 @@ fn make_test_harness() -> (
     BoxFuture<'static, Vec<UplinkErrorReport>>,
 ) {
     let (tx_up, rx_up) = mpsc::channel(5);
-    let (tx_event, rx_event) = mpsc::channel(5);
+    let (tx_event, rx_event) = topic::channel(NonZeroUsize::new(5).unwrap());
     let (tx_act, rx_act) = mpsc::channel(5);
     let (tx_router, rx_router) = mpsc::channel(5);
 
@@ -345,10 +339,10 @@ fn make_test_harness() -> (
     let error_task = error_rx.collect::<Vec<_>>();
 
     let handler = Arc::new(TestHandler(tx_up, INIT));
-    let (topic, _rec) = MpscTopic::new(rx_event, default_buffer(), yield_after());
+
     let factory = SpawnerUplinkFactory(make_config());
 
-    let channels = UplinkChannels::new(topic, rx_act, error_tx);
+    let channels = UplinkChannels::new(rx_event.subscriber(), rx_act, error_tx);
 
     let context = TestContext::new(spawn_tx, tx_router);
 
@@ -555,7 +549,7 @@ async fn relink_for_same_addr() {
 
 #[tokio::test]
 async fn sync_lane_twice() {
-    let (inputs, outputs, spawn_task) = make_test_harness();
+    let (mut inputs, outputs, spawn_task) = make_test_harness();
 
     let addr1 = RoutingAddr::remote(1);
     let addr2 = RoutingAddr::remote(2);
@@ -566,14 +560,20 @@ async fn sync_lane_twice() {
 
     let (mut split_outputs, split_task) = outputs.split(addrs);
 
-    let mut inputs1 = inputs.clone();
     let mut outputs1 = split_outputs.take_addr(addr1);
-    let mut inputs2 = inputs;
     let mut outputs2 = split_outputs.take_addr(addr2);
 
-    let io_task1 = async move {
-        inputs1.action(addr1, UplinkAction::Sync).await;
+    let barrier1 = Arc::new(Barrier::new(3));
+    let barrier2 = barrier1.clone();
+    let barrier3 = barrier1.clone();
 
+    let inputs_task = async move {
+        inputs.action(addr1, UplinkAction::Sync).await;
+        inputs.action(addr2, UplinkAction::Sync).await;
+        barrier1.wait().await;
+    };
+
+    let io_task1 = async move {
         assert_eq!(
             outputs1.take_router_events(3).await,
             vec![
@@ -583,7 +583,7 @@ async fn sync_lane_twice() {
             ]
         );
 
-        drop(inputs1);
+        barrier2.wait().await;
 
         assert_eq!(
             outputs1.take_router_events(1).await,
@@ -592,8 +592,6 @@ async fn sync_lane_twice() {
     };
 
     let io_task2 = async move {
-        inputs2.action(addr2, UplinkAction::Sync).await;
-
         assert_eq!(
             outputs2.take_router_events(3).await,
             vec![
@@ -603,7 +601,7 @@ async fn sync_lane_twice() {
             ]
         );
 
-        drop(inputs2);
+        barrier3.wait().await;
 
         assert_eq!(
             outputs2.take_router_events(1).await,
@@ -611,7 +609,12 @@ async fn sync_lane_twice() {
         );
     };
 
-    let (_, _, errs) = join3(join(io_task1, io_task2), split_task, spawn_task).await;
+    let (_, _, errs) = join3(
+        join3(inputs_task, io_task1, io_task2),
+        split_task,
+        spawn_task,
+    )
+    .await;
     assert!(errs.is_empty());
 }
 

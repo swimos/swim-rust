@@ -13,138 +13,119 @@
 // limitations under the License.
 
 use crate::var::Contents;
-use futures::future::BoxFuture;
-use futures::FutureExt;
-use futures_util::future::ready;
-use std::any::Any;
+use futures::{Stream, StreamExt};
+use futures_util::task::Context;
+use std::any::{type_name, Any};
+use std::fmt::{Debug, Formatter};
+use std::marker::PhantomData;
 use std::sync::Arc;
-use tokio::sync::oneshot::error::TryRecvError;
-use tokio::sync::{broadcast, mpsc, oneshot};
-
-/// Type erased observer to be passed into [`TVarInner`].
-pub(super) trait RawObserver {
-    fn notify_raw(&mut self, value: Contents) -> BoxFuture<()>;
-}
-
-pub(super) type DynObserver = Box<dyn RawObserver + Send + Sync + 'static>;
-
-impl<T: Any + Send + Sync> RawObserver for Observer<T> {
-    fn notify_raw(&mut self, value: Contents) -> BoxFuture<'_, ()> {
-        match value.downcast::<T>() {
-            Ok(t) => self.notify(t).boxed(),
-            Err(_) => ready(()).boxed(),
-        }
-    }
-}
-
-pub enum ObsSender<T> {
-    Mpsc(mpsc::Sender<Arc<T>>),
-    Broadcast(broadcast::Sender<Arc<T>>),
-}
-
-struct SingleObs<T> {
-    sender: ObsSender<T>,
-    is_dead: bool,
-}
-
-impl<T> SingleObs<T> {
-    fn new(sender: ObsSender<T>) -> Self {
-        SingleObs {
-            sender,
-            is_dead: false,
-        }
-    }
-}
-
-impl<T> SingleObs<T> {
-    pub async fn notify(&mut self, value: Arc<T>) {
-        let SingleObs { sender, is_dead } = self;
-        if !*is_dead {
-            match sender {
-                ObsSender::Mpsc(tx) => {
-                    if tx.send(value).await.is_err() {
-                        *is_dead = true;
-                    }
-                }
-                ObsSender::Broadcast(tx) => {
-                    if tx.send(value).is_err() {
-                        *is_dead = true;
-                    }
-                }
-            }
-        }
-    }
-}
-
-enum DeferredObserver<T> {
-    Empty,
-    Waiting(oneshot::Receiver<ObsSender<T>>),
-    Initialized(SingleObs<T>),
-}
+use tokio::macros::support::{Pin, Poll};
+use utilities::sync::topic::{self, SubscribeError, TryRecvError};
 
 pub struct Observer<T> {
-    primary: SingleObs<T>,
-    deferred: DeferredObserver<T>,
+    inner: topic::Receiver<Contents>,
+    _type: PhantomData<fn() -> Arc<T>>,
 }
 
-impl<T> From<mpsc::Sender<Arc<T>>> for ObsSender<T> {
-    fn from(tx: mpsc::Sender<Arc<T>>) -> Self {
-        ObsSender::Mpsc(tx)
-    }
+pub struct ObserverSubscriber<T> {
+    inner: topic::Subscriber<Contents>,
+    _type: PhantomData<fn() -> Arc<T>>,
 }
 
-impl<T> From<broadcast::Sender<Arc<T>>> for ObsSender<T> {
-    fn from(tx: broadcast::Sender<Arc<T>>) -> Self {
-        ObsSender::Broadcast(tx)
-    }
-}
-
-impl<T, S> From<S> for Observer<T>
-where
-    S: Into<ObsSender<T>>,
-{
-    fn from(tx: S) -> Self {
-        Observer::new(tx.into())
-    }
+pub struct ObserverStream<T> {
+    inner: topic::ReceiverStream<Contents>,
+    _type: PhantomData<fn() -> Arc<T>>,
 }
 
 impl<T> Observer<T> {
-    pub fn new(sender: ObsSender<T>) -> Self {
+    pub(super) fn new(inner: topic::Receiver<Contents>) -> Self {
         Observer {
-            primary: SingleObs::new(sender),
-            deferred: DeferredObserver::Empty,
+            inner,
+            _type: PhantomData,
         }
     }
 
-    pub fn new_with_deferred(
-        sender: ObsSender<T>,
-        deferred: oneshot::Receiver<ObsSender<T>>,
-    ) -> Self {
-        Observer {
-            primary: SingleObs::new(sender),
-            deferred: DeferredObserver::Waiting(deferred),
+    pub fn subscriber(&self) -> ObserverSubscriber<T> {
+        ObserverSubscriber {
+            inner: self.inner.subscriber(),
+            _type: PhantomData,
         }
     }
 
-    pub async fn notify(&mut self, value: Arc<T>) {
-        let Observer { primary, deferred } = self;
-        match deferred {
-            DeferredObserver::Waiting(rx) => match rx.try_recv() {
-                Ok(tx) => {
-                    let mut sender = SingleObs::new(tx);
-                    sender.notify(value.clone()).await;
-                    *deferred = DeferredObserver::Initialized(sender);
-                }
-                Err(TryRecvError::Closed) => {
-                    *deferred = DeferredObserver::Empty;
-                }
-                _ => {}
-            },
-            DeferredObserver::Initialized(sender) => {
-                sender.notify(value.clone()).await;
-            }
-            _ => {}
+    pub fn into_subscriber(self) -> ObserverSubscriber<T> {
+        ObserverSubscriber {
+            inner: self.inner.subscriber(),
+            _type: PhantomData,
         }
-        primary.notify(value).await;
+    }
+}
+
+impl<T> Clone for Observer<T> {
+    fn clone(&self) -> Self {
+        Observer {
+            inner: self.inner.clone(),
+            _type: PhantomData,
+        }
+    }
+}
+
+impl<T> Debug for Observer<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Observer")
+            .field("inner", &self.inner)
+            .field("type", &type_name::<T>())
+            .finish()
+    }
+}
+
+impl<T: Any + Send + Sync> Observer<T> {
+    pub async fn recv(&mut self) -> Option<Arc<T>> {
+        self.inner.recv().await.map(|contents| {
+            contents
+                .clone()
+                .downcast()
+                .expect("Unexpected type from TVar")
+        })
+    }
+
+    pub fn try_recv(&mut self) -> Result<Arc<T>, TryRecvError> {
+        self.inner.try_recv().map(|contents| {
+            contents
+                .clone()
+                .downcast()
+                .expect("Unexpected type from TVar")
+        })
+    }
+
+    pub fn into_stream(self) -> ObserverStream<T> {
+        ObserverStream {
+            inner: self.inner.into_stream(),
+            _type: PhantomData,
+        }
+    }
+}
+
+impl<T> ObserverSubscriber<T> {
+    pub fn subscribe(&self) -> Result<Observer<T>, SubscribeError> {
+        self.inner.subscribe().map(Observer::new)
+    }
+}
+
+impl<T> Clone for ObserverSubscriber<T> {
+    fn clone(&self) -> Self {
+        ObserverSubscriber {
+            inner: self.inner.clone(),
+            _type: PhantomData,
+        }
+    }
+}
+
+impl<T: Any + Send + Sync> Stream for ObserverStream<T> {
+    type Item = Arc<T>;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        self.inner
+            .poll_next_unpin(cx)
+            .map(|maybe_contents| maybe_contents.and_then(|contents| contents.downcast().ok()))
     }
 }

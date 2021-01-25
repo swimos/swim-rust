@@ -13,11 +13,10 @@
 // limitations under the License.
 
 use std::sync::Arc;
-use swim_server::agent::lane::lifecycle::{LaneLifecycle, StatefulLaneLifecycleBase};
+use swim_server::agent::lane::lifecycle::LaneLifecycle;
 use swim_server::agent::lane::model::action::{ActionLane, CommandLane};
 use swim_server::agent::lane::model::map::{MapLane, MapLaneEvent};
 use swim_server::agent::lane::model::value::ValueLane;
-use swim_server::agent::lane::strategy::Queue;
 use swim_server::agent::AgentContext;
 use swim_server::{
     action_lifecycle, agent_lifecycle, command_lifecycle, map_lifecycle, value_lifecycle, SwimAgent,
@@ -145,14 +144,6 @@ fn main() {
         }
     }
 
-    impl StatefulLaneLifecycleBase for ValueLifecycle {
-        type WatchStrategy = Queue;
-
-        fn create_strategy(&self) -> Self::WatchStrategy {
-            Queue::default()
-        }
-    }
-
     // ----------------------- Map Lifecycle -----------------------
 
     #[map_lifecycle(agent = "TestAgent", key_type = "String", value_type = "i32")]
@@ -181,14 +172,6 @@ fn main() {
     impl LaneLifecycle<TestAgentConfig> for MapLifecycle {
         fn create(_config: &TestAgentConfig) -> Self {
             MapLifecycle {}
-        }
-    }
-
-    impl StatefulLaneLifecycleBase for MapLifecycle {
-        type WatchStrategy = Queue;
-
-        fn create_strategy(&self) -> Self::WatchStrategy {
-            Queue::default()
         }
     }
 }

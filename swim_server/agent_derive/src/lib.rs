@@ -117,7 +117,7 @@ mod utils;
 /// use swim_server::agent::lane::model::map::MapLane;
 /// use swim_server::agent::lane::model::value::ValueLane;
 /// # use std::sync::Arc;
-/// # use swim_server::agent::lane::lifecycle::{LaneLifecycle, StatefulLaneLifecycleBase};
+/// # use swim_server::agent::lane::lifecycle::LaneLifecycle;
 /// # use swim_server::agent::lane::model::map::MapLaneEvent;
 /// # use swim_server::agent::lane::strategy::Queue;
 /// # use swim_server::agent::AgentContext;
@@ -218,14 +218,6 @@ mod utils;
 /// #     }
 /// # }
 /// #
-/// # impl StatefulLaneLifecycleBase for TestValueLifecycle {
-/// #     type WatchStrategy = Queue;
-/// #
-/// #     fn create_strategy(&self) -> Self::WatchStrategy {
-/// #         Queue::default()
-/// #     }
-/// # }
-/// #
 /// # #[map_lifecycle(agent = "TestAgent", key_type = "String", value_type = "i32")]
 /// # struct TestMapLifecycle;
 /// #
@@ -252,14 +244,6 @@ mod utils;
 /// # impl LaneLifecycle<TestAgentConfig> for TestMapLifecycle {
 /// #     fn create(_config: &TestAgentConfig) -> Self {
 /// #         TestMapLifecycle {}
-/// #     }
-/// # }
-/// #
-/// # impl StatefulLaneLifecycleBase for TestMapLifecycle {
-/// #     type WatchStrategy = Queue;
-/// #
-/// #     fn create_strategy(&self) -> Self::WatchStrategy {
-/// #         Queue::default()
 /// #     }
 /// # }
 /// ```
@@ -546,7 +530,7 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// ```rust
 /// use swim_server::value_lifecycle;
-/// use swim_server::agent::lane::lifecycle::{StatefulLaneLifecycleBase, LaneLifecycle};
+/// use swim_server::agent::lane::lifecycle::LaneLifecycle;
 /// use swim_server::agent::lane::strategy::Queue;
 /// use swim_server::agent::lane::model::value::ValueLane;
 /// use std::sync::Arc;
@@ -581,14 +565,6 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///         TestValueLifecycle {}
 ///     }
 /// }
-///
-/// impl StatefulLaneLifecycleBase for TestValueLifecycle {
-///     type WatchStrategy = Queue;
-///
-///     fn create_strategy(&self) -> Self::WatchStrategy {
-///         Queue::default()
-///     }
-/// }
 /// # #[derive(Debug, SwimAgent)]
 /// # #[agent(config = "TestAgentConfig")]
 /// # pub struct TestAgent;
@@ -601,7 +577,7 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// ```rust
 /// use swim_server::value_lifecycle;
-/// use swim_server::agent::lane::lifecycle::{StatefulLaneLifecycleBase, LaneLifecycle};
+/// use swim_server::agent::lane::lifecycle::LaneLifecycle;
 /// use swim_server::agent::lane::strategy::Queue;
 /// use swim_server::agent::lane::model::value::ValueLane;
 /// use std::sync::Arc;
@@ -642,13 +618,6 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///     }
 /// }
 ///
-/// impl StatefulLaneLifecycleBase for TestValueLifecycle {
-///     type WatchStrategy = Queue;
-///
-///     fn create_strategy(&self) -> Self::WatchStrategy {
-///         Queue::default()
-///     }
-/// }
 /// # #[derive(Debug, SwimAgent)]
 /// # #[agent(config = "TestAgentConfig")]
 /// # pub struct TestAgent;
@@ -674,7 +643,7 @@ pub fn value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// ```rust
 /// use swim_server::map_lifecycle;
-/// use swim_server::agent::lane::lifecycle::{StatefulLaneLifecycleBase, LaneLifecycle};
+/// use swim_server::agent::lane::lifecycle::LaneLifecycle;
 /// use swim_server::agent::lane::strategy::Queue;
 /// use swim_server::agent::lane::model::map::{MapLane, MapLaneEvent};
 /// use swim_server::agent::AgentContext;
@@ -709,13 +678,6 @@ pub fn value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///     }
 /// }
 ///
-/// impl StatefulLaneLifecycleBase for TestMapLifecycle {
-///     type WatchStrategy = Queue;
-///
-///     fn create_strategy(&self) -> Self::WatchStrategy {
-///         Queue::default()
-///     }
-/// }
 /// # #[derive(Debug, SwimAgent)]
 /// # #[agent(config = "TestAgentConfig")]
 /// # pub struct TestAgent;
@@ -727,7 +689,7 @@ pub fn value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// ```rust
 /// use swim_server::map_lifecycle;
-/// use swim_server::agent::lane::lifecycle::{StatefulLaneLifecycleBase, LaneLifecycle};
+/// use swim_server::agent::lane::lifecycle::LaneLifecycle;
 /// use swim_server::agent::lane::strategy::Queue;
 /// use swim_server::agent::lane::model::map::{MapLane, MapLaneEvent};
 /// use swim_server::agent::AgentContext;
@@ -767,13 +729,6 @@ pub fn value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///     }
 /// }
 ///
-/// impl StatefulLaneLifecycleBase for TestMapLifecycle {
-///     type WatchStrategy = Queue;
-///
-///     fn create_strategy(&self) -> Self::WatchStrategy {
-///         Queue::default()
-///     }
-/// }
 /// # #[derive(Debug, SwimAgent)]
 /// # #[agent(config = "TestAgentConfig")]
 /// # pub struct TestAgent;
@@ -798,7 +753,7 @@ pub fn map_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// ```rust
 /// use swim_server::demand_lifecycle;
-/// use swim_server::agent::lane::lifecycle::{StatefulLaneLifecycleBase, LaneLifecycle};
+/// use swim_server::agent::lane::lifecycle::LaneLifecycle;
 /// use swim_server::agent::lane::model::demand::DemandLane;
 /// use swim_server::agent::AgentContext;
 /// # use swim_server::SwimAgent;

@@ -12,15 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use super::{StatefulLaneLifecycle, StatefulLaneLifecycleBase};
-use crate::agent::lane::strategy::{Buffered, Queue};
+use super::StatefulLaneLifecycle;
+use crate::agent::lane::lifecycle::DefaultLifecycle;
 use crate::agent::lane::LaneModel;
 use crate::agent::AgentContext;
 use futures::future::BoxFuture;
 use futures::Stream;
 use std::collections::HashMap;
 use std::future::Future;
-use std::num::NonZeroUsize;
 use tokio::time::Duration;
 use utilities::sync::trigger::Receiver;
 use utilities::uri::RelativeUri;
@@ -71,37 +70,12 @@ impl AgentContext<TestAgent> for TestContext {
 }
 
 #[tokio::test]
-async fn default_queue_lifecycle() {
-    let n = NonZeroUsize::new(13).unwrap();
-
-    let queue = Queue(n);
-
-    let strategy = queue.create_strategy();
-
-    assert_eq!(strategy, queue);
-
+async fn default_lifecycle() {
+    let lc = DefaultLifecycle;
     let model = TestModel;
     let context = TestContext;
 
     //We just check the life-cycle events don't generate panics.
-    queue.on_start(&model, &context).await;
-    queue.on_event(&(), &model, &context).await;
-}
-
-#[tokio::test]
-async fn default_buffered_lifecycle() {
-    let n = NonZeroUsize::new(13).unwrap();
-
-    let buffered = Buffered(n);
-
-    let strategy = buffered.create_strategy();
-
-    assert_eq!(strategy, buffered);
-
-    let model = TestModel;
-    let context = TestContext;
-
-    //We just check the life-cycle events don't generate panics.
-    buffered.on_start(&model, &context).await;
-    buffered.on_event(&(), &model, &context).await;
+    lc.on_start(&model, &context).await;
+    lc.on_event(&(), &model, &context).await;
 }
