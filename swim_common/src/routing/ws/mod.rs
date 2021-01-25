@@ -18,7 +18,9 @@ use futures::future::BoxFuture;
 
 mod protocol;
 mod stream;
-mod utils;
+#[cfg(feature = "tungstenite")]
+pub mod tungstenite;
+pub mod utils;
 
 use crate::routing::ConnectionError;
 pub use protocol::*;

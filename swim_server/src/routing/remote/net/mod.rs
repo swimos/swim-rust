@@ -31,7 +31,7 @@ use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
 use url::Url;
 
-mod dns;
+pub(in crate) mod dns;
 pub mod plain;
 pub mod tls;
 
@@ -60,7 +60,7 @@ pub trait ExternalConnections: Clone + Send + Sync + 'static {
     fn lookup(&self, host: HostAndPort) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>>;
 }
 
-enum MaybeTlsListener {
+pub(crate) enum MaybeTlsListener {
     PlainText(TcpListener),
     Tls(TlsListener),
 }
@@ -74,7 +74,7 @@ impl Listener for MaybeTlsListener {
     }
 }
 
-struct EitherStream(MaybeTlsListener);
+pub(crate) struct EitherStream(MaybeTlsListener);
 
 impl Stream for EitherStream {
     type Item = IoResult<(Either<TcpStream, TlsStream>, SocketAddr)>;
@@ -101,7 +101,7 @@ impl Stream for EitherStream {
 }
 
 #[derive(Clone)]
-struct TokioNetworking {
+pub(in crate) struct TokioNetworking {
     resolver: Arc<Resolver>,
     plain: TokioPlainTextNetworking,
     tls: Arc<TokioTlsNetworking>,

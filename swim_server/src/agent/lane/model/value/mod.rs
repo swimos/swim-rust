@@ -50,11 +50,17 @@ impl<T: Any + Send + Sync> ValueLane<T> {
     }
 }
 
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct ValueLaneEvent<T> {
+    pub previous: Option<Arc<T>>,
+    pub current: Arc<T>,
+}
+
 impl<T> LaneModel for ValueLane<T>
 where
     T: Send + Sync + 'static,
 {
-    type Event = Arc<T>;
+    type Event = ValueLaneEvent<T>;
 
     fn same_lane(this: &Self, other: &Self) -> bool {
         TVar::same_var(&this.value, &other.value)

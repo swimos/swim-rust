@@ -29,6 +29,12 @@ pub fn from_value(
     fn_factory: fn(TokenStream2) -> TokenStream2,
     into: bool,
 ) -> TokenStream2 {
+    let maybe_mut_items = if into {
+        quote!(mut items)
+    } else {
+        quote!(items)
+    };
+
     match type_contents {
         TypeContents::Struct(repr) => {
             let descriptor = &repr.descriptor;
@@ -49,12 +55,18 @@ pub fn from_value(
                 _ => quote!(Ok(#structure_name(#field_assignments))),
             };
 
-            let attrs =
-                build_attr_quote(&descriptor.label, &headers, header_body, &attributes, into);
+            let attrs = build_attr_quote(
+                &descriptor.label,
+                &headers,
+                header_body,
+                &attributes,
+                into,
+                &descriptor.manifest,
+            );
 
             quote! {
                 match value {
-                    swim_common::model::Value::Record(attrs, items) => {
+                    swim_common::model::Value::Record(attrs, #maybe_mut_items) => {
                         #field_opts
                         #attrs
                         #items
@@ -86,8 +98,14 @@ pub fn from_value(
                     _ => quote!((#field_assignments)),
                 };
 
-                let attrs =
-                    build_attr_quote(&variant.name, &headers, header_body, &attributes, into);
+                let attrs = build_attr_quote(
+                    &variant.name,
+                    &headers,
+                    header_body,
+                    &attributes,
+                    into,
+                    &variant.descriptor.manifest,
+                );
 
                 quote! {
                     #ts
@@ -102,7 +120,7 @@ pub fn from_value(
 
             quote! {
                 match value {
-                    swim_common::model::Value::Record(attrs, items) => match attrs.first() {
+                    swim_common::model::Value::Record(attrs, #maybe_mut_items) => match attrs.first() {
                         #arms
                         _ => return Err(swim_common::form::FormErr::MismatchedTag),
                     }
@@ -119,6 +137,7 @@ fn build_attr_quote(
     mut header_body: TokenStream2,
     attributes: &TokenStream2,
     into: bool,
+    manifest: &FieldManifest,
 ) -> TokenStream2 {
     if header_body.is_empty() {
         header_body = quote!(_ => return Err(swim_common::form::FormErr::MismatchedTag),);
@@ -168,7 +187,7 @@ fn build_attr_quote(
             );
 
             quote! {
-                let mut attr_it = attrs.#iterator();
+                let mut attr_it = attrs.#iterator().peekable();
 
                 match attr_it.next() {
                     Some(swim_common::model::Attr { name, value })=> {
@@ -186,7 +205,7 @@ fn build_attr_quote(
         }
         _ => {
             quote! {
-                let mut attr_it = attrs.#iterator();
+                let mut attr_it = attrs.#iterator().peekable();
 
                 match attr_it.next() {
                     Some(swim_common::model::Attr { name, value }) => {
@@ -199,8 +218,12 @@ fn build_attr_quote(
             }
         }
     };
-
-    if attributes.is_empty() {
+    if manifest.replaces_body {
+        quote! {
+            #name_check
+            #attributes
+        }
+    } else if attributes.is_empty() {
         quote! {
             #name_check
 
@@ -369,15 +392,37 @@ fn parse_elements(
                     }
                 }
                 FieldKind::Body => {
-                    let fn_call = if into {
-                        fn_factory(quote!(value))
-                    } else {
-                        fn_factory(quote!(&value))
-                    };
+                    attrs = if into {
+                        quote !{
+                            #attrs
+                            let has_more = attr_it.peek().is_some();
 
-                    items = quote! {
-                        swim_common::model::Item::ValueItem(value) if #ident.is_none() => {
-                            #ident = std::option::Option::Some(#fn_call?);
+                            let update_value = if !has_more && items.len() < 2 {
+                                match items.pop() {
+                                    Some(swim_common::model::Item::ValueItem(single)) => single,
+                                    _ => swim_common::model::Value::record(items),
+                                }
+                            } else {
+                                swim_common::model::Value::Record(attr_it.collect(), items)
+                            };
+
+                            #ident = std::option::Option::Some(swim_common::form::Form::try_convert(update_value)?);
+                        }
+                    } else {
+                        quote! {
+                            #attrs
+                            let has_more = attr_it.peek().is_some();
+
+                            let update_value = if !has_more && items.len() < 2 {
+                                match items.first() {
+                                    Some(swim_common::model::Item::ValueItem(single)) => single.clone(),
+                                    _ => swim_common::model::Value::record(items.clone()),
+                                }
+                            } else {
+                                swim_common::model::Value::Record(attr_it.cloned().collect(), items.clone())
+                            };
+
+                            #ident = std::option::Option::Some(swim_common::form::Form::try_convert(update_value)?);
                         }
                     };
                 }
@@ -411,7 +456,7 @@ fn parse_elements(
             (headers, header_body, items, attrs)
         });
 
-    if !items.is_empty() {
+    if !field_manifest.replaces_body && !items.is_empty() {
         if into {
             items = quote! {
                 let mut items_iter = items.into_iter();
