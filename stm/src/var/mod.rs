@@ -50,9 +50,7 @@ impl TVarGuarded {
     /// Notify the observer and any wakers, if present.
     async fn notify(&mut self) {
         if let Some(observer) = &mut self.observer {
-            if observer.send(self.content.clone()).await.is_err() {
-                self.observer = None;
-            }
+            let _ = observer.send(self.content.clone()).await;
         }
         self.wakers.lock().drain().for_each(|w| w.wake());
     }

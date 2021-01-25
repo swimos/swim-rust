@@ -192,21 +192,23 @@ fn route() -> RelativePath {
 }
 
 struct UplinkSpawnerInputs {
-    action_tx: mpsc::Sender<TaggedAction>,
+    action_tx: Option<mpsc::Sender<TaggedAction>>,
     event_tx: topic::Sender<i32>,
 }
 
 impl UplinkSpawnerInputs {
     async fn action(&mut self, addr: RoutingAddr, action: UplinkAction) {
-        assert!(self
-            .action_tx
-            .send(TaggedAction(addr, action))
-            .await
-            .is_ok())
+        if let Some(action_tx) = &mut self.action_tx {
+            assert!(action_tx.send(TaggedAction(addr, action)).await.is_ok())
+        }
     }
 
     async fn generate_event(&mut self, event: i32) {
         assert!(self.event_tx.send(event).await.is_ok())
+    }
+
+    fn drop_action_tx(&mut self) {
+        self.action_tx = None
     }
 }
 
@@ -355,7 +357,7 @@ fn make_test_harness() -> (
     (
         UplinkSpawnerInputs {
             event_tx: tx_event,
-            action_tx: tx_act,
+            action_tx: Some(tx_act),
         },
         UplinkSpawnerOutputs {
             _update_rx: rx_up,
@@ -379,7 +381,7 @@ async fn link_to_lane() {
             vec![TaggedEnvelope(addr, Envelope::linked("node", "lane"))]
         );
 
-        drop(inputs);
+        inputs.drop_action_tx();
 
         assert_eq!(
             outputs.take_router_events(1).await,
@@ -432,7 +434,7 @@ async fn receive_event() {
             vec![TaggedEnvelope(addr, event_envelope(13))]
         );
 
-        drop(inputs);
+        inputs.drop_action_tx();
 
         assert_eq!(
             outputs.take_router_events(1).await,
@@ -462,7 +464,7 @@ async fn sync_with_lane() {
             ]
         );
 
-        drop(inputs);
+        inputs.drop_action_tx();
 
         assert_eq!(
             outputs.take_router_events(1).await,
@@ -498,7 +500,7 @@ async fn receive_event_after_sync() {
             vec![TaggedEnvelope(addr, event_envelope(13))]
         );
 
-        drop(inputs);
+        inputs.drop_action_tx();
 
         assert_eq!(
             outputs.take_router_events(1).await,
@@ -535,7 +537,7 @@ async fn relink_for_same_addr() {
             vec![TaggedEnvelope(addr, Envelope::linked("node", "lane"))]
         );
 
-        drop(inputs);
+        inputs.drop_action_tx();
 
         assert_eq!(
             outputs.take_router_events(1).await,
@@ -571,6 +573,8 @@ async fn sync_lane_twice() {
         inputs.action(addr1, UplinkAction::Sync).await;
         inputs.action(addr2, UplinkAction::Sync).await;
         barrier1.wait().await;
+        inputs.drop_action_tx();
+        inputs
     };
 
     let io_task1 = async move {
@@ -609,7 +613,7 @@ async fn sync_lane_twice() {
         );
     };
 
-    let (_, _, errs) = join3(
+    let ((_inputs, _, _), _, errs) = join3(
         join3(inputs_task, io_task1, io_task2),
         split_task,
         spawn_task,
@@ -636,7 +640,7 @@ async fn uplink_failure() {
             vec![TaggedEnvelope(addr, Envelope::unlinked("node", "lane"))]
         );
 
-        drop(inputs);
+        inputs.drop_action_tx();
     };
 
     let (_, errs) = join(io_task, spawn_task).await;

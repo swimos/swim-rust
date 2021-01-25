@@ -770,6 +770,7 @@ where
     }
 }
 
+/// Handle to subscribe the map lane events.
 pub struct MapSubscriber<K, V> {
     inner: ObserverSubscriber<TransactionSummary<Value, V>>,
     _type: PhantomData<fn() -> MapLaneEvent<K, V>>,
@@ -784,6 +785,7 @@ impl<K, V> MapSubscriber<K, V> {
     }
 }
 
+/// [`Transform`] to decompose a transaction summary into a sequence of map lane events.
 pub struct DecomposeSummary<K, V>(PhantomData<fn(V) -> (K, V)>);
 
 impl<K, V> Default for DecomposeSummary<K, V> {
@@ -807,6 +809,7 @@ impl<K: Form, V> Transform<Arc<TransactionSummary<Value, V>>> for DecomposeSumma
     }
 }
 
+/// Convert a map lane observer into a stream of events.
 pub fn summaries_to_events<K, V>(
     observer: Observer<TransactionSummary<Value, V>>,
 ) -> impl Stream<Item = MapLaneEvent<K, V>> + Send
@@ -834,6 +837,12 @@ where
     }
 }
 
+/// Create a new map lane with an attached observer that is split into a stream of events
+/// and a subscription handle.
+///
+/// # Arguments
+///
+/// * `buffer_size` - The size of the buffer for the observer.
 pub fn streamed_map_lane<K, V>(
     buffer_size: NonZeroUsize,
 ) -> (

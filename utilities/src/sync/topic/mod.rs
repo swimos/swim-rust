@@ -125,7 +125,7 @@ impl<T> Sender<T> {
             // and there is only one writer so we can guarantee that we have exclusive access
             // to this entry.
             let data_ref = unsafe { &mut *entry.data.get() };
-            *data_ref = Some(value);
+            let _prev = std::mem::replace(data_ref, Some(value));
             drop(lock);
             read_waiters.lock().wake_all();
             Ok(())
@@ -147,6 +147,8 @@ impl<T> Drop for Sender<T> {
     }
 }
 
+/// Equivalent to a [`Receiver`] that does not observe the values in the buffer. It can only be
+/// used to create new [`Receiver`]s.
 pub struct Subscriber<T> {
     inner: Arc<Inner<T>>,
 }
@@ -160,10 +162,11 @@ impl<T> Clone for Subscriber<T> {
 }
 
 impl<T> Subscriber<T> {
+    /// Attempt to create a new [`Receiver`]. This will fail if the sender has been dropped.
     pub fn subscribe(&self) -> Result<Receiver<T>, SubscribeError> {
         let Subscriber { inner, .. } = self;
         let mut lock = inner.guarded.write();
-        if lock.num_rx == 0 {
+        if !inner.active.load(Ordering::Relaxed) {
             Err(SubscribeError)
         } else {
             Ok(add_receiver(inner, &mut *lock))
@@ -193,6 +196,8 @@ impl<T> Receiver<T> {
         try_advance_reader(&mut &mut *self, None)
     }
 
+    /// Create a [`Subscriber`] from this [`Receiver] that can be used to create more receivers
+    /// without being required to observe new values in the channel.
     pub fn subscriber(&self) -> Subscriber<T> {
         Subscriber {
             inner: self.inner.clone(),
@@ -392,7 +397,10 @@ impl<'a, T> Future for TopicSend<'a, T> {
         // and there is only one writer so we can guarantee that we have exclusive access
         // to this entry.
         let data_ref = unsafe { &mut *entry.data.get() };
-        *data_ref = Some(this.value.take().expect("Send future polled twice."));
+        let _prev = std::mem::replace(
+            data_ref,
+            Some(this.value.take().expect("Send future polled twice.")),
+        );
         lock.write_offset.store(next, Ordering::Release);
         drop(lock);
         this.inner.read_waiters.lock().wake_all();

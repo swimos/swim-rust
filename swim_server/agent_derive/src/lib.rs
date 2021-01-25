@@ -108,11 +108,10 @@ mod utils;
 /// use swim_server::SwimAgent;
 /// use swim_server::agent::lane::model::action::{ActionLane, CommandLane};
 /// use swim_server::agent::lane::model::map::MapLane;
-/// use swim_server::agent::lane::model::value::ValueLane;
+/// use swim_server::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 /// # use std::sync::Arc;
 /// # use swim_server::agent::lane::lifecycle::LaneLifecycle;
 /// # use swim_server::agent::lane::model::map::MapLaneEvent;
-/// # use swim_server::agent::lane::strategy::Queue;
 /// # use swim_server::agent::AgentContext;
 /// # use swim_server::{action_lifecycle, command_lifecycle, map_lifecycle, value_lifecycle};
 ///
@@ -189,7 +188,7 @@ mod utils;
 /// #     ) where
 /// #         Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
 /// #     {
-/// #         println!("Event received: {}", event);
+/// #         println!("Event received: {}", event.current);
 /// #     }
 /// # }
 /// #
@@ -471,7 +470,6 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// ```rust
 /// use swim_server::value_lifecycle;
-/// use swim_server::agent::lane::strategy::Queue;
 /// use swim_server::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 /// use swim_server::agent::AgentContext;
 /// # use swim_server::SwimAgent;
@@ -510,7 +508,6 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// ```rust
 /// use swim_server::value_lifecycle;
-/// use swim_server::agent::lane::strategy::Queue;
 /// use swim_server::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 /// use swim_server::agent::AgentContext;
 /// # use swim_server::SwimAgent;
@@ -568,7 +565,6 @@ pub fn value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// ```rust
 /// use swim_server::map_lifecycle;
-/// use swim_server::agent::lane::strategy::Queue;
 /// use swim_server::agent::lane::model::map::{MapLane, MapLaneEvent};
 /// use swim_server::agent::AgentContext;
 /// # use swim_server::SwimAgent;
@@ -606,7 +602,6 @@ pub fn value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// ```rust
 /// use swim_server::map_lifecycle;
-/// use swim_server::agent::lane::strategy::Queue;
 /// use swim_server::agent::lane::model::map::{MapLane, MapLaneEvent};
 /// use swim_server::agent::AgentContext;
 /// # use swim_server::SwimAgent;

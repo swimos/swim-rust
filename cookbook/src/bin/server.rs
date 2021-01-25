@@ -21,7 +21,6 @@ use swim_server::agent::command_lifecycle;
 use swim_server::agent::lane::lifecycle::StatefulLaneLifecycleBase;
 use swim_server::agent::lane::model::action::CommandLane;
 use swim_server::agent::lane::model::value::{ValueLane, ValueLaneEvent};
-use swim_server::agent::lane::strategy::Queue;
 use swim_server::agent::value_lifecycle;
 use swim_server::agent::AgentContext;
 use swim_server::agent::SwimAgent;

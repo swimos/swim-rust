@@ -22,16 +22,20 @@ use std::sync::Arc;
 use tokio::macros::support::{Pin, Poll};
 use utilities::sync::topic::{self, SubscribeError, TryRecvError};
 
+/// An [`Observer`] allows changes to the state of a [`TVar`] to be observed as a stream.
 pub struct Observer<T> {
     inner: topic::Receiver<Contents>,
     _type: PhantomData<fn() -> Arc<T>>,
 }
 
+/// An [`ObserverSubscriber`] allows additional observers to be attached to a [`TVar`] to stream
+/// changes to the state.
 pub struct ObserverSubscriber<T> {
     inner: topic::Subscriber<Contents>,
     _type: PhantomData<fn() -> Arc<T>>,
 }
 
+/// A [`Stream`] of state changes from a [`TVar`].
 pub struct ObserverStream<T> {
     inner: topic::ReceiverStream<Contents>,
     _type: PhantomData<fn() -> Arc<T>>,
@@ -45,6 +49,7 @@ impl<T> Observer<T> {
         }
     }
 
+    /// Create a subscriber attached to the [`TVar`] for this observer.
     pub fn subscriber(&self) -> ObserverSubscriber<T> {
         ObserverSubscriber {
             inner: self.inner.subscriber(),
@@ -52,6 +57,7 @@ impl<T> Observer<T> {
         }
     }
 
+    /// Convert this observer into a subscriber.
     pub fn into_subscriber(self) -> ObserverSubscriber<T> {
         ObserverSubscriber {
             inner: self.inner.subscriber(),
@@ -79,6 +85,8 @@ impl<T> Debug for Observer<T> {
 }
 
 impl<T: Any + Send + Sync> Observer<T> {
+    /// Observe the next value from this observer (or None if the underlying variable has been
+    /// dropped).
     pub async fn recv(&mut self) -> Option<Arc<T>> {
         self.inner.recv().await.map(|contents| {
             contents
@@ -88,6 +96,8 @@ impl<T: Any + Send + Sync> Observer<T> {
         })
     }
 
+    /// Try to observe the next available state change from the variable, receiving an error
+    /// if not changes has occurred or the variable has been dropped.
     pub fn try_recv(&mut self) -> Result<Arc<T>, TryRecvError> {
         self.inner.try_recv().map(|contents| {
             contents
@@ -97,6 +107,7 @@ impl<T: Any + Send + Sync> Observer<T> {
         })
     }
 
+    /// Convert this observer into an equivalent [`Stream`].
     pub fn into_stream(self) -> ObserverStream<T> {
         ObserverStream {
             inner: self.inner.into_stream(),
@@ -106,6 +117,7 @@ impl<T: Any + Send + Sync> Observer<T> {
 }
 
 impl<T> ObserverSubscriber<T> {
+    /// Create a new [`Observer`] attached to the variable.
     pub fn subscribe(&self) -> Result<Observer<T>, SubscribeError> {
         self.inner.subscribe().map(Observer::new)
     }
