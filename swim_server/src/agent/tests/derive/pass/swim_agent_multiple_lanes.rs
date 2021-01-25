@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::lane::model::value::ValueLaneEvent;
-use swim_server::agent::lane::lifecycle::{LaneLifecycle, StatefulLaneLifecycleBase};
+use swim_server::agent::lane::lifecycle::StatefulLaneLifecycleBase;
 use swim_server::agent::lane::model::action::{ActionLane, CommandLane};
 use swim_server::agent::lane::model::map::{MapLane, MapLaneEvent};
 use swim_server::agent::lane::model::value::ValueLane;
+use swim_server::agent::lane::model::value::ValueLaneEvent;
 use swim_server::agent::lane::strategy::Queue;
 use swim_server::agent::AgentContext;
 use swim_server::{
@@ -83,12 +83,6 @@ fn main() {
         }
     }
 
-    impl LaneLifecycle<TestAgentConfig> for CommandLifecycle {
-        fn create(_config: &TestAgentConfig) -> Self {
-            CommandLifecycle {}
-        }
-    }
-
     // ----------------------- Action Lifecycle -----------------------
 
     #[action_lifecycle(agent = "TestAgent", command_type = "String", response_type = "i32")]
@@ -105,12 +99,6 @@ fn main() {
             Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
         {
             unimplemented!()
-        }
-    }
-
-    impl LaneLifecycle<TestAgentConfig> for ActionLifecycle {
-        fn create(_config: &TestAgentConfig) -> Self {
-            ActionLifecycle {}
         }
     }
 
@@ -136,12 +124,6 @@ fn main() {
             Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
         {
             unimplemented!()
-        }
-    }
-
-    impl LaneLifecycle<TestAgentConfig> for ValueLifecycle {
-        fn create(_config: &TestAgentConfig) -> Self {
-            ValueLifecycle {}
         }
     }
 
@@ -175,12 +157,6 @@ fn main() {
             Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
         {
             unimplemented!()
-        }
-    }
-
-    impl LaneLifecycle<TestAgentConfig> for MapLifecycle {
-        fn create(_config: &TestAgentConfig) -> Self {
-            MapLifecycle {}
         }
     }
 

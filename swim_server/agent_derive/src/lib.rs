@@ -27,7 +27,6 @@
 //! ```rust
 //! use swim_server::agent::AgentContext;
 //! use swim_server::agent::lane::model::action::CommandLane;
-//! use swim_server::agent::lane::lifecycle::LaneLifecycle;
 //! use swim_server::{command_lifecycle, SwimAgent};
 //!
 //! // ----------------------- Agent derivation -----------------------
@@ -60,12 +59,6 @@
 //!         Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
 //!     {
 //!         println!("Command received: {}", command);
-//!     }
-//! }
-//!
-//! impl LaneLifecycle<TestAgentConfig> for TestCommandLifecycle {
-//!     fn create(_config: &TestAgentConfig) -> Self {
-//!         TestCommandLifecycle {}
 //!     }
 //! }
 //! ```
@@ -116,7 +109,7 @@ mod utils;
 /// use swim_server::agent::lane::model::action::{ActionLane, CommandLane};
 /// use swim_server::agent::lane::model::map::MapLane;
 /// use swim_server::agent::lane::model::value::{ValueLane, ValueLaneEvent};
-/// # use swim_server::agent::lane::lifecycle::{LaneLifecycle, StatefulLaneLifecycleBase};
+/// # use swim_server::agent::lane::lifecycle::StatefulLaneLifecycleBase;
 /// # use swim_server::agent::lane::model::map::MapLaneEvent;
 /// # use swim_server::agent::lane::strategy::Queue;
 /// # use swim_server::agent::AgentContext;
@@ -158,12 +151,6 @@ mod utils;
 /// #     }
 /// # }
 /// #
-/// # impl LaneLifecycle<TestAgentConfig> for TestCommandLifecycle {
-/// #     fn create(_config: &TestAgentConfig) -> Self {
-/// #         TestCommandLifecycle {}
-/// #     }
-/// # }
-/// #
 /// # #[action_lifecycle(agent = "TestAgent", command_type = "String", response_type = "i32")]
 /// # struct TestActionLifecycle;
 /// #
@@ -179,12 +166,6 @@ mod utils;
 /// #     {
 /// #         println!("Command received: {}", command);
 /// #         command.len() as i32
-/// #     }
-/// # }
-/// #
-/// # impl LaneLifecycle<TestAgentConfig> for TestActionLifecycle {
-/// #     fn create(_config: &TestAgentConfig) -> Self {
-/// #         TestActionLifecycle {}
 /// #     }
 /// # }
 /// #
@@ -208,12 +189,6 @@ mod utils;
 /// #         Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
 /// #     {
 /// #         println!("Event received: {}", event.current);
-/// #     }
-/// # }
-/// #
-/// # impl LaneLifecycle<TestAgentConfig> for TestValueLifecycle {
-/// #     fn create(_config: &TestAgentConfig) -> Self {
-/// #         TestValueLifecycle {}
 /// #     }
 /// # }
 /// #
@@ -245,12 +220,6 @@ mod utils;
 /// #         Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
 /// #     {
 /// #         println!("Event received {:?}", event)
-/// #     }
-/// # }
-/// #
-/// # impl LaneLifecycle<TestAgentConfig> for TestMapLifecycle {
-/// #     fn create(_config: &TestAgentConfig) -> Self {
-/// #         TestMapLifecycle {}
 /// #     }
 /// # }
 /// #
@@ -351,7 +320,6 @@ pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// ```
 /// use swim_server::command_lifecycle;
-/// use swim_server::agent::lane::lifecycle::LaneLifecycle;
 /// use swim_server::agent::lane::model::action::CommandLane;
 /// use swim_server::agent::AgentContext;
 /// # use swim_server::SwimAgent;
@@ -361,12 +329,6 @@ pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///     command_type = "String"
 /// )]
 /// struct TestCommandLifecycle;
-///
-/// impl LaneLifecycle<TestAgentConfig> for TestCommandLifecycle {
-///     fn create(_config: &TestAgentConfig) -> Self {
-///         TestCommandLifecycle {}
-///     }
-/// }
 ///
 /// impl TestCommandLifecycle {
 ///     async fn on_command<Context>(
@@ -392,7 +354,6 @@ pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// ```rust
 /// use swim_server::command_lifecycle;
-/// use swim_server::agent::lane::lifecycle::LaneLifecycle;
 /// use swim_server::agent::lane::model::action::CommandLane;
 /// use swim_server::agent::AgentContext;
 /// # use swim_server::SwimAgent;
@@ -403,12 +364,6 @@ pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///     on_command = "custom_on_command"
 /// )]
 /// struct TestCommandLifecycle;
-///
-/// impl LaneLifecycle<TestAgentConfig> for TestCommandLifecycle {
-///     fn create(_config: &TestAgentConfig) -> Self {
-///         TestCommandLifecycle {}
-///     }
-/// }
 ///
 /// impl TestCommandLifecycle {
 ///     async fn custom_on_command<Context>(
@@ -447,7 +402,6 @@ pub fn command_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// ```rust
 /// use swim_server::action_lifecycle;
-/// use swim_server::agent::lane::lifecycle::LaneLifecycle;
 /// use swim_server::agent::lane::model::action::ActionLane;
 /// use swim_server::agent::AgentContext;
 /// # use swim_server::SwimAgent;
@@ -469,12 +423,6 @@ pub fn command_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///        command.len() as i32
 ///     }
 /// }
-///
-/// impl LaneLifecycle<TestAgentConfig> for TestActionLifecycle {
-///     fn create(_config: &TestAgentConfig) -> Self {
-///         TestActionLifecycle {}
-///     }
-/// }
 /// # #[derive(Debug, SwimAgent)]
 /// # #[agent(config = "TestAgentConfig")]
 /// # pub struct TestAgent;
@@ -487,7 +435,6 @@ pub fn command_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// ```rust
 /// use swim_server::action_lifecycle;
-/// use swim_server::agent::lane::lifecycle::LaneLifecycle;
 /// use swim_server::agent::lane::model::action::ActionLane;
 /// use swim_server::agent::AgentContext;
 /// # use swim_server::SwimAgent;
@@ -512,12 +459,6 @@ pub fn command_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///     {
 ///         println!("Command received: {}", command);
 ///         command.len() as i32
-///     }
-/// }
-///
-/// impl LaneLifecycle<TestAgentConfig> for TestActionLifecycle {
-///     fn create(_config: &TestAgentConfig) -> Self {
-///         TestActionLifecycle {}
 ///     }
 /// }
 /// # #[derive(Debug, SwimAgent)]
@@ -545,7 +486,7 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// ```rust
 /// use swim_server::value_lifecycle;
-/// use swim_server::agent::lane::lifecycle::{StatefulLaneLifecycleBase, LaneLifecycle};
+/// use swim_server::agent::lane::lifecycle::StatefulLaneLifecycleBase;
 /// use swim_server::agent::lane::strategy::Queue;
 /// use swim_server::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 /// use swim_server::agent::AgentContext;
@@ -574,12 +515,6 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///     }
 /// }
 ///
-/// impl LaneLifecycle<TestAgentConfig> for TestValueLifecycle {
-///     fn create(_config: &TestAgentConfig) -> Self {
-///         TestValueLifecycle {}
-///     }
-/// }
-///
 /// impl StatefulLaneLifecycleBase for TestValueLifecycle {
 ///     type WatchStrategy = Queue;
 ///
@@ -599,7 +534,7 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// ```rust
 /// use swim_server::value_lifecycle;
-/// use swim_server::agent::lane::lifecycle::{StatefulLaneLifecycleBase, LaneLifecycle};
+/// use swim_server::agent::lane::lifecycle::StatefulLaneLifecycleBase;
 /// use swim_server::agent::lane::strategy::Queue;
 /// use swim_server::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 /// use swim_server::agent::AgentContext;
@@ -630,12 +565,6 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///         Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
 ///     {
 ///         println!("Event received: {}", event.current);
-///     }
-/// }
-///
-/// impl LaneLifecycle<TestAgentConfig> for TestValueLifecycle {
-///     fn create(_config: &TestAgentConfig) -> Self {
-///         TestValueLifecycle {}
 ///     }
 /// }
 ///
@@ -671,7 +600,7 @@ pub fn value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// ```rust
 /// use swim_server::map_lifecycle;
-/// use swim_server::agent::lane::lifecycle::{StatefulLaneLifecycleBase, LaneLifecycle};
+/// use swim_server::agent::lane::lifecycle::StatefulLaneLifecycleBase;
 /// use swim_server::agent::lane::strategy::Queue;
 /// use swim_server::agent::lane::model::map::{MapLane, MapLaneEvent};
 /// use swim_server::agent::AgentContext;
@@ -700,12 +629,6 @@ pub fn value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///     }
 /// }
 ///
-/// impl LaneLifecycle<TestAgentConfig> for TestMapLifecycle {
-///     fn create(_config: &TestAgentConfig) -> Self {
-///         TestMapLifecycle {}
-///     }
-/// }
-///
 /// impl StatefulLaneLifecycleBase for TestMapLifecycle {
 ///     type WatchStrategy = Queue;
 ///
@@ -724,7 +647,7 @@ pub fn value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// ```rust
 /// use swim_server::map_lifecycle;
-/// use swim_server::agent::lane::lifecycle::{StatefulLaneLifecycleBase, LaneLifecycle};
+/// use swim_server::agent::lane::lifecycle::StatefulLaneLifecycleBase;
 /// use swim_server::agent::lane::strategy::Queue;
 /// use swim_server::agent::lane::model::map::{MapLane, MapLaneEvent};
 /// use swim_server::agent::AgentContext;
@@ -755,12 +678,6 @@ pub fn value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///         Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
 ///     {
 ///        println!("Event received {:?}", event)
-///     }
-/// }
-///
-/// impl LaneLifecycle<TestAgentConfig> for TestMapLifecycle {
-///     fn create(_config: &TestAgentConfig) -> Self {
-///         TestMapLifecycle {}
 ///     }
 /// }
 ///
@@ -795,7 +712,6 @@ pub fn map_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// ```rust
 /// use swim_server::demand_lifecycle;
-/// use swim_server::agent::lane::lifecycle::{StatefulLaneLifecycleBase, LaneLifecycle};
 /// use swim_server::agent::lane::model::demand::DemandLane;
 /// use swim_server::agent::AgentContext;
 /// # use swim_server::SwimAgent;
@@ -817,12 +733,6 @@ pub fn map_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///         Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
 ///     {
 ///         Some(1)
-///     }
-/// }
-///
-/// impl LaneLifecycle<TestAgentConfig> for TestDemandLifecycle {
-///     fn create(_config: &TestAgentConfig) -> Self {
-///         TestDemandLifecycle {}
 ///     }
 /// }
 ///
@@ -850,7 +760,6 @@ pub fn demand_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// ```rust
 /// use swim_server::demand_map_lifecycle;
-/// use swim_server::agent::lane::lifecycle::LaneLifecycle;
 /// use swim_server::agent::lane::model::demand_map::DemandMapLane;
 /// use swim_server::agent::AgentContext;
 /// # use swim_server::SwimAgent;
@@ -882,12 +791,6 @@ pub fn demand_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///    {
 ///        Some(1)
 ///    }
-/// }
-///
-/// impl LaneLifecycle<TestAgentConfig> for TestDemandLifecycle {
-///     fn create(_config: &TestAgentConfig) -> Self {
-///         TestDemandLifecycle {}
-///     }
 /// }
 ///
 /// # #[derive(Debug, SwimAgent)]
