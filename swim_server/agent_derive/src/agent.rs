@@ -122,6 +122,7 @@ pub fn derive_swim_agent(input: DeriveInput) -> Result<TokenStream, TokenStream>
         use swim_server::agent::{LaneTasks, SwimAgent, AgentContext, LaneIo};
         use swim_server::agent::lane::channels::AgentExecutionConfig;
         use swim_server::agent::context::AgentExecutionContext;
+        use swim_server::agent::lane::lifecycle::LaneLifecycle;
 
         #[automatically_derived]
         impl SwimAgent<#config_type> for #agent_name {
@@ -186,7 +187,7 @@ pub fn derive_agent_lifecycle(args: AttributeArgs, input: DeriveInput) -> TokenS
 
         #[automatically_derived]
         impl AgentLifecycle<#agent_name> for #lifecycle_name {
-            fn on_start<'a, C>(&'a self, context: &'a C) -> BoxFuture<'a, ()>
+            fn starting<'a, C>(&'a self, context: &'a C) -> BoxFuture<'a, ()>
             where
                 C: AgentContext<#agent_name> + Send + Sync + 'a,
             {

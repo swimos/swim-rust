@@ -17,17 +17,22 @@ use crate::plane::router::PlaneRouter;
 use crate::plane::spec::{PlaneSpec, RouteSpec};
 use crate::plane::tests::fixture::{ReceiveAgentRoute, SendAgentRoute, TestLifecycle};
 use crate::plane::{AgentRoute, EnvChannel};
+use crate::routing::{ServerRouter, TopLevelRouterFactory};
 use futures::future::join;
 use std::time::Duration;
 use swim_runtime::time::clock::Clock;
 use swim_runtime::time::timeout;
+use tokio::sync::mpsc;
 use utilities::future::open_ended::OpenEndedFutures;
 use utilities::route_pattern::RoutePattern;
 use utilities::sync::trigger;
 
 mod fixture;
 
-fn make_spec<Clk: Clock>() -> (PlaneSpec<Clk, EnvChannel, PlaneRouter>, trigger::Receiver) {
+fn make_spec<Clk: Clock, Delegate: ServerRouter + 'static>() -> (
+    PlaneSpec<Clk, EnvChannel, PlaneRouter<Delegate>>,
+    trigger::Receiver,
+) {
     let send_pattern = RoutePattern::parse(
         format!("/{}/:{}", fixture::SENDER_PREFIX, fixture::PARAM_NAME).chars(),
     )
@@ -62,15 +67,22 @@ fn make_spec<Clk: Clock>() -> (PlaneSpec<Clk, EnvChannel, PlaneRouter>, trigger:
 #[tokio::test]
 async fn plane_event_loop() {
     let (spec, done_rx) = make_spec();
+    let (context_tx, context_rx) = mpsc::channel(8);
 
     let (stop_tx, stop_rx) = trigger::trigger();
     let config = fixture::make_config();
+
+    let (remote_tx, _remote_rx) = mpsc::channel(8);
+    let top_level_router_fac = TopLevelRouterFactory::new(context_tx.clone(), remote_tx);
+
     let plane_task = super::run_plane(
         config,
         swim_runtime::time::clock::runtime_clock(),
         spec,
         stop_rx,
         OpenEndedFutures::new(),
+        (context_tx, context_rx),
+        top_level_router_fac,
     );
 
     let completion_task = async move {

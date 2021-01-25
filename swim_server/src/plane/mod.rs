@@ -16,7 +16,7 @@ pub mod context;
 pub mod error;
 pub mod lifecycle;
 pub(crate) mod provider;
-mod router;
+pub(crate) mod router;
 pub mod spec;
 #[cfg(test)]
 mod tests;
@@ -116,7 +116,7 @@ impl LocalEndpoint {
     }
 }
 
-type EnvChannel = TakeUntil<mpsc::Receiver<TaggedEnvelope>, trigger::Receiver>;
+pub(in crate) type EnvChannel = TakeUntil<mpsc::Receiver<TaggedEnvelope>, trigger::Receiver>;
 
 /// Container for the running routes within a plane.
 #[derive(Debug, Default)]
@@ -179,7 +179,7 @@ type ResolutionRequest = Request<Result<RoutingAddr, RouterError>>;
 
 /// Requests that can be serviced by the plane event loop.
 #[derive(Debug)]
-enum PlaneRequest {
+pub(crate) enum PlaneRequest {
     /// Get a handle to an agent (starting it where necessary).
     Agent {
         name: RelativeUri,
@@ -263,15 +263,15 @@ impl PlaneContext for ContextImpl {
 }
 /// Contains the specifications of all routes that are within a plane and maintains the map of
 /// currently active routes.
-struct RouteResolver<Clk> {
+struct RouteResolver<Clk, DelegateFac: ServerRouterFactory> {
     /// Clock for scheduling tasks.
     clock: Clk,
     /// The configuration for the agent routes that are opened.
     execution_config: AgentExecutionConfig,
     /// The routes for the plane.
-    routes: Vec<RouteSpec<Clk, EnvChannel, PlaneRouter>>,
+    routes: Vec<RouteSpec<Clk, EnvChannel, PlaneRouter<DelegateFac::Router>>>,
     /// Factory to create handles to the plane router when an agent is opened.
-    router_fac: PlaneRouterFactory,
+    router_fac: PlaneRouterFactory<DelegateFac>,
     /// External trigger that is fired when the plane should stop.
     stop_trigger: trigger::Receiver,
     /// The map of currently active routes.
@@ -280,7 +280,7 @@ struct RouteResolver<Clk> {
     counter: u32,
 }
 
-impl<Clk: Clock> RouteResolver<Clk> {
+impl<Clk: Clock, DelegateFac: ServerRouterFactory> RouteResolver<Clk, DelegateFac> {
     /// Attempts to open an agent at a specified route.
     fn try_open_route<S>(
         &mut self,
@@ -347,12 +347,16 @@ const PLANE_STOPPED: &str = "The plane has stopped.";
 /// * `spec` - The specification for the plane.
 /// * `stop_trigger` - Trigger to fire externally when the plane should stop.
 /// * `spawner` - Spawns tasks to run the agents for the plane.
-pub async fn run_plane<Clk, S>(
+/// * `context_channel` - Transmitter and receiver for plane requests.
+/// * `delegate_fac` - Factory for creating delegate routers.
+pub(crate) async fn run_plane<Clk, S, DelegateFac: ServerRouterFactory>(
     execution_config: AgentExecutionConfig,
     clock: Clk,
-    spec: PlaneSpec<Clk, EnvChannel, PlaneRouter>,
+    spec: PlaneSpec<Clk, EnvChannel, PlaneRouter<DelegateFac::Router>>,
     stop_trigger: trigger::Receiver,
     spawner: S,
+    context_channel: (mpsc::Sender<PlaneRequest>, mpsc::Receiver<PlaneRequest>),
+    delegate_fac: DelegateFac,
 ) where
     Clk: Clock,
     S: Spawner<BoxFuture<'static, AgentResult>>,
@@ -360,7 +364,7 @@ pub async fn run_plane<Clk, S>(
     event!(Level::DEBUG, STARTING);
     pin_mut!(spawner);
 
-    let (context_tx, context_rx) = mpsc::channel(8);
+    let (context_tx, context_rx) = context_channel;
     let mut context = ContextImpl::new(context_tx.clone(), spec.routes());
 
     let mut requests = context_rx.take_until(stop_trigger.clone()).fuse();
@@ -384,7 +388,7 @@ pub async fn run_plane<Clk, S>(
             clock,
             execution_config,
             routes,
-            router_fac: PlaneRouterFactory::new(context_tx),
+            router_fac: PlaneRouterFactory::new(context_tx, delegate_fac),
             stop_trigger,
             active_routes: PlaneActiveRoutes::default(),
             counter: 0,
@@ -542,14 +546,15 @@ pub async fn run_plane<Clk, S>(
     event!(Level::DEBUG, PLANE_STOPPED);
 }
 
-type PlaneAgentRoute<Clk> = BoxAgentRoute<Clk, EnvChannel, PlaneRouter>;
+type PlaneAgentRoute<Clk, Delegate> = BoxAgentRoute<Clk, EnvChannel, PlaneRouter<Delegate>>;
+type Params = HashMap<String, String>;
 
 /// Find the appropriate specification for a route along with any parameters derived from the
 /// route pattern.
-fn route_for<'a, Clk>(
+fn route_for<'a, Clk, Delegate>(
     route: &RelativeUri,
-    routes: &'a [RouteSpec<Clk, EnvChannel, PlaneRouter>],
-) -> Result<(&'a PlaneAgentRoute<Clk>, HashMap<String, String>), NoAgentAtRoute> {
+    routes: &'a [RouteSpec<Clk, EnvChannel, PlaneRouter<Delegate>>],
+) -> Result<(&'a PlaneAgentRoute<Clk, Delegate>, Params), NoAgentAtRoute> {
     //TODO This could be a lot more efficient though it would probably only matter for planes with a large number of routes.
     let matched = routes
         .iter()
