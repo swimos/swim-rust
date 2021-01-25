@@ -37,7 +37,7 @@ pub const WARN_URI: &str = "warnLog";
 pub const ERROR_URI: &str = "errorLog";
 pub const FAIL_URI: &str = "failLog";
 
-#[derive(Copy, Clone, Debug, Tag)]
+#[derive(Copy, Clone, Debug, Tag, Eq, PartialEq, Hash)]
 pub enum LogLevel {
     Trace,
     Debug,
@@ -45,6 +45,31 @@ pub enum LogLevel {
     Warn,
     Error,
     Fail,
+}
+
+impl LogLevel {
+    pub fn uri_ref(&self) -> &'static str {
+        match self {
+            LogLevel::Trace => TRACE_URI,
+            LogLevel::Debug => DEBUG_URI,
+            LogLevel::Info => INFO_URI,
+            LogLevel::Warn => WARN_URI,
+            LogLevel::Error => ERROR_URI,
+            LogLevel::Fail => FAIL_URI,
+        }
+    }
+
+    pub fn try_from_uri(uri: &str) -> Result<LogLevel, ()> {
+        match uri {
+            TRACE_URI => Ok(LogLevel::Trace),
+            DEBUG_URI => Ok(LogLevel::Debug),
+            INFO_URI => Ok(LogLevel::Info),
+            WARN_URI => Ok(LogLevel::Warn),
+            ERROR_URI => Ok(LogLevel::Error),
+            FAIL_URI => Ok(LogLevel::Fail),
+            _ => Err(()),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Form)]

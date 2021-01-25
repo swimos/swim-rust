@@ -24,6 +24,7 @@ pub(crate) mod log;
 pub use info::LaneInfo;
 pub use log::LogLevel;
 
+use self::parse::parse;
 use crate::agent::context::AgentExecutionContext;
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::meta::info::{open_info_lanes, InfoHandler};
@@ -71,53 +72,60 @@ impl MetaContext {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum MetaKind {
+pub enum MetaAddressed {
+    /// swim:meta:edge
     Edge,
+    /// swim:meta:mesh
     Mesh,
+    /// swim:meta:part
     Part,
+    /// swim:meta:host
     Host,
-    Node(Text),
-    Lane { node_uri: Text, lane_uri: Text },
-    Uplink,
+    /// swim:meta:node
+    Node(MetaNodeAddressed),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum MetaNodeAddressed {
+    /// swim:meta:node/percent-encoded-nodeuri/lane-uri/pulse
+    /// Eg: swim:meta:node/unit%2Ffoo/bar/pulse
+    NodeProfile { node_uri: Text, lane_uri: Text },
+    /// swim:meta:node/percent-encoded-nodeuri/lane/lane-uri/uplink
+    /// Eg: swim:meta:node/unit%2Ffoo/lane/bar/uplink
+    UplinkProfile { node_uri: Text, lane_uri: Text },
+    /// swim:meta:node/percent-encoded-nodeuri/lanes
+    /// Eg: swim:meta:node/unit%2Ffoo/lanes/
+    Lanes { node_uri: Text },
+    /// swim:meta:node/percent-encoded-nodeuri/lane-uri/traceLog
+    /// Eg: swim:meta:node/unit%2Ffoo/bar/traceLog
+    Log { node_uri: Text, level: LogLevel },
+}
+
+impl MetaNodeAddressed {
+    pub fn node_uri_ref(&self) -> &Text {
+        match self {
+            MetaNodeAddressed::NodeProfile { node_uri, .. } => &node_uri,
+            MetaNodeAddressed::UplinkProfile { node_uri, .. } => &node_uri,
+            MetaNodeAddressed::Lanes { node_uri, .. } => &node_uri,
+            MetaNodeAddressed::Log { node_uri, .. } => &node_uri,
+        }
+    }
 }
 
 pub(crate) trait MetaPath {
-    fn into_kind_and_path(self) -> Result<(MetaKind, RelativePath), RelativePath>;
+    fn meta_kind(self) -> Result<(MetaAddressed, RelativePath), RelativePath>;
 }
 
 impl MetaPath for RelativePath {
-    fn into_kind_and_path(self) -> Result<(MetaKind, RelativePath), RelativePath> {
+    fn meta_kind(self) -> Result<(MetaAddressed, RelativePath), RelativePath> {
         let RelativePath { node, lane } = self;
-        let index = node.as_str().find('/');
 
-        match index {
-            Some(index) => {
-                let node = node.as_str();
-                let (meta_kind, node_uri) = node.split_at(index);
-
-                let r = match meta_kind {
-                    META_EDGE => Ok(MetaKind::Edge),
-                    META_MESH => Ok(MetaKind::Mesh),
-                    META_PART => Ok(MetaKind::Part),
-                    META_HOST => Ok(MetaKind::Host),
-                    META_NODE => Ok(MetaKind::Node("".into())),
-                    _ => Err(RelativePath::new(node, lane.as_ref())),
-                };
-
-                match r {
-                    Ok(kind) => {
-                        let node_uri = &node_uri[1..];
-                        if node_uri.is_empty() {
-                            return Err(RelativePath::new(node, lane.as_ref()));
-                        }
-
-                        // todo return decoded uri as third arg
-                        Ok((kind, RelativePath::new(node_uri, lane.as_ref())))
-                    }
-                    Err(e) => Err(e),
-                }
+        match parse(node.as_str(), lane.as_str()) {
+            Ok(_kind) => {
+                // Ok((kind, RelativePath::new(decoded_uri, lane.into())))
+                unimplemented!()
             }
-            None => Err(RelativePath::new(node, lane)),
+            Err(_) => Err(RelativePath::new(node, lane)),
         }
     }
 }

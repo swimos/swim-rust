@@ -31,7 +31,7 @@ use utilities::errors::Recoverable;
 use utilities::sync::promise;
 use utilities::uri::RelativeUri;
 
-use crate::agent::meta::{MetaKind, MetaPath};
+use crate::agent::meta::{MetaAddressed, MetaPath};
 use crate::plane::PlaneRequest;
 use crate::routing::error::RouterError;
 use swim_common::warp::path::RelativePath;
@@ -216,7 +216,7 @@ impl Display for RoutingAddr {
 
 pub enum ServerEnvelope {
     AgentEnvelope(Envelope),
-    MetaEnvelope(Envelope, MetaKind),
+    MetaEnvelope(Envelope, MetaAddressed),
 }
 
 impl ServerEnvelope {
@@ -224,7 +224,7 @@ impl ServerEnvelope {
         ServerEnvelope::AgentEnvelope(envelope)
     }
 
-    pub fn meta(envelope: Envelope, kind: MetaKind) -> ServerEnvelope {
+    pub fn meta(envelope: Envelope, kind: MetaAddressed) -> ServerEnvelope {
         ServerEnvelope::MetaEnvelope(envelope, kind)
     }
 
@@ -248,7 +248,7 @@ impl From<Envelope> for ServerEnvelope {
         let Envelope { header, body } = envelope;
 
         if let EnvelopeHeader::IncomingLink(header, path) = header {
-            match path.into_kind_and_path() {
+            match path.meta_kind() {
                 Ok((kind, path)) => ServerEnvelope::meta(
                     Envelope {
                         header: EnvelopeHeader::IncomingLink(header, path),
@@ -280,7 +280,7 @@ impl From<TaggedAgentEnvelope> for TaggedEnvelope {
 /// An [`Envelope`] for a meta lane, tagged with the key of the endpoint into routing table from
 /// which it originated.
 #[derive(Debug, Clone, PartialEq)]
-pub struct TaggedMetaEnvelope(pub RoutingAddr, pub Envelope, pub MetaKind);
+pub struct TaggedMetaEnvelope(pub RoutingAddr, pub Envelope, pub MetaAddressed);
 
 impl From<TaggedMetaEnvelope> for TaggedEnvelope {
     fn from(env: TaggedMetaEnvelope) -> Self {

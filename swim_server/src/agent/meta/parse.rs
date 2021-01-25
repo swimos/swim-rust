@@ -13,9 +13,17 @@
 // limitations under the License.
 
 use super::{META_EDGE, META_HOST, META_MESH, META_NODE, META_PART};
-use crate::agent::meta::MetaKind;
+use crate::agent::meta::{LogLevel, MetaAddressed, MetaNodeAddressed};
 use percent_encoding::percent_decode_str;
-use swim_common::warp::path::RelativePath;
+use pin_utils::core_reexport::fmt::Formatter;
+use std::error::Error;
+use std::fmt::Display;
+use utilities::errors::Recoverable;
+
+const LANE_PART: &str = "lane";
+const LANES_PART: &str = "lanes";
+const PULSE_PART: &str = "pulse";
+const UPLINK_PART: &str = "uplink";
 
 fn iter(uri: &str) -> impl Iterator<Item = &str> {
     let lower_bound = if uri.starts_with('/') { 1 } else { 0 };
@@ -30,46 +38,103 @@ fn iter(uri: &str) -> impl Iterator<Item = &str> {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct MetaParseErr(String);
+pub enum MetaParseErr {
+    EmptyUri,
+    UnknownRequest,
+}
 
-fn parse(node_uri: &str) -> Result<MetaKind, MetaParseErr> {
+impl Display for MetaParseErr {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MetaParseErr::EmptyUri => write!(f, "Empty URI provided"),
+            MetaParseErr::Malformatted(s) => write!(f, "Request URI malformatted: {}", s),
+            MetaParseErr::UnknownRequest => {
+                write!(f, "The request URI does not match any resources")
+            }
+        }
+    }
+}
+
+impl Error for MetaParseErr {}
+
+impl Recoverable for MetaParseErr {
+    fn is_fatal(&self) -> bool {
+        !matches!(self, MetaParseErr::EmptyUri)
+    }
+}
+
+fn decode_str(s: &str) -> String {
+    percent_decode_str(s).map(|c| c as char).collect::<String>()
+}
+
+pub fn parse(node_uri: &str, lane_uri: &str) -> Result<MetaAddressed, MetaParseErr> {
     if node_uri.is_empty() {
-        return Err(MetaParseErr("Empty URI".to_string()));
+        return Err(MetaParseErr::EmptyUri);
     }
 
     let _original_uri = node_uri.clone();
-    let mut iter = iter(node_uri);
+    let mut node_iter = iter(node_uri);
+    let lane_iter = iter(lane_uri);
 
-    match iter.next() {
-        Some(META_EDGE) => Ok(MetaKind::Edge),
-        Some(META_MESH) => {
-            unimplemented!()
+    match node_iter.next() {
+        Some(META_EDGE) => Ok(MetaAddressed::Edge),
+        Some(META_MESH) => Ok(MetaAddressed::Mesh),
+        Some(META_PART) => Ok(MetaAddressed::Part),
+        Some(META_HOST) => Ok(MetaAddressed::Host),
+        Some(META_NODE) => parse_node(node_iter, lane_iter).map(MetaAddressed::Node),
+        Some(_) => Err(MetaParseErr::UnknownRequest),
+        None => {
+            // unreachable as the split operation will return an empty string after finding no
+            // matches in the input str.
+            unreachable!()
         }
-        Some(META_PART) => {
-            unimplemented!()
-        }
-        Some(META_HOST) => {
-            unimplemented!()
-        }
-        Some(META_NODE) => {
-            let node_uri = iter
-                .next()
-                .map(|c| percent_decode_str(c).map(|c| c as char).collect::<String>());
+    }
+}
 
-            let lane = iter.next();
-            let lane_uri = iter.next();
+fn parse_node<'c, L: Iterator<Item = &'c str>, R: Iterator<Item = &'c str>>(
+    mut node_iter: L,
+    mut lane_iter: R,
+) -> Result<MetaNodeAddressed, MetaParseErr> {
+    let encoded_node_uri = node_iter.next();
+    let lane = node_iter.next();
+    let lane_uri = node_iter.next();
 
-            match (node_uri, lane, lane_uri) {
-                (Some(node_uri), Some("lane"), Some(lane_uri)) => Ok(MetaKind::Lane {
-                    node_uri: node_uri.into(),
-                    lane_uri: lane_uri.into(),
-                }),
-                (Some(node_uri), None, None) => Ok(MetaKind::Node(node_uri.into())),
-                _ => Err(MetaParseErr("Malformatted URI".to_string())),
+    match (encoded_node_uri, lane, lane_uri) {
+        // Uplink request
+        (Some(node_uri), Some(LANE_PART), Some(lane_uri)) => match lane_iter.next() {
+            Some(UPLINK_PART) => Ok(MetaNodeAddressed::UplinkProfile {
+                node_uri: decode_str(node_uri).into(),
+                lane_uri: decode_str(lane_uri).into(),
+            }),
+            _ => Err(MetaParseErr::UnknownRequest),
+        },
+        // Node requests
+        (Some(node_uri), None, None) => match lane_iter.next() {
+            Some(LANES_PART) => Ok(MetaNodeAddressed::Lanes {
+                node_uri: decode_str(node_uri).into(),
+            }),
+            // Log lanes
+            Some(lane_uri) => {
+                let level =
+                    LogLevel::try_from_uri(lane_uri).map_err(|_| MetaParseErr::UnknownRequest)?;
+
+                Ok(MetaNodeAddressed::Log {
+                    node_uri: decode_str(node_uri).into(),
+                    level,
+                })
             }
-        }
-        Some(s) => Err(MetaParseErr(format!("Unknown URI: {}", s))),
-        None => Err(MetaParseErr("Empty URI provided".to_string())),
+            _ => Err(MetaParseErr::UnknownRequest),
+        },
+        // Lane requests
+        (Some(node_uri), Some(lane_uri), None) => match lane_iter.next() {
+            // Node pulse
+            Some(PULSE_PART) => Ok(MetaNodeAddressed::NodeProfile {
+                node_uri: decode_str(node_uri).into(),
+                lane_uri: decode_str(lane_uri).into(),
+            }),
+            _ => Err(MetaParseErr::UnknownRequest),
+        },
+        _ => Err(MetaParseErr::UnknownRequest),
     }
 }
 
@@ -89,16 +154,79 @@ fn test_iter() {
 }
 
 #[test]
-fn test_parse() {
+fn test_parse_node() {
     assert_eq!(
-        parse("swim:meta:node/unit%2Ffoo/"),
-        Ok(MetaKind::Node("unit/foo".into()))
-    );
-    assert_eq!(
-        parse("swim:meta:node/unit%2Ffoo/lane/bar"),
-        Ok(MetaKind::Lane {
+        parse("swim:meta:node/unit%2Ffoo/bar", "pulse"),
+        Ok(MetaAddressed::Node(MetaNodeAddressed::NodeProfile {
             node_uri: "unit/foo".into(),
             lane_uri: "bar".into()
-        })
+        }))
     );
+
+    assert_eq!(
+        parse("swim:meta:node/unit%2Ffoo/lane/bar", "uplink"),
+        Ok(MetaAddressed::Node(MetaNodeAddressed::UplinkProfile {
+            node_uri: "unit/foo".into(),
+            lane_uri: "bar".into()
+        }))
+    );
+
+    assert_eq!(
+        parse("swim:meta:node/unit%2Ffoo/", "lanes"),
+        Ok(MetaAddressed::Node(MetaNodeAddressed::Lanes {
+            node_uri: "unit/foo".into(),
+        }))
+    );
+
+    let log_levels = vec![
+        LogLevel::Trace,
+        LogLevel::Debug,
+        LogLevel::Info,
+        LogLevel::Warn,
+        LogLevel::Error,
+        LogLevel::Fail,
+    ];
+
+    for level in log_levels {
+        assert_eq!(
+            parse("swim:meta:node/unit%2Ffoo/", level.uri_ref()),
+            Ok(MetaAddressed::Node(MetaNodeAddressed::Log {
+                node_uri: "unit/foo".into(),
+                level
+            }))
+        );
+    }
+}
+
+#[test]
+fn test_parse_edge() {
+    assert_eq!(parse("swim:meta:edge", ""), Ok(MetaAddressed::Edge))
+}
+
+#[test]
+fn test_parse_mesh() {
+    assert_eq!(parse("swim:meta:mesh", ""), Ok(MetaAddressed::Mesh))
+}
+
+#[test]
+fn test_parse_part() {
+    assert_eq!(parse("swim:meta:part", ""), Ok(MetaAddressed::Part))
+}
+
+#[test]
+fn test_parse_host() {
+    assert_eq!(parse("swim:meta:host", ""), Ok(MetaAddressed::Host))
+}
+
+#[test]
+fn test_parse_unknown() {
+    assert_eq!(
+        parse("swim:meta:unknown", ""),
+        Err(MetaParseErr::UnknownRequest)
+    )
+}
+
+#[test]
+fn test_parse_empty() {
+    assert_eq!(parse("", ""), Err(MetaParseErr::EmptyUri))
 }
