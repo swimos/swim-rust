@@ -98,7 +98,8 @@ fn build_struct_as_value(
     quote! {
         let #structure_name #self_deconstruction = self;
         let mut attrs = vec![swim_common::model::Attr::of((#structure_name_str #headers)), #attributes];
-        swim_common::model::Value::Record(attrs, #items)
+        let items = #items;
+        swim_common::model::Value::Record(attrs, items)
     }
 }
 
@@ -120,7 +121,8 @@ fn build_variant_as_value(
     quote! {
         #structure_name::#variant_original_ident #self_deconstruction => {
             let mut attrs = vec![swim_common::model::Attr::of((#variant_name_str #headers)), #attributes];
-            swim_common::model::Value::Record(attrs, #items)
+            let items = #items;
+            swim_common::model::Value::Record(attrs, items)
         },
     }
 }
@@ -164,7 +166,14 @@ fn compute_as_value(
                     let func = fn_factory(&ident);
 
                     items = quote!({
-                        vec![swim_common::model::Item::ValueItem(#func)]
+                        match #func {
+                            swim_common::model::Value::Extant => vec![],
+                            swim_common::model::Value::Record(mut body_attrs, body_items) => {
+                                attrs.append(&mut body_attrs);
+                                body_items
+                            },
+                            __v => vec![swim_common::model::Item::ValueItem(__v)]
+                        }
                     });
                 }
                 FieldKind::HeaderBody => {

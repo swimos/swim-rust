@@ -28,6 +28,7 @@ pub mod value;
 pub fn derive_lane(
     trait_name: &str,
     typ: Ident,
+    has_fields: bool,
     task_name: Ident,
     agent_name: Ident,
     input_ast: DeriveInput,
@@ -103,12 +104,27 @@ pub fn derive_lane(
         }
     };
 
+    let lane_lifecycle = if !has_fields {
+        Some(quote! {
+            #[automatically_derived]
+            impl<T> swim_server::agent::lane::lifecycle::LaneLifecycle<T> for #typ {
+               fn create(_config: &T) -> Self {
+                   #typ{}
+               }
+            }
+        })
+    } else {
+        None
+    };
+
     let wrapped = as_const(trait_name, typ, private_derived);
 
     let derived = quote! {
         #public_derived
 
         #wrapped
+
+        #lane_lifecycle
     };
 
     derived.into()
