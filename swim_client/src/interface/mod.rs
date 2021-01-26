@@ -12,17 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::error::Error;
-use std::fmt;
-use std::fmt::{Display, Formatter};
-use std::sync::Arc;
-
-use tracing::info;
-
-use swim_common::form::{Form, ValidatedForm};
-use swim_common::model::Value;
-use swim_common::warp::path::AbsolutePath;
-
+//! Interface for creating and running Swim client instances.
+//!
+//! The module provides methods and structures for creating and running Swim client instances.
 use crate::configuration::downlink::{Config, ConfigParseError};
 use crate::connections::SwimConnPool;
 use crate::downlink::subscription::{
@@ -33,8 +25,16 @@ use crate::downlink::subscription::{
 use crate::downlink::typed::SchemaViolations;
 use crate::downlink::DownlinkError;
 use crate::router::SwimRouter;
+use std::error::Error;
+use std::fmt;
+use std::fmt::{Display, Formatter};
+use std::sync::Arc;
+use swim_common::form::{Form, ValidatedForm};
+use swim_common::model::Value;
 use swim_common::routing::RoutingError;
 use swim_common::warp::envelope::Envelope;
+use swim_common::warp::path::AbsolutePath;
+use tracing::info;
 
 #[cfg(feature = "websocket")]
 use {
@@ -44,29 +44,28 @@ use {
     std::fs::File, std::io::Read, swim_common::model::parser::parse_single, url::Url,
 };
 
-pub struct SwimClientConfig {
-    downlinks_config: ConfigHierarchy,
-    host_configurations: HashMap<Url, HostConfig>,
-}
-
-impl Default for SwimClientConfig {
-    fn default() -> Self {
-        SwimClientConfig {
-            downlinks_config: ConfigHierarchy::default(),
-            host_configurations: HashMap::new(),
-        }
-    }
-}
-
+/// Builder to create Swim client instance.
+///
+/// The builder can be created with default or custom configuration.
+/// The custom configuration can be read from a file.
 pub struct SwimClientBuilder {
     config: SwimClientConfig,
 }
 
 impl SwimClientBuilder {
+    /// Create a new client builder with custom configuration.
+    ///
+    /// # Arguments
+    /// * `config` - The custom configuration for the client.
     pub fn new(config: SwimClientConfig) -> SwimClientBuilder {
         SwimClientBuilder { config }
     }
 
+    /// Create a new client builder with configuration from a file.
+    ///
+    /// # Arguments
+    /// * `config_file` - Configuration file for the client.
+    /// * `use_defaults` - Whether or not missing values should be replaced with default ones.
     pub fn new_from_file(
         mut config_file: File,
         use_defaults: bool,
@@ -89,10 +88,16 @@ impl SwimClientBuilder {
         })
     }
 
+    /// Add a host configuration for a given host.
+    ///
+    /// # Arguments
+    /// * `url` - Url of the host.
+    /// * `host_config` - Host configuration.
     pub fn add_certificate(&mut self, url: Url, host_config: HostConfig) {
         self.config.host_configurations.insert(url, host_config);
     }
 
+    /// Build the Swim client.
     pub async fn build(self) -> SwimClient {
         let SwimClientBuilder {
             config:
@@ -130,40 +135,18 @@ impl Default for SwimClientBuilder {
     }
 }
 
-/// Represents errors that can occur in the client.
-#[derive(Debug)]
-pub enum ClientError {
-    /// An error that occurred when subscribing to a downlink.
-    SubscriptionError(SubscriptionError),
-    /// An error that occurred in the router.
-    RoutingError(RoutingError),
-    /// An error that occurred in a downlink.
-    DownlinkError(DownlinkError),
-    /// An error that occurred when closing the client.
-    CloseError,
+/// Swim client configuration.
+pub struct SwimClientConfig {
+    downlinks_config: ConfigHierarchy,
+    host_configurations: HashMap<Url, HostConfig>,
 }
 
-impl Display for ClientError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self.source() {
-            Some(e) => write!(f, "Client error. Caused by: {}", e),
-            None => write!(f, "Client error"),
+impl Default for SwimClientConfig {
+    fn default() -> Self {
+        SwimClientConfig {
+            downlinks_config: ConfigHierarchy::default(),
+            host_configurations: HashMap::new(),
         }
-    }
-}
-
-impl Error for ClientError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match &self {
-            ClientError::SubscriptionError(e) => Some(e),
-            ClientError::RoutingError(e) => Some(e),
-            ClientError::DownlinkError(e) => Some(e),
-            ClientError::CloseError => None,
-        }
-    }
-
-    fn cause(&self) -> Option<&dyn Error> {
-        self.source()
     }
 }
 
@@ -322,5 +305,42 @@ impl SwimClient {
             .subscribe_event_untyped(path)
             .await
             .map_err(ClientError::SubscriptionError)
+    }
+}
+
+/// Represents errors that can occur in the client.
+#[derive(Debug)]
+pub enum ClientError {
+    /// An error that occurred when subscribing to a downlink.
+    SubscriptionError(SubscriptionError),
+    /// An error that occurred in the router.
+    RoutingError(RoutingError),
+    /// An error that occurred in a downlink.
+    DownlinkError(DownlinkError),
+    /// An error that occurred when closing the client.
+    CloseError,
+}
+
+impl Display for ClientError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self.source() {
+            Some(e) => write!(f, "Client error. Caused by: {}", e),
+            None => write!(f, "Client error"),
+        }
+    }
+}
+
+impl Error for ClientError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match &self {
+            ClientError::SubscriptionError(e) => Some(e),
+            ClientError::RoutingError(e) => Some(e),
+            ClientError::DownlinkError(e) => Some(e),
+            ClientError::CloseError => None,
+        }
+    }
+
+    fn cause(&self) -> Option<&dyn Error> {
+        self.source()
     }
 }
