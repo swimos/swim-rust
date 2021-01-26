@@ -24,7 +24,7 @@ use crate::routing::{
 };
 use futures::future::BoxFuture;
 use futures::{select_biased, FutureExt, StreamExt};
-use pin_utils::core_reexport::num::NonZeroUsize;
+use std::num::NonZeroUsize;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::convert::TryFrom;

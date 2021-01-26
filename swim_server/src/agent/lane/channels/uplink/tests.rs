@@ -25,7 +25,7 @@ use futures::future::join;
 use futures::ready;
 use futures::sink::drain;
 use futures::{Stream, StreamExt};
-use pin_utils::core_reexport::num::NonZeroUsize;
+use std::num::NonZeroUsize;
 use std::collections::{HashMap, VecDeque};
 use std::pin::Pin;
 use std::sync::Arc;

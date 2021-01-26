@@ -97,6 +97,7 @@ impl TVarInner {
     /// each time the value changes.
     ///
     /// # Arguments
+    /// * `value` - The initial value of the variable.
     /// * `buffer_size` - The size of the circular buffer used by the observer.
     pub fn from_arc_with_observer<T>(
         value: Arc<T>,
@@ -122,6 +123,7 @@ impl TVarInner {
     /// Create a transactional variable with an observer than will be notified
     /// each time the value changes.
     /// # Arguments
+    /// * `value` - The initial value of the variable.
     /// * `buffer_size` - The size of the circular buffer used by the observer.
     pub fn new_with_observer<T>(value: T, buffer_size: NonZeroUsize) -> (Self, Observer<T>)
     where

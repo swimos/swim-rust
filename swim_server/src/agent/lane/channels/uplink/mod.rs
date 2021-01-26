@@ -21,7 +21,7 @@ use futures::future::ready;
 use futures::stream::BoxStream;
 use futures::stream::FusedStream;
 use futures::{select, select_biased, FutureExt, StreamExt};
-use pin_utils::core_reexport::num::NonZeroUsize;
+use std::num::NonZeroUsize;
 use pin_utils::pin_mut;
 use std::any::Any;
 use std::error::Error;

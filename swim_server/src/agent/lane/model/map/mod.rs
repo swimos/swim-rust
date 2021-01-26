@@ -34,7 +34,7 @@ use crate::agent::lane::model::DeferredSubscription;
 use crate::agent::lane::{InvalidForm, LaneModel};
 use futures::stream::{iter, Iter};
 use futures::Stream;
-use pin_utils::core_reexport::num::NonZeroUsize;
+use std::num::NonZeroUsize;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;

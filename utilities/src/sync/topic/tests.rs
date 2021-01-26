@@ -18,7 +18,7 @@ use crate::sync::topic::{Receiver, SendError, Sender};
 use crate::sync::trigger;
 use futures::future::{join, join3};
 use futures::StreamExt;
-use pin_utils::core_reexport::num::NonZeroUsize;
+use std::num::NonZeroUsize;
 use std::future::Future;
 use std::ops::Range;
 use std::sync::Arc;

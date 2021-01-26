@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::agent::lane::LaneModel;
-use pin_utils::core_reexport::num::NonZeroUsize;
+use std::num::NonZeroUsize;
 use std::any::Any;
 use std::sync::Arc;
 use stm::stm::Stm;
