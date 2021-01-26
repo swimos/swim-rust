@@ -18,6 +18,7 @@ use futures::future::{ready, BoxFuture, Ready};
 use futures::FutureExt;
 use std::convert::Infallible;
 use tokio::sync::{broadcast, mpsc, watch};
+use utilities::sync::topic;
 
 pub mod comap;
 pub mod drop_all;
@@ -229,4 +230,31 @@ pub fn for_broadcast_sender<T: Send + 'static>(
     tx: broadcast::Sender<T>,
 ) -> impl ItemSender<T, broadcast::error::SendError<T>> {
     FnMutSender::new(tx, broadcast_send_op)
+}
+
+impl<'a, T> ItemSink<'a, T> for topic::Sender<T>
+where
+    T: Send + 'a,
+{
+    type Error = topic::SendError<T>;
+    type SendFuture = topic::TopicSend<'a, T>;
+
+    fn send_item(&'a mut self, value: T) -> Self::SendFuture {
+        self.send(value)
+    }
+}
+
+pub struct Discarding<T>(pub topic::Sender<T>);
+
+impl<'a, T> ItemSink<'a, T> for Discarding<T>
+where
+    T: Send + 'a,
+{
+    type Error = topic::SendError<T>;
+    type SendFuture = topic::TopicSend<'a, T>;
+
+    fn send_item(&'a mut self, value: T) -> Self::SendFuture {
+        let Discarding(sender) = self;
+        sender.discarding_send(value)
+    }
 }

@@ -858,3 +858,31 @@ async fn send_many_records_two_receivers() {
     };
     run_as_tasks_two_readers(tx, rx, sender, receiver1, receiver2).await;
 }
+
+async fn send_with_subscriber_for(n: usize) {
+    let (mut tx, rx) = super::channel::<usize>(NonZeroUsize::new(n).unwrap());
+    let sub = rx.subscriber();
+    drop(rx);
+    assert!(matches!(tx.send(1).await, Err(SendError(1))));
+    assert!(tx.discarding_send(1).await.is_ok());
+
+    let rx2_res = sub.subscribe();
+    assert!(rx2_res.is_ok());
+    let mut rx2 = rx2_res.unwrap();
+    assert!(tx.send(2).await.is_ok());
+    assert!(matches!(rx2.recv().await, Some(g) if *g == 2));
+
+    drop(rx2);
+    drop(sub);
+
+    assert!(matches!(tx.send(3).await, Err(SendError(3))));
+    assert!(matches!(tx.discarding_send(3).await, Err(SendError(3))));
+
+}
+
+#[tokio::test]
+async fn send_with_subscriber() {
+    for n in SIZE_RANGE {
+        send_with_subscriber_for(n).await;
+    }
+}
