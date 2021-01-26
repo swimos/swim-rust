@@ -17,7 +17,7 @@ use crate::agent::lane::model::demand_map::{
 };
 use futures::future::{join, join3};
 use futures::StreamExt;
-use pin_utils::core_reexport::num::NonZeroUsize;
+use std::num::NonZeroUsize;
 use tokio::sync::mpsc;
 
 #[tokio::test]

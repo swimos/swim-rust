@@ -26,7 +26,7 @@ use std::task::{Context, Poll};
 use futures::Stream;
 use futures_util::task::AtomicWaker;
 use pin_project::pin_project;
-use pin_utils::core_reexport::num::NonZeroUsize;
+use std::num::NonZeroUsize;
 
 use crate::sync::ReadWaiters;
 
