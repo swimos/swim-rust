@@ -13,8 +13,8 @@
 // limitations under the License.
 
 use crate::agent::lane::LaneModel;
-use std::num::NonZeroUsize;
 use std::any::Any;
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 use stm::stm::Stm;
 use stm::var::observer::Observer;

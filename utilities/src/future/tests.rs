@@ -21,9 +21,9 @@ use futures::StreamExt;
 use pin_utils::pin_mut;
 use std::iter::{repeat, Repeat, Take};
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::{mpsc, Notify};
 use tokio::time::timeout;
-use std::time::Duration;
 
 #[test]
 fn future_into() {
