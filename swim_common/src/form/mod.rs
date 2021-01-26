@@ -26,6 +26,7 @@ use crate::model::schema::StandardSchema;
 use crate::model::Value;
 
 pub mod impls;
+pub mod macros;
 
 #[cfg(test)]
 mod tests;
@@ -160,7 +161,7 @@ impl Display for FormErr {
 /// #[derive(Form, PartialEq, Debug)]
 /// struct Food {
 ///     name: String,
-///     #[form(rename = "quality")]
+///     #[form(name = "quality")]
 ///     rating: i32,
 /// }
 /// let food = Food {

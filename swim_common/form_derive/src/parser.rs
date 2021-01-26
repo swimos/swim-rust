@@ -28,7 +28,7 @@ pub const ATTR_PATH: Symbol = Symbol("attr");
 pub const SLOT_PATH: Symbol = Symbol("slot");
 pub const BODY_PATH: Symbol = Symbol("body");
 pub const HEADER_BODY_PATH: Symbol = Symbol("header_body");
-pub const RENAME_PATH: Symbol = Symbol("rename");
+pub const NAME_PATH: Symbol = Symbol("name");
 pub const TAG_PATH: Symbol = Symbol("tag");
 pub const SKIP_PATH: Symbol = Symbol("skip");
 pub const SCHEMA_PATH: Symbol = Symbol("schema");
@@ -143,7 +143,7 @@ pub fn fields_from_ast<'t>(
                                 manifest.header_body = true;
                             }
                         }
-                        NestedMeta::Meta(Meta::NameValue(name)) if name.path == RENAME_PATH => {
+                        NestedMeta::Meta(Meta::NameValue(name)) if name.path == NAME_PATH => {
                             match &name.lit {
                                 Lit::Str(s) => {
                                     let old_ident = original.ident.clone().unwrap_or_else(|| {

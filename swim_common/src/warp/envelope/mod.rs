@@ -457,7 +457,7 @@ impl Envelope {
     pub fn tag(&self) -> &'static str {
         match self.header {
             EnvelopeHeader::IncomingLink(IncomingHeader::Linked(_), _) => LINKED_TAG,
-            EnvelopeHeader::IncomingLink(IncomingHeader::Synced, _) => SYNC_TAG,
+            EnvelopeHeader::IncomingLink(IncomingHeader::Synced, _) => SYNCED_TAG,
             EnvelopeHeader::IncomingLink(IncomingHeader::Unlinked, _) => UNLINKED_TAG,
             EnvelopeHeader::IncomingLink(IncomingHeader::Event, _) => EVENT_TAG,
             EnvelopeHeader::OutgoingLink(OutgoingHeader::Link(_), _) => LINK_TAG,
@@ -504,12 +504,14 @@ impl Envelope {
         let headers = Value::Record(Vec::new(), headers);
         let attr = Attr::of((tag, headers));
 
-        let body_vec = match self.body {
-            None => vec![],
-            Some(body) => vec![Item::ValueItem(body)],
-        };
-
-        Value::Record(vec![attr], body_vec)
+        match self.body {
+            None => Value::of_attr(attr),
+            Some(Value::Record(mut attrs, items)) => {
+                attrs.insert(0, attr);
+                Value::Record(attrs, items)
+            }
+            Some(value) => Value::Record(vec![attr], vec![Item::ValueItem(value)]),
+        }
     }
 
     pub fn link<S: Into<Text>>(node: S, lane: S) -> Self {
