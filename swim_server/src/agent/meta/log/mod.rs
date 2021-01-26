@@ -24,6 +24,7 @@ use crate::agent::LaneTasks;
 use crate::agent::{make_supply_lane, AgentContext, DynamicLaneTasks, SwimAgent};
 use crate::routing::LaneIdentifier;
 use std::collections::HashMap;
+use std::convert::TryFrom;
 use std::fmt::{Debug, Formatter};
 use swim_common::form::{Form, Tag};
 use swim_common::model::time::Timestamp;
@@ -47,6 +48,26 @@ pub enum LogLevel {
     Fail,
 }
 
+#[derive(PartialOrd, PartialEq, Debug, Clone)]
+pub struct InvalidLogUri(pub String);
+
+/// Try and parse a `LogLevel` from a URI str.
+impl TryFrom<&str> for LogLevel {
+    type Error = InvalidLogUri;
+
+    fn try_from(uri: &str) -> Result<Self, <LogLevel as TryFrom<&str>>::Error> {
+        match uri {
+            TRACE_URI => Ok(LogLevel::Trace),
+            DEBUG_URI => Ok(LogLevel::Debug),
+            INFO_URI => Ok(LogLevel::Info),
+            WARN_URI => Ok(LogLevel::Warn),
+            ERROR_URI => Ok(LogLevel::Error),
+            FAIL_URI => Ok(LogLevel::Fail),
+            s => Err(InvalidLogUri(format!("Unknown log level URI: {}", s))),
+        }
+    }
+}
+
 impl LogLevel {
     pub fn uri_ref(&self) -> &'static str {
         match self {
@@ -56,18 +77,6 @@ impl LogLevel {
             LogLevel::Warn => WARN_URI,
             LogLevel::Error => ERROR_URI,
             LogLevel::Fail => FAIL_URI,
-        }
-    }
-
-    pub fn try_from_uri(uri: &str) -> Result<LogLevel, ()> {
-        match uri {
-            TRACE_URI => Ok(LogLevel::Trace),
-            DEBUG_URI => Ok(LogLevel::Debug),
-            INFO_URI => Ok(LogLevel::Info),
-            WARN_URI => Ok(LogLevel::Warn),
-            ERROR_URI => Ok(LogLevel::Error),
-            FAIL_URI => Ok(LogLevel::Fail),
-            _ => Err(()),
         }
     }
 }

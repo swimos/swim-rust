@@ -13,11 +13,14 @@
 // limitations under the License.
 
 use super::{META_EDGE, META_HOST, META_MESH, META_NODE, META_PART};
+use crate::agent::meta::log::InvalidLogUri;
 use crate::agent::meta::{LogLevel, MetaAddressed, MetaNodeAddressed};
 use percent_encoding::percent_decode_str;
 use pin_utils::core_reexport::fmt::Formatter;
+use std::convert::TryFrom;
 use std::error::Error;
 use std::fmt::Display;
+use swim_common::model::text::Text;
 use utilities::errors::Recoverable;
 
 const LANE_PART: &str = "lane";
@@ -34,22 +37,25 @@ fn iter(uri: &str) -> impl Iterator<Item = &str> {
         uri.len()
     };
 
-    uri[lower_bound..upper_bound].split('/').into_iter()
+    uri[lower_bound..upper_bound].split('/')
 }
 
 #[derive(Debug, PartialEq)]
 pub enum MetaParseErr {
     EmptyUri,
-    UnknownRequest,
+    UnknownTarget,
+    InvalidLogUri(InvalidLogUri),
 }
 
 impl Display for MetaParseErr {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             MetaParseErr::EmptyUri => write!(f, "Empty URI provided"),
-            MetaParseErr::Malformatted(s) => write!(f, "Request URI malformatted: {}", s),
-            MetaParseErr::UnknownRequest => {
+            MetaParseErr::UnknownTarget => {
                 write!(f, "The request URI does not match any resources")
+            }
+            MetaParseErr::InvalidLogUri(e) => {
+                write!(f, "{}", e.0)
             }
         }
     }
@@ -63,8 +69,11 @@ impl Recoverable for MetaParseErr {
     }
 }
 
-fn decode_str(s: &str) -> String {
-    percent_decode_str(s).map(|c| c as char).collect::<String>()
+fn decode_to_text(s: &str) -> Text {
+    percent_decode_str(s)
+        .map(|c| c as char)
+        .collect::<String>()
+        .into()
 }
 
 pub fn parse(node_uri: &str, lane_uri: &str) -> Result<MetaAddressed, MetaParseErr> {
@@ -72,7 +81,6 @@ pub fn parse(node_uri: &str, lane_uri: &str) -> Result<MetaAddressed, MetaParseE
         return Err(MetaParseErr::EmptyUri);
     }
 
-    let _original_uri = node_uri.clone();
     let mut node_iter = iter(node_uri);
     let lane_iter = iter(lane_uri);
 
@@ -82,7 +90,7 @@ pub fn parse(node_uri: &str, lane_uri: &str) -> Result<MetaAddressed, MetaParseE
         Some(META_PART) => Ok(MetaAddressed::Part),
         Some(META_HOST) => Ok(MetaAddressed::Host),
         Some(META_NODE) => parse_node(node_iter, lane_iter).map(MetaAddressed::Node),
-        Some(_) => Err(MetaParseErr::UnknownRequest),
+        Some(_) => Err(MetaParseErr::UnknownTarget),
         None => {
             // unreachable as the split operation will return an empty string after finding no
             // matches in the input str.
@@ -103,38 +111,37 @@ fn parse_node<'c, L: Iterator<Item = &'c str>, R: Iterator<Item = &'c str>>(
         // Uplink request
         (Some(node_uri), Some(LANE_PART), Some(lane_uri)) => match lane_iter.next() {
             Some(UPLINK_PART) => Ok(MetaNodeAddressed::UplinkProfile {
-                node_uri: decode_str(node_uri).into(),
-                lane_uri: decode_str(lane_uri).into(),
+                node_uri: decode_to_text(node_uri),
+                lane_uri: decode_to_text(lane_uri),
             }),
-            _ => Err(MetaParseErr::UnknownRequest),
+            _ => Err(MetaParseErr::UnknownTarget),
         },
         // Node requests
         (Some(node_uri), None, None) => match lane_iter.next() {
-            Some(LANES_PART) => Ok(MetaNodeAddressed::Lanes {
-                node_uri: decode_str(node_uri).into(),
+            // Node pulse
+            Some(PULSE_PART) => Ok(MetaNodeAddressed::NodeProfile {
+                node_uri: decode_to_text(node_uri),
             }),
-            // Log lanes
-            Some(lane_uri) => {
-                let level =
-                    LogLevel::try_from_uri(lane_uri).map_err(|_| MetaParseErr::UnknownRequest)?;
-
-                Ok(MetaNodeAddressed::Log {
-                    node_uri: decode_str(node_uri).into(),
-                    level,
-                })
-            }
-            _ => Err(MetaParseErr::UnknownRequest),
+            Some(LANES_PART) => Ok(MetaNodeAddressed::Lanes {
+                node_uri: decode_to_text(node_uri),
+            }),
+            _ => Err(MetaParseErr::UnknownTarget),
         },
         // Lane requests
         (Some(node_uri), Some(lane_uri), None) => match lane_iter.next() {
-            // Node pulse
-            Some(PULSE_PART) => Ok(MetaNodeAddressed::NodeProfile {
-                node_uri: decode_str(node_uri).into(),
-                lane_uri: decode_str(lane_uri).into(),
-            }),
-            _ => Err(MetaParseErr::UnknownRequest),
+            // Log lanes
+            Some(log_uri) => {
+                let level = LogLevel::try_from(log_uri).map_err(MetaParseErr::InvalidLogUri)?;
+
+                Ok(MetaNodeAddressed::Log {
+                    node_uri: decode_to_text(node_uri),
+                    lane_uri: decode_to_text(lane_uri),
+                    level,
+                })
+            }
+            _ => Err(MetaParseErr::UnknownTarget),
         },
-        _ => Err(MetaParseErr::UnknownRequest),
+        _ => Err(MetaParseErr::UnknownTarget),
     }
 }
 
@@ -156,10 +163,9 @@ fn test_iter() {
 #[test]
 fn test_parse_node() {
     assert_eq!(
-        parse("swim:meta:node/unit%2Ffoo/bar", "pulse"),
+        parse("swim:meta:node/unit%2Ffoo", "pulse"),
         Ok(MetaAddressed::Node(MetaNodeAddressed::NodeProfile {
             node_uri: "unit/foo".into(),
-            lane_uri: "bar".into()
         }))
     );
 
@@ -189,9 +195,10 @@ fn test_parse_node() {
 
     for level in log_levels {
         assert_eq!(
-            parse("swim:meta:node/unit%2Ffoo/", level.uri_ref()),
+            parse("swim:meta:node/unit%2Ffoo/bar", level.uri_ref()),
             Ok(MetaAddressed::Node(MetaNodeAddressed::Log {
                 node_uri: "unit/foo".into(),
+                lane_uri: "bar".into(),
                 level
             }))
         );
@@ -222,7 +229,7 @@ fn test_parse_host() {
 fn test_parse_unknown() {
     assert_eq!(
         parse("swim:meta:unknown", ""),
-        Err(MetaParseErr::UnknownRequest)
+        Err(MetaParseErr::UnknownTarget)
     )
 }
 

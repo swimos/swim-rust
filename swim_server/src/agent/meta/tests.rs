@@ -12,39 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// use crate::agent::meta::{
-//     MetaKind, MetaPath, META_EDGE, META_HOST, META_MESH, META_NODE, META_PART,
-// };
-// use swim_common::warp::path::RelativePath;
-//
-// #[test]
-// fn test_meta_paths() {
-//     fn assert(kind: MetaKind, node: &str) {
-//         let path = RelativePath::new(node.to_owned() + "/test/node", "unit".to_string());
-//         assert_eq!(
-//             Ok((kind, RelativePath::new("test/node", "unit"))),
-//             path.into_kind_and_path()
-//         );
-//     }
-//
-//     assert(MetaKind::Edge, META_EDGE);
-//     assert(MetaKind::Mesh, META_MESH);
-//     assert(MetaKind::Part, META_PART);
-//     assert(MetaKind::Host, META_HOST);
-//     assert(MetaKind::Node("foo".into()), META_NODE);
-//
-//     let path = RelativePath::new(META_EDGE, "unit");
-//     assert_eq!(Err(path.clone()), path.into_kind_and_path());
-//
-//     let path = RelativePath::new(META_EDGE.to_owned() + "/", "unit".to_string());
-//     assert_eq!(Err(path.clone()), path.into_kind_and_path());
-//
-//     let path = RelativePath::new("swim:not::a_path", "unit");
-//     assert_eq!(Err(path.clone()), path.into_kind_and_path());
-// }
-
 use crate::agent::meta::log::{DEBUG_URI, ERROR_URI, FAIL_URI, INFO_URI, TRACE_URI, WARN_URI};
-use crate::agent::meta::LogLevel;
+use crate::agent::meta::{LogLevel, MetaNodeAddressed};
+use swim_common::warp::path::RelativePath;
 
 #[test]
 fn log_level_uri() {
@@ -54,4 +24,54 @@ fn log_level_uri() {
     assert_eq!(LogLevel::Warn.uri_ref(), WARN_URI);
     assert_eq!(LogLevel::Error.uri_ref(), ERROR_URI);
     assert_eq!(LogLevel::Fail.uri_ref(), FAIL_URI);
+}
+
+#[test]
+fn node_decoded_paths() {
+    let node = MetaNodeAddressed::NodeProfile {
+        node_uri: "unit/foo".into(),
+    };
+    assert_eq!(
+        node.decoded_relative_path(),
+        RelativePath::new("/unit/foo", "/pulse")
+    );
+
+    let node = MetaNodeAddressed::UplinkProfile {
+        node_uri: "unit/foo".into(),
+        lane_uri: "bar".into(),
+    };
+    assert_eq!(
+        node.decoded_relative_path(),
+        RelativePath::new("/unit/foo", "/lane/bar/uplink")
+    );
+
+    let node = MetaNodeAddressed::Lanes {
+        node_uri: "unit/foo".into(),
+    };
+    assert_eq!(
+        node.decoded_relative_path(),
+        RelativePath::new("/unit/foo", "/lanes")
+    );
+
+    let log_levels = vec![
+        LogLevel::Trace,
+        LogLevel::Debug,
+        LogLevel::Info,
+        LogLevel::Warn,
+        LogLevel::Error,
+        LogLevel::Fail,
+    ];
+
+    for level in log_levels {
+        let node = MetaNodeAddressed::Log {
+            node_uri: "unit/foo".into(),
+            lane_uri: "bar".into(),
+            level,
+        };
+
+        assert_eq!(
+            node.decoded_relative_path(),
+            RelativePath::new("/unit/foo", &format!("/bar/{}", level.uri_ref()))
+        );
+    }
 }

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::context::ContextImpl;
+use crate::agent::context::{ContextImpl, RoutingContext, ScheduleContext};
 use crate::agent::meta::make_test_meta_context;
 use crate::agent::tests::test_clock::TestClock;
 use crate::agent::AgentContext;
@@ -30,16 +30,16 @@ fn simple_accessors() {
     let (tx, _rx) = mpsc::channel(1);
     let (_close, close_sig) = trigger::trigger();
     let agent = Arc::new("agent");
+
+    let routing_context = RoutingContext::new("/node".parse().unwrap(), (), HashMap::new());
+    let schedule_context = ScheduleContext::new(tx, TestClock::default(), close_sig.clone());
     let context = ContextImpl::new(
         agent.clone(),
-        "/node".parse().unwrap(),
-        tx,
-        TestClock::default(),
-        close_sig.clone(),
-        (),
-        HashMap::new(),
+        routing_context,
+        schedule_context,
         make_test_meta_context("/node".parse().unwrap()),
     );
+
     assert!(std::ptr::eq(context.agent(), agent.as_ref()));
     assert_eq!(context.node_uri(), "/node");
     assert!(trigger::Receiver::same_receiver(
@@ -59,14 +59,13 @@ fn create_context(
     task::spawn(async move { rx.for_each(|eff| eff).await });
 
     let agent = Arc::new("agent");
+
+    let routing_context = RoutingContext::new("/node".parse().unwrap(), (), HashMap::new());
+    let schedule_context = ScheduleContext::new(tx, clock, close_trigger);
     ContextImpl::new(
         agent.clone(),
-        "/node".parse().unwrap(),
-        tx,
-        clock,
-        close_trigger,
-        (),
-        HashMap::new(),
+        routing_context,
+        schedule_context,
         make_test_meta_context("/node".parse().unwrap()),
     )
 }

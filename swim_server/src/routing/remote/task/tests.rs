@@ -30,12 +30,14 @@ use utilities::future::retryable::strategy::{Quantity, RetryStrategy};
 use utilities::sync::{promise, trigger};
 use utilities::uri::{BadRelativeUri, RelativeUri, UriIsAbsolute};
 
+use crate::agent::meta::MetaNodeAddressed;
 use crate::routing::error::RouterError;
 use crate::routing::remote::task::{ConnectionTask, DispatchError};
 use crate::routing::remote::test_fixture::fake_channel::TwoWayMpsc;
 use crate::routing::remote::test_fixture::LocalRoutes;
 use crate::routing::{
-    ConnectionDropped, Route, RoutingAddr, TaggedAgentEnvelope, TaggedEnvelope, TaggedSender,
+    ConnectionDropped, Route, RoutingAddr, TaggedAgentEnvelope, TaggedEnvelope, TaggedMetaEnvelope,
+    TaggedSender,
 };
 use futures::io::ErrorKind;
 use std::num::NonZeroUsize;
@@ -620,4 +622,89 @@ async fn task_receive_bad_message() {
     let result = timeout::timeout(Duration::from_secs(5), join(task, test_case)).await;
     let _err = ConnectionError::Protocol(ProtocolError::warp(None));
     assert!(matches!(result, Ok((ConnectionDropped::Failed(_err), _))));
+}
+
+#[tokio::test]
+async fn try_dispatch_in_map_meta() {
+    let (tx, mut rx) = mpsc::channel(8);
+    let (_drop_tx, drop_rx) = promise::promise();
+    let addr = RoutingAddr::remote(0);
+    let mut router = LocalRoutes::new(addr);
+    let mut resolved = HashMap::new();
+    let path = RelativePath::new("/unit/foo", "/pulse");
+
+    resolved.insert(
+        path.clone(),
+        Route::new(TaggedSender::new(addr, tx), drop_rx),
+    );
+
+    let env = envelope(
+        RelativePath::new("/swim:meta:node/unit%2Ffoo", "/pulse"),
+        "a",
+    );
+
+    let result = super::try_dispatch_envelope(&mut router, &mut resolved, env.clone()).await;
+    assert!(result.is_ok());
+
+    let received = rx.next().now_or_never();
+
+    assert_eq!(
+        received,
+        Some(Some(
+            TaggedMetaEnvelope(
+                addr,
+                envelope(RelativePath::new("/unit/foo", "/pulse"), "a"),
+                MetaNodeAddressed::NodeProfile {
+                    node_uri: "unit/foo".into(),
+                },
+            )
+            .into()
+        ))
+    );
+}
+
+#[tokio::test]
+async fn try_dispatch_meta_from_router() {
+    let addr = RoutingAddr::remote(0);
+    let mut router = LocalRoutes::new(addr);
+    let mut resolved = HashMap::new();
+    let path = RelativePath::new("/unit/foo", "/pulse");
+
+    let mut rx = router.add("/unit/foo".parse().unwrap());
+
+    let env = envelope(
+        RelativePath::new("/swim:meta:node/unit%2Ffoo", "/pulse"),
+        "a",
+    );
+    let result = super::try_dispatch_envelope(&mut router, &mut resolved, env.clone()).await;
+
+    assert!(result.is_ok());
+
+    let received = rx.next().now_or_never();
+    assert_eq!(
+        received,
+        Some(Some(
+            TaggedMetaEnvelope(
+                addr,
+                envelope(RelativePath::new("/unit/foo", "/pulse"), "a"),
+                MetaNodeAddressed::NodeProfile {
+                    node_uri: "unit/foo".into(),
+                },
+            )
+            .into()
+        ))
+    );
+
+    assert!(resolved.contains_key(&path));
+}
+
+#[tokio::test]
+#[should_panic(expected = "swim:meta:host requests are not implemented yet")]
+async fn unsupported_meta_type() {
+    let addr = RoutingAddr::remote(0);
+    let mut router = LocalRoutes::new(addr);
+    let mut resolved = HashMap::new();
+
+    let env = envelope(RelativePath::new("/swim:meta:host/", "/pulse"), "a");
+    let _ = super::try_dispatch_envelope(&mut router, &mut resolved, env.clone()).await;
 }

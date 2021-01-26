@@ -22,7 +22,6 @@ use std::convert::TryFrom;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;
-use std::str::Split;
 
 /// A restricted URI type that can only represent relative URIs.
 #[derive(Debug, Default, Clone, PartialEq, Eq, Hash)]
@@ -160,20 +159,5 @@ impl From<RelativeUri> for Uri {
 impl Borrow<Uri> for RelativeUri {
     fn borrow(&self) -> &Uri {
         &self.0
-    }
-}
-
-pub trait UriPathSegments {
-    fn path_segments(&self) -> Option<Split<char>>;
-}
-
-impl UriPathSegments for Uri {
-    fn path_segments(&self) -> Option<Split<char>> {
-        let path = self.path();
-        if path.starts_with('/') {
-            Some(path[1..].split('/'))
-        } else {
-            None
-        }
     }
 }

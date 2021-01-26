@@ -21,7 +21,7 @@ pub mod meta;
 #[cfg(test)]
 mod tests;
 
-use crate::agent::context::{AgentExecutionContext, ContextImpl};
+use crate::agent::context::{AgentExecutionContext, ContextImpl, RoutingContext, ScheduleContext};
 use crate::agent::dispatch::error::DispatcherErrors;
 use crate::agent::dispatch::AgentDispatcher;
 use crate::agent::lane::channels::task::{
@@ -216,16 +216,9 @@ where
             );
 
         let (tx, rx) = mpsc::channel(execution_config.scheduler_buffer.get());
-        let context = ContextImpl::new(
-            agent_ref,
-            uri.clone(),
-            tx,
-            clock,
-            stop_trigger.clone(),
-            router,
-            parameters,
-            meta_context,
-        );
+        let routing_context = RoutingContext::new(uri.clone(), router, parameters);
+        let schedule_context = ScheduleContext::new(tx, clock, stop_trigger.clone());
+        let context = ContextImpl::new(agent_ref, routing_context, schedule_context, meta_context);
 
         tasks.append(&mut meta_tasks);
 

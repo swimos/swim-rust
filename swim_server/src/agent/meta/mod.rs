@@ -87,9 +87,9 @@ pub enum MetaAddressed {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum MetaNodeAddressed {
-    /// swim:meta:node/percent-encoded-nodeuri/lane-uri/pulse
-    /// Eg: swim:meta:node/unit%2Ffoo/bar/pulse
-    NodeProfile { node_uri: Text, lane_uri: Text },
+    /// swim:meta:node/percent-encoded-nodeuri/pulse
+    /// Eg: swim:meta:node/unit%2Ffoo/pulse
+    NodeProfile { node_uri: Text },
     /// swim:meta:node/percent-encoded-nodeuri/lane/lane-uri/uplink
     /// Eg: swim:meta:node/unit%2Ffoo/lane/bar/uplink
     UplinkProfile { node_uri: Text, lane_uri: Text },
@@ -98,10 +98,37 @@ pub enum MetaNodeAddressed {
     Lanes { node_uri: Text },
     /// swim:meta:node/percent-encoded-nodeuri/lane-uri/traceLog
     /// Eg: swim:meta:node/unit%2Ffoo/bar/traceLog
-    Log { node_uri: Text, level: LogLevel },
+    Log {
+        node_uri: Text,
+        lane_uri: Text,
+        level: LogLevel,
+    },
 }
 
 impl MetaNodeAddressed {
+    pub fn decoded_relative_path(&self) -> RelativePath {
+        match self {
+            MetaNodeAddressed::NodeProfile { node_uri } => {
+                RelativePath::new(format!("/{}", node_uri), "/pulse".to_string())
+            }
+            MetaNodeAddressed::UplinkProfile { node_uri, lane_uri } => RelativePath::new(
+                format!("/{}", node_uri),
+                format!("/lane/{}/uplink", lane_uri),
+            ),
+            MetaNodeAddressed::Lanes { node_uri } => {
+                RelativePath::new(format!("/{}", node_uri), "/lanes".to_string())
+            }
+            MetaNodeAddressed::Log {
+                node_uri,
+                lane_uri,
+                level,
+            } => RelativePath::new(
+                format!("/{}", node_uri),
+                format!("/{}/{}", lane_uri, level.uri_ref()),
+            ),
+        }
+    }
+
     pub fn node_uri_ref(&self) -> &Text {
         match self {
             MetaNodeAddressed::NodeProfile { node_uri, .. } => &node_uri,
@@ -113,20 +140,13 @@ impl MetaNodeAddressed {
 }
 
 pub(crate) trait MetaPath {
-    fn meta_kind(self) -> Result<(MetaAddressed, RelativePath), RelativePath>;
+    fn try_into_meta(&self) -> Result<MetaAddressed, RelativePath>;
 }
 
 impl MetaPath for RelativePath {
-    fn meta_kind(self) -> Result<(MetaAddressed, RelativePath), RelativePath> {
+    fn try_into_meta(&self) -> Result<MetaAddressed, RelativePath> {
         let RelativePath { node, lane } = self;
-
-        match parse(node.as_str(), lane.as_str()) {
-            Ok(_kind) => {
-                // Ok((kind, RelativePath::new(decoded_uri, lane.into())))
-                unimplemented!()
-            }
-            Err(_) => Err(RelativePath::new(node, lane)),
-        }
+        parse(node.as_str(), lane.as_str()).map_err(|_| RelativePath::new(node, lane))
     }
 }
 
