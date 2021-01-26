@@ -16,7 +16,7 @@
 mod tests;
 
 mod info;
-mod parse;
+mod uri;
 
 pub(crate) mod lane;
 pub(crate) mod log;
@@ -24,10 +24,10 @@ pub(crate) mod log;
 pub use info::LaneInfo;
 pub use log::LogLevel;
 
-use self::parse::parse;
+use self::uri::parse;
 use crate::agent::context::AgentExecutionContext;
 use crate::agent::lane::channels::AgentExecutionConfig;
-use crate::agent::meta::info::{open_info_lanes, InfoHandler};
+use crate::agent::meta::info::{open_info_lane, InfoHandler};
 use crate::agent::meta::log::{open_log_lanes, LogHandler};
 use crate::agent::LaneIo;
 use crate::agent::{AgentContext, DynamicLaneTasks, SwimAgent};
@@ -97,12 +97,8 @@ pub enum MetaNodeAddressed {
     /// Eg: swim:meta:node/unit%2Ffoo/lanes/
     Lanes { node_uri: Text },
     /// swim:meta:node/percent-encoded-nodeuri/lane-uri/traceLog
-    /// Eg: swim:meta:node/unit%2Ffoo/bar/traceLog
-    Log {
-        node_uri: Text,
-        lane_uri: Text,
-        level: LogLevel,
-    },
+    /// Eg: swim:meta:node/unit%2Ffoo/traceLog
+    Log { node_uri: Text, level: LogLevel },
 }
 
 impl MetaNodeAddressed {
@@ -118,14 +114,9 @@ impl MetaNodeAddressed {
             MetaNodeAddressed::Lanes { node_uri } => {
                 RelativePath::new(format!("/{}", node_uri), "/lanes".to_string())
             }
-            MetaNodeAddressed::Log {
-                node_uri,
-                lane_uri,
-                level,
-            } => RelativePath::new(
-                format!("/{}", node_uri),
-                format!("/{}/{}", lane_uri, level.uri_ref()),
-            ),
+            MetaNodeAddressed::Log { node_uri, level } => {
+                RelativePath::new(format!("/{}", node_uri), format!("/{}", level.uri_ref()))
+            }
         }
     }
 
@@ -166,7 +157,7 @@ where
     let mut tasks = Vec::with_capacity(6);
     let mut ios = HashMap::with_capacity(6);
 
-    let (log_handler, log_tasks, log_ios) = open_log_lanes(uri.clone(), exec_conf);
+    let (log_handler, log_tasks, log_ios) = open_log_lanes(uri, exec_conf);
     log_tasks.into_iter().for_each(|t| {
         tasks.push(t);
     });
@@ -174,7 +165,7 @@ where
         ios.insert(k, v);
     });
 
-    let (info_handler, info_tasks, info_ios) = open_info_lanes(uri, exec_conf, lanes_summary);
+    let (info_handler, info_tasks, info_ios) = open_info_lane(exec_conf, lanes_summary);
     info_tasks.into_iter().for_each(|t| {
         tasks.push(t);
     });

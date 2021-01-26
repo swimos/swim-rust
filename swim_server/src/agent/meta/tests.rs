@@ -65,13 +65,12 @@ fn node_decoded_paths() {
     for level in log_levels {
         let node = MetaNodeAddressed::Log {
             node_uri: "unit/foo".into(),
-            lane_uri: "bar".into(),
             level,
         };
 
         assert_eq!(
             node.decoded_relative_path(),
-            RelativePath::new("/unit/foo", &format!("/bar/{}", level.uri_ref()))
+            RelativePath::new("/unit/foo", &format!("/{}", level.uri_ref()))
         );
     }
 }

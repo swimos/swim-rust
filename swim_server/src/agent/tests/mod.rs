@@ -344,7 +344,7 @@ async fn test_meta_lanes() {
                 assert_eq!(expected, updates);
             }
             Err(e) => {
-                panic!("Failed to sync with log lanes: {:?}", e);
+                panic!("Failed to sync with demand lanes: {:?}", e);
             }
         }
 

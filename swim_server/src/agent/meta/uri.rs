@@ -125,21 +125,15 @@ fn parse_node<'c, L: Iterator<Item = &'c str>, R: Iterator<Item = &'c str>>(
             Some(LANES_PART) => Ok(MetaNodeAddressed::Lanes {
                 node_uri: decode_to_text(node_uri),
             }),
-            _ => Err(MetaParseErr::UnknownTarget),
-        },
-        // Lane requests
-        (Some(node_uri), Some(lane_uri), None) => match lane_iter.next() {
-            // Log lanes
             Some(log_uri) => {
                 let level = LogLevel::try_from(log_uri).map_err(MetaParseErr::InvalidLogUri)?;
 
                 Ok(MetaNodeAddressed::Log {
                     node_uri: decode_to_text(node_uri),
-                    lane_uri: decode_to_text(lane_uri),
                     level,
                 })
             }
-            _ => Err(MetaParseErr::UnknownTarget),
+            None => Err(MetaParseErr::UnknownTarget),
         },
         _ => Err(MetaParseErr::UnknownTarget),
     }
@@ -195,10 +189,9 @@ fn test_parse_node() {
 
     for level in log_levels {
         assert_eq!(
-            parse("swim:meta:node/unit%2Ffoo/bar", level.uri_ref()),
+            parse("swim:meta:node/unit%2Ffoo", level.uri_ref()),
             Ok(MetaAddressed::Node(MetaNodeAddressed::Log {
                 node_uri: "unit/foo".into(),
-                lane_uri: "bar".into(),
                 level
             }))
         );

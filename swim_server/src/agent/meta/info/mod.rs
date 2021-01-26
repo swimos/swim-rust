@@ -18,14 +18,13 @@ use crate::agent::lane::lifecycle::DemandMapLaneLifecycle;
 use crate::agent::lane::model::demand_map::DemandMapLane;
 use crate::agent::lane::LaneKind;
 use crate::agent::meta::lane::make_meta_demand_map_lane;
-use crate::agent::meta::IdentifiedAgentIo;
+use crate::agent::meta::{IdentifiedAgentIo, LANES_URI};
 use crate::agent::LaneTasks;
 use crate::agent::{AgentContext, DynamicLaneTasks, LaneIo, SwimAgent};
 use crate::routing::LaneIdentifier;
 use futures::future::BoxFuture;
 use std::collections::HashMap;
 use swim_common::form::Form;
-use utilities::uri::RelativeUri;
 
 #[derive(Form, Debug, Clone)]
 pub struct LaneInfo {
@@ -88,8 +87,7 @@ impl<'a, Agent> DemandMapLaneLifecycle<'a, String, LaneInfo, Agent> for LaneInfo
     }
 }
 
-pub fn open_info_lanes<Config, Agent, Context>(
-    uri: RelativeUri,
+pub fn open_info_lane<Config, Agent, Context>(
     exec_conf: &AgentExecutionConfig,
     lanes_summary: HashMap<String, LaneInfo>,
 ) -> (
@@ -101,14 +99,18 @@ where
     Agent: SwimAgent<Config> + 'static,
     Context: AgentContext<Agent> + AgentExecutionContext + Send + Sync + 'static,
 {
-    let (info_lane, lane_info_task, lane_info_io) =
-        make_meta_demand_map_lane(uri.to_string(), true, exec_conf.lane_buffer, lanes_summary);
+    let (info_lane, lane_info_task, lane_info_io) = make_meta_demand_map_lane(
+        LANES_URI.to_string(),
+        true,
+        exec_conf.lane_buffer,
+        lanes_summary,
+    );
 
     let info_handler = InfoHandler { info_lane };
 
     let lane_info_io = lane_info_io.unwrap().boxed();
     let mut lane_hashmap = HashMap::new();
-    lane_hashmap.insert(LaneIdentifier::meta(uri.to_string()), lane_info_io);
+    lane_hashmap.insert(LaneIdentifier::meta(LANES_URI.to_string()), lane_info_io);
 
     (info_handler, vec![lane_info_task.boxed()], lane_hashmap)
 }
