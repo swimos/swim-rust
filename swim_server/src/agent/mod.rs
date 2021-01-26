@@ -258,9 +258,7 @@ where
             .map(|(k, v)| (LaneIdentifier::agent(k), v))
             .collect();
 
-        meta_io.into_iter().for_each(|(k, v)| {
-            io_providers.insert(k, v);
-        });
+        io_providers.extend(meta_io);
 
         let dispatcher =
             AgentDispatcher::new(uri.clone(), execution_config, context.clone(), io_providers);

@@ -158,20 +158,14 @@ where
     let mut ios = HashMap::with_capacity(6);
 
     let (log_handler, log_tasks, log_ios) = open_log_lanes(uri, exec_conf);
-    log_tasks.into_iter().for_each(|t| {
-        tasks.push(t);
-    });
-    log_ios.into_iter().for_each(|(k, v)| {
-        ios.insert(k, v);
-    });
+
+    tasks.extend(log_tasks);
+    ios.extend(log_ios);
 
     let (info_handler, info_tasks, info_ios) = open_info_lane(exec_conf, lanes_summary);
-    info_tasks.into_iter().for_each(|t| {
-        tasks.push(t);
-    });
-    info_ios.into_iter().for_each(|(k, v)| {
-        ios.insert(k, v);
-    });
+
+    tasks.extend(info_tasks);
+    ios.extend(info_ios);
 
     let meta_context = MetaContext::new(log_handler, info_handler);
 
