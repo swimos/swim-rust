@@ -15,13 +15,13 @@
 use rand::seq::SliceRandom;
 use std::time::Duration;
 use swim_client::downlink::Downlink;
-use swim_client::interface::SwimClient;
+use swim_client::interface::SwimClientBuilder;
+use swim_client::swim_runtime::time::delay::delay_for;
 use swim_common::warp::path::AbsolutePath;
-use swim_runtime::time::delay::delay_for;
 
 #[tokio::main]
 async fn main() {
-    let mut client = SwimClient::new_with_default().await;
+    let mut client = SwimClientBuilder::default().build().await;
     let host_uri = url::Url::parse(&"ws://127.0.0.1:9001".to_string()).unwrap();
     let node_uri_prefix = "/unit/";
 
