@@ -23,7 +23,7 @@ use crate::agent::lane::model::action::CommandLane;
 use crate::agent::lane::model::demand::DemandLane;
 use crate::agent::lane::model::demand_map::DemandMapLane;
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
-use crate::agent::lane::model::value::ValueLane;
+use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 use crate::agent::lane::strategy::Queue;
 use crate::agent::lane::tests::ExactlyOnce;
 use crate::agent::lifecycle::AgentLifecycle;
@@ -323,14 +323,14 @@ impl<'a> StatefulLaneLifecycle<'a, ValueLane<i32>, ReportingAgent> for TotalLife
 
     fn on_event<C>(
         &'a self,
-        event: &Arc<i32>,
+        event: &ValueLaneEvent<i32>,
         _model: &'a ValueLane<i32>,
         _context: &'a C,
     ) -> Self::EventFuture
     where
         C: AgentContext<ReportingAgent> + Send + Sync + 'static,
     {
-        let n = **event;
+        let n = *event.current;
         Box::pin(async move {
             self.inner.push(ReportingAgentEvent::TotalEvent(n)).await;
         })

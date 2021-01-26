@@ -15,6 +15,7 @@
 #![allow(clippy::match_wild_err_arm)]
 
 pub mod configuration;
+#[macro_use]
 pub mod form;
 pub mod model;
 pub mod request;

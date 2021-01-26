@@ -848,3 +848,88 @@ impl Form for RelativeUri {
         }
     }
 }
+
+macro_rules! impl_tuple_form {
+    ($($len:expr => ($($n:tt $name:ident)+))+) => {
+        $(
+            impl<$($name),+> Form for ($($name,)+)
+            where
+                $($name: Form,)+
+            {
+                fn as_value(&self) -> Value {
+                    Value::Record(Vec::new(),
+                        vec![
+                            $(
+                                Item::ValueItem(self.$n.as_value()),
+                            )+
+                        ]
+                    )
+                }
+
+                fn into_value(self) -> Value {
+                    Value::Record(Vec::new(),
+                        vec![
+                            $(
+                                Item::ValueItem(self.$n.into_value()),
+                            )+
+                        ]
+                    )
+                }
+
+                #[allow(non_snake_case)]
+                fn try_from_value(value: &Value) -> Result<Self, FormErr> {
+                    match value {
+                        Value::Record(attrs, items) if attrs.len() == 0 => {
+                            let mut item_iter = items.iter();
+
+                            $(
+                                let $name = match item_iter.next() {
+                                    Some(Item::ValueItem(value)) => $name::try_from_value(value)?,
+                                    _ => return Err(FormErr::Malformatted),
+                                };
+                            )+
+
+                            Ok(($($name,)+))
+                        }
+                        v => Err(FormErr::incorrect_type("Value::Record", v)),
+                    }
+                }
+
+                #[allow(non_snake_case)]
+                fn try_convert(value: Value) -> Result<Self, FormErr> {
+                    match value {
+                        Value::Record(attrs, items) if attrs.len() == 0 => {
+                            let mut item_iter = items.into_iter();
+
+                            $(
+                                let $name = match item_iter.next() {
+                                    Some(Item::ValueItem(value)) => $name::try_convert(value)?,
+                                    _ => return Err(FormErr::Malformatted),
+                                };
+                            )+
+
+                            Ok(($($name,)+))
+                        }
+                        v => Err(FormErr::incorrect_type("Value::Record", &v)),
+                    }
+                }
+            }
+        )+
+    }
+}
+
+impl_tuple_form! {
+    1  => (0 F0)
+    2  => (0 F0 1 F1)
+    3  => (0 F0 1 F1 2 F2)
+    4  => (0 F0 1 F1 2 F2 3 F3)
+    5  => (0 F0 1 F1 2 F2 3 F3 4 F4)
+    6  => (0 F0 1 F1 2 F2 3 F3 4 F4 5 F5)
+    7  => (0 F0 1 F1 2 F2 3 F3 4 F4 5 F5 6 F6)
+    8  => (0 F0 1 F1 2 F2 3 F3 4 F4 5 F5 6 F6 7 F7)
+    9  => (0 F0 1 F1 2 F2 3 F3 4 F4 5 F5 6 F6 7 F7 8 F8)
+    10 => (0 F0 1 F1 2 F2 3 F3 4 F4 5 F5 6 F6 7 F7 8 F8 9 F9)
+    11 => (0 F0 1 F1 2 F2 3 F3 4 F4 5 F5 6 F6 7 F7 8 F8 9 F9 10 F10)
+    12 => (0 F0 1 F1 2 F2 3 F3 4 F4 5 F5 6 F6 7 F7 8 F8 9 F9 10 F10 11 F11)
+    // Debug + PartialEq are only implemented up to 11 elements.
+}
