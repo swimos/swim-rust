@@ -71,7 +71,7 @@ impl AgentContext<TestAgent> for TestContext {
 
 #[tokio::test]
 async fn default_lifecycle() {
-    let lc = DefaultLifecycle;
+    let mut lc = DefaultLifecycle;
     let model = TestModel;
     let context = TestContext;
 

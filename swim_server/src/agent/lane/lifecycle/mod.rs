@@ -56,7 +56,7 @@ pub trait StatefulLaneLifecycle<'a, Model: LaneModel, Agent>: Send + Sync + 'sta
     /// * `model` - The model of the lane.
     /// * `context` - Context of the agent that owns the lane.
     fn on_event<C>(
-        &'a self,
+        &'a mut self,
         event: &'a Model::Event,
         model: &'a Model,
         context: &'a C,
@@ -92,28 +92,6 @@ pub trait ActionLaneLifecycle<'a, Command, Response, Agent>: Send + Sync + 'stat
     ) -> Self::ResponseFuture
     where
         C: AgentContext<Agent> + Send + Sync + 'static;
-}
-
-impl<'a, Model: LaneModel, Agent> StatefulLaneLifecycle<'a, Model, Agent> for DefaultLifecycle {
-    type StartFuture = Ready<()>;
-    type EventFuture = Ready<()>;
-
-    fn on_start<C: AgentContext<Agent>>(
-        &'a self,
-        _model: &'a Model,
-        _context: &'a C,
-    ) -> Self::StartFuture {
-        ready(())
-    }
-
-    fn on_event<C: AgentContext<Agent>>(
-        &'a self,
-        _event: &'a Model::Event,
-        _model: &'a Model,
-        _context: &'a C,
-    ) -> Self::EventFuture {
-        ready(())
-    }
 }
 
 /// Trait for the lifecycle of a lane that has access to the configuration of
@@ -191,4 +169,29 @@ where
     ) -> Self::OnCueFuture
     where
         C: AgentContext<Agent> + Send + Sync + 'static;
+}
+
+impl<'a, Model: LaneModel, Agent> StatefulLaneLifecycle<'a, Model, Agent> for DefaultLifecycle {
+    type StartFuture = Ready<()>;
+    type EventFuture = Ready<()>;
+
+    fn on_start<C: AgentContext<Agent>>(
+        &'a self,
+        _model: &'a Model,
+        _context: &'a C,
+    ) -> Self::StartFuture {
+        ready(())
+    }
+
+    fn on_event<C>(
+        &'a mut self,
+        _event: &'a <Model as LaneModel>::Event,
+        _model: &'a Model,
+        _context: &'a C,
+    ) -> Self::EventFuture
+    where
+        C: AgentContext<Agent> + Send + Sync + 'static,
+    {
+        ready(())
+    }
 }
