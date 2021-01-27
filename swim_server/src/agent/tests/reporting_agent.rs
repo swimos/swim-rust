@@ -23,7 +23,7 @@ use crate::agent::lane::model::action::CommandLane;
 use crate::agent::lane::model::demand::DemandLane;
 use crate::agent::lane::model::demand_map::DemandMapLane;
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
-use crate::agent::lane::model::value::ValueLane;
+use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 use crate::agent::lane::strategy::Queue;
 use crate::agent::lane::tests::ExactlyOnce;
 use crate::agent::lifecycle::AgentLifecycle;
@@ -179,7 +179,7 @@ impl<'a> DemandLaneLifecycle<'a, i32, ReportingAgent> for DemandLifecycle {
 }
 
 impl AgentLifecycle<ReportingAgent> for ReportingAgentLifecycle {
-    fn on_start<'a, C: AgentContext<ReportingAgent>>(&'a self, context: &'a C) -> BoxFuture<'a, ()>
+    fn starting<'a, C: AgentContext<ReportingAgent>>(&'a self, context: &'a C) -> BoxFuture<'a, ()>
     where
         C: AgentContext<ReportingAgent> + Send + Sync + 'a,
     {
@@ -265,7 +265,7 @@ impl<'a> StatefulLaneLifecycle<'a, MapLane<String, i32>, ReportingAgent> for Dat
     }
 
     fn on_event<C>(
-        &'a self,
+        &'a mut self,
         event: &'a MapLaneEvent<String, i32>,
         _model: &'a MapLane<String, i32>,
         context: &'a C,
@@ -322,15 +322,15 @@ impl<'a> StatefulLaneLifecycle<'a, ValueLane<i32>, ReportingAgent> for TotalLife
     }
 
     fn on_event<C>(
-        &'a self,
-        event: &Arc<i32>,
+        &'a mut self,
+        event: &ValueLaneEvent<i32>,
         _model: &'a ValueLane<i32>,
         _context: &'a C,
     ) -> Self::EventFuture
     where
         C: AgentContext<ReportingAgent> + Send + Sync + 'static,
     {
-        let n = **event;
+        let n = *event.current;
         Box::pin(async move {
             self.inner.push(ReportingAgentEvent::TotalEvent(n)).await;
         })

@@ -41,7 +41,7 @@ use crate::agent::lane::model::demand_map::{
 use crate::agent::lane::model::map::MapLaneEvent;
 use crate::agent::lane::model::map::{MapLane, MapLaneWatch};
 use crate::agent::lane::model::supply::{make_lane_model, SupplyLane};
-use crate::agent::lane::model::value::{ValueLane, ValueLaneWatch};
+use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent, ValueLaneWatch};
 use crate::agent::lane::model::DeferredLaneView;
 use crate::agent::lifecycle::AgentLifecycle;
 use crate::routing::{ServerRouter, TaggedClientEnvelope, TaggedEnvelope};
@@ -208,7 +208,7 @@ where
         );
 
         lifecycle
-            .on_start(&context)
+            .starting(&context)
             .instrument(span!(Level::DEBUG, AGENT_START))
             .await;
 
@@ -684,15 +684,26 @@ where
     fn events(self: Box<Self>, context: Context) -> BoxFuture<'static, ()> {
         async move {
             let ValueLifecycleTasks(LifecycleTasks {
-                lifecycle,
+                mut lifecycle,
                 event_stream,
                 projection,
                 ..
             }) = *self;
             let model = projection(context.agent());
             let events = event_stream.take_until(context.agent_stop_event());
-            pin_mut!(events);
-            while let Some(event) = events.next().await {
+
+            let scan_stream = events.owning_scan(None, |prev_val, event| async move {
+                Some((
+                    Some(event.clone()),
+                    ValueLaneEvent {
+                        previous: prev_val,
+                        current: event,
+                    },
+                ))
+            });
+
+            pin_mut!(scan_stream);
+            while let Some(event) = scan_stream.next().await {
                 lifecycle
                     .on_event(&event, &model, &context)
                     .instrument(span!(Level::TRACE, ON_EVENT, ?event))
@@ -781,7 +792,7 @@ where
     fn events(self: Box<Self>, context: Context) -> Eff {
         async move {
             let MapLifecycleTasks(LifecycleTasks {
-                lifecycle,
+                mut lifecycle,
                 event_stream,
                 projection,
                 ..

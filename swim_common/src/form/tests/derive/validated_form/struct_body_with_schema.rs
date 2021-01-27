@@ -12,14 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#![allow(clippy::match_wild_err_arm)]
+use form_derive::*;
 
-pub mod agent;
-pub mod interface;
-pub mod plane;
-pub mod routing;
-
-#[allow(unused_imports)]
-pub use agent_derive::*;
-pub use utilities::future::SwimStreamExt;
-pub use utilities::route_pattern::RoutePattern;
+fn main() {
+    #[derive(Form, ValidatedForm)]
+    struct S(#[form(body, schema(equal = "i64_eq"))] i64);
+}

@@ -74,7 +74,7 @@ impl AgentContext<TestAgent> for TestContext {
 async fn default_queue_lifecycle() {
     let n = NonZeroUsize::new(13).unwrap();
 
-    let queue = Queue(n);
+    let mut queue = Queue(n);
 
     let strategy = queue.create_strategy();
 
@@ -92,7 +92,7 @@ async fn default_queue_lifecycle() {
 async fn default_buffered_lifecycle() {
     let n = NonZeroUsize::new(13).unwrap();
 
-    let buffered = Buffered(n);
+    let mut buffered = Buffered(n);
 
     let strategy = buffered.create_strategy();
 
