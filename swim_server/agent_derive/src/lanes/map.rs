@@ -98,7 +98,7 @@ pub fn derive_events_body(on_event: &Callback) -> proc_macro2::TokenStream {
 
     quote!(
         let #task_name {
-            lifecycle,
+            mut lifecycle,
             event_stream,
             projection,
             ..

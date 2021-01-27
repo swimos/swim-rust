@@ -679,7 +679,7 @@ where
     fn events(self: Box<Self>, context: Context) -> BoxFuture<'static, ()> {
         async move {
             let ValueLifecycleTasks(LifecycleTasks {
-                lifecycle,
+                mut lifecycle,
                 event_stream,
                 projection,
                 ..
@@ -787,7 +787,7 @@ where
     fn events(self: Box<Self>, context: Context) -> Eff {
         async move {
             let MapLifecycleTasks(LifecycleTasks {
-                lifecycle,
+                mut lifecycle,
                 event_stream,
                 projection,
                 ..

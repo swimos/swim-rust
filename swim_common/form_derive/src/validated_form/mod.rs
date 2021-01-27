@@ -152,17 +152,20 @@ fn derive_items(fields: &[ValidatedField], descriptor: &FieldManifest) -> TokenS
             .collect()
     };
 
-    let mut schemas = fields.iter().fold(TokenStream2::new(), |ts, field| {
-        if field.form_field.is_body() {
-            let schema = &field.field_schema;
-            quote!((swim_common::model::schema::ItemSchema::ValueItem(#schema), true))
-        } else {
-            let item = field.as_item();
+    if descriptor.replaces_body {
+        // The descriptor is built from the fields, so this cannot fail.
+        let field = fields.iter().find(|f| f.form_field.is_body()).unwrap();
+        let ty = &field.form_field.original.ty;
 
-            quote! {
-                #ts
-                (#item, true),
-            }
+        return quote!(<#ty as swim_common::form::ValidatedForm>::schema());
+    }
+
+    let mut schemas = fields.iter().fold(TokenStream2::new(), |ts, field| {
+        let item = field.as_item();
+
+        quote! {
+            #ts
+            (#item, true),
         }
     });
 

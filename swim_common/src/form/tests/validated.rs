@@ -27,6 +27,7 @@ use crate::model::Item;
 use crate::model::ValueKind;
 use crate::model::{Attr, Value};
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 mod swim_common {
     pub use crate::*;
@@ -1415,10 +1416,7 @@ fn form_body() {
             },
         )),
         required: true,
-        remainder: Box::new(StandardSchema::Layout {
-            items: vec![(ItemSchema::ValueItem(i32::schema()), true)],
-            exhaustive: true,
-        }),
+        remainder: Box::new(i32::schema()),
     };
 
     let value = S { a: 1, b: 2 }.as_value();
@@ -1588,17 +1586,13 @@ fn form_enum_variants() {
 
 #[test]
 fn form_enum_attrs() {
-    fn i64_eq() -> Value {
-        Value::Int64Value(100)
-    }
-
     #[derive(Form, ValidatedForm)]
     enum E {
         #[form(tag = "Enumeration")]
         A {
             #[form(name = "integer")]
             a: i32,
-            #[form(body, schema(equal = "i64_eq"))]
+            #[form(body)]
             b: i64,
             #[form(skip)]
             c: i32,
@@ -1631,10 +1625,7 @@ fn form_enum_attrs() {
             },
         )),
         required: true,
-        remainder: Box::new(StandardSchema::Layout {
-            items: vec![(ItemSchema::ValueItem(StandardSchema::Equal(i64_eq())), true)],
-            exhaustive: true,
-        }),
+        remainder: Box::new(i64::schema()),
     }]);
 
     let value = E::A {
@@ -1886,4 +1877,45 @@ fn tagged() {
     assert_eq!(S::schema(), expected_schema);
     assert!(S::schema().matches(&valid));
     assert!(!S::schema().matches(&invalid_value));
+}
+
+#[test]
+pub fn map_modification_schema() {
+    #[derive(Debug, PartialEq, Eq, Form, ValidatedForm, Clone)]
+    pub enum ValidatedMapUpdate<K, V> {
+        #[form(tag = "update")]
+        Update(#[form(header, name = "key")] K, #[form(body)] Arc<V>),
+        #[form(tag = "remove")]
+        Remove(#[form(header, name = "key")] K),
+        #[form(tag = "clear")]
+        Clear,
+        #[form(tag = "take")]
+        Take(#[form(header_body)] i32),
+        #[form(tag = "drop")]
+        Drop(#[form(header_body)] i32),
+    }
+
+    let clear = Value::of_attr("clear");
+    let take = Value::of_attr(("take", 3));
+    let skip = Value::of_attr(("drop", 5));
+    let remove = Value::of_attr(("remove", Value::record(vec![Item::slot("key", "hello")])));
+
+    let attr = Attr::of(("update", Value::record(vec![Item::slot("key", "hello")])));
+    let body = Item::ValueItem(Value::Int32Value(2));
+    let simple_insert = Value::Record(vec![attr], vec![body]);
+
+    let attr = Attr::of(("update", Value::record(vec![Item::slot("key", "hello")])));
+    let complex_insert = Value::Record(
+        vec![attr, Attr::of(("complex", 0))],
+        vec![Item::slot("a", true)],
+    );
+
+    let schema = ValidatedMapUpdate::<Value, Value>::schema();
+
+    assert!(schema.matches(&clear));
+    assert!(schema.matches(&take));
+    assert!(schema.matches(&skip));
+    assert!(schema.matches(&remove));
+    assert!(schema.matches(&simple_insert));
+    assert!(schema.matches(&complex_insert));
 }

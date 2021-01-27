@@ -12,18 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#![allow(clippy::match_wild_err_arm)]
+use form_derive::*;
 
-pub mod configuration;
-#[macro_use]
-pub mod form;
-pub mod model;
-pub mod request;
-pub mod routing;
-pub mod sink;
-pub mod topic;
-pub mod warp;
-
-#[allow(unused_imports)]
-#[macro_use]
-extern crate form_derive;
+fn main() {
+    #[derive(Form, ValidatedForm)]
+    enum E {
+        #[form(tag = "Enumeration")]
+        A {
+            #[form(body, schema(equal = "i64_eq"))]
+            b: i64,
+        },
+    }
+}
