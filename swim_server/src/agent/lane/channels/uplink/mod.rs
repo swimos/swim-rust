@@ -304,15 +304,25 @@ where
     unfold(state, move |state| async move {
         match state {
             UplinkPhase::Running(UplinkState::Opened, actions, updates) => {
-                let maybe_action: Option<Option<UplinkAction>> = select_biased! {
-                    action = actions.next() => action.map(Some),
-                    upd = updates.next() => upd.map(|_| None), //Ignore updates until linked.
-                };
-                match maybe_action {
-                    Some(act) => {
-                        handle_action_alt(smr, UplinkState::Opened, updates, actions, act).await
-                    }
-                    _ => None,
+                loop {
+                    let maybe_action: Option<UplinkAction> = select_biased! {
+                        action = actions.next() => action,
+                        upd = updates.next() => {
+                            if upd.is_none() {
+                                None
+                            } else {
+                                continue;
+                            }
+                        }, //Ignore updates until linked.
+                    };
+                    break handle_action_alt(
+                        smr,
+                        UplinkState::Opened,
+                        updates,
+                        actions,
+                        maybe_action,
+                    )
+                    .await;
                 }
             }
             UplinkPhase::Running(simple_state, actions, updates) => {

@@ -106,6 +106,7 @@ async fn uplink_not_linked() {
     )
     .await;
 
+    println!("{:?}", uplink_result);
     assert!(matches!(uplink_result, Ok(Ok(_))));
     assert!(send_result.is_ok());
     assert!(matches!(
@@ -296,7 +297,7 @@ async fn map_state_machine_message_for() {
     let remove = map_uplink.message_for(MapLaneEvent::Remove(2));
     assert!(matches!(
         remove,
-        Ok(Some(MapUpdate::Remove(Value::Int32Value(1))))
+        Ok(Some(MapUpdate::Remove(Value::Int32Value(2))))
     ));
 
     let clear = map_uplink.message_for(MapLaneEvent::Clear);
