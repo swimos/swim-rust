@@ -17,7 +17,7 @@ use crate::routing::remote::table::{HostAndPort, RoutingTable};
 use crate::routing::remote::{
     ConnectionDropped, RawRoute, ResolutionRequest, RoutingRequest, SocketAddrIt, Unresolvable,
 };
-use crate::routing::{RoutingAddr, TaggedEnvelope};
+use crate::routing::{RoutingAddr, TaggedAgentEnvelope, TaggedEnvelope};
 use futures::{FutureExt, StreamExt};
 use std::cell::RefCell;
 use std::io::ErrorKind;
@@ -193,10 +193,10 @@ fn transition_incoming_err() {
 }
 
 fn make_env(addr: RoutingAddr) -> TaggedEnvelope {
-    TaggedEnvelope(
+    TaggedEnvelope::AgentEnvelope(TaggedAgentEnvelope(
         addr,
         Envelope::make_event("/node", "lane", Some(Value::text("body"))),
-    )
+    ))
 }
 
 #[tokio::test]

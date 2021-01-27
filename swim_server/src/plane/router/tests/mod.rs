@@ -16,6 +16,7 @@ use crate::plane::router::{PlaneRouter, PlaneRouterFactory};
 use crate::plane::PlaneRequest;
 use crate::routing::error::{RouterError, Unresolvable};
 use crate::routing::remote::RawRoute;
+use crate::routing::TaggedAgentEnvelope;
 use crate::routing::{
     RoutingAddr, ServerRouter, ServerRouterFactory, TaggedEnvelope, TopLevelRouter,
     TopLevelRouterFactory,
@@ -62,12 +63,15 @@ async fn plane_router_get_sender() {
         let mut sender = result1.unwrap();
         assert!(sender
             .sender
-            .send_item(Envelope::linked("/node", "lane"))
+            .transform_and_send(Envelope::linked("/node", "lane"))
             .await
             .is_ok());
         assert_eq!(
             send_rx.recv().await,
-            Some(TaggedEnvelope(addr, Envelope::linked("/node", "lane")))
+            Some(TaggedEnvelope::agent(TaggedAgentEnvelope(
+                addr,
+                Envelope::linked("/node", "lane")
+            )))
         );
 
         let result2 = router.resolve_sender(RoutingAddr::local(56)).await;

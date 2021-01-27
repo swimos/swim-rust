@@ -101,5 +101,6 @@ pub fn derive_action_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput)
             use swim_server::agent::lane::lifecycle::LaneLifecycle;
         },
         None,
+        quote!(Action),
     )
 }

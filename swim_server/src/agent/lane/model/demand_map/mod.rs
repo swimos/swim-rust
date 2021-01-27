@@ -62,6 +62,16 @@ where
     pub fn remove(key: Key) -> DemandMapLaneEvent<Key, Value> {
         DemandMapLaneEvent::Remove(key)
     }
+
+    #[cfg(test)]
+    pub(crate) fn key(&self) -> &Key {
+        &self.0
+    }
+
+    #[cfg(test)]
+    pub(crate) fn value(&self) -> &Value {
+        &self.1
+    }
 }
 
 pub enum DemandMapLaneCommand<Key, Value>

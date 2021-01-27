@@ -15,12 +15,14 @@
 use super::{StatefulLaneLifecycle, StatefulLaneLifecycleBase};
 use crate::agent::lane::strategy::{Buffered, Queue};
 use crate::agent::lane::LaneModel;
+use crate::agent::meta::LogLevel;
 use crate::agent::AgentContext;
 use futures::future::BoxFuture;
 use futures::Stream;
 use std::collections::HashMap;
 use std::future::Future;
 use std::num::NonZeroUsize;
+use swim_common::form::Form;
 use tokio::time::Duration;
 use utilities::sync::trigger::Receiver;
 use utilities::uri::RelativeUri;
@@ -67,6 +69,10 @@ impl AgentContext<TestAgent> for TestContext {
 
     fn parameters(&self) -> HashMap<String, String> {
         HashMap::new()
+    }
+
+    fn log<E: Form>(&self, _entry: E, _level: LogLevel) {
+        panic!("Unexpected log event");
     }
 }
 

@@ -97,5 +97,6 @@ pub fn derive_map_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput) ->
             use swim_server::agent::lane::lifecycle::LaneLifecycle;
         },
         None,
+        quote!(Map),
     )
 }

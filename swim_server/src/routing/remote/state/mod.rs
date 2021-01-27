@@ -249,7 +249,7 @@ where
     ///
     /// # Arguments
     ///
-    /// * `webcockets` - Negotiations web socket connections on top of the sockets produced by
+    /// * `websockets` - Negotiations web socket connections on top of the sockets produced by
     /// `external.
     /// * `configuration` - Configuration parameters for the state machine.
     /// * `spawner` - [`Spawner`] implementation to spawn the tasks that manage the connections.

@@ -16,7 +16,7 @@ use crate::routing::error::{RouterError, Unresolvable};
 use crate::routing::remote::router::RemoteRouter;
 use crate::routing::remote::test_fixture::LocalRoutes;
 use crate::routing::remote::{RawRoute, RoutingRequest};
-use crate::routing::{Route, RoutingAddr, ServerRouter, TaggedEnvelope};
+use crate::routing::{Route, RoutingAddr, ServerRouter, TaggedAgentEnvelope, TaggedEnvelope};
 use futures::future::join;
 use futures::io::ErrorKind;
 use futures::{FutureExt, StreamExt};
@@ -96,10 +96,13 @@ async fn resolve_remote_ok() {
         let result = router.resolve_sender(ADDR).await;
         assert!(result.is_ok());
         let Route { mut sender, .. } = result.unwrap();
-        assert!(sender.send_item(envelope("a")).await.is_ok());
+        assert!(sender.transform_and_send(envelope("a")).await.is_ok());
         drop(stop_tx);
         let result = rx.next().now_or_never();
-        assert_eq!(result, Some(Some(TaggedEnvelope(our_addr, envelope("a")))));
+        assert_eq!(
+            result,
+            Some(Some(TaggedAgentEnvelope(our_addr, envelope("a")).into()))
+        );
     };
 
     join(fake_resolver, task).await;
@@ -178,10 +181,13 @@ async fn delegate_local_ok() {
         let result = router.resolve_sender(local_addr).await;
         assert!(result.is_ok());
         let Route { mut sender, .. } = result.unwrap();
-        assert!(sender.send_item(envelope("a")).await.is_ok());
+        assert!(sender.transform_and_send(envelope("a")).await.is_ok());
         drop(stop_tx);
         let result = rx.next().now_or_never();
-        assert_eq!(result, Some(Some(TaggedEnvelope(our_addr, envelope("a")))));
+        assert_eq!(
+            result,
+            Some(Some(TaggedAgentEnvelope(our_addr, envelope("a")).into()))
+        );
     };
 
     join(fake_resolver, task).await;
@@ -233,3 +239,6 @@ async fn lookup_local_err() {
 
     join(fake_resolver, task).await;
 }
+
+#[tokio::test]
+async fn delegate_meta_request() {}

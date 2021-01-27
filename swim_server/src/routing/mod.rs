@@ -12,24 +12,29 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::plane::PlaneRequest;
-use crate::routing::error::RouterError;
 use crate::routing::remote::{RawRoute, RoutingRequest};
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use std::fmt::{Display, Formatter};
 use std::time::Duration;
+
+use tokio::sync::mpsc;
+use url::Url;
+
 use swim_common::request::Request;
 use swim_common::routing::RoutingError;
 use swim_common::routing::SendError;
 use swim_common::routing::{ConnectionError, ResolutionError};
-use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
-use tokio::sync::mpsc;
+use swim_common::warp::envelope::{Envelope, EnvelopeHeader, OutgoingLinkMessage};
 use tokio::sync::oneshot;
-use url::Url;
 use utilities::errors::Recoverable;
 use utilities::sync::promise;
 use utilities::uri::RelativeUri;
+
+use crate::agent::meta::{MetaAddressed, MetaNodeAddressed, MetaPath};
+use crate::plane::PlaneRequest;
+use crate::routing::error::RouterError;
+use swim_common::warp::path::RelativePath;
 
 pub mod error;
 pub mod remote;
@@ -209,9 +214,142 @@ impl Display for RoutingAddr {
     }
 }
 
+pub enum ServerEnvelope {
+    Agent(Envelope),
+    Meta(Envelope, MetaAddressed),
+}
+
+impl ServerEnvelope {
+    pub fn agent(envelope: Envelope) -> ServerEnvelope {
+        ServerEnvelope::Agent(envelope)
+    }
+
+    pub fn meta(envelope: Envelope, kind: MetaAddressed) -> ServerEnvelope {
+        ServerEnvelope::Meta(envelope, kind)
+    }
+
+    pub fn relative_path(&self) -> Option<RelativePath> {
+        match self {
+            ServerEnvelope::Agent(inner) => inner.header.relative_path(),
+            ServerEnvelope::Meta(inner, _) => inner.header.relative_path(),
+        }
+    }
+
+    pub fn into_envelope(self) -> Envelope {
+        match self {
+            ServerEnvelope::Agent(inner) => inner,
+            ServerEnvelope::Meta(inner, _) => inner,
+        }
+    }
+}
+
+impl From<Envelope> for ServerEnvelope {
+    fn from(envelope: Envelope) -> ServerEnvelope {
+        let Envelope { header, body } = envelope;
+
+        if let EnvelopeHeader::IncomingLink(header, path) = header {
+            match path.try_into_meta() {
+                Ok(kind) => {
+                    let path = if let MetaAddressed::Node(ref node) = kind {
+                        node.decoded_relative_path()
+                    } else {
+                        path
+                    };
+
+                    ServerEnvelope::meta(
+                        Envelope {
+                            header: EnvelopeHeader::IncomingLink(header, path),
+                            body,
+                        },
+                        kind,
+                    )
+                }
+                Err(path) => ServerEnvelope::agent(Envelope {
+                    header: EnvelopeHeader::IncomingLink(header, path),
+                    body,
+                }),
+            }
+        } else {
+            ServerEnvelope::agent(Envelope { header, body })
+        }
+    }
+}
+
 /// An [`Envelope`] tagged with the key of the endpoint into routing table from which it originated.
 #[derive(Debug, Clone, PartialEq)]
-pub struct TaggedEnvelope(pub RoutingAddr, pub Envelope);
+pub struct TaggedAgentEnvelope(pub RoutingAddr, pub Envelope);
+
+impl From<TaggedAgentEnvelope> for TaggedEnvelope {
+    fn from(env: TaggedAgentEnvelope) -> Self {
+        TaggedEnvelope::AgentEnvelope(env)
+    }
+}
+
+/// An [`Envelope`] for a meta lane, tagged with the key of the endpoint into routing table from
+/// which it originated.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TaggedMetaEnvelope(pub RoutingAddr, pub Envelope, pub MetaNodeAddressed);
+
+impl From<TaggedMetaEnvelope> for TaggedEnvelope {
+    fn from(env: TaggedMetaEnvelope) -> Self {
+        TaggedEnvelope::AgentMetaEnvelope(env)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum TaggedEnvelope {
+    AgentEnvelope(TaggedAgentEnvelope),
+    AgentMetaEnvelope(TaggedMetaEnvelope),
+}
+
+impl TaggedEnvelope {
+    pub fn agent(envelope: TaggedAgentEnvelope) -> TaggedEnvelope {
+        TaggedEnvelope::AgentEnvelope(envelope)
+    }
+
+    pub fn meta(meta: TaggedMetaEnvelope) -> TaggedEnvelope {
+        TaggedEnvelope::AgentMetaEnvelope(meta)
+    }
+
+    pub fn split(self) -> (RoutingAddr, Envelope, LaneIdentifierKind) {
+        match self {
+            TaggedEnvelope::AgentMetaEnvelope(TaggedMetaEnvelope(addr, envelope, ..)) => {
+                (addr, envelope, LaneIdentifierKind::Meta)
+            }
+            TaggedEnvelope::AgentEnvelope(TaggedAgentEnvelope(addr, envelope)) => {
+                (addr, envelope, LaneIdentifierKind::Agent)
+            }
+        }
+    }
+
+    pub fn relative_path(&self) -> Option<RelativePath> {
+        match self {
+            TaggedEnvelope::AgentEnvelope(inner) => inner.1.header.relative_path(),
+            TaggedEnvelope::AgentMetaEnvelope(inner) => inner.1.header.relative_path(),
+        }
+    }
+
+    pub fn addr(&self) -> RoutingAddr {
+        match self {
+            TaggedEnvelope::AgentEnvelope(inner) => inner.0,
+            TaggedEnvelope::AgentMetaEnvelope(inner) => inner.0,
+        }
+    }
+
+    pub fn envelope(&self) -> &Envelope {
+        match self {
+            TaggedEnvelope::AgentEnvelope(inner) => &inner.1,
+            TaggedEnvelope::AgentMetaEnvelope(inner) => &inner.1,
+        }
+    }
+
+    pub fn into_envelope(self) -> Envelope {
+        match self {
+            TaggedEnvelope::AgentEnvelope(inner) => inner.1,
+            TaggedEnvelope::AgentMetaEnvelope(inner) => inner.1,
+        }
+    }
+}
 
 /// An [`OutgoingLinkMessage`] tagged with the key of the endpoint into routing table from which it
 /// originated.
@@ -221,6 +359,27 @@ pub struct TaggedClientEnvelope(pub RoutingAddr, pub OutgoingLinkMessage);
 impl TaggedClientEnvelope {
     pub fn lane(&self) -> &str {
         self.1.path.lane.as_str()
+    }
+}
+
+pub enum AgentAddressedEnvelope {
+    Agent(Envelope),
+    Meta(Envelope, MetaNodeAddressed),
+}
+
+impl AgentAddressedEnvelope {
+    pub fn relative_path(&self) -> Option<RelativePath> {
+        match self {
+            AgentAddressedEnvelope::Agent(inner) => inner.header.relative_path(),
+            AgentAddressedEnvelope::Meta(inner, _) => inner.header.relative_path(),
+        }
+    }
+
+    pub fn into_inner(self) -> Envelope {
+        match self {
+            AgentAddressedEnvelope::Agent(inner) => inner,
+            AgentAddressedEnvelope::Meta(inner, _) => inner,
+        }
     }
 }
 
@@ -268,15 +427,27 @@ impl TaggedSender {
         TaggedSender { tag, inner }
     }
 
-    pub async fn send_item(&mut self, envelope: Envelope) -> Result<(), SendError> {
-        Ok(self
-            .inner
-            .send(TaggedEnvelope(self.tag, envelope))
+    pub async fn transform_and_send(&mut self, envelope: Envelope) -> Result<(), SendError> {
+        self.send_item(AgentAddressedEnvelope::Agent(envelope))
             .await
-            .map_err(|e| {
-                let TaggedEnvelope(_addr, env) = e.0;
-                SendError::new(RoutingError::CloseError, env)
-            })?)
+    }
+
+    pub async fn send_item(&mut self, envelope: AgentAddressedEnvelope) -> Result<(), SendError> {
+        let TaggedSender { tag, inner } = self;
+
+        let envelope = match envelope {
+            AgentAddressedEnvelope::Agent(envelope) => {
+                TaggedEnvelope::agent(TaggedAgentEnvelope(*tag, envelope))
+            }
+            AgentAddressedEnvelope::Meta(envelope, kind) => {
+                TaggedEnvelope::meta(TaggedMetaEnvelope(*tag, envelope, kind))
+            }
+        };
+
+        Ok(inner
+            .send(envelope)
+            .await
+            .map_err(|e| SendError::new(RoutingError::CloseError, e.0.into_envelope()))?)
     }
 }
 
@@ -317,4 +488,53 @@ impl ConnectionDropped {
             _ => false,
         }
     }
+}
+
+/// An abstraction over both agent lanes and meta lanes.
+#[derive(Hash, Eq, PartialEq, Debug, Clone)]
+pub struct LaneIdentifier {
+    /// The corresponding lane URI.
+    lane_uri: String,
+    /// The lane's kind.
+    kind: LaneIdentifierKind,
+}
+
+impl LaneIdentifier {
+    pub fn from(lane_uri: String, kind: LaneIdentifierKind) -> LaneIdentifier {
+        LaneIdentifier { lane_uri, kind }
+    }
+
+    pub fn agent(lane_uri: String) -> LaneIdentifier {
+        LaneIdentifier {
+            lane_uri,
+            kind: LaneIdentifierKind::Agent,
+        }
+    }
+
+    pub fn meta(lane_uri: String) -> LaneIdentifier {
+        LaneIdentifier {
+            lane_uri,
+            kind: LaneIdentifierKind::Meta,
+        }
+    }
+
+    pub fn kind(&self) -> LaneIdentifierKind {
+        self.kind
+    }
+
+    pub fn lane_uri(&self) -> &str {
+        &self.lane_uri
+    }
+}
+
+/// An identifier representing either an agent's lanes or its metadata lanes.
+#[derive(Hash, Eq, PartialEq, Debug, Clone, Copy)]
+pub enum LaneIdentifierKind {
+    /// An agent's lane.
+    Agent,
+    /// An agent's metadata lanes.
+    ///
+    /// Agent lane meta requests have their URI's prefixed in the form of `swim:meta:X` and these
+    /// are forwarded to the corresponding meta lanes.
+    Meta,
 }

@@ -564,7 +564,7 @@ impl UplinkMessageSender<TaggedSender> {
                 Envelope::make_event(&route.node, &route.lane, Some(ev.into()))
             }
         };
-        inner.send_item(envelope).await
+        inner.transform_and_send(envelope).await
     }
 }
 

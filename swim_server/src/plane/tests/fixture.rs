@@ -116,7 +116,7 @@ impl<Clk: Clock, Delegate: ServerRouter + 'static>
             let addr = router.lookup(None, target_node.clone()).await.unwrap();
             let mut tx = router.resolve_sender(addr).await.unwrap().sender;
             assert!(tx
-                .send_item(Envelope::make_event(
+                .transform_and_send(Envelope::make_event(
                     target_node.to_string(),
                     LANE_NAME.to_string(),
                     Some(MESSAGE.into())
@@ -170,14 +170,17 @@ impl<Clk: Clock, Delegate> AgentRoute<Clk, EnvChannel, PlaneRouter<Delegate>>
 
             let mut times_seen = 0;
 
-            while let Some(TaggedEnvelope(_, env)) = incoming_envelopes.next().await {
-                if env == expected_envelope {
-                    times_seen += 1;
-                    if let Some(tx) = done_sender.take() {
-                        tx.trigger();
+            while let Some(env) = incoming_envelopes.next().await {
+                match env {
+                    TaggedEnvelope::AgentEnvelope(env) if env.1 == expected_envelope => {
+                        times_seen += 1;
+                        if let Some(tx) = done_sender.take() {
+                            tx.trigger();
+                        }
                     }
-                } else {
-                    panic!("Expected {:?}, received {:?}.", expected_envelope, env);
+                    _ => {
+                        panic!("Expected {:?}, received {:?}.", expected_envelope, env);
+                    }
                 }
             }
             AgentResult {

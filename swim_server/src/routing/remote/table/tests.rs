@@ -14,7 +14,7 @@
 
 use crate::routing::remote::table::{HostAndPort, RoutingTable};
 use crate::routing::remote::RawRoute;
-use crate::routing::{ConnectionDropped, RoutingAddr, TaggedEnvelope};
+use crate::routing::{ConnectionDropped, RoutingAddr, TaggedAgentEnvelope, TaggedEnvelope};
 use futures::StreamExt;
 use std::time::Duration;
 use swim_common::warp::envelope::Envelope;
@@ -41,7 +41,7 @@ async fn insert_and_retrieve() {
 
     let RawRoute { sender, on_drop: _ } = table.resolve(addr).unwrap();
 
-    let env = TaggedEnvelope(addr, Envelope::unlink("node", "lane"));
+    let env = TaggedEnvelope::agent(TaggedAgentEnvelope(addr, Envelope::unlink("node", "lane")));
 
     assert!(sender.send(env.clone()).await.is_ok());
 

@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::agent::meta::{LogLevel, MetaContext};
 use crate::agent::{AgentContext, Eff};
 use crate::routing::ServerRouter;
 use futures::future::BoxFuture;
@@ -21,6 +22,7 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use swim_common::form::Form;
 use swim_runtime::time::clock::Clock;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
@@ -34,68 +36,101 @@ use utilities::uri::RelativeUri;
 #[cfg(test)]
 mod tests;
 
-/// [`AgentContext`] implementation that dispatches effects to the scheduler through an MPSC
-/// channel.
-#[derive(Debug)]
-pub(super) struct ContextImpl<Agent, Clk, Router> {
-    agent_ref: Arc<Agent>,
-    uri: RelativeUri,
-    scheduler: mpsc::Sender<Eff>,
-    schedule_count: Arc<AtomicU64>,
-    clock: Clk,
-    stop_signal: trigger::Receiver,
-    router: Router,
-    parameters: HashMap<String, String>,
-}
-
 const SCHEDULE: &str = "Schedule";
 const SCHED_TRIGGERED: &str = "Schedule triggered";
 const SCHED_STOPPED: &str = "Scheduler unexpectedly stopped";
 const WAITING: &str = "Schedule waiting";
 
-impl<Agent, Clk: Clone, Router: Clone> Clone for ContextImpl<Agent, Clk, Router> {
-    fn clone(&self) -> Self {
-        ContextImpl {
-            agent_ref: self.agent_ref.clone(),
-            uri: self.uri.clone(),
-            scheduler: self.scheduler.clone(),
-            schedule_count: self.schedule_count.clone(),
-            clock: self.clock.clone(),
-            stop_signal: self.stop_signal.clone(),
-            router: self.router.clone(),
-            parameters: self.parameters.clone(),
-        }
-    }
+/// [`AgentContext`] implementation that dispatches effects to the scheduler through an MPSC
+/// channel.
+#[derive(Debug)]
+pub(super) struct ContextImpl<Agent, Clk, Router> {
+    agent_ref: Arc<Agent>,
+    routing_context: RoutingContext<Router>,
+    schedule_context: ScheduleContext<Clk>,
+    meta_context: MetaContext,
 }
 
 impl<Agent, Clk, Router> ContextImpl<Agent, Clk, Router> {
     pub(super) fn new(
         agent_ref: Arc<Agent>,
-        uri: RelativeUri,
-        scheduler: mpsc::Sender<Eff>,
-        clock: Clk,
-        stop_signal: trigger::Receiver,
-        router: Router,
-        parameters: HashMap<String, String>,
+        routing_context: RoutingContext<Router>,
+        schedule_context: ScheduleContext<Clk>,
+        meta_context: MetaContext,
     ) -> Self {
         ContextImpl {
             agent_ref,
+            routing_context,
+            schedule_context,
+            meta_context,
+        }
+    }
+}
+
+impl<Agent, Clk, Router> Clone for ContextImpl<Agent, Clk, Router>
+where
+    Clk: Clone,
+    Router: Clone,
+{
+    fn clone(&self) -> Self {
+        ContextImpl {
+            agent_ref: self.agent_ref.clone(),
+            routing_context: self.routing_context.clone(),
+            schedule_context: self.schedule_context.clone(),
+            meta_context: self.meta_context.clone(),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub(super) struct RoutingContext<Router> {
+    uri: RelativeUri,
+    router: Router,
+    parameters: HashMap<String, String>,
+}
+
+impl<Router> RoutingContext<Router> {
+    pub(super) fn new(
+        uri: RelativeUri,
+        router: Router,
+        parameters: HashMap<String, String>,
+    ) -> Self {
+        RoutingContext {
             uri,
-            scheduler,
-            schedule_count: Default::default(),
-            clock,
-            stop_signal,
             router,
             parameters,
         }
     }
 }
 
-impl<Agent, Clk, Router> AgentContext<Agent> for ContextImpl<Agent, Clk, Router>
-where
-    Agent: Send + Sync + 'static,
-    Clk: Clock,
-{
+impl<Router: Clone> Clone for RoutingContext<Router> {
+    fn clone(&self) -> Self {
+        RoutingContext {
+            uri: self.uri.clone(),
+            router: self.router.clone(),
+            parameters: self.parameters.clone(),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub(super) struct ScheduleContext<Clk> {
+    scheduler: mpsc::Sender<Eff>,
+    schedule_count: Arc<AtomicU64>,
+    clock: Clk,
+    stop_signal: trigger::Receiver,
+}
+
+impl<Clk: Clock> ScheduleContext<Clk> {
+    pub(super) fn new(scheduler: Sender<Eff>, clock: Clk, stop_signal: trigger::Receiver) -> Self {
+        ScheduleContext {
+            scheduler,
+            schedule_count: Default::default(),
+            clock,
+            stop_signal,
+        }
+    }
+
     fn schedule<Effect, Str, Sch>(&self, effects: Str, schedule: Sch) -> BoxFuture<()>
     where
         Effect: Future<Output = ()> + Send + 'static,
@@ -131,25 +166,55 @@ where
             }
         })
     }
+}
+
+impl<Clk: Clone> Clone for ScheduleContext<Clk> {
+    fn clone(&self) -> Self {
+        ScheduleContext {
+            scheduler: self.scheduler.clone(),
+            schedule_count: self.schedule_count.clone(),
+            clock: self.clock.clone(),
+            stop_signal: self.stop_signal.clone(),
+        }
+    }
+}
+
+impl<Agent, Clk, Router> AgentContext<Agent> for ContextImpl<Agent, Clk, Router>
+where
+    Agent: Send + Sync + 'static,
+    Clk: Clock,
+{
+    fn schedule<Effect, Str, Sch>(&self, effects: Str, schedule: Sch) -> BoxFuture<()>
+    where
+        Effect: Future<Output = ()> + Send + 'static,
+        Str: Stream<Item = Effect> + Send + 'static,
+        Sch: Stream<Item = Duration> + Send + 'static,
+    {
+        self.schedule_context.schedule(effects, schedule)
+    }
 
     fn agent(&self) -> &Agent {
         self.agent_ref.as_ref()
     }
 
     fn node_uri(&self) -> &RelativeUri {
-        &self.uri
+        &self.routing_context.uri
     }
 
     fn agent_stop_event(&self) -> trigger::Receiver {
-        self.stop_signal.clone()
+        self.schedule_context.stop_signal.clone()
     }
 
     fn parameter(&self, key: &str) -> Option<&String> {
-        self.parameters.get(key)
+        self.routing_context.parameters.get(key)
     }
 
     fn parameters(&self) -> HashMap<String, String> {
-        self.parameters.clone()
+        self.routing_context.parameters.clone()
+    }
+
+    fn log<E: Form>(&self, entry: E, level: LogLevel) {
+        self.meta_context.log_handler().log(entry, level);
     }
 }
 
@@ -171,10 +236,10 @@ where
     type Router = RouterInner;
 
     fn router_handle(&self) -> Self::Router {
-        self.router.clone()
+        self.routing_context.router.clone()
     }
 
     fn spawner(&self) -> Sender<Eff> {
-        self.scheduler.clone()
+        self.schedule_context.scheduler.clone()
     }
 }

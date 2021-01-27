@@ -15,12 +15,14 @@
 #[cfg(test)]
 mod tests;
 
+use crate::agent::meta::MetaAddressed;
 use crate::routing::error::RouterError;
 use crate::routing::remote::config::ConnectionConfig;
 use crate::routing::remote::router::RemoteRouter;
 use crate::routing::remote::RoutingRequest;
 use crate::routing::{
-    ConnectionDropped, Route, RoutingAddr, ServerRouter, ServerRouterFactory, TaggedEnvelope,
+    AgentAddressedEnvelope, ConnectionDropped, Route, RoutingAddr, ServerEnvelope, ServerRouter,
+    ServerRouterFactory, TaggedEnvelope,
 };
 use futures::future::BoxFuture;
 use futures::{select_biased, FutureExt, StreamExt};
@@ -139,8 +141,8 @@ where
             retry_strategy,
             yield_after,
         } = self;
-        let outgoing_payloads = messages
-            .map(|TaggedEnvelope(_, envelope)| WsMessage::Text(envelope.into_value().to_string()));
+        let outgoing_payloads =
+            messages.map(|e| WsMessage::Text(e.into_envelope().into_value().to_string()));
 
         let selector = WsStreamSelector::new(&mut ws_stream, outgoing_payloads);
 
@@ -354,18 +356,71 @@ async fn try_dispatch_envelope<Router>(
 where
     Router: ServerRouter,
 {
-    if let Some(target) = envelope.header.relative_path().as_ref() {
+    match envelope.into() {
+        ServerEnvelope::Agent(envelope) => {
+            try_dispatch_agent_envelope(
+                router,
+                resolved,
+                AgentAddressedEnvelope::Agent(envelope),
+                None,
+            )
+            .await
+        }
+        ServerEnvelope::Meta(envelope, meta) => {
+            try_dispatch_meta_envelope(router, resolved, envelope, meta).await
+        }
+    }
+}
+
+async fn try_dispatch_meta_envelope<Router>(
+    router: &mut Router,
+    resolved: &mut HashMap<RelativePath, Route>,
+    envelope: Envelope,
+    meta: MetaAddressed,
+) -> Result<(), (Envelope, DispatchError)>
+where
+    Router: ServerRouter,
+{
+    match meta {
+        MetaAddressed::Edge => panic!("swim:meta:edge requests are not implemented yet"),
+        MetaAddressed::Mesh => panic!("swim:meta:mesh requests are not implemented yet"),
+        MetaAddressed::Part => panic!("swim:meta:part requests are not implemented yet"),
+        MetaAddressed::Host => panic!("swim:meta:host requests are not implemented yet"),
+        MetaAddressed::Node(addressed) => {
+            let path = addressed.decoded_relative_path();
+
+            try_dispatch_agent_envelope(
+                router,
+                resolved,
+                AgentAddressedEnvelope::Meta(envelope, addressed),
+                Some(&path),
+            )
+            .await
+        }
+    }
+}
+
+async fn try_dispatch_agent_envelope<Router>(
+    router: &mut Router,
+    resolved: &mut HashMap<RelativePath, Route>,
+    envelope: AgentAddressedEnvelope,
+    decoded_path: Option<&RelativePath>,
+) -> Result<(), (Envelope, DispatchError)>
+where
+    Router: ServerRouter,
+{
+    if let Some(target) = envelope.relative_path().as_ref() {
         let Route { sender, .. } = if let Some(route) = resolved.get_mut(target) {
             route
         } else {
-            let route = get_route(router, target).await;
+            let route = get_route(router, decoded_path.unwrap_or(target)).await;
             match route {
                 Ok(route) => match resolved.entry(target.clone()) {
                     Entry::Occupied(_) => unreachable!(),
                     Entry::Vacant(entry) => entry.insert(route),
                 },
                 Err(err) => {
-                    return Err((envelope, err));
+                    return Err((envelope.into_inner(), err));
                 }
             }
         };
