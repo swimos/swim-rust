@@ -17,7 +17,7 @@ use swim_common::form::Form;
 use swim_common::form::ValidatedForm;
 use swim_common::model::Value;
 
-/// Updates that can be applied to a [`MapLane`].
+/// Updates that can be applied to a map lane.
 #[derive(Debug, PartialEq, Eq, Form, ValidatedForm, Clone)]
 pub enum MapUpdate<K, V> {
     #[form(tag = "update")]
