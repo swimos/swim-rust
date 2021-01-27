@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::internals::{default_on_cue, default_on_sync};
+use crate::internals::{default_on_cue, default_on_remove, default_on_sync};
 use crate::lanes::derive_lane;
 use crate::utils::{get_task_struct_name, validate_input_ast, InputAstType};
 use darling::FromMeta;
@@ -33,6 +33,8 @@ struct DemandMapAttrs {
     on_sync: Ident,
     #[darling(default = "default_on_cue", map = "string_to_ident")]
     on_cue: Ident,
+    #[darling(default = "default_on_remove", map = "string_to_ident")]
+    on_remove: Ident,
 }
 
 pub fn derive_demand_map_lifecycle(
@@ -58,6 +60,7 @@ pub fn derive_demand_map_lifecycle(
     let value_type = &args.value_type;
     let on_sync_func = &args.on_sync;
     let on_cue_func = &args.on_cue;
+    let on_remove_func = &args.on_remove;
 
     let on_event = quote! {
         let #task_name {
@@ -73,7 +76,7 @@ pub fn derive_demand_map_lifecycle(
 
         while let Some(event) = events.next().await {
             match event {
-                DemandMapLaneEvent::Sync(sender) => {
+                DemandMapLaneCommand::Sync(sender) => {
                     let keys: Vec<#key_type> = lifecycle.#on_sync_func(&model, &context).await;
                     let keys_len = keys.len();
 
@@ -82,7 +85,7 @@ pub fn derive_demand_map_lifecycle(
                             if let Some(value) =
                                 lifecycle.#on_cue_func(&model, &context, key.clone()).await
                             {
-                                results.push(DemandMapLaneUpdate::make(key, value));
+                                results.push(DemandMapLaneEvent::update(key, value));
                             }
 
                             results
@@ -93,9 +96,12 @@ pub fn derive_demand_map_lifecycle(
 
                     let _ = sender.send(values);
                 }
-                DemandMapLaneEvent::Cue(sender, key) => {
+                DemandMapLaneCommand::Cue(sender, key) => {
                     let value = lifecycle.#on_cue_func(&model, &context, key).await;
                     let _ = sender.send(value);
+                }
+                DemandMapLaneCommand::Remove(key) => {
+                    lifecycle.#on_remove_func(&model, &context, key).await;
                 }
             }
         }
@@ -109,12 +115,12 @@ pub fn derive_demand_map_lifecycle(
         agent_name,
         input_ast,
         quote!(swim_server::agent::lane::model::demand_map::DemandMapLane<#key_type, #value_type>),
-        quote!(swim_server::agent::lane::model::demand_map::DemandMapLaneEvent<#key_type, #value_type>),
+        quote!(swim_server::agent::lane::model::demand_map::DemandMapLaneCommand<#key_type, #value_type>),
         None,
         on_event,
         quote! {
             use swim_server::agent::lane::lifecycle::LaneLifecycle;
-            use swim_server::agent::lane::model::demand_map::{DemandMapLane, DemandMapLaneEvent, DemandMapLaneUpdate};
+            use swim_server::agent::lane::model::demand_map::{DemandMapLane, DemandMapLaneCommand, DemandMapLaneEvent};
             use futures::stream::iter;
         },
         None,

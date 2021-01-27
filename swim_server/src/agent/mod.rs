@@ -35,7 +35,7 @@ use crate::agent::lane::model;
 use crate::agent::lane::model::action::{Action, ActionLane, CommandLane};
 use crate::agent::lane::model::demand::DemandLane;
 use crate::agent::lane::model::demand_map::{
-    DemandMapLane, DemandMapLaneEvent, DemandMapLaneUpdate,
+    DemandMapLane, DemandMapLaneCommand, DemandMapLaneEvent,
 };
 use crate::agent::lane::model::map::MapLaneEvent;
 use crate::agent::lane::model::map::{MapLane, MapLaneWatch};
@@ -1301,7 +1301,7 @@ where
     Value: Debug + Form + Send + Sync + 'static,
 {
     lane: DemandMapLane<Key, Value>,
-    topic: MpscTopic<DemandMapLaneUpdate<Key, Value>>,
+    topic: MpscTopic<DemandMapLaneEvent<Key, Value>>,
 }
 
 impl<Key, Value> DemandMapLaneIo<Key, Value>
@@ -1311,7 +1311,7 @@ where
 {
     pub fn new(
         lane: DemandMapLane<Key, Value>,
-        topic: MpscTopic<DemandMapLaneUpdate<Key, Value>>,
+        topic: MpscTopic<DemandMapLaneEvent<Key, Value>>,
     ) -> DemandMapLaneIo<Key, Value> {
         DemandMapLaneIo { lane, topic }
     }
@@ -1368,7 +1368,7 @@ impl<Agent, Context, L, S, P, Key, Value> LaneTasks<Agent, Context>
 where
     Agent: 'static,
     Context: AgentContext<Agent> + Send + Sync + 'static,
-    S: Stream<Item = DemandMapLaneEvent<Key, Value>> + Send + Sync + 'static,
+    S: Stream<Item = DemandMapLaneCommand<Key, Value>> + Send + Sync + 'static,
     Key: Any + Clone + Form + Send + Sync + Debug,
     Value: Any + Clone + Form + Send + Sync + Debug,
     L: for<'l> DemandMapLaneLifecycle<'l, Key, Value, Agent>,
@@ -1394,7 +1394,7 @@ where
 
             while let Some(event) = events.next().await {
                 match event {
-                    DemandMapLaneEvent::Sync(sender) => {
+                    DemandMapLaneCommand::Sync(sender) => {
                         let keys: Vec<Key> = lifecycle.on_sync(&model, &context).await;
                         let keys_len = keys.len();
 
@@ -1403,7 +1403,7 @@ where
                                 if let Some(value) =
                                     lifecycle.on_cue(&model, &context, key.clone()).await
                                 {
-                                    results.push(DemandMapLaneUpdate::make(key, value));
+                                    results.push(DemandMapLaneEvent::update(key, value));
                                 }
 
                                 results
@@ -1414,9 +1414,12 @@ where
 
                         let _ = sender.send(values);
                     }
-                    DemandMapLaneEvent::Cue(sender, key) => {
+                    DemandMapLaneCommand::Cue(sender, key) => {
                         let value = lifecycle.on_cue(&model, &context, key).await;
                         let _ = sender.send(value);
+                    }
+                    DemandMapLaneCommand::Remove(key) => {
+                        lifecycle.on_remove(&model, &context, key).await;
                     }
                 }
             }

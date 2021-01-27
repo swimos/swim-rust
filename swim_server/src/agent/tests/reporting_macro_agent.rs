@@ -366,6 +366,16 @@ impl DemandMapLifecycle {
             }
         }
     }
+
+    async fn on_remove<Context>(
+        &self,
+        _model: &DemandMapLane<String, i32>,
+        _context: &Context,
+        _key: String,
+    ) where
+        Context: AgentContext<ReportingAgent> + Sized + Send + Sync,
+    {
+    }
 }
 
 #[derive(Debug, Clone)]
