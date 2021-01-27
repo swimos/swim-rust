@@ -265,7 +265,7 @@ impl<'a> StatefulLaneLifecycle<'a, MapLane<String, i32>, ReportingAgent> for Dat
     }
 
     fn on_event<C>(
-        &'a self,
+        &'a mut self,
         event: &'a MapLaneEvent<String, i32>,
         _model: &'a MapLane<String, i32>,
         context: &'a C,
@@ -322,7 +322,7 @@ impl<'a> StatefulLaneLifecycle<'a, ValueLane<i32>, ReportingAgent> for TotalLife
     }
 
     fn on_event<C>(
-        &'a self,
+        &'a mut self,
         event: &ValueLaneEvent<i32>,
         _model: &'a ValueLane<i32>,
         _context: &'a C,
