@@ -14,21 +14,37 @@
 
 use crate::agent::lane::channels::update::map::MapLaneUpdateTask;
 use crate::agent::lane::channels::update::{LaneUpdate, UpdateError};
-use crate::agent::lane::model::map;
-use crate::agent::lane::model::map::{MapLaneEvent, MapUpdate};
-use crate::agent::lane::strategy::Queue;
+use crate::agent::lane::model::map::{MapLane, MapLaneEvent, MapSubscriber, MapUpdate};
+use crate::agent::lane::model::DeferredSubscription;
 use crate::agent::lane::tests::ExactlyOnce;
 use crate::routing::RoutingAddr;
 use futures::future::{join, ready};
 use futures::stream::once;
 use futures::StreamExt;
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
+use swim_common::form::Form;
 use tokio::time::timeout;
+
+fn buffer_size() -> NonZeroUsize {
+    NonZeroUsize::new(16).unwrap()
+}
+
+fn make_subscribable<K, V>(buffer_size: NonZeroUsize) -> (MapLane<K, V>, MapSubscriber<K, V>)
+where
+    K: Form + Send + Sync + 'static,
+    V: Send + Sync + 'static,
+{
+    let (lane, rx) = MapLane::observable(buffer_size);
+    (lane, MapSubscriber::new(rx.into_subscriber()))
+}
 
 #[tokio::test]
 async fn update_task_map_lane_update() {
-    let (lane, mut events) = map::make_lane_model::<i32, i32, Queue>(Queue::default());
+    let (lane, sub) = make_subscribable::<i32, i32>(buffer_size());
+
+    let mut events = sub.subscribe().unwrap();
 
     let task = MapLaneUpdateTask::new(lane, || ExactlyOnce);
 
@@ -49,7 +65,9 @@ async fn update_task_map_lane_update() {
 
 #[tokio::test]
 async fn update_task_map_lane_remove() {
-    let (lane, mut events) = map::make_lane_model::<i32, i32, Queue>(Queue::default());
+    let (lane, sub) = make_subscribable::<i32, i32>(buffer_size());
+
+    let mut events = sub.subscribe().unwrap();
 
     //Insert a record to remove and consume the generated event.
     assert!(lane
@@ -77,7 +95,9 @@ async fn update_task_map_lane_remove() {
 
 #[tokio::test]
 async fn update_task_map_lane_clear() {
-    let (lane, mut events) = map::make_lane_model::<i32, i32, Queue>(Queue::default());
+    let (lane, sub) = make_subscribable::<i32, i32>(buffer_size());
+
+    let mut events = sub.subscribe().unwrap();
 
     //Insert a record to remove and consume the generated event.
     assert!(lane

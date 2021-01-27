@@ -13,9 +13,8 @@
 // limitations under the License.
 
 use crate::agent::lane::channels::uplink::map::MapLaneSyncError;
-use crate::agent::lane::model::map;
-use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
-use crate::agent::lane::strategy::Queue;
+use crate::agent::lane::model::map::{MapLane, MapLaneEvent, MapSubscriber};
+use crate::agent::lane::model::DeferredSubscription;
 use crate::agent::lane::tests::ExactlyOnce;
 use futures::future::{join, ready, Ready};
 use futures::sink::drain;
@@ -23,6 +22,7 @@ use futures::stream::{repeat, Repeat};
 use futures::{Stream, StreamExt};
 use pin_utils::pin_mut;
 use std::collections::HashMap;
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use stm::transaction::RetryManager;
@@ -30,6 +30,10 @@ use tokio::sync::mpsc;
 use tokio::time::timeout;
 use utilities::future::SwimStreamExt;
 use utilities::sync::trigger;
+
+fn buffer_size() -> NonZeroUsize {
+    NonZeroUsize::new(16).unwrap()
+}
 
 struct Forever;
 
@@ -94,9 +98,11 @@ fn into_map(
 
 #[tokio::test]
 async fn sync_map_lane_simple() {
-    let (lane, events) = map::make_lane_model::<i32, i32, Queue>(Queue::default());
+    let (lane, rx) = MapLane::observable(buffer_size());
 
-    let mut events = events.fuse();
+    let subscriber = MapSubscriber::new(rx.into_subscriber());
+
+    let mut events = subscriber.subscribe().unwrap();
 
     populate_map(&lane, &mut events).await;
 
@@ -117,7 +123,11 @@ async fn sync_map_lane_simple() {
 
 #[tokio::test]
 async fn sync_map_lane_replace_value() {
-    let (lane, mut events) = map::make_lane_model::<i32, i32, Queue>(Queue::default());
+    let (lane, rx) = MapLane::observable(buffer_size());
+
+    let subscriber = MapSubscriber::new(rx.into_subscriber());
+
+    let mut events = subscriber.subscribe().unwrap();
 
     populate_map(&lane, &mut events).await;
 
@@ -183,7 +193,11 @@ async fn sync_map_lane_replace_value() {
 
 #[tokio::test]
 async fn sync_map_lane_remove_value() {
-    let (lane, mut events) = map::make_lane_model::<i32, i32, Queue>(Queue::default());
+    let (lane, rx) = MapLane::observable(buffer_size());
+
+    let subscriber = MapSubscriber::new(rx.into_subscriber());
+
+    let mut events = subscriber.subscribe().unwrap();
 
     populate_map(&lane, &mut events).await;
 
@@ -245,8 +259,11 @@ async fn sync_map_lane_remove_value() {
 
 #[tokio::test]
 async fn sync_map_lane_clear() {
-    let (lane, mut events) = map::make_lane_model::<i32, i32, Queue>(Queue::default());
+    let (lane, rx) = MapLane::observable(buffer_size());
 
+    let subscriber = MapSubscriber::new(rx.into_subscriber());
+
+    let mut events = subscriber.subscribe().unwrap();
     populate_map(&lane, &mut events).await;
 
     let (fake_tx, fake_rx) = mpsc::channel(5);
