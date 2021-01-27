@@ -23,6 +23,7 @@ use crate::routing::{
     ConnectionDropped, Route, RoutingAddr, ServerRouter, ServerRouterFactory, TaggedEnvelope,
 };
 use futures::future::BoxFuture;
+use futures::stream;
 use futures::{select_biased, FutureExt, StreamExt};
 use pin_utils::core_reexport::num::NonZeroUsize;
 use std::collections::hash_map::Entry;
@@ -139,8 +140,11 @@ where
             retry_strategy,
             yield_after,
         } = self;
+
+        let (missing_node_tx, missing_node_rx) = mpsc::channel(5);
         let outgoing_payloads = messages
             .map(|TaggedEnvelope(_, envelope)| WsMessage::Text(envelope.into_value().to_string()));
+        let outgoing_payloads = stream::select(outgoing_payloads, missing_node_rx);
 
         let selector = WsStreamSelector::new(&mut ws_stream, outgoing_payloads);
 
@@ -176,13 +180,25 @@ where
                                 if let Err(_err) = dispatch_envelope(
                                     &mut router,
                                     &mut resolved,
-                                    envelope,
+                                    envelope.clone(),
                                     retry_strategy,
                                     sleep,
                                 )
                                 .await
                                 {
-                                    //TODO Log error.
+                                    if let Some(path) = envelope.header.relative_path() {
+                                        if missing_node_tx
+                                            .send(WsMessage::Text(
+                                                Envelope::node_not_found(path.node, path.lane)
+                                                    .into_value()
+                                                    .to_string(),
+                                            ))
+                                            .await
+                                            .is_err()
+                                        {
+                                            //Todo error
+                                        };
+                                    }
                                 }
                             }
                             Err(c) => {
