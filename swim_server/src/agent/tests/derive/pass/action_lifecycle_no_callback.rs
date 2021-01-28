@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swim_server::agent::AgentContext;
-use swim_server::agent_lifecycle;
+use swim_server::action_lifecycle;
 
 mod swim_server {
     pub use crate::*;
@@ -23,15 +22,9 @@ mod swim_server {
 fn main() {
     struct TestAgent;
 
-    #[agent_lifecycle(agent = "TestAgent")]
-    struct TestAgentLifecycle;
+    #[derive(Debug)]
+    pub struct TestAgentConfig;
 
-    impl TestAgentLifecycle {
-        async fn on_start<Context>(&self, _context: &Context)
-        where
-            Context: AgentContext<TestAgent> + Sized + Send + Sync,
-        {
-            unimplemented!()
-        }
-    }
+    #[action_lifecycle(agent = "TestAgent", command_type = "f32", response_type = "i32")]
+    struct ActionLifecycle;
 }

@@ -15,8 +15,8 @@
 use crate::var::TVar;
 use futures::{FutureExt, StreamExt};
 use std::convert::identity;
+use std::num::NonZeroUsize;
 use std::sync::Arc;
-use tokio::sync::mpsc;
 
 #[tokio::test]
 async fn var_get() {
@@ -51,37 +51,19 @@ async fn var_store_arc() {
 
 #[tokio::test]
 async fn observe_var_store() {
-    let (tx, mut rx) = mpsc::channel(8);
+    let (var, rx) = TVar::new_with_observer(0, NonZeroUsize::new(8).unwrap());
 
-    let var = TVar::new_with_observer(0, tx.into());
+    let mut obs_stream = rx.into_stream();
 
     var.store(17).await;
 
-    let observed = rx.next().now_or_never().and_then(identity);
+    let observed = obs_stream.next().now_or_never().and_then(identity);
 
     assert_eq!(observed, Some(Arc::new(17)));
 
     var.store(-34).await;
 
-    let observed = rx.next().now_or_never().and_then(identity);
+    let observed = obs_stream.next().now_or_never().and_then(identity);
 
     assert_eq!(observed, Some(Arc::new(-34)));
 }
-/*
-#[tokio::test]
-async fn join_observers() {
-    let observer1 = TestObserver::new(None);
-    let observer2 = TestObserver::new(None);
-
-    let mut observer = super::observer::join(observer1.clone(), observer2.clone());
-
-    let v = Arc::new(4);
-
-    observer.notify(v.clone()).await;
-
-    let observed1 = observer1.get();
-    assert!(matches!(observed1, Some(v1) if Arc::ptr_eq(&v1, &v)));
-
-    let observed2 = observer2.get();
-    assert!(matches!(observed2, Some(v2) if Arc::ptr_eq(&v2, &v)));
-}*/

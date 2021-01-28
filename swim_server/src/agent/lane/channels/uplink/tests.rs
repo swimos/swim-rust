@@ -17,15 +17,16 @@ use crate::agent::lane::channels::uplink::{
     MapLaneUplink, PeelResult, Uplink, UplinkAction, UplinkError, UplinkMessage,
     UplinkStateMachine, ValueLaneUplink,
 };
-use crate::agent::lane::model::map::MapLaneEvent;
-use crate::agent::lane::model::{map, value};
-use crate::agent::lane::strategy::Queue;
+use crate::agent::lane::model::map::{MapLane, MapLaneEvent, MapSubscriber};
+use crate::agent::lane::model::value::ValueLane;
+use crate::agent::lane::model::DeferredSubscription;
 use crate::agent::lane::tests::ExactlyOnce;
 use futures::future::join;
 use futures::ready;
 use futures::sink::drain;
 use futures::{Stream, StreamExt};
 use std::collections::{BTreeMap, VecDeque};
+use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
@@ -39,6 +40,19 @@ use tokio::sync::mpsc;
 use tokio::time::timeout;
 use utilities::future::SwimStreamExt;
 use utilities::sync::trigger;
+
+fn buffer_size() -> NonZeroUsize {
+    NonZeroUsize::new(16).unwrap()
+}
+
+fn make_subscribable<K, V>(buffer_size: NonZeroUsize) -> (MapLane<K, V>, MapSubscriber<K, V>)
+where
+    K: Form + Send + Sync + 'static,
+    V: Send + Sync + 'static,
+{
+    let (lane, rx) = MapLane::observable(buffer_size);
+    (lane, MapSubscriber::new(rx.into_subscriber()))
+}
 
 struct ReportingStream<S> {
     notify: VecDeque<trigger::Sender>,
@@ -75,7 +89,9 @@ impl<S: Stream> ReportingStream<S> {
 
 #[tokio::test]
 async fn uplink_not_linked() {
-    let (lane, events) = value::make_lane_model::<i32, Queue>(0, Queue::default());
+    let (lane, rx) = ValueLane::observable(0, buffer_size());
+
+    let events = rx.into_stream();
 
     let (on_event_tx, on_event_rx) = trigger::trigger();
 
@@ -117,7 +133,9 @@ async fn uplink_not_linked() {
 
 #[tokio::test]
 async fn uplink_open_to_linked() {
-    let (lane, events) = value::make_lane_model::<i32, Queue>(0, Queue::default());
+    let (lane, rx) = ValueLane::observable(0, buffer_size());
+
+    let events = rx.into_stream();
 
     let (on_event_tx_1, on_event_rx_1) = trigger::trigger();
     let (on_event_tx_2, on_event_rx_2) = trigger::trigger();
@@ -166,7 +184,9 @@ async fn uplink_open_to_linked() {
 
 #[tokio::test]
 async fn uplink_open_to_synced() {
-    let (lane, events) = value::make_lane_model::<i32, Queue>(0, Queue::default());
+    let (lane, rx) = ValueLane::observable(0, buffer_size());
+
+    let events = rx.into_stream();
 
     let (on_event_tx, on_event_rx) = trigger::trigger();
 
@@ -213,7 +233,7 @@ async fn uplink_open_to_synced() {
 
 #[tokio::test]
 async fn value_state_machine_message_for() {
-    let (lane, _events) = value::make_lane_model::<i32, Queue>(0, Queue::default());
+    let lane = ValueLane::new(0);
 
     let uplink = ValueLaneUplink::new(lane, None);
 
@@ -226,7 +246,9 @@ async fn value_state_machine_message_for() {
 
 #[tokio::test]
 async fn value_state_machine_sync_from_var() {
-    let (lane, events) = value::make_lane_model::<i32, Queue>(7, Queue::default());
+    let (lane, rx) = ValueLane::observable(7, buffer_size());
+
+    let events = rx.into_stream();
 
     let uplink = ValueLaneUplink::new(lane, None);
 
@@ -249,7 +271,7 @@ async fn value_state_machine_sync_from_var() {
 
 #[tokio::test]
 async fn value_state_machine_sync_from_events() {
-    let (lane, _events) = value::make_lane_model::<i32, Queue>(7, Queue::default());
+    let lane = ValueLane::new(7);
 
     let uplink = ValueLaneUplink::new(lane.clone(), None);
 
@@ -282,7 +304,7 @@ async fn value_state_machine_sync_from_events() {
 
 #[tokio::test]
 async fn map_state_machine_message_for() {
-    let (lane, _events) = map::make_lane_model::<i32, i32, Queue>(Queue::default());
+    let lane = MapLane::new();
 
     let map_uplink = MapLaneUplink::new(lane, 1, || ExactlyOnce, None);
 
@@ -342,8 +364,9 @@ fn into_map(
 
 #[tokio::test]
 async fn map_state_machine_sync() {
-    let (lane, events) = map::make_lane_model::<i32, i32, Queue>(Queue::default());
+    let (lane, sub) = make_subscribable::<i32, i32>(buffer_size());
 
+    let events = sub.subscribe().unwrap();
     let mut events = events.fuse();
 
     assert!(lane

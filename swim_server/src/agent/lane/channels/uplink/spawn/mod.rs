@@ -20,6 +20,7 @@ use crate::agent::lane::channels::uplink::{
 use crate::agent::lane::channels::{
     AgentExecutionConfig, LaneMessageHandler, OutputMessage, TaggedAction,
 };
+use crate::agent::lane::model::DeferredSubscription;
 use crate::agent::Eff;
 use crate::routing::{RoutingAddr, ServerRouter};
 use futures::future::join_all;
@@ -30,7 +31,6 @@ use std::fmt::{Display, Formatter};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use swim_common::model::Value;
-use swim_common::topic::Topic;
 use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc;
 use tracing::{event, span, Level};
@@ -68,7 +68,7 @@ impl<Handler, Top> UplinkSpawner<Handler, Top>
 where
     Handler: LaneMessageHandler,
     OutputMessage<Handler>: Into<Value>,
-    Top: Topic<Handler::Event> + Send,
+    Top: DeferredSubscription<Handler::Event> + Send,
 {
     /// Crate a new uplink spawner.
     ///
@@ -212,7 +212,7 @@ where
         let (tx, rx) = mpsc::channel(action_buffer_size.get());
         let (cleanup_tx, cleanup_rx) = trigger::trigger();
         let state_machine = handler.make_uplink(addr);
-        let updates = if let Ok(sub) = topic.subscribe().await {
+        let updates = if let Some(sub) = topic.subscribe() {
             sub.fuse()
         } else {
             return None;
@@ -319,7 +319,7 @@ impl LaneUplinks for SpawnerUplinkFactory {
     where
         Handler: LaneMessageHandler + 'static,
         OutputMessage<Handler>: Into<Value>,
-        Top: Topic<Handler::Event> + Send + 'static,
+        Top: DeferredSubscription<Handler::Event>,
         Context: AgentExecutionContext,
     {
         let SpawnerUplinkFactory(AgentExecutionConfig {

@@ -13,11 +13,10 @@
 // limitations under the License.
 
 use crate::agent::lane::channels::AgentExecutionConfig;
-use crate::agent::lane::lifecycle::{LaneLifecycle, StatefulLaneLifecycleBase};
+use crate::agent::lane::lifecycle::LaneLifecycle;
 use crate::agent::lane::model::action::{ActionLane, CommandLane, Commander};
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent};
-use crate::agent::lane::strategy::Queue;
 use crate::agent::lane::tests::ExactlyOnce;
 use crate::agent::lifecycle::AgentLifecycle;
 use crate::agent::tests::stub_router::SingleChannelRouter;
@@ -126,7 +125,7 @@ impl EventCollectorHandler {
 
 // ------------------------------ Agent Lifecycle -------------------------------
 
-#[agent_lifecycle(agent = "DataAgent")]
+#[agent_lifecycle(agent = "DataAgent", on_start)]
 struct DataAgentLifecycle {
     event_handler: EventCollectorHandler,
 }
@@ -197,7 +196,7 @@ impl DataAgentLifecycle {
 
 // ------------------------------ Command Lifecycle 1 -------------------------------
 
-#[command_lifecycle(agent = "DataAgent", command_type = "String")]
+#[command_lifecycle(agent = "DataAgent", command_type = "String", on_command)]
 struct CommandLifecycle1 {
     event_handler: EventCollectorHandler,
 }
@@ -238,7 +237,7 @@ impl LaneLifecycle<DataAgentConfig> for CommandLifecycle1 {
 
 // ------------------------------ Command Lifecycle 2 -------------------------------
 
-#[command_lifecycle(agent = "DataAgent", command_type = "String")]
+#[command_lifecycle(agent = "DataAgent", command_type = "String", on_command)]
 struct CommandLifecycle2 {
     event_handler: EventCollectorHandler,
 }
@@ -279,7 +278,12 @@ impl LaneLifecycle<DataAgentConfig> for CommandLifecycle2 {
 
 // ------------------------------ Action Lifecycle 1 -------------------------------
 
-#[action_lifecycle(agent = "DataAgent", command_type = "String", response_type = "i32")]
+#[action_lifecycle(
+    agent = "DataAgent",
+    command_type = "String",
+    response_type = "i32",
+    on_command
+)]
 struct ActionLifecycle1 {
     event_handler: EventCollectorHandler,
 }
@@ -322,7 +326,13 @@ impl LaneLifecycle<DataAgentConfig> for ActionLifecycle1 {
 
 // ------------------------------ Map Lifecycle 1 -------------------------------
 
-#[map_lifecycle(agent = "DataAgent", key_type = "String", value_type = "i32")]
+#[map_lifecycle(
+    agent = "DataAgent",
+    key_type = "String",
+    value_type = "i32",
+    on_start,
+    on_event
+)]
 struct MapLifecycle1 {
     event_handler: EventCollectorHandler,
 }
@@ -368,17 +378,15 @@ impl LaneLifecycle<DataAgentConfig> for MapLifecycle1 {
     }
 }
 
-impl StatefulLaneLifecycleBase for MapLifecycle1 {
-    type WatchStrategy = Queue;
-
-    fn create_strategy(&self) -> Self::WatchStrategy {
-        Queue::default()
-    }
-}
-
 // ------------------------------ Map Lifecycle 2 -------------------------------
 
-#[map_lifecycle(agent = "DataAgent", key_type = "String", value_type = "f64")]
+#[map_lifecycle(
+    agent = "DataAgent",
+    key_type = "String",
+    value_type = "f64",
+    on_start,
+    on_event
+)]
 struct MapLifecycle2 {
     event_handler: EventCollectorHandler,
 }
@@ -424,17 +432,9 @@ impl LaneLifecycle<DataAgentConfig> for MapLifecycle2 {
     }
 }
 
-impl StatefulLaneLifecycleBase for MapLifecycle2 {
-    type WatchStrategy = Queue;
-
-    fn create_strategy(&self) -> Self::WatchStrategy {
-        Queue::default()
-    }
-}
-
 // ------------------------------ Value Lifecycle 1 -------------------------------
 
-#[value_lifecycle(agent = "DataAgent", event_type = "i32")]
+#[value_lifecycle(agent = "DataAgent", event_type = "i32", on_start, on_event)]
 struct ValueLifecycle1 {
     event_handler: EventCollectorHandler,
 }
@@ -468,17 +468,9 @@ impl LaneLifecycle<DataAgentConfig> for ValueLifecycle1 {
     }
 }
 
-impl StatefulLaneLifecycleBase for ValueLifecycle1 {
-    type WatchStrategy = Queue;
-
-    fn create_strategy(&self) -> Self::WatchStrategy {
-        Queue::default()
-    }
-}
-
 // ------------------------------ Value Lifecycle 2 -------------------------------
 
-#[value_lifecycle(agent = "DataAgent", event_type = "f64")]
+#[value_lifecycle(agent = "DataAgent", event_type = "f64", on_start, on_event)]
 struct ValueLifecycle2 {
     event_handler: EventCollectorHandler,
 }
@@ -509,14 +501,6 @@ impl LaneLifecycle<DataAgentConfig> for ValueLifecycle2 {
     fn create(config: &DataAgentConfig) -> Self {
         let event_handler = EventCollectorHandler(config.collector.clone());
         ValueLifecycle2 { event_handler }
-    }
-}
-
-impl StatefulLaneLifecycleBase for ValueLifecycle2 {
-    type WatchStrategy = Queue;
-
-    fn create_strategy(&self) -> Self::WatchStrategy {
-        Queue::default()
     }
 }
 
