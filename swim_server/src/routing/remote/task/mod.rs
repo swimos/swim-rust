@@ -25,7 +25,6 @@ use crate::routing::{
 use futures::future::BoxFuture;
 use futures::stream;
 use futures::{select_biased, FutureExt, StreamExt};
-use pin_utils::core_reexport::num::NonZeroUsize;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::convert::TryFrom;
@@ -57,9 +56,7 @@ pub struct ConnectionTask<Str, Router> {
     messages: mpsc::Receiver<TaggedEnvelope>,
     router: Router,
     stop_signal: trigger::Receiver,
-    activity_timeout: Duration,
-    retry_strategy: RetryStrategy,
-    yield_after: NonZeroUsize,
+    config: ConnectionConfig,
 }
 
 const ZERO: Duration = Duration::from_secs(0);
@@ -104,29 +101,22 @@ where
     /// * `router` - Router to route incoming messages to the appropriate destination.
     /// * `messages`- Stream of messages to be sent into the sink.
     /// * `stop_signal` - Signals to the task that it should stop.
-    /// * `activity_timeout` - If the task neither sends nor receives a message within this period
-    /// it will stop itself.
-    /// * `retry_strategy` - Retry strategy when attempting to route incoming messages.
-    /// * `yield_after` - The number of events to process before yielding execution back to the
+    /// * `config` - Configuration for the connectino task.
     /// runtime.
     pub fn new(
         ws_stream: Str,
         router: Router,
         messages: mpsc::Receiver<TaggedEnvelope>,
         stop_signal: trigger::Receiver,
-        activity_timeout: Duration,
-        retry_strategy: RetryStrategy,
-        yield_after: NonZeroUsize,
+        config: ConnectionConfig,
     ) -> Self {
-        assert!(activity_timeout > ZERO);
+        assert!(config.activity_timeout > ZERO);
         ConnectionTask {
             ws_stream,
             messages,
             router,
             stop_signal,
-            activity_timeout,
-            retry_strategy,
-            yield_after,
+            config,
         }
     }
 
@@ -136,12 +126,11 @@ where
             messages,
             mut router,
             stop_signal,
-            activity_timeout,
-            retry_strategy,
-            yield_after,
+            config,
         } = self;
 
-        let (missing_node_tx, missing_node_rx) = mpsc::channel(5);
+        let (missing_node_tx, missing_node_rx) =
+            mpsc::channel(config.missing_nodes_buffer_size.get());
         let outgoing_payloads = messages
             .map(|TaggedEnvelope(_, envelope)| WsMessage::Text(envelope.into_value().to_string()));
         let outgoing_payloads = stream::select(outgoing_payloads, missing_node_rx);
@@ -150,16 +139,16 @@ where
 
         let mut stop_fused = stop_signal.fuse();
         let mut select_stream = selector.fuse();
-        let mut timeout = sleep(activity_timeout);
+        let mut timeout = sleep(config.activity_timeout);
 
         let mut resolved: HashMap<RelativePath, Route> = HashMap::new();
-        let yield_mod = yield_after.get();
+        let yield_mod = config.yield_after.get();
         let mut iteration_count: usize = 0;
 
         let completion = loop {
             timeout.reset(
                 Instant::now()
-                    .checked_add(activity_timeout)
+                    .checked_add(config.activity_timeout)
                     .expect("Timer overflow."),
             );
             let next: Option<Result<SelectorResult<WsMessage>, ConnectionError>> = select_biased! {
@@ -177,16 +166,16 @@ where
                     Ok(SelectorResult::Read(msg)) => match msg {
                         WsMessage::Text(msg) => match read_envelope(&msg) {
                             Ok(envelope) => {
-                                if let Err(_err) = dispatch_envelope(
+                                if let Err((env, _err)) = dispatch_envelope(
                                     &mut router,
                                     &mut resolved,
-                                    envelope.clone(),
-                                    retry_strategy,
+                                    envelope,
+                                    config.connection_retries,
                                     sleep,
                                 )
                                 .await
                                 {
-                                    if let Some(path) = envelope.header.relative_path() {
+                                    if let Some(path) = env.header.relative_path() {
                                         if missing_node_tx
                                             .send(WsMessage::Text(
                                                 Envelope::node_not_found(path.node, path.lane)
@@ -246,7 +235,7 @@ where
 
         match completion {
             Completion::Failed(err) => ConnectionDropped::Failed(err),
-            Completion::TimedOut => ConnectionDropped::TimedOut(activity_timeout),
+            Completion::TimedOut => ConnectionDropped::TimedOut(config.activity_timeout),
             Completion::StoppedRemotely => ConnectionDropped::Failed(ConnectionError::Closed(
                 CloseError::new(CloseErrorKind::ClosedRemotely, None),
             )),
@@ -331,7 +320,7 @@ async fn dispatch_envelope<Router, F, D>(
     mut envelope: Envelope,
     mut retry_strategy: RetryStrategy,
     delay_fn: F,
-) -> Result<(), DispatchError>
+) -> Result<(), (Envelope, DispatchError)>
 where
     Router: ServerRouter,
     F: Fn(Duration) -> D,
@@ -346,14 +335,14 @@ where
                         delay_fn(dur).await;
                     }
                     None => {
-                        break Err(err);
+                        break Err((env, err));
                     }
                     _ => {}
                 }
                 envelope = env;
             }
-            Err((_, err)) => {
-                break Err(err);
+            Err((env, err)) => {
+                break Err((env, err));
             }
             _ => {
                 break Ok(());
@@ -466,9 +455,7 @@ where
             RemoteRouter::new(tag, delegate_router.create_for(tag), request_tx.clone()),
             msg_rx,
             stop_trigger.clone(),
-            configuration.activity_timeout,
-            configuration.connection_retries,
-            configuration.yield_after,
+            *configuration,
         );
 
         spawner.add(

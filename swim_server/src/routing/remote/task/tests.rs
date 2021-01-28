@@ -31,6 +31,7 @@ use utilities::sync::{promise, trigger};
 use utilities::uri::{BadRelativeUri, RelativeUri, UriIsAbsolute};
 
 use crate::routing::error::RouterError;
+use crate::routing::remote::config::ConnectionConfig;
 use crate::routing::remote::task::{ConnectionTask, DispatchError};
 use crate::routing::remote::test_fixture::fake_channel::TwoWayMpsc;
 use crate::routing::remote::test_fixture::LocalRoutes;
@@ -274,11 +275,12 @@ async fn dispatch_immediate_failure() {
 
     assert!(delays.lock().is_empty());
 
-    if let Err(err) = result {
+    if let Err((err_env, err)) = result {
         let expected_uri: RelativeUri = "/node".parse().unwrap();
         assert!(
             matches!(err, DispatchError::RoutingProblem(RouterError::NoAgentAtRoute(uri)) if uri == expected_uri)
         );
+        assert_eq!(err_env, env)
     } else {
         panic!("Unexpected success.")
     }
@@ -385,9 +387,14 @@ impl TaskFixture {
             router.clone(),
             env_rx,
             stop_rx,
-            Duration::from_secs(30),
-            RetryStrategy::immediate(NonZeroUsize::new(1).unwrap()),
-            NonZeroUsize::new(256).unwrap(),
+            ConnectionConfig {
+                router_buffer_size: NonZeroUsize::new(10).unwrap(),
+                channel_buffer_size: NonZeroUsize::new(10).unwrap(),
+                activity_timeout: Duration::from_secs(30),
+                connection_retries: RetryStrategy::immediate(NonZeroUsize::new(1).unwrap()),
+                yield_after: NonZeroUsize::new(256).unwrap(),
+                missing_nodes_buffer_size: NonZeroUsize::new(8).unwrap(),
+            },
         )
         .run()
         .boxed();
