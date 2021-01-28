@@ -20,6 +20,7 @@ mod uri;
 
 pub(crate) mod lane;
 pub(crate) mod log;
+pub(crate) mod metric;
 
 pub use info::LaneInfo;
 pub use log::LogLevel;

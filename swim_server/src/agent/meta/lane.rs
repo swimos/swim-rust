@@ -15,7 +15,7 @@
 use crate::agent::context::AgentExecutionContext;
 use crate::agent::lane::model::demand_map;
 use crate::agent::lane::model::demand_map::{
-    DemandMapLane, DemandMapLaneEvent, DemandMapLaneUpdate,
+    DemandMapLane, DemandMapLaneCommand, DemandMapLaneEvent,
 };
 use crate::agent::lane::LaneKind;
 use crate::agent::{AgentContext, DemandMapLaneIo, Lane, LaneIo, LaneTasks};
@@ -102,7 +102,7 @@ impl<Agent, Context, S, Key, Value> LaneTasks<Agent, Context>
 where
     Agent: 'static,
     Context: AgentContext<Agent> + Send + Sync + 'static,
-    S: Stream<Item = DemandMapLaneEvent<Key, Value>> + Send + Sync + 'static,
+    S: Stream<Item = DemandMapLaneCommand<Key, Value>> + Send + Sync + 'static,
     Key: Any + Clone + Form + Send + Sync + Debug + Eq + Hash,
     Value: Any + Clone + Form + Send + Sync + Debug,
 {
@@ -122,12 +122,12 @@ where
 
             while let Some(event) = events.next().await {
                 match event {
-                    DemandMapLaneEvent::Sync(sender) => {
+                    DemandMapLaneCommand::Sync(sender) => {
                         let size = map.len();
                         let results = map.clone().into_iter().fold(
                             Vec::with_capacity(size),
                             |mut results, (key, value)| {
-                                results.push(DemandMapLaneUpdate::make(key, value));
+                                results.push(DemandMapLaneEvent::update(key, value));
                                 results
                             },
                         );
@@ -136,11 +136,14 @@ where
                             event!(Level::ERROR, SYNC_ERR)
                         }
                     }
-                    DemandMapLaneEvent::Cue(sender, key) => {
+                    DemandMapLaneCommand::Cue(sender, key) => {
                         let value = map.get(&key).map(Clone::clone);
                         if sender.send(value).is_err() {
                             event!(Level::ERROR, CUE_ERR)
                         }
+                    }
+                    DemandMapLaneCommand::Remove(_key) => {
+                        // no-op as lanes cannot be removed
                     }
                 }
             }

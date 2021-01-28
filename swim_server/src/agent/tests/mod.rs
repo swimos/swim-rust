@@ -22,7 +22,7 @@ use crate::agent::lane::lifecycle::{
     ActionLaneLifecycle, StatefulLaneLifecycle, StatefulLaneLifecycleBase,
 };
 use crate::agent::lane::model::action::{Action, ActionLane, CommandLane};
-use crate::agent::lane::model::demand_map::DemandMapLaneUpdate;
+use crate::agent::lane::model::demand_map::{DemandMapLaneCommand, DemandMapLaneEvent};
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 use crate::agent::lane::strategy::Queue;
@@ -32,7 +32,6 @@ use crate::agent::meta::LogLevel;
 use crate::agent::tests::reporting_agent::{ReportingAgentEvent, TestAgentConfig};
 use crate::agent::tests::stub_router::SingleChannelRouter;
 use crate::agent::tests::test_clock::TestClock;
-use crate::agent::DemandMapLaneEvent;
 use crate::agent::{
     ActionLifecycleTasks, AgentContext, CommandLifecycleTasks, Lane, LaneTasks, LifecycleTasks,
     MapLifecycleTasks, ValueLifecycleTasks,
@@ -329,17 +328,24 @@ async fn test_meta_lanes() {
     let event_task = task.boxed().events(context);
     let assert_task = async move {
         let (sync_tx, sync_rx) = oneshot::channel();
-        let result = tx.clone().send(DemandMapLaneEvent::Sync(sync_tx)).await;
+        let result = tx.clone().send(DemandMapLaneCommand::Sync(sync_tx)).await;
         assert!(result.is_ok());
 
         let expected = (1..=3)
             .into_iter()
-            .map(|i| DemandMapLaneUpdate::make(i.to_string(), i))
+            .map(|i| DemandMapLaneEvent::update(i.to_string(), i))
             .collect::<Vec<_>>();
 
         match sync_rx.await {
             Ok(mut updates) => {
-                updates.sort_by(|l, r| l.key().cmp(r.key()));
+                updates.sort_by(|l, r| match (l, r) {
+                    (DemandMapLaneEvent::Update(l, _), DemandMapLaneEvent::Update(r, _)) => {
+                        l.cmp(r)
+                    }
+                    _ => {
+                        panic!("Unexpected event");
+                    }
+                });
 
                 assert_eq!(expected, updates);
             }
@@ -350,7 +356,7 @@ async fn test_meta_lanes() {
 
         let (sync_tx, sync_rx) = oneshot::channel();
         let send_result = tx
-            .send(DemandMapLaneEvent::Cue(sync_tx, 4.to_string()))
+            .send(DemandMapLaneCommand::Cue(sync_tx, 4.to_string()))
             .await;
         assert!(send_result.is_ok());
 
@@ -367,21 +373,29 @@ async fn test_meta_lanes() {
         futures::stream::iter(expected)
             .for_each(move |update| {
                 let tx = tx.clone();
+                let key = match &update {
+                    DemandMapLaneEvent::Update(key, _) => key.clone(),
+                    _ => panic!("Unexpected event"),
+                };
 
                 async move {
                     let (sync_tx, sync_rx) = oneshot::channel();
-                    let send_result = tx
-                        .send(DemandMapLaneEvent::Cue(sync_tx, update.key().clone()))
-                        .await;
+                    let send_result = tx.send(DemandMapLaneCommand::Cue(sync_tx, key)).await;
                     assert!(send_result.is_ok());
 
                     match sync_rx.await {
-                        Ok(Some(value)) => {
-                            assert_eq!(value, *update.value());
-                        }
-                        r => {
-                            panic!("Expected cue to return {}. Got {:?}", update.value(), r)
-                        }
+                        Ok(Some(value)) => match update {
+                            DemandMapLaneEvent::Update(_, event_value) => {
+                                assert_eq!(value, *event_value);
+                            }
+                            _ => panic!("Unexpected event"),
+                        },
+                        r => match update {
+                            DemandMapLaneEvent::Update(_, value) => {
+                                panic!("Expected cue to return {}. Got {:?}", *value, r)
+                            }
+                            _ => panic!("Unexpected event"),
+                        },
                     }
                 }
             })

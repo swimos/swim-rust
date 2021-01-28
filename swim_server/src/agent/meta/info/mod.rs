@@ -22,7 +22,8 @@ use crate::agent::meta::{IdentifiedAgentIo, LANES_URI};
 use crate::agent::LaneTasks;
 use crate::agent::{AgentContext, DynamicLaneTasks, LaneIo, SwimAgent};
 use crate::routing::LaneIdentifier;
-use futures::future::BoxFuture;
+use futures::future::{ready, BoxFuture};
+use futures::FutureExt;
 use std::collections::HashMap;
 use swim_common::form::Form;
 
@@ -62,6 +63,7 @@ struct LaneInfoLifecycle {
 impl<'a, Agent> DemandMapLaneLifecycle<'a, String, LaneInfo, Agent> for LaneInfoLifecycle {
     type OnSyncFuture = BoxFuture<'a, Vec<String>>;
     type OnCueFuture = BoxFuture<'a, Option<LaneInfo>>;
+    type OnRemoveFuture = BoxFuture<'a, ()>;
 
     fn on_sync<C>(
         &'a self,
@@ -84,6 +86,18 @@ impl<'a, Agent> DemandMapLaneLifecycle<'a, String, LaneInfo, Agent> for LaneInfo
         C: AgentContext<Agent> + Send + Sync + 'static,
     {
         Box::pin(async move { self.lanes.get(&key).map(Clone::clone) })
+    }
+
+    fn on_remove<C>(
+        &'a self,
+        _model: &'a DemandMapLane<String, LaneInfo>,
+        _context: &'a C,
+        _key: String,
+    ) -> Self::OnRemoveFuture
+    where
+        C: AgentContext<Agent> + Send + Sync + 'static,
+    {
+        ready(()).boxed()
     }
 }
 
