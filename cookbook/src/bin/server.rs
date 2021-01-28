@@ -18,7 +18,6 @@ use std::fmt::Debug;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::time::Duration;
 use swim_server::agent::command_lifecycle;
-use swim_server::agent::lane::lifecycle::StatefulLaneLifecycleBase;
 use swim_server::agent::lane::model::action::CommandLane;
 use swim_server::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 use swim_server::agent::value_lifecycle;
@@ -85,14 +84,6 @@ impl CounterLifecycle {
         Context: AgentContext<RustAgent> + Sized + Send + Sync + 'static,
     {
         println!("Event received: {}", event.current);
-    }
-}
-
-impl StatefulLaneLifecycleBase for CounterLifecycle {
-    type WatchStrategy = Queue;
-
-    fn create_strategy(&self) -> Self::WatchStrategy {
-        Queue::default()
     }
 }
 
