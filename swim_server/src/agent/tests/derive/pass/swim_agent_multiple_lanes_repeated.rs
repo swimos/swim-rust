@@ -12,12 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swim_server::agent::lane::lifecycle::{LaneLifecycle, StatefulLaneLifecycleBase};
+use swim_server::agent::lane::lifecycle::LaneLifecycle;
 use swim_server::agent::lane::model::action::{ActionLane, CommandLane};
 use swim_server::agent::lane::model::map::{MapLane, MapLaneEvent};
-use swim_server::agent::lane::model::value::ValueLane;
-use swim_server::agent::lane::model::value::ValueLaneEvent;
-use swim_server::agent::lane::strategy::Queue;
+use swim_server::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 use swim_server::agent::AgentContext;
 use swim_server::{
     action_lifecycle, agent_lifecycle, command_lifecycle, map_lifecycle, value_lifecycle, SwimAgent,
@@ -232,14 +230,6 @@ fn main() {
         }
     }
 
-    impl StatefulLaneLifecycleBase for ValueLifecycle1 {
-        type WatchStrategy = Queue;
-
-        fn create_strategy(&self) -> Self::WatchStrategy {
-            Queue::default()
-        }
-    }
-
     // ----------------------- Value Lifecycle 2 -----------------------
 
     #[value_lifecycle(agent = "TestAgent", event_type = "String", on_start, on_event)]
@@ -275,14 +265,6 @@ fn main() {
         }
     }
 
-    impl StatefulLaneLifecycleBase for ValueLifecycle2 {
-        type WatchStrategy = Queue;
-
-        fn create_strategy(&self) -> Self::WatchStrategy {
-            Queue::default()
-        }
-    }
-
     // ----------------------- Map Lifecycle 1 -----------------------
 
     #[map_lifecycle(
@@ -314,15 +296,7 @@ fn main() {
         }
     }
 
-    impl StatefulLaneLifecycleBase for MapLifecycle1 {
-        type WatchStrategy = Queue;
-
-        fn create_strategy(&self) -> Self::WatchStrategy {
-            Queue::default()
-        }
-    }
-
-    // ----------------------- Map Lifecycle 2 -----------------------
+    // ----------------------- Map Lifecycle 1 -----------------------
 
     #[map_lifecycle(
         agent = "TestAgent",
@@ -360,14 +334,6 @@ fn main() {
             MapLifecycle2 {
                 _field: "MapLifecycle2".to_string(),
             }
-        }
-    }
-
-    impl StatefulLaneLifecycleBase for MapLifecycle2 {
-        type WatchStrategy = Queue;
-
-        fn create_strategy(&self) -> Self::WatchStrategy {
-            Queue::default()
         }
     }
 }

@@ -276,7 +276,11 @@ fn create_lane(
             )
         }
         LaneType::Value => {
-            let model = quote!(let (#lane_name, event_stream, deferred) = swim_server::agent::lane::model::value::make_lane_model_deferred(Default::default(), lifecycle.create_strategy(), exec_conf););
+            let model = quote! {
+                let (#lane_name, observer) = swim_server::agent::lane::model::value::ValueLane::observable(Default::default(), exec_conf.observation_buffer);
+                let subscriber = observer.subscriber();
+                let event_stream = observer.into_stream();
+            };
 
             build_lane_io(
                 lane_data,
@@ -285,14 +289,16 @@ fn create_lane(
 
                     io_map.insert (
                         #lane_name_lit.to_string(),
-                        Box::new(swim_server::agent::ValueLaneIo::new(#lane_name.clone(), deferred))
+                        Box::new(swim_server::agent::ValueLaneIo::new(#lane_name.clone(), subscriber))
                     );
                 },
                 model,
             )
         }
         LaneType::Map => {
-            let model = quote!(let (#lane_name, event_stream, deferred) = swim_server::agent::lane::model::map::make_lane_model_deferred(lifecycle.create_strategy(), exec_conf););
+            let model = quote! {
+                let (#lane_name, subscriber, event_stream) = swim_server::agent::lane::model::map::streamed_map_lane(exec_conf.observation_buffer);
+            };
 
             build_lane_io(
                 lane_data,
@@ -300,7 +306,7 @@ fn create_lane(
                     #model
 
                     io_map.insert (
-                        #lane_name_lit.to_string(), Box::new(swim_server::agent::MapLaneIo::new(#lane_name.clone(), deferred))
+                        #lane_name_lit.to_string(), Box::new(swim_server::agent::MapLaneIo::new(#lane_name.clone(), subscriber))
                     );
                 },
                 model,
