@@ -502,6 +502,34 @@ async fn task_receive_message_with_route() {
 }
 
 #[tokio::test]
+async fn task_receive_node_not_found_message() {
+    let TaskFixture {
+        task,
+        envelope_tx: _envelope_tx,
+        mut sock_out,
+        stop_trigger,
+        router: _router,
+        mut sock_in,
+        send_error_tx: _send_error_tx,
+    } = TaskFixture::new();
+
+    let envelope = Envelope::link("/missing", "/lane");
+    let response = Envelope::node_not_found("/missing", "/lane");
+
+    let test_case = async move {
+        assert!(sock_in.send(Ok(message_for(envelope))).await.is_ok());
+
+        let message = sock_out.next().await;
+        assert_eq!(message, Some(message_for(response)));
+
+        stop_trigger.trigger();
+    };
+
+    let result = timeout::timeout(Duration::from_secs(5), join(task, test_case)).await;
+    assert!(matches!(result, Ok((ConnectionDropped::Closed, _))));
+}
+
+#[tokio::test]
 async fn task_receive_message_no_route() {
     let TaskFixture {
         task,
