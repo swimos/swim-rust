@@ -40,7 +40,7 @@ use swim_common::routing::{
     CloseError, CloseErrorKind, ConnectionError, ProtocolError, ProtocolErrorKind, ResolutionError,
     ResolutionErrorKind,
 };
-use swim_common::warp::envelope::{Envelope, EnvelopeParseErr};
+use swim_common::warp::envelope::{Envelope, EnvelopeHeader, EnvelopeParseErr, OutgoingHeader};
 use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc;
 use tokio::time::{sleep, Instant};
@@ -175,7 +175,11 @@ where
                                 )
                                 .await
                                 {
-                                    if let Some(path) = env.header.relative_path() {
+                                    if let EnvelopeHeader::OutgoingLink(
+                                        OutgoingHeader::Link(_),
+                                        path,
+                                    ) = env.header
+                                    {
                                         if missing_node_tx
                                             .send(WsMessage::Text(
                                                 Envelope::node_not_found(path.node, path.lane)
