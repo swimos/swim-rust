@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::internals::default_on_start;
 use crate::utils::{get_task_struct_name, validate_input_ast, InputAstType};
+use crate::utils::{parse_callback, CallbackKind};
 use darling::{ast, FromDeriveInput, FromField, FromMeta};
 use macro_helpers::{as_const, string_to_ident};
 use proc_macro::TokenStream;
@@ -35,8 +35,8 @@ const DEMAND_MAP_LANE: &str = "DemandMapLane";
 pub struct AgentAttrs {
     #[darling(map = "string_to_ident")]
     pub agent: Ident,
-    #[darling(default = "default_on_start", map = "string_to_ident")]
-    pub on_start: Ident,
+    #[darling(default)]
+    pub on_start: Option<darling::Result<String>>,
 }
 
 #[derive(Debug, FromField)]
@@ -171,7 +171,13 @@ pub fn derive_agent_lifecycle(args: AttributeArgs, input: DeriveInput) -> TokenS
 
     let lifecycle_name = input.ident.clone();
     let agent_name = &args.agent;
-    let on_start_func = &args.on_start;
+    let on_start_callback =
+        parse_callback(&args.on_start, lifecycle_name.clone(), CallbackKind::Start);
+
+    let start_body = on_start_callback.map_or(quote! {ready(()).boxed()}, |callback| {
+        let on_start_func = &callback.func_name;
+        quote! {self.#on_start_func(context).boxed()}
+    });
 
     let pub_derived = quote! {
         #[derive(Clone, Debug)]
@@ -180,7 +186,7 @@ pub fn derive_agent_lifecycle(args: AttributeArgs, input: DeriveInput) -> TokenS
 
     let private_derived = quote! {
         use futures::FutureExt;
-        use futures::future::BoxFuture;
+        use futures::future::{BoxFuture, ready};
 
         use swim_server::agent::lifecycle::AgentLifecycle;
         use swim_server::agent::AgentContext;
@@ -191,7 +197,7 @@ pub fn derive_agent_lifecycle(args: AttributeArgs, input: DeriveInput) -> TokenS
             where
                 C: AgentContext<#agent_name> + Send + Sync + 'a,
             {
-                self.#on_start_func(context).boxed()
+                #start_body
             }
         }
 

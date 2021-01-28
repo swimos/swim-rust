@@ -97,7 +97,7 @@ fn main() {
     // ----------------------- Command Lifecycle 2 -----------------------
 
     #[command_lifecycle(agent = "TestAgent", command_type = "i32", on_command = "on_command")]
-    struct CommandLifecycle2;
+    struct CommandLifecycle2 {}
 
     impl CommandLifecycle2 {
         async fn on_command<Context>(
@@ -114,7 +114,12 @@ fn main() {
 
     // ----------------------- Action Lifecycle 1 -----------------------
 
-    #[action_lifecycle(agent = "TestAgent", command_type = "i32", response_type = "i32")]
+    #[action_lifecycle(
+        agent = "TestAgent",
+        command_type = "i32",
+        response_type = "i32",
+        on_command
+    )]
     struct ActionLifecycle1;
 
     impl ActionLifecycle1 {
@@ -133,8 +138,13 @@ fn main() {
 
     // ----------------------- Action Lifecycle 2 -----------------------
 
-    #[action_lifecycle(agent = "TestAgent", command_type = "i64", response_type = "i64")]
-    struct ActionLifecycle2;
+    #[action_lifecycle(
+        agent = "TestAgent",
+        command_type = "i64",
+        response_type = "i64",
+        on_command
+    )]
+    struct ActionLifecycle2 {}
 
     impl ActionLifecycle2 {
         async fn on_command<Context>(
@@ -152,7 +162,12 @@ fn main() {
 
     // ----------------------- Action Lifecycle 2 -----------------------
 
-    #[action_lifecycle(agent = "TestAgent", command_type = "String", response_type = "String")]
+    #[action_lifecycle(
+        agent = "TestAgent",
+        command_type = "String",
+        response_type = "String",
+        on_command
+    )]
     struct ActionLifecycle3;
 
     impl ActionLifecycle3 {
@@ -171,7 +186,7 @@ fn main() {
 
     // ----------------------- Value Lifecycle 1 -----------------------
 
-    #[value_lifecycle(agent = "TestAgent", event_type = "i32")]
+    #[value_lifecycle(agent = "TestAgent", event_type = "i32", on_start, on_event)]
     struct ValueLifecycle1;
 
     impl ValueLifecycle1 {
@@ -196,8 +211,8 @@ fn main() {
 
     // ----------------------- Value Lifecycle 2 -----------------------
 
-    #[value_lifecycle(agent = "TestAgent", event_type = "String")]
-    struct ValueLifecycle2;
+    #[value_lifecycle(agent = "TestAgent", event_type = "String", on_start, on_event)]
+    struct ValueLifecycle2 {}
 
     impl ValueLifecycle2 {
         async fn on_start<Context>(&self, _model: &ValueLane<String>, _context: &Context)
@@ -221,7 +236,13 @@ fn main() {
 
     // ----------------------- Map Lifecycle 1 -----------------------
 
-    #[map_lifecycle(agent = "TestAgent", key_type = "String", value_type = "i32")]
+    #[map_lifecycle(
+        agent = "TestAgent",
+        key_type = "String",
+        value_type = "i32",
+        on_start,
+        on_event
+    )]
     struct MapLifecycle1;
 
     impl MapLifecycle1 {
@@ -246,8 +267,14 @@ fn main() {
 
     // ----------------------- Map Lifecycle 1 -----------------------
 
-    #[map_lifecycle(agent = "TestAgent", key_type = "i32", value_type = "String")]
-    struct MapLifecycle2;
+    #[map_lifecycle(
+        agent = "TestAgent",
+        key_type = "i32",
+        value_type = "String",
+        on_start,
+        on_event
+    )]
+    struct MapLifecycle2 {}
 
     impl MapLifecycle2 {
         async fn on_start<Context>(&self, _model: &MapLane<i32, String>, _context: &Context)
