@@ -12,12 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::lane::model::value::ValueLaneEvent;
-use swim_server::agent::lane::lifecycle::{LaneLifecycle, StatefulLaneLifecycleBase};
+use crate::agent::lane::lifecycle::LaneLifecycle;
 use swim_server::agent::lane::model::action::{ActionLane, CommandLane};
 use swim_server::agent::lane::model::map::{MapLane, MapLaneEvent};
-use swim_server::agent::lane::model::value::ValueLane;
-use swim_server::agent::lane::strategy::Queue;
+use swim_server::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 use swim_server::agent::AgentContext;
 use swim_server::{
     action_lifecycle, agent_lifecycle, command_lifecycle, map_lifecycle, value_lifecycle, SwimAgent,
@@ -127,7 +125,12 @@ fn main() {
 
     // ----------------------- Action Lifecycle 1 -----------------------
 
-    #[action_lifecycle(agent = "TestAgent", command_type = "i32", response_type = "i32")]
+    #[action_lifecycle(
+        agent = "TestAgent",
+        command_type = "i32",
+        response_type = "i32",
+        on_command
+    )]
     struct ActionLifecycle1;
 
     impl ActionLifecycle1 {
@@ -146,7 +149,12 @@ fn main() {
 
     // ----------------------- Action Lifecycle 2 -----------------------
 
-    #[action_lifecycle(agent = "TestAgent", command_type = "i64", response_type = "i64")]
+    #[action_lifecycle(
+        agent = "TestAgent",
+        command_type = "i64",
+        response_type = "i64",
+        on_command
+    )]
     struct ActionLifecycle2 {
         _field: String,
     };
@@ -175,7 +183,12 @@ fn main() {
 
     // ----------------------- Action Lifecycle 3 -----------------------
 
-    #[action_lifecycle(agent = "TestAgent", command_type = "String", response_type = "String")]
+    #[action_lifecycle(
+        agent = "TestAgent",
+        command_type = "String",
+        response_type = "String",
+        on_command
+    )]
     struct ActionLifecycle3;
 
     impl ActionLifecycle3 {
@@ -194,7 +207,7 @@ fn main() {
 
     // ----------------------- Value Lifecycle 1 -----------------------
 
-    #[value_lifecycle(agent = "TestAgent", event_type = "i32")]
+    #[value_lifecycle(agent = "TestAgent", event_type = "i32", on_start, on_event)]
     struct ValueLifecycle1;
 
     impl ValueLifecycle1 {
@@ -217,17 +230,9 @@ fn main() {
         }
     }
 
-    impl StatefulLaneLifecycleBase for ValueLifecycle1 {
-        type WatchStrategy = Queue;
-
-        fn create_strategy(&self) -> Self::WatchStrategy {
-            Queue::default()
-        }
-    }
-
     // ----------------------- Value Lifecycle 2 -----------------------
 
-    #[value_lifecycle(agent = "TestAgent", event_type = "String")]
+    #[value_lifecycle(agent = "TestAgent", event_type = "String", on_start, on_event)]
     struct ValueLifecycle2 {
         _field: String,
     };
@@ -260,17 +265,15 @@ fn main() {
         }
     }
 
-    impl StatefulLaneLifecycleBase for ValueLifecycle2 {
-        type WatchStrategy = Queue;
-
-        fn create_strategy(&self) -> Self::WatchStrategy {
-            Queue::default()
-        }
-    }
-
     // ----------------------- Map Lifecycle 1 -----------------------
 
-    #[map_lifecycle(agent = "TestAgent", key_type = "String", value_type = "i32")]
+    #[map_lifecycle(
+        agent = "TestAgent",
+        key_type = "String",
+        value_type = "i32",
+        on_start,
+        on_event
+    )]
     struct MapLifecycle1;
 
     impl MapLifecycle1 {
@@ -293,17 +296,15 @@ fn main() {
         }
     }
 
-    impl StatefulLaneLifecycleBase for MapLifecycle1 {
-        type WatchStrategy = Queue;
+    // ----------------------- Map Lifecycle 1 -----------------------
 
-        fn create_strategy(&self) -> Self::WatchStrategy {
-            Queue::default()
-        }
-    }
-
-    // ----------------------- Map Lifecycle 2 -----------------------
-
-    #[map_lifecycle(agent = "TestAgent", key_type = "i32", value_type = "String")]
+    #[map_lifecycle(
+        agent = "TestAgent",
+        key_type = "i32",
+        value_type = "String",
+        on_start,
+        on_event
+    )]
     struct MapLifecycle2 {
         _field: String,
     };
@@ -333,14 +334,6 @@ fn main() {
             MapLifecycle2 {
                 _field: "MapLifecycle2".to_string(),
             }
-        }
-    }
-
-    impl StatefulLaneLifecycleBase for MapLifecycle2 {
-        type WatchStrategy = Queue;
-
-        fn create_strategy(&self) -> Self::WatchStrategy {
-            Queue::default()
         }
     }
 }
