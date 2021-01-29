@@ -965,7 +965,7 @@ where
             while let Some(Command { command, responder }) = events.next().await {
                 event!(Level::TRACE, COMMANDED, ?command);
                 lifecycle
-                    .on_command(command.clone(), &model, &context)
+                    .on_command(&command, &model, &context)
                     .instrument(span!(Level::TRACE, ON_COMMAND))
                     .await;
                 if let Some(tx) = responder {

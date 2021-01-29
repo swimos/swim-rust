@@ -53,7 +53,7 @@
 //! impl TestCommandLifecycle {
 //!     async fn on_command<Context>(
 //!         &self,
-//!         command: String,
+//!         command: &String,
 //!         _model: &CommandLane<String>,
 //!         _context: &Context,
 //!     ) where
@@ -140,7 +140,7 @@ mod utils;
 /// # impl TestCommandLifecycle {
 /// #     async fn on_command<Context>(
 /// #         &self,
-/// #         command: String,
+/// #         command: &String,
 /// #         _model: &CommandLane<String>,
 /// #         _context: &Context,
 /// #     ) where
@@ -328,7 +328,7 @@ pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// impl TestCommandLifecycle {
 ///     async fn on_command<Context>(
 ///         &self,
-///         command: String,
+///         command: &String,
 ///         _model: &CommandLane<String>,
 ///         _context: &Context,
 ///     ) where
@@ -363,7 +363,7 @@ pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// impl TestCommandLifecycle {
 ///     async fn custom_on_command<Context>(
 ///         &self,
-///         command: String,
+///         command: &String,
 ///         _model: &CommandLane<String>,
 ///         _context: &Context,
 ///     ) where

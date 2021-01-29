@@ -216,7 +216,7 @@ impl<'a> CommandLaneLifecycle<'a, String, ReportingAgent> for ActionLifecycle {
 
     fn on_command<C>(
         &'a self,
-        command: String,
+        command: &'a String,
         _model: &'a CommandLane<String>,
         context: &'a C,
     ) -> Self::ResponseFuture
@@ -230,7 +230,7 @@ impl<'a> CommandLaneLifecycle<'a, String, ReportingAgent> for ActionLifecycle {
             if context
                 .agent()
                 .data
-                .update_direct(command, 1.into())
+                .update_direct(command.clone(), 1.into())
                 .apply(ExactlyOnce)
                 .await
                 .is_err()

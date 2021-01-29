@@ -218,7 +218,7 @@ impl<'a> CommandLaneLifecycle<'a, String, TestAgent<CommandLane<String>>>
 
     fn on_command<C: AgentContext<TestAgent<CommandLane<String>>>>(
         &'a self,
-        command: String,
+        command: &'a String,
         model: &'a CommandLane<String>,
         context: &'a C,
     ) -> Self::ResponseFuture
@@ -229,7 +229,7 @@ impl<'a> CommandLaneLifecycle<'a, String, TestAgent<CommandLane<String>>>
             let mut lock = self.0.lock().await;
             lock.event_agent = Some(context.agent().name);
             lock.event_model = Some(model.clone());
-            lock.events.push(command);
+            lock.events.push(command.clone());
         })
     }
 }

@@ -115,7 +115,7 @@ pub trait CommandLaneLifecycle<'a, Command, Agent>: Send + Sync + 'static {
     /// * `context` - Context of the agent that owns the lane.
     fn on_command<C>(
         &'a self,
-        command: Command,
+        command: &'a Command,
         model: &'a CommandLane<Command>,
         context: &'a C,
     ) -> Self::ResponseFuture

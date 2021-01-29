@@ -99,7 +99,7 @@ pub fn derive_events_body(on_command: &Callback) -> proc_macro2::TokenStream {
             tracing::event!(tracing::Level::TRACE, commanded = swim_server::agent::COMMANDED, ?command);
 
             tracing_futures::Instrument::instrument(
-                lifecycle.#on_command_func(command.clone(), &model, &context),
+                lifecycle.#on_command_func(&command, &model, &context),
                 tracing::span!(tracing::Level::TRACE, swim_server::agent::ON_COMMAND)
             ).await;
 

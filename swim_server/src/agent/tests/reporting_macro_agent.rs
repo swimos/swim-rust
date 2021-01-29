@@ -154,7 +154,7 @@ struct ActionLifecycle {
 impl ActionLifecycle {
     async fn on_command<Context>(
         &self,
-        command: String,
+        command: &String,
         _model: &CommandLane<String>,
         context: &Context,
     ) where
@@ -166,7 +166,7 @@ impl ActionLifecycle {
         if context
             .agent()
             .data
-            .update_direct(command, 1.into())
+            .update_direct(command.clone(), 1.into())
             .apply(ExactlyOnce)
             .await
             .is_err()

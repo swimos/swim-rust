@@ -33,7 +33,7 @@ fn main() {
     impl CommandLifecycle {
         async fn on_command<Context>(
             &self,
-            _command: i32,
+            _command: &i32,
             _model: &CommandLane<i32>,
             _context: &Context,
         ) where

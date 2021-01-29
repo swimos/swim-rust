@@ -54,7 +54,7 @@ struct EchoLifecycle;
 impl EchoLifecycle {
     async fn on_command<Context>(
         &self,
-        command: String,
+        command: &String,
         _model: &CommandLane<String>,
         _context: &Context,
     ) where

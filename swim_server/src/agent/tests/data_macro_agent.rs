@@ -206,7 +206,7 @@ struct CommandLifecycle1 {
 impl CommandLifecycle1 {
     async fn on_command<Context>(
         &self,
-        command: String,
+        command: &String,
         _model: &CommandLane<String>,
         context: &Context,
     ) where
@@ -218,7 +218,7 @@ impl CommandLifecycle1 {
         if context
             .agent()
             .map_1
-            .update_direct(command, 1.into())
+            .update_direct(command.clone(), 1.into())
             .apply(ExactlyOnce)
             .await
             .is_err()
@@ -247,7 +247,7 @@ struct CommandLifecycle2 {
 impl CommandLifecycle2 {
     async fn on_command<Context>(
         &self,
-        command: String,
+        command: &String,
         _model: &CommandLane<String>,
         context: &Context,
     ) where
@@ -259,7 +259,7 @@ impl CommandLifecycle2 {
         if context
             .agent()
             .map_2
-            .update_direct(command, 1.0.into())
+            .update_direct(command.clone(), 1.0.into())
             .apply(ExactlyOnce)
             .await
             .is_err()
