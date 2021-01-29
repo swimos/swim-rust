@@ -15,8 +15,6 @@
 //! Interface for creating and running Swim client instances.
 //!
 //! The module provides methods and structures for creating and running Swim client instances.
-use crate::configuration::downlink::{Config, ConfigParseError};
-use crate::connections::SwimConnPool;
 use crate::downlink::subscription::{
     AnyCommandDownlink, AnyEventDownlink, AnyMapDownlink, AnyValueDownlink, Downlinks, MapReceiver,
     SubscriptionError, TypedCommandDownlink, TypedEventDownlink, TypedMapDownlink,
@@ -24,34 +22,36 @@ use crate::downlink::subscription::{
 };
 use crate::downlink::typed::SchemaViolations;
 use crate::downlink::DownlinkError;
-use crate::router::SwimRouter;
 use std::error::Error;
 use std::fmt;
 use std::fmt::{Display, Formatter};
-use std::sync::Arc;
 use swim_common::form::{Form, ValidatedForm};
 use swim_common::model::Value;
 use swim_common::routing::RoutingError;
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::AbsolutePath;
-use tracing::info;
 
 #[cfg(feature = "websocket")]
 use {
-    crate::configuration::downlink::ConfigHierarchy,
+    crate::configuration::downlink::Config, crate::configuration::downlink::ConfigHierarchy,
+    crate::configuration::downlink::ConfigParseError,
     crate::connections::factory::tungstenite::HostConfig,
-    crate::connections::factory::tungstenite::TungsteniteWsFactory, std::collections::HashMap,
-    std::fs::File, std::io::Read, swim_common::model::parser::parse_single, url::Url,
+    crate::connections::factory::tungstenite::TungsteniteWsFactory,
+    crate::connections::SwimConnPool, crate::router::SwimRouter, std::collections::HashMap,
+    std::fs::File, std::io::Read, std::sync::Arc, swim_common::model::parser::parse_single,
+    tracing::info, url::Url,
 };
 
 /// Builder to create Swim client instance.
 ///
 /// The builder can be created with default or custom configuration.
 /// The custom configuration can be read from a file.
+#[cfg(feature = "websocket")]
 pub struct SwimClientBuilder {
     config: SwimClientConfig,
 }
 
+#[cfg(feature = "websocket")]
 impl SwimClientBuilder {
     /// Create a new client builder with custom configuration.
     ///
@@ -127,6 +127,7 @@ impl SwimClientBuilder {
     }
 }
 
+#[cfg(feature = "websocket")]
 impl Default for SwimClientBuilder {
     fn default() -> Self {
         SwimClientBuilder {
@@ -136,11 +137,13 @@ impl Default for SwimClientBuilder {
 }
 
 /// Swim client configuration.
+#[cfg(feature = "websocket")]
 pub struct SwimClientConfig {
     downlinks_config: ConfigHierarchy,
     host_configurations: HashMap<Url, HostConfig>,
 }
 
+#[cfg(feature = "websocket")]
 impl Default for SwimClientConfig {
     fn default() -> Self {
         SwimClientConfig {
