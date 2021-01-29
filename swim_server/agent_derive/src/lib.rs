@@ -384,7 +384,7 @@ pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// ```rust
 /// use swim_server::command_lifecycle;
-/// use swim_server::agent::lane::model::action::CommandLane;
+/// use swim_server::agent::lane::model::command::CommandLane;
 /// use swim_server::agent::AgentContext;
 /// # use swim_server::SwimAgent;
 ///

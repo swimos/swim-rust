@@ -18,7 +18,7 @@ use std::fmt::Debug;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::time::Duration;
 use swim_server::agent::command_lifecycle;
-use swim_server::agent::lane::model::action::CommandLane;
+use swim_server::agent::lane::model::command::CommandLane;
 use swim_server::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 use swim_server::agent::value_lifecycle;
 use swim_server::agent::AgentContext;
