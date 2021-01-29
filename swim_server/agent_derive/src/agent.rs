@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::internals::default_on_start;
 use crate::utils::{get_task_struct_name, validate_input_ast, InputAstType};
+use crate::utils::{parse_callback, CallbackKind};
 use darling::{ast, FromDeriveInput, FromField, FromMeta};
 use macro_helpers::{as_const, string_to_ident};
 use proc_macro::TokenStream;
@@ -35,8 +35,8 @@ const DEMAND_MAP_LANE: &str = "DemandMapLane";
 pub struct AgentAttrs {
     #[darling(map = "string_to_ident")]
     pub agent: Ident,
-    #[darling(default = "default_on_start", map = "string_to_ident")]
-    pub on_start: Ident,
+    #[darling(default)]
+    pub on_start: Option<darling::Result<String>>,
 }
 
 #[derive(Debug, FromField)]
@@ -122,6 +122,7 @@ pub fn derive_swim_agent(input: DeriveInput) -> Result<TokenStream, TokenStream>
         use swim_server::agent::{LaneTasks, SwimAgent, AgentContext, LaneIo};
         use swim_server::agent::lane::channels::AgentExecutionConfig;
         use swim_server::agent::context::AgentExecutionContext;
+        use swim_server::agent::lane::lifecycle::LaneLifecycle;
 
         #[automatically_derived]
         impl SwimAgent<#config_type> for #agent_name {
@@ -170,7 +171,13 @@ pub fn derive_agent_lifecycle(args: AttributeArgs, input: DeriveInput) -> TokenS
 
     let lifecycle_name = input.ident.clone();
     let agent_name = &args.agent;
-    let on_start_func = &args.on_start;
+    let on_start_callback =
+        parse_callback(&args.on_start, lifecycle_name.clone(), CallbackKind::Start);
+
+    let start_body = on_start_callback.map_or(quote! {ready(()).boxed()}, |callback| {
+        let on_start_func = &callback.func_name;
+        quote! {self.#on_start_func(context).boxed()}
+    });
 
     let pub_derived = quote! {
         #[derive(Clone, Debug)]
@@ -179,18 +186,18 @@ pub fn derive_agent_lifecycle(args: AttributeArgs, input: DeriveInput) -> TokenS
 
     let private_derived = quote! {
         use futures::FutureExt;
-        use futures::future::BoxFuture;
+        use futures::future::{BoxFuture, ready};
 
         use swim_server::agent::lifecycle::AgentLifecycle;
         use swim_server::agent::AgentContext;
 
         #[automatically_derived]
         impl AgentLifecycle<#agent_name> for #lifecycle_name {
-            fn on_start<'a, C>(&'a self, context: &'a C) -> BoxFuture<'a, ()>
+            fn starting<'a, C>(&'a self, context: &'a C) -> BoxFuture<'a, ()>
             where
                 C: AgentContext<#agent_name> + Send + Sync + 'a,
             {
-                self.#on_start_func(context).boxed()
+                #start_body
             }
         }
 
@@ -269,7 +276,11 @@ fn create_lane(
             )
         }
         LaneType::Value => {
-            let model = quote!(let (#lane_name, event_stream, deferred) = swim_server::agent::lane::model::value::make_lane_model_deferred(Default::default(), lifecycle.create_strategy(), exec_conf););
+            let model = quote! {
+                let (#lane_name, observer) = swim_server::agent::lane::model::value::ValueLane::observable(Default::default(), exec_conf.observation_buffer);
+                let subscriber = observer.subscriber();
+                let event_stream = observer.into_stream();
+            };
 
             build_lane_io(
                 lane_data,
@@ -278,14 +289,16 @@ fn create_lane(
 
                     io_map.insert (
                         #lane_name_lit.to_string(),
-                        Box::new(swim_server::agent::ValueLaneIo::new(#lane_name.clone(), deferred))
+                        Box::new(swim_server::agent::ValueLaneIo::new(#lane_name.clone(), subscriber))
                     );
                 },
                 model,
             )
         }
         LaneType::Map => {
-            let model = quote!(let (#lane_name, event_stream, deferred) = swim_server::agent::lane::model::map::make_lane_model_deferred(lifecycle.create_strategy(), exec_conf););
+            let model = quote! {
+                let (#lane_name, subscriber, event_stream) = swim_server::agent::lane::model::map::streamed_map_lane(exec_conf.observation_buffer);
+            };
 
             build_lane_io(
                 lane_data,
@@ -293,7 +306,7 @@ fn create_lane(
                     #model
 
                     io_map.insert (
-                        #lane_name_lit.to_string(), Box::new(swim_server::agent::MapLaneIo::new(#lane_name.clone(), deferred))
+                        #lane_name_lit.to_string(), Box::new(swim_server::agent::MapLaneIo::new(#lane_name.clone(), subscriber))
                     );
                 },
                 model,

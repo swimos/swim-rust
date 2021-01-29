@@ -12,26 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swim_server::agent::AgentContext;
-use swim_server::agent_lifecycle;
+use form_derive::*;
 
-mod swim_server {
-    pub use crate::*;
-}
-
-#[test]
 fn main() {
-    struct TestAgent;
-
-    #[agent_lifecycle(agent = "TestAgent")]
-    struct TestAgentLifecycle;
-
-    impl TestAgentLifecycle {
-        async fn on_start<Context>(&self, _context: &Context)
-        where
-            Context: AgentContext<TestAgent> + Sized + Send + Sync,
-        {
-            unimplemented!()
-        }
-    }
+    #[derive(Form, ValidatedForm)]
+    struct S(#[form(body, schema(equal = "i64_eq"))] i64);
 }

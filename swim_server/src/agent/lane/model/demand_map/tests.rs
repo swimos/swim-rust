@@ -17,8 +17,7 @@ use crate::agent::lane::model::demand_map::{
 };
 use futures::future::{join, join3};
 use futures::StreamExt;
-use pin_utils::core_reexport::num::NonZeroUsize;
-use swim_common::topic::Topic;
+use std::num::NonZeroUsize;
 use tokio::sync::mpsc;
 
 #[tokio::test]
@@ -46,7 +45,7 @@ async fn test_sync() {
 #[tokio::test]
 async fn test_cue_ok() {
     let (tx, mut rx) = mpsc::channel(5);
-    let (lane, mut topic) = make_lane_model::<i32, i32>(NonZeroUsize::new(5).unwrap(), tx);
+    let (lane, mut update_rx) = make_lane_model::<i32, i32>(NonZeroUsize::new(5).unwrap(), tx);
 
     let cue_task = async move {
         match rx.next().await {
@@ -58,8 +57,7 @@ async fn test_cue_ok() {
     };
 
     let event_task = async move {
-        let mut rx = topic.subscribe().await.unwrap();
-        match rx.next().await {
+        match update_rx.next().await {
             Some(value) => {
                 assert_eq!(value, DemandMapLaneUpdate::make(10, 5));
             }

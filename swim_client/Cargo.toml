@@ -60,25 +60,3 @@ num-bigint = "0.3"
 
 [dev-dependencies]
 tokio = { version = "0.3.3", features = ["rt-multi-thread"] }
-
-
-[[example]]
-name = "command_lane"
-
-[[example]]
-name = "downlinks"
-
-[[example]]
-name = "join_map_lanes"
-
-[[example]]
-name = "join_value_lanes"
-
-[[example]]
-name = "map_lanes"
-
-[[example]]
-name = "timer"
-
-[[example]]
-name = "value_lanes"

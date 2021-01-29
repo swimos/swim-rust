@@ -12,11 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::internals::default_on_cue;
 use crate::lanes::derive_lane;
-use crate::utils::{get_task_struct_name, validate_input_ast, InputAstType};
+use crate::utils::{
+    get_task_struct_name, parse_callback, validate_input_ast, Callback, CallbackKind, InputAstType,
+    LaneTasksImpl,
+};
 use darling::FromMeta;
-use macro_helpers::string_to_ident;
+use macro_helpers::{has_fields, string_to_ident};
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{AttributeArgs, DeriveInput, Ident};
@@ -27,8 +29,8 @@ struct DemandAttrs {
     agent: Ident,
     #[darling(map = "string_to_ident")]
     event_type: Ident,
-    #[darling(default = "default_on_cue", map = "string_to_ident")]
-    on_cue: Ident,
+    #[darling(default)]
+    on_cue: Option<darling::Result<String>>,
 }
 
 pub fn derive_demand_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput) -> TokenStream {
@@ -44,14 +46,42 @@ pub fn derive_demand_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput)
     };
 
     let lifecycle_name = input_ast.ident.clone();
+    let has_fields = has_fields(&input_ast.data);
     let task_name = get_task_struct_name(&input_ast.ident.to_string());
     let agent_name = args.agent.clone();
     let event_type = &args.event_type;
-    let on_cue_func = &args.on_cue;
+    let on_cue_callback = parse_callback(&args.on_cue, task_name.clone(), CallbackKind::Cue);
+    let lane_tasks_impl = LaneTasksImpl::Demand {
+        on_cue: on_cue_callback,
+    };
+
     let extra_field = Some(quote! {
         response_tx: tokio::sync::mpsc::Sender<#event_type>
     });
-    let on_event = quote! {
+
+    derive_lane(
+        "DemandLifecycle",
+        lifecycle_name,
+        has_fields,
+        task_name,
+        agent_name,
+        input_ast,
+        quote!(swim_server::agent::lane::model::demand::DemandLane<#event_type>),
+        quote!(()),
+        lane_tasks_impl,
+        quote! {
+            use swim_server::agent::lane::model::demand::DemandLane;
+            use swim_server::agent::lane::lifecycle::LaneLifecycle;
+        },
+        extra_field,
+    )
+}
+
+pub fn derive_events_body(on_cue: &Callback) -> proc_macro2::TokenStream {
+    let task_name = &on_cue.task_name;
+    let on_cue_func_name = &on_cue.func_name;
+
+    quote!(
         let #task_name {
             lifecycle,
             event_stream,
@@ -65,25 +95,9 @@ pub fn derive_demand_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput)
         let mut events = unsafe { Pin::new_unchecked(&mut events) };
 
         while let Some(event) = events.next().await {
-            if let Some(value) = lifecycle.#on_cue_func(&model, &context).await {
+            if let Some(value) = lifecycle.#on_cue_func_name(&model, &context).await {
                 let _ = response_tx.send(value).await;
             }
         }
-    };
-
-    derive_lane(
-        "DemandLifecycle",
-        lifecycle_name,
-        task_name,
-        agent_name,
-        input_ast,
-        quote!(swim_server::agent::lane::model::demand::DemandLane<#event_type>),
-        quote!(()),
-        None,
-        on_event,
-        quote! {
-            use swim_server::agent::lane::model::demand::DemandLane;
-        },
-        extra_field,
     )
 }

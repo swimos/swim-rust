@@ -12,10 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::sync::Arc;
-use swim_server::agent::lane::model::value::ValueLane;
 use swim_server::agent::AgentContext;
-use swim_server::value_lifecycle;
+use swim_server::agent_lifecycle;
 
 mod swim_server {
     pub use crate::*;
@@ -25,32 +23,13 @@ mod swim_server {
 fn main() {
     struct TestAgent;
 
-    #[derive(Debug)]
-    pub struct TestAgentConfig;
+    #[agent_lifecycle(agent = "TestAgent", on_start)]
+    struct TestAgentLifecycle;
 
-    #[value_lifecycle(
-        agent = "TestAgent",
-        event_type = "i32",
-        on_start = "custom_on_start",
-        on_event = "custom_on_event"
-    )]
-    struct ValueLifecycle;
-
-    impl ValueLifecycle {
-        async fn custom_on_start<Context>(&self, _model: &ValueLane<i32>, _context: &Context)
+    impl TestAgentLifecycle {
+        async fn on_start<Context>(&self, _context: &Context)
         where
             Context: AgentContext<TestAgent> + Sized + Send + Sync,
-        {
-            unimplemented!()
-        }
-
-        async fn custom_on_event<Context>(
-            &self,
-            _event: &Arc<i32>,
-            _model: &ValueLane<i32>,
-            _context: &Context,
-        ) where
-            Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
         {
             unimplemented!()
         }

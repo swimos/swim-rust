@@ -78,6 +78,7 @@ pub fn make_config() -> AgentExecutionConfig {
         max_fatal_uplink_errors: 0,
         max_uplink_start_attempts: NonZeroUsize::new(1).unwrap(),
         lane_buffer: buffer_size,
+        observation_buffer: buffer_size,
         lane_attachment_buffer: buffer_size,
         yield_after: NonZeroUsize::new(2048).unwrap(),
         retry_strategy: Default::default(),
@@ -92,7 +93,9 @@ pub const RECEIVER_PREFIX: &str = "receiver";
 const LANE_NAME: &str = "receiver_lane";
 const MESSAGE: &str = "ping!";
 
-impl<Clk: Clock> AgentRoute<Clk, EnvChannel, PlaneRouter> for SendAgentRoute {
+impl<Clk: Clock, Delegate: ServerRouter + 'static>
+    AgentRoute<Clk, EnvChannel, PlaneRouter<Delegate>> for SendAgentRoute
+{
     fn run_agent(
         &self,
         uri: RelativeUri,
@@ -100,7 +103,7 @@ impl<Clk: Clock> AgentRoute<Clk, EnvChannel, PlaneRouter> for SendAgentRoute {
         execution_config: AgentExecutionConfig,
         _clock: Clk,
         incoming_envelopes: EnvChannel,
-        mut router: PlaneRouter,
+        mut router: PlaneRouter<Delegate>,
     ) -> (Arc<dyn Any + Send + Sync>, BoxFuture<'static, AgentResult>) {
         let id = parameters[PARAM_NAME].clone();
         let target = self.0.clone();
@@ -134,7 +137,9 @@ impl<Clk: Clock> AgentRoute<Clk, EnvChannel, PlaneRouter> for SendAgentRoute {
     }
 }
 
-impl<Clk: Clock> AgentRoute<Clk, EnvChannel, PlaneRouter> for ReceiveAgentRoute {
+impl<Clk: Clock, Delegate> AgentRoute<Clk, EnvChannel, PlaneRouter<Delegate>>
+    for ReceiveAgentRoute
+{
     fn run_agent(
         &self,
         uri: RelativeUri,
@@ -142,7 +147,7 @@ impl<Clk: Clock> AgentRoute<Clk, EnvChannel, PlaneRouter> for ReceiveAgentRoute 
         execution_config: AgentExecutionConfig,
         _clock: Clk,
         incoming_envelopes: EnvChannel,
-        _router: PlaneRouter,
+        _router: PlaneRouter<Delegate>,
     ) -> (Arc<dyn Any + Send + Sync>, BoxFuture<'static, AgentResult>) {
         let ReceiveAgentRoute { expected_id, done } = self;
         let mut done_sender = done.lock().take();
