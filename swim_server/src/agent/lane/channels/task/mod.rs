@@ -390,6 +390,58 @@ async fn send_action(
     sender.send(TaggedAction(addr, action)).await.is_ok()
 }
 
+async fn run_stateless_lane_io<Upd, S, Msg, Ev>(
+    envelopes: impl Stream<Item = TaggedClientEnvelope>,
+    config: AgentExecutionConfig,
+    context: impl AgentExecutionContext,
+    route: RelativePath,
+    updater: Upd,
+    uplinks: StatelessUplinks<S>,
+) -> Result<Vec<UplinkErrorReport>, LaneIoError>
+where
+    Upd: LaneUpdate<Msg = Msg>,
+    S: Stream<Item = AddressedUplinkMessage<Ev>>,
+    Msg: Send + Sync + Form + Debug + 'static,
+    Ev: Send + Sync + Form + Debug + 'static,
+{
+    let (update_tx, update_rx) = mpsc::channel(config.update_buffer.get());
+    let (upd_done_tx, upd_done_rx) = trigger::trigger();
+    let envelopes = envelopes.take_until(upd_done_rx);
+
+    let yield_after = config.yield_after.get();
+
+    let (uplink_tx, uplink_rx) = mpsc::channel(config.action_buffer.get());
+    let (err_tx, err_rx) = mpsc::channel(config.uplink_err_buffer.get());
+
+    let update_task = async move {
+        let result = updater.run_update(update_rx).await;
+        upd_done_tx.trigger();
+        result
+    }
+    .instrument(span!(Level::INFO, UPDATE_TASK, ?route));
+
+    let uplink_task = uplinks
+        .run(uplink_rx, context.router_handle(), err_tx, yield_after)
+        .instrument(span!(Level::INFO, UPLINK_SPAWN_TASK, ?route));
+
+    let error_handler =
+        UplinkErrorHandler::collector(route.clone(), config.max_fatal_uplink_errors);
+
+    let envelope_task = action_envelope_task_with_uplinks(
+        route.clone(),
+        envelopes,
+        uplink_tx,
+        err_rx,
+        error_handler,
+        OnCommandStrategy::Send(OnCommandHandler::new(update_tx, route.clone())),
+        yield_after,
+    );
+
+    let (upd_result, _, (uplink_fatal, uplink_errs)) =
+        join3(update_task, uplink_task, envelope_task).await;
+    combine_results(route, upd_result.err(), uplink_fatal, uplink_errs)
+}
+
 /// Run the [`swim_common::warp::envelope::Envelope`] IO for a command lane. This is different to
 ///
 /// #Arguments
@@ -412,49 +464,14 @@ where
     let span = span!(Level::INFO, LANE_IO_TASK, ?route);
     let _enter = span.enter();
 
-    let (update_tx, update_rx) = mpsc::channel(config.update_buffer.get());
-    let (upd_done_tx, upd_done_rx) = trigger::trigger();
-    let envelopes = envelopes.take_until(upd_done_rx);
-
-    let yield_after = config.yield_after.get();
-
     let (feedback_tx, feedback_rx) = mpsc::channel(config.feedback_buffer.get());
-
     let feedback_rx = feedback_rx.map(|(_, message)| AddressedUplinkMessage::Broadcast(message));
-    let (uplink_tx, uplink_rx) = mpsc::channel(config.action_buffer.get());
-    let (err_tx, err_rx) = mpsc::channel(config.uplink_err_buffer.get());
 
     let updater =
         CommandLaneUpdateTask::new(lane.clone(), Some(feedback_tx), config.cleanup_timeout);
-
-    let update_task = async move {
-        let result = updater.run_update(update_rx).await;
-        upd_done_tx.trigger();
-        result
-    }
-    .instrument(span!(Level::INFO, UPDATE_TASK, ?route));
-
     let uplinks = StatelessUplinks::new(feedback_rx, route.clone(), UplinkKind::Command);
-    let uplink_task = uplinks
-        .run(uplink_rx, context.router_handle(), err_tx, yield_after)
-        .instrument(span!(Level::INFO, UPLINK_SPAWN_TASK, ?route));
 
-    let error_handler =
-        UplinkErrorHandler::collector(route.clone(), config.max_fatal_uplink_errors);
-
-    let envelope_task = action_envelope_task_with_uplinks(
-        route.clone(),
-        envelopes,
-        uplink_tx,
-        err_rx,
-        error_handler,
-        OnCommandStrategy::Send(OnCommandHandler::new(update_tx, route.clone())),
-        yield_after,
-    );
-
-    let (upd_result, _, (uplink_fatal, uplink_errs)) =
-        join3(update_task, uplink_task, envelope_task).await;
-    combine_results(route, upd_result.err(), uplink_fatal, uplink_errs)
+    run_stateless_lane_io(envelopes, config, context, route, updater, uplinks).await
 }
 
 /// Run the [`swim_common::warp::envelope::Envelope`] IO for an action lane. This is different to
@@ -482,50 +499,15 @@ where
     let span = span!(Level::INFO, LANE_IO_TASK, ?route);
     let _enter = span.enter();
 
-    let (update_tx, update_rx) = mpsc::channel(config.update_buffer.get());
-    let (upd_done_tx, upd_done_rx) = trigger::trigger();
-    let envelopes = envelopes.take_until(upd_done_rx);
-
-    let yield_after = config.yield_after.get();
-
     let (feedback_tx, feedback_rx) = mpsc::channel(config.feedback_buffer.get());
-
     let feedback_rx = feedback_rx
         .map(|(address, message)| AddressedUplinkMessage::Addressed { message, address });
-    let (uplink_tx, uplink_rx) = mpsc::channel(config.action_buffer.get());
-    let (err_tx, err_rx) = mpsc::channel(config.uplink_err_buffer.get());
 
     let updater =
         ActionLaneUpdateTask::new(lane.clone(), Some(feedback_tx), config.cleanup_timeout);
-
-    let update_task = async move {
-        let result = updater.run_update(update_rx).await;
-        upd_done_tx.trigger();
-        result
-    }
-    .instrument(span!(Level::INFO, UPDATE_TASK, ?route));
-
     let uplinks = StatelessUplinks::new(feedback_rx, route.clone(), UplinkKind::Action);
-    let uplink_task = uplinks
-        .run(uplink_rx, context.router_handle(), err_tx, yield_after)
-        .instrument(span!(Level::INFO, UPLINK_SPAWN_TASK, ?route));
 
-    let error_handler =
-        UplinkErrorHandler::collector(route.clone(), config.max_fatal_uplink_errors);
-
-    let envelope_task = action_envelope_task_with_uplinks(
-        route.clone(),
-        envelopes,
-        uplink_tx,
-        err_rx,
-        error_handler,
-        OnCommandStrategy::Send(OnCommandHandler::new(update_tx, route.clone())),
-        yield_after,
-    );
-
-    let (upd_result, _, (uplink_fatal, uplink_errs)) =
-        join3(update_task, uplink_task, envelope_task).await;
-    combine_results(route, upd_result.err(), uplink_fatal, uplink_errs)
+    run_stateless_lane_io(envelopes, config, context, route, updater, uplinks).await
 }
 
 fn combine_results(
