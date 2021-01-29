@@ -22,6 +22,7 @@ use tokio::sync::watch;
 pub mod any;
 pub mod buffered;
 pub mod dropping;
+pub mod improved;
 pub mod model;
 pub mod queue;
 pub mod raw;
@@ -300,9 +301,9 @@ impl Recoverable for TransitionError {
 /// This trait defines the interface that must be implemented for the state type of a downlink.
 trait StateMachine<State, Message, Action>: Sized {
     /// Type of events that will be issued to the owner of the downlink.
-    type Ev;
+    type Ev: Send;
     /// Type of commands that will be sent out to the Warp connection.
-    type Cmd;
+    type Cmd: Send;
 
     /// The initial value for the state.
     fn init_state(&self) -> State;
@@ -369,9 +370,9 @@ impl<Ev, Cmd> From<BasicResponse<Ev, Cmd>> for Response<Ev, Cmd> {
 /// This trait is for simple, stateful downlinks that follow the standard synchronization model.
 trait SyncStateMachine<State, Message, Action> {
     /// Type of events that will be issued to the owner of the downlink.
-    type Ev;
+    type Ev: Send;
     /// Type of commands that will be sent out to the Warp connection.
-    type Cmd;
+    type Cmd: Send;
 
     /// The initial value of the state.
     fn init(&self) -> State;

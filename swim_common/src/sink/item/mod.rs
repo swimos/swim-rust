@@ -244,6 +244,7 @@ where
     }
 }
 
+/// Wraps a [`topic::Sender`] for a sink implementation that uses the discarding send function.
 pub struct Discarding<T>(pub topic::Sender<T>);
 
 impl<'a, T> ItemSink<'a, T> for Discarding<T>

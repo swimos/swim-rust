@@ -153,6 +153,7 @@ impl<T> Drop for Sender<T> {
 
 /// Equivalent to a [`Receiver`] that does not observe the values in the buffer. It can only be
 /// used to create new [`Receiver`]s.
+#[derive(Debug)]
 pub struct Subscriber<T> {
     inner: Arc<Inner<T>>,
 }
