@@ -22,7 +22,7 @@ use crate::agent::lane::channels::task::LaneIoError;
 use crate::agent::lane::channels::uplink::spawn::UplinkErrorReport;
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::{AttachError, LaneIo};
-use crate::routing::{TaggedClientEnvelope, TaggedEnvelope};
+use crate::routing::{RoutingAddr, ServerRouter, TaggedClientEnvelope, TaggedEnvelope};
 use either::Either;
 use futures::future::{join, BoxFuture};
 use futures::stream::{FusedStream, FuturesUnordered};
@@ -34,7 +34,7 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::num::NonZeroUsize;
 use std::pin::Pin;
-use swim_common::warp::envelope::OutgoingLinkMessage;
+use swim_common::warp::envelope::{Envelope, OutgoingHeader, OutgoingLinkMessage};
 use swim_common::warp::path::RelativePath;
 use tokio::sync::{mpsc, oneshot};
 use tracing::{event, span, Level};
@@ -58,6 +58,7 @@ struct OpenRequest {
     name: String,
     rx: mpsc::Receiver<TaggedClientEnvelope>,
     callback: oneshot::Sender<Result<(), AttachError>>,
+    remote_addr: Option<RoutingAddr>,
 }
 
 impl OpenRequest {
@@ -65,8 +66,14 @@ impl OpenRequest {
         name: String,
         rx: mpsc::Receiver<TaggedClientEnvelope>,
         callback: oneshot::Sender<Result<(), AttachError>>,
+        remote_addr: Option<RoutingAddr>,
     ) -> Self {
-        OpenRequest { name, rx, callback }
+        OpenRequest {
+            name,
+            rx,
+            callback,
+            remote_addr,
+        }
     }
 }
 
@@ -253,6 +260,7 @@ where
                     name,
                     rx: lane_rx,
                     callback,
+                    remote_addr: maybe_remote_addr,
                 })) => {
                     event!(
                         Level::DEBUG,
@@ -294,6 +302,24 @@ where
                         errors.push(DispatcherError::AttachmentFailed(
                             AttachError::LaneDoesNotExist(name.clone()),
                         ));
+
+                        if let Some(remote_addr) = maybe_remote_addr {
+                            if let Ok(mut remote_rout) =
+                                context.router_handle().resolve_sender(remote_addr).await
+                            {
+                                if remote_rout
+                                    .sender
+                                    .send_item(Envelope::lane_not_found(
+                                        agent_route.to_string(),
+                                        name.clone(),
+                                    ))
+                                    .await
+                                    .is_err()
+                                {
+                                    event!(Level::ERROR, FAILED_NOT_FOUND_RESPONSE);
+                                };
+                            }
+                        }
                         if callback
                             .send(Err(AttachError::LaneDoesNotExist(name.clone())))
                             .is_err()
@@ -392,6 +418,7 @@ const ATTEMPT_DISPATCH: &str = "Attempting to dispatch envelope.";
 const REQUESTING_ATTACH: &str = "Requesting lane to be attached for envelope.";
 const NON_EXISTENT_DROP: &str = "Lane does not exist; dropping pending messages.";
 const FAILED_START_DROP: &str = "Lane IO task failed to start; dropping pending messages.";
+const FAILED_NOT_FOUND_RESPONSE: &str = "Could not send response for a missing lane.";
 
 fn lane(env: &OutgoingLinkMessage) -> &str {
     env.path.lane.as_str()
@@ -458,13 +485,25 @@ impl EnvelopeDispatcher {
 
                             let label = lane(&envelope).to_string();
 
-                            if open_tx
-                                .send(OpenRequest::new(label.clone(), uplink_rx, req_tx))
-                                .await
-                                .is_err()
-                            {
+                            let result = if let OutgoingHeader::Link(_) = envelope.header {
+                                open_tx
+                                    .send(OpenRequest::new(
+                                        label.clone(),
+                                        uplink_rx,
+                                        req_tx,
+                                        Some(addr),
+                                    ))
+                                    .await
+                            } else {
+                                open_tx
+                                    .send(OpenRequest::new(label.clone(), uplink_rx, req_tx, None))
+                                    .await
+                            };
+
+                            if result.is_err() {
                                 break false;
                             }
+
                             await_new.push(AwaitNewLane::new(label.clone(), req_rx));
                             if uplink_tx
                                 .send(TaggedClientEnvelope(addr, envelope))
