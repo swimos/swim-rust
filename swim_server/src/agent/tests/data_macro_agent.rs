@@ -15,10 +15,10 @@
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lane::lifecycle::LaneLifecycle;
 use crate::agent::lane::model::action::ActionLane;
-use crate::agent::lane::model::{action, command};
 use crate::agent::lane::model::command::CommandLane;
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent};
+use crate::agent::lane::model::{action, command};
 use crate::agent::lane::tests::ExactlyOnce;
 use crate::agent::lifecycle::AgentLifecycle;
 use crate::agent::tests::stub_router::SingleChannelRouter;

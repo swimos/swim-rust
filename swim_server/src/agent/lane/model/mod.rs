@@ -14,10 +14,8 @@
 
 use futures::Stream;
 use std::any::type_name;
-use std::any::Any;
 use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
-use std::num::NonZeroUsize;
 use std::sync::Arc;
 use stm::var::observer::{Observer, ObserverStream, ObserverSubscriber};
 use utilities::sync::topic;
