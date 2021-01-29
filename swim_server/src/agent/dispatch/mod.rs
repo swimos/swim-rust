@@ -321,6 +321,7 @@ where
                     break;
                 }
             }
+
             iteration_count += 1;
             if iteration_count % yield_mod == 0 {
                 tokio::task::yield_now().await;

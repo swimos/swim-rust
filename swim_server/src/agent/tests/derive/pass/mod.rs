@@ -12,19 +12,24 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-mod action_lifecycle_custom_func;
-mod action_lifecycle_default_func;
-mod agent_lifecycle_custom_func;
-mod agent_lifecycle_default_func;
-mod command_lifecycle_custom_func;
-mod command_lifecycle_default_func;
-mod map_lifecycle_custom_func;
-mod map_lifecycle_default_func;
+mod action_lifecycle_custom_callback;
+mod action_lifecycle_default_callback;
+mod action_lifecycle_no_callback;
+mod agent_lifecycle_custom_callback;
+mod agent_lifecycle_default_callback;
+mod agent_lifecycle_no_callback;
+mod command_lifecycle_custom_callback;
+mod command_lifecycle_default_callback;
+mod command_lifecycle_no_callback;
+mod map_lifecycle_custom_callback;
+mod map_lifecycle_default_callback;
+mod map_lifecycle_no_callback;
 mod swim_agent_empty;
 mod swim_agent_multiple_lanes;
 mod swim_agent_multiple_lanes_public;
 mod swim_agent_multiple_lanes_repeated;
 mod swim_agent_no_config;
 mod swim_agent_single_lane;
-mod value_lifecycle_custom_func;
-mod value_lifecycle_default_func;
+mod value_lifecycle_custom_callback;
+mod value_lifecycle_default_callback;
+mod value_lifecycle_no_callback;

@@ -20,6 +20,7 @@ use crate::agent::lane::channels::uplink::{
 use crate::agent::lane::channels::{
     AgentExecutionConfig, LaneMessageHandler, OutputMessage, TaggedAction,
 };
+use crate::agent::lane::model::DeferredSubscription;
 use crate::agent::Eff;
 use crate::routing::{RoutingAddr, ServerRouter};
 use futures::future::join_all;
@@ -30,7 +31,6 @@ use std::fmt::{Display, Formatter};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use swim_common::model::Value;
-use swim_common::topic::Topic;
 use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc;
 use tracing::{event, span, Level};
@@ -60,6 +60,7 @@ pub struct UplinkSpawner<Handler, Top> {
     actions: mpsc::Receiver<TaggedAction>,
     action_buffer_size: NonZeroUsize,
     max_start_attempts: NonZeroUsize,
+    yield_after: NonZeroUsize,
     route: RelativePath,
 }
 
@@ -67,7 +68,7 @@ impl<Handler, Top> UplinkSpawner<Handler, Top>
 where
     Handler: LaneMessageHandler,
     OutputMessage<Handler>: Into<Value>,
-    Top: Topic<Handler::Event> + Send,
+    Top: DeferredSubscription<Handler::Event> + Send,
 {
     /// Crate a new uplink spawner.
     ///
@@ -79,6 +80,8 @@ where
     /// * `action_buffer_size` - Size of the action queue for each uplink.
     /// * `max_start_attempts` - The maximum number of times the spawner will attempt to create a
     /// new uplink before giving up.
+    /// * `yield_after` - The number of actions to process before yielding execution back to the
+    /// runtime.
     /// * `route` - The route of the lane (for labelling outgoing envelopes).
     ///
     pub fn new(
@@ -87,6 +90,7 @@ where
         rx: mpsc::Receiver<TaggedAction>,
         action_buffer_size: NonZeroUsize,
         max_start_attempts: NonZeroUsize,
+        yield_after: NonZeroUsize,
         route: RelativePath,
     ) -> Self {
         UplinkSpawner {
@@ -95,6 +99,7 @@ where
             actions: rx,
             action_buffer_size,
             max_start_attempts,
+            yield_after,
             route,
         }
     }
@@ -120,6 +125,8 @@ where
         Router: ServerRouter,
     {
         let mut uplink_senders: HashMap<RoutingAddr, UplinkHandle> = HashMap::new();
+        let mut iteration_count: usize = 0;
+        let yield_mod = self.yield_after.get();
 
         while let Some(TaggedAction(addr, mut action)) = self.actions.recv().await {
             let mut attempts = 0;
@@ -172,6 +179,11 @@ where
             };
             if is_done {
                 break;
+            } else {
+                iteration_count += 1;
+                if iteration_count % yield_mod == 0 {
+                    tokio::task::yield_now().await;
+                }
             }
         }
         join_all(uplink_senders.into_iter().map(|(_, h)| h.cleanup()))
@@ -195,17 +207,18 @@ where
             topic,
             action_buffer_size,
             route,
+            yield_after,
             ..
         } = self;
         let (tx, rx) = mpsc::channel(action_buffer_size.get());
         let (cleanup_tx, cleanup_rx) = trigger::trigger();
         let state_machine = handler.make_uplink(addr);
-        let updates = if let Ok(sub) = topic.subscribe().await {
+        let updates = if let Some(sub) = topic.subscribe() {
             sub.fuse()
         } else {
             return None;
         };
-        let uplink = Uplink::new(state_machine, rx.fuse(), updates);
+        let uplink = Uplink::new(state_machine, rx.fuse(), updates, *yield_after);
 
         let sink = if let Ok(sender) = router.resolve_sender(addr).await {
             UplinkMessageSender::new(sender.sender, route.clone())
@@ -307,12 +320,13 @@ impl LaneUplinks for SpawnerUplinkFactory {
     where
         Handler: LaneMessageHandler + 'static,
         OutputMessage<Handler>: Into<Value>,
-        Top: Topic<Handler::Event> + Send + 'static,
+        Top: DeferredSubscription<Handler::Event>,
         Context: AgentExecutionContext,
     {
         let SpawnerUplinkFactory(AgentExecutionConfig {
             action_buffer,
             max_uplink_start_attempts,
+            yield_after,
             ..
         }) = self;
 
@@ -328,6 +342,7 @@ impl LaneUplinks for SpawnerUplinkFactory {
             actions,
             *action_buffer,
             *max_uplink_start_attempts,
+            *yield_after,
             route,
         );
 

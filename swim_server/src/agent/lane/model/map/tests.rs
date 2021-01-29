@@ -12,16 +12,30 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::lane::model::map::{make_lane_model, MapLane, MapLaneEvent, MapUpdate};
-use crate::agent::lane::strategy::{Buffered, Queue};
+use crate::agent::lane::model::map::{MapLane, MapLaneEvent, MapSubscriber, MapUpdate};
+use crate::agent::lane::model::DeferredSubscription;
 use crate::agent::lane::tests::ExactlyOnce;
 use futures::{FutureExt, Stream, StreamExt};
 use std::collections::HashMap;
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 use stm::stm::Stm;
 use stm::transaction::atomically;
 use swim_common::form::Form;
 use swim_common::model::{Attr, Item, Value};
+
+fn buffer_size() -> NonZeroUsize {
+    NonZeroUsize::new(16).unwrap()
+}
+
+fn make_subscribable<K, V>(buffer_size: NonZeroUsize) -> (MapLane<K, V>, MapSubscriber<K, V>)
+where
+    K: Form + Send + Sync + 'static,
+    V: Send + Sync + 'static,
+{
+    let (lane, rx) = MapLane::observable(buffer_size);
+    (lane, MapSubscriber::new(rx.into_subscriber()))
+}
 
 #[test]
 fn try_type_update_event_success() {
@@ -53,7 +67,7 @@ fn try_type_remove_event_failure() {
     assert!(typed.is_err());
 }
 
-async fn update_direct<Str>(lane: &MapLane<i32, i32>, events: &mut Str)
+async fn update_direct<Str>(lane: &MapLane<i32, i32>, mut events: Str)
 where
     Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
 {
@@ -69,21 +83,16 @@ where
 }
 
 #[tokio::test]
-async fn update_direct_queue() {
-    let (lane, mut events) = make_lane_model(Queue::default());
+async fn update_direct_test() {
+    let (lane, sub) = make_subscribable::<i32, i32>(buffer_size());
+    let mut events = sub.subscribe().unwrap();
     update_direct(&lane, &mut events).await;
 }
 
 #[tokio::test]
-async fn update_direct_buffered() {
-    let (lane, mut events) = make_lane_model(Buffered::default());
-    update_direct(&lane, &mut events).await;
-}
-
-async fn remove_direct_not_contained<Str>(lane: MapLane<i32, i32>, mut events: Str)
-where
-    Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
-{
+async fn remove_direct_not_contained() {
+    let (lane, sub) = make_subscribable::<i32, i32>(buffer_size());
+    let mut events = sub.subscribe().unwrap();
     let result = lane.remove_direct(1).apply(ExactlyOnce).await;
     assert!(result.is_ok());
 
@@ -92,21 +101,10 @@ where
 }
 
 #[tokio::test]
-async fn remove_direct_not_contained_queue() {
-    let (lane, events) = make_lane_model(Queue::default());
-    remove_direct_not_contained(lane, events).await;
-}
+async fn remove_direct_contained() {
+    let (lane, sub) = make_subscribable::<i32, i32>(buffer_size());
+    let mut events = sub.subscribe().unwrap();
 
-#[tokio::test]
-async fn remove_direct_not_contained_buffered() {
-    let (lane, events) = make_lane_model(Buffered::default());
-    remove_direct_not_contained(lane, events).await;
-}
-
-async fn remove_direct_contained<Str>(lane: MapLane<i32, i32>, mut events: Str)
-where
-    Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
-{
     update_direct(&lane, &mut events).await;
     let result = lane.remove_direct(1).apply(ExactlyOnce).await;
     assert!(result.is_ok());
@@ -116,21 +114,9 @@ where
 }
 
 #[tokio::test]
-async fn remove_direct_contained_queue() {
-    let (lane, events) = make_lane_model(Queue::default());
-    remove_direct_contained(lane, events).await;
-}
-
-#[tokio::test]
-async fn remove_direct_contained_buffered() {
-    let (lane, events) = make_lane_model(Buffered::default());
-    remove_direct_contained(lane, events).await;
-}
-
-async fn clear_direct_empty<Str>(lane: MapLane<i32, i32>, mut events: Str)
-where
-    Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
-{
+async fn clear_direct_empty() {
+    let (lane, sub) = make_subscribable::<i32, i32>(buffer_size());
+    let mut events = sub.subscribe().unwrap();
     let result = lane.clear_direct().apply(ExactlyOnce).await;
     assert!(result.is_ok());
 
@@ -139,21 +125,9 @@ where
 }
 
 #[tokio::test]
-async fn clear_direct_empty_queue() {
-    let (lane, events) = make_lane_model(Queue::default());
-    clear_direct_empty(lane, events).await;
-}
-
-#[tokio::test]
-async fn clear_direct_empty_buffered() {
-    let (lane, events) = make_lane_model(Buffered::default());
-    clear_direct_empty(lane, events).await;
-}
-
-async fn clear_direct_nonempty<Str>(lane: MapLane<i32, i32>, mut events: Str)
-where
-    Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
-{
+async fn clear_direct_nonempty() {
+    let (lane, sub) = make_subscribable::<i32, i32>(buffer_size());
+    let mut events = sub.subscribe().unwrap();
     update_direct(&lane, &mut events).await;
     let result = lane.clear_direct().apply(ExactlyOnce).await;
     assert!(result.is_ok());
@@ -163,20 +137,9 @@ where
 }
 
 #[tokio::test]
-async fn clear_direct_nonempty_queue() {
-    let (lane, events) = make_lane_model(Queue::default());
-    clear_direct_nonempty(lane, events).await;
-}
-
-#[tokio::test]
-async fn clear_direct_nonempty_buffered() {
-    let (lane, events) = make_lane_model(Buffered::default());
-    clear_direct_nonempty(lane, events).await;
-}
-
-#[tokio::test]
 async fn get_value() {
-    let (lane, mut events) = make_lane_model(Queue::default());
+    let (lane, sub) = make_subscribable::<i32, i32>(buffer_size());
+    let mut events = sub.subscribe().unwrap();
     update_direct(&lane, &mut events).await;
 
     let result1 = atomically(&lane.get(1), ExactlyOnce).await;
@@ -190,7 +153,8 @@ async fn get_value() {
 
 #[tokio::test]
 async fn contains_key() {
-    let (lane, mut events) = make_lane_model(Queue::default());
+    let (lane, sub) = make_subscribable::<i32, i32>(buffer_size());
+    let mut events = sub.subscribe().unwrap();
     update_direct(&lane, &mut events).await;
 
     let result1 = atomically(&lane.contains(1), ExactlyOnce).await;
@@ -204,7 +168,8 @@ async fn contains_key() {
 
 #[tokio::test]
 async fn map_len() {
-    let (lane, mut events) = make_lane_model(Queue::default());
+    let (lane, sub) = make_subscribable::<i32, i32>(buffer_size());
+    let mut events = sub.subscribe().unwrap();
 
     let result1 = atomically(&lane.len(), ExactlyOnce).await;
 
@@ -219,7 +184,8 @@ async fn map_len() {
 
 #[tokio::test]
 async fn map_is_empty() {
-    let (lane, mut events) = make_lane_model(Queue::default());
+    let (lane, sub) = make_subscribable::<i32, i32>(buffer_size());
+    let mut events = sub.subscribe().unwrap();
 
     let result1 = atomically(&lane.is_empty(), ExactlyOnce).await;
 
@@ -246,7 +212,8 @@ where
 
 #[tokio::test]
 async fn map_first() {
-    let (lane, mut events) = make_lane_model(Queue::default());
+    let (lane, sub) = make_subscribable::<i32, i32>(buffer_size());
+    let mut events = sub.subscribe().unwrap();
 
     populate(&lane, &mut events).await;
 
@@ -257,7 +224,8 @@ async fn map_first() {
 
 #[tokio::test]
 async fn map_last() {
-    let (lane, mut events) = make_lane_model(Queue::default());
+    let (lane, sub) = make_subscribable::<i32, i32>(buffer_size());
+    let mut events = sub.subscribe().unwrap();
 
     populate(&lane, &mut events).await;
 
@@ -266,10 +234,10 @@ async fn map_last() {
     assert!(matches!(result, Ok(Some(v)) if *v == 13));
 }
 
-async fn update_compound<Str>(lane: &MapLane<i32, i32>, events: &mut Str)
-where
-    Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
-{
+#[tokio::test]
+async fn update_compound() {
+    let (lane, sub) = make_subscribable::<i32, i32>(buffer_size());
+    let mut events = sub.subscribe().unwrap();
     let value = Arc::new(5);
     let result = atomically(&lane.update(1, value.clone()), ExactlyOnce).await;
     assert!(result.is_ok());
@@ -279,21 +247,9 @@ where
 }
 
 #[tokio::test]
-async fn update_compound_queue() {
-    let (lane, mut events) = make_lane_model(Queue::default());
-    update_compound(&lane, &mut events).await;
-}
-
-#[tokio::test]
-async fn update_compound_buffered() {
-    let (lane, mut events) = make_lane_model(Buffered::default());
-    update_direct(&lane, &mut events).await;
-}
-
-async fn remove_compound_not_contained<Str>(lane: MapLane<i32, i32>, mut events: Str)
-where
-    Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
-{
+async fn remove_compound_not_contained() {
+    let (lane, sub) = make_subscribable::<i32, i32>(buffer_size());
+    let mut events = sub.subscribe().unwrap();
     let result = atomically(&lane.remove(1), ExactlyOnce).await;
     assert!(result.is_ok());
 
@@ -302,21 +258,9 @@ where
 }
 
 #[tokio::test]
-async fn remove_compound_not_contained_queue() {
-    let (lane, events) = make_lane_model(Queue::default());
-    remove_compound_not_contained(lane, events).await;
-}
-
-#[tokio::test]
-async fn remove_compound_not_contained_buffered() {
-    let (lane, events) = make_lane_model(Buffered::default());
-    remove_compound_not_contained(lane, events).await;
-}
-
-async fn remove_compound_contained<Str>(lane: MapLane<i32, i32>, mut events: Str)
-where
-    Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
-{
+async fn remove_compound_contained() {
+    let (lane, sub) = make_subscribable::<i32, i32>(buffer_size());
+    let mut events = sub.subscribe().unwrap();
     update_direct(&lane, &mut events).await;
     let result = atomically(&lane.remove(1), ExactlyOnce).await;
     assert!(result.is_ok());
@@ -326,21 +270,10 @@ where
 }
 
 #[tokio::test]
-async fn remove_compound_contained_queue() {
-    let (lane, events) = make_lane_model(Queue::default());
-    remove_compound_contained(lane, events).await;
-}
+async fn clear_compound_empty() {
+    let (lane, sub) = make_subscribable::<i32, i32>(buffer_size());
+    let mut events = sub.subscribe().unwrap();
 
-#[tokio::test]
-async fn remove_compound_contained_buffered() {
-    let (lane, events) = make_lane_model(Buffered::default());
-    remove_compound_contained(lane, events).await;
-}
-
-async fn clear_compound_empty<Str>(lane: MapLane<i32, i32>, mut events: Str)
-where
-    Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
-{
     let result = atomically(&lane.clear(), ExactlyOnce).await;
     assert!(result.is_ok());
 
@@ -349,21 +282,9 @@ where
 }
 
 #[tokio::test]
-async fn clear_compound_empty_queue() {
-    let (lane, events) = make_lane_model(Queue::default());
-    clear_compound_empty(lane, events).await;
-}
-
-#[tokio::test]
-async fn clear_compound_empty_buffered() {
-    let (lane, events) = make_lane_model(Buffered::default());
-    clear_compound_empty(lane, events).await;
-}
-
-async fn clear_compound_nonempty<Str>(lane: MapLane<i32, i32>, mut events: Str)
-where
-    Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
-{
+async fn clear_compound_nonempty() {
+    let (lane, sub) = make_subscribable::<i32, i32>(buffer_size());
+    let mut events = sub.subscribe().unwrap();
     update_direct(&lane, &mut events).await;
     let result = atomically(&lane.clear(), ExactlyOnce).await;
     assert!(result.is_ok());
@@ -373,21 +294,10 @@ where
 }
 
 #[tokio::test]
-async fn clear_compound_nonempty_queue() {
-    let (lane, events) = make_lane_model(Queue::default());
-    clear_compound_nonempty(lane, events).await;
-}
+async fn double_set() {
+    let (lane, sub) = make_subscribable::<i32, i32>(buffer_size());
+    let mut events = sub.subscribe().unwrap();
 
-#[tokio::test]
-async fn clear_compound_nonempty_buffered() {
-    let (lane, events) = make_lane_model(Buffered::default());
-    clear_compound_nonempty(lane, events).await;
-}
-
-async fn double_set<Str>(lane: MapLane<i32, i32>, mut events: Str)
-where
-    Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
-{
     populate(&lane, &mut events).await;
 
     let upd = lane.get(1).and_then(|maybe| match maybe {
@@ -409,21 +319,9 @@ where
 }
 
 #[tokio::test]
-async fn double_set_queue() {
-    let (lane, events) = make_lane_model(Queue::default());
-    double_set(lane, events).await;
-}
-
-#[tokio::test]
-async fn double_set_buffered() {
-    let (lane, events) = make_lane_model(Buffered::default());
-    double_set(lane, events).await;
-}
-
-async fn transaction_with_clear<Str>(lane: MapLane<i32, i32>, mut events: Str)
-where
-    Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
-{
+async fn transaction_with_clear() {
+    let (lane, sub) = make_subscribable::<i32, i32>(buffer_size());
+    let mut events = sub.subscribe().unwrap();
     populate(&lane, &mut events).await;
 
     let insert = lane.update(42, Arc::new(-4));
@@ -447,20 +345,9 @@ where
 }
 
 #[tokio::test]
-async fn transaction_with_clear_queue() {
-    let (lane, events) = make_lane_model(Queue::default());
-    transaction_with_clear(lane, events).await;
-}
-
-#[tokio::test]
-async fn transaction_with_clear_buffered() {
-    let (lane, events) = make_lane_model(Buffered::default());
-    transaction_with_clear(lane, events).await;
-}
-
-#[tokio::test]
 async fn snapshot_map() {
-    let (lane, mut events) = make_lane_model(Queue::default());
+    let (lane, sub) = make_subscribable::<i32, i32>(buffer_size());
+    let mut events = sub.subscribe().unwrap();
 
     populate(&lane, &mut events).await;
 
@@ -473,10 +360,11 @@ async fn snapshot_map() {
     assert!(matches!(result, Ok(map) if &map == &expected));
 }
 
-async fn modify_if_defined_direct<Str>(lane: MapLane<i32, i32>, mut events: Str)
-where
-    Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
-{
+#[tokio::test]
+async fn modify_if_defined_direct() {
+    let (lane, sub) = make_subscribable::<i32, i32>(buffer_size());
+    let mut events = sub.subscribe().unwrap();
+
     populate(&lane, &mut events).await;
 
     let result = lane
@@ -499,21 +387,9 @@ where
 }
 
 #[tokio::test]
-async fn modify_if_defined_direct_queue() {
-    let (lane, events) = make_lane_model(Queue::default());
-    modify_if_defined_direct(lane, events).await;
-}
-
-#[tokio::test]
-async fn modify_if_defined_direct_buffered() {
-    let (lane, events) = make_lane_model(Buffered::default());
-    modify_if_defined_direct(lane, events).await;
-}
-
-async fn modify_direct_some<Str>(lane: MapLane<i32, i32>, mut events: Str)
-where
-    Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
-{
+async fn modify_direct_some() {
+    let (lane, sub) = make_subscribable::<i32, i32>(buffer_size());
+    let mut events = sub.subscribe().unwrap();
     populate(&lane, &mut events).await;
 
     let result = lane
@@ -533,21 +409,9 @@ where
 }
 
 #[tokio::test]
-async fn modify_direct_some_queue() {
-    let (lane, events) = make_lane_model(Queue::default());
-    modify_direct_some(lane, events).await;
-}
-
-#[tokio::test]
-async fn modify_direct_some_buffered() {
-    let (lane, events) = make_lane_model(Buffered::default());
-    modify_direct_some(lane, events).await;
-}
-
-async fn modify_direct_none<Str>(lane: MapLane<i32, i32>, mut events: Str)
-where
-    Str: Stream<Item = MapLaneEvent<i32, i32>> + Unpin,
-{
+async fn modify_direct_none() {
+    let (lane, sub) = make_subscribable::<i32, i32>(buffer_size());
+    let mut events = sub.subscribe().unwrap();
     populate(&lane, &mut events).await;
 
     let result = lane
@@ -567,21 +431,9 @@ where
 }
 
 #[tokio::test]
-async fn modify_direct_none_queue() {
-    let (lane, events) = make_lane_model(Queue::default());
-    modify_direct_none(lane, events).await;
-}
-
-#[tokio::test]
-async fn modify_direct_none_buffered() {
-    let (lane, events) = make_lane_model(Buffered::default());
-    modify_direct_none(lane, events).await;
-}
-
-#[tokio::test]
 async fn checkpoint_map() {
-    let (lane, mut events) = make_lane_model(Queue::default());
-
+    let (lane, sub) = make_subscribable::<i32, i32>(buffer_size());
+    let mut events = sub.subscribe().unwrap();
     populate(&lane, &mut events).await;
 
     let result = atomically(&lane.checkpoint(12), ExactlyOnce).await;
@@ -621,4 +473,23 @@ fn test_derive_map_update() {
             vec![Item::of(200i32)]
         )
     );
+}
+
+#[test]
+fn test_map_update_form() {
+    let update = MapUpdate::Update(100, Arc::new(200));
+    let value = update.into_value();
+
+    let expected_value = Value::Record(
+        vec![Attr::of(("update", Value::from_vec(vec![("key", 100i32)])))],
+        vec![Item::ValueItem(Value::Int32Value(200))],
+    );
+
+    assert_eq!(value, expected_value);
+
+    let converted_update: MapUpdate<i32, i32> = Form::try_from_value(&value).unwrap();
+    assert_eq!(MapUpdate::Update(100, Arc::new(200)), converted_update);
+
+    let converted_update: MapUpdate<i32, i32> = Form::try_convert(value).unwrap();
+    assert_eq!(MapUpdate::Update(100, Arc::new(200)), converted_update);
 }

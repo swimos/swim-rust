@@ -14,10 +14,14 @@
 
 use crate::plane::router::{PlaneRouter, PlaneRouterFactory};
 use crate::plane::PlaneRequest;
-use crate::routing::error::{ConnectionError, ResolutionError, RouterError, Unresolvable};
+use crate::routing::error::{RouterError, Unresolvable};
 use crate::routing::remote::RawRoute;
-use crate::routing::{RoutingAddr, ServerRouter, ServerRouterFactory, TaggedEnvelope};
+use crate::routing::{
+    RoutingAddr, ServerRouter, ServerRouterFactory, TaggedEnvelope, TopLevelRouter,
+    TopLevelRouterFactory,
+};
 use futures::future::join;
+use swim_common::routing::{ConnectionError, ProtocolError, ResolutionErrorKind};
 use swim_common::warp::envelope::Envelope;
 use tokio::sync::mpsc;
 use url::Url;
@@ -25,13 +29,16 @@ use utilities::sync::promise;
 
 #[tokio::test]
 async fn plane_router_get_sender() {
-    let addr = RoutingAddr::remote(5);
+    let addr = RoutingAddr::local(5);
 
     let (req_tx, mut req_rx) = mpsc::channel(8);
     let (send_tx, mut send_rx) = mpsc::channel(8);
     let (_drop_tx, drop_rx) = promise::promise();
 
-    let mut router = PlaneRouter::new(addr, req_tx);
+    let (remote_tx, _remote_rx) = mpsc::channel(8);
+    let top_level_router = TopLevelRouter::new(addr, req_tx.clone(), remote_tx);
+
+    let mut router = PlaneRouter::new(addr, top_level_router, req_tx);
 
     let provider_task = async move {
         while let Some(req) = req_rx.recv().await {
@@ -66,8 +73,8 @@ async fn plane_router_get_sender() {
         let result2 = router.resolve_sender(RoutingAddr::local(56)).await;
 
         assert!(matches!(
-            result2,
-            Err(ResolutionError::Unresolvable(Unresolvable(_)))
+            result2.err().unwrap().kind(),
+            ResolutionErrorKind::Unresolvable
         ));
     };
 
@@ -77,7 +84,11 @@ async fn plane_router_get_sender() {
 #[tokio::test]
 async fn plane_router_factory() {
     let (req_tx, _req_rx) = mpsc::channel(8);
-    let fac = PlaneRouterFactory::new(req_tx);
+
+    let (remote_tx, _remote_rx) = mpsc::channel(8);
+    let top_level_router_factory = TopLevelRouterFactory::new(req_tx.clone(), remote_tx);
+
+    let fac = PlaneRouterFactory::new(req_tx, top_level_router_factory);
     let router = fac.create_for(RoutingAddr::local(56));
     assert_eq!(router.tag, RoutingAddr::local(56));
 }
@@ -89,7 +100,10 @@ async fn plane_router_resolve() {
 
     let (req_tx, mut req_rx) = mpsc::channel(8);
 
-    let mut router = PlaneRouter::new(addr, req_tx);
+    let (remote_tx, _remote_rx) = mpsc::channel(8);
+    let top_level_router = TopLevelRouter::new(addr, req_tx.clone(), remote_tx);
+
+    let mut router = PlaneRouter::new(addr, top_level_router, req_tx);
 
     let host_cpy = host.clone();
 
@@ -105,8 +119,8 @@ async fn plane_router_resolve() {
                     assert!(request.send_ok(addr).is_ok());
                 } else if host.is_some() {
                     assert!(request
-                        .send_err(RouterError::ConnectionFailure(ConnectionError::Warp(
-                            "Boom!".to_string()
+                        .send_err(RouterError::ConnectionFailure(ConnectionError::Protocol(
+                            ProtocolError::warp(Some("Boom!".into()))
                         )))
                         .is_ok());
                 } else {
@@ -127,10 +141,12 @@ async fn plane_router_resolve() {
         let result2 = router
             .lookup(Some(other_host), "/node".parse().unwrap())
             .await;
-        assert!(matches!(
-            result2,
-            Err(RouterError::ConnectionFailure(ConnectionError::Warp(msg))) if msg == "Boom!"
+
+        let _expected = RouterError::ConnectionFailure(ConnectionError::Protocol(
+            ProtocolError::warp(Some("Boom!".into())),
         ));
+
+        assert!(matches!(result2, Err(_expected)));
 
         let result3 = router.lookup(None, "/node".parse().unwrap()).await;
         assert!(matches!(result3, Err(RouterError::NoAgentAtRoute(name)) if name == "/node"));

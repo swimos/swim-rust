@@ -16,7 +16,7 @@ mod addresses;
 pub mod config;
 pub mod net;
 mod pending;
-mod router;
+pub(crate) mod router;
 mod state;
 mod table;
 mod task;
@@ -32,18 +32,18 @@ use tracing::{event, Level};
 use url::Url;
 use utilities::sync::promise;
 
-use swim_common::ws::error::WebSocketError;
+use swim_common::routing::{ConnectionError, HttpError, ResolutionError, ResolutionErrorKind};
 use utilities::sync::trigger;
 use utilities::task::Spawner;
 
-use crate::routing::error::{ConnectionError, Unresolvable};
+use crate::routing::error::Unresolvable;
 use crate::routing::remote::config::ConnectionConfig;
 use crate::routing::remote::net::ExternalConnections;
 use crate::routing::remote::state::{DeferredResult, Event, RemoteConnections, RemoteTasksState};
 use crate::routing::remote::table::HostAndPort;
-use crate::routing::ws::WsConnections;
 use crate::routing::{ConnectionDropped, RoutingAddr, ServerRouterFactory, TaggedEnvelope};
 use std::io;
+use swim_common::routing::ws::WsConnections;
 
 #[cfg(test)]
 pub mod test_fixture;
@@ -81,6 +81,12 @@ pub enum RoutingRequest {
     },
 }
 
+pub struct RemoteConnectionChannels {
+    pub(crate) request_tx: mpsc::Sender<RoutingRequest>,
+    pub(crate) request_rx: mpsc::Receiver<RoutingRequest>,
+    pub(crate) stop_trigger: trigger::Receiver,
+}
+
 #[derive(Debug)]
 pub struct RemoteConnectionsTask<External: ExternalConnections, Ws, Router, Sp> {
     external: External,
@@ -90,6 +96,8 @@ pub struct RemoteConnectionsTask<External: ExternalConnections, Ws, Router, Sp> 
     stop_trigger: trigger::Receiver,
     spawner: Sp,
     configuration: ConnectionConfig,
+    remote_tx: mpsc::Sender<RoutingRequest>,
+    remote_rx: mpsc::Receiver<RoutingRequest>,
 }
 
 type SocketAddrIt = std::vec::IntoIter<SocketAddr>;
@@ -122,9 +130,15 @@ where
         bind_addr: SocketAddr,
         websockets: Ws,
         delegate_router: RouterFac,
-        stop_trigger: trigger::Receiver,
         spawner: Sp,
+        channels: RemoteConnectionChannels,
     ) -> io::Result<Self> {
+        let RemoteConnectionChannels {
+            request_tx: remote_tx,
+            request_rx: remote_rx,
+            stop_trigger,
+        } = channels;
+
         let listener = external.bind(bind_addr).await?;
         Ok(RemoteConnectionsTask {
             external,
@@ -134,6 +148,8 @@ where
             stop_trigger,
             spawner,
             configuration,
+            remote_tx,
+            remote_rx,
         })
     }
 
@@ -146,6 +162,8 @@ where
             stop_trigger,
             spawner,
             configuration,
+            remote_tx,
+            remote_rx,
         } = self;
 
         let mut state = RemoteConnections::new(
@@ -154,14 +172,25 @@ where
             spawner,
             external,
             listener,
-            stop_trigger,
             delegate_router,
+            RemoteConnectionChannels {
+                request_tx: remote_tx,
+                request_rx: remote_rx,
+                stop_trigger,
+            },
         );
 
         let mut overall_result = Ok(());
+        let mut iteration_count: usize = 0;
+        let yield_mod = configuration.yield_after.get();
 
         while let Some(event) = state.select_next().await {
             update_state(&mut state, &mut overall_result, event);
+
+            iteration_count += 1;
+            if iteration_count % yield_mod == 0 {
+                tokio::task::yield_now().await;
+            }
         }
         overall_result
     }
@@ -199,7 +228,7 @@ fn update_state<State: RemoteTasksState>(
             }
             _ => {
                 request.send_err_debug(
-                    ConnectionError::Websocket(WebSocketError::Url(host.into_string())),
+                    ConnectionError::Http(HttpError::invalid_url(host.to_string(), None)),
                     REQUEST_DROPPED,
                 );
             }
@@ -245,7 +274,7 @@ fn update_state<State: RemoteTasksState>(
             host,
             ..
         }) => {
-            state.fail_connection(&host, ConnectionError::Socket(err.kind()));
+            state.fail_connection(&host, ConnectionError::Io(err.into()));
         }
         Event::Deferred(DeferredResult::Dns {
             result: Ok(mut addrs),
@@ -256,7 +285,15 @@ fn update_state<State: RemoteTasksState>(
                     state.defer_connect_and_handshake(host, sock_addr, addrs);
                 }
             } else {
-                state.fail_connection(&host, ConnectionError::Resolution);
+                let host_err = host.to_string();
+
+                state.fail_connection(
+                    &host,
+                    ConnectionError::Resolution(ResolutionError::new(
+                        ResolutionErrorKind::Unresolvable,
+                        Some(host_err),
+                    )),
+                );
             }
         }
         Event::ConnectionClosed(addr, reason) => {

@@ -19,12 +19,11 @@ use futures::future::ready;
 use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
 use std::convert::TryFrom;
-use std::iter::FromIterator;
 use swim_common::model::parser::parse_single;
+use swim_common::routing::ws::WsMessage;
 use swim_common::routing::RoutingError;
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
-use swim_common::ws::WsMessage;
 use tokio::sync::mpsc;
 use tracing::level_filters::STATIC_MAX_LEVEL;
 use tracing::{debug, error, span, trace, warn, Level};
@@ -133,7 +132,10 @@ impl IncomingHostTask {
                     let value = {
                         match &message {
                             WsMessage::Text(s) => parse_single(&s),
-                            WsMessage::Binary(_) => unimplemented!("Binary not supported yet"),
+                            m => {
+                                error!("Unimplemented message type received: {:?}", m);
+                                continue;
+                            }
                         }
                     };
 
@@ -276,12 +278,11 @@ async fn broadcast_destination(
                 destination_subs.remove(0);
             }
         } else {
-            let futures = FuturesUnordered::from_iter(
-                destination_subs
-                    .iter_mut()
-                    .enumerate()
-                    .map(|(index, sender)| index_sender(sender, event.clone(), index)),
-            );
+            let futures: FuturesUnordered<_> = destination_subs
+                .iter_mut()
+                .enumerate()
+                .map(|(index, sender)| index_sender(sender, event.clone(), index))
+                .collect();
 
             for index in futures.filter_map(ready).collect::<Vec<_>>().await {
                 destination_subs.remove(index);

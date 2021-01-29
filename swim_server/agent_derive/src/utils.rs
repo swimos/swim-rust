@@ -12,261 +12,229 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::args::{ConfigType, LaneType, SwimAgentAttrs};
+use crate::lanes::{action, command, demand, demand_map, map, value};
 use core::fmt;
-use proc_macro2::{Ident, Literal, Span};
-use quote::quote_spanned;
-use quote::{quote, ToTokens};
+use macro_helpers::str_to_ident;
+use proc_macro2::{Ident, Span, TokenStream};
+use quote::ToTokens;
+use quote::{quote, quote_spanned};
 use std::fmt::{Display, Formatter};
-use syn::{Data, DeriveInput};
+use syn::{parse_macro_input, AttributeArgs, Data, DeriveInput};
 
 const SWIM_AGENT: &str = "Swim agent";
 const LIFECYCLE: &str = "Lifecycle";
+const DEFAULT_ON_START: &str = "on_start";
+const DEFAULT_ON_COMMAND: &str = "on_command";
+const DEFAULT_ON_EVENT: &str = "on_event";
+const DEFAULT_ON_CUE: &str = "on_cue";
+const DEFAULT_ON_SYNC: &str = "on_sync";
 
-#[derive(Debug)]
-pub struct AgentField {
-    pub lane_name: Ident,
-    pub task_name: Ident,
-    pub lifecycle_ast: proc_macro2::TokenStream,
+pub fn default_on_command() -> Ident {
+    str_to_ident(DEFAULT_ON_COMMAND)
 }
 
-type AgentName = Ident;
+pub fn default_on_cue() -> Ident {
+    str_to_ident(DEFAULT_ON_CUE)
+}
 
-pub fn get_agent_data(args: SwimAgentAttrs) -> (AgentName, ConfigType, Vec<AgentField>) {
-    let SwimAgentAttrs {
-        ident: agent_name,
-        data: fields,
-        config: config_type,
-        ..
-    } = args;
+pub fn default_on_sync() -> Ident {
+    str_to_ident(DEFAULT_ON_SYNC)
+}
 
-    let mut agent_fields = Vec::new();
+pub fn default_on_start() -> Ident {
+    str_to_ident(DEFAULT_ON_START)
+}
 
-    fields.map_struct_fields(|field| {
-        if let (Some(lane_type), Some(lane_name), Some(lifecycle_name)) =
-            (field.get_lane_type(), field.ident, field.name)
-        {
-            let lifecycle_name = Ident::new(&lifecycle_name, Span::call_site());
-
-            let (lifecycle_ast, task_name) = create_lane(
-                &lane_type,
-                field.public,
-                &agent_name,
-                &lifecycle_name,
-                &lane_name,
-            );
-
-            agent_fields.push(AgentField {
-                lane_name,
-                task_name,
-                lifecycle_ast,
-            });
-        }
-    });
-
-    (agent_name, config_type, agent_fields)
+pub fn default_on_event() -> Ident {
+    str_to_ident(DEFAULT_ON_EVENT)
 }
 
 pub fn get_task_struct_name(name: &str) -> Ident {
     Ident::new(&format!("{}Task", name), Span::call_site())
 }
 
-fn get_task_var_name(name: &str) -> Ident {
-    Ident::new(&format!("{}_task", name), Span::call_site())
-}
-
-struct LaneData<'a> {
-    agent_name: &'a Ident,
-    is_public: bool,
-    lifecycle: &'a Ident,
-    lane_name: &'a Ident,
-    task_variable: &'a Ident,
-    task_structure: &'a Ident,
-    lane_name_lit: &'a Literal,
-}
-
-fn create_lane(
-    lane_type: &LaneType,
-    is_public: bool,
-    agent_name: &Ident,
-    lifecycle: &Ident,
-    lane_name: &Ident,
-) -> (proc_macro2::TokenStream, Ident) {
-    let lane_name_str = lane_name.to_string();
-    let task_variable = get_task_var_name(&lane_name_str);
-    let task_structure = get_task_struct_name(&lifecycle.to_string());
-    let lane_name_lit = Literal::string(&lane_name_str);
-
-    let lane_data = LaneData {
-        agent_name,
-        is_public,
-        lifecycle,
-        lane_name,
-        task_variable: &task_variable,
-        task_structure: &task_structure,
-        lane_name_lit: &lane_name_lit,
-    };
-
-    match lane_type {
-        LaneType::Command => (create_command_lane(lane_data), task_variable),
-        LaneType::Action => (create_action_lane(lane_data), task_variable),
-        LaneType::Value => (create_value_lane(lane_data), task_variable),
-        LaneType::Map => (create_map_lane(lane_data), task_variable),
-    }
-}
-
-fn create_command_lane(lane_data: LaneData) -> proc_macro2::TokenStream {
-    let LaneData {
-        agent_name,
-        is_public,
-        lifecycle,
-        lane_name,
-        task_variable,
-        task_structure,
-        lane_name_lit,
-    } = lane_data;
-
-    let io = if is_public {
-        Some(quote! {
-            io_map.insert (
-                #lane_name_lit.to_string(),
-                std::boxed::Box::new(swim_server::agent::ActionLaneIo::new_command(#lane_name.clone()))
-            );
-        })
+pub fn parse_callback(
+    callback: &Option<darling::Result<String>>,
+    task_name: Ident,
+    kind: CallbackKind,
+) -> Option<Callback> {
+    if let Some(name) = callback {
+        if let Ok(name) = name {
+            Some(Callback {
+                task_name,
+                func_name: str_to_ident(&name),
+                kind,
+            })
+        } else {
+            match kind {
+                CallbackKind::Start => Some(Callback {
+                    task_name,
+                    func_name: default_on_start(),
+                    kind,
+                }),
+                CallbackKind::Command => Some(Callback {
+                    task_name,
+                    func_name: default_on_command(),
+                    kind,
+                }),
+                CallbackKind::Event => Some(Callback {
+                    task_name,
+                    func_name: default_on_event(),
+                    kind,
+                }),
+                CallbackKind::Cue => Some(Callback {
+                    task_name,
+                    func_name: default_on_cue(),
+                    kind,
+                }),
+                CallbackKind::Sync => Some(Callback {
+                    task_name,
+                    func_name: default_on_sync(),
+                    kind,
+                }),
+            }
+        }
     } else {
         None
-    };
-
-    quote! {
-        let lifecycle = #lifecycle::create(configuration);
-        let (#lane_name, event_stream) = swim_server::agent::lane::model::action::make_lane_model(exec_conf.action_buffer.clone());
-        let #task_variable = #task_structure {
-            lifecycle,
-            name: #lane_name_lit.into(),
-            event_stream,
-            projection: |agent: &#agent_name| &agent.#lane_name,
-        };
-
-        #io
     }
 }
 
-fn create_action_lane(lane_data: LaneData) -> proc_macro2::TokenStream {
-    let LaneData {
-        agent_name,
-        is_public,
-        lifecycle,
-        lane_name,
-        task_variable,
-        task_structure,
-        lane_name_lit,
-    } = lane_data;
-
-    let io = if is_public {
-        Some(quote! {
-            io_map.insert (
-                #lane_name_lit.to_string(),
-                std::boxed::Box::new(swim_server::agent::ActionLaneIo::new_action(#lane_name.clone()))
-            );
-        })
-    } else {
-        None
-    };
-
-    quote! {
-        let lifecycle = #lifecycle::create(configuration);
-        let (#lane_name, event_stream) = swim_server::agent::lane::model::action::make_lane_model(exec_conf.action_buffer.clone());
-        let #task_variable = #task_structure {
-            lifecycle,
-            name: #lane_name_lit.into(),
-            event_stream,
-            projection: |agent: &#agent_name| &agent.#lane_name,
-        };
-
-        #io
-    }
+#[derive(Debug)]
+pub struct Callback {
+    pub task_name: Ident,
+    pub func_name: Ident,
+    pub kind: CallbackKind,
 }
 
-fn create_value_lane(lane_data: LaneData) -> proc_macro2::TokenStream {
-    let LaneData {
-        agent_name,
-        is_public,
-        lifecycle,
-        lane_name,
-        task_variable,
-        task_structure,
-        lane_name_lit,
-    } = lane_data;
-
-    let lane_creation = if is_public {
-        quote! {
-            let (#lane_name, event_stream, deferred) =
-                swim_server::agent::lane::model::value::make_lane_model_deferred(std::default::Default::default(), lifecycle.create_strategy(), exec_conf);
-
-            io_map.insert (
-                #lane_name_lit.to_string(),
-                std::boxed::Box::new(swim_server::agent::ValueLaneIo::new(#lane_name.clone(), deferred))
-            );
-        }
-    } else {
-        quote! {
-            let (#lane_name, event_stream) =
-                swim_server::agent::lane::model::value::make_lane_model(std::default::Default::default(), lifecycle.create_strategy());
-        }
-    };
-
-    quote! {
-        let lifecycle = #lifecycle::create(configuration);
-
-        #lane_creation
-
-        let #task_variable = #task_structure {
-            lifecycle,
-            name: #lane_name_lit.into(),
-            event_stream,
-            projection: |agent: &#agent_name| &agent.#lane_name,
-        };
-    }
+#[derive(Debug)]
+pub enum CallbackKind {
+    Start,
+    Command,
+    Event,
+    Cue,
+    Sync,
 }
 
-fn create_map_lane(lane_data: LaneData) -> proc_macro2::TokenStream {
-    let LaneData {
-        agent_name,
-        is_public,
-        lifecycle,
-        lane_name,
-        task_variable,
-        task_structure,
-        lane_name_lit,
-    } = lane_data;
+#[derive(Debug)]
+pub enum LaneTasksImpl {
+    Action {
+        on_command: Option<Callback>,
+    },
+    Command {
+        on_command: Option<Callback>,
+    },
+    Value {
+        on_start: Option<Callback>,
+        on_event: Option<Callback>,
+    },
+    Map {
+        on_start: Option<Callback>,
+        on_event: Option<Callback>,
+    },
+    Demand {
+        on_cue: Option<Callback>,
+    },
+    DemandMap {
+        on_sync: Option<Callback>,
+        on_cue: Option<Callback>,
+    },
+}
 
-    let lane_creation = if is_public {
-        quote! {
-            let (#lane_name, event_stream, deferred) =
-                swim_server::agent::lane::model::map::make_lane_model_deferred(lifecycle.create_strategy(), exec_conf);
+pub fn derive_start_callback(body: Option<TokenStream>) -> TokenStream {
+    let body = body.unwrap_or(quote! {
+        ready(()).boxed()
+    });
 
-            io_map.insert (
-                #lane_name_lit.to_string(), std::boxed::Box::new(swim_server::agent::MapLaneIo::new(#lane_name.clone(), deferred))
-            );
+    quote!(
+        fn start<'a>(&'a self, context: &'a Context) -> BoxFuture<'a, ()> {
+            #body
         }
-    } else {
-        quote! {
-            let (#lane_name, event_stream) =
-                swim_server::agent::lane::model::map::make_lane_model(lifecycle.create_strategy());
-        }
-    };
+    )
+}
 
-    quote! {
-        let lifecycle = #lifecycle::create(configuration);
+pub fn derive_events_callback(body: Option<TokenStream>) -> TokenStream {
+    quote!(
+         fn events(self: Box<Self>, context: Context) -> BoxFuture<'static, ()> {
+            async move {
+                #body
+            }.boxed()
+         }
+    )
+}
 
-        #lane_creation
+impl ToTokens for LaneTasksImpl {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let (start_callback, events_callback) = match self {
+            LaneTasksImpl::Action { on_command } => {
+                let start_callback = derive_start_callback(None);
 
-        let #task_variable = #task_structure {
-            lifecycle,
-            name: #lane_name_lit.into(),
-            event_stream,
-            projection: |agent: &#agent_name| &agent.#lane_name,
+                let events_body = on_command
+                    .as_ref()
+                    .map(|callback| action::derive_events_body(callback));
+                let events_callback = derive_events_callback(events_body);
+
+                (start_callback, events_callback)
+            }
+            LaneTasksImpl::Command { on_command } => {
+                let start_callback = derive_start_callback(None);
+
+                let events_body = on_command
+                    .as_ref()
+                    .map(|callback| command::derive_events_body(callback));
+                let events_callback = derive_events_callback(events_body);
+
+                (start_callback, events_callback)
+            }
+            LaneTasksImpl::Value { on_start, on_event } => {
+                let start_body = on_start
+                    .as_ref()
+                    .map(|callback| value::derive_start_body(callback));
+                let start_callback = derive_start_callback(start_body);
+
+                let events_body = on_event
+                    .as_ref()
+                    .map(|callback| value::derive_events_body(callback));
+                let events_callback = derive_events_callback(events_body);
+
+                (start_callback, events_callback)
+            }
+            LaneTasksImpl::Map { on_start, on_event } => {
+                let start_body = on_start
+                    .as_ref()
+                    .map(|callback| map::derive_start_body(callback));
+                let start_callback = derive_start_callback(start_body);
+
+                let events_body = on_event
+                    .as_ref()
+                    .map(|callback| map::derive_events_body(callback));
+                let events_callback = derive_events_callback(events_body);
+
+                (start_callback, events_callback)
+            }
+            LaneTasksImpl::Demand { on_cue } => {
+                let start_callback = derive_start_callback(None);
+
+                let events_body = on_cue
+                    .as_ref()
+                    .map(|callback| demand::derive_events_body(callback));
+                let events_callback = derive_events_callback(events_body);
+
+                (start_callback, events_callback)
+            }
+            LaneTasksImpl::DemandMap { on_sync, on_cue } => {
+                let start_callback = derive_start_callback(None);
+
+                let events_body = demand_map::derive_events_body(on_sync, on_cue);
+                let events_callback = derive_events_callback(events_body);
+
+                (start_callback, events_callback)
+            }
         };
+        quote!(
+            #start_callback
+            #events_callback
+        )
+        .to_tokens(tokens)
     }
 }
 
@@ -323,4 +291,18 @@ pub fn validate_input_ast(input_ast: &DeriveInput, ty: InputAstType) -> Result<(
             }
         }
     }
+}
+
+pub fn derive<F>(
+    args: proc_macro::TokenStream,
+    input: proc_macro::TokenStream,
+    f: F,
+) -> proc_macro::TokenStream
+where
+    F: Fn(AttributeArgs, DeriveInput) -> proc_macro::TokenStream,
+{
+    let input = parse_macro_input!(input as DeriveInput);
+    let args = parse_macro_input!(args as AttributeArgs);
+
+    f(args, input)
 }

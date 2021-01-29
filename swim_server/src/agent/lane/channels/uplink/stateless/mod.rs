@@ -76,6 +76,7 @@ where
         uplink_actions: impl Stream<Item = TaggedAction>,
         router: Router,
         err_tx: mpsc::Sender<UplinkErrorReport>,
+        yield_mod: usize,
     ) where
         Router: ServerRouter,
     {
@@ -88,6 +89,8 @@ where
 
         let uplink_actions = uplink_actions.fuse();
         let producer = producer.fuse();
+
+        let mut iteration_count: usize = 0;
 
         pin_mut!(uplink_actions);
         pin_mut!(producer);
@@ -166,6 +169,11 @@ where
                 _ => {
                     break;
                 }
+            }
+
+            iteration_count += 1;
+            if iteration_count % yield_mod == 0 {
+                tokio::task::yield_now().await;
             }
         }
 

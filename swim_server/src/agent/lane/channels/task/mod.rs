@@ -20,29 +20,32 @@ use crate::agent::lane::channels::update::{LaneUpdate, UpdateError};
 use crate::agent::lane::channels::uplink::spawn::UplinkErrorReport;
 use crate::agent::lane::channels::uplink::stateless::StatelessUplinks;
 use crate::agent::lane::channels::uplink::{
-    AddressedUplinkMessage, MapLaneUplink, UplinkAction, UplinkKind, ValueLaneUplink,
+    AddressedUplinkMessage, DemandMapLaneUplink, MapLaneUplink, UplinkAction, UplinkKind,
+    ValueLaneUplink,
 };
 use crate::agent::lane::channels::{
     AgentExecutionConfig, InputMessage, LaneMessageHandler, OutputMessage, TaggedAction,
 };
 use crate::agent::lane::model::action::ActionLane;
+use crate::agent::lane::model::demand_map::{DemandMapLane, DemandMapLaneUpdate};
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::ValueLane;
+use crate::agent::lane::model::DeferredSubscription;
 use crate::agent::Eff;
 use crate::routing::{RoutingAddr, TaggedClientEnvelope};
 use either::Either;
-use futures::future::{join, join3};
+use futures::future::{join, join3, ready, BoxFuture};
 use futures::{select, Stream, StreamExt};
 use pin_utils::pin_mut;
 use std::any::Any;
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
+use std::marker::PhantomData;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use stm::transaction::RetryManager;
 use swim_common::form::{Form, FormErr};
 use swim_common::model::Value;
-use swim_common::topic::Topic;
 use swim_common::warp::envelope::{OutgoingHeader, OutgoingLinkMessage};
 use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc;
@@ -162,7 +165,7 @@ pub trait LaneUplinks {
     where
         Handler: LaneMessageHandler + 'static,
         OutputMessage<Handler>: Into<Value>,
-        Top: Topic<Handler::Event> + Send + 'static,
+        Top: DeferredSubscription<Handler::Event>,
         Context: AgentExecutionContext;
 }
 
@@ -187,11 +190,11 @@ const TOO_MANY_FAILURES: &str = "Terminating after too many failed uplinks.";
 /// * `context` - The agent execution context, providing task scheduling and outgoing envelope
 /// routing.
 /// * `route` - The route to this lane for outgoing envelope labelling.
-pub async fn run_lane_io<Handler, Uplinks>(
+pub async fn run_lane_io<Handler, Uplinks, Deferred>(
     message_handler: Handler,
     lane_uplinks: Uplinks,
     envelopes: impl Stream<Item = TaggedClientEnvelope>,
-    events: impl Topic<Handler::Event> + Send + 'static,
+    events: Deferred,
     config: AgentExecutionConfig,
     context: impl AgentExecutionContext,
     route: RelativePath,
@@ -199,6 +202,7 @@ pub async fn run_lane_io<Handler, Uplinks>(
 where
     Handler: LaneMessageHandler + 'static,
     Uplinks: LaneUplinks,
+    Deferred: DeferredSubscription<Handler::Event> + 'static,
     OutputMessage<Handler>: Into<Value>,
     InputMessage<Handler>: Debug + Form,
 {
@@ -242,6 +246,9 @@ where
         pin_mut!(envelopes);
 
         let mut err_acc = UplinkErrorAcc::new(route_cpy.clone(), max_fatal_uplink_errors);
+
+        let yield_mod = config.yield_after.get();
+        let mut iteration_count: usize = 0;
 
         let failed: bool = loop {
             let envelope_or_err: Option<Either<TaggedClientEnvelope, UplinkErrorReport>> = select! {
@@ -290,6 +297,11 @@ where
                 _ => {
                     break false;
                 }
+            }
+
+            iteration_count += 1;
+            if iteration_count % yield_mod == 0 {
+                tokio::task::yield_now().await;
             }
         };
         (failed, err_acc.take_errors())
@@ -369,10 +381,12 @@ where
 async fn simple_action_envelope_task<Command>(
     envelopes: impl Stream<Item = TaggedClientEnvelope>,
     commands: mpsc::Sender<Result<(RoutingAddr, Command), FormErr>>,
+    yield_mod: usize,
 ) where
     Command: Send + Sync + Form + 'static,
 {
     pin_mut!(envelopes);
+    let mut iteration_count: usize = 0;
 
     while let Some(TaggedClientEnvelope(addr, envelope)) = envelopes.next().await {
         let OutgoingLinkMessage { header, body, .. } = envelope;
@@ -386,6 +400,11 @@ async fn simple_action_envelope_task<Command>(
         };
         if !sent {
             break;
+        }
+
+        iteration_count += 1;
+        if iteration_count % yield_mod == 0 {
+            tokio::task::yield_now().await;
         }
     }
 }
@@ -431,6 +450,8 @@ where
     let (upd_done_tx, upd_done_rx) = trigger::trigger();
     let envelopes = envelopes.take_until(upd_done_rx);
 
+    let yield_after = config.yield_after.get();
+
     if feedback {
         let (feedback_tx, feedback_rx) = mpsc::channel(config.feedback_buffer.get());
         let feedback_rx =
@@ -450,7 +471,7 @@ where
 
         let uplinks = StatelessUplinks::new(feedback_rx, route.clone(), UplinkKind::Action);
         let uplink_task = uplinks
-            .run(uplink_rx, context.router_handle(), err_tx)
+            .run(uplink_rx, context.router_handle(), err_tx, yield_after)
             .instrument(span!(Level::INFO, UPLINK_SPAWN_TASK, ?route));
 
         let error_handler =
@@ -463,6 +484,7 @@ where
             err_rx,
             error_handler,
             OnCommandStrategy::Send(OnCommandHandler::new(update_tx, route.clone())),
+            yield_after,
         );
 
         let (upd_result, _, (uplink_fatal, uplink_errs)) =
@@ -476,7 +498,7 @@ where
             result
         }
         .instrument(span!(Level::INFO, UPDATE_TASK, ?route));
-        let envelope_task = simple_action_envelope_task(envelopes, update_tx);
+        let envelope_task = simple_action_envelope_task(envelopes, update_tx, yield_after);
         let (upd_result, _) = join(update_task, envelope_task).await;
         combine_results(route, upd_result.err(), false, vec![])
     }
@@ -586,16 +608,17 @@ impl UplinkErrorAcc {
     }
 }
 
-pub async fn run_supply_lane_io<S, Item>(
+pub async fn run_auto_lane_io<S, Item>(
     envelopes: impl Stream<Item = TaggedClientEnvelope>,
     config: AgentExecutionConfig,
     context: impl AgentExecutionContext,
     route: RelativePath,
     stream: S,
+    uplink_kind: UplinkKind,
 ) -> Result<Vec<UplinkErrorReport>, LaneIoError>
 where
     S: Stream<Item = Item> + Send + Sync + 'static,
-    Item: Send + Sync + Form + Debug + 'static,
+    Item: Send + Sync + Form + 'static,
 {
     let span = span!(Level::INFO, LANE_IO_TASK, ?route);
     let _enter = span.enter();
@@ -603,9 +626,10 @@ where
     let (uplink_tx, uplink_rx) = mpsc::channel(config.action_buffer.get());
     let (err_tx, err_rx) = mpsc::channel(config.uplink_err_buffer.get());
     let stream = stream.map(AddressedUplinkMessage::broadcast);
-    let uplinks = StatelessUplinks::new(stream, route.clone(), UplinkKind::Supply);
+    let uplinks = StatelessUplinks::new(stream, route.clone(), uplink_kind);
 
     let on_command_strategy = OnCommandStrategy::<Dropping>::dropping();
+    let yield_after = config.yield_after.get();
 
     let envelope_task = action_envelope_task_with_uplinks(
         route.clone(),
@@ -614,10 +638,11 @@ where
         err_rx,
         UplinkErrorHandler::discard(),
         on_command_strategy,
+        yield_after,
     );
 
     let uplink_task = uplinks
-        .run(uplink_rx, context.router_handle(), err_tx)
+        .run(uplink_rx, context.router_handle(), err_tx, yield_after)
         .instrument(span!(Level::INFO, UPLINK_SPAWN_TASK, ?route));
 
     let (_, (uplink_fatal, uplink_errs)) = join(uplink_task, envelope_task).await;
@@ -629,6 +654,28 @@ where
     }
 }
 
+pub async fn run_supply_lane_io<S, Item>(
+    envelopes: impl Stream<Item = TaggedClientEnvelope>,
+    config: AgentExecutionConfig,
+    context: impl AgentExecutionContext,
+    route: RelativePath,
+    stream: S,
+) -> Result<Vec<UplinkErrorReport>, LaneIoError>
+where
+    S: Stream<Item = Item> + Send + Sync + 'static,
+    Item: Send + Sync + Form + 'static,
+{
+    run_auto_lane_io(
+        envelopes,
+        config,
+        context,
+        route,
+        stream,
+        UplinkKind::Supply,
+    )
+    .await
+}
+
 async fn action_envelope_task_with_uplinks<Cmd>(
     route: RelativePath,
     envelopes: impl Stream<Item = TaggedClientEnvelope>,
@@ -636,6 +683,7 @@ async fn action_envelope_task_with_uplinks<Cmd>(
     err_rx: mpsc::Receiver<UplinkErrorReport>,
     mut err_handler: UplinkErrorHandler,
     mut on_command_handler: OnCommandStrategy<Cmd>,
+    yield_mod: usize,
 ) -> (bool, Vec<UplinkErrorReport>)
 where
     Cmd: Send + Sync + Form + Debug + 'static,
@@ -645,6 +693,8 @@ where
     let envelopes = envelopes.fuse();
     let mut err_rx = err_rx.fuse();
     pin_mut!(envelopes);
+
+    let mut iteration_count: usize = 0;
 
     let mut failed: bool = loop {
         let envelope_or_err: Option<Either<TaggedClientEnvelope, UplinkErrorReport>> = select! {
@@ -687,6 +737,11 @@ where
             _ => {
                 break false;
             }
+        }
+
+        iteration_count += 1;
+        if iteration_count % yield_mod == 0 {
+            tokio::task::yield_now().await;
         }
     };
 
@@ -780,5 +835,92 @@ where
         );
 
         sender.send(maybe_command).await.is_ok()
+    }
+}
+
+pub async fn run_demand_lane_io<Event>(
+    envelopes: impl Stream<Item = TaggedClientEnvelope>,
+    config: AgentExecutionConfig,
+    context: impl AgentExecutionContext,
+    route: RelativePath,
+    response_rx: mpsc::Receiver<Event>,
+) -> Result<Vec<UplinkErrorReport>, LaneIoError>
+where
+    Event: Send + Sync + Form + 'static,
+{
+    run_auto_lane_io(
+        envelopes,
+        config,
+        context,
+        route,
+        response_rx,
+        UplinkKind::Demand,
+    )
+    .await
+}
+
+/// Asynchronous stub for compliance with `LaneUpdate`. `DemandMapLane`s do not support updates.
+pub struct DemandMapLaneUpdateTask<T>(PhantomData<T>);
+
+impl<T> Default for DemandMapLaneUpdateTask<T> {
+    fn default() -> Self {
+        DemandMapLaneUpdateTask(PhantomData::default())
+    }
+}
+
+impl<T> LaneUpdate for DemandMapLaneUpdateTask<T>
+where
+    T: Debug + Send + 'static,
+{
+    type Msg = T;
+
+    fn run_update<Messages, Err>(
+        self,
+        _messages: Messages,
+    ) -> BoxFuture<'static, Result<(), UpdateError>>
+    where
+        Messages: Stream<Item = Result<(RoutingAddr, Self::Msg), Err>> + Send + 'static,
+        Err: Send,
+        UpdateError: From<Err>,
+    {
+        Box::pin(ready(Err(UpdateError::OperationNotSupported)))
+    }
+}
+
+/// A `DemandMapLane` uplink producer and update handler.
+pub struct DemandMapLaneMessageHandler<Key, Value>
+where
+    Key: Form,
+    Value: Form,
+{
+    lane: DemandMapLane<Key, Value>,
+}
+
+impl<Key, Value> DemandMapLaneMessageHandler<Key, Value>
+where
+    Key: Form,
+    Value: Form,
+{
+    pub fn new(lane: DemandMapLane<Key, Value>) -> DemandMapLaneMessageHandler<Key, Value> {
+        DemandMapLaneMessageHandler { lane }
+    }
+}
+
+impl<Key, Value> LaneMessageHandler for DemandMapLaneMessageHandler<Key, Value>
+where
+    Key: Any + Clone + Form + Send + Sync + Debug,
+    Value: Any + Clone + Form + Send + Sync + Debug,
+{
+    type Event = DemandMapLaneUpdate<Key, Value>;
+    type Uplink = DemandMapLaneUplink<Key, Value>;
+    type Update = DemandMapLaneUpdateTask<Value>;
+
+    fn make_uplink(&self, _addr: RoutingAddr) -> Self::Uplink {
+        let DemandMapLaneMessageHandler { lane } = self;
+        DemandMapLaneUplink::new(lane.clone())
+    }
+
+    fn make_update(&self) -> Self::Update {
+        DemandMapLaneUpdateTask::default()
     }
 }

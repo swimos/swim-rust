@@ -14,8 +14,8 @@
 
 use num_bigint::BigInt;
 use proc_macro2::TokenStream;
+use proc_macro2::TokenStream as TokenStream2;
 use quote::ToTokens;
-use syn::export::TokenStream2;
 use syn::{ExprPath, Field, Meta, NestedMeta, Type};
 
 use macro_helpers::{Attributes, CompoundTypeKind, Context, Symbol, SynOriginal};
@@ -238,6 +238,12 @@ pub enum StandardSchema {
     AllItems(Box<StandardSchema>),
 }
 
+impl StandardSchema {
+    pub fn is_assigned(&self) -> bool {
+        !matches!(self, StandardSchema::None | StandardSchema::Type(_))
+    }
+}
+
 impl ToTokens for StandardSchema {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let quote = match self {
@@ -445,20 +451,36 @@ where
                         field_schema: initial_schema,
                         form_field,
                     },
-                    |mut field, attr| match attr {
-                        NestedMeta::Meta(Meta::List(list)) if list.path == SCHEMA_PATH => {
-                            if field.form_field.is_skipped() {
-                                context.error_spanned_by(
-                                    list,
-                                    "Cannot derive a schema for a field that is skipped",
-                                )
-                            } else {
-                                field.field_schema =
-                                    parse_schema_meta(StandardSchema::None, context, &list.nested);
+                    |mut field, attr| {
+                        let validated_field = match attr {
+                            NestedMeta::Meta(Meta::List(list)) if list.path == SCHEMA_PATH => {
+                                if field.form_field.is_skipped() {
+                                    context.error_spanned_by(
+                                        list,
+                                        "Cannot derive a schema for a field that is skipped",
+                                    )
+                                } else {
+                                    field.field_schema = parse_schema_meta(
+                                        StandardSchema::None,
+                                        context,
+                                        &list.nested,
+                                    );
+                                }
+                                field
                             }
-                            field
+                            _ => field,
+                        };
+
+                        if validated_field.form_field.is_body()
+                            && validated_field.field_schema.is_assigned()
+                        {
+                            context.error_spanned_by(
+                                validated_field.form_field.original,
+                                "Fields marked as #[form(body)] cannot contain a schema",
+                            );
                         }
-                        _ => field,
+
+                        validated_field
                     },
                 )
         })

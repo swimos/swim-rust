@@ -16,12 +16,13 @@ use crate::agent;
 use crate::agent::context::AgentExecutionContext;
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lane::lifecycle::{
-    ActionLaneLifecycle, StatefulLaneLifecycle, StatefulLaneLifecycleBase,
+    ActionLaneLifecycle, DemandLaneLifecycle, DemandMapLaneLifecycle, StatefulLaneLifecycle,
 };
 use crate::agent::lane::model::action::CommandLane;
+use crate::agent::lane::model::demand::DemandLane;
+use crate::agent::lane::model::demand_map::DemandMapLane;
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
-use crate::agent::lane::model::value::ValueLane;
-use crate::agent::lane::strategy::Queue;
+use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 use crate::agent::lane::tests::ExactlyOnce;
 use crate::agent::lifecycle::AgentLifecycle;
 use crate::agent::{AgentContext, LaneIo, LaneTasks, SwimAgent};
@@ -44,6 +45,8 @@ pub struct ReportingAgent {
     data: MapLane<String, i32>,
     total: ValueLane<i32>,
     action: CommandLane<String>,
+    demand: DemandLane<i32>,
+    demand_map: DemandMapLane<String, i32>,
 }
 
 /// Type of the events that will be reported by the agent.
@@ -51,6 +54,8 @@ pub struct ReportingAgent {
 pub enum ReportingAgentEvent {
     AgentStart,
     Command(String),
+    DemandLaneEvent(i32),
+    DemandMapLaneEvent(String, i32),
     TransactionFailed,
     DataEvent(MapLaneEvent<String, i32>),
     TotalEvent(i32),
@@ -100,9 +105,79 @@ struct TotalLifecycle {
 struct ActionLifecycle {
     inner: ReportingLifecycleInner,
 }
+#[derive(Debug)]
+struct DemandLifecycle {
+    inner: ReportingLifecycleInner,
+}
+#[derive(Debug)]
+struct DemandMapLifecycle {
+    inner: ReportingLifecycleInner,
+}
+
+impl<'a> DemandMapLaneLifecycle<'a, String, i32, ReportingAgent> for DemandMapLifecycle {
+    type OnSyncFuture = BoxFuture<'a, Vec<String>>;
+    type OnCueFuture = BoxFuture<'a, Option<i32>>;
+
+    fn on_sync<C>(
+        &'a self,
+        _model: &'a DemandMapLane<String, i32>,
+        _context: &'a C,
+    ) -> Self::OnSyncFuture
+    where
+        C: AgentContext<ReportingAgent> + Send + Sync + 'static,
+    {
+        Box::pin(ready(Vec::new()))
+    }
+    fn on_cue<C>(
+        &'a self,
+        _model: &'a DemandMapLane<String, i32>,
+        context: &'a C,
+        key: String,
+    ) -> Self::OnCueFuture
+    where
+        C: AgentContext<ReportingAgent> + Send + Sync + 'static,
+    {
+        Box::pin(async move {
+            let result = atomically(&context.agent().data.get(key.clone()), ExactlyOnce).await;
+            match result {
+                Ok(Some(value)) => {
+                    self.inner
+                        .push(ReportingAgentEvent::DemandMapLaneEvent(key, *value))
+                        .await;
+                    Some(*value)
+                }
+                _ => {
+                    self.inner
+                        .push(ReportingAgentEvent::TransactionFailed)
+                        .await;
+                    None
+                }
+            }
+        })
+    }
+}
+
+impl<'a> DemandLaneLifecycle<'a, i32, ReportingAgent> for DemandLifecycle {
+    type OnCueFuture = BoxFuture<'a, Option<i32>>;
+
+    fn on_cue<C>(&'a self, _model: &'a DemandLane<i32>, context: &'a C) -> Self::OnCueFuture
+    where
+        C: AgentContext<ReportingAgent> + Send + Sync + 'static,
+    {
+        Box::pin(async move {
+            let total = *context.agent().total.load().await;
+
+            self.inner
+                .push(ReportingAgentEvent::DemandLaneEvent(total))
+                .await;
+
+            Some(total)
+        })
+    }
+}
 
 impl AgentLifecycle<ReportingAgent> for ReportingAgentLifecycle {
-    fn on_start<'a, C: AgentContext<ReportingAgent>>(&'a self, context: &'a C) -> BoxFuture<'a, ()>
+    fn starting<'a, C: AgentContext<ReportingAgent>>(&'a self, context: &'a C) -> BoxFuture<'a, ()>
     where
         C: AgentContext<ReportingAgent> + Send + Sync + 'a,
     {
@@ -110,7 +185,8 @@ impl AgentLifecycle<ReportingAgent> for ReportingAgentLifecycle {
             self.inner.push(ReportingAgentEvent::AgentStart).await;
 
             let mut count = 0;
-            let cmd = context.agent().action.clone();
+            let cmd: CommandLane<String> = context.agent().action.clone();
+            let demander: DemandLane<i32> = context.agent().demand.clone();
 
             context
                 .periodically(
@@ -120,9 +196,11 @@ impl AgentLifecycle<ReportingAgent> for ReportingAgentLifecycle {
 
                         let key = format!("Name{}", index);
                         let mut commander = cmd.commander();
+                        let mut demand_controller = demander.controller();
 
                         Box::pin(async move {
                             commander.command(key).await;
+                            demand_controller.cue().await;
                         })
                     },
                     Duration::from_secs(1),
@@ -165,14 +243,6 @@ impl<'a> ActionLaneLifecycle<'a, String, (), ReportingAgent> for ActionLifecycle
     }
 }
 
-impl StatefulLaneLifecycleBase for DataLifecycle {
-    type WatchStrategy = Queue;
-
-    fn create_strategy(&self) -> Self::WatchStrategy {
-        Queue::default()
-    }
-}
-
 impl<'a> StatefulLaneLifecycle<'a, MapLane<String, i32>, ReportingAgent> for DataLifecycle {
     type StartFuture = Ready<()>;
     type EventFuture = BoxFuture<'a, ()>;
@@ -185,7 +255,7 @@ impl<'a> StatefulLaneLifecycle<'a, MapLane<String, i32>, ReportingAgent> for Dat
     }
 
     fn on_event<C>(
-        &'a self,
+        &'a mut self,
         event: &'a MapLaneEvent<String, i32>,
         _model: &'a MapLane<String, i32>,
         context: &'a C,
@@ -197,7 +267,7 @@ impl<'a> StatefulLaneLifecycle<'a, MapLane<String, i32>, ReportingAgent> for Dat
             self.inner
                 .push(ReportingAgentEvent::DataEvent(event.clone()))
                 .await;
-            if let MapLaneEvent::Update(_, v) = event {
+            if let MapLaneEvent::Update(key, v) = event {
                 let i = **v;
 
                 let total = &context.agent().total;
@@ -208,17 +278,17 @@ impl<'a> StatefulLaneLifecycle<'a, MapLane<String, i32>, ReportingAgent> for Dat
                     self.inner
                         .push(ReportingAgentEvent::TransactionFailed)
                         .await;
+                } else {
+                    let mut controller = context.agent().demand_map.controller();
+
+                    if controller.cue(key.clone()).await.is_err() {
+                        self.inner
+                            .push(ReportingAgentEvent::TransactionFailed)
+                            .await;
+                    }
                 }
             }
         })
-    }
-}
-
-impl StatefulLaneLifecycleBase for TotalLifecycle {
-    type WatchStrategy = Queue;
-
-    fn create_strategy(&self) -> Self::WatchStrategy {
-        Queue::default()
     }
 }
 
@@ -234,15 +304,15 @@ impl<'a> StatefulLaneLifecycle<'a, ValueLane<i32>, ReportingAgent> for TotalLife
     }
 
     fn on_event<C>(
-        &'a self,
-        event: &Arc<i32>,
+        &'a mut self,
+        event: &ValueLaneEvent<i32>,
         _model: &'a ValueLane<i32>,
         _context: &'a C,
     ) -> Self::EventFuture
     where
         C: AgentContext<ReportingAgent> + Send + Sync + 'static,
     {
-        let n = **event;
+        let n = *event.current;
         Box::pin(async move {
             self.inner.push(ReportingAgentEvent::TotalEvent(n)).await;
         })
@@ -316,17 +386,41 @@ impl SwimAgent<TestAgentConfig> for ReportingAgent {
             exec_conf.action_buffer.clone(),
         );
 
+        let (demand, demand_tasks, _) = agent::make_demand_lane(
+            "demand",
+            DemandLifecycle {
+                inner: inner.clone(),
+            },
+            |agent: &ReportingAgent| &agent.demand,
+            exec_conf.action_buffer.clone(),
+        );
+
+        let (demand_map, demand_map_tasks, _) = agent::make_demand_map_lane(
+            "demand_map",
+            false,
+            DemandMapLifecycle {
+                inner: inner.clone(),
+            },
+            |agent: &ReportingAgent| &agent.demand_map,
+            exec_conf.action_buffer.clone(),
+        );
+
         let agent = ReportingAgent {
             data,
             total,
             action,
+            demand,
+            demand_map,
         };
 
         let tasks = vec![
             data_tasks.boxed(),
             total_tasks.boxed(),
             action_tasks.boxed(),
+            demand_tasks.boxed(),
+            demand_map_tasks.boxed(),
         ];
+
         (agent, tasks, HashMap::new())
     }
 }

@@ -3198,17 +3198,17 @@ fn compare_item_schemas_not_related() {
 #[test]
 fn compare_attr_schemas_equal() {
     let schema = AttrSchema::new(
-        TextSchema::Matches(Regex::new("\\w+").unwrap()),
+        TextSchema::Matches(Box::new(Regex::new("\\w+").unwrap())),
         StandardSchema::Equal(Value::Int32Value(10)),
     );
 
     let equal_schema_1 = AttrSchema::new(
-        TextSchema::Matches(Regex::new("\\w+").unwrap()),
+        TextSchema::Matches(Box::new(Regex::new("\\w+").unwrap())),
         StandardSchema::Equal(Value::Int32Value(10)),
     );
 
     let equal_schema_2 = AttrSchema::new(
-        TextSchema::Matches(Regex::new("\\w+").unwrap()),
+        TextSchema::Matches(Box::new(Regex::new("\\w+").unwrap())),
         StandardSchema::Equal(Value::Int64Value(10)),
     );
 
@@ -3234,7 +3234,7 @@ fn compare_attr_schemas_equal() {
 #[test]
 fn compare_attr_schemas_greater() {
     let schema = AttrSchema::new(
-        TextSchema::Matches(Regex::new("\\w+").unwrap()),
+        TextSchema::Matches(Box::new(Regex::new("\\w+").unwrap())),
         StandardSchema::Equal(Value::Int32Value(10)),
     );
 
@@ -3244,7 +3244,7 @@ fn compare_attr_schemas_greater() {
     );
 
     let greater_schema_2 = AttrSchema::new(
-        TextSchema::Matches(Regex::new("\\w+").unwrap()),
+        TextSchema::Matches(Box::new(Regex::new("\\w+").unwrap())),
         StandardSchema::OfKind(ValueKind::Int32),
     );
 
@@ -3264,7 +3264,7 @@ fn compare_attr_schemas_greater() {
 #[test]
 fn compare_attr_schemas_lesser() {
     let schema = AttrSchema::new(
-        TextSchema::Matches(Regex::new("\\w+").unwrap()),
+        TextSchema::Matches(Box::new(Regex::new("\\w+").unwrap())),
         StandardSchema::InRangeInt(Range::<i64>::bounded(
             Bound::inclusive(10),
             Bound::inclusive(20),
@@ -3280,7 +3280,7 @@ fn compare_attr_schemas_lesser() {
     );
 
     let lesser_schema_2 = AttrSchema::new(
-        TextSchema::Matches(Regex::new("\\w+").unwrap()),
+        TextSchema::Matches(Box::new(Regex::new("\\w+").unwrap())),
         StandardSchema::Equal(Value::Int64Value(15)),
     );
 
@@ -3300,7 +3300,7 @@ fn compare_attr_schemas_lesser() {
 #[test]
 fn compare_attr_schemas_not_related() {
     let schema = AttrSchema::new(
-        TextSchema::Matches(Regex::new("\\w+").unwrap()),
+        TextSchema::Matches(Box::new(Regex::new("\\w+").unwrap())),
         StandardSchema::InRangeInt(Range::<i64>::bounded(
             Bound::inclusive(10),
             Bound::inclusive(20),
@@ -3316,7 +3316,7 @@ fn compare_attr_schemas_not_related() {
     );
 
     let not_related_schema_2 = AttrSchema::new(
-        TextSchema::Matches(Regex::new("\\w+").unwrap()),
+        TextSchema::Matches(Box::new(Regex::new("\\w+").unwrap())),
         StandardSchema::Equal(Value::Int64Value(-15)),
     );
 
@@ -4192,7 +4192,7 @@ fn compare_equal_text() {
 
     let greater_schemas = vec![
         StandardSchema::Text(TextSchema::NonEmpty),
-        StandardSchema::Text(TextSchema::Matches(Regex::new("\\w+").unwrap())),
+        StandardSchema::Text(TextSchema::Matches(Box::new(Regex::new("\\w+").unwrap()))),
     ];
 
     let equal_schemas = vec![
@@ -4241,7 +4241,7 @@ fn compare_equal_record() {
                 ),
                 FieldSpec::new(
                     AttrSchema::new(
-                        TextSchema::Matches(Regex::new("1234").unwrap()),
+                        TextSchema::Matches(Box::new(Regex::new("1234").unwrap())),
                         StandardSchema::Anything,
                     ),
                     true,
@@ -4249,7 +4249,7 @@ fn compare_equal_record() {
                 ),
                 FieldSpec::new(
                     AttrSchema::new(
-                        TextSchema::Matches(Regex::new("123.").unwrap()),
+                        TextSchema::Matches(Box::new(Regex::new("123.").unwrap())),
                         StandardSchema::Anything,
                     ),
                     true,
@@ -4657,12 +4657,12 @@ fn compare_text_non_empty() {
     let equal_schemas = vec![StandardSchema::Text(TextSchema::NonEmpty)];
     let lesser_schemas = vec![
         StandardSchema::Text(TextSchema::Exact("foo".to_string())),
-        StandardSchema::Text(TextSchema::Matches(Regex::new("\\w+").unwrap())),
+        StandardSchema::Text(TextSchema::Matches(Box::new(Regex::new("\\w+").unwrap()))),
     ];
 
     let not_related_schemas = vec![
         StandardSchema::Text(TextSchema::Exact("".to_string())),
-        StandardSchema::Text(TextSchema::Matches(Regex::new("\\w*").unwrap())),
+        StandardSchema::Text(TextSchema::Matches(Box::new(Regex::new("\\w*").unwrap()))),
     ];
 
     assert_equal(schema.clone(), equal_schemas);
@@ -4677,12 +4677,12 @@ fn compare_text_exact() {
     let equal_schemas = vec![StandardSchema::Text(TextSchema::Exact("test".to_string()))];
     let greater_schemas = vec![
         StandardSchema::Text(TextSchema::NonEmpty),
-        StandardSchema::Text(TextSchema::Matches(Regex::new("\\w*").unwrap())),
+        StandardSchema::Text(TextSchema::Matches(Box::new(Regex::new("\\w*").unwrap()))),
     ];
 
     let not_related_schemas = vec![
         StandardSchema::Text(TextSchema::Exact("not_a_test".to_string())),
-        StandardSchema::Text(TextSchema::Matches(Regex::new("\\w*_").unwrap())),
+        StandardSchema::Text(TextSchema::Matches(Box::new(Regex::new("\\w*_").unwrap()))),
     ];
 
     assert_equal(schema.clone(), equal_schemas);
@@ -4697,11 +4697,11 @@ fn compare_text_exact() {
 
 #[test]
 fn compare_text_matches() {
-    let schema = StandardSchema::Text(TextSchema::Matches(Regex::new("\\w+").unwrap()));
+    let schema = StandardSchema::Text(TextSchema::Matches(Box::new(Regex::new("\\w+").unwrap())));
 
-    let equal_schemas = vec![StandardSchema::Text(TextSchema::Matches(
+    let equal_schemas = vec![StandardSchema::Text(TextSchema::Matches(Box::new(
         Regex::new("\\w+").unwrap(),
-    ))];
+    )))];
 
     let greater_schemas = vec![StandardSchema::Text(TextSchema::NonEmpty)];
     let lesser_schemas = vec![StandardSchema::Text(TextSchema::Exact("foo".to_string()))];
@@ -4713,7 +4713,7 @@ fn compare_text_matches() {
     assert_not_related(schema, not_related_schemas);
 
     assert_not_related(
-        StandardSchema::Text(TextSchema::Matches(Regex::new("\\w*").unwrap())),
+        StandardSchema::Text(TextSchema::Matches(Box::new(Regex::new("\\w*").unwrap()))),
         vec![StandardSchema::Text(TextSchema::NonEmpty)],
     )
 }

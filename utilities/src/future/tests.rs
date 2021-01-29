@@ -13,13 +13,17 @@
 // limitations under the License.
 
 use super::{SwimFutureExt, SwimStreamExt, SwimTryFutureExt, TransformMut};
+use crate::sync::trigger;
 use futures::executor::block_on;
-use futures::future::{ready, Ready};
-use futures::stream::{iter, FusedStream, Iter};
+use futures::future::{self, join, ready, select, Either, Ready};
+use futures::stream::{self, iter, FusedStream, Iter};
 use futures::StreamExt;
 use pin_utils::pin_mut;
 use std::iter::{repeat, Repeat, Take};
-use tokio::sync::mpsc;
+use std::sync::Arc;
+use std::time::Duration;
+use tokio::sync::{mpsc, Notify};
+use tokio::time::timeout;
 
 #[test]
 fn future_into() {
@@ -218,4 +222,45 @@ async fn owning_scan_done() {
     }
 
     assert!(scan_stream.is_terminated());
+}
+
+#[tokio::test]
+async fn future_notify_on_blocked() {
+    let (tx, rx) = trigger::trigger();
+    let notify = Arc::new(Notify::new());
+    let notify_cpy = notify.clone();
+
+    let blocker = async move {
+        let result = select(future::pending::<()>().notify_on_blocked(notify_cpy), rx).await;
+        assert!(matches!(result, Either::Right((Ok(_), _))));
+    };
+
+    let unblocker = async move {
+        notify.notified().await;
+        tx.trigger();
+    };
+
+    let result = timeout(Duration::from_secs(5), join(blocker, unblocker)).await;
+    assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn stream_notify_on_blocked() {
+    let (tx, rx) = trigger::trigger();
+    let notify = Arc::new(Notify::new());
+    let notify_cpy = notify.clone();
+
+    let blocker = async move {
+        let mut stream = stream::pending::<()>().notify_on_blocked(notify_cpy);
+        let result = select(stream.next(), rx).await;
+        assert!(matches!(result, Either::Right((Ok(_), _))));
+    };
+
+    let unblocker = async move {
+        notify.notified().await;
+        tx.trigger();
+    };
+
+    let result = timeout(Duration::from_secs(5), join(blocker, unblocker)).await;
+    assert!(result.is_ok());
 }

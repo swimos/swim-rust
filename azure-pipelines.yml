@@ -1,5 +1,5 @@
-trigger: ["master", "server-prototype"]
-pr: ["master", "server-prototype"]
+trigger: ["master", "server-prototype", "ws-move"]
+pr: ["master", "server-prototype", "ws-move"]
 
 variables:
   RUSTFLAGS: -Dwarnings
@@ -8,21 +8,21 @@ jobs:
   - template: ci/azure-test-stable.yml
     parameters:
       name: test_crates
-      rust: 1.48.0
+      rust: 1.49.0
       displayName: Test all crates
       cross: eq(variables['Build.SourceBranch'], 'refs/heads/master')
 
   - template: ci/azure-clippy.yml
     parameters:
-      rust: 1.48.0
+      rust: 1.49.0
       name: clippy
 
   - template: ci/azure-fmt.yml
     parameters:
-      rust: 1.48.0
+      rust: 1.49.0
       name: rustfmt
 
   - template: ci/azure-check-docs.yml
     parameters:
-      rust: 1.48.0
+      rust: 1.49.0
       name: docs

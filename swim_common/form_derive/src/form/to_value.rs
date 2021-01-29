@@ -17,7 +17,7 @@ use macro_helpers::Label;
 use macro_helpers::{deconstruct_type, CompoundTypeKind};
 use macro_helpers::{EnumRepr, EnumVariant, FieldKind, FormField, StructRepr, TypeContents};
 use proc_macro2::Ident;
-use syn::export::TokenStream2;
+use proc_macro2::TokenStream as TokenStream2;
 
 pub fn to_value(
     type_contents: TypeContents<FormDescriptor, FormField<'_>>,
@@ -98,7 +98,8 @@ fn build_struct_as_value(
     quote! {
         let #structure_name #self_deconstruction = self;
         let mut attrs = vec![swim_common::model::Attr::of((#structure_name_str #headers)), #attributes];
-        swim_common::model::Value::Record(attrs, #items)
+        let items = #items;
+        swim_common::model::Value::Record(attrs, items)
     }
 }
 
@@ -120,7 +121,8 @@ fn build_variant_as_value(
     quote! {
         #structure_name::#variant_original_ident #self_deconstruction => {
             let mut attrs = vec![swim_common::model::Attr::of((#variant_name_str #headers)), #attributes];
-            swim_common::model::Value::Record(attrs, #items)
+            let items = #items;
+            swim_common::model::Value::Record(attrs, items)
         },
     }
 }
@@ -165,8 +167,12 @@ fn compute_as_value(
 
                     items = quote!({
                         match #func {
-                            swim_common::model::Value::Record(_attrs, items) => items,
-                            v => vec![swim_common::model::Item::ValueItem(v)]
+                            swim_common::model::Value::Extant => vec![],
+                            swim_common::model::Value::Record(mut body_attrs, body_items) => {
+                                attrs.append(&mut body_attrs);
+                                body_items
+                            },
+                            __v => vec![swim_common::model::Item::ValueItem(__v)]
                         }
                     });
                 }

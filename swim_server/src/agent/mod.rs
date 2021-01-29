@@ -22,22 +22,30 @@ mod tests;
 use crate::agent::context::{AgentExecutionContext, ContextImpl};
 use crate::agent::dispatch::error::DispatcherErrors;
 use crate::agent::dispatch::AgentDispatcher;
-use crate::agent::lane::channels::task::{run_supply_lane_io, LaneIoError, MapLaneMessageHandler};
+use crate::agent::lane::channels::task::{
+    run_supply_lane_io, DemandMapLaneMessageHandler, LaneIoError, MapLaneMessageHandler,
+};
 use crate::agent::lane::channels::update::StmRetryStrategy;
 use crate::agent::lane::channels::uplink::spawn::{SpawnerUplinkFactory, UplinkErrorReport};
 use crate::agent::lane::channels::AgentExecutionConfig;
-use crate::agent::lane::lifecycle::{ActionLaneLifecycle, StatefulLaneLifecycle};
+use crate::agent::lane::lifecycle::{
+    ActionLaneLifecycle, DemandLaneLifecycle, DemandMapLaneLifecycle, StatefulLaneLifecycle,
+};
 use crate::agent::lane::model;
 use crate::agent::lane::model::action::{Action, ActionLane, CommandLane};
-use crate::agent::lane::model::map::MapLaneEvent;
-use crate::agent::lane::model::map::{MapLane, MapLaneWatch};
+use crate::agent::lane::model::demand::DemandLane;
+use crate::agent::lane::model::demand_map::{
+    DemandMapLane, DemandMapLaneEvent, DemandMapLaneUpdate,
+};
+use crate::agent::lane::model::map::MapLane;
+use crate::agent::lane::model::map::{summaries_to_events, MapLaneEvent, MapSubscriber};
 use crate::agent::lane::model::supply::{make_lane_model, SupplyLane};
-use crate::agent::lane::model::value::{ValueLane, ValueLaneWatch};
-use crate::agent::lane::model::DeferredLaneView;
+use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 use crate::agent::lifecycle::AgentLifecycle;
 use crate::routing::{ServerRouter, TaggedClientEnvelope, TaggedEnvelope};
-use futures::future::{ready, BoxFuture};
+use futures::future::{join, ready, BoxFuture};
 use futures::sink::drain;
+use futures::stream::iter;
 use futures::stream::{once, repeat, unfold, BoxStream, FuturesUnordered};
 use futures::{FutureExt, Stream, StreamExt};
 use pin_utils::pin_mut;
@@ -57,9 +65,10 @@ use tokio::sync::{mpsc, oneshot};
 use tracing::{event, span, Level};
 use tracing_futures::{Instrument, Instrumented};
 use utilities::future::SwimStreamExt;
-use utilities::sync::trigger;
+use utilities::sync::{topic, trigger};
 use utilities::uri::RelativeUri;
 
+use crate::agent::lane::model::DeferredSubscription;
 #[doc(hidden)]
 #[allow(unused_imports)]
 pub use agent_derive::*;
@@ -197,7 +206,7 @@ where
         );
 
         lifecycle
-            .on_start(&context)
+            .starting(&context)
             .instrument(span!(Level::DEBUG, AGENT_START))
             .await;
 
@@ -405,7 +414,7 @@ impl Display for AttachError {
                 write!(f, "A lane named \"{}\" does not exist.", name)
             }
             AttachError::AgentStopping => {
-                write!(f, "Could not attach to the lane as the agent is stoping.")
+                write!(f, "Could not attach to the lane as the agent is stopping.")
             }
         }
     }
@@ -450,7 +459,7 @@ pub struct ValueLaneIo<T, D> {
 impl<T, D> ValueLaneIo<T, D>
 where
     T: Any + Send + Sync + Form + Debug,
-    D: DeferredLaneView<Arc<T>>,
+    D: DeferredSubscription<Arc<T>>,
 {
     pub fn new(lane: ValueLane<T>, deferred: D) -> Self {
         ValueLaneIo { lane, deferred }
@@ -460,8 +469,8 @@ where
 impl<T, Context, D> LaneIo<Context> for ValueLaneIo<T, D>
 where
     T: Any + Send + Sync + Form + Debug,
-    D: DeferredLaneView<Arc<T>>,
-    Context: AgentExecutionContext + Sized + Send + Sync + 'static,
+    D: DeferredSubscription<Arc<T>>,
+    Context: AgentExecutionContext + Send + Sync + 'static,
 {
     fn attach(
         self,
@@ -472,12 +481,11 @@ where
     ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
         let ValueLaneIo { lane, deferred } = self;
         let uplink_factory = SpawnerUplinkFactory::new(config.clone());
-        let topic = deferred.attach()?;
         Ok(lane::channels::task::run_lane_io(
             lane,
             uplink_factory,
             envelopes,
-            topic,
+            deferred,
             config,
             context,
             route,
@@ -505,7 +513,7 @@ impl<K, V, D> MapLaneIo<K, V, D>
 where
     K: Any + Send + Sync + Form + Clone + Debug,
     V: Any + Send + Sync + Form + Debug,
-    D: DeferredLaneView<MapLaneEvent<K, V>>,
+    D: DeferredSubscription<MapLaneEvent<K, V>>,
 {
     pub fn new(lane: MapLane<K, V>, deferred: D) -> Self {
         MapLaneIo { lane, deferred }
@@ -517,7 +525,7 @@ where
     K: Any + Send + Sync + Form + Clone + Debug,
     V: Any + Send + Sync + Form + Debug,
     Context: AgentExecutionContext + Sized + Send + Sync + 'static,
-    D: DeferredLaneView<MapLaneEvent<K, V>>,
+    D: DeferredSubscription<MapLaneEvent<K, V>>,
 {
     fn attach(
         self,
@@ -530,8 +538,6 @@ where
 
         let uplink_factory = SpawnerUplinkFactory::new(config.clone());
 
-        let topic = deferred.attach()?;
-
         let retries = StmRetryStrategy::new(config.retry_strategy);
 
         let handler = MapLaneMessageHandler::new(lane, move || retries);
@@ -540,7 +546,7 @@ where
             handler,
             uplink_factory,
             envelopes,
-            topic,
+            deferred,
             config,
             context,
             route,
@@ -627,6 +633,15 @@ struct ValueLifecycleTasks<L, S, P>(LifecycleTasks<L, S, P>);
 struct MapLifecycleTasks<L, S, P>(LifecycleTasks<L, S, P>);
 struct ActionLifecycleTasks<L, S, P>(LifecycleTasks<L, S, P>);
 struct CommandLifecycleTasks<L, S, P>(LifecycleTasks<L, S, P>);
+struct DemandMapLifecycleTasks<L, S, P>(LifecycleTasks<L, S, P>);
+
+struct DemandLifecycleTasks<L, S, P, Event> {
+    name: String,
+    lifecycle: L,
+    event_stream: S,
+    projection: P,
+    response_tx: mpsc::Sender<Event>,
+}
 
 struct StatelessLifecycleTasks {
     name: String,
@@ -660,15 +675,26 @@ where
     fn events(self: Box<Self>, context: Context) -> BoxFuture<'static, ()> {
         async move {
             let ValueLifecycleTasks(LifecycleTasks {
-                lifecycle,
+                mut lifecycle,
                 event_stream,
                 projection,
                 ..
             }) = *self;
             let model = projection(context.agent());
             let events = event_stream.take_until(context.agent_stop_event());
-            pin_mut!(events);
-            while let Some(event) = events.next().await {
+
+            let scan_stream = events.owning_scan(None, |prev_val, event| async move {
+                Some((
+                    Some(event.clone()),
+                    ValueLaneEvent {
+                        previous: prev_val,
+                        current: event,
+                    },
+                ))
+            });
+
+            pin_mut!(scan_stream);
+            while let Some(event) = scan_stream.next().await {
                 lifecycle
                     .on_event(&event, &model, &context)
                     .instrument(span!(Level::TRACE, ON_EVENT, ?event))
@@ -706,25 +732,22 @@ where
     Context: AgentContext<Agent> + AgentExecutionContext + Send + Sync + 'static,
     T: Any + Send + Sync + Form + Debug + Default,
     L: for<'l> StatefulLaneLifecycle<'l, ValueLane<T>, Agent>,
-    L::WatchStrategy: ValueLaneWatch<T>,
 {
-    let (lane, event_stream, deferred) = if is_public {
-        let (lane, event_stream, deferred) =
-            model::value::make_lane_model_deferred(init, lifecycle.create_strategy(), config);
+    let (lane, observer) = ValueLane::observable(init, config.observation_buffer);
 
-        (lane, event_stream, Some(deferred))
+    let lane_io = if is_public {
+        Some(ValueLaneIo::new(lane.clone(), observer.subscriber()))
     } else {
-        let (lane, event_stream) = model::value::make_lane_model(init, lifecycle.create_strategy());
-
-        (lane, event_stream, None)
+        None
     };
+
     let tasks = ValueLifecycleTasks(LifecycleTasks {
         name: name.into(),
         lifecycle,
-        event_stream,
+        event_stream: observer.into_stream(),
         projection,
     });
-    let lane_io = deferred.map(|d| ValueLaneIo::new(lane.clone(), d));
+
     (lane, tasks, lane_io)
 }
 
@@ -757,7 +780,7 @@ where
     fn events(self: Box<Self>, context: Context) -> Eff {
         async move {
             let MapLifecycleTasks(LifecycleTasks {
-                lifecycle,
+                mut lifecycle,
                 event_stream,
                 projection,
                 ..
@@ -802,25 +825,25 @@ where
     K: Any + Form + Send + Sync + Clone + Debug,
     V: Any + Form + Send + Sync + Debug,
     L: for<'l> StatefulLaneLifecycle<'l, MapLane<K, V>, Agent>,
-    L::WatchStrategy: MapLaneWatch<K, V>,
 {
-    let (lane, event_stream, deferred) = if is_public {
-        let (lane, event_stream, deferred) =
-            model::map::make_lane_model_deferred(lifecycle.create_strategy(), config);
-        (lane, event_stream, Some(deferred))
+    let (lane, observer) = MapLane::observable(config.observation_buffer);
+
+    let lane_io = if is_public {
+        Some(MapLaneIo::new(
+            lane.clone(),
+            MapSubscriber::new(observer.subscriber()),
+        ))
     } else {
-        let (lane, event_stream) = model::map::make_lane_model(lifecycle.create_strategy());
-        (lane, event_stream, None)
+        None
     };
 
     let tasks = MapLifecycleTasks(LifecycleTasks {
         name: name.into(),
         lifecycle,
-        event_stream,
+        event_stream: summaries_to_events(observer),
         projection,
     });
 
-    let lane_io = deferred.map(|d| MapLaneIo::new(lane.clone(), d));
     (lane, tasks, lane_io)
 }
 
@@ -1068,7 +1091,7 @@ where
         config: AgentExecutionConfig,
         context: Context,
     ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
-        let SupplyLaneIo { stream, .. } = self;
+        let SupplyLaneIo { stream } = self;
 
         Ok(run_supply_lane_io(envelopes, config, context, route, stream).boxed())
     }
@@ -1081,5 +1104,325 @@ where
         context: Context,
     ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
         (*self).attach(route, envelopes, config, context)
+    }
+}
+
+/// Create a new demand lane.
+///
+/// # Arguments
+///
+/// * `name` - The name of the lane.
+/// * `lifecycle` - Life-cycle event handler for the lane.
+/// * `projection` - A projection from the agent type to this lane.
+/// * `buffer_size` - Buffer size for the MPSC channel accepting the commands.
+pub fn make_demand_lane<Agent, Context, Event, L>(
+    name: impl Into<String>,
+    lifecycle: L,
+    projection: impl Fn(&Agent) -> &DemandLane<Event> + Send + Sync + 'static,
+    buffer_size: NonZeroUsize,
+) -> (
+    DemandLane<Event>,
+    impl LaneTasks<Agent, Context>,
+    impl LaneIo<Context>,
+)
+where
+    Agent: 'static,
+    Context: AgentContext<Agent> + AgentExecutionContext + Send + Sync + 'static,
+    Event: Any + Send + Sync + Form + Debug,
+    L: for<'l> DemandLaneLifecycle<'l, Event, Agent>,
+{
+    let (lane, cue_stream) = model::demand::make_lane_model(buffer_size);
+    let (response_tx, response_rx) = mpsc::channel(buffer_size.get());
+
+    let tasks = DemandLifecycleTasks {
+        name: name.into(),
+        lifecycle,
+        event_stream: cue_stream,
+        projection,
+        response_tx,
+    };
+
+    let lane_io = DemandLaneIo::new(response_rx);
+
+    (lane, tasks, lane_io)
+}
+
+struct DemandLaneIo<Event> {
+    response_rx: mpsc::Receiver<Event>,
+}
+
+impl<Event> DemandLaneIo<Event>
+where
+    Event: Send + Sync + 'static,
+{
+    fn new(response_rx: mpsc::Receiver<Event>) -> DemandLaneIo<Event> {
+        DemandLaneIo { response_rx }
+    }
+}
+
+impl<Event, Context> LaneIo<Context> for DemandLaneIo<Event>
+where
+    Event: Form + Send + Sync + 'static,
+    Context: AgentExecutionContext + Sized + Send + Sync + 'static,
+{
+    fn attach(
+        self,
+        route: RelativePath,
+        envelopes: Receiver<TaggedClientEnvelope>,
+        config: AgentExecutionConfig,
+        context: Context,
+    ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
+        let DemandLaneIo { response_rx } = self;
+
+        Ok(
+            lane::channels::task::run_demand_lane_io(
+                envelopes,
+                config,
+                context,
+                route,
+                response_rx,
+            )
+            .boxed(),
+        )
+    }
+
+    fn attach_boxed(
+        self: Box<Self>,
+        route: RelativePath,
+        envelopes: Receiver<TaggedClientEnvelope>,
+        config: AgentExecutionConfig,
+        context: Context,
+    ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
+        (*self).attach(route, envelopes, config, context)
+    }
+}
+
+impl<L, S, P, Event> Lane for DemandLifecycleTasks<L, S, P, Event> {
+    fn name(&self) -> &str {
+        self.name.as_str()
+    }
+}
+
+impl<Agent, Context, L, S, P, Event> LaneTasks<Agent, Context>
+    for DemandLifecycleTasks<L, S, P, Event>
+where
+    Agent: 'static,
+    Context: AgentContext<Agent> + Send + Sync + 'static,
+    S: Stream<Item = ()> + Send + Sync + 'static,
+    Event: Any + Send + Sync + Debug,
+    L: for<'l> DemandLaneLifecycle<'l, Event, Agent>,
+    P: Fn(&Agent) -> &DemandLane<Event> + Send + Sync + 'static,
+{
+    fn start<'a>(&'a self, _context: &'a Context) -> BoxFuture<'a, ()> {
+        ready(()).boxed()
+    }
+
+    fn events(self: Box<Self>, context: Context) -> BoxFuture<'static, ()> {
+        async move {
+            let DemandLifecycleTasks {
+                lifecycle,
+                event_stream,
+                projection,
+                response_tx,
+                ..
+            } = *self;
+
+            let model = projection(context.agent()).clone();
+            let events = event_stream.take_until(context.agent_stop_event());
+
+            pin_mut!(events);
+
+            while events.next().await.is_some() {
+                if let Some(value) = lifecycle.on_cue(&model, &context).await {
+                    let _ = response_tx.send(value).await;
+                }
+            }
+        }
+        .boxed()
+    }
+}
+
+/// Create a new demand map lane.
+///
+/// # Arguments
+///
+/// * `name` - The name of the lane.
+/// * `is_public` - Whether the lane is public (with respect to external message routing).
+/// * `lifecycle` - Life-cycle event handler for the lane.
+/// * `projection` - A projection from the agent type to this lane.
+/// * `buffer_size` - Buffer size for the MPSC channel accepting the commands.
+pub fn make_demand_map_lane<Agent, Context, Key, Value, L>(
+    name: impl Into<String>,
+    is_public: bool,
+    lifecycle: L,
+    projection: impl Fn(&Agent) -> &DemandMapLane<Key, Value> + Send + Sync + 'static,
+    buffer_size: NonZeroUsize,
+) -> (
+    DemandMapLane<Key, Value>,
+    impl LaneTasks<Agent, Context>,
+    Option<impl LaneIo<Context>>,
+)
+where
+    Agent: 'static,
+    Context: AgentContext<Agent> + AgentExecutionContext + Send + Sync + 'static,
+    Key: Any + Send + Sync + Form + Clone + Debug,
+    Value: Any + Send + Sync + Form + Clone + Debug,
+    L: for<'l> DemandMapLaneLifecycle<'l, Key, Value, Agent>,
+{
+    let (lifecycle_tx, event_stream) = mpsc::channel(buffer_size.get());
+    let (lane, topic) = model::demand_map::make_lane_model(buffer_size, lifecycle_tx);
+
+    let tasks = DemandMapLifecycleTasks(LifecycleTasks {
+        name: name.into(),
+        lifecycle,
+        event_stream,
+        projection,
+    });
+
+    let lane_io = if is_public {
+        Some(DemandMapLaneIo::new(lane.clone(), topic))
+    } else {
+        None
+    };
+
+    (lane, tasks, lane_io)
+}
+
+pub struct DemandMapLaneIo<Key, Value>
+where
+    Key: Debug + Form + Send + Sync + 'static,
+    Value: Debug + Form + Send + Sync + 'static,
+{
+    lane: DemandMapLane<Key, Value>,
+    rx: mpsc::Receiver<DemandMapLaneUpdate<Key, Value>>,
+}
+
+impl<Key, Value> DemandMapLaneIo<Key, Value>
+where
+    Key: Debug + Form + Send + Sync + 'static,
+    Value: Debug + Form + Send + Sync + 'static,
+{
+    pub fn new(
+        lane: DemandMapLane<Key, Value>,
+        rx: mpsc::Receiver<DemandMapLaneUpdate<Key, Value>>,
+    ) -> DemandMapLaneIo<Key, Value> {
+        DemandMapLaneIo { lane, rx }
+    }
+}
+
+impl<Key, Value, Context> LaneIo<Context> for DemandMapLaneIo<Key, Value>
+where
+    Key: Any + Send + Sync + Form + Clone + Debug,
+    Value: Any + Send + Sync + Form + Clone + Debug,
+    Context: AgentExecutionContext + Sized + Send + Sync + 'static,
+{
+    fn attach(
+        self,
+        route: RelativePath,
+        envelopes: Receiver<TaggedClientEnvelope>,
+        config: AgentExecutionConfig,
+        context: Context,
+    ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
+        let DemandMapLaneIo { lane, mut rx, .. } = self;
+        let uplink_factory = SpawnerUplinkFactory::new(config.clone());
+        let message_handler = DemandMapLaneMessageHandler::new(lane);
+
+        let (mut topic_tx, topic_rx) = topic::channel(config.observation_buffer);
+
+        let pump = async move {
+            while let Some(update) = rx.recv().await {
+                topic_tx.discarding_send(update).await;
+            }
+        };
+
+        let lane_task = lane::channels::task::run_lane_io(
+            message_handler,
+            uplink_factory,
+            envelopes,
+            topic_rx.subscriber(),
+            config,
+            context,
+            route,
+        );
+
+        Ok(join(pump, lane_task).map(|(_, r)| r).boxed())
+    }
+
+    fn attach_boxed(
+        self: Box<Self>,
+        route: RelativePath,
+        envelopes: Receiver<TaggedClientEnvelope>,
+        config: AgentExecutionConfig,
+        context: Context,
+    ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
+        (*self).attach(route, envelopes, config, context)
+    }
+}
+
+impl<L, S, P> Lane for DemandMapLifecycleTasks<L, S, P> {
+    fn name(&self) -> &str {
+        self.0.name.as_str()
+    }
+}
+
+impl<Agent, Context, L, S, P, Key, Value> LaneTasks<Agent, Context>
+    for DemandMapLifecycleTasks<L, S, P>
+where
+    Agent: 'static,
+    Context: AgentContext<Agent> + Send + Sync + 'static,
+    S: Stream<Item = DemandMapLaneEvent<Key, Value>> + Send + Sync + 'static,
+    Key: Any + Clone + Form + Send + Sync + Debug,
+    Value: Any + Clone + Form + Send + Sync + Debug,
+    L: for<'l> DemandMapLaneLifecycle<'l, Key, Value, Agent>,
+    P: Fn(&Agent) -> &DemandMapLane<Key, Value> + Send + Sync + 'static,
+{
+    fn start<'a>(&'a self, _context: &'a Context) -> BoxFuture<'a, ()> {
+        ready(()).boxed()
+    }
+
+    fn events(self: Box<Self>, context: Context) -> BoxFuture<'static, ()> {
+        async move {
+            let DemandMapLifecycleTasks(LifecycleTasks {
+                lifecycle,
+                event_stream,
+                projection,
+                ..
+            }) = *self;
+
+            let model = projection(context.agent()).clone();
+            let events = event_stream.take_until(context.agent_stop_event());
+
+            pin_mut!(events);
+
+            while let Some(event) = events.next().await {
+                match event {
+                    DemandMapLaneEvent::Sync(sender) => {
+                        let keys: Vec<Key> = lifecycle.on_sync(&model, &context).await;
+                        let keys_len = keys.len();
+
+                        let mut values = iter(keys)
+                            .fold(Vec::with_capacity(keys_len), |mut results, key| async {
+                                if let Some(value) =
+                                    lifecycle.on_cue(&model, &context, key.clone()).await
+                                {
+                                    results.push(DemandMapLaneUpdate::make(key, value));
+                                }
+
+                                results
+                            })
+                            .await;
+
+                        values.shrink_to_fit();
+
+                        let _ = sender.send(values);
+                    }
+                    DemandMapLaneEvent::Cue(sender, key) => {
+                        let value = lifecycle.on_cue(&model, &context, key).await;
+                        let _ = sender.send(value);
+                    }
+                }
+            }
+        }
+        .boxed()
     }
 }

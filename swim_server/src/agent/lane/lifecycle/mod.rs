@@ -13,30 +13,27 @@
 // limitations under the License.
 
 use crate::agent::lane::model::action::ActionLane;
-use crate::agent::lane::strategy::{Buffered, Queue};
+use crate::agent::lane::model::demand::DemandLane;
+use crate::agent::lane::model::demand_map::DemandMapLane;
 use crate::agent::lane::LaneModel;
 use crate::agent::AgentContext;
 use futures::future::{ready, Ready};
+use std::fmt::Debug;
 use std::future::Future;
+use swim_common::form::Form;
 
 #[cfg(test)]
 mod tests;
 
-/// Base trait for all lane lifecycles for lanes that maintain an internal state.
-pub trait StatefulLaneLifecycleBase: Send + Sync + 'static {
-    type WatchStrategy;
-
-    /// Create the watch strategy that will receive events indicating the changes to the
-    /// underlying state. The constraints on this type will depend on the particular type of lane.
-    fn create_strategy(&self) -> Self::WatchStrategy;
-}
+#[derive(Debug, PartialEq, Eq)]
+pub struct DefaultLifecycle;
 
 /// Life cycle events to add behaviour to a lane that maintains an internal state.
 /// #Type Parameters
 ///
 /// * `Model` - The type of the model of the lane.
 /// * `Agent` - The type of the agent to which the lane belongs.
-pub trait StatefulLaneLifecycle<'a, Model: LaneModel, Agent>: StatefulLaneLifecycleBase {
+pub trait StatefulLaneLifecycle<'a, Model: LaneModel, Agent>: Send + Sync + 'static {
     type StartFuture: Future<Output = ()> + Send + 'a;
     type EventFuture: Future<Output = ()> + Send + 'a;
 
@@ -59,7 +56,7 @@ pub trait StatefulLaneLifecycle<'a, Model: LaneModel, Agent>: StatefulLaneLifecy
     /// * `model` - The model of the lane.
     /// * `context` - Context of the agent that owns the lane.
     fn on_event<C>(
-        &'a self,
+        &'a mut self,
         event: &'a Model::Event,
         model: &'a Model,
         context: &'a C,
@@ -97,66 +94,6 @@ pub trait ActionLaneLifecycle<'a, Command, Response, Agent>: Send + Sync + 'stat
         C: AgentContext<Agent> + Send + Sync + 'static;
 }
 
-impl StatefulLaneLifecycleBase for Queue {
-    type WatchStrategy = Self;
-
-    fn create_strategy(&self) -> Self::WatchStrategy {
-        self.clone()
-    }
-}
-
-impl<'a, Model: LaneModel, Agent> StatefulLaneLifecycle<'a, Model, Agent> for Queue {
-    type StartFuture = Ready<()>;
-    type EventFuture = Ready<()>;
-
-    fn on_start<C: AgentContext<Agent>>(
-        &'a self,
-        _model: &'a Model,
-        _context: &'a C,
-    ) -> Self::StartFuture {
-        ready(())
-    }
-
-    fn on_event<C: AgentContext<Agent>>(
-        &'a self,
-        _event: &'a Model::Event,
-        _model: &'a Model,
-        _context: &'a C,
-    ) -> Self::EventFuture {
-        ready(())
-    }
-}
-
-impl StatefulLaneLifecycleBase for Buffered {
-    type WatchStrategy = Self;
-
-    fn create_strategy(&self) -> Self::WatchStrategy {
-        self.clone()
-    }
-}
-
-impl<'a, Model: LaneModel, Agent> StatefulLaneLifecycle<'a, Model, Agent> for Buffered {
-    type StartFuture = Ready<()>;
-    type EventFuture = Ready<()>;
-
-    fn on_start<C: AgentContext<Agent>>(
-        &'a self,
-        _model: &'a Model,
-        _context: &'a C,
-    ) -> Self::StartFuture {
-        ready(())
-    }
-
-    fn on_event<C: AgentContext<Agent>>(
-        &'a self,
-        _event: &'a Model::Event,
-        _model: &'a Model,
-        _context: &'a C,
-    ) -> Self::EventFuture {
-        ready(())
-    }
-}
-
 /// Trait for the lifecycle of a lane that has access to the configuration of
 /// a swim agent and defines how the lifecycle is created.
 ///
@@ -174,4 +111,87 @@ pub trait LaneLifecycle<Config> {
     /// * `config` - Swim agent config.
 
     fn create(config: &Config) -> Self;
+}
+
+pub trait DemandLaneLifecycle<'a, Event, Agent>: Send + Sync + 'static {
+    type OnCueFuture: Future<Output = Option<Event>> + Send + 'a;
+
+    fn on_cue<C>(&'a self, model: &'a DemandLane<Event>, context: &'a C) -> Self::OnCueFuture
+    where
+        C: AgentContext<Agent> + Send + Sync + 'static;
+}
+
+/// Trait for the lifecycle of a lane that does not have any internal state and will fetch all
+/// values by demand. Upon a sync request, the keys to sync are returned by `OnSyncFuture`. For all
+/// of these keys, `on_cue` is invoked and any `Some(Value)` returned are synced. Any cue requests
+/// made to the lane, `on_cue` is invoked and any `Some(Value)` returned are propagated.
+///
+/// # Type Parameters
+///
+/// * `Key`: The type of keys in the map.
+/// * `Value`: The type of the values in the map.
+/// * `Agent` - The type of the agent to which the lane belongs.
+pub trait DemandMapLaneLifecycle<'a, Key, Value, Agent>: Send + Sync + 'static
+where
+    Key: Debug + Form + Send + Sync + 'static,
+    Value: Debug + Form + Send + Sync + 'static,
+{
+    type OnSyncFuture: Future<Output = Vec<Key>> + Send + 'a;
+    type OnCueFuture: Future<Output = Option<Value>> + Send + 'a;
+
+    /// Invoked after a sync request has been made to the lane.
+    ///
+    /// # Arguments
+    ///
+    /// * `model` - The model of the lane.
+    /// * `context` - Context of the agent that owns the lane.
+    fn on_sync<C>(
+        &'a self,
+        model: &'a DemandMapLane<Key, Value>,
+        context: &'a C,
+    ) -> Self::OnSyncFuture
+    where
+        C: AgentContext<Agent> + Send + Sync + 'static;
+
+    /// Invoked after a key has been cued. If `Some(Value)` is returned, then this value will be
+    /// propagated to all uplinks.
+    ///
+    /// # Arguments:
+    ///
+    /// * `model` - The model of the lane.
+    /// * `context` - Context of the agent that owns the lane.
+    /// * `key` - The key of the value.
+    fn on_cue<C>(
+        &'a self,
+        model: &'a DemandMapLane<Key, Value>,
+        context: &'a C,
+        key: Key,
+    ) -> Self::OnCueFuture
+    where
+        C: AgentContext<Agent> + Send + Sync + 'static;
+}
+
+impl<'a, Model: LaneModel, Agent> StatefulLaneLifecycle<'a, Model, Agent> for DefaultLifecycle {
+    type StartFuture = Ready<()>;
+    type EventFuture = Ready<()>;
+
+    fn on_start<C: AgentContext<Agent>>(
+        &'a self,
+        _model: &'a Model,
+        _context: &'a C,
+    ) -> Self::StartFuture {
+        ready(())
+    }
+
+    fn on_event<C>(
+        &'a mut self,
+        _event: &'a <Model as LaneModel>::Event,
+        _model: &'a Model,
+        _context: &'a C,
+    ) -> Self::EventFuture
+    where
+        C: AgentContext<Agent> + Send + Sync + 'static,
+    {
+        ready(())
+    }
 }

@@ -106,21 +106,21 @@ pub fn clear_summary<V: Any + Send + Sync>(
 }
 
 /// A transaction to apply an update to a summary.
-pub fn update_summary<'a, V: Any + Send + Sync>(
-    summary: &'a TVar<TransactionSummary<Value, V>>,
+pub fn update_summary<V: Any + Send + Sync>(
+    summary: &TVar<TransactionSummary<Value, V>>,
     key: Value,
     value: Arc<V>,
-) -> impl Stm<Result = ()> + 'a {
+) -> impl Stm<Result = ()> + '_ {
     summary
         .get()
         .and_then(move |sum| summary.put(sum.update(key.clone(), value.clone())))
 }
 
 /// A transaction to apply a removal to a summary.
-pub fn remove_summary<'a, V: Any + Send + Sync>(
-    summary: &'a TVar<TransactionSummary<Value, V>>,
+pub fn remove_summary<V: Any + Send + Sync>(
+    summary: &TVar<TransactionSummary<Value, V>>,
     key: Value,
-) -> impl Stm<Result = ()> + 'a {
+) -> impl Stm<Result = ()> + '_ {
     summary
         .get()
         .and_then(move |sum| summary.put(sum.remove(key.clone())))

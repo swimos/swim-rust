@@ -34,6 +34,7 @@ use crate::router::incoming::{IncomingHostTask, IncomingRequest};
 use crate::router::outgoing::OutgoingHostTask;
 use futures::future::BoxFuture;
 use swim_common::routing::RoutingError;
+use utilities::errors::Recoverable;
 use utilities::sync::promise;
 
 pub mod incoming;
