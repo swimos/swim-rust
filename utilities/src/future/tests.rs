@@ -18,10 +18,10 @@ use futures::executor::block_on;
 use futures::future::{self, join, ready, select, Either, Ready};
 use futures::stream::{self, iter, FusedStream, Iter};
 use futures::StreamExt;
-use pin_utils::core_reexport::time::Duration;
 use pin_utils::pin_mut;
 use std::iter::{repeat, Repeat, Take};
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::{mpsc, Notify};
 use tokio::time::timeout;
 

@@ -1,0 +1,5 @@
+error: Fields marked as #[form(body)] cannot contain a schema
+  --> $DIR/struct_body_with_schema.rs:19:14
+   |
+19 |     struct S(#[form(body, schema(equal = "i64_eq"))] i64);
+   |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

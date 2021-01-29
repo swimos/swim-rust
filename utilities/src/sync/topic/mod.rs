@@ -26,7 +26,7 @@ use std::task::{Context, Poll};
 use futures::Stream;
 use futures_util::task::AtomicWaker;
 use pin_project::pin_project;
-use pin_utils::core_reexport::num::NonZeroUsize;
+use std::num::NonZeroUsize;
 
 use crate::sync::ReadWaiters;
 
@@ -76,6 +76,9 @@ pub enum TryRecvError {
     NoValue,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub struct SubscribeError;
+
 impl<T> Sender<T> {
     /// Send a value into the channel, waiting for free capacity if the buffer is full.
     pub fn send(&mut self, value: T) -> TopicSend<T> {
@@ -84,6 +87,11 @@ impl<T> Sender<T> {
             inner: &*inner,
             value: Some(value),
         }
+    }
+
+    /// Send a value into the channel. If there are no receivers registered the value is discarded.
+    pub async fn discarding_send(&mut self, value: T) {
+        let _ = self.send(value).await;
     }
 
     /// Attempt to send a a value into the channel, returning an error immediately if the buffer
@@ -117,10 +125,16 @@ impl<T> Sender<T> {
             // and there is only one writer so we can guarantee that we have exclusive access
             // to this entry.
             let data_ref = unsafe { &mut *entry.data.get() };
-            *data_ref = Some(value);
+            let _prev = std::mem::replace(data_ref, Some(value));
             drop(lock);
             read_waiters.lock().wake_all();
             Ok(())
+        }
+    }
+
+    pub fn subscriber(&self) -> Subscriber<T> {
+        Subscriber {
+            inner: self.inner.clone(),
         }
     }
 }
@@ -130,6 +144,33 @@ impl<T> Drop for Sender<T> {
         self.inner.active.store(false, Ordering::Release);
         self.inner.writer_waiter.take();
         self.inner.read_waiters.lock().wake_all();
+    }
+}
+
+/// Equivalent to a [`Receiver`] that does not observe the values in the buffer. It can only be
+/// used to create new [`Receiver`]s.
+pub struct Subscriber<T> {
+    inner: Arc<Inner<T>>,
+}
+
+impl<T> Clone for Subscriber<T> {
+    fn clone(&self) -> Self {
+        Subscriber {
+            inner: self.inner.clone(),
+        }
+    }
+}
+
+impl<T> Subscriber<T> {
+    /// Attempt to create a new [`Receiver`]. This will fail if the sender has been dropped.
+    pub fn subscribe(&self) -> Result<Receiver<T>, SubscribeError> {
+        let Subscriber { inner, .. } = self;
+        let mut lock = inner.guarded.write();
+        if !inner.active.load(Ordering::Relaxed) {
+            Err(SubscribeError)
+        } else {
+            Ok(add_receiver(inner, &mut *lock))
+        }
     }
 }
 
@@ -154,6 +195,14 @@ impl<T> Receiver<T> {
     pub fn try_recv(&mut self) -> Result<EntryGuard<T>, TryRecvError> {
         try_advance_reader(&mut &mut *self, None)
     }
+
+    /// Create a [`Subscriber`] from this [`Receiver] that can be used to create more receivers
+    /// without being required to observe new values in the channel.
+    pub fn subscriber(&self) -> Subscriber<T> {
+        Subscriber {
+            inner: self.inner.clone(),
+        }
+    }
 }
 
 impl<T: Clone> Receiver<T> {
@@ -172,22 +221,8 @@ impl<T: Clone> Receiver<T> {
 impl<T> Clone for Receiver<T> {
     fn clone(&self) -> Self {
         let Receiver { inner, .. } = self;
-        let new_inner = inner.clone();
-        let Inner {
-            capacity, guarded, ..
-        } = &**inner;
-        let mut lock = guarded.write();
-        let offset = prev_slot(lock.write_offset.load(Ordering::Acquire), *capacity);
-        lock.num_rx = lock.num_rx.checked_add(1).expect("Receiver overflow.");
-        // The write offset cannot advance while we hold a write lock on the guarded section of
-        // the internal state. This means that it is impossible for an entry to be added that
-        // expects to be read by the new receiver. Therefore it is consistent to use the write
-        // offset that we just read as the starting offset of the new receiver.
-        drop(lock);
-        Receiver {
-            inner: new_inner,
-            read_offset: offset,
-        }
+        let mut lock = inner.guarded.write();
+        add_receiver(inner, &mut *lock)
     }
 }
 
@@ -237,6 +272,20 @@ impl<T> Inner<T> {
             read_waiters: Default::default(),
             writer_waiter: Default::default(),
         }
+    }
+}
+
+fn add_receiver<T>(inner: &Arc<Inner<T>>, lock: &mut Guarded) -> Receiver<T> {
+    let new_inner = inner.clone();
+    let offset = prev_slot(lock.write_offset.load(Ordering::Acquire), inner.capacity);
+    lock.num_rx = lock.num_rx.checked_add(1).expect("Receiver overflow.");
+    // The write offset cannot advance while we hold a write lock on the guarded section of
+    // the internal state. This means that it is impossible for an entry to be added that
+    // expects to be read by the new receiver. Therefore it is consistent to use the write
+    // offset that we just read as the starting offset of the new receiver.
+    Receiver {
+        inner: new_inner,
+        read_offset: offset,
     }
 }
 
@@ -348,7 +397,10 @@ impl<'a, T> Future for TopicSend<'a, T> {
         // and there is only one writer so we can guarantee that we have exclusive access
         // to this entry.
         let data_ref = unsafe { &mut *entry.data.get() };
-        *data_ref = Some(this.value.take().expect("Send future polled twice."));
+        let _prev = std::mem::replace(
+            data_ref,
+            Some(this.value.take().expect("Send future polled twice.")),
+        );
         lock.write_offset.store(next, Ordering::Release);
         drop(lock);
         this.inner.read_waiters.lock().wake_all();

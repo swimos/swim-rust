@@ -12,9 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swim_server::agent::lane::model::action::CommandLane;
+use swim_server::agent::lane::model::value::ValueLane;
+use swim_server::agent::lane::model::value::ValueLaneEvent;
 use swim_server::agent::AgentContext;
-use swim_server::{command_lifecycle, SwimAgent};
+use swim_server::value_lifecycle;
 
 mod swim_server {
     pub use crate::*;
@@ -22,29 +23,36 @@ mod swim_server {
 
 #[test]
 fn main() {
+    struct TestAgent;
+
     #[derive(Debug)]
     pub struct TestAgentConfig;
 
-    #[command_lifecycle(agent = "TestAgent", command_type = "i32", on_command)]
-    struct CommandLifecycle;
+    #[value_lifecycle(
+        agent = "TestAgent",
+        event_type = "i32",
+        on_start = "custom_on_start",
+        on_event = "custom_on_event"
+    )]
+    struct ValueLifecycle;
 
-    impl CommandLifecycle {
-        async fn on_command<Context>(
+    impl ValueLifecycle {
+        async fn custom_on_start<Context>(&self, _model: &ValueLane<i32>, _context: &Context)
+        where
+            Context: AgentContext<TestAgent> + Sized + Send + Sync,
+        {
+            unimplemented!()
+        }
+
+        async fn custom_on_event<Context>(
             &self,
-            _command: i32,
-            _model: &CommandLane<i32>,
+            _event: &ValueLaneEvent<i32>,
+            _model: &ValueLane<i32>,
             _context: &Context,
         ) where
             Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
         {
             unimplemented!()
         }
-    }
-
-    #[derive(Debug, SwimAgent)]
-    #[agent(config = "TestAgentConfig")]
-    pub struct TestAgent {
-        #[lifecycle(name = "CommandLifecycle")]
-        pub command: CommandLane<i32>,
     }
 }
