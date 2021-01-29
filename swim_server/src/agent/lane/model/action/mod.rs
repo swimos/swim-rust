@@ -17,11 +17,13 @@ mod tests;
 
 use crate::agent::lane::model::type_of;
 use crate::agent::lane::LaneModel;
+use crate::agent::model::COMMANDED_AFTER_STOP;
 use futures::Stream;
 use std::any::Any;
 use std::fmt::{Debug, Formatter};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
+use tokio::sync::mpsc::error::SendError;
 use tokio::sync::{mpsc, oneshot};
 use tracing::{event, Level};
 
@@ -106,18 +108,23 @@ impl<Command: Debug, Response> Commander<Command, Response> {
         event!(Level::TRACE, SENDING_COMMAND, ?cmd);
         let Commander(tx) = self;
         if tx.send(Action::forget(cmd)).await.is_err() {
-            panic!("Lane commanded after the agent stopped.")
+            event!(Level::ERROR, COMMANDED_AFTER_STOP);
         }
     }
 
-    pub async fn command_and_await(&mut self, cmd: Command) -> oneshot::Receiver<Response> {
+    pub async fn command_and_await(
+        &mut self,
+        cmd: Command,
+    ) -> Result<oneshot::Receiver<Response>, SendError<Action<Command, Response>>> {
         let (resp_tx, resp_rx) = oneshot::channel();
         event!(Level::TRACE, SENDING_COMMAND, ?cmd);
         let Commander(tx) = self;
-        if tx.send(Action::new(cmd, resp_tx)).await.is_err() {
-            panic!("Lane commanded after the agent stopped.")
+        if let Err(err) = tx.send(Action::new(cmd, resp_tx)).await {
+            event!(Level::ERROR, COMMANDED_AFTER_STOP);
+            Err(err)
+        } else {
+            Ok(resp_rx)
         }
-        resp_rx
     }
 }
 

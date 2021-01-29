@@ -33,6 +33,8 @@ pub mod map;
 pub mod supply;
 pub mod value;
 
+const COMMANDED_AFTER_STOP: &str = "Lane commanded after the agent stopped.";
+
 pub trait DeferredLaneView<T>: Send + Sync {
     type View: Topic<T> + Send + Sync + 'static;
 

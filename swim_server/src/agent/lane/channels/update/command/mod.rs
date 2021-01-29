@@ -100,8 +100,12 @@ where
                                 event!(Level::WARN, NO_COMPLETION);
                             }
                             Some(Either::Right(Ok((addr, msg)))) => {
-                                let rx = commander.command_and_await(msg).await;
-                                responses.push(rx.map(move |r| r.map(move |resp| (addr, resp))));
+                                if let Ok(rx) = commander.command_and_await(msg).await {
+                                    responses
+                                        .push(rx.map(move |r| r.map(move |resp| (addr, resp))));
+                                } else {
+                                    event!(Level::ERROR, NO_COMPLETION);
+                                }
                             }
                             Some(Either::Right(Err(e))) => {
                                 break Err(e.into());
