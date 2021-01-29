@@ -12,62 +12,95 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use tokio::sync::{mpsc, oneshot};
+
+use swim_common::warp::path::RelativePath;
+use utilities::sync::trigger;
+
+use crate::agent::meta::metric::config::MetricCollectorConfig;
+use crate::agent::meta::metric::lane::LaneProfile;
+use crate::agent::meta::metric::node::NodeProfile;
+use crate::agent::meta::metric::sender::TransformedSender;
+use crate::agent::meta::metric::task::{
+    CollectorStopResult, CollectorTask, ProfileRequest, ProfileRequestErr,
+};
+use crate::agent::meta::metric::uplink::{UplinkObserver, UplinkProfile, UplinkSurjection};
+use tokio::sync::mpsc::Sender;
+use tokio::task::JoinHandle;
+
 mod config;
 mod lane;
 mod node;
+mod sender;
+mod task;
 mod uplink;
 
-use std::collections::HashMap;
+#[cfg(test)]
+mod tests;
 
-use crate::agent::meta::metric::config::MetricCollectorConfig;
-use crate::agent::meta::metric::lane::{LaneEvent, LaneProfile};
-use crate::agent::meta::metric::node::{NodeEvent, NodeProfile};
-use crate::agent::meta::metric::uplink::{UplinkEvent, UplinkObserver, UplinkProfile};
-use std::num::NonZeroUsize;
-use swim_common::form::Form;
-use swim_common::warp::path::RelativePath;
-use tokio::sync::mpsc;
-use utilities::sync::trigger;
-
-type Observer<P> = mpsc::Receiver<P>;
-pub type Sender<P> = mpsc::Sender<P>;
-
-#[derive(Form, Clone, PartialEq, Hash, Eq)]
-enum MetricKind {
-    Node,
-    Lane(String),
-    Uplink(String),
+#[derive(Debug, PartialEq, Clone)]
+pub enum Profile {
+    Node(NodeProfile),
+    Lane(LaneProfile),
+    Uplink(UplinkProfile),
 }
 
-pub enum ObserverKind {
-    Node(Observer<NodeEvent>),
-    Lane(Observer<LaneEvent>),
-    Uplink(Observer<UplinkEvent>),
+#[derive(Clone, PartialEq, Debug, Eq, Hash)]
+pub enum MetricKind {
+    Node,
+    Lane(RelativePath),
+    Uplink(RelativePath),
+}
+
+#[derive(PartialEq, Debug)]
+pub enum ObserverEvent {
+    Node(NodeProfile),
+    Lane(RelativePath, LaneProfile),
+    Uplink(RelativePath, UplinkProfile),
 }
 
 pub struct MetricCollector {
-    observers: HashMap<MetricKind, ObserverKind>,
-    stop_rx: trigger::Receiver,
     config: MetricCollectorConfig,
+    metric_tx: Sender<ObserverEvent>,
+    _collector_task: JoinHandle<CollectorStopResult>,
+    request_tx: mpsc::Sender<ProfileRequest>,
 }
 
 impl MetricCollector {
-    pub fn new(stop_rx: trigger::Receiver, config: MetricCollectorConfig) -> MetricCollector {
+    pub fn new(
+        node_id: String,
+        stop_rx: trigger::Receiver,
+        config: MetricCollectorConfig,
+    ) -> MetricCollector {
+        let (metric_tx, metric_rx) = mpsc::channel(config.buffer_size.get());
+        let (collector, request_tx) =
+            CollectorTask::new(node_id, stop_rx, config.buffer_size, metric_rx);
+        let jh = tokio::spawn(collector.run());
+
         MetricCollector {
-            observers: HashMap::default(),
-            stop_rx,
             config,
+            metric_tx,
+            _collector_task: jh,
+            request_tx,
         }
     }
 
-    pub fn uplink_observer(&mut self, address: RelativePath) -> UplinkObserver {
-        let (tx, rx) = mpsc::channel(self.config.buffer_size.get());
-        let observer = UplinkObserver::new(tx);
-        self.observers.insert(
-            MetricKind::Uplink(address.to_string()),
-            ObserverKind::Uplink(rx),
-        );
+    pub async fn request_profile(&self, request: MetricKind) -> Result<Profile, ProfileRequestErr> {
+        let (tx, rx) = oneshot::channel();
+        let request = ProfileRequest::new(request, tx);
 
-        observer
+        self.request_tx.send(request).await?;
+
+        rx.await
+            .map_err(|e| ProfileRequestErr::ChannelError(e.to_string()))?
+    }
+
+    pub fn uplink_observer(&self, address: RelativePath) -> UplinkObserver {
+        let MetricCollector {
+            config, metric_tx, ..
+        } = self;
+
+        let sender = TransformedSender::new(UplinkSurjection(address.clone()), metric_tx.clone());
+        UplinkObserver::new(sender, config.sample_rate)
     }
 }

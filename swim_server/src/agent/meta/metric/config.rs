@@ -13,11 +13,12 @@
 // limitations under the License.
 
 use pin_utils::core_reexport::num::NonZeroUsize;
+use tokio::time::Duration;
 
 #[derive(Debug)]
 pub struct MetricCollectorConfig {
-    /// Sample rate in milliseconds
-    pub sample_rate: i32,
+    /// Sample rate.
+    pub sample_rate: Duration,
     /// Observer channel buffer size.
     pub buffer_size: NonZeroUsize,
 }
@@ -25,7 +26,7 @@ pub struct MetricCollectorConfig {
 impl Default for MetricCollectorConfig {
     fn default() -> Self {
         MetricCollectorConfig {
-            sample_rate: 1000,
+            sample_rate: Duration::from_secs(1),
             buffer_size: NonZeroUsize::new(10).unwrap(),
         }
     }
