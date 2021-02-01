@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::rtree::{BoxBounded, EntryPtr, Point, Rect};
-use num::traits::real::Real;
+use num::Float;
 use std::cmp::Ordering;
 
 /// The strategy that will be used to split the nodes of the [`RTree`](struct.RTree.html), once the maximum capacity is reached.

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use num::traits::real::Real;
+use num::Float;
 use std::cmp::Ordering;
 use std::fmt::Debug;
 use std::ops::Sub;
@@ -148,14 +148,14 @@ where
     }
 }
 
-/// A 2D Point with real number coordinates.
+/// A 2D Point with Float number coordinates.
 #[derive(Debug, Copy, Clone, PartialEq)]
-pub struct Point2D<T: Real> {
+pub struct Point2D<T: Float> {
     x: T,
     y: T,
 }
 
-impl<T: Real> PartialOrd for Point2D<T> {
+impl<T: Float> PartialOrd for Point2D<T> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         if self.x == other.x && self.y == other.y {
             Some(Ordering::Equal)
@@ -169,7 +169,7 @@ impl<T: Real> PartialOrd for Point2D<T> {
     }
 }
 
-impl<T: Real> Point2D<T> {
+impl<T: Float> Point2D<T> {
     /// Creates a new 2D Point from two coordinates, x an y.
     ///
     /// # Example:
@@ -182,7 +182,7 @@ impl<T: Real> Point2D<T> {
     }
 }
 
-impl<T: Real + Debug> Sub for Point2D<T> {
+impl<T: Float + Debug> Sub for Point2D<T> {
     type Output = Self;
 
     fn sub(self, rhs: Self) -> Self {
@@ -193,7 +193,7 @@ impl<T: Real + Debug> Sub for Point2D<T> {
     }
 }
 
-impl<T: Real + Debug> Point for Point2D<T> {
+impl<T: Float + Debug> Point for Point2D<T> {
     type Type = T;
 
     fn get_coord_count() -> usize {
@@ -218,7 +218,9 @@ impl<T: Real + Debug> Point for Point2D<T> {
     }
 
     fn multiply_coord(&self) -> T {
-        self.x * self.y
+        let result = self.x * self.y;
+        assert!(result.is_finite());
+        result
     }
 
     fn has_any_matching_coords(&self, other: &Self) -> bool {
@@ -246,15 +248,15 @@ impl<T: Real + Debug> Point for Point2D<T> {
     }
 }
 
-/// A 3D Point with real number coordinates.
+/// A 3D Point with Float number coordinates.
 #[derive(Debug, Copy, Clone, PartialEq)]
-pub struct Point3D<T: Real> {
+pub struct Point3D<T: Float> {
     x: T,
     y: T,
     z: T,
 }
 
-impl<T: Real> PartialOrd for Point3D<T> {
+impl<T: Float> PartialOrd for Point3D<T> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         if self.x == other.x && self.y == other.y && self.z == other.z {
             Some(Ordering::Equal)
@@ -268,7 +270,7 @@ impl<T: Real> PartialOrd for Point3D<T> {
     }
 }
 
-impl<T: Real> Point3D<T> {
+impl<T: Float> Point3D<T> {
     /// Creates a new 3D Point from two coordinates, x an y.
     ///
     /// # Example:
@@ -281,7 +283,7 @@ impl<T: Real> Point3D<T> {
     }
 }
 
-impl<T: Real + Debug> Sub for Point3D<T> {
+impl<T: Float + Debug> Sub for Point3D<T> {
     type Output = Self;
 
     fn sub(self, rhs: Self) -> Self {
@@ -293,7 +295,7 @@ impl<T: Real + Debug> Sub for Point3D<T> {
     }
 }
 
-impl<T: Real + Debug> Point for Point3D<T> {
+impl<T: Float + Debug> Point for Point3D<T> {
     type Type = T;
 
     fn get_coord_count() -> usize {
@@ -321,7 +323,9 @@ impl<T: Real + Debug> Point for Point3D<T> {
     }
 
     fn multiply_coord(&self) -> T {
-        self.x * self.y * self.z
+        let result = self.x * self.y * self.z;
+        assert!(result.is_finite());
+        result
     }
 
     fn has_any_matching_coords(&self, other: &Self) -> bool {
@@ -355,9 +359,9 @@ impl<T: Real + Debug> Point for Point3D<T> {
 
 /// A trait for implementing a custom point.
 ///
-/// The associated type of the point must be a [`Real`] number.
+/// The associated type of the point must be a [`Float`] number.
 pub trait Point: Copy + Clone + PartialEq + PartialOrd + Debug + Sub<Output = Self> {
-    type Type: Real + Debug;
+    type Type: Float + Debug;
 
     /// Returns the number of dimensions of the point.
     fn get_coord_count() -> usize;
