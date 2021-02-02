@@ -15,11 +15,10 @@
 use crate::configuration::downlink::{
     BackpressureMode, Config, DownlinkKind,
 };
-use crate::downlink::model::event;
+use crate::downlink::model::{event, SchemaViolations};
 use crate::downlink::model::map::UntypedMapModification;
 use crate::downlink::model::value::{self, SharedValue};
 use crate::downlink::model::{command, map};
-use crate::downlink::typed::SchemaViolations;
 use crate::downlink::watch_adapter::map::KeyedWatch;
 use crate::downlink::watch_adapter::value::ValuePump;
 use crate::downlink::{Command, DownlinkError, Message};

@@ -15,9 +15,9 @@
 #[cfg(test)]
 mod tests;
 
-use crate::downlink::improved::typed::UntypedMapDownlink;
+use crate::downlink::improved::typed::{UntypedMapDownlink, ViewMode};
 use std::marker::PhantomData;
-use std::fmt::{Debug, Formatter};
+use std::fmt::{Debug, Formatter, Display};
 use std::any::type_name;
 use swim_common::form::{Form, ValidatedForm, FormErr};
 use utilities::sync::{promise, topic};
@@ -30,6 +30,9 @@ use futures::stream::unfold;
 use swim_common::model::Value;
 use swim_common::request::Request;
 use std::sync::Arc;
+use swim_common::model::schema::StandardSchema;
+use std::error::Error;
+use std::cmp::Ordering;
 
 pub struct TypedMapDownlink<K, V> {
     inner: Arc<UntypedMapDownlink>,
@@ -703,5 +706,80 @@ impl<'a, K, V> MapActions<'a, K, V>
         let view = rx.await.map_err(|_| DownlinkError::DroppedChannel)??;
         Ok(TypedMapView::new(view))
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum Incompatibility {
+    Key,
+    Value,
+    Both,
+}
+
+/// Error types returned when creating a view
+/// for a map downlink with incompatible type.
+#[derive(Debug, Clone)]
+pub struct MapViewError {
+    mode: ViewMode,
+    existing_key: StandardSchema,
+    existing_value: StandardSchema,
+    requested_key: StandardSchema,
+    requested_value: StandardSchema,
+    incompatibility: Incompatibility,
+}
+
+impl Display for MapViewError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let MapViewError {
+            mode,
+            existing_key,
+            existing_value,
+            requested_key,
+            requested_value,
+            incompatibility } = self;
+        let reason = match incompatibility {
+            Incompatibility::Key => "The key",
+            Incompatibility::Value => "The value",
+            Incompatibility::Both => "Both",
+        };
+        write!(f, "A {} view of a downlink (key schema {} and value schema {})) was requested with key schema {} and value schema {}. {} schemas are incompatible. ", mode, existing_key, existing_value, requested_key, requested_value, reason)
+
+    }
+}
+
+impl Error for MapViewError {}
+
+
+impl<K: ValidatedForm, V: ValidatedForm> MapDownlinkSubscriber<K, V> {
+
+    /// Create a read-only view for a value downlink that converts all received values to a new type.
+    /// The type of the view must have an equal or greater schema than the original downlink.
+    pub async fn covariant_cast<K2: ValidatedForm, V2: ValidatedForm>(
+        &self,
+    ) -> Result<MapDownlinkSubscriber<K2, V2>, MapViewError>
+    {
+        let key_schema_good = K2::schema().partial_cmp(&K::schema()).map(|c| c != Ordering::Less).unwrap_or(false);
+        let value_schema_good = V2::schema().partial_cmp(&V::schema()).map(|c| c != Ordering::Less).unwrap_or(false);
+
+        if key_schema_good && value_schema_good {
+            Ok(MapDownlinkSubscriber::new(self.inner.clone()))
+        } else {
+            let incompatibility = if key_schema_good {
+                Incompatibility::Value
+            } else if value_schema_good {
+                Incompatibility::Key
+            } else {
+                Incompatibility::Both
+            };
+            Err(MapViewError {
+                mode: ViewMode::ReadOnly,
+                existing_key: K::schema(),
+                existing_value: V::schema(),
+                requested_key: K2::schema(),
+                requested_value: V2::schema(),
+                incompatibility,
+            })
+        }
+    }
+
 }
 

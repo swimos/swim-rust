@@ -16,7 +16,7 @@ use num_bigint::{BigInt, BigUint};
 use tokio::sync::oneshot;
 
 use super::*;
-use crate::downlink::{DownlinkState, Operation, Response, StateMachine, UpdateFailure};
+use crate::downlink::{DownlinkState, Operation, Response, StateMachine, error::UpdateFailure, Event};
 use swim_common::model::schema::Schema;
 use swim_common::request::Request;
 

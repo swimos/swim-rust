@@ -29,8 +29,7 @@ use crate::connections::SwimConnPool;
 use crate::downlink::subscription::{
    Downlinks, SubscriptionError,
 };
-use crate::downlink::typed::SchemaViolations;
-use crate::downlink::DownlinkError;
+use crate::downlink::error::DownlinkError;
 use crate::router::SwimRouter;
 use swim_common::routing::ws::WebsocketFactory;
 use swim_common::routing::RoutingError;
@@ -48,6 +47,7 @@ use crate::downlink::improved::typed::map::{TypedMapDownlink, MapDownlinkReceive
 use crate::downlink::improved::typed::command::TypedCommandDownlink;
 use crate::downlink::improved::typed::event::TypedEventDownlink;
 use crate::downlink::improved::typed::{UntypedValueDownlink, UntypedValueReceiver, UntypedMapDownlink, UntypedMapReceiver, UntypedCommandDownlink, UntypedEventDownlink};
+use crate::downlink::model::SchemaViolations;
 
 /// Represents errors that can occur in the client.
 #[derive(Debug)]

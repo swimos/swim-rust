@@ -16,10 +16,11 @@ use crate::downlink::improved::ImprovedRawDownlink;
 use crate::downlink::model::value::{Action, SharedValue, UpdateResult};
 use crate::downlink::model::map::{MapAction, ViewWithEvent};
 use swim_common::form::{ValidatedForm, Form};
-use crate::downlink::{DownlinkError, UpdateFailure, Event};
+use crate::downlink::{error::DownlinkError, error::UpdateFailure, Event};
 use tokio::sync::oneshot;
 use swim_common::model::Value;
 use utilities::sync::topic;
+use std::fmt::{Display, Formatter};
 
 pub mod command;
 pub mod event;
@@ -38,6 +39,15 @@ pub type UntypedEventReceiver = topic::Receiver<Event<Value>>;
 pub enum ViewMode {
     ReadOnly,
     WriteOnly,
+}
+
+impl Display for ViewMode {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ViewMode::ReadOnly => write!(f, "Read Only"),
+            ViewMode::WriteOnly => write!(f, "Write Only"),
+        }
+    }
 }
 
 fn wrap_update_fn<T, F>(update_fn: F) -> impl FnOnce(&Value) -> UpdateResult<Value>

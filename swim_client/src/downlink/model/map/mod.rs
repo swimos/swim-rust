@@ -19,7 +19,6 @@ use std::sync::Arc;
 
 use futures::Stream;
 use im::ordmap::OrdMap;
-use tokio::sync::mpsc;
 
 use swim_common::form::{Form, FormErr, ValidatedForm};
 use swim_common::model::schema::attr::AttrSchema;
@@ -28,17 +27,11 @@ use swim_common::model::schema::{FieldSpec, Schema, StandardSchema};
 use swim_common::model::{Attr, Item, Value, ValueKind};
 use swim_common::sink::item::ItemSender;
 
-use crate::configuration::downlink::{DownlinkParams, OnInvalidMessage};
-use crate::downlink::buffered::{self, BufferedDownlink, BufferedReceiver};
-use crate::downlink::dropping::{self, DroppingDownlink, DroppingReceiver};
 use crate::downlink::model::value::UpdateResult;
-use crate::downlink::queue::{self, QueueDownlink, QueueReceiver};
-use crate::downlink::raw::RawDownlink;
 use crate::downlink::{
-    BasicResponse, Command, DownlinkError, DownlinkRequest, Event, Message, SyncStateMachine,
+    BasicResponse, Command, DownlinkError, DownlinkRequest, Message, SyncStateMachine,
     TransitionError,
 };
-use std::num::NonZeroUsize;
 use swim_common::routing::RoutingError;
 use crate::downlink::improved::typed::{UntypedMapDownlink, UntypedMapReceiver};
 use crate::downlink::improved::DownlinkConfig;
@@ -584,119 +577,6 @@ pub fn create_downlink_improved<Updates, Commands>(
         update_stream,
         cmd_sink,
         config,
-    )
-}
-
-/// Create a map downlink.
-pub fn create_raw_downlink<Updates, Commands>(
-    key_schema: Option<StandardSchema>,
-    value_schema: Option<StandardSchema>,
-    update_stream: Updates,
-    cmd_sink: Commands,
-    buffer_size: NonZeroUsize,
-    yield_after: NonZeroUsize,
-    on_invalid: OnInvalidMessage,
-) -> RawDownlink<MapAction, mpsc::Receiver<Event<ViewWithEvent>>>
-where
-    Updates: Stream<Item = MapItemResult> + Send + 'static,
-    Commands:
-        ItemSender<Command<UntypedMapModification<Arc<Value>>>, RoutingError> + Send + 'static,
-{
-    crate::downlink::create_downlink(
-        MapStateMachine::new(
-            key_schema.unwrap_or(StandardSchema::Anything),
-            value_schema.unwrap_or(StandardSchema::Anything),
-        ),
-        update_stream,
-        cmd_sink,
-        buffer_size,
-        yield_after,
-        on_invalid,
-    )
-}
-
-/// Create a map downlink with an queue based multiplexing topic.
-pub fn create_queue_downlink<Updates, Commands>(
-    key_schema: Option<StandardSchema>,
-    value_schema: Option<StandardSchema>,
-    update_stream: Updates,
-    cmd_sink: Commands,
-    queue_size: NonZeroUsize,
-    config: &DownlinkParams,
-) -> (
-    QueueDownlink<MapAction, ViewWithEvent>,
-    QueueReceiver<ViewWithEvent>,
-)
-where
-    Updates: Stream<Item = MapItemResult> + Send + 'static,
-    Commands:
-        ItemSender<Command<UntypedMapModification<Arc<Value>>>, RoutingError> + Send + 'static,
-{
-    queue::make_downlink(
-        MapStateMachine::new(
-            key_schema.unwrap_or(StandardSchema::Anything),
-            value_schema.unwrap_or(StandardSchema::Anything),
-        ),
-        update_stream,
-        cmd_sink,
-        queue_size,
-        &config,
-    )
-}
-
-/// Create a value downlink with an dropping multiplexing topic.
-pub fn create_dropping_downlink<Updates, Commands>(
-    key_schema: Option<StandardSchema>,
-    value_schema: Option<StandardSchema>,
-    update_stream: Updates,
-    cmd_sink: Commands,
-    config: &DownlinkParams,
-) -> (
-    DroppingDownlink<MapAction, ViewWithEvent>,
-    DroppingReceiver<ViewWithEvent>,
-)
-where
-    Updates: Stream<Item = MapItemResult> + Send + 'static,
-    Commands:
-        ItemSender<Command<UntypedMapModification<Arc<Value>>>, RoutingError> + Send + 'static,
-{
-    dropping::make_downlink(
-        MapStateMachine::new(
-            key_schema.unwrap_or(StandardSchema::Anything),
-            value_schema.unwrap_or(StandardSchema::Anything),
-        ),
-        update_stream,
-        cmd_sink,
-        &config,
-    )
-}
-
-/// Create a value downlink with an buffered multiplexing topic.
-pub fn create_buffered_downlink<Updates, Commands>(
-    key_schema: Option<StandardSchema>,
-    value_schema: Option<StandardSchema>,
-    update_stream: Updates,
-    cmd_sink: Commands,
-    queue_size: NonZeroUsize,
-    config: &DownlinkParams,
-) -> (
-    BufferedDownlink<MapAction, ViewWithEvent>,
-    BufferedReceiver<ViewWithEvent>,
-)
-where
-    Updates: Stream<Item = MapItemResult> + Send + 'static,
-    Commands:
-        ItemSender<Command<UntypedMapModification<Arc<Value>>>, RoutingError> + Send + 'static,
-{
-    buffered::make_downlink(
-        MapStateMachine::new(
-            key_schema.unwrap_or(StandardSchema::Anything),
-            value_schema.unwrap_or(StandardSchema::Anything),
-        ),
-        update_stream,
-        cmd_sink,
-        queue_size,
-        &config,
     )
 }
 

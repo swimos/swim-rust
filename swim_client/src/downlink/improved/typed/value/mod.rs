@@ -26,10 +26,11 @@ use futures::Stream;
 use futures::stream::unfold;
 use swim_common::model::schema::StandardSchema;
 use std::cmp::Ordering;
-use std::fmt::{Debug, Formatter};
+use std::fmt::{Debug, Formatter, Display};
 use std::any::type_name;
 use crate::downlink::improved::typed::{UntypedValueDownlink, ViewMode};
 use std::sync::Arc;
+use std::error::Error;
 
 pub struct TypedValueDownlink<T> {
     inner: Arc<UntypedValueDownlink>,
@@ -76,6 +77,14 @@ pub struct ValueViewError {
     // The mode of the view.
     mode: ViewMode,
 }
+
+impl Display for ValueViewError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "A {} value downlink with schema {} was requested but the original value downlink is running with schema {}.", self.mode, self.requested, self.existing)
+    }
+}
+
+impl Error for ValueViewError {}
 
 impl<T> TypedValueDownlink<T> {
 

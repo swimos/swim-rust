@@ -100,7 +100,7 @@ fn make_actions(tx: &mpsc::Sender<Action>,
 #[tokio::test]
 async fn value_get() {
     let (tx, rx) = mpsc::channel(8);
-    let (mut actions, responder) = make_actions(&tx, rx, 2);
+    let (actions, responder) = make_actions(&tx, rx, 2);
 
     let assertions = async move {
         let n = actions.get().await;
@@ -112,7 +112,7 @@ async fn value_get() {
 #[tokio::test]
 async fn value_set() {
     let (tx, rx) = mpsc::channel(8);
-    let (mut actions, responder) = make_actions(&tx, rx, 2);
+    let (actions, responder) = make_actions(&tx, rx, 2);
 
     let assertions = async move {
         let result = actions.set(7).await;
@@ -130,7 +130,7 @@ async fn invalid_value_set() {
 
     let task = responder(Arc::new(2.into()), rx);
 
-    let mut actions: ValueActions<String> = ValueActions::new(&tx);
+    let actions: ValueActions<String> = ValueActions::new(&tx);
 
     let assertions = async move {
         let result = actions.set("hello".to_string()).await;
@@ -142,7 +142,7 @@ async fn invalid_value_set() {
 #[tokio::test]
 async fn value_set_and_forget() {
     let (tx, rx) = mpsc::channel(8);
-    let (mut actions, responder) = make_actions(&tx, rx, 2);
+    let (actions, responder) = make_actions(&tx, rx, 2);
 
     let assertions = async move {
         let result = actions.set_and_forget(7).await;
@@ -157,7 +157,7 @@ async fn value_set_and_forget() {
 #[tokio::test]
 async fn value_update() {
     let (tx, rx) = mpsc::channel(8);
-    let (mut actions, responder) = make_actions(&tx, rx, 2);
+    let (actions, responder) = make_actions(&tx, rx, 2);
 
     let assertions = async move {
         let result = actions.update(|n| n + 2).await;
@@ -175,7 +175,7 @@ async fn invalid_value_update() {
 
     let task = responder(Arc::new(2.into()), rx);
 
-    let mut actions: ValueActions<Value> = ValueActions::new(&tx);
+    let actions: ValueActions<Value> = ValueActions::new(&tx);
 
     let assertions = async move {
         let result = actions.update(|_| Value::Extant).await;
@@ -187,7 +187,7 @@ async fn invalid_value_update() {
 #[tokio::test]
 async fn value_update_and_forget() {
     let (tx, rx) = mpsc::channel(8);
-    let (mut actions, responder) = make_actions(&tx, rx, 2);
+    let (actions, responder) = make_actions(&tx, rx, 2);
 
     let assertions = async move {
         let result = actions.update_and_forget(|n| n + 2).await;

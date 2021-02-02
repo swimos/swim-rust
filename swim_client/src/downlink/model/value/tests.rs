@@ -15,7 +15,7 @@
 use tokio::sync::oneshot;
 
 use super::*;
-use crate::downlink::{DownlinkState, Operation, Response, StateMachine};
+use crate::downlink::{DownlinkState, Operation, Response, StateMachine, Event};
 use swim_common::model::ValueKind;
 use swim_common::request::Request;
 

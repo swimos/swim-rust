@@ -14,7 +14,6 @@
 
 use super::*;
 use crate::configuration::downlink::{ConfigHierarchy, DownlinkParams, OnInvalidMessage};
-use crate::downlink::any::TopicKind;
 use swim_common::warp::path::AbsolutePath;
 use tokio::time::Duration;
 use url::Url;
@@ -24,7 +23,7 @@ mod harness;
 // Configuration overridden for a specific host.
 fn per_host_config() -> ConfigHierarchy {
     let timeout = Duration::from_secs(60000);
-    let special_params = DownlinkParams::new_dropping(
+    let special_params = DownlinkParams::new(
         BackpressureMode::Propagate,
         timeout,
         5,
@@ -41,9 +40,8 @@ fn per_host_config() -> ConfigHierarchy {
 // Configuration overridden for a specific lane.
 fn per_lane_config() -> ConfigHierarchy {
     let timeout = Duration::from_secs(60000);
-    let special_params = DownlinkParams::new_buffered(
+    let special_params = DownlinkParams::new(
         BackpressureMode::Propagate,
-        5,
         timeout,
         5,
         OnInvalidMessage::Terminate,
@@ -77,9 +75,7 @@ async fn subscribe_value_lane_default_config() {
     let mut downlinks = dl_manager(Default::default()).await;
     let result = downlinks.subscribe_value_untyped(Value::Extant, path).await;
     assert!(result.is_ok());
-    let (dl, _rec) = result.unwrap();
 
-    assert_eq!(dl.kind(), TopicKind::Queue);
 }
 
 #[tokio::test]
@@ -88,9 +84,7 @@ async fn subscribe_value_lane_per_host_config() {
     let mut downlinks = dl_manager(per_host_config()).await;
     let result = downlinks.subscribe_value_untyped(Value::Extant, path).await;
     assert!(result.is_ok());
-    let (dl, _rec) = result.unwrap();
 
-    assert_eq!(dl.kind(), TopicKind::Dropping);
 }
 
 #[tokio::test]
@@ -103,9 +97,7 @@ async fn subscribe_value_lane_per_lane_config() {
     let mut downlinks = dl_manager(per_lane_config()).await;
     let result = downlinks.subscribe_value_untyped(Value::Extant, path).await;
     assert!(result.is_ok());
-    let (dl, _rec) = result.unwrap();
 
-    assert_eq!(dl.kind(), TopicKind::Buffered);
 }
 
 #[tokio::test]
@@ -114,9 +106,7 @@ async fn subscribe_map_lane_default_config() {
     let mut downlinks = dl_manager(Default::default()).await;
     let result = downlinks.subscribe_map_untyped(path).await;
     assert!(result.is_ok());
-    let (dl, _rec) = result.unwrap();
 
-    assert_eq!(dl.kind(), TopicKind::Queue);
 }
 
 #[tokio::test]
@@ -125,9 +115,7 @@ async fn subscribe_map_lane_per_host_config() {
     let mut downlinks = dl_manager(per_host_config()).await;
     let result = downlinks.subscribe_map_untyped(path).await;
     assert!(result.is_ok());
-    let (dl, _rec) = result.unwrap();
 
-    assert_eq!(dl.kind(), TopicKind::Dropping);
 }
 
 #[tokio::test]
@@ -140,9 +128,7 @@ async fn subscribe_map_lane_per_lane_config() {
     let mut downlinks = dl_manager(per_lane_config()).await;
     let result = downlinks.subscribe_map_untyped(path).await;
     assert!(result.is_ok());
-    let (dl, _rec) = result.unwrap();
 
-    assert_eq!(dl.kind(), TopicKind::Buffered);
 }
 
 #[tokio::test]
@@ -195,7 +181,7 @@ async fn subscribe_value_twice() {
     assert!(result2.is_ok());
     let (dl2, _rec2) = result2.unwrap();
 
-    assert!(dl1.same_downlink(&dl2));
+    assert!(Arc::ptr_eq(&dl1, &dl2));
 }
 
 #[tokio::test]
@@ -210,7 +196,7 @@ async fn subscribe_map_twice() {
     assert!(result2.is_ok());
     let (dl2, _rec2) = result2.unwrap();
 
-    assert!(dl1.same_downlink(&dl2));
+    assert!(Arc::ptr_eq(&dl1, &dl2));
 }
 
 #[tokio::test]
@@ -219,9 +205,7 @@ async fn subscribe_value_lane_typed() {
     let mut downlinks = dl_manager(Default::default()).await;
     let result = downlinks.subscribe_value::<i32>(0, path).await;
     assert!(result.is_ok());
-    let (dl, _rec) = result.unwrap();
 
-    assert_eq!(dl.kind(), TopicKind::Queue);
 }
 
 #[tokio::test]
@@ -230,7 +214,5 @@ async fn subscribe_map_lane_typed() {
     let mut downlinks = dl_manager(Default::default()).await;
     let result = downlinks.subscribe_map::<String, i32>(path).await;
     assert!(result.is_ok());
-    let (dl, _rec) = result.unwrap();
 
-    assert_eq!(dl.kind(), TopicKind::Queue);
 }

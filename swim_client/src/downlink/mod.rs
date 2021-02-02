@@ -12,161 +12,24 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use tokio::sync::mpsc;
-
-use std::fmt::{Debug, Display, Formatter};
-use swim_common::sink::item;
-use tokio::sync::broadcast;
-use tokio::sync::watch;
-
-pub mod any;
-pub mod buffered;
-pub mod dropping;
+pub mod error;
 pub mod improved;
 pub mod model;
-pub mod queue;
-pub mod raw;
 pub mod subscription;
 #[cfg(test)]
 mod tests;
-pub mod topic;
 pub mod typed;
 pub mod watch_adapter;
 
-pub(self) use self::raw::create_downlink;
-use crate::downlink::raw::DownlinkTaskHandle;
-use std::error::Error;
-use swim_common::model::schema::StandardSchema;
-use swim_common::model::Value;
+use std::fmt::Debug;
 use swim_common::request::TryRequest;
-use swim_common::routing::ConnectionError;
 use swim_common::routing::RoutingError;
-use swim_common::topic::Topic;
 use tracing::{instrument, trace};
 use utilities::errors::Recoverable;
-
-/// Shared trait for all Warp downlinks. `Act` is the type of actions that can be performed on the
-/// downlink locally and `Upd` is the type of updates that an be observed on the client side.
-pub trait Downlink<Act, Upd>: Topic<Upd> {
-    /// Type of the topic which can be used to subscribe to the downlink.
-    type DlTopic: Topic<Upd>;
-
-    /// Type of the sink that can be used to apply actions to the downlink.
-    type DlSink;
-
-    /// Split the downlink into a topic and sink.
-    fn split(self) -> (Self::DlTopic, Self::DlSink);
-}
-
-pub(in crate::downlink) trait DownlinkInternals: Send + Sync + Debug {
-    fn task_handle(&self) -> &DownlinkTaskHandle;
-}
-
-impl DownlinkInternals for DownlinkTaskHandle {
-    fn task_handle(&self) -> &DownlinkTaskHandle {
-        self
-    }
-}
-
-#[derive(Clone, PartialEq, Debug)]
-pub enum DownlinkError {
-    DroppedChannel,
-    TaskPanic(&'static str),
-    TransitionError,
-    MalformedMessage,
-    InvalidAction,
-    SchemaViolation(Value, StandardSchema),
-    ConnectionFailure(String),
-    ConnectionPoolFailure(ConnectionError),
-    ClosingFailure,
-}
+use crate::downlink::error::{DownlinkError, TransitionError};
 
 /// A request to a downlink for a value.
 pub type DownlinkRequest<T> = TryRequest<T, DownlinkError>;
-
-impl From<RoutingError> for DownlinkError {
-    fn from(e: RoutingError) -> Self {
-        match e {
-            RoutingError::RouterDropped => DownlinkError::DroppedChannel,
-            RoutingError::ConnectionError => {
-                DownlinkError::ConnectionFailure("The connection has been lost".to_string())
-            }
-            RoutingError::PoolError(e) => DownlinkError::ConnectionPoolFailure(e),
-            RoutingError::CloseError => DownlinkError::ClosingFailure,
-            RoutingError::HostUnreachable => {
-                DownlinkError::ConnectionFailure("The host is unreachable".to_string())
-            }
-        }
-    }
-}
-
-impl Display for DownlinkError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            DownlinkError::DroppedChannel => write!(
-                f,
-                "An internal channel was dropped and the downlink is now closed."
-            ),
-            DownlinkError::TaskPanic(m) => {
-                write!(f, "The downlink task panicked with: \"{:?}\"", m)
-            }
-            DownlinkError::TransitionError => {
-                write!(f, "The downlink state machine produced and error.")
-            }
-            DownlinkError::SchemaViolation(value, schema) => write!(
-                f,
-                "Received {} but expected a value matching {}.",
-                value, schema
-            ),
-            DownlinkError::MalformedMessage => {
-                write!(f, "A message did not have the expected shape.")
-            }
-            DownlinkError::InvalidAction => {
-                write!(f, "An action could not be applied to the internal state.")
-            }
-            DownlinkError::ConnectionFailure(error) => write!(f, "Connection failure: {}.", error),
-
-            DownlinkError::ConnectionPoolFailure(connection_error) => write!(
-                f,
-                "The connection pool has encountered a failure: {}",
-                connection_error
-            ),
-            DownlinkError::ClosingFailure => write!(f, "An error occurred while closing down."),
-        }
-    }
-}
-
-impl std::error::Error for DownlinkError {}
-
-impl<T> From<mpsc::error::SendError<T>> for DownlinkError {
-    fn from(_: mpsc::error::SendError<T>) -> Self {
-        DownlinkError::DroppedChannel
-    }
-}
-
-impl<T> From<mpsc::error::TrySendError<T>> for DownlinkError {
-    fn from(_: mpsc::error::TrySendError<T>) -> Self {
-        DownlinkError::DroppedChannel
-    }
-}
-
-impl<T> From<watch::error::SendError<T>> for DownlinkError {
-    fn from(_: watch::error::SendError<T>) -> Self {
-        DownlinkError::DroppedChannel
-    }
-}
-
-impl From<item::SendError> for DownlinkError {
-    fn from(_: item::SendError) -> Self {
-        DownlinkError::DroppedChannel
-    }
-}
-
-impl<T> From<broadcast::error::SendError<T>> for DownlinkError {
-    fn from(_: broadcast::error::SendError<T>) -> Self {
-        DownlinkError::DroppedChannel
-    }
-}
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum DownlinkState {
@@ -275,35 +138,6 @@ impl<Ev, Cmd> Response<Ev, Cmd> {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Debug)]
-pub enum TransitionError {
-    ReceiverDropped,
-    SideEffectFailed,
-    IllegalTransition(String),
-}
-
-impl Display for TransitionError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            TransitionError::ReceiverDropped => write!(f, "Observer of the update was dropped."),
-            TransitionError::SideEffectFailed => write!(f, "A side effect failed to complete."),
-            TransitionError::IllegalTransition(err) => {
-                write!(f, "An illegal transition was attempted: '{}'", err)
-            }
-        }
-    }
-}
-
-#[derive(Clone, PartialEq, Eq, Debug)]
-pub struct UpdateFailure(String);
-
-impl Error for TransitionError {}
-
-impl Recoverable for TransitionError {
-    fn is_fatal(&self) -> bool {
-        matches!(self, TransitionError::IllegalTransition(_))
-    }
-}
 
 /// This trait defines the interface that must be implemented for the state type of a downlink.
 trait StateMachine<State, Message, Action>: Sized {
@@ -490,38 +324,3 @@ where
     }
 }
 
-/// Merges a number of different channel send error types.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct DroppedError;
-
-impl Display for DroppedError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Channel dropped.")
-    }
-}
-
-impl std::error::Error for DroppedError {}
-
-impl<T> From<mpsc::error::SendError<T>> for DroppedError {
-    fn from(_: mpsc::error::SendError<T>) -> Self {
-        DroppedError
-    }
-}
-
-impl<T> From<watch::error::SendError<T>> for DroppedError {
-    fn from(_: watch::error::SendError<T>) -> Self {
-        DroppedError
-    }
-}
-
-impl<T> From<broadcast::error::SendError<T>> for DroppedError {
-    fn from(_: broadcast::error::SendError<T>) -> Self {
-        DroppedError
-    }
-}
-
-impl From<swim_common::sink::item::SendError> for DroppedError {
-    fn from(_: swim_common::sink::item::SendError) -> Self {
-        DroppedError
-    }
-}

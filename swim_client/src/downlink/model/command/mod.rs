@@ -12,9 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::configuration::downlink::DownlinkParams;
 use crate::downlink::{
-    raw, Command, DownlinkError, DownlinkState, Operation, Response, StateMachine,
+    Command, DownlinkError, DownlinkState, Operation, Response, StateMachine,
 };
 use swim_common::model::schema::{Schema, StandardSchema};
 use swim_common::model::Value;
@@ -43,28 +42,6 @@ pub fn create_downlink_improved<Commands>(
         config,
     ).0
 
-}
-
-pub fn create_downlink<Commands>(
-    schema: StandardSchema,
-    cmd_sender: Commands,
-    config: &DownlinkParams,
-) -> raw::Sender<Value>
-where
-    Commands: ItemSender<Command<Value>, RoutingError> + Send + 'static,
-{
-    let upd_stream = futures::stream::pending();
-
-    raw::create_downlink(
-        CommandStateMachine::new(schema),
-        upd_stream,
-        cmd_sender,
-        config.buffer_size,
-        config.yield_after,
-        config.on_invalid,
-    )
-    .split()
-    .0
 }
 
 struct CommandStateMachine {
