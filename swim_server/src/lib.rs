@@ -21,4 +21,7 @@ pub mod routing;
 
 #[allow(unused_imports)]
 pub use agent_derive::*;
-pub use utilities::*;
+pub use utilities::future::retryable::strategy::RetryStrategy;
+pub use utilities::future::SwimStreamExt;
+pub use utilities::route_pattern::RoutePattern;
+pub use utilities::uri;

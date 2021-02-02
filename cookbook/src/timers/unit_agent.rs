@@ -13,24 +13,19 @@
 // limitations under the License.
 
 use std::fmt::Debug;
-use std::sync::Arc;
 use std::time::Duration;
 use stm::transaction::atomically;
 use swim_common::model::Value;
 use swim_server::agent::command_lifecycle;
 use swim_server::agent::lane::channels::update::StmRetryStrategy;
-use swim_server::agent::lane::lifecycle::{LaneLifecycle, StatefulLaneLifecycleBase};
 use swim_server::agent::lane::model::action::CommandLane;
-use swim_server::agent::lane::model::value::ValueLane;
-use swim_server::agent::lane::strategy::Queue;
+use swim_server::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 use swim_server::agent::value_lifecycle;
 use swim_server::agent::AgentContext;
 use swim_server::agent::SwimAgent;
-use swim_server::agent_lifecycle;
-use swim_server::future::retryable::strategy::RetryStrategy;
+use swim_server::{agent_lifecycle, RetryStrategy};
 
 #[derive(Debug, SwimAgent)]
-#[agent(config = "UnitAgentConfig")]
 pub struct UnitAgent {
     #[lifecycle(name = "MinutesLifecycle")]
     pub minutes: ValueLane<i32>,
@@ -38,10 +33,7 @@ pub struct UnitAgent {
     pub publish: CommandLane<Value>,
 }
 
-#[derive(Debug, Clone)]
-pub struct UnitAgentConfig;
-
-#[agent_lifecycle(agent = "UnitAgent")]
+#[agent_lifecycle(agent = "UnitAgent", on_start)]
 pub struct UnitAgentLifecycle;
 
 impl UnitAgentLifecycle {
@@ -62,39 +54,23 @@ impl UnitAgentLifecycle {
     }
 }
 
-#[value_lifecycle(agent = "UnitAgent", event_type = "i32")]
+#[value_lifecycle(agent = "UnitAgent", event_type = "i32", on_event)]
 struct MinutesLifecycle;
 
 impl MinutesLifecycle {
-    async fn on_start<Context>(&self, _model: &ValueLane<i32>, _context: &Context)
-    where
-        Context: AgentContext<UnitAgent> + Sized + Send + Sync,
-    {
-    }
-
-    async fn on_event<Context>(&self, event: &Arc<i32>, _model: &ValueLane<i32>, _context: &Context)
-    where
+    async fn on_event<Context>(
+        &self,
+        event: &ValueLaneEvent<i32>,
+        _model: &ValueLane<i32>,
+        _context: &Context,
+    ) where
         Context: AgentContext<UnitAgent> + Sized + Send + Sync + 'static,
     {
-        println!("{} seconds since last event", event);
+        println!("{} seconds since last event", event.current);
     }
 }
 
-impl LaneLifecycle<UnitAgentConfig> for MinutesLifecycle {
-    fn create(_config: &UnitAgentConfig) -> Self {
-        MinutesLifecycle {}
-    }
-}
-
-impl StatefulLaneLifecycleBase for MinutesLifecycle {
-    type WatchStrategy = Queue;
-
-    fn create_strategy(&self) -> Self::WatchStrategy {
-        Queue::default()
-    }
-}
-
-#[command_lifecycle(agent = "UnitAgent", command_type = "Value")]
+#[command_lifecycle(agent = "UnitAgent", command_type = "Value", on_command)]
 struct PublishLifecycle;
 
 impl PublishLifecycle {
@@ -111,12 +87,6 @@ impl PublishLifecycle {
             StmRetryStrategy::new(RetryStrategy::default()),
         )
         .await;
-    }
-}
-
-impl LaneLifecycle<UnitAgentConfig> for PublishLifecycle {
-    fn create(_config: &UnitAgentConfig) -> Self {
-        PublishLifecycle {}
     }
 }
 

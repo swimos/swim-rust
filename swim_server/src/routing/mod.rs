@@ -37,46 +37,45 @@ pub mod remote;
 mod tests;
 
 #[derive(Debug, Clone)]
-pub(crate) struct SuperRouterFactory {
+pub(crate) struct TopLevelRouterFactory {
     plane_sender: mpsc::Sender<PlaneRequest>,
     remote_sender: mpsc::Sender<RoutingRequest>,
 }
 
-impl SuperRouterFactory {
+impl TopLevelRouterFactory {
     pub(in crate) fn new(
         plane_sender: mpsc::Sender<PlaneRequest>,
         remote_sender: mpsc::Sender<RoutingRequest>,
     ) -> Self {
-        SuperRouterFactory {
+        TopLevelRouterFactory {
             plane_sender,
             remote_sender,
         }
     }
 }
 
-impl ServerRouterFactory for SuperRouterFactory {
-    type Router = SuperRouter;
+impl ServerRouterFactory for TopLevelRouterFactory {
+    type Router = TopLevelRouter;
 
     fn create_for(&self, addr: RoutingAddr) -> Self::Router {
-        SuperRouter::new(addr, self.plane_sender.clone(), self.remote_sender.clone())
+        TopLevelRouter::new(addr, self.plane_sender.clone(), self.remote_sender.clone())
     }
 }
 
-// Todo maybe change name
 #[derive(Debug, Clone)]
-pub(crate) struct SuperRouter {
+pub struct TopLevelRouter {
     addr: RoutingAddr,
     plane_sender: mpsc::Sender<PlaneRequest>,
     remote_sender: mpsc::Sender<RoutingRequest>,
 }
 
-impl SuperRouter {
-    pub fn new(
+impl TopLevelRouter {
+    pub(crate) fn new(
         addr: RoutingAddr,
         plane_sender: mpsc::Sender<PlaneRequest>,
         remote_sender: mpsc::Sender<RoutingRequest>,
     ) -> Self {
-        SuperRouter {
+        TopLevelRouter {
             addr,
             plane_sender,
             remote_sender,
@@ -84,13 +83,13 @@ impl SuperRouter {
     }
 }
 
-impl ServerRouter for SuperRouter {
+impl ServerRouter for TopLevelRouter {
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,
     ) -> BoxFuture<'_, Result<Route, ResolutionError>> {
         async move {
-            let SuperRouter {
+            let TopLevelRouter {
                 plane_sender,
                 remote_sender,
                 addr: tag,
@@ -143,7 +142,7 @@ impl ServerRouter for SuperRouter {
         route: RelativeUri,
     ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
         async move {
-            let SuperRouter { plane_sender, .. } = self;
+            let TopLevelRouter { plane_sender, .. } = self;
 
             let (tx, rx) = oneshot::channel();
             if plane_sender

@@ -13,13 +13,12 @@
 // limitations under the License.
 
 use crate::agent::lane::channels::AgentExecutionConfig;
-use crate::agent::lane::lifecycle::{LaneLifecycle, StatefulLaneLifecycleBase};
+use crate::agent::lane::lifecycle::LaneLifecycle;
 use crate::agent::lane::model::action::CommandLane;
 use crate::agent::lane::model::demand::DemandLane;
 use crate::agent::lane::model::demand_map::DemandMapLane;
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
-use crate::agent::lane::model::value::ValueLane;
-use crate::agent::lane::strategy::Queue;
+use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 use crate::agent::lane::tests::ExactlyOnce;
 use crate::agent::lifecycle::AgentLifecycle;
 use crate::agent::tests::stub_router::SingleChannelRouter;
@@ -147,7 +146,7 @@ impl ReportingAgentLifecycle {
     }
 }
 
-#[command_lifecycle(agent = "ReportingAgent", command_type = "String")]
+#[command_lifecycle(agent = "ReportingAgent", command_type = "String", on_command)]
 struct ActionLifecycle {
     event_handler: EventCollectorHandler,
 }
@@ -186,7 +185,13 @@ impl LaneLifecycle<TestAgentConfig> for ActionLifecycle {
     }
 }
 
-#[map_lifecycle(agent = "ReportingAgent", key_type = "String", value_type = "i32")]
+#[map_lifecycle(
+    agent = "ReportingAgent",
+    key_type = "String",
+    value_type = "i32",
+    on_start,
+    on_event
+)]
 struct DataLifecycle {
     event_handler: EventCollectorHandler,
 }
@@ -240,15 +245,7 @@ impl LaneLifecycle<TestAgentConfig> for DataLifecycle {
     }
 }
 
-impl StatefulLaneLifecycleBase for DataLifecycle {
-    type WatchStrategy = Queue;
-
-    fn create_strategy(&self) -> Self::WatchStrategy {
-        Queue::default()
-    }
-}
-
-#[value_lifecycle(agent = "ReportingAgent", event_type = "i32")]
+#[value_lifecycle(agent = "ReportingAgent", event_type = "i32", on_start, on_event)]
 struct TotalLifecycle {
     event_handler: EventCollectorHandler,
 }
@@ -260,11 +257,15 @@ impl TotalLifecycle {
     {
     }
 
-    async fn on_event<Context>(&self, event: &Arc<i32>, _model: &ValueLane<i32>, _context: &Context)
-    where
+    async fn on_event<Context>(
+        &self,
+        event: &ValueLaneEvent<i32>,
+        _model: &ValueLane<i32>,
+        _context: &Context,
+    ) where
         Context: AgentContext<ReportingAgent> + Sized + Send + Sync + 'static,
     {
-        let n = **event;
+        let n = *event.current;
         self.event_handler
             .push(ReportingAgentEvent::TotalEvent(n))
             .await;
@@ -278,15 +279,7 @@ impl LaneLifecycle<TestAgentConfig> for TotalLifecycle {
     }
 }
 
-impl StatefulLaneLifecycleBase for TotalLifecycle {
-    type WatchStrategy = Queue;
-
-    fn create_strategy(&self) -> Self::WatchStrategy {
-        Queue::default()
-    }
-}
-
-#[demand_lifecycle(agent = "ReportingAgent", event_type = "i32")]
+#[demand_lifecycle(agent = "ReportingAgent", event_type = "i32", on_cue)]
 struct DemandLifecycle {
     event_handler: EventCollectorHandler,
 }
@@ -313,7 +306,13 @@ impl DemandLifecycle {
     }
 }
 
-#[demand_map_lifecycle(agent = "ReportingAgent", key_type = "String", value_type = "i32")]
+#[demand_map_lifecycle(
+    agent = "ReportingAgent",
+    key_type = "String",
+    value_type = "i32",
+    on_sync,
+    on_cue
+)]
 struct DemandMapLifecycle {
     event_handler: EventCollectorHandler,
 }

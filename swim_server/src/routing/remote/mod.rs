@@ -81,6 +81,12 @@ pub enum RoutingRequest {
     },
 }
 
+pub struct RemoteConnectionChannels {
+    pub(crate) request_tx: mpsc::Sender<RoutingRequest>,
+    pub(crate) request_rx: mpsc::Receiver<RoutingRequest>,
+    pub(crate) stop_trigger: trigger::Receiver,
+}
+
 #[derive(Debug)]
 pub struct RemoteConnectionsTask<External: ExternalConnections, Ws, Router, Sp> {
     external: External,
@@ -118,18 +124,20 @@ where
     RouterFac: ServerRouterFactory + 'static,
     Sp: Spawner<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>> + Send + Unpin,
 {
-    #[allow(clippy::too_many_arguments)]
     pub async fn new(
         configuration: ConnectionConfig,
         external: External,
         bind_addr: SocketAddr,
         websockets: Ws,
         delegate_router: RouterFac,
-        stop_trigger: trigger::Receiver,
         spawner: Sp,
-        remote_channel: (mpsc::Sender<RoutingRequest>, mpsc::Receiver<RoutingRequest>),
+        channels: RemoteConnectionChannels,
     ) -> io::Result<Self> {
-        let (remote_tx, remote_rx) = remote_channel;
+        let RemoteConnectionChannels {
+            request_tx: remote_tx,
+            request_rx: remote_rx,
+            stop_trigger,
+        } = channels;
 
         let listener = external.bind(bind_addr).await?;
         Ok(RemoteConnectionsTask {
@@ -164,9 +172,12 @@ where
             spawner,
             external,
             listener,
-            stop_trigger,
             delegate_router,
-            (remote_tx, remote_rx),
+            RemoteConnectionChannels {
+                request_tx: remote_tx,
+                request_rx: remote_rx,
+                stop_trigger,
+            },
         );
 
         let mut overall_result = Ok(());

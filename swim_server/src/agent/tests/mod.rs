@@ -19,13 +19,10 @@ mod reporting_macro_agent;
 pub(crate) mod test_clock;
 
 use crate::agent::lane::channels::AgentExecutionConfig;
-use crate::agent::lane::lifecycle::{
-    ActionLaneLifecycle, StatefulLaneLifecycle, StatefulLaneLifecycleBase,
-};
+use crate::agent::lane::lifecycle::{ActionLaneLifecycle, StatefulLaneLifecycle};
 use crate::agent::lane::model::action::{Action, ActionLane, CommandLane};
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
-use crate::agent::lane::model::value::ValueLane;
-use crate::agent::lane::strategy::Queue;
+use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 use crate::agent::lane::LaneModel;
 use crate::agent::tests::reporting_agent::{ReportingAgentEvent, TestAgentConfig};
 use crate::agent::tests::stub_router::SingleChannelRouter;
@@ -143,18 +140,6 @@ impl<Lane: LaneModel> Default for TestLifecycle<Lane> {
     }
 }
 
-impl<Lane> StatefulLaneLifecycleBase for TestLifecycle<Lane>
-where
-    Lane: LaneModel + Send + Sync + 'static,
-    Lane::Event: Send + Sync + 'static,
-{
-    type WatchStrategy = Queue;
-
-    fn create_strategy(&self) -> Self::WatchStrategy {
-        Queue::default()
-    }
-}
-
 impl<'a, Lane> StatefulLaneLifecycle<'a, Lane, TestAgent<Lane>> for TestLifecycle<Lane>
 where
     Lane: LaneModel + Send + Sync + 'static,
@@ -182,7 +167,7 @@ where
     }
 
     fn on_event<C>(
-        &'a self,
+        &'a mut self,
         event: &'a Lane::Event,
         model: &'a Lane,
         context: &'a C,
@@ -377,12 +362,27 @@ async fn value_lane_events_task() {
 
     let lock = lifecycle.0.lock().await;
 
+    let expected_first = ValueLaneEvent {
+        previous: None,
+        current: a.clone(),
+    };
+
+    let expected_second = ValueLaneEvent {
+        previous: Some(a),
+        current: b.clone(),
+    };
+
+    let expected_third = ValueLaneEvent {
+        previous: Some(b),
+        current: c,
+    };
+
     assert_eq!(lock.event_agent, Some("agent"));
     assert!(matches!(&lock.event_model, Some(l) if ValueLane::same_lane(&l, &lane)));
     assert!(lock.start_agent.is_none());
     assert!(lock.start_model.is_none());
     assert!(
-        matches!(lock.events.as_slice(), [first, second, third] if Arc::ptr_eq(first, &a) && Arc::ptr_eq(second, &b) && Arc::ptr_eq(third, &c))
+        matches!(lock.events.as_slice(), [first, second, third] if expected_first.eq(first) && expected_second.eq(second) && expected_third.eq(third))
     )
 }
 

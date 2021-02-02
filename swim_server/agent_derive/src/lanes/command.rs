@@ -12,14 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::utils::{get_task_struct_name, validate_input_ast, InputAstType};
+use crate::utils::{
+    get_task_struct_name, parse_callback, validate_input_ast, Callback, CallbackKind, InputAstType,
+    LaneTasksImpl,
+};
 use darling::FromMeta;
-use macro_helpers::string_to_ident;
+use macro_helpers::{has_fields, string_to_ident};
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{AttributeArgs, DeriveInput};
 
-use crate::internals::default_on_command;
 use crate::lanes::derive_lane;
 use proc_macro2::Ident;
 
@@ -29,8 +31,8 @@ struct CommandAttrs {
     agent: Ident,
     #[darling(map = "string_to_ident")]
     command_type: Ident,
-    #[darling(default = "default_on_command", map = "string_to_ident")]
-    on_command: Ident,
+    #[darling(default)]
+    on_command: Option<darling::Result<String>>,
 }
 
 pub fn derive_command_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput) -> TokenStream {
@@ -46,11 +48,40 @@ pub fn derive_command_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput
     };
 
     let lifecycle_name = input_ast.ident.clone();
+    let has_fields = has_fields(&input_ast.data);
     let task_name = get_task_struct_name(&input_ast.ident.to_string());
     let agent_name = args.agent.clone();
     let command_type = &args.command_type;
-    let on_command_func = &args.on_command;
-    let on_event = quote! {
+    let on_command_callback =
+        parse_callback(&args.on_command, task_name.clone(), CallbackKind::Command);
+    let lane_tasks_impl = LaneTasksImpl::Command {
+        on_command: on_command_callback,
+    };
+
+    derive_lane(
+        "CommandLifecycle",
+        lifecycle_name,
+        has_fields,
+        task_name,
+        agent_name,
+        input_ast,
+        quote!(swim_server::agent::lane::model::action::CommandLane<#command_type>),
+        quote!(swim_server::agent::lane::model::action::Action<#command_type, ()>),
+        lane_tasks_impl,
+        quote! {
+            use swim_server::agent::lane::model::action::CommandLane;
+            use swim_server::agent::lane::model::action::Action;
+            use swim_server::agent::lane::lifecycle::LaneLifecycle;
+        },
+        None,
+    )
+}
+
+pub fn derive_events_body(on_command: &Callback) -> proc_macro2::TokenStream {
+    let task_name = &on_command.task_name;
+    let on_command_func = &on_command.func_name;
+
+    quote!(
         let #task_name {
             lifecycle,
             event_stream,
@@ -78,22 +109,5 @@ pub fn derive_command_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput
                 }
             }
         }
-    };
-
-    derive_lane(
-        "CommandLifecycle",
-        lifecycle_name,
-        task_name,
-        agent_name,
-        input_ast,
-        quote!(swim_server::agent::lane::model::action::CommandLane<#command_type>),
-        quote!(swim_server::agent::lane::model::action::Action<#command_type, ()>),
-        None,
-        on_event,
-        quote! {
-            use swim_server::agent::lane::model::action::CommandLane;
-            use swim_server::agent::lane::model::action::Action;
-        },
-        None,
     )
 }

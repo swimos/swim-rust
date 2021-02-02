@@ -13,23 +13,18 @@
 // limitations under the License.
 
 use std::fmt::{Debug, Display};
-use std::sync::Arc;
 use stm::transaction::atomically;
 use swim_server::agent::command_lifecycle;
 use swim_server::agent::lane::channels::update::StmRetryStrategy;
-use swim_server::agent::lane::lifecycle::{LaneLifecycle, StatefulLaneLifecycleBase};
 use swim_server::agent::lane::model::action::CommandLane;
-use swim_server::agent::lane::model::value::ValueLane;
-use swim_server::agent::lane::strategy::Queue;
+use swim_server::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 use swim_server::agent::value_lifecycle;
 use swim_server::agent::AgentContext;
 use swim_server::agent::SwimAgent;
-use swim_server::agent_lifecycle;
-use swim_server::future::retryable::strategy::RetryStrategy;
 use swim_server::uri::RelativeUri;
+use swim_server::RetryStrategy;
 
 #[derive(Debug, SwimAgent)]
-#[agent(config = "UnitAgentConfig")]
 pub struct UnitAgent {
     #[lifecycle(name = "InfoLifecycle")]
     pub info: ValueLane<String>,
@@ -37,59 +32,29 @@ pub struct UnitAgent {
     pub publish_info: CommandLane<String>,
 }
 
-#[derive(Debug, Clone)]
-pub struct UnitAgentConfig;
-
-#[agent_lifecycle(agent = "UnitAgent")]
-pub struct UnitAgentLifecycle;
-
-impl UnitAgentLifecycle {
-    async fn on_start<Context>(&self, _context: &Context)
-    where
-        Context: AgentContext<UnitAgent> + Sized + Send + Sync,
-    {
-    }
-}
-
-#[value_lifecycle(agent = "UnitAgent", event_type = "String")]
+#[value_lifecycle(agent = "UnitAgent", event_type = "String", on_event)]
 struct InfoLifecycle;
 
 impl InfoLifecycle {
-    async fn on_start<Context>(&self, _model: &ValueLane<String>, _context: &Context)
-    where
-        Context: AgentContext<UnitAgent> + Sized + Send + Sync,
-    {
-    }
-
     async fn on_event<Context>(
         &self,
-        event: &Arc<String>,
-        model: &ValueLane<String>,
+        event: &ValueLaneEvent<String>,
+        _model: &ValueLane<String>,
         context: &Context,
     ) where
         Context: AgentContext<UnitAgent> + Sized + Send + Sync + 'static,
     {
-        //Todo this should print the current and the previous value
-        let message = format!("`info` set to {} from {}", event, model.load().await);
+        let message = if let Some(prev) = &event.previous {
+            format!("`info` set to {} from {}", event.current, prev)
+        } else {
+            format!("`info` set to {}", event.current)
+        };
+
         log_message(context.node_uri(), &message);
     }
 }
 
-impl LaneLifecycle<UnitAgentConfig> for InfoLifecycle {
-    fn create(_config: &UnitAgentConfig) -> Self {
-        InfoLifecycle {}
-    }
-}
-
-impl StatefulLaneLifecycleBase for InfoLifecycle {
-    type WatchStrategy = Queue;
-
-    fn create_strategy(&self) -> Self::WatchStrategy {
-        Queue::default()
-    }
-}
-
-#[command_lifecycle(agent = "UnitAgent", command_type = "String")]
+#[command_lifecycle(agent = "UnitAgent", command_type = "String", on_command)]
 struct PublishInfoLifecycle;
 
 impl PublishInfoLifecycle {
@@ -109,12 +74,6 @@ impl PublishInfoLifecycle {
             StmRetryStrategy::new(RetryStrategy::default()),
         )
         .await;
-    }
-}
-
-impl LaneLifecycle<UnitAgentConfig> for PublishInfoLifecycle {
-    fn create(_config: &UnitAgentConfig) -> Self {
-        PublishInfoLifecycle {}
     }
 }
 

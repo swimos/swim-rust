@@ -12,12 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::sync::Arc;
-use swim_server::agent::lane::lifecycle::{LaneLifecycle, StatefulLaneLifecycleBase};
 use swim_server::agent::lane::model::action::{ActionLane, CommandLane};
 use swim_server::agent::lane::model::map::{MapLane, MapLaneEvent};
-use swim_server::agent::lane::model::value::ValueLane;
-use swim_server::agent::lane::strategy::Queue;
+use swim_server::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 use swim_server::agent::AgentContext;
 use swim_server::{
     action_lifecycle, agent_lifecycle, command_lifecycle, map_lifecycle, value_lifecycle, SwimAgent,
@@ -97,16 +94,10 @@ fn main() {
         }
     }
 
-    impl LaneLifecycle<TestAgentConfig> for CommandLifecycle1 {
-        fn create(_config: &TestAgentConfig) -> Self {
-            CommandLifecycle1 {}
-        }
-    }
-
     // ----------------------- Command Lifecycle 2 -----------------------
 
     #[command_lifecycle(agent = "TestAgent", command_type = "i32", on_command = "on_command")]
-    struct CommandLifecycle2;
+    struct CommandLifecycle2 {}
 
     impl CommandLifecycle2 {
         async fn on_command<Context>(
@@ -121,15 +112,14 @@ fn main() {
         }
     }
 
-    impl LaneLifecycle<TestAgentConfig> for CommandLifecycle2 {
-        fn create(_config: &TestAgentConfig) -> Self {
-            CommandLifecycle2 {}
-        }
-    }
-
     // ----------------------- Action Lifecycle 1 -----------------------
 
-    #[action_lifecycle(agent = "TestAgent", command_type = "i32", response_type = "i32")]
+    #[action_lifecycle(
+        agent = "TestAgent",
+        command_type = "i32",
+        response_type = "i32",
+        on_command
+    )]
     struct ActionLifecycle1;
 
     impl ActionLifecycle1 {
@@ -146,16 +136,15 @@ fn main() {
         }
     }
 
-    impl LaneLifecycle<TestAgentConfig> for ActionLifecycle1 {
-        fn create(_config: &TestAgentConfig) -> Self {
-            ActionLifecycle1 {}
-        }
-    }
-
     // ----------------------- Action Lifecycle 2 -----------------------
 
-    #[action_lifecycle(agent = "TestAgent", command_type = "i64", response_type = "i64")]
-    struct ActionLifecycle2;
+    #[action_lifecycle(
+        agent = "TestAgent",
+        command_type = "i64",
+        response_type = "i64",
+        on_command
+    )]
+    struct ActionLifecycle2 {}
 
     impl ActionLifecycle2 {
         async fn on_command<Context>(
@@ -171,15 +160,14 @@ fn main() {
         }
     }
 
-    impl LaneLifecycle<TestAgentConfig> for ActionLifecycle2 {
-        fn create(_config: &TestAgentConfig) -> Self {
-            ActionLifecycle2 {}
-        }
-    }
-
     // ----------------------- Action Lifecycle 2 -----------------------
 
-    #[action_lifecycle(agent = "TestAgent", command_type = "String", response_type = "String")]
+    #[action_lifecycle(
+        agent = "TestAgent",
+        command_type = "String",
+        response_type = "String",
+        on_command
+    )]
     struct ActionLifecycle3;
 
     impl ActionLifecycle3 {
@@ -196,15 +184,9 @@ fn main() {
         }
     }
 
-    impl LaneLifecycle<TestAgentConfig> for ActionLifecycle3 {
-        fn create(_config: &TestAgentConfig) -> Self {
-            ActionLifecycle3 {}
-        }
-    }
-
     // ----------------------- Value Lifecycle 1 -----------------------
 
-    #[value_lifecycle(agent = "TestAgent", event_type = "i32")]
+    #[value_lifecycle(agent = "TestAgent", event_type = "i32", on_start, on_event)]
     struct ValueLifecycle1;
 
     impl ValueLifecycle1 {
@@ -217,7 +199,7 @@ fn main() {
 
         async fn on_event<Context>(
             &self,
-            _event: &Arc<i32>,
+            _event: &ValueLaneEvent<i32>,
             _model: &ValueLane<i32>,
             _context: &Context,
         ) where
@@ -227,24 +209,10 @@ fn main() {
         }
     }
 
-    impl LaneLifecycle<TestAgentConfig> for ValueLifecycle1 {
-        fn create(_config: &TestAgentConfig) -> Self {
-            ValueLifecycle1 {}
-        }
-    }
-
-    impl StatefulLaneLifecycleBase for ValueLifecycle1 {
-        type WatchStrategy = Queue;
-
-        fn create_strategy(&self) -> Self::WatchStrategy {
-            Queue::default()
-        }
-    }
-
     // ----------------------- Value Lifecycle 2 -----------------------
 
-    #[value_lifecycle(agent = "TestAgent", event_type = "String")]
-    struct ValueLifecycle2;
+    #[value_lifecycle(agent = "TestAgent", event_type = "String", on_start, on_event)]
+    struct ValueLifecycle2 {}
 
     impl ValueLifecycle2 {
         async fn on_start<Context>(&self, _model: &ValueLane<String>, _context: &Context)
@@ -256,7 +224,7 @@ fn main() {
 
         async fn on_event<Context>(
             &self,
-            _event: &Arc<String>,
+            _event: &ValueLaneEvent<String>,
             _model: &ValueLane<String>,
             _context: &Context,
         ) where
@@ -266,23 +234,15 @@ fn main() {
         }
     }
 
-    impl LaneLifecycle<TestAgentConfig> for ValueLifecycle2 {
-        fn create(_config: &TestAgentConfig) -> Self {
-            ValueLifecycle2 {}
-        }
-    }
-
-    impl StatefulLaneLifecycleBase for ValueLifecycle2 {
-        type WatchStrategy = Queue;
-
-        fn create_strategy(&self) -> Self::WatchStrategy {
-            Queue::default()
-        }
-    }
-
     // ----------------------- Map Lifecycle 1 -----------------------
 
-    #[map_lifecycle(agent = "TestAgent", key_type = "String", value_type = "i32")]
+    #[map_lifecycle(
+        agent = "TestAgent",
+        key_type = "String",
+        value_type = "i32",
+        on_start,
+        on_event
+    )]
     struct MapLifecycle1;
 
     impl MapLifecycle1 {
@@ -305,24 +265,16 @@ fn main() {
         }
     }
 
-    impl LaneLifecycle<TestAgentConfig> for MapLifecycle1 {
-        fn create(_config: &TestAgentConfig) -> Self {
-            MapLifecycle1 {}
-        }
-    }
-
-    impl StatefulLaneLifecycleBase for MapLifecycle1 {
-        type WatchStrategy = Queue;
-
-        fn create_strategy(&self) -> Self::WatchStrategy {
-            Queue::default()
-        }
-    }
-
     // ----------------------- Map Lifecycle 1 -----------------------
 
-    #[map_lifecycle(agent = "TestAgent", key_type = "i32", value_type = "String")]
-    struct MapLifecycle2;
+    #[map_lifecycle(
+        agent = "TestAgent",
+        key_type = "i32",
+        value_type = "String",
+        on_start,
+        on_event
+    )]
+    struct MapLifecycle2 {}
 
     impl MapLifecycle2 {
         async fn on_start<Context>(&self, _model: &MapLane<i32, String>, _context: &Context)
@@ -341,20 +293,6 @@ fn main() {
             Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
         {
             unimplemented!()
-        }
-    }
-
-    impl LaneLifecycle<TestAgentConfig> for MapLifecycle2 {
-        fn create(_config: &TestAgentConfig) -> Self {
-            MapLifecycle2 {}
-        }
-    }
-
-    impl StatefulLaneLifecycleBase for MapLifecycle2 {
-        type WatchStrategy = Queue;
-
-        fn create_strategy(&self) -> Self::WatchStrategy {
-            Queue::default()
         }
     }
 }

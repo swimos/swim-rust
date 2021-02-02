@@ -12,9 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swim_server::agent::lane::model::action::CommandLane;
-use swim_server::agent::AgentContext;
-use swim_server::command_lifecycle;
+use swim_server::action_lifecycle;
 
 mod swim_server {
     pub use crate::*;
@@ -27,19 +25,6 @@ fn main() {
     #[derive(Debug)]
     pub struct TestAgentConfig;
 
-    #[command_lifecycle(agent = "TestAgent", command_type = "i32")]
-    struct CommandLifecycle;
-
-    impl CommandLifecycle {
-        async fn on_command<Context>(
-            &self,
-            _command: i32,
-            _model: &CommandLane<i32>,
-            _context: &Context,
-        ) where
-            Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
-        {
-            unimplemented!()
-        }
-    }
+    #[action_lifecycle(agent = "TestAgent", command_type = "f32", response_type = "i32")]
+    struct ActionLifecycle;
 }

@@ -14,39 +14,21 @@
 
 use std::fmt::{Debug, Display};
 use swim_common::model::{Item, Value};
-use swim_server::agent::action_lifecycle;
 use swim_server::agent::command_lifecycle;
-use swim_server::agent::lane::lifecycle::LaneLifecycle;
-use swim_server::agent::lane::model::action::{ActionLane, CommandLane};
+use swim_server::agent::lane::model::action::CommandLane;
 use swim_server::agent::AgentContext;
 use swim_server::agent::SwimAgent;
-use swim_server::agent_lifecycle;
 use swim_server::uri::RelativeUri;
 
 #[derive(Debug, SwimAgent)]
-#[agent(config = "UnitAgentConfig")]
 pub struct UnitAgent {
     #[lifecycle(name = "PublishLifecycle")]
     pub publish: CommandLane<i32>,
     #[lifecycle(name = "PublishValueLifecycle")]
-    pub publish_value: ActionLane<Value, Value>,
+    pub publish_value: CommandLane<Value>,
 }
 
-#[derive(Debug, Clone)]
-pub struct UnitAgentConfig;
-
-#[agent_lifecycle(agent = "UnitAgent")]
-pub struct UnitAgentLifecycle;
-
-impl UnitAgentLifecycle {
-    async fn on_start<Context>(&self, _context: &Context)
-    where
-        Context: AgentContext<UnitAgent> + Sized + Send + Sync,
-    {
-    }
-}
-
-#[command_lifecycle(agent = "UnitAgent", command_type = "i32")]
+#[command_lifecycle(agent = "UnitAgent", command_type = "i32", on_command)]
 struct PublishLifecycle;
 
 impl PublishLifecycle {
@@ -69,36 +51,21 @@ impl PublishLifecycle {
     }
 }
 
-impl LaneLifecycle<UnitAgentConfig> for PublishLifecycle {
-    fn create(_config: &UnitAgentConfig) -> Self {
-        PublishLifecycle {}
-    }
-}
-
-#[action_lifecycle(agent = "UnitAgent", command_type = "Value", response_type = "Value")]
+#[command_lifecycle(agent = "UnitAgent", command_type = "Value", on_command)]
 struct PublishValueLifecycle;
 
 impl PublishValueLifecycle {
     async fn on_command<Context>(
         &self,
         command: Value,
-        _model: &ActionLane<Value, Value>,
+        _model: &CommandLane<Value>,
         context: &Context,
-    ) -> Value
-    where
+    ) where
         Context: AgentContext<UnitAgent> + Sized + Send + Sync + 'static,
     {
-        //Todo this is a command lane in the java example
         let message = format!("`publish_value` commanded with {}", command);
         log_message(context.node_uri(), &message);
         //Todo this is currently not being returned to all linked connections
-        command
-    }
-}
-
-impl LaneLifecycle<UnitAgentConfig> for PublishValueLifecycle {
-    fn create(_config: &UnitAgentConfig) -> Self {
-        PublishValueLifecycle {}
     }
 }
 

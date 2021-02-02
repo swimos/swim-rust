@@ -24,13 +24,13 @@ use crate::routing::{
 };
 use futures::future::BoxFuture;
 use futures::{select_biased, FutureExt, StreamExt};
-use pin_utils::core_reexport::num::NonZeroUsize;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::future::Future;
+use std::num::NonZeroUsize;
 use std::str::FromStr;
 use std::time::Duration;
 use swim_common::model::parser::{self, ParseFailure};

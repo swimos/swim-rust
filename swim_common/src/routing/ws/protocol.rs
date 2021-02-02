@@ -142,8 +142,8 @@ pub enum WsMessage {
 
 #[derive(Debug, Ord, PartialOrd, PartialEq, Eq, Clone)]
 pub struct CloseReason {
-    pub(crate) code: CloseCode,
-    pub(crate) reason: String,
+    pub code: CloseCode,
+    pub reason: String,
 }
 
 impl CloseReason {

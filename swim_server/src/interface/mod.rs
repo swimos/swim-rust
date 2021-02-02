@@ -16,20 +16,17 @@
 //!
 //! The module provides methods and structures for creating and running Swim server instances.
 use crate::agent::lane::channels::AgentExecutionConfig;
-use crate::agent::lifecycle::AgentLifecycle;
-use crate::agent::SwimAgent;
-use crate::plane::error::AmbiguousRoutes;
-use crate::plane::lifecycle::PlaneLifecycle;
 use crate::plane::router::PlaneRouter;
-use crate::plane::spec::PlaneBuilder;
+use crate::plane::spec::PlaneSpec;
 use crate::plane::{run_plane, EnvChannel};
 use crate::routing::remote::config::ConnectionConfig;
 use crate::routing::remote::net::dns::Resolver;
 use crate::routing::remote::net::plain::TokioPlainTextNetworking;
-use crate::routing::remote::RemoteConnectionsTask;
-use crate::routing::{SuperRouter, SuperRouterFactory};
+use crate::routing::remote::{RemoteConnectionChannels, RemoteConnectionsTask};
+use crate::routing::{TopLevelRouter, TopLevelRouterFactory};
 use futures::{io, join};
-use std::fmt::Debug;
+use std::error::Error;
+use std::fmt::{Display, Formatter};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use swim_common::routing::ws::tungstenite::TungsteniteWsConnections;
@@ -37,130 +34,65 @@ use swim_runtime::time::clock::RuntimeClock;
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use utilities::future::open_ended::OpenEndedFutures;
-use utilities::route_pattern::RoutePattern;
 use utilities::sync::trigger;
 
-/// Swim server instance.
+/// Builder to create Swim server instance.
 ///
-/// The Swim server runs a plane and its agents and a task for remote connections asynchronously.
-pub struct SwimServer {
-    address: SocketAddr,
-    conn_config: ConnectionConfig,
-    agent_config: AgentExecutionConfig,
-    websocket_config: WebSocketConfig,
-    routes: PlaneBuilder<RuntimeClock, EnvChannel, PlaneRouter<SuperRouter>>,
-    plane_lifecycle: Option<Box<dyn PlaneLifecycle>>,
-    plane_stop_rx: trigger::Receiver,
-    conn_stop_rx: trigger::Receiver,
+/// The builder can be created with default or custom configuration.
+pub struct SwimServerBuilder {
+    address: Option<SocketAddr>,
+    config: SwimServerConfig,
+    planes: Vec<PlaneSpec<RuntimeClock, EnvChannel, PlaneRouter<TopLevelRouter>>>,
 }
 
-impl SwimServer {
-    /// Creates a new Swim server instance.
+impl Default for SwimServerBuilder {
+    fn default() -> Self {
+        SwimServerBuilder {
+            address: None,
+            config: SwimServerConfig::default(),
+            planes: Vec::new(),
+        }
+    }
+}
+
+impl SwimServerBuilder {
+    /// Create a new server builder with custom configuration.
     ///
     /// # Arguments
-    /// * `address` - The address on which the server will run.
-    /// * `conn_config` - Configuration parameters for remote connections.
-    /// * `agent_config` - Configuration parameters controlling how agents and lanes are executed.
-    /// * `websocket_config` - Configuration for WebSocket connections.
-    /// * `plane_lifecycle` - Custom lifecycle for the server plane.
-    ///
-    /// # Example
-    /// ```
-    /// use std::net::{SocketAddr, IpAddr, Ipv4Addr};
-    /// use swim_server::interface::SwimServer;
-    /// use swim_server::routing::remote::config::ConnectionConfig;
-    /// use swim_server::agent::lane::channels::AgentExecutionConfig;
-    /// use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
-    ///
-    /// let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
-    /// let conn_config = ConnectionConfig::default();
-    /// let agent_config = AgentExecutionConfig::default();
-    /// let websocket_config = WebSocketConfig::default();
-    /// let plane_lifecycle = None;      
-    ///
-    /// let (mut swim_server, server_handle) = SwimServer::new(address, conn_config, agent_config, websocket_config, plane_lifecycle);
-    /// ```
-    pub fn new(
-        address: SocketAddr,
-        conn_config: ConnectionConfig,
-        agent_config: AgentExecutionConfig,
-        websocket_config: WebSocketConfig,
-        plane_lifecycle: Option<Box<dyn PlaneLifecycle>>,
-    ) -> (SwimServer, ServerHandle) {
-        let (plane_stop_tx, plane_stop_rx) = trigger::trigger();
-        let (conn_stop_tx, conn_stop_rx) = trigger::trigger();
-
-        (
-            SwimServer {
-                address,
-                conn_config,
-                agent_config,
-                websocket_config,
-                routes: PlaneBuilder::new(),
-                plane_lifecycle,
-                plane_stop_rx,
-                conn_stop_rx,
-            },
-            ServerHandle {
-                stop_plane_trigger: plane_stop_tx,
-                stop_conn_trigger: conn_stop_tx,
-            },
-        )
+    /// * `config` - The custom configuration for the server.
+    pub fn new(config: SwimServerConfig) -> Self {
+        SwimServerBuilder {
+            address: None,
+            config,
+            planes: Vec::new(),
+        }
     }
 
-    /// Creates a new Swim server instance with default configuration.
+    /// Set the address of the server.
     ///
     /// # Arguments
-    /// * `address` - The address on which the server will run.
-    ///
-    /// # Example
-    /// ```
-    /// use std::net::{SocketAddr, IpAddr, Ipv4Addr};
-    /// use swim_server::interface::SwimServer;
-    ///
-    /// let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
-    /// let (mut swim_server, server_handle) = SwimServer::new_with_default(address);
-    /// ```
-    pub fn new_with_default(address: SocketAddr) -> (SwimServer, ServerHandle) {
-        let conn_config = ConnectionConfig::default();
-        let agent_config = AgentExecutionConfig::default();
-        let websocket_config = WebSocketConfig::default();
-        let (plane_stop_tx, plane_stop_rx) = trigger::trigger();
-        let (conn_stop_tx, conn_stop_rx) = trigger::trigger();
-
-        (
-            SwimServer {
-                address,
-                conn_config,
-                agent_config,
-                websocket_config,
-                routes: PlaneBuilder::new(),
-                plane_lifecycle: None,
-                plane_stop_rx,
-                conn_stop_rx,
-            },
-            ServerHandle {
-                stop_plane_trigger: plane_stop_tx,
-                stop_conn_trigger: conn_stop_tx,
-            },
-        )
+    /// * `addr` - The address of the serer.
+    pub fn bind_to(self, addr: SocketAddr) -> Self {
+        SwimServerBuilder {
+            address: Some(addr),
+            ..self
+        }
     }
 
-    /// Adds an agent to a given route on the Swim server plane.
+    /// Add a plane to the server.
     ///
     /// # Arguments
-    /// * `route` - The route for the agent.
-    /// * `config` - Configuration for the agent.
-    /// * `lifecycle` - Lifecycle of the agent.
+    /// * `plane` - The plane specification that will be added to the server.
     ///
     /// # Example
     /// ```
     /// use std::net::{SocketAddr, IpAddr, Ipv4Addr};
-    /// use swim_server::interface::SwimServer;
-    /// use utilities::route_pattern::RoutePattern;
+    /// use swim_server::interface::{SwimServer, SwimServerBuilder};
+    /// use swim_server::RoutePattern;
     /// use swim_server::agent_lifecycle;
     /// use swim_server::agent::SwimAgent;
     /// use swim_server::agent::AgentContext;
+    /// use swim_server::plane::spec::PlaneBuilder;
     ///
     /// #[derive(Debug, SwimAgent)]
     /// #[agent(config = "RustAgentConfig")]
@@ -169,7 +101,7 @@ impl SwimServer {
     /// #[derive(Debug, Clone)]
     /// pub struct RustAgentConfig;
     ///
-    /// #[agent_lifecycle(agent = "RustAgent")]
+    /// #[agent_lifecycle(agent = "RustAgent", on_start)]
     /// struct RustAgentLifecycle;
     ///
     /// impl RustAgentLifecycle {
@@ -182,31 +114,130 @@ impl SwimServer {
     /// }
     ///
     /// let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
-    /// let (mut swim_server, server_handle) = SwimServer::new_with_default(address);
     ///
-    /// let result = swim_server.add_route(
-    ///                             RoutePattern::parse_str("/rust").unwrap(),
-    ///                             RustAgentConfig {},
-    ///                             RustAgentLifecycle {});
-    /// assert!(result.is_ok());
+    /// let mut plane_builder = PlaneBuilder::new();
+    /// plane_builder
+    ///     .add_route(
+    ///          RoutePattern::parse_str("/rust").unwrap(),
+    ///          RustAgentConfig {},
+    ///          RustAgentLifecycle {},
+    ///     ).unwrap();
+    ///
+    /// let mut swim_server_builder = SwimServerBuilder::default();
+    /// swim_server_builder.add_plane(plane_builder.build());
     /// ```
-    pub fn add_route<Agent, Config, Lifecycle>(
+    pub fn add_plane(
         &mut self,
-        route: RoutePattern,
-        config: Config,
-        lifecycle: Lifecycle,
-    ) -> Result<(), AmbiguousRoutes>
-    where
-        Agent: SwimAgent<Config> + Send + Sync + Debug + 'static,
-        Config: Send + Sync + Clone + Debug + 'static,
-        Lifecycle: AgentLifecycle<Agent> + Send + Sync + Clone + Debug + 'static,
-    {
-        self.routes.add_route(route, config, lifecycle)
+        plane: PlaneSpec<RuntimeClock, EnvChannel, PlaneRouter<TopLevelRouter>>,
+    ) {
+        if !self.planes.is_empty() {
+            panic!("Multiple planes are not supported yet")
+        }
+        self.planes.push(plane)
     }
 
+    /// Build the Swim Server.
+    ///
+    /// Returns an error if an address has not been provided for the server.
+    ///
+    /// # Example
+    /// ```
+    /// use std::net::{SocketAddr, IpAddr, Ipv4Addr};
+    /// use swim_server::interface::{SwimServer, SwimServerBuilder};
+    /// use swim_server::RoutePattern;
+    /// use swim_server::agent_lifecycle;
+    /// use swim_server::agent::SwimAgent;
+    /// use swim_server::agent::AgentContext;
+    /// use swim_server::plane::spec::PlaneBuilder;
+    ///
+    /// #[derive(Debug, SwimAgent)]
+    /// #[agent(config = "RustAgentConfig")]
+    /// pub struct RustAgent;
+    ///
+    /// #[derive(Debug, Clone)]
+    /// pub struct RustAgentConfig;
+    ///
+    /// #[agent_lifecycle(agent = "RustAgent", on_start)]
+    /// struct RustAgentLifecycle;
+    ///
+    /// impl RustAgentLifecycle {
+    ///     async fn on_start<Context>(&self, _context: &Context)
+    ///         where
+    ///             Context: AgentContext<RustAgent> + Sized + Send + Sync,
+    ///     {
+    ///         println!("Rust agent has started!");
+    ///     }
+    /// }
+    ///
+    /// let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
+    ///
+    /// let mut plane_builder = PlaneBuilder::new();
+    /// plane_builder
+    ///     .add_route(
+    ///          RoutePattern::parse_str("/rust").unwrap(),
+    ///          RustAgentConfig {},
+    ///          RustAgentLifecycle {},
+    ///     ).unwrap();
+    ///
+    /// let mut swim_server_builder = SwimServerBuilder::default();
+    /// swim_server_builder.add_plane(plane_builder.build());
+    ///
+    /// let (swim_server, server_handle) = swim_server_builder.bind_to(address).build().unwrap();
+    /// ```
+    pub fn build(self) -> Result<(SwimServer, ServerHandle), SwimServerBuilderError> {
+        let SwimServerBuilder {
+            address,
+            planes,
+            config,
+        } = self;
+
+        let (stop_trigger_tx, stop_trigger_rx) = trigger::trigger();
+
+        Ok((
+            SwimServer {
+                config,
+                planes,
+                address: address.ok_or(SwimServerBuilderError::MissingAddress)?,
+                stop_trigger_rx,
+            },
+            ServerHandle { stop_trigger_tx },
+        ))
+    }
+}
+
+/// Represents an error that can occur while using the server builder.
+#[derive(Debug)]
+pub enum SwimServerBuilderError {
+    /// An error that occurs when trying to create a server without providing the address first.
+    MissingAddress,
+}
+
+impl Display for SwimServerBuilderError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SwimServerBuilderError::MissingAddress => {
+                write!(f, "Cannot create a swim server without an address")
+            }
+        }
+    }
+}
+
+impl Error for SwimServerBuilderError {}
+
+/// Swim server instance.
+///
+/// The Swim server runs a plane and its agents and a task for remote connections asynchronously.
+pub struct SwimServer {
+    address: SocketAddr,
+    config: SwimServerConfig,
+    planes: Vec<PlaneSpec<RuntimeClock, EnvChannel, PlaneRouter<TopLevelRouter>>>,
+    stop_trigger_rx: trigger::Receiver,
+}
+
+impl SwimServer {
     /// Runs the Swim server instance.
     ///
-    /// Runs the plane and remote connections tasks of the server asynchronously
+    /// Runs the planes and remote connections tasks of the server asynchronously
     /// and returns any errors from the connections task.
     ///
     /// # Panics
@@ -214,34 +245,36 @@ impl SwimServer {
     pub async fn run(self) -> Result<(), io::Error> {
         let SwimServer {
             address,
-            conn_config,
-            agent_config,
-            websocket_config,
-            routes,
-            plane_lifecycle,
-            plane_stop_rx,
-            conn_stop_rx,
+            config,
+            mut planes,
+            stop_trigger_rx,
         } = self;
 
-        let spec = match plane_lifecycle {
-            Some(pl) => routes.build_with_lifecycle(pl),
-            None => routes.build(),
-        };
+        let SwimServerConfig {
+            websocket_config,
+            agent_config,
+            conn_config,
+        } = config;
+
+        // Todo add support for multiple planes in the future
+        let spec = planes
+            .pop()
+            .expect("The server cannot be started without a plane");
 
         let (plane_tx, plane_rx) = mpsc::channel(agent_config.lane_attachment_buffer.get());
         let (remote_tx, remote_rx) = mpsc::channel(conn_config.router_buffer_size.get());
-        let super_router_fac = SuperRouterFactory::new(plane_tx.clone(), remote_tx.clone());
+        let top_level_router_fac = TopLevelRouterFactory::new(plane_tx.clone(), remote_tx.clone());
 
         let clock = swim_runtime::time::clock::runtime_clock();
 
         let plane_future = run_plane(
-            agent_config,
+            agent_config.clone(),
             clock,
             spec,
-            plane_stop_rx,
+            stop_trigger_rx.clone(),
             OpenEndedFutures::new(),
             (plane_tx, plane_rx),
-            super_router_fac.clone(),
+            top_level_router_fac.clone(),
         );
 
         let connections_future = RemoteConnectionsTask::new(
@@ -251,16 +284,40 @@ impl SwimServer {
             TungsteniteWsConnections {
                 config: websocket_config,
             },
-            super_router_fac,
-            conn_stop_rx,
+            top_level_router_fac,
             OpenEndedFutures::new(),
-            (remote_tx, remote_rx),
+            RemoteConnectionChannels {
+                request_tx: remote_tx,
+                request_rx: remote_rx,
+                stop_trigger: stop_trigger_rx,
+            },
         )
         .await
-        .unwrap_or_else(|_| panic!("The address \"{}\" is already in use.", address))
+        .unwrap_or_else(|err| panic!("Could not connect to \"{}\": {}", address, err))
         .run();
 
         join!(connections_future, plane_future).0
+    }
+}
+
+/// Swim server configuration.
+///
+/// * `conn_config` - Configuration parameters for remote connections.
+/// * `agent_config` - Configuration parameters controlling how agents and lanes are executed.
+/// * `websocket_config` - Configuration for WebSocket connections.
+pub struct SwimServerConfig {
+    conn_config: ConnectionConfig,
+    agent_config: AgentExecutionConfig,
+    websocket_config: WebSocketConfig,
+}
+
+impl Default for SwimServerConfig {
+    fn default() -> Self {
+        SwimServerConfig {
+            conn_config: Default::default(),
+            agent_config: Default::default(),
+            websocket_config: Default::default(),
+        }
     }
 }
 
@@ -269,8 +326,7 @@ impl SwimServer {
 /// The handle is returned when a new server instance is created and is used for terminating
 /// the server.
 pub struct ServerHandle {
-    stop_plane_trigger: trigger::Sender,
-    stop_conn_trigger: trigger::Sender,
+    stop_trigger_tx: trigger::Sender,
 }
 
 impl ServerHandle {
@@ -282,16 +338,16 @@ impl ServerHandle {
     /// # Example:
     /// ```
     /// use std::net::{SocketAddr, IpAddr, Ipv4Addr};
-    /// use swim_server::interface::SwimServer;
+    /// use swim_server::interface::{SwimServer, SwimServerBuilder};
     ///
     /// let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
-    /// let (mut swim_server, server_handle) = SwimServer::new_with_default(address);
+    /// let (mut swim_server, server_handle) = SwimServerBuilder::default().bind_to(address).build().unwrap();
     ///
     /// let success = server_handle.stop();
     ///
     /// assert!(success);
     /// ```
     pub fn stop(self) -> bool {
-        self.stop_plane_trigger.trigger() && self.stop_conn_trigger.trigger()
+        self.stop_trigger_tx.trigger()
     }
 }

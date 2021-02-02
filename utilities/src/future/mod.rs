@@ -25,6 +25,8 @@ use futures::{ready, Future, Sink, Stream, TryFuture};
 use pin_project::pin_project;
 use std::marker::PhantomData;
 use std::pin::Pin;
+use std::sync::Arc;
+use tokio::sync::Notify;
 
 /// A future that transforms another future using [`Into`].
 #[pin_project]
@@ -352,6 +354,14 @@ pub trait SwimFutureExt: Future {
         Self: Sized,
     {
         Unit(self)
+    }
+
+    /// Wrap this in a future that will provide a notification each time it is blocked.
+    fn notify_on_blocked(self, notify: Arc<Notify>) -> NotifyOnBlocked<Self>
+    where
+        Self: Sized,
+    {
+        NotifyOnBlocked::new(self, notify)
     }
 }
 
@@ -877,6 +887,14 @@ pub trait SwimStreamExt: Stream {
     {
         OwningScan::new(self, initial_state, f)
     }
+
+    /// Wrap this in a future that will provide a notification each time it is blocked.
+    fn notify_on_blocked(self, notify: Arc<Notify>) -> NotifyOnBlocked<Self>
+    where
+        Self: Sized,
+    {
+        NotifyOnBlocked::new(self, notify)
+    }
 }
 
 #[pin_project]
@@ -952,4 +970,43 @@ where
     Str: Stream<Item = T> + Send + Sync + 'static,
 {
     Box::pin(stream)
+}
+
+#[pin_project]
+pub struct NotifyOnBlocked<F> {
+    #[pin]
+    inner: F,
+    notify: Arc<Notify>,
+}
+
+impl<F> NotifyOnBlocked<F> {
+    pub fn new(inner: F, notify: Arc<Notify>) -> NotifyOnBlocked<F> {
+        NotifyOnBlocked { inner, notify }
+    }
+}
+
+impl<F: Future> Future for NotifyOnBlocked<F> {
+    type Output = F::Output;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let projected = self.project();
+        let result = projected.inner.poll(cx);
+        if result.is_pending() {
+            projected.notify.notify_one();
+        }
+        result
+    }
+}
+
+impl<S: Stream> Stream for NotifyOnBlocked<S> {
+    type Item = S::Item;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let projected = self.project();
+        let result = projected.inner.poll_next(cx);
+        if result.is_pending() {
+            projected.notify.notify_one();
+        }
+        result
+    }
 }

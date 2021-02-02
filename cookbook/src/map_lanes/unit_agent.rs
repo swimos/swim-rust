@@ -11,25 +11,23 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+use std::collections::HashMap;
 use std::fmt::{Debug, Display};
 use std::sync::Arc;
 use stm::stm::Stm;
 use stm::transaction::atomically;
 use swim_server::agent::command_lifecycle;
 use swim_server::agent::lane::channels::update::StmRetryStrategy;
-use swim_server::agent::lane::lifecycle::{LaneLifecycle, StatefulLaneLifecycleBase};
+use swim_server::agent::lane::lifecycle::LaneLifecycle;
 use swim_server::agent::lane::model::action::CommandLane;
 use swim_server::agent::lane::model::map::{MapLane, MapLaneEvent};
-use swim_server::agent::lane::strategy::Queue;
 use swim_server::agent::map_lifecycle;
 use swim_server::agent::AgentContext;
 use swim_server::agent::SwimAgent;
-use swim_server::agent_lifecycle;
-use swim_server::future::retryable::strategy::RetryStrategy;
 use swim_server::uri::RelativeUri;
+use swim_server::RetryStrategy;
 
 #[derive(Debug, SwimAgent)]
-#[agent(config = "UnitAgentConfig")]
 pub struct UnitAgent {
     #[lifecycle(name = "ShoppingCartLifecycle")]
     pub shopping_cart: MapLane<String, i32>,
@@ -37,30 +35,22 @@ pub struct UnitAgent {
     pub add_item: CommandLane<String>,
 }
 
-#[derive(Debug, Clone)]
-pub struct UnitAgentConfig;
-
-#[agent_lifecycle(agent = "UnitAgent")]
-pub struct UnitAgentLifecycle;
-
-impl UnitAgentLifecycle {
-    async fn on_start<Context>(&self, _context: &Context)
-        where
-            Context: AgentContext<UnitAgent> + Sized + Send + Sync,
-    {}
+#[map_lifecycle(agent = "UnitAgent", key_type = "String", value_type = "i32", on_event)]
+struct ShoppingCartLifecycle {
+    previous_state: HashMap<String, Arc<i32>>,
 }
 
-#[map_lifecycle(agent = "UnitAgent", key_type = "String", value_type = "i32")]
-struct ShoppingCartLifecycle;
+impl LaneLifecycle<()> for ShoppingCartLifecycle {
+    fn create(_config: &()) -> Self {
+        ShoppingCartLifecycle {
+            previous_state: HashMap::new(),
+        }
+    }
+}
 
 impl ShoppingCartLifecycle {
-    async fn on_start<Context>(&self, _model: &MapLane<String, i32>, _context: &Context)
-        where
-            Context: AgentContext<UnitAgent> + Sized + Send + Sync,
-    {}
-
     async fn on_event<Context>(
-        &self,
+        &mut self,
         event: &MapLaneEvent<String, i32>,
         _model: &MapLane<String, i32>,
         context: &Context,
@@ -69,35 +59,30 @@ impl ShoppingCartLifecycle {
     {
         match event {
             MapLaneEvent::Update(key, value) => {
-                //Todo this should print the previous value of the key
-                let message = format!("{} count changed to {} from {}", key, value, value);
+                let previous_val = self.previous_state.insert(key.clone(), value.clone());
+
+                let message = if let Some(prev_val) = previous_val {
+                    format!("{} count changed to {} from {}", key, value, prev_val)
+                } else {
+                    format!("{} count changed to {}", key, value)
+                };
+
                 log_message(context.node_uri(), &message);
             }
             MapLaneEvent::Remove(key) => {
-                //Todo this should print the previous value of the removed key
-                let message = format!("removed <{}, {}>", key, "foo");
-                log_message(context.node_uri(), &message);
+                let previous_val = self.previous_state.remove(key);
+
+                if let Some(prev_val) = previous_val {
+                    let message = format!("removed <{}, {}>", key, prev_val);
+                    log_message(context.node_uri(), &message);
+                };
             }
             _ => (),
         }
     }
 }
 
-impl LaneLifecycle<UnitAgentConfig> for ShoppingCartLifecycle {
-    fn create(_config: &UnitAgentConfig) -> Self {
-        ShoppingCartLifecycle {}
-    }
-}
-
-impl StatefulLaneLifecycleBase for ShoppingCartLifecycle {
-    type WatchStrategy = Queue;
-
-    fn create_strategy(&self) -> Self::WatchStrategy {
-        Queue::default()
-    }
-}
-
-#[command_lifecycle(agent = "UnitAgent", command_type = "String")]
+#[command_lifecycle(agent = "UnitAgent", command_type = "String", on_command)]
 struct AddItemLifecycle;
 
 impl AddItemLifecycle {
@@ -119,12 +104,6 @@ impl AddItemLifecycle {
             });
 
         let _ = atomically(&update, StmRetryStrategy::new(RetryStrategy::default())).await;
-    }
-}
-
-impl LaneLifecycle<UnitAgentConfig> for AddItemLifecycle {
-    fn create(_config: &UnitAgentConfig) -> Self {
-        AddItemLifecycle {}
     }
 }
 

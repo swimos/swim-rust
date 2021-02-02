@@ -26,6 +26,7 @@ use crate::model::schema::StandardSchema;
 use crate::model::Value;
 
 pub mod impls;
+pub mod macros;
 
 #[cfg(test)]
 mod tests;

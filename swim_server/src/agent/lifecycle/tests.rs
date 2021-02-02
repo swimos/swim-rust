@@ -63,5 +63,5 @@ async fn default_agent_lifecycle() {
     let lifecycle = ();
 
     //We just check the life-cycle events don't generate panics.
-    lifecycle.start(&context).await;
+    lifecycle.starting(&context).await;
 }

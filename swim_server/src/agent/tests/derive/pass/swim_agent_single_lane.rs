@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swim_server::agent::lane::lifecycle::LaneLifecycle;
 use swim_server::agent::lane::model::action::CommandLane;
 use swim_server::agent::AgentContext;
 use swim_server::{command_lifecycle, SwimAgent};
@@ -26,7 +25,7 @@ fn main() {
     #[derive(Debug)]
     pub struct TestAgentConfig;
 
-    #[command_lifecycle(agent = "TestAgent", command_type = "i32")]
+    #[command_lifecycle(agent = "TestAgent", command_type = "i32", on_command)]
     struct CommandLifecycle;
 
     impl CommandLifecycle {
@@ -39,12 +38,6 @@ fn main() {
             Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
         {
             unimplemented!()
-        }
-    }
-
-    impl LaneLifecycle<TestAgentConfig> for CommandLifecycle {
-        fn create(_config: &TestAgentConfig) -> Self {
-            CommandLifecycle {}
         }
     }
 

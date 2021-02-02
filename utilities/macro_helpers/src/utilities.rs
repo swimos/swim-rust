@@ -15,7 +15,7 @@
 use crate::label::Label;
 use crate::{CompoundTypeKind, Context, Symbol};
 use proc_macro2::TokenStream;
-use syn::{Attribute, Lit};
+use syn::{Attribute, Data, Lit};
 use syn::{ExprPath, Meta};
 
 /// Consumes a vector of errors and produces a compiler error.
@@ -123,5 +123,20 @@ pub fn lit_str_to_expr_path(ctx: &mut Context, lit: &Lit) -> Result<ExprPath, ()
             ctx.error_spanned_by(lit, "Expected a String literal");
             Err(())
         }
+    }
+}
+
+/// Checks if a data structure has any fields
+/// For enums it will check if any variant has fields.
+pub fn has_fields(data: &Data) -> bool {
+    match data {
+        Data::Struct(ref input_struct) => !input_struct.fields.is_empty(),
+
+        Data::Enum(ref input_enum) => !input_enum
+            .variants
+            .iter()
+            .all(|variant| variant.fields.is_empty()),
+
+        Data::Union(ref input_union) => !input_union.fields.named.is_empty(),
     }
 }
