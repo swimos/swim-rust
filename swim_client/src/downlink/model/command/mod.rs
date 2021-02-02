@@ -12,20 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::downlink::{
-    Command, DownlinkError, DownlinkState, Operation, Response, StateMachine,
-};
+use crate::downlink::{Command, DownlinkError, DownlinkState, Operation, Response, StateMachine, DownlinkConfig};
 use swim_common::model::schema::{Schema, StandardSchema};
 use swim_common::model::Value;
 use swim_common::routing::RoutingError;
 use swim_common::sink::item::ItemSender;
-use crate::downlink::improved::typed::UntypedCommandDownlink;
-use crate::downlink::improved::DownlinkConfig;
+use crate::downlink::typed::UntypedCommandDownlink;
 
 #[cfg(test)]
 mod tests;
 
-pub fn create_downlink_improved<Commands>(
+pub fn create_downlink<Commands>(
     schema: StandardSchema,
     cmd_sender: Commands,
     config: DownlinkConfig,
@@ -35,7 +32,7 @@ pub fn create_downlink_improved<Commands>(
 {
     let upd_stream = futures::stream::pending();
 
-    crate::downlink::improved::create_downlink(
+    crate::downlink::create_downlink(
         CommandStateMachine::new(schema),
         upd_stream,
         cmd_sender,

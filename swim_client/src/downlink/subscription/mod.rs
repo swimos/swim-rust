@@ -53,11 +53,11 @@ use tracing::{error, info, instrument, trace_span};
 use utilities::future::{SwimFutureExt, TransformOnce, TransformedFuture};
 use utilities::sync::promise;
 use utilities::sync::promise::PromiseError;
-use crate::downlink::improved::typed::{UntypedValueDownlink, UntypedValueReceiver, UntypedMapDownlink, UntypedMapReceiver, UntypedCommandDownlink, UntypedEventDownlink};
-use crate::downlink::improved::typed::value::{TypedValueDownlink, ValueDownlinkReceiver};
-use crate::downlink::improved::typed::map::{TypedMapDownlink, MapDownlinkReceiver};
-use crate::downlink::improved::typed::command::TypedCommandDownlink;
-use crate::downlink::improved::typed::event::TypedEventDownlink;
+use crate::downlink::typed::{UntypedValueDownlink, UntypedValueReceiver, UntypedMapDownlink, UntypedMapReceiver, UntypedCommandDownlink, UntypedEventDownlink};
+use crate::downlink::typed::value::{TypedValueDownlink, ValueDownlinkReceiver};
+use crate::downlink::typed::map::{TypedMapDownlink, MapDownlinkReceiver};
+use crate::downlink::typed::command::TypedCommandDownlink;
+use crate::downlink::typed::event::TypedEventDownlink;
 
 pub mod envelopes;
 #[cfg(test)]
@@ -591,7 +591,7 @@ where
 
         let (raw_dl, rec) = match config.back_pressure {
             BackpressureMode::Propagate => {
-                value::create_downlink_improved(init, Some(schema), updates, cmd_sink.map_err_into(), (&config).into())
+                value::create_downlink(init, Some(schema), updates, cmd_sink.map_err_into(), (&config).into())
             }
             BackpressureMode::Release { yield_after, .. } => {
                 let pressure_release = ValuePump::new(cmd_sink.clone(), yield_after).await;
@@ -602,7 +602,7 @@ where
                         ow => Either::Left(ow),
                     },
                 );
-                value::create_downlink_improved(init, Some(schema), updates, either_sink.map_err_into(), (&config).into())
+                value::create_downlink(init, Some(schema), updates, either_sink.map_err_into(), (&config).into())
             }
         };
 
@@ -647,7 +647,7 @@ where
                         envelopes::map_envelope(&sink_path, cmd).1.into()
                     },
                 );
-                map::create_downlink_improved(
+                map::create_downlink(
                     Some(key_schema),
                     Some(value_schema),
                     updates,
@@ -691,7 +691,7 @@ where
                             ow => Either::Left(ow),
                         },
                     );
-                map::create_downlink_improved(
+                map::create_downlink(
                     Some(key_schema),
                     Some(value_schema),
                     updates,
@@ -731,7 +731,7 @@ where
 
         let dl = match config.back_pressure {
             BackpressureMode::Propagate => {
-                Arc::new(command::create_downlink_improved(schema.clone(), cmd_sink.map_err_into(), (&config).into()))
+                Arc::new(command::create_downlink(schema.clone(), cmd_sink.map_err_into(), (&config).into()))
             }
 
             BackpressureMode::Release { yield_after, .. } => {
@@ -745,7 +745,7 @@ where
                         }
                     });
 
-                Arc::new(command::create_downlink_improved(schema.clone(), either_sink.map_err_into(), (&config).into()))
+                Arc::new(command::create_downlink(schema.clone(), either_sink.map_err_into(), (&config).into()))
             }
         };
 

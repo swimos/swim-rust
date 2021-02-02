@@ -15,7 +15,7 @@
 #[cfg(test)]
 mod tests;
 
-use crate::downlink::improved::typed::{UntypedMapDownlink, ViewMode};
+use crate::downlink::typed::{UntypedMapDownlink, ViewMode};
 use std::marker::PhantomData;
 use std::fmt::{Debug, Formatter, Display};
 use std::any::type_name;

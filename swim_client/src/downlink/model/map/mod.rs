@@ -28,13 +28,9 @@ use swim_common::model::{Attr, Item, Value, ValueKind};
 use swim_common::sink::item::ItemSender;
 
 use crate::downlink::model::value::UpdateResult;
-use crate::downlink::{
-    BasicResponse, Command, DownlinkError, DownlinkRequest, Message, SyncStateMachine,
-    TransitionError,
-};
+use crate::downlink::{BasicResponse, Command, DownlinkError, DownlinkRequest, Message, SyncStateMachine, TransitionError, DownlinkConfig};
 use swim_common::routing::RoutingError;
-use crate::downlink::improved::typed::{UntypedMapDownlink, UntypedMapReceiver};
-use crate::downlink::improved::DownlinkConfig;
+use crate::downlink::typed::{UntypedMapReceiver, UntypedMapDownlink};
 
 #[cfg(test)]
 mod tests;
@@ -557,7 +553,7 @@ impl ViewWithEvent {
 type MapItemResult = Result<Message<UntypedMapModification<Value>>, RoutingError>;
 
 /// Create a map downlink.
-pub fn create_downlink_improved<Updates, Commands>(
+pub fn create_downlink<Updates, Commands>(
     key_schema: Option<StandardSchema>,
     value_schema: Option<StandardSchema>,
     update_stream: Updates,
@@ -569,7 +565,7 @@ pub fn create_downlink_improved<Updates, Commands>(
         Commands:
         ItemSender<Command<UntypedMapModification<Arc<Value>>>, RoutingError> + Send + Sync + 'static,
 {
-    crate::downlink::improved::create_downlink(
+    crate::downlink::create_downlink(
         MapStateMachine::new(
             key_schema.unwrap_or(StandardSchema::Anything),
             value_schema.unwrap_or(StandardSchema::Anything),

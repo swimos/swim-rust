@@ -13,7 +13,6 @@
 // limitations under the License.
 
 pub mod error;
-pub mod improved;
 pub mod model;
 pub mod subscription;
 #[cfg(test)]
@@ -27,7 +26,18 @@ use swim_common::routing::RoutingError;
 use tracing::{instrument, trace};
 use utilities::errors::Recoverable;
 use crate::downlink::error::{DownlinkError, TransitionError};
-use utilities::sync::promise;
+use utilities::sync::{promise, topic};
+use crate::configuration::downlink::{OnInvalidMessage, DownlinkParams};
+use futures::stream::once;
+use tokio::sync::mpsc;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::num::NonZeroUsize;
+use futures::{Stream, StreamExt};
+use swim_common::sink::item::ItemSender;
+use pin_utils::pin_mut;
+use futures::select_biased;
+use futures::future::ready;
 
 trait Downlink {
 
@@ -339,4 +349,285 @@ where
         Ok(response)
     }
 }
+
+#[derive(Debug)]
+pub struct RawDownlink<Act, Ev> {
+    action_sender: mpsc::Sender<Act>,
+    event_topic: topic::Subscriber<Event<Ev>>,
+    completed: Arc<AtomicBool>,
+    task_result: promise::Receiver<Result<(), DownlinkError>>,
+}
+
+impl<Act, Ev> Clone for RawDownlink<Act, Ev> {
+    fn clone(&self) -> Self {
+        RawDownlink {
+            action_sender: self.action_sender.clone(),
+            event_topic: self.event_topic.clone(),
+            task_result: self.task_result.clone(),
+            completed: self.completed.clone()
+        }
+    }
+}
+
+impl<Act, Ev> Downlink for RawDownlink<Act, Ev> {
+
+    fn is_stopped(&self) -> bool {
+        self.completed.load(Ordering::SeqCst)
+    }
+
+    fn await_stopped(&self) -> promise::Receiver<Result<(), DownlinkError>> {
+        self.task_result.clone()
+    }
+
+    fn same_downlink(left: &Self, right: &Self) -> bool {
+        Arc::ptr_eq(&left.completed, &right.completed)
+    }
+}
+
+impl<Act, Ev> RawDownlink<Act, Ev> {
+
+    pub fn subscriber(&self) -> topic::Subscriber<Event<Ev>> {
+        self.event_topic.clone()
+    }
+
+    pub fn subscribe(&self) -> Option<topic::Receiver<Event<Ev>>> {
+        self.event_topic.subscribe().ok()
+    }
+
+    pub async fn send(&self, value: Act) -> Result<(), mpsc::error::SendError<Act>> {
+        self.action_sender.send(value).await
+    }
+
+    pub fn sender(&self) -> &mpsc::Sender<Act> {
+        &self.action_sender
+    }
+
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct DownlinkConfig {
+    pub buffer_size: NonZeroUsize,
+    pub yield_after: NonZeroUsize,
+    pub on_invalid: OnInvalidMessage,
+}
+
+impl From<&DownlinkParams> for DownlinkConfig {
+    fn from(conf: &DownlinkParams) -> Self {
+        DownlinkConfig {
+            buffer_size: conf.buffer_size,
+            yield_after: conf.yield_after,
+            on_invalid: conf.on_invalid,
+        }
+    }
+}
+
+pub(in crate::downlink) fn create_downlink<M, Act, State, Machine, CmdSend, Updates>(
+    machine: Machine,
+    update_stream: Updates,
+    cmd_sink: CmdSend,
+    config: DownlinkConfig,
+) -> (RawDownlink<Act, Machine::Ev>, topic::Receiver<Event<Machine::Ev>>)
+    where
+        M: Send + 'static,
+        Act: Send + 'static,
+        State: Send + 'static,
+        Machine: StateMachine<State, M, Act> + Send + Sync + 'static,
+        Updates: Stream<Item = Result<Message<M>, RoutingError>> + Send + Sync + 'static,
+        CmdSend: ItemSender<Command<Machine::Cmd>, RoutingError> + Send + Sync + 'static,
+{
+    let (act_tx, act_rx) = mpsc::channel::<Act>(config.buffer_size.get());
+    let (event_tx, event_rx) = topic::channel::<Event<Machine::Ev>>(config.buffer_size);
+
+    let (stopped_tx, stopped_rx) = promise::promise();
+
+    let completed = Arc::new(AtomicBool::new(false));
+    let completed_cpy = completed.clone();
+
+    // The task that maintains the internal state of the lane.
+    let task: DownlinkTask<Act, Machine::Ev> = DownlinkTask {
+        event_sink: event_tx,
+        actions: act_rx,
+        config,
+    };
+
+    let dl_task = async move {
+        let result = task.run(machine, update_stream, cmd_sink).await;
+        completed.store(true, Ordering::Release);
+        let _ = stopped_tx.provide(result);
+    };
+
+    swim_runtime::task::spawn(dl_task);
+
+    let sub = event_rx.subscriber();
+
+    let dl = RawDownlink {
+        action_sender: act_tx,
+        event_topic: sub,
+        task_result: stopped_rx,
+        completed: completed_cpy,
+    };
+    (dl, event_rx)
+}
+
+struct DownlinkTask<Act, Ev> {
+    event_sink: topic::Sender<Event<Ev>>,
+    actions: mpsc::Receiver<Act>,
+    config: DownlinkConfig,
+}
+
+impl<Act, Ev> DownlinkTask<Act, Ev> {
+
+    async fn run<M, Cmd, State, Updates>(self,
+                                         state_machine: impl StateMachine<State, M, Act, Cmd = Cmd, Ev = Ev>,
+                                         updates: Updates,
+                                         mut cmd_sink: impl ItemSender<Command<Cmd>, RoutingError>) -> Result<(), DownlinkError>
+        where
+            Updates: Stream<Item = Result<Message<M>, RoutingError>> + Send + Sync + 'static,
+    {
+        let DownlinkTask {
+            mut event_sink,
+            actions,
+            config } = self;
+
+        let update_ops = updates.map(|r| match r {
+            Ok(upd) => Operation::Message(upd),
+            Err(e) => Operation::Error(e),
+        });
+
+        let start: Operation<M, Act> = Operation::Start;
+        let ops = once(ready(start)).chain(update_ops);
+
+        let mut dl_state = DownlinkState::Unlinked;
+        let mut model = state_machine.init_state();
+        let yield_mod = config.yield_after.get();
+
+        let ops = ops.fuse();
+        let actions = actions.fuse();
+
+        pin_mut!(ops);
+        pin_mut!(actions);
+
+        let mut act_terminated = false;
+        let mut events_terminated = false;
+        let mut read_act = false;
+
+        let mut iteration_count: usize = 0;
+
+        trace!("Running downlink task");
+
+        let result: Result<(), DownlinkError> = loop {
+            let next_op: TaskInput<M, Act> =
+                if dl_state == state_machine.dl_start_state() && !act_terminated {
+                    if read_act {
+                        read_act = false;
+                        let input = select_biased! {
+                            act_op = actions.next() => TaskInput::from_action(act_op),
+                            upd_op = ops.next() => TaskInput::from_operation(upd_op),
+                        };
+                        input
+                    } else {
+                        read_act = true;
+                        let input = select_biased! {
+                            upd_op = ops.next() => TaskInput::from_operation(upd_op),
+                            act_op = actions.next() => TaskInput::from_action(act_op),
+                        };
+                        input
+                    }
+                } else {
+                    TaskInput::from_operation(ops.next().await)
+                };
+
+            match next_op {
+                TaskInput::Op(op) => {
+                    let Response {
+                        event,
+                        command,
+                        error,
+                        terminate,
+                    } = match state_machine.handle_operation(&mut dl_state, &mut model, op) {
+                        Ok(r) => r,
+                        Err(e) => match e {
+                            e @ DownlinkError::TaskPanic(_) => {
+                                break Err(e);
+                            }
+                            _ => match config.on_invalid {
+                                OnInvalidMessage::Ignore => {
+                                    continue;
+                                }
+                                OnInvalidMessage::Terminate => {
+                                    break Err(e);
+                                }
+                            },
+                        },
+                    };
+                    let result = match (event, command) {
+                        (Some(event), Some(cmd)) => {
+                            if !events_terminated && event_sink.discarding_send(event).await.is_err() {
+                                events_terminated = true;
+                            }
+                            cmd_sink.send_item(cmd).await
+                        }
+                        (Some(event), _) => {
+                            if !events_terminated && event_sink.discarding_send(event).await.is_err() {
+                                events_terminated = true;
+                            }
+                            Ok(())
+                        }
+                        (_, Some(command)) => cmd_sink.send_item(command).await,
+                        _ => Ok(()),
+                    };
+
+                    if error.map(|e| e.is_fatal()).unwrap_or(false) {
+                        break Err(DownlinkError::TransitionError);
+                    } else if terminate || result.is_err() {
+                        break result.map_err(Into::into);
+                    } else if act_terminated && events_terminated {
+                        break Ok(());
+                    }
+                }
+                TaskInput::ActTerminated => {
+                    act_terminated = true;
+                    if events_terminated {
+                        break Ok(());
+                    }
+                }
+                TaskInput::Terminated => {
+                    break Ok(());
+                }
+            }
+
+            iteration_count += 1;
+            if iteration_count % yield_mod == 0 {
+                tokio::task::yield_now().await;
+            }
+        };
+        let _ = cmd_sink.send_item(Command::Unlink).await;
+        result
+    }
+
+}
+
+
+enum TaskInput<M, A> {
+    Op(Operation<M, A>),
+    ActTerminated,
+    Terminated,
+}
+
+impl<M, A> TaskInput<M, A> {
+    fn from_action(maybe_action: Option<A>) -> TaskInput<M, A> {
+        match maybe_action {
+            Some(a) => TaskInput::Op(Operation::Action(a)),
+            _ => TaskInput::ActTerminated,
+        }
+    }
+
+    fn from_operation(maybe_action: Option<Operation<M, A>>) -> TaskInput<M, A> {
+        match maybe_action {
+            Some(op) => TaskInput::Op(op),
+            _ => TaskInput::Terminated,
+        }
+    }
+}
+
 

@@ -13,10 +13,7 @@
 // limitations under the License.
 
 use crate::configuration::downlink::DownlinkParams;
-use crate::downlink::{
-    Command, DownlinkError, DownlinkState, Event, Message, Operation,
-    Response, StateMachine,
-};
+use crate::downlink::{Command, DownlinkError, DownlinkState, Event, Message, Operation, Response, StateMachine, DownlinkConfig};
 use futures::Stream;
 use swim_common::model::schema::{Schema, StandardSchema};
 use swim_common::model::Value;
@@ -24,9 +21,8 @@ use swim_common::routing::RoutingError;
 use swim_common::sink::item::ItemSender;
 use tracing::{error, instrument, trace};
 use utilities::errors::Recoverable;
-use crate::downlink::improved::typed::{UntypedEventDownlink, UntypedEventReceiver};
-use crate::downlink::improved::DownlinkConfig;
 use crate::downlink::model::SchemaViolations;
+use crate::downlink::typed::{UntypedEventDownlink, UntypedEventReceiver};
 
 #[cfg(test)]
 mod tests;
@@ -43,7 +39,7 @@ pub fn create_downlink<Updates, Snk>(
         Updates: Stream<Item = Result<Message<Value>, RoutingError>> + Send + Sync + 'static,
         Snk: ItemSender<Command<Value>, RoutingError> + Send + Sync + 'static,
 {
-    crate::downlink::improved::create_downlink(
+    crate::downlink::create_downlink(
         EventStateMachine::new(schema, violations),
         update_stream,
         cmd_sink,

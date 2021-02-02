@@ -42,11 +42,11 @@ use {
     crate::connections::factory::tungstenite::TungsteniteWsFactory, std::collections::HashMap,
     std::fs::File, std::io::Read, swim_common::model::parser::parse_single, url::Url,
 };
-use crate::downlink::improved::typed::value::{TypedValueDownlink, ValueDownlinkReceiver};
-use crate::downlink::improved::typed::map::{TypedMapDownlink, MapDownlinkReceiver};
-use crate::downlink::improved::typed::command::TypedCommandDownlink;
-use crate::downlink::improved::typed::event::TypedEventDownlink;
-use crate::downlink::improved::typed::{UntypedValueDownlink, UntypedValueReceiver, UntypedMapDownlink, UntypedMapReceiver, UntypedCommandDownlink, UntypedEventDownlink};
+use crate::downlink::typed::value::{TypedValueDownlink, ValueDownlinkReceiver};
+use crate::downlink::typed::map::{TypedMapDownlink, MapDownlinkReceiver};
+use crate::downlink::typed::command::TypedCommandDownlink;
+use crate::downlink::typed::event::TypedEventDownlink;
+use crate::downlink::typed::{UntypedValueDownlink, UntypedValueReceiver, UntypedMapDownlink, UntypedMapReceiver, UntypedCommandDownlink, UntypedEventDownlink};
 use crate::downlink::model::SchemaViolations;
 
 /// Represents errors that can occur in the client.

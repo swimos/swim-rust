@@ -17,17 +17,13 @@ use std::sync::Arc;
 
 use futures::Stream;
 
-use crate::downlink::{
-    BasicResponse, Command, DownlinkError, DownlinkRequest, Message,
-    SyncStateMachine, TransitionError, error::UpdateFailure,
-};
+use crate::downlink::{BasicResponse, Command, DownlinkError, DownlinkRequest, Message, SyncStateMachine, TransitionError, error::UpdateFailure, DownlinkConfig};
 use std::fmt;
 use swim_common::model::schema::{Schema, StandardSchema};
 use swim_common::model::Value;
 use swim_common::routing::RoutingError;
 use swim_common::sink::item::ItemSender;
-use crate::downlink::improved::DownlinkConfig;
-use crate::downlink::improved::typed::{UntypedValueDownlink, UntypedValueReceiver};
+use crate::downlink::typed::{UntypedValueDownlink, UntypedValueReceiver};
 
 #[cfg(test)]
 mod tests;
@@ -120,7 +116,7 @@ impl Action {
 type ValueItemResult = Result<Message<Value>, RoutingError>;
 
 /// Create a raw value downlink.
-pub fn create_downlink_improved<Updates, Commands>(
+pub fn create_downlink<Updates, Commands>(
     init: Value,
     schema: Option<StandardSchema>,
     update_stream: Updates,
@@ -131,7 +127,7 @@ pub fn create_downlink_improved<Updates, Commands>(
         Updates: Stream<Item = ValueItemResult> + Send + Sync + 'static,
         Commands: ItemSender<Command<SharedValue>, RoutingError> + Send + Sync + 'static,
 {
-    crate::downlink::improved::create_downlink(
+    crate::downlink::create_downlink(
         ValueStateMachine::new(init, schema.unwrap_or(StandardSchema::Anything)),
         update_stream,
         cmd_sender,

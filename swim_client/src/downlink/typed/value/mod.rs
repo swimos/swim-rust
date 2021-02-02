@@ -28,7 +28,7 @@ use swim_common::model::schema::StandardSchema;
 use std::cmp::Ordering;
 use std::fmt::{Debug, Formatter, Display};
 use std::any::type_name;
-use crate::downlink::improved::typed::{UntypedValueDownlink, ViewMode};
+use crate::downlink::typed::{UntypedValueDownlink, ViewMode};
 use std::sync::Arc;
 use std::error::Error;
 

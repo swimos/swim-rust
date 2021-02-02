@@ -14,7 +14,7 @@
 
 use std::marker::PhantomData;
 use std::sync::Arc;
-use crate::downlink::improved::typed::{UntypedCommandDownlink, ViewMode};
+use crate::downlink::typed::{UntypedCommandDownlink, ViewMode};
 use std::fmt::{Debug, Formatter};
 use std::any::type_name;
 use swim_common::form::{Form, ValidatedForm};
