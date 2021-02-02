@@ -40,6 +40,8 @@ use crate::downlink::{
 };
 use std::num::NonZeroUsize;
 use swim_common::routing::RoutingError;
+use crate::downlink::improved::typed::{UntypedMapDownlink, UntypedMapReceiver};
+use crate::downlink::improved::DownlinkConfig;
 
 #[cfg(test)]
 mod tests;
@@ -560,6 +562,30 @@ impl ViewWithEvent {
 
 /// Typedef for map downlink stream item.
 type MapItemResult = Result<Message<UntypedMapModification<Value>>, RoutingError>;
+
+/// Create a map downlink.
+pub fn create_downlink_improved<Updates, Commands>(
+    key_schema: Option<StandardSchema>,
+    value_schema: Option<StandardSchema>,
+    update_stream: Updates,
+    cmd_sink: Commands,
+    config: DownlinkConfig,
+) -> (UntypedMapDownlink, UntypedMapReceiver)
+    where
+        Updates: Stream<Item = MapItemResult> + Send + Sync + 'static,
+        Commands:
+        ItemSender<Command<UntypedMapModification<Arc<Value>>>, RoutingError> + Send + Sync + 'static,
+{
+    crate::downlink::improved::create_downlink(
+        MapStateMachine::new(
+            key_schema.unwrap_or(StandardSchema::Anything),
+            value_schema.unwrap_or(StandardSchema::Anything),
+        ),
+        update_stream,
+        cmd_sink,
+        config,
+    )
+}
 
 /// Create a map downlink.
 pub fn create_raw_downlink<Updates, Commands>(

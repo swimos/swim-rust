@@ -206,6 +206,13 @@ impl<A> Event<A> {
         }
     }
 
+    pub fn get_inner_ref(&self) -> &A {
+        match self {
+            Event::Local(inner) => inner,
+            Event::Remote(inner) => inner,
+        }
+    }
+
     /// Maps `Event<A>` to `Result<Event<B>, Err>` by applying a transformation function `Func`.
     pub fn try_transform<B, Err, Func>(self, mut func: Func) -> Result<Event<B>, Err>
     where

@@ -20,9 +20,30 @@ use swim_common::model::schema::{Schema, StandardSchema};
 use swim_common::model::Value;
 use swim_common::routing::RoutingError;
 use swim_common::sink::item::ItemSender;
+use crate::downlink::improved::typed::UntypedCommandDownlink;
+use crate::downlink::improved::DownlinkConfig;
 
 #[cfg(test)]
 mod tests;
+
+pub fn create_downlink_improved<Commands>(
+    schema: StandardSchema,
+    cmd_sender: Commands,
+    config: DownlinkConfig,
+) -> UntypedCommandDownlink
+    where
+        Commands: ItemSender<Command<Value>, RoutingError> + Send + Sync + 'static,
+{
+    let upd_stream = futures::stream::pending();
+
+    crate::downlink::improved::create_downlink(
+        CommandStateMachine::new(schema),
+        upd_stream,
+        cmd_sender,
+        config,
+    ).0
+
+}
 
 pub fn create_downlink<Commands>(
     schema: StandardSchema,

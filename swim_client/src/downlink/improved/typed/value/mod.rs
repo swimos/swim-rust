@@ -29,15 +29,16 @@ use std::cmp::Ordering;
 use std::fmt::{Debug, Formatter};
 use std::any::type_name;
 use crate::downlink::improved::typed::{UntypedValueDownlink, ViewMode};
+use std::sync::Arc;
 
 pub struct TypedValueDownlink<T> {
-    inner: UntypedValueDownlink,
+    inner: Arc<UntypedValueDownlink>,
     _type: PhantomData<fn(T) -> T>,
 }
 
 impl<T> TypedValueDownlink<T> {
 
-    fn new(inner: UntypedValueDownlink) -> Self {
+    pub(crate) fn new(inner: Arc<UntypedValueDownlink>) -> Self {
         TypedValueDownlink {
             inner,
             _type: PhantomData,
@@ -76,7 +77,7 @@ pub struct ValueViewError {
     mode: ViewMode,
 }
 
-impl<T: Form> TypedValueDownlink<T> {
+impl<T> TypedValueDownlink<T> {
 
     pub fn is_stopped(&self) -> bool {
         self.inner.is_stopped()
@@ -86,6 +87,10 @@ impl<T: Form> TypedValueDownlink<T> {
     pub fn await_stopped(&self) -> promise::Receiver<Result<(), DownlinkError>> {
         self.inner.await_stopped()
     }
+
+}
+
+impl<T: Form> TypedValueDownlink<T> {
 
     pub fn subscriber(&self) -> ValueDownlinkSubscriber<T> {
         ValueDownlinkSubscriber::new(self.inner.subscriber())
@@ -298,7 +303,7 @@ impl<T> Clone for ValueDownlinkSubscriber<T> {
 
 impl<T> ValueDownlinkReceiver<T> {
 
-    fn new(inner: topic::Receiver<Event<SharedValue>>) -> Self {
+    pub(crate) fn new(inner: topic::Receiver<Event<SharedValue>>) -> Self {
         ValueDownlinkReceiver {
             inner,
             _type: PhantomData,
@@ -322,7 +327,7 @@ impl<T: ValidatedForm> ValueDownlinkSubscriber<T> {
 
     /// Create a read-only view for a value downlink that converts all received values to a new type.
     /// The type of the view must have an equal or greater schema than the original downlink.
-    pub async fn expand_type<U: ValidatedForm>(
+    pub async fn covariant_cast<U: ValidatedForm>(
         &self,
     ) -> Result<ValueDownlinkSubscriber<U>, ValueViewError>
     {

@@ -29,9 +29,35 @@ use swim_common::routing::RoutingError;
 use swim_common::sink::item::ItemSender;
 use tracing::{error, instrument, trace};
 use utilities::errors::Recoverable;
+use crate::downlink::improved::typed::{UntypedEventDownlink, UntypedEventReceiver};
+use crate::downlink::improved::DownlinkConfig;
 
 #[cfg(test)]
 mod tests;
+
+/// Create an event downlink with a queue based multiplexing topic.
+pub fn create_downlink<Updates, Snk>(
+    schema: StandardSchema,
+    violations: SchemaViolations,
+    update_stream: Updates,
+    cmd_sink: Snk,
+    config: &DownlinkParams,
+) -> (UntypedEventDownlink, UntypedEventReceiver)
+    where
+        Updates: Stream<Item = Result<Message<Value>, RoutingError>> + Send + Sync + 'static,
+        Snk: ItemSender<Command<Value>, RoutingError> + Send + Sync + 'static,
+{
+    crate::downlink::improved::create_downlink(
+        EventStateMachine::new(schema, violations),
+        update_stream,
+        cmd_sink,
+        DownlinkConfig {
+            buffer_size: config.buffer_size,
+            yield_after: config.yield_after,
+            on_invalid: config.on_invalid,
+        }
+    )
+}
 
 /// Create an event downlink with a queue based multiplexing topic.
 pub fn create_queue_downlink<Updates, Snk>(
@@ -41,7 +67,7 @@ pub fn create_queue_downlink<Updates, Snk>(
     cmd_sink: Snk,
     queue_size: NonZeroUsize,
     config: &DownlinkParams,
-) -> (QueueDownlink<Value, Value>, QueueReceiver<Value>)
+) -> (QueueDownlink<(), Value>, QueueReceiver<Value>)
 where
     Updates: Stream<Item = Result<Message<Value>, RoutingError>> + Send + 'static,
     Snk: ItemSender<Command<Value>, RoutingError> + Send + 'static,
@@ -62,7 +88,7 @@ pub fn create_dropping_downlink<Updates, Snk>(
     update_stream: Updates,
     cmd_sink: Snk,
     config: &DownlinkParams,
-) -> (DroppingDownlink<Value, Value>, DroppingReceiver<Value>)
+) -> (DroppingDownlink<(), Value>, DroppingReceiver<Value>)
 where
     Updates: Stream<Item = Result<Message<Value>, RoutingError>> + Send + 'static,
     Snk: ItemSender<Command<Value>, RoutingError> + Send + 'static,
@@ -83,7 +109,7 @@ pub fn create_buffered_downlink<Updates, Snk>(
     cmd_sink: Snk,
     queue_size: NonZeroUsize,
     config: &DownlinkParams,
-) -> (BufferedDownlink<Value, Value>, BufferedReceiver<Value>)
+) -> (BufferedDownlink<(), Value>, BufferedReceiver<Value>)
 where
     Updates: Stream<Item = Result<Message<Value>, RoutingError>> + Send + 'static,
     Snk: ItemSender<Command<Value>, RoutingError> + Send + 'static,
@@ -108,7 +134,7 @@ impl EventStateMachine {
     }
 }
 
-impl StateMachine<(), Value, Value> for EventStateMachine {
+impl StateMachine<(), Value, ()> for EventStateMachine {
     type Ev = Value;
     type Cmd = Value;
 
@@ -123,7 +149,7 @@ impl StateMachine<(), Value, Value> for EventStateMachine {
         &self,
         downlink_state: &mut DownlinkState,
         _state: &mut (),
-        op: Operation<Value, Value>,
+        op: Operation<Value, ()>,
     ) -> Result<Response<Self::Ev, Self::Cmd>, DownlinkError> {
         match op {
             Operation::Start => {

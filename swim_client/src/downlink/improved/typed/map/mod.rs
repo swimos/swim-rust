@@ -29,15 +29,16 @@ use futures::Stream;
 use futures::stream::unfold;
 use swim_common::model::Value;
 use swim_common::request::Request;
+use std::sync::Arc;
 
 pub struct TypedMapDownlink<K, V> {
-    inner: UntypedMapDownlink,
+    inner: Arc<UntypedMapDownlink>,
     _type: PhantomData<fn(K, V) -> (K, V)>,
 }
 
 impl<K, V> TypedMapDownlink<K, V> {
 
-    fn new(inner: UntypedMapDownlink) -> Self {
+    pub(crate) fn new(inner: Arc<UntypedMapDownlink>) -> Self {
         TypedMapDownlink {
             inner,
             _type: PhantomData,
@@ -65,8 +66,7 @@ impl<K, V> Clone for TypedMapDownlink<K, V> {
     }
 }
 
-
-impl<K: Form, V: Form> TypedMapDownlink<K, V> {
+impl<K, V> TypedMapDownlink<K, V> {
 
     pub fn is_stopped(&self) -> bool {
         self.inner.is_stopped()
@@ -76,6 +76,10 @@ impl<K: Form, V: Form> TypedMapDownlink<K, V> {
     pub fn await_stopped(&self) -> promise::Receiver<Result<(), DownlinkError>> {
         self.inner.await_stopped()
     }
+
+}
+
+impl<K: Form, V: Form> TypedMapDownlink<K, V> {
 
     pub fn subscriber(&self) -> MapDownlinkSubscriber<K, V> {
         MapDownlinkSubscriber::new(self.inner.subscriber())
@@ -390,7 +394,7 @@ impl<K, V> Clone for MapDownlinkSubscriber<K, V> {
 
 impl<K, V> MapDownlinkReceiver<K, V> {
 
-    fn new(inner: topic::Receiver<Event<ViewWithEvent>>) -> Self {
+    pub(crate) fn new(inner: topic::Receiver<Event<ViewWithEvent>>) -> Self {
         MapDownlinkReceiver {
             inner,
             _type: PhantomData,

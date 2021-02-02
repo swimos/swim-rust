@@ -16,15 +16,23 @@ use crate::downlink::improved::ImprovedRawDownlink;
 use crate::downlink::model::value::{Action, SharedValue, UpdateResult};
 use crate::downlink::model::map::{MapAction, ViewWithEvent};
 use swim_common::form::{ValidatedForm, Form};
-use crate::downlink::{DownlinkError, UpdateFailure};
+use crate::downlink::{DownlinkError, UpdateFailure, Event};
 use tokio::sync::oneshot;
 use swim_common::model::Value;
+use utilities::sync::topic;
 
+pub mod command;
+pub mod event;
 pub mod map;
 pub mod value;
 
 pub type UntypedValueDownlink = ImprovedRawDownlink<Action, SharedValue>;
+pub type UntypedValueReceiver = topic::Receiver<Event<SharedValue>>;
 pub type UntypedMapDownlink = ImprovedRawDownlink<MapAction, ViewWithEvent>;
+pub type UntypedMapReceiver = topic::Receiver<Event<ViewWithEvent>>;
+pub type UntypedCommandDownlink = ImprovedRawDownlink<Value, ()>;
+pub type UntypedEventDownlink = ImprovedRawDownlink<(), Value>;
+pub type UntypedEventReceiver = topic::Receiver<Event<Value>>;
 
 #[derive(Debug, Clone)]
 pub enum ViewMode {

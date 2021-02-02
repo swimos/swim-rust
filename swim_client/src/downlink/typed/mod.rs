@@ -20,7 +20,6 @@ pub mod topic;
 use crate::downlink::any::{AnyDownlink, AnyEventReceiver, TopicKind};
 use crate::downlink::model::map::{MapAction, ViewWithEvent};
 use crate::downlink::model::value::{Action, SharedValue};
-use crate::downlink::subscription::AnyCommandDownlink;
 use crate::downlink::typed::action::{MapActions, ValueActions};
 use crate::downlink::typed::any::map::AnyMapDownlink;
 use crate::downlink::typed::any::value::AnyValueDownlink;
@@ -482,7 +481,7 @@ where
     }
 }
 
-impl<T: Form> CommandDownlink<AnyCommandDownlink, T> {
+impl<T: Form> CommandDownlink<raw::Sender<Value>, T> {
     pub async fn send_item(&mut self, item: T) -> Result<(), DownlinkError> {
         self.inner.send(item.into_value()).await.map_err(Into::into)
     }

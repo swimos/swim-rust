@@ -18,10 +18,10 @@ use crate::downlink::{DownlinkError, Message, Command, StateMachine, Event, Oper
 use swim_common::routing::RoutingError;
 use swim_common::sink::item::ItemSender;
 use std::num::NonZeroUsize;
-use crate::configuration::downlink::OnInvalidMessage;
+use crate::configuration::downlink::{OnInvalidMessage, DownlinkParams};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use futures::{StreamExt, select_biased};
+use futures::{StreamExt, select_biased, Stream};
 use futures::future::ready;
 use futures::stream::once;
 use utilities::errors::Recoverable;
@@ -57,6 +57,10 @@ impl<Act, Ev> ImprovedRawDownlink<Act, Ev> {
         self.completed.load(Ordering::SeqCst)
     }
 
+    pub fn is_running(&self) -> bool {
+        !self.is_stopped()
+    }
+
     /// Get a promise that will complete when the downlink stops running.
     pub fn await_stopped(&self) -> promise::Receiver<Result<(), DownlinkError>> {
         self.task_result.clone()
@@ -82,14 +86,24 @@ impl<Act, Ev> ImprovedRawDownlink<Act, Ev> {
 
 #[derive(Clone, Copy, Debug)]
 pub struct DownlinkConfig {
-    buffer_size: NonZeroUsize,
-    yield_after: NonZeroUsize,
-    on_invalid: OnInvalidMessage,
+    pub buffer_size: NonZeroUsize,
+    pub yield_after: NonZeroUsize,
+    pub on_invalid: OnInvalidMessage,
 }
 
-pub(in crate::downlink) fn create_downlink<M, Act, State, Machine, CmdSend>(
+impl From<&DownlinkParams> for DownlinkConfig {
+    fn from(conf: &DownlinkParams) -> Self {
+        DownlinkConfig {
+            buffer_size: conf.buffer_size,
+            yield_after: conf.yield_after,
+            on_invalid: conf.on_invalid,
+        }
+    }
+}
+
+pub(in crate::downlink) fn create_downlink<M, Act, State, Machine, CmdSend, Updates>(
     machine: Machine,
-    update_stream: mpsc::Receiver<Result<Message<M>, RoutingError>>,
+    update_stream: Updates,
     cmd_sink: CmdSend,
     config: DownlinkConfig,
 ) -> (ImprovedRawDownlink<Act, Machine::Ev>, topic::Receiver<Event<Machine::Ev>>)
@@ -98,6 +112,7 @@ where
     Act: Send + 'static,
     State: Send + 'static,
     Machine: StateMachine<State, M, Act> + Send + Sync + 'static,
+    Updates: Stream<Item = Result<Message<M>, RoutingError>> + Send + Sync + 'static,
     CmdSend: ItemSender<Command<Machine::Cmd>, RoutingError> + Send + Sync + 'static,
 {
     let (act_tx, act_rx) = mpsc::channel::<Act>(config.buffer_size.get());
@@ -109,15 +124,14 @@ where
     let completed_cpy = completed.clone();
 
     // The task that maintains the internal state of the lane.
-    let task: ImprovedDownlinkTask<M, Act, Machine::Ev> = ImprovedDownlinkTask {
+    let task: ImprovedDownlinkTask<Act, Machine::Ev> = ImprovedDownlinkTask {
         event_sink: event_tx,
-        updates: update_stream,
         actions: act_rx,
         config,
     };
 
     let dl_task = async move {
-        let result = task.run(machine, cmd_sink).await;
+        let result = task.run(machine, update_stream, cmd_sink).await;
         completed.store(true, Ordering::Release);
         let _ = stopped_tx.provide(result);
     };
@@ -135,21 +149,23 @@ where
     (dl, event_rx)
 }
 
-struct ImprovedDownlinkTask<M, Act, Ev> {
+struct ImprovedDownlinkTask<Act, Ev> {
     event_sink: topic::Sender<Event<Ev>>,
-    updates: mpsc::Receiver<Result<Message<M>, RoutingError>>,
     actions: mpsc::Receiver<Act>,
     config: DownlinkConfig,
 }
 
-impl<M, Act, Ev> ImprovedDownlinkTask<M, Act, Ev> {
+impl<Act, Ev> ImprovedDownlinkTask<Act, Ev> {
 
-    async fn run<Cmd, State>(self,
+    async fn run<M, Cmd, State, Updates>(self,
                              state_machine: impl StateMachine<State, M, Act, Cmd = Cmd, Ev = Ev>,
-                             mut cmd_sink: impl ItemSender<Command<Cmd>, RoutingError>) -> Result<(), DownlinkError> {
+                             updates: Updates,
+                             mut cmd_sink: impl ItemSender<Command<Cmd>, RoutingError>) -> Result<(), DownlinkError>
+    where
+        Updates: Stream<Item = Result<Message<M>, RoutingError>> + Send + Sync + 'static,
+    {
         let ImprovedDownlinkTask {
             mut event_sink,
-            updates,
             actions,
             config } = self;
 

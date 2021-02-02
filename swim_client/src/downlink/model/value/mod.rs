@@ -33,6 +33,8 @@ use swim_common::model::schema::{Schema, StandardSchema};
 use swim_common::model::Value;
 use swim_common::routing::RoutingError;
 use swim_common::sink::item::ItemSender;
+use crate::downlink::improved::DownlinkConfig;
+use crate::downlink::improved::typed::{UntypedValueDownlink, UntypedValueReceiver};
 
 #[cfg(test)]
 mod tests;
@@ -123,6 +125,26 @@ impl Action {
 
 /// Typedef for value downlink stream item.
 type ValueItemResult = Result<Message<Value>, RoutingError>;
+
+/// Create a raw value downlink.
+pub fn create_downlink_improved<Updates, Commands>(
+    init: Value,
+    schema: Option<StandardSchema>,
+    update_stream: Updates,
+    cmd_sender: Commands,
+    config: DownlinkConfig,
+) -> (UntypedValueDownlink, UntypedValueReceiver)
+    where
+        Updates: Stream<Item = ValueItemResult> + Send + Sync + 'static,
+        Commands: ItemSender<Command<SharedValue>, RoutingError> + Send + Sync + 'static,
+{
+    crate::downlink::improved::create_downlink(
+        ValueStateMachine::new(init, schema.unwrap_or(StandardSchema::Anything)),
+        update_stream,
+        cmd_sender,
+        config
+    )
+}
 
 /// Create a raw value downlink.
 pub fn create_raw_downlink<Updates, Commands>(
