@@ -14,7 +14,7 @@
 
 use tokio::sync::mpsc;
 use utilities::sync::{topic, promise};
-use crate::downlink::{DownlinkError, Message, Command, StateMachine, Event, Operation, DownlinkState, Response};
+use crate::downlink::{DownlinkError, Message, Command, StateMachine, Event, Operation, DownlinkState, Response, Downlink};
 use swim_common::routing::RoutingError;
 use swim_common::sink::item::ItemSender;
 use std::num::NonZeroUsize;
@@ -51,20 +51,22 @@ impl<Act, Ev> Clone for ImprovedRawDownlink<Act, Ev> {
     }
 }
 
-impl<Act, Ev> ImprovedRawDownlink<Act, Ev> {
+impl<Act, Ev> Downlink for ImprovedRawDownlink<Act, Ev> {
 
-    pub fn is_stopped(&self) -> bool {
+    fn is_stopped(&self) -> bool {
         self.completed.load(Ordering::SeqCst)
     }
 
-    pub fn is_running(&self) -> bool {
-        !self.is_stopped()
-    }
-
-    /// Get a promise that will complete when the downlink stops running.
-    pub fn await_stopped(&self) -> promise::Receiver<Result<(), DownlinkError>> {
+    fn await_stopped(&self) -> promise::Receiver<Result<(), DownlinkError>> {
         self.task_result.clone()
     }
+
+    fn same_downlink(left: &Self, right: &Self) -> bool {
+       Arc::ptr_eq(&left.completed, &right.completed)
+    }
+}
+
+impl<Act, Ev> ImprovedRawDownlink<Act, Ev> {
 
     pub fn subscriber(&self) -> topic::Subscriber<Event<Ev>> {
         self.event_topic.clone()

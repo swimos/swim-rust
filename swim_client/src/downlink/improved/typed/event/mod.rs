@@ -17,7 +17,7 @@ use std::marker::PhantomData;
 use crate::downlink::improved::typed::{UntypedEventDownlink, ViewMode};
 use std::fmt::{Debug, Formatter};
 use std::any::type_name;
-use crate::downlink::{DownlinkError, Event};
+use crate::downlink::{DownlinkError, Event, Downlink};
 use utilities::sync::{promise, topic};
 use swim_common::form::{Form, ValidatedForm};
 use futures::Stream;
@@ -60,18 +60,18 @@ impl<T> Clone for TypedEventDownlink<T> {
     }
 }
 
-
-impl<T> TypedEventDownlink<T> {
-
-    pub fn is_stopped(&self) -> bool {
+impl<T> Downlink for TypedEventDownlink<T> {
+    fn is_stopped(&self) -> bool {
         self.inner.is_stopped()
     }
 
-    /// Get a promise that will complete when the downlink stops running.
-    pub fn await_stopped(&self) -> promise::Receiver<Result<(), DownlinkError>> {
+    fn await_stopped(&self) -> promise::Receiver<Result<(), DownlinkError>> {
         self.inner.await_stopped()
     }
 
+    fn same_downlink(left: &Self, right: &Self) -> bool {
+        Arc::ptr_eq(&left.inner, &right.inner)
+    }
 }
 
 impl<T: Form> TypedEventDownlink<T> {

@@ -21,7 +21,7 @@ use std::fmt::{Debug, Formatter, Display};
 use std::any::type_name;
 use swim_common::form::{Form, ValidatedForm, FormErr};
 use utilities::sync::{promise, topic};
-use crate::downlink::{DownlinkError, Event};
+use crate::downlink::{DownlinkError, Event, Downlink};
 use tokio::sync::{mpsc, oneshot};
 use crate::downlink::model::map::{MapAction, ViewWithEvent, MapEvent, ValMap};
 use crate::downlink::typed::event::{TypedViewWithEvent, TypedMapView};
@@ -69,17 +69,18 @@ impl<K, V> Clone for TypedMapDownlink<K, V> {
     }
 }
 
-impl<K, V> TypedMapDownlink<K, V> {
-
-    pub fn is_stopped(&self) -> bool {
+impl<K, V> Downlink for TypedMapDownlink<K, V> {
+    fn is_stopped(&self) -> bool {
         self.inner.is_stopped()
     }
 
-    /// Get a promise that will complete when the downlink stops running.
-    pub fn await_stopped(&self) -> promise::Receiver<Result<(), DownlinkError>> {
+    fn await_stopped(&self) -> promise::Receiver<Result<(), DownlinkError>> {
         self.inner.await_stopped()
     }
 
+    fn same_downlink(left: &Self, right: &Self) -> bool {
+        Arc::ptr_eq(&left.inner, &right.inner)
+    }
 }
 
 impl<K: Form, V: Form> TypedMapDownlink<K, V> {

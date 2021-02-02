@@ -19,7 +19,7 @@ use crate::downlink::model::value::{SharedValue, Action};
 use std::marker::PhantomData;
 use swim_common::form::{Form, ValidatedForm};
 use utilities::sync::{promise, topic};
-use crate::downlink::{DownlinkError, Event, DownlinkRequest};
+use crate::downlink::{DownlinkError, Event, DownlinkRequest, Downlink};
 use swim_common::model::Value;
 use tokio::sync::{oneshot, mpsc};
 use futures::Stream;
@@ -86,17 +86,18 @@ impl Display for ValueViewError {
 
 impl Error for ValueViewError {}
 
-impl<T> TypedValueDownlink<T> {
-
-    pub fn is_stopped(&self) -> bool {
+impl<T> Downlink for TypedValueDownlink<T> {
+    fn is_stopped(&self) -> bool {
         self.inner.is_stopped()
     }
 
-    /// Get a promise that will complete when the downlink stops running.
-    pub fn await_stopped(&self) -> promise::Receiver<Result<(), DownlinkError>> {
+    fn await_stopped(&self) -> promise::Receiver<Result<(), DownlinkError>> {
         self.inner.await_stopped()
     }
 
+    fn same_downlink(left: &Self, right: &Self) -> bool {
+        Arc::ptr_eq(&left.inner, &right.inner)
+    }
 }
 
 impl<T: Form> TypedValueDownlink<T> {

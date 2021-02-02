@@ -27,6 +27,22 @@ use swim_common::routing::RoutingError;
 use tracing::{instrument, trace};
 use utilities::errors::Recoverable;
 use crate::downlink::error::{DownlinkError, TransitionError};
+use utilities::sync::promise;
+
+trait Downlink {
+
+    fn is_stopped(&self) -> bool;
+
+    fn is_running(&self) -> bool {
+        !self.is_stopped()
+    }
+
+    /// Get a promise that will complete when the downlink stops running.
+    fn await_stopped(&self) -> promise::Receiver<Result<(), DownlinkError>>;
+
+    fn same_downlink(left: &Self, right: &Self) -> bool;
+
+}
 
 /// A request to a downlink for a value.
 pub type DownlinkRequest<T> = TryRequest<T, DownlinkError>;

@@ -21,7 +21,7 @@ use crate::downlink::model::value::{self, SharedValue};
 use crate::downlink::model::{command, map};
 use crate::downlink::watch_adapter::map::KeyedWatch;
 use crate::downlink::watch_adapter::value::ValuePump;
-use crate::downlink::{Command, DownlinkError, Message};
+use crate::downlink::{Command, DownlinkError, Message, Downlink};
 use crate::router::{Router, RouterEvent};
 use either::Either;
 use futures::stream::Fuse;

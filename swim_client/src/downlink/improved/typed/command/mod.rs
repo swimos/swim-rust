@@ -19,7 +19,7 @@ use std::fmt::{Debug, Formatter};
 use std::any::type_name;
 use swim_common::form::{Form, ValidatedForm};
 use utilities::sync::promise;
-use crate::downlink::DownlinkError;
+use crate::downlink::{DownlinkError, Downlink};
 use swim_common::model::schema::StandardSchema;
 use std::cmp::Ordering;
 
@@ -57,17 +57,18 @@ impl<T> Clone for TypedCommandDownlink<T> {
     }
 }
 
-impl<T> TypedCommandDownlink<T> {
-
-    pub fn is_stopped(&self) -> bool {
+impl<T> Downlink for TypedCommandDownlink<T> {
+    fn is_stopped(&self) -> bool {
         self.inner.is_stopped()
     }
 
-    /// Get a promise that will complete when the downlink stops running.
-    pub fn await_stopped(&self) -> promise::Receiver<Result<(), DownlinkError>> {
+    fn await_stopped(&self) -> promise::Receiver<Result<(), DownlinkError>> {
         self.inner.await_stopped()
     }
 
+    fn same_downlink(left: &Self, right: &Self) -> bool {
+        Arc::ptr_eq(&left.inner, &right.inner)
+    }
 }
 
 impl<T: Form> TypedCommandDownlink<T> {
