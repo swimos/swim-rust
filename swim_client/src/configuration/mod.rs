@@ -218,162 +218,6 @@ pub mod downlink {
         fn client_params(&self) -> ClientParams;
     }
 
-    const QUEUE_TAG: &str = "queue";
-    const DROPPING_TAG: &str = "dropping";
-    const BUFFERED_TAG: &str = "buffered";
-    const QUEUE_SIZE_TAG: &str = "queue_size";
-
-    const DEFAULT_QUEUE_SIZE: usize = 5;
-
-    /// Multiplexing strategy for the topic of events produced by a downlink.
-    #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-    pub enum MuxMode {
-        /// Each consumer has an intermediate queues. If any one of these queues fills the
-        /// downlink will block.
-        Queue(NonZeroUsize),
-        /// Each subscriber to the downlink will see only the most recent event each time it polls.
-        /// Subscribers could miss a large proportion of messages.
-        Dropping,
-        /// All consumers read from a single intermediate queue. If this queue fills the oldest
-        /// values will be discarded. Lagging consumers could miss messages.
-        Buffered(NonZeroUsize),
-    }
-
-    impl Default for MuxMode {
-        fn default() -> Self {
-            MuxMode::Queue(NonZeroUsize::new(DEFAULT_QUEUE_SIZE).unwrap())
-        }
-    }
-
-    impl MuxMode {
-        fn try_from_value(value: Value, use_defaults: bool) -> Result<Self, ConfigParseError> {
-            match value {
-                Value::Record(mut attrs, items) if attrs.len() <= 1 => {
-                    if let Some(Attr { name, value }) = attrs.pop() {
-                        match name.as_str() {
-                            QUEUE_TAG => {
-                                if let Value::Record(_, items) = value {
-                                    try_queue_mode_from_items(items, use_defaults)
-                                } else {
-                                    Err(ConfigParseError::UnexpectedValue(value, Some(QUEUE_TAG)))
-                                }
-                            }
-                            DROPPING_TAG => {
-                                if let Value::Extant = value {
-                                    Ok(MuxMode::Dropping)
-                                } else {
-                                    Err(ConfigParseError::UnexpectedValue(
-                                        value,
-                                        Some(DROPPING_TAG),
-                                    ))
-                                }
-                            }
-                            BUFFERED_TAG => {
-                                if let Value::Record(_, items) = value {
-                                    try_buffered_mode_from_items(items, use_defaults)
-                                } else {
-                                    Err(ConfigParseError::UnexpectedValue(
-                                        value,
-                                        Some(BUFFERED_TAG),
-                                    ))
-                                }
-                            }
-                            _ => Err(ConfigParseError::UnexpectedAttribute(
-                                name.to_string(),
-                                Some(MUX_MODE_TAG),
-                            )),
-                        }
-                    } else {
-                        Err(ConfigParseError::UnnamedRecord(
-                            Value::Record(attrs, items),
-                            Some(MUX_MODE_TAG),
-                        ))
-                    }
-                }
-                _ => Err(ConfigParseError::InvalidValue(value, MUX_MODE_TAG)),
-            }
-        }
-    }
-
-    fn try_queue_mode_from_items(
-        items: Vec<Item>,
-        use_defaults: bool,
-    ) -> Result<MuxMode, ConfigParseError> {
-        let mut queue_size: Option<NonZeroUsize> = None;
-
-        for item in items {
-            match item {
-                Item::Slot(Value::Text(name), value) => match name.as_str() {
-                    QUEUE_SIZE_TAG => {
-                        let size = usize::try_from_value(&value)
-                            .map_err(|_| ConfigParseError::InvalidValue(value, QUEUE_SIZE_TAG))?;
-                        queue_size = Some(NonZeroUsize::new(size).unwrap());
-                    }
-
-                    _ => return Err(ConfigParseError::UnexpectedKey(name.to_string(), QUEUE_TAG)),
-                },
-
-                Item::Slot(value, _) => {
-                    return Err(ConfigParseError::UnexpectedValue(value, Some(QUEUE_TAG)))
-                }
-                Item::ValueItem(value) => {
-                    return Err(ConfigParseError::UnexpectedValue(value, Some(QUEUE_TAG)))
-                }
-            }
-        }
-
-        if use_defaults {
-            queue_size =
-                queue_size.or_else(|| Some(NonZeroUsize::new(DEFAULT_QUEUE_SIZE).unwrap()));
-        }
-
-        Ok(MuxMode::Queue(queue_size.ok_or(
-            ConfigParseError::MissingKey(QUEUE_SIZE_TAG, QUEUE_TAG),
-        )?))
-    }
-
-    fn try_buffered_mode_from_items(
-        items: Vec<Item>,
-        use_defaults: bool,
-    ) -> Result<MuxMode, ConfigParseError> {
-        let mut queue_size: Option<NonZeroUsize> = None;
-
-        for item in items {
-            match item {
-                Item::Slot(Value::Text(name), value) => match name.as_str() {
-                    QUEUE_SIZE_TAG => {
-                        let size = usize::try_from_value(&value)
-                            .map_err(|_| ConfigParseError::InvalidValue(value, QUEUE_SIZE_TAG))?;
-                        queue_size = Some(NonZeroUsize::new(size).unwrap());
-                    }
-
-                    _ => {
-                        return Err(ConfigParseError::UnexpectedKey(
-                            name.to_string(),
-                            BUFFERED_TAG,
-                        ))
-                    }
-                },
-
-                Item::Slot(value, _) => {
-                    return Err(ConfigParseError::UnexpectedValue(value, Some(BUFFERED_TAG)))
-                }
-                Item::ValueItem(value) => {
-                    return Err(ConfigParseError::UnexpectedValue(value, Some(BUFFERED_TAG)))
-                }
-            };
-        }
-
-        if use_defaults {
-            queue_size =
-                queue_size.or_else(|| Some(NonZeroUsize::new(DEFAULT_QUEUE_SIZE).unwrap()));
-        }
-
-        Ok(MuxMode::Buffered(queue_size.ok_or(
-            ConfigParseError::MissingKey(QUEUE_SIZE_TAG, BUFFERED_TAG),
-        )?))
-    }
-
     /// Instruction on how to respond when an invalid message is received for a downlink.
     #[derive(Clone, Copy, PartialEq, Eq, Debug)]
     pub enum OnInvalidMessage {
@@ -385,7 +229,6 @@ pub mod downlink {
     }
 
     const BACK_PRESSURE_TAG: &str = "back_pressure";
-    const MUX_MODE_TAG: &str = "mux_mode";
     const IDLE_TIMEOUT_TAG: &str = "idle_timeout";
     const ON_INVALID_TAG: &str = "on_invalid";
     const YIELD_AFTER_TAG: &str = "yield_after";
@@ -404,9 +247,6 @@ pub mod downlink {
         /// Whether the downlink propagates back-pressure.
         pub back_pressure: BackpressureMode,
 
-        /// Multiplexing mode for the downlink.
-        pub mux_mode: MuxMode,
-
         /// Timeout after which an idle downlink will be closed (not yet implemented).
         pub idle_timeout: Duration,
 
@@ -423,7 +263,6 @@ pub mod downlink {
     impl DownlinkParams {
         pub fn new(
             back_pressure: BackpressureMode,
-            mux_mode: MuxMode,
             idle_timeout: Duration,
             buffer_size: usize,
             on_invalid: OnInvalidMessage,
@@ -438,7 +277,6 @@ pub mod downlink {
                 ) {
                     (Some(nz), Some(ya)) => Ok(DownlinkParams {
                         back_pressure,
-                        mux_mode,
                         idle_timeout,
                         buffer_size: nz,
                         on_invalid,
@@ -450,68 +288,8 @@ pub mod downlink {
             }
         }
 
-        pub fn new_queue(
-            back_pressure: BackpressureMode,
-            queue_size: usize,
-            idle_timeout: Duration,
-            buffer_size: usize,
-            on_invalid: OnInvalidMessage,
-            yield_after: usize,
-        ) -> Result<DownlinkParams, String> {
-            match NonZeroUsize::new(queue_size) {
-                Some(nz) => Self::new(
-                    back_pressure,
-                    MuxMode::Queue(nz),
-                    idle_timeout,
-                    buffer_size,
-                    on_invalid,
-                    yield_after,
-                ),
-                _ => Err(BAD_BUFFER_SIZE.to_string()),
-            }
-        }
-
-        pub fn new_dropping(
-            back_pressure: BackpressureMode,
-            idle_timeout: Duration,
-            buffer_size: usize,
-            on_invalid: OnInvalidMessage,
-            yield_after: usize,
-        ) -> Result<DownlinkParams, String> {
-            Self::new(
-                back_pressure,
-                MuxMode::Dropping,
-                idle_timeout,
-                buffer_size,
-                on_invalid,
-                yield_after,
-            )
-        }
-
-        pub fn new_buffered(
-            back_pressure: BackpressureMode,
-            queue_size: usize,
-            idle_timeout: Duration,
-            buffer_size: usize,
-            on_invalid: OnInvalidMessage,
-            yield_after: usize,
-        ) -> Result<DownlinkParams, String> {
-            match NonZeroUsize::new(queue_size) {
-                Some(nz) => Self::new(
-                    back_pressure,
-                    MuxMode::Buffered(nz),
-                    idle_timeout,
-                    buffer_size,
-                    on_invalid,
-                    yield_after,
-                ),
-                _ => Err(BAD_BUFFER_SIZE.to_string()),
-            }
-        }
-
         fn try_from_items(items: Vec<Item>, use_defaults: bool) -> Result<Self, ConfigParseError> {
             let mut back_pressure: Option<BackpressureMode> = None;
-            let mut mux_mode: Option<MuxMode> = None;
             let mut idle_timeout: Option<Duration> = None;
             let mut buffer_size: Option<usize> = None;
             let mut on_invalid: Option<OnInvalidMessage> = None;
@@ -523,9 +301,6 @@ pub mod downlink {
                         BACK_PRESSURE_TAG => {
                             back_pressure =
                                 Some(BackpressureMode::try_from_value(value, use_defaults)?)
-                        }
-                        MUX_MODE_TAG => {
-                            mux_mode = Some(MuxMode::try_from_value(value, use_defaults)?)
                         }
                         IDLE_TIMEOUT_TAG => {
                             let timeout = u64::try_from_value(&value).map_err(|_| {
@@ -573,7 +348,6 @@ pub mod downlink {
 
             if use_defaults {
                 back_pressure = back_pressure.or(Some(DEFAULT_BACK_PRESSURE));
-                mux_mode = mux_mode.or_else(|| Some(MuxMode::default()));
                 idle_timeout =
                     idle_timeout.or_else(|| Some(Duration::from_secs(DEFAULT_IDLE_TIMEOUT)));
                 buffer_size = buffer_size.or(Some(DEFAULT_DOWNLINK_BUFFER_SIZE));
@@ -586,7 +360,6 @@ pub mod downlink {
                     BACK_PRESSURE_TAG,
                     DOWNLINKS_TAG,
                 ))?,
-                mux_mode.ok_or(ConfigParseError::MissingKey(MUX_MODE_TAG, DOWNLINKS_TAG))?,
                 idle_timeout.ok_or(ConfigParseError::MissingKey(
                     IDLE_TIMEOUT_TAG,
                     DOWNLINKS_TAG,
@@ -617,7 +390,6 @@ pub mod downlink {
         fn default() -> Self {
             DownlinkParams::new(
                 DEFAULT_BACK_PRESSURE,
-                Default::default(),
                 Duration::from_secs(DEFAULT_IDLE_TIMEOUT),
                 DEFAULT_DOWNLINK_BUFFER_SIZE,
                 DEFAULT_ON_INVALID,
