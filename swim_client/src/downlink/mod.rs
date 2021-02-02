@@ -415,15 +415,14 @@ impl From<&DownlinkParams> for DownlinkConfig {
     }
 }
 
+pub type RawReceiver<Ev> = topic::Receiver<Event<Ev>>;
+
 pub(in crate::downlink) fn create_downlink<M, Act, State, Machine, CmdSend, Updates>(
     machine: Machine,
     update_stream: Updates,
     cmd_sink: CmdSend,
     config: DownlinkConfig,
-) -> (
-    RawDownlink<Act, Machine::Ev>,
-    topic::Receiver<Event<Machine::Ev>>,
-)
+) -> (RawDownlink<Act, Machine::Ev>, RawReceiver<Machine::Ev>)
 where
     M: Send + 'static,
     Act: Send + 'static,

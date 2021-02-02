@@ -948,7 +948,7 @@ where
                                 schema,
                             ))
                         } else {
-                            Ok(dl.clone())
+                            Ok(dl)
                         }
                     }
                     _ => {

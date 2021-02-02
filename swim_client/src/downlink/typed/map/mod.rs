@@ -34,9 +34,11 @@ use swim_common::request::Request;
 use tokio::sync::{mpsc, oneshot};
 use utilities::sync::{promise, topic};
 
+type MapDlVariance<K, V> = fn(K, V) -> (K, V);
+
 pub struct TypedMapDownlink<K, V> {
     inner: Arc<UntypedMapDownlink>,
-    _type: PhantomData<fn(K, V) -> (K, V)>,
+    _type: PhantomData<MapDlVariance<K, V>>,
 }
 
 impl<K, V> TypedMapDownlink<K, V> {
@@ -506,7 +508,7 @@ pub fn type_event_ref<K: Form>(event: &MapEvent<Value>) -> Result<MapEvent<K>, F
 /// that can be performed on in.
 struct MapActions<'a, K, V> {
     sender: &'a mpsc::Sender<MapAction>,
-    _entry_type: PhantomData<fn(K, V) -> (K, V)>,
+    _entry_type: PhantomData<MapDlVariance<K, V>>,
 }
 
 impl<'a, K, V> MapActions<'a, K, V> {

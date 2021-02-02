@@ -302,7 +302,7 @@ impl<T: ValidatedForm> EventDownlinkSubscriber<T> {
 impl<T: Form + 'static> EventDownlinkReceiver<T> {
     pub async fn recv(&mut self) -> Option<T> {
         let value = self.inner.recv().await;
-        value.map(|g| Form::try_from_value(&*(&*g.get_inner_ref())).expect("Inconsistent Form"))
+        value.map(|g| Form::try_from_value(&*g.get_inner_ref()).expect("Inconsistent Form"))
     }
 
     pub fn into_stream(self) -> impl Stream<Item = T> + Send + 'static {
