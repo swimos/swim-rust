@@ -27,13 +27,13 @@ async fn main() {
 
     let path = AbsolutePath::new(host_uri.clone(), node_uri, lane_uri);
 
-    for _ in 0..10 {
+    for i in 0..10 {
         client
             .send_command(path.clone(), Value::Extant)
             .await
             .expect("Failed to send command!");
 
-        task::sleep(Duration::from_secs(5)).await;
+        task::sleep(Duration::from_secs(5 * i)).await;
     }
 
     println!("Stopping client in 2 seconds");

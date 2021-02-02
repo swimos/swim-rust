@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use async_std::task;
 use futures::StreamExt;
 use std::time::Duration;
 use swim_client::downlink::subscription::TypedValueReceiver;
@@ -19,7 +20,6 @@ use swim_client::downlink::Downlink;
 use swim_client::downlink::Event::Remote;
 use swim_client::interface::SwimClient;
 use swim_common::warp::path::AbsolutePath;
-use async_std::task;
 
 async fn did_set(value_recv: TypedValueReceiver<String>, initial_value: String) {
     value_recv
@@ -47,11 +47,12 @@ async fn main() {
     let mut client = SwimClient::new_with_default().await;
     let host_uri = url::Url::parse(&"ws://127.0.0.1:9001".to_string()).unwrap();
     let node_uri = "/unit/foo";
-    let lane_uri = "info";
 
-    let path = AbsolutePath::new(host_uri, node_uri, lane_uri);
+    let info_path = AbsolutePath::new(host_uri.clone(), node_uri, "info");
+    let publish_info_path = AbsolutePath::new(host_uri, node_uri, "publish_info");
+
     let (value_downlink, value_recv) = client
-        .value_downlink(path.clone(), String::new())
+        .value_downlink(info_path, String::new())
         .await
         .expect("Failed to create value downlink!");
 
@@ -66,7 +67,7 @@ async fn main() {
 
     // Send using either the proxy command lane...
     client
-        .send_command(path, "Hello from command, world!".to_string())
+        .send_command(publish_info_path, "Hello from command, world!".to_string())
         .await
         .expect("Failed to send command!");
     task::sleep(Duration::from_secs(2)).await;
@@ -77,6 +78,14 @@ async fn main() {
         .await
         .expect("Failed to send message!");
     task::sleep(Duration::from_secs(2)).await;
+
+    println!(
+        "Synchronous link get: {}",
+        dl_sink
+            .get()
+            .await
+            .expect("Failed to retrieve downlink value!")
+    );
 
     println!("Stopping client in 2 seconds");
     task::sleep(Duration::from_secs(2)).await;
