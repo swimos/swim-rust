@@ -13,23 +13,23 @@
 // limitations under the License.
 
 use crate::downlink::model::map::{MapEvent, ValMap, ViewWithEvent};
+use crate::downlink::typed::{UntypedEventDownlink, ViewMode};
+use crate::downlink::{Downlink, DownlinkError, Event};
+use futures::stream::unfold;
+use futures::Stream;
 use im::OrdMap;
+use std::any::type_name;
+use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap};
 use std::convert::TryFrom;
-use std::hash::Hash;
-use std::sync::Arc;
-use std::marker::PhantomData;
-use crate::downlink::typed::{UntypedEventDownlink, ViewMode};
 use std::fmt::{Debug, Formatter};
-use std::any::type_name;
-use crate::downlink::{DownlinkError, Event, Downlink};
-use utilities::sync::{promise, topic};
+use std::hash::Hash;
+use std::marker::PhantomData;
+use std::sync::Arc;
 use swim_common::form::{Form, FormErr, ValidatedForm};
-use futures::Stream;
-use futures::stream::unfold;
 use swim_common::model::schema::StandardSchema;
-use std::cmp::Ordering;
 use swim_common::model::Value;
+use utilities::sync::{promise, topic};
 
 #[cfg(test)]
 mod tests;
@@ -159,14 +159,12 @@ pub struct TypedEventDownlink<T> {
 }
 
 impl<T> TypedEventDownlink<T> {
-
     pub(crate) fn new(inner: Arc<UntypedEventDownlink>) -> Self {
         TypedEventDownlink {
             inner,
             _type: PhantomData,
         }
     }
-
 }
 
 impl<T> Debug for TypedEventDownlink<T> {
@@ -182,7 +180,7 @@ impl<T> Clone for TypedEventDownlink<T> {
     fn clone(&self) -> Self {
         TypedEventDownlink {
             inner: self.inner.clone(),
-            _type: PhantomData
+            _type: PhantomData,
         }
     }
 }
@@ -202,7 +200,6 @@ impl<T> Downlink for TypedEventDownlink<T> {
 }
 
 impl<T: Form> TypedEventDownlink<T> {
-
     pub fn subscriber(&self) -> EventDownlinkSubscriber<T> {
         EventDownlinkSubscriber::new(self.inner.subscriber())
     }
@@ -210,7 +207,6 @@ impl<T: Form> TypedEventDownlink<T> {
     pub fn subscribe(&self) -> Option<EventDownlinkReceiver<T>> {
         self.inner.subscribe().map(EventDownlinkReceiver::new)
     }
-
 }
 
 pub struct EventDownlinkReceiver<T> {
@@ -254,25 +250,21 @@ impl<T> Clone for EventDownlinkSubscriber<T> {
 }
 
 impl<T> EventDownlinkReceiver<T> {
-
     fn new(inner: topic::Receiver<Event<Value>>) -> Self {
         EventDownlinkReceiver {
             inner,
             _type: PhantomData,
         }
     }
-
 }
 
 impl<T> EventDownlinkSubscriber<T> {
-
     fn new(inner: topic::Subscriber<Event<Value>>) -> Self {
         EventDownlinkSubscriber {
             inner,
             _type: PhantomData,
         }
     }
-
 }
 
 /// Error type returned when creating a view
@@ -288,13 +280,11 @@ pub struct EventViewError {
 }
 
 impl<T: ValidatedForm> EventDownlinkSubscriber<T> {
-
     /// Create a read-only view for a value downlink that converts all received values to a new type.
     /// The type of the view must have an equal or greater schema than the original downlink.
     pub async fn covariant_cast<U: ValidatedForm>(
         &self,
-    ) -> Result<EventDownlinkSubscriber<U>, EventViewError>
-    {
+    ) -> Result<EventDownlinkSubscriber<U>, EventViewError> {
         let schema_cmp = U::schema().partial_cmp(&T::schema());
 
         if schema_cmp.is_some() && schema_cmp != Some(Ordering::Less) {
@@ -307,32 +297,24 @@ impl<T: ValidatedForm> EventDownlinkSubscriber<T> {
             })
         }
     }
-
 }
 
-
 impl<T: Form + 'static> EventDownlinkReceiver<T> {
-
     pub async fn recv(&mut self) -> Option<T> {
         let value = self.inner.recv().await;
-        value.map(|g| {
-            Form::try_from_value(&*(&*g.get_inner_ref())).expect("Inconsistent Form")
-        })
+        value.map(|g| Form::try_from_value(&*(&*g.get_inner_ref())).expect("Inconsistent Form"))
     }
 
     pub fn into_stream(self) -> impl Stream<Item = T> + Send + 'static {
-        unfold(self, |mut rx| async move {
-            rx.recv().await.map(|v| (v, rx))
-        })
+        unfold(
+            self,
+            |mut rx| async move { rx.recv().await.map(|v| (v, rx)) },
+        )
     }
-
 }
 
 impl<T: Form> EventDownlinkSubscriber<T> {
-
     pub async fn subscribe(&mut self) -> Result<EventDownlinkReceiver<T>, topic::SubscribeError> {
         self.inner.subscribe().map(EventDownlinkReceiver::new)
     }
-
 }
-

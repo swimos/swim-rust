@@ -28,4 +28,3 @@ impl Default for SchemaViolations {
         SchemaViolations::Report
     }
 }
-

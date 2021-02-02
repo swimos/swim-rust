@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swim_common::model::Value;
-use swim_common::model::schema::StandardSchema;
-use swim_common::routing::{ConnectionError, RoutingError};
-use tokio::sync::mpsc;
-use swim_common::sink::item;
-use std::fmt::{Display, Formatter};
 use std::error::Error;
+use std::fmt::{Display, Formatter};
+use swim_common::model::schema::StandardSchema;
+use swim_common::model::Value;
+use swim_common::routing::{ConnectionError, RoutingError};
+use swim_common::sink::item;
+use tokio::sync::mpsc;
 use utilities::errors::Recoverable;
 
 #[derive(Clone, PartialEq, Debug)]
@@ -105,7 +105,6 @@ impl From<item::SendError> for DownlinkError {
         DownlinkError::DroppedChannel
     }
 }
-
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum TransitionError {

@@ -409,7 +409,7 @@ impl<'a, T> Future for TopicSend<'a, T> {
                 Poll::Ready(Err(SendError(v)))
             } else {
                 Poll::Ready(Ok(()))
-            }
+            };
         }
         let target = lock.write_offset.load(Ordering::Acquire);
         if target == read {

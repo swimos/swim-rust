@@ -15,24 +15,24 @@
 #[cfg(test)]
 mod tests;
 
+use crate::downlink::model::map::{MapAction, MapEvent, ValMap, ViewWithEvent};
+use crate::downlink::typed::event::{TypedMapView, TypedViewWithEvent};
 use crate::downlink::typed::{UntypedMapDownlink, ViewMode};
-use std::marker::PhantomData;
-use std::fmt::{Debug, Formatter, Display};
-use std::any::type_name;
-use swim_common::form::{Form, ValidatedForm, FormErr};
-use utilities::sync::{promise, topic};
-use crate::downlink::{DownlinkError, Event, Downlink};
-use tokio::sync::{mpsc, oneshot};
-use crate::downlink::model::map::{MapAction, ViewWithEvent, MapEvent, ValMap};
-use crate::downlink::typed::event::{TypedViewWithEvent, TypedMapView};
-use futures::Stream;
+use crate::downlink::{Downlink, DownlinkError, Event};
 use futures::stream::unfold;
+use futures::Stream;
+use std::any::type_name;
+use std::cmp::Ordering;
+use std::error::Error;
+use std::fmt::{Debug, Display, Formatter};
+use std::marker::PhantomData;
+use std::sync::Arc;
+use swim_common::form::{Form, FormErr, ValidatedForm};
+use swim_common::model::schema::StandardSchema;
 use swim_common::model::Value;
 use swim_common::request::Request;
-use std::sync::Arc;
-use swim_common::model::schema::StandardSchema;
-use std::error::Error;
-use std::cmp::Ordering;
+use tokio::sync::{mpsc, oneshot};
+use utilities::sync::{promise, topic};
 
 pub struct TypedMapDownlink<K, V> {
     inner: Arc<UntypedMapDownlink>,
@@ -40,14 +40,12 @@ pub struct TypedMapDownlink<K, V> {
 }
 
 impl<K, V> TypedMapDownlink<K, V> {
-
     pub(crate) fn new(inner: Arc<UntypedMapDownlink>) -> Self {
         TypedMapDownlink {
             inner,
             _type: PhantomData,
         }
     }
-
 }
 
 impl<K, V> Debug for TypedMapDownlink<K, V> {
@@ -64,7 +62,7 @@ impl<K, V> Clone for TypedMapDownlink<K, V> {
     fn clone(&self) -> Self {
         TypedMapDownlink {
             inner: self.inner.clone(),
-            _type: PhantomData
+            _type: PhantomData,
         }
     }
 }
@@ -84,7 +82,6 @@ impl<K, V> Downlink for TypedMapDownlink<K, V> {
 }
 
 impl<K: Form, V: Form> TypedMapDownlink<K, V> {
-
     pub fn subscriber(&self) -> MapDownlinkSubscriber<K, V> {
         MapDownlinkSubscriber::new(self.inner.subscriber())
     }
@@ -99,7 +96,6 @@ impl<K: Form, V: Form> TypedMapDownlink<K, V> {
 }
 
 impl<K: ValidatedForm + 'static, V: ValidatedForm + 'static> TypedMapDownlink<K, V> {
-
     /// Get the value associated with a specific key.
     pub async fn get(&self, key: K) -> Result<Option<V>, DownlinkError> {
         actions::<K, V>(self.inner.sender()).get(key).await
@@ -107,12 +103,16 @@ impl<K: ValidatedForm + 'static, V: ValidatedForm + 'static> TypedMapDownlink<K,
 
     /// Update an entry into the map returning any existing value associated with the key.
     pub async fn update(&self, key: K, value: V) -> Result<Option<V>, DownlinkError> {
-        actions::<K, V>(self.inner.sender()).update(key, value).await
+        actions::<K, V>(self.inner.sender())
+            .update(key, value)
+            .await
     }
 
     /// Insert an entry into the map without waiting for the operation to complete.
     pub async fn update_and_forget(&self, key: K, value: V) -> Result<(), DownlinkError> {
-        actions::<K, V>(self.inner.sender()).update_and_forget(key, value).await
+        actions::<K, V>(self.inner.sender())
+            .update_and_forget(key, value)
+            .await
     }
 
     /// Modify the value associated with a key, returning the values associated withe the key before
@@ -122,18 +122,22 @@ impl<K: ValidatedForm + 'static, V: ValidatedForm + 'static> TypedMapDownlink<K,
         key: K,
         update_fn: F,
     ) -> Result<(Option<V>, Option<V>), DownlinkError>
-        where
-            F: FnOnce(Option<V>) -> Option<V> + Send + 'static,
+    where
+        F: FnOnce(Option<V>) -> Option<V> + Send + 'static,
     {
-        actions::<K, V>(self.inner.sender()).modify(key, update_fn).await
+        actions::<K, V>(self.inner.sender())
+            .modify(key, update_fn)
+            .await
     }
 
     /// Modify the value associated with a key without waiting for the operation to complete.
     pub async fn modify_and_forget<F>(&self, key: K, update_fn: F) -> Result<(), DownlinkError>
-        where
-            F: FnOnce(Option<V>) -> Option<V> + Send + 'static,
+    where
+        F: FnOnce(Option<V>) -> Option<V> + Send + 'static,
     {
-        actions::<K, V>(self.inner.sender()).modify_and_forget(key, update_fn).await
+        actions::<K, V>(self.inner.sender())
+            .modify_and_forget(key, update_fn)
+            .await
     }
 
     /// Remove any value associated with a key, returning it.
@@ -143,7 +147,9 @@ impl<K: ValidatedForm + 'static, V: ValidatedForm + 'static> TypedMapDownlink<K,
 
     /// Remove any value associated with a key without waiting for the operation to complete.
     pub async fn remove_and_forget(&self, key: K) -> Result<(), DownlinkError> {
-        actions::<K, V>(self.inner.sender()).remove_and_forget(key).await
+        actions::<K, V>(self.inner.sender())
+            .remove_and_forget(key)
+            .await
     }
 
     /// Clear the contents of the map.
@@ -159,7 +165,9 @@ impl<K: ValidatedForm + 'static, V: ValidatedForm + 'static> TypedMapDownlink<K,
 
     /// Clear the contents of the map without waiting for the operation to complete.
     pub async fn clear_and_forget(&self) -> Result<(), DownlinkError> {
-        actions::<K, V>(self.inner.sender()).clear_and_forget().await
+        actions::<K, V>(self.inner.sender())
+            .clear_and_forget()
+            .await
     }
 
     /// Retain only the first `n` elements of the map.
@@ -178,7 +186,9 @@ impl<K: ValidatedForm + 'static, V: ValidatedForm + 'static> TypedMapDownlink<K,
 
     /// Retain only the first `n` elements of the map without waiting for the operation to complete.
     pub async fn take_and_forget(&self, n: usize) -> Result<(), DownlinkError> {
-        actions::<K, V>(self.inner.sender()).take_and_forget(n).await
+        actions::<K, V>(self.inner.sender())
+            .take_and_forget(n)
+            .await
     }
 
     /// Skip the first `n` elements of the map.
@@ -197,14 +207,15 @@ impl<K: ValidatedForm + 'static, V: ValidatedForm + 'static> TypedMapDownlink<K,
 
     /// Skip the first `n` elements of the map without waiting for the operation to complete.
     pub async fn skip_and_forget(&mut self, n: usize) -> Result<(), DownlinkError> {
-        actions::<K, V>(self.inner.sender()).skip_and_forget(n).await
+        actions::<K, V>(self.inner.sender())
+            .skip_and_forget(n)
+            .await
     }
 
     /// Get the current state of the map.
     pub async fn view(&mut self) -> Result<TypedMapView<K, V>, DownlinkError> {
         actions::<K, V>(self.inner.sender()).view().await
     }
-
 }
 
 pub struct MapDownlinkSender<K, V> {
@@ -229,14 +240,12 @@ impl<K, V> Clone for MapDownlinkSender<K, V> {
 }
 
 impl<K, V> MapDownlinkSender<K, V> {
-
     fn new(inner: mpsc::Sender<MapAction>) -> Self {
         MapDownlinkSender {
             inner,
             _type: PhantomData,
         }
     }
-
 }
 
 fn actions<K, V>(sender: &mpsc::Sender<MapAction>) -> MapActions<K, V> {
@@ -244,9 +253,9 @@ fn actions<K, V>(sender: &mpsc::Sender<MapAction>) -> MapActions<K, V> {
 }
 
 impl<K, V> MapDownlinkSender<K, V>
-    where
-        K: ValidatedForm + 'static,
-        V: ValidatedForm + 'static,
+where
+    K: ValidatedForm + 'static,
+    V: ValidatedForm + 'static,
 {
     /// Get the value associated with a specific key.
     pub async fn get(&self, key: K) -> Result<Option<V>, DownlinkError> {
@@ -260,7 +269,9 @@ impl<K, V> MapDownlinkSender<K, V>
 
     /// Insert an entry into the map without waiting for the operation to complete.
     pub async fn update_and_forget(&self, key: K, value: V) -> Result<(), DownlinkError> {
-        actions::<K, V>(&self.inner).update_and_forget(key, value).await
+        actions::<K, V>(&self.inner)
+            .update_and_forget(key, value)
+            .await
     }
 
     /// Modify the value associated with a key, returning the values associated withe the key before
@@ -270,18 +281,20 @@ impl<K, V> MapDownlinkSender<K, V>
         key: K,
         update_fn: F,
     ) -> Result<(Option<V>, Option<V>), DownlinkError>
-        where
-            F: FnOnce(Option<V>) -> Option<V> + Send + 'static,
+    where
+        F: FnOnce(Option<V>) -> Option<V> + Send + 'static,
     {
         actions::<K, V>(&self.inner).modify(key, update_fn).await
     }
 
     /// Modify the value associated with a key without waiting for the operation to complete.
     pub async fn modify_and_forget<F>(&self, key: K, update_fn: F) -> Result<(), DownlinkError>
-        where
-            F: FnOnce(Option<V>) -> Option<V> + Send + 'static,
+    where
+        F: FnOnce(Option<V>) -> Option<V> + Send + 'static,
     {
-        actions::<K, V>(&self.inner).modify_and_forget(key, update_fn).await
+        actions::<K, V>(&self.inner)
+            .modify_and_forget(key, update_fn)
+            .await
     }
 
     /// Remove any value associated with a key, returning it.
@@ -397,25 +410,21 @@ impl<K, V> Clone for MapDownlinkSubscriber<K, V> {
 }
 
 impl<K, V> MapDownlinkReceiver<K, V> {
-
     pub(crate) fn new(inner: topic::Receiver<Event<ViewWithEvent>>) -> Self {
         MapDownlinkReceiver {
             inner,
             _type: PhantomData,
         }
     }
-
 }
 
 impl<K, V> MapDownlinkSubscriber<K, V> {
-
     fn new(inner: topic::Subscriber<Event<ViewWithEvent>>) -> Self {
         MapDownlinkSubscriber {
             inner,
             _type: PhantomData,
         }
     }
-
 }
 /*
 impl<K: ValidatedForm, V: ValidatedForm> MapDownlinkSubscriber<K, V> {
@@ -442,45 +451,44 @@ impl<K: ValidatedForm, V: ValidatedForm> MapDownlinkSubscriber<K, V> {
 }
 */
 impl<K: Form + 'static, V: Form + 'static> MapDownlinkReceiver<K, V> {
-
     pub async fn recv(&mut self) -> Option<Event<TypedViewWithEvent<K, V>>> {
         let value = self.inner.recv().await;
-        value.map(|g| {
-            transform_event(&*g)
-        })
+        value.map(|g| transform_event(&*g))
     }
 
-    pub fn into_stream(self) -> impl Stream<Item = Event<TypedViewWithEvent<K, V>>> + Send + 'static {
-        unfold(self, |mut rx| async move {
-            rx.recv().await.map(|v| (v, rx))
-        })
+    pub fn into_stream(
+        self,
+    ) -> impl Stream<Item = Event<TypedViewWithEvent<K, V>>> + Send + 'static {
+        unfold(
+            self,
+            |mut rx| async move { rx.recv().await.map(|v| (v, rx)) },
+        )
     }
-
 }
 
-fn transform_event<K:Form , V: Form>(event: &Event<ViewWithEvent>) -> Event<TypedViewWithEvent<K, V>> {
+fn transform_event<K: Form, V: Form>(
+    event: &Event<ViewWithEvent>,
+) -> Event<TypedViewWithEvent<K, V>> {
     match event {
         Event::Local(v) => Event::Local(transform_view(v)),
         Event::Remote(v) => Event::Remote(transform_view(v)),
     }
 }
 
-fn transform_view<K:Form , V: Form>(view: &ViewWithEvent) -> TypedViewWithEvent<K, V> {
+fn transform_view<K: Form, V: Form>(view: &ViewWithEvent) -> TypedViewWithEvent<K, V> {
     let ViewWithEvent { view, event } = view;
     let typed_map_view = TypedMapView::new(view.clone());
     let typed_event = type_event_ref(event).expect("Inconsistent Form");
     TypedViewWithEvent {
         view: typed_map_view,
-        event: typed_event
+        event: typed_event,
     }
 }
 
 impl<K: Form, V: Form> MapDownlinkSubscriber<K, V> {
-
     pub async fn subscribe(&mut self) -> Result<MapDownlinkReceiver<K, V>, topic::SubscribeError> {
         self.inner.subscribe().map(MapDownlinkReceiver::new)
     }
-
 }
 
 pub fn type_event_ref<K: Form>(event: &MapEvent<Value>) -> Result<MapEvent<K>, FormErr> {
@@ -511,9 +519,9 @@ impl<'a, K, V> MapActions<'a, K, V> {
 }
 
 impl<'a, K, V> MapActions<'a, K, V>
-    where
-        K: ValidatedForm + 'static,
-        V: ValidatedForm + 'static,
+where
+    K: ValidatedForm + 'static,
+    V: ValidatedForm + 'static,
 {
     /// Get the value associated with a specific key.
     pub async fn get(&self, key: K) -> Result<Option<V>, DownlinkError> {
@@ -554,8 +562,8 @@ impl<'a, K, V> MapActions<'a, K, V>
         key: K,
         update_fn: F,
     ) -> Result<(Option<V>, Option<V>), DownlinkError>
-        where
-            F: FnOnce(Option<V>) -> Option<V> + Send + 'static,
+    where
+        F: FnOnce(Option<V>) -> Option<V> + Send + 'static,
     {
         let (tx1, rx1) = oneshot::channel();
         let (tx2, rx2) = oneshot::channel();
@@ -576,8 +584,8 @@ impl<'a, K, V> MapActions<'a, K, V>
 
     /// Modify the value associated with a key without waiting for the operation to complete.
     pub async fn modify_and_forget<F>(&self, key: K, update_fn: F) -> Result<(), DownlinkError>
-        where
-            F: FnOnce(Option<V>) -> Option<V> + Send + 'static,
+    where
+        F: FnOnce(Option<V>) -> Option<V> + Send + 'static,
     {
         self.sender
             .send(MapAction::try_modify(
@@ -609,9 +617,7 @@ impl<'a, K, V> MapActions<'a, K, V>
     async fn clear_internal(&self) -> Result<ValMap, DownlinkError> {
         let (tx, rx) = oneshot::channel();
         let req = Request::new(tx);
-        self.sender
-            .send(MapAction::clear_and_await(req))
-            .await?;
+        self.sender.send(MapAction::clear_and_await(req)).await?;
         rx.await.map_err(|_| DownlinkError::DroppedChannel)?
     }
 
@@ -736,30 +742,33 @@ impl Display for MapViewError {
             existing_value,
             requested_key,
             requested_value,
-            incompatibility } = self;
+            incompatibility,
+        } = self;
         let reason = match incompatibility {
             Incompatibility::Key => "The key",
             Incompatibility::Value => "The value",
             Incompatibility::Both => "Both",
         };
         write!(f, "A {} view of a downlink (key schema {} and value schema {})) was requested with key schema {} and value schema {}. {} schemas are incompatible. ", mode, existing_key, existing_value, requested_key, requested_value, reason)
-
     }
 }
 
 impl Error for MapViewError {}
 
-
 impl<K: ValidatedForm, V: ValidatedForm> MapDownlinkSubscriber<K, V> {
-
     /// Create a read-only view for a value downlink that converts all received values to a new type.
     /// The type of the view must have an equal or greater schema than the original downlink.
     pub async fn covariant_cast<K2: ValidatedForm, V2: ValidatedForm>(
         &self,
-    ) -> Result<MapDownlinkSubscriber<K2, V2>, MapViewError>
-    {
-        let key_schema_good = K2::schema().partial_cmp(&K::schema()).map(|c| c != Ordering::Less).unwrap_or(false);
-        let value_schema_good = V2::schema().partial_cmp(&V::schema()).map(|c| c != Ordering::Less).unwrap_or(false);
+    ) -> Result<MapDownlinkSubscriber<K2, V2>, MapViewError> {
+        let key_schema_good = K2::schema()
+            .partial_cmp(&K::schema())
+            .map(|c| c != Ordering::Less)
+            .unwrap_or(false);
+        let value_schema_good = V2::schema()
+            .partial_cmp(&V::schema())
+            .map(|c| c != Ordering::Less)
+            .unwrap_or(false);
 
         if key_schema_good && value_schema_good {
             Ok(MapDownlinkSubscriber::new(self.inner.clone()))
@@ -781,6 +790,4 @@ impl<K: ValidatedForm, V: ValidatedForm> MapDownlinkSubscriber<K, V> {
             })
         }
     }
-
 }
-

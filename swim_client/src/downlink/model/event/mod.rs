@@ -13,7 +13,12 @@
 // limitations under the License.
 
 use crate::configuration::downlink::DownlinkParams;
-use crate::downlink::{Command, DownlinkError, DownlinkState, Event, Message, Operation, Response, StateMachine, DownlinkConfig};
+use crate::downlink::model::SchemaViolations;
+use crate::downlink::typed::{UntypedEventDownlink, UntypedEventReceiver};
+use crate::downlink::{
+    Command, DownlinkConfig, DownlinkError, DownlinkState, Event, Message, Operation, Response,
+    StateMachine,
+};
 use futures::Stream;
 use swim_common::model::schema::{Schema, StandardSchema};
 use swim_common::model::Value;
@@ -21,8 +26,6 @@ use swim_common::routing::RoutingError;
 use swim_common::sink::item::ItemSender;
 use tracing::{error, instrument, trace};
 use utilities::errors::Recoverable;
-use crate::downlink::model::SchemaViolations;
-use crate::downlink::typed::{UntypedEventDownlink, UntypedEventReceiver};
 
 #[cfg(test)]
 mod tests;
@@ -35,9 +38,9 @@ pub fn create_downlink<Updates, Snk>(
     cmd_sink: Snk,
     config: &DownlinkParams,
 ) -> (UntypedEventDownlink, UntypedEventReceiver)
-    where
-        Updates: Stream<Item = Result<Message<Value>, RoutingError>> + Send + Sync + 'static,
-        Snk: ItemSender<Command<Value>, RoutingError> + Send + Sync + 'static,
+where
+    Updates: Stream<Item = Result<Message<Value>, RoutingError>> + Send + Sync + 'static,
+    Snk: ItemSender<Command<Value>, RoutingError> + Send + Sync + 'static,
 {
     crate::downlink::create_downlink(
         EventStateMachine::new(schema, violations),
@@ -47,10 +50,9 @@ pub fn create_downlink<Updates, Snk>(
             buffer_size: config.buffer_size,
             yield_after: config.yield_after,
             on_invalid: config.on_invalid,
-        }
+        },
     )
 }
-
 
 struct EventStateMachine {
     schema: StandardSchema,

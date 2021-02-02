@@ -17,13 +17,16 @@ use std::sync::Arc;
 
 use futures::Stream;
 
-use crate::downlink::{BasicResponse, Command, DownlinkError, DownlinkRequest, Message, SyncStateMachine, TransitionError, error::UpdateFailure, DownlinkConfig};
+use crate::downlink::typed::{UntypedValueDownlink, UntypedValueReceiver};
+use crate::downlink::{
+    error::UpdateFailure, BasicResponse, Command, DownlinkConfig, DownlinkError, DownlinkRequest,
+    Message, SyncStateMachine, TransitionError,
+};
 use std::fmt;
 use swim_common::model::schema::{Schema, StandardSchema};
 use swim_common::model::Value;
 use swim_common::routing::RoutingError;
 use swim_common::sink::item::ItemSender;
-use crate::downlink::typed::{UntypedValueDownlink, UntypedValueReceiver};
 
 #[cfg(test)]
 mod tests;
@@ -123,15 +126,15 @@ pub fn create_downlink<Updates, Commands>(
     cmd_sender: Commands,
     config: DownlinkConfig,
 ) -> (UntypedValueDownlink, UntypedValueReceiver)
-    where
-        Updates: Stream<Item = ValueItemResult> + Send + Sync + 'static,
-        Commands: ItemSender<Command<SharedValue>, RoutingError> + Send + Sync + 'static,
+where
+    Updates: Stream<Item = ValueItemResult> + Send + Sync + 'static,
+    Commands: ItemSender<Command<SharedValue>, RoutingError> + Send + Sync + 'static,
 {
     crate::downlink::create_downlink(
         ValueStateMachine::new(init, schema.unwrap_or(StandardSchema::Anything)),
         update_stream,
         cmd_sender,
-        config
+        config,
     )
 }
 

@@ -28,9 +28,12 @@ use swim_common::model::{Attr, Item, Value, ValueKind};
 use swim_common::sink::item::ItemSender;
 
 use crate::downlink::model::value::UpdateResult;
-use crate::downlink::{BasicResponse, Command, DownlinkError, DownlinkRequest, Message, SyncStateMachine, TransitionError, DownlinkConfig};
+use crate::downlink::typed::{UntypedMapDownlink, UntypedMapReceiver};
+use crate::downlink::{
+    BasicResponse, Command, DownlinkConfig, DownlinkError, DownlinkRequest, Message,
+    SyncStateMachine, TransitionError,
+};
 use swim_common::routing::RoutingError;
-use crate::downlink::typed::{UntypedMapReceiver, UntypedMapDownlink};
 
 #[cfg(test)]
 mod tests;
@@ -560,10 +563,12 @@ pub fn create_downlink<Updates, Commands>(
     cmd_sink: Commands,
     config: DownlinkConfig,
 ) -> (UntypedMapDownlink, UntypedMapReceiver)
-    where
-        Updates: Stream<Item = MapItemResult> + Send + Sync + 'static,
-        Commands:
-        ItemSender<Command<UntypedMapModification<Arc<Value>>>, RoutingError> + Send + Sync + 'static,
+where
+    Updates: Stream<Item = MapItemResult> + Send + Sync + 'static,
+    Commands: ItemSender<Command<UntypedMapModification<Arc<Value>>>, RoutingError>
+        + Send
+        + Sync
+        + 'static,
 {
     crate::downlink::create_downlink(
         MapStateMachine::new(

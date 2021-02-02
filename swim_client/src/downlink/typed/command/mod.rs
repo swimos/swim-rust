@@ -12,16 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::downlink::typed::{UntypedCommandDownlink, ViewMode};
+use crate::downlink::{Downlink, DownlinkError};
+use std::any::type_name;
+use std::cmp::Ordering;
+use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
 use std::sync::Arc;
-use crate::downlink::typed::{UntypedCommandDownlink, ViewMode};
-use std::fmt::{Debug, Formatter};
-use std::any::type_name;
 use swim_common::form::{Form, ValidatedForm};
-use utilities::sync::promise;
-use crate::downlink::{DownlinkError, Downlink};
 use swim_common::model::schema::StandardSchema;
-use std::cmp::Ordering;
+use utilities::sync::promise;
 
 pub struct TypedCommandDownlink<T> {
     inner: Arc<UntypedCommandDownlink>,
@@ -29,14 +29,12 @@ pub struct TypedCommandDownlink<T> {
 }
 
 impl<T> TypedCommandDownlink<T> {
-
     pub(crate) fn new(inner: Arc<UntypedCommandDownlink>) -> Self {
         TypedCommandDownlink {
             inner,
             _type: PhantomData,
         }
     }
-
 }
 
 impl<T> Debug for TypedCommandDownlink<T> {
@@ -52,7 +50,7 @@ impl<T> Clone for TypedCommandDownlink<T> {
     fn clone(&self) -> Self {
         TypedCommandDownlink {
             inner: self.inner.clone(),
-            _type: PhantomData
+            _type: PhantomData,
         }
     }
 }
@@ -72,7 +70,6 @@ impl<T> Downlink for TypedCommandDownlink<T> {
 }
 
 impl<T: Form> TypedCommandDownlink<T> {
-
     pub async fn command(&self, command: T) -> Result<(), DownlinkError> {
         Ok(self.inner.send(command.into_value()).await?)
     }
@@ -91,13 +88,11 @@ pub struct CommandViewError {
 }
 
 impl<T: ValidatedForm> TypedCommandDownlink<T> {
-
     /// Create a read-only view for a value downlink that converts all received values to a new type.
     /// The type of the view must have an equal or greater schema than the original downlink.
     pub async fn contravariant_cast<U: ValidatedForm>(
         &self,
-    ) -> Result<TypedCommandDownlink<U>, CommandViewError>
-    {
+    ) -> Result<TypedCommandDownlink<U>, CommandViewError> {
         let schema_cmp = U::schema().partial_cmp(&T::schema());
 
         if schema_cmp.is_some() && schema_cmp != Some(Ordering::Greater) {
@@ -110,5 +105,4 @@ impl<T: ValidatedForm> TypedCommandDownlink<T> {
             })
         }
     }
-
 }

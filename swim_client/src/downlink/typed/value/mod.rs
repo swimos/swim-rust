@@ -15,22 +15,22 @@
 #[cfg(test)]
 mod tests;
 
-use crate::downlink::model::value::{SharedValue, Action};
-use std::marker::PhantomData;
-use swim_common::form::{Form, ValidatedForm};
-use utilities::sync::{promise, topic};
-use crate::downlink::{DownlinkError, Event, DownlinkRequest, Downlink};
-use swim_common::model::Value;
-use tokio::sync::{oneshot, mpsc};
-use futures::Stream;
-use futures::stream::unfold;
-use swim_common::model::schema::StandardSchema;
-use std::cmp::Ordering;
-use std::fmt::{Debug, Formatter, Display};
-use std::any::type_name;
+use crate::downlink::model::value::{Action, SharedValue};
 use crate::downlink::typed::{UntypedValueDownlink, ViewMode};
-use std::sync::Arc;
+use crate::downlink::{Downlink, DownlinkError, DownlinkRequest, Event};
+use futures::stream::unfold;
+use futures::Stream;
+use std::any::type_name;
+use std::cmp::Ordering;
 use std::error::Error;
+use std::fmt::{Debug, Display, Formatter};
+use std::marker::PhantomData;
+use std::sync::Arc;
+use swim_common::form::{Form, ValidatedForm};
+use swim_common::model::schema::StandardSchema;
+use swim_common::model::Value;
+use tokio::sync::{mpsc, oneshot};
+use utilities::sync::{promise, topic};
 
 pub struct TypedValueDownlink<T> {
     inner: Arc<UntypedValueDownlink>,
@@ -38,14 +38,12 @@ pub struct TypedValueDownlink<T> {
 }
 
 impl<T> TypedValueDownlink<T> {
-
     pub(crate) fn new(inner: Arc<UntypedValueDownlink>) -> Self {
         TypedValueDownlink {
             inner,
             _type: PhantomData,
         }
     }
-
 }
 
 impl<T> Debug for TypedValueDownlink<T> {
@@ -61,7 +59,7 @@ impl<T> Clone for TypedValueDownlink<T> {
     fn clone(&self) -> Self {
         TypedValueDownlink {
             inner: self.inner.clone(),
-            _type: PhantomData
+            _type: PhantomData,
         }
     }
 }
@@ -101,7 +99,6 @@ impl<T> Downlink for TypedValueDownlink<T> {
 }
 
 impl<T: Form> TypedValueDownlink<T> {
-
     pub fn subscriber(&self) -> ValueDownlinkSubscriber<T> {
         ValueDownlinkSubscriber::new(self.inner.subscriber())
     }
@@ -136,14 +133,12 @@ impl<T> Clone for ValueDownlinkSender<T> {
 }
 
 impl<T> ValueDownlinkSender<T> {
-
     fn new(inner: mpsc::Sender<Action>) -> Self {
         ValueDownlinkSender {
             inner,
             _type: PhantomData,
         }
     }
-
 }
 
 impl<T: ValidatedForm + 'static> ValueDownlinkSender<T> {
@@ -160,23 +155,23 @@ impl<T: ValidatedForm + 'static> ValueDownlinkSender<T> {
     }
 
     pub async fn update<F>(&self, update_fn: F) -> Result<T, DownlinkError>
-        where
-            F: FnOnce(T) -> T + Send + 'static
+    where
+        F: FnOnce(T) -> T + Send + 'static,
     {
         ValueActions::new(&self.inner).update(update_fn).await
     }
 
     pub async fn update_and_forget<F>(&self, update_fn: F) -> Result<(), DownlinkError>
-        where
-            F: FnOnce(T) -> T + Send + 'static
+    where
+        F: FnOnce(T) -> T + Send + 'static,
     {
-        ValueActions::new(&self.inner).update_and_forget(update_fn).await
+        ValueActions::new(&self.inner)
+            .update_and_forget(update_fn)
+            .await
     }
 }
 
-
 impl<T: ValidatedForm + 'static> TypedValueDownlink<T> {
-
     pub async fn get(&self) -> Result<T, DownlinkError> {
         ValueActions::new(self.inner.sender()).get().await
     }
@@ -186,25 +181,29 @@ impl<T: ValidatedForm + 'static> TypedValueDownlink<T> {
     }
 
     pub async fn set_and_forget(&self, value: T) -> Result<(), DownlinkError> {
-        ValueActions::new(self.inner.sender()).set_and_forget(value).await
+        ValueActions::new(self.inner.sender())
+            .set_and_forget(value)
+            .await
     }
 
     pub async fn update<F>(&self, update_fn: F) -> Result<T, DownlinkError>
-        where
-            F: FnOnce(T) -> T + Send + 'static
+    where
+        F: FnOnce(T) -> T + Send + 'static,
     {
-        ValueActions::new(self.inner.sender()).update(update_fn).await
+        ValueActions::new(self.inner.sender())
+            .update(update_fn)
+            .await
     }
 
     pub async fn update_and_forget<F>(&self, update_fn: F) -> Result<(), DownlinkError>
-        where
-            F: FnOnce(T) -> T + Send + 'static
+    where
+        F: FnOnce(T) -> T + Send + 'static,
     {
-        ValueActions::new(self.inner.sender()).update_and_forget(update_fn).await
+        ValueActions::new(self.inner.sender())
+            .update_and_forget(update_fn)
+            .await
     }
-
 }
-
 
 /// Wraps a sender up updates to a value downlink providing typed, asynchronous operations
 /// that can be performed on it.
@@ -214,62 +213,65 @@ struct ValueActions<'a, T> {
 }
 
 impl<'a, T> ValueActions<'a, T> {
-
     fn new(sender: &'a mpsc::Sender<Action>) -> Self {
         ValueActions {
             sender,
-            _entry_type: PhantomData
+            _entry_type: PhantomData,
         }
     }
-
 }
 
 impl<'a, T> ValueActions<'a, T>
-    where
-        T: ValidatedForm + 'static,
+where
+    T: ValidatedForm + 'static,
 {
-
-
     async fn get(&self) -> Result<T, DownlinkError> {
         let (tx, rx) = oneshot::channel();
-        self.sender.send(Action::Get(DownlinkRequest::new(tx))).await?;
+        self.sender
+            .send(Action::Get(DownlinkRequest::new(tx)))
+            .await?;
         super::await_value(rx).await
     }
 
     async fn set(&self, value: T) -> Result<(), DownlinkError> {
         let (tx, rx) = oneshot::channel();
-        self.sender.send(Action::Set(value.into_value(), Some(DownlinkRequest::new(tx)))).await?;
+        self.sender
+            .send(Action::Set(
+                value.into_value(),
+                Some(DownlinkRequest::new(tx)),
+            ))
+            .await?;
         rx.await.map_err(|_| DownlinkError::DroppedChannel)?
     }
 
     async fn set_and_forget(&self, value: T) -> Result<(), DownlinkError> {
-        Ok(self.sender.send(Action::Set(value.into_value(), None)).await?)
+        Ok(self
+            .sender
+            .send(Action::Set(value.into_value(), None))
+            .await?)
     }
 
     async fn update<F>(&self, update_fn: F) -> Result<T, DownlinkError>
-        where
-            F: FnOnce(T) -> T + Send + 'static
+    where
+        F: FnOnce(T) -> T + Send + 'static,
     {
         let wrapped = super::wrap_update_fn(update_fn);
         let (tx, rx) = oneshot::channel();
         let req = DownlinkRequest::new(tx);
-        self.sender.send(Action::try_update_and_await(wrapped, req))
+        self.sender
+            .send(Action::try_update_and_await(wrapped, req))
             .await?;
         super::await_fallible(rx).await
     }
 
     async fn update_and_forget<F>(&self, update_fn: F) -> Result<(), DownlinkError>
-        where
-            F: FnOnce(T) -> T + Send + 'static
+    where
+        F: FnOnce(T) -> T + Send + 'static,
     {
         let wrapped = super::wrap_update_fn::<T, F>(update_fn);
-        Ok(self.sender
-            .send(Action::try_update(wrapped))
-            .await?)
+        Ok(self.sender.send(Action::try_update(wrapped)).await?)
     }
-
 }
-
 
 pub struct ValueDownlinkReceiver<T> {
     inner: topic::Receiver<Event<SharedValue>>,
@@ -312,35 +314,29 @@ impl<T> Clone for ValueDownlinkSubscriber<T> {
 }
 
 impl<T> ValueDownlinkReceiver<T> {
-
     pub(crate) fn new(inner: topic::Receiver<Event<SharedValue>>) -> Self {
         ValueDownlinkReceiver {
             inner,
             _type: PhantomData,
         }
     }
-
 }
 
 impl<T> ValueDownlinkSubscriber<T> {
-
     fn new(inner: topic::Subscriber<Event<SharedValue>>) -> Self {
         ValueDownlinkSubscriber {
             inner,
             _type: PhantomData,
         }
     }
-
 }
 
 impl<T: ValidatedForm> ValueDownlinkSubscriber<T> {
-
     /// Create a read-only view for a value downlink that converts all received values to a new type.
     /// The type of the view must have an equal or greater schema than the original downlink.
     pub async fn covariant_cast<U: ValidatedForm>(
         &self,
-    ) -> Result<ValueDownlinkSubscriber<U>, ValueViewError>
-    {
+    ) -> Result<ValueDownlinkSubscriber<U>, ValueViewError> {
         let schema_cmp = U::schema().partial_cmp(&T::schema());
 
         if schema_cmp.is_some() && schema_cmp != Some(Ordering::Less) {
@@ -353,32 +349,26 @@ impl<T: ValidatedForm> ValueDownlinkSubscriber<T> {
             })
         }
     }
-
 }
 
 impl<T: Form + 'static> ValueDownlinkReceiver<T> {
-
     pub async fn recv(&mut self) -> Option<Event<T>> {
         let value = self.inner.recv().await;
-        value.map(|g| {
-            transform_event(&*g, |v| Form::try_from_value(v).expect("Inconsistent Form"))
-        })
+        value.map(|g| transform_event(&*g, |v| Form::try_from_value(v).expect("Inconsistent Form")))
     }
 
     pub fn into_stream(self) -> impl Stream<Item = Event<T>> + Send + 'static {
-        unfold(self, |mut rx| async move {
-            rx.recv().await.map(|v| (v, rx))
-        })
+        unfold(
+            self,
+            |mut rx| async move { rx.recv().await.map(|v| (v, rx)) },
+        )
     }
-
 }
 
 impl<T: Form> ValueDownlinkSubscriber<T> {
-
     pub async fn subscribe(&mut self) -> Result<ValueDownlinkReceiver<T>, topic::SubscribeError> {
         self.inner.subscribe().map(ValueDownlinkReceiver::new)
     }
-
 }
 
 fn transform_event<T>(event: &Event<SharedValue>, f: impl FnOnce(&Value) -> T) -> Event<T> {

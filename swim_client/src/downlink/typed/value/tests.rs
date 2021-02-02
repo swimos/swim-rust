@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
+use super::ValueActions;
 use crate::downlink::model::value::{Action, SharedValue};
 use crate::downlink::DownlinkError;
 use futures::future::join;
@@ -21,7 +21,6 @@ use std::sync::Arc;
 use swim_common::model::Value;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
-use super::ValueActions;
 
 async fn responder(mut state: SharedValue, mut rx: mpsc::Receiver<Action>) {
     while let Some(value) = rx.recv().await {
@@ -88,10 +87,11 @@ impl AsMut<mpsc::Sender<Action>> for Actions {
     }
 }
 
-fn make_actions(tx: &mpsc::Sender<Action>,
-                rx: mpsc::Receiver<Action>,
-                init: i32) -> (ValueActions<i32>, impl Future<Output = ()>) {
-
+fn make_actions(
+    tx: &mpsc::Sender<Action>,
+    rx: mpsc::Receiver<Action>,
+    init: i32,
+) -> (ValueActions<i32>, impl Future<Output = ()>) {
     let actions = ValueActions::new(tx);
     let task = responder(Arc::new(init.into()), rx);
     (actions, task)

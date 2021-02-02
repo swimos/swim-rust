@@ -19,8 +19,8 @@ use super::*;
 use crate::downlink::TransitionError;
 use std::time::Instant;
 use swim_common::routing::RoutingError;
-use tokio::stream::StreamExt;
 use swim_common::sink::item;
+use tokio::stream::StreamExt;
 
 #[test]
 fn transition_error_display() {
@@ -204,14 +204,14 @@ fn make_test_dl_custom_on_invalid(
     let config = DownlinkConfig {
         buffer_size: NonZeroUsize::new(10).unwrap(),
         yield_after: NonZeroUsize::new(256).unwrap(),
-        on_invalid
+        on_invalid,
     };
 
     let (downlink, dl_rx) = create_downlink(
         TestStateMachine::new(dl_start_state, start_response),
         rx_in,
         item::for_mpsc_sender(tx_out).map_err_into(),
-        config
+        config,
     );
 
     (downlink, dl_rx, tx_in, rx_out)
@@ -240,7 +240,7 @@ async fn sync_on_startup() {
 
 #[tokio::test]
 async fn event_on_sync() {
-    let (_dl, mut dl_rx,  messages, _commands) = make_test_sync_dl();
+    let (_dl, mut dl_rx, messages, _commands) = make_test_sync_dl();
 
     assert!(messages.send(Ok(Message::Linked)).await.is_ok());
     assert!(messages.send(Ok(Message::Synced)).await.is_ok());
@@ -571,7 +571,7 @@ async fn action_received_before_synced() {
 
 #[tokio::test]
 async fn action_received_before_linked() {
-    let (dl, _events,  _messages, mut commands) = make_test_dl_custom_on_invalid(
+    let (dl, _events, _messages, mut commands) = make_test_dl_custom_on_invalid(
         OnInvalidMessage::Terminate,
         DownlinkState::Unlinked,
         Response::none(),

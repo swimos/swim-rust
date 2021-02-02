@@ -12,14 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::downlink::model::value::{Action, SharedValue, UpdateResult};
 use crate::downlink::model::map::{MapAction, ViewWithEvent};
-use swim_common::form::{ValidatedForm, Form};
+use crate::downlink::model::value::{Action, SharedValue, UpdateResult};
 use crate::downlink::{error::DownlinkError, error::UpdateFailure, Event, RawDownlink};
-use tokio::sync::oneshot;
-use swim_common::model::Value;
-use utilities::sync::topic;
 use std::fmt::{Display, Formatter};
+use swim_common::form::{Form, ValidatedForm};
+use swim_common::model::Value;
+use tokio::sync::oneshot;
+use utilities::sync::topic;
 
 pub mod command;
 pub mod event;
@@ -50,9 +50,9 @@ impl Display for ViewMode {
 }
 
 fn wrap_update_fn<T, F>(update_fn: F) -> impl FnOnce(&Value) -> UpdateResult<Value>
-    where
-        T: Form,
-        F: FnOnce(T) -> T,
+where
+    T: Form,
+    F: FnOnce(T) -> T,
 {
     move |value: &Value| match Form::try_from_value(value) {
         Ok(t) => Ok(update_fn(t).into_value()),
@@ -86,9 +86,9 @@ async fn await_value<T: ValidatedForm>(
 fn wrap_option_update_fn<T, F>(
     update_fn: F,
 ) -> impl FnOnce(&Option<&Value>) -> UpdateResult<Option<Value>>
-    where
-        T: Form,
-        F: FnOnce(Option<T>) -> Option<T>,
+where
+    T: Form,
+    F: FnOnce(Option<T>) -> Option<T>,
 {
     move |maybe_value| match maybe_value.as_ref() {
         Some(value) => match T::try_from_value(value) {
@@ -131,6 +131,3 @@ async fn await_fallible_optional<T: ValidatedForm>(
         _ => Ok(None),
     }
 }
-
-
-

@@ -26,15 +26,22 @@ use swim_common::warp::path::AbsolutePath;
 use crate::configuration::downlink::{Config, ConfigParseError};
 use crate::configuration::router::RouterParamBuilder;
 use crate::connections::SwimConnPool;
-use crate::downlink::subscription::{
-   Downlinks, SubscriptionError,
-};
 use crate::downlink::error::DownlinkError;
+use crate::downlink::subscription::{Downlinks, SubscriptionError};
 use crate::router::SwimRouter;
 use swim_common::routing::ws::WebsocketFactory;
 use swim_common::routing::RoutingError;
 use swim_common::warp::envelope::Envelope;
 
+use crate::downlink::model::SchemaViolations;
+use crate::downlink::typed::command::TypedCommandDownlink;
+use crate::downlink::typed::event::TypedEventDownlink;
+use crate::downlink::typed::map::{MapDownlinkReceiver, TypedMapDownlink};
+use crate::downlink::typed::value::{TypedValueDownlink, ValueDownlinkReceiver};
+use crate::downlink::typed::{
+    UntypedCommandDownlink, UntypedEventDownlink, UntypedMapDownlink, UntypedMapReceiver,
+    UntypedValueDownlink, UntypedValueReceiver,
+};
 #[cfg(feature = "websocket")]
 use {
     crate::configuration::downlink::ConfigHierarchy,
@@ -42,12 +49,6 @@ use {
     crate::connections::factory::tungstenite::TungsteniteWsFactory, std::collections::HashMap,
     std::fs::File, std::io::Read, swim_common::model::parser::parse_single, url::Url,
 };
-use crate::downlink::typed::value::{TypedValueDownlink, ValueDownlinkReceiver};
-use crate::downlink::typed::map::{TypedMapDownlink, MapDownlinkReceiver};
-use crate::downlink::typed::command::TypedCommandDownlink;
-use crate::downlink::typed::event::TypedEventDownlink;
-use crate::downlink::typed::{UntypedValueDownlink, UntypedValueReceiver, UntypedMapDownlink, UntypedMapReceiver, UntypedCommandDownlink, UntypedEventDownlink};
-use crate::downlink::model::SchemaViolations;
 
 /// Represents errors that can occur in the client.
 #[derive(Debug)]

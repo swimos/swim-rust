@@ -877,7 +877,6 @@ async fn send_with_subscriber_for(n: usize) {
 
     assert!(matches!(tx.send(3).await, Err(SendError(3))));
     assert!(matches!(tx.discarding_send(3).await, Err(SendError(3))));
-
 }
 
 #[tokio::test]

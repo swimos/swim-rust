@@ -75,7 +75,6 @@ async fn subscribe_value_lane_default_config() {
     let mut downlinks = dl_manager(Default::default()).await;
     let result = downlinks.subscribe_value_untyped(Value::Extant, path).await;
     assert!(result.is_ok());
-
 }
 
 #[tokio::test]
@@ -84,7 +83,6 @@ async fn subscribe_value_lane_per_host_config() {
     let mut downlinks = dl_manager(per_host_config()).await;
     let result = downlinks.subscribe_value_untyped(Value::Extant, path).await;
     assert!(result.is_ok());
-
 }
 
 #[tokio::test]
@@ -97,7 +95,6 @@ async fn subscribe_value_lane_per_lane_config() {
     let mut downlinks = dl_manager(per_lane_config()).await;
     let result = downlinks.subscribe_value_untyped(Value::Extant, path).await;
     assert!(result.is_ok());
-
 }
 
 #[tokio::test]
@@ -106,7 +103,6 @@ async fn subscribe_map_lane_default_config() {
     let mut downlinks = dl_manager(Default::default()).await;
     let result = downlinks.subscribe_map_untyped(path).await;
     assert!(result.is_ok());
-
 }
 
 #[tokio::test]
@@ -115,7 +111,6 @@ async fn subscribe_map_lane_per_host_config() {
     let mut downlinks = dl_manager(per_host_config()).await;
     let result = downlinks.subscribe_map_untyped(path).await;
     assert!(result.is_ok());
-
 }
 
 #[tokio::test]
@@ -128,7 +123,6 @@ async fn subscribe_map_lane_per_lane_config() {
     let mut downlinks = dl_manager(per_lane_config()).await;
     let result = downlinks.subscribe_map_untyped(path).await;
     assert!(result.is_ok());
-
 }
 
 #[tokio::test]
@@ -205,7 +199,6 @@ async fn subscribe_value_lane_typed() {
     let mut downlinks = dl_manager(Default::default()).await;
     let result = downlinks.subscribe_value::<i32>(0, path).await;
     assert!(result.is_ok());
-
 }
 
 #[tokio::test]
@@ -214,5 +207,4 @@ async fn subscribe_map_lane_typed() {
     let mut downlinks = dl_manager(Default::default()).await;
     let result = downlinks.subscribe_map::<String, i32>(path).await;
     assert!(result.is_ok());
-
 }

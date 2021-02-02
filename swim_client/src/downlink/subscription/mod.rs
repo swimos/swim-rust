@@ -12,16 +12,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::configuration::downlink::{
-    BackpressureMode, Config, DownlinkKind,
-};
-use crate::downlink::model::{event, SchemaViolations};
+use crate::configuration::downlink::{BackpressureMode, Config, DownlinkKind};
 use crate::downlink::model::map::UntypedMapModification;
 use crate::downlink::model::value::{self, SharedValue};
 use crate::downlink::model::{command, map};
+use crate::downlink::model::{event, SchemaViolations};
+use crate::downlink::typed::command::TypedCommandDownlink;
+use crate::downlink::typed::event::TypedEventDownlink;
+use crate::downlink::typed::map::{MapDownlinkReceiver, TypedMapDownlink};
+use crate::downlink::typed::value::{TypedValueDownlink, ValueDownlinkReceiver};
+use crate::downlink::typed::{
+    UntypedCommandDownlink, UntypedEventDownlink, UntypedMapDownlink, UntypedMapReceiver,
+    UntypedValueDownlink, UntypedValueReceiver,
+};
 use crate::downlink::watch_adapter::map::KeyedWatch;
 use crate::downlink::watch_adapter::value::ValuePump;
-use crate::downlink::{Command, DownlinkError, Message, Downlink};
+use crate::downlink::{Command, Downlink, DownlinkError, Message};
 use crate::router::{Router, RouterEvent};
 use either::Either;
 use futures::stream::Fuse;
@@ -53,11 +59,6 @@ use tracing::{error, info, instrument, trace_span};
 use utilities::future::{SwimFutureExt, TransformOnce, TransformedFuture};
 use utilities::sync::promise;
 use utilities::sync::promise::PromiseError;
-use crate::downlink::typed::{UntypedValueDownlink, UntypedValueReceiver, UntypedMapDownlink, UntypedMapReceiver, UntypedCommandDownlink, UntypedEventDownlink};
-use crate::downlink::typed::value::{TypedValueDownlink, ValueDownlinkReceiver};
-use crate::downlink::typed::map::{TypedMapDownlink, MapDownlinkReceiver};
-use crate::downlink::typed::command::TypedCommandDownlink;
-use crate::downlink::typed::event::TypedEventDownlink;
 
 pub mod envelopes;
 #[cfg(test)]
@@ -590,9 +591,13 @@ where
                 });
 
         let (raw_dl, rec) = match config.back_pressure {
-            BackpressureMode::Propagate => {
-                value::create_downlink(init, Some(schema), updates, cmd_sink.map_err_into(), (&config).into())
-            }
+            BackpressureMode::Propagate => value::create_downlink(
+                init,
+                Some(schema),
+                updates,
+                cmd_sink.map_err_into(),
+                (&config).into(),
+            ),
             BackpressureMode::Release { yield_after, .. } => {
                 let pressure_release = ValuePump::new(cmd_sink.clone(), yield_after).await;
 
@@ -602,14 +607,22 @@ where
                         ow => Either::Left(ow),
                     },
                 );
-                value::create_downlink(init, Some(schema), updates, either_sink.map_err_into(), (&config).into())
+                value::create_downlink(
+                    init,
+                    Some(schema),
+                    updates,
+                    either_sink.map_err_into(),
+                    (&config).into(),
+                )
             }
         };
 
         let dl = Arc::new(raw_dl);
 
-        self.value_downlinks
-            .insert(path.clone(), ValueHandle::new(Arc::downgrade(&dl), schema_cpy));
+        self.value_downlinks.insert(
+            path.clone(),
+            ValueHandle::new(Arc::downgrade(&dl), schema_cpy),
+        );
         self.stopped_watch.push(
             dl.await_stopped()
                 .transform(MakeStopEvent::new(DownlinkKind::Value, path)),
@@ -652,7 +665,7 @@ where
                     Some(value_schema),
                     updates,
                     cmd_sink.map_err_into(),
-                    (&config).into()
+                    (&config).into(),
                 )
             }
             BackpressureMode::Release {
@@ -696,7 +709,7 @@ where
                     Some(value_schema),
                     updates,
                     either_sink.map_err_into(),
-                    (&config).into()
+                    (&config).into(),
                 )
             }
         };
@@ -730,9 +743,11 @@ where
             .comap(move |cmd: Command<Value>| envelopes::command_envelope(&path_cpy, cmd).1.into());
 
         let dl = match config.back_pressure {
-            BackpressureMode::Propagate => {
-                Arc::new(command::create_downlink(schema.clone(), cmd_sink.map_err_into(), (&config).into()))
-            }
+            BackpressureMode::Propagate => Arc::new(command::create_downlink(
+                schema.clone(),
+                cmd_sink.map_err_into(),
+                (&config).into(),
+            )),
 
             BackpressureMode::Release { yield_after, .. } => {
                 let pressure_release = ValuePump::new(cmd_sink.clone(), yield_after).await;
@@ -745,7 +760,11 @@ where
                         }
                     });
 
-                Arc::new(command::create_downlink(schema.clone(), either_sink.map_err_into(), (&config).into()))
+                Arc::new(command::create_downlink(
+                    schema.clone(),
+                    either_sink.map_err_into(),
+                    (&config).into(),
+                ))
             }
         };
 
@@ -881,11 +900,7 @@ where
                             } else {
                                 self.map_downlinks.remove(&path);
                                 Ok(self
-                                    .create_new_map_downlink(
-                                        path.clone(),
-                                        key_schema,
-                                        value_schema,
-                                    )
+                                    .create_new_map_downlink(path.clone(), key_schema, value_schema)
                                     .await?)
                             }
                         }
@@ -1022,7 +1037,8 @@ where
                 }
             }
             DownlinkKind::Command => {
-                if let Some(CommandHandle { dl: weak_dl, .. }) = self.command_downlinks.get(&stop_event.path)
+                if let Some(CommandHandle { dl: weak_dl, .. }) =
+                    self.command_downlinks.get(&stop_event.path)
                 {
                     let is_running = weak_dl.upgrade().map(|dl| dl.is_running()).unwrap_or(false);
                     if is_running {

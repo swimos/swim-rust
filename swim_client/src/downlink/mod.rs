@@ -20,27 +20,26 @@ mod tests;
 pub mod typed;
 pub mod watch_adapter;
 
+use crate::configuration::downlink::{DownlinkParams, OnInvalidMessage};
+use crate::downlink::error::{DownlinkError, TransitionError};
+use futures::future::ready;
+use futures::select_biased;
+use futures::stream::once;
+use futures::{Stream, StreamExt};
+use pin_utils::pin_mut;
 use std::fmt::Debug;
+use std::num::NonZeroUsize;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use swim_common::request::TryRequest;
 use swim_common::routing::RoutingError;
+use swim_common::sink::item::ItemSender;
+use tokio::sync::mpsc;
 use tracing::{instrument, trace};
 use utilities::errors::Recoverable;
-use crate::downlink::error::{DownlinkError, TransitionError};
 use utilities::sync::{promise, topic};
-use crate::configuration::downlink::{OnInvalidMessage, DownlinkParams};
-use futures::stream::once;
-use tokio::sync::mpsc;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::num::NonZeroUsize;
-use futures::{Stream, StreamExt};
-use swim_common::sink::item::ItemSender;
-use pin_utils::pin_mut;
-use futures::select_biased;
-use futures::future::ready;
 
 trait Downlink {
-
     fn is_stopped(&self) -> bool;
 
     fn is_running(&self) -> bool {
@@ -51,7 +50,6 @@ trait Downlink {
     fn await_stopped(&self) -> promise::Receiver<Result<(), DownlinkError>>;
 
     fn same_downlink(left: &Self, right: &Self) -> bool;
-
 }
 
 /// A request to a downlink for a value.
@@ -163,7 +161,6 @@ impl<Ev, Cmd> Response<Ev, Cmd> {
         self
     }
 }
-
 
 /// This trait defines the interface that must be implemented for the state type of a downlink.
 trait StateMachine<State, Message, Action>: Sized {
@@ -364,13 +361,12 @@ impl<Act, Ev> Clone for RawDownlink<Act, Ev> {
             action_sender: self.action_sender.clone(),
             event_topic: self.event_topic.clone(),
             task_result: self.task_result.clone(),
-            completed: self.completed.clone()
+            completed: self.completed.clone(),
         }
     }
 }
 
 impl<Act, Ev> Downlink for RawDownlink<Act, Ev> {
-
     fn is_stopped(&self) -> bool {
         self.completed.load(Ordering::SeqCst)
     }
@@ -385,7 +381,6 @@ impl<Act, Ev> Downlink for RawDownlink<Act, Ev> {
 }
 
 impl<Act, Ev> RawDownlink<Act, Ev> {
-
     pub fn subscriber(&self) -> topic::Subscriber<Event<Ev>> {
         self.event_topic.clone()
     }
@@ -401,7 +396,6 @@ impl<Act, Ev> RawDownlink<Act, Ev> {
     pub fn sender(&self) -> &mpsc::Sender<Act> {
         &self.action_sender
     }
-
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -426,14 +420,17 @@ pub(in crate::downlink) fn create_downlink<M, Act, State, Machine, CmdSend, Upda
     update_stream: Updates,
     cmd_sink: CmdSend,
     config: DownlinkConfig,
-) -> (RawDownlink<Act, Machine::Ev>, topic::Receiver<Event<Machine::Ev>>)
-    where
-        M: Send + 'static,
-        Act: Send + 'static,
-        State: Send + 'static,
-        Machine: StateMachine<State, M, Act> + Send + Sync + 'static,
-        Updates: Stream<Item = Result<Message<M>, RoutingError>> + Send + Sync + 'static,
-        CmdSend: ItemSender<Command<Machine::Cmd>, RoutingError> + Send + Sync + 'static,
+) -> (
+    RawDownlink<Act, Machine::Ev>,
+    topic::Receiver<Event<Machine::Ev>>,
+)
+where
+    M: Send + 'static,
+    Act: Send + 'static,
+    State: Send + 'static,
+    Machine: StateMachine<State, M, Act> + Send + Sync + 'static,
+    Updates: Stream<Item = Result<Message<M>, RoutingError>> + Send + Sync + 'static,
+    CmdSend: ItemSender<Command<Machine::Cmd>, RoutingError> + Send + Sync + 'static,
 {
     let (act_tx, act_rx) = mpsc::channel::<Act>(config.buffer_size.get());
     let (event_tx, event_rx) = topic::channel::<Event<Machine::Ev>>(config.buffer_size);
@@ -476,18 +473,20 @@ struct DownlinkTask<Act, Ev> {
 }
 
 impl<Act, Ev> DownlinkTask<Act, Ev> {
-
-    async fn run<M, Cmd, State, Updates>(self,
-                                         state_machine: impl StateMachine<State, M, Act, Cmd = Cmd, Ev = Ev>,
-                                         updates: Updates,
-                                         mut cmd_sink: impl ItemSender<Command<Cmd>, RoutingError>) -> Result<(), DownlinkError>
-        where
-            Updates: Stream<Item = Result<Message<M>, RoutingError>> + Send + Sync + 'static,
+    async fn run<M, Cmd, State, Updates>(
+        self,
+        state_machine: impl StateMachine<State, M, Act, Cmd = Cmd, Ev = Ev>,
+        updates: Updates,
+        mut cmd_sink: impl ItemSender<Command<Cmd>, RoutingError>,
+    ) -> Result<(), DownlinkError>
+    where
+        Updates: Stream<Item = Result<Message<M>, RoutingError>> + Send + Sync + 'static,
     {
         let DownlinkTask {
             mut event_sink,
             actions,
-            config } = self;
+            config,
+        } = self;
 
         let update_ops = updates.map(|r| match r {
             Ok(upd) => Operation::Message(upd),
@@ -562,13 +561,17 @@ impl<Act, Ev> DownlinkTask<Act, Ev> {
                     };
                     let result = match (event, command) {
                         (Some(event), Some(cmd)) => {
-                            if !events_terminated && event_sink.discarding_send(event).await.is_err() {
+                            if !events_terminated
+                                && event_sink.discarding_send(event).await.is_err()
+                            {
                                 events_terminated = true;
                             }
                             cmd_sink.send_item(cmd).await
                         }
                         (Some(event), _) => {
-                            if !events_terminated && event_sink.discarding_send(event).await.is_err() {
+                            if !events_terminated
+                                && event_sink.discarding_send(event).await.is_err()
+                            {
                                 events_terminated = true;
                             }
                             Ok(())
@@ -604,9 +607,7 @@ impl<Act, Ev> DownlinkTask<Act, Ev> {
         let _ = cmd_sink.send_item(Command::Unlink).await;
         result
     }
-
 }
-
 
 enum TaskInput<M, A> {
     Op(Operation<M, A>),
@@ -629,5 +630,3 @@ impl<M, A> TaskInput<M, A> {
         }
     }
 }
-
-

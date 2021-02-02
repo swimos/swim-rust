@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use super::MapActions;
 use crate::downlink::model::map::{MapAction, ValMap};
 use crate::downlink::DownlinkError;
 use futures::future::join;
@@ -20,7 +21,6 @@ use std::future::Future;
 use std::sync::Arc;
 use swim_common::model::Value;
 use tokio::sync::mpsc;
-use super::MapActions;
 
 async fn responder(init: OrdMap<i32, i32>, mut rx: mpsc::Receiver<MapAction>) {
     let mut state: ValMap = init
@@ -105,7 +105,7 @@ async fn responder(init: OrdMap<i32, i32>, mut rx: mpsc::Receiver<MapAction>) {
                         None => f(&None),
                         Some(v) => f(&Some(v.as_ref())),
                     }
-                        .map(Arc::new);
+                    .map(Arc::new);
                     match &replacement {
                         Some(v) => state.insert(key, v.clone()),
                         _ => state.remove(&key),
