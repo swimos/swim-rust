@@ -254,6 +254,43 @@ fn actions<K, V>(sender: &mpsc::Sender<MapAction>) -> MapActions<K, V> {
     MapActions::new(sender)
 }
 
+impl<K: ValidatedForm, V: ValidatedForm> MapDownlinkSender<K, V> {
+    pub fn contravariant_cast<K2, V2>(&self) -> Result<MapDownlinkSender<K2, V2>, MapViewError>
+    where
+        K2: ValidatedForm,
+        V2: ValidatedForm,
+    {
+        let key_schema_good = K2::schema()
+            .partial_cmp(&K::schema())
+            .map(|c| c != Ordering::Greater)
+            .unwrap_or(false);
+        let value_schema_good = V2::schema()
+            .partial_cmp(&V::schema())
+            .map(|c| c != Ordering::Greater)
+            .unwrap_or(false);
+
+        if key_schema_good && value_schema_good {
+            Ok(MapDownlinkSender::new(self.inner.clone()))
+        } else {
+            let incompatibility = if key_schema_good {
+                Incompatibility::Value
+            } else if value_schema_good {
+                Incompatibility::Key
+            } else {
+                Incompatibility::Both
+            };
+            Err(MapViewError {
+                mode: ViewMode::WriteOnly,
+                existing_key: K::schema(),
+                existing_value: V::schema(),
+                requested_key: K2::schema(),
+                requested_value: V2::schema(),
+                incompatibility,
+            })
+        }
+    }
+}
+
 impl<K, V> MapDownlinkSender<K, V>
 where
     K: ValidatedForm + 'static,
@@ -760,9 +797,13 @@ impl Error for MapViewError {}
 impl<K: ValidatedForm, V: ValidatedForm> MapDownlinkSubscriber<K, V> {
     /// Create a read-only view for a value downlink that converts all received values to a new type.
     /// The type of the view must have an equal or greater schema than the original downlink.
-    pub async fn covariant_cast<K2: ValidatedForm, V2: ValidatedForm>(
+    pub async fn covariant_cast<K2, V2>(
         &self,
-    ) -> Result<MapDownlinkSubscriber<K2, V2>, MapViewError> {
+    ) -> Result<MapDownlinkSubscriber<K2, V2>, MapViewError>
+    where
+        K2: ValidatedForm,
+        V2: ValidatedForm,
+    {
         let key_schema_good = K2::schema()
             .partial_cmp(&K::schema())
             .map(|c| c != Ordering::Less)

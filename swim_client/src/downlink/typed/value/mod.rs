@@ -141,6 +141,25 @@ impl<T> ValueDownlinkSender<T> {
     }
 }
 
+impl<T: ValidatedForm> ValueDownlinkSender<T> {
+    pub fn contravariant_cast<U>(&self) -> Result<ValueDownlinkSender<U>, ValueViewError>
+    where
+        U: ValidatedForm,
+    {
+        let schema_cmp = U::schema().partial_cmp(&T::schema());
+
+        if schema_cmp.is_some() && schema_cmp != Some(Ordering::Greater) {
+            Ok(ValueDownlinkSender::new(self.inner.clone()))
+        } else {
+            Err(ValueViewError {
+                existing: T::schema(),
+                requested: U::schema(),
+                mode: ViewMode::WriteOnly,
+            })
+        }
+    }
+}
+
 impl<T: ValidatedForm + 'static> ValueDownlinkSender<T> {
     pub async fn get(&self) -> Result<T, DownlinkError> {
         ValueActions::new(&self.inner).get().await
@@ -334,9 +353,10 @@ impl<T> ValueDownlinkSubscriber<T> {
 impl<T: ValidatedForm> ValueDownlinkSubscriber<T> {
     /// Create a read-only view for a value downlink that converts all received values to a new type.
     /// The type of the view must have an equal or greater schema than the original downlink.
-    pub async fn covariant_cast<U: ValidatedForm>(
-        &self,
-    ) -> Result<ValueDownlinkSubscriber<U>, ValueViewError> {
+    pub async fn covariant_cast<U>(&self) -> Result<ValueDownlinkSubscriber<U>, ValueViewError>
+    where
+        U: ValidatedForm,
+    {
         let schema_cmp = U::schema().partial_cmp(&T::schema());
 
         if schema_cmp.is_some() && schema_cmp != Some(Ordering::Less) {
