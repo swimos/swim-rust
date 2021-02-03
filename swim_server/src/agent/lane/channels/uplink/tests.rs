@@ -122,7 +122,6 @@ async fn uplink_not_linked() {
     )
     .await;
 
-    println!("{:?}", uplink_result);
     assert!(matches!(uplink_result, Ok(Ok(_))));
     assert!(send_result.is_ok());
     assert!(matches!(
