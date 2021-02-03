@@ -24,6 +24,7 @@ use crate::agent::dispatch::error::DispatcherErrors;
 use crate::agent::dispatch::AgentDispatcher;
 use crate::agent::lane::channels::task::{
     run_supply_lane_io, DemandMapLaneMessageHandler, LaneIoError, MapLaneMessageHandler,
+    ValueLaneMessageHandler,
 };
 use crate::agent::lane::channels::update::StmRetryStrategy;
 use crate::agent::lane::channels::uplink::spawn::{SpawnerUplinkFactory, UplinkErrorReport};
@@ -480,9 +481,12 @@ where
         context: Context,
     ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
         let ValueLaneIo { lane, deferred } = self;
+
+        let handler = ValueLaneMessageHandler::new(lane, config.value_lane_backpressure);
+
         let uplink_factory = SpawnerUplinkFactory::new(config.clone());
         Ok(lane::channels::task::run_lane_io(
-            lane,
+            handler,
             uplink_factory,
             envelopes,
             deferred,
@@ -540,7 +544,8 @@ where
 
         let retries = StmRetryStrategy::new(config.retry_strategy);
 
-        let handler = MapLaneMessageHandler::new(lane, move || retries);
+        let handler =
+            MapLaneMessageHandler::new(lane, move || retries, config.map_lane_backpressure);
 
         Ok(lane::channels::task::run_lane_io(
             handler,
