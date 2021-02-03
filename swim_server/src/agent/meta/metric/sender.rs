@@ -74,5 +74,5 @@ async fn test_err() {
 
     drop(rx);
 
-    assert_eq!(sender.try_send(profile.clone()), Err(SendError));
+    assert_eq!(sender.try_send(profile), Err(SendError));
 }

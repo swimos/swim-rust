@@ -21,6 +21,7 @@ use crate::agent::lane::channels::{
     AgentExecutionConfig, LaneMessageHandler, OutputMessage, TaggedAction,
 };
 use crate::agent::lane::model::action::{Action, ActionLane};
+use crate::agent::meta::metric::MetricObserver;
 use crate::agent::Eff;
 use crate::routing::error::RouterError;
 use crate::routing::{
@@ -385,6 +386,10 @@ impl AgentExecutionContext for TestContext {
 
     fn spawner(&self) -> Sender<Eff> {
         self.scheduler.clone()
+    }
+
+    fn metrics(&self) -> MetricObserver {
+        panic!("Unexpected metric observer request")
     }
 }
 
@@ -1283,6 +1288,10 @@ impl AgentExecutionContext for MultiTestContext {
 
     fn spawner(&self) -> Sender<Eff> {
         self.1.clone()
+    }
+
+    fn metrics(&self) -> MetricObserver {
+        panic!("Unexpected metric observer request")
     }
 }
 

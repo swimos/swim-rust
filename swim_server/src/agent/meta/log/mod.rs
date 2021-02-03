@@ -18,7 +18,7 @@ mod tests;
 use crate::agent::context::AgentExecutionContext;
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lane::model::supply::SupplyLane;
-use crate::agent::meta::IdentifiedAgentIo;
+use crate::agent::meta::{IdentifiedAgentIo, MetaNodeAddressed};
 use crate::agent::LaneIo;
 use crate::agent::LaneTasks;
 use crate::agent::{make_supply_lane, AgentContext, DynamicLaneTasks, SwimAgent};
@@ -48,27 +48,18 @@ pub enum LogLevel {
     Fail,
 }
 
-#[derive(PartialOrd, PartialEq, Debug, Clone)]
-pub struct InvalidLogUri(pub String);
-
-/// Try and parse a `LogLevel` from a URI str.
-impl TryFrom<&str> for LogLevel {
-    type Error = InvalidLogUri;
-
-    fn try_from(uri: &str) -> Result<Self, <LogLevel as TryFrom<&str>>::Error> {
-        match uri {
-            TRACE_URI => Ok(LogLevel::Trace),
-            DEBUG_URI => Ok(LogLevel::Debug),
-            INFO_URI => Ok(LogLevel::Info),
-            WARN_URI => Ok(LogLevel::Warn),
-            ERROR_URI => Ok(LogLevel::Error),
-            FAIL_URI => Ok(LogLevel::Fail),
-            s => Err(InvalidLogUri(format!("Unknown log level URI: {}", s))),
-        }
-    }
-}
-
 impl LogLevel {
+    pub fn enumerated() -> &'static [LogLevel] {
+        &[
+            LogLevel::Trace,
+            LogLevel::Debug,
+            LogLevel::Info,
+            LogLevel::Warn,
+            LogLevel::Error,
+            LogLevel::Fail,
+        ]
+    }
+
     pub fn uri_ref(&self) -> &'static str {
         match self {
             LogLevel::Trace => TRACE_URI,
@@ -78,6 +69,24 @@ impl LogLevel {
             LogLevel::Error => ERROR_URI,
             LogLevel::Fail => FAIL_URI,
         }
+    }
+}
+
+#[derive(PartialOrd, PartialEq, Debug, Clone)]
+pub struct InvalidLogUri(pub String);
+
+/// Try and parse a `LogLevel` from a URI str.
+impl TryFrom<&str> for LogLevel {
+    type Error = InvalidLogUri;
+
+    fn try_from(uri: &str) -> Result<Self, <LogLevel as TryFrom<&str>>::Error> {
+        for level in LogLevel::enumerated() {
+            if uri == level.uri_ref() {
+                return Ok(*level);
+            }
+        }
+
+        Err(InvalidLogUri(format!("Unknown log level URI: {}", uri)))
     }
 }
 
@@ -169,11 +178,14 @@ where
 {
     let mut lane_tasks = Vec::with_capacity(6);
     let mut lane_ios = HashMap::with_capacity(6);
-    let mut make_log_lane = |lane_uri: String| {
-        let (lane, task, io) = make_supply_lane(lane_uri.clone(), true, exec_conf.lane_buffer);
+    let mut make_log_lane = |level: LogLevel| {
+        let (lane, task, io) = make_supply_lane(level.uri_ref(), true, exec_conf.lane_buffer);
         lane_tasks.push(task.boxed());
         lane_ios.insert(
-            LaneIdentifier::meta(lane_uri),
+            LaneIdentifier::meta(MetaNodeAddressed::Log {
+                node_uri: uri.to_string().into(),
+                level,
+            }),
             io.expect("Public lane didn't return any lane IO").boxed(),
         );
 
@@ -181,13 +193,13 @@ where
     };
 
     let log_handler = LogHandler {
-        uri,
-        trace_lane: make_log_lane(TRACE_URI.to_string()),
-        debug_lane: make_log_lane(DEBUG_URI.to_string()),
-        info_lane: make_log_lane(INFO_URI.to_string()),
-        warn_lane: make_log_lane(WARN_URI.to_string()),
-        error_lane: make_log_lane(ERROR_URI.to_string()),
-        fail_lane: make_log_lane(FAIL_URI.to_string()),
+        uri: uri.clone(),
+        trace_lane: make_log_lane(LogLevel::Trace),
+        debug_lane: make_log_lane(LogLevel::Debug),
+        info_lane: make_log_lane(LogLevel::Info),
+        warn_lane: make_log_lane(LogLevel::Warn),
+        error_lane: make_log_lane(LogLevel::Error),
+        fail_lane: make_log_lane(LogLevel::Fail),
     };
 
     (log_handler, lane_tasks, lane_ios)

@@ -12,23 +12,27 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::collections::{hash_map::Entry, HashMap};
+use std::marker::PhantomData;
+
+use either::Either;
+use futures::{select_biased, Stream, StreamExt};
+use pin_utils::pin_mut;
+use tokio::sync::mpsc;
+use tracing::{event, Level};
+
+use swim_common::form::Form;
+use swim_common::model::Value;
+use swim_common::warp::path::RelativePath;
+
 use crate::agent::lane::channels::uplink::spawn::UplinkErrorReport;
 use crate::agent::lane::channels::uplink::{
     AddressedUplinkMessage, UplinkAction, UplinkError, UplinkKind, UplinkMessage,
     UplinkMessageSender,
 };
 use crate::agent::lane::channels::TaggedAction;
+use crate::agent::meta::metric::uplink::UplinkObserver;
 use crate::routing::{RoutingAddr, ServerRouter, TaggedSender};
-use either::Either;
-use futures::{select_biased, Stream, StreamExt};
-use pin_utils::pin_mut;
-use std::collections::{hash_map::Entry, HashMap};
-use std::marker::PhantomData;
-use swim_common::form::Form;
-use swim_common::model::Value;
-use swim_common::warp::path::RelativePath;
-use tokio::sync::mpsc;
-use tracing::{event, Level};
 
 #[cfg(test)]
 mod tests;
@@ -50,6 +54,7 @@ pub struct StatelessUplinks<S> {
     producer: S,
     route: RelativePath,
     uplink_kind: UplinkKind,
+    observer: UplinkObserver,
 }
 
 impl<S, F> StatelessUplinks<S>
@@ -57,11 +62,17 @@ where
     S: Stream<Item = AddressedUplinkMessage<F>>,
     F: Send + Sync + Form + 'static,
 {
-    pub fn new(producer: S, route: RelativePath, uplink_kind: UplinkKind) -> Self {
+    pub fn new(
+        producer: S,
+        route: RelativePath,
+        uplink_kind: UplinkKind,
+        observer: UplinkObserver,
+    ) -> Self {
         StatelessUplinks {
             producer,
             route,
             uplink_kind,
+            observer,
         }
     }
 }
@@ -84,6 +95,7 @@ where
             route,
             producer,
             uplink_kind,
+            mut observer,
         } = self;
         let mut uplinks: Uplinks<F, Router> = Uplinks::new(router, err_tx, route);
 
@@ -110,17 +122,22 @@ where
                         message,
                         address: addr,
                     } => {
-                        if uplinks
+                        match uplinks
                             .send_msg(UplinkMessage::Event(RespMsg(message)), addr)
                             .await
-                            .is_err()
                         {
-                            break;
+                            Ok(_) => {
+                                observer.on_event();
+                            }
+                            Err(_) => break,
                         }
                     }
                     AddressedUplinkMessage::Broadcast(message) => {
-                        if uplinks.broadcast_msg(message).await.is_err() {
-                            break;
+                        match uplinks.broadcast_msg(message).await {
+                            Ok(_) => {
+                                observer.on_event();
+                            }
+                            Err(_) => break,
                         }
                     }
                 },

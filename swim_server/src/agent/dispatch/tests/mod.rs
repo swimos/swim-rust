@@ -84,7 +84,13 @@ fn lanes(names: Vec<&str>) -> HashMap<LaneIdentifier, MockLane> {
         map.insert(LaneIdentifier::agent(name.to_string()), MockLane);
     }
 
-    map.insert(LaneIdentifier::meta("infoLog".to_string()), MockLane);
+    map.insert(
+        LaneIdentifier::meta(MetaNodeAddressed::Log {
+            node_uri: "/node".into(),
+            level: LogLevel::Info,
+        }),
+        MockLane,
+    );
 
     map
 }

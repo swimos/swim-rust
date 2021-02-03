@@ -12,13 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::meta::metric::sender::{Surjection, TransformedSender};
-use crate::agent::meta::metric::ObserverEvent;
-use futures::FutureExt;
 use std::time::{Duration, Instant};
+
+use futures::FutureExt;
+use tokio::sync::mpsc;
+
 use swim_common::form::Form;
 use swim_common::warp::path::RelativePath;
-use tokio::sync::mpsc;
+
+use crate::agent::meta::metric::sender::{Surjection, TransformedSender};
+use crate::agent::meta::metric::ObserverEvent;
 
 #[derive(Default, Form, Clone, PartialEq, Debug)]
 pub struct UplinkProfile {
@@ -86,12 +89,12 @@ impl UplinkObserver {
     }
 
     pub fn on_event(&mut self) {
-        self.profile.event_count.wrapping_add(1);
+        self.profile.event_count = self.profile.event_count.wrapping_add(1);
         self.flush();
     }
 
     pub fn on_command(&mut self) {
-        self.profile.command_count.wrapping_add(1);
+        self.profile.command_count = self.profile.command_count.wrapping_add(1);
         self.flush();
     }
 }

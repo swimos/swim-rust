@@ -450,11 +450,9 @@ impl EnvelopeDispatcher {
                     }
                 }
                 Some(Either::Right(request)) => {
-                    let (addr, envelope, identifier_kind) = request.split();
+                    event!(Level::TRACE, message = ATTEMPT_DISPATCH, ?request);
 
-                    event!(Level::TRACE, message = ATTEMPT_DISPATCH, ?envelope);
-
-                    if let Ok(envelope) = envelope.into_outgoing() {
+                    if let Ok((addr, envelope, identifier)) = request.split_outgoing() {
                         if let Some(sender) = senders.get_mut(lane(&envelope)) {
                             if sender
                                 .send(TaggedClientEnvelope(addr, envelope))
@@ -467,9 +465,7 @@ impl EnvelopeDispatcher {
                             event!(Level::TRACE, message = REQUESTING_ATTACH, ?envelope);
                             let (req_tx, req_rx) = oneshot::channel();
                             let (uplink_tx, uplink_rx) = mpsc::channel(lane_buffer.get());
-
                             let label = lane(&envelope).to_string();
-                            let identifier = LaneIdentifier::from(label.clone(), identifier_kind);
 
                             if open_tx
                                 .send(OpenRequest::new(identifier, uplink_rx, req_tx))

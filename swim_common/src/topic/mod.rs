@@ -89,7 +89,7 @@ pub trait Topic<T> {
 }
 
 /// A topic implementation backed by a Tokio watch channel. Subscribers will only see the latest
-/// output record since the last time the polled and so may (and likely will) miss outputs.
+/// output record since the last time they polled and so may (and likely will) miss outputs.
 #[derive(Debug)]
 pub struct WatchTopic<T> {
     receiver: watch::Receiver<Option<T>>,

@@ -12,15 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use pin_utils::core_reexport::num::NonZeroUsize;
+use std::num::NonZeroUsize;
 use tokio::time::Duration;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MetricCollectorConfig {
     /// Sample rate.
     pub sample_rate: Duration,
     /// Observer channel buffer size.
     pub buffer_size: NonZeroUsize,
+    /// The number of events to process before yielding execution back to the runtime.
+    pub yield_after: NonZeroUsize,
+    /// How often to check for dropped routes.
+    pub prune_frequency: Duration,
 }
 
 impl Default for MetricCollectorConfig {
@@ -28,6 +32,8 @@ impl Default for MetricCollectorConfig {
         MetricCollectorConfig {
             sample_rate: Duration::from_secs(1),
             buffer_size: NonZeroUsize::new(10).unwrap(),
+            yield_after: NonZeroUsize::new(256).unwrap(),
+            prune_frequency: Duration::from_secs(30),
         }
     }
 }

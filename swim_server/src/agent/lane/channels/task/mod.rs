@@ -468,7 +468,10 @@ where
         }
         .instrument(span!(Level::INFO, UPDATE_TASK, ?route));
 
-        let uplinks = StatelessUplinks::new(feedback_rx, route.clone(), UplinkKind::Action);
+        let observer = context.metrics().uplink_observer(route.clone());
+
+        let uplinks =
+            StatelessUplinks::new(feedback_rx, route.clone(), UplinkKind::Action, observer);
         let uplink_task = uplinks
             .run(uplink_rx, context.router_handle(), err_tx, yield_after)
             .instrument(span!(Level::INFO, UPLINK_SPAWN_TASK, ?route));
@@ -625,7 +628,8 @@ where
     let (uplink_tx, uplink_rx) = mpsc::channel(config.action_buffer.get());
     let (err_tx, err_rx) = mpsc::channel(config.uplink_err_buffer.get());
     let stream = stream.map(AddressedUplinkMessage::broadcast);
-    let uplinks = StatelessUplinks::new(stream, route.clone(), uplink_kind);
+    let observer = context.metrics().uplink_observer(route.clone());
+    let uplinks = StatelessUplinks::new(stream, route.clone(), uplink_kind, observer);
 
     let on_command_strategy = OnCommandStrategy::<Dropping>::dropping();
     let yield_after = config.yield_after.get();

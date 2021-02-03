@@ -27,11 +27,13 @@ use swim_common::routing::SendError;
 use swim_common::routing::{ConnectionError, ResolutionError};
 use swim_common::warp::envelope::{Envelope, EnvelopeHeader, OutgoingLinkMessage};
 use tokio::sync::oneshot;
-use utilities::errors::Recoverable;
+use utilities::errors::{Recoverable, SwimResultExt};
 use utilities::sync::promise;
 use utilities::uri::RelativeUri;
 
-use crate::agent::meta::{MetaAddressed, MetaNodeAddressed, MetaPath};
+use crate::agent::meta::{
+    MetaAddressed, MetaNodeAddressed, MetaPath, LANES_URI, PULSE_URI, UPLINK_URI,
+};
 use crate::plane::PlaneRequest;
 use crate::routing::error::RouterError;
 use swim_common::warp::path::RelativePath;
@@ -311,13 +313,16 @@ impl TaggedEnvelope {
         TaggedEnvelope::AgentMetaEnvelope(meta)
     }
 
-    pub fn split(self) -> (RoutingAddr, Envelope, LaneIdentifierKind) {
+    pub fn split_outgoing(self) -> Result<(RoutingAddr, OutgoingLinkMessage, LaneIdentifier), ()> {
         match self {
-            TaggedEnvelope::AgentMetaEnvelope(TaggedMetaEnvelope(addr, envelope, ..)) => {
-                (addr, envelope, LaneIdentifierKind::Meta)
+            TaggedEnvelope::AgentMetaEnvelope(TaggedMetaEnvelope(addr, envelope, meta)) => {
+                let envelope = envelope.into_outgoing().discard_err()?;
+                Ok((addr, envelope, LaneIdentifier::Meta(meta)))
             }
             TaggedEnvelope::AgentEnvelope(TaggedAgentEnvelope(addr, envelope)) => {
-                (addr, envelope, LaneIdentifierKind::Agent)
+                let envelope = envelope.into_outgoing().discard_err()?;
+                let path = envelope.path.lane.to_string();
+                Ok((addr, envelope, LaneIdentifier::Agent(path)))
             }
         }
     }
@@ -492,49 +497,42 @@ impl ConnectionDropped {
 
 /// An abstraction over both agent lanes and meta lanes.
 #[derive(Hash, Eq, PartialEq, Debug, Clone)]
-pub struct LaneIdentifier {
-    /// The corresponding lane URI.
-    lane_uri: String,
-    /// The lane's kind.
-    kind: LaneIdentifierKind,
+pub enum LaneIdentifier {
+    Agent(String),
+    Meta(MetaNodeAddressed),
+}
+
+impl Display for LaneIdentifier {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LaneIdentifier::Agent(uri) => {
+                write!(f, "Agent(lane: \"{}\"", uri)
+            }
+            LaneIdentifier::Meta(meta) => {
+                write!(f, "Meta({:?})", meta)
+            }
+        }
+    }
 }
 
 impl LaneIdentifier {
-    pub fn from(lane_uri: String, kind: LaneIdentifierKind) -> LaneIdentifier {
-        LaneIdentifier { lane_uri, kind }
-    }
-
     pub fn agent(lane_uri: String) -> LaneIdentifier {
-        LaneIdentifier {
-            lane_uri,
-            kind: LaneIdentifierKind::Agent,
-        }
+        LaneIdentifier::Agent(lane_uri)
     }
 
-    pub fn meta(lane_uri: String) -> LaneIdentifier {
-        LaneIdentifier {
-            lane_uri,
-            kind: LaneIdentifierKind::Meta,
-        }
-    }
-
-    pub fn kind(&self) -> LaneIdentifierKind {
-        self.kind
+    pub fn meta(kind: MetaNodeAddressed) -> LaneIdentifier {
+        LaneIdentifier::Meta(kind)
     }
 
     pub fn lane_uri(&self) -> &str {
-        &self.lane_uri
+        match self {
+            LaneIdentifier::Agent(uri) => uri.as_ref(),
+            LaneIdentifier::Meta(meta) => match meta {
+                MetaNodeAddressed::NodeProfile { .. } => PULSE_URI,
+                MetaNodeAddressed::UplinkProfile { .. } => UPLINK_URI,
+                MetaNodeAddressed::Lanes { .. } => LANES_URI,
+                MetaNodeAddressed::Log { level, .. } => level.uri_ref(),
+            },
+        }
     }
-}
-
-/// An identifier representing either an agent's lanes or its metadata lanes.
-#[derive(Hash, Eq, PartialEq, Debug, Clone, Copy)]
-pub enum LaneIdentifierKind {
-    /// An agent's lane.
-    Agent,
-    /// An agent's metadata lanes.
-    ///
-    /// Agent lane meta requests have their URI's prefixed in the form of `swim:meta:X` and these
-    /// are forwarded to the corresponding meta lanes.
-    Meta,
 }

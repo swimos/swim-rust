@@ -18,6 +18,7 @@ use crate::agent::lane::channels::update::{LaneUpdate, UpdateError};
 use crate::agent::lane::channels::uplink::spawn::{SpawnerUplinkFactory, UplinkErrorReport};
 use crate::agent::lane::channels::uplink::{UplinkAction, UplinkError, UplinkStateMachine};
 use crate::agent::lane::channels::{AgentExecutionConfig, LaneMessageHandler, TaggedAction};
+use crate::agent::meta::metric::MetricObserver;
 use crate::agent::Eff;
 use crate::routing::error::RouterError;
 use crate::routing::{
@@ -327,6 +328,10 @@ impl AgentExecutionContext for TestContext {
 
     fn spawner(&self) -> Sender<Eff> {
         self.spawner.clone()
+    }
+
+    fn metrics(&self) -> MetricObserver {
+        panic!("Unexpected metric observer request")
     }
 }
 

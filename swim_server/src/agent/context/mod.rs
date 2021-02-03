@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::agent::meta::metric::MetricObserver;
 use crate::agent::meta::{LogLevel, MetaContext};
 use crate::agent::{AgentContext, Eff};
 use crate::routing::ServerRouter;
@@ -48,7 +49,7 @@ pub(super) struct ContextImpl<Agent, Clk, Router> {
     agent_ref: Arc<Agent>,
     routing_context: RoutingContext<Router>,
     schedule_context: ScheduleContext<Clk>,
-    meta_context: MetaContext,
+    meta_context: Arc<MetaContext>,
 }
 
 impl<Agent, Clk, Router> ContextImpl<Agent, Clk, Router> {
@@ -62,7 +63,7 @@ impl<Agent, Clk, Router> ContextImpl<Agent, Clk, Router> {
             agent_ref,
             routing_context,
             schedule_context,
-            meta_context,
+            meta_context: Arc::new(meta_context),
         }
     }
 }
@@ -227,6 +228,10 @@ pub trait AgentExecutionContext {
 
     /// Provide a channel to dispatch events to the agent scheduler.
     fn spawner(&self) -> mpsc::Sender<Eff>;
+
+    /// Provides an observer that can be used to observe events that happen on nodes, lanes, and
+    /// uplinks.
+    fn metrics(&self) -> MetricObserver;
 }
 
 impl<Agent, Clk, RouterInner> AgentExecutionContext for ContextImpl<Agent, Clk, RouterInner>
@@ -241,5 +246,9 @@ where
 
     fn spawner(&self) -> Sender<Eff> {
         self.schedule_context.scheduler.clone()
+    }
+
+    fn metrics(&self) -> MetricObserver {
+        self.meta_context.metric_collector().observer()
     }
 }

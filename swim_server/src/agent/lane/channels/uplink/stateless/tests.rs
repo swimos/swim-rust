@@ -28,7 +28,11 @@ use swim_common::warp::path::RelativePath;
 use crate::agent::lane::channels::uplink::stateless::StatelessUplinks;
 use crate::agent::lane::channels::uplink::{AddressedUplinkMessage, UplinkAction, UplinkKind};
 use crate::agent::lane::channels::TaggedAction;
+use crate::agent::meta::metric::sender::TransformedSender;
+use crate::agent::meta::metric::uplink::{UplinkObserver, UplinkSurjection};
+use crate::agent::meta::metric::MetricObserver;
 use crate::routing::error::RouterError;
+use std::time::Duration;
 use swim_common::routing::ResolutionError;
 use url::Url;
 use utilities::sync::promise;
@@ -87,6 +91,10 @@ impl AgentExecutionContext for TestContext {
     fn spawner(&self) -> mpsc::Sender<Eff> {
         self.1.clone()
     }
+
+    fn metrics(&self) -> MetricObserver {
+        panic!("Unexpected metric observer request")
+    }
 }
 
 async fn check_receive(
@@ -100,6 +108,12 @@ async fn check_receive(
     assert_eq!(env.into_envelope(), expected);
 }
 
+fn observer() -> UplinkObserver {
+    let (tx, _rx) = mpsc::channel(1);
+    let sender = TransformedSender::new(UplinkSurjection(RelativePath::new("/node", "/lane")), tx);
+    UplinkObserver::new(sender, Duration::from_secs(1))
+}
+
 #[tokio::test]
 async fn immediate_unlink_stateless_uplinks() {
     let route = RelativePath::new("node", "lane");
@@ -108,7 +122,7 @@ async fn immediate_unlink_stateless_uplinks() {
     let (router_tx, mut router_rx) = mpsc::channel(5);
     let (error_tx, _error_rx) = mpsc::channel(5);
 
-    let uplinks = StatelessUplinks::new(producer_rx, route.clone(), UplinkKind::Supply);
+    let uplinks = StatelessUplinks::new(producer_rx, route.clone(), UplinkKind::Supply, observer());
 
     let router = TestRouter::new(RoutingAddr::local(1024), router_tx);
 
@@ -144,7 +158,7 @@ async fn sync_with_stateless_uplinks() {
     let (router_tx, mut router_rx) = mpsc::channel(5);
     let (error_tx, _error_rx) = mpsc::channel(5);
 
-    let uplinks = StatelessUplinks::new(producer_rx, route.clone(), UplinkKind::Action);
+    let uplinks = StatelessUplinks::new(producer_rx, route.clone(), UplinkKind::Action, observer());
 
     let router = TestRouter::new(RoutingAddr::local(1024), router_tx);
 
@@ -187,7 +201,7 @@ async fn sync_with_action_lane() {
     let (router_tx, mut router_rx) = mpsc::channel(5);
     let (error_tx, _error_rx) = mpsc::channel(5);
 
-    let uplinks = StatelessUplinks::new(producer_rx, route.clone(), UplinkKind::Action);
+    let uplinks = StatelessUplinks::new(producer_rx, route.clone(), UplinkKind::Action, observer());
 
     let router = TestRouter::new(RoutingAddr::local(1024), router_tx);
 
@@ -236,7 +250,7 @@ async fn sync_after_link_on_stateless_uplinks() {
     let (router_tx, mut router_rx) = mpsc::channel(5);
     let (error_tx, _error_rx) = mpsc::channel(5);
 
-    let uplinks = StatelessUplinks::new(producer_rx, route.clone(), UplinkKind::Supply);
+    let uplinks = StatelessUplinks::new(producer_rx, route.clone(), UplinkKind::Supply, observer());
 
     let router = TestRouter::new(RoutingAddr::local(1024), router_tx);
 
@@ -291,7 +305,7 @@ async fn link_to_and_receive_from_broadcast_uplinks() {
     let (router_tx, mut router_rx) = mpsc::channel(5);
     let (error_tx, _error_rx) = mpsc::channel(5);
 
-    let uplinks = StatelessUplinks::new(response_rx, route.clone(), UplinkKind::Supply);
+    let uplinks = StatelessUplinks::new(response_rx, route.clone(), UplinkKind::Supply, observer());
 
     let router = TestRouter::new(RoutingAddr::local(1024), router_tx);
 
@@ -356,7 +370,7 @@ async fn link_to_and_receive_from_addressed_uplinks() {
     let (router_tx, mut router_rx) = mpsc::channel(5);
     let (error_tx, _error_rx) = mpsc::channel(5);
 
-    let uplinks = StatelessUplinks::new(response_rx, route.clone(), UplinkKind::Supply);
+    let uplinks = StatelessUplinks::new(response_rx, route.clone(), UplinkKind::Supply, observer());
 
     let router = TestRouter::new(RoutingAddr::local(1024), router_tx);
 
@@ -437,7 +451,7 @@ async fn link_twice_to_stateless_uplinks() {
     let (router_tx, mut router_rx) = mpsc::channel(5);
     let (error_tx, _error_rx) = mpsc::channel(5);
 
-    let uplinks = StatelessUplinks::new(response_rx, route.clone(), UplinkKind::Supply);
+    let uplinks = StatelessUplinks::new(response_rx, route.clone(), UplinkKind::Supply, observer());
 
     let router = TestRouter::new(RoutingAddr::local(1024), router_tx);
 
@@ -501,7 +515,7 @@ async fn no_messages_after_unlink_from_stateless_uplinks() {
     let (router_tx, mut router_rx) = mpsc::channel(5);
     let (error_tx, _error_rx) = mpsc::channel(5);
 
-    let uplinks = StatelessUplinks::new(response_rx, route.clone(), UplinkKind::Supply);
+    let uplinks = StatelessUplinks::new(response_rx, route.clone(), UplinkKind::Supply, observer());
 
     let router = TestRouter::new(RoutingAddr::local(1024), router_tx);
 
@@ -586,7 +600,7 @@ async fn send_no_uplink_stateless_uplinks() {
 
     let router = TestRouter::new(RoutingAddr::local(1024), router_tx);
 
-    let uplinks = StatelessUplinks::new(producer_rx, route.clone(), UplinkKind::Supply);
+    let uplinks = StatelessUplinks::new(producer_rx, route.clone(), UplinkKind::Supply, observer());
     let uplinks_task = uplinks.run(action_rx, router, error_tx, 256);
 
     let addr = RoutingAddr::remote(7);

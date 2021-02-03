@@ -25,8 +25,8 @@ use tokio::sync::mpsc;
 use tokio::time::Duration;
 use utilities::sync::trigger;
 
-#[test]
-fn simple_accessors() {
+#[tokio::test]
+async fn simple_accessors() {
     let (tx, _rx) = mpsc::channel(1);
     let (_close, close_sig) = trigger::trigger();
     let agent = Arc::new("agent");

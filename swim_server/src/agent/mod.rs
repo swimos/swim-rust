@@ -208,12 +208,12 @@ where
         });
 
     let task = async move {
-        // todo: this should happen more dynamically and should be created when requested
         let (meta_context, mut meta_tasks, meta_io) =
             open_meta_lanes::<Config, Agent, ContextImpl<Agent, Clk, Router>>(
                 uri.clone(),
                 &execution_config,
-                lane_summary,
+                &lane_summary,
+                stop_trigger.clone(),
             );
 
         let (tx, rx) = mpsc::channel(execution_config.scheduler_buffer.get());
