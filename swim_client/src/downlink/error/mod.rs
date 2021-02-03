@@ -21,6 +21,9 @@ use swim_common::sink::item;
 use tokio::sync::mpsc;
 use utilities::errors::Recoverable;
 
+#[cfg(test)]
+mod tests;
+
 #[derive(Clone, PartialEq, Debug)]
 pub enum DownlinkError {
     DroppedChannel,

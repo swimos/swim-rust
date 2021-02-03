@@ -32,6 +32,8 @@ use swim_common::model::Value;
 use tokio::sync::{mpsc, oneshot};
 use utilities::sync::{promise, topic};
 
+/// A downlink to a remote value lane containing values that are compatible with the
+/// [`ValidatedForm`] implementation for [`T`].
 pub struct TypedValueDownlink<T> {
     inner: Arc<UntypedValueDownlink>,
     _type: PhantomData<fn(T) -> T>,
@@ -99,19 +101,24 @@ impl<T> Downlink for TypedValueDownlink<T> {
 }
 
 impl<T: Form> TypedValueDownlink<T> {
+    /// Create a subscriber that can be used to produce receivers that observe changes to the state
+    /// of the downlink.
     pub fn subscriber(&self) -> ValueDownlinkSubscriber<T> {
         ValueDownlinkSubscriber::new(self.inner.subscriber())
     }
 
+    /// Create a new receiver, attached to the downlink, to observe changes to the state.
     pub fn subscribe(&self) -> Option<ValueDownlinkReceiver<T>> {
         self.inner.subscribe().map(ValueDownlinkReceiver::new)
     }
 
+    /// Create a sender that can be used to interact with the map in the downlink.
     pub fn sender(&self) -> ValueDownlinkSender<T> {
         ValueDownlinkSender::new(self.inner.sender().clone())
     }
 }
 
+/// A handle to interact with the value of a value downlink.
 pub struct ValueDownlinkSender<T> {
     inner: mpsc::Sender<Action>,
     _type: PhantomData<fn(T)>,
@@ -142,6 +149,9 @@ impl<T> ValueDownlinkSender<T> {
 }
 
 impl<T: ValidatedForm> ValueDownlinkSender<T> {
+    /// Create a sender for a more refined type (the [`ValidatedForm`] implementation for [`U`]
+    /// will always produce a [`Value`] that is acceptable to the [`ValidatedForm`] implementation
+    /// for [`T`]) to the downlink.
     pub fn contravariant_cast<U>(&self) -> Result<ValueDownlinkSender<U>, ValueViewError>
     where
         U: ValidatedForm,
@@ -161,18 +171,22 @@ impl<T: ValidatedForm> ValueDownlinkSender<T> {
 }
 
 impl<T: ValidatedForm + 'static> ValueDownlinkSender<T> {
+    /// Get the current value of the downlink.
     pub async fn get(&self) -> Result<T, DownlinkError> {
         ValueActions::new(&self.inner).get().await
     }
 
+    /// Set the value of the downlink, waiting until the set has completed.
     pub async fn set(&self, value: T) -> Result<(), DownlinkError> {
         ValueActions::new(&self.inner).set(value).await
     }
 
+    /// Set the value of the downlink, returning immediately.
     pub async fn set_and_forget(&self, value: T) -> Result<(), DownlinkError> {
         ValueActions::new(&self.inner).set_and_forget(value).await
     }
 
+    /// Update the value of the downlink, waiting until the changes has completed.
     pub async fn update<F>(&self, update_fn: F) -> Result<T, DownlinkError>
     where
         F: FnOnce(T) -> T + Send + 'static,
@@ -180,6 +194,7 @@ impl<T: ValidatedForm + 'static> ValueDownlinkSender<T> {
         ValueActions::new(&self.inner).update(update_fn).await
     }
 
+    /// Update the value of the downlink, returning immediately.
     pub async fn update_and_forget<F>(&self, update_fn: F) -> Result<(), DownlinkError>
     where
         F: FnOnce(T) -> T + Send + 'static,
@@ -191,20 +206,24 @@ impl<T: ValidatedForm + 'static> ValueDownlinkSender<T> {
 }
 
 impl<T: ValidatedForm + 'static> TypedValueDownlink<T> {
+    /// Get the current value of the downlink.
     pub async fn get(&self) -> Result<T, DownlinkError> {
         ValueActions::new(self.inner.sender()).get().await
     }
 
+    /// Set the value of the downlink, waiting until the set has completed.
     pub async fn set(&self, value: T) -> Result<(), DownlinkError> {
         ValueActions::new(self.inner.sender()).set(value).await
     }
 
+    /// Set the value of the downlink, returning immediately.
     pub async fn set_and_forget(&self, value: T) -> Result<(), DownlinkError> {
         ValueActions::new(self.inner.sender())
             .set_and_forget(value)
             .await
     }
 
+    /// Update the value of the downlink, waiting until the changes has completed.
     pub async fn update<F>(&self, update_fn: F) -> Result<T, DownlinkError>
     where
         F: FnOnce(T) -> T + Send + 'static,
@@ -214,6 +233,7 @@ impl<T: ValidatedForm + 'static> TypedValueDownlink<T> {
             .await
     }
 
+    /// Update the value of the downlink, returning immediately.
     pub async fn update_and_forget<F>(&self, update_fn: F) -> Result<(), DownlinkError>
     where
         F: FnOnce(T) -> T + Send + 'static,
@@ -292,6 +312,8 @@ where
     }
 }
 
+/// A receiver that observes the state changes of the downlink. Note that a receiver must consume
+/// the state changes or the downlink will block.
 pub struct ValueDownlinkReceiver<T> {
     inner: topic::Receiver<Event<SharedValue>>,
     _type: PhantomData<fn() -> T>,
@@ -312,6 +334,8 @@ impl<T> Clone for ValueDownlinkReceiver<T> {
     }
 }
 
+/// Value downlink handle that can produce receivers that will observe the state changes of the
+/// downlink.
 pub struct ValueDownlinkSubscriber<T> {
     inner: topic::Subscriber<Event<SharedValue>>,
     _type: PhantomData<fn() -> T>,
@@ -372,11 +396,13 @@ impl<T: ValidatedForm> ValueDownlinkSubscriber<T> {
 }
 
 impl<T: Form + 'static> ValueDownlinkReceiver<T> {
+    /// Observe the next state change from the downlink.
     pub async fn recv(&mut self) -> Option<Event<T>> {
         let value = self.inner.recv().await;
         value.map(|g| transform_event(&*g, |v| Form::try_from_value(v).expect("Inconsistent Form")))
     }
 
+    /// Convert this receiver in a [`Stream`] of state changes.
     pub fn into_stream(self) -> impl Stream<Item = Event<T>> + Send + 'static {
         unfold(
             self,

@@ -39,9 +39,13 @@ use tracing::{instrument, trace};
 use utilities::errors::Recoverable;
 use utilities::sync::{promise, topic};
 
+/// Trait defining the common operations supported by all downlinks.
 trait Downlink {
+    /// True when the downlink has terminated.
     fn is_stopped(&self) -> bool;
 
+    /// True when the downlink is still running. It is not safe to rely on the downlink still being
+    /// active at any point after this call has been made.
     fn is_running(&self) -> bool {
         !self.is_stopped()
     }
@@ -49,6 +53,7 @@ trait Downlink {
     /// Get a promise that will complete when the downlink stops running.
     fn await_stopped(&self) -> promise::Receiver<Result<(), DownlinkError>>;
 
+    /// Determine if two downlink handles represent the same downlink.
     fn same_downlink(left: &Self, right: &Self) -> bool;
 }
 
@@ -347,6 +352,9 @@ where
     }
 }
 
+/// Raw downlinks are the untyped core around which other types are downlink are built. Actions of
+/// type [[Act]] can be applied to the downlink, modifying its state, and it will, in turn produce
+/// events of type [[Ev]].
 #[derive(Debug)]
 pub struct RawDownlink<Act, Ev> {
     action_sender: mpsc::Sender<Act>,
@@ -398,10 +406,14 @@ impl<Act, Ev> RawDownlink<Act, Ev> {
     }
 }
 
+/// Configuration parameters for the downlink event loop.
 #[derive(Clone, Copy, Debug)]
-pub struct DownlinkConfig {
+pub(in crate::downlink) struct DownlinkConfig {
+    /// Buffer size for the action and event channels.
     pub buffer_size: NonZeroUsize,
+    /// The downlink event loop with yield to the runtime after this many iterations.
     pub yield_after: NonZeroUsize,
+    /// Strategy for handling invalid messages.
     pub on_invalid: OnInvalidMessage,
 }
 
@@ -417,6 +429,13 @@ impl From<&DownlinkParams> for DownlinkConfig {
 
 pub type RawReceiver<Ev> = topic::Receiver<Event<Ev>>;
 
+/// Create a new raw downlink, starting its event loop.
+/// # Arguments
+///
+/// * `machine` - The downlink state machine.
+/// * `update_stream` - Stream of external updates to the state.
+/// * `cmd_sink` - Sink for outgoing commands to the remote lane.
+/// * `config` - Configuration for the event loop.
 pub(in crate::downlink) fn create_downlink<M, Act, State, Machine, CmdSend, Updates>(
     machine: Machine,
     update_stream: Updates,

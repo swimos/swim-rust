@@ -556,7 +556,7 @@ impl ViewWithEvent {
 type MapItemResult = Result<Message<UntypedMapModification<Value>>, RoutingError>;
 
 /// Create a map downlink.
-pub fn create_downlink<Updates, Commands>(
+pub(in crate::downlink) fn create_downlink<Updates, Commands>(
     key_schema: Option<StandardSchema>,
     value_schema: Option<StandardSchema>,
     update_stream: Updates,

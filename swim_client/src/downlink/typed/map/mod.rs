@@ -36,6 +36,8 @@ use utilities::sync::{promise, topic};
 
 type MapDlVariance<K, V> = fn(K, V) -> (K, V);
 
+/// A downlink to a remote map lane containing values that are compatible with the
+/// [`ValidatedForm`] implementations for [`K`] and [`V`].
 pub struct TypedMapDownlink<K, V> {
     inner: Arc<UntypedMapDownlink>,
     _type: PhantomData<MapDlVariance<K, V>>,
@@ -84,14 +86,18 @@ impl<K, V> Downlink for TypedMapDownlink<K, V> {
 }
 
 impl<K: Form, V: Form> TypedMapDownlink<K, V> {
+    /// Create a subscriber that can be used to produce receivers that observe changes to the state
+    /// of the downlink.
     pub fn subscriber(&self) -> MapDownlinkSubscriber<K, V> {
         MapDownlinkSubscriber::new(self.inner.subscriber())
     }
 
+    /// Create a new receiver, attached to the downlink, to observe changes to the state.
     pub fn subscribe(&self) -> Option<MapDownlinkReceiver<K, V>> {
         self.inner.subscribe().map(MapDownlinkReceiver::new)
     }
 
+    /// Create a sender that can be used to interact with the map in the downlink.
     pub fn sender(&self) -> MapDownlinkSender<K, V> {
         MapDownlinkSender::new(self.inner.sender().clone())
     }
@@ -220,6 +226,7 @@ impl<K: ValidatedForm + 'static, V: ValidatedForm + 'static> TypedMapDownlink<K,
     }
 }
 
+/// A handle to interact with the map in a value downlink.
 pub struct MapDownlinkSender<K, V> {
     inner: mpsc::Sender<MapAction>,
     _type: PhantomData<fn(K, V)>,
@@ -255,6 +262,9 @@ fn actions<K, V>(sender: &mpsc::Sender<MapAction>) -> MapActions<K, V> {
 }
 
 impl<K: ValidatedForm, V: ValidatedForm> MapDownlinkSender<K, V> {
+    /// Create a sender for more refined key and value types (the [`ValidatedForm`] implementations
+    /// for [`K2`] and [`V2`] will always produce [`Values`] that are acceptable to the
+    /// [`ValidatedForm`] implementations for [`K`] and [`V`]) to the downlink.
     pub fn contravariant_cast<K2, V2>(&self) -> Result<MapDownlinkSender<K2, V2>, MapViewError>
     where
         K2: ValidatedForm,
@@ -406,6 +416,8 @@ where
     }
 }
 
+/// A receiver that observes the state changes of the downlink. Note that a receiver must consume
+/// the state changes or the downlink will block.
 pub struct MapDownlinkReceiver<K, V> {
     inner: topic::Receiver<Event<ViewWithEvent>>,
     _type: PhantomData<fn() -> (K, V)>,
@@ -427,6 +439,8 @@ impl<K, V> Clone for MapDownlinkReceiver<K, V> {
     }
 }
 
+/// Map downlink handle that can produce receivers that will observe the state changes of the
+/// downlink.
 pub struct MapDownlinkSubscriber<K, V> {
     inner: topic::Subscriber<Event<ViewWithEvent>>,
     _type: PhantomData<fn() -> (K, V)>,
@@ -465,36 +479,15 @@ impl<K, V> MapDownlinkSubscriber<K, V> {
         }
     }
 }
-/*
-impl<K: ValidatedForm, V: ValidatedForm> MapDownlinkSubscriber<K, V> {
 
-    /// Create a read-only view for a value downlink that converts all received values to a new type.
-    /// The type of the view must have an equal or greater schema than the original downlink.
-    pub async fn expand_type<K2: ValidatedForm, V2: ValidatedForm>(
-        &self,
-    ) -> Result<MapDownlinkSubscriber<K, V>, ValueViewError>
-    {
-        let schema_cmp = U::schema().partial_cmp(&T::schema());
-
-        if schema_cmp.is_some() && schema_cmp != Some(Ordering::Less) {
-            Ok(ValueDownlinkSubscriber::new(self.inner.clone()))
-        } else {
-            Err(ValueViewError {
-                existing: T::schema(),
-                requested: U::schema(),
-                mode: ViewMode::ReadOnly,
-            })
-        }
-    }
-
-}
-*/
 impl<K: Form + 'static, V: Form + 'static> MapDownlinkReceiver<K, V> {
+    /// Observe the next state change from the downlink.
     pub async fn recv(&mut self) -> Option<Event<TypedViewWithEvent<K, V>>> {
         let value = self.inner.recv().await;
         value.map(|g| transform_event(&*g))
     }
 
+    /// Convert this receiver in a [`Stream`] of state changes.
     pub fn into_stream(
         self,
     ) -> impl Stream<Item = Event<TypedViewWithEvent<K, V>>> + Send + 'static {

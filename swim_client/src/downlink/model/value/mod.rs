@@ -119,7 +119,7 @@ impl Action {
 type ValueItemResult = Result<Message<Value>, RoutingError>;
 
 /// Create a raw value downlink.
-pub fn create_downlink<Updates, Commands>(
+pub(in crate::downlink) fn create_downlink<Updates, Commands>(
     init: Value,
     schema: Option<StandardSchema>,
     update_stream: Updates,

@@ -153,6 +153,8 @@ fn type_event<K: Form>(event: MapEvent<Value>) -> Result<MapEvent<K>, FormErr> {
     }
 }
 
+/// A downlink to a remote lane producing events that are compatible with the [`ValidatedForm`]
+/// implementation for [`T`].
 pub struct TypedEventDownlink<T> {
     inner: Arc<UntypedEventDownlink>,
     _type: PhantomData<fn() -> T>,
@@ -200,15 +202,20 @@ impl<T> Downlink for TypedEventDownlink<T> {
 }
 
 impl<T: Form> TypedEventDownlink<T> {
+    /// Create a subscriber that can be used to produce receivers that observe events from the
+    /// downlink.
     pub fn subscriber(&self) -> EventDownlinkSubscriber<T> {
         EventDownlinkSubscriber::new(self.inner.subscriber())
     }
 
+    /// Create a new receiver, attached to the downlink, to observe the events.
     pub fn subscribe(&self) -> Option<EventDownlinkReceiver<T>> {
         self.inner.subscribe().map(EventDownlinkReceiver::new)
     }
 }
 
+/// A receiver that observes the events from the downlink. Note that a receiver must consume
+/// the events or the downlink will block.
 pub struct EventDownlinkReceiver<T> {
     inner: topic::Receiver<Event<Value>>,
     _type: PhantomData<fn() -> T>,
@@ -229,6 +236,8 @@ impl<T> Clone for EventDownlinkReceiver<T> {
     }
 }
 
+/// Value downlink handle that can produce receivers that will observe the events from the
+/// downlink.
 pub struct EventDownlinkSubscriber<T> {
     inner: topic::Subscriber<Event<Value>>,
     _type: PhantomData<fn() -> T>,

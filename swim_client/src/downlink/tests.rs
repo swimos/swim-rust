@@ -22,18 +22,6 @@ use swim_common::routing::RoutingError;
 use swim_common::sink::item;
 use tokio::stream::StreamExt;
 
-#[test]
-fn transition_error_display() {
-    let string = TransitionError::ReceiverDropped.to_string();
-    assert_eq!(string, "Observer of the update was dropped.");
-
-    let string = TransitionError::SideEffectFailed.to_string();
-    assert_eq!(string, "A side effect failed to complete.");
-
-    let string = TransitionError::IllegalTransition("Bad".to_string()).to_string();
-    assert_eq!(string, "An illegal transition was attempted: 'Bad'");
-}
-
 struct State(i32);
 
 #[derive(Debug)]

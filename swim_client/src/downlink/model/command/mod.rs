@@ -24,7 +24,7 @@ use swim_common::sink::item::ItemSender;
 #[cfg(test)]
 mod tests;
 
-pub fn create_downlink<Commands>(
+pub(in crate::downlink) fn create_downlink<Commands>(
     schema: StandardSchema,
     cmd_sender: Commands,
     config: DownlinkConfig,

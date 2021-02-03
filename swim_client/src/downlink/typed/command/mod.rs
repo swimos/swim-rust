@@ -23,6 +23,7 @@ use swim_common::form::{Form, ValidatedForm};
 use swim_common::model::schema::StandardSchema;
 use utilities::sync::promise;
 
+/// A downlink that sends commands to a remote downlink and does not link to the remote lane.
 pub struct TypedCommandDownlink<T> {
     inner: Arc<UntypedCommandDownlink>,
     _type: PhantomData<fn(T)>,
@@ -70,6 +71,7 @@ impl<T> Downlink for TypedCommandDownlink<T> {
 }
 
 impl<T: Form> TypedCommandDownlink<T> {
+    /// Send a command to the remote lane.
     pub async fn command(&self, command: T) -> Result<(), DownlinkError> {
         Ok(self.inner.send(command.into_value()).await?)
     }
@@ -88,8 +90,9 @@ pub struct CommandViewError {
 }
 
 impl<T: ValidatedForm> TypedCommandDownlink<T> {
-    /// Create a read-only view for a value downlink that converts all received values to a new type.
-    /// The type of the view must have an equal or greater schema than the original downlink.
+    /// Create a sender for a more refined type (the [`ValidatedForm`] implementation for [`U`]
+    /// will always produce a [`Value`] that is acceptable to the [`ValidatedForm`] implementation
+    /// for [`T`]) to the downlink.
     pub async fn contravariant_cast<U: ValidatedForm>(
         &self,
     ) -> Result<TypedCommandDownlink<U>, CommandViewError> {
