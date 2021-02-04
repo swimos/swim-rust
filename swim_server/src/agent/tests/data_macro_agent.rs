@@ -125,7 +125,7 @@ impl EventCollectorHandler {
 
 // ------------------------------ Agent Lifecycle -------------------------------
 
-#[agent_lifecycle(agent = "DataAgent")]
+#[agent_lifecycle(agent = "DataAgent", on_start)]
 struct DataAgentLifecycle {
     event_handler: EventCollectorHandler,
 }
@@ -196,7 +196,7 @@ impl DataAgentLifecycle {
 
 // ------------------------------ Command Lifecycle 1 -------------------------------
 
-#[command_lifecycle(agent = "DataAgent", command_type = "String")]
+#[command_lifecycle(agent = "DataAgent", command_type = "String", on_command)]
 struct CommandLifecycle1 {
     event_handler: EventCollectorHandler,
 }
@@ -237,7 +237,7 @@ impl LaneLifecycle<DataAgentConfig> for CommandLifecycle1 {
 
 // ------------------------------ Command Lifecycle 2 -------------------------------
 
-#[command_lifecycle(agent = "DataAgent", command_type = "String")]
+#[command_lifecycle(agent = "DataAgent", command_type = "String", on_command)]
 struct CommandLifecycle2 {
     event_handler: EventCollectorHandler,
 }
@@ -278,7 +278,12 @@ impl LaneLifecycle<DataAgentConfig> for CommandLifecycle2 {
 
 // ------------------------------ Action Lifecycle 1 -------------------------------
 
-#[action_lifecycle(agent = "DataAgent", command_type = "String", response_type = "i32")]
+#[action_lifecycle(
+    agent = "DataAgent",
+    command_type = "String",
+    response_type = "i32",
+    on_command
+)]
 struct ActionLifecycle1 {
     event_handler: EventCollectorHandler,
 }
@@ -321,7 +326,13 @@ impl LaneLifecycle<DataAgentConfig> for ActionLifecycle1 {
 
 // ------------------------------ Map Lifecycle 1 -------------------------------
 
-#[map_lifecycle(agent = "DataAgent", key_type = "String", value_type = "i32")]
+#[map_lifecycle(
+    agent = "DataAgent",
+    key_type = "String",
+    value_type = "i32",
+    on_start,
+    on_event
+)]
 struct MapLifecycle1 {
     event_handler: EventCollectorHandler,
 }
@@ -369,7 +380,13 @@ impl LaneLifecycle<DataAgentConfig> for MapLifecycle1 {
 
 // ------------------------------ Map Lifecycle 2 -------------------------------
 
-#[map_lifecycle(agent = "DataAgent", key_type = "String", value_type = "f64")]
+#[map_lifecycle(
+    agent = "DataAgent",
+    key_type = "String",
+    value_type = "f64",
+    on_start,
+    on_event
+)]
 struct MapLifecycle2 {
     event_handler: EventCollectorHandler,
 }
@@ -417,7 +434,7 @@ impl LaneLifecycle<DataAgentConfig> for MapLifecycle2 {
 
 // ------------------------------ Value Lifecycle 1 -------------------------------
 
-#[value_lifecycle(agent = "DataAgent", event_type = "i32")]
+#[value_lifecycle(agent = "DataAgent", event_type = "i32", on_start, on_event)]
 struct ValueLifecycle1 {
     event_handler: EventCollectorHandler,
 }
@@ -453,7 +470,7 @@ impl LaneLifecycle<DataAgentConfig> for ValueLifecycle1 {
 
 // ------------------------------ Value Lifecycle 2 -------------------------------
 
-#[value_lifecycle(agent = "DataAgent", event_type = "f64")]
+#[value_lifecycle(agent = "DataAgent", event_type = "f64", on_start, on_event)]
 struct ValueLifecycle2 {
     event_handler: EventCollectorHandler,
 }
@@ -499,7 +516,7 @@ async fn agent_loop() {
 
     let agent_lifecycle = config.agent_lifecycle();
 
-    let exec_config = AgentExecutionConfig::with(buffer_size, 1, 0, Duration::from_secs(1));
+    let exec_config = AgentExecutionConfig::with(buffer_size, 1, 0, Duration::from_secs(1), None);
 
     let (envelope_tx, envelope_rx) = mpsc::channel(buffer_size.get());
 

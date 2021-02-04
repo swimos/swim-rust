@@ -12,19 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::convert::TryInto;
 use std::fmt::{Debug, Formatter};
-use std::ops::Deref;
 use std::sync::Arc;
 
 use futures::Stream;
 use im::ordmap::OrdMap;
 
-use swim_common::form::{Form, FormErr, ValidatedForm};
-use swim_common::model::schema::attr::AttrSchema;
-use swim_common::model::schema::slot::SlotSchema;
-use swim_common::model::schema::{FieldSpec, Schema, StandardSchema};
-use swim_common::model::{Attr, Item, Value, ValueKind};
+use swim_common::model::schema::{Schema, StandardSchema};
+use swim_common::model::Value;
 use swim_common::sink::item::ItemSender;
 
 use crate::downlink::model::value::UpdateResult;
@@ -34,212 +29,14 @@ use crate::downlink::{
     SyncStateMachine, TransitionError,
 };
 use swim_common::routing::RoutingError;
+use swim_warp::model::map::MapUpdate;
 
 #[cfg(test)]
 mod tests;
 
-const UPDATE_NAME: &str = "update";
-const REMOVE_NAME: &str = "remove";
-const TAKE_NAME: &str = "take";
-const SKIP_NAME: &str = "drop";
-const CLEAR_NAME: &str = "clear";
-const KEY_FIELD: &str = "key";
-
-#[derive(Clone, PartialEq, Eq, Debug)]
-pub enum MapModification<K, V> {
-    Update(K, V),
-    Remove(K),
-    Take(usize),
-    Skip(usize),
-    Clear,
-}
-
-impl<K: ValidatedForm, V: ValidatedForm> Form for MapModification<K, V> {
-    fn as_value(&self) -> Value {
-        match self {
-            MapModification::Update(key, value) => update(key.as_value(), value.as_value()),
-            MapModification::Remove(key) => remove(key.as_value()),
-            MapModification::Take(n) => take(*n),
-            MapModification::Skip(n) => skip(*n),
-            MapModification::Clear => clear(),
-        }
-    }
-
-    fn into_value(self) -> Value {
-        match self {
-            MapModification::Update(key, value) => update(key.into_value(), value.into_value()),
-            MapModification::Remove(key) => remove(key.into_value()),
-            MapModification::Take(n) => take(n),
-            MapModification::Skip(n) => skip(n),
-            MapModification::Clear => clear(),
-        }
-    }
-
-    fn try_from_value(body: &Value) -> Result<Self, FormErr> {
-        use Value::*;
-        if let Record(attrs, items) = body {
-            let mut attr_it = attrs.iter();
-            let head = attr_it.next();
-            let has_more = attr_it.next().is_some();
-
-            match head {
-                Some(first) if !has_more && items.is_empty() => match first {
-                    Attr {
-                        name,
-                        value: Extant,
-                    } if *name == CLEAR_NAME => Ok(MapModification::Clear),
-                    Attr {
-                        name,
-                        value: Int32Value(n),
-                    } => extract_take_or_skip(name.as_str(), *n),
-                    Attr { name, value } if name == REMOVE_NAME => {
-                        extract_key(value.clone()).map(MapModification::Remove)
-                    }
-                    Attr { name, value } if name == UPDATE_NAME => {
-                        let key = extract_key(value.clone())?;
-                        Ok(MapModification::Update(key, V::try_convert(Extant)?))
-                    }
-                    _ => Err(FormErr::Malformatted),
-                },
-                Some(Attr { name, value }) if *name == UPDATE_NAME => {
-                    let key = extract_key(value.clone())?;
-
-                    let update_value = if !has_more && items.len() < 2 {
-                        match items.first() {
-                            Some(Item::ValueItem(single)) => single.clone(),
-                            _ => Value::record(items.clone()),
-                        }
-                    } else {
-                        Record(attrs.iter().skip(1).cloned().collect(), items.clone())
-                    };
-                    Ok(MapModification::Update(key, V::try_convert(update_value)?))
-                }
-
-                _ => Err(FormErr::Malformatted),
-            }
-        } else {
-            Err(FormErr::IncorrectType(
-                "Invalid structure for map action.".to_string(),
-            ))
-        }
-    }
-}
-
-impl<K: ValidatedForm, V: ValidatedForm> ValidatedForm for MapModification<K, V> {
-    fn schema() -> StandardSchema {
-        let clear_schema = AttrSchema::tag(CLEAR_NAME).only();
-
-        let num_schema =
-            StandardSchema::OfKind(ValueKind::Int32).and(StandardSchema::after_int(0, true));
-
-        let take_schema = AttrSchema::named(TAKE_NAME, num_schema.clone()).only();
-
-        let drop_schema = AttrSchema::named(SKIP_NAME, num_schema).only();
-
-        let key_schema = FieldSpec::default(SlotSchema::new(
-            StandardSchema::text(KEY_FIELD),
-            K::schema(),
-        ));
-
-        let key_body_schema = StandardSchema::NumAttrs(0).and(StandardSchema::HasSlots {
-            slots: vec![key_schema],
-            exhaustive: true,
-        });
-
-        let remove_schema = AttrSchema::named(REMOVE_NAME, key_body_schema.clone()).only();
-
-        let update_schema = AttrSchema::named(UPDATE_NAME, key_body_schema).and_then(V::schema());
-
-        StandardSchema::Or(vec![
-            update_schema,
-            remove_schema,
-            clear_schema,
-            take_schema,
-            drop_schema,
-        ])
-    }
-}
+pub type MapModification<K, V> = MapUpdate<K, V>;
 
 pub type UntypedMapModification<V> = MapModification<Value, V>;
-
-fn extract_key<K: ValidatedForm>(attr_body: Value) -> Result<K, FormErr> {
-    match attr_body {
-        Value::Record(attrs, items) if attrs.is_empty() && items.len() < 2 => {
-            match items.into_iter().next() {
-                Some(Item::Slot(Value::Text(name), key)) if name == KEY_FIELD => {
-                    Ok(K::try_convert(key)?)
-                }
-                _ => Err(FormErr::Message("Invalid key specifier.".to_string())),
-            }
-        }
-        _ => Err(FormErr::Message("Invalid key specifier.".to_string())),
-    }
-}
-
-fn extract_take_or_skip<K: ValidatedForm, V: ValidatedForm>(
-    name: &str,
-    n: i32,
-) -> Result<MapModification<K, V>, FormErr> {
-    match name {
-        TAKE_NAME => {
-            if n >= 0 {
-                Ok(MapModification::Take(n as usize))
-            } else {
-                Err(FormErr::Message(format!("Invalid take size: {}", n)))
-            }
-        }
-        SKIP_NAME => {
-            if n >= 0 {
-                Ok(MapModification::Skip(n as usize))
-            } else {
-                Err(FormErr::Message(format!("Invalid drop size: {}", n)))
-            }
-        }
-        _ => Err(FormErr::Message(format!("{} is not a map action.", name))),
-    }
-}
-
-fn clear() -> Value {
-    Value::of_attr(CLEAR_NAME)
-}
-
-fn skip(n: usize) -> Value {
-    let num: i32 = n.try_into().unwrap_or(i32::max_value());
-    Value::of_attr((SKIP_NAME, num))
-}
-
-fn take(n: usize) -> Value {
-    let num: i32 = n.try_into().unwrap_or(i32::max_value());
-    Value::of_attr((TAKE_NAME, num))
-}
-
-fn remove(key: Value) -> Value {
-    Value::of_attr((REMOVE_NAME, Value::singleton((KEY_FIELD, key))))
-}
-
-fn update(key: Value, value: Value) -> Value {
-    let attr = Attr::of((UPDATE_NAME, Value::singleton((KEY_FIELD, key))));
-    match value {
-        Value::Extant => Value::of_attr(attr),
-        Value::Record(mut attrs, items) => {
-            attrs.insert(0, attr);
-            Value::Record(attrs, items)
-        }
-        ow => Value::Record(vec![attr], vec![Item::ValueItem(ow)]),
-    }
-}
-
-impl<V: Deref<Target = Value>> UntypedMapModification<V> {
-    pub fn envelope_body(self) -> Value {
-        match self {
-            UntypedMapModification::Update(key, value) => update(key, (*value).clone()),
-            UntypedMapModification::Remove(key) => remove(key),
-            UntypedMapModification::Take(n) => take(n),
-            UntypedMapModification::Skip(n) => skip(n),
-            UntypedMapModification::Clear => clear(),
-        }
-    }
-}
 
 pub enum MapAction {
     Update {
@@ -565,10 +362,8 @@ pub(in crate::downlink) fn create_downlink<Updates, Commands>(
 ) -> (UntypedMapDownlink, UntypedMapReceiver)
 where
     Updates: Stream<Item = MapItemResult> + Send + Sync + 'static,
-    Commands: ItemSender<Command<UntypedMapModification<Arc<Value>>>, RoutingError>
-        + Send
-        + Sync
-        + 'static,
+    Commands:
+        ItemSender<Command<UntypedMapModification<Value>>, RoutingError> + Send + Sync + 'static,
 {
     crate::downlink::create_downlink(
         MapStateMachine::new(
@@ -616,7 +411,7 @@ impl MapStateMachine {
 
 impl SyncStateMachine<MapModel, UntypedMapModification<Value>, MapAction> for MapStateMachine {
     type Ev = ViewWithEvent;
-    type Cmd = UntypedMapModification<Arc<Value>>;
+    type Cmd = UntypedMapModification<Value>;
 
     fn init(&self) -> MapModel {
         MapModel::new()
@@ -635,10 +430,13 @@ impl SyncStateMachine<MapModel, UntypedMapModification<Value>, MapAction> for Ma
             UntypedMapModification::Update(k, v) => {
                 if self.key_schema.matches(&k) {
                     if self.value_schema.matches(&v) {
-                        state.state.insert(k, Arc::new(v));
+                        state.state.insert(k, v);
                         Ok(())
                     } else {
-                        Err(DownlinkError::SchemaViolation(v, self.value_schema.clone()))
+                        Err(DownlinkError::SchemaViolation(
+                            (*v).clone(),
+                            self.value_schema.clone(),
+                        ))
                     }
                 } else {
                     Err(DownlinkError::SchemaViolation(k, self.key_schema.clone()))
@@ -656,7 +454,7 @@ impl SyncStateMachine<MapModel, UntypedMapModification<Value>, MapAction> for Ma
                 state.state = state.state.take(n);
                 Ok(())
             }
-            UntypedMapModification::Skip(n) => {
+            UntypedMapModification::Drop(n) => {
                 state.state = state.state.skip(n);
                 Ok(())
             }
@@ -676,10 +474,13 @@ impl SyncStateMachine<MapModel, UntypedMapModification<Value>, MapAction> for Ma
             UntypedMapModification::Update(k, v) => {
                 if self.key_schema.matches(&k) {
                     if self.value_schema.matches(&v) {
-                        state.state.insert(k.clone(), Arc::new(v));
+                        state.state.insert(k.clone(), v);
                         Ok(Some(ViewWithEvent::update(&state.state, k)))
                     } else {
-                        Err(DownlinkError::SchemaViolation(v, self.value_schema.clone()))
+                        Err(DownlinkError::SchemaViolation(
+                            (*v).clone(),
+                            self.value_schema.clone(),
+                        ))
                     }
                 } else {
                     Err(DownlinkError::SchemaViolation(k, self.key_schema.clone()))
@@ -697,7 +498,7 @@ impl SyncStateMachine<MapModel, UntypedMapModification<Value>, MapAction> for Ma
                 state.state = state.state.take(n);
                 Ok(Some(ViewWithEvent::take(&state.state, n)))
             }
-            UntypedMapModification::Skip(n) => {
+            UntypedMapModification::Drop(n) => {
                 state.state = state.state.skip(n);
                 Ok(Some(ViewWithEvent::skip(&state.state, n)))
             }
@@ -770,7 +571,7 @@ fn process_action(
     val_schema: &StandardSchema,
     data_state: &mut ValMap,
     action: MapAction,
-) -> BasicResponse<ViewWithEvent, UntypedMapModification<Arc<Value>>> {
+) -> BasicResponse<ViewWithEvent, UntypedMapModification<Value>> {
     let (resp, err) = match action {
         MapAction::Update { key, value, old } => {
             if !key_schema.matches(&key) {
@@ -865,7 +666,7 @@ fn process_action(
             (
                 BasicResponse::of(
                     ViewWithEvent::skip(data_state, n),
-                    UntypedMapModification::Skip(n),
+                    UntypedMapModification::Drop(n),
                 ),
                 err1.is_err() || err2.is_err(),
             )
@@ -985,7 +786,7 @@ fn handle_modify<F, T>(
     replacement: Option<DownlinkRequest<T>>,
     to_event: F,
 ) -> (
-    BasicResponse<ViewWithEvent, UntypedMapModification<Arc<Value>>>,
+    BasicResponse<ViewWithEvent, UntypedMapModification<Value>>,
     bool,
 )
 where

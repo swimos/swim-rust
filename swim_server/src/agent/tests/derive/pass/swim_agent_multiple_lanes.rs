@@ -82,7 +82,12 @@ fn main() {
 
     // ----------------------- Action Lifecycle -----------------------
 
-    #[action_lifecycle(agent = "TestAgent", command_type = "String", response_type = "i32")]
+    #[action_lifecycle(
+        agent = "TestAgent",
+        command_type = "String",
+        response_type = "i32",
+        on_command
+    )]
     struct ActionLifecycle;
 
     impl ActionLifecycle {
@@ -101,7 +106,7 @@ fn main() {
 
     // ----------------------- Value Lifecycle -----------------------
 
-    #[value_lifecycle(agent = "TestAgent", event_type = "i32")]
+    #[value_lifecycle(agent = "TestAgent", event_type = "i32", on_start, on_event)]
     struct ValueLifecycle;
 
     impl ValueLifecycle {
@@ -126,7 +131,13 @@ fn main() {
 
     // ----------------------- Map Lifecycle -----------------------
 
-    #[map_lifecycle(agent = "TestAgent", key_type = "String", value_type = "i32")]
+    #[map_lifecycle(
+        agent = "TestAgent",
+        key_type = "String",
+        value_type = "i32",
+        on_start,
+        on_event
+    )]
     struct MapLifecycle;
 
     impl MapLifecycle {

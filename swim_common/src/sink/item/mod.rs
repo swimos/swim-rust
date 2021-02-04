@@ -19,6 +19,7 @@ use futures::FutureExt;
 use std::convert::Infallible;
 use tokio::sync::{broadcast, mpsc, watch};
 use utilities::sync::topic;
+use utilities::sync::circular_buffer;
 
 pub mod comap;
 pub mod drop_all;
@@ -257,5 +258,17 @@ where
     fn send_item(&'a mut self, value: T) -> Self::SendFuture {
         let Discarding(sender) = self;
         sender.discarding_send(value)
+    }
+}
+
+impl<'a, T: 'a> ItemSink<'a, T> for circular_buffer::Sender<T>
+where
+    T: Send + Sync,
+{
+    type Error = circular_buffer::error::SendError<T>;
+    type SendFuture = Ready<Result<(), Self::Error>>;
+
+    fn send_item(&'a mut self, value: T) -> Self::SendFuture {
+        ready(self.try_send(value))
     }
 }

@@ -207,7 +207,6 @@ where
             topic,
             action_buffer_size,
             route,
-            yield_after,
             ..
         } = self;
         let (tx, rx) = mpsc::channel(action_buffer_size.get());
@@ -218,7 +217,7 @@ where
         } else {
             return None;
         };
-        let uplink = Uplink::new(state_machine, rx.fuse(), updates, *yield_after);
+        let uplink = Uplink::new(state_machine, rx.fuse(), updates);
 
         let sink = if let Ok(sender) = router.resolve_sender(addr).await {
             UplinkMessageSender::new(sender.sender, route.clone())

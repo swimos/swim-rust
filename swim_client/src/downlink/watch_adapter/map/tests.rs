@@ -16,6 +16,7 @@ use tokio::sync::mpsc;
 
 use super::*;
 use std::collections::BTreeMap;
+use std::sync::Arc;
 use std::time::Duration;
 use swim_common::sink::item;
 use tokio::time::timeout;
@@ -23,7 +24,7 @@ use tokio::time::timeout;
 const TIMEOUT: Duration = Duration::from_secs(30);
 const SHORT_TIMEOUT: Duration = Duration::from_secs(5);
 
-type Modification = UntypedMapModification<Arc<Value>>;
+type Modification = UntypedMapModification<Value>;
 
 fn update(key: i32, value: i32) -> Modification {
     UntypedMapModification::Update(Value::Int32Value(key), Arc::new(Value::Int32Value(value)))
@@ -53,7 +54,7 @@ async fn validate_receive(
             UntypedMapModification::Take(n) => {
                 map = map.into_iter().take(n).collect();
             }
-            UntypedMapModification::Skip(n) => {
+            UntypedMapModification::Drop(n) => {
                 map = map.into_iter().skip(n).collect();
             }
             UntypedMapModification::Clear => {
@@ -262,13 +263,13 @@ async fn single_skip() {
 
     let receiver = tokio::task::spawn(async move { rx.recv().await });
 
-    let result = watcher.send_item(UntypedMapModification::Skip(4)).await;
+    let result = watcher.send_item(UntypedMapModification::Drop(4)).await;
     assert!(result.is_ok());
 
     let output = timeout(TIMEOUT, receiver).await.unwrap();
     assert!(output.is_ok());
 
-    assert_eq!(output.unwrap(), Some(UntypedMapModification::Skip(4)));
+    assert_eq!(output.unwrap(), Some(UntypedMapModification::Drop(4)));
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -288,7 +289,7 @@ async fn special_action_ordering() {
         update(1, 5),
         update(2, 8),
         update(3, 21),
-        UntypedMapModification::Skip(2),
+        UntypedMapModification::Drop(2),
         update(1, 42),
     ];
 

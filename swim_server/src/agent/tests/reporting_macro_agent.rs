@@ -146,7 +146,7 @@ impl ReportingAgentLifecycle {
     }
 }
 
-#[command_lifecycle(agent = "ReportingAgent", command_type = "String")]
+#[command_lifecycle(agent = "ReportingAgent", command_type = "String", on_command)]
 struct ActionLifecycle {
     event_handler: EventCollectorHandler,
 }
@@ -185,7 +185,13 @@ impl LaneLifecycle<TestAgentConfig> for ActionLifecycle {
     }
 }
 
-#[map_lifecycle(agent = "ReportingAgent", key_type = "String", value_type = "i32")]
+#[map_lifecycle(
+    agent = "ReportingAgent",
+    key_type = "String",
+    value_type = "i32",
+    on_start,
+    on_event
+)]
 struct DataLifecycle {
     event_handler: EventCollectorHandler,
 }
@@ -239,7 +245,7 @@ impl LaneLifecycle<TestAgentConfig> for DataLifecycle {
     }
 }
 
-#[value_lifecycle(agent = "ReportingAgent", event_type = "i32")]
+#[value_lifecycle(agent = "ReportingAgent", event_type = "i32", on_start, on_event)]
 struct TotalLifecycle {
     event_handler: EventCollectorHandler,
 }
@@ -273,7 +279,7 @@ impl LaneLifecycle<TestAgentConfig> for TotalLifecycle {
     }
 }
 
-#[demand_lifecycle(agent = "ReportingAgent", event_type = "i32")]
+#[demand_lifecycle(agent = "ReportingAgent", event_type = "i32", on_cue)]
 struct DemandLifecycle {
     event_handler: EventCollectorHandler,
 }
@@ -300,7 +306,13 @@ impl DemandLifecycle {
     }
 }
 
-#[demand_map_lifecycle(agent = "ReportingAgent", key_type = "String", value_type = "i32")]
+#[demand_map_lifecycle(
+    agent = "ReportingAgent",
+    key_type = "String",
+    value_type = "i32",
+    on_sync,
+    on_cue
+)]
 struct DemandMapLifecycle {
     event_handler: EventCollectorHandler,
 }
@@ -384,7 +396,7 @@ async fn agent_loop() {
 
     let agent_lifecycle = config.agent_lifecycle();
 
-    let exec_config = AgentExecutionConfig::with(buffer_size, 1, 0, Duration::from_secs(1));
+    let exec_config = AgentExecutionConfig::with(buffer_size, 1, 0, Duration::from_secs(1), None);
 
     let (envelope_tx, envelope_rx) = mpsc::channel(buffer_size.get());
 
