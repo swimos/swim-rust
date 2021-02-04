@@ -791,9 +791,7 @@ impl Error for MapViewError {}
 impl<K: ValidatedForm, V: ValidatedForm> MapDownlinkSubscriber<K, V> {
     /// Create a read-only view for a value downlink that converts all received values to a new type.
     /// The type of the view must have an equal or greater schema than the original downlink.
-    pub fn covariant_cast<K2, V2>(
-        self,
-    ) -> Result<MapDownlinkSubscriber<K2, V2>, MapViewError>
+    pub fn covariant_cast<K2, V2>(self) -> Result<MapDownlinkSubscriber<K2, V2>, MapViewError>
     where
         K2: ValidatedForm,
         V2: ValidatedForm,

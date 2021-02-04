@@ -393,7 +393,6 @@ impl<T: ValidatedForm> ValueDownlinkSubscriber<T> {
             })
         }
     }
-
 }
 
 impl<T: Form + 'static> ValueDownlinkReceiver<T> {
