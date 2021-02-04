@@ -353,8 +353,8 @@ where
 }
 
 /// Raw downlinks are the untyped core around which other types are downlink are built. Actions of
-/// type [[Act]] can be applied to the downlink, modifying its state, and it will, in turn produce
-/// events of type [[Ev]].
+/// type `Act` can be applied to the downlink, modifying its state, and it will, in turn produce
+/// events of type `Ev`.
 #[derive(Debug)]
 pub struct RawDownlink<Act, Ev> {
     action_sender: mpsc::Sender<Act>,

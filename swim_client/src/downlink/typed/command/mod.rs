@@ -90,9 +90,9 @@ pub struct CommandViewError {
 }
 
 impl<T: ValidatedForm> TypedCommandDownlink<T> {
-    /// Create a sender for a more refined type (the [`ValidatedForm`] implementation for [`U`]
-    /// will always produce a [`Value`] that is acceptable to the [`ValidatedForm`] implementation
-    /// for [`T`]) to the downlink.
+    /// Create a sender for a more refined type (the [`ValidatedForm`] implementation for `U`
+    /// will always produce a [`swim_common::model::Value`] that is acceptable to the [`ValidatedForm`] implementation
+    /// for `T`) to the downlink.
     pub async fn contravariant_cast<U: ValidatedForm>(
         &self,
     ) -> Result<TypedCommandDownlink<U>, CommandViewError> {

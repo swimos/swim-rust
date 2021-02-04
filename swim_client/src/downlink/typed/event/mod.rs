@@ -154,7 +154,7 @@ fn type_event<K: Form>(event: MapEvent<Value>) -> Result<MapEvent<K>, FormErr> {
 }
 
 /// A downlink to a remote lane producing events that are compatible with the [`ValidatedForm`]
-/// implementation for [`T`].
+/// implementation for `T`.
 pub struct TypedEventDownlink<T> {
     inner: Arc<UntypedEventDownlink>,
     _type: PhantomData<fn() -> T>,

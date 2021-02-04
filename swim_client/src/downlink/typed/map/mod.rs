@@ -37,7 +37,7 @@ use utilities::sync::{promise, topic};
 type MapDlVariance<K, V> = fn(K, V) -> (K, V);
 
 /// A downlink to a remote map lane containing values that are compatible with the
-/// [`ValidatedForm`] implementations for [`K`] and [`V`].
+/// [`ValidatedForm`] implementations for `K` and `V`.
 pub struct TypedMapDownlink<K, V> {
     inner: Arc<UntypedMapDownlink>,
     _type: PhantomData<MapDlVariance<K, V>>,
@@ -263,8 +263,8 @@ fn actions<K, V>(sender: &mpsc::Sender<MapAction>) -> MapActions<K, V> {
 
 impl<K: ValidatedForm, V: ValidatedForm> MapDownlinkSender<K, V> {
     /// Create a sender for more refined key and value types (the [`ValidatedForm`] implementations
-    /// for [`K2`] and [`V2`] will always produce [`Values`] that are acceptable to the
-    /// [`ValidatedForm`] implementations for [`K`] and [`V`]) to the downlink.
+    /// for `K2` and `V2` will always produce [`Value`]s that are acceptable to the
+    /// [`ValidatedForm`] implementations for `K` and `V`) to the downlink.
     pub fn contravariant_cast<K2, V2>(&self) -> Result<MapDownlinkSender<K2, V2>, MapViewError>
     where
         K2: ValidatedForm,

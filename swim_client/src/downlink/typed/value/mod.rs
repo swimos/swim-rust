@@ -33,7 +33,7 @@ use tokio::sync::{mpsc, oneshot};
 use utilities::sync::{promise, topic};
 
 /// A downlink to a remote value lane containing values that are compatible with the
-/// [`ValidatedForm`] implementation for [`T`].
+/// [`ValidatedForm`] implementation for `T`.
 pub struct TypedValueDownlink<T> {
     inner: Arc<UntypedValueDownlink>,
     _type: PhantomData<fn(T) -> T>,
@@ -149,9 +149,9 @@ impl<T> ValueDownlinkSender<T> {
 }
 
 impl<T: ValidatedForm> ValueDownlinkSender<T> {
-    /// Create a sender for a more refined type (the [`ValidatedForm`] implementation for [`U`]
+    /// Create a sender for a more refined type (the [`ValidatedForm`] implementation for `U`
     /// will always produce a [`Value`] that is acceptable to the [`ValidatedForm`] implementation
-    /// for [`T`]) to the downlink.
+    /// for `T`) to the downlink.
     pub fn contravariant_cast<U>(&self) -> Result<ValueDownlinkSender<U>, ValueViewError>
     where
         U: ValidatedForm,
