@@ -571,7 +571,7 @@ fn test_conf_from_file_unnamed_record_nested() {
     if let Err(err) = result {
         assert_eq!(
             err.to_string(),
-            "Unnamed record \"{back_pressure:@propagate,mux_mode:@queue(queue_size:5),idle_timeout:60000,buffer_size:5,on_invalid:terminate,yield_after:256}\" in \"config\"."
+            "Unnamed record \"{back_pressure:@propagate,idle_timeout:60000,buffer_size:5,on_invalid:terminate,yield_after:256}\" in \"config\"."
         )
     } else {
         panic!("Expected configuration parsing error!")

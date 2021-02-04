@@ -10,7 +10,6 @@
     }
     @downlinks {
         back_pressure: @propagate()
-        mux_mode: @queue(queue_size: 5)
         idle_timeout: 60000
         buffer_size: 5
         on_invalid: "terminate"
@@ -19,7 +18,6 @@
     @host {
         "foo-url": {
             back_pressure: @propagate()
-            mux_mode: @queue(queue_size: 5)
             idle_timeout: 60000
             buffer_size: 5
             on_invalid: "terminate"
