@@ -12,13 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+pub mod events;
 #[cfg(test)]
 mod tests;
 
 use crate::downlink::model::map::{MapAction, MapEvent, ValMap, ViewWithEvent};
-use crate::downlink::typed::event::{TypedMapView, TypedViewWithEvent};
 use crate::downlink::typed::{UntypedMapDownlink, ViewMode};
 use crate::downlink::{Downlink, DownlinkError, Event};
+use events::{TypedMapView, TypedViewWithEvent};
 use futures::stream::unfold;
 use futures::Stream;
 use std::any::type_name;

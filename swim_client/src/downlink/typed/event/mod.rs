@@ -12,146 +12,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::downlink::model::map::{MapEvent, ValMap, ViewWithEvent};
 use crate::downlink::typed::{UntypedEventDownlink, ViewMode};
 use crate::downlink::{Downlink, DownlinkError, Event};
 use futures::stream::unfold;
 use futures::Stream;
-use im::OrdMap;
 use std::any::type_name;
 use std::cmp::Ordering;
-use std::collections::{BTreeMap, HashMap};
-use std::convert::TryFrom;
 use std::fmt::{Debug, Formatter};
-use std::hash::Hash;
 use std::marker::PhantomData;
 use std::sync::Arc;
-use swim_common::form::{Form, FormErr, ValidatedForm};
+use swim_common::form::{Form, ValidatedForm};
 use swim_common::model::schema::StandardSchema;
 use swim_common::model::Value;
 use utilities::sync::{promise, topic};
 
 #[cfg(test)]
 mod tests;
-
-/// Event representing a change of the state of a map downlink with type information applied using
-/// a [`Form`] for the keys and values.
-#[derive(Clone, PartialEq, Eq, Debug)]
-pub struct TypedViewWithEvent<K, V> {
-    pub view: TypedMapView<K, V>,
-    pub event: MapEvent<K>,
-}
-
-/// Typed view of a [`ValMap`] with type information applied using a [`Form`] for the keys and
-/// values.
-#[derive(Clone, PartialEq, Eq, Debug)]
-pub struct TypedMapView<K, V> {
-    inner: ValMap,
-    _entry_type: PhantomData<(K, V)>,
-}
-
-impl<K, V> TypedMapView<K, V> {
-    pub fn new(inner: ValMap) -> Self {
-        TypedMapView {
-            inner,
-            _entry_type: PhantomData,
-        }
-    }
-}
-
-impl<K: Form, V: Form> TypedMapView<K, V> {
-    /// Get the value associated with a key.
-    pub fn get(&self, key: &K) -> Option<V> {
-        self.inner
-            .get(&key.as_value())
-            .and_then(|value| V::try_from_value(value.as_ref()).ok())
-    }
-
-    /// The size of the underlying map.
-    pub fn len(&self) -> usize {
-        self.inner.len()
-    }
-
-    /// Whether the underlying map is empty.
-    pub fn is_empty(&self) -> bool {
-        self.inner.is_empty()
-    }
-
-    /// An iterator over the entries of the map.
-    pub fn iter(&self) -> impl Iterator<Item = (K, V)> + '_ {
-        self.inner.iter().filter_map(|(key, value)| {
-            match (K::try_from_value(key), V::try_from_value(value.as_ref())) {
-                (Ok(k), Ok(v)) => Some((k, v)),
-                _ => None,
-            }
-        })
-    }
-
-    /// An iterator over the keys of the map.
-    pub fn keys(&self) -> impl Iterator<Item = K> + '_ {
-        self.inner
-            .keys()
-            .filter_map(|key| K::try_from_value(key).ok())
-    }
-}
-
-impl<K: Form + Hash + Eq, V: Form> TypedMapView<K, V> {
-    /// Create a [`HashMap`] containing the typed values.
-    pub fn as_hash_map(&self) -> HashMap<K, V> {
-        let mut map = HashMap::new();
-        for (key, value) in self.iter() {
-            map.insert(key, value);
-        }
-        map
-    }
-}
-
-impl<K: Form + Ord, V: Form> TypedMapView<K, V> {
-    /// Create a [`BTreeMap`] containing the typed values.
-    pub fn as_btree_map(&self) -> BTreeMap<K, V> {
-        let mut map = BTreeMap::new();
-        for (key, value) in self.iter() {
-            map.insert(key, value);
-        }
-        map
-    }
-}
-
-impl<K: Form + Ord + Clone, V: Form + Clone> TypedMapView<K, V> {
-    /// Create an [`OrdMap`] containing the typed values.
-    pub fn as_ord_map(&self) -> OrdMap<K, V> {
-        let mut map = OrdMap::new();
-        for (key, value) in self.iter() {
-            map.insert(key, value);
-        }
-        map
-    }
-}
-
-impl<K: Form, V: Form> TryFrom<ViewWithEvent> for TypedViewWithEvent<K, V> {
-    type Error = FormErr;
-
-    fn try_from(view: ViewWithEvent) -> Result<Self, Self::Error> {
-        let ViewWithEvent { view, event } = view;
-
-        let typed_event = type_event(event);
-        typed_event.map(|ev| TypedViewWithEvent {
-            view: TypedMapView::new(view),
-            event: ev,
-        })
-    }
-}
-
-fn type_event<K: Form>(event: MapEvent<Value>) -> Result<MapEvent<K>, FormErr> {
-    match event {
-        MapEvent::Initial => Ok(MapEvent::Initial),
-        MapEvent::Update(k) => K::try_convert(k).map(MapEvent::Update),
-        MapEvent::Remove(k) => K::try_convert(k).map(MapEvent::Remove),
-        MapEvent::Take(n) => Ok(MapEvent::Take(n)),
-        MapEvent::Skip(n) => Ok(MapEvent::Skip(n)),
-        MapEvent::Clear => Ok(MapEvent::Clear),
-    }
-}
 
 /// A downlink to a remote lane producing events that are compatible with the [`ValidatedForm`]
 /// implementation for `T`.
@@ -309,11 +185,13 @@ impl<T: ValidatedForm> EventDownlinkSubscriber<T> {
 }
 
 impl<T: Form + 'static> EventDownlinkReceiver<T> {
+    /// Observe the next event from the downlink.
     pub async fn recv(&mut self) -> Option<T> {
         let value = self.inner.recv().await;
         value.map(|g| Form::try_from_value(&*g.get_inner_ref()).expect("Inconsistent Form"))
     }
 
+    /// Convert this receiver in a [`Stream`] of events.
     pub fn into_stream(self) -> impl Stream<Item = T> + Send + 'static {
         unfold(
             self,

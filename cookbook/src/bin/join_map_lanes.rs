@@ -15,8 +15,8 @@
 use futures::StreamExt;
 use std::time::Duration;
 use swim_client::downlink::model::map::MapEvent;
-use swim_client::downlink::subscription::TypedMapReceiver;
-use swim_client::downlink::typed::event::TypedViewWithEvent;
+use swim_client::downlink::typed::map::events::TypedViewWithEvent;
+use swim_client::downlink::typed::map::MapDownlinkReceiver;
 use swim_client::downlink::Event::Remote;
 use swim_client::interface::SwimClient;
 use swim_common::warp::path::AbsolutePath;
@@ -25,8 +25,9 @@ use tokio::task;
 
 const THRESHOLD: i32 = 1000;
 
-async fn did_update(map_recv: TypedMapReceiver<String, i32>, default: i32) {
+async fn did_update(map_recv: MapDownlinkReceiver<String, i32>, default: i32) {
     map_recv
+        .into_stream()
         .filter_map(|event| async {
             match event {
                 Remote(TypedViewWithEvent {

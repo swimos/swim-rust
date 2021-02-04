@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::downlink::model::map::{MapEvent, ValMap, ViewWithEvent};
-use crate::downlink::typed::event::{TypedMapView, TypedViewWithEvent};
+use crate::downlink::typed::map::events::{TypedMapView, TypedViewWithEvent};
 use im::OrdMap;
 use std::collections::{BTreeMap, HashMap};
 use std::convert::TryInto;
