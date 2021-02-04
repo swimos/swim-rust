@@ -20,7 +20,7 @@ use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use stm::stm::Stm;
-use stm::transaction::atomically;
+use stm::transaction::{atomically, TransactionRunner};
 use swim_common::form::Form;
 use swim_common::model::{Attr, Item, Value};
 
@@ -492,4 +492,18 @@ fn test_map_update_form() {
 
     let converted_update: MapUpdate<i32, i32> = Form::try_convert(value).unwrap();
     assert_eq!(MapUpdate::Update(100, Arc::new(200)), converted_update);
+}
+
+#[tokio::test]
+async fn update_direct_multiple_test() {
+    let (lane, _sub) = make_subscribable::<String, i32>(buffer_size());
+
+    let mut runner = TransactionRunner::new(1, || ExactlyOnce);
+    for i in 0..50 {
+        assert!(lane
+            .update_direct("Key".to_owned(), Arc::new(i))
+            .apply_with(&mut runner)
+            .await
+            .is_ok());
+    }
 }
