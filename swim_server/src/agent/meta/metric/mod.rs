@@ -25,6 +25,7 @@ use utilities::sync::trigger;
 use crate::agent::context::AgentExecutionContext;
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lane::model::supply::SupplyLane;
+use crate::agent::lane::strategy::Dropping;
 use crate::agent::meta::metric::config::MetricCollectorConfig;
 use crate::agent::meta::metric::lane::LaneProfile;
 use crate::agent::meta::metric::node::NodeProfile;
@@ -40,6 +41,7 @@ use pin_utils::core_reexport::fmt::Formatter;
 use std::fmt::Debug;
 use utilities::uri::RelativeUri;
 
+pub mod channel;
 pub mod config;
 pub mod lane;
 pub mod node;
@@ -115,8 +117,8 @@ impl MetricObserver {
 
 pub fn open_pulse_lanes<Config, Agent, Context>(
     node_uri: RelativeUri,
-    exec_conf: &AgentExecutionConfig,
     lanes: &[&String],
+    config: &AgentExecutionConfig,
 ) -> (
     HashMap<LaneIdentifier, SupplyLane<Value>>,
     DynamicLaneTasks<Agent, Context>,
@@ -133,7 +135,7 @@ where
     let mut make_lane = |map: &mut HashMap<LaneIdentifier, SupplyLane<Value>>,
                          lane_uri: &String,
                          kind: MetaNodeAddressed| {
-        let (lane, task, io) = make_supply_lane(lane_uri.clone(), true, exec_conf.lane_buffer);
+        let (lane, task, io) = make_supply_lane(lane_uri.clone(), true, Dropping, &config);
         let identifier = LaneIdentifier::meta(kind);
 
         map.insert(identifier.clone(), lane);

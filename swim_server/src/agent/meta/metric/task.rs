@@ -21,7 +21,6 @@ use futures::FutureExt;
 use futures::StreamExt;
 use pin_utils::core_reexport::fmt::Formatter;
 use tokio::sync::mpsc;
-use tokio::sync::mpsc::error::TrySendError;
 use tokio::time::Duration;
 use tracing::{event, Level};
 
@@ -37,7 +36,6 @@ use crate::routing::LaneIdentifier;
 
 // const REQ_TX_ERR: &str = "Failed to return requested profile";
 // const REMOVE_ERR: &str = "Attempted to deregister a metric that wasn't registered";
-const CHANNEL_CLOSED: &str = "Channel closed";
 const LANE_NOT_FOUND: &str = "Lane not found";
 
 pub struct CollectorTask {
@@ -160,15 +158,10 @@ fn forward(
 ) {
     match lanes.get(&address) {
         Some(supply_lane) => {
-            let supplier = supply_lane.supplier();
-            match supplier.try_send(profile) {
+            match supply_lane.try_send(profile) {
                 Ok(()) => {}
-                Err(TrySendError::Closed(_)) => {
-                    let _ = lanes.remove(&address);
-                    event!(Level::ERROR, %address, CHANNEL_CLOSED);
-                }
-                Err(TrySendError::Full(_)) => {
-                    // drop the message
+                Err(_) => {
+                    // no subscribers
                 }
             }
         }

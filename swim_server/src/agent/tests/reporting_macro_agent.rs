@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::agent::lane::channels::AgentExecutionConfig;
-use crate::agent::lane::lifecycle::{LaneLifecycle, StatefulLaneLifecycleBase};
+use crate::agent::lane::lifecycle::{LaneLifecycle, LifecycleBase};
 use crate::agent::lane::model::action::CommandLane;
 use crate::agent::lane::model::demand::DemandLane;
 use crate::agent::lane::model::demand_map::DemandMapLane;
@@ -240,7 +240,7 @@ impl LaneLifecycle<TestAgentConfig> for DataLifecycle {
     }
 }
 
-impl StatefulLaneLifecycleBase for DataLifecycle {
+impl LifecycleBase for DataLifecycle {
     type WatchStrategy = Queue;
 
     fn create_strategy(&self) -> Self::WatchStrategy {
@@ -282,7 +282,7 @@ impl LaneLifecycle<TestAgentConfig> for TotalLifecycle {
     }
 }
 
-impl StatefulLaneLifecycleBase for TotalLifecycle {
+impl LifecycleBase for TotalLifecycle {
     type WatchStrategy = Queue;
 
     fn create_strategy(&self) -> Self::WatchStrategy {

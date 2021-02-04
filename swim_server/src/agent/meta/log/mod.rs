@@ -17,7 +17,9 @@ mod tests;
 
 use crate::agent::context::AgentExecutionContext;
 use crate::agent::lane::channels::AgentExecutionConfig;
-use crate::agent::lane::model::supply::SupplyLane;
+use crate::agent::lane::lifecycle::LifecycleBase;
+use crate::agent::lane::model::supply::{SupplyLane, SupplyLaneWatch};
+use crate::agent::lane::strategy::Dropping;
 use crate::agent::meta::{IdentifiedAgentIo, MetaNodeAddressed};
 use crate::agent::LaneIo;
 use crate::agent::LaneTasks;
@@ -113,7 +115,6 @@ impl LogEntry {
     }
 }
 
-#[derive(Clone)]
 pub struct LogHandler {
     uri: RelativeUri,
     trace_lane: SupplyLane<LogEntry>,
@@ -134,16 +135,16 @@ impl Debug for LogHandler {
 
 #[cfg(test)]
 pub(crate) fn make_log_handler(uri: RelativeUri) -> LogHandler {
-    use tokio::sync::mpsc;
+    let config = AgentExecutionConfig::default();
 
     LogHandler {
         uri,
-        trace_lane: SupplyLane::new(mpsc::channel(5).0),
-        debug_lane: SupplyLane::new(mpsc::channel(5).0),
-        info_lane: SupplyLane::new(mpsc::channel(5).0),
-        warn_lane: SupplyLane::new(mpsc::channel(5).0),
-        error_lane: SupplyLane::new(mpsc::channel(5).0),
-        fail_lane: SupplyLane::new(mpsc::channel(5).0),
+        trace_lane: SupplyLane::new(Box::new(Dropping.create_strategy().make_watch(&config).0)),
+        debug_lane: SupplyLane::new(Box::new(Dropping.create_strategy().make_watch(&config).0)),
+        info_lane: SupplyLane::new(Box::new(Dropping.create_strategy().make_watch(&config).0)),
+        warn_lane: SupplyLane::new(Box::new(Dropping.create_strategy().make_watch(&config).0)),
+        error_lane: SupplyLane::new(Box::new(Dropping.create_strategy().make_watch(&config).0)),
+        fail_lane: SupplyLane::new(Box::new(Dropping.create_strategy().make_watch(&config).0)),
     }
 }
 
@@ -151,22 +152,21 @@ impl LogHandler {
     pub fn log<E: Form>(&self, entry: E, level: LogLevel) {
         let entry = LogEntry::make(entry, level, self.uri.clone());
 
-        let sender = match level {
-            LogLevel::Trace => self.trace_lane.supplier(),
-            LogLevel::Debug => self.debug_lane.supplier(),
-            LogLevel::Info => self.info_lane.supplier(),
-            LogLevel::Warn => self.warn_lane.supplier(),
-            LogLevel::Error => self.error_lane.supplier(),
-            LogLevel::Fail => self.fail_lane.supplier(),
+        let _result = match level {
+            LogLevel::Trace => self.trace_lane.send(entry),
+            LogLevel::Debug => self.debug_lane.send(entry),
+            LogLevel::Info => self.info_lane.send(entry),
+            LogLevel::Warn => self.warn_lane.send(entry),
+            LogLevel::Error => self.error_lane.send(entry),
+            LogLevel::Fail => self.fail_lane.send(entry),
         };
-
-        let _ = sender.try_send(entry);
+        // todo log result
     }
 }
 
 pub fn open_log_lanes<Config, Agent, Context>(
     uri: RelativeUri,
-    exec_conf: &AgentExecutionConfig,
+    config: &AgentExecutionConfig,
 ) -> (
     LogHandler,
     DynamicLaneTasks<Agent, Context>,
@@ -179,7 +179,7 @@ where
     let mut lane_tasks = Vec::with_capacity(6);
     let mut lane_ios = HashMap::with_capacity(6);
     let mut make_log_lane = |level: LogLevel| {
-        let (lane, task, io) = make_supply_lane(level.uri_ref(), true, exec_conf.lane_buffer);
+        let (lane, task, io) = make_supply_lane(level.uri_ref(), true, Dropping, &config);
         lane_tasks.push(task.boxed());
         lane_ios.insert(
             LaneIdentifier::meta(MetaNodeAddressed::Log {

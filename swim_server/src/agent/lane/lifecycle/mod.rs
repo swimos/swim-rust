@@ -15,7 +15,7 @@
 use crate::agent::lane::model::action::ActionLane;
 use crate::agent::lane::model::demand::DemandLane;
 use crate::agent::lane::model::demand_map::DemandMapLane;
-use crate::agent::lane::strategy::{Buffered, Queue};
+use crate::agent::lane::strategy::{Buffered, Dropping, Queue};
 use crate::agent::lane::LaneModel;
 use crate::agent::AgentContext;
 use futures::future::{ready, Ready};
@@ -26,8 +26,8 @@ use swim_common::form::Form;
 #[cfg(test)]
 mod tests;
 
-/// Base trait for all lane lifecycles for lanes that maintain an internal state.
-pub trait StatefulLaneLifecycleBase: Send + Sync + 'static {
+/// Base trait for all lane lifecycles.
+pub trait LifecycleBase: Send + Sync + 'static {
     type WatchStrategy;
 
     /// Create the watch strategy that will receive events indicating the changes to the
@@ -40,7 +40,7 @@ pub trait StatefulLaneLifecycleBase: Send + Sync + 'static {
 ///
 /// * `Model` - The type of the model of the lane.
 /// * `Agent` - The type of the agent to which the lane belongs.
-pub trait StatefulLaneLifecycle<'a, Model: LaneModel, Agent>: StatefulLaneLifecycleBase {
+pub trait StatefulLaneLifecycle<'a, Model: LaneModel, Agent>: LifecycleBase {
     type StartFuture: Future<Output = ()> + Send + 'a;
     type EventFuture: Future<Output = ()> + Send + 'a;
 
@@ -101,7 +101,7 @@ pub trait ActionLaneLifecycle<'a, Command, Response, Agent>: Send + Sync + 'stat
         C: AgentContext<Agent> + Send + Sync + 'static;
 }
 
-impl StatefulLaneLifecycleBase for Queue {
+impl LifecycleBase for Queue {
     type WatchStrategy = Self;
 
     fn create_strategy(&self) -> Self::WatchStrategy {
@@ -131,7 +131,7 @@ impl<'a, Model: LaneModel, Agent> StatefulLaneLifecycle<'a, Model, Agent> for Qu
     }
 }
 
-impl StatefulLaneLifecycleBase for Buffered {
+impl LifecycleBase for Buffered {
     type WatchStrategy = Self;
 
     fn create_strategy(&self) -> Self::WatchStrategy {
@@ -253,4 +253,12 @@ where
     ) -> Self::OnRemoveFuture
     where
         C: AgentContext<Agent> + Send + Sync + 'static;
+}
+
+impl LifecycleBase for Dropping {
+    type WatchStrategy = Dropping;
+
+    fn create_strategy(&self) -> Self::WatchStrategy {
+        Dropping
+    }
 }

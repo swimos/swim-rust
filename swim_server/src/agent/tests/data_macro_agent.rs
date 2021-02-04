@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::agent::lane::channels::AgentExecutionConfig;
-use crate::agent::lane::lifecycle::{LaneLifecycle, StatefulLaneLifecycleBase};
+use crate::agent::lane::lifecycle::{LaneLifecycle, LifecycleBase};
 use crate::agent::lane::model::action::{ActionLane, CommandLane, Commander};
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent};
@@ -368,7 +368,7 @@ impl LaneLifecycle<DataAgentConfig> for MapLifecycle1 {
     }
 }
 
-impl StatefulLaneLifecycleBase for MapLifecycle1 {
+impl LifecycleBase for MapLifecycle1 {
     type WatchStrategy = Queue;
 
     fn create_strategy(&self) -> Self::WatchStrategy {
@@ -424,7 +424,7 @@ impl LaneLifecycle<DataAgentConfig> for MapLifecycle2 {
     }
 }
 
-impl StatefulLaneLifecycleBase for MapLifecycle2 {
+impl LifecycleBase for MapLifecycle2 {
     type WatchStrategy = Queue;
 
     fn create_strategy(&self) -> Self::WatchStrategy {
@@ -468,7 +468,7 @@ impl LaneLifecycle<DataAgentConfig> for ValueLifecycle1 {
     }
 }
 
-impl StatefulLaneLifecycleBase for ValueLifecycle1 {
+impl LifecycleBase for ValueLifecycle1 {
     type WatchStrategy = Queue;
 
     fn create_strategy(&self) -> Self::WatchStrategy {
@@ -512,7 +512,7 @@ impl LaneLifecycle<DataAgentConfig> for ValueLifecycle2 {
     }
 }
 
-impl StatefulLaneLifecycleBase for ValueLifecycle2 {
+impl LifecycleBase for ValueLifecycle2 {
     type WatchStrategy = Queue;
 
     fn create_strategy(&self) -> Self::WatchStrategy {

@@ -14,9 +14,6 @@
 
 use std::time::{Duration, Instant};
 
-use futures::FutureExt;
-use tokio::sync::mpsc;
-
 use swim_common::form::Form;
 use swim_common::warp::path::RelativePath;
 
@@ -99,16 +96,23 @@ impl UplinkObserver {
     }
 }
 
-#[tokio::test]
-async fn test_uplink_surjection() {
-    let path = RelativePath::new("/node", "/lane");
-    let (tx, mut rx) = mpsc::channel(1);
-    let sender = TransformedSender::new(UplinkSurjection(path.clone()), tx);
-    let profile = UplinkProfile::default();
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use futures::FutureExt;
+    use tokio::sync::mpsc;
 
-    assert!(sender.try_send(profile.clone()).is_ok());
-    assert_eq!(
-        rx.recv().now_or_never().unwrap().unwrap(),
-        ObserverEvent::Uplink(path, profile)
-    );
+    #[tokio::test]
+    async fn test_uplink_surjection() {
+        let path = RelativePath::new("/node", "/lane");
+        let (tx, mut rx) = mpsc::channel(1);
+        let sender = TransformedSender::new(UplinkSurjection(path.clone()), tx);
+        let profile = UplinkProfile::default();
+
+        assert!(sender.try_send(profile.clone()).is_ok());
+        assert_eq!(
+            rx.recv().now_or_never().unwrap().unwrap(),
+            ObserverEvent::Uplink(path, profile)
+        );
+    }
 }

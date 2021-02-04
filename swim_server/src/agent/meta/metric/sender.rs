@@ -12,10 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::meta::metric::uplink::{UplinkProfile, UplinkSurjection};
 use crate::agent::meta::metric::ObserverEvent;
 use std::marker::PhantomData;
-use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc;
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
@@ -65,14 +63,21 @@ where
     }
 }
 
-#[tokio::test]
-async fn test_err() {
-    let path = RelativePath::new("/node", "/lane");
-    let (tx, rx) = mpsc::channel(1);
-    let sender = TransformedSender::new(UplinkSurjection(path.clone()), tx);
-    let profile = UplinkProfile::default();
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::agent::meta::metric::uplink::{UplinkProfile, UplinkSurjection};
+    use swim_common::warp::path::RelativePath;
 
-    drop(rx);
+    #[tokio::test]
+    async fn test_err() {
+        let path = RelativePath::new("/node", "/lane");
+        let (tx, rx) = mpsc::channel(1);
+        let sender = TransformedSender::new(UplinkSurjection(path.clone()), tx);
+        let profile = UplinkProfile::default();
 
-    assert_eq!(sender.try_send(profile), Err(SendError));
+        drop(rx);
+
+        assert_eq!(sender.try_send(profile), Err(SendError));
+    }
 }

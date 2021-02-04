@@ -173,7 +173,7 @@ where
     let mut tasks = Vec::with_capacity(6);
     let mut ios = HashMap::with_capacity(6);
 
-    let (log_handler, log_tasks, log_ios) = open_log_lanes(uri.clone(), exec_conf);
+    let (log_handler, log_tasks, log_ios) = open_log_lanes(uri.clone(), &exec_conf);
 
     tasks.extend(log_tasks);
     ios.extend(log_ios);
@@ -186,7 +186,7 @@ where
 
     let lanes = lanes_summary.keys().into_iter().collect::<Vec<_>>();
     let (pulse_lanes, pulse_tasks, pulse_ios) =
-        open_pulse_lanes(uri.clone(), exec_conf, lanes.as_slice());
+        open_pulse_lanes(uri.clone(), lanes.as_slice(), &exec_conf);
 
     tasks.extend(pulse_tasks);
     ios.extend(pulse_ios);

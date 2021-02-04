@@ -12,14 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::lane::{LaneKind, LaneModel};
-use crate::agent::{AgentContext, Eff, Lane, LaneTasks, StatelessLifecycleTasks};
-use futures::future::ready;
-use futures::future::BoxFuture;
-use futures::{FutureExt, Stream};
-use std::num::NonZeroUsize;
+use crate::agent::lane::model::supply::supplier::BoxSupplier;
+use crate::agent::lane::LaneModel;
 use std::sync::Arc;
-use tokio::sync::mpsc;
+
+mod supplier;
+use crate::agent::lane::channels::AgentExecutionConfig;
+pub use supplier::*;
 
 #[cfg(test)]
 mod tests;
@@ -29,9 +28,8 @@ mod tests;
 /// # Type Parameters
 ///
 /// * `T` - The type of the events produced.
-#[derive(Debug, Clone)]
 pub struct SupplyLane<T> {
-    sender: mpsc::Sender<T>,
+    sender: BoxSupplier<T>,
     id: Arc<()>,
 }
 
@@ -39,16 +37,19 @@ impl<T> SupplyLane<T>
 where
     T: Send + Sync + 'static,
 {
-    pub(crate) fn new(sender: mpsc::Sender<T>) -> Self {
+    pub(crate) fn new(sender: BoxSupplier<T>) -> Self {
         SupplyLane {
             sender,
             id: Default::default(),
         }
     }
 
-    /// Creates a new supplier to publish events.
-    pub fn supplier(&self) -> mpsc::Sender<T> {
-        self.sender.clone()
+    pub async fn send(&self, value: T) -> Result<(), ()> {
+        self.sender.supply(value).await
+    }
+
+    pub fn try_send(&self, value: T) -> Result<(), ()> {
+        self.sender.try_supply(value)
     }
 }
 
@@ -62,37 +63,17 @@ impl<T> LaneModel for SupplyLane<T> {
 
 /// Create a new supply lane model. Returns a new supply lane model and a stream that events can be
 /// received from.
-pub fn make_lane_model<T>(
-    buffer_size: NonZeroUsize,
-) -> (SupplyLane<T>, impl Stream<Item = T> + Send + 'static)
+pub fn make_lane_model<Event, W>(
+    watch: W,
+    config: &AgentExecutionConfig,
+) -> (SupplyLane<Event>, W::Topic)
 where
-    T: Send + Sync + 'static,
+    Event: Send + Sync + Clone + 'static,
+    W: SupplyLaneWatch<Event>,
+    <W as SupplyLaneWatch<Event>>::Sender: Sync + Send,
 {
-    let (tx, rx) = mpsc::channel(buffer_size.get());
-    let lane = SupplyLane::new(tx);
-    (lane, rx)
-}
+    let (sender, topic) = watch.make_watch(config);
+    let lane = SupplyLane::new(Box::new(sender));
 
-impl Lane for StatelessLifecycleTasks {
-    fn name(&self) -> &str {
-        self.name.as_str()
-    }
-
-    fn kind(&self) -> LaneKind {
-        LaneKind::Supply
-    }
-}
-
-impl<Agent, Context> LaneTasks<Agent, Context> for StatelessLifecycleTasks
-where
-    Agent: 'static,
-    Context: AgentContext<Agent> + Send + Sync + 'static,
-{
-    fn start<'a>(&'a self, _context: &'a Context) -> BoxFuture<'a, ()> {
-        ready(()).boxed()
-    }
-
-    fn events(self: Box<Self>, _context: Context) -> Eff {
-        ready(()).boxed()
-    }
+    (lane, topic)
 }

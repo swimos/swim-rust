@@ -109,7 +109,7 @@ mod utils;
 /// use swim_server::agent::lane::model::action::{ActionLane, CommandLane};
 /// use swim_server::agent::lane::model::map::MapLane;
 /// use swim_server::agent::lane::model::value::{ValueLane, ValueLaneEvent};
-/// # use swim_server::agent::lane::lifecycle::StatefulLaneLifecycleBase;
+/// # use swim_server::agent::lane::lifecycle::LifecycleBase;
 /// # use swim_server::agent::lane::model::map::MapLaneEvent;
 /// # use swim_server::agent::lane::strategy::Queue;
 /// # use swim_server::agent::AgentContext;
@@ -192,7 +192,7 @@ mod utils;
 /// #     }
 /// # }
 /// #
-/// # impl StatefulLaneLifecycleBase for TestValueLifecycle {
+/// # impl LifecycleBase for TestValueLifecycle {
 /// #     type WatchStrategy = Queue;
 /// #
 /// #     fn create_strategy(&self) -> Self::WatchStrategy {
@@ -223,7 +223,7 @@ mod utils;
 /// #     }
 /// # }
 /// #
-/// # impl StatefulLaneLifecycleBase for TestMapLifecycle {
+/// # impl LifecycleBase for TestMapLifecycle {
 /// #     type WatchStrategy = Queue;
 /// #
 /// #     fn create_strategy(&self) -> Self::WatchStrategy {
@@ -486,7 +486,7 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// ```rust
 /// use swim_server::value_lifecycle;
-/// use swim_server::agent::lane::lifecycle::StatefulLaneLifecycleBase;
+/// use swim_server::agent::lane::lifecycle::LifecycleBase;
 /// use swim_server::agent::lane::strategy::Queue;
 /// use swim_server::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 /// use swim_server::agent::AgentContext;
@@ -515,7 +515,7 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///     }
 /// }
 ///
-/// impl StatefulLaneLifecycleBase for TestValueLifecycle {
+/// impl LifecycleBase for TestValueLifecycle {
 ///     type WatchStrategy = Queue;
 ///
 ///     fn create_strategy(&self) -> Self::WatchStrategy {
@@ -534,7 +534,7 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// ```rust
 /// use swim_server::value_lifecycle;
-/// use swim_server::agent::lane::lifecycle::StatefulLaneLifecycleBase;
+/// use swim_server::agent::lane::lifecycle::LifecycleBase;
 /// use swim_server::agent::lane::strategy::Queue;
 /// use swim_server::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 /// use swim_server::agent::AgentContext;
@@ -568,7 +568,7 @@ pub fn action_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///     }
 /// }
 ///
-/// impl StatefulLaneLifecycleBase for TestValueLifecycle {
+/// impl LifecycleBase for TestValueLifecycle {
 ///     type WatchStrategy = Queue;
 ///
 ///     fn create_strategy(&self) -> Self::WatchStrategy {
@@ -600,7 +600,7 @@ pub fn value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// ```rust
 /// use swim_server::map_lifecycle;
-/// use swim_server::agent::lane::lifecycle::StatefulLaneLifecycleBase;
+/// use swim_server::agent::lane::lifecycle::LifecycleBase;
 /// use swim_server::agent::lane::strategy::Queue;
 /// use swim_server::agent::lane::model::map::{MapLane, MapLaneEvent};
 /// use swim_server::agent::AgentContext;
@@ -629,7 +629,7 @@ pub fn value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///     }
 /// }
 ///
-/// impl StatefulLaneLifecycleBase for TestMapLifecycle {
+/// impl LifecycleBase for TestMapLifecycle {
 ///     type WatchStrategy = Queue;
 ///
 ///     fn create_strategy(&self) -> Self::WatchStrategy {
@@ -647,7 +647,7 @@ pub fn value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// ```rust
 /// use swim_server::map_lifecycle;
-/// use swim_server::agent::lane::lifecycle::StatefulLaneLifecycleBase;
+/// use swim_server::agent::lane::lifecycle::LifecycleBase;
 /// use swim_server::agent::lane::strategy::Queue;
 /// use swim_server::agent::lane::model::map::{MapLane, MapLaneEvent};
 /// use swim_server::agent::AgentContext;
@@ -681,7 +681,7 @@ pub fn value_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///     }
 /// }
 ///
-/// impl StatefulLaneLifecycleBase for TestMapLifecycle {
+/// impl LifecycleBase for TestMapLifecycle {
 ///     type WatchStrategy = Queue;
 ///
 ///     fn create_strategy(&self) -> Self::WatchStrategy {

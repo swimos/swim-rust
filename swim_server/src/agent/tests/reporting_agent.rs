@@ -16,8 +16,8 @@ use crate::agent;
 use crate::agent::context::AgentExecutionContext;
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lane::lifecycle::{
-    ActionLaneLifecycle, DemandLaneLifecycle, DemandMapLaneLifecycle, StatefulLaneLifecycle,
-    StatefulLaneLifecycleBase,
+    ActionLaneLifecycle, DemandLaneLifecycle, DemandMapLaneLifecycle, LifecycleBase,
+    StatefulLaneLifecycle,
 };
 use crate::agent::lane::model::action::CommandLane;
 use crate::agent::lane::model::demand::DemandLane;
@@ -259,7 +259,7 @@ impl<'a> ActionLaneLifecycle<'a, String, (), ReportingAgent> for ActionLifecycle
     }
 }
 
-impl StatefulLaneLifecycleBase for DataLifecycle {
+impl LifecycleBase for DataLifecycle {
     type WatchStrategy = Queue;
 
     fn create_strategy(&self) -> Self::WatchStrategy {
@@ -316,7 +316,7 @@ impl<'a> StatefulLaneLifecycle<'a, MapLane<String, i32>, ReportingAgent> for Dat
     }
 }
 
-impl StatefulLaneLifecycleBase for TotalLifecycle {
+impl LifecycleBase for TotalLifecycle {
     type WatchStrategy = Queue;
 
     fn create_strategy(&self) -> Self::WatchStrategy {

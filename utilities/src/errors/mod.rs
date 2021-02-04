@@ -51,12 +51,22 @@ pub trait Recoverable: Error {
 }
 
 pub trait SwimResultExt<O, E> {
+    /// Map both the ok and error variant to `()`.
+    fn discard(self) -> Result<(), ()>;
+
     /// Maps the error variant to `()`.
     #[allow(clippy::result_unit_err)]
     fn discard_err(self) -> Result<O, ()>;
 }
 
 impl<O, E> SwimResultExt<O, E> for Result<O, E> {
+    fn discard(self) -> Result<(), ()> {
+        match self {
+            Ok(_) => Ok(()),
+            Err(_) => Err(()),
+        }
+    }
+
     fn discard_err(self) -> Result<O, ()> {
         self.map_err(|_| ())
     }

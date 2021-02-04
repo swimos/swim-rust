@@ -31,7 +31,8 @@ use crate::agent::lane::channels::update::StmRetryStrategy;
 use crate::agent::lane::channels::uplink::spawn::{SpawnerUplinkFactory, UplinkErrorReport};
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lane::lifecycle::{
-    ActionLaneLifecycle, DemandLaneLifecycle, DemandMapLaneLifecycle, StatefulLaneLifecycle,
+    ActionLaneLifecycle, DemandLaneLifecycle, DemandMapLaneLifecycle, LifecycleBase,
+    StatefulLaneLifecycle,
 };
 use crate::agent::lane::model::action::{Action, ActionLane, CommandLane};
 use crate::agent::lane::model::demand::DemandLane;
@@ -40,7 +41,7 @@ use crate::agent::lane::model::demand_map::{
 };
 use crate::agent::lane::model::map::MapLaneEvent;
 use crate::agent::lane::model::map::{MapLane, MapLaneWatch};
-use crate::agent::lane::model::supply::{make_lane_model, SupplyLane};
+use crate::agent::lane::model::supply::{make_lane_model, SupplyLane, SupplyLaneWatch};
 use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent, ValueLaneWatch};
 use crate::agent::lane::model::DeferredLaneView;
 use crate::agent::lane::{model, LaneKind};
@@ -61,7 +62,7 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use swim_common::form::Form;
-use swim_common::topic::MpscTopic;
+use swim_common::topic::{MpscTopic, Topic};
 use swim_common::warp::path::RelativePath;
 use swim_runtime::time::clock::Clock;
 use tokio::sync::mpsc::Receiver;
@@ -73,9 +74,12 @@ use utilities::sync::trigger;
 use utilities::uri::RelativeUri;
 
 use crate::agent::meta::{open_meta_lanes, LaneInfo, LogLevel};
+
 #[doc(hidden)]
 #[allow(unused_imports)]
 pub use agent_derive::*;
+
+use std::marker::PhantomData;
 
 /// Trait that must be implemented for any agent. This is essentially just boilerplate and will
 /// eventually be implemented using a derive macro.
@@ -1093,10 +1097,11 @@ where
 /// * `name` - The name of the lane.
 /// * `is_public` - Whether the lane is public (with respect to external message routing).
 /// * `buffer_size` - Buffer size for the MPSC channel accepting the events.
-pub fn make_supply_lane<Agent, Context, T>(
+pub fn make_supply_lane<Agent, Context, T, L>(
     name: impl Into<String>,
     is_public: bool,
-    buffer_size: NonZeroUsize,
+    lifecycle: L,
+    config: &AgentExecutionConfig,
 ) -> (
     SupplyLane<T>,
     impl LaneTasks<Agent, Context>,
@@ -1106,13 +1111,15 @@ where
     Agent: 'static,
     Context: AgentContext<Agent> + AgentExecutionContext + Send + Sync + 'static,
     T: Any + Clone + Send + Sync + Form + Debug,
+    L: LifecycleBase,
+    L::WatchStrategy: SupplyLaneWatch<T>,
 {
-    let (lane, event_stream) = make_lane_model(buffer_size);
+    let (lane, topic) = make_lane_model(lifecycle.create_strategy(), config);
 
     let tasks = StatelessLifecycleTasks { name: name.into() };
 
     let lane_io = if is_public {
-        Some(SupplyLaneIo::new(event_stream))
+        Some(SupplyLaneIo::new(topic))
     } else {
         None
     };
@@ -1120,20 +1127,51 @@ where
     (lane, tasks, lane_io)
 }
 
-struct SupplyLaneIo<S> {
-    stream: S,
-}
+impl Lane for StatelessLifecycleTasks {
+    fn name(&self) -> &str {
+        &self.name
+    }
 
-impl<S> SupplyLaneIo<S> {
-    fn new(stream: S) -> Self {
-        SupplyLaneIo { stream }
+    fn kind(&self) -> LaneKind {
+        LaneKind::Supply
     }
 }
 
-impl<S, Item, Context> LaneIo<Context> for SupplyLaneIo<S>
+impl<Agent, Context> LaneTasks<Agent, Context> for StatelessLifecycleTasks
 where
-    S: Stream<Item = Item> + Send + Sync + 'static,
-    Item: Send + Sync + Form + Debug + 'static,
+    Agent: 'static,
+    Context: AgentContext<Agent> + Send + Sync + 'static,
+{
+    fn start<'a>(&'a self, _context: &'a Context) -> BoxFuture<'a, ()> {
+        ready(()).boxed()
+    }
+
+    fn events(self: Box<Self>, context: Context) -> BoxFuture<'static, ()> {
+        async move {
+            let _ = context.agent_stop_event().await;
+        }
+        .boxed()
+    }
+}
+
+struct SupplyLaneIo<T, E> {
+    topic: T,
+    _pd: PhantomData<E>,
+}
+
+impl<T, E> SupplyLaneIo<T, E> {
+    fn new(topic: T) -> Self {
+        SupplyLaneIo {
+            topic,
+            _pd: Default::default(),
+        }
+    }
+}
+
+impl<T, E, Context> LaneIo<Context> for SupplyLaneIo<T, E>
+where
+    T: Topic<E> + Send + Sync + 'static,
+    E: Send + Sync + Form + 'static,
     Context: AgentExecutionContext + Sized + Send + Sync + 'static,
 {
     fn attach(
@@ -1143,9 +1181,15 @@ where
         config: AgentExecutionConfig,
         context: Context,
     ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
-        let SupplyLaneIo { stream } = self;
+        let future = async move {
+            let SupplyLaneIo { mut topic, .. } = self;
+            match topic.subscribe().await {
+                Ok(stream) => run_supply_lane_io(envelopes, config, context, route, stream).await,
+                Err(_) => unimplemented!(),
+            }
+        };
 
-        Ok(run_supply_lane_io(envelopes, config, context, route, stream).boxed())
+        Ok(Box::pin(future.boxed()))
     }
 
     fn attach_boxed(

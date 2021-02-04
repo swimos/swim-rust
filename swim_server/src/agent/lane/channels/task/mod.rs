@@ -619,7 +619,7 @@ pub async fn run_auto_lane_io<S, Item>(
     uplink_kind: UplinkKind,
 ) -> Result<Vec<UplinkErrorReport>, LaneIoError>
 where
-    S: Stream<Item = Item> + Send + Sync + 'static,
+    S: Stream<Item = Item> + 'static,
     Item: Send + Sync + Form + 'static,
 {
     let span = span!(Level::INFO, LANE_IO_TASK, ?route);
@@ -665,7 +665,7 @@ pub async fn run_supply_lane_io<S, Item>(
     stream: S,
 ) -> Result<Vec<UplinkErrorReport>, LaneIoError>
 where
-    S: Stream<Item = Item> + Send + Sync + 'static,
+    S: Stream<Item = Item> + Send + 'static,
     Item: Send + Sync + Form + 'static,
 {
     run_auto_lane_io(

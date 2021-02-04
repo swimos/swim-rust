@@ -12,24 +12,29 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::meta::metric::sender::TransformedSender;
-use crate::agent::meta::metric::ObserverEvent;
-use futures::FutureExt;
 use swim_common::form::Form;
-use tokio::sync::mpsc;
 
 #[derive(Default, Form, Clone, PartialEq, Debug)]
 pub struct NodeProfile;
 
-#[tokio::test]
-async fn test_node_surjection() {
-    let (tx, mut rx) = mpsc::channel(1);
-    let sender = TransformedSender::new(ObserverEvent::Node, tx);
-    let profile = NodeProfile::default();
+#[cfg(test)]
+mod tests {
+    use crate::agent::meta::metric::node::NodeProfile;
+    use crate::agent::meta::metric::sender::TransformedSender;
+    use crate::agent::meta::metric::ObserverEvent;
+    use futures::FutureExt;
+    use tokio::sync::mpsc;
 
-    assert!(sender.try_send(profile.clone()).is_ok());
-    assert_eq!(
-        rx.recv().now_or_never().unwrap().unwrap(),
-        ObserverEvent::Node(profile)
-    );
+    #[tokio::test]
+    async fn test_node_surjection() {
+        let (tx, mut rx) = mpsc::channel(1);
+        let sender = TransformedSender::new(ObserverEvent::Node, tx);
+        let profile = NodeProfile::default();
+
+        assert!(sender.try_send(profile.clone()).is_ok());
+        assert_eq!(
+            rx.recv().now_or_never().unwrap().unwrap(),
+            ObserverEvent::Node(profile)
+        );
+    }
 }

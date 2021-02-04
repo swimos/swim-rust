@@ -130,6 +130,15 @@ impl<T> WatchSink<T> {
     }
 }
 
+impl<'a, T> ItemSink<'a, T> for WatchSink<T> {
+    type Error = SendError;
+    type SendFuture = Ready<Result<(), SendError>>;
+
+    fn send_item(&'a mut self, value: T) -> Self::SendFuture {
+        ready(self.broadcast(value))
+    }
+}
+
 struct BoxingSink<Snk>(Snk);
 
 impl<'a, T, Snk> ItemSink<'a, T> for BoxingSink<Snk>

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swim_server::agent::lane::lifecycle::StatefulLaneLifecycleBase;
+use swim_server::agent::lane::lifecycle::LifecycleBase;
 use swim_server::agent::lane::model::action::{ActionLane, CommandLane};
 use swim_server::agent::lane::model::map::{MapLane, MapLaneEvent};
 use swim_server::agent::lane::model::value::ValueLane;
@@ -127,7 +127,7 @@ fn main() {
         }
     }
 
-    impl StatefulLaneLifecycleBase for ValueLifecycle {
+    impl LifecycleBase for ValueLifecycle {
         type WatchStrategy = Queue;
 
         fn create_strategy(&self) -> Self::WatchStrategy {
@@ -160,7 +160,7 @@ fn main() {
         }
     }
 
-    impl StatefulLaneLifecycleBase for MapLifecycle {
+    impl LifecycleBase for MapLifecycle {
         type WatchStrategy = Queue;
 
         fn create_strategy(&self) -> Self::WatchStrategy {

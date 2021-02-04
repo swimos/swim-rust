@@ -19,6 +19,10 @@ mod tests;
 
 //Strategies for watching events from a lane.
 
+/// Publish only the most recent event.
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct Dropping;
+
 /// Push lane events into a bounded queue.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Queue(pub NonZeroUsize);
