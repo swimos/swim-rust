@@ -16,7 +16,6 @@ use super::ValueActions;
 use crate::downlink::model::value::{Action, SharedValue};
 use crate::downlink::DownlinkError;
 use futures::future::join;
-use std::future::Future;
 use std::sync::Arc;
 use swim_common::model::Value;
 use tokio::sync::mpsc;
@@ -87,34 +86,27 @@ impl AsMut<mpsc::Sender<Action>> for Actions {
     }
 }
 
-fn make_actions(
-    tx: &mpsc::Sender<Action>,
-    rx: mpsc::Receiver<Action>,
-    init: i32,
-) -> (ValueActions<i32>, impl Future<Output = ()>) {
-    let actions = ValueActions::new(tx);
-    let task = responder(Arc::new(init.into()), rx);
-    (actions, task)
-}
-
 #[tokio::test]
 async fn value_get() {
     let (tx, rx) = mpsc::channel(8);
-    let (actions, responder) = make_actions(&tx, rx, 2);
+    let responder = responder(Arc::new(2.into()), rx);
 
     let assertions = async move {
+        let actions = ValueActions::new(&tx);
         let n = actions.get().await;
         assert_eq!(n, Ok(2));
     };
+
     join(assertions, responder).await;
 }
 
 #[tokio::test]
 async fn value_set() {
     let (tx, rx) = mpsc::channel(8);
-    let (actions, responder) = make_actions(&tx, rx, 2);
+    let responder = responder(Arc::new(2.into()), rx);
 
     let assertions = async move {
+        let actions = ValueActions::new(&tx);
         let result = actions.set(7).await;
         assert_eq!(result, Ok(()));
 
@@ -128,23 +120,23 @@ async fn value_set() {
 async fn invalid_value_set() {
     let (tx, rx) = mpsc::channel(8);
 
-    let task = responder(Arc::new(2.into()), rx);
-
-    let actions: ValueActions<String> = ValueActions::new(&tx);
+    let responder = responder(Arc::new(2.into()), rx);
 
     let assertions = async move {
+        let actions: ValueActions<String> = ValueActions::new(&tx);
         let result = actions.set("hello".to_string()).await;
         assert_eq!(result, Err(DownlinkError::InvalidAction));
     };
-    join(assertions, task).await;
+    join(assertions, responder).await;
 }
 
 #[tokio::test]
 async fn value_set_and_forget() {
     let (tx, rx) = mpsc::channel(8);
-    let (actions, responder) = make_actions(&tx, rx, 2);
+    let responder = responder(Arc::new(2.into()), rx);
 
     let assertions = async move {
+        let actions = ValueActions::new(&tx);
         let result = actions.set_and_forget(7).await;
         assert_eq!(result, Ok(()));
 
@@ -157,9 +149,10 @@ async fn value_set_and_forget() {
 #[tokio::test]
 async fn value_update() {
     let (tx, rx) = mpsc::channel(8);
-    let (actions, responder) = make_actions(&tx, rx, 2);
+    let responder = responder(Arc::new(2.into()), rx);
 
     let assertions = async move {
+        let actions = ValueActions::new(&tx);
         let result = actions.update(|n| n + 2).await;
         assert_eq!(result, Ok(2));
 
@@ -173,23 +166,23 @@ async fn value_update() {
 async fn invalid_value_update() {
     let (tx, rx) = mpsc::channel(8);
 
-    let task = responder(Arc::new(2.into()), rx);
-
-    let actions: ValueActions<Value> = ValueActions::new(&tx);
+    let responder = responder(Arc::new(2.into()), rx);
 
     let assertions = async move {
+        let actions: ValueActions<Value> = ValueActions::new(&tx);
         let result = actions.update(|_| Value::Extant).await;
         assert_eq!(result, Err(DownlinkError::InvalidAction));
     };
-    join(assertions, task).await;
+    join(assertions, responder).await;
 }
 
 #[tokio::test]
 async fn value_update_and_forget() {
     let (tx, rx) = mpsc::channel(8);
-    let (actions, responder) = make_actions(&tx, rx, 2);
+    let responder = responder(Arc::new(2.into()), rx);
 
     let assertions = async move {
+        let actions = ValueActions::new(&tx);
         let result = actions.update_and_forget(|n| n + 2).await;
         assert_eq!(result, Ok(()));
 

@@ -17,7 +17,6 @@ use crate::downlink::model::map::{MapAction, ValMap};
 use crate::downlink::DownlinkError;
 use futures::future::join;
 use im::OrdMap;
-use std::future::Future;
 use std::sync::Arc;
 use swim_common::model::Value;
 use tokio::sync::mpsc;
@@ -175,16 +174,6 @@ impl AsMut<mpsc::Sender<MapAction>> for Actions {
     }
 }
 
-fn make_actions(
-    tx: &mpsc::Sender<MapAction>,
-    rx: mpsc::Receiver<MapAction>,
-    init: OrdMap<i32, i32>,
-) -> (MapActions<i32, i32>, impl Future<Output = ()>) {
-    let actions = MapActions::new(&tx);
-    let task = responder(init, rx);
-    (actions, task)
-}
-
 fn make_map() -> OrdMap<i32, i32> {
     let mut map = OrdMap::new();
     map.insert(1, 2);
@@ -196,9 +185,9 @@ fn make_map() -> OrdMap<i32, i32> {
 #[tokio::test]
 async fn map_view() {
     let (tx, rx) = mpsc::channel(8);
-    let (mut actions, responder) = make_actions(&tx, rx, make_map());
-
+    let responder = responder(make_map(), rx);
     let assertions = async move {
+        let actions = MapActions::new(&tx);
         let result = actions.view().await;
         assert!(result.is_ok());
 
@@ -212,9 +201,10 @@ async fn map_view() {
 #[tokio::test]
 async fn map_get() {
     let (tx, rx) = mpsc::channel(8);
-    let (actions, responder) = make_actions(&tx, rx, make_map());
+    let responder = responder(make_map(), rx);
 
     let assertions = async move {
+        let actions = MapActions::new(&tx);
         let result = actions.get(2).await;
         assert!(result.is_ok());
 
@@ -229,9 +219,10 @@ async fn map_get() {
 #[tokio::test]
 async fn map_insert() {
     let (tx, rx) = mpsc::channel(8);
-    let (actions, responder) = make_actions(&tx, rx, make_map());
+    let responder = responder(make_map(), rx);
 
     let assertions = async move {
+        let actions = MapActions::new(&tx);
         let result = actions.update(4, 8).await;
         assert!(result.is_ok());
 
@@ -249,37 +240,38 @@ async fn map_insert() {
 #[tokio::test]
 async fn map_invalid_key_update() {
     let (tx, rx) = mpsc::channel(8);
-    let actions: MapActions<String, i32> = MapActions::new(&tx);
-    let task = responder(make_map(), rx);
+    let responder = responder(make_map(), rx);
 
     let assertions = async move {
+        let actions: MapActions<String, i32> = MapActions::new(&tx);
         let result = actions.update("bad".to_string(), 8).await;
         assert_eq!(result, Err(DownlinkError::InvalidAction));
     };
 
-    join(assertions, task).await;
+    join(assertions, responder).await;
 }
 
 #[tokio::test]
 async fn map_invalid_value_update() {
     let (tx, rx) = mpsc::channel(8);
-    let actions: MapActions<i32, String> = MapActions::new(&tx);
-    let task = responder(make_map(), rx);
+    let responder = responder(make_map(), rx);
 
     let assertions = async move {
+        let actions: MapActions<i32, String> = MapActions::new(&tx);
         let result = actions.update(4, "bad".to_string()).await;
         assert_eq!(result, Err(DownlinkError::InvalidAction));
     };
 
-    join(assertions, task).await;
+    join(assertions, responder).await;
 }
 
 #[tokio::test]
 async fn map_insert_and_forget() {
     let (tx, rx) = mpsc::channel(8);
-    let (actions, responder) = make_actions(&tx, rx, make_map());
+    let responder = responder(make_map(), rx);
 
     let assertions = async move {
+        let actions = MapActions::new(&tx);
         let result = actions.update_and_forget(4, 8).await;
         assert_eq!(result, Ok(()));
 
@@ -293,9 +285,10 @@ async fn map_insert_and_forget() {
 #[tokio::test]
 async fn map_remove() {
     let (tx, rx) = mpsc::channel(8);
-    let (actions, responder) = make_actions(&tx, rx, make_map());
+    let responder = responder(make_map(), rx);
 
     let assertions = async move {
+        let actions = MapActions::new(&tx);
         let result = actions.remove(2).await;
         assert!(result.is_ok());
 
@@ -313,23 +306,24 @@ async fn map_remove() {
 #[tokio::test]
 async fn map_invalid_remove() {
     let (tx, rx) = mpsc::channel(8);
-    let actions: MapActions<String, i32> = MapActions::new(&tx);
-    let task = responder(make_map(), rx);
+    let responder = responder(make_map(), rx);
 
     let assertions = async move {
+        let actions: MapActions<String, i32> = MapActions::new(&tx);
         let result = actions.remove("bad".to_string()).await;
         assert_eq!(result, Err(DownlinkError::InvalidAction));
     };
 
-    join(assertions, task).await;
+    join(assertions, responder).await;
 }
 
 #[tokio::test]
 async fn map_remove_and_forget() {
     let (tx, rx) = mpsc::channel(8);
-    let (actions, responder) = make_actions(&tx, rx, make_map());
+    let responder = responder(make_map(), rx);
 
     let assertions = async move {
+        let actions: MapActions<i32, i32> = MapActions::new(&tx);
         let result = actions.remove_and_forget(2).await;
         assert_eq!(result, Ok(()));
 
@@ -343,9 +337,10 @@ async fn map_remove_and_forget() {
 #[tokio::test]
 async fn map_clear() {
     let (tx, rx) = mpsc::channel(8);
-    let (mut actions, responder) = make_actions(&tx, rx, make_map());
+    let responder = responder(make_map(), rx);
 
     let assertions = async move {
+        let actions: MapActions<i32, i32> = MapActions::new(&tx);
         let result = actions.clear().await;
         assert_eq!(result, Ok(()));
 
@@ -361,9 +356,10 @@ async fn map_clear() {
 #[tokio::test]
 async fn map_clear_and_forget() {
     let (tx, rx) = mpsc::channel(8);
-    let (mut actions, responder) = make_actions(&tx, rx, make_map());
+    let responder = responder(make_map(), rx);
 
     let assertions = async move {
+        let actions: MapActions<i32, i32> = MapActions::new(&tx);
         let result = actions.clear_and_forget().await;
         assert_eq!(result, Ok(()));
 
@@ -379,9 +375,10 @@ async fn map_clear_and_forget() {
 #[tokio::test]
 async fn map_remove_all() {
     let (tx, rx) = mpsc::channel(8);
-    let (mut actions, responder) = make_actions(&tx, rx, make_map());
+    let responder = responder(make_map(), rx);
 
     let assertions = async move {
+        let actions: MapActions<i32, i32> = MapActions::new(&tx);
         let result = actions.remove_all().await;
         assert!(result.is_ok());
 
@@ -401,9 +398,10 @@ async fn map_remove_all() {
 #[tokio::test]
 async fn map_take() {
     let (tx, rx) = mpsc::channel(8);
-    let (mut actions, responder) = make_actions(&tx, rx, make_map());
+    let responder = responder(make_map(), rx);
 
     let assertions = async move {
+        let actions: MapActions<i32, i32> = MapActions::new(&tx);
         let result = actions.take(1).await;
         assert_eq!(result, Ok(()));
 
@@ -422,9 +420,10 @@ async fn map_take() {
 #[tokio::test]
 async fn map_take_and_forget() {
     let (tx, rx) = mpsc::channel(8);
-    let (mut actions, responder) = make_actions(&tx, rx, make_map());
+    let responder = responder(make_map(), rx);
 
     let assertions = async move {
+        let actions: MapActions<i32, i32> = MapActions::new(&tx);
         let result = actions.take_and_forget(1).await;
         assert_eq!(result, Ok(()));
 
@@ -443,9 +442,10 @@ async fn map_take_and_forget() {
 #[tokio::test]
 async fn map_take_and_get() {
     let (tx, rx) = mpsc::channel(8);
-    let (mut actions, responder) = make_actions(&tx, rx, make_map());
+    let responder = responder(make_map(), rx);
 
     let assertions = async move {
+        let actions: MapActions<i32, i32> = MapActions::new(&tx);
         let result = actions.take_and_get(1).await;
 
         let mut expected = OrdMap::new();
@@ -471,9 +471,10 @@ async fn map_take_and_get() {
 #[tokio::test]
 async fn map_skip() {
     let (tx, rx) = mpsc::channel(8);
-    let (mut actions, responder) = make_actions(&tx, rx, make_map());
+    let responder = responder(make_map(), rx);
 
     let assertions = async move {
+        let actions: MapActions<i32, i32> = MapActions::new(&tx);
         let result = actions.skip(2).await;
         assert_eq!(result, Ok(()));
 
@@ -492,9 +493,10 @@ async fn map_skip() {
 #[tokio::test]
 async fn map_skip_and_forget() {
     let (tx, rx) = mpsc::channel(8);
-    let (mut actions, responder) = make_actions(&tx, rx, make_map());
+    let responder = responder(make_map(), rx);
 
     let assertions = async move {
+        let actions: MapActions<i32, i32> = MapActions::new(&tx);
         let result = actions.skip_and_forget(2).await;
         assert_eq!(result, Ok(()));
 
@@ -513,9 +515,10 @@ async fn map_skip_and_forget() {
 #[tokio::test]
 async fn map_skip_and_get() {
     let (tx, rx) = mpsc::channel(8);
-    let (mut actions, responder) = make_actions(&tx, rx, make_map());
+    let responder = responder(make_map(), rx);
 
     let assertions = async move {
+        let actions: MapActions<i32, i32> = MapActions::new(&tx);
         let result = actions.skip_and_get(2).await;
 
         let mut expected = OrdMap::new();

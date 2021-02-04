@@ -19,10 +19,10 @@ use super::*;
 use crate::downlink::{
     error::UpdateFailure, DownlinkState, Event, Operation, Response, StateMachine,
 };
+use swim_common::form::{Form, FormErr, ValidatedForm};
 use swim_common::model::schema::Schema;
 use swim_common::model::{Attr, Item, ValueKind};
 use swim_common::request::Request;
-use swim_common::form::{ValidatedForm, Form, FormErr};
 
 fn make_model_with(key: i32, value: String) -> MapModel {
     let k = Value::Int32Value(key);

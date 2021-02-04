@@ -200,28 +200,28 @@ impl<K: ValidatedForm + 'static, V: ValidatedForm + 'static> TypedMapDownlink<K,
     }
 
     /// Skip the first `n` elements of the map.
-    pub async fn skip(&mut self, n: usize) -> Result<(), DownlinkError> {
+    pub async fn skip(&self, n: usize) -> Result<(), DownlinkError> {
         actions::<K, V>(self.inner.sender()).skip(n).await
     }
 
     /// Skip the first `n` elements of the map returning the state of the map before and after the
     /// operation.
     pub async fn skip_and_get(
-        &mut self,
+        &self,
         n: usize,
     ) -> Result<(TypedMapView<K, V>, TypedMapView<K, V>), DownlinkError> {
         actions::<K, V>(self.inner.sender()).skip_and_get(n).await
     }
 
     /// Skip the first `n` elements of the map without waiting for the operation to complete.
-    pub async fn skip_and_forget(&mut self, n: usize) -> Result<(), DownlinkError> {
+    pub async fn skip_and_forget(&self, n: usize) -> Result<(), DownlinkError> {
         actions::<K, V>(self.inner.sender())
             .skip_and_forget(n)
             .await
     }
 
     /// Get the current state of the map.
-    pub async fn view(&mut self) -> Result<TypedMapView<K, V>, DownlinkError> {
+    pub async fn view(&self) -> Result<TypedMapView<K, V>, DownlinkError> {
         actions::<K, V>(self.inner.sender()).view().await
     }
 }
@@ -392,26 +392,26 @@ where
     }
 
     /// Skip the first `n` elements of the map.
-    pub async fn skip(&mut self, n: usize) -> Result<(), DownlinkError> {
+    pub async fn skip(&self, n: usize) -> Result<(), DownlinkError> {
         actions::<K, V>(&self.inner).skip(n).await
     }
 
     /// Skip the first `n` elements of the map returning the state of the map before and after the
     /// operation.
     pub async fn skip_and_get(
-        &mut self,
+        &self,
         n: usize,
     ) -> Result<(TypedMapView<K, V>, TypedMapView<K, V>), DownlinkError> {
         actions::<K, V>(&self.inner).skip_and_get(n).await
     }
 
     /// Skip the first `n` elements of the map without waiting for the operation to complete.
-    pub async fn skip_and_forget(&mut self, n: usize) -> Result<(), DownlinkError> {
+    pub async fn skip_and_forget(&self, n: usize) -> Result<(), DownlinkError> {
         actions::<K, V>(&self.inner).skip_and_forget(n).await
     }
 
     /// Get the current state of the map.
-    pub async fn view(&mut self) -> Result<TypedMapView<K, V>, DownlinkError> {
+    pub async fn view(&self) -> Result<TypedMapView<K, V>, DownlinkError> {
         actions::<K, V>(&self.inner).view().await
     }
 }
@@ -703,7 +703,7 @@ where
         Ok(self.sender.send(MapAction::take(n)).await?)
     }
 
-    async fn skip_internal(&mut self, n: usize) -> Result<(ValMap, ValMap), DownlinkError> {
+    async fn skip_internal(&self, n: usize) -> Result<(ValMap, ValMap), DownlinkError> {
         let (tx1, rx1) = oneshot::channel();
         let (tx2, rx2) = oneshot::channel();
         let req1 = Request::new(tx1);
@@ -717,14 +717,14 @@ where
     }
 
     /// Skip the first `n` elements of the map.
-    pub async fn skip(&mut self, n: usize) -> Result<(), DownlinkError> {
+    pub async fn skip(&self, n: usize) -> Result<(), DownlinkError> {
         self.skip_internal(n).await.map(|_| ())
     }
 
     /// Skip the first `n` elements of the map returning the state of the map before and after the
     /// operation.
     pub async fn skip_and_get(
-        &mut self,
+        &self,
         n: usize,
     ) -> Result<(TypedMapView<K, V>, TypedMapView<K, V>), DownlinkError> {
         self.skip_internal(n)
@@ -733,12 +733,12 @@ where
     }
 
     /// Skip the first `n` elements of the map without waiting for the operation to complete.
-    pub async fn skip_and_forget(&mut self, n: usize) -> Result<(), DownlinkError> {
+    pub async fn skip_and_forget(&self, n: usize) -> Result<(), DownlinkError> {
         Ok(self.sender.send(MapAction::skip(n)).await?)
     }
 
     /// Get the current state of the map.
-    pub async fn view(&mut self) -> Result<TypedMapView<K, V>, DownlinkError> {
+    pub async fn view(&self) -> Result<TypedMapView<K, V>, DownlinkError> {
         let (tx, rx) = oneshot::channel();
         let req = Request::new(tx);
         self.sender.send(MapAction::get_map(req)).await?;
