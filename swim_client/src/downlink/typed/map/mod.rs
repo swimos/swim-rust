@@ -266,7 +266,7 @@ impl<K: ValidatedForm, V: ValidatedForm> MapDownlinkSender<K, V> {
     /// Create a sender for more refined key and value types (the [`ValidatedForm`] implementations
     /// for `K2` and `V2` will always produce [`Value`]s that are acceptable to the
     /// [`ValidatedForm`] implementations for `K` and `V`) to the downlink.
-    pub fn contravariant_cast<K2, V2>(&self) -> Result<MapDownlinkSender<K2, V2>, MapViewError>
+    pub fn contravariant_cast<K2, V2>(self) -> Result<MapDownlinkSender<K2, V2>, MapViewError>
     where
         K2: ValidatedForm,
         V2: ValidatedForm,
@@ -281,7 +281,7 @@ impl<K: ValidatedForm, V: ValidatedForm> MapDownlinkSender<K, V> {
             .unwrap_or(false);
 
         if key_schema_good && value_schema_good {
-            Ok(MapDownlinkSender::new(self.inner.clone()))
+            Ok(MapDownlinkSender::new(self.inner))
         } else {
             let incompatibility = if key_schema_good {
                 Incompatibility::Value
@@ -519,7 +519,7 @@ fn transform_view<K: Form, V: Form>(view: &ViewWithEvent) -> TypedViewWithEvent<
 }
 
 impl<K: Form, V: Form> MapDownlinkSubscriber<K, V> {
-    pub async fn subscribe(&mut self) -> Result<MapDownlinkReceiver<K, V>, topic::SubscribeError> {
+    pub fn subscribe(&self) -> Result<MapDownlinkReceiver<K, V>, topic::SubscribeError> {
         self.inner.subscribe().map(MapDownlinkReceiver::new)
     }
 }
@@ -791,8 +791,8 @@ impl Error for MapViewError {}
 impl<K: ValidatedForm, V: ValidatedForm> MapDownlinkSubscriber<K, V> {
     /// Create a read-only view for a value downlink that converts all received values to a new type.
     /// The type of the view must have an equal or greater schema than the original downlink.
-    pub async fn covariant_cast<K2, V2>(
-        &self,
+    pub fn covariant_cast<K2, V2>(
+        self,
     ) -> Result<MapDownlinkSubscriber<K2, V2>, MapViewError>
     where
         K2: ValidatedForm,
@@ -808,7 +808,7 @@ impl<K: ValidatedForm, V: ValidatedForm> MapDownlinkSubscriber<K, V> {
             .unwrap_or(false);
 
         if key_schema_good && value_schema_good {
-            Ok(MapDownlinkSubscriber::new(self.inner.clone()))
+            Ok(MapDownlinkSubscriber::new(self.inner))
         } else {
             let incompatibility = if key_schema_good {
                 Incompatibility::Value

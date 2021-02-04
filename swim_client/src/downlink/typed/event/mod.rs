@@ -168,12 +168,12 @@ impl<T: ValidatedForm> EventDownlinkSubscriber<T> {
     /// Create a read-only view for a value downlink that converts all received values to a new type.
     /// The type of the view must have an equal or greater schema than the original downlink.
     pub async fn covariant_cast<U: ValidatedForm>(
-        &self,
+        self,
     ) -> Result<EventDownlinkSubscriber<U>, EventViewError> {
         let schema_cmp = U::schema().partial_cmp(&T::schema());
 
         if schema_cmp.is_some() && schema_cmp != Some(Ordering::Less) {
-            Ok(EventDownlinkSubscriber::new(self.inner.clone()))
+            Ok(EventDownlinkSubscriber::new(self.inner))
         } else {
             Err(EventViewError {
                 existing: T::schema(),
@@ -201,7 +201,7 @@ impl<T: Form + 'static> EventDownlinkReceiver<T> {
 }
 
 impl<T: Form> EventDownlinkSubscriber<T> {
-    pub async fn subscribe(&mut self) -> Result<EventDownlinkReceiver<T>, topic::SubscribeError> {
+    pub fn subscribe(&self) -> Result<EventDownlinkReceiver<T>, topic::SubscribeError> {
         self.inner.subscribe().map(EventDownlinkReceiver::new)
     }
 }

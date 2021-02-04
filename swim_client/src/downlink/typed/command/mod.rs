@@ -93,7 +93,7 @@ impl<T: ValidatedForm> TypedCommandDownlink<T> {
     /// Create a sender for a more refined type (the [`ValidatedForm`] implementation for `U`
     /// will always produce a [`swim_common::model::Value`] that is acceptable to the [`ValidatedForm`] implementation
     /// for `T`) to the downlink.
-    pub async fn contravariant_cast<U: ValidatedForm>(
+    pub fn contravariant_view<U: ValidatedForm>(
         &self,
     ) -> Result<TypedCommandDownlink<U>, CommandViewError> {
         let schema_cmp = U::schema().partial_cmp(&T::schema());

@@ -152,14 +152,14 @@ impl<T: ValidatedForm> ValueDownlinkSender<T> {
     /// Create a sender for a more refined type (the [`ValidatedForm`] implementation for `U`
     /// will always produce a [`Value`] that is acceptable to the [`ValidatedForm`] implementation
     /// for `T`) to the downlink.
-    pub fn contravariant_cast<U>(&self) -> Result<ValueDownlinkSender<U>, ValueViewError>
+    pub fn contravariant_cast<U>(self) -> Result<ValueDownlinkSender<U>, ValueViewError>
     where
         U: ValidatedForm,
     {
         let schema_cmp = U::schema().partial_cmp(&T::schema());
 
         if schema_cmp.is_some() && schema_cmp != Some(Ordering::Greater) {
-            Ok(ValueDownlinkSender::new(self.inner.clone()))
+            Ok(ValueDownlinkSender::new(self.inner))
         } else {
             Err(ValueViewError {
                 existing: T::schema(),
@@ -377,14 +377,14 @@ impl<T> ValueDownlinkSubscriber<T> {
 impl<T: ValidatedForm> ValueDownlinkSubscriber<T> {
     /// Create a read-only view for a value downlink that converts all received values to a new type.
     /// The type of the view must have an equal or greater schema than the original downlink.
-    pub async fn covariant_cast<U>(&self) -> Result<ValueDownlinkSubscriber<U>, ValueViewError>
+    pub fn covariant_cast<U>(self) -> Result<ValueDownlinkSubscriber<U>, ValueViewError>
     where
         U: ValidatedForm,
     {
         let schema_cmp = U::schema().partial_cmp(&T::schema());
 
         if schema_cmp.is_some() && schema_cmp != Some(Ordering::Less) {
-            Ok(ValueDownlinkSubscriber::new(self.inner.clone()))
+            Ok(ValueDownlinkSubscriber::new(self.inner))
         } else {
             Err(ValueViewError {
                 existing: T::schema(),
@@ -393,6 +393,7 @@ impl<T: ValidatedForm> ValueDownlinkSubscriber<T> {
             })
         }
     }
+
 }
 
 impl<T: Form + 'static> ValueDownlinkReceiver<T> {
@@ -412,7 +413,7 @@ impl<T: Form + 'static> ValueDownlinkReceiver<T> {
 }
 
 impl<T: Form> ValueDownlinkSubscriber<T> {
-    pub async fn subscribe(&mut self) -> Result<ValueDownlinkReceiver<T>, topic::SubscribeError> {
+    pub fn subscribe(&self) -> Result<ValueDownlinkReceiver<T>, topic::SubscribeError> {
         self.inner.subscribe().map(ValueDownlinkReceiver::new)
     }
 }

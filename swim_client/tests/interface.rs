@@ -15,21 +15,16 @@
 #[cfg(feature = "test_server")]
 mod tests {
     use std::sync::Arc;
-    use swim_client::downlink::model::map::{
-        MapAction, MapEvent, MapModification, UntypedMapModification,
-    };
-    use swim_client::downlink::model::value::Action;
-    use swim_client::downlink::typed::event::TypedViewWithEvent;
-    use swim_client::downlink::{Downlink, Event};
+    use swim_client::downlink::model::map::{MapEvent, MapModification, UntypedMapModification};
+    use swim_client::downlink::typed::map::events::TypedViewWithEvent;
+    use swim_client::downlink::Event;
     use swim_client::interface::SwimClient;
     use swim_common::form::Form;
     use swim_common::model::{Attr, Item, Value};
-    use swim_common::topic::Topic;
     use swim_common::warp::path::AbsolutePath;
     use test_server::clients::Cli;
     use test_server::Docker;
     use test_server::SwimTestServer;
-    use tokio::stream::StreamExt;
     use tokio::time::Duration;
 
     #[tokio::test]
@@ -42,10 +37,10 @@ mod tests {
 
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "id");
 
-        let (_, mut recv) = client.value_downlink::<i32>(path.clone(), 0).await.unwrap();
+        let (_dl, mut recv) = client.value_downlink::<i32>(path.clone(), 0).await.unwrap();
         tokio::time::sleep(Duration::from_secs(1)).await;
 
-        let message = recv.next().await.unwrap();
+        let message = recv.recv().await.unwrap();
         assert_eq!(message, Event::Remote(0));
     }
 
@@ -59,15 +54,15 @@ mod tests {
 
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "id");
 
-        let (mut dl, mut recv) = client.value_downlink(path.clone(), 0).await.unwrap();
+        let (dl, mut recv) = client.value_downlink(path.clone(), 0).await.unwrap();
         tokio::time::sleep(Duration::from_secs(1)).await;
 
-        dl.send_item(Action::set(10.into_value())).await.unwrap();
+        dl.set(10).await.unwrap();
 
-        let message = recv.next().await.unwrap();
+        let message = recv.recv().await.unwrap();
         assert_eq!(message, Event::Remote(0));
 
-        let message = recv.next().await.unwrap();
+        let message = recv.recv().await.unwrap();
         assert_eq!(message, Event::Local(10));
     }
 
@@ -80,13 +75,13 @@ mod tests {
         let mut client = SwimClient::new_with_default().await;
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "shoppingCart");
 
-        let (_, mut recv) = client
+        let (_dl, mut recv) = client
             .map_downlink::<String, i32>(path.clone())
             .await
             .unwrap();
         tokio::time::sleep(Duration::from_secs(1)).await;
 
-        let message = recv.next().await.unwrap();
+        let message = recv.recv().await.unwrap();
 
         if let Event::Remote(event) = message {
             let TypedViewWithEvent { view, event } = event;
@@ -107,17 +102,15 @@ mod tests {
         let mut client = SwimClient::new_with_default().await;
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "shoppingCart");
 
-        let (mut dl, mut recv) = client
+        let (dl, mut recv) = client
             .map_downlink::<String, i32>(path.clone())
             .await
             .unwrap();
         tokio::time::sleep(Duration::from_secs(1)).await;
 
-        dl.send_item(MapAction::update(String::from("milk").into(), 1.into()))
-            .await
-            .unwrap();
+        dl.update_and_forget("milk".to_owned(), 1).await.unwrap();
 
-        let message = recv.next().await.unwrap();
+        let message = recv.recv().await.unwrap();
 
         if let Event::Remote(event) = message {
             let TypedViewWithEvent { view, event } = event;
@@ -128,7 +121,7 @@ mod tests {
             panic!("The map downlink did not receive the correct message!")
         }
 
-        let message = recv.next().await.unwrap();
+        let message = recv.recv().await.unwrap();
 
         if let Event::Local(event) = message {
             let TypedViewWithEvent { view, event } = event;
@@ -153,13 +146,14 @@ mod tests {
 
         let command_path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "info");
 
-        let mut event_dl = client.untyped_event_downlink(event_path).await.unwrap();
+        let event_dl = client.untyped_event_downlink(event_path).await.unwrap();
+        let mut rec = event_dl.subscribe().unwrap();
         tokio::time::sleep(Duration::from_secs(1)).await;
 
-        let mut command_dl = client.untyped_command_downlink(command_path).await.unwrap();
+        let command_dl = client.untyped_command_downlink(command_path).await.unwrap();
         command_dl.send("Hello, from Rust!".into()).await.unwrap();
 
-        let incoming = event_dl.recv().await.unwrap();
+        let incoming = rec.recv().await.unwrap().clone().get_inner();
 
         assert_eq!(incoming, Value::text("Hello, from Rust!"));
     }
@@ -176,22 +170,25 @@ mod tests {
         let event_path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "info");
         let command_path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "info");
 
-        let mut event_dl = client
+        let event_dl = client
             .event_downlink::<String>(event_path, Default::default())
             .await
             .unwrap();
+
+        let mut rec = event_dl.subscribe().unwrap();
+
         tokio::time::sleep(Duration::from_secs(1)).await;
 
-        let mut command_dl = client
+        let command_dl = client
             .command_downlink::<String>(command_path)
             .await
             .unwrap();
         command_dl
-            .send_item("Hello, from Rust!".to_string())
+            .command("Hello, from Rust!".to_string())
             .await
             .unwrap();
 
-        let incoming = event_dl.recv().await.unwrap();
+        let incoming = rec.recv().await.unwrap();
 
         assert_eq!(incoming, "Hello, from Rust!");
     }
@@ -208,16 +205,19 @@ mod tests {
         let event_path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "info");
         let command_path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "info");
 
-        let mut event_dl = client
+        let event_dl = client
             .event_downlink::<i32>(event_path, Default::default())
             .await
             .unwrap();
+
+        let mut rec = event_dl.subscribe().unwrap();
+
         tokio::time::sleep(Duration::from_secs(1)).await;
 
-        let mut command_dl = client.untyped_command_downlink(command_path).await.unwrap();
+        let command_dl = client.untyped_command_downlink(command_path).await.unwrap();
         command_dl.send("Hello, from Rust!".into()).await.unwrap();
 
-        let incoming = event_dl.recv().await;
+        let incoming = rec.recv().await;
 
         assert_eq!(incoming, None);
     }
@@ -237,10 +237,12 @@ mod tests {
         let command_path =
             AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "shoppingCart");
 
-        let mut event_dl = client.untyped_event_downlink(event_path).await.unwrap();
+        let event_dl = client.untyped_event_downlink(event_path).await.unwrap();
+        let mut rec = event_dl.subscribe().unwrap();
+
         tokio::time::sleep(Duration::from_secs(1)).await;
 
-        let mut command_dl = client.untyped_command_downlink(command_path).await.unwrap();
+        let command_dl = client.untyped_command_downlink(command_path).await.unwrap();
         command_dl
             .send(
                 UntypedMapModification::Update(
@@ -252,7 +254,7 @@ mod tests {
             .await
             .unwrap();
 
-        let incoming = event_dl.recv().await.unwrap();
+        let incoming = rec.recv().await.unwrap().clone().get_inner();
 
         let header = Attr::of(("update", Value::record(vec![Item::slot("key", "milk")])));
         let body = Item::of(6u32);
@@ -276,23 +278,25 @@ mod tests {
         let command_path =
             AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "shoppingCart");
 
-        let mut event_dl = client
+        let event_dl = client
             .event_downlink::<MapModification<String, i32>>(event_path, Default::default())
             .await
             .unwrap();
 
+        let mut rec = event_dl.subscribe().unwrap();
+
         tokio::time::sleep(Duration::from_secs(1)).await;
 
-        let mut command_dl = client
+        let command_dl = client
             .command_downlink::<MapModification<String, i32>>(command_path)
             .await
             .unwrap();
 
         let item = MapModification::Update("milk".to_string(), Arc::new(6i32));
 
-        command_dl.send_item(item).await.unwrap();
+        command_dl.command(item).await.unwrap();
 
-        let incoming = event_dl.recv().await.unwrap();
+        let incoming = rec.recv().await.unwrap();
 
         assert_eq!(
             incoming,
@@ -315,14 +319,16 @@ mod tests {
         let command_path =
             AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "shoppingCart");
 
-        let mut event_dl = client
+        let event_dl = client
             .event_downlink::<MapModification<i32, i32>>(event_path, Default::default())
             .await
             .unwrap();
 
+        let mut rec = event_dl.subscribe().unwrap();
+
         tokio::time::sleep(Duration::from_secs(1)).await;
 
-        let mut command_dl = client.untyped_command_downlink(command_path).await.unwrap();
+        let command_dl = client.untyped_command_downlink(command_path).await.unwrap();
         command_dl
             .send(
                 UntypedMapModification::Update(
@@ -334,7 +340,7 @@ mod tests {
             .await
             .unwrap();
 
-        let incoming = event_dl.recv().await;
+        let incoming = rec.recv().await;
 
         assert_eq!(incoming, None);
     }
@@ -354,14 +360,16 @@ mod tests {
         let command_path =
             AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "shoppingCart");
 
-        let mut event_dl = client
+        let event_dl = client
             .event_downlink::<MapModification<String, String>>(event_path, Default::default())
             .await
             .unwrap();
 
+        let mut rec = event_dl.subscribe().unwrap();
+
         tokio::time::sleep(Duration::from_secs(1)).await;
 
-        let mut command_dl = client.untyped_command_downlink(command_path).await.unwrap();
+        let command_dl = client.untyped_command_downlink(command_path).await.unwrap();
         command_dl
             .send(
                 UntypedMapModification::Update(
@@ -373,7 +381,7 @@ mod tests {
             .await
             .unwrap();
 
-        let incoming = event_dl.recv().await;
+        let incoming = rec.recv().await;
 
         assert_eq!(incoming, None);
     }
@@ -388,7 +396,7 @@ mod tests {
 
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "info");
 
-        let mut command_dl = client
+        let command_dl = client
             .command_downlink::<String>(path.clone())
             .await
             .unwrap();
@@ -396,34 +404,30 @@ mod tests {
         tokio::time::sleep(Duration::from_secs(1)).await;
 
         command_dl
-            .send_item("Hello, String!".to_string())
+            .command("Hello, String!".to_string())
             .await
             .unwrap();
 
-        let (mut dl, mut recv) = client.value_downlink(path, String::new()).await.unwrap();
+        let (dl, mut recv) = client.value_downlink(path, String::new()).await.unwrap();
 
-        let message = recv.next().await.unwrap();
+        let sub = dl.subscriber().covariant_cast::<Value>().unwrap();
+
+        let message = recv.recv().await.unwrap();
         assert_eq!(message, Event::Remote(String::from("Hello, String!")));
 
-        let mut recv_view = dl
-            .read_only_view::<Value>()
-            .await
-            .unwrap()
-            .subscribe()
-            .await
-            .unwrap();
+        let mut recv_view = sub.subscribe().unwrap();
 
         tokio::time::sleep(Duration::from_secs(1)).await;
 
         command_dl
-            .send_item("Hello, Value!".to_string())
+            .command("Hello, Value!".to_string())
             .await
             .unwrap();
 
-        let message = recv.next().await.unwrap();
+        let message = recv.recv().await.unwrap();
         assert_eq!(message, Event::Remote(String::from("Hello, Value!")));
 
-        let message = recv_view.next().await.unwrap();
+        let message = recv_view.recv().await.unwrap();
         assert_eq!(
             message,
             Event::Remote(Value::from("Hello, Value!".to_string()))
@@ -439,19 +443,10 @@ mod tests {
         let mut client = SwimClient::new_with_default().await;
 
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "id");
-        let (mut dl, _) = client.value_downlink(path.clone(), 0i64).await.unwrap();
+        let (dl, _rec) = client.value_downlink(path.clone(), 0i64).await.unwrap();
 
-        if let Err(view_error) = dl.read_only_view::<String>().await {
-            assert_eq!(view_error.to_string(),  "A read-only value downlink with schema @kind(text) was requested but the original value downlink is running with schema @kind(int64).")
-        } else {
-            panic!("Expected a ViewError!")
-        }
-
-        if let Err(view_error) = dl.read_only_view::<i32>().await {
-            assert_eq!(view_error.to_string(),  "A read-only value downlink with schema @kind(int32) was requested but the original value downlink is running with schema @kind(int64).")
-        } else {
-            panic!("Expected a ViewError!")
-        }
+        assert!(dl.subscriber().covariant_cast::<String>().is_err());
+        assert!(dl.subscriber().covariant_cast::<i32>().is_err());
     }
 
     #[tokio::test]
@@ -464,7 +459,7 @@ mod tests {
 
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "shoppingCart");
 
-        let mut command_dl = client
+        let command_dl = client
             .command_downlink::<MapModification<String, i32>>(path.clone())
             .await
             .unwrap();
@@ -472,15 +467,15 @@ mod tests {
         tokio::time::sleep(Duration::from_secs(1)).await;
 
         command_dl
-            .send_item(MapModification::Update("milk".to_string(), Arc::new(1)))
+            .command(MapModification::Update("milk".to_string(), Arc::new(1)))
             .await
             .unwrap();
 
         tokio::time::sleep(Duration::from_secs(1)).await;
 
-        let (mut dl, mut recv) = client.map_downlink::<String, i32>(path).await.unwrap();
+        let (dl, mut recv) = client.map_downlink::<String, i32>(path).await.unwrap();
 
-        let message = recv.next().await.unwrap();
+        let message = recv.recv().await.unwrap();
         if let Event::Remote(event) = message {
             let TypedViewWithEvent { view, event } = event;
 
@@ -491,23 +486,22 @@ mod tests {
         }
 
         let mut recv_view = dl
-            .read_only_view::<Value, Value>()
-            .await
+            .subscriber()
+            .covariant_cast::<Value, Value>()
             .unwrap()
             .subscribe()
-            .await
             .unwrap();
 
         tokio::time::sleep(Duration::from_secs(1)).await;
 
         command_dl
-            .send_item(MapModification::Update("eggs".to_string(), Arc::new(2)))
+            .command(MapModification::Update("eggs".to_string(), Arc::new(2)))
             .await
             .unwrap();
 
         tokio::time::sleep(Duration::from_secs(1)).await;
 
-        let message = recv.next().await.unwrap();
+        let message = recv.recv().await.unwrap();
         if let Event::Remote(event) = message {
             let TypedViewWithEvent { view, event } = event;
 
@@ -518,7 +512,7 @@ mod tests {
             panic!("The map downlink did not receive the correct message!")
         }
 
-        let message = recv_view.next().await.unwrap();
+        let message = recv_view.recv().await.unwrap();
         if let Event::Remote(event) = message {
             let TypedViewWithEvent { view, event } = event;
 
@@ -545,31 +539,12 @@ mod tests {
         let mut client = SwimClient::new_with_default().await;
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "integerMap");
 
-        let (mut dl, _) = client.map_downlink::<i64, i64>(path).await.unwrap();
+        let (dl, _rec) = client.map_downlink::<i64, i64>(path).await.unwrap();
 
-        if let Err(view_error) = dl.read_only_view::<String, String>().await {
-            assert_eq!(view_error.to_string(),  "A read-only map downlink with key schema @kind(text) was requested but the original map downlink is running with key schema @kind(int64).")
-        } else {
-            panic!("Expected a ViewError!")
-        }
-
-        if let Err(view_error) = dl.read_only_view::<i64, String>().await {
-            assert_eq!(view_error.to_string(),  "A read-only map downlink with value schema @kind(text) was requested but the original map downlink is running with value schema @kind(int64).")
-        } else {
-            panic!("Expected a ViewError!")
-        }
-
-        if let Err(view_error) = dl.read_only_view::<i32, i64>().await {
-            assert_eq!(view_error.to_string(),  "A read-only map downlink with key schema @kind(int32) was requested but the original map downlink is running with key schema @kind(int64).")
-        } else {
-            panic!("Expected a ViewError!")
-        }
-
-        if let Err(view_error) = dl.read_only_view::<i64, i32>().await {
-            assert_eq!(view_error.to_string(),  "A read-only map downlink with value schema @kind(int32) was requested but the original map downlink is running with value schema @kind(int64).")
-        } else {
-            panic!("Expected a ViewError!")
-        }
+        assert!(dl.subscriber().covariant_cast::<String, String>().is_err());
+        assert!(dl.subscriber().covariant_cast::<i64, String>().is_err());
+        assert!(dl.subscriber().covariant_cast::<i32, i64>().is_err());
+        assert!(dl.subscriber().covariant_cast::<i64, i32>().is_err());
     }
 
     #[tokio::test]
@@ -582,29 +557,28 @@ mod tests {
 
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "info");
 
-        let mut command_dl = client
+        let command_dl = client
             .command_downlink::<String>(path.clone())
             .await
             .unwrap();
 
         tokio::time::sleep(Duration::from_secs(1)).await;
-        command_dl.send_item(String::from("milk")).await.unwrap();
+        command_dl.command(String::from("milk")).await.unwrap();
         tokio::time::sleep(Duration::from_secs(1)).await;
 
-        let (mut dl, mut recv) = client.value_downlink(path, Value::Extant).await.unwrap();
+        let (dl, mut recv) = client.value_downlink(path, Value::Extant).await.unwrap();
 
-        let message = recv.next().await.unwrap();
+        let message = recv.recv().await.unwrap();
         assert_eq!(message, Event::Remote(Value::text("milk")));
 
-        let mut sender_view = dl.write_only_sender::<String>().await.unwrap();
-        let (_, mut sink) = dl.split();
+        let sender_view = dl.sender().contravariant_cast::<String>().unwrap();
 
-        sink.set(String::from("bread").into()).await.unwrap();
-        let message = recv.next().await.unwrap();
+        dl.set(String::from("bread").into()).await.unwrap();
+        let message = recv.recv().await.unwrap();
         assert_eq!(message, Event::Local(Value::text("bread")));
 
         sender_view.set(String::from("chocolate")).await.unwrap();
-        let message = recv.next().await.unwrap();
+        let message = recv.recv().await.unwrap();
         assert_eq!(message, Event::Local(Value::text("chocolate")));
     }
 
@@ -617,19 +591,10 @@ mod tests {
         let mut client = SwimClient::new_with_default().await;
 
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "id");
-        let (mut dl, _) = client.value_downlink(path.clone(), 0i32).await.unwrap();
+        let (dl, _rec) = client.value_downlink(path.clone(), 0i32).await.unwrap();
 
-        if let Err(view_error) = dl.write_only_sender::<String>().await {
-            assert_eq!(view_error.to_string(),  "A write-only value downlink with schema @kind(text) was requested but the original value downlink is running with schema @kind(int32).")
-        } else {
-            panic!("Expected a ViewError!")
-        }
-
-        if let Err(view_error) = dl.write_only_sender::<i64>().await {
-            assert_eq!(view_error.to_string(),  "A write-only value downlink with schema @kind(int64) was requested but the original value downlink is running with schema @kind(int32).")
-        } else {
-            panic!("Expected a ViewError!")
-        }
+        assert!(dl.sender().contravariant_cast::<String>().is_err());
+        assert!(dl.sender().contravariant_cast::<i64>().is_err());
     }
 
     #[tokio::test]
@@ -642,7 +607,7 @@ mod tests {
 
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "shoppingCart");
 
-        let mut command_dl = client
+        let command_dl = client
             .command_downlink::<MapModification<String, i32>>(path.clone())
             .await
             .unwrap();
@@ -650,7 +615,7 @@ mod tests {
         tokio::time::sleep(Duration::from_secs(1)).await;
 
         command_dl
-            .send_item(MapModification::Update(
+            .command(MapModification::Update(
                 String::from("milk").into(),
                 5.into(),
             ))
@@ -659,9 +624,9 @@ mod tests {
 
         tokio::time::sleep(Duration::from_secs(1)).await;
 
-        let (mut dl, mut recv) = client.map_downlink::<Value, Value>(path).await.unwrap();
+        let (dl, mut recv) = client.map_downlink::<Value, Value>(path).await.unwrap();
 
-        let message = recv.next().await.unwrap();
+        let message = recv.recv().await.unwrap();
         if let Event::Remote(event) = message {
             let TypedViewWithEvent { view, event } = event;
 
@@ -674,14 +639,13 @@ mod tests {
             panic!("The map downlink did not receive the correct message!")
         }
 
-        let mut sender_view = dl.write_only_sender::<String, i32>().await.unwrap();
-        let (_, mut sink) = dl.split();
+        let sender_view = dl.sender().contravariant_cast::<String, i32>().unwrap();
 
-        sink.update(String::from("eggs").into(), 3.into())
+        dl.update(String::from("eggs").into(), 3.into())
             .await
             .unwrap();
 
-        let message = recv.next().await.unwrap();
+        let message = recv.recv().await.unwrap();
         if let Event::Local(event) = message {
             let TypedViewWithEvent { view, event } = event;
 
@@ -703,7 +667,7 @@ mod tests {
             .await
             .unwrap();
 
-        let message = recv.next().await.unwrap();
+        let message = recv.recv().await.unwrap();
         if let Event::Local(event) = message {
             let TypedViewWithEvent { view, event } = event;
 
@@ -734,30 +698,11 @@ mod tests {
         let mut client = SwimClient::new_with_default().await;
 
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "integerMap");
-        let (mut dl, _) = client.map_downlink::<i32, i32>(path).await.unwrap();
+        let (dl, _) = client.map_downlink::<i32, i32>(path).await.unwrap();
 
-        if let Err(view_error) = dl.write_only_sender::<String, String>().await {
-            assert_eq!(view_error.to_string(),  "A write-only map downlink with key schema @kind(text) was requested but the original map downlink is running with key schema @kind(int32).")
-        } else {
-            panic!("Expected a ViewError!")
-        }
-
-        if let Err(view_error) = dl.write_only_sender::<i32, String>().await {
-            assert_eq!(view_error.to_string(),  "A write-only map downlink with value schema @kind(text) was requested but the original map downlink is running with value schema @kind(int32).")
-        } else {
-            panic!("Expected a ViewError!")
-        }
-
-        if let Err(view_error) = dl.write_only_sender::<i64, i32>().await {
-            assert_eq!(view_error.to_string(),  "A write-only map downlink with key schema @kind(int64) was requested but the original map downlink is running with key schema @kind(int32).")
-        } else {
-            panic!("Expected a ViewError!")
-        }
-
-        if let Err(view_error) = dl.write_only_sender::<i32, i64>().await {
-            assert_eq!(view_error.to_string(),  "A write-only map downlink with value schema @kind(int64) was requested but the original map downlink is running with value schema @kind(int32).")
-        } else {
-            panic!("Expected a ViewError!")
-        }
+        assert!(dl.sender().contravariant_cast::<String, String>().is_err());
+        assert!(dl.sender().contravariant_cast::<i32, String>().is_err());
+        assert!(dl.sender().contravariant_cast::<i64, i32>().is_err());
+        assert!(dl.sender().contravariant_cast::<i32, i64>().is_err());
     }
 }

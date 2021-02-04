@@ -40,7 +40,7 @@ use utilities::errors::Recoverable;
 use utilities::sync::{promise, topic};
 
 /// Trait defining the common operations supported by all downlinks.
-trait Downlink {
+pub trait Downlink {
     /// True when the downlink has terminated.
     fn is_stopped(&self) -> bool;
 
