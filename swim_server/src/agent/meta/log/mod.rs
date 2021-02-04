@@ -17,8 +17,7 @@ mod tests;
 
 use crate::agent::context::AgentExecutionContext;
 use crate::agent::lane::channels::AgentExecutionConfig;
-use crate::agent::lane::lifecycle::LifecycleBase;
-use crate::agent::lane::model::supply::{SupplyLane, SupplyLaneWatch};
+use crate::agent::lane::model::supply::SupplyLane;
 use crate::agent::lane::strategy::Dropping;
 use crate::agent::meta::{IdentifiedAgentIo, MetaNodeAddressed};
 use crate::agent::LaneIo;
@@ -136,6 +135,8 @@ impl Debug for LogHandler {
 #[cfg(test)]
 pub(crate) fn make_log_handler(uri: RelativeUri) -> LogHandler {
     let config = AgentExecutionConfig::default();
+    use crate::agent::lane::lifecycle::LifecycleBase;
+    use crate::agent::lane::model::supply::SupplyLaneWatch;
 
     LogHandler {
         uri,
