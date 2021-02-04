@@ -25,7 +25,6 @@ use crate::downlink::typed::{
     CommandDownlink, EventDownlink, MapDownlink, SchemaViolations, ValueDownlink,
 };
 use crate::downlink::watch_adapter::map::KeyedWatch;
-use crate::downlink::watch_adapter::value::ValuePump;
 use crate::downlink::{raw, Command, DownlinkError, Message};
 use crate::router::{Router, RouterEvent};
 use either::Either;
@@ -52,13 +51,14 @@ use swim_common::topic::Topic;
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::AbsolutePath;
 use swim_runtime::task::{spawn, TaskError, TaskHandle};
+use swim_warp::backpressure;
 use tokio::sync::mpsc::error::SendError;
 use tokio::sync::oneshot::error::RecvError;
 use tokio::sync::{mpsc, oneshot};
 use tracing::{error, info, instrument, trace_span};
 use utilities::future::{SwimFutureExt, TransformOnce, TransformedFuture, UntilFailure};
-use utilities::sync::promise;
 use utilities::sync::promise::PromiseError;
+use utilities::sync::{circular_buffer, promise};
 
 pub mod envelopes;
 #[cfg(test)]
@@ -616,8 +616,19 @@ where
             BackpressureMode::Propagate => {
                 value_downlink_for_sink(cmd_sink, init, schema, updates, &config)
             }
-            BackpressureMode::Release { yield_after, .. } => {
-                let pressure_release = ValuePump::new(cmd_sink.clone(), yield_after).await;
+            BackpressureMode::Release {
+                yield_after,
+                input_buffer_size,
+                ..
+            } => {
+                let (release_tx, release_rx) = circular_buffer::channel(input_buffer_size);
+
+                let release_task =
+                    backpressure::release_pressure(release_rx, cmd_sink.clone(), yield_after);
+                //TODO Use a Spawner instead.
+                swim_runtime::task::spawn(release_task);
+
+                let pressure_release = release_tx.map_err_into();
 
                 let either_sink = SplitSink::new(cmd_sink, pressure_release).comap(
                     move |cmd: Command<SharedValue>| match cmd {
@@ -665,7 +676,7 @@ where
         let (dl, rec) = match config.back_pressure {
             BackpressureMode::Propagate => {
                 let cmd_sink = item::for_mpsc_sender(sink).map_err_into().comap(
-                    move |cmd: Command<UntypedMapModification<Arc<Value>>>| {
+                    move |cmd: Command<UntypedMapModification<Value>>| {
                         envelopes::map_envelope(&sink_path, cmd).1.into()
                     },
                 );
@@ -679,12 +690,12 @@ where
             } => {
                 let sink_path_duplicate = sink_path.clone();
                 let direct_sink = item::for_mpsc_sender(sink.clone()).map_err_into().comap(
-                    move |cmd: Command<UntypedMapModification<Arc<Value>>>| {
+                    move |cmd: Command<UntypedMapModification<Value>>| {
                         envelopes::map_envelope(&sink_path_duplicate, cmd).1.into()
                     },
                 );
                 let action_sink = item::for_mpsc_sender(sink).map_err_into().comap(
-                    move |act: UntypedMapModification<Arc<Value>>| {
+                    move |act: UntypedMapModification<Value>| {
                         envelopes::map_envelope(&sink_path, Command::Action(act))
                             .1
                             .into()
@@ -702,7 +713,7 @@ where
 
                 let either_sink = SplitSink::new(direct_sink, pressure_release.into_item_sender())
                     .comap(
-                        move |cmd: Command<UntypedMapModification<Arc<Value>>>| match cmd {
+                        move |cmd: Command<UntypedMapModification<Value>>| match cmd {
                             Command::Action(act) => Either::Right(act),
                             ow => Either::Left(ow),
                         },
@@ -742,8 +753,18 @@ where
                 command_downlink_for_sink(cmd_sink, schema.clone(), &config)
             }
 
-            BackpressureMode::Release { yield_after, .. } => {
-                let pressure_release = ValuePump::new(cmd_sink.clone(), yield_after).await;
+            BackpressureMode::Release {
+                yield_after,
+                input_buffer_size,
+                ..
+            } => {
+                let (release_tx, release_rx) = circular_buffer::channel(input_buffer_size);
+
+                let release_task =
+                    backpressure::release_pressure(release_rx, cmd_sink.clone(), yield_after);
+                //TODO Use a Spawner instead.
+                swim_runtime::task::spawn(release_task);
+                let pressure_release = release_tx.map_err_into();
 
                 let either_sink =
                     SplitSink::new(cmd_sink, pressure_release).comap(move |cmd: Command<Value>| {
@@ -1178,7 +1199,7 @@ fn map_downlink_for_sink<Updates, Snk>(
 )
 where
     Updates: Stream<Item = MapItemResult> + Send + 'static,
-    Snk: ItemSender<Command<UntypedMapModification<Arc<Value>>>, RoutingError> + Send + 'static,
+    Snk: ItemSender<Command<UntypedMapModification<Value>>, RoutingError> + Send + 'static,
 {
     let dl_cmd_sink = cmd_sink.map_err_into();
     match config.mux_mode {

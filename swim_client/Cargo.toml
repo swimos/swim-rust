@@ -44,6 +44,7 @@ default-features = false
 [dependencies]
 utilities = { path = "../utilities" }
 swim_runtime = { path = "../swim_runtime" }
+swim_warp = { path = "../swim_warp" }
 
 pin-utils = "0.1.0"
 pin-project = "0.4.20"
