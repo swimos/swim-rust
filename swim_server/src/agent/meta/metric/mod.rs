@@ -30,7 +30,7 @@ use crate::agent::meta::metric::lane::LaneProfile;
 use crate::agent::meta::metric::node::NodeProfile;
 use crate::agent::meta::metric::sender::TransformedSender;
 use crate::agent::meta::metric::task::{CollectorStopResult, CollectorTask};
-use crate::agent::meta::metric::uplink::{UplinkObserver, UplinkSurjection, UplinkUplinkProfile};
+use crate::agent::meta::metric::uplink::{UplinkObserver, UplinkSurjection, WarpUplinkProfile};
 use crate::agent::meta::{IdentifiedAgentIo, MetaNodeAddressed};
 use crate::agent::LaneIo;
 use crate::agent::LaneTasks;
@@ -40,7 +40,6 @@ use pin_utils::core_reexport::fmt::Formatter;
 use std::fmt::Debug;
 use utilities::uri::RelativeUri;
 
-pub mod channel;
 pub mod config;
 pub mod lane;
 pub mod node;
@@ -55,9 +54,11 @@ mod tests;
 pub enum ObserverEvent {
     Node(NodeProfile),
     Lane(RelativePath, LaneProfile),
-    Uplink(RelativePath, UplinkUplinkProfile),
+    Uplink(RelativePath, WarpUplinkProfile),
 }
 
+/// An observer for node, lane and uplinks which generates profiles based on the events for the
+/// part. These events are aggregated and forwarded to their corresponding lanes as pulses.
 pub struct MetricCollector {
     observer: MetricObserver,
     _collector_task: JoinHandle<CollectorStopResult>,
@@ -89,6 +90,7 @@ impl MetricCollector {
         }
     }
 
+    /// Returns a handle which can be used to create uplink, lane, or node observers.
     pub fn observer(&self) -> MetricObserver {
         self.observer.clone()
     }
@@ -105,6 +107,7 @@ impl MetricObserver {
         MetricObserver { config, metric_tx }
     }
 
+    /// Returns a new `UplinkObserver` for the provided `address`.
     pub fn uplink_observer(&self, address: RelativePath) -> UplinkObserver {
         let MetricObserver { config, metric_tx } = self;
         let sender = TransformedSender::new(UplinkSurjection(address), metric_tx.clone());
@@ -113,15 +116,17 @@ impl MetricObserver {
     }
 }
 
+type PulseLaneOpenResult<Agent, Context> = (
+    HashMap<LaneIdentifier, SupplyLane<Value>>,
+    DynamicLaneTasks<Agent, Context>,
+    IdentifiedAgentIo<Context>,
+);
+
 pub fn open_pulse_lanes<Config, Agent, Context>(
     node_uri: RelativeUri,
     lanes: &[&String],
     config: &AgentExecutionConfig,
-) -> (
-    HashMap<LaneIdentifier, SupplyLane<Value>>,
-    DynamicLaneTasks<Agent, Context>,
-    IdentifiedAgentIo<Context>,
-)
+) -> PulseLaneOpenResult<Agent, Context>
 where
     Agent: SwimAgent<Config> + 'static,
     Context: AgentContext<Agent> + AgentExecutionContext + Send + Sync + 'static,
@@ -141,21 +146,20 @@ where
         ios.insert(identifier, io.expect("Lane returned private IO").boxed());
     };
 
-    let mut supply_lanes =
-        lanes
-            .into_iter()
-            .fold(HashMap::with_capacity(len), |mut map, lane_uri| {
-                make_lane(
-                    &mut map,
-                    lane_uri,
-                    MetaNodeAddressed::UplinkProfile {
-                        node_uri: node_uri.to_string().into(),
-                        lane_uri: lane_uri.to_string().into(),
-                    },
-                );
+    let mut supply_lanes = lanes
+        .iter()
+        .fold(HashMap::with_capacity(len), |mut map, lane_uri| {
+            make_lane(
+                &mut map,
+                lane_uri,
+                MetaNodeAddressed::UplinkProfile {
+                    node_uri: node_uri.to_string().into(),
+                    lane_uri: lane_uri.to_string().into(),
+                },
+            );
 
-                map
-            });
+            map
+        });
 
     make_lane(
         &mut supply_lanes,

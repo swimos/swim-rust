@@ -27,15 +27,18 @@ use swim_common::form::Form;
 use swim_common::model::Value;
 use utilities::sync::trigger;
 
-use crate::agent::lane::model::supply::SupplyLane;
+use crate::agent::lane::model::supply::{SupplyLane, TrySupplyError};
 use crate::agent::meta::metric::ObserverEvent;
 use crate::agent::meta::MetaNodeAddressed;
 use crate::routing::LaneIdentifier;
 
+const REMOVING_LANE: &str = "Lane closed, removing";
 const LANE_NOT_FOUND: &str = "Lane not found";
 const STOP_OK: &str = "Collector stopped normally";
 const STOP_CLOSED: &str = "Collector event stream unexpectedly closed";
 
+/// Collects all the profiles generated for a given node and forwards them to their corresponding
+/// supply lanes for consumption.
 pub struct CollectorTask {
     node_id: String,
     stop_rx: trigger::Receiver,
@@ -59,7 +62,6 @@ impl Display for CollectorStopResult {
 }
 
 impl CollectorTask {
-    // todo: accept collector task config
     pub fn new(
         node_id: String,
         stop_rx: trigger::Receiver,
@@ -91,13 +93,14 @@ impl CollectorTask {
         let stop_code = loop {
             let event: Option<ObserverEvent> = select! {
                 _ = fused_trigger => {
-                    event!(Level::WARN, %node_id, STOP_CLOSED);
+                    event!(Level::WARN, %node_id, STOP_OK);
                     break CollectorStopResult::Normal;
                 },
                 metric = fused_metric_rx.next() => metric,
             };
             match event {
                 None => {
+                    event!(Level::WARN, %node_id, STOP_CLOSED);
                     break CollectorStopResult::Abnormal;
                 }
                 Some(event) => {
@@ -113,8 +116,8 @@ impl CollectorTask {
                         }
                         ObserverEvent::Uplink(address, profile) => (
                             LaneIdentifier::meta(MetaNodeAddressed::UplinkProfile {
-                                node_uri: address.node.into(),
-                                lane_uri: address.lane.into(),
+                                node_uri: address.node,
+                                lane_uri: address.lane,
                             }),
                             profile.into_value(),
                         ),
@@ -137,17 +140,15 @@ impl CollectorTask {
 }
 
 fn forward(
-    lanes: &HashMap<LaneIdentifier, SupplyLane<Value>>,
+    lanes: &mut HashMap<LaneIdentifier, SupplyLane<Value>>,
     address: LaneIdentifier,
     profile: Value,
 ) {
     match lanes.get(&address) {
         Some(supply_lane) => {
-            match supply_lane.try_send(profile) {
-                Ok(()) => {}
-                Err(_) => {
-                    // no subscribers
-                }
+            if let Err(TrySupplyError::Closed) = supply_lane.try_send(profile) {
+                event!(Level::ERROR, %address, REMOVING_LANE);
+                let _ = lanes.remove(&address);
             }
         }
         None => {

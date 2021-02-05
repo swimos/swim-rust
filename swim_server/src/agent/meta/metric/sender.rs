@@ -66,7 +66,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agent::meta::metric::uplink::{UplinkSurjection, UplinkUplinkProfile};
+    use crate::agent::meta::metric::uplink::{UplinkSurjection, WarpUplinkProfile};
     use swim_common::warp::path::RelativePath;
 
     #[tokio::test]
@@ -74,7 +74,7 @@ mod tests {
         let path = RelativePath::new("/node", "/lane");
         let (tx, rx) = mpsc::channel(1);
         let sender = TransformedSender::new(UplinkSurjection(path.clone()), tx);
-        let profile = UplinkUplinkProfile::default();
+        let profile = WarpUplinkProfile::default();
 
         drop(rx);
 

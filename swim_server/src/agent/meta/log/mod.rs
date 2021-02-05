@@ -29,6 +29,7 @@ use std::fmt::{Debug, Formatter};
 use swim_common::form::{Form, Tag};
 use swim_common::model::time::Timestamp;
 use swim_common::model::Value;
+use tracing::{event, Level};
 use utilities::uri::RelativeUri;
 
 pub const TRACE_URI: &str = "traceLog";
@@ -37,6 +38,8 @@ pub const INFO_URI: &str = "infoLog";
 pub const WARN_URI: &str = "warnLog";
 pub const ERROR_URI: &str = "errorLog";
 pub const FAIL_URI: &str = "failLog";
+
+const LOG_FAIL: &str = "Failed to send log message";
 
 #[derive(Copy, Clone, Debug, Tag, Eq, PartialEq, Hash)]
 pub enum LogLevel {
@@ -151,15 +154,19 @@ impl LogHandler {
     pub fn log<E: Form>(&self, entry: E, level: LogLevel) {
         let entry = LogEntry::make(entry, level, self.uri.clone());
 
-        let _result = match level {
-            LogLevel::Trace => self.trace_lane.send(entry),
-            LogLevel::Debug => self.debug_lane.send(entry),
-            LogLevel::Info => self.info_lane.send(entry),
-            LogLevel::Warn => self.warn_lane.send(entry),
-            LogLevel::Error => self.error_lane.send(entry),
-            LogLevel::Fail => self.fail_lane.send(entry),
+        let result = match level {
+            LogLevel::Trace => self.trace_lane.try_send(entry),
+            LogLevel::Debug => self.debug_lane.try_send(entry),
+            LogLevel::Info => self.info_lane.try_send(entry),
+            LogLevel::Warn => self.warn_lane.try_send(entry),
+            LogLevel::Error => self.error_lane.try_send(entry),
+            LogLevel::Fail => self.fail_lane.try_send(entry),
         };
-        // todo log result
+
+        if result.is_err() {
+            let uri = &self.uri;
+            event!(Level::WARN, %uri, LOG_FAIL);
+        }
     }
 }
 

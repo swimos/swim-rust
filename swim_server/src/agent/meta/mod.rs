@@ -191,7 +191,6 @@ where
     tasks.extend(pulse_tasks);
     ios.extend(pulse_ios);
 
-    // todo: provide config as argument
     let metrics = MetricCollector::new(uri.to_string(), stop_rx, Default::default(), pulse_lanes);
     let meta_context = MetaContext::new(log_handler, info_handler, metrics);
 

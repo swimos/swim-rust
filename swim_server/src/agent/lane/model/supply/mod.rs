@@ -44,11 +44,11 @@ where
         }
     }
 
-    pub async fn send(&self, value: T) -> Result<(), ()> {
+    pub async fn send(&self, value: T) -> Result<(), SupplyError> {
         self.sender.supply(value).await
     }
 
-    pub fn try_send(&self, value: T) -> Result<(), ()> {
+    pub fn try_send(&self, value: T) -> Result<(), TrySupplyError> {
         self.sender.try_supply(value)
     }
 }

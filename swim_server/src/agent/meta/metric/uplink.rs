@@ -22,7 +22,7 @@ use crate::agent::meta::metric::ObserverEvent;
 use std::mem::replace;
 
 #[derive(Default, Form, Clone, PartialEq, Debug)]
-pub struct UplinkUplinkProfile {
+pub struct WarpUplinkProfile {
     pub event_delta: i32,
     pub event_rate: u64,
     pub event_count: u64,
@@ -31,9 +31,29 @@ pub struct UplinkUplinkProfile {
     pub command_count: u64,
 }
 
-impl UplinkUplinkProfile {
+impl WarpUplinkProfile {
+    pub fn new(
+        event_delta: i32,
+        event_rate: u64,
+        event_count: u64,
+        command_delta: i32,
+        command_rate: u64,
+        command_count: u64,
+    ) -> Self {
+        WarpUplinkProfile {
+            event_delta,
+            event_rate,
+            event_count,
+            command_delta,
+            command_rate,
+            command_count,
+        }
+    }
+}
+
+impl WarpUplinkProfile {
     fn build(&mut self, last_report: &Instant) {
-        let UplinkUplinkProfile {
+        let WarpUplinkProfile {
             event_delta,
             event_rate,
             event_count,
@@ -56,29 +76,29 @@ impl UplinkUplinkProfile {
 }
 
 pub struct UplinkSurjection(pub RelativePath);
-impl Surjection<UplinkUplinkProfile> for UplinkSurjection {
-    fn onto(&self, input: UplinkUplinkProfile) -> ObserverEvent {
+impl Surjection<WarpUplinkProfile> for UplinkSurjection {
+    fn onto(&self, input: WarpUplinkProfile) -> ObserverEvent {
         ObserverEvent::Uplink(self.0.clone(), input)
     }
 }
 
 pub struct UplinkObserver {
-    sender: TransformedSender<UplinkSurjection, UplinkUplinkProfile>,
+    sender: TransformedSender<UplinkSurjection, WarpUplinkProfile>,
     last_report: Instant,
     report_interval: Duration,
-    profile: UplinkUplinkProfile,
+    profile: WarpUplinkProfile,
 }
 
 impl UplinkObserver {
     pub fn new(
-        sender: TransformedSender<UplinkSurjection, UplinkUplinkProfile>,
+        sender: TransformedSender<UplinkSurjection, WarpUplinkProfile>,
         report_interval: Duration,
     ) -> UplinkObserver {
         UplinkObserver {
             sender,
             last_report: Instant::now(),
             report_interval,
-            profile: UplinkUplinkProfile::default(),
+            profile: WarpUplinkProfile::default(),
         }
     }
 
@@ -93,13 +113,8 @@ impl UplinkObserver {
         if last_report.elapsed() > *report_interval {
             profile.build(last_report);
 
-            match sender.try_send(profile.clone()) {
-                Ok(()) => {
-                    *last_report = Instant::now();
-                }
-                Err(_) => {
-                    // agent has been stopped or a capacity limit has been reached
-                }
+            if let Ok(()) = sender.try_send(profile.clone()) {
+                *last_report = Instant::now();
             }
         }
     }
@@ -126,7 +141,7 @@ mod tests {
         let path = RelativePath::new("/node", "/lane");
         let (tx, mut rx) = mpsc::channel(1);
         let sender = TransformedSender::new(UplinkSurjection(path.clone()), tx);
-        let profile = UplinkUplinkProfile::default();
+        let profile = WarpUplinkProfile::default();
 
         assert!(sender.try_send(profile.clone()).is_ok());
         assert_eq!(

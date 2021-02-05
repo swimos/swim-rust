@@ -12,13 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::lane::channels::AgentExecutionConfig;
+use std::num::NonZeroUsize;
+
 use futures::future::{ready, BoxFuture};
 use futures::{FutureExt, TryFutureExt};
-use std::num::NonZeroUsize;
-use swim_common::topic::{MpscTopic, Topic, WatchTopic};
 use tokio::sync::{mpsc, watch};
-use utilities::errors::SwimResultExt;
+
+use swim_common::topic::{MpscTopic, Topic, WatchTopic};
+
+use crate::agent::lane::channels::AgentExecutionConfig;
+use tokio::sync::mpsc::error::TrySendError as MpscTrySendError;
+use tokio::sync::watch::error::SendError as WatchSendError;
 
 #[derive(Debug, PartialEq, Eq, Clone, Default)]
 pub struct Dropping;
@@ -30,6 +34,34 @@ const DEFAULT_BUFFER: usize = 10;
 
 fn default_buffer() -> NonZeroUsize {
     NonZeroUsize::new(DEFAULT_BUFFER).unwrap()
+}
+
+pub struct SupplyError;
+
+pub enum TrySupplyError {
+    Closed,
+    Capacity,
+}
+
+impl<T> From<MpscTrySendError<T>> for TrySupplyError {
+    fn from(e: MpscTrySendError<T>) -> Self {
+        match e {
+            MpscTrySendError::Closed(_) => TrySupplyError::Closed,
+            MpscTrySendError::Full(_) => TrySupplyError::Capacity,
+        }
+    }
+}
+
+impl<T> From<WatchSendError<T>> for TrySupplyError {
+    fn from(_: WatchSendError<T>) -> Self {
+        TrySupplyError::Closed
+    }
+}
+
+impl From<TrySupplyError> for SupplyError {
+    fn from(_: TrySupplyError) -> Self {
+        SupplyError
+    }
 }
 
 impl Default for Queue {
@@ -54,21 +86,21 @@ pub trait Supplier<T>
 where
     T: Send + Sync + 'static,
 {
-    fn try_supply(&self, item: T) -> Result<(), ()>;
+    fn try_supply(&self, item: T) -> Result<(), TrySupplyError>;
 
-    fn supply(&self, item: T) -> BoxFuture<Result<(), ()>>;
+    fn supply(&self, item: T) -> BoxFuture<Result<(), SupplyError>>;
 }
 
 impl<T> Supplier<T> for mpsc::Sender<T>
 where
     T: Send + Sync + 'static,
 {
-    fn try_supply(&self, item: T) -> Result<(), ()> {
-        self.try_send(item).discard_err()
+    fn try_supply(&self, item: T) -> Result<(), TrySupplyError> {
+        self.try_send(item).map_err(Into::into)
     }
 
-    fn supply(&self, item: T) -> BoxFuture<Result<(), ()>> {
-        self.send(item).map_err(|_| ()).boxed()
+    fn supply(&self, item: T) -> BoxFuture<Result<(), SupplyError>> {
+        self.send(item).map_err(|_| SupplyError).boxed()
     }
 }
 
@@ -92,12 +124,12 @@ impl<T> Supplier<T> for WatchSupplier<T>
 where
     T: Send + Sync + 'static,
 {
-    fn try_supply(&self, item: T) -> Result<(), ()> {
-        self.0.send(Some(item)).discard_err()
+    fn try_supply(&self, item: T) -> Result<(), TrySupplyError> {
+        self.0.send(Some(item)).map_err(Into::into)
     }
 
-    fn supply(&self, item: T) -> BoxFuture<Result<(), ()>> {
-        ready(self.try_supply(item)).boxed()
+    fn supply(&self, item: T) -> BoxFuture<Result<(), SupplyError>> {
+        ready(self.try_supply(item).map_err(Into::into)).boxed()
     }
 }
 

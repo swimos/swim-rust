@@ -27,7 +27,7 @@ use swim_common::routing::SendError;
 use swim_common::routing::{ConnectionError, ResolutionError};
 use swim_common::warp::envelope::{Envelope, EnvelopeHeader, OutgoingLinkMessage};
 use tokio::sync::oneshot;
-use utilities::errors::{Recoverable, SwimResultExt};
+use utilities::errors::Recoverable;
 use utilities::sync::promise;
 use utilities::uri::RelativeUri;
 
@@ -313,16 +313,28 @@ impl TaggedEnvelope {
         TaggedEnvelope::AgentMetaEnvelope(meta)
     }
 
-    pub fn split_outgoing(self) -> Result<(RoutingAddr, OutgoingLinkMessage, LaneIdentifier), ()> {
+    pub fn split_outgoing(
+        self,
+    ) -> Result<(RoutingAddr, OutgoingLinkMessage, LaneIdentifier), TaggedEnvelope> {
         match self {
             TaggedEnvelope::AgentMetaEnvelope(TaggedMetaEnvelope(addr, envelope, meta)) => {
-                let envelope = envelope.into_outgoing().discard_err()?;
-                Ok((addr, envelope, LaneIdentifier::Meta(meta)))
+                match envelope.into_outgoing() {
+                    Ok(envelope) => Ok((addr, envelope, LaneIdentifier::Meta(meta))),
+                    Err(envelope) => Err(TaggedEnvelope::AgentMetaEnvelope(TaggedMetaEnvelope(
+                        addr, envelope, meta,
+                    ))),
+                }
             }
             TaggedEnvelope::AgentEnvelope(TaggedAgentEnvelope(addr, envelope)) => {
-                let envelope = envelope.into_outgoing().discard_err()?;
-                let path = envelope.path.lane.to_string();
-                Ok((addr, envelope, LaneIdentifier::Agent(path)))
+                match envelope.into_outgoing() {
+                    Ok(envelope) => {
+                        let path = envelope.path.lane.to_string();
+                        Ok((addr, envelope, LaneIdentifier::Agent(path)))
+                    }
+                    Err(envelope) => Err(TaggedEnvelope::AgentEnvelope(TaggedAgentEnvelope(
+                        addr, envelope,
+                    ))),
+                }
             }
         }
     }
