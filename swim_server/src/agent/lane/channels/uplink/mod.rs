@@ -16,7 +16,8 @@ use crate::agent::lane::channels::uplink::backpressure::{
     KeyedBackpressureConfig, SimpleBackpressureConfig,
 };
 use crate::agent::lane::channels::uplink::map::MapLaneSyncError;
-use crate::agent::lane::model::demand_map::{DemandMapLane, DemandMapLaneUpdate};
+use crate::agent::lane::model::demand_map::DemandMapLane;
+use crate::agent::lane::model::demand_map::DemandMapLaneEvent;
 use crate::agent::lane::model::map::{make_update, MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::ValueLane;
 use crate::routing::{RoutingAddr, TaggedSender};
@@ -784,17 +785,17 @@ where
     }
 }
 
-impl<Key, Value> UplinkStateMachine<DemandMapLaneUpdate<Key, Value>>
+impl<Key, Value> UplinkStateMachine<DemandMapLaneEvent<Key, Value>>
     for DemandMapLaneUplink<Key, Value>
 where
     Key: Any + Clone + Form + Send + Sync + Debug,
     Value: Any + Clone + Form + Send + Sync + Debug,
 {
-    type Msg = DemandMapLaneUpdate<Key, Value>;
+    type Msg = DemandMapLaneEvent<Key, Value>;
 
     fn message_for(
         &self,
-        event: DemandMapLaneUpdate<Key, Value>,
+        event: DemandMapLaneEvent<Key, Value>,
     ) -> Result<Option<Self::Msg>, UplinkError> {
         Ok(Some(event))
     }
@@ -804,7 +805,7 @@ where
         updates: &'a mut Updates,
     ) -> BoxStream<'a, PeelResult<'a, Updates, Result<Self::Msg, UplinkError>>>
     where
-        Updates: FusedStream<Item = DemandMapLaneUpdate<Key, Value>> + Send + Unpin + 'a,
+        Updates: FusedStream<Item = DemandMapLaneEvent<Key, Value>> + Send + Unpin + 'a,
     {
         let DemandMapLaneUplink { lane, .. } = self;
 

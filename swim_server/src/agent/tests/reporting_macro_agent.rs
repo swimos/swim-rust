@@ -311,7 +311,8 @@ impl DemandLifecycle {
     key_type = "String",
     value_type = "i32",
     on_sync,
-    on_cue
+    on_cue,
+    on_remove
 )]
 struct DemandMapLifecycle {
     event_handler: EventCollectorHandler,
@@ -360,6 +361,16 @@ impl DemandMapLifecycle {
                 None
             }
         }
+    }
+
+    async fn on_remove<Context>(
+        &self,
+        _model: &DemandMapLane<String, i32>,
+        _context: &Context,
+        _key: String,
+    ) where
+        Context: AgentContext<ReportingAgent> + Sized + Send + Sync,
+    {
     }
 }
 

@@ -30,7 +30,7 @@ use crate::agent::lane::channels::{
     AgentExecutionConfig, InputMessage, LaneMessageHandler, OutputMessage, TaggedAction,
 };
 use crate::agent::lane::model::action::ActionLane;
-use crate::agent::lane::model::demand_map::{DemandMapLane, DemandMapLaneUpdate};
+use crate::agent::lane::model::demand_map::{DemandMapLane, DemandMapLaneEvent};
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::ValueLane;
 use crate::agent::lane::model::DeferredSubscription;
@@ -947,7 +947,7 @@ where
     Key: Any + Clone + Form + Send + Sync + Debug,
     Value: Any + Clone + Form + Send + Sync + Debug,
 {
-    type Event = DemandMapLaneUpdate<Key, Value>;
+    type Event = DemandMapLaneEvent<Key, Value>;
     type Uplink = DemandMapLaneUplink<Key, Value>;
     type Update = DemandMapLaneUpdateTask<Value>;
 
