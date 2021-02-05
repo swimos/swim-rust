@@ -311,7 +311,8 @@ impl DemandLifecycle {
     key_type = "String",
     value_type = "i32",
     on_sync,
-    on_cue
+    on_cue,
+    on_remove
 )]
 struct DemandMapLifecycle {
     event_handler: EventCollectorHandler,
