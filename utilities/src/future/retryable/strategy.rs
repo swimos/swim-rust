@@ -149,7 +149,7 @@ impl Iterator for RetryStrategy {
                 strategy.retry_no += 1;
 
                 // Thread local RNG is used as it will live for the duration of the retry strategy
-                let wait = rand::thread_rng().gen_range(0, 1000);
+                let wait = rand::thread_rng().gen_range(0..=1000);
                 let duration = Duration::from_millis((2 ^ strategy.retry_no) + wait);
                 let sleep_time = std::cmp::min(duration, strategy.max_interval);
 

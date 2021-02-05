@@ -46,13 +46,13 @@ utilities = { path = "../utilities" }
 swim_runtime = { path = "../swim_runtime" }
 
 pin-utils = "0.1.0"
-pin-project = "0.4.20"
+pin-project = "1.0.5"
 either = "1.5.3"
 futures = "0.3.4"
 futures-util = "0.3.4"
 im = "15.0.0"
 url = "2.1.1"
-rand = "0.7.3"
+rand = "0.8.3"
 tracing-subscriber = "0.2.11"
 tracing-futures = "0.2.4"
 tokio = { version = "0.3.3", features = ["sync", "stream", "rt", "macros", "time"] }
