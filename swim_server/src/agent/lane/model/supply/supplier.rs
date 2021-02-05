@@ -16,22 +16,16 @@ use crate::agent::lane::channels::AgentExecutionConfig;
 use futures::future::{ready, BoxFuture};
 use futures::{FutureExt, TryFutureExt};
 use std::num::NonZeroUsize;
-use swim_common::topic::{BroadcastSender, BroadcastTopic, MpscTopic, Topic, WatchTopic};
-use tokio::sync::{broadcast, mpsc, watch};
+use swim_common::topic::{MpscTopic, Topic, WatchTopic};
+use tokio::sync::{mpsc, watch};
 use utilities::errors::SwimResultExt;
 
 #[derive(Debug, PartialEq, Eq, Clone, Default)]
 pub struct Dropping;
 
-/// Push lane events into a bounded queue.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Queue(pub NonZeroUsize);
 
-/// Publish the latest lane events to a bounded buffer.
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub struct Buffered(pub NonZeroUsize);
-
-/// The default buffer size for the [`Queue`] and [`Buffered`] strategies.
 const DEFAULT_BUFFER: usize = 10;
 
 fn default_buffer() -> NonZeroUsize {
@@ -44,22 +38,22 @@ impl Default for Queue {
     }
 }
 
-impl Default for Buffered {
-    fn default() -> Self {
-        Buffered(default_buffer())
-    }
-}
-
 pub type BoxSupplier<T> = Box<dyn Supplier<T> + Send + Sync + 'static>;
 
-pub trait SupplyLaneWatch<T: Clone> {
+pub trait SupplyLaneWatch<T: Clone>
+where
+    T: Send + Sync + 'static,
+{
     type Sender: Supplier<T> + Send + Sync + 'static;
     type Topic: Topic<T> + Send + Sync + 'static;
 
     fn make_watch(&self, config: &AgentExecutionConfig) -> (Self::Sender, Self::Topic);
 }
 
-pub trait Supplier<T> {
+pub trait Supplier<T>
+where
+    T: Send + Sync + 'static,
+{
     fn try_supply(&self, item: T) -> Result<(), ()>;
 
     fn supply(&self, item: T) -> BoxFuture<Result<(), ()>>;
@@ -67,7 +61,7 @@ pub trait Supplier<T> {
 
 impl<T> Supplier<T> for mpsc::Sender<T>
 where
-    T: Send + Sync,
+    T: Send + Sync + 'static,
 {
     fn try_supply(&self, item: T) -> Result<(), ()> {
         self.try_send(item).discard_err()
@@ -94,7 +88,10 @@ where
     }
 }
 
-impl<T> Supplier<T> for WatchSupplier<T> {
+impl<T> Supplier<T> for WatchSupplier<T>
+where
+    T: Send + Sync + 'static,
+{
     fn try_supply(&self, item: T) -> Result<(), ()> {
         self.0.send(Some(item)).discard_err()
     }
@@ -118,43 +115,5 @@ where
         let (topic, _rec) = WatchTopic::new(rx);
 
         (WatchSupplier(tx), topic)
-    }
-}
-
-impl<T> Supplier<T> for broadcast::Sender<T> {
-    fn try_supply(&self, item: T) -> Result<(), ()> {
-        self.send(item).discard()
-    }
-
-    fn supply(&self, item: T) -> BoxFuture<Result<(), ()>> {
-        ready(self.try_supply(item)).boxed()
-    }
-}
-
-impl<T> Supplier<T> for BroadcastSender<T>
-where
-    T: Clone + Send + Sync + 'static,
-{
-    fn try_supply(&self, item: T) -> Result<(), ()> {
-        self.send(item).discard()
-    }
-
-    fn supply(&self, item: T) -> BoxFuture<Result<(), ()>> {
-        ready(self.try_supply(item)).boxed()
-    }
-}
-
-impl<T> SupplyLaneWatch<T> for Buffered
-where
-    T: Clone + Send + Sync + 'static,
-{
-    type Sender = BroadcastSender<T>;
-    type Topic = BroadcastTopic<T>;
-
-    fn make_watch(&self, _config: &AgentExecutionConfig) -> (Self::Sender, Self::Topic) {
-        let Buffered(size) = self;
-        let (topic, tx, _) = BroadcastTopic::new(size.get());
-
-        (tx, topic)
     }
 }

@@ -15,7 +15,7 @@
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lane::model::supply::{make_lane_model, Dropping};
 use crate::agent::meta::metric::task::{CollectorStopResult, CollectorTask};
-use crate::agent::meta::metric::uplink::UplinkProfile;
+use crate::agent::meta::metric::uplink::UplinkUplinkProfile;
 use crate::agent::meta::metric::ObserverEvent;
 use crate::agent::meta::MetaNodeAddressed;
 use crate::routing::LaneIdentifier;
@@ -23,7 +23,6 @@ use futures::future::join;
 use futures::StreamExt;
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
-use std::time::Duration;
 use swim_common::form::Form;
 use swim_common::topic::Topic;
 use swim_common::warp::path::RelativePath;
@@ -36,7 +35,6 @@ async fn test_delivery() {
     let mut supply_rx = topic.subscribe().await.unwrap();
 
     let (metric_tx, metric_rx) = mpsc::channel(1);
-    let prune_frequency = Duration::from_secs(1);
     let (trigger_tx, trigger_rx) = trigger::trigger();
     let ident = LaneIdentifier::meta(MetaNodeAddressed::UplinkProfile {
         node_uri: "/node".into(),
@@ -45,16 +43,10 @@ async fn test_delivery() {
     let mut lanes = HashMap::new();
     lanes.insert(ident, supply_lane);
 
-    let task = CollectorTask::new(
-        "/node".to_string(),
-        trigger_rx,
-        metric_rx,
-        prune_frequency,
-        lanes,
-    );
+    let task = CollectorTask::new("/node".to_string(), trigger_rx, metric_rx, lanes);
 
     let send_task = async move {
-        let profile = UplinkProfile::default();
+        let profile = UplinkUplinkProfile::default();
         let profile_value = profile.as_value();
 
         assert!(metric_tx

@@ -19,47 +19,66 @@ use swim_common::warp::path::RelativePath;
 
 use crate::agent::meta::metric::sender::{Surjection, TransformedSender};
 use crate::agent::meta::metric::ObserverEvent;
+use std::mem::replace;
 
 #[derive(Default, Form, Clone, PartialEq, Debug)]
-pub struct UplinkProfile {
+pub struct UplinkUplinkProfile {
     pub event_delta: i32,
-    pub event_rate: i32,
-    pub event_count: i64,
+    pub event_rate: u64,
+    pub event_count: u64,
     pub command_delta: i32,
-    pub command_rate: i32,
-    pub command_count: i64,
+    pub command_rate: u64,
+    pub command_count: u64,
 }
 
-impl UplinkProfile {
-    fn build(&mut self) {
-        // todo
+impl UplinkUplinkProfile {
+    fn build(&mut self, last_report: &Instant) {
+        let UplinkUplinkProfile {
+            event_delta,
+            event_rate,
+            event_count,
+            command_delta,
+            command_rate,
+            command_count,
+        } = self;
+
+        let now = Instant::now();
+        let dt = now.duration_since(*last_report).as_millis() as u64;
+
+        let event_delta = replace(event_delta, 0);
+        *event_rate = ((event_delta * 1000) as u64 / dt) as u64;
+        *event_count = event_count.wrapping_add(event_delta as u64);
+
+        let command_delta = replace(command_delta, 0);
+        *command_rate = ((command_delta * 1000) as u64 / dt) as u64;
+        *command_count = command_count.wrapping_add(command_delta as u64);
     }
 }
 
 pub struct UplinkSurjection(pub RelativePath);
-impl Surjection<UplinkProfile> for UplinkSurjection {
-    fn onto(&self, input: UplinkProfile) -> ObserverEvent {
+impl Surjection<UplinkUplinkProfile> for UplinkSurjection {
+    fn onto(&self, input: UplinkUplinkProfile) -> ObserverEvent {
         ObserverEvent::Uplink(self.0.clone(), input)
     }
 }
 
 pub struct UplinkObserver {
-    sender: TransformedSender<UplinkSurjection, UplinkProfile>,
+    sender: TransformedSender<UplinkSurjection, UplinkUplinkProfile>,
     last_report: Instant,
     report_interval: Duration,
-    profile: UplinkProfile,
+    profile: UplinkUplinkProfile,
 }
 
 impl UplinkObserver {
     pub fn new(
-        sender: TransformedSender<UplinkSurjection, UplinkProfile>,
+        sender: TransformedSender<UplinkSurjection, UplinkUplinkProfile>,
         report_interval: Duration,
     ) -> UplinkObserver {
         UplinkObserver {
             sender,
             last_report: Instant::now(),
             report_interval,
-            profile: UplinkProfile::default(),
+            profile: UplinkUplinkProfile::default(),
         }
     }
 
@@ -72,7 +91,7 @@ impl UplinkObserver {
         } = self;
 
         if last_report.elapsed() > *report_interval {
-            profile.build();
+            profile.build(last_report);
 
             match sender.try_send(profile.clone()) {
                 Ok(()) => {
@@ -107,7 +126,7 @@ mod tests {
         let path = RelativePath::new("/node", "/lane");
         let (tx, mut rx) = mpsc::channel(1);
         let sender = TransformedSender::new(UplinkSurjection(path.clone()), tx);
-        let profile = UplinkProfile::default();
+        let profile = UplinkUplinkProfile::default();
 
         assert!(sender.try_send(profile.clone()).is_ok());
         assert_eq!(

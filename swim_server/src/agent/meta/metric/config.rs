@@ -23,8 +23,6 @@ pub struct MetricCollectorConfig {
     pub buffer_size: NonZeroUsize,
     /// The number of events to process before yielding execution back to the runtime.
     pub yield_after: NonZeroUsize,
-    /// How often to check for dropped routes.
-    pub prune_frequency: Duration,
 }
 
 impl Default for MetricCollectorConfig {
@@ -33,7 +31,6 @@ impl Default for MetricCollectorConfig {
             sample_rate: Duration::from_secs(1),
             buffer_size: NonZeroUsize::new(10).unwrap(),
             yield_after: NonZeroUsize::new(256).unwrap(),
-            prune_frequency: Duration::from_secs(30),
         }
     }
 }

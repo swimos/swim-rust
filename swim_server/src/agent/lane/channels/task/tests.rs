@@ -24,7 +24,7 @@ use crate::agent::lane::channels::{
 };
 use crate::agent::lane::model::action::{Action, ActionLane};
 use crate::agent::lane::model::DeferredSubscription;
-use crate::agent::meta::metric::MetricObserver;
+use crate::agent::meta::metric::{MetricCollector, MetricObserver};
 use crate::agent::Eff;
 use crate::routing::error::RouterError;
 use crate::routing::{
@@ -315,6 +315,7 @@ struct TestContext {
     trigger: Arc<Mutex<Option<trigger::Sender>>>,
     _drop_tx: Arc<promise::Sender<ConnectionDropped>>,
     drop_rx: promise::Receiver<ConnectionDropped>,
+    metrics: Arc<MetricCollector>,
 }
 
 impl TestContext {
@@ -391,7 +392,7 @@ impl AgentExecutionContext for TestContext {
     }
 
     fn metrics(&self) -> MetricObserver {
-        panic!("Unexpected metric observer request")
+        self.metrics.observer()
     }
 }
 
@@ -514,12 +515,20 @@ fn make_context() -> (
 
     let (drop_tx, drop_rx) = promise::promise();
 
+    let metrics = MetricCollector::new(
+        "/node".to_string(),
+        stop_rx.clone(),
+        Default::default(),
+        Default::default(),
+    );
+
     let context = TestContext {
         scheduler: spawn_tx,
         messages: router_tx,
         trigger: Arc::new(Mutex::new(Some(stop_tx))),
         _drop_tx: Arc::new(drop_tx),
         drop_rx,
+        metrics: Arc::new(metrics),
     };
     let spawn_task = spawn_rx
         .take_until(stop_rx)
@@ -1244,15 +1253,24 @@ impl MultiTestContextInner {
 struct MultiTestContext(
     Arc<parking_lot::Mutex<MultiTestContextInner>>,
     mpsc::Sender<Eff>,
+    Arc<MetricCollector>,
 );
 
 impl MultiTestContext {
     fn new(router_addr: RoutingAddr, spawner: mpsc::Sender<Eff>) -> Self {
+        let metrics = MetricCollector::new(
+            "/node".to_string(),
+            trigger::trigger().1,
+            Default::default(),
+            Default::default(),
+        );
+
         MultiTestContext(
             Arc::new(parking_lot::Mutex::new(MultiTestContextInner::new(
                 router_addr,
             ))),
             spawner,
+            Arc::new(metrics),
         )
     }
 
@@ -1288,7 +1306,7 @@ impl AgentExecutionContext for MultiTestContext {
     }
 
     fn metrics(&self) -> MetricObserver {
-        panic!("Unexpected metric observer request")
+        self.2.observer()
     }
 }
 

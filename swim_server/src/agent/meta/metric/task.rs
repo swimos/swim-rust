@@ -21,12 +21,10 @@ use futures::FutureExt;
 use futures::StreamExt;
 use pin_utils::core_reexport::fmt::Formatter;
 use tokio::sync::mpsc;
-use tokio::time::Duration;
 use tracing::{event, Level};
 
 use swim_common::form::Form;
 use swim_common::model::Value;
-use swim_runtime::time::delay::delay_for;
 use utilities::sync::trigger;
 
 use crate::agent::lane::model::supply::SupplyLane;
@@ -34,15 +32,14 @@ use crate::agent::meta::metric::ObserverEvent;
 use crate::agent::meta::MetaNodeAddressed;
 use crate::routing::LaneIdentifier;
 
-// const REQ_TX_ERR: &str = "Failed to return requested profile";
-// const REMOVE_ERR: &str = "Attempted to deregister a metric that wasn't registered";
 const LANE_NOT_FOUND: &str = "Lane not found";
+const STOP_OK: &str = "Collector stopped normally";
+const STOP_CLOSED: &str = "Collector event stream unexpectedly closed";
 
 pub struct CollectorTask {
     node_id: String,
     stop_rx: trigger::Receiver,
     metric_rx: mpsc::Receiver<ObserverEvent>,
-    prune_frequency: Duration,
     lanes: HashMap<LaneIdentifier, SupplyLane<Value>>,
 }
 
@@ -61,25 +58,18 @@ impl Display for CollectorStopResult {
     }
 }
 
-enum CollectorEvent {
-    ObserverEvent(ObserverEvent),
-    Prune,
-}
-
 impl CollectorTask {
     // todo: accept collector task config
     pub fn new(
         node_id: String,
         stop_rx: trigger::Receiver,
         metric_rx: mpsc::Receiver<ObserverEvent>,
-        prune_frequency: Duration,
         lanes: HashMap<LaneIdentifier, SupplyLane<Value>>,
     ) -> CollectorTask {
         CollectorTask {
             node_id,
             stop_rx,
             metric_rx,
-            prune_frequency,
             lanes,
         }
     }
@@ -89,30 +79,28 @@ impl CollectorTask {
             node_id,
             stop_rx,
             metric_rx,
-            prune_frequency,
             mut lanes,
         } = self;
 
         let mut fused_metric_rx = metric_rx.fuse();
         let mut fused_trigger = stop_rx.fuse();
-        let mut fused_prune = delay_for(prune_frequency).fuse();
-
         let mut iteration_count: usize = 0;
+
         let yield_mod = yield_after.get();
 
         let stop_code = loop {
-            let event: Option<CollectorEvent> = select! {
-                _ = fused_prune => Some(CollectorEvent::Prune),
+            let event: Option<ObserverEvent> = select! {
                 _ = fused_trigger => {
+                    event!(Level::WARN, %node_id, STOP_CLOSED);
                     break CollectorStopResult::Normal;
                 },
-                metric = fused_metric_rx.next() => metric.map(CollectorEvent::ObserverEvent),
+                metric = fused_metric_rx.next() => metric,
             };
             match event {
                 None => {
                     break CollectorStopResult::Abnormal;
                 }
-                Some(CollectorEvent::ObserverEvent(event)) => {
+                Some(event) => {
                     let (address, profile_value) = match event {
                         ObserverEvent::Node(profile) => (
                             LaneIdentifier::meta(MetaNodeAddressed::NodeProfile {
@@ -134,9 +122,6 @@ impl CollectorTask {
 
                     forward(&mut lanes, address, profile_value);
                 }
-                Some(CollectorEvent::Prune) => {
-                    // todo: prune routes where the drop promise has been satisfied
-                }
             }
 
             iteration_count = iteration_count.wrapping_add(1);
@@ -145,14 +130,14 @@ impl CollectorTask {
             }
         };
 
-        event!(Level::INFO, %stop_code, %node_id, "Metric collector stopped");
+        event!(Level::INFO, %stop_code, %node_id, STOP_OK);
 
         stop_code
     }
 }
 
 fn forward(
-    lanes: &mut HashMap<LaneIdentifier, SupplyLane<Value>>,
+    lanes: &HashMap<LaneIdentifier, SupplyLane<Value>>,
     address: LaneIdentifier,
     profile: Value,
 ) {

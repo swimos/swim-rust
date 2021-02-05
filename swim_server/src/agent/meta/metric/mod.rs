@@ -30,7 +30,7 @@ use crate::agent::meta::metric::lane::LaneProfile;
 use crate::agent::meta::metric::node::NodeProfile;
 use crate::agent::meta::metric::sender::TransformedSender;
 use crate::agent::meta::metric::task::{CollectorStopResult, CollectorTask};
-use crate::agent::meta::metric::uplink::{UplinkObserver, UplinkProfile, UplinkSurjection};
+use crate::agent::meta::metric::uplink::{UplinkObserver, UplinkSurjection, UplinkUplinkProfile};
 use crate::agent::meta::{IdentifiedAgentIo, MetaNodeAddressed};
 use crate::agent::LaneIo;
 use crate::agent::LaneTasks;
@@ -55,7 +55,7 @@ mod tests;
 pub enum ObserverEvent {
     Node(NodeProfile),
     Lane(RelativePath, LaneProfile),
-    Uplink(RelativePath, UplinkProfile),
+    Uplink(RelativePath, UplinkUplinkProfile),
 }
 
 pub struct MetricCollector {
@@ -79,8 +79,7 @@ impl MetricCollector {
         lanes: HashMap<LaneIdentifier, SupplyLane<Value>>,
     ) -> MetricCollector {
         let (metric_tx, metric_rx) = mpsc::channel(config.buffer_size.get());
-        let collector =
-            CollectorTask::new(node_id, stop_rx, metric_rx, config.prune_frequency, lanes);
+        let collector = CollectorTask::new(node_id, stop_rx, metric_rx, lanes);
         let jh = tokio::spawn(collector.run(config.yield_after));
         let observer = MetricObserver::new(config, metric_tx);
 
