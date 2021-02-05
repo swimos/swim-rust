@@ -27,6 +27,7 @@ use crate::agent::lane::tests::ExactlyOnce;
 use crate::agent::lifecycle::AgentLifecycle;
 use crate::agent::{AgentContext, LaneIo, LaneTasks, SwimAgent};
 use futures::future::{ready, BoxFuture, Ready};
+use futures::FutureExt;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -117,6 +118,7 @@ struct DemandMapLifecycle {
 impl<'a> DemandMapLaneLifecycle<'a, String, i32, ReportingAgent> for DemandMapLifecycle {
     type OnSyncFuture = BoxFuture<'a, Vec<String>>;
     type OnCueFuture = BoxFuture<'a, Option<i32>>;
+    type OnRemoveFuture = BoxFuture<'a, ()>;
 
     fn on_sync<C>(
         &'a self,
@@ -154,6 +156,18 @@ impl<'a> DemandMapLaneLifecycle<'a, String, i32, ReportingAgent> for DemandMapLi
                 }
             }
         })
+    }
+
+    fn on_remove<C>(
+        &'a self,
+        _model: &'a DemandMapLane<String, i32>,
+        _context: &'a C,
+        _key: String,
+    ) -> Self::OnRemoveFuture
+    where
+        C: AgentContext<ReportingAgent> + Send + Sync + 'static,
+    {
+        ready(()).boxed()
     }
 }
 
