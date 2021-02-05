@@ -12,19 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::lane::channels::AgentExecutionConfig;
-use crate::agent::lane::model::{DeferredBroadcastView, DeferredLaneView, DeferredMpscView};
-use crate::agent::lane::strategy::{Buffered, Queue};
 use crate::agent::lane::LaneModel;
-use futures::Stream;
 use std::any::Any;
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 use stm::stm::Stm;
 use stm::var::observer::Observer;
 use stm::var::TVar;
-use tokio::sync::{broadcast, mpsc, oneshot};
-use utilities::future::{sync_boxed, SyncBoxStream};
-use utilities::sync::broadcast_rx_to_stream;
 
 #[cfg(test)]
 mod tests;
@@ -49,6 +43,11 @@ impl<T: Any + Send + Sync> ValueLane<T> {
             value: TVar::new(init),
         }
     }
+
+    pub fn observable(init: T, buffer_size: NonZeroUsize) -> (Self, Observer<T>) {
+        let (var, observer) = TVar::new_with_observer(init, buffer_size);
+        (ValueLane { value: var }, observer)
+    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -66,37 +65,6 @@ where
     fn same_lane(this: &Self, other: &Self) -> bool {
         TVar::same_var(&this.value, &other.value)
     }
-}
-
-/// Create a new value lane with the specified watch strategy.
-pub fn make_lane_model<T, W>(init: T, watch: W) -> (ValueLane<T>, W::View)
-where
-    T: Any + Send + Sync + Default,
-    W: ValueLaneWatch<T>,
-{
-    let value = Arc::new(init);
-    let (observer, view) = watch.make_watch(&value);
-    let var = TVar::from_arc_with_observer(value, observer);
-    let lane = ValueLane { value: var };
-    (lane, view)
-}
-
-/// Create a new value lane with the specified watch strategy, attaching an additional, deferred
-/// observer channel.
-pub fn make_lane_model_deferred<T, W>(
-    init: T,
-    watch: W,
-    config: &AgentExecutionConfig,
-) -> (ValueLane<T>, W::View, W::DeferredView)
-where
-    T: Any + Send + Sync,
-    W: ValueLaneWatch<T>,
-{
-    let value = Arc::new(init);
-    let (observer, view, deferred) = watch.make_watch_with_deferred(&value, config);
-    let var = TVar::from_arc_with_observer(value, observer);
-    let lane = ValueLane { value: var };
-    (lane, view, deferred)
 }
 
 impl<T: Any + Send + Sync> ValueLane<T> {
@@ -125,80 +93,5 @@ impl<T: Any + Send + Sync> ValueLane<T> {
     #[cfg(test)]
     pub async fn lock(&self) -> stm::var::TVarLock {
         self.value.lock().await
-    }
-}
-
-/// Adapts a watch strategy for use with a [`ValueLane`].
-pub trait ValueLaneWatch<T> {
-    /// The type of the stream of values produced by the lane.
-    type View: Stream<Item = Arc<T>> + Send + Sync + 'static;
-
-    type DeferredView: DeferredLaneView<Arc<T>> + Send + 'static;
-
-    /// Create a linked observer and view stream.
-    fn make_watch(&self, init: &Arc<T>) -> (Observer<T>, Self::View);
-
-    fn make_watch_with_deferred(
-        &self,
-        init: &Arc<T>,
-        config: &AgentExecutionConfig,
-    ) -> (Observer<T>, Self::View, Self::DeferredView);
-}
-
-impl<T> ValueLaneWatch<T> for Queue
-where
-    T: Any + Send + Sync,
-{
-    type View = mpsc::Receiver<Arc<T>>;
-    type DeferredView = DeferredMpscView<T>;
-
-    fn make_watch(&self, _init: &Arc<T>) -> (Observer<T>, Self::View) {
-        let Queue(n) = self;
-        let (tx, rx) = mpsc::channel(n.get());
-        (tx.into(), rx)
-    }
-
-    fn make_watch_with_deferred(
-        &self,
-        _init: &Arc<T>,
-        config: &AgentExecutionConfig,
-    ) -> (Observer<T>, Self::View, Self::DeferredView) {
-        let Queue(n) = self;
-        let (tx, rx) = mpsc::channel(n.get());
-        let (tx_init, rx_init) = oneshot::channel();
-        let joined = Observer::new_with_deferred(tx.into(), rx_init);
-        let deferred_view = DeferredMpscView::new(tx_init, *n, config.yield_after);
-        (joined, rx, deferred_view)
-    }
-}
-
-impl<T> ValueLaneWatch<T> for Buffered
-where
-    T: Any + Default + Send + Sync,
-{
-    type View = SyncBoxStream<Arc<T>>;
-    type DeferredView = DeferredBroadcastView<T>;
-
-    fn make_watch(&self, _init: &Arc<T>) -> (Observer<T>, Self::View) {
-        let Buffered(n) = self;
-        let (tx, rx) = broadcast::channel(n.get());
-        (tx.into(), sync_boxed(broadcast_rx_to_stream(rx)))
-    }
-
-    fn make_watch_with_deferred(
-        &self,
-        _init: &Arc<T>,
-        _config: &AgentExecutionConfig,
-    ) -> (Observer<T>, Self::View, Self::DeferredView) {
-        let Buffered(n) = self;
-        let (tx, rx) = broadcast::channel(n.get());
-        let (tx_init, rx_init) = oneshot::channel();
-        let joined = Observer::new_with_deferred(tx.into(), rx_init);
-        let deferred_view = DeferredBroadcastView::new(tx_init, *n);
-        (
-            joined,
-            sync_boxed(broadcast_rx_to_stream(rx)),
-            deferred_view,
-        )
     }
 }

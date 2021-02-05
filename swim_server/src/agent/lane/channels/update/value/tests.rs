@@ -14,18 +14,24 @@
 
 use crate::agent::lane::channels::update::value::ValueLaneUpdateTask;
 use crate::agent::lane::channels::update::{LaneUpdate, UpdateError};
-use crate::agent::lane::model::value;
-use crate::agent::lane::strategy::Queue;
+use crate::agent::lane::model::value::ValueLane;
 use crate::routing::RoutingAddr;
 use futures::future::{join, ready};
 use futures::stream::once;
 use futures::StreamExt;
+use std::num::NonZeroUsize;
 use std::time::Duration;
 use tokio::time::timeout;
 
+fn buffer_size() -> NonZeroUsize {
+    NonZeroUsize::new(16).unwrap()
+}
+
 #[tokio::test]
 async fn update_task_value_lane() {
-    let (lane, mut events) = value::make_lane_model::<i32, Queue>(0, Queue::default());
+    let (lane, rx) = ValueLane::observable(0, buffer_size());
+
+    let mut events = rx.into_stream();
 
     let task = ValueLaneUpdateTask::new(lane);
 

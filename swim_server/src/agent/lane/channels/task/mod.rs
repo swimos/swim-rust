@@ -17,6 +17,9 @@ use crate::agent::lane::channels::update::action::ActionLaneUpdateTask;
 use crate::agent::lane::channels::update::map::MapLaneUpdateTask;
 use crate::agent::lane::channels::update::value::ValueLaneUpdateTask;
 use crate::agent::lane::channels::update::{LaneUpdate, UpdateError};
+use crate::agent::lane::channels::uplink::backpressure::{
+    KeyedBackpressureConfig, SimpleBackpressureConfig,
+};
 use crate::agent::lane::channels::uplink::spawn::UplinkErrorReport;
 use crate::agent::lane::channels::uplink::stateless::StatelessUplinks;
 use crate::agent::lane::channels::uplink::{
@@ -30,6 +33,7 @@ use crate::agent::lane::model::action::ActionLane;
 use crate::agent::lane::model::demand_map::{DemandMapLane, DemandMapLaneUpdate};
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::ValueLane;
+use crate::agent::lane::model::DeferredSubscription;
 use crate::agent::Eff;
 use crate::routing::{RoutingAddr, TaggedClientEnvelope};
 use either::Either;
@@ -45,7 +49,6 @@ use std::sync::Arc;
 use stm::transaction::RetryManager;
 use swim_common::form::{Form, FormErr};
 use swim_common::model::Value;
-use swim_common::topic::Topic;
 use swim_common::warp::envelope::{OutgoingHeader, OutgoingLinkMessage};
 use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc;
@@ -165,7 +168,7 @@ pub trait LaneUplinks {
     where
         Handler: LaneMessageHandler + 'static,
         OutputMessage<Handler>: Into<Value>,
-        Top: Topic<Handler::Event> + Send + 'static,
+        Top: DeferredSubscription<Handler::Event>,
         Context: AgentExecutionContext;
 }
 
@@ -190,11 +193,11 @@ const TOO_MANY_FAILURES: &str = "Terminating after too many failed uplinks.";
 /// * `context` - The agent execution context, providing task scheduling and outgoing envelope
 /// routing.
 /// * `route` - The route to this lane for outgoing envelope labelling.
-pub async fn run_lane_io<Handler, Uplinks>(
+pub async fn run_lane_io<Handler, Uplinks, Deferred>(
     message_handler: Handler,
     lane_uplinks: Uplinks,
     envelopes: impl Stream<Item = TaggedClientEnvelope>,
-    events: impl Topic<Handler::Event> + Send + 'static,
+    events: Deferred,
     config: AgentExecutionConfig,
     context: impl AgentExecutionContext,
     route: RelativePath,
@@ -202,6 +205,7 @@ pub async fn run_lane_io<Handler, Uplinks>(
 where
     Handler: LaneMessageHandler + 'static,
     Uplinks: LaneUplinks,
+    Deferred: DeferredSubscription<Handler::Event> + 'static,
     OutputMessage<Handler>: Into<Value>,
     InputMessage<Handler>: Debug + Form,
 {
@@ -311,7 +315,21 @@ where
     combine_results(route, upd_res.err(), upl_fatal, upl_errs)
 }
 
-impl<T> LaneMessageHandler for ValueLane<T>
+pub struct ValueLaneMessageHandler<T> {
+    lane: ValueLane<T>,
+    backpressure_config: Option<SimpleBackpressureConfig>,
+}
+
+impl<T> ValueLaneMessageHandler<T> {
+    pub fn new(lane: ValueLane<T>, backpressure_config: Option<SimpleBackpressureConfig>) -> Self {
+        ValueLaneMessageHandler {
+            lane,
+            backpressure_config,
+        }
+    }
+}
+
+impl<T> LaneMessageHandler for ValueLaneMessageHandler<T>
 where
     T: Any + Send + Sync + Debug,
 {
@@ -320,11 +338,11 @@ where
     type Update = ValueLaneUpdateTask<T>;
 
     fn make_uplink(&self, _addr: RoutingAddr) -> Self::Uplink {
-        ValueLaneUplink::new((*self).clone())
+        ValueLaneUplink::new(self.lane.clone(), self.backpressure_config)
     }
 
     fn make_update(&self) -> Self::Update {
-        ValueLaneUpdateTask::new((*self).clone())
+        ValueLaneUpdateTask::new(self.lane.clone())
     }
 }
 
@@ -334,6 +352,7 @@ pub struct MapLaneMessageHandler<K, V, F> {
     lane: MapLane<K, V>,
     uplink_counter: AtomicU64,
     retries: F,
+    backpressure_config: Option<KeyedBackpressureConfig>,
 }
 
 impl<K, V, F, Ret> MapLaneMessageHandler<K, V, F>
@@ -341,11 +360,16 @@ where
     F: Fn() -> Ret + Clone + Send + Sync + 'static,
     Ret: RetryManager + Send + Sync + 'static,
 {
-    pub fn new(lane: MapLane<K, V>, retries: F) -> Self {
+    pub fn new(
+        lane: MapLane<K, V>,
+        retries: F,
+        backpressure_config: Option<KeyedBackpressureConfig>,
+    ) -> Self {
         MapLaneMessageHandler {
             lane,
             uplink_counter: AtomicU64::new(1),
             retries,
+            backpressure_config,
         }
     }
 }
@@ -366,9 +390,10 @@ where
             lane,
             uplink_counter,
             retries,
+            backpressure_config,
         } = self;
         let i = uplink_counter.fetch_add(1, Ordering::Relaxed);
-        MapLaneUplink::new((*lane).clone(), i, retries.clone())
+        MapLaneUplink::new((*lane).clone(), i, retries.clone(), *backpressure_config)
     }
 
     fn make_update(&self) -> Self::Update {

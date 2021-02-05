@@ -16,7 +16,7 @@
 pub(crate) mod tests;
 
 use crate::ptr::Addressed;
-use crate::var::observer::{DynObserver, Observer};
+use crate::var::observer::Observer;
 use futures::future::FutureExt;
 use futures::ready;
 use parking_lot::Mutex;
@@ -25,12 +25,14 @@ use std::any::Any;
 use std::fmt::{Debug, Formatter};
 use std::future::Future;
 use std::marker::PhantomData;
+use std::num::NonZeroUsize;
 use std::ops::Deref;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll, Waker};
 use utilities::ptr::data_ptr_eq;
 use utilities::sync::rwlock::{ReadFuture, ReadGuard, RwLock, WriteGuard};
+use utilities::sync::topic;
 
 pub mod observer;
 
@@ -40,7 +42,7 @@ pub(crate) type Contents = Arc<dyn Any + Send + Sync>;
 
 pub(crate) struct TVarGuarded {
     content: Contents,
-    observer: Option<DynObserver>,
+    observer: Option<topic::Sender<Contents>>,
     wakers: Mutex<Slab<Waker>>,
 }
 
@@ -48,7 +50,7 @@ impl TVarGuarded {
     /// Notify the observer and any wakers, if present.
     async fn notify(&mut self) {
         if let Some(observer) = &mut self.observer {
-            observer.notify_raw(self.content.clone()).await;
+            let _ = observer.send(self.content.clone()).await;
         }
         self.wakers.lock().drain().for_each(|w| w.wake());
     }
@@ -93,26 +95,41 @@ impl TVarInner {
 
     /// Create a transactional variable with an observer than will be notified
     /// each time the value changes.
-    pub fn from_arc_with_observer<T>(value: Arc<T>, observer: Observer<T>) -> Self
+    ///
+    /// # Arguments
+    /// * `value` - The initial value of the variable.
+    /// * `buffer_size` - The size of the circular buffer used by the observer.
+    pub fn from_arc_with_observer<T>(
+        value: Arc<T>,
+        buffer_size: NonZeroUsize,
+    ) -> (Self, Observer<T>)
     where
         T: Any + Send + Sync,
     {
-        TVarInner {
-            guarded: RwLock::new(TVarGuarded {
-                content: value,
-                observer: Some(Box::new(observer)),
-                wakers: Default::default(),
-            }),
-        }
+        let (tx, rx) = topic::channel(buffer_size);
+        let observer = Observer::new(rx);
+        (
+            TVarInner {
+                guarded: RwLock::new(TVarGuarded {
+                    content: value,
+                    observer: Some(tx),
+                    wakers: Default::default(),
+                }),
+            },
+            observer,
+        )
     }
 
     /// Create a transactional variable with an observer than will be notified
     /// each time the value changes.
-    pub fn new_with_observer<T>(value: T, observer: Observer<T>) -> Self
+    /// # Arguments
+    /// * `value` - The initial value of the variable.
+    /// * `buffer_size` - The size of the circular buffer used by the observer.
+    pub fn new_with_observer<T>(value: T, buffer_size: NonZeroUsize) -> (Self, Observer<T>)
     where
         T: Any + Send + Sync,
     {
-        Self::from_arc_with_observer(Arc::new(value), observer)
+        Self::from_arc_with_observer(Arc::new(value), buffer_size)
     }
 
     /// Read the contents of the variable.
@@ -267,15 +284,17 @@ impl<T: Any + Send + Sync> TVar<T> {
         TVar(TVarInner::from_arc(initial), PhantomData)
     }
 
-    pub fn new_with_observer(initial: T, observer: Observer<T>) -> Self {
-        TVar(TVarInner::new_with_observer(initial, observer), PhantomData)
+    pub fn new_with_observer(initial: T, buffer_size: NonZeroUsize) -> (Self, Observer<T>) {
+        let (inner, observer) = TVarInner::new_with_observer(initial, buffer_size);
+        (TVar(inner, PhantomData), observer)
     }
 
-    pub fn from_arc_with_observer(initial: Arc<T>, observer: Observer<T>) -> Self {
-        TVar(
-            TVarInner::from_arc_with_observer(initial, observer),
-            PhantomData,
-        )
+    pub fn from_arc_with_observer(
+        initial: Arc<T>,
+        buffer_size: NonZeroUsize,
+    ) -> (Self, Observer<T>) {
+        let (inner, observer) = TVarInner::from_arc_with_observer(initial, buffer_size);
+        (TVar(inner, PhantomData), observer)
     }
 }
 

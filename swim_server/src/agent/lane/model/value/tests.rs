@@ -14,25 +14,39 @@
 
 use super::*;
 use crate::agent::lane::tests::ExactlyOnce;
-use futures::{FutureExt, StreamExt};
 use stm::transaction::atomically;
-use tokio::sync::mpsc::error::TryRecvError;
+use stm::var::observer::ObserverSubscriber;
+use utilities::sync::topic::TryRecvError;
+
+fn buffer_size() -> NonZeroUsize {
+    NonZeroUsize::new(16).unwrap()
+}
+
+fn make_subscribable<T>(init: T, buffer_size: NonZeroUsize) -> (ValueLane<T>, ObserverSubscriber<T>)
+where
+    T: Send + Sync + 'static,
+{
+    let (lane, rx) = ValueLane::observable(init, buffer_size);
+    (lane, rx.into_subscriber())
+}
 
 #[tokio::test]
 async fn value_lane_get() {
-    let (lane, mut events) = make_lane_model(0, Queue::default());
+    let (lane, sub) = make_subscribable::<i32>(0, buffer_size());
+    let mut events = sub.subscribe().unwrap();
 
     let result = atomically(&lane.get(), ExactlyOnce).await;
 
     assert!(matches!(result, Ok(v) if v == Arc::new(0)));
 
     let event = events.try_recv();
-    assert!(matches!(event, Err(TryRecvError::Empty)));
+    assert!(matches!(event, Err(TryRecvError::NoValue)));
 }
 
 #[tokio::test]
-async fn value_lane_set_queue() {
-    let (lane, mut events) = make_lane_model(0, Queue::default());
+async fn value_lane_set() {
+    let (lane, sub) = make_subscribable::<i32>(0, buffer_size());
+    let mut events = sub.subscribe().unwrap();
 
     let result = atomically(&lane.set(1), ExactlyOnce).await;
 
@@ -43,20 +57,9 @@ async fn value_lane_set_queue() {
 }
 
 #[tokio::test]
-async fn value_lane_set_buffered() {
-    let (lane, mut events) = make_lane_model(0, Buffered::default());
-
-    let result = atomically(&lane.set(1), ExactlyOnce).await;
-
-    assert!(result.is_ok());
-
-    let event = events.next().await;
-    assert!(matches!(event, Some(v) if *v == 1));
-}
-
-#[tokio::test]
-async fn value_lane_compound_transaction_queue() {
-    let (lane, mut events) = make_lane_model(5, Queue::default());
+async fn value_lane_compound_transaction() {
+    let (lane, sub) = make_subscribable::<i32>(5, buffer_size());
+    let mut events = sub.subscribe().unwrap();
 
     let stm = lane
         .get()
@@ -70,24 +73,5 @@ async fn value_lane_compound_transaction_queue() {
     assert!(matches!(event, Some(v) if *v == 6));
 
     let event2 = events.try_recv();
-    assert!(matches!(event2, Err(TryRecvError::Empty)));
-}
-
-#[tokio::test]
-async fn value_lane_compound_transaction_buffered() {
-    let (lane, mut events) = make_lane_model(5, Buffered::default());
-
-    let stm = lane
-        .get()
-        .and_then(|i| lane.set(-1).followed_by(lane.set(*i + 1)));
-
-    let result = atomically(&stm, ExactlyOnce).await;
-
-    assert!(result.is_ok());
-
-    let event = events.next().await;
-    assert!(matches!(event, Some(v) if *v == 6));
-
-    let event2 = events.next().now_or_never();
-    assert!(event2.is_none());
+    assert!(matches!(event2, Err(TryRecvError::NoValue)));
 }
