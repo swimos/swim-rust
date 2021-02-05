@@ -21,7 +21,6 @@ use futures::future::BoxFuture;
 use futures::Stream;
 use std::collections::HashMap;
 use std::future::Future;
-use std::num::NonZeroUsize;
 use swim_common::form::Form;
 use tokio::time::Duration;
 use utilities::sync::trigger::Receiver;

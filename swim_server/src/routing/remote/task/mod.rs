@@ -133,11 +133,9 @@ where
 
         let (missing_node_tx, missing_node_rx) =
             mpsc::channel(config.missing_nodes_buffer_size.get());
-        let outgoing_payloads = messages
-            .map(|TaggedEnvelope(_, envelope)| WsMessage::Text(envelope.into_value().to_string()));
-        let outgoing_payloads = stream::select(outgoing_payloads, missing_node_rx);
         let outgoing_payloads =
             messages.map(|e| WsMessage::Text(e.into_envelope().into_value().to_string()));
+        let outgoing_payloads = stream::select(outgoing_payloads, missing_node_rx);
 
         let selector = WsStreamSelector::new(&mut ws_stream, outgoing_payloads);
 
