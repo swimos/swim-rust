@@ -15,8 +15,8 @@
 use std::pin::Pin;
 
 use futures::task::{Context, Poll};
+use futures::Future;
 use futures::{ready, TryFuture};
-use futures::{Future, FutureExt};
 
 use crate::future::retryable::strategy::RetryStrategy;
 
@@ -39,11 +39,10 @@ pub trait ResettableFuture: Future {
     fn reset(self: Pin<&mut Self>) -> bool;
 }
 
-#[pin_project(project = RetryStateProj)]
 enum RetryState<Err> {
     Polling,
     Retrying(Option<Err>),
-    Sleeping(#[pin] Delay),
+    Sleeping(Pin<Box<Delay>>),
 }
 
 /// A future that can be retried with a [`RetryStrategy`].
@@ -52,7 +51,6 @@ pub struct RetryableFuture<Fut, Err> {
     #[pin]
     future: Fut,
     strategy: RetryStrategy,
-    #[pin]
     state: RetryState<Err>,
 }
 
@@ -77,18 +75,17 @@ where
 
         loop {
             let future = this.future.as_mut();
-            let mut state = this.state.as_mut().project();
 
-            let new_state = match state {
-                RetryStateProj::Polling => match ready!(future.try_poll(cx)) {
+            let new_state = match &mut this.state {
+                RetryState::Polling => match ready!(future.try_poll(cx)) {
                     Ok(out) => return Poll::Ready(Ok(out)),
                     Err(e) => RetryState::Retrying(Some(e)),
                 },
-                RetryStateProj::Retrying(ref mut e) => match this.strategy.next() {
+                RetryState::Retrying(e) => match this.strategy.next() {
                     Some(s) => {
                         if future.reset() {
                             match s {
-                                Some(dur) => RetryState::Sleeping(delay_for(dur)),
+                                Some(dur) => RetryState::Sleeping(Box::pin(delay_for(dur))),
                                 None => RetryState::Polling,
                             }
                         } else if let Some(e) = e.take() {
@@ -105,12 +102,12 @@ where
                         }
                     }
                 },
-                RetryStateProj::Sleeping(ref mut delay) => {
-                    ready!(delay.poll_unpin(cx));
+                RetryState::Sleeping(delay) => {
+                    ready!(delay.as_mut().poll(cx));
                     RetryState::Polling
                 }
             };
-            this.state.set(new_state);
+            *this.state = new_state;
         }
     }
 }
