@@ -12,12 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swim_server::agent::lane::lifecycle::LifecycleBase;
 use swim_server::agent::lane::model::action::{ActionLane, CommandLane};
 use swim_server::agent::lane::model::map::{MapLane, MapLaneEvent};
-use swim_server::agent::lane::model::value::ValueLane;
-use swim_server::agent::lane::model::value::ValueLaneEvent;
-use swim_server::agent::lane::strategy::Queue;
+use swim_server::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 use swim_server::agent::AgentContext;
 use swim_server::{
     action_lifecycle, agent_lifecycle, command_lifecycle, map_lifecycle, value_lifecycle, SwimAgent,
@@ -85,7 +82,12 @@ fn main() {
 
     // ----------------------- Action Lifecycle -----------------------
 
-    #[action_lifecycle(agent = "TestAgent", command_type = "String", response_type = "i32")]
+    #[action_lifecycle(
+        agent = "TestAgent",
+        command_type = "String",
+        response_type = "i32",
+        on_command
+    )]
     struct ActionLifecycle;
 
     impl ActionLifecycle {
@@ -104,7 +106,7 @@ fn main() {
 
     // ----------------------- Value Lifecycle -----------------------
 
-    #[value_lifecycle(agent = "TestAgent", event_type = "i32")]
+    #[value_lifecycle(agent = "TestAgent", event_type = "i32", on_start, on_event)]
     struct ValueLifecycle;
 
     impl ValueLifecycle {
@@ -127,17 +129,15 @@ fn main() {
         }
     }
 
-    impl LifecycleBase for ValueLifecycle {
-        type WatchStrategy = Queue;
-
-        fn create_strategy(&self) -> Self::WatchStrategy {
-            Queue::default()
-        }
-    }
-
     // ----------------------- Map Lifecycle -----------------------
 
-    #[map_lifecycle(agent = "TestAgent", key_type = "String", value_type = "i32")]
+    #[map_lifecycle(
+        agent = "TestAgent",
+        key_type = "String",
+        value_type = "i32",
+        on_start,
+        on_event
+    )]
     struct MapLifecycle;
 
     impl MapLifecycle {
@@ -157,14 +157,6 @@ fn main() {
             Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
         {
             unimplemented!()
-        }
-    }
-
-    impl LifecycleBase for MapLifecycle {
-        type WatchStrategy = Queue;
-
-        fn create_strategy(&self) -> Self::WatchStrategy {
-            Queue::default()
         }
     }
 }

@@ -12,9 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::internals::{default_on_cue, default_on_remove, default_on_sync};
 use crate::lanes::derive_lane;
-use crate::utils::{get_task_struct_name, validate_input_ast, InputAstType};
+use crate::utils::{
+    get_task_struct_name, validate_input_ast, CallbackKind, InputAstType, LaneTasksImpl,
+};
+use crate::utils::{parse_callback, Callback};
 use darling::FromMeta;
 use macro_helpers::{has_fields, string_to_ident};
 use proc_macro::TokenStream;
@@ -29,12 +31,12 @@ struct DemandMapAttrs {
     key_type: Ident,
     #[darling(map = "string_to_ident")]
     value_type: Ident,
-    #[darling(default = "default_on_sync", map = "string_to_ident")]
-    on_sync: Ident,
-    #[darling(default = "default_on_cue", map = "string_to_ident")]
-    on_cue: Ident,
-    #[darling(default = "default_on_remove", map = "string_to_ident")]
-    on_remove: Ident,
+    #[darling(default)]
+    on_sync: Option<darling::Result<String>>,
+    #[darling(default)]
+    on_cue: Option<darling::Result<String>>,
+    #[darling(default)]
+    on_remove: Option<darling::Result<String>>,
 }
 
 pub fn derive_demand_map_lifecycle(
@@ -58,53 +60,11 @@ pub fn derive_demand_map_lifecycle(
     let agent_name = args.agent.clone();
     let key_type = &args.key_type;
     let value_type = &args.value_type;
-    let on_sync_func = &args.on_sync;
-    let on_cue_func = &args.on_cue;
-    let on_remove_func = &args.on_remove;
-
-    let on_event = quote! {
-        let #task_name {
-            lifecycle,
-            event_stream,
-            projection,
-            ..
-        } = *self;
-
-        let model = projection(context.agent()).clone();
-        let mut events = event_stream.take_until(context.agent_stop_event());
-        let mut events = unsafe { Pin::new_unchecked(&mut events) };
-
-        while let Some(event) = events.next().await {
-            match event {
-                DemandMapLaneCommand::Sync(sender) => {
-                    let keys: Vec<#key_type> = lifecycle.#on_sync_func(&model, &context).await;
-                    let keys_len = keys.len();
-
-                    let mut values = iter(keys)
-                        .fold(Vec::with_capacity(keys_len), |mut results, key| async {
-                            if let Some(value) =
-                                lifecycle.#on_cue_func(&model, &context, key.clone()).await
-                            {
-                                results.push(DemandMapLaneEvent::update(key, value));
-                            }
-
-                            results
-                        })
-                        .await;
-
-                    values.shrink_to_fit();
-
-                    let _ = sender.send(values);
-                }
-                DemandMapLaneCommand::Cue(sender, key) => {
-                    let value = lifecycle.#on_cue_func(&model, &context, key).await;
-                    let _ = sender.send(value);
-                }
-                DemandMapLaneCommand::Remove(key) => {
-                    lifecycle.#on_remove_func(&model, &context, key).await;
-                }
-            }
-        }
+    let on_sync_callback = parse_callback(&args.on_sync, task_name.clone(), CallbackKind::Sync);
+    let on_cue_callback = parse_callback(&args.on_cue, task_name.clone(), CallbackKind::Cue);
+    let lane_tasks_impl = LaneTasksImpl::DemandMap {
+        on_sync: on_sync_callback,
+        on_cue: on_cue_callback,
     };
 
     derive_lane(
@@ -115,15 +75,138 @@ pub fn derive_demand_map_lifecycle(
         agent_name,
         input_ast,
         quote!(swim_server::agent::lane::model::demand_map::DemandMapLane<#key_type, #value_type>),
-        quote!(swim_server::agent::lane::model::demand_map::DemandMapLaneCommand<#key_type, #value_type>),
-        None,
-        on_event,
+        quote!(swim_server::agent::lane::model::demand_map::DemandMapLaneEvent<#key_type, #value_type>),
+        lane_tasks_impl,
         quote! {
             use swim_server::agent::lane::lifecycle::LaneLifecycle;
-            use swim_server::agent::lane::model::demand_map::{DemandMapLane, DemandMapLaneCommand, DemandMapLaneEvent};
+            use swim_server::agent::lane::model::demand_map::{DemandMapLane, DemandMapLaneEvent, DemandMapLaneUpdate};
             use futures::stream::iter;
         },
         None,
         quote!(DemandMap),
     )
+}
+
+pub fn derive_events_body(
+    on_sync: &Option<Callback>,
+    on_cue: &Option<Callback>,
+) -> Option<proc_macro2::TokenStream> {
+    match (on_sync, on_cue) {
+        (Some(on_sync), Some(on_cue)) => {
+            let task_name = &on_sync.task_name;
+            let on_sync_func_name = &on_sync.func_name;
+            let on_cue_func_name = &on_cue.func_name;
+            let on_remove_func_name = &on_remove.func_name;
+
+            Some(quote!(
+                let #task_name {
+                    lifecycle,
+                    event_stream,
+                    projection,
+                    ..
+                } = *self;
+
+                let model = projection(context.agent()).clone();
+                let mut events = event_stream.take_until(context.agent_stop_event());
+                let mut events = unsafe { Pin::new_unchecked(&mut events) };
+
+                while let Some(event) = events.next().await {
+                    match event {
+                        DemandMapLaneCommand::Sync(sender) => {
+                            let keys: Vec<_> = lifecycle.#on_sync_func_name(&model, &context).await;
+                            let keys_len = keys.len();
+
+                            let mut values = iter(keys)
+                                .fold(Vec::with_capacity(keys_len), |mut results, key| async {
+                                    if let Some(value) =
+                                        lifecycle.#on_cue_func_name(&model, &context, key.clone()).await
+                                    {
+                                        results.push(DemandMapLaneEvent::make(key, value));
+                                    }
+
+                                    results
+                                })
+                                .await;
+
+                            values.shrink_to_fit();
+
+                            let _ = sender.send(values);
+                        }
+                        DemandMapLaneCommand::Cue(sender, key) => {
+                            let value = lifecycle.#on_cue_func_name(&model, &context, key).await;
+                            let _ = sender.send(value);
+                        }
+                        DemandMapLaneCommand::Remove(key) => {
+                            lifecycle.#on_remove_func_name(&model, &context, key).await;
+                        }
+                    }
+                }
+            ))
+        }
+        (Some(on_sync), None) => {
+            let task_name = &on_sync.task_name;
+            let on_sync_func_name = &on_sync.func_name;
+
+            Some(quote!(
+                let #task_name {
+                    lifecycle,
+                    event_stream,
+                    projection,
+                    ..
+                } = *self;
+
+                let model = projection(context.agent()).clone();
+                let mut events = event_stream.take_until(context.agent_stop_event());
+                let mut events = unsafe { Pin::new_unchecked(&mut events) };
+
+                while let Some(event) = events.next().await {
+                    match event {
+                        DemandMapLaneEvent::Sync(sender) => {
+                            let keys: Vec<_> = lifecycle.#on_sync_func_name(&model, &context).await;
+                            let keys_len = keys.len();
+
+                            let mut values = iter(keys)
+                                .fold(Vec::with_capacity(keys_len), |mut results, key| async {
+                                    results
+                                })
+                                .await;
+
+                            values.shrink_to_fit();
+
+                            let _ = sender.send(values);
+                        }
+                        _ => ()
+                    }
+                }
+            ))
+        }
+        (None, Some(on_cue)) => {
+            let task_name = &on_cue.task_name;
+            let on_cue_func_name = &on_cue.func_name;
+
+            Some(quote!(
+                let #task_name {
+                    lifecycle,
+                    event_stream,
+                    projection,
+                    ..
+                } = *self;
+
+                let model = projection(context.agent()).clone();
+                let mut events = event_stream.take_until(context.agent_stop_event());
+                let mut events = unsafe { Pin::new_unchecked(&mut events) };
+
+                while let Some(event) = events.next().await {
+                    match event {
+                        DemandMapLaneEvent::Cue(sender, key) => {
+                            let value = lifecycle.#on_cue_func_name(&model, &context, key).await;
+                            let _ = sender.send(value);
+                        }
+                        _ => ()
+                    }
+                }
+            ))
+        }
+        (None, None) => None,
+    }
 }

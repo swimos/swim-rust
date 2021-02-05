@@ -26,21 +26,15 @@ use swim_common::form::Form;
 #[cfg(test)]
 mod tests;
 
-/// Base trait for all lane lifecycles.
-pub trait LifecycleBase: Send + Sync + 'static {
-    type WatchStrategy;
-
-    /// Create the watch strategy that will receive events indicating the changes to the
-    /// underlying state. The constraints on this type will depend on the particular type of lane.
-    fn create_strategy(&self) -> Self::WatchStrategy;
-}
+#[derive(Debug, PartialEq, Eq)]
+pub struct DefaultLifecycle;
 
 /// Life cycle events to add behaviour to a lane that maintains an internal state.
 /// #Type Parameters
 ///
 /// * `Model` - The type of the model of the lane.
 /// * `Agent` - The type of the agent to which the lane belongs.
-pub trait StatefulLaneLifecycle<'a, Model: LaneModel, Agent>: LifecycleBase {
+pub trait StatefulLaneLifecycle<'a, Model: LaneModel, Agent>: Send + Sync + 'static {
     type StartFuture: Future<Output = ()> + Send + 'a;
     type EventFuture: Future<Output = ()> + Send + 'a;
 
@@ -99,66 +93,6 @@ pub trait ActionLaneLifecycle<'a, Command, Response, Agent>: Send + Sync + 'stat
     ) -> Self::ResponseFuture
     where
         C: AgentContext<Agent> + Send + Sync + 'static;
-}
-
-impl LifecycleBase for Queue {
-    type WatchStrategy = Self;
-
-    fn create_strategy(&self) -> Self::WatchStrategy {
-        self.clone()
-    }
-}
-
-impl<'a, Model: LaneModel, Agent> StatefulLaneLifecycle<'a, Model, Agent> for Queue {
-    type StartFuture = Ready<()>;
-    type EventFuture = Ready<()>;
-
-    fn on_start<C: AgentContext<Agent>>(
-        &'a self,
-        _model: &'a Model,
-        _context: &'a C,
-    ) -> Self::StartFuture {
-        ready(())
-    }
-
-    fn on_event<C: AgentContext<Agent>>(
-        &'a mut self,
-        _event: &'a Model::Event,
-        _model: &'a Model,
-        _context: &'a C,
-    ) -> Self::EventFuture {
-        ready(())
-    }
-}
-
-impl LifecycleBase for Buffered {
-    type WatchStrategy = Self;
-
-    fn create_strategy(&self) -> Self::WatchStrategy {
-        self.clone()
-    }
-}
-
-impl<'a, Model: LaneModel, Agent> StatefulLaneLifecycle<'a, Model, Agent> for Buffered {
-    type StartFuture = Ready<()>;
-    type EventFuture = Ready<()>;
-
-    fn on_start<C: AgentContext<Agent>>(
-        &'a self,
-        _model: &'a Model,
-        _context: &'a C,
-    ) -> Self::StartFuture {
-        ready(())
-    }
-
-    fn on_event<C: AgentContext<Agent>>(
-        &'a mut self,
-        _event: &'a Model::Event,
-        _model: &'a Model,
-        _context: &'a C,
-    ) -> Self::EventFuture {
-        ready(())
-    }
 }
 
 /// Trait for the lifecycle of a lane that has access to the configuration of
@@ -260,5 +194,30 @@ impl LifecycleBase for Dropping {
 
     fn create_strategy(&self) -> Self::WatchStrategy {
         Dropping
+    }
+}
+
+impl<'a, Model: LaneModel, Agent> StatefulLaneLifecycle<'a, Model, Agent> for DefaultLifecycle {
+    type StartFuture = Ready<()>;
+    type EventFuture = Ready<()>;
+
+    fn on_start<C: AgentContext<Agent>>(
+        &'a self,
+        _model: &'a Model,
+        _context: &'a C,
+    ) -> Self::StartFuture {
+        ready(())
+    }
+
+    fn on_event<C>(
+        &'a mut self,
+        _event: &'a <Model as LaneModel>::Event,
+        _model: &'a Model,
+        _context: &'a C,
+    ) -> Self::EventFuture
+    where
+        C: AgentContext<Agent> + Send + Sync + 'static,
+    {
+        ready(())
     }
 }

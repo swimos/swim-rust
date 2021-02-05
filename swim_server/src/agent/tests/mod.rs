@@ -23,7 +23,6 @@ use crate::agent::lane::model::action::{Action, ActionLane, CommandLane};
 use crate::agent::lane::model::demand_map::{DemandMapLaneCommand, DemandMapLaneEvent};
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent};
-use crate::agent::lane::strategy::Queue;
 use crate::agent::lane::LaneModel;
 use crate::agent::meta::lane::MetaDemandMapLifecycleTasks;
 use crate::agent::meta::LogLevel;
@@ -141,18 +140,6 @@ struct TestLifecycle<Lane: LaneModel>(Arc<Mutex<TestResults<Lane>>>);
 impl<Lane: LaneModel> Default for TestLifecycle<Lane> {
     fn default() -> Self {
         TestLifecycle(Arc::new(Mutex::new(TestResults::default())))
-    }
-}
-
-impl<Lane> LifecycleBase for TestLifecycle<Lane>
-where
-    Lane: LaneModel + Send + Sync + 'static,
-    Lane::Event: Send + Sync + 'static,
-{
-    type WatchStrategy = Queue;
-
-    fn create_strategy(&self) -> Self::WatchStrategy {
-        Queue::default()
     }
 }
 
@@ -829,7 +816,7 @@ async fn agent_loop() {
 
     let agent_lifecycle = config.agent_lifecycle();
 
-    let exec_config = AgentExecutionConfig::with(buffer_size, 1, 0, Duration::from_secs(1));
+    let exec_config = AgentExecutionConfig::with(buffer_size, 1, 0, Duration::from_secs(1), None);
 
     let (envelope_tx, envelope_rx) = mpsc::channel(buffer_size.get());
 

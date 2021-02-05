@@ -16,7 +16,9 @@ use crate::agent::context::AgentExecutionContext;
 use crate::agent::lane::channels::task::{LaneUplinks, UplinkChannels};
 use crate::agent::lane::channels::update::{LaneUpdate, UpdateError};
 use crate::agent::lane::channels::uplink::spawn::{SpawnerUplinkFactory, UplinkErrorReport};
-use crate::agent::lane::channels::uplink::{UplinkAction, UplinkError, UplinkStateMachine};
+use crate::agent::lane::channels::uplink::{
+    PeelResult, UplinkAction, UplinkError, UplinkStateMachine,
+};
 use crate::agent::lane::channels::{AgentExecutionConfig, LaneMessageHandler, TaggedAction};
 use crate::agent::meta::metric::MetricObserver;
 use crate::agent::Eff;
@@ -26,7 +28,7 @@ use crate::routing::{
     TaggedSender,
 };
 use futures::future::{join, join3, ready, BoxFuture};
-use futures::stream::once;
+use futures::stream::iter;
 use futures::stream::{BoxStream, FusedStream};
 use futures::{FutureExt, Stream, StreamExt};
 use pin_utils::pin_mut;
@@ -40,13 +42,12 @@ use swim_common::routing::ResolutionError;
 use swim_common::routing::RoutingError;
 use swim_common::routing::SendError;
 use swim_common::sink::item::ItemSink;
-use swim_common::topic::MpscTopic;
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
-use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
+use tokio::sync::{mpsc, Barrier};
 use url::Url;
-use utilities::sync::promise;
+use utilities::sync::{promise, topic};
 use utilities::uri::RelativeUri;
 
 const INIT: i32 = 42;
@@ -149,13 +150,20 @@ impl UplinkStateMachine<i32> for TestStateMachine {
 
     fn sync_lane<'a, Updates>(
         &'a self,
-        _updates: &'a mut Updates,
-    ) -> BoxStream<'a, Result<Self::Msg, UplinkError>>
+        updates: &'a mut Updates,
+    ) -> BoxStream<'a, PeelResult<'a, Updates, Result<Self::Msg, UplinkError>>>
     where
         Updates: FusedStream<Item = i32> + Send + Unpin + 'a,
     {
         let TestStateMachine(n) = self;
-        once(ready(Ok(Message(*n)))).boxed()
+        iter(
+            vec![
+                PeelResult::Output(Ok(Message(*n))),
+                PeelResult::Complete(updates),
+            ]
+            .into_iter(),
+        )
+        .boxed()
     }
 }
 
@@ -190,31 +198,28 @@ fn default_buffer() -> NonZeroUsize {
     NonZeroUsize::new(5).unwrap()
 }
 
-fn yield_after() -> NonZeroUsize {
-    NonZeroUsize::new(256).unwrap()
-}
-
 fn route() -> RelativePath {
     RelativePath::new("node", "lane")
 }
 
-#[derive(Clone)]
 struct UplinkSpawnerInputs {
-    action_tx: mpsc::Sender<TaggedAction>,
-    event_tx: mpsc::Sender<i32>,
+    action_tx: Option<mpsc::Sender<TaggedAction>>,
+    event_tx: topic::Sender<i32>,
 }
 
 impl UplinkSpawnerInputs {
     async fn action(&mut self, addr: RoutingAddr, action: UplinkAction) {
-        assert!(self
-            .action_tx
-            .send(TaggedAction(addr, action))
-            .await
-            .is_ok())
+        if let Some(action_tx) = &mut self.action_tx {
+            assert!(action_tx.send(TaggedAction(addr, action)).await.is_ok())
+        }
     }
 
     async fn generate_event(&mut self, event: i32) {
         assert!(self.event_tx.send(event).await.is_ok())
+    }
+
+    fn drop_action_tx(&mut self) {
+        self.action_tx = None
     }
 }
 
@@ -291,7 +296,7 @@ impl UplinkSpawnerSplitOutputs {
 }
 
 fn make_config() -> AgentExecutionConfig {
-    AgentExecutionConfig::with(default_buffer(), 1, 1, Duration::from_secs(5))
+    AgentExecutionConfig::with(default_buffer(), 1, 1, Duration::from_secs(5), None)
 }
 
 struct TestContext {
@@ -342,7 +347,7 @@ fn make_test_harness() -> (
     BoxFuture<'static, Vec<UplinkErrorReport>>,
 ) {
     let (tx_up, rx_up) = mpsc::channel(5);
-    let (tx_event, rx_event) = mpsc::channel(5);
+    let (tx_event, rx_event) = topic::channel(NonZeroUsize::new(5).unwrap());
     let (tx_act, rx_act) = mpsc::channel(5);
     let (tx_router, rx_router) = mpsc::channel(5);
 
@@ -353,10 +358,10 @@ fn make_test_harness() -> (
     let error_task = error_rx.collect::<Vec<_>>();
 
     let handler = Arc::new(TestHandler(tx_up, INIT));
-    let (topic, _rec) = MpscTopic::new(rx_event, default_buffer(), yield_after());
+
     let factory = SpawnerUplinkFactory(make_config());
 
-    let channels = UplinkChannels::new(topic, rx_act, error_tx);
+    let channels = UplinkChannels::new(rx_event.subscriber(), rx_act, error_tx);
 
     let context = TestContext::new(spawn_tx, tx_router);
 
@@ -369,7 +374,7 @@ fn make_test_harness() -> (
     (
         UplinkSpawnerInputs {
             event_tx: tx_event,
-            action_tx: tx_act,
+            action_tx: Some(tx_act),
         },
         UplinkSpawnerOutputs {
             _update_rx: rx_up,
@@ -393,7 +398,7 @@ async fn link_to_lane() {
             vec![TaggedAgentEnvelope(addr, Envelope::linked("node", "lane")).into()]
         );
 
-        drop(inputs);
+        inputs.drop_action_tx();
 
         assert_eq!(
             outputs.take_router_events(1).await,
@@ -446,7 +451,7 @@ async fn receive_event() {
             vec![TaggedAgentEnvelope(addr, event_envelope(13)).into()]
         );
 
-        drop(inputs);
+        inputs.drop_action_tx();
 
         assert_eq!(
             outputs.take_router_events(1).await,
@@ -476,7 +481,7 @@ async fn sync_with_lane() {
             ]
         );
 
-        drop(inputs);
+        inputs.drop_action_tx();
 
         assert_eq!(
             outputs.take_router_events(1).await,
@@ -512,7 +517,7 @@ async fn receive_event_after_sync() {
             vec![TaggedAgentEnvelope(addr, event_envelope(13)).into()]
         );
 
-        drop(inputs);
+        inputs.drop_action_tx();
 
         assert_eq!(
             outputs.take_router_events(1).await,
@@ -549,7 +554,7 @@ async fn relink_for_same_addr() {
             vec![TaggedAgentEnvelope(addr, Envelope::linked("node", "lane")).into()]
         );
 
-        drop(inputs);
+        inputs.drop_action_tx();
 
         assert_eq!(
             outputs.take_router_events(1).await,
@@ -563,7 +568,7 @@ async fn relink_for_same_addr() {
 
 #[tokio::test]
 async fn sync_lane_twice() {
-    let (inputs, outputs, spawn_task) = make_test_harness();
+    let (mut inputs, outputs, spawn_task) = make_test_harness();
 
     let addr1 = RoutingAddr::remote(1);
     let addr2 = RoutingAddr::remote(2);
@@ -574,14 +579,22 @@ async fn sync_lane_twice() {
 
     let (mut split_outputs, split_task) = outputs.split(addrs);
 
-    let mut inputs1 = inputs.clone();
     let mut outputs1 = split_outputs.take_addr(addr1);
-    let mut inputs2 = inputs;
     let mut outputs2 = split_outputs.take_addr(addr2);
 
-    let io_task1 = async move {
-        inputs1.action(addr1, UplinkAction::Sync).await;
+    let barrier1 = Arc::new(Barrier::new(3));
+    let barrier2 = barrier1.clone();
+    let barrier3 = barrier1.clone();
 
+    let inputs_task = async move {
+        inputs.action(addr1, UplinkAction::Sync).await;
+        inputs.action(addr2, UplinkAction::Sync).await;
+        barrier1.wait().await;
+        inputs.drop_action_tx();
+        inputs
+    };
+
+    let io_task1 = async move {
         assert_eq!(
             outputs1.take_router_events(3).await,
             vec![
@@ -591,7 +604,7 @@ async fn sync_lane_twice() {
             ]
         );
 
-        drop(inputs1);
+        barrier2.wait().await;
 
         assert_eq!(
             outputs1.take_router_events(1).await,
@@ -600,8 +613,6 @@ async fn sync_lane_twice() {
     };
 
     let io_task2 = async move {
-        inputs2.action(addr2, UplinkAction::Sync).await;
-
         assert_eq!(
             outputs2.take_router_events(3).await,
             vec![
@@ -611,7 +622,7 @@ async fn sync_lane_twice() {
             ]
         );
 
-        drop(inputs2);
+        barrier3.wait().await;
 
         assert_eq!(
             outputs2.take_router_events(1).await,
@@ -619,7 +630,12 @@ async fn sync_lane_twice() {
         );
     };
 
-    let (_, _, errs) = join3(join(io_task1, io_task2), split_task, spawn_task).await;
+    let ((_inputs, _, _), _, errs) = join3(
+        join3(inputs_task, io_task1, io_task2),
+        split_task,
+        spawn_task,
+    )
+    .await;
     assert!(errs.is_empty());
 }
 
@@ -641,7 +657,7 @@ async fn uplink_failure() {
             vec![TaggedAgentEnvelope(addr, Envelope::unlinked("node", "lane")).into()]
         );
 
-        drop(inputs);
+        inputs.drop_action_tx();
     };
 
     let (_, errs) = join(io_task, spawn_task).await;

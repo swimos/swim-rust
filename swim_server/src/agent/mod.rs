@@ -26,6 +26,7 @@ use crate::agent::dispatch::error::DispatcherErrors;
 use crate::agent::dispatch::AgentDispatcher;
 use crate::agent::lane::channels::task::{
     run_supply_lane_io, DemandMapLaneMessageHandler, LaneIoError, MapLaneMessageHandler,
+    ValueLaneMessageHandler,
 };
 use crate::agent::lane::channels::update::StmRetryStrategy;
 use crate::agent::lane::channels::uplink::spawn::{SpawnerUplinkFactory, UplinkErrorReport};
@@ -34,20 +35,21 @@ use crate::agent::lane::lifecycle::{
     ActionLaneLifecycle, DemandLaneLifecycle, DemandMapLaneLifecycle, LifecycleBase,
     StatefulLaneLifecycle,
 };
+use crate::agent::lane::model;
 use crate::agent::lane::model::action::{Action, ActionLane, CommandLane};
 use crate::agent::lane::model::demand::DemandLane;
 use crate::agent::lane::model::demand_map::{
     DemandMapLane, DemandMapLaneCommand, DemandMapLaneEvent,
 };
-use crate::agent::lane::model::map::MapLaneEvent;
+use crate::agent::lane::model::map::{summaries_to_events, MapLaneEvent, MapSubscriber};
 use crate::agent::lane::model::map::{MapLane, MapLaneWatch};
 use crate::agent::lane::model::supply::{make_lane_model, SupplyLane, SupplyLaneWatch};
 use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent, ValueLaneWatch};
 use crate::agent::lane::model::DeferredLaneView;
-use crate::agent::lane::{model, LaneKind};
+use crate::agent::lane::LaneKind;
 use crate::agent::lifecycle::AgentLifecycle;
 use crate::routing::{LaneIdentifier, ServerRouter, TaggedClientEnvelope, TaggedEnvelope};
-use futures::future::{ready, BoxFuture};
+use futures::future::{join, ready, BoxFuture};
 use futures::sink::drain;
 use futures::stream::iter;
 use futures::stream::{once, repeat, unfold, BoxStream, FuturesUnordered};
@@ -73,6 +75,7 @@ use utilities::future::SwimStreamExt;
 use utilities::sync::trigger;
 use utilities::uri::RelativeUri;
 
+use crate::agent::lane::model::DeferredSubscription;
 use crate::agent::meta::{open_meta_lanes, LaneInfo, LogLevel};
 
 #[doc(hidden)]
@@ -493,7 +496,7 @@ pub struct ValueLaneIo<T, D> {
 impl<T, D> ValueLaneIo<T, D>
 where
     T: Any + Send + Sync + Form + Debug,
-    D: DeferredLaneView<Arc<T>>,
+    D: DeferredSubscription<Arc<T>>,
 {
     pub fn new(lane: ValueLane<T>, deferred: D) -> Self {
         ValueLaneIo { lane, deferred }
@@ -503,8 +506,8 @@ where
 impl<T, Context, D> LaneIo<Context> for ValueLaneIo<T, D>
 where
     T: Any + Send + Sync + Form + Debug,
-    D: DeferredLaneView<Arc<T>>,
-    Context: AgentExecutionContext + Sized + Send + Sync + 'static,
+    D: DeferredSubscription<Arc<T>>,
+    Context: AgentExecutionContext + Send + Sync + 'static,
 {
     fn attach(
         self,
@@ -514,13 +517,15 @@ where
         context: Context,
     ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
         let ValueLaneIo { lane, deferred } = self;
+
+        let handler = ValueLaneMessageHandler::new(lane, config.value_lane_backpressure);
+
         let uplink_factory = SpawnerUplinkFactory::new(config.clone());
-        let topic = deferred.attach()?;
         Ok(lane::channels::task::run_lane_io(
-            lane,
+            handler,
             uplink_factory,
             envelopes,
-            topic,
+            deferred,
             config,
             context,
             route,
@@ -548,7 +553,7 @@ impl<K, V, D> MapLaneIo<K, V, D>
 where
     K: Any + Send + Sync + Form + Clone + Debug,
     V: Any + Send + Sync + Form + Debug,
-    D: DeferredLaneView<MapLaneEvent<K, V>>,
+    D: DeferredSubscription<MapLaneEvent<K, V>>,
 {
     pub fn new(lane: MapLane<K, V>, deferred: D) -> Self {
         MapLaneIo { lane, deferred }
@@ -560,7 +565,7 @@ where
     K: Any + Send + Sync + Form + Clone + Debug,
     V: Any + Send + Sync + Form + Debug,
     Context: AgentExecutionContext + Sized + Send + Sync + 'static,
-    D: DeferredLaneView<MapLaneEvent<K, V>>,
+    D: DeferredSubscription<MapLaneEvent<K, V>>,
 {
     fn attach(
         self,
@@ -573,17 +578,16 @@ where
 
         let uplink_factory = SpawnerUplinkFactory::new(config.clone());
 
-        let topic = deferred.attach()?;
-
         let retries = StmRetryStrategy::new(config.retry_strategy);
 
-        let handler = MapLaneMessageHandler::new(lane, move || retries);
+        let handler =
+            MapLaneMessageHandler::new(lane, move || retries, config.map_lane_backpressure);
 
         Ok(lane::channels::task::run_lane_io(
             handler,
             uplink_factory,
             envelopes,
-            topic,
+            deferred,
             config,
             context,
             route,
@@ -773,25 +777,22 @@ where
     Context: AgentContext<Agent> + AgentExecutionContext + Send + Sync + 'static,
     T: Any + Send + Sync + Form + Debug + Default,
     L: for<'l> StatefulLaneLifecycle<'l, ValueLane<T>, Agent>,
-    L::WatchStrategy: ValueLaneWatch<T>,
 {
-    let (lane, event_stream, deferred) = if is_public {
-        let (lane, event_stream, deferred) =
-            model::value::make_lane_model_deferred(init, lifecycle.create_strategy(), config);
+    let (lane, observer) = ValueLane::observable(init, config.observation_buffer);
 
-        (lane, event_stream, Some(deferred))
+    let lane_io = if is_public {
+        Some(ValueLaneIo::new(lane.clone(), observer.subscriber()))
     } else {
-        let (lane, event_stream) = model::value::make_lane_model(init, lifecycle.create_strategy());
-
-        (lane, event_stream, None)
+        None
     };
+
     let tasks = ValueLifecycleTasks(LifecycleTasks {
         name: name.into(),
         lifecycle,
-        event_stream,
+        event_stream: observer.into_stream(),
         projection,
     });
-    let lane_io = deferred.map(|d| ValueLaneIo::new(lane.clone(), d));
+
     (lane, tasks, lane_io)
 }
 
@@ -873,25 +874,25 @@ where
     K: Any + Form + Send + Sync + Clone + Debug,
     V: Any + Form + Send + Sync + Debug,
     L: for<'l> StatefulLaneLifecycle<'l, MapLane<K, V>, Agent>,
-    L::WatchStrategy: MapLaneWatch<K, V>,
 {
-    let (lane, event_stream, deferred) = if is_public {
-        let (lane, event_stream, deferred) =
-            model::map::make_lane_model_deferred(lifecycle.create_strategy(), config);
-        (lane, event_stream, Some(deferred))
+    let (lane, observer) = MapLane::observable(config.observation_buffer);
+
+    let lane_io = if is_public {
+        Some(MapLaneIo::new(
+            lane.clone(),
+            MapSubscriber::new(observer.subscriber()),
+        ))
     } else {
-        let (lane, event_stream) = model::map::make_lane_model(lifecycle.create_strategy());
-        (lane, event_stream, None)
+        None
     };
 
     let tasks = MapLifecycleTasks(LifecycleTasks {
         name: name.into(),
         lifecycle,
-        event_stream,
+        event_stream: summaries_to_events(observer),
         projection,
     });
 
-    let lane_io = deferred.map(|d| MapLaneIo::new(lane.clone(), d));
     (lane, tasks, lane_io)
 }
 
@@ -1394,7 +1395,7 @@ where
     Value: Debug + Form + Send + Sync + 'static,
 {
     lane: DemandMapLane<Key, Value>,
-    topic: MpscTopic<DemandMapLaneEvent<Key, Value>>,
+    rx: mpsc::Receiver<DemandMapLaneEvent<Key, Value>>,
 }
 
 impl<Key, Value> DemandMapLaneIo<Key, Value>
@@ -1404,9 +1405,9 @@ where
 {
     pub fn new(
         lane: DemandMapLane<Key, Value>,
-        topic: MpscTopic<DemandMapLaneEvent<Key, Value>>,
+        rx: mpsc::Receiver<DemandMapLaneEvent<Key, Value>>,
     ) -> DemandMapLaneIo<Key, Value> {
-        DemandMapLaneIo { lane, topic }
+        DemandMapLaneIo { lane, rx }
     }
 }
 
@@ -1423,20 +1424,29 @@ where
         config: AgentExecutionConfig,
         context: Context,
     ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
-        let DemandMapLaneIo { lane, topic, .. } = self;
+        let DemandMapLaneIo { lane, mut rx, .. } = self;
         let uplink_factory = SpawnerUplinkFactory::new(config.clone());
         let message_handler = DemandMapLaneMessageHandler::new(lane);
 
-        Ok(lane::channels::task::run_lane_io(
+        let (mut topic_tx, topic_rx) = topic::channel(config.observation_buffer);
+
+        let pump = async move {
+            while let Some(update) = rx.recv().await {
+                topic_tx.discarding_send(update).await;
+            }
+        };
+
+        let lane_task = lane::channels::task::run_lane_io(
             message_handler,
             uplink_factory,
             envelopes,
-            topic,
+            topic_rx.subscriber(),
             config,
             context,
             route,
-        )
-        .boxed())
+        );
+
+        Ok(join(pump, lane_task).map(|(_, r)| r).boxed())
     }
 
     fn attach_boxed(
