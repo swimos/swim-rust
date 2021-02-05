@@ -12,16 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::agent::lane::channels::uplink::backpressure::{
+    KeyedBackpressureConfig, SimpleBackpressureConfig,
+};
 use crate::agent::lane::channels::uplink::map::MapLaneSyncError;
 use crate::agent::lane::model::demand_map::{DemandMapLane, DemandMapLaneUpdate};
-use crate::agent::lane::model::map::{MapLane, MapLaneEvent, MapUpdate};
+use crate::agent::lane::model::map::{make_update, MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::ValueLane;
 use crate::routing::{RoutingAddr, TaggedSender};
-use futures::future::ready;
-use futures::stream::BoxStream;
-use futures::stream::FusedStream;
-use futures::{select, select_biased, FutureExt, StreamExt};
-use pin_utils::core_reexport::num::NonZeroUsize;
+use either::Either;
+use futures::future::{ready, BoxFuture};
+use futures::stream::{once, unfold, BoxStream, FusedStream};
+use futures::{select, select_biased, FutureExt, Stream, StreamExt};
 use pin_utils::pin_mut;
 use std::any::Any;
 use std::error::Error;
@@ -35,15 +37,17 @@ use swim_common::routing::SendError;
 use swim_common::sink::item::{FnMutSender, ItemSender};
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
-use tracing::{event, span, Level};
+use swim_warp::backpressure::map::MapUpdateMessage;
+use swim_warp::model::map::MapUpdate;
+use tracing::{event, Level};
 use utilities::errors::Recoverable;
 
-#[cfg(test)]
-mod tests;
-
+pub(crate) mod backpressure;
 pub mod map;
 pub(crate) mod spawn;
 pub mod stateless;
+#[cfg(test)]
+mod tests;
 
 /// An enumeration representing the type of an uplink.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -76,6 +80,19 @@ pub enum UplinkState {
     Synced,
 }
 
+/// Stages of the lifecycle of an uplink.
+pub enum UplinkPhase<'a, Actions, Updates, Msg> {
+    /// The uplink is running.
+    Running(UplinkState, &'a mut Actions, &'a mut Updates),
+    /// The uplink is synchronizing the state of the client.
+    Syncing(
+        &'a mut Actions,
+        BoxStream<'a, PeelResult<'a, Updates, Result<Msg, UplinkError>>>,
+    ),
+    /// The uplink has terminated.
+    Terminated,
+}
+
 /// Responses from a lane uplink to its subscriber.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum UplinkMessage<Ev> {
@@ -83,6 +100,19 @@ pub enum UplinkMessage<Ev> {
     Synced,
     Unlinked,
     Event(Ev),
+}
+
+impl<K, V> MapUpdateMessage<K, V> for UplinkMessage<MapUpdate<K, V>> {
+    fn discriminate(self) -> Either<MapUpdate<K, V>, Self> {
+        match self {
+            UplinkMessage::Event(update) => Either::Left(update),
+            ow => Either::Right(ow),
+        }
+    }
+
+    fn repack(update: MapUpdate<K, V>) -> Self {
+        UplinkMessage::Event(update)
+    }
 }
 
 /// An addressed uplink message. Either to be broadcast to all uplinks or to a single address.
@@ -120,8 +150,7 @@ pub enum UplinkError {
 }
 
 fn trans_err_fatal(err: &TransactionError) -> bool {
-    matches!(err, 
-        TransactionError::HighContention { .. } | TransactionError::TooManyAttempts { .. } )
+    matches!(err, TransactionError::HighContention { .. } | TransactionError::TooManyAttempts { .. } )
 }
 
 impl Recoverable for UplinkError {
@@ -196,22 +225,14 @@ pub struct Uplink<SM, Actions, Updates> {
     actions: Actions,
     /// Stream of updates to the lane.
     updates: Updates,
-    /// The number of events to process before yielding execution back to the runtime.
-    yield_after: NonZeroUsize,
 }
 
 impl<SM, Actions, Updates> Uplink<SM, Actions, Updates> {
-    pub fn new(
-        state_machine: SM,
-        actions: Actions,
-        updates: Updates,
-        yield_after: NonZeroUsize,
-    ) -> Self {
+    pub fn new(state_machine: SM, actions: Actions, updates: Updates) -> Self {
         Uplink {
             state_machine,
             actions,
             updates,
-            yield_after,
         }
     }
 }
@@ -222,16 +243,30 @@ const UPLINK_FAILED: &str = "Uplink task failed.";
 impl<SM, Actions, Updates> Uplink<SM, Actions, Updates>
 where
     Updates: FusedStream + Send,
-    SM: UplinkStateMachine<Updates::Item>,
-    Actions: FusedStream<Item = UplinkAction> + Unpin,
+    Updates::Item: Send,
+    SM: UplinkStateMachine<Updates::Item> + 'static,
+    Actions: FusedStream<Item = UplinkAction> + Send,
 {
     /// Run the uplink as an asynchronous task.
     pub async fn run_uplink<Sender, SendErr>(self, mut sender: Sender) -> Result<(), UplinkError>
     where
-        Sender: ItemSender<UplinkMessage<SM::Msg>, SendErr>,
+        Sender: ItemSender<UplinkMessage<SM::Msg>, SendErr> + Send + Sync + Clone,
+        SendErr: Send,
     {
-        let result = self.run_uplink_internal(&mut sender).await;
-        let attempt_unlink = match &result {
+        let Uplink {
+            state_machine,
+            actions,
+            updates,
+            ..
+        } = self;
+        pin_mut!(actions);
+        pin_mut!(updates);
+        let update_stream = as_stream(&state_machine, &mut actions, &mut updates);
+
+        let completion = state_machine
+            .send_message_stream(update_stream, sender.clone())
+            .await;
+        let attempt_unlink = match &completion {
             Ok(_) => false,
             Err(error) => {
                 event!(Level::ERROR, message = UPLINK_FAILED, ?error);
@@ -247,86 +282,95 @@ where
         if attempt_unlink && sender.send_item(UplinkMessage::Unlinked).await.is_err() {
             event!(Level::ERROR, FAILED_UNLINK);
         }
-        result
+        completion
     }
+}
 
-    async fn run_uplink_internal<Sender, SendErr>(
-        self,
-        sender: &mut Sender,
-    ) -> Result<(), UplinkError>
-    where
-        Sender: ItemSender<UplinkMessage<SM::Msg>, SendErr>,
-    {
-        let Uplink {
-            state_machine,
-            actions,
-            updates,
-            yield_after,
-        } = self;
+fn as_stream<'a, SM, Actions, Updates>(
+    state_machine: &'a SM,
+    actions: &'a mut Actions,
+    updates: &'a mut Updates,
+) -> impl Stream<Item = Result<UplinkMessage<SM::Msg>, UplinkError>> + 'a
+where
+    Updates: FusedStream + Send + Unpin,
+    SM: UplinkStateMachine<Updates::Item> + 'static,
+    Actions: FusedStream<Item = UplinkAction> + Unpin,
+{
+    let smr = &*state_machine;
 
-        pin_mut!(actions);
-        pin_mut!(updates);
+    let state: UplinkPhase<'a, Actions, Updates, SM::Msg> =
+        UplinkPhase::Running(UplinkState::Opened, actions, updates);
 
-        let mut state = UplinkState::Opened;
-        let mut iteration_count: usize = 0;
-        let yield_mod = yield_after.get();
-
-        loop {
-            if state == UplinkState::Opened {
-                let action = loop {
-                    select_biased! {
-                        action = actions.next() => {
-                            break action;
-                        },
-                        _ = updates.next() => {}, //Ignore updates until linked.
+    unfold(state, move |state| async move {
+        match state {
+            UplinkPhase::Running(UplinkState::Opened, actions, updates) => {
+                loop {
+                    let maybe_action: Option<UplinkAction> = select_biased! {
+                        action = actions.next() => action,
+                        upd = updates.next() => {
+                            if upd.is_none() {
+                                None
+                            } else {
+                                continue;
+                            }
+                        }, //Ignore updates until linked.
+                    };
+                    break handle_action_alt(
+                        smr,
+                        UplinkState::Opened,
+                        updates,
+                        actions,
+                        maybe_action,
+                    )
+                    .await;
+                }
+            }
+            UplinkPhase::Running(simple_state, actions, updates) => {
+                let next: Either<Option<UplinkAction>, Option<Updates::Item>> = select_biased! {
+                    action = actions.next() => Either::Left(action),
+                    update = updates.next() => Either::Right(update),
+                };
+                match next {
+                    Either::Left(action) => {
+                        handle_action_alt(smr, simple_state, updates, actions, action).await
+                    }
+                    Either::Right(Some(update)) => match smr.message_for(update) {
+                        Ok(Some(msg)) => Some((
+                            Ok(UplinkMessage::Event(msg)),
+                            UplinkPhase::Running(simple_state, actions, updates),
+                        )),
+                        Err(e) => {
+                            Some((Err(e), UplinkPhase::Running(simple_state, actions, updates)))
+                        }
+                        _ => {
+                            panic!("No message.")
+                        }
+                    },
+                    _ => None,
+                }
+            }
+            UplinkPhase::Syncing(actions, mut sync_stream) => {
+                let item_and_state = match sync_stream.next().await {
+                    Some(PeelResult::Output(event)) => match event {
+                        Ok(msg) => (
+                            Ok(UplinkMessage::Event(msg)),
+                            UplinkPhase::Syncing(actions, sync_stream),
+                        ),
+                        Err(e) => (Err(e), UplinkPhase::Terminated),
+                    },
+                    Some(PeelResult::Complete(updates)) => (
+                        Ok(UplinkMessage::Synced),
+                        UplinkPhase::Running(UplinkState::Synced, actions, updates),
+                    ),
+                    _ => {
+                        panic!("Lane synchronization stream did not return the update stream.")
                     }
                 };
-                if let Some(new_state) = handle_action(
-                    &state_machine,
-                    UplinkState::Opened,
-                    &mut updates,
-                    sender,
-                    action,
-                )
-                .await?
-                {
-                    state = new_state;
-                } else {
-                    break Ok(());
-                }
-            } else {
-                select_biased! {
-                    action = actions.next() => {
-                        if let Some(new_state) = handle_action(
-                            &state_machine,
-                            UplinkState::Opened,
-                            &mut updates,
-                            sender,
-                            action).await? {
-
-                            state = new_state;
-                        } else {
-                            break Ok(());
-                        }
-                    },
-                    maybe_update = updates.next() => {
-                        if let Some(update) = maybe_update {
-                            if let Some(msg) = state_machine.message_for(update)? {
-                                send_msg(sender, UplinkMessage::Event(msg)).await?;
-                            }
-                        } else {
-                            break Err(UplinkError::LaneStoppedReporting);
-                        }
-                    },
-                }
+                Some(item_and_state)
             }
-
-            iteration_count += 1;
-            if iteration_count % yield_mod == 0 {
-                tokio::task::yield_now().await;
-            }
+            UplinkPhase::Terminated => None,
         }
-    }
+    })
 }
 
 const LINKING: &str = "Creating uplink.";
@@ -334,52 +378,87 @@ const SYNCING: &str = "Synchronizing uplink.";
 const UNLINKING: &str = "Stopping uplink after client request.";
 
 // Change the state of the uplink based on an action.
-async fn handle_action<SM, Updates, Sender, SendErr>(
-    state_machine: &SM,
+async fn handle_action_alt<'a, SM, Updates, Actions>(
+    state_machine: &'a SM,
     prev_state: UplinkState,
-    updates: &mut Updates,
-    sender: &mut Sender,
+    updates: &'a mut Updates,
+    actions: &'a mut Actions,
     action: Option<UplinkAction>,
-) -> Result<Option<UplinkState>, UplinkError>
+) -> Option<(
+    Result<UplinkMessage<SM::Msg>, UplinkError>,
+    UplinkPhase<'a, Actions, Updates, SM::Msg>,
+)>
 where
-    Updates: FusedStream + Send + Unpin,
-    SM: UplinkStateMachine<Updates::Item>,
-    Sender: ItemSender<UplinkMessage<SM::Msg>, SendErr>,
+    Updates: FusedStream + Send + Unpin + 'a,
+    SM: UplinkStateMachine<Updates::Item> + 'static,
+    Actions: FusedStream<Item = UplinkAction> + Unpin + 'a,
 {
     match action {
         Some(UplinkAction::Link) => {
             //Move into the linked state which will caused updates to be sent.
             event!(Level::DEBUG, LINKING);
-            send_msg(sender, UplinkMessage::Linked).await?;
-            Ok(Some(UplinkState::Linked))
+            Some((
+                Ok(UplinkMessage::Linked),
+                UplinkPhase::Running(UplinkState::Linked, actions, updates),
+            ))
         }
         Some(UplinkAction::Sync) => {
-            if prev_state == UplinkState::Opened {
+            let mut sync_stream = state_machine.sync_lane(updates);
+            let msg_and_state = if prev_state == UplinkState::Opened {
                 event!(Level::DEBUG, LINKING);
-                send_msg(sender, UplinkMessage::Linked).await?;
-            }
-            // Run the sync state machine until it completes then enter the synced state.
-            let span = span!(Level::DEBUG, SYNCING);
-            let _enter = span.enter();
-            let sync_stream = state_machine.sync_lane(updates);
-            pin_mut!(sync_stream);
-            while let Some(result) = sync_stream.next().await {
-                send_msg(sender, UplinkMessage::Event(result?)).await?;
-            }
-            send_msg(sender, UplinkMessage::Synced).await?;
-            Ok(Some(UplinkState::Synced))
+                (
+                    Ok(UplinkMessage::Linked),
+                    UplinkPhase::Syncing(actions, sync_stream),
+                )
+            } else {
+                event!(Level::DEBUG, SYNCING);
+                match sync_stream.next().await {
+                    Some(PeelResult::Output(event)) => match event {
+                        Ok(msg) => (
+                            Ok(UplinkMessage::Event(msg)),
+                            UplinkPhase::Syncing(actions, sync_stream),
+                        ),
+                        Err(e) => (Err(e), UplinkPhase::Terminated),
+                    },
+                    Some(PeelResult::Complete(updates)) => (
+                        Ok(UplinkMessage::Synced),
+                        UplinkPhase::Running(UplinkState::Synced, actions, updates),
+                    ),
+                    _ => {
+                        panic!("Lane synchronization stream did not return the update stream.")
+                    }
+                }
+            };
+            Some(msg_and_state)
         }
         _ => {
             // When an unlink is requested, send the unlinked response and terminate the uplink.
             event!(Level::DEBUG, UNLINKING);
-            send_msg(sender, UplinkMessage::Unlinked).await?;
-            Ok(None)
+            Some((Ok(UplinkMessage::Unlinked), UplinkPhase::Terminated))
+        }
+    }
+}
+
+/// Item type for streams that peel values from another stream (by reference), returning the
+/// reference to the undelying stream before terminating.
+pub enum PeelResult<'a, U, T> {
+    /// An output peeled from the underlying stream.
+    Output(T),
+    /// Returning the underlying stream (the stream should return None after this).
+    Complete(&'a mut U),
+}
+
+impl<'a, U, T> PeelResult<'a, U, T> {
+    fn output(self) -> Option<T> {
+        match self {
+            PeelResult::Output(v) => Some(v),
+            _ => None,
         }
     }
 }
 
 /// Trait encoding the differences in uplink behaviour for different kinds of lanes.
-pub trait UplinkStateMachine<Event> {
+pub trait UplinkStateMachine<Event>: Send + Sync {
     type Msg: Any + Send + Sync + Debug;
 
     /// Create a message to send to the subscriber from a lane event (where appropriate).
@@ -391,19 +470,66 @@ pub trait UplinkStateMachine<Event> {
     fn sync_lane<'a, Updates>(
         &'a self,
         updates: &'a mut Updates,
-    ) -> BoxStream<'a, Result<Self::Msg, UplinkError>>
+    ) -> BoxStream<'a, PeelResult<'a, Updates, Result<Self::Msg, UplinkError>>>
     where
         Updates: FusedStream<Item = Event> + Send + Unpin + 'a;
+
+    fn send_message_stream<'a, Messages, Sender, SendErr>(
+        &'a self,
+        message_stream: Messages,
+        sender: Sender,
+    ) -> BoxFuture<'a, Result<(), UplinkError>>
+    where
+        Messages: Stream<Item = Result<UplinkMessage<Self::Msg>, UplinkError>> + Send + 'a,
+        Sender: ItemSender<UplinkMessage<Self::Msg>, SendErr> + Send + Sync + Clone + 'a,
+        SendErr: Send + 'a,
+    {
+        default_send_message_stream(message_stream, sender).boxed()
+    }
 }
 
-pub struct ValueLaneUplink<T>(ValueLane<T>);
+async fn default_send_message_stream<Msg, Messages, Sender, SendErr>(
+    message_stream: Messages,
+    mut sender: Sender,
+) -> Result<(), UplinkError>
+where
+    Msg: Any + Send + Sync + Debug,
+    Messages: Stream<Item = Result<UplinkMessage<Msg>, UplinkError>> + Send,
+    Sender: ItemSender<UplinkMessage<Msg>, SendErr> + Send + Sync,
+{
+    pin_mut!(message_stream);
+    loop {
+        match message_stream.next().await {
+            Some(Ok(msg)) => {
+                let result = send_msg(&mut sender, msg).await;
+                if result.is_err() {
+                    break result;
+                }
+            }
+            Some(Err(e)) => {
+                break Err(e);
+            }
+            _ => {
+                break Ok(());
+            }
+        }
+    }
+}
+
+pub struct ValueLaneUplink<T> {
+    lane: ValueLane<T>,
+    backpressure_config: Option<SimpleBackpressureConfig>,
+}
 
 impl<T> ValueLaneUplink<T>
 where
     T: Any + Send + Sync,
 {
-    pub fn new(lane: ValueLane<T>) -> Self {
-        ValueLaneUplink(lane)
+    pub fn new(lane: ValueLane<T>, backpressure_config: Option<SimpleBackpressureConfig>) -> Self {
+        ValueLaneUplink {
+            lane,
+            backpressure_config,
+        }
     }
 }
 
@@ -455,25 +581,59 @@ where
     fn sync_lane<'a, Updates>(
         &'a self,
         updates: &'a mut Updates,
-    ) -> BoxStream<'a, Result<Self::Msg, UplinkError>>
+    ) -> BoxStream<'a, PeelResult<'a, Updates, Result<Self::Msg, UplinkError>>>
     where
         Updates: FusedStream<Item = Arc<T>> + Send + Unpin + 'a,
     {
-        let ValueLaneUplink(lane) = self;
-        let fut = async move {
-            let lane_state: Option<Arc<T>> = select! {
-                v = lane.load().fuse() => Some(v),
-                maybe_v = updates.next() => maybe_v,
-            };
-            if let Some(v) = lane_state {
-                event!(Level::TRACE, message = OBTAINED_VALUE_STATE, value = ?v);
-                Ok(v.into())
-            } else {
-                Err(UplinkError::LaneStoppedReporting)
-            }
-        };
+        let ValueLaneUplink { lane, .. } = self;
+        let str = unfold(
+            (false, Some(updates)),
+            move |(synced, maybe_updates)| async move {
+                if let Some(updates) = maybe_updates {
+                    if synced {
+                        Some((PeelResult::Complete(updates), (true, None)))
+                    } else {
+                        let lane_state: Option<Arc<T>> = select! {
+                            v = lane.load().fuse() => Some(v),
+                            maybe_v = updates.next() => maybe_v,
+                        };
+                        if let Some(v) = lane_state {
+                            event!(Level::TRACE, message = OBTAINED_VALUE_STATE, value = ?v);
+                            Some((PeelResult::Output(Ok(v.into())), (true, Some(updates))))
+                        } else {
+                            Some((
+                                PeelResult::Output(Err(UplinkError::LaneStoppedReporting)),
+                                (true, Some(updates)),
+                            ))
+                        }
+                    }
+                } else {
+                    None
+                }
+            },
+        );
+        Box::pin(str)
+    }
 
-        Box::pin(futures::stream::once(fut))
+    fn send_message_stream<'a, Messages, Sender, SendErr>(
+        &'a self,
+        message_stream: Messages,
+        sender: Sender,
+    ) -> BoxFuture<'a, Result<(), UplinkError>>
+    where
+        Messages: Stream<Item = Result<UplinkMessage<Self::Msg>, UplinkError>> + Send + 'a,
+        Sender: ItemSender<UplinkMessage<Self::Msg>, SendErr> + Send + Sync + Clone + 'a,
+        SendErr: Send + 'a,
+    {
+        async move {
+            if let Some(config) = self.backpressure_config {
+                backpressure::value_uplink_release_backpressure(message_stream, sender, config)
+                    .await
+            } else {
+                default_send_message_stream(message_stream, sender).await
+            }
+        }
+        .boxed()
     }
 }
 
@@ -486,6 +646,7 @@ pub struct MapLaneUplink<K, V, F> {
     id: u64,
     /// A factory for retry strategies to be used for the checkpoint transactions.
     retries: F,
+    backpressure_config: Option<KeyedBackpressureConfig>,
 }
 
 impl<K, V, F, Retries> MapLaneUplink<K, V, F>
@@ -495,8 +656,18 @@ where
     F: Fn() -> Retries + Send + Sync + 'static,
     Retries: RetryManager + Send + 'static,
 {
-    pub fn new(lane: MapLane<K, V>, id: u64, retries: F) -> Self {
-        MapLaneUplink { lane, id, retries }
+    pub fn new(
+        lane: MapLane<K, V>,
+        id: u64,
+        retries: F,
+        backpressure_config: Option<KeyedBackpressureConfig>,
+    ) -> Self {
+        MapLaneUplink {
+            lane,
+            id,
+            retries,
+            backpressure_config,
+        }
     }
 }
 
@@ -507,31 +678,58 @@ where
     F: Fn() -> Retries + Send + Sync + 'static,
     Retries: RetryManager + Send + 'static,
 {
-    type Msg = MapUpdate<K, V>;
+    type Msg = MapUpdate<Value, V>;
 
     fn message_for(&self, event: MapLaneEvent<K, V>) -> Result<Option<Self::Msg>, UplinkError> {
-        Ok(MapUpdate::make(event))
+        Ok(make_update(event))
     }
 
     fn sync_lane<'a, Updates>(
         &'a self,
         updates: &'a mut Updates,
-    ) -> BoxStream<'a, Result<Self::Msg, UplinkError>>
+    ) -> BoxStream<'a, PeelResult<'a, Updates, Result<Self::Msg, UplinkError>>>
     where
         Updates: FusedStream<Item = MapLaneEvent<K, V>> + Send + Unpin + 'a,
     {
-        let MapLaneUplink { lane, id, retries } = self;
+        let MapLaneUplink {
+            lane, id, retries, ..
+        } = self;
         Box::pin(
-            map::sync_map_lane(*id, lane, updates, retries()).filter_map(|r| {
+            map::sync_map_lane_peel(*id, lane, updates, retries()).filter_map(|r| {
                 ready(match r {
-                    Ok(event) => MapUpdate::make(event).map(Ok),
-                    Err(err) => Some(Err(err.into())),
+                    PeelResult::Output(Ok(event)) => {
+                        make_update(event).map(Ok).map(PeelResult::Output)
+                    }
+                    PeelResult::Output(Err(err)) => Some(PeelResult::Output(Err(err.into()))),
+                    PeelResult::Complete(upd) => Some(PeelResult::Complete(upd)),
                 })
             }),
         )
     }
+
+    fn send_message_stream<'a, Messages, Sender, SendErr>(
+        &'a self,
+        message_stream: Messages,
+        sender: Sender,
+    ) -> BoxFuture<'a, Result<(), UplinkError>>
+    where
+        Messages:
+            Stream<Item = Result<UplinkMessage<MapUpdate<Value, V>>, UplinkError>> + Send + 'a,
+        Sender: ItemSender<UplinkMessage<MapUpdate<Value, V>>, SendErr> + Send + Sync + Clone + 'a,
+        SendErr: Send + 'a,
+    {
+        async move {
+            if let Some(config) = self.backpressure_config {
+                backpressure::map_uplink_release_backpressure(message_stream, sender, config).await
+            } else {
+                default_send_message_stream(message_stream, sender).await
+            }
+        }
+        .boxed()
+    }
 }
 
+#[derive(Debug, Clone)]
 pub(crate) struct UplinkMessageSender<S> {
     inner: S,
     route: RelativePath,
@@ -544,7 +742,7 @@ impl<S> UplinkMessageSender<S> {
 }
 
 impl UplinkMessageSender<TaggedSender> {
-    pub fn into_item_sender<Msg>(self) -> impl ItemSender<UplinkMessage<Msg>, SendError>
+    pub fn into_item_sender<Msg>(self) -> impl ItemSender<UplinkMessage<Msg>, SendError> + Clone
     where
         Msg: Into<Value> + Send + 'static,
     {
@@ -603,8 +801,8 @@ where
 
     fn sync_lane<'a, Updates>(
         &'a self,
-        _updates: &'a mut Updates,
-    ) -> BoxStream<'a, Result<Self::Msg, UplinkError>>
+        updates: &'a mut Updates,
+    ) -> BoxStream<'a, PeelResult<'a, Updates, Result<Self::Msg, UplinkError>>>
     where
         Updates: FusedStream<Item = DemandMapLaneUpdate<Key, Value>> + Send + Unpin + 'a,
     {
@@ -613,13 +811,16 @@ where
         let controller = lane.controller();
         let sync_fut = controller.sync();
 
+        let messages = once(sync_fut)
+            .filter_map(|r| match r {
+                Ok(v) => ready(Some(v.into_iter())),
+                Err(_) => ready(None),
+            })
+            .flat_map(|v| futures::stream::iter(v).map(|m| PeelResult::Output(Ok(m))));
+
         Box::pin(
-            futures::stream::once(sync_fut)
-                .filter_map(|r| match r {
-                    Ok(v) => ready(Some(v.into_iter())),
-                    Err(_) => ready(None),
-                })
-                .flat_map(|v| futures::stream::iter(v).map(Ok))
+            messages
+                .chain(once(ready(PeelResult::Complete(updates))))
                 .fuse(),
         )
     }

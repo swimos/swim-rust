@@ -330,8 +330,7 @@ where
                     break;
                 }
             }
-
-            iteration_count += 1;
+            iteration_count = iteration_count.wrapping_add(1);
             if iteration_count % yield_mod == 0 {
                 tokio::task::yield_now().await;
             }
@@ -495,7 +494,7 @@ impl EnvelopeDispatcher {
                 }
             }
 
-            iteration_count += 1;
+            iteration_count = iteration_count.wrapping_add(1);
             if iteration_count % yield_mod == 0 {
                 tokio::task::yield_now().await;
             }
@@ -532,7 +531,7 @@ impl EnvelopeDispatcher {
                     break;
                 }
             }
-            iteration_count += 1;
+            iteration_count = iteration_count.wrapping_add(1);
             if iteration_count % yield_mod == 0 {
                 tokio::task::yield_now().await;
             }

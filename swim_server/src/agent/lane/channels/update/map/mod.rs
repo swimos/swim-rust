@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::agent::lane::channels::update::{LaneUpdate, UpdateError};
-use crate::agent::lane::model::map::{MapLane, MapUpdate};
+use crate::agent::lane::model::map::MapLane;
 use crate::routing::RoutingAddr;
 use futures::future::BoxFuture;
 use futures::{FutureExt, Stream, StreamExt};
@@ -22,6 +22,7 @@ use std::any::Any;
 use std::fmt::Debug;
 use stm::transaction::{RetryManager, TransactionRunner};
 use swim_common::form::Form;
+use swim_warp::model::map::MapUpdate;
 use tracing::{event, Level};
 
 #[cfg(test)]
@@ -82,6 +83,9 @@ where
                     }
                     MapUpdate::Clear => {
                         lane.clear_direct().apply_with(&mut runner).await?;
+                    }
+                    _ => {
+                        panic!("Take and drop not yet supported.")
                     }
                 }
             }

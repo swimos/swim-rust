@@ -59,6 +59,7 @@ fn make_dispatcher(
         max_pending,
         0,
         Duration::from_secs(1),
+        None,
     );
 
     let dispatcher = AgentDispatcher::new(

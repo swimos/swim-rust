@@ -17,14 +17,12 @@ use crate::agent::context::AgentExecutionContext;
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lane::lifecycle::{
     ActionLaneLifecycle, DemandLaneLifecycle, DemandMapLaneLifecycle, StatefulLaneLifecycle,
-    StatefulLaneLifecycleBase,
 };
 use crate::agent::lane::model::action::CommandLane;
 use crate::agent::lane::model::demand::DemandLane;
 use crate::agent::lane::model::demand_map::DemandMapLane;
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent};
-use crate::agent::lane::strategy::Queue;
 use crate::agent::lane::tests::ExactlyOnce;
 use crate::agent::lifecycle::AgentLifecycle;
 use crate::agent::{AgentContext, LaneIo, LaneTasks, SwimAgent};
@@ -245,14 +243,6 @@ impl<'a> ActionLaneLifecycle<'a, String, (), ReportingAgent> for ActionLifecycle
     }
 }
 
-impl StatefulLaneLifecycleBase for DataLifecycle {
-    type WatchStrategy = Queue;
-
-    fn create_strategy(&self) -> Self::WatchStrategy {
-        Queue::default()
-    }
-}
-
 impl<'a> StatefulLaneLifecycle<'a, MapLane<String, i32>, ReportingAgent> for DataLifecycle {
     type StartFuture = Ready<()>;
     type EventFuture = BoxFuture<'a, ()>;
@@ -265,7 +255,7 @@ impl<'a> StatefulLaneLifecycle<'a, MapLane<String, i32>, ReportingAgent> for Dat
     }
 
     fn on_event<C>(
-        &'a self,
+        &'a mut self,
         event: &'a MapLaneEvent<String, i32>,
         _model: &'a MapLane<String, i32>,
         context: &'a C,
@@ -302,14 +292,6 @@ impl<'a> StatefulLaneLifecycle<'a, MapLane<String, i32>, ReportingAgent> for Dat
     }
 }
 
-impl StatefulLaneLifecycleBase for TotalLifecycle {
-    type WatchStrategy = Queue;
-
-    fn create_strategy(&self) -> Self::WatchStrategy {
-        Queue::default()
-    }
-}
-
 impl<'a> StatefulLaneLifecycle<'a, ValueLane<i32>, ReportingAgent> for TotalLifecycle {
     type StartFuture = Ready<()>;
     type EventFuture = BoxFuture<'a, ()>;
@@ -322,7 +304,7 @@ impl<'a> StatefulLaneLifecycle<'a, ValueLane<i32>, ReportingAgent> for TotalLife
     }
 
     fn on_event<C>(
-        &'a self,
+        &'a mut self,
         event: &ValueLaneEvent<i32>,
         _model: &'a ValueLane<i32>,
         _context: &'a C,
