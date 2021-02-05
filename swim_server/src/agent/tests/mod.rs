@@ -34,7 +34,7 @@ use crate::agent::{
 use crate::plane::provider::AgentProvider;
 use crate::routing::RoutingAddr;
 use futures::future::{join, BoxFuture};
-use futures::{Stream, StreamExt};
+use futures::Stream;
 use std::collections::HashMap;
 use std::future::Future;
 use std::num::NonZeroUsize;
@@ -42,6 +42,7 @@ use std::sync::Arc;
 use swim_runtime::task;
 use tokio::sync::{mpsc, Mutex};
 use tokio::time::{timeout, Duration};
+use tokio_stream::wrappers::ReceiverStream;
 use utilities::sync::trigger;
 use utilities::sync::trigger::Receiver;
 use utilities::uri::RelativeUri;
@@ -52,7 +53,7 @@ mod stub_router {
         ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedEnvelope, TaggedSender,
     };
     use futures::future::BoxFuture;
-    use futures::{FutureExt, StreamExt};
+    use futures::FutureExt;
     use std::sync::Arc;
     use swim_common::routing::ResolutionError;
     use tokio::sync::mpsc;
@@ -72,7 +73,7 @@ mod stub_router {
         pub(crate) fn new(router_addr: RoutingAddr) -> Self {
             let (tx, rx) = promise::promise();
             let (env_tx, mut env_rx) = mpsc::channel(16);
-            tokio::spawn(async move { while let Some(_) = env_rx.next().await {} });
+            tokio::spawn(async move { while let Some(_) = env_rx.recv().await {} });
             SingleChannelRouter {
                 router_addr,
                 inner: env_tx,
@@ -295,7 +296,7 @@ async fn value_lane_start_task() {
     let tasks = ValueLifecycleTasks(LifecycleTasks {
         name: "lane".to_string(),
         lifecycle: lifecycle.clone(),
-        event_stream: rx,
+        event_stream: ReceiverStream::new(rx),
         projection: proj(),
     });
 
@@ -331,7 +332,7 @@ async fn value_lane_events_task() {
     let tasks = Box::new(ValueLifecycleTasks(LifecycleTasks {
         name: "lane".to_string(),
         lifecycle: lifecycle.clone(),
-        event_stream: rx,
+        event_stream: ReceiverStream::new(rx),
         projection: proj(),
     }));
 
@@ -396,7 +397,7 @@ async fn value_lane_events_task_termination() {
     let tasks = Box::new(ValueLifecycleTasks(LifecycleTasks {
         name: "lane".to_string(),
         lifecycle: lifecycle.clone(),
-        event_stream: rx,
+        event_stream: ReceiverStream::new(rx),
         projection: proj(),
     }));
 
@@ -426,7 +427,7 @@ async fn map_lane_start_task() {
     let tasks = MapLifecycleTasks(LifecycleTasks {
         name: "lane".to_string(),
         lifecycle: lifecycle.clone(),
-        event_stream: rx,
+        event_stream: ReceiverStream::new(rx),
         projection: proj(),
     });
 
@@ -461,7 +462,7 @@ async fn map_lane_events_task() {
     let tasks = Box::new(MapLifecycleTasks(LifecycleTasks {
         name: "lane".to_string(),
         lifecycle: lifecycle.clone(),
-        event_stream: rx,
+        event_stream: ReceiverStream::new(rx),
         projection: proj(),
     }));
 
@@ -513,7 +514,7 @@ async fn map_lane_events_task_termination() {
     let tasks = Box::new(MapLifecycleTasks(LifecycleTasks {
         name: "lane".to_string(),
         lifecycle: lifecycle.clone(),
-        event_stream: rx,
+        event_stream: ReceiverStream::new(rx),
         projection: proj(),
     }));
 
@@ -544,7 +545,7 @@ async fn action_lane_events_task() {
     let tasks = Box::new(ActionLifecycleTasks(LifecycleTasks {
         name: "lane".to_string(),
         lifecycle: lifecycle.clone(),
-        event_stream: rx,
+        event_stream: ReceiverStream::new(rx),
         projection: proj(),
     }));
 
@@ -596,7 +597,7 @@ async fn action_lane_events_task_termination() {
     let tasks = Box::new(ActionLifecycleTasks(LifecycleTasks {
         name: "lane".to_string(),
         lifecycle: lifecycle.clone(),
-        event_stream: rx,
+        event_stream: ReceiverStream::new(rx),
         projection: proj(),
     }));
 
@@ -627,7 +628,7 @@ async fn command_lane_events_task() {
     let tasks = Box::new(CommandLifecycleTasks(LifecycleTasks {
         name: "lane".to_string(),
         lifecycle: lifecycle.clone(),
-        event_stream: rx,
+        event_stream: ReceiverStream::new(rx),
         projection: proj(),
     }));
 
@@ -679,7 +680,7 @@ async fn command_lane_events_task_terminates() {
     let tasks = Box::new(CommandLifecycleTasks(LifecycleTasks {
         name: "lane".to_string(),
         lifecycle: lifecycle.clone(),
-        event_stream: rx,
+        event_stream: ReceiverStream::new(rx),
         projection: proj(),
     }));
 
@@ -725,14 +726,14 @@ async fn agent_loop() {
         HashMap::new(),
         exec_config,
         clock.clone(),
-        envelope_rx,
+        ReceiverStream::new(envelope_rx),
         SingleChannelRouter::new(RoutingAddr::local(1024)),
     );
 
     let agent_task = swim_runtime::task::spawn(agent_proc);
 
     async fn expect(rx: &mut mpsc::Receiver<ReportingAgentEvent>, expected: ReportingAgentEvent) {
-        let result = rx.next().await;
+        let result = rx.recv().await;
         assert!(result.is_some());
         let event = result.unwrap();
         assert_eq!(event, expected);

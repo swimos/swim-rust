@@ -39,10 +39,11 @@ pub trait ResettableFuture: Future {
     fn reset(self: Pin<&mut Self>) -> bool;
 }
 
+#[pin_project(project = RetryStateProj)]
 enum RetryState<Err> {
     Polling,
     Retrying(Option<Err>),
-    Sleeping(Delay),
+    Sleeping(#[pin] Delay),
 }
 
 /// A future that can be retried with a [`RetryStrategy`].
@@ -51,6 +52,7 @@ pub struct RetryableFuture<Fut, Err> {
     #[pin]
     future: Fut,
     strategy: RetryStrategy,
+    #[pin]
     state: RetryState<Err>,
 }
 
@@ -75,22 +77,19 @@ where
 
         loop {
             let future = this.future.as_mut();
+            let mut state = this.state.as_mut().project();
 
-            match this.state {
-                RetryState::Polling => match ready!(future.try_poll(cx)) {
+            let new_state = match state {
+                RetryStateProj::Polling => match ready!(future.try_poll(cx)) {
                     Ok(out) => return Poll::Ready(Ok(out)),
-                    Err(e) => *this.state = RetryState::Retrying(Some(e)),
+                    Err(e) => RetryState::Retrying(Some(e)),
                 },
-                RetryState::Retrying(ref mut e) => match this.strategy.next() {
+                RetryStateProj::Retrying(ref mut e) => match this.strategy.next() {
                     Some(s) => {
                         if future.reset() {
                             match s {
-                                Some(dur) => {
-                                    *this.state = RetryState::Sleeping(delay_for(dur));
-                                }
-                                None => {
-                                    *this.state = RetryState::Polling;
-                                }
+                                Some(dur) => RetryState::Sleeping(delay_for(dur)),
+                                None => RetryState::Polling,
                             }
                         } else if let Some(e) = e.take() {
                             return Poll::Ready(Err(e));
@@ -106,11 +105,12 @@ where
                         }
                     }
                 },
-                RetryState::Sleeping(ref mut delay) => {
+                RetryStateProj::Sleeping(ref mut delay) => {
                     ready!(delay.poll_unpin(cx));
-                    *this.state = RetryState::Polling;
+                    RetryState::Polling
                 }
             };
+            this.state.set(new_state);
         }
     }
 }

@@ -23,6 +23,7 @@ use std::marker::PhantomData;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot};
+use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, Level};
 
 /// Model for a lane that can receive commands and optionally produce responses.
@@ -138,7 +139,7 @@ where
 {
     let (tx, rx) = mpsc::channel(buffer_size.get());
     let lane = ActionLane::new(tx);
-    (lane, rx)
+    (lane, ReceiverStream::new(rx))
 }
 
 impl<Command, Response> LaneModel for ActionLane<Command, Response> {

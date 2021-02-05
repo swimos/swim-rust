@@ -35,6 +35,7 @@ use swim_common::request::TryRequest;
 use swim_common::routing::RoutingError;
 use swim_common::sink::item::ItemSender;
 use tokio::sync::mpsc;
+use tokio_stream::wrappers::ReceiverStream;
 use tracing::{instrument, trace};
 use utilities::errors::Recoverable;
 use utilities::sync::{promise, topic};
@@ -519,7 +520,7 @@ impl<Act, Ev> DownlinkTask<Act, Ev> {
         let yield_mod = config.yield_after.get();
 
         let ops = ops.fuse();
-        let actions = actions.fuse();
+        let actions = ReceiverStream::new(actions).fuse();
 
         pin_mut!(ops);
         pin_mut!(actions);

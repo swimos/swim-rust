@@ -16,7 +16,6 @@ use crate::agent::lane::model::demand_map::{
     make_lane_model, DemandMapLaneEvent, DemandMapLaneUpdate,
 };
 use futures::future::{join, join3};
-use futures::StreamExt;
 use std::num::NonZeroUsize;
 use tokio::sync::mpsc;
 
@@ -28,7 +27,7 @@ async fn test_sync() {
     let sync = controller.sync();
 
     let asserter = async move {
-        match rx.next().await {
+        match rx.recv().await {
             Some(DemandMapLaneEvent::Sync(sender)) => {
                 assert!(sender.send(vec![DemandMapLaneUpdate::make(5, 10)]).is_ok());
             }
@@ -48,7 +47,7 @@ async fn test_cue_ok() {
     let (lane, mut update_rx) = make_lane_model::<i32, i32>(NonZeroUsize::new(5).unwrap(), tx);
 
     let cue_task = async move {
-        match rx.next().await {
+        match rx.recv().await {
             Some(DemandMapLaneEvent::Cue(sender, _key)) => {
                 assert!(sender.send(Some(5)).is_ok());
             }
@@ -57,7 +56,7 @@ async fn test_cue_ok() {
     };
 
     let event_task = async move {
-        match update_rx.next().await {
+        match update_rx.recv().await {
             Some(value) => {
                 assert_eq!(value, DemandMapLaneUpdate::make(10, 5));
             }
@@ -80,7 +79,7 @@ async fn test_cue_none() {
     let (lane, _topic) = make_lane_model::<i32, i32>(NonZeroUsize::new(5).unwrap(), tx);
 
     let cue_task = async move {
-        match rx.next().await {
+        match rx.recv().await {
             Some(DemandMapLaneEvent::Cue(sender, _key)) => {
                 assert!(sender.send(None).is_ok());
             }
