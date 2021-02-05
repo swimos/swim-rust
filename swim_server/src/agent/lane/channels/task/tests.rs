@@ -16,11 +16,14 @@ use crate::agent::context::AgentExecutionContext;
 use crate::agent::lane::channels::task::{LaneIoError, LaneUplinks, UplinkChannels};
 use crate::agent::lane::channels::update::{LaneUpdate, UpdateError};
 use crate::agent::lane::channels::uplink::spawn::UplinkErrorReport;
-use crate::agent::lane::channels::uplink::{UplinkAction, UplinkError, UplinkStateMachine};
+use crate::agent::lane::channels::uplink::{
+    PeelResult, UplinkAction, UplinkError, UplinkStateMachine,
+};
 use crate::agent::lane::channels::{
     AgentExecutionConfig, LaneMessageHandler, OutputMessage, TaggedAction,
 };
 use crate::agent::lane::model::action::{Action, ActionLane};
+use crate::agent::lane::model::DeferredSubscription;
 use crate::agent::Eff;
 use crate::routing::error::RouterError;
 use crate::routing::{
@@ -28,7 +31,7 @@ use crate::routing::{
     TaggedSender,
 };
 use futures::future::{join, join3, ready, BoxFuture};
-use futures::stream::{BoxStream, FusedStream};
+use futures::stream::{once, BoxStream, FusedStream};
 use futures::{Future, FutureExt, Stream, StreamExt};
 use pin_utils::pin_mut;
 use std::collections::{HashMap, HashSet};
@@ -42,13 +45,12 @@ use swim_common::routing::ResolutionError;
 use swim_common::routing::RoutingError;
 use swim_common::routing::SendError;
 use swim_common::sink::item::ItemSink;
-use swim_common::topic::{MpscTopic, Topic};
 use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
 use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::{mpsc, Mutex};
 use url::Url;
-use utilities::sync::{promise, trigger};
+use utilities::sync::{promise, topic, trigger};
 use utilities::uri::RelativeUri;
 
 #[test]
@@ -165,7 +167,7 @@ impl LaneUplinks for TestUplinkSpawner {
     where
         Handler: LaneMessageHandler + 'static,
         OutputMessage<Handler>: Into<Value>,
-        Top: Topic<Handler::Event> + Send + 'static,
+        Top: DeferredSubscription<Handler::Event>,
         Context: AgentExecutionContext,
     {
         let TestUplinkSpawner {
@@ -241,12 +243,12 @@ impl UplinkStateMachine<i32> for DummyUplink {
 
     fn sync_lane<'a, Updates>(
         &'a self,
-        _updates: &'a mut Updates,
-    ) -> BoxStream<'a, Result<Self::Msg, UplinkError>>
+        updates: &'a mut Updates,
+    ) -> BoxStream<'a, PeelResult<'a, Updates, Result<Self::Msg, UplinkError>>>
     where
         Updates: FusedStream<Item = i32> + Send + Unpin + 'a,
     {
-        futures::stream::empty().boxed()
+        once(ready(PeelResult::Complete(updates))).boxed()
     }
 }
 
@@ -393,17 +395,16 @@ fn default_buffer() -> NonZeroUsize {
 }
 
 fn make_config() -> AgentExecutionConfig {
-    AgentExecutionConfig::with(default_buffer(), 1, 1, Duration::from_secs(5))
+    AgentExecutionConfig::with(default_buffer(), 1, 1, Duration::from_secs(5), None)
 }
 
 fn route() -> RelativePath {
     RelativePath::new("node", "lane")
 }
 
-#[derive(Clone)]
 struct TaskInput {
     envelope_tx: mpsc::Sender<TaggedClientEnvelope>,
-    _event_tx: Option<mpsc::Sender<i32>>,
+    _event_tx: Option<topic::Sender<i32>>,
 }
 
 impl TaskInput {
@@ -460,10 +461,6 @@ impl TaskOutput {
     }
 }
 
-fn yield_after() -> NonZeroUsize {
-    NonZeroUsize::new(256).unwrap()
-}
-
 fn make_task(
     fail_on: Vec<RoutingAddr>,
     fatal_errors: bool,
@@ -476,12 +473,12 @@ fn make_task(
 ) {
     let (respond_tx, respond_rx) = mpsc::channel(5);
     let (envelope_tx, envelope_rx) = mpsc::channel(5);
-    let (event_tx, event_rx) = mpsc::channel(5);
+    let (event_tx, event_rx) = topic::channel(NonZeroUsize::new(5).unwrap());
 
     let handler = TestHandler::new();
     let output = TaskOutput(respond_rx, handler.0.clone());
     let uplinks = TestUplinkSpawner::new(respond_tx, fail_on, fatal_errors);
-    let (topic, _rec) = MpscTopic::new(event_rx, default_buffer(), yield_after());
+    let topic = event_rx.subscriber();
 
     let task = super::run_lane_io(
         handler,
@@ -672,10 +669,10 @@ async fn fail_on_update_error() {
 
     let addr = RoutingAddr::remote(4);
 
-    let _inputs_clone = inputs.clone();
+    let inputs_ref = &mut inputs;
 
     let io_task = async move {
-        inputs.cause_update_error(addr).await;
+        inputs_ref.cause_update_error(addr).await;
 
         context.stop().await;
     };
@@ -757,11 +754,11 @@ async fn fail_after_too_many_fatal_uplink_errors() {
     let (mut inputs, outputs, main_task) =
         make_task(vec![bad_addr1, bad_addr2], true, config, context.clone());
 
-    let _inputs_clone = inputs.clone();
+    let inputs_ref = &mut inputs;
 
     let io_task = async move {
-        inputs.send_sync(bad_addr1).await;
-        inputs.send_sync(bad_addr2).await;
+        inputs_ref.send_sync(bad_addr1).await;
+        inputs_ref.send_sync(bad_addr2).await;
 
         context.stop().await;
     };
@@ -813,19 +810,19 @@ async fn report_uplink_failures_on_update_failure() {
 
     let addr = RoutingAddr::remote(4);
 
-    let _inputs_clone = inputs.clone();
+    let inputs_ref = &mut inputs;
 
     let outputs_ref = &mut outputs;
 
     let io_task = async move {
-        inputs.send_link(bad_addr).await;
-        inputs.send_link(addr).await;
+        inputs_ref.send_link(bad_addr).await;
+        inputs_ref.send_link(addr).await;
 
         let actions = outputs_ref.take_actions(1).await;
 
         assert!(matches!(actions.as_slice(), [TaggedAction(a, UplinkAction::Link)] if a == &addr));
 
-        inputs.cause_update_error(addr).await;
+        inputs_ref.cause_update_error(addr).await;
 
         context.stop().await;
     };
@@ -1166,10 +1163,10 @@ async fn handle_action_lane_update_failure() {
 
     let addr = RoutingAddr::remote(5);
 
-    let _input_cpy = input.clone();
+    let input_ref = &mut input;
 
     let io_task = async move {
-        input.send_raw(addr, Value::text("0")).await;
+        input_ref.send_raw(addr, Value::text("0")).await;
     };
 
     let (_, result, _) = join3(spawn_task, task, io_task).await;

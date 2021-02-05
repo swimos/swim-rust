@@ -18,10 +18,8 @@ use std::fmt::Debug;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::time::Duration;
 use swim_server::agent::command_lifecycle;
-use swim_server::agent::lane::lifecycle::StatefulLaneLifecycleBase;
 use swim_server::agent::lane::model::action::CommandLane;
 use swim_server::agent::lane::model::value::{ValueLane, ValueLaneEvent};
-use swim_server::agent::lane::strategy::Queue;
 use swim_server::agent::value_lifecycle;
 use swim_server::agent::AgentContext;
 use swim_server::agent::SwimAgent;
@@ -38,7 +36,7 @@ pub struct RustAgent {
     pub counter: ValueLane<i32>,
 }
 
-#[agent_lifecycle(agent = "RustAgent")]
+#[agent_lifecycle(agent = "RustAgent", on_start)]
 struct RustAgentLifecycle;
 
 impl RustAgentLifecycle {
@@ -50,7 +48,7 @@ impl RustAgentLifecycle {
     }
 }
 
-#[command_lifecycle(agent = "RustAgent", command_type = "String")]
+#[command_lifecycle(agent = "RustAgent", command_type = "String", on_command)]
 struct EchoLifecycle;
 
 impl EchoLifecycle {
@@ -66,7 +64,7 @@ impl EchoLifecycle {
     }
 }
 
-#[value_lifecycle(agent = "RustAgent", event_type = "i32")]
+#[value_lifecycle(agent = "RustAgent", event_type = "i32", on_start, on_event)]
 struct CounterLifecycle;
 
 impl CounterLifecycle {
@@ -86,14 +84,6 @@ impl CounterLifecycle {
         Context: AgentContext<RustAgent> + Sized + Send + Sync + 'static,
     {
         println!("Event received: {}", event.current);
-    }
-}
-
-impl StatefulLaneLifecycleBase for CounterLifecycle {
-    type WatchStrategy = Queue;
-
-    fn create_strategy(&self) -> Self::WatchStrategy {
-        Queue::default()
     }
 }
 

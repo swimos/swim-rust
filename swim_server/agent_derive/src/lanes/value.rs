@@ -12,9 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::internals::{default_on_event, default_on_start};
 use crate::lanes::derive_lane;
-use crate::utils::{get_task_struct_name, validate_input_ast, InputAstType};
+use crate::utils::{
+    get_task_struct_name, parse_callback, validate_input_ast, Callback, CallbackKind, InputAstType,
+    LaneTasksImpl,
+};
 use darling::FromMeta;
 use macro_helpers::{has_fields, string_to_ident};
 use proc_macro::TokenStream;
@@ -27,10 +29,10 @@ struct ValueAttrs {
     agent: Ident,
     #[darling(map = "string_to_ident")]
     event_type: Ident,
-    #[darling(default = "default_on_start", map = "string_to_ident")]
-    on_start: Ident,
-    #[darling(default = "default_on_event", map = "string_to_ident")]
-    on_event: Ident,
+    #[darling(default)]
+    on_start: Option<darling::Result<String>>,
+    #[darling(default)]
+    on_event: Option<darling::Result<String>>,
 }
 
 pub fn derive_value_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput) -> TokenStream {
@@ -50,15 +52,49 @@ pub fn derive_value_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput) 
     let task_name = get_task_struct_name(&input_ast.ident.to_string());
     let agent_name = args.agent.clone();
     let event_type = &args.event_type;
-    let on_start_func = &args.on_start;
-    let on_event_func = &args.on_event;
 
-    let on_start = quote! {
+    let on_start_callback = parse_callback(&args.on_start, task_name.clone(), CallbackKind::Start);
+    let on_event_callback = parse_callback(&args.on_event, task_name.clone(), CallbackKind::Event);
+    let lane_tasks_impl = LaneTasksImpl::Value {
+        on_start: on_start_callback,
+        on_event: on_event_callback,
+    };
+
+    derive_lane(
+        "ValueLifecycle",
+        lifecycle_name,
+        has_fields,
+        task_name,
+        agent_name,
+        input_ast,
+        quote!(swim_server::agent::lane::model::value::ValueLane<#event_type>),
+        quote!(std::sync::Arc<#event_type>),
+        lane_tasks_impl,
+        quote! {
+            use swim_server::agent::lane::model::value::{ValueLane, ValueLaneEvent};
+            use swim_server::SwimStreamExt;
+            use swim_server::agent::lane::lifecycle::LaneLifecycle;
+        },
+        None,
+    )
+}
+
+pub fn derive_start_body(on_start: &Callback) -> proc_macro2::TokenStream {
+    let task_name = &on_start.task_name;
+    let on_start_func = &on_start.func_name;
+
+    quote!(
         let #task_name { lifecycle, projection, .. } = self;
         let model = projection(context.agent());
         lifecycle.#on_start_func(model, context).boxed()
-    };
-    let on_event = quote! {
+    )
+}
+
+pub fn derive_events_body(on_event: &Callback) -> proc_macro2::TokenStream {
+    let task_name = &on_event.task_name;
+    let on_event_func_name = &on_event.func_name;
+
+    quote!(
         let #task_name {
             mut lifecycle,
             event_stream,
@@ -83,28 +119,9 @@ pub fn derive_value_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput) 
 
         while let Some(event) = scan_stream.next().await {
               tracing_futures::Instrument::instrument(
-                lifecycle.#on_event_func(&event, &model, &context),
+                lifecycle.#on_event_func_name(&event, &model, &context),
                 tracing::span!(tracing::Level::TRACE, swim_server::agent::ON_EVENT, ?event)
             ).await;
         }
-    };
-
-    derive_lane(
-        "ValueLifecycle",
-        lifecycle_name,
-        has_fields,
-        task_name,
-        agent_name,
-        input_ast,
-        quote!(swim_server::agent::lane::model::value::ValueLane<#event_type>),
-        quote!(std::sync::Arc<#event_type>),
-        Some(on_start),
-        on_event,
-        quote! {
-            use swim_server::agent::lane::model::value::{ValueLane, ValueLaneEvent};
-            use swim_server::SwimStreamExt;
-            use swim_server::agent::lane::lifecycle::LaneLifecycle;
-        },
-        None,
     )
 }

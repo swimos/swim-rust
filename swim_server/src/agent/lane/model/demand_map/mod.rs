@@ -20,7 +20,6 @@ use tokio::sync::{mpsc, oneshot};
 
 use swim_common::form::Form;
 use swim_common::model::Value;
-use swim_common::topic::MpscTopic;
 
 use crate::agent::lane::LaneModel;
 use utilities::errors::SwimResultExt;
@@ -221,15 +220,13 @@ pub fn make_lane_model<Key, Value>(
     lifecycle_sender: mpsc::Sender<DemandMapLaneCommand<Key, Value>>,
 ) -> (
     DemandMapLane<Key, Value>,
-    MpscTopic<DemandMapLaneEvent<Key, Value>>,
+    mpsc::Receiver<DemandMapLaneEvent<Key, Value>>,
 )
 where
     Key: Send + Clone + Form + Sync + 'static,
     Value: Send + Clone + Form + Sync + 'static,
 {
     let (tx, rx) = mpsc::channel(buffer_size.get());
-    let (topic, _rec) = MpscTopic::new(rx, buffer_size, buffer_size);
     let lane = DemandMapLane::new(tx, lifecycle_sender);
-
-    (lane, topic)
+    (lane, rx)
 }

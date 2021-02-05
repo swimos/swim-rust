@@ -78,11 +78,14 @@ pub fn make_config() -> AgentExecutionConfig {
         max_fatal_uplink_errors: 0,
         max_uplink_start_attempts: NonZeroUsize::new(1).unwrap(),
         lane_buffer: buffer_size,
+        observation_buffer: buffer_size,
         lane_attachment_buffer: buffer_size,
         yield_after: NonZeroUsize::new(2048).unwrap(),
         retry_strategy: Default::default(),
         cleanup_timeout: Duration::from_secs(1),
         scheduler_buffer: buffer_size,
+        value_lane_backpressure: None,
+        map_lane_backpressure: None,
     }
 }
 

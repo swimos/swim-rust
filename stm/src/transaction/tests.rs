@@ -20,15 +20,16 @@ use crate::var::TVar;
 use futures::future::{ready, Ready};
 use futures::stream::{empty, Empty};
 use futures::task::Poll;
-use futures::{FutureExt, Stream, StreamExt};
+use futures::{FutureExt, Stream};
 use std::any::Any;
 use std::convert::identity;
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
+use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::Context;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 use tokio::time::{timeout, Duration};
 
@@ -891,15 +892,13 @@ fn dyn_stm_erases_stack_size() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn observe_transaction_outcome() {
-    let (tx, mut rx) = mpsc::channel(8);
-
-    let var = TVar::new_with_observer(12, tx.into());
+    let (var, mut rx) = TVar::new_with_observer(12, NonZeroUsize::new(8).unwrap());
 
     let stm = var.get().and_then(|i| var.put(*i + 1));
     let result = atomically(&stm, ExactlyOnce).await;
     assert!(result.is_ok());
 
-    let observed = rx.next().now_or_never().and_then(identity);
+    let observed = rx.recv().now_or_never().and_then(identity);
 
     assert_eq!(observed, Some(Arc::new(13)));
 }

@@ -13,6 +13,9 @@
 // limitations under the License.
 
 use crate::agent::lane::channels::update::LaneUpdate;
+use crate::agent::lane::channels::uplink::backpressure::{
+    KeyedBackpressureConfig, SimpleBackpressureConfig,
+};
 use crate::agent::lane::channels::uplink::{UplinkAction, UplinkStateMachine};
 use crate::routing::RoutingAddr;
 use std::num::NonZeroUsize;
@@ -42,6 +45,8 @@ pub struct AgentExecutionConfig {
     pub max_uplink_start_attempts: NonZeroUsize,
     /// Size of the buffer used by the agent envelope dispatcher to communicate with lanes.
     pub lane_buffer: NonZeroUsize,
+    /// Size of the buffer
+    pub observation_buffer: NonZeroUsize,
     /// Buffer size for the task that attaches lanes to the dispatcher.
     pub lane_attachment_buffer: NonZeroUsize,
     /// Number of values to process before yielding to the runtime.
@@ -52,6 +57,10 @@ pub struct AgentExecutionConfig {
     pub cleanup_timeout: Duration,
     /// The buffer size for the MPSC channel used by the agent to schedule events.
     pub scheduler_buffer: NonZeroUsize,
+    /// Back-pressure relief configuration for value lane uplinks.
+    pub value_lane_backpressure: Option<SimpleBackpressureConfig>,
+    /// Back-pressure relief configuration for map lane uplinks.
+    pub map_lane_backpressure: Option<KeyedBackpressureConfig>,
 }
 
 const DEFAULT_YIELD_COUNT: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(2048) };
@@ -62,6 +71,7 @@ impl AgentExecutionConfig {
         max_pending_envelopes: usize,
         error_threshold: usize,
         cleanup_timeout: Duration,
+        backpressure: Option<KeyedBackpressureConfig>,
     ) -> Self {
         AgentExecutionConfig {
             max_pending_envelopes,
@@ -72,11 +82,17 @@ impl AgentExecutionConfig {
             max_fatal_uplink_errors: error_threshold,
             max_uplink_start_attempts: NonZeroUsize::new(error_threshold + 1).unwrap(),
             lane_buffer: default_buffer,
+            observation_buffer: default_buffer,
             lane_attachment_buffer: default_buffer,
             yield_after: DEFAULT_YIELD_COUNT,
             retry_strategy: Default::default(),
             cleanup_timeout,
             scheduler_buffer: default_buffer,
+            value_lane_backpressure: backpressure.map(|kc| SimpleBackpressureConfig {
+                buffer_size: kc.buffer_size,
+                yield_after: kc.buffer_size,
+            }),
+            map_lane_backpressure: backpressure,
         }
     }
 }
@@ -94,11 +110,14 @@ impl Default for AgentExecutionConfig {
             max_fatal_uplink_errors: 0,
             max_uplink_start_attempts: NonZeroUsize::new(1).unwrap(),
             lane_buffer: default_buffer,
+            observation_buffer: default_buffer,
             lane_attachment_buffer: default_buffer,
             yield_after: DEFAULT_YIELD_COUNT,
             retry_strategy: RetryStrategy::default(),
             cleanup_timeout: Duration::from_secs(30),
             scheduler_buffer: default_buffer,
+            value_lane_backpressure: None,
+            map_lane_backpressure: None,
         }
     }
 }
