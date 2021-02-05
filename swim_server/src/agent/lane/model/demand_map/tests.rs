@@ -13,14 +13,13 @@
 // limitations under the License.
 
 use crate::agent::lane::model::demand_map::{
-    make_lane_model, DemandMapLaneCommand, DemandMapLaneEvent, DemandMapLaneUpdate,
+    make_lane_model, DemandMapLaneCommand, DemandMapLaneEvent,
 };
 use futures::future::{join, join3};
 use futures::StreamExt;
 use std::num::NonZeroUsize;
 use swim_common::form::Form;
 use swim_common::record;
-use swim_common::topic::Topic;
 use tokio::sync::mpsc;
 
 #[tokio::test]

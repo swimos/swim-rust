@@ -16,7 +16,7 @@ use crate::agent::lane::channels::uplink::backpressure::{
     KeyedBackpressureConfig, SimpleBackpressureConfig,
 };
 use crate::agent::lane::channels::uplink::map::MapLaneSyncError;
-use crate::agent::lane::model::demand_map::{DemandMapLane, DemandMapLaneUpdate};
+use crate::agent::lane::model::demand_map::{DemandMapLane, DemandMapLaneEvent};
 use crate::agent::lane::model::map::{make_update, MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::ValueLane;
 use crate::routing::{RoutingAddr, TaggedSender};

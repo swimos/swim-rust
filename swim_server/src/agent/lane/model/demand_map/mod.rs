@@ -220,7 +220,7 @@ pub fn make_lane_model<Key, Value>(
     lifecycle_sender: mpsc::Sender<DemandMapLaneCommand<Key, Value>>,
 ) -> (
     DemandMapLane<Key, Value>,
-    mpsc::Receiver<DemandMapLaneUpdate<Key, Value>>,
+    mpsc::Receiver<DemandMapLaneEvent<Key, Value>>,
 )
 where
     Key: Send + Clone + Form + Sync + 'static,

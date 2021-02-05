@@ -24,8 +24,7 @@ use utilities::sync::trigger;
 
 use crate::agent::context::AgentExecutionContext;
 use crate::agent::lane::channels::AgentExecutionConfig;
-use crate::agent::lane::model::supply::SupplyLane;
-use crate::agent::lane::strategy::Dropping;
+use crate::agent::lane::model::supply::{Dropping, SupplyLane};
 use crate::agent::meta::metric::config::MetricCollectorConfig;
 use crate::agent::meta::metric::lane::LaneProfile;
 use crate::agent::meta::metric::node::NodeProfile;

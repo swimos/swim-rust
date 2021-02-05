@@ -32,8 +32,7 @@ use crate::agent::lane::channels::update::StmRetryStrategy;
 use crate::agent::lane::channels::uplink::spawn::{SpawnerUplinkFactory, UplinkErrorReport};
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lane::lifecycle::{
-    ActionLaneLifecycle, DemandLaneLifecycle, DemandMapLaneLifecycle, LifecycleBase,
-    StatefulLaneLifecycle,
+    ActionLaneLifecycle, DemandLaneLifecycle, DemandMapLaneLifecycle, StatefulLaneLifecycle,
 };
 use crate::agent::lane::model;
 use crate::agent::lane::model::action::{Action, ActionLane, CommandLane};
@@ -41,11 +40,10 @@ use crate::agent::lane::model::demand::DemandLane;
 use crate::agent::lane::model::demand_map::{
     DemandMapLane, DemandMapLaneCommand, DemandMapLaneEvent,
 };
+use crate::agent::lane::model::map::MapLane;
 use crate::agent::lane::model::map::{summaries_to_events, MapLaneEvent, MapSubscriber};
-use crate::agent::lane::model::map::{MapLane, MapLaneWatch};
 use crate::agent::lane::model::supply::{make_lane_model, SupplyLane, SupplyLaneWatch};
-use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent, ValueLaneWatch};
-use crate::agent::lane::model::DeferredLaneView;
+use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 use crate::agent::lane::LaneKind;
 use crate::agent::lifecycle::AgentLifecycle;
 use crate::routing::{LaneIdentifier, ServerRouter, TaggedClientEnvelope, TaggedEnvelope};
@@ -64,7 +62,7 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use swim_common::form::Form;
-use swim_common::topic::{MpscTopic, Topic};
+use swim_common::topic::Topic;
 use swim_common::warp::path::RelativePath;
 use swim_runtime::time::clock::Clock;
 use tokio::sync::mpsc::Receiver;
@@ -72,7 +70,7 @@ use tokio::sync::{mpsc, oneshot};
 use tracing::{event, span, Level};
 use tracing_futures::{Instrument, Instrumented};
 use utilities::future::SwimStreamExt;
-use utilities::sync::trigger;
+use utilities::sync::{topic, trigger};
 use utilities::uri::RelativeUri;
 
 use crate::agent::lane::model::DeferredSubscription;
@@ -1112,10 +1110,9 @@ where
     Agent: 'static,
     Context: AgentContext<Agent> + AgentExecutionContext + Send + Sync + 'static,
     T: Any + Clone + Send + Sync + Form + Debug,
-    L: LifecycleBase,
-    L::WatchStrategy: SupplyLaneWatch<T>,
+    L: SupplyLaneWatch<T>,
 {
-    let (lane, topic) = make_lane_model(lifecycle.create_strategy(), config);
+    let (lane, topic) = make_lane_model(lifecycle, config);
 
     let tasks = StatelessLifecycleTasks { name: name.into() };
 

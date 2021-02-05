@@ -13,12 +13,42 @@
 // limitations under the License.
 
 use crate::agent::lane::channels::AgentExecutionConfig;
-use crate::agent::lane::strategy::{Buffered, Dropping, Queue};
 use futures::future::{ready, BoxFuture};
 use futures::{FutureExt, TryFutureExt};
+use std::num::NonZeroUsize;
 use swim_common::topic::{BroadcastSender, BroadcastTopic, MpscTopic, Topic, WatchTopic};
 use tokio::sync::{broadcast, mpsc, watch};
 use utilities::errors::SwimResultExt;
+
+#[derive(Debug, PartialEq, Eq, Clone, Default)]
+pub struct Dropping;
+
+/// Push lane events into a bounded queue.
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct Queue(pub NonZeroUsize);
+
+/// Publish the latest lane events to a bounded buffer.
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct Buffered(pub NonZeroUsize);
+
+/// The default buffer size for the [`Queue`] and [`Buffered`] strategies.
+const DEFAULT_BUFFER: usize = 10;
+
+fn default_buffer() -> NonZeroUsize {
+    NonZeroUsize::new(DEFAULT_BUFFER).unwrap()
+}
+
+impl Default for Queue {
+    fn default() -> Self {
+        Queue(default_buffer())
+    }
+}
+
+impl Default for Buffered {
+    fn default() -> Self {
+        Buffered(default_buffer())
+    }
+}
 
 pub type BoxSupplier<T> = Box<dyn Supplier<T> + Send + Sync + 'static>;
 

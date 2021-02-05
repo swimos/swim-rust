@@ -15,7 +15,6 @@
 use crate::agent::lane::model::action::ActionLane;
 use crate::agent::lane::model::demand::DemandLane;
 use crate::agent::lane::model::demand_map::DemandMapLane;
-use crate::agent::lane::strategy::{Buffered, Dropping, Queue};
 use crate::agent::lane::LaneModel;
 use crate::agent::AgentContext;
 use futures::future::{ready, Ready};
@@ -187,14 +186,6 @@ where
     ) -> Self::OnRemoveFuture
     where
         C: AgentContext<Agent> + Send + Sync + 'static;
-}
-
-impl LifecycleBase for Dropping {
-    type WatchStrategy = Dropping;
-
-    fn create_strategy(&self) -> Self::WatchStrategy {
-        Dropping
-    }
 }
 
 impl<'a, Model: LaneModel, Agent> StatefulLaneLifecycle<'a, Model, Agent> for DefaultLifecycle {

@@ -18,7 +18,7 @@ mod reporting_agent;
 mod reporting_macro_agent;
 pub(crate) mod test_clock;
 use crate::agent::lane::channels::AgentExecutionConfig;
-use crate::agent::lane::lifecycle::{ActionLaneLifecycle, LifecycleBase, StatefulLaneLifecycle};
+use crate::agent::lane::lifecycle::{ActionLaneLifecycle, StatefulLaneLifecycle};
 use crate::agent::lane::model::action::{Action, ActionLane, CommandLane};
 use crate::agent::lane::model::demand_map::{DemandMapLaneCommand, DemandMapLaneEvent};
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};

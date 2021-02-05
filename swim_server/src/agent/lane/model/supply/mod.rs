@@ -70,7 +70,6 @@ pub fn make_lane_model<Event, W>(
 where
     Event: Send + Sync + Clone + 'static,
     W: SupplyLaneWatch<Event>,
-    <W as SupplyLaneWatch<Event>>::Sender: Sync + Send,
 {
     let (sender, topic) = watch.make_watch(config);
     let lane = SupplyLane::new(Box::new(sender));

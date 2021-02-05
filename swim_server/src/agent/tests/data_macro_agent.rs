@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::agent::lane::channels::AgentExecutionConfig;
-use crate::agent::lane::lifecycle::{LaneLifecycle, LifecycleBase};
+use crate::agent::lane::lifecycle::LaneLifecycle;
 use crate::agent::lane::model::action::{ActionLane, CommandLane, Commander};
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent};

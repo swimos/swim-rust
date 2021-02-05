@@ -13,9 +13,7 @@
 // limitations under the License.
 
 use crate::agent::lane::channels::AgentExecutionConfig;
-use crate::agent::lane::lifecycle::LifecycleBase;
-use crate::agent::lane::model::supply::make_lane_model;
-use crate::agent::lane::strategy::Queue;
+use crate::agent::lane::model::supply::{make_lane_model, Queue};
 use futures::StreamExt;
 use std::num::NonZeroUsize;
 use swim_common::topic::Topic;
@@ -23,7 +21,7 @@ use swim_common::topic::Topic;
 #[tokio::test]
 async fn receive_events() {
     let (lane, mut topic) = make_lane_model(
-        Queue(NonZeroUsize::new(1000).unwrap()).create_strategy(),
+        Queue(NonZeroUsize::new(1000).unwrap()),
         &AgentExecutionConfig::default(),
     );
     let mut events = topic.subscribe().await.unwrap();

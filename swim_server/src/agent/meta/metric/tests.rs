@@ -13,9 +13,7 @@
 // limitations under the License.
 
 use crate::agent::lane::channels::AgentExecutionConfig;
-use crate::agent::lane::lifecycle::LifecycleBase;
-use crate::agent::lane::model::supply::make_lane_model;
-use crate::agent::lane::strategy::Dropping;
+use crate::agent::lane::model::supply::{make_lane_model, Dropping};
 use crate::agent::meta::metric::task::{CollectorStopResult, CollectorTask};
 use crate::agent::meta::metric::uplink::UplinkProfile;
 use crate::agent::meta::metric::ObserverEvent;
@@ -34,8 +32,7 @@ use utilities::sync::trigger;
 
 #[tokio::test]
 async fn test_delivery() {
-    let (supply_lane, mut topic) =
-        make_lane_model(Dropping.create_strategy(), &AgentExecutionConfig::default());
+    let (supply_lane, mut topic) = make_lane_model(Dropping, &AgentExecutionConfig::default());
     let mut supply_rx = topic.subscribe().await.unwrap();
 
     let (metric_tx, metric_rx) = mpsc::channel(1);
