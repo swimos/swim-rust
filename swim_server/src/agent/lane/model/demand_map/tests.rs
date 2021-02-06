@@ -102,7 +102,7 @@ async fn test_remove() {
     let (lane, _topic) = make_lane_model::<i32, i32>(NonZeroUsize::new(5).unwrap(), tx);
 
     let remove_task = async move {
-        match rx.next().await {
+        match rx.recv().await {
             Some(DemandMapLaneCommand::Remove(key)) => {
                 assert_eq!(key, 1);
             }
