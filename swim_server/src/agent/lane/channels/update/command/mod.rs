@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::agent::lane::channels::update::{LaneUpdate, UpdateError};
-use crate::agent::lane::model::action::ActionLane;
+use crate::agent::lane::model::command::CommandLane;
 use crate::routing::RoutingAddr;
 use either::Either;
 use futures::future::BoxFuture;
@@ -27,27 +27,22 @@ use swim_runtime::time::timeout;
 use tokio::sync::mpsc;
 use tracing::{event, Level};
 
-#[cfg(test)]
-mod tests;
-
-/// Asynchronous task to set a stream of values into a [`crate::agent::lane::model::value::ValueLane`].
-pub struct ActionLaneUpdateTask<Command, Response> {
-    lane: ActionLane<Command, Response>,
-    feedback: Option<mpsc::Sender<(RoutingAddr, Response)>>,
+pub struct CommandLaneUpdateTask<T> {
+    lane: CommandLane<T>,
+    feedback: Option<mpsc::Sender<(RoutingAddr, T)>>,
     cleanup_timeout: Duration,
 }
 
-impl<Command, Response> ActionLaneUpdateTask<Command, Response>
+impl<T> CommandLaneUpdateTask<T>
 where
-    Command: Send + Sync + Debug + 'static,
-    Response: Send + Sync + Debug + 'static,
+    T: Send + Sync + Debug + 'static,
 {
     pub fn new(
-        lane: ActionLane<Command, Response>,
-        feedback: Option<mpsc::Sender<(RoutingAddr, Response)>>,
+        lane: CommandLane<T>,
+        feedback: Option<mpsc::Sender<(RoutingAddr, T)>>,
         cleanup_timeout: Duration,
     ) -> Self {
-        ActionLaneUpdateTask {
+        CommandLaneUpdateTask {
             lane,
             feedback,
             cleanup_timeout,
@@ -55,15 +50,14 @@ where
     }
 }
 
-const NO_COMPLETION: &str = "Action did not complete.";
+const NO_COMPLETION: &str = "Command did not complete.";
 const CLEANUP_TIMEOUT: &str = "Timeout waiting for pending completions.";
 
-impl<Command, Response> LaneUpdate for ActionLaneUpdateTask<Command, Response>
+impl<T> LaneUpdate for CommandLaneUpdateTask<T>
 where
-    Command: Send + Sync + Debug + 'static,
-    Response: Send + Sync + Debug + 'static,
+    T: Send + Sync + Debug + 'static,
 {
-    type Msg = Command;
+    type Msg = T;
 
     fn run_update<Messages, Err>(
         self,
@@ -75,7 +69,7 @@ where
         UpdateError: From<Err>,
     {
         async move {
-            let ActionLaneUpdateTask {
+            let CommandLaneUpdateTask {
                 lane,
                 feedback,
                 cleanup_timeout,
@@ -85,7 +79,6 @@ where
                 Some(resp_tx) => {
                     let messages = messages.fuse();
                     pin_mut!(messages);
-                    //TODO This maintains a total order of responses whereas all we need is a total order per address.
                     let mut responses = FuturesOrdered::new();
                     let result: Result<(), UpdateError> = loop {
                         let resp_or_msg = if responses.is_empty() {

@@ -14,7 +14,7 @@
 
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lane::lifecycle::LaneLifecycle;
-use crate::agent::lane::model::action::CommandLane;
+use crate::agent::lane::model::command::CommandLane;
 use crate::agent::lane::model::demand::DemandLane;
 use crate::agent::lane::model::demand_map::DemandMapLane;
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
@@ -154,7 +154,7 @@ struct ActionLifecycle {
 impl ActionLifecycle {
     async fn on_command<Context>(
         &self,
-        command: String,
+        command: &String,
         _model: &CommandLane<String>,
         context: &Context,
     ) where
@@ -166,7 +166,7 @@ impl ActionLifecycle {
         if context
             .agent()
             .data
-            .update_direct(command, 1.into())
+            .update_direct(command.clone(), 1.into())
             .apply(ExactlyOnce)
             .await
             .is_err()

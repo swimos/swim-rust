@@ -19,8 +19,11 @@ mod reporting_macro_agent;
 pub(crate) mod test_clock;
 
 use crate::agent::lane::channels::AgentExecutionConfig;
-use crate::agent::lane::lifecycle::{ActionLaneLifecycle, StatefulLaneLifecycle};
-use crate::agent::lane::model::action::{Action, ActionLane, CommandLane};
+use crate::agent::lane::lifecycle::{
+    ActionLaneLifecycle, CommandLaneLifecycle, StatefulLaneLifecycle,
+};
+use crate::agent::lane::model::action::{Action, ActionLane};
+use crate::agent::lane::model::command::{Command, CommandLane};
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 use crate::agent::lane::LaneModel;
@@ -208,14 +211,14 @@ impl<'a> ActionLaneLifecycle<'a, String, usize, TestAgent<ActionLane<String, usi
     }
 }
 
-impl<'a> ActionLaneLifecycle<'a, String, (), TestAgent<CommandLane<String>>>
+impl<'a> CommandLaneLifecycle<'a, String, TestAgent<CommandLane<String>>>
     for TestLifecycle<CommandLane<String>>
 {
     type ResponseFuture = BoxFuture<'a, ()>;
 
     fn on_command<C: AgentContext<TestAgent<CommandLane<String>>>>(
         &'a self,
-        command: String,
+        command: &'a String,
         model: &'a CommandLane<String>,
         context: &'a C,
     ) -> Self::ResponseFuture
@@ -226,7 +229,7 @@ impl<'a> ActionLaneLifecycle<'a, String, (), TestAgent<CommandLane<String>>>
             let mut lock = self.0.lock().await;
             lock.event_agent = Some(context.agent().name);
             lock.event_model = Some(model.clone());
-            lock.events.push(command);
+            lock.events.push(command.clone());
         })
     }
 }
@@ -651,7 +654,7 @@ async fn command_lane_events_task() {
 
     let send = async move {
         for x in clones.into_iter() {
-            let _ = tx.send(Action::forget(x)).await;
+            let _ = tx.send(Command::forget(x)).await;
         }
         drop(tx);
     };

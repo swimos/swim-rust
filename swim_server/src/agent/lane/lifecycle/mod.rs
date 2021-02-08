@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use crate::agent::lane::model::action::ActionLane;
+use crate::agent::lane::model::command::CommandLane;
 use crate::agent::lane::model::demand::DemandLane;
 use crate::agent::lane::model::demand_map::DemandMapLane;
 use crate::agent::lane::LaneModel;
@@ -66,7 +67,7 @@ pub trait StatefulLaneLifecycle<'a, Model: LaneModel, Agent>: Send + Sync + 'sta
 }
 
 /// Trait for the life cycle of a lane that does not have any internal state and only processes
-/// commands.
+/// commands and return responses to the original sender.
 ///
 /// #Type Parameters
 ///
@@ -77,7 +78,7 @@ pub trait ActionLaneLifecycle<'a, Command, Response, Agent>: Send + Sync + 'stat
     type ResponseFuture: Future<Output = Response> + Send + 'a;
 
     /// Called each type a command is applied to the lane. The returned response will be sent
-    /// to any subscribers to the lane.
+    /// to the original sender.
     ///
     /// #Arguments
     ///
@@ -88,6 +89,34 @@ pub trait ActionLaneLifecycle<'a, Command, Response, Agent>: Send + Sync + 'stat
         &'a self,
         command: Command,
         model: &'a ActionLane<Command, Response>,
+        context: &'a C,
+    ) -> Self::ResponseFuture
+    where
+        C: AgentContext<Agent> + Send + Sync + 'static;
+}
+
+/// Trait for the life cycle of a lane that does not have any internal state and only processes
+/// commands and returns responses to all subscribers.
+///
+/// #Type Parameters
+///
+/// * `Command` - The type of commands that the lane can handle.
+/// * `Agent` - The type of the agent to which the lane belongs.
+pub trait CommandLaneLifecycle<'a, Command, Agent>: Send + Sync + 'static {
+    type ResponseFuture: Future<Output = ()> + Send + 'a;
+
+    /// Called each type a command is applied to the lane. The generated event will be sent
+    /// to all subscribers of the lane.
+    ///
+    /// #Arguments
+    ///
+    /// * `command` - The command object.
+    /// * `model` - The model of the lane.
+    /// * `context` - Context of the agent that owns the lane.
+    fn on_command<C>(
+        &'a self,
+        command: &'a Command,
+        model: &'a CommandLane<Command>,
         context: &'a C,
     ) -> Self::ResponseFuture
     where
