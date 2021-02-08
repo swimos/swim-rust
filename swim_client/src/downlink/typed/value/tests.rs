@@ -13,19 +13,19 @@
 // limitations under the License.
 
 use super::ValueActions;
-use crate::downlink::{Command, Message};
-use crate::downlink::model::value::{Action, SharedValue};
-use crate::downlink::{DownlinkError, DownlinkConfig};
 use crate::configuration::downlink::OnInvalidMessage;
+use crate::downlink::model::value::{Action, SharedValue};
+use crate::downlink::typed::value::{TypedValueDownlink, ValueDownlinkReceiver};
+use crate::downlink::{Command, Message};
+use crate::downlink::{DownlinkConfig, DownlinkError};
 use futures::future::join;
+use std::num::NonZeroUsize;
 use std::sync::Arc;
-use swim_common::model::Value;
-use tokio::sync::mpsc;
 use swim_common::form::ValidatedForm;
+use swim_common::model::Value;
 use swim_common::routing::RoutingError;
 use swim_common::sink::item::ItemSender;
-use crate::downlink::typed::value::{TypedValueDownlink, ValueDownlinkReceiver};
-use std::num::NonZeroUsize;
+use tokio::sync::mpsc;
 
 async fn responder(mut state: SharedValue, mut rx: mpsc::Receiver<Action>) {
     while let Some(value) = rx.recv().await {
@@ -221,7 +221,7 @@ fn make_value_downlink<T: ValidatedForm>(init: T) -> Components<T> {
             buffer_size: NonZeroUsize::new(8).unwrap(),
             yield_after: NonZeroUsize::new(2048).unwrap(),
             on_invalid: OnInvalidMessage::Terminate,
-        }
+        },
     );
     let downlink = TypedValueDownlink::new(Arc::new(dl));
     let receiver = ValueDownlinkReceiver::new(rx);
@@ -240,7 +240,7 @@ async fn subscriber_covariant_cast() {
         downlink,
         receiver: _receiver,
         update_tx: _update_tx,
-        command_rx: _command_rx
+        command_rx: _command_rx,
     } = make_value_downlink(0);
 
     let sub = downlink.subscriber();
@@ -248,22 +248,36 @@ async fn subscriber_covariant_cast() {
     assert!(sub.clone().covariant_cast::<i32>().is_ok());
     assert!(sub.clone().covariant_cast::<Value>().is_ok());
     assert!(sub.clone().covariant_cast::<String>().is_err());
-
 }
 
 #[tokio::test]
-async fn sender_cotravariant_cast() {
+async fn sender_cotravariant_view() {
     let Components {
         downlink,
         receiver: _receiver,
         update_tx: _update_tx,
-        command_rx: _command_rx
+        command_rx: _command_rx,
     } = make_value_downlink(0i64);
 
     let sender = downlink.sender();
 
-    assert!(sender.clone().contravariant_cast::<i64>().is_ok());
-    assert!(sender.clone().contravariant_cast::<i32>().is_ok());
-    assert!(sender.clone().contravariant_cast::<String>().is_err());
+    assert!(sender.contravariant_view::<i64>().is_ok());
+    assert!(sender.contravariant_view::<i32>().is_ok());
+    assert!(sender.contravariant_view::<String>().is_err());
+}
 
+#[tokio::test]
+async fn sender_covariant_view() {
+    let Components {
+        downlink,
+        receiver: _receiver,
+        update_tx: _update_tx,
+        command_rx: _command_rx,
+    } = make_value_downlink(0);
+
+    let sender = downlink.sender();
+
+    assert!(sender.covariant_view::<i32>().is_ok());
+    assert!(sender.covariant_view::<Value>().is_ok());
+    assert!(sender.covariant_view::<String>().is_err());
 }

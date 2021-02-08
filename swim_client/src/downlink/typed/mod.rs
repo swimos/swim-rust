@@ -114,6 +114,13 @@ async fn await_optional<T: ValidatedForm>(
     }
 }
 
+async fn await_discard<T>(
+    rx: oneshot::Receiver<Result<T, DownlinkError>>,
+) -> Result<(), DownlinkError> {
+    rx.await.map_err(|_| DownlinkError::DroppedChannel)??;
+    Ok(())
+}
+
 async fn await_fallible_optional<T: ValidatedForm>(
     rx: oneshot::Receiver<Result<UpdateResult<Option<SharedValue>>, DownlinkError>>,
 ) -> Result<Option<T>, DownlinkError> {

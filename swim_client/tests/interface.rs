@@ -571,7 +571,7 @@ mod tests {
         let message = recv.recv().await.unwrap();
         assert_eq!(message, Event::Remote(Value::text("milk")));
 
-        let sender_view = dl.sender().contravariant_cast::<String>().unwrap();
+        let sender_view = dl.sender().contravariant_view::<String>().unwrap();
 
         dl.set(String::from("bread").into()).await.unwrap();
         let message = recv.recv().await.unwrap();
@@ -593,8 +593,8 @@ mod tests {
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "id");
         let (dl, _rec) = client.value_downlink(path.clone(), 0i32).await.unwrap();
 
-        assert!(dl.sender().contravariant_cast::<String>().is_err());
-        assert!(dl.sender().contravariant_cast::<i64>().is_err());
+        assert!(dl.sender().contravariant_view::<String>().is_err());
+        assert!(dl.sender().contravariant_view::<i64>().is_err());
     }
 
     #[tokio::test]
@@ -639,7 +639,7 @@ mod tests {
             panic!("The map downlink did not receive the correct message!")
         }
 
-        let sender_view = dl.sender().contravariant_cast::<String, i32>().unwrap();
+        let sender_view = dl.sender().contravariant_view::<String, i32>().unwrap();
 
         dl.update(String::from("eggs").into(), 3.into())
             .await
@@ -700,9 +700,9 @@ mod tests {
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "integerMap");
         let (dl, _) = client.map_downlink::<i32, i32>(path).await.unwrap();
 
-        assert!(dl.sender().contravariant_cast::<String, String>().is_err());
-        assert!(dl.sender().contravariant_cast::<i32, String>().is_err());
-        assert!(dl.sender().contravariant_cast::<i64, i32>().is_err());
-        assert!(dl.sender().contravariant_cast::<i32, i64>().is_err());
+        assert!(dl.sender().contravariant_view::<String, String>().is_err());
+        assert!(dl.sender().contravariant_view::<i32, String>().is_err());
+        assert!(dl.sender().contravariant_view::<i64, i32>().is_err());
+        assert!(dl.sender().contravariant_view::<i32, i64>().is_err());
     }
 }
