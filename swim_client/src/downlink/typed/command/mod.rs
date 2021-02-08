@@ -19,13 +19,13 @@ use crate::downlink::typed::UntypedCommandDownlink;
 use crate::downlink::{Downlink, DownlinkError};
 use std::any::type_name;
 use std::cmp::Ordering;
-use std::fmt::{Debug, Formatter, Display};
+use std::error::Error;
+use std::fmt::{Debug, Display, Formatter};
 use std::marker::PhantomData;
 use std::sync::Arc;
 use swim_common::form::{Form, ValidatedForm};
 use swim_common::model::schema::StandardSchema;
 use utilities::sync::promise;
-use std::error::Error;
 
 /// A downlink that sends commands to a remote downlink and does not link to the remote lane.
 pub struct TypedCommandDownlink<T> {
@@ -92,11 +92,9 @@ pub struct CommandViewError {
 }
 
 impl Display for CommandViewError {
-
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "A Write Only view of a command downlink with schema {} was requested but the original command downlink is running with schema {}.", self.requested, self.existing)
     }
-
 }
 
 impl Error for CommandViewError {}

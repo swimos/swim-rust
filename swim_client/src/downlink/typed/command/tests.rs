@@ -13,16 +13,16 @@
 // limitations under the License.
 
 use crate::configuration::downlink::OnInvalidMessage;
-use crate::downlink::typed::command::{TypedCommandDownlink, CommandViewError};
+use crate::downlink::typed::command::{CommandViewError, TypedCommandDownlink};
 use crate::downlink::Command;
 use crate::downlink::DownlinkConfig;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use swim_common::form::ValidatedForm;
+use swim_common::model::schema::StandardSchema;
 use swim_common::model::Value;
 use swim_common::sink::item::ItemSender;
 use tokio::sync::mpsc;
-use swim_common::model::schema::StandardSchema;
 
 struct Components<T> {
     downlink: TypedCommandDownlink<T>,

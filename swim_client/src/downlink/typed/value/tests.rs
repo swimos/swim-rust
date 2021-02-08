@@ -23,11 +23,11 @@ use futures::future::join;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use swim_common::form::ValidatedForm;
+use swim_common::model::schema::StandardSchema;
 use swim_common::model::Value;
 use swim_common::routing::RoutingError;
 use swim_common::sink::item::ItemSender;
 use tokio::sync::mpsc;
-use swim_common::model::schema::StandardSchema;
 
 async fn responder(mut state: SharedValue, mut rx: mpsc::Receiver<Action>) {
     while let Some(value) = rx.recv().await {

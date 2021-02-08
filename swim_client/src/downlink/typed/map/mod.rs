@@ -1020,7 +1020,7 @@ impl Display for MapViewError {
             Incompatibility::Value => "The value",
             Incompatibility::Both => "Both",
         };
-        write!(f, "A {} view of a downlink (key schema {} and value schema {})) was requested with key schema {} and value schema {}. {} schemas are incompatible. ", mode, existing_key, existing_value, requested_key, requested_value, reason)
+        write!(f, "A {} view of a map downlink (key schema {} and value schema {})) was requested with key schema {} and value schema {}. {} schemas are incompatible.", mode, existing_key, existing_value, requested_key, requested_value, reason)
     }
 }
 
