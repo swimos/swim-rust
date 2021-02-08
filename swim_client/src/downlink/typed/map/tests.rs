@@ -638,7 +638,7 @@ async fn subscriber_covariant_cast() {
 }
 
 #[tokio::test]
-async fn sender_cotravariant_view() {
+async fn sender_contravariant_view() {
     let Components {
         downlink,
         receiver: _receiver,

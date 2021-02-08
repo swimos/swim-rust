@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::configuration::downlink::DownlinkParams;
 use crate::downlink::model::SchemaViolations;
 use crate::downlink::typed::{UntypedEventDownlink, UntypedEventReceiver};
 use crate::downlink::{
@@ -30,13 +29,13 @@ use utilities::errors::Recoverable;
 #[cfg(test)]
 mod tests;
 
-/// Create an event downlink with a queue based multiplexing topic.
-pub fn create_downlink<Updates, Snk>(
+/// Create an event downlink.
+pub(in crate::downlink) fn create_downlink<Updates, Snk>(
     schema: StandardSchema,
     violations: SchemaViolations,
     update_stream: Updates,
     cmd_sink: Snk,
-    config: &DownlinkParams,
+    config: DownlinkConfig,
 ) -> (UntypedEventDownlink, UntypedEventReceiver)
 where
     Updates: Stream<Item = Result<Message<Value>, RoutingError>> + Send + Sync + 'static,
@@ -46,11 +45,7 @@ where
         EventStateMachine::new(schema, violations),
         update_stream,
         cmd_sink,
-        DownlinkConfig {
-            buffer_size: config.buffer_size,
-            yield_after: config.yield_after,
-            on_invalid: config.on_invalid,
-        },
+        config,
     )
 }
 

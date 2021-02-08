@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[cfg(test)]
+mod tests;
+
 use crate::downlink::typed::{UntypedCommandDownlink, ViewMode};
 use crate::downlink::{Downlink, DownlinkError};
 use std::any::type_name;
@@ -98,7 +101,7 @@ impl<T: ValidatedForm> TypedCommandDownlink<T> {
     ) -> Result<TypedCommandDownlink<U>, CommandViewError> {
         let schema_cmp = U::schema().partial_cmp(&T::schema());
 
-        if schema_cmp.is_some() && schema_cmp != Some(Ordering::Greater) {
+        if schema_cmp.is_some() && schema_cmp != Some(Ordering::Less) {
             Ok(TypedCommandDownlink::new(self.inner.clone()))
         } else {
             Err(CommandViewError {

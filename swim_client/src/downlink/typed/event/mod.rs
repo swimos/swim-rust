@@ -167,7 +167,7 @@ pub struct EventViewError {
 impl<T: ValidatedForm> EventDownlinkSubscriber<T> {
     /// Create a read-only view for a value downlink that converts all received values to a new type.
     /// The type of the view must have an equal or greater schema than the original downlink.
-    pub async fn covariant_cast<U: ValidatedForm>(
+    pub fn covariant_cast<U: ValidatedForm>(
         self,
     ) -> Result<EventDownlinkSubscriber<U>, EventViewError> {
         let schema_cmp = U::schema().partial_cmp(&T::schema());
