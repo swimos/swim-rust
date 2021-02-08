@@ -16,7 +16,7 @@ use std::fmt::{Debug, Display};
 use stm::transaction::atomically;
 use swim_server::agent::command_lifecycle;
 use swim_server::agent::lane::channels::update::StmRetryStrategy;
-use swim_server::agent::lane::model::action::CommandLane;
+use swim_server::agent::lane::model::command::CommandLane;
 use swim_server::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 use swim_server::agent::value_lifecycle;
 use swim_server::agent::AgentContext;
@@ -60,7 +60,7 @@ struct PublishInfoLifecycle;
 impl PublishInfoLifecycle {
     async fn on_command<Context>(
         &self,
-        command: String,
+        command: &String,
         _model: &CommandLane<String>,
         context: &Context,
     ) where

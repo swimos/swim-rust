@@ -13,17 +13,23 @@
 // limitations under the License.
 
 use futures::Stream;
+use std::any::type_name;
+use std::fmt::{Debug, Formatter};
+use std::marker::PhantomData;
 use std::sync::Arc;
 use stm::var::observer::{Observer, ObserverStream, ObserverSubscriber};
 use utilities::sync::topic;
 use utilities::sync::topic::ReceiverStream;
 
 pub mod action;
+pub mod command;
 pub mod demand;
 pub mod demand_map;
 pub mod map;
 pub mod supply;
 pub mod value;
+
+const COMMANDED_AFTER_STOP: &str = "Lane commanded after the agent stopped.";
 
 pub trait DeferredSubscription<T>: Send + Sync + 'static {
     type View: Stream<Item = T> + Send + 'static;
@@ -46,5 +52,17 @@ impl<T: Clone + Send + Sync + 'static> DeferredSubscription<T> for topic::Subscr
 
     fn subscribe(&self) -> Option<Self::View> {
         self.subscribe().ok().map(topic::Receiver::into_stream)
+    }
+}
+
+struct TypeOf<T: ?Sized>(PhantomData<T>);
+
+fn type_of<T: ?Sized>() -> TypeOf<T> {
+    TypeOf(PhantomData)
+}
+
+impl<T: ?Sized> Debug for TypeOf<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", type_name::<T>())
     }
 }

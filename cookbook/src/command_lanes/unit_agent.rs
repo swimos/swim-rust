@@ -15,7 +15,7 @@
 use std::fmt::{Debug, Display};
 use swim_common::model::{Item, Value};
 use swim_server::agent::command_lifecycle;
-use swim_server::agent::lane::model::action::CommandLane;
+use swim_server::agent::lane::model::command::CommandLane;
 use swim_server::agent::AgentContext;
 use swim_server::agent::SwimAgent;
 use swim_server::uri::RelativeUri;
@@ -32,7 +32,7 @@ pub struct UnitAgent {
 struct PublishLifecycle;
 
 impl PublishLifecycle {
-    async fn on_command<Context>(&self, command: i32, _model: &CommandLane<i32>, context: &Context)
+    async fn on_command<Context>(&self, command: &i32, _model: &CommandLane<i32>, context: &Context)
     where
         Context: AgentContext<UnitAgent> + Sized + Send + Sync + 'static,
     {
@@ -57,7 +57,7 @@ struct PublishValueLifecycle;
 impl PublishValueLifecycle {
     async fn on_command<Context>(
         &self,
-        command: Value,
+        command: &Value,
         _model: &CommandLane<Value>,
         context: &Context,
     ) where
