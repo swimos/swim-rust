@@ -442,7 +442,7 @@ where
     combine_results(route, upd_result.err(), uplink_fatal, uplink_errs)
 }
 
-/// Run the [`swim_common::warp::envelope::Envelope`] IO for a command lane. This is different to
+/// Run the [`swim_common::warp::envelope::Envelope`] IO for a command lane.
 ///
 /// #Arguments
 /// * `lane` - The command lane.
