@@ -15,7 +15,8 @@
 use super::ValueActions;
 use crate::configuration::downlink::OnInvalidMessage;
 use crate::downlink::model::value::{Action, SharedValue};
-use crate::downlink::typed::value::{TypedValueDownlink, ValueDownlinkReceiver};
+use crate::downlink::typed::value::{TypedValueDownlink, ValueDownlinkReceiver, ValueViewError};
+use crate::downlink::typed::ViewMode;
 use crate::downlink::{Command, Message};
 use crate::downlink::{DownlinkConfig, DownlinkError};
 use futures::future::join;
@@ -26,6 +27,7 @@ use swim_common::model::Value;
 use swim_common::routing::RoutingError;
 use swim_common::sink::item::ItemSender;
 use tokio::sync::mpsc;
+use swim_common::model::schema::StandardSchema;
 
 async fn responder(mut state: SharedValue, mut rx: mpsc::Receiver<Action>) {
     while let Some(value) = rx.recv().await {
@@ -280,4 +282,16 @@ async fn sender_covariant_view() {
     assert!(sender.covariant_view::<i32>().is_ok());
     assert!(sender.covariant_view::<Value>().is_ok());
     assert!(sender.covariant_view::<String>().is_err());
+}
+
+#[test]
+fn value_view_error_display() {
+    let err = ValueViewError {
+        existing: StandardSchema::Nothing,
+        requested: StandardSchema::Anything,
+        mode: ViewMode::ReadOnly,
+    };
+    let str = err.to_string();
+
+    assert_eq!(str, format!("A Read Only view of a value downlink with schema {} was requested but the original value downlink is running with schema {}.", StandardSchema::Anything, StandardSchema::Nothing));
 }

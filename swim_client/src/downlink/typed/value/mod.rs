@@ -80,7 +80,7 @@ pub struct ValueViewError {
 
 impl Display for ValueViewError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "A {} value downlink with schema {} was requested but the original value downlink is running with schema {}.", self.mode, self.requested, self.existing)
+        write!(f, "A {} view of a value downlink with schema {} was requested but the original value downlink is running with schema {}.", self.mode, self.requested, self.existing)
     }
 }
 

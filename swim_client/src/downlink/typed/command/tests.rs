@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::configuration::downlink::OnInvalidMessage;
-use crate::downlink::typed::command::TypedCommandDownlink;
+use crate::downlink::typed::command::{TypedCommandDownlink, CommandViewError};
 use crate::downlink::Command;
 use crate::downlink::DownlinkConfig;
 use std::num::NonZeroUsize;
@@ -22,6 +22,7 @@ use swim_common::form::ValidatedForm;
 use swim_common::model::Value;
 use swim_common::sink::item::ItemSender;
 use tokio::sync::mpsc;
+use swim_common::model::schema::StandardSchema;
 
 struct Components<T> {
     downlink: TypedCommandDownlink<T>,
@@ -59,4 +60,15 @@ async fn sender_contravariant_view() {
     assert!(downlink.contravariant_view::<i64>().is_ok());
     assert!(downlink.contravariant_view::<i32>().is_ok());
     assert!(downlink.contravariant_view::<String>().is_err());
+}
+
+#[test]
+fn command_view_error_display() {
+    let err = CommandViewError {
+        existing: StandardSchema::Nothing,
+        requested: StandardSchema::Anything,
+    };
+    let str = err.to_string();
+
+    assert_eq!(str, format!("A Write Only view of a command downlink with schema {} was requested but the original command downlink is running with schema {}.", StandardSchema::Anything, StandardSchema::Nothing));
 }

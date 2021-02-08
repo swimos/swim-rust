@@ -15,16 +15,17 @@
 #[cfg(test)]
 mod tests;
 
-use crate::downlink::typed::{UntypedCommandDownlink, ViewMode};
+use crate::downlink::typed::UntypedCommandDownlink;
 use crate::downlink::{Downlink, DownlinkError};
 use std::any::type_name;
 use std::cmp::Ordering;
-use std::fmt::{Debug, Formatter};
+use std::fmt::{Debug, Formatter, Display};
 use std::marker::PhantomData;
 use std::sync::Arc;
 use swim_common::form::{Form, ValidatedForm};
 use swim_common::model::schema::StandardSchema;
 use utilities::sync::promise;
+use std::error::Error;
 
 /// A downlink that sends commands to a remote downlink and does not link to the remote lane.
 pub struct TypedCommandDownlink<T> {
@@ -88,9 +89,17 @@ pub struct CommandViewError {
     existing: StandardSchema,
     // A validation schema for the type of the requested view.
     requested: StandardSchema,
-    // The mode of the view.
-    mode: ViewMode,
 }
+
+impl Display for CommandViewError {
+
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "A Write Only view of a command downlink with schema {} was requested but the original command downlink is running with schema {}.", self.requested, self.existing)
+    }
+
+}
+
+impl Error for CommandViewError {}
 
 impl<T: ValidatedForm> TypedCommandDownlink<T> {
     /// Create a sender for a more refined type (the [`ValidatedForm`] implementation for `U`
@@ -107,7 +116,6 @@ impl<T: ValidatedForm> TypedCommandDownlink<T> {
             Err(CommandViewError {
                 existing: T::schema(),
                 requested: U::schema(),
-                mode: ViewMode::ReadOnly,
             })
         }
     }

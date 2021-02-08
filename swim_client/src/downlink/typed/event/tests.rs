@@ -15,7 +15,7 @@
 use crate::configuration::downlink::OnInvalidMessage;
 use crate::downlink::model::map::{MapEvent, ValMap, ViewWithEvent};
 use crate::downlink::model::SchemaViolations;
-use crate::downlink::typed::event::{EventDownlinkReceiver, TypedEventDownlink};
+use crate::downlink::typed::event::{EventDownlinkReceiver, TypedEventDownlink, EventViewError};
 use crate::downlink::typed::map::events::{TypedMapView, TypedViewWithEvent};
 use crate::downlink::DownlinkConfig;
 use crate::downlink::{Command, Message};
@@ -30,6 +30,7 @@ use swim_common::model::Value;
 use swim_common::routing::RoutingError;
 use swim_common::sink::item::ItemSender;
 use tokio::sync::mpsc;
+use swim_common::model::schema::StandardSchema;
 
 fn make_raw() -> ValMap {
     let mut map = ValMap::new();
@@ -306,4 +307,15 @@ async fn subscriber_covariant_cast() {
     assert!(sub.clone().covariant_cast::<i32>().is_ok());
     assert!(sub.clone().covariant_cast::<Value>().is_ok());
     assert!(sub.clone().covariant_cast::<String>().is_err());
+}
+
+#[test]
+fn event_view_error_display() {
+    let err = EventViewError {
+        existing: StandardSchema::Nothing,
+        requested: StandardSchema::Anything,
+    };
+    let str = err.to_string();
+
+    assert_eq!(str, format!("A Read Only view of an event downlink with schema {} was requested but the original event downlink is running with schema {}.", StandardSchema::Anything, StandardSchema::Nothing));
 }
