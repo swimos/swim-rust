@@ -65,12 +65,12 @@ pub fn derive_command_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput
         task_name,
         agent_name,
         input_ast,
-        quote!(swim_server::agent::lane::model::action::CommandLane<#command_type>),
-        quote!(swim_server::agent::lane::model::action::Action<#command_type, ()>),
+        quote!(swim_server::agent::lane::model::command::CommandLane<#command_type>),
+        quote!(swim_server::agent::lane::model::command::Command<#command_type>),
         lane_tasks_impl,
         quote! {
-            use swim_server::agent::lane::model::action::CommandLane;
-            use swim_server::agent::lane::model::action::Action;
+            use swim_server::agent::lane::model::command::CommandLane;
+            use swim_server::agent::lane::model::command::Command;
             use swim_server::agent::lane::lifecycle::LaneLifecycle;
         },
         None,
@@ -99,12 +99,12 @@ pub fn derive_events_body(on_command: &Callback) -> proc_macro2::TokenStream {
             tracing::event!(tracing::Level::TRACE, commanded = swim_server::agent::COMMANDED, ?command);
 
             tracing_futures::Instrument::instrument(
-                lifecycle.#on_command_func(command, &model, &context),
+                lifecycle.#on_command_func(&command, &model, &context),
                 tracing::span!(tracing::Level::TRACE, swim_server::agent::ON_COMMAND)
             ).await;
 
             if let Some(tx) = responder {
-                if tx.send(()).is_err() {
+                if tx.send(command).is_err() {
                     tracing::event!(tracing::Level::WARN, response_ingored = swim_server::agent::RESPONSE_IGNORED);
                 }
             }
