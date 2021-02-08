@@ -24,6 +24,7 @@ use crate::agent::dispatch::error::DispatcherErrors;
 use crate::agent::dispatch::AgentDispatcher;
 use crate::agent::lane::channels::task::{
     run_supply_lane_io, DemandMapLaneMessageHandler, LaneIoError, MapLaneMessageHandler,
+    ValueLaneMessageHandler,
 };
 use crate::agent::lane::channels::update::StmRetryStrategy;
 use crate::agent::lane::channels::uplink::spawn::{SpawnerUplinkFactory, UplinkErrorReport};
@@ -37,12 +38,13 @@ use crate::agent::lane::model::action::{Action, ActionLane};
 use crate::agent::lane::model::command::{Command, CommandLane};
 use crate::agent::lane::model::demand::DemandLane;
 use crate::agent::lane::model::demand_map::{
-    DemandMapLane, DemandMapLaneEvent, DemandMapLaneUpdate,
+    DemandMapLane, DemandMapLaneCommand, DemandMapLaneEvent,
 };
 use crate::agent::lane::model::map::MapLane;
 use crate::agent::lane::model::map::{summaries_to_events, MapLaneEvent, MapSubscriber};
 use crate::agent::lane::model::supply::{make_lane_model, SupplyLane};
 use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent};
+use crate::agent::lane::model::DeferredSubscription;
 use crate::agent::lifecycle::AgentLifecycle;
 use crate::routing::{ServerRouter, TaggedClientEnvelope, TaggedEnvelope};
 use futures::future::{join, ready, BoxFuture};
@@ -70,7 +72,6 @@ use utilities::future::SwimStreamExt;
 use utilities::sync::{topic, trigger};
 use utilities::uri::RelativeUri;
 
-use crate::agent::lane::model::DeferredSubscription;
 #[doc(hidden)]
 #[allow(unused_imports)]
 pub use agent_derive::*;
@@ -482,9 +483,12 @@ where
         context: Context,
     ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
         let ValueLaneIo { lane, deferred } = self;
+
+        let handler = ValueLaneMessageHandler::new(lane, config.value_lane_backpressure);
+
         let uplink_factory = SpawnerUplinkFactory::new(config.clone());
         Ok(lane::channels::task::run_lane_io(
-            lane,
+            handler,
             uplink_factory,
             envelopes,
             deferred,
@@ -542,7 +546,8 @@ where
 
         let retries = StmRetryStrategy::new(config.retry_strategy);
 
-        let handler = MapLaneMessageHandler::new(lane, move || retries);
+        let handler =
+            MapLaneMessageHandler::new(lane, move || retries, config.map_lane_backpressure);
 
         Ok(lane::channels::task::run_lane_io(
             handler,
@@ -1329,7 +1334,7 @@ where
     Value: Debug + Form + Send + Sync + 'static,
 {
     lane: DemandMapLane<Key, Value>,
-    rx: mpsc::Receiver<DemandMapLaneUpdate<Key, Value>>,
+    rx: mpsc::Receiver<DemandMapLaneEvent<Key, Value>>,
 }
 
 impl<Key, Value> DemandMapLaneIo<Key, Value>
@@ -1339,7 +1344,7 @@ where
 {
     pub fn new(
         lane: DemandMapLane<Key, Value>,
-        rx: mpsc::Receiver<DemandMapLaneUpdate<Key, Value>>,
+        rx: mpsc::Receiver<DemandMapLaneEvent<Key, Value>>,
     ) -> DemandMapLaneIo<Key, Value> {
         DemandMapLaneIo { lane, rx }
     }
@@ -1405,7 +1410,7 @@ impl<Agent, Context, L, S, P, Key, Value> LaneTasks<Agent, Context>
 where
     Agent: 'static,
     Context: AgentContext<Agent> + Send + Sync + 'static,
-    S: Stream<Item = DemandMapLaneEvent<Key, Value>> + Send + Sync + 'static,
+    S: Stream<Item = DemandMapLaneCommand<Key, Value>> + Send + Sync + 'static,
     Key: Any + Clone + Form + Send + Sync + Debug,
     Value: Any + Clone + Form + Send + Sync + Debug,
     L: for<'l> DemandMapLaneLifecycle<'l, Key, Value, Agent>,
@@ -1431,7 +1436,7 @@ where
 
             while let Some(event) = events.next().await {
                 match event {
-                    DemandMapLaneEvent::Sync(sender) => {
+                    DemandMapLaneCommand::Sync(sender) => {
                         let keys: Vec<Key> = lifecycle.on_sync(&model, &context).await;
                         let keys_len = keys.len();
 
@@ -1440,7 +1445,7 @@ where
                                 if let Some(value) =
                                     lifecycle.on_cue(&model, &context, key.clone()).await
                                 {
-                                    results.push(DemandMapLaneUpdate::make(key, value));
+                                    results.push(DemandMapLaneEvent::update(key, value));
                                 }
 
                                 results
@@ -1451,9 +1456,12 @@ where
 
                         let _ = sender.send(values);
                     }
-                    DemandMapLaneEvent::Cue(sender, key) => {
+                    DemandMapLaneCommand::Cue(sender, key) => {
                         let value = lifecycle.on_cue(&model, &context, key).await;
                         let _ = sender.send(value);
+                    }
+                    DemandMapLaneCommand::Remove(key) => {
+                        lifecycle.on_remove(&model, &context, key).await;
                     }
                 }
             }

@@ -167,6 +167,7 @@ where
 {
     type OnSyncFuture: Future<Output = Vec<Key>> + Send + 'a;
     type OnCueFuture: Future<Output = Option<Value>> + Send + 'a;
+    type OnRemoveFuture: Future<Output = ()> + Send + 'a;
 
     /// Invoked after a sync request has been made to the lane.
     ///
@@ -196,6 +197,22 @@ where
         context: &'a C,
         key: Key,
     ) -> Self::OnCueFuture
+    where
+        C: AgentContext<Agent> + Send + Sync + 'static;
+
+    /// Invoked after a key has been removed.
+    ///
+    /// # Arguments:
+    ///
+    /// * `model` - The model of the lane.
+    /// * `context` - Context of the agent that owns the lane.
+    /// * `key` - The key of the value.
+    fn on_remove<C>(
+        &'a self,
+        _model: &'a DemandMapLane<Key, Value>,
+        _context: &'a C,
+        _key: Key,
+    ) -> Self::OnRemoveFuture
     where
         C: AgentContext<Agent> + Send + Sync + 'static;
 }

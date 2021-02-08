@@ -904,6 +904,17 @@ pub fn demand_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///    {
 ///        Some(1)
 ///    }
+///
+///     async fn on_remove<Context>(
+///         &self,
+///         _model: & DemandMapLane<String, i32>,
+///         _context: &Context,
+///         _key: String,
+///     ) where
+///         Context: AgentContext<TestAgent> + Send + Sync + 'static,
+///    {
+///
+///    }
 /// }
 ///
 /// # #[derive(Debug, SwimAgent)]

@@ -385,7 +385,7 @@ async fn mpsc_topic_task<T: Clone>(
                 break;
             }
         }
-        iteration_count += 1;
+        iteration_count = iteration_count.wrapping_add(1);
         if iteration_count % yield_mod == 0 {
             tokio::task::yield_now().await;
         }

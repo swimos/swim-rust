@@ -714,7 +714,7 @@ async fn agent_loop() {
 
     let agent_lifecycle = config.agent_lifecycle();
 
-    let exec_config = AgentExecutionConfig::with(buffer_size, 1, 0, Duration::from_secs(1));
+    let exec_config = AgentExecutionConfig::with(buffer_size, 1, 0, Duration::from_secs(1), None);
 
     let (envelope_tx, envelope_rx) = mpsc::channel(buffer_size.get());
 

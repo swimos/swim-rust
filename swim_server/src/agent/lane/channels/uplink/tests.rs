@@ -14,10 +14,10 @@
 
 use crate::agent::lane::channels::uplink::map::MapLaneSyncError;
 use crate::agent::lane::channels::uplink::{
-    MapLaneUplink, Uplink, UplinkAction, UplinkError, UplinkMessage, UplinkStateMachine,
-    ValueLaneUplink,
+    MapLaneUplink, PeelResult, Uplink, UplinkAction, UplinkError, UplinkMessage,
+    UplinkStateMachine, ValueLaneUplink,
 };
-use crate::agent::lane::model::map::{MapLane, MapLaneEvent, MapSubscriber, MapUpdate};
+use crate::agent::lane::model::map::{MapLane, MapLaneEvent, MapSubscriber};
 use crate::agent::lane::model::value::ValueLane;
 use crate::agent::lane::model::DeferredSubscription;
 use crate::agent::lane::tests::ExactlyOnce;
@@ -25,7 +25,7 @@ use futures::future::join;
 use futures::ready;
 use futures::sink::drain;
 use futures::{Stream, StreamExt};
-use std::collections::{HashMap, VecDeque};
+use std::collections::{BTreeMap, VecDeque};
 use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -33,7 +33,9 @@ use std::task::{Context, Poll};
 use std::time::Duration;
 use stm::transaction::TransactionError;
 use swim_common::form::{Form, FormErr};
+use swim_common::model::Value;
 use swim_common::sink::item;
+use swim_warp::model::map::MapUpdate;
 use tokio::sync::mpsc;
 use tokio::time::timeout;
 use utilities::future::SwimStreamExt;
@@ -98,10 +100,9 @@ async fn uplink_not_linked() {
     let (tx_action, rx_action) = mpsc::channel::<UplinkAction>(5);
 
     let uplink = Uplink::new(
-        ValueLaneUplink::new(lane.clone()),
+        ValueLaneUplink::new(lane.clone(), None),
         rx_action.fuse(),
         events.fuse(),
-        NonZeroUsize::new(256).unwrap(),
     );
 
     let (tx_event, rx_event) = mpsc::channel(5);
@@ -143,10 +144,9 @@ async fn uplink_open_to_linked() {
     let (tx_action, rx_action) = mpsc::channel::<UplinkAction>(5);
 
     let uplink = Uplink::new(
-        ValueLaneUplink::new(lane.clone()),
+        ValueLaneUplink::new(lane.clone(), None),
         rx_action.fuse(),
         events.fuse(),
-        NonZeroUsize::new(256).unwrap(),
     );
 
     let (tx_event, rx_event) = mpsc::channel(5);
@@ -194,10 +194,9 @@ async fn uplink_open_to_synced() {
     let (tx_action, rx_action) = mpsc::channel::<UplinkAction>(5);
 
     let uplink = Uplink::new(
-        ValueLaneUplink::new(lane.clone()),
+        ValueLaneUplink::new(lane.clone(), None),
         rx_action.fuse(),
         events.fuse(),
-        NonZeroUsize::new(256).unwrap(),
     );
 
     let (tx_event, rx_event) = mpsc::channel(5);
@@ -235,7 +234,7 @@ async fn uplink_open_to_synced() {
 async fn value_state_machine_message_for() {
     let lane = ValueLane::new(0);
 
-    let uplink = ValueLaneUplink::new(lane);
+    let uplink = ValueLaneUplink::new(lane, None);
 
     let event = Arc::new(4);
 
@@ -249,7 +248,8 @@ async fn value_state_machine_sync_from_var() {
     let (lane, rx) = ValueLane::observable(7, buffer_size());
 
     let events = rx.into_stream();
-    let uplink = ValueLaneUplink::new(lane);
+
+    let uplink = ValueLaneUplink::new(lane, None);
 
     let mut events = events.fuse();
 
@@ -263,14 +263,16 @@ async fn value_state_machine_sync_from_var() {
 
     let event_vec = sync_events.unwrap();
 
-    assert!(matches!(event_vec.as_slice(), [Ok(v)] if **v == 7));
+    assert!(
+        matches!(event_vec.as_slice(), [PeelResult::Output(Ok(v)), PeelResult::Complete(_)] if **v == 7)
+    );
 }
 
 #[tokio::test]
 async fn value_state_machine_sync_from_events() {
     let lane = ValueLane::new(7);
 
-    let uplink = ValueLaneUplink::new(lane.clone());
+    let uplink = ValueLaneUplink::new(lane.clone(), None);
 
     let (tx_fake, rx_fake) = mpsc::channel(5);
 
@@ -294,22 +296,30 @@ async fn value_state_machine_sync_from_events() {
 
     let event_vec = sync_result.unwrap();
 
-    assert!(matches!(event_vec.as_slice(), [Ok(v)] if Arc::ptr_eq(&v.0, &event)));
+    assert!(
+        matches!(event_vec.as_slice(), [PeelResult::Output(Ok(v)), PeelResult::Complete(_)] if Arc::ptr_eq(&v.0, &event))
+    );
 }
 
 #[tokio::test]
 async fn map_state_machine_message_for() {
     let lane = MapLane::new();
 
-    let map_uplink = MapLaneUplink::new(lane, 1, || ExactlyOnce);
+    let map_uplink = MapLaneUplink::new(lane, 1, || ExactlyOnce, None);
 
     let value = Arc::new(4);
 
     let update = map_uplink.message_for(MapLaneEvent::Update(3, value.clone()));
-    assert!(matches!(update, Ok(Some(MapUpdate::Update(3, v))) if Arc::ptr_eq(&v, &value)));
+
+    assert!(
+        matches!(update, Ok(Some(MapUpdate::Update(Value::Int32Value(3), v))) if Arc::ptr_eq(&v, &value))
+    );
 
     let remove = map_uplink.message_for(MapLaneEvent::Remove(2));
-    assert!(matches!(remove, Ok(Some(MapUpdate::Remove(2)))));
+    assert!(matches!(
+        remove,
+        Ok(Some(MapUpdate::Remove(Value::Int32Value(2))))
+    ));
 
     let clear = map_uplink.message_for(MapLaneEvent::Clear);
     assert!(matches!(clear, Ok(Some(MapUpdate::Clear))));
@@ -319,20 +329,32 @@ async fn map_state_machine_message_for() {
 }
 
 fn into_map(
-    events: Vec<Result<MapUpdate<i32, i32>, UplinkError>>,
-) -> Result<HashMap<i32, i32>, UplinkError> {
-    let mut map = HashMap::new();
+    events: Vec<Result<MapUpdate<Value, i32>, UplinkError>>,
+) -> Result<BTreeMap<i32, i32>, UplinkError> {
+    let mut map = BTreeMap::new();
 
     for event in events.into_iter() {
         match event? {
             MapUpdate::Update(k, v) => {
-                map.insert(k, *v);
+                map.insert(i32::try_convert(k).unwrap(), *v);
             }
             MapUpdate::Remove(k) => {
-                map.remove(&k);
+                map.remove(&i32::try_convert(k).unwrap());
             }
             MapUpdate::Clear => {
                 map.clear();
+            }
+            MapUpdate::Take(n) => {
+                let discard = map.keys().skip(n).map(|k| *k).collect::<Vec<_>>();
+                for k in discard {
+                    map.remove(&k);
+                }
+            }
+            MapUpdate::Drop(n) => {
+                let discard = map.keys().take(n).map(|k| *k).collect::<Vec<_>>();
+                for k in discard {
+                    map.remove(&k);
+                }
             }
         }
     }
@@ -363,7 +385,7 @@ async fn map_state_machine_sync() {
         .await
         .is_ok());
 
-    let map_uplink = MapLaneUplink::new(lane, 1, || ExactlyOnce);
+    let map_uplink = MapLaneUplink::new(lane, 1, || ExactlyOnce, None);
 
     let sync_events = timeout(
         Duration::from_secs(10),
@@ -375,11 +397,16 @@ async fn map_state_machine_sync() {
 
     let sync_vec = sync_events.unwrap();
 
-    let results = into_map(sync_vec);
+    let sync_values = sync_vec
+        .into_iter()
+        .filter_map(|peel_result| peel_result.output())
+        .collect();
+
+    let results = into_map(sync_values);
 
     assert!(results.is_ok());
 
-    let mut expected = HashMap::new();
+    let mut expected = BTreeMap::new();
     expected.insert(1, 2);
     expected.insert(2, 5);
     assert_eq!(results.unwrap(), expected);

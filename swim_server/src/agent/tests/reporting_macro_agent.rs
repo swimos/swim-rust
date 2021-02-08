@@ -311,7 +311,8 @@ impl DemandLifecycle {
     key_type = "String",
     value_type = "i32",
     on_sync,
-    on_cue
+    on_cue,
+    on_remove
 )]
 struct DemandMapLifecycle {
     event_handler: EventCollectorHandler,
@@ -361,6 +362,16 @@ impl DemandMapLifecycle {
             }
         }
     }
+
+    async fn on_remove<Context>(
+        &self,
+        _model: &DemandMapLane<String, i32>,
+        _context: &Context,
+        _key: String,
+    ) where
+        Context: AgentContext<ReportingAgent> + Sized + Send + Sync,
+    {
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -396,7 +407,7 @@ async fn agent_loop() {
 
     let agent_lifecycle = config.agent_lifecycle();
 
-    let exec_config = AgentExecutionConfig::with(buffer_size, 1, 0, Duration::from_secs(1));
+    let exec_config = AgentExecutionConfig::with(buffer_size, 1, 0, Duration::from_secs(1), None);
 
     let (envelope_tx, envelope_rx) = mpsc::channel(buffer_size.get());
 
