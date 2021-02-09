@@ -895,9 +895,10 @@ async fn adding_subscribers() {
 
     let (comm_tx, mut comm_rx) = mpsc::channel::<trigger::Sender>(2);
 
-    let start_task = |mut rx: Receiver<i32>| {
+    let start_task = |rx: Receiver<i32>| {
+        let mut stream = rx.into_stream();
         let task = async move {
-            while let Some(_) = rx.recv().await {}
+            while let Some(_) = stream.next().await {}
         };
         tokio::spawn(task);
     };
