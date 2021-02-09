@@ -24,18 +24,19 @@ async fn main() {
     let host_uri = url::Url::parse(&"ws://127.0.0.1:9001".to_string()).unwrap();
     let node_uri = "/unit/foo";
 
-    let path = AbsolutePath::new(host_uri.clone(), node_uri, "shopping_cart");
+    let path = AbsolutePath::new(host_uri.clone(), node_uri, "info");
 
-    let (map_downlink, _) = client
-        .map_downlink::<String, i32>(path)
+    let (value_downlink, _) = client
+        .value_downlink(path, String::new())
         .await
-        .expect("Failed to create downlink!");
+        .expect("Failed to create value downlink!");
 
-    let (_dl_topic, mut dl_sink) = map_downlink.split();
+    let (_dl_topic, mut dl_sink) = value_downlink.split();
 
-    for _ in 0..50 {
+    for i in (1..100000).step_by(2) {
+        println!("Setting {}", i);
         dl_sink
-            .update(String::from("FromClient"), 1)
+            .set(i.to_string())
             .await
             .expect("Failed to send message!");
     }

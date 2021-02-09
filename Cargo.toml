@@ -12,5 +12,5 @@ members = [
 
 exclude = [
     "cookbook",
-    "stm-panic-example"
+    "server-freezing-example"
 ]

@@ -12,29 +12,38 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 use std::fmt::Debug;
-use swim_server::agent::lane::model::map::{MapLane, MapLaneEvent};
-use swim_server::agent::map_lifecycle;
-use swim_server::agent::AgentContext;
+use swim_server::agent::lane::lifecycle::LaneLifecycle;
+use swim_server::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 use swim_server::agent::SwimAgent;
+use swim_server::agent::{value_lifecycle, AgentContext};
 
 #[derive(Debug, SwimAgent)]
 pub struct UnitAgent {
-    #[lifecycle(name = "ShoppingCartLifecycle")]
-    pub shopping_cart: MapLane<String, i32>,
+    #[lifecycle(name = "InfoLifecycle")]
+    pub info: ValueLane<String>,
 }
 
-#[map_lifecycle(agent = "UnitAgent", key_type = "String", value_type = "i32", on_event)]
-struct ShoppingCartLifecycle;
+#[value_lifecycle(agent = "UnitAgent", event_type = "String", on_event)]
+struct InfoLifecycle {
+    count: i32,
+}
 
-impl ShoppingCartLifecycle {
+impl InfoLifecycle {
     async fn on_event<Context>(
         &mut self,
-        event: &MapLaneEvent<String, i32>,
-        _model: &MapLane<String, i32>,
+        _event: &ValueLaneEvent<String>,
+        _model: &ValueLane<String>,
         _context: &Context,
     ) where
         Context: AgentContext<UnitAgent> + Sized + Send + Sync + 'static,
     {
-        println!("{:?}", event);
+        self.count += 1;
+        println!("Count: {}", self.count)
+    }
+}
+
+impl LaneLifecycle<()> for InfoLifecycle {
+    fn create(_config: &()) -> Self {
+        InfoLifecycle { count: 0 }
     }
 }
