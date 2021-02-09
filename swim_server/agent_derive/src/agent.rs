@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::utils::{get_task_struct_name, validate_input_ast, InputAstType};
+use crate::utils::{get_task_struct_name, validate_input_ast, Callback, InputAstType};
 use crate::utils::{parse_callback, CallbackKind};
 use darling::{ast, FromDeriveInput, FromField, FromMeta};
 use macro_helpers::{as_const, string_to_ident};
@@ -174,10 +174,14 @@ pub fn derive_agent_lifecycle(args: AttributeArgs, input: DeriveInput) -> TokenS
     let on_start_callback =
         parse_callback(&args.on_start, lifecycle_name.clone(), CallbackKind::Start);
 
-    let start_body = on_start_callback.map_or(quote! {ready(()).boxed()}, |callback| {
-        let on_start_func = &callback.func_name;
-        quote! {self.#on_start_func(context).boxed()}
-    });
+    let start_body = match on_start_callback {
+        Callback::Default { .. } => {
+            quote! {ready(()).boxed()}
+        }
+        Callback::Custom { func_name, .. } => {
+            quote! {self.#func_name(context).boxed()}
+        }
+    };
 
     let pub_derived = quote! {
         #[derive(Clone, Debug)]
