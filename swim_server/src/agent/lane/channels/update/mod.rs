@@ -13,6 +13,7 @@
 // limitations under the License.
 
 pub mod action;
+pub mod command;
 pub mod map;
 pub mod value;
 

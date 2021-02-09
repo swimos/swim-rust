@@ -29,6 +29,8 @@ pub struct ConnectionConfig {
     pub connection_retries: RetryStrategy,
     /// The number of events to process before yielding execution back to the runtime.
     pub yield_after: NonZeroUsize,
+    /// Buffer size for the channel to send data for missing nodes.
+    pub missing_nodes_buffer_size: NonZeroUsize,
 }
 
 impl Default for ConnectionConfig {
@@ -39,6 +41,7 @@ impl Default for ConnectionConfig {
             activity_timeout: Duration::new(30, 00),
             connection_retries: Default::default(),
             yield_after: NonZeroUsize::new(256).unwrap(),
+            missing_nodes_buffer_size: NonZeroUsize::new(8).unwrap(),
         }
     }
 }

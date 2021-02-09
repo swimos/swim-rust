@@ -14,9 +14,13 @@
 
 use crate::agent::context::AgentExecutionContext;
 use crate::agent::lane::channels::update::action::ActionLaneUpdateTask;
+use crate::agent::lane::channels::update::command::CommandLaneUpdateTask;
 use crate::agent::lane::channels::update::map::MapLaneUpdateTask;
 use crate::agent::lane::channels::update::value::ValueLaneUpdateTask;
 use crate::agent::lane::channels::update::{LaneUpdate, UpdateError};
+use crate::agent::lane::channels::uplink::backpressure::{
+    KeyedBackpressureConfig, SimpleBackpressureConfig,
+};
 use crate::agent::lane::channels::uplink::spawn::UplinkErrorReport;
 use crate::agent::lane::channels::uplink::stateless::StatelessUplinks;
 use crate::agent::lane::channels::uplink::{
@@ -27,7 +31,8 @@ use crate::agent::lane::channels::{
     AgentExecutionConfig, InputMessage, LaneMessageHandler, OutputMessage, TaggedAction,
 };
 use crate::agent::lane::model::action::ActionLane;
-use crate::agent::lane::model::demand_map::{DemandMapLane, DemandMapLaneUpdate};
+use crate::agent::lane::model::command::CommandLane;
+use crate::agent::lane::model::demand_map::{DemandMapLane, DemandMapLaneEvent};
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::ValueLane;
 use crate::agent::lane::model::DeferredSubscription;
@@ -312,7 +317,21 @@ where
     combine_results(route, upd_res.err(), upl_fatal, upl_errs)
 }
 
-impl<T> LaneMessageHandler for ValueLane<T>
+pub struct ValueLaneMessageHandler<T> {
+    lane: ValueLane<T>,
+    backpressure_config: Option<SimpleBackpressureConfig>,
+}
+
+impl<T> ValueLaneMessageHandler<T> {
+    pub fn new(lane: ValueLane<T>, backpressure_config: Option<SimpleBackpressureConfig>) -> Self {
+        ValueLaneMessageHandler {
+            lane,
+            backpressure_config,
+        }
+    }
+}
+
+impl<T> LaneMessageHandler for ValueLaneMessageHandler<T>
 where
     T: Any + Send + Sync + Debug,
 {
@@ -321,11 +340,11 @@ where
     type Update = ValueLaneUpdateTask<T>;
 
     fn make_uplink(&self, _addr: RoutingAddr) -> Self::Uplink {
-        ValueLaneUplink::new((*self).clone())
+        ValueLaneUplink::new(self.lane.clone(), self.backpressure_config)
     }
 
     fn make_update(&self) -> Self::Update {
-        ValueLaneUpdateTask::new((*self).clone())
+        ValueLaneUpdateTask::new(self.lane.clone())
     }
 }
 
@@ -335,6 +354,7 @@ pub struct MapLaneMessageHandler<K, V, F> {
     lane: MapLane<K, V>,
     uplink_counter: AtomicU64,
     retries: F,
+    backpressure_config: Option<KeyedBackpressureConfig>,
 }
 
 impl<K, V, F, Ret> MapLaneMessageHandler<K, V, F>
@@ -342,11 +362,16 @@ where
     F: Fn() -> Ret + Clone + Send + Sync + 'static,
     Ret: RetryManager + Send + Sync + 'static,
 {
-    pub fn new(lane: MapLane<K, V>, retries: F) -> Self {
+    pub fn new(
+        lane: MapLane<K, V>,
+        retries: F,
+        backpressure_config: Option<KeyedBackpressureConfig>,
+    ) -> Self {
         MapLaneMessageHandler {
             lane,
             uplink_counter: AtomicU64::new(1),
             retries,
+            backpressure_config,
         }
     }
 }
@@ -367,45 +392,15 @@ where
             lane,
             uplink_counter,
             retries,
+            backpressure_config,
         } = self;
         let i = uplink_counter.fetch_add(1, Ordering::Relaxed);
-        MapLaneUplink::new((*lane).clone(), i, retries.clone())
+        MapLaneUplink::new((*lane).clone(), i, retries.clone(), *backpressure_config)
     }
 
     fn make_update(&self) -> Self::Update {
         let MapLaneMessageHandler { lane, retries, .. } = self;
         MapLaneUpdateTask::new((*lane).clone(), (*retries).clone())
-    }
-}
-
-async fn simple_action_envelope_task<Command>(
-    envelopes: impl Stream<Item = TaggedClientEnvelope>,
-    commands: mpsc::Sender<Result<(RoutingAddr, Command), FormErr>>,
-    yield_mod: usize,
-) where
-    Command: Send + Sync + Form + 'static,
-{
-    pin_mut!(envelopes);
-    let mut iteration_count: usize = 0;
-
-    while let Some(TaggedClientEnvelope(addr, envelope)) = envelopes.next().await {
-        let OutgoingLinkMessage { header, body, .. } = envelope;
-        let sent = match header {
-            OutgoingHeader::Command => {
-                let command =
-                    Command::try_convert(body.unwrap_or(Value::Extant)).map(|cmd| (addr, cmd));
-                commands.send(command).await.is_ok()
-            }
-            _ => true,
-        };
-        if !sent {
-            break;
-        }
-
-        iteration_count += 1;
-        if iteration_count % yield_mod == 0 {
-            tokio::task::yield_now().await;
-        }
     }
 }
 
@@ -419,13 +414,96 @@ async fn send_action(
     sender.send(TaggedAction(addr, action)).await.is_ok()
 }
 
+async fn run_stateless_lane_io<Upd, S, Msg, Ev>(
+    envelopes: impl Stream<Item = TaggedClientEnvelope>,
+    config: AgentExecutionConfig,
+    context: impl AgentExecutionContext,
+    route: RelativePath,
+    updater: Upd,
+    uplinks: StatelessUplinks<S>,
+) -> Result<Vec<UplinkErrorReport>, LaneIoError>
+where
+    Upd: LaneUpdate<Msg = Msg>,
+    S: Stream<Item = AddressedUplinkMessage<Ev>>,
+    Msg: Send + Sync + Form + Debug + 'static,
+    Ev: Send + Sync + Form + Debug + 'static,
+{
+    let (update_tx, update_rx) = mpsc::channel(config.update_buffer.get());
+    let (upd_done_tx, upd_done_rx) = trigger::trigger();
+    let envelopes = envelopes.take_until(upd_done_rx);
+
+    let yield_after = config.yield_after.get();
+
+    let (uplink_tx, uplink_rx) = mpsc::channel(config.action_buffer.get());
+    let (err_tx, err_rx) = mpsc::channel(config.uplink_err_buffer.get());
+
+    let update_task = async move {
+        let result = updater.run_update(update_rx).await;
+        upd_done_tx.trigger();
+        result
+    }
+    .instrument(span!(Level::INFO, UPDATE_TASK, ?route));
+
+    let uplink_task = uplinks
+        .run(uplink_rx, context.router_handle(), err_tx, yield_after)
+        .instrument(span!(Level::INFO, UPLINK_SPAWN_TASK, ?route));
+
+    let error_handler =
+        UplinkErrorHandler::collector(route.clone(), config.max_fatal_uplink_errors);
+
+    let envelope_task = action_envelope_task_with_uplinks(
+        route.clone(),
+        envelopes,
+        uplink_tx,
+        err_rx,
+        error_handler,
+        OnCommandStrategy::Send(OnCommandHandler::new(update_tx, route.clone())),
+        yield_after,
+    );
+
+    let (upd_result, _, (uplink_fatal, uplink_errs)) =
+        join3(update_task, uplink_task, envelope_task).await;
+    combine_results(route, upd_result.err(), uplink_fatal, uplink_errs)
+}
+
+/// Run the [`swim_common::warp::envelope::Envelope`] IO for a command lane.
+///
+/// #Arguments
+/// * `lane` - The command lane.
+/// * `envelopes` - The stream of incoming envelopes.
+/// * `config` - Agent configuration parameters.
+/// * `context` - The agent execution context, providing task scheduling and outgoing envelope
+/// routing.
+/// * `route` - The route to this lane for outgoing envelope labelling.
+pub async fn run_command_lane_io<T>(
+    lane: CommandLane<T>,
+    envelopes: impl Stream<Item = TaggedClientEnvelope>,
+    config: AgentExecutionConfig,
+    context: impl AgentExecutionContext,
+    route: RelativePath,
+) -> Result<Vec<UplinkErrorReport>, LaneIoError>
+where
+    T: Send + Sync + Form + Debug + 'static,
+{
+    let span = span!(Level::INFO, LANE_IO_TASK, ?route);
+    let _enter = span.enter();
+
+    let (feedback_tx, feedback_rx) = mpsc::channel(config.feedback_buffer.get());
+    let feedback_rx = feedback_rx.map(|(_, message)| AddressedUplinkMessage::Broadcast(message));
+
+    let updater =
+        CommandLaneUpdateTask::new(lane.clone(), Some(feedback_tx), config.cleanup_timeout);
+    let uplinks = StatelessUplinks::new(feedback_rx, route.clone(), UplinkKind::Command);
+
+    run_stateless_lane_io(envelopes, config, context, route, updater, uplinks).await
+}
+
 /// Run the [`swim_common::warp::envelope::Envelope`] IO for an action lane. This is different to
 /// the standard `run_lane_io` as the update and uplink components of an action lane are interleaved
 /// and different uplinks will receive entirely different messages.
 ///
 /// #Arguments
 /// * `lane` - The action lane.
-/// * `feedback` - Whether the lane provides feedback (and so can have uplinks).
 /// * `envelopes` - The stream of incoming envelopes.
 /// * `config` - Agent configuration parameters.
 /// * `context` - The agent execution context, providing task scheduling and outgoing envelope
@@ -433,7 +511,6 @@ async fn send_action(
 /// * `route` - The route to this lane for outgoing envelope labelling.
 pub async fn run_action_lane_io<Command, Response>(
     lane: ActionLane<Command, Response>,
-    feedback: bool,
     envelopes: impl Stream<Item = TaggedClientEnvelope>,
     config: AgentExecutionConfig,
     context: impl AgentExecutionContext,
@@ -446,62 +523,15 @@ where
     let span = span!(Level::INFO, LANE_IO_TASK, ?route);
     let _enter = span.enter();
 
-    let (update_tx, update_rx) = mpsc::channel(config.update_buffer.get());
-    let (upd_done_tx, upd_done_rx) = trigger::trigger();
-    let envelopes = envelopes.take_until(upd_done_rx);
+    let (feedback_tx, feedback_rx) = mpsc::channel(config.feedback_buffer.get());
+    let feedback_rx = feedback_rx
+        .map(|(address, message)| AddressedUplinkMessage::Addressed { message, address });
 
-    let yield_after = config.yield_after.get();
+    let updater =
+        ActionLaneUpdateTask::new(lane.clone(), Some(feedback_tx), config.cleanup_timeout);
+    let uplinks = StatelessUplinks::new(feedback_rx, route.clone(), UplinkKind::Action);
 
-    if feedback {
-        let (feedback_tx, feedback_rx) = mpsc::channel(config.feedback_buffer.get());
-        let feedback_rx =
-            feedback_rx.map(|(addr, item)| AddressedUplinkMessage::addressed(item, addr));
-        let (uplink_tx, uplink_rx) = mpsc::channel(config.action_buffer.get());
-        let (err_tx, err_rx) = mpsc::channel(config.uplink_err_buffer.get());
-
-        let updater =
-            ActionLaneUpdateTask::new(lane.clone(), Some(feedback_tx), config.cleanup_timeout);
-
-        let update_task = async move {
-            let result = updater.run_update(update_rx).await;
-            upd_done_tx.trigger();
-            result
-        }
-        .instrument(span!(Level::INFO, UPDATE_TASK, ?route));
-
-        let uplinks = StatelessUplinks::new(feedback_rx, route.clone(), UplinkKind::Action);
-        let uplink_task = uplinks
-            .run(uplink_rx, context.router_handle(), err_tx, yield_after)
-            .instrument(span!(Level::INFO, UPLINK_SPAWN_TASK, ?route));
-
-        let error_handler =
-            UplinkErrorHandler::collector(route.clone(), config.max_fatal_uplink_errors);
-
-        let envelope_task = action_envelope_task_with_uplinks(
-            route.clone(),
-            envelopes,
-            uplink_tx,
-            err_rx,
-            error_handler,
-            OnCommandStrategy::Send(OnCommandHandler::new(update_tx, route.clone())),
-            yield_after,
-        );
-
-        let (upd_result, _, (uplink_fatal, uplink_errs)) =
-            join3(update_task, uplink_task, envelope_task).await;
-        combine_results(route, upd_result.err(), uplink_fatal, uplink_errs)
-    } else {
-        let updater = ActionLaneUpdateTask::new(lane.clone(), None, config.cleanup_timeout);
-        let update_task = async move {
-            let result = updater.run_update(update_rx).await;
-            upd_done_tx.trigger();
-            result
-        }
-        .instrument(span!(Level::INFO, UPDATE_TASK, ?route));
-        let envelope_task = simple_action_envelope_task(envelopes, update_tx, yield_after);
-        let (upd_result, _) = join(update_task, envelope_task).await;
-        combine_results(route, upd_result.err(), false, vec![])
-    }
+    run_stateless_lane_io(envelopes, config, context, route, updater, uplinks).await
 }
 
 fn combine_results(
@@ -911,7 +941,7 @@ where
     Key: Any + Clone + Form + Send + Sync + Debug,
     Value: Any + Clone + Form + Send + Sync + Debug,
 {
-    type Event = DemandMapLaneUpdate<Key, Value>;
+    type Event = DemandMapLaneEvent<Key, Value>;
     type Uplink = DemandMapLaneUplink<Key, Value>;
     type Update = DemandMapLaneUpdateTask<Value>;
 

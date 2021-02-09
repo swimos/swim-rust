@@ -547,8 +547,8 @@ impl Transaction {
             })
     }
 
-    // Reset the transaction after a failed execution/commit.
-    fn reset(&mut self) {
+    /// Reset the transaction after a failed or completed execution/commit.
+    pub(crate) fn reset(&mut self) {
         self.log_assoc.clear();
         self.log.clear();
         self.masks.clear();
@@ -844,6 +844,8 @@ where
             retries,
             transaction,
         } = self;
-        atomically_with(stm, retries(), transaction).await
+        let result = atomically_with(stm, retries(), transaction).await;
+        transaction.reset();
+        result
     }
 }

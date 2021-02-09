@@ -16,9 +16,9 @@ use crate::agent;
 use crate::agent::context::AgentExecutionContext;
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lane::lifecycle::{
-    ActionLaneLifecycle, DemandLaneLifecycle, DemandMapLaneLifecycle, StatefulLaneLifecycle,
+    CommandLaneLifecycle, DemandLaneLifecycle, DemandMapLaneLifecycle, StatefulLaneLifecycle,
 };
-use crate::agent::lane::model::action::CommandLane;
+use crate::agent::lane::model::command::CommandLane;
 use crate::agent::lane::model::demand::DemandLane;
 use crate::agent::lane::model::demand_map::DemandMapLane;
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
@@ -27,6 +27,7 @@ use crate::agent::lane::tests::ExactlyOnce;
 use crate::agent::lifecycle::AgentLifecycle;
 use crate::agent::{AgentContext, LaneIo, LaneTasks, SwimAgent};
 use futures::future::{ready, BoxFuture, Ready};
+use futures::FutureExt;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -117,6 +118,7 @@ struct DemandMapLifecycle {
 impl<'a> DemandMapLaneLifecycle<'a, String, i32, ReportingAgent> for DemandMapLifecycle {
     type OnSyncFuture = BoxFuture<'a, Vec<String>>;
     type OnCueFuture = BoxFuture<'a, Option<i32>>;
+    type OnRemoveFuture = BoxFuture<'a, ()>;
 
     fn on_sync<C>(
         &'a self,
@@ -154,6 +156,18 @@ impl<'a> DemandMapLaneLifecycle<'a, String, i32, ReportingAgent> for DemandMapLi
                 }
             }
         })
+    }
+
+    fn on_remove<C>(
+        &'a self,
+        _model: &'a DemandMapLane<String, i32>,
+        _context: &'a C,
+        _key: String,
+    ) -> Self::OnRemoveFuture
+    where
+        C: AgentContext<ReportingAgent> + Send + Sync + 'static,
+    {
+        ready(()).boxed()
     }
 }
 
@@ -211,12 +225,12 @@ impl AgentLifecycle<ReportingAgent> for ReportingAgentLifecycle {
     }
 }
 
-impl<'a> ActionLaneLifecycle<'a, String, (), ReportingAgent> for ActionLifecycle {
+impl<'a> CommandLaneLifecycle<'a, String, ReportingAgent> for ActionLifecycle {
     type ResponseFuture = BoxFuture<'a, ()>;
 
     fn on_command<C>(
         &'a self,
-        command: String,
+        command: &'a String,
         _model: &'a CommandLane<String>,
         context: &'a C,
     ) -> Self::ResponseFuture
@@ -230,7 +244,7 @@ impl<'a> ActionLaneLifecycle<'a, String, (), ReportingAgent> for ActionLifecycle
             if context
                 .agent()
                 .data
-                .update_direct(command, 1.into())
+                .update_direct(command.clone(), 1.into())
                 .apply(ExactlyOnce)
                 .await
                 .is_err()

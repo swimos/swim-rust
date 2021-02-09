@@ -14,7 +14,7 @@
 
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lane::lifecycle::LaneLifecycle;
-use crate::agent::lane::model::action::CommandLane;
+use crate::agent::lane::model::command::CommandLane;
 use crate::agent::lane::model::demand::DemandLane;
 use crate::agent::lane::model::demand_map::DemandMapLane;
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
@@ -154,7 +154,7 @@ struct ActionLifecycle {
 impl ActionLifecycle {
     async fn on_command<Context>(
         &self,
-        command: String,
+        command: &String,
         _model: &CommandLane<String>,
         context: &Context,
     ) where
@@ -166,7 +166,7 @@ impl ActionLifecycle {
         if context
             .agent()
             .data
-            .update_direct(command, 1.into())
+            .update_direct(command.clone(), 1.into())
             .apply(ExactlyOnce)
             .await
             .is_err()
@@ -311,7 +311,8 @@ impl DemandLifecycle {
     key_type = "String",
     value_type = "i32",
     on_sync,
-    on_cue
+    on_cue,
+    on_remove
 )]
 struct DemandMapLifecycle {
     event_handler: EventCollectorHandler,
@@ -361,6 +362,16 @@ impl DemandMapLifecycle {
             }
         }
     }
+
+    async fn on_remove<Context>(
+        &self,
+        _model: &DemandMapLane<String, i32>,
+        _context: &Context,
+        _key: String,
+    ) where
+        Context: AgentContext<ReportingAgent> + Sized + Send + Sync,
+    {
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -396,7 +407,7 @@ async fn agent_loop() {
 
     let agent_lifecycle = config.agent_lifecycle();
 
-    let exec_config = AgentExecutionConfig::with(buffer_size, 1, 0, Duration::from_secs(1));
+    let exec_config = AgentExecutionConfig::with(buffer_size, 1, 0, Duration::from_secs(1), None);
 
     let (envelope_tx, envelope_rx) = mpsc::channel(buffer_size.get());
 

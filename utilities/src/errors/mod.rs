@@ -49,3 +49,15 @@ pub trait Recoverable: Error {
         !self.is_fatal()
     }
 }
+
+pub trait SwimResultExt<O, E> {
+    /// Maps the error variant to `()`.
+    #[allow(clippy::result_unit_err)]
+    fn discard_err(self) -> Result<O, ()>;
+}
+
+impl<O, E> SwimResultExt<O, E> for Result<O, E> {
+    fn discard_err(self) -> Result<O, ()> {
+        self.map_err(|_| ())
+    }
+}
