@@ -37,7 +37,7 @@ mod tests {
         let container = docker.run(SwimTestServer);
         let port = container.get_host_port(9001).unwrap();
         let host = format!("ws://127.0.0.1:{}", port);
-        let mut client = SwimClientBuilder::default().build().await;
+        let mut client = SwimClientBuilder::build_with_default().await;
 
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "id");
 
@@ -54,7 +54,7 @@ mod tests {
         let container = docker.run(SwimTestServer);
         let port = container.get_host_port(9001).unwrap();
         let host = format!("ws://127.0.0.1:{}", port);
-        let mut client = SwimClientBuilder::default().build().await;
+        let mut client = SwimClientBuilder::build_with_default().await;
 
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "id");
 
@@ -76,7 +76,7 @@ mod tests {
         let container = docker.run(SwimTestServer);
         let port = container.get_host_port(9001).unwrap();
         let host = format!("ws://127.0.0.1:{}", port);
-        let mut client = SwimClientBuilder::default().build().await;
+        let mut client = SwimClientBuilder::build_with_default().await;
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "shoppingCart");
 
         let (_, mut recv) = client
@@ -103,7 +103,7 @@ mod tests {
         let container = docker.run(SwimTestServer);
         let port = container.get_host_port(9001).unwrap();
         let host = format!("ws://127.0.0.1:{}", port);
-        let mut client = SwimClientBuilder::default().build().await;
+        let mut client = SwimClientBuilder::build_with_default().await;
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "shoppingCart");
 
         let (mut dl, mut recv) = client
@@ -146,7 +146,7 @@ mod tests {
         let port = container.get_host_port(9001).unwrap();
         let host = format!("ws://127.0.0.1:{}", port);
 
-        let mut client = SwimClientBuilder::default().build().await;
+        let mut client = SwimClientBuilder::build_with_default().await;
 
         let event_path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "info");
 
@@ -170,7 +170,7 @@ mod tests {
         let port = container.get_host_port(9001).unwrap();
         let host = format!("ws://127.0.0.1:{}", port);
 
-        let mut client = SwimClientBuilder::default().build().await;
+        let mut client = SwimClientBuilder::build_with_default().await;
 
         let event_path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "info");
         let command_path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "info");
@@ -202,7 +202,7 @@ mod tests {
         let port = container.get_host_port(9001).unwrap();
         let host = format!("ws://127.0.0.1:{}", port);
 
-        let mut client = SwimClientBuilder::default().build().await;
+        let mut client = SwimClientBuilder::build_with_default().await;
 
         let event_path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "info");
         let command_path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "info");
@@ -228,7 +228,7 @@ mod tests {
         let port = container.get_host_port(9001).unwrap();
         let host = format!("ws://127.0.0.1:{}", port);
 
-        let mut client = SwimClientBuilder::default().build().await;
+        let mut client = SwimClientBuilder::build_with_default().await;
 
         let event_path =
             AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "shoppingCart");
@@ -264,7 +264,7 @@ mod tests {
         let port = container.get_host_port(9001).unwrap();
         let host = format!("ws://127.0.0.1:{}", port);
 
-        let mut client = SwimClientBuilder::default().build().await;
+        let mut client = SwimClientBuilder::build_with_default().await;
 
         let event_path =
             AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "shoppingCart");
@@ -300,7 +300,7 @@ mod tests {
         let port = container.get_host_port(9001).unwrap();
         let host = format!("ws://127.0.0.1:{}", port);
 
-        let mut client = SwimClientBuilder::default().build().await;
+        let mut client = SwimClientBuilder::build_with_default().await;
 
         let event_path =
             AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "shoppingCart");
@@ -336,7 +336,7 @@ mod tests {
         let port = container.get_host_port(9001).unwrap();
         let host = format!("ws://127.0.0.1:{}", port);
 
-        let mut client = SwimClientBuilder::default().build().await;
+        let mut client = SwimClientBuilder::build_with_default().await;
 
         let event_path =
             AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "shoppingCart");
@@ -371,7 +371,7 @@ mod tests {
         let container = docker.run(SwimTestServer);
         let port = container.get_host_port(9001).unwrap();
         let host = format!("ws://127.0.0.1:{}", port);
-        let mut client = SwimClientBuilder::default().build().await;
+        let mut client = SwimClientBuilder::build_with_default().await;
 
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "info");
 
@@ -423,7 +423,7 @@ mod tests {
         let container = docker.run(SwimTestServer);
         let port = container.get_host_port(9001).unwrap();
         let host = format!("ws://127.0.0.1:{}", port);
-        let mut client = SwimClientBuilder::default().build().await;
+        let mut client = SwimClientBuilder::build_with_default().await;
 
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "id");
         let (mut dl, _) = client.value_downlink(path.clone(), 0i64).await.unwrap();
@@ -447,7 +447,7 @@ mod tests {
         let container = docker.run(SwimTestServer);
         let port = container.get_host_port(9001).unwrap();
         let host = format!("ws://127.0.0.1:{}", port);
-        let mut client = SwimClientBuilder::default().build().await;
+        let mut client = SwimClientBuilder::build_with_default().await;
 
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "shoppingCart");
 
@@ -529,7 +529,7 @@ mod tests {
         let container = docker.run(SwimTestServer);
         let port = container.get_host_port(9001).unwrap();
         let host = format!("ws://127.0.0.1:{}", port);
-        let mut client = SwimClientBuilder::default().build().await;
+        let mut client = SwimClientBuilder::build_with_default().await;
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "integerMap");
 
         let (mut dl, _) = client.map_downlink::<i64, i64>(path).await.unwrap();
@@ -565,7 +565,7 @@ mod tests {
         let container = docker.run(SwimTestServer);
         let port = container.get_host_port(9001).unwrap();
         let host = format!("ws://127.0.0.1:{}", port);
-        let mut client = SwimClientBuilder::default().build().await;
+        let mut client = SwimClientBuilder::build_with_default().await;
 
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "info");
 
@@ -601,7 +601,7 @@ mod tests {
         let container = docker.run(SwimTestServer);
         let port = container.get_host_port(9001).unwrap();
         let host = format!("ws://127.0.0.1:{}", port);
-        let mut client = SwimClientBuilder::default().build().await;
+        let mut client = SwimClientBuilder::build_with_default().await;
 
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "id");
         let (mut dl, _) = client.value_downlink(path.clone(), 0i32).await.unwrap();
@@ -625,7 +625,7 @@ mod tests {
         let container = docker.run(SwimTestServer);
         let port = container.get_host_port(9001).unwrap();
         let host = format!("ws://127.0.0.1:{}", port);
-        let mut client = SwimClientBuilder::default().build().await;
+        let mut client = SwimClientBuilder::build_with_default().await;
 
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "shoppingCart");
 
@@ -718,7 +718,7 @@ mod tests {
         let container = docker.run(SwimTestServer);
         let port = container.get_host_port(9001).unwrap();
         let host = format!("ws://127.0.0.1:{}", port);
-        let mut client = SwimClientBuilder::default().build().await;
+        let mut client = SwimClientBuilder::build_with_default().await;
 
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "integerMap");
         let (mut dl, _) = client.map_downlink::<i32, i32>(path).await.unwrap();

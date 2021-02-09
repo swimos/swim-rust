@@ -21,7 +21,7 @@ use swim_common::warp::path::AbsolutePath;
 
 #[tokio::main]
 async fn main() {
-    let mut client = SwimClientBuilder::default().build().await;
+    let mut client = SwimClientBuilder::build_with_default().await;
     let host_uri = url::Url::parse(&"ws://127.0.0.1:9001".to_string()).unwrap();
     let node_uri_prefix = "/unit/";
 
