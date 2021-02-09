@@ -18,6 +18,7 @@ use futures::future::{ready, BoxFuture, Ready};
 use futures::FutureExt;
 use std::convert::Infallible;
 use tokio::sync::{broadcast, mpsc, watch};
+use utilities::sync::circular_buffer;
 
 pub mod comap;
 pub mod drop_all;
@@ -229,4 +230,16 @@ pub fn for_broadcast_sender<T: Send + 'static>(
     tx: broadcast::Sender<T>,
 ) -> impl ItemSender<T, broadcast::error::SendError<T>> {
     FnMutSender::new(tx, broadcast_send_op)
+}
+
+impl<'a, T: 'a> ItemSink<'a, T> for circular_buffer::Sender<T>
+where
+    T: Send + Sync,
+{
+    type Error = circular_buffer::error::SendError<T>;
+    type SendFuture = Ready<Result<(), Self::Error>>;
+
+    fn send_item(&'a mut self, value: T) -> Self::SendFuture {
+        ready(self.try_send(value))
+    }
 }

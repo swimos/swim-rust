@@ -21,6 +21,7 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use tokio::sync::mpsc::error::SendError as MpscSendError;
 use utilities::errors::Recoverable;
+use utilities::sync::circular_buffer;
 
 // An error returned by the router
 #[derive(Clone, Debug, PartialEq)]
@@ -71,5 +72,11 @@ impl<T> From<MpscSendError<T>> for RoutingError {
 impl From<RoutingError> for RequestError {
     fn from(_: RoutingError) -> Self {
         RequestError {}
+    }
+}
+
+impl<T> From<circular_buffer::error::SendError<T>> for RoutingError {
+    fn from(_: circular_buffer::error::SendError<T>) -> Self {
+        RoutingError::RouterDropped
     }
 }
