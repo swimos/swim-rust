@@ -1,0 +1,32 @@
+[package]
+name = "server-freezing-example"
+version = "0.1.0"
+authors = ["DobromirM <mr.d.marinov@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+url = "2.1.1"
+tokio = "0.3.3"
+futures = "0.3.4"
+futures-util = "0.3.4"
+rand = "0.7.3"
+async-std = "1.7.0"
+tracing = "0.1.16"
+tracing-futures = "0.2.4"
+swim_client = { path = "../swim_client" }
+swim_common = { path = "../swim_common" }
+swim_server = { path = "../swim_server"}
+
+[[bin]]
+name = "panic_server"
+path = "src/server.rs"
+
+[[bin]]
+name = "panic_first_client"
+path = "src/first_client.rs"
+
+[[bin]]
+name = "panic_second_client"
+path = "src/second_client.rs"
