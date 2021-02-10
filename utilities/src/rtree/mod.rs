@@ -19,7 +19,7 @@ pub use super::rect;
 pub use crate::rtree::rectangles::*;
 pub use crate::rtree::strategies::*;
 use num::traits::Pow;
-use std::fmt::Debug;
+use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
@@ -37,17 +37,20 @@ mod tests;
 ///
 /// An R-tree can also be created by bulk-loading elements using the Sort-Tile-Recursive (STR).
 #[derive(Debug, Clone)]
-pub struct RTree<B>
+pub struct RTree<B, L>
 where
     B: BoxBounded,
+    L: Label,
 {
-    root: Node<B>,
+    root: Node<B, L>,
     len: usize,
+    items: HashMap<L, Arc<Entry<B, L>>>,
 }
 
-impl<B> RTree<B>
+impl<B, L> RTree<B, L>
 where
     B: BoxBounded,
+    L: Label,
 {
     /// Creates a new R-rtree.
     ///
@@ -90,6 +93,7 @@ where
         RTree {
             root: Node::new_root(min_children.get(), max_children.get(), split_strat),
             len: 0,
+            items: HashMap::new(),
         }
     }
 
@@ -171,8 +175,17 @@ where
     /// rtree.insert(rect!((0.0, 0.0), (2.0, 2.0)));
     /// assert_eq!(rtree.len(), 2);
     /// ```
-    pub fn insert(&mut self, item: B) {
-        self.internal_insert(Arc::new(Entry::Leaf { item }), 0);
+    pub fn insert(&mut self, label: L, item: B) {
+        let label_ptr: *const L = &label;
+
+        let item = Arc::new(Entry::Leaf {
+            label: label_ptr,
+            item,
+        });
+
+        self.items.insert(label, item.clone());
+
+        self.internal_insert(item, 0);
         self.len += 1;
     }
 
@@ -287,36 +300,38 @@ where
     ///
     /// assert_eq!(rtree.len(), 12);
     /// ```
-    pub fn bulk_load(
-        min_children: NonZeroUsize,
-        max_children: NonZeroUsize,
-        split_strat: SplitStrategy,
-        items: Vec<B>,
-    ) -> RTree<B> {
-        check_children(&min_children, &max_children);
+    // pub fn bulk_load(
+    //     min_children: NonZeroUsize,
+    //     max_children: NonZeroUsize,
+    //     split_strat: SplitStrategy,
+    //     items: Vec<B, L>,
+    // ) -> RTree<B, L> {
+    //     check_children(&min_children, &max_children);
+    //
+    //     let items_num = items.len();
+    //
+    //     let items = items
+    //         .into_iter()
+    //         .map(|item| Arc::new(Entry::Leaf { item }))
+    //         .collect();
+    //
+    //     let root = RTree::internal_bulk_load(
+    //         min_children.get(),
+    //         max_children.get(),
+    //         split_strat,
+    //         items,
+    //         0,
+    //     );
+    //
+    //     //Todo
+    //     RTree {
+    //         root,
+    //         len: items_num,
+    //         items: HashMap::new(),
+    //     }
+    // }
 
-        let items_num = items.len();
-
-        let items = items
-            .into_iter()
-            .map(|item| Arc::new(Entry::Leaf { item }))
-            .collect();
-
-        let root = RTree::internal_bulk_load(
-            min_children.get(),
-            max_children.get(),
-            split_strat,
-            items,
-            0,
-        );
-
-        RTree {
-            root,
-            len: items_num,
-        }
-    }
-
-    fn internal_insert(&mut self, item: EntryPtr<B>, level: usize) {
+    fn internal_insert(&mut self, item: EntryPtr<B, L>, level: usize) {
         if let Some((first_entry, second_entry)) = self.root.insert(item, level) {
             self.root = Node {
                 entries: vec![first_entry, second_entry],
@@ -332,9 +347,9 @@ where
         min_children: usize,
         max_children: usize,
         split_strat: SplitStrategy,
-        mut entries: Vec<EntryPtr<B>>,
+        mut entries: Vec<EntryPtr<B, L>>,
         mut level: usize,
-    ) -> Node<B> {
+    ) -> Node<B, L> {
         let mut entries_count = entries.len();
 
         while entries_count > max_children {
@@ -364,7 +379,7 @@ where
                 let chunk_size = calculate_chunk_size(node_capacity, coord_count, entries_count);
 
                 for items in chunks {
-                    let sort_by_dim = |mut items: Vec<EntryPtr<B>>| {
+                    let sort_by_dim = |mut items: Vec<EntryPtr<B, L>>| {
                         items.sort_by(|first, second| {
                             let first_center = first.get_mbb().get_center();
                             let second_center = second.get_mbb().get_center();
@@ -388,7 +403,7 @@ where
             entries = vec![];
 
             for chunk in chunks {
-                let construct_entry = |items: Vec<EntryPtr<B>>| {
+                let construct_entry = |items: Vec<EntryPtr<B, L>>| {
                     let mut items_iter = items.iter();
                     let first_mbb = *items_iter.next().unwrap().get_mbb();
                     let mbb = items
@@ -463,20 +478,22 @@ fn check_children(min_children: &NonZeroUsize, max_children: &NonZeroUsize) {
 }
 
 #[derive(Debug, Clone)]
-pub(in crate) struct Node<B>
+pub(in crate) struct Node<B, L>
 where
     B: BoxBounded,
+    L: Label,
 {
-    entries: Vec<EntryPtr<B>>,
+    entries: Vec<EntryPtr<B, L>>,
     level: usize,
     min_children: usize,
     max_children: usize,
     split_strat: SplitStrategy,
 }
 
-impl<B> Node<B>
+impl<B, L> Node<B, L>
 where
     B: BoxBounded,
+    L: Label,
 {
     fn new_root(min_children: usize, max_children: usize, split_strat: SplitStrategy) -> Self {
         Node {
@@ -502,7 +519,9 @@ where
         if self.is_leaf() {
             for entry in &self.entries {
                 match **entry {
-                    Entry::Leaf { item: ref entry } if area.is_covering(entry.get_mbb()) => {
+                    Entry::Leaf {
+                        item: ref entry, ..
+                    } if area.is_covering(entry.get_mbb()) => {
                         found.push(entry);
                     }
                     _ => (),
@@ -526,7 +545,7 @@ where
         }
     }
 
-    fn insert(&mut self, item: EntryPtr<B>, level: usize) -> MaybeSplit<B> {
+    fn insert(&mut self, item: EntryPtr<B, L>, level: usize) -> MaybeSplit<B, L> {
         match *item {
             //If we have a branch and we are at the right level -> insert
             Entry::Branch { .. } if self.level == level => {
@@ -587,14 +606,16 @@ where
         None
     }
 
-    fn remove(&mut self, bounding_box: &Rect<B::Point>) -> Option<(B, MaybeOrphans<B>)> {
+    fn remove(&mut self, bounding_box: &Rect<B::Point>) -> Option<(B, MaybeOrphans<B, L>)> {
         if self.is_leaf() {
             //If this is leaf try to find the item
             let mut remove_idx = None;
 
             for (idx, entry) in self.entries.iter().enumerate() {
                 match **entry {
-                    Entry::Leaf { item: ref entry } if entry.get_mbb() == bounding_box => {
+                    Entry::Leaf {
+                        item: ref entry, ..
+                    } if entry.get_mbb() == bounding_box => {
                         remove_idx = Some(idx);
                         break;
                     }
@@ -609,7 +630,7 @@ where
                 (*entry_ptr).clone()
             };
 
-            if let Entry::Leaf { item } = entry {
+            if let Entry::Leaf { item, .. } = entry {
                 Some((item, None))
             } else {
                 None
@@ -651,7 +672,7 @@ where
         }
     }
 
-    fn split(&mut self) -> (EntryPtr<B>, EntryPtr<B>) {
+    fn split(&mut self) -> (EntryPtr<B, L>, EntryPtr<B, L>) {
         let ((first_group, first_mbb), (second_group, second_mbb)) =
             split(&mut self.entries, self.min_children, self.split_strat);
 
@@ -681,13 +702,14 @@ where
     }
 }
 
-fn split<B>(
-    entries: &mut Vec<EntryPtr<B>>,
+fn split<B, L>(
+    entries: &mut Vec<EntryPtr<B, L>>,
     min_children: usize,
     split_strat: SplitStrategy,
-) -> (SplitGroup<B>, SplitGroup<B>)
+) -> (SplitGroup<B, L>, SplitGroup<B, L>)
 where
     B: BoxBounded,
+    L: Label,
 {
     let (first_seed_idx, second_seed_idx) = match split_strat {
         SplitStrategy::Linear => linear_pick_seeds(entries),
@@ -749,23 +771,31 @@ where
     ((first_group, first_mbb), (second_group, second_mbb))
 }
 
-type EntryPtr<B> = Arc<Entry<B>>;
-type MaybeOrphans<B> = Option<Vec<EntryPtr<B>>>;
-type MaybeSplit<B> = Option<(EntryPtr<B>, EntryPtr<B>)>;
-type SplitGroup<B> = (Vec<EntryPtr<B>>, Rect<<B as BoxBounded>::Point>);
+type EntryPtr<B, L> = Arc<Entry<B, L>>;
+type MaybeOrphans<B, L> = Option<Vec<EntryPtr<B, L>>>;
+type MaybeSplit<B, L> = Option<(EntryPtr<B, L>, EntryPtr<B, L>)>;
+type SplitGroup<B, L> = (Vec<EntryPtr<B, L>>, Rect<<B as BoxBounded>::Point>);
 
 #[derive(Debug, Clone)]
-pub(in crate) enum Entry<B>
+pub(in crate) enum Entry<B, L>
 where
     B: BoxBounded,
+    L: Label,
 {
-    Leaf { item: B },
-    Branch { mbb: Rect<B::Point>, child: Node<B> },
+    Leaf {
+        label: *const L,
+        item: B,
+    },
+    Branch {
+        mbb: Rect<B::Point>,
+        child: Node<B, L>,
+    },
 }
 
-impl<B> Entry<B>
+impl<B, L> Entry<B, L>
 where
     B: BoxBounded,
+    L: Label,
 {
     fn len(&self) -> usize {
         match self {
@@ -783,17 +813,17 @@ where
 
     fn get_mbb(&self) -> &Rect<B::Point> {
         match self {
-            Entry::Leaf { item } => item.get_mbb(),
+            Entry::Leaf { item, .. } => item.get_mbb(),
             Entry::Branch { mbb, .. } => mbb,
         }
     }
 
     fn insert(
         &mut self,
-        item: EntryPtr<B>,
+        item: EntryPtr<B, L>,
         expanded_rect: Rect<B::Point>,
         level: usize,
-    ) -> MaybeSplit<B> {
+    ) -> MaybeSplit<B, L> {
         match self {
             Entry::Branch { mbb, child } => {
                 *mbb = expanded_rect;
@@ -803,7 +833,7 @@ where
         }
     }
 
-    fn remove(&mut self, bounding_box: &Rect<B::Point>) -> Option<(B, MaybeOrphans<B>)> {
+    fn remove(&mut self, bounding_box: &Rect<B::Point>) -> Option<(B, MaybeOrphans<B, L>)> {
         match self {
             Entry::Branch { mbb, child } => {
                 let (removed, orphan_nodes) = child.remove(bounding_box)?;

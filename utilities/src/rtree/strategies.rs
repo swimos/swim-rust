@@ -12,9 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::rtree::{BoxBounded, EntryPtr, Point, Rect};
+use crate::rtree::{BoxBounded, EntryPtr, Label, Point, Rect};
 use num::Float;
 use std::cmp::Ordering;
+use std::fmt::Debug;
 
 /// The strategy that will be used to split the nodes of the [`RTree`](struct.RTree.html), once the maximum capacity is reached.
 ///
@@ -25,9 +26,10 @@ pub enum SplitStrategy {
     Quadratic,
 }
 
-pub(in crate) fn quadratic_pick_seeds<B>(entries: &[EntryPtr<B>]) -> (usize, usize)
+pub(in crate) fn quadratic_pick_seeds<B, L>(entries: &[EntryPtr<B, L>]) -> (usize, usize)
 where
     B: BoxBounded,
+    L: Label,
 {
     let mut first_idx = 0;
     let mut second_idx = 1;
@@ -57,8 +59,8 @@ where
     (first_idx, second_idx)
 }
 
-pub(in crate) fn pick_next_quadratic<B>(
-    entries: &[EntryPtr<B>],
+pub(in crate) fn pick_next_quadratic<B, L>(
+    entries: &[EntryPtr<B, L>],
     first_mbb: &Rect<B::Point>,
     second_mbb: &Rect<B::Point>,
     first_group_size: usize,
@@ -66,6 +68,7 @@ pub(in crate) fn pick_next_quadratic<B>(
 ) -> (usize, Rect<B::Point>, Group)
 where
     B: BoxBounded,
+    L: Label,
 {
     let mut entries_iter = entries.iter();
     let item = entries_iter.next().unwrap();
@@ -80,7 +83,7 @@ where
 
     let mut max_preference_diff = (first_preference - second_preference).abs();
 
-    let mut group = select_group::<B>(
+    let mut group = select_group::<B, L>(
         first_mbb,
         second_mbb,
         first_group_size,
@@ -108,7 +111,7 @@ where
             max_preference_diff = preference_diff;
             item_idx = idx;
 
-            group = select_group::<B>(
+            group = select_group::<B, L>(
                 first_mbb,
                 second_mbb,
                 first_group_size,
@@ -129,9 +132,10 @@ where
 
 type PointType<B> = <<B as BoxBounded>::Point as Point>::Type;
 
-pub(in crate) fn linear_pick_seeds<B>(entries: &[EntryPtr<B>]) -> (usize, usize)
+pub(in crate) fn linear_pick_seeds<B, L>(entries: &[EntryPtr<B, L>]) -> (usize, usize)
 where
     B: BoxBounded,
+    L: Label,
 {
     let mut first_idx = 0;
     let mut second_idx = 1;
@@ -221,12 +225,13 @@ where
     (first_idx, second_idx)
 }
 
-pub(in crate) fn pick_next_linear<B>(
-    entries: &[EntryPtr<B>],
+pub(in crate) fn pick_next_linear<B, L>(
+    entries: &[EntryPtr<B, L>],
     mbb: &Rect<B::Point>,
 ) -> (usize, Rect<B::Point>, Group)
 where
     B: BoxBounded,
+    L: Label,
 {
     (
         0,
@@ -242,13 +247,14 @@ struct SplitPreference<B, T> {
     second_expanded_rect: B,
 }
 
-fn calc_preferences<B>(
-    item: &EntryPtr<B>,
+fn calc_preferences<B, L>(
+    item: &EntryPtr<B, L>,
     first_mbb: &Rect<B::Point>,
     second_mbb: &Rect<B::Point>,
 ) -> SplitPreference<Rect<B::Point>, PointType<B>>
 where
     B: BoxBounded,
+    L: Label,
 {
     let first_expanded_rect = first_mbb.combine_boxes(item.get_mbb());
     let first_diff = first_expanded_rect.measure() - first_mbb.measure();
@@ -264,7 +270,7 @@ where
     }
 }
 
-fn select_group<B>(
+fn select_group<B, L>(
     first_mbb: &Rect<B::Point>,
     second_mbb: &Rect<B::Point>,
     first_group_size: usize,

@@ -15,6 +15,7 @@
 use num::Float;
 use std::cmp::Ordering;
 use std::fmt::Debug;
+use std::hash::Hash;
 use std::ops::Sub;
 
 /// An n-dimensional rectangle defined by two points.
@@ -406,6 +407,10 @@ pub trait BoxBounded: Clone + Debug {
     /// Calculates the area for 2D objects and volume for 3D objects.
     fn measure(&self) -> <Self::Point as Point>::Type;
 }
+
+pub trait Label: Hash + Eq + Debug + Clone {}
+
+impl<T: Hash + Eq + Debug + Clone> Label for T {}
 
 ///Creates a [`Rect`](rtree/struct.Rect.html) from coordinates.
 ///
