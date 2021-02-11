@@ -16,7 +16,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use futures::channel::mpsc as fut_mpsc;
-use futures::future::{join, BoxFuture};
+use futures::future::{join, join4, BoxFuture};
 use futures::{FutureExt, SinkExt, StreamExt};
 use http::Uri;
 use parking_lot::Mutex;
@@ -370,18 +370,21 @@ struct TaskFixture {
     send_error_tx: watch::Sender<Option<ConnectionError>>,
 }
 
+const BUFFER_SIZE: usize = 8;
+
 impl TaskFixture {
     fn new() -> Self {
         let addr = RoutingAddr::remote(0);
         let router = LocalRoutes::new(addr);
-        let (tx_in, rx_in) = fut_mpsc::channel(8);
-        let (tx_out, rx_out) = fut_mpsc::channel(8);
+        let (tx_in, rx_in) = fut_mpsc::channel(BUFFER_SIZE);
+        let (tx_out, rx_out) = fut_mpsc::channel(BUFFER_SIZE);
 
-        let (env_tx, env_rx) = mpsc::channel(8);
+        let (env_tx, env_rx) = mpsc::channel(BUFFER_SIZE);
         let (stop_tx, stop_rx) = trigger::trigger();
         let (failure_tx, failure_rx) = watch::channel(None);
 
-        let fake_socket = TwoWayMpsc::new(tx_out, rx_in, move |_| failure_rx.borrow().clone());
+        let fake_socket =
+            TwoWayMpsc::new(tx_out.clone(), rx_in, move |_| failure_rx.borrow().clone());
         let task = ConnectionTask::new(
             fake_socket,
             router.clone(),
@@ -393,7 +396,7 @@ impl TaskFixture {
                 activity_timeout: Duration::from_secs(30),
                 connection_retries: RetryStrategy::immediate(NonZeroUsize::new(1).unwrap()),
                 yield_after: NonZeroUsize::new(256).unwrap(),
-                missing_nodes_buffer_size: NonZeroUsize::new(8).unwrap(),
+                missing_nodes_buffer_size: NonZeroUsize::new(BUFFER_SIZE).unwrap(),
             },
         )
         .run()
@@ -677,4 +680,84 @@ async fn task_receive_bad_message() {
     let result = timeout::timeout(Duration::from_secs(5), join(task, test_case)).await;
     let _err = ConnectionError::Protocol(ProtocolError::warp(None));
     assert!(matches!(result, Ok((ConnectionDropped::Failed(_err), _))));
+}
+
+async fn generate_writes(
+    mut route_rx: mpsc::Receiver<TaggedEnvelope>,
+    outgoing: mpsc::Sender<TaggedEnvelope>,
+    stop_trigger: trigger::Sender,
+) -> Result<(), mpsc::error::SendError<TaggedEnvelope>> {
+    let addr = RoutingAddr::local(7);
+
+    for i in 0..10 {
+        if route_rx.recv().await.is_none() {
+            return Ok(());
+        }
+        for j in 0..(BUFFER_SIZE * 3) {
+            let envelope = Envelope::make_command(
+                "/remote_node",
+                "/remote_lane",
+                Some(Value::text(format!("{}.{}", i, j))),
+            );
+            let tagged = TaggedEnvelope(addr, envelope);
+            outgoing.send(tagged).await?;
+        }
+    }
+    stop_trigger.trigger();
+    Ok(())
+}
+
+#[tokio::test]
+async fn read_causes_write_buffer_to_fill() {
+    let TaskFixture {
+        task,
+        envelope_tx,
+        mut sock_out,
+        stop_trigger,
+        router,
+        sock_in,
+        send_error_tx: _send_error_tx,
+    } = TaskFixture::new();
+
+    let (route_tx, route_rx) = mpsc::channel(1);
+
+    router.add_sender("/node".parse().unwrap(), route_tx.clone());
+
+    let outgoing = envelope_tx.clone();
+
+    let route_task = generate_writes(route_rx, outgoing, stop_trigger);
+
+    let consume_output = async move {
+        loop {
+            if sock_out.next().await.is_none() {
+                break;
+            }
+        }
+    };
+
+    let mut input = sock_in.clone();
+
+    let generate_inputs = async move {
+        for i in 0..10 {
+            let envelope =
+                Envelope::make_command("/node", "/lane", Some(Value::text(i.to_string())));
+            let message = Ok(message_for(envelope));
+            if input.send(message).await.is_err() {
+                break;
+            }
+        }
+    };
+
+    let task_to = Duration::from_secs(10);
+    let t1 = tokio::time::timeout(task_to, task);
+    let t2 = tokio::time::timeout(task_to, route_task);
+    let t3 = tokio::time::timeout(task_to, consume_output);
+    let t4 = tokio::time::timeout(task_to, generate_inputs);
+
+    let result = join4(t1, t2, t3, t4).await;
+    println!("{:?}", result);
+    assert!(matches!(
+        result,
+        (Ok(ConnectionDropped::Closed), Ok(_), Ok(_), Ok(_))
+    ));
 }
