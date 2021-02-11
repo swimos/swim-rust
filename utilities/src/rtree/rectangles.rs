@@ -26,7 +26,7 @@ use std::ops::Sub;
 ///
 /// For example, in a 2D rectangle, the low point is the lower-left corner and the high point
 /// is the upper-right corner.
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Rect<P>
 where
     P: Point,

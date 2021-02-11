@@ -26,10 +26,10 @@ pub enum SplitStrategy {
     Quadratic,
 }
 
-pub(in crate) fn quadratic_pick_seeds<B, L>(entries: &[EntryPtr<B, L>]) -> (usize, usize)
+pub(in crate) fn quadratic_pick_seeds<L, B>(entries: &[EntryPtr<L, B>]) -> (usize, usize)
 where
-    B: BoxBounded,
     L: Label,
+    B: BoxBounded,
 {
     let mut first_idx = 0;
     let mut second_idx = 1;
@@ -59,16 +59,16 @@ where
     (first_idx, second_idx)
 }
 
-pub(in crate) fn pick_next_quadratic<B, L>(
-    entries: &[EntryPtr<B, L>],
+pub(in crate) fn pick_next_quadratic<L, B>(
+    entries: &[EntryPtr<L, B>],
     first_mbb: &Rect<B::Point>,
     second_mbb: &Rect<B::Point>,
     first_group_size: usize,
     second_group_size: usize,
 ) -> (usize, Rect<B::Point>, Group)
 where
-    B: BoxBounded,
     L: Label,
+    B: BoxBounded,
 {
     let mut entries_iter = entries.iter();
     let item = entries_iter.next().unwrap();
@@ -83,7 +83,7 @@ where
 
     let mut max_preference_diff = (first_preference - second_preference).abs();
 
-    let mut group = select_group::<B, L>(
+    let mut group = select_group::<L, B>(
         first_mbb,
         second_mbb,
         first_group_size,
@@ -111,7 +111,7 @@ where
             max_preference_diff = preference_diff;
             item_idx = idx;
 
-            group = select_group::<B, L>(
+            group = select_group::<L, B>(
                 first_mbb,
                 second_mbb,
                 first_group_size,
@@ -132,10 +132,10 @@ where
 
 type PointType<B> = <<B as BoxBounded>::Point as Point>::Type;
 
-pub(in crate) fn linear_pick_seeds<B, L>(entries: &[EntryPtr<B, L>]) -> (usize, usize)
+pub(in crate) fn linear_pick_seeds<L, B>(entries: &[EntryPtr<L, B>]) -> (usize, usize)
 where
-    B: BoxBounded,
     L: Label,
+    B: BoxBounded,
 {
     let mut first_idx = 0;
     let mut second_idx = 1;
@@ -225,13 +225,13 @@ where
     (first_idx, second_idx)
 }
 
-pub(in crate) fn pick_next_linear<B, L>(
-    entries: &[EntryPtr<B, L>],
+pub(in crate) fn pick_next_linear<L, B>(
+    entries: &[EntryPtr<L, B>],
     mbb: &Rect<B::Point>,
 ) -> (usize, Rect<B::Point>, Group)
 where
-    B: BoxBounded,
     L: Label,
+    B: BoxBounded,
 {
     (
         0,
@@ -247,14 +247,14 @@ struct SplitPreference<B, T> {
     second_expanded_rect: B,
 }
 
-fn calc_preferences<B, L>(
-    item: &EntryPtr<B, L>,
+fn calc_preferences<L, B>(
+    item: &EntryPtr<L, B>,
     first_mbb: &Rect<B::Point>,
     second_mbb: &Rect<B::Point>,
 ) -> SplitPreference<Rect<B::Point>, PointType<B>>
 where
-    B: BoxBounded,
     L: Label,
+    B: BoxBounded,
 {
     let first_expanded_rect = first_mbb.combine_boxes(item.get_mbb());
     let first_diff = first_expanded_rect.measure() - first_mbb.measure();
@@ -270,7 +270,7 @@ where
     }
 }
 
-fn select_group<B, L>(
+fn select_group<L, B>(
     first_mbb: &Rect<B::Point>,
     second_mbb: &Rect<B::Point>,
     first_group_size: usize,

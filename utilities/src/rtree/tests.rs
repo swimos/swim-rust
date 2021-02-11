@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::rtree::rectangles::{Point2D, Point3D};
-use crate::rtree::{BoxBounded, RTree, Rect, SplitStrategy};
+use crate::rtree::{BoxBounded, Label, RTree, Rect, SplitStrategy};
 use std::fs;
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
@@ -27,8 +27,16 @@ fn foo_test() {
     );
 
     tree.insert("First".to_string(), rect!((0.5, 0.5), (10.5, 10.5)));
-
     eprintln!("tree = {:#?}", tree);
+    tree.insert("Second".to_string(), rect!((0.5, 0.5), (10.5, 10.5)));
+    eprintln!("tree = {:#?}", tree);
+    tree.remove(&"First".to_string());
+    eprintln!("tree = {:#?}", tree);
+
+    for (label, item) in tree.iter() {
+        eprintln!("label = {:#?}", label);
+        eprintln!("item = {:#?}", item);
+    }
 
     // let rects = vec![
     //     rect!((0.5, 0.5), (10.5, 10.5)),
@@ -46,77 +54,120 @@ fn foo_test() {
     // ];
 }
 
-// fn test_tree<B: BoxBounded>(mut tree: RTree<B>, rects: Vec<B>, path: String) {
-//     assert_eq!(
-//         format!("{:#?}", tree),
-//         fs::read_to_string(format!("{}/add/0.txt", path)).unwrap()
-//     );
-//
-//     for (idx, rect) in rects.clone().into_iter().enumerate() {
-//         tree.insert(rect);
-//         assert_eq!(
-//             format!("{:#?}", tree),
-//             fs::read_to_string(format!("{}/add/{}.txt", path, idx + 1)).unwrap()
-//         );
-//     }
-//
-//     for (idx, rect) in rects.into_iter().enumerate() {
-//         tree.remove(&rect.get_mbb());
-//         assert_eq!(
-//             format!("{:#?}", tree),
-//             fs::read_to_string(format!("{}/remove/{}.txt", path, idx + 1)).unwrap()
-//         );
-//     }
-// }
-//
-// fn build_2d_search_tree() -> RTree<Rect<Point2D<f64>>> {
-//     let rects = vec![
-//         rect!((0.0, 0.0), (10.0, 10.0)),
-//         rect!((12.0, 0.0), (15.0, 15.0)),
-//         rect!((7.0, 7.0), (14.0, 14.0)),
-//         rect!((10.0, 11.0), (11.0, 12.0)),
-//         rect!((4.0, 4.0), (5.0, 6.0)),
-//         rect!((4.0, 9.0), (5.0, 11.0)),
-//         rect!((13.0, 0.0), (14.0, 1.0)),
-//         rect!((13.0, 13.0), (16.0, 16.0)),
-//         rect!((2.0, 13.0), (4.0, 16.0)),
-//         rect!((2.0, 2.0), (3.0, 3.0)),
-//         rect!((10.0, 0.0), (12.0, 5.0)),
-//         rect!((7.0, 3.0), (8.0, 6.0)),
-//     ];
-//
-//     RTree::bulk_load(
-//         NonZeroUsize::new(2).unwrap(),
-//         NonZeroUsize::new(4).unwrap(),
-//         SplitStrategy::Quadratic,
-//         rects,
-//     )
-// }
-//
-// fn build_3d_search_tree() -> RTree<Rect<Point3D<f64>>> {
-//     let rects = vec![
-//         rect!((0.0, 0.0, 0.0), (10.0, 10.0, 10.0)),
-//         rect!((12.0, 0.0, 0.0), (15.0, 10.0, 15.0)),
-//         rect!((7.0, 0.0, 7.0), (14.0, 10.0, 14.0)),
-//         rect!((10.0, 0.0, 11.0), (11.0, 10.0, 12.0)),
-//         rect!((4.0, 0.0, 4.0), (5.0, 10.0, 6.0)),
-//         rect!((4.0, 0.0, 9.0), (5.0, 10.0, 11.0)),
-//         rect!((13.0, 0.0, 0.0), (14.0, 10.0, 1.0)),
-//         rect!((13.0, 0.0, 13.0), (16.0, 10.0, 16.0)),
-//         rect!((2.0, 0.0, 13.0), (4.0, 10.0, 16.0)),
-//         rect!((2.0, 0.0, 2.0), (3.0, 10.0, 3.0)),
-//         rect!((10.0, 0.0, 0.0), (12.0, 10.0, 5.0)),
-//         rect!((7.0, 0.0, 3.0), (8.0, 10.0, 6.0)),
-//     ];
-//
-//     RTree::bulk_load(
-//         NonZeroUsize::new(2).unwrap(),
-//         NonZeroUsize::new(4).unwrap(),
-//         SplitStrategy::Quadratic,
-//         rects,
-//     )
-// }
-//
+fn test_tree<B: BoxBounded + Eq, L: Label>(
+    mut tree: RTree<L, B>,
+    entries: Vec<(L, B)>,
+    path: String,
+) {
+    assert_eq!(
+        format!("{:#?}", tree),
+        fs::read_to_string(format!("{}/add/0.txt", path)).unwrap()
+    );
+
+    for (idx, (label, item)) in entries.clone().into_iter().enumerate() {
+        tree.insert(label, item);
+        assert_eq!(
+            format!("{:#?}", tree),
+            fs::read_to_string(format!("{}/add/{}.txt", path, idx + 1)).unwrap()
+        );
+    }
+
+    for (idx, (label, item)) in entries.into_iter().enumerate() {
+        let removed_item = tree.remove(&label).unwrap();
+
+        assert_eq!(removed_item, item);
+
+        assert_eq!(
+            format!("{:#?}", tree),
+            fs::read_to_string(format!("{}/remove/{}.txt", path, idx + 1)).unwrap()
+        );
+    }
+}
+
+fn build_2d_search_tree() -> RTree<String, Rect<Point2D<f64>>> {
+    let rects = vec![
+        ("First".to_string(), rect!((0.0, 0.0), (10.0, 10.0))),
+        ("Second".to_string(), rect!((12.0, 0.0), (15.0, 15.0))),
+        ("Third".to_string(), rect!((7.0, 7.0), (14.0, 14.0))),
+        ("Fourth".to_string(), rect!((10.0, 11.0), (11.0, 12.0))),
+        ("Fifth".to_string(), rect!((4.0, 4.0), (5.0, 6.0))),
+        ("Sixth".to_string(), rect!((4.0, 9.0), (5.0, 11.0))),
+        ("Seventh".to_string(), rect!((13.0, 0.0), (14.0, 1.0))),
+        ("Eighth".to_string(), rect!((13.0, 13.0), (16.0, 16.0))),
+        ("Ninth".to_string(), rect!((2.0, 13.0), (4.0, 16.0))),
+        ("Tenth".to_string(), rect!((2.0, 2.0), (3.0, 3.0))),
+        ("Eleventh".to_string(), rect!((10.0, 0.0), (12.0, 5.0))),
+        ("Twelfth".to_string(), rect!((7.0, 3.0), (8.0, 6.0))),
+    ];
+
+    RTree::bulk_load(
+        NonZeroUsize::new(2).unwrap(),
+        NonZeroUsize::new(4).unwrap(),
+        SplitStrategy::Quadratic,
+        rects,
+    )
+}
+
+fn build_3d_search_tree() -> RTree<String, Rect<Point3D<f64>>> {
+    let rects = vec![
+        (
+            "First".to_string(),
+            rect!((0.0, 0.0, 0.0), (10.0, 10.0, 10.0)),
+        ),
+        (
+            "Second".to_string(),
+            rect!((12.0, 0.0, 0.0), (15.0, 10.0, 15.0)),
+        ),
+        (
+            "Third".to_string(),
+            rect!((7.0, 0.0, 7.0), (14.0, 10.0, 14.0)),
+        ),
+        (
+            "Fourth".to_string(),
+            rect!((10.0, 0.0, 11.0), (11.0, 10.0, 12.0)),
+        ),
+        (
+            "Fifth".to_string(),
+            rect!((4.0, 0.0, 4.0), (5.0, 10.0, 6.0)),
+        ),
+        (
+            "Sixth".to_string(),
+            rect!((4.0, 0.0, 9.0), (5.0, 10.0, 11.0)),
+        ),
+        (
+            "Seventh".to_string(),
+            rect!((13.0, 0.0, 0.0), (14.0, 10.0, 1.0)),
+        ),
+        (
+            "Eighth".to_string(),
+            rect!((13.0, 0.0, 13.0), (16.0, 10.0, 16.0)),
+        ),
+        (
+            "Ninth".to_string(),
+            rect!((2.0, 0.0, 13.0), (4.0, 10.0, 16.0)),
+        ),
+        (
+            "Tenth".to_string(),
+            rect!((2.0, 0.0, 2.0), (3.0, 10.0, 3.0)),
+        ),
+        (
+            "Eleventh".to_string(),
+            rect!((10.0, 0.0, 0.0), (12.0, 10.0, 5.0)),
+        ),
+        (
+            "Twelfth".to_string(),
+            rect!((7.0, 0.0, 3.0), (8.0, 10.0, 6.0)),
+        ),
+    ];
+
+    RTree::bulk_load(
+        NonZeroUsize::new(2).unwrap(),
+        NonZeroUsize::new(4).unwrap(),
+        SplitStrategy::Quadratic,
+        rects,
+    )
+}
+
 // #[test]
 // fn rtree_2d_linear_test() {
 //     let rects = vec![
@@ -675,75 +726,75 @@ fn foo_test() {
 //     assert_eq!(found.len(), 3);
 // }
 //
-// #[test]
-// fn clone_tracker_test() {
-//     let first = rect!((0.0, 0.0), (10.0, 10.0));
-//     let clone_count = CloneCount::new();
-//
-//     let first_clone_tracker = CloneTracker::new(first.clone(), clone_count.clone());
-//
-//     assert_eq!(clone_count.get(), 0);
-//     let _ = first_clone_tracker.clone();
-//     assert_eq!(clone_count.get(), 1);
-//     let _ = first_clone_tracker.clone();
-//     assert_eq!(clone_count.get(), 2);
-// }
-//
-// #[derive(Debug)]
-// struct CloneTracker {
-//     mbb: Rect<Point2D<f64>>,
-//     clone_count: CloneCount,
-// }
-//
-// impl CloneTracker {
-//     fn new(rect: Rect<Point2D<f64>>, clone_count: CloneCount) -> Self {
-//         CloneTracker {
-//             mbb: rect,
-//             clone_count,
-//         }
-//     }
-// }
-//
-// impl Clone for CloneTracker {
-//     fn clone(&self) -> Self {
-//         self.clone_count.inc();
-//
-//         CloneTracker {
-//             mbb: self.mbb.clone(),
-//             clone_count: self.clone_count.clone(),
-//         }
-//     }
-// }
-//
-// impl BoxBounded for CloneTracker {
-//     type Point = Point2D<f64>;
-//
-//     fn get_mbb(&self) -> &Rect<Self::Point> {
-//         &self.mbb
-//     }
-//
-//     fn get_center(&self) -> Self::Point {
-//         self.mbb.get_center()
-//     }
-//
-//     fn measure(&self) -> f64 {
-//         self.mbb.measure()
-//     }
-// }
-//
-// #[derive(Debug, Clone)]
-// struct CloneCount(Arc<Mutex<i32>>);
-//
-// impl CloneCount {
-//     fn new() -> Self {
-//         CloneCount(Arc::new(Mutex::new(0)))
-//     }
-//
-//     fn inc(&self) {
-//         *self.0.lock().unwrap() += 1;
-//     }
-//
-//     fn get(&self) -> i32 {
-//         *self.0.lock().unwrap()
-//     }
-// }
+#[test]
+fn clone_tracker_test() {
+    let first = rect!((0.0, 0.0), (10.0, 10.0));
+    let clone_count = CloneCount::new();
+
+    let first_clone_tracker = CloneTracker::new(first.clone(), clone_count.clone());
+
+    assert_eq!(clone_count.get(), 0);
+    let _ = first_clone_tracker.clone();
+    assert_eq!(clone_count.get(), 1);
+    let _ = first_clone_tracker.clone();
+    assert_eq!(clone_count.get(), 2);
+}
+
+#[derive(Debug)]
+struct CloneTracker {
+    mbb: Rect<Point2D<f64>>,
+    clone_count: CloneCount,
+}
+
+impl CloneTracker {
+    fn new(rect: Rect<Point2D<f64>>, clone_count: CloneCount) -> Self {
+        CloneTracker {
+            mbb: rect,
+            clone_count,
+        }
+    }
+}
+
+impl Clone for CloneTracker {
+    fn clone(&self) -> Self {
+        self.clone_count.inc();
+
+        CloneTracker {
+            mbb: self.mbb.clone(),
+            clone_count: self.clone_count.clone(),
+        }
+    }
+}
+
+impl BoxBounded for CloneTracker {
+    type Point = Point2D<f64>;
+
+    fn get_mbb(&self) -> &Rect<Self::Point> {
+        &self.mbb
+    }
+
+    fn get_center(&self) -> Self::Point {
+        self.mbb.get_center()
+    }
+
+    fn measure(&self) -> f64 {
+        self.mbb.measure()
+    }
+}
+
+#[derive(Debug, Clone)]
+struct CloneCount(Arc<Mutex<i32>>);
+
+impl CloneCount {
+    fn new() -> Self {
+        CloneCount(Arc::new(Mutex::new(0)))
+    }
+
+    fn inc(&self) {
+        *self.0.lock().unwrap() += 1;
+    }
+
+    fn get(&self) -> i32 {
+        *self.0.lock().unwrap()
+    }
+}
