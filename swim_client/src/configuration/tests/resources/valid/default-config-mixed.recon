@@ -7,6 +7,5 @@
     }
     @downlinks {
         back_pressure: @propagate()
-        mux_mode: @queue(queue_size: 5)
     }
 }

@@ -14,7 +14,7 @@
 
 use crate::downlink::model::event::EventStateMachine;
 use crate::downlink::model::map::MapModification;
-use crate::downlink::typed::SchemaViolations;
+use crate::downlink::model::SchemaViolations;
 use crate::downlink::Event;
 use crate::downlink::{Command, DownlinkState, Message, Operation, Response, StateMachine};
 use swim_common::form::{Form, ValidatedForm};
@@ -228,11 +228,7 @@ fn test_handle_invalid_event() {
     let machine = EventStateMachine::new(StandardSchema::Anything, SchemaViolations::Report);
 
     let response = machine
-        .handle_operation(
-            &mut DownlinkState::Linked,
-            &mut (),
-            Operation::Action(5.into_value()),
-        )
+        .handle_operation(&mut DownlinkState::Linked, &mut (), Operation::Action(()))
         .unwrap();
 
     assert_eq!(response, Response::none());

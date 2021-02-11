@@ -12,14 +12,25 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::configuration::downlink::OnInvalidMessage;
 use crate::downlink::model::map::{MapEvent, ValMap, ViewWithEvent};
-use crate::downlink::typed::event::{TypedMapView, TypedViewWithEvent};
+use crate::downlink::model::SchemaViolations;
+use crate::downlink::typed::event::{EventDownlinkReceiver, EventViewError, TypedEventDownlink};
+use crate::downlink::typed::map::events::{TypedMapView, TypedViewWithEvent};
+use crate::downlink::DownlinkConfig;
+use crate::downlink::{Command, Message};
 use im::OrdMap;
 use std::collections::{BTreeMap, HashMap};
 use std::convert::TryInto;
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 use swim_common::form::FormErr;
+use swim_common::form::ValidatedForm;
+use swim_common::model::schema::StandardSchema;
 use swim_common::model::Value;
+use swim_common::routing::RoutingError;
+use swim_common::sink::item::ItemSender;
+use tokio::sync::mpsc;
 
 fn make_raw() -> ValMap {
     let mut map = ValMap::new();
@@ -246,4 +257,65 @@ fn typed_view_with_event_bad_remove() {
     let typed: Result<TypedViewWithEvent<i32, i32>, FormErr> = raw.try_into();
 
     assert!(typed.is_err());
+}
+
+struct Components<T> {
+    downlink: TypedEventDownlink<T>,
+    receiver: EventDownlinkReceiver<T>,
+    update_tx: mpsc::Sender<Result<Message<Value>, RoutingError>>,
+    command_rx: mpsc::Receiver<Command<Value>>,
+}
+
+fn make_event_downlink<T: ValidatedForm>() -> Components<T> {
+    let (update_tx, update_rx) = mpsc::channel(8);
+    let (command_tx, command_rx) = mpsc::channel(8);
+    let sender = swim_common::sink::item::for_mpsc_sender(command_tx).map_err_into();
+
+    let (dl, rx) = crate::downlink::model::event::create_downlink(
+        T::schema(),
+        SchemaViolations::Report,
+        update_rx,
+        sender,
+        DownlinkConfig {
+            buffer_size: NonZeroUsize::new(8).unwrap(),
+            yield_after: NonZeroUsize::new(2048).unwrap(),
+            on_invalid: OnInvalidMessage::Terminate,
+        },
+    );
+    let downlink = TypedEventDownlink::new(Arc::new(dl));
+    let receiver = EventDownlinkReceiver::new(rx);
+
+    Components {
+        downlink,
+        receiver,
+        update_tx,
+        command_rx,
+    }
+}
+
+#[tokio::test]
+async fn subscriber_covariant_cast() {
+    let Components {
+        downlink,
+        receiver: _receiver,
+        update_tx: _update_tx,
+        command_rx: _command_rx,
+    } = make_event_downlink::<i32>();
+
+    let sub = downlink.subscriber();
+
+    assert!(sub.clone().covariant_cast::<i32>().is_ok());
+    assert!(sub.clone().covariant_cast::<Value>().is_ok());
+    assert!(sub.clone().covariant_cast::<String>().is_err());
+}
+
+#[test]
+fn event_view_error_display() {
+    let err = EventViewError {
+        existing: StandardSchema::Nothing,
+        requested: StandardSchema::Anything,
+    };
+    let str = err.to_string();
+
+    assert_eq!(str, format!("A Read Only view of an event downlink with schema {} was requested but the original event downlink is running with schema {}.", StandardSchema::Anything, StandardSchema::Nothing));
 }

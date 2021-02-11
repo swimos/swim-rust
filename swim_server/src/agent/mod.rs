@@ -1371,7 +1371,9 @@ where
 
         let pump = async move {
             while let Some(update) = rx.recv().await {
-                topic_tx.discarding_send(update).await;
+                if topic_tx.discarding_send(update).await.is_err() {
+                    break;
+                }
             }
         };
 
