@@ -15,10 +15,10 @@
 #[cfg(test)]
 mod tests;
 
-use futures::stream::FusedStream;
+use futures::future::FusedFuture;
 use futures::task::{Context, Poll};
 use futures::{ready, Sink, SinkExt, Stream, StreamExt};
-use pin_project::pin_project;
+use std::future::Future;
 use std::pin::Pin;
 
 #[derive(Debug)]
@@ -44,14 +44,109 @@ pub enum SelectorResult<T> {
 /// the underlying stream and notifications of successful writes. The selector waits on both
 /// the read and write halves of the underlying channel becoming available. In the situation where
 /// both are available it will alternate between the two to prevent starvation.
-#[pin_project]
 pub struct WsStreamSelector<S, M, T> {
     ws: S,
-    #[pin]
     messages: Option<M>,
     pending: Option<T>,
     bias: bool,
     state: State,
+}
+
+pub struct SelectRw<'a, S, M, T>(&'a mut WsStreamSelector<S, M, T>);
+
+impl<'a, S, M, T> Future for SelectRw<'a, S, M, T>
+where
+    M: Stream<Item = T> + Unpin,
+    S: Sink<T>,
+    S: Stream<Item = Result<T, SinkError<S, T>>> + Unpin,
+{
+    type Output = Option<Result<SelectorResult<T>, <S as Sink<T>>::Error>>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let WsStreamSelector {
+            ws,
+            messages,
+            pending,
+            bias,
+            state,
+        } = self.get_mut().0;
+        match state {
+            State::Terminated => Poll::Ready(None),
+            State::Terminating => {
+                *state = State::Terminated;
+                Poll::Ready(None)
+            }
+            State::ClosePending => {
+                let result = ready!(ws.poll_close_unpin(cx));
+                *state = State::Terminated;
+                match result {
+                    Err(e) => Poll::Ready(Some(Err(e))),
+                    _ => Poll::Ready(None),
+                }
+            }
+            _ => {
+                if pending.is_some() {
+                    if *bias {
+                        let send_result = try_send(ws, cx, pending);
+                        if send_result.is_pending() {
+                            try_read(ws, cx, state)
+                        } else {
+                            *bias = false;
+                            send_result
+                        }
+                    } else {
+                        let read_result = try_read(ws, cx, state);
+                        if read_result.is_pending() {
+                            try_send(ws, cx, pending)
+                        } else {
+                            *bias = true;
+                            read_result
+                        }
+                    }
+                } else {
+                    match messages {
+                        Some(message_str) => {
+                            if *bias {
+                                let next = message_str.poll_next_unpin(cx);
+                                match next {
+                                    Poll::Ready(Some(v)) => {
+                                        *pending = Some(v);
+                                        let send_result = try_send(ws, cx, pending);
+                                        if send_result.is_pending() {
+                                            try_read(ws, cx, state)
+                                        } else {
+                                            *bias = false;
+                                            send_result
+                                        }
+                                    }
+                                    Poll::Ready(None) => {
+                                        *messages = None;
+                                        try_read(ws, cx, state)
+                                    }
+                                    Poll::Pending => try_read(ws, cx, state),
+                                }
+                            } else {
+                                let read_result = try_read(ws, cx, state);
+                                if read_result.is_pending() {
+                                    if let Some(next) = ready!(message_str.poll_next_unpin(cx)) {
+                                        *pending = Some(next);
+                                        try_send(ws, cx, pending)
+                                    } else {
+                                        *messages = None;
+                                        read_result
+                                    }
+                                } else {
+                                    *bias = true;
+                                    read_result
+                                }
+                            }
+                        }
+                        _ => try_read(ws, cx, state),
+                    }
+                }
+            }
+        }
+    }
 }
 
 impl<S, M, T> WsStreamSelector<S, M, T>
@@ -69,99 +164,17 @@ where
             state: State::Active,
         }
     }
+
+    pub fn select_rw(&mut self) -> SelectRw<S, M, T> {
+        SelectRw(self)
+    }
+
+    pub fn is_terminated(&self) -> bool {
+        matches!(&self.state, State::Terminated)
+    }
 }
 
 pub type SinkError<S, T> = <S as Sink<T>>::Error;
-
-impl<S, M, T> Stream for WsStreamSelector<S, M, T>
-where
-    M: Stream<Item = T>,
-    S: Sink<T>,
-    S: Stream<Item = Result<T, SinkError<S, T>>> + Unpin,
-{
-    type Item = Result<SelectorResult<T>, <S as Sink<T>>::Error>;
-
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let mut projected = self.project();
-        match projected.state {
-            State::Terminated => Poll::Ready(None),
-            State::Terminating => {
-                *projected.state = State::Terminated;
-                Poll::Ready(None)
-            }
-            State::ClosePending => {
-                let result = ready!(projected.ws.poll_close_unpin(cx));
-                *projected.state = State::Terminated;
-                match result {
-                    Err(e) => Poll::Ready(Some(Err(e))),
-                    _ => Poll::Ready(None),
-                }
-            }
-            _ => {
-                if projected.pending.is_some() {
-                    if *projected.bias {
-                        let send_result = try_send(projected.ws, cx, projected.pending);
-                        if send_result.is_pending() {
-                            try_read(projected.ws, cx, projected.state)
-                        } else {
-                            *projected.bias = false;
-                            send_result
-                        }
-                    } else {
-                        let read_result = try_read(projected.ws, cx, projected.state);
-                        if read_result.is_pending() {
-                            try_send(projected.ws, cx, projected.pending)
-                        } else {
-                            *projected.bias = true;
-                            read_result
-                        }
-                    }
-                } else {
-                    match projected.messages.as_mut().as_pin_mut() {
-                        Some(messages) => {
-                            if *projected.bias {
-                                let next = messages.poll_next(cx);
-                                match next {
-                                    Poll::Ready(Some(v)) => {
-                                        *projected.pending = Some(v);
-                                        let send_result =
-                                            try_send(projected.ws, cx, projected.pending);
-                                        if send_result.is_pending() {
-                                            try_read(projected.ws, cx, projected.state)
-                                        } else {
-                                            *projected.bias = false;
-                                            send_result
-                                        }
-                                    }
-                                    Poll::Ready(None) => {
-                                        projected.messages.set(None);
-                                        try_read(projected.ws, cx, projected.state)
-                                    }
-                                    Poll::Pending => try_read(projected.ws, cx, projected.state),
-                                }
-                            } else {
-                                let read_result = try_read(projected.ws, cx, projected.state);
-                                if read_result.is_pending() {
-                                    if let Some(next) = ready!(messages.poll_next(cx)) {
-                                        *projected.pending = Some(next);
-                                        try_send(projected.ws, cx, projected.pending)
-                                    } else {
-                                        projected.messages.set(None);
-                                        read_result
-                                    }
-                                } else {
-                                    *projected.bias = true;
-                                    read_result
-                                }
-                            }
-                        }
-                        _ => try_read(projected.ws, cx, projected.state),
-                    }
-                }
-            }
-        }
-    }
-}
 
 type SelectResult<S, T> = Result<SelectorResult<T>, SinkError<S, T>>;
 
@@ -187,14 +200,14 @@ where
     }
 }
 
-impl<S, M, T> FusedStream for WsStreamSelector<S, M, T>
+impl<'a, S, M, T> FusedFuture for SelectRw<'a, S, M, T>
 where
-    M: Stream<Item = T>,
+    M: Stream<Item = T> + Unpin,
     S: Sink<T>,
     S: Stream<Item = Result<T, SinkError<S, T>>> + Unpin,
 {
     fn is_terminated(&self) -> bool {
-        matches!(self.state, State::Terminated)
+        self.0.is_terminated()
     }
 }
 

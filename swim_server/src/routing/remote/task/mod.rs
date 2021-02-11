@@ -138,7 +138,7 @@ where
         let selector = WsStreamSelector::new(&mut ws_stream, outgoing_payloads);
 
         let mut stop_fused = stop_signal.fuse();
-        let mut select_stream = selector.fuse();
+        let mut select_stream = selector;
         let mut timeout = sleep(config.activity_timeout);
 
         let mut resolved: HashMap<RelativePath, Route> = HashMap::new();
@@ -158,7 +158,7 @@ where
                 _ = (&mut timeout).fuse() => {
                     break Completion::TimedOut;
                 }
-                event = select_stream.next() => event,
+                event = select_stream.select_rw() => event,
             };
 
             if let Some(event) = next {

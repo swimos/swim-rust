@@ -16,7 +16,6 @@ use crate::routing::ws::protocol::CloseReason;
 use crate::routing::ws::stream::selector::{SelectorResult, WsStreamSelector};
 use crate::routing::ws::stream::JoinedStreamSink;
 use futures::future::{ready, Ready};
-use futures::stream::FusedStream;
 use futures::task::{AtomicWaker, Context, Poll};
 use futures::{Sink, SinkExt, Stream, StreamExt};
 use parking_lot::Mutex;
@@ -201,7 +200,7 @@ async fn produce_available() {
 
     let mut selector = WsStreamSelector::new(test_stream, rx);
 
-    let result = selector.next().await;
+    let result = selector.select_rw().await;
 
     assert_eq!(result, Some(Ok(SelectorResult::Read(12))));
 
@@ -219,7 +218,7 @@ async fn consume_available() {
 
     let mut selector = WsStreamSelector::new(test_stream, rx);
 
-    let result = selector.next().await;
+    let result = selector.select_rw().await;
 
     assert_eq!(result, Some(Ok(SelectorResult::Written)));
 
@@ -238,8 +237,8 @@ async fn both_available() {
 
     let mut selector = WsStreamSelector::new(test_stream, rx);
 
-    let result1 = selector.next().await;
-    let result2 = selector.next().await;
+    let result1 = selector.select_rw().await;
+    let result2 = selector.select_rw().await;
 
     assert_eq!(result1, Some(Ok(SelectorResult::Read(56))));
     assert_eq!(result2, Some(Ok(SelectorResult::Written)));
@@ -256,7 +255,7 @@ async fn produce_error() {
 
     let mut selector = WsStreamSelector::new(test_stream, rx);
 
-    let result = selector.next().await;
+    let result = selector.select_rw().await;
 
     assert_eq!(result, Some(Err(TestError("Boom!".to_string()))));
 
@@ -274,7 +273,7 @@ async fn consume_error_on_ready() {
 
     let mut selector = WsStreamSelector::new(test_stream, rx);
 
-    let result = selector.next().await;
+    let result = selector.select_rw().await;
 
     assert_eq!(result, Some(Err(TestError("Boom!".to_string()))));
 
@@ -292,7 +291,7 @@ async fn consume_error_on_send() {
 
     let mut selector = WsStreamSelector::new(test_stream, rx);
 
-    let result = selector.next().await;
+    let result = selector.select_rw().await;
 
     assert_eq!(result, Some(Err(TestError("Boom!".to_string()))));
 
@@ -315,20 +314,20 @@ async fn alternates_produce_and_consume() {
 
     let mut selector = WsStreamSelector::new(test_stream, rx);
 
-    let result = selector.next().await;
+    let result = selector.select_rw().await;
     assert_eq!(result, Some(Ok(SelectorResult::Read(66))));
 
     staging.stage_produce(76);
 
-    let result = selector.next().await;
+    let result = selector.select_rw().await;
     assert_eq!(result, Some(Ok(SelectorResult::Written)));
 
     staging.stage_consume(2);
 
-    let result = selector.next().await;
+    let result = selector.select_rw().await;
     assert_eq!(result, Some(Ok(SelectorResult::Read(76))));
 
-    let result = selector.next().await;
+    let result = selector.select_rw().await;
     assert_eq!(result, Some(Ok(SelectorResult::Written)));
 
     assert!(!selector.is_terminated());
@@ -347,12 +346,12 @@ async fn consumption_possible_but_no_data() {
 
     let mut selector = WsStreamSelector::new(test_stream, rx);
 
-    let result = selector.next().await;
+    let result = selector.select_rw().await;
     assert_eq!(result, Some(Ok(SelectorResult::Read(66))));
 
     staging.stage_produce(76);
 
-    let result = selector.next().await;
+    let result = selector.select_rw().await;
     assert_eq!(result, Some(Ok(SelectorResult::Read(76))));
     assert!(!selector.is_terminated());
 }
@@ -369,13 +368,13 @@ async fn production_continues_after_no_more_consumption() {
 
     let mut selector = WsStreamSelector::new(test_stream, rx);
 
-    let result = selector.next().await;
+    let result = selector.select_rw().await;
     assert_eq!(result, Some(Ok(SelectorResult::Read(66))));
 
     staging.stage_produce(76);
     drop(tx);
 
-    let result = selector.next().await;
+    let result = selector.select_rw().await;
     assert_eq!(result, Some(Ok(SelectorResult::Read(76))));
     assert!(!selector.is_terminated());
 }
@@ -394,17 +393,17 @@ async fn production_and_consumption_stop_after_close() {
 
     let mut selector = WsStreamSelector::new(test_stream, rx);
 
-    let result = selector.next().await;
+    let result = selector.select_rw().await;
     assert_eq!(result, Some(Ok(SelectorResult::Read(66))));
 
     staging.stage_consume(1);
     staging.stage_produce(88);
     staging.close();
 
-    let result = selector.next().await;
+    let result = selector.select_rw().await;
     assert_eq!(result, Some(Err(TestError("Closed!".to_string()))));
 
-    let result = selector.next().await;
+    let result = selector.select_rw().await;
     assert!(result.is_none());
     assert!(selector.is_terminated());
 }
@@ -421,11 +420,11 @@ async fn error_on_close() {
     staging.stage_close_error("Boom!");
     staging.close();
 
-    let result = selector.next().await;
+    let result = selector.select_rw().await;
     assert_eq!(result, Some(Err(TestError("Boom!".to_string()))));
     assert!(!selector.is_terminated());
 
-    let result = selector.next().await;
+    let result = selector.select_rw().await;
     assert!(result.is_none());
     assert!(selector.is_terminated());
 }
