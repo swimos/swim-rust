@@ -23,8 +23,8 @@ use std::num::NonZeroUsize;
 use std::ops::Range;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::Notify;
 use tokio::sync::mpsc;
+use tokio::sync::Notify;
 
 #[test]
 fn next_slots() {
@@ -889,17 +889,14 @@ async fn send_with_subscriber() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn adding_subscribers() {
-
-    let (mut chan_tx, chan_rx)  = super::channel::<i32>(NonZeroUsize::new(8).unwrap());
+    let (mut chan_tx, chan_rx) = super::channel::<i32>(NonZeroUsize::new(8).unwrap());
     let sub = chan_tx.subscriber();
 
     let (comm_tx, mut comm_rx) = mpsc::channel::<trigger::Sender>(2);
 
     let start_task = |rx: Receiver<i32>| {
         let mut stream = rx.into_stream();
-        let task = async move {
-            while let Some(_) = stream.next().await {}
-        };
+        let task = async move { while let Some(_) = stream.next().await {} };
         tokio::spawn(task);
     };
 

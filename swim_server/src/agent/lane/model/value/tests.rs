@@ -14,13 +14,13 @@
 
 use super::*;
 use crate::agent::lane::tests::ExactlyOnce;
+use futures::future::join;
+use std::time::Duration;
 use stm::transaction::atomically;
 use stm::var::observer::ObserverSubscriber;
+use tokio::sync::mpsc;
 use utilities::sync::topic::TryRecvError;
 use utilities::sync::trigger;
-use tokio::sync::mpsc;
-use std::time::Duration;
-use futures::future::join;
 
 fn buffer_size() -> NonZeroUsize {
     NonZeroUsize::new(16).unwrap()
@@ -89,9 +89,7 @@ async fn value_lane_subscribe() {
     let (comm_tx, mut comm_rx) = mpsc::channel::<trigger::Sender>(2);
 
     let start_task = |mut rx: Observer<i32>| {
-        let task = async move {
-            while let Some(_) = rx.recv().await {}
-        };
+        let task = async move { while let Some(_) = rx.recv().await {} };
         tokio::spawn(task);
     };
 
@@ -119,5 +117,4 @@ async fn value_lane_subscribe() {
     let t2 = tokio::spawn(gen_task);
     let result = tokio::time::timeout(Duration::from_secs(5), join(t1, t2)).await;
     assert!(matches!(result, Ok((Ok(_), Ok(_)))));
-
 }

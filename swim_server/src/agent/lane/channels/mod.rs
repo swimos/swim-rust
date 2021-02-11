@@ -23,6 +23,7 @@ use std::time::Duration;
 use utilities::future::retryable::strategy::RetryStrategy;
 
 pub mod task;
+#[cfg(test)]
 mod tests;
 pub mod update;
 pub mod uplink;

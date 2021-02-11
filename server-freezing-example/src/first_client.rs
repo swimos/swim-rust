@@ -37,7 +37,6 @@ async fn main() {
             .set(i.to_string())
             .await
             .expect("Failed to send message!");
-
     }
 
     println!("Stopping client in 2 seconds");
