@@ -811,8 +811,13 @@ where
             .map_err_into()
             .comap(move |cmd: Command<Value>| envelopes::command_envelope(&path_cpy, cmd).1.into());
 
-        let (raw_dl, _) =
-            event::create_downlink(schema.clone(), violations, updates, cmd_sink, &config);
+        let (raw_dl, _) = event::create_downlink(
+            schema.clone(),
+            violations,
+            updates,
+            cmd_sink,
+            (&config).into(),
+        );
 
         let dl = Arc::new(raw_dl);
 

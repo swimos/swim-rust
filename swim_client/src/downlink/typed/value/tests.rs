@@ -13,13 +13,21 @@
 // limitations under the License.
 
 use super::ValueActions;
+use crate::configuration::downlink::OnInvalidMessage;
 use crate::downlink::model::value::{Action, SharedValue};
-use crate::downlink::DownlinkError;
+use crate::downlink::typed::value::{TypedValueDownlink, ValueDownlinkReceiver, ValueViewError};
+use crate::downlink::typed::ViewMode;
+use crate::downlink::{Command, Message};
+use crate::downlink::{DownlinkConfig, DownlinkError};
 use futures::future::join;
+use std::num::NonZeroUsize;
 use std::sync::Arc;
+use swim_common::form::ValidatedForm;
+use swim_common::model::schema::StandardSchema;
 use swim_common::model::Value;
+use swim_common::routing::RoutingError;
+use swim_common::sink::item::ItemSender;
 use tokio::sync::mpsc;
-use tokio::sync::mpsc::Sender;
 
 async fn responder(mut state: SharedValue, mut rx: mpsc::Receiver<Action>) {
     while let Some(value) = rx.recv().await {
@@ -81,7 +89,7 @@ async fn responder(mut state: SharedValue, mut rx: mpsc::Receiver<Action>) {
 
 struct Actions(mpsc::Sender<Action>);
 impl AsMut<mpsc::Sender<Action>> for Actions {
-    fn as_mut(&mut self) -> &mut Sender<Action> {
+    fn as_mut(&mut self) -> &mut mpsc::Sender<Action> {
         &mut self.0
     }
 }
@@ -190,4 +198,100 @@ async fn value_update_and_forget() {
         assert_eq!(n, Ok(4));
     };
     join(assertions, responder).await;
+}
+
+struct Components<T> {
+    downlink: TypedValueDownlink<T>,
+    receiver: ValueDownlinkReceiver<T>,
+    update_tx: mpsc::Sender<Result<Message<Value>, RoutingError>>,
+    command_rx: mpsc::Receiver<Command<SharedValue>>,
+}
+
+fn make_value_downlink<T: ValidatedForm>(init: T) -> Components<T> {
+    let init_value = init.into_value();
+
+    let (update_tx, update_rx) = mpsc::channel(8);
+    let (command_tx, command_rx) = mpsc::channel(8);
+    let sender = swim_common::sink::item::for_mpsc_sender(command_tx).map_err_into();
+
+    let (dl, rx) = crate::downlink::model::value::create_downlink(
+        init_value,
+        Some(T::schema()),
+        update_rx,
+        sender,
+        DownlinkConfig {
+            buffer_size: NonZeroUsize::new(8).unwrap(),
+            yield_after: NonZeroUsize::new(2048).unwrap(),
+            on_invalid: OnInvalidMessage::Terminate,
+        },
+    );
+    let downlink = TypedValueDownlink::new(Arc::new(dl));
+    let receiver = ValueDownlinkReceiver::new(rx);
+
+    Components {
+        downlink,
+        receiver,
+        update_tx,
+        command_rx,
+    }
+}
+
+#[tokio::test]
+async fn subscriber_covariant_cast() {
+    let Components {
+        downlink,
+        receiver: _receiver,
+        update_tx: _update_tx,
+        command_rx: _command_rx,
+    } = make_value_downlink(0);
+
+    let sub = downlink.subscriber();
+
+    assert!(sub.clone().covariant_cast::<i32>().is_ok());
+    assert!(sub.clone().covariant_cast::<Value>().is_ok());
+    assert!(sub.clone().covariant_cast::<String>().is_err());
+}
+
+#[tokio::test]
+async fn sender_contravariant_view() {
+    let Components {
+        downlink,
+        receiver: _receiver,
+        update_tx: _update_tx,
+        command_rx: _command_rx,
+    } = make_value_downlink(0i64);
+
+    let sender = downlink.sender();
+
+    assert!(sender.contravariant_view::<i64>().is_ok());
+    assert!(sender.contravariant_view::<i32>().is_ok());
+    assert!(sender.contravariant_view::<String>().is_err());
+}
+
+#[tokio::test]
+async fn sender_covariant_view() {
+    let Components {
+        downlink,
+        receiver: _receiver,
+        update_tx: _update_tx,
+        command_rx: _command_rx,
+    } = make_value_downlink(0);
+
+    let sender = downlink.sender();
+
+    assert!(sender.covariant_view::<i32>().is_ok());
+    assert!(sender.covariant_view::<Value>().is_ok());
+    assert!(sender.covariant_view::<String>().is_err());
+}
+
+#[test]
+fn value_view_error_display() {
+    let err = ValueViewError {
+        existing: StandardSchema::Nothing,
+        requested: StandardSchema::Anything,
+        mode: ViewMode::ReadOnly,
+    };
+    let str = err.to_string();
+
+    assert_eq!(str, format!("A Read Only view of a value downlink with schema {} was requested but the original value downlink is running with schema {}.", StandardSchema::Anything, StandardSchema::Nothing));
 }

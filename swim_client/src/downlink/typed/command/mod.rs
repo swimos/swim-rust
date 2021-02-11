@@ -12,11 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::downlink::typed::{UntypedCommandDownlink, ViewMode};
+#[cfg(test)]
+mod tests;
+
+use crate::downlink::typed::UntypedCommandDownlink;
 use crate::downlink::{Downlink, DownlinkError};
 use std::any::type_name;
 use std::cmp::Ordering;
-use std::fmt::{Debug, Formatter};
+use std::error::Error;
+use std::fmt::{Debug, Display, Formatter};
 use std::marker::PhantomData;
 use std::sync::Arc;
 use swim_common::form::{Form, ValidatedForm};
@@ -85,9 +89,15 @@ pub struct CommandViewError {
     existing: StandardSchema,
     // A validation schema for the type of the requested view.
     requested: StandardSchema,
-    // The mode of the view.
-    mode: ViewMode,
 }
+
+impl Display for CommandViewError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "A Write Only view of a command downlink with schema {} was requested but the original command downlink is running with schema {}.", self.requested, self.existing)
+    }
+}
+
+impl Error for CommandViewError {}
 
 impl<T: ValidatedForm> TypedCommandDownlink<T> {
     /// Create a sender for a more refined type (the [`ValidatedForm`] implementation for `U`
@@ -98,13 +108,12 @@ impl<T: ValidatedForm> TypedCommandDownlink<T> {
     ) -> Result<TypedCommandDownlink<U>, CommandViewError> {
         let schema_cmp = U::schema().partial_cmp(&T::schema());
 
-        if schema_cmp.is_some() && schema_cmp != Some(Ordering::Greater) {
+        if schema_cmp.is_some() && schema_cmp != Some(Ordering::Less) {
             Ok(TypedCommandDownlink::new(self.inner.clone()))
         } else {
             Err(CommandViewError {
                 existing: T::schema(),
                 requested: U::schema(),
-                mode: ViewMode::ReadOnly,
             })
         }
     }

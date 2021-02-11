@@ -13,12 +13,24 @@
 // limitations under the License.
 
 use super::MapActions;
-use crate::downlink::model::map::{MapAction, ValMap};
-use crate::downlink::DownlinkError;
+use crate::configuration::downlink::OnInvalidMessage;
+use crate::downlink::model::map::{MapAction, UntypedMapModification, ValMap};
+use crate::downlink::typed::map::{
+    Incompatibility, MapDownlinkReceiver, MapViewError, TypedMapDownlink,
+};
+use crate::downlink::typed::ViewMode;
+use crate::downlink::{Command, Message};
+use crate::downlink::{DownlinkConfig, DownlinkError};
 use futures::future::join;
 use im::OrdMap;
+use std::num::NonZeroUsize;
 use std::sync::Arc;
+use swim_common::form::ValidatedForm;
+use swim_common::model::schema::StandardSchema;
 use swim_common::model::Value;
+use swim_common::routing::RoutingError;
+use swim_common::sink::item::ItemSender;
+use swim_warp::model::map::MapUpdate;
 use tokio::sync::mpsc;
 
 async fn responder(init: OrdMap<i32, i32>, mut rx: mpsc::Receiver<MapAction>) {
@@ -238,6 +250,23 @@ async fn map_insert() {
 }
 
 #[tokio::test]
+async fn map_insert_discard() {
+    let (tx, rx) = mpsc::channel(8);
+    let responder = responder(make_map(), rx);
+
+    let assertions = async move {
+        let actions = MapActions::new(&tx);
+        let result = actions.update_discard(4, 8).await;
+        assert!(result.is_ok());
+
+        let result = actions.get(4).await;
+        assert_eq!(result, Ok(Some(8)));
+    };
+
+    join(assertions, responder).await;
+}
+
+#[tokio::test]
 async fn map_invalid_key_update() {
     let (tx, rx) = mpsc::channel(8);
     let responder = responder(make_map(), rx);
@@ -295,6 +324,23 @@ async fn map_remove() {
         let map = result.unwrap();
 
         assert_eq!(map, Some(4));
+
+        let result = actions.get(2).await;
+        assert_eq!(result, Ok(None));
+    };
+
+    join(assertions, responder).await;
+}
+
+#[tokio::test]
+async fn map_remove_discard() {
+    let (tx, rx) = mpsc::channel(8);
+    let responder = responder(make_map(), rx);
+
+    let assertions = async move {
+        let actions: MapActions<i32, i32> = MapActions::new(&tx);
+        let result = actions.remove_discard(2).await;
+        assert!(result.is_ok());
 
         let result = actions.get(2).await;
         assert_eq!(result, Ok(None));
@@ -539,4 +585,115 @@ async fn map_skip_and_get() {
     };
 
     join(assertions, responder).await;
+}
+
+struct Components<K, V> {
+    downlink: TypedMapDownlink<K, V>,
+    receiver: MapDownlinkReceiver<K, V>,
+    update_tx: mpsc::Sender<Result<Message<MapUpdate<Value, Value>>, RoutingError>>,
+    command_rx: mpsc::Receiver<Command<UntypedMapModification<Value>>>,
+}
+
+fn make_map_downlink<K: ValidatedForm, V: ValidatedForm>() -> Components<K, V> {
+    let (update_tx, update_rx) = mpsc::channel(8);
+    let (command_tx, command_rx) = mpsc::channel(8);
+    let sender = swim_common::sink::item::for_mpsc_sender(command_tx).map_err_into();
+
+    let (dl, rx) = crate::downlink::model::map::create_downlink(
+        Some(K::schema()),
+        Some(V::schema()),
+        update_rx,
+        sender,
+        DownlinkConfig {
+            buffer_size: NonZeroUsize::new(8).unwrap(),
+            yield_after: NonZeroUsize::new(2048).unwrap(),
+            on_invalid: OnInvalidMessage::Terminate,
+        },
+    );
+    let downlink = TypedMapDownlink::new(Arc::new(dl));
+    let receiver = MapDownlinkReceiver::new(rx);
+
+    Components {
+        downlink,
+        receiver,
+        update_tx,
+        command_rx,
+    }
+}
+
+#[tokio::test]
+async fn subscriber_covariant_cast() {
+    let Components {
+        downlink,
+        receiver: _receiver,
+        update_tx: _update_tx,
+        command_rx: _command_rx,
+    } = make_map_downlink::<i32, i32>();
+
+    let sub = downlink.subscriber();
+
+    assert!(sub.clone().covariant_cast::<i32, i32>().is_ok());
+    assert!(sub.clone().covariant_cast::<Value, Value>().is_ok());
+    assert!(sub.clone().covariant_cast::<i32, Value>().is_ok());
+    assert!(sub.clone().covariant_cast::<Value, i32>().is_ok());
+    assert!(sub.clone().covariant_cast::<String, i32>().is_err());
+    assert!(sub.clone().covariant_cast::<i32, String>().is_err());
+    assert!(sub.clone().covariant_cast::<String, String>().is_err());
+}
+
+#[tokio::test]
+async fn sender_contravariant_view() {
+    let Components {
+        downlink,
+        receiver: _receiver,
+        update_tx: _update_tx,
+        command_rx: _command_rx,
+    } = make_map_downlink::<i64, i64>();
+
+    let sender = downlink.sender();
+
+    assert!(sender.contravariant_view::<i64, i64>().is_ok());
+    assert!(sender.contravariant_view::<i64, i32>().is_ok());
+    assert!(sender.contravariant_view::<i32, i64>().is_ok());
+    assert!(sender.contravariant_view::<i32, i32>().is_ok());
+    assert!(sender.contravariant_view::<String, i64>().is_err());
+    assert!(sender.contravariant_view::<i64, String>().is_err());
+    assert!(sender.contravariant_view::<String, String>().is_err());
+}
+
+#[tokio::test]
+async fn sender_covariant_view() {
+    let Components {
+        downlink,
+        receiver: _receiver,
+        update_tx: _update_tx,
+        command_rx: _command_rx,
+    } = make_map_downlink::<i32, i32>();
+
+    let sender = downlink.sender();
+
+    assert!(sender.covariant_view::<i32, i32>().is_ok());
+    assert!(sender.covariant_view::<i32, Value>().is_ok());
+    assert!(sender.covariant_view::<Value, i32>().is_ok());
+    assert!(sender.covariant_view::<Value, Value>().is_ok());
+    assert!(sender.covariant_view::<String, i32>().is_err());
+    assert!(sender.covariant_view::<i32, String>().is_err());
+    assert!(sender.covariant_view::<String, String>().is_err());
+}
+
+#[test]
+fn map_view_error_display() {
+    let err = MapViewError {
+        mode: ViewMode::ReadOnly,
+        existing_key: StandardSchema::Anything,
+        existing_value: StandardSchema::Nothing,
+        requested_key: StandardSchema::NonNan,
+        requested_value: StandardSchema::Finite,
+        incompatibility: Incompatibility::Key,
+    };
+
+    let string = err.to_string();
+
+    assert_eq!(string, format!("A Read Only view of a map downlink (key schema {} and value schema {})) was requested with key schema {} and value schema {}. The key schemas are incompatible.", 
+                               StandardSchema::Anything, StandardSchema::Nothing, StandardSchema::NonNan, StandardSchema::Finite));
 }

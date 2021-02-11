@@ -80,7 +80,7 @@ pub struct ValueViewError {
 
 impl Display for ValueViewError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "A {} value downlink with schema {} was requested but the original value downlink is running with schema {}.", self.mode, self.requested, self.existing)
+        write!(f, "A {} view of a value downlink with schema {} was requested but the original value downlink is running with schema {}.", self.mode, self.requested, self.existing)
     }
 }
 
@@ -124,9 +124,37 @@ pub struct ValueDownlinkSender<T> {
     _type: PhantomData<fn(T)>,
 }
 
+pub struct ValueDownlinkContraView<T> {
+    inner: mpsc::Sender<Action>,
+    _type: PhantomData<fn(T)>,
+}
+
+pub struct ValueDownlinkView<T> {
+    inner: mpsc::Sender<Action>,
+    _type: PhantomData<fn(T)>,
+}
+
 impl<T> Debug for ValueDownlinkSender<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ValueDownlinkSender")
+            .field("inner", &self.inner)
+            .field("type", &type_name::<T>())
+            .finish()
+    }
+}
+
+impl<T> Debug for ValueDownlinkContraView<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ValueDownlinkContraView")
+            .field("inner", &self.inner)
+            .field("type", &type_name::<T>())
+            .finish()
+    }
+}
+
+impl<T> Debug for ValueDownlinkView<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ValueDownlinkView")
             .field("inner", &self.inner)
             .field("type", &type_name::<T>())
             .finish()
@@ -139,9 +167,39 @@ impl<T> Clone for ValueDownlinkSender<T> {
     }
 }
 
+impl<T> Clone for ValueDownlinkContraView<T> {
+    fn clone(&self) -> Self {
+        ValueDownlinkContraView::new(self.inner.clone())
+    }
+}
+
+impl<T> Clone for ValueDownlinkView<T> {
+    fn clone(&self) -> Self {
+        ValueDownlinkView::new(self.inner.clone())
+    }
+}
+
 impl<T> ValueDownlinkSender<T> {
     fn new(inner: mpsc::Sender<Action>) -> Self {
         ValueDownlinkSender {
+            inner,
+            _type: PhantomData,
+        }
+    }
+}
+
+impl<T> ValueDownlinkContraView<T> {
+    fn new(inner: mpsc::Sender<Action>) -> Self {
+        ValueDownlinkContraView {
+            inner,
+            _type: PhantomData,
+        }
+    }
+}
+
+impl<T> ValueDownlinkView<T> {
+    fn new(inner: mpsc::Sender<Action>) -> Self {
+        ValueDownlinkView {
             inner,
             _type: PhantomData,
         }
@@ -152,19 +210,38 @@ impl<T: ValidatedForm> ValueDownlinkSender<T> {
     /// Create a sender for a more refined type (the [`ValidatedForm`] implementation for `U`
     /// will always produce a [`Value`] that is acceptable to the [`ValidatedForm`] implementation
     /// for `T`) to the downlink.
-    pub fn contravariant_cast<U>(self) -> Result<ValueDownlinkSender<U>, ValueViewError>
+    pub fn contravariant_view<U>(&self) -> Result<ValueDownlinkContraView<U>, ValueViewError>
     where
         U: ValidatedForm,
     {
         let schema_cmp = U::schema().partial_cmp(&T::schema());
 
         if schema_cmp.is_some() && schema_cmp != Some(Ordering::Greater) {
-            Ok(ValueDownlinkSender::new(self.inner))
+            Ok(ValueDownlinkContraView::new(self.inner.clone()))
         } else {
             Err(ValueViewError {
                 existing: T::schema(),
                 requested: U::schema(),
                 mode: ViewMode::WriteOnly,
+            })
+        }
+    }
+
+    /// Create a read-only view for a value downlink sender that converts all  values to a new type.
+    /// The type of the view must have an equal or greater schema than the original downlink.
+    pub fn covariant_view<U>(&self) -> Result<ValueDownlinkView<U>, ValueViewError>
+    where
+        U: ValidatedForm,
+    {
+        let schema_cmp = U::schema().partial_cmp(&T::schema());
+
+        if schema_cmp.is_some() && schema_cmp != Some(Ordering::Less) {
+            Ok(ValueDownlinkView::new(self.inner.clone()))
+        } else {
+            Err(ValueViewError {
+                existing: T::schema(),
+                requested: U::schema(),
+                mode: ViewMode::ReadOnly,
             })
         }
     }
@@ -202,6 +279,25 @@ impl<T: ValidatedForm + 'static> ValueDownlinkSender<T> {
         ValueActions::new(&self.inner)
             .update_and_forget(update_fn)
             .await
+    }
+}
+
+impl<T: ValidatedForm + 'static> ValueDownlinkContraView<T> {
+    /// Set the value of the downlink, waiting until the set has completed.
+    pub async fn set(&self, value: T) -> Result<(), DownlinkError> {
+        ValueActions::new(&self.inner).set(value).await
+    }
+
+    /// Set the value of the downlink, returning immediately.
+    pub async fn set_and_forget(&self, value: T) -> Result<(), DownlinkError> {
+        ValueActions::new(&self.inner).set_and_forget(value).await
+    }
+}
+
+impl<T: ValidatedForm + 'static> ValueDownlinkView<T> {
+    /// Get the current value of the downlink.
+    pub async fn get(&self) -> Result<T, DownlinkError> {
+        ValueActions::new(&self.inner).get().await
     }
 }
 
@@ -375,8 +471,9 @@ impl<T> ValueDownlinkSubscriber<T> {
 }
 
 impl<T: ValidatedForm> ValueDownlinkSubscriber<T> {
-    /// Create a read-only view for a value downlink that converts all received values to a new type.
-    /// The type of the view must have an equal or greater schema than the original downlink.
+    /// Create a read-only view for a value downlink subscriberthat converts all received values
+    /// to a new type. The type of the view must have an equal or greater schema than the original
+    /// downlink.
     pub fn covariant_cast<U>(self) -> Result<ValueDownlinkSubscriber<U>, ValueViewError>
     where
         U: ValidatedForm,

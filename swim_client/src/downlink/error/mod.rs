@@ -24,6 +24,7 @@ use utilities::errors::Recoverable;
 #[cfg(test)]
 mod tests;
 
+/// Indicates that an error ocurred within a downlink.
 #[derive(Clone, PartialEq, Debug)]
 pub enum DownlinkError {
     DroppedChannel,
@@ -61,7 +62,7 @@ impl Display for DownlinkError {
                 "An internal channel was dropped and the downlink is now closed."
             ),
             DownlinkError::TaskPanic(m) => {
-                write!(f, "The downlink task panicked with: \"{:?}\"", m)
+                write!(f, "The downlink task panicked with: \"{}\"", m)
             }
             DownlinkError::TransitionError => {
                 write!(f, "The downlink state machine produced and error.")
@@ -77,7 +78,7 @@ impl Display for DownlinkError {
             DownlinkError::InvalidAction => {
                 write!(f, "An action could not be applied to the internal state.")
             }
-            DownlinkError::ConnectionFailure(error) => write!(f, "Connection failure: {}.", error),
+            DownlinkError::ConnectionFailure(error) => write!(f, "Connection failure: {}", error),
 
             DownlinkError::ConnectionPoolFailure(connection_error) => write!(
                 f,
@@ -109,6 +110,7 @@ impl From<item::SendError> for DownlinkError {
     }
 }
 
+/// Error indicating that a state change was attempted in the downlink and failed.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum TransitionError {
     ReceiverDropped,
@@ -128,6 +130,7 @@ impl Display for TransitionError {
     }
 }
 
+/// Indicates that an error ocurred attempting to update the state of a downlink.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct UpdateFailure(pub String);
 

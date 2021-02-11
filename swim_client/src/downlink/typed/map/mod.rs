@@ -233,9 +233,39 @@ pub struct MapDownlinkSender<K, V> {
     _type: PhantomData<fn(K, V)>,
 }
 
+pub struct MapDownlinkContraView<K, V> {
+    inner: mpsc::Sender<MapAction>,
+    _type: PhantomData<fn(K, V)>,
+}
+
+pub struct MapDownlinkView<K, V> {
+    inner: mpsc::Sender<MapAction>,
+    _type: PhantomData<fn(K, V)>,
+}
+
 impl<K, V> Debug for MapDownlinkSender<K, V> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ValueDownlinkSender")
+            .field("inner", &self.inner)
+            .field("key_type", &type_name::<K>())
+            .field("value_type", &type_name::<V>())
+            .finish()
+    }
+}
+
+impl<K, V> Debug for MapDownlinkView<K, V> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ValueDownlinkView")
+            .field("inner", &self.inner)
+            .field("key_type", &type_name::<K>())
+            .field("value_type", &type_name::<V>())
+            .finish()
+    }
+}
+
+impl<K, V> Debug for MapDownlinkContraView<K, V> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ValueDownlinkContraView")
             .field("inner", &self.inner)
             .field("key_type", &type_name::<K>())
             .field("value_type", &type_name::<V>())
@@ -249,9 +279,39 @@ impl<K, V> Clone for MapDownlinkSender<K, V> {
     }
 }
 
+impl<K, V> Clone for MapDownlinkView<K, V> {
+    fn clone(&self) -> Self {
+        MapDownlinkView::new(self.inner.clone())
+    }
+}
+
+impl<K, V> Clone for MapDownlinkContraView<K, V> {
+    fn clone(&self) -> Self {
+        MapDownlinkContraView::new(self.inner.clone())
+    }
+}
+
 impl<K, V> MapDownlinkSender<K, V> {
     fn new(inner: mpsc::Sender<MapAction>) -> Self {
         MapDownlinkSender {
+            inner,
+            _type: PhantomData,
+        }
+    }
+}
+
+impl<K, V> MapDownlinkView<K, V> {
+    fn new(inner: mpsc::Sender<MapAction>) -> Self {
+        MapDownlinkView {
+            inner,
+            _type: PhantomData,
+        }
+    }
+}
+
+impl<K, V> MapDownlinkContraView<K, V> {
+    fn new(inner: mpsc::Sender<MapAction>) -> Self {
+        MapDownlinkContraView {
             inner,
             _type: PhantomData,
         }
@@ -266,7 +326,7 @@ impl<K: ValidatedForm, V: ValidatedForm> MapDownlinkSender<K, V> {
     /// Create a sender for more refined key and value types (the [`ValidatedForm`] implementations
     /// for `K2` and `V2` will always produce [`Value`]s that are acceptable to the
     /// [`ValidatedForm`] implementations for `K` and `V`) to the downlink.
-    pub fn contravariant_cast<K2, V2>(self) -> Result<MapDownlinkSender<K2, V2>, MapViewError>
+    pub fn contravariant_view<K2, V2>(&self) -> Result<MapDownlinkContraView<K2, V2>, MapViewError>
     where
         K2: ValidatedForm,
         V2: ValidatedForm,
@@ -281,7 +341,7 @@ impl<K: ValidatedForm, V: ValidatedForm> MapDownlinkSender<K, V> {
             .unwrap_or(false);
 
         if key_schema_good && value_schema_good {
-            Ok(MapDownlinkSender::new(self.inner))
+            Ok(MapDownlinkContraView::new(self.inner.clone()))
         } else {
             let incompatibility = if key_schema_good {
                 Incompatibility::Value
@@ -292,6 +352,44 @@ impl<K: ValidatedForm, V: ValidatedForm> MapDownlinkSender<K, V> {
             };
             Err(MapViewError {
                 mode: ViewMode::WriteOnly,
+                existing_key: K::schema(),
+                existing_value: V::schema(),
+                requested_key: K2::schema(),
+                requested_value: V2::schema(),
+                incompatibility,
+            })
+        }
+    }
+
+    /// Create a sender for more general key and value types (the [`ValidatedForm`] implementations
+    /// for `K` and `V` will always produce [`Value`]s that are acceptable to the
+    /// [`ValidatedForm`] implementations for `K2` and `Vv`) to the downlink.
+    pub fn covariant_view<K2, V2>(&self) -> Result<MapDownlinkView<K2, V2>, MapViewError>
+    where
+        K2: ValidatedForm,
+        V2: ValidatedForm,
+    {
+        let key_schema_good = K2::schema()
+            .partial_cmp(&K::schema())
+            .map(|c| c != Ordering::Less)
+            .unwrap_or(false);
+        let value_schema_good = V2::schema()
+            .partial_cmp(&V::schema())
+            .map(|c| c != Ordering::Less)
+            .unwrap_or(false);
+
+        if key_schema_good && value_schema_good {
+            Ok(MapDownlinkView::new(self.inner.clone()))
+        } else {
+            let incompatibility = if key_schema_good {
+                Incompatibility::Value
+            } else if value_schema_good {
+                Incompatibility::Key
+            } else {
+                Incompatibility::Both
+            };
+            Err(MapViewError {
+                mode: ViewMode::ReadOnly,
                 existing_key: K::schema(),
                 existing_value: V::schema(),
                 requested_key: K2::schema(),
@@ -414,6 +512,122 @@ where
     /// Get the current state of the map.
     pub async fn view(&self) -> Result<TypedMapView<K, V>, DownlinkError> {
         actions::<K, V>(&self.inner).view().await
+    }
+}
+
+impl<K, V> MapDownlinkView<K, V>
+where
+    K: ValidatedForm + 'static,
+    V: ValidatedForm + 'static,
+{
+    /// Get the value associated with a specific key.
+    pub async fn get(&self, key: K) -> Result<Option<V>, DownlinkError> {
+        actions::<K, V>(&self.inner).get(key).await
+    }
+
+    /// Remove any value associated with a key, returning it.
+    pub async fn remove(&self, key: K) -> Result<Option<V>, DownlinkError> {
+        actions::<K, V>(&self.inner).remove(key).await
+    }
+
+    /// Remove any value associated with a key without waiting for the operation to complete.
+    pub async fn remove_and_forget(&self, key: K) -> Result<(), DownlinkError> {
+        actions::<K, V>(&self.inner).remove_and_forget(key).await
+    }
+
+    /// Clear the contents of the map.
+    pub async fn clear(&self) -> Result<(), DownlinkError> {
+        actions::<K, V>(&self.inner).clear().await
+    }
+
+    /// Clear the contents of the map without waiting for the operation to complete.
+    pub async fn clear_and_forget(&self) -> Result<(), DownlinkError> {
+        actions::<K, V>(&self.inner).clear_and_forget().await
+    }
+
+    /// Retain only the first `n` elements of the map.
+    pub async fn take(&self, n: usize) -> Result<(), DownlinkError> {
+        actions::<K, V>(&self.inner).take(n).await
+    }
+
+    /// Retain only the first `n` elements of the map without waiting for the operation to complete.
+    pub async fn take_and_forget(&self, n: usize) -> Result<(), DownlinkError> {
+        actions::<K, V>(&self.inner).take_and_forget(n).await
+    }
+
+    /// Skip the first `n` elements of the map.
+    pub async fn skip(&self, n: usize) -> Result<(), DownlinkError> {
+        actions::<K, V>(&self.inner).skip(n).await
+    }
+
+    /// Skip the first `n` elements of the map without waiting for the operation to complete.
+    pub async fn skip_and_forget(&self, n: usize) -> Result<(), DownlinkError> {
+        actions::<K, V>(&self.inner).skip_and_forget(n).await
+    }
+
+    /// Get the current state of the map.
+    pub async fn view(&self) -> Result<TypedMapView<K, V>, DownlinkError> {
+        actions::<K, V>(&self.inner).view().await
+    }
+}
+
+impl<K, V> MapDownlinkContraView<K, V>
+where
+    K: ValidatedForm + 'static,
+    V: ValidatedForm + 'static,
+{
+    /// Update an entry into the map returning any existing value associated with the key.
+    pub async fn update(&self, key: K, value: V) -> Result<(), DownlinkError> {
+        actions::<K, V>(&self.inner)
+            .update_discard(key, value)
+            .await
+    }
+
+    /// Insert an entry into the map without waiting for the operation to complete.
+    pub async fn update_and_forget(&self, key: K, value: V) -> Result<(), DownlinkError> {
+        actions::<K, V>(&self.inner)
+            .update_and_forget(key, value)
+            .await
+    }
+
+    /// Remove any value associated with a key, returning it.
+    pub async fn remove(&self, key: K) -> Result<(), DownlinkError> {
+        actions::<K, V>(&self.inner).remove_discard(key).await
+    }
+
+    /// Remove any value associated with a key without waiting for the operation to complete.
+    pub async fn remove_and_forget(&self, key: K) -> Result<(), DownlinkError> {
+        actions::<K, V>(&self.inner).remove_and_forget(key).await
+    }
+
+    /// Clear the contents of the map.
+    pub async fn clear(&self) -> Result<(), DownlinkError> {
+        actions::<K, V>(&self.inner).clear().await
+    }
+
+    /// Clear the contents of the map without waiting for the operation to complete.
+    pub async fn clear_and_forget(&self) -> Result<(), DownlinkError> {
+        actions::<K, V>(&self.inner).clear_and_forget().await
+    }
+
+    /// Retain only the first `n` elements of the map.
+    pub async fn take(&self, n: usize) -> Result<(), DownlinkError> {
+        actions::<K, V>(&self.inner).take(n).await
+    }
+
+    /// Retain only the first `n` elements of the map without waiting for the operation to complete.
+    pub async fn take_and_forget(&self, n: usize) -> Result<(), DownlinkError> {
+        actions::<K, V>(&self.inner).take_and_forget(n).await
+    }
+
+    /// Skip the first `n` elements of the map.
+    pub async fn skip(&self, n: usize) -> Result<(), DownlinkError> {
+        actions::<K, V>(&self.inner).skip(n).await
+    }
+
+    /// Skip the first `n` elements of the map without waiting for the operation to complete.
+    pub async fn skip_and_forget(&self, n: usize) -> Result<(), DownlinkError> {
+        actions::<K, V>(&self.inner).skip_and_forget(n).await
     }
 }
 
@@ -580,6 +794,20 @@ where
         super::await_optional(rx).await
     }
 
+    /// Update an entry into the map.
+    pub async fn update_discard(&self, key: K, value: V) -> Result<(), DownlinkError> {
+        let (tx, rx) = oneshot::channel();
+        let req = Request::new(tx);
+        self.sender
+            .send(MapAction::update_and_await(
+                key.into_value(),
+                value.into_value(),
+                req,
+            ))
+            .await?;
+        super::await_discard(rx).await
+    }
+
     /// Insert an entry into the map without waiting for the operation to complete.
     pub async fn update_and_forget(&self, key: K, value: V) -> Result<(), DownlinkError> {
         Ok(self
@@ -637,6 +865,16 @@ where
             .send(MapAction::remove_and_await(key.into_value(), req))
             .await?;
         super::await_optional(rx).await
+    }
+
+    /// Remove any value associated with a key.
+    pub async fn remove_discard(&self, key: K) -> Result<(), DownlinkError> {
+        let (tx, rx) = oneshot::channel();
+        let req = Request::new(tx);
+        self.sender
+            .send(MapAction::remove_and_await(key.into_value(), req))
+            .await?;
+        super::await_discard(rx).await
     }
 
     /// Remove any value associated with a key without waiting for the operation to complete.
@@ -782,7 +1020,7 @@ impl Display for MapViewError {
             Incompatibility::Value => "The value",
             Incompatibility::Both => "Both",
         };
-        write!(f, "A {} view of a downlink (key schema {} and value schema {})) was requested with key schema {} and value schema {}. {} schemas are incompatible. ", mode, existing_key, existing_value, requested_key, requested_value, reason)
+        write!(f, "A {} view of a map downlink (key schema {} and value schema {})) was requested with key schema {} and value schema {}. {} schemas are incompatible.", mode, existing_key, existing_value, requested_key, requested_value, reason)
     }
 }
 

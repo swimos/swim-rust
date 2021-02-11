@@ -12,13 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::downlink::typed::{UntypedEventDownlink, ViewMode};
+use crate::downlink::typed::UntypedEventDownlink;
 use crate::downlink::{Downlink, DownlinkError, Event};
 use futures::stream::unfold;
 use futures::Stream;
 use std::any::type_name;
 use std::cmp::Ordering;
-use std::fmt::{Debug, Formatter};
+use std::error::Error;
+use std::fmt::{Debug, Display, Formatter};
 use std::marker::PhantomData;
 use std::sync::Arc;
 use swim_common::form::{Form, ValidatedForm};
@@ -160,14 +161,20 @@ pub struct EventViewError {
     existing: StandardSchema,
     // A validation schema for the type of the requested view.
     requested: StandardSchema,
-    // The mode of the view.
-    mode: ViewMode,
 }
+
+impl Display for EventViewError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "A Read Only view of an event downlink with schema {} was requested but the original event downlink is running with schema {}.", self.requested, self.existing)
+    }
+}
+
+impl Error for EventViewError {}
 
 impl<T: ValidatedForm> EventDownlinkSubscriber<T> {
     /// Create a read-only view for a value downlink that converts all received values to a new type.
     /// The type of the view must have an equal or greater schema than the original downlink.
-    pub async fn covariant_cast<U: ValidatedForm>(
+    pub fn covariant_cast<U: ValidatedForm>(
         self,
     ) -> Result<EventDownlinkSubscriber<U>, EventViewError> {
         let schema_cmp = U::schema().partial_cmp(&T::schema());
@@ -178,7 +185,6 @@ impl<T: ValidatedForm> EventDownlinkSubscriber<T> {
             Err(EventViewError {
                 existing: T::schema(),
                 requested: U::schema(),
-                mode: ViewMode::ReadOnly,
             })
         }
     }

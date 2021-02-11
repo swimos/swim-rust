@@ -14,9 +14,11 @@
 
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lane::lifecycle::LaneLifecycle;
-use crate::agent::lane::model::action::{ActionLane, CommandLane, Commander};
+use crate::agent::lane::model::action::ActionLane;
+use crate::agent::lane::model::command::CommandLane;
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent};
+use crate::agent::lane::model::{action, command};
 use crate::agent::lane::tests::ExactlyOnce;
 use crate::agent::lifecycle::AgentLifecycle;
 use crate::agent::tests::stub_router::SingleChannelRouter;
@@ -131,8 +133,8 @@ struct DataAgentLifecycle {
 }
 
 enum DataAgentCommander {
-    ActionLaneCommander(Commander<String, i32>),
-    CommandLaneCommander(Commander<String, ()>),
+    ActionLaneCommander(action::Commander<String, i32>),
+    CommandLaneCommander(command::Commander<String>),
 }
 
 impl DataAgentCommander {
@@ -204,7 +206,7 @@ struct CommandLifecycle1 {
 impl CommandLifecycle1 {
     async fn on_command<Context>(
         &self,
-        command: String,
+        command: &String,
         _model: &CommandLane<String>,
         context: &Context,
     ) where
@@ -216,7 +218,7 @@ impl CommandLifecycle1 {
         if context
             .agent()
             .map_1
-            .update_direct(command, 1.into())
+            .update_direct(command.clone(), 1.into())
             .apply(ExactlyOnce)
             .await
             .is_err()
@@ -245,7 +247,7 @@ struct CommandLifecycle2 {
 impl CommandLifecycle2 {
     async fn on_command<Context>(
         &self,
-        command: String,
+        command: &String,
         _model: &CommandLane<String>,
         context: &Context,
     ) where
@@ -257,7 +259,7 @@ impl CommandLifecycle2 {
         if context
             .agent()
             .map_2
-            .update_direct(command, 1.0.into())
+            .update_direct(command.clone(), 1.0.into())
             .apply(ExactlyOnce)
             .await
             .is_err()

@@ -16,9 +16,9 @@ use crate::agent;
 use crate::agent::context::AgentExecutionContext;
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lane::lifecycle::{
-    ActionLaneLifecycle, DemandLaneLifecycle, DemandMapLaneLifecycle, StatefulLaneLifecycle,
+    CommandLaneLifecycle, DemandLaneLifecycle, DemandMapLaneLifecycle, StatefulLaneLifecycle,
 };
-use crate::agent::lane::model::action::CommandLane;
+use crate::agent::lane::model::command::CommandLane;
 use crate::agent::lane::model::demand::DemandLane;
 use crate::agent::lane::model::demand_map::DemandMapLane;
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
@@ -225,12 +225,12 @@ impl AgentLifecycle<ReportingAgent> for ReportingAgentLifecycle {
     }
 }
 
-impl<'a> ActionLaneLifecycle<'a, String, (), ReportingAgent> for ActionLifecycle {
+impl<'a> CommandLaneLifecycle<'a, String, ReportingAgent> for ActionLifecycle {
     type ResponseFuture = BoxFuture<'a, ()>;
 
     fn on_command<C>(
         &'a self,
-        command: String,
+        command: &'a String,
         _model: &'a CommandLane<String>,
         context: &'a C,
     ) -> Self::ResponseFuture
@@ -244,7 +244,7 @@ impl<'a> ActionLaneLifecycle<'a, String, (), ReportingAgent> for ActionLifecycle
             if context
                 .agent()
                 .data
-                .update_direct(command, 1.into())
+                .update_direct(command.clone(), 1.into())
                 .apply(ExactlyOnce)
                 .await
                 .is_err()
