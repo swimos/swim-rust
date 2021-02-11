@@ -20,23 +20,26 @@ use std::sync::{Arc, Mutex};
 
 #[test]
 fn foo_test() {
-    let mut tree = RTree::new(
-        NonZeroUsize::new(2).unwrap(),
-        NonZeroUsize::new(4).unwrap(),
-        SplitStrategy::Linear,
-    );
+    let tree = build_2d_search_tree();
 
-    tree.insert("First".to_string(), rect!((0.5, 0.5), (10.5, 10.5)));
-    eprintln!("tree = {:#?}", tree);
-    tree.insert("Second".to_string(), rect!((0.5, 0.5), (10.5, 10.5)));
-    eprintln!("tree = {:#?}", tree);
-    tree.remove(&"First".to_string());
-    eprintln!("tree = {:#?}", tree);
+    // eprintln!("tree = {:#?}", tree);
+    // let mut tree = RTree::new(
+    //     NonZeroUsize::new(2).unwrap(),
+    //     NonZeroUsize::new(4).unwrap(),
+    //     SplitStrategy::Linear,
+    // );
 
-    for (label, item) in tree.iter() {
-        eprintln!("label = {:#?}", label);
-        eprintln!("item = {:#?}", item);
-    }
+    // tree.insert("First".to_string(), rect!((0.5, 0.5), (10.5, 10.5)));
+    // eprintln!("tree = {:#?}", tree);
+    // tree.insert("Second".to_string(), rect!((0.5, 0.5), (10.5, 10.5)));
+    // eprintln!("tree = {:#?}", tree);
+    // tree.remove(&"First".to_string());
+    // eprintln!("tree = {:#?}", tree);
+    //
+    // for (label, item) in tree.iter() {
+    //     eprintln!("label = {:#?}", label);
+    //     eprintln!("item = {:#?}", item);
+    // }
 
     // let rects = vec![
     //     rect!((0.5, 0.5), (10.5, 10.5)),
@@ -54,33 +57,35 @@ fn foo_test() {
     // ];
 }
 
-fn test_tree<B: BoxBounded + Eq, L: Label>(
-    mut tree: RTree<L, B>,
-    entries: Vec<(L, B)>,
-    path: String,
-) {
+fn test_tree<B: BoxBounded, L: Label>(mut tree: RTree<L, B>, entries: Vec<(L, B)>, path: String) {
     assert_eq!(
         format!("{:#?}", tree),
         fs::read_to_string(format!("{}/add/0.txt", path)).unwrap()
     );
+    assert_eq!(tree.len(), 0);
 
     for (idx, (label, item)) in entries.clone().into_iter().enumerate() {
         tree.insert(label, item);
+
         assert_eq!(
             format!("{:#?}", tree),
             fs::read_to_string(format!("{}/add/{}.txt", path, idx + 1)).unwrap()
         );
+        assert_eq!(tree.len(), idx + 1);
     }
+
+    let full_tree_len = tree.len();
 
     for (idx, (label, item)) in entries.into_iter().enumerate() {
         let removed_item = tree.remove(&label).unwrap();
 
-        assert_eq!(removed_item, item);
+        assert_eq!(removed_item.get_mbb(), item.get_mbb());
 
         assert_eq!(
             format!("{:#?}", tree),
             fs::read_to_string(format!("{}/remove/{}.txt", path, idx + 1)).unwrap()
         );
+        assert_eq!(tree.len(), full_tree_len - idx - 1);
     }
 }
 
@@ -106,6 +111,7 @@ fn build_2d_search_tree() -> RTree<String, Rect<Point2D<f64>>> {
         SplitStrategy::Quadratic,
         rects,
     )
+    .unwrap()
 }
 
 fn build_3d_search_tree() -> RTree<String, Rect<Point3D<f64>>> {
@@ -166,34 +172,36 @@ fn build_3d_search_tree() -> RTree<String, Rect<Point3D<f64>>> {
         SplitStrategy::Quadratic,
         rects,
     )
+    .unwrap()
 }
 
-// #[test]
-// fn rtree_2d_linear_test() {
-//     let rects = vec![
-//         rect!((0.5, 0.5), (10.5, 10.5)),
-//         rect!((12.5, 0.5), (15.5, 15.5)),
-//         rect!((7.5, 7.5), (14.5, 14.5)),
-//         rect!((10.5, 11.5), (11.5, 12.5)),
-//         rect!((4.5, 4.5), (5.5, 6.5)),
-//         rect!((4.5, 9.5), (5.5, 11.5)),
-//         rect!((13.5, 0.5), (14.5, 1.5)),
-//         rect!((13.5, 13.5), (16.5, 16.5)),
-//         rect!((2.5, 13.5), (4.5, 16.5)),
-//         rect!((2.5, 2.5), (3.5, 3.5)),
-//         rect!((3.5, 6.5), (4.5, 11.5)),
-//         rect!((0.5, 0.5), (5.5, 5.5)),
-//     ];
-//
-//     let tree = RTree::new(
-//         NonZeroUsize::new(2).unwrap(),
-//         NonZeroUsize::new(4).unwrap(),
-//         SplitStrategy::Linear,
-//     );
-//
-//     test_tree(tree, rects, String::from("src/rtree/resources/2d/linear"));
-// }
-//
+#[test]
+fn rtree_2d_linear_test() {
+    let rects = vec![
+        ("First".to_string(), rect!((0.5, 0.5), (10.5, 10.5))),
+        ("Second".to_string(), rect!((12.5, 0.5), (15.5, 15.5))),
+        ("Third".to_string(), rect!((7.5, 7.5), (14.5, 14.5))),
+        ("Fourth".to_string(), rect!((10.5, 11.5), (11.5, 12.5))),
+        ("Fifth".to_string(), rect!((4.5, 4.5), (5.5, 6.5))),
+        ("Sixth".to_string(), rect!((4.5, 9.5), (5.5, 11.5))),
+        ("Seventh".to_string(), rect!((13.5, 0.5), (14.5, 1.5))),
+        ("Eighth".to_string(), rect!((13.5, 13.5), (16.5, 16.5))),
+        ("Ninth".to_string(), rect!((2.5, 13.5), (4.5, 16.5))),
+        ("Tenth".to_string(), rect!((2.5, 2.5), (3.5, 3.5))),
+        ("Eleventh".to_string(), rect!((3.5, 6.5), (4.5, 11.5))),
+        ("Twelfth".to_string(), rect!((0.5, 0.5), (5.5, 5.5))),
+    ];
+
+    let tree = RTree::new(
+        NonZeroUsize::new(2).unwrap(),
+        NonZeroUsize::new(4).unwrap(),
+        SplitStrategy::Linear,
+    )
+    .unwrap();
+
+    test_tree(tree, rects, String::from("src/rtree/resources/2d/linear"));
+}
+
 // #[test]
 // fn rtree_3d_linear_test() {
 //     let rects = vec![

@@ -148,7 +148,7 @@ where
         for (i, item) in entries.iter().enumerate() {
             let mbb = item.get_mbb();
 
-            for dim in 0..mbb.get_coord_count() {
+            for dim in 0..B::get_coord_count() {
                 let low_dim = mbb.low.get_nth_coord(dim).unwrap();
                 let high_dim = mbb.high.get_nth_coord(dim).unwrap();
 

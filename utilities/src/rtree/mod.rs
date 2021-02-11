@@ -19,8 +19,10 @@ pub use super::rect;
 pub use crate::rtree::rectangles::*;
 pub use crate::rtree::strategies::*;
 use num::traits::Pow;
-use std::collections::hash_map::Iter;
+use std::collections::hash_map;
 use std::collections::HashMap;
+use std::error::Error;
+use std::fmt::{Display, Formatter};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
@@ -44,7 +46,7 @@ where
     B: BoxBounded,
 {
     root: Node<L, B>,
-    items: HashMap<LabelPtr<L>, Arc<Entry<L, B>>>,
+    lookup_map: HashMap<LabelPtr<L>, Arc<Entry<L, B>>>,
 }
 
 impl<L, B> RTree<L, B>
@@ -87,13 +89,14 @@ where
         min_children: NonZeroUsize,
         max_children: NonZeroUsize,
         split_strat: SplitStrategy,
-    ) -> Self {
-        check_children(&min_children, &max_children);
+    ) -> Result<Self, RTreeError<L>> {
+        Self::check_children(&min_children, &max_children)?;
+        Self::check_data_type()?;
 
-        RTree {
+        Ok(RTree {
             root: Node::new_root(min_children.get(), max_children.get(), split_strat),
-            items: HashMap::new(),
-        }
+            lookup_map: HashMap::new(),
+        })
     }
 
     /// Returns the number of items in the tree.
@@ -111,7 +114,7 @@ where
     /// assert_eq!(rtree.len(), 2);
     /// ```
     pub fn len(&self) -> usize {
-        self.items.len()
+        self.lookup_map.len()
     }
 
     /// Returns whether or not the tree has any items.
@@ -174,10 +177,9 @@ where
     /// rtree.insert(rect!((0.0, 0.0), (2.0, 2.0)));
     /// assert_eq!(rtree.len(), 2);
     /// ```
-    pub fn insert(&mut self, label: L, item: B) {
-        //Todo
-        if let Some(_) = self.items.get(&label) {
-            panic!("Already present")
+    pub fn insert(&mut self, label: L, item: B) -> Result<(), RTreeError<L>> {
+        if self.lookup_map.get(&label).is_some() {
+            return Err(RTreeError::DuplicateLabelError(label));
         }
 
         let label_ptr = Arc::new(label);
@@ -187,9 +189,10 @@ where
             item,
         });
 
-        self.items.insert(label_ptr, item.clone());
+        self.lookup_map.insert(label_ptr, item.clone());
 
         self.internal_insert(item, 0);
+        Ok(())
     }
 
     /// Removes and returns an item from the tree that has bounding box equal to the given bounding box.
@@ -224,7 +227,7 @@ where
     /// assert_eq!(rtree.len(), 0);
     /// ```
     pub fn remove(&mut self, label: &L) -> Option<B> {
-        let item = self.items.get(label);
+        let item = self.lookup_map.get(label);
 
         let bounding_box = match item {
             None => return None,
@@ -267,7 +270,7 @@ where
             }
         }
 
-        self.items.remove(label);
+        self.lookup_map.remove(label);
 
         Some(removed)
     }
@@ -316,21 +319,30 @@ where
         max_children: NonZeroUsize,
         split_strat: SplitStrategy,
         items: Vec<(L, B)>,
-    ) -> RTree<L, B> {
-        check_children(&min_children, &max_children);
+    ) -> Result<RTree<L, B>, RTreeError<L>> {
+        Self::check_children(&min_children, &max_children)?;
+        Self::check_data_type()?;
 
-        //Todo check for duplicated labels
-        let (items, entries) = items
-            .into_iter()
-            .map(|(label, item)| {
-                let label = Arc::new(label);
-                let entry = Arc::new(Entry::Leaf {
-                    label: label.clone(),
-                    item,
-                });
-                ((label, entry.clone()), entry)
-            })
-            .unzip();
+        let mut lookup_map = HashMap::new();
+        let mut entries = Vec::new();
+
+        for (label, item) in items.into_iter() {
+            let label = Arc::new(label);
+            let entry = Arc::new(Entry::Leaf {
+                label: label.clone(),
+                item,
+            });
+
+            match lookup_map.entry(label) {
+                hash_map::Entry::Occupied(occ) => {
+                    let label = (**occ.key()).clone();
+                    return Err(RTreeError::DuplicateLabelError(label));
+                }
+                hash_map::Entry::Vacant(vac) => vac.insert(entry.clone()),
+            };
+
+            entries.push(entry);
+        }
 
         let root = RTree::internal_bulk_load(
             min_children.get(),
@@ -340,7 +352,7 @@ where
             0,
         );
 
-        RTree { root, items }
+        Ok(RTree { root, lookup_map })
     }
 
     fn internal_insert(&mut self, item: EntryPtr<L, B>, level: usize) {
@@ -451,7 +463,57 @@ where
 
     pub fn iter(&self) -> RTreeIter<L, B> {
         RTreeIter {
-            iter: self.items.iter(),
+            iter: self.lookup_map.iter(),
+        }
+    }
+
+    fn check_children(
+        min_children: &NonZeroUsize,
+        max_children: &NonZeroUsize,
+    ) -> Result<(), RTreeError<L>> {
+        if min_children.get() <= max_children.get() / 2 {
+            Ok(())
+        } else {
+            Err(RTreeError::ChildrenSizeError)
+        }
+    }
+
+    fn check_data_type() -> Result<(), RTreeError<L>> {
+        if B::get_coord_count() > 3 {
+            Err(RTreeError::DataTypeError)
+        } else {
+            Ok(())
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum RTreeError<L>
+where
+    L: Label,
+{
+    DuplicateLabelError(L),
+    ChildrenSizeError,
+    DataTypeError,
+}
+
+impl<L> Error for RTreeError<L> where L: Label {}
+
+impl<L> Display for RTreeError<L>
+where
+    L: Label,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RTreeError::DuplicateLabelError(label) => {
+                write!(f, "The label `{:?}` already exists.", label)
+            }
+            RTreeError::ChildrenSizeError => {
+                write!(f, "The minimum number of children cannot be more than half of the maximum number of children.")
+            }
+            RTreeError::DataTypeError => {
+                write!(f, "Only 2D and 3D data types are currently supported!")
+            }
         }
     }
 }
@@ -461,7 +523,7 @@ where
     L: Label,
     B: BoxBounded,
 {
-    iter: Iter<'a, LabelPtr<L>, Arc<Entry<L, B>>>,
+    iter: hash_map::Iter<'a, LabelPtr<L>, Arc<Entry<L, B>>>,
 }
 
 impl<'a, L, B> Iterator for RTreeIter<'a, L, B>
@@ -511,15 +573,12 @@ fn calculate_chunk_size(node_capacity: usize, coord_count: usize, entries_count:
     } else if coord_count == 3 {
         leaf_pages.cbrt()
     } else {
-        panic!("Only 2D and 3D data is supported!")
+        // Only 2D and 3D data types are currently supported.
+        unreachable!()
     };
 
     let chunk_size = node_capacity * (vertical_chunks.pow((coord_count - 1) as f64) as usize);
     chunk_size as usize
-}
-
-fn check_children(min_children: &NonZeroUsize, max_children: &NonZeroUsize) {
-    assert!(min_children.get() <= max_children.get() / 2, "The minimum number of children cannot be more than half of the maximum number of children.");
 }
 
 #[derive(Debug, Clone)]

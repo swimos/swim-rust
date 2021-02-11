@@ -400,7 +400,7 @@ pub trait BoxBounded: Clone + Debug {
     fn get_center(&self) -> Self::Point;
 
     /// Returns the number of dimensions of the object.
-    fn get_coord_count(&self) -> usize {
+    fn get_coord_count() -> usize {
         Self::Point::get_coord_count()
     }
 
