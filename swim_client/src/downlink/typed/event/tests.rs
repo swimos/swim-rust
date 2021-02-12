@@ -31,6 +31,7 @@ use swim_common::model::Value;
 use swim_common::routing::RoutingError;
 use swim_common::sink::item::ItemSender;
 use tokio::sync::mpsc;
+use tokio_stream::wrappers::ReceiverStream;
 
 fn make_raw() -> ValMap {
     let mut map = ValMap::new();
@@ -274,7 +275,7 @@ fn make_event_downlink<T: ValidatedForm>() -> Components<T> {
     let (dl, rx) = crate::downlink::model::event::create_downlink(
         T::schema(),
         SchemaViolations::Report,
-        update_rx,
+        ReceiverStream::new(update_rx),
         sender,
         DownlinkConfig {
             buffer_size: NonZeroUsize::new(8).unwrap(),

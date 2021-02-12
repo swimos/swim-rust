@@ -28,6 +28,7 @@ use swim_common::model::Value;
 use swim_common::routing::RoutingError;
 use swim_common::sink::item::ItemSender;
 use tokio::sync::mpsc;
+use tokio_stream::wrappers::ReceiverStream;
 
 async fn responder(mut state: SharedValue, mut rx: mpsc::Receiver<Action>) {
     while let Some(value) = rx.recv().await {
@@ -217,7 +218,7 @@ fn make_value_downlink<T: ValidatedForm>(init: T) -> Components<T> {
     let (dl, rx) = crate::downlink::model::value::create_downlink(
         init_value,
         Some(T::schema()),
-        update_rx,
+        ReceiverStream::new(update_rx),
         sender,
         DownlinkConfig {
             buffer_size: NonZeroUsize::new(8).unwrap(),

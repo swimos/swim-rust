@@ -75,6 +75,7 @@ use utilities::uri::RelativeUri;
 #[doc(hidden)]
 #[allow(unused_imports)]
 pub use agent_derive::*;
+use tokio_stream::wrappers::ReceiverStream;
 
 /// Trait that must be implemented for any agent. This is essentially just boilerplate and will
 /// eventually be implemented using a derive macro.
@@ -223,7 +224,7 @@ where
 
         let task_manager: FuturesUnordered<Instrumented<Eff>> = FuturesUnordered::new();
 
-        let scheduler_task = rx
+        let scheduler_task = ReceiverStream::new(rx)
             .take_until(stop_trigger)
             .for_each_concurrent(None, |eff| eff)
             .boxed()
@@ -490,7 +491,7 @@ where
         Ok(lane::channels::task::run_lane_io(
             handler,
             uplink_factory,
-            envelopes,
+            ReceiverStream::new(envelopes),
             deferred,
             config,
             context,
@@ -552,7 +553,7 @@ where
         Ok(lane::channels::task::run_lane_io(
             handler,
             uplink_factory,
-            envelopes,
+            ReceiverStream::new(envelopes),
             deferred,
             config,
             context,
@@ -601,10 +602,14 @@ where
     ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
         let ActionLaneIo { lane } = self;
 
-        Ok(
-            lane::channels::task::run_action_lane_io(lane, envelopes, config, context, route)
-                .boxed(),
+        Ok(lane::channels::task::run_action_lane_io(
+            lane,
+            ReceiverStream::new(envelopes),
+            config,
+            context,
+            route,
         )
+        .boxed())
     }
 
     fn attach_boxed(
@@ -645,10 +650,14 @@ where
     ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
         let CommandLaneIo { lane } = self;
 
-        Ok(
-            lane::channels::task::run_command_lane_io(lane, envelopes, config, context, route)
-                .boxed(),
+        Ok(lane::channels::task::run_command_lane_io(
+            lane,
+            ReceiverStream::new(envelopes),
+            config,
+            context,
+            route,
         )
+        .boxed())
     }
 
     fn attach_boxed(
@@ -1133,7 +1142,14 @@ where
     ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
         let SupplyLaneIo { stream } = self;
 
-        Ok(run_supply_lane_io(envelopes, config, context, route, stream).boxed())
+        Ok(run_supply_lane_io(
+            ReceiverStream::new(envelopes),
+            config,
+            context,
+            route,
+            stream,
+        )
+        .boxed())
     }
 
     fn attach_boxed(
@@ -1214,16 +1230,14 @@ where
     ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
         let DemandLaneIo { response_rx } = self;
 
-        Ok(
-            lane::channels::task::run_demand_lane_io(
-                envelopes,
-                config,
-                context,
-                route,
-                response_rx,
-            )
-            .boxed(),
+        Ok(lane::channels::task::run_demand_lane_io(
+            ReceiverStream::new(envelopes),
+            config,
+            context,
+            route,
+            response_rx,
         )
+        .boxed())
     }
 
     fn attach_boxed(
@@ -1309,13 +1323,13 @@ where
     Value: Any + Send + Sync + Form + Clone + Debug,
     L: for<'l> DemandMapLaneLifecycle<'l, Key, Value, Agent>,
 {
-    let (lifecycle_tx, event_stream) = mpsc::channel(buffer_size.get());
+    let (lifecycle_tx, event_rx) = mpsc::channel(buffer_size.get());
     let (lane, topic) = model::demand_map::make_lane_model(buffer_size, lifecycle_tx);
 
     let tasks = DemandMapLifecycleTasks(LifecycleTasks {
         name: name.into(),
         lifecycle,
-        event_stream,
+        event_stream: ReceiverStream::new(event_rx),
         projection,
     });
 
@@ -1380,7 +1394,7 @@ where
         let lane_task = lane::channels::task::run_lane_io(
             message_handler,
             uplink_factory,
-            envelopes,
+            ReceiverStream::new(envelopes),
             topic_rx.subscriber(),
             config,
             context,
