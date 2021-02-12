@@ -53,6 +53,8 @@ pub struct WsStreamSelector<S, M, T> {
 }
 
 pub struct SelectRw<'a, S, M, T>(&'a mut WsStreamSelector<S, M, T>);
+pub struct SelectW<'a, S, M, T>(&'a mut WsStreamSelector<S, M, T>);
+
 
 impl<'a, S, M, T> Future for SelectRw<'a, S, M, T>
 where
@@ -149,6 +151,70 @@ where
     }
 }
 
+impl<'a, S, M, T> Future for SelectW<'a, S, M, T>
+    where
+        M: Stream<Item = T> + Unpin,
+        S: Sink<T>,
+        S: Stream<Item = Result<T, SinkError<S, T>>> + Unpin,
+{
+    type Output = Option<Result<bool, <S as Sink<T>>::Error>>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let WsStreamSelector {
+            ws,
+            messages,
+            pending,
+            bias,
+            state,
+        } = self.get_mut().0;
+        match state {
+            State::Terminated => Poll::Ready(None),
+            State::Terminating => {
+                *state = State::Terminated;
+                Poll::Ready(None)
+            }
+            State::ClosePending => {
+                let result = ready!(ws.poll_close_unpin(cx));
+                *state = State::Terminated;
+                match result {
+                    Err(e) => Poll::Ready(Some(Err(e))),
+                    _ => Poll::Ready(None),
+                }
+            }
+            _ => {
+                if pending.is_some() {
+                    let result = ready!(try_send(ws, cx, pending));
+                    *bias = false;
+                    Poll::Ready(result.map(|r| r.map(|_| true)))
+                } else {
+                    match messages {
+                        Some(message_str) => {
+                            let next = ready!(message_str.poll_next_unpin(cx));
+                            match next {
+                                Some(v) => {
+                                    *pending = Some(v);
+                                    let result = ready!(try_send(ws, cx, pending));
+                                    *bias = false;
+                                    Poll::Ready(result.map(|r| r.map(|_| true)))
+                                }
+                                _ => {
+                                    *messages = None;
+                                    *bias = false;
+                                    Poll::Ready(Some(Ok(false)))
+                                }
+                            }
+                        }
+                        _ => {
+                            *bias = false;
+                            Poll::Ready(Some(Ok(false)))
+                        },
+                    }
+                }
+            }
+        }
+    }
+}
+
 impl<S, M, T> WsStreamSelector<S, M, T>
 where
     M: Stream<Item = T>,
@@ -167,6 +233,10 @@ where
 
     pub fn select_rw(&mut self) -> SelectRw<S, M, T> {
         SelectRw(self)
+    }
+
+    pub fn select_w(&mut self) -> SelectW<S, M, T> {
+        SelectW(self)
     }
 
     pub fn is_terminated(&self) -> bool {
@@ -205,6 +275,17 @@ where
     M: Stream<Item = T> + Unpin,
     S: Sink<T>,
     S: Stream<Item = Result<T, SinkError<S, T>>> + Unpin,
+{
+    fn is_terminated(&self) -> bool {
+        self.0.is_terminated()
+    }
+}
+
+impl<'a, S, M, T> FusedFuture for SelectW<'a, S, M, T>
+    where
+        M: Stream<Item = T> + Unpin,
+        S: Sink<T>,
+        S: Stream<Item = Result<T, SinkError<S, T>>> + Unpin,
 {
     fn is_terminated(&self) -> bool {
         self.0.is_terminated()
