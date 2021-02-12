@@ -19,10 +19,12 @@ pub use super::rect;
 pub use crate::rtree::rectangles::*;
 pub use crate::rtree::strategies::*;
 use num::traits::Pow;
+use std::borrow::Borrow;
 use std::collections::hash_map;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
+use std::hash::{Hash, Hasher};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
@@ -46,7 +48,7 @@ where
     B: BoxBounded,
 {
     root: Node<L, B>,
-    lookup_map: HashMap<LabelPtr<L>, Arc<Entry<L, B>>>,
+    lookup_map: HashMap<RTreeKey<L>, Arc<Entry<L, B>>>,
 }
 
 impl<L, B> RTree<L, B>
@@ -183,14 +185,17 @@ where
             return Err(RTreeError::DuplicateLabelError(label));
         }
 
-        let label_ptr = Arc::new(label);
+        let item = Arc::new(Entry::Leaf { label, item });
 
-        let item = Arc::new(Entry::Leaf {
-            label: label_ptr.clone(),
-            item,
-        });
+        let label_raw_ptr: *const L = match &*item {
+            Entry::Leaf { label, .. } => label,
+            Entry::Branch { .. } => {
+                unreachable!()
+            }
+        };
 
-        self.lookup_map.insert(label_ptr, item.clone());
+        self.lookup_map
+            .insert(RTreeKey(label_raw_ptr), item.clone());
 
         self.internal_insert(item, 0);
         Ok(())
@@ -228,14 +233,9 @@ where
     /// assert_eq!(rtree.len(), 0);
     /// ```
     pub fn remove(&mut self, label: &L) -> Option<B> {
-        let item = self.lookup_map.get(label);
+        let item = self.lookup_map.remove(label)?;
 
-        let bounding_box = match item {
-            None => return None,
-            Some(item) => item.get_mbb(),
-        };
-
-        let (removed, maybe_orphan_nodes) = self.root.remove(bounding_box, label).unwrap();
+        let (removed, maybe_orphan_nodes) = self.root.remove(item.get_mbb(), label).unwrap();
 
         if self.root.num_entries() == 1 && !self.root.is_leaf() {
             let entry_ptr = self.root.entries.pop().unwrap();
@@ -270,8 +270,6 @@ where
                 }
             }
         }
-
-        self.lookup_map.remove(label);
 
         Some(removed)
     }
@@ -328,20 +326,20 @@ where
         let mut entries = Vec::new();
 
         for (label, item) in items.into_iter() {
-            let label = Arc::new(label);
-            let entry = Arc::new(Entry::Leaf {
-                label: label.clone(),
-                item,
-            });
+            if lookup_map.get(&label).is_some() {
+                return Err(RTreeError::DuplicateLabelError(label));
+            }
 
-            match lookup_map.entry(label) {
-                hash_map::Entry::Occupied(occ) => {
-                    let label = (**occ.key()).clone();
-                    return Err(RTreeError::DuplicateLabelError(label));
+            let entry = Arc::new(Entry::Leaf { label, item });
+
+            let label_raw_ptr: *const L = match &*entry {
+                Entry::Leaf { label, .. } => label,
+                Entry::Branch { .. } => {
+                    unreachable!()
                 }
-                hash_map::Entry::Vacant(vac) => vac.insert(entry.clone()),
             };
 
+            lookup_map.insert(RTreeKey(label_raw_ptr), entry.clone());
             entries.push(entry);
         }
 
@@ -462,7 +460,6 @@ where
         }
     }
 
-    //Todo
     pub fn iter(&self) -> RTreeIter<L, B> {
         RTreeIter {
             iter: self.lookup_map.iter(),
@@ -489,7 +486,27 @@ where
     }
 }
 
-//Todo
+#[derive(Debug, Clone, Eq)]
+struct RTreeKey<L>(*const L);
+
+impl<L: PartialEq> PartialEq for RTreeKey<L> {
+    fn eq(&self, other: &Self) -> bool {
+        unsafe { *self.0 == *other.0 }
+    }
+}
+
+impl<L: Hash> Hash for RTreeKey<L> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        unsafe { (*self.0).hash(state) }
+    }
+}
+
+impl<L> Borrow<L> for RTreeKey<L> {
+    fn borrow(&self) -> &L {
+        unsafe { &*self.0 }
+    }
+}
+
 #[derive(Debug)]
 pub enum RTreeError<L>
 where
@@ -526,7 +543,7 @@ where
     L: Label,
     B: BoxBounded,
 {
-    iter: hash_map::Iter<'a, LabelPtr<L>, Arc<Entry<L, B>>>,
+    iter: hash_map::Iter<'a, RTreeKey<L>, Arc<Entry<L, B>>>,
 }
 
 impl<'a, L, B> Iterator for RTreeIter<'a, L, B>
@@ -537,10 +554,11 @@ where
     type Item = (&'a L, &'a B);
 
     fn next(&mut self) -> Option<Self::Item> {
-        let (label, entry) = self.iter.next()?;
+        let (key, entry) = self.iter.next()?;
+        let label = key.borrow();
 
         match &**entry {
-            Entry::Leaf { item, .. } => return Some((&**label, item)),
+            Entry::Leaf { item, .. } => return Some((label, item)),
             Entry::Branch { .. } => {
                 unreachable!()
             }
@@ -725,8 +743,9 @@ where
             for (idx, entry) in self.entries.iter().enumerate() {
                 match **entry {
                     Entry::Leaf {
-                        item: ref entry, ..
-                    } if entry.get_mbb() == bounding_box => {
+                        label: ref entry_label,
+                        item: ref entry,
+                    } if entry.get_mbb() == bounding_box && entry_label == label => {
                         remove_idx = Some(idx);
                         break;
                     }
@@ -883,8 +902,6 @@ where
 }
 
 type EntryPtr<L, B> = Arc<Entry<L, B>>;
-type LabelPtr<L> = Arc<L>;
-
 type MaybeOrphans<L, B> = Option<Vec<EntryPtr<L, B>>>;
 type MaybeSplit<L, B> = Option<(EntryPtr<L, B>, EntryPtr<L, B>)>;
 type SplitGroup<L, B> = (Vec<EntryPtr<L, B>>, Rect<<B as BoxBounded>::Point>);
@@ -896,7 +913,7 @@ where
     B: BoxBounded,
 {
     Leaf {
-        label: LabelPtr<L>,
+        label: L,
         item: B,
     },
     Branch {

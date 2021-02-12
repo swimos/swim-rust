@@ -18,6 +18,12 @@ use std::fs;
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
 
+//Todo test insert with same bb but different labels
+//Todo test remove with same bb but different labels
+//Todo test that the tree is still immutable
+//Todo test iterator
+//Todo documentation
+
 fn test_tree<B: BoxBounded, L: Label>(mut tree: RTree<L, B>, entries: Vec<(L, B)>, path: String) {
     assert_eq!(
         format!("{:#?}", tree.root),
