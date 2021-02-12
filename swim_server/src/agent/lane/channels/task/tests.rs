@@ -36,6 +36,7 @@ use futures::stream::{once, BoxStream, FusedStream};
 use futures::{Future, FutureExt, Stream, StreamExt};
 use pin_utils::pin_mut;
 use std::collections::{HashMap, HashSet};
+use std::convert::identity;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
@@ -1066,7 +1067,8 @@ async fn handle_action_lane_immediate_unlink_request() {
     let (_, result, mut router_rx) = join3(spawn_task, task, io_task).await;
 
     assert!(matches!(result, Ok(errs) if errs.is_empty()));
-    assert!(router_rx.recv().now_or_never().is_none());
+
+    assert!(router_rx.recv().now_or_never().and_then(identity).is_none());
 }
 
 #[tokio::test]
