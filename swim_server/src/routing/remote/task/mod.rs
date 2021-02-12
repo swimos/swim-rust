@@ -22,9 +22,9 @@ use crate::routing::remote::RoutingRequest;
 use crate::routing::{
     ConnectionDropped, Route, RoutingAddr, ServerRouter, ServerRouterFactory, TaggedEnvelope,
 };
-use futures::future::BoxFuture;
-use futures::stream;
-use futures::{select_biased, FutureExt, StreamExt};
+use futures::future::{join, BoxFuture};
+use futures::{select_biased, stream, FutureExt, Sink, Stream, StreamExt};
+use pin_utils::pin_mut;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::convert::TryFrom;
@@ -135,10 +135,9 @@ where
             .map(|TaggedEnvelope(_, envelope)| WsMessage::Text(envelope.into_value().to_string()));
         let outgoing_payloads = stream::select(outgoing_payloads, missing_node_rx);
 
-        let selector = WsStreamSelector::new(&mut ws_stream, outgoing_payloads);
+        let mut selector = WsStreamSelector::new(&mut ws_stream, outgoing_payloads);
 
         let mut stop_fused = stop_signal.fuse();
-        let mut select_stream = selector;
         let mut timeout = sleep(config.activity_timeout);
 
         let mut resolved: HashMap<RelativePath, Route> = HashMap::new();
@@ -158,7 +157,7 @@ where
                 _ = (&mut timeout).fuse() => {
                     break Completion::TimedOut;
                 }
-                event = select_stream.select_rw() => event,
+                event = selector.select_rw() => event,
             };
 
             if let Some(event) = next {
@@ -166,32 +165,34 @@ where
                     Ok(SelectorResult::Read(msg)) => match msg {
                         WsMessage::Text(msg) => match read_envelope(&msg) {
                             Ok(envelope) => {
-                                if let Err((env, _err)) = dispatch_envelope(
-                                    &mut router,
-                                    &mut resolved,
-                                    envelope,
-                                    config.connection_retries,
-                                    sleep,
-                                )
-                                .await
-                                {
-                                    if let EnvelopeHeader::OutgoingLink(
-                                        OutgoingHeader::Link(_),
-                                        path,
-                                    ) = env.header
-                                    {
-                                        if missing_node_tx
-                                            .send(WsMessage::Text(
-                                                Envelope::node_not_found(path.node, path.lane)
-                                                    .into_value()
-                                                    .to_string(),
-                                            ))
-                                            .await
-                                            .is_err()
-                                        {
-                                            //Todo error
-                                        };
+                                let (done_tx, done_rx) = trigger::trigger();
+
+                                let dispatch_task = async {
+                                    let dispatch_result = dispatch_envelope(
+                                        &mut router,
+                                        &mut resolved,
+                                        envelope,
+                                        config.connection_retries,
+                                        sleep,
+                                    )
+                                    .await;
+                                    if let Err((env, _)) = dispatch_result {
+                                        handle_not_found(env, &missing_node_tx).await;
                                     }
+                                }
+                                .then(move |_| async {
+                                    done_tx.trigger();
+                                });
+
+                                let write_task = write_to_socket_only(
+                                    &mut selector,
+                                    done_rx,
+                                    yield_mod,
+                                    &mut iteration_count,
+                                );
+                                let (_, write_result) = join(dispatch_task, write_task).await;
+                                if let Err(err) = write_result {
+                                    break Completion::Failed(err);
                                 }
                             }
                             Err(c) => {
@@ -471,4 +472,61 @@ where
         );
         msg_tx
     }
+}
+
+fn link_or_sync(env: Envelope) -> Option<RelativePath> {
+    match env.header {
+        EnvelopeHeader::OutgoingLink(OutgoingHeader::Link(_), path) => Some(path),
+        EnvelopeHeader::OutgoingLink(OutgoingHeader::Sync(_), path) => Some(path),
+        _ => None,
+    }
+}
+
+async fn handle_not_found(env: Envelope, sender: &mpsc::Sender<WsMessage>) {
+    if let Some(RelativePath { node, lane }) = link_or_sync(env) {
+        let not_found = Envelope::node_not_found(node, lane);
+        //An error here means the web socket connection has failed and will produce an error
+        //the next time it is polled so it is fine to discard this error.
+        let _ = sender.send(not_found.into()).await;
+    }
+}
+
+async fn write_to_socket_only<S, M, T>(
+    selector: &mut WsStreamSelector<S, M, T>,
+    done: trigger::Receiver,
+    yield_mod: usize,
+    iteration_count: &mut usize,
+) -> Result<(), <S as Sink<T>>::Error>
+where
+    M: Stream<Item = T> + Unpin,
+    S: Sink<T>,
+    S: Stream<Item = Result<T, <S as Sink<T>>::Error>> + Unpin,
+{
+    let write_stream = stream::unfold(
+        (selector, iteration_count),
+        |(selector, iteration_count)| async {
+            let write_result = selector.select_w().await;
+            match write_result {
+                Some(Ok(true)) => {
+                    *iteration_count += 1;
+                    if *iteration_count % yield_mod == 0 {
+                        tokio::task::yield_now().await;
+                    }
+                    Some((Ok(()), (selector, iteration_count)))
+                }
+                Some(Err(e)) => Some((Err(e), (selector, iteration_count))),
+                _ => None,
+            }
+        },
+    )
+    .take_until(done);
+
+    pin_mut!(write_stream);
+
+    while let Some(result) = write_stream.next().await {
+        if result.is_err() {
+            return result;
+        }
+    }
+    Ok(())
 }

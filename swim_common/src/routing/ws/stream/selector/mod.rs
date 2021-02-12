@@ -55,7 +55,6 @@ pub struct WsStreamSelector<S, M, T> {
 pub struct SelectRw<'a, S, M, T>(&'a mut WsStreamSelector<S, M, T>);
 pub struct SelectW<'a, S, M, T>(&'a mut WsStreamSelector<S, M, T>);
 
-
 impl<'a, S, M, T> Future for SelectRw<'a, S, M, T>
 where
     M: Stream<Item = T> + Unpin,
@@ -152,10 +151,10 @@ where
 }
 
 impl<'a, S, M, T> Future for SelectW<'a, S, M, T>
-    where
-        M: Stream<Item = T> + Unpin,
-        S: Sink<T>,
-        S: Stream<Item = Result<T, SinkError<S, T>>> + Unpin,
+where
+    M: Stream<Item = T> + Unpin,
+    S: Sink<T>,
+    S: Stream<Item = Result<T, SinkError<S, T>>> + Unpin,
 {
     type Output = Option<Result<bool, <S as Sink<T>>::Error>>;
 
@@ -207,7 +206,7 @@ impl<'a, S, M, T> Future for SelectW<'a, S, M, T>
                         _ => {
                             *bias = false;
                             Poll::Ready(Some(Ok(false)))
-                        },
+                        }
                     }
                 }
             }
@@ -282,10 +281,10 @@ where
 }
 
 impl<'a, S, M, T> FusedFuture for SelectW<'a, S, M, T>
-    where
-        M: Stream<Item = T> + Unpin,
-        S: Sink<T>,
-        S: Stream<Item = Result<T, SinkError<S, T>>> + Unpin,
+where
+    M: Stream<Item = T> + Unpin,
+    S: Sink<T>,
+    S: Stream<Item = Result<T, SinkError<S, T>>> + Unpin,
 {
     fn is_terminated(&self) -> bool {
         self.0.is_terminated()

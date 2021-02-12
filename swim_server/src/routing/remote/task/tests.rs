@@ -548,12 +548,13 @@ async fn task_receive_sync_message_missing_node() {
 
     let test_case = async move {
         assert!(sock_in.send(Ok(message_for(envelope))).await.is_ok());
-        sock_out.next().await;
-        panic!("No messages should be received")
+        let message = sock_out.next().await.unwrap();
+        let expected: WsMessage = Envelope::node_not_found("/missing", "/lane").into();
+        assert_eq!(message, expected);
     };
 
     let result = timeout::timeout(Duration::from_secs(5), join(task, test_case)).await;
-    assert!(result.is_err());
+    assert!(result.is_ok());
 }
 
 #[tokio::test]
@@ -755,7 +756,6 @@ async fn read_causes_write_buffer_to_fill() {
     let t4 = tokio::time::timeout(task_to, generate_inputs);
 
     let result = join4(t1, t2, t3, t4).await;
-    println!("{:?}", result);
     assert!(matches!(
         result,
         (Ok(ConnectionDropped::Closed), Ok(_), Ok(_), Ok(_))
