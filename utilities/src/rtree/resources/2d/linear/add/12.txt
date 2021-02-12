@@ -1,295 +1,304 @@
-RTree {
-    root: Node {
-        entries: [
-            Branch {
-                mbb: Rect {
-                    low: Point2D {
-                        x: 4.5,
-                        y: 0.5,
-                    },
-                    high: Point2D {
-                        x: 16.5,
-                        y: 16.5,
-                    },
+Node {
+    entries: [
+        Branch {
+            mbb: Rect {
+                low: Point2D {
+                    x: 4.5,
+                    y: 0.5,
                 },
-                child: Node {
-                    entries: [
-                        Branch {
-                            mbb: Rect {
-                                low: Point2D {
-                                    x: 7.5,
-                                    y: 0.5,
-                                },
-                                high: Point2D {
-                                    x: 14.5,
-                                    y: 14.5,
-                                },
-                            },
-                            child: Node {
-                                entries: [
-                                    Leaf {
-                                        item: Rect {
-                                            low: Point2D {
-                                                x: 13.5,
-                                                y: 0.5,
-                                            },
-                                            high: Point2D {
-                                                x: 14.5,
-                                                y: 1.5,
-                                            },
-                                        },
-                                    },
-                                    Leaf {
-                                        item: Rect {
-                                            low: Point2D {
-                                                x: 7.5,
-                                                y: 7.5,
-                                            },
-                                            high: Point2D {
-                                                x: 14.5,
-                                                y: 14.5,
-                                            },
-                                        },
-                                    },
-                                ],
-                                level: 0,
-                                min_children: 2,
-                                max_children: 4,
-                                split_strat: Linear,
-                            },
-                        },
-                        Branch {
-                            mbb: Rect {
-                                low: Point2D {
-                                    x: 4.5,
-                                    y: 4.5,
-                                },
-                                high: Point2D {
-                                    x: 11.5,
-                                    y: 12.5,
-                                },
-                            },
-                            child: Node {
-                                entries: [
-                                    Leaf {
-                                        item: Rect {
-                                            low: Point2D {
-                                                x: 4.5,
-                                                y: 4.5,
-                                            },
-                                            high: Point2D {
-                                                x: 5.5,
-                                                y: 6.5,
-                                            },
-                                        },
-                                    },
-                                    Leaf {
-                                        item: Rect {
-                                            low: Point2D {
-                                                x: 10.5,
-                                                y: 11.5,
-                                            },
-                                            high: Point2D {
-                                                x: 11.5,
-                                                y: 12.5,
-                                            },
-                                        },
-                                    },
-                                ],
-                                level: 0,
-                                min_children: 2,
-                                max_children: 4,
-                                split_strat: Linear,
-                            },
-                        },
-                        Branch {
-                            mbb: Rect {
-                                low: Point2D {
-                                    x: 4.5,
-                                    y: 0.5,
-                                },
-                                high: Point2D {
-                                    x: 16.5,
-                                    y: 16.5,
-                                },
-                            },
-                            child: Node {
-                                entries: [
-                                    Leaf {
-                                        item: Rect {
-                                            low: Point2D {
-                                                x: 13.5,
-                                                y: 13.5,
-                                            },
-                                            high: Point2D {
-                                                x: 16.5,
-                                                y: 16.5,
-                                            },
-                                        },
-                                    },
-                                    Leaf {
-                                        item: Rect {
-                                            low: Point2D {
-                                                x: 4.5,
-                                                y: 9.5,
-                                            },
-                                            high: Point2D {
-                                                x: 5.5,
-                                                y: 11.5,
-                                            },
-                                        },
-                                    },
-                                    Leaf {
-                                        item: Rect {
-                                            low: Point2D {
-                                                x: 12.5,
-                                                y: 0.5,
-                                            },
-                                            high: Point2D {
-                                                x: 15.5,
-                                                y: 15.5,
-                                            },
-                                        },
-                                    },
-                                ],
-                                level: 0,
-                                min_children: 2,
-                                max_children: 4,
-                                split_strat: Linear,
-                            },
-                        },
-                    ],
-                    level: 1,
-                    min_children: 2,
-                    max_children: 4,
-                    split_strat: Linear,
+                high: Point2D {
+                    x: 16.5,
+                    y: 16.5,
                 },
             },
-            Branch {
-                mbb: Rect {
-                    low: Point2D {
-                        x: 0.5,
-                        y: 0.5,
+            child: Node {
+                entries: [
+                    Branch {
+                        mbb: Rect {
+                            low: Point2D {
+                                x: 7.5,
+                                y: 0.5,
+                            },
+                            high: Point2D {
+                                x: 14.5,
+                                y: 14.5,
+                            },
+                        },
+                        child: Node {
+                            entries: [
+                                Leaf {
+                                    label: "Seventh",
+                                    item: Rect {
+                                        low: Point2D {
+                                            x: 13.5,
+                                            y: 0.5,
+                                        },
+                                        high: Point2D {
+                                            x: 14.5,
+                                            y: 1.5,
+                                        },
+                                    },
+                                },
+                                Leaf {
+                                    label: "Third",
+                                    item: Rect {
+                                        low: Point2D {
+                                            x: 7.5,
+                                            y: 7.5,
+                                        },
+                                        high: Point2D {
+                                            x: 14.5,
+                                            y: 14.5,
+                                        },
+                                    },
+                                },
+                            ],
+                            level: 0,
+                            min_children: 2,
+                            max_children: 4,
+                            split_strat: Linear,
+                        },
                     },
-                    high: Point2D {
-                        x: 10.5,
-                        y: 16.5,
+                    Branch {
+                        mbb: Rect {
+                            low: Point2D {
+                                x: 4.5,
+                                y: 4.5,
+                            },
+                            high: Point2D {
+                                x: 11.5,
+                                y: 12.5,
+                            },
+                        },
+                        child: Node {
+                            entries: [
+                                Leaf {
+                                    label: "Fifth",
+                                    item: Rect {
+                                        low: Point2D {
+                                            x: 4.5,
+                                            y: 4.5,
+                                        },
+                                        high: Point2D {
+                                            x: 5.5,
+                                            y: 6.5,
+                                        },
+                                    },
+                                },
+                                Leaf {
+                                    label: "Fourth",
+                                    item: Rect {
+                                        low: Point2D {
+                                            x: 10.5,
+                                            y: 11.5,
+                                        },
+                                        high: Point2D {
+                                            x: 11.5,
+                                            y: 12.5,
+                                        },
+                                    },
+                                },
+                            ],
+                            level: 0,
+                            min_children: 2,
+                            max_children: 4,
+                            split_strat: Linear,
+                        },
                     },
+                    Branch {
+                        mbb: Rect {
+                            low: Point2D {
+                                x: 4.5,
+                                y: 0.5,
+                            },
+                            high: Point2D {
+                                x: 16.5,
+                                y: 16.5,
+                            },
+                        },
+                        child: Node {
+                            entries: [
+                                Leaf {
+                                    label: "Eighth",
+                                    item: Rect {
+                                        low: Point2D {
+                                            x: 13.5,
+                                            y: 13.5,
+                                        },
+                                        high: Point2D {
+                                            x: 16.5,
+                                            y: 16.5,
+                                        },
+                                    },
+                                },
+                                Leaf {
+                                    label: "Sixth",
+                                    item: Rect {
+                                        low: Point2D {
+                                            x: 4.5,
+                                            y: 9.5,
+                                        },
+                                        high: Point2D {
+                                            x: 5.5,
+                                            y: 11.5,
+                                        },
+                                    },
+                                },
+                                Leaf {
+                                    label: "Second",
+                                    item: Rect {
+                                        low: Point2D {
+                                            x: 12.5,
+                                            y: 0.5,
+                                        },
+                                        high: Point2D {
+                                            x: 15.5,
+                                            y: 15.5,
+                                        },
+                                    },
+                                },
+                            ],
+                            level: 0,
+                            min_children: 2,
+                            max_children: 4,
+                            split_strat: Linear,
+                        },
+                    },
+                ],
+                level: 1,
+                min_children: 2,
+                max_children: 4,
+                split_strat: Linear,
+            },
+        },
+        Branch {
+            mbb: Rect {
+                low: Point2D {
+                    x: 0.5,
+                    y: 0.5,
                 },
-                child: Node {
-                    entries: [
-                        Branch {
-                            mbb: Rect {
-                                low: Point2D {
-                                    x: 0.5,
-                                    y: 0.5,
-                                },
-                                high: Point2D {
-                                    x: 5.5,
-                                    y: 5.5,
-                                },
-                            },
-                            child: Node {
-                                entries: [
-                                    Leaf {
-                                        item: Rect {
-                                            low: Point2D {
-                                                x: 2.5,
-                                                y: 2.5,
-                                            },
-                                            high: Point2D {
-                                                x: 3.5,
-                                                y: 3.5,
-                                            },
-                                        },
-                                    },
-                                    Leaf {
-                                        item: Rect {
-                                            low: Point2D {
-                                                x: 0.5,
-                                                y: 0.5,
-                                            },
-                                            high: Point2D {
-                                                x: 5.5,
-                                                y: 5.5,
-                                            },
-                                        },
-                                    },
-                                ],
-                                level: 0,
-                                min_children: 2,
-                                max_children: 4,
-                                split_strat: Linear,
-                            },
-                        },
-                        Branch {
-                            mbb: Rect {
-                                low: Point2D {
-                                    x: 0.5,
-                                    y: 0.5,
-                                },
-                                high: Point2D {
-                                    x: 10.5,
-                                    y: 16.5,
-                                },
-                            },
-                            child: Node {
-                                entries: [
-                                    Leaf {
-                                        item: Rect {
-                                            low: Point2D {
-                                                x: 2.5,
-                                                y: 13.5,
-                                            },
-                                            high: Point2D {
-                                                x: 4.5,
-                                                y: 16.5,
-                                            },
-                                        },
-                                    },
-                                    Leaf {
-                                        item: Rect {
-                                            low: Point2D {
-                                                x: 0.5,
-                                                y: 0.5,
-                                            },
-                                            high: Point2D {
-                                                x: 10.5,
-                                                y: 10.5,
-                                            },
-                                        },
-                                    },
-                                    Leaf {
-                                        item: Rect {
-                                            low: Point2D {
-                                                x: 3.5,
-                                                y: 6.5,
-                                            },
-                                            high: Point2D {
-                                                x: 4.5,
-                                                y: 11.5,
-                                            },
-                                        },
-                                    },
-                                ],
-                                level: 0,
-                                min_children: 2,
-                                max_children: 4,
-                                split_strat: Linear,
-                            },
-                        },
-                    ],
-                    level: 1,
-                    min_children: 2,
-                    max_children: 4,
-                    split_strat: Linear,
+                high: Point2D {
+                    x: 10.5,
+                    y: 16.5,
                 },
             },
-        ],
-        level: 2,
-        min_children: 2,
-        max_children: 4,
-        split_strat: Linear,
-    },
-    len: 12,
+            child: Node {
+                entries: [
+                    Branch {
+                        mbb: Rect {
+                            low: Point2D {
+                                x: 0.5,
+                                y: 0.5,
+                            },
+                            high: Point2D {
+                                x: 5.5,
+                                y: 5.5,
+                            },
+                        },
+                        child: Node {
+                            entries: [
+                                Leaf {
+                                    label: "Tenth",
+                                    item: Rect {
+                                        low: Point2D {
+                                            x: 2.5,
+                                            y: 2.5,
+                                        },
+                                        high: Point2D {
+                                            x: 3.5,
+                                            y: 3.5,
+                                        },
+                                    },
+                                },
+                                Leaf {
+                                    label: "Twelfth",
+                                    item: Rect {
+                                        low: Point2D {
+                                            x: 0.5,
+                                            y: 0.5,
+                                        },
+                                        high: Point2D {
+                                            x: 5.5,
+                                            y: 5.5,
+                                        },
+                                    },
+                                },
+                            ],
+                            level: 0,
+                            min_children: 2,
+                            max_children: 4,
+                            split_strat: Linear,
+                        },
+                    },
+                    Branch {
+                        mbb: Rect {
+                            low: Point2D {
+                                x: 0.5,
+                                y: 0.5,
+                            },
+                            high: Point2D {
+                                x: 10.5,
+                                y: 16.5,
+                            },
+                        },
+                        child: Node {
+                            entries: [
+                                Leaf {
+                                    label: "Ninth",
+                                    item: Rect {
+                                        low: Point2D {
+                                            x: 2.5,
+                                            y: 13.5,
+                                        },
+                                        high: Point2D {
+                                            x: 4.5,
+                                            y: 16.5,
+                                        },
+                                    },
+                                },
+                                Leaf {
+                                    label: "First",
+                                    item: Rect {
+                                        low: Point2D {
+                                            x: 0.5,
+                                            y: 0.5,
+                                        },
+                                        high: Point2D {
+                                            x: 10.5,
+                                            y: 10.5,
+                                        },
+                                    },
+                                },
+                                Leaf {
+                                    label: "Eleventh",
+                                    item: Rect {
+                                        low: Point2D {
+                                            x: 3.5,
+                                            y: 6.5,
+                                        },
+                                        high: Point2D {
+                                            x: 4.5,
+                                            y: 11.5,
+                                        },
+                                    },
+                                },
+                            ],
+                            level: 0,
+                            min_children: 2,
+                            max_children: 4,
+                            split_strat: Linear,
+                        },
+                    },
+                ],
+                level: 1,
+                min_children: 2,
+                max_children: 4,
+                split_strat: Linear,
+            },
+        },
+    ],
+    level: 2,
+    min_children: 2,
+    max_children: 4,
+    split_strat: Linear,
 }
