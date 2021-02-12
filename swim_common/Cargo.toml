@@ -33,7 +33,7 @@ base64 = "0.12.3"
 form_derive = { path = "form_derive" }
 im = "15.0.0"
 chrono = "0.4"
-tokio-tungstenite = { version = "0.12.0", git = "https://github.com/swimos/tokio-tungstenite/", branch = "tokio-1.1-deflate", features = ["deflate"], optional = true }
+tokio-tungstenite = { version = "0.13.0", git = "https://github.com/swimos/tokio-tungstenite/", branch = "deflate-v13", features = ["deflate"], optional = true }
 
 [dependencies.tokio-native-tls]
 version = "0.3"
