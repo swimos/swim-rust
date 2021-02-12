@@ -25,6 +25,7 @@ use crate::routing::{
 use futures::future::BoxFuture;
 use futures::stream;
 use futures::{select_biased, FutureExt, StreamExt};
+use pin_utils::pin_mut;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::convert::TryFrom;
@@ -44,6 +45,7 @@ use swim_common::warp::envelope::{Envelope, EnvelopeHeader, EnvelopeParseErr, Ou
 use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc;
 use tokio::time::{sleep, Instant};
+use tokio_stream::wrappers::ReceiverStream;
 use utilities::errors::Recoverable;
 use utilities::future::retryable::strategy::RetryStrategy;
 use utilities::sync::trigger;
@@ -131,22 +133,24 @@ where
 
         let (missing_node_tx, missing_node_rx) =
             mpsc::channel(config.missing_nodes_buffer_size.get());
-        let outgoing_payloads = messages
+        let outgoing_payloads = ReceiverStream::new(messages)
             .map(|TaggedEnvelope(_, envelope)| WsMessage::Text(envelope.into_value().to_string()));
-        let outgoing_payloads = stream::select(outgoing_payloads, missing_node_rx);
+        let outgoing_payloads =
+            stream::select(outgoing_payloads, ReceiverStream::new(missing_node_rx));
 
         let selector = WsStreamSelector::new(&mut ws_stream, outgoing_payloads);
 
         let mut stop_fused = stop_signal.fuse();
         let mut select_stream = selector.fuse();
-        let mut timeout = sleep(config.activity_timeout);
+        let timeout = sleep(config.activity_timeout);
+        pin_mut!(timeout);
 
         let mut resolved: HashMap<RelativePath, Route> = HashMap::new();
         let yield_mod = config.yield_after.get();
         let mut iteration_count: usize = 0;
 
         let completion = loop {
-            timeout.reset(
+            timeout.as_mut().reset(
                 Instant::now()
                     .checked_add(config.activity_timeout)
                     .expect("Timer overflow."),

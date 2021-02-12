@@ -29,6 +29,7 @@ use crate::var::{Contents, ReadContentsFuture, TVarInner, TVarRead};
 use futures::future::try_join_all;
 use futures::task::{Context, Poll};
 use futures::{ready, Future, FutureExt, Stream, StreamExt};
+use pin_utils::pin_mut;
 use slab::Slab;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
@@ -649,8 +650,8 @@ impl Error for TransactionError {
 
 /// A strategy for retrying transactions.
 pub trait RetryManager {
-    type ContentionManager: Stream<Item = ()> + Send + Unpin;
-    type RetryFut: Future<Output = bool> + Send + Unpin;
+    type ContentionManager: Stream<Item = ()> + Send;
+    type RetryFut: Future<Output = bool> + Send;
 
     /// A stream of (potential) delays between attempts to apply the transaction that fail
     /// due to contention. If this stream terminates, the transaction will also.
@@ -670,7 +671,8 @@ where
     S: Stm,
     Retries: RetryManager,
 {
-    let mut contention_manager = retries.contention_manager();
+    let contention_manager = retries.contention_manager();
+    pin_mut!(contention_manager);
 
     let mut failed_commits: usize = 0;
     let mut num_attempts: usize = 0;

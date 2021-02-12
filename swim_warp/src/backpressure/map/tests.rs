@@ -86,7 +86,7 @@ async fn single_pass_through() {
     let (tx_in, rx_in) = mpsc::channel(8);
     let (tx_out, mut rx_out) = mpsc::channel(8);
     let release_task = super::release_pressure(
-        rx_in,
+        ReceiverStream::new(rx_in),
         for_mpsc_sender(tx_out),
         yield_after(),
         buffer_size(),
@@ -115,7 +115,7 @@ async fn multiple_one_key() {
     let (tx_in, rx_in) = mpsc::channel(8);
     let (tx_out, rx_out) = mpsc::channel(8);
     let release_task = super::release_pressure(
-        rx_in,
+        ReceiverStream::new(rx_in),
         for_mpsc_sender(tx_out),
         yield_after(),
         buffer_size(),
@@ -151,7 +151,7 @@ async fn multiple_keys() {
     let (tx_in, rx_in) = mpsc::channel(8);
     let (tx_out, rx_out) = mpsc::channel(8);
     let release_task = super::release_pressure(
-        rx_in,
+        ReceiverStream::new(rx_in),
         for_mpsc_sender(tx_out),
         yield_after(),
         buffer_size(),
@@ -189,7 +189,7 @@ async fn multiple_keys_multiple_values() {
     let (tx_in, rx_in) = mpsc::channel(8);
     let (tx_out, rx_out) = mpsc::channel(8);
     let release_task = super::release_pressure(
-        rx_in,
+        ReceiverStream::new(rx_in),
         for_mpsc_sender(tx_out),
         yield_after(),
         buffer_size(),
@@ -225,7 +225,7 @@ async fn single_clear() {
     let (tx_in, rx_in) = mpsc::channel::<MapUpdate<Value, Value>>(8);
     let (tx_out, mut rx_out) = mpsc::channel::<MapUpdate<Value, Value>>(8);
     let release_task = super::release_pressure(
-        rx_in,
+        ReceiverStream::new(rx_in),
         for_mpsc_sender(tx_out),
         yield_after(),
         buffer_size(),
@@ -254,7 +254,7 @@ async fn single_take() {
     let (tx_in, rx_in) = mpsc::channel::<MapUpdate<Value, Value>>(8);
     let (tx_out, mut rx_out) = mpsc::channel::<MapUpdate<Value, Value>>(8);
     let release_task = super::release_pressure(
-        rx_in,
+        ReceiverStream::new(rx_in),
         for_mpsc_sender(tx_out),
         yield_after(),
         buffer_size(),
@@ -282,7 +282,7 @@ async fn single_skip() {
     let (tx_in, rx_in) = mpsc::channel::<MapUpdate<Value, Value>>(8);
     let (tx_out, mut rx_out) = mpsc::channel::<MapUpdate<Value, Value>>(8);
     let release_task = super::release_pressure(
-        rx_in,
+        ReceiverStream::new(rx_in),
         for_mpsc_sender(tx_out),
         yield_after(),
         buffer_size(),
@@ -311,7 +311,7 @@ async fn special_action_ordering() {
     let (tx_in, rx_in) = mpsc::channel(8);
     let (tx_out, rx_out) = mpsc::channel(8);
     let release_task = super::release_pressure(
-        rx_in,
+        ReceiverStream::new(rx_in),
         for_mpsc_sender(tx_out),
         yield_after(),
         buffer_size(),
@@ -355,7 +355,7 @@ async fn overflow_active_keys() {
     let (tx_in, rx_in) = mpsc::channel(8);
     let (tx_out, rx_out) = mpsc::channel(8);
     let release_task = super::release_pressure(
-        rx_in,
+        ReceiverStream::new(rx_in),
         for_mpsc_sender(tx_out),
         yield_after(),
         buffer_size(),

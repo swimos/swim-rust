@@ -20,6 +20,7 @@ use futures::future::join;
 use std::time::Duration;
 use swim_common::form::FormErr;
 use tokio::sync::mpsc;
+use tokio_stream::wrappers::ReceiverStream;
 
 #[tokio::test]
 async fn cmd_no_feedback() {
@@ -30,7 +31,7 @@ async fn cmd_no_feedback() {
 
     let lane_task = ActionLaneUpdateTask::new(lane, None, Duration::from_secs(1));
 
-    let update_task = lane_task.run_update(msg_rx);
+    let update_task = lane_task.run_update(ReceiverStream::new(msg_rx));
 
     let addr = RoutingAddr::remote(5);
 
@@ -58,7 +59,7 @@ async fn failure_no_feedback() {
 
     let lane_task = ActionLaneUpdateTask::new(lane, None, Duration::from_secs(1));
 
-    let update_task = lane_task.run_update(msg_rx);
+    let update_task = lane_task.run_update(ReceiverStream::new(msg_rx));
 
     let _msg_tx_cpy = msg_tx.clone();
 
@@ -113,7 +114,7 @@ async fn cmd_with_feedback() {
 
     let lane_task = ActionLaneUpdateTask::new(lane, Some(feedback_tx), Duration::from_secs(1));
 
-    let update_task = lane_task.run_update(msg_rx);
+    let update_task = lane_task.run_update(ReceiverStream::new(msg_rx));
 
     let addr = RoutingAddr::remote(5);
 
@@ -140,7 +141,7 @@ async fn multiple_cmd_with_feedback() {
 
     let lane_task = ActionLaneUpdateTask::new(lane, Some(feedback_tx), Duration::from_secs(1));
 
-    let update_task = lane_task.run_update(msg_rx);
+    let update_task = lane_task.run_update(ReceiverStream::new(msg_rx));
 
     let addr1 = RoutingAddr::remote(5);
     let addr2 = RoutingAddr::remote(6);
@@ -171,7 +172,7 @@ async fn multiple_cmd_with_out_of_order_feedback() {
 
     let lane_task = ActionLaneUpdateTask::new(lane, Some(feedback_tx), Duration::from_secs(1));
 
-    let update_task = lane_task.run_update(msg_rx);
+    let update_task = lane_task.run_update(ReceiverStream::new(msg_rx));
 
     let addr1 = RoutingAddr::remote(5);
     let addr2 = RoutingAddr::remote(6);
@@ -209,7 +210,7 @@ async fn cleanup_on_error() {
 
     let lane_task = ActionLaneUpdateTask::new(lane, Some(feedback_tx), Duration::from_secs(1));
 
-    let update_task = lane_task.run_update(msg_rx);
+    let update_task = lane_task.run_update(ReceiverStream::new(msg_rx));
 
     let addr1 = RoutingAddr::remote(5);
     let addr2 = RoutingAddr::remote(6);
@@ -249,7 +250,7 @@ async fn fail_on_feedback_dropped() {
 
     let lane_task = ActionLaneUpdateTask::new(lane, Some(feedback_tx), Duration::from_secs(1));
 
-    let update_task = lane_task.run_update(msg_rx);
+    let update_task = lane_task.run_update(ReceiverStream::new(msg_rx));
 
     let addr1 = RoutingAddr::remote(5);
 

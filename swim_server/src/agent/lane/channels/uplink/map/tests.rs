@@ -28,6 +28,7 @@ use std::time::Duration;
 use stm::transaction::RetryManager;
 use tokio::sync::mpsc;
 use tokio::time::timeout;
+use tokio_stream::wrappers::ReceiverStream;
 use utilities::future::SwimStreamExt;
 use utilities::sync::trigger;
 
@@ -133,7 +134,7 @@ async fn sync_map_lane_replace_value() {
 
     let (fake_tx, fake_rx) = mpsc::channel(5);
 
-    let mut fake_rx = fake_rx.fuse();
+    let mut fake_rx = ReceiverStream::new(fake_rx).fuse();
 
     // Locking a value in the map means that reads cannot complete allowing us to reliably provide
     // a replacement value by injecting a fake event.
@@ -203,7 +204,7 @@ async fn sync_map_lane_remove_value() {
 
     let (fake_tx, fake_rx) = mpsc::channel(5);
 
-    let mut fake_rx = fake_rx.fuse();
+    let mut fake_rx = ReceiverStream::new(fake_rx).fuse();
 
     // Locking a value in the map means that reads cannot complete allowing us to reliably provide
     // a replacement value by injecting a fake event.
@@ -268,7 +269,7 @@ async fn sync_map_lane_clear() {
 
     let (fake_tx, fake_rx) = mpsc::channel(5);
 
-    let mut fake_rx = fake_rx.fuse();
+    let mut fake_rx = ReceiverStream::new(fake_rx).fuse();
 
     // Locking a value in the map means that reads cannot complete allowing us to reliably provide
     // a replacement value by injecting a fake event.

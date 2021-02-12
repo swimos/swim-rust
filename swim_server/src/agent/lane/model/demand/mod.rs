@@ -19,6 +19,7 @@ use std::marker::PhantomData;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use tokio::sync::mpsc;
+use tokio_stream::wrappers::ReceiverStream;
 
 /// Model for a stateless, lazy, lane that uses its lifecycle to generate a value.
 ///
@@ -99,5 +100,5 @@ where
 {
     let (tx, rx) = mpsc::channel(buffer_size.get());
     let lane = DemandLane::new(tx);
-    (lane, rx)
+    (lane, ReceiverStream::new(rx))
 }

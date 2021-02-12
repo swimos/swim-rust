@@ -55,6 +55,7 @@ use swim_warp::backpressure;
 use tokio::sync::mpsc::error::SendError;
 use tokio::sync::oneshot::error::RecvError;
 use tokio::sync::{mpsc, oneshot};
+use tokio_stream::wrappers::ReceiverStream;
 use tracing::{error, info, instrument, trace_span};
 use utilities::future::{SwimFutureExt, TransformOnce, TransformedFuture};
 use utilities::sync::promise::PromiseError;
@@ -92,7 +93,7 @@ impl Downlinks {
         let client_params = config.client_params();
         let task = DownlinkTask::new(config, router);
         let (tx, rx) = mpsc::channel(client_params.dl_req_buffer_size.get());
-        let task_handle = spawn(task.run(rx));
+        let task_handle = spawn(task.run(ReceiverStream::new(rx)));
 
         Downlinks {
             sender: tx,
@@ -580,7 +581,7 @@ where
         let (sink, incoming) = self.router.connection_for(&path).await?;
         let schema_cpy = schema.clone();
 
-        let updates = incoming.map(map_router_events);
+        let updates = ReceiverStream::new(incoming).map(map_router_events);
 
         let sink_path = path.clone();
         let cmd_sink =
@@ -646,7 +647,7 @@ where
         let key_schema_cpy = key_schema.clone();
         let value_schema_cpy = value_schema.clone();
 
-        let updates = incoming.map(|e| match e {
+        let updates = ReceiverStream::new(incoming).map(|e| match e {
             RouterEvent::Message(l) => Ok(envelopes::map::from_envelope(l)),
             RouterEvent::ConnectionClosed => Err(RoutingError::ConnectionError),
             RouterEvent::Unreachable(_) => Err(RoutingError::HostUnreachable),
@@ -801,7 +802,7 @@ where
     ) -> RequestResult<Arc<UntypedEventDownlink>> {
         let (sink, incoming) = self.router.connection_for(&path).await?;
 
-        let updates = incoming.map(map_router_events);
+        let updates = ReceiverStream::new(incoming).map(map_router_events);
 
         let config = self.config.config_for(&path);
 

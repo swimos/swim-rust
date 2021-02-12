@@ -44,6 +44,7 @@ use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::{mpsc, Barrier};
+use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
 use utilities::sync::{promise, topic};
 use utilities::uri::RelativeUri;
@@ -264,7 +265,7 @@ impl UplinkSpawnerOutputs {
 
 struct UplinkSpawnerOutputs {
     _update_rx: mpsc::Receiver<i32>,
-    router_rx: mpsc::Receiver<TaggedEnvelope>,
+    router_rx: ReceiverStream<TaggedEnvelope>,
 }
 
 struct UplinkSpawnerSplitOutputs {
@@ -272,7 +273,7 @@ struct UplinkSpawnerSplitOutputs {
     router_rxs: HashMap<RoutingAddr, mpsc::Receiver<Envelope>>,
 }
 
-struct RouterChannel(mpsc::Receiver<Envelope>);
+struct RouterChannel(ReceiverStream<Envelope>);
 
 impl RouterChannel {
     async fn take_router_events(&mut self, n: usize) -> Vec<Envelope> {
@@ -287,7 +288,7 @@ impl RouterChannel {
 
 impl UplinkSpawnerSplitOutputs {
     pub fn take_addr(&mut self, addr: RoutingAddr) -> RouterChannel {
-        RouterChannel(self.router_rxs.remove(&addr).unwrap())
+        RouterChannel(ReceiverStream::new(self.router_rxs.remove(&addr).unwrap()))
     }
 }
 
@@ -344,10 +345,10 @@ fn make_test_harness() -> (
     let (tx_router, rx_router) = mpsc::channel(5);
 
     let (spawn_tx, spawn_rx) = mpsc::channel(5);
-    let spawn_task = spawn_rx.for_each_concurrent(None, |task| task);
+    let spawn_task = ReceiverStream::new(spawn_rx).for_each_concurrent(None, |task| task);
 
     let (error_tx, error_rx) = mpsc::channel(5);
-    let error_task = error_rx.collect::<Vec<_>>();
+    let error_task = ReceiverStream::new(error_rx).collect::<Vec<_>>();
 
     let handler = Arc::new(TestHandler(tx_up, INIT));
 
@@ -370,7 +371,7 @@ fn make_test_harness() -> (
         },
         UplinkSpawnerOutputs {
             _update_rx: rx_up,
-            router_rx: rx_router,
+            router_rx: ReceiverStream::new(rx_router),
         },
         errs,
     )

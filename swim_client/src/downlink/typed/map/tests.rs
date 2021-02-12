@@ -32,6 +32,7 @@ use swim_common::routing::RoutingError;
 use swim_common::sink::item::ItemSender;
 use swim_warp::model::map::MapUpdate;
 use tokio::sync::mpsc;
+use tokio_stream::wrappers::ReceiverStream;
 
 async fn responder(init: OrdMap<i32, i32>, mut rx: mpsc::Receiver<MapAction>) {
     let mut state: ValMap = init
@@ -602,7 +603,7 @@ fn make_map_downlink<K: ValidatedForm, V: ValidatedForm>() -> Components<K, V> {
     let (dl, rx) = crate::downlink::model::map::create_downlink(
         Some(K::schema()),
         Some(V::schema()),
-        update_rx,
+        ReceiverStream::new(update_rx),
         sender,
         DownlinkConfig {
             buffer_size: NonZeroUsize::new(8).unwrap(),

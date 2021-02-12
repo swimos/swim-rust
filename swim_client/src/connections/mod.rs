@@ -297,8 +297,9 @@ fn combine_connection_streams(
     connection_requests_rx: mpsc::Receiver<ConnectionRequest>,
     close_requests_rx: mpsc::Receiver<()>,
 ) -> impl stream::Stream<Item = RequestType> + Send + 'static {
-    let connection_requests = connection_requests_rx.map(RequestType::NewConnection);
-    let close_request = close_requests_rx.map(|_| RequestType::Close);
+    let connection_requests =
+        ReceiverStream::new(connection_requests_rx).map(RequestType::NewConnection);
+    let close_request = ReceiverStream::new(close_requests_rx).map(|_| RequestType::Close);
 
     stream::select(connection_requests, close_request)
 }
@@ -331,7 +332,8 @@ where
             rx,
         } = self;
 
-        rx.map(Ok)
+        ReceiverStream::new(rx)
+            .map(Ok)
             .forward(write_sink)
             .map_err(|_| {
                 stopped.store(true, Ordering::Release);
@@ -465,6 +467,7 @@ use swim_common::routing::{CloseError, ConnectionError, ResolutionError, Resolut
 use swim_runtime::task::*;
 use swim_runtime::time::instant::Instant;
 use swim_runtime::time::interval::interval;
+use tokio_stream::wrappers::ReceiverStream;
 
 pub type ConnectionChannel = (ConnectionSender, Option<ConnectionReceiver>);
 

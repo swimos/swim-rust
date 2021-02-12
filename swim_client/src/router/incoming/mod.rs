@@ -81,7 +81,7 @@ impl IncomingHostTask {
                             _ => Some(IncomingRequest::Close(None)),
                         }
                     },
-                    task = task_rx.next() => task,
+                    task = task_rx.recv() => task,
                     maybe_message = message_rx.recv() => {
                         match maybe_message{
                             Some(message) => Some(IncomingRequest::Message(message)),
@@ -100,7 +100,7 @@ impl IncomingHostTask {
                             _ => Some(IncomingRequest::Close(None)),
                         }
                     },
-                    task = task_rx.next() => task,
+                    task = task_rx.recv() => task,
                 };
                 result.ok_or(RoutingError::ConnectionError)?
             };

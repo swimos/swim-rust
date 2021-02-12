@@ -25,6 +25,7 @@ use swim_common::sink::item;
 use swim_runtime::time::timeout::timeout;
 use swim_warp::model::map::MapUpdate;
 use tokio::sync::mpsc;
+use tokio_stream::wrappers::ReceiverStream;
 
 const TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -53,7 +54,7 @@ async fn value_uplink_backpressure_release_events() {
     let (out_tx, mut out_rx) = mpsc::channel::<ValueOut>(2);
 
     let relief_task = super::value_uplink_release_backpressure(
-        in_rx,
+        ReceiverStream::new(in_rx),
         item::for_mpsc_sender(out_tx),
         simple_config(),
     );
@@ -92,7 +93,7 @@ async fn value_uplink_backpressure_release_special() {
     let (out_tx, mut out_rx) = mpsc::channel::<ValueOut>(2);
 
     let relief_task = super::value_uplink_release_backpressure(
-        in_rx,
+        ReceiverStream::new(in_rx),
         item::for_mpsc_sender(out_tx),
         simple_config(),
     );
@@ -145,7 +146,7 @@ async fn value_uplink_backpressure_release_failure() {
     let (out_tx, mut out_rx) = mpsc::channel::<ValueOut>(2);
 
     let relief_task = super::value_uplink_release_backpressure(
-        in_rx,
+        ReceiverStream::new(in_rx),
         item::for_mpsc_sender(out_tx),
         simple_config(),
     );
@@ -194,7 +195,7 @@ async fn map_uplink_backpressure_release_events() {
     let (out_tx, mut out_rx) = mpsc::channel::<MapOut>(2);
 
     let relief_task = super::map_uplink_release_backpressure(
-        in_rx,
+        ReceiverStream::new(in_rx),
         item::for_mpsc_sender(out_tx),
         keyed_config(),
     );
@@ -242,7 +243,7 @@ async fn map_uplink_backpressure_release_special() {
     let (out_tx, mut out_rx) = mpsc::channel::<MapOut>(2);
 
     let relief_task = super::map_uplink_release_backpressure(
-        in_rx,
+        ReceiverStream::new(in_rx),
         item::for_mpsc_sender(out_tx),
         keyed_config(),
     );
@@ -313,7 +314,7 @@ async fn map_uplink_backpressure_release_failure() {
     let (out_tx, mut out_rx) = mpsc::channel::<MapOut>(2);
 
     let relief_task = super::map_uplink_release_backpressure(
-        in_rx,
+        ReceiverStream::new(in_rx),
         item::for_mpsc_sender(out_tx),
         keyed_config(),
     );

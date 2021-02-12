@@ -27,6 +27,7 @@ use swim_common::sink::item;
 use swim_common::sink::item::ItemSender;
 use swim_runtime::task::{spawn, TaskHandle};
 use tokio::sync::{mpsc, oneshot};
+use tokio_stream::wrappers::ReceiverStream;
 use utilities::lru_cache::LruCache;
 use utilities::sync::circular_buffer;
 
@@ -250,7 +251,7 @@ where
 
         let mut key_streams = SelectAll::new();
 
-        let mut bridge_fused = bridge.fuse();
+        let mut bridge_fused = ReceiverStream::new(bridge).fuse();
 
         loop {
             let maybe_event: Option<Either<BridgeMessage, Mod>> = if key_streams.is_empty() {

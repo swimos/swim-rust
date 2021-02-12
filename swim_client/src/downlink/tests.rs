@@ -17,10 +17,10 @@ use tokio::sync::oneshot;
 
 use super::*;
 use crate::downlink::TransitionError;
+use futures::StreamExt;
 use std::time::Instant;
 use swim_common::routing::RoutingError;
 use swim_common::sink::item;
-use tokio::stream::StreamExt;
 
 struct State(i32);
 
@@ -197,7 +197,7 @@ fn make_test_dl_custom_on_invalid(
 
     let (downlink, dl_rx) = create_downlink(
         TestStateMachine::new(dl_start_state, start_response),
-        rx_in,
+        ReceiverStream::new(rx_in),
         item::for_mpsc_sender(tx_out).map_err_into(),
         config,
     );
@@ -222,7 +222,7 @@ fn make_test_sync_dl() -> (
 async fn sync_on_startup() {
     let (_dl, _rx, _messages, mut commands) = make_test_sync_dl();
 
-    let first_cmd = commands.next().await;
+    let first_cmd = commands.recv().await;
     assert_eq!(first_cmd, Some(Command::Sync));
 }
 
@@ -467,7 +467,7 @@ async fn continues_on_invalid() {
 async fn unlinks_on_unreachable_host() {
     let (_dl, mut dl_rx, messages, mut commands) = make_test_sync_dl();
 
-    let first_cmd = commands.next().await;
+    let first_cmd = commands.recv().await;
     assert_eq!(first_cmd, Some(Command::Sync));
 
     assert!(messages
@@ -490,7 +490,7 @@ async fn queues_on_unreachable_host() {
 
     let mut events = rx.into_stream();
 
-    let first_cmd = commands.next().await;
+    let first_cmd = commands.recv().await;
     assert_eq!(first_cmd, Some(Command::Sync));
 
     assert!(messages
@@ -524,7 +524,7 @@ async fn queues_on_unreachable_host() {
 async fn terminates_when_router_dropped() {
     let (dl, _events, messages, mut commands) = make_test_sync_dl();
 
-    let first_cmd = commands.next().await;
+    let first_cmd = commands.recv().await;
 
     assert_eq!(first_cmd, Some(Command::Sync));
 
@@ -551,8 +551,8 @@ async fn action_received_before_synced() {
 
     dl.send(AddTo::of(4)).await.unwrap();
 
-    let first_cmd = commands.next().await;
-    let second_cmd = commands.next().await;
+    let first_cmd = commands.recv().await;
+    let second_cmd = commands.recv().await;
     assert_eq!(first_cmd, Some(Command::Link));
     assert_eq!(second_cmd, Some(Command::Action(4)));
 }
@@ -567,6 +567,6 @@ async fn action_received_before_linked() {
 
     dl.send(AddTo::of(4)).await.unwrap();
 
-    let first_cmd = commands.next().await;
+    let first_cmd = commands.recv().await;
     assert_eq!(first_cmd, Some(Command::Action(4)));
 }
