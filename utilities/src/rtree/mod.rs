@@ -70,9 +70,10 @@ where
     /// ```
     /// use utilities::rtree::{Point2D, Rect, RTree, SplitStrategy, rect};
     /// use std::num::NonZeroUsize;
-    /// let mut rtree = RTree::new(NonZeroUsize::new(5).unwrap(), NonZeroUsize::new(10).unwrap(), SplitStrategy::Linear);
+    /// let mut rtree = RTree::new(NonZeroUsize::new(5).unwrap(), NonZeroUsize::new(10).unwrap(), SplitStrategy::Linear).unwrap();
     ///
-    /// rtree.insert(rect!((0.0, 0.0), (1.0, 1.0)));
+    /// // the labels must be unique
+    /// rtree.insert("First".to_string(), rect!((0.0, 0.0), (1.0, 1.0))).unwrap();
     ///
     /// assert_eq!(rtree.len(), 1)
     /// ```
@@ -83,7 +84,7 @@ where
     /// # use std::num::NonZeroUsize;
     /// #
     /// // min cannot be greater than half of max
-    /// let rtree: RTree<Rect<Point2D<f64>>> = RTree::new(NonZeroUsize::new(6).unwrap(), NonZeroUsize::new(10).unwrap(), SplitStrategy::Linear);
+    /// let rtree: RTree<String, Rect<Point2D<f64>>> = RTree::new(NonZeroUsize::new(6).unwrap(), NonZeroUsize::new(10).unwrap(), SplitStrategy::Linear).unwrap();
     /// ```
     pub fn new(
         min_children: NonZeroUsize,
@@ -105,12 +106,12 @@ where
     /// ```
     /// use utilities::rtree::{Point2D, Rect, RTree, SplitStrategy, rect};
     /// use std::num::NonZeroUsize;
-    /// let mut rtree = RTree::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(5).unwrap(), SplitStrategy::Linear);
+    /// let mut rtree = RTree::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(5).unwrap(), SplitStrategy::Linear).unwrap();
     ///
-    /// rtree.insert(rect!((0.0, 0.0), (1.0, 1.0)));
+    /// rtree.insert("First".to_string(), rect!((0.0, 0.0), (1.0, 1.0))).unwrap();
     /// assert_eq!(rtree.len(), 1);
     ///
-    /// rtree.insert(rect!((0.0, 0.0), (2.0, 2.0)));
+    /// rtree.insert("Second".to_string(), rect!((0.0, 0.0), (2.0, 2.0))).unwrap();
     /// assert_eq!(rtree.len(), 2);
     /// ```
     pub fn len(&self) -> usize {
@@ -123,11 +124,11 @@ where
     /// ```
     /// use utilities::rtree::{Point2D, Rect, RTree, SplitStrategy, rect};
     /// use std::num::NonZeroUsize;
-    /// let mut rtree = RTree::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(5).unwrap(), SplitStrategy::Linear);
+    /// let mut rtree = RTree::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(5).unwrap(), SplitStrategy::Linear).unwrap();
     ///
     /// assert!(rtree.is_empty());
     ///
-    /// rtree.insert(rect!((0.0, 0.0), (1.0, 1.0)));
+    /// rtree.insert("First".to_string(), rect!((0.0, 0.0), (1.0, 1.0))).unwrap();
     ///
     /// assert!(!rtree.is_empty());
     /// ```
@@ -142,13 +143,13 @@ where
     /// ```
     /// use utilities::rtree::{Point2D, Rect, RTree, SplitStrategy, rect};
     /// use std::num::NonZeroUsize;
-    /// let mut rtree = RTree::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(5).unwrap(), SplitStrategy::Linear);
+    /// let mut rtree = RTree::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(5).unwrap(), SplitStrategy::Linear).unwrap();
     ///
     /// let first_item = rect!((0.0, 0.0), (1.0, 1.0));
     /// let second_item = rect!((0.0, 0.0), (2.0, 2.0));
     ///
-    /// rtree.insert(first_item.clone());
-    /// rtree.insert(second_item.clone());
+    /// rtree.insert("First".to_string(), first_item.clone()).unwrap();
+    /// rtree.insert("Second".to_string(), second_item.clone()).unwrap();
     ///
     /// let maybe_found = rtree.search(&rect!((0.0, 0.0), (1.5, 1.5)));
     /// assert_eq!(maybe_found.unwrap(), vec![&first_item]);
@@ -169,12 +170,12 @@ where
     /// ```
     /// use utilities::rtree::{Point2D, Rect, RTree, SplitStrategy, rect};
     /// use std::num::NonZeroUsize;
-    /// let mut rtree = RTree::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(5).unwrap(), SplitStrategy::Linear);
+    /// let mut rtree = RTree::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(5).unwrap(), SplitStrategy::Linear).unwrap();
     ///
-    /// rtree.insert(rect!((0.0, 0.0), (1.0, 1.0)));
+    /// rtree.insert("First".to_string(), rect!((0.0, 0.0), (1.0, 1.0))).unwrap();
     /// assert_eq!(rtree.len(), 1);
     ///
-    /// rtree.insert(rect!((0.0, 0.0), (2.0, 2.0)));
+    /// rtree.insert("Second".to_string(), rect!((0.0, 0.0), (2.0, 2.0))).unwrap();
     /// assert_eq!(rtree.len(), 2);
     /// ```
     pub fn insert(&mut self, label: L, item: B) -> Result<(), RTreeError<L>> {
@@ -203,26 +204,26 @@ where
     /// ```
     /// use utilities::rtree::{Point2D, Rect, RTree, SplitStrategy, rect};
     /// use std::num::NonZeroUsize;
-    /// let mut rtree = RTree::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(5).unwrap(), SplitStrategy::Linear);
+    /// let mut rtree = RTree::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(5).unwrap(), SplitStrategy::Linear).unwrap();
     ///
     /// let first_item = rect!((0.0, 0.0), (1.0, 1.0));
     /// let second_item = rect!((0.0, 0.0), (2.0, 2.0));
     ///
-    /// rtree.insert(first_item.clone());
+    /// rtree.insert("First".to_string(), first_item.clone()).unwrap();
     /// assert_eq!(rtree.len(), 1);
     ///
-    /// rtree.insert(second_item.clone());
+    /// rtree.insert("Second".to_string(), second_item.clone()).unwrap();
     /// assert_eq!(rtree.len(), 2);
     ///
-    /// let maybe_removed = rtree.remove(&rect!((0.0, 0.0), (2.0, 2.0)));
+    /// let maybe_removed = rtree.remove(&"Second".to_string());
     /// assert_eq!(maybe_removed.unwrap(), second_item);
     /// assert_eq!(rtree.len(), 1);
     ///
-    /// let maybe_removed = rtree.remove(&rect!((50.0, 60.0), (60.0, 70.0)));
+    /// let maybe_removed = rtree.remove(&"Third".to_string());
     /// assert!(maybe_removed.is_none());
     /// assert_eq!(rtree.len(), 1);
     ///
-    /// let maybe_removed = rtree.remove(&rect!((0.0, 0.0), (1.0, 1.0)));
+    /// let maybe_removed = rtree.remove(&"First".to_string());
     /// assert_eq!(maybe_removed.unwrap(), first_item);
     /// assert_eq!(rtree.len(), 0);
     /// ```
@@ -291,18 +292,18 @@ where
     /// use std::num::NonZeroUsize;
     ///
     /// let items = vec![
-    ///         rect!((0.0, 0.0), (10.0, 10.0)),
-    ///         rect!((12.0, 0.0), (15.0, 15.0)),
-    ///         rect!((7.0, 7.0), (14.0, 14.0)),
-    ///         rect!((10.0, 11.0), (11.0, 12.0)),
-    ///         rect!((4.0, 4.0), (5.0, 6.0)),
-    ///         rect!((4.0, 9.0), (5.0, 11.0)),
-    ///         rect!((13.0, 0.0), (14.0, 1.0)),
-    ///         rect!((13.0, 13.0), (16.0, 16.0)),
-    ///         rect!((2.0, 13.0), (4.0, 16.0)),
-    ///         rect!((2.0, 2.0), (3.0, 3.0)),
-    ///         rect!((10.0, 0.0), (12.0, 5.0)),
-    ///         rect!((7.0, 3.0), (8.0, 6.0)),
+    ///         ("First".to_string(), rect!((0.0, 0.0), (10.0, 10.0))),
+    ///         ("Second".to_string(),rect!((12.0, 0.0), (15.0, 15.0))),
+    ///         ("Third".to_string(),rect!((7.0, 7.0), (14.0, 14.0))),
+    ///         ("Fourth".to_string(),rect!((10.0, 11.0), (11.0, 12.0))),
+    ///         ("Fifth".to_string(),rect!((4.0, 4.0), (5.0, 6.0))),
+    ///         ("Sixth".to_string(),rect!((4.0, 9.0), (5.0, 11.0))),
+    ///         ("Seventh".to_string(),rect!((13.0, 0.0), (14.0, 1.0))),
+    ///         ("Eighth".to_string(),rect!((13.0, 13.0), (16.0, 16.0))),
+    ///         ("Ninth".to_string(),rect!((2.0, 13.0), (4.0, 16.0))),
+    ///         ("Tenth".to_string(),rect!((2.0, 2.0), (3.0, 3.0))),
+    ///         ("Eleventh".to_string(),rect!((10.0, 0.0), (12.0, 5.0))),
+    ///         ("Twelfth".to_string(),rect!((7.0, 3.0), (8.0, 6.0))),
     ///     ];
     ///
     /// let rtree = RTree::bulk_load(
@@ -310,7 +311,7 @@ where
     ///     NonZeroUsize::new(4).unwrap(),
     ///     SplitStrategy::Quadratic,
     ///     items,
-    /// );
+    /// ).unwrap();
     ///
     /// assert_eq!(rtree.len(), 12);
     /// ```
@@ -461,6 +462,7 @@ where
         }
     }
 
+    //Todo
     pub fn iter(&self) -> RTreeIter<L, B> {
         RTreeIter {
             iter: self.lookup_map.iter(),
@@ -487,6 +489,7 @@ where
     }
 }
 
+//Todo
 #[derive(Debug)]
 pub enum RTreeError<L>
 where

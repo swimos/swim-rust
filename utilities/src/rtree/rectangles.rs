@@ -408,6 +408,7 @@ pub trait BoxBounded: Clone + Debug {
     fn measure(&self) -> <Self::Point as Point>::Type;
 }
 
+//Todo
 pub trait Label: Hash + Eq + Debug + Clone {}
 
 impl<T: Hash + Eq + Debug + Clone> Label for T {}
