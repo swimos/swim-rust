@@ -21,15 +21,15 @@ use futures::stream::SelectAll;
 use futures::{select_biased, Stream};
 use futures::{FutureExt, StreamExt};
 use std::num::NonZeroUsize;
-use std::sync::Arc;
 use swim_common::model::Value;
 use swim_common::routing::RoutingError;
 use swim_common::sink::item;
 use swim_common::sink::item::ItemSender;
 use swim_runtime::task::{spawn, TaskHandle};
-use tokio::sync::broadcast::error::RecvError;
-use tokio::sync::{broadcast, mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot};
+use tokio_stream::wrappers::ReceiverStream;
 use utilities::lru_cache::LruCache;
+use utilities::sync::circular_buffer;
 
 /// Stream adapter that removes per-key back-pressure from modifications over a map downlink. If
 /// the produces pushes in changes, sequentially, to the same key the consumer will only observe
@@ -41,7 +41,7 @@ use utilities::lru_cache::LruCache;
 /// For the same reason, compound operations (like clear, take, etc) will wait for all previous
 /// operations to have send before being sent and will stall the internal tasks until they complete.
 pub struct KeyedWatch {
-    sender: mpsc::Sender<UntypedMapModification<Arc<Value>>>,
+    sender: mpsc::Sender<UntypedMapModification<Value>>,
     _consume_task: TaskHandle<()>,
     _produce_task: TaskHandle<()>,
 }
@@ -62,7 +62,7 @@ impl KeyedWatch {
         yield_after: NonZeroUsize,
     ) -> KeyedWatch
     where
-        Snk: ItemSender<UntypedMapModification<Arc<Value>>, RoutingError> + Send + 'static,
+        Snk: ItemSender<UntypedMapModification<Value>, RoutingError> + Send + 'static,
     {
         let (tx, rx) = mpsc::channel(input_buffer_size.get());
         let (bridge_tx, bridge_rx) = mpsc::channel(bridge_buffer_size.get());
@@ -78,20 +78,18 @@ impl KeyedWatch {
 
     pub async fn send_item(
         &mut self,
-        value: UntypedMapModification<Arc<Value>>,
+        value: UntypedMapModification<Value>,
     ) -> Result<(), RoutingError> {
         Ok(self.sender.send(value).await?)
     }
 
-    pub fn into_item_sender(
-        self,
-    ) -> impl ItemSender<UntypedMapModification<Arc<Value>>, RoutingError> {
+    pub fn into_item_sender(self) -> impl ItemSender<UntypedMapModification<Value>, RoutingError> {
         let KeyedWatch { sender, .. } = self;
         item::for_mpsc_sender(sender).map_err_into()
     }
 }
 
-type Mod = UntypedMapModification<Arc<Value>>;
+type Mod = UntypedMapModification<Value>;
 
 #[derive(Clone, Debug)]
 struct KeyedAction(Value, Mod);
@@ -105,7 +103,7 @@ enum SpecialAction {
 
 #[derive(Debug)]
 enum BridgeMessage {
-    Register(broadcast::Receiver<Mod>),
+    Register(circular_buffer::Receiver<Mod>),
     Special(SpecialAction, oneshot::Sender<()>),
     Flush(oneshot::Sender<()>),
 }
@@ -115,7 +113,7 @@ pub struct ConsumerTask {
     input: mpsc::Receiver<Mod>,
     bridge: mpsc::Sender<BridgeMessage>,
     yield_after: NonZeroUsize,
-    senders: LruCache<Value, broadcast::Sender<Mod>>,
+    senders: LruCache<Value, circular_buffer::Sender<Mod>>,
 }
 
 impl ConsumerTask {
@@ -151,7 +149,7 @@ impl ConsumerTask {
                     }
                 }
             }
-            iteration_count += 1;
+            iteration_count = iteration_count.wrapping_add(1);
             if iteration_count % yield_mod == 0 {
                 tokio::task::yield_now().await;
             }
@@ -164,10 +162,10 @@ impl ConsumerTask {
         } = self;
         let KeyedAction(key, action) = keyed;
         match senders.get_mut(&key) {
-            Some(sender) => sender.send(action).is_ok(),
+            Some(sender) => sender.try_send(action).is_ok(),
             _ => {
-                let (tx, rx) = broadcast::channel(1);
-                tx.send(action).expect("Open channel rejected value.");
+                let (mut tx, rx) = circular_buffer::watch_channel();
+                tx.try_send(action).expect("Open channel rejected value.");
 
                 if let Some((_, _evicted)) = senders.insert(key, tx) {
                     //Evicted sender must not be dropped until the flush completes.
@@ -216,7 +214,7 @@ fn classify(action: Mod) -> Either<KeyedAction, SpecialAction> {
             UntypedMapModification::Remove(key),
         )),
         UntypedMapModification::Take(n) => Either::Right(SpecialAction::Take(n)),
-        UntypedMapModification::Skip(n) => Either::Right(SpecialAction::Skip(n)),
+        UntypedMapModification::Drop(n) => Either::Right(SpecialAction::Skip(n)),
         UntypedMapModification::Clear => Either::Right(SpecialAction::Clear),
     }
 }
@@ -253,7 +251,7 @@ where
 
         let mut key_streams = SelectAll::new();
 
-        let mut bridge_fused = bridge.fuse();
+        let mut bridge_fused = ReceiverStream::new(bridge).fuse();
 
         loop {
             let maybe_event: Option<Either<BridgeMessage, Mod>> = if key_streams.is_empty() {
@@ -265,7 +263,7 @@ where
                             break message.map(Either::Left);
                         },
                         output = key_streams.next() => {
-                            if let Some(Ok(v)) = output {
+                            if let Some(v) = output {
                                 break Some(Either::Right(v));
                             }
                         },
@@ -276,8 +274,7 @@ where
             if let Some(event) = maybe_event {
                 match event {
                     Either::Left(BridgeMessage::Register(receiver)) => {
-                        //TODO Get rid of this allocation.
-                        key_streams.push(Box::pin(receiver.into_stream()));
+                        key_streams.push(receiver);
                     }
                     Either::Left(BridgeMessage::Special(action, cb)) => {
                         if !producer_handle_special(&mut sink, action, cb, &mut key_streams).await {
@@ -304,7 +301,7 @@ where
             } else {
                 break;
             }
-            iteration_count += 1;
+            iteration_count = iteration_count.wrapping_add(1);
             if iteration_count % yield_mod == 0 {
                 tokio::task::yield_now().await;
             }
@@ -314,15 +311,13 @@ where
 
 async fn flush_key_streams<Str, Snk>(sink: &mut Snk, key_streams: &mut Str) -> bool
 where
-    Str: Stream<Item = Result<Mod, RecvError>> + Unpin + Sync + 'static,
+    Str: Stream<Item = Mod> + Unpin + Sync + 'static,
     Snk: ItemSender<Mod, RoutingError>,
 {
-    while let Some(Some(r)) = key_streams.next().now_or_never() {
-        if let Ok(modification) = r {
-            if let Err(RoutingError::RouterDropped) = sink.send_item(modification).await {
-                //Router was dropped.
-                return false;
-            }
+    while let Some(Some(modification)) = key_streams.next().now_or_never() {
+        if let Err(RoutingError::RouterDropped) = sink.send_item(modification).await {
+            //Router was dropped.
+            return false;
         }
     }
     true
@@ -335,7 +330,7 @@ async fn producer_handle_special<Str, Snk>(
     key_streams: &mut Str,
 ) -> bool
 where
-    Str: Stream<Item = Result<Mod, RecvError>> + Unpin + Sync + 'static,
+    Str: Stream<Item = Mod> + Unpin + Sync + 'static,
     Snk: ItemSender<Mod, RoutingError>,
 {
     //Drain all of the keyed streams of immediately available values to
@@ -346,7 +341,7 @@ where
     //Dispatch the special event.
     let special = match action {
         SpecialAction::Take(n) => UntypedMapModification::Take(n),
-        SpecialAction::Skip(n) => UntypedMapModification::Skip(n),
+        SpecialAction::Skip(n) => UntypedMapModification::Drop(n),
         SpecialAction::Clear => UntypedMapModification::Clear,
     };
     if let Err(RoutingError::RouterDropped) = sink.send_item(special).await {

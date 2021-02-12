@@ -13,11 +13,12 @@
 // limitations under the License.
 
 use crate::agent::lane::model::demand_map::{
-    make_lane_model, DemandMapLaneEvent, DemandMapLaneUpdate,
+    make_lane_model, DemandMapLaneCommand, DemandMapLaneEvent,
 };
 use futures::future::{join, join3};
-use futures::StreamExt;
 use std::num::NonZeroUsize;
+use swim_common::form::Form;
+use swim_common::record;
 use tokio::sync::mpsc;
 
 #[tokio::test]
@@ -28,9 +29,9 @@ async fn test_sync() {
     let sync = controller.sync();
 
     let asserter = async move {
-        match rx.next().await {
-            Some(DemandMapLaneEvent::Sync(sender)) => {
-                assert!(sender.send(vec![DemandMapLaneUpdate::make(5, 10)]).is_ok());
+        match rx.recv().await {
+            Some(DemandMapLaneCommand::Sync(sender)) => {
+                assert!(sender.send(vec![DemandMapLaneEvent::update(5, 10)]).is_ok());
             }
             _ => panic!("Unexpected event"),
         }
@@ -48,8 +49,8 @@ async fn test_cue_ok() {
     let (lane, mut update_rx) = make_lane_model::<i32, i32>(NonZeroUsize::new(5).unwrap(), tx);
 
     let cue_task = async move {
-        match rx.next().await {
-            Some(DemandMapLaneEvent::Cue(sender, _key)) => {
+        match rx.recv().await {
+            Some(DemandMapLaneCommand::Cue(sender, _key)) => {
                 assert!(sender.send(Some(5)).is_ok());
             }
             _ => panic!("Unexpected event"),
@@ -57,9 +58,9 @@ async fn test_cue_ok() {
     };
 
     let event_task = async move {
-        match update_rx.next().await {
+        match update_rx.recv().await {
             Some(value) => {
-                assert_eq!(value, DemandMapLaneUpdate::make(10, 5));
+                assert_eq!(value, DemandMapLaneEvent::update(10, 5));
             }
             _ => {
                 panic!("Expected a value");
@@ -80,8 +81,8 @@ async fn test_cue_none() {
     let (lane, _topic) = make_lane_model::<i32, i32>(NonZeroUsize::new(5).unwrap(), tx);
 
     let cue_task = async move {
-        match rx.next().await {
-            Some(DemandMapLaneEvent::Cue(sender, _key)) => {
+        match rx.recv().await {
+            Some(DemandMapLaneCommand::Cue(sender, _key)) => {
                 assert!(sender.send(None).is_ok());
             }
             _ => panic!("Unexpected event"),
@@ -93,4 +94,45 @@ async fn test_cue_none() {
     let (_, cue_result) = join(cue_task, cue_future).await;
 
     assert!(cue_result.is_ok());
+}
+
+#[tokio::test]
+async fn test_remove() {
+    let (tx, mut rx) = mpsc::channel(5);
+    let (lane, _topic) = make_lane_model::<i32, i32>(NonZeroUsize::new(5).unwrap(), tx);
+
+    let remove_task = async move {
+        match rx.recv().await {
+            Some(DemandMapLaneCommand::Remove(key)) => {
+                assert_eq!(key, 1);
+            }
+            _ => panic!("Unexpected event"),
+        }
+    };
+
+    let mut controller = lane.controller();
+    let remove_future = controller.remove(1);
+    let (_, remove_result) = join(remove_task, remove_future).await;
+
+    assert!(remove_result.is_ok());
+}
+
+#[test]
+fn test_form() {
+    let remove_event: DemandMapLaneEvent<i32, i32> = DemandMapLaneEvent::remove(1);
+    assert_eq!(
+        remove_event.as_value(),
+        record!(
+            attrs => [("remove", record!(("key", 1)))]
+        )
+    );
+
+    let update_event = DemandMapLaneEvent::update(1, 2);
+    assert_eq!(
+        update_event.as_value(),
+        record!(
+            attrs => [("update", record!(("key", 1)))],
+            items => [2]
+        )
+    );
 }

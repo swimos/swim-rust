@@ -31,6 +31,7 @@ use utilities::sync::{promise, trigger};
 use utilities::uri::{BadRelativeUri, RelativeUri, UriIsAbsolute};
 
 use crate::routing::error::RouterError;
+use crate::routing::remote::config::ConnectionConfig;
 use crate::routing::remote::task::{ConnectionTask, DispatchError};
 use crate::routing::remote::test_fixture::fake_channel::TwoWayMpsc;
 use crate::routing::remote::test_fixture::LocalRoutes;
@@ -97,7 +98,7 @@ async fn try_dispatch_in_map() {
 
     assert!(result.is_ok());
 
-    let received = rx.next().now_or_never();
+    let received = rx.recv().now_or_never();
     assert_eq!(received, Some(Some(TaggedEnvelope(addr, env))));
 }
 
@@ -116,7 +117,7 @@ async fn try_dispatch_from_router() {
 
     assert!(result.is_ok());
 
-    let received = rx.next().now_or_never();
+    let received = rx.recv().now_or_never();
     assert_eq!(received, Some(Some(TaggedEnvelope(addr, env))));
 
     assert!(resolved.contains_key(&path));
@@ -237,7 +238,7 @@ async fn dispatch_immediate_success() {
 
     assert!(result.is_ok());
 
-    let received = rx.next().now_or_never();
+    let received = rx.recv().now_or_never();
     assert_eq!(received, Some(Some(TaggedEnvelope(addr, env))));
 
     assert!(resolved.contains_key(&path));
@@ -274,11 +275,12 @@ async fn dispatch_immediate_failure() {
 
     assert!(delays.lock().is_empty());
 
-    if let Err(err) = result {
+    if let Err((err_env, err)) = result {
         let expected_uri: RelativeUri = "/node".parse().unwrap();
         assert!(
             matches!(err, DispatchError::RoutingProblem(RouterError::NoAgentAtRoute(uri)) if uri == expected_uri)
         );
+        assert_eq!(err_env, env)
     } else {
         panic!("Unexpected success.")
     }
@@ -315,7 +317,7 @@ async fn dispatch_after_retry() {
 
     assert!(result.is_ok());
 
-    let received = rx.next().now_or_never();
+    let received = rx.recv().now_or_never();
     assert_eq!(received, Some(Some(TaggedEnvelope(addr, env))));
 
     assert!(resolved.contains_key(&path));
@@ -352,7 +354,7 @@ async fn dispatch_after_immediate_retry() {
 
     assert!(result.is_ok());
 
-    let received = rx.next().now_or_never();
+    let received = rx.recv().now_or_never();
     assert_eq!(received, Some(Some(TaggedEnvelope(addr, env))));
 
     assert!(resolved.contains_key(&path));
@@ -385,9 +387,14 @@ impl TaskFixture {
             router.clone(),
             env_rx,
             stop_rx,
-            Duration::from_secs(30),
-            RetryStrategy::immediate(NonZeroUsize::new(1).unwrap()),
-            NonZeroUsize::new(256).unwrap(),
+            ConnectionConfig {
+                router_buffer_size: NonZeroUsize::new(10).unwrap(),
+                channel_buffer_size: NonZeroUsize::new(10).unwrap(),
+                activity_timeout: Duration::from_secs(30),
+                connection_retries: RetryStrategy::immediate(NonZeroUsize::new(1).unwrap()),
+                yield_after: NonZeroUsize::new(256).unwrap(),
+                missing_nodes_buffer_size: NonZeroUsize::new(8).unwrap(),
+            },
         )
         .run()
         .boxed();
@@ -486,12 +493,64 @@ async fn task_receive_message_with_route() {
 
     let test_case = async move {
         assert!(sock_in.send(Ok(message_for(env_cpy.clone()))).await.is_ok());
-        assert!(matches!(rx.next().await, Some(TaggedEnvelope(_, env)) if env == env_cpy));
+        assert!(matches!(rx.recv().await, Some(TaggedEnvelope(_, env)) if env == env_cpy));
         stop_trigger.trigger();
     };
 
     let result = timeout::timeout(Duration::from_secs(5), join(task, test_case)).await;
     assert!(matches!(result, Ok((ConnectionDropped::Closed, _))));
+}
+
+#[tokio::test]
+async fn task_receive_link_message_missing_node() {
+    let TaskFixture {
+        task,
+        envelope_tx: _envelope_tx,
+        mut sock_out,
+        stop_trigger,
+        router: _router,
+        mut sock_in,
+        send_error_tx: _send_error_tx,
+    } = TaskFixture::new();
+
+    let envelope = Envelope::link("/missing", "/lane");
+    let response = Envelope::node_not_found("/missing", "/lane");
+
+    let test_case = async move {
+        assert!(sock_in.send(Ok(message_for(envelope))).await.is_ok());
+
+        let message = sock_out.next().await;
+        assert_eq!(message, Some(message_for(response)));
+
+        stop_trigger.trigger();
+    };
+
+    let result = timeout::timeout(Duration::from_secs(5), join(task, test_case)).await;
+    assert!(matches!(result, Ok((ConnectionDropped::Closed, _))));
+}
+
+#[tokio::test]
+async fn task_receive_sync_message_missing_node() {
+    let TaskFixture {
+        task,
+        envelope_tx: _envelope_tx,
+        mut sock_out,
+        stop_trigger: _stop_trigger,
+        router: _router,
+        mut sock_in,
+        send_error_tx: _send_error_tx,
+    } = TaskFixture::new();
+
+    let envelope = Envelope::sync("/missing", "/lane");
+
+    let test_case = async move {
+        assert!(sock_in.send(Ok(message_for(envelope))).await.is_ok());
+        sock_out.next().await;
+        panic!("No messages should be received")
+    };
+
+    let result = timeout::timeout(Duration::from_secs(5), join(task, test_case)).await;
+    assert!(result.is_err());
 }
 
 #[tokio::test]

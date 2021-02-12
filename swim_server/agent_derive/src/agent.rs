@@ -244,7 +244,7 @@ fn create_lane(
 
     let ts = match lane_type {
         LaneType::Command => {
-            let model = quote!(let (#lane_name, event_stream) = swim_server::agent::lane::model::action::make_lane_model(exec_conf.action_buffer.clone()););
+            let model = quote!(let (#lane_name, event_stream) = swim_server::agent::lane::model::command::make_lane_model(exec_conf.action_buffer.clone()););
 
             build_lane_io(
                 lane_data,
@@ -253,7 +253,7 @@ fn create_lane(
 
                     io_map.insert (
                         #lane_name_lit.to_string(),
-                        Box::new(swim_server::agent::ActionLaneIo::new_command(#lane_name.clone()))
+                        Box::new(swim_server::agent::CommandLaneIo::new(#lane_name.clone()))
                     );
                 },
                 model,
@@ -269,7 +269,7 @@ fn create_lane(
 
                     io_map.insert (
                         #lane_name_lit.to_string(),
-                        Box::new(swim_server::agent::ActionLaneIo::new_action(#lane_name.clone()))
+                        Box::new(swim_server::agent::ActionLaneIo::new(#lane_name.clone()))
                     );
                 },
                 model,
@@ -440,8 +440,9 @@ fn build_demand_map_lane_io(lane_data: LaneData) -> proc_macro2::TokenStream {
 
     quote! {
         let buffer_size = exec_conf.action_buffer.clone();
-        let (lifecycle_tx, event_stream) = tokio::sync::mpsc::channel(buffer_size.get());
+        let (lifecycle_tx, event_rx) = tokio::sync::mpsc::channel(buffer_size.get());
         let lifecycle = #lifecycle::create(configuration);
+        let event_stream = tokio_stream::wrappers::ReceiverStream::new(event_rx);
 
         let #task_variable = #task_structure {
             lifecycle,

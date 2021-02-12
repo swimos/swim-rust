@@ -55,6 +55,10 @@ pub fn channel<T: Send + Sync>(capacity: NonZeroUsize) -> (Sender<T>, Receiver<T
     (Sender(inner.clone()), Receiver(inner))
 }
 
+pub fn watch_channel<T: Send + Sync>() -> (Sender<T>, Receiver<T>) {
+    channel(NonZeroUsize::new(1).unwrap())
+}
+
 pub mod error {
 
     /// Error type returning the pushed value if the receive end of the channel is dropped.

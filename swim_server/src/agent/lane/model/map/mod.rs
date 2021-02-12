@@ -39,6 +39,7 @@ use std::fmt::Debug;
 use std::hash::Hash;
 use std::num::NonZeroUsize;
 use stm::var::observer::{Observer, ObserverStream, ObserverSubscriber};
+use swim_warp::model::map::MapUpdate;
 use tracing::{event, Level};
 use utilities::future::{FlatmapStream, SwimStreamExt, Transform};
 
@@ -121,36 +122,12 @@ impl<K, V> Clone for MapLane<K, V> {
     }
 }
 
-/// Updates that can be applied to a [`MapLane`].
-/// TODO Add take/drop.
-#[derive(Debug, PartialEq, Eq, Form)]
-pub enum MapUpdate<K, V> {
-    #[form(tag = "update")]
-    Update(#[form(header, name = "key")] K, #[form(body)] Arc<V>),
-    #[form(tag = "remove")]
-    Remove(#[form(header, name = "key")] K),
-    #[form(tag = "clear")]
-    Clear,
-}
-
-impl<K: Form, V: Form> From<MapUpdate<K, V>> for Value {
-    fn from(event: MapUpdate<K, V>) -> Self {
-        event.into_value()
-    }
-}
-
-impl<K, V> MapUpdate<K, V>
-where
-    K: Form,
-    V: Form,
-{
-    pub fn make(event: MapLaneEvent<K, V>) -> Option<MapUpdate<K, V>> {
-        match event {
-            MapLaneEvent::Update(key, value) => Some(MapUpdate::Update(key, value)),
-            MapLaneEvent::Clear => Some(MapUpdate::Clear),
-            MapLaneEvent::Remove(key) => Some(MapUpdate::Remove(key)),
-            MapLaneEvent::Checkpoint(_) => None,
-        }
+pub fn make_update<K: Form, V: Form>(event: MapLaneEvent<K, V>) -> Option<MapUpdate<Value, V>> {
+    match event {
+        MapLaneEvent::Update(key, value) => Some(MapUpdate::Update(key.into_value(), value)),
+        MapLaneEvent::Clear => Some(MapUpdate::Clear),
+        MapLaneEvent::Remove(key) => Some(MapUpdate::Remove(key.into_value())),
+        MapLaneEvent::Checkpoint(_) => None,
     }
 }
 

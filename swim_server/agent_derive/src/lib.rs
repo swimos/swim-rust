@@ -26,7 +26,7 @@
 //!
 //! ```rust
 //! use swim_server::agent::AgentContext;
-//! use swim_server::agent::lane::model::action::CommandLane;
+//! use swim_server::agent::lane::model::command::CommandLane;
 //! use swim_server::{command_lifecycle, SwimAgent};
 //!
 //! // ----------------------- Agent derivation -----------------------
@@ -53,7 +53,7 @@
 //! impl TestCommandLifecycle {
 //!     async fn on_command<Context>(
 //!         &self,
-//!         command: String,
+//!         command: &String,
 //!         _model: &CommandLane<String>,
 //!         _context: &Context,
 //!     ) where
@@ -106,7 +106,8 @@ mod utils;
 ///
 /// ```rust
 /// use swim_server::SwimAgent;
-/// use swim_server::agent::lane::model::action::{ActionLane, CommandLane};
+/// use swim_server::agent::lane::model::action::ActionLane;
+/// use swim_server::agent::lane::model::command::CommandLane;
 /// use swim_server::agent::lane::model::map::MapLane;
 /// use swim_server::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 /// # use swim_server::agent::lane::model::map::MapLaneEvent;
@@ -139,7 +140,7 @@ mod utils;
 /// # impl TestCommandLifecycle {
 /// #     async fn on_command<Context>(
 /// #         &self,
-/// #         command: String,
+/// #         command: &String,
 /// #         _model: &CommandLane<String>,
 /// #         _context: &Context,
 /// #     ) where
@@ -313,7 +314,7 @@ pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// ```
 /// use swim_server::command_lifecycle;
-/// use swim_server::agent::lane::model::action::CommandLane;
+/// use swim_server::agent::lane::model::command::CommandLane;
 /// use swim_server::agent::AgentContext;
 /// # use swim_server::SwimAgent;
 ///
@@ -327,7 +328,7 @@ pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// impl TestCommandLifecycle {
 ///     async fn on_command<Context>(
 ///         &self,
-///         command: String,
+///         command: &String,
 ///         _model: &CommandLane<String>,
 ///         _context: &Context,
 ///     ) where
@@ -348,7 +349,7 @@ pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// ```rust
 /// use swim_server::command_lifecycle;
-/// use swim_server::agent::lane::model::action::CommandLane;
+/// use swim_server::agent::lane::model::command::CommandLane;
 /// use swim_server::agent::AgentContext;
 /// # use swim_server::SwimAgent;
 ///
@@ -362,7 +363,7 @@ pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 /// impl TestCommandLifecycle {
 ///     async fn custom_on_command<Context>(
 ///         &self,
-///         command: String,
+///         command: &String,
 ///         _model: &CommandLane<String>,
 ///         _context: &Context,
 ///     ) where
@@ -383,7 +384,7 @@ pub fn agent_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// ```rust
 /// use swim_server::command_lifecycle;
-/// use swim_server::agent::lane::model::action::CommandLane;
+/// use swim_server::agent::lane::model::command::CommandLane;
 /// use swim_server::agent::AgentContext;
 /// # use swim_server::SwimAgent;
 ///
@@ -902,6 +903,17 @@ pub fn demand_lifecycle(args: TokenStream, input: TokenStream) -> TokenStream {
 ///        Context: AgentContext<TestAgent> + Sized + Send + Sync + 'static,
 ///    {
 ///        Some(1)
+///    }
+///
+///     async fn on_remove<Context>(
+///         &self,
+///         _model: & DemandMapLane<String, i32>,
+///         _context: &Context,
+///         _key: String,
+///     ) where
+///         Context: AgentContext<TestAgent> + Send + Sync + 'static,
+///    {
+///
 ///    }
 /// }
 ///

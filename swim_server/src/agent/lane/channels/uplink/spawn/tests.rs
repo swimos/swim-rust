@@ -16,7 +16,9 @@ use crate::agent::context::AgentExecutionContext;
 use crate::agent::lane::channels::task::{LaneUplinks, UplinkChannels};
 use crate::agent::lane::channels::update::{LaneUpdate, UpdateError};
 use crate::agent::lane::channels::uplink::spawn::{SpawnerUplinkFactory, UplinkErrorReport};
-use crate::agent::lane::channels::uplink::{UplinkAction, UplinkError, UplinkStateMachine};
+use crate::agent::lane::channels::uplink::{
+    PeelResult, UplinkAction, UplinkError, UplinkStateMachine,
+};
 use crate::agent::lane::channels::{AgentExecutionConfig, LaneMessageHandler, TaggedAction};
 use crate::agent::Eff;
 use crate::routing::error::RouterError;
@@ -24,7 +26,7 @@ use crate::routing::{
     ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedEnvelope, TaggedSender,
 };
 use futures::future::{join, join3, ready, BoxFuture};
-use futures::stream::once;
+use futures::stream::iter;
 use futures::stream::{BoxStream, FusedStream};
 use futures::{FutureExt, Stream, StreamExt};
 use pin_utils::pin_mut;
@@ -42,6 +44,7 @@ use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::{mpsc, Barrier};
+use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
 use utilities::sync::{promise, topic};
 use utilities::uri::RelativeUri;
@@ -146,13 +149,20 @@ impl UplinkStateMachine<i32> for TestStateMachine {
 
     fn sync_lane<'a, Updates>(
         &'a self,
-        _updates: &'a mut Updates,
-    ) -> BoxStream<'a, Result<Self::Msg, UplinkError>>
+        updates: &'a mut Updates,
+    ) -> BoxStream<'a, PeelResult<'a, Updates, Result<Self::Msg, UplinkError>>>
     where
         Updates: FusedStream<Item = i32> + Send + Unpin + 'a,
     {
         let TestStateMachine(n) = self;
-        once(ready(Ok(Message(*n)))).boxed()
+        iter(
+            vec![
+                PeelResult::Output(Ok(Message(*n))),
+                PeelResult::Complete(updates),
+            ]
+            .into_iter(),
+        )
+        .boxed()
     }
 }
 
@@ -255,7 +265,7 @@ impl UplinkSpawnerOutputs {
 
 struct UplinkSpawnerOutputs {
     _update_rx: mpsc::Receiver<i32>,
-    router_rx: mpsc::Receiver<TaggedEnvelope>,
+    router_rx: ReceiverStream<TaggedEnvelope>,
 }
 
 struct UplinkSpawnerSplitOutputs {
@@ -263,7 +273,7 @@ struct UplinkSpawnerSplitOutputs {
     router_rxs: HashMap<RoutingAddr, mpsc::Receiver<Envelope>>,
 }
 
-struct RouterChannel(mpsc::Receiver<Envelope>);
+struct RouterChannel(ReceiverStream<Envelope>);
 
 impl RouterChannel {
     async fn take_router_events(&mut self, n: usize) -> Vec<Envelope> {
@@ -278,12 +288,12 @@ impl RouterChannel {
 
 impl UplinkSpawnerSplitOutputs {
     pub fn take_addr(&mut self, addr: RoutingAddr) -> RouterChannel {
-        RouterChannel(self.router_rxs.remove(&addr).unwrap())
+        RouterChannel(ReceiverStream::new(self.router_rxs.remove(&addr).unwrap()))
     }
 }
 
 fn make_config() -> AgentExecutionConfig {
-    AgentExecutionConfig::with(default_buffer(), 1, 1, Duration::from_secs(5))
+    AgentExecutionConfig::with(default_buffer(), 1, 1, Duration::from_secs(5), None)
 }
 
 struct TestContext {
@@ -335,10 +345,10 @@ fn make_test_harness() -> (
     let (tx_router, rx_router) = mpsc::channel(5);
 
     let (spawn_tx, spawn_rx) = mpsc::channel(5);
-    let spawn_task = spawn_rx.for_each_concurrent(None, |task| task);
+    let spawn_task = ReceiverStream::new(spawn_rx).for_each_concurrent(None, |task| task);
 
     let (error_tx, error_rx) = mpsc::channel(5);
-    let error_task = error_rx.collect::<Vec<_>>();
+    let error_task = ReceiverStream::new(error_rx).collect::<Vec<_>>();
 
     let handler = Arc::new(TestHandler(tx_up, INIT));
 
@@ -361,7 +371,7 @@ fn make_test_harness() -> (
         },
         UplinkSpawnerOutputs {
             _update_rx: rx_up,
-            router_rx: rx_router,
+            router_rx: ReceiverStream::new(rx_router),
         },
         errs,
     )

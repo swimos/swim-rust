@@ -558,7 +558,7 @@ where
         let label = key.borrow();
 
         match &**entry {
-            Entry::Leaf { item, .. } => return Some((label, item)),
+            Entry::Leaf { item, .. } => Some((label, item)),
             Entry::Branch { .. } => {
                 unreachable!()
             }

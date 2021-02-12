@@ -24,23 +24,27 @@ use crate::agent::dispatch::error::DispatcherErrors;
 use crate::agent::dispatch::AgentDispatcher;
 use crate::agent::lane::channels::task::{
     run_supply_lane_io, DemandMapLaneMessageHandler, LaneIoError, MapLaneMessageHandler,
+    ValueLaneMessageHandler,
 };
 use crate::agent::lane::channels::update::StmRetryStrategy;
 use crate::agent::lane::channels::uplink::spawn::{SpawnerUplinkFactory, UplinkErrorReport};
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lane::lifecycle::{
-    ActionLaneLifecycle, DemandLaneLifecycle, DemandMapLaneLifecycle, StatefulLaneLifecycle,
+    ActionLaneLifecycle, CommandLaneLifecycle, DemandLaneLifecycle, DemandMapLaneLifecycle,
+    StatefulLaneLifecycle,
 };
 use crate::agent::lane::model;
-use crate::agent::lane::model::action::{Action, ActionLane, CommandLane};
+use crate::agent::lane::model::action::{Action, ActionLane};
+use crate::agent::lane::model::command::{Command, CommandLane};
 use crate::agent::lane::model::demand::DemandLane;
 use crate::agent::lane::model::demand_map::{
-    DemandMapLane, DemandMapLaneEvent, DemandMapLaneUpdate,
+    DemandMapLane, DemandMapLaneCommand, DemandMapLaneEvent,
 };
 use crate::agent::lane::model::map::MapLane;
 use crate::agent::lane::model::map::{summaries_to_events, MapLaneEvent, MapSubscriber};
 use crate::agent::lane::model::supply::{make_lane_model, SupplyLane};
 use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent};
+use crate::agent::lane::model::DeferredSubscription;
 use crate::agent::lifecycle::AgentLifecycle;
 use crate::routing::{ServerRouter, TaggedClientEnvelope, TaggedEnvelope};
 use futures::future::{join, ready, BoxFuture};
@@ -68,10 +72,10 @@ use utilities::future::SwimStreamExt;
 use utilities::sync::{topic, trigger};
 use utilities::uri::RelativeUri;
 
-use crate::agent::lane::model::DeferredSubscription;
 #[doc(hidden)]
 #[allow(unused_imports)]
 pub use agent_derive::*;
+use tokio_stream::wrappers::ReceiverStream;
 
 /// Trait that must be implemented for any agent. This is essentially just boilerplate and will
 /// eventually be implemented using a derive macro.
@@ -220,7 +224,7 @@ where
 
         let task_manager: FuturesUnordered<Instrumented<Eff>> = FuturesUnordered::new();
 
-        let scheduler_task = rx
+        let scheduler_task = ReceiverStream::new(rx)
             .take_until(stop_trigger)
             .for_each_concurrent(None, |eff| eff)
             .boxed()
@@ -480,11 +484,14 @@ where
         context: Context,
     ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
         let ValueLaneIo { lane, deferred } = self;
+
+        let handler = ValueLaneMessageHandler::new(lane, config.value_lane_backpressure);
+
         let uplink_factory = SpawnerUplinkFactory::new(config.clone());
         Ok(lane::channels::task::run_lane_io(
-            lane,
+            handler,
             uplink_factory,
-            envelopes,
+            ReceiverStream::new(envelopes),
             deferred,
             config,
             context,
@@ -540,12 +547,13 @@ where
 
         let retries = StmRetryStrategy::new(config.retry_strategy);
 
-        let handler = MapLaneMessageHandler::new(lane, move || retries);
+        let handler =
+            MapLaneMessageHandler::new(lane, move || retries, config.map_lane_backpressure);
 
         Ok(lane::channels::task::run_lane_io(
             handler,
             uplink_factory,
-            envelopes,
+            ReceiverStream::new(envelopes),
             deferred,
             config,
             context,
@@ -567,7 +575,6 @@ where
 
 pub struct ActionLaneIo<Command, Response> {
     lane: ActionLane<Command, Response>,
-    feedback: bool,
 }
 
 impl<Command, Response> ActionLaneIo<Command, Response>
@@ -575,18 +582,8 @@ where
     Command: Send + Sync + Form + Debug + 'static,
     Response: Send + Sync + Form + Debug + 'static,
 {
-    pub fn new_action(lane: ActionLane<Command, Response>) -> Self {
-        ActionLaneIo {
-            lane,
-            feedback: true,
-        }
-    }
-
-    pub fn new_command(lane: ActionLane<Command, Response>) -> Self {
-        ActionLaneIo {
-            lane,
-            feedback: false,
-        }
+    pub fn new(lane: ActionLane<Command, Response>) -> Self {
+        ActionLaneIo { lane }
     }
 }
 
@@ -603,10 +600,62 @@ where
         config: AgentExecutionConfig,
         context: Context,
     ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
-        let ActionLaneIo { lane, feedback } = self;
+        let ActionLaneIo { lane } = self;
 
         Ok(lane::channels::task::run_action_lane_io(
-            lane, feedback, envelopes, config, context, route,
+            lane,
+            ReceiverStream::new(envelopes),
+            config,
+            context,
+            route,
+        )
+        .boxed())
+    }
+
+    fn attach_boxed(
+        self: Box<Self>,
+        route: RelativePath,
+        envelopes: Receiver<TaggedClientEnvelope>,
+        config: AgentExecutionConfig,
+        context: Context,
+    ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
+        (*self).attach(route, envelopes, config, context)
+    }
+}
+
+pub struct CommandLaneIo<T> {
+    lane: CommandLane<T>,
+}
+
+impl<T> CommandLaneIo<T>
+where
+    T: Send + Sync + Form + Debug + 'static,
+{
+    pub fn new(lane: CommandLane<T>) -> Self {
+        CommandLaneIo { lane }
+    }
+}
+
+impl<T, Context> LaneIo<Context> for CommandLaneIo<T>
+where
+    T: Send + Sync + Form + Debug + 'static,
+    Context: AgentExecutionContext + Sized + Send + Sync + 'static,
+{
+    fn attach(
+        self,
+        route: RelativePath,
+        envelopes: Receiver<TaggedClientEnvelope>,
+        config: AgentExecutionConfig,
+        context: Context,
+    ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
+        let CommandLaneIo { lane } = self;
+
+        Ok(lane::channels::task::run_command_lane_io(
+            lane,
+            ReceiverStream::new(envelopes),
+            config,
+            context,
+            route,
         )
         .boxed())
     }
@@ -903,14 +952,14 @@ impl<L, S, P> Lane for CommandLifecycleTasks<L, S, P> {
     }
 }
 
-impl<Agent, Context, Command, L, S, P> LaneTasks<Agent, Context> for CommandLifecycleTasks<L, S, P>
+impl<Agent, Context, T, L, S, P> LaneTasks<Agent, Context> for CommandLifecycleTasks<L, S, P>
 where
     Agent: 'static,
     Context: AgentContext<Agent> + Send + Sync + 'static,
-    S: Stream<Item = Action<Command, ()>> + Send + Sync + 'static,
-    Command: Any + Send + Sync + Debug,
-    L: for<'l> ActionLaneLifecycle<'l, Command, (), Agent>,
-    P: Fn(&Agent) -> &CommandLane<Command> + Send + Sync + 'static,
+    S: Stream<Item = Command<T>> + Send + Sync + 'static,
+    T: Any + Send + Sync + Debug + Clone,
+    L: for<'l> CommandLaneLifecycle<'l, T, Agent>,
+    P: Fn(&Agent) -> &CommandLane<T> + Send + Sync + 'static,
 {
     fn start<'a>(&'a self, _context: &'a Context) -> BoxFuture<'a, ()> {
         ready(()).boxed()
@@ -927,14 +976,14 @@ where
             let model = projection(context.agent()).clone();
             let events = event_stream.take_until(context.agent_stop_event());
             pin_mut!(events);
-            while let Some(Action { command, responder }) = events.next().await {
+            while let Some(Command { command, responder }) = events.next().await {
                 event!(Level::TRACE, COMMANDED, ?command);
                 lifecycle
-                    .on_command(command, &model, &context)
+                    .on_command(&command, &model, &context)
                     .instrument(span!(Level::TRACE, ON_COMMAND))
                     .await;
                 if let Some(tx) = responder {
-                    if tx.send(()).is_err() {
+                    if tx.send(command).is_err() {
                         event!(Level::WARN, RESPONSE_IGNORED);
                     }
                 }
@@ -983,7 +1032,7 @@ where
     });
 
     let lane_io = if is_public {
-        Some(ActionLaneIo::new_action(lane.clone()))
+        Some(ActionLaneIo::new(lane.clone()))
     } else {
         None
     };
@@ -999,24 +1048,24 @@ where
 /// * `lifecycle` - Life-cycle event handler for the lane.
 /// * `projection` - A projection from the agent type to this lane.
 /// * `buffer_size` - Buffer size for the MPSC channel accepting the commands.
-pub fn make_command_lane<Agent, Context, Command, L>(
+pub fn make_command_lane<Agent, Context, T, L>(
     name: impl Into<String>,
     is_public: bool,
     lifecycle: L,
-    projection: impl Fn(&Agent) -> &CommandLane<Command> + Send + Sync + 'static,
+    projection: impl Fn(&Agent) -> &CommandLane<T> + Send + Sync + 'static,
     buffer_size: NonZeroUsize,
 ) -> (
-    CommandLane<Command>,
+    CommandLane<T>,
     impl LaneTasks<Agent, Context>,
     Option<impl LaneIo<Context>>,
 )
 where
     Agent: 'static,
     Context: AgentContext<Agent> + AgentExecutionContext + Send + Sync + 'static,
-    Command: Any + Send + Sync + Form + Debug,
-    L: for<'l> ActionLaneLifecycle<'l, Command, (), Agent>,
+    T: Any + Send + Sync + Form + Debug + Clone,
+    L: for<'l> CommandLaneLifecycle<'l, T, Agent>,
 {
-    let (lane, event_stream) = model::action::make_lane_model(buffer_size);
+    let (lane, event_stream) = model::command::make_lane_model(buffer_size);
 
     let tasks = CommandLifecycleTasks(LifecycleTasks {
         name: name.into(),
@@ -1026,7 +1075,7 @@ where
     });
 
     let lane_io = if is_public {
-        Some(ActionLaneIo::new_command(lane.clone()))
+        Some(CommandLaneIo::new(lane.clone()))
     } else {
         None
     };
@@ -1093,7 +1142,14 @@ where
     ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
         let SupplyLaneIo { stream } = self;
 
-        Ok(run_supply_lane_io(envelopes, config, context, route, stream).boxed())
+        Ok(run_supply_lane_io(
+            ReceiverStream::new(envelopes),
+            config,
+            context,
+            route,
+            stream,
+        )
+        .boxed())
     }
 
     fn attach_boxed(
@@ -1174,16 +1230,14 @@ where
     ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
         let DemandLaneIo { response_rx } = self;
 
-        Ok(
-            lane::channels::task::run_demand_lane_io(
-                envelopes,
-                config,
-                context,
-                route,
-                response_rx,
-            )
-            .boxed(),
+        Ok(lane::channels::task::run_demand_lane_io(
+            ReceiverStream::new(envelopes),
+            config,
+            context,
+            route,
+            response_rx,
         )
+        .boxed())
     }
 
     fn attach_boxed(
@@ -1269,13 +1323,13 @@ where
     Value: Any + Send + Sync + Form + Clone + Debug,
     L: for<'l> DemandMapLaneLifecycle<'l, Key, Value, Agent>,
 {
-    let (lifecycle_tx, event_stream) = mpsc::channel(buffer_size.get());
+    let (lifecycle_tx, event_rx) = mpsc::channel(buffer_size.get());
     let (lane, topic) = model::demand_map::make_lane_model(buffer_size, lifecycle_tx);
 
     let tasks = DemandMapLifecycleTasks(LifecycleTasks {
         name: name.into(),
         lifecycle,
-        event_stream,
+        event_stream: ReceiverStream::new(event_rx),
         projection,
     });
 
@@ -1294,7 +1348,7 @@ where
     Value: Debug + Form + Send + Sync + 'static,
 {
     lane: DemandMapLane<Key, Value>,
-    rx: mpsc::Receiver<DemandMapLaneUpdate<Key, Value>>,
+    rx: mpsc::Receiver<DemandMapLaneEvent<Key, Value>>,
 }
 
 impl<Key, Value> DemandMapLaneIo<Key, Value>
@@ -1304,7 +1358,7 @@ where
 {
     pub fn new(
         lane: DemandMapLane<Key, Value>,
-        rx: mpsc::Receiver<DemandMapLaneUpdate<Key, Value>>,
+        rx: mpsc::Receiver<DemandMapLaneEvent<Key, Value>>,
     ) -> DemandMapLaneIo<Key, Value> {
         DemandMapLaneIo { lane, rx }
     }
@@ -1331,14 +1385,16 @@ where
 
         let pump = async move {
             while let Some(update) = rx.recv().await {
-                topic_tx.discarding_send(update).await;
+                if topic_tx.discarding_send(update).await.is_err() {
+                    break;
+                }
             }
         };
 
         let lane_task = lane::channels::task::run_lane_io(
             message_handler,
             uplink_factory,
-            envelopes,
+            ReceiverStream::new(envelopes),
             topic_rx.subscriber(),
             config,
             context,
@@ -1370,7 +1426,7 @@ impl<Agent, Context, L, S, P, Key, Value> LaneTasks<Agent, Context>
 where
     Agent: 'static,
     Context: AgentContext<Agent> + Send + Sync + 'static,
-    S: Stream<Item = DemandMapLaneEvent<Key, Value>> + Send + Sync + 'static,
+    S: Stream<Item = DemandMapLaneCommand<Key, Value>> + Send + Sync + 'static,
     Key: Any + Clone + Form + Send + Sync + Debug,
     Value: Any + Clone + Form + Send + Sync + Debug,
     L: for<'l> DemandMapLaneLifecycle<'l, Key, Value, Agent>,
@@ -1396,7 +1452,7 @@ where
 
             while let Some(event) = events.next().await {
                 match event {
-                    DemandMapLaneEvent::Sync(sender) => {
+                    DemandMapLaneCommand::Sync(sender) => {
                         let keys: Vec<Key> = lifecycle.on_sync(&model, &context).await;
                         let keys_len = keys.len();
 
@@ -1405,7 +1461,7 @@ where
                                 if let Some(value) =
                                     lifecycle.on_cue(&model, &context, key.clone()).await
                                 {
-                                    results.push(DemandMapLaneUpdate::make(key, value));
+                                    results.push(DemandMapLaneEvent::update(key, value));
                                 }
 
                                 results
@@ -1416,9 +1472,12 @@ where
 
                         let _ = sender.send(values);
                     }
-                    DemandMapLaneEvent::Cue(sender, key) => {
+                    DemandMapLaneCommand::Cue(sender, key) => {
                         let value = lifecycle.on_cue(&model, &context, key).await;
                         let _ = sender.send(value);
+                    }
+                    DemandMapLaneCommand::Remove(key) => {
+                        lifecycle.on_remove(&model, &context, key).await;
                     }
                 }
             }

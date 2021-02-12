@@ -30,6 +30,7 @@ use stm::transaction::TransactionError;
 use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
 use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc;
+use tokio_stream::wrappers::ReceiverStream;
 
 mod mock;
 
@@ -56,6 +57,7 @@ fn make_dispatcher(
         max_pending,
         0,
         Duration::from_secs(1),
+        None,
     );
 
     let dispatcher = AgentDispatcher::new(
@@ -65,7 +67,7 @@ fn make_dispatcher(
         boxed_lanes,
     );
 
-    let spawn_task = spawn_rx.for_each_concurrent(None, |eff| eff);
+    let spawn_task = ReceiverStream::new(spawn_rx).for_each_concurrent(None, |eff| eff);
 
     let dispatch_task = dispatcher.run(envelopes);
 
@@ -105,7 +107,8 @@ async fn expect_echo(rx: &mut mpsc::Receiver<TaggedEnvelope>, lane: &str, envelo
 async fn dispatch_nothing() {
     let (envelope_tx, envelope_rx) = mpsc::channel::<TaggedEnvelope>(8);
 
-    let (task, context) = make_dispatcher(8, 10, lanes(vec!["lane"]), envelope_rx);
+    let (task, context) =
+        make_dispatcher(8, 10, lanes(vec!["lane"]), ReceiverStream::new(envelope_rx));
 
     drop(envelope_tx);
     drop(context);
@@ -118,7 +121,8 @@ async fn dispatch_nothing() {
 async fn dispatch_single() {
     let (envelope_tx, envelope_rx) = mpsc::channel::<TaggedEnvelope>(8);
 
-    let (task, context) = make_dispatcher(8, 10, lanes(vec!["lane"]), envelope_rx);
+    let (task, context) =
+        make_dispatcher(8, 10, lanes(vec!["lane"]), ReceiverStream::new(envelope_rx));
 
     let addr = RoutingAddr::remote(1);
 
@@ -145,7 +149,12 @@ async fn dispatch_single() {
 async fn dispatch_two_lanes() {
     let (envelope_tx, envelope_rx) = mpsc::channel::<TaggedEnvelope>(8);
 
-    let (task, context) = make_dispatcher(8, 10, lanes(vec!["lane_a", "lane_b"]), envelope_rx);
+    let (task, context) = make_dispatcher(
+        8,
+        10,
+        lanes(vec!["lane_a", "lane_b"]),
+        ReceiverStream::new(envelope_rx),
+    );
 
     let addr1 = RoutingAddr::remote(1);
     let addr2 = RoutingAddr::remote(2);
@@ -181,7 +190,8 @@ async fn dispatch_two_lanes() {
 async fn dispatch_multiple_same_lane() {
     let (envelope_tx, envelope_rx) = mpsc::channel::<TaggedEnvelope>(8);
 
-    let (task, context) = make_dispatcher(8, 10, lanes(vec!["lane"]), envelope_rx);
+    let (task, context) =
+        make_dispatcher(8, 10, lanes(vec!["lane"]), ReceiverStream::new(envelope_rx));
 
     let addr = RoutingAddr::remote(1);
 
@@ -220,7 +230,12 @@ async fn dispatch_multiple_same_lane() {
 async fn blocked_lane() {
     let (envelope_tx, envelope_rx) = mpsc::channel::<TaggedEnvelope>(8);
 
-    let (task, context) = make_dispatcher(1, 10, lanes(vec!["lane_a", "lane_b"]), envelope_rx);
+    let (task, context) = make_dispatcher(
+        1,
+        10,
+        lanes(vec!["lane_a", "lane_b"]),
+        ReceiverStream::new(envelope_rx),
+    );
 
     let addr1 = RoutingAddr::remote(1);
     let addr2 = RoutingAddr::remote(2);
@@ -280,7 +295,12 @@ async fn blocked_lane() {
 async fn flush_pending() {
     let (envelope_tx, envelope_rx) = mpsc::channel::<TaggedEnvelope>(8);
 
-    let (task, context) = make_dispatcher(1, 10, lanes(vec!["lane_a", "lane_b"]), envelope_rx);
+    let (task, context) = make_dispatcher(
+        1,
+        10,
+        lanes(vec!["lane_a", "lane_b"]),
+        ReceiverStream::new(envelope_rx),
+    );
 
     let addr1 = RoutingAddr::remote(1);
     let addr2 = RoutingAddr::remote(2);
@@ -338,7 +358,8 @@ async fn flush_pending() {
 async fn dispatch_to_non_existent() {
     let (envelope_tx, envelope_rx) = mpsc::channel::<TaggedEnvelope>(8);
 
-    let (task, context) = make_dispatcher(8, 10, lanes(vec!["lane"]), envelope_rx);
+    let (task, context) =
+        make_dispatcher(8, 10, lanes(vec!["lane"]), ReceiverStream::new(envelope_rx));
 
     let addr = RoutingAddr::remote(1);
 
@@ -364,7 +385,8 @@ async fn dispatch_to_non_existent() {
 async fn failed_lane_task() {
     let (envelope_tx, envelope_rx) = mpsc::channel::<TaggedEnvelope>(8);
 
-    let (task, context) = make_dispatcher(8, 10, lanes(vec!["lane"]), envelope_rx);
+    let (task, context) =
+        make_dispatcher(8, 10, lanes(vec!["lane"]), ReceiverStream::new(envelope_rx));
 
     let addr = RoutingAddr::remote(1);
 
@@ -400,7 +422,12 @@ async fn failed_lane_task() {
 async fn fatal_failed_attachment() {
     let (envelope_tx, envelope_rx) = mpsc::channel::<TaggedEnvelope>(8);
 
-    let (task, context) = make_dispatcher(8, 10, lanes(vec![mock::POISON_PILL]), envelope_rx);
+    let (task, context) = make_dispatcher(
+        8,
+        10,
+        lanes(vec![mock::POISON_PILL]),
+        ReceiverStream::new(envelope_rx),
+    );
 
     let addr = RoutingAddr::remote(1);
 

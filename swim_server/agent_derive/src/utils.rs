@@ -28,6 +28,11 @@ const DEFAULT_ON_COMMAND: &str = "on_command";
 const DEFAULT_ON_EVENT: &str = "on_event";
 const DEFAULT_ON_CUE: &str = "on_cue";
 const DEFAULT_ON_SYNC: &str = "on_sync";
+const DEFAULT_ON_REMOVE: &str = "on_remove";
+
+pub fn default_on_remove() -> Ident {
+    str_to_ident(DEFAULT_ON_REMOVE)
+}
 
 pub fn default_on_command() -> Ident {
     str_to_ident(DEFAULT_ON_COMMAND)
@@ -92,6 +97,11 @@ pub fn parse_callback(
                     func_name: default_on_sync(),
                     kind,
                 }),
+                CallbackKind::Remove => Some(Callback {
+                    task_name,
+                    func_name: default_on_remove(),
+                    kind,
+                }),
             }
         }
     } else {
@@ -113,6 +123,7 @@ pub enum CallbackKind {
     Event,
     Cue,
     Sync,
+    Remove,
 }
 
 #[derive(Debug)]
@@ -137,6 +148,7 @@ pub enum LaneTasksImpl {
     DemandMap {
         on_sync: Option<Callback>,
         on_cue: Option<Callback>,
+        on_remove: Option<Callback>,
     },
 }
 
@@ -221,10 +233,14 @@ impl ToTokens for LaneTasksImpl {
 
                 (start_callback, events_callback)
             }
-            LaneTasksImpl::DemandMap { on_sync, on_cue } => {
+            LaneTasksImpl::DemandMap {
+                on_sync,
+                on_cue,
+                on_remove,
+            } => {
                 let start_callback = derive_start_callback(None);
 
-                let events_body = demand_map::derive_events_body(on_sync, on_cue);
+                let events_body = demand_map::derive_events_body(on_sync, on_cue, on_remove);
                 let events_callback = derive_events_callback(events_body);
 
                 (start_callback, events_callback)

@@ -37,6 +37,7 @@ use std::pin::Pin;
 use swim_common::warp::envelope::OutgoingLinkMessage;
 use swim_common::warp::path::RelativePath;
 use tokio::sync::{mpsc, oneshot};
+use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, span, Level};
 use tracing_futures::Instrument;
 use utilities::errors::Recoverable;
@@ -237,7 +238,7 @@ where
 
         let mut lane_io_tasks = FuturesUnordered::new();
 
-        let requests = requests.fuse();
+        let requests = ReceiverStream::new(requests).fuse();
         pin_mut!(requests);
 
         let yield_mod = config.yield_after.get();
@@ -321,8 +322,7 @@ where
                     break;
                 }
             }
-
-            iteration_count += 1;
+            iteration_count = iteration_count.wrapping_add(1);
             if iteration_count % yield_mod == 0 {
                 tokio::task::yield_now().await;
             }
@@ -482,7 +482,7 @@ impl EnvelopeDispatcher {
                 }
             }
 
-            iteration_count += 1;
+            iteration_count = iteration_count.wrapping_add(1);
             if iteration_count % yield_mod == 0 {
                 tokio::task::yield_now().await;
             }
@@ -519,7 +519,7 @@ impl EnvelopeDispatcher {
                     break;
                 }
             }
-            iteration_count += 1;
+            iteration_count = iteration_count.wrapping_add(1);
             if iteration_count % yield_mod == 0 {
                 tokio::task::yield_now().await;
             }

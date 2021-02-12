@@ -14,9 +14,11 @@
 
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lane::lifecycle::LaneLifecycle;
-use crate::agent::lane::model::action::{ActionLane, CommandLane, Commander};
+use crate::agent::lane::model::action::ActionLane;
+use crate::agent::lane::model::command::CommandLane;
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent};
+use crate::agent::lane::model::{action, command};
 use crate::agent::lane::tests::ExactlyOnce;
 use crate::agent::lifecycle::AgentLifecycle;
 use crate::agent::tests::stub_router::SingleChannelRouter;
@@ -27,7 +29,6 @@ use crate::routing::RoutingAddr;
 use crate::{
     action_lifecycle, agent_lifecycle, command_lifecycle, map_lifecycle, value_lifecycle, SwimAgent,
 };
-use futures::StreamExt;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::fmt::Debug;
@@ -37,6 +38,7 @@ use std::time::Duration;
 use stm::stm::Stm;
 use stm::transaction::atomically;
 use tokio::sync::{mpsc, Mutex};
+use tokio_stream::wrappers::ReceiverStream;
 use utilities::uri::RelativeUri;
 
 mod swim_server {
@@ -131,8 +133,8 @@ struct DataAgentLifecycle {
 }
 
 enum DataAgentCommander {
-    ActionLaneCommander(Commander<String, i32>),
-    CommandLaneCommander(Commander<String, ()>),
+    ActionLaneCommander(action::Commander<String, i32>),
+    CommandLaneCommander(command::Commander<String>),
 }
 
 impl DataAgentCommander {
@@ -204,7 +206,7 @@ struct CommandLifecycle1 {
 impl CommandLifecycle1 {
     async fn on_command<Context>(
         &self,
-        command: String,
+        command: &String,
         _model: &CommandLane<String>,
         context: &Context,
     ) where
@@ -216,7 +218,7 @@ impl CommandLifecycle1 {
         if context
             .agent()
             .map_1
-            .update_direct(command, 1.into())
+            .update_direct(command.clone(), 1.into())
             .apply(ExactlyOnce)
             .await
             .is_err()
@@ -245,7 +247,7 @@ struct CommandLifecycle2 {
 impl CommandLifecycle2 {
     async fn on_command<Context>(
         &self,
-        command: String,
+        command: &String,
         _model: &CommandLane<String>,
         context: &Context,
     ) where
@@ -257,7 +259,7 @@ impl CommandLifecycle2 {
         if context
             .agent()
             .map_2
-            .update_direct(command, 1.0.into())
+            .update_direct(command.clone(), 1.0.into())
             .apply(ExactlyOnce)
             .await
             .is_err()
@@ -516,7 +518,7 @@ async fn agent_loop() {
 
     let agent_lifecycle = config.agent_lifecycle();
 
-    let exec_config = AgentExecutionConfig::with(buffer_size, 1, 0, Duration::from_secs(1));
+    let exec_config = AgentExecutionConfig::with(buffer_size, 1, 0, Duration::from_secs(1), None);
 
     let (envelope_tx, envelope_rx) = mpsc::channel(buffer_size.get());
 
@@ -527,14 +529,14 @@ async fn agent_loop() {
         HashMap::new(),
         exec_config,
         clock.clone(),
-        envelope_rx,
+        ReceiverStream::new(envelope_rx),
         SingleChannelRouter::new(RoutingAddr::local(1024)),
     );
 
     let agent_task = swim_runtime::task::spawn(agent_proc);
 
     async fn expect(rx: &mut mpsc::Receiver<DataAgentEvent>, expected: DataAgentEvent) {
-        let result = rx.next().await;
+        let result = rx.recv().await;
         assert!(result.is_some());
         let event = result.unwrap();
         assert_eq!(event, expected);

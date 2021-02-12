@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::configuration::downlink::{
-    BackpressureMode, ClientParams, ConfigHierarchy, DownlinkParams, MuxMode, OnInvalidMessage,
+    BackpressureMode, ClientParams, ConfigHierarchy, DownlinkParams, OnInvalidMessage,
 };
 use crate::configuration::router::RouterParams;
 use crate::interface::SwimClient;
@@ -204,7 +204,6 @@ fn create_full_config() -> ConfigHierarchy {
                 max_active_keys: NonZeroUsize::new(15).unwrap(),
                 yield_after: NonZeroUsize::new(15).unwrap(),
             },
-            MuxMode::Buffered(NonZeroUsize::new(10).unwrap()),
             Duration::from_secs(30000),
             10,
             OnInvalidMessage::Ignore,
@@ -217,7 +216,6 @@ fn create_full_config() -> ConfigHierarchy {
         Url::parse("ws://127.0.0.1").unwrap(),
         DownlinkParams::new(
             BackpressureMode::Propagate,
-            MuxMode::Queue(NonZeroUsize::new(15).unwrap()),
             Duration::from_secs(40000),
             15,
             OnInvalidMessage::Ignore,
@@ -230,7 +228,6 @@ fn create_full_config() -> ConfigHierarchy {
         Url::parse("ws://127.0.0.2").unwrap(),
         DownlinkParams::new(
             BackpressureMode::Propagate,
-            MuxMode::Dropping,
             Duration::from_secs(50000),
             25,
             OnInvalidMessage::Terminate,
@@ -243,7 +240,6 @@ fn create_full_config() -> ConfigHierarchy {
         &AbsolutePath::new(Url::parse("ws://192.168.0.1").unwrap(), "bar", "baz"),
         DownlinkParams::new(
             BackpressureMode::Propagate,
-            MuxMode::Buffered(NonZeroUsize::new(10).unwrap()),
             Duration::from_secs(90000),
             40,
             OnInvalidMessage::Ignore,
@@ -261,7 +257,6 @@ fn create_full_config() -> ConfigHierarchy {
                 max_active_keys: NonZeroUsize::new(20).unwrap(),
                 yield_after: NonZeroUsize::new(20).unwrap(),
             },
-            MuxMode::Buffered(NonZeroUsize::new(5).unwrap()),
             Duration::from_secs(100000),
             50,
             OnInvalidMessage::Terminate,
@@ -576,7 +571,7 @@ fn test_conf_from_file_unnamed_record_nested() {
     if let Err(err) = result {
         assert_eq!(
             err.to_string(),
-            "Unnamed record \"{back_pressure:@propagate,mux_mode:@queue(queue_size:5),idle_timeout:60000,buffer_size:5,on_invalid:terminate,yield_after:256}\" in \"config\"."
+            "Unnamed record \"{back_pressure:@propagate,idle_timeout:60000,buffer_size:5,on_invalid:terminate,yield_after:256}\" in \"config\"."
         )
     } else {
         panic!("Expected configuration parsing error!")

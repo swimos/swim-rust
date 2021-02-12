@@ -84,6 +84,8 @@ pub fn make_config() -> AgentExecutionConfig {
         retry_strategy: Default::default(),
         cleanup_timeout: Duration::from_secs(1),
         scheduler_buffer: buffer_size,
+        value_lane_backpressure: None,
+        map_lane_backpressure: None,
     }
 }
 
