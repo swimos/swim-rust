@@ -16,7 +16,7 @@ use rand::seq::SliceRandom;
 use std::time::Duration;
 use swim_client::downlink::Downlink;
 use swim_client::interface::SwimClientBuilder;
-use swim_client::swim_runtime::time::delay::delay_for;
+use swim_client::runtime::time::delay::delay_for;
 use swim_common::warp::path::AbsolutePath;
 
 #[tokio::main]

@@ -26,6 +26,6 @@ pub mod connections;
 pub mod downlink;
 pub mod interface;
 pub mod router;
-pub use swim_runtime;
+pub use swim_runtime as runtime;
 
 extern crate utilities;
