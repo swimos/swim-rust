@@ -44,7 +44,7 @@ use crate::agent::lane::model::demand_map::{
 };
 use crate::agent::lane::model::map::MapLane;
 use crate::agent::lane::model::map::{summaries_to_events, MapLaneEvent, MapSubscriber};
-use crate::agent::lane::model::supply::{make_lane_model, SupplyLane, SupplyLaneWatch};
+use crate::agent::lane::model::supply::{make_lane_model, SupplyLane, SupplyLaneObserver};
 use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 use crate::agent::lane::LaneKind;
 use crate::agent::lifecycle::AgentLifecycle;
@@ -64,7 +64,6 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use swim_common::form::Form;
-use swim_common::topic::Topic;
 use swim_common::warp::path::RelativePath;
 use swim_runtime::time::clock::Clock;
 use tokio::sync::mpsc::Receiver;
@@ -461,7 +460,7 @@ impl Display for AttachError {
 impl Error for AttachError {}
 
 /// Lazily initialized envelope IO for a lane.
-pub trait LaneIo<Context: AgentExecutionContext + Sized + Send + Sync + 'static>:
+pub trait LaneIo<Context: AgentExecutionContext + Send + Sync + Sized + Send + Sync + 'static>:
     Send + Sync
 {
     /// Attempt to attach the running lane to a stream of envelopes.
@@ -565,7 +564,7 @@ impl<K, V, Context, D> LaneIo<Context> for MapLaneIo<K, V, D>
 where
     K: Any + Send + Sync + Form + Clone + Debug,
     V: Any + Send + Sync + Form + Debug,
-    Context: AgentExecutionContext + Sized + Send + Sync + 'static,
+    Context: AgentExecutionContext + Send + Sync + Sized + Send + Sync + 'static,
     D: DeferredSubscription<MapLaneEvent<K, V>>,
 {
     fn attach(
@@ -625,7 +624,7 @@ impl<Command, Response, Context> LaneIo<Context> for ActionLaneIo<Command, Respo
 where
     Command: Send + Sync + Form + Debug + 'static,
     Response: Send + Sync + Form + Debug + 'static,
-    Context: AgentExecutionContext + Sized + Send + Sync + 'static,
+    Context: AgentExecutionContext + Send + Sync + Sized + Send + Sync + 'static,
 {
     fn attach(
         self,
@@ -673,7 +672,7 @@ where
 impl<T, Context> LaneIo<Context> for CommandLaneIo<T>
 where
     T: Send + Sync + Form + Debug + 'static,
-    Context: AgentExecutionContext + Sized + Send + Sync + 'static,
+    Context: AgentExecutionContext + Send + Sync + Sized + Send + Sync + 'static,
 {
     fn attach(
         self,
@@ -1140,11 +1139,10 @@ where
 /// * `name` - The name of the lane.
 /// * `is_public` - Whether the lane is public (with respect to external message routing).
 /// * `buffer_size` - Buffer size for the MPSC channel accepting the events.
-pub fn make_supply_lane<Agent, Context, T, L>(
+pub fn make_supply_lane<Agent, Context, T, O>(
     name: impl Into<String>,
     is_public: bool,
-    lifecycle: L,
-    config: &AgentExecutionConfig,
+    observer: O,
 ) -> (
     SupplyLane<T>,
     impl LaneTasks<Agent, Context>,
@@ -1154,14 +1152,14 @@ where
     Agent: 'static,
     Context: AgentContext<Agent> + AgentExecutionContext + Send + Sync + 'static,
     T: Any + Clone + Send + Sync + Form + Debug,
-    L: SupplyLaneWatch<T>,
+    O: SupplyLaneObserver<T>,
 {
-    let (lane, topic) = make_lane_model(lifecycle, config);
+    let (lane, view) = make_lane_model(observer);
 
     let tasks = StatelessLifecycleTasks { name: name.into() };
 
     let lane_io = if is_public {
-        Some(SupplyLaneIo::new(topic))
+        Some(SupplyLaneIo::new(view))
     } else {
         None
     };
@@ -1212,9 +1210,9 @@ impl<T, E> SupplyLaneIo<T, E> {
 
 impl<T, E, Context> LaneIo<Context> for SupplyLaneIo<T, E>
 where
-    T: Topic<E> + Send + Sync + 'static,
+    T: Stream<Item = E> + Send + Sync + 'static,
     E: Send + Sync + Form + 'static,
-    Context: AgentExecutionContext + Sized + Send + Sync + 'static,
+    Context: AgentExecutionContext + Send + Sync + Sized + Send + Sync + 'static,
 {
     fn attach(
         self,
@@ -1223,24 +1221,18 @@ where
         config: AgentExecutionConfig,
         context: Context,
     ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
-        let future = async move {
-            let SupplyLaneIo { mut topic, .. } = self;
-            match topic.subscribe().await {
-                Ok(stream) => {
-                    run_supply_lane_io(
-                        ReceiverStream::new(envelopes),
-                        config,
-                        context,
-                        route,
-                        stream,
-                    )
-                    .await
-                }
-                Err(_) => unimplemented!(),
-            }
-        };
+        let SupplyLaneIo { topic, .. } = self;
 
-        Ok(Box::pin(future.boxed()))
+        Ok(Box::pin(
+            run_supply_lane_io(
+                ReceiverStream::new(envelopes),
+                config,
+                context,
+                route,
+                topic,
+            )
+            .boxed(),
+        ))
     }
 
     fn attach_boxed(
@@ -1310,7 +1302,7 @@ where
 impl<Event, Context> LaneIo<Context> for DemandLaneIo<Event>
 where
     Event: Form + Send + Sync + 'static,
-    Context: AgentExecutionContext + Sized + Send + Sync + 'static,
+    Context: AgentExecutionContext + Send + Sync + Sized + Send + Sync + 'static,
 {
     fn attach(
         self,
@@ -1463,7 +1455,7 @@ impl<Key, Value, Context> LaneIo<Context> for DemandMapLaneIo<Key, Value>
 where
     Key: Any + Send + Sync + Form + Clone + Debug,
     Value: Any + Send + Sync + Form + Clone + Debug,
-    Context: AgentExecutionContext + Sized + Send + Sync + 'static,
+    Context: AgentExecutionContext + Send + Sync + Sized + Send + Sync + 'static,
 {
     fn attach(
         self,

@@ -81,7 +81,7 @@ const INTERNAL_DISPATCH_TASK: &str = "Internal envelope dispatcher task.";
 
 impl<Context> AgentDispatcher<Context>
 where
-    Context: AgentExecutionContext + Clone + Send + Sync + 'static,
+    Context: AgentExecutionContext + Send + Sync + Clone + Send + Sync + 'static,
 {
     /// Create a dispatcher for an agent.
     ///
@@ -210,7 +210,7 @@ async fn next_attachment_event(
 
 impl<'a, Context> LaneAttachmentTask<'a, Context>
 where
-    Context: AgentExecutionContext + Clone + Send + Sync + 'static,
+    Context: AgentExecutionContext + Send + Sync + Clone + Send + Sync + 'static,
 {
     fn new(
         agent_route: RelativeUri,

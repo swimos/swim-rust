@@ -321,7 +321,7 @@ impl LaneUplinks for SpawnerUplinkFactory {
         Handler: LaneMessageHandler + 'static,
         OutputMessage<Handler>: Into<Value>,
         Top: DeferredSubscription<Handler::Event>,
-        Context: AgentExecutionContext,
+        Context: AgentExecutionContext + Send + Sync,
     {
         let SpawnerUplinkFactory(AgentExecutionConfig {
             action_buffer,

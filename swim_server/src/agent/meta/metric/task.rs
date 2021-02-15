@@ -31,6 +31,7 @@ use crate::agent::lane::model::supply::{SupplyLane, TrySupplyError};
 use crate::agent::meta::metric::ObserverEvent;
 use crate::agent::meta::MetaNodeAddressed;
 use crate::routing::LaneIdentifier;
+use tokio_stream::wrappers::ReceiverStream;
 
 const REMOVING_LANE: &str = "Lane closed, removing";
 const LANE_NOT_FOUND: &str = "Lane not found";
@@ -84,7 +85,7 @@ impl CollectorTask {
             mut lanes,
         } = self;
 
-        let mut fused_metric_rx = metric_rx.fuse();
+        let mut fused_metric_rx = ReceiverStream::new(metric_rx).fuse();
         let mut fused_trigger = stop_rx.fuse();
         let mut iteration_count: usize = 0;
 
@@ -144,7 +145,7 @@ fn forward(
     address: LaneIdentifier,
     profile: Value,
 ) {
-    match lanes.get(&address) {
+    match lanes.get_mut(&address) {
         Some(supply_lane) => {
             if let Err(TrySupplyError::Closed) = supply_lane.try_send(profile) {
                 event!(Level::ERROR, %address, REMOVING_LANE);

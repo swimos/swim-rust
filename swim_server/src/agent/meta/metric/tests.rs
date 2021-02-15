@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lane::model::supply::{make_lane_model, Dropping, Queue};
 use crate::agent::meta::metric::task::CollectorTask;
 use crate::agent::meta::metric::uplink::WarpUplinkProfile;
@@ -24,17 +23,14 @@ use futures::{FutureExt, StreamExt};
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use swim_common::form::Form;
-use swim_common::topic::Topic;
 use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc;
 use utilities::sync::trigger;
 
 #[tokio::test]
 async fn test_queue() {
-    let (supply_lane, mut topic) =
-        make_lane_model(Queue::default(), &AgentExecutionConfig::default());
+    let (supply_lane, mut supply_rx) = make_lane_model(Queue(NonZeroUsize::new(4).unwrap()));
 
-    let mut supply_rx = topic.subscribe().await.unwrap();
     let (metric_tx, metric_rx) = mpsc::channel(5);
     let (trigger_tx, trigger_rx) = trigger::trigger();
     let ident = LaneIdentifier::meta(MetaNodeAddressed::UplinkProfile {
@@ -92,9 +88,8 @@ async fn test_queue() {
 
 #[tokio::test]
 async fn test_dropping() {
-    let (supply_lane, mut topic) = make_lane_model(Dropping, &AgentExecutionConfig::default());
+    let (supply_lane, mut supply_rx) = make_lane_model(Dropping);
 
-    let mut supply_rx = topic.subscribe().await.unwrap();
     let (metric_tx, metric_rx) = mpsc::channel(150);
     let (trigger_tx, trigger_rx) = trigger::trigger();
     let ident = LaneIdentifier::meta(MetaNodeAddressed::UplinkProfile {
@@ -140,10 +135,8 @@ async fn test_dropping() {
 
 #[tokio::test]
 async fn test_unknown() {
-    let (supply_lane, mut topic) =
-        make_lane_model(Queue::default(), &AgentExecutionConfig::default());
+    let (supply_lane, mut supply_rx) = make_lane_model(Queue::default());
 
-    let mut supply_rx = topic.subscribe().await.unwrap();
     let (metric_tx, metric_rx) = mpsc::channel(150);
     let (trigger_tx, trigger_rx) = trigger::trigger();
     let ident = LaneIdentifier::meta(MetaNodeAddressed::UplinkProfile {

@@ -20,7 +20,7 @@ pub(crate) mod test_clock;
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lane::lifecycle::CommandLaneLifecycle;
 use crate::agent::lane::lifecycle::{ActionLaneLifecycle, StatefulLaneLifecycle};
-use crate::agent::lane::model::action::{Action, ActionLane, CommandLane};
+use crate::agent::lane::model::action::{Action, ActionLane};
 use crate::agent::lane::model::command::{Command, CommandLane};
 use crate::agent::lane::model::demand_map::{DemandMapLaneCommand, DemandMapLaneEvent};
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
@@ -354,10 +354,6 @@ async fn test_meta_lanes() {
         futures::stream::iter(expected)
             .for_each(move |update| {
                 let tx = tx.clone();
-                let key = match &update {
-                    DemandMapLaneEvent::Update(key, _) => key.clone(),
-                    _ => panic!("Unexpected event"),
-                };
 
                 async move {
                     let (sync_tx, sync_rx) = oneshot::channel();

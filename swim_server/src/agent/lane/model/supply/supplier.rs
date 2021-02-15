@@ -12,17 +12,57 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::num::NonZeroUsize;
-
 use futures::future::{ready, BoxFuture};
-use futures::{FutureExt, TryFutureExt};
-use tokio::sync::{mpsc, watch};
-
-use swim_common::topic::{MpscTopic, Topic, WatchTopic};
-
-use crate::agent::lane::channels::AgentExecutionConfig;
+use futures::{FutureExt, Stream, TryFutureExt};
+use pin_project::pin_project;
+use std::num::NonZeroUsize;
+use std::pin::Pin;
+use std::task::{Context, Poll};
 use tokio::sync::mpsc::error::TrySendError as MpscTrySendError;
 use tokio::sync::watch::error::SendError as WatchSendError;
+use tokio::sync::{mpsc, watch};
+use tokio_stream::wrappers::{ReceiverStream, WatchStream as TokioWatchStream};
+
+pub type BoxSupplier<T> = Box<dyn Supplier<T> + Send + Sync + 'static>;
+
+pub struct SupplyError;
+
+pub enum TrySupplyError {
+    Closed,
+    Capacity,
+}
+
+pub trait Supplier<T>
+where
+    T: Send + Sync + 'static,
+{
+    fn try_supply(&self, item: T) -> Result<(), TrySupplyError>;
+
+    fn supply(&self, item: T) -> BoxFuture<Result<(), SupplyError>>;
+}
+
+pub trait SupplyLaneObserver<T: Clone>
+where
+    T: Send + Sync + 'static,
+{
+    type Sender: Supplier<T> + Send + Sync + 'static;
+    type View: Stream<Item = T> + Send + Sync + 'static;
+
+    fn make_observer(&self) -> (Self::Sender, Self::View);
+}
+
+impl<T> Supplier<T> for mpsc::Sender<T>
+where
+    T: Send + Sync + 'static,
+{
+    fn try_supply(&self, item: T) -> Result<(), TrySupplyError> {
+        self.try_send(item).map_err(Into::into)
+    }
+
+    fn supply(&self, item: T) -> BoxFuture<Result<(), SupplyError>> {
+        self.send(item).map_err(|_| SupplyError).boxed()
+    }
+}
 
 #[derive(Debug, PartialEq, Eq, Clone, Default)]
 pub struct Dropping;
@@ -30,17 +70,10 @@ pub struct Dropping;
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Queue(pub NonZeroUsize);
 
-const DEFAULT_BUFFER: usize = 10;
-
-fn default_buffer() -> NonZeroUsize {
-    NonZeroUsize::new(DEFAULT_BUFFER).unwrap()
-}
-
-pub struct SupplyError;
-
-pub enum TrySupplyError {
-    Closed,
-    Capacity,
+impl Default for Queue {
+    fn default() -> Self {
+        Queue(NonZeroUsize::new(10).unwrap())
+    }
 }
 
 impl<T> From<MpscTrySendError<T>> for TrySupplyError {
@@ -64,61 +97,22 @@ impl From<TrySupplyError> for SupplyError {
     }
 }
 
-impl Default for Queue {
-    fn default() -> Self {
-        Queue(default_buffer())
-    }
-}
-
-pub type BoxSupplier<T> = Box<dyn Supplier<T> + Send + Sync + 'static>;
-
-pub trait SupplyLaneWatch<T: Clone>
-where
-    T: Send + Sync + 'static,
-{
-    type Sender: Supplier<T> + Send + Sync + 'static;
-    type Topic: Topic<T> + Send + Sync + 'static;
-
-    fn make_watch(&self, config: &AgentExecutionConfig) -> (Self::Sender, Self::Topic);
-}
-
-pub trait Supplier<T>
-where
-    T: Send + Sync + 'static,
-{
-    fn try_supply(&self, item: T) -> Result<(), TrySupplyError>;
-
-    fn supply(&self, item: T) -> BoxFuture<Result<(), SupplyError>>;
-}
-
-impl<T> Supplier<T> for mpsc::Sender<T>
-where
-    T: Send + Sync + 'static,
-{
-    fn try_supply(&self, item: T) -> Result<(), TrySupplyError> {
-        self.try_send(item).map_err(Into::into)
-    }
-
-    fn supply(&self, item: T) -> BoxFuture<Result<(), SupplyError>> {
-        self.send(item).map_err(|_| SupplyError).boxed()
-    }
-}
-
-impl<T> SupplyLaneWatch<T> for Queue
+impl<T> SupplyLaneObserver<T> for Queue
 where
     T: Clone + Send + Sync + 'static,
 {
     type Sender = mpsc::Sender<T>;
-    type Topic = MpscTopic<T>;
+    type View = ReceiverStream<T>;
 
-    fn make_watch(&self, config: &AgentExecutionConfig) -> (Self::Sender, Self::Topic) {
+    fn make_observer(&self) -> (Self::Sender, Self::View) {
         let Queue(size) = self;
         let (tx, rx) = mpsc::channel(size.get());
-        let (topic, _rec) = MpscTopic::new(rx, *size, config.yield_after);
 
-        (tx, topic)
+        (tx, ReceiverStream::new(rx))
     }
 }
+
+pub struct WatchSupplier<T>(watch::Sender<Option<T>>);
 
 impl<T> Supplier<T> for WatchSupplier<T>
 where
@@ -133,19 +127,28 @@ where
     }
 }
 
-pub struct WatchSupplier<T>(watch::Sender<Option<T>>);
-
-impl<T> SupplyLaneWatch<T> for Dropping
+#[pin_project]
+pub struct WatchStream<T>(#[pin] TokioWatchStream<Option<T>>);
+impl<T> Stream for WatchStream<T>
 where
     T: Clone + Send + Sync + 'static,
 {
+    type Item = T;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        self.project().0.poll_next(cx).map(Option::flatten)
+    }
+}
+
+impl<T> SupplyLaneObserver<T> for Dropping
+where
+    T: Clone + Send + Sync + Unpin + 'static,
+{
     type Sender = WatchSupplier<T>;
-    type Topic = WatchTopic<T>;
+    type View = WatchStream<T>;
 
-    fn make_watch(&self, _config: &AgentExecutionConfig) -> (Self::Sender, Self::Topic) {
+    fn make_observer(&self) -> (Self::Sender, Self::View) {
         let (tx, rx) = watch::channel(None);
-        let (topic, _rec) = WatchTopic::new(rx);
-
-        (WatchSupplier(tx), topic)
+        (WatchSupplier(tx), WatchStream(TokioWatchStream::new(rx)))
     }
 }

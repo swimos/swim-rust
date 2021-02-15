@@ -16,7 +16,6 @@
 mod tests;
 
 use crate::agent::context::AgentExecutionContext;
-use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lane::model::supply::{Dropping, SupplyLane};
 use crate::agent::meta::{IdentifiedAgentIo, MetaNodeAddressed};
 use crate::agent::LaneIo;
@@ -136,17 +135,16 @@ impl Debug for LogHandler {
 
 #[cfg(test)]
 pub(crate) fn make_log_handler(uri: RelativeUri) -> LogHandler {
-    let config = AgentExecutionConfig::default();
-    use crate::agent::lane::model::supply::SupplyLaneWatch;
+    use tokio::sync::mpsc;
 
     LogHandler {
         uri,
-        trace_lane: SupplyLane::new(Box::new(Dropping.make_watch(&config).0)),
-        debug_lane: SupplyLane::new(Box::new(Dropping.make_watch(&config).0)),
-        info_lane: SupplyLane::new(Box::new(Dropping.make_watch(&config).0)),
-        warn_lane: SupplyLane::new(Box::new(Dropping.make_watch(&config).0)),
-        error_lane: SupplyLane::new(Box::new(Dropping.make_watch(&config).0)),
-        fail_lane: SupplyLane::new(Box::new(Dropping.make_watch(&config).0)),
+        trace_lane: SupplyLane::new(Box::new(mpsc::channel(1).0)),
+        debug_lane: SupplyLane::new(Box::new(mpsc::channel(1).0)),
+        info_lane: SupplyLane::new(Box::new(mpsc::channel(1).0)),
+        warn_lane: SupplyLane::new(Box::new(mpsc::channel(1).0)),
+        error_lane: SupplyLane::new(Box::new(mpsc::channel(1).0)),
+        fail_lane: SupplyLane::new(Box::new(mpsc::channel(1).0)),
     }
 }
 
@@ -172,7 +170,6 @@ impl LogHandler {
 
 pub fn open_log_lanes<Config, Agent, Context>(
     uri: RelativeUri,
-    config: &AgentExecutionConfig,
 ) -> (
     LogHandler,
     DynamicLaneTasks<Agent, Context>,
@@ -185,7 +182,7 @@ where
     let mut lane_tasks = Vec::with_capacity(6);
     let mut lane_ios = HashMap::with_capacity(6);
     let mut make_log_lane = |level: LogLevel| {
-        let (lane, task, io) = make_supply_lane(level.uri_ref(), true, Dropping, &config);
+        let (lane, task, io) = make_supply_lane(level.uri_ref(), true, Dropping);
         lane_tasks.push(task.boxed());
         lane_ios.insert(
             LaneIdentifier::meta(MetaNodeAddressed::Log {

@@ -354,7 +354,7 @@ impl TestAgentConfig {
 }
 
 impl SwimAgent<TestAgentConfig> for ReportingAgent {
-    fn instantiate<Context: AgentContext<Self> + AgentExecutionContext>(
+    fn instantiate<Context: AgentContext<Self> + AgentExecutionContext + Send + Sync>(
         configuration: &TestAgentConfig,
         exec_conf: &AgentExecutionConfig,
     ) -> (

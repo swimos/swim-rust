@@ -126,7 +126,7 @@ pub fn derive_swim_agent(input: DeriveInput) -> Result<TokenStream, TokenStream>
 
         #[automatically_derived]
         impl SwimAgent<#config_type> for #agent_name {
-            fn instantiate<Context: AgentContext<Self> + AgentExecutionContext>(
+            fn instantiate<Context: AgentContext<Self> + AgentExecutionContext + Send + Sync>(
                 configuration: &#config_type,
                 exec_conf: &AgentExecutionConfig,
             ) -> (

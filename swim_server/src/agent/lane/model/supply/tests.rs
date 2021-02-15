@@ -12,19 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lane::model::supply::{make_lane_model, Queue};
-use futures::StreamExt;
 use std::num::NonZeroUsize;
-use swim_common::topic::Topic;
+use tokio_stream::StreamExt;
 
 #[tokio::test]
 async fn receive_events() {
-    let (lane, mut topic) = make_lane_model(
-        Queue(NonZeroUsize::new(1000).unwrap()),
-        &AgentExecutionConfig::default(),
-    );
-    let mut events = topic.subscribe().await.unwrap();
+    let (lane, mut events) = make_lane_model(Queue(NonZeroUsize::new(1000).unwrap()));
 
     let jh = tokio::spawn(async move {
         let mut expected = (0..=100).collect::<Vec<i32>>();

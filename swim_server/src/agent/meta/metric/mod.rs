@@ -23,7 +23,6 @@ use swim_common::warp::path::RelativePath;
 use utilities::sync::trigger;
 
 use crate::agent::context::AgentExecutionContext;
-use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lane::model::supply::{Dropping, SupplyLane};
 use crate::agent::meta::metric::config::MetricCollectorConfig;
 use crate::agent::meta::metric::lane::LaneProfile;
@@ -125,7 +124,6 @@ type PulseLaneOpenResult<Agent, Context> = (
 pub fn open_pulse_lanes<Config, Agent, Context>(
     node_uri: RelativeUri,
     lanes: &[&String],
-    config: &AgentExecutionConfig,
 ) -> PulseLaneOpenResult<Agent, Context>
 where
     Agent: SwimAgent<Config> + 'static,
@@ -138,7 +136,7 @@ where
     let mut make_lane = |map: &mut HashMap<LaneIdentifier, SupplyLane<Value>>,
                          lane_uri: &String,
                          kind: MetaNodeAddressed| {
-        let (lane, task, io) = make_supply_lane(lane_uri.clone(), true, Dropping, &config);
+        let (lane, task, io) = make_supply_lane(lane_uri.clone(), true, Dropping);
         let identifier = LaneIdentifier::meta(kind);
 
         map.insert(identifier.clone(), lane);

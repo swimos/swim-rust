@@ -172,7 +172,7 @@ impl LaneUplinks for TestUplinkSpawner {
         Handler: LaneMessageHandler + 'static,
         OutputMessage<Handler>: Into<Value>,
         Top: DeferredSubscription<Handler::Event>,
-        Context: AgentExecutionContext,
+        Context: AgentExecutionContext + Send + Sync,
     {
         let TestUplinkSpawner {
             respond_tx,

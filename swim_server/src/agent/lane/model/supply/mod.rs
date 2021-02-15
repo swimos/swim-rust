@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::lane::model::supply::supplier::BoxSupplier;
 use crate::agent::lane::LaneModel;
 use std::sync::Arc;
-use tokio::sync::mpsc;
-use tokio_stream::wrappers::ReceiverStream;
+
+mod supplier;
+pub use supplier::*;
 
 #[cfg(test)]
 mod tests;
@@ -43,11 +43,11 @@ where
     }
 
     pub async fn send(&self, value: T) -> Result<(), SupplyError> {
-        self.sender.supply(value).await
+        self.sender.supply(value).await.map_err(Into::into)
     }
 
     pub fn try_send(&self, value: T) -> Result<(), TrySupplyError> {
-        self.sender.try_supply(value)
+        self.sender.try_supply(value).map_err(Into::into)
     }
 }
 
@@ -59,18 +59,13 @@ impl<T> LaneModel for SupplyLane<T> {
     }
 }
 
-/// Create a new supply lane model. Returns a new supply lane model and a stream that events can be
-/// received from.
-pub fn make_lane_model<Event, W>(
-    watch: W,
-    config: &AgentExecutionConfig,
-) -> (SupplyLane<Event>, W::Topic)
+pub fn make_lane_model<Event, O>(observer: O) -> (SupplyLane<Event>, O::View)
 where
     Event: Send + Sync + Clone + 'static,
-    W: SupplyLaneWatch<Event>,
+    O: SupplyLaneObserver<Event>,
 {
-    let (sender, topic) = watch.make_watch(config);
+    let (sender, view) = observer.make_observer();
     let lane = SupplyLane::new(Box::new(sender));
 
-    (lane, topic)
+    (lane, view)
 }

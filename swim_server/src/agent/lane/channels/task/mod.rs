@@ -172,7 +172,7 @@ pub trait LaneUplinks {
         Handler: LaneMessageHandler + 'static,
         OutputMessage<Handler>: Into<Value>,
         Top: DeferredSubscription<Handler::Event>,
-        Context: AgentExecutionContext;
+        Context: AgentExecutionContext + Send + Sync;
 }
 
 const LANE_IO_TASK: &str = "Lane IO task.";
@@ -202,7 +202,7 @@ pub async fn run_lane_io<Handler, Uplinks, Deferred>(
     envelopes: impl Stream<Item = TaggedClientEnvelope>,
     events: Deferred,
     config: AgentExecutionConfig,
-    context: impl AgentExecutionContext,
+    context: impl AgentExecutionContext + Send + Sync,
     route: RelativePath,
 ) -> Result<Vec<UplinkErrorReport>, LaneIoError>
 where
@@ -420,7 +420,7 @@ async fn send_action(
 async fn run_stateless_lane_io<Upd, S, Msg, Ev>(
     envelopes: impl Stream<Item = TaggedClientEnvelope>,
     config: AgentExecutionConfig,
-    context: impl AgentExecutionContext,
+    context: impl AgentExecutionContext + Send + Sync,
     route: RelativePath,
     updater: Upd,
     uplinks: StatelessUplinks<S>,
@@ -447,9 +447,6 @@ where
     }
     .instrument(span!(Level::INFO, UPDATE_TASK, ?route));
 
-    let observer = context.metrics().uplink_observer(route.clone());
-
-    let uplinks = StatelessUplinks::new(feedback_rx, route.clone(), UplinkKind::Action, observer);
     let uplink_task = uplinks
         .run(
             ReceiverStream::new(uplink_rx),
@@ -490,7 +487,7 @@ pub async fn run_command_lane_io<T>(
     lane: CommandLane<T>,
     envelopes: impl Stream<Item = TaggedClientEnvelope>,
     config: AgentExecutionConfig,
-    context: impl AgentExecutionContext,
+    context: impl AgentExecutionContext + Send + Sync,
     route: RelativePath,
 ) -> Result<Vec<UplinkErrorReport>, LaneIoError>
 where
@@ -502,10 +499,11 @@ where
     let (feedback_tx, feedback_rx) = mpsc::channel(config.feedback_buffer.get());
     let feedback_rx = ReceiverStream::new(feedback_rx)
         .map(|(_, message)| AddressedUplinkMessage::Broadcast(message));
+    let observer = context.metrics().uplink_observer(route.clone());
 
     let updater =
         CommandLaneUpdateTask::new(lane.clone(), Some(feedback_tx), config.cleanup_timeout);
-    let uplinks = StatelessUplinks::new(feedback_rx, route.clone(), UplinkKind::Command);
+    let uplinks = StatelessUplinks::new(feedback_rx, route.clone(), UplinkKind::Command, observer);
 
     run_stateless_lane_io(envelopes, config, context, route, updater, uplinks).await
 }
@@ -525,7 +523,7 @@ pub async fn run_action_lane_io<Command, Response>(
     lane: ActionLane<Command, Response>,
     envelopes: impl Stream<Item = TaggedClientEnvelope>,
     config: AgentExecutionConfig,
-    context: impl AgentExecutionContext,
+    context: impl AgentExecutionContext + Send + Sync,
     route: RelativePath,
 ) -> Result<Vec<UplinkErrorReport>, LaneIoError>
 where
@@ -538,10 +536,11 @@ where
     let (feedback_tx, feedback_rx) = mpsc::channel(config.feedback_buffer.get());
     let feedback_rx = ReceiverStream::new(feedback_rx)
         .map(|(address, message)| AddressedUplinkMessage::Addressed { message, address });
+    let observer = context.metrics().uplink_observer(route.clone());
 
     let updater =
         ActionLaneUpdateTask::new(lane.clone(), Some(feedback_tx), config.cleanup_timeout);
-    let uplinks = StatelessUplinks::new(feedback_rx, route.clone(), UplinkKind::Action);
+    let uplinks = StatelessUplinks::new(feedback_rx, route.clone(), UplinkKind::Action, observer);
 
     run_stateless_lane_io(envelopes, config, context, route, updater, uplinks).await
 }
@@ -653,7 +652,7 @@ impl UplinkErrorAcc {
 pub async fn run_auto_lane_io<S, Item>(
     envelopes: impl Stream<Item = TaggedClientEnvelope>,
     config: AgentExecutionConfig,
-    context: impl AgentExecutionContext,
+    context: impl AgentExecutionContext + Send + Sync,
     route: RelativePath,
     stream: S,
     uplink_kind: UplinkKind,
@@ -705,7 +704,7 @@ where
 pub async fn run_supply_lane_io<S, Item>(
     envelopes: impl Stream<Item = TaggedClientEnvelope>,
     config: AgentExecutionConfig,
-    context: impl AgentExecutionContext,
+    context: impl AgentExecutionContext + Send + Sync,
     route: RelativePath,
     stream: S,
 ) -> Result<Vec<UplinkErrorReport>, LaneIoError>
@@ -888,7 +887,7 @@ where
 pub async fn run_demand_lane_io<Event>(
     envelopes: impl Stream<Item = TaggedClientEnvelope>,
     config: AgentExecutionConfig,
-    context: impl AgentExecutionContext,
+    context: impl AgentExecutionContext + Send + Sync,
     route: RelativePath,
     response_rx: mpsc::Receiver<Event>,
 ) -> Result<Vec<UplinkErrorReport>, LaneIoError>
