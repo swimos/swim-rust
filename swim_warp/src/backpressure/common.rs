@@ -25,6 +25,7 @@ use futures::StreamExt;
 use tokio::sync::mpsc;
 
 use swim_common::sink::item::ItemSender;
+use tokio_stream::wrappers::ReceiverStream;
 use utilities::lru_cache::LruCache;
 use utilities::sync::{circular_buffer, trigger};
 
@@ -234,8 +235,8 @@ where
     let mut queued_buffers: HashMap<K, VecDeque<BridgeBufferReceiver<V>>> = HashMap::new();
 
     let mut buffers = FuturesUnordered::new();
+    let mut bridge_rx = ReceiverStream::new(bridge_rx).fuse();
 
-    let mut bridge_rx = bridge_rx.fuse();
     let mut stopped = false;
 
     loop {

@@ -27,7 +27,7 @@
 // limitations under the License.
 
 use crate::backpressure::keyed::{release_pressure, Keyed};
-use futures::{FutureExt, StreamExt};
+use futures::FutureExt;
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::Display;
 use std::num::NonZeroUsize;
@@ -36,6 +36,7 @@ use swim_common::sink::item::for_mpsc_sender;
 use swim_runtime::time::timeout::timeout;
 use tokio::sync::mpsc;
 use tokio::time::Duration;
+use tokio_stream::wrappers::ReceiverStream;
 
 const TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -82,7 +83,7 @@ async fn simple_release() {
     let (tx_in, rx_in) = mpsc::channel(max as usize * 2);
     let (tx_out, mut rx_out) = mpsc::channel(8);
     let release_task = release_pressure(
-        rx_in,
+        ReceiverStream::new(rx_in),
         for_mpsc_sender(tx_out),
         yield_after(),
         buffer_size(),
@@ -102,10 +103,10 @@ async fn simple_release() {
         let min = max - buffer_size().get() as i32 + 1;
 
         for i in min..=max {
-            assert_eq!(rx_out.next().await, Some(make_event(lane.clone(), i)));
+            assert_eq!(rx_out.recv().await, Some(make_event(lane.clone(), i)));
         }
 
-        assert_eq!(rx_out.next().now_or_never(), None);
+        assert_eq!(rx_out.recv().now_or_never(), None);
     });
 
     let _output = timeout(TIMEOUT, receiver).await.unwrap();
@@ -144,7 +145,7 @@ async fn multiple_keys() {
 
     let (tx_out, mut rx_out) = mpsc::channel(8);
     let release_task = release_pressure(
-        rx_in,
+        ReceiverStream::new(rx_in),
         for_mpsc_sender(tx_out),
         yield_after(),
         buffer_size(),
@@ -164,7 +165,7 @@ async fn multiple_keys() {
     let mut seen: HashMap<String, Vec<WarpUplinkProfile>> = HashMap::new();
 
     let receiver = tokio::task::spawn(async move {
-        while let Some(profile) = rx_out.next().await {
+        while let Some(profile) = rx_out.recv().await {
             let profile: WarpUplinkProfile = profile;
             seen.entry(profile.key()).or_default().push(profile.clone());
         }
@@ -193,7 +194,7 @@ async fn overflow() {
     let (tx_in, rx_in) = mpsc::channel(count as usize);
     let (tx_out, mut rx_out) = mpsc::channel(8);
     let release_task = release_pressure(
-        rx_in,
+        ReceiverStream::new(rx_in),
         for_mpsc_sender(tx_out),
         yield_after(),
         buffer_size(),
@@ -218,7 +219,7 @@ async fn overflow() {
     let receiver = tokio::task::spawn(async move {
         let mut seen = BTreeMap::new();
 
-        while let Some(value) = rx_out.next().await {
+        while let Some(value) = rx_out.recv().await {
             seen.insert(value.key(), value);
         }
 
