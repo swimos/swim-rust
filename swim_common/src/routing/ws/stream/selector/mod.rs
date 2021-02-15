@@ -230,14 +230,17 @@ where
         }
     }
 
+    /// Either read from the connection or write to it, depending on availability.
     pub fn select_rw(&mut self) -> SelectRw<S, M, T> {
         SelectRw(self)
     }
 
+    /// Write the the channel, waiting for outgoing data to become available.
     pub fn select_w(&mut self) -> SelectW<S, M, T> {
         SelectW(self)
     }
 
+    /// True when the connection is closed.
     pub fn is_terminated(&self) -> bool {
         matches!(&self.state, State::Terminated)
     }

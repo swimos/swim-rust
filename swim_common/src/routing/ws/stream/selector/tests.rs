@@ -80,10 +80,15 @@ impl Sink<i32> for TestWsStream {
             consume,
             consume_waker,
             closed,
+            close_error,
             ..
         } = &mut *lock;
         if *closed {
-            Poll::Ready(Err(TestError("Closed!".to_string())))
+            Poll::Ready(if let Some(err) = close_error.take() {
+                Err(err)
+            } else {
+                Err(TestError("Closed!".to_string()))
+            })
         } else {
             match consume {
                 Some(Consume {
@@ -108,10 +113,17 @@ impl Sink<i32> for TestWsStream {
     fn start_send(self: Pin<&mut Self>, item: i32) -> Result<(), Self::Error> {
         let mut lock = self.0.lock();
         let Inner {
-            consume, closed, ..
+            consume,
+            closed,
+            close_error,
+            ..
         } = &mut *lock;
         if *closed {
-            Err(TestError("Closed!".to_string()))
+            if let Some(err) = close_error.take() {
+                Err(err)
+            } else {
+                Err(TestError("Closed!".to_string()))
+            }
         } else {
             match consume.take() {
                 Some(Consume {
@@ -226,6 +238,24 @@ async fn consume_available() {
 }
 
 #[tokio::test]
+async fn consume_available_write_only() {
+    let test_stream = TestWsStream::default();
+
+    let (tx, rx) = mpsc::channel(8);
+
+    assert!(tx.send(1).await.is_ok());
+    test_stream.stage_consume(1);
+
+    let mut selector = WsStreamSelector::new(test_stream, rx);
+
+    let result = selector.select_w().await;
+
+    assert_eq!(result, Some(Ok(true)));
+
+    assert!(!selector.is_terminated());
+}
+
+#[tokio::test]
 async fn both_available() {
     let test_stream = TestWsStream::default();
 
@@ -242,6 +272,25 @@ async fn both_available() {
 
     assert_eq!(result1, Some(Ok(SelectorResult::Read(56))));
     assert_eq!(result2, Some(Ok(SelectorResult::Written)));
+
+    assert!(!selector.is_terminated());
+}
+
+#[tokio::test]
+async fn both_available_write_only() {
+    let test_stream = TestWsStream::default();
+
+    let (tx, rx) = mpsc::channel(8);
+
+    test_stream.stage_produce(56);
+    assert!(tx.send(4).await.is_ok());
+    test_stream.stage_consume(4);
+
+    let mut selector = WsStreamSelector::new(test_stream, rx);
+
+    let result = selector.select_w().await;
+
+    assert_eq!(result, Some(Ok(true)));
 
     assert!(!selector.is_terminated());
 }
@@ -281,6 +330,24 @@ async fn consume_error_on_ready() {
 }
 
 #[tokio::test]
+async fn consume_error_on_ready_write_only() {
+    let test_stream = TestWsStream::default();
+
+    let (tx, rx) = mpsc::channel(8);
+
+    assert!(tx.send(0).await.is_ok());
+    test_stream.stage_consume_error(0, "Boom!");
+
+    let mut selector = WsStreamSelector::new(test_stream, rx);
+
+    let result = selector.select_w().await;
+
+    assert_eq!(result, Some(Err(TestError("Boom!".to_string()))));
+
+    assert!(!selector.is_terminated());
+}
+
+#[tokio::test]
 async fn consume_error_on_send() {
     let test_stream = TestWsStream::default();
 
@@ -292,6 +359,24 @@ async fn consume_error_on_send() {
     let mut selector = WsStreamSelector::new(test_stream, rx);
 
     let result = selector.select_rw().await;
+
+    assert_eq!(result, Some(Err(TestError("Boom!".to_string()))));
+
+    assert!(!selector.is_terminated());
+}
+
+#[tokio::test]
+async fn consume_error_on_send_write_only() {
+    let test_stream = TestWsStream::default();
+
+    let (tx, rx) = mpsc::channel(8);
+
+    assert!(tx.send(0).await.is_ok());
+    test_stream.stage_consume_error_on_send(0, "Boom!");
+
+    let mut selector = WsStreamSelector::new(test_stream, rx);
+
+    let result = selector.select_w().await;
 
     assert_eq!(result, Some(Err(TestError("Boom!".to_string()))));
 
