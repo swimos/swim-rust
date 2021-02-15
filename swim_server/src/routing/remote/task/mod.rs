@@ -55,6 +55,7 @@ use utilities::uri::{BadRelativeUri, RelativeUri};
 pub struct ConnectionTask<Str, Router> {
     ws_stream: Str,
     messages: mpsc::Receiver<TaggedEnvelope>,
+    message_injector: mpsc::Sender<TaggedEnvelope>,
     router: Router,
     stop_signal: trigger::Receiver,
     config: ConnectionConfig,
@@ -104,6 +105,7 @@ where
     /// * `ws_stream` - The joined sink/stream that implements the web sockets protocol.
     /// * `router` - Router to route incoming messages to the appropriate destination.
     /// * `messages`- Stream of messages to be sent into the sink.
+    /// * `message_injector` - Allows messages to be injected into the outgoing stream.
     /// * `stop_signal` - Signals to the task that it should stop.
     /// * `config` - Configuration for the connectino task.
     /// runtime.
@@ -111,6 +113,7 @@ where
         ws_stream: Str,
         router: Router,
         messages: mpsc::Receiver<TaggedEnvelope>,
+        message_injector: mpsc::Sender<TaggedEnvelope>,
         stop_signal: trigger::Receiver,
         config: ConnectionConfig,
     ) -> Self {
@@ -118,6 +121,7 @@ where
         ConnectionTask {
             ws_stream,
             messages,
+            message_injector,
             router,
             stop_signal,
             config,
@@ -128,16 +132,13 @@ where
         let ConnectionTask {
             mut ws_stream,
             messages,
+            message_injector,
             mut router,
             stop_signal,
             config,
         } = self;
 
-        let (missing_node_tx, missing_node_rx) =
-            mpsc::channel(config.missing_nodes_buffer_size.get());
-        let outgoing_payloads = messages
-            .map(|TaggedEnvelope(_, envelope)| WsMessage::Text(envelope.into_value().to_string()));
-        let outgoing_payloads = stream::select(outgoing_payloads, missing_node_rx);
+        let outgoing_payloads = messages.map(Into::into);
 
         let mut selector = WsStreamSelector::new(&mut ws_stream, outgoing_payloads);
 
@@ -181,7 +182,7 @@ where
                                     )
                                     .await;
                                     if let Err((env, _)) = dispatch_result {
-                                        handle_not_found(env, &missing_node_tx).await;
+                                        handle_not_found(env, &message_injector).await;
                                     }
                                 }
                                 .then(move |_| async {
@@ -463,6 +464,7 @@ where
             ws_stream,
             RemoteRouter::new(tag, delegate_router.create_for(tag), request_tx.clone()),
             msg_rx,
+            msg_tx.clone(),
             stop_trigger.clone(),
             *configuration,
         );
@@ -487,13 +489,16 @@ fn link_or_sync(env: Envelope) -> Option<RelativePath> {
     }
 }
 
+// Dummy origing for not found messages.
+const NOT_FOUND_ADDR: RoutingAddr = RoutingAddr::local(0);
+
 // For a link or sync message that cannot be routed, send back a "not found" message.
-async fn handle_not_found(env: Envelope, sender: &mpsc::Sender<WsMessage>) {
+async fn handle_not_found(env: Envelope, sender: &mpsc::Sender<TaggedEnvelope>) {
     if let Some(RelativePath { node, lane }) = link_or_sync(env) {
         let not_found = Envelope::node_not_found(node, lane);
         //An error here means the web socket connection has failed and will produce an error
         //the next time it is polled so it is fine to discard this error.
-        let _ = sender.send(not_found.into()).await;
+        let _ = sender.send(TaggedEnvelope(NOT_FOUND_ADDR, not_found)).await;
     }
 }
 

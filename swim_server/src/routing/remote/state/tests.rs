@@ -61,7 +61,6 @@ fn make_state(
         activity_timeout: Duration::from_secs(30),
         connection_retries: RetryStrategy::none(),
         yield_after: NonZeroUsize::new(256).unwrap(),
-        missing_nodes_buffer_size: NonZeroUsize::new(8).unwrap(),
     };
 
     let fake_connections = FakeConnections::new(HashMap::new(), HashMap::new(), None);

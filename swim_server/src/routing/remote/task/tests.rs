@@ -389,6 +389,7 @@ impl TaskFixture {
             fake_socket,
             router.clone(),
             env_rx,
+            env_tx.clone(),
             stop_rx,
             ConnectionConfig {
                 router_buffer_size: NonZeroUsize::new(10).unwrap(),
@@ -396,7 +397,6 @@ impl TaskFixture {
                 activity_timeout: Duration::from_secs(30),
                 connection_retries: RetryStrategy::immediate(NonZeroUsize::new(1).unwrap()),
                 yield_after: NonZeroUsize::new(256).unwrap(),
-                missing_nodes_buffer_size: NonZeroUsize::new(BUFFER_SIZE).unwrap(),
             },
         )
         .run()
@@ -687,10 +687,11 @@ async fn generate_writes(
     mut route_rx: mpsc::Receiver<TaggedEnvelope>,
     outgoing: mpsc::Sender<TaggedEnvelope>,
     stop_trigger: trigger::Sender,
+    n: i32
 ) -> Result<(), mpsc::error::SendError<TaggedEnvelope>> {
     let addr = RoutingAddr::local(7);
 
-    for i in 0..10 {
+    for i in 0..n {
         if route_rx.recv().await.is_none() {
             return Ok(());
         }
@@ -720,13 +721,15 @@ async fn read_causes_write_buffer_to_fill() {
         send_error_tx: _send_error_tx,
     } = TaskFixture::new();
 
+    let n = 100;
+
     let (route_tx, route_rx) = mpsc::channel(1);
 
     router.add_sender("/node".parse().unwrap(), route_tx.clone());
 
     let outgoing = envelope_tx.clone();
 
-    let route_task = generate_writes(route_rx, outgoing, stop_trigger);
+    let route_task = generate_writes(route_rx, outgoing, stop_trigger, n);
 
     let consume_output = async move {
         loop {
@@ -739,7 +742,7 @@ async fn read_causes_write_buffer_to_fill() {
     let mut input = sock_in.clone();
 
     let generate_inputs = async move {
-        for i in 0..10 {
+        for i in 0..n {
             let envelope =
                 Envelope::make_command("/node", "/lane", Some(Value::text(i.to_string())));
             let message = Ok(message_for(envelope));
@@ -749,7 +752,7 @@ async fn read_causes_write_buffer_to_fill() {
         }
     };
 
-    let task_to = Duration::from_secs(10);
+    let task_to = Duration::from_secs(60);
     let t1 = tokio::time::timeout(task_to, task);
     let t2 = tokio::time::timeout(task_to, route_task);
     let t3 = tokio::time::timeout(task_to, consume_output);
