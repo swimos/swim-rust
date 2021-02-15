@@ -12,17 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::collections::hash_map::Entry;
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::hash::Hash;
+use std::num::NonZeroUsize;
+
 use either::Either;
 use futures::select_biased;
 use futures::stream::FuturesUnordered;
 use futures::Future;
 use futures::StreamExt;
-use std::collections::hash_map::Entry;
-use std::collections::{HashMap, HashSet, VecDeque};
-use std::hash::Hash;
-use std::num::NonZeroUsize;
-use swim_common::sink::item::ItemSender;
 use tokio::sync::mpsc;
+
+use swim_common::sink::item::ItemSender;
 use utilities::lru_cache::LruCache;
 use utilities::sync::{circular_buffer, trigger};
 
@@ -48,8 +50,13 @@ pub async fn transmit<M, K, V, S>(
     } else {
         let (mut tx, rx) = circular_buffer::channel(buffer_size);
         tx.try_send(value).ok().expect(INTERNAL_ERROR);
-        if let Some((evicted, _)) = senders.insert(key.clone(), tx) {
+        if let Some((evicted, sender)) = senders.insert(key.clone(), tx) {
             let (sync_tx, sync_rx) = trigger::trigger();
+
+            // The sender needs to be dropped to stop the consume task from locking up waiting for
+            // more messages when flushing the buffers.
+            drop(sender);
+
             bridge_tx
                 .send(Action::Evict {
                     key: evicted,
@@ -174,6 +181,13 @@ pub fn on_key<K, V, F>(
     }
 }
 
+/// A message type that is used by the input task to communicate with the output task.
+///
+/// Type parameters:
+/// `M`: message.
+/// `K`: key.
+/// `V`: value.
+/// `S`: special action.
 pub enum Action<M, K, V, S> {
     /// Register a new channel for a key.
     Register {
@@ -192,6 +206,7 @@ pub enum Action<M, K, V, S> {
     Flush { message: M },
 }
 
+/// What action to take based on the result of an `Action::Special` request.
 pub enum SpecialActionResult {
     Clear,
     Drain,
@@ -294,6 +309,7 @@ where
                     Some(key),
                 )
                 .await?;
+
                 on_handled.trigger();
             }
             Either::Left(Action::Flush { message }) => {
