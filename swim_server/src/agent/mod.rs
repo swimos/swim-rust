@@ -460,7 +460,7 @@ impl Display for AttachError {
 impl Error for AttachError {}
 
 /// Lazily initialized envelope IO for a lane.
-pub trait LaneIo<Context: AgentExecutionContext + Send + Sync + Sized + Send + Sync + 'static>:
+pub trait LaneIo<Context: AgentExecutionContext + Sized + Send + Sync + 'static>:
     Send + Sync
 {
     /// Attempt to attach the running lane to a stream of envelopes.
@@ -564,7 +564,7 @@ impl<K, V, Context, D> LaneIo<Context> for MapLaneIo<K, V, D>
 where
     K: Any + Send + Sync + Form + Clone + Debug,
     V: Any + Send + Sync + Form + Debug,
-    Context: AgentExecutionContext + Send + Sync + Sized + Send + Sync + 'static,
+    Context: AgentExecutionContext + Sized + Send + Sync + 'static,
     D: DeferredSubscription<MapLaneEvent<K, V>>,
 {
     fn attach(
@@ -624,7 +624,7 @@ impl<Command, Response, Context> LaneIo<Context> for ActionLaneIo<Command, Respo
 where
     Command: Send + Sync + Form + Debug + 'static,
     Response: Send + Sync + Form + Debug + 'static,
-    Context: AgentExecutionContext + Send + Sync + Sized + Send + Sync + 'static,
+    Context: AgentExecutionContext + Sized + Send + Sync + 'static,
 {
     fn attach(
         self,
@@ -672,7 +672,7 @@ where
 impl<T, Context> LaneIo<Context> for CommandLaneIo<T>
 where
     T: Send + Sync + Form + Debug + 'static,
-    Context: AgentExecutionContext + Send + Sync + Sized + Send + Sync + 'static,
+    Context: AgentExecutionContext + Sized + Send + Sync + 'static,
 {
     fn attach(
         self,
@@ -1212,7 +1212,7 @@ impl<T, E, Context> LaneIo<Context> for SupplyLaneIo<T, E>
 where
     T: Stream<Item = E> + Send + Sync + 'static,
     E: Send + Sync + Form + 'static,
-    Context: AgentExecutionContext + Send + Sync + Sized + Send + Sync + 'static,
+    Context: AgentExecutionContext + Sized + Send + Sync + 'static,
 {
     fn attach(
         self,
@@ -1302,7 +1302,7 @@ where
 impl<Event, Context> LaneIo<Context> for DemandLaneIo<Event>
 where
     Event: Form + Send + Sync + 'static,
-    Context: AgentExecutionContext + Send + Sync + Sized + Send + Sync + 'static,
+    Context: AgentExecutionContext + Sized + Send + Sync + 'static,
 {
     fn attach(
         self,
@@ -1455,7 +1455,7 @@ impl<Key, Value, Context> LaneIo<Context> for DemandMapLaneIo<Key, Value>
 where
     Key: Any + Send + Sync + Form + Clone + Debug,
     Value: Any + Send + Sync + Form + Clone + Debug,
-    Context: AgentExecutionContext + Send + Sync + Sized + Send + Sync + 'static,
+    Context: AgentExecutionContext + Sized + Send + Sync + 'static,
 {
     fn attach(
         self,
