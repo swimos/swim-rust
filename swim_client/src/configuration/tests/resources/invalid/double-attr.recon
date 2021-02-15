@@ -10,7 +10,6 @@
     }
   @downlinks {
         back_pressure: @propagate()
-        mux_mode: @queue(queue_size: 5)
         idle_timeout: 0
         buffer_size: 5
         on_invalid: "terminate"

@@ -14,7 +14,6 @@
 
 use rand::seq::SliceRandom;
 use std::time::Duration;
-use swim_client::downlink::Downlink;
 use swim_client::interface::SwimClient;
 use swim_common::warp::path::AbsolutePath;
 use swim_runtime::time::delay::delay_for;
@@ -31,22 +30,20 @@ async fn main() {
         "shoppingCart",
     );
 
-    let (map_downlink, _) = client
+    let (map_downlink, receiver) = client
         .map_downlink::<String, i32>(path)
         .await
         .expect("Failed to create downlink!");
 
-    let (_dl_topic, mut dl_sink) = map_downlink.split();
-
-    dl_sink
+    map_downlink
         .update(String::from("FromClientLink"), 25)
         .await
         .expect("Failed to send message!");
 
     delay_for(Duration::from_secs(2)).await;
 
-    drop(_dl_topic);
-    drop(dl_sink);
+    drop(receiver);
+    drop(map_downlink);
 
     let items = vec!["bat", "cat", "rat"];
 

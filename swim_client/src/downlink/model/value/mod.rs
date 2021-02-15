@@ -16,19 +16,13 @@ use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
 
 use futures::Stream;
-use tokio::sync::mpsc;
 
-use crate::configuration::downlink::{DownlinkParams, OnInvalidMessage};
-use crate::downlink::buffered::{self, BufferedDownlink, BufferedReceiver};
-use crate::downlink::dropping::{self, DroppingDownlink, DroppingReceiver};
-use crate::downlink::queue::{self, QueueDownlink, QueueReceiver};
-use crate::downlink::raw::RawDownlink;
+use crate::downlink::typed::{UntypedValueDownlink, UntypedValueReceiver};
 use crate::downlink::{
-    create_downlink, BasicResponse, Command, DownlinkError, DownlinkRequest, Event, Message,
-    SyncStateMachine, TransitionError, UpdateFailure,
+    error::UpdateFailure, BasicResponse, Command, DownlinkConfig, DownlinkError, DownlinkRequest,
+    Message, SyncStateMachine, TransitionError,
 };
 use std::fmt;
-use std::num::NonZeroUsize;
 use swim_common::model::schema::{Schema, StandardSchema};
 use swim_common::model::Value;
 use swim_common::routing::RoutingError;
@@ -125,99 +119,22 @@ impl Action {
 type ValueItemResult = Result<Message<Value>, RoutingError>;
 
 /// Create a raw value downlink.
-pub fn create_raw_downlink<Updates, Commands>(
+pub(in crate::downlink) fn create_downlink<Updates, Commands>(
     init: Value,
     schema: Option<StandardSchema>,
     update_stream: Updates,
     cmd_sender: Commands,
-    buffer_size: NonZeroUsize,
-    yield_after: NonZeroUsize,
-    on_invalid: OnInvalidMessage,
-) -> RawDownlink<Action, mpsc::Receiver<Event<SharedValue>>>
+    config: DownlinkConfig,
+) -> (UntypedValueDownlink, UntypedValueReceiver)
 where
-    Updates: Stream<Item = ValueItemResult> + Send + 'static,
-    Commands: ItemSender<Command<SharedValue>, RoutingError> + Send + 'static,
+    Updates: Stream<Item = ValueItemResult> + Send + Sync + 'static,
+    Commands: ItemSender<Command<SharedValue>, RoutingError> + Send + Sync + 'static,
 {
-    create_downlink(
+    crate::downlink::create_downlink(
         ValueStateMachine::new(init, schema.unwrap_or(StandardSchema::Anything)),
         update_stream,
         cmd_sender,
-        buffer_size,
-        yield_after,
-        on_invalid,
-    )
-}
-
-/// Create a value downlink with an queue based multiplexing topic.
-pub fn create_queue_downlink<Updates, Commands>(
-    init: Value,
-    schema: Option<StandardSchema>,
-    update_stream: Updates,
-    cmd_sender: Commands,
-    queue_size: NonZeroUsize,
-    config: &DownlinkParams,
-) -> (
-    QueueDownlink<Action, SharedValue>,
-    QueueReceiver<SharedValue>,
-)
-where
-    Updates: Stream<Item = ValueItemResult> + Send + 'static,
-    Commands: ItemSender<Command<SharedValue>, RoutingError> + Send + 'static,
-{
-    queue::make_downlink(
-        ValueStateMachine::new(init, schema.unwrap_or(StandardSchema::Anything)),
-        update_stream,
-        cmd_sender,
-        queue_size,
-        &config,
-    )
-}
-
-/// Create a value downlink with a dropping multiplexing topic.
-pub fn create_dropping_downlink<Updates, Commands>(
-    init: Value,
-    schema: Option<StandardSchema>,
-    update_stream: Updates,
-    cmd_sender: Commands,
-    config: &DownlinkParams,
-) -> (
-    DroppingDownlink<Action, SharedValue>,
-    DroppingReceiver<SharedValue>,
-)
-where
-    Updates: Stream<Item = ValueItemResult> + Send + 'static,
-    Commands: ItemSender<Command<SharedValue>, RoutingError> + Send + 'static,
-{
-    dropping::make_downlink(
-        ValueStateMachine::new(init, schema.unwrap_or(StandardSchema::Anything)),
-        update_stream,
-        cmd_sender,
-        &config,
-    )
-}
-
-/// Create a value downlink with an buffering multiplexing topic.
-pub fn create_buffered_downlink<Updates, Commands>(
-    init: Value,
-    schema: Option<StandardSchema>,
-    update_stream: Updates,
-    cmd_sender: Commands,
-    queue_size: NonZeroUsize,
-    config: &DownlinkParams,
-) -> (
-    BufferedDownlink<Action, SharedValue>,
-    BufferedReceiver<SharedValue>,
-)
-where
-    Updates: Stream<Item = ValueItemResult> + Send + 'static,
-    Commands: ItemSender<Command<SharedValue>, RoutingError> + Send + 'static,
-{
-    buffered::make_downlink(
-        ValueStateMachine::new(init, schema.unwrap_or(StandardSchema::Anything)),
-        update_stream,
-        cmd_sender,
-        queue_size,
-        &config,
+        config,
     )
 }
 
