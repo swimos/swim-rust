@@ -44,6 +44,7 @@ use swim_common::warp::envelope::{Envelope, EnvelopeHeader, EnvelopeParseErr, Ou
 use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc;
 use tokio::time::{sleep, Instant};
+use tracing::{event, Level};
 use utilities::errors::Recoverable;
 use utilities::future::retryable::strategy::RetryStrategy;
 use utilities::sync::trigger;
@@ -87,6 +88,9 @@ impl From<EnvelopeParseErr> for Completion {
         )))
     }
 }
+
+const IGNORING_MESSAGE: &str = "Ignoring unexpected message.";
+const ERROR_ON_CLOSE: &str = "Error whilst closing connection.";
 
 impl<Str, Router> ConnectionTask<Str, Router>
 where
@@ -199,8 +203,8 @@ where
                                 break c;
                             }
                         },
-                        _e => {
-                            // todo
+                        message => {
+                            event!(Level::WARN, IGNORING_MESSAGE, ?message);
                         }
                     },
                     Err(err) => {
@@ -233,8 +237,8 @@ where
             }
             _ => None,
         } {
-            if let Err(_err) = ws_stream.close(Some(reason)).await {
-                //TODO Log close error.
+            if let Err(error) = ws_stream.close(Some(reason)).await {
+                event!(Level::ERROR, ERROR_ON_CLOSE, ?error);
             }
         }
 
@@ -474,6 +478,7 @@ where
     }
 }
 
+//Get the target path only for link and sync messages (for creating the "not found" response).
 fn link_or_sync(env: Envelope) -> Option<RelativePath> {
     match env.header {
         EnvelopeHeader::OutgoingLink(OutgoingHeader::Link(_), path) => Some(path),
@@ -482,6 +487,7 @@ fn link_or_sync(env: Envelope) -> Option<RelativePath> {
     }
 }
 
+// For a link or sync message that cannot be routed, send back a "not found" message.
 async fn handle_not_found(env: Envelope, sender: &mpsc::Sender<WsMessage>) {
     if let Some(RelativePath { node, lane }) = link_or_sync(env) {
         let not_found = Envelope::node_not_found(node, lane);
@@ -491,6 +497,9 @@ async fn handle_not_found(env: Envelope, sender: &mpsc::Sender<WsMessage>) {
     }
 }
 
+// Continue polling the selector but only to write messsages. This ensures that the task cannot
+// block whilst waiting to dispatch an incoming message. (Where an imcoming message generates
+// one or more outgoing messages on the same socket this can lead to a deadlock).
 async fn write_to_socket_only<S, M, T>(
     selector: &mut WsStreamSelector<S, M, T>,
     done: trigger::Receiver,
