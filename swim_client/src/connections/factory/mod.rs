@@ -19,7 +19,6 @@ pub mod stream;
 pub mod tungstenite;
 
 pub mod async_factory {
-    use futures::stream::StreamExt;
     use futures::{Future, Sink, Stream};
     use tokio::sync::{mpsc, oneshot};
 
@@ -82,7 +81,7 @@ pub mod async_factory {
             request,
             url,
             config,
-        }) = receiver.next().await
+        }) = receiver.recv().await
         {
             let conn: Result<(Snk, Str), ConnectionError> = connect_async(url, config).await;
             let _ = request.send(conn);

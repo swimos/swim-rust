@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swim_server::agent::lane::model::action::CommandLane;
+use swim_server::agent::lane::model::command::CommandLane;
 use swim_server::agent::AgentContext;
 use swim_server::command_lifecycle;
 
@@ -37,7 +37,7 @@ fn main() {
     impl CommandLifecycle {
         async fn custom_function<Context>(
             &self,
-            _command: i32,
+            _command: &i32,
             _model: &CommandLane<i32>,
             _context: &Context,
         ) where

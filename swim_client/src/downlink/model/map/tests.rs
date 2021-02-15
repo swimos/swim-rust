@@ -16,8 +16,12 @@ use num_bigint::{BigInt, BigUint};
 use tokio::sync::oneshot;
 
 use super::*;
-use crate::downlink::{DownlinkState, Operation, Response, StateMachine, UpdateFailure};
+use crate::downlink::{
+    error::UpdateFailure, DownlinkState, Event, Operation, Response, StateMachine,
+};
+use swim_common::form::{Form, FormErr, ValidatedForm};
 use swim_common::model::schema::Schema;
+use swim_common::model::{Attr, Item, ValueKind};
 use swim_common::request::Request;
 
 fn make_model_with(key: i32, value: String) -> MapModel {
@@ -90,9 +94,7 @@ fn linked_message() {
     }
 }
 
-fn only_event(
-    response: &Response<ViewWithEvent, UntypedMapModification<Arc<Value>>>,
-) -> &ViewWithEvent {
+fn only_event(response: &Response<ViewWithEvent, UntypedMapModification<Value>>) -> &ViewWithEvent {
     match response {
         Response {
             event: Some(Event::Remote(ev)),
@@ -166,7 +168,10 @@ fn insert_message_unlinked() {
     let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
-        Operation::Message(Message::Action(UntypedMapModification::Update(k, v))),
+        Operation::Message(Message::Action(UntypedMapModification::Update(
+            k,
+            Arc::new(v),
+        ))),
     );
 
     assert!(maybe_response.is_ok());
@@ -256,7 +261,7 @@ fn skip_message_unlinked() {
     let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
-        Operation::Message(Message::Action(UntypedMapModification::Skip(1))),
+        Operation::Message(Message::Action(UntypedMapModification::Drop(1))),
     );
 
     assert!(maybe_response.is_ok());
@@ -310,7 +315,7 @@ fn clear_message_unlinked() {
 #[test]
 fn insert_message_linked() {
     let k = Value::Int32Value(4);
-    let v = Value::text("hello");
+    let v = Arc::new(Value::text("hello"));
 
     let mut state = DownlinkState::Linked;
     let mut model = MapModel::new();
@@ -327,7 +332,7 @@ fn insert_message_linked() {
     assert!(maybe_response.is_ok());
     let response = maybe_response.unwrap();
 
-    let expected = ValMap::from(vec![(k, Arc::new(v))]);
+    let expected = ValMap::from(vec![(k, v)]);
 
     assert_eq!(state, DownlinkState::Linked);
     assert_eq!(model.state, expected);
@@ -404,7 +409,7 @@ fn skip_message_linked() {
     let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
-        Operation::Message(Message::Action(UntypedMapModification::Skip(1))),
+        Operation::Message(Message::Action(UntypedMapModification::Drop(1))),
     );
 
     assert!(maybe_response.is_ok());
@@ -449,7 +454,7 @@ fn clear_message_linked() {
 #[test]
 fn insert_message_synced() {
     let k = Value::Int32Value(4);
-    let v = Value::text("hello");
+    let v = Arc::new(Value::text("hello"));
 
     let mut state = DownlinkState::Synced;
     let mut model = MapModel::new();
@@ -466,7 +471,7 @@ fn insert_message_synced() {
     assert!(maybe_response.is_ok());
     let response = maybe_response.unwrap();
 
-    let expected = ValMap::from(vec![(k.clone(), Arc::new(v))]);
+    let expected = ValMap::from(vec![(k.clone(), v)]);
 
     assert_eq!(state, DownlinkState::Synced);
     assert_eq!(&model.state, &expected);
@@ -555,7 +560,7 @@ fn skip_message_synced() {
     let maybe_response = machine.handle_operation(
         &mut state,
         &mut model,
-        Operation::Message(Message::Action(UntypedMapModification::Skip(1))),
+        Operation::Message(Message::Action(UntypedMapModification::Drop(1))),
     );
 
     assert!(maybe_response.is_ok());
@@ -719,10 +724,10 @@ fn make_update(
 }
 
 fn event_and_cmd(
-    response: Response<ViewWithEvent, UntypedMapModification<Arc<Value>>>,
+    response: Response<ViewWithEvent, UntypedMapModification<Value>>,
 ) -> (
     ViewWithEvent,
-    UntypedMapModification<Arc<Value>>,
+    UntypedMapModification<Value>,
     Option<TransitionError>,
 ) {
     match response {
@@ -1331,7 +1336,7 @@ fn skip_action() {
 
     assert!(view.ptr_eq(&model.state));
     assert_eq!(event, MapEvent::Skip(1));
-    assert_eq!(cmd, UntypedMapModification::Skip(1));
+    assert_eq!(cmd, UntypedMapModification::Drop(1));
     assert!(err.is_none());
 
     let result_before = rx_before.try_recv();
@@ -1384,7 +1389,7 @@ fn skip_action_dropped_before() {
 
     assert!(view.ptr_eq(&model.state));
     assert_eq!(event, MapEvent::Skip(1));
-    assert_eq!(cmd, UntypedMapModification::Skip(1));
+    assert_eq!(cmd, UntypedMapModification::Drop(1));
     assert_eq!(err, Some(TransitionError::ReceiverDropped));
 
     let result_after = rx_after.try_recv();
@@ -1432,7 +1437,7 @@ fn skip_action_dropped_after() {
 
     assert!(view.ptr_eq(&model.state));
     assert_eq!(event, MapEvent::Skip(1));
-    assert_eq!(cmd, UntypedMapModification::Skip(1));
+    assert_eq!(cmd, UntypedMapModification::Drop(1));
     assert_eq!(err, Some(TransitionError::ReceiverDropped));
 
     let result_before = rx_before.try_recv();
@@ -1479,7 +1484,7 @@ fn skip_action_dropped_both() {
 
     assert!(view.ptr_eq(&model.state));
     assert_eq!(event, MapEvent::Skip(1));
-    assert_eq!(cmd, UntypedMapModification::Skip(1));
+    assert_eq!(cmd, UntypedMapModification::Drop(1));
     assert_eq!(err, Some(TransitionError::ReceiverDropped));
 }
 
@@ -1619,11 +1624,11 @@ pub fn take_from_value() {
 pub fn skip_to_value() {
     let expected = Value::of_attr(("drop", 5));
     assert_eq!(
-        Form::into_value(UntypedMapModification::<Value>::Skip(5)),
+        Form::into_value(UntypedMapModification::<Value>::Drop(5)),
         expected
     );
     assert_eq!(
-        Form::as_value(&UntypedMapModification::<Value>::Skip(5)),
+        Form::as_value(&UntypedMapModification::<Value>::Drop(5)),
         expected
     );
 }
@@ -1632,9 +1637,9 @@ pub fn skip_to_value() {
 pub fn skip_from_value() {
     let rep = Value::of_attr(("drop", 5));
     let result1: MapModResult = Form::try_from_value(&rep);
-    assert_eq!(result1, Ok(UntypedMapModification::Skip(5)));
+    assert_eq!(result1, Ok(UntypedMapModification::Drop(5)));
     let result2: MapModResult = Form::try_convert(rep);
-    assert_eq!(result2, Ok(UntypedMapModification::Skip(5)));
+    assert_eq!(result2, Ok(UntypedMapModification::Drop(5)));
 }
 
 #[test]
@@ -1679,14 +1684,14 @@ pub fn simple_insert_to_value() {
     assert_eq!(
         Form::into_value(UntypedMapModification::Update(
             Value::text("hello"),
-            Value::Int32Value(2)
+            Arc::new(Value::Int32Value(2))
         )),
         expected
     );
     assert_eq!(
         Form::as_value(&UntypedMapModification::Update(
             Value::text("hello"),
-            Value::Int32Value(2)
+            Arc::new(Value::Int32Value(2))
         )),
         expected
     );
@@ -1702,7 +1707,7 @@ pub fn simple_insert_from_value() {
         result1,
         Ok(UntypedMapModification::Update(
             Value::text("hello"),
-            Value::Int32Value(2)
+            Arc::new(Value::Int32Value(2))
         ))
     );
     let result2: MapModResult = Form::try_convert(rep);
@@ -1710,14 +1715,17 @@ pub fn simple_insert_from_value() {
         result2,
         Ok(UntypedMapModification::Update(
             Value::text("hello"),
-            Value::Int32Value(2)
+            Arc::new(Value::Int32Value(2))
         ))
     );
 }
 
 #[test]
 pub fn complex_insert_to_value() {
-    let body = Value::Record(vec![Attr::of(("complex", 0))], vec![Item::slot("a", true)]);
+    let body = Arc::new(Value::Record(
+        vec![Attr::of(("complex", 0))],
+        vec![Item::slot("a", true)],
+    ));
     let attr = Attr::of(("update", Value::record(vec![Item::slot("key", "hello")])));
     let expected = Value::Record(
         vec![attr, Attr::of(("complex", 0))],
@@ -1741,7 +1749,10 @@ pub fn complex_insert_to_value() {
 
 #[test]
 pub fn complex_insert_from_value() {
-    let body = Value::Record(vec![Attr::of(("complex", 0))], vec![Item::slot("a", true)]);
+    let body = Arc::new(Value::Record(
+        vec![Attr::of(("complex", 0))],
+        vec![Item::slot("a", true)],
+    ));
     let attr = Attr::of(("update", Value::record(vec![Item::slot("key", "hello")])));
     let rep = Value::Record(
         vec![attr, Attr::of(("complex", 0))],
@@ -1795,7 +1806,7 @@ pub fn map_modification_schema() {
 #[test]
 fn invalid_insert_key_unlinked() {
     let k = Value::Extant;
-    let v = Value::text("hello");
+    let v = Arc::new(Value::text("hello"));
 
     let mut state = DownlinkState::Unlinked;
     let machine = MapStateMachine::new(
@@ -1820,7 +1831,7 @@ fn invalid_insert_key_unlinked() {
 #[test]
 fn invalid_insert_value_unlinked() {
     let k = Value::Int32Value(1);
-    let v = Value::Extant;
+    let v = Arc::new(Value::Extant);
 
     let mut state = DownlinkState::Unlinked;
     let machine = MapStateMachine::new(
@@ -1869,7 +1880,7 @@ fn invalid_remove_unlinked() {
 #[test]
 fn invalid_insert_key_linked() {
     let k = Value::Extant;
-    let v = Value::text("hello");
+    let v = Arc::new(Value::text("hello"));
 
     let mut state = DownlinkState::Linked;
     let machine = MapStateMachine::new(
@@ -1897,7 +1908,7 @@ fn invalid_insert_key_linked() {
 #[test]
 fn invalid_insert_value_linked() {
     let k = Value::Int32Value(1);
-    let v = Value::Extant;
+    let v = Arc::new(Value::Extant);
 
     let mut state = DownlinkState::Linked;
     let machine = MapStateMachine::new(
@@ -1952,7 +1963,7 @@ fn invalid_remove_linked() {
 #[test]
 fn invalid_insert_key_synced() {
     let k = Value::Extant;
-    let v = Value::text("hello");
+    let v = Arc::new(Value::text("hello"));
 
     let mut state = DownlinkState::Synced;
     let machine = MapStateMachine::new(
@@ -1980,7 +1991,7 @@ fn invalid_insert_key_synced() {
 #[test]
 fn invalid_insert_value_synced() {
     let k = Value::Int32Value(1);
-    let v = Value::Extant;
+    let v = Arc::new(Value::Extant);
 
     let mut state = DownlinkState::Synced;
     let machine = MapStateMachine::new(

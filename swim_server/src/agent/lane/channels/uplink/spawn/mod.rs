@@ -33,6 +33,7 @@ use std::sync::Arc;
 use swim_common::model::Value;
 use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc;
+use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, span, Level};
 use tracing_futures::Instrument;
 use utilities::sync::trigger;
@@ -207,7 +208,6 @@ where
             topic,
             action_buffer_size,
             route,
-            yield_after,
             ..
         } = self;
         let (tx, rx) = mpsc::channel(action_buffer_size.get());
@@ -218,7 +218,7 @@ where
         } else {
             return None;
         };
-        let uplink = Uplink::new(state_machine, rx.fuse(), updates, *yield_after);
+        let uplink = Uplink::new(state_machine, ReceiverStream::new(rx).fuse(), updates);
 
         let sink = if let Ok(sender) = router.resolve_sender(addr).await {
             UplinkMessageSender::new(sender.sender, route.clone())

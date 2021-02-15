@@ -31,6 +31,7 @@ use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio_native_tls::native_tls::{Identity, TlsConnector as NativeTlsConnector};
 use tokio_native_tls::{TlsAcceptor, TlsConnector};
+use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, Level};
 
 use crate::routing::remote::net::dns::{DnsResolver, Resolver};
@@ -115,7 +116,7 @@ impl ExternalConnections for TokioTlsNetworking {
 pub struct TlsListener {
     _jh: JoinHandle<()>,
     #[pin]
-    receiver: mpsc::Receiver<TlsHandshakeResult>,
+    receiver: ReceiverStream<TlsHandshakeResult>,
 }
 
 impl TlsListener {
@@ -131,7 +132,7 @@ impl TlsListener {
 
         TlsListener {
             _jh: jh,
-            receiver: pending_rx,
+            receiver: ReceiverStream::new(pending_rx),
         }
     }
 }
