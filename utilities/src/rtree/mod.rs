@@ -56,7 +56,7 @@ where
     L: Label,
     B: BoxBounded,
 {
-    /// Creates a new R-rtree.
+    /// Creates a new R-tree.
     ///
     /// Each node of the tree has a minimum and maximum capacity specified by
     /// `min_children` and `max_children` respectively. The minimum capacity must be less than or equal to
@@ -68,6 +68,8 @@ where
     /// If a node has less elements that the minimum capacity after removal, the remaining elements
     /// in the node are merged back with the rest of the tree.
     ///
+    /// The R-tree currently supports only 2 and 3 dimensional items.
+    ///
     /// # Example:
     /// ```
     /// use utilities::rtree::{Point2D, Rect, RTree, SplitStrategy, rect};
@@ -78,15 +80,6 @@ where
     /// rtree.insert("First".to_string(), rect!((0.0, 0.0), (1.0, 1.0))).unwrap();
     ///
     /// assert_eq!(rtree.len(), 1)
-    /// ```
-    ///
-    /// # Panics:
-    /// ```should_panic
-    /// # use utilities::rtree::{Point2D, Rect, RTree, SplitStrategy};
-    /// # use std::num::NonZeroUsize;
-    /// #
-    /// // min cannot be greater than half of max
-    /// let rtree: RTree<String, Rect<Point2D<f64>>> = RTree::new(NonZeroUsize::new(6).unwrap(), NonZeroUsize::new(10).unwrap(), SplitStrategy::Linear).unwrap();
     /// ```
     pub fn new(
         min_children: NonZeroUsize,
@@ -166,7 +159,8 @@ where
         self.root.search(area)
     }
 
-    /// Inserts a new item in the tree.
+    /// Inserts a new item in the tree. Each item must have a unique label.
+    /// If the provided label already exsists in the tree, a `DuplicateLabelError` will be returned.
     ///
     /// # Example:
     /// ```
@@ -201,9 +195,8 @@ where
         Ok(())
     }
 
-    /// Removes and returns an item from the tree that has bounding box equal to the given bounding box.
+    /// Removes and returns an item from the tree given its label.
     /// If no such item is found, `None` is returned.
-    /// If multiple items have a matching bounding box, only the first one is removed.
     ///
     /// # Example:
     /// ```
@@ -277,6 +270,9 @@ where
     /// Creates a new R-tree from a list of items.
     ///
     /// The items are loaded into the tree using the Sort-Tile-Recursive (STR) algorithm.
+    ///
+    /// Each item must have a unique label. If there are duplicated lables,
+    /// a `DuplicateLabelError` will be returned.
     ///
     /// Each node of the tree has a minimum and maximum capacity specified by
     /// `min_children` and `max_children` respectively. The minimum capacity must be less than or equal to
@@ -352,6 +348,30 @@ where
         );
 
         Ok(RTree { root, lookup_map })
+    }
+
+    /// An iterator visiting all entries in the tree in arbitrary order.
+    /// The iterator element type is `(&'a L, &'a B)`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use utilities::rtree::{Point2D, Rect, RTree, SplitStrategy, rect};          
+    /// use std::num::NonZeroUsize;
+    ///
+    /// let mut rtree = RTree::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(5).unwrap(), SplitStrategy::Linear).unwrap();
+    ///
+    /// rtree.insert("First".to_string(), rect!((0.0, 0.0), (1.0, 1.0))).unwrap();
+    /// rtree.insert("Second".to_string(), rect!((0.0, 0.0), (2.0, 2.0))).unwrap();
+    ///
+    /// for (label, item) in rtree.iter() {
+    ///     println!("label: {:?} item: {:?}", label, item);
+    /// }
+    /// ```
+    pub fn iter(&self) -> RTreeIter<L, B> {
+        RTreeIter {
+            iter: self.lookup_map.iter(),
+        }
     }
 
     fn internal_insert(&mut self, item: EntryPtr<L, B>, level: usize) {
@@ -460,12 +480,6 @@ where
         }
     }
 
-    pub fn iter(&self) -> RTreeIter<L, B> {
-        RTreeIter {
-            iter: self.lookup_map.iter(),
-        }
-    }
-
     fn check_children(
         min_children: &NonZeroUsize,
         max_children: &NonZeroUsize,
@@ -486,34 +500,17 @@ where
     }
 }
 
-#[derive(Debug, Clone, Eq)]
-struct RTreeKey<L>(*const L);
-
-impl<L: PartialEq> PartialEq for RTreeKey<L> {
-    fn eq(&self, other: &Self) -> bool {
-        unsafe { *self.0 == *other.0 }
-    }
-}
-
-impl<L: Hash> Hash for RTreeKey<L> {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        unsafe { (*self.0).hash(state) }
-    }
-}
-
-impl<L> Borrow<L> for RTreeKey<L> {
-    fn borrow(&self) -> &L {
-        unsafe { &*self.0 }
-    }
-}
-
+/// An error returned by the RTree.
 #[derive(Debug)]
 pub enum RTreeError<L>
 where
     L: Label,
 {
+    // A duplicate label was tried to be inserted in the tree.
     DuplicateLabelError(L),
+    // The min child size is not less or equal to half the max child size.
     ChildrenSizeError,
+    // The data type of the tree is not 2 or 3 dimensional.
     DataTypeError,
 }
 
@@ -538,6 +535,24 @@ where
     }
 }
 
+/// An iterator over the entries of an `RTree`.
+///
+/// This `struct` is created by the [`iter`] method on [`RTree`] and the items produced by the
+/// iterator are in arbitrary order.
+///
+/// [`iter`]: RTree::iter
+///
+/// # Example
+///
+/// ```
+/// use utilities::rtree::{Point2D, Rect, RTree, SplitStrategy, rect};          
+/// use std::num::NonZeroUsize;
+///
+/// let mut rtree = RTree::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(5).unwrap(), SplitStrategy::Linear).unwrap();
+/// rtree.insert("First".to_string(), rect!((0.0, 0.0), (1.0, 1.0))).unwrap();
+///
+/// let iter = rtree.iter();
+/// ```
 pub struct RTreeIter<'a, L, B>
 where
     L: Label,
@@ -563,6 +578,27 @@ where
                 unreachable!()
             }
         }
+    }
+}
+
+#[derive(Debug, Clone, Eq)]
+struct RTreeKey<L>(*const L);
+
+impl<L: PartialEq> PartialEq for RTreeKey<L> {
+    fn eq(&self, other: &Self) -> bool {
+        unsafe { *self.0 == *other.0 }
+    }
+}
+
+impl<L: Hash> Hash for RTreeKey<L> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        unsafe { (*self.0).hash(state) }
+    }
+}
+
+impl<L> Borrow<L> for RTreeKey<L> {
+    fn borrow(&self) -> &L {
+        unsafe { &*self.0 }
     }
 }
 

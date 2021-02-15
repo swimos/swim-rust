@@ -13,16 +13,11 @@
 // limitations under the License.
 
 use crate::rtree::rectangles::{Point2D, Point3D};
-use crate::rtree::{BoxBounded, Label, RTree, Rect, SplitStrategy};
+use crate::rtree::{BoxBounded, Label, Point, RTree, RTreeError, Rect, SplitStrategy};
 use std::fs;
 use std::num::NonZeroUsize;
+use std::ops::Sub;
 use std::sync::{Arc, Mutex};
-
-//Todo test insert with same bb but different labels
-//Todo test remove with same bb but different labels
-//Todo test that the tree is still immutable
-//Todo test iterator
-//Todo documentation
 
 fn test_tree<B: BoxBounded, L: Label>(mut tree: RTree<L, B>, entries: Vec<(L, B)>, path: String) {
     assert_eq!(
@@ -566,6 +561,212 @@ fn search_multiple_results_3d_test() {
 }
 
 #[test]
+fn tree_iterator_test() {
+    let items = vec![
+        ("First".to_string(), rect!((0.0, 0.0), (10.0, 10.0))),
+        ("Second".to_string(), rect!((12.0, 0.0), (15.0, 15.0))),
+        ("Third".to_string(), rect!((7.0, 7.0), (14.0, 14.0))),
+        ("Sixth".to_string(), rect!((10.0, 11.0), (11.0, 12.0))),
+        ("Twelfth".to_string(), rect!((7.0, 3.0), (8.0, 6.0))),
+    ];
+
+    let tree = RTree::bulk_load(
+        NonZeroUsize::new(2).unwrap(),
+        NonZeroUsize::new(4).unwrap(),
+        SplitStrategy::Quadratic,
+        items.clone(),
+    )
+    .unwrap();
+
+    for (label, item) in tree.iter() {
+        assert!(items.contains(&(label.clone(), item.clone())));
+    }
+}
+
+#[test]
+fn tree_immutable_test() {
+    let mut tree = build_2d_search_tree();
+
+    let mut tree_clone_1 = tree.clone();
+    tree.remove(&"First".to_string()).unwrap();
+    tree.remove(&"Third".to_string()).unwrap();
+    tree.remove(&"Fifth".to_string()).unwrap();
+    tree.remove(&"Seventh".to_string()).unwrap();
+    tree.remove(&"Ninth".to_string()).unwrap();
+    tree.remove(&"Eleventh".to_string()).unwrap();
+    let mut tree_clone_2 = tree.clone();
+    tree.remove(&"Second".to_string()).unwrap();
+    tree.remove(&"Fourth".to_string()).unwrap();
+    tree.remove(&"Sixth".to_string()).unwrap();
+    tree.remove(&"Eighth".to_string()).unwrap();
+    tree.remove(&"Tenth".to_string()).unwrap();
+    tree.remove(&"Twelfth".to_string()).unwrap();
+
+    assert_eq!(tree.len(), 0);
+    assert_eq!(tree_clone_1.len(), 12);
+    assert_eq!(tree_clone_2.len(), 6);
+
+    tree_clone_1.remove(&"Second".to_string()).unwrap();
+    tree_clone_1.remove(&"Fourth".to_string()).unwrap();
+    tree_clone_1.remove(&"Sixth".to_string()).unwrap();
+    tree_clone_1.remove(&"Eighth".to_string()).unwrap();
+    tree_clone_1.remove(&"Tenth".to_string()).unwrap();
+    tree_clone_1.remove(&"Twelfth".to_string()).unwrap();
+
+    assert_eq!(tree.len(), 0);
+    assert_eq!(tree_clone_1.len(), 6);
+    assert_eq!(tree_clone_2.len(), 6);
+
+    tree_clone_2.remove(&"Second".to_string()).unwrap();
+    tree_clone_2.remove(&"Fourth".to_string()).unwrap();
+    tree_clone_2.remove(&"Sixth".to_string()).unwrap();
+    tree_clone_2.remove(&"Eighth".to_string()).unwrap();
+    tree_clone_2.remove(&"Tenth".to_string()).unwrap();
+    tree_clone_2.remove(&"Twelfth".to_string()).unwrap();
+
+    assert_eq!(tree.len(), 0);
+    assert_eq!(tree_clone_1.len(), 6);
+    assert_eq!(tree_clone_2.len(), 0);
+}
+
+#[test]
+fn tree_insert_same_bb() {
+    let mut tree = RTree::new(
+        NonZeroUsize::new(1).unwrap(),
+        NonZeroUsize::new(50).unwrap(),
+        SplitStrategy::Quadratic,
+    )
+    .unwrap();
+
+    tree.insert("First".to_string(), rect!((0.0, 0.0), (10.0, 10.0)))
+        .unwrap();
+
+    tree.insert("Second".to_string(), rect!((0.0, 0.0), (10.0, 10.0)))
+        .unwrap();
+
+    assert_eq!(tree.len(), 2)
+}
+
+#[test]
+fn tree_remove_same_bb_test() {
+    let mut tree = RTree::new(
+        NonZeroUsize::new(1).unwrap(),
+        NonZeroUsize::new(50).unwrap(),
+        SplitStrategy::Quadratic,
+    )
+    .unwrap();
+
+    tree.insert("First".to_string(), rect!((0.0, 0.0), (10.0, 10.0)))
+        .unwrap();
+
+    tree.insert("Second".to_string(), rect!((0.0, 0.0), (10.0, 10.0)))
+        .unwrap();
+
+    let item = tree.remove(&"Second".to_string()).unwrap();
+
+    assert_eq!(tree.len(), 1);
+    assert_eq!(tree.iter().next().unwrap().0, "First");
+    assert_eq!(item.get_mbb().high, Point2D::new(10.0, 10.0));
+    assert_eq!(item.get_mbb().low, Point2D::new(0.0, 0.0));
+}
+
+#[test]
+fn tree_remove_missing_label_test() {
+    let mut tree = RTree::new(
+        NonZeroUsize::new(1).unwrap(),
+        NonZeroUsize::new(50).unwrap(),
+        SplitStrategy::Quadratic,
+    )
+    .unwrap();
+
+    tree.insert("First".to_string(), rect!((0.0, 0.0), (10.0, 10.0)))
+        .unwrap();
+
+    tree.insert("Second".to_string(), rect!((0.0, 0.0), (10.0, 10.0)))
+        .unwrap();
+
+    let item = tree.remove(&"Fourth".to_string());
+
+    assert!(item.is_none());
+    assert_eq!(tree.len(), 2);
+}
+
+#[test]
+fn tree_children_size_error_test() {
+    let tree: Result<RTree<String, Rect<Point2D<f64>>>, RTreeError<String>> = RTree::new(
+        NonZeroUsize::new(10).unwrap(),
+        NonZeroUsize::new(19).unwrap(),
+        SplitStrategy::Quadratic,
+    );
+
+    assert!(matches!(tree, Err(RTreeError::ChildrenSizeError)));
+
+    let tree: Result<RTree<String, Rect<Point2D<f64>>>, RTreeError<String>> = RTree::new(
+        NonZeroUsize::new(50).unwrap(),
+        NonZeroUsize::new(1).unwrap(),
+        SplitStrategy::Quadratic,
+    );
+
+    assert!(matches!(tree, Err(RTreeError::ChildrenSizeError)));
+}
+
+#[test]
+fn tree_insert_same_labels_test() {
+    let mut tree = RTree::new(
+        NonZeroUsize::new(1).unwrap(),
+        NonZeroUsize::new(50).unwrap(),
+        SplitStrategy::Quadratic,
+    )
+    .unwrap();
+
+    tree.insert("First".to_string(), rect!((0.0, 0.0), (10.0, 10.0)))
+        .unwrap();
+
+    let result = tree.insert("First".to_string(), rect!((0.0, 0.0), (20.0, 20.0)));
+
+    if let Err(RTreeError::DuplicateLabelError(label)) = result {
+        assert_eq!(label, "First")
+    } else {
+        panic!("Expected duplicate label error!")
+    }
+}
+
+#[test]
+fn tree_bulk_load_same_labels_test() {
+    let items = vec![
+        ("First".to_string(), rect!((0.0, 0.0), (10.0, 10.0))),
+        ("Second".to_string(), rect!((12.0, 0.0), (15.0, 15.0))),
+        ("Third".to_string(), rect!((7.0, 7.0), (14.0, 14.0))),
+        ("Third".to_string(), rect!((10.0, 11.0), (11.0, 12.0))),
+        ("Twelfth".to_string(), rect!((7.0, 3.0), (8.0, 6.0))),
+    ];
+
+    let result = RTree::bulk_load(
+        NonZeroUsize::new(2).unwrap(),
+        NonZeroUsize::new(4).unwrap(),
+        SplitStrategy::Quadratic,
+        items,
+    );
+
+    if let Err(RTreeError::DuplicateLabelError(label)) = result {
+        assert_eq!(label, "Third")
+    } else {
+        panic!("Expected duplicate label error!")
+    }
+}
+
+#[test]
+fn tree_data_type_error_test() {
+    let tree: Result<RTree<String, Rect<TestPoint4D>>, RTreeError<String>> = RTree::new(
+        NonZeroUsize::new(2).unwrap(),
+        NonZeroUsize::new(4).unwrap(),
+        SplitStrategy::Quadratic,
+    );
+
+    assert!(matches!(tree, Err(RTreeError::DataTypeError)));
+}
+
+#[test]
 fn insert_no_clones_test() {
     let mut tree = RTree::new(
         NonZeroUsize::new(2).unwrap(),
@@ -619,7 +820,7 @@ fn clone_on_remove_test() {
 
     let cloned_tree = tree.clone();
 
-    tree.remove(&"First".to_string());
+    tree.remove(&"First".to_string()).unwrap();
     assert_eq!(clone_count.get(), 1);
 
     assert_eq!(tree.len(), 0);
@@ -804,27 +1005,27 @@ fn clone_on_merge_test() {
 
     let first_cloned_tree = tree.clone();
 
-    tree.remove(&"First".to_string());
+    tree.remove(&"First".to_string()).unwrap();
     assert_eq!(clone_count.get(), 1);
 
     let second_cloned_tree = tree.clone();
 
-    tree.remove(&"Second".to_string());
+    tree.remove(&"Second".to_string()).unwrap();
     assert_eq!(clone_count.get(), 2);
 
     let third_cloned_tree = tree.clone();
 
-    tree.remove(&"Third".to_string());
+    tree.remove(&"Third".to_string()).unwrap();
     assert_eq!(clone_count.get(), 3);
 
     let fourth_cloned_tree = tree.clone();
 
-    tree.remove(&"Fourth".to_string());
+    tree.remove(&"Fourth".to_string()).unwrap();
     assert_eq!(clone_count.get(), 4);
 
     let fifth_cloned_tree = tree.clone();
 
-    tree.remove(&"Fifth".to_string());
+    tree.remove(&"Fifth".to_string()).unwrap();
     assert_eq!(clone_count.get(), 5);
 
     assert_eq!(tree.len(), 0);
@@ -1108,5 +1309,48 @@ impl CloneCount {
 
     fn get(&self) -> i32 {
         *self.0.lock().unwrap()
+    }
+}
+
+#[derive(Copy, Clone, PartialEq, PartialOrd, Debug)]
+struct TestPoint4D {}
+
+impl Sub for TestPoint4D {
+    type Output = TestPoint4D;
+
+    fn sub(self, _rhs: Self) -> Self::Output {
+        unimplemented!()
+    }
+}
+
+impl Point for TestPoint4D {
+    type Type = f64;
+
+    fn get_coord_count() -> usize {
+        4
+    }
+
+    fn get_nth_coord(&self, _n: usize) -> Option<Self::Type> {
+        unimplemented!()
+    }
+
+    fn mean(&self, _other: &Self) -> Self {
+        unimplemented!()
+    }
+
+    fn multiply_coord(&self) -> Self::Type {
+        unimplemented!()
+    }
+
+    fn has_any_matching_coords(&self, _other: &Self) -> bool {
+        unimplemented!()
+    }
+
+    fn get_lowest(&self, _other: &Self) -> Self {
+        unimplemented!()
+    }
+
+    fn get_highest(&self, _other: &Self) -> Self {
+        unimplemented!()
     }
 }
