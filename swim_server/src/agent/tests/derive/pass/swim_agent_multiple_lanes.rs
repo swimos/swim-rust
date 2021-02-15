@@ -12,7 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swim_server::agent::lane::model::action::{ActionLane, CommandLane};
+use swim_server::agent::lane::model::action::ActionLane;
+use swim_server::agent::lane::model::command::CommandLane;
 use swim_server::agent::lane::model::map::{MapLane, MapLaneEvent};
 use swim_server::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 use swim_server::agent::AgentContext;
@@ -70,7 +71,7 @@ fn main() {
     impl CommandLifecycle {
         async fn on_command<Context>(
             &self,
-            _command: String,
+            _command: &String,
             _model: &CommandLane<String>,
             _context: &Context,
         ) where

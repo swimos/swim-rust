@@ -61,6 +61,22 @@ where
     pub fn remove(key: Key) -> DemandMapLaneEvent<Key, Value> {
         DemandMapLaneEvent::Remove(key)
     }
+
+    #[cfg(test)]
+    pub(crate) fn unchecked_key(&self) -> &Key {
+        match self {
+            DemandMapLaneEvent::Update(key, _) => &key,
+            _ => panic!("Expected to be an update variant"),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn unchecked_value(&self) -> &Value {
+        match self {
+            DemandMapLaneEvent::Update(_, value) => &value,
+            _ => panic!("Expected to be an update variant"),
+        }
+    }
 }
 
 pub enum DemandMapLaneCommand<Key, Value>

@@ -15,10 +15,8 @@
 use crate::agent::lane::model::supply::supplier::BoxSupplier;
 use crate::agent::lane::LaneModel;
 use std::sync::Arc;
-
-mod supplier;
-use crate::agent::lane::channels::AgentExecutionConfig;
-pub use supplier::*;
+use tokio::sync::mpsc;
+use tokio_stream::wrappers::ReceiverStream;
 
 #[cfg(test)]
 mod tests;

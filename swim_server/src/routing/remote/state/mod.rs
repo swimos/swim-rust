@@ -31,7 +31,7 @@ use std::io;
 use std::net::SocketAddr;
 use swim_common::routing::ws::WsConnections;
 use swim_common::routing::ConnectionError;
-use tokio::sync::mpsc;
+use tokio_stream::wrappers::ReceiverStream;
 use utilities::future::open_ended::OpenEndedFutures;
 use utilities::sync::promise::Sender;
 use utilities::sync::{promise, trigger};
@@ -113,7 +113,7 @@ where
     spawner: Sp,
     listener: <External::ListenerType as Listener>::AcceptStream,
     external: External,
-    requests: TakeUntil<mpsc::Receiver<RoutingRequest>, trigger::Receiver>,
+    requests: TakeUntil<ReceiverStream<RoutingRequest>, trigger::Receiver>,
     table: RoutingTable,
     pending: PendingRequests,
     addresses: RemoteRoutingAddresses,
@@ -280,7 +280,7 @@ where
             listener: listener.into_stream(),
             external,
             spawner,
-            requests: request_rx.take_until(stop_rx),
+            requests: ReceiverStream::new(request_rx).take_until(stop_rx),
             table: RoutingTable::default(),
             pending: PendingRequests::default(),
             addresses: RemoteRoutingAddresses::default(),

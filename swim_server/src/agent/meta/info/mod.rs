@@ -90,15 +90,17 @@ impl<'a, Agent> DemandMapLaneLifecycle<'a, String, LaneInfo, Agent> for LaneInfo
     }
 
     fn on_remove<C>(
-        &'a self,
+        &'a mut self,
         _model: &'a DemandMapLane<String, LaneInfo>,
         _context: &'a C,
-        _key: String,
+        key: String,
     ) -> Self::OnRemoveFuture
     where
         C: AgentContext<Agent> + Send + Sync + 'static,
     {
-        ready(()).boxed()
+        Box::pin(async move {
+            let _ = self.lanes.remove(&key);
+        })
     }
 }
 

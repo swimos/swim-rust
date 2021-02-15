@@ -31,6 +31,7 @@ use std::hash::Hash;
 use std::num::NonZeroUsize;
 use swim_common::form::Form;
 use tokio::sync::mpsc;
+use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, Level};
 
 const CUE_ERR: &str = "Failed to cue message";
@@ -70,6 +71,8 @@ where
     Value: Any + Send + Sync + Form + Clone + Debug,
 {
     let (lifecycle_tx, event_stream) = mpsc::channel(buffer_size.get());
+    let event_stream = ReceiverStream::new(event_stream);
+
     let (lane, topic) = demand_map::make_lane_model(buffer_size, lifecycle_tx);
 
     let tasks = MetaDemandMapLifecycleTasks {
@@ -113,7 +116,9 @@ where
     fn events(self: Box<Self>, context: Context) -> BoxFuture<'static, ()> {
         async move {
             let MetaDemandMapLifecycleTasks {
-                map, event_stream, ..
+                mut map,
+                event_stream,
+                ..
             } = *self;
 
             let events = event_stream.take_until(context.agent_stop_event());
@@ -142,8 +147,8 @@ where
                             event!(Level::ERROR, CUE_ERR)
                         }
                     }
-                    DemandMapLaneCommand::Remove(_key) => {
-                        // no-op as lanes cannot be removed
+                    DemandMapLaneCommand::Remove(key) => {
+                        let _ = map.remove(&key);
                     }
                 }
             }

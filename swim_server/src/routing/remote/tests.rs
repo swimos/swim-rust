@@ -18,7 +18,7 @@ use crate::routing::remote::{
     ConnectionDropped, RawRoute, ResolutionRequest, RoutingRequest, SocketAddrIt, Unresolvable,
 };
 use crate::routing::{RoutingAddr, TaggedAgentEnvelope, TaggedEnvelope};
-use futures::{FutureExt, StreamExt};
+use futures::FutureExt;
 use std::cell::RefCell;
 use std::io::ErrorKind;
 use std::net::SocketAddr;
@@ -223,7 +223,7 @@ async fn transition_request_endpoint_in_table() {
     match result {
         Ok(Ok(RawRoute { sender, .. })) => {
             assert!(sender.send(envelope.clone()).await.is_ok());
-            assert_eq!(route_rx.next().now_or_never(), Some(Some(envelope)))
+            assert_eq!(route_rx.recv().now_or_never(), Some(Some(envelope)))
         }
         ow => {
             panic!("Unexpected failure {:?}.", ow);
