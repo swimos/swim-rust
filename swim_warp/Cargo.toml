@@ -22,8 +22,9 @@ pin-utils = "0.1.0"
 swim_common = { path = "../swim_common", default-features = false }
 utilities = { path = "../utilities" }
 swim_runtime = { path = "../swim_runtime" }
-tokio = { version = "0.3.3", features = ["sync"] }
+tokio = { version = "1.1.1", features = ["sync"] }
+tokio-stream = "0.1.2"
 
 [dev-dependencies]
 tracing = "0.1.16"
-tokio = { version = "0.3.3", features = ["rt-multi-thread", "macros"] }
+tokio = { version = "1.1.1", features = ["rt-multi-thread", "macros"] }

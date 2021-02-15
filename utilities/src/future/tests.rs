@@ -24,6 +24,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{mpsc, Notify};
 use tokio::time::timeout;
+use tokio_stream::wrappers::ReceiverStream;
 
 #[test]
 fn future_into() {
@@ -190,7 +191,7 @@ async fn owning_scan() {
     });
 
     let results = scan_stream.collect::<Vec<_>>().await;
-    let sent = rx.collect::<Vec<_>>().await;
+    let sent = ReceiverStream::new(rx).collect::<Vec<_>>().await;
 
     assert_eq!(results, vec![2, 3, 4, 5]);
     assert_eq!(sent, vec![1, 2, 3, 4]);

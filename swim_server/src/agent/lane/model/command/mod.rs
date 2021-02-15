@@ -21,6 +21,7 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use tokio::sync::mpsc::error::SendError;
 use tokio::sync::{mpsc, oneshot};
+use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, Level};
 
 #[cfg(test)]
@@ -142,7 +143,7 @@ where
 {
     let (tx, rx) = mpsc::channel(buffer_size.get());
     let lane = CommandLane::new(tx);
-    (lane, rx)
+    (lane, ReceiverStream::new(rx))
 }
 
 impl<T> LaneModel for CommandLane<T> {

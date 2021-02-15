@@ -444,8 +444,9 @@ fn build_demand_map_lane_io(lane_data: LaneData) -> proc_macro2::TokenStream {
 
     quote! {
         let buffer_size = exec_conf.action_buffer.clone();
-        let (lifecycle_tx, event_stream) = tokio::sync::mpsc::channel(buffer_size.get());
+        let (lifecycle_tx, event_rx) = tokio::sync::mpsc::channel(buffer_size.get());
         let lifecycle = #lifecycle::create(configuration);
+        let event_stream = tokio_stream::wrappers::ReceiverStream::new(event_rx);
 
         let #task_variable = #task_structure {
             lifecycle,

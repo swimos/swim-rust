@@ -9,18 +9,18 @@ swim_common = { path = "../../swim_common" }
 utilities = { path = "../../utilities" }
 swim_runtime = { path = "../../swim_runtime" }
 
-tokio = "0.3.3"
+tokio = "1.1.1"
 jwt = "0.11.0"
 serde = "1.0.117"
 serde_json = "1.0.59"
 futures = "0.3.4"
 futures-util = "0.3.4"
 im = "15.0.0"
-reqwest = "0.10.8"
+reqwest = "0.11.0"
 http = "0.2.3"
 url = { version = "2.1.1", features = ["serde"] }
 biscuit = "0.5.0"
 chrono = "0.4"
 
 [dev-dependencies]
-tokio = { version = "0.3.3", features = ["rt-multi-thread", "macros", "test-util"] }
+tokio = { version = "1.1.1", features = ["rt-multi-thread", "macros", "test-util"] }
