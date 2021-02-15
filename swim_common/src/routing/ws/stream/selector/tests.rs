@@ -23,6 +23,7 @@ use parking_lot::Mutex;
 use std::pin::Pin;
 use std::sync::Arc;
 use tokio::sync::mpsc;
+use tokio_stream::wrappers::ReceiverStream;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct TestError(String);
@@ -199,7 +200,7 @@ async fn produce_available() {
 
     let (_tx, rx) = mpsc::channel(8);
 
-    let mut selector = WsStreamSelector::new(test_stream, rx);
+    let mut selector = WsStreamSelector::new(test_stream, ReceiverStream::new(rx));
 
     let result = selector.next().await;
 
@@ -217,7 +218,7 @@ async fn consume_available() {
     assert!(tx.send(1).await.is_ok());
     test_stream.stage_consume(1);
 
-    let mut selector = WsStreamSelector::new(test_stream, rx);
+    let mut selector = WsStreamSelector::new(test_stream, ReceiverStream::new(rx));
 
     let result = selector.next().await;
 
@@ -236,7 +237,7 @@ async fn both_available() {
     assert!(tx.send(4).await.is_ok());
     test_stream.stage_consume(4);
 
-    let mut selector = WsStreamSelector::new(test_stream, rx);
+    let mut selector = WsStreamSelector::new(test_stream, ReceiverStream::new(rx));
 
     let result1 = selector.next().await;
     let result2 = selector.next().await;
@@ -254,7 +255,7 @@ async fn produce_error() {
 
     let (_tx, rx) = mpsc::channel(8);
 
-    let mut selector = WsStreamSelector::new(test_stream, rx);
+    let mut selector = WsStreamSelector::new(test_stream, ReceiverStream::new(rx));
 
     let result = selector.next().await;
 
@@ -272,7 +273,7 @@ async fn consume_error_on_ready() {
     assert!(tx.send(0).await.is_ok());
     test_stream.stage_consume_error(0, "Boom!");
 
-    let mut selector = WsStreamSelector::new(test_stream, rx);
+    let mut selector = WsStreamSelector::new(test_stream, ReceiverStream::new(rx));
 
     let result = selector.next().await;
 
@@ -290,7 +291,7 @@ async fn consume_error_on_send() {
     assert!(tx.send(0).await.is_ok());
     test_stream.stage_consume_error_on_send(0, "Boom!");
 
-    let mut selector = WsStreamSelector::new(test_stream, rx);
+    let mut selector = WsStreamSelector::new(test_stream, ReceiverStream::new(rx));
 
     let result = selector.next().await;
 
@@ -313,7 +314,7 @@ async fn alternates_produce_and_consume() {
     staging.stage_produce(66);
     staging.stage_consume(1);
 
-    let mut selector = WsStreamSelector::new(test_stream, rx);
+    let mut selector = WsStreamSelector::new(test_stream, ReceiverStream::new(rx));
 
     let result = selector.next().await;
     assert_eq!(result, Some(Ok(SelectorResult::Read(66))));
@@ -345,7 +346,7 @@ async fn consumption_possible_but_no_data() {
     staging.stage_produce(66);
     staging.stage_consume(0);
 
-    let mut selector = WsStreamSelector::new(test_stream, rx);
+    let mut selector = WsStreamSelector::new(test_stream, ReceiverStream::new(rx));
 
     let result = selector.next().await;
     assert_eq!(result, Some(Ok(SelectorResult::Read(66))));
@@ -367,7 +368,7 @@ async fn production_continues_after_no_more_consumption() {
 
     staging.stage_produce(66);
 
-    let mut selector = WsStreamSelector::new(test_stream, rx);
+    let mut selector = WsStreamSelector::new(test_stream, ReceiverStream::new(rx));
 
     let result = selector.next().await;
     assert_eq!(result, Some(Ok(SelectorResult::Read(66))));
@@ -392,7 +393,7 @@ async fn production_and_consumption_stop_after_close() {
 
     staging.stage_produce(66);
 
-    let mut selector = WsStreamSelector::new(test_stream, rx);
+    let mut selector = WsStreamSelector::new(test_stream, ReceiverStream::new(rx));
 
     let result = selector.next().await;
     assert_eq!(result, Some(Ok(SelectorResult::Read(66))));
@@ -417,7 +418,7 @@ async fn error_on_close() {
 
     let (_tx, rx) = mpsc::channel(8);
 
-    let mut selector = WsStreamSelector::new(test_stream, rx);
+    let mut selector = WsStreamSelector::new(test_stream, ReceiverStream::new(rx));
     staging.stage_close_error("Boom!");
     staging.close();
 

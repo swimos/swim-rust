@@ -13,10 +13,10 @@
 // limitations under the License.
 
 use std::time::Duration;
-use swim_client::downlink::typed::SchemaViolations;
+use swim_client::downlink::model::SchemaViolations;
 use swim_client::interface::SwimClientBuilder;
-use swim_client::runtime::time::delay::delay_for;
 use swim_common::warp::path::AbsolutePath;
+use swim_client::runtime::time::delay::delay_for;
 use tokio::task;
 
 #[tokio::main]
@@ -28,13 +28,15 @@ async fn main() {
 
     let path = AbsolutePath::new(host_uri, node_uri, lane_uri);
 
-    let mut event_dl = client
+    let event_dl = client
         .event_downlink::<i64>(path.clone(), SchemaViolations::Ignore)
         .await
         .unwrap();
 
+    let mut rec = event_dl.subscribe().expect("Downlink closed unexpectedly.");
+
     task::spawn(async move {
-        while let Some(event) = event_dl.recv().await {
+        while let Some(event) = rec.recv().await {
             println!("Link received event: {}", event)
         }
     });

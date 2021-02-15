@@ -19,13 +19,8 @@ use crate::configuration::downlink::Config;
 use crate::configuration::downlink::ConfigHierarchy;
 use crate::configuration::downlink::ConfigParseError;
 use crate::connections::SwimConnPool;
-use crate::downlink::subscription::{
-    AnyCommandDownlink, AnyEventDownlink, AnyMapDownlink, AnyValueDownlink, Downlinks, MapReceiver,
-    SubscriptionError, TypedCommandDownlink, TypedEventDownlink, TypedMapDownlink,
-    TypedMapReceiver, TypedValueDownlink, TypedValueReceiver, ValueReceiver,
-};
-use crate::downlink::typed::SchemaViolations;
-use crate::downlink::DownlinkError;
+use crate::downlink::error::DownlinkError;
+use crate::downlink::subscription::{Downlinks, SubscriptionError};
 use crate::router::SwimRouter;
 use std::error::Error;
 use std::fmt;
@@ -44,6 +39,15 @@ use tracing::info;
 
 #[cfg(feature = "websocket")]
 use crate::connections::factory::tungstenite::TungsteniteWsFactory;
+use crate::downlink::model::SchemaViolations;
+use crate::downlink::typed::command::TypedCommandDownlink;
+use crate::downlink::typed::event::TypedEventDownlink;
+use crate::downlink::typed::map::{MapDownlinkReceiver, TypedMapDownlink};
+use crate::downlink::typed::value::{TypedValueDownlink, ValueDownlinkReceiver};
+use crate::downlink::typed::{
+    UntypedCommandDownlink, UntypedEventDownlink, UntypedMapDownlink, UntypedMapReceiver,
+    UntypedValueDownlink, UntypedValueReceiver,
+};
 
 /// Builder to create Swim client instance.
 ///
@@ -179,7 +183,7 @@ impl SwimClient {
         &mut self,
         path: AbsolutePath,
         initial: T,
-    ) -> Result<(TypedValueDownlink<T>, TypedValueReceiver<T>), ClientError>
+    ) -> Result<(TypedValueDownlink<T>, ValueDownlinkReceiver<T>), ClientError>
     where
         T: ValidatedForm + Send + 'static,
     {
@@ -193,7 +197,7 @@ impl SwimClient {
     pub async fn map_downlink<K, V>(
         &mut self,
         path: AbsolutePath,
-    ) -> Result<(TypedMapDownlink<K, V>, TypedMapReceiver<K, V>), ClientError>
+    ) -> Result<(TypedMapDownlink<K, V>, MapDownlinkReceiver<K, V>), ClientError>
     where
         K: ValidatedForm + Send + 'static,
         V: ValidatedForm + Send + 'static,
@@ -239,7 +243,7 @@ impl SwimClient {
         &mut self,
         path: AbsolutePath,
         initial: Value,
-    ) -> Result<(AnyValueDownlink, ValueReceiver), ClientError> {
+    ) -> Result<(Arc<UntypedValueDownlink>, UntypedValueReceiver), ClientError> {
         self.downlinks
             .subscribe_value_untyped(initial, path)
             .await
@@ -250,7 +254,7 @@ impl SwimClient {
     pub async fn untyped_map_downlink(
         &mut self,
         path: AbsolutePath,
-    ) -> Result<(AnyMapDownlink, MapReceiver), ClientError> {
+    ) -> Result<(Arc<UntypedMapDownlink>, UntypedMapReceiver), ClientError> {
         self.downlinks
             .subscribe_map_untyped(path)
             .await
@@ -261,7 +265,7 @@ impl SwimClient {
     pub async fn untyped_command_downlink(
         &mut self,
         path: AbsolutePath,
-    ) -> Result<AnyCommandDownlink, ClientError> {
+    ) -> Result<Arc<UntypedCommandDownlink>, ClientError> {
         self.downlinks
             .subscribe_command_untyped(path)
             .await
@@ -272,7 +276,7 @@ impl SwimClient {
     pub async fn untyped_event_downlink(
         &mut self,
         path: AbsolutePath,
-    ) -> Result<AnyEventDownlink, ClientError> {
+    ) -> Result<Arc<UntypedEventDownlink>, ClientError> {
         self.downlinks
             .subscribe_event_untyped(path)
             .await

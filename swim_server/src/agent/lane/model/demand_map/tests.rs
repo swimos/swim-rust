@@ -16,7 +16,6 @@ use crate::agent::lane::model::demand_map::{
     make_lane_model, DemandMapLaneCommand, DemandMapLaneEvent,
 };
 use futures::future::{join, join3};
-use futures::StreamExt;
 use std::num::NonZeroUsize;
 use swim_common::form::Form;
 use swim_common::record;
@@ -30,7 +29,7 @@ async fn test_sync() {
     let sync = controller.sync();
 
     let asserter = async move {
-        match rx.next().await {
+        match rx.recv().await {
             Some(DemandMapLaneCommand::Sync(sender)) => {
                 assert!(sender.send(vec![DemandMapLaneEvent::update(5, 10)]).is_ok());
             }
@@ -50,7 +49,7 @@ async fn test_cue_ok() {
     let (lane, mut update_rx) = make_lane_model::<i32, i32>(NonZeroUsize::new(5).unwrap(), tx);
 
     let cue_task = async move {
-        match rx.next().await {
+        match rx.recv().await {
             Some(DemandMapLaneCommand::Cue(sender, _key)) => {
                 assert!(sender.send(Some(5)).is_ok());
             }
@@ -59,7 +58,7 @@ async fn test_cue_ok() {
     };
 
     let event_task = async move {
-        match update_rx.next().await {
+        match update_rx.recv().await {
             Some(value) => {
                 assert_eq!(value, DemandMapLaneEvent::update(10, 5));
             }
@@ -82,7 +81,7 @@ async fn test_cue_none() {
     let (lane, _topic) = make_lane_model::<i32, i32>(NonZeroUsize::new(5).unwrap(), tx);
 
     let cue_task = async move {
-        match rx.next().await {
+        match rx.recv().await {
             Some(DemandMapLaneCommand::Cue(sender, _key)) => {
                 assert!(sender.send(None).is_ok());
             }
@@ -103,7 +102,7 @@ async fn test_remove() {
     let (lane, _topic) = make_lane_model::<i32, i32>(NonZeroUsize::new(5).unwrap(), tx);
 
     let remove_task = async move {
-        match rx.next().await {
+        match rx.recv().await {
             Some(DemandMapLaneCommand::Remove(key)) => {
                 assert_eq!(key, 1);
             }

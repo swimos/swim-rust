@@ -14,16 +14,16 @@
 
 use futures::StreamExt;
 use std::time::Duration;
-use swim_client::downlink::subscription::TypedValueReceiver;
-use swim_client::downlink::Downlink;
+use swim_client::downlink::typed::value::ValueDownlinkReceiver;
 use swim_client::downlink::Event::Remote;
 use swim_client::interface::SwimClientBuilder;
 use swim_client::runtime::time::delay::delay_for;
 use swim_common::warp::path::AbsolutePath;
 use tokio::task;
 
-async fn did_set(value_recv: TypedValueReceiver<String>, initial_value: String) {
+async fn did_set(value_recv: ValueDownlinkReceiver<String>, initial_value: String) {
     value_recv
+        .into_stream()
         .filter_map(|event| async {
             match event {
                 Remote(event) => Some(event),
@@ -56,9 +56,7 @@ async fn main() {
         .await
         .expect("Failed to create value downlink!");
 
-    let (_dl_topic, mut dl_sink) = value_downlink.split();
-
-    let initial_value = dl_sink
+    let initial_value = value_downlink
         .get()
         .await
         .expect("Failed to retrieve initial downlink value!");
@@ -73,7 +71,7 @@ async fn main() {
     delay_for(Duration::from_secs(2)).await;
 
     // ...or a downlink set()
-    dl_sink
+    value_downlink
         .set("Hello from link, world!".to_string())
         .await
         .expect("Failed to send message!");

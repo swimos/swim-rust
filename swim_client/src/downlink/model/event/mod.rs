@@ -12,17 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::configuration::downlink::DownlinkParams;
-use crate::downlink::buffered::{BufferedDownlink, BufferedReceiver};
-use crate::downlink::dropping::{DroppingDownlink, DroppingReceiver};
-use crate::downlink::queue::{QueueDownlink, QueueReceiver};
-use crate::downlink::typed::SchemaViolations;
+use crate::downlink::model::SchemaViolations;
+use crate::downlink::typed::{UntypedEventDownlink, UntypedEventReceiver};
 use crate::downlink::{
-    buffered, dropping, queue, Command, DownlinkError, DownlinkState, Event, Message, Operation,
-    Response, StateMachine,
+    Command, DownlinkConfig, DownlinkError, DownlinkState, Event, Message, Operation, Response,
+    StateMachine,
 };
 use futures::Stream;
-use std::num::NonZeroUsize;
 use swim_common::model::schema::{Schema, StandardSchema};
 use swim_common::model::Value;
 use swim_common::routing::RoutingError;
@@ -33,67 +29,23 @@ use utilities::errors::Recoverable;
 #[cfg(test)]
 mod tests;
 
-/// Create an event downlink with a queue based multiplexing topic.
-pub fn create_queue_downlink<Updates, Snk>(
+/// Create an event downlink.
+pub(in crate::downlink) fn create_downlink<Updates, Snk>(
     schema: StandardSchema,
     violations: SchemaViolations,
     update_stream: Updates,
     cmd_sink: Snk,
-    queue_size: NonZeroUsize,
-    config: &DownlinkParams,
-) -> (QueueDownlink<Value, Value>, QueueReceiver<Value>)
+    config: DownlinkConfig,
+) -> (UntypedEventDownlink, UntypedEventReceiver)
 where
-    Updates: Stream<Item = Result<Message<Value>, RoutingError>> + Send + 'static,
-    Snk: ItemSender<Command<Value>, RoutingError> + Send + 'static,
+    Updates: Stream<Item = Result<Message<Value>, RoutingError>> + Send + Sync + 'static,
+    Snk: ItemSender<Command<Value>, RoutingError> + Send + Sync + 'static,
 {
-    queue::make_downlink(
+    crate::downlink::create_downlink(
         EventStateMachine::new(schema, violations),
         update_stream,
         cmd_sink,
-        queue_size,
-        &config,
-    )
-}
-
-/// Create an event downlink with a dropping multiplexing topic.
-pub fn create_dropping_downlink<Updates, Snk>(
-    schema: StandardSchema,
-    violations: SchemaViolations,
-    update_stream: Updates,
-    cmd_sink: Snk,
-    config: &DownlinkParams,
-) -> (DroppingDownlink<Value, Value>, DroppingReceiver<Value>)
-where
-    Updates: Stream<Item = Result<Message<Value>, RoutingError>> + Send + 'static,
-    Snk: ItemSender<Command<Value>, RoutingError> + Send + 'static,
-{
-    dropping::make_downlink(
-        EventStateMachine::new(schema, violations),
-        update_stream,
-        cmd_sink,
-        &config,
-    )
-}
-
-/// Create an event downlink with an buffering multiplexing topic.
-pub fn create_buffered_downlink<Updates, Snk>(
-    schema: StandardSchema,
-    violations: SchemaViolations,
-    update_stream: Updates,
-    cmd_sink: Snk,
-    queue_size: NonZeroUsize,
-    config: &DownlinkParams,
-) -> (BufferedDownlink<Value, Value>, BufferedReceiver<Value>)
-where
-    Updates: Stream<Item = Result<Message<Value>, RoutingError>> + Send + 'static,
-    Snk: ItemSender<Command<Value>, RoutingError> + Send + 'static,
-{
-    buffered::make_downlink(
-        EventStateMachine::new(schema, violations),
-        update_stream,
-        cmd_sink,
-        queue_size,
-        &config,
+        config,
     )
 }
 
@@ -108,7 +60,7 @@ impl EventStateMachine {
     }
 }
 
-impl StateMachine<(), Value, Value> for EventStateMachine {
+impl StateMachine<(), Value, ()> for EventStateMachine {
     type Ev = Value;
     type Cmd = Value;
 
@@ -123,7 +75,7 @@ impl StateMachine<(), Value, Value> for EventStateMachine {
         &self,
         downlink_state: &mut DownlinkState,
         _state: &mut (),
-        op: Operation<Value, Value>,
+        op: Operation<Value, ()>,
     ) -> Result<Response<Self::Ev, Self::Cmd>, DownlinkError> {
         match op {
             Operation::Start => {
