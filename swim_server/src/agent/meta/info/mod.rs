@@ -62,6 +62,7 @@ struct LaneInfoLifecycle {
 impl<'a, Agent> DemandMapLaneLifecycle<'a, String, LaneInfo, Agent> for LaneInfoLifecycle {
     type OnSyncFuture = BoxFuture<'a, Vec<String>>;
     type OnCueFuture = BoxFuture<'a, Option<LaneInfo>>;
+    type OnRemoveFuture = BoxFuture<'a, ()>;
 
     fn on_sync<C>(
         &'a self,
@@ -84,6 +85,20 @@ impl<'a, Agent> DemandMapLaneLifecycle<'a, String, LaneInfo, Agent> for LaneInfo
         C: AgentContext<Agent> + Send + Sync + 'static,
     {
         Box::pin(async move { self.lanes.get(&key).map(Clone::clone) })
+    }
+
+    fn on_remove<C>(
+        &'a mut self,
+        _model: &'a DemandMapLane<String, LaneInfo>,
+        _context: &'a C,
+        key: String,
+    ) -> Self::OnRemoveFuture
+    where
+        C: AgentContext<Agent> + Send + Sync + 'static,
+    {
+        Box::pin(async move {
+            let _ = self.lanes.remove(&key);
+        })
     }
 }
 

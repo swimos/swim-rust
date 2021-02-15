@@ -47,6 +47,7 @@ use swim_common::routing::ws::WsMessage;
 use swim_common::routing::{
     CloseError, CloseErrorKind, ConnectionError, IoError, ProtocolError, ResolutionError,
 };
+use tokio_stream::wrappers::ReceiverStream;
 
 #[test]
 fn dispatch_error_display() {
@@ -685,7 +686,8 @@ async fn task_receive_bad_message() {
 
 #[tokio::test]
 async fn try_dispatch_in_map_meta() {
-    let (tx, mut rx) = mpsc::channel(8);
+    let (tx, rx) = mpsc::channel(8);
+    let mut rx = ReceiverStream::new(rx);
     let (_drop_tx, drop_rx) = promise::promise();
     let addr = RoutingAddr::remote(0);
     let mut router = LocalRoutes::new(addr);
@@ -739,7 +741,7 @@ async fn try_dispatch_meta_from_router() {
 
     assert!(result.is_ok());
 
-    let received = rx.next().now_or_never();
+    let received = rx.recv().now_or_never();
     assert_eq!(
         received,
         Some(Some(

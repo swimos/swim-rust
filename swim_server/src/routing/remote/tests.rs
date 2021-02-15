@@ -18,7 +18,7 @@ use crate::routing::remote::{
     ConnectionDropped, RawRoute, ResolutionRequest, RoutingRequest, SocketAddrIt, Unresolvable,
 };
 use crate::routing::{RoutingAddr, TaggedAgentEnvelope, TaggedEnvelope};
-use futures::{FutureExt, StreamExt};
+use futures::FutureExt;
 use std::cell::RefCell;
 use std::io::ErrorKind;
 use std::net::SocketAddr;

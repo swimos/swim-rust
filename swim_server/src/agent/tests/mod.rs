@@ -20,9 +20,9 @@ pub(crate) mod test_clock;
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lane::lifecycle::CommandLaneLifecycle;
 use crate::agent::lane::lifecycle::{ActionLaneLifecycle, StatefulLaneLifecycle};
-use crate::agent::lane::model::action::{Action, ActionLane, CommandLane};
+use crate::agent::lane::model::action::{Action, ActionLane};
 use crate::agent::lane::model::command::{Command, CommandLane};
-use crate::agent::lane::model::demand_map::DemandMapLaneUpdate;
+use crate::agent::lane::model::demand_map::DemandMapLaneCommand;
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 use crate::agent::lane::LaneModel;
@@ -39,7 +39,7 @@ use crate::agent::{
 use crate::plane::provider::AgentProvider;
 use crate::routing::RoutingAddr;
 use futures::future::{join, BoxFuture};
-use futures::Stream;
+use futures::{Stream, StreamExt};
 use std::collections::HashMap;
 use std::future::Future;
 use std::num::NonZeroUsize;
@@ -304,7 +304,7 @@ async fn test_meta_lanes() {
     map.insert("3".to_string(), 3);
 
     let (tx, rx) = mpsc::channel(3);
-    let task = MetaDemandMapLifecycleTasks::new("lane".to_string(), map, rx);
+    let task = MetaDemandMapLifecycleTasks::new("lane".to_string(), map, ReceiverStream::new(rx));
 
     let (_stop, stop_sig) = trigger::trigger();
     let agent = Arc::new(TestAgent {
@@ -317,17 +317,17 @@ async fn test_meta_lanes() {
     let event_task = task.boxed().events(context);
     let assert_task = async move {
         let (sync_tx, sync_rx) = oneshot::channel();
-        let result = tx.clone().send(DemandMapLaneEvent::Sync(sync_tx)).await;
+        let result = tx.clone().send(DemandMapLaneCommand::Sync(sync_tx)).await;
         assert!(result.is_ok());
 
         let expected = (1..=3)
             .into_iter()
-            .map(|i| DemandMapLaneUpdate::make(i.to_string(), i))
+            .map(|i| DemandMapLaneEvent::update(i.to_string(), i))
             .collect::<Vec<_>>();
 
         match sync_rx.await {
             Ok(mut updates) => {
-                updates.sort_by(|l, r| l.key().cmp(r.key()));
+                updates.sort_by(|l, r| l.unchecked_key().cmp(r.unchecked_key()));
 
                 assert_eq!(expected, updates);
             }
@@ -338,7 +338,7 @@ async fn test_meta_lanes() {
 
         let (sync_tx, sync_rx) = oneshot::channel();
         let send_result = tx
-            .send(DemandMapLaneEvent::Cue(sync_tx, 4.to_string()))
+            .send(DemandMapLaneCommand::Cue(sync_tx, 4.to_string()))
             .await;
         assert!(send_result.is_ok());
 
@@ -359,16 +359,23 @@ async fn test_meta_lanes() {
                 async move {
                     let (sync_tx, sync_rx) = oneshot::channel();
                     let send_result = tx
-                        .send(DemandMapLaneEvent::Cue(sync_tx, update.key().clone()))
+                        .send(DemandMapLaneCommand::Cue(
+                            sync_tx,
+                            update.unchecked_key().clone(),
+                        ))
                         .await;
                     assert!(send_result.is_ok());
 
                     match sync_rx.await {
                         Ok(Some(value)) => {
-                            assert_eq!(value, *update.value());
+                            assert_eq!(value, *update.unchecked_value());
                         }
                         r => {
-                            panic!("Expected cue to return {}. Got {:?}", update.value(), r)
+                            panic!(
+                                "Expected cue to return {}. Got {:?}",
+                                update.unchecked_value(),
+                                r
+                            )
                         }
                     }
                 }

@@ -63,13 +63,19 @@ where
     }
 
     #[cfg(test)]
-    pub(crate) fn key(&self) -> &Key {
-        &self.0
+    pub(crate) fn unchecked_key(&self) -> &Key {
+        match self {
+            DemandMapLaneEvent::Update(key, _) => &key,
+            _ => panic!("Expected to be an update variant"),
+        }
     }
 
     #[cfg(test)]
-    pub(crate) fn value(&self) -> &Value {
-        &self.1
+    pub(crate) fn unchecked_value(&self) -> &Value {
+        match self {
+            DemandMapLaneEvent::Update(_, value) => &value,
+            _ => panic!("Expected to be an update variant"),
+        }
     }
 }
 

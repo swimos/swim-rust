@@ -159,7 +159,7 @@ impl<'a> DemandMapLaneLifecycle<'a, String, i32, ReportingAgent> for DemandMapLi
     }
 
     fn on_remove<C>(
-        &'a self,
+        &'a mut self,
         _model: &'a DemandMapLane<String, i32>,
         _context: &'a C,
         _key: String,

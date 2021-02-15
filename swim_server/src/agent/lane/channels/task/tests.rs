@@ -945,7 +945,8 @@ async fn expect_broadcast_envelopes(
 ) {
     let mut received_addr = HashMap::new();
     for _ in 0..count {
-        let TaggedEnvelope(addr, env) = router_rx.recv().await.expect("Channel closed");
+        let TaggedAgentEnvelope(addr, env) = receive_agent_env(router_rx).await;
+
         *received_addr.entry(addr).or_insert(0) += 1;
         assert_eq!(env, expected_envelope);
     }
@@ -1437,11 +1438,21 @@ async fn handle_command_lane_link_request() {
     assert!(matches!(result, Ok(errs) if errs.is_empty()));
 }
 
+async fn receive_agent_env(rx: &mut mpsc::Receiver<TaggedEnvelope>) -> TaggedAgentEnvelope {
+    match rx.recv().await.expect("Channel closed") {
+        TaggedEnvelope::AgentEnvelope(e) => e,
+        TaggedEnvelope::AgentMetaEnvelope(_) => {
+            panic!("Expected an agent envelope")
+        }
+    }
+}
+
 #[tokio::test]
 async fn command_lane_multiple_links() {
     let route = route();
 
     let (context, mut router_rx, spawn_task) = make_context();
+
     let config = make_config();
 
     let (task, mut input) = make_command_lane_task(config, context);
@@ -1492,11 +1503,11 @@ async fn command_lane_multiple_links() {
 
         let expected_unlink = Envelope::unlinked(&route.node, &route.lane);
 
-        let TaggedEnvelope(rec_addr1, env) = router_rx.recv().await.expect("Channel closed");
+        let TaggedAgentEnvelope(rec_addr1, env) = receive_agent_env(&mut router_rx).await;
         assert!(rec_addr1 == addr1 || rec_addr1 == addr2);
         assert_eq!(env, expected_unlink);
 
-        let TaggedEnvelope(rec_addr2, env) = router_rx.recv().await.expect("Channel closed");
+        let TaggedAgentEnvelope(rec_addr2, env) = receive_agent_env(&mut router_rx).await;
         assert!(rec_addr2 == addr1 || rec_addr2 == addr2);
         assert_ne!(rec_addr1, rec_addr2);
         assert_eq!(env, expected_unlink);

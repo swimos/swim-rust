@@ -15,7 +15,7 @@
 use crate::agent::context::AgentExecutionContext;
 use crate::agent::lane::model::demand_map;
 use crate::agent::lane::model::demand_map::{
-    DemandMapLane, DemandMapLaneEvent, DemandMapLaneUpdate,
+    DemandMapLane, DemandMapLaneCommand, DemandMapLaneEvent,
 };
 use crate::agent::lane::LaneKind;
 use crate::agent::{AgentContext, DemandMapLaneIo, Lane, LaneIo, LaneTasks};
@@ -31,6 +31,7 @@ use std::hash::Hash;
 use std::num::NonZeroUsize;
 use swim_common::form::Form;
 use tokio::sync::mpsc;
+use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, Level};
 
 const CUE_ERR: &str = "Failed to cue message";
@@ -70,6 +71,8 @@ where
     Value: Any + Send + Sync + Form + Clone + Debug,
 {
     let (lifecycle_tx, event_stream) = mpsc::channel(buffer_size.get());
+    let event_stream = ReceiverStream::new(event_stream);
+
     let (lane, topic) = demand_map::make_lane_model(buffer_size, lifecycle_tx);
 
     let tasks = MetaDemandMapLifecycleTasks {
@@ -102,7 +105,7 @@ impl<Agent, Context, S, Key, Value> LaneTasks<Agent, Context>
 where
     Agent: 'static,
     Context: AgentContext<Agent> + Send + Sync + 'static,
-    S: Stream<Item = DemandMapLaneEvent<Key, Value>> + Send + Sync + 'static,
+    S: Stream<Item = DemandMapLaneCommand<Key, Value>> + Send + Sync + 'static,
     Key: Any + Clone + Form + Send + Sync + Debug + Eq + Hash,
     Value: Any + Clone + Form + Send + Sync + Debug,
 {
@@ -113,7 +116,9 @@ where
     fn events(self: Box<Self>, context: Context) -> BoxFuture<'static, ()> {
         async move {
             let MetaDemandMapLifecycleTasks {
-                map, event_stream, ..
+                mut map,
+                event_stream,
+                ..
             } = *self;
 
             let events = event_stream.take_until(context.agent_stop_event());
@@ -122,12 +127,12 @@ where
 
             while let Some(event) = events.next().await {
                 match event {
-                    DemandMapLaneEvent::Sync(sender) => {
+                    DemandMapLaneCommand::Sync(sender) => {
                         let size = map.len();
                         let results = map.clone().into_iter().fold(
                             Vec::with_capacity(size),
                             |mut results, (key, value)| {
-                                results.push(DemandMapLaneUpdate::make(key, value));
+                                results.push(DemandMapLaneEvent::update(key, value));
                                 results
                             },
                         );
@@ -136,11 +141,14 @@ where
                             event!(Level::ERROR, SYNC_ERR)
                         }
                     }
-                    DemandMapLaneEvent::Cue(sender, key) => {
+                    DemandMapLaneCommand::Cue(sender, key) => {
                         let value = map.get(&key).map(Clone::clone);
                         if sender.send(value).is_err() {
                             event!(Level::ERROR, CUE_ERR)
                         }
+                    }
+                    DemandMapLaneCommand::Remove(key) => {
+                        let _ = map.remove(&key);
                     }
                 }
             }

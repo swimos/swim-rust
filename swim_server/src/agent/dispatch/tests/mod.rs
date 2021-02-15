@@ -127,7 +127,8 @@ async fn dispatch_nothing() {
 async fn dispatch_meta() {
     let (envelope_tx, envelope_rx) = mpsc::channel::<TaggedEnvelope>(8);
 
-    let (task, context) = make_dispatcher(8, 10, lanes(vec!["lane"]), envelope_rx);
+    let (task, context) =
+        make_dispatcher(8, 10, lanes(vec!["lane"]), ReceiverStream::new(envelope_rx));
 
     let addr = RoutingAddr::remote(1);
 

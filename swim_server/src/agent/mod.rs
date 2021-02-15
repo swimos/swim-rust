@@ -1494,7 +1494,7 @@ where
     fn events(self: Box<Self>, context: Context) -> BoxFuture<'static, ()> {
         async move {
             let DemandMapLifecycleTasks(LifecycleTasks {
-                lifecycle,
+                mut lifecycle,
                 event_stream,
                 projection,
                 ..
