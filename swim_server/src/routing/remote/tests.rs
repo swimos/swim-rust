@@ -223,7 +223,7 @@ async fn transition_request_endpoint_in_table() {
     match result {
         Ok(Ok(RawRoute { sender, .. })) => {
             assert!(sender.send(envelope.clone()).await.is_ok());
-            assert_eq!(route_rx.next().now_or_never(), Some(Some(envelope)))
+            assert_eq!(route_rx.recv().now_or_never(), Some(Some(envelope)))
         }
         ow => {
             panic!("Unexpected failure {:?}.", ow);

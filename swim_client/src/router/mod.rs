@@ -19,6 +19,7 @@ use futures::stream::FuturesUnordered;
 use futures::{select_biased, Future, FutureExt, StreamExt};
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
+use tokio_stream::wrappers::ReceiverStream;
 use tracing::trace_span;
 use tracing::{span, Level};
 use tracing_futures::Instrument;
@@ -200,8 +201,8 @@ impl<Pool: ConnectionPool> TaskManager<Pool> {
             config,
         } = self;
 
-        let mut message_request_rx = message_request_rx.fuse();
-        let mut conn_request_rx = conn_request_rx.fuse();
+        let mut message_request_rx = ReceiverStream::new(message_request_rx).fuse();
+        let mut conn_request_rx = ReceiverStream::new(conn_request_rx).fuse();
         let mut close_trigger = close_rx.clone().fuse();
 
         let mut host_managers: HashMap<url::Url, HostManagerHandle> = HashMap::new();
@@ -435,8 +436,8 @@ impl<Pool: ConnectionPool> HostManager<Pool> {
         );
 
         let mut close_trigger = close_rx.fuse();
-        let mut connection_request_rx = connection_request_rx.fuse();
-        let mut stream_registrator_rx = stream_registrator_rx.fuse();
+        let mut connection_request_rx = ReceiverStream::new(connection_request_rx).fuse();
+        let mut stream_registrator_rx = ReceiverStream::new(stream_registrator_rx).fuse();
 
         loop {
             let task = select_biased! {

@@ -20,6 +20,7 @@ use futures::{FutureExt, Stream};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use tokio::sync::mpsc;
+use tokio_stream::wrappers::ReceiverStream;
 
 #[cfg(test)]
 mod tests;
@@ -70,7 +71,7 @@ where
 {
     let (tx, rx) = mpsc::channel(buffer_size.get());
     let lane = SupplyLane::new(tx);
-    (lane, rx)
+    (lane, ReceiverStream::new(rx))
 }
 
 impl Lane for StatelessLifecycleTasks {

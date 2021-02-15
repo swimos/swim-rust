@@ -18,40 +18,48 @@ use std::sync::Arc;
 
 use tokio::sync::{mpsc, oneshot};
 
-use crate::agent::lane::LaneModel;
 use swim_common::form::Form;
 use swim_common::model::Value;
+
+use crate::agent::lane::LaneModel;
+use utilities::errors::SwimResultExt;
 
 #[cfg(test)]
 mod tests;
 
 #[derive(Form, Debug, Clone, PartialEq)]
-#[form(tag = "update")]
-pub struct DemandMapLaneUpdate<Key, Value>(
-    #[form(header, name = "key")] Key,
-    #[form(body)] Arc<Value>,
-)
-where
-    Key: Form,
-    Value: Form;
-
-impl<K, V> From<DemandMapLaneUpdate<K, V>> for Value
-where
-    K: Form,
-    V: Form,
-{
-    fn from(update: DemandMapLaneUpdate<K, V>) -> Self {
-        update.into_value()
-    }
-}
-
-impl<Key, Value> DemandMapLaneUpdate<Key, Value>
+pub enum DemandMapLaneEvent<Key, Value>
 where
     Key: Form,
     Value: Form,
 {
-    pub fn make(key: Key, value: Value) -> DemandMapLaneUpdate<Key, Value> {
-        DemandMapLaneUpdate(key, Arc::new(value))
+    #[form(tag = "remove")]
+    Remove(#[form(header, name = "key")] Key),
+    #[form(tag = "update")]
+    Update(#[form(header, name = "key")] Key, #[form(body)] Arc<Value>),
+}
+
+impl<K, V> From<DemandMapLaneEvent<K, V>> for Value
+where
+    K: Form,
+    V: Form,
+{
+    fn from(update: DemandMapLaneEvent<K, V>) -> Self {
+        update.into_value()
+    }
+}
+
+impl<Key, Value> DemandMapLaneEvent<Key, Value>
+where
+    Key: Form,
+    Value: Form,
+{
+    pub fn update(key: Key, value: Value) -> DemandMapLaneEvent<Key, Value> {
+        DemandMapLaneEvent::Update(key, Arc::new(value))
+    }
+
+    pub fn remove(key: Key) -> DemandMapLaneEvent<Key, Value> {
+        DemandMapLaneEvent::Remove(key)
     }
 
     #[cfg(test)]
@@ -65,13 +73,14 @@ where
     }
 }
 
-pub enum DemandMapLaneEvent<Key, Value>
+pub enum DemandMapLaneCommand<Key, Value>
 where
     Key: Form,
     Value: Form,
 {
-    Sync(oneshot::Sender<Vec<DemandMapLaneUpdate<Key, Value>>>),
+    Sync(oneshot::Sender<Vec<DemandMapLaneEvent<Key, Value>>>),
     Cue(oneshot::Sender<Option<Value>>, Key),
+    Remove(Key),
 }
 
 /// A controller for a demand map lane that may be used to cue a value by its key.
@@ -86,20 +95,20 @@ where
     Value: Form,
 {
     /// Syncs this lane. Called by the uplink.
-    pub(crate) async fn sync(self) -> Result<Vec<DemandMapLaneUpdate<Key, Value>>, ()> {
+    pub(crate) async fn sync(self) -> Result<Vec<DemandMapLaneEvent<Key, Value>>, ()> {
         let (tx, rx) = oneshot::channel();
 
         if self
             .0
             .lifecycle_sender
-            .send(DemandMapLaneEvent::Sync(tx))
+            .send(DemandMapLaneCommand::Sync(tx))
             .await
             .is_err()
         {
             return Err(());
         }
 
-        rx.await.map_err(|_| ())
+        rx.await.discard_err()
     }
 
     /// Cues a value. Returns `Ok(true)` if the key mapped successfully to a value or `Ok(false)`
@@ -109,7 +118,7 @@ where
         if self
             .0
             .lifecycle_sender
-            .send(DemandMapLaneEvent::Cue(tx, key.clone()))
+            .send(DemandMapLaneCommand::Cue(tx, key.clone()))
             .await
             .is_err()
         {
@@ -121,13 +130,32 @@ where
                 let _ = self
                     .0
                     .uplink_sender
-                    .send(DemandMapLaneUpdate::make(key, value))
+                    .send(DemandMapLaneEvent::update(key, value))
                     .await;
                 Ok(true)
             }
             Ok(None) => Ok(false),
             _ => Err(()),
         }
+    }
+
+    /// Removes a value from the map.
+    pub async fn remove(&mut self, key: Key) -> Result<(), ()> {
+        if self
+            .0
+            .lifecycle_sender
+            .send(DemandMapLaneCommand::Remove(key.clone()))
+            .await
+            .is_err()
+        {
+            return Err(());
+        }
+
+        self.0
+            .uplink_sender
+            .send(DemandMapLaneEvent::remove(key))
+            .await
+            .discard_err()
     }
 }
 
@@ -139,8 +167,8 @@ where
     Key: Form,
     Value: Form,
 {
-    uplink_sender: mpsc::Sender<DemandMapLaneUpdate<Key, Value>>,
-    lifecycle_sender: mpsc::Sender<DemandMapLaneEvent<Key, Value>>,
+    uplink_sender: mpsc::Sender<DemandMapLaneEvent<Key, Value>>,
+    lifecycle_sender: mpsc::Sender<DemandMapLaneCommand<Key, Value>>,
     id: Arc<()>,
 }
 
@@ -164,8 +192,8 @@ where
     Value: Clone + Form,
 {
     pub(crate) fn new(
-        uplink_sender: mpsc::Sender<DemandMapLaneUpdate<Key, Value>>,
-        lifecycle_sender: mpsc::Sender<DemandMapLaneEvent<Key, Value>>,
+        uplink_sender: mpsc::Sender<DemandMapLaneEvent<Key, Value>>,
+        lifecycle_sender: mpsc::Sender<DemandMapLaneCommand<Key, Value>>,
     ) -> DemandMapLane<Key, Value> {
         DemandMapLane {
             uplink_sender,
@@ -199,10 +227,10 @@ where
 /// `lifecycle_sender`: a sender to the `DemandMapLaneLifecycle`.
 pub fn make_lane_model<Key, Value>(
     buffer_size: NonZeroUsize,
-    lifecycle_sender: mpsc::Sender<DemandMapLaneEvent<Key, Value>>,
+    lifecycle_sender: mpsc::Sender<DemandMapLaneCommand<Key, Value>>,
 ) -> (
     DemandMapLane<Key, Value>,
-    mpsc::Receiver<DemandMapLaneUpdate<Key, Value>>,
+    mpsc::Receiver<DemandMapLaneEvent<Key, Value>>,
 )
 where
     Key: Send + Clone + Form + Sync + 'static,

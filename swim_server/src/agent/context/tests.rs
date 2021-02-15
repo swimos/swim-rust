@@ -16,7 +16,6 @@ use crate::agent::context::{ContextImpl, RoutingContext, ScheduleContext};
 use crate::agent::meta::make_test_meta_context;
 use crate::agent::tests::test_clock::TestClock;
 use crate::agent::AgentContext;
-use futures::StreamExt;
 use std::collections::HashMap;
 use std::sync::Arc;
 use swim_runtime::task;
@@ -53,10 +52,16 @@ fn create_context(
     clock: TestClock,
     close_trigger: trigger::Receiver,
 ) -> ContextImpl<&'static str, impl Clock, ()> {
-    let (tx, rx) = mpsc::channel(n);
+    let (tx, mut rx) = mpsc::channel(n);
 
     //Run any tasks that get scheduled.
-    task::spawn(async move { rx.for_each(|eff| eff).await });
+    task::spawn(async move {
+        {
+            while let Some(eff) = rx.recv().await {
+                eff.await
+            }
+        }
+    });
 
     let agent = Arc::new("agent");
 

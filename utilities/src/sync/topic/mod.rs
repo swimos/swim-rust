@@ -86,12 +86,18 @@ impl<T> Sender<T> {
         TopicSend {
             inner: &*inner,
             value: Some(value),
+            fail_on_no_rx: true,
         }
     }
 
     /// Send a value into the channel. If there are no receivers registered the value is discarded.
-    pub async fn discarding_send(&mut self, value: T) {
-        let _ = self.send(value).await;
+    pub fn discarding_send(&mut self, value: T) -> TopicSend<T> {
+        let Sender { inner } = self;
+        TopicSend {
+            inner: &*inner,
+            value: Some(value),
+            fail_on_no_rx: false,
+        }
     }
 
     /// Attempt to send a a value into the channel, returning an error immediately if the buffer
@@ -133,9 +139,7 @@ impl<T> Sender<T> {
     }
 
     pub fn subscriber(&self) -> Subscriber<T> {
-        Subscriber {
-            inner: self.inner.clone(),
-        }
+        self.inner.subscriber()
     }
 }
 
@@ -149,6 +153,7 @@ impl<T> Drop for Sender<T> {
 
 /// Equivalent to a [`Receiver`] that does not observe the values in the buffer. It can only be
 /// used to create new [`Receiver`]s.
+#[derive(Debug)]
 pub struct Subscriber<T> {
     inner: Arc<Inner<T>>,
 }
@@ -199,9 +204,7 @@ impl<T> Receiver<T> {
     /// Create a [`Subscriber`] from this [`Receiver] that can be used to create more receivers
     /// without being required to observe new values in the channel.
     pub fn subscriber(&self) -> Subscriber<T> {
-        Subscriber {
-            inner: self.inner.clone(),
-        }
+        self.inner.subscriber()
     }
 }
 
@@ -256,6 +259,7 @@ struct Inner<T> {
     active: AtomicBool,
     read_waiters: parking_lot::Mutex<ReadWaiters>,
     writer_waiter: AtomicWaker,
+    num_sub: AtomicUsize,
 }
 
 impl<T> Inner<T> {
@@ -271,6 +275,14 @@ impl<T> Inner<T> {
             active: AtomicBool::new(true),
             read_waiters: Default::default(),
             writer_waiter: Default::default(),
+            num_sub: AtomicUsize::new(1),
+        }
+    }
+
+    fn subscriber(self: &Arc<Self>) -> Subscriber<T> {
+        self.num_sub.fetch_add(1, Ordering::Release);
+        Subscriber {
+            inner: self.clone(),
         }
     }
 }
@@ -279,6 +291,7 @@ fn add_receiver<T>(inner: &Arc<Inner<T>>, lock: &mut Guarded) -> Receiver<T> {
     let new_inner = inner.clone();
     let offset = prev_slot(lock.write_offset.load(Ordering::Acquire), inner.capacity);
     lock.num_rx = lock.num_rx.checked_add(1).expect("Receiver overflow.");
+    inner.num_sub.fetch_add(1, Ordering::Release);
     // The write offset cannot advance while we hold a write lock on the guarded section of
     // the internal state. This means that it is impossible for an entry to be added that
     // expects to be read by the new receiver. Therefore it is consistent to use the write
@@ -314,10 +327,12 @@ impl<T> Drop for Receiver<T> {
             guarded,
             read_floor,
             writer_waiter,
+            num_sub,
             ..
         } = &**inner;
         let mut lock = guarded.write();
         lock.num_rx -= 1;
+        num_sub.fetch_sub(1, Ordering::Release);
         let write_offset = lock.write_offset.load(Ordering::Relaxed);
         let mut i = next_slot(*read_offset, *capacity);
         let mut new_floor = None;
@@ -340,11 +355,19 @@ impl<T> Drop for Receiver<T> {
     }
 }
 
+impl<T> Drop for Subscriber<T> {
+    fn drop(&mut self) {
+        let Subscriber { inner } = self;
+        inner.num_sub.fetch_sub(1, Ordering::Release);
+    }
+}
+
 #[pin_project]
 pub struct TopicSend<'a, T> {
     #[pin]
     inner: &'a Inner<T>,
     value: Option<T>,
+    fail_on_no_rx: bool,
 }
 
 pub struct TopicReceive<'a, T> {
@@ -373,12 +396,20 @@ impl<'a, T> Future for TopicSend<'a, T> {
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.project();
-        let read = this.inner.read_floor.load(Ordering::Acquire);
-        let lock = this.inner.guarded.read();
-        if lock.num_rx == 0 {
+        if this.inner.num_sub.load(Ordering::Acquire) == 0 {
             return Poll::Ready(Err(SendError(
                 this.value.take().expect("Send future polled twice."),
             )));
+        }
+        let read = this.inner.read_floor.load(Ordering::Acquire);
+        let lock = this.inner.guarded.read();
+        if lock.num_rx == 0 {
+            let v = this.value.take().expect("Send future polled twice.");
+            return if *this.fail_on_no_rx {
+                Poll::Ready(Err(SendError(v)))
+            } else {
+                Poll::Ready(Ok(()))
+            };
         }
         let target = lock.write_offset.load(Ordering::Acquire);
         if target == read {
@@ -426,6 +457,7 @@ fn try_advance_reader<'a, 'b, T>(
         active,
         read_waiters,
         writer_waiter,
+        ..
     } = &**inner;
     let lock = guarded.read();
     let target = next_slot(*read_offset, *capacity);
