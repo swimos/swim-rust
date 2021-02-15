@@ -305,10 +305,10 @@ where
                         ));
 
                         if let Some(remote_addr) = maybe_remote_addr {
-                            if let Ok(mut remote_rout) =
+                            if let Ok(mut remote_route) =
                                 context.router_handle().resolve_sender(remote_addr).await
                             {
-                                if remote_rout
+                                if remote_route
                                     .sender
                                     .send_item(Envelope::lane_not_found(
                                         agent_route.to_string(),
