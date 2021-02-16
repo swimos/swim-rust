@@ -13,13 +13,12 @@
 // limitations under the License.
 
 use crate::agent::lane::channels::update::LaneUpdate;
-use crate::agent::lane::channels::uplink::backpressure::{
-    KeyedBackpressureConfig, SimpleBackpressureConfig,
-};
+use crate::agent::lane::channels::uplink::backpressure::SimpleBackpressureConfig;
 use crate::agent::lane::channels::uplink::{UplinkAction, UplinkStateMachine};
 use crate::routing::RoutingAddr;
 use std::num::NonZeroUsize;
 use std::time::Duration;
+use swim_warp::backpressure::KeyedBackpressureConfig;
 use utilities::future::retryable::strategy::RetryStrategy;
 
 pub mod task;

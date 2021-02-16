@@ -18,9 +18,7 @@ use crate::agent::lane::channels::update::command::CommandLaneUpdateTask;
 use crate::agent::lane::channels::update::map::MapLaneUpdateTask;
 use crate::agent::lane::channels::update::value::ValueLaneUpdateTask;
 use crate::agent::lane::channels::update::{LaneUpdate, UpdateError};
-use crate::agent::lane::channels::uplink::backpressure::{
-    KeyedBackpressureConfig, SimpleBackpressureConfig,
-};
+use crate::agent::lane::channels::uplink::backpressure::SimpleBackpressureConfig;
 use crate::agent::lane::channels::uplink::spawn::UplinkErrorReport;
 use crate::agent::lane::channels::uplink::stateless::StatelessUplinks;
 use crate::agent::lane::channels::uplink::{
@@ -53,6 +51,7 @@ use swim_common::form::{Form, FormErr};
 use swim_common::model::Value;
 use swim_common::warp::envelope::{OutgoingHeader, OutgoingLinkMessage};
 use swim_common::warp::path::RelativePath;
+use swim_warp::backpressure::KeyedBackpressureConfig;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, span, Level};

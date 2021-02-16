@@ -12,9 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::lane::channels::uplink::backpressure::{
-    KeyedBackpressureConfig, SimpleBackpressureConfig,
-};
+use crate::agent::lane::channels::uplink::backpressure::SimpleBackpressureConfig;
 use crate::agent::lane::channels::uplink::map::MapLaneSyncError;
 use crate::agent::lane::model::demand_map::{DemandMapLane, DemandMapLaneEvent};
 use crate::agent::lane::model::map::{make_update, MapLane, MapLaneEvent};
@@ -38,6 +36,7 @@ use swim_common::sink::item::{FnMutSender, ItemSender};
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
 use swim_warp::backpressure::map::MapUpdateMessage;
+use swim_warp::backpressure::KeyedBackpressureConfig;
 use swim_warp::model::map::MapUpdate;
 use tracing::{event, Level};
 use utilities::errors::Recoverable;

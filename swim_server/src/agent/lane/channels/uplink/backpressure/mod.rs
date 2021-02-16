@@ -26,7 +26,7 @@ use std::num::NonZeroUsize;
 use swim_common::form::Form;
 use swim_common::sink::item::ItemSender;
 use swim_warp::backpressure::map::release_pressure as release_pressure_map;
-use swim_warp::backpressure::{release_pressure, Flushable};
+use swim_warp::backpressure::{release_pressure, Flushable, KeyedBackpressureConfig};
 use swim_warp::model::map::MapUpdate;
 use tokio::sync::oneshot;
 use utilities::sync::{circular_buffer, trigger};
@@ -38,19 +38,6 @@ pub struct SimpleBackpressureConfig {
     pub buffer_size: NonZeroUsize,
     /// Number of loop iterations after which the input and output tasks will yield.
     pub yield_after: NonZeroUsize,
-}
-
-/// Configuration for the map lane back-pressure release.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct KeyedBackpressureConfig {
-    /// Buffer size for the channels connecting the input and output tasks.
-    pub buffer_size: NonZeroUsize,
-    /// Number of loop iterations after which the input and output tasks will yield.
-    pub yield_after: NonZeroUsize,
-    /// Buffer size for the communication side channel between the input and output tasks.
-    pub bridge_buffer_size: NonZeroUsize,
-    /// Number of keys for maintain a channel for at any one time.
-    pub cache_size: NonZeroUsize,
 }
 
 /// Consume a stream of messages from a [`ValueLane`] with one task that pushes them into a

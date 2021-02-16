@@ -13,10 +13,32 @@
 // limitations under the License.
 
 use std::num::NonZeroUsize;
+use swim_warp::backpressure::KeyedBackpressureConfig;
 use tokio::time::Duration;
 
-#[derive(Debug, Clone)]
+const DEFAULT_YIELD: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(256) };
+const DEFAULT_BUFFER: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(64) };
+
+#[derive(Debug, Clone, Default)]
 pub struct MetricCollectorConfig {
+    pub task_config: MetricCollectorTaskConfig,
+    /// Backpressure release configuration.
+    pub backpressure_config: KeyedBackpressureConfig,
+}
+
+impl MetricCollectorConfig {
+    pub fn split(self) -> (MetricCollectorTaskConfig, KeyedBackpressureConfig) {
+        let MetricCollectorConfig {
+            task_config,
+            backpressure_config,
+        } = self;
+
+        (task_config, backpressure_config)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct MetricCollectorTaskConfig {
     /// Sample rate.
     pub sample_rate: Duration,
     /// Observer channel buffer size.
@@ -25,12 +47,12 @@ pub struct MetricCollectorConfig {
     pub yield_after: NonZeroUsize,
 }
 
-impl Default for MetricCollectorConfig {
+impl Default for MetricCollectorTaskConfig {
     fn default() -> Self {
-        MetricCollectorConfig {
+        MetricCollectorTaskConfig {
             sample_rate: Duration::from_secs(1),
-            buffer_size: NonZeroUsize::new(10).unwrap(),
-            yield_after: NonZeroUsize::new(256).unwrap(),
+            buffer_size: DEFAULT_BUFFER,
+            yield_after: DEFAULT_YIELD,
         }
     }
 }

@@ -24,7 +24,7 @@ use utilities::sync::trigger;
 
 use crate::agent::context::AgentExecutionContext;
 use crate::agent::lane::model::supply::{Dropping, SupplyLane};
-use crate::agent::meta::metric::config::MetricCollectorConfig;
+use crate::agent::meta::metric::config::{MetricCollectorConfig, MetricCollectorTaskConfig};
 use crate::agent::meta::metric::lane::LaneProfile;
 use crate::agent::meta::metric::node::NodeProfile;
 use crate::agent::meta::metric::sender::TransformedSender;
@@ -35,8 +35,14 @@ use crate::agent::LaneIo;
 use crate::agent::LaneTasks;
 use crate::agent::{make_supply_lane, AgentContext, DynamicLaneTasks, SwimAgent};
 use crate::routing::LaneIdentifier;
+use futures::Stream;
 use pin_utils::core_reexport::fmt::Formatter;
 use std::fmt::Debug;
+use swim_common::sink::item::{for_mpsc_sender, ItemSender};
+use swim_warp::backpressure::keyed::{release_pressure, Keyed};
+use swim_warp::backpressure::KeyedBackpressureConfig;
+use tokio::sync::mpsc::error::SendError;
+use tokio_stream::wrappers::ReceiverStream;
 use utilities::uri::RelativeUri;
 
 pub mod config;
@@ -49,6 +55,14 @@ pub mod uplink;
 #[cfg(test)]
 mod tests;
 
+pub struct MetricCollectorError;
+
+impl From<SendError<ObserverEvent>> for MetricCollectorError {
+    fn from(_: SendError<ObserverEvent>) -> Self {
+        MetricCollectorError
+    }
+}
+
 #[derive(PartialEq, Debug)]
 pub enum ObserverEvent {
     Node(NodeProfile),
@@ -56,11 +70,26 @@ pub enum ObserverEvent {
     Uplink(RelativePath, WarpUplinkProfile),
 }
 
+impl Keyed for ObserverEvent {
+    type Key = String;
+
+    fn key(&self) -> Self::Key {
+        match self {
+            ObserverEvent::Node(_) => {
+                unimplemented!()
+            }
+            ObserverEvent::Lane(lane, _) => lane.to_string(),
+            ObserverEvent::Uplink(lane, _) => lane.to_string(),
+        }
+    }
+}
+
 /// An observer for node, lane and uplinks which generates profiles based on the events for the
 /// part. These events are aggregated and forwarded to their corresponding lanes as pulses.
 pub struct MetricCollector {
     observer: MetricObserver,
     _collector_task: JoinHandle<CollectorStopResult>,
+    _backpressure_task: JoinHandle<Result<(), MetricCollectorError>>,
 }
 
 impl Debug for MetricCollector {
@@ -78,14 +107,24 @@ impl MetricCollector {
         config: MetricCollectorConfig,
         lanes: HashMap<LaneIdentifier, SupplyLane<Value>>,
     ) -> MetricCollector {
-        let (metric_tx, metric_rx) = mpsc::channel(config.buffer_size.get());
+        let (task_config, bp_config) = config.split();
+
+        let (metric_tx, metric_rx) = mpsc::channel(task_config.buffer_size.get());
+        let (messages, stream) = mpsc::channel(task_config.buffer_size.get());
+        let stream = ReceiverStream::new(stream);
+        let sink = for_mpsc_sender(messages).map_err_into();
+
+        let release_task = metrics_release_backpressure(stream, sink, bp_config);
+        let release_jh = tokio::spawn(release_task);
+
         let collector = CollectorTask::new(node_id, stop_rx, metric_rx, lanes);
-        let jh = tokio::spawn(collector.run(config.yield_after));
-        let observer = MetricObserver::new(config, metric_tx);
+        let collector_jh = tokio::spawn(collector.run(task_config.yield_after));
+        let observer = MetricObserver::new(task_config, metric_tx);
 
         MetricCollector {
             observer,
-            _collector_task: jh,
+            _collector_task: collector_jh,
+            _backpressure_task: release_jh,
         }
     }
 
@@ -95,14 +134,36 @@ impl MetricCollector {
     }
 }
 
+async fn metrics_release_backpressure<E, Sink>(
+    messages: impl Stream<Item = ObserverEvent>,
+    sink: Sink,
+    config: KeyedBackpressureConfig,
+) -> Result<(), E>
+where
+    Sink: ItemSender<ObserverEvent, E>,
+{
+    release_pressure(
+        messages,
+        sink,
+        config.yield_after,
+        config.bridge_buffer_size,
+        config.cache_size,
+        config.buffer_size,
+    )
+    .await
+}
+
 #[derive(Clone, Debug)]
 pub struct MetricObserver {
-    config: MetricCollectorConfig,
+    config: MetricCollectorTaskConfig,
     metric_tx: Sender<ObserverEvent>,
 }
 
 impl MetricObserver {
-    pub fn new(config: MetricCollectorConfig, metric_tx: Sender<ObserverEvent>) -> MetricObserver {
+    pub fn new(
+        config: MetricCollectorTaskConfig,
+        metric_tx: Sender<ObserverEvent>,
+    ) -> MetricObserver {
         MetricObserver { config, metric_tx }
     }
 
