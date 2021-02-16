@@ -42,6 +42,7 @@ const SYNCED_TAG: &str = "synced";
 const UNLINKED_TAG: &str = "unlinked";
 const EVENT_TAG: &str = "event";
 const NODE_NOT_FOUND_TAG: &str = "nodeNotFound";
+const LANE_NOT_FOUND_TAG: &str = "laneNotFound";
 
 /// Header for negotiation envelopes (authorization and deauthorization).
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -544,6 +545,14 @@ impl Envelope {
             node,
             lane,
             Some(Value::of_attr(Attr::of(NODE_NOT_FOUND_TAG))),
+        )
+    }
+
+    pub fn lane_not_found<S: Into<Text>>(node: S, lane: S) -> Self {
+        Self::make_unlinked(
+            node,
+            lane,
+            Some(Value::of_attr(Attr::of(LANE_NOT_FOUND_TAG))),
         )
     }
 }
