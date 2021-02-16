@@ -28,7 +28,7 @@ use futures::FutureExt;
 use std::time::Duration;
 use swim_common::routing::ResolutionError;
 use swim_runtime::time::clock::Clock;
-use tokio::sync::mpsc;
+use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
 use utilities::route_pattern::RoutePattern;
 use utilities::uri::RelativeUri;
@@ -45,7 +45,7 @@ impl Clock for DummyClock {
 }
 
 type BuilderType =
-    PlaneBuilder<DummyClock, mpsc::Receiver<TaggedEnvelope>, PlaneRouter<DummyDelegate>>;
+    PlaneBuilder<DummyClock, ReceiverStream<TaggedEnvelope>, PlaneRouter<DummyDelegate>>;
 
 #[derive(Debug)]
 struct DummyAgent;

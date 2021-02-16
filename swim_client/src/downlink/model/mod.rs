@@ -16,3 +16,15 @@ pub mod command;
 pub mod event;
 pub mod map;
 pub mod value;
+
+#[derive(Eq, PartialEq, Clone, Copy, Debug, Hash)]
+pub enum SchemaViolations {
+    Ignore,
+    Report,
+}
+
+impl Default for SchemaViolations {
+    fn default() -> Self {
+        SchemaViolations::Report
+    }
+}

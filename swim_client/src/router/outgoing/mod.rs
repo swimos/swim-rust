@@ -21,6 +21,7 @@ use tokio::sync::mpsc;
 use tracing::{error, info, span, trace, Level};
 
 use crate::router::retry::new_request;
+use tokio_stream::wrappers::ReceiverStream;
 use utilities::future::retryable::RetryableFuture;
 
 //----------------------------------Downlink to Connection Pool---------------------------------
@@ -71,7 +72,7 @@ impl OutgoingHostTask {
         } = self;
 
         let mut close_trigger = close_rx.fuse();
-        let mut envelope_rx = envelope_rx.fuse();
+        let mut envelope_rx = ReceiverStream::new(envelope_rx).fuse();
 
         loop {
             let task = select! {

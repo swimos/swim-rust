@@ -81,7 +81,7 @@ pub mod interval {
     pub struct Interval {
         #[cfg(not(target_arch = "wasm32"))]
         #[pin]
-        inner: tokio::time::Interval,
+        inner: tokio_stream::wrappers::IntervalStream,
         #[cfg(target_arch = "wasm32")]
         #[pin]
         inner: wasm_timer::Interval,
@@ -106,7 +106,7 @@ pub mod interval {
     pub fn interval(period: Duration) -> Interval {
         #[cfg(not(target_arch = "wasm32"))]
         {
-            let inner = tokio::time::interval(period);
+            let inner = tokio_stream::wrappers::IntervalStream::new(tokio::time::interval(period));
             Interval { inner }
         }
 

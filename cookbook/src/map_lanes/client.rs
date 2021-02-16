@@ -16,19 +16,19 @@ use async_std::task;
 use futures::StreamExt;
 use std::time::Duration;
 use swim_client::downlink::model::map::MapEvent;
-use swim_client::downlink::subscription::TypedMapReceiver;
-use swim_client::downlink::typed::event::{TypedMapView, TypedViewWithEvent};
-use swim_client::downlink::Downlink;
+use swim_client::downlink::typed::map::events::{TypedMapView, TypedViewWithEvent};
+use swim_client::downlink::typed::map::MapDownlinkReceiver;
 use swim_client::downlink::Event::Remote;
 use swim_client::interface::SwimClient;
 use swim_common::warp::path::AbsolutePath;
 
 async fn did_update(
-    map_recv: TypedMapReceiver<String, i32>,
+    map_recv: MapDownlinkReceiver<String, i32>,
     initial_value: TypedMapView<String, i32>,
     default: i32,
 ) {
     map_recv
+        .into_stream()
         .filter_map(|event| async {
             match event {
                 Remote(TypedViewWithEvent {
@@ -73,9 +73,7 @@ async fn main() {
         .await
         .expect("Failed to create map downlink!");
 
-    let (_dl_topic, mut dl_sink) = map_downlink.split();
-
-    let initial_value = dl_sink
+    let initial_value = map_downlink
         .view()
         .await
         .expect("Failed to retrieve initial map downlink!");
@@ -90,14 +88,14 @@ async fn main() {
 
     task::sleep(Duration::from_secs(2)).await;
 
-    dl_sink
+    map_downlink
         .update("FromClientLink".to_string(), 25)
         .await
         .expect("Failed to send message!");
 
     task::sleep(Duration::from_secs(2)).await;
 
-    dl_sink
+    map_downlink
         .remove("FromClientLink".to_string())
         .await
         .expect("Failed to send message!");
