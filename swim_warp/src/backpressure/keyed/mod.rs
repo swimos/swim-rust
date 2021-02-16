@@ -30,9 +30,12 @@ type BridgeBufferReceiver<V> = circular_buffer::Receiver<V>;
 type KeyedTransmitEvent<K, V> = (K, Option<(V, BridgeBufferReceiver<V>)>);
 type KeyedAction<K, V> = Action<V, K, V, ()>;
 
+/// A trait signifying that the implementor can be addressed by a key.
 pub trait Keyed {
+    /// The type of the key that will be returned.
     type Key: Hash + Eq + Clone;
 
+    /// Return a key representing this instance.
     fn key(&self) -> Self::Key;
 }
 

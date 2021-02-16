@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::meta::metric::MetricObserver;
+use crate::agent::meta::metric::MetricObserverFactory;
 use crate::agent::meta::{LogLevel, MetaContext};
 use crate::agent::{AgentContext, Eff};
 use crate::routing::ServerRouter;
@@ -229,9 +229,9 @@ pub trait AgentExecutionContext {
     /// Provide a channel to dispatch events to the agent scheduler.
     fn spawner(&self) -> mpsc::Sender<Eff>;
 
-    /// Provides an observer that can be used to observe events that happen on nodes, lanes, and
-    /// uplinks.
-    fn metrics(&self) -> MetricObserver;
+    /// Provides an observer factory that can be used to create observers that register events that
+    /// happen on nodes, lanes, and uplinks.
+    fn metrics(&self) -> &MetricObserverFactory;
 }
 
 impl<Agent, Clk, RouterInner> AgentExecutionContext for ContextImpl<Agent, Clk, RouterInner>
@@ -248,7 +248,7 @@ where
         self.schedule_context.scheduler.clone()
     }
 
-    fn metrics(&self) -> MetricObserver {
-        self.meta_context.metric_collector().observer()
+    fn metrics(&self) -> &MetricObserverFactory {
+        self.meta_context.metric_observer()
     }
 }

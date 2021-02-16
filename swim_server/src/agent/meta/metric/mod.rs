@@ -13,14 +13,22 @@
 // limitations under the License.
 
 use std::collections::HashMap;
+use std::fmt::{Debug, Display, Formatter};
 
+use futures::future::join;
+use futures::{Future, Stream, StreamExt};
 use tokio::sync::mpsc;
+use tokio::sync::mpsc::error::SendError;
 use tokio::sync::mpsc::Sender;
-use tokio::task::JoinHandle;
+use tokio_stream::wrappers::ReceiverStream;
 
 use swim_common::model::Value;
+use swim_common::sink::item::{for_mpsc_sender, ItemSender};
 use swim_common::warp::path::RelativePath;
+use swim_warp::backpressure::keyed::{release_pressure, Keyed};
+use swim_warp::backpressure::KeyedBackpressureConfig;
 use utilities::sync::trigger;
+use utilities::uri::RelativeUri;
 
 use crate::agent::context::AgentExecutionContext;
 use crate::agent::lane::model::supply::{Dropping, SupplyLane};
@@ -35,15 +43,6 @@ use crate::agent::LaneIo;
 use crate::agent::LaneTasks;
 use crate::agent::{make_supply_lane, AgentContext, DynamicLaneTasks, SwimAgent};
 use crate::routing::LaneIdentifier;
-use futures::Stream;
-use pin_utils::core_reexport::fmt::Formatter;
-use std::fmt::Debug;
-use swim_common::sink::item::{for_mpsc_sender, ItemSender};
-use swim_warp::backpressure::keyed::{release_pressure, Keyed};
-use swim_warp::backpressure::KeyedBackpressureConfig;
-use tokio::sync::mpsc::error::SendError;
-use tokio_stream::wrappers::ReceiverStream;
-use utilities::uri::RelativeUri;
 
 pub mod config;
 pub mod lane;
@@ -55,11 +54,26 @@ pub mod uplink;
 #[cfg(test)]
 mod tests;
 
-pub struct MetricCollectorError;
+#[derive(Debug, PartialEq)]
+pub enum MetricObserverError {
+    CollectorFailed,
+    ChannelClosed,
+}
 
-impl From<SendError<ObserverEvent>> for MetricCollectorError {
+impl Display for MetricObserverError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MetricObserverError::CollectorFailed => {
+                write!(f, "The collector's input stream closed unexpectedly")
+            }
+            MetricObserverError::ChannelClosed => write!(f, "Input stream closed unexpectedly"),
+        }
+    }
+}
+
+impl From<SendError<ObserverEvent>> for MetricObserverError {
     fn from(_: SendError<ObserverEvent>) -> Self {
-        MetricCollectorError
+        MetricObserverError::ChannelClosed
     }
 }
 
@@ -84,54 +98,55 @@ impl Keyed for ObserverEvent {
     }
 }
 
-/// An observer for node, lane and uplinks which generates profiles based on the events for the
-/// part. These events are aggregated and forwarded to their corresponding lanes as pulses.
-pub struct MetricCollector {
-    observer: MetricObserver,
-    _collector_task: JoinHandle<CollectorStopResult>,
-    _backpressure_task: JoinHandle<Result<(), MetricCollectorError>>,
-}
+/// Creates a new metric observer factory for the provided `node_id`. The factory can produce
+/// observers which may be used to register events such as receiving a command, link/unlink requests
+/// and other events for uplinks, nodes, and lanes. Events produced are *not* guaranteed to be
+/// delivered as this will add additional overhead. Instead, observers communicate with an inner
+/// collector task over an MPSC channel that has a backpressure relief system which drops the oldest
+/// message first. Messages are taken from this channel and forwarded to the corresponding supply
+/// lanes for the metric - these supply lanes also have a dropping strategy.
+///
+/// # Arguments:
+/// `node_id`: the node that this observer is operating on.
+/// `stop_rx`: a stop trigger which will cause this observer to stop.
+/// `config`: a configuration for the collector task and backpressure relief system.
+/// `lanes`: a map containing the meta node addressed supply lanes for the observers.
+pub fn make_metric_observer(
+    node_id: String,
+    stop_rx: trigger::Receiver,
+    config: MetricCollectorConfig,
+    lanes: HashMap<LaneIdentifier, SupplyLane<Value>>,
+) -> (
+    MetricObserverFactory,
+    impl Future<Output = Result<(), MetricObserverError>>,
+) {
+    let (task_config, bp_config) = config.split();
+    let (metric_tx, metric_rx) = mpsc::channel(task_config.buffer_size.get());
+    let observer = MetricObserverFactory::new(task_config, metric_tx);
 
-impl Debug for MetricCollector {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("MetricCollector")
-            .field("observer", &self.observer)
-            .finish()
-    }
-}
+    let task = async move {
+        let metric_stream = ReceiverStream::new(metric_rx);
+        let (sink, bp_stream) = mpsc::channel(task_config.buffer_size.get());
+        let sink = for_mpsc_sender(sink).map_err_into::<MetricObserverError>();
 
-impl MetricCollector {
-    pub fn new(
-        node_id: String,
-        stop_rx: trigger::Receiver,
-        config: MetricCollectorConfig,
-        lanes: HashMap<LaneIdentifier, SupplyLane<Value>>,
-    ) -> MetricCollector {
-        let (task_config, bp_config) = config.split();
+        let release_task = metrics_release_backpressure(
+            metric_stream.take_until(stop_rx.clone()),
+            sink,
+            bp_config,
+        );
 
-        let (metric_tx, metric_rx) = mpsc::channel(task_config.buffer_size.get());
-        let (messages, stream) = mpsc::channel(task_config.buffer_size.get());
-        let stream = ReceiverStream::new(stream);
-        let sink = for_mpsc_sender(messages).map_err_into();
+        let collector = CollectorTask::new(node_id, stop_rx, bp_stream, lanes);
+        let (release_result, collector_result) =
+            join(release_task, collector.run(task_config.yield_after)).await;
 
-        let release_task = metrics_release_backpressure(stream, sink, bp_config);
-        let release_jh = tokio::spawn(release_task);
-
-        let collector = CollectorTask::new(node_id, stop_rx, metric_rx, lanes);
-        let collector_jh = tokio::spawn(collector.run(task_config.yield_after));
-        let observer = MetricObserver::new(task_config, metric_tx);
-
-        MetricCollector {
-            observer,
-            _collector_task: collector_jh,
-            _backpressure_task: release_jh,
+        match (release_result, collector_result) {
+            (Err(e), _) => Err(e),
+            (_, CollectorStopResult::Abnormal) => Err(MetricObserverError::CollectorFailed),
+            _ => Ok(()),
         }
-    }
+    };
 
-    /// Returns a handle which can be used to create uplink, lane, or node observers.
-    pub fn observer(&self) -> MetricObserver {
-        self.observer.clone()
-    }
+    (observer, task)
 }
 
 async fn metrics_release_backpressure<E, Sink>(
@@ -154,22 +169,22 @@ where
 }
 
 #[derive(Clone, Debug)]
-pub struct MetricObserver {
+pub struct MetricObserverFactory {
     config: MetricCollectorTaskConfig,
     metric_tx: Sender<ObserverEvent>,
 }
 
-impl MetricObserver {
-    pub fn new(
+impl MetricObserverFactory {
+    fn new(
         config: MetricCollectorTaskConfig,
         metric_tx: Sender<ObserverEvent>,
-    ) -> MetricObserver {
-        MetricObserver { config, metric_tx }
+    ) -> MetricObserverFactory {
+        MetricObserverFactory { config, metric_tx }
     }
 
     /// Returns a new `UplinkObserver` for the provided `address`.
     pub fn uplink_observer(&self, address: RelativePath) -> UplinkObserver {
-        let MetricObserver { config, metric_tx } = self;
+        let MetricObserverFactory { config, metric_tx } = self;
         let sender = TransformedSender::new(UplinkSurjection(address), metric_tx.clone());
 
         UplinkObserver::new(sender, config.sample_rate)

@@ -30,7 +30,7 @@ use crate::agent::lane::channels::uplink::{AddressedUplinkMessage, UplinkAction,
 use crate::agent::lane::channels::TaggedAction;
 use crate::agent::meta::metric::sender::TransformedSender;
 use crate::agent::meta::metric::uplink::{UplinkObserver, UplinkSurjection};
-use crate::agent::meta::metric::MetricObserver;
+use crate::agent::meta::metric::MetricObserverFactory;
 use crate::routing::error::RouterError;
 use std::time::Duration;
 use swim_common::routing::ResolutionError;
@@ -93,7 +93,7 @@ impl AgentExecutionContext for TestContext {
         self.1.clone()
     }
 
-    fn metrics(&self) -> MetricObserver {
+    fn metrics(&self) -> &MetricObserverFactory {
         panic!("Unexpected metric observer request")
     }
 }

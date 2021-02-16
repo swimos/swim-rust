@@ -30,10 +30,13 @@ use crate::agent::context::AgentExecutionContext;
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::meta::info::{open_info_lane, InfoHandler};
 use crate::agent::meta::log::{open_log_lanes, LogHandler};
-use crate::agent::meta::metric::{open_pulse_lanes, MetricCollector};
+use crate::agent::meta::metric::{
+    make_metric_observer, open_pulse_lanes, MetricObserverError, MetricObserverFactory,
+};
 use crate::agent::LaneIo;
 use crate::agent::{AgentContext, DynamicLaneTasks, SwimAgent};
 use crate::routing::LaneIdentifier;
+use futures::Future;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use swim_common::model::text::Text;
@@ -57,19 +60,19 @@ pub type IdentifiedAgentIo<Context> = HashMap<LaneIdentifier, Box<dyn LaneIo<Con
 pub struct MetaContext {
     log_handler: LogHandler,
     info_handler: InfoHandler,
-    metric_collector: MetricCollector,
+    metric_observer: MetricObserverFactory,
 }
 
 impl MetaContext {
     fn new(
         log_handler: LogHandler,
         info_handler: InfoHandler,
-        metric_collector: MetricCollector,
+        metric_observer: MetricObserverFactory,
     ) -> MetaContext {
         MetaContext {
             log_handler,
             info_handler,
-            metric_collector,
+            metric_observer,
         }
     }
 
@@ -81,8 +84,8 @@ impl MetaContext {
         &self.info_handler
     }
 
-    pub fn metric_collector(&self) -> &MetricCollector {
-        &self.metric_collector
+    pub fn metric_observer(&self) -> &MetricObserverFactory {
+        &self.metric_observer
     }
 }
 
@@ -165,6 +168,7 @@ pub fn open_meta_lanes<Config, Agent, Context>(
     MetaContext,
     DynamicLaneTasks<Agent, Context>,
     IdentifiedAgentIo<Context>,
+    impl Future<Output = Result<(), MetricObserverError>>,
 )
 where
     Agent: SwimAgent<Config> + 'static,
@@ -190,27 +194,37 @@ where
     tasks.extend(pulse_tasks);
     ios.extend(pulse_ios);
 
-    let metrics = MetricCollector::new(uri.to_string(), stop_rx, Default::default(), pulse_lanes);
-    let meta_context = MetaContext::new(log_handler, info_handler, metrics);
+    let (observer, task) = make_metric_observer(
+        uri.to_string(),
+        stop_rx,
+        exec_conf.metric_backpressure,
+        pulse_lanes,
+    );
+    let meta_context = MetaContext::new(log_handler, info_handler, observer);
 
-    (meta_context, tasks, ios)
+    (meta_context, tasks, ios, task)
 }
 
 #[cfg(test)]
-pub(crate) fn make_test_meta_context(uri: RelativeUri) -> MetaContext {
+pub(crate) fn make_test_meta_context(
+    uri: RelativeUri,
+) -> (
+    MetaContext,
+    impl Future<Output = Result<(), MetricObserverError>>,
+) {
     use self::info::make_info_handler;
     use self::log::make_log_handler;
 
     let (_tx, rx) = trigger::trigger();
+    let (observer, task) =
+        make_metric_observer(uri.to_string(), rx, Default::default(), Default::default());
 
-    MetaContext {
-        log_handler: make_log_handler(uri.clone()),
-        info_handler: make_info_handler(),
-        metric_collector: MetricCollector::new(
-            uri.to_string(),
-            rx,
-            Default::default(),
-            Default::default(),
-        ),
-    }
+    (
+        MetaContext {
+            log_handler: make_log_handler(uri.clone()),
+            info_handler: make_info_handler(),
+            metric_observer: observer,
+        },
+        task,
+    )
 }

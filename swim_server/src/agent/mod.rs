@@ -112,6 +112,7 @@ const AGENT_TASK: &str = "Agent task";
 const AGENT_START: &str = "Agent start";
 const LANE_START: &str = "Lane start";
 const SCHEDULER_TASK: &str = "Agent scheduler";
+const METRICS_TASK: &str = "Agent metrics task";
 const ROOT_DISPATCHER_TASK: &str = "Agent envelope dispatcher.";
 const LANE_EVENTS: &str = "Lane events";
 
@@ -187,6 +188,7 @@ pub fn run_agent<Config, Clk, Agent, L, Router>(
 )
 where
     Clk: Clock,
+    Config: 'static,
     Agent: SwimAgent<Config> + Send + Sync + 'static,
     L: AgentLifecycle<Agent> + Send + Sync + 'static,
     Router: ServerRouter + Clone + 'static,
@@ -215,7 +217,7 @@ where
         });
 
     let task = async move {
-        let (meta_context, mut meta_tasks, meta_io) =
+        let (meta_context, mut meta_tasks, meta_io, metric_task) =
             open_meta_lanes::<Config, Agent, ContextImpl<Agent, Clk, Router>>(
                 uri.clone(),
                 &execution_config,
@@ -244,6 +246,20 @@ where
         }
 
         let task_manager: FuturesUnordered<Instrumented<Eff>> = FuturesUnordered::new();
+
+        let metric_context = context.clone();
+        let metric_task = async move {
+            if let Err(e) = metric_task.await {
+                // todo: replace with dual logging system
+                event!(Level::ERROR, error = %e, "Metric collector task failed");
+
+                let message = format!("Metric collector task failed with {}", e);
+                metric_context.log(message, LogLevel::Error);
+            }
+        }
+        .boxed()
+        .instrument(span!(Level::TRACE, METRICS_TASK));
+        task_manager.push(metric_task);
 
         let scheduler_task = ReceiverStream::new(rx)
             .take_until(stop_trigger)

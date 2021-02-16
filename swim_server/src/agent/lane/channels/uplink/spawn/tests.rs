@@ -20,7 +20,7 @@ use crate::agent::lane::channels::uplink::{
     PeelResult, UplinkAction, UplinkError, UplinkStateMachine,
 };
 use crate::agent::lane::channels::{AgentExecutionConfig, LaneMessageHandler, TaggedAction};
-use crate::agent::meta::metric::MetricObserver;
+use crate::agent::meta::metric::MetricObserverFactory;
 use crate::agent::Eff;
 use crate::routing::error::RouterError;
 use crate::routing::{
@@ -297,7 +297,7 @@ impl UplinkSpawnerSplitOutputs {
 }
 
 fn make_config() -> AgentExecutionConfig {
-    AgentExecutionConfig::with(default_buffer(), 1, 1, Duration::from_secs(5), None)
+    AgentExecutionConfig::with(default_buffer(), 1, 1, Duration::from_secs(5), None, None)
 }
 
 struct TestContext {
@@ -336,7 +336,7 @@ impl AgentExecutionContext for TestContext {
         self.spawner.clone()
     }
 
-    fn metrics(&self) -> MetricObserver {
+    fn metrics(&self) -> &MetricObserverFactory {
         panic!("Unexpected metric observer request")
     }
 }

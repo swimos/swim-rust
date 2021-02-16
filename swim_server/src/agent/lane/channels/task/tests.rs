@@ -25,7 +25,7 @@ use crate::agent::lane::channels::{
 use crate::agent::lane::model::action::{Action, ActionLane};
 use crate::agent::lane::model::command::{Command, CommandLane};
 use crate::agent::lane::model::DeferredSubscription;
-use crate::agent::meta::metric::{MetricCollector, MetricObserver};
+use crate::agent::meta::metric::{make_metric_observer, MetricObserverFactory};
 use crate::agent::Eff;
 use crate::routing::error::RouterError;
 use crate::routing::{
@@ -318,7 +318,7 @@ struct TestContext {
     trigger: Arc<Mutex<Option<trigger::Sender>>>,
     _drop_tx: Arc<promise::Sender<ConnectionDropped>>,
     drop_rx: promise::Receiver<ConnectionDropped>,
-    metrics: Arc<MetricCollector>,
+    metrics: Arc<MetricObserverFactory>,
 }
 
 impl TestContext {
@@ -394,8 +394,8 @@ impl AgentExecutionContext for TestContext {
         self.scheduler.clone()
     }
 
-    fn metrics(&self) -> MetricObserver {
-        self.metrics.observer()
+    fn metrics(&self) -> &MetricObserverFactory {
+        &*self.metrics
     }
 }
 
@@ -404,7 +404,7 @@ fn default_buffer() -> NonZeroUsize {
 }
 
 fn make_config() -> AgentExecutionConfig {
-    AgentExecutionConfig::with(default_buffer(), 1, 1, Duration::from_secs(5), None)
+    AgentExecutionConfig::with(default_buffer(), 1, 1, Duration::from_secs(5), None, None)
 }
 
 fn route() -> RelativePath {
@@ -518,12 +518,14 @@ fn make_context() -> (
 
     let (drop_tx, drop_rx) = promise::promise();
 
-    let metrics = MetricCollector::new(
+    let (metrics, task) = make_metric_observer(
         "/node".to_string(),
         stop_rx.clone(),
         Default::default(),
         Default::default(),
     );
+
+    let task = async move { task.await.map_err(|_| ()) };
 
     let context = TestContext {
         scheduler: spawn_tx,
@@ -533,12 +535,19 @@ fn make_context() -> (
         drop_rx,
         metrics: Arc::new(metrics),
     };
+
     let spawn_task = ReceiverStream::new(spawn_rx)
         .take_until(stop_rx)
         .for_each_concurrent(None, |t| t)
         .boxed();
 
-    (context, router_rx, spawn_task)
+    let task = async move {
+        match join(spawn_task, task).await {
+            _ => (),
+        }
+    };
+
+    (context, router_rx, task.boxed())
 }
 
 #[tokio::test]
@@ -1281,24 +1290,37 @@ impl MultiTestContextInner {
 struct MultiTestContext(
     Arc<parking_lot::Mutex<MultiTestContextInner>>,
     mpsc::Sender<Eff>,
-    Arc<MetricCollector>,
+    Arc<MetricObserverFactory>,
 );
 
 impl MultiTestContext {
-    fn new(router_addr: RoutingAddr, spawner: mpsc::Sender<Eff>) -> Self {
-        let metrics = MetricCollector::new(
+    fn new(
+        router_addr: RoutingAddr,
+        spawner: mpsc::Sender<Eff>,
+        trigger: trigger::Receiver,
+    ) -> (Self, impl Future<Output = ()>) {
+        let (observer, task) = make_metric_observer(
             "/node".to_string(),
-            trigger::trigger().1,
+            trigger,
             Default::default(),
             Default::default(),
         );
 
-        MultiTestContext(
-            Arc::new(parking_lot::Mutex::new(MultiTestContextInner::new(
-                router_addr,
-            ))),
-            spawner,
-            Arc::new(metrics),
+        let task = async move {
+            match task.await {
+                _ => (),
+            }
+        };
+
+        (
+            MultiTestContext(
+                Arc::new(parking_lot::Mutex::new(MultiTestContextInner::new(
+                    router_addr,
+                ))),
+                spawner,
+                Arc::new(observer),
+            ),
+            task,
         )
     }
 
@@ -1333,8 +1355,8 @@ impl AgentExecutionContext for MultiTestContext {
         self.1.clone()
     }
 
-    fn metrics(&self) -> MetricObserver {
-        self.2.observer()
+    fn metrics(&self) -> &MetricObserverFactory {
+        &*self.2
     }
 }
 
@@ -1365,22 +1387,28 @@ impl ServerRouter for MultiTestRouter {
     }
 }
 
-fn make_multi_context() -> (MultiTestContext, BoxFuture<'static, ()>) {
+fn make_multi_context(trigger: trigger::Receiver) -> (MultiTestContext, BoxFuture<'static, ()>) {
     let (spawn_tx, spawn_rx) = mpsc::channel(5);
 
-    let context = MultiTestContext::new(RoutingAddr::local(1024), spawn_tx);
+    let (context, metric_task) = MultiTestContext::new(RoutingAddr::local(1024), spawn_tx, trigger);
     let spawn_task = ReceiverStream::new(spawn_rx)
         .for_each_concurrent(None, |t| t)
         .boxed();
 
-    (context, spawn_task)
+    let task = async move {
+        let _r = join(metric_task, spawn_task).await;
+        ()
+    };
+
+    (context, task.boxed())
 }
 
 #[tokio::test]
 async fn handle_action_lane_non_fatal_uplink_error() {
+    let (stop_tx, stop_rx) = trigger::trigger();
     let route = route();
 
-    let (context, spawn_task) = make_multi_context();
+    let (context, spawn_task) = make_multi_context(stop_rx);
     let config = make_config();
 
     let (task, mut input) = make_action_lane_task(config, context.clone());
@@ -1416,6 +1444,7 @@ async fn handle_action_lane_non_fatal_uplink_error() {
         .await;
 
         drop(input);
+        stop_tx.trigger();
     };
 
     let (_, result, _) = join3(spawn_task, task, io_task).await;

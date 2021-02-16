@@ -19,8 +19,9 @@ use tokio::time::Duration;
 const DEFAULT_YIELD: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(256) };
 const DEFAULT_BUFFER: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(64) };
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Eq, PartialEq, Copy, Clone, Default)]
 pub struct MetricCollectorConfig {
+    /// Configuration for the metric collector task.
     pub task_config: MetricCollectorTaskConfig,
     /// Backpressure release configuration.
     pub backpressure_config: KeyedBackpressureConfig,
@@ -37,7 +38,7 @@ impl MetricCollectorConfig {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Eq, PartialEq, Copy, Clone)]
 pub struct MetricCollectorTaskConfig {
     /// Sample rate.
     pub sample_rate: Duration,

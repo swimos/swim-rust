@@ -32,11 +32,13 @@ async fn simple_accessors() {
 
     let routing_context = RoutingContext::new("/node".parse().unwrap(), (), HashMap::new());
     let schedule_context = ScheduleContext::new(tx, TestClock::default(), close_sig.clone());
+    let (meta_context, _metric_task) = make_test_meta_context("/node".parse().unwrap());
+
     let context = ContextImpl::new(
         agent.clone(),
         routing_context,
         schedule_context,
-        make_test_meta_context("/node".parse().unwrap()),
+        meta_context,
     );
 
     assert!(std::ptr::eq(context.agent(), agent.as_ref()));
@@ -67,11 +69,13 @@ fn create_context(
 
     let routing_context = RoutingContext::new("/node".parse().unwrap(), (), HashMap::new());
     let schedule_context = ScheduleContext::new(tx, clock, close_trigger);
+    let (meta_context, _metric_task) = make_test_meta_context("/node".parse().unwrap());
+
     ContextImpl::new(
         agent.clone(),
         routing_context,
         schedule_context,
-        make_test_meta_context("/node".parse().unwrap()),
+        meta_context,
     )
 }
 

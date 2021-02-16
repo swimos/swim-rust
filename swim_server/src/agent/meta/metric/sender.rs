@@ -17,7 +17,7 @@ use std::marker::PhantomData;
 use tokio::sync::mpsc;
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
-pub struct SendError;
+pub struct TrySendError;
 
 pub trait Surjection<I> {
     fn onto(&self, input: I) -> ObserverEvent;
@@ -53,13 +53,13 @@ where
         }
     }
 
-    pub fn try_send(&self, message: I) -> Result<(), SendError> {
+    pub fn try_send(&self, message: I) -> Result<(), TrySendError> {
         let TransformedSender {
             surjection, sender, ..
         } = self;
         let msg = surjection.onto(message);
 
-        sender.try_send(msg).map_err(|_| SendError)
+        sender.try_send(msg).map_err(|_| TrySendError)
     }
 }
 
@@ -78,6 +78,6 @@ mod tests {
 
         drop(rx);
 
-        assert_eq!(sender.try_send(profile), Err(SendError));
+        assert_eq!(sender.try_send(profile), Err(TrySendError));
     }
 }

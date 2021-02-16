@@ -15,6 +15,7 @@
 use crate::agent::lane::channels::update::LaneUpdate;
 use crate::agent::lane::channels::uplink::backpressure::SimpleBackpressureConfig;
 use crate::agent::lane::channels::uplink::{UplinkAction, UplinkStateMachine};
+use crate::agent::meta::metric::config::MetricCollectorConfig;
 use crate::routing::RoutingAddr;
 use std::num::NonZeroUsize;
 use std::time::Duration;
@@ -60,6 +61,8 @@ pub struct AgentExecutionConfig {
     pub value_lane_backpressure: Option<SimpleBackpressureConfig>,
     /// Back-pressure relief configuration for map lane uplinks.
     pub map_lane_backpressure: Option<KeyedBackpressureConfig>,
+    /// Back-pressure relief configuration for metric observation.
+    pub metric_backpressure: MetricCollectorConfig,
 }
 
 const DEFAULT_YIELD_COUNT: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(2048) };
@@ -71,6 +74,7 @@ impl AgentExecutionConfig {
         error_threshold: usize,
         cleanup_timeout: Duration,
         backpressure: Option<KeyedBackpressureConfig>,
+        metric_backpressure: Option<MetricCollectorConfig>,
     ) -> Self {
         AgentExecutionConfig {
             max_pending_envelopes,
@@ -92,6 +96,7 @@ impl AgentExecutionConfig {
                 yield_after: kc.buffer_size,
             }),
             map_lane_backpressure: backpressure,
+            metric_backpressure: metric_backpressure.unwrap_or_default(),
         }
     }
 }
@@ -117,6 +122,7 @@ impl Default for AgentExecutionConfig {
             scheduler_buffer: default_buffer,
             value_lane_backpressure: None,
             map_lane_backpressure: None,
+            metric_backpressure: Default::default(),
         }
     }
 }

@@ -61,6 +61,7 @@ fn make_dispatcher(
         0,
         Duration::from_secs(1),
         None,
+        None,
     );
 
     let dispatcher = AgentDispatcher::new(
