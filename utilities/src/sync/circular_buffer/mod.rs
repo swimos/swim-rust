@@ -166,12 +166,20 @@ where
     loop {
         let available = permits.load(Ordering::Relaxed);
         if available > 0 {
-            if permits.compare_and_swap(available, available - 1, Ordering::Acquire) == available {
-                queue.push_value(value).ok().expect("Inconsistent queue.");
-                if available == *capacity {
-                    waker.wake();
+            match permits.compare_exchange(
+                available,
+                available - 1,
+                Ordering::Acquire,
+                Ordering::Acquire,
+            ) {
+                Ok(count) if count == available => {
+                    queue.push_value(value).ok().expect("Inconsistent queue.");
+                    if available == *capacity {
+                        waker.wake();
+                    }
+                    break;
                 }
-                break;
+                _ => continue,
             }
         } else {
             // The popped value must remain in scope until we have released the permit in case

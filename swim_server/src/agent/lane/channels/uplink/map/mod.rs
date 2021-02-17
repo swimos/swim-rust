@@ -74,7 +74,7 @@ enum MapLaneSyncState<R, CF, GF> {
     Complete,
 }
 
-type UnfoldResult<'a, R, Ev, State> = Option<(PeelResult<'a, Ev, R>, (Option<&'a mut Ev>, State))>;
+type UnfoldResult<'a, R, Ev, State> = (PeelResult<'a, Ev, R>, (Option<&'a mut Ev>, State));
 
 impl<R, CF, GF> MapLaneSyncState<R, CF, GF> {
     //Create a return value for the unfold function causing the stream to yield a map event.
@@ -83,7 +83,7 @@ impl<R, CF, GF> MapLaneSyncState<R, CF, GF> {
         events: &mut Ev,
         event: MapLaneEvent<K, V>,
     ) -> UnfoldResult<EventResult<K, V>, Ev, Self> {
-        Some((PeelResult::Output(Ok(event)), (Some(events), self)))
+        (PeelResult::Output(Ok(event)), (Some(events), self))
     }
 
     // Create a return value for an unfold function causing the stream to terminate with an error.
@@ -92,7 +92,7 @@ impl<R, CF, GF> MapLaneSyncState<R, CF, GF> {
         events: &mut Ev,
         error: MapLaneSyncError,
     ) -> UnfoldResult<EventResult<K, V>, Ev, Self> {
-        Some((PeelResult::Output(Err(error)), (Some(events), self)))
+        (PeelResult::Output(Err(error)), (Some(events), self))
     }
 }
 
@@ -264,12 +264,12 @@ where
                                     }
                                     Err(error) => {
                                         event!(Level::ERROR, message = CHECKPOINT_FAILED, id, ?error);
-                                        break MapLaneSyncState::Complete.yield_error(events, error);
+                                        break Some(MapLaneSyncState::Complete.yield_error(events, error));
                                     }
                                 }
                             }
                             Either::Left(Some(ev)) => {
-                                break MapLaneSyncState::Checkpointing(chk_fut).yield_event(events, ev);
+                                break Some(MapLaneSyncState::Checkpointing(chk_fut).yield_event(events, ev));
                             }
                             Either::Left(_) => {
                                 //No more events.
@@ -282,7 +282,7 @@ where
                             }
                             Either::Right(Err(error)) => {
                                 event!(Level::ERROR, message = CHECKPOINT_FAILED, id, ?error);
-                                break MapLaneSyncState::Complete.yield_error(events, error);
+                                break Some(MapLaneSyncState::Complete.yield_error(events, error));
                             }
                         }
                     }
@@ -305,7 +305,7 @@ where
                                 pending,
                                 cancellers,
                             };
-                            break 'outer new_state.yield_event(events, event);
+                            break 'outer Some(new_state.yield_event(events, event));
                         }
                         _ => {
                             event!(Level::WARN, message = LANE_STOPPED, id);
@@ -334,7 +334,7 @@ where
                                         cancellers,
                                     }
                                 };
-                                break 'outer new_state.yield_event(events, event);
+                                break 'outer Some(new_state.yield_event(events, event));
                             }
                             Either::Right(Some(Some((key, value)))) => {
                                 cancellers.remove(&key);
@@ -346,10 +346,10 @@ where
                                             pending,
                                             cancellers,
                                         };
-                                        new_state.yield_event(events, event)
+                                        Some(new_state.yield_event(events, event))
                                     }
-                                    Err(err) => MapLaneSyncState::Complete
-                                        .yield_error(events, MapLaneSyncError::InconsistentForm(err)),
+                                    Err(err) => Some(MapLaneSyncState::Complete
+                                        .yield_error(events, MapLaneSyncError::InconsistentForm(err))),
                                 };
                                 break 'outer result;
                             }

@@ -138,8 +138,11 @@ fn test_tls_error() {
         .unwrap()
         .into();
 
-    matches!(e, TlsError {
-        kind:TlsErrorKind::SSL,
-        ..
-    });
+    matches!(
+        e,
+        TlsError {
+            kind: TlsErrorKind::SSL,
+            ..
+        }
+    );
 }

@@ -151,7 +151,10 @@ pub enum UplinkError {
 }
 
 fn trans_err_fatal(err: &TransactionError) -> bool {
-    matches!(err, TransactionError::HighContention { .. } | TransactionError::TooManyAttempts { .. } )
+    matches!(
+        err,
+        TransactionError::HighContention { .. } | TransactionError::TooManyAttempts { .. }
+    )
 }
 
 impl Recoverable for UplinkError {
