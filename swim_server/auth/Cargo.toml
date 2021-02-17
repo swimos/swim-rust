@@ -9,7 +9,7 @@ swim_common = { path = "../../swim_common" }
 utilities = { path = "../../utilities" }
 swim_runtime = { path = "../../swim_runtime" }
 
-tokio = "0.3.3"
+tokio = "1.1.1"
 jwt = "0.12.0"
 serde = "1.0.117"
 serde_json = "1.0.59"
@@ -23,4 +23,4 @@ biscuit = "0.5.0"
 chrono = "0.4"
 
 [dev-dependencies]
-tokio = { version = "0.3.3", features = ["rt-multi-thread", "macros", "test-util"] }
+tokio = { version = "1.1.1", features = ["rt-multi-thread", "macros", "test-util"] }

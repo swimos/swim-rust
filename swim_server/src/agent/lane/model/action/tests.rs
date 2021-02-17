@@ -32,10 +32,3 @@ async fn debug_action_lane() {
     let (model, _events) = super::make_lane_model::<i32, i32>(n);
     assert_eq!(format!("{:?}", model), "ActionLane(fn(i32) -> i32)");
 }
-
-#[tokio::test]
-async fn debug_command_lane() {
-    let n = NonZeroUsize::new(5).unwrap();
-    let (model, _events) = super::make_lane_model::<i32, ()>(n);
-    assert_eq!(format!("{:?}", model), "CommandLane(i32)");
-}

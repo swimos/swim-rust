@@ -5,7 +5,8 @@ authors = ["Swim.AI developers info@swim.ai"]
 edition = "2018"
 
 [dependencies]
-tokio = { version = "0.3.3", features = ["sync", "stream", "macros"] }
+tokio = { version = "1.1.1", features = ["sync", "macros"] }
+tokio-stream = "0.1.2"
 web-sys = { version = "0.3.41", features = ["WebSocket", "ErrorEvent"] }
 wasm-bindgen-futures = "0.4.14"
 ws_stream_wasm = "0.6.0"

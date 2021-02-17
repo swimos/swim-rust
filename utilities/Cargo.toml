@@ -17,11 +17,12 @@ pin-project = "1.0.5"
 rand = "0.7.3"
 tracing = "0.1.16"
 tracing-subscriber = "0.2.11"
-tokio = { version = "0.3.3", features = ["sync", "rt"] }
+tokio = { version = "1.1.1", features = ["sync", "rt"] }
 swim_runtime = { path = "../swim_runtime" }
 slab = "0.4.2"
 macro_helpers = { path = "macro_helpers" }
 url = "2.1.1"
 
 [dev-dependencies]
-tokio = { version = "0.3.3", features = [ "rt-multi-thread", "macros"] }
+tokio = { version = "1.1.1", features = [ "rt-multi-thread", "macros"] }
+tokio-stream = "0.1.2"
