@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::rtree::rectangles::{Point2D, Point3D};
-use crate::rtree::{BoxBounded, Label, Point, RTree, RTreeError, Rect, SplitStrategy};
+use crate::rtree::{BoxBounded, Label, RTree, RTreeError, Rect, SplitStrategy};
 use std::fs;
 use std::num::NonZeroUsize;
 use std::ops::Sub;
@@ -756,17 +756,6 @@ fn tree_bulk_load_same_labels_test() {
 }
 
 #[test]
-fn tree_data_type_error_test() {
-    let tree: Result<RTree<String, Rect<TestPoint4D>>, RTreeError<String>> = RTree::new(
-        NonZeroUsize::new(2).unwrap(),
-        NonZeroUsize::new(4).unwrap(),
-        SplitStrategy::Quadratic,
-    );
-
-    assert!(matches!(tree, Err(RTreeError::DataTypeError)));
-}
-
-#[test]
 fn insert_no_clones_test() {
     let mut tree = RTree::new(
         NonZeroUsize::new(2).unwrap(),
@@ -1319,38 +1308,6 @@ impl Sub for TestPoint4D {
     type Output = TestPoint4D;
 
     fn sub(self, _rhs: Self) -> Self::Output {
-        unimplemented!()
-    }
-}
-
-impl Point for TestPoint4D {
-    type Type = f64;
-
-    fn get_coord_count() -> usize {
-        4
-    }
-
-    fn get_nth_coord(&self, _n: usize) -> Option<Self::Type> {
-        unimplemented!()
-    }
-
-    fn mean(&self, _other: &Self) -> Self {
-        unimplemented!()
-    }
-
-    fn multiply_coord(&self) -> Self::Type {
-        unimplemented!()
-    }
-
-    fn has_any_matching_coords(&self, _other: &Self) -> bool {
-        unimplemented!()
-    }
-
-    fn get_lowest(&self, _other: &Self) -> Self {
-        unimplemented!()
-    }
-
-    fn get_highest(&self, _other: &Self) -> Self {
         unimplemented!()
     }
 }

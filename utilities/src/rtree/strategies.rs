@@ -20,12 +20,22 @@ use std::fmt::Debug;
 /// The strategy that will be used to split the nodes of the [`RTree`](struct.RTree.html), once the maximum capacity is reached.
 ///
 /// The two supported strategies run in linear and quadratic time.
+///
+/// ## Reference
+/// For more information refer to ["R-trees: a dynamic index structure for spatial searching"](http://www-db.deis.unibo.it/courses/SI-LS/papers/Gut84.pdf).
 #[derive(Debug, Clone, Copy)]
 pub enum SplitStrategy {
+    /// This algorithm is linear in the number of entries and number of dimensions.
     Linear,
+    /// This algorithm attempts to find a small-area split, but is not guaranteed to find one with the smallest area possible.
+    /// The cost is quadratic in the number of entries and liner in the number of dimensions.
     Quadratic,
 }
 
+// The algorithm picks two of the M + 1 entries to be the first elements of the two new groups
+// by choosing the pair that would waste the most area if both were put in the same group,
+// i.e. the area of a rectangle covering both entries, minus the areas of the entries
+// themselves, would be greatest.
 pub(in crate) fn quadratic_pick_seeds<L, B>(entries: &[EntryPtr<L, B>]) -> (usize, usize)
 where
     L: Label,
@@ -59,6 +69,9 @@ where
     (first_idx, second_idx)
 }
 
+// The entries are assigned to groups one at a time. At each step the area expansion
+// required to add each remaining entry to each group is calculated, and the entry
+// assigned is the one showing the greatest difference between the two groups.
 pub(in crate) fn pick_next_quadratic<L, B>(
     entries: &[EntryPtr<L, B>],
     first_mbb: &Rect<B::Point>,
@@ -132,6 +145,11 @@ where
 
 type PointType<B> = <<B as BoxBounded>::Point as Point>::Type;
 
+// The algorithm picks the two most extreme rectangles to be the first elements of the two
+// new groups. For every dimension it finds the entry with the highest low side, and the
+// entry with the lowest high side and records the separation. The separations are normalised
+// by dividing by the width of the entire set along the corresponding dimension. It then
+// chooses the pair with the greatest normalised separation along any dimension.
 pub(in crate) fn linear_pick_seeds<L, B>(entries: &[EntryPtr<L, B>]) -> (usize, usize)
 where
     L: Label,
@@ -148,7 +166,7 @@ where
         for (i, item) in entries.iter().enumerate() {
             let mbb = item.get_mbb();
 
-            for dim in 0..B::get_coord_count() {
+            for dim in 0..B::get_coord_type() as usize {
                 let low_dim = mbb.low.get_nth_coord(dim).unwrap();
                 let high_dim = mbb.high.get_nth_coord(dim).unwrap();
 
@@ -207,7 +225,9 @@ where
         let max_separation = normalised_separations
             .into_iter()
             .max_by(|(_, _, norm_sep_1), (_, _, norm_sep_2)| {
-                norm_sep_1.partial_cmp(norm_sep_2).unwrap()
+                norm_sep_1
+                    .partial_cmp(norm_sep_2)
+                    .unwrap_or(Ordering::Equal)
             })
             .unwrap();
 
@@ -225,6 +245,7 @@ where
     (first_idx, second_idx)
 }
 
+// The entries are assigned to the first available group.
 pub(in crate) fn pick_next_linear<L, B>(
     entries: &[EntryPtr<L, B>],
     mbb: &Rect<B::Point>,

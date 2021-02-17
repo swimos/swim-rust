@@ -197,8 +197,8 @@ impl<T: Float + Debug> Sub for Point2D<T> {
 impl<T: Float + Debug> Point for Point2D<T> {
     type Type = T;
 
-    fn get_coord_count() -> usize {
-        2
+    fn get_coord_type() -> CoordType {
+        CoordType::TwoDimensional
     }
 
     fn get_nth_coord(&self, n: usize) -> Option<T> {
@@ -299,8 +299,8 @@ impl<T: Float + Debug> Sub for Point3D<T> {
 impl<T: Float + Debug> Point for Point3D<T> {
     type Type = T;
 
-    fn get_coord_count() -> usize {
-        3
+    fn get_coord_type() -> CoordType {
+        CoordType::ThreeDimensional
     }
 
     fn get_nth_coord(&self, n: usize) -> Option<T> {
@@ -358,14 +358,21 @@ impl<T: Float + Debug> Point for Point3D<T> {
     }
 }
 
+/// The type of the coordinates of the entries in the RTree.
+/// The RTree can currently work with 2D and 3D objects only.
+pub enum CoordType {
+    TwoDimensional = 2,
+    ThreeDimensional = 3,
+}
+
 /// A trait for implementing a custom point.
 ///
 /// The associated type of the point must be a [`Float`] number.
 pub trait Point: Copy + Clone + PartialEq + PartialOrd + Debug + Sub<Output = Self> {
     type Type: Float + Debug;
 
-    /// Returns the number of dimensions of the point.
-    fn get_coord_count() -> usize;
+    /// Returns the type of the coordinates of the point.
+    fn get_coord_type() -> CoordType;
 
     // Returns the n-th coordinate of the point, or none if the point
     // has less than n coordinates.
@@ -399,16 +406,16 @@ pub trait BoxBounded: Clone + Debug {
     /// Calculates the center of the bounding box of the object.
     fn get_center(&self) -> Self::Point;
 
-    /// Returns the number of dimensions of the object.
-    fn get_coord_count() -> usize {
-        Self::Point::get_coord_count()
+    /// Returns the type of the coordinates of the point.
+    fn get_coord_type() -> CoordType {
+        Self::Point::get_coord_type()
     }
 
     /// Calculates the area for 2D objects and volume for 3D objects.
     fn measure(&self) -> <Self::Point as Point>::Type;
 }
 
-//Todo
+/// A trait for objects that can be used as labels of entries in the RTree.
 pub trait Label: Hash + Eq + Debug + Clone {}
 
 impl<T: Hash + Eq + Debug + Clone> Label for T {}

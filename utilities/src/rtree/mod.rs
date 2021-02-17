@@ -87,7 +87,6 @@ where
         split_strat: SplitStrategy,
     ) -> Result<Self, RTreeError<L>> {
         Self::check_children(&min_children, &max_children)?;
-        Self::check_data_type()?;
 
         Ok(RTree {
             root: Node::new_root(min_children.get(), max_children.get(), split_strat),
@@ -309,6 +308,10 @@ where
     ///
     /// assert_eq!(rtree.len(), 12);
     /// ```
+    ///
+    /// ## Reference
+    /// For more information refer to ["STR: a simple and efficient algorithm for R-tree packing"](https://apps.dtic.mil/dtic/tr/fulltext/u2/a324493.pdf).
+    ///
     pub fn bulk_load(
         min_children: NonZeroUsize,
         max_children: NonZeroUsize,
@@ -316,7 +319,6 @@ where
         items: Vec<(L, B)>,
     ) -> Result<RTree<L, B>, RTreeError<L>> {
         Self::check_children(&min_children, &max_children)?;
-        Self::check_data_type()?;
 
         let mut lookup_map = HashMap::new();
         let mut entries = Vec::new();
@@ -398,7 +400,7 @@ where
         while entries_count > max_children {
             // We choose to fill the nodes halfway between the min and max capacity to avoid splits and merges after a single insert/remove
             let node_capacity = (max_children + min_children) / 2;
-            let coord_count = B::Point::get_coord_count();
+            let coord_count = B::Point::get_coord_type() as usize;
 
             // Sort all by the first dimension
             entries.sort_by(|first, second| {
@@ -490,14 +492,6 @@ where
             Err(RTreeError::ChildrenSizeError)
         }
     }
-
-    fn check_data_type() -> Result<(), RTreeError<L>> {
-        if B::get_coord_count() > 3 {
-            Err(RTreeError::DataTypeError)
-        } else {
-            Ok(())
-        }
-    }
 }
 
 /// An error returned by the RTree.
@@ -510,8 +504,6 @@ where
     DuplicateLabelError(L),
     // The min child size is not less or equal to half the max child size.
     ChildrenSizeError,
-    // The data type of the tree is not 2 or 3 dimensional.
-    DataTypeError,
 }
 
 impl<L> Error for RTreeError<L> where L: Label {}
@@ -527,9 +519,6 @@ where
             }
             RTreeError::ChildrenSizeError => {
                 write!(f, "The minimum number of children cannot be more than half of the maximum number of children.")
-            }
-            RTreeError::DataTypeError => {
-                write!(f, "Only 2D and 3D data types are currently supported!")
             }
         }
     }
