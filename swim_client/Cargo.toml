@@ -9,12 +9,6 @@ default = ["websocket"]
 websocket = ["tokio-tungstenite", "http", "tokio-native-tls", "swim_common/tls", "swim_common/tungstenite"]
 debug = ["log_verbose"]
 log_verbose = []
-test-server = ["test_server"]
-
-[dependencies.test_server]
-path = "test_server"
-features = ["enabled"]
-optional = true
 
 [dependencies.tokio-tungstenite]
 version = "0.13.0"
@@ -62,3 +56,4 @@ num-bigint = "0.3"
 
 [dev-dependencies]
 tokio = { version = "1.1.1", features = ["rt-multi-thread"] }
+test_server = { path = "test_server" }

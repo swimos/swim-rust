@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#[cfg(feature = "test_server")]
 mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
     use swim_client::downlink::model::map::{MapEvent, MapModification, UntypedMapModification};
     use swim_client::downlink::typed::map::events::TypedViewWithEvent;
@@ -22,37 +22,42 @@ mod tests {
     use swim_common::form::Form;
     use swim_common::model::{Attr, Item, Value};
     use swim_common::warp::path::AbsolutePath;
-    use test_server::clients::Cli;
-    use test_server::Docker;
-    use test_server::SwimTestServer;
+    use test_server::build_server;
     use tokio::time::Duration;
+
+    static PORT: AtomicUsize = AtomicUsize::new(9001);
+
+    fn get_free_port() -> u16 {
+        PORT.fetch_add(1, Ordering::SeqCst) as u16
+    }
 
     #[tokio::test]
     async fn test_value_dl_recv() {
-        let docker = Cli::default();
-        let container = docker.run(SwimTestServer);
-        let port = container.get_host_port(9001).unwrap();
+        let port = get_free_port();
+        let (server, handle) = build_server(port).await;
+        tokio::spawn(server.run());
+
         let host = format!("ws://127.0.0.1:{}", port);
         let mut client = SwimClient::new_with_default().await;
-
-        let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "id");
+        let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "/unit/foo", "id");
 
         let (_dl, mut recv) = client.value_downlink::<i32>(path.clone(), 0).await.unwrap();
-        tokio::time::sleep(Duration::from_secs(1)).await;
 
         let message = recv.recv().await.unwrap();
         assert_eq!(message, Event::Remote(0));
+        handle.stop();
     }
 
     #[tokio::test]
     async fn test_value_dl_send() {
-        let docker = Cli::default();
-        let container = docker.run(SwimTestServer);
-        let port = container.get_host_port(9001).unwrap();
+        let port = get_free_port();
+        let (server, handle) = build_server(port).await;
+        tokio::spawn(server.run());
+
         let host = format!("ws://127.0.0.1:{}", port);
         let mut client = SwimClient::new_with_default().await;
 
-        let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "id");
+        let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "/unit/foo", "id");
 
         let (dl, mut recv) = client.value_downlink(path.clone(), 0).await.unwrap();
         tokio::time::sleep(Duration::from_secs(1)).await;
@@ -64,16 +69,22 @@ mod tests {
 
         let message = recv.recv().await.unwrap();
         assert_eq!(message, Event::Local(10));
+        handle.stop();
     }
 
     #[tokio::test]
     async fn test_map_dl_recv() {
-        let docker = Cli::default();
-        let container = docker.run(SwimTestServer);
-        let port = container.get_host_port(9001).unwrap();
+        let port = get_free_port();
+        let (server, handle) = build_server(port).await;
+        tokio::spawn(server.run());
+
         let host = format!("ws://127.0.0.1:{}", port);
         let mut client = SwimClient::new_with_default().await;
-        let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "shoppingCart");
+        let path = AbsolutePath::new(
+            url::Url::parse(&host).unwrap(),
+            "/unit/foo",
+            "shopping_cart",
+        );
 
         let (_dl, mut recv) = client
             .map_downlink::<String, i32>(path.clone())
@@ -91,16 +102,22 @@ mod tests {
         } else {
             panic!("The map downlink did not receive the correct message!")
         }
+        handle.stop();
     }
 
     #[tokio::test]
     async fn test_map_dl_send() {
-        let docker = Cli::default();
-        let container = docker.run(SwimTestServer);
-        let port = container.get_host_port(9001).unwrap();
+        let port = get_free_port();
+        let (server, handle) = build_server(port).await;
+        tokio::spawn(server.run());
+
         let host = format!("ws://127.0.0.1:{}", port);
         let mut client = SwimClient::new_with_default().await;
-        let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "shoppingCart");
+        let path = AbsolutePath::new(
+            url::Url::parse(&host).unwrap(),
+            "/unit/foo",
+            "shopping_cart",
+        );
 
         let (dl, mut recv) = client
             .map_downlink::<String, i32>(path.clone())
@@ -131,20 +148,20 @@ mod tests {
         } else {
             panic!("The map downlink did not receive the correct message!")
         }
+        handle.stop();
     }
 
     #[tokio::test]
     async fn test_recv_untyped_value_event() {
-        let docker = Cli::default();
-        let container = docker.run(SwimTestServer);
-        let port = container.get_host_port(9001).unwrap();
-        let host = format!("ws://127.0.0.1:{}", port);
+        let port = get_free_port();
+        let (server, handle) = build_server(port).await;
+        tokio::spawn(server.run());
 
+        let host = format!("ws://127.0.0.1:{}", port);
         let mut client = SwimClient::new_with_default().await;
 
-        let event_path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "info");
-
-        let command_path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "info");
+        let event_path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "/unit/foo", "info");
+        let command_path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "/unit/foo", "info");
 
         let event_dl = client.untyped_event_downlink(event_path).await.unwrap();
         let mut rec = event_dl.subscribe().unwrap();
@@ -156,19 +173,20 @@ mod tests {
         let incoming = rec.recv().await.unwrap().clone().get_inner();
 
         assert_eq!(incoming, Value::text("Hello, from Rust!"));
+        handle.stop();
     }
 
     #[tokio::test]
     async fn test_recv_typed_value_event_valid() {
-        let docker = Cli::default();
-        let container = docker.run(SwimTestServer);
-        let port = container.get_host_port(9001).unwrap();
-        let host = format!("ws://127.0.0.1:{}", port);
+        let port = get_free_port();
+        let (server, handle) = build_server(port).await;
+        tokio::spawn(server.run());
 
+        let host = format!("ws://127.0.0.1:{}", port);
         let mut client = SwimClient::new_with_default().await;
 
-        let event_path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "info");
-        let command_path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "info");
+        let event_path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "/unit/foo", "info");
+        let command_path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "/unit/foo", "info");
 
         let event_dl = client
             .event_downlink::<String>(event_path, Default::default())
@@ -191,19 +209,20 @@ mod tests {
         let incoming = rec.recv().await.unwrap();
 
         assert_eq!(incoming, "Hello, from Rust!");
+        handle.stop();
     }
 
     #[tokio::test]
     async fn test_recv_typed_value_event_invalid() {
-        let docker = Cli::default();
-        let container = docker.run(SwimTestServer);
-        let port = container.get_host_port(9001).unwrap();
-        let host = format!("ws://127.0.0.1:{}", port);
+        let port = get_free_port();
+        let (server, handle) = build_server(port).await;
+        tokio::spawn(server.run());
 
+        let host = format!("ws://127.0.0.1:{}", port);
         let mut client = SwimClient::new_with_default().await;
 
-        let event_path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "info");
-        let command_path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "info");
+        let event_path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "/unit/foo", "info");
+        let command_path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "/unit/foo", "info");
 
         let event_dl = client
             .event_downlink::<i32>(event_path, Default::default())
@@ -220,22 +239,29 @@ mod tests {
         let incoming = rec.recv().await;
 
         assert_eq!(incoming, None);
+        handle.stop();
     }
 
     #[tokio::test]
     async fn test_recv_untyped_map_event() {
-        let docker = Cli::default();
-        let container = docker.run(SwimTestServer);
-        let port = container.get_host_port(9001).unwrap();
-        let host = format!("ws://127.0.0.1:{}", port);
+        let port = get_free_port();
+        let (server, handle) = build_server(port).await;
+        tokio::spawn(server.run());
 
+        let host = format!("ws://127.0.0.1:{}", port);
         let mut client = SwimClient::new_with_default().await;
 
-        let event_path =
-            AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "shoppingCart");
+        let event_path = AbsolutePath::new(
+            url::Url::parse(&host).unwrap(),
+            "/unit/foo",
+            "shopping_cart",
+        );
 
-        let command_path =
-            AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "shoppingCart");
+        let command_path = AbsolutePath::new(
+            url::Url::parse(&host).unwrap(),
+            "/unit/foo",
+            "shopping_cart",
+        );
 
         let event_dl = client.untyped_event_downlink(event_path).await.unwrap();
         let mut rec = event_dl.subscribe().unwrap();
@@ -261,22 +287,29 @@ mod tests {
         let expected = Value::Record(vec![header], vec![body]);
 
         assert_eq!(incoming, expected);
+        handle.stop();
     }
 
     #[tokio::test]
     async fn test_recv_typed_map_event_valid() {
-        let docker = Cli::default();
-        let container = docker.run(SwimTestServer);
-        let port = container.get_host_port(9001).unwrap();
-        let host = format!("ws://127.0.0.1:{}", port);
+        let port = get_free_port();
+        let (server, handle) = build_server(port).await;
+        tokio::spawn(server.run());
 
+        let host = format!("ws://127.0.0.1:{}", port);
         let mut client = SwimClient::new_with_default().await;
 
-        let event_path =
-            AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "shoppingCart");
+        let event_path = AbsolutePath::new(
+            url::Url::parse(&host).unwrap(),
+            "/unit/foo",
+            "shopping_cart",
+        );
 
-        let command_path =
-            AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "shoppingCart");
+        let command_path = AbsolutePath::new(
+            url::Url::parse(&host).unwrap(),
+            "/unit/foo",
+            "shopping_cart",
+        );
 
         let event_dl = client
             .event_downlink::<MapModification<String, i32>>(event_path, Default::default())
@@ -302,22 +335,29 @@ mod tests {
             incoming,
             MapModification::Update("milk".to_string(), Arc::new(6i32))
         );
+        handle.stop();
     }
 
     #[tokio::test]
     async fn test_recv_typed_map_event_invalid_key() {
-        let docker = Cli::default();
-        let container = docker.run(SwimTestServer);
-        let port = container.get_host_port(9001).unwrap();
-        let host = format!("ws://127.0.0.1:{}", port);
+        let port = get_free_port();
+        let (server, handle) = build_server(port).await;
+        tokio::spawn(server.run());
 
+        let host = format!("ws://127.0.0.1:{}", port);
         let mut client = SwimClient::new_with_default().await;
 
-        let event_path =
-            AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "shoppingCart");
+        let event_path = AbsolutePath::new(
+            url::Url::parse(&host).unwrap(),
+            "/unit/foo",
+            "shopping_cart",
+        );
 
-        let command_path =
-            AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "shoppingCart");
+        let command_path = AbsolutePath::new(
+            url::Url::parse(&host).unwrap(),
+            "/unit/foo",
+            "shopping_cart",
+        );
 
         let event_dl = client
             .event_downlink::<MapModification<i32, i32>>(event_path, Default::default())
@@ -343,22 +383,29 @@ mod tests {
         let incoming = rec.recv().await;
 
         assert_eq!(incoming, None);
+        handle.stop();
     }
 
     #[tokio::test]
     async fn test_recv_typed_map_event_invalid_value() {
-        let docker = Cli::default();
-        let container = docker.run(SwimTestServer);
-        let port = container.get_host_port(9001).unwrap();
-        let host = format!("ws://127.0.0.1:{}", port);
+        let port = get_free_port();
+        let (server, handle) = build_server(port).await;
+        tokio::spawn(server.run());
 
+        let host = format!("ws://127.0.0.1:{}", port);
         let mut client = SwimClient::new_with_default().await;
 
-        let event_path =
-            AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "shoppingCart");
+        let event_path = AbsolutePath::new(
+            url::Url::parse(&host).unwrap(),
+            "/unit/foo",
+            "shopping_cart",
+        );
 
-        let command_path =
-            AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "shoppingCart");
+        let command_path = AbsolutePath::new(
+            url::Url::parse(&host).unwrap(),
+            "/unit/foo",
+            "shopping_cart",
+        );
 
         let event_dl = client
             .event_downlink::<MapModification<String, String>>(event_path, Default::default())
@@ -384,32 +431,32 @@ mod tests {
         let incoming = rec.recv().await;
 
         assert_eq!(incoming, None);
+        handle.stop();
     }
 
     #[tokio::test]
     async fn test_read_only_value() {
-        let docker = Cli::default();
-        let container = docker.run(SwimTestServer);
-        let port = container.get_host_port(9001).unwrap();
+        let port = get_free_port();
+        let (server, handle) = build_server(port).await;
+        tokio::spawn(server.run());
+
         let host = format!("ws://127.0.0.1:{}", port);
         let mut client = SwimClient::new_with_default().await;
-
-        let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "info");
+        let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "/unit/foo", "info");
 
         let command_dl = client
             .command_downlink::<String>(path.clone())
             .await
             .unwrap();
 
-        tokio::time::sleep(Duration::from_secs(1)).await;
-
         command_dl
             .command("Hello, String!".to_string())
             .await
             .unwrap();
 
-        let (dl, mut recv) = client.value_downlink(path, String::new()).await.unwrap();
+        tokio::time::sleep(Duration::from_secs(1)).await;
 
+        let (dl, mut recv) = client.value_downlink(path, String::new()).await.unwrap();
         let sub = dl.subscriber().covariant_cast::<Value>().unwrap();
 
         let message = recv.recv().await.unwrap();
@@ -432,32 +479,40 @@ mod tests {
             message,
             Event::Remote(Value::from("Hello, Value!".to_string()))
         );
+        handle.stop();
     }
 
     #[tokio::test]
     async fn test_read_only_value_schema_error() {
-        let docker = Cli::default();
-        let container = docker.run(SwimTestServer);
-        let port = container.get_host_port(9001).unwrap();
+        let port = get_free_port();
+        let (server, handle) = build_server(port).await;
+        tokio::spawn(server.run());
+
         let host = format!("ws://127.0.0.1:{}", port);
         let mut client = SwimClient::new_with_default().await;
 
-        let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "id");
+        let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "/unit/foo", "id");
         let (dl, _rec) = client.value_downlink(path.clone(), 0i64).await.unwrap();
 
         assert!(dl.subscriber().covariant_cast::<String>().is_err());
         assert!(dl.subscriber().covariant_cast::<i32>().is_err());
+        handle.stop();
     }
 
     #[tokio::test]
     async fn test_read_only_map() {
-        let docker = Cli::default();
-        let container = docker.run(SwimTestServer);
-        let port = container.get_host_port(9001).unwrap();
+        let port = get_free_port();
+        let (server, handle) = build_server(port).await;
+        tokio::spawn(server.run());
+
         let host = format!("ws://127.0.0.1:{}", port);
         let mut client = SwimClient::new_with_default().await;
 
-        let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "shoppingCart");
+        let path = AbsolutePath::new(
+            url::Url::parse(&host).unwrap(),
+            "/unit/foo",
+            "shopping_cart",
+        );
 
         let command_dl = client
             .command_downlink::<MapModification<String, i32>>(path.clone())
@@ -528,16 +583,18 @@ mod tests {
         } else {
             panic!("The map downlink did not receive the correct message!")
         }
+        handle.stop();
     }
 
     #[tokio::test]
     async fn test_read_only_map_schema_error() {
-        let docker = Cli::default();
-        let container = docker.run(SwimTestServer);
-        let port = container.get_host_port(9001).unwrap();
+        let port = get_free_port();
+        let (server, handle) = build_server(port).await;
+        tokio::spawn(server.run());
+
         let host = format!("ws://127.0.0.1:{}", port);
         let mut client = SwimClient::new_with_default().await;
-        let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "integerMap");
+        let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "/unit/foo", "integer_map");
 
         let (dl, _rec) = client.map_downlink::<i64, i64>(path).await.unwrap();
 
@@ -545,17 +602,19 @@ mod tests {
         assert!(dl.subscriber().covariant_cast::<i64, String>().is_err());
         assert!(dl.subscriber().covariant_cast::<i32, i64>().is_err());
         assert!(dl.subscriber().covariant_cast::<i64, i32>().is_err());
+        handle.stop();
     }
 
     #[tokio::test]
     async fn test_write_only_value() {
-        let docker = Cli::default();
-        let container = docker.run(SwimTestServer);
-        let port = container.get_host_port(9001).unwrap();
+        let port = get_free_port();
+        let (server, handle) = build_server(port).await;
+        tokio::spawn(server.run());
+
         let host = format!("ws://127.0.0.1:{}", port);
         let mut client = SwimClient::new_with_default().await;
 
-        let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "info");
+        let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "/unit/foo", "info");
 
         let command_dl = client
             .command_downlink::<String>(path.clone())
@@ -580,32 +639,40 @@ mod tests {
         sender_view.set(String::from("chocolate")).await.unwrap();
         let message = recv.recv().await.unwrap();
         assert_eq!(message, Event::Local(Value::text("chocolate")));
+        handle.stop();
     }
 
     #[tokio::test]
     async fn test_write_only_value_schema_error() {
-        let docker = Cli::default();
-        let container = docker.run(SwimTestServer);
-        let port = container.get_host_port(9001).unwrap();
+        let port = get_free_port();
+        let (server, handle) = build_server(port).await;
+        tokio::spawn(server.run());
+
         let host = format!("ws://127.0.0.1:{}", port);
         let mut client = SwimClient::new_with_default().await;
 
-        let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "id");
+        let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "/unit/foo", "id");
         let (dl, _rec) = client.value_downlink(path.clone(), 0i32).await.unwrap();
 
         assert!(dl.sender().contravariant_view::<String>().is_err());
         assert!(dl.sender().contravariant_view::<i64>().is_err());
+        handle.stop();
     }
 
     #[tokio::test]
     async fn test_write_only_map() {
-        let docker = Cli::default();
-        let container = docker.run(SwimTestServer);
-        let port = container.get_host_port(9001).unwrap();
+        let port = get_free_port();
+        let (server, handle) = build_server(port).await;
+        tokio::spawn(server.run());
+
         let host = format!("ws://127.0.0.1:{}", port);
         let mut client = SwimClient::new_with_default().await;
 
-        let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "shoppingCart");
+        let path = AbsolutePath::new(
+            url::Url::parse(&host).unwrap(),
+            "/unit/foo",
+            "shopping_cart",
+        );
 
         let command_dl = client
             .command_downlink::<MapModification<String, i32>>(path.clone())
@@ -687,22 +754,25 @@ mod tests {
         } else {
             panic!("The map downlink did not receive the correct message!")
         }
+        handle.stop();
     }
 
     #[tokio::test]
     async fn test_write_only_map_schema_error() {
-        let docker = Cli::default();
-        let container = docker.run(SwimTestServer);
-        let port = container.get_host_port(9001).unwrap();
+        let port = get_free_port();
+        let (server, handle) = build_server(port).await;
+        tokio::spawn(server.run());
+
         let host = format!("ws://127.0.0.1:{}", port);
         let mut client = SwimClient::new_with_default().await;
 
-        let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "unit/foo", "integerMap");
+        let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "/unit/foo", "integer_map");
         let (dl, _) = client.map_downlink::<i32, i32>(path).await.unwrap();
 
         assert!(dl.sender().contravariant_view::<String, String>().is_err());
         assert!(dl.sender().contravariant_view::<i32, String>().is_err());
         assert!(dl.sender().contravariant_view::<i64, i32>().is_err());
         assert!(dl.sender().contravariant_view::<i32, i64>().is_err());
+        handle.stop();
     }
 }
