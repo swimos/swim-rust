@@ -12,19 +12,24 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#[cfg(test)]
-mod tests;
+use std::hash::Hash;
+use std::num::NonZeroUsize;
 
-use crate::backpressure::common::{consume_buffers, transmit, Action, SpecialActionResult};
 use futures::future::join;
 use futures::{Stream, StreamExt};
 use pin_utils::pin_mut;
-use std::hash::Hash;
-use std::num::NonZeroUsize;
-use swim_common::sink::item::ItemSender;
 use tokio::sync::mpsc;
+
+use crate::backpressure::keyed::common::{consume_buffers, transmit, Action, SpecialActionResult};
+use swim_common::sink::item::ItemSender;
 use utilities::lru_cache::LruCache;
 use utilities::sync::circular_buffer;
+
+#[cfg(test)]
+mod tests;
+
+mod common;
+pub mod map;
 
 type BridgeBufferReceiver<V> = circular_buffer::Receiver<V>;
 type KeyedTransmitEvent<K, V> = (K, Option<(V, BridgeBufferReceiver<V>)>);

@@ -26,7 +26,7 @@ use swim_common::sink::item::ItemSender;
 use utilities::lru_cache::LruCache;
 use utilities::sync::{circular_buffer, trigger};
 
-use crate::backpressure::common::{consume_buffers, transmit, Action, SpecialActionResult};
+use crate::backpressure::keyed::common::{consume_buffers, transmit, Action, SpecialActionResult};
 use crate::model::map::MapUpdate;
 
 #[cfg(test)]

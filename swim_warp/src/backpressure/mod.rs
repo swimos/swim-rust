@@ -12,16 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-mod common;
+use std::num::NonZeroUsize;
+
+use swim_common::sink::item::ItemSender;
+use utilities::sync::{circular_buffer, trigger};
+
 pub mod keyed;
-pub mod map;
 
 #[cfg(test)]
 mod test;
-
-use std::num::NonZeroUsize;
-use swim_common::sink::item::ItemSender;
-use utilities::sync::{circular_buffer, trigger};
 
 #[derive(Debug)]
 pub enum Flushable<T> {

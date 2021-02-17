@@ -51,12 +51,8 @@ pub async fn transmit<M, K, V, S>(
     } else {
         let (mut tx, rx) = circular_buffer::channel(buffer_size);
         tx.try_send(value).ok().expect(INTERNAL_ERROR);
-        if let Some((evicted, sender)) = senders.insert(key.clone(), tx) {
+        if let Some((evicted, _)) = senders.insert(key.clone(), tx) {
             let (sync_tx, sync_rx) = trigger::trigger();
-
-            // The sender needs to be dropped to stop the consume task from locking up waiting for
-            // more messages when flushing the buffers.
-            drop(sender);
 
             bridge_tx
                 .send(Action::Evict {

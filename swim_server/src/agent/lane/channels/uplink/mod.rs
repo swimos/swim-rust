@@ -38,7 +38,7 @@ use swim_common::routing::SendError;
 use swim_common::sink::item::{FnMutSender, ItemSender};
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
-use swim_warp::backpressure::map::MapUpdateMessage;
+use swim_warp::backpressure::keyed::map::MapUpdateMessage;
 use swim_warp::model::map::MapUpdate;
 use tracing::{event, Level};
 use utilities::errors::Recoverable;
