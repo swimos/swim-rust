@@ -521,7 +521,7 @@ where
         |(selector, iteration_count)| async {
             let write_result = selector.select_w().await;
             match write_result {
-                Some(Ok(true)) => {
+                Some(Ok(_)) => {
                     *iteration_count += 1;
                     if *iteration_count % yield_mod == 0 {
                         tokio::task::yield_now().await;

@@ -250,7 +250,7 @@ async fn consume_available_write_only() {
 
     let result = selector.select_w().await;
 
-    assert_eq!(result, Some(Ok(true)));
+    assert_eq!(result, Some(Ok(())));
 
     assert!(!selector.is_terminated());
 }
@@ -290,7 +290,7 @@ async fn both_available_write_only() {
 
     let result = selector.select_w().await;
 
-    assert_eq!(result, Some(Ok(true)));
+    assert_eq!(result, Some(Ok(())));
 
     assert!(!selector.is_terminated());
 }

@@ -20,6 +20,7 @@ use futures::task::{Context, Poll};
 use futures::{ready, Sink, SinkExt, Stream, StreamExt};
 use std::future::Future;
 use std::pin::Pin;
+use tokio::time::Instant;
 
 #[derive(Debug)]
 enum State {
@@ -47,7 +48,7 @@ pub enum SelectorResult<T> {
 pub struct WsStreamSelector<S, M, T> {
     ws: S,
     messages: Option<M>,
-    pending: Option<T>,
+    pending: Option<(T, Instant)>,
     bias: bool,
     state: State,
 }
@@ -86,63 +87,31 @@ where
                 }
             }
             _ => {
-                if pending.is_some() {
-                    if *bias {
-                        let send_result = try_send(ws, cx, pending);
-                        if send_result.is_pending() {
-                            try_read(ws, cx, state)
-                        } else {
-                            *bias = false;
-                            send_result
+                if *bias {
+                    let write_result = match next_to_send(cx, pending, messages) {
+                        Poll::Ready(Some((message, ts))) => {
+                            try_write(ws, cx, pending, message, ts)
                         }
+                        _ => Poll::Pending
+                    };
+                    if write_result.is_pending() {
+                        try_read(ws, cx, state)
                     } else {
-                        let read_result = try_read(ws, cx, state);
-                        if read_result.is_pending() {
-                            try_send(ws, cx, pending)
-                        } else {
-                            *bias = true;
-                            read_result
-                        }
+                        *bias = false;
+                        write_result.map(Some)
                     }
                 } else {
-                    match messages {
-                        Some(message_str) => {
-                            if *bias {
-                                let next = message_str.poll_next_unpin(cx);
-                                match next {
-                                    Poll::Ready(Some(v)) => {
-                                        *pending = Some(v);
-                                        let send_result = try_send(ws, cx, pending);
-                                        if send_result.is_pending() {
-                                            try_read(ws, cx, state)
-                                        } else {
-                                            *bias = false;
-                                            send_result
-                                        }
-                                    }
-                                    Poll::Ready(None) => {
-                                        *messages = None;
-                                        try_read(ws, cx, state)
-                                    }
-                                    Poll::Pending => try_read(ws, cx, state),
-                                }
-                            } else {
-                                let read_result = try_read(ws, cx, state);
-                                if read_result.is_pending() {
-                                    if let Some(next) = ready!(message_str.poll_next_unpin(cx)) {
-                                        *pending = Some(next);
-                                        try_send(ws, cx, pending)
-                                    } else {
-                                        *messages = None;
-                                        read_result
-                                    }
-                                } else {
-                                    *bias = true;
-                                    read_result
-                                }
+                    let read_result = try_read(ws, cx, state);
+                    if read_result.is_pending() {
+                        match next_to_send(cx, pending, messages) {
+                            Poll::Ready(Some((message, ts))) => {
+                                try_write(ws, cx, pending, message, ts).map(Some)
                             }
+                            _ => Poll::Pending
                         }
-                        _ => try_read(ws, cx, state),
+                    } else {
+                        *bias = true;
+                        read_result
                     }
                 }
             }
@@ -156,7 +125,7 @@ where
     S: Sink<T>,
     S: Stream<Item = Result<T, SinkError<S, T>>> + Unpin,
 {
-    type Output = Option<Result<bool, <S as Sink<T>>::Error>>;
+    type Output = Option<Result<(), <S as Sink<T>>::Error>>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let WsStreamSelector {
@@ -181,34 +150,18 @@ where
                 }
             }
             _ => {
-                if pending.is_some() {
-                    let result = ready!(try_send(ws, cx, pending));
-                    *bias = false;
-                    Poll::Ready(result.map(|r| r.map(|_| true)))
-                } else {
-                    match messages {
-                        Some(message_str) => {
-                            let next = ready!(message_str.poll_next_unpin(cx));
-                            match next {
-                                Some(v) => {
-                                    *pending = Some(v);
-                                    let result = ready!(try_send(ws, cx, pending));
-                                    *bias = false;
-                                    Poll::Ready(result.map(|r| r.map(|_| true)))
-                                }
-                                _ => {
-                                    *messages = None;
-                                    *bias = false;
-                                    Poll::Ready(Some(Ok(false)))
-                                }
-                            }
-                        }
-                        _ => {
-                            *bias = false;
-                            Poll::Ready(Some(Ok(false)))
-                        }
+                let write_result = match next_to_send(cx, pending, messages) {
+                    Poll::Ready(Some((message, ts))) => {
+                        let result = ready!(try_write(ws, cx, pending, message, ts));
+                        Poll::Ready(Some(result.map(|_| ())))
                     }
+                    Poll::Ready(None) => Poll::Ready(None),
+                    _ => Poll::Pending
+                };
+                if !write_result.is_pending() {
+                    *bias = false
                 }
+                write_result
             }
         }
     }
@@ -249,28 +202,6 @@ where
 pub type SinkError<S, T> = <S as Sink<T>>::Error;
 
 type SelectResult<S, T> = Result<SelectorResult<T>, SinkError<S, T>>;
-
-fn try_send<S, T>(
-    ws: &mut S,
-    cx: &mut Context<'_>,
-    pending: &mut Option<T>,
-) -> Poll<Option<SelectResult<S, T>>>
-where
-    S: Sink<T>,
-    S: Stream<Item = Result<T, <S as Sink<T>>::Error>> + Unpin,
-{
-    let result = ready!(ws.poll_ready_unpin(cx));
-    if let Err(e) = result {
-        Poll::Ready(Some(Err(e)))
-    } else {
-        let message = pending.take().unwrap();
-        if let Err(e) = ws.start_send_unpin(message) {
-            Poll::Ready(Some(Err(e)))
-        } else {
-            Poll::Ready(Some(Ok(SelectorResult::Written)))
-        }
-    }
-}
 
 impl<'a, S, M, T> FusedFuture for SelectRw<'a, S, M, T>
 where
@@ -320,5 +251,52 @@ where
             }
         },
         _ => Poll::Pending,
+    }
+}
+
+fn next_to_send<T, M>(cx: &mut Context<'_>,
+                       pending: &mut Option<(T, Instant)>,
+                      messages: &mut Option<M>) -> Poll<Option<(T, Option<Instant>)>>
+where
+    M: Stream<Item = T> + Unpin,
+{
+    match pending.take() {
+        Some((message, t)) => Poll::Ready(Some((message, Some(t)))),
+        _ => {
+            if let Some(message_str) = messages {
+                if let Some(message) = ready!(message_str.poll_next_unpin(cx)) {
+                    Poll::Ready(Some((message, None)))
+
+                } else {
+                    *messages = None;
+                    Poll::Ready(None)
+                }
+            } else {
+                Poll::Ready(None)
+            }
+        }
+    }
+}
+
+fn try_write<S, T>(ws: &mut S,
+                   cx: &mut Context<'_>,
+                   pending: &mut Option<(T, Instant)>,
+                   message: T,
+                   ts: Option<Instant>) -> Poll<SelectResult<S, T>>
+where
+    S: Sink<T> + Unpin,
+{
+    match ws.poll_ready_unpin(cx) {
+        Poll::Ready(Ok(_)) => {
+            Poll::Ready(ws.start_send_unpin(message).map(|_| SelectorResult::Written))
+        },
+        Poll::Ready(Err(e)) => {
+            *pending = Some((message, ts.unwrap_or_else(|| Instant::now())));
+            Poll::Ready(Err(e))
+        }
+        _ => {
+            *pending = Some((message, ts.unwrap_or_else(|| Instant::now())));
+            Poll::Pending
+        }
     }
 }
