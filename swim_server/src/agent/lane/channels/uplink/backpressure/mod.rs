@@ -25,7 +25,7 @@ use std::hash::Hash;
 use std::num::NonZeroUsize;
 use swim_common::form::Form;
 use swim_common::sink::item::ItemSender;
-use swim_warp::backpressure::map::release_pressure as release_pressure_map;
+use swim_warp::backpressure::keyed::map::release_pressure as release_pressure_map;
 use swim_warp::backpressure::{release_pressure, Flushable};
 use swim_warp::model::map::MapUpdate;
 use tokio::sync::oneshot;
