@@ -29,7 +29,7 @@ fn envelope_for<T, F>(
     command: Command<T>,
 ) -> (url::Url, OutgoingLinkMessage)
 where
-    F: Fn(T) -> Option<Value>,
+    F: Fn(T) -> Value,
 {
     let (host, path) = path.clone().split();
     (
@@ -48,7 +48,7 @@ where
             Command::Action(v) => OutgoingLinkMessage {
                 header: OutgoingHeader::Command,
                 path,
-                body: to_body(v),
+                body: Some(to_body(v)),
             },
             Command::Unlink => OutgoingLinkMessage {
                 header: OutgoingHeader::Unlink,
@@ -80,7 +80,7 @@ pub fn command_envelope(
     path: &AbsolutePath,
     command: Command<Value>,
 ) -> (url::Url, OutgoingLinkMessage) {
-    envelope_for(Some, path, command)
+    envelope_for(|v| v, path, command)
 }
 
 pub(in crate::downlink) mod value {
@@ -89,8 +89,8 @@ pub(in crate::downlink) mod value {
     use swim_common::model::Value;
     use swim_common::warp::envelope::{IncomingHeader, IncomingLinkMessage};
 
-    pub(in crate::downlink) fn envelope_body(v: SharedValue) -> Option<Value> {
-        Some((*v).clone())
+    pub(in crate::downlink) fn envelope_body(v: SharedValue) -> Value {
+        (*v).clone()
     }
 
     pub(in crate::downlink) fn from_envelope(incoming: IncomingLinkMessage) -> Message<Value> {
@@ -125,8 +125,8 @@ pub(in crate::downlink) mod map {
     use swim_common::warp::envelope::{IncomingHeader, IncomingLinkMessage};
     use tracing::warn;
 
-    pub(super) fn envelope_body(cmd: UntypedMapModification<Value>) -> Option<Value> {
-        Some(Form::into_value(cmd))
+    pub(super) fn envelope_body(cmd: UntypedMapModification<Value>) -> Value {
+        Form::into_value(cmd)
     }
 
     pub(in crate::downlink) fn from_envelope(

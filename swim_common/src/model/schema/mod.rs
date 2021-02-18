@@ -975,11 +975,11 @@ fn has_attributes_cmp(
 
             if cmp.is_none() && this_exhaustive == *other_exhaustive {
                 if fields_are_related(this_attributes, other_attributes, this_exhaustive) {
-                    cmp_related(
+                    Some(cmp_related(
                         this_attributes.len(),
                         other_attributes.len(),
                         this_exhaustive,
-                    )
+                    ))
                 } else {
                     None
                 }
@@ -1033,7 +1033,11 @@ fn has_slots_cmp(
                 && this_exhaustive == *other_exhaustive
                 && fields_are_related(this_slots, other_slots, this_exhaustive)
             {
-                cmp_related(this_slots.len(), other_slots.len(), this_exhaustive)
+                Some(cmp_related(
+                    this_slots.len(),
+                    other_slots.len(),
+                    this_exhaustive,
+                ))
             } else {
                 cmp
             }
@@ -1103,7 +1107,11 @@ fn layout_cmp(
                     ordered_items_are_related(this_items, other_items, this_exhaustive);
 
                 if are_related {
-                    cmp_related(this_items.len(), other_items.len(), this_exhaustive)
+                    Some(cmp_related(
+                        this_items.len(),
+                        other_items.len(),
+                        this_exhaustive,
+                    ))
                 } else {
                     None
                 }
@@ -1116,19 +1124,19 @@ fn layout_cmp(
     }
 }
 
-fn cmp_related(first_len: usize, second_len: usize, exhaustive: bool) -> Option<Ordering> {
+fn cmp_related(first_len: usize, second_len: usize, exhaustive: bool) -> Ordering {
     if first_len == second_len {
-        Some(Ordering::Equal)
+        Ordering::Equal
     } else if first_len > second_len {
         if exhaustive {
-            Some(Ordering::Greater)
+            Ordering::Greater
         } else {
-            Some(Ordering::Less)
+            Ordering::Less
         }
     } else if exhaustive {
-        Some(Ordering::Less)
+        Ordering::Less
     } else {
-        Some(Ordering::Greater)
+        Ordering::Greater
     }
 }
 

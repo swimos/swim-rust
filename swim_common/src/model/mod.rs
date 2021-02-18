@@ -1275,7 +1275,7 @@ fn escape_text(text: &str) -> String {
     output.iter().collect()
 }
 
-fn encode_escaped(s: &str, dst: &mut BytesMut) -> Result<(), std::io::Error> {
+fn encode_escaped(s: &str, dst: &mut BytesMut) {
     let mut from = 0;
     let bytes = s.as_bytes();
     let mut put_acc = |dst: &mut BytesMut, off: usize| {
@@ -1327,7 +1327,6 @@ fn encode_escaped(s: &str, dst: &mut BytesMut) -> Result<(), std::io::Error> {
         };
     });
     put_acc(dst, bytes.len());
-    Ok(())
 }
 
 ///
@@ -1344,10 +1343,7 @@ fn unpack_attr_body(attrs: &[Attr], items: &[Item]) -> bool {
     } else if items.len() > 1 {
         true
     } else {
-        match items.first() {
-            Some(item) => matches!(item, Item::Slot(_, _)),
-            _ => false,
-        }
+        matches!(items.first(), Some(Item::Slot(_, _)))
     }
 }
 
@@ -1357,7 +1353,7 @@ fn encode_attr(
     dst: &mut BytesMut,
 ) -> Result<(), ValueEncodeErr> {
     dst.put_u8(b'@');
-    ValueEncoder::encode_text(dst, attr.name.as_str())?;
+    ValueEncoder::encode_text(dst, attr.name.as_str());
     if attr.value != Value::Extant {
         dst.put_u8(b'(');
         match attr.value {
@@ -1436,7 +1432,10 @@ impl ValueEncoder {
                 }
                 Ok(())
             }
-            Value::Text(s) => ValueEncoder::encode_text(dst, s.as_str()),
+            Value::Text(s) => {
+                ValueEncoder::encode_text(dst, s.as_str());
+                Ok(())
+            }
             Value::Record(attrs, items) => {
                 if attrs.is_empty() && items.is_empty() {
                     dst.put_u8(b'{');
@@ -1458,20 +1457,17 @@ impl ValueEncoder {
         }
     }
 
-    fn encode_text(dst: &mut BytesMut, s: &str) -> Result<(), ValueEncodeErr> {
+    fn encode_text(dst: &mut BytesMut, s: &str) {
         if parser::is_identifier(s.borrow()) {
             dst.put(s.as_bytes());
-            Ok(())
         } else if needs_escape(s.borrow()) {
             dst.put_u8(b'\"');
-            encode_escaped(s.borrow(), dst)?;
+            encode_escaped(s.borrow(), dst);
             dst.put_u8(b'\"');
-            Ok(())
         } else {
             dst.put_u8(b'\"');
             dst.put(s.as_bytes());
             dst.put_u8(b'\"');
-            Ok(())
         }
     }
 
