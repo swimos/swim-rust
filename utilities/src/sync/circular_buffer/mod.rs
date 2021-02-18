@@ -170,7 +170,7 @@ where
                 available,
                 available - 1,
                 Ordering::Acquire,
-                Ordering::Acquire,
+                Ordering::Relaxed,
             ) {
                 Ok(count) if count == available => {
                     queue.push_value(value).ok().expect("Inconsistent queue.");
