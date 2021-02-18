@@ -21,6 +21,7 @@ use std::time::Duration;
 use swim_common::model::Value;
 use swim_common::sink::item::for_mpsc_sender;
 use tokio::time::timeout;
+use tokio_stream::wrappers::ReceiverStream;
 
 const TIMEOUT: Duration = Duration::from_secs(30);
 const SHORT_TIMEOUT: Duration = Duration::from_secs(5);
