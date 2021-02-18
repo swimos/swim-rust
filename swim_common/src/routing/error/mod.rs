@@ -42,6 +42,7 @@ use utilities::errors::Recoverable;
 
 pub type FmtResult = std::fmt::Result;
 
+use std::time::Duration;
 #[cfg(feature = "tungstenite")]
 use {std::ops::Deref, tokio_tungstenite::tungstenite};
 
@@ -68,6 +69,8 @@ pub enum ConnectionError {
     Encoding(EncodingError),
     /// An error produced when attempting to resolve a peer.
     Resolution(ResolutionError),
+    /// A pending write did not complete within the specified duration.
+    WriteTimeout(Duration),
 }
 
 impl Recoverable for ConnectionError {
@@ -85,6 +88,7 @@ impl Recoverable for ConnectionError {
             ),
             ConnectionError::Encoding(e) => e.is_fatal(),
             ConnectionError::Resolution(e) => e.is_fatal(),
+            ConnectionError::WriteTimeout(_) => false,
         }
     }
 }
@@ -103,6 +107,11 @@ impl Display for ConnectionError {
             ConnectionError::Io(e) => write!(f, "{}", e),
             ConnectionError::Encoding(e) => write!(f, "{}", e),
             ConnectionError::Resolution(e) => write!(f, "{}", e),
+            ConnectionError::WriteTimeout(dur) => write!(
+                f,
+                "Writing to the connection failed to complete within {:?}.",
+                dur
+            ),
         }
     }
 }

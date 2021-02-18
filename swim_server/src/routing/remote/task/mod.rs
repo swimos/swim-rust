@@ -140,7 +140,12 @@ where
 
         let outgoing_payloads = messages.map(Into::into);
 
-        let mut selector = WsStreamSelector::new(&mut ws_stream, outgoing_payloads);
+        let mut selector = WsStreamSelector::new(
+            &mut ws_stream,
+            outgoing_payloads,
+            config.write_timeout,
+            |dur| ConnectionError::WriteTimeout(*dur),
+        );
 
         let mut stop_fused = stop_signal.fuse();
         let mut timeout = sleep(config.activity_timeout);
@@ -505,16 +510,16 @@ async fn handle_not_found(env: Envelope, sender: &mpsc::Sender<TaggedEnvelope>) 
 // Continue polling the selector but only to write messsages. This ensures that the task cannot
 // block whilst waiting to dispatch an incoming message. (Where an imcoming message generates
 // one or more outgoing messages on the same socket this can lead to a deadlock).
-async fn write_to_socket_only<S, M, T>(
-    selector: &mut WsStreamSelector<S, M, T>,
+async fn write_to_socket_only<S, M, T, E>(
+    selector: &mut WsStreamSelector<S, M, T, E>,
     done: trigger::Receiver,
     yield_mod: usize,
     iteration_count: &mut usize,
-) -> Result<(), <S as Sink<T>>::Error>
+) -> Result<(), E>
 where
     M: Stream<Item = T> + Unpin,
-    S: Sink<T>,
-    S: Stream<Item = Result<T, <S as Sink<T>>::Error>> + Unpin,
+    S: Sink<T, Error = E>,
+    S: Stream<Item = Result<T, E>> + Unpin,
 {
     let write_stream = stream::unfold(
         (selector, iteration_count),

@@ -395,6 +395,7 @@ impl TaskFixture {
                 router_buffer_size: NonZeroUsize::new(10).unwrap(),
                 channel_buffer_size: NonZeroUsize::new(10).unwrap(),
                 activity_timeout: Duration::from_secs(30),
+                write_timeout: Duration::from_secs(20),
                 connection_retries: RetryStrategy::immediate(NonZeroUsize::new(1).unwrap()),
                 yield_after: NonZeroUsize::new(256).unwrap(),
             },
@@ -687,7 +688,7 @@ async fn generate_writes(
     mut route_rx: mpsc::Receiver<TaggedEnvelope>,
     outgoing: mpsc::Sender<TaggedEnvelope>,
     stop_trigger: trigger::Sender,
-    n: i32
+    n: i32,
 ) -> Result<(), mpsc::error::SendError<TaggedEnvelope>> {
     let addr = RoutingAddr::local(7);
 

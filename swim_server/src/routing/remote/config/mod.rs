@@ -25,6 +25,8 @@ pub struct ConnectionConfig {
     pub channel_buffer_size: NonZeroUsize,
     /// Time after which to close an inactive connection.
     pub activity_timeout: Duration,
+    /// If a pending write does not complete after this period, fail
+    pub write_timeout: Duration,
     /// Strategy for retrying a connection.
     pub connection_retries: RetryStrategy,
     /// The number of events to process before yielding execution back to the runtime.
@@ -36,7 +38,8 @@ impl Default for ConnectionConfig {
         ConnectionConfig {
             router_buffer_size: NonZeroUsize::new(10).unwrap(),
             channel_buffer_size: NonZeroUsize::new(10).unwrap(),
-            activity_timeout: Duration::new(30, 00),
+            activity_timeout: Duration::from_secs(30),
+            write_timeout: Duration::from_secs(20),
             connection_retries: Default::default(),
             yield_after: NonZeroUsize::new(256).unwrap(),
         }

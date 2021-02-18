@@ -59,6 +59,7 @@ fn make_state(
         router_buffer_size: buffer_size,
         channel_buffer_size: buffer_size,
         activity_timeout: Duration::from_secs(30),
+        write_timeout: Duration::from_secs(20),
         connection_retries: RetryStrategy::none(),
         yield_after: NonZeroUsize::new(256).unwrap(),
     };
