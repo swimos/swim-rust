@@ -22,7 +22,7 @@ use crate::agent::lane::channels::task::LaneIoError;
 use crate::agent::lane::channels::uplink::spawn::UplinkErrorReport;
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::{AttachError, LaneIo};
-use crate::routing::LaneIdentifier;
+use crate::routing::{AgentAddressedEnvelope, LaneIdentifier};
 use crate::routing::{RoutingAddr, ServerRouter, TaggedClientEnvelope, TaggedEnvelope};
 use either::Either;
 use futures::future::{join, BoxFuture};
@@ -314,9 +314,11 @@ where
                             {
                                 if remote_route
                                     .sender
-                                    .send_item(Envelope::lane_not_found(
-                                        agent_route.to_string(),
-                                        name.clone(),
+                                    .send_item(AgentAddressedEnvelope::Agent(
+                                        Envelope::lane_not_found(
+                                            agent_route.to_string(),
+                                            identifier.lane_uri().to_string(),
+                                        ),
                                     ))
                                     .await
                                     .is_err()

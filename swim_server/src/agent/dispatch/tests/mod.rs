@@ -416,7 +416,11 @@ async fn dispatch_link_to_non_existent() {
         let expected_env = Envelope::lane_not_found("/node", "other");
 
         let mut rx = context.take_receiver(&addr).unwrap();
-        let TaggedEnvelope(_, env) = rx.recv().await.unwrap();
+
+        let env = match rx.recv().await.unwrap() {
+            TaggedEnvelope::AgentEnvelope(TaggedAgentEnvelope(_, env)) => env,
+            e => panic!("Unexpected envelope type: {:?}", e),
+        };
 
         assert_eq!(expected_env, env);
 
@@ -445,7 +449,10 @@ async fn dispatch_sync_to_non_existent() {
     let link = Envelope::sync("/node", "other");
 
     let assertion_task = async move {
-        assert!(envelope_tx.send(TaggedEnvelope(addr, link)).await.is_ok());
+        assert!(envelope_tx
+            .send(TaggedEnvelope::agent(TaggedAgentEnvelope(addr, link)))
+            .await
+            .is_ok());
 
         let mut rx = context.take_receiver(&addr).unwrap();
         let result = timeout::timeout(Duration::from_secs(5), rx.recv()).await;
