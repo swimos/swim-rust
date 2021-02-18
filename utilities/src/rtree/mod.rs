@@ -85,7 +85,7 @@ where
         min_children: NonZeroUsize,
         max_children: NonZeroUsize,
         split_strat: SplitStrategy,
-    ) -> Result<Self, RTreeError<L>> {
+    ) -> Result<Self, ChildrenSizeError> {
         Self::check_children(&min_children, &max_children)?;
 
         Ok(RTree {
@@ -173,9 +173,9 @@ where
     /// rtree.insert("Second".to_string(), rect!((0.0, 0.0), (2.0, 2.0))).unwrap();
     /// assert_eq!(rtree.len(), 2);
     /// ```
-    pub fn insert(&mut self, label: L, item: B) -> Result<(), RTreeError<L>> {
+    pub fn insert(&mut self, label: L, item: B) -> Result<(), DuplicateLabelError<L>> {
         if self.lookup_map.get(&label).is_some() {
-            return Err(RTreeError::DuplicateLabelError(label));
+            return Err(DuplicateLabelError(label));
         }
 
         let item = Arc::new(Entry::Leaf { label, item });
@@ -325,7 +325,7 @@ where
 
         for (label, item) in items.into_iter() {
             if lookup_map.get(&label).is_some() {
-                return Err(RTreeError::DuplicateLabelError(label));
+                return Err(RTreeError::from(DuplicateLabelError(label)));
             }
 
             let entry = Arc::new(Entry::Leaf { label, item });
@@ -485,12 +485,36 @@ where
     fn check_children(
         min_children: &NonZeroUsize,
         max_children: &NonZeroUsize,
-    ) -> Result<(), RTreeError<L>> {
+    ) -> Result<(), ChildrenSizeError> {
         if min_children.get() <= max_children.get() / 2 {
             Ok(())
         } else {
-            Err(RTreeError::ChildrenSizeError)
+            Err(ChildrenSizeError)
         }
+    }
+}
+
+/// An error returned when the min child size is not less or equal to half the max child size.
+#[derive(Debug)]
+pub struct ChildrenSizeError;
+
+impl Error for ChildrenSizeError {}
+
+impl Display for ChildrenSizeError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "The minimum number of children cannot be more than half of the maximum number of children.")
+    }
+}
+
+/// An error returned when a duplicate label is tried to be inserted in the tree.
+#[derive(Debug)]
+pub struct DuplicateLabelError<L: Label>(L);
+
+impl<L> Error for DuplicateLabelError<L> where L: Label {}
+
+impl<L: Label> Display for DuplicateLabelError<L> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "The label `{:?}` already exists.", self.0)
     }
 }
 
@@ -500,27 +524,30 @@ pub enum RTreeError<L>
 where
     L: Label,
 {
-    // A duplicate label was tried to be inserted in the tree.
-    DuplicateLabelError(L),
-    // The min child size is not less or equal to half the max child size.
-    ChildrenSizeError,
+    DuplicateLabelError(DuplicateLabelError<L>),
+    ChildrenSizeError(ChildrenSizeError),
 }
 
 impl<L> Error for RTreeError<L> where L: Label {}
 
-impl<L> Display for RTreeError<L>
-where
-    L: Label,
-{
+impl<L: Label> Display for RTreeError<L> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            RTreeError::DuplicateLabelError(label) => {
-                write!(f, "The label `{:?}` already exists.", label)
-            }
-            RTreeError::ChildrenSizeError => {
-                write!(f, "The minimum number of children cannot be more than half of the maximum number of children.")
-            }
+            RTreeError::DuplicateLabelError(err) => err.fmt(f),
+            RTreeError::ChildrenSizeError(err) => err.fmt(f),
         }
+    }
+}
+
+impl<L: Label> From<ChildrenSizeError> for RTreeError<L> {
+    fn from(err: ChildrenSizeError) -> Self {
+        RTreeError::ChildrenSizeError(err)
+    }
+}
+
+impl<L: Label> From<DuplicateLabelError<L>> for RTreeError<L> {
+    fn from(err: DuplicateLabelError<L>) -> Self {
+        RTreeError::DuplicateLabelError(err)
     }
 }
 

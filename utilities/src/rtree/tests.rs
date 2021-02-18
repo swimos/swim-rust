@@ -13,7 +13,10 @@
 // limitations under the License.
 
 use crate::rtree::rectangles::{Point2D, Point3D};
-use crate::rtree::{BoxBounded, Label, RTree, RTreeError, Rect, SplitStrategy};
+use crate::rtree::{
+    BoxBounded, ChildrenSizeError, DuplicateLabelError, Label, RTree, RTreeError, Rect,
+    SplitStrategy,
+};
 use std::fs;
 use std::num::NonZeroUsize;
 use std::ops::Sub;
@@ -693,21 +696,21 @@ fn tree_remove_missing_label_test() {
 
 #[test]
 fn tree_children_size_error_test() {
-    let tree: Result<RTree<String, Rect<Point2D<f64>>>, RTreeError<String>> = RTree::new(
+    let tree: Result<RTree<String, Rect<Point2D<f64>>>, ChildrenSizeError> = RTree::new(
         NonZeroUsize::new(10).unwrap(),
         NonZeroUsize::new(19).unwrap(),
         SplitStrategy::Quadratic,
     );
 
-    assert!(matches!(tree, Err(RTreeError::ChildrenSizeError)));
+    assert!(matches!(tree, Err(ChildrenSizeError)));
 
-    let tree: Result<RTree<String, Rect<Point2D<f64>>>, RTreeError<String>> = RTree::new(
+    let tree: Result<RTree<String, Rect<Point2D<f64>>>, ChildrenSizeError> = RTree::new(
         NonZeroUsize::new(50).unwrap(),
         NonZeroUsize::new(1).unwrap(),
         SplitStrategy::Quadratic,
     );
 
-    assert!(matches!(tree, Err(RTreeError::ChildrenSizeError)));
+    assert!(matches!(tree, Err(ChildrenSizeError)));
 }
 
 #[test]
@@ -724,7 +727,7 @@ fn tree_insert_same_labels_test() {
 
     let result = tree.insert("First".to_string(), rect!((0.0, 0.0), (20.0, 20.0)));
 
-    if let Err(RTreeError::DuplicateLabelError(label)) = result {
+    if let Err(DuplicateLabelError(label)) = result {
         assert_eq!(label, "First")
     } else {
         panic!("Expected duplicate label error!")
@@ -748,7 +751,7 @@ fn tree_bulk_load_same_labels_test() {
         items,
     );
 
-    if let Err(RTreeError::DuplicateLabelError(label)) = result {
+    if let Err(RTreeError::DuplicateLabelError(DuplicateLabelError(label))) = result {
         assert_eq!(label, "Third")
     } else {
         panic!("Expected duplicate label error!")
