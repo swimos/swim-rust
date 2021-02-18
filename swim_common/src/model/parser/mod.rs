@@ -549,17 +549,19 @@ impl ReconToken<&str> {
 impl<S: TokenStr> ReconToken<S> {
     /// True if, and only if, the token constitutes a ['Value'] in itself.
     fn is_value(&self) -> bool {
-        matches!(self,
+        matches!(
+            self,
             ReconToken::Identifier(_)
-            | ReconToken::StringLiteral(_)
-            | ReconToken::Int32Literal(_)
-            | ReconToken::Int64Literal(_)
-            | ReconToken::UInt32Literal(_)
-            | ReconToken::UInt64Literal(_)
-            | ReconToken::Float64Literal(_)
-            | ReconToken::BigInt(_)
-            | ReconToken::BigUint(_)
-            | ReconToken::BoolLiteral(_))
+                | ReconToken::StringLiteral(_)
+                | ReconToken::Int32Literal(_)
+                | ReconToken::Int64Literal(_)
+                | ReconToken::UInt32Literal(_)
+                | ReconToken::UInt64Literal(_)
+                | ReconToken::Float64Literal(_)
+                | ReconToken::BigInt(_)
+                | ReconToken::BigUint(_)
+                | ReconToken::BoolLiteral(_)
+        )
     }
 
     /// Try to get a value from a single token.
@@ -669,7 +671,7 @@ fn tokenize_update<T: TokenStr, B: TokenBuffer<T>>(
                 let location = *location;
                 let tok = extract_identifier(source, next.map(|p| p.0), location);
                 *state = TokenParseState::None(location);
-                tok
+                Some(Ok(tok))
             }
         },
         TokenParseState::ReadingStringLiteral(location, escape) => {
@@ -816,7 +818,7 @@ fn extract_identifier<T: TokenStr, B: TokenBuffer<T>>(
     source: &mut B,
     next_index: Option<usize>,
     location: Location,
-) -> Option<Result<LocatedReconToken<T>, BadToken>> {
+) -> LocatedReconToken<T> {
     let content = source.take_opt(location.offset, next_index);
     let token = if content.borrow() == "true" {
         ReconToken::BoolLiteral(true)
@@ -825,7 +827,7 @@ fn extract_identifier<T: TokenStr, B: TokenBuffer<T>>(
     } else {
         ReconToken::Identifier(content)
     };
-    Some(Result::Ok(loc(token, location)))
+    loc(token, location)
 }
 
 fn is_numeric_char(c: char) -> bool {
@@ -1015,7 +1017,9 @@ fn final_token<T: TokenStr, B: TokenBuffer<T>>(
     state: &mut TokenParseState,
 ) -> Option<Result<LocatedReconToken<T>, BadToken>> {
     match state {
-        TokenParseState::ReadingIdentifier(location) => extract_identifier(source, None, *location),
+        TokenParseState::ReadingIdentifier(location) => {
+            Some(Ok(extract_identifier(source, None, *location)))
+        }
         TokenParseState::ReadingInteger(location) => {
             let location = *location;
             let start = location.offset;
