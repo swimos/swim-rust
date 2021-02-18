@@ -205,34 +205,33 @@ where
             }
         }
 
-        let dim_lengths: Vec<_> = dim_boundary_points
-            .into_iter()
-            .map(|(low, high)| (high - low).abs())
-            .collect();
+        let dim_lengths = dim_boundary_points
+            .iter()
+            .map(|(low, high)| (*high - *low).abs());
 
-        let side_separations: Vec<_> = max_low_sides
-            .into_iter()
-            .zip(min_high_sides.into_iter())
-            .map(|((idx_low, low), (idx_high, high))| (idx_low, idx_high, (high - low).abs()))
-            .collect();
+        let side_separations = max_low_sides
+            .iter()
+            .zip(min_high_sides.iter())
+            .map(|((idx_low, low), (idx_high, high))| (idx_low, idx_high, (*high - *low).abs()));
 
-        let normalised_separations: Vec<_> = side_separations
-            .into_iter()
-            .zip(dim_lengths.into_iter())
-            .map(|((f, s, separation), dim_len)| (f, s, separation / dim_len))
-            .collect();
+        let normalised_separations = side_separations
+            .zip(dim_lengths)
+            .map(|((f, s, separation), dim_len)| (f, s, separation / dim_len));
 
         let max_separation = normalised_separations
-            .into_iter()
             .max_by(|(_, _, norm_sep_1), (_, _, norm_sep_2)| {
                 norm_sep_1
                     .partial_cmp(norm_sep_2)
                     .unwrap_or(Ordering::Equal)
             })
-            .unwrap();
+            .unwrap_or((
+                &0,
+                &1,
+                <<B as BoxBounded>::Point as Point>::Type::min_value(),
+            ));
 
-        first_idx = max_separation.0;
-        second_idx = max_separation.1;
+        first_idx = *max_separation.0;
+        second_idx = *max_separation.1;
     }
 
     let (first_idx, second_idx) = match first_idx.cmp(&second_idx) {
