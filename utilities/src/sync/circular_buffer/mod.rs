@@ -1,4 +1,4 @@
-// Copyright 2015-2020 SWIM.AI inc.
+// Copyright 2015-2021 SWIM.AI inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -166,12 +166,20 @@ where
     loop {
         let available = permits.load(Ordering::Relaxed);
         if available > 0 {
-            if permits.compare_and_swap(available, available - 1, Ordering::Acquire) == available {
-                queue.push_value(value).ok().expect("Inconsistent queue.");
-                if available == *capacity {
-                    waker.wake();
+            match permits.compare_exchange(
+                available,
+                available - 1,
+                Ordering::Acquire,
+                Ordering::Relaxed,
+            ) {
+                Ok(count) if count == available => {
+                    queue.push_value(value).ok().expect("Inconsistent queue.");
+                    if available == *capacity {
+                        waker.wake();
+                    }
+                    break;
                 }
-                break;
+                _ => continue,
             }
         } else {
             // The popped value must remain in scope until we have released the permit in case

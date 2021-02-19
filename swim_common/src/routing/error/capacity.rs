@@ -1,4 +1,4 @@
-// Copyright 2015-2020 SWIM.AI inc.
+// Copyright 2015-2021 SWIM.AI inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -96,7 +96,9 @@ impl Recoverable for CapacityError {
         {
             !matches!(
                 self.kind,
-                CapacityErrorKind::ReadFull | CapacityErrorKind::WriteFull | CapacityErrorKind::Full(_)
+                CapacityErrorKind::ReadFull
+                    | CapacityErrorKind::WriteFull
+                    | CapacityErrorKind::Full(_)
             )
         }
     }
