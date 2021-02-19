@@ -1,0 +1,34 @@
+Node {
+    entries: [
+        Leaf {
+            label: "Twelfth",
+            item: Rect {
+                low: Point2D {
+                    x: 0.5,
+                    y: 0.5,
+                },
+                high: Point2D {
+                    x: 5.5,
+                    y: 5.5,
+                },
+            },
+        },
+        Leaf {
+            label: "Eleventh",
+            item: Rect {
+                low: Point2D {
+                    x: 3.5,
+                    y: 6.5,
+                },
+                high: Point2D {
+                    x: 4.5,
+                    y: 11.5,
+                },
+            },
+        },
+    ],
+    level: 0,
+    min_children: 2,
+    max_children: 4,
+    split_strat: Linear,
+}
