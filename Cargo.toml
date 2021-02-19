@@ -11,6 +11,5 @@ members = [
 ]
 
 exclude = [
-    "cookbook",
-    "server-freezing-example"
+    "cookbook"
 ]
