@@ -753,15 +753,10 @@ async fn read_causes_write_buffer_to_fill() {
         }
     };
 
-    let task_to = Duration::from_secs(60);
-    let t1 = tokio::time::timeout(task_to, task);
-    let t2 = tokio::time::timeout(task_to, route_task);
-    let t3 = tokio::time::timeout(task_to, consume_output);
-    let t4 = tokio::time::timeout(task_to, generate_inputs);
-
-    let result = join4(t1, t2, t3, t4).await;
-    assert!(matches!(
-        result,
-        (Ok(ConnectionDropped::Closed), Ok(_), Ok(_), Ok(_))
-    ));
+    let result = tokio::time::timeout(
+        Duration::from_secs(60),
+        join4(task, route_task, consume_output, generate_inputs),
+    )
+    .await;
+    assert!(matches!(result, Ok((ConnectionDropped::Closed, _, _, _))));
 }
