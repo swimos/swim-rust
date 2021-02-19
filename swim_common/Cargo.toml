@@ -39,7 +39,7 @@ version = "0.2"
 optional = true
 
 [dev-dependencies]
-tokio = { version = "0.3.3", features = ["fs", "macros"] }
+tokio = { version = "0.3.3", features = ["fs", "macros", "test-util"] }
 rand = "0.7"
 num-bigint = { version = "0.3", features = ["rand"] }
 trybuild = "1.0.37"

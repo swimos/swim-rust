@@ -41,9 +41,6 @@ pub enum SelectorResult<T> {
     Written,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub struct WriteTimeout(Duration);
-
 /// An alternative to using a lock for splitting the read and write halves of an IO channel
 /// that cannot be split into two independently owned halves. Values are written into the
 /// sink from a provided stream and the selector itself is a stream of values read from
@@ -87,69 +84,45 @@ where
         let selector: &mut WsStreamSelector<S, M, T, E> = this.selector;
         let mut sleep: Pin<&mut Option<Sleep>> = this.timeout_sleep;
 
-        let WsStreamSelector {
-            ws,
-            messages,
-            pending,
-            bias,
-            state,
-            write_timeout,
-            on_write_timeout,
-        } = selector;
-        match state {
+        match &selector.state {
             State::Terminated => Poll::Ready(None),
             State::Terminating => {
-                *state = State::Terminated;
+                selector.state = State::Terminated;
                 Poll::Ready(None)
             }
             State::ClosePending => {
-                let result = ready!(ws.poll_close_unpin(cx));
-                *state = State::Terminated;
+                let result = ready!(selector.ws.poll_close_unpin(cx));
+                selector.state = State::Terminated;
                 match result {
                     Err(e) => Poll::Ready(Some(Err(e))),
                     _ => Poll::Ready(None),
                 }
             }
             _ => {
-                if *bias {
-                    let write_result = match next_to_send(cx, pending, messages) {
-                        Poll::Ready(Some((message, ts))) => try_write(
-                            ws,
-                            cx,
-                            pending,
-                            message,
-                            ts,
-                            write_timeout,
-                            on_write_timeout,
-                            &mut sleep,
-                        ),
+                if selector.bias {
+                    let write_result = match selector.next_to_send(cx) {
+                        Poll::Ready(Some((message, ts))) => {
+                            selector.try_write(cx, message, ts, &mut sleep)
+                        }
                         _ => Poll::Pending,
                     };
                     if write_result.is_pending() {
-                        try_read(ws, cx, state)
+                        selector.try_read(cx)
                     } else {
-                        *bias = false;
+                        selector.bias = false;
                         write_result.map(Some)
                     }
                 } else {
-                    let read_result = try_read(ws, cx, state);
+                    let read_result = selector.try_read(cx);
                     if read_result.is_pending() {
-                        match next_to_send(cx, pending, messages) {
-                            Poll::Ready(Some((message, ts))) => try_write(
-                                ws,
-                                cx,
-                                pending,
-                                message,
-                                ts,
-                                write_timeout,
-                                on_write_timeout,
-                                &mut sleep,
-                            )
-                            .map(Some),
+                        match selector.next_to_send(cx) {
+                            Poll::Ready(Some((message, ts))) => {
+                                selector.try_write(cx, message, ts, &mut sleep).map(Some)
+                            }
                             _ => Poll::Pending,
                         }
                     } else {
-                        *bias = true;
+                        selector.bias = true;
                         read_result
                     }
                 }
@@ -171,49 +144,31 @@ where
         let selector: &mut WsStreamSelector<S, M, T, E> = this.selector;
         let mut sleep: Pin<&mut Option<Sleep>> = this.timeout_sleep;
 
-        let WsStreamSelector {
-            ws,
-            messages,
-            pending,
-            bias,
-            state,
-            write_timeout,
-            on_write_timeout,
-        } = selector;
-        match state {
+        match &selector.state {
             State::Terminated => Poll::Ready(None),
             State::Terminating => {
-                *state = State::Terminated;
+                selector.state = State::Terminated;
                 Poll::Ready(None)
             }
             State::ClosePending => {
-                let result = ready!(ws.poll_close_unpin(cx));
-                *state = State::Terminated;
+                let result = ready!(selector.ws.poll_close_unpin(cx));
+                selector.state = State::Terminated;
                 match result {
                     Err(e) => Poll::Ready(Some(Err(e))),
                     _ => Poll::Ready(None),
                 }
             }
             _ => {
-                let write_result = match next_to_send(cx, pending, messages) {
+                let write_result = match selector.next_to_send(cx) {
                     Poll::Ready(Some((message, ts))) => {
-                        let result = ready!(try_write(
-                            ws,
-                            cx,
-                            pending,
-                            message,
-                            ts,
-                            write_timeout,
-                            on_write_timeout,
-                            &mut sleep
-                        ));
+                        let result = ready!(selector.try_write(cx, message, ts, &mut sleep));
                         Poll::Ready(Some(result.map(|_| ())))
                     }
                     Poll::Ready(None) => Poll::Ready(None),
                     _ => Poll::Pending,
                 };
                 if !write_result.is_pending() {
-                    *bias = false
+                    selector.bias = false
                 }
                 write_result
             }
@@ -223,7 +178,7 @@ where
 
 impl<S, M, T, E> WsStreamSelector<S, M, T, E>
 where
-    M: Stream<Item = T>,
+    M: Stream<Item = T> + Unpin,
     S: Sink<T, Error = E>,
     S: Stream<Item = Result<T, E>> + Unpin,
 {
@@ -270,9 +225,91 @@ where
     pub fn is_terminated(&self) -> bool {
         matches!(&self.state, State::Terminated)
     }
-}
 
-type SelectResult<T, E> = Result<SelectorResult<T>, E>;
+    fn try_read(&mut self, cx: &mut Context<'_>) -> Poll<Option<Result<SelectorResult<T>, E>>> {
+        match self.ws.poll_next_unpin(cx) {
+            Poll::Ready(Some(r)) => Poll::Ready(Some(r.map(SelectorResult::Read))),
+            Poll::Ready(_) => match self.ws.poll_close_unpin(cx) {
+                Poll::Ready(Err(e)) => {
+                    self.state = State::Terminating;
+                    Poll::Ready(Some(Err(e)))
+                }
+                Poll::Pending => {
+                    self.state = State::ClosePending;
+                    Poll::Pending
+                }
+                _ => {
+                    self.state = State::Terminated;
+                    Poll::Ready(None)
+                }
+            },
+            _ => Poll::Pending,
+        }
+    }
+
+    fn next_to_send(&mut self, cx: &mut Context<'_>) -> Poll<Option<(T, Option<Instant>)>> {
+        match self.pending.take() {
+            Some((message, t)) => Poll::Ready(Some((message, Some(t)))),
+            _ => {
+                if let Some(message_str) = &mut self.messages {
+                    if let Some(message) = ready!(message_str.poll_next_unpin(cx)) {
+                        Poll::Ready(Some((message, None)))
+                    } else {
+                        self.messages = None;
+                        Poll::Ready(None)
+                    }
+                } else {
+                    Poll::Ready(None)
+                }
+            }
+        }
+    }
+
+    fn try_write(
+        &mut self,
+        cx: &mut Context<'_>,
+        message: T,
+        ts: Option<Instant>,
+        sleep: &mut Pin<&mut Option<Sleep>>,
+    ) -> Poll<Result<SelectorResult<T>, E>> {
+        match self.ws.poll_ready_unpin(cx) {
+            Poll::Ready(Ok(_)) => Poll::Ready(
+                self.ws
+                    .start_send_unpin(message)
+                    .map(|_| SelectorResult::Written),
+            ),
+            Poll::Ready(Err(e)) => {
+                if let Some(ts) = ts {
+                    self.pending = Some((message, ts));
+                } else {
+                    let ts = Instant::now()
+                        .checked_add(self.write_timeout)
+                        .expect("Duration overflow.");
+                    self.pending = Some((message, ts));
+                    register_sleep(sleep, ts);
+                }
+                Poll::Ready(Err(e))
+            }
+            _ => {
+                if let Some(ts) = ts {
+                    self.pending = Some((message, ts));
+                } else {
+                    let ts = Instant::now()
+                        .checked_add(self.write_timeout)
+                        .expect("Duration overflow.");
+                    self.pending = Some((message, ts));
+                    register_sleep(sleep, ts);
+                }
+                if let Some(s) = sleep.as_mut().as_pin_mut() {
+                    ready!(s.poll(cx));
+                    Poll::Ready(Err((self.on_write_timeout)(&self.write_timeout)))
+                } else {
+                    Poll::Pending
+                }
+            }
+        }
+    }
+}
 
 impl<'a, S, M, T, E> FusedFuture for SelectRw<'a, S, M, T, E>
 where
@@ -293,110 +330,6 @@ where
 {
     fn is_terminated(&self) -> bool {
         self.selector.is_terminated()
-    }
-}
-
-fn try_read<S, T, E>(
-    ws: &mut S,
-    cx: &mut Context<'_>,
-    state: &mut State,
-) -> Poll<Option<SelectResult<T, E>>>
-where
-    S: Sink<T, Error = E>,
-    S: Stream<Item = Result<T, E>> + Unpin,
-{
-    match ws.poll_next_unpin(cx) {
-        Poll::Ready(Some(r)) => Poll::Ready(Some(r.map(SelectorResult::Read))),
-        Poll::Ready(_) => match ws.poll_close_unpin(cx) {
-            Poll::Ready(Err(e)) => {
-                *state = State::Terminating;
-                Poll::Ready(Some(Err(e)))
-            }
-            Poll::Pending => {
-                *state = State::ClosePending;
-                Poll::Pending
-            }
-            _ => {
-                *state = State::Terminated;
-                Poll::Ready(None)
-            }
-        },
-        _ => Poll::Pending,
-    }
-}
-
-fn next_to_send<T, M>(
-    cx: &mut Context<'_>,
-    pending: &mut Option<(T, Instant)>,
-    messages: &mut Option<M>,
-) -> Poll<Option<(T, Option<Instant>)>>
-where
-    M: Stream<Item = T> + Unpin,
-{
-    match pending.take() {
-        Some((message, t)) => Poll::Ready(Some((message, Some(t)))),
-        _ => {
-            if let Some(message_str) = messages {
-                if let Some(message) = ready!(message_str.poll_next_unpin(cx)) {
-                    Poll::Ready(Some((message, None)))
-                } else {
-                    *messages = None;
-                    Poll::Ready(None)
-                }
-            } else {
-                Poll::Ready(None)
-            }
-        }
-    }
-}
-
-fn try_write<S, T, E>(
-    ws: &mut S,
-    cx: &mut Context<'_>,
-    pending: &mut Option<(T, Instant)>,
-    message: T,
-    ts: Option<Instant>,
-    write_timeout: &Duration,
-    on_write_timeout: &impl Fn(&Duration) -> E,
-    sleep: &mut Pin<&mut Option<Sleep>>,
-) -> Poll<SelectResult<T, E>>
-where
-    S: Sink<T, Error = E> + Unpin,
-{
-    match ws.poll_ready_unpin(cx) {
-        Poll::Ready(Ok(_)) => Poll::Ready(
-            ws.start_send_unpin(message)
-                .map(|_| SelectorResult::Written),
-        ),
-        Poll::Ready(Err(e)) => {
-            if let Some(ts) = ts {
-                *pending = Some((message, ts));
-            } else {
-                let ts = Instant::now()
-                    .checked_add(*write_timeout)
-                    .expect("Duration overflow.");
-                *pending = Some((message, ts));
-                register_sleep(sleep, ts);
-            }
-            Poll::Ready(Err(e))
-        }
-        _ => {
-            if let Some(ts) = ts {
-                *pending = Some((message, ts));
-            } else {
-                let ts = Instant::now()
-                    .checked_add(*write_timeout)
-                    .expect("Duration overflow.");
-                *pending = Some((message, ts));
-                register_sleep(sleep, ts);
-            }
-            if let Some(s) = sleep.as_mut().as_pin_mut() {
-                ready!(s.poll(cx));
-                Poll::Ready(Err(on_write_timeout(write_timeout)))
-            } else {
-                Poll::Pending
-            }
-        }
     }
 }
 

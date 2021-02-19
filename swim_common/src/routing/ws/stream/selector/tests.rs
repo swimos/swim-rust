@@ -15,10 +15,11 @@
 use crate::routing::ws::protocol::CloseReason;
 use crate::routing::ws::stream::selector::{SelectorResult, WsStreamSelector};
 use crate::routing::ws::stream::JoinedStreamSink;
-use futures::future::{ready, Ready};
+use futures::future::{join, ready, Ready};
 use futures::task::{AtomicWaker, Context, Poll};
 use futures::{Sink, SinkExt, Stream, StreamExt};
 use parking_lot::Mutex;
+use std::ops::Add;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
@@ -521,7 +522,7 @@ async fn error_on_close() {
     assert!(result.is_none());
     assert!(selector.is_terminated());
 }
-/*
+
 #[tokio::test]
 async fn consume_timeout() {
     let test_stream = TestWsStream::default();
@@ -536,17 +537,47 @@ async fn consume_timeout() {
 
     let select_task = NotifyOnBlocked::new(selector.select_rw(), notify.clone());
 
+    tokio::time::pause();
+
     let time_task = async move {
         notify.notified().await;
-
+        tokio::time::advance(WRITE_TIMEOUT.add(Duration::from_secs(1))).await;
     };
 
-    let result = selector.select_rw().await;
+    let (result, _) = join(select_task, time_task).await;
 
-    assert_eq!(result, Some(Ok(SelectorResult::Written)));
+    assert_eq!(result, Some(Err(TestError("Write Timeout".to_string()))));
 
     assert!(!selector.is_terminated());
-}*/
+}
+
+#[tokio::test]
+async fn consume_timeout_write_only() {
+    let test_stream = TestWsStream::default();
+
+    let (tx, rx) = mpsc::channel(8);
+
+    assert!(tx.send(1).await.is_ok());
+
+    let mut selector = WsStreamSelector::new(test_stream, rx, WRITE_TIMEOUT, write_timeout);
+
+    let notify = Arc::new(Notify::new());
+
+    let select_task = NotifyOnBlocked::new(selector.select_w(), notify.clone());
+
+    tokio::time::pause();
+
+    let time_task = async move {
+        notify.notified().await;
+        tokio::time::advance(WRITE_TIMEOUT.add(Duration::from_secs(1))).await;
+    };
+
+    let (result, _) = join(select_task, time_task).await;
+
+    assert_eq!(result, Some(Err(TestError("Write Timeout".to_string()))));
+
+    assert!(!selector.is_terminated());
+}
 
 struct TestStreamSink {
     input: Vec<i32>,
