@@ -12,12 +12,12 @@ macro_helpers = { path = "../../utilities/macro_helpers" }
 syn = "1.0.39"
 quote = "1.0.7"
 proc-macro2 = "1.0.19"
-darling = "0.10.2"
+darling = "0.12.0"
 
 [dev-dependencies]
 swim_server = { path = "../../swim_server" }
 utilities = { path = "../../utilities" }
-tokio = { version = "0.3.3", features = ["sync"] }
+tokio = { version = "1.1.1", features = ["sync"] }
 futures = "0.3.4"
 tracing = "0.1.16"
 tracing-futures = "0.2.4"

@@ -44,6 +44,7 @@ use swim_common::request::Request;
 use swim_common::routing::{ConnectionError, ProtocolError, ProtocolErrorKind};
 use swim_runtime::time::clock::Clock;
 use tokio::sync::{mpsc, oneshot};
+use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, span, Level};
 use tracing_futures::Instrument;
 use url::Url;
@@ -116,7 +117,7 @@ impl LocalEndpoint {
     }
 }
 
-pub(in crate) type EnvChannel = TakeUntil<mpsc::Receiver<TaggedEnvelope>, trigger::Receiver>;
+pub(in crate) type EnvChannel = TakeUntil<ReceiverStream<TaggedEnvelope>, trigger::Receiver>;
 
 /// Container for the running routes within a plane.
 #[derive(Debug, Default)]
@@ -300,7 +301,7 @@ impl<Clk: Clock, DelegateFac: ServerRouterFactory> RouteResolver<Clk, DelegateFa
             counter,
         } = self;
         let (agent_route, params) = route_for(&route, routes)?;
-        let (tx, rx) = mpsc::channel(8);
+        let (tx, rx) = mpsc::channel::<TaggedEnvelope>(8);
         *counter = counter
             .checked_add(1)
             .expect("Local endpoint counter overflow.");
@@ -310,7 +311,7 @@ impl<Clk: Clock, DelegateFac: ServerRouterFactory> RouteResolver<Clk, DelegateFa
             params,
             execution_config.clone(),
             clock.clone(),
-            rx.take_until(stop_trigger.clone()),
+            ReceiverStream::new(rx).take_until(stop_trigger.clone()),
             router_fac.create_for(addr),
         );
         active_routes.add_endpoint(addr, route, LocalEndpoint::new(Arc::downgrade(&agent), tx));
@@ -367,7 +368,9 @@ pub(crate) async fn run_plane<Clk, S, DelegateFac: ServerRouterFactory>(
     let (context_tx, context_rx) = context_channel;
     let mut context = ContextImpl::new(context_tx.clone(), spec.routes());
 
-    let mut requests = context_rx.take_until(stop_trigger.clone()).fuse();
+    let mut requests = ReceiverStream::new(context_rx)
+        .take_until(stop_trigger.clone())
+        .fuse();
 
     let PlaneSpec {
         routes,

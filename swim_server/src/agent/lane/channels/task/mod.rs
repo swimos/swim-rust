@@ -54,6 +54,7 @@ use swim_common::model::Value;
 use swim_common::warp::envelope::{OutgoingHeader, OutgoingLinkMessage};
 use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc;
+use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, span, Level};
 use tracing_futures::Instrument;
 use utilities::errors::Recoverable;
@@ -231,7 +232,9 @@ where
     let spawner_channels = UplinkChannels::new(events, act_rx, err_tx);
 
     let (upd_done_tx, upd_done_rx) = trigger::trigger();
-    let updater = arc_handler.make_update().run_update(upd_rx);
+    let updater = arc_handler
+        .make_update()
+        .run_update(ReceiverStream::new(upd_rx));
     let update_task = async move {
         let result = updater.await;
         upd_done_tx.trigger();
@@ -243,7 +246,7 @@ where
         .make_task(arc_handler, spawner_channels, route.clone(), &context)
         .instrument(span!(Level::INFO, UPLINK_SPAWN_TASK, ?route));
 
-    let mut err_rx = err_rx.take_until(upd_done_rx).fuse();
+    let mut err_rx = ReceiverStream::new(err_rx).take_until(upd_done_rx).fuse();
 
     let route_cpy = route.clone();
 
@@ -438,14 +441,19 @@ where
     let (err_tx, err_rx) = mpsc::channel(config.uplink_err_buffer.get());
 
     let update_task = async move {
-        let result = updater.run_update(update_rx).await;
+        let result = updater.run_update(ReceiverStream::new(update_rx)).await;
         upd_done_tx.trigger();
         result
     }
     .instrument(span!(Level::INFO, UPDATE_TASK, ?route));
 
     let uplink_task = uplinks
-        .run(uplink_rx, context.router_handle(), err_tx, yield_after)
+        .run(
+            ReceiverStream::new(uplink_rx),
+            context.router_handle(),
+            err_tx,
+            yield_after,
+        )
         .instrument(span!(Level::INFO, UPLINK_SPAWN_TASK, ?route));
 
     let error_handler =
@@ -489,7 +497,8 @@ where
     let _enter = span.enter();
 
     let (feedback_tx, feedback_rx) = mpsc::channel(config.feedback_buffer.get());
-    let feedback_rx = feedback_rx.map(|(_, message)| AddressedUplinkMessage::Broadcast(message));
+    let feedback_rx = ReceiverStream::new(feedback_rx)
+        .map(|(_, message)| AddressedUplinkMessage::Broadcast(message));
 
     let updater =
         CommandLaneUpdateTask::new(lane.clone(), Some(feedback_tx), config.cleanup_timeout);
@@ -524,7 +533,7 @@ where
     let _enter = span.enter();
 
     let (feedback_tx, feedback_rx) = mpsc::channel(config.feedback_buffer.get());
-    let feedback_rx = feedback_rx
+    let feedback_rx = ReceiverStream::new(feedback_rx)
         .map(|(address, message)| AddressedUplinkMessage::Addressed { message, address });
 
     let updater =
@@ -672,7 +681,12 @@ where
     );
 
     let uplink_task = uplinks
-        .run(uplink_rx, context.router_handle(), err_tx, yield_after)
+        .run(
+            ReceiverStream::new(uplink_rx),
+            context.router_handle(),
+            err_tx,
+            yield_after,
+        )
         .instrument(span!(Level::INFO, UPLINK_SPAWN_TASK, ?route));
 
     let (_, (uplink_fatal, uplink_errs)) = join(uplink_task, envelope_task).await;
@@ -718,11 +732,10 @@ async fn action_envelope_task_with_uplinks<Cmd>(
 where
     Cmd: Send + Sync + Form + Debug + 'static,
 {
+    let envelopes = envelopes.fuse();
     pin_mut!(envelopes);
 
-    let envelopes = envelopes.fuse();
-    let mut err_rx = err_rx.fuse();
-    pin_mut!(envelopes);
+    let mut err_rx = ReceiverStream::new(err_rx).fuse();
 
     let mut iteration_count: usize = 0;
 
@@ -883,7 +896,7 @@ where
         config,
         context,
         route,
-        response_rx,
+        ReceiverStream::new(response_rx),
         UplinkKind::Demand,
     )
     .await

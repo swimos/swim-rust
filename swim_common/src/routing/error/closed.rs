@@ -21,7 +21,6 @@ use utilities::errors::Recoverable;
 
 use tokio::sync::mpsc::error::RecvError as MpscRecvError;
 use tokio::sync::mpsc::error::SendError as MpscSendError;
-use tokio::sync::mpsc::error::TryRecvError as MpscTryRecvError;
 use tokio::sync::mpsc::error::TrySendError as MpscTrySendError;
 
 use tokio::sync::oneshot::error::RecvError as OneshotRecvError;
@@ -134,18 +133,6 @@ impl From<MpscRecvError> for CloseError {
     }
 }
 
-impl From<MpscTryRecvError> for CloseError {
-    fn from(_: MpscTryRecvError) -> Self {
-        CloseError::new(CloseErrorKind::Unexpected, None)
-    }
-}
-
-impl<T> From<MpscTrySendError<T>> for CloseError {
-    fn from(_: MpscTrySendError<T>) -> Self {
-        CloseError::new(CloseErrorKind::Unexpected, None)
-    }
-}
-
 impl<T> From<MpscSendError<T>> for ConnectionError {
     fn from(e: MpscSendError<T>) -> Self {
         ConnectionError::Closed(e.into())
@@ -158,15 +145,9 @@ impl From<MpscRecvError> for ConnectionError {
     }
 }
 
-impl From<MpscTryRecvError> for ConnectionError {
-    fn from(e: MpscTryRecvError) -> Self {
-        ConnectionError::Closed(e.into())
-    }
-}
-
-impl<T> From<MpscTrySendError<T>> for ConnectionError {
-    fn from(e: MpscTrySendError<T>) -> Self {
-        ConnectionError::Closed(e.into())
+impl<T> From<MpscTrySendError<T>> for CloseError {
+    fn from(_e: MpscTrySendError<T>) -> Self {
+        CloseError::unexpected()
     }
 }
 
@@ -286,16 +267,6 @@ fn test_display() {
 #[tokio::test]
 async fn test_from() {
     use tokio::sync::mpsc;
-
-    {
-        let (tx, mut rx): (mpsc::Sender<i32>, mpsc::Receiver<i32>) = mpsc::channel(1);
-        drop(tx);
-
-        let next = rx.try_recv();
-        let err: CloseError = next.unwrap_err().into();
-
-        assert_eq!(err, CloseError::unexpected());
-    }
 
     {
         let (tx, rx): (mpsc::Sender<i32>, mpsc::Receiver<i32>) = mpsc::channel(1);

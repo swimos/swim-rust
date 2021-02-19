@@ -19,6 +19,7 @@ use std::time::Duration;
 use swim_common::sink::item::for_mpsc_sender;
 use swim_runtime::time::timeout::timeout;
 use tokio::sync::{mpsc, Barrier};
+use tokio_stream::wrappers::ReceiverStream;
 use utilities::sync::circular_buffer;
 
 const TIMEOUT: Duration = Duration::from_secs(30);
@@ -58,7 +59,7 @@ async fn send_multiple() {
     let task = super::release_pressure(buf_rx, for_mpsc_sender(tx), yield_after());
     let handle = tokio::task::spawn(task);
 
-    let receiver = tokio::task::spawn(rx.collect::<Vec<_>>());
+    let receiver = tokio::task::spawn(ReceiverStream::new(rx).collect::<Vec<_>>());
 
     for n in 0..10 {
         assert!(buf_tx.try_send(n).is_ok());
@@ -94,7 +95,7 @@ async fn send_multiple_chunks() {
 
     let receiver = tokio::task::spawn(async move {
         let mut results = vec![];
-        while let Some(value) = rx.next().await {
+        while let Some(value) = rx.recv().await {
             results.push(value);
             if value == 9 {
                 barrier_rx.wait().await;

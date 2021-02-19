@@ -44,6 +44,7 @@ use swim_common::warp::envelope::{Envelope, EnvelopeHeader, EnvelopeParseErr, Ou
 use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc;
 use tokio::time::{sleep, Instant};
+use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, Level};
 use utilities::errors::Recoverable;
 use utilities::future::retryable::strategy::RetryStrategy;
@@ -138,7 +139,7 @@ where
             config,
         } = self;
 
-        let outgoing_payloads = messages.map(Into::into);
+        let outgoing_payloads = ReceiverStream::new(messages).map(Into::into);
 
         let mut selector = WsStreamSelector::new(
             &mut ws_stream,
@@ -148,14 +149,15 @@ where
         );
 
         let mut stop_fused = stop_signal.fuse();
-        let mut timeout = sleep(config.activity_timeout);
+        let timeout = sleep(config.activity_timeout);
+        pin_mut!(timeout);
 
         let mut resolved: HashMap<RelativePath, Route> = HashMap::new();
         let yield_mod = config.yield_after.get();
         let mut iteration_count: usize = 0;
 
         let completion = loop {
-            timeout.reset(
+            timeout.as_mut().reset(
                 Instant::now()
                     .checked_add(config.activity_timeout)
                     .expect("Timer overflow."),
@@ -171,6 +173,8 @@ where
             };
 
             if let Some(event) = next {
+                // disable the linter here as there are to-dos
+                #[allow(clippy::collapsible_match)]
                 match event {
                     Ok(SelectorResult::Read(msg)) => match msg {
                         WsMessage::Text(msg) => match read_envelope(&msg) {

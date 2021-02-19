@@ -98,7 +98,7 @@ async fn try_dispatch_in_map() {
 
     assert!(result.is_ok());
 
-    let received = rx.next().now_or_never();
+    let received = rx.recv().now_or_never();
     assert_eq!(received, Some(Some(TaggedEnvelope(addr, env))));
 }
 
@@ -117,7 +117,7 @@ async fn try_dispatch_from_router() {
 
     assert!(result.is_ok());
 
-    let received = rx.next().now_or_never();
+    let received = rx.recv().now_or_never();
     assert_eq!(received, Some(Some(TaggedEnvelope(addr, env))));
 
     assert!(resolved.contains_key(&path));
@@ -238,7 +238,7 @@ async fn dispatch_immediate_success() {
 
     assert!(result.is_ok());
 
-    let received = rx.next().now_or_never();
+    let received = rx.recv().now_or_never();
     assert_eq!(received, Some(Some(TaggedEnvelope(addr, env))));
 
     assert!(resolved.contains_key(&path));
@@ -317,7 +317,7 @@ async fn dispatch_after_retry() {
 
     assert!(result.is_ok());
 
-    let received = rx.next().now_or_never();
+    let received = rx.recv().now_or_never();
     assert_eq!(received, Some(Some(TaggedEnvelope(addr, env))));
 
     assert!(resolved.contains_key(&path));
@@ -354,7 +354,7 @@ async fn dispatch_after_immediate_retry() {
 
     assert!(result.is_ok());
 
-    let received = rx.next().now_or_never();
+    let received = rx.recv().now_or_never();
     assert_eq!(received, Some(Some(TaggedEnvelope(addr, env))));
 
     assert!(resolved.contains_key(&path));
@@ -497,7 +497,7 @@ async fn task_receive_message_with_route() {
 
     let test_case = async move {
         assert!(sock_in.send(Ok(message_for(env_cpy.clone()))).await.is_ok());
-        assert!(matches!(rx.next().await, Some(TaggedEnvelope(_, env)) if env == env_cpy));
+        assert!(matches!(rx.recv().await, Some(TaggedEnvelope(_, env)) if env == env_cpy));
         stop_trigger.trigger();
     };
 

@@ -36,6 +36,7 @@ use swim_common::routing::{
     CloseError, ConnectionError, HttpError, HttpErrorKind, ResolutionError, ResolutionErrorKind,
 };
 use tokio::sync::mpsc;
+use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
 use utilities::sync::promise;
 use utilities::uri::RelativeUri;
@@ -409,11 +410,11 @@ impl FakeListener {
 
 impl Listener for FakeListener {
     type Socket = FakeSocket;
-    type AcceptStream = Fuse<mpsc::Receiver<io::Result<(Self::Socket, SocketAddr)>>>;
+    type AcceptStream = Fuse<ReceiverStream<io::Result<(Self::Socket, SocketAddr)>>>;
 
     fn into_stream(self) -> Self::AcceptStream {
         let FakeListener(rx) = self;
-        rx.fuse()
+        ReceiverStream::new(rx).fuse()
     }
 }
 

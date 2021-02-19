@@ -96,7 +96,9 @@ impl Recoverable for CapacityError {
         {
             !matches!(
                 self.kind,
-                CapacityErrorKind::ReadFull | CapacityErrorKind::WriteFull | CapacityErrorKind::Full(_)
+                CapacityErrorKind::ReadFull
+                    | CapacityErrorKind::WriteFull
+                    | CapacityErrorKind::Full(_)
             )
         }
     }

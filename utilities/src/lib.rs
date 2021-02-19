@@ -24,6 +24,7 @@ pub mod lru_cache;
 pub mod num;
 pub mod ptr;
 pub mod route_pattern;
+pub mod rtree;
 pub mod sync;
 pub mod task;
 pub mod trace;

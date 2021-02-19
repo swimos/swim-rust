@@ -27,6 +27,7 @@ use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::AbsolutePath;
 use tokio::sync::mpsc;
 use tokio::time::timeout;
+use tokio_stream::wrappers::ReceiverStream;
 use utilities::sync::promise;
 
 async fn get_message(
@@ -109,7 +110,10 @@ async fn test_route_single_outgoing_message_to_single_downlink() {
     let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
     let _ = sink.send(envelope).await.unwrap();
 
-    let mut pool_handlers: HashMap<_, _> = pool_handlers_rx.take(1).collect().await;
+    let mut pool_handlers: HashMap<_, _> = ReceiverStream::new(pool_handlers_rx)
+        .take(1)
+        .collect()
+        .await;
 
     assert!(router.close().await.is_ok());
     assert_eq!(get_request_count(&pool), 1);
@@ -144,7 +148,10 @@ async fn test_route_single_outgoing_message_to_multiple_downlinks_same_host() {
     let _ = first_sink.send(env.clone()).await.unwrap();
     let _ = second_sink.send(env).await.unwrap();
 
-    let mut pool_handlers: HashMap<_, _> = pool_handlers_rx.take(1).collect().await;
+    let mut pool_handlers: HashMap<_, _> = ReceiverStream::new(pool_handlers_rx)
+        .take(1)
+        .collect()
+        .await;
 
     assert!(router.close().await.is_ok());
     assert_eq!(get_request_count(&pool), 2);
@@ -185,7 +192,10 @@ async fn test_route_single_outgoing_message_to_multiple_downlinks_different_host
     let _ = first_sink.send(env.clone()).await.unwrap();
     let _ = second_sink.send(env).await.unwrap();
 
-    let mut pool_handlers: HashMap<_, _> = pool_handlers_rx.take(2).collect().await;
+    let mut pool_handlers: HashMap<_, _> = ReceiverStream::new(pool_handlers_rx)
+        .take(2)
+        .collect()
+        .await;
 
     assert!(router.close().await.is_ok());
     assert_eq!(get_request_count(&pool), 2);
@@ -229,7 +239,10 @@ async fn test_route_multiple_outgoing_messages_to_single_downlink() {
     );
     let _ = sink.send(second_env).await.unwrap();
 
-    let mut pool_handlers: HashMap<_, _> = pool_handlers_rx.take(1).collect().await;
+    let mut pool_handlers: HashMap<_, _> = ReceiverStream::new(pool_handlers_rx)
+        .take(1)
+        .collect()
+        .await;
 
     assert!(router.close().await.is_ok());
     assert_eq!(get_request_count(&pool), 2);
@@ -282,7 +295,10 @@ async fn test_route_multiple_outgoing_messages_to_multiple_downlinks_same_host()
     let _ = first_sink.send(second_env).await.unwrap();
     let _ = second_sink.send(third_env).await.unwrap();
 
-    let mut pool_handlers: HashMap<_, _> = pool_handlers_rx.take(1).collect().await;
+    let mut pool_handlers: HashMap<_, _> = ReceiverStream::new(pool_handlers_rx)
+        .take(1)
+        .collect()
+        .await;
 
     assert!(router.close().await.is_ok());
     assert_eq!(get_request_count(&pool), 3);
@@ -340,7 +356,10 @@ async fn test_route_multiple_outgoing_messages_to_multiple_downlinks_different_h
     let _ = first_sink.send(second_env).await.unwrap();
     let _ = second_sink.send(third_env).await.unwrap();
 
-    let mut pool_handlers: HashMap<_, _> = pool_handlers_rx.take(2).collect().await;
+    let mut pool_handlers: HashMap<_, _> = ReceiverStream::new(pool_handlers_rx)
+        .take(2)
+        .collect()
+        .await;
 
     assert!(router.close().await.is_ok());
     assert_eq!(get_request_count(&pool), 3);
@@ -379,7 +398,10 @@ async fn test_route_single_incoming_message_to_single_downlink() {
 
     let _ = sink.send(envelope.clone()).await.unwrap();
 
-    let mut pool_handlers: HashMap<_, _> = pool_handlers_rx.take(1).collect().await;
+    let mut pool_handlers: HashMap<_, _> = ReceiverStream::new(pool_handlers_rx)
+        .take(1)
+        .collect()
+        .await;
 
     send_message(&mut pool_handlers, &url, "@event(node:foo,lane:bar){Hello}").await;
 
@@ -419,7 +441,10 @@ async fn test_route_single_incoming_message_to_multiple_downlinks_same_host_same
     let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
     let _ = first_sink.send(envelope).await.unwrap();
 
-    let mut pool_handlers: HashMap<_, _> = pool_handlers_rx.take(1).collect().await;
+    let mut pool_handlers: HashMap<_, _> = ReceiverStream::new(pool_handlers_rx)
+        .take(1)
+        .collect()
+        .await;
 
     send_message(
         &mut pool_handlers,
@@ -470,7 +495,10 @@ async fn test_route_single_incoming_message_to_multiple_downlinks_same_host_diff
     let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
     let _ = first_sink.send(envelope.clone()).await.unwrap();
 
-    let mut pool_handlers: HashMap<_, _> = pool_handlers_rx.take(1).collect().await;
+    let mut pool_handlers: HashMap<_, _> = ReceiverStream::new(pool_handlers_rx)
+        .take(1)
+        .collect()
+        .await;
 
     send_message(&mut pool_handlers, &url, "@event(node:foo,lane:bar){tseT}").await;
 
@@ -519,7 +547,10 @@ async fn test_route_single_incoming_message_to_multiple_downlinks_different_host
     let _ = first_sink.send(envelope.clone()).await.unwrap();
     let _ = second_sink.send(envelope).await.unwrap();
 
-    let mut pool_handlers: HashMap<_, _> = pool_handlers_rx.take(2).collect().await;
+    let mut pool_handlers: HashMap<_, _> = ReceiverStream::new(pool_handlers_rx)
+        .take(2)
+        .collect()
+        .await;
 
     send_message(
         &mut pool_handlers,
@@ -595,7 +626,10 @@ async fn test_route_single_incoming_message_to_multiple_downlinks_different_host
     let _ = second_sink.send(envelope.clone()).await.unwrap();
     let _ = third_sink.send(envelope).await.unwrap();
 
-    let mut pool_handlers: HashMap<_, _> = pool_handlers_rx.take(3).collect().await;
+    let mut pool_handlers: HashMap<_, _> = ReceiverStream::new(pool_handlers_rx)
+        .take(3)
+        .collect()
+        .await;
 
     send_message(
         &mut pool_handlers,
@@ -679,7 +713,10 @@ async fn test_route_multiple_incoming_messages_to_single_downlink() {
     let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
     let _ = sink.send(envelope.clone()).await.unwrap();
 
-    let mut pool_handlers: HashMap<_, _> = pool_handlers_rx.take(1).collect().await;
+    let mut pool_handlers: HashMap<_, _> = ReceiverStream::new(pool_handlers_rx)
+        .take(1)
+        .collect()
+        .await;
 
     send_message(
         &mut pool_handlers,
@@ -741,7 +778,10 @@ async fn test_route_multiple_incoming_messages_to_multiple_downlinks_same_host_s
     let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
     let _ = first_sink.send(envelope).await.unwrap();
 
-    let mut pool_handlers: HashMap<_, _> = pool_handlers_rx.take(1).collect().await;
+    let mut pool_handlers: HashMap<_, _> = ReceiverStream::new(pool_handlers_rx)
+        .take(1)
+        .collect()
+        .await;
 
     send_message(
         &mut pool_handlers,
@@ -814,7 +854,10 @@ async fn test_route_multiple_incoming_messages_to_multiple_downlinks_same_host_d
     let envelope = Envelope::sync(String::from("room"), String::from("seven"));
     let _ = first_sink.send(envelope.clone()).await.unwrap();
 
-    let mut pool_handlers: HashMap<_, _> = pool_handlers_rx.take(1).collect().await;
+    let mut pool_handlers: HashMap<_, _> = ReceiverStream::new(pool_handlers_rx)
+        .take(1)
+        .collect()
+        .await;
 
     send_message(
         &mut pool_handlers,
@@ -891,7 +934,10 @@ async fn test_route_multiple_incoming_message_to_multiple_downlinks_different_ho
     let _ = first_sink.send(envelope.clone()).await.unwrap();
     let _ = second_sink.send(envelope).await.unwrap();
 
-    let mut pool_handlers: HashMap<_, _> = pool_handlers_rx.take(2).collect().await;
+    let mut pool_handlers: HashMap<_, _> = ReceiverStream::new(pool_handlers_rx)
+        .take(2)
+        .collect()
+        .await;
 
     send_message(
         &mut pool_handlers,
@@ -1003,7 +1049,10 @@ async fn test_route_multiple_incoming_message_to_multiple_downlinks_different_ho
     let _ = second_sink.send(envelope.clone()).await.unwrap();
     let _ = third_sink.send(envelope).await.unwrap();
 
-    let mut pool_handlers: HashMap<_, _> = pool_handlers_rx.take(3).collect().await;
+    let mut pool_handlers: HashMap<_, _> = ReceiverStream::new(pool_handlers_rx)
+        .take(3)
+        .collect()
+        .await;
 
     send_message(
         &mut pool_handlers,
@@ -1159,7 +1208,10 @@ async fn test_route_incoming_unsopported_message() {
     let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
     let _ = sink.send(envelope.clone()).await.unwrap();
 
-    let mut pool_handlers: HashMap<_, _> = pool_handlers_rx.take(1).collect().await;
+    let mut pool_handlers: HashMap<_, _> = ReceiverStream::new(pool_handlers_rx)
+        .take(1)
+        .collect()
+        .await;
 
     send_message(&mut pool_handlers, &url, "@auth()").await;
 
@@ -1204,7 +1256,10 @@ async fn test_route_incoming_message_of_no_interest() {
     let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
     let _ = sink.send(envelope.clone()).await.unwrap();
 
-    let mut pool_handlers: HashMap<_, _> = pool_handlers_rx.take(1).collect().await;
+    let mut pool_handlers: HashMap<_, _> = ReceiverStream::new(pool_handlers_rx)
+        .take(1)
+        .collect()
+        .await;
 
     send_message(
         &mut pool_handlers,
@@ -1264,7 +1319,10 @@ async fn test_single_direct_message_existing_connection() {
 
     assert!(general_sink.send((url.clone(), command_env)).await.is_ok());
 
-    let mut pool_handlers: HashMap<_, _> = pool_handlers_rx.take(1).collect().await;
+    let mut pool_handlers: HashMap<_, _> = ReceiverStream::new(pool_handlers_rx)
+        .take(1)
+        .collect()
+        .await;
 
     assert!(router.close().await.is_ok());
     assert_eq!(get_request_count(&pool), 2);
@@ -1302,7 +1360,10 @@ async fn test_single_direct_message_new_connection() {
 
     assert!(general_sink.send((url.clone(), command_env)).await.is_ok());
 
-    let mut pool_handlers: HashMap<_, _> = pool_handlers_rx.take(1).collect().await;
+    let mut pool_handlers: HashMap<_, _> = ReceiverStream::new(pool_handlers_rx)
+        .take(1)
+        .collect()
+        .await;
 
     assert!(router.close().await.is_ok());
     assert_eq!(get_request_count(&pool), 1);
@@ -1347,7 +1408,10 @@ async fn test_multiple_direct_messages_existing_connection() {
 
     assert!(general_sink.send((url.clone(), second_env)).await.is_ok());
 
-    let mut pool_handlers: HashMap<_, _> = pool_handlers_rx.take(1).collect().await;
+    let mut pool_handlers: HashMap<_, _> = ReceiverStream::new(pool_handlers_rx)
+        .take(1)
+        .collect()
+        .await;
 
     assert!(router.close().await.is_ok());
     assert_eq!(get_request_count(&pool), 3);
@@ -1406,7 +1470,10 @@ async fn test_multiple_direct_messages_new_connection() {
 
     assert!(general_sink.send((url.clone(), third_env)).await.is_ok());
 
-    let mut pool_handlers: HashMap<_, _> = pool_handlers_rx.take(1).collect().await;
+    let mut pool_handlers: HashMap<_, _> = ReceiverStream::new(pool_handlers_rx)
+        .take(1)
+        .collect()
+        .await;
 
     assert!(router.close().await.is_ok());
     assert_eq!(get_request_count(&pool), 3);
@@ -1475,7 +1542,10 @@ async fn test_multiple_direct_messages_different_connections() {
         .await
         .is_ok());
 
-    let mut pool_handlers: HashMap<_, _> = pool_handlers_rx.take(2).collect().await;
+    let mut pool_handlers: HashMap<_, _> = ReceiverStream::new(pool_handlers_rx)
+        .take(2)
+        .collect()
+        .await;
 
     assert!(router.close().await.is_ok());
     assert_eq!(get_request_count(&pool), 3);
@@ -1552,7 +1622,10 @@ async fn test_route_incoming_parse_message_error() {
     let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
     let _ = sink.send(envelope.clone()).await.unwrap();
 
-    let mut pool_handlers: HashMap<_, _> = pool_handlers_rx.take(1).collect().await;
+    let mut pool_handlers: HashMap<_, _> = ReceiverStream::new(pool_handlers_rx)
+        .take(1)
+        .collect()
+        .await;
 
     send_message(&mut pool_handlers, &url, "|").await;
 
@@ -1597,7 +1670,10 @@ async fn test_route_incoming_parse_envelope_error() {
     let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
     let _ = sink.send(envelope.clone()).await.unwrap();
 
-    let mut pool_handlers: HashMap<_, _> = pool_handlers_rx.take(1).collect().await;
+    let mut pool_handlers: HashMap<_, _> = ReceiverStream::new(pool_handlers_rx)
+        .take(1)
+        .collect()
+        .await;
 
     send_message(&mut pool_handlers, &url, "@invalid(node:oof,lane:rab){bye}").await;
 
@@ -1652,7 +1728,10 @@ async fn test_route_incoming_connection_closed_single() {
     let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
     let _ = sink.send(envelope.clone()).await.unwrap();
 
-    let mut pool_handlers: HashMap<_, _> = pool_handlers_rx.take(1).collect().await;
+    let mut pool_handlers: HashMap<_, _> = ReceiverStream::new(pool_handlers_rx)
+        .take(1)
+        .collect()
+        .await;
 
     drop(pool_handlers.remove(&url).unwrap());
 
@@ -1683,7 +1762,10 @@ async fn test_route_incoming_connection_closed_multiple_same_host() {
     let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
     let _ = first_sink.send(envelope.clone()).await.unwrap();
 
-    let mut pool_handlers: HashMap<_, _> = pool_handlers_rx.take(1).collect().await;
+    let mut pool_handlers: HashMap<_, _> = ReceiverStream::new(pool_handlers_rx)
+        .take(1)
+        .collect()
+        .await;
 
     drop(pool_handlers.remove(&url).unwrap());
 
@@ -1726,7 +1808,10 @@ async fn test_route_incoming_connection_closed_multiple_different_hosts() {
     let _ = first_sink.send(envelope.clone()).await.unwrap();
     let _ = second_sink.send(envelope.clone()).await.unwrap();
 
-    let mut pool_handlers: HashMap<_, _> = pool_handlers_rx.take(2).collect().await;
+    let mut pool_handlers: HashMap<_, _> = ReceiverStream::new(pool_handlers_rx)
+        .take(2)
+        .collect()
+        .await;
 
     drop(pool_handlers.remove(&first_url).unwrap());
 

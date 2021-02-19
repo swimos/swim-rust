@@ -38,6 +38,7 @@ use swim_common::sink::item;
 use swim_warp::model::map::MapUpdate;
 use tokio::sync::mpsc;
 use tokio::time::timeout;
+use tokio_stream::wrappers::ReceiverStream;
 use utilities::future::SwimStreamExt;
 use utilities::sync::trigger;
 
@@ -101,7 +102,7 @@ async fn uplink_not_linked() {
 
     let uplink = Uplink::new(
         ValueLaneUplink::new(lane.clone(), None),
-        rx_action.fuse(),
+        ReceiverStream::new(rx_action).fuse(),
         events.fuse(),
     );
 
@@ -113,7 +114,7 @@ async fn uplink_not_linked() {
         lane.store(12).await;
         assert!(on_event_rx.await.is_ok());
         assert!(tx_action.send(UplinkAction::Unlink).await.is_ok());
-        rx_event.collect::<Vec<_>>().await
+        ReceiverStream::new(rx_event).collect::<Vec<_>>().await
     };
 
     let (uplink_result, send_result) = join(
@@ -145,7 +146,7 @@ async fn uplink_open_to_linked() {
 
     let uplink = Uplink::new(
         ValueLaneUplink::new(lane.clone(), None),
-        rx_action.fuse(),
+        ReceiverStream::new(rx_action).fuse(),
         events.fuse(),
     );
 
@@ -160,7 +161,7 @@ async fn uplink_open_to_linked() {
         lane.store(25).await;
         assert!(on_event_rx_2.await.is_ok());
         assert!(tx_action.send(UplinkAction::Unlink).await.is_ok());
-        rx_event.collect::<Vec<_>>().await
+        ReceiverStream::new(rx_event).collect::<Vec<_>>().await
     };
 
     let (uplink_result, send_result) = join(
@@ -195,7 +196,7 @@ async fn uplink_open_to_synced() {
 
     let uplink = Uplink::new(
         ValueLaneUplink::new(lane.clone(), None),
-        rx_action.fuse(),
+        ReceiverStream::new(rx_action).fuse(),
         events.fuse(),
     );
 
@@ -208,7 +209,7 @@ async fn uplink_open_to_synced() {
         assert!(on_event_rx.await.is_ok());
         assert!(tx_action.send(UplinkAction::Sync).await.is_ok());
         assert!(tx_action.send(UplinkAction::Unlink).await.is_ok());
-        rx_event.collect::<Vec<_>>().await
+        ReceiverStream::new(rx_event).collect::<Vec<_>>().await
     };
 
     let (uplink_result, send_result) = join(
@@ -276,7 +277,7 @@ async fn value_state_machine_sync_from_events() {
 
     let (tx_fake, rx_fake) = mpsc::channel(5);
 
-    let mut rx_fake = rx_fake.fuse();
+    let mut rx_fake = ReceiverStream::new(rx_fake).fuse();
 
     let _lock = lane.lock().await;
 

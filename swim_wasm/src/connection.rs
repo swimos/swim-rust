@@ -85,7 +85,7 @@ impl WasmWsFactory {
     }
 
     async fn factory_task(mut receiver: mpsc::Receiver<ConnReq>) {
-        while let Some(ConnReq { request, url }) = receiver.next().await {
+        while let Some(ConnReq { request, url }) = receiver.recv().await {
             let connect_result = WsMeta::connect(url, None).await;
 
             match connect_result {

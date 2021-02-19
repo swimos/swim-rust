@@ -1,0 +1,60 @@
+Node {
+    entries: [
+        Leaf {
+            label: "First",
+            item: Rect {
+                low: Point2D {
+                    x: 0.5,
+                    y: 0.5,
+                },
+                high: Point2D {
+                    x: 10.5,
+                    y: 10.5,
+                },
+            },
+        },
+        Leaf {
+            label: "Second",
+            item: Rect {
+                low: Point2D {
+                    x: 12.5,
+                    y: 0.5,
+                },
+                high: Point2D {
+                    x: 15.5,
+                    y: 15.5,
+                },
+            },
+        },
+        Leaf {
+            label: "Third",
+            item: Rect {
+                low: Point2D {
+                    x: 7.5,
+                    y: 7.5,
+                },
+                high: Point2D {
+                    x: 14.5,
+                    y: 14.5,
+                },
+            },
+        },
+        Leaf {
+            label: "Fourth",
+            item: Rect {
+                low: Point2D {
+                    x: 10.5,
+                    y: 11.5,
+                },
+                high: Point2D {
+                    x: 11.5,
+                    y: 12.5,
+                },
+            },
+        },
+    ],
+    level: 0,
+    min_children: 2,
+    max_children: 4,
+    split_strat: Quadratic,
+}

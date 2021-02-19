@@ -24,6 +24,7 @@ use swim_common::model::Value;
 use swim_common::routing::{ConnectionError, IoError, ResolutionError};
 use swim_common::warp::envelope::Envelope;
 use tokio::sync::mpsc;
+use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
 use utilities::sync::{promise, trigger};
 use utilities::uri::RelativeUri;
@@ -36,7 +37,7 @@ async fn fake_resolution(
     sender: mpsc::Sender<TaggedEnvelope>,
     stop_trigger: trigger::Receiver,
 ) {
-    let mut rx = rx.take_until(stop_trigger);
+    let mut rx = ReceiverStream::new(rx).take_until(stop_trigger);
     let mut resolved = false;
 
     let (_drop_tx, drop_rx) = promise::promise();
@@ -98,7 +99,7 @@ async fn resolve_remote_ok() {
         let Route { mut sender, .. } = result.unwrap();
         assert!(sender.send_item(envelope("a")).await.is_ok());
         drop(stop_tx);
-        let result = rx.next().now_or_never();
+        let result = rx.recv().now_or_never();
         assert_eq!(result, Some(Some(TaggedEnvelope(our_addr, envelope("a")))));
     };
 
@@ -180,7 +181,7 @@ async fn delegate_local_ok() {
         let Route { mut sender, .. } = result.unwrap();
         assert!(sender.send_item(envelope("a")).await.is_ok());
         drop(stop_tx);
-        let result = rx.next().now_or_never();
+        let result = rx.recv().now_or_never();
         assert_eq!(result, Some(Some(TaggedEnvelope(our_addr, envelope("a")))));
     };
 

@@ -36,6 +36,7 @@ use futures::stream::{once, BoxStream, FusedStream};
 use futures::{Future, FutureExt, Stream, StreamExt};
 use pin_utils::pin_mut;
 use std::collections::{HashMap, HashSet};
+use std::convert::identity;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
@@ -50,6 +51,7 @@ use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
 use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::{mpsc, Mutex};
+use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
 use utilities::sync::{promise, topic, trigger};
 use utilities::uri::RelativeUri;
@@ -445,7 +447,7 @@ impl TaskInput {
     }
 }
 
-struct TaskOutput(mpsc::Receiver<TaggedAction>, Arc<Mutex<Vec<i32>>>);
+struct TaskOutput(ReceiverStream<TaggedAction>, Arc<Mutex<Vec<i32>>>);
 
 impl TaskOutput {
     async fn check_history(&self, expected: Vec<i32>) {
@@ -477,14 +479,14 @@ fn make_task(
     let (event_tx, event_rx) = topic::channel(NonZeroUsize::new(5).unwrap());
 
     let handler = TestHandler::new();
-    let output = TaskOutput(respond_rx, handler.0.clone());
+    let output = TaskOutput(ReceiverStream::new(respond_rx), handler.0.clone());
     let uplinks = TestUplinkSpawner::new(respond_tx, fail_on, fatal_errors);
     let topic = event_rx.subscriber();
 
     let task = super::run_lane_io(
         handler,
         uplinks,
-        envelope_rx,
+        ReceiverStream::new(envelope_rx),
         topic,
         config,
         context,
@@ -517,7 +519,7 @@ fn make_context() -> (
         _drop_tx: Arc::new(drop_tx),
         drop_rx,
     };
-    let spawn_task = spawn_rx
+    let spawn_task = ReceiverStream::new(spawn_rx)
         .take_until(stop_rx)
         .for_each_concurrent(None, |t| t)
         .boxed();
@@ -883,7 +885,13 @@ fn make_action_lane_task<Context: AgentExecutionContext + Send + Sync + 'static>
 
     let lane: ActionLane<i32, i32> = ActionLane::new(feedback_tx);
 
-    let task = super::run_action_lane_io(lane, envelope_rx, config, context, route());
+    let task = super::run_action_lane_io(
+        lane,
+        ReceiverStream::new(envelope_rx),
+        config,
+        context,
+        route(),
+    );
 
     let input = TaskInput {
         envelope_tx,
@@ -913,7 +921,13 @@ fn make_command_lane_task<Context: AgentExecutionContext + Send + Sync + 'static
 
     let lane: CommandLane<i32> = CommandLane::new(feedback_tx);
 
-    let task = super::run_command_lane_io(lane, envelope_rx, config, context, route());
+    let task = super::run_command_lane_io(
+        lane,
+        ReceiverStream::new(envelope_rx),
+        config,
+        context,
+        route(),
+    );
 
     let input = TaskInput {
         envelope_tx,
@@ -1053,7 +1067,8 @@ async fn handle_action_lane_immediate_unlink_request() {
     let (_, result, mut router_rx) = join3(spawn_task, task, io_task).await;
 
     assert!(matches!(result, Ok(errs) if errs.is_empty()));
-    assert!(router_rx.try_recv().is_err());
+
+    assert!(router_rx.recv().now_or_never().and_then(identity).is_none());
 }
 
 #[tokio::test]
@@ -1322,7 +1337,9 @@ fn make_multi_context() -> (MultiTestContext, BoxFuture<'static, ()>) {
     let (spawn_tx, spawn_rx) = mpsc::channel(5);
 
     let context = MultiTestContext::new(RoutingAddr::local(1024), spawn_tx);
-    let spawn_task = spawn_rx.for_each_concurrent(None, |t| t).boxed();
+    let spawn_task = ReceiverStream::new(spawn_rx)
+        .for_each_concurrent(None, |t| t)
+        .boxed();
 
     (context, spawn_task)
 }

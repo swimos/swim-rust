@@ -25,6 +25,7 @@ use swim_common::sink::item;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
+use tokio_stream::wrappers::ReceiverStream;
 use utilities::sync::trigger;
 
 struct UplinkComponents {
@@ -41,7 +42,11 @@ async fn make_uplink(
     let (action_tx, action_rx) = mpsc::channel::<UplinkAction>(8);
     let (event_tx, event_rx) = mpsc::channel::<UplinkMessage<ValueLaneEvent<i32>>>(8);
     let updates = subscriber.subscribe().unwrap().into_stream().fuse();
-    let uplink = Uplink::new(state_machine, action_rx.fuse(), updates);
+    let uplink = Uplink::new(
+        state_machine,
+        ReceiverStream::new(action_rx).fuse(),
+        updates,
+    );
 
     let uplink_task = uplink.run_uplink(item::for_mpsc_sender(event_tx));
     let handle = tokio::spawn(uplink_task);
