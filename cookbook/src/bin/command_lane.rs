@@ -14,14 +14,14 @@
 
 use std::time::Duration;
 use swim_client::downlink::model::SchemaViolations;
-use swim_client::interface::SwimClient;
+use swim_client::interface::SwimClientBuilder;
 use swim_common::warp::path::AbsolutePath;
-use swim_runtime::time::delay::delay_for;
+use swim_client::runtime::time::delay::delay_for;
 use tokio::task;
 
 #[tokio::main]
 async fn main() {
-    let mut client = SwimClient::new_with_default().await;
+    let mut client = SwimClientBuilder::build_with_default().await;
     let host_uri = url::Url::parse(&"ws://127.0.0.1:9001".to_string()).unwrap();
     let node_uri = "unit/foo";
     let lane_uri = "publish";
