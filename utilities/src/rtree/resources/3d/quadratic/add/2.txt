@@ -1,0 +1,38 @@
+Node {
+    entries: [
+        Leaf {
+            label: "First",
+            item: Rect {
+                low: Point3D {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                high: Point3D {
+                    x: 10.0,
+                    y: 10.0,
+                    z: 10.0,
+                },
+            },
+        },
+        Leaf {
+            label: "Second",
+            item: Rect {
+                low: Point3D {
+                    x: 12.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                high: Point3D {
+                    x: 15.0,
+                    y: 10.0,
+                    z: 15.0,
+                },
+            },
+        },
+    ],
+    level: 0,
+    min_children: 2,
+    max_children: 4,
+    split_strat: Quadratic,
+}

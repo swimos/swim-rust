@@ -1,0 +1,610 @@
+Node {
+    entries: [
+        Branch {
+            mbb: Rect {
+                low: Point3D {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                high: Point3D {
+                    x: 11.0,
+                    y: 11.0,
+                    z: 22.0,
+                },
+            },
+            child: Node {
+                entries: [
+                    Branch {
+                        mbb: Rect {
+                            low: Point3D {
+                                x: 1.0,
+                                y: 1.0,
+                                z: 0.0,
+                            },
+                            high: Point3D {
+                                x: 11.0,
+                                y: 11.0,
+                                z: 11.0,
+                            },
+                        },
+                        child: Node {
+                            entries: [
+                                Leaf {
+                                    label: "Thirteenth",
+                                    item: Rect {
+                                        low: Point3D {
+                                            x: 1.0,
+                                            y: 1.0,
+                                            z: 0.0,
+                                        },
+                                        high: Point3D {
+                                            x: 11.0,
+                                            y: 11.0,
+                                            z: 4.0,
+                                        },
+                                    },
+                                },
+                                Leaf {
+                                    label: "Sixth",
+                                    item: Rect {
+                                        low: Point3D {
+                                            x: 4.0,
+                                            y: 9.0,
+                                            z: 1.0,
+                                        },
+                                        high: Point3D {
+                                            x: 5.0,
+                                            y: 11.0,
+                                            z: 6.0,
+                                        },
+                                    },
+                                },
+                                Leaf {
+                                    label: "Seventeenth",
+                                    item: Rect {
+                                        low: Point3D {
+                                            x: 5.0,
+                                            y: 5.0,
+                                            z: 7.0,
+                                        },
+                                        high: Point3D {
+                                            x: 6.0,
+                                            y: 7.0,
+                                            z: 11.0,
+                                        },
+                                    },
+                                },
+                            ],
+                            level: 0,
+                            min_children: 2,
+                            max_children: 4,
+                            split_strat: Quadratic,
+                        },
+                    },
+                    Branch {
+                        mbb: Rect {
+                            low: Point3D {
+                                x: 0.0,
+                                y: 0.0,
+                                z: 3.0,
+                            },
+                            high: Point3D {
+                                x: 10.0,
+                                y: 10.0,
+                                z: 15.0,
+                            },
+                        },
+                        child: Node {
+                            entries: [
+                                Leaf {
+                                    label: "Fifth",
+                                    item: Rect {
+                                        low: Point3D {
+                                            x: 4.0,
+                                            y: 4.0,
+                                            z: 3.0,
+                                        },
+                                        high: Point3D {
+                                            x: 5.0,
+                                            y: 6.0,
+                                            z: 5.0,
+                                        },
+                                    },
+                                },
+                                Leaf {
+                                    label: "Twenty-fourth",
+                                    item: Rect {
+                                        low: Point3D {
+                                            x: 8.0,
+                                            y: 4.0,
+                                            z: 3.0,
+                                        },
+                                        high: Point3D {
+                                            x: 9.0,
+                                            y: 7.0,
+                                            z: 13.0,
+                                        },
+                                    },
+                                },
+                                Leaf {
+                                    label: "First",
+                                    item: Rect {
+                                        low: Point3D {
+                                            x: 0.0,
+                                            y: 0.0,
+                                            z: 7.0,
+                                        },
+                                        high: Point3D {
+                                            x: 10.0,
+                                            y: 10.0,
+                                            z: 15.0,
+                                        },
+                                    },
+                                },
+                            ],
+                            level: 0,
+                            min_children: 2,
+                            max_children: 4,
+                            split_strat: Quadratic,
+                        },
+                    },
+                    Branch {
+                        mbb: Rect {
+                            low: Point3D {
+                                x: 2.0,
+                                y: 2.0,
+                                z: 9.0,
+                            },
+                            high: Point3D {
+                                x: 8.0,
+                                y: 6.0,
+                                z: 22.0,
+                            },
+                        },
+                        child: Node {
+                            entries: [
+                                Leaf {
+                                    label: "Twenty-second",
+                                    item: Rect {
+                                        low: Point3D {
+                                            x: 3.0,
+                                            y: 3.0,
+                                            z: 9.0,
+                                        },
+                                        high: Point3D {
+                                            x: 4.0,
+                                            y: 4.0,
+                                            z: 14.0,
+                                        },
+                                    },
+                                },
+                                Leaf {
+                                    label: "Twelfth",
+                                    item: Rect {
+                                        low: Point3D {
+                                            x: 7.0,
+                                            y: 3.0,
+                                            z: 11.0,
+                                        },
+                                        high: Point3D {
+                                            x: 8.0,
+                                            y: 6.0,
+                                            z: 19.0,
+                                        },
+                                    },
+                                },
+                                Leaf {
+                                    label: "Tenth",
+                                    item: Rect {
+                                        low: Point3D {
+                                            x: 2.0,
+                                            y: 2.0,
+                                            z: 10.0,
+                                        },
+                                        high: Point3D {
+                                            x: 3.0,
+                                            y: 3.0,
+                                            z: 22.0,
+                                        },
+                                    },
+                                },
+                            ],
+                            level: 0,
+                            min_children: 2,
+                            max_children: 4,
+                            split_strat: Quadratic,
+                        },
+                    },
+                ],
+                level: 1,
+                min_children: 2,
+                max_children: 4,
+                split_strat: Quadratic,
+            },
+        },
+        Branch {
+            mbb: Rect {
+                low: Point3D {
+                    x: 2.0,
+                    y: 0.0,
+                    z: 1.0,
+                },
+                high: Point3D {
+                    x: 15.0,
+                    y: 17.0,
+                    z: 17.0,
+                },
+            },
+            child: Node {
+                entries: [
+                    Branch {
+                        mbb: Rect {
+                            low: Point3D {
+                                x: 7.0,
+                                y: 7.0,
+                                z: 1.0,
+                            },
+                            high: Point3D {
+                                x: 15.0,
+                                y: 15.0,
+                                z: 9.0,
+                            },
+                        },
+                        child: Node {
+                            entries: [
+                                Leaf {
+                                    label: "Fifteenth",
+                                    item: Rect {
+                                        low: Point3D {
+                                            x: 8.0,
+                                            y: 8.0,
+                                            z: 1.0,
+                                        },
+                                        high: Point3D {
+                                            x: 15.0,
+                                            y: 15.0,
+                                            z: 5.0,
+                                        },
+                                    },
+                                },
+                                Leaf {
+                                    label: "Third",
+                                    item: Rect {
+                                        low: Point3D {
+                                            x: 7.0,
+                                            y: 7.0,
+                                            z: 3.0,
+                                        },
+                                        high: Point3D {
+                                            x: 14.0,
+                                            y: 14.0,
+                                            z: 7.0,
+                                        },
+                                    },
+                                },
+                                Leaf {
+                                    label: "Fourth",
+                                    item: Rect {
+                                        low: Point3D {
+                                            x: 10.0,
+                                            y: 11.0,
+                                            z: 4.0,
+                                        },
+                                        high: Point3D {
+                                            x: 11.0,
+                                            y: 12.0,
+                                            z: 9.0,
+                                        },
+                                    },
+                                },
+                            ],
+                            level: 0,
+                            min_children: 2,
+                            max_children: 4,
+                            split_strat: Quadratic,
+                        },
+                    },
+                    Branch {
+                        mbb: Rect {
+                            low: Point3D {
+                                x: 11.0,
+                                y: 0.0,
+                                z: 3.0,
+                            },
+                            high: Point3D {
+                                x: 15.0,
+                                y: 15.0,
+                                z: 15.0,
+                            },
+                        },
+                        child: Node {
+                            entries: [
+                                Leaf {
+                                    label: "Second",
+                                    item: Rect {
+                                        low: Point3D {
+                                            x: 12.0,
+                                            y: 0.0,
+                                            z: 3.0,
+                                        },
+                                        high: Point3D {
+                                            x: 15.0,
+                                            y: 15.0,
+                                            z: 11.0,
+                                        },
+                                    },
+                                },
+                                Leaf {
+                                    label: "Twenty-third",
+                                    item: Rect {
+                                        low: Point3D {
+                                            x: 11.0,
+                                            y: 1.0,
+                                            z: 5.0,
+                                        },
+                                        high: Point3D {
+                                            x: 13.0,
+                                            y: 6.0,
+                                            z: 15.0,
+                                        },
+                                    },
+                                },
+                                Leaf {
+                                    label: "Nineteenth",
+                                    item: Rect {
+                                        low: Point3D {
+                                            x: 14.0,
+                                            y: 1.0,
+                                            z: 14.0,
+                                        },
+                                        high: Point3D {
+                                            x: 15.0,
+                                            y: 2.0,
+                                            z: 15.0,
+                                        },
+                                    },
+                                },
+                            ],
+                            level: 0,
+                            min_children: 2,
+                            max_children: 4,
+                            split_strat: Quadratic,
+                        },
+                    },
+                    Branch {
+                        mbb: Rect {
+                            low: Point3D {
+                                x: 2.0,
+                                y: 10.0,
+                                z: 11.0,
+                            },
+                            high: Point3D {
+                                x: 6.0,
+                                y: 17.0,
+                                z: 17.0,
+                            },
+                        },
+                        child: Node {
+                            entries: [
+                                Leaf {
+                                    label: "Ninth",
+                                    item: Rect {
+                                        low: Point3D {
+                                            x: 2.0,
+                                            y: 13.0,
+                                            z: 11.0,
+                                        },
+                                        high: Point3D {
+                                            x: 4.0,
+                                            y: 16.0,
+                                            z: 14.0,
+                                        },
+                                    },
+                                },
+                                Leaf {
+                                    label: "Twenty-first",
+                                    item: Rect {
+                                        low: Point3D {
+                                            x: 3.0,
+                                            y: 14.0,
+                                            z: 11.0,
+                                        },
+                                        high: Point3D {
+                                            x: 5.0,
+                                            y: 17.0,
+                                            z: 17.0,
+                                        },
+                                    },
+                                },
+                                Leaf {
+                                    label: "Eighteenth",
+                                    item: Rect {
+                                        low: Point3D {
+                                            x: 5.0,
+                                            y: 10.0,
+                                            z: 15.0,
+                                        },
+                                        high: Point3D {
+                                            x: 6.0,
+                                            y: 12.0,
+                                            z: 16.0,
+                                        },
+                                    },
+                                },
+                            ],
+                            level: 0,
+                            min_children: 2,
+                            max_children: 4,
+                            split_strat: Quadratic,
+                        },
+                    },
+                ],
+                level: 1,
+                min_children: 2,
+                max_children: 4,
+                split_strat: Quadratic,
+            },
+        },
+        Branch {
+            mbb: Rect {
+                low: Point3D {
+                    x: 10.0,
+                    y: 0.0,
+                    z: 7.0,
+                },
+                high: Point3D {
+                    x: 17.0,
+                    y: 17.0,
+                    z: 31.0,
+                },
+            },
+            child: Node {
+                entries: [
+                    Branch {
+                        mbb: Rect {
+                            low: Point3D {
+                                x: 11.0,
+                                y: 12.0,
+                                z: 7.0,
+                            },
+                            high: Point3D {
+                                x: 17.0,
+                                y: 17.0,
+                                z: 15.0,
+                            },
+                        },
+                        child: Node {
+                            entries: [
+                                Leaf {
+                                    label: "Eighth",
+                                    item: Rect {
+                                        low: Point3D {
+                                            x: 13.0,
+                                            y: 13.0,
+                                            z: 7.0,
+                                        },
+                                        high: Point3D {
+                                            x: 16.0,
+                                            y: 16.0,
+                                            z: 11.0,
+                                        },
+                                    },
+                                },
+                                Leaf {
+                                    label: "Sixteenth",
+                                    item: Rect {
+                                        low: Point3D {
+                                            x: 11.0,
+                                            y: 12.0,
+                                            z: 10.0,
+                                        },
+                                        high: Point3D {
+                                            x: 12.0,
+                                            y: 13.0,
+                                            z: 12.0,
+                                        },
+                                    },
+                                },
+                                Leaf {
+                                    label: "Twentieth",
+                                    item: Rect {
+                                        low: Point3D {
+                                            x: 14.0,
+                                            y: 14.0,
+                                            z: 13.0,
+                                        },
+                                        high: Point3D {
+                                            x: 17.0,
+                                            y: 17.0,
+                                            z: 15.0,
+                                        },
+                                    },
+                                },
+                            ],
+                            level: 0,
+                            min_children: 2,
+                            max_children: 4,
+                            split_strat: Quadratic,
+                        },
+                    },
+                    Branch {
+                        mbb: Rect {
+                            low: Point3D {
+                                x: 10.0,
+                                y: 0.0,
+                                z: 10.0,
+                            },
+                            high: Point3D {
+                                x: 16.0,
+                                y: 16.0,
+                                z: 31.0,
+                            },
+                        },
+                        child: Node {
+                            entries: [
+                                Leaf {
+                                    label: "Eleventh",
+                                    item: Rect {
+                                        low: Point3D {
+                                            x: 10.0,
+                                            y: 0.0,
+                                            z: 13.0,
+                                        },
+                                        high: Point3D {
+                                            x: 12.0,
+                                            y: 5.0,
+                                            z: 17.0,
+                                        },
+                                    },
+                                },
+                                Leaf {
+                                    label: "Seventh",
+                                    item: Rect {
+                                        low: Point3D {
+                                            x: 13.0,
+                                            y: 0.0,
+                                            z: 19.0,
+                                        },
+                                        high: Point3D {
+                                            x: 14.0,
+                                            y: 1.0,
+                                            z: 20.0,
+                                        },
+                                    },
+                                },
+                                Leaf {
+                                    label: "Fourteenth",
+                                    item: Rect {
+                                        low: Point3D {
+                                            x: 13.0,
+                                            y: 1.0,
+                                            z: 10.0,
+                                        },
+                                        high: Point3D {
+                                            x: 16.0,
+                                            y: 16.0,
+                                            z: 31.0,
+                                        },
+                                    },
+                                },
+                            ],
+                            level: 0,
+                            min_children: 2,
+                            max_children: 4,
+                            split_strat: Quadratic,
+                        },
+                    },
+                ],
+                level: 1,
+                min_children: 2,
+                max_children: 4,
+                split_strat: Quadratic,
+            },
+        },
+    ],
+    level: 2,
+    min_children: 2,
+    max_children: 4,
+    split_strat: Quadratic,
+}
