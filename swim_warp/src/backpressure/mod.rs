@@ -1,4 +1,4 @@
-// Copyright 2015-2020 SWIM.AI inc.
+// Copyright 2015-2021 SWIM.AI inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,13 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod map;
-#[cfg(test)]
-mod test;
-
 use std::num::NonZeroUsize;
+
 use swim_common::sink::item::ItemSender;
 use utilities::sync::{circular_buffer, trigger};
+
+pub mod keyed;
+
+#[cfg(test)]
+mod test;
 
 #[derive(Debug)]
 pub enum Flushable<T> {

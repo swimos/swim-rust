@@ -1,0 +1,23 @@
+Node {
+    entries: [
+        Leaf {
+            label: "Twelfth",
+            item: Rect {
+                low: Point3D {
+                    x: 7.0,
+                    y: 0.0,
+                    z: 3.0,
+                },
+                high: Point3D {
+                    x: 8.0,
+                    y: 10.0,
+                    z: 6.0,
+                },
+            },
+        },
+    ],
+    level: 0,
+    min_children: 2,
+    max_children: 4,
+    split_strat: Quadratic,
+}

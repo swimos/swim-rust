@@ -1,4 +1,4 @@
-// Copyright 2015-2020 SWIM.AI inc.
+// Copyright 2015-2021 SWIM.AI inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -166,6 +166,8 @@ where
             };
 
             if let Some(event) = next {
+                // disable the linter here as there are to-dos
+                #[allow(clippy::collapsible_match)]
                 match event {
                     Ok(SelectorResult::Read(msg)) => match msg {
                         WsMessage::Text(msg) => match read_envelope(&msg) {
