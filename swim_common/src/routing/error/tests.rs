@@ -54,6 +54,6 @@ fn connection_error_display() {
     let string = ConnectionError::WriteTimeout(Duration::from_secs(5)).to_string();
     assert_eq!(
         string,
-        "Writing to the connection failed to complete within 5 seconds."
+        "Writing to the connection failed to complete within 5s."
     )
 }
