@@ -16,7 +16,7 @@ use crate::configuration::downlink::{
     BackpressureMode, ClientParams, ConfigHierarchy, DownlinkParams, OnInvalidMessage,
 };
 use crate::configuration::router::RouterParams;
-use crate::interface::SwimClient;
+use crate::interface::SwimClientBuilder;
 use std::fs;
 use std::fs::File;
 use std::io::Read;
@@ -301,33 +301,30 @@ fn test_conf_from_file_full_unordered() {
     assert_eq!(config, expected)
 }
 
-#[tokio::test]
-async fn test_client_file_conf_non_utf8_error() {
+#[test]
+fn test_client_file_conf_non_utf8_error() {
     let file =
         File::open("src/configuration/tests/resources/invalid/non-utf-8-config.recon").unwrap();
-    let result = SwimClient::new_from_file(file, false).await;
+    let result = SwimClientBuilder::new_from_file(file, false);
 
     if let Err(err) = result {
         assert_eq!(
             err.to_string(),
-            "Client error. Caused by: File error: stream did not contain valid UTF-8"
+            "File error: stream did not contain valid UTF-8"
         )
     } else {
         panic!("Expected file error!")
     }
 }
 
-#[tokio::test]
-async fn test_client_file_conf_recon_error() {
+#[test]
+fn test_client_file_conf_recon_error() {
     let file =
         File::open("src/configuration/tests/resources/invalid/parse-err-config.recon").unwrap();
-    let result = SwimClient::new_from_file(file, false).await;
+    let result = SwimClientBuilder::new_from_file(file, false);
 
     if let Err(err) = result {
-        assert_eq!(
-            err.to_string(),
-            "Client error. Caused by: Recon error: Bad token at: 4:17"
-        )
+        assert_eq!(err.to_string(), "Recon error: Bad token at: 4:17")
     } else {
         panic!("Expected file error!")
     }
