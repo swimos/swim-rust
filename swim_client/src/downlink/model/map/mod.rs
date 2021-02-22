@@ -306,42 +306,42 @@ pub struct ViewWithEvent {
 }
 
 impl ViewWithEvent {
-    fn initial(map: &ValMap) -> ViewWithEvent {
+    pub fn initial(map: &ValMap) -> ViewWithEvent {
         ViewWithEvent {
             view: map.clone(),
             event: MapEvent::Initial,
         }
     }
 
-    fn update(map: &ValMap, key: Value) -> ViewWithEvent {
+    pub fn update(map: &ValMap, key: Value) -> ViewWithEvent {
         ViewWithEvent {
             view: map.clone(),
             event: MapEvent::Update(key),
         }
     }
 
-    fn remove(map: &ValMap, key: Value) -> ViewWithEvent {
+    pub fn remove(map: &ValMap, key: Value) -> ViewWithEvent {
         ViewWithEvent {
             view: map.clone(),
             event: MapEvent::Remove(key),
         }
     }
 
-    fn take(map: &ValMap, n: usize) -> ViewWithEvent {
+    pub fn take(map: &ValMap, n: usize) -> ViewWithEvent {
         ViewWithEvent {
             view: map.clone(),
             event: MapEvent::Take(n),
         }
     }
 
-    fn skip(map: &ValMap, n: usize) -> ViewWithEvent {
+    pub fn skip(map: &ValMap, n: usize) -> ViewWithEvent {
         ViewWithEvent {
             view: map.clone(),
             event: MapEvent::Skip(n),
         }
     }
 
-    fn clear(map: &ValMap) -> ViewWithEvent {
+    pub fn clear(map: &ValMap) -> ViewWithEvent {
         ViewWithEvent {
             view: map.clone(),
             event: MapEvent::Clear,

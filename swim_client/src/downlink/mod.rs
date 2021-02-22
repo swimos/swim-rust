@@ -14,6 +14,7 @@
 
 pub mod error;
 pub mod model;
+pub mod state_machine;
 pub mod subscription;
 #[cfg(test)]
 mod tests;
@@ -62,7 +63,7 @@ pub trait Downlink {
 pub type DownlinkRequest<T> = TryRequest<T, DownlinkError>;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum DownlinkState {
+pub enum DownlinkState {
     Unlinked,
     Linked,
     Synced,
