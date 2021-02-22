@@ -50,16 +50,22 @@ where
     ) -> BoxFuture<'static, Result<(), UpdateError>>
     where
         Messages: Stream<Item = Result<(RoutingAddr, Self::Msg), Err>> + Send + 'static,
-        Err: Send,
+        Err: Send + Debug,
         UpdateError: From<Err>,
     {
         let ValueLaneUpdateTask { lane } = self;
         async move {
             pin_mut!(messages);
             while let Some(msg_result) = messages.next().await {
-                let (_, msg) = msg_result?;
-                event!(Level::TRACE, message = APPLYING_UPDATE, value = ?msg);
-                lane.store(msg).await;
+                match msg_result {
+                    Ok((_, msg)) => {
+                        event!(Level::TRACE, message = APPLYING_UPDATE, value = ?msg);
+                        lane.store(msg).await;
+                    }
+                    Err(err) => {
+                        event!(Level::ERROR, ?err);
+                    }
+                }
             }
             Ok(())
         }

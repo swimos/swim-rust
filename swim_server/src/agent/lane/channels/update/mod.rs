@@ -94,7 +94,7 @@ pub trait LaneUpdate {
     ) -> BoxFuture<'static, Result<(), UpdateError>>
     where
         Messages: Stream<Item = Result<(RoutingAddr, Self::Msg), Err>> + Send + 'static,
-        Err: Send,
+        Err: Send + Debug,
         UpdateError: From<Err>;
 }
 
