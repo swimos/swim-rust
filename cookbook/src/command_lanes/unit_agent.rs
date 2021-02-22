@@ -65,7 +65,6 @@ impl PublishValueLifecycle {
     {
         let message = format!("`publish_value` commanded with {}", command);
         log_message(context.node_uri(), &message);
-        //Todo this is currently not being returned to all linked connections
     }
 }
 
