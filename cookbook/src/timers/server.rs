@@ -15,13 +15,13 @@
 mod unit_agent;
 
 use crate::unit_agent::{UnitAgent, UnitAgentLifecycle};
-use async_std::task;
 use futures::join;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::time::Duration;
 use swim_server::interface::SwimServerBuilder;
 use swim_server::plane::spec::PlaneBuilder;
 use swim_server::RoutePattern;
+use tokio::time;
 
 #[tokio::main]
 async fn main() {
@@ -41,7 +41,7 @@ async fn main() {
     let (swim_server, server_handle) = swim_server_builder.bind_to(address).build().unwrap();
 
     let stop = async {
-        task::sleep(Duration::from_secs(300)).await;
+        time::sleep(Duration::from_secs(300)).await;
         server_handle.stop();
     };
 

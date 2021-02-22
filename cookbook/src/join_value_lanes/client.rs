@@ -12,16 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use async_std::task;
 use futures::StreamExt;
 use std::time::Duration;
 use swim_client::downlink::model::map::MapEvent;
 use swim_client::downlink::typed::map::events::TypedViewWithEvent;
 use swim_client::downlink::typed::map::MapDownlinkReceiver;
 use swim_client::downlink::Event::Remote;
-use swim_client::interface::SwimClient;
+use swim_client::interface::SwimClientBuilder;
 use swim_common::model::Value;
 use swim_common::warp::path::AbsolutePath;
+use tokio::{task, time};
 
 async fn did_update(map_recv: MapDownlinkReceiver<i32, bool>, default: bool) {
     map_recv
@@ -47,7 +47,7 @@ async fn did_update(map_recv: MapDownlinkReceiver<i32, bool>, default: bool) {
 
 #[tokio::main]
 async fn main() {
-    let mut client = SwimClient::new_with_default().await;
+    let mut client = SwimClientBuilder::build_with_default().await;
     let host_uri = url::Url::parse(&"ws://127.0.0.1:9001".to_string()).unwrap();
 
     let building_node = "/building/swim";
@@ -67,7 +67,7 @@ async fn main() {
 
     task::spawn(did_update(map_recv, false));
 
-    task::sleep(Duration::from_secs(2)).await;
+    time::sleep(Duration::from_secs(2)).await;
 
     let first_room_uri = AbsolutePath::new(host_uri.clone(), first_room_node, switch_lane);
     let second_room_uri = AbsolutePath::new(host_uri.clone(), second_room_node, switch_lane);
@@ -78,43 +78,43 @@ async fn main() {
         .await
         .expect("Failed to send command!");
 
-    task::sleep(Duration::from_secs(1)).await;
+    time::sleep(Duration::from_secs(1)).await;
 
     client
         .send_command(second_room_uri.clone(), Value::Extant)
         .await
         .expect("Failed to send command!");
 
-    task::sleep(Duration::from_secs(1)).await;
+    time::sleep(Duration::from_secs(1)).await;
 
     client
         .send_command(third_room_uri.clone(), Value::Extant)
         .await
         .expect("Failed to send command!");
 
-    task::sleep(Duration::from_secs(1)).await;
+    time::sleep(Duration::from_secs(1)).await;
 
     client
         .send_command(second_room_uri.clone(), Value::Extant)
         .await
         .expect("Failed to send command!");
 
-    task::sleep(Duration::from_secs(1)).await;
+    time::sleep(Duration::from_secs(1)).await;
 
     client
         .send_command(second_room_uri, Value::Extant)
         .await
         .expect("Failed to send command!");
 
-    task::sleep(Duration::from_secs(1)).await;
+    time::sleep(Duration::from_secs(1)).await;
 
     client
         .send_command(third_room_uri, Value::Extant)
         .await
         .expect("Failed to send command!");
 
-    task::sleep(Duration::from_secs(1)).await;
+    time::sleep(Duration::from_secs(1)).await;
 
     println!("Stopping client in 2 seconds");
-    task::sleep(Duration::from_secs(2)).await;
+    time::sleep(Duration::from_secs(2)).await;
 }

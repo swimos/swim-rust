@@ -12,15 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use async_std::task;
 use std::time::Duration;
-use swim_client::interface::SwimClient;
+use swim_client::interface::SwimClientBuilder;
 use swim_common::model::Value;
 use swim_common::warp::path::AbsolutePath;
+use tokio::time;
 
 #[tokio::main]
 async fn main() {
-    let mut client = SwimClient::new_with_default().await;
+    let mut client = SwimClientBuilder::build_with_default().await;
     let host_uri = url::Url::parse(&"ws://127.0.0.1:9001".to_string()).unwrap();
     let node_uri = "/unit/foo";
     let lane_uri = "publish";
@@ -33,9 +33,9 @@ async fn main() {
             .await
             .expect("Failed to send command!");
 
-        task::sleep(Duration::from_secs(5 * i)).await;
+        time::sleep(Duration::from_secs(5 * i)).await;
     }
 
     println!("Stopping client in 2 seconds");
-    task::sleep(Duration::from_secs(2)).await;
+    time::sleep(Duration::from_secs(2)).await;
 }

@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use async_std::task;
 use futures::StreamExt;
 use std::time::Duration;
 use swim_client::downlink::typed::value::ValueDownlinkReceiver;
 use swim_client::downlink::Event::Remote;
-use swim_client::interface::SwimClient;
+use swim_client::interface::SwimClientBuilder;
 use swim_common::warp::path::AbsolutePath;
+use tokio::{task, time};
 
 async fn did_set(value_recv: ValueDownlinkReceiver<String>, initial_value: String) {
     value_recv
@@ -44,7 +44,7 @@ async fn did_set(value_recv: ValueDownlinkReceiver<String>, initial_value: Strin
 
 #[tokio::main]
 async fn main() {
-    let mut client = SwimClient::new_with_default().await;
+    let mut client = SwimClientBuilder::build_with_default().await;
     let host_uri = url::Url::parse(&"ws://127.0.0.1:9001".to_string()).unwrap();
     let node_uri = "/unit/foo";
 
@@ -68,23 +68,23 @@ async fn main() {
         .send_command(publish_info_path, "Hello from command, world!".to_string())
         .await
         .expect("Failed to send command!");
-    task::sleep(Duration::from_secs(2)).await;
+    time::sleep(Duration::from_secs(2)).await;
 
     // ...or a downlink set()
     value_downlink
         .set("Hello from link, world!".to_string())
         .await
         .expect("Failed to send message!");
-    task::sleep(Duration::from_secs(2)).await;
+    time::sleep(Duration::from_secs(2)).await;
 
     println!(
         "Synchronous link get: {}",
-        dl_sink
+        value_downlink
             .get()
             .await
             .expect("Failed to retrieve downlink value!")
     );
 
     println!("Stopping client in 2 seconds");
-    task::sleep(Duration::from_secs(2)).await;
+    time::sleep(Duration::from_secs(2)).await;
 }

@@ -12,15 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use async_std::task;
 use futures::StreamExt;
 use std::time::Duration;
 use swim_client::downlink::model::map::MapEvent;
 use swim_client::downlink::typed::map::events::TypedViewWithEvent;
 use swim_client::downlink::typed::map::MapDownlinkReceiver;
 use swim_client::downlink::Event::Remote;
-use swim_client::interface::SwimClient;
+use swim_client::interface::SwimClientBuilder;
 use swim_common::warp::path::AbsolutePath;
+use tokio::{task, time};
 
 const THRESHOLD: i32 = 1000;
 
@@ -52,7 +52,7 @@ async fn did_update(map_recv: MapDownlinkReceiver<String, i32>, default: i32) {
 
 #[tokio::main]
 async fn main() {
-    let mut client = SwimClient::new_with_default().await;
+    let mut client = SwimClientBuilder::build_with_default().await;
     let host_uri = url::Url::parse(&"ws://127.0.0.1:53556".to_string()).unwrap();
     let node_uri = "/join/state/all";
     let lane_uri = "join";
@@ -66,8 +66,8 @@ async fn main() {
 
     task::spawn(did_update(map_recv, 0));
 
-    task::sleep(Duration::from_secs(2)).await;
+    time::sleep(Duration::from_secs(2)).await;
 
     println!("Stopping client in 2 seconds");
-    task::sleep(Duration::from_secs(2)).await;
+    time::sleep(Duration::from_secs(2)).await;
 }
