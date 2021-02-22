@@ -14,7 +14,7 @@
 
 use crate::lanes::derive_lane;
 use crate::utils::{
-    get_task_struct_name, parse_callback, validate_input_ast, Callback, CallbackKind, InputAstType,
+    get_task_struct_name, parse_callback, validate_input_ast, CallbackKind, InputAstType,
     LaneTasksImpl,
 };
 use darling::FromMeta;
@@ -79,10 +79,7 @@ pub fn derive_value_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput) 
     )
 }
 
-pub fn derive_start_body(on_start: &Callback) -> proc_macro2::TokenStream {
-    let task_name = &on_start.task_name;
-    let on_start_func = &on_start.func_name;
-
+pub fn derive_start_body(task_name: &Ident, on_start_func: &Ident) -> proc_macro2::TokenStream {
     quote!(
         let #task_name { lifecycle, projection, .. } = self;
         let model = projection(context.agent());
@@ -90,10 +87,10 @@ pub fn derive_start_body(on_start: &Callback) -> proc_macro2::TokenStream {
     )
 }
 
-pub fn derive_events_body(on_event: &Callback) -> proc_macro2::TokenStream {
-    let task_name = &on_event.task_name;
-    let on_event_func_name = &on_event.func_name;
-
+pub fn derive_events_body(
+    task_name: &Ident,
+    on_event_func_name: &Ident,
+) -> proc_macro2::TokenStream {
     quote!(
         let #task_name {
             mut lifecycle,
