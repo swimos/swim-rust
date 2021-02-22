@@ -23,6 +23,7 @@ use std::num::NonZeroUsize;
 use std::ops::Range;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::mpsc;
 use tokio::sync::Notify;
 
 #[test]
@@ -884,4 +885,43 @@ async fn send_with_subscriber() {
     for n in SIZE_RANGE {
         send_with_subscriber_for(n).await;
     }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn adding_subscribers() {
+    let (mut chan_tx, chan_rx) = super::channel::<i32>(NonZeroUsize::new(8).unwrap());
+    let sub = chan_tx.subscriber();
+
+    let (comm_tx, mut comm_rx) = mpsc::channel::<trigger::Sender>(2);
+
+    let start_task = |rx: Receiver<i32>| {
+        let mut stream = rx.into_stream();
+        let task = async move { while let Some(_) = stream.next().await {} };
+        tokio::spawn(task);
+    };
+
+    start_task(chan_rx);
+
+    let rx_spawner = async move {
+        while let Some(trigger) = comm_rx.recv().await {
+            start_task(sub.subscribe().unwrap());
+            trigger.trigger();
+        }
+    };
+
+    let gen_task = async move {
+        for i in 1..20 {
+            if i % 5 == 0 {
+                let (task_tx, task_rx) = trigger::trigger();
+                comm_tx.send(task_tx).await.unwrap();
+                task_rx.await.unwrap();
+            }
+            chan_tx.discarding_send(i).await.unwrap();
+        }
+    };
+
+    let t1 = tokio::spawn(rx_spawner);
+    let t2 = tokio::spawn(gen_task);
+    let result = tokio::time::timeout(Duration::from_secs(5), join(t1, t2)).await;
+    assert!(matches!(result, Ok((Ok(_), Ok(_)))));
 }

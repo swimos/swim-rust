@@ -14,9 +14,13 @@
 
 use super::*;
 use crate::agent::lane::tests::ExactlyOnce;
+use futures::future::join;
+use std::time::Duration;
 use stm::transaction::atomically;
 use stm::var::observer::ObserverSubscriber;
+use tokio::sync::mpsc;
 use utilities::sync::topic::TryRecvError;
+use utilities::sync::trigger;
 
 fn buffer_size() -> NonZeroUsize {
     NonZeroUsize::new(16).unwrap()
@@ -74,4 +78,43 @@ async fn value_lane_compound_transaction() {
 
     let event2 = events.try_recv();
     assert!(matches!(event2, Err(TryRecvError::NoValue)));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn value_lane_subscribe() {
+    let (lane, observer) = ValueLane::observable(0, NonZeroUsize::new(8).unwrap());
+
+    let sub = observer.subscriber();
+
+    let (comm_tx, mut comm_rx) = mpsc::channel::<trigger::Sender>(2);
+
+    let start_task = |mut rx: Observer<i32>| {
+        let task = async move { while let Some(_) = rx.recv().await {} };
+        tokio::spawn(task);
+    };
+
+    start_task(observer);
+
+    let rx_spawner = async move {
+        while let Some(trigger) = comm_rx.recv().await {
+            start_task(sub.subscribe().unwrap());
+            trigger.trigger();
+        }
+    };
+
+    let gen_task = async move {
+        for i in 1..20 {
+            if i % 5 == 0 {
+                let (task_tx, task_rx) = trigger::trigger();
+                comm_tx.send(task_tx).await.unwrap();
+                task_rx.await.unwrap();
+            }
+            lane.store(i).await;
+        }
+    };
+
+    let t1 = tokio::spawn(rx_spawner);
+    let t2 = tokio::spawn(gen_task);
+    let result = tokio::time::timeout(Duration::from_secs(5), join(t1, t2)).await;
+    assert!(matches!(result, Ok((Ok(_), Ok(_)))));
 }
