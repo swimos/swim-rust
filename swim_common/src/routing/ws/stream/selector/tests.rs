@@ -15,18 +15,24 @@
 use crate::routing::ws::protocol::CloseReason;
 use crate::routing::ws::stream::selector::{SelectorResult, WsStreamSelector};
 use crate::routing::ws::stream::JoinedStreamSink;
-use futures::future::{ready, Ready};
-use futures::stream::FusedStream;
+use futures::future::{join, ready, Ready};
 use futures::task::{AtomicWaker, Context, Poll};
 use futures::{Sink, SinkExt, Stream, StreamExt};
 use parking_lot::Mutex;
+use std::ops::Add;
 use std::pin::Pin;
 use std::sync::Arc;
-use tokio::sync::mpsc;
+use std::time::Duration;
+use tokio::sync::{mpsc, Notify};
 use tokio_stream::wrappers::ReceiverStream;
+use utilities::future::NotifyOnBlocked;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct TestError(String);
+
+fn write_timeout(_: &Duration) -> TestError {
+    TestError("Write Timeout".to_string())
+}
 
 #[derive(Debug)]
 struct Consume {
@@ -82,10 +88,15 @@ impl Sink<i32> for TestWsStream {
             consume,
             consume_waker,
             closed,
+            close_error,
             ..
         } = &mut *lock;
         if *closed {
-            Poll::Ready(Err(TestError("Closed!".to_string())))
+            Poll::Ready(if let Some(err) = close_error.take() {
+                Err(err)
+            } else {
+                Err(TestError("Closed!".to_string()))
+            })
         } else {
             match consume {
                 Some(Consume {
@@ -110,10 +121,17 @@ impl Sink<i32> for TestWsStream {
     fn start_send(self: Pin<&mut Self>, item: i32) -> Result<(), Self::Error> {
         let mut lock = self.0.lock();
         let Inner {
-            consume, closed, ..
+            consume,
+            closed,
+            close_error,
+            ..
         } = &mut *lock;
         if *closed {
-            Err(TestError("Closed!".to_string()))
+            if let Some(err) = close_error.take() {
+                Err(err)
+            } else {
+                Err(TestError("Closed!".to_string()))
+            }
         } else {
             match consume.take() {
                 Some(Consume {
@@ -193,6 +211,8 @@ impl TestWsStream {
     }
 }
 
+const WRITE_TIMEOUT: Duration = Duration::from_secs(60);
+
 #[tokio::test]
 async fn produce_available() {
     let test_stream = TestWsStream::default();
@@ -200,9 +220,14 @@ async fn produce_available() {
 
     let (_tx, rx) = mpsc::channel(8);
 
-    let mut selector = WsStreamSelector::new(test_stream, ReceiverStream::new(rx));
+    let mut selector = WsStreamSelector::new(
+        test_stream,
+        ReceiverStream::new(rx),
+        WRITE_TIMEOUT,
+        write_timeout,
+    );
 
-    let result = selector.next().await;
+    let result = selector.select_rw().await;
 
     assert_eq!(result, Some(Ok(SelectorResult::Read(12))));
 
@@ -218,11 +243,39 @@ async fn consume_available() {
     assert!(tx.send(1).await.is_ok());
     test_stream.stage_consume(1);
 
-    let mut selector = WsStreamSelector::new(test_stream, ReceiverStream::new(rx));
+    let mut selector = WsStreamSelector::new(
+        test_stream,
+        ReceiverStream::new(rx),
+        WRITE_TIMEOUT,
+        write_timeout,
+    );
 
-    let result = selector.next().await;
+    let result = selector.select_rw().await;
 
     assert_eq!(result, Some(Ok(SelectorResult::Written)));
+
+    assert!(!selector.is_terminated());
+}
+
+#[tokio::test]
+async fn consume_available_write_only() {
+    let test_stream = TestWsStream::default();
+
+    let (tx, rx) = mpsc::channel(8);
+
+    assert!(tx.send(1).await.is_ok());
+    test_stream.stage_consume(1);
+
+    let mut selector = WsStreamSelector::new(
+        test_stream,
+        ReceiverStream::new(rx),
+        WRITE_TIMEOUT,
+        write_timeout,
+    );
+
+    let result = selector.select_w().await;
+
+    assert_eq!(result, Some(Ok(())));
 
     assert!(!selector.is_terminated());
 }
@@ -237,13 +290,42 @@ async fn both_available() {
     assert!(tx.send(4).await.is_ok());
     test_stream.stage_consume(4);
 
-    let mut selector = WsStreamSelector::new(test_stream, ReceiverStream::new(rx));
+    let mut selector = WsStreamSelector::new(
+        test_stream,
+        ReceiverStream::new(rx),
+        WRITE_TIMEOUT,
+        write_timeout,
+    );
 
-    let result1 = selector.next().await;
-    let result2 = selector.next().await;
+    let result1 = selector.select_rw().await;
+    let result2 = selector.select_rw().await;
 
     assert_eq!(result1, Some(Ok(SelectorResult::Read(56))));
     assert_eq!(result2, Some(Ok(SelectorResult::Written)));
+
+    assert!(!selector.is_terminated());
+}
+
+#[tokio::test]
+async fn both_available_write_only() {
+    let test_stream = TestWsStream::default();
+
+    let (tx, rx) = mpsc::channel(8);
+
+    test_stream.stage_produce(56);
+    assert!(tx.send(4).await.is_ok());
+    test_stream.stage_consume(4);
+
+    let mut selector = WsStreamSelector::new(
+        test_stream,
+        ReceiverStream::new(rx),
+        WRITE_TIMEOUT,
+        write_timeout,
+    );
+
+    let result = selector.select_w().await;
+
+    assert_eq!(result, Some(Ok(())));
 
     assert!(!selector.is_terminated());
 }
@@ -255,9 +337,14 @@ async fn produce_error() {
 
     let (_tx, rx) = mpsc::channel(8);
 
-    let mut selector = WsStreamSelector::new(test_stream, ReceiverStream::new(rx));
+    let mut selector = WsStreamSelector::new(
+        test_stream,
+        ReceiverStream::new(rx),
+        WRITE_TIMEOUT,
+        write_timeout,
+    );
 
-    let result = selector.next().await;
+    let result = selector.select_rw().await;
 
     assert_eq!(result, Some(Err(TestError("Boom!".to_string()))));
 
@@ -273,9 +360,37 @@ async fn consume_error_on_ready() {
     assert!(tx.send(0).await.is_ok());
     test_stream.stage_consume_error(0, "Boom!");
 
-    let mut selector = WsStreamSelector::new(test_stream, ReceiverStream::new(rx));
+    let mut selector = WsStreamSelector::new(
+        test_stream,
+        ReceiverStream::new(rx),
+        WRITE_TIMEOUT,
+        write_timeout,
+    );
 
-    let result = selector.next().await;
+    let result = selector.select_rw().await;
+
+    assert_eq!(result, Some(Err(TestError("Boom!".to_string()))));
+
+    assert!(!selector.is_terminated());
+}
+
+#[tokio::test]
+async fn consume_error_on_ready_write_only() {
+    let test_stream = TestWsStream::default();
+
+    let (tx, rx) = mpsc::channel(8);
+
+    assert!(tx.send(0).await.is_ok());
+    test_stream.stage_consume_error(0, "Boom!");
+
+    let mut selector = WsStreamSelector::new(
+        test_stream,
+        ReceiverStream::new(rx),
+        WRITE_TIMEOUT,
+        write_timeout,
+    );
+
+    let result = selector.select_w().await;
 
     assert_eq!(result, Some(Err(TestError("Boom!".to_string()))));
 
@@ -291,9 +406,37 @@ async fn consume_error_on_send() {
     assert!(tx.send(0).await.is_ok());
     test_stream.stage_consume_error_on_send(0, "Boom!");
 
-    let mut selector = WsStreamSelector::new(test_stream, ReceiverStream::new(rx));
+    let mut selector = WsStreamSelector::new(
+        test_stream,
+        ReceiverStream::new(rx),
+        WRITE_TIMEOUT,
+        write_timeout,
+    );
 
-    let result = selector.next().await;
+    let result = selector.select_rw().await;
+
+    assert_eq!(result, Some(Err(TestError("Boom!".to_string()))));
+
+    assert!(!selector.is_terminated());
+}
+
+#[tokio::test]
+async fn consume_error_on_send_write_only() {
+    let test_stream = TestWsStream::default();
+
+    let (tx, rx) = mpsc::channel(8);
+
+    assert!(tx.send(0).await.is_ok());
+    test_stream.stage_consume_error_on_send(0, "Boom!");
+
+    let mut selector = WsStreamSelector::new(
+        test_stream,
+        ReceiverStream::new(rx),
+        WRITE_TIMEOUT,
+        write_timeout,
+    );
+
+    let result = selector.select_w().await;
 
     assert_eq!(result, Some(Err(TestError("Boom!".to_string()))));
 
@@ -314,22 +457,27 @@ async fn alternates_produce_and_consume() {
     staging.stage_produce(66);
     staging.stage_consume(1);
 
-    let mut selector = WsStreamSelector::new(test_stream, ReceiverStream::new(rx));
+    let mut selector = WsStreamSelector::new(
+        test_stream,
+        ReceiverStream::new(rx),
+        WRITE_TIMEOUT,
+        write_timeout,
+    );
 
-    let result = selector.next().await;
+    let result = selector.select_rw().await;
     assert_eq!(result, Some(Ok(SelectorResult::Read(66))));
 
     staging.stage_produce(76);
 
-    let result = selector.next().await;
+    let result = selector.select_rw().await;
     assert_eq!(result, Some(Ok(SelectorResult::Written)));
 
     staging.stage_consume(2);
 
-    let result = selector.next().await;
+    let result = selector.select_rw().await;
     assert_eq!(result, Some(Ok(SelectorResult::Read(76))));
 
-    let result = selector.next().await;
+    let result = selector.select_rw().await;
     assert_eq!(result, Some(Ok(SelectorResult::Written)));
 
     assert!(!selector.is_terminated());
@@ -346,14 +494,19 @@ async fn consumption_possible_but_no_data() {
     staging.stage_produce(66);
     staging.stage_consume(0);
 
-    let mut selector = WsStreamSelector::new(test_stream, ReceiverStream::new(rx));
+    let mut selector = WsStreamSelector::new(
+        test_stream,
+        ReceiverStream::new(rx),
+        WRITE_TIMEOUT,
+        write_timeout,
+    );
 
-    let result = selector.next().await;
+    let result = selector.select_rw().await;
     assert_eq!(result, Some(Ok(SelectorResult::Read(66))));
 
     staging.stage_produce(76);
 
-    let result = selector.next().await;
+    let result = selector.select_rw().await;
     assert_eq!(result, Some(Ok(SelectorResult::Read(76))));
     assert!(!selector.is_terminated());
 }
@@ -368,15 +521,20 @@ async fn production_continues_after_no_more_consumption() {
 
     staging.stage_produce(66);
 
-    let mut selector = WsStreamSelector::new(test_stream, ReceiverStream::new(rx));
+    let mut selector = WsStreamSelector::new(
+        test_stream,
+        ReceiverStream::new(rx),
+        WRITE_TIMEOUT,
+        write_timeout,
+    );
 
-    let result = selector.next().await;
+    let result = selector.select_rw().await;
     assert_eq!(result, Some(Ok(SelectorResult::Read(66))));
 
     staging.stage_produce(76);
     drop(tx);
 
-    let result = selector.next().await;
+    let result = selector.select_rw().await;
     assert_eq!(result, Some(Ok(SelectorResult::Read(76))));
     assert!(!selector.is_terminated());
 }
@@ -393,19 +551,24 @@ async fn production_and_consumption_stop_after_close() {
 
     staging.stage_produce(66);
 
-    let mut selector = WsStreamSelector::new(test_stream, ReceiverStream::new(rx));
+    let mut selector = WsStreamSelector::new(
+        test_stream,
+        ReceiverStream::new(rx),
+        WRITE_TIMEOUT,
+        write_timeout,
+    );
 
-    let result = selector.next().await;
+    let result = selector.select_rw().await;
     assert_eq!(result, Some(Ok(SelectorResult::Read(66))));
 
     staging.stage_consume(1);
     staging.stage_produce(88);
     staging.close();
 
-    let result = selector.next().await;
+    let result = selector.select_rw().await;
     assert_eq!(result, Some(Err(TestError("Closed!".to_string()))));
 
-    let result = selector.next().await;
+    let result = selector.select_rw().await;
     assert!(result.is_none());
     assert!(selector.is_terminated());
 }
@@ -418,17 +581,88 @@ async fn error_on_close() {
 
     let (_tx, rx) = mpsc::channel(8);
 
-    let mut selector = WsStreamSelector::new(test_stream, ReceiverStream::new(rx));
+    let mut selector = WsStreamSelector::new(
+        test_stream,
+        ReceiverStream::new(rx),
+        WRITE_TIMEOUT,
+        write_timeout,
+    );
     staging.stage_close_error("Boom!");
     staging.close();
 
-    let result = selector.next().await;
+    let result = selector.select_rw().await;
     assert_eq!(result, Some(Err(TestError("Boom!".to_string()))));
     assert!(!selector.is_terminated());
 
-    let result = selector.next().await;
+    let result = selector.select_rw().await;
     assert!(result.is_none());
     assert!(selector.is_terminated());
+}
+
+#[tokio::test]
+async fn consume_timeout() {
+    let test_stream = TestWsStream::default();
+
+    let (tx, rx) = mpsc::channel(8);
+
+    assert!(tx.send(1).await.is_ok());
+
+    let mut selector = WsStreamSelector::new(
+        test_stream,
+        ReceiverStream::new(rx),
+        WRITE_TIMEOUT,
+        write_timeout,
+    );
+
+    let notify = Arc::new(Notify::new());
+
+    let select_task = NotifyOnBlocked::new(selector.select_rw(), notify.clone());
+
+    tokio::time::pause();
+
+    let time_task = async move {
+        notify.notified().await;
+        tokio::time::advance(WRITE_TIMEOUT.add(Duration::from_secs(1))).await;
+    };
+
+    let (result, _) = join(select_task, time_task).await;
+
+    assert_eq!(result, Some(Err(TestError("Write Timeout".to_string()))));
+
+    assert!(!selector.is_terminated());
+}
+
+#[tokio::test]
+async fn consume_timeout_write_only() {
+    let test_stream = TestWsStream::default();
+
+    let (tx, rx) = mpsc::channel(8);
+
+    assert!(tx.send(1).await.is_ok());
+
+    let mut selector = WsStreamSelector::new(
+        test_stream,
+        ReceiverStream::new(rx),
+        WRITE_TIMEOUT,
+        write_timeout,
+    );
+
+    let notify = Arc::new(Notify::new());
+
+    let select_task = NotifyOnBlocked::new(selector.select_w(), notify.clone());
+
+    tokio::time::pause();
+
+    let time_task = async move {
+        notify.notified().await;
+        tokio::time::advance(WRITE_TIMEOUT.add(Duration::from_secs(1))).await;
+    };
+
+    let (result, _) = join(select_task, time_task).await;
+
+    assert_eq!(result, Some(Err(TestError("Write Timeout".to_string()))));
+
+    assert!(!selector.is_terminated());
 }
 
 struct TestStreamSink {

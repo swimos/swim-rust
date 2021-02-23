@@ -16,6 +16,7 @@ use std::convert::TryFrom;
 
 use crate::model::text::Text;
 use crate::model::{Attr, Item, Value};
+use crate::routing::ws::WsMessage;
 use crate::warp::path::RelativePath;
 use either::Either;
 use std::error::Error;
@@ -927,6 +928,12 @@ impl From<Envelope> for Value {
             _ => vec![],
         };
         Value::Record(attrs, envelope)
+    }
+}
+
+impl From<Envelope> for WsMessage {
+    fn from(env: Envelope) -> Self {
+        WsMessage::Text(env.into_value().to_string())
     }
 }
 
