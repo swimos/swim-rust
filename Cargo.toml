@@ -11,5 +11,5 @@ members = [
 ]
 
 exclude = [
-    "cookbook",
+    "cookbook"
 ]
