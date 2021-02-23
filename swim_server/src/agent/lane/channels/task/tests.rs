@@ -51,6 +51,7 @@ use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
 use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::{mpsc, Mutex};
+use tokio::time::timeout;
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
 use utilities::sync::{promise, topic, trigger};
@@ -1196,24 +1197,27 @@ async fn handle_action_lane_update_failure() {
         input_ref.send_raw(addr, Value::text("0")).await;
     };
 
-    let (_, result, _) = join3(spawn_task, task, io_task).await;
-
+    let (_, result, _) = join3(spawn_task, timeout(Duration::new(5, 0), task), io_task).await;
     assert!(result.is_err());
-    let expected_route = route();
+}
 
-    let LaneIoError {
-        route,
-        update_error,
-        uplink_errors,
-    } = result.err().unwrap();
+#[tokio::test]
+async fn handle_command_lane_update_failure() {
+    let (context, _router_rx, spawn_task) = make_context();
+    let config = make_config();
 
-    assert_eq!(route, expected_route);
-    assert!(uplink_errors.is_empty());
+    let (task, mut input) = make_command_lane_task(config, context);
 
-    assert!(matches!(
-        update_error,
-        Some(UpdateError::BadEnvelopeBody(FormErr::IncorrectType(_)))
-    ));
+    let addr = RoutingAddr::remote(5);
+
+    let input_ref = &mut input;
+
+    let io_task = async move {
+        input_ref.send_raw(addr, Value::text("0")).await;
+    };
+
+    let (_, result, _) = join3(spawn_task, timeout(Duration::new(5, 0), task), io_task).await;
+    assert!(result.is_err());
 }
 
 #[derive(Debug)]

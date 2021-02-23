@@ -19,6 +19,7 @@ use crate::routing::RoutingAddr;
 use futures::future::join;
 use std::time::Duration;
 use swim_common::form::FormErr;
+use swim_runtime::time::timeout::timeout;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 
@@ -233,11 +234,8 @@ async fn cleanup_on_error() {
         check_feedback(&mut feedback_rx, addr2, 56).await;
     };
 
-    let (result, _) = join(update_task, assertion_task).await;
-    assert!(matches!(
-        result,
-        Err(UpdateError::BadEnvelopeBody(FormErr::Malformatted))
-    ));
+    let (result, _) = join(timeout(Duration::new(5, 0), update_task), assertion_task).await;
+    assert!(result.is_err());
 }
 
 #[tokio::test]
