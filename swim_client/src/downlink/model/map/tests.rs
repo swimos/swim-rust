@@ -573,7 +573,7 @@ fn skip_message_synced() {
 
     let ViewWithEvent { view, event } = only_event(&response);
     assert!(view.ptr_eq(&model.state));
-    let expected_event = MapEvent::Skip(1);
+    let expected_event = MapEvent::Drop(1);
     assert_eq!(event, &expected_event);
 }
 
@@ -1295,7 +1295,7 @@ fn make_skip(
     let (tx_bef, rx_bef) = oneshot::channel();
     let (tx_aft, rx_aft) = oneshot::channel();
     (
-        MapAction::skip_and_await(n, Request::new(tx_bef), Request::new(tx_aft)),
+        MapAction::drop_and_await(n, Request::new(tx_bef), Request::new(tx_aft)),
         rx_bef,
         rx_aft,
     )
@@ -1335,7 +1335,7 @@ fn skip_action() {
     let (ViewWithEvent { view, event }, cmd, err) = event_and_cmd(response);
 
     assert!(view.ptr_eq(&model.state));
-    assert_eq!(event, MapEvent::Skip(1));
+    assert_eq!(event, MapEvent::Drop(1));
     assert_eq!(cmd, UntypedMapModification::Drop(1));
     assert!(err.is_none());
 
@@ -1388,7 +1388,7 @@ fn skip_action_dropped_before() {
     let (ViewWithEvent { view, event }, cmd, err) = event_and_cmd(response);
 
     assert!(view.ptr_eq(&model.state));
-    assert_eq!(event, MapEvent::Skip(1));
+    assert_eq!(event, MapEvent::Drop(1));
     assert_eq!(cmd, UntypedMapModification::Drop(1));
     assert_eq!(err, Some(TransitionError::ReceiverDropped));
 
@@ -1436,7 +1436,7 @@ fn skip_action_dropped_after() {
     let (ViewWithEvent { view, event }, cmd, err) = event_and_cmd(response);
 
     assert!(view.ptr_eq(&model.state));
-    assert_eq!(event, MapEvent::Skip(1));
+    assert_eq!(event, MapEvent::Drop(1));
     assert_eq!(cmd, UntypedMapModification::Drop(1));
     assert_eq!(err, Some(TransitionError::ReceiverDropped));
 
@@ -1483,7 +1483,7 @@ fn skip_action_dropped_both() {
     let (ViewWithEvent { view, event }, cmd, err) = event_and_cmd(response);
 
     assert!(view.ptr_eq(&model.state));
-    assert_eq!(event, MapEvent::Skip(1));
+    assert_eq!(event, MapEvent::Drop(1));
     assert_eq!(cmd, UntypedMapModification::Drop(1));
     assert_eq!(err, Some(TransitionError::ReceiverDropped));
 }

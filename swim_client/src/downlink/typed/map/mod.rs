@@ -744,7 +744,7 @@ pub fn type_event_ref<K: Form>(event: &MapEvent<Value>) -> Result<MapEvent<K>, F
         MapEvent::Update(k) => K::try_from_value(k).map(MapEvent::Update),
         MapEvent::Remove(k) => K::try_from_value(k).map(MapEvent::Remove),
         MapEvent::Take(n) => Ok(MapEvent::Take(*n)),
-        MapEvent::Skip(n) => Ok(MapEvent::Skip(*n)),
+        MapEvent::Drop(n) => Ok(MapEvent::Drop(*n)),
         MapEvent::Clear => Ok(MapEvent::Clear),
     }
 }
@@ -948,7 +948,7 @@ where
         let req1 = Request::new(tx1);
         let req2 = Request::new(tx2);
         self.sender
-            .send(MapAction::skip_and_await(n, req1, req2))
+            .send(MapAction::drop_and_await(n, req1, req2))
             .await?;
         let before = rx1.await.map_err(|_| DownlinkError::DroppedChannel)??;
         let after = rx2.await.map_err(|_| DownlinkError::DroppedChannel)??;
@@ -973,7 +973,7 @@ where
 
     /// Skip the first `n` elements of the map without waiting for the operation to complete.
     pub async fn skip_and_forget(&self, n: usize) -> Result<(), DownlinkError> {
-        Ok(self.sender.send(MapAction::skip(n)).await?)
+        Ok(self.sender.send(MapAction::drop(n)).await?)
     }
 
     /// Get the current state of the map.

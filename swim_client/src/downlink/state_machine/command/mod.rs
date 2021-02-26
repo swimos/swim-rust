@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[cfg(test)]
+mod tests;
+
 use crate::downlink::state_machine::{DownlinkStateMachine, EventResult, Response, ResponseResult};
 use crate::downlink::{Command, Message};
 use swim_common::model::schema::{Schema, StandardSchema};
@@ -19,6 +22,18 @@ use swim_common::model::Value;
 
 struct CommandStateMachine {
     schema: StandardSchema,
+}
+
+impl CommandStateMachine {
+    fn unvalidated() -> Self {
+        CommandStateMachine {
+            schema: StandardSchema::Anything,
+        }
+    }
+
+    fn new(schema: StandardSchema) -> Self {
+        CommandStateMachine { schema }
+    }
 }
 
 impl DownlinkStateMachine<(), Value> for CommandStateMachine {

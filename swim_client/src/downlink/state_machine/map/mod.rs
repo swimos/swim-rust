@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[cfg(test)]
+mod tests;
+
 use crate::downlink::error::DownlinkError;
 use crate::downlink::model::map::{MapAction, UntypedMapModification, ValMap, ViewWithEvent};
 use crate::downlink::state_machine::{Response, ResponseResult, SyncStateMachine};
@@ -23,6 +26,22 @@ use swim_common::model::Value;
 pub struct MapStateMachine {
     key_schema: StandardSchema,
     value_schema: StandardSchema,
+}
+
+impl MapStateMachine {
+    pub fn unvalidated() -> Self {
+        MapStateMachine {
+            key_schema: StandardSchema::Anything,
+            value_schema: StandardSchema::Anything,
+        }
+    }
+
+    pub fn new(key_schema: StandardSchema, value_schema: StandardSchema) -> Self {
+        MapStateMachine {
+            key_schema,
+            value_schema,
+        }
+    }
 }
 
 impl SyncStateMachine<UntypedMapModification<Value>, MapAction> for MapStateMachine {

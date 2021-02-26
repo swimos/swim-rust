@@ -186,7 +186,7 @@ fn typed_view_with_event_take() {
 fn typed_view_with_event_skip() {
     let raw = ViewWithEvent {
         view: make_raw(),
-        event: MapEvent::Skip(1),
+        event: MapEvent::Drop(1),
     };
 
     let typed: Result<TypedViewWithEvent<i32, i32>, FormErr> = raw.try_into();
@@ -195,7 +195,7 @@ fn typed_view_with_event_skip() {
         typed,
         Ok(TypedViewWithEvent {
             view: make_view(),
-            event: MapEvent::Skip(1)
+            event: MapEvent::Drop(1)
         })
     );
 }

@@ -134,7 +134,7 @@ impl MapAction {
         }
     }
 
-    pub fn skip(n: usize) -> MapAction {
+    pub fn drop(n: usize) -> MapAction {
         MapAction::Skip {
             n,
             before: None,
@@ -142,7 +142,7 @@ impl MapAction {
         }
     }
 
-    pub fn skip_and_await(
+    pub fn drop_and_await(
         n: usize,
         map_before: DownlinkRequest<ValMap>,
         map_after: DownlinkRequest<ValMap>,
@@ -293,7 +293,7 @@ pub enum MapEvent<K> {
     Update(K),
     Remove(K),
     Take(usize),
-    Skip(usize),
+    Drop(usize),
     Clear,
 }
 
@@ -337,7 +337,7 @@ impl ViewWithEvent {
     pub fn skip(map: &ValMap, n: usize) -> ViewWithEvent {
         ViewWithEvent {
             view: map.clone(),
-            event: MapEvent::Skip(n),
+            event: MapEvent::Drop(n),
         }
     }
 
