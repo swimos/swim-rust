@@ -34,6 +34,7 @@ use crate::model::{Item, Value, ValueKind};
 use std::mem::size_of;
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicI64, AtomicU32, AtomicU64, Ordering};
 use url::Url;
+use utilities::uri::RelativeUri;
 
 impl Form for Blob {
     fn as_value(&self) -> Value {
@@ -837,6 +838,23 @@ impl Form for Url {
                 Ok(url) => Ok(url),
                 Err(_) => Err(FormErr::Malformatted),
             },
+            v => Err(FormErr::incorrect_type("Value::Text", v)),
+        }
+    }
+}
+
+impl Form for RelativeUri {
+    fn as_value(&self) -> Value {
+        Value::text(self.to_string())
+    }
+
+    fn try_from_value(value: &Value) -> Result<Self, FormErr> {
+        match value {
+            Value::Text(inner) => {
+                let uri =
+                    RelativeUri::from_str(inner.as_str()).map_err(|_| FormErr::Malformatted)?;
+                Ok(uri)
+            }
             v => Err(FormErr::incorrect_type("Value::Text", v)),
         }
     }

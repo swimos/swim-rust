@@ -14,12 +14,14 @@
 
 use crate::agent::dispatch::error::{DispatcherError, DispatcherErrors};
 use crate::agent::dispatch::tests::mock::{MockExecutionContext, MockLane};
-use crate::agent::dispatch::AgentDispatcher;
+use crate::agent::dispatch::{AgentDispatcher, LaneIdentifier};
 use crate::agent::lane::channels::task::LaneIoError;
 use crate::agent::lane::channels::update::UpdateError;
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::AttachError;
 use crate::agent::LaneIo;
+use crate::meta::log::LogLevel;
+use crate::meta::{LaneAddressedKind, MetaNodeAddressed};
 use crate::routing::{RoutingAddr, TaggedEnvelope};
 use futures::future::{join, BoxFuture};
 use futures::{FutureExt, Stream, StreamExt};
@@ -31,6 +33,7 @@ use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
 use swim_common::warp::path::RelativePath;
 use swim_runtime::time::timeout;
 use tokio::sync::mpsc;
+use tokio::sync::mpsc::Sender;
 use tokio_stream::wrappers::ReceiverStream;
 
 mod mock;
@@ -38,7 +41,7 @@ mod mock;
 fn make_dispatcher(
     buffer_size: usize,
     max_pending: usize,
-    lanes: HashMap<String, MockLane>,
+    lanes: HashMap<LaneIdentifier, MockLane>,
     envelopes: impl Stream<Item = TaggedEnvelope> + Send + 'static,
 ) -> (
     BoxFuture<'static, Result<DispatcherErrors, DispatcherErrors>>,
@@ -78,11 +81,12 @@ fn make_dispatcher(
     )
 }
 
-fn lanes(names: Vec<&str>) -> HashMap<String, MockLane> {
+fn lanes(names: Vec<&str>) -> HashMap<LaneIdentifier, MockLane> {
     let mut map = HashMap::new();
     for name in names.iter() {
-        map.insert(name.to_string(), MockLane);
+        map.insert(LaneIdentifier::agent(name.to_string()), MockLane);
     }
+
     map
 }
 
@@ -485,4 +489,140 @@ async fn fatal_failed_attachment() {
         }
         ow => panic!("Unexpected result {:?}.", ow),
     }
+}
+
+#[tokio::test]
+async fn dispatch_meta() {
+    let mut map = HashMap::new();
+
+    map.insert(LaneIdentifier::agent("lane".to_string()), MockLane);
+    map.insert(
+        LaneIdentifier::Meta(MetaNodeAddressed::NodeProfile),
+        MockLane,
+    );
+    map.insert(
+        LaneIdentifier::Meta(MetaNodeAddressed::UplinkProfile {
+            lane_uri: "bar".into(),
+        }),
+        MockLane,
+    );
+    map.insert(
+        LaneIdentifier::Meta(MetaNodeAddressed::LaneAddressed {
+            lane_uri: "bar".into(),
+            kind: LaneAddressedKind::Pulse,
+        }),
+        MockLane,
+    );
+    map.insert(
+        LaneIdentifier::Meta(MetaNodeAddressed::LaneAddressed {
+            lane_uri: "bar".into(),
+            kind: LaneAddressedKind::Log(LogLevel::Trace),
+        }),
+        MockLane,
+    );
+    map.insert(LaneIdentifier::Meta(MetaNodeAddressed::Lanes), MockLane);
+
+    for level in LogLevel::enumerated() {
+        map.insert(
+            LaneIdentifier::Meta(MetaNodeAddressed::NodeLog(*level)),
+            MockLane,
+        );
+    }
+
+    let (envelope_tx, envelope_rx) = mpsc::channel::<TaggedEnvelope>(8);
+
+    let (task, context) = make_dispatcher(8, 10, map, ReceiverStream::new(envelope_rx));
+
+    let mut receiver_idx = 0;
+
+    let assertion_task = async move {
+        let mut make_addr = || {
+            receiver_idx += 1;
+            RoutingAddr::remote(receiver_idx)
+        };
+
+        async fn assert(
+            envelope_tx: &Sender<TaggedEnvelope>,
+            context: &MockExecutionContext,
+            env: Envelope,
+            lane: &str,
+            addr: RoutingAddr,
+        ) {
+            assert!(envelope_tx
+                .send(TaggedEnvelope(addr, env.clone()))
+                .await
+                .is_ok());
+
+            let mut rx = context.take_receiver(&addr).unwrap();
+            expect_echo(&mut rx, lane, env).await;
+        }
+
+        assert(
+            &envelope_tx,
+            &context,
+            Envelope::link("/swim:meta:node/unit%2Ffoo/", "pulse"),
+            "pulse",
+            make_addr(),
+        )
+        .await;
+
+        assert(
+            &envelope_tx,
+            &context,
+            Envelope::link("/swim:meta:node/unit%2Ffoo/lane/bar", "uplink"),
+            "uplink",
+            make_addr(),
+        )
+        .await;
+
+        assert(
+            &envelope_tx,
+            &context,
+            Envelope::link("/swim:meta:node/unit%2Ffoo/lane/bar", "traceLog"),
+            "traceLog",
+            make_addr(),
+        )
+        .await;
+
+        assert(
+            &envelope_tx,
+            &context,
+            Envelope::link("/swim:meta:node/unit%2Ffoo/", "lanes"),
+            "lanes",
+            make_addr(),
+        )
+        .await;
+
+        for level in LogLevel::enumerated() {
+            assert(
+                &envelope_tx,
+                &context,
+                Envelope::link("/swim:meta:node/unit%2Ffoo", level.uri_ref()),
+                level.uri_ref(),
+                make_addr(),
+            )
+            .await;
+        }
+
+        let addr = make_addr();
+        let env = Envelope::link("/swim:meta:node/unit%2Ffoo/bar/fizz", "lane");
+
+        assert!(envelope_tx
+            .send(TaggedEnvelope(addr, env.clone()))
+            .await
+            .is_ok());
+
+        let expected_env = Envelope::lane_not_found("/swim:meta:node/unit%2Ffoo/bar/fizz", "lane");
+
+        let mut rx = context.take_receiver(&addr).unwrap();
+        let TaggedEnvelope(_, env) = rx.recv().await.unwrap();
+
+        assert_eq!(expected_env, env);
+
+        drop(envelope_tx);
+        drop(context);
+    };
+
+    let (result, _) = join(task, assertion_task).await;
+    assert!(matches!(result, Ok(errs) if errs.is_empty()));
 }

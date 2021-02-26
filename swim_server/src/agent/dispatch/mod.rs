@@ -12,17 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod error;
-#[cfg(test)]
-mod tests;
+use std::collections::HashMap;
+use std::convert::TryFrom;
+use std::fmt::{Display, Formatter};
+use std::future::Future;
+use std::num::NonZeroUsize;
+use std::pin::Pin;
 
-use crate::agent::context::AgentExecutionContext;
-use crate::agent::dispatch::error::{DispatcherError, DispatcherErrors};
-use crate::agent::lane::channels::task::LaneIoError;
-use crate::agent::lane::channels::uplink::spawn::UplinkErrorReport;
-use crate::agent::lane::channels::AgentExecutionConfig;
-use crate::agent::{AttachError, LaneIo};
-use crate::routing::{RoutingAddr, ServerRouter, TaggedClientEnvelope, TaggedEnvelope};
 use either::Either;
 use futures::future::{join, BoxFuture};
 use futures::stream::{FusedStream, FuturesUnordered};
@@ -30,19 +26,31 @@ use futures::task::{Context, Poll};
 use futures::{ready, select_biased, FutureExt};
 use futures::{Stream, StreamExt};
 use pin_utils::pin_mut;
-use std::collections::HashMap;
-use std::future::Future;
-use std::num::NonZeroUsize;
-use std::pin::Pin;
-use swim_common::warp::envelope::{Envelope, OutgoingHeader, OutgoingLinkMessage};
-use swim_common::warp::path::RelativePath;
+use thiserror::Error;
 use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, span, Level};
 use tracing_futures::Instrument;
+
+use swim_common::warp::envelope::{Envelope, OutgoingHeader};
+use swim_common::warp::path::RelativePath;
 use utilities::errors::Recoverable;
 use utilities::sync::trigger;
 use utilities::uri::RelativeUri;
+
+use crate::agent::context::AgentExecutionContext;
+use crate::agent::dispatch::error::{DispatcherError, DispatcherErrors};
+use crate::agent::lane::channels::task::LaneIoError;
+use crate::agent::lane::channels::uplink::spawn::UplinkErrorReport;
+use crate::agent::lane::channels::AgentExecutionConfig;
+use crate::agent::{AttachError, LaneIo};
+use crate::meta::uri::MetaParseErr;
+use crate::meta::{LaneAddressedKind, MetaNodeAddressed, LANES_URI, PULSE_URI, UPLINK_URI};
+use crate::routing::{RoutingAddr, ServerRouter, TaggedClientEnvelope, TaggedEnvelope};
+
+pub mod error;
+#[cfg(test)]
+mod tests;
 
 /// A collection of interlinked tasks that forwards incoming
 /// [`swim_common::warp::envelope::Envelope`]s to the lanes of an agent and routes
@@ -51,12 +59,12 @@ pub struct AgentDispatcher<Context> {
     agent_route: RelativeUri,
     config: AgentExecutionConfig,
     context: Context,
-    lanes: HashMap<String, Box<dyn LaneIo<Context>>>,
+    lanes: HashMap<LaneIdentifier, Box<dyn LaneIo<Context>>>,
 }
 
 //A request to attach a lane to the dispatcher.
 struct OpenRequest {
-    name: String,
+    identifier: LaneIdentifier,
     rx: mpsc::Receiver<TaggedClientEnvelope>,
     callback: oneshot::Sender<Result<(), AttachError>>,
     remote_addr: Option<RoutingAddr>,
@@ -64,16 +72,96 @@ struct OpenRequest {
 
 impl OpenRequest {
     fn new(
-        name: String,
+        identifier: LaneIdentifier,
         rx: mpsc::Receiver<TaggedClientEnvelope>,
         callback: oneshot::Sender<Result<(), AttachError>>,
         remote_addr: Option<RoutingAddr>,
     ) -> Self {
         OpenRequest {
-            name,
+            identifier,
             rx,
             callback,
             remote_addr,
+        }
+    }
+}
+
+/// An abstraction over both agent lanes and meta lanes.
+#[derive(Hash, Eq, PartialEq, Debug, Clone)]
+pub enum LaneIdentifier {
+    /// A user-written lane.
+    Agent(String),
+    /// A node-addressed lane; such as a log/pulse.
+    Meta(MetaNodeAddressed),
+}
+
+#[derive(Debug, PartialEq, Error)]
+pub enum LaneIdentifierParseErr {
+    /// The provided relative path was of `swim:meta:node` but the target was invalid.
+    #[error("Unknown node meta address: `{0}`")]
+
+    /// The provided path was empty.
+    UnknownMetaNodeAddress(String),
+    #[error("Empty node or lane URI")]
+    EmptyUri,
+}
+
+impl<'a> TryFrom<&'a RelativePath> for LaneIdentifier {
+    type Error = LaneIdentifierParseErr;
+
+    fn try_from(path: &RelativePath) -> Result<Self, Self::Error> {
+        match MetaNodeAddressed::try_from_relative(path) {
+            Ok(meta) => Ok(LaneIdentifier::meta(meta)),
+            Err(e) => match e {
+                MetaParseErr::EmptyUri => Err(LaneIdentifierParseErr::EmptyUri),
+                MetaParseErr::UnknownNodeTarget => Err(
+                    LaneIdentifierParseErr::UnknownMetaNodeAddress(path.node.to_string()),
+                ),
+                _ => Ok(LaneIdentifier::agent(path.lane.to_string())),
+            },
+        }
+    }
+}
+
+impl Display for LaneIdentifier {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LaneIdentifier::Agent(uri) => {
+                write!(f, "Agent(lane: \"{}\")", uri)
+            }
+            LaneIdentifier::Meta(meta) => {
+                write!(f, "Meta({:?})", meta)
+            }
+        }
+    }
+}
+
+impl LaneIdentifier {
+    pub fn agent(lane_uri: String) -> LaneIdentifier {
+        LaneIdentifier::Agent(lane_uri)
+    }
+
+    pub fn meta(kind: MetaNodeAddressed) -> LaneIdentifier {
+        LaneIdentifier::Meta(kind)
+    }
+
+    pub fn lane_uri(&self) -> String {
+        match self {
+            LaneIdentifier::Agent(lane) => lane.to_owned(),
+            LaneIdentifier::Meta(meta) => match meta {
+                MetaNodeAddressed::NodeProfile {} => PULSE_URI.to_string(),
+                MetaNodeAddressed::UplinkProfile { .. } => UPLINK_URI.to_string(),
+                MetaNodeAddressed::Lanes => LANES_URI.to_string(),
+                MetaNodeAddressed::NodeLog(level) => level.uri_ref().to_string(),
+                MetaNodeAddressed::LaneAddressed {
+                    kind: LaneAddressedKind::Log(level),
+                    ..
+                } => level.uri_ref().to_string(),
+                MetaNodeAddressed::LaneAddressed {
+                    kind: LaneAddressedKind::Pulse,
+                    ..
+                } => PULSE_URI.to_string(),
+            },
         }
     }
 }
@@ -98,7 +186,7 @@ where
         agent_route: RelativeUri,
         config: AgentExecutionConfig,
         context: Context,
-        lanes: HashMap<String, Box<dyn LaneIo<Context>>>,
+        lanes: HashMap<LaneIdentifier, Box<dyn LaneIo<Context>>>,
     ) -> Self {
         AgentDispatcher {
             agent_route,
@@ -129,13 +217,17 @@ where
 
         let (tripwire_tx, tripwire_rx) = trigger::trigger();
 
+        let mut dispatcher = EnvelopeDispatcher::new(
+            open_tx,
+            config.yield_after,
+            config.lane_buffer,
+            context.router_handle(),
+        );
+
         let attacher = LaneAttachmentTask::new(agent_route, lanes, &config, context);
         let open_task = attacher
             .run(open_rx, tripwire_tx)
             .instrument(span!(Level::INFO, LANE_ATTACH_TASK));
-
-        let mut dispatcher =
-            EnvelopeDispatcher::new(open_tx, config.yield_after, config.lane_buffer);
 
         let dispatch_task = async move {
             let succeeded = dispatcher
@@ -159,7 +251,7 @@ where
 // A task that attaches the lanes to the dispatcher when the first envelope is routed to them.
 struct LaneAttachmentTask<'a, Context> {
     agent_route: RelativeUri,
-    lanes: HashMap<String, Box<dyn LaneIo<Context>>>,
+    lanes: HashMap<LaneIdentifier, Box<dyn LaneIo<Context>>>,
     config: &'a AgentExecutionConfig,
     context: Context,
 }
@@ -217,7 +309,7 @@ where
 {
     fn new(
         agent_route: RelativeUri,
-        lanes: HashMap<String, Box<dyn LaneIo<Context>>>,
+        lanes: HashMap<LaneIdentifier, Box<dyn LaneIo<Context>>>,
         config: &'a AgentExecutionConfig,
         context: Context,
     ) -> Self {
@@ -252,13 +344,14 @@ where
         let mut iteration_count: usize = 0;
 
         let mut errors = DispatcherErrors::new();
+        let mut router = context.router_handle();
 
         loop {
             let next = next_attachment_event(&mut requests, &mut lane_io_tasks).await;
 
             match next {
                 Some(LaneTaskEvent::Request(OpenRequest {
-                    name,
+                    identifier,
                     rx: lane_rx,
                     callback,
                     remote_addr: maybe_remote_addr,
@@ -266,28 +359,30 @@ where
                     event!(
                         Level::DEBUG,
                         message = "Attachment requested for lane.",
-                        ?name
+                        ?identifier
                     );
-                    if let Some(lane_io) = lanes.remove(&name) {
-                        let route = RelativePath::new(agent_route.to_string(), name.clone());
+
+                    if let Some(lane_io) = lanes.remove(&identifier) {
+                        let route =
+                            RelativePath::new(agent_route.to_string(), identifier.lane_uri());
                         let task_result =
                             lane_io.attach_boxed(route, lane_rx, config.clone(), context.clone());
                         match task_result {
                             Ok(task) => {
                                 lane_io_tasks.push(task);
                                 if callback.send(Ok(())).is_err() {
-                                    event!(Level::ERROR, message = BAD_CALLBACK, ?name);
+                                    event!(Level::ERROR, message = BAD_CALLBACK, ?identifier);
                                 }
                             }
                             Err(error) => {
                                 event!(
                                     Level::ERROR,
                                     message = "Attaching to a lane failed.",
-                                    ?name,
+                                    ?identifier,
                                     ?error
                                 );
                                 if callback.send(Err(error.clone())).is_err() {
-                                    event!(Level::ERROR, message = BAD_CALLBACK, ?name);
+                                    event!(Level::ERROR, message = BAD_CALLBACK, ?identifier);
                                 }
                                 let dispatch_err = DispatcherError::AttachmentFailed(error);
                                 if dispatch_err.is_fatal() {
@@ -301,31 +396,23 @@ where
                         }
                     } else {
                         errors.push(DispatcherError::AttachmentFailed(
-                            AttachError::LaneDoesNotExist(name.clone()),
+                            AttachError::LaneDoesNotExist(identifier.lane_uri()),
                         ));
 
                         if let Some(remote_addr) = maybe_remote_addr {
-                            if let Ok(mut remote_route) =
-                                context.router_handle().resolve_sender(remote_addr).await
-                            {
-                                if remote_route
-                                    .sender
-                                    .send_item(Envelope::lane_not_found(
-                                        agent_route.to_string(),
-                                        name.clone(),
-                                    ))
-                                    .await
-                                    .is_err()
-                                {
-                                    event!(Level::ERROR, FAILED_NOT_FOUND_RESPONSE);
-                                };
-                            }
+                            send_lane_not_found(
+                                &mut router,
+                                remote_addr,
+                                agent_route.to_string(),
+                                identifier.lane_uri(),
+                            )
+                            .await;
                         }
                         if callback
-                            .send(Err(AttachError::LaneDoesNotExist(name.clone())))
+                            .send(Err(AttachError::LaneDoesNotExist(identifier.to_string())))
                             .is_err()
                         {
-                            event!(Level::ERROR, message = BAD_CALLBACK, ?name);
+                            event!(Level::ERROR, message = BAD_CALLBACK, ?identifier);
                         }
                     }
                 }
@@ -404,12 +491,13 @@ impl<L: Unpin> Future for AwaitNewLane<L> {
     }
 }
 
-struct EnvelopeDispatcher {
-    senders: HashMap<String, mpsc::Sender<TaggedClientEnvelope>>,
+struct EnvelopeDispatcher<Router> {
+    senders: HashMap<LaneIdentifier, mpsc::Sender<TaggedClientEnvelope>>,
     open_tx: mpsc::Sender<OpenRequest>,
-    await_new: FuturesUnordered<AwaitNewLane<String>>,
+    await_new: FuturesUnordered<AwaitNewLane<LaneIdentifier>>,
     yield_after: NonZeroUsize,
     lane_buffer: NonZeroUsize,
+    router: Router,
 }
 
 const BAD_CALLBACK: &str = "Could not send input channel to the envelope dispatcher.";
@@ -418,17 +506,18 @@ const ATTEMPT_DISPATCH: &str = "Attempting to dispatch envelope.";
 const REQUESTING_ATTACH: &str = "Requesting lane to be attached for envelope.";
 const NON_EXISTENT_DROP: &str = "Lane does not exist; dropping pending messages.";
 const FAILED_START_DROP: &str = "Lane IO task failed to start; dropping pending messages.";
-const FAILED_NOT_FOUND_RESPONSE: &str = "Could not send response for a missing lane.";
+const NODE_URI_PARSE_ERR: &str = "Failed to parse node URI.";
+const FAILED_NOT_FOUND_RESPONSE: &str = "Failed to send lane not found response.";
 
-fn lane(env: &OutgoingLinkMessage) -> &str {
-    env.path.lane.as_str()
-}
-
-impl EnvelopeDispatcher {
+impl<Router> EnvelopeDispatcher<Router>
+where
+    Router: ServerRouter,
+{
     fn new(
         open_tx: mpsc::Sender<OpenRequest>,
         yield_after: NonZeroUsize,
         lane_buffer: NonZeroUsize,
+        router: Router,
     ) -> Self {
         EnvelopeDispatcher {
             senders: Default::default(),
@@ -436,6 +525,7 @@ impl EnvelopeDispatcher {
             await_new: Default::default(),
             yield_after,
             lane_buffer,
+            router,
         }
     }
 
@@ -446,6 +536,7 @@ impl EnvelopeDispatcher {
             await_new,
             yield_after,
             lane_buffer,
+            router,
         } = self;
 
         let envelopes = envelopes.fuse();
@@ -470,7 +561,24 @@ impl EnvelopeDispatcher {
                 Some(Either::Right(TaggedEnvelope(addr, envelope))) => {
                     event!(Level::TRACE, message = ATTEMPT_DISPATCH, ?envelope);
                     if let Ok(envelope) = envelope.into_outgoing() {
-                        if let Some(sender) = senders.get_mut(lane(&envelope)) {
+                        let identifier = match LaneIdentifier::try_from(&envelope.path) {
+                            Ok(identifier) => identifier,
+                            Err(e) => {
+                                event!(Level::WARN, message = NODE_URI_PARSE_ERR, ?e);
+
+                                send_lane_not_found(
+                                    router,
+                                    addr,
+                                    envelope.path.node.to_string(),
+                                    envelope.path.lane.to_string(),
+                                )
+                                .await;
+
+                                break false;
+                            }
+                        };
+
+                        if let Some(sender) = senders.get_mut(&identifier) {
                             if sender
                                 .send(TaggedClientEnvelope(addr, envelope))
                                 .await
@@ -483,12 +591,10 @@ impl EnvelopeDispatcher {
                             let (req_tx, req_rx) = oneshot::channel();
                             let (uplink_tx, uplink_rx) = mpsc::channel(lane_buffer.get());
 
-                            let label = lane(&envelope).to_string();
-
                             let result = if let OutgoingHeader::Link(_) = envelope.header {
                                 open_tx
                                     .send(OpenRequest::new(
-                                        label.clone(),
+                                        identifier.clone(),
                                         uplink_rx,
                                         req_tx,
                                         Some(addr),
@@ -496,7 +602,12 @@ impl EnvelopeDispatcher {
                                     .await
                             } else {
                                 open_tx
-                                    .send(OpenRequest::new(label.clone(), uplink_rx, req_tx, None))
+                                    .send(OpenRequest::new(
+                                        identifier.clone(),
+                                        uplink_rx,
+                                        req_tx,
+                                        None,
+                                    ))
                                     .await
                             };
 
@@ -504,7 +615,7 @@ impl EnvelopeDispatcher {
                                 break false;
                             }
 
-                            await_new.push(AwaitNewLane::new(label.clone(), req_rx));
+                            await_new.push(AwaitNewLane::new(identifier.clone(), req_rx));
                             if uplink_tx
                                 .send(TaggedClientEnvelope(addr, envelope))
                                 .await
@@ -512,7 +623,8 @@ impl EnvelopeDispatcher {
                             {
                                 break false;
                             }
-                            senders.insert(label.clone(), uplink_tx);
+
+                            senders.insert(identifier, uplink_tx);
                         }
                     }
                 }
@@ -582,5 +694,25 @@ where
             new_sender = await_new.next() => new_sender.map(Either::Left),
             env = envelopes.next() => env.map(Either::Right),
         }
+    }
+}
+
+async fn send_lane_not_found<Router>(
+    router: &mut Router,
+    remote_addr: RoutingAddr,
+    node: String,
+    lane: String,
+) where
+    Router: ServerRouter,
+{
+    if let Ok(mut remote_route) = router.resolve_sender(remote_addr).await {
+        if remote_route
+            .sender
+            .send_item(Envelope::lane_not_found(node.to_owned(), lane.to_owned()))
+            .await
+            .is_err()
+        {
+            event!(Level::ERROR, ?node, ?lane, FAILED_NOT_FOUND_RESPONSE);
+        };
     }
 }
