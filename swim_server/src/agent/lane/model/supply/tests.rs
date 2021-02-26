@@ -13,12 +13,13 @@
 // limitations under the License.
 
 use crate::agent::lane::model::supply::make_lane_model;
+use crate::agent::lane::model::supply::supplier::Queue;
 use futures::StreamExt;
 use std::num::NonZeroUsize;
 
 #[tokio::test]
 async fn receive_events() {
-    let (lane, mut events) = make_lane_model::<i32>(NonZeroUsize::new(5).unwrap());
+    let (lane, mut events) = make_lane_model(Queue(NonZeroUsize::new(1000).unwrap()));
 
     let jh = tokio::spawn(async move {
         let mut expected = (0..=100).collect::<Vec<i32>>();
@@ -34,8 +35,7 @@ async fn receive_events() {
     let values: Vec<i32> = (0..=100).collect();
 
     for v in values {
-        let supplier = lane.supplier();
-        assert!(supplier.send(v).await.is_ok());
+        assert!(lane.send(v).await.is_ok());
     }
 
     drop(lane);
