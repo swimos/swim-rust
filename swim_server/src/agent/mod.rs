@@ -72,6 +72,7 @@ use utilities::future::SwimStreamExt;
 use utilities::sync::{topic, trigger};
 use utilities::uri::RelativeUri;
 
+use crate::agent::lane::model::supply::supplier::SupplyLaneObserver;
 #[doc(hidden)]
 #[allow(unused_imports)]
 pub use agent_derive::*;
@@ -1090,10 +1091,10 @@ where
 /// * `name` - The name of the lane.
 /// * `is_public` - Whether the lane is public (with respect to external message routing).
 /// * `buffer_size` - Buffer size for the MPSC channel accepting the events.
-pub fn make_supply_lane<Agent, Context, T>(
+pub fn make_supply_lane<Agent, Context, T, O>(
     name: impl Into<String>,
     is_public: bool,
-    buffer_size: NonZeroUsize,
+    observer: O,
 ) -> (
     SupplyLane<T>,
     impl LaneTasks<Agent, Context>,
@@ -1103,13 +1104,14 @@ where
     Agent: 'static,
     Context: AgentContext<Agent> + AgentExecutionContext + Send + Sync + 'static,
     T: Any + Clone + Send + Sync + Form + Debug,
+    O: SupplyLaneObserver<T>,
 {
-    let (lane, event_stream) = make_lane_model(buffer_size);
+    let (lane, view) = make_lane_model(observer);
 
     let tasks = StatelessLifecycleTasks { name: name.into() };
 
     let lane_io = if is_public {
-        Some(SupplyLaneIo::new(event_stream))
+        Some(SupplyLaneIo::new(view))
     } else {
         None
     };
