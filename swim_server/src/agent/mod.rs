@@ -19,7 +19,7 @@ pub mod lifecycle;
 #[cfg(test)]
 mod tests;
 
-use crate::agent::context::{AgentExecutionContext, ContextImpl};
+use crate::agent::context::{AgentExecutionContext, ContextImpl, RoutingContext, SchedulerContext};
 use crate::agent::dispatch::error::DispatcherErrors;
 use crate::agent::dispatch::{AgentDispatcher, LaneIdentifier};
 use crate::agent::lane::channels::task::{
@@ -33,7 +33,6 @@ use crate::agent::lane::lifecycle::{
     ActionLaneLifecycle, CommandLaneLifecycle, DemandLaneLifecycle, DemandMapLaneLifecycle,
     StatefulLaneLifecycle,
 };
-use crate::agent::lane::model;
 use crate::agent::lane::model::action::{Action, ActionLane};
 use crate::agent::lane::model::command::{Command, CommandLane};
 use crate::agent::lane::model::demand::DemandLane;
@@ -45,6 +44,7 @@ use crate::agent::lane::model::map::{summaries_to_events, MapLaneEvent, MapSubsc
 use crate::agent::lane::model::supply::{make_lane_model, SupplyLane};
 use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 use crate::agent::lane::model::DeferredSubscription;
+use crate::agent::lane::{model, LaneKind};
 use crate::agent::lifecycle::AgentLifecycle;
 use crate::routing::{ServerRouter, TaggedClientEnvelope, TaggedEnvelope};
 use futures::future::{join, ready, BoxFuture};
@@ -73,6 +73,8 @@ use utilities::sync::{topic, trigger};
 use utilities::uri::RelativeUri;
 
 use crate::agent::lane::model::supply::supplier::SupplyLaneObserver;
+use crate::meta::info::LaneInfo;
+use crate::meta::open_meta_lanes;
 #[doc(hidden)]
 #[allow(unused_imports)]
 pub use agent_derive::*;
@@ -194,21 +196,34 @@ where
 
     let span = span!(Level::INFO, AGENT_TASK, %uri);
     let (tripwire, stop_trigger) = trigger::trigger();
-    let (agent, tasks, io_providers) =
+    let (agent, mut tasks, io_providers) =
         Agent::instantiate::<ContextImpl<Agent, Clk, Router>>(&agent_config, &execution_config);
     let agent_ref = Arc::new(agent);
     let agent_cpy = agent_ref.clone();
+
+    let lane_summary = tasks
+        .iter()
+        .fold(HashMap::with_capacity(tasks.len()), |mut map, lane| {
+            let lane_name = lane.name().to_string();
+            let lane_info = LaneInfo::new(lane_name.clone(), lane.kind());
+
+            map.insert(lane_name, lane_info);
+            map
+        });
+
     let task = async move {
+        let (meta_context, mut meta_tasks, meta_io) = open_meta_lanes::<
+            Config,
+            Agent,
+            ContextImpl<Agent, Clk, Router>,
+        >(&execution_config, lane_summary);
+
+        tasks.append(&mut meta_tasks);
+
         let (tx, rx) = mpsc::channel(execution_config.scheduler_buffer.get());
-        let context = ContextImpl::new(
-            agent_ref,
-            uri.clone(),
-            tx,
-            clock,
-            stop_trigger.clone(),
-            router,
-            parameters,
-        );
+        let routing_context = RoutingContext::new(uri.clone(), router, parameters);
+        let schedule_context = SchedulerContext::new(tx, clock, stop_trigger.clone());
+        let context = ContextImpl::new(agent_ref, routing_context, schedule_context, meta_context);
 
         lifecycle
             .starting(&context)
@@ -241,10 +256,13 @@ where
             );
         }
 
-        let io_providers = io_providers
+        let mut io_providers = io_providers
             .into_iter()
             .map(|(k, v)| (LaneIdentifier::agent(k), v))
-            .collect();
+            .collect::<HashMap<_, _>>();
+
+        io_providers.extend(meta_io);
+
         let dispatcher =
             AgentDispatcher::new(uri.clone(), execution_config, context.clone(), io_providers);
 
@@ -379,6 +397,9 @@ pub trait AgentContext<Agent> {
 pub trait Lane {
     /// The name of the lane.
     fn name(&self) -> &str;
+
+    /// The type of the lane.
+    fn kind(&self) -> LaneKind;
 }
 
 /// Provides an abstraction over the different types of lane to allow the lane life-cycles to be
@@ -699,11 +720,16 @@ struct DemandLifecycleTasks<L, S, P, Event> {
 
 struct StatelessLifecycleTasks {
     name: String,
+    kind: LaneKind,
 }
 
 impl<L, S, P> Lane for ValueLifecycleTasks<L, S, P> {
     fn name(&self) -> &str {
         self.0.name.as_str()
+    }
+
+    fn kind(&self) -> LaneKind {
+        LaneKind::Value
     }
 }
 
@@ -809,6 +835,10 @@ impl<L, S, P> Lane for MapLifecycleTasks<L, S, P> {
     fn name(&self) -> &str {
         self.0.name.as_str()
     }
+
+    fn kind(&self) -> LaneKind {
+        LaneKind::Map
+    }
 }
 
 impl<Agent, Context, K, V, L, S, P> LaneTasks<Agent, Context> for MapLifecycleTasks<L, S, P>
@@ -905,6 +935,10 @@ impl<L, S, P> Lane for ActionLifecycleTasks<L, S, P> {
     fn name(&self) -> &str {
         self.0.name.as_str()
     }
+
+    fn kind(&self) -> LaneKind {
+        LaneKind::Action
+    }
 }
 
 impl<Agent, Context, Command, Response, L, S, P> LaneTasks<Agent, Context>
@@ -954,6 +988,10 @@ where
 impl<L, S, P> Lane for CommandLifecycleTasks<L, S, P> {
     fn name(&self) -> &str {
         self.0.name.as_str()
+    }
+
+    fn kind(&self) -> LaneKind {
+        LaneKind::Command
     }
 }
 
@@ -1112,7 +1150,10 @@ where
 {
     let (lane, view) = make_lane_model(observer);
 
-    let tasks = StatelessLifecycleTasks { name: name.into() };
+    let tasks = StatelessLifecycleTasks {
+        name: name.into(),
+        kind: LaneKind::Supply,
+    };
 
     let lane_io = if is_public {
         Some(SupplyLaneIo::new(view))
@@ -1260,6 +1301,10 @@ where
 impl<L, S, P, Event> Lane for DemandLifecycleTasks<L, S, P, Event> {
     fn name(&self) -> &str {
         self.name.as_str()
+    }
+
+    fn kind(&self) -> LaneKind {
+        LaneKind::Demand
     }
 }
 
@@ -1425,6 +1470,10 @@ impl<L, S, P> Lane for DemandMapLifecycleTasks<L, S, P> {
     fn name(&self) -> &str {
         self.0.name.as_str()
     }
+
+    fn kind(&self) -> LaneKind {
+        LaneKind::DemandMap
+    }
 }
 
 impl<Agent, Context, L, S, P, Key, Value> LaneTasks<Agent, Context>
@@ -1445,7 +1494,7 @@ where
     fn events(self: Box<Self>, context: Context) -> BoxFuture<'static, ()> {
         async move {
             let DemandMapLifecycleTasks(LifecycleTasks {
-                lifecycle,
+                mut lifecycle,
                 event_stream,
                 projection,
                 ..

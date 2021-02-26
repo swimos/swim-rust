@@ -14,7 +14,7 @@
 
 use std::error::Error;
 use std::fmt::{Display, Formatter};
-use swim_common::form::FormErr;
+use swim_common::form::{Form, FormErr};
 
 pub mod channels;
 pub mod lifecycle;
@@ -48,4 +48,19 @@ impl Error for InvalidForm {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         Some(&self.0)
     }
+}
+
+/// An enumeration representing the type of a lane.
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Form)]
+pub enum LaneKind {
+    Action,
+    Command,
+    Demand,
+    DemandMap,
+    Map,
+    JoinMap,
+    JoinValue,
+    Supply,
+    Spatial,
+    Value,
 }

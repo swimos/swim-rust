@@ -20,7 +20,7 @@ pub mod supplier;
 use crate::agent::lane::model::supply::supplier::{
     BoxSupplier, SupplyError, SupplyLaneObserver, TrySupplyError,
 };
-use crate::agent::lane::LaneModel;
+use crate::agent::lane::{LaneKind, LaneModel};
 use crate::agent::{AgentContext, Eff, Lane, LaneTasks, StatelessLifecycleTasks};
 use futures::future::ready;
 use futures::future::BoxFuture;
@@ -81,6 +81,10 @@ where
 impl Lane for StatelessLifecycleTasks {
     fn name(&self) -> &str {
         self.name.as_str()
+    }
+
+    fn kind(&self) -> LaneKind {
+        self.kind
     }
 }
 
