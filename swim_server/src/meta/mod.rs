@@ -184,7 +184,8 @@ where
     let mut tasks = Vec::new();
     let mut ios = HashMap::new();
 
-    let (lane_information, info_tasks, info_ios) = open_info_lane(exec_conf, lanes_summary);
+    let (lane_information, info_tasks, info_ios) =
+        open_info_lane(exec_conf.lane_buffer, lanes_summary);
 
     tasks.extend(info_tasks);
     ios.extend(info_ios);

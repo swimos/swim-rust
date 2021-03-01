@@ -19,6 +19,9 @@ pub mod lifecycle;
 #[cfg(test)]
 mod tests;
 
+#[cfg(test)]
+pub use tests::test_clock::TestClock;
+
 use crate::agent::context::{AgentExecutionContext, ContextImpl, RoutingContext, SchedulerContext};
 use crate::agent::dispatch::error::DispatcherErrors;
 use crate::agent::dispatch::{AgentDispatcher, LaneIdentifier};
@@ -33,6 +36,7 @@ use crate::agent::lane::lifecycle::{
     ActionLaneLifecycle, CommandLaneLifecycle, DemandLaneLifecycle, DemandMapLaneLifecycle,
     StatefulLaneLifecycle,
 };
+use crate::agent::lane::model;
 use crate::agent::lane::model::action::{Action, ActionLane};
 use crate::agent::lane::model::command::{Command, CommandLane};
 use crate::agent::lane::model::demand::DemandLane;
@@ -44,7 +48,6 @@ use crate::agent::lane::model::map::{summaries_to_events, MapLaneEvent, MapSubsc
 use crate::agent::lane::model::supply::{make_lane_model, SupplyLane};
 use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 use crate::agent::lane::model::DeferredSubscription;
-use crate::agent::lane::{model, LaneKind};
 use crate::agent::lifecycle::AgentLifecycle;
 use crate::routing::{ServerRouter, TaggedClientEnvelope, TaggedEnvelope};
 use futures::future::{join, ready, BoxFuture};
@@ -73,7 +76,7 @@ use utilities::sync::{topic, trigger};
 use utilities::uri::RelativeUri;
 
 use crate::agent::lane::model::supply::supplier::SupplyLaneObserver;
-use crate::meta::info::LaneInfo;
+use crate::meta::info::{LaneInfo, LaneKind};
 use crate::meta::open_meta_lanes;
 #[doc(hidden)]
 #[allow(unused_imports)]

@@ -80,8 +80,8 @@ pub fn derive_lane(
                 &self.name
             }
 
-            fn kind(&self) -> swim_server::agent::lane::LaneKind {
-                swim_server::agent::lane::LaneKind::#lane_kind
+            fn kind(&self) -> swim_server::meta::info::LaneKind {
+                swim_server::meta::info::LaneKind::#lane_kind
             }
         }
 
