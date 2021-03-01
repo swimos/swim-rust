@@ -95,12 +95,10 @@ impl Form for LaneInfo {
         match value {
             Value::Record(attrs, items) => match attrs.first() {
                 Some(attr) if attr.name == LANE_INFO_TAG => {
-                    let mut items_iter = items.iter();
-
                     let mut lane_uri_opt = None;
                     let mut lane_type_opt = None;
 
-                    while let Some(item) = items_iter.next() {
+                    for item in items {
                         match item {
                             Item::Slot(Value::Text(uri_key), Value::Text(uri_value))
                                 if uri_key == FIELD_LANE_URI =>

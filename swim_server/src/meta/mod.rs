@@ -202,8 +202,8 @@ pub(crate) fn make_test_meta_context() -> MetaContext {
 
     MetaContext {
         lane_information: LaneInformation::new(DemandMapLane::new(
-            mpsc::channel(0).0,
-            mpsc::channel(0).0,
+            mpsc::channel(1).0,
+            mpsc::channel(1).0,
         )),
     }
 }

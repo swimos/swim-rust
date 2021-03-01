@@ -153,7 +153,7 @@ impl ServerRouter for MockRouter {
 }
 
 #[tokio::test]
-async fn lane_info() {
+async fn lane_info_sync() {
     let (tx, mut rx) = mpsc::channel(5);
     let uri = RelativeUri::try_from("/test").unwrap();
     let buffer_size = NonZeroUsize::new(10).unwrap();
@@ -162,7 +162,7 @@ async fn lane_info() {
     let (envelope_tx, envelope_rx) = mpsc::channel(buffer_size.get());
     let provider = AgentProvider::new(MockAgentConfig, MockAgentLifecycle);
 
-    let (_, agent_proc) = provider.run(
+    let (_a, agent_proc) = provider.run(
         uri,
         HashMap::new(),
         exec_config,

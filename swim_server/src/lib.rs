@@ -16,7 +16,7 @@
 
 pub mod agent;
 pub mod interface;
-mod meta;
+pub mod meta;
 pub mod plane;
 pub mod routing;
 
