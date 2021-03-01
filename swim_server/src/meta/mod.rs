@@ -23,6 +23,7 @@ use crate::meta::uri::{parse, MetaParseErr};
 use lazy_static::lazy_static;
 use percent_encoding::percent_decode_str;
 use regex::Regex;
+use std::fmt::{Display, Formatter};
 use std::str::FromStr;
 use swim_common::model::text::Text;
 use swim_common::warp::path::RelativePath;
@@ -92,6 +93,28 @@ pub enum MetaNodeAddressed {
     NodeLog(LogLevel),
 }
 
+impl Display for MetaNodeAddressed {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MetaNodeAddressed::NodeProfile => {
+                write!(f, "NodePulse")
+            }
+            MetaNodeAddressed::UplinkProfile { lane_uri } => {
+                write!(f, "UplinkProfile(lane_uri: \"{}\")", lane_uri)
+            }
+            MetaNodeAddressed::LaneAddressed { lane_uri, kind } => {
+                write!(f, "Lane(lane_uri: \"{}\", kind: {})", lane_uri, kind)
+            }
+            MetaNodeAddressed::Lanes => {
+                write!(f, "Lanes")
+            }
+            MetaNodeAddressed::NodeLog(level) => {
+                write!(f, "Log(level: {})", level)
+            }
+        }
+    }
+}
+
 /// Lane-addressed metadata.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum LaneAddressedKind {
@@ -101,10 +124,21 @@ pub enum LaneAddressedKind {
     Log(LogLevel),
 }
 
+impl Display for LaneAddressedKind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LaneAddressedKind::Pulse => write!(f, "Pulse"),
+            LaneAddressedKind::Log(level) => write!(f, "Log(level: {})", level),
+        }
+    }
+}
+
 impl MetaNodeAddressed {
     /// Attempts to parse `path` into a metadata route.
     pub fn try_from_relative(path: &RelativePath) -> Result<MetaNodeAddressed, MetaParseErr> {
         let RelativePath { node, lane } = path;
-        parse(node.as_str(), lane.as_str())
+        let node_uri = RelativeUri::from_str(node.as_str())?;
+
+        parse(node_uri, lane.as_str())
     }
 }

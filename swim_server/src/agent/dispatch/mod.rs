@@ -89,7 +89,7 @@ impl OpenRequest {
 /// An abstraction over both agent lanes and meta lanes.
 #[derive(Hash, Eq, PartialEq, Debug, Clone)]
 pub enum LaneIdentifier {
-    /// A user-written lane.
+    /// A user-defined lane.
     Agent(String),
     /// A node-addressed lane; such as a log/pulse.
     Meta(MetaNodeAddressed),
@@ -99,11 +99,10 @@ pub enum LaneIdentifier {
 pub enum LaneIdentifierParseErr {
     /// The provided relative path was of `swim:meta:node` but the target was invalid.
     #[error("Unknown node meta address: `{0}`")]
-
     /// The provided path was empty.
     UnknownMetaNodeAddress(String),
     #[error("Empty node or lane URI")]
-    EmptyUri,
+    InvalidUri(String),
 }
 
 impl<'a> TryFrom<&'a RelativePath> for LaneIdentifier {
@@ -113,7 +112,7 @@ impl<'a> TryFrom<&'a RelativePath> for LaneIdentifier {
         match MetaNodeAddressed::try_from_relative(path) {
             Ok(meta) => Ok(LaneIdentifier::meta(meta)),
             Err(e) => match e {
-                MetaParseErr::EmptyUri => Err(LaneIdentifierParseErr::EmptyUri),
+                MetaParseErr::InvalidUri(m) => Err(LaneIdentifierParseErr::InvalidUri(m.0)),
                 MetaParseErr::UnknownNodeTarget => Err(
                     LaneIdentifierParseErr::UnknownMetaNodeAddress(path.node.to_string()),
                 ),
@@ -130,7 +129,7 @@ impl Display for LaneIdentifier {
                 write!(f, "Agent(lane: \"{}\")", uri)
             }
             LaneIdentifier::Meta(meta) => {
-                write!(f, "Meta({:?})", meta)
+                write!(f, "Meta({})", meta)
             }
         }
     }

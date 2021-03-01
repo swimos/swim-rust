@@ -14,7 +14,7 @@
 
 use crate::agent::dispatch::error::{DispatcherError, DispatcherErrors};
 use crate::agent::dispatch::tests::mock::{MockExecutionContext, MockLane};
-use crate::agent::dispatch::{AgentDispatcher, LaneIdentifier};
+use crate::agent::dispatch::{AgentDispatcher, LaneIdentifier, LaneIdentifierParseErr};
 use crate::agent::lane::channels::task::LaneIoError;
 use crate::agent::lane::channels::update::UpdateError;
 use crate::agent::lane::channels::AgentExecutionConfig;
@@ -26,6 +26,7 @@ use crate::routing::{RoutingAddr, TaggedEnvelope};
 use futures::future::{join, BoxFuture};
 use futures::{FutureExt, Stream, StreamExt};
 use std::collections::HashMap;
+use std::convert::TryFrom;
 use std::num::NonZeroUsize;
 use std::time::Duration;
 use stm::transaction::TransactionError;
@@ -625,4 +626,42 @@ async fn dispatch_meta() {
 
     let (result, _) = join(task, assertion_task).await;
     assert!(matches!(result, Ok(errs) if errs.is_empty()));
+}
+
+#[test]
+fn parse_lane_identifier() {
+    let path = RelativePath::new("/swim:meta:node/unit%2Ffoo/lane/bar", "traceLog");
+    let result = LaneIdentifier::try_from(&path);
+
+    assert_eq!(
+        result,
+        Ok(LaneIdentifier::meta(MetaNodeAddressed::LaneAddressed {
+            lane_uri: "bar".into(),
+            kind: LaneAddressedKind::Log(LogLevel::Trace)
+        }))
+    );
+
+    let path = RelativePath::new("/swim:meta:node/unit%2Ffoo/host/bar", "traceLog");
+    let result = LaneIdentifier::try_from(&path);
+
+    assert_eq!(
+        result,
+        Err(LaneIdentifierParseErr::UnknownMetaNodeAddress(
+            "/swim:meta:node/unit%2Ffoo/host/bar".to_string()
+        ))
+    );
+
+    let path = RelativePath::new("/node", "lane");
+    let result = LaneIdentifier::try_from(&path);
+
+    assert_eq!(result, Ok(LaneIdentifier::agent("lane".to_string())));
+}
+
+#[test]
+fn lane_identifier_display() {
+    let agent_identifier = LaneIdentifier::agent("/lane".to_string());
+    assert_eq!(format!("{}", agent_identifier), "Agent(lane: \"/lane\")");
+
+    let meta_identifier = LaneIdentifier::meta(MetaNodeAddressed::Lanes);
+    assert_eq!(format!("{}", meta_identifier), "Meta(Lanes)");
 }
