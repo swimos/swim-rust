@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use std::convert::TryFrom;
+use std::fmt::{Display, Formatter};
 use swim_common::form::{Form, Tag};
 use swim_common::model::time::Timestamp;
 use swim_common::model::Value;
@@ -33,6 +34,19 @@ pub enum LogLevel {
     Warn,
     Error,
     Fail,
+}
+
+impl Display for LogLevel {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LogLevel::Trace => write!(f, "Trace"),
+            LogLevel::Debug => write!(f, "Debug"),
+            LogLevel::Info => write!(f, "Info"),
+            LogLevel::Warn => write!(f, "Warn"),
+            LogLevel::Error => write!(f, "Error"),
+            LogLevel::Fail => write!(f, "Fail"),
+        }
+    }
 }
 
 impl LogLevel {
@@ -60,11 +74,11 @@ impl LogLevel {
 }
 
 #[derive(PartialOrd, PartialEq, Debug, Clone)]
-pub struct InvalidLogUri(pub String);
+pub struct InvalidUri(pub String);
 
-/// Try and parse a `LogLevel` from a URI str.
+/// Try to parse a `LogLevel` from a URI str.
 impl TryFrom<&str> for LogLevel {
-    type Error = InvalidLogUri;
+    type Error = InvalidUri;
 
     fn try_from(uri: &str) -> Result<Self, <LogLevel as TryFrom<&str>>::Error> {
         for level in LogLevel::enumerated() {
@@ -73,7 +87,7 @@ impl TryFrom<&str> for LogLevel {
             }
         }
 
-        Err(InvalidLogUri(format!("Unknown log level URI: {}", uri)))
+        Err(InvalidUri(format!("Unknown log level URI: {}", uri)))
     }
 }
 
