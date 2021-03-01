@@ -25,7 +25,7 @@ use thiserror::Error;
 use utilities::errors::Recoverable;
 
 use crate::meta::{LANES_URI, LANE_URI, PULSE_URI, UPLINK_URI};
-use utilities::uri::{BadRelativeUri, RelativeUri};
+use utilities::uri::{BadRelativeUri, PathSegmentIterator, RelativeUri};
 
 /// Errors that are produced when parsing an invalid node or lane URI.
 #[derive(Debug, PartialEq, Error)]
@@ -94,10 +94,10 @@ pub fn parse(
     }
 }
 
-fn parse_node<'c, L>(mut node_iter: L, target_lane: &str) -> Result<MetaNodeAddressed, MetaParseErr>
-where
-    L: Iterator<Item = &'c str>,
-{
+fn parse_node(
+    mut node_iter: PathSegmentIterator,
+    target_lane: &str,
+) -> Result<MetaNodeAddressed, MetaParseErr> {
     let encoded_node_uri = node_iter.next();
     let lane = node_iter.next();
     let lane_uri = node_iter.next();
