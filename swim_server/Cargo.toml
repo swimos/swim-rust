@@ -40,6 +40,10 @@ tokio-tungstenite = { version = "0.13.0", git = "https://github.com/swimos/tokio
 tokio-native-tls = "0.3"
 trust-dns-resolver = { version = "0.20", optional = true, features = ["tokio-runtime"] }
 auth = { path = "auth" }
+regex = "1"
+lazy_static = "1.4.0"
+percent-encoding = "2.1.0"
+thiserror = "1.0"
 
 [dev-dependencies]
 tokio = { version = "1.1.1", features = ["rt-multi-thread", "macros", "test-util"] }

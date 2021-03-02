@@ -1,0 +1,144 @@
+// Copyright 2015-2021 SWIM.AI inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+pub mod log;
+pub mod uri;
+
+#[cfg(test)]
+mod tests;
+
+use crate::meta::log::LogLevel;
+use crate::meta::uri::{parse, MetaParseErr};
+use lazy_static::lazy_static;
+use percent_encoding::percent_decode_str;
+use regex::Regex;
+use std::fmt::{Display, Formatter};
+use std::str::FromStr;
+use swim_common::model::text::Text;
+use swim_common::warp::path::RelativePath;
+use utilities::uri::RelativeUri;
+
+lazy_static! {
+    static ref META_PATTERN: Regex =
+        Regex::new(r"(/?)(swim:meta:)(edge|mesh|part|host|node)(?P<node>/[^/]+/)")
+            .expect("Failed to compile meta pattern");
+}
+
+const NODE_CAPTURE_GROUP: &str = "node";
+
+pub const LANE_URI: &str = "lane";
+pub const LANES_URI: &str = "lanes";
+pub const PULSE_URI: &str = "pulse";
+pub const UPLINK_URI: &str = "uplink";
+
+pub const META_NODE: &str = "swim:meta:node";
+
+/// Attempts to decode a meta-encoded node URI. Returns a decoded node URI if `uri` matches or
+/// returns `uri`.
+pub fn get_route(uri: RelativeUri) -> RelativeUri {
+    let captures = META_PATTERN.captures(uri.path());
+    match captures {
+        Some(captures) => match captures.name(NODE_CAPTURE_GROUP) {
+            Some(node) => match percent_decode_str(node.as_str()).decode_utf8() {
+                Ok(decoded) => RelativeUri::from_str(decoded.as_ref()).unwrap_or(uri),
+                Err(_) => uri,
+            },
+            None => uri,
+        },
+        None => uri,
+    }
+}
+
+/// Node-addressed metadata.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum MetaNodeAddressed {
+    /// A node's pulse.
+    ///
+    /// swim:meta:node/percent-encoded-nodeuri/pulse
+    /// Eg: swim:meta:node/unit%2Ffoo/pulse
+    NodeProfile,
+    /// Uplink pulse.
+    ///
+    /// swim:meta:node/percent-encoded-nodeuri/lane/lane-uri/uplink
+    /// Eg: swim:meta:node/unit%2Ffoo/lane/bar/uplink
+    UplinkProfile { lane_uri: Text },
+    /// Lane addressed routes: pulse/logs.
+    ///
+    /// swim:meta:node/percent-encoded-nodeuri/lane/node-lane-uri/lane-uri
+    /// Eg: swim:meta:node/unit%2Ffoo/lane/bar/traceLog
+    LaneAddressed {
+        lane_uri: Text,
+        kind: LaneAddressedKind,
+    },
+    /// A node's lanes.
+    ///
+    /// swim:meta:node/percent-encoded-nodeuri/lanes
+    /// Eg: swim:meta:node/unit%2Ffoo/lanes/
+    Lanes,
+    /// Node-level logs.
+    ///
+    /// swim:meta:node/percent-encoded-nodeuri/lane-uri/traceLog
+    /// Eg: swim:meta:node/unit%2Ffoo/bar/traceLog
+    NodeLog(LogLevel),
+}
+
+impl Display for MetaNodeAddressed {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MetaNodeAddressed::NodeProfile => {
+                write!(f, "NodePulse")
+            }
+            MetaNodeAddressed::UplinkProfile { lane_uri } => {
+                write!(f, "UplinkProfile(lane_uri: \"{}\")", lane_uri)
+            }
+            MetaNodeAddressed::LaneAddressed { lane_uri, kind } => {
+                write!(f, "Lane(lane_uri: \"{}\", kind: {})", lane_uri, kind)
+            }
+            MetaNodeAddressed::Lanes => {
+                write!(f, "Lanes")
+            }
+            MetaNodeAddressed::NodeLog(level) => {
+                write!(f, "Log(level: {})", level)
+            }
+        }
+    }
+}
+
+/// Lane-addressed metadata.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum LaneAddressedKind {
+    /// A lane's pulse.
+    Pulse,
+    /// Lane-level logs.
+    Log(LogLevel),
+}
+
+impl Display for LaneAddressedKind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LaneAddressedKind::Pulse => write!(f, "Pulse"),
+            LaneAddressedKind::Log(level) => write!(f, "Log(level: {})", level),
+        }
+    }
+}
+
+impl MetaNodeAddressed {
+    /// Attempts to parse `path` into a metadata route.
+    pub fn try_from_relative(path: &RelativePath) -> Result<MetaNodeAddressed, MetaParseErr> {
+        let RelativePath { node, lane } = path;
+        let node_uri = RelativeUri::from_str(node.as_str())?;
+
+        parse(node_uri, lane.as_str())
+    }
+}

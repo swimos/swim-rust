@@ -329,12 +329,13 @@ where
                     .await;
                 }
             }
-            UplinkPhase::Running(simple_state, actions, updates) => {
+            UplinkPhase::Running(simple_state, actions, updates) => loop {
                 let next: Either<Option<UplinkAction>, Option<Updates::Item>> = select_biased! {
                     action = actions.next() => Either::Left(action),
                     update = updates.next() => Either::Right(update),
                 };
-                match next {
+
+                break match next {
                     Either::Left(action) => {
                         handle_action_alt(smr, simple_state, updates, actions, action).await
                     }
@@ -346,13 +347,11 @@ where
                         Err(e) => {
                             Some((Err(e), UplinkPhase::Running(simple_state, actions, updates)))
                         }
-                        _ => {
-                            panic!("No message.")
-                        }
+                        _ => continue,
                     },
                     _ => None,
-                }
-            }
+                };
+            },
             UplinkPhase::Syncing(actions, mut sync_stream) => {
                 let item_and_state = match sync_stream.next().await {
                     Some(PeelResult::Output(event)) => match event {
