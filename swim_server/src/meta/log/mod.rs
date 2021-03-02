@@ -45,13 +45,20 @@ pub const FAIL_URI: &str = "failLog";
 
 const LOG_FAIL: &str = "Failed to send log message";
 
-#[derive(Copy, Clone, Debug, Tag, Eq, PartialEq, Hash)]
+/// A corresponding level associated with a `LogEntry`.
+#[derive(Copy, Clone, Debug, Tag, Eq, PartialEq, PartialOrd, Hash)]
 pub enum LogLevel {
+    /// Fine-grained informational events.
     Trace,
+    /// Information that is useful in debugging an application.
     Debug,
+    /// Information that denotes the progress of an application.
     Info,
+    /// Potentially harmful events to the application.
     Warn,
+    /// Log entries that have originated from an error in the application.
     Error,
+    /// Events that may lead to the application to exit.
     Fail,
 }
 
@@ -80,7 +87,8 @@ impl LogLevel {
         ]
     }
 
-    pub fn uri_ref(&self) -> &'static str {
+    /// Returns the lane URI associated with this level;
+    pub(crate) fn uri_ref(&self) -> &'static str {
         match self {
             LogLevel::Trace => TRACE_URI,
             LogLevel::Debug => DEBUG_URI,
@@ -110,13 +118,19 @@ impl TryFrom<&str> for LogLevel {
     }
 }
 
+/// A log entry that may be supplied to a log lane.
 #[derive(Clone, Debug, Form)]
 pub struct LogEntry {
+    /// Timestamp of when this entry was created.
     time: Timestamp,
+    /// The body of the entry.
     message: Value,
+    /// The coarseness of this entry.
     #[form(tag)]
     level: LogLevel,
+    /// The node URI that produced this entry.
     node: RelativeUri,
+    /// The lane URI that produced this entry.
     lane: String,
 }
 
@@ -140,44 +154,89 @@ impl LogEntry {
     }
 }
 
-/// A handle to all of the log lanes at an agent-level. I.e, for the agent itself and not its
-/// uplinks or lanes.
+/// A handle to all of the log lanes for a node. I.e, for the agent itself and not its uplinks or
+/// lanes.
 ///
 /// Log lanes make no guarantees as to whether the messages that are sent to them will actually be
 /// delivered. This is so that backpressure is not applied to the supplier of a log entry. If
 /// throughput to a log lane was high enough and the lane was asynchronous or blocking, this would
 /// create backpressure to the supplier.
+///
+/// Internally, this is backed by a buffer which will either send the entries as they're provided,
+/// or wait until the buffer is full before sending any entries.
 #[derive(Clone)]
 pub struct NodeLogger {
     /// Internal buffer for entries.
     buffer: Arc<LogBuffer>,
-    /// The agent's node URI.
+    /// The agent's URI.
     node_uri: RelativeUri,
-    /// Fine-grained informational events.
+    /// Lane for fine-grained informational events.
     trace_lane: Arc<SupplyLane<LogEntry>>,
-    /// Information that is useful in debugging an application.
+    /// Lane for information that is useful in debugging an application.
     debug_lane: Arc<SupplyLane<LogEntry>>,
-    /// Information that denotes the progress of an application.
+    /// Lane for information that denotes the progress of an application.
     info_lane: Arc<SupplyLane<LogEntry>>,
-    /// Potentially harmful events to the application.
+    /// Lane for potentially harmful events to the application.
     warn_lane: Arc<SupplyLane<LogEntry>>,
-    /// Log entries that have originated from an error in the application.
+    /// Lane for log entries that have originated from an error in the application.
     error_lane: Arc<SupplyLane<LogEntry>>,
-    /// Events that may lead to the application to exit.
+    /// Lane for events that may lead to the application to exit.
     fail_lane: Arc<SupplyLane<LogEntry>>,
 }
 
+impl Debug for NodeLogger {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("NodeLogger")
+            .field("node_uri", &self.node_uri)
+            .field("buffer", &self.buffer)
+            .finish()
+    }
+}
+
 impl NodeLogger {
+    fn new(
+        buffer: Arc<LogBuffer>,
+        node_uri: RelativeUri,
+        trace_lane: Arc<SupplyLane<LogEntry>>,
+        debug_lane: Arc<SupplyLane<LogEntry>>,
+        info_lane: Arc<SupplyLane<LogEntry>>,
+        warn_lane: Arc<SupplyLane<LogEntry>>,
+        error_lane: Arc<SupplyLane<LogEntry>>,
+        fail_lane: Arc<SupplyLane<LogEntry>>,
+    ) -> Self {
+        NodeLogger {
+            buffer,
+            node_uri,
+            trace_lane,
+            debug_lane,
+            info_lane,
+            warn_lane,
+            error_lane,
+            fail_lane,
+        }
+    }
+
     /// Log `entry` at `level` and send it to the corresponding lane for `level`.
     ///
     /// See `LogHandler` for message delivery guarantees.
     pub fn log<F: Form>(&self, entry: F, level: LogLevel) {
-        let entry = LogEntry::make(entry, level, self.node_uri.clone(), level.uri_ref());
-        self.buffer.push(entry);
+        let NodeLogger { node_uri, .. } = self;
 
+        let entry = LogEntry::make(entry, level, node_uri.clone(), level.uri_ref());
+        self.log_entry(entry);
+    }
+
+    /// Log `entry` to its corresponding log lane.
+    pub fn log_entry(&self, entry: LogEntry) {
+        self.buffer.push(entry);
+        self.flush();
+    }
+
+    /// Flushes any available log entries in the buffer.
+    fn flush(&self) {
         if let Some(entries) = self.buffer.next() {
             for entry in entries {
-                let result = match level {
+                let result = match &entry.level {
                     LogLevel::Trace => self.trace_lane.try_send(entry),
                     LogLevel::Debug => self.debug_lane.try_send(entry),
                     LogLevel::Info => self.info_lane.try_send(entry),
@@ -195,12 +254,16 @@ impl NodeLogger {
     }
 }
 
+/// A configurable buffer for log entries. Entries will be available once the buffer's size is equal
+/// to or greater than `cap`.  
+#[derive(Debug)]
 struct LogBuffer {
     buffer: SegQueue<LogEntry>,
     cap: usize,
 }
 
 impl LogBuffer {
+    /// Create a new buffer that will produce values according to `strategy`.
     fn new(strategy: FlushStrategy) -> Self {
         let cap = match strategy {
             FlushStrategy::Immediate => 1,
@@ -213,15 +276,24 @@ impl LogBuffer {
         }
     }
 
+    /// Push a value into the buffer.
     fn push(&self, entry: LogEntry) {
         self.buffer.push(entry);
     }
 
+    /// Takes any entries that are available in the buffer. If the buffer's capacity is greater than
+    /// or equal to the configured capacity then the buffer is drained.
     fn next(&self) -> Option<Vec<LogEntry>> {
         let LogBuffer { buffer, cap } = self;
 
         if buffer.len() >= *cap {
-            let end = if *cap == 1 { buffer.len() } else { *cap };
+            let len = buffer.len();
+
+            let end = if *cap == 1 || len >= *cap {
+                len
+            } else {
+                return None;
+            };
 
             let mut drained = 0;
             let mut results = Vec::new();
@@ -236,9 +308,10 @@ impl LogBuffer {
                 }
             }
 
-            match results.len() {
-                0 => None,
-                _ => Some(results),
+            if results.is_empty() {
+                None
+            } else {
+                Some(results)
             }
         } else {
             None
@@ -262,14 +335,7 @@ pub(crate) fn make_node_logger(node_uri: RelativeUri) -> NodeLogger {
     }
 }
 
-impl Debug for NodeLogger {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("LogHandler")
-            .field("node_uri", &self.node_uri)
-            .finish()
-    }
-}
-
+/// Opens log lanes for `node_uri` using the provided configuration.
 pub fn open_log_lanes<Config, Agent, Context>(
     node_uri: RelativeUri,
     config: LogConfig,
