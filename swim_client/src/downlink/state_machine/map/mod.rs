@@ -143,7 +143,12 @@ impl SyncStateMachine<UntypedMapModification<Value>, MapAction> for MapStateMach
         state: &mut Self::State,
         action: MapAction,
     ) -> ResponseResult<Self::Report, Self::Command> {
-        process_action(&self.key_schema, &self.value_schema, state, action)
+        Ok(process_action(
+            &self.key_schema,
+            &self.value_schema,
+            state,
+            action,
+        ))
     }
 }
 
@@ -191,15 +196,15 @@ fn process_action(
     val_schema: &StandardSchema,
     data_state: &mut ValMap,
     action: MapAction,
-) -> ResponseResult<ViewWithEvent, UntypedMapModification<Value>> {
+) -> Response<ViewWithEvent, UntypedMapModification<Value>> {
     match action {
         MapAction::Update { key, value, old } => {
             if !key_schema.matches(&key) {
                 send_error(old, key, key_schema.clone());
-                Ok(Response::default())
+                Response::default()
             } else if !val_schema.matches(&value) {
                 send_error(old, value, val_schema.clone());
-                Ok(Response::default())
+                Response::default()
             } else {
                 let v_arc = Arc::new(value);
                 update_and_notify_prev(
@@ -214,13 +219,13 @@ fn process_action(
                     ViewWithEvent::update(data_state, key.clone()),
                     UntypedMapModification::Update(key, v_arc),
                 );
-                Ok(response.into())
+                response.into()
             }
         }
         MapAction::Remove { key, old } => {
             if !key_schema.matches(&key) {
                 send_error(old, key, key_schema.clone());
-                Ok(Response::default())
+                Response::default()
             } else {
                 let did_rem = if let Some(req) = old {
                     let prev = data_state.remove(&key);
@@ -236,9 +241,9 @@ fn process_action(
                         ViewWithEvent::remove(data_state, key.clone()),
                         UntypedMapModification::Remove(key),
                     );
-                    Ok(response.into())
+                    response.into()
                 } else {
-                    Ok(Response::default())
+                    Response::default()
                 }
             }
         }
@@ -257,7 +262,7 @@ fn process_action(
                 ViewWithEvent::take(data_state, n),
                 UntypedMapModification::Take(n),
             );
-            Ok(response.into())
+            response.into()
         }
         MapAction::Skip { n, before, after } => {
             update_and_notify(
@@ -274,7 +279,7 @@ fn process_action(
                 ViewWithEvent::skip(data_state, n),
                 UntypedMapModification::Drop(n),
             );
-            Ok(response.into())
+            response.into()
         }
         MapAction::Clear { before } => {
             if let Some(req) = before {
@@ -287,15 +292,15 @@ fn process_action(
                 ViewWithEvent::clear(data_state),
                 UntypedMapModification::Clear,
             );
-            Ok(response.into())
+            response.into()
         }
         MapAction::Get { request } => {
             let _ = request.send_ok(data_state.clone());
-            Ok(Response::default())
+            Response::default()
         }
         MapAction::GetByKey { key, request } => {
             let _ = request.send_ok(data_state.get(&key).cloned());
-            Ok(Response::default())
+            Response::default()
         }
         MapAction::Modify {
             key,
@@ -305,7 +310,7 @@ fn process_action(
         } => {
             if !key_schema.matches(&key) {
                 modify_key_schema_errors(key_schema, key, before, after);
-                Ok(Response::default())
+                Response::default()
             } else {
                 let prev = get_and_deref(data_state, &key);
                 let maybe_new_val = f(&prev);
@@ -313,7 +318,7 @@ fn process_action(
                     Some(v) if !val_schema.matches(&v) => {
                         send_error(before, v.clone(), val_schema.clone());
                         send_error(after, v, val_schema.clone());
-                        Ok(Response::default())
+                        Response::default()
                     }
                     validated => {
                         let had_existing = prev.is_some();
@@ -338,7 +343,7 @@ fn process_action(
         } => {
             if !key_schema.matches(&key) {
                 modify_key_schema_errors(key_schema, key, before, after);
-                Ok(Response::default())
+                Response::default()
             } else {
                 let prev = get_and_deref(data_state, &key);
                 match f(&prev) {
@@ -346,7 +351,7 @@ fn process_action(
                         Some(v) if !val_schema.matches(&v) => {
                             send_error(before, v.clone(), val_schema.clone());
                             send_error(after, v, val_schema.clone());
-                            Ok(Response::default())
+                            Response::default()
                         }
                         validated => {
                             let had_existing = prev.is_some();
@@ -375,7 +380,7 @@ fn process_action(
                             }
                             _ => {}
                         }
-                        Ok(Response::default())
+                        Response::default()
                     }
                 }
             }
@@ -391,7 +396,7 @@ fn handle_modify<F, T>(
     old: Option<DownlinkRequest<T>>,
     replacement: Option<DownlinkRequest<T>>,
     to_event: F,
-) -> ResponseResult<ViewWithEvent, UntypedMapModification<Value>>
+) -> Response<ViewWithEvent, UntypedMapModification<Value>>
 where
     F: Fn(Option<Arc<Value>>) -> T + Send + 'static,
 {
@@ -409,7 +414,7 @@ where
                 ViewWithEvent::update(data_state, key.clone()),
                 UntypedMapModification::Update(key, v_arc),
             );
-            Ok(response.into())
+            response.into()
         }
         _ if had_existing => {
             let removed = data_state.remove(&key);
@@ -423,9 +428,9 @@ where
                 ViewWithEvent::remove(data_state, key.clone()),
                 UntypedMapModification::Remove(key),
             );
-            Ok(response.into())
+            response.into()
         }
-        _ => Ok(Response::default()),
+        _ => Response::default(),
     }
 }
 

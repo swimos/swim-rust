@@ -521,21 +521,20 @@ where
     Actions: FusedStream<Item = Action> + Unpin + 'static,
     SM: DownlinkStateMachine<M, Action>,
 {
-    let next: Option<Option<Either<Result<Message<M>, RoutingError>, Action>>> =
-        if state_machine.handle_actions(&state) {
-            select_biased! {
-                maybe_upd = updates.next() => Some(maybe_upd.map(Either::Left)),
-                maybe_act = actions.next() => {
-                    if let Some(act) = maybe_act {
-                        Some(Some(Either::Right(act)))
-                    } else {
-                        None
-                    }
+    let next = if state_machine.handle_actions(&state) {
+        select_biased! {
+            maybe_upd = updates.next() => Some(maybe_upd.map(Either::Left)),
+            maybe_act = actions.next() => {
+                if let Some(act) = maybe_act {
+                    Some(Some(Either::Right(act)))
+                } else {
+                    None
                 }
             }
-        } else {
-            Some(updates.next().await.map(Either::Left))
-        };
+        }
+    } else {
+        Some(updates.next().await.map(Either::Left))
+    };
 
     match next {
         Some(Some(Either::Left(Ok(message)))) => {

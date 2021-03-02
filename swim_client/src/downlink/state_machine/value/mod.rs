@@ -89,16 +89,25 @@ impl SyncStateMachine<Value, Action> for ValueStateMachine {
                 let _ = resp.send_ok(state.clone());
                 Ok(Response::default())
             }
-            Action::Set(set_value, maybe_resp) => {
-                apply_set(state, &self.schema, set_value, maybe_resp, |_| ())
-            }
+            Action::Set(set_value, maybe_resp) => Ok(apply_set(
+                state,
+                &self.schema,
+                set_value,
+                maybe_resp,
+                |_| (),
+            )),
             Action::Update(upd_fn, maybe_resp) => {
                 let new_value = upd_fn(&**state);
-                apply_set(state, &self.schema, new_value, maybe_resp, |s| s.clone())
+                Ok(apply_set(state, &self.schema, new_value, maybe_resp, |s| {
+                    s.clone()
+                }))
             }
-            Action::TryUpdate(upd_fn, maybe_resp) => {
-                try_apply_set(state, &self.schema, upd_fn(&**state), maybe_resp)
-            }
+            Action::TryUpdate(upd_fn, maybe_resp) => Ok(try_apply_set(
+                state,
+                &self.schema,
+                upd_fn(&**state),
+                maybe_resp,
+            )),
         }
     }
 }
@@ -109,7 +118,7 @@ fn apply_set<F, T>(
     set_value: Value,
     maybe_resp: Option<DownlinkRequest<T>>,
     to_output: F,
-) -> ResponseResult<SharedValue, SharedValue>
+) -> Response<SharedValue, SharedValue>
 where
     F: FnOnce(&SharedValue) -> T,
 {
@@ -119,12 +128,12 @@ where
         if let Some((req, old)) = with_old {
             let _ = req.send_ok(old);
         }
-        Ok(((*state).clone(), (*state).clone()).into())
+        ((*state).clone(), (*state).clone()).into()
     } else {
         if let Some(req) = maybe_resp {
             let _ = req.send_err(DownlinkError::SchemaViolation(set_value, schema.clone()));
         }
-        Ok(Response::default())
+        Response::default()
     }
 }
 
@@ -133,7 +142,7 @@ fn try_apply_set(
     schema: &StandardSchema,
     maybe_set_value: UpdateResult<Value>,
     maybe_resp: Option<DownlinkRequest<UpdateResult<SharedValue>>>,
-) -> ResponseResult<SharedValue, SharedValue> {
+) -> Response<SharedValue, SharedValue> {
     match maybe_set_value {
         Ok(set_value) => {
             if schema.matches(&set_value) {
@@ -142,19 +151,19 @@ fn try_apply_set(
                 if let Some((req, old)) = with_old {
                     let _ = req.send_ok(Ok(old));
                 }
-                Ok(((*state).clone(), (*state).clone()).into())
+                ((*state).clone(), (*state).clone()).into()
             } else {
                 if let Some(req) = maybe_resp {
                     let _ = req.send_err(DownlinkError::SchemaViolation(set_value, schema.clone()));
                 }
-                Ok(Response::default())
+                Response::default()
             }
         }
         Err(err) => {
             if let Some(req) = maybe_resp {
                 let _ = req.send_ok(Err(err));
             }
-            Ok(Response::default())
+            Response::default()
         }
     }
 }
