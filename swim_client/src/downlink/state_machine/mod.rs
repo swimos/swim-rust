@@ -21,27 +21,28 @@ use crate::downlink::error::DownlinkError;
 use crate::downlink::{Command, DownlinkState, Message};
 use tracing::trace;
 
+#[derive(Debug)]
 pub struct EventResult<T> {
-    result: Result<Option<T>, DownlinkError>,
-    terminate: bool,
+    pub result: Result<Option<T>, DownlinkError>,
+    pub terminate: bool,
 }
 
 impl<T> EventResult<T> {
-    fn terminate() -> EventResult<T> {
+    pub fn terminate() -> EventResult<T> {
         EventResult {
             result: Ok(None),
             terminate: true,
         }
     }
 
-    fn fail(err: DownlinkError) -> EventResult<T> {
+    pub fn fail(err: DownlinkError) -> EventResult<T> {
         EventResult {
             result: Err(err),
             terminate: true,
         }
     }
 
-    fn of(value: T) -> EventResult<T> {
+    pub fn of(value: T) -> EventResult<T> {
         EventResult {
             result: Ok(Some(value)),
             terminate: false,
@@ -77,22 +78,15 @@ impl<T> Default for EventResult<T> {
 
 #[derive(PartialEq, Eq, Debug)]
 pub struct Response<E, C> {
-    event: Option<E>,
-    command: Option<Command<C>>,
+    pub event: Option<E>,
+    pub command: Option<Command<C>>,
 }
 
 impl<E, C> Response<E, C> {
-    fn command(cmd: C) -> Self {
+    pub fn command(cmd: C) -> Self {
         Response {
             event: None,
             command: Some(Command::Action(cmd)),
-        }
-    }
-
-    fn event(ev: E) -> Self {
-        Response {
-            event: Some(ev),
-            command: None,
         }
     }
 }
@@ -115,33 +109,54 @@ impl<E, C> Default for Response<E, C> {
     }
 }
 
-type ResponseResult<E, C> = Result<Response<E, C>, DownlinkError>;
+pub type ResponseResult<E, C> = Result<Response<E, C>, DownlinkError>;
 
+/// This trait defines the interface that must be implemented for the state type of a downlink.
 pub trait DownlinkStateMachine<Event, Request> {
-    type State;
-    type Update;
-    type Report;
+    /// State type of the downlink.
+    type State: Send + Sync;
+    /// Type of commands that will be sent out to the Warp connection.
+    type Update: Send;
+    /// Type of events that will be issued to the owner of the downlink.
+    type Report: Send;
 
+    /// Create the initial value of the state and any command that should be sent
+    /// at initialization.
     fn initialize(&self) -> (Self::State, Option<Command<Self::Update>>);
 
+    /// Determines whether actions should be processed, based on the current state.
+    fn handle_actions(&self, _state: &Self::State) -> bool {
+        true
+    }
+
+    /// Handle an incoming Warp message.
     fn handle_event(
         &self,
         state: &mut Self::State,
         event: Message<Event>,
     ) -> EventResult<Self::Report>;
 
+    /// Handle a local request.
     fn handle_request(
         &self,
         state: &mut Self::State,
         request: Request,
     ) -> ResponseResult<Self::Report, Self::Update>;
+
+    /// A command to attempt to dispatch when the downlink stops.
+    fn finalize(&self, _state: &Self::State) -> Option<Command<Self::Update>> {
+        None
+    }
 }
 
 /// This trait is for simple, stateful downlinks that follow the standard synchronization model.
 pub trait SyncStateMachine<Event, Request> {
-    type State;
-    type Command;
-    type Report;
+    /// State type of the downlink.
+    type State: Send + Sync;
+    /// Type of commands that will be sent out to the Warp connection.
+    type Command: Send;
+    /// Type of events that will be issued to the owner of the downlink.
+    type Report: Send;
 
     /// The initial value of the state.
     fn init(&self) -> Self::State;
@@ -164,6 +179,8 @@ pub trait SyncStateMachine<Event, Request> {
         message: Event,
     ) -> Result<Option<Self::Report>, DownlinkError>;
 
+    /// Apply a request to the state of the downlink, potentialyl generating outgoing events
+    /// and commands.
     fn apply_request(
         &self,
         state: &mut Self::State,
@@ -181,6 +198,11 @@ where
 
     fn initialize(&self) -> (Self::State, Option<Command<Self::Update>>) {
         ((DownlinkState::Unlinked, self.init()), Some(Command::Sync))
+    }
+
+    fn handle_actions(&self, state: &Self::State) -> bool {
+        let (dl_state, _) = state;
+        *dl_state == DownlinkState::Synced
     }
 
     fn handle_event(
@@ -224,5 +246,26 @@ where
     ) -> ResponseResult<Basic::Report, Basic::Command> {
         let (_, basic_state) = state;
         self.apply_request(basic_state, request)
+    }
+
+    fn finalize(&self, state: &Self::State) -> Option<Command<Self::Update>> {
+        let (dl_state, _) = state;
+        if *dl_state == DownlinkState::Linked || *dl_state == DownlinkState::Synced {
+            Some(Command::Unlink)
+        } else {
+            None
+        }
+    }
+}
+
+#[derive(Eq, PartialEq, Clone, Copy, Debug, Hash)]
+pub enum SchemaViolations {
+    Ignore,
+    Report,
+}
+
+impl Default for SchemaViolations {
+    fn default() -> Self {
+        SchemaViolations::Report
     }
 }

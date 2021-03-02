@@ -28,9 +28,13 @@ const STATES: [DownlinkState; 3] = [
     DownlinkState::Synced,
 ];
 
+fn unvalidated(init: Value) -> ValueStateMachine {
+    ValueStateMachine::new(init, StandardSchema::Anything)
+}
+
 #[test]
 fn init_downlink() {
-    let machine = ValueStateMachine::unvalidated(Value::from(0));
+    let machine = unvalidated(Value::from(0));
     let ((dl_state, state), start) = machine.initialize();
     assert_eq!(dl_state, DownlinkState::Unlinked);
     assert_eq!(&*state, &Value::from(0));
@@ -40,7 +44,7 @@ fn init_downlink() {
 fn linked_response(start_state: DownlinkState) {
     let mut state = (start_state, SharedValue::new(Value::from(0)));
 
-    let machine = ValueStateMachine::unvalidated(Value::from(0));
+    let machine = unvalidated(Value::from(0));
     let EventResult { result, terminate } = machine.handle_event(&mut state, Message::Linked);
 
     assert!(result.is_ok());
@@ -61,7 +65,7 @@ fn linked_message() {
 fn synced_response(start_state: DownlinkState) {
     let mut state = (start_state, SharedValue::new(Value::from(2)));
 
-    let machine = ValueStateMachine::unvalidated(Value::from(0));
+    let machine = unvalidated(Value::from(0));
     let EventResult { result, terminate } = machine.handle_event(&mut state, Message::Synced);
 
     let (dl_state, data_state) = state;
@@ -86,7 +90,7 @@ fn synced_message() {
 fn unlinked_response(start_state: DownlinkState) {
     let mut state = (start_state, SharedValue::new(Value::from(2)));
 
-    let machine = ValueStateMachine::unvalidated(Value::from(0));
+    let machine = unvalidated(Value::from(0));
     let EventResult { result, terminate } = machine.handle_event(&mut state, Message::Unlinked);
 
     let (dl_state, _data_state) = state;
@@ -107,7 +111,7 @@ fn unlinked_message() {
 fn update_message_unlinked() {
     let mut state = (DownlinkState::Unlinked, SharedValue::new(Value::from(1)));
 
-    let machine = ValueStateMachine::unvalidated(Value::from(0));
+    let machine = unvalidated(Value::from(0));
     let EventResult { result, terminate } =
         machine.handle_event(&mut state, Message::Action(Value::Int32Value(3)));
 
@@ -123,7 +127,7 @@ fn update_message_unlinked() {
 fn update_message_linked() {
     let mut state = (DownlinkState::Linked, SharedValue::new(Value::from(1)));
 
-    let machine = ValueStateMachine::unvalidated(Value::from(0));
+    let machine = unvalidated(Value::from(0));
 
     let EventResult { result, terminate } =
         machine.handle_event(&mut state, Message::Action(Value::Int32Value(3)));
@@ -140,7 +144,7 @@ fn update_message_linked() {
 fn update_message_synced() {
     let mut state = (DownlinkState::Synced, SharedValue::new(Value::from(1)));
 
-    let machine = ValueStateMachine::unvalidated(Value::from(0));
+    let machine = unvalidated(Value::from(0));
 
     let EventResult { result, terminate } =
         machine.handle_event(&mut state, Message::Action(Value::Int32Value(3)));
@@ -162,7 +166,7 @@ fn make_get() -> (Action, oneshot::Receiver<Result<Arc<Value>, DownlinkError>>) 
 fn get_action() {
     let mut state = (DownlinkState::Synced, SharedValue::new(Value::from(13)));
 
-    let machine = ValueStateMachine::unvalidated(Value::from(0));
+    let machine = unvalidated(Value::from(0));
     let (action, mut rx) = make_get();
 
     let result = machine.handle_request(&mut state, action);
@@ -192,7 +196,7 @@ fn get_action() {
 fn dropped_get() {
     let mut state = (DownlinkState::Synced, SharedValue::new(Value::from(13)));
 
-    let machine = ValueStateMachine::unvalidated(Value::from(0));
+    let machine = unvalidated(Value::from(0));
     let (action, _) = make_get();
 
     let result = machine.handle_request(&mut state, action);
@@ -226,7 +230,7 @@ fn make_set(n: i32) -> (Action, oneshot::Receiver<Result<(), DownlinkError>>) {
 fn set_action() {
     let mut state = (DownlinkState::Synced, SharedValue::new(Value::from(13)));
 
-    let machine = ValueStateMachine::unvalidated(Value::from(0));
+    let machine = unvalidated(Value::from(0));
     let (action, mut rx) = make_set(67);
 
     let result = machine.handle_request(&mut state, action);
@@ -288,7 +292,7 @@ fn invalid_set_action() {
 fn dropped_set_action() {
     let mut state = (DownlinkState::Synced, SharedValue::new(Value::from(13)));
 
-    let machine = ValueStateMachine::unvalidated(Value::from(0));
+    let machine = unvalidated(Value::from(0));
     let (action, _) = make_set(67);
 
     let result = machine.handle_request(&mut state, action);
@@ -332,7 +336,7 @@ fn make_bad(n: i32) -> (Action, oneshot::Receiver<Result<Arc<Value>, DownlinkErr
 fn update_action() {
     let mut state = (DownlinkState::Synced, SharedValue::new(Value::from(13)));
 
-    let machine = ValueStateMachine::unvalidated(Value::from(0));
+    let machine = unvalidated(Value::from(0));
     let (action, mut rx) = make_update();
 
     let old = state.1.clone();
@@ -396,7 +400,7 @@ fn invalid_update_action() {
 fn dropped_update_action() {
     let mut state = (DownlinkState::Synced, SharedValue::new(Value::from(13)));
 
-    let machine = ValueStateMachine::unvalidated(Value::from(0));
+    let machine = unvalidated(Value::from(0));
     let (action, _) = make_update();
 
     let result = machine.handle_request(&mut state, action);
@@ -448,7 +452,7 @@ fn make_try_bad(
 fn successful_try_update_action() {
     let mut state = (DownlinkState::Synced, SharedValue::new(Value::from(13)));
 
-    let machine = ValueStateMachine::unvalidated(Value::from(0));
+    let machine = unvalidated(Value::from(0));
     let (action, mut rx) = make_try_update();
 
     let old = state.1.clone();
@@ -475,7 +479,7 @@ fn successful_try_update_action() {
 fn unsuccessful_try_update_action() {
     let mut state = (DownlinkState::Synced, SharedValue::new(Value::from(14)));
 
-    let machine = ValueStateMachine::unvalidated(Value::from(0));
+    let machine = unvalidated(Value::from(0));
     let (action, mut rx) = make_try_update();
 
     let result = machine.handle_request(&mut state, action);
@@ -540,7 +544,7 @@ fn invalid_try_update_action() {
 fn dropped_try_update_action() {
     let mut state = (DownlinkState::Synced, SharedValue::new(Value::from(13)));
 
-    let machine = ValueStateMachine::unvalidated(Value::from(0));
+    let machine = unvalidated(Value::from(0));
     let (action, _) = make_try_update();
 
     let result = machine.handle_request(&mut state, action);

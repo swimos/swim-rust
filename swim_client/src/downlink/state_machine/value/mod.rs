@@ -29,13 +29,6 @@ pub struct ValueStateMachine {
 }
 
 impl ValueStateMachine {
-    pub fn unvalidated(init: Value) -> Self {
-        ValueStateMachine {
-            init,
-            schema: StandardSchema::Anything,
-        }
-    }
-
     pub fn new(init: Value, schema: StandardSchema) -> Self {
         assert!(
             schema.matches(&init),

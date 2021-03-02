@@ -14,7 +14,7 @@
 
 pub mod error;
 pub mod model;
-pub mod state_machine;
+pub(crate) mod state_machine;
 pub mod subscription;
 #[cfg(test)]
 mod tests;
@@ -22,22 +22,38 @@ pub mod typed;
 pub mod watch_adapter;
 
 use crate::configuration::downlink::{DownlinkParams, OnInvalidMessage};
-use crate::downlink::error::{DownlinkError, TransitionError};
-use futures::future::ready;
+use crate::downlink::error::DownlinkError;
+use crate::downlink::model::map::{MapItemResult, UntypedMapModification};
+use crate::downlink::model::value::{SharedValue, ValueItemResult};
+use crate::downlink::state_machine::command::CommandStateMachine;
+use crate::downlink::state_machine::event::EventStateMachine;
+use crate::downlink::state_machine::map::MapStateMachine;
+use crate::downlink::state_machine::value::ValueStateMachine;
+use crate::downlink::state_machine::{
+    DownlinkStateMachine, EventResult, Response, SchemaViolations,
+};
+use crate::downlink::typed::{
+    UntypedCommandDownlink, UntypedEventDownlink, UntypedEventReceiver, UntypedMapDownlink,
+    UntypedMapReceiver, UntypedValueDownlink, UntypedValueReceiver,
+};
+use either::Either;
+use futures::future::FusedFuture;
 use futures::select_biased;
-use futures::stream::once;
-use futures::{Stream, StreamExt};
+use futures::stream::FusedStream;
+use futures::{FutureExt, Stream, StreamExt};
 use pin_utils::pin_mut;
 use std::fmt::Debug;
 use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use swim_common::model::schema::StandardSchema;
+use swim_common::model::Value;
 use swim_common::request::TryRequest;
 use swim_common::routing::RoutingError;
 use swim_common::sink::item::ItemSender;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
-use tracing::{instrument, trace};
+use tracing::{event, Level};
 use utilities::errors::Recoverable;
 use utilities::sync::{promise, topic};
 
@@ -119,241 +135,6 @@ impl<A> Event<A> {
     }
 }
 
-#[derive(Clone, PartialEq, Debug)]
-pub enum Operation<M, A> {
-    Start,
-    Message(Message<M>),
-    Action(A),
-    Error(RoutingError),
-}
-
-#[derive(Clone, PartialEq, Eq, Debug)]
-struct Response<Ev, Cmd> {
-    event: Option<Event<Ev>>,
-    command: Option<Command<Cmd>>,
-    error: Option<TransitionError>,
-    terminate: bool,
-}
-
-impl<Ev, Cmd> Response<Ev, Cmd> {
-    fn none() -> Response<Ev, Cmd> {
-        Response {
-            event: None,
-            command: None,
-            error: None,
-            terminate: false,
-        }
-    }
-
-    fn for_event(event: Event<Ev>) -> Response<Ev, Cmd> {
-        Response {
-            event: Some(event),
-            command: None,
-            error: None,
-            terminate: false,
-        }
-    }
-
-    fn for_command(command: Command<Cmd>) -> Response<Ev, Cmd> {
-        Response {
-            event: None,
-            command: Some(command),
-            error: None,
-            terminate: false,
-        }
-    }
-
-    fn then_terminate(mut self) -> Self {
-        self.terminate = true;
-        self
-    }
-}
-
-/// This trait defines the interface that must be implemented for the state type of a downlink.
-trait StateMachine<State, Message, Action>: Sized {
-    /// Type of events that will be issued to the owner of the downlink.
-    type Ev: Send;
-    /// Type of commands that will be sent out to the Warp connection.
-    type Cmd: Send;
-
-    /// The initial value for the state.
-    fn init_state(&self) -> State;
-
-    // The downlink state at which the machine should start
-    // to process updates and actions.
-    fn dl_start_state(&self) -> DownlinkState;
-
-    /// For an operation on the downlink, generate output messages.
-    fn handle_operation(
-        &self,
-        downlink_state: &mut DownlinkState,
-        state: &mut State,
-        op: Operation<Message, Action>,
-    ) -> Result<Response<Self::Ev, Self::Cmd>, DownlinkError>;
-}
-
-#[derive(Clone, PartialEq, Eq, Debug)]
-struct BasicResponse<Ev, Cmd> {
-    event: Option<Ev>,
-    command: Option<Cmd>,
-    error: Option<TransitionError>,
-}
-
-impl<Ev, Cmd> BasicResponse<Ev, Cmd> {
-    fn none() -> Self {
-        BasicResponse {
-            event: None,
-            command: None,
-            error: None,
-        }
-    }
-
-    fn of(event: Ev, command: Cmd) -> Self {
-        BasicResponse {
-            event: Some(event),
-            command: Some(command),
-            error: None,
-        }
-    }
-
-    fn with_error(mut self, err: TransitionError) -> Self {
-        self.error = Some(err);
-        self
-    }
-}
-
-impl<Ev, Cmd> From<BasicResponse<Ev, Cmd>> for Response<Ev, Cmd> {
-    fn from(basic: BasicResponse<Ev, Cmd>) -> Self {
-        let BasicResponse {
-            event,
-            command,
-            error,
-        } = basic;
-        Response {
-            event: event.map(Event::Local),
-            command: command.map(Command::Action),
-            error,
-            terminate: false,
-        }
-    }
-}
-
-/// This trait is for simple, stateful downlinks that follow the standard synchronization model.
-trait SyncStateMachine<State, Message, Action> {
-    /// Type of events that will be issued to the owner of the downlink.
-    type Ev: Send;
-    /// Type of commands that will be sent out to the Warp connection.
-    type Cmd: Send;
-
-    /// The initial value of the state.
-    fn init(&self) -> State;
-
-    /// Generate the initial event when the downlink enters the [`Synced`] state.
-    fn on_sync(&self, state: &State) -> Self::Ev;
-
-    /// Update the state with a message, received between [`Linked`] and [`Synced`'].
-    fn handle_message_unsynced(
-        &self,
-        state: &mut State,
-        message: Message,
-    ) -> Result<(), DownlinkError>;
-
-    /// Update the state with a message when in the [`Synced`] state, potentially generating an
-    /// event.
-    fn handle_message(
-        &self,
-        state: &mut State,
-        message: Message,
-    ) -> Result<Option<Self::Ev>, DownlinkError>;
-
-    /// Handle a local action potentially generating an event and/or a command and/or an error.
-    fn handle_action(
-        &self,
-        state: &mut State,
-        action: Action,
-    ) -> BasicResponse<Self::Ev, Self::Cmd>;
-}
-
-//Adapter to make a SyncStateMachine into a StateMachine.
-impl<State, M, A, Basic> StateMachine<State, M, A> for Basic
-where
-    Basic: SyncStateMachine<State, M, A>,
-{
-    type Ev = <Basic as SyncStateMachine<State, M, A>>::Ev;
-    type Cmd = <Basic as SyncStateMachine<State, M, A>>::Cmd;
-
-    fn init_state(&self) -> State {
-        self.init()
-    }
-
-    fn dl_start_state(&self) -> DownlinkState {
-        DownlinkState::Synced
-    }
-
-    #[instrument(skip(self, state, data_state, op))]
-    fn handle_operation(
-        &self,
-        state: &mut DownlinkState,
-        data_state: &mut State,
-        op: Operation<M, A>,
-    ) -> Result<Response<Self::Ev, Self::Cmd>, DownlinkError> {
-        let response = match op {
-            Operation::Start => {
-                if *state == DownlinkState::Synced {
-                    trace!("Downlink synced");
-                    Response::none()
-                } else {
-                    trace!("Downlink syncing");
-                    Response::for_command(Command::Sync)
-                }
-            }
-            Operation::Message(message) => match message {
-                Message::Linked => {
-                    trace!("Downlink linked");
-                    *state = DownlinkState::Linked;
-                    Response::none()
-                }
-                Message::Synced => {
-                    let old_state = *state;
-                    *state = DownlinkState::Synced;
-                    if old_state == DownlinkState::Synced {
-                        Response::none()
-                    } else {
-                        Response::for_event(Event::Remote(self.on_sync(data_state)))
-                    }
-                }
-                Message::Action(msg) => match *state {
-                    DownlinkState::Unlinked => Response::none(),
-                    DownlinkState::Linked => {
-                        self.handle_message_unsynced(data_state, msg)?;
-                        Response::none()
-                    }
-                    DownlinkState::Synced => match self.handle_message(data_state, msg)? {
-                        Some(ev) => Response::for_event(Event::Remote(ev)),
-                        _ => Response::none(),
-                    },
-                },
-                Message::Unlinked => {
-                    trace!("Downlink unlinked");
-                    *state = DownlinkState::Unlinked;
-                    Response::none().then_terminate()
-                }
-                Message::BadEnvelope(_) => return Err(DownlinkError::MalformedMessage),
-            },
-            Operation::Action(action) => self.handle_action(data_state, action).into(),
-            Operation::Error(e) => {
-                if e.is_fatal() {
-                    return Err(e.into());
-                } else {
-                    *state = DownlinkState::Unlinked;
-                    Response::for_command(Command::Sync)
-                }
-            }
-        };
-        Ok(response)
-    }
-}
-
 /// Raw downlinks are the untyped core around which other types are downlink are built. Actions of
 /// type `Act` can be applied to the downlink, modifying its state, and it will, in turn produce
 /// events of type `Ev`.
@@ -431,191 +212,152 @@ impl From<&DownlinkParams> for DownlinkConfig {
 
 pub type RawReceiver<Ev> = topic::Receiver<Event<Ev>>;
 
-/// Create a new raw downlink, starting its event loop.
-/// # Arguments
-///
-/// * `machine` - The downlink state machine.
-/// * `update_stream` - Stream of external updates to the state.
-/// * `cmd_sink` - Sink for outgoing commands to the remote lane.
-/// * `config` - Configuration for the event loop.
-pub(in crate::downlink) fn create_downlink<M, Act, State, Machine, CmdSend, Updates>(
-    machine: Machine,
-    update_stream: Updates,
-    cmd_sink: CmdSend,
-    config: DownlinkConfig,
-) -> (RawDownlink<Act, Machine::Ev>, RawReceiver<Machine::Ev>)
-where
-    M: Send + 'static,
-    Act: Send + 'static,
-    State: Send + 'static,
-    Machine: StateMachine<State, M, Act> + Send + Sync + 'static,
-    Updates: Stream<Item = Result<Message<M>, RoutingError>> + Send + Sync + 'static,
-    CmdSend: ItemSender<Command<Machine::Cmd>, RoutingError> + Send + Sync + 'static,
-{
-    let (act_tx, act_rx) = mpsc::channel::<Act>(config.buffer_size.get());
-    let (event_tx, event_rx) = topic::channel::<Event<Machine::Ev>>(config.buffer_size);
-
-    let (stopped_tx, stopped_rx) = promise::promise();
-
-    let completed = Arc::new(AtomicBool::new(false));
-    let completed_cpy = completed.clone();
-
-    // The task that maintains the internal state of the lane.
-    let task: DownlinkTask<Act, Machine::Ev> = DownlinkTask {
-        event_sink: event_tx,
-        actions: act_rx,
-        config,
-    };
-
-    let dl_task = async move {
-        let result = task.run(machine, update_stream, cmd_sink).await;
-        completed.store(true, Ordering::Release);
-        let _ = stopped_tx.provide(result);
-    };
-
-    swim_runtime::task::spawn(dl_task);
-
-    let sub = event_rx.subscriber();
-
-    let dl = RawDownlink {
-        action_sender: act_tx,
-        event_topic: sub,
-        task_result: stopped_rx,
-        completed: completed_cpy,
-    };
-    (dl, event_rx)
-}
-
-struct DownlinkTask<Act, Ev> {
-    event_sink: topic::Sender<Event<Ev>>,
-    actions: mpsc::Receiver<Act>,
+struct DownlinkEventLoop<SM, Updates, Action> {
+    state_machine: SM,
+    updates: Updates,
+    actions: mpsc::Receiver<Action>,
     config: DownlinkConfig,
 }
 
-impl<Act, Ev> DownlinkTask<Act, Ev> {
-    async fn run<M, Cmd, State, Updates>(
-        self,
-        state_machine: impl StateMachine<State, M, Act, Cmd = Cmd, Ev = Ev>,
+impl<SM, Updates, Action> DownlinkEventLoop<SM, Updates, Action> {
+    fn new(
+        state_machine: SM,
         updates: Updates,
-        mut cmd_sink: impl ItemSender<Command<Cmd>, RoutingError>,
+        actions: mpsc::Receiver<Action>,
+        config: DownlinkConfig,
+    ) -> Self {
+        DownlinkEventLoop {
+            state_machine,
+            updates,
+            actions,
+            config,
+        }
+    }
+}
+
+const ERR_ON_MSG: &str = "Error on incoming envelope in downlink.";
+const ERR_ON_ACTION: &str = "Error on incoming action in downlink.";
+const ERR_SENDING_CMD: &str = "Error sending outgoing message.";
+const FAILED_TO_UNLINK: &str = "Failed to unlink a terminated downlink.";
+
+impl<M, SM, Updates, Action> DownlinkEventLoop<SM, Updates, Action>
+where
+    Action: 'static,
+    Updates: Stream<Item = Result<Message<M>, RoutingError>> + Send + Sync + 'static,
+    SM: DownlinkStateMachine<M, Action>,
+{
+    pub async fn run<CmdSender>(
+        self,
+        mut commands: CmdSender,
+        mut events: topic::Sender<Event<SM::Report>>,
     ) -> Result<(), DownlinkError>
     where
-        Updates: Stream<Item = Result<Message<M>, RoutingError>> + Send + Sync + 'static,
+        CmdSender: ItemSender<Command<SM::Update>, RoutingError> + Send + Sync + 'static,
     {
-        let DownlinkTask {
-            mut event_sink,
+        let DownlinkEventLoop {
+            state_machine,
+            updates,
             actions,
             config,
         } = self;
 
-        let update_ops = updates.map(|r| match r {
-            Ok(upd) => Operation::Message(upd),
-            Err(e) => Operation::Error(e),
-        });
-
-        let start: Operation<M, Act> = Operation::Start;
-        let ops = once(ready(start)).chain(update_ops);
-
-        let mut dl_state = DownlinkState::Unlinked;
-        let mut model = state_machine.init_state();
         let yield_mod = config.yield_after.get();
-
-        let ops = ops.fuse();
-        let actions = ReceiverStream::new(actions).fuse();
-
-        pin_mut!(ops);
-        pin_mut!(actions);
-
-        let mut act_terminated = false;
-        let mut events_terminated = false;
-        let mut read_act = false;
-
         let mut iteration_count: usize = 0;
 
-        trace!("Running downlink task");
+        let (mut state, start_cmd) = state_machine.initialize();
+        if let Some(cmd) = start_cmd {
+            commands.send_item(cmd).await?;
+        }
 
-        let result: Result<(), DownlinkError> = loop {
-            let next_op: TaskInput<M, Act> =
-                if dl_state == state_machine.dl_start_state() && !act_terminated {
-                    if read_act {
-                        read_act = false;
-                        let input = select_biased! {
-                            act_op = actions.next() => TaskInput::from_action(act_op),
-                            upd_op = ops.next() => TaskInput::from_operation(upd_op),
-                        };
-                        input
-                    } else {
-                        read_act = true;
-                        let input = select_biased! {
-                            upd_op = ops.next() => TaskInput::from_operation(upd_op),
-                            act_op = actions.next() => TaskInput::from_action(act_op),
-                        };
-                        input
-                    }
-                } else {
-                    TaskInput::from_operation(ops.next().await)
-                };
+        let updates = updates.fuse();
+        let mut actions = ReceiverStream::new(actions).fuse();
+        pin_mut!(updates);
 
-            match next_op {
-                TaskInput::Op(op) => {
-                    let Response {
-                        event,
-                        command,
-                        error,
-                        terminate,
-                    } = match state_machine.handle_operation(&mut dl_state, &mut model, op) {
-                        Ok(r) => r,
-                        Err(e) => match e {
-                            e @ DownlinkError::TaskPanic(_) => {
-                                break Err(e);
-                            }
-                            _ => match config.on_invalid {
-                                OnInvalidMessage::Ignore => {
-                                    continue;
-                                }
-                                OnInvalidMessage::Terminate => {
-                                    break Err(e);
-                                }
-                            },
-                        },
-                    };
-                    let result = match (event, command) {
-                        (Some(event), Some(cmd)) => {
-                            if !events_terminated
-                                && event_sink.discarding_send(event).await.is_err()
-                            {
-                                events_terminated = true;
-                            }
-                            cmd_sink.send_item(cmd).await
+        //Ideally these would be a single enum but pending must be kept pinned and command_state
+        //cannot be pinned so this is not possible.
+        let pending = None;
+        pin_mut!(pending);
+        let mut command_state = Some(commands);
+
+        let result = loop {
+            match command_state {
+                Some(commands) => {
+                    match select_updates_and_actions(
+                        &state_machine,
+                        &mut state,
+                        &mut updates,
+                        &mut actions,
+                        &mut events,
+                        &config,
+                    )
+                    .await
+                    {
+                        SelectAnyEffect::SendCommand(cmd) => {
+                            pending.set(Some(send_response(commands, cmd).fuse()));
+                            command_state = None;
                         }
-                        (Some(event), _) => {
-                            if !events_terminated
-                                && event_sink.discarding_send(event).await.is_err()
-                            {
-                                events_terminated = true;
-                            }
-                            Ok(())
+                        SelectAnyEffect::TerminateWithError(err) => {
+                            command_state = Some(commands);
+                            break Err(err);
                         }
-                        (_, Some(command)) => cmd_sink.send_item(command).await,
-                        _ => Ok(()),
-                    };
-
-                    if error.map(|e| e.is_fatal()).unwrap_or(false) {
-                        break Err(DownlinkError::TransitionError);
-                    } else if terminate || result.is_err() {
-                        break result.map_err(Into::into);
-                    } else if act_terminated && events_terminated {
-                        break Ok(());
+                        SelectAnyEffect::Terminate => {
+                            command_state = Some(commands);
+                            break Ok(());
+                        }
+                        _ => {
+                            command_state = Some(commands);
+                        }
                     }
                 }
-                TaskInput::ActTerminated => {
-                    act_terminated = true;
-                    if events_terminated {
-                        break Ok(());
+                _ => {
+                    let mut pending_write =
+                        pending.as_mut().as_pin_mut().expect("Inconsistent state.");
+                    match select_updates_only(
+                        &state_machine,
+                        &mut state,
+                        &mut updates,
+                        pending_write.as_mut(),
+                        &mut events,
+                        &config,
+                    )
+                    .await
+                    {
+                        SelectUpdatesEffect::WriteComplete(sender) => {
+                            command_state = Some(sender);
+                            pending.set(None);
+                        }
+                        SelectUpdatesEffect::WriteFailed(sender, error) => {
+                            command_state = Some(sender);
+                            pending.set(None);
+                            break Err(error.into());
+                        }
+                        SelectUpdatesEffect::TerminateWithError(error) => {
+                            let (sender, _) = pending_write.await;
+                            command_state = Some(sender);
+                            pending.set(None);
+                            break Err(error);
+                        }
+                        SelectUpdatesEffect::Terminate => {
+                            let (sender, _) = pending_write.await;
+                            command_state = Some(sender);
+                            pending.set(None);
+                            break Ok(());
+                        }
+                        SelectUpdatesEffect::AttemptRestart => {
+                            let (sender, _) = pending_write.await;
+                            let (new_state, start_cmd) = state_machine.initialize();
+                            state = new_state;
+                            if let Some(cmd) = start_cmd {
+                                pending.set(Some(send_response(sender, cmd).fuse()));
+                            } else {
+                                command_state = Some(sender);
+                                pending.set(None);
+                            }
+                        }
+                        _ => {
+                            command_state = None;
+                        }
                     }
-                }
-                TaskInput::Terminated => {
-                    break Ok(());
                 }
             }
 
@@ -624,29 +366,357 @@ impl<Act, Ev> DownlinkTask<Act, Ev> {
                 tokio::task::yield_now().await;
             }
         };
-        let _ = cmd_sink.send_item(Command::Unlink).await;
+        if let Some(mut commands) = command_state {
+            if let Some(cmd) = state_machine.finalize(&state) {
+                if let Err(error) = commands.send_item(cmd).await {
+                    event!(Level::ERROR, FAILED_TO_UNLINK, ?error);
+                }
+            }
+        }
         result
     }
 }
 
-enum TaskInput<M, A> {
-    Op(Operation<M, A>),
-    ActTerminated,
-    Terminated,
+enum CommonEffect {
+    Terminate,
+    TerminateWithError(DownlinkError),
+    Continue,
 }
 
-impl<M, A> TaskInput<M, A> {
-    fn from_action(maybe_action: Option<A>) -> TaskInput<M, A> {
-        match maybe_action {
-            Some(a) => TaskInput::Op(Operation::Action(a)),
-            _ => TaskInput::ActTerminated,
-        }
-    }
+enum SelectAnyEffect<C> {
+    Terminate,
+    TerminateWithError(DownlinkError),
+    SendCommand(Command<C>),
+    Continue,
+}
 
-    fn from_operation(maybe_action: Option<Operation<M, A>>) -> TaskInput<M, A> {
-        match maybe_action {
-            Some(op) => TaskInput::Op(op),
-            _ => TaskInput::Terminated,
+impl<C> From<CommonEffect> for SelectAnyEffect<C> {
+    fn from(eff: CommonEffect) -> Self {
+        match eff {
+            CommonEffect::Terminate => SelectAnyEffect::Terminate,
+            CommonEffect::TerminateWithError(error) => SelectAnyEffect::TerminateWithError(error),
+            CommonEffect::Continue => SelectAnyEffect::Continue,
         }
     }
+}
+
+enum SelectUpdatesEffect<CmdSender> {
+    Terminate,
+    TerminateWithError(DownlinkError),
+    Continue,
+    WriteComplete(CmdSender),
+    WriteFailed(CmdSender, RoutingError),
+    AttemptRestart,
+}
+
+impl<CmdSender> From<CommonEffect> for SelectUpdatesEffect<CmdSender> {
+    fn from(eff: CommonEffect) -> Self {
+        match eff {
+            CommonEffect::Terminate => SelectUpdatesEffect::Terminate,
+            CommonEffect::TerminateWithError(error) => {
+                SelectUpdatesEffect::TerminateWithError(error)
+            }
+            CommonEffect::Continue => SelectUpdatesEffect::Continue,
+        }
+    }
+}
+
+type WriteResult<CmdSender> = (CmdSender, Result<(), RoutingError>);
+
+async fn select_updates_only<M, Action, Updates, CmdSender, Fut, SM>(
+    state_machine: &SM,
+    state: &mut SM::State,
+    updates: &mut Updates,
+    mut command_dispatch: Fut,
+    events: &mut topic::Sender<Event<SM::Report>>,
+    config: &DownlinkConfig,
+) -> SelectUpdatesEffect<CmdSender>
+where
+    Updates: FusedStream<Item = Result<Message<M>, RoutingError>> + Unpin,
+    Fut: FusedFuture<Output = WriteResult<CmdSender>> + Unpin,
+    SM: DownlinkStateMachine<M, Action>,
+{
+    let next: Either<WriteResult<CmdSender>, Option<Result<Message<M>, RoutingError>>> = select_biased! {
+        write_result = command_dispatch => Either::Left(write_result),
+        maybe_update = updates.next() => Either::Right(maybe_update),
+    };
+
+    match next {
+        Either::Left((sender, Ok(_))) => SelectUpdatesEffect::WriteComplete(sender),
+        Either::Right(Some(Ok(message))) => {
+            process_message(state_machine, state, events, message, config)
+                .await
+                .into()
+        }
+        Either::Left((sender, Err(error))) => {
+            event!(Level::ERROR, ERR_SENDING_CMD, ?error);
+            SelectUpdatesEffect::WriteFailed(sender, error)
+        }
+        Either::Right(Some(Err(error))) => {
+            if error.is_fatal() {
+                SelectUpdatesEffect::TerminateWithError(error.into())
+            } else {
+                SelectUpdatesEffect::AttemptRestart
+            }
+        }
+        _ => SelectUpdatesEffect::Continue,
+    }
+}
+
+async fn process_message<M, Action, SM>(
+    state_machine: &SM,
+    state: &mut SM::State,
+    events: &mut topic::Sender<Event<SM::Report>>,
+    message: Message<M>,
+    config: &DownlinkConfig,
+) -> CommonEffect
+where
+    SM: DownlinkStateMachine<M, Action>,
+{
+    match state_machine.handle_event(state, message) {
+        EventResult {
+            result: Ok(event),
+            terminate,
+        } => {
+            let send_result = if let Some(event) = event {
+                events.discarding_send(Event::Remote(event)).await
+            } else {
+                Ok(())
+            };
+            if send_result.is_err() || terminate {
+                CommonEffect::Terminate
+            } else {
+                CommonEffect::Continue
+            }
+        }
+        EventResult {
+            result: Err(error),
+            terminate,
+        } => {
+            if terminate {
+                event!(Level::ERROR, ERR_ON_MSG, ?error);
+                if config.on_invalid == OnInvalidMessage::Ignore && error.is_bad_message() {
+                    CommonEffect::Continue
+                } else {
+                    CommonEffect::TerminateWithError(error)
+                }
+            } else {
+                event!(Level::WARN, ERR_ON_MSG, ?error);
+                CommonEffect::Continue
+            }
+        }
+    }
+}
+
+async fn select_updates_and_actions<M, Action, Updates, Actions, SM>(
+    state_machine: &SM,
+    state: &mut SM::State,
+    updates: &mut Updates,
+    actions: &mut Actions,
+    events: &mut topic::Sender<Event<SM::Report>>,
+    config: &DownlinkConfig,
+) -> SelectAnyEffect<SM::Update>
+where
+    Updates: FusedStream<Item = Result<Message<M>, RoutingError>> + Unpin,
+    Actions: FusedStream<Item = Action> + Unpin + 'static,
+    SM: DownlinkStateMachine<M, Action>,
+{
+    let next: Option<Option<Either<Result<Message<M>, RoutingError>, Action>>> =
+        if state_machine.handle_actions(&state) {
+            select_biased! {
+                maybe_upd = updates.next() => Some(maybe_upd.map(Either::Left)),
+                maybe_act = actions.next() => {
+                    if let Some(act) = maybe_act {
+                        Some(Some(Either::Right(act)))
+                    } else {
+                        None
+                    }
+                }
+            }
+        } else {
+            Some(updates.next().await.map(Either::Left))
+        };
+
+    match next {
+        Some(Some(Either::Left(Ok(message)))) => {
+            process_message(state_machine, state, events, message, config)
+                .await
+                .into()
+        }
+        Some(Some(Either::Left(Err(e)))) => {
+            if e.is_fatal() {
+                SelectAnyEffect::TerminateWithError(e.into())
+            } else {
+                let (new_state, start_cmd) = state_machine.initialize();
+                *state = new_state;
+                if let Some(cmd) = start_cmd {
+                    SelectAnyEffect::SendCommand(cmd)
+                } else {
+                    SelectAnyEffect::Continue
+                }
+            }
+        }
+        Some(Some(Either::Right(action))) => match state_machine.handle_request(state, action) {
+            Ok(Response { event, command }) => {
+                let event_result = if let Some(event) = event {
+                    events.discarding_send(Event::Local(event)).await
+                } else {
+                    Ok(())
+                };
+                if event_result.is_err() {
+                    SelectAnyEffect::Terminate
+                } else if let Some(cmd) = command {
+                    SelectAnyEffect::SendCommand(cmd)
+                } else {
+                    SelectAnyEffect::Continue
+                }
+            }
+            Err(error) => {
+                event!(Level::WARN, ERR_ON_ACTION, ?error);
+                SelectAnyEffect::Continue
+            }
+        },
+        Some(_) => SelectAnyEffect::Terminate,
+        _ => SelectAnyEffect::Continue,
+    }
+}
+
+async fn send_response<S, CmdSender>(
+    mut command_sender: CmdSender,
+    cmd: Command<S>,
+) -> (CmdSender, Result<(), RoutingError>)
+where
+    CmdSender: ItemSender<Command<S>, RoutingError> + Send + Sync + 'static,
+{
+    let result = command_sender.send_item(cmd).await;
+    (command_sender, result)
+}
+
+/// Create a new raw downlink, starting its event loop.
+/// # Arguments
+///
+/// * `machine` - The downlink state machine.
+/// * `update_stream` - Stream of external updates to the state.
+/// * `cmd_sink` - Sink for outgoing commands to the remote lane.
+/// * `config` - Configuration for the event loop.
+pub(in crate::downlink) fn create_downlink<M, Act, SM, CmdSend, Updates>(
+    machine: SM,
+    update_stream: Updates,
+    cmd_sink: CmdSend,
+    config: DownlinkConfig,
+) -> (RawDownlink<Act, SM::Report>, RawReceiver<SM::Report>)
+where
+    M: Send + 'static,
+    Act: Send + 'static,
+    SM: DownlinkStateMachine<M, Act> + Send + Sync + 'static,
+    Updates: Stream<Item = Result<Message<M>, RoutingError>> + Send + Sync + 'static,
+    CmdSend: ItemSender<Command<SM::Update>, RoutingError> + Send + Sync + 'static,
+{
+    let (act_tx, act_rx) = mpsc::channel(config.buffer_size.get());
+
+    let downlink = DownlinkEventLoop::new(machine, update_stream, act_rx, config);
+
+    let (event_tx, event_rx) = topic::channel(config.buffer_size);
+
+    let completed = Arc::new(AtomicBool::new(false));
+    let completed_cpy = completed.clone();
+    let (result_tx, result_rx) = promise::promise();
+
+    let task = async move {
+        let result = downlink.run(cmd_sink, event_tx).await;
+        let _ = result_tx.provide(result);
+        completed_cpy.store(true, Ordering::SeqCst);
+    };
+
+    swim_runtime::task::spawn(task);
+    let dl = RawDownlink {
+        action_sender: act_tx,
+        event_topic: event_rx.subscriber(),
+        completed,
+        task_result: result_rx,
+    };
+    (dl, event_rx)
+}
+
+pub(in crate::downlink) fn command_downlink<Commands>(
+    schema: StandardSchema,
+    cmd_sender: Commands,
+    config: DownlinkConfig,
+) -> UntypedCommandDownlink
+where
+    Commands: ItemSender<Command<Value>, RoutingError> + Send + Sync + 'static,
+{
+    let upd_stream = futures::stream::pending();
+
+    create_downlink(
+        CommandStateMachine::new(schema),
+        upd_stream,
+        cmd_sender,
+        config,
+    )
+    .0
+}
+
+/// Create an event downlink.
+pub(in crate::downlink) fn event_downlink<Updates, Snk>(
+    schema: StandardSchema,
+    violations: SchemaViolations,
+    update_stream: Updates,
+    cmd_sink: Snk,
+    config: DownlinkConfig,
+) -> (UntypedEventDownlink, UntypedEventReceiver)
+where
+    Updates: Stream<Item = Result<Message<Value>, RoutingError>> + Send + Sync + 'static,
+    Snk: ItemSender<Command<()>, RoutingError> + Send + Sync + 'static,
+{
+    create_downlink(
+        EventStateMachine::new(schema, violations),
+        update_stream,
+        cmd_sink,
+        config,
+    )
+}
+
+/// Create a map downlink.
+pub(in crate::downlink) fn map_downlink<Updates, Commands>(
+    key_schema: Option<StandardSchema>,
+    value_schema: Option<StandardSchema>,
+    update_stream: Updates,
+    cmd_sink: Commands,
+    config: DownlinkConfig,
+) -> (UntypedMapDownlink, UntypedMapReceiver)
+where
+    Updates: Stream<Item = MapItemResult> + Send + Sync + 'static,
+    Commands:
+        ItemSender<Command<UntypedMapModification<Value>>, RoutingError> + Send + Sync + 'static,
+{
+    create_downlink(
+        MapStateMachine::new(
+            key_schema.unwrap_or(StandardSchema::Anything),
+            value_schema.unwrap_or(StandardSchema::Anything),
+        ),
+        update_stream,
+        cmd_sink,
+        config,
+    )
+}
+
+/// Create a raw value downlink.
+pub(in crate::downlink) fn value_downlink<Updates, Commands>(
+    init: Value,
+    schema: Option<StandardSchema>,
+    update_stream: Updates,
+    cmd_sender: Commands,
+    config: DownlinkConfig,
+) -> (UntypedValueDownlink, UntypedValueReceiver)
+where
+    Updates: Stream<Item = ValueItemResult> + Send + Sync + 'static,
+    Commands: ItemSender<Command<SharedValue>, RoutingError> + Send + Sync + 'static,
+{
+    create_downlink(
+        ValueStateMachine::new(init, schema.unwrap_or(StandardSchema::Anything)),
+        update_stream,
+        cmd_sender,
+        config,
+    )
 }

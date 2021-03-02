@@ -16,27 +16,21 @@
 mod tests;
 
 use crate::downlink::error::DownlinkError;
-use crate::downlink::model::SchemaViolations;
-use crate::downlink::state_machine::{DownlinkStateMachine, EventResult, Response, ResponseResult};
+use crate::downlink::state_machine::{
+    DownlinkStateMachine, EventResult, Response, ResponseResult, SchemaViolations,
+};
 use crate::downlink::{Command, Message};
 use swim_common::model::schema::{Schema, StandardSchema};
 use swim_common::model::Value;
 use tracing::trace;
 
-struct EventStateMachine {
+pub struct EventStateMachine {
     schema: StandardSchema,
     violations: SchemaViolations,
 }
 
 impl EventStateMachine {
-    fn unvalidated() -> Self {
-        EventStateMachine {
-            schema: StandardSchema::Anything,
-            violations: SchemaViolations::Ignore,
-        }
-    }
-
-    fn new(schema: StandardSchema, violations: SchemaViolations) -> Self {
+    pub fn new(schema: StandardSchema, violations: SchemaViolations) -> Self {
         EventStateMachine { schema, violations }
     }
 }

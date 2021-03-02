@@ -20,18 +20,12 @@ use crate::downlink::{Command, Message};
 use swim_common::model::schema::{Schema, StandardSchema};
 use swim_common::model::Value;
 
-struct CommandStateMachine {
+pub struct CommandStateMachine {
     schema: StandardSchema,
 }
 
 impl CommandStateMachine {
-    fn unvalidated() -> Self {
-        CommandStateMachine {
-            schema: StandardSchema::Anything,
-        }
-    }
-
-    fn new(schema: StandardSchema) -> Self {
+    pub fn new(schema: StandardSchema) -> Self {
         CommandStateMachine { schema }
     }
 }

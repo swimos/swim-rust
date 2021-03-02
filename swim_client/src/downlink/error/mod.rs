@@ -38,6 +38,15 @@ pub enum DownlinkError {
     ClosingFailure,
 }
 
+impl DownlinkError {
+    pub fn is_bad_message(&self) -> bool {
+        matches!(
+            self,
+            DownlinkError::MalformedMessage | DownlinkError::SchemaViolation(_, _)
+        )
+    }
+}
+
 impl From<RoutingError> for DownlinkError {
     fn from(e: RoutingError) -> Self {
         match e {

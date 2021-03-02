@@ -14,9 +14,8 @@
 
 use crate::configuration::downlink::{BackpressureMode, Config, DownlinkKind};
 use crate::downlink::model::map::UntypedMapModification;
-use crate::downlink::model::value::{self, SharedValue};
-use crate::downlink::model::{command, map};
-use crate::downlink::model::{event, SchemaViolations};
+use crate::downlink::model::value::SharedValue;
+use crate::downlink::state_machine::SchemaViolations;
 use crate::downlink::typed::command::TypedCommandDownlink;
 use crate::downlink::typed::event::TypedEventDownlink;
 use crate::downlink::typed::map::{MapDownlinkReceiver, TypedMapDownlink};
@@ -26,7 +25,10 @@ use crate::downlink::typed::{
     UntypedValueDownlink, UntypedValueReceiver,
 };
 use crate::downlink::watch_adapter::map::KeyedWatch;
-use crate::downlink::{Command, Downlink, DownlinkError, Message};
+use crate::downlink::{
+    command_downlink, event_downlink, map_downlink, value_downlink, Command, Downlink,
+    DownlinkError, Message,
+};
 use crate::router::{Router, RouterEvent};
 use either::Either;
 use futures::stream::Fuse;
@@ -593,7 +595,7 @@ where
 
         let (raw_dl, rec) = match config.back_pressure {
             BackpressureMode::Propagate => {
-                value::create_downlink(init, Some(schema), updates, cmd_sink, (&config).into())
+                value_downlink(init, Some(schema), updates, cmd_sink, (&config).into())
             }
             BackpressureMode::Release {
                 input_buffer_size,
@@ -616,7 +618,7 @@ where
                     },
                 );
 
-                value::create_downlink(init, Some(schema), updates, either_sink, (&config).into())
+                value_downlink(init, Some(schema), updates, either_sink, (&config).into())
             }
         };
 
@@ -663,7 +665,7 @@ where
                         envelopes::map_envelope(&sink_path, cmd).1.into()
                     },
                 );
-                map::create_downlink(
+                map_downlink(
                     Some(key_schema),
                     Some(value_schema),
                     updates,
@@ -707,7 +709,7 @@ where
                             ow => Either::Left(ow),
                         },
                     );
-                map::create_downlink(
+                map_downlink(
                     Some(key_schema),
                     Some(value_schema),
                     updates,
@@ -749,11 +751,9 @@ where
                 });
 
         let dl = match config.back_pressure {
-            BackpressureMode::Propagate => Arc::new(command::create_downlink(
-                schema.clone(),
-                cmd_sink,
-                (&config).into(),
-            )),
+            BackpressureMode::Propagate => {
+                Arc::new(command_downlink(schema.clone(), cmd_sink, (&config).into()))
+            }
 
             BackpressureMode::Release {
                 input_buffer_size,
@@ -775,7 +775,7 @@ where
                         }
                     });
 
-                Arc::new(command::create_downlink(
+                Arc::new(command_downlink(
                     schema.clone(),
                     either_sink.map_err_into(),
                     (&config).into(),
@@ -809,9 +809,9 @@ where
         let path_cpy = path.clone();
         let cmd_sink = item::for_mpsc_sender(sink)
             .map_err_into()
-            .comap(move |cmd: Command<Value>| envelopes::command_envelope(&path_cpy, cmd).1.into());
+            .comap(move |cmd: Command<()>| envelopes::dummy_envelope(&path_cpy, cmd).1.into());
 
-        let (raw_dl, _) = event::create_downlink(
+        let (raw_dl, _) = event_downlink(
             schema.clone(),
             violations,
             updates,

@@ -14,7 +14,7 @@
 
 use crate::configuration::downlink::OnInvalidMessage;
 use crate::downlink::model::map::{MapEvent, ValMap, ViewWithEvent};
-use crate::downlink::model::SchemaViolations;
+use crate::downlink::state_machine::SchemaViolations;
 use crate::downlink::typed::event::{EventDownlinkReceiver, EventViewError, TypedEventDownlink};
 use crate::downlink::typed::map::events::{TypedMapView, TypedViewWithEvent};
 use crate::downlink::DownlinkConfig;
@@ -264,7 +264,7 @@ struct Components<T> {
     downlink: TypedEventDownlink<T>,
     receiver: EventDownlinkReceiver<T>,
     update_tx: mpsc::Sender<Result<Message<Value>, RoutingError>>,
-    command_rx: mpsc::Receiver<Command<Value>>,
+    command_rx: mpsc::Receiver<Command<()>>,
 }
 
 fn make_event_downlink<T: ValidatedForm>() -> Components<T> {
@@ -272,7 +272,7 @@ fn make_event_downlink<T: ValidatedForm>() -> Components<T> {
     let (command_tx, command_rx) = mpsc::channel(8);
     let sender = swim_common::sink::item::for_mpsc_sender(command_tx).map_err_into();
 
-    let (dl, rx) = crate::downlink::model::event::create_downlink(
+    let (dl, rx) = crate::downlink::event_downlink(
         T::schema(),
         SchemaViolations::Report,
         ReceiverStream::new(update_rx),

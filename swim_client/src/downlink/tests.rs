@@ -16,8 +16,10 @@ use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 
 use super::*;
-use crate::downlink::TransitionError;
+use crate::downlink::state_machine::ResponseResult;
+use crate::downlink::{Downlink, DownlinkState};
 use futures::StreamExt;
+use std::num::NonZeroUsize;
 use std::time::Instant;
 use swim_common::routing::RoutingError;
 use swim_common::sink::item;
@@ -52,18 +54,13 @@ impl AddTo {
     }
 }
 
-fn with_error<Ev, Cmd>(mut response: Response<Ev, Cmd>, err: TransitionError) -> Response<Ev, Cmd> {
-    response.error = Some(err);
-    response
-}
-
 struct TestStateMachine {
     dl_start_state: DownlinkState,
-    start_response: Response<i32, i32>,
+    start_response: Option<Command<i32>>,
 }
 
 impl TestStateMachine {
-    fn new(dl_start_state: DownlinkState, start_response: Response<i32, i32>) -> Self {
+    fn new(dl_start_state: DownlinkState, start_response: Option<Command<i32>>) -> Self {
         TestStateMachine {
             dl_start_state,
             start_response,
@@ -71,105 +68,105 @@ impl TestStateMachine {
     }
 }
 
-impl StateMachine<State, Msg, AddTo> for TestStateMachine {
-    type Ev = i32;
-    type Cmd = i32;
+impl DownlinkStateMachine<Msg, AddTo> for TestStateMachine {
+    type State = (DownlinkState, State);
+    type Update = i32;
+    type Report = i32;
 
-    fn init_state(&self) -> State {
-        State(0)
+    fn initialize(&self) -> (Self::State, Option<Command<Self::Update>>) {
+        (
+            (DownlinkState::Unlinked, State(0)),
+            self.start_response.clone(),
+        )
     }
 
-    fn dl_start_state(&self) -> DownlinkState {
-        self.dl_start_state
-    }
-
-    fn handle_operation(
-        &self,
-        dl_state: &mut DownlinkState,
-        model: &mut State,
-        op: Operation<Msg, AddTo>,
-    ) -> Result<Response<Self::Ev, Self::Cmd>, DownlinkError> {
-        match op {
-            Operation::Start => Ok(self.start_response.clone()),
-            Operation::Message(Message::Linked) => {
-                *dl_state = DownlinkState::Linked;
-                Ok(Response::none())
+    fn handle_actions(&self, state: &Self::State) -> bool {
+        let (dl_state, State(_data_state)) = state;
+        match self.dl_start_state {
+            DownlinkState::Unlinked => true,
+            DownlinkState::Linked => {
+                *dl_state == DownlinkState::Linked || *dl_state == DownlinkState::Synced
             }
-            Operation::Message(Message::Synced) => {
+            DownlinkState::Synced => *dl_state == DownlinkState::Synced,
+        }
+    }
+
+    fn handle_event(
+        &self,
+        state: &mut Self::State,
+        event: Message<Msg>,
+    ) -> EventResult<Self::Report> {
+        let do_action = self.handle_actions(state);
+        let (dl_state, State(data_state)) = state;
+        match event {
+            Message::Linked => {
+                *dl_state = DownlinkState::Linked;
+                EventResult::default()
+            }
+            Message::Synced => {
                 let prev = *dl_state;
                 *dl_state = DownlinkState::Synced;
-                Ok(if prev != DownlinkState::Synced {
-                    Response::for_event(Event::Remote(model.0))
+                if prev != DownlinkState::Synced {
+                    EventResult::of(*data_state)
                 } else {
-                    Response::none()
-                })
+                    EventResult::default()
+                }
             }
-            Operation::Message(Message::Unlinked) => {
-                *dl_state = DownlinkState::Unlinked;
-                Ok(Response::none())
-            }
-            Operation::Message(Message::Action(Msg(n, maybe_cb))) => {
+            Message::Action(Msg(n, maybe_cb)) => {
                 let result = if n < 0 {
-                    Err(DownlinkError::MalformedMessage)
+                    EventResult::fail(DownlinkError::MalformedMessage)
                 } else {
                     if *dl_state != DownlinkState::Unlinked {
-                        model.0 = n;
+                        *data_state = n;
                     }
-                    Ok(if *dl_state == self.dl_start_state() {
-                        Response::for_event(Event::Remote(model.0))
+                    if do_action {
+                        EventResult::of(*data_state)
                     } else {
-                        Response::none()
-                    })
+                        EventResult::default()
+                    }
                 };
 
                 match maybe_cb {
                     Some(cb) => match cb.send(Instant::now()) {
                         Ok(_) => result,
-                        Err(_) => {
-                            result.map(|resp| with_error(resp, TransitionError::ReceiverDropped))
-                        }
+                        Err(_) => EventResult {
+                            result: Err(DownlinkError::TransitionError),
+                            terminate: false,
+                        },
                     },
                     _ => result,
                 }
             }
-            Operation::Message(Message::BadEnvelope(_)) => Err(DownlinkError::MalformedMessage),
-            Operation::Action(AddTo(n, maybe_cb)) => {
-                let next = model.0 + n;
-                let resp = if next < 0 {
-                    with_error(
-                        Response::none(),
-                        TransitionError::IllegalTransition("State cannot be negative.".to_owned()),
-                    )
-                } else {
-                    model.0 = next;
-                    response_of(Event::Local(next), Command::Action(next))
-                };
-                Ok(match maybe_cb {
-                    Some(cb) => match cb.send(Instant::now()) {
-                        Ok(_) => resp,
-                        Err(_) => with_error(resp, TransitionError::ReceiverDropped),
-                    },
-                    _ => resp,
-                })
+            Message::Unlinked => {
+                *dl_state = DownlinkState::Unlinked;
+                EventResult::default()
             }
-            Operation::Error(e) => {
-                if e.is_fatal() {
-                    return Err(DownlinkError::DroppedChannel);
-                } else {
-                    *dl_state = DownlinkState::Unlinked;
-                    Ok(Response::for_command(Command::Sync))
-                }
-            }
+            Message::BadEnvelope(_) => EventResult::fail(DownlinkError::MalformedMessage),
         }
     }
-}
 
-fn response_of<Ev, Cmd>(event: Event<Ev>, command: Command<Cmd>) -> Response<Ev, Cmd> {
-    Response {
-        event: Some(event),
-        command: Some(command),
-        error: None,
-        terminate: false,
+    fn handle_request(
+        &self,
+        state: &mut Self::State,
+        request: AddTo,
+    ) -> ResponseResult<Self::Report, Self::Update> {
+        let (_dl_state, State(data_state)) = state;
+        let AddTo(n, maybe_cb) = request;
+        let next = *data_state + n;
+        let resp = if next < 0 {
+            Err(DownlinkError::InvalidAction)
+        } else {
+            *data_state = next;
+            Ok((next, next).into())
+        };
+        if let Some(cb) = maybe_cb {
+            let _ = cb.send(Instant::now());
+        }
+        resp
+    }
+
+    fn finalize(&self, _state: &Self::State) -> Option<Command<Self::Update>> {
+        Some(Command::Unlink)
     }
 }
 
@@ -179,7 +176,7 @@ type Snk<T> = mpsc::Sender<T>;
 fn make_test_dl_custom_on_invalid(
     on_invalid: OnInvalidMessage,
     dl_start_state: DownlinkState,
-    start_response: Response<i32, i32>,
+    start_response: Option<Command<i32>>,
 ) -> (
     RawDownlink<AddTo, i32>,
     topic::Receiver<Event<i32>>,
@@ -214,12 +211,12 @@ fn make_test_sync_dl() -> (
     make_test_dl_custom_on_invalid(
         OnInvalidMessage::Terminate,
         DownlinkState::Synced,
-        Response::for_command(Command::Sync),
+        Some(Command::Sync),
     )
 }
 
 #[tokio::test]
-async fn sync_on_startup() {
+async fn initial_command_on_startup() {
     let (_dl, _rx, _messages, mut commands) = make_test_sync_dl();
 
     let first_cmd = commands.recv().await;
@@ -227,7 +224,7 @@ async fn sync_on_startup() {
 }
 
 #[tokio::test]
-async fn event_on_sync() {
+async fn event_on_state_change() {
     let (_dl, mut dl_rx, messages, _commands) = make_test_sync_dl();
 
     assert!(messages.send(Ok(Message::Linked)).await.is_ok());
@@ -238,7 +235,7 @@ async fn event_on_sync() {
 }
 
 #[tokio::test]
-async fn ignore_update_before_link() {
+async fn state_based_action_filter() {
     let (_dl, mut dl_rx, messages, _commands) = make_test_sync_dl();
 
     assert!(messages
@@ -253,7 +250,7 @@ async fn ignore_update_before_link() {
 }
 
 #[tokio::test]
-async fn apply_updates_between_link_and_sync() {
+async fn state_updates_with_no_report() {
     let (_dl, mut dl_rx, messages, _commands) = make_test_sync_dl();
 
     assert!(messages.send(Ok(Message::Linked)).await.is_ok());
@@ -287,7 +284,7 @@ async fn sync_dl(
 }
 
 #[tokio::test]
-async fn updates_processed_when_synced() {
+async fn process_messages() {
     let (_dl, rx, mut messages, mut commands) = make_test_sync_dl();
 
     let mut events = rx.into_stream();
@@ -313,7 +310,7 @@ async fn updates_processed_when_synced() {
 }
 
 #[tokio::test]
-async fn actions_processed_when_synced() {
+async fn actions_processed_when_not_filtered() {
     let (dl, rx, mut messages, mut commands) = make_test_sync_dl();
 
     let mut events = rx.into_stream();
@@ -327,7 +324,7 @@ async fn actions_processed_when_synced() {
 }
 
 #[tokio::test]
-async fn actions_paused_when_not_synced() {
+async fn actions_paused_when_filtered() {
     let (dl, rx, mut messages, mut commands) = make_test_sync_dl();
 
     let mut events = rx.into_stream();
@@ -393,7 +390,7 @@ async fn actions_paused_when_unlinked() {
 }
 
 #[tokio::test]
-async fn errors_propagate() {
+async fn continue_after_failed_action() {
     let (dl, rx, mut messages, mut commands) = make_test_sync_dl();
 
     let mut events = rx.into_stream();
@@ -408,14 +405,13 @@ async fn errors_propagate() {
     assert!(dl.send(action).await.is_ok());
 
     //Wait for the action the be executed.
-    assert!(act_rx.await.is_ok());
+    let _ = act_rx.await;
 
-    let stop_res = dl.await_stopped().await;
-
-    assert!(stop_res.is_ok());
-    let r = stop_res.unwrap();
-
-    assert!(matches!(&*r, Err(DownlinkError::TransitionError)));
+    assert!(messages
+        .send(Ok(Message::Action(Msg(12, None))))
+        .await
+        .is_ok());
+    assert_eq!(events.next().await, Some(Event::Remote(12)));
 }
 
 #[tokio::test]
@@ -423,7 +419,7 @@ async fn terminates_on_invalid() {
     let (dl, _events, messages, _commands) = make_test_dl_custom_on_invalid(
         OnInvalidMessage::Terminate,
         DownlinkState::Synced,
-        Response::for_command(Command::Sync),
+        Some(Command::Sync),
     );
 
     let (msg_tx, msg_rx) = oneshot::channel();
@@ -447,7 +443,7 @@ async fn continues_on_invalid() {
     let (_dl, rx, mut messages, mut commands) = make_test_dl_custom_on_invalid(
         OnInvalidMessage::Ignore,
         DownlinkState::Synced,
-        Response::for_command(Command::Sync),
+        Some(Command::Sync),
     );
 
     let mut events = rx.into_stream();
@@ -537,36 +533,4 @@ async fn terminates_when_router_dropped() {
     assert!(stop_res.is_ok());
     let inner_result = (*stop_res.unwrap()).clone();
     assert_eq!(inner_result, Err(DownlinkError::DroppedChannel));
-}
-
-#[tokio::test]
-async fn action_received_before_synced() {
-    let (dl, _events, messages, mut commands) = make_test_dl_custom_on_invalid(
-        OnInvalidMessage::Terminate,
-        DownlinkState::Linked,
-        Response::for_command(Command::Link),
-    );
-
-    assert!(messages.send(Ok(Message::Linked)).await.is_ok());
-
-    dl.send(AddTo::of(4)).await.unwrap();
-
-    let first_cmd = commands.recv().await;
-    let second_cmd = commands.recv().await;
-    assert_eq!(first_cmd, Some(Command::Link));
-    assert_eq!(second_cmd, Some(Command::Action(4)));
-}
-
-#[tokio::test]
-async fn action_received_before_linked() {
-    let (dl, _events, _messages, mut commands) = make_test_dl_custom_on_invalid(
-        OnInvalidMessage::Terminate,
-        DownlinkState::Unlinked,
-        Response::none(),
-    );
-
-    dl.send(AddTo::of(4)).await.unwrap();
-
-    let first_cmd = commands.recv().await;
-    assert_eq!(first_cmd, Some(Command::Action(4)));
 }

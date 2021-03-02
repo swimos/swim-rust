@@ -39,7 +39,7 @@ use tracing::info;
 
 #[cfg(feature = "websocket")]
 use crate::connections::factory::tungstenite::TungsteniteWsFactory;
-use crate::downlink::model::SchemaViolations;
+use crate::downlink::state_machine::SchemaViolations;
 use crate::downlink::typed::command::TypedCommandDownlink;
 use crate::downlink::typed::event::TypedEventDownlink;
 use crate::downlink::typed::map::{MapDownlinkReceiver, TypedMapDownlink};

@@ -33,9 +33,13 @@ const STATES: [DownlinkState; 3] = [
     DownlinkState::Synced,
 ];
 
+fn unvalidated() -> MapStateMachine {
+    MapStateMachine::new(StandardSchema::Anything, StandardSchema::Anything)
+}
+
 #[test]
 fn start_downlink() {
-    let machine = MapStateMachine::unvalidated();
+    let machine = unvalidated();
     let ((dl_state, data_state), cmd) = machine.initialize();
     assert_eq!(dl_state, DownlinkState::Unlinked);
     assert!(data_state.is_empty());
@@ -43,7 +47,7 @@ fn start_downlink() {
 }
 
 fn linked_response(start_state: DownlinkState) {
-    let machine = MapStateMachine::unvalidated();
+    let machine = unvalidated();
     let mut state = (start_state, ValMap::new());
 
     let EventResult { result, terminate } = machine.handle_event(&mut state, Message::Linked);
@@ -65,7 +69,7 @@ fn linked_message() {
 }
 
 fn synced_response(start_state: DownlinkState) {
-    let machine = MapStateMachine::unvalidated();
+    let machine = unvalidated();
     let init = make_model_with(7, "hello".to_owned());
     let mut state = (start_state, init.clone());
 
@@ -95,7 +99,7 @@ fn synced_message() {
 }
 
 fn unlinked_response(start_state: DownlinkState) {
-    let machine = MapStateMachine::unvalidated();
+    let machine = unvalidated();
     let mut state = (start_state, ValMap::new());
 
     let EventResult { result, terminate } = machine.handle_event(&mut state, Message::Unlinked);
@@ -130,7 +134,7 @@ fn messages() -> impl Iterator<Item = Message<UntypedMapModification<Value>>> {
 #[test]
 fn messages_when_unlinked() {
     for message in messages() {
-        let machine = MapStateMachine::unvalidated();
+        let machine = unvalidated();
         let mut state = (DownlinkState::Unlinked, ValMap::new());
 
         let EventResult { result, terminate } = machine.handle_event(&mut state, message);
@@ -156,7 +160,7 @@ fn update_response(synced: bool) {
     let v = Arc::new(Value::from("hello"));
     let expected = ValMap::from(vec![(k.clone(), v.clone())]);
 
-    let machine = MapStateMachine::unvalidated();
+    let machine = unvalidated();
     let mut state = (init, ValMap::new());
 
     let message = Message::Action(UntypedMapModification::Update(k.clone(), v));
@@ -199,7 +203,7 @@ fn remove_response(synced: bool) {
     let v = Arc::new(Value::from("hello"));
     let start = ValMap::from(vec![(k.clone(), v.clone())]);
 
-    let machine = MapStateMachine::unvalidated();
+    let machine = unvalidated();
     let mut state = (init, start);
 
     let message = Message::Action(UntypedMapModification::Remove(k.clone()));
@@ -246,7 +250,7 @@ fn take_response(synced: bool) {
 
     let expected = ValMap::from(vec![(k1.clone(), v1.clone())]);
 
-    let machine = MapStateMachine::unvalidated();
+    let machine = unvalidated();
     let mut state = (init, start);
 
     let message = Message::Action(UntypedMapModification::Take(1));
@@ -293,7 +297,7 @@ fn drop_response(synced: bool) {
 
     let expected = ValMap::from(vec![(k2.clone(), v2.clone())]);
 
-    let machine = MapStateMachine::unvalidated();
+    let machine = unvalidated();
     let mut state = (init, start);
 
     let message = Message::Action(UntypedMapModification::Drop(1));
@@ -340,7 +344,7 @@ fn clear_response(synced: bool) {
 
     let expected = ValMap::new();
 
-    let machine = MapStateMachine::unvalidated();
+    let machine = unvalidated();
     let mut state = (init, start);
 
     let message = Message::Action(UntypedMapModification::Clear);
@@ -393,7 +397,7 @@ fn get_action() {
     let v = Arc::new(Value::from("hello"));
     let start = ValMap::from(vec![(k.clone(), v.clone())]);
 
-    let machine = MapStateMachine::unvalidated();
+    let machine = unvalidated();
     let mut state = (DownlinkState::Synced, start.clone());
 
     let (request, mut rx) = make_get_map();
@@ -424,7 +428,7 @@ fn get_key_action() {
     let v = Arc::new(Value::from("hello"));
     let start = ValMap::from(vec![(k.clone(), v.clone())]);
 
-    let machine = MapStateMachine::unvalidated();
+    let machine = unvalidated();
     let mut state = (DownlinkState::Synced, start.clone());
 
     let (request, mut rx) = make_get(4);
@@ -455,7 +459,7 @@ fn get_absent_key_action() {
     let v = Arc::new(Value::from("hello"));
     let start = ValMap::from(vec![(k.clone(), v.clone())]);
 
-    let machine = MapStateMachine::unvalidated();
+    let machine = unvalidated();
     let mut state = (DownlinkState::Synced, start.clone());
 
     let (request, mut rx) = make_get(5);
@@ -501,7 +505,7 @@ fn insert_action() {
     let start = ValMap::new();
     let expected = ValMap::from(vec![(k.clone(), v.clone())]);
 
-    let machine = MapStateMachine::unvalidated();
+    let machine = unvalidated();
     let mut state = (DownlinkState::Synced, start.clone());
 
     let (request, mut rx) = make_update(4, "hello".to_string());
@@ -543,7 +547,7 @@ fn update_action() {
     let start = ValMap::from(vec![(k.clone(), v1.clone())]);
     let expected = ValMap::from(vec![(k.clone(), v2.clone())]);
 
-    let machine = MapStateMachine::unvalidated();
+    let machine = unvalidated();
     let mut state = (DownlinkState::Synced, start.clone());
 
     let (request, mut rx) = make_update(4, "world".to_string());
@@ -585,7 +589,7 @@ fn update_action_dropped() {
     let start = ValMap::from(vec![(k.clone(), v1.clone())]);
     let expected = ValMap::from(vec![(k.clone(), v2.clone())]);
 
-    let machine = MapStateMachine::unvalidated();
+    let machine = unvalidated();
     let mut state = (DownlinkState::Synced, start.clone());
 
     let (request, _) = make_update(4, "world".to_string());
@@ -721,7 +725,7 @@ fn make_remove(
 fn remove_action_undefined() {
     let start = ValMap::new();
 
-    let machine = MapStateMachine::unvalidated();
+    let machine = unvalidated();
     let mut state = (DownlinkState::Synced, start.clone());
 
     let (request, mut rx) = make_remove(4);
@@ -753,7 +757,7 @@ fn remove_action_defined() {
     let start = ValMap::from(vec![(k.clone(), v.clone())]);
     let expected = ValMap::new();
 
-    let machine = MapStateMachine::unvalidated();
+    let machine = unvalidated();
     let mut state = (DownlinkState::Synced, start.clone());
 
     let (request, mut rx) = make_remove(4);
@@ -793,7 +797,7 @@ fn remove_action_dropped() {
     let start = ValMap::from(vec![(k.clone(), v.clone())]);
     let expected = ValMap::new();
 
-    let machine = MapStateMachine::unvalidated();
+    let machine = unvalidated();
     let mut state = (DownlinkState::Synced, start.clone());
 
     let (request, _) = make_remove(4);
@@ -890,7 +894,7 @@ fn take_action() {
     let start = ValMap::from(vec![(k1.clone(), v1.clone()), (k2.clone(), v2.clone())]);
     let expected = ValMap::from(vec![(k1.clone(), v1.clone())]);
 
-    let machine = MapStateMachine::unvalidated();
+    let machine = unvalidated();
     let mut state = (DownlinkState::Synced, start.clone());
 
     let (request, mut rx_before, mut rx_after) = make_take(1);
@@ -932,7 +936,7 @@ fn take_action_dropped() {
     let start = ValMap::from(vec![(k1.clone(), v1.clone()), (k2.clone(), v2.clone())]);
     let expected = ValMap::from(vec![(k1.clone(), v1.clone())]);
 
-    let machine = MapStateMachine::unvalidated();
+    let machine = unvalidated();
     let mut state = (DownlinkState::Synced, start.clone());
 
     let (request, _, _) = make_take(1);
@@ -984,7 +988,7 @@ fn drop_action() {
     let start = ValMap::from(vec![(k1.clone(), v1.clone()), (k2.clone(), v2.clone())]);
     let expected = ValMap::from(vec![(k2.clone(), v2.clone())]);
 
-    let machine = MapStateMachine::unvalidated();
+    let machine = unvalidated();
     let mut state = (DownlinkState::Synced, start.clone());
 
     let (request, mut rx_before, mut rx_after) = make_drop(1);
@@ -1026,7 +1030,7 @@ fn drop_action_dropped() {
     let start = ValMap::from(vec![(k1.clone(), v1.clone()), (k2.clone(), v2.clone())]);
     let expected = ValMap::from(vec![(k2.clone(), v2.clone())]);
 
-    let machine = MapStateMachine::unvalidated();
+    let machine = unvalidated();
     let mut state = (DownlinkState::Synced, start.clone());
 
     let (request, _, _) = make_drop(1);
@@ -1066,7 +1070,7 @@ fn clear_action() {
     let v2 = Arc::new(Value::from("world"));
     let start = ValMap::from(vec![(k1.clone(), v1.clone()), (k2.clone(), v2.clone())]);
 
-    let machine = MapStateMachine::unvalidated();
+    let machine = unvalidated();
     let mut state = (DownlinkState::Synced, start.clone());
 
     let (request, mut rx) = make_clear();
@@ -1104,7 +1108,7 @@ fn clear_action_dropped() {
     let v2 = Arc::new(Value::from("world"));
     let start = ValMap::from(vec![(k1.clone(), v1.clone()), (k2.clone(), v2.clone())]);
 
-    let machine = MapStateMachine::unvalidated();
+    let machine = unvalidated();
     let mut state = (DownlinkState::Synced, start.clone());
 
     let (request, _) = make_clear();

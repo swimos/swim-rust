@@ -600,7 +600,7 @@ fn make_map_downlink<K: ValidatedForm, V: ValidatedForm>() -> Components<K, V> {
     let (command_tx, command_rx) = mpsc::channel(8);
     let sender = swim_common::sink::item::for_mpsc_sender(command_tx).map_err_into();
 
-    let (dl, rx) = crate::downlink::model::map::create_downlink(
+    let (dl, rx) = crate::downlink::map_downlink(
         Some(K::schema()),
         Some(V::schema()),
         ReceiverStream::new(update_rx),

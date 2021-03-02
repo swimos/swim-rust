@@ -13,7 +13,6 @@
 // limitations under the License.
 
 use super::*;
-use crate::downlink::model::SchemaViolations;
 use crate::downlink::{Command, Message};
 use swim_common::model::schema::StandardSchema;
 use swim_common::model::{Value, ValueKind};

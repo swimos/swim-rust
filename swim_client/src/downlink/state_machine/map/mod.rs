@@ -29,13 +29,6 @@ pub struct MapStateMachine {
 }
 
 impl MapStateMachine {
-    pub fn unvalidated() -> Self {
-        MapStateMachine {
-            key_schema: StandardSchema::Anything,
-            value_schema: StandardSchema::Anything,
-        }
-    }
-
     pub fn new(key_schema: StandardSchema, value_schema: StandardSchema) -> Self {
         MapStateMachine {
             key_schema,
