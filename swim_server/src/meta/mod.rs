@@ -14,6 +14,7 @@
 
 pub mod info;
 pub mod log;
+pub mod metric;
 pub mod uri;
 
 #[cfg(test)]
