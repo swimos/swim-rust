@@ -194,6 +194,7 @@ impl Debug for NodeLogger {
 }
 
 impl NodeLogger {
+    #[cfg(test)]
     fn new(
         buffer: Arc<LogBuffer>,
         node_uri: RelativeUri,
