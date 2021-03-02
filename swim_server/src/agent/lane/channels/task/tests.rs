@@ -1197,7 +1197,7 @@ async fn handle_action_lane_update_failure() {
         input_ref.send_raw(addr, Value::text("0")).await;
     };
 
-    let (_, result, _) = join3(spawn_task, timeout(Duration::new(5, 0), task), io_task).await;
+    let (_, result, _) = join3(spawn_task, timeout(Duration::from_secs(5), task), io_task).await;
     assert!(result.is_err());
 }
 
@@ -1216,7 +1216,7 @@ async fn handle_command_lane_update_failure() {
         input_ref.send_raw(addr, Value::text("0")).await;
     };
 
-    let (_, result, _) = join3(spawn_task, timeout(Duration::new(5, 0), task), io_task).await;
+    let (_, result, _) = join3(spawn_task, timeout(Duration::from_secs(5), task), io_task).await;
     assert!(result.is_err());
 }
 

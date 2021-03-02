@@ -234,7 +234,7 @@ async fn cleanup_on_error() {
         check_feedback(&mut feedback_rx, addr2, 56).await;
     };
 
-    let (result, _) = join(timeout(Duration::new(5, 0), update_task), assertion_task).await;
+    let (result, _) = join(timeout(Duration::from_secs(5), update_task), assertion_task).await;
     assert!(result.is_err());
 }
 
