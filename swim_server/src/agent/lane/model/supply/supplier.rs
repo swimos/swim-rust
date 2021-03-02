@@ -180,3 +180,84 @@ where
         (WatchSupplier(tx), WatchStream(TokioWatchStream::new(rx)))
     }
 }
+
+/// Supply lane send strategies.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SupplierKind {
+    /// Only attempt to send the most recent log entry.
+    Dropping,
+    /// Buffer N log entries to send. When the buffer is full it will no longer accept new entries
+    /// until space is available.
+    Queue(NonZeroUsize),
+}
+
+impl<T> SupplyLaneObserver<T> for SupplierKind
+where
+    T: Clone + Send + Sync + Unpin + 'static,
+{
+    type Sender = SupplyLaneSender<T>;
+    type View = SupplyLaneView<T>;
+
+    fn make_observer(&self) -> (Self::Sender, Self::View) {
+        match self {
+            SupplierKind::Dropping => {
+                let (sender, view) = Dropping.make_observer();
+                (
+                    SupplyLaneSender::Dropping(sender),
+                    SupplyLaneView::Dropping(view),
+                )
+            }
+            SupplierKind::Queue(n) => {
+                let (sender, view) = Queue(*n).make_observer();
+                (SupplyLaneSender::Queue(sender), SupplyLaneView::Queue(view))
+            }
+        }
+    }
+}
+
+pub enum SupplyLaneSender<T> {
+    Dropping(WatchSupplier<T>),
+    Queue(mpsc::Sender<T>),
+}
+
+impl<T> Supplier<T> for SupplyLaneSender<T>
+where
+    T: Send + Sync + 'static,
+{
+    fn try_supply(&self, item: T) -> Result<(), TrySupplyError> {
+        match self {
+            SupplyLaneSender::Dropping(s) => s.try_supply(item),
+            SupplyLaneSender::Queue(s) => s.try_supply(item),
+        }
+    }
+
+    fn supply(&self, item: T) -> BoxFuture<Result<(), SupplyError>> {
+        match self {
+            SupplyLaneSender::Dropping(s) => s.supply(item),
+            SupplyLaneSender::Queue(s) => s.supply(item),
+        }
+        .boxed()
+    }
+}
+
+#[pin_project(project = ViewProj)]
+pub enum SupplyLaneView<T> {
+    Dropping(#[pin] WatchStream<T>),
+    Queue(#[pin] ReceiverStream<T>),
+}
+
+impl<T> Stream for SupplyLaneView<T>
+where
+    T: Clone + Send + Sync + 'static,
+{
+    type Item = T;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let this = self.project();
+
+        match this {
+            ViewProj::Dropping(s) => s.poll_next(cx),
+            ViewProj::Queue(s) => s.poll_next(cx),
+        }
+    }
+}

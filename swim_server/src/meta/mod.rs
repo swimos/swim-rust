@@ -24,7 +24,7 @@ use crate::agent::dispatch::LaneIdentifier;
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::{AgentContext, DynamicLaneTasks, LaneIo, SwimAgent};
 use crate::meta::info::{open_info_lane, LaneInfo, LaneInformation};
-use crate::meta::log::LogLevel;
+use crate::meta::log::{open_log_lanes, LogLevel, NodeLogger};
 use crate::meta::uri::{parse, MetaParseErr};
 use lazy_static::lazy_static;
 use percent_encoding::percent_decode_str;
@@ -72,11 +72,19 @@ pub fn get_route(uri: RelativeUri) -> RelativeUri {
 #[derive(Debug)]
 pub struct MetaContext {
     lane_information: LaneInformation,
+    node_logger: NodeLogger,
 }
 
 impl MetaContext {
-    fn new(lane_information: LaneInformation) -> MetaContext {
-        MetaContext { lane_information }
+    fn new(lane_information: LaneInformation, node_logger: NodeLogger) -> MetaContext {
+        MetaContext {
+            lane_information,
+            node_logger,
+        }
+    }
+
+    pub fn node_logger(&self) -> NodeLogger {
+        self.node_logger.clone()
     }
 
     #[allow(dead_code)]
@@ -170,6 +178,7 @@ impl MetaNodeAddressed {
 }
 
 pub fn open_meta_lanes<Config, Agent, Context>(
+    node_uri: RelativeUri,
     exec_conf: &AgentExecutionConfig,
     lanes_summary: HashMap<String, LaneInfo>,
 ) -> (
@@ -184,13 +193,18 @@ where
     let mut tasks = Vec::new();
     let mut ios = HashMap::new();
 
+    let (node_logger, log_tasks, log_ios) = open_log_lanes(node_uri, exec_conf.node_log);
+
+    tasks.extend(log_tasks);
+    ios.extend(log_ios);
+
     let (lane_information, info_tasks, info_ios) =
         open_info_lane(exec_conf.lane_buffer, lanes_summary);
 
     tasks.extend(info_tasks);
     ios.extend(info_ios);
 
-    let meta_context = MetaContext::new(lane_information);
+    let meta_context = MetaContext::new(lane_information, node_logger);
 
     (meta_context, tasks, ios)
 }
@@ -198,6 +212,7 @@ where
 #[cfg(test)]
 pub(crate) fn make_test_meta_context() -> MetaContext {
     use crate::agent::lane::model::demand_map::DemandMapLane;
+    use crate::meta::log::make_node_logger;
     use tokio::sync::mpsc;
 
     MetaContext {
@@ -205,5 +220,6 @@ pub(crate) fn make_test_meta_context() -> MetaContext {
             mpsc::channel(1).0,
             mpsc::channel(1).0,
         )),
+        node_logger: make_node_logger(RelativeUri::default()),
     }
 }
