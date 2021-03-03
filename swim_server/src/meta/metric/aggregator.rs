@@ -14,7 +14,6 @@
 
 use crate::meta::metric::{AggregatorError, AggregatorErrorKind, AggregatorKind};
 use crate::meta::metric::{STOP_CLOSED, STOP_OK};
-use futures::future::BoxFuture;
 use futures::FutureExt;
 use futures::StreamExt;
 use futures::{select, Stream};
@@ -22,7 +21,6 @@ use std::fmt::Debug;
 use std::num::NonZeroUsize;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::TrySendError;
-use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, Level};
 use utilities::sync::trigger;
 
@@ -40,7 +38,7 @@ pub trait MetricAggregator {
     type Input;
     type Output: Addressed;
 
-    fn on_receive(&mut self, profile: Self::Input) -> BoxFuture<Result<Option<Self::Output>, ()>>;
+    fn on_receive(&mut self, profile: Self::Input) -> Result<Option<Self::Output>, ()>;
 }
 
 pub struct AggregatorTask<C, S>
@@ -104,11 +102,11 @@ where
                     break AggregatorErrorKind::AbnormalStop;
                 }
                 Some(profile) => {
-                    if let Ok(Some(profile)) = inner.on_receive(profile).await {
+                    if let Ok(Some(profile)) = inner.on_receive(profile) {
                         if let Some(sender) = &output {
                             if let Err(e) = sender.try_send(profile) {
                                 match e {
-                                    TrySendError::Closed(e) => {
+                                    TrySendError::Closed(_) => {
                                         break AggregatorErrorKind::ForwardChannelClosed;
                                     }
                                     TrySendError::Full(e) => {

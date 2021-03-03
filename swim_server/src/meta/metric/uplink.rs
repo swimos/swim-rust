@@ -18,23 +18,22 @@ use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use futures::future::BoxFuture;
-use futures::FutureExt;
 use tokio::sync::mpsc;
 
 use swim_common::form::Form;
 use swim_common::warp::path::RelativePath;
 use tracing::{event, Level};
-use utilities::sync::rwlock::RwLock;
 
+use crate::agent::lane::model::supply::supplier::TrySupplyError;
 use crate::agent::lane::model::supply::SupplyLane;
 use crate::meta::metric::aggregator::{Addressed, MetricAggregator};
-use crate::meta::metric::AggregatorKind;
+use crate::meta::metric::REMOVING_LANE;
+use crate::meta::metric::{try_send, AggregatorKind};
 use swim_warp::backpressure::keyed::Keyed;
 
 const SEND_PROFILE_FAIL: &str = "Failed to send uplink profile";
 const SEND_PULSE_FAIL: &str = "Failed to send uplink pulse";
-const MISSING_LANE: &str = "Lane does not exist";
+pub const MISSING_LANE: &str = "Lane does not exist";
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub struct SendError;
@@ -224,7 +223,7 @@ impl InnerObserver {
         {
             let last_reported = unsafe { *last_report.get() };
             if last_reported.elapsed() < *report_interval {
-                sending.store(false, Ordering::Acquire);
+                sending.store(false, Ordering::Release);
                 return;
             }
 
@@ -258,7 +257,7 @@ impl InnerObserver {
                 event!(Level::WARN, ?lane, SEND_PROFILE_FAIL);
             }
 
-            sending.store(false, Ordering::Acquire);
+            sending.store(false, Ordering::Release);
         }
     }
 }
@@ -349,28 +348,20 @@ impl MetricAggregator for UplinkAggregatorTask {
     type Input = TaggedWarpUplinkProfile;
     type Output = TaggedWarpUplinkProfile;
 
-    fn on_receive(
-        &mut self,
-        tagged_profile: Self::Input,
-    ) -> BoxFuture<Result<Option<Self::Input>, ()>> {
-        async move {
-            let TaggedWarpUplinkProfile { path, profile } = tagged_profile;
-            let lane_uri = &path.lane;
+    fn on_receive(&mut self, tagged_profile: Self::Input) -> Result<Option<Self::Input>, ()> {
+        let TaggedWarpUplinkProfile { path, profile } = tagged_profile;
+        let lane_uri = &path.lane;
 
-            match self.pulse_lanes.get(&path) {
-                Some(lane) => {
-                    let pulse = profile.clone().into();
-                    if let Err(_) = lane.try_send(pulse) {
-                        event!(Level::DEBUG, ?lane_uri, SEND_PULSE_FAIL);
-                    }
-                }
-                None => {
-                    event!(Level::WARN, ?lane_uri, MISSING_LANE);
-                }
+        match self.pulse_lanes.get(&path) {
+            Some(lane) => {
+                let pulse = profile.clone().into();
+                try_send(lane, pulse, &path, &mut self.pulse_lanes);
             }
-            Ok(Some(TaggedWarpUplinkProfile { path, profile }))
+            None => {
+                event!(Level::WARN, ?lane_uri, MISSING_LANE);
+            }
         }
-        .boxed()
+        Ok(Some(TaggedWarpUplinkProfile { path, profile }))
     }
 }
 

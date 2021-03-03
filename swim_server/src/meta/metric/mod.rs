@@ -41,17 +41,17 @@ use utilities::uri::RelativeUri;
 
 use crate::agent::dispatch::LaneIdentifier;
 use crate::agent::lane::channels::uplink::backpressure::KeyedBackpressureConfig;
-use crate::agent::lane::model::supply::supplier::Dropping;
-use crate::meta::metric::aggregator::AggregatorTask;
+use crate::agent::lane::model::supply::supplier::{Dropping, TrySupplyError};
+use crate::meta::metric::aggregator::{Addressed, AggregatorTask};
 use crate::meta::metric::config::MetricAggregatorConfig;
 use crate::meta::metric::lane::{LaneAggregatorTask, LanePulse};
 use crate::meta::metric::node::{NodeAggregatorTask, NodePulse};
 use crate::meta::metric::uplink::{
-    uplink_observer, SendError, TaggedWarpUplinkProfile, UplinkAggregatorTask, UplinkProfileSender,
+    uplink_observer, TaggedWarpUplinkProfile, UplinkAggregatorTask, UplinkProfileSender,
     WarpUplinkPulse,
 };
 use crate::meta::{IdentifiedAgentIo, LaneAddressedKind, MetaNodeAddressed};
-use futures::future::{try_join3, try_join4};
+use futures::future::try_join4;
 use futures::{Stream, StreamExt};
 pub use lane::LaneProfile;
 pub use node::NodeProfile;
@@ -61,12 +61,18 @@ use swim_common::sink::item::{for_mpsc_sender, ItemSender};
 use swim_warp::backpressure::keyed::release_pressure;
 use tokio::sync::mpsc::error::SendError as TokioSendError;
 use tokio_stream::wrappers::ReceiverStream;
+use tracing::{event, span, Level};
+use tracing_futures::Instrument;
 pub use uplink::{UplinkActionObserver, UplinkEventObserver, WarpUplinkProfile};
 
+const AGGREGATOR_TASK: &str = "Metric aggregator task";
 const REMOVING_LANE: &str = "Lane closed, removing";
 const LANE_NOT_FOUND: &str = "Lane not found";
 const STOP_OK: &str = "Aggregator stopped normally";
 const STOP_CLOSED: &str = "Aggregator event stream unexpectedly closed";
+
+const SEND_PROFILE_FAIL: &str = "Failed to send profile";
+const SEND_PULSE_FAIL: &str = "Failed to send pulse";
 
 /// An observer for node, lane and uplinks which generates profiles based on the events for the
 /// part. These events are aggregated and forwarded to their corresponding lanes as pulses.
@@ -98,7 +104,7 @@ impl From<TokioSendError<TaggedWarpUplinkProfile>> for AggregatorError {
 }
 
 impl Display for AggregatorError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, _f: &mut Formatter<'_>) -> std::fmt::Result {
         unimplemented!()
     }
 }
@@ -129,7 +135,7 @@ impl Display for AggregatorErrorKind {
 
 impl MetricAggregator {
     pub fn new(
-        node_id: String,
+        node_uri: String,
         stop_rx: trigger::Receiver,
         config: MetricAggregatorConfig,
         uplink_pulse_lanes: HashMap<RelativePath, SupplyLane<WarpUplinkPulse>>,
@@ -148,7 +154,7 @@ impl MetricAggregator {
 
         let (lane_tx, lane_rx) = mpsc::channel(buffer_size.get());
         let lane_aggregator = AggregatorTask::new(
-            node_id.clone(),
+            node_uri.clone(),
             stop_rx.clone(),
             LaneAggregatorTask::new(lane_pulse_lanes),
             ReceiverStream::new(lane_rx),
@@ -168,7 +174,7 @@ impl MetricAggregator {
         );
 
         let uplink_aggregator = AggregatorTask::new(
-            node_id,
+            node_uri.clone(),
             stop_rx,
             UplinkAggregatorTask::new(uplink_pulse_lanes),
             ReceiverStream::new(bp_stream),
@@ -184,6 +190,7 @@ impl MetricAggregator {
                 uplink_aggregator.run(yield_after),
                 release_task,
             )
+            .instrument(span!(Level::INFO, AGGREGATOR_TASK, ?node_uri))
             .await
             .map(|_| ())
         };
@@ -194,8 +201,7 @@ impl MetricAggregator {
         }
     }
 
-    /// Returns a handle which can be used to create uplink, lane, or node observers.
-    pub fn observer(&self) -> MetricObserver {
+    pub fn uplink_observer(&self) -> MetricObserver {
         self.observer.clone()
     }
 }
@@ -343,4 +349,26 @@ where
     };
 
     (pulse_lanes, tasks, ios)
+}
+
+fn try_send<P>(
+    lane: &SupplyLane<P>,
+    payload: P,
+    path: &RelativePath,
+    lanes: &mut HashMap<RelativePath, SupplyLane<P>>,
+) where
+    P: Send + Sync + 'static,
+{
+    let lane_uri = &path.lane;
+
+    match lane.try_send(payload) {
+        Ok(()) => {}
+        Err(TrySupplyError::Closed) => {
+            let _ = lanes.remove(&path);
+            event!(Level::DEBUG, ?lane_uri, REMOVING_LANE);
+        }
+        Err(TrySupplyError::Capacity) => {
+            event!(Level::DEBUG, ?lane_uri, SEND_PULSE_FAIL);
+        }
+    }
 }

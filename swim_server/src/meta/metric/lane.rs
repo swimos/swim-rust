@@ -13,15 +13,20 @@
 // limitations under the License.
 
 use crate::agent::lane::model::supply::SupplyLane;
-use futures::FutureExt;
 use std::collections::HashMap;
 use swim_common::form::Form;
 use swim_common::warp::path::RelativePath;
 
+use crate::agent::lane::model::supply::supplier::TrySupplyError;
 use crate::meta::metric::aggregator::{Addressed, MetricAggregator};
 use crate::meta::metric::uplink::TaggedWarpUplinkProfile;
+use crate::meta::metric::REMOVING_LANE;
 use crate::meta::metric::{AggregatorKind, WarpUplinkProfile};
-use futures::future::BoxFuture;
+use tracing::{event, Level};
+
+const SEND_PROFILE_FAIL: &str = "Failed to send lane profile";
+const SEND_PULSE_FAIL: &str = "Failed to send lane pulse";
+pub const MISSING_LANE: &str = "Lane does not exist";
 
 #[derive(Default, Form, Clone, PartialEq, Debug)]
 pub struct LaneProfile;
@@ -64,43 +69,35 @@ impl MetricAggregator for LaneAggregatorTask {
     type Input = TaggedWarpUplinkProfile;
     type Output = TaggedLaneProfile;
 
-    fn on_receive(
-        &mut self,
-        tagged_profile: Self::Input,
-    ) -> BoxFuture<Result<Option<Self::Output>, ()>> {
-        async move {
-            // let TaggedWarpUplinkProfile {
-            //     path: lane_id,
-            //     profile,
-            // } = tagged_profile;
-            // let lane_uri = &lane_id.lane;
-            //
-            // match self.pulse_lanes.get(&lane_id) {
-            //     Some(lane) => {
-            //         let pulse = profile.clone().into();
-            //         if let Err(_) = lane.try_send(pulse) {
-            //             // todo log err
-            //         }
-            //     }
-            //     None => {
-            //         panic!()
-            //     }
-            // }
-            //
-            // Some(TaggedLaneProfile { lane_id, profile })
-            unimplemented!()
-        }
-        .boxed()
+    fn on_receive(&mut self, tagged_profile: Self::Input) -> Result<Option<Self::Output>, ()> {
+        // let TaggedWarpUplinkProfile { path, profile } = tagged_profile;
+        // let lane_uri = &lane_id.lane;
+        //
+        // match self.pulse_lanes.get(&lane_id) {
+        //     Some(lane) => {
+        //         let pulse = profile.clone().into();
+        //
+        //         match lane.try_send(pulse) {
+        //             Ok(()) => {}
+        //             Err(TrySupplyError::Closed) => {
+        //                 let _ = self.pulse_lanes.remove(&path);
+        //                 event!(Level::DEBUG, ?lane_uri, REMOVING_LANE);
+        //             }
+        //             Err(TrySupplyError::Capacity) => {
+        //                 event!(Level::DEBUG, ?lane_uri, SEND_PULSE_FAIL);
+        //             }
+        //         }
+        //     }
+        //     None => {
+        //         panic!()
+        //     }
+        // }
+        //
+        // Some(TaggedLaneProfile { path, profile })
+        unimplemented!()
     }
 }
 
-// pub struct LaneSurjection(pub RelativePath);
-// impl Surjection<LaneProfile> for LaneSurjection {
-//     fn onto(&self, input: LaneProfile) -> ObserverEvent {
-//         ObserverEvent::Lane(self.0.clone(), input)
-//     }
-// }
-//
 // #[cfg(test)]
 // mod tests {
 //     use crate::agent::meta::metric::lane::{LaneProfile, LaneSurjection};
