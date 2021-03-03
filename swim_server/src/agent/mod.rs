@@ -75,7 +75,6 @@ use utilities::future::SwimStreamExt;
 use utilities::sync::{topic, trigger};
 use utilities::uri::RelativeUri;
 
-use crate::agent::lane::model::supply::supplier::SupplyLaneObserver;
 use crate::meta::info::{LaneInfo, LaneKind};
 use crate::meta::open_meta_lanes;
 #[doc(hidden)]
@@ -1139,7 +1138,7 @@ where
 pub fn make_supply_lane<Agent, Context, T, O>(
     name: impl Into<String>,
     is_public: bool,
-    observer: O,
+    buffer_size: NonZeroUsize,
 ) -> (
     SupplyLane<T>,
     impl LaneTasks<Agent, Context>,
@@ -1149,9 +1148,8 @@ where
     Agent: 'static,
     Context: AgentContext<Agent> + AgentExecutionContext + Send + Sync + 'static,
     T: Any + Clone + Send + Sync + Form + Debug,
-    O: SupplyLaneObserver<T>,
 {
-    let (lane, view) = make_lane_model(observer);
+    let (lane, view) = make_lane_model(buffer_size);
 
     let tasks = StatelessLifecycleTasks {
         name: name.into(),
