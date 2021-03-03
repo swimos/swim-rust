@@ -327,12 +327,12 @@ pub(crate) fn make_node_logger(node_uri: RelativeUri) -> NodeLogger {
     NodeLogger {
         buffer: Arc::new(LogBuffer::new(FlushStrategy::Immediate)),
         node_uri,
-        trace_lane: Arc::new(SupplyLane::new(Box::new(mpsc::channel(1).0))),
-        debug_lane: Arc::new(SupplyLane::new(Box::new(mpsc::channel(1).0))),
-        info_lane: Arc::new(SupplyLane::new(Box::new(mpsc::channel(1).0))),
-        warn_lane: Arc::new(SupplyLane::new(Box::new(mpsc::channel(1).0))),
-        error_lane: Arc::new(SupplyLane::new(Box::new(mpsc::channel(1).0))),
-        fail_lane: Arc::new(SupplyLane::new(Box::new(mpsc::channel(1).0))),
+        trace_lane: Arc::new(SupplyLane::new(mpsc::channel(1).0)),
+        debug_lane: Arc::new(SupplyLane::new(mpsc::channel(1).0)),
+        info_lane: Arc::new(SupplyLane::new(mpsc::channel(1).0)),
+        warn_lane: Arc::new(SupplyLane::new(mpsc::channel(1).0)),
+        error_lane: Arc::new(SupplyLane::new(mpsc::channel(1).0)),
+        fail_lane: Arc::new(SupplyLane::new(mpsc::channel(1).0)),
     }
 }
 
@@ -350,7 +350,7 @@ where
     Context: AgentContext<Agent> + AgentExecutionContext + Send + Sync + 'static,
 {
     let LogConfig {
-        send_strategy,
+        lane_buffer,
         flush_strategy,
     } = config;
 
@@ -359,7 +359,7 @@ where
     let mut lane_ios = HashMap::with_capacity(lane_count);
 
     let mut make_log_lane = |level: LogLevel| {
-        let (lane, task, io) = make_supply_lane(level.uri_ref(), true, send_strategy);
+        let (lane, task, io) = make_supply_lane(level.uri_ref(), true, lane_buffer);
 
         lane_tasks.push(task.boxed());
         lane_ios.insert(

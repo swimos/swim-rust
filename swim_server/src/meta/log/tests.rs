@@ -332,7 +332,7 @@ fn log_entry(level: LogLevel, message: &str) -> LogEntry {
 
 fn supply_lane() -> (mpsc::Receiver<LogEntry>, SupplyLane<LogEntry>) {
     let (tx, rx) = mpsc::channel(8);
-    (rx, SupplyLane::new(Box::new(tx)))
+    (rx, SupplyLane::new(tx))
 }
 
 #[tokio::test]

@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::lane::model::supply::supplier::SupplierKind;
 use std::num::NonZeroUsize;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -23,14 +22,14 @@ pub enum FlushStrategy {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LogConfig {
-    pub send_strategy: SupplierKind,
+    pub lane_buffer: NonZeroUsize,
     pub flush_strategy: FlushStrategy,
 }
 
 impl Default for LogConfig {
     fn default() -> Self {
         LogConfig {
-            send_strategy: SupplierKind::Dropping,
+            lane_buffer: NonZeroUsize::new(10).unwrap(),
             flush_strategy: FlushStrategy::Immediate,
         }
     }
