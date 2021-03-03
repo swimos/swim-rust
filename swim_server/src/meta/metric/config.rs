@@ -16,7 +16,7 @@ use std::num::NonZeroUsize;
 use tokio::time::Duration;
 
 #[derive(Debug, Clone)]
-pub struct MetricCollectorConfig {
+pub struct MetricAggregatorConfig {
     /// Sample rate.
     pub sample_rate: Duration,
     /// Observer channel buffer size.
@@ -25,9 +25,9 @@ pub struct MetricCollectorConfig {
     pub yield_after: NonZeroUsize,
 }
 
-impl Default for MetricCollectorConfig {
+impl Default for MetricAggregatorConfig {
     fn default() -> Self {
-        MetricCollectorConfig {
+        MetricAggregatorConfig {
             sample_rate: Duration::from_secs(1),
             buffer_size: NonZeroUsize::new(10).unwrap(),
             yield_after: NonZeroUsize::new(256).unwrap(),

@@ -24,31 +24,36 @@ use tokio::sync::mpsc;
 
 use swim_common::form::Form;
 use swim_common::warp::path::RelativePath;
+use tracing::{event, Level};
 use utilities::sync::rwlock::RwLock;
 
 use crate::agent::lane::model::supply::SupplyLane;
-use crate::meta::metric::collector::Collector;
-use crate::meta::metric::CollectorKind;
+use crate::meta::metric::aggregator::{Addressed, MetricAggregator};
+use crate::meta::metric::AggregatorKind;
+
+const SEND_PROFILE_FAIL: &str = "Failed to send uplink profile";
+const SEND_PULSE_FAIL: &str = "Failed to send uplink pulse";
+const MISSING_LANE: &str = "Lane does not exist";
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub struct SendError;
 
 #[derive(Clone, Debug)]
-pub struct ProfileSender {
+pub struct UplinkProfileSender {
     lane_id: RelativePath,
     sender: mpsc::Sender<TaggedWarpUplinkProfile>,
 }
 
-impl ProfileSender {
+impl UplinkProfileSender {
     pub fn new(
         lane_id: RelativePath,
         sender: mpsc::Sender<TaggedWarpUplinkProfile>,
-    ) -> ProfileSender {
-        ProfileSender { lane_id, sender }
+    ) -> UplinkProfileSender {
+        UplinkProfileSender { lane_id, sender }
     }
 
     pub fn try_send(&self, profile: WarpUplinkProfile) -> Result<(), SendError> {
-        let ProfileSender { lane_id, sender } = self;
+        let UplinkProfileSender { lane_id, sender } = self;
         let tagged = TaggedWarpUplinkProfile::tag(lane_id.clone(), profile);
 
         sender.try_send(tagged).map_err(|_| SendError)
@@ -56,18 +61,29 @@ impl ProfileSender {
 }
 
 pub struct TaggedWarpUplinkProfile {
-    pub lane_id: RelativePath,
+    pub path: RelativePath,
     pub profile: WarpUplinkProfile,
+}
+
+impl Addressed for TaggedWarpUplinkProfile {
+    type Tag = RelativePath;
+
+    fn address(&self) -> &Self::Tag {
+        &self.path
+    }
 }
 
 impl TaggedWarpUplinkProfile {
     pub fn tag(lane_id: RelativePath, profile: WarpUplinkProfile) -> Self {
-        TaggedWarpUplinkProfile { lane_id, profile }
+        TaggedWarpUplinkProfile {
+            path: lane_id,
+            profile,
+        }
     }
 
     pub fn split(self) -> (RelativePath, WarpUplinkProfile) {
-        let TaggedWarpUplinkProfile { lane_id, profile } = self;
-        (lane_id, profile)
+        let TaggedWarpUplinkProfile { path, profile } = self;
+        (path, profile)
     }
 }
 
@@ -176,7 +192,7 @@ pub struct InnerObserver {
     close_delta: Arc<AtomicI32>,
     last_report: Arc<UnsafeCell<Instant>>,
     report_interval: Duration,
-    sender: ProfileSender,
+    sender: UplinkProfileSender,
 }
 
 impl InnerObserver {
@@ -204,7 +220,7 @@ impl InnerObserver {
             }
 
             let now = Instant::now();
-            let dt = now.duration_since(last_report_time).as_secs_f64();
+            let dt = now.duration_since(last_reported).as_secs_f64();
 
             let event_delta = event_delta.swap(0, Ordering::Acquire);
             let event_rate = ((event_delta * 1000) as f64 / dt).ceil() as u64;
@@ -229,7 +245,8 @@ impl InnerObserver {
             };
 
             if sender.try_send(profile).is_err() {
-                // todo log
+                let lane = &sender.lane_id;
+                event!(Level::WARN, ?lane, SEND_PROFILE_FAIL);
             }
 
             sending.store(false, Ordering::Acquire);
@@ -239,7 +256,7 @@ impl InnerObserver {
 
 pub fn uplink_observer(
     report_interval: Duration,
-    sender: ProfileSender,
+    sender: UplinkProfileSender,
 ) -> (UplinkEventObserver, UplinkActionObserver) {
     let inner = InnerObserver {
         sending: Arc::new(AtomicBool::new(false)),
@@ -307,18 +324,18 @@ impl UplinkActionObserver {
     }
 }
 
-pub struct UplinkCollectorTask {
+pub struct UplinkAggregatorTask {
     pulse_lanes: HashMap<RelativePath, SupplyLane<WarpUplinkPulse>>,
 }
 
-impl UplinkCollectorTask {
+impl UplinkAggregatorTask {
     pub fn new(pulse_lanes: HashMap<RelativePath, SupplyLane<WarpUplinkPulse>>) -> Self {
-        UplinkCollectorTask { pulse_lanes }
+        UplinkAggregatorTask { pulse_lanes }
     }
 }
 
-impl Collector for UplinkCollectorTask {
-    const COLLECTOR_KIND: CollectorKind = CollectorKind::Uplink;
+impl MetricAggregator for UplinkAggregatorTask {
+    const AGGREGATOR_KIND: AggregatorKind = AggregatorKind::Uplink;
 
     type Input = TaggedWarpUplinkProfile;
     type Output = TaggedWarpUplinkProfile;
@@ -328,20 +345,21 @@ impl Collector for UplinkCollectorTask {
         tagged_profile: Self::Input,
     ) -> BoxFuture<Result<Option<Self::Input>, ()>> {
         async move {
-            let TaggedWarpUplinkProfile { lane_id, profile } = tagged_profile;
+            let TaggedWarpUplinkProfile { path, profile } = tagged_profile;
+            let lane_uri = &path.lane;
 
-            match self.pulse_lanes.get(&lane_id) {
+            match self.pulse_lanes.get(&path) {
                 Some(lane) => {
                     let pulse = profile.clone().into();
                     if let Err(_) = lane.try_send(pulse) {
-                        // todo log err
+                        event!(Level::DEBUG, ?lane_uri, SEND_PULSE_FAIL);
                     }
                 }
                 None => {
-                    panic!()
+                    event!(Level::WARN, ?lane_uri, MISSING_LANE);
                 }
             }
-            Ok(Some(TaggedWarpUplinkProfile { lane_id, profile }))
+            Ok(Some(TaggedWarpUplinkProfile { path, profile }))
         }
         .boxed()
     }

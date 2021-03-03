@@ -14,7 +14,7 @@
 //
 // use crate::agent::lane::model::supply::{make_lane_model, Queue};
 // use crate::agent::meta::metric::uplink::{
-//     TaggedWarpUplinkProfile, UplinkCollectorTask, WarpUplinkProfile, WarpUplinkPulse,
+//     TaggedWarpUplinkProfile, UplinkAggregatorTask, WarpUplinkProfile, WarpUplinkPulse,
 // };
 // use futures::future::join;
 // use futures::{FutureExt, StreamExt};
@@ -37,7 +37,7 @@
 //     let mut lanes = HashMap::new();
 //     lanes.insert(ident, supply_lane);
 //
-//     let task = UplinkCollectorTask::new("/node".to_string(), trigger_rx, metric_rx, lane_tx, lanes);
+//     let task = UplinkAggregatorTask::new("/node".to_string(), trigger_rx, metric_rx, lane_tx, lanes);
 //
 //     let send_task = async move {
 //         let profile1 = WarpUplinkProfile::new(1, 1, 1, 1, 1, 1, 0, 0);
@@ -89,7 +89,7 @@
 //     let mut lanes = HashMap::new();
 //     lanes.insert(ident, supply_lane);
 //
-//     let task = UplinkCollectorTask::new("/node".to_string(), trigger_rx, metric_rx, lane_tx, lanes);
+//     let task = UplinkAggregatorTask::new("/node".to_string(), trigger_rx, metric_rx, lane_tx, lanes);
 //
 //     let send_task = async move {
 //         for i in 0..100 {
@@ -133,7 +133,7 @@
 //     let mut lanes = HashMap::new();
 //     lanes.insert(ident, supply_lane);
 //
-//     let task = UplinkCollectorTask::new("/node".to_string(), trigger_rx, metric_rx, lane_tx, lanes);
+//     let task = UplinkAggregatorTask::new("/node".to_string(), trigger_rx, metric_rx, lane_tx, lanes);
 //
 //     let send_task = async move {
 //         let tagged = TaggedWarpUplinkProfile::tag(

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-mod collector;
+mod aggregator;
 pub mod config;
 mod lane;
 mod node;
@@ -41,12 +41,13 @@ use utilities::uri::RelativeUri;
 
 use crate::agent::dispatch::LaneIdentifier;
 use crate::agent::lane::model::supply::supplier::Dropping;
-use crate::meta::metric::collector::CollectorTask;
-use crate::meta::metric::config::MetricCollectorConfig;
-use crate::meta::metric::lane::{LaneCollectorTask, LanePulse};
-use crate::meta::metric::node::{NodeCollectorTask, NodePulse};
+use crate::meta::metric::aggregator::AggregatorTask;
+use crate::meta::metric::config::MetricAggregatorConfig;
+use crate::meta::metric::lane::{LaneAggregatorTask, LanePulse};
+use crate::meta::metric::node::{NodeAggregatorTask, NodePulse};
 use crate::meta::metric::uplink::{
-    uplink_observer, ProfileSender, TaggedWarpUplinkProfile, UplinkCollectorTask, WarpUplinkPulse,
+    uplink_observer, TaggedWarpUplinkProfile, UplinkAggregatorTask, UplinkProfileSender,
+    WarpUplinkPulse,
 };
 use crate::meta::{IdentifiedAgentIo, LaneAddressedKind, MetaNodeAddressed};
 use futures::future::try_join3;
@@ -58,82 +59,86 @@ pub use uplink::{UplinkActionObserver, UplinkEventObserver, WarpUplinkProfile};
 
 const REMOVING_LANE: &str = "Lane closed, removing";
 const LANE_NOT_FOUND: &str = "Lane not found";
-const STOP_OK: &str = "Collector stopped normally";
-const STOP_CLOSED: &str = "Collector event stream unexpectedly closed";
+const STOP_OK: &str = "Aggregator stopped normally";
+const STOP_CLOSED: &str = "Aggregator event stream unexpectedly closed";
 
 /// An observer for node, lane and uplinks which generates profiles based on the events for the
 /// part. These events are aggregated and forwarded to their corresponding lanes as pulses.
-pub struct MetricCollector {
+pub struct MetricAggregator {
     observer: MetricObserver,
-    _collector_task: JoinHandle<Result<(), CollectorError>>,
+    _aggregator_task: JoinHandle<Result<(), AggregatorError>>,
 }
 
-impl Debug for MetricCollector {
+impl Debug for MetricAggregator {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("MetricCollector")
+        f.debug_struct("MetricAggregator")
             .field("observer", &self.observer)
             .finish()
     }
 }
 
-pub struct CollectorError {
-    collector: CollectorKind,
-    error: CollectorErrorKind,
+pub struct AggregatorError {
+    aggregator: AggregatorKind,
+    error: AggregatorErrorKind,
 }
 
-impl Display for CollectorError {
+impl Display for AggregatorError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         unimplemented!()
     }
 }
 
 #[derive(Clone, Eq, PartialEq, Debug)]
-pub enum CollectorKind {
+pub enum AggregatorKind {
     Node,
     Lane,
     Uplink,
 }
 
 #[derive(Clone, Eq, PartialEq, Debug)]
-pub enum CollectorErrorKind {
+pub enum AggregatorErrorKind {
+    ForwardChannelClosed,
     AbnormalStop,
 }
 
-impl Display for CollectorErrorKind {
+impl Display for AggregatorErrorKind {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            CollectorErrorKind::AbnormalStop => write!(f, "Collected stopped abnormally"),
+            AggregatorErrorKind::AbnormalStop => write!(f, "Collected stopped abnormally"),
+            AggregatorErrorKind::ForwardChannelClosed => {
+                write!(f, "Aggregator's forward channel closed")
+            }
         }
     }
 }
 
-impl MetricCollector {
+impl MetricAggregator {
     pub fn new(
         node_id: String,
         stop_rx: trigger::Receiver,
-        config: MetricCollectorConfig,
+        config: MetricAggregatorConfig,
         uplink_pulse_lanes: HashMap<RelativePath, SupplyLane<WarpUplinkPulse>>,
         lane_pulse_lanes: HashMap<RelativePath, SupplyLane<LanePulse>>,
         agent_pulse: SupplyLane<NodePulse>,
-    ) -> MetricCollector {
+    ) -> MetricAggregator {
         let (node_tx, node_rx) = mpsc::channel(config.buffer_size.get());
-        let node_collector = NodeCollectorTask::new(stop_rx.clone(), node_rx, agent_pulse);
+        let node_aggregator = NodeAggregatorTask::new(stop_rx.clone(), node_rx, agent_pulse);
 
         let (lane_tx, lane_rx) = mpsc::channel(config.buffer_size.get());
-        let lane_collector = CollectorTask::new(
+        let lane_aggregator = AggregatorTask::new(
             node_id.clone(),
             stop_rx.clone(),
-            LaneCollectorTask::new(lane_pulse_lanes),
+            LaneAggregatorTask::new(lane_pulse_lanes),
             lane_rx,
             Some(node_tx),
         );
 
         let (uplink_tx, uplink_rx) = mpsc::channel(config.buffer_size.get());
 
-        let uplink_collector = CollectorTask::new(
+        let uplink_aggregator = AggregatorTask::new(
             node_id,
             stop_rx,
-            UplinkCollectorTask::new(uplink_pulse_lanes),
+            UplinkAggregatorTask::new(uplink_pulse_lanes),
             uplink_rx,
             Some(lane_tx),
         );
@@ -141,17 +146,17 @@ impl MetricCollector {
 
         let jh = async move {
             try_join3(
-                node_collector.run(config.yield_after),
-                lane_collector.run(config.yield_after),
-                uplink_collector.run(config.yield_after),
+                node_aggregator.run(config.yield_after),
+                lane_aggregator.run(config.yield_after),
+                uplink_aggregator.run(config.yield_after),
             )
             .await
             .map(|_| ())
         };
 
-        MetricCollector {
+        MetricAggregator {
             observer,
-            _collector_task: tokio::spawn(jh),
+            _aggregator_task: tokio::spawn(jh),
         }
     }
 
@@ -163,13 +168,13 @@ impl MetricCollector {
 
 #[derive(Clone, Debug)]
 pub struct MetricObserver {
-    config: MetricCollectorConfig,
+    config: MetricAggregatorConfig,
     metric_tx: Sender<TaggedWarpUplinkProfile>,
 }
 
 impl MetricObserver {
     pub fn new(
-        config: MetricCollectorConfig,
+        config: MetricAggregatorConfig,
         metric_tx: Sender<TaggedWarpUplinkProfile>,
     ) -> MetricObserver {
         MetricObserver { config, metric_tx }
@@ -181,7 +186,7 @@ impl MetricObserver {
         address: RelativePath,
     ) -> (UplinkEventObserver, UplinkActionObserver) {
         let MetricObserver { config, metric_tx } = self;
-        let profile_sender = ProfileSender::new(address, metric_tx.clone());
+        let profile_sender = UplinkProfileSender::new(address, metric_tx.clone());
 
         uplink_observer(config.sample_rate, profile_sender)
     }

@@ -12,30 +12,40 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::meta::metric::{CollectorError, CollectorErrorKind, CollectorKind};
+use crate::meta::metric::{AggregatorError, AggregatorErrorKind, AggregatorKind};
 use crate::meta::metric::{STOP_CLOSED, STOP_OK};
 use futures::future::BoxFuture;
 use futures::select;
 use futures::FutureExt;
 use futures::StreamExt;
+use std::fmt::Debug;
 use std::num::NonZeroUsize;
 use tokio::sync::mpsc;
+use tokio::sync::mpsc::error::TrySendError;
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, Level};
 use utilities::sync::trigger;
 
-pub trait Collector {
-    const COLLECTOR_KIND: CollectorKind;
+const FWD_FAIL: &str = "Failed to forward metric";
+
+pub trait Addressed {
+    type Tag: Debug;
+
+    fn address(&self) -> &Self::Tag;
+}
+
+pub trait MetricAggregator {
+    const AGGREGATOR_KIND: AggregatorKind;
 
     type Input;
-    type Output;
+    type Output: Addressed;
 
     fn on_receive(&mut self, profile: Self::Input) -> BoxFuture<Result<Option<Self::Output>, ()>>;
 }
 
-pub struct CollectorTask<C>
+pub struct AggregatorTask<C>
 where
-    C: Collector,
+    C: MetricAggregator,
 {
     node_id: String,
     stop_rx: trigger::Receiver,
@@ -44,9 +54,9 @@ where
     output: Option<mpsc::Sender<C::Output>>,
 }
 
-impl<C> CollectorTask<C>
+impl<C> AggregatorTask<C>
 where
-    C: Collector,
+    C: MetricAggregator,
 {
     pub fn new(
         node_id: String,
@@ -54,8 +64,8 @@ where
         inner: C,
         input: mpsc::Receiver<C::Input>,
         output: Option<mpsc::Sender<C::Output>>,
-    ) -> CollectorTask<C> {
-        CollectorTask {
+    ) -> AggregatorTask<C> {
+        AggregatorTask {
             node_id,
             stop_rx,
             inner,
@@ -64,8 +74,8 @@ where
         }
     }
 
-    pub async fn run(self, yield_after: NonZeroUsize) -> Result<(), CollectorError> {
-        let CollectorTask {
+    pub async fn run(self, yield_after: NonZeroUsize) -> Result<(), AggregatorError> {
+        let AggregatorTask {
             node_id,
             stop_rx,
             mut inner,
@@ -90,13 +100,21 @@ where
             match event {
                 None => {
                     event!(Level::WARN, %node_id, STOP_CLOSED);
-                    break CollectorErrorKind::AbnormalStop;
+                    break AggregatorErrorKind::AbnormalStop;
                 }
                 Some(profile) => {
                     if let Ok(Some(profile)) = inner.on_receive(profile).await {
                         if let Some(sender) = &output {
                             if let Err(e) = sender.try_send(profile) {
-                                // todo log
+                                match e {
+                                    TrySendError::Closed(e) => {
+                                        break AggregatorErrorKind::ForwardChannelClosed;
+                                    }
+                                    TrySendError::Full(e) => {
+                                        let address = e.address();
+                                        event!(Level::DEBUG, ?address, FWD_FAIL);
+                                    }
+                                }
                             }
                         }
                     }
@@ -111,8 +129,8 @@ where
 
         event!(Level::INFO, %error, %node_id, STOP_CLOSED);
 
-        return Err(CollectorError {
-            collector: C::COLLECTOR_KIND,
+        return Err(AggregatorError {
+            aggregator: C::AGGREGATOR_KIND,
             error,
         });
     }

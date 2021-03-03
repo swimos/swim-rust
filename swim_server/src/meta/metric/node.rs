@@ -14,7 +14,7 @@
 
 use crate::agent::lane::model::supply::SupplyLane;
 use crate::meta::metric::lane::TaggedLaneProfile;
-use crate::meta::metric::{CollectorError, CollectorKind, LaneProfile};
+use crate::meta::metric::{AggregatorError, AggregatorKind, LaneProfile};
 use std::num::NonZeroUsize;
 use swim_common::form::Form;
 use tokio::sync::mpsc;
@@ -32,29 +32,29 @@ impl NodeProfile {
 #[derive(Default, Form, Clone, PartialEq, Debug)]
 pub struct NodePulse;
 
-pub struct NodeCollectorTask {
+pub struct NodeAggregatorTask {
     stop_rx: trigger::Receiver,
     metric_rx: mpsc::Receiver<TaggedLaneProfile>,
     pulse_lane: SupplyLane<NodePulse>,
 }
 
-impl NodeCollectorTask {
-    const COLLECTOR_KIND: CollectorKind = CollectorKind::Node;
+impl NodeAggregatorTask {
+    const COLLECTOR_KIND: AggregatorKind = AggregatorKind::Node;
 
     pub fn new(
         stop_rx: trigger::Receiver,
         metric_rx: mpsc::Receiver<TaggedLaneProfile>,
         pulse_lane: SupplyLane<NodePulse>,
-    ) -> NodeCollectorTask {
-        NodeCollectorTask {
+    ) -> NodeAggregatorTask {
+        NodeAggregatorTask {
             stop_rx,
             metric_rx,
             pulse_lane,
         }
     }
 
-    pub async fn run(self, yield_after: NonZeroUsize) -> Result<(), CollectorError> {
-        // let NodeCollectorTask {
+    pub async fn run(self, yield_after: NonZeroUsize) -> Result<(), AggregatorError> {
+        // let NodeAggregatorTask {
         //     stop_rx,
         //     metric_rx,
         //     pulse_lane,
@@ -70,14 +70,14 @@ impl NodeCollectorTask {
         //     let event: Option<TaggedLaneProfile> = select! {
         //         _ = fused_trigger => {
         //             event!(Level::WARN, %node_id, STOP_OK);
-        //             break NodeCollectorStopResult::Normal;
+        //             break NodeAggregatorStopResult::Normal;
         //         },
         //         metric = fused_metric_rx.next() => metric,
         //     };
         //     match event {
         //         None => {
         //             event!(Level::WARN, %node_id, STOP_CLOSED);
-        //             break NodeCollectorStopResult::Abnormal;
+        //             break NodeAggregatorStopResult::Abnormal;
         //         }
         //         Some(profile) => {
         //             // let (path, uplink_profile) = profile.split();

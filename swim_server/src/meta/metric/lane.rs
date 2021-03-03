@@ -18,9 +18,9 @@ use std::collections::HashMap;
 use swim_common::form::Form;
 use swim_common::warp::path::RelativePath;
 
-use crate::meta::metric::collector::Collector;
+use crate::meta::metric::aggregator::{Addressed, MetricAggregator};
 use crate::meta::metric::uplink::TaggedWarpUplinkProfile;
-use crate::meta::metric::{CollectorKind, WarpUplinkProfile};
+use crate::meta::metric::{AggregatorKind, WarpUplinkProfile};
 use futures::future::BoxFuture;
 
 #[derive(Default, Form, Clone, PartialEq, Debug)]
@@ -37,21 +37,29 @@ pub struct TaggedLaneProfile {
     profile: LaneProfile,
 }
 
-#[derive(Default, Form, Clone, PartialEq, Debug)]
-pub struct LanePulse;
+impl Addressed for TaggedLaneProfile {
+    type Tag = RelativePath;
 
-pub struct LaneCollectorTask {
-    pulse_lanes: HashMap<RelativePath, SupplyLane<LanePulse>>,
-}
-
-impl LaneCollectorTask {
-    pub fn new(pulse_lanes: HashMap<RelativePath, SupplyLane<LanePulse>>) -> Self {
-        LaneCollectorTask { pulse_lanes }
+    fn address(&self) -> &Self::Tag {
+        &self.path
     }
 }
 
-impl Collector for LaneCollectorTask {
-    const COLLECTOR_KIND: CollectorKind = CollectorKind::Lane;
+#[derive(Default, Form, Clone, PartialEq, Debug)]
+pub struct LanePulse;
+
+pub struct LaneAggregatorTask {
+    pulse_lanes: HashMap<RelativePath, SupplyLane<LanePulse>>,
+}
+
+impl LaneAggregatorTask {
+    pub fn new(pulse_lanes: HashMap<RelativePath, SupplyLane<LanePulse>>) -> Self {
+        LaneAggregatorTask { pulse_lanes }
+    }
+}
+
+impl MetricAggregator for LaneAggregatorTask {
+    const AGGREGATOR_KIND: AggregatorKind = AggregatorKind::Lane;
 
     type Input = TaggedWarpUplinkProfile;
     type Output = TaggedLaneProfile;
@@ -61,21 +69,25 @@ impl Collector for LaneCollectorTask {
         tagged_profile: Self::Input,
     ) -> BoxFuture<Result<Option<Self::Output>, ()>> {
         async move {
-            // let TaggedWarpUplinkProfile { lane_id, profile } = tagged_profile;
-            //
-            // match self.pulse_lanes.get(&lane_id) {
-            //     Some(lane) => {
-            //         let pulse = profile.clone().into();
-            //         if let Err(_) = lane.try_send(pulse) {
-            //             // todo log err
-            //         }
-            //     }
-            //     None => {
-            //         panic!()
-            //     }
-            // }
-            // Some(TaggedWarpUplinkProfile { lane_id, profile })
-            unimplemented!()
+            let TaggedWarpUplinkProfile {
+                path: lane_id,
+                profile,
+            } = tagged_profile;
+            let lane_uri = &lane_id.lane;
+
+            match self.pulse_lanes.get(&lane_id) {
+                Some(lane) => {
+                    let pulse = profile.clone().into();
+                    if let Err(_) = lane.try_send(pulse) {
+                        // todo log err
+                    }
+                }
+                None => {
+                    panic!()
+                }
+            }
+
+            Some(TaggedLaneProfile { lane_id, profile })
         }
         .boxed()
     }
