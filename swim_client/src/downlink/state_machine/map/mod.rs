@@ -23,6 +23,7 @@ use std::sync::Arc;
 use swim_common::model::schema::{Schema, StandardSchema};
 use swim_common::model::Value;
 
+/// State machine for map downlinks.
 pub struct MapStateMachine {
     key_schema: StandardSchema,
     value_schema: StandardSchema,
@@ -39,7 +40,7 @@ impl MapStateMachine {
 
 impl SyncStateMachine<UntypedMapModification<Value>, MapAction> for MapStateMachine {
     type State = ValMap;
-    type Command = UntypedMapModification<Value>;
+    type WarpCmd = UntypedMapModification<Value>;
     type Report = ViewWithEvent;
 
     fn init(&self) -> Self::State {
@@ -138,11 +139,11 @@ impl SyncStateMachine<UntypedMapModification<Value>, MapAction> for MapStateMach
         }
     }
 
-    fn apply_request(
+    fn apply_action_request(
         &self,
         state: &mut Self::State,
         action: MapAction,
-    ) -> ResponseResult<Self::Report, Self::Command> {
+    ) -> ResponseResult<Self::Report, Self::WarpCmd> {
         Ok(process_action(
             &self.key_schema,
             &self.value_schema,

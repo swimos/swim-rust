@@ -45,7 +45,8 @@ fn linked_response(start_state: DownlinkState) {
     let mut state = (start_state, SharedValue::new(Value::from(0)));
 
     let machine = unvalidated(Value::from(0));
-    let EventResult { result, terminate } = machine.handle_event(&mut state, Message::Linked);
+    let EventResult { result, terminate } =
+        machine.handle_warp_message(&mut state, Message::Linked);
 
     assert!(result.is_ok());
     assert!(!terminate);
@@ -66,7 +67,8 @@ fn synced_response(start_state: DownlinkState) {
     let mut state = (start_state, SharedValue::new(Value::from(2)));
 
     let machine = unvalidated(Value::from(0));
-    let EventResult { result, terminate } = machine.handle_event(&mut state, Message::Synced);
+    let EventResult { result, terminate } =
+        machine.handle_warp_message(&mut state, Message::Synced);
 
     let (dl_state, data_state) = state;
 
@@ -91,7 +93,8 @@ fn unlinked_response(start_state: DownlinkState) {
     let mut state = (start_state, SharedValue::new(Value::from(2)));
 
     let machine = unvalidated(Value::from(0));
-    let EventResult { result, terminate } = machine.handle_event(&mut state, Message::Unlinked);
+    let EventResult { result, terminate } =
+        machine.handle_warp_message(&mut state, Message::Unlinked);
 
     let (dl_state, _data_state) = state;
 
@@ -113,7 +116,7 @@ fn update_message_unlinked() {
 
     let machine = unvalidated(Value::from(0));
     let EventResult { result, terminate } =
-        machine.handle_event(&mut state, Message::Action(Value::Int32Value(3)));
+        machine.handle_warp_message(&mut state, Message::Action(Value::Int32Value(3)));
 
     let (dl_state, data_state) = state;
 
@@ -130,7 +133,7 @@ fn update_message_linked() {
     let machine = unvalidated(Value::from(0));
 
     let EventResult { result, terminate } =
-        machine.handle_event(&mut state, Message::Action(Value::Int32Value(3)));
+        machine.handle_warp_message(&mut state, Message::Action(Value::Int32Value(3)));
 
     let (dl_state, data_state) = state;
 
@@ -147,7 +150,7 @@ fn update_message_synced() {
     let machine = unvalidated(Value::from(0));
 
     let EventResult { result, terminate } =
-        machine.handle_event(&mut state, Message::Action(Value::Int32Value(3)));
+        machine.handle_warp_message(&mut state, Message::Action(Value::Int32Value(3)));
 
     let (dl_state, data_state) = state;
 
@@ -169,7 +172,7 @@ fn get_action() {
     let machine = unvalidated(Value::from(0));
     let (action, mut rx) = make_get();
 
-    let result = machine.handle_request(&mut state, action);
+    let result = machine.handle_action_request(&mut state, action);
 
     let (dl_state, data_state) = state;
 
@@ -199,7 +202,7 @@ fn dropped_get() {
     let machine = unvalidated(Value::from(0));
     let (action, _) = make_get();
 
-    let result = machine.handle_request(&mut state, action);
+    let result = machine.handle_action_request(&mut state, action);
 
     let (dl_state, data_state) = state;
 
@@ -233,7 +236,7 @@ fn set_action() {
     let machine = unvalidated(Value::from(0));
     let (action, mut rx) = make_set(67);
 
-    let result = machine.handle_request(&mut state, action);
+    let result = machine.handle_action_request(&mut state, action);
 
     let (dl_state, data_state) = state;
 
@@ -259,7 +262,7 @@ fn invalid_set_action() {
     let machine = ValueStateMachine::new(Value::text(""), StandardSchema::OfKind(ValueKind::Text));
     let (action, mut rx) = make_set(67);
 
-    let result = machine.handle_request(&mut state, action);
+    let result = machine.handle_action_request(&mut state, action);
 
     let (dl_state, data_state) = state;
 
@@ -295,7 +298,7 @@ fn dropped_set_action() {
     let machine = unvalidated(Value::from(0));
     let (action, _) = make_set(67);
 
-    let result = machine.handle_request(&mut state, action);
+    let result = machine.handle_action_request(&mut state, action);
 
     let (dl_state, data_state) = state;
 
@@ -341,7 +344,7 @@ fn update_action() {
 
     let old = state.1.clone();
 
-    let result = machine.handle_request(&mut state, action);
+    let result = machine.handle_action_request(&mut state, action);
 
     let (dl_state, data_state) = state;
 
@@ -367,7 +370,7 @@ fn invalid_update_action() {
     let machine = ValueStateMachine::new(Value::text(""), StandardSchema::OfKind(ValueKind::Text));
     let (action, mut rx) = make_bad(67);
 
-    let result = machine.handle_request(&mut state, action);
+    let result = machine.handle_action_request(&mut state, action);
 
     let (dl_state, data_state) = state;
 
@@ -403,7 +406,7 @@ fn dropped_update_action() {
     let machine = unvalidated(Value::from(0));
     let (action, _) = make_update();
 
-    let result = machine.handle_request(&mut state, action);
+    let result = machine.handle_action_request(&mut state, action);
 
     let (dl_state, data_state) = state;
 
@@ -457,7 +460,7 @@ fn successful_try_update_action() {
 
     let old = state.1.clone();
 
-    let result = machine.handle_request(&mut state, action);
+    let result = machine.handle_action_request(&mut state, action);
 
     let (dl_state, data_state) = state;
     assert!(result.is_ok());
@@ -482,7 +485,7 @@ fn unsuccessful_try_update_action() {
     let machine = unvalidated(Value::from(0));
     let (action, mut rx) = make_try_update();
 
-    let result = machine.handle_request(&mut state, action);
+    let result = machine.handle_action_request(&mut state, action);
 
     let (dl_state, data_state) = state;
     assert!(result.is_ok());
@@ -511,7 +514,7 @@ fn invalid_try_update_action() {
     let machine = ValueStateMachine::new(Value::text(""), StandardSchema::OfKind(ValueKind::Text));
     let (action, mut rx) = make_try_bad(7);
 
-    let result = machine.handle_request(&mut state, action);
+    let result = machine.handle_action_request(&mut state, action);
 
     let (dl_state, data_state) = state;
 
@@ -547,7 +550,7 @@ fn dropped_try_update_action() {
     let machine = unvalidated(Value::from(0));
     let (action, _) = make_try_update();
 
-    let result = machine.handle_request(&mut state, action);
+    let result = machine.handle_action_request(&mut state, action);
 
     let (dl_state, data_state) = state;
     assert!(result.is_ok());
@@ -569,7 +572,7 @@ fn invalid_message_unlinked() {
     let machine = ValueStateMachine::new(Value::from(0), schema);
 
     let EventResult { result, terminate } =
-        machine.handle_event(&mut state, Message::Action(Value::from("a")));
+        machine.handle_warp_message(&mut state, Message::Action(Value::from("a")));
 
     let (dl_state, data_state) = state;
 
@@ -588,7 +591,7 @@ fn invalid_message_linked() {
     let machine = ValueStateMachine::new(Value::from(0), schema);
 
     let EventResult { result, terminate } =
-        machine.handle_event(&mut state, Message::Action(Value::from("a")));
+        machine.handle_warp_message(&mut state, Message::Action(Value::from("a")));
 
     assert!(
         matches!(result, Err(DownlinkError::SchemaViolation(Value::Text(t), StandardSchema::OfKind(ValueKind::Int32))) if t == "a")
@@ -604,7 +607,7 @@ fn extant_message_linked() {
     let machine = ValueStateMachine::new(Value::from(0), schema);
 
     let EventResult { result, terminate } =
-        machine.handle_event(&mut state, Message::Action(Value::Extant));
+        machine.handle_warp_message(&mut state, Message::Action(Value::Extant));
 
     assert_eq!(result, Ok(None));
     assert!(!terminate);
@@ -618,7 +621,7 @@ fn invalid_message_synced() {
     let machine = ValueStateMachine::new(Value::from(0), schema);
 
     let EventResult { result, terminate } =
-        machine.handle_event(&mut state, Message::Action(Value::from("a")));
+        machine.handle_warp_message(&mut state, Message::Action(Value::from("a")));
 
     assert!(
         matches!(result, Err(DownlinkError::SchemaViolation(Value::Text(t), StandardSchema::OfKind(ValueKind::Int32))) if t == "a")

@@ -70,17 +70,17 @@ impl TestStateMachine {
 
 impl DownlinkStateMachine<Msg, AddTo> for TestStateMachine {
     type State = (DownlinkState, State);
-    type Update = i32;
+    type WarpCmd = i32;
     type Report = i32;
 
-    fn initialize(&self) -> (Self::State, Option<Command<Self::Update>>) {
+    fn initialize(&self) -> (Self::State, Option<Command<Self::WarpCmd>>) {
         (
             (DownlinkState::Unlinked, State(0)),
             self.start_response.clone(),
         )
     }
 
-    fn handle_actions(&self, state: &Self::State) -> bool {
+    fn handle_requests(&self, state: &Self::State) -> bool {
         let (dl_state, State(_data_state)) = state;
         match self.dl_start_state {
             DownlinkState::Unlinked => true,
@@ -91,12 +91,12 @@ impl DownlinkStateMachine<Msg, AddTo> for TestStateMachine {
         }
     }
 
-    fn handle_event(
+    fn handle_warp_message(
         &self,
         state: &mut Self::State,
         event: Message<Msg>,
     ) -> EventResult<Self::Report> {
-        let do_action = self.handle_actions(state);
+        let do_action = self.handle_requests(state);
         let (dl_state, State(data_state)) = state;
         match event {
             Message::Linked => {
@@ -145,11 +145,11 @@ impl DownlinkStateMachine<Msg, AddTo> for TestStateMachine {
         }
     }
 
-    fn handle_request(
+    fn handle_action_request(
         &self,
         state: &mut Self::State,
         request: AddTo,
-    ) -> ResponseResult<Self::Report, Self::Update> {
+    ) -> ResponseResult<Self::Report, Self::WarpCmd> {
         let (_dl_state, State(data_state)) = state;
         let AddTo(n, maybe_cb) = request;
         let next = *data_state + n;
@@ -165,7 +165,7 @@ impl DownlinkStateMachine<Msg, AddTo> for TestStateMachine {
         resp
     }
 
-    fn finalize(&self, _state: &Self::State) -> Option<Command<Self::Update>> {
+    fn finalize(&self, _state: &Self::State) -> Option<Command<Self::WarpCmd>> {
         Some(Command::Unlink)
     }
 }

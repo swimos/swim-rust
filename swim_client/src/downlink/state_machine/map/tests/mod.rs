@@ -50,7 +50,8 @@ fn linked_response(start_state: DownlinkState) {
     let machine = unvalidated();
     let mut state = (start_state, ValMap::new());
 
-    let EventResult { result, terminate } = machine.handle_event(&mut state, Message::Linked);
+    let EventResult { result, terminate } =
+        machine.handle_warp_message(&mut state, Message::Linked);
 
     let (dl_state, data_state) = state;
 
@@ -73,7 +74,8 @@ fn synced_response(start_state: DownlinkState) {
     let init = make_model_with(7, "hello".to_owned());
     let mut state = (start_state, init.clone());
 
-    let EventResult { result, terminate } = machine.handle_event(&mut state, Message::Synced);
+    let EventResult { result, terminate } =
+        machine.handle_warp_message(&mut state, Message::Synced);
 
     let (dl_state, data_state) = state;
 
@@ -102,7 +104,8 @@ fn unlinked_response(start_state: DownlinkState) {
     let machine = unvalidated();
     let mut state = (start_state, ValMap::new());
 
-    let EventResult { result, terminate } = machine.handle_event(&mut state, Message::Unlinked);
+    let EventResult { result, terminate } =
+        machine.handle_warp_message(&mut state, Message::Unlinked);
 
     let (dl_state, _data_state) = state;
 
@@ -137,7 +140,7 @@ fn messages_when_unlinked() {
         let machine = unvalidated();
         let mut state = (DownlinkState::Unlinked, ValMap::new());
 
-        let EventResult { result, terminate } = machine.handle_event(&mut state, message);
+        let EventResult { result, terminate } = machine.handle_warp_message(&mut state, message);
 
         let (dl_state, data_state) = state;
 
@@ -165,7 +168,7 @@ fn update_response(synced: bool) {
 
     let message = Message::Action(UntypedMapModification::Update(k.clone(), v));
 
-    let EventResult { result, terminate } = machine.handle_event(&mut state, message);
+    let EventResult { result, terminate } = machine.handle_warp_message(&mut state, message);
 
     let (dl_state, data_state) = state;
 
@@ -208,7 +211,7 @@ fn remove_response(synced: bool) {
 
     let message = Message::Action(UntypedMapModification::Remove(k.clone()));
 
-    let EventResult { result, terminate } = machine.handle_event(&mut state, message);
+    let EventResult { result, terminate } = machine.handle_warp_message(&mut state, message);
 
     let (dl_state, data_state) = state;
 
@@ -255,7 +258,7 @@ fn take_response(synced: bool) {
 
     let message = Message::Action(UntypedMapModification::Take(1));
 
-    let EventResult { result, terminate } = machine.handle_event(&mut state, message);
+    let EventResult { result, terminate } = machine.handle_warp_message(&mut state, message);
 
     let (dl_state, data_state) = state;
 
@@ -302,7 +305,7 @@ fn drop_response(synced: bool) {
 
     let message = Message::Action(UntypedMapModification::Drop(1));
 
-    let EventResult { result, terminate } = machine.handle_event(&mut state, message);
+    let EventResult { result, terminate } = machine.handle_warp_message(&mut state, message);
 
     let (dl_state, data_state) = state;
 
@@ -349,7 +352,7 @@ fn clear_response(synced: bool) {
 
     let message = Message::Action(UntypedMapModification::Clear);
 
-    let EventResult { result, terminate } = machine.handle_event(&mut state, message);
+    let EventResult { result, terminate } = machine.handle_warp_message(&mut state, message);
 
     let (dl_state, data_state) = state;
 
@@ -402,7 +405,7 @@ fn get_action() {
 
     let (request, mut rx) = make_get_map();
 
-    let result = machine.handle_request(&mut state, request);
+    let result = machine.handle_action_request(&mut state, request);
 
     let (dl_state, data_state) = state;
 
@@ -433,7 +436,7 @@ fn get_key_action() {
 
     let (request, mut rx) = make_get(4);
 
-    let result = machine.handle_request(&mut state, request);
+    let result = machine.handle_action_request(&mut state, request);
 
     let (dl_state, data_state) = state;
 
@@ -464,7 +467,7 @@ fn get_absent_key_action() {
 
     let (request, mut rx) = make_get(5);
 
-    let result = machine.handle_request(&mut state, request);
+    let result = machine.handle_action_request(&mut state, request);
 
     let (dl_state, data_state) = state;
 
@@ -510,7 +513,7 @@ fn insert_action() {
 
     let (request, mut rx) = make_update(4, "hello".to_string());
 
-    let result = machine.handle_request(&mut state, request);
+    let result = machine.handle_action_request(&mut state, request);
 
     let (dl_state, data_state) = state;
 
@@ -552,7 +555,7 @@ fn update_action() {
 
     let (request, mut rx) = make_update(4, "world".to_string());
 
-    let result = machine.handle_request(&mut state, request);
+    let result = machine.handle_action_request(&mut state, request);
 
     let (dl_state, data_state) = state;
 
@@ -594,7 +597,7 @@ fn update_action_dropped() {
 
     let (request, _) = make_update(4, "world".to_string());
 
-    let result = machine.handle_request(&mut state, request);
+    let result = machine.handle_action_request(&mut state, request);
 
     let (dl_state, data_state) = state;
 
@@ -637,7 +640,7 @@ fn insert_action_invalid_key() {
         old: Some(Request::new(tx)),
     };
 
-    let result = machine.handle_request(&mut state, request);
+    let result = machine.handle_action_request(&mut state, request);
 
     let (dl_state, data_state) = state;
 
@@ -682,7 +685,7 @@ fn insert_action_invalid_value() {
         old: Some(Request::new(tx)),
     };
 
-    let result = machine.handle_request(&mut state, request);
+    let result = machine.handle_action_request(&mut state, request);
 
     let (dl_state, data_state) = state;
 
@@ -730,7 +733,7 @@ fn remove_action_undefined() {
 
     let (request, mut rx) = make_remove(4);
 
-    let result = machine.handle_request(&mut state, request);
+    let result = machine.handle_action_request(&mut state, request);
 
     let (dl_state, data_state) = state;
 
@@ -762,7 +765,7 @@ fn remove_action_defined() {
 
     let (request, mut rx) = make_remove(4);
 
-    let result = machine.handle_request(&mut state, request);
+    let result = machine.handle_action_request(&mut state, request);
 
     let (dl_state, data_state) = state;
 
@@ -802,7 +805,7 @@ fn remove_action_dropped() {
 
     let (request, _) = make_remove(4);
 
-    let result = machine.handle_request(&mut state, request);
+    let result = machine.handle_action_request(&mut state, request);
 
     let (dl_state, data_state) = state;
 
@@ -843,7 +846,7 @@ fn remove_action_invalid() {
         old: Some(Request::new(tx)),
     };
 
-    let result = machine.handle_request(&mut state, request);
+    let result = machine.handle_action_request(&mut state, request);
 
     let (dl_state, data_state) = state;
 
@@ -899,7 +902,7 @@ fn take_action() {
 
     let (request, mut rx_before, mut rx_after) = make_take(1);
 
-    let result = machine.handle_request(&mut state, request);
+    let result = machine.handle_action_request(&mut state, request);
 
     let (dl_state, data_state) = state;
 
@@ -941,7 +944,7 @@ fn take_action_dropped() {
 
     let (request, _, _) = make_take(1);
 
-    let result = machine.handle_request(&mut state, request);
+    let result = machine.handle_action_request(&mut state, request);
 
     let (dl_state, data_state) = state;
 
@@ -993,7 +996,7 @@ fn drop_action() {
 
     let (request, mut rx_before, mut rx_after) = make_drop(1);
 
-    let result = machine.handle_request(&mut state, request);
+    let result = machine.handle_action_request(&mut state, request);
 
     let (dl_state, data_state) = state;
 
@@ -1035,7 +1038,7 @@ fn drop_action_dropped() {
 
     let (request, _, _) = make_drop(1);
 
-    let result = machine.handle_request(&mut state, request);
+    let result = machine.handle_action_request(&mut state, request);
 
     let (dl_state, data_state) = state;
 
@@ -1075,7 +1078,7 @@ fn clear_action() {
 
     let (request, mut rx) = make_clear();
 
-    let result = machine.handle_request(&mut state, request);
+    let result = machine.handle_action_request(&mut state, request);
 
     let (dl_state, data_state) = state;
 
@@ -1113,7 +1116,7 @@ fn clear_action_dropped() {
 
     let (request, _) = make_clear();
 
-    let result = machine.handle_request(&mut state, request);
+    let result = machine.handle_action_request(&mut state, request);
 
     let (dl_state, data_state) = state;
 

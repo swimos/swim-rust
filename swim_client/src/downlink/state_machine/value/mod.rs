@@ -23,6 +23,7 @@ use swim_common::model::schema::Schema;
 use swim_common::model::schema::StandardSchema;
 use swim_common::model::Value;
 
+/// State machine for value downlinks.
 pub struct ValueStateMachine {
     init: Value,
     schema: StandardSchema,
@@ -40,7 +41,7 @@ impl ValueStateMachine {
 
 impl SyncStateMachine<Value, Action> for ValueStateMachine {
     type State = SharedValue;
-    type Command = SharedValue;
+    type WarpCmd = SharedValue;
     type Report = SharedValue;
 
     fn init(&self) -> Self::State {
@@ -79,7 +80,7 @@ impl SyncStateMachine<Value, Action> for ValueStateMachine {
         }
     }
 
-    fn apply_request(
+    fn apply_action_request(
         &self,
         state: &mut Self::State,
         action: Action,

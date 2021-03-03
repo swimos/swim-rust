@@ -33,14 +33,18 @@ impl CommandStateMachine {
 
 impl DownlinkStateMachine<(), Value> for CommandStateMachine {
     type State = ();
-    type Update = Value;
+    type WarpCmd = Value;
     type Report = ();
 
-    fn initialize(&self) -> (Self::State, Option<Command<Self::Update>>) {
+    fn initialize(&self) -> (Self::State, Option<Command<Self::WarpCmd>>) {
         ((), None)
     }
 
-    fn handle_event(&self, _: &mut Self::State, event: Message<()>) -> EventResult<Self::Report> {
+    fn handle_warp_message(
+        &self,
+        _: &mut Self::State,
+        event: Message<()>,
+    ) -> EventResult<Self::Report> {
         if let Message::Unlinked = event {
             EventResult::terminate()
         } else {
@@ -48,11 +52,11 @@ impl DownlinkStateMachine<(), Value> for CommandStateMachine {
         }
     }
 
-    fn handle_request(
+    fn handle_action_request(
         &self,
         _: &mut Self::State,
         value: Value,
-    ) -> ResponseResult<Self::Report, Self::Update> {
+    ) -> ResponseResult<Self::Report, Self::WarpCmd> {
         if self.schema.matches(&value) {
             Ok(Response::command(value))
         } else {

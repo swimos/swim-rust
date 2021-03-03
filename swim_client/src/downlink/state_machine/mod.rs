@@ -21,6 +21,9 @@ use crate::downlink::error::DownlinkError;
 use crate::downlink::{Command, DownlinkState, Message};
 use tracing::trace;
 
+/// Result of processing a Warp message in a downlink state machine. If the terminate
+/// flag is set the downlink will stop (using any error from the result). If the
+/// result is an error but the terminate flag is not set the error will only be logged.
 #[derive(Debug)]
 pub struct EventResult<T> {
     pub result: Result<Option<T>, DownlinkError>,
@@ -76,6 +79,7 @@ impl<T> Default for EventResult<T> {
     }
 }
 
+/// Result of processing an action against a downlink state machine.
 #[derive(PartialEq, Eq, Debug)]
 pub struct Response<E, C> {
     pub event: Option<E>,
@@ -112,49 +116,49 @@ impl<E, C> Default for Response<E, C> {
 pub type ResponseResult<E, C> = Result<Response<E, C>, DownlinkError>;
 
 /// This trait defines the interface that must be implemented for the state type of a downlink.
-pub trait DownlinkStateMachine<Event, Request> {
+pub trait DownlinkStateMachine<WarpMsg, ActionReq> {
     /// State type of the downlink.
     type State: Send + Sync;
     /// Type of commands that will be sent out to the Warp connection.
-    type Update: Send;
-    /// Type of events that will be issued to the owner of the downlink.
+    type WarpCmd: Send;
+    /// Type of events that will be issued to the observer of the downlink.
     type Report: Send;
 
     /// Create the initial value of the state and any command that should be sent
     /// at initialization.
-    fn initialize(&self) -> (Self::State, Option<Command<Self::Update>>);
+    fn initialize(&self) -> (Self::State, Option<Command<Self::WarpCmd>>);
 
-    /// Determines whether actions should be processed, based on the current state.
-    fn handle_actions(&self, _state: &Self::State) -> bool {
+    /// Determines whether action requests should be processed, based on the current state.
+    fn handle_requests(&self, _state: &Self::State) -> bool {
         true
     }
 
     /// Handle an incoming Warp message.
-    fn handle_event(
+    fn handle_warp_message(
         &self,
         state: &mut Self::State,
-        event: Message<Event>,
+        event: Message<WarpMsg>,
     ) -> EventResult<Self::Report>;
 
-    /// Handle a local request.
-    fn handle_request(
+    /// Handle a local action request.
+    fn handle_action_request(
         &self,
         state: &mut Self::State,
-        request: Request,
-    ) -> ResponseResult<Self::Report, Self::Update>;
+        request: ActionReq,
+    ) -> ResponseResult<Self::Report, Self::WarpCmd>;
 
     /// A command to attempt to dispatch when the downlink stops.
-    fn finalize(&self, _state: &Self::State) -> Option<Command<Self::Update>> {
+    fn finalize(&self, _state: &Self::State) -> Option<Command<Self::WarpCmd>> {
         None
     }
 }
 
 /// This trait is for simple, stateful downlinks that follow the standard synchronization model.
-pub trait SyncStateMachine<Event, Request> {
+pub trait SyncStateMachine<WarpMsg, ActionReq> {
     /// State type of the downlink.
     type State: Send + Sync;
     /// Type of commands that will be sent out to the Warp connection.
-    type Command: Send;
+    type WarpCmd: Send;
     /// Type of events that will be issued to the owner of the downlink.
     type Report: Send;
 
@@ -168,7 +172,7 @@ pub trait SyncStateMachine<Event, Request> {
     fn handle_message_unsynced(
         &self,
         state: &mut Self::State,
-        message: Event,
+        message: WarpMsg,
     ) -> Result<(), DownlinkError>;
 
     /// Update the state with a message when in the [`Synced`] state, potentially generating an
@@ -176,39 +180,39 @@ pub trait SyncStateMachine<Event, Request> {
     fn handle_message(
         &self,
         state: &mut Self::State,
-        message: Event,
+        message: WarpMsg,
     ) -> Result<Option<Self::Report>, DownlinkError>;
 
-    /// Apply a request to the state of the downlink, potentialyl generating outgoing events
+    /// Apply an action request to the state of the downlink, potentialyl generating outgoing events
     /// and commands.
-    fn apply_request(
+    fn apply_action_request(
         &self,
         state: &mut Self::State,
-        req: Request,
-    ) -> ResponseResult<Self::Report, Self::Command>;
+        req: ActionReq,
+    ) -> ResponseResult<Self::Report, Self::WarpCmd>;
 }
 
-impl<Basic, Event, Request> DownlinkStateMachine<Event, Request> for Basic
+impl<Basic, WarpMsg, ActionReq> DownlinkStateMachine<WarpMsg, ActionReq> for Basic
 where
-    Basic: SyncStateMachine<Event, Request>,
+    Basic: SyncStateMachine<WarpMsg, ActionReq>,
 {
     type State = (DownlinkState, Basic::State);
     type Report = Basic::Report;
-    type Update = Basic::Command;
+    type WarpCmd = Basic::WarpCmd;
 
-    fn initialize(&self) -> (Self::State, Option<Command<Self::Update>>) {
+    fn initialize(&self) -> (Self::State, Option<Command<Self::WarpCmd>>) {
         ((DownlinkState::Unlinked, self.init()), Some(Command::Sync))
     }
 
-    fn handle_actions(&self, state: &Self::State) -> bool {
+    fn handle_requests(&self, state: &Self::State) -> bool {
         let (dl_state, _) = state;
         *dl_state == DownlinkState::Synced
     }
 
-    fn handle_event(
+    fn handle_warp_message(
         &self,
         state: &mut Self::State,
-        event: Message<Event>,
+        event: Message<WarpMsg>,
     ) -> EventResult<Self::Report> {
         let (dl_state, basic_state) = state;
         match event {
@@ -239,16 +243,16 @@ where
         }
     }
 
-    fn handle_request(
+    fn handle_action_request(
         &self,
         state: &mut Self::State,
-        request: Request,
-    ) -> ResponseResult<Basic::Report, Basic::Command> {
+        request: ActionReq,
+    ) -> ResponseResult<Basic::Report, Basic::WarpCmd> {
         let (_, basic_state) = state;
-        self.apply_request(basic_state, request)
+        self.apply_action_request(basic_state, request)
     }
 
-    fn finalize(&self, state: &Self::State) -> Option<Command<Self::Update>> {
+    fn finalize(&self, state: &Self::State) -> Option<Command<Self::WarpCmd>> {
         let (dl_state, _) = state;
         if *dl_state == DownlinkState::Linked || *dl_state == DownlinkState::Synced {
             Some(Command::Unlink)

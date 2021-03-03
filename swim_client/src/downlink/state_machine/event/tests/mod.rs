@@ -31,7 +31,8 @@ fn event_dl_linked() {
 
     let mut state = ();
 
-    let EventResult { result, terminate } = machine.handle_event(&mut state, Message::Linked);
+    let EventResult { result, terminate } =
+        machine.handle_warp_message(&mut state, Message::Linked);
 
     assert!(!terminate);
     assert!(matches!(result, Ok(None)));
@@ -43,7 +44,8 @@ fn event_dl_synced() {
 
     let mut state = ();
 
-    let EventResult { result, terminate } = machine.handle_event(&mut state, Message::Synced);
+    let EventResult { result, terminate } =
+        machine.handle_warp_message(&mut state, Message::Synced);
 
     assert!(!terminate);
     assert!(matches!(result, Ok(None)));
@@ -55,7 +57,8 @@ fn event_dl_unlinked() {
 
     let mut state = ();
 
-    let EventResult { result, terminate } = machine.handle_event(&mut state, Message::Unlinked);
+    let EventResult { result, terminate } =
+        machine.handle_warp_message(&mut state, Message::Unlinked);
 
     assert!(terminate);
     assert!(matches!(result, Ok(None)));
@@ -71,7 +74,7 @@ fn event_dl_valid_message() {
     let mut state = ();
 
     let EventResult { result, terminate } =
-        machine.handle_event(&mut state, Message::Action(Value::from(2)));
+        machine.handle_warp_message(&mut state, Message::Action(Value::from(2)));
 
     assert!(!terminate);
     assert!(matches!(result, Ok(Some(v)) if v == Value::from(2)));
@@ -87,7 +90,7 @@ fn event_dl_ignore_invalid_message() {
     let mut state = ();
 
     let EventResult { result, terminate } =
-        machine.handle_event(&mut state, Message::Action(Value::from("hello")));
+        machine.handle_warp_message(&mut state, Message::Action(Value::from("hello")));
 
     assert!(!terminate);
     assert!(matches!(result, Ok(None)));
@@ -103,7 +106,7 @@ fn event_dl_error_on_invalid_message() {
     let mut state = ();
 
     let EventResult { result, terminate } =
-        machine.handle_event(&mut state, Message::Action(Value::from("hello")));
+        machine.handle_warp_message(&mut state, Message::Action(Value::from("hello")));
 
     assert!(terminate);
     assert!(matches!(

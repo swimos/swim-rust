@@ -36,14 +36,14 @@ impl EventStateMachine {
 
 impl DownlinkStateMachine<Value, ()> for EventStateMachine {
     type State = ();
-    type Update = ();
+    type WarpCmd = ();
     type Report = Value;
 
-    fn initialize(&self) -> (Self::State, Option<Command<Self::Update>>) {
+    fn initialize(&self) -> (Self::State, Option<Command<Self::WarpCmd>>) {
         ((), Some(Command::Link))
     }
 
-    fn handle_event(
+    fn handle_warp_message(
         &self,
         _: &mut Self::State,
         event: Message<Value>,
@@ -74,11 +74,11 @@ impl DownlinkStateMachine<Value, ()> for EventStateMachine {
         }
     }
 
-    fn handle_request(
+    fn handle_action_request(
         &self,
         _: &mut Self::State,
         _: (),
-    ) -> ResponseResult<Self::Report, Self::Update> {
+    ) -> ResponseResult<Self::Report, Self::WarpCmd> {
         Ok(Response::default())
     }
 }
