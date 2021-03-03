@@ -19,9 +19,7 @@ use im::ordmap::OrdMap;
 
 use swim_common::model::Value;
 
-use crate::downlink::model::value::UpdateResult;
-use crate::downlink::{DownlinkRequest, Message};
-use swim_common::routing::RoutingError;
+use crate::downlink::DownlinkRequest;
 use swim_warp::model::map::MapUpdate;
 
 #[cfg(test)]
@@ -60,18 +58,6 @@ pub enum MapAction {
     GetByKey {
         key: Value,
         request: DownlinkRequest<Option<Arc<Value>>>,
-    },
-    Modify {
-        key: Value,
-        f: Box<dyn FnOnce(&Option<&Value>) -> Option<Value> + Send>,
-        before: Option<DownlinkRequest<Option<Arc<Value>>>>,
-        after: Option<DownlinkRequest<Option<Arc<Value>>>>,
-    },
-    TryModify {
-        key: Value,
-        f: Box<dyn FnOnce(&Option<&Value>) -> UpdateResult<Option<Value>> + Send>,
-        before: Option<DownlinkRequest<UpdateResult<Option<Arc<Value>>>>>,
-        after: Option<DownlinkRequest<UpdateResult<Option<Arc<Value>>>>>,
     },
 }
 
@@ -164,90 +150,6 @@ impl MapAction {
     pub fn get(key: Value, request: DownlinkRequest<Option<Arc<Value>>>) -> MapAction {
         MapAction::GetByKey { key, request }
     }
-
-    pub fn modify<F>(key: Value, f: F) -> MapAction
-    where
-        F: FnOnce(&Option<&Value>) -> Option<Value> + Send + 'static,
-    {
-        MapAction::Modify {
-            key,
-            f: Box::new(f),
-            before: None,
-            after: None,
-        }
-    }
-
-    pub fn try_modify<F>(key: Value, f: F) -> MapAction
-    where
-        F: FnOnce(&Option<&Value>) -> UpdateResult<Option<Value>> + Send + 'static,
-    {
-        MapAction::TryModify {
-            key,
-            f: Box::new(f),
-            before: None,
-            after: None,
-        }
-    }
-
-    pub fn modify_box(
-        key: Value,
-        f: Box<dyn FnOnce(&Option<&Value>) -> Option<Value> + Send>,
-    ) -> MapAction {
-        MapAction::Modify {
-            key,
-            f: Box::new(f),
-            before: None,
-            after: None,
-        }
-    }
-
-    pub fn modify_and_await<F>(
-        key: Value,
-        f: F,
-        val_before: DownlinkRequest<Option<Arc<Value>>>,
-        val_after: DownlinkRequest<Option<Arc<Value>>>,
-    ) -> MapAction
-    where
-        F: FnOnce(&Option<&Value>) -> Option<Value> + Send + 'static,
-    {
-        MapAction::Modify {
-            key,
-            f: Box::new(f),
-            before: Some(val_before),
-            after: Some(val_after),
-        }
-    }
-
-    pub fn try_modify_and_await<F>(
-        key: Value,
-        f: F,
-        val_before: DownlinkRequest<UpdateResult<Option<Arc<Value>>>>,
-        val_after: DownlinkRequest<UpdateResult<Option<Arc<Value>>>>,
-    ) -> MapAction
-    where
-        F: FnOnce(&Option<&Value>) -> UpdateResult<Option<Value>> + Send + 'static,
-    {
-        MapAction::TryModify {
-            key,
-            f: Box::new(f),
-            before: Some(val_before),
-            after: Some(val_after),
-        }
-    }
-
-    pub fn modify_box_and_await(
-        key: Value,
-        f: Box<dyn FnOnce(&Option<&Value>) -> Option<Value> + Send>,
-        val_before: DownlinkRequest<Option<Arc<Value>>>,
-        val_after: DownlinkRequest<Option<Arc<Value>>>,
-    ) -> MapAction {
-        MapAction::Modify {
-            key,
-            f: Box::new(f),
-            before: Some(val_before),
-            after: Some(val_after),
-        }
-    }
 }
 
 impl Debug for MapAction {
@@ -266,16 +168,6 @@ impl Debug for MapAction {
             MapAction::Clear { before } => write!(f, "Clear({:?})", before),
             MapAction::Get { request } => write!(f, "Get({:?})", request),
             MapAction::GetByKey { key, request } => write!(f, "GetByKey({:?}, {:?})", key, request),
-            MapAction::Modify {
-                key, before, after, ..
-            } => write!(f, "Modify({:?}, <closure>, {:?}, {:?})", key, before, after),
-            MapAction::TryModify {
-                key, before, after, ..
-            } => write!(
-                f,
-                "TryModify({:?}, <closure>, {:?}, {:?})",
-                key, before, after
-            ),
         }
     }
 }
@@ -341,6 +233,3 @@ impl ViewWithEvent {
         }
     }
 }
-
-/// Typedef for map downlink stream item.
-pub type MapItemResult = Result<Message<UntypedMapModification<Value>>, RoutingError>;

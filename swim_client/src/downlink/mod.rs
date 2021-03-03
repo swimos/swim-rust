@@ -23,8 +23,8 @@ pub mod watch_adapter;
 
 use crate::configuration::downlink::{DownlinkParams, OnInvalidMessage};
 use crate::downlink::error::DownlinkError;
-use crate::downlink::model::map::{MapItemResult, UntypedMapModification};
-use crate::downlink::model::value::{SharedValue, ValueItemResult};
+use crate::downlink::model::map::UntypedMapModification;
+use crate::downlink::model::value::SharedValue;
 use crate::downlink::state_machine::command::CommandStateMachine;
 use crate::downlink::state_machine::event::EventStateMachine;
 use crate::downlink::state_machine::map::MapStateMachine;
@@ -676,6 +676,9 @@ where
     )
 }
 
+/// Typedef for map downlink stream item.
+type MapItemResult = Result<Message<UntypedMapModification<Value>>, RoutingError>;
+
 /// Create a map downlink.
 pub(in crate::downlink) fn map_downlink<Updates, Commands>(
     key_schema: Option<StandardSchema>,
@@ -699,6 +702,9 @@ where
         config,
     )
 }
+
+/// Typedef for value downlink stream item.
+type ValueItemResult = Result<Message<Value>, RoutingError>;
 
 /// Create a raw value downlink.
 pub(in crate::downlink) fn value_downlink<Updates, Commands>(

@@ -124,31 +124,6 @@ impl<K: ValidatedForm + 'static, V: ValidatedForm + 'static> TypedMapDownlink<K,
             .await
     }
 
-    /// Modify the value associated with a key, returning the values associated withe the key before
-    /// and after the operation.
-    pub async fn modify<F>(
-        &self,
-        key: K,
-        update_fn: F,
-    ) -> Result<(Option<V>, Option<V>), DownlinkError>
-    where
-        F: FnOnce(Option<V>) -> Option<V> + Send + 'static,
-    {
-        actions::<K, V>(self.inner.sender())
-            .modify(key, update_fn)
-            .await
-    }
-
-    /// Modify the value associated with a key without waiting for the operation to complete.
-    pub async fn modify_and_forget<F>(&self, key: K, update_fn: F) -> Result<(), DownlinkError>
-    where
-        F: FnOnce(Option<V>) -> Option<V> + Send + 'static,
-    {
-        actions::<K, V>(self.inner.sender())
-            .modify_and_forget(key, update_fn)
-            .await
-    }
-
     /// Remove any value associated with a key, returning it.
     pub async fn remove(&self, key: K) -> Result<Option<V>, DownlinkError> {
         actions::<K, V>(self.inner.sender()).remove(key).await
@@ -419,29 +394,6 @@ where
     pub async fn update_and_forget(&self, key: K, value: V) -> Result<(), DownlinkError> {
         actions::<K, V>(&self.inner)
             .update_and_forget(key, value)
-            .await
-    }
-
-    /// Modify the value associated with a key, returning the values associated withe the key before
-    /// and after the operation.
-    pub async fn modify<F>(
-        &self,
-        key: K,
-        update_fn: F,
-    ) -> Result<(Option<V>, Option<V>), DownlinkError>
-    where
-        F: FnOnce(Option<V>) -> Option<V> + Send + 'static,
-    {
-        actions::<K, V>(&self.inner).modify(key, update_fn).await
-    }
-
-    /// Modify the value associated with a key without waiting for the operation to complete.
-    pub async fn modify_and_forget<F>(&self, key: K, update_fn: F) -> Result<(), DownlinkError>
-    where
-        F: FnOnce(Option<V>) -> Option<V> + Send + 'static,
-    {
-        actions::<K, V>(&self.inner)
-            .modify_and_forget(key, update_fn)
             .await
     }
 
@@ -814,47 +766,6 @@ where
             .sender
             .send(MapAction::update(key.into_value(), value.into_value()))
             .await?)
-    }
-
-    /// Modify the value associated with a key, returning the values associated withe the key before
-    /// and after the operation.
-    pub async fn modify<F>(
-        &self,
-        key: K,
-        update_fn: F,
-    ) -> Result<(Option<V>, Option<V>), DownlinkError>
-    where
-        F: FnOnce(Option<V>) -> Option<V> + Send + 'static,
-    {
-        let (tx1, rx1) = oneshot::channel();
-        let (tx2, rx2) = oneshot::channel();
-        let req1 = Request::new(tx1);
-        let req2 = Request::new(tx2);
-        self.sender
-            .send(MapAction::try_modify_and_await(
-                key.into_value(),
-                super::wrap_option_update_fn(update_fn),
-                req1,
-                req2,
-            ))
-            .await?;
-        let before = super::await_fallible_optional(rx1).await?;
-        let after = super::await_fallible_optional(rx2).await?;
-        Ok((before, after))
-    }
-
-    /// Modify the value associated with a key without waiting for the operation to complete.
-    pub async fn modify_and_forget<F>(&self, key: K, update_fn: F) -> Result<(), DownlinkError>
-    where
-        F: FnOnce(Option<V>) -> Option<V> + Send + 'static,
-    {
-        self.sender
-            .send(MapAction::try_modify(
-                key.into_value(),
-                super::wrap_option_update_fn(update_fn),
-            ))
-            .await?;
-        Ok(())
     }
 
     /// Remove any value associated with a key, returning it.
