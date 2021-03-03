@@ -14,10 +14,10 @@
 
 use crate::configuration::downlink::OnInvalidMessage;
 use crate::downlink::model::map::{MapEvent, ValMap, ViewWithEvent};
-use crate::downlink::state_machine::SchemaViolations;
 use crate::downlink::typed::event::{EventDownlinkReceiver, EventViewError, TypedEventDownlink};
 use crate::downlink::typed::map::events::{TypedMapView, TypedViewWithEvent};
 use crate::downlink::DownlinkConfig;
+use crate::downlink::SchemaViolations;
 use crate::downlink::{Command, Message};
 use im::OrdMap;
 use std::collections::{BTreeMap, HashMap};

@@ -14,12 +14,11 @@
 
 pub mod error;
 pub mod model;
-pub(crate) mod state_machine;
-pub mod subscription;
+mod state_machine;
+mod subscription;
 #[cfg(test)]
 mod tests;
 pub mod typed;
-pub mod watch_adapter;
 
 use crate::configuration::downlink::{DownlinkParams, OnInvalidMessage};
 use crate::downlink::error::DownlinkError;
@@ -29,9 +28,7 @@ use crate::downlink::state_machine::command::CommandStateMachine;
 use crate::downlink::state_machine::event::EventStateMachine;
 use crate::downlink::state_machine::map::MapStateMachine;
 use crate::downlink::state_machine::value::ValueStateMachine;
-use crate::downlink::state_machine::{
-    DownlinkStateMachine, EventResult, Response, SchemaViolations,
-};
+use crate::downlink::state_machine::{DownlinkStateMachine, EventResult, Response};
 use crate::downlink::typed::{
     UntypedCommandDownlink, UntypedEventDownlink, UntypedEventReceiver, UntypedMapDownlink,
     UntypedMapReceiver, UntypedValueDownlink, UntypedValueReceiver,
@@ -56,6 +53,8 @@ use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, Level};
 use utilities::errors::Recoverable;
 use utilities::sync::{promise, topic};
+
+pub use crate::downlink::subscription::Downlinks;
 
 /// Trait defining the common operations supported by all downlinks.
 pub trait Downlink {
@@ -135,6 +134,18 @@ impl<A> Event<A> {
     }
 }
 
+#[derive(Eq, PartialEq, Clone, Copy, Debug, Hash)]
+pub enum SchemaViolations {
+    Ignore,
+    Report,
+}
+
+impl Default for SchemaViolations {
+    fn default() -> Self {
+        SchemaViolations::Report
+    }
+}
+
 /// Raw downlinks are the untyped core around which other types are downlink are built. Actions of
 /// type `Act` can be applied to the downlink, modifying its state, and it will, in turn produce
 /// events of type `Ev`.
@@ -191,7 +202,7 @@ impl<Act, Ev> RawDownlink<Act, Ev> {
 
 /// Configuration parameters for the downlink event loop.
 #[derive(Clone, Copy, Debug)]
-pub(in crate::downlink) struct DownlinkConfig {
+struct DownlinkConfig {
     /// Buffer size for the action and event channels.
     pub buffer_size: NonZeroUsize,
     /// The downlink event loop with yield to the runtime after this many iterations.
@@ -598,7 +609,7 @@ where
 /// * `update_stream` - Stream of external updates to the state.
 /// * `cmd_sink` - Sink for outgoing commands to the remote lane.
 /// * `config` - Configuration for the event loop.
-pub(in crate::downlink) fn create_downlink<M, Act, SM, CmdSend, Updates>(
+fn create_downlink<M, Act, SM, CmdSend, Updates>(
     machine: SM,
     update_stream: Updates,
     cmd_sink: CmdSend,
@@ -637,7 +648,7 @@ where
     (dl, event_rx)
 }
 
-pub(in crate::downlink) fn command_downlink<Commands>(
+fn command_downlink<Commands>(
     schema: StandardSchema,
     cmd_sender: Commands,
     config: DownlinkConfig,
@@ -657,7 +668,7 @@ where
 }
 
 /// Create an event downlink.
-pub(in crate::downlink) fn event_downlink<Updates, Snk>(
+fn event_downlink<Updates, Snk>(
     schema: StandardSchema,
     violations: SchemaViolations,
     update_stream: Updates,
@@ -680,7 +691,7 @@ where
 type MapItemResult = Result<Message<UntypedMapModification<Value>>, RoutingError>;
 
 /// Create a map downlink.
-pub(in crate::downlink) fn map_downlink<Updates, Commands>(
+fn map_downlink<Updates, Commands>(
     key_schema: Option<StandardSchema>,
     value_schema: Option<StandardSchema>,
     update_stream: Updates,
@@ -707,7 +718,7 @@ where
 type ValueItemResult = Result<Message<Value>, RoutingError>;
 
 /// Create a raw value downlink.
-pub(in crate::downlink) fn value_downlink<Updates, Commands>(
+fn value_downlink<Updates, Commands>(
     init: Value,
     schema: Option<StandardSchema>,
     update_stream: Updates,

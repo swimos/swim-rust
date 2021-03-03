@@ -257,15 +257,3 @@ where
         }
     }
 }
-
-#[derive(Eq, PartialEq, Clone, Copy, Debug, Hash)]
-pub enum SchemaViolations {
-    Ignore,
-    Report,
-}
-
-impl Default for SchemaViolations {
-    fn default() -> Self {
-        SchemaViolations::Report
-    }
-}

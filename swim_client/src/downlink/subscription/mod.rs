@@ -13,9 +13,10 @@
 // limitations under the License.
 
 use crate::configuration::downlink::{BackpressureMode, Config, DownlinkKind};
+use crate::downlink::error::SubscriptionError;
 use crate::downlink::model::map::UntypedMapModification;
 use crate::downlink::model::value::SharedValue;
-use crate::downlink::state_machine::SchemaViolations;
+use crate::downlink::subscription::watch_adapter::KeyedWatch;
 use crate::downlink::typed::command::TypedCommandDownlink;
 use crate::downlink::typed::event::TypedEventDownlink;
 use crate::downlink::typed::map::{MapDownlinkReceiver, TypedMapDownlink};
@@ -24,10 +25,9 @@ use crate::downlink::typed::{
     UntypedCommandDownlink, UntypedEventDownlink, UntypedMapDownlink, UntypedMapReceiver,
     UntypedValueDownlink, UntypedValueReceiver,
 };
-use crate::downlink::watch_adapter::map::KeyedWatch;
 use crate::downlink::{
     command_downlink, event_downlink, map_downlink, value_downlink, Command, Downlink,
-    DownlinkError, Message,
+    DownlinkError, Message, SchemaViolations,
 };
 use crate::router::{Router, RouterEvent};
 use either::Either;
@@ -38,13 +38,11 @@ use futures_util::select_biased;
 use futures_util::stream::{FuturesUnordered, StreamExt};
 use pin_utils::pin_mut;
 use std::collections::HashMap;
-use std::fmt::{Display, Formatter};
 use std::pin::Pin;
 use std::sync::{Arc, Weak};
 use swim_common::form::ValidatedForm;
 use swim_common::model::schema::StandardSchema;
 use swim_common::model::Value;
-use swim_common::request::request_future::RequestError;
 use swim_common::request::Request;
 use swim_common::routing::RoutingError;
 use swim_common::sink::item;
@@ -54,8 +52,6 @@ use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::AbsolutePath;
 use swim_runtime::task::{spawn, TaskError, TaskHandle};
 use swim_warp::backpressure;
-use tokio::sync::mpsc::error::SendError;
-use tokio::sync::oneshot::error::RecvError;
 use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{error, info, instrument, trace_span};
@@ -65,7 +61,8 @@ use utilities::sync::{circular_buffer, promise};
 
 pub mod envelopes;
 #[cfg(test)]
-pub mod tests;
+mod tests;
+mod watch_adapter;
 
 pub struct Downlinks {
     sender: mpsc::Sender<DownlinkRequest>,
@@ -78,6 +75,12 @@ enum DownlinkRequest {
         path: AbsolutePath,
         envelope: Envelope,
     },
+}
+
+impl From<mpsc::error::SendError<DownlinkRequest>> for SubscriptionError {
+    fn from(_: mpsc::error::SendError<DownlinkRequest>) -> Self {
+        SubscriptionError::DownlinkTaskStopped
+    }
 }
 
 /// Contains all running WARP downlinks and allows requests for downlink subscriptions.
@@ -311,129 +314,6 @@ impl Downlinks {
             .await?;
 
         rx.await.map_err(Into::into).and_then(|r| r)
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum SubscriptionError {
-    BadKind {
-        expected: DownlinkKind,
-        actual: DownlinkKind,
-    },
-    DownlinkTaskStopped,
-    IncompatibleValueSchema {
-        path: AbsolutePath,
-        existing: Box<StandardSchema>,
-        requested: Box<StandardSchema>,
-    },
-    IncompatibleMapSchema {
-        is_key: bool,
-        path: AbsolutePath,
-        existing: Box<StandardSchema>,
-        requested: Box<StandardSchema>,
-    },
-    ConnectionError,
-}
-
-impl SubscriptionError {
-    pub fn incompatibile_value(
-        path: AbsolutePath,
-        existing: StandardSchema,
-        requested: StandardSchema,
-    ) -> Self {
-        SubscriptionError::IncompatibleValueSchema {
-            path,
-            existing: Box::new(existing),
-            requested: Box::new(requested),
-        }
-    }
-
-    pub fn incompatibile_map_key(
-        path: AbsolutePath,
-        existing: StandardSchema,
-        requested: StandardSchema,
-    ) -> Self {
-        SubscriptionError::IncompatibleMapSchema {
-            is_key: true,
-            path,
-            existing: Box::new(existing),
-            requested: Box::new(requested),
-        }
-    }
-
-    pub fn incompatibile_map_value(
-        path: AbsolutePath,
-        existing: StandardSchema,
-        requested: StandardSchema,
-    ) -> Self {
-        SubscriptionError::IncompatibleMapSchema {
-            is_key: false,
-            path,
-            existing: Box::new(existing),
-            requested: Box::new(requested),
-        }
-    }
-}
-
-impl From<mpsc::error::SendError<DownlinkRequest>> for SubscriptionError {
-    fn from(_: SendError<DownlinkRequest>) -> Self {
-        SubscriptionError::DownlinkTaskStopped
-    }
-}
-
-impl From<oneshot::error::RecvError> for SubscriptionError {
-    fn from(_: RecvError) -> Self {
-        SubscriptionError::DownlinkTaskStopped
-    }
-}
-
-impl From<RequestError> for SubscriptionError {
-    fn from(_: RequestError) -> Self {
-        SubscriptionError::ConnectionError
-    }
-}
-
-impl Display for SubscriptionError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            SubscriptionError::BadKind { expected, actual } => write!(
-                f,
-                "Requested {} downlink but a {} downlink was already open for that lane.",
-                expected, actual
-            ),
-            SubscriptionError::DownlinkTaskStopped => {
-                write!(f, "The downlink task has already stopped.")
-            }
-            SubscriptionError::IncompatibleValueSchema {
-                path,
-                existing,
-                requested,
-            } => {
-                write!(f, "A downlink was requested to {} with schema {} but one is already running with schema {}.",
-                       path, existing, requested)
-            }
-            SubscriptionError::IncompatibleMapSchema {
-                is_key,
-                path,
-                existing,
-                requested,
-            } => {
-                let key_or_val = if *is_key { "key" } else { "value" };
-                write!(f, "A map downlink was requested to {} with {} schema {} but one is already running with schema {}.",
-                       path, key_or_val, existing, requested)
-            }
-            SubscriptionError::ConnectionError => {
-                write!(f, "The downlink could not establish a connection.")
-            }
-        }
-    }
-}
-
-impl std::error::Error for SubscriptionError {}
-
-impl SubscriptionError {
-    pub fn bad_kind(expected: DownlinkKind, actual: DownlinkKind) -> SubscriptionError {
-        SubscriptionError::BadKind { expected, actual }
     }
 }
 

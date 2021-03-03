@@ -19,8 +19,8 @@ use crate::configuration::downlink::Config;
 use crate::configuration::downlink::ConfigHierarchy;
 use crate::configuration::downlink::ConfigParseError;
 use crate::connections::SwimConnPool;
-use crate::downlink::error::DownlinkError;
-use crate::downlink::subscription::{Downlinks, SubscriptionError};
+use crate::downlink::error::{DownlinkError, SubscriptionError};
+use crate::downlink::Downlinks;
 use crate::router::SwimRouter;
 use std::error::Error;
 use std::fmt;
@@ -39,7 +39,6 @@ use tracing::info;
 
 #[cfg(feature = "websocket")]
 use crate::connections::factory::tungstenite::TungsteniteWsFactory;
-use crate::downlink::state_machine::SchemaViolations;
 use crate::downlink::typed::command::TypedCommandDownlink;
 use crate::downlink::typed::event::TypedEventDownlink;
 use crate::downlink::typed::map::{MapDownlinkReceiver, TypedMapDownlink};
@@ -48,6 +47,7 @@ use crate::downlink::typed::{
     UntypedCommandDownlink, UntypedEventDownlink, UntypedMapDownlink, UntypedMapReceiver,
     UntypedValueDownlink, UntypedValueReceiver,
 };
+use crate::downlink::SchemaViolations;
 
 /// Builder to create Swim client instance.
 ///

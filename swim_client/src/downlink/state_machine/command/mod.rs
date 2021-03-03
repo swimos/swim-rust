@@ -20,6 +20,7 @@ use crate::downlink::{Command, Message};
 use swim_common::model::schema::{Schema, StandardSchema};
 use swim_common::model::Value;
 
+/// State machine for command downlinks.
 pub struct CommandStateMachine {
     schema: StandardSchema,
 }

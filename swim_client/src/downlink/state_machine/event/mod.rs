@@ -16,14 +16,13 @@
 mod tests;
 
 use crate::downlink::error::DownlinkError;
-use crate::downlink::state_machine::{
-    DownlinkStateMachine, EventResult, Response, ResponseResult, SchemaViolations,
-};
-use crate::downlink::{Command, Message};
+use crate::downlink::state_machine::{DownlinkStateMachine, EventResult, Response, ResponseResult};
+use crate::downlink::{Command, Message, SchemaViolations};
 use swim_common::model::schema::{Schema, StandardSchema};
 use swim_common::model::Value;
 use tracing::trace;
 
+/// State machine for event downlinks.
 pub struct EventStateMachine {
     schema: StandardSchema,
     violations: SchemaViolations,
