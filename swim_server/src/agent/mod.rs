@@ -1135,7 +1135,7 @@ where
 /// * `name` - The name of the lane.
 /// * `is_public` - Whether the lane is public (with respect to external message routing).
 /// * `buffer_size` - Buffer size for the MPSC channel accepting the events.
-pub fn make_supply_lane<Agent, Context, T, O>(
+pub fn make_supply_lane<Agent, Context, T>(
     name: impl Into<String>,
     is_public: bool,
     buffer_size: NonZeroUsize,
