@@ -21,7 +21,7 @@ mod tests;
 
 use crate::agent::context::{AgentExecutionContext, ContextImpl};
 use crate::agent::dispatch::error::DispatcherErrors;
-use crate::agent::dispatch::AgentDispatcher;
+use crate::agent::dispatch::{AgentDispatcher, LaneIdentifier};
 use crate::agent::lane::channels::task::{
     run_supply_lane_io, DemandMapLaneMessageHandler, LaneIoError, MapLaneMessageHandler,
     ValueLaneMessageHandler,
@@ -240,6 +240,10 @@ where
             );
         }
 
+        let io_providers = io_providers
+            .into_iter()
+            .map(|(k, v)| (LaneIdentifier::agent(k), v))
+            .collect();
         let dispatcher =
             AgentDispatcher::new(uri.clone(), execution_config, context.clone(), io_providers);
 

@@ -174,7 +174,7 @@ where
 
             if let Some(event) = next {
                 // disable the linter here as there are to-dos
-                #[allow(clippy::collapsible_match)]
+                #[allow(clippy::collapsible_if)]
                 match event {
                     Ok(SelectorResult::Read(msg)) => match msg {
                         WsMessage::Text(msg) => match read_envelope(&msg) {
