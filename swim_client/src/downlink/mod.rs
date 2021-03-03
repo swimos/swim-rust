@@ -507,7 +507,7 @@ where
     Fut: FusedFuture<Output = WriteResult<CmdSender>> + Unpin,
     SM: DownlinkStateMachine<M, Action>,
 {
-    let next: Either<WriteResult<CmdSender>, Option<Result<Message<M>, RoutingError>>> = select_biased! {
+    let next = select_biased! {
         write_result = command_dispatch => Either::Left(write_result),
         maybe_update = message_stream.next() => Either::Right(maybe_update),
     };

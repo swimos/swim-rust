@@ -13,11 +13,11 @@
 // limitations under the License.
 
 use std::time::Duration;
-use swim_client::downlink::model::SchemaViolations;
 use swim_client::interface::SwimClientBuilder;
 use swim_common::warp::path::AbsolutePath;
 use swim_client::runtime::time::delay::delay_for;
 use tokio::task;
+use swim_client::downlink::SchemaViolations;
 
 #[tokio::main]
 async fn main() {
