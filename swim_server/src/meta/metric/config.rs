@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::agent::lane::channels::uplink::backpressure::KeyedBackpressureConfig;
 use std::num::NonZeroUsize;
 use tokio::time::Duration;
 
@@ -23,6 +24,7 @@ pub struct MetricAggregatorConfig {
     pub buffer_size: NonZeroUsize,
     /// The number of events to process before yielding execution back to the runtime.
     pub yield_after: NonZeroUsize,
+    pub backpressure_config: KeyedBackpressureConfig,
 }
 
 impl Default for MetricAggregatorConfig {
@@ -31,6 +33,12 @@ impl Default for MetricAggregatorConfig {
             sample_rate: Duration::from_secs(1),
             buffer_size: NonZeroUsize::new(10).unwrap(),
             yield_after: NonZeroUsize::new(256).unwrap(),
+            backpressure_config: KeyedBackpressureConfig {
+                buffer_size: NonZeroUsize::new(2).unwrap(),
+                yield_after: NonZeroUsize::new(256).unwrap(),
+                bridge_buffer_size: NonZeroUsize::new(4).unwrap(),
+                cache_size: NonZeroUsize::new(4).unwrap(),
+            },
         }
     }
 }

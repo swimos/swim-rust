@@ -30,6 +30,7 @@ use utilities::sync::rwlock::RwLock;
 use crate::agent::lane::model::supply::SupplyLane;
 use crate::meta::metric::aggregator::{Addressed, MetricAggregator};
 use crate::meta::metric::AggregatorKind;
+use swim_warp::backpressure::keyed::Keyed;
 
 const SEND_PROFILE_FAIL: &str = "Failed to send uplink profile";
 const SEND_PULSE_FAIL: &str = "Failed to send uplink pulse";
@@ -63,6 +64,14 @@ impl UplinkProfileSender {
 pub struct TaggedWarpUplinkProfile {
     pub path: RelativePath,
     pub profile: WarpUplinkProfile,
+}
+
+impl Keyed for TaggedWarpUplinkProfile {
+    type Key = RelativePath;
+
+    fn key(&self) -> Self::Key {
+        self.path.clone()
+    }
 }
 
 impl Addressed for TaggedWarpUplinkProfile {

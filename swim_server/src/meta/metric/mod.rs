@@ -40,21 +40,27 @@ use std::fmt::{Debug, Display};
 use utilities::uri::RelativeUri;
 
 use crate::agent::dispatch::LaneIdentifier;
+use crate::agent::lane::channels::uplink::backpressure::KeyedBackpressureConfig;
 use crate::agent::lane::model::supply::supplier::Dropping;
 use crate::meta::metric::aggregator::AggregatorTask;
 use crate::meta::metric::config::MetricAggregatorConfig;
 use crate::meta::metric::lane::{LaneAggregatorTask, LanePulse};
 use crate::meta::metric::node::{NodeAggregatorTask, NodePulse};
 use crate::meta::metric::uplink::{
-    uplink_observer, TaggedWarpUplinkProfile, UplinkAggregatorTask, UplinkProfileSender,
+    uplink_observer, SendError, TaggedWarpUplinkProfile, UplinkAggregatorTask, UplinkProfileSender,
     WarpUplinkPulse,
 };
 use crate::meta::{IdentifiedAgentIo, LaneAddressedKind, MetaNodeAddressed};
-use futures::future::try_join3;
+use futures::future::{try_join3, try_join4};
+use futures::{Stream, StreamExt};
 pub use lane::LaneProfile;
 pub use node::NodeProfile;
 use std::any::Any;
 use swim_common::form::Form;
+use swim_common::sink::item::{for_mpsc_sender, ItemSender};
+use swim_warp::backpressure::keyed::release_pressure;
+use tokio::sync::mpsc::error::SendError as TokioSendError;
+use tokio_stream::wrappers::ReceiverStream;
 pub use uplink::{UplinkActionObserver, UplinkEventObserver, WarpUplinkProfile};
 
 const REMOVING_LANE: &str = "Lane closed, removing";
@@ -80,6 +86,15 @@ impl Debug for MetricAggregator {
 pub struct AggregatorError {
     aggregator: AggregatorKind,
     error: AggregatorErrorKind,
+}
+
+impl From<TokioSendError<TaggedWarpUplinkProfile>> for AggregatorError {
+    fn from(_: TokioSendError<TaggedWarpUplinkProfile>) -> Self {
+        AggregatorError {
+            aggregator: AggregatorKind::Uplink,
+            error: AggregatorErrorKind::ForwardChannelClosed,
+        }
+    }
 }
 
 impl Display for AggregatorError {
@@ -121,34 +136,53 @@ impl MetricAggregator {
         lane_pulse_lanes: HashMap<RelativePath, SupplyLane<LanePulse>>,
         agent_pulse: SupplyLane<NodePulse>,
     ) -> MetricAggregator {
-        let (node_tx, node_rx) = mpsc::channel(config.buffer_size.get());
+        let MetricAggregatorConfig {
+            buffer_size,
+            yield_after,
+            backpressure_config,
+            ..
+        } = config;
+
+        let (node_tx, node_rx) = mpsc::channel(buffer_size.get());
         let node_aggregator = NodeAggregatorTask::new(stop_rx.clone(), node_rx, agent_pulse);
 
-        let (lane_tx, lane_rx) = mpsc::channel(config.buffer_size.get());
+        let (lane_tx, lane_rx) = mpsc::channel(buffer_size.get());
         let lane_aggregator = AggregatorTask::new(
             node_id.clone(),
             stop_rx.clone(),
             LaneAggregatorTask::new(lane_pulse_lanes),
-            lane_rx,
+            ReceiverStream::new(lane_rx),
             Some(node_tx),
         );
 
-        let (uplink_tx, uplink_rx) = mpsc::channel(config.buffer_size.get());
+        let (uplink_tx, uplink_rx) = mpsc::channel(buffer_size.get());
+
+        let metric_stream = ReceiverStream::new(uplink_rx);
+        let (sink, bp_stream) = mpsc::channel(buffer_size.get());
+        let sink = for_mpsc_sender(sink).map_err_into::<AggregatorError>();
+
+        let release_task = metrics_release_backpressure(
+            metric_stream.take_until(stop_rx.clone()),
+            sink,
+            backpressure_config,
+        );
 
         let uplink_aggregator = AggregatorTask::new(
             node_id,
             stop_rx,
             UplinkAggregatorTask::new(uplink_pulse_lanes),
-            uplink_rx,
+            ReceiverStream::new(bp_stream),
             Some(lane_tx),
         );
-        let observer = MetricObserver::new(config.clone(), uplink_tx);
+
+        let observer = MetricObserver::new(config, uplink_tx);
 
         let jh = async move {
-            try_join3(
-                node_aggregator.run(config.yield_after),
-                lane_aggregator.run(config.yield_after),
-                uplink_aggregator.run(config.yield_after),
+            try_join4(
+                node_aggregator.run(yield_after),
+                lane_aggregator.run(yield_after),
+                uplink_aggregator.run(yield_after),
+                release_task,
             )
             .await
             .map(|_| ())
@@ -164,6 +198,25 @@ impl MetricAggregator {
     pub fn observer(&self) -> MetricObserver {
         self.observer.clone()
     }
+}
+
+async fn metrics_release_backpressure<E, Sink>(
+    messages: impl Stream<Item = TaggedWarpUplinkProfile>,
+    sink: Sink,
+    config: KeyedBackpressureConfig,
+) -> Result<(), E>
+where
+    Sink: ItemSender<TaggedWarpUplinkProfile, E>,
+{
+    release_pressure(
+        messages,
+        sink,
+        config.yield_after,
+        config.bridge_buffer_size,
+        config.cache_size,
+        config.buffer_size,
+    )
+    .await
 }
 
 #[derive(Clone, Debug)]

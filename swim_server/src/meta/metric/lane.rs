@@ -69,25 +69,26 @@ impl MetricAggregator for LaneAggregatorTask {
         tagged_profile: Self::Input,
     ) -> BoxFuture<Result<Option<Self::Output>, ()>> {
         async move {
-            let TaggedWarpUplinkProfile {
-                path: lane_id,
-                profile,
-            } = tagged_profile;
-            let lane_uri = &lane_id.lane;
-
-            match self.pulse_lanes.get(&lane_id) {
-                Some(lane) => {
-                    let pulse = profile.clone().into();
-                    if let Err(_) = lane.try_send(pulse) {
-                        // todo log err
-                    }
-                }
-                None => {
-                    panic!()
-                }
-            }
-
-            Some(TaggedLaneProfile { lane_id, profile })
+            // let TaggedWarpUplinkProfile {
+            //     path: lane_id,
+            //     profile,
+            // } = tagged_profile;
+            // let lane_uri = &lane_id.lane;
+            //
+            // match self.pulse_lanes.get(&lane_id) {
+            //     Some(lane) => {
+            //         let pulse = profile.clone().into();
+            //         if let Err(_) = lane.try_send(pulse) {
+            //             // todo log err
+            //         }
+            //     }
+            //     None => {
+            //         panic!()
+            //     }
+            // }
+            //
+            // Some(TaggedLaneProfile { lane_id, profile })
+            unimplemented!()
         }
         .boxed()
     }

@@ -15,9 +15,9 @@
 use crate::meta::metric::{AggregatorError, AggregatorErrorKind, AggregatorKind};
 use crate::meta::metric::{STOP_CLOSED, STOP_OK};
 use futures::future::BoxFuture;
-use futures::select;
 use futures::FutureExt;
 use futures::StreamExt;
+use futures::{select, Stream};
 use std::fmt::Debug;
 use std::num::NonZeroUsize;
 use tokio::sync::mpsc;
@@ -43,28 +43,29 @@ pub trait MetricAggregator {
     fn on_receive(&mut self, profile: Self::Input) -> BoxFuture<Result<Option<Self::Output>, ()>>;
 }
 
-pub struct AggregatorTask<C>
+pub struct AggregatorTask<C, S>
 where
     C: MetricAggregator,
 {
     node_id: String,
     stop_rx: trigger::Receiver,
     inner: C,
-    input: mpsc::Receiver<C::Input>,
+    input: S,
     output: Option<mpsc::Sender<C::Output>>,
 }
 
-impl<C> AggregatorTask<C>
+impl<C, S> AggregatorTask<C, S>
 where
     C: MetricAggregator,
+    S: Stream<Item = C::Input> + Unpin,
 {
     pub fn new(
         node_id: String,
         stop_rx: trigger::Receiver,
         inner: C,
-        input: mpsc::Receiver<C::Input>,
+        input: S,
         output: Option<mpsc::Sender<C::Output>>,
-    ) -> AggregatorTask<C> {
+    ) -> AggregatorTask<C, S> {
         AggregatorTask {
             node_id,
             stop_rx,
@@ -83,7 +84,7 @@ where
             output,
         } = self;
 
-        let mut fused_metric_rx = ReceiverStream::new(input).fuse();
+        let mut fused_metric_rx = input.fuse();
         let mut fused_trigger = stop_rx.fuse();
         let mut iteration_count: usize = 0;
 
