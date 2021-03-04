@@ -12,21 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::lane::model::supply::SupplyLane;
-use std::collections::HashMap;
 use swim_common::form::Form;
 use swim_common::warp::path::RelativePath;
 
-use crate::agent::lane::model::supply::supplier::TrySupplyError;
-use crate::meta::metric::aggregator::{Addressed, MetricAggregator};
+use crate::meta::metric::aggregator::{AddressedMetric, MetricStage};
 use crate::meta::metric::uplink::TaggedWarpUplinkProfile;
-use crate::meta::metric::REMOVING_LANE;
-use crate::meta::metric::{AggregatorKind, WarpUplinkProfile};
-use tracing::{event, Level};
-
-const SEND_PROFILE_FAIL: &str = "Failed to send lane profile";
-const SEND_PULSE_FAIL: &str = "Failed to send lane pulse";
-pub const MISSING_LANE: &str = "Lane does not exist";
+use crate::meta::metric::{MetricKind, WarpUplinkProfile};
 
 #[derive(Default, Form, Clone, PartialEq, Debug)]
 pub struct LaneProfile;
@@ -37,65 +28,58 @@ impl LaneProfile {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct TaggedLaneProfile {
-    path: RelativePath,
-    profile: LaneProfile,
+    pub path: RelativePath,
+    pub profile: LaneProfile,
 }
 
-impl Addressed for TaggedLaneProfile {
-    type Tag = RelativePath;
+impl AddressedMetric for TaggedLaneProfile {
+    type Payload = LaneProfile;
 
-    fn address(&self) -> &Self::Tag {
+    fn split(self) -> (RelativePath, Self::Payload) {
+        let TaggedLaneProfile { path, profile } = self;
+        (path, profile)
+    }
+
+    fn tag_ref(&self) -> &RelativePath {
         &self.path
+    }
+
+    fn tag(payload: Self::Payload, path: RelativePath) -> Self {
+        TaggedLaneProfile {
+            path,
+            profile: payload,
+        }
+    }
+}
+
+pub struct LaneStage;
+impl MetricStage for LaneStage {
+    const METRIC_KIND: MetricKind = MetricKind::Lane;
+
+    type ProfileIn = TaggedWarpUplinkProfile;
+    type ProfileOut = TaggedLaneProfile;
+    type Pulse = LanePulse;
+
+    fn aggregate(_old: LaneProfile, _new: WarpUplinkProfile) -> LaneProfile {
+        unimplemented!()
+    }
+}
+
+impl From<LaneProfile> for LanePulse {
+    fn from(_: LaneProfile) -> Self {
+        unimplemented!()
     }
 }
 
 #[derive(Default, Form, Clone, PartialEq, Debug)]
 pub struct LanePulse;
 
-pub struct LaneAggregatorTask {
-    pulse_lanes: HashMap<RelativePath, SupplyLane<LanePulse>>,
-}
-
-impl LaneAggregatorTask {
-    pub fn new(pulse_lanes: HashMap<RelativePath, SupplyLane<LanePulse>>) -> Self {
-        LaneAggregatorTask { pulse_lanes }
-    }
-}
-
-impl MetricAggregator for LaneAggregatorTask {
-    const AGGREGATOR_KIND: AggregatorKind = AggregatorKind::Lane;
-
-    type Input = TaggedWarpUplinkProfile;
-    type Output = TaggedLaneProfile;
-
-    fn on_receive(&mut self, tagged_profile: Self::Input) -> Result<Option<Self::Output>, ()> {
-        // let TaggedWarpUplinkProfile { path, profile } = tagged_profile;
-        // let lane_uri = &lane_id.lane;
-        //
-        // match self.pulse_lanes.get(&lane_id) {
-        //     Some(lane) => {
-        //         let pulse = profile.clone().into();
-        //
-        //         match lane.try_send(pulse) {
-        //             Ok(()) => {}
-        //             Err(TrySupplyError::Closed) => {
-        //                 let _ = self.pulse_lanes.remove(&path);
-        //                 event!(Level::DEBUG, ?lane_uri, REMOVING_LANE);
-        //             }
-        //             Err(TrySupplyError::Capacity) => {
-        //                 event!(Level::DEBUG, ?lane_uri, SEND_PULSE_FAIL);
-        //             }
-        //         }
-        //     }
-        //     None => {
-        //         panic!()
-        //     }
-        // }
-        //
-        // Some(TaggedLaneProfile { path, profile })
-        unimplemented!()
-    }
+#[derive(Clone, PartialEq, Debug)]
+pub struct TaggedLanePulse {
+    path: RelativePath,
+    pulse: LanePulse,
 }
 
 // #[cfg(test)]

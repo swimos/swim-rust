@@ -18,12 +18,13 @@ use tokio::time::Duration;
 
 #[derive(Debug, Clone)]
 pub struct MetricAggregatorConfig {
-    /// Sample rate.
+    /// Sample report rate of events.
     pub sample_rate: Duration,
     /// Observer channel buffer size.
     pub buffer_size: NonZeroUsize,
     /// The number of events to process before yielding execution back to the runtime.
     pub yield_after: NonZeroUsize,
+    /// Backpressure relief configuration for WARP Uplink profile ingress.
     pub backpressure_config: KeyedBackpressureConfig,
 }
 

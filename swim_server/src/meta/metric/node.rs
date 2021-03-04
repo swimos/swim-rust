@@ -12,12 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::agent::lane::model::supply::supplier::TrySupplyError;
 use crate::agent::lane::model::supply::SupplyLane;
+use crate::meta::metric::aggregator::AddressedMetric;
 use crate::meta::metric::lane::TaggedLaneProfile;
-use crate::meta::metric::{AggregatorError, AggregatorKind, LaneProfile};
+use crate::meta::metric::{AggregatorError, AggregatorErrorKind, LaneProfile, MetricKind};
+use crate::meta::metric::{STOP_CLOSED, STOP_OK};
+use futures::select;
+use futures::FutureExt;
+use futures::StreamExt;
 use std::num::NonZeroUsize;
+use std::time::{Duration, Instant};
 use swim_common::form::Form;
-use tokio::sync::mpsc;
+use swim_common::warp::path::RelativePath;
+use tokio_stream::wrappers::ReceiverStream;
+use tracing::{event, Level};
 use utilities::sync::trigger;
 
 #[derive(Default, Form, Clone, PartialEq, Debug)]
@@ -32,73 +41,103 @@ impl NodeProfile {
 #[derive(Default, Form, Clone, PartialEq, Debug)]
 pub struct NodePulse;
 
+impl NodePulse {
+    fn accumulate(&mut self, _other: LaneProfile) {
+        unimplemented!()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct TaggedNodeProfile {
+    path: RelativePath,
+    profile: NodeProfile,
+}
+
 pub struct NodeAggregatorTask {
     stop_rx: trigger::Receiver,
-    metric_rx: mpsc::Receiver<TaggedLaneProfile>,
-    pulse_lane: SupplyLane<NodePulse>,
+    sample_rate: Duration,
+    last_report: Instant,
+    lane: SupplyLane<NodePulse>,
+    input: ReceiverStream<TaggedLaneProfile>,
+    pulse: NodePulse,
 }
 
 impl NodeAggregatorTask {
-    const COLLECTOR_KIND: AggregatorKind = AggregatorKind::Node;
-
     pub fn new(
         stop_rx: trigger::Receiver,
-        metric_rx: mpsc::Receiver<TaggedLaneProfile>,
-        pulse_lane: SupplyLane<NodePulse>,
-    ) -> NodeAggregatorTask {
+        sample_rate: Duration,
+        lane: SupplyLane<NodePulse>,
+        input: ReceiverStream<TaggedLaneProfile>,
+    ) -> Self {
         NodeAggregatorTask {
             stop_rx,
-            metric_rx,
-            pulse_lane,
+            sample_rate,
+            last_report: Instant::now(),
+            lane,
+            input,
+            pulse: NodePulse::default(),
         }
     }
-
     pub async fn run(self, yield_after: NonZeroUsize) -> Result<(), AggregatorError> {
-        // let NodeAggregatorTask {
-        //     stop_rx,
-        //     metric_rx,
-        //     pulse_lane,
-        // } = self;
-        //
-        // let mut fused_metric_rx = ReceiverStream::new(metric_rx).fuse();
-        // let mut fused_trigger = stop_rx.fuse();
-        // let mut iteration_count: usize = 0;
-        //
-        // let yield_mod = yield_after.get();
-        //
-        // let stop_code = loop {
-        //     let event: Option<TaggedLaneProfile> = select! {
-        //         _ = fused_trigger => {
-        //             event!(Level::WARN, %node_id, STOP_OK);
-        //             break NodeAggregatorStopResult::Normal;
-        //         },
-        //         metric = fused_metric_rx.next() => metric,
-        //     };
-        //     match event {
-        //         None => {
-        //             event!(Level::WARN, %node_id, STOP_CLOSED);
-        //             break NodeAggregatorStopResult::Abnormal;
-        //         }
-        //         Some(profile) => {
-        //             // let (path, uplink_profile) = profile.split();
-        //             // let lane_identifier = LaneIdentifier::meta(MetaNodeAddressed::UplinkProfile {
-        //             //     node_uri: path.node,
-        //             //     lane_uri: path.lane,
-        //             // });
-        //
-        //             unimplemented!()
-        //         }
-        //     }
-        //
-        //     iteration_count = iteration_count.wrapping_add(1);
-        //     if iteration_count % yield_mod == 0 {
-        //         tokio::task::yield_now().await;
-        //     }
-        // };
-        //
-        // event!(Level::INFO, %stop_code, %node_id, STOP_OK);
-        //
-        // stop_code
+        let NodeAggregatorTask {
+            stop_rx,
+            sample_rate,
+            mut last_report,
+            lane,
+            input,
+            mut pulse,
+        } = self;
+
+        let mut fused_metric_rx = input.fuse();
+        let mut fused_trigger = stop_rx.fuse();
+        let mut iteration_count: usize = 0;
+
+        let yield_mod = yield_after.get();
+
+        let error = loop {
+            let event: Option<TaggedLaneProfile> = select! {
+                _ = fused_trigger => {
+                    event!(Level::WARN, STOP_OK);
+                    return Ok(());
+                },
+                metric = fused_metric_rx.next() => metric,
+            };
+            match event {
+                None => {
+                    event!(Level::WARN, STOP_CLOSED);
+                    break AggregatorErrorKind::AbnormalStop;
+                }
+                Some(tagged) => {
+                    let (_, profile) = tagged.split();
+                    pulse.accumulate(profile);
+
+                    if last_report.elapsed() > sample_rate {
+                        if let Err(TrySupplyError::Closed) = lane.try_send(pulse.clone()) {
+                            break AggregatorErrorKind::ForwardChannelClosed;
+                        } else {
+                            last_report = Instant::now();
+                        }
+                    }
+                }
+            }
+
+            iteration_count = iteration_count.wrapping_add(1);
+            if iteration_count % yield_mod == 0 {
+                tokio::task::yield_now().await;
+            }
+        };
+
+        event!(Level::ERROR, %error, STOP_CLOSED);
+
+        return Err(AggregatorError {
+            aggregator: MetricKind::Node,
+            error,
+        });
+    }
+}
+
+impl From<NodeProfile> for NodePulse {
+    fn from(_: NodeProfile) -> Self {
         unimplemented!()
     }
 }

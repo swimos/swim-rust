@@ -40,39 +40,30 @@ use std::fmt::{Debug, Display};
 use utilities::uri::RelativeUri;
 
 use crate::agent::dispatch::LaneIdentifier;
-use crate::agent::lane::channels::uplink::backpressure::KeyedBackpressureConfig;
-use crate::agent::lane::model::supply::supplier::{Dropping, TrySupplyError};
-use crate::meta::metric::aggregator::{Addressed, AggregatorTask};
+use crate::agent::lane::model::supply::supplier::Dropping;
+use crate::meta::metric::aggregator::AggregatorTask;
 use crate::meta::metric::config::MetricAggregatorConfig;
-use crate::meta::metric::lane::{LaneAggregatorTask, LanePulse};
+use crate::meta::metric::lane::{LanePulse, LaneStage};
 use crate::meta::metric::node::{NodeAggregatorTask, NodePulse};
 use crate::meta::metric::uplink::{
-    uplink_observer, TaggedWarpUplinkProfile, UplinkAggregatorTask, UplinkProfileSender,
+    uplink_aggregator, uplink_observer, TaggedWarpUplinkProfile, UplinkProfileSender,
     WarpUplinkPulse,
 };
 use crate::meta::{IdentifiedAgentIo, LaneAddressedKind, MetaNodeAddressed};
-use futures::future::try_join4;
-use futures::{Stream, StreamExt};
+use futures::future::try_join3;
 pub use lane::LaneProfile;
 pub use node::NodeProfile;
 use std::any::Any;
 use swim_common::form::Form;
-use swim_common::sink::item::{for_mpsc_sender, ItemSender};
-use swim_warp::backpressure::keyed::release_pressure;
 use tokio::sync::mpsc::error::SendError as TokioSendError;
 use tokio_stream::wrappers::ReceiverStream;
-use tracing::{event, span, Level};
+use tracing::{span, Level};
 use tracing_futures::Instrument;
 pub use uplink::{UplinkActionObserver, UplinkEventObserver, WarpUplinkProfile};
 
 const AGGREGATOR_TASK: &str = "Metric aggregator task";
-const REMOVING_LANE: &str = "Lane closed, removing";
-const LANE_NOT_FOUND: &str = "Lane not found";
 const STOP_OK: &str = "Aggregator stopped normally";
 const STOP_CLOSED: &str = "Aggregator event stream unexpectedly closed";
-
-const SEND_PROFILE_FAIL: &str = "Failed to send profile";
-const SEND_PULSE_FAIL: &str = "Failed to send pulse";
 
 /// An observer for node, lane and uplinks which generates profiles based on the events for the
 /// part. These events are aggregated and forwarded to their corresponding lanes as pulses.
@@ -90,14 +81,14 @@ impl Debug for MetricAggregator {
 }
 
 pub struct AggregatorError {
-    aggregator: AggregatorKind,
+    aggregator: MetricKind,
     error: AggregatorErrorKind,
 }
 
 impl From<TokioSendError<TaggedWarpUplinkProfile>> for AggregatorError {
     fn from(_: TokioSendError<TaggedWarpUplinkProfile>) -> Self {
         AggregatorError {
-            aggregator: AggregatorKind::Uplink,
+            aggregator: MetricKind::Uplink,
             error: AggregatorErrorKind::ForwardChannelClosed,
         }
     }
@@ -110,7 +101,7 @@ impl Display for AggregatorError {
 }
 
 #[derive(Clone, Eq, PartialEq, Debug)]
-pub enum AggregatorKind {
+pub enum MetricKind {
     Node,
     Lane,
     Uplink,
@@ -143,52 +134,44 @@ impl MetricAggregator {
         agent_pulse: SupplyLane<NodePulse>,
     ) -> MetricAggregator {
         let MetricAggregatorConfig {
+            sample_rate,
             buffer_size,
             yield_after,
             backpressure_config,
-            ..
         } = config;
 
         let (node_tx, node_rx) = mpsc::channel(buffer_size.get());
-        let node_aggregator = NodeAggregatorTask::new(stop_rx.clone(), node_rx, agent_pulse);
+        let node_aggregator = NodeAggregatorTask::new(
+            stop_rx.clone(),
+            sample_rate,
+            agent_pulse,
+            ReceiverStream::new(node_rx),
+        );
 
         let (lane_tx, lane_rx) = mpsc::channel(buffer_size.get());
-        let lane_aggregator = AggregatorTask::new(
-            node_uri.clone(),
+        let lane_aggregator = AggregatorTask::<LaneStage, _>::new(
+            lane_pulse_lanes,
+            sample_rate,
             stop_rx.clone(),
-            LaneAggregatorTask::new(lane_pulse_lanes),
             ReceiverStream::new(lane_rx),
             Some(node_tx),
         );
 
-        let (uplink_tx, uplink_rx) = mpsc::channel(buffer_size.get());
-
-        let metric_stream = ReceiverStream::new(uplink_rx);
-        let (sink, bp_stream) = mpsc::channel(buffer_size.get());
-        let sink = for_mpsc_sender(sink).map_err_into::<AggregatorError>();
-
-        let release_task = metrics_release_backpressure(
-            metric_stream.take_until(stop_rx.clone()),
-            sink,
+        let (uplink_task, uplink_tx) = uplink_aggregator(
+            stop_rx.clone(),
+            sample_rate,
+            buffer_size,
+            yield_after,
             backpressure_config,
+            uplink_pulse_lanes,
+            lane_tx,
         );
-
-        let uplink_aggregator = AggregatorTask::new(
-            node_uri.clone(),
-            stop_rx,
-            UplinkAggregatorTask::new(uplink_pulse_lanes),
-            ReceiverStream::new(bp_stream),
-            Some(lane_tx),
-        );
-
-        let observer = MetricObserver::new(config, uplink_tx);
 
         let jh = async move {
-            try_join4(
+            try_join3(
                 node_aggregator.run(yield_after),
                 lane_aggregator.run(yield_after),
-                uplink_aggregator.run(yield_after),
-                release_task,
+                uplink_task,
             )
             .instrument(span!(Level::INFO, AGGREGATOR_TASK, ?node_uri))
             .await
@@ -196,7 +179,7 @@ impl MetricAggregator {
         };
 
         MetricAggregator {
-            observer,
+            observer: MetricObserver::new(config, uplink_tx),
             _aggregator_task: tokio::spawn(jh),
         }
     }
@@ -204,25 +187,6 @@ impl MetricAggregator {
     pub fn uplink_observer(&self) -> MetricObserver {
         self.observer.clone()
     }
-}
-
-async fn metrics_release_backpressure<E, Sink>(
-    messages: impl Stream<Item = TaggedWarpUplinkProfile>,
-    sink: Sink,
-    config: KeyedBackpressureConfig,
-) -> Result<(), E>
-where
-    Sink: ItemSender<TaggedWarpUplinkProfile, E>,
-{
-    release_pressure(
-        messages,
-        sink,
-        config.yield_after,
-        config.bridge_buffer_size,
-        config.cache_size,
-        config.buffer_size,
-    )
-    .await
 }
 
 #[derive(Clone, Debug)]
@@ -349,26 +313,4 @@ where
     };
 
     (pulse_lanes, tasks, ios)
-}
-
-fn try_send<P>(
-    lane: &SupplyLane<P>,
-    payload: P,
-    path: &RelativePath,
-    lanes: &mut HashMap<RelativePath, SupplyLane<P>>,
-) where
-    P: Send + Sync + 'static,
-{
-    let lane_uri = &path.lane;
-
-    match lane.try_send(payload) {
-        Ok(()) => {}
-        Err(TrySupplyError::Closed) => {
-            let _ = lanes.remove(&path);
-            event!(Level::DEBUG, ?lane_uri, REMOVING_LANE);
-        }
-        Err(TrySupplyError::Capacity) => {
-            event!(Level::DEBUG, ?lane_uri, SEND_PULSE_FAIL);
-        }
-    }
 }

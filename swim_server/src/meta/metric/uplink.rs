@@ -12,28 +12,30 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use futures::future::try_join;
 use std::cell::UnsafeCell;
-use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-
 use tokio::sync::mpsc;
 
 use swim_common::form::Form;
 use swim_common::warp::path::RelativePath;
 use tracing::{event, Level};
 
-use crate::agent::lane::model::supply::supplier::TrySupplyError;
+use crate::agent::lane::channels::uplink::backpressure::KeyedBackpressureConfig;
 use crate::agent::lane::model::supply::SupplyLane;
-use crate::meta::metric::aggregator::{Addressed, MetricAggregator};
-use crate::meta::metric::REMOVING_LANE;
-use crate::meta::metric::{try_send, AggregatorKind};
-use swim_warp::backpressure::keyed::Keyed;
+use crate::meta::metric::aggregator::{AddressedMetric, AggregatorTask, MetricStage};
+use crate::meta::metric::{AggregatorError, MetricKind};
+use futures::{Future, Stream, StreamExt};
+use std::collections::HashMap;
+use std::num::NonZeroUsize;
+use swim_common::sink::item::{for_mpsc_sender, ItemSender};
+use swim_warp::backpressure::keyed::{release_pressure, Keyed};
+use tokio_stream::wrappers::ReceiverStream;
+use utilities::sync::trigger;
 
 const SEND_PROFILE_FAIL: &str = "Failed to send uplink profile";
-const SEND_PULSE_FAIL: &str = "Failed to send uplink pulse";
-pub const MISSING_LANE: &str = "Lane does not exist";
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub struct SendError;
@@ -60,9 +62,30 @@ impl UplinkProfileSender {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct TaggedWarpUplinkProfile {
     pub path: RelativePath,
     pub profile: WarpUplinkProfile,
+}
+
+impl AddressedMetric for TaggedWarpUplinkProfile {
+    type Payload = WarpUplinkProfile;
+
+    fn split(self) -> (RelativePath, Self::Payload) {
+        let TaggedWarpUplinkProfile { path, profile } = self;
+        (path, profile)
+    }
+
+    fn tag_ref(&self) -> &RelativePath {
+        &self.path
+    }
+
+    fn tag(payload: Self::Payload, path: RelativePath) -> Self {
+        TaggedWarpUplinkProfile {
+            path,
+            profile: payload,
+        }
+    }
 }
 
 impl Keyed for TaggedWarpUplinkProfile {
@@ -70,14 +93,6 @@ impl Keyed for TaggedWarpUplinkProfile {
 
     fn key(&self) -> Self::Key {
         self.path.clone()
-    }
-}
-
-impl Addressed for TaggedWarpUplinkProfile {
-    type Tag = RelativePath;
-
-    fn address(&self) -> &Self::Tag {
-        &self.path
     }
 }
 
@@ -95,9 +110,30 @@ impl TaggedWarpUplinkProfile {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct TaggedWarpUplinkPulse {
-    pub lane_id: RelativePath,
-    pub profile: WarpUplinkPulse,
+    pub path: RelativePath,
+    pub pulse: WarpUplinkPulse,
+}
+
+impl AddressedMetric for TaggedWarpUplinkPulse {
+    type Payload = WarpUplinkPulse;
+
+    fn split(self) -> (RelativePath, Self::Payload) {
+        let TaggedWarpUplinkPulse { path, pulse } = self;
+        (path, pulse)
+    }
+
+    fn tag_ref(&self) -> &RelativePath {
+        &self.path
+    }
+
+    fn tag(payload: Self::Payload, path: RelativePath) -> Self {
+        TaggedWarpUplinkPulse {
+            path,
+            pulse: payload,
+        }
+    }
 }
 
 #[derive(Default, Form, Clone, PartialEq, Debug)]
@@ -129,6 +165,34 @@ impl From<WarpUplinkProfile> for WarpUplinkPulse {
             command_delta,
             command_rate,
             command_count,
+        }
+    }
+}
+
+impl From<TaggedWarpUplinkProfile> for TaggedWarpUplinkPulse {
+    fn from(profile: TaggedWarpUplinkProfile) -> Self {
+        let TaggedWarpUplinkProfile { path, profile } = profile;
+
+        let WarpUplinkProfile {
+            event_delta,
+            event_rate,
+            event_count,
+            command_delta,
+            command_rate,
+            command_count,
+            ..
+        } = profile;
+
+        TaggedWarpUplinkPulse {
+            path,
+            pulse: WarpUplinkPulse {
+                event_delta,
+                event_rate,
+                event_count,
+                command_delta,
+                command_rate,
+                command_count,
+            },
         }
     }
 }
@@ -257,6 +321,10 @@ impl InnerObserver {
                 event!(Level::WARN, ?lane, SEND_PROFILE_FAIL);
             }
 
+            unsafe {
+                *last_report.get() = Instant::now();
+            }
+
             sending.store(false, Ordering::Release);
         }
     }
@@ -332,37 +400,77 @@ impl UplinkActionObserver {
     }
 }
 
-pub struct UplinkAggregatorTask {
-    pulse_lanes: HashMap<RelativePath, SupplyLane<WarpUplinkPulse>>,
-}
+pub struct UplinkStage;
+impl MetricStage for UplinkStage {
+    const METRIC_KIND: MetricKind = MetricKind::Uplink;
 
-impl UplinkAggregatorTask {
-    pub fn new(pulse_lanes: HashMap<RelativePath, SupplyLane<WarpUplinkPulse>>) -> Self {
-        UplinkAggregatorTask { pulse_lanes }
+    type ProfileIn = TaggedWarpUplinkProfile;
+    type ProfileOut = TaggedWarpUplinkProfile;
+    type Pulse = WarpUplinkPulse;
+
+    fn aggregate(_old: WarpUplinkProfile, _new: WarpUplinkProfile) -> WarpUplinkProfile {
+        unimplemented!()
     }
 }
 
-impl MetricAggregator for UplinkAggregatorTask {
-    const AGGREGATOR_KIND: AggregatorKind = AggregatorKind::Uplink;
+pub fn uplink_aggregator(
+    stop_rx: trigger::Receiver,
+    sample_rate: Duration,
+    buffer_size: NonZeroUsize,
+    yield_after: NonZeroUsize,
+    backpressure_config: KeyedBackpressureConfig,
+    uplink_pulse_lanes: HashMap<RelativePath, SupplyLane<WarpUplinkPulse>>,
+    lane_tx: mpsc::Sender<TaggedWarpUplinkProfile>,
+) -> (
+    impl Future<Output = Result<(), AggregatorError>>,
+    mpsc::Sender<TaggedWarpUplinkProfile>,
+) {
+    let (uplink_tx, uplink_rx) = mpsc::channel(buffer_size.get());
 
-    type Input = TaggedWarpUplinkProfile;
-    type Output = TaggedWarpUplinkProfile;
+    let metric_stream = ReceiverStream::new(uplink_rx);
+    let (sink, bp_stream) = mpsc::channel(buffer_size.get());
+    let sink = for_mpsc_sender(sink).map_err_into::<AggregatorError>();
 
-    fn on_receive(&mut self, tagged_profile: Self::Input) -> Result<Option<Self::Input>, ()> {
-        let TaggedWarpUplinkProfile { path, profile } = tagged_profile;
-        let lane_uri = &path.lane;
+    let release_task = metrics_release_backpressure(
+        metric_stream.take_until(stop_rx.clone()),
+        sink,
+        backpressure_config,
+    );
 
-        match self.pulse_lanes.get(&path) {
-            Some(lane) => {
-                let pulse = profile.clone().into();
-                try_send(lane, pulse, &path, &mut self.pulse_lanes);
-            }
-            None => {
-                event!(Level::WARN, ?lane_uri, MISSING_LANE);
-            }
-        }
-        Ok(Some(TaggedWarpUplinkProfile { path, profile }))
-    }
+    let uplink_aggregator = AggregatorTask::<UplinkStage, _>::new(
+        uplink_pulse_lanes,
+        sample_rate,
+        stop_rx,
+        ReceiverStream::new(bp_stream),
+        Some(lane_tx),
+    );
+
+    let task = async move {
+        try_join(uplink_aggregator.run(yield_after), release_task)
+            .await
+            .map(|_| ())
+    };
+
+    (task, uplink_tx)
+}
+
+async fn metrics_release_backpressure<E, Sink>(
+    messages: impl Stream<Item = TaggedWarpUplinkProfile>,
+    sink: Sink,
+    config: KeyedBackpressureConfig,
+) -> Result<(), E>
+where
+    Sink: ItemSender<TaggedWarpUplinkProfile, E>,
+{
+    release_pressure(
+        messages,
+        sink,
+        config.yield_after,
+        config.bridge_buffer_size,
+        config.cache_size,
+        config.buffer_size,
+    )
+    .await
 }
 
 #[cfg(test)]
