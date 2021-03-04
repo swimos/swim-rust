@@ -32,81 +32,107 @@ const LANE_NOT_FOUND: &str = "Lane not found";
 const REMOVING_LANE: &str = "Lane closed, removing";
 
 pub trait AddressedMetric {
-    type Payload: Send + Sync + Clone + Default;
+    type Metric: Send + Sync + Clone + Default;
 
-    fn split(self) -> (RelativePath, Self::Payload);
+    fn unpack(self) -> (RelativePath, Self::Metric);
 
-    fn tag_ref(&self) -> &RelativePath;
+    fn path(&self) -> RelativePath;
 
-    fn tag(payload: Self::Payload, path: RelativePath) -> Self;
+    fn pack(payload: Self::Metric, path: RelativePath) -> Self;
 }
 
-type Payload<AM> = <AM as AddressedMetric>::Payload;
-
-pub trait MetricStage {
+pub trait Metric<In>: Clone {
     const METRIC_KIND: MetricKind;
 
-    type ProfileIn: AddressedMetric;
-    type ProfileOut: AddressedMetric + Clone;
-    type Pulse: From<Payload<Self::ProfileOut>> + Send + Sync + 'static;
+    type Pulse: Send + Sync + 'static;
 
-    fn aggregate(
-        old: Payload<Self::ProfileOut>,
-        new: Payload<Self::ProfileIn>,
-    ) -> Payload<Self::ProfileOut>;
+    fn accumulate(&mut self, new: In);
+
+    fn reset(&mut self);
+
+    fn as_pulse(&self) -> Self::Pulse;
 }
 
-struct Pulse<M: MetricStage> {
-    previous: M::ProfileOut,
+pub struct ProfileItem<M, In>
+where
+    In: AddressedMetric,
+    M: Metric<In::Metric>,
+{
+    last_report: Instant,
+    inner: M,
     lane: SupplyLane<M::Pulse>,
 }
 
-impl<M: MetricStage> Pulse<M> {
-    pub fn new(previous: M::ProfileOut, lane: SupplyLane<M::Pulse>) -> Pulse<M> {
-        Pulse { previous, lane }
+impl<M, In> ProfileItem<M, In>
+where
+    In: AddressedMetric,
+    M: Metric<In::Metric>,
+{
+    pub fn new(profile: M, lane: SupplyLane<M::Pulse>) -> ProfileItem<M, In> {
+        ProfileItem {
+            last_report: Instant::now(),
+            inner: profile,
+            lane,
+        }
+    }
+
+    fn report(&mut self, profile: In::Metric, sample_rate: Duration) -> Result<Option<M>, ()> {
+        let ProfileItem {
+            last_report,
+            inner,
+            lane,
+        } = self;
+
+        inner.accumulate(profile);
+
+        if last_report.elapsed() > sample_rate {
+            let pulse = inner.as_pulse();
+
+            match lane.try_send(pulse) {
+                Ok(_) | Err(TrySupplyError::Capacity) => {
+                    *last_report = Instant::now();
+                    let ret = inner.clone();
+
+                    inner.reset();
+                    Ok(Some(ret))
+                }
+                Err(TrySupplyError::Closed) => Err(()),
+            }
+        } else {
+            Ok(None)
+        }
     }
 }
 
-pub struct AggregatorTask<M, S>
+pub struct AggregatorTask<In, M, S>
 where
-    M: MetricStage,
-    S: Stream<Item = M::ProfileIn> + Unpin,
+    In: AddressedMetric,
+    S: Stream<Item = In> + Unpin,
+    M: Metric<In::Metric>,
 {
     stop_rx: trigger::Receiver,
     sample_rate: Duration,
-    last_report: Instant,
-    pulse_lanes: HashMap<RelativePath, Pulse<M>>,
+    pulse_lanes: HashMap<RelativePath, ProfileItem<M, In>>,
     input: S,
-    output: Option<mpsc::Sender<M::ProfileOut>>,
+    output: Option<mpsc::Sender<M>>,
 }
 
-impl<M, S> AggregatorTask<M, S>
+impl<In, M, S> AggregatorTask<In, M, S>
 where
-    M: MetricStage,
-    S: Stream<Item = M::ProfileIn> + Unpin,
+    In: AddressedMetric,
+    S: Stream<Item = In> + Unpin,
+    M: Metric<In::Metric>,
 {
     pub fn new(
-        pulse_lanes: HashMap<RelativePath, SupplyLane<M::Pulse>>,
+        pulse_lanes: HashMap<RelativePath, ProfileItem<M, In>>,
         sample_rate: Duration,
         stop_rx: trigger::Receiver,
         input: S,
-        output: Option<mpsc::Sender<M::ProfileOut>>,
-    ) -> AggregatorTask<M, S> {
-        let pulse_lanes = pulse_lanes
-            .into_iter()
-            .map(|(k, lane)| {
-                let key = k.clone();
-                let profile = M::ProfileOut::tag(Default::default(), k);
-                let pulse = Pulse::new(profile, lane);
-
-                (key, pulse)
-            })
-            .collect();
-
+        output: Option<mpsc::Sender<M>>,
+    ) -> AggregatorTask<In, M, S> {
         AggregatorTask {
             stop_rx,
             sample_rate,
-            last_report: Instant::now(),
             pulse_lanes,
             input,
             output,
@@ -117,7 +143,6 @@ where
         let AggregatorTask {
             stop_rx,
             sample_rate,
-            mut last_report,
             mut pulse_lanes,
             input,
             output,
@@ -130,7 +155,7 @@ where
         let yield_mod = yield_after.get();
 
         let error = loop {
-            let event: Option<M::ProfileIn> = select! {
+            let event: Option<In> = select! {
                 _ = fused_trigger => {
                     event!(Level::WARN, STOP_OK);
                     return Ok(());
@@ -143,44 +168,31 @@ where
                     break AggregatorErrorKind::AbnormalStop;
                 }
                 Some(profile) => {
-                    let (tag, payload) = profile.split();
+                    let (path, payload) = profile.unpack();
 
-                    match pulse_lanes.remove(&tag) {
-                        Some(Pulse { previous, lane }) => {
-                            // split old profile
-                            let (profile_tag, old_profile) = previous.split();
-                            // aggregate profile with old
-                            let updated_profile = M::aggregate(old_profile, payload.clone());
-                            // create pulse
-                            let pulse = M::Pulse::from(updated_profile.clone());
-                            // tag profile for forwarding
-                            let tagged_profile = M::ProfileOut::tag(updated_profile, profile_tag);
-
-                            if last_report.elapsed() > sample_rate {
-                                // send pulse
-                                if let Err(TrySupplyError::Closed) = lane.try_send(pulse) {
-                                    // the lane has already been removed
-                                    event!(Level::DEBUG, ?tag, REMOVING_LANE);
+                    let did_error = match pulse_lanes.get_mut(&path) {
+                        Some(profile) => match profile.report(payload, sample_rate) {
+                            Ok(Some(forward)) => {
+                                if let Some(channel) = &output {
+                                    if let Err(TrySendError::Closed(_)) = channel.try_send(forward)
+                                    {
+                                        break AggregatorErrorKind::ForwardChannelClosed;
+                                    }
                                 }
-
-                                last_report = Instant::now();
+                                false
                             }
-
-                            // send tagged profile
-                            if let Some(channel) = &output {
-                                if let Err(TrySendError::Closed(_)) =
-                                    channel.try_send(tagged_profile.clone())
-                                {
-                                    break AggregatorErrorKind::ForwardChannelClosed;
-                                }
-                            }
-
-                            // store tagged profile
-                            let _ = pulse_lanes.insert(tag, Pulse::new(tagged_profile, lane));
-                        }
+                            Ok(None) => false,
+                            Err(_) => true,
+                        },
                         None => {
-                            event!(Level::DEBUG, ?tag, LANE_NOT_FOUND);
+                            event!(Level::DEBUG, ?path, LANE_NOT_FOUND);
+                            false
                         }
+                    };
+
+                    if did_error {
+                        event!(Level::DEBUG, ?path, REMOVING_LANE);
+                        let _ = pulse_lanes.remove(&path);
                     }
                 }
             }

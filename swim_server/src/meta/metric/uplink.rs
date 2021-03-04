@@ -25,7 +25,7 @@ use tracing::{event, Level};
 
 use crate::agent::lane::channels::uplink::backpressure::KeyedBackpressureConfig;
 use crate::agent::lane::model::supply::SupplyLane;
-use crate::meta::metric::aggregator::{AddressedMetric, AggregatorTask, MetricStage};
+use crate::meta::metric::aggregator::{AddressedMetric, AggregatorTask, Metric, ProfileItem};
 use crate::meta::metric::{AggregatorError, MetricKind};
 use futures::{Future, Stream, StreamExt};
 use std::collections::HashMap;
@@ -69,18 +69,18 @@ pub struct TaggedWarpUplinkProfile {
 }
 
 impl AddressedMetric for TaggedWarpUplinkProfile {
-    type Payload = WarpUplinkProfile;
+    type Metric = WarpUplinkProfile;
 
-    fn split(self) -> (RelativePath, Self::Payload) {
+    fn unpack(self) -> (RelativePath, Self::Metric) {
         let TaggedWarpUplinkProfile { path, profile } = self;
         (path, profile)
     }
 
-    fn tag_ref(&self) -> &RelativePath {
-        &self.path
+    fn path(&self) -> RelativePath {
+        self.path.clone()
     }
 
-    fn tag(payload: Self::Payload, path: RelativePath) -> Self {
+    fn pack(payload: Self::Metric, path: RelativePath) -> Self {
         TaggedWarpUplinkProfile {
             path,
             profile: payload,
@@ -117,18 +117,18 @@ pub struct TaggedWarpUplinkPulse {
 }
 
 impl AddressedMetric for TaggedWarpUplinkPulse {
-    type Payload = WarpUplinkPulse;
+    type Metric = WarpUplinkPulse;
 
-    fn split(self) -> (RelativePath, Self::Payload) {
+    fn unpack(self) -> (RelativePath, Self::Metric) {
         let TaggedWarpUplinkPulse { path, pulse } = self;
         (path, pulse)
     }
 
-    fn tag_ref(&self) -> &RelativePath {
-        &self.path
+    fn path(&self) -> RelativePath {
+        self.path.clone()
     }
 
-    fn tag(payload: Self::Payload, path: RelativePath) -> Self {
+    fn pack(payload: Self::Metric, path: RelativePath) -> Self {
         TaggedWarpUplinkPulse {
             path,
             pulse: payload,
@@ -144,57 +144,6 @@ pub struct WarpUplinkPulse {
     pub command_delta: i32,
     pub command_rate: u64,
     pub command_count: u64,
-}
-
-impl From<WarpUplinkProfile> for WarpUplinkPulse {
-    fn from(profile: WarpUplinkProfile) -> Self {
-        let WarpUplinkProfile {
-            event_delta,
-            event_rate,
-            event_count,
-            command_delta,
-            command_rate,
-            command_count,
-            ..
-        } = profile;
-
-        WarpUplinkPulse {
-            event_delta,
-            event_rate,
-            event_count,
-            command_delta,
-            command_rate,
-            command_count,
-        }
-    }
-}
-
-impl From<TaggedWarpUplinkProfile> for TaggedWarpUplinkPulse {
-    fn from(profile: TaggedWarpUplinkProfile) -> Self {
-        let TaggedWarpUplinkProfile { path, profile } = profile;
-
-        let WarpUplinkProfile {
-            event_delta,
-            event_rate,
-            event_count,
-            command_delta,
-            command_rate,
-            command_count,
-            ..
-        } = profile;
-
-        TaggedWarpUplinkPulse {
-            path,
-            pulse: WarpUplinkPulse {
-                event_delta,
-                event_rate,
-                event_count,
-                command_delta,
-                command_rate,
-                command_count,
-            },
-        }
-    }
 }
 
 impl WarpUplinkPulse {
@@ -226,7 +175,9 @@ pub struct WarpUplinkProfile {
     pub command_rate: u64,
     pub command_count: u64,
     pub open_delta: i32,
+    pub open_count: u64,
     pub close_delta: i32,
+    pub close_count: u64,
 }
 
 impl WarpUplinkProfile {
@@ -238,7 +189,9 @@ impl WarpUplinkProfile {
         command_rate: u64,
         command_count: u64,
         open_delta: i32,
+        open_count: u64,
         close_delta: i32,
+        close_count: u64,
     ) -> Self {
         WarpUplinkProfile {
             event_delta,
@@ -248,7 +201,9 @@ impl WarpUplinkProfile {
             command_rate,
             command_count,
             open_delta,
+            open_count,
             close_delta,
+            close_count,
         }
     }
 }
@@ -313,7 +268,9 @@ impl InnerObserver {
                 command_rate,
                 command_count,
                 open_delta,
+                open_count: 0, //todo
                 close_delta,
+                close_count: 0,
             };
 
             if sender.try_send(profile).is_err() {
@@ -400,19 +357,6 @@ impl UplinkActionObserver {
     }
 }
 
-pub struct UplinkStage;
-impl MetricStage for UplinkStage {
-    const METRIC_KIND: MetricKind = MetricKind::Uplink;
-
-    type ProfileIn = TaggedWarpUplinkProfile;
-    type ProfileOut = TaggedWarpUplinkProfile;
-    type Pulse = WarpUplinkPulse;
-
-    fn aggregate(_old: WarpUplinkProfile, _new: WarpUplinkProfile) -> WarpUplinkProfile {
-        unimplemented!()
-    }
-}
-
 pub fn uplink_aggregator(
     stop_rx: trigger::Receiver,
     sample_rate: Duration,
@@ -437,7 +381,18 @@ pub fn uplink_aggregator(
         backpressure_config,
     );
 
-    let uplink_aggregator = AggregatorTask::<UplinkStage, _>::new(
+    let uplink_pulse_lanes = uplink_pulse_lanes
+        .into_iter()
+        .map(|(k, v)| {
+            let inner = ProfileItem::new(
+                TaggedWarpUplinkProfile::pack(WarpUplinkProfile::default(), k.clone()),
+                v,
+            );
+            (k, inner)
+        })
+        .collect();
+
+    let uplink_aggregator = AggregatorTask::new(
         uplink_pulse_lanes,
         sample_rate,
         stop_rx,
@@ -452,6 +407,23 @@ pub fn uplink_aggregator(
     };
 
     (task, uplink_tx)
+}
+
+impl Metric<WarpUplinkProfile> for TaggedWarpUplinkProfile {
+    const METRIC_KIND: MetricKind = MetricKind::Uplink;
+    type Pulse = WarpUplinkPulse;
+
+    fn accumulate(&mut self, _new: WarpUplinkProfile) {
+        unimplemented!()
+    }
+
+    fn reset(&mut self) {
+        unimplemented!()
+    }
+
+    fn as_pulse(&self) -> Self::Pulse {
+        unimplemented!()
+    }
 }
 
 async fn metrics_release_backpressure<E, Sink>(

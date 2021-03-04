@@ -41,9 +41,9 @@ use utilities::uri::RelativeUri;
 
 use crate::agent::dispatch::LaneIdentifier;
 use crate::agent::lane::model::supply::supplier::Dropping;
-use crate::meta::metric::aggregator::AggregatorTask;
+use crate::meta::metric::aggregator::{AddressedMetric, AggregatorTask, ProfileItem};
 use crate::meta::metric::config::MetricAggregatorConfig;
-use crate::meta::metric::lane::{LanePulse, LaneStage};
+use crate::meta::metric::lane::{LanePulse, TaggedLaneProfile};
 use crate::meta::metric::node::{NodeAggregatorTask, NodePulse};
 use crate::meta::metric::uplink::{
     uplink_aggregator, uplink_observer, TaggedWarpUplinkProfile, UplinkProfileSender,
@@ -126,7 +126,7 @@ impl Display for AggregatorErrorKind {
 
 impl MetricAggregator {
     pub fn new(
-        node_uri: String,
+        node_uri: RelativePath,
         stop_rx: trigger::Receiver,
         config: MetricAggregatorConfig,
         uplink_pulse_lanes: HashMap<RelativePath, SupplyLane<WarpUplinkPulse>>,
@@ -149,7 +149,18 @@ impl MetricAggregator {
         );
 
         let (lane_tx, lane_rx) = mpsc::channel(buffer_size.get());
-        let lane_aggregator = AggregatorTask::<LaneStage, _>::new(
+        let lane_pulse_lanes = lane_pulse_lanes
+            .into_iter()
+            .map(|(k, v)| {
+                let inner = ProfileItem::new(
+                    TaggedLaneProfile::pack(LaneProfile::default(), k.clone()),
+                    v,
+                );
+                (k, inner)
+            })
+            .collect();
+
+        let lane_aggregator = AggregatorTask::new(
             lane_pulse_lanes,
             sample_rate,
             stop_rx.clone(),

@@ -108,7 +108,7 @@ impl NodeAggregatorTask {
                     break AggregatorErrorKind::AbnormalStop;
                 }
                 Some(tagged) => {
-                    let (_, profile) = tagged.split();
+                    let (_, profile) = tagged.unpack();
                     pulse.accumulate(profile);
 
                     if last_report.elapsed() > sample_rate {
