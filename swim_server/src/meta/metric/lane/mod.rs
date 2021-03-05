@@ -23,16 +23,16 @@ use crate::meta::metric::{MetricKind, WarpUplinkProfile};
 pub struct LaneProfile {
     // todo: WarpDownlinkProfile aggregation
     // todo: LaneAddress
-    pub uplink_event_delta: i32,
+    pub uplink_event_delta: u32,
     pub uplink_event_rate: u64,
     pub uplink_event_count: u64,
-    pub uplink_command_delta: i32,
+    pub uplink_command_delta: u32,
     pub uplink_command_rate: u64,
     pub uplink_command_count: u64,
-    pub open_delta: i32,
-    pub open_count: u64,
-    pub close_delta: i32,
-    pub close_count: u64,
+    pub uplink_open_delta: u32,
+    pub uplink_open_count: u32,
+    pub uplink_close_delta: u32,
+    pub uplink_close_count: u32,
 }
 
 impl LaneProfile {
@@ -71,95 +71,88 @@ impl Metric<WarpUplinkProfile> for TaggedLaneProfile {
     const METRIC_KIND: MetricKind = MetricKind::Lane;
     type Pulse = LanePulse;
 
-    fn accumulate(&mut self, _new: WarpUplinkProfile) {
-        // let TaggedLaneProfile {
-        //     path,
-        //     profile:
-        //         LaneProfile {
-        //             uplink_event_delta,
-        //             uplink_event_rate,
-        //             uplink_event_count,
-        //             uplink_command_delta,
-        //             uplink_command_rate,
-        //             uplink_command_count,
-        //             open_delta,
-        //             open_count,
-        //             close_delta,
-        //             close_count,
-        //         },
-        // } = old;
-        //
-        // WarpUplinkProfile {
-        //     event_delta,
-        //     event_rate,
-        //     event_count,
-        //     command_delta,
-        //     command_rate,
-        //     command_count,
-        //     open_delta,
-        //     open_count,
-        //     close_delta,
-        //     close_count,
-        // } = new.profile;
-
-        unimplemented!()
-        // let WarpUplinkProfile {
-        //     event_delta: new_event_delta,
-        //     event_rate: new_event_rate,
-        //     event_count: new_event_count,
-        //     command_delta: new_command_delta,
-        //     command_rate: new_command_rate,
-        //     command_count: new_command_count,
-        //     open_delta: new_open_delta,
-        //     open_count: new_open_count,
-        //     close_delta: new_close_delta,
-        //     close_count: new_close_count,
-        // } = new;
-        //
-        // let LaneProfile {
-        //     uplink_event_delta,
-        //     uplink_event_rate,
-        //     uplink_event_count,
-        //     uplink_command_delta,
-        //     uplink_command_rate,
-        //     uplink_command_count,
-        //     open_delta,
-        //     open_count,
-        //     close_delta,
-        //     close_count,
-        // } = old;
-        //
-        // LaneProfile {
-        //     uplink_event_delta: uplink_event_delta + new_event_delta,
-        //     uplink_event_rate: uplink_event_rate + new_event_rate,
-        //     uplink_event_count: uplink_event_count + new_event_count,
-        //     uplink_command_delta: uplink_command_delta + new_command_delta,
-        //     uplink_command_rate: uplink_command_rate + new_command_rate,
-        //     uplink_command_count: uplink_command_count + new_command_count,
-        //     open_delta: open_delta + new_open_delta,
-        //     open_count: open_count + new_open_count,
-        //     close_delta: close_delta + new_close_delta,
-        //     close_count: close_count + new_close_count,
-        // }
-    }
-
-    fn reset(&mut self) {
+    fn accumulate(&mut self, new: WarpUplinkProfile) {
         let LaneProfile {
             uplink_event_delta,
             uplink_event_rate,
+            uplink_event_count,
             uplink_command_delta,
             uplink_command_rate,
-            open_delta,
-            close_delta,
-            ..
+            uplink_command_count,
+            uplink_open_delta,
+            uplink_open_count,
+            uplink_close_delta,
+            uplink_close_count,
         } = &mut self.profile;
+
+        let WarpUplinkProfile {
+            event_delta: new_event_delta,
+            event_rate: new_event_rate,
+            event_count: new_event_count,
+            command_delta: new_command_delta,
+            command_rate: new_command_rate,
+            command_count: new_command_count,
+            open_delta: new_open_delta,
+            open_count: new_open_count,
+            close_delta: new_close_delta,
+            close_count: new_close_count,
+        } = new;
+
+        *uplink_event_delta += new_event_delta;
+        *uplink_event_rate += new_event_rate;
+        *uplink_event_count += new_event_count;
+        *uplink_command_delta += new_command_delta;
+        *uplink_command_rate += new_command_rate;
+        *uplink_command_count += new_command_count;
+        *uplink_open_delta += new_open_delta;
+        *uplink_open_count += new_open_count;
+        *uplink_close_delta += new_close_delta;
+        *uplink_close_count += new_close_count;
+    }
+
+    fn collect(&mut self) -> TaggedLaneProfile {
+        let LaneProfile {
+            uplink_event_delta,
+            uplink_event_rate,
+            uplink_event_count,
+            uplink_command_delta,
+            uplink_command_rate,
+            uplink_command_count,
+            uplink_open_delta,
+            uplink_open_count,
+            uplink_close_delta,
+            uplink_close_count,
+        } = &mut self.profile;
+
+        *uplink_event_count += *uplink_event_delta as u64;
+        *uplink_command_count += *uplink_command_delta as u64;
+        *uplink_open_count += *uplink_open_delta;
+        *uplink_close_count += *uplink_close_delta;
+
+        let new_profile = LaneProfile {
+            uplink_event_delta: *uplink_event_delta,
+            uplink_event_rate: *uplink_event_rate,
+            uplink_event_count: *uplink_event_count,
+            uplink_command_delta: *uplink_command_delta,
+            uplink_command_rate: *uplink_command_rate,
+            uplink_command_count: *uplink_command_count,
+            uplink_open_delta: *uplink_open_delta,
+            uplink_open_count: *uplink_open_count,
+            uplink_close_delta: *uplink_close_delta,
+            uplink_close_count: *uplink_close_count,
+        };
 
         *uplink_event_delta = 0;
         *uplink_event_rate = 0;
         *uplink_command_delta = 0;
         *uplink_command_rate = 0;
-        *open_delta = 0;
-        *close_delta = 0;
+        *uplink_open_delta = 0;
+        *uplink_close_delta = 0;
+
+        TaggedLaneProfile {
+            path: self.path.clone(),
+            profile: new_profile,
+        }
     }
 
     fn as_pulse(&self) -> Self::Pulse {
@@ -189,7 +182,7 @@ impl Metric<WarpUplinkProfile> for TaggedLaneProfile {
 #[derive(Default, Form, Clone, PartialEq, Debug)]
 pub struct LanePulse {
     #[form(name = "uplinkPulse")]
-    uplink_pulse: WarpUplinkPulse,
+    pub uplink_pulse: WarpUplinkPulse,
 }
 
 #[derive(Clone, PartialEq, Debug)]

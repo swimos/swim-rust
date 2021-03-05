@@ -48,7 +48,7 @@ pub trait Metric<In>: Clone {
 
     fn accumulate(&mut self, new: In);
 
-    fn reset(&mut self);
+    fn collect(&mut self) -> Self;
 
     fn as_pulse(&self) -> Self::Pulse;
 }
@@ -91,9 +91,7 @@ where
             match lane.try_send(pulse) {
                 Ok(_) | Err(TrySupplyError::Capacity) => {
                     *last_report = Instant::now();
-                    let ret = inner.clone();
-
-                    inner.reset();
+                    let ret = inner.collect();
                     Ok(Some(ret))
                 }
                 Err(TrySupplyError::Closed) => Err(()),

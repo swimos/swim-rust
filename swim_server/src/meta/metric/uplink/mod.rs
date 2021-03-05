@@ -12,9 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[cfg(test)]
+mod tests;
+
 use futures::future::try_join;
 use std::cell::UnsafeCell;
-use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
@@ -38,7 +41,7 @@ use utilities::sync::trigger;
 const SEND_PROFILE_FAIL: &str = "Failed to send uplink profile";
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
-pub struct SendError;
+pub struct TrySendError;
 
 #[derive(Clone, Debug)]
 pub struct UplinkProfileSender {
@@ -54,15 +57,15 @@ impl UplinkProfileSender {
         UplinkProfileSender { lane_id, sender }
     }
 
-    pub fn try_send(&self, profile: WarpUplinkProfile) -> Result<(), SendError> {
+    pub fn try_send(&self, profile: WarpUplinkProfile) -> Result<(), TrySendError> {
         let UplinkProfileSender { lane_id, sender } = self;
         let tagged = TaggedWarpUplinkProfile::tag(lane_id.clone(), profile);
 
-        sender.try_send(tagged).map_err(|_| SendError)
+        sender.try_send(tagged).map_err(|_| TrySendError)
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TaggedWarpUplinkProfile {
     pub path: RelativePath,
     pub profile: WarpUplinkProfile,
@@ -138,20 +141,20 @@ impl AddressedMetric for TaggedWarpUplinkPulse {
 
 #[derive(Default, Form, Clone, PartialEq, Debug)]
 pub struct WarpUplinkPulse {
-    pub event_delta: i32,
+    pub event_delta: u32,
     pub event_rate: u64,
     pub event_count: u64,
-    pub command_delta: i32,
+    pub command_delta: u32,
     pub command_rate: u64,
     pub command_count: u64,
 }
 
 impl WarpUplinkPulse {
     pub fn new(
-        event_delta: i32,
+        event_delta: u32,
         event_rate: u64,
         event_count: u64,
-        command_delta: i32,
+        command_delta: u32,
         command_rate: u64,
         command_count: u64,
     ) -> Self {
@@ -168,30 +171,30 @@ impl WarpUplinkPulse {
 
 #[derive(Default, Form, Clone, PartialEq, Debug)]
 pub struct WarpUplinkProfile {
-    pub event_delta: i32,
+    pub event_delta: u32,
     pub event_rate: u64,
     pub event_count: u64,
-    pub command_delta: i32,
+    pub command_delta: u32,
     pub command_rate: u64,
     pub command_count: u64,
-    pub open_delta: i32,
-    pub open_count: u64,
-    pub close_delta: i32,
-    pub close_count: u64,
+    pub open_delta: u32,
+    pub open_count: u32,
+    pub close_delta: u32,
+    pub close_count: u32,
 }
 
 impl WarpUplinkProfile {
     pub fn new(
-        event_delta: i32,
+        event_delta: u32,
         event_rate: u64,
         event_count: u64,
-        command_delta: i32,
+        command_delta: u32,
         command_rate: u64,
         command_count: u64,
-        open_delta: i32,
-        open_count: u64,
-        close_delta: i32,
-        close_count: u64,
+        open_delta: u32,
+        open_count: u32,
+        close_delta: u32,
+        close_count: u32,
     ) -> Self {
         WarpUplinkProfile {
             event_delta,
@@ -208,15 +211,20 @@ impl WarpUplinkProfile {
     }
 }
 
+unsafe impl Send for InnerObserver {}
+unsafe impl Sync for InnerObserver {}
+
 #[derive(Clone)]
 pub struct InnerObserver {
     sending: Arc<AtomicBool>,
-    event_delta: Arc<AtomicI32>,
+    event_delta: Arc<AtomicU32>,
     event_count: Arc<AtomicU64>,
-    command_delta: Arc<AtomicI32>,
+    command_delta: Arc<AtomicU32>,
     command_count: Arc<AtomicU64>,
-    open_delta: Arc<AtomicI32>,
-    close_delta: Arc<AtomicI32>,
+    open_delta: Arc<AtomicU32>,
+    open_count: Arc<AtomicU32>,
+    close_delta: Arc<AtomicU32>,
+    close_count: Arc<AtomicU32>,
     last_report: Arc<UnsafeCell<Instant>>,
     report_interval: Duration,
     sender: UplinkProfileSender,
@@ -232,6 +240,8 @@ impl InnerObserver {
             command_count,
             open_delta,
             close_delta,
+            open_count,
+            close_count,
             last_report,
             report_interval,
             sender,
@@ -246,19 +256,29 @@ impl InnerObserver {
                 return;
             }
 
+            let calculate_rate = |delta: u32, dt: f64| {
+                if delta == 0 || dt == 0.0 {
+                    0
+                } else {
+                    ((delta as f64 * 1000.0) / dt).ceil() as u64
+                }
+            };
+
             let now = Instant::now();
             let dt = now.duration_since(last_reported).as_secs_f64();
 
             let event_delta = event_delta.swap(0, Ordering::Acquire);
-            let event_rate = ((event_delta * 1000) as f64 / dt).ceil() as u64;
-            let event_count = event_count.fetch_add(event_rate, Ordering::Acquire);
+            let event_rate = calculate_rate(event_delta, dt);
+            let event_count = event_count.fetch_add(event_delta as u64, Ordering::Acquire);
 
             let command_delta = command_delta.swap(0, Ordering::Acquire);
-            let command_rate = ((command_delta * 1000) as f64 / dt).ceil() as u64;
-            let command_count = command_count.fetch_add(command_rate, Ordering::Acquire);
+            let command_rate = calculate_rate(command_delta, dt);
+            let command_count = command_count.fetch_add(command_delta as u64, Ordering::Acquire);
 
-            let open_delta = open_delta.load(Ordering::Relaxed);
-            let close_delta = close_delta.load(Ordering::Relaxed);
+            let profile_open_delta = open_delta.swap(0, Ordering::Relaxed);
+            let profile_open_count = open_count.fetch_add(profile_open_delta, Ordering::Acquire);
+            let profile_close_delta = close_delta.swap(0, Ordering::Relaxed);
+            let profile_close_count = close_count.fetch_add(profile_close_delta, Ordering::Acquire);
 
             let profile = WarpUplinkProfile {
                 event_delta,
@@ -267,10 +287,10 @@ impl InnerObserver {
                 command_delta,
                 command_rate,
                 command_count,
-                open_delta,
-                open_count: 0, //todo
-                close_delta,
-                close_count: 0,
+                open_delta: profile_open_delta,
+                open_count: profile_open_count,
+                close_delta: profile_close_delta,
+                close_count: profile_close_count,
             };
 
             if sender.try_send(profile).is_err() {
@@ -293,12 +313,14 @@ pub fn uplink_observer(
 ) -> (UplinkEventObserver, UplinkActionObserver) {
     let inner = InnerObserver {
         sending: Arc::new(AtomicBool::new(false)),
-        event_delta: Arc::new(AtomicI32::new(0)),
+        event_delta: Arc::new(AtomicU32::new(0)),
         event_count: Arc::new(AtomicU64::new(0)),
-        command_delta: Arc::new(AtomicI32::new(0)),
+        command_delta: Arc::new(AtomicU32::new(0)),
         command_count: Arc::new(AtomicU64::new(0)),
-        open_delta: Arc::new(AtomicI32::new(0)),
-        close_delta: Arc::new(AtomicI32::new(0)),
+        open_delta: Arc::new(AtomicU32::new(0)),
+        open_count: Arc::new(AtomicU32::new(0)),
+        close_delta: Arc::new(AtomicU32::new(0)),
+        close_count: Arc::new(AtomicU32::new(0)),
         last_report: Arc::new(UnsafeCell::new(Instant::now())),
         report_interval,
         sender,
@@ -324,7 +346,7 @@ impl UplinkEventObserver {
 
 impl UplinkEventObserver {
     pub fn on_event(&self) {
-        let _old = self.inner.event_count.fetch_add(1, Ordering::Acquire);
+        let _old = self.inner.event_delta.fetch_add(1, Ordering::Acquire);
         self.inner.flush();
     }
 }
@@ -342,7 +364,7 @@ impl UplinkActionObserver {
 
 impl UplinkActionObserver {
     pub fn on_command(&self) {
-        let _old = self.inner.command_count.fetch_add(1, Ordering::Acquire);
+        let _old = self.inner.command_delta.fetch_add(1, Ordering::Acquire);
         self.inner.flush();
     }
 
@@ -411,18 +433,36 @@ pub fn uplink_aggregator(
 
 impl Metric<WarpUplinkProfile> for TaggedWarpUplinkProfile {
     const METRIC_KIND: MetricKind = MetricKind::Uplink;
+
     type Pulse = WarpUplinkPulse;
 
-    fn accumulate(&mut self, _new: WarpUplinkProfile) {
-        unimplemented!()
+    fn accumulate(&mut self, new: WarpUplinkProfile) {
+        self.profile = new;
     }
 
-    fn reset(&mut self) {
-        unimplemented!()
+    fn collect(&mut self) -> Self {
+        self.clone()
     }
 
     fn as_pulse(&self) -> Self::Pulse {
-        unimplemented!()
+        let WarpUplinkProfile {
+            event_delta,
+            event_rate,
+            event_count,
+            command_delta,
+            command_rate,
+            command_count,
+            ..
+        } = self.profile;
+
+        WarpUplinkPulse {
+            event_delta,
+            event_rate,
+            event_count,
+            command_delta,
+            command_rate,
+            command_count,
+        }
     }
 }
 
@@ -443,57 +483,4 @@ where
         config.buffer_size,
     )
     .await
-}
-
-#[cfg(test)]
-mod tests {
-    // use super::*;
-    // use futures::FutureExt;
-    // use tokio::sync::mpsc;
-    //
-    // #[tokio::test]
-    // async fn test_uplink_surjection() {
-    //     let path = RelativePath::new("/node", "/lane");
-    //     let (tx, mut rx) = mpsc::channel(1);
-    //     let sender = ProfileSender::new(UplinkSurjection(path.clone()), tx);
-    //     let profile = WarpUplinkProfile::default();
-    //
-    //     assert!(sender.try_send(profile.clone()).is_ok());
-    //     assert_eq!(
-    //         rx.recv().now_or_never().unwrap().unwrap(),
-    //         ObserverEvent::Uplink(path, profile)
-    //     );
-    // }
-    //
-    // #[tokio::test]
-    // async fn test_receive() {
-    //     let path = RelativePath::new("/node", "/lane");
-    //     let (tx, mut rx) = mpsc::channel(1);
-    //     let sender = ProfileSender::new(UplinkSurjection(path.clone()), tx);
-    //
-    //     let (event_observer, action_observer) = uplink_observer(Duration::from_nanos(1), sender);
-    //
-    //     event_observer
-    //         .inner
-    //         .command_count
-    //         .fetch_add(2, Ordering::Acquire);
-    //     event_observer
-    //         .inner
-    //         .event_count
-    //         .fetch_add(2, Ordering::Acquire);
-    //
-    //     event_observer.inner.flush();
-    //
-    //     let received = rx.recv().await.unwrap();
-    //
-    //     match received {
-    //         ObserverEvent::Uplink(_, profile) => {
-    //             assert_eq!(profile.event_count, 2);
-    //             assert_eq!(profile.command_count, 2);
-    //         }
-    //         _ => {
-    //             panic!("Unexpected event kind")
-    //         }
-    //     }
-    // }
 }

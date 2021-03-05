@@ -1,155 +1,94 @@
-// // Copyright 2015-2020 SWIM.AI inc.
-// //
-// // Licensed under the Apache License, Version 2.0 (the "License");
-// // you may not use this file except in compliance with the License.
-// // You may obtain a copy of the License at
-// //
-// //     http://www.apache.org/licenses/LICENSE-2.0
-// //
-// // Unless required by applicable law or agreed to in writing, software
-// // distributed under the License is distributed on an "AS IS" BASIS,
-// // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// // See the License for the specific language governing permissions and
-// // limitations under the License.
+// Copyright 2015-2020 SWIM.AI inc.
 //
-// use crate::agent::lane::model::supply::{make_lane_model, Queue};
-// use crate::agent::meta::metric::uplink::{
-//     TaggedWarpUplinkProfile, UplinkAggregatorTask, WarpUplinkProfile, WarpUplinkPulse,
-// };
-// use futures::future::join;
-// use futures::{FutureExt, StreamExt};
-// use std::collections::HashMap;
-// use std::num::NonZeroUsize;
-// use swim_common::warp::path::RelativePath;
-// use tokio::sync::mpsc;
-// use utilities::sync::trigger;
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
 //
-// #[tokio::test]
-// async fn test_queue() {
-//     let (supply_lane, mut supply_rx) = make_lane_model(Queue(NonZeroUsize::new(4).unwrap()));
+//     http://www.apache.org/licenses/LICENSE-2.0
 //
-//     let (metric_tx, metric_rx) = mpsc::channel(5);
-//     let (lane_tx, _lane_rx) = mpsc::channel(5);
-//
-//     let (trigger_tx, trigger_rx) = trigger::trigger();
-//     let ident = RelativePath::new("/node", "/lane");
-//
-//     let mut lanes = HashMap::new();
-//     lanes.insert(ident, supply_lane);
-//
-//     let task = UplinkAggregatorTask::new("/node".to_string(), trigger_rx, metric_rx, lane_tx, lanes);
-//
-//     let send_task = async move {
-//         let profile1 = WarpUplinkProfile::new(1, 1, 1, 1, 1, 1, 0, 0);
-//         let profile2 = WarpUplinkProfile::new(2, 2, 2, 2, 2, 2, 0, 0);
-//         let profile3 = WarpUplinkProfile::new(3, 3, 3, 3, 3, 3, 0, 0);
-//
-//         let profiles = vec![profile1, profile2, profile3];
-//
-//         for profile in profiles {
-//             let profile =
-//                 TaggedWarpUplinkProfile::tag(RelativePath::new("/node", "/lane"), profile);
-//             assert!(metric_tx.send(profile).await.is_ok());
-//         }
-//
-//         for i in 1..=3 {
-//             match supply_rx.next().await {
-//                 Some(pulse) => {
-//                     let expected =
-//                         WarpUplinkPulse::new(i, i as u64, i as u64, i, i as u64, i as u64);
-//                     assert_eq!(expected, pulse);
-//                 }
-//                 None => {
-//                     panic!("Expected an uplink profile")
-//                 }
-//             }
-//         }
-//
-//         match supply_rx.next().now_or_never() {
-//             Some(_) => {
-//                 panic!("Unexpected uplink profile")
-//             }
-//             None => trigger_tx.trigger(),
-//         }
-//     };
-//
-//     let (_r1, _r2) = join(task.run(NonZeroUsize::new(100).unwrap()), send_task).await;
-// }
-//
-// #[tokio::test]
-// async fn test_dropping() {
-//     let (supply_lane, mut supply_rx) = make_lane_model(Queue(NonZeroUsize::new(4).unwrap()));
-//
-//     let (metric_tx, metric_rx) = mpsc::channel(5);
-//     let (lane_tx, _lane_rx) = mpsc::channel(5);
-//
-//     let (trigger_tx, trigger_rx) = trigger::trigger();
-//     let ident = RelativePath::new("/node", "/lane");
-//
-//     let mut lanes = HashMap::new();
-//     lanes.insert(ident, supply_lane);
-//
-//     let task = UplinkAggregatorTask::new("/node".to_string(), trigger_rx, metric_rx, lane_tx, lanes);
-//
-//     let send_task = async move {
-//         for i in 0..100 {
-//             let mut profile = WarpUplinkProfile::default();
-//             profile.event_count = i;
-//             let profile =
-//                 TaggedWarpUplinkProfile::tag(RelativePath::new("/node", "/lane"), profile);
-//
-//             assert!(metric_tx.send(profile).await.is_ok());
-//         }
-//
-//         match supply_rx.next().await {
-//             Some(pulse) => {
-//                 let expected = WarpUplinkPulse {
-//                     event_count: 99,
-//                     ..Default::default()
-//                 };
-//
-//                 assert_eq!(pulse, expected);
-//                 assert!(trigger_tx.trigger());
-//             }
-//             None => {
-//                 panic!("Expected an uplink profile")
-//             }
-//         }
-//     };
-//
-//     let (_r1, _r2) = join(task.run(NonZeroUsize::new(100).unwrap()), send_task).await;
-// }
-//
-// #[tokio::test]
-// async fn test_unknown() {
-//     let (supply_lane, mut supply_rx) = make_lane_model(Queue(NonZeroUsize::new(4).unwrap()));
-//
-//     let (metric_tx, metric_rx) = mpsc::channel(5);
-//     let (lane_tx, _lane_rx) = mpsc::channel(5);
-//
-//     let (trigger_tx, trigger_rx) = trigger::trigger();
-//     let ident = RelativePath::new("/node", "/lane");
-//
-//     let mut lanes = HashMap::new();
-//     lanes.insert(ident, supply_lane);
-//
-//     let task = UplinkAggregatorTask::new("/node".to_string(), trigger_rx, metric_rx, lane_tx, lanes);
-//
-//     let send_task = async move {
-//         let tagged = TaggedWarpUplinkProfile::tag(
-//             RelativePath::new("/node", "/lane"),
-//             WarpUplinkProfile::default(),
-//         );
-//
-//         assert!(metric_tx.send(tagged).await.is_ok());
-//
-//         match supply_rx.next().now_or_never() {
-//             Some(_) => {
-//                 panic!("Unexpected uplink profile")
-//             }
-//             None => trigger_tx.trigger(),
-//         }
-//     };
-//
-//     let (_r1, _r2) = join(task.run(NonZeroUsize::new(100).unwrap()), send_task).await;
-// }
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+use crate::agent::lane::model::supply::SupplyLane;
+use crate::meta::metric::aggregator::{AddressedMetric, AggregatorTask, ProfileItem};
+use crate::meta::metric::lane::{LanePulse, TaggedLaneProfile};
+use crate::meta::metric::uplink::{TaggedWarpUplinkProfile, WarpUplinkPulse};
+use crate::meta::metric::{LaneProfile, WarpUplinkProfile};
+use std::collections::HashMap;
+use std::num::NonZeroUsize;
+use std::time::Duration;
+use swim_common::warp::path::RelativePath;
+use tokio::sync::mpsc;
+use tokio_stream::wrappers::ReceiverStream;
+use utilities::sync::trigger;
+
+#[tokio::test]
+async fn single() {
+    let (stop_tx, stop_rx) = trigger::trigger();
+    let (lane_tx, mut lane_rx) = mpsc::channel(5);
+    let lane = SupplyLane::new(Box::new(lane_tx));
+
+    let mut lane_map = HashMap::new();
+    let path = RelativePath::new("/node", "lane");
+
+    let value = ProfileItem::new(
+        TaggedLaneProfile::pack(LaneProfile::default(), path.clone()),
+        lane,
+    );
+    lane_map.insert(path.clone(), value);
+
+    let (lane_profile_tx, lane_profile_rx) = mpsc::channel(5);
+    let (node_tx, _node_rx) = mpsc::channel(5);
+
+    let lane_aggregator = AggregatorTask::new(
+        lane_map,
+        Duration::from_nanos(1),
+        stop_rx.clone(),
+        ReceiverStream::new(lane_profile_rx),
+        Some(node_tx),
+    );
+
+    let aggregator_task = tokio::spawn(lane_aggregator.run(NonZeroUsize::new(256).unwrap()));
+
+    let receive_task = async move {
+        let received = lane_rx.recv().await.expect("Expected a LanePulse");
+        let expected = LanePulse {
+            uplink_pulse: WarpUplinkPulse {
+                event_delta: 1,
+                event_rate: 2,
+                event_count: 3,
+                command_delta: 4,
+                command_rate: 5,
+                command_count: 6,
+            },
+        };
+
+        assert_eq!(received, expected);
+    };
+    let receive_task = tokio::spawn(receive_task);
+
+    let input = TaggedWarpUplinkProfile {
+        path,
+        profile: WarpUplinkProfile {
+            event_delta: 1,
+            event_rate: 2,
+            event_count: 3,
+            command_delta: 4,
+            command_rate: 5,
+            command_count: 6,
+            open_delta: 7,
+            open_count: 8,
+            close_delta: 9,
+            close_count: 10,
+        },
+    };
+
+    assert!(lane_profile_tx.send(input).await.is_ok());
+
+    assert!(receive_task.await.is_ok());
+    stop_tx.trigger();
+    assert!(aggregator_task.await.is_ok());
+}
