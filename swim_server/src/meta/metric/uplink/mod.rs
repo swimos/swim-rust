@@ -183,34 +183,6 @@ pub struct WarpUplinkProfile {
     pub close_count: u32,
 }
 
-impl WarpUplinkProfile {
-    pub fn new(
-        event_delta: u32,
-        event_rate: u64,
-        event_count: u64,
-        command_delta: u32,
-        command_rate: u64,
-        command_count: u64,
-        open_delta: u32,
-        open_count: u32,
-        close_delta: u32,
-        close_count: u32,
-    ) -> Self {
-        WarpUplinkProfile {
-            event_delta,
-            event_rate,
-            event_count,
-            command_delta,
-            command_rate,
-            command_count,
-            open_delta,
-            open_count,
-            close_delta,
-            close_count,
-        }
-    }
-}
-
 unsafe impl Send for InnerObserver {}
 unsafe impl Sync for InnerObserver {}
 
@@ -234,17 +206,9 @@ impl InnerObserver {
     fn flush(&self) {
         let InnerObserver {
             sending,
-            event_delta,
-            event_count,
-            command_delta,
-            command_count,
-            open_delta,
-            close_delta,
-            open_count,
-            close_count,
             last_report,
             report_interval,
-            sender,
+            ..
         } = self;
 
         if let Ok(false) =
@@ -256,53 +220,73 @@ impl InnerObserver {
                 return;
             }
 
-            let calculate_rate = |delta: u32, dt: f64| {
-                if delta == 0 || dt == 0.0 {
-                    0
-                } else {
-                    ((delta as f64 * 1000.0) / dt).ceil() as u64
-                }
-            };
-
-            let now = Instant::now();
-            let dt = now.duration_since(last_reported).as_secs_f64();
-
-            let event_delta = event_delta.swap(0, Ordering::Acquire);
-            let event_rate = calculate_rate(event_delta, dt);
-            let event_count = event_count.fetch_add(event_delta as u64, Ordering::Acquire);
-
-            let command_delta = command_delta.swap(0, Ordering::Acquire);
-            let command_rate = calculate_rate(command_delta, dt);
-            let command_count = command_count.fetch_add(command_delta as u64, Ordering::Acquire);
-
-            let profile_open_delta = open_delta.swap(0, Ordering::Relaxed);
-            let profile_open_count = open_count.fetch_add(profile_open_delta, Ordering::Acquire);
-            let profile_close_delta = close_delta.swap(0, Ordering::Relaxed);
-            let profile_close_count = close_count.fetch_add(profile_close_delta, Ordering::Acquire);
-
-            let profile = WarpUplinkProfile {
-                event_delta,
-                event_rate,
-                event_count,
-                command_delta,
-                command_rate,
-                command_count,
-                open_delta: profile_open_delta,
-                open_count: profile_open_count,
-                close_delta: profile_close_delta,
-                close_count: profile_close_count,
-            };
-
-            if sender.try_send(profile).is_err() {
-                let lane = &sender.lane_id;
-                event!(Level::WARN, ?lane, SEND_PROFILE_FAIL);
-            }
+            self.accumulate_and_send();
 
             unsafe {
                 *last_report.get() = Instant::now();
             }
 
             sending.store(false, Ordering::Release);
+        }
+    }
+
+    fn accumulate_and_send(&self) {
+        let InnerObserver {
+            event_delta,
+            event_count,
+            command_delta,
+            command_count,
+            open_delta,
+            close_delta,
+            open_count,
+            close_count,
+            last_report,
+            sender,
+            ..
+        } = self;
+
+        let last_reported = unsafe { *last_report.get() };
+
+        let calculate_rate = |delta: u32, dt: f64| {
+            if delta == 0 || dt == 0.0 {
+                0
+            } else {
+                ((delta as f64 * 1000.0) / dt).ceil() as u64
+            }
+        };
+
+        let now = Instant::now();
+        let dt = now.duration_since(last_reported).as_secs_f64();
+
+        let event_delta = event_delta.swap(0, Ordering::Relaxed);
+        let event_rate = calculate_rate(event_delta, dt);
+        let event_count = event_count.fetch_add(event_delta as u64, Ordering::Acquire);
+
+        let command_delta = command_delta.swap(0, Ordering::Acquire);
+        let command_rate = calculate_rate(command_delta, dt);
+        let command_count = command_count.fetch_add(command_delta as u64, Ordering::Acquire);
+
+        let profile_open_delta = open_delta.swap(0, Ordering::Relaxed);
+        let profile_open_count = open_count.fetch_add(profile_open_delta, Ordering::Acquire);
+        let profile_close_delta = close_delta.swap(0, Ordering::Relaxed);
+        let profile_close_count = close_count.fetch_add(profile_close_delta, Ordering::Acquire);
+
+        let profile = WarpUplinkProfile {
+            event_delta,
+            event_rate,
+            event_count,
+            command_delta,
+            command_rate,
+            command_count,
+            open_delta: profile_open_delta,
+            open_count: profile_open_count,
+            close_delta: profile_close_delta,
+            close_count: profile_close_count,
+        };
+
+        if sender.try_send(profile).is_err() {
+            let lane = &sender.lane_id;
+            event!(Level::DEBUG, ?lane, SEND_PROFILE_FAIL);
         }
     }
 }
@@ -377,6 +361,34 @@ impl UplinkActionObserver {
         let _old = self.inner.close_delta.fetch_add(1, Ordering::Acquire);
         self.inner.flush();
     }
+
+    #[cfg(test)]
+    pub(crate) fn set_inner_values(&self, to: u32) {
+        let InnerObserver {
+            sending,
+            event_delta,
+            event_count,
+            command_delta,
+            command_count,
+            open_delta,
+            open_count,
+            close_delta,
+            close_count,
+            last_report,
+            report_interval,
+            sender,
+        } = &*self.inner;
+
+        event_delta.store(to, Ordering::Relaxed);
+        command_delta.store(to, Ordering::Relaxed);
+        open_delta.store(to, Ordering::Relaxed);
+        close_delta.store(to, Ordering::Relaxed);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn force_flush(&self) {
+        self.inner.accumulate_and_send();
+    }
 }
 
 pub fn uplink_aggregator(
@@ -419,7 +431,7 @@ pub fn uplink_aggregator(
         sample_rate,
         stop_rx,
         ReceiverStream::new(bp_stream),
-        Some(lane_tx),
+        lane_tx,
     );
 
     let task = async move {

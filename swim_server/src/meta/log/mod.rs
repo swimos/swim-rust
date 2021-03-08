@@ -131,16 +131,11 @@ pub struct LogEntry {
     /// The node URI that produced this entry.
     node: RelativeUri,
     /// The lane URI that produced this entry.
-    lane: String,
+    lane: Option<String>,
 }
 
 impl LogEntry {
-    pub fn make<F>(
-        message: F,
-        level: LogLevel,
-        node: RelativeUri,
-        lane: impl Into<String>,
-    ) -> LogEntry
+    pub fn make<F>(message: F, level: LogLevel, node: RelativeUri, lane: Option<String>) -> LogEntry
     where
         F: Form,
     {
@@ -149,7 +144,7 @@ impl LogEntry {
             message: message.into_value(),
             level,
             node,
-            lane: lane.into(),
+            lane,
         }
     }
 }
@@ -223,7 +218,7 @@ impl NodeLogger {
     pub fn log<F: Form>(&self, entry: F, level: LogLevel) {
         let NodeLogger { node_uri, .. } = self;
 
-        let entry = LogEntry::make(entry, level, node_uri.clone(), level.uri_ref());
+        let entry = LogEntry::make(entry, level, node_uri.clone(), None);
         self.log_entry(entry);
     }
 

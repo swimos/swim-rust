@@ -12,35 +12,30 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[cfg(test)]
+mod tests;
+
 mod aggregator;
 pub mod config;
 mod lane;
 mod node;
+pub mod pulse;
 mod uplink;
-
-#[cfg(test)]
-mod tests;
 
 use std::collections::HashMap;
 
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
-use tokio::task::JoinHandle;
 
 use swim_common::warp::path::RelativePath;
 use utilities::sync::trigger;
 
-use crate::agent::context::AgentExecutionContext;
 use crate::agent::lane::model::supply::SupplyLane;
-use crate::agent::LaneIo;
-use crate::agent::LaneTasks;
-use crate::agent::{make_supply_lane, AgentContext, DynamicLaneTasks, SwimAgent};
 use pin_utils::core_reexport::fmt::Formatter;
 use std::fmt::{Debug, Display};
 use utilities::uri::RelativeUri;
 
-use crate::agent::dispatch::LaneIdentifier;
-use crate::agent::lane::model::supply::supplier::Dropping;
+use crate::meta::log::{LogEntry, LogLevel, NodeLogger};
 use crate::meta::metric::aggregator::{AddressedMetric, AggregatorTask, ProfileItem};
 use crate::meta::metric::config::MetricAggregatorConfig;
 use crate::meta::metric::lane::{LanePulse, TaggedLaneProfile};
@@ -49,12 +44,11 @@ use crate::meta::metric::uplink::{
     uplink_aggregator, uplink_observer, TaggedWarpUplinkProfile, UplinkProfileSender,
     WarpUplinkPulse,
 };
-use crate::meta::{IdentifiedAgentIo, LaneAddressedKind, MetaNodeAddressed};
 use futures::future::try_join3;
+use futures::Future;
 pub use lane::LaneProfile;
 pub use node::NodeProfile;
-use std::any::Any;
-use swim_common::form::Form;
+use std::time::Duration;
 use tokio::sync::mpsc::error::SendError as TokioSendError;
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{span, Level};
@@ -64,15 +58,16 @@ pub use uplink::{UplinkActionObserver, UplinkEventObserver, WarpUplinkProfile};
 const AGGREGATOR_TASK: &str = "Metric aggregator task";
 const STOP_OK: &str = "Aggregator stopped normally";
 const STOP_CLOSED: &str = "Aggregator event stream unexpectedly closed";
+const LOG_ERROR_MSG: &str = "Node aggregator failed";
+const LOG_TASK_FINISHED_MSG: &str = "Node aggregator task completed";
 
 /// An observer for node, lane and uplinks which generates profiles based on the events for the
 /// part. These events are aggregated and forwarded to their corresponding lanes as pulses.
-pub struct MetricAggregator {
+pub struct NodeMetricAggregator {
     observer: MetricObserver,
-    _aggregator_task: JoinHandle<Result<(), AggregatorError>>,
 }
 
-impl Debug for MetricAggregator {
+impl Debug for NodeMetricAggregator {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("MetricAggregator")
             .field("observer", &self.observer)
@@ -80,6 +75,7 @@ impl Debug for MetricAggregator {
     }
 }
 
+#[derive(Debug, PartialEq, Clone)]
 pub struct AggregatorError {
     aggregator: MetricKind,
     error: AggregatorErrorKind,
@@ -95,8 +91,9 @@ impl From<TokioSendError<TaggedWarpUplinkProfile>> for AggregatorError {
 }
 
 impl Display for AggregatorError {
-    fn fmt(&self, _f: &mut Formatter<'_>) -> std::fmt::Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let AggregatorError { aggregator, error } = self;
+        write!(f, "{} aggregator errored with: {}", aggregator, error)
     }
 }
 
@@ -105,6 +102,12 @@ pub enum MetricKind {
     Node,
     Lane,
     Uplink,
+}
+
+impl Display for MetricKind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
 }
 
 #[derive(Clone, Eq, PartialEq, Debug)]
@@ -116,23 +119,29 @@ pub enum AggregatorErrorKind {
 impl Display for AggregatorErrorKind {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            AggregatorErrorKind::AbnormalStop => write!(f, "Collected stopped abnormally"),
             AggregatorErrorKind::ForwardChannelClosed => {
                 write!(f, "Aggregator's forward channel closed")
+            }
+            AggregatorErrorKind::AbnormalStop => {
+                write!(f, "Aggregator's input stream closed unexpectedly")
             }
         }
     }
 }
 
-impl MetricAggregator {
+impl NodeMetricAggregator {
     pub fn new(
-        node_uri: RelativePath,
+        node_uri: RelativeUri,
         stop_rx: trigger::Receiver,
         config: MetricAggregatorConfig,
         uplink_pulse_lanes: HashMap<RelativePath, SupplyLane<WarpUplinkPulse>>,
         lane_pulse_lanes: HashMap<RelativePath, SupplyLane<LanePulse>>,
         agent_pulse: SupplyLane<NodePulse>,
-    ) -> MetricAggregator {
+        log_context: NodeLogger,
+    ) -> (
+        NodeMetricAggregator,
+        impl Future<Output = Result<(), AggregatorError>>,
+    ) {
         let MetricAggregatorConfig {
             sample_rate,
             buffer_size,
@@ -165,11 +174,11 @@ impl MetricAggregator {
             sample_rate,
             stop_rx.clone(),
             ReceiverStream::new(lane_rx),
-            Some(node_tx),
+            node_tx,
         );
 
         let (uplink_task, uplink_tx) = uplink_aggregator(
-            stop_rx.clone(),
+            stop_rx,
             sample_rate,
             buffer_size,
             yield_after,
@@ -178,150 +187,77 @@ impl MetricAggregator {
             lane_tx,
         );
 
-        let jh = async move {
-            try_join3(
+        let task_node_uri = node_uri.clone();
+
+        let task = async move {
+            let result = try_join3(
                 node_aggregator.run(yield_after),
                 lane_aggregator.run(yield_after),
                 uplink_task,
             )
-            .instrument(span!(Level::INFO, AGGREGATOR_TASK, ?node_uri))
+            .instrument(span!(Level::DEBUG, AGGREGATOR_TASK, ?task_node_uri))
             .await
-            .map(|_| ())
+            .map(|_| ());
+
+            let entry = match &result {
+                Ok(()) => LogEntry::make(
+                    LOG_TASK_FINISHED_MSG.to_string(),
+                    LogLevel::Debug,
+                    task_node_uri,
+                    None,
+                ),
+                Err(e) => {
+                    let message = format!("{}: {}", LOG_ERROR_MSG, e);
+                    LogEntry::make(message, LogLevel::Error, task_node_uri, None)
+                }
+            };
+
+            log_context.log_entry(entry);
+
+            result
         };
 
-        MetricAggregator {
-            observer: MetricObserver::new(config, uplink_tx),
-            _aggregator_task: tokio::spawn(jh),
-        }
+        let metrics = NodeMetricAggregator {
+            observer: MetricObserver::new(config.sample_rate, node_uri, uplink_tx),
+        };
+        (metrics, task)
     }
 
-    pub fn uplink_observer(&self) -> MetricObserver {
+    pub fn observer(&self) -> MetricObserver {
         self.observer.clone()
     }
 }
 
 #[derive(Clone, Debug)]
 pub struct MetricObserver {
-    config: MetricAggregatorConfig,
+    sample_rate: Duration,
+    node_uri: String,
     metric_tx: Sender<TaggedWarpUplinkProfile>,
 }
 
 impl MetricObserver {
     pub fn new(
-        config: MetricAggregatorConfig,
+        sample_rate: Duration,
+        node_uri: RelativeUri,
         metric_tx: Sender<TaggedWarpUplinkProfile>,
     ) -> MetricObserver {
-        MetricObserver { config, metric_tx }
+        MetricObserver {
+            sample_rate,
+            node_uri: node_uri.to_string(),
+            metric_tx,
+        }
     }
 
     /// Returns a new `UplinkObserver` for the provided `address`.
-    pub fn uplink_observer(
-        &self,
-        address: RelativePath,
-    ) -> (UplinkEventObserver, UplinkActionObserver) {
-        let MetricObserver { config, metric_tx } = self;
-        let profile_sender = UplinkProfileSender::new(address, metric_tx.clone());
+    pub fn uplink_observer(&self, lane_uri: String) -> (UplinkEventObserver, UplinkActionObserver) {
+        let MetricObserver {
+            sample_rate,
+            node_uri,
+            metric_tx,
+        } = self;
+        let profile_sender =
+            UplinkProfileSender::new(RelativePath::new(node_uri, lane_uri), metric_tx.clone());
 
-        uplink_observer(config.sample_rate, profile_sender)
+        uplink_observer(*sample_rate, profile_sender)
     }
-}
-
-type PulseLaneOpenResult<Agent, Context> = (
-    PulseLanes,
-    DynamicLaneTasks<Agent, Context>,
-    IdentifiedAgentIo<Context>,
-);
-
-pub struct PulseLanes {
-    pub uplinks: HashMap<RelativePath, SupplyLane<WarpUplinkPulse>>,
-    pub lanes: HashMap<RelativePath, SupplyLane<LanePulse>>,
-    pub node: SupplyLane<NodePulse>,
-}
-
-pub fn make_pulse_lane<Config, Agent, Context, V>(
-    lane_uri: String,
-) -> (
-    SupplyLane<V>,
-    Box<dyn LaneTasks<Agent, Context>>,
-    Box<dyn LaneIo<Context>>,
-)
-where
-    Agent: SwimAgent<Config> + 'static,
-    Context: AgentContext<Agent> + AgentExecutionContext + Send + Sync + 'static,
-    V: Any + Clone + Send + Sync + Form + Debug + Unpin,
-{
-    let (lane, task, io) = make_supply_lane(lane_uri, true, Dropping);
-    (
-        lane,
-        task.boxed(),
-        io.expect("Lane returned private IO").boxed(),
-    )
-}
-
-pub fn open_pulse_lanes<Config, Agent, Context>(
-    node_uri: RelativeUri,
-    agent_lanes: &[&String],
-) -> PulseLaneOpenResult<Agent, Context>
-where
-    Agent: SwimAgent<Config> + 'static,
-    Context: AgentContext<Agent> + AgentExecutionContext + Send + Sync + 'static,
-{
-    let len = agent_lanes.len() * 2;
-    let mut tasks = Vec::with_capacity(len);
-    let mut ios = HashMap::with_capacity(len);
-
-    let mut uplinks = HashMap::new();
-    let mut lanes = HashMap::new();
-
-    // open uplink pulse lanes
-    agent_lanes.iter().for_each(|lane_uri| {
-        let (lane, task, io) =
-            make_pulse_lane::<Config, Agent, Context, WarpUplinkPulse>(lane_uri.to_string());
-
-        uplinks.insert(
-            RelativePath::new(node_uri.to_string(), lane_uri.to_string()),
-            lane,
-        );
-        tasks.push(task);
-        ios.insert(
-            LaneIdentifier::Meta(MetaNodeAddressed::UplinkProfile {
-                lane_uri: lane_uri.to_string().into(),
-            }),
-            io,
-        );
-    });
-
-    // open lane pulse lanes
-    agent_lanes.iter().for_each(|lane_uri| {
-        let (lane, task, io) =
-            make_pulse_lane::<Config, Agent, Context, LanePulse>(lane_uri.to_string());
-
-        lanes.insert(
-            RelativePath::new(node_uri.to_string(), lane_uri.to_string()),
-            lane,
-        );
-        tasks.push(task);
-        ios.insert(
-            LaneIdentifier::Meta(MetaNodeAddressed::LaneAddressed {
-                lane_uri: lane_uri.to_string().into(),
-                kind: LaneAddressedKind::Pulse,
-            }),
-            io,
-        );
-    });
-
-    // open node pulse lane
-    let (node_lane, task, io) =
-        make_pulse_lane::<Config, Agent, Context, NodePulse>("".to_string());
-
-    tasks.push(task);
-    ios.insert(LaneIdentifier::Meta(MetaNodeAddressed::NodeProfile), io);
-
-    let pulse_lanes = PulseLanes {
-        uplinks,
-        lanes,
-        node: node_lane,
-    };
-
-    (pulse_lanes, tasks, ios)
 }

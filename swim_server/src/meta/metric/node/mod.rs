@@ -109,7 +109,7 @@ impl NodeAggregatorTask {
                 }
                 Some(tagged) => {
                     let (_, profile) = tagged.unpack();
-                    pulse.accumulate(profile);
+                    // pulse.accumulate(profile);
 
                     if last_report.elapsed() > sample_rate {
                         if let Err(TrySupplyError::Closed) = lane.try_send(pulse.clone()) {

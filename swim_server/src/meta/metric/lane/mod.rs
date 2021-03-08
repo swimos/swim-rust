@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[cfg(test)]
+mod tests;
+
 use swim_common::form::Form;
 use swim_common::warp::path::RelativePath;
 
@@ -35,13 +38,7 @@ pub struct LaneProfile {
     pub uplink_close_count: u32,
 }
 
-impl LaneProfile {
-    pub fn accumulate(&mut self, _profile: &WarpUplinkProfile) {
-        unimplemented!()
-    }
-}
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TaggedLaneProfile {
     pub path: RelativePath,
     pub profile: LaneProfile,
@@ -69,6 +66,7 @@ impl AddressedMetric for TaggedLaneProfile {
 
 impl Metric<WarpUplinkProfile> for TaggedLaneProfile {
     const METRIC_KIND: MetricKind = MetricKind::Lane;
+
     type Pulse = LanePulse;
 
     fn accumulate(&mut self, new: WarpUplinkProfile) {
@@ -123,11 +121,6 @@ impl Metric<WarpUplinkProfile> for TaggedLaneProfile {
             uplink_close_delta,
             uplink_close_count,
         } = &mut self.profile;
-
-        *uplink_event_count += *uplink_event_delta as u64;
-        *uplink_command_count += *uplink_command_delta as u64;
-        *uplink_open_count += *uplink_open_delta;
-        *uplink_close_count += *uplink_close_delta;
 
         let new_profile = LaneProfile {
             uplink_event_delta: *uplink_event_delta,

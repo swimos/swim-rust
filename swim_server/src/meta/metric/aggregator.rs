@@ -58,6 +58,7 @@ where
     In: AddressedMetric,
     M: Metric<In::Metric>,
 {
+    requires_flush: bool,
     last_report: Instant,
     inner: M,
     lane: SupplyLane<M::Pulse>,
@@ -70,10 +71,35 @@ where
 {
     pub fn new(profile: M, lane: SupplyLane<M::Pulse>) -> ProfileItem<M, In> {
         ProfileItem {
+            requires_flush: false,
             last_report: Instant::now(),
             inner: profile,
             lane,
         }
+    }
+
+    fn flush_profile(&mut self, profile: In::Metric) -> M {
+        let ProfileItem {
+            inner,
+            lane,
+            requires_flush,
+            ..
+        } = self;
+
+        *requires_flush = false;
+        inner.accumulate(profile);
+
+        let pulse = inner.as_pulse();
+        let _ = lane.try_send(pulse);
+
+        inner.collect()
+    }
+
+    fn flush_pulse(&self) {
+        let ProfileItem { inner, lane, .. } = self;
+
+        let pulse = inner.as_pulse();
+        let _ = lane.try_send(pulse);
     }
 
     fn report(&mut self, profile: In::Metric, sample_rate: Duration) -> Result<Option<M>, ()> {
@@ -81,6 +107,7 @@ where
             last_report,
             inner,
             lane,
+            requires_flush,
         } = self;
 
         inner.accumulate(profile);
@@ -91,12 +118,16 @@ where
             match lane.try_send(pulse) {
                 Ok(_) | Err(TrySupplyError::Capacity) => {
                     *last_report = Instant::now();
+
                     let ret = inner.collect();
+                    *requires_flush = false;
+
                     Ok(Some(ret))
                 }
                 Err(TrySupplyError::Closed) => Err(()),
             }
         } else {
+            *requires_flush = true;
             Ok(None)
         }
     }
@@ -112,7 +143,7 @@ where
     sample_rate: Duration,
     pulse_lanes: HashMap<RelativePath, ProfileItem<M, In>>,
     input: S,
-    output: Option<mpsc::Sender<M>>,
+    output: mpsc::Sender<M>,
 }
 
 impl<In, M, S> AggregatorTask<In, M, S>
@@ -126,7 +157,7 @@ where
         sample_rate: Duration,
         stop_rx: trigger::Receiver,
         input: S,
-        output: Option<mpsc::Sender<M>>,
+        output: mpsc::Sender<M>,
     ) -> AggregatorTask<In, M, S> {
         AggregatorTask {
             stop_rx,
@@ -156,6 +187,9 @@ where
             let event: Option<In> = select! {
                 _ = fused_trigger => {
                     event!(Level::WARN, STOP_OK);
+
+                    drain(&mut fused_metric_rx, &mut pulse_lanes, &output);
+
                     return Ok(());
                 },
                 metric = fused_metric_rx.next() => metric,
@@ -170,12 +204,9 @@ where
 
                     let did_error = match pulse_lanes.get_mut(&path) {
                         Some(profile) => match profile.report(payload, sample_rate) {
-                            Ok(Some(forward)) => {
-                                if let Some(channel) = &output {
-                                    if let Err(TrySendError::Closed(_)) = channel.try_send(forward)
-                                    {
-                                        break AggregatorErrorKind::ForwardChannelClosed;
-                                    }
+                            Ok(Some(pulse)) => {
+                                if let Err(TrySendError::Closed(_)) = output.try_send(pulse) {
+                                    break AggregatorErrorKind::ForwardChannelClosed;
                                 }
                                 false
                             }
@@ -208,4 +239,30 @@ where
             error,
         });
     }
+}
+
+fn drain<In, M, S>(
+    stream: &mut S,
+    pulse_lanes: &mut HashMap<RelativePath, ProfileItem<M, In>>,
+    output: &mpsc::Sender<M>,
+) where
+    In: AddressedMetric,
+    S: Stream<Item = In> + Unpin,
+    M: Metric<In::Metric>,
+{
+    while let Some(profile) = stream.next().now_or_never().flatten() {
+        let (path, payload) = profile.unpack();
+
+        if let Some(item) = pulse_lanes.get_mut(&path) {
+            let pulse = item.flush_profile(payload);
+            let _ = output.try_send(pulse);
+        }
+    }
+
+    pulse_lanes
+        .iter()
+        .filter(|(_k, v)| v.requires_flush)
+        .for_each(|(_k, item)| {
+            item.flush_pulse();
+        });
 }
