@@ -1,4 +1,4 @@
-// Copyright 2015-2020 SWIM.AI inc.
+// Copyright 2015-2021 SWIM.AI inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@ use crate::routing::{
     ResolutionError,
 };
 use std::io::ErrorKind;
+use std::time::Duration;
 
 #[test]
 fn connection_error_display() {
@@ -49,4 +50,10 @@ fn connection_error_display() {
 
     let string = ConnectionError::Closed(CloseError::new(CloseErrorKind::Normal, None)).to_string();
     assert_eq!(string, "The connection has been closed.");
+
+    let string = ConnectionError::WriteTimeout(Duration::from_secs(5)).to_string();
+    assert_eq!(
+        string,
+        "Writing to the connection failed to complete within 5s."
+    )
 }

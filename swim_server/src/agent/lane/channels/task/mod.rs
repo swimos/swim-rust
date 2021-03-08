@@ -1,4 +1,4 @@
-// Copyright 2015-2020 SWIM.AI inc.
+// Copyright 2015-2021 SWIM.AI inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -764,7 +764,9 @@ where
                             on_command_handler.on_command(maybe_command, addr).await
                         }
                         None => {
-                            break false;
+                            let maybe_command =
+                                Cmd::try_convert(Value::Extant).map(|cmd| (addr, cmd));
+                            on_command_handler.on_command(maybe_command, addr).await
                         }
                     },
                 };

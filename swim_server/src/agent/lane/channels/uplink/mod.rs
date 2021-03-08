@@ -1,4 +1,4 @@
-// Copyright 2015-2020 SWIM.AI inc.
+// Copyright 2015-2021 SWIM.AI inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -38,7 +38,7 @@ use swim_common::routing::SendError;
 use swim_common::sink::item::{FnMutSender, ItemSender};
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
-use swim_warp::backpressure::map::MapUpdateMessage;
+use swim_warp::backpressure::keyed::map::MapUpdateMessage;
 use swim_warp::model::map::MapUpdate;
 use tracing::{event, Level};
 use utilities::errors::Recoverable;
@@ -151,7 +151,10 @@ pub enum UplinkError {
 }
 
 fn trans_err_fatal(err: &TransactionError) -> bool {
-    matches!(err, TransactionError::HighContention { .. } | TransactionError::TooManyAttempts { .. } )
+    matches!(
+        err,
+        TransactionError::HighContention { .. } | TransactionError::TooManyAttempts { .. }
+    )
 }
 
 impl Recoverable for UplinkError {
@@ -326,12 +329,13 @@ where
                     .await;
                 }
             }
-            UplinkPhase::Running(simple_state, actions, updates) => {
+            UplinkPhase::Running(simple_state, actions, updates) => loop {
                 let next: Either<Option<UplinkAction>, Option<Updates::Item>> = select_biased! {
                     action = actions.next() => Either::Left(action),
                     update = updates.next() => Either::Right(update),
                 };
-                match next {
+
+                break match next {
                     Either::Left(action) => {
                         handle_action_alt(smr, simple_state, updates, actions, action).await
                     }
@@ -343,13 +347,11 @@ where
                         Err(e) => {
                             Some((Err(e), UplinkPhase::Running(simple_state, actions, updates)))
                         }
-                        _ => {
-                            panic!("No message.")
-                        }
+                        _ => continue,
                     },
                     _ => None,
-                }
-            }
+                };
+            },
             UplinkPhase::Syncing(actions, mut sync_stream) => {
                 let item_and_state = match sync_stream.next().await {
                     Some(PeelResult::Output(event)) => match event {

@@ -1,4 +1,4 @@
-// Copyright 2015-2020 SWIM.AI inc.
+// Copyright 2015-2021 SWIM.AI inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,10 +13,10 @@
 // limitations under the License.
 
 use crate::lanes::derive_lane;
+use crate::utils::parse_callback;
 use crate::utils::{
     get_task_struct_name, validate_input_ast, CallbackKind, InputAstType, LaneTasksImpl,
 };
-use crate::utils::{parse_callback, Callback};
 use darling::FromMeta;
 use macro_helpers::{has_fields, string_to_ident};
 use proc_macro::TokenStream;
@@ -78,10 +78,7 @@ pub fn derive_action_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput)
     )
 }
 
-pub fn derive_events_body(on_command: &Callback) -> proc_macro2::TokenStream {
-    let task_name = &on_command.task_name;
-    let on_action_func = &on_command.func_name;
-
+pub fn derive_events_body(task_name: &Ident, on_action_func: &Ident) -> proc_macro2::TokenStream {
     quote!(
         let #task_name {
             lifecycle,

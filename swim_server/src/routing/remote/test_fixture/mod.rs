@@ -1,4 +1,4 @@
-// Copyright 2015-2020 SWIM.AI inc.
+// Copyright 2015-2021 SWIM.AI inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -124,6 +124,21 @@ impl LocalRoutes {
         uri: RelativeUri,
         countdown: u8,
     ) -> mpsc::Receiver<TaggedEnvelope> {
+        let (tx, rx) = mpsc::channel(8);
+        self.add_sender_with_countdown(uri, tx, countdown);
+        rx
+    }
+
+    pub fn add_sender(&self, uri: RelativeUri, tx: mpsc::Sender<TaggedEnvelope>) {
+        self.add_sender_with_countdown(uri, tx, 0);
+    }
+
+    fn add_sender_with_countdown(
+        &self,
+        uri: RelativeUri,
+        tx: mpsc::Sender<TaggedEnvelope>,
+        countdown: u8,
+    ) {
         let LocalRoutes(owner_addr, inner) = self;
         let LocalRoutesInner {
             routes,
@@ -136,7 +151,6 @@ impl LocalRoutes {
             let id = RoutingAddr::local(*counter);
             *counter += 1;
             uri_mappings.insert(uri, (id, countdown));
-            let (tx, rx) = mpsc::channel(8);
             let (drop_tx, drop_rx) = promise::promise();
             let route = Route::new(TaggedSender::new(*owner_addr, tx), drop_rx);
             routes.insert(
@@ -147,7 +161,6 @@ impl LocalRoutes {
                     countdown,
                 },
             );
-            rx
         }
     }
 

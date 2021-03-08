@@ -1,4 +1,4 @@
-// Copyright 2015-2020 SWIM.AI inc.
+// Copyright 2015-2021 SWIM.AI inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ use futures::FutureExt;
 use std::fmt::{Display, Formatter};
 use std::time::Duration;
 use swim_common::request::Request;
+use swim_common::routing::ws::WsMessage;
 use swim_common::routing::RoutingError;
 use swim_common::routing::SendError;
 use swim_common::routing::{ConnectionError, ResolutionError};
@@ -212,6 +213,13 @@ impl Display for RoutingAddr {
 /// An [`Envelope`] tagged with the key of the endpoint into routing table from which it originated.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TaggedEnvelope(pub RoutingAddr, pub Envelope);
+
+impl From<TaggedEnvelope> for WsMessage {
+    fn from(env: TaggedEnvelope) -> Self {
+        let TaggedEnvelope(_, envelope) = env;
+        envelope.into()
+    }
+}
 
 /// An [`OutgoingLinkMessage`] tagged with the key of the endpoint into routing table from which it
 /// originated.

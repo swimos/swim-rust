@@ -1,4 +1,4 @@
-// Copyright 2015-2020 SWIM.AI inc.
+// Copyright 2015-2021 SWIM.AI inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -71,7 +71,7 @@ where
     ) -> BoxFuture<'static, Result<(), UpdateError>>
     where
         Messages: Stream<Item = Result<(RoutingAddr, Self::Msg), Err>> + Send + 'static,
-        Err: Send,
+        Err: Send + Debug,
         UpdateError: From<Err>,
     {
         async move {
@@ -115,7 +115,7 @@ where
                                 }
                             }
                             Some(Either::Right(Err(e))) => {
-                                break Err(e.into());
+                                event!(Level::ERROR, ?e);
                             }
                             _ => {
                                 break Ok(());

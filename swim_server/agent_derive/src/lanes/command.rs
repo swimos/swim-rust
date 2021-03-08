@@ -1,4 +1,4 @@
-// Copyright 2015-2020 SWIM.AI inc.
+// Copyright 2015-2021 SWIM.AI inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::utils::{
-    get_task_struct_name, parse_callback, validate_input_ast, Callback, CallbackKind, InputAstType,
+    get_task_struct_name, parse_callback, validate_input_ast, CallbackKind, InputAstType,
     LaneTasksImpl,
 };
 use darling::FromMeta;
@@ -77,10 +77,7 @@ pub fn derive_command_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput
     )
 }
 
-pub fn derive_events_body(on_command: &Callback) -> proc_macro2::TokenStream {
-    let task_name = &on_command.task_name;
-    let on_command_func = &on_command.func_name;
-
+pub fn derive_events_body(task_name: &Ident, on_command_func: &Ident) -> proc_macro2::TokenStream {
     quote!(
         let #task_name {
             lifecycle,
@@ -102,6 +99,30 @@ pub fn derive_events_body(on_command: &Callback) -> proc_macro2::TokenStream {
                 lifecycle.#on_command_func(&command, &model, &context),
                 tracing::span!(tracing::Level::TRACE, swim_server::agent::ON_COMMAND)
             ).await;
+
+            if let Some(tx) = responder {
+                if tx.send(command).is_err() {
+                    tracing::event!(tracing::Level::WARN, response_ingored = swim_server::agent::RESPONSE_IGNORED);
+                }
+            }
+        }
+    )
+}
+
+pub fn default_events_body(task_name: &Ident) -> proc_macro2::TokenStream {
+    quote!(
+        let #task_name {
+            event_stream,
+            ..
+        } = *self;
+
+        let mut events = event_stream.take_until(context.agent_stop_event());
+        let mut events = unsafe { Pin::new_unchecked(&mut events) };
+
+        while let Some(event) = events.next().await {
+            let (command, responder) = event.destruct();
+
+            tracing::event!(tracing::Level::TRACE, commanded = swim_server::agent::COMMANDED, ?command);
 
             if let Some(tx) = responder {
                 if tx.send(command).is_err() {

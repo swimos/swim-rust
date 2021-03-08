@@ -1,4 +1,4 @@
-// Copyright 2015-2020 SWIM.AI inc.
+// Copyright 2015-2021 SWIM.AI inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -137,4 +137,52 @@ fn relative_uri_equality() {
     assert_eq!(relative, string);
     assert_eq!(relative, string.to_string());
     assert_eq!(relative, uri);
+}
+
+#[test]
+fn segment_iter_encoded() {
+    let uri = RelativeUri::from_str("/swim:meta:node/unit%2Ffoo/lane/bar").unwrap();
+    let mut iter = uri.path_iter();
+
+    assert_eq!(iter.next(), Some("swim:meta:node"));
+    assert_eq!(iter.next(), Some("unit%2Ffoo"));
+    assert_eq!(iter.next(), Some("lane"));
+    assert_eq!(iter.next(), Some("bar"));
+    assert_eq!(iter.next(), None);
+}
+
+#[test]
+fn segment_iter() {
+    let uri = RelativeUri::from_str("/swim/meta/node/lane/bar").unwrap();
+    let mut iter = uri.path_iter();
+
+    assert_eq!(iter.next(), Some("swim"));
+    assert_eq!(iter.next(), Some("meta"));
+    assert_eq!(iter.next(), Some("node"));
+    assert_eq!(iter.next(), Some("lane"));
+    assert_eq!(iter.next(), Some("bar"));
+    assert_eq!(iter.next(), None);
+}
+
+#[test]
+fn segment_iter_trailing() {
+    let uri = RelativeUri::from_str("/swim/meta/").unwrap();
+    let mut iter = uri.path_iter();
+
+    assert_eq!(iter.next(), Some("swim"));
+    assert_eq!(iter.next(), Some("meta"));
+    assert_eq!(iter.next(), None);
+}
+
+#[test]
+fn segment_iter_multiple_slashes() {
+    let uri = RelativeUri::from_str("/////////a/b//c//d/////////////////e/////").unwrap();
+    let mut iter = uri.path_iter();
+
+    assert_eq!(iter.next(), Some("a"));
+    assert_eq!(iter.next(), Some("b"));
+    assert_eq!(iter.next(), Some("c"));
+    assert_eq!(iter.next(), Some("d"));
+    assert_eq!(iter.next(), Some("e"));
+    assert_eq!(iter.next(), None);
 }

@@ -1,4 +1,4 @@
-// Copyright 2015-2020 SWIM.AI inc.
+// Copyright 2015-2021 SWIM.AI inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -73,7 +73,11 @@ pub struct RelativePath {
 }
 
 impl RelativePath {
-    pub fn new<S: Into<Text>>(node: S, lane: S) -> RelativePath {
+    pub fn new<N, L>(node: N, lane: L) -> RelativePath
+    where
+        N: Into<Text>,
+        L: Into<Text>,
+    {
         RelativePath {
             node: node.into(),
             lane: lane.into(),
