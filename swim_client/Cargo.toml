@@ -45,7 +45,7 @@ swim_runtime = { path = "../swim_runtime" }
 swim_warp = { path = "../swim_warp" }
 
 pin-utils = "0.1.0"
-pin-project = "0.4.20"
+pin-project = "1.0.5"
 either = "1.5.3"
 futures = "0.3.4"
 futures-util = "0.3.4"

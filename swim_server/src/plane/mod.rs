@@ -1,4 +1,4 @@
-// Copyright 2015-2020 SWIM.AI inc.
+// Copyright 2015-2021 SWIM.AI inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ mod tests;
 
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::AgentResult;
+use crate::meta::get_route;
 use crate::plane::context::PlaneContext;
 use crate::plane::error::NoAgentAtRoute;
 use crate::plane::router::{PlaneRouter, PlaneRouterFactory};
@@ -418,15 +419,18 @@ pub(crate) async fn run_plane<Clk, S, DelegateFac: ServerRouterFactory>(
             match req_or_res {
                 Either::Left(Some(PlaneRequest::Agent { name, request })) => {
                     event!(Level::TRACE, GETTING_HANDLE, ?name);
+
+                    let route = get_route(name);
+
                     let result = if let Some(agent) = resolver
                         .active_routes
-                        .get_endpoint_for_route(&name)
+                        .get_endpoint_for_route(&route)
                         .and_then(|ep| ep.agent_handle.upgrade())
                     {
                         Ok(agent)
                     } else {
                         resolver
-                            .try_open_route(name.clone(), spawner.deref())
+                            .try_open_route(route, spawner.deref())
                             .map(|(agent, _)| agent)
                     };
                     if request.send(result).is_err() {
@@ -462,10 +466,13 @@ pub(crate) async fn run_plane<Clk, S, DelegateFac: ServerRouterFactory>(
                     request,
                 })) => {
                     event!(Level::TRACE, RESOLVING, ?name);
-                    let result = if let Some(addr) = resolver.active_routes.addr_for_route(&name) {
+
+                    let route = get_route(name);
+
+                    let result = if let Some(addr) = resolver.active_routes.addr_for_route(&route) {
                         Ok(addr)
                     } else {
-                        match resolver.try_open_route(name.clone(), spawner.deref()) {
+                        match resolver.try_open_route(route, spawner.deref()) {
                             Ok((_, addr)) => Ok(addr),
                             Err(NoAgentAtRoute(uri)) => Err(RouterError::NoAgentAtRoute(uri)),
                         }

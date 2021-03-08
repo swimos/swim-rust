@@ -1,4 +1,4 @@
-// Copyright 2015-2020 SWIM.AI inc.
+// Copyright 2015-2021 SWIM.AI inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -25,7 +25,7 @@ use std::hash::Hash;
 use std::num::NonZeroUsize;
 use swim_common::form::Form;
 use swim_common::sink::item::ItemSender;
-use swim_warp::backpressure::map::release_pressure as release_pressure_map;
+use swim_warp::backpressure::keyed::map::release_pressure as release_pressure_map;
 use swim_warp::backpressure::{release_pressure, Flushable};
 use swim_warp::model::map::MapUpdate;
 use tokio::sync::oneshot;

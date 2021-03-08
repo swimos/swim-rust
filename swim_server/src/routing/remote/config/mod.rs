@@ -1,4 +1,4 @@
-// Copyright 2015-2020 SWIM.AI inc.
+// Copyright 2015-2021 SWIM.AI inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -25,12 +25,12 @@ pub struct ConnectionConfig {
     pub channel_buffer_size: NonZeroUsize,
     /// Time after which to close an inactive connection.
     pub activity_timeout: Duration,
+    /// If a pending write does not complete after this period, fail
+    pub write_timeout: Duration,
     /// Strategy for retrying a connection.
     pub connection_retries: RetryStrategy,
     /// The number of events to process before yielding execution back to the runtime.
     pub yield_after: NonZeroUsize,
-    /// Buffer size for the channel to send data for missing nodes.
-    pub missing_nodes_buffer_size: NonZeroUsize,
 }
 
 impl Default for ConnectionConfig {
@@ -38,10 +38,10 @@ impl Default for ConnectionConfig {
         ConnectionConfig {
             router_buffer_size: NonZeroUsize::new(10).unwrap(),
             channel_buffer_size: NonZeroUsize::new(10).unwrap(),
-            activity_timeout: Duration::new(30, 00),
+            activity_timeout: Duration::from_secs(30),
+            write_timeout: Duration::from_secs(20),
             connection_retries: Default::default(),
             yield_after: NonZeroUsize::new(256).unwrap(),
-            missing_nodes_buffer_size: NonZeroUsize::new(8).unwrap(),
         }
     }
 }

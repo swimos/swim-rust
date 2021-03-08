@@ -1,4 +1,4 @@
-// Copyright 2015-2020 SWIM.AI inc.
+// Copyright 2015-2021 SWIM.AI inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -159,16 +159,28 @@ fn wrap(task_name: &Ident, body: TokenStream2) -> TokenStream2 {
 }
 
 pub fn derive_events_body(
-    on_sync: &Option<Callback>,
-    on_cue: &Option<Callback>,
-    on_remove: &Option<Callback>,
+    on_sync: &Callback,
+    on_cue: &Callback,
+    on_remove: &Callback,
 ) -> Option<TokenStream2> {
     match (on_sync, on_cue, on_remove) {
-        (Some(on_sync), Some(on_cue), Some(on_remove)) => {
-            let task_name = &on_sync.task_name;
-            let on_sync_body = on_sync_body(&on_sync.func_name, Some(&on_cue.func_name));
-            let on_cue_body = on_cue_body(&on_cue.func_name);
-            let on_remove_body = on_remove_body(&on_remove.func_name);
+        (
+            Callback::Custom {
+                task_name,
+                func_name: sync_func_name,
+            },
+            Callback::Custom {
+                func_name: cue_func_name,
+                ..
+            },
+            Callback::Custom {
+                func_name: remove_func_name,
+                ..
+            },
+        ) => {
+            let on_sync_body = on_sync_body(sync_func_name, Some(cue_func_name));
+            let on_cue_body = on_cue_body(cue_func_name);
+            let on_remove_body = on_remove_body(remove_func_name);
 
             Some(wrap(
                 task_name,
@@ -179,9 +191,15 @@ pub fn derive_events_body(
                 },
             ))
         }
-        (Some(on_sync), None, None) => {
-            let task_name = &on_sync.task_name;
-            let on_sync_body = on_sync_body(&on_sync.func_name, None);
+        (
+            Callback::Custom {
+                task_name,
+                func_name: sync_func_name,
+            },
+            Callback::Default { .. },
+            Callback::Default { .. },
+        ) => {
+            let on_sync_body = on_sync_body(sync_func_name, None);
 
             Some(wrap(
                 task_name,
@@ -191,9 +209,15 @@ pub fn derive_events_body(
                 },
             ))
         }
-        (None, Some(on_cue), None) => {
-            let task_name = &on_cue.task_name;
-            let on_cue_body = on_cue_body(&on_cue.func_name);
+        (
+            Callback::Default { .. },
+            Callback::Custom {
+                task_name,
+                func_name: cue_func_name,
+            },
+            Callback::Default { .. },
+        ) => {
+            let on_cue_body = on_cue_body(cue_func_name);
 
             Some(wrap(
                 task_name,
@@ -203,9 +227,15 @@ pub fn derive_events_body(
                 },
             ))
         }
-        (None, None, Some(on_remove)) => {
-            let task_name = &on_remove.task_name;
-            let on_remove_body = on_remove_body(&on_remove.func_name);
+        (
+            Callback::Default { .. },
+            Callback::Default { .. },
+            Callback::Custom {
+                task_name,
+                func_name: remove_func_name,
+            },
+        ) => {
+            let on_remove_body = on_remove_body(remove_func_name);
 
             Some(wrap(
                 task_name,
@@ -215,10 +245,19 @@ pub fn derive_events_body(
                 },
             ))
         }
-        (None, Some(on_cue), Some(on_remove)) => {
-            let task_name = &on_cue.task_name;
-            let on_cue_body = on_cue_body(&on_cue.func_name);
-            let on_remove_body = on_remove_body(&on_remove.func_name);
+        (
+            Callback::Default { .. },
+            Callback::Custom {
+                task_name,
+                func_name: cue_func_name,
+            },
+            Callback::Custom {
+                func_name: remove_func_name,
+                ..
+            },
+        ) => {
+            let on_cue_body = on_cue_body(cue_func_name);
+            let on_remove_body = on_remove_body(remove_func_name);
 
             Some(wrap(
                 task_name,
@@ -229,10 +268,19 @@ pub fn derive_events_body(
                 },
             ))
         }
-        (Some(on_sync), None, Some(on_remove)) => {
-            let task_name = &on_sync.task_name;
-            let on_sync_body = on_sync_body(&on_sync.func_name, None);
-            let on_remove_body = on_remove_body(&on_remove.func_name);
+        (
+            Callback::Custom {
+                task_name,
+                func_name: sync_func_name,
+            },
+            Callback::Default { .. },
+            Callback::Custom {
+                func_name: remove_func_name,
+                ..
+            },
+        ) => {
+            let on_sync_body = on_sync_body(sync_func_name, None);
+            let on_remove_body = on_remove_body(remove_func_name);
 
             Some(wrap(
                 task_name,
@@ -243,10 +291,19 @@ pub fn derive_events_body(
                 },
             ))
         }
-        (Some(on_sync), Some(on_cue), None) => {
-            let task_name = &on_sync.task_name;
-            let on_sync_body = on_sync_body(&on_sync.func_name, Some(&on_cue.func_name));
-            let on_cue_body = on_cue_body(&on_cue.func_name);
+        (
+            Callback::Custom {
+                task_name,
+                func_name: sync_func_name,
+            },
+            Callback::Custom {
+                func_name: cue_func_name,
+                ..
+            },
+            Callback::Default { .. },
+        ) => {
+            let on_sync_body = on_sync_body(sync_func_name, Some(cue_func_name));
+            let on_cue_body = on_cue_body(cue_func_name);
 
             Some(wrap(
                 task_name,
@@ -257,6 +314,6 @@ pub fn derive_events_body(
                 },
             ))
         }
-        (None, None, None) => None,
+        (Callback::Default { .. }, Callback::Default { .. }, Callback::Default { .. }) => None,
     }
 }

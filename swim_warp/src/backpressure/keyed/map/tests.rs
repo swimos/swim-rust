@@ -1,4 +1,4 @@
-// Copyright 2015-2020 SWIM.AI inc.
+// Copyright 2015-2021 SWIM.AI inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ use std::time::Duration;
 use swim_common::model::Value;
 use swim_common::sink::item::for_mpsc_sender;
 use tokio::time::timeout;
+use tokio_stream::wrappers::ReceiverStream;
 
 const TIMEOUT: Duration = Duration::from_secs(30);
 const SHORT_TIMEOUT: Duration = Duration::from_secs(5);

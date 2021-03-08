@@ -1,4 +1,4 @@
-// Copyright 2015-2020 SWIM.AI inc.
+// Copyright 2015-2021 SWIM.AI inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -61,7 +61,7 @@ where
     ) -> BoxFuture<'static, Result<(), UpdateError>>
     where
         Messages: Stream<Item = Result<(RoutingAddr, Self::Msg), Err>> + Send + 'static,
-        Err: Send,
+        Err: Send + Debug,
         UpdateError: From<Err>,
     {
         let MapLaneUpdateTask { lane, retries } = self;
@@ -70,22 +70,28 @@ where
 
             let mut runner = TransactionRunner::new(1, retries);
             while let Some(update_result) = messages.next().await {
-                let (_, update) = update_result?;
-                event!(Level::TRACE, message = APPLYING_UPDATE, ?update);
-                match update {
-                    MapUpdate::Update(key, value) => {
-                        lane.update_direct(key, value)
-                            .apply_with(&mut runner)
-                            .await?;
+                match update_result {
+                    Ok((_, update)) => {
+                        event!(Level::TRACE, message = APPLYING_UPDATE, ?update);
+                        match update {
+                            MapUpdate::Update(key, value) => {
+                                lane.update_direct(key, value)
+                                    .apply_with(&mut runner)
+                                    .await?;
+                            }
+                            MapUpdate::Remove(key) => {
+                                lane.remove_direct(key).apply_with(&mut runner).await?;
+                            }
+                            MapUpdate::Clear => {
+                                lane.clear_direct().apply_with(&mut runner).await?;
+                            }
+                            _ => {
+                                panic!("Take and drop not yet supported.")
+                            }
+                        }
                     }
-                    MapUpdate::Remove(key) => {
-                        lane.remove_direct(key).apply_with(&mut runner).await?;
-                    }
-                    MapUpdate::Clear => {
-                        lane.clear_direct().apply_with(&mut runner).await?;
-                    }
-                    _ => {
-                        panic!("Take and drop not yet supported.")
+                    Err(err) => {
+                        event!(Level::ERROR, ?err);
                     }
                 }
             }

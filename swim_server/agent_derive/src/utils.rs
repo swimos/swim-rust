@@ -1,4 +1,4 @@
-// Copyright 2015-2020 SWIM.AI inc.
+// Copyright 2015-2021 SWIM.AI inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -62,58 +62,50 @@ pub fn parse_callback(
     callback: &Option<darling::Result<String>>,
     task_name: Ident,
     kind: CallbackKind,
-) -> Option<Callback> {
+) -> Callback {
     if let Some(name) = callback {
         if let Ok(name) = name {
-            Some(Callback {
+            Callback::Custom {
                 task_name,
                 func_name: str_to_ident(&name),
-                kind,
-            })
+            }
         } else {
             match kind {
-                CallbackKind::Start => Some(Callback {
+                CallbackKind::Start => Callback::Custom {
                     task_name,
                     func_name: default_on_start(),
-                    kind,
-                }),
-                CallbackKind::Command => Some(Callback {
+                },
+                CallbackKind::Command => Callback::Custom {
                     task_name,
                     func_name: default_on_command(),
-                    kind,
-                }),
-                CallbackKind::Event => Some(Callback {
+                },
+                CallbackKind::Event => Callback::Custom {
                     task_name,
                     func_name: default_on_event(),
-                    kind,
-                }),
-                CallbackKind::Cue => Some(Callback {
+                },
+                CallbackKind::Cue => Callback::Custom {
                     task_name,
                     func_name: default_on_cue(),
-                    kind,
-                }),
-                CallbackKind::Sync => Some(Callback {
+                },
+                CallbackKind::Sync => Callback::Custom {
                     task_name,
                     func_name: default_on_sync(),
-                    kind,
-                }),
-                CallbackKind::Remove => Some(Callback {
+                },
+                CallbackKind::Remove => Callback::Custom {
                     task_name,
                     func_name: default_on_remove(),
-                    kind,
-                }),
+                },
             }
         }
     } else {
-        None
+        Callback::Default { task_name }
     }
 }
 
 #[derive(Debug)]
-pub struct Callback {
-    pub task_name: Ident,
-    pub func_name: Ident,
-    pub kind: CallbackKind,
+pub enum Callback {
+    Default { task_name: Ident },
+    Custom { task_name: Ident, func_name: Ident },
 }
 
 #[derive(Debug)]
@@ -129,26 +121,26 @@ pub enum CallbackKind {
 #[derive(Debug)]
 pub enum LaneTasksImpl {
     Action {
-        on_command: Option<Callback>,
+        on_command: Callback,
     },
     Command {
-        on_command: Option<Callback>,
+        on_command: Callback,
     },
     Value {
-        on_start: Option<Callback>,
-        on_event: Option<Callback>,
+        on_start: Callback,
+        on_event: Callback,
     },
     Map {
-        on_start: Option<Callback>,
-        on_event: Option<Callback>,
+        on_start: Callback,
+        on_event: Callback,
     },
     Demand {
-        on_cue: Option<Callback>,
+        on_cue: Callback,
     },
     DemandMap {
-        on_sync: Option<Callback>,
-        on_cue: Option<Callback>,
-        on_remove: Option<Callback>,
+        on_sync: Callback,
+        on_cue: Callback,
+        on_remove: Callback,
     },
 }
 
@@ -180,9 +172,13 @@ impl ToTokens for LaneTasksImpl {
             LaneTasksImpl::Action { on_command } => {
                 let start_callback = derive_start_callback(None);
 
-                let events_body = on_command
-                    .as_ref()
-                    .map(|callback| action::derive_events_body(callback));
+                let events_body = match on_command {
+                    Callback::Default { .. } => None,
+                    Callback::Custom {
+                        task_name,
+                        func_name,
+                    } => Some(action::derive_events_body(task_name, func_name)),
+                };
                 let events_callback = derive_events_callback(events_body);
 
                 (start_callback, events_callback)
@@ -190,35 +186,57 @@ impl ToTokens for LaneTasksImpl {
             LaneTasksImpl::Command { on_command } => {
                 let start_callback = derive_start_callback(None);
 
-                let events_body = on_command
-                    .as_ref()
-                    .map(|callback| command::derive_events_body(callback));
+                let events_body = match on_command {
+                    Callback::Default { task_name } => {
+                        Some(command::default_events_body(task_name))
+                    }
+                    Callback::Custom {
+                        task_name,
+                        func_name,
+                    } => Some(command::derive_events_body(task_name, func_name)),
+                };
                 let events_callback = derive_events_callback(events_body);
 
                 (start_callback, events_callback)
             }
             LaneTasksImpl::Value { on_start, on_event } => {
-                let start_body = on_start
-                    .as_ref()
-                    .map(|callback| value::derive_start_body(callback));
+                let start_body = match on_start {
+                    Callback::Default { .. } => None,
+                    Callback::Custom {
+                        task_name,
+                        func_name,
+                    } => Some(value::derive_start_body(task_name, func_name)),
+                };
                 let start_callback = derive_start_callback(start_body);
 
-                let events_body = on_event
-                    .as_ref()
-                    .map(|callback| value::derive_events_body(callback));
+                let events_body = match on_event {
+                    Callback::Default { .. } => None,
+                    Callback::Custom {
+                        task_name,
+                        func_name,
+                    } => Some(value::derive_events_body(task_name, func_name)),
+                };
                 let events_callback = derive_events_callback(events_body);
 
                 (start_callback, events_callback)
             }
             LaneTasksImpl::Map { on_start, on_event } => {
-                let start_body = on_start
-                    .as_ref()
-                    .map(|callback| map::derive_start_body(callback));
+                let start_body = match on_start {
+                    Callback::Default { .. } => None,
+                    Callback::Custom {
+                        task_name,
+                        func_name,
+                    } => Some(map::derive_start_body(task_name, func_name)),
+                };
                 let start_callback = derive_start_callback(start_body);
 
-                let events_body = on_event
-                    .as_ref()
-                    .map(|callback| map::derive_events_body(callback));
+                let events_body = match on_event {
+                    Callback::Default { .. } => None,
+                    Callback::Custom {
+                        task_name,
+                        func_name,
+                    } => Some(map::derive_events_body(task_name, func_name)),
+                };
                 let events_callback = derive_events_callback(events_body);
 
                 (start_callback, events_callback)
@@ -226,9 +244,13 @@ impl ToTokens for LaneTasksImpl {
             LaneTasksImpl::Demand { on_cue } => {
                 let start_callback = derive_start_callback(None);
 
-                let events_body = on_cue
-                    .as_ref()
-                    .map(|callback| demand::derive_events_body(callback));
+                let events_body = match on_cue {
+                    Callback::Default { .. } => None,
+                    Callback::Custom {
+                        task_name,
+                        func_name,
+                    } => Some(demand::derive_events_body(task_name, func_name)),
+                };
                 let events_callback = derive_events_callback(events_body);
 
                 (start_callback, events_callback)

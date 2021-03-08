@@ -1,4 +1,4 @@
-// Copyright 2015-2020 SWIM.AI inc.
+// Copyright 2015-2021 SWIM.AI inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,9 +16,9 @@ use futures::StreamExt;
 use std::time::Duration;
 use swim_client::downlink::typed::value::ValueDownlinkReceiver;
 use swim_client::downlink::Event::Remote;
-use swim_client::interface::SwimClient;
+use swim_client::interface::SwimClientBuilder;
+use swim_client::runtime::time::delay::delay_for;
 use swim_common::warp::path::AbsolutePath;
-use swim_runtime::time::delay::delay_for;
 use tokio::task;
 
 async fn did_set(value_recv: ValueDownlinkReceiver<String>, initial_value: String) {
@@ -45,7 +45,7 @@ async fn did_set(value_recv: ValueDownlinkReceiver<String>, initial_value: Strin
 
 #[tokio::main]
 async fn main() {
-    let mut client = SwimClient::new_with_default().await;
+    let mut client = SwimClientBuilder::build_with_default().await;
     let host_uri = url::Url::parse(&"ws://127.0.0.1:9001".to_string()).unwrap();
     let node_uri = "unit/foo";
     let lane_uri = "info";

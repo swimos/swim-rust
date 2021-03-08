@@ -1,4 +1,4 @@
-// Copyright 2015-2020 SWIM.AI inc.
+// Copyright 2015-2021 SWIM.AI inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -59,9 +59,9 @@ fn make_state(
         router_buffer_size: buffer_size,
         channel_buffer_size: buffer_size,
         activity_timeout: Duration::from_secs(30),
+        write_timeout: Duration::from_secs(20),
         connection_retries: RetryStrategy::none(),
         yield_after: NonZeroUsize::new(256).unwrap(),
-        missing_nodes_buffer_size: NonZeroUsize::new(8).unwrap(),
     };
 
     let fake_connections = FakeConnections::new(HashMap::new(), HashMap::new(), None);

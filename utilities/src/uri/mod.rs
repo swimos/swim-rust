@@ -1,4 +1,4 @@
-// Copyright 2015-2020 SWIM.AI inc.
+// Copyright 2015-2021 SWIM.AI inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -57,6 +57,32 @@ impl RelativeUri {
 
     pub fn query(&self) -> Option<&str> {
         self.0.query()
+    }
+
+    /// Returns an iterator that will yield each segment in the path.
+    pub fn path_iter(&self) -> PathSegmentIterator<'_> {
+        PathSegmentIterator(self.0.path())
+    }
+}
+
+/// An iterator over segments in a relative URI. The iterator will skip empty segments in the path.
+#[derive(Clone, Debug)]
+pub struct PathSegmentIterator<'a>(&'a str);
+
+impl<'a> Iterator for PathSegmentIterator<'a> {
+    type Item = &'a str;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let lower = self.0.find(|c| c != '/')?;
+        let upper = self.0[lower..]
+            .find('/')
+            .map_or(self.0.len(), |next_slash| lower + next_slash);
+
+        let segment = Some(&self.0[lower..upper]);
+
+        self.0 = &self.0[upper..];
+
+        segment
     }
 }
 
