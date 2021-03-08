@@ -276,7 +276,7 @@ mod tests {
                     "milk".to_string().into_value(),
                     Arc::new(6.into_value()),
                 )
-                .as_value(),
+                    .as_value(),
             )
             .await
             .unwrap();
@@ -376,7 +376,7 @@ mod tests {
                     "milk".to_string().into_value(),
                     Arc::new(6.into_value()),
                 )
-                .as_value(),
+                    .as_value(),
             )
             .await
             .unwrap();
@@ -424,7 +424,7 @@ mod tests {
                     "milk".to_string().into_value(),
                     Arc::new(6.into_value()),
                 )
-                .as_value(),
+                    .as_value(),
             )
             .await
             .unwrap();
