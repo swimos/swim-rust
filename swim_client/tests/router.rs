@@ -13,7 +13,6 @@
 // limitations under the License.
 
 mod tests {
-    use std::sync::atomic::{AtomicUsize, Ordering};
     use swim_client::configuration::router::{ConnectionPoolParams, RouterParamBuilder};
     use swim_client::connections::factory::tungstenite::TungsteniteWsFactory;
     use swim_client::connections::SwimConnPool;
@@ -22,23 +21,16 @@ mod tests {
     use swim_common::warp::envelope::Envelope;
     use swim_common::warp::path::AbsolutePath;
     use swim_runtime::time::timeout::timeout;
-    use test_server::build_server;
+    use test_server::start_server;
     use tokio::time::Duration;
-
-    static PORT: AtomicUsize = AtomicUsize::new(9001);
-
-    fn get_free_port() -> u16 {
-        PORT.fetch_add(1, Ordering::SeqCst) as u16
-    }
 
     #[tokio::test]
     #[ignore]
     async fn secure() {
-        let port = get_free_port();
-        let (server, handle) = build_server(port).await;
-        tokio::spawn(server.run());
+        let server = start_server().await;
+        let port = server.port();
 
-        let host = format!("wss://127.0.0.1:{}", port);
+        let host = format!("ws://127.0.0.1:{}", port);
         let config = RouterParamBuilder::default().build();
         let pool = SwimConnPool::new(
             ConnectionPoolParams::default(),
@@ -57,14 +49,13 @@ mod tests {
         eprintln!("message = {:#?}", stream.recv().await);
 
         let _ = router.close().await;
-        handle.stop();
+        server.stop().await.unwrap();
     }
 
     #[tokio::test]
     async fn normal_receive() {
-        let port = get_free_port();
-        let (server, handle) = build_server(port).await;
-        tokio::spawn(server.run());
+        let server = start_server().await;
+        let port = server.port();
 
         let host = format!("ws://127.0.0.1:{}", port);
         let config = RouterParamBuilder::default().build();
@@ -103,14 +94,13 @@ mod tests {
         assert_eq!(stream.recv().await.unwrap(), expected);
 
         let _ = router.close().await;
-        handle.stop();
+        server.stop().await.unwrap();
     }
 
     #[tokio::test]
     async fn node_not_found_receive() {
-        let port = get_free_port();
-        let (server, handle) = build_server(port).await;
-        tokio::spawn(server.run());
+        let server = start_server().await;
+        let port = server.port();
 
         let host = format!("ws://127.0.0.1:{}", port);
         let config = RouterParamBuilder::default().build();
@@ -139,14 +129,13 @@ mod tests {
         assert_eq!(stream.recv().await.unwrap(), expected);
 
         let _ = router.close().await;
-        handle.stop();
+        server.stop().await.unwrap();
     }
 
     #[tokio::test]
     async fn lane_not_found_receive() {
-        let port = get_free_port();
-        let (server, handle) = build_server(port).await;
-        tokio::spawn(server.run());
+        let server = start_server().await;
+        let port = server.port();
 
         let host = format!("ws://127.0.0.1:{}", port);
         let config = RouterParamBuilder::default().build();
@@ -171,14 +160,13 @@ mod tests {
         assert_eq!(stream.recv().await.unwrap(), expected);
 
         let _ = router.close().await;
-        handle.stop();
+        server.stop().await.unwrap();
     }
 
     #[tokio::test]
     async fn not_interested_receive() {
-        let port = get_free_port();
-        let (server, handle) = build_server(port).await;
-        tokio::spawn(server.run());
+        let server = start_server().await;
+        let port = server.port();
 
         let host = format!("ws://127.0.0.1:{}", port);
         let config = RouterParamBuilder::default().build();
@@ -198,14 +186,13 @@ mod tests {
         assert!(result.is_err());
 
         let _ = router.close().await;
-        handle.stop();
+        server.stop().await.unwrap();
     }
 
     #[tokio::test]
     async fn not_found_receive() {
-        let port = get_free_port();
-        let (server, handle) = build_server(port).await;
-        tokio::spawn(server.run());
+        let server = start_server().await;
+        let port = server.port();
 
         let host = format!("ws://127.0.0.1:{}", port);
         let config = RouterParamBuilder::default().build();
@@ -222,22 +209,25 @@ mod tests {
         );
         let (sink, mut stream) = router.connection_for(&path).await.unwrap();
 
-        let sync = Envelope::sync(String::from("non_existent"), String::from("non_existent"));
+        let command = Envelope::make_command(
+            String::from("non_existent"),
+            String::from("non_existent"),
+            None,
+        );
 
-        sink.send(sync).await.unwrap();
+        sink.send(command).await.unwrap();
 
         let result = timeout(Duration::from_secs(5), stream.recv()).await;
         assert!(result.is_err());
 
         let _ = router.close().await;
-        handle.stop();
+        server.stop().await.unwrap();
     }
 
     #[tokio::test]
     async fn send_commands() {
-        let port = get_free_port();
-        let (server, handle) = build_server(port).await;
-        tokio::spawn(server.run());
+        let server = start_server().await;
+        let port = server.port();
 
         let host = format!("ws://127.0.0.1:{}", port);
         let config = RouterParamBuilder::default().build();
@@ -279,6 +269,6 @@ mod tests {
         assert!(result.is_ok());
 
         let _ = router.close().await;
-        handle.stop();
+        server.stop().await.unwrap();
     }
 }

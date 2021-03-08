@@ -47,6 +47,7 @@ pub trait Listener {
     type AcceptStream: FusedStream<Item = IoResult<(Self::Socket, SocketAddr)>> + Unpin;
 
     fn into_stream(self) -> Self::AcceptStream;
+    fn local_addr(&self) -> io::Result<SocketAddr>;
 }
 
 /// Trait for types that can create remote network connections asynchronously. This is primarily
@@ -71,6 +72,13 @@ impl Listener for MaybeTlsListener {
 
     fn into_stream(self) -> Self::AcceptStream {
         EitherStream(self).fuse()
+    }
+
+    fn local_addr(&self) -> io::Result<SocketAddr> {
+        match self {
+            MaybeTlsListener::PlainText(tcp_listener) => tcp_listener.local_addr(),
+            MaybeTlsListener::Tls(tcp_listener) => tcp_listener.local_addr(),
+        }
     }
 }
 

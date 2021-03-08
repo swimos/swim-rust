@@ -24,6 +24,7 @@ use futures::task::{Context, Poll};
 use futures::FutureExt;
 use futures::{Stream, StreamExt};
 use pin_project::pin_project;
+use std::io;
 use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
 
@@ -74,5 +75,9 @@ impl Listener for TcpListener {
 
     fn into_stream(self) -> Self::AcceptStream {
         WithPeer(self).fuse()
+    }
+
+    fn local_addr(&self) -> io::Result<SocketAddr> {
+        self.local_addr()
     }
 }

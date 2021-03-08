@@ -30,6 +30,7 @@ use std::fmt::{Display, Formatter};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use swim_common::routing::ws::tungstenite::TungsteniteWsConnections;
+use swim_runtime::task::{spawn, TaskHandle};
 use swim_runtime::time::clock::RuntimeClock;
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
@@ -136,6 +137,7 @@ impl SwimServerBuilder {
         self.planes.push(plane)
     }
 
+    //Todo change doc
     /// Build the Swim Server.
     ///
     /// Returns an error if an address has not been provided for the server.
@@ -184,71 +186,16 @@ impl SwimServerBuilder {
     ///
     /// let (swim_server, server_handle) = swim_server_builder.bind_to(address).build().unwrap();
     /// ```
-    pub fn build(self) -> Result<(SwimServer, ServerHandle), SwimServerBuilderError> {
+    pub async fn build(self) -> Result<SwimServer, SwimServerBuilderError> {
         let SwimServerBuilder {
             address,
-            planes,
+            mut planes,
             config,
         } = self;
+
+        let address = address.ok_or(SwimServerBuilderError::MissingAddress)?;
 
         let (stop_trigger_tx, stop_trigger_rx) = trigger::trigger();
-
-        Ok((
-            SwimServer {
-                config,
-                planes,
-                address: address.ok_or(SwimServerBuilderError::MissingAddress)?,
-                stop_trigger_rx,
-            },
-            ServerHandle { stop_trigger_tx },
-        ))
-    }
-}
-
-/// Represents an error that can occur while using the server builder.
-#[derive(Debug)]
-pub enum SwimServerBuilderError {
-    /// An error that occurs when trying to create a server without providing the address first.
-    MissingAddress,
-}
-
-impl Display for SwimServerBuilderError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            SwimServerBuilderError::MissingAddress => {
-                write!(f, "Cannot create a swim server without an address")
-            }
-        }
-    }
-}
-
-impl Error for SwimServerBuilderError {}
-
-/// Swim server instance.
-///
-/// The Swim server runs a plane and its agents and a task for remote connections asynchronously.
-pub struct SwimServer {
-    address: SocketAddr,
-    config: SwimServerConfig,
-    planes: Vec<PlaneSpec<RuntimeClock, EnvChannel, PlaneRouter<TopLevelRouter>>>,
-    stop_trigger_rx: trigger::Receiver,
-}
-
-impl SwimServer {
-    /// Runs the Swim server instance.
-    ///
-    /// Runs the planes and remote connections tasks of the server asynchronously
-    /// and returns any errors from the connections task.
-    ///
-    /// # Panics
-    /// The task will panic if the address provided to the server is already being used.
-    pub async fn run(self) -> Result<(), io::Error> {
-        let SwimServer {
-            address,
-            config,
-            mut planes,
-            stop_trigger_rx,
-        } = self;
 
         let SwimServerConfig {
             websocket_config,
@@ -277,7 +224,7 @@ impl SwimServer {
             top_level_router_fac.clone(),
         );
 
-        let connections_future = RemoteConnectionsTask::new(
+        let connections_task = RemoteConnectionsTask::new(
             conn_config,
             TokioPlainTextNetworking::new(Arc::new(Resolver::new().await)),
             address,
@@ -293,10 +240,61 @@ impl SwimServer {
             },
         )
         .await
-        .unwrap_or_else(|err| panic!("Could not connect to \"{}\": {}", address, err))
-        .run();
+        .unwrap_or_else(|err| panic!("Could not connect to \"{}\": {}", address, err));
 
-        join!(connections_future, plane_future).0
+        //Todo
+        let local_addr = connections_task.listener.local_addr().unwrap();
+        let connections_future = connections_task.run();
+
+        let task_handle = spawn(async { join!(connections_future, plane_future).0 });
+
+        Ok(SwimServer {
+            local_addr,
+            task_handle,
+            stop_trigger_tx,
+        })
+    }
+}
+
+/// Represents an error that can occur while using the server builder.
+#[derive(Debug)]
+pub enum SwimServerBuilderError {
+    /// An error that occurs when trying to create a server without providing the address first.
+    MissingAddress,
+}
+
+impl Display for SwimServerBuilderError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SwimServerBuilderError::MissingAddress => {
+                write!(f, "Cannot create a swim server without an address")
+            }
+        }
+    }
+}
+
+impl Error for SwimServerBuilderError {}
+
+//Todo doc
+pub struct SwimServer {
+    local_addr: SocketAddr,
+    task_handle: TaskHandle<Result<(), io::Error>>,
+    stop_trigger_tx: trigger::Sender,
+}
+
+impl SwimServer {
+    pub fn addr(&self) -> &SocketAddr {
+        &self.local_addr
+    }
+
+    pub fn port(&self) -> u16 {
+        self.local_addr.port()
+    }
+
+    pub async fn stop(self) -> Result<(), io::Error> {
+        self.stop_trigger_tx.trigger();
+        //Todo
+        self.task_handle.await.unwrap()
     }
 }
 
@@ -318,36 +316,5 @@ impl Default for SwimServerConfig {
             agent_config: Default::default(),
             websocket_config: Default::default(),
         }
-    }
-}
-
-/// Handle for stopping a server instance.
-///
-/// The handle is returned when a new server instance is created and is used for terminating
-/// the server.
-pub struct ServerHandle {
-    stop_trigger_tx: trigger::Sender,
-}
-
-impl ServerHandle {
-    /// Terminates the associated server instance.
-    ///
-    /// Returns `true` if all sever tasks have been successfully notified to terminate
-    /// and `false` otherwise.
-    ///
-    /// # Example:
-    /// ```
-    /// use std::net::{SocketAddr, IpAddr, Ipv4Addr};
-    /// use swim_server::interface::{SwimServer, SwimServerBuilder};
-    ///
-    /// let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
-    /// let (mut swim_server, server_handle) = SwimServerBuilder::default().bind_to(address).build().unwrap();
-    ///
-    /// let success = server_handle.stop();
-    ///
-    /// assert!(success);
-    /// ```
-    pub fn stop(self) -> bool {
-        self.stop_trigger_tx.trigger()
     }
 }

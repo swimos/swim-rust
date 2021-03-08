@@ -57,6 +57,11 @@ impl Listener for TlsListener {
     fn into_stream(self) -> Self::AcceptStream {
         self.fuse()
     }
+
+    fn local_addr(&self) -> io::Result<SocketAddr> {
+        //Todo
+        unimplemented!()
+    }
 }
 
 #[derive(Clone)]
