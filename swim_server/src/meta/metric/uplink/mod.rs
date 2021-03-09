@@ -367,15 +367,13 @@ impl UplinkActionObserver {
         self.inner.flush();
     }
 
-    /// Report that a new uplink opened has been dispatched and send a new profile if the report
-    /// interval has elapsed.
+    /// Report that a new uplink opened and send a new profile if the report interval has elapsed.
     pub fn did_open(&self) {
         let _old = self.inner.open_delta.fetch_add(1, Ordering::Acquire);
         self.inner.flush();
     }
 
-    /// Report that an uplink closed has been dispatched and send a new profile if the report
-    /// interval has elapsed.
+    /// Report that an uplink closed and send a new profile if the report interval has elapsed.
     pub fn did_close(&self) {
         let _old = self.inner.close_delta.fetch_add(1, Ordering::Acquire);
         self.inner.flush();
