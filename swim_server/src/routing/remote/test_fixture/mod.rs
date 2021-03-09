@@ -416,11 +416,6 @@ impl Listener for FakeListener {
         let FakeListener(rx) = self;
         ReceiverStream::new(rx).fuse()
     }
-
-    fn local_addr(&self) -> io::Result<SocketAddr> {
-        //Todo
-        unreachable!()
-    }
 }
 
 pub(crate) struct FakeWebsockets;

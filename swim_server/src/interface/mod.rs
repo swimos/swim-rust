@@ -30,7 +30,7 @@ use std::fmt::{Display, Formatter};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use swim_common::routing::ws::tungstenite::TungsteniteWsConnections;
-use swim_runtime::task::{spawn, TaskHandle};
+use swim_runtime::task::{spawn, TaskError, TaskHandle};
 use swim_runtime::time::clock::RuntimeClock;
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
@@ -137,7 +137,6 @@ impl SwimServerBuilder {
         self.planes.push(plane)
     }
 
-    //Todo change doc
     /// Build the Swim Server.
     ///
     /// Returns an error if an address has not been provided for the server.
@@ -184,7 +183,7 @@ impl SwimServerBuilder {
     /// let mut swim_server_builder = SwimServerBuilder::default();
     /// swim_server_builder.add_plane(plane_builder.build());
     ///
-    /// let (swim_server, server_handle) = swim_server_builder.bind_to(address).build().unwrap();
+    /// let swim_server = tokio_test::block_on(swim_server_builder.bind_to(address).build());
     /// ```
     pub async fn build(self) -> Result<SwimServer, SwimServerBuilderError> {
         let SwimServerBuilder {
@@ -193,7 +192,9 @@ impl SwimServerBuilder {
             config,
         } = self;
 
-        let address = address.ok_or(SwimServerBuilderError::MissingAddress)?;
+        let address = address.ok_or(SwimServerBuilderError {
+            msg: "Cannot create a swim server without an address".to_string(),
+        })?;
 
         let (stop_trigger_tx, stop_trigger_rx) = trigger::trigger();
 
@@ -242,8 +243,14 @@ impl SwimServerBuilder {
         .await
         .unwrap_or_else(|err| panic!("Could not connect to \"{}\": {}", address, err));
 
-        //Todo
-        let local_addr = connections_task.listener.local_addr().unwrap();
+        let local_addr = match connections_task.listener.local_addr() {
+            Ok(local_addr) => local_addr,
+            Err(err) => {
+                return Err(SwimServerBuilderError {
+                    msg: err.to_string(),
+                })
+            }
+        };
         let connections_future = connections_task.run();
 
         let task_handle = spawn(async { join!(connections_future, plane_future).0 });
@@ -258,24 +265,21 @@ impl SwimServerBuilder {
 
 /// Represents an error that can occur while using the server builder.
 #[derive(Debug)]
-pub enum SwimServerBuilderError {
-    /// An error that occurs when trying to create a server without providing the address first.
-    MissingAddress,
+pub struct SwimServerBuilderError {
+    msg: String,
 }
 
 impl Display for SwimServerBuilderError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            SwimServerBuilderError::MissingAddress => {
-                write!(f, "Cannot create a swim server without an address")
-            }
-        }
+        write!(f, "{}", self.msg)
     }
 }
 
 impl Error for SwimServerBuilderError {}
 
-//Todo doc
+/// Swim server instance.
+///
+/// The Swim server runs a plane and its agents and a task for remote connections asynchronously.
 pub struct SwimServer {
     local_addr: SocketAddr,
     task_handle: TaskHandle<Result<(), io::Error>>,
@@ -283,20 +287,49 @@ pub struct SwimServer {
 }
 
 impl SwimServer {
+    /// Returns the address of the server.
     pub fn addr(&self) -> &SocketAddr {
         &self.local_addr
     }
 
+    /// Returns the port of the server.
     pub fn port(&self) -> u16 {
         self.local_addr.port()
     }
 
-    pub async fn stop(self) -> Result<(), io::Error> {
+    /// Terminates the server instance.
+    ///
+    /// Returns any runtime errors that the server has encountered.
+    /// ```
+    pub async fn stop(self) -> Result<(), ServerError> {
         self.stop_trigger_tx.trigger();
-        //Todo
-        self.task_handle.await.unwrap()
+
+        match self.task_handle.await {
+            Ok(result) => result.map_err(ServerError::RuntimeError),
+            Err(err) => Err(ServerError::CloseError(err)),
+        }
     }
 }
+
+/// Represents errors that can occur in the server.
+#[derive(Debug)]
+pub enum ServerError {
+    /// An error that occurred when the server was running.
+    RuntimeError(io::Error),
+    /// An error that occurred when closing the server.
+    CloseError(TaskError),
+}
+
+impl Display for ServerError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ServerError::RuntimeError(err) => err.fmt(f),
+            ServerError::CloseError(err) => err.fmt(f),
+        }
+    }
+}
+
+impl Error for ServerError {}
 
 /// Swim server configuration.
 ///
