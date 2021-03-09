@@ -28,8 +28,8 @@ use tracing::{event, Level};
 
 use crate::agent::lane::channels::uplink::backpressure::KeyedBackpressureConfig;
 use crate::agent::lane::model::supply::SupplyLane;
-use crate::meta::metric::aggregator::{AddressedMetric, AggregatorTask, Metric, ProfileItem};
-use crate::meta::metric::{AggregatorError, MetricKind};
+use crate::meta::metric::aggregator::{AddressedMetric, AggregatorTask, Metric, MetricState};
+use crate::meta::metric::{AggregatorError, MetricStage};
 use futures::{Future, Stream, StreamExt};
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
@@ -79,10 +79,6 @@ impl AddressedMetric for TaggedWarpUplinkProfile {
         (path, profile)
     }
 
-    fn path(&self) -> RelativePath {
-        self.path.clone()
-    }
-
     fn pack(payload: Self::Metric, path: RelativePath) -> Self {
         TaggedWarpUplinkProfile {
             path,
@@ -125,10 +121,6 @@ impl AddressedMetric for TaggedWarpUplinkPulse {
     fn unpack(self) -> (RelativePath, Self::Metric) {
         let TaggedWarpUplinkPulse { path, pulse } = self;
         (path, pulse)
-    }
-
-    fn path(&self) -> RelativePath {
-        self.path.clone()
     }
 
     fn pack(payload: Self::Metric, path: RelativePath) -> Self {
@@ -360,19 +352,35 @@ impl UplinkActionObserver {
     }
 
     #[cfg(test)]
-    pub(crate) fn set_inner_values(&self, to: u32) {
+    pub(crate) fn set_inner_values(&self, to: WarpUplinkProfile) {
         let InnerObserver {
             event_delta,
+            event_count,
             command_delta,
+            command_count,
             open_delta,
             close_delta,
             ..
         } = &*self.inner;
 
-        event_delta.store(to, Ordering::Relaxed);
-        command_delta.store(to, Ordering::Relaxed);
-        open_delta.store(to, Ordering::Relaxed);
-        close_delta.store(to, Ordering::Relaxed);
+        let WarpUplinkProfile {
+            event_delta: profile_event_delta,
+            event_count: profile_event_count,
+            command_delta: profile_command_delta,
+            command_count: profile_command_count,
+            open_delta: profile_open_delta,
+            close_delta: profile_close_delta,
+            ..
+        } = to;
+
+        event_delta.store(profile_event_delta, Ordering::Relaxed);
+        event_count.store(profile_event_count, Ordering::Relaxed);
+
+        command_delta.store(profile_command_delta, Ordering::Relaxed);
+        command_count.store(profile_command_count, Ordering::Relaxed);
+
+        open_delta.store(profile_open_delta, Ordering::Relaxed);
+        close_delta.store(profile_close_delta, Ordering::Relaxed);
     }
 
     #[cfg(test)]
@@ -408,7 +416,7 @@ pub fn uplink_aggregator(
     let uplink_pulse_lanes = uplink_pulse_lanes
         .into_iter()
         .map(|(k, v)| {
-            let inner = ProfileItem::new(
+            let inner = MetricState::new(
                 TaggedWarpUplinkProfile::pack(WarpUplinkProfile::default(), k.clone()),
                 v,
             );
@@ -434,7 +442,7 @@ pub fn uplink_aggregator(
 }
 
 impl Metric<WarpUplinkProfile> for TaggedWarpUplinkProfile {
-    const METRIC_KIND: MetricKind = MetricKind::Uplink;
+    const METRIC_STAGE: MetricStage = MetricStage::Uplink;
 
     type Pulse = WarpUplinkPulse;
 
@@ -476,30 +484,61 @@ impl Metric<WarpUplinkProfile> for TaggedWarpUplinkProfile {
         *close_count += close_count.wrapping_add(profile_close_count);
     }
 
-    fn collect(&mut self) -> Self {
-        self.clone()
-    }
-
-    fn as_pulse(&self) -> Self::Pulse {
+    fn collect(&mut self) -> (Self, Self::Pulse) {
         let WarpUplinkProfile {
             event_delta,
             event_rate,
+            event_count,
             command_delta,
             command_rate,
+            command_count,
+            open_delta,
             open_count,
+            close_delta,
             close_count,
-            ..
-        } = self.profile;
+        } = &mut self.profile;
 
-        let link_count = open_count.saturating_sub(close_count);
+        *event_count = event_count.wrapping_add(*event_delta as u64);
+        *command_count = command_count.wrapping_add(*command_delta as u64);
 
-        WarpUplinkPulse {
+        let link_count = open_count.saturating_sub(*close_count);
+
+        let pulse = WarpUplinkPulse {
             link_count,
-            event_rate,
-            event_count: event_delta as u64,
-            command_rate,
-            command_count: command_delta as u64,
-        }
+            event_rate: *event_rate,
+            event_count: *event_count,
+            command_rate: *command_rate,
+            command_count: *command_count,
+        };
+
+        let new_profile = WarpUplinkProfile {
+            event_delta: *event_delta,
+            event_rate: *event_rate,
+            event_count: *event_count,
+            command_delta: *command_delta,
+            command_rate: *command_rate,
+            command_count: *command_count,
+            open_delta: *open_delta,
+            open_count: *open_count,
+            close_delta: *close_delta,
+            close_count: *close_count,
+        };
+
+        let profile = TaggedWarpUplinkProfile {
+            path: self.path.clone(),
+            profile: new_profile,
+        };
+
+        *event_delta = 0;
+        *event_rate = 0;
+
+        *command_delta = 0;
+        *command_rate = 0;
+
+        *open_delta = 0;
+        *close_delta = 0;
+
+        (profile, pulse)
     }
 }
 

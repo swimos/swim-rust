@@ -21,7 +21,7 @@ use crate::meta::metric::uplink::{
     uplink_aggregator, uplink_observer, TaggedWarpUplinkProfile, TrySendError, UplinkProfileSender,
     WarpUplinkPulse,
 };
-use crate::meta::metric::{MetricObserver, WarpUplinkProfile};
+use crate::meta::metric::{UplinkMetricObserver, WarpUplinkProfile};
 use futures::future::{join, join3};
 use futures::stream::iter;
 use futures::{FutureExt, StreamExt};
@@ -214,7 +214,7 @@ async fn task_backpressure() {
         lane_profile_tx,
     );
 
-    let observer = MetricObserver::new(
+    let observer = UplinkMetricObserver::new(
         config.sample_rate,
         RelativeUri::from_str("/node").unwrap(),
         uplink_tx,
@@ -320,7 +320,7 @@ async fn with_observer() {
 
     let task = tokio::spawn(join3(uplink_task, lane_rcv_task, supply_rcv_task));
 
-    let observer = MetricObserver::new(
+    let observer = UplinkMetricObserver::new(
         sample_rate,
         RelativeUri::from_str("/node").unwrap(),
         uplink_tx,

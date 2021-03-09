@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::agent::lane::model::supply::SupplyLane;
-use crate::meta::metric::aggregator::{AddressedMetric, AggregatorTask, ProfileItem};
+use crate::meta::metric::aggregator::{AddressedMetric, AggregatorTask, MetricState};
 use crate::meta::metric::lane::{LanePulse, TaggedLaneProfile};
 use crate::meta::metric::tests::{
     build_uplink_profile, create_lane_map, DEFAULT_BUFFER, DEFAULT_YIELD,
@@ -38,7 +38,7 @@ async fn single() {
     let mut lane_map = HashMap::new();
     let path = RelativePath::new("/node", "lane");
 
-    let value = ProfileItem::new(
+    let value = MetricState::new(
         TaggedLaneProfile::pack(WarpLaneProfile::default(), path.clone()),
         lane,
     );
@@ -63,9 +63,9 @@ async fn single() {
             uplink_pulse: WarpUplinkPulse {
                 link_count: 0,
                 event_rate: 2,
-                event_count: 3,
+                event_count: 1,
                 command_rate: 5,
-                command_count: 6,
+                command_count: 4,
             },
         };
 
@@ -73,14 +73,14 @@ async fn single() {
 
         let received = node_rx.recv().await.expect("Expected a lane profile");
         let expected = TaggedLaneProfile {
-            path: path,
+            path,
             profile: WarpLaneProfile {
                 uplink_event_delta: 1,
                 uplink_event_rate: 2,
-                uplink_event_count: 3,
+                uplink_event_count: 1,
                 uplink_command_delta: 4,
                 uplink_command_rate: 5,
-                uplink_command_count: 6,
+                uplink_command_count: 4,
                 uplink_open_delta: 7,
                 uplink_open_count: 8,
                 uplink_close_delta: 9,

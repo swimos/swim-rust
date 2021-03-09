@@ -48,6 +48,7 @@ pub type MakePulseLaneResult<V, Agent, Context> = (
     Box<dyn LaneIo<Context>>,
 );
 
+/// Creates a supply lane for `lane_uri`.
 pub fn make_pulse_lane<Config, Agent, Context, V>(
     lane_uri: String,
 ) -> MakePulseLaneResult<V, Agent, Context>
@@ -64,6 +65,7 @@ where
     )
 }
 
+/// Opens uplink and lane supply lanes for all `agent_lanes`.
 pub fn open_pulse_lanes<Config, Agent, Context>(
     node_uri: RelativeUri,
     agent_lanes: &[&String],

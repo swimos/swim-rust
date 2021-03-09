@@ -15,13 +15,13 @@
 use crate::agent::lane::channels::uplink::backpressure::KeyedBackpressureConfig;
 use crate::agent::lane::model::supply::SupplyLane;
 use crate::meta::log::make_node_logger;
-use crate::meta::metric::aggregator::{AddressedMetric, AggregatorTask, ProfileItem};
+use crate::meta::metric::aggregator::{AddressedMetric, AggregatorTask, MetricState};
 use crate::meta::metric::config::MetricAggregatorConfig;
 use crate::meta::metric::lane::{LanePulse, TaggedLaneProfile};
 use crate::meta::metric::node::NodePulse;
 use crate::meta::metric::uplink::{TaggedWarpUplinkProfile, WarpUplinkPulse};
 use crate::meta::metric::{
-    AggregatorError, AggregatorErrorKind, MetricKind, NodeMetricAggregator, WarpLaneProfile,
+    AggregatorError, AggregatorErrorKind, MetricStage, NodeMetricAggregator, WarpLaneProfile,
     WarpUplinkProfile,
 };
 use futures::future::{join, join3};
@@ -47,7 +47,7 @@ pub fn create_lane_map(
     buffer_size: NonZeroUsize,
 ) -> (
     HashMap<RelativePath, mpsc::Receiver<LanePulse>>,
-    HashMap<RelativePath, ProfileItem<TaggedLaneProfile, TaggedWarpUplinkProfile>>,
+    HashMap<RelativePath, MetricState<TaggedLaneProfile, TaggedWarpUplinkProfile>>,
 ) {
     let mut lane_map = HashMap::new();
     let mut rx_map = HashMap::new();
@@ -58,7 +58,7 @@ pub fn create_lane_map(
 
         let path = RelativePath::new("/node", format!("lane_{}", i));
 
-        let value = ProfileItem::new(
+        let value = MetricState::new(
             TaggedLaneProfile::pack(WarpLaneProfile::default(), path.clone()),
             lane,
         );
@@ -127,7 +127,7 @@ async fn drain() {
     let mut lane_map = HashMap::new();
     let path = RelativePath::new("/node", "lane");
 
-    let value = ProfileItem::new(
+    let value = MetricState::new(
         TaggedLaneProfile::pack(WarpLaneProfile::default(), path.clone()),
         lane,
     );
@@ -157,9 +157,9 @@ async fn drain() {
             uplink_pulse: WarpUplinkPulse {
                 link_count: 0,
                 event_rate: 2,
-                event_count: 2,
+                event_count: 3,
                 command_rate: 2,
-                command_count: 2,
+                command_count: 3,
             },
         };
         assert_eq!(second, expected_second);
@@ -169,9 +169,9 @@ async fn drain() {
             uplink_pulse: WarpUplinkPulse {
                 link_count: 0,
                 event_rate: 3,
-                event_count: 3,
+                event_count: 6,
                 command_rate: 3,
-                command_count: 3,
+                command_count: 6,
             },
         };
         assert_eq!(third, expected_third);
@@ -202,7 +202,7 @@ async fn abnormal() {
     let mut lane_map = HashMap::new();
     let path = RelativePath::new("/node", "lane");
 
-    let value = ProfileItem::new(
+    let value = MetricState::new(
         TaggedLaneProfile::pack(WarpLaneProfile::default(), path.clone()),
         lane,
     );
@@ -228,7 +228,7 @@ async fn abnormal() {
                 panic!("Expected abnormal stop code")
             }
             Err(AggregatorError { aggregator, error }) => {
-                assert_eq!(aggregator, MetricKind::Lane);
+                assert_eq!(aggregator, MetricStage::Lane);
                 assert_eq!(error, AggregatorErrorKind::AbnormalStop);
             }
         }
@@ -380,7 +380,13 @@ async fn full_pipeline() {
     let (_event_observer, action_observer) =
         aggregator.observer().uplink_observer("test".to_string());
 
-    action_observer.set_inner_values(event_count);
+    let profile = WarpUplinkProfile {
+        event_delta: event_count,
+        command_delta: event_count,
+        ..Default::default()
+    };
+
+    action_observer.set_inner_values(profile);
     action_observer.force_flush();
 
     assert!(task_jh.await.is_ok());
@@ -505,7 +511,13 @@ async fn full_pipeline_multiple_observers() {
     let (_event_observer1, action_observer1) =
         aggregator.observer().uplink_observer("test".to_string());
 
-    action_observer1.set_inner_values(event_count1 as u32);
+    let first = WarpUplinkProfile {
+        event_delta: 10,
+        command_delta: 10,
+        ..Default::default()
+    };
+
+    action_observer1.set_inner_values(first);
     action_observer1.force_flush();
 
     sleep(sample_rate).await;
@@ -513,7 +525,15 @@ async fn full_pipeline_multiple_observers() {
     let (_event_observer2, action_observer2) =
         aggregator.observer().uplink_observer("test".to_string());
 
-    action_observer2.set_inner_values(event_count2 as u32);
+    let second = WarpUplinkProfile {
+        event_delta: 5,
+        event_count: 10,
+        command_delta: 5,
+        command_count: 10,
+        ..Default::default()
+    };
+
+    action_observer2.set_inner_values(second);
     action_observer2.force_flush();
 
     assert!(task_jh.await.is_ok());

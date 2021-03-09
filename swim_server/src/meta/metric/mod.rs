@@ -36,7 +36,7 @@ use std::fmt::{Debug, Display};
 use utilities::uri::RelativeUri;
 
 use crate::meta::log::{LogEntry, LogLevel, NodeLogger};
-use crate::meta::metric::aggregator::{AddressedMetric, AggregatorTask, ProfileItem};
+use crate::meta::metric::aggregator::{AddressedMetric, AggregatorTask, MetricState};
 use crate::meta::metric::config::MetricAggregatorConfig;
 use crate::meta::metric::lane::{LanePulse, TaggedLaneProfile};
 use crate::meta::metric::node::{NodeAggregatorTask, NodePulse};
@@ -61,10 +61,24 @@ const STOP_CLOSED: &str = "Aggregator event stream unexpectedly closed";
 const LOG_ERROR_MSG: &str = "Node aggregator failed";
 const LOG_TASK_FINISHED_MSG: &str = "Node aggregator task completed";
 
-/// An observer for node, lane and uplinks which generates profiles based on the events for the
-/// part. These events are aggregated and forwarded to their corresponding lanes as pulses.
+/// A node metric aggregator.
+///
+/// The aggregator has an input channel which is fed WARP uplink profiles which are produced by
+/// uplink observers. The reporting interval of these profiles is configurable and backpressure
+/// relief is also applied. Profile reporting is event driven and a profile will only be reported
+/// if a metric is reported *and* the sample period has elapsed; no periodic flushing of stale
+/// profiles is applied. These profiles are then aggregated by an uplink aggregator and a WARP
+/// uplink pulse is produced at the corresponding supply lane as well as a WARP uplink profile being
+/// forwarded the the next stage in the pipeline. The same process is repeated for lanes and finally
+/// a node pulse and profile is produced.
+///
+/// This aggregator is structured in a fan-in fashion and profiles and pulses are debounced by the
+/// sample rate which is provided at creation. In addition to this, no guarantees are made as to
+/// whether the the pulse or profiles will be delivered; if the channel is full, then the message is
+/// dropped.
 pub struct NodeMetricAggregator {
-    observer: MetricObserver,
+    /// An inner observer factory for creating uplink observer pairs.
+    observer: UplinkMetricObserver,
 }
 
 impl Debug for NodeMetricAggregator {
@@ -75,16 +89,19 @@ impl Debug for NodeMetricAggregator {
     }
 }
 
+/// An error produced by a metric aggregator.
 #[derive(Debug, PartialEq, Clone)]
 pub struct AggregatorError {
-    aggregator: MetricKind,
+    /// The type of aggregator that errored.
+    aggregator: MetricStage,
+    /// The underlying error.
     error: AggregatorErrorKind,
 }
 
 impl From<TokioSendError<TaggedWarpUplinkProfile>> for AggregatorError {
     fn from(_: TokioSendError<TaggedWarpUplinkProfile>) -> Self {
         AggregatorError {
-            aggregator: MetricKind::Uplink,
+            aggregator: MetricStage::Uplink,
             error: AggregatorErrorKind::ForwardChannelClosed,
         }
     }
@@ -97,22 +114,30 @@ impl Display for AggregatorError {
     }
 }
 
+/// A metric aggregator kind or stage in the pipeline.
 #[derive(Clone, Eq, PartialEq, Debug)]
-pub enum MetricKind {
+pub enum MetricStage {
+    /// A node aggregator which accepts lane profiles and produces node pulses/profiles.
     Node,
+    /// A lane aggregator which accepts uplink profiles and produces lane pulses/profiles.
     Lane,
+    /// An uplink aggregator which aggregates events and actions which occur in the uplink and then
+    /// produces uplink profiles and a pulse.
     Uplink,
 }
 
-impl Display for MetricKind {
+impl Display for MetricStage {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}", self)
     }
 }
 
+/// An error produced by a metric aggregator.
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub enum AggregatorErrorKind {
+    /// The aggregator's forward/output channel closed.
     ForwardChannelClosed,
+    /// The input stream to the aggregator closed unexpectedly.
     AbnormalStop,
 }
 
@@ -130,6 +155,21 @@ impl Display for AggregatorErrorKind {
 }
 
 impl NodeMetricAggregator {
+    /// Creates a new node metric aggregator for the `node_uri`.
+    ///
+    /// # Arguments:
+    ///
+    /// * `node_uri` - The URI that this aggregator corresponds to.
+    /// * `stop_rx` - A stop signal for shutting down the aggregator. When this is triggered, it
+    /// will cause all of the pending profiles and pulses to be flushed. Regardless of the last
+    /// flush time.
+    /// * `config` - A configuration for the aggregator and backpressure.
+    /// * `uplink_pulse_lanes` - A map keyed by lane paths and that contains supply lanes for
+    /// WARP uplink pulses.
+    /// * `lane_pulse_lanes` - A map keyed by lane paths and that contains supply lanes for lane
+    /// pulses.
+    /// * `agent_pulse` - A supply lane for producing a node's pulse.
+    /// * `log_context` - Logging context for reporting errors that occur.
     pub fn new(
         node_uri: RelativeUri,
         stop_rx: trigger::Receiver,
@@ -161,7 +201,7 @@ impl NodeMetricAggregator {
         let lane_pulse_lanes = lane_pulse_lanes
             .into_iter()
             .map(|(k, v)| {
-                let inner = ProfileItem::new(
+                let inner = MetricState::new(
                     TaggedLaneProfile::pack(WarpLaneProfile::default(), k.clone()),
                     v,
                 );
@@ -218,39 +258,50 @@ impl NodeMetricAggregator {
         };
 
         let metrics = NodeMetricAggregator {
-            observer: MetricObserver::new(config.sample_rate, node_uri, uplink_tx),
+            observer: UplinkMetricObserver::new(config.sample_rate, node_uri, uplink_tx),
         };
         (metrics, task)
     }
 
-    pub fn observer(&self) -> MetricObserver {
+    pub fn observer(&self) -> UplinkMetricObserver {
         self.observer.clone()
     }
 }
 
+/// An uplink metric observer factory for creating new ingress channels to the metric aggregator.
 #[derive(Clone, Debug)]
-pub struct MetricObserver {
+pub struct UplinkMetricObserver {
+    /// The same rate at which profiles will be reported.
     sample_rate: Duration,
+    /// The URI of the metric aggregator.
     node_uri: String,
+    /// A reporting channel for the accumulated profile.
     metric_tx: Sender<TaggedWarpUplinkProfile>,
 }
 
-impl MetricObserver {
+impl UplinkMetricObserver {
+    /// Creates a new uplink metric observer factory for `node_uri`.
+    ///
+    /// # Arguments:
+    /// `sample_rate`: The rate at which to report the accumulated profile. A profile will only be
+    /// reported if this period has elapsed *and* a metric is reported.
+    /// `node_uri`: The node URI that this uplink is attached to.
+    /// `metric_tx`: The channel to forward the profile to.
     pub fn new(
         sample_rate: Duration,
         node_uri: RelativeUri,
         metric_tx: Sender<TaggedWarpUplinkProfile>,
-    ) -> MetricObserver {
-        MetricObserver {
+    ) -> UplinkMetricObserver {
+        UplinkMetricObserver {
             sample_rate,
             node_uri: node_uri.to_string(),
             metric_tx,
         }
     }
 
-    /// Returns a new `UplinkObserver` for the provided `address`.
+    /// Returns a new event and action observer pair for the provided `lane_uri`.
     pub fn uplink_observer(&self, lane_uri: String) -> (UplinkEventObserver, UplinkActionObserver) {
-        let MetricObserver {
+        let UplinkMetricObserver {
             sample_rate,
             node_uri,
             metric_tx,
