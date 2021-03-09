@@ -21,7 +21,7 @@ use crate::meta::metric::lane::{LanePulse, TaggedLaneProfile};
 use crate::meta::metric::node::NodePulse;
 use crate::meta::metric::uplink::{TaggedWarpUplinkProfile, WarpUplinkPulse};
 use crate::meta::metric::{
-    AggregatorError, AggregatorErrorKind, LaneProfile, MetricKind, NodeMetricAggregator,
+    AggregatorError, AggregatorErrorKind, MetricKind, NodeMetricAggregator, WarpLaneProfile,
     WarpUplinkProfile,
 };
 use futures::future::{join, join3};
@@ -32,7 +32,6 @@ use std::num::NonZeroUsize;
 use std::str::FromStr;
 use std::time::Duration;
 use swim_common::warp::path::RelativePath;
-use swim_runtime::time::timeout::timeout;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Receiver;
 use tokio::time::sleep;
@@ -60,7 +59,7 @@ pub fn create_lane_map(
         let path = RelativePath::new("/node", format!("lane_{}", i));
 
         let value = ProfileItem::new(
-            TaggedLaneProfile::pack(LaneProfile::default(), path.clone()),
+            TaggedLaneProfile::pack(WarpLaneProfile::default(), path.clone()),
             lane,
         );
 
@@ -129,7 +128,7 @@ async fn drain() {
     let path = RelativePath::new("/node", "lane");
 
     let value = ProfileItem::new(
-        TaggedLaneProfile::pack(LaneProfile::default(), path.clone()),
+        TaggedLaneProfile::pack(WarpLaneProfile::default(), path.clone()),
         lane,
     );
     lane_map.insert(path.clone(), value);
@@ -143,10 +142,9 @@ async fn drain() {
         let first = lane_rx.recv().await.unwrap();
         let expected_first = LanePulse {
             uplink_pulse: WarpUplinkPulse {
-                event_delta: 1,
+                link_count: 0,
                 event_rate: 1,
                 event_count: 1,
-                command_delta: 1,
                 command_rate: 1,
                 command_count: 1,
             },
@@ -157,12 +155,11 @@ async fn drain() {
         let second = lane_rx.recv().await.unwrap();
         let expected_second = LanePulse {
             uplink_pulse: WarpUplinkPulse {
-                event_delta: 2,
+                link_count: 0,
                 event_rate: 2,
-                event_count: 3,
-                command_delta: 2,
+                event_count: 2,
                 command_rate: 2,
-                command_count: 3,
+                command_count: 2,
             },
         };
         assert_eq!(second, expected_second);
@@ -170,12 +167,11 @@ async fn drain() {
         let third = lane_rx.recv().await.unwrap();
         let expected_third = LanePulse {
             uplink_pulse: WarpUplinkPulse {
-                event_delta: 3,
+                link_count: 0,
                 event_rate: 3,
-                event_count: 6,
-                command_delta: 3,
+                event_count: 3,
                 command_rate: 3,
-                command_count: 6,
+                command_count: 3,
             },
         };
         assert_eq!(third, expected_third);
@@ -207,7 +203,7 @@ async fn abnormal() {
     let path = RelativePath::new("/node", "lane");
 
     let value = ProfileItem::new(
-        TaggedLaneProfile::pack(LaneProfile::default(), path.clone()),
+        TaggedLaneProfile::pack(WarpLaneProfile::default(), path.clone()),
         lane,
     );
     lane_map.insert(path.clone(), value);
@@ -283,7 +279,7 @@ where
     (path, rx, lane)
 }
 
-fn assert_no_receive<T>(map: &mut HashMap<RelativePath, Receiver<T>>, skip: Vec<RelativePath>)
+fn assert_receive_none<T>(map: &mut HashMap<RelativePath, Receiver<T>>, skip: &Vec<RelativePath>)
 where
     T: PartialEq + Debug,
 {
@@ -296,7 +292,7 @@ where
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn simple_full_pipeline() {
+async fn full_pipeline() {
     let node_uri = RelativeUri::from_str("/node").unwrap();
     let (stop_tx, stop_rx) = trigger::trigger();
     let sample_rate = Duration::from_millis(100);
@@ -344,12 +340,10 @@ async fn simple_full_pipeline() {
 
         let uplink_pulse = lane.recv().await.expect("No pulse sent to lane");
 
-        println!("Uplink received");
+        assert_receive_none(&mut uplink_rx, &uplink_test_lanes);
 
-        assert_no_receive(&mut uplink_rx, uplink_test_lanes);
-
-        assert_eq!(uplink_pulse.event_delta, 10);
-        assert_eq!(uplink_pulse.command_delta, 10);
+        assert_eq!(uplink_pulse.event_count, 10);
+        assert_eq!(uplink_pulse.command_count, 10);
     };
 
     let lane_task = async move {
@@ -359,17 +353,27 @@ async fn simple_full_pipeline() {
         let lane_pulse = lane.recv().await.expect("No pulse sent to lane");
         let uplink_pulse = lane_pulse.uplink_pulse;
 
-        println!("Lane received");
+        assert_receive_none(&mut lane_rx, &test_lanes);
 
-        assert_no_receive(&mut lane_rx, test_lanes);
-
-        assert_eq!(uplink_pulse.event_delta, 10);
-        assert_eq!(uplink_pulse.command_delta, 10);
+        assert_eq!(uplink_pulse.event_count, 10);
+        assert_eq!(uplink_pulse.command_count, 10);
     };
 
     let node_task = async move {
-        // let _node_pulse: NodePulse = node_pulse_rx.recv().await.expect("No pulse sent to lane");
+        let NodePulse { uplinks } = node_pulse_rx.recv().await.expect("No pulse sent to lane");
+        let WarpUplinkPulse {
+            link_count,
+            event_count,
+            command_count,
+            ..
+        } = uplinks;
+
+        assert_eq!(link_count, 0);
+        assert_eq!(event_count, 10);
+        assert_eq!(command_count, 10);
     };
+
+    sleep(sample_rate).await;
 
     let task_jh = tokio::spawn(join3(uplink_task, lane_task, node_task));
 
@@ -383,7 +387,138 @@ async fn simple_full_pipeline() {
 
     stop_tx.trigger();
 
-    println!("Awaiting aggregator task");
+    assert!(aggregator_jh.await.unwrap().is_ok());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn full_pipeline_multiple_observers() {
+    let node_uri = RelativeUri::from_str("/node").unwrap();
+    let (stop_tx, stop_rx) = trigger::trigger();
+    let sample_rate = Duration::from_millis(100);
+    let event_count1 = 10;
+    let event_count2 = 5;
+
+    let expected_count = event_count1 + event_count2;
+
+    let config = MetricAggregatorConfig {
+        sample_rate,
+        buffer_size: DEFAULT_BUFFER,
+        yield_after: DEFAULT_YIELD,
+        backpressure_config: backpressure_config(),
+    };
+
+    let endpoint_count = 10;
+    let test_lanes = vec!["test".to_string()];
+
+    let (uplink_tx, mut uplink_rx) = make_pulse_map(endpoint_count, test_lanes.clone());
+    let (lane_tx, mut lane_rx) = make_pulse_map(endpoint_count, test_lanes.clone());
+
+    let (node_pulse_tx, mut node_pulse_rx) = mpsc::channel(DEFAULT_BUFFER.get());
+    let node_pulse_lane = SupplyLane::new(Box::new(node_pulse_tx));
+
+    let (aggregator, aggregator_task) = NodeMetricAggregator::new(
+        node_uri.clone(),
+        stop_rx,
+        config,
+        uplink_tx,
+        lane_tx,
+        node_pulse_lane,
+        make_node_logger(node_uri),
+    );
+
+    let aggregator_jh = tokio::spawn(aggregator_task);
+
+    let test_lanes = test_lanes
+        .into_iter()
+        .map(|name| RelativePath::new("/node", name))
+        .collect::<Vec<_>>();
+
+    let uplink_test_lanes = test_lanes.clone();
+
+    let uplink_task = async move {
+        let lane = uplink_rx
+            .get_mut(&RelativePath::new("/node", "test"))
+            .expect("Missing lane");
+
+        let uplink_pulse1 = lane.recv().await.expect("No pulse sent to lane");
+
+        assert_eq!(uplink_pulse1.event_count, event_count1);
+        assert_eq!(uplink_pulse1.command_count, event_count1);
+
+        let uplink_pulse2 = lane.recv().await.expect("No pulse sent to lane");
+
+        assert_receive_none(&mut uplink_rx, &uplink_test_lanes);
+
+        assert_eq!(uplink_pulse2.event_count, expected_count);
+        assert_eq!(uplink_pulse2.command_count, expected_count);
+    };
+
+    let lane_task = async move {
+        let lane = lane_rx
+            .get_mut(&RelativePath::new("/node", "test"))
+            .expect("Missing lane");
+        let lane_pulse1 = lane.recv().await.expect("No pulse sent to lane");
+        let uplink_pulse1 = lane_pulse1.uplink_pulse;
+
+        assert_eq!(uplink_pulse1.event_count, event_count1);
+        assert_eq!(uplink_pulse1.command_count, event_count1);
+
+        let lane_pulse2 = lane.recv().await.expect("No pulse sent to lane");
+        let uplink_pulse2 = lane_pulse2.uplink_pulse;
+
+        assert_receive_none(&mut lane_rx, &test_lanes);
+
+        assert_eq!(uplink_pulse2.event_count, expected_count);
+        assert_eq!(uplink_pulse2.command_count, expected_count);
+    };
+
+    let node_task = async move {
+        let NodePulse { uplinks } = node_pulse_rx.recv().await.expect("No pulse sent to lane");
+        let WarpUplinkPulse {
+            link_count,
+            event_count,
+            command_count,
+            ..
+        } = uplinks;
+
+        assert_eq!(link_count, 0);
+        assert_eq!(event_count, event_count1);
+        assert_eq!(command_count, event_count1);
+
+        let NodePulse { uplinks } = node_pulse_rx.recv().await.expect("No pulse sent to lane");
+        let WarpUplinkPulse {
+            link_count,
+            event_count,
+            command_count,
+            ..
+        } = uplinks;
+
+        assert_eq!(link_count, 0);
+        assert_eq!(event_count, expected_count);
+        assert_eq!(command_count, expected_count);
+    };
+
+    sleep(sample_rate).await;
+
+    let task_jh = tokio::spawn(join3(uplink_task, lane_task, node_task));
+
+    let (_event_observer1, action_observer1) =
+        aggregator.observer().uplink_observer("test".to_string());
+
+    action_observer1.set_inner_values(event_count1 as u32);
+    action_observer1.force_flush();
+
+    sleep(sample_rate).await;
+
+    let (_event_observer2, action_observer2) =
+        aggregator.observer().uplink_observer("test".to_string());
+
+    action_observer2.set_inner_values(event_count2 as u32);
+    action_observer2.force_flush();
+
+    assert!(task_jh.await.is_ok());
+
+    stop_tx.trigger();
 
     assert!(aggregator_jh.await.unwrap().is_ok());
 }

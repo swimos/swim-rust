@@ -46,7 +46,7 @@ use crate::meta::metric::uplink::{
 };
 use futures::future::try_join3;
 use futures::Future;
-pub use lane::LaneProfile;
+pub use lane::WarpLaneProfile;
 pub use node::NodeProfile;
 use std::time::Duration;
 use tokio::sync::mpsc::error::SendError as TokioSendError;
@@ -162,7 +162,7 @@ impl NodeMetricAggregator {
             .into_iter()
             .map(|(k, v)| {
                 let inner = ProfileItem::new(
-                    TaggedLaneProfile::pack(LaneProfile::default(), k.clone()),
+                    TaggedLaneProfile::pack(WarpLaneProfile::default(), k.clone()),
                     v,
                 );
                 (k, inner)

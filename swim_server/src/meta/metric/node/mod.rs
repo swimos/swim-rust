@@ -16,7 +16,8 @@ use crate::agent::lane::model::supply::supplier::TrySupplyError;
 use crate::agent::lane::model::supply::SupplyLane;
 use crate::meta::metric::aggregator::AddressedMetric;
 use crate::meta::metric::lane::TaggedLaneProfile;
-use crate::meta::metric::{AggregatorError, AggregatorErrorKind, LaneProfile, MetricKind};
+use crate::meta::metric::uplink::WarpUplinkPulse;
+use crate::meta::metric::{AggregatorError, AggregatorErrorKind, MetricKind, WarpLaneProfile};
 use crate::meta::metric::{STOP_CLOSED, STOP_OK};
 use futures::select;
 use futures::FutureExt;
@@ -30,21 +31,100 @@ use tracing::{event, Level};
 use utilities::sync::trigger;
 
 #[derive(Default, Form, Clone, PartialEq, Debug)]
-pub struct NodeProfile;
+pub struct NodeProfile {
+    pub uplink_event_delta: u32,
+    pub uplink_event_rate: u64,
+    pub uplink_event_count: u64,
+    pub uplink_command_delta: u32,
+    pub uplink_command_rate: u64,
+    pub uplink_command_count: u64,
+    pub uplink_open_delta: u32,
+    pub uplink_open_count: u32,
+    pub uplink_close_delta: u32,
+    pub uplink_close_count: u32,
+}
 
 impl NodeProfile {
-    pub fn accumulate(&mut self, _profile: &LaneProfile) {
-        unimplemented!()
+    fn accumulate(&mut self, other: WarpLaneProfile) {
+        let NodeProfile {
+            uplink_event_delta,
+            uplink_event_rate,
+            uplink_command_delta,
+            uplink_command_rate,
+            uplink_open_delta,
+            uplink_open_count,
+            uplink_close_delta,
+            uplink_close_count,
+            ..
+        } = self;
+
+        let WarpLaneProfile {
+            uplink_event_delta: other_uplink_event_delta,
+            uplink_event_rate: other_uplink_event_rate,
+            uplink_command_delta: other_uplink_command_delta,
+            uplink_command_rate: other_uplink_command_rate,
+            uplink_open_delta: other_uplink_open_delta,
+            uplink_open_count: other_uplink_open_count,
+            uplink_close_delta: other_uplink_close_delta,
+            uplink_close_count: other_uplink_close_count,
+            ..
+        } = other;
+
+        *uplink_event_delta = uplink_event_delta.wrapping_add(other_uplink_event_delta);
+        *uplink_event_rate = uplink_event_rate.wrapping_add(other_uplink_event_rate);
+
+        *uplink_command_delta = uplink_command_delta.wrapping_add(other_uplink_command_delta);
+        *uplink_command_rate = uplink_command_rate.wrapping_add(other_uplink_command_rate);
+
+        *uplink_open_delta = uplink_open_delta.wrapping_add(other_uplink_open_delta);
+        *uplink_open_count = uplink_open_count.wrapping_add(other_uplink_open_count);
+
+        *uplink_close_delta = uplink_close_delta.wrapping_add(other_uplink_close_delta);
+        *uplink_close_count = uplink_close_count.wrapping_add(other_uplink_close_count);
+    }
+
+    fn collect(&mut self) -> NodePulse {
+        let NodeProfile {
+            uplink_event_delta,
+            uplink_event_rate,
+            uplink_event_count,
+            uplink_command_delta,
+            uplink_command_rate,
+            uplink_command_count,
+            uplink_open_delta,
+            uplink_open_count,
+            uplink_close_delta,
+            uplink_close_count,
+        } = self;
+
+        let link_count = uplink_open_count.saturating_sub(*uplink_close_count);
+        let event_count = uplink_event_count.wrapping_add(*uplink_event_delta as u64);
+        let command_count = uplink_command_count.wrapping_add(*uplink_command_delta as u64);
+
+        let pulse = NodePulse {
+            uplinks: WarpUplinkPulse {
+                link_count,
+                event_rate: *uplink_event_rate,
+                event_count,
+                command_rate: *uplink_command_rate,
+                command_count,
+            },
+        };
+
+        *uplink_open_delta = 0;
+        *uplink_close_delta = 0;
+        *uplink_event_delta = 0;
+        *uplink_event_rate = 0;
+        *uplink_command_delta = 0;
+        *uplink_command_rate = 0;
+
+        pulse
     }
 }
 
 #[derive(Default, Form, Clone, PartialEq, Debug)]
-pub struct NodePulse;
-
-impl NodePulse {
-    fn accumulate(&mut self, _other: LaneProfile) {
-        unimplemented!()
-    }
+pub struct NodePulse {
+    pub uplinks: WarpUplinkPulse,
 }
 
 #[derive(Debug, Clone)]
@@ -59,7 +139,7 @@ pub struct NodeAggregatorTask {
     last_report: Instant,
     lane: SupplyLane<NodePulse>,
     input: ReceiverStream<TaggedLaneProfile>,
-    pulse: NodePulse,
+    profile: NodeProfile,
 }
 
 impl NodeAggregatorTask {
@@ -75,7 +155,7 @@ impl NodeAggregatorTask {
             last_report: Instant::now(),
             lane,
             input,
-            pulse: NodePulse::default(),
+            profile: NodeProfile::default(),
         }
     }
     pub async fn run(self, yield_after: NonZeroUsize) -> Result<(), AggregatorError> {
@@ -85,7 +165,7 @@ impl NodeAggregatorTask {
             mut last_report,
             lane,
             input,
-            mut pulse,
+            mut profile,
         } = self;
 
         let mut fused_metric_rx = input.fuse();
@@ -108,11 +188,12 @@ impl NodeAggregatorTask {
                     break AggregatorErrorKind::AbnormalStop;
                 }
                 Some(tagged) => {
-                    let (_, profile) = tagged.unpack();
-                    // pulse.accumulate(profile);
+                    let (_, new_profile) = tagged.unpack();
+                    profile.accumulate(new_profile);
+                    let pulse = profile.collect();
 
                     if last_report.elapsed() > sample_rate {
-                        if let Err(TrySupplyError::Closed) = lane.try_send(pulse.clone()) {
+                        if let Err(TrySupplyError::Closed) = lane.try_send(pulse) {
                             break AggregatorErrorKind::ForwardChannelClosed;
                         } else {
                             last_report = Instant::now();
@@ -134,32 +215,4 @@ impl NodeAggregatorTask {
             error,
         });
     }
-}
-
-impl From<NodeProfile> for NodePulse {
-    fn from(_: NodeProfile) -> Self {
-        unimplemented!()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    // use crate::agent::meta::metric::node::NodeProfile;
-    // use crate::agent::meta::metric::sender::TransformedSender;
-    // use crate::agent::meta::metric::ObserverEvent;
-    // use futures::FutureExt;
-    // use tokio::sync::mpsc;
-    //
-    // #[tokio::test]
-    // async fn test_node_surjection() {
-    //     let (tx, mut rx) = mpsc::channel(1);
-    //     let sender = TransformedSender::new(ObserverEvent::Node, tx);
-    //     let profile = NodeProfile::default();
-    //
-    //     assert!(sender.try_send(profile.clone()).is_ok());
-    //     assert_eq!(
-    //         rx.recv().now_or_never().unwrap().unwrap(),
-    //         ObserverEvent::Node(profile)
-    //     );
-    // }
 }

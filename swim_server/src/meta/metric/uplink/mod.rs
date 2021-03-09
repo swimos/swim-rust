@@ -141,28 +141,25 @@ impl AddressedMetric for TaggedWarpUplinkPulse {
 
 #[derive(Default, Form, Clone, PartialEq, Debug)]
 pub struct WarpUplinkPulse {
-    pub event_delta: u32,
+    pub link_count: u32,
     pub event_rate: u64,
     pub event_count: u64,
-    pub command_delta: u32,
     pub command_rate: u64,
     pub command_count: u64,
 }
 
 impl WarpUplinkPulse {
     pub fn new(
-        event_delta: u32,
+        link_count: u32,
         event_rate: u64,
         event_count: u64,
-        command_delta: u32,
         command_rate: u64,
         command_count: u64,
     ) -> Self {
         WarpUplinkPulse {
-            event_delta,
+            link_count,
             event_rate,
             event_count,
-            command_delta,
             command_rate,
             command_count,
         }
@@ -365,18 +362,11 @@ impl UplinkActionObserver {
     #[cfg(test)]
     pub(crate) fn set_inner_values(&self, to: u32) {
         let InnerObserver {
-            sending,
             event_delta,
-            event_count,
             command_delta,
-            command_count,
             open_delta,
-            open_count,
             close_delta,
-            close_count,
-            last_report,
-            report_interval,
-            sender,
+            ..
         } = &*self.inner;
 
         event_delta.store(to, Ordering::Relaxed);
@@ -448,8 +438,42 @@ impl Metric<WarpUplinkProfile> for TaggedWarpUplinkProfile {
 
     type Pulse = WarpUplinkPulse;
 
-    fn accumulate(&mut self, new: WarpUplinkProfile) {
-        self.profile = new;
+    fn accumulate(&mut self, profile: WarpUplinkProfile) {
+        let WarpUplinkProfile {
+            event_delta: profile_event_delta,
+            event_rate: profile_event_rate,
+            command_delta: profile_command_delta,
+            command_rate: profile_command_rate,
+            open_delta: profile_open_delta,
+            open_count: profile_open_count,
+            close_delta: profile_close_delta,
+            close_count: profile_close_count,
+            ..
+        } = profile;
+
+        let WarpUplinkProfile {
+            event_delta,
+            event_rate,
+            command_delta,
+            command_rate,
+            open_delta,
+            open_count,
+            close_delta,
+            close_count,
+            ..
+        } = &mut self.profile;
+
+        *event_delta += event_delta.wrapping_add(profile_event_delta);
+        *event_rate += event_rate.wrapping_add(profile_event_rate);
+
+        *command_delta += command_delta.wrapping_add(profile_command_delta);
+        *command_rate += command_rate.wrapping_add(profile_command_rate);
+
+        *open_delta += open_delta.wrapping_add(profile_open_delta);
+        *open_count += open_count.wrapping_add(profile_open_count);
+
+        *close_delta += close_delta.wrapping_add(profile_close_delta);
+        *close_count += close_count.wrapping_add(profile_close_count);
     }
 
     fn collect(&mut self) -> Self {
@@ -460,20 +484,21 @@ impl Metric<WarpUplinkProfile> for TaggedWarpUplinkProfile {
         let WarpUplinkProfile {
             event_delta,
             event_rate,
-            event_count,
             command_delta,
             command_rate,
-            command_count,
+            open_count,
+            close_count,
             ..
         } = self.profile;
 
+        let link_count = open_count.saturating_sub(close_count);
+
         WarpUplinkPulse {
-            event_delta,
+            link_count,
             event_rate,
-            event_count,
-            command_delta,
+            event_count: event_delta as u64,
             command_rate,
-            command_count,
+            command_count: command_delta as u64,
         }
     }
 }

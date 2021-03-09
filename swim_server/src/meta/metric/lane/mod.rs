@@ -23,7 +23,7 @@ use crate::meta::metric::uplink::WarpUplinkPulse;
 use crate::meta::metric::{MetricKind, WarpUplinkProfile};
 
 #[derive(Default, Form, Clone, PartialEq, Debug)]
-pub struct LaneProfile {
+pub struct WarpLaneProfile {
     // todo: WarpDownlinkProfile aggregation
     // todo: LaneAddress
     pub uplink_event_delta: u32,
@@ -41,11 +41,11 @@ pub struct LaneProfile {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TaggedLaneProfile {
     pub path: RelativePath,
-    pub profile: LaneProfile,
+    pub profile: WarpLaneProfile,
 }
 
 impl AddressedMetric for TaggedLaneProfile {
-    type Metric = LaneProfile;
+    type Metric = WarpLaneProfile;
 
     fn unpack(self) -> (RelativePath, Self::Metric) {
         let TaggedLaneProfile { path, profile } = self;
@@ -70,46 +70,45 @@ impl Metric<WarpUplinkProfile> for TaggedLaneProfile {
     type Pulse = LanePulse;
 
     fn accumulate(&mut self, new: WarpUplinkProfile) {
-        let LaneProfile {
+        let WarpLaneProfile {
             uplink_event_delta,
             uplink_event_rate,
-            uplink_event_count,
             uplink_command_delta,
             uplink_command_rate,
-            uplink_command_count,
             uplink_open_delta,
             uplink_open_count,
             uplink_close_delta,
             uplink_close_count,
+            ..
         } = &mut self.profile;
 
         let WarpUplinkProfile {
             event_delta: new_event_delta,
             event_rate: new_event_rate,
-            event_count: new_event_count,
             command_delta: new_command_delta,
             command_rate: new_command_rate,
-            command_count: new_command_count,
             open_delta: new_open_delta,
             open_count: new_open_count,
             close_delta: new_close_delta,
             close_count: new_close_count,
+            ..
         } = new;
 
         *uplink_event_delta += new_event_delta;
         *uplink_event_rate += new_event_rate;
-        *uplink_event_count += new_event_count;
+
         *uplink_command_delta += new_command_delta;
         *uplink_command_rate += new_command_rate;
-        *uplink_command_count += new_command_count;
+
         *uplink_open_delta += new_open_delta;
         *uplink_open_count += new_open_count;
+
         *uplink_close_delta += new_close_delta;
         *uplink_close_count += new_close_count;
     }
 
     fn collect(&mut self) -> TaggedLaneProfile {
-        let LaneProfile {
+        let WarpLaneProfile {
             uplink_event_delta,
             uplink_event_rate,
             uplink_event_count,
@@ -122,7 +121,7 @@ impl Metric<WarpUplinkProfile> for TaggedLaneProfile {
             uplink_close_count,
         } = &mut self.profile;
 
-        let new_profile = LaneProfile {
+        let new_profile = WarpLaneProfile {
             uplink_event_delta: *uplink_event_delta,
             uplink_event_rate: *uplink_event_rate,
             uplink_event_count: *uplink_event_count,
@@ -149,23 +148,28 @@ impl Metric<WarpUplinkProfile> for TaggedLaneProfile {
     }
 
     fn as_pulse(&self) -> Self::Pulse {
-        let LaneProfile {
+        let WarpLaneProfile {
             uplink_event_delta,
             uplink_event_rate,
             uplink_event_count,
             uplink_command_delta,
             uplink_command_rate,
             uplink_command_count,
+            uplink_open_count,
+            uplink_close_count,
             ..
         } = self.profile;
 
+        let link_count = uplink_open_count.saturating_sub(uplink_close_count);
+        let event_count = uplink_event_count.wrapping_add(uplink_event_delta as u64);
+        let command_count = uplink_command_count.wrapping_add(uplink_command_delta as u64);
+
         let uplink_pulse = WarpUplinkPulse {
-            event_delta: uplink_event_delta,
+            link_count,
             event_rate: uplink_event_rate,
-            event_count: uplink_event_count,
-            command_delta: uplink_command_delta,
+            event_count,
             command_rate: uplink_command_rate,
-            command_count: uplink_command_count,
+            command_count,
         };
 
         LanePulse { uplink_pulse }

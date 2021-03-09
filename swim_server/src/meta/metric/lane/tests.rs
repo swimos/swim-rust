@@ -19,7 +19,7 @@ use crate::meta::metric::tests::{
     build_uplink_profile, create_lane_map, DEFAULT_BUFFER, DEFAULT_YIELD,
 };
 use crate::meta::metric::uplink::{TaggedWarpUplinkProfile, WarpUplinkPulse};
-use crate::meta::metric::{LaneProfile, WarpUplinkProfile};
+use crate::meta::metric::{WarpLaneProfile, WarpUplinkProfile};
 use futures::future::join;
 use std::collections::HashMap;
 use std::time::Duration;
@@ -39,7 +39,7 @@ async fn single() {
     let path = RelativePath::new("/node", "lane");
 
     let value = ProfileItem::new(
-        TaggedLaneProfile::pack(LaneProfile::default(), path.clone()),
+        TaggedLaneProfile::pack(WarpLaneProfile::default(), path.clone()),
         lane,
     );
     lane_map.insert(path.clone(), value);
@@ -61,10 +61,9 @@ async fn single() {
         let received = lane_rx.recv().await.expect("Expected a LanePulse");
         let expected = LanePulse {
             uplink_pulse: WarpUplinkPulse {
-                event_delta: 1,
+                link_count: 0,
                 event_rate: 2,
                 event_count: 3,
-                command_delta: 4,
                 command_rate: 5,
                 command_count: 6,
             },
@@ -75,7 +74,7 @@ async fn single() {
         let received = node_rx.recv().await.expect("Expected a lane profile");
         let expected = TaggedLaneProfile {
             path: path,
-            profile: LaneProfile {
+            profile: WarpLaneProfile {
                 uplink_event_delta: 1,
                 uplink_event_rate: 2,
                 uplink_event_count: 3,
@@ -150,10 +149,9 @@ async fn multiple_lanes() {
 
         let expected = LanePulse {
             uplink_pulse: WarpUplinkPulse {
-                event_delta: 45,
+                link_count: 0,
                 event_rate: 45,
                 event_count: 45,
-                command_delta: 45,
                 command_rate: 45,
                 command_count: 45,
             },

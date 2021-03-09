@@ -296,8 +296,8 @@ async fn with_observer() {
     let sample_rate = Duration::from_millis(100);
 
     let supply_rcv_task = async move {
-        let profile: WarpUplinkPulse = supply_lane_rx.recv().await.unwrap();
-        assert_eq!(profile.event_delta, 1);
+        let pulse: WarpUplinkPulse = supply_lane_rx.recv().await.unwrap();
+        assert_eq!(pulse.event_count, 1);
     };
 
     let lane_rcv_task = async move {

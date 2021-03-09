@@ -19,7 +19,7 @@ use crate::meta::metric::{STOP_CLOSED, STOP_OK};
 use futures::FutureExt;
 use futures::StreamExt;
 use futures::{select, Stream};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::num::NonZeroUsize;
 use std::time::{Duration, Instant};
 use swim_common::warp::path::RelativePath;
@@ -71,7 +71,7 @@ where
 {
     pub fn new(profile: M, lane: SupplyLane<M::Pulse>) -> ProfileItem<M, In> {
         ProfileItem {
-            requires_flush: false,
+            requires_flush: true,
             last_report: Instant::now(),
             inner: profile,
             lane,
@@ -177,6 +177,7 @@ where
             output,
         } = self;
 
+        let mut removed_lanes = HashSet::new();
         let mut fused_metric_rx = input.fuse();
         let mut fused_trigger = stop_rx.fuse();
         let mut iteration_count: usize = 0;
@@ -214,7 +215,10 @@ where
                             Err(_) => true,
                         },
                         None => {
-                            event!(Level::DEBUG, ?path, LANE_NOT_FOUND);
+                            if removed_lanes.get(&path).is_none() {
+                                event!(Level::DEBUG, ?path, LANE_NOT_FOUND);
+                            }
+
                             false
                         }
                     };
@@ -222,6 +226,7 @@ where
                     if did_error {
                         event!(Level::DEBUG, ?path, REMOVING_LANE);
                         let _ = pulse_lanes.remove(&path);
+                        removed_lanes.insert(path);
                     }
                 }
             }
