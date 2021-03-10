@@ -15,7 +15,7 @@
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lifecycle::AgentLifecycle;
 use crate::agent::{AgentParameters, AgentResult, SwimAgent};
-use crate::plane::AgentRoute;
+use crate::plane::{AgentRoute, PlaneRequest};
 use crate::routing::{ServerRouter, TaggedEnvelope};
 use futures::future::BoxFuture;
 use futures::{FutureExt, Stream};
@@ -25,6 +25,7 @@ use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
 use std::sync::Arc;
 use swim_runtime::time::clock::Clock;
+use tokio::sync::mpsc;
 use utilities::uri::RelativeUri;
 
 /// [`AgentRoute`] implementation that spawns agents with a fixed configuration.
@@ -62,7 +63,7 @@ where
         }
     }
 
-    pub fn run<Clk, Envelopes, Router>(
+    pub(crate) fn run<Clk, Envelopes, Router>(
         &self,
         uri: RelativeUri,
         parameters: HashMap<String, String>,
@@ -70,6 +71,7 @@ where
         clock: Clk,
         incoming_envelopes: Envelopes,
         router: Router,
+        plane_tx: mpsc::Sender<PlaneRequest>,
     ) -> (Arc<dyn Any + Send + Sync>, BoxFuture<'static, AgentResult>)
     where
         Clk: Clock,
@@ -91,6 +93,7 @@ where
             parameters,
             incoming_envelopes,
             router,
+            plane_tx,
         );
         (agent, task.boxed())
     }
@@ -114,6 +117,7 @@ where
         clock: Clk,
         incoming_envelopes: Envelopes,
         router: Router,
+        plane_tx: mpsc::Sender<PlaneRequest>,
     ) -> (Arc<dyn Any + Send + Sync>, BoxFuture<'static, AgentResult>) {
         self.run(
             uri,
@@ -122,6 +126,7 @@ where
             clock,
             incoming_envelopes,
             router,
+            plane_tx,
         )
     }
 }

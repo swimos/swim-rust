@@ -46,6 +46,7 @@ use crate::agent::lane::model::supply::{make_lane_model, SupplyLane};
 use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 use crate::agent::lane::model::DeferredSubscription;
 use crate::agent::lifecycle::AgentLifecycle;
+use crate::plane::PlaneRequest;
 use crate::routing::{ServerRouter, TaggedClientEnvelope, TaggedEnvelope};
 use futures::future::{join, ready, BoxFuture};
 use futures::sink::drain;
@@ -168,12 +169,13 @@ impl<Config> AgentParameters<Config> {
 /// * `stop_trigger` - External trigger to cleanly stop the agent.
 /// * `parameters` - Parameters extracted from the agent node route pattern.
 /// * `incoming_envelopes` - The stream of envelopes routed to the agent.
-pub fn run_agent<Config, Clk, Agent, L, Router>(
+pub(crate) fn run_agent<Config, Clk, Agent, L, Router>(
     lifecycle: L,
     clock: Clk,
     parameters: AgentParameters<Config>,
     incoming_envelopes: impl Stream<Item = TaggedEnvelope> + Send + 'static,
     router: Router,
+    plane_tx: mpsc::Sender<PlaneRequest>,
 ) -> (
     Arc<Agent>,
     impl Future<Output = AgentResult> + Send + 'static,
