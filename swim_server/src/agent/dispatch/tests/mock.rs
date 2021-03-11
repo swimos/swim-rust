@@ -144,6 +144,10 @@ impl AgentExecutionContext for MockExecutionContext {
     fn spawner(&self) -> Sender<Eff> {
         self.spawner.clone()
     }
+
+    fn relative_uri(&self) -> &RelativeUri {
+        unimplemented!()
+    }
 }
 
 impl MockExecutionContext {

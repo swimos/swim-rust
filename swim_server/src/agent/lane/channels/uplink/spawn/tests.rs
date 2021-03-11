@@ -331,6 +331,10 @@ impl AgentExecutionContext for TestContext {
     fn spawner(&self) -> Sender<Eff> {
         self.spawner.clone()
     }
+
+    fn relative_uri(&self) -> &RelativeUri {
+        unimplemented!()
+    }
 }
 
 /// Create a spawner connected to a complete test harness.

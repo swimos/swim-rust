@@ -88,6 +88,10 @@ impl AgentExecutionContext for TestContext {
     fn spawner(&self) -> mpsc::Sender<Eff> {
         self.1.clone()
     }
+
+    fn relative_uri(&self) -> &RelativeUri {
+        unimplemented!()
+    }
 }
 
 async fn check_receive(

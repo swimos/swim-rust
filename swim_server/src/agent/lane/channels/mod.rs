@@ -61,6 +61,8 @@ pub struct AgentExecutionConfig {
     pub value_lane_backpressure: Option<SimpleBackpressureConfig>,
     /// Back-pressure relief configuration for map lane uplinks.
     pub map_lane_backpressure: Option<KeyedBackpressureConfig>,
+    /// The maximum idle time before the agent is terminated.
+    pub max_idle_time: Duration,
 }
 
 const DEFAULT_YIELD_COUNT: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(2048) };
@@ -72,6 +74,7 @@ impl AgentExecutionConfig {
         error_threshold: usize,
         cleanup_timeout: Duration,
         backpressure: Option<KeyedBackpressureConfig>,
+        max_idle_time: Duration,
     ) -> Self {
         AgentExecutionConfig {
             max_pending_envelopes,
@@ -93,6 +96,7 @@ impl AgentExecutionConfig {
                 yield_after: kc.buffer_size,
             }),
             map_lane_backpressure: backpressure,
+            max_idle_time,
         }
     }
 }
@@ -118,6 +122,7 @@ impl Default for AgentExecutionConfig {
             scheduler_buffer: default_buffer,
             value_lane_backpressure: None,
             map_lane_backpressure: None,
+            max_idle_time: Duration::from_secs(300),
         }
     }
 }

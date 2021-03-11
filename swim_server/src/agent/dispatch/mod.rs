@@ -46,7 +46,10 @@ use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::{AttachError, LaneIo};
 use crate::meta::uri::MetaParseErr;
 use crate::meta::{LaneAddressedKind, MetaNodeAddressed, LANES_URI, PULSE_URI, UPLINK_URI};
+use crate::plane::PlaneRequest;
 use crate::routing::{RoutingAddr, ServerRouter, TaggedClientEnvelope, TaggedEnvelope};
+use std::time::Duration;
+use swim_runtime::time::timeout::timeout;
 
 pub mod error;
 #[cfg(test)]
@@ -200,9 +203,10 @@ where
     /// # Arguments
     /// * `incoming` - The stream of incoming [`swim_common::warp::envelope::Envelope`]s to the
     /// agent.
-    pub async fn run(
+    pub(crate) async fn run(
         self,
         incoming: impl Stream<Item = TaggedEnvelope>,
+        plane_tx: mpsc::Sender<PlaneRequest>,
     ) -> Result<DispatcherErrors, DispatcherErrors> {
         let AgentDispatcher {
             agent_route,
@@ -220,8 +224,11 @@ where
             open_tx,
             config.yield_after,
             config.lane_buffer,
+            config.max_idle_time,
             context.router_handle(),
         );
+
+        let relative_uri = context.relative_uri().clone();
 
         let attacher = LaneAttachmentTask::new(agent_route, lanes, &config, context);
         let open_task = attacher
@@ -230,7 +237,7 @@ where
 
         let dispatch_task = async move {
             let succeeded = dispatcher
-                .dispatch_envelopes(incoming.take_until(tripwire_rx))
+                .dispatch_envelopes(incoming.take_until(tripwire_rx), plane_tx, relative_uri)
                 .await;
             if succeeded {
                 dispatcher
@@ -496,6 +503,7 @@ struct EnvelopeDispatcher<Router> {
     await_new: FuturesUnordered<AwaitNewLane<LaneIdentifier>>,
     yield_after: NonZeroUsize,
     lane_buffer: NonZeroUsize,
+    max_idle_time: Duration,
     router: Router,
 }
 
@@ -516,6 +524,7 @@ where
         open_tx: mpsc::Sender<OpenRequest>,
         yield_after: NonZeroUsize,
         lane_buffer: NonZeroUsize,
+        max_idle_time: Duration,
         router: Router,
     ) -> Self {
         EnvelopeDispatcher {
@@ -524,17 +533,24 @@ where
             await_new: Default::default(),
             yield_after,
             lane_buffer,
+            max_idle_time,
             router,
         }
     }
 
-    async fn dispatch_envelopes(&mut self, envelopes: impl Stream<Item = TaggedEnvelope>) -> bool {
+    async fn dispatch_envelopes(
+        &mut self,
+        envelopes: impl Stream<Item = TaggedEnvelope>,
+        plane_tx: mpsc::Sender<PlaneRequest>,
+        relative_uri: RelativeUri,
+    ) -> bool {
         let EnvelopeDispatcher {
             senders,
             open_tx,
             await_new,
             yield_after,
             lane_buffer,
+            max_idle_time,
             router,
         } = self;
 
@@ -545,7 +561,23 @@ where
         let mut iteration_count: usize = 0;
 
         loop {
-            let next = select_next(await_new, &mut envelopes).await;
+            let next_fut = select_next(await_new, &mut envelopes);
+            let maybe_next = timeout(max_idle_time.clone(), next_fut).await;
+
+            let next = match maybe_next {
+                Ok(next) => next,
+                Err(_) => {
+                    if plane_tx
+                        .send(PlaneRequest::TerminateAgent(relative_uri))
+                        .await
+                        .is_err()
+                    {
+                        break false;
+                    } else {
+                        break true;
+                    }
+                }
+            };
 
             match next {
                 Some(Either::Left((label, Ok(_)))) => {

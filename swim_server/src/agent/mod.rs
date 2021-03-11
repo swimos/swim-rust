@@ -253,7 +253,7 @@ where
 
         let dispatch_task = async move {
             let tripwire = tripwire;
-            let result = dispatcher.run(incoming_envelopes).await;
+            let result = dispatcher.run(incoming_envelopes, plane_tx).await;
             tripwire.trigger();
             let _ = result_tx.send(result);
         }

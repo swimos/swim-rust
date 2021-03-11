@@ -162,6 +162,9 @@ pub trait AgentExecutionContext {
 
     /// Provide a channel to dispatch events to the agent scheduler.
     fn spawner(&self) -> mpsc::Sender<Eff>;
+
+    /// Get the relative uri of the agent.
+    fn relative_uri(&self) -> &RelativeUri;
 }
 
 impl<Agent, Clk, RouterInner> AgentExecutionContext for ContextImpl<Agent, Clk, RouterInner>
@@ -176,5 +179,9 @@ where
 
     fn spawner(&self) -> Sender<Eff> {
         self.scheduler.clone()
+    }
+
+    fn relative_uri(&self) -> &RelativeUri {
+        &self.uri
     }
 }

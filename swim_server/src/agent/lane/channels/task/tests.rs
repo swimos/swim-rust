@@ -392,6 +392,10 @@ impl AgentExecutionContext for TestContext {
     fn spawner(&self) -> Sender<Eff> {
         self.scheduler.clone()
     }
+
+    fn relative_uri(&self) -> &RelativeUri {
+        unimplemented!()
+    }
 }
 
 fn default_buffer() -> NonZeroUsize {
@@ -1307,6 +1311,10 @@ impl AgentExecutionContext for MultiTestContext {
 
     fn spawner(&self) -> Sender<Eff> {
         self.1.clone()
+    }
+
+    fn relative_uri(&self) -> &RelativeUri {
+        unimplemented!()
     }
 }
 
