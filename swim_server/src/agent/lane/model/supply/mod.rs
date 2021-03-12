@@ -12,25 +12,26 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[cfg(test)]
+mod tests;
+
 use crate::agent::lane::LaneModel;
 use crate::agent::{AgentContext, Eff, Lane, LaneTasks, StatelessLifecycleTasks};
+use crate::meta::info::LaneKind;
 use futures::future::ready;
 use futures::future::BoxFuture;
-use futures::{FutureExt, Stream};
+use futures::FutureExt;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use tokio::sync::mpsc;
+use tokio::sync::mpsc::error::{SendError, TrySendError};
 use tokio_stream::wrappers::ReceiverStream;
-
-#[cfg(test)]
-mod tests;
 
 /// Model for a stateless lane that publishes events to all uplinks.
 ///
 /// # Type Parameters
 ///
 /// * `T` - The type of the events produced.
-#[derive(Debug, Clone)]
 pub struct SupplyLane<T> {
     sender: mpsc::Sender<T>,
     id: Arc<()>,
@@ -47,9 +48,12 @@ where
         }
     }
 
-    /// Creates a new supplier to publish events.
-    pub fn supplier(&self) -> mpsc::Sender<T> {
-        self.sender.clone()
+    pub async fn send(&self, value: T) -> Result<(), SendError<T>> {
+        self.sender.send(value).await
+    }
+
+    pub fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
+        self.sender.try_send(value)
     }
 }
 
@@ -63,20 +67,25 @@ impl<T> LaneModel for SupplyLane<T> {
 
 /// Create a new supply lane model. Returns a new supply lane model and a stream that events can be
 /// received from.
-pub fn make_lane_model<T>(
+pub fn make_lane_model<Event>(
     buffer_size: NonZeroUsize,
-) -> (SupplyLane<T>, impl Stream<Item = T> + Send + 'static)
+) -> (SupplyLane<Event>, ReceiverStream<Event>)
 where
-    T: Send + Sync + 'static,
+    Event: Send + Sync + Clone + 'static,
 {
     let (tx, rx) = mpsc::channel(buffer_size.get());
     let lane = SupplyLane::new(tx);
+
     (lane, ReceiverStream::new(rx))
 }
 
 impl Lane for StatelessLifecycleTasks {
     fn name(&self) -> &str {
         self.name.as_str()
+    }
+
+    fn kind(&self) -> LaneKind {
+        self.kind
     }
 }
 

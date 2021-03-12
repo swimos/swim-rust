@@ -34,6 +34,7 @@ use crate::agent::{
     ActionLifecycleTasks, AgentContext, CommandLifecycleTasks, Lane, LaneTasks, LifecycleTasks,
     MapLifecycleTasks, ValueLifecycleTasks,
 };
+use crate::meta::info::LaneKind;
 use crate::plane::provider::AgentProvider;
 use crate::routing::RoutingAddr;
 use futures::future::{join, BoxFuture};
@@ -303,6 +304,8 @@ async fn value_lane_start_task() {
         projection: proj(),
     });
 
+    assert_eq!(tasks.kind(), LaneKind::Value);
+
     assert_eq!(tasks.name(), "lane".to_string());
 
     let lane = ValueLane::new("".to_string());
@@ -469,6 +472,8 @@ async fn map_lane_events_task() {
         projection: proj(),
     }));
 
+    assert_eq!(tasks.kind(), LaneKind::Map);
+
     let lane = MapLane::new();
 
     let agent = Arc::new(TestAgent {
@@ -552,6 +557,8 @@ async fn action_lane_events_task() {
         projection: proj(),
     }));
 
+    assert_eq!(tasks.kind(), LaneKind::Action);
+
     assert_eq!(tasks.name(), "lane".to_string());
 
     let lane = ActionLane::new(tx_lane);
@@ -634,6 +641,8 @@ async fn command_lane_events_task() {
         event_stream: ReceiverStream::new(rx),
         projection: proj(),
     }));
+
+    assert_eq!(tasks.kind(), LaneKind::Command);
 
     assert_eq!(tasks.name(), "lane".to_string());
 
