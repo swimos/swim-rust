@@ -27,8 +27,8 @@ macro_rules! swim_agent {
         swim_agent!(@ { $name, $config, [] [] } $($x)*,);
     };
     // value lane
-    (@ { $name: ident, $config: ident, [$($acc_lifecycles: ident $element: ident: $ty: ty)*] [$($out_impl:tt)*] }
-        lane(path: $path: tt, $lane_name:ident : ValueLane<$key: ident>) => {
+    (@ { $name: ident, $config: ident, [$([$acc_visibilities:vis] $acc_lifecycles: ident $element: ident: $ty: ty)*] [$($out_impl:tt)*] }
+        $visibility:vis lane(path: $path: tt, $lane_name:ident : ValueLane<$key: ident>) => {
             lifecycle: $lifecycle:ident { $($lifecycle_fields:tt)* }
             on_create($on_create_config:ident) $on_create:block
             on_start($on_start_self: ident, $on_start_model:ident, $on_start_context:ident) $on_start:block
@@ -38,8 +38,8 @@ macro_rules! swim_agent {
             swim_agent!{@ {
                 $name, $config,
                 [
-                    $($acc_lifecycles $element: $ty)*
-                    $lifecycle $lane_name: crate::agent::lane::model::value::ValueLane<$key>
+                    $([$acc_visibilities] $acc_lifecycles $element: $ty)*
+                    [$visibility] $lifecycle $lane_name: crate::agent::lane::model::value::ValueLane<$key>
                 ]
                 [
                     $($out_impl)*
@@ -74,8 +74,8 @@ macro_rules! swim_agent {
             } $($remainder)*}
     };
     // map lane
-    (@ { $name: ident, $config: ident, [$($acc_lifecycles: ident $element: ident: $ty: ty)*] [$($out_impl:tt)*] }
-        lane(path: $path: tt, $lane_name:ident : MapLane<$key: ident, $value: ident>) => {
+    (@ { $name: ident, $config: ident, [$([$acc_visibilities:vis] $acc_lifecycles: ident $element: ident: $ty: ty)*] [$($out_impl:tt)*] }
+        $visibility:vis lane(path: $path: tt, $lane_name:ident : MapLane<$key: ident, $value: ident>) => {
             lifecycle: $lifecycle:ident { $($lifecycle_fields:tt)* }
             on_create($on_create_config:ident) $on_create:block
             on_start($on_start_self: ident, $on_start_model:ident, $on_start_context:ident) $on_start:block
@@ -85,8 +85,8 @@ macro_rules! swim_agent {
             swim_agent!{@ {
                 $name, $config,
                 [
-                    $($acc_lifecycles $element: $ty)*
-                    $lifecycle $lane_name: crate::agent::lane::model::map::MapLane<$key, $value>
+                    $([$acc_visibilities] $acc_lifecycles $element: $ty)*
+                    [$visibility] $lifecycle $lane_name: crate::agent::lane::model::map::MapLane<$key, $value>
                 ]
                 [
                     $($out_impl)*
@@ -121,8 +121,8 @@ macro_rules! swim_agent {
             } $($remainder)*}
     };
     // action lane
-    (@ { $name: ident, $config: ident, [$($acc_lifecycles: ident $element: ident: $ty: ty)*] [$($out_impl:tt)*] }
-        lane(path: $path: tt, $lane_name:ident : ActionLane<$command_type: ident, $response_type: ident>) => {
+    (@ { $name: ident, $config: ident, [$([$acc_visibilities:vis] $acc_lifecycles: ident $element: ident: $ty: ty)*] [$($out_impl:tt)*] }
+        $visibility:vis lane(path: $path: tt, $lane_name:ident : ActionLane<$command_type: ident, $response_type: ident>) => {
             lifecycle: $lifecycle:ident { $($lifecycle_fields:tt)* }
             on_create($on_create_config:ident) $on_create:block
             on_command($on_command_self: ident, $on_command_event:ident, $on_command_model:ident, $on_command_context:ident) -> $response_type_ret: ty $on_command: block
@@ -131,8 +131,8 @@ macro_rules! swim_agent {
             swim_agent!{@ {
                 $name, $config,
                 [
-                    $($acc_lifecycles $element: $ty)*
-                    $lifecycle $lane_name: crate::agent::lane::model::action::ActionLane<$command_type, $response_type>
+                    $([$acc_visibilities] $acc_lifecycles $element: $ty)*
+                    [$visibility] $lifecycle $lane_name: crate::agent::lane::model::action::ActionLane<$command_type, $response_type>
                 ]
                 [
                     $($out_impl)*
@@ -161,8 +161,8 @@ macro_rules! swim_agent {
             } $($remainder)*}
     };
     // command lane
-    (@ { $name: ident, $config: ident, [$($acc_lifecycles: ident $element: ident: $ty: ty)*] [$($out_impl:tt)*] }
-        lane(path: $path: tt, $lane_name:ident : CommandLane<$command_type: ident>) => {
+    (@ { $name: ident, $config: ident, [$([$acc_visibilities:vis] $acc_lifecycles: ident $element: ident: $ty: ty)*] [$($out_impl:tt)*] }
+        $visibility:vis lane(path: $path: tt, $lane_name:ident : CommandLane<$command_type: ident>) => {
             lifecycle: $lifecycle:ident { $($lifecycle_fields:tt)* }
             on_create($on_create_config:ident) $on_create:block
             on_command($on_command_self: ident, $on_command_event:ident, $on_command_model:ident, $on_command_context:ident) $on_command: block
@@ -171,8 +171,8 @@ macro_rules! swim_agent {
             swim_agent!{@ {
                 $name, $config,
                 [
-                    $($acc_lifecycles $element: $ty)*
-                    $lifecycle $lane_name: crate::agent::lane::model::command::CommandLane<$command_type>
+                    $([$acc_visibilities] $acc_lifecycles $element: $ty)*
+                    [$visibility] $lifecycle $lane_name: crate::agent::lane::model::command::CommandLane<$command_type>
                 ]
                 [
                     $($out_impl)*
@@ -200,8 +200,8 @@ macro_rules! swim_agent {
             } $($remainder)*}
     };
     // demand lane
-    (@ { $name: ident, $config: ident, [$($acc_lifecycles: ident $element: ident: $ty: ty)*] [$($out_impl:tt)*] }
-        lane(path: $path: tt, $lane_name:ident : DemandLane<$cue_type: ident>) => {
+    (@ { $name: ident, $config: ident, [$([$acc_visibilities:vis] $acc_lifecycles: ident $element: ident: $ty: ty)*] [$($out_impl:tt)*] }
+        $visibility:vis lane(path: $path: tt, $lane_name:ident : DemandLane<$cue_type: ident>) => {
             lifecycle: $lifecycle:ident { $($lifecycle_fields:tt)* }
             on_create($on_create_config:ident) $on_create:block
             on_cue($on_cue_self: ident, $on_cue_model:ident, $on_cue_context:ident) -> $cue_type_ret:ty $on_cue: block
@@ -210,8 +210,8 @@ macro_rules! swim_agent {
             swim_agent!{@ {
                 $name, $config,
                 [
-                    $($acc_lifecycles $element: $ty)*
-                    $lifecycle $lane_name: crate::agent::lane::model::demand::DemandLane<$cue_type>
+                    $([$acc_visibilities] $acc_lifecycles $element: $ty)*
+                    [$visibility] $lifecycle $lane_name: crate::agent::lane::model::demand::DemandLane<$cue_type>
                 ]
                 [
                     $($out_impl)*
@@ -240,8 +240,8 @@ macro_rules! swim_agent {
             } $($remainder)*}
     };
     // demand map lane
-    (@ { $name: ident, $config: ident, [$($acc_lifecycles: ident $element: ident: $ty: ty)*] [$($out_impl:tt)*] }
-        lane(path: $path: tt, $lane_name:ident : DemandMapLane<$key_type: ident, $value_type: ident>) => {
+    (@ { $name: ident, $config: ident, [$([$acc_visibilities:vis] $acc_lifecycles: ident $element: ident: $ty: ty)*] [$($out_impl:tt)*] }
+        $visibility:vis lane(path: $path: tt, $lane_name:ident : DemandMapLane<$key_type: ident, $value_type: ident>) => {
             lifecycle: $lifecycle:ident { $($lifecycle_fields:tt)* }
             on_create($on_create_config:ident) $on_create:block
             on_cue($on_cue_self: ident, $on_cue_model:ident, $on_cue_context:ident, $on_cue_key:ident) -> $cue_type_ret:ty $on_cue: block
@@ -251,8 +251,8 @@ macro_rules! swim_agent {
             swim_agent!{@ {
                 $name, $config,
                 [
-                    $($acc_lifecycles $element: $ty)*
-                    $lifecycle $lane_name: crate::agent::lane::model::demand_map::DemandMapLane<$key_type, $value_type>
+                    $([$acc_visibilities] $acc_lifecycles $element: $ty)*
+                    [$visibility] $lifecycle $lane_name: crate::agent::lane::model::demand_map::DemandMapLane<$key_type, $value_type>
                 ]
                 [
                     $($out_impl)*
@@ -295,13 +295,13 @@ macro_rules! swim_agent {
         pub struct $name;
     };
     // base: impl agent with lanes
-    (@ { $name: ident, $config: ident, [$($lifecycle:ident $element: ident: $ty: ty)*] [$($out_impl:tt)*]} $(,)*) => {
+    (@ { $name: ident, $config: ident, [$([$visibility:vis] $lifecycle:ident $element: ident: $ty: ty)*] [$($out_impl:tt)*]} $(,)*) => {
         #[utilities::stringify_attr(agent(config($config)))]
         #[derive(Clone, Debug, crate::agent::SwimAgent)]
         pub struct $name {
             $(
                 #[stringify(lifecycle(name($lifecycle)))]
-                $element: $ty
+                $visibility $element: $ty
             ),*
         }
 

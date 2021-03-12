@@ -139,7 +139,7 @@ swim_agent! {
                 }
             }
         }
-        lane(path: "total", total: ValueLane<i32>) => {
+        pub lane(path: "total", total: ValueLane<i32>) => {
             lifecycle: TotalLifecycle {
                 event_handler: EventCollectorHandler,
             }
