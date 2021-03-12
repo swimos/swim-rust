@@ -41,7 +41,7 @@
 /// struct Config;
 ///
 /// #[derive(Clone, Debug, SwimAgent)]
-/// #[agent(config = "config")]
+/// #[agent(config = "Config")]
 /// pub struct SwimAgentName;
 /// ```
 ///
