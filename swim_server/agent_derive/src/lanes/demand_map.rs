@@ -38,6 +38,8 @@ struct DemandMapAttrs {
     on_cue: Option<darling::Result<String>>,
     #[darling(default)]
     on_remove: Option<darling::Result<String>>,
+    #[darling(default)]
+    gen_lifecycle: Option<bool>,
 }
 
 pub fn derive_demand_map_lifecycle(
@@ -56,7 +58,9 @@ pub fn derive_demand_map_lifecycle(
     };
 
     let lifecycle_name = input_ast.ident.clone();
-    let has_fields = has_fields(&input_ast.data);
+    let gen_lifecycle = args
+        .gen_lifecycle
+        .unwrap_or_else(|| !has_fields(&input_ast.data));
     let task_name = get_task_struct_name(&input_ast.ident.to_string());
     let agent_name = args.agent.clone();
     let key_type = &args.key_type;
@@ -74,7 +78,7 @@ pub fn derive_demand_map_lifecycle(
     derive_lane(
         "DemandMapLifecycle",
         lifecycle_name,
-        has_fields,
+        gen_lifecycle,
         task_name,
         agent_name,
         input_ast,

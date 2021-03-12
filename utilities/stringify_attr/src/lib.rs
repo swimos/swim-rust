@@ -178,6 +178,4 @@
 #[cfg(test)]
 mod tests;
 
-#[allow(unused_imports)]
-#[macro_use]
-extern crate attr_derive;
+pub use attr_derive::{stringify_attr, stringify_attr_raw};

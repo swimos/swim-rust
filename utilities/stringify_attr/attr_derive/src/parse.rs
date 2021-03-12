@@ -173,3 +173,21 @@ pub fn stringify_container_attrs(
         Some(result)
     }
 }
+
+pub fn stringify_container_attrs_raw(
+    ctx: &mut Context,
+    meta: Vec<NestedMeta>,
+) -> Option<Attribute> {
+    let list: MetaList = parse_quote!(stringify_raw(#(#meta),*));
+    let pre_processed = parse_stringify_raw(ctx, list)?;
+
+    let parsed = pre_processed
+        .parse(ctx)
+        .map(|processed| {
+            let parsed: Attribute = parse_quote!(#processed);
+            parsed
+        })
+        .ok()?;
+
+    Some(parsed)
+}
