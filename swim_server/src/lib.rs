@@ -26,3 +26,5 @@ pub mod routing;
 pub use agent_derive::*;
 pub use utilities::future::SwimStreamExt;
 pub use utilities::route_pattern::RoutePattern;
+
+pub use utilities::{stringify_attr, stringify_attr_raw};

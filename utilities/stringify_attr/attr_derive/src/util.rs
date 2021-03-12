@@ -58,7 +58,6 @@ pub fn list_to_str(
                     let seg = inner.segments;
                     let segment_string = seg.to_token_stream().to_string();
                     let lit: MetaNameValue = parse_quote!(#path = #segment_string);
-
                     vec.push(Meta::NameValue(lit));
                 }
                 m => {

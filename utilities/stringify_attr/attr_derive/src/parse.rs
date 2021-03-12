@@ -38,7 +38,6 @@ pub fn parse_attr_input(ctx: &mut Context, meta: NestedMeta) -> Result<Vec<Meta>
     match meta.clone() {
         NestedMeta::Meta(Meta::List(list)) if !list.nested.is_empty() => {
             let MetaList { path, nested, .. } = list;
-
             Ok(list_to_str(ctx, path, nested))
         }
         n => {
@@ -108,6 +107,7 @@ fn parse_stringify_raw(ctx: &mut Context, meta: MetaList) -> Option<Preprocessed
                 Meta::NameValue(pair) if pair.path == PATH => {
                     let str = get_lit_str(ctx, &pair.lit).ok()?;
                     let value = try_with_context(&pair, ctx, || str.parse::<Path>())?;
+
                     path_opt = Some(value);
                 }
                 m => ctx.error_spanned_by(m, UNEXPECTED_ATTR),
