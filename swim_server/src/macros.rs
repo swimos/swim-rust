@@ -12,17 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use utilities::{stringify_attr, stringify_attr_raw};
-
-use crate::agent::SwimAgent;
-
 mod swim_server {
     pub use crate::*;
 }
 
-struct SwimAgentConfig {}
-
-// todo: impl agent get_lanes to be able to build a server?
 #[macro_export]
 macro_rules! swim_agent {
     // entry: agent with no lanes
@@ -51,7 +44,7 @@ macro_rules! swim_agent {
                 [
                     $($out_impl)*
 
-                    #[stringify_attr_raw(path = "crate::value_lifecycle", in(agent($name), event_type($key)), raw(gen_lifecycle = false))]
+                    #[utilities::stringify_attr_raw(path = "crate::value_lifecycle", in(agent($name), event_type($key)), raw(gen_lifecycle = false, on_start, on_event))]
                     pub struct $lifecycle {
                         $($lifecycle_fields)*
                     }
@@ -64,7 +57,7 @@ macro_rules! swim_agent {
                             $on_start
                         }
 
-                        async fn on_event<Context>($on_event_self: &Self, $on_event_event: &std::sync::Arc<$key>, $on_event_model: &crate::agent::lane::model::value::ValueLane<$key>, $on_event_context: &Context)
+                        async fn on_event<Context>($on_event_self: &Self, $on_event_event: &crate::agent::lane::model::value::ValueLaneEvent<$key>, $on_event_model: &crate::agent::lane::model::value::ValueLane<$key>, $on_event_context: &Context)
                         where
                             Context: crate::agent::AgentContext<$name> + Sized + Send + Sync + 'static,
                         {
@@ -98,7 +91,7 @@ macro_rules! swim_agent {
                 [
                     $($out_impl)*
 
-                    #[stringify_attr_raw(path = "crate::map_lifecycle", in(agent($name), key_type($key), value_type($value)), raw(gen_lifecycle = false))]
+                    #[utilities::stringify_attr_raw(path = "crate::map_lifecycle", in(agent($name), key_type($key), value_type($value)), raw(gen_lifecycle = false, on_start, on_event))]
                     pub struct $lifecycle {
                         $($lifecycle_fields)*
                     }
@@ -144,7 +137,7 @@ macro_rules! swim_agent {
                 [
                     $($out_impl)*
 
-                    #[stringify_attr_raw(path = "crate::action_lifecycle", in(agent($name), command_type($command_type), response_type($response_type)), raw(gen_lifecycle = false))]
+                    #[utilities::stringify_attr_raw(path = "crate::action_lifecycle", in(agent($name), command_type($command_type), response_type($response_type)), raw(gen_lifecycle = false, on_command))]
                     pub struct $lifecycle {
                         $($lifecycle_fields)*
                     }
@@ -184,13 +177,13 @@ macro_rules! swim_agent {
                 [
                     $($out_impl)*
 
-                    #[stringify_attr_raw(path = "crate::command_lifecycle", in(agent($name), command_type($command_type)), raw(gen_lifecycle = false))]
+                    #[utilities::stringify_attr_raw(path = "crate::command_lifecycle", in(agent($name), command_type($command_type)), raw(gen_lifecycle = false, on_command))]
                     pub struct $lifecycle {
                         $($lifecycle_fields)*
                     }
 
                     impl $lifecycle {
-                        async fn on_command<Context>($on_command_self: &Self, $on_command_event: $command_type, $on_command_model: &crate::agent::lane::model::command::CommandLane<$command_type>, $on_command_context: &Context)
+                        async fn on_command<Context>($on_command_self: &Self, $on_command_event: &$command_type, $on_command_model: &crate::agent::lane::model::command::CommandLane<$command_type>, $on_command_context: &Context)
                         where
                             Context: crate::agent::AgentContext<$name> + Sized + Send + Sync,
                         {
@@ -223,7 +216,7 @@ macro_rules! swim_agent {
                 [
                     $($out_impl)*
 
-                    #[stringify_attr_raw(path = "crate::demand_lifecycle", in(agent($name), event_type($cue_type)), raw(gen_lifecycle = false))]
+                    #[utilities::stringify_attr_raw(path = "crate::demand_lifecycle", in(agent($name), event_type($cue_type)), raw(gen_lifecycle = false, on_cue))]
                     pub struct $lifecycle {
                         $($lifecycle_fields)*
                     }
@@ -264,7 +257,7 @@ macro_rules! swim_agent {
                 [
                     $($out_impl)*
 
-                    #[stringify_attr_raw(path = "crate::demand_map_lifecycle", in(agent($name), key_type($key_type), value_type($value_type)), raw(gen_lifecycle = false))]
+                    #[utilities::stringify_attr_raw(path = "crate::demand_map_lifecycle", in(agent($name), key_type($key_type), value_type($value_type)), raw(gen_lifecycle = false, on_cue, on_sync))]
                     pub struct $lifecycle {
                         $($lifecycle_fields)*
                     }
@@ -297,14 +290,14 @@ macro_rules! swim_agent {
     };
     // base: impl agent with no lanes
     (@ { $name: ident, $config: ident } $(,)*) => {
-        #[derive(Clone, Debug, SwimAgent)]
+        #[derive(Clone, Debug, crate::agent::SwimAgent)]
         #[agent(config($config))]
         pub struct $name;
     };
     // base: impl agent with lanes
     (@ { $name: ident, $config: ident, [$($lifecycle:ident $element: ident: $ty: ty)*] [$($out_impl:tt)*]} $(,)*) => {
-        #[stringify_attr(agent(config($config)))]
-        #[derive(Clone, Debug, SwimAgent)]
+        #[utilities::stringify_attr(agent(config($config)))]
+        #[derive(Clone, Debug, crate::agent::SwimAgent)]
         pub struct $name {
             $(
                 #[stringify(lifecycle(name($lifecycle)))]
@@ -314,76 +307,4 @@ macro_rules! swim_agent {
 
         $($out_impl)*
     };
-}
-
-swim_agent! {
-    (SwimAgentImpl, SwimAgentConfig) => {
-        lane(path: "/value_lane/:id", value_lane: ValueLane<String>) => {
-            lifecycle: ValueLifecycleTesty {}
-            on_create(_config) {
-                ValueLifecycleTesty {}
-            }
-            on_start(self, _model, _context) {
-                println!("value lane on start");
-            }
-            on_event(self, event, _model, _context) {
-                println!("value lane on event: {}", event);
-            }
-        }
-        lane(path: "/map_lane/:id", map_lane: MapLane<String, i32>) => {
-            lifecycle: MapLifecycle {}
-            on_create(_config) {
-                MapLifecycle {}
-            }
-            on_start(self, _model, _context) {
-                println!("map lane on start");
-            }
-            on_event(self, event, _model, _context) {
-                println!("map lane on event: {:?}", event);
-            }
-        }
-        lane(path: "/action_lane/:id", action_lane: ActionLane<String, i32>) => {
-            lifecycle: ActionLifecycle {}
-            on_create(_config) {
-                ActionLifecycle {}
-            }
-            on_command(self, command, _model, _context) -> i32 {
-                println!("Command lane received: {}", command);
-                1
-            }
-        }
-        lane(path: "/action_lane/:id", command_lane: CommandLane<String>) => {
-            lifecycle: CommandLifecycle {}
-            on_create(_config) {
-                CommandLifecycle {}
-            }
-            on_command(self, command, _model, _context) {
-                println!("Command lane received: {}", command);
-            }
-        }
-        lane(path: "/demand_lane/:id", demand_lane: DemandLane<String>) => {
-            lifecycle: DemandLifecycle {}
-            on_create(_config) {
-                DemandLifecycle {}
-            }
-            on_cue(self, _model, _context) -> Option<String> {
-                println!("Demand lane cue");
-                Some(1.to_string())
-            }
-        }
-        lane(path: "/demand_map_lane/:id", demand_map_lane: DemandMapLane<String, i32>) => {
-            lifecycle: DemandMapLifecycle {}
-            on_create(_config) {
-                DemandMapLifecycle {}
-            }
-            on_cue(self, _model, _context, _key) -> Option<i32> {
-                println!("Demand map lane cue");
-                Some(1)
-            }
-            on_sync(self, _model, _context) -> Vec<String> {
-                println!("Demand map sync");
-                vec!["a".to_string(), "b".to_string(), "c".to_string()]
-            }
-        }
-    }
 }

@@ -19,8 +19,6 @@ use attr_derive::{stringify_attr, stringify_attr_raw};
 use serde::Serialize;
 use trybuild::TestCases;
 
-use attr_derive::stringify_attr;
-
 #[test]
 fn test_derive() {
     let t = TestCases::new();
