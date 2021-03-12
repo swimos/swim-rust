@@ -201,7 +201,7 @@ pub enum SubscriptionError {
 }
 
 impl SubscriptionError {
-    pub fn incompatibile_value(
+    pub fn incompatible_value(
         path: AbsolutePath,
         existing: StandardSchema,
         requested: StandardSchema,
@@ -213,7 +213,7 @@ impl SubscriptionError {
         }
     }
 
-    pub fn incompatibile_map_key(
+    pub fn incompatible_map_key(
         path: AbsolutePath,
         existing: StandardSchema,
         requested: StandardSchema,
@@ -226,7 +226,7 @@ impl SubscriptionError {
         }
     }
 
-    pub fn incompatibile_map_value(
+    pub fn incompatible_map_value(
         path: AbsolutePath,
         existing: StandardSchema,
         requested: StandardSchema,

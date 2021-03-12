@@ -737,7 +737,7 @@ where
                                     .await?)
                             }
                         } else {
-                            Err(SubscriptionError::incompatibile_value(
+                            Err(SubscriptionError::incompatible_value(
                                 path,
                                 existing_schema.clone(),
                                 schema,
@@ -780,13 +780,13 @@ where
                 value_schema: existing_value_schema,
             }) => {
                 if !key_schema.eq(existing_key_schema) {
-                    Err(SubscriptionError::incompatibile_map_key(
+                    Err(SubscriptionError::incompatible_map_key(
                         path,
                         existing_key_schema.clone(),
                         key_schema,
                     ))
                 } else if !value_schema.eq(existing_value_schema) {
-                    Err(SubscriptionError::incompatibile_map_value(
+                    Err(SubscriptionError::incompatible_map_value(
                         path,
                         existing_value_schema.clone(),
                         value_schema,
@@ -842,7 +842,7 @@ where
                 match maybe_dl {
                     Some(dl) if dl.is_running() => {
                         if !schema.eq(existing_schema) {
-                            Err(SubscriptionError::incompatibile_value(
+                            Err(SubscriptionError::incompatible_value(
                                 path,
                                 existing_schema.clone(),
                                 schema,
@@ -884,7 +884,7 @@ where
                         if schema.eq(existing_schema) {
                             Ok(dl_clone)
                         } else {
-                            Err(SubscriptionError::incompatibile_value(
+                            Err(SubscriptionError::incompatible_value(
                                 path,
                                 existing_schema.clone(),
                                 schema,

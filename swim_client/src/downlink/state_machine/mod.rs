@@ -19,7 +19,7 @@ pub mod value;
 
 use crate::downlink::error::DownlinkError;
 use crate::downlink::{Command, DownlinkState, Message};
-use tracing::trace;
+use tracing::{trace, warn};
 
 /// Result of processing a Warp message in a downlink state machine. If the terminate
 /// flag is set the downlink will stop (using any error from the result). If the
@@ -239,7 +239,13 @@ where
                 *dl_state = DownlinkState::Unlinked;
                 EventResult::terminate()
             }
-            Message::BadEnvelope(_) => EventResult::fail(DownlinkError::MalformedMessage),
+            Message::BadEnvelope(details) => {
+                warn!(
+                    ?details,
+                    "Downlink failed after receiving a malformed envelope."
+                );
+                EventResult::fail(DownlinkError::MalformedMessage)
+            }
         }
     }
 
