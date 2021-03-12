@@ -1,4 +1,4 @@
-// Copyright 2015-2021 SWIM.AI inc.
+// Copyright 2015-2020 SWIM.AI inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -23,39 +23,25 @@ use crate::models::Visitor;
 use crate::parse::{stringify_container_attrs, stringify_container_attrs_raw};
 use macro_helpers::Context;
 use proc_macro::TokenStream;
+use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
-use syn::__private::TokenStream2;
 use syn::visit_mut::VisitMut;
 use syn::{parse_macro_input, AttributeArgs, DeriveInput};
 
 #[proc_macro_attribute]
 pub fn stringify_attr(args: TokenStream, input: TokenStream) -> TokenStream {
-    let mut input = parse_macro_input!(input as DeriveInput);
+    let input = parse_macro_input!(input as DeriveInput);
     let args = parse_macro_input!(args as AttributeArgs);
 
     let mut context = Context::default();
     let container_attrs = stringify_container_attrs(&mut context, args).unwrap_or_default();
-    let container_ts = quote!(#(#container_attrs)*);
 
-    let mut visitor = Visitor::new(context);
-    visitor.visit_data_mut(&mut input.data);
-
-    if let Err(errors) = visitor.context.check() {
-        let compile_errors = errors.iter().map(syn::Error::to_compile_error);
-        return quote!(#(#compile_errors)*).into();
-    }
-
-    let output = quote! {
-        #container_ts
-        #input
-    };
-
-    output.into()
+    stringify_data(context, input, quote!(#(#container_attrs)*))
 }
 
 #[proc_macro_attribute]
 pub fn stringify_attr_raw(args: TokenStream, input: TokenStream) -> TokenStream {
-    let mut input = parse_macro_input!(input as DeriveInput);
+    let input = parse_macro_input!(input as DeriveInput);
     let args = parse_macro_input!(args as AttributeArgs);
 
     let mut context = Context::default();
@@ -67,6 +53,14 @@ pub fn stringify_attr_raw(args: TokenStream, input: TokenStream) -> TokenStream 
         None => TokenStream2::new(),
     };
 
+    stringify_data(context, input, container_ts)
+}
+
+fn stringify_data(
+    context: Context,
+    mut input: DeriveInput,
+    container_ts: TokenStream2,
+) -> TokenStream {
     let mut visitor = Visitor::new(context);
     visitor.visit_data_mut(&mut input.data);
 
