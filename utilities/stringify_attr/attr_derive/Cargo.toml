@@ -1,0 +1,14 @@
+[package]
+name = "attr_derive"
+version = "0.1.0"
+authors = ["Swim.AI developers info@swim.ai"]
+edition = "2018"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+macro_helpers = { path  = "../../macro_helpers" }
+syn = { version = "1.0.39", features = ["full", "visit-mut"] }
+quote = "1.0.7"
+proc-macro2 = "1.0.19"

@@ -36,6 +36,12 @@ extern crate macro_helpers;
 #[doc(hidden)]
 pub use macro_helpers::*;
 
+#[allow(unused_imports)]
+#[macro_use]
+extern crate stringify_attr;
+#[doc(hidden)]
+pub use stringify_attr::*;
+
 /// Error thrown by methods that required a usize to be positive.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct ZeroUsize;
