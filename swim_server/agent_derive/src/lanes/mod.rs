@@ -38,6 +38,7 @@ pub fn derive_lane(
     lane_tasks_impl: LaneTasksImpl,
     imports: TokenStream,
     field: Option<TokenStream>,
+    lane_kind: TokenStream,
 ) -> proc_macro::TokenStream {
     let public_derived = quote! {
         #input_ast
@@ -77,6 +78,10 @@ pub fn derive_lane(
         {
             fn name(&self) -> &str {
                 &self.name
+            }
+
+            fn kind(&self) -> swim_server::meta::info::LaneKind {
+                swim_server::meta::info::LaneKind::#lane_kind
             }
         }
 
