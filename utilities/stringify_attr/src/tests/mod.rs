@@ -1,4 +1,4 @@
-// Copyright 2015-2021 SWIM.AI inc.
+// Copyright 2015-2020 SWIM.AI inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,6 +13,8 @@
 // limitations under the License.
 
 #![allow(non_snake_case, non_camel_case_types)]
+
+use attr_derive::{stringify_attr, stringify_attr_raw};
 
 use serde::Serialize;
 use trybuild::TestCases;
@@ -296,4 +298,23 @@ fn generic_impl() {
     let s = Structure { key: 1 };
     let result = serde_json::to_string(&s);
     assert_eq!(result.unwrap(), "{\"A\":1}".to_string());
+}
+
+#[test]
+fn container_raw() {
+    macro_rules! t {
+        ($name:ident, $rename:ident) => {
+            #[stringify_attr_raw(path = "serde", in(rename($rename)), raw(deny_unknown_fields))]
+            #[derive(Serialize)]
+            struct $name {
+                key: i32,
+            }
+        };
+    }
+
+    t!(A, B);
+
+    let s = A { key: 1 };
+    let result = serde_json::to_string(&s);
+    assert_eq!(result.unwrap(), "{\"key\":1}".to_string());
 }
