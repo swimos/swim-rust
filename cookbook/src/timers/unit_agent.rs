@@ -98,10 +98,12 @@ async fn increment_time(minutes: &ValueLane<i32>) {
     .await;
 
     if let Ok(value) = current_value {
-        let _ = atomically(
-            &minutes.set(*value + 1),
-            StmRetryStrategy::new(RetryStrategy::default()),
-        )
-        .await;
+        if *value < 5 {
+            let _ = atomically(
+                &minutes.set(*value + 1),
+                StmRetryStrategy::new(RetryStrategy::default()),
+            )
+            .await;
+        }
     }
 }

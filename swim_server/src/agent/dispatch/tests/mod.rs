@@ -28,6 +28,7 @@ use futures::{FutureExt, Stream, StreamExt};
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::num::NonZeroUsize;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use stm::transaction::TransactionError;
 use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
@@ -35,6 +36,7 @@ use swim_common::warp::path::RelativePath;
 use swim_runtime::time::timeout;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
+use tokio::time::Instant;
 use tokio_stream::wrappers::ReceiverStream;
 
 mod mock;
@@ -63,6 +65,7 @@ fn make_dispatcher(
         0,
         Duration::from_secs(1),
         None,
+        Duration::from_secs(60),
     );
 
     let dispatcher = AgentDispatcher::new(
@@ -74,7 +77,8 @@ fn make_dispatcher(
 
     let spawn_task = ReceiverStream::new(spawn_rx).for_each_concurrent(None, |eff| eff);
 
-    let dispatch_task = dispatcher.run(envelopes);
+    let uplinks_idle_since = Arc::new(Mutex::new(Instant::now()));
+    let dispatch_task = dispatcher.run(envelopes, uplinks_idle_since);
 
     (
         join(spawn_task, dispatch_task).map(|(_, r)| r).boxed(),

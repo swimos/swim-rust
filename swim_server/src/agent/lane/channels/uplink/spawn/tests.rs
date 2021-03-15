@@ -32,7 +32,7 @@ use futures::{FutureExt, Stream, StreamExt};
 use pin_utils::pin_mut;
 use std::collections::{HashMap, HashSet};
 use std::num::NonZeroUsize;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use swim_common::form::{Form, FormErr};
 use swim_common::model::Value;
@@ -44,6 +44,7 @@ use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::{mpsc, Barrier};
+use tokio::time::Instant;
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
 use utilities::sync::{promise, topic};
@@ -293,7 +294,14 @@ impl UplinkSpawnerSplitOutputs {
 }
 
 fn make_config() -> AgentExecutionConfig {
-    AgentExecutionConfig::with(default_buffer(), 1, 1, Duration::from_secs(5), None)
+    AgentExecutionConfig::with(
+        default_buffer(),
+        1,
+        1,
+        Duration::from_secs(5),
+        None,
+        Duration::from_secs(60),
+    )
 }
 
 struct TestContext {
@@ -301,6 +309,7 @@ struct TestContext {
     messages: mpsc::Sender<TaggedEnvelope>,
     _drop_tx: promise::Sender<ConnectionDropped>,
     drop_rx: promise::Receiver<ConnectionDropped>,
+    uplinks_idle_since: Arc<Mutex<Instant>>,
 }
 
 impl TestContext {
@@ -311,6 +320,7 @@ impl TestContext {
             messages,
             _drop_tx: drop_tx,
             drop_rx,
+            uplinks_idle_since: Arc::new(Mutex::new(Instant::now())),
         }
     }
 }
@@ -332,8 +342,8 @@ impl AgentExecutionContext for TestContext {
         self.spawner.clone()
     }
 
-    fn relative_uri(&self) -> &RelativeUri {
-        unimplemented!()
+    fn uplinks_idle_since(&self) -> &Arc<Mutex<Instant>> {
+        &self.uplinks_idle_since
     }
 }
 

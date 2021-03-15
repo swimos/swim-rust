@@ -22,6 +22,8 @@ use utilities::errors::Recoverable;
 pub enum DispatcherError {
     AttachmentFailed(AttachError),
     LaneTaskFailed(LaneIoError),
+    SenderError,
+    AgentTimedOut,
 }
 
 impl Recoverable for DispatcherError {
@@ -101,6 +103,12 @@ impl Display for DispatcherError {
         match self {
             DispatcherError::AttachmentFailed(err) => write!(f, "{}", err),
             DispatcherError::LaneTaskFailed(err) => write!(f, "{}", err),
+            DispatcherError::SenderError => {
+                write!(f, "Sender failed.")
+            }
+            DispatcherError::AgentTimedOut => {
+                write!(f, "Agent timed out.")
+            }
         }
     }
 }
@@ -110,6 +118,8 @@ impl Error for DispatcherError {
         match self {
             DispatcherError::AttachmentFailed(err) => Some(err),
             DispatcherError::LaneTaskFailed(err) => Some(err),
+            DispatcherError::SenderError => None,
+            DispatcherError::AgentTimedOut => None,
         }
     }
 }

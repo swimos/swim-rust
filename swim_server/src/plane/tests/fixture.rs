@@ -18,7 +18,7 @@ use crate::agent::AgentResult;
 use crate::plane::context::PlaneContext;
 use crate::plane::lifecycle::PlaneLifecycle;
 use crate::plane::router::PlaneRouter;
-use crate::plane::{AgentRoute, EnvChannel, PlaneRequest};
+use crate::plane::{AgentRoute, EnvChannel};
 use crate::routing::{ServerRouter, TaggedEnvelope};
 use futures::future::BoxFuture;
 use futures::{FutureExt, StreamExt};
@@ -34,7 +34,6 @@ use swim_common::warp::envelope::Envelope;
 use swim_runtime::time::clock::Clock;
 use utilities::sync::trigger;
 use utilities::uri::RelativeUri;
-use tokio::sync::mpsc;
 
 #[derive(Debug)]
 pub struct SendAgent(String);
@@ -87,6 +86,7 @@ pub fn make_config() -> AgentExecutionConfig {
         scheduler_buffer: buffer_size,
         value_lane_backpressure: None,
         map_lane_backpressure: None,
+        max_idle_time: Duration::from_secs(60)
     }
 }
 
@@ -107,7 +107,6 @@ impl<Clk: Clock, Delegate: ServerRouter + 'static>
         _clock: Clk,
         incoming_envelopes: EnvChannel,
         mut router: PlaneRouter<Delegate>,
-        _plane_tx: mpsc::Sender<PlaneRequest>,
     ) -> (Arc<dyn Any + Send + Sync>, BoxFuture<'static, AgentResult>) {
         let id = parameters[PARAM_NAME].clone();
         let target = self.0.clone();
@@ -152,7 +151,6 @@ impl<Clk: Clock, Delegate> AgentRoute<Clk, EnvChannel, PlaneRouter<Delegate>>
         _clock: Clk,
         incoming_envelopes: EnvChannel,
         _router: PlaneRouter<Delegate>,
-        _plane_tx: mpsc::Sender<PlaneRequest>,
     ) -> (Arc<dyn Any + Send + Sync>, BoxFuture<'static, AgentResult>) {
         let ReceiveAgentRoute { expected_id, done } = self;
         let mut done_sender = done.lock().take();

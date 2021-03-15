@@ -21,7 +21,7 @@ use futures::future::{join, ready, BoxFuture};
 use futures::FutureExt;
 use tokio::sync::mpsc;
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
 
@@ -30,6 +30,7 @@ use crate::agent::lane::channels::uplink::{AddressedUplinkMessage, UplinkAction,
 use crate::agent::lane::channels::TaggedAction;
 use crate::routing::error::RouterError;
 use swim_common::routing::ResolutionError;
+use tokio::time::Instant;
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
 use utilities::sync::promise;
@@ -76,7 +77,7 @@ impl ServerRouter for TestRouter {
     }
 }
 
-struct TestContext(TestRouter, mpsc::Sender<Eff>);
+struct TestContext(TestRouter, mpsc::Sender<Eff>, Arc<Mutex<Instant>>);
 
 impl AgentExecutionContext for TestContext {
     type Router = TestRouter;
@@ -89,8 +90,8 @@ impl AgentExecutionContext for TestContext {
         self.1.clone()
     }
 
-    fn relative_uri(&self) -> &RelativeUri {
-        unimplemented!()
+    fn uplinks_idle_since(&self) -> &Arc<Mutex<Instant>> {
+        &self.2
     }
 }
 

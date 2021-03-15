@@ -75,7 +75,6 @@ trait AgentRoute<Clk, Envelopes, Router>: Debug {
         clock: Clk,
         incoming_envelopes: Envelopes,
         router: Router,
-        plane_tx: mpsc::Sender<PlaneRequest>,
     ) -> (Arc<dyn Any + Send + Sync>, BoxFuture<'static, AgentResult>);
 
     fn boxed(self) -> BoxAgentRoute<Clk, Envelopes, Router>
@@ -201,8 +200,6 @@ pub(crate) enum PlaneRequest {
     },
     /// Get all of the active routes for the plane.
     Routes(RoutesRequest),
-    /// Stop an idle agent.
-    TerminateAgent(RelativeUri),
 }
 
 /// Plane context implementation.
@@ -291,7 +288,6 @@ impl<Clk: Clock, DelegateFac: ServerRouterFactory> RouteResolver<Clk, DelegateFa
         &mut self,
         route: RelativeUri,
         spawner: &S,
-        plane_tx: mpsc::Sender<PlaneRequest>,
     ) -> Result<(Arc<dyn Any + Send + Sync>, RoutingAddr), NoAgentAtRoute>
     where
         S: Spawner<BoxFuture<'static, AgentResult>>,
@@ -318,7 +314,6 @@ impl<Clk: Clock, DelegateFac: ServerRouterFactory> RouteResolver<Clk, DelegateFa
             clock.clone(),
             ReceiverStream::new(rx).take_until(stop_trigger.clone()),
             router_fac.create_for(addr),
-            plane_tx,
         );
         active_routes.add_endpoint(addr, route, LocalEndpoint::new(Arc::downgrade(&agent), tx));
         if spawner.try_add(task).is_err() {
@@ -397,7 +392,7 @@ pub(crate) async fn run_plane<Clk, S, DelegateFac: ServerRouterFactory>(
             clock,
             execution_config,
             routes,
-            router_fac: PlaneRouterFactory::new(context_tx.clone(), delegate_fac),
+            router_fac: PlaneRouterFactory::new(context_tx, delegate_fac),
             stop_trigger,
             active_routes: PlaneActiveRoutes::default(),
             counter: 0,
@@ -435,7 +430,7 @@ pub(crate) async fn run_plane<Clk, S, DelegateFac: ServerRouterFactory>(
                         Ok(agent)
                     } else {
                         resolver
-                            .try_open_route(route, spawner.deref(), context_tx.clone())
+                            .try_open_route(route, spawner.deref())
                             .map(|(agent, _)| agent)
                     };
                     if request.send(result).is_err() {
@@ -477,7 +472,7 @@ pub(crate) async fn run_plane<Clk, S, DelegateFac: ServerRouterFactory>(
                     let result = if let Some(addr) = resolver.active_routes.addr_for_route(&route) {
                         Ok(addr)
                     } else {
-                        match resolver.try_open_route(route, spawner.deref(), context_tx.clone()) {
+                        match resolver.try_open_route(route, spawner.deref()) {
                             Ok((_, addr)) => Ok(addr),
                             Err(NoAgentAtRoute(uri)) => Err(RouterError::NoAgentAtRoute(uri)),
                         }
@@ -510,9 +505,6 @@ pub(crate) async fn run_plane<Clk, S, DelegateFac: ServerRouterFactory>(
                     {
                         event!(Level::WARN, DROPPED_REQUEST);
                     }
-                }
-                Either::Left(Some(PlaneRequest::TerminateAgent(route))) => {
-                    resolver.active_routes.remove_endpoint(&route);
                 }
                 Either::Right(Some(AgentResult {
                     route,

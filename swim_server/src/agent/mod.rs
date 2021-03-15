@@ -46,7 +46,6 @@ use crate::agent::lane::model::supply::{make_lane_model, SupplyLane};
 use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 use crate::agent::lane::model::DeferredSubscription;
 use crate::agent::lifecycle::AgentLifecycle;
-use crate::plane::PlaneRequest;
 use crate::routing::{ServerRouter, TaggedClientEnvelope, TaggedEnvelope};
 use futures::future::{join, ready, BoxFuture};
 use futures::sink::drain;
@@ -175,7 +174,6 @@ pub(crate) fn run_agent<Config, Clk, Agent, L, Router>(
     parameters: AgentParameters<Config>,
     incoming_envelopes: impl Stream<Item = TaggedEnvelope> + Send + 'static,
     router: Router,
-    plane_tx: mpsc::Sender<PlaneRequest>,
 ) -> (
     Arc<Agent>,
     impl Future<Output = AgentResult> + Send + 'static,
@@ -201,6 +199,7 @@ where
     let agent_cpy = agent_ref.clone();
     let task = async move {
         let (tx, rx) = mpsc::channel(execution_config.scheduler_buffer.get());
+
         let context = ContextImpl::new(
             agent_ref,
             uri.clone(),
@@ -251,9 +250,11 @@ where
 
         let (result_tx, result_rx) = oneshot::channel();
 
+        let uplinks_idle_since = context.uplinks_idle_since.clone();
+
         let dispatch_task = async move {
             let tripwire = tripwire;
-            let result = dispatcher.run(incoming_envelopes, plane_tx).await;
+            let result = dispatcher.run(incoming_envelopes, uplinks_idle_since).await;
             tripwire.trigger();
             let _ = result_tx.send(result);
         }

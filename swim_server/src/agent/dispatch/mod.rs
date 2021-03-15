@@ -46,10 +46,11 @@ use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::{AttachError, LaneIo};
 use crate::meta::uri::MetaParseErr;
 use crate::meta::{LaneAddressedKind, MetaNodeAddressed, LANES_URI, PULSE_URI, UPLINK_URI};
-use crate::plane::PlaneRequest;
 use crate::routing::{RoutingAddr, ServerRouter, TaggedClientEnvelope, TaggedEnvelope};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use swim_runtime::time::timeout::timeout;
+use tokio::time::Instant;
 
 pub mod error;
 #[cfg(test)]
@@ -206,7 +207,7 @@ where
     pub(crate) async fn run(
         self,
         incoming: impl Stream<Item = TaggedEnvelope>,
-        plane_tx: mpsc::Sender<PlaneRequest>,
+        uplinks_idle_since: Arc<Mutex<Instant>>,
     ) -> Result<DispatcherErrors, DispatcherErrors> {
         let AgentDispatcher {
             agent_route,
@@ -228,29 +229,50 @@ where
             context.router_handle(),
         );
 
-        let relative_uri = context.relative_uri().clone();
-
         let attacher = LaneAttachmentTask::new(agent_route, lanes, &config, context);
         let open_task = attacher
             .run(open_rx, tripwire_tx)
             .instrument(span!(Level::INFO, LANE_ATTACH_TASK));
 
         let dispatch_task = async move {
-            let succeeded = dispatcher
-                .dispatch_envelopes(incoming.take_until(tripwire_rx), plane_tx, relative_uri)
+            let result = dispatcher
+                .dispatch_envelopes(incoming.take_until(tripwire_rx), uplinks_idle_since)
                 .await;
-            if succeeded {
+
+            if result.is_ok() {
                 dispatcher
                     .flush()
                     .instrument(span!(Level::INFO, DISPATCHER_FLUSH_TASK))
                     .await;
             }
+
+            result
         }
         .instrument(span!(Level::INFO, INTERNAL_DISPATCH_TASK));
 
-        let (result, _) = join(open_task, dispatch_task).await;
+        let (result, dispatch_result) = join(open_task, dispatch_task).await;
 
-        result
+        match dispatch_result {
+            Ok(_) => result,
+            Err(dispatch_err) => match result {
+                Ok(mut errors) => {
+                    errors.push(dispatch_err);
+                    if errors.is_fatal() {
+                        Err(errors)
+                    } else {
+                        Ok(errors)
+                    }
+                }
+                Err(mut errors) => {
+                    errors.push(dispatch_err);
+                    if errors.is_fatal() {
+                        Err(errors)
+                    } else {
+                        Ok(errors)
+                    }
+                }
+            },
+        }
     }
 }
 
@@ -541,9 +563,8 @@ where
     async fn dispatch_envelopes(
         &mut self,
         envelopes: impl Stream<Item = TaggedEnvelope>,
-        plane_tx: mpsc::Sender<PlaneRequest>,
-        relative_uri: RelativeUri,
-    ) -> bool {
+        uplinks_idle_since: Arc<Mutex<Instant>>,
+    ) -> Result<(), DispatcherError> {
         let EnvelopeDispatcher {
             senders,
             open_tx,
@@ -560,21 +581,25 @@ where
         let yield_mod = yield_after.get();
         let mut iteration_count: usize = 0;
 
-        loop {
-            let next_fut = select_next(await_new, &mut envelopes);
-            let maybe_next = timeout(max_idle_time.clone(), next_fut).await;
+        'outer: loop {
+            let mut idle_timeout = *max_idle_time;
 
-            let next = match maybe_next {
-                Ok(next) => next,
-                Err(_) => {
-                    if plane_tx
-                        .send(PlaneRequest::TerminateAgent(relative_uri))
-                        .await
-                        .is_err()
-                    {
-                        break false;
-                    } else {
-                        break true;
+            let next = loop {
+                let next_fut = select_next(await_new, &mut envelopes);
+                let maybe_next = timeout(idle_timeout, next_fut).await;
+
+                match maybe_next {
+                    Ok(next) => break next,
+                    Err(_) => {
+                        let output_idle_dur =
+                            &Instant::now().duration_since(*uplinks_idle_since.lock().unwrap());
+
+                        if output_idle_dur > max_idle_time {
+                            break 'outer Err(DispatcherError::AgentTimedOut);
+                        } else {
+                            idle_timeout = *max_idle_time - *output_idle_dur;
+                            continue;
+                        }
                     }
                 }
             };
@@ -586,7 +611,7 @@ where
                 Some(Either::Left((name, Err(err)))) => {
                     senders.remove(&name);
                     if !matches!(err, AttachError::LaneDoesNotExist(_)) {
-                        break false;
+                        break Err(DispatcherError::AttachmentFailed(err));
                     }
                 }
                 Some(Either::Right(TaggedEnvelope(addr, envelope))) => {
@@ -605,7 +630,9 @@ where
                                 )
                                 .await;
 
-                                break false;
+                                break Err(DispatcherError::AttachmentFailed(
+                                    AttachError::LaneDoesNotExist(envelope.path.to_string()),
+                                ));
                             }
                         };
 
@@ -615,7 +642,7 @@ where
                                 .await
                                 .is_err()
                             {
-                                break false;
+                                break Err(DispatcherError::SenderError);
                             }
                         } else {
                             event!(Level::TRACE, message = REQUESTING_ATTACH, ?envelope);
@@ -643,7 +670,7 @@ where
                             };
 
                             if result.is_err() {
-                                break false;
+                                break Err(DispatcherError::SenderError);
                             }
 
                             await_new.push(AwaitNewLane::new(identifier.clone(), req_rx));
@@ -652,7 +679,7 @@ where
                                 .await
                                 .is_err()
                             {
-                                break false;
+                                break Err(DispatcherError::SenderError);
                             }
 
                             senders.insert(identifier, uplink_tx);
@@ -660,7 +687,7 @@ where
                     }
                 }
                 _ => {
-                    break true;
+                    break Ok(());
                 }
             }
 
