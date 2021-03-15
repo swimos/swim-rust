@@ -76,13 +76,6 @@ impl KeyedWatch {
         }
     }
 
-    pub async fn send_item(
-        &mut self,
-        value: UntypedMapModification<Value>,
-    ) -> Result<(), RoutingError> {
-        Ok(self.sender.send(value).await?)
-    }
-
     pub fn into_item_sender(self) -> impl ItemSender<UntypedMapModification<Value>, RoutingError> {
         let KeyedWatch { sender, .. } = self;
         item::for_mpsc_sender(sender).map_err_into()

@@ -83,7 +83,7 @@ fn yield_after() -> NonZeroUsize {
 #[tokio::test(flavor = "multi_thread")]
 async fn single_pass_through() {
     let (tx, mut rx) = mpsc::channel(5);
-    let mut watcher = KeyedWatch::new(
+    let watcher = KeyedWatch::new(
         item::for_mpsc_sender(tx).map_err_into(),
         buffer_size(),
         buffer_size(),
@@ -94,7 +94,7 @@ async fn single_pass_through() {
 
     let receiver = tokio::task::spawn(async move { rx.recv().await });
 
-    let result = watcher.send_item(update(1, 5)).await;
+    let result = watcher.sender.send(update(1, 5)).await;
     assert!(result.is_ok());
 
     let output = timeout(TIMEOUT, receiver).await.unwrap();
@@ -107,7 +107,7 @@ async fn single_pass_through() {
 async fn multiple_one_key() {
     let (tx, rx) = mpsc::channel(5);
 
-    let mut watcher = KeyedWatch::new(
+    let watcher = KeyedWatch::new(
         item::for_mpsc_sender(tx).map_err_into(),
         buffer_size(),
         buffer_size(),
@@ -124,7 +124,7 @@ async fn multiple_one_key() {
     let receiver = tokio::task::spawn(validate_receive(rx, expected));
 
     for m in modifications.into_iter() {
-        let result = watcher.send_item(m).await;
+        let result = watcher.sender.send(m).await;
         assert!(result.is_ok());
     }
 
@@ -139,7 +139,7 @@ async fn multiple_one_key() {
 async fn multiple_keys() {
     let (tx, rx) = mpsc::channel(5);
 
-    let mut watcher = KeyedWatch::new(
+    let watcher = KeyedWatch::new(
         item::for_mpsc_sender(tx).map_err_into(),
         buffer_size(),
         buffer_size(),
@@ -157,7 +157,7 @@ async fn multiple_keys() {
     let receiver = tokio::task::spawn(validate_receive(rx, expected));
 
     for m in modifications.into_iter() {
-        let result = watcher.send_item(m).await;
+        let result = watcher.sender.send(m).await;
         assert!(result.is_ok());
     }
 
@@ -172,7 +172,7 @@ async fn multiple_keys() {
 async fn multiple_keys_multiple_values() {
     let (tx, rx) = mpsc::channel(5);
 
-    let mut watcher = KeyedWatch::new(
+    let watcher = KeyedWatch::new(
         item::for_mpsc_sender(tx).map_err_into(),
         buffer_size(),
         buffer_size(),
@@ -189,7 +189,7 @@ async fn multiple_keys_multiple_values() {
     let receiver = tokio::task::spawn(validate_receive(rx, expected));
 
     for m in modifications.into_iter() {
-        let result = watcher.send_item(m).await;
+        let result = watcher.sender.send(m).await;
         assert!(result.is_ok());
     }
 
@@ -204,7 +204,7 @@ async fn multiple_keys_multiple_values() {
 async fn single_clear() {
     let (tx, mut rx) = mpsc::channel(5);
 
-    let mut watcher = KeyedWatch::new(
+    let watcher = KeyedWatch::new(
         item::for_mpsc_sender(tx).map_err_into(),
         buffer_size(),
         buffer_size(),
@@ -215,7 +215,7 @@ async fn single_clear() {
 
     let receiver = tokio::task::spawn(async move { rx.recv().await });
 
-    let result = watcher.send_item(UntypedMapModification::Clear).await;
+    let result = watcher.sender.send(UntypedMapModification::Clear).await;
     assert!(result.is_ok());
 
     let output = timeout(TIMEOUT, receiver).await.unwrap();
@@ -228,7 +228,7 @@ async fn single_clear() {
 async fn single_take() {
     let (tx, mut rx) = mpsc::channel(5);
 
-    let mut watcher = KeyedWatch::new(
+    let watcher = KeyedWatch::new(
         item::for_mpsc_sender(tx).map_err_into(),
         buffer_size(),
         buffer_size(),
@@ -239,7 +239,7 @@ async fn single_take() {
 
     let receiver = tokio::task::spawn(async move { rx.recv().await });
 
-    let result = watcher.send_item(UntypedMapModification::Take(4)).await;
+    let result = watcher.sender.send(UntypedMapModification::Take(4)).await;
     assert!(result.is_ok());
 
     let output = timeout(TIMEOUT, receiver).await.unwrap();
@@ -252,7 +252,7 @@ async fn single_take() {
 async fn single_skip() {
     let (tx, mut rx) = mpsc::channel(5);
 
-    let mut watcher = KeyedWatch::new(
+    let watcher = KeyedWatch::new(
         item::for_mpsc_sender(tx).map_err_into(),
         buffer_size(),
         buffer_size(),
@@ -263,7 +263,7 @@ async fn single_skip() {
 
     let receiver = tokio::task::spawn(async move { rx.recv().await });
 
-    let result = watcher.send_item(UntypedMapModification::Drop(4)).await;
+    let result = watcher.sender.send(UntypedMapModification::Drop(4)).await;
     assert!(result.is_ok());
 
     let output = timeout(TIMEOUT, receiver).await.unwrap();
@@ -276,7 +276,7 @@ async fn single_skip() {
 async fn special_action_ordering() {
     let (tx, rx) = mpsc::channel(5);
 
-    let mut watcher = KeyedWatch::new(
+    let watcher = KeyedWatch::new(
         item::for_mpsc_sender(tx).map_err_into(),
         buffer_size(),
         buffer_size(),
@@ -300,7 +300,7 @@ async fn special_action_ordering() {
     let receiver = tokio::task::spawn(validate_receive(rx, expected));
 
     for m in modifications.into_iter() {
-        let result = watcher.send_item(m).await;
+        let result = watcher.sender.send(m).await;
         assert!(result.is_ok());
     }
 
@@ -315,7 +315,7 @@ async fn special_action_ordering() {
 async fn overflow_active_keys() {
     let (tx, rx) = mpsc::channel(5);
 
-    let mut watcher = KeyedWatch::new(
+    let watcher = KeyedWatch::new(
         item::for_mpsc_sender(tx).map_err_into(),
         buffer_size(),
         buffer_size(),
@@ -337,7 +337,7 @@ async fn overflow_active_keys() {
     let receiver = tokio::task::spawn(validate_receive(rx, expected));
 
     for m in modifications.into_iter() {
-        let result = watcher.send_item(m).await;
+        let result = watcher.sender.send(m).await;
         assert!(result.is_ok());
     }
 
