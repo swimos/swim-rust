@@ -38,6 +38,7 @@ use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
 use tokio::time::Instant;
 use tokio_stream::wrappers::ReceiverStream;
+use utilities::errors::Recoverable;
 
 mod mock;
 
@@ -629,7 +630,8 @@ async fn dispatch_meta() {
     };
 
     let (result, _) = join(task, assertion_task).await;
-    assert!(matches!(result, Ok(errs) if errs.is_empty()));
+
+    assert!(matches!(result, Ok(errs) if !errs.is_fatal()));
 }
 
 #[test]
