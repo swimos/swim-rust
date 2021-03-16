@@ -21,13 +21,14 @@ mod tests {
     use swim_common::form::Form;
     use swim_common::model::{Attr, Item, Value};
     use swim_common::warp::path::AbsolutePath;
-    use test_server::start_server;
+    use test_server::build_server;
     use tokio::time::Duration;
 
     #[tokio::test]
     async fn test_value_dl_recv() {
-        let server = start_server().await;
-        let port = server.port();
+        let (server, mut handle) = build_server().await;
+        tokio::spawn(server.run());
+        let port = handle.address().await.unwrap().port();
 
         let host = format!("ws://127.0.0.1:{}", port);
         let mut client = SwimClientBuilder::build_with_default().await;
@@ -38,13 +39,14 @@ mod tests {
 
         let message = recv.recv().await.unwrap();
         assert_eq!(message, Event::Remote(0));
-        server.stop().await.unwrap();
+        handle.stop();
     }
 
     #[tokio::test]
     async fn test_value_dl_send() {
-        let server = start_server().await;
-        let port = server.port();
+        let (server, mut handle) = build_server().await;
+        tokio::spawn(server.run());
+        let port = handle.address().await.unwrap().port();
 
         let host = format!("ws://127.0.0.1:{}", port);
         let mut client = SwimClientBuilder::build_with_default().await;
@@ -61,13 +63,14 @@ mod tests {
 
         let message = recv.recv().await.unwrap();
         assert_eq!(message, Event::Local(10));
-        server.stop().await.unwrap();
+        handle.stop();
     }
 
     #[tokio::test]
     async fn test_map_dl_recv() {
-        let server = start_server().await;
-        let port = server.port();
+        let (server, mut handle) = build_server().await;
+        tokio::spawn(server.run());
+        let port = handle.address().await.unwrap().port();
 
         let host = format!("ws://127.0.0.1:{}", port);
         let mut client = SwimClientBuilder::build_with_default().await;
@@ -93,13 +96,14 @@ mod tests {
         } else {
             panic!("The map downlink did not receive the correct message!")
         }
-        server.stop().await.unwrap();
+        handle.stop();
     }
 
     #[tokio::test]
     async fn test_map_dl_send() {
-        let server = start_server().await;
-        let port = server.port();
+        let (server, mut handle) = build_server().await;
+        tokio::spawn(server.run());
+        let port = handle.address().await.unwrap().port();
 
         let host = format!("ws://127.0.0.1:{}", port);
         let mut client = SwimClientBuilder::build_with_default().await;
@@ -138,13 +142,14 @@ mod tests {
         } else {
             panic!("The map downlink did not receive the correct message!")
         }
-        server.stop().await.unwrap();
+        handle.stop();
     }
 
     #[tokio::test]
     async fn test_recv_untyped_value_event() {
-        let server = start_server().await;
-        let port = server.port();
+        let (server, mut handle) = build_server().await;
+        tokio::spawn(server.run());
+        let port = handle.address().await.unwrap().port();
 
         let host = format!("ws://127.0.0.1:{}", port);
         let mut client = SwimClientBuilder::build_with_default().await;
@@ -162,13 +167,14 @@ mod tests {
         let incoming = rec.recv().await.unwrap().clone().get_inner();
 
         assert_eq!(incoming, Value::text("Hello, from Rust!"));
-        server.stop().await.unwrap();
+        handle.stop();
     }
 
     #[tokio::test]
     async fn test_recv_typed_value_event_valid() {
-        let server = start_server().await;
-        let port = server.port();
+        let (server, mut handle) = build_server().await;
+        tokio::spawn(server.run());
+        let port = handle.address().await.unwrap().port();
 
         let host = format!("ws://127.0.0.1:{}", port);
         let mut client = SwimClientBuilder::build_with_default().await;
@@ -197,13 +203,14 @@ mod tests {
         let incoming = rec.recv().await.unwrap();
 
         assert_eq!(incoming, "Hello, from Rust!");
-        server.stop().await.unwrap();
+        handle.stop();
     }
 
     #[tokio::test]
     async fn test_recv_typed_value_event_invalid() {
-        let server = start_server().await;
-        let port = server.port();
+        let (server, mut handle) = build_server().await;
+        tokio::spawn(server.run());
+        let port = handle.address().await.unwrap().port();
 
         let host = format!("ws://127.0.0.1:{}", port);
         let mut client = SwimClientBuilder::build_with_default().await;
@@ -226,13 +233,14 @@ mod tests {
         let incoming = rec.recv().await;
 
         assert_eq!(incoming, None);
-        server.stop().await.unwrap();
+        handle.stop();
     }
 
     #[tokio::test]
     async fn test_recv_untyped_map_event() {
-        let server = start_server().await;
-        let port = server.port();
+        let (server, mut handle) = build_server().await;
+        tokio::spawn(server.run());
+        let port = handle.address().await.unwrap().port();
 
         let host = format!("ws://127.0.0.1:{}", port);
         let mut client = SwimClientBuilder::build_with_default().await;
@@ -273,13 +281,14 @@ mod tests {
         let expected = Value::Record(vec![header], vec![body]);
 
         assert_eq!(incoming, expected);
-        server.stop().await.unwrap();
+        handle.stop();
     }
 
     #[tokio::test]
     async fn test_recv_typed_map_event_valid() {
-        let server = start_server().await;
-        let port = server.port();
+        let (server, mut handle) = build_server().await;
+        tokio::spawn(server.run());
+        let port = handle.address().await.unwrap().port();
 
         let host = format!("ws://127.0.0.1:{}", port);
         let mut client = SwimClientBuilder::build_with_default().await;
@@ -320,13 +329,14 @@ mod tests {
             incoming,
             MapModification::Update("milk".to_string(), Arc::new(6i32))
         );
-        server.stop().await.unwrap();
+        handle.stop();
     }
 
     #[tokio::test]
     async fn test_recv_typed_map_event_invalid_key() {
-        let server = start_server().await;
-        let port = server.port();
+        let (server, mut handle) = build_server().await;
+        tokio::spawn(server.run());
+        let port = handle.address().await.unwrap().port();
 
         let host = format!("ws://127.0.0.1:{}", port);
         let mut client = SwimClientBuilder::build_with_default().await;
@@ -367,13 +377,14 @@ mod tests {
         let incoming = rec.recv().await;
 
         assert_eq!(incoming, None);
-        server.stop().await.unwrap();
+        handle.stop();
     }
 
     #[tokio::test]
     async fn test_recv_typed_map_event_invalid_value() {
-        let server = start_server().await;
-        let port = server.port();
+        let (server, mut handle) = build_server().await;
+        tokio::spawn(server.run());
+        let port = handle.address().await.unwrap().port();
 
         let host = format!("ws://127.0.0.1:{}", port);
         let mut client = SwimClientBuilder::build_with_default().await;
@@ -414,13 +425,14 @@ mod tests {
         let incoming = rec.recv().await;
 
         assert_eq!(incoming, None);
-        server.stop().await.unwrap();
+        handle.stop();
     }
 
     #[tokio::test]
     async fn test_read_only_value() {
-        let server = start_server().await;
-        let port = server.port();
+        let (server, mut handle) = build_server().await;
+        tokio::spawn(server.run());
+        let port = handle.address().await.unwrap().port();
 
         let host = format!("ws://127.0.0.1:{}", port);
         let mut client = SwimClientBuilder::build_with_default().await;
@@ -461,13 +473,14 @@ mod tests {
             message,
             Event::Remote(Value::from("Hello, Value!".to_string()))
         );
-        server.stop().await.unwrap();
+        handle.stop();
     }
 
     #[tokio::test]
     async fn test_read_only_value_schema_error() {
-        let server = start_server().await;
-        let port = server.port();
+        let (server, mut handle) = build_server().await;
+        tokio::spawn(server.run());
+        let port = handle.address().await.unwrap().port();
 
         let host = format!("ws://127.0.0.1:{}", port);
         let mut client = SwimClientBuilder::build_with_default().await;
@@ -477,13 +490,14 @@ mod tests {
 
         assert!(dl.subscriber().covariant_cast::<String>().is_err());
         assert!(dl.subscriber().covariant_cast::<i32>().is_err());
-        server.stop().await.unwrap();
+        handle.stop();
     }
 
     #[tokio::test]
     async fn test_read_only_map() {
-        let server = start_server().await;
-        let port = server.port();
+        let (server, mut handle) = build_server().await;
+        tokio::spawn(server.run());
+        let port = handle.address().await.unwrap().port();
 
         let host = format!("ws://127.0.0.1:{}", port);
         let mut client = SwimClientBuilder::build_with_default().await;
@@ -563,13 +577,14 @@ mod tests {
         } else {
             panic!("The map downlink did not receive the correct message!")
         }
-        server.stop().await.unwrap();
+        handle.stop();
     }
 
     #[tokio::test]
     async fn test_read_only_map_schema_error() {
-        let server = start_server().await;
-        let port = server.port();
+        let (server, mut handle) = build_server().await;
+        tokio::spawn(server.run());
+        let port = handle.address().await.unwrap().port();
 
         let host = format!("ws://127.0.0.1:{}", port);
         let mut client = SwimClientBuilder::build_with_default().await;
@@ -581,13 +596,14 @@ mod tests {
         assert!(dl.subscriber().covariant_cast::<i64, String>().is_err());
         assert!(dl.subscriber().covariant_cast::<i32, i64>().is_err());
         assert!(dl.subscriber().covariant_cast::<i64, i32>().is_err());
-        server.stop().await.unwrap();
+        handle.stop();
     }
 
     #[tokio::test]
     async fn test_write_only_value() {
-        let server = start_server().await;
-        let port = server.port();
+        let (server, mut handle) = build_server().await;
+        tokio::spawn(server.run());
+        let port = handle.address().await.unwrap().port();
 
         let host = format!("ws://127.0.0.1:{}", port);
         let mut client = SwimClientBuilder::build_with_default().await;
@@ -617,13 +633,14 @@ mod tests {
         sender_view.set(String::from("chocolate")).await.unwrap();
         let message = recv.recv().await.unwrap();
         assert_eq!(message, Event::Local(Value::text("chocolate")));
-        server.stop().await.unwrap();
+        handle.stop();
     }
 
     #[tokio::test]
     async fn test_write_only_value_schema_error() {
-        let server = start_server().await;
-        let port = server.port();
+        let (server, mut handle) = build_server().await;
+        tokio::spawn(server.run());
+        let port = handle.address().await.unwrap().port();
 
         let host = format!("ws://127.0.0.1:{}", port);
         let mut client = SwimClientBuilder::build_with_default().await;
@@ -633,13 +650,14 @@ mod tests {
 
         assert!(dl.sender().contravariant_view::<String>().is_err());
         assert!(dl.sender().contravariant_view::<i64>().is_err());
-        server.stop().await.unwrap();
+        handle.stop();
     }
 
     #[tokio::test]
     async fn test_write_only_map() {
-        let server = start_server().await;
-        let port = server.port();
+        let (server, mut handle) = build_server().await;
+        tokio::spawn(server.run());
+        let port = handle.address().await.unwrap().port();
 
         let host = format!("ws://127.0.0.1:{}", port);
         let mut client = SwimClientBuilder::build_with_default().await;
@@ -730,13 +748,14 @@ mod tests {
         } else {
             panic!("The map downlink did not receive the correct message!")
         }
-        server.stop().await.unwrap();
+        handle.stop();
     }
 
     #[tokio::test]
     async fn test_write_only_map_schema_error() {
-        let server = start_server().await;
-        let port = server.port();
+        let (server, mut handle) = build_server().await;
+        tokio::spawn(server.run());
+        let port = handle.address().await.unwrap().port();
 
         let host = format!("ws://127.0.0.1:{}", port);
         let mut client = SwimClientBuilder::build_with_default().await;
@@ -748,6 +767,6 @@ mod tests {
         assert!(dl.sender().contravariant_view::<i32, String>().is_err());
         assert!(dl.sender().contravariant_view::<i64, i32>().is_err());
         assert!(dl.sender().contravariant_view::<i32, i64>().is_err());
-        server.stop().await.unwrap();
+        handle.stop();
     }
 }

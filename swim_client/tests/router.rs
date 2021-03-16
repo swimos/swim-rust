@@ -21,14 +21,15 @@ mod tests {
     use swim_common::warp::envelope::Envelope;
     use swim_common::warp::path::AbsolutePath;
     use swim_runtime::time::timeout::timeout;
-    use test_server::start_server;
+    use test_server::build_server;
     use tokio::time::Duration;
 
     #[tokio::test]
     #[ignore]
     async fn secure() {
-        let server = start_server().await;
-        let port = server.port();
+        let (server, mut handle) = build_server().await;
+        tokio::spawn(server.run());
+        let port = handle.address().await.unwrap().port();
 
         let host = format!("ws://127.0.0.1:{}", port);
         let config = RouterParamBuilder::default().build();
@@ -49,13 +50,14 @@ mod tests {
         eprintln!("message = {:#?}", stream.recv().await);
 
         let _ = router.close().await;
-        server.stop().await.unwrap();
+        handle.stop();
     }
 
     #[tokio::test]
     async fn normal_receive() {
-        let server = start_server().await;
-        let port = server.port();
+        let (server, mut handle) = build_server().await;
+        tokio::spawn(server.run());
+        let port = handle.address().await.unwrap().port();
 
         let host = format!("ws://127.0.0.1:{}", port);
         let config = RouterParamBuilder::default().build();
@@ -94,13 +96,14 @@ mod tests {
         assert_eq!(stream.recv().await.unwrap(), expected);
 
         let _ = router.close().await;
-        server.stop().await.unwrap();
+        handle.stop();
     }
 
     #[tokio::test]
     async fn node_not_found_receive() {
-        let server = start_server().await;
-        let port = server.port();
+        let (server, mut handle) = build_server().await;
+        tokio::spawn(server.run());
+        let port = handle.address().await.unwrap().port();
 
         let host = format!("ws://127.0.0.1:{}", port);
         let config = RouterParamBuilder::default().build();
@@ -129,13 +132,14 @@ mod tests {
         assert_eq!(stream.recv().await.unwrap(), expected);
 
         let _ = router.close().await;
-        server.stop().await.unwrap();
+        handle.stop();
     }
 
     #[tokio::test]
     async fn lane_not_found_receive() {
-        let server = start_server().await;
-        let port = server.port();
+        let (server, mut handle) = build_server().await;
+        tokio::spawn(server.run());
+        let port = handle.address().await.unwrap().port();
 
         let host = format!("ws://127.0.0.1:{}", port);
         let config = RouterParamBuilder::default().build();
@@ -160,13 +164,14 @@ mod tests {
         assert_eq!(stream.recv().await.unwrap(), expected);
 
         let _ = router.close().await;
-        server.stop().await.unwrap();
+        handle.stop();
     }
 
     #[tokio::test]
     async fn not_interested_receive() {
-        let server = start_server().await;
-        let port = server.port();
+        let (server, mut handle) = build_server().await;
+        tokio::spawn(server.run());
+        let port = handle.address().await.unwrap().port();
 
         let host = format!("ws://127.0.0.1:{}", port);
         let config = RouterParamBuilder::default().build();
@@ -186,13 +191,14 @@ mod tests {
         assert!(result.is_err());
 
         let _ = router.close().await;
-        server.stop().await.unwrap();
+        handle.stop();
     }
 
     #[tokio::test]
     async fn not_found_receive() {
-        let server = start_server().await;
-        let port = server.port();
+        let (server, mut handle) = build_server().await;
+        tokio::spawn(server.run());
+        let port = handle.address().await.unwrap().port();
 
         let host = format!("ws://127.0.0.1:{}", port);
         let config = RouterParamBuilder::default().build();
@@ -221,13 +227,14 @@ mod tests {
         assert!(result.is_err());
 
         let _ = router.close().await;
-        server.stop().await.unwrap();
+        handle.stop();
     }
 
     #[tokio::test]
     async fn send_commands() {
-        let server = start_server().await;
-        let port = server.port();
+        let (server, mut handle) = build_server().await;
+        tokio::spawn(server.run());
+        let port = handle.address().await.unwrap().port();
 
         let host = format!("ws://127.0.0.1:{}", port);
         let config = RouterParamBuilder::default().build();
@@ -269,6 +276,6 @@ mod tests {
         assert!(result.is_ok());
 
         let _ = router.close().await;
-        server.stop().await.unwrap();
+        handle.stop();
     }
 }

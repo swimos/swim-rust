@@ -30,12 +30,13 @@ use std::fmt::{Display, Formatter};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use swim_common::routing::ws::tungstenite::TungsteniteWsConnections;
-use swim_runtime::task::{spawn, TaskError, TaskHandle};
+use swim_runtime::task::TaskError;
 use swim_runtime::time::clock::RuntimeClock;
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use utilities::future::open_ended::OpenEndedFutures;
-use utilities::sync::trigger;
+use utilities::sync::promise::PromiseError;
+use utilities::sync::{promise, trigger};
 
 /// Builder to create Swim server instance.
 ///
@@ -183,20 +184,62 @@ impl SwimServerBuilder {
     /// let mut swim_server_builder = SwimServerBuilder::default();
     /// swim_server_builder.add_plane(plane_builder.build());
     ///
-    /// let swim_server = tokio_test::block_on(swim_server_builder.bind_to(address).build());
+    /// let (swim_server, server_handle) = swim_server_builder.bind_to(address).build().unwrap();
     /// ```
-    pub async fn build(self) -> Result<SwimServer, SwimServerBuilderError> {
+    pub fn build(self) -> Result<(SwimServer, ServerHandle), SwimServerBuilderError> {
         let SwimServerBuilder {
             address,
-            mut planes,
+            planes,
             config,
         } = self;
 
-        let address = address.ok_or(SwimServerBuilderError {
-            msg: "Cannot create a swim server without an address".to_string(),
-        })?;
-
         let (stop_trigger_tx, stop_trigger_rx) = trigger::trigger();
+        let (address_tx, address_rx) = promise::promise();
+
+        Ok((
+            SwimServer {
+                config,
+                planes,
+                address: address.ok_or(SwimServerBuilderError::MissingAddress)?,
+                stop_trigger_rx,
+                address_tx,
+            },
+            ServerHandle {
+                address: None,
+                address_rx: Some(address_rx),
+                stop_trigger_tx,
+            },
+        ))
+    }
+}
+
+/// Swim server instance.
+///
+/// The Swim server runs a plane and its agents and a task for remote connections asynchronously.
+pub struct SwimServer {
+    address: SocketAddr,
+    config: SwimServerConfig,
+    planes: Vec<PlaneSpec<RuntimeClock, EnvChannel, PlaneRouter<TopLevelRouter>>>,
+    stop_trigger_rx: trigger::Receiver,
+    address_tx: promise::Sender<SocketAddr>,
+}
+
+impl SwimServer {
+    /// Runs the Swim server instance.
+    ///
+    /// Runs the planes and remote connections tasks of the server asynchronously
+    /// and returns any errors from the connections task.
+    ///
+    /// # Panics
+    /// The task will panic if the address provided to the server is already being used.
+    pub async fn run(self) -> Result<(), io::Error> {
+        let SwimServer {
+            address,
+            config,
+            mut planes,
+            stop_trigger_rx,
+            address_tx,
+        } = self;
 
         let SwimServerConfig {
             websocket_config,
@@ -243,73 +286,35 @@ impl SwimServerBuilder {
         .await
         .unwrap_or_else(|err| panic!("Could not connect to \"{}\": {}", address, err));
 
-        let local_addr = match connections_task.listener.local_addr() {
-            Ok(local_addr) => local_addr,
-            Err(err) => {
-                return Err(SwimServerBuilderError {
-                    msg: err.to_string(),
-                })
-            }
+        let _ = match connections_task.listener.local_addr() {
+            Ok(local_addr) => address_tx.provide(local_addr),
+            Err(err) => panic!("Could not resolve server address: {}", err),
         };
+
         let connections_future = connections_task.run();
 
-        let task_handle = spawn(async { join!(connections_future, plane_future).0 });
-
-        Ok(SwimServer {
-            local_addr,
-            task_handle,
-            stop_trigger_tx,
-        })
+        join!(connections_future, plane_future).0
     }
 }
 
 /// Represents an error that can occur while using the server builder.
 #[derive(Debug)]
-pub struct SwimServerBuilderError {
-    msg: String,
+pub enum SwimServerBuilderError {
+    /// An error that occurs when trying to create a server without providing the address first.
+    MissingAddress,
 }
 
 impl Display for SwimServerBuilderError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.msg)
+        match self {
+            SwimServerBuilderError::MissingAddress => {
+                write!(f, "Cannot create a swim server without an address")
+            }
+        }
     }
 }
 
 impl Error for SwimServerBuilderError {}
-
-/// Swim server instance.
-///
-/// The Swim server runs a plane and its agents and a task for remote connections asynchronously.
-pub struct SwimServer {
-    local_addr: SocketAddr,
-    task_handle: TaskHandle<Result<(), io::Error>>,
-    stop_trigger_tx: trigger::Sender,
-}
-
-impl SwimServer {
-    /// Returns the address of the server.
-    pub fn addr(&self) -> &SocketAddr {
-        &self.local_addr
-    }
-
-    /// Returns the port of the server.
-    pub fn port(&self) -> u16 {
-        self.local_addr.port()
-    }
-
-    /// Terminates the server instance.
-    ///
-    /// Returns any runtime errors that the server has encountered.
-    /// ```
-    pub async fn stop(self) -> Result<(), ServerError> {
-        self.stop_trigger_tx.trigger();
-
-        match self.task_handle.await {
-            Ok(result) => result.map_err(ServerError::RuntimeError),
-            Err(err) => Err(ServerError::CloseError(err)),
-        }
-    }
-}
 
 /// Represents errors that can occur in the server.
 #[derive(Debug)]
@@ -349,5 +354,50 @@ impl Default for SwimServerConfig {
             agent_config: Default::default(),
             websocket_config: Default::default(),
         }
+    }
+}
+
+/// Handle for a server instance.
+///
+/// The handle is returned when a new server instance is created and is used for terminating
+/// the server or obtaining its address.
+pub struct ServerHandle {
+    address_rx: Option<promise::Receiver<SocketAddr>>,
+    address: Option<SocketAddr>,
+    stop_trigger_tx: trigger::Sender,
+}
+
+impl ServerHandle {
+    /// Returns the local address that this server is bound to.
+    ///
+    /// This can be useful, for example, when binding to port 0 to figure out
+    /// which port was actually bound.
+    pub async fn address(&mut self) -> Result<&SocketAddr, PromiseError> {
+        if self.address.is_none() {
+            let address = self.address_rx.take().unwrap().await?;
+            self.address = Some(*address);
+        }
+        Ok(self.address.as_ref().unwrap())
+    }
+
+    /// Terminates the associated server instance.
+    ///
+    /// Returns `true` if all sever tasks have been successfully notified to terminate
+    /// and `false` otherwise.
+    ///
+    /// # Example:
+    /// ```
+    /// use std::net::{SocketAddr, IpAddr, Ipv4Addr};
+    /// use swim_server::interface::{SwimServer, SwimServerBuilder};
+    ///
+    /// let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
+    /// let (mut swim_server, server_handle) = SwimServerBuilder::default().bind_to(address).build().unwrap();
+    ///
+    /// let success = server_handle.stop();
+    ///
+    /// assert!(success);
+    /// ```
+    pub fn stop(self) -> bool {
+        self.stop_trigger_tx.trigger()
     }
 }
