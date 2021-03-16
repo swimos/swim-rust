@@ -86,7 +86,7 @@ pub fn make_config() -> AgentExecutionConfig {
         scheduler_buffer: buffer_size,
         value_lane_backpressure: None,
         map_lane_backpressure: None,
-        max_idle_time: Duration::from_secs(60)
+        max_idle_time: Duration::from_secs(60),
     }
 }
 
