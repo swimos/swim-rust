@@ -13,9 +13,10 @@
 // limitations under the License.
 
 pub mod context;
-pub mod dispatch;
+pub(crate) mod dispatch;
 pub mod lane;
 pub mod lifecycle;
+
 #[cfg(test)]
 mod tests;
 

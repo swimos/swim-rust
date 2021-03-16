@@ -204,7 +204,7 @@ where
     /// # Arguments
     /// * `incoming` - The stream of incoming [`swim_common::warp::envelope::Envelope`]s to the
     /// agent.
-    pub(crate) async fn run(
+    pub async fn run(
         self,
         incoming: impl Stream<Item = TaggedEnvelope>,
         uplinks_idle_since: Arc<Mutex<Instant>>,
