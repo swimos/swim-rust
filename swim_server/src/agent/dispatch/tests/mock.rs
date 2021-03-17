@@ -39,6 +39,7 @@ use tokio::sync::mpsc;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time::Instant;
 use url::Url;
+use utilities::instant::AtomicInstant;
 use utilities::sync::promise;
 use utilities::uri::RelativeUri;
 
@@ -133,7 +134,7 @@ impl ServerRouter for MockRouter {
 pub struct MockExecutionContext {
     router: Arc<Mutex<MockRouterInner>>,
     spawner: mpsc::Sender<Eff>,
-    uplinks_idle_since: Arc<std::sync::Mutex<Instant>>,
+    uplinks_idle_since: Arc<AtomicInstant>,
 }
 
 impl AgentExecutionContext for MockExecutionContext {
@@ -147,7 +148,7 @@ impl AgentExecutionContext for MockExecutionContext {
         self.spawner.clone()
     }
 
-    fn uplinks_idle_since(&self) -> &Arc<std::sync::Mutex<Instant>> {
+    fn uplinks_idle_since(&self) -> &Arc<AtomicInstant> {
         &self.uplinks_idle_since
     }
 }
@@ -157,7 +158,7 @@ impl MockExecutionContext {
         MockExecutionContext {
             router: Arc::new(Mutex::new(MockRouterInner::new(router_addr, buffer_size))),
             spawner,
-            uplinks_idle_since: Arc::new(std::sync::Mutex::new(Instant::now())),
+            uplinks_idle_since: Arc::new(AtomicInstant::new(Instant::now())),
         }
     }
 

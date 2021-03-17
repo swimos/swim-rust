@@ -47,10 +47,12 @@ use crate::agent::{AttachError, LaneIo};
 use crate::meta::uri::MetaParseErr;
 use crate::meta::{LaneAddressedKind, MetaNodeAddressed, LANES_URI, PULSE_URI, UPLINK_URI};
 use crate::routing::{RoutingAddr, ServerRouter, TaggedClientEnvelope, TaggedEnvelope};
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
 use std::time::Duration;
 use swim_runtime::time::timeout::timeout;
 use tokio::time::Instant;
+use utilities::instant::AtomicInstant;
 
 pub mod error;
 #[cfg(test)]
@@ -207,7 +209,7 @@ where
     pub async fn run(
         self,
         incoming: impl Stream<Item = TaggedEnvelope>,
-        uplinks_idle_since: Arc<Mutex<Instant>>,
+        uplinks_idle_since: Arc<AtomicInstant>,
     ) -> Result<DispatcherErrors, DispatcherErrors> {
         let AgentDispatcher {
             agent_route,
@@ -563,7 +565,7 @@ where
     async fn dispatch_envelopes(
         &mut self,
         envelopes: impl Stream<Item = TaggedEnvelope>,
-        uplinks_idle_since: Arc<Mutex<Instant>>,
+        uplinks_idle_since: Arc<AtomicInstant>,
     ) -> Result<(), DispatcherError> {
         let EnvelopeDispatcher {
             senders,
@@ -591,8 +593,8 @@ where
                 match maybe_next {
                     Ok(next) => break next,
                     Err(_) => {
-                        let output_idle_dur =
-                            &Instant::now().duration_since(*uplinks_idle_since.lock().unwrap());
+                        let output_idle_dur = &Instant::now()
+                            .duration_since(uplinks_idle_since.load(Ordering::Acquire));
 
                         if output_idle_dur > max_idle_time {
                             break 'outer Err(DispatcherError::AgentTimedOut);

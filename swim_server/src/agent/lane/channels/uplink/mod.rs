@@ -30,7 +30,8 @@ use std::any::Any;
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use std::ops::Deref;
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
 use stm::transaction::{RetryManager, TransactionError};
 use swim_common::form::{Form, FormErr};
 use swim_common::model::Value;
@@ -43,6 +44,7 @@ use swim_warp::model::map::MapUpdate;
 use tokio::time::Instant;
 use tracing::{event, Level};
 use utilities::errors::Recoverable;
+use utilities::instant::AtomicInstant;
 
 pub(crate) mod backpressure;
 pub mod map;
@@ -256,7 +258,7 @@ where
     pub async fn run_uplink<Sender, SendErr>(
         self,
         mut sender: Sender,
-        uplinks_idle_since: Arc<Mutex<Instant>>,
+        uplinks_idle_since: Arc<AtomicInstant>,
     ) -> Result<(), UplinkError>
     where
         Sender: ItemSender<UplinkMessage<SM::Msg>, SendErr> + Send + Sync + Clone,
@@ -486,7 +488,7 @@ pub trait UplinkStateMachine<Event>: Send + Sync {
         &'a self,
         message_stream: Messages,
         sender: Sender,
-        uplinks_idle_since: Arc<Mutex<Instant>>,
+        uplinks_idle_since: Arc<AtomicInstant>,
     ) -> BoxFuture<'a, Result<(), UplinkError>>
     where
         Messages: Stream<Item = Result<UplinkMessage<Self::Msg>, UplinkError>> + Send + 'a,
@@ -500,7 +502,7 @@ pub trait UplinkStateMachine<Event>: Send + Sync {
 async fn default_send_message_stream<Msg, Messages, Sender, SendErr>(
     message_stream: Messages,
     mut sender: Sender,
-    uplinks_idle_since: Arc<Mutex<Instant>>,
+    uplinks_idle_since: Arc<AtomicInstant>,
 ) -> Result<(), UplinkError>
 where
     Msg: Any + Send + Sync + Debug,
@@ -515,7 +517,7 @@ where
                 if result.is_err() {
                     break result;
                 } else {
-                    *uplinks_idle_since.lock().unwrap() = Instant::now();
+                    uplinks_idle_since.store(Instant::now(), Ordering::Release)
                 }
             }
             Some(Err(e)) => {
@@ -631,7 +633,7 @@ where
         &'a self,
         message_stream: Messages,
         sender: Sender,
-        uplinks_idle_since: Arc<Mutex<Instant>>,
+        uplinks_idle_since: Arc<AtomicInstant>,
     ) -> BoxFuture<'a, Result<(), UplinkError>>
     where
         Messages: Stream<Item = Result<UplinkMessage<Self::Msg>, UplinkError>> + Send + 'a,
@@ -724,7 +726,7 @@ where
         &'a self,
         message_stream: Messages,
         sender: Sender,
-        uplinks_idle_since: Arc<Mutex<Instant>>,
+        uplinks_idle_since: Arc<AtomicInstant>,
     ) -> BoxFuture<'a, Result<(), UplinkError>>
     where
         Messages:

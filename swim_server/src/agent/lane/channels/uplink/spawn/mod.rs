@@ -29,14 +29,14 @@ use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::num::NonZeroUsize;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use swim_common::model::Value;
 use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc;
-use tokio::time::Instant;
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, span, Level};
 use tracing_futures::Instrument;
+use utilities::instant::AtomicInstant;
 use utilities::sync::trigger;
 
 #[cfg(test)]
@@ -122,7 +122,7 @@ where
         mut self,
         mut router: Router,
         mut spawn_tx: mpsc::Sender<Eff>,
-        uplinks_idle_since: Arc<Mutex<Instant>>,
+        uplinks_idle_since: Arc<AtomicInstant>,
         error_collector: mpsc::Sender<UplinkErrorReport>,
     ) where
         Router: ServerRouter,
@@ -207,7 +207,7 @@ where
         err_tx: mpsc::Sender<UplinkErrorReport>,
         spawn_tx: &mut mpsc::Sender<Eff>,
         router: &mut Router,
-        uplinks_idle_since: Arc<Mutex<Instant>>,
+        uplinks_idle_since: Arc<AtomicInstant>,
     ) -> Option<UplinkHandle>
     where
         Router: ServerRouter,

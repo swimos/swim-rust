@@ -20,7 +20,7 @@ use futures::{FutureExt, Stream, StreamExt};
 use std::collections::HashMap;
 use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use swim_runtime::time::clock::Clock;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
@@ -28,6 +28,7 @@ use tokio::time::{Duration, Instant};
 use tracing::{event, span, Level};
 use tracing_futures::Instrument;
 use utilities::future::SwimStreamExt;
+use utilities::instant::AtomicInstant;
 use utilities::sync::trigger;
 use utilities::uri::RelativeUri;
 
@@ -46,7 +47,7 @@ pub(super) struct ContextImpl<Agent, Clk, Router> {
     stop_signal: trigger::Receiver,
     router: Router,
     parameters: HashMap<String, String>,
-    pub(crate) uplinks_idle_since: Arc<Mutex<Instant>>,
+    pub(crate) uplinks_idle_since: Arc<AtomicInstant>,
 }
 
 const SCHEDULE: &str = "Schedule";
@@ -89,7 +90,7 @@ impl<Agent, Clk, Router> ContextImpl<Agent, Clk, Router> {
             stop_signal,
             router,
             parameters,
-            uplinks_idle_since: Arc::new(Mutex::new(Instant::now())),
+            uplinks_idle_since: Arc::new(AtomicInstant::new(Instant::now())),
         }
     }
 }
@@ -167,7 +168,7 @@ pub trait AgentExecutionContext {
     fn spawner(&self) -> mpsc::Sender<Eff>;
 
     /// Return the time since the last outgoing message.
-    fn uplinks_idle_since(&self) -> &Arc<Mutex<Instant>>;
+    fn uplinks_idle_since(&self) -> &Arc<AtomicInstant>;
 }
 
 impl<Agent, Clk, RouterInner> AgentExecutionContext for ContextImpl<Agent, Clk, RouterInner>
@@ -184,7 +185,7 @@ where
         self.scheduler.clone()
     }
 
-    fn uplinks_idle_since(&self) -> &Arc<Mutex<Instant>> {
+    fn uplinks_idle_since(&self) -> &Arc<AtomicInstant> {
         &self.uplinks_idle_since
     }
 }

@@ -28,7 +28,7 @@ use futures::{FutureExt, Stream, StreamExt};
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::num::NonZeroUsize;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
 use stm::transaction::TransactionError;
 use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
@@ -39,6 +39,7 @@ use tokio::sync::mpsc::Sender;
 use tokio::time::Instant;
 use tokio_stream::wrappers::ReceiverStream;
 use utilities::errors::Recoverable;
+use utilities::instant::AtomicInstant;
 
 mod mock;
 
@@ -78,7 +79,7 @@ fn make_dispatcher(
 
     let spawn_task = ReceiverStream::new(spawn_rx).for_each_concurrent(None, |eff| eff);
 
-    let uplinks_idle_since = Arc::new(Mutex::new(Instant::now()));
+    let uplinks_idle_since = Arc::new(AtomicInstant::new(Instant::now()));
     let dispatch_task = dispatcher.run(envelopes, uplinks_idle_since);
 
     (

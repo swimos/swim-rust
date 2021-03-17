@@ -32,7 +32,7 @@ use futures::{FutureExt, Stream, StreamExt};
 use pin_utils::pin_mut;
 use std::collections::{HashMap, HashSet};
 use std::num::NonZeroUsize;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
 use swim_common::form::{Form, FormErr};
 use swim_common::model::Value;
@@ -47,6 +47,7 @@ use tokio::sync::{mpsc, Barrier};
 use tokio::time::Instant;
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
+use utilities::instant::AtomicInstant;
 use utilities::sync::{promise, topic};
 use utilities::uri::RelativeUri;
 
@@ -309,7 +310,7 @@ struct TestContext {
     messages: mpsc::Sender<TaggedEnvelope>,
     _drop_tx: promise::Sender<ConnectionDropped>,
     drop_rx: promise::Receiver<ConnectionDropped>,
-    uplinks_idle_since: Arc<Mutex<Instant>>,
+    uplinks_idle_since: Arc<AtomicInstant>,
 }
 
 impl TestContext {
@@ -320,7 +321,7 @@ impl TestContext {
             messages,
             _drop_tx: drop_tx,
             drop_rx,
-            uplinks_idle_since: Arc::new(Mutex::new(Instant::now())),
+            uplinks_idle_since: Arc::new(AtomicInstant::new(Instant::now())),
         }
     }
 }
@@ -342,7 +343,7 @@ impl AgentExecutionContext for TestContext {
         self.spawner.clone()
     }
 
-    fn uplinks_idle_since(&self) -> &Arc<Mutex<Instant>> {
+    fn uplinks_idle_since(&self) -> &Arc<AtomicInstant> {
         &self.uplinks_idle_since
     }
 }
