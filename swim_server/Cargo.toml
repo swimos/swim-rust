@@ -5,7 +5,9 @@ authors = ["Swim.AI developers info@swim.ai"]
 edition = "2018"
 
 [features]
-default = []
+default = ["db/rocksdb", "db/libmdbx"]
+rocksdb = ["db/rocksdb"]
+libmdbx = ["db/libmdbx"]
 debug = ["log_verbose"]
 log_verbose = []
 trust-dns = ["trust-dns-resolver"]
@@ -17,6 +19,12 @@ tracing = { version = "0.1.13", features = ["max_level_debug"] }
 tracing = "0.1.16"
 
 [dependencies]
+swim_common = { path = "../swim_common", features = ["tls"] }
+swim_warp = { path = "../swim_warp" }
+utilities = { path = "../utilities" }
+swim_runtime = { path = "../swim_runtime" }
+stm = { path = "../stm" }
+
 either = "1.5.3"
 futures = "0.3.4"
 futures-util = "0.3.4"
@@ -28,11 +36,6 @@ pin-utils = "0.1.0"
 tokio = { version = "1.1.1", features = ["rt", "net"] }
 tokio-stream = { version = "0.1.2", features = ["sync"] }
 url = "2.1.1"
-swim_common = { path = "../swim_common", features = ["tls"] }
-swim_warp = { path = "../swim_warp" }
-utilities = { path = "../utilities" }
-swim_runtime = { path = "../swim_runtime" }
-stm = { path = "../stm" }
 tracing-futures = "0.2.4"
 agent_derive = { path = "agent_derive" }
 trybuild = "1.0.17"
@@ -44,6 +47,11 @@ regex = "1"
 lazy_static = "1.4.0"
 percent-encoding = "2.1.0"
 thiserror = "1.0"
+
+[dependencies.db]
+version = "0.1.0"
+path = "db"
+default-features = false
 
 [dev-dependencies]
 tokio = { version = "1.1.1", features = ["rt-multi-thread", "macros", "test-util"] }
