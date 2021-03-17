@@ -13,10 +13,10 @@
 // limitations under the License.
 
 use crate::configuration::downlink::{BackpressureMode, Config, DownlinkKind};
+use crate::downlink::error::SubscriptionError;
 use crate::downlink::model::map::UntypedMapModification;
-use crate::downlink::model::value::{self, SharedValue};
-use crate::downlink::model::{command, map};
-use crate::downlink::model::{event, SchemaViolations};
+use crate::downlink::model::value::SharedValue;
+use crate::downlink::subscription::watch_adapter::KeyedWatch;
 use crate::downlink::typed::command::TypedCommandDownlink;
 use crate::downlink::typed::event::TypedEventDownlink;
 use crate::downlink::typed::map::{MapDownlinkReceiver, TypedMapDownlink};
@@ -25,8 +25,10 @@ use crate::downlink::typed::{
     UntypedCommandDownlink, UntypedEventDownlink, UntypedMapDownlink, UntypedMapReceiver,
     UntypedValueDownlink, UntypedValueReceiver,
 };
-use crate::downlink::watch_adapter::map::KeyedWatch;
-use crate::downlink::{Command, Downlink, DownlinkError, Message};
+use crate::downlink::{
+    command_downlink, event_downlink, map_downlink, value_downlink, Command, Downlink,
+    DownlinkError, Message, SchemaViolations,
+};
 use crate::router::{Router, RouterEvent};
 use either::Either;
 use futures::stream::Fuse;
@@ -36,13 +38,11 @@ use futures_util::select_biased;
 use futures_util::stream::{FuturesUnordered, StreamExt};
 use pin_utils::pin_mut;
 use std::collections::HashMap;
-use std::fmt::{Display, Formatter};
 use std::pin::Pin;
 use std::sync::{Arc, Weak};
 use swim_common::form::ValidatedForm;
 use swim_common::model::schema::StandardSchema;
 use swim_common::model::Value;
-use swim_common::request::request_future::RequestError;
 use swim_common::request::Request;
 use swim_common::routing::RoutingError;
 use swim_common::sink::item;
@@ -52,8 +52,6 @@ use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::AbsolutePath;
 use swim_runtime::task::{spawn, TaskError, TaskHandle};
 use swim_warp::backpressure;
-use tokio::sync::mpsc::error::SendError;
-use tokio::sync::oneshot::error::RecvError;
 use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{error, info, instrument, trace_span};
@@ -63,7 +61,8 @@ use utilities::sync::{circular_buffer, promise};
 
 pub mod envelopes;
 #[cfg(test)]
-pub mod tests;
+mod tests;
+mod watch_adapter;
 
 pub struct Downlinks {
     sender: mpsc::Sender<DownlinkRequest>,
@@ -76,6 +75,12 @@ enum DownlinkRequest {
         path: AbsolutePath,
         envelope: Envelope,
     },
+}
+
+impl From<mpsc::error::SendError<DownlinkRequest>> for SubscriptionError {
+    fn from(_: mpsc::error::SendError<DownlinkRequest>) -> Self {
+        SubscriptionError::DownlinkTaskStopped
+    }
 }
 
 /// Contains all running WARP downlinks and allows requests for downlink subscriptions.
@@ -312,129 +317,6 @@ impl Downlinks {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub enum SubscriptionError {
-    BadKind {
-        expected: DownlinkKind,
-        actual: DownlinkKind,
-    },
-    DownlinkTaskStopped,
-    IncompatibleValueSchema {
-        path: AbsolutePath,
-        existing: Box<StandardSchema>,
-        requested: Box<StandardSchema>,
-    },
-    IncompatibleMapSchema {
-        is_key: bool,
-        path: AbsolutePath,
-        existing: Box<StandardSchema>,
-        requested: Box<StandardSchema>,
-    },
-    ConnectionError,
-}
-
-impl SubscriptionError {
-    pub fn incompatibile_value(
-        path: AbsolutePath,
-        existing: StandardSchema,
-        requested: StandardSchema,
-    ) -> Self {
-        SubscriptionError::IncompatibleValueSchema {
-            path,
-            existing: Box::new(existing),
-            requested: Box::new(requested),
-        }
-    }
-
-    pub fn incompatibile_map_key(
-        path: AbsolutePath,
-        existing: StandardSchema,
-        requested: StandardSchema,
-    ) -> Self {
-        SubscriptionError::IncompatibleMapSchema {
-            is_key: true,
-            path,
-            existing: Box::new(existing),
-            requested: Box::new(requested),
-        }
-    }
-
-    pub fn incompatibile_map_value(
-        path: AbsolutePath,
-        existing: StandardSchema,
-        requested: StandardSchema,
-    ) -> Self {
-        SubscriptionError::IncompatibleMapSchema {
-            is_key: false,
-            path,
-            existing: Box::new(existing),
-            requested: Box::new(requested),
-        }
-    }
-}
-
-impl From<mpsc::error::SendError<DownlinkRequest>> for SubscriptionError {
-    fn from(_: SendError<DownlinkRequest>) -> Self {
-        SubscriptionError::DownlinkTaskStopped
-    }
-}
-
-impl From<oneshot::error::RecvError> for SubscriptionError {
-    fn from(_: RecvError) -> Self {
-        SubscriptionError::DownlinkTaskStopped
-    }
-}
-
-impl From<RequestError> for SubscriptionError {
-    fn from(_: RequestError) -> Self {
-        SubscriptionError::ConnectionError
-    }
-}
-
-impl Display for SubscriptionError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            SubscriptionError::BadKind { expected, actual } => write!(
-                f,
-                "Requested {} downlink but a {} downlink was already open for that lane.",
-                expected, actual
-            ),
-            SubscriptionError::DownlinkTaskStopped => {
-                write!(f, "The downlink task has already stopped.")
-            }
-            SubscriptionError::IncompatibleValueSchema {
-                path,
-                existing,
-                requested,
-            } => {
-                write!(f, "A downlink was requested to {} with schema {} but one is already running with schema {}.",
-                       path, existing, requested)
-            }
-            SubscriptionError::IncompatibleMapSchema {
-                is_key,
-                path,
-                existing,
-                requested,
-            } => {
-                let key_or_val = if *is_key { "key" } else { "value" };
-                write!(f, "A map downlink was requested to {} with {} schema {} but one is already running with schema {}.",
-                       path, key_or_val, existing, requested)
-            }
-            SubscriptionError::ConnectionError => {
-                write!(f, "The downlink could not establish a connection.")
-            }
-        }
-    }
-}
-
-impl std::error::Error for SubscriptionError {}
-
-impl SubscriptionError {
-    pub fn bad_kind(expected: DownlinkKind, actual: DownlinkKind) -> SubscriptionError {
-        SubscriptionError::BadKind { expected, actual }
-    }
-}
-
 pub type RequestResult<T> = Result<T, SubscriptionError>;
 
 pub enum DownlinkSpecifier {
@@ -593,7 +475,7 @@ where
 
         let (raw_dl, rec) = match config.back_pressure {
             BackpressureMode::Propagate => {
-                value::create_downlink(init, Some(schema), updates, cmd_sink, (&config).into())
+                value_downlink(init, Some(schema), updates, cmd_sink, (&config).into())
             }
             BackpressureMode::Release {
                 input_buffer_size,
@@ -616,7 +498,7 @@ where
                     },
                 );
 
-                value::create_downlink(init, Some(schema), updates, either_sink, (&config).into())
+                value_downlink(init, Some(schema), updates, either_sink, (&config).into())
             }
         };
 
@@ -663,7 +545,7 @@ where
                         envelopes::map_envelope(&sink_path, cmd).1.into()
                     },
                 );
-                map::create_downlink(
+                map_downlink(
                     Some(key_schema),
                     Some(value_schema),
                     updates,
@@ -707,7 +589,7 @@ where
                             ow => Either::Left(ow),
                         },
                     );
-                map::create_downlink(
+                map_downlink(
                     Some(key_schema),
                     Some(value_schema),
                     updates,
@@ -749,11 +631,9 @@ where
                 });
 
         let dl = match config.back_pressure {
-            BackpressureMode::Propagate => Arc::new(command::create_downlink(
-                schema.clone(),
-                cmd_sink,
-                (&config).into(),
-            )),
+            BackpressureMode::Propagate => {
+                Arc::new(command_downlink(schema.clone(), cmd_sink, (&config).into()))
+            }
 
             BackpressureMode::Release {
                 input_buffer_size,
@@ -775,7 +655,7 @@ where
                         }
                     });
 
-                Arc::new(command::create_downlink(
+                Arc::new(command_downlink(
                     schema.clone(),
                     either_sink.map_err_into(),
                     (&config).into(),
@@ -809,9 +689,9 @@ where
         let path_cpy = path.clone();
         let cmd_sink = item::for_mpsc_sender(sink)
             .map_err_into()
-            .comap(move |cmd: Command<Value>| envelopes::command_envelope(&path_cpy, cmd).1.into());
+            .comap(move |cmd: Command<()>| envelopes::dummy_envelope(&path_cpy, cmd).1.into());
 
-        let (raw_dl, _) = event::create_downlink(
+        let (raw_dl, _) = event_downlink(
             schema.clone(),
             violations,
             updates,
@@ -857,7 +737,7 @@ where
                                     .await?)
                             }
                         } else {
-                            Err(SubscriptionError::incompatibile_value(
+                            Err(SubscriptionError::incompatible_value(
                                 path,
                                 existing_schema.clone(),
                                 schema,
@@ -900,13 +780,13 @@ where
                 value_schema: existing_value_schema,
             }) => {
                 if !key_schema.eq(existing_key_schema) {
-                    Err(SubscriptionError::incompatibile_map_key(
+                    Err(SubscriptionError::incompatible_map_key(
                         path,
                         existing_key_schema.clone(),
                         key_schema,
                     ))
                 } else if !value_schema.eq(existing_value_schema) {
-                    Err(SubscriptionError::incompatibile_map_value(
+                    Err(SubscriptionError::incompatible_map_value(
                         path,
                         existing_value_schema.clone(),
                         value_schema,
@@ -962,7 +842,7 @@ where
                 match maybe_dl {
                     Some(dl) if dl.is_running() => {
                         if !schema.eq(existing_schema) {
-                            Err(SubscriptionError::incompatibile_value(
+                            Err(SubscriptionError::incompatible_value(
                                 path,
                                 existing_schema.clone(),
                                 schema,
@@ -1004,7 +884,7 @@ where
                         if schema.eq(existing_schema) {
                             Ok(dl_clone)
                         } else {
-                            Err(SubscriptionError::incompatibile_value(
+                            Err(SubscriptionError::incompatible_value(
                                 path,
                                 existing_schema.clone(),
                                 schema,

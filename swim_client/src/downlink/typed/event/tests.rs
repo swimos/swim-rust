@@ -14,10 +14,10 @@
 
 use crate::configuration::downlink::OnInvalidMessage;
 use crate::downlink::model::map::{MapEvent, ValMap, ViewWithEvent};
-use crate::downlink::model::SchemaViolations;
 use crate::downlink::typed::event::{EventDownlinkReceiver, EventViewError, TypedEventDownlink};
 use crate::downlink::typed::map::events::{TypedMapView, TypedViewWithEvent};
 use crate::downlink::DownlinkConfig;
+use crate::downlink::SchemaViolations;
 use crate::downlink::{Command, Message};
 use im::OrdMap;
 use std::collections::{BTreeMap, HashMap};
@@ -186,7 +186,7 @@ fn typed_view_with_event_take() {
 fn typed_view_with_event_skip() {
     let raw = ViewWithEvent {
         view: make_raw(),
-        event: MapEvent::Skip(1),
+        event: MapEvent::Drop(1),
     };
 
     let typed: Result<TypedViewWithEvent<i32, i32>, FormErr> = raw.try_into();
@@ -195,7 +195,7 @@ fn typed_view_with_event_skip() {
         typed,
         Ok(TypedViewWithEvent {
             view: make_view(),
-            event: MapEvent::Skip(1)
+            event: MapEvent::Drop(1)
         })
     );
 }
@@ -264,7 +264,7 @@ struct Components<T> {
     downlink: TypedEventDownlink<T>,
     receiver: EventDownlinkReceiver<T>,
     update_tx: mpsc::Sender<Result<Message<Value>, RoutingError>>,
-    command_rx: mpsc::Receiver<Command<Value>>,
+    command_rx: mpsc::Receiver<Command<()>>,
 }
 
 fn make_event_downlink<T: ValidatedForm>() -> Components<T> {
@@ -272,7 +272,7 @@ fn make_event_downlink<T: ValidatedForm>() -> Components<T> {
     let (command_tx, command_rx) = mpsc::channel(8);
     let sender = swim_common::sink::item::for_mpsc_sender(command_tx).map_err_into();
 
-    let (dl, rx) = crate::downlink::model::event::create_downlink(
+    let (dl, rx) = crate::downlink::event_downlink(
         T::schema(),
         SchemaViolations::Report,
         ReceiverStream::new(update_rx),

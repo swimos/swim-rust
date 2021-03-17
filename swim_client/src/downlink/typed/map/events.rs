@@ -136,7 +136,7 @@ fn type_event<K: Form>(event: MapEvent<Value>) -> Result<MapEvent<K>, FormErr> {
         MapEvent::Update(k) => K::try_convert(k).map(MapEvent::Update),
         MapEvent::Remove(k) => K::try_convert(k).map(MapEvent::Remove),
         MapEvent::Take(n) => Ok(MapEvent::Take(n)),
-        MapEvent::Skip(n) => Ok(MapEvent::Skip(n)),
+        MapEvent::Drop(n) => Ok(MapEvent::Drop(n)),
         MapEvent::Clear => Ok(MapEvent::Clear),
     }
 }
