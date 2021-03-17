@@ -1,0 +1,5 @@
+error: Expected a single item list
+  --> $DIR/invalid_list.rs:20:11
+   |
+20 |         #[stringify(path = "a", path = "b")]
+   |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

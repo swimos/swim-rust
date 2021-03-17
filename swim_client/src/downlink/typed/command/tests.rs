@@ -33,7 +33,7 @@ fn make_command_downlink<T: ValidatedForm>() -> Components<T> {
     let (command_tx, command_rx) = mpsc::channel(8);
     let sender = swim_common::sink::item::for_mpsc_sender(command_tx).map_err_into();
 
-    let dl = crate::downlink::model::command::create_downlink(
+    let dl = crate::downlink::command_downlink(
         T::schema(),
         sender,
         DownlinkConfig {

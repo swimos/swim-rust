@@ -215,7 +215,7 @@ fn make_value_downlink<T: ValidatedForm>(init: T) -> Components<T> {
     let (command_tx, command_rx) = mpsc::channel(8);
     let sender = swim_common::sink::item::for_mpsc_sender(command_tx).map_err_into();
 
-    let (dl, rx) = crate::downlink::model::value::create_downlink(
+    let (dl, rx) = crate::downlink::value_downlink(
         init_value,
         Some(T::schema()),
         ReceiverStream::new(update_rx),
