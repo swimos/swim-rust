@@ -1,0 +1,5 @@
+error: Unexpected attribute
+  --> $DIR/container2.rs:19:38
+   |
+19 |     #[stringify_attr(serde(rename(A, path = "A")))]
+   |                                      ^^^^^^^^^^
