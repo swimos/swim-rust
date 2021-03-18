@@ -24,6 +24,7 @@ use crate::routing::remote::net::dns::Resolver;
 use crate::routing::remote::net::plain::TokioPlainTextNetworking;
 use crate::routing::remote::{RemoteConnectionChannels, RemoteConnectionsTask};
 use crate::routing::{TopLevelRouter, TopLevelRouterFactory};
+use either::Either;
 use futures::{io, join};
 use std::error::Error;
 use std::fmt::{Display, Formatter};
@@ -35,7 +36,6 @@ use swim_runtime::time::clock::RuntimeClock;
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use utilities::future::open_ended::OpenEndedFutures;
-use utilities::sync::promise::PromiseError;
 use utilities::sync::{promise, trigger};
 
 /// Builder to create Swim server instance.
@@ -205,8 +205,7 @@ impl SwimServerBuilder {
                 address_tx,
             },
             ServerHandle {
-                address: None,
-                address_rx: Some(address_rx),
+                either_address: Either::Left(address_rx),
                 stop_trigger_tx,
             },
         ))
@@ -362,8 +361,7 @@ impl Default for SwimServerConfig {
 /// The handle is returned when a new server instance is created and is used for terminating
 /// the server or obtaining its address.
 pub struct ServerHandle {
-    address_rx: Option<promise::Receiver<SocketAddr>>,
-    address: Option<SocketAddr>,
+    either_address: Either<promise::Receiver<SocketAddr>, Option<SocketAddr>>,
     stop_trigger_tx: trigger::Sender,
 }
 
@@ -372,12 +370,23 @@ impl ServerHandle {
     ///
     /// This can be useful, for example, when binding to port 0 to figure out
     /// which port was actually bound.
-    pub async fn address(&mut self) -> Result<&SocketAddr, PromiseError> {
-        if self.address.is_none() {
-            let address = self.address_rx.take().unwrap().await?;
-            self.address = Some(*address);
+    pub async fn address(&mut self) -> Option<&SocketAddr> {
+        let ServerHandle {
+            either_address,
+            stop_trigger_tx: _,
+        } = self;
+
+        if either_address.is_left() {
+            if let Either::Left(promise) = std::mem::replace(either_address, Either::Right(None)) {
+                *either_address = Either::Right(promise.await.ok().map(|r| *r));
+            }
         }
-        Ok(self.address.as_ref().unwrap())
+
+        either_address
+            .as_ref()
+            .right()
+            .map(Option::as_ref)
+            .flatten()
     }
 
     /// Terminates the associated server instance.
