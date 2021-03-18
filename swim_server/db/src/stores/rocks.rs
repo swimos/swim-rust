@@ -35,19 +35,21 @@ impl RocksDatabase {
 }
 
 impl<'a> StoreEngine<'a> for RocksDatabase {
+    type Key = &'a [u8];
+    type Value = &'a [u8];
     type Error = rocksdb::Error;
 
-    fn put(&self, key: &'a [u8], value: &'a [u8]) -> Result<(), Self::Error> {
+    fn put(&self, key: Self::Key, value: Self::Value) -> Result<(), Self::Error> {
         let RocksDatabase { delegate, .. } = self;
         delegate.put(key, value)
     }
 
-    fn get(&self, key: &'a [u8]) -> Result<Option<Vec<u8>>, Self::Error> {
+    fn get(&self, key: Self::Key) -> Result<Option<Vec<u8>>, Self::Error> {
         let RocksDatabase { delegate, .. } = self;
         delegate.get(key)
     }
 
-    fn delete(&self, key: &'a [u8]) -> Result<bool, Self::Error> {
+    fn delete(&self, key: Self::Key) -> Result<bool, Self::Error> {
         let RocksDatabase { delegate, .. } = self;
         delegate.delete(key).map(|_| true)
     }

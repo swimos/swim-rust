@@ -15,10 +15,18 @@
 pub mod key;
 pub mod stores;
 
+use crate::key::StoreKey;
+use bincode::Error;
 use std::sync::Arc;
 
 pub enum StoreError {
     Error(String),
+}
+
+impl From<bincode::Error> for StoreError {
+    fn from(_: Error) -> Self {
+        unimplemented!()
+    }
 }
 
 pub struct StoreEngineOpts;
@@ -48,14 +56,16 @@ pub trait FromOpts: Sized {
     fn from_opts(opts: StoreEngineOpts) -> Result<Self, StoreInitialisationError>;
 }
 
-pub trait StoreEngine<'a>: Sized {
+pub trait StoreEngine<'a> {
+    type Key;
+    type Value;
     type Error: Into<StoreError>;
 
-    fn put(&self, key: &'a [u8], value: &'a [u8]) -> Result<(), Self::Error>;
+    fn put(&self, key: Self::Key, value: Self::Value) -> Result<(), Self::Error>;
 
-    fn get(&self, key: &'a [u8]) -> Result<Option<Vec<u8>>, Self::Error>;
+    fn get(&self, key: Self::Key) -> Result<Option<Vec<u8>>, Self::Error>;
 
-    fn delete(&self, key: &'a [u8]) -> Result<bool, Self::Error>;
+    fn delete(&self, key: Self::Key) -> Result<bool, Self::Error>;
 }
 
 pub struct StoreEntry<'s> {
@@ -73,6 +83,10 @@ impl<E> DatabaseStore<E> {
             engine: Arc::new(engine),
         }
     }
+
+    fn serialize(&self, key: &StoreKey) -> Result<Vec<u8>, StoreError> {
+        bincode::serialize(key).map_err(Into::into)
+    }
 }
 
 impl<E> Clone for DatabaseStore<E> {
@@ -83,21 +97,26 @@ impl<E> Clone for DatabaseStore<E> {
     }
 }
 
-impl<'a, E> StoreEngine<'a> for DatabaseStore<E>
+impl<'i, E> StoreEngine<'i> for DatabaseStore<E>
 where
-    E: StoreEngine<'a>,
+    E: for<'e> StoreEngine<'e, Key = &'e [u8], Value = &'e [u8]>,
 {
-    type Error = E::Error;
+    type Key = &'i StoreKey<'i>;
+    type Value = &'i [u8];
+    type Error = StoreError;
 
-    fn put(&self, key: &'a [u8], value: &'a [u8]) -> Result<(), Self::Error> {
-        self.engine.put(key, value)
+    fn put(&self, key: Self::Key, value: Self::Value) -> Result<(), Self::Error> {
+        let key = self.serialize(key)?;
+        self.engine.put(key.as_slice(), value).map_err(Into::into)
     }
 
-    fn get(&self, key: &'a [u8]) -> Result<Option<Vec<u8>>, Self::Error> {
-        self.engine.get(key)
+    fn get(&self, key: Self::Key) -> Result<Option<Vec<u8>>, Self::Error> {
+        let key = self.serialize(key)?;
+        self.engine.get(key.as_slice()).map_err(Into::into)
     }
 
-    fn delete(&self, key: &'a [u8]) -> Result<bool, Self::Error> {
-        self.engine.delete(key)
+    fn delete(&self, key: Self::Key) -> Result<bool, Self::Error> {
+        let key = self.serialize(key)?;
+        self.engine.delete(key.as_slice()).map_err(Into::into)
     }
 }

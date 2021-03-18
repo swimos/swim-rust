@@ -34,9 +34,11 @@ impl LmdbxDatabase {
 }
 
 impl<'a> StoreEngine<'a> for LmdbxDatabase {
+    type Key = &'a [u8];
+    type Value = &'a [u8];
     type Error = heed::Error;
 
-    fn put(&self, key: &'a [u8], value: &'a [u8]) -> Result<(), Self::Error> {
+    fn put(&self, key: Self::Key, value: Self::Value) -> Result<(), Self::Error> {
         let LmdbxDatabase { delegate, env } = self;
         let mut wtxn = env.write_txn()?;
 
@@ -44,14 +46,14 @@ impl<'a> StoreEngine<'a> for LmdbxDatabase {
         wtxn.commit()
     }
 
-    fn get(&self, key: &'a [u8]) -> Result<Option<Vec<u8>>, Self::Error> {
+    fn get(&self, key: Self::Key) -> Result<Option<Vec<u8>>, Self::Error> {
         let LmdbxDatabase { delegate, env } = self;
         let rtxn = env.read_txn()?;
 
         delegate.get(&rtxn, key).map(|e| e.map(|e| e.to_vec()))
     }
 
-    fn delete(&self, key: &'a [u8]) -> Result<bool, Self::Error> {
+    fn delete(&self, key: Self::Key) -> Result<bool, Self::Error> {
         let LmdbxDatabase { delegate, env } = self;
         let mut wtxn = env.write_txn()?;
 

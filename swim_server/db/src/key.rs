@@ -17,7 +17,7 @@ use std::borrow::Cow;
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialOrd, PartialEq)]
 pub enum StoreKey<'k> {
-    Direct(Key<'k>),
+    Direct(StorageKey<'k>),
     Map(MapStorageKey<'k>),
 }
 
