@@ -102,7 +102,9 @@ async fn main() {
 
     let mut swim_server_builder = SwimServerBuilder::default();
     swim_server_builder.add_plane(plane_builder.build());
-    let (swim_server, server_handle) = swim_server_builder.bind_to(address).build().unwrap();
+    let (swim_server, mut server_handle) = swim_server_builder.bind_to(address).build().unwrap();
+
+    let address = server_handle.address();
 
     let stop = async {
         task::sleep(Duration::from_secs(60)).await;
