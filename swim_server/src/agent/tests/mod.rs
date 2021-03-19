@@ -287,7 +287,7 @@ where
     }
 
     fn logger(&self) -> NodeLogger {
-        unreachable!("Unexpected log event")
+        panic!("Unexpected log event")
     }
 }
 

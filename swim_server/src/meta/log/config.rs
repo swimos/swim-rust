@@ -13,24 +13,42 @@
 // limitations under the License.
 
 use std::num::NonZeroUsize;
+use std::time::Duration;
 
+/// A flushing strategy for the log buffer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FlushStrategy {
+    /// Immediately flush any new entries that are pushed into the buffer.
     Immediate,
+    /// Buffer N entries into the buffer before sending them to their log lanes.
     Buffer(NonZeroUsize),
 }
 
+/// Configuration for node-level logging.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LogConfig {
+    /// How frequently to flush any pending entries in the buffer.
+    pub flush_interval: Duration,
+    /// The channel capacity between the node logger and the send task.
+    pub channel_buffer_size: NonZeroUsize,
+    /// The channel capacity for each log lane.
     pub lane_buffer: NonZeroUsize,
+    /// A flushing strategy for the log buffer. Entries will either be sent immediately or buffered
+    /// until the buffer is full.
     pub flush_strategy: FlushStrategy,
+    /// The maximum number of pending messages that may be buffered between the send task and a
+    /// log lane.
+    pub max_pending_messages: NonZeroUsize,
 }
 
 impl Default for LogConfig {
     fn default() -> Self {
         LogConfig {
-            lane_buffer: NonZeroUsize::new(10).unwrap(),
+            flush_interval: Duration::from_secs(30),
+            channel_buffer_size: NonZeroUsize::new(64).unwrap(),
+            lane_buffer: NonZeroUsize::new(16).unwrap(),
             flush_strategy: FlushStrategy::Immediate,
+            max_pending_messages: NonZeroUsize::new(16).unwrap(),
         }
     }
 }

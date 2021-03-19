@@ -215,11 +215,15 @@ where
         });
 
     let task = async move {
+        let task_manager: FuturesUnordered<Instrumented<Eff>> = FuturesUnordered::new();
+
         let (meta_context, mut meta_tasks, meta_io) =
             open_meta_lanes::<Config, Agent, ContextImpl<Agent, Clk, Router>>(
                 uri.clone(),
                 &execution_config,
                 lane_summary,
+                stop_trigger.clone(),
+                &task_manager,
             );
 
         tasks.append(&mut meta_tasks);
@@ -241,8 +245,6 @@ where
                 .instrument(span!(Level::DEBUG, LANE_START, name = lane_name))
                 .await;
         }
-
-        let task_manager: FuturesUnordered<Instrumented<Eff>> = FuturesUnordered::new();
 
         let scheduler_task = ReceiverStream::new(rx)
             .take_until(stop_trigger)

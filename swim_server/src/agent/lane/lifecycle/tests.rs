@@ -70,7 +70,7 @@ impl AgentContext<TestAgent> for TestContext {
     }
 
     fn logger(&self) -> NodeLogger {
-        unreachable!("Unexpected log event")
+        panic!("Unexpected log event")
     }
 }
 
