@@ -15,8 +15,7 @@
 use crate::label::Label;
 use crate::{CompoundTypeKind, Context, Symbol};
 use proc_macro2::TokenStream;
-use syn::{Attribute, Data, Lit};
-use syn::{ExprPath, Meta};
+use syn::{Attribute, Data, ExprPath, Lit, LitStr, Meta};
 
 /// Consumes a vector of errors and produces a compiler error.
 pub fn to_compile_errors(errors: Vec<syn::Error>) -> proc_macro2::TokenStream {
@@ -138,5 +137,17 @@ pub fn has_fields(data: &Data) -> bool {
             .all(|variant| variant.fields.is_empty()),
 
         Data::Union(ref input_union) => !input_union.fields.named.is_empty(),
+    }
+}
+
+/// Returns a `LitStr` if `Lit` is `Lit::Str`. Returns an `Err` if `lit` doesn't match and writes
+/// an error spanned by `lit` to `ctx`.
+pub fn get_lit_str<'a>(ctx: &mut Context, lit: &'a Lit) -> Result<&'a LitStr, ()> {
+    match lit {
+        Lit::Str(str) => Ok(str),
+        lit => {
+            ctx.error_spanned_by(lit, "Expected a string literal");
+            Err(())
+        }
     }
 }

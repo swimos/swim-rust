@@ -12,4 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod map;
+use attr_derive::stringify_attr;
+
+fn main() {
+    #[stringify_attr]
+    struct A {
+        #[stringify(serde(rename(B)), extra = "C")]
+        a: i32,
+    }
+}

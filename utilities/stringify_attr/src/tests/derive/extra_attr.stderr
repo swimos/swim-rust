@@ -1,0 +1,5 @@
+error: Expected a single item list
+  --> $DIR/extra_attr.rs:20:11
+   |
+20 |         #[stringify(serde(rename(B)), extra = "C")]
+   |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

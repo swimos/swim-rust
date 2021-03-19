@@ -59,7 +59,7 @@ where
     )
 }
 
-/// Convert a downlink [`Command`], from a value lane, into a Warp [`OutgoingLinkMessage`].
+/// Convert a downlink [`Command`], from a value downlink, into a Warp [`OutgoingLinkMessage`].
 pub fn value_envelope(
     path: &AbsolutePath,
     command: Command<SharedValue>,
@@ -67,7 +67,7 @@ pub fn value_envelope(
     envelope_for(value::envelope_body, path, command)
 }
 
-/// Convert a downlink [`Command`], from a map lane, into a Warp [`OutgoingLinkMessage`].
+/// Convert a downlink [`Command`], from a map downlink, into a Warp [`OutgoingLinkMessage`].
 pub fn map_envelope(
     path: &AbsolutePath,
     command: Command<UntypedMapModification<Value>>,
@@ -75,12 +75,20 @@ pub fn map_envelope(
     envelope_for(map::envelope_body, path, command)
 }
 
-/// Convert a downlink [`Command`], from a command lane, into a Warp [`OutgoingLinkMessage`].
+/// Convert a downlink [`Command`], from a command downkink, into a Warp [`OutgoingLinkMessage`].
 pub fn command_envelope(
     path: &AbsolutePath,
     command: Command<Value>,
 ) -> (url::Url, OutgoingLinkMessage) {
     envelope_for(|v| v, path, command)
+}
+
+/// Convert a downlink [`Command`], from a event downlink, into a Warp [`OutgoingLinkMessage`].
+pub fn dummy_envelope(
+    path: &AbsolutePath,
+    command: Command<()>,
+) -> (url::Url, OutgoingLinkMessage) {
+    envelope_for(|_| Value::Extant, path, command)
 }
 
 pub(in crate::downlink) mod value {
