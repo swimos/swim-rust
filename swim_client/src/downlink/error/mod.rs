@@ -12,13 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::configuration::downlink::DownlinkKind;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use swim_common::model::schema::StandardSchema;
 use swim_common::model::Value;
+use swim_common::request::request_future::RequestError;
 use swim_common::routing::{ConnectionError, RoutingError};
 use swim_common::sink::item;
+use swim_common::warp::path::AbsolutePath;
 use tokio::sync::mpsc;
+use tokio::sync::oneshot;
 use utilities::errors::Recoverable;
 
 #[cfg(test)]
@@ -36,6 +40,15 @@ pub enum DownlinkError {
     ConnectionFailure(String),
     ConnectionPoolFailure(ConnectionError),
     ClosingFailure,
+}
+
+impl DownlinkError {
+    pub fn is_bad_message(&self) -> bool {
+        matches!(
+            self,
+            DownlinkError::MalformedMessage | DownlinkError::SchemaViolation(_, _)
+        )
+    }
 }
 
 impl From<RoutingError> for DownlinkError {
@@ -163,5 +176,122 @@ impl<T> From<mpsc::error::SendError<T>> for DroppedError {
 impl From<swim_common::sink::item::SendError> for DroppedError {
     fn from(_: swim_common::sink::item::SendError) -> Self {
         DroppedError
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum SubscriptionError {
+    BadKind {
+        expected: DownlinkKind,
+        actual: DownlinkKind,
+    },
+    DownlinkTaskStopped,
+    IncompatibleValueSchema {
+        path: AbsolutePath,
+        existing: Box<StandardSchema>,
+        requested: Box<StandardSchema>,
+    },
+    IncompatibleMapSchema {
+        is_key: bool,
+        path: AbsolutePath,
+        existing: Box<StandardSchema>,
+        requested: Box<StandardSchema>,
+    },
+    ConnectionError,
+}
+
+impl SubscriptionError {
+    pub fn incompatible_value(
+        path: AbsolutePath,
+        existing: StandardSchema,
+        requested: StandardSchema,
+    ) -> Self {
+        SubscriptionError::IncompatibleValueSchema {
+            path,
+            existing: Box::new(existing),
+            requested: Box::new(requested),
+        }
+    }
+
+    pub fn incompatible_map_key(
+        path: AbsolutePath,
+        existing: StandardSchema,
+        requested: StandardSchema,
+    ) -> Self {
+        SubscriptionError::IncompatibleMapSchema {
+            is_key: true,
+            path,
+            existing: Box::new(existing),
+            requested: Box::new(requested),
+        }
+    }
+
+    pub fn incompatible_map_value(
+        path: AbsolutePath,
+        existing: StandardSchema,
+        requested: StandardSchema,
+    ) -> Self {
+        SubscriptionError::IncompatibleMapSchema {
+            is_key: false,
+            path,
+            existing: Box::new(existing),
+            requested: Box::new(requested),
+        }
+    }
+}
+
+impl From<oneshot::error::RecvError> for SubscriptionError {
+    fn from(_: oneshot::error::RecvError) -> Self {
+        SubscriptionError::DownlinkTaskStopped
+    }
+}
+
+impl From<RequestError> for SubscriptionError {
+    fn from(_: RequestError) -> Self {
+        SubscriptionError::ConnectionError
+    }
+}
+
+impl Display for SubscriptionError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SubscriptionError::BadKind { expected, actual } => write!(
+                f,
+                "Requested {} downlink but a {} downlink was already open for that lane.",
+                expected, actual
+            ),
+            SubscriptionError::DownlinkTaskStopped => {
+                write!(f, "The downlink task has already stopped.")
+            }
+            SubscriptionError::IncompatibleValueSchema {
+                path,
+                existing,
+                requested,
+            } => {
+                write!(f, "A downlink was requested to {} with schema {} but one is already running with schema {}.",
+                       path, existing, requested)
+            }
+            SubscriptionError::IncompatibleMapSchema {
+                is_key,
+                path,
+                existing,
+                requested,
+            } => {
+                let key_or_val = if *is_key { "key" } else { "value" };
+                write!(f, "A map downlink was requested to {} with {} schema {} but one is already running with schema {}.",
+                       path, key_or_val, existing, requested)
+            }
+            SubscriptionError::ConnectionError => {
+                write!(f, "The downlink could not establish a connection.")
+            }
+        }
+    }
+}
+
+impl std::error::Error for SubscriptionError {}
+
+impl SubscriptionError {
+    pub fn bad_kind(expected: DownlinkKind, actual: DownlinkKind) -> SubscriptionError {
+        SubscriptionError::BadKind { expected, actual }
     }
 }

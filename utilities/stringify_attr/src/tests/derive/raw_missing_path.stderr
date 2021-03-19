@@ -1,0 +1,5 @@
+error: Missing attribute: path
+  --> $DIR/raw_missing_path.rs:20:11
+   |
+20 |         #[stringify_raw(in(rename(B)), raw(path = "b"))]
+   |           ^^^^^^^^^^^^^

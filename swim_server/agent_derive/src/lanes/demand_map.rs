@@ -87,6 +87,7 @@ pub fn derive_demand_map_lifecycle(
             use futures::stream::iter;
         },
         None,
+        quote!(DemandMap),
     )
 }
 

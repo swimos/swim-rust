@@ -83,22 +83,6 @@ async fn await_value<T: ValidatedForm>(
     })
 }
 
-fn wrap_option_update_fn<T, F>(
-    update_fn: F,
-) -> impl FnOnce(&Option<&Value>) -> UpdateResult<Option<Value>>
-where
-    T: Form,
-    F: FnOnce(Option<T>) -> Option<T>,
-{
-    move |maybe_value| match maybe_value.as_ref() {
-        Some(value) => match T::try_from_value(value) {
-            Ok(t) => Ok(update_fn(Some(t)).map(Form::into_value)),
-            Err(e) => Err(UpdateFailure(e.to_string())),
-        },
-        _ => Ok(update_fn(None).map(Form::into_value)),
-    }
-}
-
 async fn await_optional<T: ValidatedForm>(
     rx: oneshot::Receiver<Result<Option<SharedValue>, DownlinkError>>,
 ) -> Result<Option<T>, DownlinkError> {
@@ -119,22 +103,4 @@ async fn await_discard<T>(
 ) -> Result<(), DownlinkError> {
     rx.await.map_err(|_| DownlinkError::DroppedChannel)??;
     Ok(())
-}
-
-async fn await_fallible_optional<T: ValidatedForm>(
-    rx: oneshot::Receiver<Result<UpdateResult<Option<SharedValue>>, DownlinkError>>,
-) -> Result<Option<T>, DownlinkError> {
-    let maybe_value = rx
-        .await
-        .map_err(|_| DownlinkError::DroppedChannel)??
-        .map_err(|_| DownlinkError::InvalidAction)?;
-    match maybe_value {
-        Some(value) => Form::try_from_value(value.as_ref())
-            .map_err(|_| {
-                let schema = <T as ValidatedForm>::schema();
-                DownlinkError::SchemaViolation((*value).clone(), schema)
-            })
-            .map(Some),
-        _ => Ok(None),
-    }
 }
