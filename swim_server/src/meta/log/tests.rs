@@ -19,7 +19,7 @@ use crate::agent::lane::model::value::ValueLane;
 use crate::agent::{
     agent_lifecycle, map_lifecycle, value_lifecycle, AgentContext, SwimAgent, TestClock,
 };
-use crate::meta::log::config::FlushStrategy;
+use crate::meta::log::config::{FlushStrategy, LogConfig};
 use crate::meta::log::{LogBuffer, LogEntry, LogLanes, LogLevel, NodeLogger};
 use crate::plane::provider::AgentProvider;
 use crate::routing::error::RouterError;
@@ -289,16 +289,17 @@ async fn flushes() {
 
     let (stop_tx, stop_rx) = trigger::trigger();
     let flush_interval = Duration::from_secs(2);
+    let config = make_config(
+        flush_interval,
+        FlushStrategy::Buffer(NonZeroUsize::new(6).unwrap()),
+    );
 
     let (node_logger, task) = NodeLogger::new(
-        NonZeroUsize::new(16).unwrap(),
         RelativeUri::from_str("/node").unwrap(),
         NonZeroUsize::new(256).unwrap(),
-        NonZeroUsize::new(64).unwrap(),
         stop_rx,
         log_lanes,
-        FlushStrategy::Buffer(NonZeroUsize::new(6).unwrap()),
-        flush_interval,
+        config,
     );
 
     let jh = tokio::spawn(task);
@@ -335,17 +336,19 @@ async fn node_logger_buffered() {
         fail_lane,
     };
 
+    let flush_interval = Duration::from_secs(30);
     let (stop_tx, stop_rx) = trigger::trigger();
+    let config = make_config(
+        flush_interval,
+        FlushStrategy::Buffer(NonZeroUsize::new(6).unwrap()),
+    );
 
     let (node_logger, task) = NodeLogger::new(
-        NonZeroUsize::new(16).unwrap(),
         RelativeUri::from_str("/node").unwrap(),
         NonZeroUsize::new(256).unwrap(),
-        NonZeroUsize::new(64).unwrap(),
         stop_rx,
         log_lanes,
-        FlushStrategy::Buffer(NonZeroUsize::new(6).unwrap()),
-        Duration::from_secs(30),
+        config,
     );
 
     let jh = tokio::spawn(task);
@@ -403,6 +406,16 @@ async fn send(node_logger: &NodeLogger, level: LogLevel) {
         .is_ok());
 }
 
+fn make_config(flush_interval: Duration, flush_strategy: FlushStrategy) -> LogConfig {
+    LogConfig {
+        flush_interval,
+        channel_buffer_size: NonZeroUsize::new(64).unwrap(),
+        lane_buffer: NonZeroUsize::new(2).unwrap(),
+        flush_strategy,
+        max_pending_messages: NonZeroUsize::new(64).unwrap(),
+    }
+}
+
 #[tokio::test]
 async fn node_logger_immediate() {
     let (mut trace_rx, trace_lane) = supply_lane();
@@ -421,17 +434,16 @@ async fn node_logger_immediate() {
         fail_lane,
     };
 
+    let flush_interval = Duration::from_secs(5);
     let (stop_tx, stop_rx) = trigger::trigger();
+    let config = make_config(flush_interval, FlushStrategy::Immediate);
 
     let (node_logger, task) = NodeLogger::new(
-        NonZeroUsize::new(16).unwrap(),
         RelativeUri::from_str("/node").unwrap(),
         NonZeroUsize::new(256).unwrap(),
-        NonZeroUsize::new(16).unwrap(),
         stop_rx,
         log_lanes,
-        FlushStrategy::Immediate,
-        Duration::from_secs(5),
+        config,
     );
 
     let jh = tokio::spawn(task);

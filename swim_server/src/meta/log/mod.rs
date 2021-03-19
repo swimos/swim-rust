@@ -228,16 +228,21 @@ impl LogLanes {
 
 impl NodeLogger {
     fn new(
-        buffer_size: NonZeroUsize,
         node_uri: RelativeUri,
         yield_after: NonZeroUsize,
-        max_pending: NonZeroUsize,
         stop_rx: trigger::Receiver,
         log_lanes: LogLanes,
-        flush_strategy: FlushStrategy,
-        flush_interval: Duration,
+        config: LogConfig,
     ) -> (NodeLogger, impl Future<Output = ()>) {
-        let (tx, rx) = mpsc::channel(buffer_size.get());
+        let LogConfig {
+            flush_interval,
+            channel_buffer_size,
+            flush_strategy,
+            max_pending_messages,
+            ..
+        } = config;
+
+        let (tx, rx) = mpsc::channel(channel_buffer_size.get());
         let task = LogTask {
             rx,
             flush_interval,
@@ -250,7 +255,10 @@ impl NodeLogger {
             node_uri,
         };
 
-        (node_logger, task.run(yield_after, stop_rx, max_pending))
+        (
+            node_logger,
+            task.run(yield_after, stop_rx, max_pending_messages),
+        )
     }
 
     /// Log `entry` at `level` and send it to the corresponding lane for `level`.
@@ -438,20 +446,12 @@ where
     Agent: SwimAgent<Config> + 'static,
     Context: AgentContext<Agent> + AgentExecutionContext + Send + Sync + 'static,
 {
-    let LogConfig {
-        flush_interval,
-        channel_buffer_size,
-        lane_buffer,
-        flush_strategy,
-        max_pending_messages,
-    } = config;
-
     let lane_count = LogLevel::enumerated().len();
     let mut lane_tasks = Vec::with_capacity(lane_count);
     let mut lane_ios = HashMap::with_capacity(lane_count);
 
     let mut make_log_lane = |level: LogLevel| {
-        let (lane, task, io) = make_supply_lane(level.uri_ref(), true, lane_buffer);
+        let (lane, task, io) = make_supply_lane(level.uri_ref(), true, config.lane_buffer);
 
         lane_tasks.push(task.boxed());
         lane_ios.insert(
@@ -471,16 +471,8 @@ where
         fail_lane: make_log_lane(LogLevel::Fail),
     };
 
-    let (node_logger, task) = NodeLogger::new(
-        channel_buffer_size,
-        node_uri.clone(),
-        yield_after,
-        max_pending_messages,
-        stop_rx,
-        log_lanes,
-        flush_strategy,
-        flush_interval,
-    );
+    let (node_logger, task) =
+        NodeLogger::new(node_uri.clone(), yield_after, stop_rx, log_lanes, config);
 
     let task = futures::FutureExt::boxed(task).instrument(span!(Level::DEBUG, LOG_TASK, ?node_uri));
 
