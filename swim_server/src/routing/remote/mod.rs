@@ -90,7 +90,7 @@ pub struct RemoteConnectionChannels {
 #[derive(Debug)]
 pub struct RemoteConnectionsTask<External: ExternalConnections, Ws, Router, Sp> {
     external: External,
-    listener: External::ListenerType,
+    pub(crate) listener: External::ListenerType,
     websockets: Ws,
     delegate_router: Router,
     stop_trigger: trigger::Receiver,
