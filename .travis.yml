@@ -11,23 +11,6 @@ branches:
 
 jobs:
   include:
-    - dist: bionic
-      os: linux
-      arch: amd64
-      services:
-        - docker
-      env:
-        - RUST_BACKTRACE=1
-        - ARCH=amd64
-        - TEST_SERVER_VERSION=v1.4
-        - TEST_SERVER_IMAGE_NAME="org.swimos/swim-docker-example:1.4"
-        - REPO_URL="https://github.com/swimos/swim-docker-example/"
-      script:
-        - cd swim_client
-        # Features aren't allowed in the root of a virtual workspace
-        - cargo test --all-targets --package swim_client --features test-server
-        - cd ..
-
     - os: linux
       arch: arm64
       env:

@@ -12,35 +12,26 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#[cfg(feature = "test_server")]
 mod tests {
     use swim_client::configuration::router::{ConnectionPoolParams, RouterParamBuilder};
     use swim_client::connections::factory::tungstenite::TungsteniteWsFactory;
     use swim_client::connections::SwimConnPool;
-    use swim_client::router::{Router, SwimRouter};
+    use swim_client::router::{Router, RouterEvent, SwimRouter};
     use swim_common::model::Value;
     use swim_common::warp::envelope::Envelope;
     use swim_common::warp::path::AbsolutePath;
-    use test_server::clients::Cli;
-    use test_server::Docker;
-    use test_server::SwimTestServer;
+    use swim_runtime::time::timeout::timeout;
+    use test_server::build_server;
     use tokio::time::Duration;
-    use utilities::trace;
 
-    fn init_trace() {
-        trace::init_trace(vec!["client::router=trace"]);
-    }
-
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[tokio::test]
     #[ignore]
     async fn secure() {
-        init_trace();
+        let (server, mut handle) = build_server().await;
+        tokio::spawn(server.run());
+        let port = handle.address().await.unwrap().port();
 
-        let docker = Cli::default();
-        let container = docker.run(SwimTestServer);
-        let port = container.get_host_port(9001).unwrap();
-        let host = format!("wss://127.0.0.1:{}", port);
-
+        let host = format!("ws://127.0.0.1:{}", port);
         let config = RouterParamBuilder::default().build();
         let pool = SwimConnPool::new(
             ConnectionPoolParams::default(),
@@ -50,26 +41,25 @@ mod tests {
         let mut router = SwimRouter::new(config, pool);
 
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "/unit/foo", "info");
-        let (sink, _stream) = router.connection_for(&path).await.unwrap();
+        let (sink, mut stream) = router.connection_for(&path).await.unwrap();
 
         let sync = Envelope::sync(String::from("/unit/foo"), String::from("info"));
 
         sink.send(sync).await.unwrap();
 
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        eprintln!("message = {:#?}", stream.recv().await);
+
         let _ = router.close().await;
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        handle.stop();
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[tokio::test]
     async fn normal_receive() {
-        init_trace();
+        let (server, mut handle) = build_server().await;
+        tokio::spawn(server.run());
+        let port = handle.address().await.unwrap().port();
 
-        let docker = Cli::default();
-        let container = docker.run(SwimTestServer);
-        let port = container.get_host_port(9001).unwrap();
         let host = format!("ws://127.0.0.1:{}", port);
-
         let config = RouterParamBuilder::default().build();
         let pool = SwimConnPool::new(
             ConnectionPoolParams::default(),
@@ -79,26 +69,111 @@ mod tests {
         let mut router = SwimRouter::new(config, pool);
 
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "/unit/foo", "info");
-        let (sink, _stream) = router.connection_for(&path).await.unwrap();
+        let (sink, mut stream) = router.connection_for(&path).await.unwrap();
 
-        let sync = Envelope::sync(String::from("/unit/foo"), String::from("info"));
+        let sync = Envelope::sync("/unit/foo", "info");
+        sink.send(sync).await.unwrap();
+
+        let expected = RouterEvent::Message(
+            Envelope::linked("/unit/foo", "info")
+                .into_incoming()
+                .unwrap(),
+        );
+        assert_eq!(stream.recv().await.unwrap(), expected);
+
+        let expected = RouterEvent::Message(
+            Envelope::make_event("/unit/foo", "info", Some("".into()))
+                .into_incoming()
+                .unwrap(),
+        );
+        assert_eq!(stream.recv().await.unwrap(), expected);
+
+        let expected = RouterEvent::Message(
+            Envelope::synced("/unit/foo", "info")
+                .into_incoming()
+                .unwrap(),
+        );
+        assert_eq!(stream.recv().await.unwrap(), expected);
+
+        let _ = router.close().await;
+        handle.stop();
+    }
+
+    #[tokio::test]
+    async fn node_not_found_receive() {
+        let (server, mut handle) = build_server().await;
+        tokio::spawn(server.run());
+        let port = handle.address().await.unwrap().port();
+
+        let host = format!("ws://127.0.0.1:{}", port);
+        let config = RouterParamBuilder::default().build();
+        let pool = SwimConnPool::new(
+            ConnectionPoolParams::default(),
+            TungsteniteWsFactory::new(5).await,
+        );
+        let mut router = SwimRouter::new(config, pool);
+
+        let path = AbsolutePath::new(
+            url::Url::parse(&host).unwrap(),
+            "non_existent",
+            "non_existent",
+        );
+        let (sink, mut stream) = router.connection_for(&path).await.unwrap();
+
+        let sync = Envelope::link(String::from("non_existent"), String::from("non_existent"));
 
         sink.send(sync).await.unwrap();
 
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        let expected = RouterEvent::Message(
+            Envelope::node_not_found("non_existent", "non_existent")
+                .into_incoming()
+                .unwrap(),
+        );
+        assert_eq!(stream.recv().await.unwrap(), expected);
+
         let _ = router.close().await;
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        handle.stop();
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[tokio::test]
+    async fn lane_not_found_receive() {
+        let (server, mut handle) = build_server().await;
+        tokio::spawn(server.run());
+        let port = handle.address().await.unwrap().port();
+
+        let host = format!("ws://127.0.0.1:{}", port);
+        let config = RouterParamBuilder::default().build();
+        let pool = SwimConnPool::new(
+            ConnectionPoolParams::default(),
+            TungsteniteWsFactory::new(5).await,
+        );
+        let mut router = SwimRouter::new(config, pool);
+
+        let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "/unit/foo", "non_existent");
+        let (sink, mut stream) = router.connection_for(&path).await.unwrap();
+
+        let sync = Envelope::link(String::from("/unit/foo"), String::from("non_existent"));
+
+        sink.send(sync).await.unwrap();
+
+        let expected = RouterEvent::Message(
+            Envelope::lane_not_found("/unit/foo", "non_existent")
+                .into_incoming()
+                .unwrap(),
+        );
+        assert_eq!(stream.recv().await.unwrap(), expected);
+
+        let _ = router.close().await;
+        handle.stop();
+    }
+
+    #[tokio::test]
     async fn not_interested_receive() {
-        init_trace();
+        let (server, mut handle) = build_server().await;
+        tokio::spawn(server.run());
+        let port = handle.address().await.unwrap().port();
 
-        let docker = Cli::default();
-        let container = docker.run(SwimTestServer);
-        let port = container.get_host_port(9001).unwrap();
         let host = format!("ws://127.0.0.1:{}", port);
-
         let config = RouterParamBuilder::default().build();
         let pool = SwimConnPool::new(
             ConnectionPoolParams::default(),
@@ -107,26 +182,25 @@ mod tests {
         let mut router = SwimRouter::new(config, pool);
 
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "foo", "bar");
-        let (sink, _stream) = router.connection_for(&path).await.unwrap();
+        let (sink, mut stream) = router.connection_for(&path).await.unwrap();
 
         let sync = Envelope::sync(String::from("/unit/foo"), String::from("info"));
-
         sink.send(sync).await.unwrap();
 
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        let result = timeout(Duration::from_secs(5), stream.recv()).await;
+        assert!(result.is_err());
+
         let _ = router.close().await;
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        handle.stop();
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[tokio::test]
     async fn not_found_receive() {
-        init_trace();
+        let (server, mut handle) = build_server().await;
+        tokio::spawn(server.run());
+        let port = handle.address().await.unwrap().port();
 
-        let docker = Cli::default();
-        let container = docker.run(SwimTestServer);
-        let port = container.get_host_port(9001).unwrap();
         let host = format!("ws://127.0.0.1:{}", port);
-
         let config = RouterParamBuilder::default().build();
         let pool = SwimConnPool::new(
             ConnectionPoolParams::default(),
@@ -134,27 +208,35 @@ mod tests {
         );
         let mut router = SwimRouter::new(config, pool);
 
-        let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "foo", "bar");
-        let (sink, _stream) = router.connection_for(&path).await.unwrap();
+        let path = AbsolutePath::new(
+            url::Url::parse(&host).unwrap(),
+            "non_existent",
+            "non_existent",
+        );
+        let (sink, mut stream) = router.connection_for(&path).await.unwrap();
 
-        let sync = Envelope::sync(String::from("non_existent"), String::from("non_existent"));
+        let command = Envelope::make_command(
+            String::from("non_existent"),
+            String::from("non_existent"),
+            None,
+        );
 
-        sink.send(sync).await.unwrap();
+        sink.send(command).await.unwrap();
 
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        let result = timeout(Duration::from_secs(5), stream.recv()).await;
+        assert!(result.is_err());
+
         let _ = router.close().await;
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        handle.stop();
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[tokio::test]
     async fn send_commands() {
-        init_trace();
+        let (server, mut handle) = build_server().await;
+        tokio::spawn(server.run());
+        let port = handle.address().await.unwrap().port();
 
-        let docker = Cli::default();
-        let container = docker.run(SwimTestServer);
-        let port = container.get_host_port(9001).unwrap();
         let host = format!("ws://127.0.0.1:{}", port);
-
         let config = RouterParamBuilder::default().build();
         let pool = SwimConnPool::new(
             ConnectionPoolParams::default(),
@@ -184,63 +266,16 @@ mod tests {
 
         let router_sink = router.general_sink();
 
-        router_sink
-            .send((url.clone(), first_message))
-            .await
-            .unwrap();
+        let result = router_sink.send((url.clone(), first_message)).await;
+        assert!(result.is_ok());
 
-        tokio::time::sleep(Duration::from_secs(1)).await;
+        let result = router_sink.send((url.clone(), second_message)).await;
+        assert!(result.is_ok());
 
-        router_sink
-            .send((url.clone(), second_message))
-            .await
-            .unwrap();
+        let result = router_sink.send((url, third_message)).await;
+        assert!(result.is_ok());
 
-        tokio::time::sleep(Duration::from_secs(1)).await;
-
-        router_sink.send((url, third_message)).await.unwrap();
-
-        tokio::time::sleep(Duration::from_secs(1)).await;
-
-        tokio::time::sleep(Duration::from_secs(1)).await;
         let _ = router.close().await;
-        tokio::time::sleep(Duration::from_secs(5)).await;
-    }
-
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    #[ignore]
-    pub async fn server_stops_between_requests() {
-        init_trace();
-
-        let docker = Cli::default();
-        let container = docker.run(SwimTestServer);
-        let port = container.get_host_port(9001).unwrap();
-        let host = format!("ws://127.0.0.1:{}", port);
-
-        let config = RouterParamBuilder::default().build();
-        let pool = SwimConnPool::new(
-            ConnectionPoolParams::default(),
-            TungsteniteWsFactory::new(5).await,
-        );
-        let mut router = SwimRouter::new(config, pool);
-
-        let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "/unit/foo", "info");
-        let (sink, _stream) = router.connection_for(&path).await.unwrap();
-        let sync = Envelope::sync(String::from("/unit/foo"), String::from("info"));
-
-        println!("Sending item");
-        sink.send(sync).await.unwrap();
-        println!("Sent item");
-
-        docker.stop(container.id());
-
-        let sync = Envelope::sync(String::from("/unit/foo"), String::from("info"));
-
-        println!("Sending second item");
-        let _ = sink.send(sync).await;
-        println!("Sent second item");
-        tokio::time::sleep(Duration::from_secs(10)).await;
-        let _ = router.close().await;
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        handle.stop();
     }
 }
