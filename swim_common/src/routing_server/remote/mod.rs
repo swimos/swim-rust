@@ -18,32 +18,35 @@ pub mod net;
 mod pending;
 pub(crate) mod router;
 mod state;
-mod table;
+pub mod table;
 mod task;
 #[cfg(test)]
 mod tests;
 
 use std::net::SocketAddr;
 
+use crate::request::Request;
 use futures::future::BoxFuture;
-use swim_common::request::Request;
 use tokio::sync::mpsc;
 use tracing::{event, Level};
 use url::Url;
 use utilities::sync::promise;
 
-use swim_common::routing::{ConnectionError, HttpError, ResolutionError, ResolutionErrorKind};
+use crate::routing_server::{ConnectionError, ResolutionError};
 use utilities::sync::trigger;
 use utilities::task::Spawner;
 
-use crate::routing::error::Unresolvable;
-use crate::routing::remote::config::ConnectionConfig;
-use crate::routing::remote::net::ExternalConnections;
-use crate::routing::remote::state::{DeferredResult, Event, RemoteConnections, RemoteTasksState};
-use crate::routing::remote::table::HostAndPort;
-use crate::routing::{ConnectionDropped, RoutingAddr, ServerRouterFactory, TaggedEnvelope};
+use crate::routing::ws::WsConnections;
+use crate::routing::{HttpError, ResolutionErrorKind};
+use crate::routing_server::error::Unresolvable;
+use crate::routing_server::remote::config::ConnectionConfig;
+use crate::routing_server::remote::net::ExternalConnections;
+use crate::routing_server::remote::state::{
+    DeferredResult, Event, RemoteConnections, RemoteTasksState,
+};
+use crate::routing_server::remote::table::HostAndPort;
+use crate::routing_server::{ConnectionDropped, RoutingAddr, ServerRouterFactory, TaggedEnvelope};
 use std::io;
-use swim_common::routing::ws::WsConnections;
 
 #[cfg(test)]
 pub mod test_fixture;
@@ -82,15 +85,15 @@ pub enum RoutingRequest {
 }
 
 pub struct RemoteConnectionChannels {
-    pub(crate) request_tx: mpsc::Sender<RoutingRequest>,
-    pub(crate) request_rx: mpsc::Receiver<RoutingRequest>,
-    pub(crate) stop_trigger: trigger::Receiver,
+    pub request_tx: mpsc::Sender<RoutingRequest>,
+    pub request_rx: mpsc::Receiver<RoutingRequest>,
+    pub stop_trigger: trigger::Receiver,
 }
 
 #[derive(Debug)]
 pub struct RemoteConnectionsTask<External: ExternalConnections, Ws, Router, Sp> {
     external: External,
-    pub(crate) listener: External::ListenerType,
+    pub listener: External::ListenerType,
     websockets: Ws,
     delegate_router: Router,
     stop_trigger: trigger::Receiver,

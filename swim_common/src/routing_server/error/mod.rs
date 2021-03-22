@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::routing::RoutingAddr;
+use crate::routing_server::ConnectionError;
+use crate::routing_server::RoutingAddr;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
-use swim_common::routing::ConnectionError;
 use utilities::errors::Recoverable;
 use utilities::uri::RelativeUri;
 

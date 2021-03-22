@@ -14,7 +14,6 @@
 
 use crate::agent::{AgentContext, Eff};
 use crate::meta::MetaContext;
-use crate::routing::ServerRouter;
 use futures::future::BoxFuture;
 use futures::sink::drain;
 use futures::{FutureExt, Stream, StreamExt};
@@ -22,6 +21,7 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use swim_common::routing_server::ServerRouter;
 use swim_runtime::time::clock::Clock;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;

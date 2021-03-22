@@ -20,6 +20,7 @@ pub mod form;
 pub mod model;
 pub mod request;
 pub mod routing;
+pub mod routing_server;
 pub mod sink;
 pub mod warp;
 

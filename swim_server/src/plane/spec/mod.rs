@@ -18,9 +18,9 @@ use crate::plane::error::AmbiguousRoutes;
 use crate::plane::lifecycle::PlaneLifecycle;
 use crate::plane::provider::AgentProvider;
 use crate::plane::{AgentRoute, BoxAgentRoute};
-use crate::routing::{ServerRouter, TaggedEnvelope};
 use futures::Stream;
 use std::fmt::Debug;
+use swim_common::routing_server::{ServerRouter, TaggedEnvelope};
 use swim_runtime::time::clock::Clock;
 use utilities::route_pattern::RoutePattern;
 

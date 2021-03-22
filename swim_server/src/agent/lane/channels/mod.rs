@@ -17,9 +17,9 @@ use crate::agent::lane::channels::uplink::backpressure::{
     KeyedBackpressureConfig, SimpleBackpressureConfig,
 };
 use crate::agent::lane::channels::uplink::{UplinkAction, UplinkStateMachine};
-use crate::routing::RoutingAddr;
 use std::num::NonZeroUsize;
 use std::time::Duration;
+use swim_common::routing_server::RoutingAddr;
 use utilities::future::retryable::strategy::RetryStrategy;
 
 pub mod task;

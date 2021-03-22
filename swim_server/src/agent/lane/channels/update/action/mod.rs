@@ -14,7 +14,6 @@
 
 use crate::agent::lane::channels::update::{LaneUpdate, UpdateError};
 use crate::agent::lane::model::action::ActionLane;
-use crate::routing::RoutingAddr;
 use either::Either;
 use futures::future::BoxFuture;
 use futures::select_biased;
@@ -23,6 +22,7 @@ use futures::{FutureExt, Stream, StreamExt};
 use pin_utils::pin_mut;
 use std::fmt::Debug;
 use std::time::Duration;
+use swim_common::routing_server::RoutingAddr;
 use swim_runtime::time::timeout;
 use tokio::sync::mpsc;
 use tracing::{event, Level};

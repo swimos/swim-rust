@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::routing::RoutingAddr;
+use crate::routing_server::RoutingAddr;
 
 /// Iterator to generate a sequence of distinct remote routing addresses.
 #[derive(Debug, Default)]
@@ -35,7 +35,7 @@ impl Iterator for RemoteRoutingAddresses {
 
 #[cfg(test)]
 mod tests {
-    use crate::routing::remote::addresses::RemoteRoutingAddresses;
+    use crate::routing_server::remote::addresses::RemoteRoutingAddresses;
 
     #[test]
     fn generate_addresses() {

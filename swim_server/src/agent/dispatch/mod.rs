@@ -46,7 +46,9 @@ use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::{AttachError, LaneIo};
 use crate::meta::uri::MetaParseErr;
 use crate::meta::{LaneAddressedKind, MetaNodeAddressed, LANES_URI, PULSE_URI, UPLINK_URI};
-use crate::routing::{RoutingAddr, ServerRouter, TaggedClientEnvelope, TaggedEnvelope};
+use swim_common::routing_server::{
+    RoutingAddr, ServerRouter, TaggedClientEnvelope, TaggedEnvelope,
+};
 
 pub mod error;
 #[cfg(test)]

@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::routing::remote::table::{HostAndPort, RoutingTable};
 use crate::routing::remote::RawRoute;
+use crate::routing::table::{HostAndPort, RoutingTable};
 use crate::routing::{ConnectionDropped, RoutingAddr, TaggedEnvelope};
+use crate::warp::envelope::Envelope;
 use std::time::Duration;
-use swim_common::warp::envelope::Envelope;
 use tokio::sync::mpsc;
 
 #[test]

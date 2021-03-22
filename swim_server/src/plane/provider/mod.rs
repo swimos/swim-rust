@@ -16,7 +16,6 @@ use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lifecycle::AgentLifecycle;
 use crate::agent::{AgentParameters, AgentResult, SwimAgent};
 use crate::plane::AgentRoute;
-use crate::routing::{ServerRouter, TaggedEnvelope};
 use futures::future::BoxFuture;
 use futures::{FutureExt, Stream};
 use std::any::Any;
@@ -24,6 +23,7 @@ use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
 use std::sync::Arc;
+use swim_common::routing_server::{ServerRouter, TaggedEnvelope};
 use swim_runtime::time::clock::Clock;
 use utilities::uri::RelativeUri;
 

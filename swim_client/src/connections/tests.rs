@@ -456,7 +456,7 @@ async fn test_connection_send_single_message() {
 
     let mut factory = TestConnectionFactory::new(test_data).await;
 
-    let connection = SwimConnection::new(host, buffer_size, &mut factory)
+    let connection = ClientConnection::new(host, buffer_size, &mut factory)
         .await
         .unwrap();
 
@@ -480,7 +480,7 @@ async fn test_connection_send_multiple_messages() {
 
     let mut factory = TestConnectionFactory::new(test_data).await;
 
-    let mut connection = SwimConnection::new(host, buffer_size, &mut factory)
+    let mut connection = ClientConnection::new(host, buffer_size, &mut factory)
         .await
         .unwrap();
 
@@ -526,7 +526,7 @@ async fn test_connection_send_and_receive_messages() {
 
     let mut factory = TestConnectionFactory::new(test_data).await;
 
-    let mut connection = SwimConnection::new(host, buffer_size, &mut factory)
+    let mut connection = ClientConnection::new(host, buffer_size, &mut factory)
         .await
         .unwrap();
 
@@ -561,7 +561,7 @@ async fn test_connection_receive_message_error() {
 
     let mut factory = TestConnectionFactory::new(test_data).await;
 
-    let connection = SwimConnection::new(host, buffer_size, &mut factory)
+    let connection = ClientConnection::new(host, buffer_size, &mut factory)
         .await
         .unwrap();
     // When
@@ -586,7 +586,7 @@ async fn test_new_connection_send_message_error() {
 
     let mut factory = TestConnectionFactory::new(test_data).await;
 
-    let connection = SwimConnection::new(host, buffer_size, &mut factory)
+    let connection = ClientConnection::new(host, buffer_size, &mut factory)
         .await
         .unwrap();
     // When

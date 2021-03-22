@@ -28,9 +28,6 @@ use crate::plane::context::PlaneContext;
 use crate::plane::error::NoAgentAtRoute;
 use crate::plane::router::{PlaneRouter, PlaneRouterFactory};
 use crate::plane::spec::{PlaneSpec, RouteSpec};
-use crate::routing::error::{RouterError, Unresolvable};
-use crate::routing::remote::RawRoute;
-use crate::routing::{ConnectionDropped, RoutingAddr, ServerRouterFactory, TaggedEnvelope};
 use either::Either;
 use futures::future::{join, BoxFuture};
 use futures::{select_biased, FutureExt, StreamExt};
@@ -43,6 +40,11 @@ use std::ops::Deref;
 use std::sync::{Arc, Weak};
 use swim_common::request::Request;
 use swim_common::routing::{ConnectionError, ProtocolError, ProtocolErrorKind};
+use swim_common::routing_server::error::{RouterError, Unresolvable};
+use swim_common::routing_server::remote::RawRoute;
+use swim_common::routing_server::{
+    ConnectionDropped, RoutingAddr, ServerRouterFactory, TaggedEnvelope,
+};
 use swim_runtime::time::clock::Clock;
 use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::ReceiverStream;

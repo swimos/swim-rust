@@ -15,10 +15,10 @@
 use std::net::SocketAddr;
 use std::pin::Pin;
 
-use crate::routing::remote::net::dns::{DnsResolver, Resolver};
-use crate::routing::remote::net::plain::TokioPlainTextNetworking;
-use crate::routing::remote::net::tls::{TlsListener, TlsStream, TokioTlsNetworking};
-use crate::routing::remote::table::HostAndPort;
+use crate::routing_server::remote::net::dns::{DnsResolver, Resolver};
+use crate::routing_server::remote::net::plain::TokioPlainTextNetworking;
+use crate::routing_server::remote::net::tls::{TlsListener, TlsStream, TokioTlsNetworking};
+use crate::routing_server::remote::table::HostAndPort;
 use either::Either;
 use futures::stream::{Fuse, FusedStream, StreamExt};
 use futures::task::{Context, Poll};
@@ -31,7 +31,7 @@ use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
 use url::Url;
 
-pub(in crate) mod dns;
+pub mod dns;
 pub mod plain;
 pub mod tls;
 

@@ -12,11 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::routing::error::RouterError;
-use crate::routing::remote::net::{ExternalConnections, Listener};
-use crate::routing::remote::table::HostAndPort;
-use crate::routing::remote::ConnectionDropped;
-use crate::routing::{
+use crate::routing_server::error::RouterError;
+use crate::routing_server::remote::net::{ExternalConnections, Listener};
+use crate::routing_server::remote::table::HostAndPort;
+use crate::routing_server::remote::ConnectionDropped;
+use crate::routing_server::ws::{CloseReason, JoinedStreamSink, WsConnections, WsMessage};
+use crate::routing_server::{
+    CloseError, ConnectionError, HttpError, HttpErrorKind, ResolutionError, ResolutionErrorKind,
+};
+use crate::routing_server::{
     Route, RoutingAddr, ServerRouter, ServerRouterFactory, TaggedEnvelope, TaggedSender,
 };
 use futures::future::{ready, BoxFuture};
@@ -31,10 +35,6 @@ use std::io;
 use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::Arc;
-use swim_common::routing::ws::{CloseReason, JoinedStreamSink, WsConnections, WsMessage};
-use swim_common::routing::{
-    CloseError, ConnectionError, HttpError, HttpErrorKind, ResolutionError, ResolutionErrorKind,
-};
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
@@ -193,13 +193,13 @@ impl ServerRouterFactory for LocalRoutes {
 
 pub mod fake_channel {
 
+    use crate::routing_server::ws::{CloseReason, JoinedStreamSink};
     use futures::channel::mpsc;
     use futures::future::ready;
     use futures::future::BoxFuture;
     use futures::{ready, FutureExt, Sink, SinkExt, Stream, StreamExt};
     use std::pin::Pin;
     use std::task::{Context, Poll};
-    use swim_common::routing::ws::{CloseReason, JoinedStreamSink};
 
     pub struct TwoWayMpsc<T, E> {
         tx: mpsc::Sender<T>,

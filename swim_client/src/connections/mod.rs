@@ -88,11 +88,18 @@ impl SwimConnPool {
     ///
     /// * `buffer_size`             - The buffer size of the internal channels in the connection
     ///                               pool as an integer.
-    /// * `connection_factory`      - Custom factory capable of producing connections for the pool.
-    #[instrument(skip(config, connection_factory))]
-    pub fn new<WsFac>(config: ConnectionPoolParams, connection_factory: WsFac) -> SwimConnPool
+    /// * `ws_factory` - Websocket factory for the client.
+    /// * `conn_factory` - Connection factory for the client.
+    #[instrument(skip(config, conn_factory, ws_factory))]
+    pub fn new<WSFac, ConnFac, Socket>(
+        config: ConnectionPoolParams,
+        conn_factory: ConnFac,
+        ws_factory: WSFac,
+    ) -> SwimConnPool
     where
-        WsFac: WebsocketFactory + 'static,
+        WSFac: WsConnections<Socket> + Send + Sync + 'static,
+        ConnFac: ExternalConnections<Socket = Socket>,
+        Socket: Send + Sync + Unpin + 'static,
     {
         let (connection_request_tx, connection_request_rx) =
             mpsc::channel(config.buffer_size().get());
@@ -100,7 +107,8 @@ impl SwimConnPool {
 
         let task = PoolTask::new(
             connection_request_rx,
-            connection_factory,
+            conn_factory,
+            ws_factory,
             config.buffer_size(),
             stop_request_rx,
         );
@@ -177,29 +185,36 @@ enum RequestType {
     Close,
 }
 
-struct PoolTask<WsFac>
+struct PoolTask<WSFac, ConnFac, Socket>
 where
-    WsFac: WebsocketFactory + 'static,
+    WSFac: WsConnections<Socket> + Send + Sync + 'static,
+    ConnFac: ExternalConnections<Socket = Socket>,
+    Socket: Send + Sync + Unpin + 'static,
 {
     connection_request_rx: mpsc::Receiver<ConnectionRequest>,
-    connection_factory: WsFac,
+    conn_factory: ConnFac,
+    ws_factory: WSFac,
     buffer_size: NonZeroUsize,
     stop_request_rx: mpsc::Receiver<()>,
 }
 
-impl<WsFac> PoolTask<WsFac>
+impl<WSFac, ConnFac, Socket> PoolTask<WSFac, ConnFac, Socket>
 where
-    WsFac: WebsocketFactory + 'static,
+    WSFac: WsConnections<Socket> + Send + Sync + 'static,
+    ConnFac: ExternalConnections<Socket = Socket>,
+    Socket: Send + Sync + Unpin + 'static,
 {
     fn new(
         connection_request_rx: mpsc::Receiver<ConnectionRequest>,
-        connection_factory: WsFac,
+        conn_factory: ConnFac,
+        ws_factory: WSFac,
         buffer_size: NonZeroUsize,
         stop_request_rx: mpsc::Receiver<()>,
     ) -> Self {
         PoolTask {
             connection_request_rx,
-            connection_factory,
+            conn_factory,
+            ws_factory,
             buffer_size,
             stop_request_rx,
         }
@@ -209,7 +224,8 @@ where
     async fn run(self, config: ConnectionPoolParams) -> Result<(), ConnectionError> {
         let PoolTask {
             connection_request_rx,
-            mut connection_factory,
+            mut conn_factory,
+            mut ws_factory,
             buffer_size,
             stop_request_rx,
         } = self;
@@ -249,10 +265,11 @@ where
                     };
 
                     let connection_channel = if recreate {
-                        SwimConnection::new(
+                        ClientConnection::new(
                             host_url.clone(),
                             buffer_size.get(),
-                            &mut connection_factory,
+                            &mut conn_factory,
+                            &mut ws_factory,
                         )
                         .await
                         .and_then(|connection| {
@@ -282,7 +299,7 @@ where
                     connections.retain(|_, v| v.last_accessed.elapsed() < conn_timeout);
                     let after_size = connections.len();
 
-                    trace!("Pruned {} inactive connections", (before_size - after_size));
+                    trace!("Pruned {} inactive networking", (before_size - after_size));
                 }
 
                 RequestType::Close => {
@@ -390,7 +407,7 @@ where
 }
 
 struct InnerConnection {
-    conn: SwimConnection,
+    conn: ClientConnection,
     last_accessed: Instant,
 }
 
@@ -402,7 +419,7 @@ impl InnerConnection {
     }
 
     pub fn from(
-        mut conn: SwimConnection,
+        mut conn: ClientConnection,
     ) -> Result<(InnerConnection, ConnectionSender, mpsc::Receiver<WsMessage>), ConnectionError>
     {
         let sender = ConnectionSender {
@@ -425,7 +442,7 @@ impl InnerConnection {
 }
 
 /// Connection to a remote host.
-pub struct SwimConnection {
+pub struct ClientConnection {
     stopped: Arc<AtomicBool>,
     tx: mpsc::Sender<WsMessage>,
     rx: Option<mpsc::Receiver<WsMessage>>,
@@ -433,16 +450,36 @@ pub struct SwimConnection {
     _receive_handle: TaskHandle<Result<(), ConnectionError>>,
 }
 
-impl SwimConnection {
-    async fn new<T: WebsocketFactory + Send + Sync + 'static>(
+impl ClientConnection {
+    async fn new<WSFac, ConnFac, Socket>(
         host_url: url::Url,
         buffer_size: usize,
-        websocket_factory: &mut T,
-    ) -> Result<SwimConnection, ConnectionError> {
+        conn_factory: &mut ConnFac,
+        ws_factory: &mut WSFac,
+    ) -> Result<ClientConnection, ConnectionError>
+    where
+        WSFac: WsConnections<Socket> + Send + Sync + 'static,
+        ConnFac: ExternalConnections<Socket = Socket>,
+        Socket: Send + Sync + Unpin + 'static,
+    {
         let (sender_tx, sender_rx) = mpsc::channel(buffer_size);
         let (receiver_tx, receiver_rx) = mpsc::channel(buffer_size);
 
-        let (write_sink, read_stream) = websocket_factory.connect(host_url).await?;
+        //Todo dm remove the unwraps
+        let (write_sink, read_stream) = ws_factory
+            .open_connection(
+                conn_factory
+                    .try_open(
+                        host_url
+                            .socket_addrs(|| None)
+                            .map_err(|err| ConnectionError::Io(err.into()))?
+                            .remove(0),
+                    )
+                    .await?,
+                host_url.to_string(),
+            )
+            .await?
+            .split();
 
         let stopped = Arc::new(AtomicBool::new(false));
 
@@ -452,7 +489,7 @@ impl SwimConnection {
         let send_handler = spawn(send.run());
         let receive_handler = spawn(receive.run());
 
-        Ok(SwimConnection {
+        Ok(ClientConnection {
             stopped,
             tx: sender_tx,
             rx: Some(receiver_rx),
@@ -462,8 +499,9 @@ impl SwimConnection {
     }
 }
 
-use swim_common::routing::ws::{WebsocketFactory, WsMessage};
+use swim_common::routing::ws::{WsConnections, WsMessage};
 use swim_common::routing::{CloseError, ConnectionError, ResolutionError, ResolutionErrorKind};
+use swim_common::routing_server::remote::net::ExternalConnections;
 use swim_runtime::task::*;
 use swim_runtime::time::instant::Instant;
 use swim_runtime::time::interval::interval;
