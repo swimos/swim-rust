@@ -12,13 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod key;
+use crate::stores::plane::{PlaneStore, PlaneStoreInner};
+use bincode::Error;
+use std::collections::HashMap;
+use std::sync::{Arc, Weak};
+
+pub mod engines;
+mod mock;
 pub mod stores;
 
-use crate::key::StoreKey;
-use bincode::Error;
-use std::sync::Arc;
-
+#[derive(Debug)]
 pub enum StoreError {
     Error(String),
 }
@@ -35,13 +38,25 @@ pub enum StoreInitialisationError {}
 
 pub enum SnapshotError {}
 
-pub trait SwimStore: for<'s> Store<'s> {}
+pub trait SwimStore {
+    type PlaneStore: Store;
 
-pub trait Store<'a>: StoreEngine<'a> + FromOpts + Snapshot<'a> + Send + Sync + 'static {}
+    fn plane_store<I: ToString>(&mut self, address: I) -> Result<Self::PlaneStore, StoreError>;
+}
+
+pub trait Store:
+    for<'a> StoreEngine<'a> + FromOpts + for<'a> Snapshot<'a> + Send + Sync + Destroy
+{
+    fn address(&self) -> String;
+}
+
+pub trait Destroy {
+    fn destroy(self);
+}
 
 pub trait Snapshot<'a>
 where
-    Self: Send + Sync + Sized + 'static,
+    Self: Send + Sync + Sized,
 {
     type Snapshot: Iterable;
 
@@ -68,55 +83,32 @@ pub trait StoreEngine<'a> {
     fn delete(&self, key: Self::Key) -> Result<bool, Self::Error>;
 }
 
-pub struct StoreEntry<'s> {
-    pub key: &'s [u8],
-    pub value: &'s [u8],
+struct ServerStore<'s> {
+    inner: HashMap<String, Weak<PlaneStoreInner<'s>>>,
 }
 
-pub struct DatabaseStore<E> {
-    engine: Arc<E>,
-}
+impl<'s> SwimStore for ServerStore<'s> {
+    type PlaneStore = PlaneStore<'s>;
 
-impl<E> DatabaseStore<E> {
-    pub fn new(engine: E) -> Self {
-        DatabaseStore {
-            engine: Arc::new(engine),
+    fn plane_store<I: ToString>(&mut self, address: I) -> Result<Self::PlaneStore, StoreError> {
+        let ServerStore { inner } = self;
+        let address = address.to_string();
+
+        let result = match inner.get(&address) {
+            Some(store) => match store.upgrade() {
+                Some(store) => Ok(store),
+                None => Arc::new(PlaneStoreInner::open(&address)),
+            },
+            None => Arc::new(PlaneStoreInner::open(&address)),
+        };
+
+        match result {
+            Ok(store) => {
+                let weak = Arc::downgrade(&store);
+                inner.insert(address, weak);
+                Ok(PlaneStore::from_inner(store))
+            }
+            Err(_) => {}
         }
-    }
-
-    fn serialize(&self, key: &StoreKey) -> Result<Vec<u8>, StoreError> {
-        bincode::serialize(key).map_err(Into::into)
-    }
-}
-
-impl<E> Clone for DatabaseStore<E> {
-    fn clone(&self) -> Self {
-        DatabaseStore {
-            engine: self.engine.clone(),
-        }
-    }
-}
-
-impl<'i, E> StoreEngine<'i> for DatabaseStore<E>
-where
-    E: for<'e> StoreEngine<'e, Key = &'e [u8], Value = &'e [u8]>,
-{
-    type Key = &'i StoreKey<'i>;
-    type Value = &'i [u8];
-    type Error = StoreError;
-
-    fn put(&self, key: Self::Key, value: Self::Value) -> Result<(), Self::Error> {
-        let key = self.serialize(key)?;
-        self.engine.put(key.as_slice(), value).map_err(Into::into)
-    }
-
-    fn get(&self, key: Self::Key) -> Result<Option<Vec<u8>>, Self::Error> {
-        let key = self.serialize(key)?;
-        self.engine.get(key.as_slice()).map_err(Into::into)
-    }
-
-    fn delete(&self, key: Self::Key) -> Result<bool, Self::Error> {
-        let key = self.serialize(key)?;
-        self.engine.delete(key.as_slice()).map_err(Into::into)
     }
 }

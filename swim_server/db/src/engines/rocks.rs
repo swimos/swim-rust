@@ -12,11 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::engines::StoreDelegate;
 use crate::{
-    FromOpts, Iterable, Snapshot, Store, StoreEngine, StoreEngineOpts, StoreError,
-    StoreInitialisationError,
+    Destroy, FromOpts, Iterable, Snapshot, Store, StoreEngine, StoreEngineOpts, StoreError,
+    StoreInitialisationError, SwimStore,
 };
-use rocksdb::{DBIterator, Error, Snapshot as DBSnapshot, DB};
+use parking_lot::RwLock;
+use rocksdb::{DBIterator, Error, Options, Snapshot as DBSnapshot, DB};
+use std::path::PathBuf;
+use std::sync::Arc;
 
 impl From<rocksdb::Error> for StoreError {
     fn from(e: Error) -> Self {
@@ -24,13 +28,59 @@ impl From<rocksdb::Error> for StoreError {
     }
 }
 
+struct RocksSwimStore {
+    database: RocksDatabase,
+    config: Options,
+    base_path: PathBuf,
+}
+
+impl RocksSwimStore {
+    pub fn new(base_path: PathBuf, database: DB) -> RocksSwimStore {
+        RocksSwimStore {
+            base_path,
+            database: RocksDatabase::new(database),
+            config: Options::default(),
+        }
+    }
+}
+
+#[derive(Clone)]
 pub struct RocksDatabase {
-    delegate: DB,
+    // todo: this can be removed if we know all of the possible planes that will exist in the
+    //  lifetime of the server
+    delegate: Arc<RwLock<DB>>,
 }
 
 impl RocksDatabase {
-    pub fn new(delegate: DB) -> Self {
-        RocksDatabase { delegate }
+    pub fn new(delegate: DB) -> RocksDatabase {
+        RocksDatabase {
+            delegate: Arc::new(RwLock::new(delegate)),
+        }
+    }
+}
+
+impl From<RocksDatabase> for StoreDelegate {
+    fn from(d: RocksDatabase) -> Self {
+        StoreDelegate::Rocksdb(d)
+    }
+}
+
+impl SwimStore for RocksSwimStore {
+    type PlaneStore = RocksDatabase;
+
+    fn plane_store<I: ToString>(&mut self, address: I) -> Result<Self::PlaneStore, StoreError> {
+        let address = address.to_string();
+        let RocksSwimStore {
+            database, config, ..
+        } = self;
+
+        let mut db = database.delegate.write();
+
+        if db.cf_handle(address.as_str()).is_none() {
+            db.create_cf(address, config)?;
+        }
+
+        Ok(database.clone())
     }
 }
 
@@ -41,27 +91,43 @@ impl<'a> StoreEngine<'a> for RocksDatabase {
 
     fn put(&self, key: Self::Key, value: Self::Value) -> Result<(), Self::Error> {
         let RocksDatabase { delegate, .. } = self;
-        delegate.put(key, value)
+        let db = &*delegate.read();
+
+        db.put(key, value)
     }
 
     fn get(&self, key: Self::Key) -> Result<Option<Vec<u8>>, Self::Error> {
         let RocksDatabase { delegate, .. } = self;
-        delegate.get(key)
+        let db = &*delegate.read();
+
+        db.get(key)
     }
 
     fn delete(&self, key: Self::Key) -> Result<bool, Self::Error> {
         let RocksDatabase { delegate, .. } = self;
-        delegate.delete(key).map(|_| true)
+        let db = &*delegate.read();
+
+        db.delete(key).map(|_| true)
     }
 }
 
-impl<'a> Store<'a> for RocksDatabase {}
+impl Store for RocksDatabase {
+    fn address(&self) -> String {
+        self.delegate.read().path().to_string_lossy().to_string()
+    }
+}
+
+impl Destroy for RocksDatabase {
+    fn destroy(self) {
+        let _ = DB::destroy(&Options::default(), self.delegate.read().path());
+    }
+}
 
 impl<'a> Snapshot<'a> for RocksDatabase {
     type Snapshot = DBSnapshot<'a>;
 
     fn snapshot(&'a self) -> Self::Snapshot {
-        self.delegate.snapshot()
+        unimplemented!()
     }
 }
 
@@ -77,7 +143,7 @@ impl FromOpts for RocksDatabase {
 
 #[cfg(test)]
 mod tests {
-    use crate::stores::rocks::RocksDatabase;
+    use crate::engines::rocks::RocksDatabase;
     use crate::StoreEngine;
     use rocksdb::{Options, DB};
 

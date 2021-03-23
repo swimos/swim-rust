@@ -15,16 +15,10 @@
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialOrd, PartialEq)]
+#[derive(Clone, Debug, PartialOrd, PartialEq)]
 pub enum StoreKey<'k> {
-    Direct(StorageKey<'k>),
     Map(MapStorageKey<'k>),
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialOrd, PartialEq)]
-pub struct StorageKey<'k> {
-    node_uri: Cow<'k, str>,
-    lane_uri: Cow<'k, str>,
+    Value(ValueStorageKey<'k>),
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialOrd, PartialEq)]
@@ -32,4 +26,10 @@ pub struct MapStorageKey<'k> {
     node_uri: Cow<'k, str>,
     lane_uri: Cow<'k, str>,
     key: Cow<'k, [u8]>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialOrd, PartialEq)]
+pub struct ValueStorageKey<'k> {
+    pub node_uri: Cow<'k, str>,
+    pub lane_uri: Cow<'k, str>,
 }

@@ -5,13 +5,14 @@ authors = ["Swim.AI developers info@swim.ai"]
 edition = "2018"
 
 [features]
-default = ["rocksdb"]
+default = ["rocks-db", "libmdbx"]
 rocks-db = ["rocksdb"]
 libmdbx = ["heed/mdbx"]
 
 [dependencies]
 bincode = "1.3.2"
-serde = "1.0.124"
+serde = { version = "1.0.124", features = ["derive"] }
+parking_lot = "0.11.0"
 
 [dependencies.rocksdb]
 version = "0.15.0"
