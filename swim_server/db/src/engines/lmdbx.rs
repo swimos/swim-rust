@@ -102,10 +102,6 @@ impl LmdbxDatabase {
         }
     }
 
-    fn from_inner(inner: Arc<LmdbxDatabaseInner>) -> LmdbxDatabase {
-        LmdbxDatabase { inner }
-    }
-
     fn init<P: AsRef<Path>>(
         path: P,
         config: &EnvOpenOptions,

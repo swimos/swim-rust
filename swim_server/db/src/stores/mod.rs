@@ -33,7 +33,7 @@ pub enum StoreKey {
 pub struct MapStorageKey {
     node_uri: String,
     lane_uri: String,
-    key: String,
+    key: Vec<u8>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialOrd, PartialEq)]

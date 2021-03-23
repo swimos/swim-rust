@@ -12,41 +12,72 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::stores::lane::LaneStore;
-use crate::StoreError;
+use crate::stores::lane::{
+    serialize, serialize_into_vec, FromDelegate, LaneKey, LaneStore, SwimLaneStore,
+};
+use crate::{OwnedStoreEngine, StoreEngine, StoreError};
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 
-pub trait MapStore<'a> {
-    type Key: 'a;
-    type Value: 'a;
+pub trait MapStore<'a, K, V>: FromDelegate<'a>
+where
+    K: Serialize + 'a,
+    V: Serialize + 'a,
+{
+    fn put(&self, key: &K, value: &V) -> Result<(), StoreError>;
 
-    fn put(&self, key: Self::Key, value: Self::Value) -> Result<(), StoreError>;
+    fn get(&self, key: &K) -> Result<Option<Vec<u8>>, StoreError>;
 
-    fn get(&self, key: Self::Key) -> Result<Option<Vec<u8>>, StoreError>;
+    fn delete(&self, key: &K) -> Result<bool, StoreError>;
+}
 
-    fn delete(&self, key: Self::Key) -> Result<bool, StoreError>;
+impl<'a, E> FromDelegate<'a> for MapLaneStore<E>
+where
+    E: StoreEngine<'a>,
+{
+    type Delegate = SwimLaneStore<E>;
+
+    fn from_delegate(delegate: Self::Delegate, address: String) -> Self {
+        MapLaneStore::new(delegate, address)
+    }
 }
 
 pub struct MapLaneStore<D> {
+    delegate: SwimLaneStore<D>,
     lane_uri: String,
-    delegate: D,
 }
 
-impl<'a, D> MapStore<'a> for MapLaneStore<D>
+impl<D> MapLaneStore<D> {
+    pub fn new(delegate: SwimLaneStore<D>, lane_uri: String) -> Self {
+        MapLaneStore { delegate, lane_uri }
+    }
+}
+
+impl<'a, D, K: 'a, V: 'a> MapStore<'a, K, V> for MapLaneStore<D>
 where
-    D: LaneStore<'a>,
+    D: LaneStore<'a> + OwnedStoreEngine<Key = &'a LaneKey<'a>, Value = &'a [u8]>,
+    K: Serialize,
+    V: Serialize + DeserializeOwned,
 {
-    type Key = ();
-    type Value = ();
+    fn put(&self, key: &K, value: &V) -> Result<(), StoreError> {
+        let MapLaneStore { delegate, lane_uri } = self;
+        let key = serialize(key)?;
+        let value = serialize(value)?;
 
-    fn put(&self, _key: Self::Key, _value: Self::Value) -> Result<(), StoreError> {
-        unimplemented!()
+        delegate.put(&LaneKey::Map { lane_uri, key }, value.as_slice())
     }
 
-    fn get(&self, _key: Self::Key) -> Result<Option<Vec<u8>>, StoreError> {
-        unimplemented!()
+    fn get(&self, key: &K) -> Result<Option<Vec<u8>>, StoreError> {
+        let MapLaneStore { delegate, lane_uri } = self;
+        serialize_into_vec(delegate, key, |del, key| {
+            del.get(&LaneKey::Map { lane_uri, key })
+        })
     }
 
-    fn delete(&self, _key: Self::Key) -> Result<bool, StoreError> {
-        unimplemented!()
+    fn delete(&self, key: &K) -> Result<bool, StoreError> {
+        let MapLaneStore { delegate, lane_uri } = self;
+        serialize_into_vec(delegate, key, |del, key| {
+            del.delete(&LaneKey::Map { lane_uri, key })
+        })
     }
 }

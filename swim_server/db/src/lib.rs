@@ -104,6 +104,9 @@ pub trait FromOpts: Sized {
     ) -> Result<Self, StoreInitialisationError>;
 }
 
+pub trait OwnedStoreEngine: for<'a> StoreEngine<'a> {}
+impl<S> OwnedStoreEngine for S where S: for<'s> StoreEngine<'s> {}
+
 pub trait StoreEngine<'a> {
     type Key: 'a;
     type Value: 'a;
