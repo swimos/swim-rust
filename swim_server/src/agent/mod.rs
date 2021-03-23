@@ -36,7 +36,7 @@ use crate::agent::lane::lifecycle::{
     ActionLaneLifecycle, CommandLaneLifecycle, DemandLaneLifecycle, DemandMapLaneLifecycle,
     StatefulLaneLifecycle,
 };
-use crate::agent::lane::model;
+pub use crate::agent::lane::model;
 use crate::agent::lane::model::action::{Action, ActionLane};
 use crate::agent::lane::model::command::{Command, CommandLane};
 use crate::agent::lane::model::demand::DemandLane;
@@ -1258,7 +1258,7 @@ where
     (lane, tasks, lane_io)
 }
 
-struct DemandLaneIo<Event> {
+pub struct DemandLaneIo<Event> {
     response_rx: mpsc::Receiver<Event>,
 }
 
@@ -1266,7 +1266,7 @@ impl<Event> DemandLaneIo<Event>
 where
     Event: Send + Sync + 'static,
 {
-    fn new(response_rx: mpsc::Receiver<Event>) -> DemandLaneIo<Event> {
+    pub fn new(response_rx: mpsc::Receiver<Event>) -> DemandLaneIo<Event> {
         DemandLaneIo { response_rx }
     }
 }
