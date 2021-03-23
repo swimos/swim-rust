@@ -12,13 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::engines::StoreDelegateConfig;
 use crate::stores::plane::{PlaneStore, PlaneStoreInner};
 use bincode::Error;
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Weak};
 
 pub mod engines;
-mod mock;
+pub mod factory;
+pub mod mock;
 pub mod stores;
 
 #[derive(Debug)]
@@ -32,35 +35,62 @@ impl From<bincode::Error> for StoreError {
     }
 }
 
-pub struct StoreEngineOpts;
+impl From<StoreInitialisationError> for StoreError {
+    fn from(e: StoreInitialisationError) -> Self {
+        StoreError::Error(format!("{:?}", e))
+    }
+}
 
-pub enum StoreInitialisationError {}
+#[derive(Debug, Clone)]
+pub struct StoreEngineOpts {
+    base_path: PathBuf,
+    map_opts: MapStoreEngineOpts,
+    value_opts: ValueStoreEngineOpts,
+}
+
+#[derive(Debug, Clone)]
+pub struct MapStoreEngineOpts {
+    config: StoreDelegateConfig,
+}
+
+#[derive(Debug, Clone)]
+pub struct ValueStoreEngineOpts {
+    config: StoreDelegateConfig,
+}
+
+#[derive(Debug)]
+pub enum StoreInitialisationError {
+    Error(String),
+}
 
 pub enum SnapshotError {}
 
 pub trait SwimStore {
     type PlaneStore: Store;
 
-    fn plane_store<I: ToString>(&mut self, address: I) -> Result<Self::PlaneStore, StoreError>;
+    // todo replace I with AsRef<Path>?
+    fn plane_store<I: ToString>(&mut self, path: I) -> Result<Self::PlaneStore, StoreError>;
 }
 
-pub trait Store:
-    for<'a> StoreEngine<'a> + FromOpts + for<'a> Snapshot<'a> + Send + Sync + Destroy
-{
-    fn address(&self) -> String;
+pub trait Store: for<'a> StoreEngine<'a> + FromOpts + Snapshot + Send + Sync + Destroy {
+    // type Opts: From<>
+    //
+    // fn from_opts(Self::Opts)->Result<Self, StoreInitialisationError>;
+
+    fn path(&self) -> String;
 }
 
 pub trait Destroy {
     fn destroy(self);
 }
 
-pub trait Snapshot<'a>
+pub trait Snapshot
 where
     Self: Send + Sync + Sized,
 {
     type Snapshot: Iterable;
 
-    fn snapshot(&'a self) -> Self::Snapshot;
+    fn snapshot(&self) -> Self::Snapshot;
 }
 
 pub trait Iterable {
@@ -68,12 +98,17 @@ pub trait Iterable {
 }
 
 pub trait FromOpts: Sized {
-    fn from_opts(opts: StoreEngineOpts) -> Result<Self, StoreInitialisationError>;
+    type Opts;
+
+    fn from_opts<I: AsRef<Path>>(
+        path: I,
+        opts: &Self::Opts,
+    ) -> Result<Self, StoreInitialisationError>;
 }
 
 pub trait StoreEngine<'a> {
-    type Key;
-    type Value;
+    type Key: 'a;
+    type Value: 'a;
     type Error: Into<StoreError>;
 
     fn put(&self, key: Self::Key, value: Self::Value) -> Result<(), Self::Error>;
@@ -83,32 +118,81 @@ pub trait StoreEngine<'a> {
     fn delete(&self, key: Self::Key) -> Result<bool, Self::Error>;
 }
 
-struct ServerStore<'s> {
-    inner: HashMap<String, Weak<PlaneStoreInner<'s>>>,
+pub struct ServerStore {
+    inner: HashMap<String, Weak<PlaneStoreInner>>,
+    opts: StoreEngineOpts,
 }
 
-impl<'s> SwimStore for ServerStore<'s> {
-    type PlaneStore = PlaneStore<'s>;
+impl ServerStore {
+    pub fn new(opts: StoreEngineOpts) -> ServerStore {
+        ServerStore {
+            inner: HashMap::new(),
+            opts,
+        }
+    }
+}
 
-    fn plane_store<I: ToString>(&mut self, address: I) -> Result<Self::PlaneStore, StoreError> {
-        let ServerStore { inner } = self;
-        let address = address.to_string();
+impl SwimStore for ServerStore {
+    type PlaneStore = PlaneStore;
 
-        let result = match inner.get(&address) {
+    fn plane_store<I: ToString>(&mut self, path: I) -> Result<Self::PlaneStore, StoreError> {
+        let ServerStore { inner, opts } = self;
+        let path = path.to_string();
+
+        let store = match inner.get(&path) {
             Some(store) => match store.upgrade() {
-                Some(store) => Ok(store),
-                None => Arc::new(PlaneStoreInner::open(&address)),
+                Some(store) => return Ok(PlaneStore::from_inner(store)),
+                None => Arc::new(PlaneStoreInner::open(&path, opts)?),
             },
-            None => Arc::new(PlaneStoreInner::open(&address)),
+            None => Arc::new(PlaneStoreInner::open(&path, opts)?),
         };
 
-        match result {
-            Ok(store) => {
-                let weak = Arc::downgrade(&store);
-                inner.insert(address, weak);
-                Ok(PlaneStore::from_inner(store))
-            }
-            Err(_) => {}
-        }
+        let weak = Arc::downgrade(&store);
+        inner.insert(path, weak);
+        Ok(PlaneStore::from_inner(store))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::engines::lmdbx::LmdbxOpts;
+    use crate::engines::StoreDelegateConfig;
+    use crate::stores::{StoreKey, ValueStorageKey};
+    use crate::{
+        MapStoreEngineOpts, ServerStore, StoreEngine, StoreEngineOpts, SwimStore,
+        ValueStoreEngineOpts,
+    };
+    use heed::EnvOpenOptions;
+    use rocksdb::Options;
+
+    #[test]
+    fn simple_put_get() {
+        let mut rock_opts = Options::default();
+        rock_opts.create_if_missing(true);
+        rock_opts.create_missing_column_families(true);
+
+        let server_opts = StoreEngineOpts {
+            base_path: "target".into(),
+            map_opts: MapStoreEngineOpts {
+                config: StoreDelegateConfig::Lmdbx(LmdbxOpts {
+                    open_opts: EnvOpenOptions::new(),
+                }),
+            },
+            value_opts: ValueStoreEngineOpts {
+                config: StoreDelegateConfig::Rocksdb(rock_opts),
+            },
+        };
+
+        let mut store = ServerStore::new(server_opts);
+        let plane_store = store.plane_store("unit").unwrap();
+
+        let node_key = StoreKey::Value(ValueStorageKey {
+            node_uri: "node".to_string(),
+            lane_uri: "lane".to_string(),
+        });
+
+        assert!(plane_store.put(&node_key, b"test").is_ok());
+        let value = plane_store.get(&node_key).unwrap().unwrap();
+        println!("{:?}", String::from_utf8(value));
     }
 }

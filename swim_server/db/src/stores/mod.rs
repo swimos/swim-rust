@@ -12,25 +12,43 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::marker::PhantomData;
+pub mod plane;
 
-use serde::Serialize;
+use std::marker::PhantomData;
 
 use crate::engines::StoreDelegate;
 use crate::{Iterable, Snapshot, StoreEngine, StoreError};
 
-pub mod key;
-pub mod plane;
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Debug, PartialOrd, PartialEq)]
+pub enum StoreKey {
+    Map(MapStorageKey),
+    Value(ValueStorageKey),
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialOrd, PartialEq)]
+pub struct MapStorageKey {
+    node_uri: String,
+    lane_uri: String,
+    key: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialOrd, PartialEq)]
+pub struct ValueStorageKey {
+    pub node_uri: String,
+    pub lane_uri: String,
+}
 
 pub struct DatabaseStore<K> {
     delegate: StoreDelegate,
     _key_pd: PhantomData<K>,
 }
 
-impl<K> DatabaseStore<K> {
+impl<'a, K> DatabaseStore<K> {
     pub fn new<D>(delegate: D) -> Self
     where
-        D: for<'a> StoreEngine<'a> + Into<StoreDelegate>,
+        D: StoreEngine<'a> + Into<StoreDelegate>,
     {
         DatabaseStore {
             delegate: delegate.into(),
@@ -43,12 +61,12 @@ impl<K> DatabaseStore<K> {
     }
 }
 
-impl<'i, K: 'i> StoreEngine<'i> for DatabaseStore<K>
+impl<'a, K: 'a> StoreEngine<'a> for DatabaseStore<K>
 where
     K: Serialize,
 {
-    type Key = &'i K;
-    type Value = &'i [u8];
+    type Key = &'a K;
+    type Value = &'a [u8];
     type Error = StoreError;
 
     fn put(&self, key: Self::Key, value: Self::Value) -> Result<(), Self::Error> {
@@ -69,13 +87,13 @@ where
 
 pub struct StoreSnapshot;
 
-impl<'a, V: 'a> Snapshot<'a> for DatabaseStore<V>
+impl<V> Snapshot for DatabaseStore<V>
 where
     V: Send + Sync,
 {
     type Snapshot = StoreSnapshot;
 
-    fn snapshot(&'a self) -> Self::Snapshot {
+    fn snapshot(&self) -> Self::Snapshot {
         unimplemented!()
     }
 }

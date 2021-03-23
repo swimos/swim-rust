@@ -12,58 +12,92 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::stores::key::{MapStorageKey, StoreKey, ValueStorageKey};
-use crate::stores::{DatabaseStore, StoreSnapshot};
+use crate::engines::StoreDelegate;
+use crate::stores::{DatabaseStore, MapStorageKey, StoreKey, StoreSnapshot, ValueStorageKey};
 use crate::{
     Destroy, FromOpts, Snapshot, Store, StoreEngine, StoreEngineOpts, StoreError,
     StoreInitialisationError,
 };
+use std::fmt::{Debug, Formatter};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-pub struct PlaneStoreInner<'l> {
-    map_store: DatabaseStore<MapStorageKey<'l>>,
-    value_store: DatabaseStore<ValueStorageKey<'l>>,
+pub struct PlaneStoreInner {
+    path: PathBuf,
+    map_store: DatabaseStore<MapStorageKey>,
+    value_store: DatabaseStore<ValueStorageKey>,
 }
 
-impl<'l> PlaneStoreInner<'l> {
-    pub(crate) fn open(_addr: &String) -> Result<PlaneStore<'_>, StoreError> {
-        unimplemented!()
+impl Debug for PlaneStoreInner {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PlaneStoreInner")
+            .field("path", &self.path.to_string_lossy().to_string())
+            .finish()
     }
 }
 
-#[derive(Clone)]
-pub struct PlaneStore<'l> {
-    inner: Arc<PlaneStoreInner<'l>>,
+impl PlaneStoreInner {
+    pub(crate) fn open<I: AsRef<Path>>(
+        addr: I,
+        opts: &StoreEngineOpts,
+    ) -> Result<PlaneStoreInner, StoreInitialisationError> {
+        let StoreEngineOpts {
+            map_opts,
+            value_opts,
+            base_path,
+        } = opts;
+
+        let addr = Path::new(base_path).join("store").join("planes").join(addr);
+        let map_path = addr.join("map");
+        let value_path = addr.join("value");
+
+        let map_store = StoreDelegate::from_opts(&map_path, &map_opts.config)?;
+        let value_store = StoreDelegate::from_opts(&value_path, &value_opts.config)?;
+
+        Ok(PlaneStoreInner {
+            path: addr.into(),
+            map_store: DatabaseStore::new(map_store),
+            value_store: DatabaseStore::new(value_store),
+        })
+    }
 }
 
-impl<'l> PlaneStore<'l> {
+#[derive(Clone, Debug)]
+pub struct PlaneStore {
+    inner: Arc<PlaneStoreInner>,
+}
+
+impl PlaneStore {
     pub fn new(
-        map_store: DatabaseStore<MapStorageKey<'l>>,
-        value_store: DatabaseStore<ValueStorageKey<'l>>,
+        path: PathBuf,
+        map_store: DatabaseStore<MapStorageKey>,
+        value_store: DatabaseStore<ValueStorageKey>,
     ) -> Self {
         PlaneStore {
             inner: Arc::new(PlaneStoreInner {
+                path,
                 map_store,
                 value_store,
             }),
         }
     }
 
-    pub fn from_inner(inner: Arc<PlaneStoreInner<'l>>) -> PlaneStore {
+    pub fn from_inner(inner: Arc<PlaneStoreInner>) -> PlaneStore {
         PlaneStore { inner }
     }
 }
 
-impl<'i> StoreEngine<'i> for PlaneStore<'i> {
-    type Key = &'i StoreKey<'i>;
-    type Value = &'i [u8];
+impl<'a> StoreEngine<'a> for PlaneStore {
+    type Key = &'a StoreKey;
+    type Value = &'a [u8];
     type Error = StoreError;
 
     fn put(&self, key: Self::Key, value: Self::Value) -> Result<(), Self::Error> {
         let PlaneStoreInner {
             map_store,
             value_store,
-        } = &self.inner;
+            ..
+        } = &*self.inner;
         match key {
             StoreKey::Map(key) => map_store.put(key, value),
             StoreKey::Value(key) => value_store.put(key, value),
@@ -74,7 +108,8 @@ impl<'i> StoreEngine<'i> for PlaneStore<'i> {
         let PlaneStoreInner {
             map_store,
             value_store,
-        } = &self.inner;
+            ..
+        } = &*self.inner;
         match key {
             StoreKey::Map(key) => map_store.get(key),
             StoreKey::Value(key) => value_store.get(key),
@@ -85,7 +120,8 @@ impl<'i> StoreEngine<'i> for PlaneStore<'i> {
         let PlaneStoreInner {
             map_store,
             value_store,
-        } = &self.inner;
+            ..
+        } = &*self.inner;
         match key {
             StoreKey::Map(key) => map_store.delete(key),
             StoreKey::Value(key) => value_store.delete(key),
@@ -93,28 +129,36 @@ impl<'i> StoreEngine<'i> for PlaneStore<'i> {
     }
 }
 
-impl<'i> Store for PlaneStore<'i> {
-    fn address(&self) -> String {
+impl Store for PlaneStore {
+    fn path(&self) -> String {
         unimplemented!()
     }
 }
 
-impl<'i> FromOpts for PlaneStore<'i> {
-    fn from_opts(_opts: StoreEngineOpts) -> Result<Self, StoreInitialisationError> {
-        unimplemented!()
+impl FromOpts for PlaneStore {
+    type Opts = StoreEngineOpts;
+
+    fn from_opts<I: AsRef<Path>>(
+        path: I,
+        opts: &Self::Opts,
+    ) -> Result<Self, StoreInitialisationError> {
+        let inner = PlaneStoreInner::open(path, opts)?;
+        Ok(PlaneStore {
+            inner: Arc::new(inner),
+        })
     }
 }
 
-impl<'i> Destroy for PlaneStore<'i> {
+impl Destroy for PlaneStore {
     fn destroy(self) {
         unimplemented!()
     }
 }
 
-impl<'i> Snapshot<'i> for PlaneStore<'i> {
+impl Snapshot for PlaneStore {
     type Snapshot = StoreSnapshot;
 
-    fn snapshot(&'i self) -> Self::Snapshot {
+    fn snapshot(&self) -> Self::Snapshot {
         unimplemented!()
     }
 }
@@ -122,9 +166,8 @@ impl<'i> Snapshot<'i> for PlaneStore<'i> {
 #[cfg(test)]
 mod tests {
     use crate::engines::rocks::RocksDatabase;
-    use crate::stores::key::{StoreKey, ValueStorageKey};
     use crate::stores::plane::PlaneStore;
-    use crate::stores::DatabaseStore;
+    use crate::stores::{DatabaseStore, StoreKey, ValueStorageKey};
     use crate::StoreEngine;
     use rocksdb::{Options, DB};
 
@@ -143,7 +186,7 @@ mod tests {
             let value_delegate = RocksDatabase::new(value_db);
             let value_store = DatabaseStore::new(value_delegate);
 
-            let plane_store = PlaneStore::new(map_store, value_store);
+            let plane_store = PlaneStore::new("test".into(), map_store, value_store);
 
             let value_key = StoreKey::Value(ValueStorageKey {
                 node_uri: "/node".into(),

@@ -14,7 +14,7 @@
 
 use crate::engines::StoreDelegate;
 use crate::{
-    Destroy, FromOpts, Iterable, Snapshot, Store, StoreEngine, StoreEngineOpts, StoreError,
+    Destroy, FromOpts, Iterable, Snapshot, Store, StoreEngine, StoreError,
     StoreInitialisationError, SwimStore,
 };
 use heed::types::ByteSlice;
@@ -22,12 +22,15 @@ use heed::{Database, Env, EnvOpenOptions, Error};
 use rocksdb::DBIterator;
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
-use std::marker::PhantomData;
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Weak};
 
-const LMDB_EXT: &str = "mdb";
+impl From<heed::Error> for StoreInitialisationError {
+    fn from(e: Error) -> Self {
+        StoreInitialisationError::Error(e.to_string())
+    }
+}
 
 impl From<heed::Error> for StoreError {
     fn from(e: Error) -> Self {
@@ -38,29 +41,28 @@ impl From<heed::Error> for StoreError {
 struct LmdbxSwimStore {
     databases: HashMap<String, Weak<LmdbxDatabaseInner>>,
     config: EnvOpenOptions,
-    base_path: PathBuf,
 }
 
 pub struct LmdbxDatabaseInner {
-    address: PathBuf,
+    path: PathBuf,
     delegate: Arc<Database<ByteSlice, ByteSlice>>,
     env: Arc<Env>,
 }
 
 impl PartialEq for LmdbxDatabaseInner {
     fn eq(&self, other: &Self) -> bool {
-        self.address.eq(&other.address)
+        self.path.eq(&other.path)
     }
 }
 
 impl LmdbxDatabaseInner {
     pub fn new(
-        address: PathBuf,
+        path: PathBuf,
         delegate: Arc<Database<ByteSlice, ByteSlice>>,
         env: Arc<Env>,
     ) -> Self {
         LmdbxDatabaseInner {
-            address,
+            path,
             delegate,
             env,
         }
@@ -75,7 +77,7 @@ pub struct LmdbxDatabase {
 impl Debug for LmdbxDatabase {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("LmdbxDatabase")
-            .field("path", &self.inner.address)
+            .field("path", &self.inner.path)
             .finish()
     }
 }
@@ -88,19 +90,19 @@ impl From<LmdbxDatabase> for StoreDelegate {
 
 impl LmdbxDatabase {
     pub fn new(
-        address: PathBuf,
+        path: PathBuf,
         delegate: Arc<Database<ByteSlice, ByteSlice>>,
         env: Arc<Env>,
     ) -> Self {
         LmdbxDatabase {
-            inner: Arc::new(LmdbxDatabaseInner::new(address, delegate, env)),
+            inner: Arc::new(LmdbxDatabaseInner::new(path, delegate, env)),
         }
     }
 
-    fn from_raw(address: PathBuf, delegate: Database<ByteSlice, ByteSlice>, env: Env) -> Self {
+    fn from_raw(path: PathBuf, delegate: Database<ByteSlice, ByteSlice>, env: Env) -> Self {
         LmdbxDatabase {
             inner: Arc::new(LmdbxDatabaseInner::new(
-                address,
+                path,
                 Arc::new(delegate),
                 Arc::new(env),
             )),
@@ -112,13 +114,15 @@ impl LmdbxDatabase {
     }
 
     fn init<P: AsRef<Path>>(
-        base_path: P,
-        address: &String,
+        // base_path: B,
+        path: P,
         config: &EnvOpenOptions,
-    ) -> Result<Self, StoreError> {
-        let path = Path::new(base_path.as_ref().into()).join(format!("{}.{}", address, LMDB_EXT));
+    ) -> Result<Self, StoreInitialisationError> {
+        let path = path.as_ref().to_owned();
+
         if !path.exists() {
-            std::fs::create_dir_all(path.deref()).map_err(|e| StoreError::Error(e.to_string()))?;
+            std::fs::create_dir_all(&path)
+                .map_err(|e| StoreInitialisationError::Error(e.to_string()))?;
         }
 
         let env = config.open(path.deref())?;
@@ -131,64 +135,79 @@ impl LmdbxDatabase {
 impl SwimStore for LmdbxSwimStore {
     type PlaneStore = LmdbxDatabase;
 
-    fn plane_store<I: ToString>(&mut self, address: I) -> Result<Self::PlaneStore, StoreError> {
-        let address = address.to_string();
+    fn plane_store<I: ToString>(&mut self, path: I) -> Result<Self::PlaneStore, StoreError> {
+        let path = path.to_string();
         let LmdbxSwimStore {
             databases,
             config,
-            base_path,
+            // base_path,
         } = self;
 
-        let result = match databases.get(&address) {
+        let result = match databases.get(&path) {
             Some(weak) => match weak.upgrade() {
                 Some(db) => Ok(LmdbxDatabase::from_inner(db)),
-                None => LmdbxDatabase::init(base_path.deref(), &address, config),
+                None => LmdbxDatabase::init(&path, config),
             },
-            None => LmdbxDatabase::init(base_path.deref(), &address, config),
+            None => LmdbxDatabase::init(&path, config),
         };
 
         match result {
             Ok(db) => {
                 let weak = Arc::downgrade(&db.inner);
-                databases.insert(address, weak);
+                databases.insert(path, weak);
 
                 Ok(db)
             }
-            Err(e) => Err(e),
+            Err(e) => Err(e.into()),
         }
     }
 }
 
 impl Store for LmdbxDatabase {
-    fn address(&self) -> String {
-        self.inner.address.to_string_lossy().to_string()
+    fn path(&self) -> String {
+        self.inner.path.to_string_lossy().to_string()
     }
 }
 
 impl Destroy for LmdbxDatabase {
     fn destroy(self) {
-        let _ = std::fs::remove_file(&self.inner.address);
+        let _ = std::fs::remove_file(&self.inner.path);
     }
 }
 
 impl FromOpts for LmdbxDatabase {
-    fn from_opts(_opts: StoreEngineOpts) -> Result<Self, StoreInitialisationError> {
+    type Opts = LmdbxOpts;
+
+    fn from_opts<I: AsRef<Path>>(
+        path: I,
+        opts: &Self::Opts,
+    ) -> Result<Self, StoreInitialisationError> {
+        let LmdbxOpts {
+            // base_path,
+            open_opts,
+        } = opts;
+
+        LmdbxDatabase::init(path, open_opts)
+    }
+}
+
+#[derive(Clone)]
+pub struct LmdbxOpts {
+    pub open_opts: EnvOpenOptions,
+}
+
+pub struct LmdbxSnapshot;
+
+impl Snapshot for LmdbxDatabase {
+    type Snapshot = LmdbxSnapshot;
+
+    fn snapshot(&self) -> Self::Snapshot {
         unimplemented!()
     }
 }
 
-pub struct LmdbxSnapshot<'a>(PhantomData<&'a ()>);
-
-impl<'a> Snapshot<'a> for LmdbxDatabase {
-    type Snapshot = LmdbxSnapshot<'a>;
-
-    fn snapshot(&'a self) -> Self::Snapshot {
-        unimplemented!()
-    }
-}
-
-impl<'a> Iterable for LmdbxSnapshot<'a> {
-    type Iterator = DBIterator<'a>;
+impl Iterable for LmdbxSnapshot {
+    type Iterator = DBIterator<'static>;
 }
 
 impl<'a> StoreEngine<'a> for LmdbxDatabase {
@@ -260,10 +279,10 @@ mod tests {
         let mut swim_store = LmdbxSwimStore {
             databases: Default::default(),
             config: EnvOpenOptions::new(),
-            base_path: "target".into(),
+            // base_path: "target".into(),
         };
 
         let plane_store = swim_store.plane_store("unit2").unwrap();
-        let _address = plane_store.address();
+        let _path = plane_store.path();
     }
 }

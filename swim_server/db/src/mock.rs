@@ -13,22 +13,23 @@
 // limitations under the License.
 
 use crate::{
-    Destroy, FromOpts, Iterable, Snapshot, Store, StoreEngine, StoreEngineOpts, StoreError,
+    Destroy, FromOpts, Iterable, Snapshot, Store, StoreEngine, StoreError,
     StoreInitialisationError, SwimStore,
 };
+use std::path::Path;
 
 struct TestStore;
 impl SwimStore for TestStore {
     type PlaneStore = TestPlaneStore;
 
-    fn plane_store<I>(&mut self, _address: I) -> Result<Self::PlaneStore, StoreError> {
+    fn plane_store<I>(&mut self, _path: I) -> Result<Self::PlaneStore, StoreError> {
         unimplemented!()
     }
 }
 
 struct TestPlaneStore;
 impl Store for TestPlaneStore {
-    fn address(&self) -> String {
+    fn path(&self) -> String {
         unimplemented!()
     }
 }
@@ -40,15 +41,20 @@ impl Destroy for TestPlaneStore {
 }
 
 impl FromOpts for TestPlaneStore {
-    fn from_opts(_opts: StoreEngineOpts) -> Result<Self, StoreInitialisationError> {
+    type Opts = ();
+
+    fn from_opts<I: AsRef<Path>>(
+        _path: I,
+        _opts: &Self::Opts,
+    ) -> Result<Self, StoreInitialisationError> {
         unimplemented!()
     }
 }
 
-impl<'a> Snapshot<'a> for TestPlaneStore {
+impl Snapshot for TestPlaneStore {
     type Snapshot = TestSnapshot;
 
-    fn snapshot(&'a self) -> Self::Snapshot {
+    fn snapshot(&self) -> Self::Snapshot {
         unimplemented!()
     }
 }

@@ -14,12 +14,10 @@
 
 use crate::engines::StoreDelegate;
 use crate::{
-    Destroy, FromOpts, Iterable, Snapshot, Store, StoreEngine, StoreEngineOpts, StoreError,
-    StoreInitialisationError, SwimStore,
+    Destroy, FromOpts, Iterable, Snapshot, Store, StoreEngine, StoreError, StoreInitialisationError,
 };
-use parking_lot::RwLock;
 use rocksdb::{DBIterator, Error, Options, Snapshot as DBSnapshot, DB};
-use std::path::PathBuf;
+use std::path::Path;
 use std::sync::Arc;
 
 impl From<rocksdb::Error> for StoreError {
@@ -28,33 +26,15 @@ impl From<rocksdb::Error> for StoreError {
     }
 }
 
-struct RocksSwimStore {
-    database: RocksDatabase,
-    config: Options,
-    base_path: PathBuf,
-}
-
-impl RocksSwimStore {
-    pub fn new(base_path: PathBuf, database: DB) -> RocksSwimStore {
-        RocksSwimStore {
-            base_path,
-            database: RocksDatabase::new(database),
-            config: Options::default(),
-        }
-    }
-}
-
 #[derive(Clone)]
 pub struct RocksDatabase {
-    // todo: this can be removed if we know all of the possible planes that will exist in the
-    //  lifetime of the server
-    delegate: Arc<RwLock<DB>>,
+    delegate: Arc<DB>,
 }
 
 impl RocksDatabase {
     pub fn new(delegate: DB) -> RocksDatabase {
         RocksDatabase {
-            delegate: Arc::new(RwLock::new(delegate)),
+            delegate: Arc::new(delegate),
         }
     }
 }
@@ -65,25 +45,6 @@ impl From<RocksDatabase> for StoreDelegate {
     }
 }
 
-impl SwimStore for RocksSwimStore {
-    type PlaneStore = RocksDatabase;
-
-    fn plane_store<I: ToString>(&mut self, address: I) -> Result<Self::PlaneStore, StoreError> {
-        let address = address.to_string();
-        let RocksSwimStore {
-            database, config, ..
-        } = self;
-
-        let mut db = database.delegate.write();
-
-        if db.cf_handle(address.as_str()).is_none() {
-            db.create_cf(address, config)?;
-        }
-
-        Ok(database.clone())
-    }
-}
-
 impl<'a> StoreEngine<'a> for RocksDatabase {
     type Key = &'a [u8];
     type Value = &'a [u8];
@@ -91,42 +52,36 @@ impl<'a> StoreEngine<'a> for RocksDatabase {
 
     fn put(&self, key: Self::Key, value: Self::Value) -> Result<(), Self::Error> {
         let RocksDatabase { delegate, .. } = self;
-        let db = &*delegate.read();
-
-        db.put(key, value)
+        delegate.put(key, value)
     }
 
     fn get(&self, key: Self::Key) -> Result<Option<Vec<u8>>, Self::Error> {
         let RocksDatabase { delegate, .. } = self;
-        let db = &*delegate.read();
-
-        db.get(key)
+        delegate.get(key)
     }
 
     fn delete(&self, key: Self::Key) -> Result<bool, Self::Error> {
         let RocksDatabase { delegate, .. } = self;
-        let db = &*delegate.read();
-
-        db.delete(key).map(|_| true)
+        delegate.delete(key).map(|_| true)
     }
 }
 
 impl Store for RocksDatabase {
-    fn address(&self) -> String {
-        self.delegate.read().path().to_string_lossy().to_string()
+    fn path(&self) -> String {
+        self.delegate.path().to_string_lossy().to_string()
     }
 }
 
 impl Destroy for RocksDatabase {
     fn destroy(self) {
-        let _ = DB::destroy(&Options::default(), self.delegate.read().path());
+        let _ = DB::destroy(&Options::default(), self.delegate.path());
     }
 }
 
-impl<'a> Snapshot<'a> for RocksDatabase {
-    type Snapshot = DBSnapshot<'a>;
+impl Snapshot for RocksDatabase {
+    type Snapshot = DBSnapshot<'static>;
 
-    fn snapshot(&'a self) -> Self::Snapshot {
+    fn snapshot(&self) -> Self::Snapshot {
         unimplemented!()
     }
 }
@@ -136,8 +91,20 @@ impl<'a> Iterable for DBSnapshot<'a> {
 }
 
 impl FromOpts for RocksDatabase {
-    fn from_opts(_opts: StoreEngineOpts) -> Result<Self, StoreInitialisationError> {
-        unimplemented!()
+    type Opts = Options;
+
+    fn from_opts<I: AsRef<Path>>(
+        path: I,
+        opts: &Self::Opts,
+    ) -> Result<Self, StoreInitialisationError> {
+        let db = DB::open(opts, path)?;
+        Ok(RocksDatabase::new(db))
+    }
+}
+
+impl From<rocksdb::Error> for StoreInitialisationError {
+    fn from(e: Error) -> Self {
+        StoreInitialisationError::Error(e.to_string())
     }
 }
 

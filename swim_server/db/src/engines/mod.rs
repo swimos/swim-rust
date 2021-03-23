@@ -12,9 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::engines::lmdbx::LmdbxDatabase;
+use crate::engines::lmdbx::{LmdbxDatabase, LmdbxOpts};
 use crate::engines::rocks::RocksDatabase;
-use crate::{StoreEngine, StoreError};
+use crate::{FromOpts, StoreEngine, StoreError, StoreInitialisationError};
+use std::fmt::{Debug, Formatter};
+use std::path::Path;
 
 #[cfg(feature = "libmdbx")]
 pub mod lmdbx;
@@ -26,6 +28,38 @@ pub enum StoreDelegate {
     Lmdbx(LmdbxDatabase),
     #[cfg(feature = "rocks-db")]
     Rocksdb(RocksDatabase),
+}
+
+impl FromOpts for StoreDelegate {
+    type Opts = StoreDelegateConfig;
+
+    fn from_opts<I: AsRef<Path>>(
+        path: I,
+        opts: &Self::Opts,
+    ) -> Result<Self, StoreInitialisationError> {
+        match opts {
+            StoreDelegateConfig::Lmdbx(opts) => {
+                LmdbxDatabase::from_opts(path, opts).map(StoreDelegate::Lmdbx)
+            }
+            StoreDelegateConfig::Rocksdb(opts) => {
+                RocksDatabase::from_opts(path, opts).map(StoreDelegate::Rocksdb)
+            }
+        }
+    }
+}
+
+#[derive(Clone)]
+pub enum StoreDelegateConfig {
+    #[cfg(feature = "libmdbx")]
+    Lmdbx(LmdbxOpts),
+    #[cfg(feature = "rocks-db")]
+    Rocksdb(rocksdb::Options),
+}
+
+impl Debug for StoreDelegateConfig {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("StoreDelegateConfig").finish()
+    }
 }
 
 macro_rules! gated_arm {
