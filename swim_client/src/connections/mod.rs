@@ -32,12 +32,8 @@ use tokio_tungstenite::tungstenite;
 use tracing::{instrument, trace};
 use url::Host;
 
-use swim_common::request::request_future::RequestError;
-
 use crate::configuration::router::ConnectionPoolParams;
-
-#[cfg(feature = "websocket")]
-pub mod factory;
+use swim_common::request::request_future::RequestError;
 
 #[cfg(test)]
 mod tests;

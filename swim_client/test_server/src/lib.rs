@@ -27,7 +27,7 @@ use swim_server::plane::spec::PlaneBuilder;
 use swim_server::RoutePattern;
 
 pub async fn build_server() -> (SwimServer, ServerHandle) {
-    let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 9001);
+    let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 0);
     let mut plane_builder = PlaneBuilder::new();
 
     plane_builder

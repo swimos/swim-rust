@@ -12,14 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::routing::ws::{CloseReason, JoinedStreamSink, WsConnections, WsMessage};
+use crate::routing::{
+    CloseError, ConnectionError, HttpError, HttpErrorKind, ResolutionError, ResolutionErrorKind,
+};
 use crate::routing_server::error::RouterError;
 use crate::routing_server::remote::net::{ExternalConnections, Listener};
 use crate::routing_server::remote::table::HostAndPort;
 use crate::routing_server::remote::ConnectionDropped;
-use crate::routing_server::ws::{CloseReason, JoinedStreamSink, WsConnections, WsMessage};
-use crate::routing_server::{
-    CloseError, ConnectionError, HttpError, HttpErrorKind, ResolutionError, ResolutionErrorKind,
-};
 use crate::routing_server::{
     Route, RoutingAddr, ServerRouter, ServerRouterFactory, TaggedEnvelope, TaggedSender,
 };
@@ -193,7 +193,7 @@ impl ServerRouterFactory for LocalRoutes {
 
 pub mod fake_channel {
 
-    use crate::routing_server::ws::{CloseReason, JoinedStreamSink};
+    use crate::routing::ws::{CloseReason, JoinedStreamSink};
     use futures::channel::mpsc;
     use futures::future::ready;
     use futures::future::BoxFuture;

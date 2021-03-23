@@ -12,17 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::routing::error::{RouterError, Unresolvable};
-use crate::routing::remote::router::RemoteRouter;
-use crate::routing::remote::test_fixture::LocalRoutes;
-use crate::routing::remote::{RawRoute, RoutingRequest};
-use crate::routing::{Route, RoutingAddr, ServerRouter, TaggedEnvelope};
+use crate::model::Value;
+use crate::routing::{ConnectionError, IoError, ResolutionError};
+use crate::routing_server::error::{RouterError, Unresolvable};
+use crate::routing_server::remote::router::RemoteRouter;
+use crate::routing_server::remote::test_fixture::LocalRoutes;
+use crate::routing_server::remote::{RawRoute, RoutingRequest};
+use crate::routing_server::{Route, RoutingAddr, ServerRouter, TaggedEnvelope};
+use crate::warp::envelope::Envelope;
 use futures::future::join;
 use futures::io::ErrorKind;
 use futures::{FutureExt, StreamExt};
-use swim_common::model::Value;
-use swim_common::routing::{ConnectionError, IoError, ResolutionError};
-use swim_common::warp::envelope::Envelope;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;

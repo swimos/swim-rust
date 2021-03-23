@@ -12,16 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::routing::remote::config::ConnectionConfig;
-use crate::routing::remote::state::{
+use crate::request::Request;
+use crate::routing::{ConnectionError, IoError};
+use crate::routing_server::remote::config::ConnectionConfig;
+use crate::routing_server::remote::state::{
     DeferredResult, Event, RemoteConnectionChannels, RemoteConnections, RemoteTasksState, State,
 };
-use crate::routing::remote::table::HostAndPort;
-use crate::routing::remote::test_fixture::{
+use crate::routing_server::remote::table::HostAndPort;
+use crate::routing_server::remote::test_fixture::{
     FakeConnections, FakeListener, FakeSocket, FakeWebsocket, FakeWebsockets, LocalRoutes,
 };
-use crate::routing::remote::ConnectionDropped;
-use crate::routing::RoutingAddr;
+use crate::routing_server::remote::ConnectionDropped;
+use crate::routing_server::RoutingAddr;
 use futures::future::BoxFuture;
 use futures::io::ErrorKind;
 use std::collections::HashMap;
@@ -29,8 +31,6 @@ use std::io;
 use std::net::SocketAddr;
 use std::num::NonZeroUsize;
 use std::time::Duration;
-use swim_common::request::Request;
-use swim_common::routing::{ConnectionError, IoError};
 use swim_runtime::time::timeout::timeout;
 use tokio::sync::{mpsc, oneshot};
 use utilities::future::open_ended::OpenEndedFutures;

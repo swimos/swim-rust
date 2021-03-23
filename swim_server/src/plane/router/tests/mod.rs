@@ -14,14 +14,12 @@
 
 use crate::plane::router::{PlaneRouter, PlaneRouterFactory};
 use crate::plane::PlaneRequest;
-use crate::routing::error::{RouterError, Unresolvable};
-use crate::routing::remote::RawRoute;
-use crate::routing::{
-    RoutingAddr, ServerRouter, ServerRouterFactory, TaggedEnvelope, TopLevelRouter,
-    TopLevelRouterFactory,
-};
+use crate::routing::{TopLevelRouter, TopLevelRouterFactory};
 use futures::future::join;
 use swim_common::routing::{ConnectionError, ProtocolError, ResolutionErrorKind};
+use swim_common::routing_server::error::{RouterError, Unresolvable};
+use swim_common::routing_server::remote::RawRoute;
+use swim_common::routing_server::{RoutingAddr, ServerRouter, ServerRouterFactory, TaggedEnvelope};
 use swim_common::warp::envelope::Envelope;
 use tokio::sync::mpsc;
 use url::Url;

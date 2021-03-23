@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::routing::remote::pending::PendingRequests;
-use crate::routing::remote::table::HostAndPort;
-use crate::routing::RoutingAddr;
+use crate::request::Request;
+use crate::routing::{CloseError, CloseErrorKind, ConnectionError};
+use crate::routing_server::remote::pending::PendingRequests;
+use crate::routing_server::remote::table::HostAndPort;
+use crate::routing_server::RoutingAddr;
 use futures::future::join;
-use swim_common::request::Request;
-use swim_common::routing::{CloseError, CloseErrorKind, ConnectionError};
 use tokio::sync::oneshot;
 
 #[tokio::test]

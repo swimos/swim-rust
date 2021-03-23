@@ -18,10 +18,6 @@ use crate::agent::lane::model::value::ValueLane;
 use crate::agent::{agent_lifecycle, map_lifecycle, value_lifecycle, SwimAgent, TestClock};
 use crate::meta::info::{LaneInfo, LaneKind};
 use crate::plane::provider::AgentProvider;
-use crate::routing::error::RouterError;
-use crate::routing::{
-    ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedEnvelope, TaggedSender,
-};
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use std::collections::{HashMap, HashSet};
@@ -31,6 +27,10 @@ use std::sync::Arc;
 use swim_common::form::{Form, FormErr};
 use swim_common::record;
 use swim_common::routing::ResolutionError;
+use swim_common::routing_server::error::RouterError;
+use swim_common::routing_server::{
+    ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedEnvelope, TaggedSender,
+};
 use swim_common::warp::envelope::Envelope;
 use swim_runtime::time::timeout;
 use tokio::sync::mpsc;

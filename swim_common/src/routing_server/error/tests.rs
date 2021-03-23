@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::routing::error::{RouterError, Unresolvable};
-use crate::routing::RoutingAddr;
-use swim_common::routing::{CloseError, CloseErrorKind, ConnectionError, ResolutionError};
+use crate::routing::{CloseError, CloseErrorKind, ConnectionError, ResolutionError};
+use crate::routing_server::error::{RouterError, Unresolvable};
+use crate::routing_server::RoutingAddr;
 use utilities::uri::RelativeUri;
 
 #[test]

@@ -151,7 +151,7 @@ mod tests {
         tokio::spawn(server.run());
         let port = handle.address().await.unwrap().port();
 
-        let host = format!("ws://127.0.0.1:9001");
+        let host = format!("ws://127.0.0.1:{}", port);
         let mut client = SwimClientBuilder::build_with_default().await;
 
         let event_path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "/unit/foo", "info");
