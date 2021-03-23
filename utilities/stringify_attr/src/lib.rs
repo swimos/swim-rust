@@ -116,7 +116,7 @@
 //! ```
 //!
 //! ## Syntax
-//! ```compile_fail
+//! ```text
 //! # [ stringify | stringify_raw ]
 //!
 //! stringify:
