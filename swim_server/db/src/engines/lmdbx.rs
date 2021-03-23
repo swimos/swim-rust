@@ -14,17 +14,15 @@
 
 use crate::engines::StoreDelegate;
 use crate::{
-    Destroy, FromOpts, Iterable, Snapshot, Store, StoreEngine, StoreError,
-    StoreInitialisationError, SwimStore,
+    Destroy, FromOpts, Iterable, Snapshot, Store, StoreEngine, StoreError, StoreInitialisationError,
 };
 use heed::types::ByteSlice;
 use heed::{Database, Env, EnvOpenOptions, Error};
 use rocksdb::DBIterator;
-use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Weak};
+use std::sync::Arc;
 
 impl From<heed::Error> for StoreInitialisationError {
     fn from(e: Error) -> Self {
@@ -36,11 +34,6 @@ impl From<heed::Error> for StoreError {
     fn from(e: Error) -> Self {
         StoreError::Error(e.to_string())
     }
-}
-
-struct LmdbxSwimStore {
-    databases: HashMap<String, Weak<LmdbxDatabaseInner>>,
-    config: EnvOpenOptions,
 }
 
 pub struct LmdbxDatabaseInner {
@@ -114,7 +107,6 @@ impl LmdbxDatabase {
     }
 
     fn init<P: AsRef<Path>>(
-        // base_path: B,
         path: P,
         config: &EnvOpenOptions,
     ) -> Result<Self, StoreInitialisationError> {
@@ -129,37 +121,6 @@ impl LmdbxDatabase {
         let db = env.create_database(None)?;
 
         Ok(LmdbxDatabase::from_raw(path, db, env))
-    }
-}
-
-impl SwimStore for LmdbxSwimStore {
-    type PlaneStore = LmdbxDatabase;
-
-    fn plane_store<I: ToString>(&mut self, path: I) -> Result<Self::PlaneStore, StoreError> {
-        let path = path.to_string();
-        let LmdbxSwimStore {
-            databases,
-            config,
-            // base_path,
-        } = self;
-
-        let result = match databases.get(&path) {
-            Some(weak) => match weak.upgrade() {
-                Some(db) => Ok(LmdbxDatabase::from_inner(db)),
-                None => LmdbxDatabase::init(&path, config),
-            },
-            None => LmdbxDatabase::init(&path, config),
-        };
-
-        match result {
-            Ok(db) => {
-                let weak = Arc::downgrade(&db.inner);
-                databases.insert(path, weak);
-
-                Ok(db)
-            }
-            Err(e) => Err(e.into()),
-        }
     }
 }
 
@@ -182,10 +143,7 @@ impl FromOpts for LmdbxDatabase {
         path: I,
         opts: &Self::Opts,
     ) -> Result<Self, StoreInitialisationError> {
-        let LmdbxOpts {
-            // base_path,
-            open_opts,
-        } = opts;
+        let LmdbxOpts { open_opts } = opts;
 
         LmdbxDatabase::init(path, open_opts)
     }
@@ -198,10 +156,10 @@ pub struct LmdbxOpts {
 
 pub struct LmdbxSnapshot;
 
-impl Snapshot for LmdbxDatabase {
+impl<'a> Snapshot<'a> for LmdbxDatabase {
     type Snapshot = LmdbxSnapshot;
 
-    fn snapshot(&self) -> Self::Snapshot {
+    fn snapshot(&'a self) -> Self::Snapshot {
         unimplemented!()
     }
 }
@@ -242,8 +200,8 @@ impl<'a> StoreEngine<'a> for LmdbxDatabase {
 
 #[cfg(test)]
 mod tests {
-    use crate::engines::lmdbx::{LmdbxDatabase, LmdbxSwimStore};
-    use crate::{Store, StoreEngine, SwimStore};
+    use crate::engines::lmdbx::LmdbxDatabase;
+    use crate::StoreEngine;
     use heed::types::UnalignedSlice;
     use heed::{Database, EnvOpenOptions};
     use std::fs;
@@ -272,17 +230,5 @@ mod tests {
 
         assert!(lm.delete(b"b").is_ok());
         assert_eq!(lm.get(b"b").unwrap(), None);
-    }
-
-    #[test]
-    fn store() {
-        let mut swim_store = LmdbxSwimStore {
-            databases: Default::default(),
-            config: EnvOpenOptions::new(),
-            // base_path: "target".into(),
-        };
-
-        let plane_store = swim_store.plane_store("unit2").unwrap();
-        let _path = plane_store.path();
     }
 }

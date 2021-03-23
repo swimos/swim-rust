@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use crate::engines::StoreDelegate;
+use crate::stores::node::{NodeStore, SwimNodeStore};
 use crate::stores::{DatabaseStore, MapStorageKey, StoreKey, StoreSnapshot, ValueStorageKey};
 use crate::{
     Destroy, FromOpts, Snapshot, Store, StoreEngine, StoreEngineOpts, StoreError,
@@ -21,6 +22,11 @@ use crate::{
 use std::fmt::{Debug, Formatter};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+
+const STORE_DIR: &str = "store";
+const PLANES_DIR: &str = "planes";
+const MAP_DIR: &str = "map";
+const VALUE_DIR: &str = "value";
 
 pub struct PlaneStoreInner {
     path: PathBuf,
@@ -36,6 +42,25 @@ impl Debug for PlaneStoreInner {
     }
 }
 
+fn paths_for<I: AsRef<Path> + ?Sized>(base_path: &PathBuf, plane_name: &I) -> (PathBuf, PathBuf) {
+    let addr = Path::new(base_path)
+        .join(STORE_DIR)
+        .join(PLANES_DIR)
+        .join(plane_name);
+    let map_path = addr.join(MAP_DIR);
+    let value_path = addr.join(VALUE_DIR);
+
+    (map_path, value_path)
+}
+
+pub trait PlaneStore<'a> {
+    type NodeStore: NodeStore<'a>;
+
+    fn node_store<I>(&mut self, node: I) -> Result<Self::NodeStore, StoreError>
+    where
+        I: ToString;
+}
+
 impl PlaneStoreInner {
     pub(crate) fn open<I: AsRef<Path>>(
         addr: I,
@@ -47,15 +72,12 @@ impl PlaneStoreInner {
             base_path,
         } = opts;
 
-        let addr = Path::new(base_path).join("store").join("planes").join(addr);
-        let map_path = addr.join("map");
-        let value_path = addr.join("value");
-
+        let (map_path, value_path) = paths_for(base_path, addr.as_ref());
         let map_store = StoreDelegate::from_opts(&map_path, &map_opts.config)?;
         let value_store = StoreDelegate::from_opts(&value_path, &value_opts.config)?;
 
         Ok(PlaneStoreInner {
-            path: addr.into(),
+            path: addr.as_ref().into(),
             map_store: DatabaseStore::new(map_store),
             value_store: DatabaseStore::new(value_store),
         })
@@ -63,17 +85,28 @@ impl PlaneStoreInner {
 }
 
 #[derive(Clone, Debug)]
-pub struct PlaneStore {
+pub struct SwimPlaneStore {
     inner: Arc<PlaneStoreInner>,
 }
 
-impl PlaneStore {
+impl<'a> PlaneStore<'a> for SwimPlaneStore {
+    type NodeStore = SwimNodeStore<Self>;
+
+    fn node_store<I>(&mut self, _node: I) -> Result<Self::NodeStore, StoreError>
+    where
+        I: ToString,
+    {
+        unimplemented!()
+    }
+}
+
+impl SwimPlaneStore {
     pub fn new(
         path: PathBuf,
         map_store: DatabaseStore<MapStorageKey>,
         value_store: DatabaseStore<ValueStorageKey>,
     ) -> Self {
-        PlaneStore {
+        SwimPlaneStore {
             inner: Arc::new(PlaneStoreInner {
                 path,
                 map_store,
@@ -82,12 +115,12 @@ impl PlaneStore {
         }
     }
 
-    pub fn from_inner(inner: Arc<PlaneStoreInner>) -> PlaneStore {
-        PlaneStore { inner }
+    pub fn from_inner(inner: Arc<PlaneStoreInner>) -> SwimPlaneStore {
+        SwimPlaneStore { inner }
     }
 }
 
-impl<'a> StoreEngine<'a> for PlaneStore {
+impl<'a> StoreEngine<'a> for SwimPlaneStore {
     type Key = &'a StoreKey;
     type Value = &'a [u8];
     type Error = StoreError;
@@ -129,13 +162,13 @@ impl<'a> StoreEngine<'a> for PlaneStore {
     }
 }
 
-impl Store for PlaneStore {
+impl Store for SwimPlaneStore {
     fn path(&self) -> String {
         unimplemented!()
     }
 }
 
-impl FromOpts for PlaneStore {
+impl FromOpts for SwimPlaneStore {
     type Opts = StoreEngineOpts;
 
     fn from_opts<I: AsRef<Path>>(
@@ -143,22 +176,22 @@ impl FromOpts for PlaneStore {
         opts: &Self::Opts,
     ) -> Result<Self, StoreInitialisationError> {
         let inner = PlaneStoreInner::open(path, opts)?;
-        Ok(PlaneStore {
+        Ok(SwimPlaneStore {
             inner: Arc::new(inner),
         })
     }
 }
 
-impl Destroy for PlaneStore {
+impl Destroy for SwimPlaneStore {
     fn destroy(self) {
         unimplemented!()
     }
 }
 
-impl Snapshot for PlaneStore {
-    type Snapshot = StoreSnapshot;
+impl<'a> Snapshot<'a> for SwimPlaneStore {
+    type Snapshot = StoreSnapshot<'a>;
 
-    fn snapshot(&self) -> Self::Snapshot {
+    fn snapshot(&'a self) -> Self::Snapshot {
         unimplemented!()
     }
 }
@@ -166,7 +199,7 @@ impl Snapshot for PlaneStore {
 #[cfg(test)]
 mod tests {
     use crate::engines::rocks::RocksDatabase;
-    use crate::stores::plane::PlaneStore;
+    use crate::stores::plane::SwimPlaneStore;
     use crate::stores::{DatabaseStore, StoreKey, ValueStorageKey};
     use crate::StoreEngine;
     use rocksdb::{Options, DB};
@@ -186,7 +219,7 @@ mod tests {
             let value_delegate = RocksDatabase::new(value_db);
             let value_store = DatabaseStore::new(value_delegate);
 
-            let plane_store = PlaneStore::new("test".into(), map_store, value_store);
+            let plane_store = SwimPlaneStore::new("test".into(), map_store, value_store);
 
             let value_key = StoreKey::Value(ValueStorageKey {
                 node_uri: "/node".into(),

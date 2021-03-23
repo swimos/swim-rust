@@ -13,15 +13,14 @@
 // limitations under the License.
 
 use crate::engines::StoreDelegateConfig;
-use crate::stores::plane::{PlaneStore, PlaneStoreInner};
+use crate::stores::plane::{PlaneStore, PlaneStoreInner, SwimPlaneStore};
 use bincode::Error;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Weak};
 
 pub mod engines;
-pub mod factory;
-pub mod mock;
+// pub mod mock;
 pub mod stores;
 
 #[derive(Debug)]
@@ -66,17 +65,16 @@ pub enum StoreInitialisationError {
 pub enum SnapshotError {}
 
 pub trait SwimStore {
-    type PlaneStore: Store;
+    type PlaneStore: for<'a> PlaneStore<'a>;
 
-    // todo replace I with AsRef<Path>?
-    fn plane_store<I: ToString>(&mut self, path: I) -> Result<Self::PlaneStore, StoreError>;
+    fn plane_store<I>(&mut self, path: I) -> Result<Self::PlaneStore, StoreError>
+    where
+        I: ToString;
 }
 
-pub trait Store: for<'a> StoreEngine<'a> + FromOpts + Snapshot + Send + Sync + Destroy {
-    // type Opts: From<>
-    //
-    // fn from_opts(Self::Opts)->Result<Self, StoreInitialisationError>;
-
+pub trait Store:
+    for<'a> StoreEngine<'a> + FromOpts + for<'a> Snapshot<'a> + Send + Sync + Destroy + 'static
+{
     fn path(&self) -> String;
 }
 
@@ -84,13 +82,13 @@ pub trait Destroy {
     fn destroy(self);
 }
 
-pub trait Snapshot
+pub trait Snapshot<'a>
 where
     Self: Send + Sync + Sized,
 {
     type Snapshot: Iterable;
 
-    fn snapshot(&self) -> Self::Snapshot;
+    fn snapshot(&'a self) -> Self::Snapshot;
 }
 
 pub trait Iterable {
@@ -119,37 +117,37 @@ pub trait StoreEngine<'a> {
 }
 
 pub struct ServerStore {
-    inner: HashMap<String, Weak<PlaneStoreInner>>,
+    refs: HashMap<String, Weak<PlaneStoreInner>>,
     opts: StoreEngineOpts,
 }
 
 impl ServerStore {
     pub fn new(opts: StoreEngineOpts) -> ServerStore {
         ServerStore {
-            inner: HashMap::new(),
+            refs: HashMap::new(),
             opts,
         }
     }
 }
 
 impl SwimStore for ServerStore {
-    type PlaneStore = PlaneStore;
+    type PlaneStore = SwimPlaneStore;
 
     fn plane_store<I: ToString>(&mut self, path: I) -> Result<Self::PlaneStore, StoreError> {
-        let ServerStore { inner, opts } = self;
+        let ServerStore { refs, opts } = self;
         let path = path.to_string();
 
-        let store = match inner.get(&path) {
+        let store = match refs.get(&path) {
             Some(store) => match store.upgrade() {
-                Some(store) => return Ok(PlaneStore::from_inner(store)),
+                Some(store) => return Ok(SwimPlaneStore::from_inner(store)),
                 None => Arc::new(PlaneStoreInner::open(&path, opts)?),
             },
             None => Arc::new(PlaneStoreInner::open(&path, opts)?),
         };
 
         let weak = Arc::downgrade(&store);
-        inner.insert(path, weak);
-        Ok(PlaneStore::from_inner(store))
+        refs.insert(path, weak);
+        Ok(SwimPlaneStore::from_inner(store))
     }
 }
 

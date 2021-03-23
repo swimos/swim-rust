@@ -51,10 +51,10 @@ impl FromOpts for TestPlaneStore {
     }
 }
 
-impl Snapshot for TestPlaneStore {
+impl<'a> Snapshot<'a> for TestPlaneStore {
     type Snapshot = TestSnapshot;
 
-    fn snapshot(&self) -> Self::Snapshot {
+    fn snapshot(&'a self) -> Self::Snapshot {
         unimplemented!()
     }
 }

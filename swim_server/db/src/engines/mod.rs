@@ -14,7 +14,7 @@
 
 use crate::engines::lmdbx::{LmdbxDatabase, LmdbxOpts};
 use crate::engines::rocks::RocksDatabase;
-use crate::{FromOpts, StoreEngine, StoreError, StoreInitialisationError};
+use crate::{FromOpts, Iterable, StoreEngine, StoreError, StoreInitialisationError};
 use std::fmt::{Debug, Formatter};
 use std::path::Path;
 
@@ -88,5 +88,25 @@ impl<'a> StoreEngine<'a> for StoreDelegate {
 
     fn delete(&self, key: Self::Key) -> Result<bool, Self::Error> {
         gated_arm!(self, delete(key))
+    }
+}
+
+pub enum StoreSnapshot<'a> {
+    #[cfg(feature = "libmdbx")]
+    Lmdbx,
+    #[cfg(feature = "rocks-db")]
+    Rocksdb(rocksdb::Snapshot<'a>),
+}
+
+impl<'a> Iterable for StoreSnapshot<'a> {
+    type Iterator = StoreSnapshotIterator;
+}
+
+pub struct StoreSnapshotIterator;
+impl Iterator for StoreSnapshotIterator {
+    type Item = ();
+
+    fn next(&mut self) -> Option<Self::Item> {
+        unimplemented!()
     }
 }

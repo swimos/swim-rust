@@ -78,11 +78,11 @@ impl Destroy for RocksDatabase {
     }
 }
 
-impl Snapshot for RocksDatabase {
-    type Snapshot = DBSnapshot<'static>;
+impl<'a> Snapshot<'a> for RocksDatabase {
+    type Snapshot = DBSnapshot<'a>;
 
-    fn snapshot(&self) -> Self::Snapshot {
-        unimplemented!()
+    fn snapshot(&'a self) -> Self::Snapshot {
+        self.delegate.snapshot()
     }
 }
 

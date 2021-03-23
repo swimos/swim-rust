@@ -12,12 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+pub mod lane;
+pub mod node;
 pub mod plane;
 
 use std::marker::PhantomData;
 
-use crate::engines::StoreDelegate;
-use crate::{Iterable, Snapshot, StoreEngine, StoreError};
+use crate::engines::{StoreDelegate, StoreSnapshot};
+use crate::{Snapshot, StoreEngine, StoreError};
 
 use serde::{Deserialize, Serialize};
 
@@ -56,8 +58,12 @@ impl<'a, K> DatabaseStore<K> {
         }
     }
 
-    fn serialize<S: Serialize>(&self, key: &S) -> Result<Vec<u8>, StoreError> {
-        bincode::serialize(key).map_err(Into::into)
+    fn serialize_op<S: Serialize, F, O>(&self, key: &S, f: F) -> Result<O, StoreError>
+    where
+        F: Fn(&StoreDelegate, Vec<u8>) -> Result<O, StoreError>,
+    {
+        let key = bincode::serialize(key).map_err(StoreError::from)?;
+        Ok(f(&self.delegate, key)?)
     }
 }
 
@@ -70,43 +76,25 @@ where
     type Error = StoreError;
 
     fn put(&self, key: Self::Key, value: Self::Value) -> Result<(), Self::Error> {
-        let key = self.serialize(key)?;
-        self.delegate.put(key.as_slice(), value).map_err(Into::into)
+        self.serialize_op(key, |d, v| d.put(v.as_slice(), value))
     }
 
     fn get(&self, key: Self::Key) -> Result<Option<Vec<u8>>, Self::Error> {
-        let key = self.serialize(key)?;
-        self.delegate.get(key.as_slice()).map_err(Into::into)
+        self.serialize_op(key, |d, v| d.get(v.as_slice()))
     }
 
     fn delete(&self, key: Self::Key) -> Result<bool, Self::Error> {
-        let key = self.serialize(key)?;
-        self.delegate.delete(key.as_slice()).map_err(Into::into)
+        self.serialize_op(key, |d, v| d.delete(v.as_slice()))
     }
 }
 
-pub struct StoreSnapshot;
-
-impl<V> Snapshot for DatabaseStore<V>
+impl<'a, V> Snapshot<'a> for DatabaseStore<V>
 where
     V: Send + Sync,
 {
-    type Snapshot = StoreSnapshot;
+    type Snapshot = StoreSnapshot<'a>;
 
-    fn snapshot(&self) -> Self::Snapshot {
-        unimplemented!()
-    }
-}
-
-impl Iterable for StoreSnapshot {
-    type Iterator = StoreSnapshotIterator;
-}
-
-pub struct StoreSnapshotIterator;
-impl Iterator for StoreSnapshotIterator {
-    type Item = ();
-
-    fn next(&mut self) -> Option<Self::Item> {
+    fn snapshot(&'a self) -> Self::Snapshot {
         unimplemented!()
     }
 }
