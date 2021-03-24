@@ -56,7 +56,7 @@ fn paths_for<I: AsRef<Path> + ?Sized>(base_path: &PathBuf, plane_name: &I) -> (P
 pub trait PlaneStore<'a> {
     type NodeStore: NodeStore<'a>;
 
-    fn node_store<I>(&mut self, node: I) -> Result<Self::NodeStore, StoreError>
+    fn node_store<I>(&self, node: I) -> Self::NodeStore
     where
         I: ToString;
 }
@@ -90,13 +90,13 @@ pub struct SwimPlaneStore {
 }
 
 impl<'a> PlaneStore<'a> for SwimPlaneStore {
-    type NodeStore = SwimNodeStore<Self>;
+    type NodeStore = SwimNodeStore;
 
-    fn node_store<I>(&mut self, _node: I) -> Result<Self::NodeStore, StoreError>
+    fn node_store<I>(&self, node: I) -> Self::NodeStore
     where
         I: ToString,
     {
-        unimplemented!()
+        SwimNodeStore::new(self.clone(), node.to_string())
     }
 }
 
@@ -121,8 +121,8 @@ impl SwimPlaneStore {
 }
 
 impl<'a> StoreEngine<'a> for SwimPlaneStore {
-    type Key = &'a StoreKey;
-    type Value = &'a [u8];
+    type Key = StoreKey;
+    type Value = Vec<u8>;
     type Error = StoreError;
 
     fn put(&self, key: Self::Key, value: Self::Value) -> Result<(), Self::Error> {
@@ -132,8 +132,8 @@ impl<'a> StoreEngine<'a> for SwimPlaneStore {
             ..
         } = &*self.inner;
         match key {
-            StoreKey::Map(key) => map_store.put(key, value),
-            StoreKey::Value(key) => value_store.put(key, value),
+            StoreKey::Map(key) => map_store.put(&key, value),
+            StoreKey::Value(key) => value_store.put(&key, value),
         }
     }
 
@@ -144,8 +144,8 @@ impl<'a> StoreEngine<'a> for SwimPlaneStore {
             ..
         } = &*self.inner;
         match key {
-            StoreKey::Map(key) => map_store.get(key),
-            StoreKey::Value(key) => value_store.get(key),
+            StoreKey::Map(key) => map_store.get(&key),
+            StoreKey::Value(key) => value_store.get(&key),
         }
     }
 
@@ -156,8 +156,8 @@ impl<'a> StoreEngine<'a> for SwimPlaneStore {
             ..
         } = &*self.inner;
         match key {
-            StoreKey::Map(key) => map_store.delete(key),
-            StoreKey::Value(key) => value_store.delete(key),
+            StoreKey::Map(key) => map_store.delete(&key),
+            StoreKey::Value(key) => value_store.delete(&key),
         }
     }
 }
@@ -203,6 +203,7 @@ mod tests {
     use crate::stores::{DatabaseStore, StoreKey, ValueStorageKey};
     use crate::StoreEngine;
     use rocksdb::{Options, DB};
+    use std::sync::Arc;
 
     #[test]
     fn t() {
@@ -222,13 +223,13 @@ mod tests {
             let plane_store = SwimPlaneStore::new("test".into(), map_store, value_store);
 
             let value_key = StoreKey::Value(ValueStorageKey {
-                node_uri: "/node".into(),
-                lane_uri: "/lane".into(),
+                node_uri: Arc::new("/node".to_string()),
+                lane_uri: Arc::new("/lane".to_string()),
             });
 
-            assert!(plane_store.put(&value_key, b"test").is_ok());
+            assert!(plane_store.put(value_key.clone(), b"test".to_vec()).is_ok());
 
-            let result = plane_store.get(&value_key);
+            let result = plane_store.get(value_key);
             let vec = result.unwrap().unwrap();
             println!("{:?}", String::from_utf8(vec));
         }

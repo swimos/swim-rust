@@ -20,7 +20,6 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Weak};
 
 pub mod engines;
-// pub mod mock;
 pub mod stores;
 
 #[derive(Debug)]
@@ -104,12 +103,12 @@ pub trait FromOpts: Sized {
     ) -> Result<Self, StoreInitialisationError>;
 }
 
-pub trait OwnedStoreEngine: for<'a> StoreEngine<'a> {}
+pub trait OwnedStoreEngine: for<'s> StoreEngine<'s> {}
 impl<S> OwnedStoreEngine for S where S: for<'s> StoreEngine<'s> {}
 
-pub trait StoreEngine<'a> {
-    type Key: 'a;
-    type Value: 'a;
+pub trait StoreEngine<'i>: 'static {
+    type Key: 'i;
+    type Value: 'i;
     type Error: Into<StoreError>;
 
     fn put(&self, key: Self::Key, value: Self::Value) -> Result<(), Self::Error>;
@@ -158,6 +157,10 @@ impl SwimStore for ServerStore {
 mod tests {
     use crate::engines::lmdbx::LmdbxOpts;
     use crate::engines::StoreDelegateConfig;
+    use crate::stores::lane::map::MapStore;
+    use crate::stores::lane::value::{ValueLaneStore, ValueStore};
+    use crate::stores::node::NodeStore;
+    use crate::stores::plane::PlaneStore;
     use crate::stores::{StoreKey, ValueStorageKey};
     use crate::{
         MapStoreEngineOpts, ServerStore, StoreEngine, StoreEngineOpts, SwimStore,
@@ -165,6 +168,7 @@ mod tests {
     };
     use heed::EnvOpenOptions;
     use rocksdb::Options;
+    use std::sync::Arc;
 
     #[test]
     fn simple_put_get() {
@@ -188,12 +192,54 @@ mod tests {
         let plane_store = store.plane_store("unit").unwrap();
 
         let node_key = StoreKey::Value(ValueStorageKey {
-            node_uri: "node".to_string(),
-            lane_uri: "lane".to_string(),
+            node_uri: Arc::new("node".to_string()),
+            lane_uri: Arc::new("lane".to_string()),
         });
 
-        assert!(plane_store.put(&node_key, b"test").is_ok());
-        let value = plane_store.get(&node_key).unwrap().unwrap();
+        assert!(plane_store.put(node_key.clone(), b"test".to_vec()).is_ok());
+        let value = plane_store.get(node_key).unwrap().unwrap();
         println!("{:?}", String::from_utf8(value));
+    }
+
+    #[test]
+    fn lane() {
+        let mut rock_opts = Options::default();
+        rock_opts.create_if_missing(true);
+        rock_opts.create_missing_column_families(true);
+
+        let server_opts = StoreEngineOpts {
+            base_path: "target".into(),
+            map_opts: MapStoreEngineOpts {
+                config: StoreDelegateConfig::Lmdbx(LmdbxOpts {
+                    open_opts: EnvOpenOptions::new(),
+                }),
+            },
+            value_opts: ValueStoreEngineOpts {
+                config: StoreDelegateConfig::Rocksdb(rock_opts),
+            },
+        };
+
+        let mut store = ServerStore::new(server_opts);
+        let plane_store = store.plane_store("unit").unwrap();
+        let node_store = plane_store.node_store("node");
+        let map_store = node_store.map_lane_store("map");
+
+        assert!(map_store.put(&"a".to_string(), &"a".to_string()).is_ok());
+        let val = map_store.get(&"a".to_string());
+        println!("{:?}", val);
+
+        let value_store1 = node_store.value_lane_store("value");
+        assert!(value_store1.store(&"a".to_string()).is_ok());
+        let val = value_store1.load();
+        println!("{:?}", val);
+
+        let value_store2: ValueLaneStore<String> = node_store.value_lane_store("value");
+        let val = value_store2.load();
+        println!("{:?}", val);
+
+        let value_store3: ValueLaneStore<String> = node_store.value_lane_store("value2");
+        // assert!(value_store3.store(&"a".to_string()).is_ok());
+        let val = value_store3.load();
+        println!("{:?}", val);
     }
 }

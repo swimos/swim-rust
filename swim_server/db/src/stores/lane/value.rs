@@ -12,12 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::stores::lane::{serialize_into_slice, FromDelegate, LaneKey, SwimLaneStore};
-use crate::{OwnedStoreEngine, StoreEngine, StoreError};
+use crate::stores::lane::{serialize_into_vec, LaneKey};
+use crate::stores::node::SwimNodeStore;
+use crate::{StoreEngine, StoreError};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
+use std::marker::PhantomData;
+use std::sync::Arc;
 
-pub trait ValueStore<'a, V>: FromDelegate<'a>
+pub trait ValueStore<'a, V>
 where
     V: Serialize,
 {
@@ -28,46 +31,49 @@ where
     fn clear(&self) -> Result<(), StoreError>;
 }
 
-pub struct ValueLaneStore<'a, D> {
-    delegate: SwimLaneStore<D>,
-    key: LaneKey<'a>,
+pub struct ValueLaneStore<V> {
+    delegate: SwimNodeStore,
+    lane_uri: Arc<String>,
+    _value: PhantomData<V>,
 }
 
-impl<'a, D> FromDelegate<'a> for ValueLaneStore<'a, D>
-where
-    D: OwnedStoreEngine,
-{
-    type Delegate = SwimLaneStore<D>;
-
-    fn from_delegate(delegate: Self::Delegate, address: String) -> Self {
-        ValueLaneStore::new(delegate, address)
-    }
-}
-
-impl<'a, D> ValueLaneStore<'a, D> {
-    pub fn new(delegate: SwimLaneStore<D>, lane_uri: String) -> Self {
+impl<V> ValueLaneStore<V> {
+    pub fn new(delegate: SwimNodeStore, lane_uri: String) -> Self {
         ValueLaneStore {
             delegate,
-            key: LaneKey::Value { lane_uri },
+            lane_uri: Arc::new(lane_uri),
+            _value: Default::default(),
         }
     }
 }
 
-impl<'a, D, V> ValueStore<'a, V> for ValueLaneStore<'a, D>
+impl<'a, V> ValueStore<'a, V> for ValueLaneStore<V>
 where
-    D: OwnedStoreEngine<Key = &'a LaneKey<'a>, Value = &'a [u8]>,
     V: Serialize + DeserializeOwned,
 {
     fn store(&self, value: &V) -> Result<(), StoreError> {
-        let ValueLaneStore { delegate, key } = self;
-        serialize_into_slice(delegate, value, |del, obj| del.put(key, obj))
+        let ValueLaneStore {
+            delegate, lane_uri, ..
+        } = self;
+        serialize_into_vec(delegate, value, |del, obj| {
+            del.put(
+                LaneKey::Value {
+                    lane_uri: lane_uri.clone(),
+                },
+                obj,
+            )
+        })
     }
 
     fn load(&self) -> Result<V, StoreError> {
-        let ValueLaneStore { delegate, key } = self;
+        let ValueLaneStore {
+            delegate, lane_uri, ..
+        } = self;
 
         let bytes = delegate
-            .get(key)?
+            .get(LaneKey::Value {
+                lane_uri: lane_uri.clone(),
+            })?
             // todo err
             .ok_or_else(|| StoreError::Error("Entry not found".to_string()))?;
         let slice = bytes.as_slice();
@@ -75,7 +81,13 @@ where
     }
 
     fn clear(&self) -> Result<(), StoreError> {
-        let ValueLaneStore { delegate, key } = self;
-        delegate.delete(key).map(|_| ())
+        let ValueLaneStore {
+            delegate, lane_uri, ..
+        } = self;
+        delegate
+            .delete(LaneKey::Value {
+                lane_uri: lane_uri.clone(),
+            })
+            .map(|_| ())
     }
 }

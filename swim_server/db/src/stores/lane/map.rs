@@ -12,72 +12,90 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::stores::lane::{
-    serialize, serialize_into_vec, FromDelegate, LaneKey, LaneStore, SwimLaneStore,
-};
-use crate::{OwnedStoreEngine, StoreEngine, StoreError};
+use crate::stores::lane::{serialize, serialize_into_vec, LaneKey};
+use crate::stores::node::SwimNodeStore;
+use crate::{StoreEngine, StoreError};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
+use std::marker::PhantomData;
+use std::sync::Arc;
 
-pub trait MapStore<'a, K, V>: FromDelegate<'a>
+pub trait MapStore<'a, K, V>
 where
-    K: Serialize + 'a,
-    V: Serialize + 'a,
+    K: Serialize,
+    V: Serialize + DeserializeOwned,
 {
     fn put(&self, key: &K, value: &V) -> Result<(), StoreError>;
 
-    fn get(&self, key: &K) -> Result<Option<Vec<u8>>, StoreError>;
+    fn get(&self, key: &K) -> Result<Option<V>, StoreError>;
 
     fn delete(&self, key: &K) -> Result<bool, StoreError>;
 }
 
-impl<'a, E> FromDelegate<'a> for MapLaneStore<E>
-where
-    E: StoreEngine<'a>,
-{
-    type Delegate = SwimLaneStore<E>;
+pub struct MapLaneStore<K, V> {
+    delegate: SwimNodeStore,
+    lane_uri: Arc<String>,
+    _key: PhantomData<K>,
+    _value: PhantomData<V>,
+}
 
-    fn from_delegate(delegate: Self::Delegate, address: String) -> Self {
-        MapLaneStore::new(delegate, address)
+impl<K, V> MapLaneStore<K, V> {
+    pub fn new(delegate: SwimNodeStore, lane_uri: String) -> Self {
+        MapLaneStore {
+            delegate,
+            lane_uri: Arc::new(lane_uri),
+            _key: Default::default(),
+            _value: Default::default(),
+        }
     }
 }
 
-pub struct MapLaneStore<D> {
-    delegate: SwimLaneStore<D>,
-    lane_uri: String,
-}
-
-impl<D> MapLaneStore<D> {
-    pub fn new(delegate: SwimLaneStore<D>, lane_uri: String) -> Self {
-        MapLaneStore { delegate, lane_uri }
-    }
-}
-
-impl<'a, D, K: 'a, V: 'a> MapStore<'a, K, V> for MapLaneStore<D>
+impl<'s, 'a, K, V> MapStore<'a, K, V> for MapLaneStore<K, V>
 where
-    D: LaneStore<'a> + OwnedStoreEngine<Key = &'a LaneKey<'a>, Value = &'a [u8]>,
     K: Serialize,
-    V: Serialize + DeserializeOwned,
+    V: Serialize + DeserializeOwned + 's,
 {
     fn put(&self, key: &K, value: &V) -> Result<(), StoreError> {
-        let MapLaneStore { delegate, lane_uri } = self;
+        let MapLaneStore {
+            delegate, lane_uri, ..
+        } = self;
         let key = serialize(key)?;
         let value = serialize(value)?;
-
-        delegate.put(&LaneKey::Map { lane_uri, key }, value.as_slice())
+        let k = LaneKey::Map {
+            lane_uri: lane_uri.clone(),
+            key,
+        };
+        delegate.put(k, value)
     }
 
-    fn get(&self, key: &K) -> Result<Option<Vec<u8>>, StoreError> {
-        let MapLaneStore { delegate, lane_uri } = self;
-        serialize_into_vec(delegate, key, |del, key| {
-            del.get(&LaneKey::Map { lane_uri, key })
-        })
+    fn get(&self, key: &K) -> Result<Option<V>, StoreError> {
+        let MapLaneStore {
+            delegate, lane_uri, ..
+        } = self;
+        let opt = serialize_into_vec(delegate, key, |del, key| {
+            del.get(LaneKey::Map {
+                lane_uri: lane_uri.clone(),
+                key,
+            })
+        })?;
+
+        match opt {
+            Some(bytes) => bincode::deserialize(bytes.as_slice())
+                .map_err(Into::into)
+                .map(Some),
+            None => Ok(None),
+        }
     }
 
     fn delete(&self, key: &K) -> Result<bool, StoreError> {
-        let MapLaneStore { delegate, lane_uri } = self;
+        let MapLaneStore {
+            delegate, lane_uri, ..
+        } = self;
         serialize_into_vec(delegate, key, |del, key| {
-            del.delete(&LaneKey::Map { lane_uri, key })
+            del.delete(LaneKey::Map {
+                lane_uri: lane_uri.clone(),
+                key,
+            })
         })
     }
 }

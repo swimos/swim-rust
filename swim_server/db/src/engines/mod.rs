@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::engines::lmdbx::{LmdbxDatabase, LmdbxOpts};
+use crate::engines::lmdbx::{LmdbxDatabase, LmdbxOpts, LmdbxSnapshot};
 use crate::engines::rocks::RocksDatabase;
 use crate::{FromOpts, Iterable, StoreEngine, StoreError, StoreInitialisationError};
 use std::fmt::{Debug, Formatter};
@@ -23,6 +23,7 @@ pub mod lmdbx;
 #[cfg(feature = "rocks-db")]
 pub mod rocks;
 
+#[derive(Clone)]
 pub enum StoreDelegate {
     #[cfg(feature = "libmdbx")]
     Lmdbx(LmdbxDatabase),
@@ -73,9 +74,9 @@ macro_rules! gated_arm {
     };
 }
 
-impl<'a> StoreEngine<'a> for StoreDelegate {
-    type Key = &'a [u8];
-    type Value = &'a [u8];
+impl<'i> StoreEngine<'i> for StoreDelegate {
+    type Key = &'i [u8];
+    type Value = &'i [u8];
     type Error = StoreError;
 
     fn put(&self, key: Self::Key, value: Self::Value) -> Result<(), Self::Error> {
@@ -93,7 +94,7 @@ impl<'a> StoreEngine<'a> for StoreDelegate {
 
 pub enum StoreSnapshot<'a> {
     #[cfg(feature = "libmdbx")]
-    Lmdbx,
+    Lmdbx(LmdbxSnapshot),
     #[cfg(feature = "rocks-db")]
     Rocksdb(rocksdb::Snapshot<'a>),
 }

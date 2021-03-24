@@ -45,9 +45,9 @@ impl From<RocksDatabase> for StoreDelegate {
     }
 }
 
-impl<'a> StoreEngine<'a> for RocksDatabase {
-    type Key = &'a [u8];
-    type Value = &'a [u8];
+impl<'i> StoreEngine<'i> for RocksDatabase {
+    type Key = &'i [u8];
+    type Value = &'i [u8];
     type Error = rocksdb::Error;
 
     fn put(&self, key: Self::Key, value: Self::Value) -> Result<(), Self::Error> {

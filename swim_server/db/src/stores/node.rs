@@ -12,24 +12,36 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::stores::lane::{LaneKey, LaneStore, SwimLaneStore};
+use crate::stores::lane::map::MapLaneStore;
+use crate::stores::lane::value::ValueLaneStore;
+use crate::stores::lane::LaneKey;
+use crate::stores::plane::SwimPlaneStore;
 use crate::stores::{MapStorageKey, StoreKey, ValueStorageKey};
 use crate::{StoreEngine, StoreError};
-use std::borrow::Cow;
+use serde::Serialize;
 use std::sync::Arc;
 
-pub trait NodeStore<'a>: StoreEngine<'a> + Send + Sync + 'static {
-    type LaneStore: LaneStore<'a>;
+pub trait NodeStore<'a>: StoreEngine<'a> {
+    fn map_lane_store<I, K, V>(&self, lane: I) -> MapLaneStore<K, V>
+    where
+        I: ToString,
+        K: Serialize + 'a,
+        V: Serialize + 'a,
+        Self: Sized;
 
-    fn lane_store(&self) -> Self::LaneStore;
+    fn value_lane_store<I, V>(&self, lane: I) -> ValueLaneStore<V>
+    where
+        I: ToString,
+        V: Serialize + 'a,
+        Self: Sized;
 }
 
-pub struct SwimNodeStore<D> {
-    delegate: Arc<D>,
-    node_uri: Cow<'static, str>,
+pub struct SwimNodeStore {
+    delegate: Arc<SwimPlaneStore>,
+    node_uri: Arc<String>,
 }
 
-impl<D> Clone for SwimNodeStore<D> {
+impl Clone for SwimNodeStore {
     fn clone(&self) -> Self {
         SwimNodeStore {
             delegate: self.delegate.clone(),
@@ -38,62 +50,68 @@ impl<D> Clone for SwimNodeStore<D> {
     }
 }
 
-impl<D> SwimNodeStore<D> {
-    pub fn new<S>(delegate: D, node_uri: Cow<'static, str>) -> SwimNodeStore<D> {
+impl SwimNodeStore {
+    pub fn new(delegate: SwimPlaneStore, node_uri: String) -> SwimNodeStore {
         SwimNodeStore {
             delegate: Arc::new(delegate),
-            node_uri,
+            node_uri: Arc::new(node_uri),
         }
     }
 }
 
-// // todo remove clones
-// fn map_key(key: &LaneKey, node_uri: String) -> StoreKey {
-//     match key {
-//         LaneKey::Map { lane_uri, key } => StoreKey::Map(MapStorageKey {
-//             node_uri,
-//             lane_uri: lane_uri.clone(),
-//             key: key.clone(),
-//         }),
-//         LaneKey::Value { lane_uri } => StoreKey::Value(ValueStorageKey {
-//             node_uri,
-//             lane_uri: lane_uri.clone(),
-//         }),
-//     }
-// }
+impl<'a> NodeStore<'a> for SwimNodeStore {
+    fn map_lane_store<I, K, V>(&self, lane: I) -> MapLaneStore<K, V>
+    where
+        I: ToString,
+        K: Serialize,
+        V: Serialize + 'a,
+    {
+        MapLaneStore::new(self.clone(), lane.to_string())
+    }
 
-impl<'a, D> NodeStore<'a> for SwimNodeStore<D>
-where
-    D: StoreEngine<'a, Key = &'a StoreKey, Value = &'a [u8], Error = StoreError>
-        + Send
-        + Sync
-        + 'static,
-{
-    type LaneStore = SwimLaneStore<Self>;
-
-    fn lane_store(&self) -> Self::LaneStore {
-        SwimLaneStore::new(self.clone())
+    fn value_lane_store<I, V>(&self, lane: I) -> ValueLaneStore<V>
+    where
+        I: ToString,
+        V: Serialize + 'a,
+    {
+        ValueLaneStore::new(self.clone(), lane.to_string())
     }
 }
 
-impl<'a, D: 'a> StoreEngine<'a> for SwimNodeStore<D>
-where
-    D: StoreEngine<'a, Key = &'a StoreKey, Value = &'a [u8], Error = StoreError>,
-{
-    type Key = &'a StoreKey;
-    type Value = &'a [u8];
+fn map_key(lane_key: LaneKey, node_uri: Arc<String>) -> StoreKey {
+    match lane_key {
+        LaneKey::Map { lane_uri, key } => StoreKey::Map(MapStorageKey {
+            node_uri,
+            lane_uri,
+            key,
+        }),
+        LaneKey::Value { lane_uri } => StoreKey::Value(ValueStorageKey { node_uri, lane_uri }),
+    }
+}
+
+impl<'a> StoreEngine<'a> for SwimNodeStore {
+    type Key = LaneKey;
+    type Value = Vec<u8>;
     type Error = StoreError;
 
     fn put(&self, key: Self::Key, value: Self::Value) -> Result<(), Self::Error> {
         let SwimNodeStore { delegate, node_uri } = self;
-        delegate.put(&key, value)
+        let key = map_key(key, node_uri.clone());
+
+        delegate.put(key, value)
     }
 
-    fn get(&self, _key: Self::Key) -> Result<Option<Vec<u8>>, Self::Error> {
-        unimplemented!()
+    fn get(&self, key: Self::Key) -> Result<Option<Vec<u8>>, Self::Error> {
+        let SwimNodeStore { delegate, node_uri } = self;
+        let key = map_key(key, node_uri.clone());
+
+        delegate.get(key)
     }
 
-    fn delete(&self, _key: Self::Key) -> Result<bool, Self::Error> {
-        unimplemented!()
+    fn delete(&self, key: Self::Key) -> Result<bool, Self::Error> {
+        let SwimNodeStore { delegate, node_uri } = self;
+        let key = map_key(key, node_uri.clone());
+
+        delegate.delete(key)
     }
 }

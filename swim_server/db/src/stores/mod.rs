@@ -21,7 +21,9 @@ use std::marker::PhantomData;
 use crate::engines::{StoreDelegate, StoreSnapshot};
 use crate::{Snapshot, StoreEngine, StoreError};
 
-use serde::{Deserialize, Serialize};
+use crate::stores::lane::serialize_into_vec;
+use serde::Serialize;
+use std::sync::Arc;
 
 #[derive(Clone, Debug, PartialOrd, PartialEq)]
 pub enum StoreKey {
@@ -29,22 +31,31 @@ pub enum StoreKey {
     Value(ValueStorageKey),
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialOrd, PartialEq)]
+#[derive(Serialize, Clone, Debug, PartialOrd, PartialEq)]
 pub struct MapStorageKey {
-    node_uri: String,
-    lane_uri: String,
+    node_uri: Arc<String>,
+    lane_uri: Arc<String>,
     key: Vec<u8>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialOrd, PartialEq)]
+#[derive(Serialize, Clone, Debug, PartialOrd, PartialEq)]
 pub struct ValueStorageKey {
-    pub node_uri: String,
-    pub lane_uri: String,
+    pub node_uri: Arc<String>,
+    pub lane_uri: Arc<String>,
 }
 
 pub struct DatabaseStore<K> {
     delegate: StoreDelegate,
     _key_pd: PhantomData<K>,
+}
+
+impl<K> Clone for DatabaseStore<K> {
+    fn clone(&self) -> Self {
+        DatabaseStore {
+            delegate: self.delegate.clone(),
+            _key_pd: Default::default(),
+        }
+    }
 }
 
 impl<'a, K> DatabaseStore<K> {
@@ -57,34 +68,32 @@ impl<'a, K> DatabaseStore<K> {
             _key_pd: Default::default(),
         }
     }
-
-    fn serialize_op<S: Serialize, F, O>(&self, key: &S, f: F) -> Result<O, StoreError>
-    where
-        F: Fn(&StoreDelegate, Vec<u8>) -> Result<O, StoreError>,
-    {
-        let key = bincode::serialize(key).map_err(StoreError::from)?;
-        Ok(f(&self.delegate, key)?)
-    }
 }
 
 impl<'a, K: 'a> StoreEngine<'a> for DatabaseStore<K>
 where
-    K: Serialize,
+    K: Serialize + 'static,
 {
     type Key = &'a K;
-    type Value = &'a [u8];
+    type Value = Vec<u8>;
     type Error = StoreError;
 
     fn put(&self, key: Self::Key, value: Self::Value) -> Result<(), Self::Error> {
-        self.serialize_op(key, |d, v| d.put(v.as_slice(), value))
+        serialize_into_vec(&self.delegate, key, |delegate, key| {
+            delegate.put(key.as_slice(), value.as_slice())
+        })
     }
 
     fn get(&self, key: Self::Key) -> Result<Option<Vec<u8>>, Self::Error> {
-        self.serialize_op(key, |d, v| d.get(v.as_slice()))
+        serialize_into_vec(&self.delegate, key, |delegate, key| {
+            delegate.get(key.as_slice())
+        })
     }
 
     fn delete(&self, key: Self::Key) -> Result<bool, Self::Error> {
-        self.serialize_op(key, |d, v| d.delete(v.as_slice()))
+        serialize_into_vec(&self.delegate, key, |delegate, key| {
+            delegate.delete(key.as_slice())
+        })
     }
 }
 

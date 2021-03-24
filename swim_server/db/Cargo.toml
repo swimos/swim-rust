@@ -11,7 +11,7 @@ libmdbx = ["heed/mdbx"]
 
 [dependencies]
 bincode = "1.3.2"
-serde = { version = "1.0.124", features = ["derive"] }
+serde = { version = "1.0.124", features = ["derive", "rc"] }
 
 [dependencies.rocksdb]
 version = "0.15.0"

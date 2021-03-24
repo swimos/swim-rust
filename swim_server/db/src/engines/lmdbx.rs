@@ -62,7 +62,7 @@ impl LmdbxDatabaseInner {
     }
 }
 
-#[derive(PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct LmdbxDatabase {
     inner: Arc<LmdbxDatabaseInner>,
 }
@@ -164,9 +164,9 @@ impl Iterable for LmdbxSnapshot {
     type Iterator = DBIterator<'static>;
 }
 
-impl<'a> StoreEngine<'a> for LmdbxDatabase {
-    type Key = &'a [u8];
-    type Value = &'a [u8];
+impl<'i> StoreEngine<'i> for LmdbxDatabase {
+    type Key = &'i [u8];
+    type Value = &'i [u8];
     type Error = heed::Error;
 
     fn put(&self, key: Self::Key, value: Self::Value) -> Result<(), Self::Error> {
