@@ -461,7 +461,6 @@ impl ClientConnection {
         let (sender_tx, sender_rx) = mpsc::channel(buffer_size);
         let (receiver_tx, receiver_rx) = mpsc::channel(buffer_size);
 
-        //Todo dm remove the unwraps
         let (write_sink, read_stream) = ws_factory
             .open_connection(
                 conn_factory
