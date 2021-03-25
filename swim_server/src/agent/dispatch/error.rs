@@ -16,6 +16,7 @@ use crate::agent::lane::channels::task::LaneIoError;
 use crate::agent::AttachError;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
+use std::time::Duration;
 use utilities::errors::Recoverable;
 
 #[derive(Debug)]
@@ -23,7 +24,7 @@ pub enum DispatcherError {
     AttachmentFailed(AttachError),
     LaneTaskFailed(LaneIoError),
     SenderError,
-    AgentTimedOut,
+    AgentTimedOut(Duration),
 }
 
 impl Recoverable for DispatcherError {
@@ -106,8 +107,8 @@ impl Display for DispatcherError {
             DispatcherError::SenderError => {
                 write!(f, "Sender failed.")
             }
-            DispatcherError::AgentTimedOut => {
-                write!(f, "Agent timed out.")
+            DispatcherError::AgentTimedOut(dur) => {
+                write!(f, "Agent timed out after {}s.", dur.as_secs().to_string())
             }
         }
     }
@@ -119,7 +120,7 @@ impl Error for DispatcherError {
             DispatcherError::AttachmentFailed(err) => Some(err),
             DispatcherError::LaneTaskFailed(err) => Some(err),
             DispatcherError::SenderError => None,
-            DispatcherError::AgentTimedOut => None,
+            DispatcherError::AgentTimedOut(_) => None,
         }
     }
 }

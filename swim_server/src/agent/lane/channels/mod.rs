@@ -122,7 +122,7 @@ impl Default for AgentExecutionConfig {
             scheduler_buffer: default_buffer,
             value_lane_backpressure: None,
             map_lane_backpressure: None,
-            max_idle_time: Duration::from_secs(10),
+            max_idle_time: Duration::from_secs(300),
         }
     }
 }

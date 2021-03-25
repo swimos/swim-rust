@@ -594,10 +594,10 @@ where
                     Ok(next) => break next,
                     Err(_) => {
                         let output_idle_dur = &Instant::now()
-                            .duration_since(uplinks_idle_since.load(Ordering::Acquire));
+                            .duration_since(uplinks_idle_since.load(Ordering::Relaxed));
 
                         if output_idle_dur > max_idle_time {
-                            break 'outer Err(DispatcherError::AgentTimedOut);
+                            break 'outer Err(DispatcherError::AgentTimedOut(*max_idle_time));
                         } else {
                             idle_timeout = *max_idle_time - *output_idle_dur;
                             continue;

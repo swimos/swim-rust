@@ -517,7 +517,7 @@ where
                 if result.is_err() {
                     break result;
                 } else {
-                    uplinks_idle_since.store(Instant::now(), Ordering::Release)
+                    uplinks_idle_since.store(Instant::now(), Ordering::Relaxed)
                 }
             }
             Some(Err(e)) => {
