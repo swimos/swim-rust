@@ -30,10 +30,11 @@ use futures::task::{AtomicWaker, Context, Poll};
 use futures::{FutureExt, Sink, Stream, StreamExt};
 use http::StatusCode;
 use parking_lot::Mutex;
-use std::collections::HashMap;
+use std::collections::{hash_map, HashMap};
 use std::io;
 use std::net::SocketAddr;
 use std::pin::Pin;
+use std::sync::atomic::{AtomicIsize, Ordering};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
@@ -59,6 +60,7 @@ pub struct LocalRoutesInner {
 pub struct LocalRoutes(RoutingAddr, Arc<Mutex<LocalRoutesInner>>);
 
 impl LocalRoutes {
+    #[allow(dead_code)]
     pub(crate) fn new(owner_addr: RoutingAddr) -> Self {
         LocalRoutes(owner_addr, Default::default())
     }
@@ -95,24 +97,22 @@ impl ServerRouter for LocalRoutes {
             Err(RouterError::ConnectionFailure(ConnectionError::Resolution(
                 ResolutionError::new(ResolutionErrorKind::Unresolvable, None),
             )))
-        } else {
-            if let Some((addr, countdown)) = lock.uri_mappings.get_mut(&route) {
-                if *countdown == 0 {
-                    Ok(*addr)
-                } else {
-                    *countdown -= 1;
-                    let addr = *addr;
-                    if let Some(Entry { countdown, .. }) = lock.routes.get_mut(&addr) {
-                        *countdown -= 1;
-                    }
-                    // A non-fatal error that will allow a retry.
-                    Err(RouterError::ConnectionFailure(ConnectionError::Http(
-                        HttpError::new(HttpErrorKind::StatusCode(Some(StatusCode::OK)), None),
-                    )))
-                }
+        } else if let Some((addr, countdown)) = lock.uri_mappings.get_mut(&route) {
+            if *countdown == 0 {
+                Ok(*addr)
             } else {
-                Err(RouterError::NoAgentAtRoute(route))
+                *countdown -= 1;
+                let addr = *addr;
+                if let Some(Entry { countdown, .. }) = lock.routes.get_mut(&addr) {
+                    *countdown -= 1;
+                }
+                // A non-fatal error that will allow a retry.
+                Err(RouterError::ConnectionFailure(ConnectionError::Http(
+                    HttpError::new(HttpErrorKind::StatusCode(Some(StatusCode::OK)), None),
+                )))
             }
+        } else {
+            Err(RouterError::NoAgentAtRoute(route))
         };
         ready(result).boxed()
     }
@@ -145,22 +145,26 @@ impl LocalRoutes {
             uri_mappings,
             counter,
         } = &mut *inner.lock();
-        if uri_mappings.contains_key(&uri) {
-            panic!("Duplicate registration.");
-        } else {
-            let id = RoutingAddr::local(*counter);
-            *counter += 1;
-            uri_mappings.insert(uri, (id, countdown));
-            let (drop_tx, drop_rx) = promise::promise();
-            let route = Route::new(TaggedSender::new(*owner_addr, tx), drop_rx);
-            routes.insert(
-                id,
-                Entry {
-                    route,
-                    on_drop: drop_tx,
-                    countdown,
-                },
-            );
+        let entry = uri_mappings.entry(uri);
+        match entry {
+            hash_map::Entry::Occupied(_) => {
+                panic!("Duplicate registration.")
+            }
+            hash_map::Entry::Vacant(vacant) => {
+                let id = RoutingAddr::local(*counter);
+                *counter += 1;
+                vacant.insert((id, countdown));
+                let (drop_tx, drop_rx) = promise::promise();
+                let route = Route::new(TaggedSender::new(*owner_addr, tx), drop_rx);
+                routes.insert(
+                    id,
+                    Entry {
+                        route,
+                        on_drop: drop_tx,
+                        countdown,
+                    },
+                );
+            }
         }
     }
 
@@ -281,39 +285,59 @@ pub mod fake_channel {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Clone)]
+pub enum ErrorMode {
+    /// Return an error when sending messages.
+    Send,
+    /// Return an error when receiving messages.
+    Receive,
+    /// Do not return any errors.
+    None,
+}
+
+#[derive(Debug)]
 pub struct FakeSocket {
     input: Vec<WsMessage>,
     offset_in: usize,
     stop_when_exhausted: bool,
-    output: Vec<WsMessage>,
+    output: Option<mpsc::Sender<WsMessage>>,
+    err_mode: ErrorMode,
 }
 
 impl FakeSocket {
-    pub fn new(data: Vec<WsMessage>, initial_out_cap: usize, stop_when_exhausted: bool) -> Self {
+    pub fn new(
+        data: Vec<WsMessage>,
+        stop_when_exhausted: bool,
+        output: Option<mpsc::Sender<WsMessage>>,
+        err_mode: ErrorMode,
+    ) -> Self {
         FakeSocket {
             input: data,
             offset_in: 0,
             stop_when_exhausted,
-            output: Vec::with_capacity(initial_out_cap),
+            output,
+            err_mode,
         }
     }
 
     pub fn trivial() -> Self {
-        Self::new(vec![], 0, true)
+        Self::new(vec![], true, None, ErrorMode::None)
     }
 
     pub fn duplicate(&self) -> Self {
         let FakeSocket {
             input,
             stop_when_exhausted,
+            output,
+            err_mode,
             ..
         } = self;
         FakeSocket {
             input: input.clone(),
             offset_in: 0,
             stop_when_exhausted: *stop_when_exhausted,
-            output: vec![],
+            output: output.clone(),
+            err_mode: err_mode.clone(),
         }
     }
 }
@@ -328,6 +352,8 @@ struct FakeConnectionsInner {
 #[derive(Debug, Clone)]
 pub struct FakeConnections {
     inner: Arc<Mutex<FakeConnectionsInner>>,
+    // The count of open requests that will return error before it starts handling them normally.
+    open_error_count: Arc<AtomicIsize>,
 }
 
 impl FakeConnections {
@@ -335,6 +361,7 @@ impl FakeConnections {
         sockets: HashMap<SocketAddr, Result<FakeSocket, io::Error>>,
         dns: HashMap<String, Vec<SocketAddr>>,
         incoming: Option<mpsc::Receiver<io::Result<(FakeSocket, SocketAddr)>>>,
+        open_error_count: usize,
     ) -> Self {
         FakeConnections {
             inner: Arc::new(Mutex::new(FakeConnectionsInner {
@@ -342,6 +369,7 @@ impl FakeConnections {
                 incoming: incoming.map(FakeListener),
                 dns,
             })),
+            open_error_count: Arc::new(AtomicIsize::new(open_error_count as isize)),
         }
     }
 
@@ -369,17 +397,22 @@ impl ExternalConnections for FakeConnections {
             .incoming
             .take()
             .map(Ok)
-            .unwrap_or(Err(ErrorKind::AddrNotAvailable.into()));
+            .unwrap_or_else(|| Err(ErrorKind::AddrNotAvailable.into()));
         ready(result).boxed()
     }
 
     fn try_open(&self, addr: SocketAddr) -> BoxFuture<'static, io::Result<Self::Socket>> {
+        let count = self.open_error_count.fetch_sub(1, Ordering::AcqRel);
+        if count > 0 {
+            return ready(Err(io::Error::new(ErrorKind::InvalidInput, "Test Error"))).boxed();
+        }
+
         let result = self
             .inner
             .lock()
             .sockets
             .remove(&addr)
-            .unwrap_or(Err(ErrorKind::NotFound.into()));
+            .unwrap_or_else(|| Err(ErrorKind::NotFound.into()));
         ready(result).boxed()
     }
 
@@ -394,7 +427,7 @@ impl ExternalConnections for FakeConnections {
             .get(&host_and_port.to_string())
             .map(Clone::clone)
             .map(Ok)
-            .unwrap_or(Err(ErrorKind::NotFound.into()));
+            .unwrap_or_else(|| Err(ErrorKind::NotFound.into()));
         ready(result).boxed()
     }
 }
@@ -410,6 +443,7 @@ impl FakeListener {
 
 impl Listener for FakeListener {
     type Socket = FakeSocket;
+    #[allow(clippy::type_complexity)]
     type AcceptStream = Fuse<ReceiverStream<io::Result<(Self::Socket, SocketAddr)>>>;
 
     fn into_stream(self) -> Self::AcceptStream {
@@ -418,7 +452,7 @@ impl Listener for FakeListener {
     }
 }
 
-pub(crate) struct FakeWebsockets;
+pub struct FakeWebsockets;
 
 impl WsConnections<FakeSocket> for FakeWebsockets {
     type StreamSink = FakeWebsocket;
@@ -459,6 +493,11 @@ impl Stream for FakeWebsocket {
             closed,
             waker,
         } = self.get_mut();
+
+        if let ErrorMode::Receive = inner.err_mode {
+            return Poll::Ready(Some(Err(ConnectionError::Closed(CloseError::unexpected()))));
+        };
+
         if *closed {
             Poll::Ready(None)
         } else {
@@ -486,6 +525,10 @@ impl Sink<WsMessage> for FakeWebsocket {
     type Error = ConnectionError;
 
     fn poll_ready(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        if let ErrorMode::Send = self.inner.err_mode {
+            return Poll::Ready(Err(ConnectionError::Closed(CloseError::unexpected())));
+        };
+
         if self.closed {
             Poll::Ready(Err(ConnectionError::Closed(CloseError::closed())))
         } else {
@@ -494,14 +537,28 @@ impl Sink<WsMessage> for FakeWebsocket {
     }
 
     fn start_send(self: Pin<&mut Self>, item: WsMessage) -> Result<(), Self::Error> {
+        if let ErrorMode::Send = self.inner.err_mode {
+            return Err(ConnectionError::Closed(CloseError::unexpected()));
+        };
+
         if self.closed {
             Err(ConnectionError::Closed(CloseError::closed()))
         } else {
-            Ok(self.get_mut().inner.output.push(item))
+            self.get_mut()
+                .inner
+                .output
+                .as_ref()
+                .expect("An output channel must be provided to send messages.")
+                .try_send(item)
+                .map_err(|_| ConnectionError::Closed(CloseError::closed()))
         }
     }
 
     fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        if let ErrorMode::Send = self.inner.err_mode {
+            return Poll::Ready(Err(ConnectionError::Closed(CloseError::unexpected())));
+        };
+
         if self.closed {
             Poll::Ready(Err(ConnectionError::Closed(CloseError::closed())))
         } else {
@@ -510,6 +567,10 @@ impl Sink<WsMessage> for FakeWebsocket {
     }
 
     fn poll_close(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        if let ErrorMode::Send = self.inner.err_mode {
+            return Poll::Ready(Err(ConnectionError::Closed(CloseError::unexpected())));
+        };
+
         let FakeWebsocket { closed, waker, .. } = self.get_mut();
         *closed = true;
         waker.wake();

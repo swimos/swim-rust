@@ -48,7 +48,6 @@ use crate::routing_server::remote::table::HostAndPort;
 use crate::routing_server::{ConnectionDropped, RoutingAddr, ServerRouterFactory, TaggedEnvelope};
 use std::io;
 
-#[cfg(test)]
 pub mod test_fixture;
 
 #[derive(Clone, Debug)]

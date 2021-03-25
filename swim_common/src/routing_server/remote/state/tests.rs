@@ -20,7 +20,8 @@ use crate::routing_server::remote::state::{
 };
 use crate::routing_server::remote::table::HostAndPort;
 use crate::routing_server::remote::test_fixture::{
-    FakeConnections, FakeListener, FakeSocket, FakeWebsocket, FakeWebsockets, LocalRoutes,
+    ErrorMode, FakeConnections, FakeListener, FakeSocket, FakeWebsocket, FakeWebsockets,
+    LocalRoutes,
 };
 use crate::routing_server::remote::ConnectionDropped;
 use crate::routing_server::RoutingAddr;
@@ -64,7 +65,7 @@ fn make_state(
         yield_after: NonZeroUsize::new(256).unwrap(),
     };
 
-    let fake_connections = FakeConnections::new(HashMap::new(), HashMap::new(), None);
+    let fake_connections = FakeConnections::new(HashMap::new(), HashMap::new(), None, 0);
     let router = LocalRoutes::new(addr);
 
     let (stop_tx, stop_rx) = trigger::trigger();
@@ -455,7 +456,7 @@ async fn connections_state_shutdown_process() {
 
     let sa = sock_addr();
 
-    let web_sock = FakeWebsocket::new(FakeSocket::new(vec![], 0, false));
+    let web_sock = FakeWebsocket::new(FakeSocket::new(vec![], false, None, ErrorMode::None));
     let host1 = HostAndPort::new("my_host".to_string(), 80);
     let host2 = HostAndPort::new("other".to_string(), 80);
 

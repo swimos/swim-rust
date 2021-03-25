@@ -12,27 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use futures::task::{Context, Poll};
-use futures::Sink;
-use futures_util::stream::Stream;
-use std::pin::Pin;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
 use tokio::sync::mpsc;
-use url::Url;
 
 use super::*;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-use std::time::Duration;
-use swim_common::routing::ws::Protocol;
-use swim_common::routing::ws::{ConnFuture, WebsocketFactory};
-use swim_common::routing::{
-    CapacityError, CapacityErrorKind, CloseErrorKind, ProtocolError, ProtocolErrorKind,
-};
 use swim_common::routing_server::remote::test_fixture::{
     ErrorMode, FakeConnections, FakeSocket, FakeWebsockets,
 };
-use tokio_tungstenite::tungstenite::extensions::compression::WsCompression;
 
 #[tokio::test]
 async fn test_connection_pool_send_single_message_single_connection() {
@@ -55,7 +41,7 @@ async fn test_connection_pool_send_single_message_single_connection() {
         )),
     );
 
-    let conn_factory = FakeConnections::new(sockets, HashMap::new(), None);
+    let conn_factory = FakeConnections::new(sockets, HashMap::new(), None, 0);
     let ws_factory = FakeWebsockets;
 
     let mut connection_pool =
@@ -99,7 +85,7 @@ async fn test_connection_pool_send_multiple_messages_single_connection() {
         )),
     );
 
-    let conn_factory = FakeConnections::new(sockets, HashMap::new(), None);
+    let conn_factory = FakeConnections::new(sockets, HashMap::new(), None, 0);
     let ws_factory = FakeWebsockets;
 
     let mut connection_pool =
@@ -185,7 +171,7 @@ async fn test_connection_pool_send_multiple_messages_multiple_connections() {
         )),
     );
 
-    let conn_factory = FakeConnections::new(sockets, HashMap::new(), None);
+    let conn_factory = FakeConnections::new(sockets, HashMap::new(), None, 0);
     let ws_factory = FakeWebsockets;
 
     let mut connection_pool =
@@ -254,7 +240,7 @@ async fn test_connection_pool_receive_single_message_single_connection() {
         )),
     );
 
-    let conn_factory = FakeConnections::new(sockets, HashMap::new(), None);
+    let conn_factory = FakeConnections::new(sockets, HashMap::new(), None, 0);
     let ws_factory = FakeWebsockets;
 
     let mut connection_pool =
@@ -292,7 +278,7 @@ async fn test_connection_pool_receive_multiple_messages_single_connection() {
         )),
     );
 
-    let conn_factory = FakeConnections::new(sockets, HashMap::new(), None);
+    let conn_factory = FakeConnections::new(sockets, HashMap::new(), None, 0);
     let ws_factory = FakeWebsockets;
 
     let mut connection_pool =
@@ -364,7 +350,7 @@ async fn test_connection_pool_receive_multiple_messages_multiple_connections() {
         )),
     );
 
-    let conn_factory = FakeConnections::new(sockets, HashMap::new(), None);
+    let conn_factory = FakeConnections::new(sockets, HashMap::new(), None, 0);
     let ws_factory = FakeWebsockets;
 
     let mut connection_pool =
@@ -425,7 +411,7 @@ async fn test_connection_pool_send_and_receive_messages() {
         )),
     );
 
-    let conn_factory = FakeConnections::new(sockets, HashMap::new(), None);
+    let conn_factory = FakeConnections::new(sockets, HashMap::new(), None, 0);
     let ws_factory = FakeWebsockets;
 
     let mut connection_pool =
@@ -458,8 +444,8 @@ async fn test_connection_pool_connection_error() {
     // Given
     let host_url = url::Url::parse("ws://127.0.0.1:9001/").unwrap();
 
-    let mut sockets = HashMap::new();
-    let conn_factory = FakeConnections::new(sockets, HashMap::new(), None);
+    let sockets = HashMap::new();
+    let conn_factory = FakeConnections::new(sockets, HashMap::new(), None, 0);
     let ws_factory = FakeWebsockets;
 
     let mut connection_pool =
@@ -475,44 +461,53 @@ async fn test_connection_pool_connection_error() {
     assert!(connection.is_err());
 }
 
-// #[tokio::test]
-// async fn test_connection_pool_connection_error_send_message() {
-//     // Given
-//     let host_url = url::Url::parse("ws://127.0.0.1:9001/").unwrap();
-//     let text = "Test_message";
-//     let (writer_tx, mut writer_rx) = mpsc::channel(5);
-//
-//     let test_data = vec![None, Some(TestData::new(vec![], writer_tx))];
-//
-//     let mut connection_pool = SwimConnPool::new(
-//         ConnectionPoolParams::default(),
-//         TestConnectionFactory::new_multiple_with_errs(test_data).await,
-//     );
-//
-//     // When
-//     let first_connection = connection_pool
-//         .request_connection(host_url.clone(), false)
-//         .await
-//         .unwrap();
-//
-//     let (mut second_connection_sender, _second_connection_receiver) = connection_pool
-//         .request_connection(host_url, false)
-//         .await
-//         .unwrap()
-//         .unwrap();
-//
-//     second_connection_sender
-//         .send_message(text.into())
-//         .await
-//         .unwrap();
-//
-//     // Then
-//     assert!(first_connection.is_err());
-//     assert_eq!(
-//         writer_rx.recv().await.unwrap(),
-//         WsMessage::Text("Test_message".to_string())
-//     );
-// }
+#[tokio::test]
+async fn test_connection_pool_connection_error_send_message() {
+    // Given
+    let host_url = url::Url::parse("ws://127.0.0.1:9001/").unwrap();
+    let (writer_tx, mut writer_rx) = mpsc::channel(5);
+
+    let mut sockets = HashMap::new();
+    sockets.insert(
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 9001),
+        Ok(FakeSocket::new(
+            vec![],
+            true,
+            Some(writer_tx),
+            ErrorMode::None,
+        )),
+    );
+
+    let conn_factory = FakeConnections::new(sockets, HashMap::new(), None, 1);
+    let ws_factory = FakeWebsockets;
+
+    let mut connection_pool =
+        SwimConnPool::new(ConnectionPoolParams::default(), conn_factory, ws_factory);
+
+    // When
+    let first_connection = connection_pool
+        .request_connection(host_url.clone(), false)
+        .await
+        .unwrap();
+
+    let (mut second_connection_sender, _second_connection_receiver) = connection_pool
+        .request_connection(host_url, false)
+        .await
+        .unwrap()
+        .unwrap();
+
+    second_connection_sender
+        .send_message("Test_message".into())
+        .await
+        .unwrap();
+
+    // Then
+    assert!(first_connection.is_err());
+    assert_eq!(
+        writer_rx.recv().await.unwrap(),
+        WsMessage::Text("Test_message".to_string())
+    );
+}
 
 #[tokio::test]
 async fn test_connection_pool_close() {
@@ -529,10 +524,10 @@ async fn test_connection_pool_close() {
         )),
     );
 
-    let conn_factory = FakeConnections::new(sockets, HashMap::new(), None);
+    let conn_factory = FakeConnections::new(sockets, HashMap::new(), None, 0);
     let ws_factory = FakeWebsockets;
 
-    let mut connection_pool =
+    let connection_pool =
         SwimConnPool::new(ConnectionPoolParams::default(), conn_factory, ws_factory);
 
     // When
@@ -560,7 +555,7 @@ async fn test_connection_send_single_message() {
         )),
     );
 
-    let mut conn_factory = FakeConnections::new(sockets, HashMap::new(), None);
+    let mut conn_factory = FakeConnections::new(sockets, HashMap::new(), None, 0);
     let mut ws_factory = FakeWebsockets;
 
     let connection = ClientConnection::new(host, buffer_size, &mut conn_factory, &mut ws_factory)
@@ -594,7 +589,7 @@ async fn test_connection_send_multiple_messages() {
         )),
     );
 
-    let mut conn_factory = FakeConnections::new(sockets, HashMap::new(), None);
+    let mut conn_factory = FakeConnections::new(sockets, HashMap::new(), None, 0);
     let mut ws_factory = FakeWebsockets;
 
     let mut connection =
@@ -640,7 +635,7 @@ async fn test_connection_send_and_receive_messages() {
         )),
     );
 
-    let mut conn_factory = FakeConnections::new(sockets, HashMap::new(), None);
+    let mut conn_factory = FakeConnections::new(sockets, HashMap::new(), None, 0);
     let mut ws_factory = FakeWebsockets;
 
     let mut connection =
@@ -663,268 +658,58 @@ async fn test_connection_send_and_receive_messages() {
     );
 }
 
-// #[tokio::test]
-// async fn test_connection_receive_message_error() {
-//     // Given
-//     let host = url::Url::parse("ws://127.0.0.1:9001/").unwrap();
-//     let buffer_size = 5;
-//
-//     let mut sockets = HashMap::new();
-//     sockets.insert(
-//         SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 9001),
-//         Ok(FakeSocket::new(vec![], false, None, ErrorMode::None)),
-//     );
-//
-//     let mut conn_factory = FakeConnections::new(sockets, HashMap::new(), None);
-//     let mut ws_factory = FakeWebsockets;
-//
-//     let mut connection =
-//         ClientConnection::new(host, buffer_size, &mut conn_factory, &mut ws_factory)
-//             .await
-//             .unwrap();
-//     // When
-//     let result = connection._receive_handle.await.unwrap();
-//     // Then
-//     assert!(result.is_err());
-//     assert_eq!(
-//         result.err().unwrap(),
-//         ConnectionError::Closed(CloseError::unexpected())
-//     );
-// }
-//
-// #[tokio::test]
-// async fn test_new_connection_send_message_error() {
-//     // Given
-//     let host = url::Url::parse("ws://127.0.0.1:9001/").unwrap();
-//     let buffer_size = 5;
-//
-//     let mut sockets = HashMap::new();
-//     sockets.insert(
-//         SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 9001),
-//         Ok(FakeSocket::new(vec![], false, None, ErrorMode::Stream(0))),
-//     );
-//
-//     let mut conn_factory = FakeConnections::new(sockets, HashMap::new(), None);
-//     let mut ws_factory = FakeWebsockets;
-//
-//     let mut connection =
-//         ClientConnection::new(host, buffer_size, &mut conn_factory, &mut ws_factory)
-//             .await
-//             .unwrap();
-//     // When
-//     let result = connection._send_handle.await.unwrap();
-//     // Then
-//     assert!(result.is_err());
-//     assert_eq!(
-//         result.err().unwrap(),
-//         ConnectionError::Closed(CloseError::unexpected())
-//     );
-// }
+#[tokio::test]
+async fn test_connection_receive_message_error() {
+    // Given
+    let host = url::Url::parse("ws://127.0.0.1:9001/").unwrap();
+    let buffer_size = 5;
 
-// #[derive(Clone)]
-// struct TestReadStream {
-//     items: Vec<WsMessage>,
-//     error: bool,
-// }
-//
-// impl Stream for TestReadStream {
-//     type Item = Result<WsMessage, ConnectionError>;
-//
-//     fn poll_next(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-//         if self.error {
-//             Poll::Ready(Some(Err(ConnectionError::Protocol(ProtocolError::new(
-//                 ProtocolErrorKind::WebSocket,
-//                 None,
-//             )))))
-//         } else {
-//             let message = self.items.drain(0..1).next();
-//             Poll::Ready(Some(message.ok_or(ConnectionError::Closed(
-//                 CloseError::new(CloseErrorKind::Normal, None),
-//             ))))
-//         }
-//     }
-// }
-//
-// #[derive(Clone)]
-// struct TestWriteStream {
-//     tx: mpsc::Sender<WsMessage>,
-//     error: bool,
-// }
-//
-// impl Sink<WsMessage> for TestWriteStream {
-//     type Error = ();
-//
-//     fn poll_ready(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-//         if self.error {
-//             Poll::Ready(Err(()))
-//         } else {
-//             Poll::Ready(Ok(()))
-//         }
-//     }
-//
-//     fn start_send(self: Pin<&mut Self>, item: WsMessage) -> Result<(), Self::Error> {
-//         if self.error {
-//             Err(())
-//         } else {
-//             self.tx.try_send(item).unwrap();
-//             Ok(())
-//         }
-//     }
-//
-//     fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-//         if self.error {
-//             Poll::Ready(Err(()))
-//         } else {
-//             Poll::Ready(Ok(()))
-//         }
-//     }
-//
-//     fn poll_close(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-//         if self.error {
-//             Poll::Ready(Err(()))
-//         } else {
-//             Poll::Ready(Ok(()))
-//         }
-//     }
-// }
-//
-// struct TestConnectionFactory {
-//     inner: AsyncFactory<TestWriteStream, TestReadStream>,
-// }
-//
-// impl TestConnectionFactory {
-//     async fn new(test_data: TestData) -> Self {
-//         let shared_data = Arc::new(test_data);
-//         let inner = AsyncFactory::new(5, move |url, _config| {
-//             let shared_data = shared_data.clone();
-//             async { shared_data.open_conn(url).await }
-//         })
-//         .await;
-//         TestConnectionFactory { inner }
-//     }
-//
-//     async fn new_multiple(test_data: Vec<TestData>) -> Self {
-//         TestConnectionFactory::new_multiple_with_errs(test_data.into_iter().map(Some).collect())
-//             .await
-//     }
-//
-//     async fn new_multiple_with_errs(test_data: Vec<Option<TestData>>) -> Self {
-//         let shared_data = Arc::new(MultipleTestData::new(test_data));
-//         let inner = AsyncFactory::new(5, move |url, _config| {
-//             let shared_data = shared_data.clone();
-//             async { shared_data.open_conn(url).await }
-//         })
-//         .await;
-//         TestConnectionFactory { inner }
-//     }
-// }
-//
-// impl WebsocketFactory for TestConnectionFactory {
-//     type WsStream = TestReadStream;
-//     type WsSink = TestWriteStream;
-//
-//     fn connect(&mut self, url: Url) -> ConnFuture<Self::WsSink, Self::WsStream> {
-//         self.inner
-//             .connect_using(
-//                 url,
-//                 HostConfig {
-//                     protocol: Protocol::PlainText,
-//                     compression_level: WsCompression::None(None),
-//                 },
-//             )
-//             .boxed()
-//     }
-// }
-//
-// struct TestData {
-//     inputs: Vec<WsMessage>,
-//     outputs: mpsc::Sender<WsMessage>,
-//     input_error: bool,
-//     output_error: bool,
-// }
-//
-// struct MultipleTestData {
-//     connections: Vec<Option<TestData>>,
-//     n: AtomicUsize,
-// }
-//
-// impl MultipleTestData {
-//     fn new(data: Vec<Option<TestData>>) -> Self {
-//         MultipleTestData {
-//             connections: data,
-//             n: AtomicUsize::new(0),
-//         }
-//     }
-//
-//     async fn open_conn(
-//         self: Arc<Self>,
-//         _url: url::Url,
-//     ) -> Result<(TestWriteStream, TestReadStream), ConnectionError> {
-//         let i = self.n.fetch_add(1, Ordering::AcqRel);
-//         if i >= self.connections.len() {
-//             Err(ConnectionError::Capacity(CapacityError::new(
-//                 CapacityErrorKind::Ambiguous,
-//                 None,
-//             )))
-//         } else {
-//             let maybe_conn = &self.connections[i];
-//             match maybe_conn {
-//                 Some(conn) => {
-//                     let data = conn.inputs.clone();
-//                     let sender = conn.outputs.clone();
-//                     let output = TestWriteStream {
-//                         tx: sender,
-//                         error: conn.output_error,
-//                     };
-//                     let input = TestReadStream {
-//                         items: data,
-//                         error: conn.input_error,
-//                     };
-//                     Ok((output, input))
-//                 }
-//                 _ => Err(ConnectionError::Capacity(CapacityError::new(
-//                     CapacityErrorKind::Ambiguous,
-//                     None,
-//                 ))),
-//             }
-//         }
-//     }
-// }
-//
-// impl TestData {
-//     fn new(inputs: Vec<WsMessage>, outputs: mpsc::Sender<WsMessage>) -> Self {
-//         TestData {
-//             inputs,
-//             outputs,
-//             input_error: false,
-//             output_error: false,
-//         }
-//     }
-//
-//     async fn open_conn(
-//         self: Arc<Self>,
-//         _url: url::Url,
-//     ) -> Result<(TestWriteStream, TestReadStream), ConnectionError> {
-//         let data = self.inputs.clone();
-//         let sender = self.outputs.clone();
-//         let output = TestWriteStream {
-//             tx: sender,
-//             error: self.output_error,
-//         };
-//         let input = TestReadStream {
-//             items: data,
-//             error: self.input_error,
-//         };
-//         Ok((output, input))
-//     }
-//
-//     fn fail_on_input(mut self) -> Self {
-//         self.input_error = true;
-//         self
-//     }
-//
-//     fn fail_on_output(mut self) -> Self {
-//         self.output_error = true;
-//         self
-//     }
-// }
+    let mut sockets = HashMap::new();
+    sockets.insert(
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 9001),
+        Ok(FakeSocket::new(vec![], false, None, ErrorMode::Receive)),
+    );
+
+    let mut conn_factory = FakeConnections::new(sockets, HashMap::new(), None, 0);
+    let mut ws_factory = FakeWebsockets;
+
+    let connection = ClientConnection::new(host, buffer_size, &mut conn_factory, &mut ws_factory)
+        .await
+        .unwrap();
+    // When
+    let result = connection._receive_handle.await.unwrap();
+    // Then
+    assert!(result.is_err());
+    assert_eq!(
+        result.err().unwrap(),
+        ConnectionError::Closed(CloseError::unexpected())
+    );
+}
+
+#[tokio::test]
+async fn test_new_connection_send_message_error() {
+    // Given
+    let host = url::Url::parse("ws://127.0.0.1:9001/").unwrap();
+    let buffer_size = 5;
+
+    let mut sockets = HashMap::new();
+    sockets.insert(
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 9001),
+        Ok(FakeSocket::new(vec![], false, None, ErrorMode::Send)),
+    );
+
+    let mut conn_factory = FakeConnections::new(sockets, HashMap::new(), None, 0);
+    let mut ws_factory = FakeWebsockets;
+
+    let connection = ClientConnection::new(host, buffer_size, &mut conn_factory, &mut ws_factory)
+        .await
+        .unwrap();
+    // When
+    let result = connection._send_handle.await.unwrap();
+    // Then
+    assert!(result.is_err());
+    assert_eq!(
+        result.err().unwrap(),
+        ConnectionError::Closed(CloseError::unexpected())
+    );
+}
