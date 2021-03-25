@@ -20,20 +20,16 @@ pub mod map;
 pub mod value;
 
 pub enum LaneKey {
-    Map { lane_uri: Arc<String>, key: Vec<u8> },
-    Value { lane_uri: Arc<String> },
+    Map {
+        lane_uri: Arc<String>,
+        key: Option<Vec<u8>>,
+    },
+    Value {
+        lane_uri: Arc<String>,
+    },
 }
 
-pub fn serialize_into_slice<'a, S, F, O, E>(engine: &E, obj: &S, f: F) -> Result<O, StoreError>
-where
-    S: Serialize + 'a,
-    E: StoreEngine<'a>,
-    F: Fn(&E, &[u8]) -> Result<O, StoreError>,
-{
-    f(engine, serialize(obj)?.as_slice())
-}
-
-pub fn serialize_into_vec<'a, S, F, O, E>(engine: &E, obj: &S, f: F) -> Result<O, StoreError>
+pub fn serialize_then<'a, S, F, O, E>(engine: &E, obj: &S, f: F) -> Result<O, StoreError>
 where
     S: Serialize,
     E: StoreEngine<'a>,

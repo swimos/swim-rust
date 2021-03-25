@@ -12,11 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::stores::lane::{serialize, serialize_into_vec, LaneKey};
+use crate::engines::{StoreDelegateSnapshot, StoreDelegateSnapshotIterator};
+use crate::stores::lane::{serialize, serialize_then, LaneKey};
 use crate::stores::node::SwimNodeStore;
-use crate::{StoreEngine, StoreError};
+use crate::stores::{MapStorageKey, StoreKey};
+use crate::{RangedSnapshot, Snapshot, StoreEngine, StoreError};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
+use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
 use std::sync::Arc;
 
@@ -63,7 +66,7 @@ where
         let value = serialize(value)?;
         let k = LaneKey::Map {
             lane_uri: lane_uri.clone(),
-            key,
+            key: Some(key),
         };
         delegate.put(k, value)
     }
@@ -72,10 +75,10 @@ where
         let MapLaneStore {
             delegate, lane_uri, ..
         } = self;
-        let opt = serialize_into_vec(delegate, key, |del, key| {
+        let opt = serialize_then(delegate, key, |del, key| {
             del.get(LaneKey::Map {
                 lane_uri: lane_uri.clone(),
-                key,
+                key: Some(key),
             })
         })?;
 
@@ -91,11 +94,106 @@ where
         let MapLaneStore {
             delegate, lane_uri, ..
         } = self;
-        serialize_into_vec(delegate, key, |del, key| {
+        serialize_then(delegate, key, |del, key| {
             del.delete(LaneKey::Map {
                 lane_uri: lane_uri.clone(),
-                key,
+                key: Some(key),
             })
         })
+    }
+}
+
+impl<K, V> RangedSnapshot for MapLaneStore<K, V>
+where
+    K: DeserializeOwned,
+    V: DeserializeOwned,
+{
+    type Key = K;
+    type Value = V;
+    type RangedSnapshot = MapLaneRangedSnapshot<K, V>;
+    type Prefix = Arc<String>;
+
+    fn ranged_snapshot(
+        &self,
+        prefix: Self::Prefix,
+    ) -> Result<Option<Self::RangedSnapshot>, StoreError> {
+        let prefix = LaneKey::Map {
+            lane_uri: prefix,
+            key: None,
+        };
+
+        match self.delegate.ranged_snapshot(prefix)? {
+            Some(snapshot) => Ok(Some(MapLaneRangedSnapshot {
+                snapshot,
+                _k_pd: Default::default(),
+                _v_pd: Default::default(),
+            })),
+            None => Ok(None),
+        }
+    }
+}
+
+pub struct MapLaneRangedSnapshot<K, V> {
+    snapshot: StoreDelegateSnapshot,
+    _k_pd: PhantomData<K>,
+    _v_pd: PhantomData<V>,
+}
+
+impl<K, V> Debug for MapLaneRangedSnapshot<K, V> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MapLaneRangedSnapshot").finish()
+    }
+}
+
+impl<K, V> IntoIterator for MapLaneRangedSnapshot<K, V>
+where
+    K: DeserializeOwned,
+    V: DeserializeOwned,
+{
+    type Item = Result<(K, V), StoreError>;
+    type IntoIter = MapLaneRangedSnapshotIterator<K, V>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        MapLaneRangedSnapshotIterator {
+            snapshot: self.snapshot.into_iter(),
+            _k_pd: Default::default(),
+            _v_pd: Default::default(),
+        }
+    }
+}
+
+pub struct MapLaneRangedSnapshotIterator<K, V> {
+    snapshot: StoreDelegateSnapshotIterator,
+    _k_pd: PhantomData<K>,
+    _v_pd: PhantomData<V>,
+}
+
+impl<K, V> Iterator for MapLaneRangedSnapshotIterator<K, V>
+where
+    K: DeserializeOwned,
+    V: DeserializeOwned,
+{
+    type Item = Result<(K, V), StoreError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.snapshot.next().map(|(key, value)| {
+            let store_key = bincode::deserialize::<MapStorageKey>(&key)?;
+            let key = bincode::deserialize::<K>(&store_key.key.ok_or(StoreError::KeyNotFound)?)?;
+            let value = bincode::deserialize::<V>(&value)?;
+
+            Ok((key, value))
+        })
+    }
+}
+
+impl<K, V> Snapshot<K, V> for MapLaneStore<K, V>
+where
+    K: DeserializeOwned,
+    V: DeserializeOwned,
+{
+    type Snapshot = MapLaneRangedSnapshot<K, V>;
+
+    fn snapshot(&self) -> Result<Option<Self::Snapshot>, StoreError> {
+        self.ranged_snapshot(self.lane_uri.clone())
     }
 }

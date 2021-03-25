@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::engines::StoreDelegate;
+use crate::engines::{StoreDelegate, StoreDelegateSnapshot};
 use crate::stores::node::{NodeStore, SwimNodeStore};
-use crate::stores::{DatabaseStore, MapStorageKey, StoreKey, StoreSnapshot, ValueStorageKey};
+use crate::stores::{DatabaseStore, MapStorageKey, StoreKey, ValueStorageKey};
 use crate::{
-    Destroy, FromOpts, Snapshot, Store, StoreEngine, StoreEngineOpts, StoreError,
+    Destroy, FromOpts, RangedSnapshot, StoreEngine, StoreEngineOpts, StoreError,
     StoreInitialisationError,
 };
 use std::fmt::{Debug, Formatter};
@@ -88,7 +88,6 @@ impl PlaneStoreInner {
 pub struct SwimPlaneStore {
     inner: Arc<PlaneStoreInner>,
 }
-
 impl<'a> PlaneStore<'a> for SwimPlaneStore {
     type NodeStore = SwimNodeStore;
 
@@ -131,6 +130,7 @@ impl<'a> StoreEngine<'a> for SwimPlaneStore {
             value_store,
             ..
         } = &*self.inner;
+
         match key {
             StoreKey::Map(key) => map_store.put(&key, value),
             StoreKey::Value(key) => value_store.put(&key, value),
@@ -162,36 +162,44 @@ impl<'a> StoreEngine<'a> for SwimPlaneStore {
     }
 }
 
-impl Store for SwimPlaneStore {
-    fn path(&self) -> String {
-        unimplemented!()
-    }
-}
-
-impl FromOpts for SwimPlaneStore {
-    type Opts = StoreEngineOpts;
-
-    fn from_opts<I: AsRef<Path>>(
-        path: I,
-        opts: &Self::Opts,
-    ) -> Result<Self, StoreInitialisationError> {
-        let inner = PlaneStoreInner::open(path, opts)?;
-        Ok(SwimPlaneStore {
-            inner: Arc::new(inner),
-        })
-    }
-}
-
 impl Destroy for SwimPlaneStore {
     fn destroy(self) {
         unimplemented!()
     }
 }
 
-impl<'a> Snapshot<'a> for SwimPlaneStore {
-    type Snapshot = StoreSnapshot<'a>;
+impl RangedSnapshot for SwimPlaneStore {
+    type Key = Vec<u8>;
+    type Value = Vec<u8>;
+    type RangedSnapshot = StoreDelegateSnapshot;
+    type Prefix = StoreKey;
 
-    fn snapshot(&'a self) -> Self::Snapshot {
+    fn ranged_snapshot(
+        &self,
+        prefix: Self::Prefix,
+    ) -> Result<Option<Self::RangedSnapshot>, StoreError> {
+        match prefix {
+            p @ StoreKey::Map(..) => self.inner.map_store.ranged_snapshot(p),
+            p @ StoreKey::Value(..) => self.inner.value_store.ranged_snapshot(p),
+        }
+    }
+}
+
+pub struct RangedPlaneSnapshot;
+impl IntoIterator for RangedPlaneSnapshot {
+    type Item = (Vec<u8>, Vec<u8>);
+    type IntoIter = RangedPlaneSnapshotIterator;
+
+    fn into_iter(self) -> Self::IntoIter {
+        unimplemented!()
+    }
+}
+
+pub struct RangedPlaneSnapshotIterator;
+impl Iterator for RangedPlaneSnapshotIterator {
+    type Item = (Vec<u8>, Vec<u8>);
+
+    fn next(&mut self) -> Option<Self::Item> {
         unimplemented!()
     }
 }

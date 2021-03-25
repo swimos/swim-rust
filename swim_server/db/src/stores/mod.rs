@@ -18,27 +18,29 @@ pub mod plane;
 
 use std::marker::PhantomData;
 
-use crate::engines::{StoreDelegate, StoreSnapshot};
-use crate::{Snapshot, StoreEngine, StoreError};
+use crate::engines::{StoreDelegate, StoreDelegateSnapshot};
+use crate::{RangedSnapshot, StoreEngine, StoreError};
 
-use crate::stores::lane::serialize_into_vec;
-use serde::Serialize;
+use crate::stores::lane::{serialize, serialize_then};
+use heed::zerocopy::AsBytes;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-#[derive(Clone, Debug, PartialOrd, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialOrd, PartialEq)]
 pub enum StoreKey {
     Map(MapStorageKey),
     Value(ValueStorageKey),
 }
 
-#[derive(Serialize, Clone, Debug, PartialOrd, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialOrd, PartialEq)]
 pub struct MapStorageKey {
-    node_uri: Arc<String>,
-    lane_uri: Arc<String>,
-    key: Vec<u8>,
+    pub node_uri: Arc<String>,
+    pub lane_uri: Arc<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub key: Option<Vec<u8>>,
 }
 
-#[derive(Serialize, Clone, Debug, PartialOrd, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialOrd, PartialEq)]
 pub struct ValueStorageKey {
     pub node_uri: Arc<String>,
     pub lane_uri: Arc<String>,
@@ -47,6 +49,29 @@ pub struct ValueStorageKey {
 pub struct DatabaseStore<K> {
     delegate: StoreDelegate,
     _key_pd: PhantomData<K>,
+}
+
+impl<K> RangedSnapshot for DatabaseStore<K> {
+    type Key = Vec<u8>;
+    type Value = Vec<u8>;
+    type RangedSnapshot = StoreDelegateSnapshot;
+    type Prefix = StoreKey;
+
+    fn ranged_snapshot(
+        &self,
+        prefix: Self::Prefix,
+    ) -> Result<Option<Self::RangedSnapshot>, StoreError> {
+        match prefix {
+            StoreKey::Map(key) => {
+                let prefix = serialize(&key)?;
+                self.delegate.ranged_snapshot(prefix)
+            }
+            StoreKey::Value(key) => {
+                let prefix = serialize(&key)?;
+                self.delegate.ranged_snapshot(prefix)
+            }
+        }
+    }
 }
 
 impl<K> Clone for DatabaseStore<K> {
@@ -79,31 +104,39 @@ where
     type Error = StoreError;
 
     fn put(&self, key: Self::Key, value: Self::Value) -> Result<(), Self::Error> {
-        serialize_into_vec(&self.delegate, key, |delegate, key| {
+        serialize_then(&self.delegate, key, |delegate, key| {
             delegate.put(key.as_slice(), value.as_slice())
         })
     }
 
     fn get(&self, key: Self::Key) -> Result<Option<Vec<u8>>, Self::Error> {
-        serialize_into_vec(&self.delegate, key, |delegate, key| {
+        serialize_then(&self.delegate, key, |delegate, key| {
             delegate.get(key.as_slice())
         })
     }
 
     fn delete(&self, key: Self::Key) -> Result<bool, Self::Error> {
-        serialize_into_vec(&self.delegate, key, |delegate, key| {
+        serialize_then(&self.delegate, key, |delegate, key| {
             delegate.delete(key.as_slice())
         })
     }
 }
 
-impl<'a, V> Snapshot<'a> for DatabaseStore<V>
-where
-    V: Send + Sync,
-{
-    type Snapshot = StoreSnapshot<'a>;
+pub struct RawRangedSnapshot;
+impl IntoIterator for RawRangedSnapshot {
+    type Item = (Vec<u8>, Vec<u8>);
+    type IntoIter = RawRangedSnapshotIterator;
 
-    fn snapshot(&'a self) -> Self::Snapshot {
+    fn into_iter(self) -> Self::IntoIter {
+        unimplemented!()
+    }
+}
+
+pub struct RawRangedSnapshotIterator;
+impl Iterator for RawRangedSnapshotIterator {
+    type Item = (Vec<u8>, Vec<u8>);
+
+    fn next(&mut self) -> Option<Self::Item> {
         unimplemented!()
     }
 }

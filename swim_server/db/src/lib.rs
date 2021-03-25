@@ -12,9 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#![allow(warnings)]
+
 use crate::engines::StoreDelegateConfig;
 use crate::stores::plane::{PlaneStore, PlaneStoreInner, SwimPlaneStore};
 use bincode::Error;
+use serde::de::DeserializeOwned;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Weak};
@@ -24,12 +27,13 @@ pub mod stores;
 
 #[derive(Debug)]
 pub enum StoreError {
+    KeyNotFound,
     Error(String),
 }
 
 impl From<bincode::Error> for StoreError {
-    fn from(_: Error) -> Self {
-        unimplemented!()
+    fn from(e: Error) -> Self {
+        StoreError::Error(e.to_string())
     }
 }
 
@@ -72,7 +76,7 @@ pub trait SwimStore {
 }
 
 pub trait Store:
-    for<'a> StoreEngine<'a> + FromOpts + for<'a> Snapshot<'a> + Send + Sync + Destroy + 'static
+    for<'a> StoreEngine<'a> + FromOpts + RangedSnapshot + Send + Sync + Destroy + 'static
 {
     fn path(&self) -> String;
 }
@@ -81,17 +85,22 @@ pub trait Destroy {
     fn destroy(self);
 }
 
-pub trait Snapshot<'a>
-where
-    Self: Send + Sync + Sized,
-{
-    type Snapshot: Iterable;
+pub trait RangedSnapshot {
+    type Key: DeserializeOwned;
+    type Value: DeserializeOwned;
+    type RangedSnapshot: IntoIterator;
+    type Prefix;
 
-    fn snapshot(&'a self) -> Self::Snapshot;
+    fn ranged_snapshot(
+        &self,
+        prefix: Self::Prefix,
+    ) -> Result<Option<Self::RangedSnapshot>, StoreError>;
 }
 
-pub trait Iterable {
-    type Iterator: Iterator;
+pub trait Snapshot<K, V>: RangedSnapshot {
+    type Snapshot: IntoIterator<Item = Result<(K, V), StoreError>>;
+
+    fn snapshot(&self) -> Result<Option<Self::Snapshot>, StoreError>;
 }
 
 pub trait FromOpts: Sized {
@@ -163,7 +172,7 @@ mod tests {
     use crate::stores::plane::PlaneStore;
     use crate::stores::{StoreKey, ValueStorageKey};
     use crate::{
-        MapStoreEngineOpts, ServerStore, StoreEngine, StoreEngineOpts, SwimStore,
+        MapStoreEngineOpts, ServerStore, Snapshot, StoreEngine, StoreEngineOpts, SwimStore,
         ValueStoreEngineOpts,
     };
     use heed::EnvOpenOptions;
@@ -210,10 +219,13 @@ mod tests {
         let server_opts = StoreEngineOpts {
             base_path: "target".into(),
             map_opts: MapStoreEngineOpts {
-                config: StoreDelegateConfig::Lmdbx(LmdbxOpts {
-                    open_opts: EnvOpenOptions::new(),
-                }),
+                config: StoreDelegateConfig::Rocksdb(rock_opts.clone()),
             },
+            // map_opts: MapStoreEngineOpts {
+            //     config: StoreDelegateConfig::Lmdbx(LmdbxOpts {
+            //         open_opts: EnvOpenOptions::new(),
+            //     }),
+            // },
             value_opts: ValueStoreEngineOpts {
                 config: StoreDelegateConfig::Rocksdb(rock_opts),
             },
@@ -225,21 +237,27 @@ mod tests {
         let map_store = node_store.map_lane_store("map");
 
         assert!(map_store.put(&"a".to_string(), &"a".to_string()).is_ok());
-        let val = map_store.get(&"a".to_string());
-        println!("{:?}", val);
+        // let val = map_store.get(&"a".to_string());
+        // println!("{}", val.unwrap().unwrap());
 
-        let value_store1 = node_store.value_lane_store("value");
-        assert!(value_store1.store(&"a".to_string()).is_ok());
-        let val = value_store1.load();
-        println!("{:?}", val);
+        let ss = map_store.snapshot().unwrap().unwrap();
+        let iter = ss.into_iter();
+        for i in iter {
+            println!("Iter: {:?}", i);
+        }
 
-        let value_store2: ValueLaneStore<String> = node_store.value_lane_store("value");
-        let val = value_store2.load();
-        println!("{:?}", val);
-
-        let value_store3: ValueLaneStore<String> = node_store.value_lane_store("value2");
-        // assert!(value_store3.store(&"a".to_string()).is_ok());
-        let val = value_store3.load();
-        println!("{:?}", val);
+        // let value_store1 = node_store.value_lane_store("value");
+        // assert!(value_store1.store(&"a".to_string()).is_ok());
+        // let val = value_store1.load();
+        // println!("{:?}", val);
+        //
+        // let value_store2: ValueLaneStore<String> = node_store.value_lane_store("value");
+        // let val = value_store2.load();
+        // println!("{:?}", val);
+        //
+        // let value_store3: ValueLaneStore<String> = node_store.value_lane_store("value2");
+        // // assert!(value_store3.store(&"a".to_string()).is_ok());
+        // let val = value_store3.load();
+        // println!("{:?}", val);
     }
 }

@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+pub mod snapshot;
+
 use crate::engines::StoreDelegate;
-use crate::{
-    Destroy, FromOpts, Iterable, Snapshot, Store, StoreEngine, StoreError, StoreInitialisationError,
-};
-use rocksdb::{DBIterator, Error, Options, Snapshot as DBSnapshot, DB};
+use crate::{Destroy, FromOpts, Store, StoreEngine, StoreError, StoreInitialisationError};
+use rocksdb::{Error, Options, DB};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -76,18 +76,6 @@ impl Destroy for RocksDatabase {
     fn destroy(self) {
         let _ = DB::destroy(&Options::default(), self.delegate.path());
     }
-}
-
-impl<'a> Snapshot<'a> for RocksDatabase {
-    type Snapshot = DBSnapshot<'a>;
-
-    fn snapshot(&'a self) -> Self::Snapshot {
-        self.delegate.snapshot()
-    }
-}
-
-impl<'a> Iterable for DBSnapshot<'a> {
-    type Iterator = DBIterator<'a>;
 }
 
 impl FromOpts for RocksDatabase {

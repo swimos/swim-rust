@@ -12,13 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+pub mod snapshot;
+
 use crate::engines::StoreDelegate;
-use crate::{
-    Destroy, FromOpts, Iterable, Snapshot, Store, StoreEngine, StoreError, StoreInitialisationError,
-};
+use crate::{Destroy, FromOpts, Store, StoreEngine, StoreError, StoreInitialisationError};
 use heed::types::ByteSlice;
 use heed::{Database, Env, EnvOpenOptions, Error};
-use rocksdb::DBIterator;
 use std::fmt::{Debug, Formatter};
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
@@ -148,20 +147,6 @@ impl FromOpts for LmdbxDatabase {
 #[derive(Clone)]
 pub struct LmdbxOpts {
     pub open_opts: EnvOpenOptions,
-}
-
-pub struct LmdbxSnapshot;
-
-impl<'a> Snapshot<'a> for LmdbxDatabase {
-    type Snapshot = LmdbxSnapshot;
-
-    fn snapshot(&'a self) -> Self::Snapshot {
-        unimplemented!()
-    }
-}
-
-impl Iterable for LmdbxSnapshot {
-    type Iterator = DBIterator<'static>;
 }
 
 impl<'i> StoreEngine<'i> for LmdbxDatabase {

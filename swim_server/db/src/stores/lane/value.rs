@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::stores::lane::{serialize_into_vec, LaneKey};
+use crate::stores::lane::{serialize_then, LaneKey};
 use crate::stores::node::SwimNodeStore;
 use crate::{StoreEngine, StoreError};
 use serde::de::DeserializeOwned;
@@ -26,7 +26,7 @@ where
 {
     fn store(&self, value: &V) -> Result<(), StoreError>;
 
-    fn load(&self) -> Result<V, StoreError>;
+    fn load(&self) -> Result<Option<V>, StoreError>;
 
     fn clear(&self) -> Result<(), StoreError>;
 }
@@ -45,6 +45,12 @@ impl<V> ValueLaneStore<V> {
             _value: Default::default(),
         }
     }
+
+    fn key(&self) -> LaneKey {
+        LaneKey::Value {
+            lane_uri: self.lane_uri.clone(),
+        }
+    }
 }
 
 impl<'a, V> ValueStore<'a, V> for ValueLaneStore<V>
@@ -52,42 +58,23 @@ where
     V: Serialize + DeserializeOwned,
 {
     fn store(&self, value: &V) -> Result<(), StoreError> {
-        let ValueLaneStore {
-            delegate, lane_uri, ..
-        } = self;
-        serialize_into_vec(delegate, value, |del, obj| {
-            del.put(
-                LaneKey::Value {
-                    lane_uri: lane_uri.clone(),
-                },
-                obj,
-            )
+        serialize_then(&self.delegate, value, |delegate, bytes| {
+            delegate.put(self.key(), bytes)
         })
     }
 
-    fn load(&self) -> Result<V, StoreError> {
-        let ValueLaneStore {
-            delegate, lane_uri, ..
-        } = self;
-
-        let bytes = delegate
-            .get(LaneKey::Value {
-                lane_uri: lane_uri.clone(),
-            })?
-            // todo err
-            .ok_or_else(|| StoreError::Error("Entry not found".to_string()))?;
-        let slice = bytes.as_slice();
-        bincode::deserialize(slice).map_err(Into::into)
+    fn load(&self) -> Result<Option<V>, StoreError> {
+        match self.delegate.get(self.key()) {
+            Ok(Some(bytes)) => {
+                let slice = bytes.as_slice();
+                bincode::deserialize(slice).map_err(Into::into)
+            }
+            Ok(None) => Ok(None),
+            Err(e) => Err(e),
+        }
     }
 
     fn clear(&self) -> Result<(), StoreError> {
-        let ValueLaneStore {
-            delegate, lane_uri, ..
-        } = self;
-        delegate
-            .delete(LaneKey::Value {
-                lane_uri: lane_uri.clone(),
-            })
-            .map(|_| ())
+        self.delegate.delete(self.key()).map(|_| ())
     }
 }

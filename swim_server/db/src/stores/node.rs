@@ -12,12 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::engines::StoreDelegateSnapshot;
 use crate::stores::lane::map::MapLaneStore;
 use crate::stores::lane::value::ValueLaneStore;
 use crate::stores::lane::LaneKey;
 use crate::stores::plane::SwimPlaneStore;
 use crate::stores::{MapStorageKey, StoreKey, ValueStorageKey};
-use crate::{StoreEngine, StoreError};
+use crate::{RangedSnapshot, StoreEngine, StoreError};
 use serde::Serialize;
 use std::sync::Arc;
 
@@ -39,6 +40,32 @@ pub trait NodeStore<'a>: StoreEngine<'a> {
 pub struct SwimNodeStore {
     delegate: Arc<SwimPlaneStore>,
     node_uri: Arc<String>,
+}
+
+impl RangedSnapshot for SwimNodeStore {
+    type Key = Vec<u8>;
+    type Value = Vec<u8>;
+    type RangedSnapshot = StoreDelegateSnapshot;
+    type Prefix = LaneKey;
+
+    fn ranged_snapshot(
+        &self,
+        prefix: Self::Prefix,
+    ) -> Result<Option<Self::RangedSnapshot>, StoreError> {
+        let prefix = match prefix {
+            LaneKey::Map { lane_uri, .. } => StoreKey::Map(MapStorageKey {
+                node_uri: self.node_uri.clone(),
+                lane_uri,
+                key: None,
+            }),
+            LaneKey::Value { lane_uri } => StoreKey::Value(ValueStorageKey {
+                node_uri: self.node_uri.clone(),
+                lane_uri,
+            }),
+        };
+
+        self.delegate.ranged_snapshot(prefix)
+    }
 }
 
 impl Clone for SwimNodeStore {
