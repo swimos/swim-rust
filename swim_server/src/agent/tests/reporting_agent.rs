@@ -25,6 +25,7 @@ use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 use crate::agent::lane::tests::ExactlyOnce;
 use crate::agent::lifecycle::AgentLifecycle;
+use crate::agent::tests::reporting_macro_agent::ReportingAgentEvent;
 use crate::agent::{AgentContext, LaneIo, LaneTasks, SwimAgent};
 use futures::future::{ready, BoxFuture, Ready};
 use futures::FutureExt;
@@ -48,18 +49,6 @@ pub struct ReportingAgent {
     action: CommandLane<String>,
     demand: DemandLane<i32>,
     demand_map: DemandMapLane<String, i32>,
-}
-
-/// Type of the events that will be reported by the agent.
-#[derive(Debug, PartialEq, Eq)]
-pub enum ReportingAgentEvent {
-    AgentStart,
-    Command(String),
-    DemandLaneEvent(i32),
-    DemandMapLaneEvent(String, i32),
-    TransactionFailed,
-    DataEvent(MapLaneEvent<String, i32>),
-    TotalEvent(i32),
 }
 
 /// Collects the events from the agent life-cycles.
