@@ -33,7 +33,6 @@ use std::sync::Arc;
 use std::time::Duration;
 use stm::stm::Stm;
 use stm::transaction::atomically;
-use swim_common::routing::RoutingAddr;
 use tokio::sync::{mpsc, Mutex};
 
 mod swim_server {
