@@ -494,9 +494,11 @@ impl ClientConnection {
     }
 }
 
+use swim_common::routing::error::{
+    CloseError, ConnectionError, ResolutionError, ResolutionErrorKind,
+};
+use swim_common::routing::remote::net::ExternalConnections;
 use swim_common::routing::ws::{WsConnections, WsMessage};
-use swim_common::routing::{CloseError, ConnectionError, ResolutionError, ResolutionErrorKind};
-use swim_common::routing_server::remote::net::ExternalConnections;
 use swim_runtime::task::*;
 use swim_runtime::time::instant::Instant;
 use swim_runtime::time::interval::interval;

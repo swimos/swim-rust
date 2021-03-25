@@ -16,7 +16,7 @@ use tokio::sync::mpsc;
 
 use super::*;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-use swim_common::routing_server::remote::test_fixture::{
+use swim_common::routing::remote::test_fixture::{
     ErrorMode, FakeConnections, FakeSocket, FakeWebsockets,
 };
 

@@ -50,7 +50,7 @@ use std::sync::Arc;
 use stm::transaction::RetryManager;
 use swim_common::form::{Form, FormErr};
 use swim_common::model::Value;
-use swim_common::routing_server::{RoutingAddr, TaggedClientEnvelope};
+use swim_common::routing::{RoutingAddr, TaggedClientEnvelope};
 use swim_common::warp::envelope::{OutgoingHeader, OutgoingLinkMessage};
 use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc;

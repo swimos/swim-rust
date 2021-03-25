@@ -25,7 +25,7 @@ use std::fmt::{Debug, Display, Formatter};
 use std::time::Duration;
 use stm::transaction::{RetryManager, TransactionError};
 use swim_common::form::FormErr;
-use swim_common::routing_server::RoutingAddr;
+use swim_common::routing::RoutingAddr;
 use swim_runtime::time::delay::{delay_for, Delay};
 use utilities::future::retryable::strategy::RetryStrategy;
 use utilities::future::{

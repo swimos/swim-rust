@@ -13,12 +13,12 @@
 // limitations under the License.
 
 use crate::model::Value;
-use crate::routing::{ConnectionError, IoError, ResolutionError};
-use crate::routing_server::error::{RouterError, Unresolvable};
-use crate::routing_server::remote::router::RemoteRouter;
-use crate::routing_server::remote::test_fixture::LocalRoutes;
-use crate::routing_server::remote::{RawRoute, RoutingRequest};
-use crate::routing_server::{Route, RoutingAddr, ServerRouter, TaggedEnvelope};
+use crate::routing::error::{ConnectionError, IoError, ResolutionError};
+use crate::routing::error::{RouterError, Unresolvable};
+use crate::routing::remote::router::RemoteRouter;
+use crate::routing::remote::test_fixture::LocalRoutes;
+use crate::routing::remote::{RawRoute, RoutingRequest};
+use crate::routing::{Route, RoutingAddr, ServerRouter, TaggedEnvelope};
 use crate::warp::envelope::Envelope;
 use futures::future::join;
 use futures::io::ErrorKind;

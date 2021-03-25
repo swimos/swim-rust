@@ -18,9 +18,9 @@ mod tests {
     use swim_client::connections::SwimConnPool;
     use swim_client::router::{Router, RouterEvent, SwimRouter};
     use swim_common::model::Value;
+    use swim_common::routing::remote::net::dns::Resolver;
+    use swim_common::routing::remote::net::plain::TokioPlainTextNetworking;
     use swim_common::routing::ws::tungstenite::TungsteniteWsConnections;
-    use swim_common::routing_server::remote::net::dns::Resolver;
-    use swim_common::routing_server::remote::net::plain::TokioPlainTextNetworking;
     use swim_common::warp::envelope::Envelope;
     use swim_common::warp::path::AbsolutePath;
     use swim_runtime::time::timeout::timeout;

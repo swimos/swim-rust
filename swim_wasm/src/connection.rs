@@ -22,11 +22,11 @@ use wasm_bindgen_futures::spawn_local;
 use ws_stream_wasm::{WsErr, WsMessage as WasmMessage, WsMeta, WsStream};
 
 use std::ops::Deref;
-use swim_common::routing::ws::{ConnFuture, WebsocketFactory, WsMessage};
-use swim_common::routing::{
+use swim_common::routing::error::{
     CloseError, CloseErrorKind, ConnectionError, EncodingError, EncodingErrorKind, HttpError,
     HttpErrorKind, InvalidUriError, InvalidUriErrorKind, IoError, StatusCode,
 };
+use swim_common::routing::ws::{ConnFuture, WebsocketFactory, WsMessage};
 use utilities::future::{TransformMut, TransformedSink, TransformedStream};
 
 /// A transformer that converts from a [`swim_common::routing::ws::WsMessage`] to

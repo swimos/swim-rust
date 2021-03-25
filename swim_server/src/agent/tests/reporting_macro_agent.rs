@@ -37,7 +37,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use stm::stm::Stm;
 use stm::transaction::atomically;
-use swim_common::routing_server::RoutingAddr;
+use swim_common::routing::RoutingAddr;
 use tokio::sync::{mpsc, Mutex};
 use tokio_stream::wrappers::ReceiverStream;
 use utilities::uri::RelativeUri;

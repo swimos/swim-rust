@@ -20,7 +20,7 @@ use futures::stream::once;
 use futures::StreamExt;
 use std::num::NonZeroUsize;
 use std::time::Duration;
-use swim_common::routing_server::RoutingAddr;
+use swim_common::routing::RoutingAddr;
 use tokio::time::timeout;
 
 fn buffer_size() -> NonZeroUsize {

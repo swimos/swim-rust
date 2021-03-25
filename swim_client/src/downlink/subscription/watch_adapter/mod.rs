@@ -22,7 +22,7 @@ use futures::{select_biased, Stream};
 use futures::{FutureExt, StreamExt};
 use std::num::NonZeroUsize;
 use swim_common::model::Value;
-use swim_common::routing::RoutingError;
+use swim_common::routing::error::RoutingError;
 use swim_common::sink::item;
 use swim_common::sink::item::ItemSender;
 use swim_runtime::task::{spawn, TaskHandle};

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::routing::{format_cause, ConnectionError, FmtResult};
+use crate::routing::error::{format_cause, ConnectionError, FmtResult};
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use utilities::errors::Recoverable;

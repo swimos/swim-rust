@@ -12,18 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::routing::ws::WsConnections;
-use crate::routing_server::remote::addresses::RemoteRoutingAddresses;
-use crate::routing_server::remote::config::ConnectionConfig;
-use crate::routing_server::remote::net::{ExternalConnections, Listener};
-use crate::routing_server::remote::pending::PendingRequests;
-use crate::routing_server::remote::table::{HostAndPort, RoutingTable};
-use crate::routing_server::remote::task::TaskFactory;
-use crate::routing_server::remote::{
+use crate::routing::remote::addresses::RemoteRoutingAddresses;
+use crate::routing::remote::config::ConnectionConfig;
+use crate::routing::remote::net::{ExternalConnections, Listener};
+use crate::routing::remote::pending::PendingRequests;
+use crate::routing::remote::table::{HostAndPort, RoutingTable};
+use crate::routing::remote::task::TaskFactory;
+use crate::routing::remote::{
     RawRoute, RemoteConnectionChannels, ResolutionRequest, RoutingRequest, SocketAddrIt,
 };
-use crate::routing_server::ConnectionError;
-use crate::routing_server::{ConnectionDropped, RoutingAddr, ServerRouterFactory};
+use crate::routing::ws::WsConnections;
+use crate::routing::ConnectionError;
+use crate::routing::{ConnectionDropped, RoutingAddr, ServerRouterFactory};
 use futures::future::{BoxFuture, Fuse};
 use futures::StreamExt;
 use futures::{select_biased, FutureExt};

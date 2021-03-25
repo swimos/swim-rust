@@ -16,17 +16,17 @@
 mod tests;
 
 use crate::model::parser::{self, ParseFailure};
-use crate::routing::ws::selector::{SelectorResult, WsStreamSelector};
-use crate::routing::ws::{CloseCode, CloseReason, JoinedStreamSink, WsMessage};
-use crate::routing::{
+use crate::routing::error::{
     CloseError, CloseErrorKind, ConnectionError, ProtocolError, ProtocolErrorKind, ResolutionError,
     ResolutionErrorKind,
 };
-use crate::routing_server::error::RouterError;
-use crate::routing_server::remote::config::ConnectionConfig;
-use crate::routing_server::remote::router::RemoteRouter;
-use crate::routing_server::remote::RoutingRequest;
-use crate::routing_server::{
+use crate::routing::remote::config::ConnectionConfig;
+use crate::routing::remote::router::RemoteRouter;
+use crate::routing::remote::RoutingRequest;
+use crate::routing::ws::selector::{SelectorResult, WsStreamSelector};
+use crate::routing::ws::{CloseCode, CloseReason, JoinedStreamSink, WsMessage};
+use crate::routing::RouterError;
+use crate::routing::{
     ConnectionDropped, Route, RoutingAddr, ServerRouter, ServerRouterFactory, TaggedEnvelope,
 };
 use crate::warp::envelope::{Envelope, EnvelopeHeader, EnvelopeParseErr, OutgoingHeader};

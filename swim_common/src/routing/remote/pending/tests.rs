@@ -13,10 +13,10 @@
 // limitations under the License.
 
 use crate::request::Request;
-use crate::routing::{CloseError, CloseErrorKind, ConnectionError};
-use crate::routing_server::remote::pending::PendingRequests;
-use crate::routing_server::remote::table::HostAndPort;
-use crate::routing_server::RoutingAddr;
+use crate::routing::error::{CloseError, CloseErrorKind, ConnectionError};
+use crate::routing::remote::pending::PendingRequests;
+use crate::routing::remote::table::HostAndPort;
+use crate::routing::RoutingAddr;
 use futures::future::join;
 use tokio::sync::oneshot;
 

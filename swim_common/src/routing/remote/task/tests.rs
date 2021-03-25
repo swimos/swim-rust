@@ -30,16 +30,16 @@ use utilities::future::retryable::strategy::{Quantity, RetryStrategy};
 use utilities::sync::{promise, trigger};
 use utilities::uri::{BadRelativeUri, RelativeUri, UriIsAbsolute};
 
-use crate::routing::ws::WsMessage;
-use crate::routing::{
+use crate::routing::error::{
     CloseError, CloseErrorKind, ConnectionError, IoError, ProtocolError, ResolutionError,
 };
-use crate::routing_server::error::RouterError;
-use crate::routing_server::remote::config::ConnectionConfig;
-use crate::routing_server::remote::task::{ConnectionTask, DispatchError};
-use crate::routing_server::remote::test_fixture::fake_channel::TwoWayMpsc;
-use crate::routing_server::remote::test_fixture::LocalRoutes;
-use crate::routing_server::{ConnectionDropped, Route, RoutingAddr, TaggedEnvelope, TaggedSender};
+use crate::routing::remote::config::ConnectionConfig;
+use crate::routing::remote::task::{ConnectionTask, DispatchError};
+use crate::routing::remote::test_fixture::fake_channel::TwoWayMpsc;
+use crate::routing::remote::test_fixture::LocalRoutes;
+use crate::routing::ws::WsMessage;
+use crate::routing::RouterError;
+use crate::routing::{ConnectionDropped, Route, RoutingAddr, TaggedEnvelope, TaggedSender};
 use futures::io::ErrorKind;
 use std::num::NonZeroUsize;
 use std::time::Duration;

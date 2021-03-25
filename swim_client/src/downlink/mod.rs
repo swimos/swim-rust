@@ -33,6 +33,7 @@ use crate::downlink::typed::{
     UntypedCommandDownlink, UntypedEventDownlink, UntypedEventReceiver, UntypedMapDownlink,
     UntypedMapReceiver, UntypedValueDownlink, UntypedValueReceiver,
 };
+use crate::utilities::errors::Recoverable;
 use either::Either;
 use futures::future::FusedFuture;
 use futures::select_biased;
@@ -46,12 +47,11 @@ use std::sync::Arc;
 use swim_common::model::schema::StandardSchema;
 use swim_common::model::Value;
 use swim_common::request::TryRequest;
-use swim_common::routing::RoutingError;
+use swim_common::routing::error::RoutingError;
 use swim_common::sink::item::ItemSender;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, span, Level};
-use utilities::errors::Recoverable;
 use utilities::sync::{promise, topic};
 
 pub use crate::downlink::subscription::Downlinks;

@@ -19,11 +19,11 @@ use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::WebSocketStream;
 
 use crate::routing::error::{ConnectionError, TError};
+use crate::routing::error::{HttpError, HttpErrorKind, TungsteniteError};
 use crate::routing::ws::WsMessage;
 use crate::routing::ws::{
     CloseCode, CloseReason, JoinedStreamSink, TransformedStreamSink, WsConnections,
 };
-use crate::routing::{HttpError, HttpErrorKind, TungsteniteError};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode as TungCloseCode;
 

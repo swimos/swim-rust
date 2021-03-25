@@ -14,13 +14,13 @@
 
 use crate::model::Value;
 use crate::request::Request;
-use crate::routing::{ConnectionError, IoError, ResolutionError, ResolutionErrorKind};
-use crate::routing_server::remote::state::{DeferredResult, Event, RemoteTasksState};
-use crate::routing_server::remote::table::{HostAndPort, RoutingTable};
-use crate::routing_server::remote::{
+use crate::routing::error::{ConnectionError, IoError, ResolutionError, ResolutionErrorKind};
+use crate::routing::remote::state::{DeferredResult, Event, RemoteTasksState};
+use crate::routing::remote::table::{HostAndPort, RoutingTable};
+use crate::routing::remote::{
     ConnectionDropped, RawRoute, ResolutionRequest, RoutingRequest, SocketAddrIt, Unresolvable,
 };
-use crate::routing_server::{RoutingAddr, TaggedEnvelope};
+use crate::routing::{RoutingAddr, TaggedEnvelope};
 use crate::warp::envelope::Envelope;
 use futures::FutureExt;
 use std::cell::RefCell;

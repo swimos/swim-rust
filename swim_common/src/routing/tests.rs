@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::routing_server::{RoutingAddr, TaggedEnvelope, TaggedSender};
+use crate::routing::{RoutingAddr, TaggedEnvelope, TaggedSender};
 use crate::warp::envelope::Envelope;
 use tokio::sync::mpsc;
 

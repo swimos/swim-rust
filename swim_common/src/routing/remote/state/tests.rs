@@ -13,18 +13,18 @@
 // limitations under the License.
 
 use crate::request::Request;
-use crate::routing::{ConnectionError, IoError};
-use crate::routing_server::remote::config::ConnectionConfig;
-use crate::routing_server::remote::state::{
+use crate::routing::error::{ConnectionError, IoError};
+use crate::routing::remote::config::ConnectionConfig;
+use crate::routing::remote::state::{
     DeferredResult, Event, RemoteConnectionChannels, RemoteConnections, RemoteTasksState, State,
 };
-use crate::routing_server::remote::table::HostAndPort;
-use crate::routing_server::remote::test_fixture::{
+use crate::routing::remote::table::HostAndPort;
+use crate::routing::remote::test_fixture::{
     ErrorMode, FakeConnections, FakeListener, FakeSocket, FakeWebsocket, FakeWebsockets,
     LocalRoutes,
 };
-use crate::routing_server::remote::ConnectionDropped;
-use crate::routing_server::RoutingAddr;
+use crate::routing::remote::ConnectionDropped;
+use crate::routing::RoutingAddr;
 use futures::future::BoxFuture;
 use futures::io::ErrorKind;
 use std::collections::HashMap;

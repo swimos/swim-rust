@@ -31,8 +31,8 @@ use std::sync::Arc;
 use swim_common::form::{Form, ValidatedForm};
 use swim_common::model::parser::parse_single;
 use swim_common::model::Value;
+use swim_common::routing::error::RoutingError;
 use swim_common::routing::ws::WsConnections;
-use swim_common::routing::RoutingError;
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::AbsolutePath;
 use tracing::info;
@@ -46,10 +46,10 @@ use crate::downlink::typed::{
     UntypedValueDownlink, UntypedValueReceiver,
 };
 use crate::downlink::SchemaViolations;
+use swim_common::routing::remote::net::dns::Resolver;
+use swim_common::routing::remote::net::plain::TokioPlainTextNetworking;
+use swim_common::routing::remote::net::ExternalConnections;
 use swim_common::routing::ws::tungstenite::TungsteniteWsConnections;
-use swim_common::routing_server::remote::net::dns::Resolver;
-use swim_common::routing_server::remote::net::plain::TokioPlainTextNetworking;
-use swim_common::routing_server::remote::net::ExternalConnections;
 
 /// Builder to create Swim client instance.
 ///

@@ -34,7 +34,7 @@ use crate::connections::{ConnectionPool, ConnectionSender};
 use crate::router::incoming::{IncomingHostTask, IncomingRequest};
 use crate::router::outgoing::OutgoingHostTask;
 use futures::future::BoxFuture;
-use swim_common::routing::RoutingError;
+use swim_common::routing::error::RoutingError;
 use utilities::errors::Recoverable;
 use utilities::sync::promise;
 

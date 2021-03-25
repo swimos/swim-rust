@@ -15,8 +15,8 @@
 #[cfg(test)]
 mod tests;
 
-use crate::routing_server::remote::RawRoute;
-use crate::routing_server::{ConnectionDropped, RoutingAddr, TaggedEnvelope};
+use crate::routing::remote::RawRoute;
+use crate::routing::{ConnectionDropped, RoutingAddr, TaggedEnvelope};
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
 use std::net::SocketAddr;

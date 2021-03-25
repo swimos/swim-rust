@@ -29,7 +29,7 @@ use std::convert::TryFrom;
 use std::num::NonZeroUsize;
 use std::time::Duration;
 use stm::transaction::TransactionError;
-use swim_common::routing_server::{RoutingAddr, TaggedEnvelope};
+use swim_common::routing::{RoutingAddr, TaggedEnvelope};
 use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
 use swim_common::warp::path::RelativePath;
 use swim_runtime::time::timeout;

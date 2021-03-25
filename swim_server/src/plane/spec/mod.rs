@@ -20,7 +20,7 @@ use crate::plane::provider::AgentProvider;
 use crate::plane::{AgentRoute, BoxAgentRoute};
 use futures::Stream;
 use std::fmt::Debug;
-use swim_common::routing_server::{ServerRouter, TaggedEnvelope};
+use swim_common::routing::{ServerRouter, TaggedEnvelope};
 use swim_runtime::time::clock::Clock;
 use utilities::route_pattern::RoutePattern;
 

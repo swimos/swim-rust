@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::routing_server::remote::table::HostAndPort;
-use crate::routing_server::remote::{ResolutionRequest, REQUEST_DROPPED};
-use crate::routing_server::ConnectionError;
-use crate::routing_server::RoutingAddr;
+use crate::routing::remote::table::HostAndPort;
+use crate::routing::remote::{ResolutionRequest, REQUEST_DROPPED};
+use crate::routing::ConnectionError;
+use crate::routing::RoutingAddr;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 

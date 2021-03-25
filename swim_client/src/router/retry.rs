@@ -23,12 +23,11 @@ use futures::task::{Context, Poll};
 use futures::Future;
 use pin_project::pin_project;
 use std::pin::Pin;
-use swim_common::routing::RoutingError;
-use utilities::future::retryable::request::{RetrySendError, RetryableRequest, SendResult};
-
+use swim_common::routing::error::RoutingError;
 use swim_common::routing::ws::WsMessage;
 use tracing::trace;
 use utilities::errors::Recoverable;
+use utilities::future::retryable::request::{RetrySendError, RetryableRequest, SendResult};
 
 #[pin_project]
 struct LoggingRetryable<F> {

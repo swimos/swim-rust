@@ -23,7 +23,7 @@ use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
 use std::sync::Arc;
-use swim_common::routing_server::{ServerRouter, TaggedEnvelope};
+use swim_common::routing::{ServerRouter, TaggedEnvelope};
 use swim_runtime::time::clock::Clock;
 use utilities::uri::RelativeUri;
 

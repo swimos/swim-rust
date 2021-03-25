@@ -12,15 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::routing::ws::{CloseReason, JoinedStreamSink, WsConnections, WsMessage};
-use crate::routing::{
+use crate::routing::error::{
     CloseError, ConnectionError, HttpError, HttpErrorKind, ResolutionError, ResolutionErrorKind,
 };
-use crate::routing_server::error::RouterError;
-use crate::routing_server::remote::net::{ExternalConnections, Listener};
-use crate::routing_server::remote::table::HostAndPort;
-use crate::routing_server::remote::ConnectionDropped;
-use crate::routing_server::{
+use crate::routing::remote::net::{ExternalConnections, Listener};
+use crate::routing::remote::table::HostAndPort;
+use crate::routing::remote::ConnectionDropped;
+use crate::routing::ws::{CloseReason, JoinedStreamSink, WsConnections, WsMessage};
+use crate::routing::RouterError;
+use crate::routing::{
     Route, RoutingAddr, ServerRouter, ServerRouterFactory, TaggedEnvelope, TaggedSender,
 };
 use futures::future::{ready, BoxFuture};

@@ -30,7 +30,7 @@ use std::fmt::{Display, Formatter};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use swim_common::model::Value;
-use swim_common::routing_server::{RoutingAddr, ServerRouter};
+use swim_common::routing::{RoutingAddr, ServerRouter};
 use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;

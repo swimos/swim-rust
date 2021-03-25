@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::routing_server::remote::table::HostAndPort;
+use crate::routing::remote::table::HostAndPort;
 use futures::Future;
 use futures::FutureExt;
 use futures_util::future::BoxFuture;
@@ -83,8 +83,8 @@ impl DnsResolver for Resolver {
 
 #[cfg(feature = "trust-dns")]
 mod trust_dns_impl {
-    use crate::routing_server::remote::net::dns::DnsResolver;
-    use crate::routing_server::remote::table::HostAndPort;
+    use crate::routing::remote::net::dns::DnsResolver;
+    use crate::routing::remote::table::HostAndPort;
     use futures::future::BoxFuture;
     use std::io;
     use std::net::{SocketAddr, ToSocketAddrs};

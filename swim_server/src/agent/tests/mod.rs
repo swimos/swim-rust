@@ -42,7 +42,7 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-use swim_common::routing_server::RoutingAddr;
+use swim_common::routing::RoutingAddr;
 use swim_runtime::task;
 use tokio::sync::{mpsc, Mutex};
 use tokio::time::{timeout, Duration};
@@ -55,9 +55,9 @@ mod stub_router {
     use futures::future::BoxFuture;
     use futures::FutureExt;
     use std::sync::Arc;
-    use swim_common::routing::ResolutionError;
-    use swim_common::routing_server::error::RouterError;
-    use swim_common::routing_server::{
+    use swim_common::routing::error::ResolutionError;
+    use swim_common::routing::error::RouterError;
+    use swim_common::routing::{
         ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedEnvelope, TaggedSender,
     };
     use tokio::sync::mpsc;

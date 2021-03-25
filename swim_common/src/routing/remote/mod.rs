@@ -32,20 +32,18 @@ use tracing::{event, Level};
 use url::Url;
 use utilities::sync::promise;
 
-use crate::routing_server::{ConnectionError, ResolutionError};
+use crate::routing::{ConnectionError, ResolutionError};
 use utilities::sync::trigger;
 use utilities::task::Spawner;
 
+use crate::routing::error::Unresolvable;
+use crate::routing::error::{HttpError, ResolutionErrorKind};
+use crate::routing::remote::config::ConnectionConfig;
+use crate::routing::remote::net::ExternalConnections;
+use crate::routing::remote::state::{DeferredResult, Event, RemoteConnections, RemoteTasksState};
+use crate::routing::remote::table::HostAndPort;
 use crate::routing::ws::WsConnections;
-use crate::routing::{HttpError, ResolutionErrorKind};
-use crate::routing_server::error::Unresolvable;
-use crate::routing_server::remote::config::ConnectionConfig;
-use crate::routing_server::remote::net::ExternalConnections;
-use crate::routing_server::remote::state::{
-    DeferredResult, Event, RemoteConnections, RemoteTasksState,
-};
-use crate::routing_server::remote::table::HostAndPort;
-use crate::routing_server::{ConnectionDropped, RoutingAddr, ServerRouterFactory, TaggedEnvelope};
+use crate::routing::{ConnectionDropped, RoutingAddr, ServerRouterFactory, TaggedEnvelope};
 use std::io;
 
 pub mod test_fixture;

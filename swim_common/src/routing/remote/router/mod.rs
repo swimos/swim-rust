@@ -13,10 +13,10 @@
 // limitations under the License.
 
 use crate::request::Request;
-use crate::routing_server::error::RouterError;
-use crate::routing_server::remote::{RawRoute, RoutingRequest};
-use crate::routing_server::ResolutionError;
-use crate::routing_server::{Route, RoutingAddr, ServerRouter, TaggedSender};
+use crate::routing::remote::{RawRoute, RoutingRequest};
+use crate::routing::ResolutionError;
+use crate::routing::RouterError;
+use crate::routing::{Route, RoutingAddr, ServerRouter, TaggedSender};
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use tokio::sync::{mpsc, oneshot};

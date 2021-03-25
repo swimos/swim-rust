@@ -21,7 +21,7 @@ use std::any::Any;
 use std::fmt::Debug;
 use stm::transaction::{RetryManager, TransactionRunner};
 use swim_common::form::Form;
-use swim_common::routing_server::RoutingAddr;
+use swim_common::routing::RoutingAddr;
 use swim_warp::model::map::MapUpdate;
 use tracing::{event, Level};
 

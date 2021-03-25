@@ -3,12 +3,10 @@ use crate::plane::PlaneRequest;
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use swim_common::request::Request;
-use swim_common::routing::ResolutionError;
-use swim_common::routing_server::error::RouterError;
-use swim_common::routing_server::remote::{RawRoute, RoutingRequest};
-use swim_common::routing_server::{
-    Route, RoutingAddr, ServerRouter, ServerRouterFactory, TaggedSender,
-};
+use swim_common::routing::error::ResolutionError;
+use swim_common::routing::error::RouterError;
+use swim_common::routing::remote::{RawRoute, RoutingRequest};
+use swim_common::routing::{Route, RoutingAddr, ServerRouter, ServerRouterFactory, TaggedSender};
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use url::Url;

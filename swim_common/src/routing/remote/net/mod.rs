@@ -15,10 +15,10 @@
 use std::net::SocketAddr;
 use std::pin::Pin;
 
-use crate::routing_server::remote::net::dns::{DnsResolver, Resolver};
-use crate::routing_server::remote::net::plain::TokioPlainTextNetworking;
-use crate::routing_server::remote::net::tls::{TlsListener, TlsStream, TokioTlsNetworking};
-use crate::routing_server::remote::table::HostAndPort;
+use crate::routing::remote::net::dns::{DnsResolver, Resolver};
+use crate::routing::remote::net::plain::TokioPlainTextNetworking;
+use crate::routing::remote::net::tls::{TlsListener, TlsStream, TokioTlsNetworking};
+use crate::routing::remote::table::HostAndPort;
 use either::Either;
 use futures::stream::{Fuse, FusedStream, StreamExt};
 use futures::task::{Context, Poll};
@@ -101,7 +101,7 @@ impl Stream for EitherStream {
 }
 
 #[derive(Clone)]
-pub(in crate) struct TokioNetworking {
+pub(crate) struct TokioNetworking {
     resolver: Arc<Resolver>,
     plain: TokioPlainTextNetworking,
     tls: Arc<TokioTlsNetworking>,

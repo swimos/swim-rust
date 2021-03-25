@@ -64,7 +64,7 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use swim_common::form::Form;
-use swim_common::routing_server::{ServerRouter, TaggedClientEnvelope, TaggedEnvelope};
+use swim_common::routing::{ServerRouter, TaggedClientEnvelope, TaggedEnvelope};
 use swim_common::warp::path::RelativePath;
 use swim_runtime::time::clock::Clock;
 use tokio::sync::mpsc::Receiver;

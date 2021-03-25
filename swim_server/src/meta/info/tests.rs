@@ -26,9 +26,9 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use swim_common::form::{Form, FormErr};
 use swim_common::record;
-use swim_common::routing::ResolutionError;
-use swim_common::routing_server::error::RouterError;
-use swim_common::routing_server::{
+use swim_common::routing::error::ResolutionError;
+use swim_common::routing::error::RouterError;
+use swim_common::routing::{
     ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedEnvelope, TaggedSender,
 };
 use swim_common::warp::envelope::Envelope;
