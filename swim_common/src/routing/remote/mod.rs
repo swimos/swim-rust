@@ -341,7 +341,7 @@ fn validate_scheme(scheme: &str) -> Option<u16> {
 type IoResult<T> = io::Result<T>;
 
 /// Trait for servers that listen for incoming remote connections. This is primarily used to
-/// abstract over [`TcpListener`] for testing purposes.
+/// abstract over [`std::net::TcpListener`] for testing purposes.
 pub trait Listener {
     type Socket: Unpin + Send + Sync + 'static;
     type AcceptStream: FusedStream<Item = IoResult<(Self::Socket, SocketAddr)>> + Unpin;
@@ -350,7 +350,7 @@ pub trait Listener {
 }
 
 /// Trait for types that can create remote network connections asynchronously. This is primarily
-/// used to abstract over [`TcpListener`] and [`TcpStream`] for testing purposes.
+/// used to abstract over [`std::net::TcpListener`] and [`std::net::TcpStream`] for testing purposes.
 pub trait ExternalConnections: Clone + Send + Sync + 'static {
     type Socket: Unpin + Send + Sync + 'static;
     type ListenerType: Listener<Socket = Self::Socket>;
