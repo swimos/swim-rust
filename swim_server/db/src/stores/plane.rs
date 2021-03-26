@@ -169,18 +169,20 @@ impl Destroy for SwimPlaneStore {
 }
 
 impl RangedSnapshot for SwimPlaneStore {
-    type Key = Vec<u8>;
-    type Value = Vec<u8>;
     type RangedSnapshot = StoreDelegateSnapshot;
     type Prefix = StoreKey;
 
-    fn ranged_snapshot(
+    fn ranged_snapshot<'i, F, K, V>(
         &self,
         prefix: Self::Prefix,
-    ) -> Result<Option<Self::RangedSnapshot>, StoreError> {
+        map_fn: F,
+    ) -> Result<Option<Self::RangedSnapshot>, StoreError>
+    where
+        F: Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
+    {
         match prefix {
-            p @ StoreKey::Map(..) => self.inner.map_store.ranged_snapshot(p),
-            p @ StoreKey::Value(..) => self.inner.value_store.ranged_snapshot(p),
+            p @ StoreKey::Map(..) => self.inner.map_store.ranged_snapshot(p, map_fn),
+            p @ StoreKey::Value(..) => self.inner.value_store.ranged_snapshot(p, map_fn),
         }
     }
 }

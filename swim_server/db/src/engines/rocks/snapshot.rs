@@ -19,15 +19,17 @@ use std::vec::IntoIter;
 pub type RocksSnapshotIter = IntoIter<(Vec<u8>, Vec<u8>)>;
 
 impl RangedSnapshot for RocksDatabase {
-    type Key = Vec<u8>;
-    type Value = Vec<u8>;
     type RangedSnapshot = RocksRangedSnapshot;
     type Prefix = Vec<u8>;
 
-    fn ranged_snapshot(
+    fn ranged_snapshot<'i, F, K, V>(
         &self,
         prefix: Self::Prefix,
-    ) -> Result<Option<Self::RangedSnapshot>, StoreError> {
+        map_fn: F,
+    ) -> Result<Option<Self::RangedSnapshot>, StoreError>
+    where
+        F: Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
+    {
         let db = &*self.delegate;
         let mut raw = db.raw_iterator();
         let mut data = Vec::new();
@@ -41,7 +43,8 @@ impl RangedSnapshot for RocksDatabase {
                         if !key.starts_with(&prefix) {
                             break;
                         } else {
-                            data.push((key.to_vec(), value.to_vec()));
+                            let (key, value) = map_fn(key, value)?;
+                            data.push((key, value));
                             raw.next();
                         }
                     }

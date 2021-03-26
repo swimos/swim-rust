@@ -108,21 +108,23 @@ where
     K: DeserializeOwned,
     V: DeserializeOwned,
 {
-    type Key = K;
-    type Value = V;
     type RangedSnapshot = MapLaneRangedSnapshot<K, V>;
     type Prefix = Arc<String>;
 
-    fn ranged_snapshot(
+    fn ranged_snapshot<'i, F>(
         &self,
         prefix: Self::Prefix,
-    ) -> Result<Option<Self::RangedSnapshot>, StoreError> {
+        map_fn: F,
+    ) -> Result<Option<Self::RangedSnapshot>, StoreError>
+    where
+        F: Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
+    {
         let prefix = LaneKey::Map {
             lane_uri: prefix,
             key: None,
         };
 
-        match self.delegate.ranged_snapshot(prefix)? {
+        match self.delegate.ranged_snapshot(prefix, map_fn)? {
             Some(snapshot) => Ok(Some(MapLaneRangedSnapshot {
                 snapshot,
                 _k_pd: Default::default(),
@@ -178,6 +180,7 @@ where
     fn next(&mut self) -> Option<Self::Item> {
         self.snapshot.next().map(|(key, value)| {
             let store_key = bincode::deserialize::<MapStorageKey>(&key)?;
+
             let key = bincode::deserialize::<K>(&store_key.key.ok_or(StoreError::KeyNotFound)?)?;
             let value = bincode::deserialize::<V>(&value)?;
 

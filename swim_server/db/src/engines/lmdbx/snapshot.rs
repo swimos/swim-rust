@@ -20,15 +20,17 @@ use std::vec::IntoIter;
 pub type LmdbxSnapshotIter = IntoIter<(Vec<u8>, Vec<u8>)>;
 
 impl RangedSnapshot for LmdbxDatabase {
-    type Key = Vec<u8>;
-    type Value = Vec<u8>;
     type RangedSnapshot = LmdbxRangedSnapshot;
     type Prefix = Vec<u8>;
 
-    fn ranged_snapshot(
+    fn ranged_snapshot<'i, F, K, V>(
         &self,
         prefix: Self::Prefix,
-    ) -> Result<Option<Self::RangedSnapshot>, StoreError> {
+        map_fn: F,
+    ) -> Result<Option<Self::RangedSnapshot>, StoreError>
+    where
+        F: Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
+    {
         let LmdbxDatabaseInner { delegate, env, .. } = &*self.inner;
         let tx = env.read_txn()?;
 
@@ -38,7 +40,9 @@ impl RangedSnapshot for LmdbxDatabase {
 
         let data = it.try_fold(Vec::new(), |mut vec, result| match result {
             Ok((key, value)) => {
-                vec.push((key.to_vec(), value.to_vec()));
+                let (key, value) = map_fn(key, value)?;
+                vec.push((key, value));
+
                 Ok(vec)
             }
             Err(e) => Err(StoreError::Error(e.to_string())),

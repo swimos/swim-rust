@@ -52,23 +52,25 @@ pub struct DatabaseStore<K> {
 }
 
 impl<K> RangedSnapshot for DatabaseStore<K> {
-    type Key = Vec<u8>;
-    type Value = Vec<u8>;
     type RangedSnapshot = StoreDelegateSnapshot;
     type Prefix = StoreKey;
 
-    fn ranged_snapshot(
+    fn ranged_snapshot<'i, F, K, V>(
         &self,
         prefix: Self::Prefix,
-    ) -> Result<Option<Self::RangedSnapshot>, StoreError> {
+        map_fn: F,
+    ) -> Result<Option<Self::RangedSnapshot>, StoreError>
+    where
+        F: Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
+    {
         match prefix {
             StoreKey::Map(key) => {
                 let prefix = serialize(&key)?;
-                self.delegate.ranged_snapshot(prefix)
+                self.delegate.ranged_snapshot(prefix, map_fn)
             }
             StoreKey::Value(key) => {
                 let prefix = serialize(&key)?;
-                self.delegate.ranged_snapshot(prefix)
+                self.delegate.ranged_snapshot(prefix, map_fn)
             }
         }
     }

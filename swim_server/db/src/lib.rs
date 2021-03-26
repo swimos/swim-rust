@@ -85,16 +85,20 @@ pub trait Destroy {
     fn destroy(self);
 }
 
-pub trait RangedSnapshot {
-    type Key: DeserializeOwned;
-    type Value: DeserializeOwned;
+pub trait Ranged {}
+impl<K, V, R> Ranged for R where R: RangedSnapshot<K, V> {}
+
+pub trait RangedSnapshot<K, V> {
     type RangedSnapshot: IntoIterator;
     type Prefix;
 
-    fn ranged_snapshot(
+    fn ranged_snapshot<'i, F>(
         &self,
         prefix: Self::Prefix,
-    ) -> Result<Option<Self::RangedSnapshot>, StoreError>;
+        map_fn: F,
+    ) -> Result<Option<Self::RangedSnapshot>, StoreError>
+    where
+        F: Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>;
 }
 
 pub trait Snapshot<K, V>: RangedSnapshot {

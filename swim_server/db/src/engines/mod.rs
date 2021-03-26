@@ -80,21 +80,23 @@ impl Iterator for StoreDelegateSnapshotIterator {
 }
 
 impl RangedSnapshot for StoreDelegate {
-    type Key = Vec<u8>;
-    type Value = Vec<u8>;
     type RangedSnapshot = StoreDelegateSnapshot;
     type Prefix = Vec<u8>;
 
-    fn ranged_snapshot(
+    fn ranged_snapshot<'i, F, K, V>(
         &self,
         prefix: Self::Prefix,
-    ) -> Result<Option<Self::RangedSnapshot>, StoreError> {
+        map_fn: F,
+    ) -> Result<Option<Self::RangedSnapshot>, StoreError>
+    where
+        F: Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
+    {
         match self {
             StoreDelegate::Lmdbx(db) => db
-                .ranged_snapshot(prefix)
+                .ranged_snapshot(prefix, map_fn)
                 .map(|e| e.map(StoreDelegateSnapshot::Lmdbx)),
             StoreDelegate::Rocksdb(db) => db
-                .ranged_snapshot(prefix)
+                .ranged_snapshot(prefix, map_fn)
                 .map(|e| e.map(StoreDelegateSnapshot::Rocksdb)),
         }
     }

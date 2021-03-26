@@ -43,15 +43,17 @@ pub struct SwimNodeStore {
 }
 
 impl RangedSnapshot for SwimNodeStore {
-    type Key = Vec<u8>;
-    type Value = Vec<u8>;
     type RangedSnapshot = StoreDelegateSnapshot;
     type Prefix = LaneKey;
 
-    fn ranged_snapshot(
+    fn ranged_snapshot<'i, F, K, V>(
         &self,
         prefix: Self::Prefix,
-    ) -> Result<Option<Self::RangedSnapshot>, StoreError> {
+        map_fn: F,
+    ) -> Result<Option<Self::RangedSnapshot>, StoreError>
+    where
+        F: Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
+    {
         let prefix = match prefix {
             LaneKey::Map { lane_uri, .. } => StoreKey::Map(MapStorageKey {
                 node_uri: self.node_uri.clone(),
@@ -64,7 +66,7 @@ impl RangedSnapshot for SwimNodeStore {
             }),
         };
 
-        self.delegate.ranged_snapshot(prefix)
+        self.delegate.ranged_snapshot(prefix, map_fn)
     }
 }
 
