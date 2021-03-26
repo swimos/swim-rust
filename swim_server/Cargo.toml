@@ -54,5 +54,6 @@ path = "db"
 default-features = false
 
 [dev-dependencies]
+db = { path = "db", version = "0.1.0", features = ["mock", "rocksdb"] }
 tokio = { version = "1.1.1", features = ["rt-multi-thread", "macros", "test-util"] }
 tracing = "0.1.16"

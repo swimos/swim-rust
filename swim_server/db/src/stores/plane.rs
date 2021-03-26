@@ -53,8 +53,8 @@ fn paths_for<I: AsRef<Path> + ?Sized>(base_path: &PathBuf, plane_name: &I) -> (P
     (map_path, value_path)
 }
 
-pub trait PlaneStore<'a> {
-    type NodeStore: NodeStore<'a>;
+pub trait PlaneStore {
+    type NodeStore: for<'n> NodeStore<'n>;
 
     fn node_store<I>(&self, node: I) -> Self::NodeStore
     where
@@ -88,7 +88,7 @@ impl PlaneStoreInner {
 pub struct SwimPlaneStore {
     inner: Arc<PlaneStoreInner>,
 }
-impl<'a> PlaneStore<'a> for SwimPlaneStore {
+impl PlaneStore for SwimPlaneStore {
     type NodeStore = SwimNodeStore;
 
     fn node_store<I>(&self, node: I) -> Self::NodeStore

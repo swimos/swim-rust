@@ -12,6 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[cfg(feature = "mock")]
+pub mod mock;
+
+pub mod engines;
+pub mod stores;
+
 use crate::engines::StoreDelegateConfig;
 use crate::stores::plane::{PlaneStore, PlaneStoreInner, SwimPlaneStore};
 use bincode::Error;
@@ -19,9 +25,6 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Weak};
 use std::vec::IntoIter;
-
-pub mod engines;
-pub mod stores;
 
 #[derive(Debug)]
 pub enum StoreError {
@@ -48,12 +51,22 @@ pub struct StoreEngineOpts {
     value_opts: ValueStoreEngineOpts,
 }
 
-#[derive(Debug, Clone)]
+impl Default for StoreEngineOpts {
+    fn default() -> Self {
+        StoreEngineOpts {
+            base_path: "target".into(),
+            map_opts: MapStoreEngineOpts::default(),
+            value_opts: ValueStoreEngineOpts::default(),
+        }
+    }
+}
+
+#[derive(Default, Debug, Clone)]
 pub struct MapStoreEngineOpts {
     config: StoreDelegateConfig,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct ValueStoreEngineOpts {
     config: StoreDelegateConfig,
 }
@@ -66,7 +79,7 @@ pub enum StoreInitialisationError {
 pub enum SnapshotError {}
 
 pub trait SwimStore {
-    type PlaneStore: for<'a> PlaneStore<'a>;
+    type PlaneStore: PlaneStore;
 
     fn plane_store<I>(&mut self, path: I) -> Result<Self::PlaneStore, StoreError>
     where
@@ -76,7 +89,6 @@ pub trait SwimStore {
 pub trait Store:
     for<'a> StoreEngine<'a> + FromOpts + RangedSnapshot + Send + Sync + Destroy + 'static
 {
-    fn path(&self) -> String;
 }
 
 pub trait Destroy {

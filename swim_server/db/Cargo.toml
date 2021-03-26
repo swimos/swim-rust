@@ -8,6 +8,7 @@ edition = "2018"
 default = ["rocks-db", "libmdbx"]
 rocks-db = ["rocksdb"]
 libmdbx = ["heed/mdbx"]
+mock = []
 
 [dependencies]
 bincode = "1.3.2"

@@ -24,6 +24,7 @@ use crate::routing::remote::net::dns::Resolver;
 use crate::routing::remote::net::plain::TokioPlainTextNetworking;
 use crate::routing::remote::{RemoteConnectionChannels, RemoteConnectionsTask};
 use crate::routing::{TopLevelRouter, TopLevelRouterFactory};
+use db::{ServerStore, StoreEngineOpts, SwimStore};
 use futures::{io, join};
 use std::error::Error;
 use std::fmt::{Display, Formatter};
@@ -267,6 +268,8 @@ impl SwimServer {
 
         let clock = swim_runtime::time::clock::runtime_clock();
 
+        let mut store = ServerStore::new(StoreEngineOpts::default());
+
         let plane_future = run_plane(
             agent_config.clone(),
             clock,
@@ -275,6 +278,7 @@ impl SwimServer {
             OpenEndedFutures::new(),
             (plane_tx, plane_rx),
             top_level_router_fac.clone(),
+            store.plane_store("plane").unwrap(),
         );
 
         let connections_future = RemoteConnectionsTask::new(

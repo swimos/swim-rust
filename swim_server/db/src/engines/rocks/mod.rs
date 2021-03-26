@@ -67,11 +67,7 @@ impl<'i> StoreEngine<'i> for RocksDatabase {
     }
 }
 
-impl Store for RocksDatabase {
-    fn path(&self) -> String {
-        self.delegate.path().to_string_lossy().to_string()
-    }
-}
+impl Store for RocksDatabase {}
 
 impl Destroy for RocksDatabase {
     fn destroy(self) {

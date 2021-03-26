@@ -12,11 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[cfg(feature = "libmdbx")]
 use crate::engines::lmdbx::{LmdbxDatabase, LmdbxOpts};
+
+#[cfg(feature = "rocks-db")]
 use crate::engines::rocks::RocksDatabase;
 use crate::{
     FromOpts, KeyedSnapshot, RangedSnapshot, StoreEngine, StoreError, StoreInitialisationError,
 };
+use heed::EnvOpenOptions;
 use std::fmt::{Debug, Formatter};
 use std::path::Path;
 
@@ -31,6 +35,8 @@ pub enum StoreDelegate {
     Lmdbx(LmdbxDatabase),
     #[cfg(feature = "rocks-db")]
     Rocksdb(RocksDatabase),
+    #[cfg(feature = "mock")]
+    Mock(crate::mock::EmptyDelegateStore),
 }
 
 impl RangedSnapshot for StoreDelegate {
@@ -45,8 +51,12 @@ impl RangedSnapshot for StoreDelegate {
         F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
     {
         match self {
+            #[cfg(feature = "libmdbx")]
             StoreDelegate::Lmdbx(db) => db.ranged_snapshot(prefix, map_fn),
+            #[cfg(feature = "rocks-db")]
             StoreDelegate::Rocksdb(db) => db.ranged_snapshot(prefix, map_fn),
+            #[cfg(feature = "mock")]
+            StoreDelegate::Mock(db) => db.ranged_snapshot(prefix, map_fn),
         }
     }
 }
@@ -59,9 +69,11 @@ impl FromOpts for StoreDelegate {
         opts: &Self::Opts,
     ) -> Result<Self, StoreInitialisationError> {
         match opts {
+            #[cfg(feature = "libmdbx")]
             StoreDelegateConfig::Lmdbx(opts) => {
                 LmdbxDatabase::from_opts(path, opts).map(StoreDelegate::Lmdbx)
             }
+            #[cfg(feature = "rocks-db")]
             StoreDelegateConfig::Rocksdb(opts) => {
                 RocksDatabase::from_opts(path, opts).map(StoreDelegate::Rocksdb)
             }
@@ -77,6 +89,20 @@ pub enum StoreDelegateConfig {
     Rocksdb(rocksdb::Options),
 }
 
+impl Default for StoreDelegateConfig {
+    fn default() -> Self {
+        if cfg!(feature = "libmdbx") {
+            StoreDelegateConfig::Lmdbx(LmdbxOpts {
+                open_opts: EnvOpenOptions::new(),
+            })
+        } else if cfg!(feature = "rocks-db") {
+            StoreDelegateConfig::Rocksdb(rocksdb::Options::default())
+        } else {
+            panic!("Missing database engine feature flag")
+        }
+    }
+}
+
 impl Debug for StoreDelegateConfig {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("StoreDelegateConfig").finish()
@@ -90,6 +116,8 @@ macro_rules! gated_arm {
             StoreDelegate::Lmdbx(db) => db.$($op)*.map_err(Into::into),
             #[cfg(feature = "rocks-db")]
             StoreDelegate::Rocksdb(db) => db.$($op)*.map_err(Into::into),
+            #[cfg(feature = "mock")]
+            StoreDelegate::Mock(db) => db.$($op)*.map_err(Into::into),
         }
     };
 }

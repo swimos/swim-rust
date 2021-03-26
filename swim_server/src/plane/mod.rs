@@ -31,6 +31,7 @@ use crate::plane::spec::{PlaneSpec, RouteSpec};
 use crate::routing::error::{RouterError, Unresolvable};
 use crate::routing::remote::RawRoute;
 use crate::routing::{ConnectionDropped, RoutingAddr, ServerRouterFactory, TaggedEnvelope};
+use db::stores::plane::PlaneStore;
 use either::Either;
 use futures::future::{join, BoxFuture};
 use futures::{select_biased, FutureExt, StreamExt};
@@ -288,6 +289,7 @@ impl<Clk: Clock, DelegateFac: ServerRouterFactory> RouteResolver<Clk, DelegateFa
         &mut self,
         route: RelativeUri,
         spawner: &S,
+        plane_store: &impl PlaneStore,
     ) -> Result<(Arc<dyn Any + Send + Sync>, RoutingAddr), NoAgentAtRoute>
     where
         S: Spawner<BoxFuture<'static, AgentResult>>,
@@ -359,6 +361,7 @@ pub(crate) async fn run_plane<Clk, S, DelegateFac: ServerRouterFactory>(
     spawner: S,
     context_channel: (mpsc::Sender<PlaneRequest>, mpsc::Receiver<PlaneRequest>),
     delegate_fac: DelegateFac,
+    plane_store: impl PlaneStore,
 ) where
     Clk: Clock,
     S: Spawner<BoxFuture<'static, AgentResult>>,
@@ -430,7 +433,7 @@ pub(crate) async fn run_plane<Clk, S, DelegateFac: ServerRouterFactory>(
                         Ok(agent)
                     } else {
                         resolver
-                            .try_open_route(route, spawner.deref())
+                            .try_open_route(route, spawner.deref(), &plane_store)
                             .map(|(agent, _)| agent)
                     };
                     if request.send(result).is_err() {
@@ -472,7 +475,7 @@ pub(crate) async fn run_plane<Clk, S, DelegateFac: ServerRouterFactory>(
                     let result = if let Some(addr) = resolver.active_routes.addr_for_route(&route) {
                         Ok(addr)
                     } else {
-                        match resolver.try_open_route(route, spawner.deref()) {
+                        match resolver.try_open_route(route, spawner.deref(), &plane_store) {
                             Ok((_, addr)) => Ok(addr),
                             Err(NoAgentAtRoute(uri)) => Err(RouterError::NoAgentAtRoute(uri)),
                         }

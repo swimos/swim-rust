@@ -120,11 +120,7 @@ impl LmdbxDatabase {
     }
 }
 
-impl Store for LmdbxDatabase {
-    fn path(&self) -> String {
-        self.inner.path.to_string_lossy().to_string()
-    }
-}
+impl Store for LmdbxDatabase {}
 
 impl Destroy for LmdbxDatabase {
     fn destroy(self) {
