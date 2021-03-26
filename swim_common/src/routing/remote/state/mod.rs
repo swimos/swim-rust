@@ -14,10 +14,10 @@
 
 use crate::routing::remote::addresses::RemoteRoutingAddresses;
 use crate::routing::remote::config::ConnectionConfig;
-use crate::routing::remote::net::{ExternalConnections, Listener};
 use crate::routing::remote::pending::PendingRequests;
 use crate::routing::remote::table::{HostAndPort, RoutingTable};
 use crate::routing::remote::task::TaskFactory;
+use crate::routing::remote::{ExternalConnections, Listener};
 use crate::routing::remote::{
     RawRoute, RemoteConnectionChannels, ResolutionRequest, RoutingRequest, SocketAddrIt,
 };

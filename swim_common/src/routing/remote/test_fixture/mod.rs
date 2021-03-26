@@ -15,9 +15,9 @@
 use crate::routing::error::{
     CloseError, ConnectionError, HttpError, HttpErrorKind, ResolutionError, ResolutionErrorKind,
 };
-use crate::routing::remote::net::{ExternalConnections, Listener};
 use crate::routing::remote::table::HostAndPort;
 use crate::routing::remote::ConnectionDropped;
+use crate::routing::remote::{ExternalConnections, Listener};
 use crate::routing::ws::{CloseReason, JoinedStreamSink, WsConnections, WsMessage};
 use crate::routing::RouterError;
 use crate::routing::{

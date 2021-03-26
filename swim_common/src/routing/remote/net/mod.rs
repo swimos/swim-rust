@@ -19,8 +19,9 @@ use crate::routing::remote::net::dns::{DnsResolver, Resolver};
 use crate::routing::remote::net::plain::TokioPlainTextNetworking;
 use crate::routing::remote::net::tls::{TlsListener, TlsStream, TokioTlsNetworking};
 use crate::routing::remote::table::HostAndPort;
+use crate::routing::remote::{ExternalConnections, IoResult, Listener};
 use either::Either;
-use futures::stream::{Fuse, FusedStream, StreamExt};
+use futures::stream::{Fuse, StreamExt};
 use futures::task::{Context, Poll};
 use futures::FutureExt;
 use futures::Stream;
@@ -37,28 +38,6 @@ pub mod tls;
 
 /// HTTP protocol over TLS/SSL
 const HTTPS_PORT: u16 = 443;
-
-type IoResult<T> = io::Result<T>;
-
-/// Trait for servers that listen for incoming remote connections. This is primarily used to
-/// abstract over [`TcpListener`] for testing purposes.
-pub trait Listener {
-    type Socket: Unpin + Send + Sync + 'static;
-    type AcceptStream: FusedStream<Item = IoResult<(Self::Socket, SocketAddr)>> + Unpin;
-
-    fn into_stream(self) -> Self::AcceptStream;
-}
-
-/// Trait for types that can create remote network connections asynchronously. This is primarily
-/// used to abstract over [`TcpListener`] and [`TcpStream`] for testing purposes.
-pub trait ExternalConnections: Clone + Send + Sync + 'static {
-    type Socket: Unpin + Send + Sync + 'static;
-    type ListenerType: Listener<Socket = Self::Socket>;
-
-    fn bind(&self, addr: SocketAddr) -> BoxFuture<'static, IoResult<Self::ListenerType>>;
-    fn try_open(&self, addr: SocketAddr) -> BoxFuture<'static, IoResult<Self::Socket>>;
-    fn lookup(&self, host: HostAndPort) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>>;
-}
 
 pub(crate) enum MaybeTlsListener {
     PlainText(TcpListener),

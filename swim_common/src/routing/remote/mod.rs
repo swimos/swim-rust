@@ -14,12 +14,15 @@
 
 mod addresses;
 pub mod config;
-pub mod net;
 mod pending;
 pub(crate) mod router;
 mod state;
 pub mod table;
 mod task;
+
+#[cfg(not(target_arch = "wasm32"))]
+pub mod net;
+
 #[cfg(test)]
 mod tests;
 
@@ -39,11 +42,11 @@ use utilities::task::Spawner;
 use crate::routing::error::Unresolvable;
 use crate::routing::error::{HttpError, ResolutionErrorKind};
 use crate::routing::remote::config::ConnectionConfig;
-use crate::routing::remote::net::ExternalConnections;
 use crate::routing::remote::state::{DeferredResult, Event, RemoteConnections, RemoteTasksState};
 use crate::routing::remote::table::HostAndPort;
 use crate::routing::ws::WsConnections;
 use crate::routing::{ConnectionDropped, RoutingAddr, ServerRouterFactory, TaggedEnvelope};
+use futures::stream::FusedStream;
 use std::io;
 
 pub mod test_fixture;
@@ -333,4 +336,26 @@ fn validate_scheme(scheme: &str) -> Option<u16> {
         "wss" | "swims" | "warps" => Some(443),
         _ => None,
     }
+}
+
+type IoResult<T> = io::Result<T>;
+
+/// Trait for servers that listen for incoming remote connections. This is primarily used to
+/// abstract over [`TcpListener`] for testing purposes.
+pub trait Listener {
+    type Socket: Unpin + Send + Sync + 'static;
+    type AcceptStream: FusedStream<Item = IoResult<(Self::Socket, SocketAddr)>> + Unpin;
+
+    fn into_stream(self) -> Self::AcceptStream;
+}
+
+/// Trait for types that can create remote network connections asynchronously. This is primarily
+/// used to abstract over [`TcpListener`] and [`TcpStream`] for testing purposes.
+pub trait ExternalConnections: Clone + Send + Sync + 'static {
+    type Socket: Unpin + Send + Sync + 'static;
+    type ListenerType: Listener<Socket = Self::Socket>;
+
+    fn bind(&self, addr: SocketAddr) -> BoxFuture<'static, IoResult<Self::ListenerType>>;
+    fn try_open(&self, addr: SocketAddr) -> BoxFuture<'static, IoResult<Self::Socket>>;
+    fn lookup(&self, host: HostAndPort) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>>;
 }

@@ -46,10 +46,14 @@ use crate::downlink::typed::{
     UntypedValueDownlink, UntypedValueReceiver,
 };
 use crate::downlink::SchemaViolations;
-use swim_common::routing::remote::net::dns::Resolver;
-use swim_common::routing::remote::net::plain::TokioPlainTextNetworking;
-use swim_common::routing::remote::net::ExternalConnections;
-use swim_common::routing::ws::tungstenite::TungsteniteWsConnections;
+use swim_common::routing::remote::ExternalConnections;
+
+#[cfg(feature = "websocket")]
+use {
+    swim_common::routing::remote::net::dns::Resolver,
+    swim_common::routing::remote::net::plain::TokioPlainTextNetworking,
+    swim_common::routing::ws::tungstenite::TungsteniteWsConnections,
+};
 
 /// Builder to create Swim client instance.
 ///
