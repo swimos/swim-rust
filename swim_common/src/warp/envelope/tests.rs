@@ -27,8 +27,7 @@ fn run_test(record: Value, expected: Envelope) {
     match e {
         Ok(env) => assert_eq!(expected, env),
         Err(e) => {
-            println!("{:?}", e);
-            panic!(e);
+            panic!("{}", e);
         }
     }
 }

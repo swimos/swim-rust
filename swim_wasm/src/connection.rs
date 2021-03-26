@@ -127,11 +127,10 @@ impl WebsocketFactory for WasmWsFactory {
                     Some("WebSocket factory closed".into()),
                 ))
             })?;
-            Ok(rx
-                .map_err(|_| {
-                    ConnectionError::Closed(CloseError::new(CloseErrorKind::Unexpected, None))
-                })
-                .await??)
+            rx.map_err(|_| {
+                ConnectionError::Closed(CloseError::new(CloseErrorKind::Unexpected, None))
+            })
+            .await?
         }
         .boxed()
     }
