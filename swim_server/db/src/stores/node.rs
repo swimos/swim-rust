@@ -12,13 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::engines::StoreDelegateSnapshot;
 use crate::stores::lane::map::MapLaneStore;
 use crate::stores::lane::value::ValueLaneStore;
 use crate::stores::lane::LaneKey;
 use crate::stores::plane::SwimPlaneStore;
 use crate::stores::{MapStorageKey, StoreKey, ValueStorageKey};
-use crate::{RangedSnapshot, StoreEngine, StoreError};
+use crate::{KeyedSnapshot, RangedSnapshot, StoreEngine, StoreError};
 use serde::Serialize;
 use std::sync::Arc;
 
@@ -43,16 +42,15 @@ pub struct SwimNodeStore {
 }
 
 impl RangedSnapshot for SwimNodeStore {
-    type RangedSnapshot = StoreDelegateSnapshot;
     type Prefix = LaneKey;
 
-    fn ranged_snapshot<'i, F, K, V>(
+    fn ranged_snapshot<F, K, V>(
         &self,
         prefix: Self::Prefix,
         map_fn: F,
-    ) -> Result<Option<Self::RangedSnapshot>, StoreError>
+    ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
     where
-        F: Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
+        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
     {
         let prefix = match prefix {
             LaneKey::Map { lane_uri, .. } => StoreKey::Map(MapStorageKey {

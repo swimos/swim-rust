@@ -12,14 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::engines::{StoreDelegateSnapshot, StoreDelegateSnapshotIterator};
 use crate::stores::lane::{serialize, serialize_then, LaneKey};
 use crate::stores::node::SwimNodeStore;
-use crate::stores::{MapStorageKey, StoreKey};
-use crate::{RangedSnapshot, Snapshot, StoreEngine, StoreError};
+use crate::stores::MapStorageKey;
+use crate::{KeyedSnapshot, RangedSnapshot, Snapshot, StoreEngine, StoreError};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
-use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
 use std::sync::Arc;
 
@@ -108,84 +106,22 @@ where
     K: DeserializeOwned,
     V: DeserializeOwned,
 {
-    type RangedSnapshot = MapLaneRangedSnapshot<K, V>;
     type Prefix = Arc<String>;
 
-    fn ranged_snapshot<'i, F>(
+    fn ranged_snapshot<F, DK, DV>(
         &self,
         prefix: Self::Prefix,
         map_fn: F,
-    ) -> Result<Option<Self::RangedSnapshot>, StoreError>
+    ) -> Result<Option<KeyedSnapshot<DK, DV>>, StoreError>
     where
-        F: Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
+        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(DK, DV), StoreError>,
     {
         let prefix = LaneKey::Map {
             lane_uri: prefix,
             key: None,
         };
 
-        match self.delegate.ranged_snapshot(prefix, map_fn)? {
-            Some(snapshot) => Ok(Some(MapLaneRangedSnapshot {
-                snapshot,
-                _k_pd: Default::default(),
-                _v_pd: Default::default(),
-            })),
-            None => Ok(None),
-        }
-    }
-}
-
-pub struct MapLaneRangedSnapshot<K, V> {
-    snapshot: StoreDelegateSnapshot,
-    _k_pd: PhantomData<K>,
-    _v_pd: PhantomData<V>,
-}
-
-impl<K, V> Debug for MapLaneRangedSnapshot<K, V> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("MapLaneRangedSnapshot").finish()
-    }
-}
-
-impl<K, V> IntoIterator for MapLaneRangedSnapshot<K, V>
-where
-    K: DeserializeOwned,
-    V: DeserializeOwned,
-{
-    type Item = Result<(K, V), StoreError>;
-    type IntoIter = MapLaneRangedSnapshotIterator<K, V>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        MapLaneRangedSnapshotIterator {
-            snapshot: self.snapshot.into_iter(),
-            _k_pd: Default::default(),
-            _v_pd: Default::default(),
-        }
-    }
-}
-
-pub struct MapLaneRangedSnapshotIterator<K, V> {
-    snapshot: StoreDelegateSnapshotIterator,
-    _k_pd: PhantomData<K>,
-    _v_pd: PhantomData<V>,
-}
-
-impl<K, V> Iterator for MapLaneRangedSnapshotIterator<K, V>
-where
-    K: DeserializeOwned,
-    V: DeserializeOwned,
-{
-    type Item = Result<(K, V), StoreError>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.snapshot.next().map(|(key, value)| {
-            let store_key = bincode::deserialize::<MapStorageKey>(&key)?;
-
-            let key = bincode::deserialize::<K>(&store_key.key.ok_or(StoreError::KeyNotFound)?)?;
-            let value = bincode::deserialize::<V>(&value)?;
-
-            Ok((key, value))
-        })
+        self.delegate.ranged_snapshot(prefix, map_fn)
     }
 }
 
@@ -194,9 +130,16 @@ where
     K: DeserializeOwned,
     V: DeserializeOwned,
 {
-    type Snapshot = MapLaneRangedSnapshot<K, V>;
+    type Snapshot = KeyedSnapshot<K, V>;
 
     fn snapshot(&self) -> Result<Option<Self::Snapshot>, StoreError> {
-        self.ranged_snapshot(self.lane_uri.clone())
+        self.ranged_snapshot(self.lane_uri.clone(), |key, value| {
+            let store_key = bincode::deserialize::<MapStorageKey>(&key)?;
+
+            let key = bincode::deserialize::<K>(&store_key.key.ok_or(StoreError::KeyNotFound)?)?;
+            let value = bincode::deserialize::<V>(&value)?;
+
+            Ok((key, value))
+        })
     }
 }

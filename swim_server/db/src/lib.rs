@@ -12,15 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#![allow(warnings)]
-
 use crate::engines::StoreDelegateConfig;
 use crate::stores::plane::{PlaneStore, PlaneStoreInner, SwimPlaneStore};
 use bincode::Error;
-use serde::de::DeserializeOwned;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Weak};
+use std::vec::IntoIter;
 
 pub mod engines;
 pub mod stores;
@@ -85,24 +83,38 @@ pub trait Destroy {
     fn destroy(self);
 }
 
-pub trait Ranged {}
-impl<K, V, R> Ranged for R where R: RangedSnapshot<K, V> {}
-
-pub trait RangedSnapshot<K, V> {
-    type RangedSnapshot: IntoIterator;
+pub trait RangedSnapshot {
     type Prefix;
 
-    fn ranged_snapshot<'i, F>(
+    fn ranged_snapshot<F, K, V>(
         &self,
         prefix: Self::Prefix,
         map_fn: F,
-    ) -> Result<Option<Self::RangedSnapshot>, StoreError>
+    ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
     where
-        F: Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>;
+        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>;
+}
+
+pub struct KeyedSnapshot<K, V> {
+    data: IntoIter<(K, V)>,
+}
+
+impl<K, V> Iterator for KeyedSnapshot<K, V> {
+    type Item = (K, V);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.data.next()
+    }
+}
+
+impl<K, V> KeyedSnapshot<K, V> {
+    pub fn new(data: IntoIter<(K, V)>) -> Self {
+        KeyedSnapshot { data }
+    }
 }
 
 pub trait Snapshot<K, V>: RangedSnapshot {
-    type Snapshot: IntoIterator<Item = Result<(K, V), StoreError>>;
+    type Snapshot: IntoIterator<Item = (K, V)>;
 
     fn snapshot(&self) -> Result<Option<Self::Snapshot>, StoreError>;
 }
@@ -171,7 +183,6 @@ mod tests {
     use crate::engines::lmdbx::LmdbxOpts;
     use crate::engines::StoreDelegateConfig;
     use crate::stores::lane::map::MapStore;
-    use crate::stores::lane::value::{ValueLaneStore, ValueStore};
     use crate::stores::node::NodeStore;
     use crate::stores::plane::PlaneStore;
     use crate::stores::{StoreKey, ValueStorageKey};

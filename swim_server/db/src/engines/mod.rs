@@ -12,14 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::engines::lmdbx::snapshot::{LmdbxRangedSnapshot, LmdbxSnapshotIter};
 use crate::engines::lmdbx::{LmdbxDatabase, LmdbxOpts};
-use crate::engines::rocks::snapshot::{RocksRangedSnapshot, RocksSnapshotIter};
 use crate::engines::rocks::RocksDatabase;
-use crate::{FromOpts, RangedSnapshot, StoreEngine, StoreError, StoreInitialisationError};
+use crate::{
+    FromOpts, KeyedSnapshot, RangedSnapshot, StoreEngine, StoreError, StoreInitialisationError,
+};
 use std::fmt::{Debug, Formatter};
 use std::path::Path;
-use std::vec::IntoIter;
 
 #[cfg(feature = "libmdbx")]
 pub mod lmdbx;
@@ -34,70 +33,20 @@ pub enum StoreDelegate {
     Rocksdb(RocksDatabase),
 }
 
-pub enum StoreDelegateSnapshot {
-    #[cfg(feature = "libmdbx")]
-    Lmdbx(LmdbxRangedSnapshot),
-    #[cfg(feature = "rocks-db")]
-    Rocksdb(RocksRangedSnapshot),
-}
-
-impl IntoIterator for StoreDelegateSnapshot {
-    type Item = (Vec<u8>, Vec<u8>);
-    type IntoIter = StoreDelegateSnapshotIterator;
-
-    fn into_iter(self) -> Self::IntoIter {
-        match self {
-            #[cfg(feature = "libmdbx")]
-            StoreDelegateSnapshot::Lmdbx(snapshot) => {
-                StoreDelegateSnapshotIterator::Lmdbx(snapshot.into_iter())
-            }
-            #[cfg(feature = "rocks-db")]
-            StoreDelegateSnapshot::Rocksdb(snapshot) => {
-                StoreDelegateSnapshotIterator::Rocksdb(snapshot.into_iter())
-            }
-        }
-    }
-}
-
-pub enum StoreDelegateSnapshotIterator {
-    #[cfg(feature = "libmdbx")]
-    Lmdbx(LmdbxSnapshotIter),
-    #[cfg(feature = "rocks-db")]
-    Rocksdb(RocksSnapshotIter),
-}
-
-impl Iterator for StoreDelegateSnapshotIterator {
-    type Item = (Vec<u8>, Vec<u8>);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        match self {
-            #[cfg(feature = "libmdbx")]
-            StoreDelegateSnapshotIterator::Lmdbx(iter) => iter.next(),
-            #[cfg(feature = "rocks-db")]
-            StoreDelegateSnapshotIterator::Rocksdb(iter) => iter.next(),
-        }
-    }
-}
-
 impl RangedSnapshot for StoreDelegate {
-    type RangedSnapshot = StoreDelegateSnapshot;
     type Prefix = Vec<u8>;
 
-    fn ranged_snapshot<'i, F, K, V>(
+    fn ranged_snapshot<F, K, V>(
         &self,
         prefix: Self::Prefix,
         map_fn: F,
-    ) -> Result<Option<Self::RangedSnapshot>, StoreError>
+    ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
     where
-        F: Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
+        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
     {
         match self {
-            StoreDelegate::Lmdbx(db) => db
-                .ranged_snapshot(prefix, map_fn)
-                .map(|e| e.map(StoreDelegateSnapshot::Lmdbx)),
-            StoreDelegate::Rocksdb(db) => db
-                .ranged_snapshot(prefix, map_fn)
-                .map(|e| e.map(StoreDelegateSnapshot::Rocksdb)),
+            StoreDelegate::Lmdbx(db) => db.ranged_snapshot(prefix, map_fn),
+            StoreDelegate::Rocksdb(db) => db.ranged_snapshot(prefix, map_fn),
         }
     }
 }
@@ -162,10 +111,3 @@ impl<'i> StoreEngine<'i> for StoreDelegate {
         gated_arm!(self, delete(key))
     }
 }
-//
-// pub enum StoreSnapshot<'a> {
-//     #[cfg(feature = "libmdbx")]
-//     Lmdbx(LmdbxKeyedSnapshot),
-//     #[cfg(feature = "rocks-db")]
-//     Rocksdb(rocksdb::Snapshot<'a>),
-// }

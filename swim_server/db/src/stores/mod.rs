@@ -18,11 +18,10 @@ pub mod plane;
 
 use std::marker::PhantomData;
 
-use crate::engines::{StoreDelegate, StoreDelegateSnapshot};
-use crate::{RangedSnapshot, StoreEngine, StoreError};
+use crate::engines::StoreDelegate;
+use crate::{KeyedSnapshot, RangedSnapshot, StoreEngine, StoreError};
 
 use crate::stores::lane::{serialize, serialize_then};
-use heed::zerocopy::AsBytes;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -52,16 +51,15 @@ pub struct DatabaseStore<K> {
 }
 
 impl<K> RangedSnapshot for DatabaseStore<K> {
-    type RangedSnapshot = StoreDelegateSnapshot;
     type Prefix = StoreKey;
 
-    fn ranged_snapshot<'i, F, K, V>(
+    fn ranged_snapshot<F, DK, DV>(
         &self,
         prefix: Self::Prefix,
         map_fn: F,
-    ) -> Result<Option<Self::RangedSnapshot>, StoreError>
+    ) -> Result<Option<KeyedSnapshot<DK, DV>>, StoreError>
     where
-        F: Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
+        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(DK, DV), StoreError>,
     {
         match prefix {
             StoreKey::Map(key) => {

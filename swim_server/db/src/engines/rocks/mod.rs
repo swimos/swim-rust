@@ -12,10 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod snapshot;
-
 use crate::engines::StoreDelegate;
-use crate::{Destroy, FromOpts, Store, StoreEngine, StoreError, StoreInitialisationError};
+use crate::{
+    Destroy, FromOpts, KeyedSnapshot, RangedSnapshot, Store, StoreEngine, StoreError,
+    StoreInitialisationError,
+};
 use rocksdb::{Error, Options, DB};
 use std::path::Path;
 use std::sync::Arc;
@@ -93,6 +94,50 @@ impl FromOpts for RocksDatabase {
 impl From<rocksdb::Error> for StoreInitialisationError {
     fn from(e: Error) -> Self {
         StoreInitialisationError::Error(e.to_string())
+    }
+}
+
+impl RangedSnapshot for RocksDatabase {
+    type Prefix = Vec<u8>;
+
+    fn ranged_snapshot<F, K, V>(
+        &self,
+        prefix: Self::Prefix,
+        map_fn: F,
+    ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
+    where
+        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
+    {
+        let db = &*self.delegate;
+        let mut raw = db.raw_iterator();
+        let mut data = Vec::new();
+
+        raw.seek(prefix.clone());
+
+        loop {
+            if raw.valid() {
+                match (raw.key(), raw.value()) {
+                    (Some(key), Some(value)) => {
+                        if !key.starts_with(&prefix) {
+                            break;
+                        } else {
+                            let mapped = map_fn(key, value)?;
+                            data.push(mapped);
+                            raw.next();
+                        }
+                    }
+                    _ => panic!(),
+                }
+            } else {
+                break;
+            }
+        }
+
+        if data.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(KeyedSnapshot::new(data.into_iter())))
+        }
     }
 }
 

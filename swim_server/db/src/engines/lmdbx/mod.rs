@@ -12,10 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod snapshot;
-
 use crate::engines::StoreDelegate;
-use crate::{Destroy, FromOpts, Store, StoreEngine, StoreError, StoreInitialisationError};
+use crate::{
+    Destroy, FromOpts, KeyedSnapshot, RangedSnapshot, Store, StoreEngine, StoreError,
+    StoreInitialisationError,
+};
 use heed::types::ByteSlice;
 use heed::{Database, Env, EnvOpenOptions, Error};
 use std::fmt::{Debug, Formatter};
@@ -141,6 +142,42 @@ impl FromOpts for LmdbxDatabase {
         let LmdbxOpts { open_opts } = opts;
 
         LmdbxDatabase::init(path, open_opts)
+    }
+}
+
+impl RangedSnapshot for LmdbxDatabase {
+    type Prefix = Vec<u8>;
+
+    fn ranged_snapshot<F, K, V>(
+        &self,
+        prefix: Self::Prefix,
+        map_fn: F,
+    ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
+    where
+        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
+    {
+        let LmdbxDatabaseInner { delegate, env, .. } = &*self.inner;
+        let tx = env.read_txn()?;
+
+        let mut it = delegate
+            .prefix_iter(&tx, &prefix)
+            .map_err(|e| StoreError::Error(e.to_string()))?;
+
+        let data = it.try_fold(Vec::new(), |mut vec, result| match result {
+            Ok((key, value)) => {
+                let mapped = map_fn(key, value)?;
+                vec.push(mapped);
+
+                Ok(vec)
+            }
+            Err(e) => Err(StoreError::Error(e.to_string())),
+        })?;
+
+        if data.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(KeyedSnapshot::new(data.into_iter())))
+        }
     }
 }
 
