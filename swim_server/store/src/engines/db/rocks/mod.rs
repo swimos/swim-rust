@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::engines::StoreDelegate;
+use crate::engines::db::StoreDelegate;
 use crate::{
     Destroy, FromOpts, KeyedSnapshot, RangedSnapshot, Store, StoreEngine, StoreError,
     StoreInitialisationError,
@@ -139,7 +139,7 @@ impl RangedSnapshot for RocksDatabase {
 
 #[cfg(test)]
 mod tests {
-    use crate::engines::rocks::RocksDatabase;
+    use crate::engines::db::rocks::RocksDatabase;
     use crate::StoreEngine;
     use rocksdb::{Options, DB};
 

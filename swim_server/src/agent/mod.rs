@@ -80,22 +80,25 @@ use crate::meta::open_meta_lanes;
 #[doc(hidden)]
 #[allow(unused_imports)]
 pub use agent_derive::*;
+use store::stores::node::NodeStore;
 use tokio_stream::wrappers::ReceiverStream;
 
 /// Trait that must be implemented for any agent. This is essentially just boilerplate and will
 /// eventually be implemented using a derive macro.
 pub trait SwimAgent<Config>: Any + Send + Sync + Sized {
     /// Create an instance of the agent and life-cycle handles for each of its lanes.
-    fn instantiate<Context>(
+    fn instantiate<Context, Store>(
         configuration: &Config,
         exec_conf: &AgentExecutionConfig,
+        store: &Store,
     ) -> (
         Self,
         DynamicLaneTasks<Self, Context>,
         DynamicAgentIo<Context>,
     )
     where
-        Context: AgentContext<Self> + AgentExecutionContext + Send + Sync + 'static;
+        Context: AgentContext<Self> + AgentExecutionContext + Send + Sync + 'static,
+        Store: NodeStore;
 }
 
 pub type DynamicLaneTasks<Agent, Context> = Vec<Box<dyn LaneTasks<Agent, Context>>>;
@@ -173,12 +176,13 @@ impl<Config> AgentParameters<Config> {
 /// * `stop_trigger` - External trigger to cleanly stop the agent.
 /// * `parameters` - Parameters extracted from the agent node route pattern.
 /// * `incoming_envelopes` - The stream of envelopes routed to the agent.
-pub fn run_agent<Config, Clk, Agent, L, Router>(
+pub fn run_agent<Config, Clk, Agent, L, Router, Store>(
     lifecycle: L,
     clock: Clk,
     parameters: AgentParameters<Config>,
     incoming_envelopes: impl Stream<Item = TaggedEnvelope> + Send + 'static,
     router: Router,
+    store: Store,
 ) -> (
     Arc<Agent>,
     impl Future<Output = AgentResult> + Send + 'static,
@@ -188,6 +192,7 @@ where
     Agent: SwimAgent<Config> + Send + Sync + 'static,
     L: AgentLifecycle<Agent> + Send + Sync + 'static,
     Router: ServerRouter + Clone + 'static,
+    Store: NodeStore + Send + Sync + Clone,
 {
     let AgentParameters {
         agent_config,
@@ -198,8 +203,10 @@ where
 
     let span = span!(Level::INFO, AGENT_TASK, %uri);
     let (tripwire, stop_trigger) = trigger::trigger();
-    let (agent, mut tasks, io_providers) =
-        Agent::instantiate::<ContextImpl<Agent, Clk, Router>>(&agent_config, &execution_config);
+    let (agent, mut tasks, io_providers) = Agent::instantiate::<
+        ContextImpl<Agent, Clk, Router, Store>,
+        Store,
+    >(&agent_config, &execution_config, &store);
     let agent_ref = Arc::new(agent);
     let agent_cpy = agent_ref.clone();
 
@@ -217,7 +224,7 @@ where
         let (meta_context, mut meta_tasks, meta_io) = open_meta_lanes::<
             Config,
             Agent,
-            ContextImpl<Agent, Clk, Router>,
+            ContextImpl<Agent, Clk, Router, Store>,
         >(&execution_config, lane_summary);
 
         tasks.append(&mut meta_tasks);
@@ -225,7 +232,13 @@ where
         let (tx, rx) = mpsc::channel(execution_config.scheduler_buffer.get());
         let routing_context = RoutingContext::new(uri.clone(), router, parameters);
         let schedule_context = SchedulerContext::new(tx, clock, stop_trigger.clone());
-        let context = ContextImpl::new(agent_ref, routing_context, schedule_context, meta_context);
+        let context = ContextImpl::new(
+            agent_ref,
+            routing_context,
+            schedule_context,
+            meta_context,
+            store,
+        );
 
         lifecycle
             .starting(&context)

@@ -29,6 +29,7 @@ use crate::agent::lane::channels::uplink::stateless::StatelessUplinks;
 use crate::agent::lane::channels::uplink::{AddressedUplinkMessage, UplinkAction, UplinkKind};
 use crate::agent::lane::channels::TaggedAction;
 use crate::routing::error::RouterError;
+use store::mock::MockNodeStore;
 use swim_common::routing::ResolutionError;
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
@@ -80,6 +81,7 @@ struct TestContext(TestRouter, mpsc::Sender<Eff>);
 
 impl AgentExecutionContext for TestContext {
     type Router = TestRouter;
+    type Store = MockNodeStore;
 
     fn router_handle(&self) -> Self::Router {
         self.0.clone()
@@ -87,6 +89,10 @@ impl AgentExecutionContext for TestContext {
 
     fn spawner(&self) -> mpsc::Sender<Eff> {
         self.1.clone()
+    }
+
+    fn store(&self) -> Self::Store {
+        unimplemented!()
     }
 }
 

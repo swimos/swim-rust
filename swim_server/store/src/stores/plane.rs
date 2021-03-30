@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::engines::StoreDelegate;
+use crate::engines::db::StoreDelegate;
 use crate::stores::node::{NodeStore, SwimNodeStore};
 use crate::stores::{DatabaseStore, MapStorageKey, StoreKey, ValueStorageKey};
 use crate::{
@@ -53,8 +53,8 @@ fn paths_for<I: AsRef<Path> + ?Sized>(base_path: &PathBuf, plane_name: &I) -> (P
     (map_path, value_path)
 }
 
-pub trait PlaneStore {
-    type NodeStore: for<'n> NodeStore<'n>;
+pub trait PlaneStore: Debug {
+    type NodeStore: NodeStore;
 
     fn node_store<I>(&self, node: I) -> Self::NodeStore
     where
@@ -207,7 +207,7 @@ impl Iterator for RangedPlaneSnapshotIterator {
 
 #[cfg(test)]
 mod tests {
-    use crate::engines::rocks::RocksDatabase;
+    use crate::engines::db::rocks::RocksDatabase;
     use crate::stores::plane::SwimPlaneStore;
     use crate::stores::{DatabaseStore, StoreKey, ValueStorageKey};
     use crate::StoreEngine;

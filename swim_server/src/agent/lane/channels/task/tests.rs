@@ -41,6 +41,7 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use stm::transaction::TransactionError;
+use store::mock::MockNodeStore;
 use swim_common::form::{Form, FormErr};
 use swim_common::model::Value;
 use swim_common::routing::ResolutionError;
@@ -378,6 +379,7 @@ impl ServerRouter for TestRouter {
 
 impl AgentExecutionContext for TestContext {
     type Router = TestRouter;
+    type Store = MockNodeStore;
 
     fn router_handle(&self) -> Self::Router {
         let TestContext {
@@ -391,6 +393,10 @@ impl AgentExecutionContext for TestContext {
 
     fn spawner(&self) -> Sender<Eff> {
         self.scheduler.clone()
+    }
+
+    fn store(&self) -> Self::Store {
+        MockNodeStore
     }
 }
 
@@ -1300,6 +1306,7 @@ struct MultiTestRouter(Arc<parking_lot::Mutex<MultiTestContextInner>>);
 
 impl AgentExecutionContext for MultiTestContext {
     type Router = MultiTestRouter;
+    type Store = MockNodeStore;
 
     fn router_handle(&self) -> Self::Router {
         MultiTestRouter(self.0.clone())
@@ -1307,6 +1314,10 @@ impl AgentExecutionContext for MultiTestContext {
 
     fn spawner(&self) -> Sender<Eff> {
         self.1.clone()
+    }
+
+    fn store(&self) -> Self::Store {
+        MockNodeStore
     }
 }
 

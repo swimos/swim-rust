@@ -34,6 +34,7 @@ use std::collections::{HashMap, HashSet};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
+use store::mock::MockNodeStore;
 use swim_common::form::{Form, FormErr};
 use swim_common::model::Value;
 use swim_common::routing::ResolutionError;
@@ -317,6 +318,7 @@ impl TestContext {
 
 impl AgentExecutionContext for TestContext {
     type Router = TestRouter;
+    type Store = MockNodeStore;
 
     fn router_handle(&self) -> Self::Router {
         let TestContext {
@@ -330,6 +332,10 @@ impl AgentExecutionContext for TestContext {
 
     fn spawner(&self) -> Sender<Eff> {
         self.spawner.clone()
+    }
+
+    fn store(&self) -> Self::Store {
+        MockNodeStore
     }
 }
 

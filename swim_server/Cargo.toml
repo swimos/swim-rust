@@ -5,9 +5,9 @@ authors = ["Swim.AI developers info@swim.ai"]
 edition = "2018"
 
 [features]
-default = ["db/rocksdb", "db/libmdbx"]
-rocksdb = ["db/rocksdb"]
-libmdbx = ["db/libmdbx"]
+default = ["store/rocksdb", "store/libmdbx"]
+rocksdb = ["store/rocksdb"]
+libmdbx = ["store/libmdbx"]
 debug = ["log_verbose"]
 log_verbose = []
 trust-dns = ["trust-dns-resolver"]
@@ -48,12 +48,12 @@ lazy_static = "1.4.0"
 percent-encoding = "2.1.0"
 thiserror = "1.0"
 
-[dependencies.db]
+[dependencies.store]
 version = "0.1.0"
-path = "db"
+path = "store"
 default-features = false
 
 [dev-dependencies]
-db = { path = "db", version = "0.1.0", features = ["mock", "rocksdb"] }
+store = { path = "store", version = "0.1.0", features = ["mock", "rocksdb"] }
 tokio = { version = "1.1.1", features = ["rt-multi-thread", "macros", "test-util"] }
 tracing = "0.1.16"

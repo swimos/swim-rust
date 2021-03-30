@@ -43,6 +43,7 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
+use store::mock::MockNodeStore;
 use swim_runtime::task;
 use tokio::sync::{mpsc, Mutex};
 use tokio::time::{timeout, Duration};
@@ -740,6 +741,7 @@ async fn agent_loop() {
         clock.clone(),
         ReceiverStream::new(envelope_rx),
         SingleChannelRouter::new(RoutingAddr::local(1024)),
+        MockNodeStore,
     );
 
     let agent_task = swim_runtime::task::spawn(agent_proc);

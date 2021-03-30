@@ -126,16 +126,18 @@ pub fn derive_swim_agent(input: DeriveInput) -> Result<TokenStream, TokenStream>
 
         #[automatically_derived]
         impl SwimAgent<#config_type> for #agent_name {
-            fn instantiate<Context: AgentContext<Self> + AgentExecutionContext>(
+            fn instantiate<Context, Store>(
                 configuration: &#config_type,
                 exec_conf: &AgentExecutionConfig,
+                store:&Store
             ) -> (
                 Self,
                 Vec<Box<dyn LaneTasks<Self, Context>>>,
                 HashMap<String, Box<dyn LaneIo<Context>>>,
             )
-                where
-                    Context: AgentContext<Self> + AgentExecutionContext + Send + Sync + 'static,
+            where
+                Context: AgentContext<Self> + AgentExecutionContext + Send + Sync + 'static,
+                Store: swim_server::stores::node::NodeStore,
             {
                 let mut io_map: HashMap<String, Box<dyn LaneIo<Context>>> = HashMap::new();
 

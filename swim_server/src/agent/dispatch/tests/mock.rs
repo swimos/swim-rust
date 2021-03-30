@@ -31,6 +31,7 @@ use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::sync::Arc;
 use stm::transaction::TransactionError;
+use store::mock::MockNodeStore;
 use swim_common::model::Value;
 use swim_common::routing::ResolutionError;
 use swim_common::warp::envelope::{Envelope, OutgoingHeader, OutgoingLinkMessage};
@@ -136,6 +137,7 @@ pub struct MockExecutionContext {
 
 impl AgentExecutionContext for MockExecutionContext {
     type Router = MockRouter;
+    type Store = MockNodeStore;
 
     fn router_handle(&self) -> Self::Router {
         MockRouter(self.router.clone())
@@ -143,6 +145,10 @@ impl AgentExecutionContext for MockExecutionContext {
 
     fn spawner(&self) -> Sender<Eff> {
         self.spawner.clone()
+    }
+
+    fn store(&self) -> Self::Store {
+        MockNodeStore
     }
 }
 

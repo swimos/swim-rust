@@ -18,10 +18,9 @@ use crate::plane::spec::{PlaneSpec, RouteSpec};
 use crate::plane::tests::fixture::{ReceiveAgentRoute, SendAgentRoute, TestLifecycle};
 use crate::plane::{AgentRoute, EnvChannel};
 use crate::routing::{ServerRouter, TopLevelRouterFactory};
-use db::mock::MockServerStore;
-use db::{ServerStore, StoreEngineOpts, SwimStore};
 use futures::future::join;
 use std::time::Duration;
+use store::mock::MockPlaneStore;
 use swim_runtime::time::clock::Clock;
 use swim_runtime::time::timeout;
 use tokio::sync::mpsc;
@@ -32,7 +31,7 @@ use utilities::sync::trigger;
 mod fixture;
 
 fn make_spec<Clk: Clock, Delegate: ServerRouter + 'static>() -> (
-    PlaneSpec<Clk, EnvChannel, PlaneRouter<Delegate>>,
+    PlaneSpec<Clk, EnvChannel, PlaneRouter<Delegate>, MockPlaneStore>,
     trigger::Receiver,
 ) {
     let send_pattern = RoutePattern::parse(
@@ -61,6 +60,7 @@ fn make_spec<Clk: Clock, Delegate: ServerRouter + 'static>() -> (
         PlaneSpec {
             routes: vec![sender, reciever],
             lifecycle: Some(lifecycle.boxed()),
+            store: MockPlaneStore,
         },
         rx,
     )
@@ -85,7 +85,6 @@ async fn plane_event_loop() {
         OpenEndedFutures::new(),
         (context_tx, context_rx),
         top_level_router_fac,
-        MockServerStore.plane_store("test").unwrap(),
     );
 
     let completion_task = async move {

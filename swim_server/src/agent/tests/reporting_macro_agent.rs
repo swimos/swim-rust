@@ -38,6 +38,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use stm::stm::Stm;
 use stm::transaction::atomically;
+use store::mock::MockNodeStore;
 use tokio::sync::{mpsc, Mutex};
 use tokio_stream::wrappers::ReceiverStream;
 use utilities::uri::RelativeUri;
@@ -423,6 +424,7 @@ async fn agent_loop() {
         clock.clone(),
         ReceiverStream::new(envelope_rx),
         SingleChannelRouter::new(RoutingAddr::local(1024)),
+        MockNodeStore,
     );
 
     let agent_task = swim_runtime::task::spawn(agent_proc);

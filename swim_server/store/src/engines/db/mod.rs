@@ -13,10 +13,10 @@
 // limitations under the License.
 
 #[cfg(feature = "libmdbx")]
-use crate::engines::lmdbx::{LmdbxDatabase, LmdbxOpts};
+use crate::engines::db::lmdbx::{LmdbxDatabase, LmdbxOpts};
 
 #[cfg(feature = "rocks-db")]
-use crate::engines::rocks::RocksDatabase;
+use crate::engines::db::rocks::RocksDatabase;
 use crate::{
     FromOpts, KeyedSnapshot, RangedSnapshot, StoreEngine, StoreError, StoreInitialisationError,
 };

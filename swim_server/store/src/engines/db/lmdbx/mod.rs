@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::engines::StoreDelegate;
+use crate::engines::db::StoreDelegate;
 use crate::{
     Destroy, FromOpts, KeyedSnapshot, RangedSnapshot, Store, StoreEngine, StoreError,
     StoreInitialisationError,
@@ -214,7 +214,7 @@ impl<'i> StoreEngine<'i> for LmdbxDatabase {
 
 #[cfg(test)]
 mod tests {
-    use crate::engines::lmdbx::LmdbxDatabase;
+    use crate::engines::db::lmdbx::LmdbxDatabase;
     use crate::StoreEngine;
     use heed::types::UnalignedSlice;
     use heed::{Database, EnvOpenOptions};

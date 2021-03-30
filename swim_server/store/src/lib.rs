@@ -18,7 +18,7 @@ pub mod mock;
 pub mod engines;
 pub mod stores;
 
-use crate::engines::StoreDelegateConfig;
+use crate::engines::db::StoreDelegateConfig;
 use crate::stores::plane::{PlaneStore, PlaneStoreInner, SwimPlaneStore};
 use bincode::Error;
 use std::collections::HashMap;
@@ -192,9 +192,8 @@ impl SwimStore for ServerStore {
 
 #[cfg(test)]
 mod tests {
-    use crate::engines::lmdbx::LmdbxOpts;
-    use crate::engines::StoreDelegateConfig;
-    use crate::stores::lane::map::MapStore;
+    use crate::engines::db::lmdbx::LmdbxOpts;
+    use crate::engines::db::StoreDelegateConfig;
     use crate::stores::node::NodeStore;
     use crate::stores::plane::PlaneStore;
     use crate::stores::{StoreKey, ValueStorageKey};
@@ -237,8 +236,8 @@ mod tests {
         println!("{:?}", String::from_utf8(value));
     }
 
-    #[test]
-    fn lane() {
+    #[tokio::test]
+    async fn lane() {
         let mut rock_opts = Options::default();
         rock_opts.create_if_missing(true);
         rock_opts.create_missing_column_families(true);
@@ -261,9 +260,12 @@ mod tests {
         let mut store = ServerStore::new(server_opts);
         let plane_store = store.plane_store("unit").unwrap();
         let node_store = plane_store.node_store("node");
-        let map_store = node_store.map_lane_store("map");
+        let map_store = node_store.map_lane_store("map", false);
 
-        assert!(map_store.put(&"a".to_string(), &"a".to_string()).is_ok());
+        assert!(map_store
+            .put(&"a".to_string(), &"a".to_string())
+            .await
+            .is_ok());
         // let val = map_store.get(&"a".to_string());
         // println!("{}", val.unwrap().unwrap());
 

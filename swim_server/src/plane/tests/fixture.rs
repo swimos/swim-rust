@@ -30,6 +30,7 @@ use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
+use store::mock::MockNodeStore;
 use swim_common::warp::envelope::Envelope;
 use swim_runtime::time::clock::Clock;
 use utilities::sync::trigger;
@@ -96,7 +97,7 @@ const LANE_NAME: &str = "receiver_lane";
 const MESSAGE: &str = "ping!";
 
 impl<Clk: Clock, Delegate: ServerRouter + 'static>
-    AgentRoute<Clk, EnvChannel, PlaneRouter<Delegate>> for SendAgentRoute
+    AgentRoute<Clk, EnvChannel, PlaneRouter<Delegate>, MockNodeStore> for SendAgentRoute
 {
     fn run_agent(
         &self,
@@ -106,6 +107,7 @@ impl<Clk: Clock, Delegate: ServerRouter + 'static>
         _clock: Clk,
         incoming_envelopes: EnvChannel,
         mut router: PlaneRouter<Delegate>,
+        _store: MockNodeStore,
     ) -> (Arc<dyn Any + Send + Sync>, BoxFuture<'static, AgentResult>) {
         let id = parameters[PARAM_NAME].clone();
         let target = self.0.clone();
@@ -139,7 +141,7 @@ impl<Clk: Clock, Delegate: ServerRouter + 'static>
     }
 }
 
-impl<Clk: Clock, Delegate> AgentRoute<Clk, EnvChannel, PlaneRouter<Delegate>>
+impl<Clk: Clock, Delegate> AgentRoute<Clk, EnvChannel, PlaneRouter<Delegate>, MockNodeStore>
     for ReceiveAgentRoute
 {
     fn run_agent(
@@ -150,6 +152,7 @@ impl<Clk: Clock, Delegate> AgentRoute<Clk, EnvChannel, PlaneRouter<Delegate>>
         _clock: Clk,
         incoming_envelopes: EnvChannel,
         _router: PlaneRouter<Delegate>,
+        _store: MockNodeStore,
     ) -> (Arc<dyn Any + Send + Sync>, BoxFuture<'static, AgentResult>) {
         let ReceiveAgentRoute { expected_id, done } = self;
         let mut done_sender = done.lock().take();

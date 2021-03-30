@@ -24,6 +24,7 @@ use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
 use std::sync::Arc;
+use store::stores::node::NodeStore;
 use swim_runtime::time::clock::Clock;
 use utilities::uri::RelativeUri;
 
@@ -62,7 +63,7 @@ where
         }
     }
 
-    pub fn run<Clk, Envelopes, Router>(
+    pub fn run<Clk, Envelopes, Router, Store>(
         &self,
         uri: RelativeUri,
         parameters: HashMap<String, String>,
@@ -70,11 +71,13 @@ where
         clock: Clk,
         incoming_envelopes: Envelopes,
         router: Router,
+        store: Store,
     ) -> (Arc<dyn Any + Send + Sync>, BoxFuture<'static, AgentResult>)
     where
         Clk: Clock,
         Envelopes: Stream<Item = TaggedEnvelope> + Send + 'static,
         Router: ServerRouter + Clone + 'static,
+        Store: NodeStore + Send + Sync + Clone,
     {
         let AgentProvider {
             configuration,
@@ -91,13 +94,14 @@ where
             parameters,
             incoming_envelopes,
             router,
+            store,
         );
         (agent, task.boxed())
     }
 }
 
-impl<Clk, Envelopes, Router, Agent, Config, Lifecycle> AgentRoute<Clk, Envelopes, Router>
-    for AgentProvider<Agent, Config, Lifecycle>
+impl<Clk, Envelopes, Router, Agent, Config, Lifecycle, Store>
+    AgentRoute<Clk, Envelopes, Router, Store> for AgentProvider<Agent, Config, Lifecycle>
 where
     Clk: Clock,
     Envelopes: Stream<Item = TaggedEnvelope> + Send + 'static,
@@ -105,6 +109,7 @@ where
     Agent: SwimAgent<Config> + Send + Sync + Debug + 'static,
     Config: Send + Sync + Clone + Debug + 'static,
     Lifecycle: AgentLifecycle<Agent> + Send + Sync + Clone + Debug + 'static,
+    Store: NodeStore + Send + Sync + Clone,
 {
     fn run_agent(
         &self,
@@ -114,6 +119,7 @@ where
         clock: Clk,
         incoming_envelopes: Envelopes,
         router: Router,
+        store: Store,
     ) -> (Arc<dyn Any + Send + Sync>, BoxFuture<'static, AgentResult>) {
         self.run(
             uri,
@@ -122,6 +128,7 @@ where
             clock,
             incoming_envelopes,
             router,
+            store,
         )
     }
 }

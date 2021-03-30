@@ -12,13 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::engines::StoreDelegate;
-use crate::stores::plane::SwimPlaneStore;
+use crate::engines::db::StoreDelegate;
+use crate::stores::lane::map::MapDataModel;
+use crate::stores::lane::value::ValueDataModel;
+use crate::stores::node::NodeStore;
+use crate::stores::plane::{PlaneStore, SwimPlaneStore};
 use crate::stores::{DatabaseStore, StoreKey};
 use crate::{
     Destroy, FromOpts, KeyedSnapshot, RangedSnapshot, Store, StoreEngine, StoreError,
     StoreInitialisationError, SwimStore,
 };
+use serde::Serialize;
 use std::path::Path;
 
 pub struct MockServerStore;
@@ -126,5 +130,59 @@ impl RangedSnapshot for EmptyDelegateStore {
         F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
     {
         Ok(None)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct MockNodeStore;
+impl NodeStore for MockNodeStore {
+    fn map_lane_store<I, K, V>(&self, _lane: I, _transient: bool) -> MapDataModel<K, V>
+    where
+        I: ToString,
+        K: Serialize,
+        V: Serialize,
+        Self: Sized,
+    {
+        unimplemented!()
+    }
+
+    fn value_lane_store<I, V>(&self, _lane: I, _transient: bool) -> ValueDataModel
+    where
+        I: ToString,
+        V: Serialize,
+        Self: Sized,
+    {
+        unimplemented!()
+    }
+}
+
+impl<'a> StoreEngine<'a> for MockNodeStore {
+    type Key = ();
+    type Value = ();
+    type Error = StoreError;
+
+    fn put(&self, _key: Self::Key, _value: Self::Value) -> Result<(), Self::Error> {
+        unimplemented!()
+    }
+
+    fn get(&self, _key: Self::Key) -> Result<Option<Vec<u8>>, Self::Error> {
+        unimplemented!()
+    }
+
+    fn delete(&self, _key: Self::Key) -> Result<bool, Self::Error> {
+        unimplemented!()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct MockPlaneStore;
+impl PlaneStore for MockPlaneStore {
+    type NodeStore = MockNodeStore;
+
+    fn node_store<I>(&self, _node: I) -> Self::NodeStore
+    where
+        I: ToString,
+    {
+        MockNodeStore
     }
 }

@@ -26,6 +26,8 @@ use crate::routing::{Route, RoutingAddr, ServerRouter, TaggedEnvelope};
 use futures::future::{ready, BoxFuture, Ready};
 use futures::FutureExt;
 use std::time::Duration;
+use store::mock::MockPlaneStore;
+use store::stores::node::NodeStore;
 use swim_common::routing::ResolutionError;
 use swim_runtime::time::clock::Clock;
 use tokio_stream::wrappers::ReceiverStream;
@@ -44,8 +46,12 @@ impl Clock for DummyClock {
     }
 }
 
-type BuilderType =
-    PlaneBuilder<DummyClock, ReceiverStream<TaggedEnvelope>, PlaneRouter<DummyDelegate>>;
+type BuilderType = PlaneBuilder<
+    DummyClock,
+    ReceiverStream<TaggedEnvelope>,
+    PlaneRouter<DummyDelegate>,
+    MockPlaneStore,
+>;
 
 #[derive(Debug)]
 struct DummyAgent;
@@ -80,9 +86,10 @@ impl ServerRouter for DummyDelegate {
 }
 
 impl SwimAgent<DummyConfig> for DummyAgent {
-    fn instantiate<Context>(
+    fn instantiate<Context, Store>(
         _configuration: &DummyConfig,
         _exec_conf: &AgentExecutionConfig,
+        _store: &Store,
     ) -> (
         Self,
         DynamicLaneTasks<Self, Context>,
@@ -90,6 +97,7 @@ impl SwimAgent<DummyConfig> for DummyAgent {
     )
     where
         Context: AgentContext<Self> + AgentExecutionContext + Send + Sync + 'static,
+        Store: NodeStore,
     {
         panic!("Called unexpectedly.");
     }
@@ -118,12 +126,14 @@ impl PlaneLifecycle for DummyPlaneLifecycle {
 fn plane_builder_single_route() {
     let pat = RoutePattern::parse_str("/:id").unwrap();
 
-    let mut builder: BuilderType = PlaneBuilder::new();
+    let mut builder: BuilderType = PlaneBuilder::new(MockPlaneStore);
     assert!(builder
         .add_route(pat.clone(), DummyConfig(1), DummyLifecycle(1))
         .is_ok());
 
-    let PlaneSpec { routes, lifecycle } = builder.build();
+    let PlaneSpec {
+        routes, lifecycle, ..
+    } = builder.build();
     assert!(lifecycle.is_none());
     assert_eq!(routes.len(), 1);
     let RouteSpec {
@@ -143,7 +153,7 @@ fn plane_builder_two_routes() {
     let pat1 = RoutePattern::parse_str("/a").unwrap();
     let pat2 = RoutePattern::parse_str("/b").unwrap();
 
-    let mut builder: BuilderType = PlaneBuilder::new();
+    let mut builder: BuilderType = PlaneBuilder::new(MockPlaneStore);
     assert!(builder
         .add_route(pat1.clone(), DummyConfig(1), DummyLifecycle(1))
         .is_ok());
@@ -151,7 +161,9 @@ fn plane_builder_two_routes() {
         .add_route(pat2.clone(), DummyConfig(2), DummyLifecycle(2))
         .is_ok());
 
-    let PlaneSpec { routes, lifecycle } = builder.build();
+    let PlaneSpec {
+        routes, lifecycle, ..
+    } = builder.build();
     assert!(lifecycle.is_none());
     assert_eq!(routes.len(), 2);
     let RouteSpec {
@@ -182,7 +194,7 @@ fn plane_builder_route_collision() {
     let pat1 = RoutePattern::parse_str("/:id").unwrap();
     let pat2 = RoutePattern::parse_str("/b").unwrap();
 
-    let mut builder: BuilderType = PlaneBuilder::new();
+    let mut builder: BuilderType = PlaneBuilder::new(MockPlaneStore);
     assert!(builder
         .add_route(pat1.clone(), DummyConfig(1), DummyLifecycle(1))
         .is_ok());
@@ -199,14 +211,16 @@ fn plane_builder_route_collision() {
 fn add_plane_lifecycle() {
     let pat = RoutePattern::parse_str("/:id").unwrap();
 
-    let mut builder: BuilderType = PlaneBuilder::new();
+    let mut builder: BuilderType = PlaneBuilder::new(MockPlaneStore);
     assert!(builder
         .add_route(pat.clone(), DummyConfig(1), DummyLifecycle(1))
         .is_ok());
 
     let plane_lifecycle = DummyPlaneLifecycle(5);
 
-    let PlaneSpec { routes, lifecycle } = builder.build_with_lifecycle(plane_lifecycle.boxed());
+    let PlaneSpec {
+        routes, lifecycle, ..
+    } = builder.build_with_lifecycle(plane_lifecycle.boxed());
     assert!(lifecycle.is_some());
 
     let lc = lifecycle.unwrap();

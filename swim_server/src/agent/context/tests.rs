@@ -18,6 +18,7 @@ use crate::agent::AgentContext;
 use crate::meta::make_test_meta_context;
 use std::collections::HashMap;
 use std::sync::Arc;
+use store::mock::MockNodeStore;
 use swim_runtime::task;
 use swim_runtime::time::clock::Clock;
 use tokio::sync::mpsc;
@@ -36,6 +37,7 @@ fn simple_accessors() {
         routing_context,
         schedule_context,
         make_test_meta_context(),
+        MockNodeStore,
     );
 
     assert!(std::ptr::eq(context.agent(), agent.as_ref()));
@@ -50,7 +52,7 @@ fn create_context(
     n: usize,
     clock: TestClock,
     close_trigger: trigger::Receiver,
-) -> ContextImpl<&'static str, impl Clock, ()> {
+) -> ContextImpl<&'static str, impl Clock, (), MockNodeStore> {
     let (tx, mut rx) = mpsc::channel(n);
 
     //Run any tasks that get scheduled.
@@ -71,6 +73,7 @@ fn create_context(
         routing_context,
         schedule_context,
         make_test_meta_context(),
+        MockNodeStore,
     )
 }
 

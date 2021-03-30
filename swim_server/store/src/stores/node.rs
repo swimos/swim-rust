@@ -12,30 +12,32 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::stores::lane::map::MapLaneStore;
-use crate::stores::lane::value::ValueLaneStore;
+use crate::stores::lane::map::MapDataModel;
+use crate::stores::lane::value::ValueDataModel;
 use crate::stores::lane::LaneKey;
 use crate::stores::plane::SwimPlaneStore;
 use crate::stores::{MapStorageKey, StoreKey, ValueStorageKey};
 use crate::{KeyedSnapshot, RangedSnapshot, StoreEngine, StoreError};
 use serde::Serialize;
+use std::fmt::Debug;
 use std::sync::Arc;
 
-pub trait NodeStore<'a>: StoreEngine<'a> {
-    fn map_lane_store<I, K, V>(&self, lane: I) -> MapLaneStore<K, V>
+pub trait NodeStore: for<'a> StoreEngine<'a> + Send + Sync + Clone + Debug {
+    fn map_lane_store<I, K, V>(&self, lane: I, transient: bool) -> MapDataModel<K, V>
     where
         I: ToString,
-        K: Serialize + 'a,
-        V: Serialize + 'a,
+        K: Serialize,
+        V: Serialize,
         Self: Sized;
 
-    fn value_lane_store<I, V>(&self, lane: I) -> ValueLaneStore<V>
+    fn value_lane_store<I, V>(&self, lane: I, transient: bool) -> ValueDataModel
     where
         I: ToString,
-        V: Serialize + 'a,
+        V: Serialize,
         Self: Sized;
 }
 
+#[derive(Debug)]
 pub struct SwimNodeStore {
     delegate: Arc<SwimPlaneStore>,
     node_uri: Arc<String>,
@@ -86,22 +88,22 @@ impl SwimNodeStore {
     }
 }
 
-impl<'a> NodeStore<'a> for SwimNodeStore {
-    fn map_lane_store<I, K, V>(&self, lane: I) -> MapLaneStore<K, V>
+impl NodeStore for SwimNodeStore {
+    fn map_lane_store<I, K, V>(&self, lane: I, transient: bool) -> MapDataModel<K, V>
     where
         I: ToString,
         K: Serialize,
-        V: Serialize + 'a,
+        V: Serialize,
     {
-        MapLaneStore::new(self.clone(), lane.to_string())
+        MapDataModel::new(self.clone(), lane.to_string(), transient)
     }
 
-    fn value_lane_store<I, V>(&self, lane: I) -> ValueLaneStore<V>
+    fn value_lane_store<I, V>(&self, lane: I, transient: bool) -> ValueDataModel
     where
         I: ToString,
-        V: Serialize + 'a,
+        V: Serialize,
     {
-        ValueLaneStore::new(self.clone(), lane.to_string())
+        ValueDataModel::new(self.clone(), lane.to_string(), transient)
     }
 }
 

@@ -26,6 +26,7 @@ use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 use crate::agent::lane::tests::ExactlyOnce;
 use crate::agent::lifecycle::AgentLifecycle;
 use crate::agent::{AgentContext, LaneIo, LaneTasks, SwimAgent};
+use crate::stores::node::NodeStore;
 use futures::future::{ready, BoxFuture, Ready};
 use futures::FutureExt;
 use std::collections::HashMap;
@@ -354,16 +355,18 @@ impl TestAgentConfig {
 }
 
 impl SwimAgent<TestAgentConfig> for ReportingAgent {
-    fn instantiate<Context: AgentContext<Self> + AgentExecutionContext>(
+    fn instantiate<Context, Store>(
         configuration: &TestAgentConfig,
         exec_conf: &AgentExecutionConfig,
+        _store: &Store,
     ) -> (
         Self,
         Vec<Box<dyn LaneTasks<Self, Context>>>,
         HashMap<String, Box<dyn LaneIo<Context>>>,
     )
     where
-        Context: AgentContext<Self> + Send + Sync + 'static,
+        Context: AgentContext<Self> + AgentExecutionContext + Send + Sync + 'static,
+        Store: NodeStore,
     {
         let TestAgentConfig { collector } = configuration;
 

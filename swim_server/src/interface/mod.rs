@@ -17,19 +17,20 @@
 //! The module provides methods and structures for creating and running Swim server instances.
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::plane::router::PlaneRouter;
-use crate::plane::spec::PlaneSpec;
+use crate::plane::spec::{PlaneBuilder, PlaneSpec};
 use crate::plane::{run_plane, EnvChannel};
 use crate::routing::remote::config::ConnectionConfig;
 use crate::routing::remote::net::dns::Resolver;
 use crate::routing::remote::net::plain::TokioPlainTextNetworking;
 use crate::routing::remote::{RemoteConnectionChannels, RemoteConnectionsTask};
 use crate::routing::{TopLevelRouter, TopLevelRouterFactory};
-use db::{ServerStore, StoreEngineOpts, SwimStore};
 use futures::{io, join};
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::net::SocketAddr;
 use std::sync::Arc;
+use store::stores::plane::SwimPlaneStore;
+use store::{ServerStore, StoreEngineOpts, SwimStore};
 use swim_common::routing::ws::tungstenite::TungsteniteWsConnections;
 use swim_runtime::time::clock::RuntimeClock;
 use tokio::sync::mpsc;
@@ -43,7 +44,8 @@ use utilities::sync::trigger;
 pub struct SwimServerBuilder {
     address: Option<SocketAddr>,
     config: SwimServerConfig,
-    planes: Vec<PlaneSpec<RuntimeClock, EnvChannel, PlaneRouter<TopLevelRouter>>>,
+    planes: Vec<PlaneSpec<RuntimeClock, EnvChannel, PlaneRouter<TopLevelRouter>, SwimPlaneStore>>,
+    store: ServerStore,
 }
 
 impl Default for SwimServerBuilder {
@@ -52,6 +54,7 @@ impl Default for SwimServerBuilder {
             address: None,
             config: SwimServerConfig::default(),
             planes: Vec::new(),
+            store: ServerStore::new(StoreEngineOpts::default()),
         }
     }
 }
@@ -61,11 +64,12 @@ impl SwimServerBuilder {
     ///
     /// # Arguments
     /// * `config` - The custom configuration for the server.
-    pub fn new(config: SwimServerConfig) -> Self {
+    pub fn new(config: SwimServerConfig, store: ServerStore) -> Self {
         SwimServerBuilder {
             address: None,
             config,
             planes: Vec::new(),
+            store,
         }
     }
 
@@ -127,14 +131,26 @@ impl SwimServerBuilder {
     /// let mut swim_server_builder = SwimServerBuilder::default();
     /// swim_server_builder.add_plane(plane_builder.build());
     /// ```
+    // todo change this to `.plane_builder` and return a plane builder with a SwimPlaneStore
     pub fn add_plane(
         &mut self,
-        plane: PlaneSpec<RuntimeClock, EnvChannel, PlaneRouter<TopLevelRouter>>,
+        plane: PlaneSpec<RuntimeClock, EnvChannel, PlaneRouter<TopLevelRouter>, SwimPlaneStore>,
     ) {
         if !self.planes.is_empty() {
             panic!("Multiple planes are not supported yet")
         }
         self.planes.push(plane)
+    }
+
+    pub fn plane_builder<I: Into<String>>(
+        &mut self,
+        name: I,
+    ) -> PlaneBuilder<RuntimeClock, EnvChannel, PlaneRouter<TopLevelRouter>, SwimPlaneStore> {
+        let store = self
+            .store
+            .plane_store(name.into())
+            .expect("Failed to build store");
+        PlaneBuilder::new(store)
     }
 
     /// Build the Swim Server.
@@ -190,6 +206,7 @@ impl SwimServerBuilder {
             address,
             planes,
             config,
+            store,
         } = self;
 
         let (stop_trigger_tx, stop_trigger_rx) = trigger::trigger();
@@ -200,6 +217,7 @@ impl SwimServerBuilder {
                 planes,
                 address: address.ok_or(SwimServerBuilderError::MissingAddress)?,
                 stop_trigger_rx,
+                _store: store,
             },
             ServerHandle { stop_trigger_tx },
         ))
@@ -231,8 +249,9 @@ impl Error for SwimServerBuilderError {}
 pub struct SwimServer {
     address: SocketAddr,
     config: SwimServerConfig,
-    planes: Vec<PlaneSpec<RuntimeClock, EnvChannel, PlaneRouter<TopLevelRouter>>>,
+    planes: Vec<PlaneSpec<RuntimeClock, EnvChannel, PlaneRouter<TopLevelRouter>, SwimPlaneStore>>,
     stop_trigger_rx: trigger::Receiver,
+    _store: ServerStore,
 }
 
 impl SwimServer {
@@ -249,6 +268,7 @@ impl SwimServer {
             config,
             mut planes,
             stop_trigger_rx,
+            _store,
         } = self;
 
         let SwimServerConfig {
@@ -268,8 +288,6 @@ impl SwimServer {
 
         let clock = swim_runtime::time::clock::runtime_clock();
 
-        let mut store = ServerStore::new(StoreEngineOpts::default());
-
         let plane_future = run_plane(
             agent_config.clone(),
             clock,
@@ -278,7 +296,6 @@ impl SwimServer {
             OpenEndedFutures::new(),
             (plane_tx, plane_rx),
             top_level_router_fac.clone(),
-            store.plane_store("plane").unwrap(),
         );
 
         let connections_future = RemoteConnectionsTask::new(

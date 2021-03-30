@@ -18,7 +18,7 @@ pub mod plane;
 
 use std::marker::PhantomData;
 
-use crate::engines::StoreDelegate;
+use crate::engines::db::StoreDelegate;
 use crate::{KeyedSnapshot, RangedSnapshot, StoreEngine, StoreError};
 
 use crate::stores::lane::{serialize, serialize_then};

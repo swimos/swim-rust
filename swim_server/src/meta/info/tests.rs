@@ -28,6 +28,7 @@ use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
+use store::mock::MockNodeStore;
 use swim_common::form::{Form, FormErr};
 use swim_common::record;
 use swim_common::routing::ResolutionError;
@@ -169,6 +170,7 @@ async fn lane_info_sync() {
         clock.clone(),
         ReceiverStream::new(envelope_rx),
         MockRouter::new(RoutingAddr::local(1024), tx),
+        MockNodeStore,
     );
 
     let _agent_task = swim_runtime::task::spawn(agent_proc);
