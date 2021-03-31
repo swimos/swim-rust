@@ -483,6 +483,9 @@ async fn connect_and_handshake_single<External: ExternalConnections, Ws>(
 where
     Ws: WsConnections<External::Socket>,
 {
+    //Todo dm bug needs the protocol
+    let host = format!("ws://{}", host);
+    eprintln!("host = {:#?}", host);
     websockets
         .open_connection(external.try_open(addr).await?, host)
         .await
