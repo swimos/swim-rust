@@ -38,6 +38,7 @@ use crate::agent::{
     MapLifecycleTasks, SwimAgent, ValueLifecycleTasks,
 };
 use crate::meta::info::LaneKind;
+use crate::meta::log::NodeLogger;
 use crate::plane::provider::AgentProvider;
 use crate::routing::RoutingAddr;
 use futures::future::{join, BoxFuture};
@@ -287,6 +288,10 @@ where
 
     fn parameters(&self) -> HashMap<String, String> {
         HashMap::new()
+    }
+
+    fn logger(&self) -> NodeLogger {
+        panic!("Unexpected log event")
     }
 }
 
