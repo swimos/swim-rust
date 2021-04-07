@@ -19,6 +19,7 @@ use crate::{
     Destroy, FromOpts, KeyedSnapshot, RangedSnapshot, StoreEngine, StoreEngineOpts, StoreError,
     StoreInitialisationError,
 };
+use std::ffi::OsStr;
 use std::fmt::{Debug, Formatter};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -42,11 +43,15 @@ impl Debug for PlaneStoreInner {
     }
 }
 
-fn paths_for<I: AsRef<Path> + ?Sized>(base_path: &PathBuf, plane_name: &I) -> (PathBuf, PathBuf) {
+fn paths_for<B, P>(base_path: &B, plane_name: &P) -> (PathBuf, PathBuf)
+where
+    B: AsRef<OsStr> + ?Sized,
+    P: AsRef<OsStr> + ?Sized,
+{
     let addr = Path::new(base_path)
         .join(STORE_DIR)
         .join(PLANES_DIR)
-        .join(plane_name);
+        .join(plane_name.as_ref());
     let map_path = addr.join(MAP_DIR);
     let value_path = addr.join(VALUE_DIR);
 
@@ -62,22 +67,26 @@ pub trait PlaneStore: Debug {
 }
 
 impl PlaneStoreInner {
-    pub(crate) fn open<I: AsRef<Path>>(
-        addr: I,
+    pub(crate) fn open<B, P>(
+        base_path: B,
+        plane_name: P,
         opts: &StoreEngineOpts,
-    ) -> Result<PlaneStoreInner, StoreInitialisationError> {
+    ) -> Result<PlaneStoreInner, StoreInitialisationError>
+    where
+        B: AsRef<Path>,
+        P: AsRef<Path>,
+    {
         let StoreEngineOpts {
             map_opts,
             value_opts,
-            base_path,
         } = opts;
 
-        let (map_path, value_path) = paths_for(base_path, addr.as_ref());
+        let (map_path, value_path) = paths_for(base_path.as_ref(), plane_name.as_ref());
         let map_store = StoreDelegate::from_opts(&map_path, &map_opts.config)?;
         let value_store = StoreDelegate::from_opts(&value_path, &value_opts.config)?;
 
         Ok(PlaneStoreInner {
-            path: addr.as_ref().into(),
+            path: plane_name.as_ref().into(),
             map_store: DatabaseStore::new(map_store),
             value_store: DatabaseStore::new(value_store),
         })

@@ -54,7 +54,7 @@ impl Default for SwimServerBuilder {
             address: None,
             config: SwimServerConfig::default(),
             planes: Vec::new(),
-            store: ServerStore::new(StoreEngineOpts::default()),
+            store: ServerStore::new(StoreEngineOpts::default(), "target".into()),
         }
     }
 }
@@ -98,6 +98,7 @@ impl SwimServerBuilder {
     /// use swim_server::agent::SwimAgent;
     /// use swim_server::agent::AgentContext;
     /// use swim_server::plane::spec::PlaneBuilder;
+    /// use store::{ServerStore, SwimStore};
     ///
     /// #[derive(Debug, SwimAgent)]
     /// #[agent(config = "RustAgentConfig")]
@@ -118,9 +119,9 @@ impl SwimServerBuilder {
     ///     }
     /// }
     ///
-    /// let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
+    /// let mut swim_server_builder = SwimServerBuilder::default();
+    /// let mut plane_builder = swim_server_builder.plane_builder("test");
     ///
-    /// let mut plane_builder = PlaneBuilder::new();
     /// plane_builder
     ///     .add_route(
     ///          RoutePattern::parse_str("/rust").unwrap(),
@@ -128,7 +129,6 @@ impl SwimServerBuilder {
     ///          RustAgentLifecycle {},
     ///     ).unwrap();
     ///
-    /// let mut swim_server_builder = SwimServerBuilder::default();
     /// swim_server_builder.add_plane(plane_builder.build());
     /// ```
     // todo change this to `.plane_builder` and return a plane builder with a SwimPlaneStore
@@ -186,9 +186,9 @@ impl SwimServerBuilder {
     ///     }
     /// }
     ///
-    /// let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
+    /// let mut swim_server_builder = SwimServerBuilder::default();
+    /// let mut plane_builder = swim_server_builder.plane_builder("test");
     ///
-    /// let mut plane_builder = PlaneBuilder::new();
     /// plane_builder
     ///     .add_route(
     ///          RoutePattern::parse_str("/rust").unwrap(),
@@ -196,9 +196,9 @@ impl SwimServerBuilder {
     ///          RustAgentLifecycle {},
     ///     ).unwrap();
     ///
-    /// let mut swim_server_builder = SwimServerBuilder::default();
     /// swim_server_builder.add_plane(plane_builder.build());
     ///
+    /// let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
     /// let (swim_server, server_handle) = swim_server_builder.bind_to(address).build().unwrap();
     /// ```
     pub fn build(self) -> Result<(SwimServer, ServerHandle), SwimServerBuilderError> {

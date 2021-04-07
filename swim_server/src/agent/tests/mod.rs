@@ -36,6 +36,7 @@ use crate::agent::{
 };
 use crate::meta::info::LaneKind;
 use crate::plane::provider::AgentProvider;
+use crate::plane::RouteAndParameters;
 use crate::routing::RoutingAddr;
 use futures::future::{join, BoxFuture};
 use futures::Stream;
@@ -735,8 +736,7 @@ async fn agent_loop() {
     // a specific order. We can then safely expect these events in that order to verify the agent
     // loop.
     let (_, agent_proc) = provider.run(
-        uri,
-        HashMap::new(),
+        RouteAndParameters::new(uri, HashMap::new()),
         exec_config,
         clock.clone(),
         ReceiverStream::new(envelope_rx),
