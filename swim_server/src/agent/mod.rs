@@ -76,6 +76,7 @@ use utilities::sync::{topic, trigger};
 use utilities::uri::RelativeUri;
 
 use crate::meta::info::{LaneInfo, LaneKind};
+use crate::meta::log::NodeLogger;
 use crate::meta::open_meta_lanes;
 #[doc(hidden)]
 #[allow(unused_imports)]
@@ -214,11 +215,16 @@ where
         });
 
     let task = async move {
-        let (meta_context, mut meta_tasks, meta_io) = open_meta_lanes::<
-            Config,
-            Agent,
-            ContextImpl<Agent, Clk, Router>,
-        >(&execution_config, lane_summary);
+        let task_manager: FuturesUnordered<Instrumented<Eff>> = FuturesUnordered::new();
+
+        let (meta_context, mut meta_tasks, meta_io) =
+            open_meta_lanes::<Config, Agent, ContextImpl<Agent, Clk, Router>>(
+                uri.clone(),
+                &execution_config,
+                lane_summary,
+                stop_trigger.clone(),
+                &task_manager,
+            );
 
         tasks.append(&mut meta_tasks);
 
@@ -239,8 +245,6 @@ where
                 .instrument(span!(Level::DEBUG, LANE_START, name = lane_name))
                 .await;
         }
-
-        let task_manager: FuturesUnordered<Instrumented<Eff>> = FuturesUnordered::new();
 
         let scheduler_task = ReceiverStream::new(rx)
             .take_until(stop_trigger)
@@ -394,6 +398,9 @@ pub trait AgentContext<Agent> {
 
     /// Get a copy of all parameters extracted from the agent node route.
     fn parameters(&self) -> HashMap<String, String>;
+
+    /// Return a handle to the logger for this node.
+    fn logger(&self) -> NodeLogger;
 }
 
 pub trait Lane {

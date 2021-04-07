@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use crate::agent::{AgentContext, Eff};
+use crate::meta::log::NodeLogger;
 use crate::meta::MetaContext;
 use futures::future::BoxFuture;
 use futures::sink::drain;
@@ -210,6 +211,10 @@ where
 
     fn parameters(&self) -> HashMap<String, String> {
         self.routing_context.parameters.clone()
+    }
+
+    fn logger(&self) -> NodeLogger {
+        self.meta_context.node_logger()
     }
 }
 
