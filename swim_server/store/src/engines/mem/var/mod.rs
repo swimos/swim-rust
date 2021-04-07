@@ -15,8 +15,8 @@
 #[cfg(test)]
 pub(crate) mod tests;
 
-use crate::ptr::Addressed;
-use crate::var::observer::Observer;
+use crate::engines::mem::ptr::Addressed;
+use crate::engines::mem::var::observer::Observer;
 use futures::future::FutureExt;
 use futures::ready;
 use parking_lot::Mutex;

@@ -126,7 +126,7 @@ impl PlaneLifecycle for DummyPlaneLifecycle {
 fn plane_builder_single_route() {
     let pat = RoutePattern::parse_str("/:id").unwrap();
 
-    let mut builder: BuilderType = PlaneBuilder::new(MockPlaneStore);
+    let mut builder: BuilderType = PlaneBuilder::new(MockPlaneStore::new("test".to_string()));
     assert!(builder
         .add_route(pat.clone(), DummyConfig(1), DummyLifecycle(1))
         .is_ok());
@@ -153,7 +153,7 @@ fn plane_builder_two_routes() {
     let pat1 = RoutePattern::parse_str("/a").unwrap();
     let pat2 = RoutePattern::parse_str("/b").unwrap();
 
-    let mut builder: BuilderType = PlaneBuilder::new(MockPlaneStore);
+    let mut builder: BuilderType = PlaneBuilder::new(MockPlaneStore::new("test".to_string()));
     assert!(builder
         .add_route(pat1.clone(), DummyConfig(1), DummyLifecycle(1))
         .is_ok());
@@ -194,7 +194,7 @@ fn plane_builder_route_collision() {
     let pat1 = RoutePattern::parse_str("/:id").unwrap();
     let pat2 = RoutePattern::parse_str("/b").unwrap();
 
-    let mut builder: BuilderType = PlaneBuilder::new(MockPlaneStore);
+    let mut builder: BuilderType = PlaneBuilder::new(MockPlaneStore::new("test".to_string()));
     assert!(builder
         .add_route(pat1.clone(), DummyConfig(1), DummyLifecycle(1))
         .is_ok());
@@ -211,7 +211,7 @@ fn plane_builder_route_collision() {
 fn add_plane_lifecycle() {
     let pat = RoutePattern::parse_str("/:id").unwrap();
 
-    let mut builder: BuilderType = PlaneBuilder::new(MockPlaneStore);
+    let mut builder: BuilderType = PlaneBuilder::new(MockPlaneStore::new("test".to_string()));
     assert!(builder
         .add_route(pat.clone(), DummyConfig(1), DummyLifecycle(1))
         .is_ok());

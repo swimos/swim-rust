@@ -60,7 +60,7 @@ fn make_spec<Clk: Clock, Delegate: ServerRouter + 'static>() -> (
         PlaneSpec {
             routes: vec![sender, reciever],
             lifecycle: Some(lifecycle.boxed()),
-            store: MockPlaneStore,
+            store: MockPlaneStore::new("mock".to_string()),
         },
         rx,
     )

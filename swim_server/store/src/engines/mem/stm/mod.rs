@@ -12,14 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::local::{TLocalRead, TLocalWrite};
-use crate::stm::stm_futures::{
+use crate::engines::mem::local::{TLocalRead, TLocalWrite};
+use crate::engines::mem::stm::stm_futures::{
     AndThenTransFuture, BoxedTransactionFuture, CatchTransFuture, ChoiceTransFuture,
     LocalReadFuture, LocalWriteFuture, MapStmFuture, SequenceTransFuture, TransactionFuture,
     VecStmFuture, WriteFuture,
 };
-use crate::transaction::VarReadFuture;
-use crate::var::{TVarRead, TVarWrite};
+use crate::engines::mem::transaction::VarReadFuture;
+use crate::engines::mem::var::{TVarRead, TVarWrite};
 use futures::future::{ready, Ready};
 use pin_project::pin_project;
 use std::any::Any;
@@ -713,12 +713,12 @@ impl<T: Any + Send + Sync> Stm for TLocalWrite<T> {}
 
 mod private {
     use super::Retry;
-    use crate::local::{TLocalRead, TLocalWrite};
-    use crate::stm::{
+    use crate::engines::mem::local::{TLocalRead, TLocalWrite};
+    use crate::engines::mem::stm::{
         Abort, AndThen, BoxedStm, Catch, Choice, Constant, DynStm, MapStm, Sequence, StmEither,
         VecStm,
     };
-    use crate::var::{TVarRead, TVarWrite};
+    use crate::engines::mem::var::{TVarRead, TVarWrite};
     use std::ops::Deref;
 
     pub trait Sealed {}

@@ -6,10 +6,13 @@ members = [
     "swim_common",
     "swim_server",
     "swim_warp",
-    "stm",
     "utilities",
 ]
 
 exclude = [
     "cookbook"
 ]
+
+[profile.release]
+debug = true
+

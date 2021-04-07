@@ -16,6 +16,8 @@ use crate::agent::lane::channels::update::value::ValueLaneUpdateTask;
 use crate::agent::lane::channels::update::{LaneUpdate, UpdateError};
 use crate::agent::lane::model::value::ValueLane;
 use crate::routing::RoutingAddr;
+use crate::stores::lane::value::mem::ValueDataMemStore;
+use crate::stores::lane::value::ValueDataModel;
 use futures::future::{join, ready};
 use futures::stream::once;
 use futures::StreamExt;
@@ -29,7 +31,9 @@ fn buffer_size() -> NonZeroUsize {
 
 #[tokio::test]
 async fn update_task_value_lane() {
-    let (lane, rx) = ValueLane::observable(0, buffer_size());
+    let (store, rx) = ValueDataMemStore::observable(Default::default(), buffer_size());
+    let model = ValueDataModel::Mem(store);
+    let lane = ValueLane::new(model);
 
     let mut events = rx.into_stream();
 

@@ -87,7 +87,7 @@ where
     Router: ServerRouter + Clone + 'static,
     Store: PlaneStore,
 {
-    pub(crate) fn new(store: Store) -> Self {
+    pub fn new(store: Store) -> Self {
         PlaneBuilder(PlaneSpec {
             routes: vec![],
             lifecycle: None,

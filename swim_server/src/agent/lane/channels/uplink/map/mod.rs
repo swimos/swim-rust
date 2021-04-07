@@ -16,6 +16,9 @@
 mod tests;
 
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
+use crate::engines::mem::transaction;
+use crate::engines::mem::transaction::{RetryManager, TransactionError};
+use crate::engines::mem::var::TVar;
 use either::Either;
 use futures::future::ready;
 use futures::stream::{unfold, FusedStream, FuturesUnordered};
@@ -26,9 +29,6 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::future::Future;
 use std::sync::Arc;
-use stm::transaction;
-use stm::transaction::{RetryManager, TransactionError};
-use stm::var::TVar;
 use swim_common::form::{Form, FormErr};
 use swim_common::model::Value;
 

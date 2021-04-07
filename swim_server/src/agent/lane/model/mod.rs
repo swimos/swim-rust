@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::stores::lane::observer::{StoreObserver, StoreStream, StoreSubscriber};
 use futures::Stream;
 use std::any::type_name;
 use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
 use std::sync::Arc;
-use stm::var::observer::{Observer, ObserverStream, ObserverSubscriber};
 use utilities::sync::topic;
 use utilities::sync::topic::ReceiverStream;
 
@@ -37,13 +37,13 @@ pub trait DeferredSubscription<T>: Send + Sync + 'static {
     fn subscribe(&self) -> Option<Self::View>;
 }
 
-impl<T: Send + Sync + 'static> DeferredSubscription<Arc<T>> for ObserverSubscriber<T> {
-    type View = ObserverStream<T>;
+impl<T: Send + Sync + 'static> DeferredSubscription<Arc<T>> for StoreSubscriber<T> {
+    type View = StoreStream<T>;
 
     fn subscribe(&self) -> Option<Self::View> {
-        ObserverSubscriber::subscribe(self)
+        StoreSubscriber::subscribe(self)
             .ok()
-            .map(Observer::into_stream)
+            .map(StoreObserver::into_stream)
     }
 }
 

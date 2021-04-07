@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::agent::lane::channels::update::UpdateError;
-use stm::transaction::TransactionError;
+use crate::engines::mem::transaction::TransactionError;
 use swim_common::form::FormErr;
 
 #[test]

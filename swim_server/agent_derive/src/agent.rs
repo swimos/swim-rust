@@ -19,7 +19,7 @@ use macro_helpers::{as_const, string_to_ident};
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use proc_macro2::{Delimiter, Group, Ident, Literal, Span};
-use quote::{quote, ToTokens};
+use quote::{format_ident, quote, ToTokens};
 use syn::{AttributeArgs, DeriveInput, Path, Type, TypePath, Visibility};
 
 type AgentName = Ident;
@@ -46,6 +46,8 @@ pub struct LifecycleAttrs {
     pub ty: syn::Type,
     pub vis: syn::Visibility,
     pub name: Option<String>,
+    #[darling(default)]
+    pub transient: Option<bool>,
 }
 
 impl LifecycleAttrs {
@@ -232,6 +234,7 @@ fn create_lane(
     agent_name: &Ident,
     lifecycle: &Ident,
     lane_name: &Ident,
+    is_transient: bool,
 ) -> (proc_macro2::TokenStream, Ident) {
     let lane_name_str = lane_name.to_string();
     let task_variable = get_task_var_name(&lane_name_str);
@@ -282,8 +285,12 @@ fn create_lane(
             )
         }
         LaneType::Value => {
+            let model = format_ident!("{}_model", lane_name);
+
             let model = quote! {
-                let (#lane_name, observer) = swim_server::agent::lane::model::value::ValueLane::observable(Default::default(), exec_conf.observation_buffer);
+                let (#model, observer) = store.observable_value_lane_store(stringify!(#lane_name), #is_transient, exec_conf.observation_buffer, Default::default());
+                let #lane_name = swim_server::agent::lane::model::value::ValueLane::new(#model);
+
                 let subscriber = observer.subscriber();
                 let event_stream = observer.into_stream();
             };
@@ -341,6 +348,7 @@ pub fn get_agent_data(args: SwimAgentAttrs) -> (AgentName, ConfigType, Vec<Agent
         {
             let lifecycle_name = Ident::new(&lifecycle_name, Span::call_site());
             let is_public = matches!(field.vis, Visibility::Public(_));
+            let is_transient = field.transient.unwrap_or(true);
 
             let (lifecycle_ast, task_name) = create_lane(
                 &lane_type,
@@ -348,6 +356,7 @@ pub fn get_agent_data(args: SwimAgentAttrs) -> (AgentName, ConfigType, Vec<Agent
                 &agent_name,
                 &lifecycle_name,
                 &lane_name,
+                is_transient,
             );
 
             agent_fields.push(AgentField {

@@ -37,18 +37,20 @@ use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::ValueLane;
 use crate::agent::lane::model::DeferredSubscription;
 use crate::agent::Eff;
+use crate::engines::mem::transaction::RetryManager;
 use crate::routing::{RoutingAddr, TaggedClientEnvelope};
 use either::Either;
 use futures::future::{join, join3, ready, BoxFuture};
 use futures::{select, Stream, StreamExt};
 use pin_utils::pin_mut;
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 use std::any::Any;
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use stm::transaction::RetryManager;
 use swim_common::form::{Form, FormErr};
 use swim_common::model::Value;
 use swim_common::warp::envelope::{OutgoingHeader, OutgoingLinkMessage};
@@ -336,7 +338,7 @@ impl<T> ValueLaneMessageHandler<T> {
 
 impl<T> LaneMessageHandler for ValueLaneMessageHandler<T>
 where
-    T: Any + Send + Sync + Debug,
+    T: Any + Send + Sync + Serialize + DeserializeOwned + Default + Debug,
 {
     type Event = Arc<T>;
     type Uplink = ValueLaneUplink<T>;

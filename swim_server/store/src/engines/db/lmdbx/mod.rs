@@ -14,7 +14,7 @@
 
 use crate::engines::db::StoreDelegate;
 use crate::{
-    Destroy, FromOpts, KeyedSnapshot, RangedSnapshot, Store, StoreEngine, StoreError,
+    FromOpts, KeyedSnapshot, RangedSnapshot, Store, StoreEngine, StoreError,
     StoreInitialisationError,
 };
 use heed::types::ByteSlice;
@@ -121,12 +121,6 @@ impl LmdbxDatabase {
 }
 
 impl Store for LmdbxDatabase {}
-
-impl Destroy for LmdbxDatabase {
-    fn destroy(self) {
-        let _ = std::fs::remove_file(&self.inner.path);
-    }
-}
 
 impl FromOpts for LmdbxDatabase {
     type Opts = LmdbxOpts;

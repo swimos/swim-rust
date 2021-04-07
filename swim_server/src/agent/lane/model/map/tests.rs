@@ -15,12 +15,12 @@
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent, MapSubscriber, MapUpdate};
 use crate::agent::lane::model::DeferredSubscription;
 use crate::agent::lane::tests::ExactlyOnce;
+use crate::engines::mem::stm::Stm;
+use crate::engines::mem::transaction::{atomically, TransactionRunner};
 use futures::{FutureExt, Stream, StreamExt};
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-use stm::stm::Stm;
-use stm::transaction::{atomically, TransactionRunner};
 use swim_common::form::Form;
 use swim_common::model::{Attr, Item, Value};
 

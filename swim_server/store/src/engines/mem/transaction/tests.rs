@@ -13,10 +13,12 @@
 // limitations under the License.
 
 use super::atomically;
-use crate::local::TLocal;
-use crate::stm::{self, Abort, Catch, Choice, Constant, Retry, Stm, StmEither, VecStm};
-use crate::transaction::{RetryManager, TransactionError};
-use crate::var::TVar;
+use crate::engines::mem::local::TLocal;
+use crate::engines::mem::stm::{
+    self, Abort, Catch, Choice, Constant, Retry, Stm, StmEither, VecStm,
+};
+use crate::engines::mem::transaction::{RetryManager, TransactionError};
+use crate::engines::mem::var::TVar;
 use futures::future::{ready, Ready};
 use futures::stream::{empty, Empty};
 use futures::task::Poll;

@@ -18,7 +18,7 @@ use futures::FutureExt;
 use std::fmt::Debug;
 
 /// Custom lifecycle event handlers for a plane.
-pub trait PlaneLifecycle: Debug {
+pub trait PlaneLifecycle: Send + Debug {
     /// Called concurrently when the plane starts.
     fn on_start<'a>(&'a mut self, _context: &'a mut dyn PlaneContext) -> BoxFuture<'a, ()> {
         ready(()).boxed()

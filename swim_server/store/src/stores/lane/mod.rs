@@ -12,11 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::{StoreEngine, StoreError};
-use serde::Serialize;
 use std::sync::Arc;
 
+use serde::Serialize;
+
+use crate::{StoreEngine, StoreError};
+
 pub mod map;
+pub mod observer;
 pub mod value;
 
 pub enum LaneKey {

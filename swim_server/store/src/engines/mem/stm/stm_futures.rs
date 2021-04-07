@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::local::{TLocal, TLocalRead, TLocalWrite};
-use crate::stm::{ExecResult, Stm, StmEither, StmEitherProj};
-use crate::transaction::Transaction;
-use crate::var::TVarInner;
+use crate::engines::mem::local::{TLocal, TLocalRead, TLocalWrite};
+use crate::engines::mem::stm::{ExecResult, Stm, StmEither, StmEitherProj};
+use crate::engines::mem::transaction::Transaction;
+use crate::engines::mem::var::TVarInner;
 use futures::future::Ready;
 use futures::ready;
 use futures::task::{Context, Poll};

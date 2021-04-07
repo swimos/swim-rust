@@ -13,11 +13,13 @@
 // limitations under the License.
 
 use super::*;
-use crate::agent::lane::tests::ExactlyOnce;
+use crate::stores::lane::observer::StoreObserver;
+use crate::stores::lane::value::mem::ValueDataMemStore;
+use crate::stores::node::NodeStore;
 use futures::future::join;
+use std::num::NonZeroUsize;
 use std::time::Duration;
-use stm::transaction::atomically;
-use stm::var::observer::ObserverSubscriber;
+use store::mock::MockNodeStore;
 use tokio::sync::mpsc;
 use utilities::sync::topic::TryRecvError;
 use utilities::sync::trigger;
@@ -26,20 +28,23 @@ fn buffer_size() -> NonZeroUsize {
     NonZeroUsize::new(16).unwrap()
 }
 
-fn make_subscribable<T>(init: T, buffer_size: NonZeroUsize) -> (ValueLane<T>, ObserverSubscriber<T>)
+fn make_subscribable<T>(init: T, buffer_size: NonZeroUsize) -> (ValueLane<T>, StoreObserver<T>)
 where
-    T: Send + Sync + 'static,
+    T: Send + Sync + Default + Serialize + DeserializeOwned + 'static,
 {
-    let (lane, rx) = ValueLane::observable(init, buffer_size);
-    (lane, rx.into_subscriber())
+    let (store, rx) = ValueDataMemStore::observable(init, buffer_size);
+    let model = ValueDataModel::Mem(store);
+    let lane = ValueLane::new(model);
+
+    (lane, rx)
 }
 
 #[tokio::test]
 async fn value_lane_get() {
-    let (lane, sub) = make_subscribable::<i32>(0, buffer_size());
-    let mut events = sub.subscribe().unwrap();
-
-    let result = atomically(&lane.get(), ExactlyOnce).await;
+    let (lane, receiver) = make_subscribable::<i32>(0, buffer_size());
+    let subscriber = receiver.subscriber();
+    let mut events = subscriber.subscribe().unwrap();
+    let result = lane.get().await;
 
     assert!(matches!(result, Ok(v) if v == Arc::new(0)));
 
@@ -49,10 +54,11 @@ async fn value_lane_get() {
 
 #[tokio::test]
 async fn value_lane_set() {
-    let (lane, sub) = make_subscribable::<i32>(0, buffer_size());
-    let mut events = sub.subscribe().unwrap();
+    let (lane, receiver) = make_subscribable::<i32>(0, buffer_size());
+    let subscriber = receiver.subscriber();
+    let mut events = subscriber.subscribe().unwrap();
 
-    let result = atomically(&lane.set(1), ExactlyOnce).await;
+    let result = lane.set(1).await;
 
     assert!(result.is_ok());
 
@@ -60,40 +66,45 @@ async fn value_lane_set() {
     assert!(matches!(event, Some(v) if *v == 1));
 }
 
-#[tokio::test]
-async fn value_lane_compound_transaction() {
-    let (lane, sub) = make_subscribable::<i32>(5, buffer_size());
-    let mut events = sub.subscribe().unwrap();
-
-    let stm = lane
-        .get()
-        .and_then(|i| lane.set(-1).followed_by(lane.set(*i + 1)));
-
-    let result = atomically(&stm, ExactlyOnce).await;
-
-    assert!(result.is_ok());
-
-    let event = events.recv().await;
-    assert!(matches!(event, Some(v) if *v == 6));
-
-    let event2 = events.try_recv();
-    assert!(matches!(event2, Err(TryRecvError::NoValue)));
-}
+// todo
+// #[tokio::test]
+// async fn value_lane_compound_transaction() {
+//     let (lane, receiver) = make_subscribable::<i32>(5, buffer_size());
+//     let subscriber = receiver.subscriber();
+//     let mut events = subscriber.subscribe().unwrap();
+//
+//     let stm = lane
+//         .get()
+//         .and_then(|i| lane.set(-1).followed_by(lane.set(*i + 1)));
+//
+//     let result = atomically(&stm, ExactlyOnce).await;
+//
+//     assert!(result.is_ok());
+//
+//     let event = events.recv().await;
+//     assert!(matches!(event, Some(v) if v.as_ref() == &6));
+//
+//     let event2 = events.try_recv();
+//     assert!(matches!(event2, Err(TryRecvError::NoValue)));
+// }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn value_lane_subscribe() {
-    let (lane, observer) = ValueLane::observable(0, NonZeroUsize::new(8).unwrap());
+    let store = MockNodeStore;
+    let (model, rx) =
+        store.observable_value_lane_store("test", true, NonZeroUsize::new(8).unwrap(), 0);
+    let lane = ValueLane::new(model);
 
-    let sub = observer.subscriber();
+    let sub = rx.subscriber();
 
     let (comm_tx, mut comm_rx) = mpsc::channel::<trigger::Sender>(2);
 
-    let start_task = |mut rx: Observer<i32>| {
+    let start_task = |mut rx: StoreObserver<i32>| {
         let task = async move { while let Some(_) = rx.recv().await {} };
         tokio::spawn(task);
     };
 
-    start_task(observer);
+    start_task(rx);
 
     let rx_spawner = async move {
         while let Some(trigger) = comm_rx.recv().await {
@@ -109,7 +120,7 @@ async fn value_lane_subscribe() {
                 comm_tx.send(task_tx).await.unwrap();
                 task_rx.await.unwrap();
             }
-            lane.store(i).await;
+            lane.store(i).await.unwrap();
         }
     };
 

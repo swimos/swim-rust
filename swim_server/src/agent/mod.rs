@@ -80,6 +80,8 @@ use crate::meta::open_meta_lanes;
 #[doc(hidden)]
 #[allow(unused_imports)]
 pub use agent_derive::*;
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 use store::stores::node::NodeStore;
 use tokio_stream::wrappers::ReceiverStream;
 
@@ -513,7 +515,7 @@ where
 
 impl<T, Context, D> LaneIo<Context> for ValueLaneIo<T, D>
 where
-    T: Any + Send + Sync + Form + Debug,
+    T: Any + Send + Sync + Serialize + DeserializeOwned + Default + Form + Debug,
     D: DeferredSubscription<Arc<T>>,
     Context: AgentExecutionContext + Send + Sync + 'static,
 {
@@ -810,13 +812,15 @@ where
 /// * `init` - The initial value of the lane.
 /// * `lifecycle` - Life-cycle event handler for the lane.
 /// * `projection` - A projection from the agent type to this lane.
-pub fn make_value_lane<Agent, Context, T, L>(
-    name: impl Into<String>,
+pub fn make_value_lane<Agent, Context, T, L, Store>(
+    name: impl ToString,
     is_public: bool,
     config: &AgentExecutionConfig,
     init: T,
     lifecycle: L,
     projection: impl Fn(&Agent) -> &ValueLane<T> + Send + Sync + 'static,
+    store: &Store,
+    transient: bool,
 ) -> (
     ValueLane<T>,
     impl LaneTasks<Agent, Context>,
@@ -825,10 +829,17 @@ pub fn make_value_lane<Agent, Context, T, L>(
 where
     Agent: 'static,
     Context: AgentContext<Agent> + AgentExecutionContext + Send + Sync + 'static,
-    T: Any + Send + Sync + Form + Debug + Default,
+    T: Any + Send + Sync + Form + Debug + Default + Serialize + DeserializeOwned,
     L: for<'l> StatefulLaneLifecycle<'l, ValueLane<T>, Agent>,
+    Store: NodeStore,
 {
-    let (lane, observer) = ValueLane::observable(init, config.observation_buffer);
+    let (data_model, observer) = store.observable_value_lane_store(
+        name.to_string(),
+        transient,
+        config.observation_buffer,
+        init,
+    );
+    let lane = ValueLane::new(data_model);
 
     let lane_io = if is_public {
         Some(ValueLaneIo::new(lane.clone(), observer.subscriber()))
@@ -837,7 +848,7 @@ where
     };
 
     let tasks = ValueLifecycleTasks(LifecycleTasks {
-        name: name.into(),
+        name: name.to_string(),
         lifecycle,
         event_stream: observer.into_stream(),
         projection,

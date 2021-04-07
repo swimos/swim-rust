@@ -26,6 +26,35 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Weak};
 use std::vec::IntoIter;
 
+pub use rocksdb::Options;
+use tempdir::TempDir;
+
+#[derive(Debug)]
+pub enum StoreDir {
+    Transient(TempDir),
+    Persistent(PathBuf),
+}
+
+impl StoreDir {
+    const DIR_ERR: &'static str = "Failed to open temporary directory";
+
+    pub fn persistent<I: AsRef<Path>>(path: I) -> StoreDir {
+        StoreDir::Persistent(path.as_ref().to_path_buf())
+    }
+
+    pub fn transient(prefix: &str) -> StoreDir {
+        let temp_dir = TempDir::new(prefix).expect(StoreDir::DIR_ERR);
+        StoreDir::Transient(temp_dir)
+    }
+
+    pub fn path(&self) -> &Path {
+        match self {
+            StoreDir::Transient(dir) => dir.path(),
+            StoreDir::Persistent(path) => path.as_path(),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum StoreError {
     KeyNotFound,
@@ -46,15 +75,29 @@ impl From<StoreInitialisationError> for StoreError {
 
 #[derive(Debug, Clone)]
 pub struct StoreEngineOpts {
-    base_path: PathBuf,
-    map_opts: MapStoreEngineOpts,
-    value_opts: ValueStoreEngineOpts,
+    pub map_opts: MapStoreEngineOpts,
+    pub value_opts: ValueStoreEngineOpts,
+}
+
+impl StoreEngineOpts {
+    pub fn rocks_default() -> StoreEngineOpts {
+        let mut opts = rocksdb::Options::default();
+        opts.create_if_missing(true);
+
+        StoreEngineOpts {
+            map_opts: MapStoreEngineOpts {
+                config: StoreDelegateConfig::Rocksdb(opts.clone()),
+            },
+            value_opts: ValueStoreEngineOpts {
+                config: StoreDelegateConfig::Rocksdb(opts),
+            },
+        }
+    }
 }
 
 impl Default for StoreEngineOpts {
     fn default() -> Self {
         StoreEngineOpts {
-            base_path: "target".into(),
             map_opts: MapStoreEngineOpts::default(),
             value_opts: ValueStoreEngineOpts::default(),
         }
@@ -63,12 +106,12 @@ impl Default for StoreEngineOpts {
 
 #[derive(Default, Debug, Clone)]
 pub struct MapStoreEngineOpts {
-    config: StoreDelegateConfig,
+    pub config: StoreDelegateConfig,
 }
 
 #[derive(Default, Debug, Clone)]
 pub struct ValueStoreEngineOpts {
-    config: StoreDelegateConfig,
+    pub config: StoreDelegateConfig,
 }
 
 #[derive(Debug)]
@@ -87,12 +130,8 @@ pub trait SwimStore {
 }
 
 pub trait Store:
-    for<'a> StoreEngine<'a> + FromOpts + RangedSnapshot + Send + Sync + Destroy + 'static
+    for<'a> StoreEngine<'a> + FromOpts + RangedSnapshot + Send + Sync + 'static
 {
-}
-
-pub trait Destroy {
-    fn destroy(self);
 }
 
 pub trait RangedSnapshot {
@@ -156,13 +195,23 @@ pub trait StoreEngine<'i>: 'static {
 }
 
 pub struct ServerStore {
+    dir: StoreDir,
     refs: HashMap<String, Weak<PlaneStoreInner>>,
     opts: StoreEngineOpts,
 }
 
 impl ServerStore {
-    pub fn new(opts: StoreEngineOpts) -> ServerStore {
+    pub fn new(opts: StoreEngineOpts, base_path: PathBuf) -> ServerStore {
         ServerStore {
+            dir: StoreDir::persistent(base_path),
+            refs: HashMap::new(),
+            opts,
+        }
+    }
+
+    pub fn transient(opts: StoreEngineOpts, prefix: &str) -> ServerStore {
+        ServerStore {
+            dir: StoreDir::transient(prefix),
             refs: HashMap::new(),
             opts,
         }
@@ -172,20 +221,20 @@ impl ServerStore {
 impl SwimStore for ServerStore {
     type PlaneStore = SwimPlaneStore;
 
-    fn plane_store<I: ToString>(&mut self, path: I) -> Result<Self::PlaneStore, StoreError> {
-        let ServerStore { refs, opts } = self;
-        let path = path.to_string();
+    fn plane_store<I: ToString>(&mut self, plane_name: I) -> Result<Self::PlaneStore, StoreError> {
+        let ServerStore { refs, opts, dir } = self;
+        let plane_name = plane_name.to_string();
 
-        let store = match refs.get(&path) {
+        let store = match refs.get(&plane_name) {
             Some(store) => match store.upgrade() {
                 Some(store) => return Ok(SwimPlaneStore::from_inner(store)),
-                None => Arc::new(PlaneStoreInner::open(&path, opts)?),
+                None => Arc::new(PlaneStoreInner::open(dir.path(), &plane_name, opts)?),
             },
-            None => Arc::new(PlaneStoreInner::open(&path, opts)?),
+            None => Arc::new(PlaneStoreInner::open(dir.path(), &plane_name, opts)?),
         };
 
         let weak = Arc::downgrade(&store);
-        refs.insert(path, weak);
+        refs.insert(plane_name, weak);
         Ok(SwimPlaneStore::from_inner(store))
     }
 }
@@ -212,7 +261,6 @@ mod tests {
         rock_opts.create_missing_column_families(true);
 
         let server_opts = StoreEngineOpts {
-            base_path: "target".into(),
             map_opts: MapStoreEngineOpts {
                 config: StoreDelegateConfig::Lmdbx(LmdbxOpts {
                     open_opts: EnvOpenOptions::new(),
@@ -223,7 +271,7 @@ mod tests {
             },
         };
 
-        let mut store = ServerStore::new(server_opts);
+        let mut store = ServerStore::transient(server_opts, "target");
         let plane_store = store.plane_store("unit").unwrap();
 
         let node_key = StoreKey::Value(ValueStorageKey {
@@ -243,21 +291,15 @@ mod tests {
         rock_opts.create_missing_column_families(true);
 
         let server_opts = StoreEngineOpts {
-            base_path: "target".into(),
             map_opts: MapStoreEngineOpts {
                 config: StoreDelegateConfig::Rocksdb(rock_opts.clone()),
             },
-            // map_opts: MapStoreEngineOpts {
-            //     config: StoreDelegateConfig::Lmdbx(LmdbxOpts {
-            //         open_opts: EnvOpenOptions::new(),
-            //     }),
-            // },
             value_opts: ValueStoreEngineOpts {
                 config: StoreDelegateConfig::Rocksdb(rock_opts),
             },
         };
 
-        let mut store = ServerStore::new(server_opts);
+        let mut store = ServerStore::transient(server_opts, "target");
         let plane_store = store.plane_store("unit").unwrap();
         let node_store = plane_store.node_store("node");
         let map_store = node_store.map_lane_store("map", false);

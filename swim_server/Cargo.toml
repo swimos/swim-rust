@@ -23,7 +23,6 @@ swim_common = { path = "../swim_common", features = ["tls"] }
 swim_warp = { path = "../swim_warp" }
 utilities = { path = "../utilities" }
 swim_runtime = { path = "../swim_runtime" }
-stm = { path = "../stm" }
 
 either = "1.5.3"
 futures = "0.3.4"
@@ -47,6 +46,7 @@ regex = "1"
 lazy_static = "1.4.0"
 percent-encoding = "2.1.0"
 thiserror = "1.0"
+serde = { version = "1.0.124", features = ["derive"] }
 
 [dependencies.store]
 version = "0.1.0"

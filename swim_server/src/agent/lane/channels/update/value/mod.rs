@@ -21,6 +21,8 @@ use crate::routing::RoutingAddr;
 use futures::future::BoxFuture;
 use futures::{FutureExt, Stream, StreamExt};
 use pin_utils::pin_mut;
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 use std::any::Any;
 use std::fmt::Debug;
 use tracing::{event, Level};
@@ -40,7 +42,7 @@ const APPLYING_UPDATE: &str = "Applying value update.";
 
 impl<T> LaneUpdate for ValueLaneUpdateTask<T>
 where
-    T: Any + Send + Sync + Debug,
+    T: Any + Send + Sync + Serialize + DeserializeOwned + Default + Debug,
 {
     type Msg = T;
 
@@ -60,7 +62,7 @@ where
                 match msg_result {
                     Ok((_, msg)) => {
                         event!(Level::TRACE, message = APPLYING_UPDATE, value = ?msg);
-                        lane.store(msg).await;
+                        lane.store(msg).await?;
                     }
                     Err(err) => {
                         event!(Level::ERROR, ?err);

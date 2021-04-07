@@ -35,8 +35,6 @@ use std::fmt::Debug;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
-use stm::stm::Stm;
-use stm::transaction::atomically;
 use store::mock::MockNodeStore;
 use tokio::sync::{mpsc, Mutex};
 use tokio_stream::wrappers::ReceiverStream;
@@ -363,9 +361,7 @@ impl MapLifecycle1 {
 
             let total = &context.agent().value_1;
 
-            let add = total.get().and_then(move |n| total.set(*n + i));
-
-            if atomically(&add, ExactlyOnce).await.is_err() {
+            if total.get_for_update(move |n| *n + i).await.is_err() {
                 self.event_handler
                     .push(DataAgentEvent::TransactionFailed)
                     .await;
@@ -417,9 +413,7 @@ impl MapLifecycle2 {
 
             let total = &context.agent().value_2;
 
-            let add = total.get().and_then(move |n| total.set(*n + i));
-
-            if atomically(&add, ExactlyOnce).await.is_err() {
+            if total.get_for_update(move |n| *n + i).await.is_err() {
                 self.event_handler
                     .push(DataAgentEvent::TransactionFailed)
                     .await;

@@ -24,11 +24,13 @@ use crate::agent::lifecycle::AgentLifecycle;
 use crate::agent::tests::stub_router::SingleChannelRouter;
 use crate::agent::tests::test_clock::TestClock;
 use crate::agent::AgentContext;
+use crate::engines::mem::transaction::atomically;
 use crate::plane::provider::AgentProvider;
 use crate::routing::RoutingAddr;
+use crate::stores::plane::PlaneStore;
 use crate::{
     agent_lifecycle, command_lifecycle, demand_lifecycle, demand_map_lifecycle, map_lifecycle,
-    value_lifecycle, SwimAgent,
+    value_lifecycle, ServerStore, StoreEngineOpts, SwimAgent, SwimStore,
 };
 use std::collections::HashMap;
 use std::convert::TryFrom;
@@ -36,9 +38,6 @@ use std::fmt::Debug;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
-use stm::stm::Stm;
-use stm::transaction::atomically;
-use store::mock::MockNodeStore;
 use tokio::sync::{mpsc, Mutex};
 use tokio_stream::wrappers::ReceiverStream;
 use utilities::uri::RelativeUri;
@@ -57,7 +56,7 @@ mod swim_server {
 pub struct ReportingAgent {
     #[lifecycle(name = "DataLifecycle")]
     pub data: MapLane<String, i32>,
-    #[lifecycle(name = "TotalLifecycle")]
+    #[lifecycle(transient = true, name = "TotalLifecycle")]
     total: ValueLane<i32>,
     #[lifecycle(name = "ActionLifecycle")]
     action: CommandLane<String>,
@@ -220,9 +219,7 @@ impl DataLifecycle {
 
             let total = &context.agent().total;
 
-            let add = total.get().and_then(move |n| total.set(*n + i));
-
-            if atomically(&add, ExactlyOnce).await.is_err() {
+            if total.get_for_update(move |n| *n + i).await.is_err() {
                 self.event_handler
                     .push(ReportingAgentEvent::TransactionFailed)
                     .await;
@@ -297,7 +294,7 @@ impl DemandLifecycle {
     where
         Context: AgentContext<ReportingAgent> + Sized + Send + Sync + 'static,
     {
-        let total = *context.agent().total.load().await;
+        let total = *context.agent().total.load().await.unwrap();
 
         self.event_handler
             .push(ReportingAgentEvent::DemandLaneEvent(total))
@@ -414,6 +411,9 @@ async fn agent_loop() {
 
     let provider = AgentProvider::new(config, agent_lifecycle);
 
+    let mut server_store = ServerStore::new(StoreEngineOpts::rocks_default(), "target".into());
+    let plane_store = server_store.plane_store("test_plane").unwrap();
+
     // The ReportingAgent is carefully contrived such that its lifecycle events all trigger in
     // a specific order. We can then safely expect these events in that order to verify the agent
     // loop.
@@ -424,7 +424,7 @@ async fn agent_loop() {
         clock.clone(),
         ReceiverStream::new(envelope_rx),
         SingleChannelRouter::new(RoutingAddr::local(1024)),
-        MockNodeStore,
+        plane_store.node_store("node"),
     );
 
     let agent_task = swim_runtime::task::spawn(agent_proc);
@@ -439,6 +439,9 @@ async fn agent_loop() {
     expect(&mut rx, ReportingAgentEvent::AgentStart).await;
 
     clock.advance_when_blocked(Duration::from_secs(1)).await;
+    // while let Some(result) = rx.recv().await {
+    //     println!("{:?}", result);
+    // }
     expect(&mut rx, ReportingAgentEvent::Command("Name0".to_string())).await;
     expect(&mut rx, ReportingAgentEvent::DemandLaneEvent(0)).await;
     expect(

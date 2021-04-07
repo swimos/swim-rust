@@ -29,14 +29,12 @@ pub mod lmdbx;
 #[cfg(feature = "rocks-db")]
 pub mod rocks;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum StoreDelegate {
     #[cfg(feature = "libmdbx")]
     Lmdbx(LmdbxDatabase),
     #[cfg(feature = "rocks-db")]
     Rocksdb(RocksDatabase),
-    #[cfg(feature = "mock")]
-    Mock(crate::mock::EmptyDelegateStore),
 }
 
 impl RangedSnapshot for StoreDelegate {
@@ -55,8 +53,6 @@ impl RangedSnapshot for StoreDelegate {
             StoreDelegate::Lmdbx(db) => db.ranged_snapshot(prefix, map_fn),
             #[cfg(feature = "rocks-db")]
             StoreDelegate::Rocksdb(db) => db.ranged_snapshot(prefix, map_fn),
-            #[cfg(feature = "mock")]
-            StoreDelegate::Mock(db) => db.ranged_snapshot(prefix, map_fn),
         }
     }
 }
@@ -116,8 +112,6 @@ macro_rules! gated_arm {
             StoreDelegate::Lmdbx(db) => db.$($op)*.map_err(Into::into),
             #[cfg(feature = "rocks-db")]
             StoreDelegate::Rocksdb(db) => db.$($op)*.map_err(Into::into),
-            #[cfg(feature = "mock")]
-            StoreDelegate::Mock(db) => db.$($op)*.map_err(Into::into),
         }
     };
 }

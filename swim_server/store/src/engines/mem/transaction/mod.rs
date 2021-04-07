@@ -20,12 +20,12 @@ use std::any::{Any, TypeId};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::ptr::PtrKey;
-use crate::stm::error::StmError;
-use crate::stm::stm_futures::{RunIn, TransactionFuture};
-use crate::stm::{ExecResult, Stm};
-use crate::transaction::frame_mask::{FrameMask, ReadWrite};
-use crate::var::{Contents, ReadContentsFuture, TVarInner, TVarRead};
+use crate::engines::mem::ptr::PtrKey;
+use crate::engines::mem::stm::error::StmError;
+use crate::engines::mem::stm::stm_futures::{RunIn, TransactionFuture};
+use crate::engines::mem::stm::{ExecResult, Stm};
+use crate::engines::mem::transaction::frame_mask::{FrameMask, ReadWrite};
+use crate::engines::mem::var::{Contents, ReadContentsFuture, TVarInner, TVarRead};
 use futures::future::try_join_all;
 use futures::task::{Context, Poll};
 use futures::{ready, Future, FutureExt, Stream, StreamExt};

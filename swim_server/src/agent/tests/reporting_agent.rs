@@ -26,6 +26,7 @@ use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 use crate::agent::lane::tests::ExactlyOnce;
 use crate::agent::lifecycle::AgentLifecycle;
 use crate::agent::{AgentContext, LaneIo, LaneTasks, SwimAgent};
+use crate::engines::mem::transaction::atomically;
 use crate::stores::node::NodeStore;
 use futures::future::{ready, BoxFuture, Ready};
 use futures::FutureExt;
@@ -33,8 +34,6 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::Arc;
 use std::time::Duration;
-use stm::stm::Stm;
-use stm::transaction::atomically;
 use tokio::sync::{mpsc, Mutex};
 
 /// An agent for use in tests of the agent execution loop. All events that occur in the lifecycle
@@ -180,7 +179,7 @@ impl<'a> DemandLaneLifecycle<'a, i32, ReportingAgent> for DemandLifecycle {
         C: AgentContext<ReportingAgent> + Send + Sync + 'static,
     {
         Box::pin(async move {
-            let total = *context.agent().total.load().await;
+            let total = *context.agent().total.load().await.unwrap();
 
             self.inner
                 .push(ReportingAgentEvent::DemandLaneEvent(total))
@@ -287,9 +286,7 @@ impl<'a> StatefulLaneLifecycle<'a, MapLane<String, i32>, ReportingAgent> for Dat
 
                 let total = &context.agent().total;
 
-                let add = total.get().and_then(move |n| total.set(*n + i));
-
-                if atomically(&add, ExactlyOnce).await.is_err() {
+                if total.get_for_update(move |n| *n + i).await.is_err() {
                     self.inner
                         .push(ReportingAgentEvent::TransactionFailed)
                         .await;
@@ -358,7 +355,7 @@ impl SwimAgent<TestAgentConfig> for ReportingAgent {
     fn instantiate<Context, Store>(
         configuration: &TestAgentConfig,
         exec_conf: &AgentExecutionConfig,
-        _store: &Store,
+        store: &Store,
     ) -> (
         Self,
         Vec<Box<dyn LaneTasks<Self, Context>>>,
@@ -386,11 +383,13 @@ impl SwimAgent<TestAgentConfig> for ReportingAgent {
             "total",
             false,
             exec_conf,
-            0,
+            Default::default(),
             TotalLifecycle {
                 inner: inner.clone(),
             },
             |agent: &ReportingAgent| &agent.total,
+            store,
+            true,
         );
 
         let (action, action_tasks, _) = agent::make_command_lane(

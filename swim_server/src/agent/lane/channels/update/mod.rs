@@ -17,6 +17,7 @@ pub mod command;
 pub mod map;
 pub mod value;
 
+use crate::engines::mem::transaction::{RetryManager, TransactionError};
 use crate::routing::RoutingAddr;
 use futures::future::{ready, BoxFuture, Either, Ready};
 use futures::stream::{iter, Iter};
@@ -24,7 +25,7 @@ use futures::Stream;
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use std::time::Duration;
-use stm::transaction::{RetryManager, TransactionError};
+use store::StoreError;
 use swim_common::form::FormErr;
 use swim_runtime::time::delay::{delay_for, Delay};
 use utilities::future::retryable::strategy::RetryStrategy;
@@ -42,6 +43,8 @@ pub enum UpdateError {
     BadEnvelopeBody(FormErr),
     FeedbackChannelDropped,
     OperationNotSupported,
+    // todo
+    StoreError(String),
 }
 
 impl Display for UpdateError {
@@ -58,6 +61,9 @@ impl Display for UpdateError {
             }
             UpdateError::OperationNotSupported => {
                 write!(f, "The requested operation is not supported by this lane")
+            }
+            UpdateError::StoreError(e) => {
+                write!(f, "{}", e)
             }
         }
     }
@@ -82,6 +88,12 @@ impl From<TransactionError> for UpdateError {
 impl From<FormErr> for UpdateError {
     fn from(err: FormErr) -> Self {
         UpdateError::BadEnvelopeBody(err)
+    }
+}
+
+impl From<StoreError> for UpdateError {
+    fn from(e: StoreError) -> Self {
+        UpdateError::StoreError(format!("{:?}", e))
     }
 }
 

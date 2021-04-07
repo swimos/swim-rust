@@ -37,6 +37,7 @@ use crate::agent::{
 use crate::meta::info::LaneKind;
 use crate::plane::provider::AgentProvider;
 use crate::routing::RoutingAddr;
+use crate::stores::node::NodeStore;
 use futures::future::{join, BoxFuture};
 use futures::Stream;
 use std::collections::HashMap;
@@ -309,7 +310,9 @@ async fn value_lane_start_task() {
 
     assert_eq!(tasks.name(), "lane".to_string());
 
-    let lane = ValueLane::new("".to_string());
+    let store = MockNodeStore;
+    let model = store.value_lane_store("test", true, "".to_string());
+    let lane = ValueLane::new(model);
 
     let agent = Arc::new(TestAgent {
         name: "agent",
@@ -343,7 +346,9 @@ async fn value_lane_events_task() {
         projection: proj(),
     }));
 
-    let lane = ValueLane::new("".to_string());
+    let store = MockNodeStore;
+    let model = store.value_lane_store("test", true, "".to_string());
+    let lane = ValueLane::new(model);
 
     let agent = Arc::new(TestAgent {
         name: "agent",
@@ -408,7 +413,9 @@ async fn value_lane_events_task_termination() {
         projection: proj(),
     }));
 
-    let lane = ValueLane::new("".to_string());
+    let store = MockNodeStore;
+    let model = store.value_lane_store("test", true, "".to_string());
+    let lane = ValueLane::new(model);
 
     let agent = Arc::new(TestAgent {
         name: "agent",

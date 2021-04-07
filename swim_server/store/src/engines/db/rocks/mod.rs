@@ -14,7 +14,7 @@
 
 use crate::engines::db::StoreDelegate;
 use crate::{
-    Destroy, FromOpts, KeyedSnapshot, RangedSnapshot, Store, StoreEngine, StoreError,
+    FromOpts, KeyedSnapshot, RangedSnapshot, Store, StoreEngine, StoreError,
     StoreInitialisationError,
 };
 use rocksdb::{Error, Options, DB};
@@ -27,7 +27,7 @@ impl From<rocksdb::Error> for StoreError {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct RocksDatabase {
     delegate: Arc<DB>,
 }
@@ -68,12 +68,6 @@ impl<'i> StoreEngine<'i> for RocksDatabase {
 }
 
 impl Store for RocksDatabase {}
-
-impl Destroy for RocksDatabase {
-    fn destroy(self) {
-        let _ = DB::destroy(&Options::default(), self.delegate.path());
-    }
-}
 
 impl FromOpts for RocksDatabase {
     type Opts = Options;

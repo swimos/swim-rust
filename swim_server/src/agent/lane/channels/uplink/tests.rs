@@ -21,6 +21,9 @@ use crate::agent::lane::model::map::{MapLane, MapLaneEvent, MapSubscriber};
 use crate::agent::lane::model::value::ValueLane;
 use crate::agent::lane::model::DeferredSubscription;
 use crate::agent::lane::tests::ExactlyOnce;
+use crate::engines::mem::transaction::TransactionError;
+use crate::stores::lane::value::mem::ValueDataMemStore;
+use crate::stores::lane::value::ValueDataModel;
 use futures::future::join;
 use futures::ready;
 use futures::sink::drain;
@@ -31,7 +34,6 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
-use stm::transaction::TransactionError;
 use swim_common::form::{Form, FormErr};
 use swim_common::model::Value;
 use swim_common::sink::item;
@@ -90,7 +92,9 @@ impl<S: Stream> ReportingStream<S> {
 
 #[tokio::test]
 async fn uplink_not_linked() {
-    let (lane, rx) = ValueLane::observable(0, buffer_size());
+    let (store, rx) = ValueDataMemStore::observable(0, buffer_size());
+    let model = ValueDataModel::Mem(store);
+    let lane = ValueLane::new(model);
 
     let events = rx.into_stream();
 
@@ -111,7 +115,7 @@ async fn uplink_not_linked() {
     let uplink_task = uplink.run_uplink(item::for_mpsc_sender(tx_event));
 
     let send_task = async move {
-        lane.store(12).await;
+        lane.store(12).await.unwrap();
         assert!(on_event_rx.await.is_ok());
         assert!(tx_action.send(UplinkAction::Unlink).await.is_ok());
         ReceiverStream::new(rx_event).collect::<Vec<_>>().await
@@ -133,7 +137,9 @@ async fn uplink_not_linked() {
 
 #[tokio::test]
 async fn uplink_open_to_linked() {
-    let (lane, rx) = ValueLane::observable(0, buffer_size());
+    let (store, rx) = ValueDataMemStore::observable(0, buffer_size());
+    let model = ValueDataModel::Mem(store);
+    let lane = ValueLane::new(model);
 
     let events = rx.into_stream();
 
@@ -155,10 +161,10 @@ async fn uplink_open_to_linked() {
     let uplink_task = uplink.run_uplink(item::for_mpsc_sender(tx_event));
 
     let send_task = async move {
-        lane.store(12).await;
+        lane.store(12).await.unwrap();
         assert!(on_event_rx_1.await.is_ok());
         assert!(tx_action.send(UplinkAction::Link).await.is_ok());
-        lane.store(25).await;
+        lane.store(25).await.unwrap();
         assert!(on_event_rx_2.await.is_ok());
         assert!(tx_action.send(UplinkAction::Unlink).await.is_ok());
         ReceiverStream::new(rx_event).collect::<Vec<_>>().await
@@ -184,7 +190,9 @@ async fn uplink_open_to_linked() {
 
 #[tokio::test]
 async fn uplink_open_to_synced() {
-    let (lane, rx) = ValueLane::observable(0, buffer_size());
+    let (store, rx) = ValueDataMemStore::observable(0, buffer_size());
+    let model = ValueDataModel::Mem(store);
+    let lane = ValueLane::new(model);
 
     let events = rx.into_stream();
 
@@ -205,7 +213,7 @@ async fn uplink_open_to_synced() {
     let uplink_task = uplink.run_uplink(item::for_mpsc_sender(tx_event));
 
     let send_task = async move {
-        lane.store(12).await;
+        lane.store(12).await.unwrap();
         assert!(on_event_rx.await.is_ok());
         assert!(tx_action.send(UplinkAction::Sync).await.is_ok());
         assert!(tx_action.send(UplinkAction::Unlink).await.is_ok());
@@ -233,7 +241,9 @@ async fn uplink_open_to_synced() {
 
 #[tokio::test]
 async fn value_state_machine_message_for() {
-    let lane = ValueLane::new(0);
+    let store = ValueDataMemStore::new(Default::default());
+    let model = ValueDataModel::Mem(store);
+    let lane = ValueLane::new(model);
 
     let uplink = ValueLaneUplink::new(lane, None);
 
@@ -246,7 +256,9 @@ async fn value_state_machine_message_for() {
 
 #[tokio::test]
 async fn value_state_machine_sync_from_var() {
-    let (lane, rx) = ValueLane::observable(7, buffer_size());
+    let (store, rx) = ValueDataMemStore::observable(7, buffer_size());
+    let model = ValueDataModel::Mem(store);
+    let lane = ValueLane::new(model);
 
     let events = rx.into_stream();
 
@@ -271,7 +283,9 @@ async fn value_state_machine_sync_from_var() {
 
 #[tokio::test]
 async fn value_state_machine_sync_from_events() {
-    let lane = ValueLane::new(7);
+    let store = ValueDataMemStore::new(Default::default());
+    let model = ValueDataModel::Mem(store);
+    let lane = ValueLane::new(model);
 
     let uplink = ValueLaneUplink::new(lane.clone(), None);
 

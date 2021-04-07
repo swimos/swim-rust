@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use crate::stores::lane::map::MapDataModel;
+use crate::stores::lane::observer::StoreObserver;
 use crate::stores::lane::value::ValueDataModel;
 use crate::stores::lane::LaneKey;
 use crate::stores::plane::SwimPlaneStore;
@@ -20,6 +21,7 @@ use crate::stores::{MapStorageKey, StoreKey, ValueStorageKey};
 use crate::{KeyedSnapshot, RangedSnapshot, StoreEngine, StoreError};
 use serde::Serialize;
 use std::fmt::Debug;
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 
 pub trait NodeStore: for<'a> StoreEngine<'a> + Send + Sync + Clone + Debug {
@@ -30,10 +32,27 @@ pub trait NodeStore: for<'a> StoreEngine<'a> + Send + Sync + Clone + Debug {
         V: Serialize,
         Self: Sized;
 
-    fn value_lane_store<I, V>(&self, lane: I, transient: bool) -> ValueDataModel
+    fn value_lane_store<I, V>(
+        &self,
+        lane: I,
+        transient: bool,
+        default_value: V,
+    ) -> ValueDataModel<V>
     where
         I: ToString,
-        V: Serialize,
+        V: Serialize + Send + Sync + Default + 'static,
+        Self: Sized;
+
+    fn observable_value_lane_store<I, V>(
+        &self,
+        lane: I,
+        transient: bool,
+        buffer_size: NonZeroUsize,
+        default_value: V,
+    ) -> (ValueDataModel<V>, StoreObserver<V>)
+    where
+        I: ToString,
+        V: Serialize + Send + Sync + Default + 'static,
         Self: Sized;
 }
 
@@ -98,12 +117,38 @@ impl NodeStore for SwimNodeStore {
         MapDataModel::new(self.clone(), lane.to_string(), transient)
     }
 
-    fn value_lane_store<I, V>(&self, lane: I, transient: bool) -> ValueDataModel
+    fn value_lane_store<I, V>(
+        &self,
+        lane: I,
+        transient: bool,
+        default_value: V,
+    ) -> ValueDataModel<V>
     where
         I: ToString,
-        V: Serialize,
+        V: Serialize + Send + Sync + Default + 'static,
     {
-        ValueDataModel::new(self.clone(), lane.to_string(), transient)
+        ValueDataModel::new(self.clone(), lane.to_string(), transient, default_value)
+    }
+
+    fn observable_value_lane_store<I, V>(
+        &self,
+        lane: I,
+        transient: bool,
+        buffer_size: NonZeroUsize,
+        default_value: V,
+    ) -> (ValueDataModel<V>, StoreObserver<V>)
+    where
+        I: ToString,
+        V: Serialize + Send + Sync + Default + 'static,
+        Self: Sized,
+    {
+        ValueDataModel::observable(
+            self.clone(),
+            lane.to_string(),
+            transient,
+            buffer_size,
+            default_value,
+        )
     }
 }
 

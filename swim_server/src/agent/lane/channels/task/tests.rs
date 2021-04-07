@@ -26,6 +26,7 @@ use crate::agent::lane::model::action::{Action, ActionLane};
 use crate::agent::lane::model::command::{Command, CommandLane};
 use crate::agent::lane::model::DeferredSubscription;
 use crate::agent::Eff;
+use crate::engines::mem::transaction::TransactionError;
 use crate::routing::error::RouterError;
 use crate::routing::{
     ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedClientEnvelope, TaggedEnvelope,
@@ -40,7 +41,6 @@ use std::convert::identity;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
-use stm::transaction::TransactionError;
 use store::mock::MockNodeStore;
 use swim_common::form::{Form, FormErr};
 use swim_common::model::Value;

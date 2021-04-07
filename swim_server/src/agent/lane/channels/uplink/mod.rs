@@ -20,18 +20,21 @@ use crate::agent::lane::model::demand_map::DemandMapLane;
 use crate::agent::lane::model::demand_map::DemandMapLaneEvent;
 use crate::agent::lane::model::map::{make_update, MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::ValueLane;
+use crate::engines::mem::transaction::{RetryManager, TransactionError};
 use crate::routing::{RoutingAddr, TaggedSender};
 use either::Either;
 use futures::future::{ready, BoxFuture};
 use futures::stream::{once, unfold, BoxStream, FusedStream};
 use futures::{select, select_biased, FutureExt, Stream, StreamExt};
 use pin_utils::pin_mut;
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 use std::any::Any;
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use std::ops::Deref;
 use std::sync::Arc;
-use stm::transaction::{RetryManager, TransactionError};
+use store::StoreError;
 use swim_common::form::{Form, FormErr};
 use swim_common::model::Value;
 use swim_common::routing::SendError;
@@ -573,7 +576,7 @@ const OBTAINED_VALUE_STATE: &str = "Obtained value lane state.";
 
 impl<T> UplinkStateMachine<Arc<T>> for ValueLaneUplink<T>
 where
-    T: Any + Send + Sync + Debug,
+    T: Any + Send + Sync + Serialize + DeserializeOwned + Default + Debug,
 {
     type Msg = ValueLaneEvent<T>;
 
@@ -596,13 +599,23 @@ where
                     if synced {
                         Some((PeelResult::Complete(updates), (true, None)))
                     } else {
-                        let lane_state: Option<Arc<T>> = select! {
+                        let lane_state: Option<Result<Arc<T>, StoreError>> = select! {
                             v = lane.load().fuse() => Some(v),
-                            maybe_v = updates.next() => maybe_v,
+                            maybe_v = updates.next() => maybe_v.map(Ok),
                         };
                         if let Some(v) = lane_state {
-                            event!(Level::TRACE, message = OBTAINED_VALUE_STATE, value = ?v);
-                            Some((PeelResult::Output(Ok(v.into())), (true, Some(updates))))
+                            match v {
+                                Ok(value) => {
+                                    event!(Level::TRACE, message = OBTAINED_VALUE_STATE, value = ?value);
+                                    Some((
+                                        PeelResult::Output(Ok(value.into())),
+                                        (true, Some(updates)),
+                                    ))
+                                }
+                                Err(_e) => {
+                                    unimplemented!()
+                                }
+                            }
                         } else {
                             Some((
                                 PeelResult::Output(Err(UplinkError::LaneStoppedReporting)),

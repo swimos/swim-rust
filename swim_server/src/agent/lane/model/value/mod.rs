@@ -13,12 +13,12 @@
 // limitations under the License.
 
 use crate::agent::lane::LaneModel;
+use crate::StoreError;
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 use std::any::Any;
-use std::num::NonZeroUsize;
 use std::sync::Arc;
-use stm::stm::Stm;
-use stm::var::observer::Observer;
-use stm::var::TVar;
+use store::stores::lane::value::ValueDataModel;
 
 #[cfg(test)]
 mod tests;
@@ -26,27 +26,20 @@ mod tests;
 /// A lane containing a single value.
 #[derive(Debug)]
 pub struct ValueLane<T> {
-    value: TVar<T>,
+    data_model: ValueDataModel<T>,
 }
 
 impl<T> Clone for ValueLane<T> {
     fn clone(&self) -> Self {
         ValueLane {
-            value: self.value.clone(),
+            data_model: self.data_model.clone(),
         }
     }
 }
 
 impl<T: Any + Send + Sync> ValueLane<T> {
-    pub fn new(init: T) -> Self {
-        ValueLane {
-            value: TVar::new(init),
-        }
-    }
-
-    pub fn observable(init: T, buffer_size: NonZeroUsize) -> (Self, Observer<T>) {
-        let (var, observer) = TVar::new_with_observer(init, buffer_size);
-        (ValueLane { value: var }, observer)
+    pub fn new(model: ValueDataModel<T>) -> Self {
+        ValueLane { data_model: model }
     }
 }
 
@@ -63,35 +56,42 @@ where
     type Event = ValueLaneEvent<T>;
 
     fn same_lane(this: &Self, other: &Self) -> bool {
-        TVar::same_var(&this.value, &other.value)
+        this.data_model.eq(&other.data_model)
     }
 }
 
-impl<T: Any + Send + Sync> ValueLane<T> {
+impl<T> ValueLane<T>
+where
+    T: Any + Send + Sync + Serialize + DeserializeOwned + Default,
+{
     /// Get the current value.
-    pub fn get(&self) -> impl Stm<Result = Arc<T>> {
-        self.value.get()
+    pub async fn get(&self) -> Result<Arc<T>, StoreError> {
+        self.data_model.get().await
     }
 
     /// Update the current value.
-    pub fn set(&self, value: T) -> impl Stm<Result = ()> {
-        self.value.put(value)
+    pub async fn set(&self, value: T) -> Result<(), StoreError> {
+        self.data_model.set(value).await
     }
 
     /// Get the current value, outside of a transaction.
-    pub async fn load(&self) -> Arc<T> {
-        self.value.load().await
+    pub async fn load(&self) -> Result<Arc<T>, StoreError> {
+        self.data_model.load().await
     }
 
     /// Store a value to the lane, outside of a transaction.
-    pub async fn store(&self, value: T) {
-        self.value.store(value).await;
+    pub async fn store(&self, value: T) -> Result<(), StoreError> {
+        self.data_model.store(value).await
+    }
+
+    pub async fn get_for_update(&self, op: impl Fn(Arc<T>) -> T + Sync) -> Result<(), StoreError> {
+        self.data_model.get_for_update(op).await
     }
 
     /// Locks the variable, preventing it from being read from or written to. This is
     /// required to force the ordering of events in some unit tests.
     #[cfg(test)]
-    pub async fn lock(&self) -> stm::var::TVarLock {
-        self.value.lock().await
+    pub(crate) async fn lock(&self) -> Option<crate::engines::mem::var::TVarLock> {
+        self.data_model.lock().await
     }
 }

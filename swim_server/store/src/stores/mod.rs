@@ -62,11 +62,11 @@ impl<K> RangedSnapshot for DatabaseStore<K> {
         F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(DK, DV), StoreError>,
     {
         match prefix {
-            StoreKey::Map(key) => {
+            StoreKey::Value(key) => {
                 let prefix = serialize(&key)?;
                 self.delegate.ranged_snapshot(prefix, map_fn)
             }
-            StoreKey::Value(key) => {
+            StoreKey::Map(key) => {
                 let prefix = serialize(&key)?;
                 self.delegate.ranged_snapshot(prefix, map_fn)
             }

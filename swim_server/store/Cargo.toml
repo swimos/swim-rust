@@ -11,9 +11,19 @@ libmdbx = ["heed/mdbx"]
 mock = []
 
 [dependencies]
+utilities = { path = "../../utilities" }
+
 bincode = "1.3.2"
 serde = { version = "1.0.124", features = ["derive", "rc"] }
-tokio = { version = "1.1.1" }
+futures = "0.3.4"
+futures-util = "0.3.4"
+parking_lot = "0.11.0"
+pin-project = "1.0.5"
+pin-utils = "0.1.0"
+tokio = { version = "1.1.1", features = ["sync"] }
+tokio-stream = "0.1.2"
+slab = "0.4.2"
+tempdir = "0.3.7"
 
 [dependencies.rocksdb]
 version = "0.15.0"

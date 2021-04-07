@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::var::TVar;
+use crate::engines::mem::var::TVar;
 use futures::{FutureExt, StreamExt};
 use std::convert::identity;
 use std::num::NonZeroUsize;

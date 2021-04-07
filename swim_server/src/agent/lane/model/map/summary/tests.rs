@@ -14,7 +14,7 @@
 
 use super::*;
 use crate::agent::lane::tests::ExactlyOnce;
-use stm::transaction::atomically;
+use crate::engines::mem::transaction::atomically;
 
 #[test]
 fn default_summary() {
