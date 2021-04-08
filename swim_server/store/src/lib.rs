@@ -271,7 +271,7 @@ mod tests {
             },
         };
 
-        let mut store = ServerStore::transient(server_opts, "target");
+        let mut store = ServerStore::transient(server_opts, "target".into());
         let plane_store = store.plane_store("unit").unwrap();
 
         let node_key = StoreKey::Value(ValueStorageKey {
