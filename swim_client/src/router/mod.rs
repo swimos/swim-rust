@@ -16,7 +16,7 @@ use std::collections::HashMap;
 use std::ops::Deref;
 
 use futures::stream::FuturesUnordered;
-use futures::{select_biased, Future, FutureExt, StreamExt};
+use futures::{select_biased, Future, FutureExt, SinkExt, StreamExt};
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio_stream::wrappers::ReceiverStream;
@@ -34,9 +34,28 @@ use crate::connections::{ConnectionPool, ConnectionSender};
 use crate::router::incoming::{IncomingHostTask, IncomingRequest};
 use crate::router::outgoing::OutgoingHostTask;
 use futures::future::BoxFuture;
-use swim_common::routing::error::RoutingError;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::sync::Arc;
+use std::time::Duration;
+use swim_common::request::Request;
+use swim_common::routing::error::{ResolutionError, RouterError, RoutingError, Unresolvable};
+use swim_common::routing::remote::config::ConnectionConfig;
+use swim_common::routing::remote::net::dns::Resolver;
+use swim_common::routing::remote::net::plain::TokioPlainTextNetworking;
+use swim_common::routing::remote::{
+    RawRoute, RemoteConnectionChannels, RemoteConnectionsTask, RoutingRequest,
+};
+use swim_common::routing::ws::tungstenite::TungsteniteWsConnections;
+use swim_common::routing::{
+    Route, RoutingAddr, ServerRouter, ServerRouterFactory, TaggedEnvelope, TaggedSender,
+};
+use tokio::time::sleep;
+use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
+use url::Url;
 use utilities::errors::Recoverable;
-use utilities::sync::promise;
+use utilities::future::open_ended::OpenEndedFutures;
+use utilities::sync::{promise, trigger};
+use utilities::uri::RelativeUri;
 
 pub mod incoming;
 pub mod outgoing;
@@ -44,6 +63,196 @@ mod retry;
 
 #[cfg(test)]
 mod tests;
+
+//Todo dm
+#[derive(Debug)]
+pub(crate) enum ClientRequest {
+    /// Resolve the routing address for a downlink.
+    Resolve {
+        host: Option<Url>,
+        name: RelativeUri,
+        request: Request<Result<RoutingAddr, RouterError>>,
+    },
+    Unimplemented {
+        request: Request<Result<RawRoute, Unresolvable>>,
+        origin: SocketAddr,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ClientRouterFactory {
+    request_sender: mpsc::Sender<ClientRequest>,
+}
+
+impl ClientRouterFactory {
+    pub(crate) fn new(request_sender: mpsc::Sender<ClientRequest>) -> Self {
+        ClientRouterFactory { request_sender }
+    }
+}
+
+impl ServerRouterFactory for ClientRouterFactory {
+    type Router = ClientRouter;
+
+    fn create_for(&self, addr: RoutingAddr) -> Self::Router {
+        ClientRouter {
+            tag: addr,
+            request_sender: self.request_sender.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ClientRouter {
+    tag: RoutingAddr,
+    request_sender: mpsc::Sender<ClientRequest>,
+}
+
+impl ServerRouter for ClientRouter {
+    fn resolve_sender(
+        &mut self,
+        addr: RoutingAddr,
+        origin: Option<SocketAddr>,
+    ) -> BoxFuture<'_, Result<Route, ResolutionError>> {
+        async move {
+            let ClientRouter {
+                tag,
+                request_sender,
+            } = self;
+            let (tx, rx) = oneshot::channel();
+            if request_sender
+                .send(ClientRequest::Unimplemented {
+                    request: Request::new(tx),
+                    origin: origin.unwrap(),
+                })
+                .await
+                .is_err()
+            {
+                Err(ResolutionError::router_dropped())
+            } else {
+                match rx.await {
+                    Ok(Ok(RawRoute { sender, on_drop })) => {
+                        Ok(Route::new(TaggedSender::new(*tag, sender), on_drop))
+                    }
+                    Ok(Err(err)) => Err(ResolutionError::unresolvable(err.to_string())),
+                    Err(_) => Err(ResolutionError::router_dropped()),
+                }
+            }
+        }
+        .boxed()
+    }
+
+    fn lookup(
+        &mut self,
+        host: Option<Url>,
+        route: RelativeUri,
+    ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
+        eprintln!("host = {:#?}", host);
+        eprintln!("route = {:#?}", route);
+
+        async move {
+            let ClientRouter { request_sender, .. } = self;
+            let (tx, rx) = oneshot::channel();
+            if request_sender
+                .send(ClientRequest::Resolve {
+                    host,
+                    name: route,
+                    request: Request::new(tx),
+                })
+                .await
+                .is_err()
+            {
+                Err(RouterError::RouterDropped)
+            } else {
+                match rx.await {
+                    Ok(Ok(addr)) => Ok(addr),
+                    Ok(Err(err)) => Err(err),
+                    Err(_) => Err(RouterError::RouterDropped),
+                }
+            }
+        }
+        .boxed()
+    }
+}
+
+#[tokio::test]
+async fn connection_test() {
+    let conn_config = ConnectionConfig::default();
+    let websocket_config = WebSocketConfig::default();
+
+    let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 9999);
+    let (remote_tx, remote_rx) = mpsc::channel(conn_config.router_buffer_size.get());
+
+    // Todo dm put the request into an incoming task?
+    let (request_tx, mut request_rx) = mpsc::channel(conn_config.router_buffer_size.get());
+    let client_router_factory = ClientRouterFactory::new(request_tx);
+    let (_stop_trigger_tx, stop_trigger_rx) = trigger::trigger();
+
+    let connections_fut = RemoteConnectionsTask::new(
+        conn_config,
+        TokioPlainTextNetworking::new(Arc::new(Resolver::new().await)),
+        address,
+        TungsteniteWsConnections {
+            config: websocket_config,
+        },
+        client_router_factory,
+        OpenEndedFutures::new(),
+        RemoteConnectionChannels {
+            request_tx: remote_tx.clone(),
+            request_rx: remote_rx,
+            stop_trigger: stop_trigger_rx,
+        },
+    )
+    .await
+    .unwrap_or_else(|err| panic!("Could not connect to \"{}\": {}", address, err))
+    .run();
+
+    spawn(connections_fut);
+
+    let (tx, rx) = oneshot::channel();
+    remote_tx
+        .send(RoutingRequest::ResolveUrl {
+            host: Url::parse("ws://127.0.0.1:9001/").unwrap(),
+            request: Request::new(tx),
+        })
+        .await
+        .unwrap();
+
+    let addr = rx.await.unwrap().unwrap();
+
+    let (tx, rx) = oneshot::channel();
+    remote_tx
+        .send(RoutingRequest::Endpoint {
+            addr,
+            request: Request::new(tx),
+        })
+        .await
+        .unwrap();
+
+    let raw = rx.await.unwrap().unwrap();
+
+    raw.sender
+        .send(TaggedEnvelope(
+            RoutingAddr::local(0),
+            Envelope::sync("/rust", "counter"),
+        ))
+        .await
+        .unwrap();
+
+    // eprintln!(
+    //     "plane_rx.recv().await.unwrap() = {:#?}",
+    //     plane_rx.recv().await.unwrap()
+    // );
+
+    // raw.sender
+    //     .send(TaggedEnvelope(
+    //         RoutingAddr::local(0),
+    //         Envelope::make_command("/rust", "counter", Some(Value::Int64Value(10))),
+    //     ))
+    //     .await
+    //     .unwrap();
+
+    sleep(Duration::from_secs(10)).await;
+}
 
 /// The Router is responsible for routing messages between the downlinks and the connections from the
 /// connection pool. It can be used to obtain a connection for a downlink or to send direct messages.

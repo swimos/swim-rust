@@ -20,31 +20,21 @@ use crate::plane::router::PlaneRouter;
 use crate::plane::spec::PlaneSpec;
 use crate::plane::{run_plane, EnvChannel};
 use crate::routing::{TopLevelRouter, TopLevelRouterFactory};
-use core::time::Duration;
 use either::Either;
 use futures::{io, join};
 use std::error::Error;
 use std::fmt::{Display, Formatter};
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::net::SocketAddr;
 use std::sync::Arc;
-use swim_common::model::Value;
-use swim_common::request::Request;
 use swim_common::routing::remote::config::ConnectionConfig;
 use swim_common::routing::remote::net::dns::Resolver;
 use swim_common::routing::remote::net::plain::TokioPlainTextNetworking;
-use swim_common::routing::remote::{
-    RemoteConnectionChannels, RemoteConnectionsTask, RoutingRequest,
-};
+use swim_common::routing::remote::{RemoteConnectionChannels, RemoteConnectionsTask};
 use swim_common::routing::ws::tungstenite::TungsteniteWsConnections;
-use swim_common::routing::{RoutingAddr, TaggedEnvelope};
-use swim_common::warp::envelope::Envelope;
-use swim_runtime::task::{spawn, TaskError};
+use swim_runtime::task::TaskError;
 use swim_runtime::time::clock::RuntimeClock;
 use tokio::sync::mpsc;
-use tokio::sync::oneshot;
-use tokio::time::sleep;
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
-use url::Url;
 use utilities::future::open_ended::OpenEndedFutures;
 use utilities::sync::{promise, trigger};
 
@@ -304,84 +294,6 @@ impl SwimServer {
 
         join!(connections_future, plane_future).0
     }
-}
-
-#[tokio::test]
-async fn connection_test() {
-    let conn_config = ConnectionConfig::default();
-    let websocket_config = WebSocketConfig::default();
-
-    let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 9999);
-    let (plane_tx, mut plane_rx) = mpsc::channel(conn_config.router_buffer_size.get());
-    let (remote_tx, remote_rx) = mpsc::channel(conn_config.router_buffer_size.get());
-    let top_level_router_fac = TopLevelRouterFactory::new(plane_tx.clone(), remote_tx.clone());
-    let (_stop_trigger_tx, stop_trigger_rx) = trigger::trigger();
-
-    let connections_fut = RemoteConnectionsTask::new(
-        conn_config,
-        TokioPlainTextNetworking::new(Arc::new(Resolver::new().await)),
-        address,
-        TungsteniteWsConnections {
-            config: websocket_config,
-        },
-        top_level_router_fac,
-        OpenEndedFutures::new(),
-        RemoteConnectionChannels {
-            request_tx: remote_tx.clone(),
-            request_rx: remote_rx,
-            stop_trigger: stop_trigger_rx,
-        },
-    )
-    .await
-    .unwrap_or_else(|err| panic!("Could not connect to \"{}\": {}", address, err))
-    .run();
-
-    spawn(connections_fut);
-
-    let (tx, rx) = oneshot::channel();
-    remote_tx
-        .send(RoutingRequest::ResolveUrl {
-            host: Url::parse("ws://127.0.0.1:9001/").unwrap(),
-            request: Request::new(tx),
-        })
-        .await
-        .unwrap();
-
-    let addr = rx.await.unwrap().unwrap();
-
-    let (tx, rx) = oneshot::channel();
-    remote_tx
-        .send(RoutingRequest::Endpoint {
-            addr,
-            request: Request::new(tx),
-        })
-        .await
-        .unwrap();
-
-    let raw = rx.await.unwrap().unwrap();
-
-    raw.sender
-        .send(TaggedEnvelope(
-            RoutingAddr::local(0),
-            Envelope::sync("/rust", "counter"),
-        ))
-        .await
-        .unwrap();
-
-    eprintln!(
-        "plane_rx.recv().await.unwrap() = {:#?}",
-        plane_rx.recv().await.unwrap()
-    );
-
-    // raw.sender
-    //     .send(TaggedEnvelope(
-    //         RoutingAddr::local(0),
-    //         Envelope::make_command("/rust", "counter", Some(Value::Int64Value(10))),
-    //     ))
-    //     .await
-    //     .unwrap();
-
-    sleep(Duration::from_secs(10)).await;
 }
 
 /// Represents an error that can occur while using the server builder.
