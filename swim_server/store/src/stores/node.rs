@@ -137,7 +137,7 @@ impl<'a> StoreEngine<'a> for SwimNodeStore {
         delegate.get(key)
     }
 
-    fn delete(&self, key: Self::Key) -> Result<bool, Self::Error> {
+    fn delete(&self, key: Self::Key) -> Result<(), Self::Error> {
         let SwimNodeStore { delegate, node_uri } = self;
         let key = map_key(key, node_uri.clone());
 

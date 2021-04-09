@@ -19,7 +19,7 @@ use crate::stores::node::NodeStore;
 use crate::stores::plane::{PlaneStore, SwimPlaneStore};
 use crate::stores::{DatabaseStore, StoreKey};
 use crate::{
-    Destroy, FromOpts, KeyedSnapshot, RangedSnapshot, Store, StoreEngine, StoreError,
+    FromOpts, KeyedSnapshot, RangedSnapshot, Store, StoreEngine, StoreError,
     StoreInitialisationError, SwimStore,
 };
 use serde::Serialize;
@@ -38,10 +38,6 @@ impl FromOpts for MockServerStore {
     ) -> Result<Self, StoreInitialisationError> {
         Ok(MockServerStore)
     }
-}
-
-impl Destroy for MockServerStore {
-    fn destroy(self) {}
 }
 
 impl RangedSnapshot for MockServerStore {
@@ -93,8 +89,8 @@ impl<'a> StoreEngine<'a> for MockServerStore {
         Ok(None)
     }
 
-    fn delete(&self, _key: Self::Key) -> Result<bool, Self::Error> {
-        Ok(true)
+    fn delete(&self, _key: Self::Key) -> Result<(), Self::Error> {
+        Ok(())
     }
 }
 
@@ -113,8 +109,8 @@ impl<'a> StoreEngine<'a> for EmptyDelegateStore {
         Ok(None)
     }
 
-    fn delete(&self, _key: Self::Key) -> Result<bool, Self::Error> {
-        Ok(true)
+    fn delete(&self, _key: Self::Key) -> Result<(), Self::Error> {
+        Ok(())
     }
 }
 
@@ -169,7 +165,7 @@ impl<'a> StoreEngine<'a> for MockNodeStore {
         unimplemented!()
     }
 
-    fn delete(&self, _key: Self::Key) -> Result<bool, Self::Error> {
+    fn delete(&self, _key: Self::Key) -> Result<(), Self::Error> {
         unimplemented!()
     }
 }

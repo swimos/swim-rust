@@ -12,9 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[cfg(test)]
+mod tests;
+
 use crate::engines::db::StoreDelegate;
 use crate::{
-    Destroy, FromOpts, KeyedSnapshot, RangedSnapshot, Store, StoreEngine, StoreError,
+    FromOpts, KeyedSnapshot, RangedSnapshot, Store, StoreEngine, StoreError,
     StoreInitialisationError,
 };
 use rocksdb::{Error, Options, DB};
@@ -61,19 +64,13 @@ impl<'i> StoreEngine<'i> for RocksDatabase {
         delegate.get(key)
     }
 
-    fn delete(&self, key: Self::Key) -> Result<bool, Self::Error> {
+    fn delete(&self, key: Self::Key) -> Result<(), Self::Error> {
         let RocksDatabase { delegate, .. } = self;
-        delegate.delete(key).map(|_| true)
+        delegate.delete(key)
     }
 }
 
 impl Store for RocksDatabase {}
-
-impl Destroy for RocksDatabase {
-    fn destroy(self) {
-        let _ = DB::destroy(&Options::default(), self.delegate.path());
-    }
-}
 
 impl FromOpts for RocksDatabase {
     type Opts = Options;
@@ -134,37 +131,5 @@ impl RangedSnapshot for RocksDatabase {
         } else {
             Ok(Some(KeyedSnapshot::new(data.into_iter())))
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::engines::db::rocks::RocksDatabase;
-    use crate::StoreEngine;
-    use rocksdb::{Options, DB};
-
-    #[test]
-    fn test() {
-        let path = "__test_rocks_db";
-        let db = DB::open_default(path).unwrap();
-
-        {
-            let rocks = RocksDatabase::new(db);
-
-            assert!(rocks.put(b"a", b"a").is_ok());
-
-            let value = rocks.get(b"a").unwrap().unwrap();
-            assert_eq!(String::from_utf8(value).unwrap(), "a".to_string());
-
-            assert!(rocks.put(b"a", b"b").is_ok());
-
-            let value = rocks.get(b"a").unwrap().unwrap();
-            assert_eq!(String::from_utf8(value).unwrap(), "b".to_string());
-
-            assert!(rocks.delete(b"a").is_ok());
-            assert_eq!(rocks.get(b"a").unwrap(), None);
-        }
-
-        assert!(DB::destroy(&Options::default(), path).is_ok());
     }
 }

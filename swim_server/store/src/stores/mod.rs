@@ -115,7 +115,7 @@ where
         })
     }
 
-    fn delete(&self, key: Self::Key) -> Result<bool, Self::Error> {
+    fn delete(&self, key: Self::Key) -> Result<(), Self::Error> {
         serialize_then(&self.delegate, key, |delegate, key| {
             delegate.delete(key.as_slice())
         })

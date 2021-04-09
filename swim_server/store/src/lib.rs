@@ -112,12 +112,8 @@ pub trait SwimStore {
 }
 
 pub trait Store:
-    for<'a> StoreEngine<'a> + FromOpts + RangedSnapshot + Send + Sync + Destroy + 'static
+    for<'a> StoreEngine<'a> + FromOpts + RangedSnapshot + Send + Sync + 'static
 {
-}
-
-pub trait Destroy {
-    fn destroy(self);
 }
 
 pub trait RangedSnapshot {
@@ -177,7 +173,7 @@ pub trait StoreEngine<'i>: 'static {
 
     fn get(&self, key: Self::Key) -> Result<Option<Vec<u8>>, Self::Error>;
 
-    fn delete(&self, key: Self::Key) -> Result<bool, Self::Error>;
+    fn delete(&self, key: Self::Key) -> Result<(), Self::Error>;
 }
 
 pub struct ServerStore {
@@ -227,7 +223,6 @@ impl SwimStore for ServerStore {
 
 #[cfg(test)]
 mod tests {
-    use crate::engines::db::lmdbx::LmdbxOpts;
     use crate::engines::db::StoreDelegateConfig;
     use crate::stores::node::NodeStore;
     use crate::stores::plane::PlaneStore;
@@ -236,24 +231,16 @@ mod tests {
         MapStoreEngineOpts, ServerStore, Snapshot, StoreEngine, StoreEngineOpts, SwimStore,
         ValueStoreEngineOpts,
     };
-    use heed::EnvOpenOptions;
-    use rocksdb::Options;
     use std::sync::Arc;
 
     #[test]
     fn simple_put_get() {
-        let mut rock_opts = Options::default();
-        rock_opts.create_if_missing(true);
-        rock_opts.create_missing_column_families(true);
-
         let server_opts = StoreEngineOpts {
             map_opts: MapStoreEngineOpts {
-                config: StoreDelegateConfig::Lmdbx(LmdbxOpts {
-                    open_opts: EnvOpenOptions::new(),
-                }),
+                config: StoreDelegateConfig::lmdbx(),
             },
             value_opts: ValueStoreEngineOpts {
-                config: StoreDelegateConfig::Rocksdb(rock_opts),
+                config: StoreDelegateConfig::rocksdb(),
             },
         };
 
@@ -272,16 +259,12 @@ mod tests {
 
     #[tokio::test]
     async fn lane() {
-        let mut rock_opts = Options::default();
-        rock_opts.create_if_missing(true);
-        rock_opts.create_missing_column_families(true);
-
         let server_opts = StoreEngineOpts {
             map_opts: MapStoreEngineOpts {
-                config: StoreDelegateConfig::Rocksdb(rock_opts.clone()),
+                config: StoreDelegateConfig::rocksdb(),
             },
             value_opts: ValueStoreEngineOpts {
-                config: StoreDelegateConfig::Rocksdb(rock_opts),
+                config: StoreDelegateConfig::rocksdb(),
             },
         };
 

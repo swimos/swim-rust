@@ -16,7 +16,7 @@ use crate::engines::db::StoreDelegate;
 use crate::stores::node::{NodeStore, SwimNodeStore};
 use crate::stores::{DatabaseStore, MapStorageKey, StoreKey, ValueStorageKey};
 use crate::{
-    Destroy, FromOpts, KeyedSnapshot, RangedSnapshot, StoreEngine, StoreEngineOpts, StoreError,
+    FromOpts, KeyedSnapshot, RangedSnapshot, StoreEngine, StoreEngineOpts, StoreError,
     StoreInitialisationError,
 };
 use std::ffi::OsStr;
@@ -158,7 +158,7 @@ impl<'a> StoreEngine<'a> for SwimPlaneStore {
         }
     }
 
-    fn delete(&self, key: Self::Key) -> Result<bool, Self::Error> {
+    fn delete(&self, key: Self::Key) -> Result<(), Self::Error> {
         let PlaneStoreInner {
             map_store,
             value_store,
@@ -168,12 +168,6 @@ impl<'a> StoreEngine<'a> for SwimPlaneStore {
             StoreKey::Map(key) => map_store.delete(&key),
             StoreKey::Value(key) => value_store.delete(&key),
         }
-    }
-}
-
-impl Destroy for SwimPlaneStore {
-    fn destroy(self) {
-        unimplemented!()
     }
 }
 
