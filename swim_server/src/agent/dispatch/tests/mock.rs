@@ -24,6 +24,7 @@ use futures::FutureExt;
 use parking_lot::Mutex;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use stm::transaction::TransactionError;
 use swim_common::model::Value;
@@ -92,7 +93,11 @@ impl MockRouterInner {
 pub struct MockRouter(Arc<Mutex<MockRouterInner>>);
 
 impl ServerRouter for MockRouter {
-    fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>> {
+    fn resolve_sender(
+        &mut self,
+        addr: RoutingAddr,
+        _origin: Option<SocketAddr>,
+    ) -> BoxFuture<Result<Route, ResolutionError>> {
         async move {
             let mut lock = self.0.lock();
             let MockRouterInner {
@@ -215,7 +220,7 @@ impl LaneIo<MockExecutionContext> for MockLane {
                         let sender = match senders.entry(addr) {
                             Entry::Occupied(entry) => entry.into_mut(),
                             Entry::Vacant(entry) => {
-                                if let Ok(sender) = router.resolve_sender(addr).await {
+                                if let Ok(sender) = router.resolve_sender(addr, None).await {
                                     entry.insert(sender.sender)
                                 } else {
                                     break Some(LaneIoError::for_uplink_errors(

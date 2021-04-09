@@ -55,7 +55,7 @@ async fn plane_router_get_sender() {
     };
 
     let send_task = async move {
-        let result1 = router.resolve_sender(addr).await;
+        let result1 = router.resolve_sender(addr, None).await;
         assert!(result1.is_ok());
         let mut sender = result1.unwrap();
         assert!(sender
@@ -68,7 +68,7 @@ async fn plane_router_get_sender() {
             Some(TaggedEnvelope(addr, Envelope::linked("/node", "lane")))
         );
 
-        let result2 = router.resolve_sender(RoutingAddr::local(56)).await;
+        let result2 = router.resolve_sender(RoutingAddr::local(56), None).await;
 
         assert!(matches!(
             result2.err().unwrap().kind(),

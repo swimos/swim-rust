@@ -23,6 +23,7 @@ use swim_common::routing::{Route, RoutingAddr, ServerRouter, ServerRouterFactory
 use tokio::sync::{mpsc, oneshot};
 use url::Url;
 use utilities::uri::RelativeUri;
+use std::net::SocketAddr;
 
 #[cfg(test)]
 mod tests;
@@ -82,7 +83,11 @@ impl<Delegate> PlaneRouter<Delegate> {
 }
 
 impl<Delegate: ServerRouter> ServerRouter for PlaneRouter<Delegate> {
-    fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>> {
+    fn resolve_sender(
+        &mut self,
+        addr: RoutingAddr,
+        _origin: Option<SocketAddr>,
+    ) -> BoxFuture<Result<Route, ResolutionError>> {
         async move {
             let PlaneRouter {
                 tag,
@@ -110,7 +115,7 @@ impl<Delegate: ServerRouter> ServerRouter for PlaneRouter<Delegate> {
                     }
                 }
             } else {
-                delegate_router.resolve_sender(addr).await
+                delegate_router.resolve_sender(addr, None).await
             }
         }
         .boxed()

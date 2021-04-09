@@ -70,6 +70,7 @@ impl ServerRouter for LocalRoutes {
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,
+        _origin: Option<SocketAddr>,
     ) -> BoxFuture<'_, Result<Route, ResolutionError>> {
         let lock = self.1.lock();
         let result = if let Some(Entry {

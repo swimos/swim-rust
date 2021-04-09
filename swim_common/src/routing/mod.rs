@@ -25,6 +25,7 @@ use url::Url;
 use utilities::errors::Recoverable;
 use utilities::sync::promise;
 use utilities::uri::RelativeUri;
+use std::net::SocketAddr;
 
 pub mod error;
 pub mod remote;
@@ -113,7 +114,7 @@ impl Route {
 
 /// Interface for interacting with the server [`Envelope`] router.
 pub trait ServerRouter: Send + Sync {
-    fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>>;
+    fn resolve_sender(&mut self, addr: RoutingAddr, origin: Option<SocketAddr>) -> BoxFuture<Result<Route, ResolutionError>>;
 
     fn lookup(
         &mut self,

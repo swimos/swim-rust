@@ -32,6 +32,7 @@ use futures::{Future, FutureExt, Stream, StreamExt};
 use pin_utils::pin_mut;
 use std::collections::{HashMap, HashSet};
 use std::convert::identity;
+use std::net::SocketAddr;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
@@ -356,7 +357,11 @@ impl<'a> ItemSink<'a, Envelope> for TestSender {
 }
 
 impl ServerRouter for TestRouter {
-    fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>> {
+    fn resolve_sender(
+        &mut self,
+        addr: RoutingAddr,
+        _origin: Option<SocketAddr>,
+    ) -> BoxFuture<Result<Route, ResolutionError>> {
         let TestRouter {
             sender, drop_rx, ..
         } = self;
@@ -1311,7 +1316,11 @@ impl AgentExecutionContext for MultiTestContext {
 }
 
 impl ServerRouter for MultiTestRouter {
-    fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>> {
+    fn resolve_sender(
+        &mut self,
+        addr: RoutingAddr,
+        _origin: Option<SocketAddr>,
+    ) -> BoxFuture<Result<Route, ResolutionError>> {
         async move {
             let mut lock = self.0.lock();
             if let Some(sender) = lock.senders.get(&addr) {

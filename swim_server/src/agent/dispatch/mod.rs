@@ -704,7 +704,7 @@ async fn send_lane_not_found<Router>(
 ) where
     Router: ServerRouter,
 {
-    if let Ok(mut remote_route) = router.resolve_sender(remote_addr).await {
+    if let Ok(mut remote_route) = router.resolve_sender(remote_addr, None).await {
         if remote_route
             .sender
             .send_item(Envelope::lane_not_found(node.to_owned(), lane.to_owned()))

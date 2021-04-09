@@ -52,10 +52,12 @@ async fn main() {
 
     let path = AbsolutePath::new(host_uri, node_uri, lane_uri);
 
-    client
-        .send_command(path, 10)
+    let (value_downlink, value_recv) = client
+        .value_downlink(path.clone(), String::new())
         .await
-        .expect("Failed to send command!");
+        .expect("Failed to create value downlink!");
 
+    println!("Stopping client in 2 seconds");
     delay_for(Duration::from_secs(2)).await;
 }
+

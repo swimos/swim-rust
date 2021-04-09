@@ -23,6 +23,7 @@ use crate::plane::router::PlaneRouter;
 use crate::plane::spec::{PlaneBuilder, PlaneSpec, RouteSpec};
 use futures::future::{ready, BoxFuture, Ready};
 use futures::FutureExt;
+use std::net::SocketAddr;
 use std::time::Duration;
 use swim_common::routing::error::ResolutionError;
 use swim_common::routing::error::RouterError;
@@ -66,6 +67,7 @@ impl ServerRouter for DummyDelegate {
     fn resolve_sender(
         &mut self,
         _addr: RoutingAddr,
+        _origin: Option<SocketAddr>,
     ) -> BoxFuture<'_, Result<Route, ResolutionError>> {
         unimplemented!()
     }

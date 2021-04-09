@@ -34,6 +34,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
 use utilities::sync::promise;
 use utilities::uri::RelativeUri;
+use std::net::SocketAddr;
 
 #[derive(Clone, Debug)]
 struct TestRouter {
@@ -56,7 +57,11 @@ impl TestRouter {
 }
 
 impl ServerRouter for TestRouter {
-    fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>> {
+    fn resolve_sender(
+        &mut self,
+        addr: RoutingAddr,
+        _origin: Option<SocketAddr>,
+    ) -> BoxFuture<Result<Route, ResolutionError>> {
         let TestRouter {
             sender, drop_rx, ..
         } = self;

@@ -19,6 +19,7 @@ use crate::routing::RouterError;
 use crate::routing::{Route, RoutingAddr, ServerRouter, TaggedSender};
 use futures::future::BoxFuture;
 use futures::FutureExt;
+use std::net::SocketAddr;
 use tokio::sync::{mpsc, oneshot};
 use url::Url;
 use utilities::uri::RelativeUri;
@@ -53,6 +54,7 @@ impl<Delegate: ServerRouter> ServerRouter for RemoteRouter<Delegate> {
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,
+        origin: Option<SocketAddr>,
     ) -> BoxFuture<'_, Result<Route, ResolutionError>> {
         async move {
             let RemoteRouter {
@@ -76,7 +78,7 @@ impl<Delegate: ServerRouter> ServerRouter for RemoteRouter<Delegate> {
                     }
                 }
             } else {
-                delegate_router.resolve_sender(addr).await
+                delegate_router.resolve_sender(addr, origin).await
             }
         }
         .boxed()

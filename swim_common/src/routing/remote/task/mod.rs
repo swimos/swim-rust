@@ -40,6 +40,7 @@ use std::convert::TryFrom;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::future::Future;
+use std::net::SocketAddr;
 use std::str::FromStr;
 use std::time::Duration;
 use tokio::sync::mpsc;
@@ -54,6 +55,7 @@ use utilities::uri::{BadRelativeUri, RelativeUri};
 
 /// A task that manages reading from and writing to a web-sockets channel.
 pub struct ConnectionTask<Str, Router> {
+    addr: SocketAddr,
     ws_stream: Str,
     messages: mpsc::Receiver<TaggedEnvelope>,
     message_injector: mpsc::Sender<TaggedEnvelope>,
@@ -111,6 +113,7 @@ where
     /// * `config` - Configuration for the connectino task.
     /// runtime.
     pub fn new(
+        addr: SocketAddr,
         ws_stream: Str,
         router: Router,
         messages: mpsc::Receiver<TaggedEnvelope>,
@@ -120,6 +123,7 @@ where
     ) -> Self {
         assert!(config.activity_timeout > ZERO);
         ConnectionTask {
+            addr,
             ws_stream,
             messages,
             message_injector,
@@ -131,6 +135,7 @@ where
 
     pub async fn run(self) -> ConnectionDropped {
         let ConnectionTask {
+            addr,
             mut ws_stream,
             messages,
             message_injector,
@@ -186,6 +191,7 @@ where
                                         &mut router,
                                         &mut resolved,
                                         envelope,
+                                        addr,
                                         config.connection_retries,
                                         sleep,
                                     )
@@ -337,6 +343,7 @@ async fn dispatch_envelope<Router, F, D>(
     router: &mut Router,
     resolved: &mut HashMap<RelativePath, Route>,
     mut envelope: Envelope,
+    origin: SocketAddr,
     mut retry_strategy: RetryStrategy,
     delay_fn: F,
 ) -> Result<(), (Envelope, DispatchError)>
@@ -346,7 +353,7 @@ where
     D: Future<Output = ()>,
 {
     loop {
-        let result = try_dispatch_envelope(router, resolved, envelope).await;
+        let result = try_dispatch_envelope(router, resolved, envelope, origin).await;
         match result {
             Err((env, err)) if !err.is_fatal() => {
                 match retry_strategy.next() {
@@ -374,6 +381,7 @@ async fn try_dispatch_envelope<Router>(
     router: &mut Router,
     resolved: &mut HashMap<RelativePath, Route>,
     envelope: Envelope,
+    origin: SocketAddr,
 ) -> Result<(), (Envelope, DispatchError)>
 where
     Router: ServerRouter,
@@ -382,7 +390,7 @@ where
         let Route { sender, .. } = if let Some(route) = resolved.get_mut(target) {
             route
         } else {
-            let route = get_route(router, target).await;
+            let route = get_route(router, target, origin).await;
             match route {
                 Ok(route) => match resolved.entry(target.clone()) {
                     Entry::Occupied(_) => unreachable!(),
@@ -415,6 +423,7 @@ where
 async fn get_route<Router>(
     router: &mut Router,
     target: &RelativePath,
+    origin: SocketAddr,
 ) -> Result<Route, DispatchError>
 where
     Router: ServerRouter,
@@ -422,7 +431,7 @@ where
     let target_addr = router
         .lookup(None, RelativeUri::from_str(&target.node.as_str())?)
         .await?;
-    Ok(router.resolve_sender(target_addr).await?)
+    Ok(router.resolve_sender(target_addr, Some(origin)).await?)
 }
 
 /// Factory to create and spawn new connection tasks.
@@ -454,6 +463,7 @@ where
 {
     pub fn spawn_connection_task<Str, Sp>(
         &self,
+        addr: SocketAddr,
         ws_stream: Str,
         tag: RoutingAddr,
         spawner: &Sp,
@@ -470,6 +480,7 @@ where
         } = self;
         let (msg_tx, msg_rx) = mpsc::channel(configuration.channel_buffer_size.get());
         let task = ConnectionTask::new(
+            addr,
             ws_stream,
             RemoteRouter::new(tag, delegate_router.create_for(tag), request_tx.clone()),
             msg_rx,

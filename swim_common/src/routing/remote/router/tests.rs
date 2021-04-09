@@ -94,7 +94,7 @@ async fn resolve_remote_ok() {
     let task = async move {
         let result = router.lookup(Some(url), path()).await;
         assert_eq!(result, Ok(ADDR));
-        let result = router.resolve_sender(ADDR).await;
+        let result = router.resolve_sender(ADDR, None).await;
         assert!(result.is_ok());
         let Route { mut sender, .. } = result.unwrap();
         assert!(sender.send_item(envelope("a")).await.is_ok());
@@ -120,7 +120,7 @@ async fn resolve_remote_failure() {
 
     let task = async move {
         let other_addr = RoutingAddr::remote(56);
-        let result = router.resolve_sender(other_addr).await;
+        let result = router.resolve_sender(other_addr, None).await;
         let _expected = ResolutionError::unresolvable(other_addr.to_string());
 
         assert!(matches!(result, Err(_expected)));
@@ -176,7 +176,7 @@ async fn delegate_local_ok() {
         assert!(result.is_ok());
         let local_addr = result.unwrap();
 
-        let result = router.resolve_sender(local_addr).await;
+        let result = router.resolve_sender(local_addr, None).await;
         assert!(result.is_ok());
         let Route { mut sender, .. } = result.unwrap();
         assert!(sender.send_item(envelope("a")).await.is_ok());
@@ -203,7 +203,7 @@ async fn resolve_local_err() {
 
     let task = async move {
         let local_addr = RoutingAddr::local(0);
-        let result = router.resolve_sender(local_addr).await;
+        let result = router.resolve_sender(local_addr, None).await;
         let _expected = ResolutionError::unresolvable(local_addr.to_string());
 
         assert!(matches!(result, Err(_expected)));

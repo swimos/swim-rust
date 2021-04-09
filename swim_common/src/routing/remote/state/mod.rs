@@ -165,7 +165,7 @@ where
             pending,
             ..
         } = self;
-        let msg_tx = tasks.spawn_connection_task(ws_stream, addr, spawner);
+        let msg_tx = tasks.spawn_connection_task(sock_addr, ws_stream, addr, spawner);
         table.insert(addr, host.clone(), sock_addr, msg_tx);
         if let Some(host) = host {
             pending.send_ok(&host, addr);

@@ -119,6 +119,7 @@ impl ServerRouter for ClientRouter {
                 request_sender,
             } = self;
             let (tx, rx) = oneshot::channel();
+            eprintln!("addr = {:#?}", addr);
             if request_sender
                 .send(ClientRequest::Unimplemented {
                     request: Request::new(tx),
@@ -172,6 +173,11 @@ impl ServerRouter for ClientRouter {
         }
         .boxed()
     }
+}
+
+#[tokio::test]
+async fn client_test() {
+
 }
 
 #[tokio::test]

@@ -68,6 +68,7 @@ mod stub_router {
     use url::Url;
     use utilities::sync::promise;
     use utilities::uri::RelativeUri;
+    use std::net::SocketAddr;
 
     #[derive(Clone)]
     pub struct SingleChannelRouter {
@@ -95,6 +96,7 @@ mod stub_router {
         fn resolve_sender(
             &mut self,
             addr: RoutingAddr,
+            _origin: Option<SocketAddr>,
         ) -> BoxFuture<Result<Route, ResolutionError>> {
             async move {
                 let SingleChannelRouter { inner, drop_rx, .. } = self;

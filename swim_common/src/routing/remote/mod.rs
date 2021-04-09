@@ -142,6 +142,7 @@ where
             stop_trigger,
         } = channels;
 
+        //Todo dm this is not needed for a client
         let listener = external.bind(bind_addr).await?;
         Ok(RemoteConnectionsTask {
             external,
