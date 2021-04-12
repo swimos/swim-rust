@@ -27,6 +27,7 @@ use crate::StoreError;
 pub mod db;
 pub mod mem;
 
+/// A value lane data model.
 #[derive(Debug)]
 pub enum ValueDataModel<T> {
     Mem(ValueDataMemStore<T>),
@@ -56,6 +57,13 @@ impl<V> ValueDataModel<V>
 where
     V: Send + Sync + 'static,
 {
+    /// Constructs a new value data model.
+    ///
+    /// # Arguments
+    /// `delegate`: if this data model is *not* transient, then delegate operations to this store.
+    /// `lane_uri`: the lane URI that this store represents.
+    /// `transient`: whether this store should be an in-memory model.
+    /// `default_value`: the value to set the store to if its empty.
     pub fn new(
         delegate: SwimNodeStore,
         lane_uri: String,
@@ -69,6 +77,14 @@ where
         }
     }
 
+    /// Constructs a new, observable, value data model.
+    ///
+    /// # Arguments
+    /// `delegate`: if this data model is *not* transient, then delegate operations to this store.
+    /// `lane_uri`: the lane URI that this store represents.
+    /// `transient`: whether this store should be an in-memory model.
+    /// `buffer_size`: the capacity of the observation buffer.
+    /// `default_value`: the value to set the store to if its empty.
     pub fn observable(
         delegate: SwimNodeStore,
         lane_uri: String,
@@ -91,6 +107,7 @@ impl<V> ValueDataModel<V>
 where
     V: Serialize + DeserializeOwned + Send + Sync + 'static,
 {
+    /// Serializes and stores `value` outside of a transaction.
     pub async fn store(&self, value: V) -> Result<(), StoreError> {
         match self {
             ValueDataModel::Mem(store) => Ok(store.store(value).await),
@@ -98,6 +115,7 @@ where
         }
     }
 
+    /// Load and deserialize the value outside of a transaction.
     pub async fn load(&self) -> Result<Arc<V>, StoreError> {
         match self {
             ValueDataModel::Mem(store) => Ok(store.load().await),
@@ -105,15 +123,15 @@ where
         }
     }
 
+    /// Load and deserialize the value inside of a transaction if the delegate supports them.
     pub async fn get(&self) -> Result<Arc<V>, StoreError> {
         match self {
             ValueDataModel::Mem(store) => store.get().await,
-            ValueDataModel::Db(_) => {
-                unimplemented!()
-            }
+            ValueDataModel::Db(store) => store.load().await,
         }
     }
 
+    /// Serialize and stores `value` inside of a transaction if the delegate supports them.
     pub async fn set(&self, value: V) -> Result<(), StoreError> {
         match self {
             ValueDataModel::Mem(store) => store.set(value).await,
@@ -121,6 +139,8 @@ where
         }
     }
 
+    /// Loads the current value inside of a transaction if the delegate supports them and stores
+    /// the result of `op`.
     pub async fn get_for_update(&self, op: impl Fn(Arc<V>) -> V + Sync) -> Result<(), StoreError> {
         match self {
             ValueDataModel::Mem(store) => store.get_for_update(op).await,
@@ -128,6 +148,7 @@ where
         }
     }
 
+    /// Locks the `TVar` if this is a transient store.
     pub async fn lock(&self) -> Option<crate::engines::mem::var::TVarLock> {
         match self {
             ValueDataModel::Mem(store) => Some(store.lock().await),

@@ -12,26 +12,5 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// use crate::engines::mem::var::observer::Observer;
-// use std::sync::Arc;
-// use tokio::sync::Mutex;
-// use utilities::sync::topic;
-
 pub mod db;
 pub mod mem;
-
-// pub enum StoreStream<T> {
-//     Stm(Observer<T>),
-//     Db(Arc<Mutex<topic::Sender<T>>>),
-// }
-//
-// impl<T> StoreStream<T> {
-//     pub fn stm(delegate: Observer<T>) -> StoreStream<T> {
-//         StoreStream::Stm(delegate)
-//     }
-//
-//     pub fn db(delegate: topic::Sender<T>) -> StoreStream<T> {
-//         StoreStream::Db(Arc::new(Mutex::new(delegate)))
-//     }
-// }
-//

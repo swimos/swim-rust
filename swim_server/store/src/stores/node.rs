@@ -55,12 +55,26 @@ pub trait NodeStore: for<'a> StoreEngine<'a> + Send + Sync + Clone + Debug {
     /// `lane_uri`: the URI of the lane.
     /// `transient`: whether the lane is a transient lane. If this is `true`, then the data model
     /// returned should be an in-memory store.
-    fn value_lane_store<I, V>(&self, lane_uri: I, transient: bool, default_value: V,
+    /// `default_value`: the default value to store if the store is empty.
+    fn value_lane_store<I, V>(
+        &self,
+        lane_uri: I,
+        transient: bool,
+        default_value: V,
+    ) -> ValueDataModel<V>
     where
         I: ToString,
         V: Serialize + Send + Sync + 'static,
         Self: Sized;
 
+    /// Open a new value data model.
+    ///
+    /// # Arguments
+    /// `lane_uri`: the URI of the lane.
+    /// `transient`: whether the lane is a transient lane. If this is `true`, then the data model
+    /// returned should be an in-memory store.
+    /// `buffer_size`: the size of the observation buffer.
+    /// `default_value`: the default value to store if the store is empty.
     fn observable_value_lane_store<I, V>(
         &self,
         lane: I,

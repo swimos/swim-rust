@@ -109,6 +109,22 @@ pub struct StoreEngineOpts {
     value_opts: ValueStoreEngineOpts,
 }
 
+impl StoreEngineOpts {
+    pub fn rocks_default() -> StoreEngineOpts {
+        let mut opts = rocksdb::Options::default();
+        opts.create_if_missing(true);
+
+        StoreEngineOpts {
+            map_opts: MapStoreEngineOpts {
+                config: StoreDelegateConfig::Rocksdb(opts.clone()),
+            },
+            value_opts: ValueStoreEngineOpts {
+                config: StoreDelegateConfig::Rocksdb(opts),
+            },
+        }
+    }
+}
+
 /// Options that are used to instantiate map stores.
 #[derive(Default, Debug, Clone)]
 pub struct MapStoreEngineOpts {

@@ -75,8 +75,8 @@ impl<'a> StoreEngine<'a> for MockPlaneStore {
         Ok(None)
     }
 
-    fn delete(&self, _key: Self::Key) -> Result<bool, Self::Error> {
-        Ok(true)
+    fn delete(&self, _key: Self::Key) -> Result<(), Self::Error> {
+        Ok(())
     }
 }
 
@@ -151,7 +151,7 @@ impl<'a> StoreEngine<'a> for MockNodeStore {
         panic!("Unsupported operation")
     }
 
-    fn delete(&self, _key: Self::Key) -> Result<bool, Self::Error> {
+    fn delete(&self, _key: Self::Key) -> Result<(), Self::Error> {
         // Only memory stores are ever returned so this _shouldn't_ be called
         panic!("Unsupported operation")
     }
