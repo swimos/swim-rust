@@ -27,6 +27,8 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Weak};
 use std::vec::IntoIter;
 use std::{fs, io};
+
+pub use rocksdb::Options;
 use tempdir::TempDir;
 
 /// A directory on the file system used for sever stores.
@@ -121,6 +123,15 @@ impl StoreEngineOpts {
             value_opts: ValueStoreEngineOpts {
                 config: StoreDelegateConfig::Rocksdb(opts),
             },
+        }
+    }
+}
+
+impl Default for StoreEngineOpts {
+    fn default() -> Self {
+        StoreEngineOpts {
+            map_opts: MapStoreEngineOpts::default(),
+            value_opts: ValueStoreEngineOpts::default(),
         }
     }
 }

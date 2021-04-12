@@ -166,6 +166,8 @@ impl SwimServerBuilder {
     /// use swim_server::agent::SwimAgent;
     /// use swim_server::agent::AgentContext;
     /// use swim_server::plane::spec::PlaneBuilder;
+    /// use store::mock::MockPlaneStore;
+    /// use store::{ServerStore, SwimStore};
     ///
     /// #[derive(Debug, SwimAgent)]
     /// #[agent(config = "RustAgentConfig")]
@@ -186,9 +188,10 @@ impl SwimServerBuilder {
     ///     }
     /// }
     ///
-    /// let mut swim_server_builder = SwimServerBuilder::default();
-    /// let mut plane_builder = swim_server_builder.plane_builder("test");
+    /// let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
+    /// let mut server_store = ServerStore::new(Default::default(), "test".into());
     ///
+    /// let mut plane_builder = PlaneBuilder::new(server_store.plane_store("test").unwrap());
     /// plane_builder
     ///     .add_route(
     ///          RoutePattern::parse_str("/rust").unwrap(),
