@@ -13,13 +13,13 @@
 // limitations under the License.
 
 use super::*;
-use crate::stores::lane::observer::StoreObserver;
-use crate::stores::lane::value::mem::ValueDataMemStore;
-use crate::stores::node::NodeStore;
 use futures::future::join;
 use std::num::NonZeroUsize;
 use std::time::Duration;
 use store::mock::MockNodeStore;
+use store::observer::StoreObserver;
+use store::NodeStore;
+use store::ValueDataMemStore;
 use tokio::sync::mpsc;
 use utilities::sync::topic::TryRecvError;
 use utilities::sync::trigger;

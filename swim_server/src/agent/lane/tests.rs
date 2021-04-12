@@ -13,9 +13,9 @@
 // limitations under the License.
 
 use crate::agent::lane::InvalidForm;
-use crate::engines::mem::transaction::RetryManager;
 use futures::future::{ready, Ready};
 use futures::stream::{empty, Empty};
+use store::mem::transaction::RetryManager;
 use swim_common::form::FormErr;
 
 #[derive(Clone, Debug)]

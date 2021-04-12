@@ -21,12 +21,10 @@ use std::sync::Arc;
 
 use im::OrdMap;
 
-use crate::engines::mem::local::TLocal;
-use crate::engines::mem::stm::{abort, left, right, Constant, Stm, VecStm, UNIT};
-use crate::engines::mem::transaction::{
-    atomically, RetryManager, TransactionError, TransactionRunner,
-};
-use crate::engines::mem::var::TVar;
+use store::mem::local::TLocal;
+use store::mem::stm::{abort, left, right, Constant, Stm, VecStm, UNIT};
+use store::mem::transaction::{atomically, RetryManager, TransactionError, TransactionRunner};
+use store::mem::var::TVar;
 use summary::{clear_summary, remove_summary, update_summary};
 use swim_common::form::{Form, FormErr};
 use swim_common::model::Value;
@@ -34,13 +32,13 @@ use swim_common::model::Value;
 use crate::agent::lane::model::map::summary::TransactionSummary;
 use crate::agent::lane::model::DeferredSubscription;
 use crate::agent::lane::{InvalidForm, LaneModel};
-use crate::engines::mem::var::observer::{Observer, ObserverStream, ObserverSubscriber};
 use futures::stream::{iter, Iter};
 use futures::Stream;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::num::NonZeroUsize;
+use store::mem::var::observer::{Observer, ObserverStream, ObserverSubscriber};
 use swim_warp::model::map::MapUpdate;
 use tracing::{event, Level};
 use utilities::future::{FlatmapStream, SwimStreamExt, Transform};
@@ -233,7 +231,7 @@ impl<K: Form, V: Any + Send + Sync> MapLane<K, V> {
     /// Locks an entry in the map, preventing it from being read from or written to. This is
     /// required to force the ordering of events in some unit tests.
     #[cfg(test)]
-    pub async fn lock(&self, key: &K) -> Option<crate::engines::mem::var::TVarLock> {
+    pub async fn lock(&self, key: &K) -> Option<store::mem::var::TVarLock> {
         match self.map_state.load().await.get(&key.as_value()) {
             Some(var) => Some(var.lock().await),
             _ => None,

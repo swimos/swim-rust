@@ -24,14 +24,12 @@ use crate::agent::lifecycle::AgentLifecycle;
 use crate::agent::tests::stub_router::SingleChannelRouter;
 use crate::agent::tests::test_clock::TestClock;
 use crate::agent::AgentContext;
-use crate::engines::mem::transaction::atomically;
 use crate::plane::provider::AgentProvider;
 use crate::plane::RouteAndParameters;
 use crate::routing::RoutingAddr;
-use crate::stores::plane::PlaneStore;
 use crate::{
     agent_lifecycle, command_lifecycle, demand_lifecycle, demand_map_lifecycle, map_lifecycle,
-    value_lifecycle, ServerStore, StoreEngineOpts, SwimAgent, SwimStore,
+    value_lifecycle, SwimAgent,
 };
 use std::collections::HashMap;
 use std::convert::TryFrom;
@@ -39,6 +37,8 @@ use std::fmt::Debug;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
+use store::mem::transaction::atomically;
+use store::{PlaneStore, ServerStore, StoreEngineOpts, SwimStore};
 use tokio::sync::{mpsc, Mutex};
 use tokio_stream::wrappers::ReceiverStream;
 use utilities::uri::RelativeUri;

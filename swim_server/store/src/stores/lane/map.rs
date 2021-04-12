@@ -15,7 +15,7 @@
 use crate::stores::lane::{serialize, serialize_then, LaneKey};
 use crate::stores::node::SwimNodeStore;
 use crate::stores::MapStorageKey;
-use crate::{KeyedSnapshot, RangedSnapshot, Snapshot, StoreEngine, StoreError};
+use crate::{deserialize, KeyedSnapshot, RangedSnapshot, Snapshot, StoreEngine, StoreError};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::marker::PhantomData;
@@ -139,10 +139,6 @@ impl<K, V> RangedSnapshot for MapDataModel<K, V> {
             MapDataModelDelegate::Db(store) => store.ranged_snapshot(prefix, map_fn),
         }
     }
-}
-
-fn deserialize<K: DeserializeOwned>(value: &[u8]) -> Result<K, StoreError> {
-    bincode::deserialize(value).map_err(|e| StoreError::Decoding(e.to_string()))
 }
 
 impl<K, V> Snapshot<K, V> for MapDataModel<K, V>

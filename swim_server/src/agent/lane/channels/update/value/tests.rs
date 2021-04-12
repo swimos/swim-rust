@@ -16,13 +16,13 @@ use crate::agent::lane::channels::update::value::ValueLaneUpdateTask;
 use crate::agent::lane::channels::update::{LaneUpdate, UpdateError};
 use crate::agent::lane::model::value::ValueLane;
 use crate::routing::RoutingAddr;
-use crate::stores::lane::value::mem::ValueDataMemStore;
-use crate::stores::lane::value::ValueDataModel;
 use futures::future::{join, ready};
 use futures::stream::once;
 use futures::StreamExt;
 use std::num::NonZeroUsize;
 use std::time::Duration;
+use store::ValueDataMemStore;
+use store::ValueDataModel;
 use tokio::time::timeout;
 
 fn buffer_size() -> NonZeroUsize {

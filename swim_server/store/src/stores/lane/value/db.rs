@@ -15,7 +15,7 @@
 use crate::stores::lane::observer::StoreObserver;
 use crate::stores::lane::{serialize_then, LaneKey};
 use crate::stores::node::SwimNodeStore;
-use crate::{StoreEngine, StoreError};
+use crate::{deserialize, StoreEngine, StoreError};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::any::Any;
@@ -91,7 +91,7 @@ where
                 channel
                     .send(Arc::new(value))
                     .await
-                    .map_err(|_| StoreError::Error("Observer error".to_string()))
+                    .map_err(|_| StoreError::ObserverClosed)
             }
             None => Ok(()),
         }
@@ -112,7 +112,7 @@ where
 
     pub fn load(&self) -> Result<Arc<V>, StoreError> {
         match self.store.get(self.key()) {
-            Ok(Some(bytes)) => bincode::deserialize(bytes.as_slice()).map_err(Into::into),
+            Ok(Some(bytes)) => deserialize(bytes.as_slice()),
             Ok(None) => {
                 let value = self.default_value.clone();
                 serialize_then(&self.store, &value, |delegate, bytes| {

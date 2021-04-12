@@ -25,4 +25,8 @@ pub use agent_derive::*;
 pub use utilities::future::SwimStreamExt;
 pub use utilities::route_pattern::RoutePattern;
 
-pub use store::*;
+// Hidden export required by agent derive macro.
+#[doc(hidden)]
+pub mod store {
+    pub use store::NodeStore;
+}

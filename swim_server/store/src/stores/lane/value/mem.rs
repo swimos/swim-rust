@@ -55,7 +55,7 @@ where
     pub async fn atomically<O>(&self, op: impl Stm<Result = O>) -> Result<O, StoreError> {
         atomically(&op, ExactlyOnce)
             .await
-            .map_err(|e| StoreError::Error(e.to_string()))
+            .map_err(|e| StoreError::Delegate(Box::new(e)))
     }
 }
 

@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::stores::lane::observer::{StoreObserver, StoreStream, StoreSubscriber};
 use futures::Stream;
 use std::any::type_name;
 use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
 use std::sync::Arc;
+use store::observer::{StoreObserver, StoreStream, StoreSubscriber};
 use utilities::sync::topic;
 use utilities::sync::topic::ReceiverStream;
 

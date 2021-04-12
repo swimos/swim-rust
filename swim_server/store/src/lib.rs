@@ -18,7 +18,15 @@ pub mod mock;
 mod engines;
 mod stores;
 
-pub use stores::lane::value::ValueDataModel;
+pub mod mem {
+    pub use super::engines::mem::*;
+}
+
+pub mod observer {
+    pub use super::stores::lane::observer::{StoreObserver, StoreStream, StoreSubscriber};
+}
+
+pub use stores::lane::value::{db::ValueDataDbStore, mem::ValueDataMemStore, ValueDataModel};
 pub use stores::node::{NodeStore, SwimNodeStore};
 pub use stores::plane::{PlaneStore, SwimPlaneStore};
 
@@ -33,6 +41,7 @@ use std::vec::IntoIter;
 use std::{fs, io};
 
 pub use rocksdb::Options;
+use serde::de::DeserializeOwned;
 use tempdir::TempDir;
 
 /// A directory on the file system used for sever stores.
@@ -87,6 +96,7 @@ impl StoreDir {
 /// Store errors.
 #[derive(Debug)]
 pub enum StoreError {
+    ObserverClosed,
     KeyNotFound,
     Snapshot(String),
     InitialisationFailure(String),
@@ -402,4 +412,8 @@ mod tests {
         // let val = value_store3.load();
         // println!("{:?}", val);
     }
+}
+
+pub(crate) fn deserialize<K: DeserializeOwned>(value: &[u8]) -> Result<K, StoreError> {
+    bincode::deserialize(value).map_err(|e| StoreError::Decoding(e.to_string()))
 }

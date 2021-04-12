@@ -26,14 +26,14 @@ use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 use crate::agent::lane::tests::ExactlyOnce;
 use crate::agent::lifecycle::AgentLifecycle;
 use crate::agent::{AgentContext, LaneIo, LaneTasks, SwimAgent};
-use crate::engines::mem::transaction::atomically;
-use crate::NodeStore;
 use futures::future::{ready, BoxFuture, Ready};
 use futures::FutureExt;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::Arc;
 use std::time::Duration;
+use store::mem::transaction::atomically;
+use store::NodeStore;
 use tokio::sync::{mpsc, Mutex};
 
 /// An agent for use in tests of the agent execution loop. All events that occur in the lifecycle

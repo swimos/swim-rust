@@ -17,7 +17,6 @@ pub mod command;
 pub mod map;
 pub mod value;
 
-use crate::engines::mem::transaction::{RetryManager, TransactionError};
 use crate::routing::RoutingAddr;
 use futures::future::{ready, BoxFuture, Either, Ready};
 use futures::stream::{iter, Iter};
@@ -25,6 +24,7 @@ use futures::Stream;
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use std::time::Duration;
+use store::mem::transaction::{RetryManager, TransactionError};
 use store::StoreError;
 use swim_common::form::FormErr;
 use swim_runtime::time::delay::{delay_for, Delay};

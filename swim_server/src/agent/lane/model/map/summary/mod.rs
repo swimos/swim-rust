@@ -16,12 +16,12 @@
 mod tests;
 
 use crate::agent::lane::model::map::MapLaneEvent;
-use crate::engines::mem::stm::Stm;
-use crate::engines::mem::var::TVar;
 use im::HashMap;
 use std::any::Any;
 use std::hash::Hash;
 use std::sync::Arc;
+use store::mem::stm::Stm;
+use store::mem::var::TVar;
 use swim_common::model::Value;
 
 /// Representation of the modification to the value of an entry in a map lane.

@@ -13,12 +13,12 @@
 // limitations under the License.
 
 use crate::agent::lane::LaneModel;
-use crate::StoreError;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::any::Any;
 use std::sync::Arc;
-use store::stores::lane::value::ValueDataModel;
+use store::StoreError;
+use store::ValueDataModel;
 
 #[cfg(test)]
 mod tests;
@@ -91,7 +91,7 @@ where
     /// Locks the variable, preventing it from being read from or written to. This is
     /// required to force the ordering of events in some unit tests.
     #[cfg(test)]
-    pub(crate) async fn lock(&self) -> Option<crate::engines::mem::var::TVarLock> {
+    pub(crate) async fn lock(&self) -> Option<store::mem::var::TVarLock> {
         self.data_model.lock().await
     }
 }

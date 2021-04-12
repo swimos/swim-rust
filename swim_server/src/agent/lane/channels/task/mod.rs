@@ -37,7 +37,7 @@ use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::ValueLane;
 use crate::agent::lane::model::DeferredSubscription;
 use crate::agent::Eff;
-use crate::engines::mem::transaction::RetryManager;
+
 use crate::routing::{RoutingAddr, TaggedClientEnvelope};
 use either::Either;
 use futures::future::{join, join3, ready, BoxFuture};
@@ -51,6 +51,7 @@ use std::fmt::{Debug, Display, Formatter};
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use store::mem::transaction::RetryManager;
 use swim_common::form::{Form, FormErr};
 use swim_common::model::Value;
 use swim_common::warp::envelope::{OutgoingHeader, OutgoingLinkMessage};
