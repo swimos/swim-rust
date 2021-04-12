@@ -127,15 +127,6 @@ impl StoreEngineOpts {
     }
 }
 
-impl Default for StoreEngineOpts {
-    fn default() -> Self {
-        StoreEngineOpts {
-            map_opts: MapStoreEngineOpts::default(),
-            value_opts: ValueStoreEngineOpts::default(),
-        }
-    }
-}
-
 /// Options that are used to instantiate map stores.
 #[derive(Default, Debug, Clone)]
 pub struct MapStoreEngineOpts {

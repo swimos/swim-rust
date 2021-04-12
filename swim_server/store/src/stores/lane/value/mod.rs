@@ -127,7 +127,7 @@ where
     pub async fn get(&self) -> Result<Arc<V>, StoreError> {
         match self {
             ValueDataModel::Mem(store) => store.get().await,
-            ValueDataModel::Db(store) => store.load().await,
+            ValueDataModel::Db(store) => store.load(),
         }
     }
 
