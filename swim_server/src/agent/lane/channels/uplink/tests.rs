@@ -32,8 +32,8 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
 use store::mem::transaction::TransactionError;
-use store::ValueDataMemStore;
 use store::ValueDataModel;
+use store::{StoreError, ValueDataMemStore};
 use swim_common::form::{Form, FormErr};
 use swim_common::model::Value;
 use swim_common::sink::item;
@@ -437,8 +437,15 @@ fn uplink_error_display() {
         format!("{}", UplinkError::LaneStoppedReporting),
         "The lane stopped reporting its state."
     );
-    assert_eq!(format!("{}", UplinkError::FailedTransaction(TransactionError::InvalidRetry)), 
-               "The uplink failed to execute a transaction: Retry on transaction with no data dependencies.");
+    assert_eq!(
+        format!(
+            "{}",
+            UplinkError::Store(StoreError::Delegate(Box::new(
+                TransactionError::InvalidRetry
+            )))
+        ),
+        "The uplink failed to with a store error: Retry on transaction with no data dependencies."
+    );
     assert_eq!(
         format!("{}", UplinkError::InconsistentForm(FormErr::Malformatted)),
         "A form implementation used by a lane is inconsistent: Malformatted"
@@ -457,10 +464,10 @@ fn uplink_error_display() {
 fn uplink_error_from_map_sync_error() {
     let err1: UplinkError =
         MapLaneSyncError::FailedTransaction(TransactionError::InvalidRetry).into();
-    assert!(matches!(
-        err1,
-        UplinkError::FailedTransaction(TransactionError::InvalidRetry)
-    ));
+    let _expected = UplinkError::Store(StoreError::Delegate(Box::new(
+        TransactionError::InvalidRetry,
+    )));
+    assert!(matches!(err1, _expected));
     let err2: UplinkError = MapLaneSyncError::InconsistentForm(FormErr::Malformatted).into();
     assert!(matches!(
         err2,

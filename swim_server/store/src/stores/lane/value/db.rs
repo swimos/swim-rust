@@ -124,7 +124,7 @@ where
         }
     }
 
-    pub async fn get_for_update(&self, _op: impl Fn(Arc<V>) -> V + Sync) -> Result<(), StoreError> {
-        unimplemented!()
+    pub async fn get_for_update(&self, op: impl Fn(Arc<V>) -> V + Sync) -> Result<(), StoreError> {
+        self.store(op(self.load()?)).await
     }
 }

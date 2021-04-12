@@ -62,7 +62,7 @@ where
 
 impl<T> ValueLane<T>
 where
-    T: Any + Send + Sync + Serialize + DeserializeOwned + Default,
+    T: Any + Send + Sync + Serialize + DeserializeOwned,
 {
     /// Get the current value.
     pub async fn get(&self) -> Result<Arc<T>, StoreError> {

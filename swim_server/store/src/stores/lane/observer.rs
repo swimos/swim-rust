@@ -83,8 +83,8 @@ impl<T> Clone for StoreSubscriber<T> {
 impl<T> StoreSubscriber<T> {
     pub fn subscribe(&self) -> Result<StoreObserver<T>, SubscribeError> {
         match self {
-            StoreSubscriber::Db(rx) => rx.subscribe().map(|s| StoreObserver::Db(s)),
-            StoreSubscriber::Mem(rx) => rx.subscribe().map(|s| StoreObserver::Mem(s)),
+            StoreSubscriber::Db(rx) => rx.subscribe().map(StoreObserver::Db),
+            StoreSubscriber::Mem(rx) => rx.subscribe().map(StoreObserver::Mem),
         }
     }
 }

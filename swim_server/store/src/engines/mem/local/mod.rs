@@ -42,12 +42,12 @@ impl<T> TLocal<T> {
         }
     }
 
-    /// An [`crate::stm::Stm`] instance that will read the value of the variable.
+    /// An [`crate::mem::stm::Stm`] instance that will read the value of the variable.
     pub fn get(&self) -> TLocalRead<T> {
         TLocalRead(self.clone())
     }
 
-    /// An ['crate::stm::Stm'] instance that will write the value of the variable.
+    /// An ['`crate::mem::stm::Stm'] instance that will write the value of the variable.
     pub fn put(&self, value: T) -> TLocalWrite<T> {
         TLocalWrite(self.clone(), Arc::new(value))
     }
@@ -82,7 +82,7 @@ impl<T: Debug> Debug for TLocal<T> {
     }
 }
 
-/// [`crate::stm::Stm`] instance reading from a [`TLocal`].
+/// [`crate::mem::stm::Stm`] instance reading from a [`TLocal`].
 #[derive(Debug)]
 pub struct TLocalRead<T>(pub(crate) TLocal<T>);
 
@@ -93,7 +93,7 @@ impl<T> Clone for TLocalRead<T> {
     }
 }
 
-/// [`crate::stm::Stm`] instance writing to a [`TLocal`].
+/// [`crate::mem::stm::Stm`] instance writing to a [`TLocal`].
 #[derive(Debug)]
 pub struct TLocalWrite<T>(pub(crate) TLocal<T>, pub(crate) Arc<T>);
 

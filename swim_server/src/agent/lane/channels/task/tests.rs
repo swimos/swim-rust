@@ -42,6 +42,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use store::mem::transaction::TransactionError;
 use store::mock::MockNodeStore;
+use store::StoreError;
 use swim_common::form::{Form, FormErr};
 use swim_common::model::Value;
 use swim_common::routing::ResolutionError;
@@ -194,9 +195,9 @@ impl LaneUplinks for TestUplinkSpawner {
                     let error = if fatal_errors {
                         UplinkError::LaneStoppedReporting
                     } else {
-                        UplinkError::FailedTransaction(TransactionError::HighContention {
-                            num_failed: 10,
-                        })
+                        UplinkError::Store(StoreError::Delegate(Box::new(
+                            TransactionError::HighContention { num_failed: 10 },
+                        )))
                     };
                     assert!(error_collector
                         .send(UplinkErrorReport { error, addr: *addr })
@@ -739,10 +740,7 @@ async fn continue_after_non_fatal_uplink_err() {
     let (_, result, _) = join3(spawn_task, main_task, io_task).await;
     match result.as_ref().map(|v| v.as_slice()) {
         Ok([UplinkErrorReport { error, addr: a }]) => {
-            assert!(matches!(
-                error,
-                UplinkError::FailedTransaction(TransactionError::HighContention { num_failed: 10 })
-            ));
+            store_err_eq(error, TransactionError::HighContention { num_failed: 10 });
             assert_eq!(a, &bad_addr);
         }
         ow => {
@@ -751,6 +749,19 @@ async fn continue_after_non_fatal_uplink_err() {
     }
 
     outputs.check_history(vec![12]).await;
+}
+
+fn store_err_eq(actual: &UplinkError, _expected: TransactionError) {
+    match actual {
+        UplinkError::Store(serror) => {
+            if let Some(transaction_error) = serror.downcast_ref::<TransactionError>() {
+                assert!(matches!(transaction_error, _expected));
+            } else {
+                panic!("Expected a transaction error")
+            }
+        }
+        _ => panic!("Expected a store error"),
+    }
 }
 
 #[tokio::test]
@@ -851,12 +862,7 @@ async fn report_uplink_failures_on_update_failure() {
             ));
             match uplink_errors.as_slice() {
                 [UplinkErrorReport { error, addr: a }] => {
-                    assert!(matches!(
-                        error,
-                        UplinkError::FailedTransaction(TransactionError::HighContention {
-                            num_failed: 10
-                        })
-                    ));
+                    store_err_eq(error, TransactionError::HighContention { num_failed: 10 });
                     assert_eq!(a, &bad_addr);
                 }
                 ow => {

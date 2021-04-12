@@ -42,7 +42,7 @@ const APPLYING_UPDATE: &str = "Applying value update.";
 
 impl<T> LaneUpdate for ValueLaneUpdateTask<T>
 where
-    T: Any + Send + Sync + Serialize + DeserializeOwned + Default + Debug,
+    T: Any + Send + Sync + Serialize + DeserializeOwned + Debug,
 {
     type Msg = T;
 

@@ -339,7 +339,7 @@ impl<T> ValueLaneMessageHandler<T> {
 
 impl<T> LaneMessageHandler for ValueLaneMessageHandler<T>
 where
-    T: Any + Send + Sync + Serialize + DeserializeOwned + Default + Debug,
+    T: Any + Send + Sync + Serialize + DeserializeOwned + Debug,
 {
     type Event = Arc<T>;
     type Uplink = ValueLaneUplink<T>;

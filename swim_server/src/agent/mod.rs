@@ -167,6 +167,19 @@ impl<Config> AgentParameters<Config> {
     }
 }
 
+/// Lane creation properties.
+pub struct LaneProperties<T> {
+    /// The name of the lane.
+    pub name: String,
+    /// Whether the lane is public (with respect to external message routing).
+    pub is_public: bool,
+    /// Whether the lane is transient.
+    pub is_transient: bool,
+    /// The initial value for the lane. If this lane is not transient, then this value will be
+    /// ignored if one already exists in the lane's store.
+    pub init: T,
+}
+
 /// Creates a single, asynchronous task that manages the lifecycle of an agent, all of its lanes
 /// and any events that are scheduled within it.
 ///
@@ -515,7 +528,7 @@ where
 
 impl<T, Context, D> LaneIo<Context> for ValueLaneIo<T, D>
 where
-    T: Any + Send + Sync + Serialize + DeserializeOwned + Default + Form + Debug,
+    T: Any + Send + Sync + Serialize + DeserializeOwned + Form + Debug,
     D: DeferredSubscription<Arc<T>>,
     Context: AgentExecutionContext + Send + Sync + 'static,
 {
@@ -804,23 +817,18 @@ where
 
 /// Create a value lane instance along with its life-cycle.
 ///
-/// #Arguments
+/// # Arguments
 ///
-/// * `name` - The name of the lane.
-/// * `is_public` - Whether the lane is public (with respect to external message routing).
+/// * `properties` - Lane initialisation properties.
 /// * `config` - Configuration parameters.
-/// * `init` - The initial value of the lane.
 /// * `lifecycle` - Life-cycle event handler for the lane.
 /// * `projection` - A projection from the agent type to this lane.
 pub fn make_value_lane<Agent, Context, T, L, Store>(
-    name: impl ToString,
-    is_public: bool,
+    properties: LaneProperties<T>,
     config: &AgentExecutionConfig,
-    init: T,
     lifecycle: L,
     projection: impl Fn(&Agent) -> &ValueLane<T> + Send + Sync + 'static,
     store: &Store,
-    transient: bool,
 ) -> (
     ValueLane<T>,
     impl LaneTasks<Agent, Context>,
@@ -829,13 +837,20 @@ pub fn make_value_lane<Agent, Context, T, L, Store>(
 where
     Agent: 'static,
     Context: AgentContext<Agent> + AgentExecutionContext + Send + Sync + 'static,
-    T: Any + Send + Sync + Form + Debug + Default + Serialize + DeserializeOwned,
+    T: Any + Send + Sync + Form + Debug + Serialize + DeserializeOwned,
     L: for<'l> StatefulLaneLifecycle<'l, ValueLane<T>, Agent>,
     Store: NodeStore,
 {
+    let LaneProperties {
+        name,
+        is_public,
+        is_transient,
+        init,
+    } = properties;
+
     let (data_model, observer) = store.observable_value_lane_store(
-        name.to_string(),
-        transient,
+        name.clone(),
+        is_transient,
         config.observation_buffer,
         init,
     );
@@ -848,7 +863,7 @@ where
     };
 
     let tasks = ValueLifecycleTasks(LifecycleTasks {
-        name: name.to_string(),
+        name,
         lifecycle,
         event_stream: observer.into_stream(),
         projection,

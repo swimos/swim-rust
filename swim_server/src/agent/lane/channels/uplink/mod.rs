@@ -33,7 +33,7 @@ use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use std::ops::Deref;
 use std::sync::Arc;
-use store::mem::transaction::{RetryManager, TransactionError};
+use store::mem::transaction::RetryManager;
 use store::StoreError;
 use swim_common::form::{Form, FormErr};
 use swim_common::model::Value;
@@ -145,26 +145,18 @@ pub enum UplinkError {
     ChannelDropped,
     /// The lane stopped reporting its state changes.
     LaneStoppedReporting,
-    /// The uplink attempted to execute a transaction against its lane but failed.
-    FailedTransaction(TransactionError),
+    Store(StoreError),
     /// The form used by the lane is inconsistent.
     InconsistentForm(FormErr),
     /// The uplink failed to start after a number of attempts.
     FailedToStart(usize),
 }
 
-fn trans_err_fatal(err: &TransactionError) -> bool {
-    matches!(
-        err,
-        TransactionError::HighContention { .. } | TransactionError::TooManyAttempts { .. }
-    )
-}
-
 impl Recoverable for UplinkError {
     fn is_fatal(&self) -> bool {
         match self {
             UplinkError::LaneStoppedReporting | UplinkError::InconsistentForm(_) => true,
-            UplinkError::FailedTransaction(err) => trans_err_fatal(err),
+            UplinkError::Store(store_err) => store_err.is_fatal(),
             _ => false,
         }
     }
@@ -173,7 +165,9 @@ impl Recoverable for UplinkError {
 impl From<MapLaneSyncError> for UplinkError {
     fn from(err: MapLaneSyncError) -> Self {
         match err {
-            MapLaneSyncError::FailedTransaction(e) => UplinkError::FailedTransaction(e),
+            MapLaneSyncError::FailedTransaction(e) => {
+                UplinkError::Store(StoreError::Delegate(Box::new(e)))
+            }
             MapLaneSyncError::InconsistentForm(e) => UplinkError::InconsistentForm(e),
         }
     }
@@ -184,8 +178,8 @@ impl Display for UplinkError {
         match self {
             UplinkError::ChannelDropped => write!(f, "Uplink send channel was dropped."),
             UplinkError::LaneStoppedReporting => write!(f, "The lane stopped reporting its state."),
-            UplinkError::FailedTransaction(err) => {
-                write!(f, "The uplink failed to execute a transaction: {}", err)
+            UplinkError::Store(err) => {
+                write!(f, "The uplink failed to with a store error: {}", err)
             }
             UplinkError::InconsistentForm(err) => write!(
                 f,
@@ -202,7 +196,7 @@ impl Display for UplinkError {
 impl Error for UplinkError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            UplinkError::FailedTransaction(err) => Some(err),
+            UplinkError::Store(err) => Some(err),
             UplinkError::InconsistentForm(err) => Some(err),
             _ => None,
         }
@@ -576,7 +570,7 @@ const OBTAINED_VALUE_STATE: &str = "Obtained value lane state.";
 
 impl<T> UplinkStateMachine<Arc<T>> for ValueLaneUplink<T>
 where
-    T: Any + Send + Sync + Serialize + DeserializeOwned + Default + Debug,
+    T: Any + Send + Sync + Serialize + DeserializeOwned + Debug,
 {
     type Msg = ValueLaneEvent<T>;
 
@@ -612,9 +606,10 @@ where
                                         (true, Some(updates)),
                                     ))
                                 }
-                                Err(_e) => {
-                                    unimplemented!()
-                                }
+                                Err(e) => Some((
+                                    PeelResult::Output(Err(UplinkError::Store(e))),
+                                    (true, Some(updates)),
+                                )),
                             }
                         } else {
                             Some((

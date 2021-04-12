@@ -110,7 +110,10 @@ where
     /// Serializes and stores `value` outside of a transaction.
     pub async fn store(&self, value: V) -> Result<(), StoreError> {
         match self {
-            ValueDataModel::Mem(store) => Ok(store.store(value).await),
+            ValueDataModel::Mem(store) => {
+                store.store(value).await;
+                Ok(())
+            }
             ValueDataModel::Db(store) => store.store(value).await,
         }
     }
@@ -144,7 +147,7 @@ where
     pub async fn get_for_update(&self, op: impl Fn(Arc<V>) -> V + Sync) -> Result<(), StoreError> {
         match self {
             ValueDataModel::Mem(store) => store.get_for_update(op).await,
-            _ => unimplemented!(),
+            ValueDataModel::Db(store) => store.get_for_update(op).await,
         }
     }
 

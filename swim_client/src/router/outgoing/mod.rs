@@ -74,9 +74,6 @@ impl OutgoingHostTask {
         let mut close_trigger = close_rx.fuse();
         let mut envelope_rx = ReceiverStream::new(envelope_rx).fuse();
 
-        let yield_mod = 256;
-        let mut iteration_count: usize = 0;
-
         loop {
             let task = select! {
                 closed = &mut close_trigger => {
@@ -97,7 +94,6 @@ impl OutgoingHostTask {
             match task {
                 OutgoingRequest::Message(envelope) => {
                     let message = envelope.into_value().to_string();
-                    println!("Sending: {:?}", message);
                     let request = new_request(connection_request_tx.clone(), message.into());
 
                     RetryableFuture::new(request, config.retry_strategy())
@@ -105,10 +101,6 @@ impl OutgoingHostTask {
                         .map_err(|e| {
                             error!(cause = %e, "Failed to send envelope");
                             e
-                        })
-                        .and_then(|e| {
-                            println!("Future completed with: {:?}", e);
-                            Ok(e)
                         })?;
 
                     trace!("Completed request");
@@ -121,11 +113,6 @@ impl OutgoingHostTask {
                 }
             }
             trace!("Completed outgoing request");
-
-            iteration_count += 1;
-            if iteration_count % yield_mod == 0 {
-                tokio::task::yield_now().await;
-            }
         }
     }
 }

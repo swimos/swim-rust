@@ -67,7 +67,7 @@ pub trait NodeStore: for<'a> StoreEngine<'a> + Send + Sync + Clone + Debug {
         V: Serialize + Send + Sync + 'static,
         Self: Sized;
 
-    /// Open a new value data model.
+    /// Open a new observable value data model.
     ///
     /// # Arguments
     /// `lane_uri`: the URI of the lane.

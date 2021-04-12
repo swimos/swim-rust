@@ -12,6 +12,33 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! This crate provides persistent and transient store engines for Swim servers.
+//!
+//! At a top level, a server uses a store which may be either transient (the directory is deleted
+//! after the store handle is dropped) or persistent (the directory will be initialised upon
+//! creation and lane stores will read it upon loading. From here, there is a fan-out from the
+//! server store to the ingress at a lane-level.
+//!
+//! # Server stores
+//! Server stores initialise plane stores on demand and two delegate databases serve all of the map
+//! and value lanes on the plane. These delegate databases may be either Rocks DB or libmdbx
+//! implementations - Rocks is preferred for map lanes to reduce IO.
+//!
+//! # Plane stores
+//! Plane stores produce node stores and operations (CRUD) performed on them are mapped to the
+//! corresponding map or value store delegate. It is at this level that the storage keys are
+//! serialized before an operation is directly performed on the delegate store.
+//!
+//! # Node stores
+//! Node stores produce map and value lane data models. Node stores are aware of the URI that the
+//! store is operating on and any operations performed on them have a node URI attached to the key.
+//!
+//! # Lane data models
+//! Similar to server stores, lane data models may be transient (in-memory models) or persistent.
+//! Transient models are backed by a software transactional memory model. Persistent models map all
+//! of their operations with a lane URI and delegate their operations up the aforementioned
+//! hierarchy.
+
 #[cfg(feature = "mock")]
 pub mod mock;
 
@@ -33,16 +60,18 @@ pub use stores::plane::{PlaneStore, SwimPlaneStore};
 use crate::engines::db::StoreDelegateConfig;
 use crate::stores::plane::PlaneStoreInner;
 use std::collections::HashMap;
-use std::error::Error;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Weak};
 use std::vec::IntoIter;
-use std::{fs, io};
+use std::{error::Error as StdError, fs, io};
 
+use crate::mem::transaction::TransactionError;
 pub use rocksdb::Options;
 use serde::de::DeserializeOwned;
 use tempdir::TempDir;
+use thiserror::Error;
+use utilities::errors::Recoverable;
 
 /// A directory on the file system used for sever stores.
 #[derive(Debug)]
@@ -94,17 +123,59 @@ impl StoreDir {
 }
 
 /// Store errors.
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum StoreError {
+    #[error("Observer closed")]
     ObserverClosed,
+    #[error("Key not found")]
     KeyNotFound,
+    #[error("Snapshot error: `{0}`")]
     Snapshot(String),
+    #[error("Store initialisation failure: `{0}`")]
     InitialisationFailure(String),
+    #[error("IO error: `{0}`")]
     Io(io::Error),
+    #[error("Encoding error: `{0}`")]
     Encoding(String),
+    #[error("Decoding error: `{0}`")]
     Decoding(String),
-    Delegate(Box<dyn Error>),
+    #[error("{0}")]
+    Delegate(Box<dyn StdError + Send>),
+    #[error("Store closing")]
     Closing,
+}
+
+impl StoreError {
+    pub fn downcast_ref<E: StdError + 'static>(&self) -> Option<&E> {
+        match self {
+            StoreError::Delegate(d) => {
+                if let Some(ref downcasted) = d.downcast_ref() {
+                    return Some(downcasted);
+                }
+                None
+            }
+            _ => None,
+        }
+    }
+}
+
+impl Recoverable for StoreError {
+    fn is_fatal(&self) -> bool {
+        match self {
+            StoreError::Delegate(delegate) => {
+                if let Some(inner) = delegate.downcast_ref::<TransactionError>() {
+                    matches!(
+                        inner,
+                        TransactionError::HighContention { .. }
+                            | TransactionError::TooManyAttempts { .. }
+                    )
+                } else {
+                    false
+                }
+            }
+            _ => true,
+        }
+    }
 }
 
 /// Engine options for both map and value lanes.
@@ -247,7 +318,6 @@ pub trait FromOpts: Sized {
     /// # Arguments:
     /// `path`: the path that this store should open in.
     /// `opts`: the options.
-    ///
     fn from_opts<I: AsRef<Path>>(path: I, opts: &Self::Opts) -> Result<Self, StoreError>;
 }
 
@@ -330,87 +400,6 @@ impl SwimStore for ServerStore {
         let weak = Arc::downgrade(&store);
         refs.insert(plane_name, weak);
         Ok(SwimPlaneStore::from_inner(store))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::engines::db::StoreDelegateConfig;
-    use crate::stores::node::NodeStore;
-    use crate::stores::plane::PlaneStore;
-    use crate::stores::{StoreKey, ValueStorageKey};
-    use crate::{
-        MapStoreEngineOpts, ServerStore, Snapshot, StoreEngine, StoreEngineOpts, SwimStore,
-        ValueStoreEngineOpts,
-    };
-    use std::sync::Arc;
-
-    #[test]
-    fn simple_put_get() {
-        let server_opts = StoreEngineOpts {
-            map_opts: MapStoreEngineOpts {
-                config: StoreDelegateConfig::lmdbx(),
-            },
-            value_opts: ValueStoreEngineOpts {
-                config: StoreDelegateConfig::rocksdb(),
-            },
-        };
-
-        let mut store = ServerStore::transient(server_opts, "target".into());
-        let plane_store = store.plane_store("unit").unwrap();
-
-        let node_key = StoreKey::Value(ValueStorageKey {
-            node_uri: Arc::new("node".to_string()),
-            lane_uri: Arc::new("lane".to_string()),
-        });
-
-        assert!(plane_store.put(node_key.clone(), b"test".to_vec()).is_ok());
-        let value = plane_store.get(node_key).unwrap().unwrap();
-        println!("{:?}", String::from_utf8(value));
-    }
-
-    #[tokio::test]
-    async fn lane() {
-        let server_opts = StoreEngineOpts {
-            map_opts: MapStoreEngineOpts {
-                config: StoreDelegateConfig::rocksdb(),
-            },
-            value_opts: ValueStoreEngineOpts {
-                config: StoreDelegateConfig::rocksdb(),
-            },
-        };
-
-        let mut store = ServerStore::transient(server_opts, "target".into());
-        let plane_store = store.plane_store("unit").unwrap();
-        let node_store = plane_store.node_store("node");
-        let map_store = node_store.map_lane_store("map", false);
-
-        assert!(map_store
-            .put(&"a".to_string(), &"a".to_string())
-            .await
-            .is_ok());
-        // let val = map_store.get(&"a".to_string());
-        // println!("{}", val.unwrap().unwrap());
-
-        let ss = map_store.snapshot().unwrap().unwrap();
-        let iter = ss.into_iter();
-        for i in iter {
-            println!("Iter: {:?}", i);
-        }
-
-        // let value_store1 = node_store.value_lane_store("value");
-        // assert!(value_store1.store(&"a".to_string()).is_ok());
-        // let val = value_store1.load();
-        // println!("{:?}", val);
-        //
-        // let value_store2: ValueLaneStore<String> = node_store.value_lane_store("value");
-        // let val = value_store2.load();
-        // println!("{:?}", val);
-        //
-        // let value_store3: ValueLaneStore<String> = node_store.value_lane_store("value2");
-        // // assert!(value_store3.store(&"a".to_string()).is_ok());
-        // let val = value_store3.load();
-        // println!("{:?}", val);
     }
 }
 

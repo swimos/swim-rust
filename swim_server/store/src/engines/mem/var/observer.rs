@@ -22,20 +22,20 @@ use std::sync::Arc;
 use tokio::macros::support::{Pin, Poll};
 use utilities::sync::topic::{self, SubscribeError, TryRecvError};
 
-/// An [`Observer`] allows changes to the state of a [`crate::var::TVar`] to be observed as a stream.
+/// An [`Observer`] allows changes to the state of a [`crate::mem::var::TVar`] to be observed as a stream.
 pub struct Observer<T> {
     inner: topic::Receiver<Contents>,
     _type: PhantomData<fn() -> Arc<T>>,
 }
 
-/// An [`ObserverSubscriber`] allows additional observers to be attached to a [`crate::var::TVar`] to stream
+/// An [`ObserverSubscriber`] allows additional observers to be attached to a [`crate::mem::var::TVar`] to stream
 /// changes to the state.
 pub struct ObserverSubscriber<T> {
     inner: topic::Subscriber<Contents>,
     _type: PhantomData<fn() -> Arc<T>>,
 }
 
-/// A [`Stream`] of state changes from a [`crate::var::TVar`].
+/// A [`Stream`] of state changes from a [`crate::mem::var::TVar`].
 pub struct ObserverStream<T> {
     inner: topic::ReceiverStream<Contents>,
     _type: PhantomData<fn() -> Arc<T>>,
@@ -49,7 +49,7 @@ impl<T> Observer<T> {
         }
     }
 
-    /// Create a subscriber attached to the [`crate::var::TVar`] for this observer.
+    /// Create a subscriber attached to the [`crate::mem::var::TVar`] for this observer.
     pub fn subscriber(&self) -> ObserverSubscriber<T> {
         ObserverSubscriber {
             inner: self.inner.subscriber(),

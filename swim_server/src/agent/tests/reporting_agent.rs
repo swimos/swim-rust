@@ -25,7 +25,7 @@ use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 use crate::agent::lane::tests::ExactlyOnce;
 use crate::agent::lifecycle::AgentLifecycle;
-use crate::agent::{AgentContext, LaneIo, LaneTasks, SwimAgent};
+use crate::agent::{AgentContext, LaneIo, LaneProperties, LaneTasks, SwimAgent};
 use futures::future::{ready, BoxFuture, Ready};
 use futures::FutureExt;
 use std::collections::HashMap;
@@ -380,16 +380,18 @@ impl SwimAgent<TestAgentConfig> for ReportingAgent {
         );
 
         let (total, total_tasks, _) = agent::make_value_lane(
-            "total",
-            false,
+            LaneProperties {
+                name: "total".to_string(),
+                is_public: false,
+                is_transient: true,
+                init: Default::default(),
+            },
             exec_conf,
-            Default::default(),
             TotalLifecycle {
                 inner: inner.clone(),
             },
             |agent: &ReportingAgent| &agent.total,
             store,
-            true,
         );
 
         let (action, action_tasks, _) = agent::make_command_lane(

@@ -206,7 +206,7 @@ impl TVarInner {
     }
 }
 
-/// A transactional variable that can be read and written by [`crate::stm::Stm`] transactions.
+/// A transactional variable that can be read and written by [`crate::mem::stm::Stm`] transactions.
 pub struct TVar<T>(TVarInner, PhantomData<Arc<T>>);
 
 impl<T> Clone for TVar<T> {
