@@ -16,6 +16,8 @@
 
 pub mod agent;
 pub mod interface;
+#[macro_use]
+pub mod macros;
 pub mod meta;
 pub mod plane;
 pub mod routing;
@@ -24,6 +26,8 @@ pub mod routing;
 pub use agent_derive::*;
 pub use utilities::future::SwimStreamExt;
 pub use utilities::route_pattern::RoutePattern;
+
+pub use utilities::{stringify_attr, stringify_attr_raw};
 
 // Hidden export required by agent derive macro.
 #[doc(hidden)]

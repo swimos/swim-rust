@@ -116,6 +116,10 @@ impl LmdbxDatabase {
 
         Ok(LmdbxDatabase::from_raw(path, db, env))
     }
+
+    pub fn path(&self) -> &Path {
+        &self.inner.path.as_path()
+    }
 }
 
 impl Store for LmdbxDatabase {}

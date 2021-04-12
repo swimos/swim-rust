@@ -28,8 +28,8 @@ const VALUE_DIR: &str = "value";
 
 /// The core of a plane store.
 pub struct PlaneStoreInner {
-    /// The directory that the map and value stores are located.
-    plane_name: PathBuf,
+    /// The name of the plane.
+    plane_name: String,
     /// A store for map lanes.
     map_store: DatabaseStore<MapStorageKey>,
     /// A store for value lanes.
@@ -39,7 +39,7 @@ pub struct PlaneStoreInner {
 impl Debug for PlaneStoreInner {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("PlaneStoreInner")
-            .field("plane_name", &self.plane_name.to_string_lossy().to_string())
+            .field("plane_name", &self.plane_name)
             .finish()
     }
 }
@@ -88,11 +88,16 @@ impl PlaneStoreInner {
         } = opts;
 
         let (map_path, value_path) = paths_for(base_path.as_ref(), plane_name.as_ref());
-        let map_store = StoreDelegate::from_opts(&map_path, &map_opts.config)?;
-        let value_store = StoreDelegate::from_opts(&value_path, &value_opts.config)?;
+        let map_store = StoreDelegate::from_opts(&map_path, &map_opts)?;
+        let value_store = StoreDelegate::from_opts(&value_path, &value_opts)?;
+        let plane_name = plane_name
+            .as_ref()
+            .to_str()
+            .expect("Expected valid UTF-8")
+            .to_string();
 
         Ok(PlaneStoreInner {
-            plane_name: plane_name.as_ref().into(),
+            plane_name,
             map_store: DatabaseStore::new(map_store),
             value_store: DatabaseStore::new(value_store),
         })
@@ -123,11 +128,11 @@ impl SwimPlaneStore {
     /// Creates a new plane store.
     ///
     /// # Arguments
-    /// `plane_name`: the directory that `map_store` and `value_store` are located within.
+    /// `plane_name`: the name of the plane.
     /// `map_store`: a store for delegating map lane store engine operations to.
     /// `value_store`: a store for delegating value lane store engine operations to.
     pub fn new(
-        plane_name: PathBuf,
+        plane_name: String,
         map_store: DatabaseStore<MapStorageKey>,
         value_store: DatabaseStore<ValueStorageKey>,
     ) -> Self {
@@ -209,14 +214,15 @@ impl RangedSnapshot for SwimPlaneStore {
 #[cfg(test)]
 mod tests {
     use crate::engines::db::rocks::RocksDatabase;
-    use crate::stores::plane::SwimPlaneStore;
+    use crate::stores::plane::{PlaneStoreInner, SwimPlaneStore};
     use crate::stores::{DatabaseStore, StoreKey, ValueStorageKey};
-    use crate::StoreEngine;
+    use crate::{StoreEngine, StoreEngineOpts};
     use rocksdb::{Options, DB};
     use std::sync::Arc;
+    use tempdir::TempDir;
 
     #[test]
-    fn t() {
+    fn put_get() {
         let map_path = "__test_rocks_db_map";
         let map_db = DB::open_default(map_path).unwrap();
 
@@ -237,14 +243,42 @@ mod tests {
                 lane_uri: Arc::new("/lane".to_string()),
             });
 
-            assert!(plane_store.put(value_key.clone(), b"test".to_vec()).is_ok());
+            let test_data = "test";
+
+            assert!(plane_store
+                .put(value_key.clone(), test_data.as_bytes().to_vec())
+                .is_ok());
 
             let result = plane_store.get(value_key);
             let vec = result.unwrap().unwrap();
-            println!("{:?}", String::from_utf8(vec));
+            assert_eq!(Ok(test_data.to_string()), String::from_utf8(vec));
         }
 
         assert!(DB::destroy(&Options::default(), map_path).is_ok());
         assert!(DB::destroy(&Options::default(), value_path).is_ok());
+    }
+
+    #[test]
+    fn directories() {
+        let plane_name = "test_plane";
+        let temp_dir = TempDir::new("test").expect("Failed to create temporary directory");
+
+        let plane_inner =
+            PlaneStoreInner::open(temp_dir.path(), plane_name, &StoreEngineOpts::default())
+                .expect("Failed to create plane store");
+
+        let PlaneStoreInner {
+            plane_name: inner_plane_name,
+            map_store,
+            value_store,
+        } = plane_inner;
+
+        assert_eq!(inner_plane_name, plane_name);
+
+        let map_dir = map_store.delegate.path();
+        assert!(map_dir.ends_with("map"));
+
+        let value_dir = value_store.delegate.path();
+        assert!(value_dir.ends_with("value"));
     }
 }

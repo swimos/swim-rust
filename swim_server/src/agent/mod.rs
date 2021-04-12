@@ -36,7 +36,7 @@ use crate::agent::lane::lifecycle::{
     ActionLaneLifecycle, CommandLaneLifecycle, DemandLaneLifecycle, DemandMapLaneLifecycle,
     StatefulLaneLifecycle,
 };
-use crate::agent::lane::model;
+pub use crate::agent::lane::model;
 use crate::agent::lane::model::action::{Action, ActionLane};
 use crate::agent::lane::model::command::{Command, CommandLane};
 use crate::agent::lane::model::demand::DemandLane;
@@ -76,6 +76,7 @@ use utilities::sync::{topic, trigger};
 use utilities::uri::RelativeUri;
 
 use crate::meta::info::{LaneInfo, LaneKind};
+use crate::meta::log::NodeLogger;
 use crate::meta::open_meta_lanes;
 #[doc(hidden)]
 #[allow(unused_imports)]
@@ -236,11 +237,16 @@ where
         });
 
     let task = async move {
-        let (meta_context, mut meta_tasks, meta_io) = open_meta_lanes::<
-            Config,
-            Agent,
-            ContextImpl<Agent, Clk, Router, Store>,
-        >(&execution_config, lane_summary);
+        let task_manager: FuturesUnordered<Instrumented<Eff>> = FuturesUnordered::new();
+
+        let (meta_context, mut meta_tasks, meta_io) =
+            open_meta_lanes::<Config, Agent, ContextImpl<Agent, Clk, Router, Store>>(
+                uri.clone(),
+                &execution_config,
+                lane_summary,
+                stop_trigger.clone(),
+                &task_manager,
+            );
 
         tasks.append(&mut meta_tasks);
 
@@ -267,8 +273,6 @@ where
                 .instrument(span!(Level::DEBUG, LANE_START, name = lane_name))
                 .await;
         }
-
-        let task_manager: FuturesUnordered<Instrumented<Eff>> = FuturesUnordered::new();
 
         let scheduler_task = ReceiverStream::new(rx)
             .take_until(stop_trigger)
@@ -422,6 +426,9 @@ pub trait AgentContext<Agent> {
 
     /// Get a copy of all parameters extracted from the agent node route.
     fn parameters(&self) -> HashMap<String, String>;
+
+    /// Return a handle to the logger for this node.
+    fn logger(&self) -> NodeLogger;
 }
 
 pub trait Lane {
@@ -1290,7 +1297,7 @@ where
     (lane, tasks, lane_io)
 }
 
-struct DemandLaneIo<Event> {
+pub struct DemandLaneIo<Event> {
     response_rx: mpsc::Receiver<Event>,
 }
 
@@ -1298,7 +1305,7 @@ impl<Event> DemandLaneIo<Event>
 where
     Event: Send + Sync + 'static,
 {
-    fn new(response_rx: mpsc::Receiver<Event>) -> DemandLaneIo<Event> {
+    pub fn new(response_rx: mpsc::Receiver<Event>) -> DemandLaneIo<Event> {
         DemandLaneIo { response_rx }
     }
 }

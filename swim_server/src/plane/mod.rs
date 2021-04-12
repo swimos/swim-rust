@@ -87,7 +87,7 @@ trait AgentRoute<Clk, Envelopes, Router, Store>: Debug + Send {
 }
 
 type BoxAgentRoute<Clk, Envelopes, Router, Store> =
-    Box<dyn AgentRoute<Clk, Envelopes, Router, Store>>;
+    Box<dyn AgentRoute<Clk, Envelopes, Router, Store> + Send>;
 
 /// Endpoint connected to an agent within the plane.
 #[derive(Debug)]

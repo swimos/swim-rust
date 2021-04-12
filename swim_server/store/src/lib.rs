@@ -182,9 +182,9 @@ impl Recoverable for StoreError {
 #[derive(Debug, Clone, Default)]
 pub struct StoreEngineOpts {
     /// Options that are used to instantiate map stores.
-    map_opts: MapStoreEngineOpts,
+    map_opts: StoreDelegateConfig,
     /// Options that are used to instantiate value stores.
-    value_opts: ValueStoreEngineOpts,
+    value_opts: StoreDelegateConfig,
 }
 
 impl StoreEngineOpts {
@@ -405,4 +405,36 @@ impl SwimStore for ServerStore {
 
 pub(crate) fn deserialize<K: DeserializeOwned>(value: &[u8]) -> Result<K, StoreError> {
     bincode::deserialize(value).map_err(|e| StoreError::Decoding(e.to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::engines::db::StoreDelegateConfig;
+    use crate::stores::{StoreKey, ValueStorageKey};
+    use crate::{ServerStore, StoreEngine, StoreEngineOpts, SwimStore};
+    use std::sync::Arc;
+
+    #[test]
+    fn put_get() {
+        let server_opts = StoreEngineOpts {
+            map_opts: StoreDelegateConfig::lmdbx(),
+            value_opts: StoreDelegateConfig::rocksdb(),
+        };
+
+        let mut store = ServerStore::transient(server_opts, "target".into());
+        let plane_store = store.plane_store("unit").unwrap();
+
+        let node_key = StoreKey::Value(ValueStorageKey {
+            node_uri: Arc::new("node".to_string()),
+            lane_uri: Arc::new("lane".to_string()),
+        });
+
+        let test_data = "test";
+
+        assert!(plane_store
+            .put(node_key.clone(), test_data.as_bytes().to_vec())
+            .is_ok());
+        let value = plane_store.get(node_key).unwrap().unwrap();
+        assert_eq!(Ok(test_data.to_string()), String::from_utf8(value));
+    }
 }
