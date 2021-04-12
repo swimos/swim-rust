@@ -18,7 +18,7 @@ use crate::agent::AgentResult;
 use crate::plane::context::PlaneContext;
 use crate::plane::lifecycle::PlaneLifecycle;
 use crate::plane::router::PlaneRouter;
-use crate::plane::{AgentRoute, EnvChannel};
+use crate::plane::{AgentRoute, EnvChannel, RouteAndParameters};
 use crate::routing::{ServerRouter, TaggedEnvelope};
 use futures::future::BoxFuture;
 use futures::{FutureExt, StreamExt};
@@ -26,7 +26,6 @@ use http::Uri;
 use parking_lot::Mutex;
 use pin_utils::pin_mut;
 use std::any::Any;
-use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
@@ -101,20 +100,22 @@ impl<Clk: Clock, Delegate: ServerRouter + 'static>
 {
     fn run_agent(
         &self,
-        uri: RelativeUri,
-        parameters: HashMap<String, String>,
+        route: RouteAndParameters,
         execution_config: AgentExecutionConfig,
         _clock: Clk,
         incoming_envelopes: EnvChannel,
         mut router: PlaneRouter<Delegate>,
         _store: MockNodeStore,
     ) -> (Arc<dyn Any + Send + Sync>, BoxFuture<'static, AgentResult>) {
+        let (uri, parameters) = route.split();
         let id = parameters[PARAM_NAME].clone();
         let target = self.0.clone();
         let agent = Arc::new(SendAgent(id.clone()));
         let expected_route: RelativeUri = format!("/{}/{}", SENDER_PREFIX, id).parse().unwrap();
+
         assert_eq!(uri, expected_route);
         assert_eq!(execution_config, make_config());
+
         let task = async move {
             let target_node: RelativeUri =
                 format!("/{}/{}", RECEIVER_PREFIX, target).parse().unwrap();
@@ -146,14 +147,14 @@ impl<Clk: Clock, Delegate> AgentRoute<Clk, EnvChannel, PlaneRouter<Delegate>, Mo
 {
     fn run_agent(
         &self,
-        uri: RelativeUri,
-        parameters: HashMap<String, String>,
+        route: RouteAndParameters,
         execution_config: AgentExecutionConfig,
         _clock: Clk,
         incoming_envelopes: EnvChannel,
         _router: PlaneRouter<Delegate>,
         _store: MockNodeStore,
     ) -> (Arc<dyn Any + Send + Sync>, BoxFuture<'static, AgentResult>) {
+        let (uri, parameters) = route.split();
         let ReceiveAgentRoute { expected_id, done } = self;
         let mut done_sender = done.lock().take();
         assert!(done_sender.is_some());

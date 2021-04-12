@@ -62,16 +62,15 @@ trait AgentRoute<Clk, Envelopes, Router, Store>: Debug + Send {
     ///
     /// #Arguments
     ///
-    /// * `uri` The specific URI of the agent instance.
-    /// * `parameters` - Named parameters extracted from the agent URI with the route pattern.
+    /// * `route` - The route of the agent instance and named parameters extracted from the agent
+    /// URI with the route pattern.
     /// * `execution_config` - Configuration parameters controlling how the agent runs.
     /// * `clock` - Clock for scheduling events.
     /// * `incoming_envelopes`- The stream of envelopes routed to the agent.
     /// * `router` - The router by which the agent can send messages.
     fn run_agent(
         &self,
-        uri: RelativeUri,
-        parameters: HashMap<String, String>,
+        route: RouteAndParameters,
         execution_config: AgentExecutionConfig,
         clock: Clk,
         incoming_envelopes: Envelopes,
@@ -266,6 +265,14 @@ impl PlaneContext for ContextImpl {
         .boxed()
     }
 }
+
+type PlaneRouteSpec<Clk, DelegateFac, Store> = RouteSpec<
+    Clk,
+    EnvChannel,
+    PlaneRouter<<DelegateFac as ServerRouterFactory>::Router>,
+    <Store as PlaneStore>::NodeStore,
+>;
+
 /// Contains the specifications of all routes that are within a plane and maintains the map of
 /// currently active routes.
 struct RouteResolver<Clk, DelegateFac: ServerRouterFactory, Store>
@@ -277,7 +284,7 @@ where
     /// The configuration for the agent routes that are opened.
     execution_config: AgentExecutionConfig,
     /// The routes for the plane.
-    routes: Vec<RouteSpec<Clk, EnvChannel, PlaneRouter<DelegateFac::Router>, Store::NodeStore>>,
+    routes: Vec<PlaneRouteSpec<Clk, DelegateFac, Store>>,
     store: Store,
     /// Factory to create handles to the plane router when an agent is opened.
     router_fac: PlaneRouterFactory<DelegateFac>,
@@ -320,8 +327,7 @@ where
             .expect("Local endpoint counter overflow.");
         let addr = RoutingAddr::local(*counter);
         let (agent, task) = agent_route.run_agent(
-            route.clone(),
-            params,
+            RouteAndParameters::new(route.clone(), params),
             execution_config.clone(),
             clock.clone(),
             ReceiverStream::new(rx).take_until(stop_trigger.clone()),
@@ -575,6 +581,30 @@ pub(crate) async fn run_plane<Clk, S, DelegateFac: ServerRouterFactory, Store>(
 type PlaneAgentRoute<Clk, Delegate, Store> =
     BoxAgentRoute<Clk, EnvChannel, PlaneRouter<Delegate>, Store>;
 type Params = HashMap<String, String>;
+
+pub struct RouteAndParameters {
+    route: RelativeUri,
+    parameters: HashMap<String, String>,
+}
+
+impl RouteAndParameters {
+    pub fn new(route: RelativeUri, parameters: HashMap<String, String>) -> RouteAndParameters {
+        RouteAndParameters { route, parameters }
+    }
+
+    pub fn route(&self) -> &RelativeUri {
+        &self.route
+    }
+
+    pub fn parameters(&self) -> &HashMap<String, String> {
+        &self.parameters
+    }
+
+    pub fn split(self) -> (RelativeUri, HashMap<String, String>) {
+        let RouteAndParameters { route, parameters } = self;
+        (route, parameters)
+    }
+}
 
 /// Find the appropriate specification for a route along with any parameters derived from the
 /// route pattern.

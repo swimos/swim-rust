@@ -12,15 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[cfg(test)]
+mod test_suite;
+
 #[cfg(feature = "libmdbx")]
-use crate::engines::db::lmdbx::{LmdbxDatabase, LmdbxOpts};
+use crate::engines::db::lmdbx::LmdbxDatabase;
 
 #[cfg(feature = "rocks-db")]
 use crate::engines::db::rocks::RocksDatabase;
 use crate::{
     FromOpts, KeyedSnapshot, RangedSnapshot, StoreEngine, StoreError, StoreInitialisationError,
 };
-use heed::EnvOpenOptions;
 use std::fmt::{Debug, Formatter};
 use std::path::Path;
 
@@ -29,12 +31,15 @@ pub mod lmdbx;
 #[cfg(feature = "rocks-db")]
 pub mod rocks;
 
-#[derive(Clone, Debug)]
+/// A store which delegates all calls to an LMDB, Rocks or Mock database.
+#[derive(Clone)]
 pub enum StoreDelegate {
     #[cfg(feature = "libmdbx")]
     Lmdbx(LmdbxDatabase),
     #[cfg(feature = "rocks-db")]
     Rocksdb(RocksDatabase),
+    #[cfg(feature = "mock")]
+    Mock(crate::mock::EmptyDelegateStore),
 }
 
 impl RangedSnapshot for StoreDelegate {
@@ -53,6 +58,8 @@ impl RangedSnapshot for StoreDelegate {
             StoreDelegate::Lmdbx(db) => db.ranged_snapshot(prefix, map_fn),
             #[cfg(feature = "rocks-db")]
             StoreDelegate::Rocksdb(db) => db.ranged_snapshot(prefix, map_fn),
+            #[cfg(feature = "mock")]
+            StoreDelegate::Mock(db) => db.ranged_snapshot(prefix, map_fn),
         }
     }
 }
@@ -80,19 +87,33 @@ impl FromOpts for StoreDelegate {
 #[derive(Clone)]
 pub enum StoreDelegateConfig {
     #[cfg(feature = "libmdbx")]
-    Lmdbx(LmdbxOpts),
+    Lmdbx(heed::EnvOpenOptions),
     #[cfg(feature = "rocks-db")]
     Rocksdb(rocksdb::Options),
+}
+
+impl StoreDelegateConfig {
+    #[cfg(feature = "libmdbx")]
+    pub fn lmdbx() -> StoreDelegateConfig {
+        StoreDelegateConfig::Lmdbx(heed::EnvOpenOptions::new())
+    }
+
+    #[cfg(feature = "libmdbx")]
+    pub fn rocksdb() -> StoreDelegateConfig {
+        let mut rock_opts = rocksdb::Options::default();
+        rock_opts.create_if_missing(true);
+        rock_opts.create_missing_column_families(true);
+
+        StoreDelegateConfig::Rocksdb(rock_opts)
+    }
 }
 
 impl Default for StoreDelegateConfig {
     fn default() -> Self {
         if cfg!(feature = "libmdbx") {
-            StoreDelegateConfig::Lmdbx(LmdbxOpts {
-                open_opts: EnvOpenOptions::new(),
-            })
+            StoreDelegateConfig::lmdbx()
         } else if cfg!(feature = "rocks-db") {
-            StoreDelegateConfig::Rocksdb(rocksdb::Options::default())
+            StoreDelegateConfig::rocksdb()
         } else {
             panic!("Missing database engine feature flag")
         }
@@ -112,6 +133,8 @@ macro_rules! gated_arm {
             StoreDelegate::Lmdbx(db) => db.$($op)*.map_err(Into::into),
             #[cfg(feature = "rocks-db")]
             StoreDelegate::Rocksdb(db) => db.$($op)*.map_err(Into::into),
+            #[cfg(feature = "mock")]
+            StoreDelegate::Mock(db) => db.$($op)*.map_err(Into::into),
         }
     };
 }
@@ -129,7 +152,7 @@ impl<'i> StoreEngine<'i> for StoreDelegate {
         gated_arm!(self, get(key))
     }
 
-    fn delete(&self, key: Self::Key) -> Result<bool, Self::Error> {
+    fn delete(&self, key: Self::Key) -> Result<(), Self::Error> {
         gated_arm!(self, delete(key))
     }
 }

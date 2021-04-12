@@ -15,18 +15,16 @@
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lifecycle::AgentLifecycle;
 use crate::agent::{AgentParameters, AgentResult, SwimAgent};
-use crate::plane::AgentRoute;
+use crate::plane::{AgentRoute, RouteAndParameters};
 use crate::routing::{ServerRouter, TaggedEnvelope};
 use futures::future::BoxFuture;
 use futures::{FutureExt, Stream};
 use std::any::Any;
-use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
 use std::sync::Arc;
 use store::stores::node::NodeStore;
 use swim_runtime::time::clock::Clock;
-use utilities::uri::RelativeUri;
 
 /// [`AgentRoute`] implementation that spawns agents with a fixed configuration.
 pub struct AgentProvider<Agent, Config, Lifecycle> {
@@ -65,8 +63,7 @@ where
 
     pub fn run<Clk, Envelopes, Router, Store>(
         &self,
-        uri: RelativeUri,
-        parameters: HashMap<String, String>,
+        route: RouteAndParameters,
         execution_config: AgentExecutionConfig,
         clock: Clk,
         incoming_envelopes: Envelopes,
@@ -85,8 +82,9 @@ where
             ..
         } = self;
 
+        let (route, parameters) = route.split();
         let parameters =
-            AgentParameters::new(configuration.clone(), execution_config, uri, parameters);
+            AgentParameters::new(configuration.clone(), execution_config, route, parameters);
 
         let (agent, task) = crate::agent::run_agent(
             lifecycle.clone(),
@@ -113,8 +111,7 @@ where
 {
     fn run_agent(
         &self,
-        uri: RelativeUri,
-        parameters: HashMap<String, String>,
+        route: RouteAndParameters,
         execution_config: AgentExecutionConfig,
         clock: Clk,
         incoming_envelopes: Envelopes,
@@ -122,8 +119,7 @@ where
         store: Store,
     ) -> (Arc<dyn Any + Send + Sync>, BoxFuture<'static, AgentResult>) {
         self.run(
-            uri,
-            parameters,
+            route,
             execution_config,
             clock,
             incoming_envelopes,

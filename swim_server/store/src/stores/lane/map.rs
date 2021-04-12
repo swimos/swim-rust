@@ -99,7 +99,7 @@ where
         }
     }
 
-    pub async fn delete(&self, key: &K) -> Result<bool, StoreError> {
+    pub async fn delete(&self, key: &K) -> Result<(), StoreError> {
         let MapDataModel {
             delegate, lane_uri, ..
         } = self;

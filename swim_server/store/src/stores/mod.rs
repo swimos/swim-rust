@@ -25,27 +25,37 @@ use crate::stores::lane::{serialize, serialize_then};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
+/// A storage key used for either map or value lanes.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialOrd, PartialEq)]
 pub enum StoreKey {
     Map(MapStorageKey),
     Value(ValueStorageKey),
 }
 
+/// A storage key for map lanes.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialOrd, PartialEq)]
 pub struct MapStorageKey {
+    /// The node URI that this key corresponds to.
     pub node_uri: Arc<String>,
+    /// The lane URI that this key corresponds to.
     pub lane_uri: Arc<String>,
+    /// An optional serialized key for the key within the lane.
+    ///
+    /// This is optional as it is not required for executing ranged snapshots on a storage engine.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub key: Option<Vec<u8>>,
 }
 
+/// A storage key for value lanes.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialOrd, PartialEq)]
 pub struct ValueStorageKey {
     pub node_uri: Arc<String>,
     pub lane_uri: Arc<String>,
 }
 
+/// A store which may either be an LMDB or Rocks database.
 pub struct DatabaseStore<K> {
+    /// The delegate store.
     delegate: StoreDelegate,
     _key_pd: PhantomData<K>,
 }
@@ -115,28 +125,9 @@ where
         })
     }
 
-    fn delete(&self, key: Self::Key) -> Result<bool, Self::Error> {
+    fn delete(&self, key: Self::Key) -> Result<(), Self::Error> {
         serialize_then(&self.delegate, key, |delegate, key| {
             delegate.delete(key.as_slice())
         })
-    }
-}
-
-pub struct RawRangedSnapshot;
-impl IntoIterator for RawRangedSnapshot {
-    type Item = (Vec<u8>, Vec<u8>);
-    type IntoIter = RawRangedSnapshotIterator;
-
-    fn into_iter(self) -> Self::IntoIter {
-        unimplemented!()
-    }
-}
-
-pub struct RawRangedSnapshotIterator;
-impl Iterator for RawRangedSnapshotIterator {
-    type Item = (Vec<u8>, Vec<u8>);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        unimplemented!()
     }
 }
