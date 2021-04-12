@@ -115,16 +115,8 @@ impl SwimClientBuilder {
 
         info!("Initialising Swim Client");
 
-        let router_params = downlinks_config.client_params().router_params;
-        let pool = SwimConnPool::new(
-            router_params.connection_pool_params(),
-            conn_factory,
-            ws_factory,
-        );
-        let router = SwimRouter::new(router_params, pool);
-
         SwimClient {
-            downlinks: Downlinks::new(Arc::new(downlinks_config), router).await,
+            downlinks: Downlinks::new(Arc::new(downlinks_config)).await,
         }
     }
 
@@ -135,21 +127,8 @@ impl SwimClientBuilder {
 
         let config = ConfigHierarchy::default();
 
-        let ws_factory = TungsteniteWsConnections {
-            config: Default::default(),
-        };
-        let conn_factory = TokioPlainTextNetworking::new(Arc::new(Resolver::new().await));
-
-        let router_params = config.client_params().router_params;
-        let pool = SwimConnPool::new(
-            router_params.connection_pool_params(),
-            conn_factory,
-            ws_factory,
-        );
-        let router = SwimRouter::new(router_params, pool);
-
         SwimClient {
-            downlinks: Downlinks::new(Arc::new(config), router).await,
+            downlinks: Downlinks::new(Arc::new(config)).await,
         }
     }
 }
