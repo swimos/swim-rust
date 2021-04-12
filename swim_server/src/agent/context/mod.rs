@@ -22,7 +22,7 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use store::stores::node::NodeStore;
+use store::NodeStore;
 use swim_runtime::time::clock::Clock;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;

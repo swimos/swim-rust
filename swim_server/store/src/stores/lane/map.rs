@@ -91,7 +91,7 @@ where
 
                 match opt {
                     Some(bytes) => bincode::deserialize(bytes.as_slice())
-                        .map_err(Into::into)
+                        .map_err(|e| StoreError::Decoding(e.to_string()))
                         .map(Some),
                     None => Ok(None),
                 }
@@ -141,6 +141,10 @@ impl<K, V> RangedSnapshot for MapDataModel<K, V> {
     }
 }
 
+fn deserialize<K: DeserializeOwned>(value: &[u8]) -> Result<K, StoreError> {
+    bincode::deserialize(value).map_err(|e| StoreError::Decoding(e.to_string()))
+}
+
 impl<K, V> Snapshot<K, V> for MapDataModel<K, V>
 where
     K: DeserializeOwned,
@@ -150,10 +154,10 @@ where
 
     fn snapshot(&self) -> Result<Option<Self::Snapshot>, StoreError> {
         self.ranged_snapshot(self.lane_uri.clone(), |key, value| {
-            let store_key = bincode::deserialize::<MapStorageKey>(&key)?;
+            let store_key = deserialize::<MapStorageKey>(&key)?;
 
-            let key = bincode::deserialize::<K>(&store_key.key.ok_or(StoreError::KeyNotFound)?)?;
-            let value = bincode::deserialize::<V>(&value)?;
+            let key = deserialize::<K>(&store_key.key.ok_or(StoreError::KeyNotFound)?)?;
+            let value = deserialize::<V>(&value)?;
 
             Ok((key, value))
         })

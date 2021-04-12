@@ -82,7 +82,7 @@ use crate::meta::open_meta_lanes;
 pub use agent_derive::*;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
-use store::stores::node::NodeStore;
+use store::NodeStore;
 use tokio_stream::wrappers::ReceiverStream;
 
 /// Trait that must be implemented for any agent. This is essentially just boilerplate and will

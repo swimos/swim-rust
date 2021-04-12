@@ -41,7 +41,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::ops::Deref;
 use std::sync::{Arc, Weak};
-use store::stores::plane::PlaneStore;
+use store::PlaneStore;
 use swim_common::request::Request;
 use swim_common::routing::{ConnectionError, ProtocolError, ProtocolErrorKind};
 use swim_runtime::time::clock::Clock;

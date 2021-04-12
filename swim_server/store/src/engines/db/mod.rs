@@ -20,9 +20,7 @@ use crate::engines::db::lmdbx::LmdbxDatabase;
 
 #[cfg(feature = "rocks-db")]
 use crate::engines::db::rocks::RocksDatabase;
-use crate::{
-    FromOpts, KeyedSnapshot, RangedSnapshot, StoreEngine, StoreError, StoreInitialisationError,
-};
+use crate::{FromOpts, KeyedSnapshot, RangedSnapshot, StoreEngine, StoreError};
 use std::fmt::{Debug, Formatter};
 use std::path::Path;
 
@@ -63,10 +61,7 @@ impl RangedSnapshot for StoreDelegate {
 impl FromOpts for StoreDelegate {
     type Opts = StoreDelegateConfig;
 
-    fn from_opts<I: AsRef<Path>>(
-        path: I,
-        opts: &Self::Opts,
-    ) -> Result<Self, StoreInitialisationError> {
+    fn from_opts<I: AsRef<Path>>(path: I, opts: &Self::Opts) -> Result<Self, StoreError> {
         match opts {
             #[cfg(feature = "libmdbx")]
             StoreDelegateConfig::Lmdbx(opts) => {

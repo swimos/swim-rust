@@ -23,7 +23,7 @@ use std::any::Any;
 use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
 use std::sync::Arc;
-use store::stores::node::NodeStore;
+use store::NodeStore;
 use swim_runtime::time::clock::Clock;
 
 /// [`AgentRoute`] implementation that spawns agents with a fixed configuration.
