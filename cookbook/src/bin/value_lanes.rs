@@ -21,10 +21,10 @@ use swim_client::runtime::time::delay::delay_for;
 use swim_common::warp::path::AbsolutePath;
 use tokio::task;
 
-async fn did_set(value_recv: ValueDownlinkReceiver<String>, initial_value: String) {
+async fn did_set(value_recv: ValueDownlinkReceiver<i32>, initial_value: i32) {
     value_recv
         .into_stream()
-        .filter_map(|event| async {
+        .filter_map(|event| async move {
             match event {
                 Remote(event) => Some(event),
                 _ => None,
@@ -32,7 +32,7 @@ async fn did_set(value_recv: ValueDownlinkReceiver<String>, initial_value: Strin
         })
         .scan(initial_value, |state, current| {
             let previous = std::mem::replace(state, current.clone());
-            async { Some((previous, current)) }
+            async move { Some((previous, current)) }
         })
         .for_each(|(previous, current)| async move {
             println!(
@@ -53,11 +53,21 @@ async fn main() {
     let path = AbsolutePath::new(host_uri, node_uri, lane_uri);
 
     let (value_downlink, value_recv) = client
-        .value_downlink(path.clone(), String::new())
+        .value_downlink(path.clone(), 0)
         .await
         .expect("Failed to create value downlink!");
+
+    task::spawn(did_set(value_recv, 0));
+
+    delay_for(Duration::from_secs(2)).await;
+
+    client
+        .send_command(path, 13)
+        .await
+        .expect("Failed to send command!");
+
+    delay_for(Duration::from_secs(2)).await;
 
     println!("Stopping client in 2 seconds");
     delay_for(Duration::from_secs(2)).await;
 }
-

@@ -119,7 +119,6 @@ impl ServerRouter for ClientRouter {
                 request_sender,
             } = self;
             let (tx, rx) = oneshot::channel();
-            eprintln!("addr = {:#?}", addr);
             if request_sender
                 .send(ClientRequest::Unimplemented {
                     request: Request::new(tx),
@@ -147,8 +146,6 @@ impl ServerRouter for ClientRouter {
         host: Option<Url>,
         route: RelativeUri,
     ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
-        eprintln!("host = {:#?}", host);
-        eprintln!("route = {:#?}", route);
 
         async move {
             let ClientRouter { request_sender, .. } = self;

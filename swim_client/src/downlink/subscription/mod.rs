@@ -162,7 +162,6 @@ impl OutgoingManager {
         OutgoingManagerSender,
         mpsc::Sender<Request<mpsc::Receiver<TaggedEnvelope>>>,
     ) {
-        eprintln!("New manager");
         let (envelope_tx, envelope_rx) = mpsc::channel(8);
         let (sub_tx, sub_rx) = mpsc::channel(8);
         (
@@ -710,34 +709,23 @@ where
 
         let mut stream = rx.await.unwrap();
 
-        spawn(async move {
-            let message = stream.recv().await.unwrap();
-            eprintln!("message = {:#?}", message);
-        });
-
-        //Todo dm this is here only for easier testing
-        raw.sender
-            .send(TaggedEnvelope(
-                RoutingAddr::local(0),
-                Envelope::sync("/rust", "counter"),
-            ))
-            .await
-            .unwrap();
-
-        //TODO dm replace the old stuff
-        let (sink, incoming) = self.router.connection_for(&path).await?;
-
         let schema_cpy = schema.clone();
 
-        let updates = ReceiverStream::new(incoming).map(map_router_events);
+        let updates = ReceiverStream::new(stream).map(|tagged_env| {
+            Ok(envelopes::value::from_envelope(
+                tagged_env.1.into_incoming().unwrap(),
+            ))
+        });
 
         let sink_path = path.clone();
-        let cmd_sink =
-            item::for_mpsc_sender(sink)
-                .map_err_into()
-                .comap(move |cmd: Command<SharedValue>| {
-                    envelopes::value_envelope(&sink_path, cmd).1.into()
-                });
+        let cmd_sink = item::for_mpsc_sender(raw.sender).map_err_into().comap(
+            move |cmd: Command<SharedValue>| {
+                TaggedEnvelope(
+                    RoutingAddr::local(0),
+                    envelopes::value_envelope(&sink_path, cmd).1.into(),
+                )
+            },
+        );
 
         let (raw_dl, rec) = match config.back_pressure {
             BackpressureMode::Propagate => {
