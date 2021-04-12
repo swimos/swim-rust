@@ -17,11 +17,6 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 
-use tokio::sync::{mpsc, Mutex};
-
-use stm::stm::Stm;
-use stm::transaction::atomically;
-
 use crate::agent::lane::model::demand::DemandLane;
 use crate::agent::lane::model::map::MapLaneEvent;
 use crate::agent::lane::tests::ExactlyOnce;
@@ -34,6 +29,8 @@ use crate::agent::AgentContext;
 use crate::agent_lifecycle;
 use crate::plane::provider::AgentProvider;
 use crate::swim_agent;
+use store::mem::transaction::atomically;
+use tokio::sync::{mpsc, Mutex};
 
 mod swim_server {
     pub use crate::*;
@@ -120,10 +117,7 @@ swim_agent! {
                     let i = **v;
 
                     let total = &context.agent().total;
-
-                    let add = total.get().and_then(move |n| total.set(*n + i));
-
-                    if atomically(&add, ExactlyOnce).await.is_err() {
+                    if total.get_for_update(move |n| *n + i).await.is_err() {
                         self.event_handler
                             .push(ReportingAgentEvent::TransactionFailed)
                             .await;
@@ -188,13 +182,13 @@ swim_agent! {
                 DemandLifecycle { event_handler }
             }
             on_cue(self, _model, context) -> Option<i32> {
-                let total = *context.agent().total.load().await;
+                let total = context.agent().total.load().await.unwrap();
 
                 self.event_handler
-                    .push(ReportingAgentEvent::DemandLaneEvent(total))
+                    .push(ReportingAgentEvent::DemandLaneEvent(*total))
                     .await;
 
-                Some(total)
+                Some(*total)
             }
         }
         lane(path: "demand_map", demand_map: DemandMapLane<String, i32>) => {

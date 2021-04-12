@@ -78,7 +78,8 @@ impl PublishInfoLifecycle {
             .agent()
             .info
             .store(format!("from publish_info: {} ", command))
-            .await;
+            .await
+            .unwrap();
     }
 }
 

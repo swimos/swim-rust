@@ -32,7 +32,6 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use store::mem::transaction::atomically;
-use store::{PlaneStore, ServerStore, StoreEngineOpts, SwimStore};
 use tokio::sync::{mpsc, Mutex};
 
 mod swim_server {

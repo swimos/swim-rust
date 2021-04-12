@@ -26,7 +26,6 @@ use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 use crate::agent::lane::tests::ExactlyOnce;
 use crate::agent::lifecycle::AgentLifecycle;
 use crate::agent::tests::reporting_macro_agent::ReportingAgentEvent;
-use crate::NodeStore;
 use crate::agent::{AgentContext, LaneIo, LaneProperties, LaneTasks, SwimAgent};
 use futures::future::{ready, BoxFuture, Ready};
 use futures::FutureExt;

@@ -193,12 +193,8 @@ impl StoreEngineOpts {
         opts.create_if_missing(true);
 
         StoreEngineOpts {
-            map_opts: MapStoreEngineOpts {
-                config: StoreDelegateConfig::Rocksdb(opts.clone()),
-            },
-            value_opts: ValueStoreEngineOpts {
-                config: StoreDelegateConfig::Rocksdb(opts),
-            },
+            map_opts: StoreDelegateConfig::Rocksdb(opts.clone()),
+            value_opts: StoreDelegateConfig::Rocksdb(opts),
         }
     }
 }

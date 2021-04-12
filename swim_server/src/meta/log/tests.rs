@@ -21,7 +21,6 @@ use crate::agent::{
 };
 use crate::meta::log::config::{FlushStrategy, LogConfig};
 use crate::meta::log::{LogBuffer, LogEntry, LogLanes, LogLevel, NodeLogger};
-use crate::mock::MockNodeStore;
 use crate::plane::provider::AgentProvider;
 use crate::plane::RouteAndParameters;
 use crate::routing::error::RouterError;
@@ -35,6 +34,7 @@ use std::convert::TryFrom;
 use std::num::NonZeroUsize;
 use std::str::FromStr;
 use std::sync::Arc;
+use store::mock::MockNodeStore;
 use swim_common::form::Form;
 use swim_common::model::Value;
 use swim_common::routing::ResolutionError;
