@@ -31,6 +31,8 @@ struct DemandAttrs {
     event_type: Ident,
     #[darling(default)]
     on_cue: Option<darling::Result<String>>,
+    #[darling(default)]
+    gen_lifecycle: Option<bool>,
 }
 
 pub fn derive_demand_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput) -> TokenStream {
@@ -46,7 +48,9 @@ pub fn derive_demand_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput)
     };
 
     let lifecycle_name = input_ast.ident.clone();
-    let has_fields = has_fields(&input_ast.data);
+    let gen_lifecycle = args
+        .gen_lifecycle
+        .unwrap_or_else(|| !has_fields(&input_ast.data));
     let task_name = get_task_struct_name(&input_ast.ident.to_string());
     let agent_name = args.agent.clone();
     let event_type = &args.event_type;
@@ -62,7 +66,7 @@ pub fn derive_demand_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput)
     derive_lane(
         "DemandLifecycle",
         lifecycle_name,
-        has_fields,
+        gen_lifecycle,
         task_name,
         agent_name,
         input_ast,

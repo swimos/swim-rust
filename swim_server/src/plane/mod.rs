@@ -57,7 +57,7 @@ use utilities::uri::RelativeUri;
 
 /// Trait for agent routes. An agent route can construct and run any number of instances of a
 /// [`SwimAgent`] type.
-trait AgentRoute<Clk, Envelopes, Router, Store>: Debug {
+trait AgentRoute<Clk, Envelopes, Router, Store>: Debug + Send {
     /// Run an instance of the agent.
     ///
     /// #Arguments
@@ -87,7 +87,7 @@ trait AgentRoute<Clk, Envelopes, Router, Store>: Debug {
 }
 
 type BoxAgentRoute<Clk, Envelopes, Router, Store> =
-    Box<dyn AgentRoute<Clk, Envelopes, Router, Store>>;
+    Box<dyn AgentRoute<Clk, Envelopes, Router, Store> + Send>;
 
 /// Endpoint connected to an agent within the plane.
 #[derive(Debug)]

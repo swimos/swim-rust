@@ -13,7 +13,8 @@
 // limitations under the License.
 
 use futures::Future;
-use std::fmt::Debug;
+use std::fmt;
+use std::fmt::{Debug, Display, Formatter};
 
 #[cfg(not(target_arch = "wasm32"))]
 pub use self::tokio::TaskHandle;
@@ -22,6 +23,12 @@ pub use self::wasm::TaskHandle;
 
 #[derive(Debug)]
 pub struct TaskError;
+
+impl Display for TaskError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "Task error.")
+    }
+}
 
 /// Spawns a new asynchronous task on the current runtime. a `TaskHandle` is returned that
 /// corresponds to the current runtime. See the documentation for the underlying executor for
