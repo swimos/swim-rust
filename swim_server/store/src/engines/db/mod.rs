@@ -31,6 +31,7 @@ pub mod lmdbx;
 #[cfg(feature = "rocks-db")]
 pub mod rocks;
 
+/// A store which delegates all calls to an LMDB, Rocks or Mock database.
 #[derive(Clone)]
 pub enum StoreDelegate {
     #[cfg(feature = "libmdbx")]
@@ -96,6 +97,7 @@ impl StoreDelegateConfig {
     pub fn lmdbx() -> StoreDelegateConfig {
         StoreDelegateConfig::Lmdbx(heed::EnvOpenOptions::new())
     }
+
     #[cfg(feature = "libmdbx")]
     pub fn rocksdb() -> StoreDelegateConfig {
         let mut rock_opts = rocksdb::Options::default();

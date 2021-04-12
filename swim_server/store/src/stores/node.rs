@@ -22,24 +22,51 @@ use serde::Serialize;
 use std::fmt::Debug;
 use std::sync::Arc;
 
+/// A trait for defining store engines which open stores for nodes.
+///
+/// Node stores are responsible for ensuring that the data models that they open for their lanes
+/// correctly map their keys to their delegate store engines.
+///
+/// # Data models
+/// Data models may be either persistent or transient. Persistent data models are backed by a store
+/// in which operations on persistent data models are mapped to the correct node and delegated to
+/// the store; providing that the top-level server store is also persistent.
+///
+/// Transient data models will live in memory for the duration that a handle to the model exists.
 pub trait NodeStore: for<'a> StoreEngine<'a> + Send + Sync + Clone + Debug {
-    fn map_lane_store<I, K, V>(&self, lane: I, transient: bool) -> MapDataModel<K, V>
+    /// Open a new map data model.
+    ///
+    /// # Arguments
+    /// `lane_uri`: the URI of the lane.
+    /// `transient`: whether the lane is a transient lane. If this is `true`, then the data model
+    /// returned should be an in-memory store.
+    fn map_lane_store<I, K, V>(&self, lane_uri: I, transient: bool) -> MapDataModel<K, V>
     where
         I: ToString,
         K: Serialize,
         V: Serialize,
         Self: Sized;
 
-    fn value_lane_store<I, V>(&self, lane: I, transient: bool) -> ValueDataModel
+    /// Open a new value data model.
+    ///
+    /// # Arguments
+    /// `lane_uri`: the URI of the lane.
+    /// `transient`: whether the lane is a transient lane. If this is `true`, then the data model
+    /// returned should be an in-memory store.
+    fn value_lane_store<I, V>(&self, lane_uri: I, transient: bool) -> ValueDataModel
     where
         I: ToString,
         V: Serialize,
         Self: Sized;
 }
 
+/// A node store which is used to open value and map lane data models.
 #[derive(Debug)]
 pub struct SwimNodeStore {
+    /// The plane store that value and map data models will delegate their store engine operations
+    /// to.
     delegate: Arc<SwimPlaneStore>,
+    /// The node URI that this store represents.
     node_uri: Arc<String>,
 }
 
@@ -80,6 +107,8 @@ impl Clone for SwimNodeStore {
 }
 
 impl SwimNodeStore {
+    /// Create a new Swim node store which will delegate its engine operations to `delegate` and
+    /// represents a node at `node_uri`.
     pub fn new(delegate: SwimPlaneStore, node_uri: String) -> SwimNodeStore {
         SwimNodeStore {
             delegate: Arc::new(delegate),
