@@ -48,6 +48,7 @@ use crate::routing::ws::WsConnections;
 use crate::routing::{ConnectionDropped, RoutingAddr, ServerRouterFactory, TaggedEnvelope};
 use futures::stream::FusedStream;
 use std::io;
+use std::io::Error;
 
 pub mod test_fixture;
 
@@ -91,16 +92,28 @@ pub struct RemoteConnectionChannels {
 }
 
 #[derive(Debug)]
-pub struct RemoteConnectionsTask<External: ExternalConnections, Ws, Router, Sp> {
-    external: External,
-    pub listener: External::ListenerType,
-    websockets: Ws,
-    delegate_router: Router,
-    stop_trigger: trigger::Receiver,
-    spawner: Sp,
-    configuration: ConnectionConfig,
-    remote_tx: mpsc::Sender<RoutingRequest>,
-    remote_rx: mpsc::Receiver<RoutingRequest>,
+pub enum RemoteConnectionsTask<External: ExternalConnections, Ws, Router, Sp> {
+    Server {
+        external: External,
+        listener: External::ListenerType,
+        websockets: Ws,
+        delegate_router: Router,
+        stop_trigger: trigger::Receiver,
+        spawner: Sp,
+        configuration: ConnectionConfig,
+        remote_tx: mpsc::Sender<RoutingRequest>,
+        remote_rx: mpsc::Receiver<RoutingRequest>,
+    },
+    Client {
+        external: External,
+        websockets: Ws,
+        delegate_router: Router,
+        stop_trigger: trigger::Receiver,
+        spawner: Sp,
+        configuration: ConnectionConfig,
+        remote_tx: mpsc::Sender<RoutingRequest>,
+        remote_rx: mpsc::Receiver<RoutingRequest>,
+    },
 }
 
 type SocketAddrIt = std::vec::IntoIter<SocketAddr>;
@@ -127,7 +140,33 @@ where
     RouterFac: ServerRouterFactory + 'static,
     Sp: Spawner<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>> + Send + Unpin,
 {
-    pub async fn new(
+    pub async fn new_client_task(
+        configuration: ConnectionConfig,
+        external: External,
+        websockets: Ws,
+        delegate_router: RouterFac,
+        spawner: Sp,
+        channels: RemoteConnectionChannels,
+    ) -> Self {
+        let RemoteConnectionChannels {
+            request_tx: remote_tx,
+            request_rx: remote_rx,
+            stop_trigger,
+        } = channels;
+
+        RemoteConnectionsTask::Client {
+            external,
+            websockets,
+            delegate_router,
+            stop_trigger,
+            spawner,
+            configuration,
+            remote_tx,
+            remote_rx,
+        }
+    }
+
+    pub async fn new_server_task(
         configuration: ConnectionConfig,
         external: External,
         bind_addr: SocketAddr,
@@ -142,9 +181,9 @@ where
             stop_trigger,
         } = channels;
 
-        //Todo dm this is not needed for a client
         let listener = external.bind(bind_addr).await?;
-        Ok(RemoteConnectionsTask {
+
+        Ok(RemoteConnectionsTask::Server {
             external,
             listener,
             websockets,
@@ -158,32 +197,67 @@ where
     }
 
     pub async fn run(self) -> Result<(), io::Error> {
-        let RemoteConnectionsTask {
-            external,
-            listener,
-            websockets,
-            delegate_router,
-            stop_trigger,
-            spawner,
-            configuration,
-            remote_tx,
-            remote_rx,
-        } = self;
-
-        let mut state = RemoteConnections::new(
-            &websockets,
-            configuration,
-            spawner,
-            external,
-            listener,
-            delegate_router,
-            RemoteConnectionChannels {
-                request_tx: remote_tx,
-                request_rx: remote_rx,
+        match self {
+            RemoteConnectionsTask::Server {
+                external,
+                listener,
+                websockets,
+                delegate_router,
                 stop_trigger,
-            },
-        );
+                spawner,
+                configuration,
+                remote_tx,
+                remote_rx,
+            } => {
+                let mut state = RemoteConnections::new(
+                    &websockets,
+                    configuration,
+                    spawner,
+                    external,
+                    Some(listener),
+                    delegate_router,
+                    RemoteConnectionChannels {
+                        request_tx: remote_tx,
+                        request_rx: remote_rx,
+                        stop_trigger,
+                    },
+                );
 
+                RemoteConnectionsTask::run_loop(state, configuration).await
+            }
+            RemoteConnectionsTask::Client {
+                external,
+                websockets,
+                delegate_router,
+                stop_trigger,
+                spawner,
+                configuration,
+                remote_tx,
+                remote_rx,
+            } => {
+                let mut state = RemoteConnections::new(
+                    &websockets,
+                    configuration,
+                    spawner,
+                    external,
+                    None,
+                    delegate_router,
+                    RemoteConnectionChannels {
+                        request_tx: remote_tx,
+                        request_rx: remote_rx,
+                        stop_trigger,
+                    },
+                );
+
+                RemoteConnectionsTask::run_loop(state, configuration).await
+            }
+        }
+    }
+
+    async fn run_loop(
+        mut state: RemoteConnections<'_, External, Ws, Sp, RouterFac>,
+        configuration: ConnectionConfig,
+    ) -> Result<(), Error> {
         let mut overall_result = Ok(());
         let mut iteration_count: usize = 0;
         let yield_mod = configuration.yield_after.get();

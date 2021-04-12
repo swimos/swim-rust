@@ -111,7 +111,7 @@ where
 {
     websockets: &'a Ws,
     spawner: Sp,
-    listener: <External::ListenerType as Listener>::AcceptStream,
+    listener: Option<<External::ListenerType as Listener>::AcceptStream>,
     external: External,
     requests: TakeUntil<ReceiverStream<RoutingRequest>, trigger::Receiver>,
     table: RoutingTable,
@@ -263,7 +263,7 @@ where
         configuration: ConnectionConfig,
         spawner: Sp,
         external: External,
-        listener: External::ListenerType,
+        listener: Option<External::ListenerType>,
         delegate_router: RouterFac,
         channels: RemoteConnectionChannels,
     ) -> Self {
@@ -277,7 +277,7 @@ where
         let tasks = TaskFactory::new(request_tx, stop_rx.clone(), configuration, delegate_router);
         RemoteConnections {
             websockets,
-            listener: listener.into_stream(),
+            listener: listener.map(Listener::into_stream),
             external,
             spawner,
             requests: ReceiverStream::new(request_rx).take_until(stop_rx),
@@ -310,42 +310,87 @@ where
             ..
         } = self;
         let mut external_stop = external_stop;
-        loop {
-            match state {
-                State::Running => {
-                    let result = select_biased! {
-                        _ = &mut external_stop => {
-                            if let Some(stop_tx) = internal_stop.take() {
-                                stop_tx.trigger();
-                            }
-                            None
-                        },
-                        incoming = listener.next() => incoming.map(Event::Incoming),
-                        request = requests.next() => request.map(Event::Request),
-                        def_complete = deferred.next() => def_complete.map(Event::Deferred),
-                        result = spawner.next() => result.map(|(addr, reason)| Event::ConnectionClosed(addr, reason)),
-                    };
-                    if result.is_none() {
-                        spawner.stop();
-                        *state = State::ClosingConnections;
-                    } else {
-                        return result;
+
+        //Todo dm remove repetition
+        if listener.is_some() {
+            loop {
+                match state {
+                    State::Running => {
+                        let result = select_biased! {
+                            _ = &mut external_stop => {
+                                if let Some(stop_tx) = internal_stop.take() {
+                                    stop_tx.trigger();
+                                }
+                                None
+                            },
+                            incoming = listener.as_mut().unwrap().next() => incoming.map(Event::Incoming),
+                            request = requests.next() => request.map(Event::Request),
+                            def_complete = deferred.next() => def_complete.map(Event::Deferred),
+                            result = spawner.next() => result.map(|(addr, reason)| Event::ConnectionClosed(addr, reason)),
+                        };
+
+                        if result.is_none() {
+                            spawner.stop();
+                            *state = State::ClosingConnections;
+                        } else {
+                            return result;
+                        }
+                    }
+                    State::ClosingConnections => {
+                        let result = select_biased! {
+                            def_complete = deferred.next() => def_complete.map(Event::Deferred),
+                            result = spawner.next() => result.map(|(addr, reason)| Event::ConnectionClosed(addr, reason)),
+                        };
+                        if result.is_none() {
+                            OpenEndedFutures::stop(deferred);
+                            *state = State::ClearingDeferred;
+                        } else {
+                            return result;
+                        }
+                    }
+                    State::ClearingDeferred => {
+                        return deferred.next().await.map(Event::Deferred);
                     }
                 }
-                State::ClosingConnections => {
-                    let result = select_biased! {
-                        def_complete = deferred.next() => def_complete.map(Event::Deferred),
-                        result = spawner.next() => result.map(|(addr, reason)| Event::ConnectionClosed(addr, reason)),
-                    };
-                    if result.is_none() {
-                        OpenEndedFutures::stop(deferred);
-                        *state = State::ClearingDeferred;
-                    } else {
-                        return result;
+            }
+        } else {
+            loop {
+                match state {
+                    State::Running => {
+                        let result = select_biased! {
+                            _ = &mut external_stop => {
+                                if let Some(stop_tx) = internal_stop.take() {
+                                    stop_tx.trigger();
+                                }
+                                None
+                            },
+                            request = requests.next() => request.map(Event::Request),
+                            def_complete = deferred.next() => def_complete.map(Event::Deferred),
+                            result = spawner.next() => result.map(|(addr, reason)| Event::ConnectionClosed(addr, reason)),
+                        };
+
+                        if result.is_none() {
+                            spawner.stop();
+                            *state = State::ClosingConnections;
+                        } else {
+                            return result;
+                        }
                     }
-                }
-                State::ClearingDeferred => {
-                    return deferred.next().await.map(Event::Deferred);
+                    State::ClosingConnections => {
+                        let result = select_biased! {
+                            def_complete = deferred.next() => def_complete.map(Event::Deferred),
+                            result = spawner.next() => result.map(|(addr, reason)| Event::ConnectionClosed(addr, reason)),
+                        };
+                        if result.is_none() {
+                            OpenEndedFutures::stop(deferred);
+                            *state = State::ClearingDeferred;
+                        } else {
+                            return result;
+                        }
+                    }
+                    State::ClearingDeferred => {
+                        return deferred.next().await.map(Event::Deferred);
+                    }
                 }
             }
         }

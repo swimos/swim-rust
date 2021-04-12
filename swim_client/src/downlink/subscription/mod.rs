@@ -99,12 +99,14 @@ use swim_common::routing::ws::tungstenite::TungsteniteWsConnections;
 use swim_common::routing::{
     ConnectionDropped, Route, RoutingAddr, ServerRouter, ServerRouterFactory, TaggedEnvelope,
 };
+use tokio::sync::mpsc::Receiver;
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use url::Url;
 use utilities::future::open_ended::OpenEndedFutures;
 use utilities::sync::trigger;
 use utilities::uri::RelativeUri;
 
+//Todo dm move
 async fn create_remote_conns() -> (
     mpsc::Receiver<ClientRequest>,
     mpsc::Sender<RoutingRequest>,
@@ -119,8 +121,6 @@ async fn create_remote_conns() -> (
     let conn_config = ConnectionConfig::default();
     let websocket_config = WebSocketConfig::default();
 
-    //Todo dm this needs to be removed for the client
-    let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 9999);
     let (remote_tx, remote_rx) = mpsc::channel(conn_config.router_buffer_size.get());
     let (request_tx, request_rx) = mpsc::channel(conn_config.router_buffer_size.get());
     let top_level_router_fac = ClientRouterFactory::new(request_tx);
@@ -131,10 +131,9 @@ async fn create_remote_conns() -> (
         request_rx,
         remote_tx.clone(),
         stop_trigger_tx,
-        RemoteConnectionsTask::new(
+        RemoteConnectionsTask::new_client_task(
             conn_config,
             TokioPlainTextNetworking::new(Arc::new(Resolver::new().await)),
-            address,
             TungsteniteWsConnections {
                 config: websocket_config,
             },
@@ -146,8 +145,7 @@ async fn create_remote_conns() -> (
                 stop_trigger: stop_trigger_rx,
             },
         )
-        .await
-        .unwrap_or_else(|err| panic!("Could not connect to \"{}\": {}", address, err)),
+        .await,
     )
 }
 
@@ -186,23 +184,27 @@ impl OutgoingManager {
         let mut subs: Vec<mpsc::Sender<TaggedEnvelope>> = Vec::new();
 
         loop {
-            let next: Either<TaggedEnvelope, Request<mpsc::Receiver<TaggedEnvelope>>> = select_biased! {
-                envelope = envelope_rx.next() => Either::Left(envelope.unwrap()),
-                sub = sub_rx.next() => Either::Right(sub.unwrap()),
+            let next: Either<
+                Option<TaggedEnvelope>,
+                Option<Request<mpsc::Receiver<TaggedEnvelope>>>,
+            > = select_biased! {
+                envelope = envelope_rx.next() => Either::Left(envelope),
+                sub = sub_rx.next() => Either::Right(sub),
             };
 
             match next {
-                Either::Left(envelope) => {
+                Either::Left(Some(envelope)) => {
                     //Todo dm this should run in parallel
                     for mut sub in &mut subs {
                         sub.send(envelope.clone()).await.unwrap();
                     }
                 }
-                Either::Right(sub_request) => {
+                Either::Right(Some(sub_request)) => {
                     let (sub_tx, sub_rx) = mpsc::channel(8);
                     subs.push(sub_tx);
                     sub_request.send(sub_rx).unwrap();
                 }
+                _ => break,
             }
         }
     }
@@ -226,18 +228,21 @@ async fn run_client_router(
     let mut request_rx = ReceiverStream::new(request_rx).fuse();
     let mut local_rx = ReceiverStream::new(local_rx).fuse();
     loop {
-        let next: Either<ClientRequest, (AbsolutePath, Request<mpsc::Receiver<TaggedEnvelope>>)> = select_biased! {
-            request = request_rx.next() => Either::Left(request.unwrap()),
-            sub = local_rx.next() => Either::Right(sub.unwrap()),
+        let next: Either<
+            Option<ClientRequest>,
+            Option<(AbsolutePath, Request<mpsc::Receiver<TaggedEnvelope>>)>,
+        > = select_biased! {
+            request = request_rx.next() => Either::Left(request),
+            sub = local_rx.next() => Either::Right(sub),
         };
 
         match next {
-            Either::Left(request) => {
+            Either::Left(Some(request)) => {
                 match request {
                     ClientRequest::Resolve { request, .. } => {
                         request.send(Ok(RoutingAddr::local(0))).unwrap();
                     }
-                    ClientRequest::Unimplemented { request, origin } => {
+                    ClientRequest::Subscribe { request, origin } => {
                         //Todo change this
                         let url = Url::parse(&format!("ws://{}", origin.to_string())).unwrap();
 
@@ -257,7 +262,7 @@ async fn run_client_router(
                     }
                 }
             }
-            Either::Right((sub_addr, sub_req)) => {
+            Either::Right(Some((sub_addr, sub_req))) => {
                 let (_, sub_sender) = outgoing_managers
                     .entry(sub_addr.host.clone())
                     .or_insert_with(|| {
@@ -266,9 +271,10 @@ async fn run_client_router(
                         (sender, sub_tx)
                     });
 
-                //Todo add relative path
+                //Todo dm add relative path
                 sub_sender.send(sub_req).await.unwrap();
             }
+            _ => break,
         }
     }
 }
