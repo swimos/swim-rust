@@ -21,7 +21,7 @@ use crate::plane::{AgentRoute, BoxAgentRoute};
 use crate::routing::{ServerRouter, TaggedEnvelope};
 use futures::Stream;
 use std::fmt::Debug;
-use store::stores::plane::PlaneStore;
+use store::PlaneStore;
 use swim_runtime::time::clock::Clock;
 use utilities::route_pattern::RoutePattern;
 

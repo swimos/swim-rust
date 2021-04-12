@@ -16,10 +16,7 @@
 mod tests;
 
 use crate::engines::db::StoreDelegate;
-use crate::{
-    FromOpts, KeyedSnapshot, RangedSnapshot, Store, StoreEngine, StoreError,
-    StoreInitialisationError,
-};
+use crate::{FromOpts, KeyedSnapshot, RangedSnapshot, Store, StoreEngine, StoreError};
 use heed::types::ByteSlice;
 use heed::{Database, Env, EnvOpenOptions, Error};
 use std::fmt::{Debug, Formatter};
@@ -27,15 +24,16 @@ use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-impl From<heed::Error> for StoreInitialisationError {
-    fn from(e: Error) -> Self {
-        StoreInitialisationError::Error(e.to_string())
-    }
-}
-
 impl From<heed::Error> for StoreError {
-    fn from(e: Error) -> Self {
-        StoreError::Error(e.to_string())
+    fn from(e: heed::Error) -> Self {
+        match e {
+            Error::Io(e) => StoreError::Io(e),
+            Error::Mdb(e) => StoreError::Delegate(Box::new(e)),
+            e @ Error::Encoding => StoreError::Encoding(e.to_string()),
+            e @ Error::Decoding => StoreError::Encoding(e.to_string()),
+            e @ Error::InvalidDatabaseTyping => StoreError::Delegate(Box::new(e)),
+            Error::DatabaseClosing => StoreError::Closing,
+        }
     }
 }
 
@@ -105,15 +103,12 @@ impl LmdbxDatabase {
         }
     }
 
-    fn init<P: AsRef<Path>>(
-        path: P,
-        config: &EnvOpenOptions,
-    ) -> Result<Self, StoreInitialisationError> {
+    fn init<P: AsRef<Path>>(path: P, config: &EnvOpenOptions) -> Result<Self, StoreError> {
         let path = path.as_ref().to_owned();
 
         if !path.exists() {
             std::fs::create_dir_all(&path)
-                .map_err(|e| StoreInitialisationError::Error(e.to_string()))?;
+                .map_err(|e| StoreError::InitialisationFailure(e.to_string()))?;
         }
 
         let env = config.open(path.deref())?;
@@ -128,10 +123,7 @@ impl Store for LmdbxDatabase {}
 impl FromOpts for LmdbxDatabase {
     type Opts = EnvOpenOptions;
 
-    fn from_opts<I: AsRef<Path>>(
-        path: I,
-        opts: &Self::Opts,
-    ) -> Result<Self, StoreInitialisationError> {
+    fn from_opts<I: AsRef<Path>>(path: I, opts: &Self::Opts) -> Result<Self, StoreError> {
         LmdbxDatabase::init(path, opts)
     }
 }
@@ -152,7 +144,7 @@ impl RangedSnapshot for LmdbxDatabase {
 
         let mut it = delegate
             .prefix_iter(&tx, &prefix)
-            .map_err(|e| StoreError::Error(e.to_string()))?;
+            .map_err(|e| StoreError::Snapshot(e.to_string()))?;
 
         let data = it.try_fold(Vec::new(), |mut vec, result| match result {
             Ok((key, value)) => {
@@ -161,7 +153,7 @@ impl RangedSnapshot for LmdbxDatabase {
 
                 Ok(vec)
             }
-            Err(e) => Err(StoreError::Error(e.to_string())),
+            Err(e) => Err(StoreError::Snapshot(e.to_string())),
         })?;
 
         if data.is_empty() {

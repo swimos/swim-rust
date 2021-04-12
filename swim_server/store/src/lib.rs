@@ -15,13 +15,17 @@
 #[cfg(feature = "mock")]
 pub mod mock;
 
-pub mod engines;
-pub mod stores;
+mod engines;
+mod stores;
+
+pub use stores::lane::value::ValueDataModel;
+pub use stores::node::{NodeStore, SwimNodeStore};
+pub use stores::plane::{PlaneStore, SwimPlaneStore};
 
 use crate::engines::db::StoreDelegateConfig;
-use crate::stores::plane::{PlaneStore, PlaneStoreInner, SwimPlaneStore};
-use bincode::Error;
+use crate::stores::plane::PlaneStoreInner;
 use std::collections::HashMap;
+use std::error::Error;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Weak};
@@ -81,23 +85,14 @@ impl StoreDir {
 /// Store errors.
 #[derive(Debug)]
 pub enum StoreError {
-    /// An entity with the provided key could not be found.
     KeyNotFound,
-    /// Generic error with its cause as a string.
-    // todo: remove
-    Error(String),
-}
-
-impl From<bincode::Error> for StoreError {
-    fn from(e: Error) -> Self {
-        StoreError::Error(e.to_string())
-    }
-}
-
-impl From<StoreInitialisationError> for StoreError {
-    fn from(e: StoreInitialisationError) -> Self {
-        StoreError::Error(format!("{:?}", e))
-    }
+    Snapshot(String),
+    InitialisationFailure(String),
+    Io(io::Error),
+    Encoding(String),
+    Decoding(String),
+    Delegate(Box<dyn Error>),
+    Closing,
 }
 
 /// Engine options for both map and value lanes.
@@ -119,19 +114,6 @@ pub struct MapStoreEngineOpts {
 #[derive(Default, Debug, Clone)]
 pub struct ValueStoreEngineOpts {
     config: StoreDelegateConfig,
-}
-
-/// An error that was produced when attempting to instantiate a store.
-#[derive(Debug)]
-pub enum StoreInitialisationError {
-    /// Generic error with its cause as a string.
-    // todo: remove
-    Error(String),
-}
-
-/// An error that was produced when attempting to snapshot a store.
-pub enum SnapshotError {
-    // todo add variants
 }
 
 /// A Swim server store.
@@ -238,10 +220,7 @@ pub trait FromOpts: Sized {
     /// `path`: the path that this store should open in.
     /// `opts`: the options.
     ///
-    fn from_opts<I: AsRef<Path>>(
-        path: I,
-        opts: &Self::Opts,
-    ) -> Result<Self, StoreInitialisationError>;
+    fn from_opts<I: AsRef<Path>>(path: I, opts: &Self::Opts) -> Result<Self, StoreError>;
 }
 
 /// A key-value store.

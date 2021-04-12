@@ -16,17 +16,14 @@
 mod tests;
 
 use crate::engines::db::StoreDelegate;
-use crate::{
-    FromOpts, KeyedSnapshot, RangedSnapshot, Store, StoreEngine, StoreError,
-    StoreInitialisationError,
-};
+use crate::{FromOpts, KeyedSnapshot, RangedSnapshot, Store, StoreEngine, StoreError};
 use rocksdb::{Error, Options, DB};
 use std::path::Path;
 use std::sync::Arc;
 
 impl From<rocksdb::Error> for StoreError {
     fn from(e: Error) -> Self {
-        StoreError::Error(e.to_string())
+        StoreError::Delegate(Box::new(e))
     }
 }
 
@@ -75,18 +72,9 @@ impl Store for RocksDatabase {}
 impl FromOpts for RocksDatabase {
     type Opts = Options;
 
-    fn from_opts<I: AsRef<Path>>(
-        path: I,
-        opts: &Self::Opts,
-    ) -> Result<Self, StoreInitialisationError> {
+    fn from_opts<I: AsRef<Path>>(path: I, opts: &Self::Opts) -> Result<Self, StoreError> {
         let db = DB::open(opts, path)?;
         Ok(RocksDatabase::new(db))
-    }
-}
-
-impl From<rocksdb::Error> for StoreInitialisationError {
-    fn from(e: Error) -> Self {
-        StoreInitialisationError::Error(e.to_string())
     }
 }
 

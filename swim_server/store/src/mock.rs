@@ -18,10 +18,7 @@ use crate::stores::lane::value::ValueDataModel;
 use crate::stores::node::NodeStore;
 use crate::stores::plane::{PlaneStore, SwimPlaneStore};
 use crate::stores::{DatabaseStore, StoreKey};
-use crate::{
-    FromOpts, KeyedSnapshot, RangedSnapshot, Store, StoreEngine, StoreError,
-    StoreInitialisationError, SwimStore,
-};
+use crate::{FromOpts, KeyedSnapshot, RangedSnapshot, Store, StoreEngine, StoreError, SwimStore};
 use serde::Serialize;
 use std::path::Path;
 
@@ -32,10 +29,7 @@ impl Store for MockServerStore {}
 impl FromOpts for MockServerStore {
     type Opts = ();
 
-    fn from_opts<I: AsRef<Path>>(
-        _path: I,
-        _opts: &Self::Opts,
-    ) -> Result<Self, StoreInitialisationError> {
+    fn from_opts<I: AsRef<Path>>(_path: I, _opts: &Self::Opts) -> Result<Self, StoreError> {
         Ok(MockServerStore)
     }
 }

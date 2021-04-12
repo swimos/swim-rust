@@ -29,7 +29,7 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::net::SocketAddr;
 use std::sync::Arc;
-use store::stores::plane::SwimPlaneStore;
+use store::SwimPlaneStore;
 use store::{ServerStore, StoreEngineOpts, SwimStore};
 use swim_common::routing::ws::tungstenite::TungsteniteWsConnections;
 use swim_runtime::time::clock::RuntimeClock;
@@ -131,7 +131,6 @@ impl SwimServerBuilder {
     ///
     /// swim_server_builder.add_plane(plane_builder.build());
     /// ```
-    // todo change this to `.plane_builder` and return a plane builder with a SwimPlaneStore
     pub fn add_plane(
         &mut self,
         plane: PlaneSpec<RuntimeClock, EnvChannel, PlaneRouter<TopLevelRouter>, SwimPlaneStore>,

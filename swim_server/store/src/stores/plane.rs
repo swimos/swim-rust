@@ -15,10 +15,7 @@
 use crate::engines::db::StoreDelegate;
 use crate::stores::node::{NodeStore, SwimNodeStore};
 use crate::stores::{DatabaseStore, MapStorageKey, StoreKey, ValueStorageKey};
-use crate::{
-    FromOpts, KeyedSnapshot, RangedSnapshot, StoreEngine, StoreEngineOpts, StoreError,
-    StoreInitialisationError,
-};
+use crate::{FromOpts, KeyedSnapshot, RangedSnapshot, StoreEngine, StoreEngineOpts, StoreError};
 use std::ffi::OsStr;
 use std::fmt::{Debug, Formatter};
 use std::path::{Path, PathBuf};
@@ -80,7 +77,7 @@ impl PlaneStoreInner {
         base_path: B,
         plane_name: P,
         opts: &StoreEngineOpts,
-    ) -> Result<PlaneStoreInner, StoreInitialisationError>
+    ) -> Result<PlaneStoreInner, StoreError>
     where
         B: AsRef<Path>,
         P: AsRef<Path>,

@@ -84,7 +84,7 @@ impl ValueDataModel {
             ValueDataModelDelegate::Db(store) => match store.get(self.key()) {
                 Ok(Some(bytes)) => {
                     let slice = bytes.as_slice();
-                    bincode::deserialize(slice).map_err(Into::into)
+                    bincode::deserialize(slice).map_err(|e| StoreError::Decoding(e.to_string()))
                 }
                 Ok(None) => Ok(None),
                 Err(e) => Err(e),

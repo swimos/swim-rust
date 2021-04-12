@@ -27,7 +27,7 @@ use futures::future::{ready, BoxFuture, Ready};
 use futures::FutureExt;
 use std::time::Duration;
 use store::mock::MockPlaneStore;
-use store::stores::node::NodeStore;
+use store::NodeStore;
 use swim_common::routing::ResolutionError;
 use swim_runtime::time::clock::Clock;
 use tokio_stream::wrappers::ReceiverStream;

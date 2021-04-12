@@ -51,5 +51,5 @@ where
 }
 
 pub fn serialize<S: Serialize>(obj: &S) -> Result<Vec<u8>, StoreError> {
-    bincode::serialize(obj).map_err(StoreError::from)
+    bincode::serialize(obj).map_err(|e| StoreError::Encoding(e.to_string()))
 }
