@@ -40,6 +40,21 @@ pub enum StoreDelegate {
     Mock(crate::mock::EmptyDelegateStore),
 }
 
+impl StoreDelegate {
+    pub fn path(&self) -> &Path {
+        match self {
+            #[cfg(feature = "libmdbx")]
+            StoreDelegate::Lmdbx(delegate) => delegate.path(),
+            #[cfg(feature = "rocks-db")]
+            StoreDelegate::Rocksdb(delegate) => delegate.path(),
+            #[cfg(feature = "mock")]
+            StoreDelegate::Mock(_) => {
+                panic!("Mock stores don't contain a path")
+            }
+        }
+    }
+}
+
 impl RangedSnapshot for StoreDelegate {
     type Prefix = Vec<u8>;
 

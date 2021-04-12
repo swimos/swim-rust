@@ -21,7 +21,9 @@ use crate::agent::{
 };
 use crate::meta::log::config::{FlushStrategy, LogConfig};
 use crate::meta::log::{LogBuffer, LogEntry, LogLanes, LogLevel, NodeLogger};
+use crate::mock::MockNodeStore;
 use crate::plane::provider::AgentProvider;
+use crate::plane::RouteAndParameters;
 use crate::routing::error::RouterError;
 use crate::routing::{
     ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedEnvelope, TaggedSender,
@@ -142,12 +144,12 @@ async fn agent_log() {
     let provider = AgentProvider::new(MockAgentConfig, MockAgentLifecycle);
 
     let (_a, agent_proc) = provider.run(
-        uri,
-        HashMap::new(),
+        RouteAndParameters::new(uri, HashMap::new()),
         exec_config,
         clock.clone(),
         ReceiverStream::new(envelope_rx),
         MockRouter::new(RoutingAddr::local(1024), tx),
+        MockNodeStore,
     );
 
     let _agent_task = swim_runtime::task::spawn(agent_proc);

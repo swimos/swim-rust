@@ -99,21 +99,9 @@ pub enum StoreError {
 #[derive(Debug, Clone, Default)]
 pub struct StoreEngineOpts {
     /// Options that are used to instantiate map stores.
-    map_opts: MapStoreEngineOpts,
+    map_opts: StoreDelegateConfig,
     /// Options that are used to instantiate value stores.
-    value_opts: ValueStoreEngineOpts,
-}
-
-/// Options that are used to instantiate map stores.
-#[derive(Default, Debug, Clone)]
-pub struct MapStoreEngineOpts {
-    config: StoreDelegateConfig,
-}
-
-/// Options that are used to instantiate value stores.
-#[derive(Default, Debug, Clone)]
-pub struct ValueStoreEngineOpts {
-    config: StoreDelegateConfig,
+    value_opts: StoreDelegateConfig,
 }
 
 /// A Swim server store.
@@ -308,24 +296,15 @@ impl SwimStore for ServerStore {
 #[cfg(test)]
 mod tests {
     use crate::engines::db::StoreDelegateConfig;
-    use crate::stores::node::NodeStore;
-    use crate::stores::plane::PlaneStore;
     use crate::stores::{StoreKey, ValueStorageKey};
-    use crate::{
-        MapStoreEngineOpts, ServerStore, Snapshot, StoreEngine, StoreEngineOpts, SwimStore,
-        ValueStoreEngineOpts,
-    };
+    use crate::{ServerStore, StoreEngine, StoreEngineOpts, SwimStore};
     use std::sync::Arc;
 
     #[test]
-    fn simple_put_get() {
+    fn put_get() {
         let server_opts = StoreEngineOpts {
-            map_opts: MapStoreEngineOpts {
-                config: StoreDelegateConfig::lmdbx(),
-            },
-            value_opts: ValueStoreEngineOpts {
-                config: StoreDelegateConfig::rocksdb(),
-            },
+            map_opts: StoreDelegateConfig::lmdbx(),
+            value_opts: StoreDelegateConfig::rocksdb(),
         };
 
         let mut store = ServerStore::transient(server_opts, "target".into());
@@ -336,52 +315,12 @@ mod tests {
             lane_uri: Arc::new("lane".to_string()),
         });
 
-        assert!(plane_store.put(node_key.clone(), b"test".to_vec()).is_ok());
-        let value = plane_store.get(node_key).unwrap().unwrap();
-        println!("{:?}", String::from_utf8(value));
-    }
+        let test_data = "test";
 
-    #[tokio::test]
-    async fn lane() {
-        let server_opts = StoreEngineOpts {
-            map_opts: MapStoreEngineOpts {
-                config: StoreDelegateConfig::rocksdb(),
-            },
-            value_opts: ValueStoreEngineOpts {
-                config: StoreDelegateConfig::rocksdb(),
-            },
-        };
-
-        let mut store = ServerStore::transient(server_opts, "target".into());
-        let plane_store = store.plane_store("unit").unwrap();
-        let node_store = plane_store.node_store("node");
-        let map_store = node_store.map_lane_store("map", false);
-
-        assert!(map_store
-            .put(&"a".to_string(), &"a".to_string())
-            .await
+        assert!(plane_store
+            .put(node_key.clone(), test_data.as_bytes().to_vec())
             .is_ok());
-        // let val = map_store.get(&"a".to_string());
-        // println!("{}", val.unwrap().unwrap());
-
-        let ss = map_store.snapshot().unwrap().unwrap();
-        let iter = ss.into_iter();
-        for i in iter {
-            println!("Iter: {:?}", i);
-        }
-
-        // let value_store1 = node_store.value_lane_store("value");
-        // assert!(value_store1.store(&"a".to_string()).is_ok());
-        // let val = value_store1.load();
-        // println!("{:?}", val);
-        //
-        // let value_store2: ValueLaneStore<String> = node_store.value_lane_store("value");
-        // let val = value_store2.load();
-        // println!("{:?}", val);
-        //
-        // let value_store3: ValueLaneStore<String> = node_store.value_lane_store("value2");
-        // // assert!(value_store3.store(&"a".to_string()).is_ok());
-        // let val = value_store3.load();
-        // println!("{:?}", val);
+        let value = plane_store.get(node_key).unwrap().unwrap();
+        assert_eq!(Ok(test_data.to_string()), String::from_utf8(value));
     }
 }

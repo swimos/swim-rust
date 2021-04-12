@@ -23,18 +23,17 @@ use swim_server::agent::value_lifecycle;
 use swim_server::agent::AgentContext;
 use swim_server::agent::SwimAgent;
 use swim_server::interface::{ServerHandle, SwimServer, SwimServerBuilder};
-use swim_server::plane::spec::PlaneBuilder;
 use swim_server::RoutePattern;
 
 pub async fn build_server() -> (SwimServer, ServerHandle) {
     let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 0);
-    let mut plane_builder = PlaneBuilder::new();
+    let mut swim_server_builder = SwimServerBuilder::default();
+    let mut plane_builder = swim_server_builder.plane_builder("test");
 
     plane_builder
         .add_route::<UnitAgent, (), ()>(RoutePattern::parse_str("/unit/foo").unwrap(), (), ())
         .unwrap();
 
-    let mut swim_server_builder = SwimServerBuilder::default();
     swim_server_builder.add_plane(plane_builder.build());
     swim_server_builder.bind_to(address).build().unwrap()
 }

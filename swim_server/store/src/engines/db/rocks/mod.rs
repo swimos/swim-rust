@@ -38,6 +38,10 @@ impl RocksDatabase {
             delegate: Arc::new(delegate),
         }
     }
+
+    pub fn path(&self) -> &Path {
+        &self.delegate.path()
+    }
 }
 
 impl From<RocksDatabase> for StoreDelegate {

@@ -23,8 +23,6 @@ use crate::agent::lifecycle::AgentLifecycle;
 use crate::agent::tests::run_agent_test;
 use crate::agent::AgentContext;
 use crate::plane::provider::AgentProvider;
-use crate::plane::RouteAndParameters;
-use crate::routing::RoutingAddr;
 use crate::{
     agent_lifecycle, command_lifecycle, demand_lifecycle, demand_map_lifecycle, map_lifecycle,
     value_lifecycle, SwimAgent,
@@ -35,7 +33,6 @@ use std::sync::Arc;
 use std::time::Duration;
 use stm::stm::Stm;
 use stm::transaction::atomically;
-use store::mock::MockNodeStore;
 use tokio::sync::{mpsc, Mutex};
 
 mod swim_server {
