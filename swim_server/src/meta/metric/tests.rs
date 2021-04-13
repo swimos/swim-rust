@@ -116,7 +116,7 @@ pub fn build_uplink_profile(path: RelativePath, n: u32) -> TaggedWarpUplinkProfi
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn drain() {
     let (trigger_tx, trigger_rx) = trigger::trigger();
     assert!(trigger_tx.trigger());
