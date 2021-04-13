@@ -40,9 +40,9 @@ impl TlsError {
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum TlsErrorKind {
     /// An IO error was produced when attempting to read a certificate or in the connection.
-    IO,
+    Io,
     /// An OpenSSL error.
-    SSL,
+    Ssl,
     /// The provided certificate is invalid.
     InvalidCertificate,
 }
@@ -55,14 +55,14 @@ impl Display for TlsError {
         let cause = format_cause(cause);
 
         match kind {
-            TlsErrorKind::IO => {
+            TlsErrorKind::Io => {
                 write!(
                     f,
                     "An IO error was produced during a TLS operation.{}",
                     cause
                 )
             }
-            TlsErrorKind::SSL => {
+            TlsErrorKind::Ssl => {
                 write!(f, "SSL error.{}", cause)
             }
             TlsErrorKind::InvalidCertificate => {
@@ -80,13 +80,13 @@ impl Recoverable for TlsError {
 
 impl From<NativeTlsError> for TlsError {
     fn from(e: NativeTlsError) -> Self {
-        TlsError::new(TlsErrorKind::SSL, Some(e.to_string()))
+        TlsError::new(TlsErrorKind::Ssl, Some(e.to_string()))
     }
 }
 
 impl From<std::io::Error> for TlsError {
     fn from(e: std::io::Error) -> Self {
-        TlsError::new(TlsErrorKind::IO, Some(e.to_string()))
+        TlsError::new(TlsErrorKind::Io, Some(e.to_string()))
     }
 }
 
@@ -99,11 +99,11 @@ impl From<TlsError> for ConnectionError {
 #[test]
 fn test_tls_error() {
     assert_eq!(
-        TlsError::new(TlsErrorKind::IO, None).to_string(),
+        TlsError::new(TlsErrorKind::Io, None).to_string(),
         "An IO error was produced during a TLS operation."
     );
     assert_eq!(
-        TlsError::new(TlsErrorKind::SSL, None).to_string(),
+        TlsError::new(TlsErrorKind::Ssl, None).to_string(),
         "SSL error."
     );
     assert_eq!(
@@ -112,11 +112,11 @@ fn test_tls_error() {
     );
 
     assert_eq!(
-        TlsError::new(TlsErrorKind::IO, Some("Broken pipe".to_string())).to_string(),
+        TlsError::new(TlsErrorKind::Io, Some("Broken pipe".to_string())).to_string(),
         "An IO error was produced during a TLS operation. Broken pipe"
     );
     assert_eq!(
-        TlsError::new(TlsErrorKind::SSL, Some("Handshake failure".to_string())).to_string(),
+        TlsError::new(TlsErrorKind::Ssl, Some("Handshake failure".to_string())).to_string(),
         "SSL error. Handshake failure"
     );
     assert_eq!(
@@ -128,8 +128,8 @@ fn test_tls_error() {
         "Invalid certificate. Certificate has expired"
     );
 
-    assert!(TlsError::new(TlsErrorKind::IO, None).is_fatal());
-    assert!(TlsError::new(TlsErrorKind::SSL, None).is_fatal());
+    assert!(TlsError::new(TlsErrorKind::Io, None).is_fatal());
+    assert!(TlsError::new(TlsErrorKind::Ssl, None).is_fatal());
     assert!(TlsError::new(TlsErrorKind::InvalidCertificate, None).is_fatal());
 
     let e: TlsError = tokio_native_tls::native_tls::Certificate::from_der(&Vec::new())
@@ -140,7 +140,7 @@ fn test_tls_error() {
     matches!(
         e,
         TlsError {
-            kind: TlsErrorKind::SSL,
+            kind: TlsErrorKind::Ssl,
             ..
         }
     );

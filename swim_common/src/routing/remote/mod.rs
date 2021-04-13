@@ -209,7 +209,7 @@ where
                 remote_tx,
                 remote_rx,
             } => {
-                let mut state = RemoteConnections::new(
+                let state = RemoteConnections::new(
                     &websockets,
                     configuration,
                     spawner,
@@ -235,7 +235,7 @@ where
                 remote_tx,
                 remote_rx,
             } => {
-                let mut state = RemoteConnections::new(
+                let state = RemoteConnections::new(
                     &websockets,
                     configuration,
                     spawner,
