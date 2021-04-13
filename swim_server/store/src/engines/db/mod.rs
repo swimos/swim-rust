@@ -30,13 +30,11 @@ pub mod lmdbx;
 pub mod rocks;
 
 /// A store which delegates all calls to an LMDB, Rocks or Mock database.
-#[derive(Clone)]
 pub enum StoreDelegate {
     #[cfg(feature = "libmdbx")]
     Lmdbx(LmdbxDatabase),
     #[cfg(feature = "rocks-db")]
     Rocksdb(RocksDatabase),
-    #[cfg(feature = "mock")]
     Mock(crate::mock::EmptyDelegateStore),
 }
 
@@ -47,7 +45,6 @@ impl StoreDelegate {
             StoreDelegate::Lmdbx(delegate) => delegate.path(),
             #[cfg(feature = "rocks-db")]
             StoreDelegate::Rocksdb(delegate) => delegate.path(),
-            #[cfg(feature = "mock")]
             StoreDelegate::Mock(_) => {
                 panic!("Mock stores don't contain a path")
             }
@@ -71,7 +68,6 @@ impl RangedSnapshot for StoreDelegate {
             StoreDelegate::Lmdbx(db) => db.ranged_snapshot(prefix, map_fn),
             #[cfg(feature = "rocks-db")]
             StoreDelegate::Rocksdb(db) => db.ranged_snapshot(prefix, map_fn),
-            #[cfg(feature = "mock")]
             StoreDelegate::Mock(db) => db.ranged_snapshot(prefix, map_fn),
         }
     }
@@ -143,7 +139,6 @@ macro_rules! gated_arm {
             StoreDelegate::Lmdbx(db) => db.$($op)*.map_err(Into::into),
             #[cfg(feature = "rocks-db")]
             StoreDelegate::Rocksdb(db) => db.$($op)*.map_err(Into::into),
-            #[cfg(feature = "mock")]
             StoreDelegate::Mock(db) => db.$($op)*.map_err(Into::into),
         }
     };

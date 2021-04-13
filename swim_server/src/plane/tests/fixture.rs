@@ -108,13 +108,13 @@ impl<Clk: Clock, Delegate: ServerRouter + 'static>
         mut router: PlaneRouter<Delegate>,
         _store: MockNodeStore,
     ) -> (Arc<dyn Any + Send + Sync>, BoxFuture<'static, AgentResult>) {
-        let (uri, parameters) = route.split();
+        let RouteAndParameters { route, parameters } = route;
         let id = parameters[PARAM_NAME].clone();
         let target = self.0.clone();
         let agent = Arc::new(SendAgent(id.clone()));
         let expected_route: RelativeUri = format!("/{}/{}", SENDER_PREFIX, id).parse().unwrap();
 
-        assert_eq!(uri, expected_route);
+        assert_eq!(route, expected_route);
         assert_eq!(execution_config, make_config());
 
         let task = async move {
@@ -133,7 +133,7 @@ impl<Clk: Clock, Delegate: ServerRouter + 'static>
             pin_mut!(incoming_envelopes);
             while incoming_envelopes.next().await.is_some() {}
             AgentResult {
-                route: uri,
+                route,
                 dispatcher_errors: DispatcherErrors::default(),
                 failed: false,
             }
@@ -155,7 +155,7 @@ impl<Clk: Clock, Delegate> AgentRoute<Clk, EnvChannel, PlaneRouter<Delegate>, Mo
         _router: PlaneRouter<Delegate>,
         _store: MockNodeStore,
     ) -> (Arc<dyn Any + Send + Sync>, BoxFuture<'static, AgentResult>) {
-        let (uri, parameters) = route.split();
+        let RouteAndParameters { route, parameters } = route;
         let ReceiveAgentRoute { expected_id, done } = self;
         let mut done_sender = done.lock().take();
         assert!(done_sender.is_some());
@@ -165,7 +165,7 @@ impl<Clk: Clock, Delegate> AgentRoute<Clk, EnvChannel, PlaneRouter<Delegate>, Mo
         assert_eq!(id, expected_target);
         let agent = Arc::new(ReceiveAgent(id.clone()));
         let expected_route: Uri = format!("/{}/{}", RECEIVER_PREFIX, id).parse().unwrap();
-        assert_eq!(uri, expected_route);
+        assert_eq!(route, expected_route);
         assert_eq!(execution_config, make_config());
         let task = async move {
             pin_mut!(incoming_envelopes);
@@ -189,7 +189,7 @@ impl<Clk: Clock, Delegate> AgentRoute<Clk, EnvChannel, PlaneRouter<Delegate>, Mo
                 }
             }
             AgentResult {
-                route: uri,
+                route,
                 dispatcher_errors: DispatcherErrors::default(),
                 failed: times_seen != 1,
             }

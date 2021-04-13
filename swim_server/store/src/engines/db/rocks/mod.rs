@@ -27,7 +27,6 @@ impl From<rocksdb::Error> for StoreError {
     }
 }
 
-#[derive(Clone)]
 pub struct RocksDatabase {
     delegate: Arc<DB>,
 }

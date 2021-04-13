@@ -82,7 +82,7 @@ where
             ..
         } = self;
 
-        let (route, parameters) = route.split();
+        let RouteAndParameters { route, parameters } = route;
         let parameters =
             AgentParameters::new(configuration.clone(), execution_config, route, parameters);
 

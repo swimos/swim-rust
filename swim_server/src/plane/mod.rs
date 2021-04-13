@@ -583,26 +583,13 @@ type PlaneAgentRoute<Clk, Delegate, Store> =
 type Params = HashMap<String, String>;
 
 pub struct RouteAndParameters {
-    route: RelativeUri,
-    parameters: HashMap<String, String>,
+    pub route: RelativeUri,
+    pub parameters: HashMap<String, String>,
 }
 
 impl RouteAndParameters {
     pub fn new(route: RelativeUri, parameters: HashMap<String, String>) -> RouteAndParameters {
         RouteAndParameters { route, parameters }
-    }
-
-    pub fn route(&self) -> &RelativeUri {
-        &self.route
-    }
-
-    pub fn parameters(&self) -> &HashMap<String, String> {
-        &self.parameters
-    }
-
-    pub fn split(self) -> (RelativeUri, HashMap<String, String>) {
-        let RouteAndParameters { route, parameters } = self;
-        (route, parameters)
     }
 }
 

@@ -63,7 +63,7 @@ impl LmdbxDatabaseInner {
     }
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(PartialEq)]
 pub struct LmdbxDatabase {
     inner: Arc<LmdbxDatabaseInner>,
 }

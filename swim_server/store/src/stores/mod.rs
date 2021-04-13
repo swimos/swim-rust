@@ -84,15 +84,6 @@ impl<K> RangedSnapshot for DatabaseStore<K> {
     }
 }
 
-impl<K> Clone for DatabaseStore<K> {
-    fn clone(&self) -> Self {
-        DatabaseStore {
-            delegate: self.delegate.clone(),
-            _key_pd: Default::default(),
-        }
-    }
-}
-
 impl<'a, K> DatabaseStore<K> {
     pub fn new<D>(delegate: D) -> Self
     where
