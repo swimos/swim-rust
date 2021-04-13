@@ -131,10 +131,11 @@ async fn drain() {
         TaggedLaneProfile::pack(WarpLaneProfile::default(), path.clone()),
         lane,
     );
-    lane_map.insert(path.clone(), value);
+    lane_map.insert(path, value);
 
     let stream = futures::stream::iter(vec![make_profile(1), make_profile(2), make_profile(3)]);
     let (out_tx, _out_rx) = mpsc::channel(4096);
+
     let aggregator =
         AggregatorTask::new(lane_map, Duration::from_secs(1), trigger_rx, stream, out_tx);
 
@@ -189,7 +190,7 @@ async fn drain() {
         }
     };
 
-    let handle = tokio::time::timeout(Duration::from_secs(5), task).await;
+    let handle = tokio::time::timeout(Duration::from_secs(15), task).await;
     assert!(handle.is_ok());
 }
 
