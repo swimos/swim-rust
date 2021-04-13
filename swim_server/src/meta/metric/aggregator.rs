@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::lane::model::supply::supplier::TrySupplyError;
 use crate::agent::lane::model::supply::SupplyLane;
 use crate::meta::metric::{AggregatorError, AggregatorErrorKind, MetricStage};
 use crate::meta::metric::{STOP_CLOSED, STOP_OK};
@@ -135,13 +134,13 @@ where
             let (profile, pulse) = inner.collect();
 
             match lane.try_send(pulse) {
-                Ok(_) | Err(TrySupplyError::Capacity) => {
+                Ok(_) | Err(TrySendError::Full(_)) => {
                     *last_report = Instant::now();
                     *requires_flush = false;
 
                     Ok(Some(profile))
                 }
-                Err(TrySupplyError::Closed) => Err(()),
+                Err(TrySendError::Closed(_)) => Err(()),
             }
         } else {
             *requires_flush = true;
@@ -223,6 +222,8 @@ where
             };
             match event {
                 None => {
+                    drain(&mut fused_metric_rx, &mut pulse_lanes, &output);
+
                     event!(Level::WARN, STOP_CLOSED);
                     break AggregatorErrorKind::AbnormalStop;
                 }

@@ -266,9 +266,13 @@ impl NodeLogger {
         level: LogLevel,
     ) -> Result<(), SendError<LogEntry>> {
         let NodeLogger { sender, node_uri } = self;
-        let entry = LogEntry::make(entry, level, node_uri.clone(), lane_uri);
+        let entry = LogEntry::make(entry, level, node_uri.clone(), Some(lane_uri));
 
         sender.send(entry).await
+    }
+
+    pub async fn log_entry(&self, entry: LogEntry) -> Result<(), SendError<LogEntry>> {
+        self.sender.send(entry).await
     }
 }
 

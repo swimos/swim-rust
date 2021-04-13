@@ -252,7 +252,7 @@ impl NodeMetricAggregator {
                 }
             };
 
-            log_context.log_entry(entry);
+            let _res = log_context.log_entry(entry).await;
 
             result
         };

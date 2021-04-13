@@ -13,7 +13,6 @@
 // limitations under the License.
 
 use crate::agent::lane::channels::uplink::backpressure::KeyedBackpressureConfig;
-use crate::agent::lane::model::supply::supplier::Queue;
 use crate::agent::lane::model::supply::{make_lane_model, SupplyLane};
 use crate::meta::metric::config::MetricAggregatorConfig;
 use crate::meta::metric::tests::{backpressure_config, DEFAULT_BUFFER, DEFAULT_YIELD};
@@ -193,7 +192,7 @@ async fn task_backpressure() {
     let mut lane_set = HashSet::new();
 
     (0..count).into_iter().for_each(|i| {
-        let (supply_lane, supply_rx) = make_lane_model(Queue::default());
+        let (supply_lane, supply_rx) = make_lane_model(NonZeroUsize::new(10).unwrap());
         let key = format_lane(i);
 
         lane_set.insert(key.clone());
@@ -285,7 +284,7 @@ async fn task_backpressure() {
 async fn with_observer() {
     let (stop_tx, stop_rx) = trigger::trigger();
     let (supply_lane_tx, mut supply_lane_rx) = mpsc::channel(5);
-    let lane = SupplyLane::new(Box::new(supply_lane_tx));
+    let lane = SupplyLane::new(supply_lane_tx);
 
     let mut lane_map = HashMap::new();
     let path = RelativePath::new("/node", "lane");

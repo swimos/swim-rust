@@ -54,7 +54,7 @@ pub fn create_lane_map(
 
     for i in 0..count {
         let (lane_tx, lane_rx) = mpsc::channel(buffer_size.get());
-        let lane = SupplyLane::new(Box::new(lane_tx));
+        let lane = SupplyLane::new(lane_tx);
 
         let path = RelativePath::new("/node", format!("lane_{}", i));
 
@@ -122,7 +122,7 @@ async fn drain() {
     assert!(trigger_tx.trigger());
 
     let (lane_tx, mut lane_rx) = mpsc::channel(5);
-    let lane = SupplyLane::new(Box::new(lane_tx));
+    let lane = SupplyLane::new(lane_tx);
 
     let mut lane_map = HashMap::new();
     let path = RelativePath::new("/node", "lane");
@@ -184,7 +184,7 @@ async fn drain() {
         match result {
             (Ok(()), _) => {}
             (Err(e), _) => {
-                panic!(e)
+                panic!("{}", e)
             }
         }
     };
@@ -197,7 +197,7 @@ async fn drain() {
 async fn abnormal() {
     let (_trigger_tx, trigger_rx) = trigger::trigger();
     let (lane_tx, _lane_rx) = mpsc::channel(5);
-    let lane = SupplyLane::new(Box::new(lane_tx));
+    let lane = SupplyLane::new(lane_tx);
 
     let mut lane_map = HashMap::new();
     let path = RelativePath::new("/node", "lane");
@@ -274,7 +274,7 @@ where
 {
     let path = RelativePath::new("/node", lane);
     let (tx, rx) = mpsc::channel(DEFAULT_BUFFER.get());
-    let lane = SupplyLane::new(Box::new(tx));
+    let lane = SupplyLane::new(tx);
 
     (path, rx, lane)
 }
@@ -312,7 +312,7 @@ async fn full_pipeline() {
     let (lane_tx, mut lane_rx) = make_pulse_map(endpoint_count, test_lanes.clone());
 
     let (node_pulse_tx, mut node_pulse_rx) = mpsc::channel(DEFAULT_BUFFER.get());
-    let node_pulse_lane = SupplyLane::new(Box::new(node_pulse_tx));
+    let node_pulse_lane = SupplyLane::new(node_pulse_tx);
 
     let (aggregator, aggregator_task) = NodeMetricAggregator::new(
         node_uri.clone(),
@@ -396,7 +396,7 @@ async fn full_pipeline() {
     assert!(aggregator_jh.await.unwrap().is_ok());
 }
 
-#[tokio::test(flavor = "multi_thread")]
+#[tokio::test]
 async fn full_pipeline_multiple_observers() {
     let node_uri = RelativeUri::from_str("/node").unwrap();
     let (stop_tx, stop_rx) = trigger::trigger();
@@ -420,7 +420,7 @@ async fn full_pipeline_multiple_observers() {
     let (lane_tx, mut lane_rx) = make_pulse_map(endpoint_count, test_lanes.clone());
 
     let (node_pulse_tx, mut node_pulse_rx) = mpsc::channel(DEFAULT_BUFFER.get());
-    let node_pulse_lane = SupplyLane::new(Box::new(node_pulse_tx));
+    let node_pulse_lane = SupplyLane::new(node_pulse_tx);
 
     let (aggregator, aggregator_task) = NodeMetricAggregator::new(
         node_uri.clone(),

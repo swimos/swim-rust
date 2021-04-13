@@ -14,7 +14,6 @@
 
 use crate::agent::context::AgentExecutionContext;
 use crate::agent::dispatch::LaneIdentifier;
-use crate::agent::lane::model::supply::supplier::Dropping;
 use crate::agent::lane::model::supply::SupplyLane;
 use crate::agent::{
     make_supply_lane, AgentContext, DynamicLaneTasks, LaneIo, LaneTasks, SwimAgent,
@@ -26,6 +25,7 @@ use crate::meta::{IdentifiedAgentIo, LaneAddressedKind, MetaNodeAddressed};
 use std::any::Any;
 use std::collections::HashMap;
 use std::fmt::Debug;
+use std::num::NonZeroUsize;
 use swim_common::form::Form;
 use swim_common::warp::path::RelativePath;
 use utilities::uri::RelativeUri;
@@ -51,13 +51,14 @@ pub type MakePulseLaneResult<V, Agent, Context> = (
 /// Creates a supply lane for `lane_uri`.
 pub fn make_pulse_lane<Config, Agent, Context, V>(
     lane_uri: String,
+    buffer_size: NonZeroUsize,
 ) -> MakePulseLaneResult<V, Agent, Context>
 where
     Agent: SwimAgent<Config> + 'static,
     Context: AgentContext<Agent> + AgentExecutionContext + Send + Sync + 'static,
     V: Any + Clone + Send + Sync + Form + Debug + Unpin,
 {
-    let (lane, task, io) = make_supply_lane(lane_uri, true, Dropping);
+    let (lane, task, io) = make_supply_lane(lane_uri, true, buffer_size);
     (
         lane,
         task.boxed(),
@@ -69,6 +70,7 @@ where
 pub fn open_pulse_lanes<Config, Agent, Context>(
     node_uri: RelativeUri,
     agent_lanes: &[&String],
+    buffer_size: NonZeroUsize,
 ) -> PulseLaneOpenResult<Agent, Context>
 where
     Agent: SwimAgent<Config> + 'static,
@@ -83,8 +85,10 @@ where
 
     // open uplink pulse lanes
     agent_lanes.iter().for_each(|lane_uri| {
-        let (lane, task, io) =
-            make_pulse_lane::<Config, Agent, Context, WarpUplinkPulse>(lane_uri.to_string());
+        let (lane, task, io) = make_pulse_lane::<Config, Agent, Context, WarpUplinkPulse>(
+            lane_uri.to_string(),
+            buffer_size,
+        );
 
         uplinks.insert(
             RelativePath::new(node_uri.to_string(), lane_uri.to_string()),
@@ -102,7 +106,7 @@ where
     // open lane pulse lanes
     agent_lanes.iter().for_each(|lane_uri| {
         let (lane, task, io) =
-            make_pulse_lane::<Config, Agent, Context, LanePulse>(lane_uri.to_string());
+            make_pulse_lane::<Config, Agent, Context, LanePulse>(lane_uri.to_string(), buffer_size);
 
         lanes.insert(
             RelativePath::new(node_uri.to_string(), lane_uri.to_string()),
@@ -120,7 +124,7 @@ where
 
     // open node pulse lane
     let (node_lane, task, io) =
-        make_pulse_lane::<Config, Agent, Context, NodePulse>("".to_string());
+        make_pulse_lane::<Config, Agent, Context, NodePulse>("".to_string(), buffer_size);
 
     tasks.push(task);
     ios.insert(LaneIdentifier::Meta(MetaNodeAddressed::NodeProfile), io);

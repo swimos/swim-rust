@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::lane::model::supply::supplier::TrySupplyError;
 use crate::agent::lane::model::supply::SupplyLane;
 use crate::meta::metric::aggregator::AddressedMetric;
 use crate::meta::metric::lane::TaggedLaneProfile;
@@ -26,6 +25,7 @@ use std::num::NonZeroUsize;
 use std::time::{Duration, Instant};
 use swim_common::form::Form;
 use swim_common::warp::path::RelativePath;
+use tokio::sync::mpsc::error::TrySendError;
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, Level};
 use utilities::sync::trigger;
@@ -200,7 +200,7 @@ impl NodeAggregatorTask {
                     let pulse = profile.collect();
 
                     if last_report.elapsed() > sample_rate {
-                        if let Err(TrySupplyError::Closed) = lane.try_send(pulse) {
+                        if let Err(TrySendError::Closed(_)) = lane.try_send(pulse) {
                             break AggregatorErrorKind::ForwardChannelClosed;
                         } else {
                             last_report = Instant::now();

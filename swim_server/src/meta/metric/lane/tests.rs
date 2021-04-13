@@ -33,7 +33,7 @@ use utilities::sync::trigger;
 async fn single() {
     let (stop_tx, stop_rx) = trigger::trigger();
     let (lane_tx, mut lane_rx) = mpsc::channel(5);
-    let lane = SupplyLane::new(Box::new(lane_tx));
+    let lane = SupplyLane::new(lane_tx);
 
     let mut lane_map = HashMap::new();
     let path = RelativePath::new("/node", "lane");
@@ -169,7 +169,7 @@ async fn multiple_lanes() {
     match join(lane_aggregator.run(DEFAULT_YIELD), assertion_task).await {
         (Ok(_), _) => {}
         (Err(e), _) => {
-            panic!(e)
+            panic!("{}", e)
         }
     }
 }
