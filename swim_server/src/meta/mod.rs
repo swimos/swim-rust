@@ -23,10 +23,11 @@ mod tests;
 use crate::agent::context::AgentExecutionContext;
 use crate::agent::dispatch::LaneIdentifier;
 use crate::agent::lane::channels::AgentExecutionConfig;
-use crate::agent::{AgentContext, DynamicLaneTasks, LaneIo, SwimAgent};
+use crate::agent::{AgentContext, DynamicLaneTasks, Eff, LaneIo, SwimAgent};
 use crate::meta::info::{open_info_lane, LaneInfo, LaneInformation};
 use crate::meta::log::{open_log_lanes, LogLevel, NodeLogger};
 use crate::meta::uri::{parse, MetaParseErr};
+use futures::stream::FuturesUnordered;
 use lazy_static::lazy_static;
 use percent_encoding::percent_decode_str;
 use regex::Regex;
@@ -35,6 +36,8 @@ use std::fmt::{Display, Formatter};
 use std::str::FromStr;
 use swim_common::model::text::Text;
 use swim_common::warp::path::RelativePath;
+use tracing_futures::Instrumented;
+use utilities::sync::trigger;
 use utilities::uri::RelativeUri;
 
 lazy_static! {
@@ -183,6 +186,8 @@ pub fn open_meta_lanes<Config, Agent, Context>(
     node_uri: RelativeUri,
     exec_conf: &AgentExecutionConfig,
     lanes_summary: HashMap<String, LaneInfo>,
+    stop_rx: trigger::Receiver,
+    task_manager: &FuturesUnordered<Instrumented<Eff>>,
 ) -> (
     MetaContext,
     DynamicLaneTasks<Agent, Context>,
@@ -195,7 +200,13 @@ where
     let mut tasks = Vec::new();
     let mut ios = HashMap::new();
 
-    let (node_logger, log_tasks, log_ios) = open_log_lanes(node_uri, exec_conf.node_log);
+    let (node_logger, log_tasks, log_ios) = open_log_lanes(
+        node_uri,
+        exec_conf.node_log,
+        stop_rx,
+        exec_conf.yield_after,
+        task_manager,
+    );
 
     tasks.extend(log_tasks);
     ios.extend(log_ios);

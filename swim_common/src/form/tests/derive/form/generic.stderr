@@ -1,4 +1,4 @@
-error[E0599]: no method named `as_value` found for struct `S<Valid, main::Invalid>` in the current scope
+error[E0599]: the method `as_value` exists for struct `S<Valid, main::Invalid>`, but its trait bounds were not satisfied
   --> $DIR/generic.rs:34:15
    |
 21 |     struct Invalid;
@@ -11,9 +11,9 @@ error[E0599]: no method named `as_value` found for struct `S<Valid, main::Invali
    |     doesn't satisfy `S<Valid, main::Invalid>: Form`
 ...
 34 |     let _ = s.as_value();
-   |               ^^^^^^^^ method not found in `S<Valid, main::Invalid>`
+   |               ^^^^^^^^ method cannot be called on `S<Valid, main::Invalid>` due to unsatisfied trait bounds
    |
-   = note: the method `as_value` exists but the following trait bounds were not satisfied:
+   = note: the following trait bounds were not satisfied:
            `main::Invalid: Form`
            which is required by `S<Valid, main::Invalid>: Form`
    = help: items from traits can only be used if the trait is implemented and in scope

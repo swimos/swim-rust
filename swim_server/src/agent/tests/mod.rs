@@ -13,6 +13,7 @@
 // limitations under the License.
 
 mod data_macro_agent;
+mod declarive_macro_agent;
 mod derive;
 mod reporting_agent;
 mod reporting_macro_agent;
@@ -27,12 +28,14 @@ use crate::agent::lane::model::command::{Command, CommandLane};
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 use crate::agent::lane::LaneModel;
-use crate::agent::tests::reporting_agent::{ReportingAgentEvent, TestAgentConfig};
+use crate::agent::lifecycle::AgentLifecycle;
+use crate::agent::tests::reporting_agent::TestAgentConfig;
+use crate::agent::tests::reporting_macro_agent::ReportingAgentEvent;
 use crate::agent::tests::stub_router::SingleChannelRouter;
 use crate::agent::tests::test_clock::TestClock;
 use crate::agent::{
     ActionLifecycleTasks, AgentContext, CommandLifecycleTasks, Lane, LaneTasks, LifecycleTasks,
-    MapLifecycleTasks, ValueLifecycleTasks,
+    MapLifecycleTasks, SwimAgent, ValueLifecycleTasks,
 };
 use crate::meta::info::LaneKind;
 use crate::meta::log::NodeLogger;
@@ -41,6 +44,7 @@ use crate::routing::RoutingAddr;
 use futures::future::{join, BoxFuture};
 use futures::Stream;
 use std::collections::HashMap;
+use std::fmt::Debug;
 use std::future::Future;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -287,7 +291,7 @@ where
     }
 
     fn logger(&self) -> NodeLogger {
-        unreachable!("Unexpected log event")
+        panic!("Unexpected log event")
     }
 }
 
@@ -719,21 +723,29 @@ async fn command_lane_events_task_terminates() {
 
 #[tokio::test]
 async fn agent_loop() {
-    let (tx, mut rx) = mpsc::channel(5);
-
+    let (tx, rx) = mpsc::channel(5);
     let config = TestAgentConfig::new(tx);
+    let agent_lifecycle = config.agent_lifecycle();
 
+    let provider = AgentProvider::new(config, agent_lifecycle);
+    run_agent_test(provider, rx).await;
+}
+
+pub async fn run_agent_test<Agent, Config, Lifecycle>(
+    provider: AgentProvider<Agent, Config, Lifecycle>,
+    mut rx: mpsc::Receiver<ReportingAgentEvent>,
+) where
+    Agent: SwimAgent<Config> + Debug,
+    Config: Send + Sync + Clone + Debug + 'static,
+    Lifecycle: AgentLifecycle<Agent> + Send + Sync + Clone + Debug + 'static,
+{
     let uri = "/test".parse().unwrap();
     let buffer_size = NonZeroUsize::new(10).unwrap();
     let clock = TestClock::default();
 
-    let agent_lifecycle = config.agent_lifecycle();
-
     let exec_config = AgentExecutionConfig::with(buffer_size, 1, 0, Duration::from_secs(1), None);
 
     let (envelope_tx, envelope_rx) = mpsc::channel(buffer_size.get());
-
-    let provider = AgentProvider::new(config, agent_lifecycle);
 
     // The ReportingAgent is carefully contrived such that its lifecycle events all trigger in
     // a specific order. We can then safely expect these events in that order to verify the agent

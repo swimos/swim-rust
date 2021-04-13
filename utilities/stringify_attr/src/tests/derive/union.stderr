@@ -1,0 +1,5 @@
+error: Unions are not supported
+  --> $DIR/union.rs:19:5
+   |
+19 |     union A {}
+   |     ^^^^^

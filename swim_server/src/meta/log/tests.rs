@@ -19,8 +19,8 @@ use crate::agent::lane::model::value::ValueLane;
 use crate::agent::{
     agent_lifecycle, map_lifecycle, value_lifecycle, AgentContext, SwimAgent, TestClock,
 };
-use crate::meta::log::config::FlushStrategy;
-use crate::meta::log::{LogBuffer, LogEntry, LogLevel, NodeLogger};
+use crate::meta::log::config::{FlushStrategy, LogConfig};
+use crate::meta::log::{LogBuffer, LogEntry, LogLanes, LogLevel, NodeLogger};
 use crate::plane::provider::AgentProvider;
 use crate::routing::error::RouterError;
 use crate::routing::{
@@ -40,10 +40,10 @@ use swim_common::warp::envelope::{Envelope, OutgoingHeader, OutgoingLinkMessage}
 use swim_common::warp::path::RelativePath;
 use swim_warp::model::map::MapUpdate;
 use tokio::sync::mpsc;
-use tokio::time::Duration;
+use tokio::time::{sleep, Duration};
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
-use utilities::sync::promise;
+use utilities::sync::{promise, trigger};
 use utilities::uri::RelativeUri;
 
 const TEST_MSG: &str = "Map lifecycle on event";
@@ -80,7 +80,11 @@ impl MapLifecycle {
     ) where
         Context: AgentContext<MockAgent> + Sized + Send + Sync + 'static,
     {
-        context.logger().log(TEST_MSG.to_string(), LogLevel::Info);
+        assert!(context
+            .logger()
+            .log(TEST_MSG.to_string(), "lane".to_string(), LogLevel::Info)
+            .await
+            .is_ok());
     }
 }
 
@@ -212,7 +216,7 @@ async fn agent_log() {
             TEST_MSG.to_string(),
             LogLevel::Info,
             RelativeUri::from_str("/test").unwrap(),
-            None
+            "lane"
         )
     );
 }
@@ -226,113 +230,92 @@ impl PartialEq for LogEntry {
     }
 }
 
-#[test]
-fn log_buffer_immediate() {
-    let buffer = LogBuffer::new(FlushStrategy::Immediate);
-
-    assert_eq!(buffer.next(), None);
-    buffer.push(log_entry(LogLevel::Info, "1"));
-
-    assert_eq!(buffer.next(), Some(vec![log_entry(LogLevel::Info, "1")]));
-    assert_eq!(buffer.next(), None);
-}
-
-#[test]
-fn log_buffer_immediate_multiple() {
-    let buffer = LogBuffer::new(FlushStrategy::Immediate);
-
-    assert_eq!(buffer.next(), None);
-
-    buffer.push(log_entry(LogLevel::Info, "1"));
-    buffer.push(log_entry(LogLevel::Info, "2"));
-    buffer.push(log_entry(LogLevel::Info, "3"));
-    buffer.push(log_entry(LogLevel::Info, "4"));
-    buffer.push(log_entry(LogLevel::Info, "5"));
-
-    assert_eq!(
-        buffer.next(),
-        Some(vec![
-            log_entry(LogLevel::Info, "1"),
-            log_entry(LogLevel::Info, "2"),
-            log_entry(LogLevel::Info, "3"),
-            log_entry(LogLevel::Info, "4"),
-            log_entry(LogLevel::Info, "5"),
-        ])
-    );
-
-    assert_eq!(buffer.next(), None);
-}
-
-#[test]
-fn log_buffer_n() {
-    let buffer = LogBuffer::new(FlushStrategy::Buffer(NonZeroUsize::new(5).unwrap()));
-
-    assert_eq!(buffer.next(), None);
-    buffer.push(log_entry(LogLevel::Info, "1"));
-
-    assert_eq!(buffer.next(), None);
-    buffer.push(log_entry(LogLevel::Info, "2"));
-    assert_eq!(buffer.next(), None);
-
-    buffer.push(log_entry(LogLevel::Info, "3"));
-    buffer.push(log_entry(LogLevel::Info, "4"));
-    buffer.push(log_entry(LogLevel::Info, "5"));
-
-    assert_eq!(
-        buffer.next(),
-        Some(vec![
-            log_entry(LogLevel::Info, "1"),
-            log_entry(LogLevel::Info, "2"),
-            log_entry(LogLevel::Info, "3"),
-            log_entry(LogLevel::Info, "4"),
-            log_entry(LogLevel::Info, "5"),
-        ])
-    );
-
-    assert_eq!(buffer.next(), None);
-    buffer.push(log_entry(LogLevel::Info, "6"));
-    assert_eq!(buffer.next(), None);
-}
-
-#[test]
-fn log_buffer_over_capacity() {
-    let buffer = LogBuffer::new(FlushStrategy::Buffer(NonZeroUsize::new(2).unwrap()));
-
-    assert_eq!(buffer.next(), None);
-    buffer.push(log_entry(LogLevel::Info, "1"));
-    buffer.push(log_entry(LogLevel::Info, "2"));
-    buffer.push(log_entry(LogLevel::Info, "3"));
-    buffer.push(log_entry(LogLevel::Info, "4"));
-    buffer.push(log_entry(LogLevel::Info, "5"));
-
-    assert_eq!(
-        buffer.next(),
-        Some(vec![
-            log_entry(LogLevel::Info, "1"),
-            log_entry(LogLevel::Info, "2"),
-            log_entry(LogLevel::Info, "3"),
-            log_entry(LogLevel::Info, "4"),
-            log_entry(LogLevel::Info, "5"),
-        ])
-    );
-
-    assert_eq!(buffer.next(), None);
-    buffer.push(log_entry(LogLevel::Info, "6"));
-    assert_eq!(buffer.next(), None);
-}
-
 fn log_entry(level: LogLevel, message: &str) -> LogEntry {
     LogEntry::make(
         message.to_string(),
         level,
-        RelativeUri::from_str("/test").unwrap(),
-        Some("lane".to_string()),
+        RelativeUri::from_str("/node").unwrap(),
+        "lane",
     )
 }
 
 fn supply_lane() -> (mpsc::Receiver<LogEntry>, SupplyLane<LogEntry>) {
     let (tx, rx) = mpsc::channel(8);
-    (rx, SupplyLane::new(Box::new(tx)))
+    (rx, SupplyLane::new(tx))
+}
+
+#[test]
+fn no_buffer() {
+    let mut buffer = LogBuffer::None;
+    let entry = log_entry(LogLevel::Trace, "test");
+    assert_eq!(buffer.push(entry.clone()), Some(vec![entry]));
+}
+
+#[test]
+fn capped_buffer() {
+    let mut buffer = LogBuffer::Capped(Vec::with_capacity(5));
+    let entries = vec![
+        log_entry(LogLevel::Trace, "1"),
+        log_entry(LogLevel::Trace, "2"),
+        log_entry(LogLevel::Trace, "3"),
+        log_entry(LogLevel::Trace, "4"),
+        log_entry(LogLevel::Trace, "5"),
+    ];
+
+    assert_eq!(buffer.push(log_entry(LogLevel::Trace, "1")), None);
+    assert_eq!(buffer.push(log_entry(LogLevel::Trace, "2")), None);
+    assert_eq!(buffer.push(log_entry(LogLevel::Trace, "3")), None);
+    assert_eq!(buffer.push(log_entry(LogLevel::Trace, "4")), None);
+    assert_eq!(buffer.push(log_entry(LogLevel::Trace, "5")), Some(entries));
+}
+
+#[tokio::test]
+async fn flushes() {
+    let (mut trace_rx, trace_lane) = supply_lane();
+    let (_debug_rx, debug_lane) = supply_lane();
+    let (_info_rx, info_lane) = supply_lane();
+    let (_warn_rx, warn_lane) = supply_lane();
+    let (_error_rx, error_lane) = supply_lane();
+    let (_fail_rx, fail_lane) = supply_lane();
+
+    let log_lanes = LogLanes {
+        trace_lane,
+        debug_lane,
+        info_lane,
+        warn_lane,
+        error_lane,
+        fail_lane,
+    };
+
+    let (stop_tx, stop_rx) = trigger::trigger();
+    let flush_interval = Duration::from_secs(2);
+    let config = make_config(
+        flush_interval,
+        FlushStrategy::Buffer(NonZeroUsize::new(6).unwrap()),
+    );
+
+    let (node_logger, task) = NodeLogger::new(
+        RelativeUri::from_str("/node").unwrap(),
+        NonZeroUsize::new(256).unwrap(),
+        stop_rx,
+        log_lanes,
+        config,
+    );
+
+    let jh = tokio::spawn(task);
+
+    send(&node_logger, LogLevel::Trace).await;
+    assert!(trace_rx.recv().now_or_never().flatten().is_none());
+
+    sleep(flush_interval).await;
+
+    assert_eq!(
+        trace_rx.recv().await,
+        Some(log_entry(LogLevel::Trace, "Trace"))
+    );
+
+    assert!(stop_tx.trigger());
+    assert!(jh.await.is_ok());
 }
 
 #[tokio::test]
@@ -344,42 +327,48 @@ async fn node_logger_buffered() {
     let (mut error_rx, error_lane) = supply_lane();
     let (mut fail_rx, fail_lane) = supply_lane();
 
-    let arc_buffer = Arc::new(LogBuffer::new(FlushStrategy::Buffer(
-        NonZeroUsize::new(6).unwrap(),
-    )));
+    let log_lanes = LogLanes {
+        trace_lane,
+        debug_lane,
+        info_lane,
+        warn_lane,
+        error_lane,
+        fail_lane,
+    };
 
-    let node_logger = NodeLogger::new(
-        arc_buffer.clone(),
-        RelativeUri::from_str("/node").unwrap(),
-        Arc::new(trace_lane),
-        Arc::new(debug_lane),
-        Arc::new(info_lane),
-        Arc::new(warn_lane),
-        Arc::new(error_lane),
-        Arc::new(fail_lane),
+    let flush_interval = Duration::from_secs(30);
+    let (stop_tx, stop_rx) = trigger::trigger();
+    let config = make_config(
+        flush_interval,
+        FlushStrategy::Buffer(NonZeroUsize::new(6).unwrap()),
     );
 
-    node_logger.log_entry(log_entry(LogLevel::Trace, "Trace"));
-    assert_eq!(arc_buffer.next(), None);
+    let (node_logger, task) = NodeLogger::new(
+        RelativeUri::from_str("/node").unwrap(),
+        NonZeroUsize::new(256).unwrap(),
+        stop_rx,
+        log_lanes,
+        config,
+    );
+
+    let jh = tokio::spawn(task);
+
+    send(&node_logger, LogLevel::Trace).await;
     assert!(trace_rx.recv().now_or_never().flatten().is_none());
 
-    node_logger.log_entry(log_entry(LogLevel::Debug, "Debug"));
-    assert_eq!(arc_buffer.next(), None);
+    send(&node_logger, LogLevel::Debug).await;
     assert!(debug_rx.recv().now_or_never().flatten().is_none());
 
-    node_logger.log_entry(log_entry(LogLevel::Info, "Info"));
-    assert_eq!(arc_buffer.next(), None);
+    send(&node_logger, LogLevel::Info).await;
     assert!(info_rx.recv().now_or_never().flatten().is_none());
 
-    node_logger.log_entry(log_entry(LogLevel::Warn, "Warn"));
-    assert_eq!(arc_buffer.next(), None);
+    send(&node_logger, LogLevel::Warn).await;
     assert!(warn_rx.recv().now_or_never().flatten().is_none());
 
-    node_logger.log_entry(log_entry(LogLevel::Error, "Error"));
-    assert_eq!(arc_buffer.next(), None);
+    send(&node_logger, LogLevel::Error).await;
     assert!(error_rx.recv().now_or_never().flatten().is_none());
 
-    node_logger.log_entry(log_entry(LogLevel::Fail, "Fail"));
+    send(&node_logger, LogLevel::Fail).await;
 
     assert_eq!(
         trace_rx.recv().await,
@@ -406,7 +395,25 @@ async fn node_logger_buffered() {
         Some(log_entry(LogLevel::Fail, "Fail"))
     );
 
-    assert_eq!(arc_buffer.next(), None);
+    assert!(stop_tx.trigger());
+    assert!(jh.await.is_ok());
+}
+
+async fn send(node_logger: &NodeLogger, level: LogLevel) {
+    assert!(node_logger
+        .log(level.to_string(), "lane".to_string(), level)
+        .await
+        .is_ok());
+}
+
+fn make_config(flush_interval: Duration, flush_strategy: FlushStrategy) -> LogConfig {
+    LogConfig {
+        flush_interval,
+        channel_buffer_size: NonZeroUsize::new(64).unwrap(),
+        lane_buffer: NonZeroUsize::new(2).unwrap(),
+        flush_strategy,
+        max_pending_messages: NonZeroUsize::new(64).unwrap(),
+    }
 }
 
 #[tokio::test]
@@ -418,54 +425,65 @@ async fn node_logger_immediate() {
     let (mut error_rx, error_lane) = supply_lane();
     let (mut fail_rx, fail_lane) = supply_lane();
 
-    let arc_buffer = Arc::new(LogBuffer::new(FlushStrategy::Immediate));
+    let log_lanes = LogLanes {
+        trace_lane,
+        debug_lane,
+        info_lane,
+        warn_lane,
+        error_lane,
+        fail_lane,
+    };
 
-    let node_logger = NodeLogger::new(
-        arc_buffer.clone(),
+    let flush_interval = Duration::from_secs(5);
+    let (stop_tx, stop_rx) = trigger::trigger();
+    let config = make_config(flush_interval, FlushStrategy::Immediate);
+
+    let (node_logger, task) = NodeLogger::new(
         RelativeUri::from_str("/node").unwrap(),
-        Arc::new(trace_lane),
-        Arc::new(debug_lane),
-        Arc::new(info_lane),
-        Arc::new(warn_lane),
-        Arc::new(error_lane),
-        Arc::new(fail_lane),
+        NonZeroUsize::new(256).unwrap(),
+        stop_rx,
+        log_lanes,
+        config,
     );
 
-    node_logger.log_entry(log_entry(LogLevel::Trace, "Trace"));
+    let jh = tokio::spawn(task);
+
+    send(&node_logger, LogLevel::Trace).await;
     assert_eq!(
         trace_rx.recv().await,
         Some(log_entry(LogLevel::Trace, "Trace"))
     );
 
-    node_logger.log_entry(log_entry(LogLevel::Debug, "Debug"));
+    send(&node_logger, LogLevel::Debug).await;
     assert_eq!(
         debug_rx.recv().await,
         Some(log_entry(LogLevel::Debug, "Debug"))
     );
 
-    node_logger.log_entry(log_entry(LogLevel::Info, "Info"));
+    send(&node_logger, LogLevel::Info).await;
     assert_eq!(
         info_rx.recv().await,
         Some(log_entry(LogLevel::Info, "Info"))
     );
 
-    node_logger.log_entry(log_entry(LogLevel::Warn, "Warn"));
+    send(&node_logger, LogLevel::Warn).await;
     assert_eq!(
         warn_rx.recv().await,
         Some(log_entry(LogLevel::Warn, "Warn"))
     );
 
-    node_logger.log_entry(log_entry(LogLevel::Error, "Error"));
+    send(&node_logger, LogLevel::Error).await;
     assert_eq!(
         error_rx.recv().await,
         Some(log_entry(LogLevel::Error, "Error"))
     );
 
-    node_logger.log_entry(log_entry(LogLevel::Fail, "Fail"));
+    send(&node_logger, LogLevel::Fail).await;
     assert_eq!(
         fail_rx.recv().await,
         Some(log_entry(LogLevel::Fail, "Fail"))
     );
 
-    assert_eq!(arc_buffer.next(), None);
+    assert!(stop_tx.trigger());
+    assert!(jh.await.is_ok());
 }

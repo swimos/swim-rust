@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lane::lifecycle::LaneLifecycle;
 use crate::agent::lane::model::command::CommandLane;
 use crate::agent::lane::model::demand::DemandLane;
@@ -21,17 +20,13 @@ use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 use crate::agent::lane::tests::ExactlyOnce;
 use crate::agent::lifecycle::AgentLifecycle;
-use crate::agent::tests::stub_router::SingleChannelRouter;
-use crate::agent::tests::test_clock::TestClock;
+use crate::agent::tests::run_agent_test;
 use crate::agent::AgentContext;
 use crate::plane::provider::AgentProvider;
-use crate::routing::RoutingAddr;
 use crate::{
     agent_lifecycle, command_lifecycle, demand_lifecycle, demand_map_lifecycle, map_lifecycle,
     value_lifecycle, SwimAgent,
 };
-use std::collections::HashMap;
-use std::convert::TryFrom;
 use std::fmt::Debug;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -39,8 +34,6 @@ use std::time::Duration;
 use stm::stm::Stm;
 use stm::transaction::atomically;
 use tokio::sync::{mpsc, Mutex};
-use tokio_stream::wrappers::ReceiverStream;
-use utilities::uri::RelativeUri;
 
 mod swim_server {
     pub use crate::*;
@@ -91,11 +84,11 @@ impl EventCollector {
 }
 
 #[derive(Clone, Debug)]
-struct EventCollectorHandler(Arc<Mutex<EventCollector>>);
+pub struct EventCollectorHandler(pub Arc<Mutex<EventCollector>>);
 
 impl EventCollectorHandler {
     /// Push an event into the channel.
-    async fn push(&self, event: ReportingAgentEvent) {
+    pub async fn push(&self, event: ReportingAgentEvent) {
         self.0
             .lock()
             .await
@@ -397,92 +390,10 @@ impl TestAgentConfig {
 
 #[tokio::test]
 async fn agent_loop() {
-    let (tx, mut rx) = mpsc::channel(5);
-
+    let (tx, rx) = mpsc::channel(5);
     let config = TestAgentConfig::new(tx);
-
-    let uri = RelativeUri::try_from("/test").unwrap();
-    let buffer_size = NonZeroUsize::new(10).unwrap();
-    let clock = TestClock::default();
-
     let agent_lifecycle = config.agent_lifecycle();
 
-    let exec_config = AgentExecutionConfig::with(buffer_size, 1, 0, Duration::from_secs(1), None);
-
-    let (envelope_tx, envelope_rx) = mpsc::channel(buffer_size.get());
-
     let provider = AgentProvider::new(config, agent_lifecycle);
-
-    // The ReportingAgent is carefully contrived such that its lifecycle events all trigger in
-    // a specific order. We can then safely expect these events in that order to verify the agent
-    // loop.
-    let (_, agent_proc) = provider.run(
-        uri,
-        HashMap::new(),
-        exec_config,
-        clock.clone(),
-        ReceiverStream::new(envelope_rx),
-        SingleChannelRouter::new(RoutingAddr::local(1024)),
-    );
-
-    let agent_task = swim_runtime::task::spawn(agent_proc);
-
-    async fn expect(rx: &mut mpsc::Receiver<ReportingAgentEvent>, expected: ReportingAgentEvent) {
-        let result = rx.recv().await;
-        assert!(result.is_some());
-        let event = result.unwrap();
-        assert_eq!(event, expected);
-    }
-
-    expect(&mut rx, ReportingAgentEvent::AgentStart).await;
-
-    clock.advance_when_blocked(Duration::from_secs(1)).await;
-    expect(&mut rx, ReportingAgentEvent::Command("Name0".to_string())).await;
-    expect(&mut rx, ReportingAgentEvent::DemandLaneEvent(0)).await;
-    expect(
-        &mut rx,
-        ReportingAgentEvent::DataEvent(MapLaneEvent::Update("Name0".to_string(), 1.into())),
-    )
-    .await;
-    expect(&mut rx, ReportingAgentEvent::TotalEvent(1)).await;
-    expect(
-        &mut rx,
-        ReportingAgentEvent::DemandMapLaneEvent("Name0".to_string(), 1),
-    )
-    .await;
-
-    clock.advance_when_blocked(Duration::from_secs(1)).await;
-
-    expect(&mut rx, ReportingAgentEvent::Command("Name1".to_string())).await;
-    expect(&mut rx, ReportingAgentEvent::DemandLaneEvent(1)).await;
-    expect(
-        &mut rx,
-        ReportingAgentEvent::DataEvent(MapLaneEvent::Update("Name1".to_string(), 1.into())),
-    )
-    .await;
-    expect(&mut rx, ReportingAgentEvent::TotalEvent(2)).await;
-    expect(
-        &mut rx,
-        ReportingAgentEvent::DemandMapLaneEvent("Name1".to_string(), 1),
-    )
-    .await;
-
-    clock.advance_when_blocked(Duration::from_secs(1)).await;
-    expect(&mut rx, ReportingAgentEvent::Command("Name2".to_string())).await;
-    expect(&mut rx, ReportingAgentEvent::DemandLaneEvent(2)).await;
-    expect(
-        &mut rx,
-        ReportingAgentEvent::DataEvent(MapLaneEvent::Update("Name2".to_string(), 1.into())),
-    )
-    .await;
-    expect(&mut rx, ReportingAgentEvent::TotalEvent(3)).await;
-    expect(
-        &mut rx,
-        ReportingAgentEvent::DemandMapLaneEvent("Name2".to_string(), 1),
-    )
-    .await;
-
-    drop(envelope_tx);
-
-    assert!(agent_task.await.is_ok());
+    run_agent_test(provider, rx).await;
 }

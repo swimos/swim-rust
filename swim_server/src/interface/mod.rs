@@ -24,17 +24,19 @@ use crate::routing::remote::net::dns::Resolver;
 use crate::routing::remote::net::plain::TokioPlainTextNetworking;
 use crate::routing::remote::{RemoteConnectionChannels, RemoteConnectionsTask};
 use crate::routing::{TopLevelRouter, TopLevelRouterFactory};
+use either::Either;
 use futures::{io, join};
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use swim_common::routing::ws::tungstenite::TungsteniteWsConnections;
+use swim_runtime::task::TaskError;
 use swim_runtime::time::clock::RuntimeClock;
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use utilities::future::open_ended::OpenEndedFutures;
-use utilities::sync::trigger;
+use utilities::sync::{promise, trigger};
 
 /// Builder to create Swim server instance.
 ///
@@ -192,6 +194,7 @@ impl SwimServerBuilder {
         } = self;
 
         let (stop_trigger_tx, stop_trigger_rx) = trigger::trigger();
+        let (address_tx, address_rx) = promise::promise();
 
         Ok((
             SwimServer {
@@ -199,30 +202,15 @@ impl SwimServerBuilder {
                 planes,
                 address: address.ok_or(SwimServerBuilderError::MissingAddress)?,
                 stop_trigger_rx,
+                address_tx,
             },
-            ServerHandle { stop_trigger_tx },
+            ServerHandle {
+                either_address: Either::Left(address_rx),
+                stop_trigger_tx,
+            },
         ))
     }
 }
-
-/// Represents an error that can occur while using the server builder.
-#[derive(Debug)]
-pub enum SwimServerBuilderError {
-    /// An error that occurs when trying to create a server without providing the address first.
-    MissingAddress,
-}
-
-impl Display for SwimServerBuilderError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            SwimServerBuilderError::MissingAddress => {
-                write!(f, "Cannot create a swim server without an address")
-            }
-        }
-    }
-}
-
-impl Error for SwimServerBuilderError {}
 
 /// Swim server instance.
 ///
@@ -232,6 +220,7 @@ pub struct SwimServer {
     config: SwimServerConfig,
     planes: Vec<PlaneSpec<RuntimeClock, EnvChannel, PlaneRouter<TopLevelRouter>>>,
     stop_trigger_rx: trigger::Receiver,
+    address_tx: promise::Sender<SocketAddr>,
 }
 
 impl SwimServer {
@@ -248,6 +237,7 @@ impl SwimServer {
             config,
             mut planes,
             stop_trigger_rx,
+            address_tx,
         } = self;
 
         let SwimServerConfig {
@@ -277,7 +267,7 @@ impl SwimServer {
             top_level_router_fac.clone(),
         );
 
-        let connections_future = RemoteConnectionsTask::new(
+        let connections_task = RemoteConnectionsTask::new(
             conn_config,
             TokioPlainTextNetworking::new(Arc::new(Resolver::new().await)),
             address,
@@ -293,12 +283,57 @@ impl SwimServer {
             },
         )
         .await
-        .unwrap_or_else(|err| panic!("Could not connect to \"{}\": {}", address, err))
-        .run();
+        .unwrap_or_else(|err| panic!("Could not connect to \"{}\": {}", address, err));
+
+        let _ = match connections_task.listener.local_addr() {
+            Ok(local_addr) => address_tx.provide(local_addr),
+            Err(err) => panic!("Could not resolve server address: {}", err),
+        };
+
+        let connections_future = connections_task.run();
 
         join!(connections_future, plane_future).0
     }
 }
+
+/// Represents an error that can occur while using the server builder.
+#[derive(Debug)]
+pub enum SwimServerBuilderError {
+    /// An error that occurs when trying to create a server without providing the address first.
+    MissingAddress,
+}
+
+impl Display for SwimServerBuilderError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SwimServerBuilderError::MissingAddress => {
+                write!(f, "Cannot create a swim server without an address")
+            }
+        }
+    }
+}
+
+impl Error for SwimServerBuilderError {}
+
+/// Represents errors that can occur in the server.
+#[derive(Debug)]
+pub enum ServerError {
+    /// An error that occurred when the server was running.
+    RuntimeError(io::Error),
+    /// An error that occurred when closing the server.
+    CloseError(TaskError),
+}
+
+impl Display for ServerError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ServerError::RuntimeError(err) => err.fmt(f),
+            ServerError::CloseError(err) => err.fmt(f),
+        }
+    }
+}
+
+impl Error for ServerError {}
 
 /// Swim server configuration.
 ///
@@ -321,15 +356,39 @@ impl Default for SwimServerConfig {
     }
 }
 
-/// Handle for stopping a server instance.
+/// Handle for a server instance.
 ///
 /// The handle is returned when a new server instance is created and is used for terminating
-/// the server.
+/// the server or obtaining its address.
 pub struct ServerHandle {
+    either_address: Either<promise::Receiver<SocketAddr>, Option<SocketAddr>>,
     stop_trigger_tx: trigger::Sender,
 }
 
 impl ServerHandle {
+    /// Returns the local address that this server is bound to.
+    ///
+    /// This can be useful, for example, when binding to port 0 to figure out
+    /// which port was actually bound.
+    pub async fn address(&mut self) -> Option<&SocketAddr> {
+        let ServerHandle {
+            either_address,
+            stop_trigger_tx: _,
+        } = self;
+
+        if either_address.is_left() {
+            if let Either::Left(promise) = std::mem::replace(either_address, Either::Right(None)) {
+                *either_address = Either::Right(promise.await.ok().map(|r| *r));
+            }
+        }
+
+        either_address
+            .as_ref()
+            .right()
+            .map(Option::as_ref)
+            .flatten()
+    }
+
     /// Terminates the associated server instance.
     ///
     /// Returns `true` if all sever tasks have been successfully notified to terminate

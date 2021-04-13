@@ -15,18 +15,17 @@
 #[cfg(test)]
 mod tests;
 
-pub mod supplier;
-
-use crate::agent::lane::model::supply::supplier::{
-    BoxSupplier, SupplyError, SupplyLaneObserver, TrySupplyError,
-};
 use crate::agent::lane::LaneModel;
 use crate::agent::{AgentContext, Eff, Lane, LaneTasks, StatelessLifecycleTasks};
 use crate::meta::info::LaneKind;
 use futures::future::ready;
 use futures::future::BoxFuture;
 use futures::FutureExt;
+use std::num::NonZeroUsize;
 use std::sync::Arc;
+use tokio::sync::mpsc;
+use tokio::sync::mpsc::error::{SendError, TrySendError};
+use tokio_stream::wrappers::ReceiverStream;
 
 /// Model for a stateless lane that publishes events to all uplinks.
 ///
@@ -34,7 +33,7 @@ use std::sync::Arc;
 ///
 /// * `T` - The type of the events produced.
 pub struct SupplyLane<T> {
-    sender: BoxSupplier<T>,
+    sender: mpsc::Sender<T>,
     id: Arc<()>,
 }
 
@@ -42,19 +41,19 @@ impl<T> SupplyLane<T>
 where
     T: Send + Sync + 'static,
 {
-    pub(crate) fn new(sender: BoxSupplier<T>) -> Self {
+    pub(crate) fn new(sender: mpsc::Sender<T>) -> Self {
         SupplyLane {
             sender,
             id: Default::default(),
         }
     }
 
-    pub async fn send(&self, value: T) -> Result<(), SupplyError> {
-        self.sender.supply(value).await.map_err(Into::into)
+    pub async fn send(&self, value: T) -> Result<(), SendError<T>> {
+        self.sender.send(value).await
     }
 
-    pub fn try_send(&self, value: T) -> Result<(), TrySupplyError> {
-        self.sender.try_supply(value).map_err(Into::into)
+    pub fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
+        self.sender.try_send(value)
     }
 }
 
@@ -68,15 +67,16 @@ impl<T> LaneModel for SupplyLane<T> {
 
 /// Create a new supply lane model. Returns a new supply lane model and a stream that events can be
 /// received from.
-pub fn make_lane_model<Event, O>(observer: O) -> (SupplyLane<Event>, O::View)
+pub fn make_lane_model<Event>(
+    buffer_size: NonZeroUsize,
+) -> (SupplyLane<Event>, ReceiverStream<Event>)
 where
     Event: Send + Sync + Clone + 'static,
-    O: SupplyLaneObserver<Event>,
 {
-    let (sender, view) = observer.make_observer();
-    let lane = SupplyLane::new(Box::new(sender));
+    let (tx, rx) = mpsc::channel(buffer_size.get());
+    let lane = SupplyLane::new(tx);
 
-    (lane, view)
+    (lane, ReceiverStream::new(rx))
 }
 
 impl Lane for StatelessLifecycleTasks {

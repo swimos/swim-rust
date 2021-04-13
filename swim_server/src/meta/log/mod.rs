@@ -20,20 +20,31 @@ pub mod config;
 use crate::agent::context::AgentExecutionContext;
 use crate::agent::dispatch::LaneIdentifier;
 use crate::agent::lane::model::supply::SupplyLane;
-use crate::agent::LaneIo;
 use crate::agent::LaneTasks;
 use crate::agent::{make_supply_lane, AgentContext, DynamicLaneTasks, SwimAgent};
+use crate::agent::{Eff, LaneIo};
 use crate::meta::log::config::{FlushStrategy, LogConfig};
 use crate::meta::{IdentifiedAgentIo, MetaNodeAddressed};
-use crossbeam_queue::SegQueue;
+use either::Either;
+use futures::select_biased;
+use futures::stream::FuturesUnordered;
+use futures::{Future, StreamExt};
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::fmt::{Debug, Display, Formatter};
-use std::sync::Arc;
+use std::num::NonZeroUsize;
 use swim_common::form::{Form, Tag};
 use swim_common::model::time::Timestamp;
 use swim_common::model::Value;
-use tracing::{event, Level};
+use tokio::sync::mpsc;
+use tokio::sync::mpsc::error::SendError;
+use tokio::time::Duration;
+use tokio_stream::wrappers::ReceiverStream;
+use tracing::{event, span, Level};
+use tracing_futures::{Instrument, Instrumented};
+
+use swim_runtime::time::interval::interval;
+use utilities::sync::trigger;
 use utilities::uri::RelativeUri;
 
 pub const TRACE_URI: &str = "traceLog";
@@ -43,6 +54,7 @@ pub const WARN_URI: &str = "warnLog";
 pub const ERROR_URI: &str = "errorLog";
 pub const FAIL_URI: &str = "failLog";
 
+const LOG_TASK: &str = "Node logger";
 const LOG_FAIL: &str = "Failed to send log message";
 
 /// A corresponding level associated with a `LogEntry`.
@@ -152,182 +164,264 @@ impl LogEntry {
 /// A handle to all of the log lanes for a node. I.e, for the agent itself and not its uplinks or
 /// lanes.
 ///
-/// Log lanes make no guarantees as to whether the messages that are sent to them will actually be
-/// delivered. This is so that backpressure is not applied to the supplier of a log entry. If
-/// throughput to a log lane was high enough and the lane was asynchronous or blocking, this would
-/// create backpressure to the supplier.
-///
 /// Internally, this is backed by a buffer which will either send the entries as they're provided,
 /// or wait until the buffer is full before sending any entries.
 #[derive(Clone)]
 pub struct NodeLogger {
-    /// Internal buffer for entries.
-    buffer: Arc<LogBuffer>,
-    /// The agent's URI.
+    /// Channel to the internal send task.
+    sender: mpsc::Sender<LogEntry>,
+    /// The node URI that this logger is attched to.
     node_uri: RelativeUri,
-    /// Lane for fine-grained informational events.
-    trace_lane: Arc<SupplyLane<LogEntry>>,
-    /// Lane for information that is useful in debugging an application.
-    debug_lane: Arc<SupplyLane<LogEntry>>,
-    /// Lane for information that denotes the progress of an application.
-    info_lane: Arc<SupplyLane<LogEntry>>,
-    /// Lane for potentially harmful events to the application.
-    warn_lane: Arc<SupplyLane<LogEntry>>,
-    /// Lane for log entries that have originated from an error in the application.
-    error_lane: Arc<SupplyLane<LogEntry>>,
-    /// Lane for events that may lead to the application to exit.
-    fail_lane: Arc<SupplyLane<LogEntry>>,
 }
 
 impl Debug for NodeLogger {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("NodeLogger")
             .field("node_uri", &self.node_uri)
-            .field("buffer", &self.buffer)
             .finish()
     }
 }
 
-impl NodeLogger {
-    #[cfg(test)]
-    fn new(
-        buffer: Arc<LogBuffer>,
-        node_uri: RelativeUri,
-        trace_lane: Arc<SupplyLane<LogEntry>>,
-        debug_lane: Arc<SupplyLane<LogEntry>>,
-        info_lane: Arc<SupplyLane<LogEntry>>,
-        warn_lane: Arc<SupplyLane<LogEntry>>,
-        error_lane: Arc<SupplyLane<LogEntry>>,
-        fail_lane: Arc<SupplyLane<LogEntry>>,
-    ) -> Self {
-        NodeLogger {
-            buffer,
-            node_uri,
+struct LogLanes {
+    /// Lane for fine-grained informational events.
+    trace_lane: SupplyLane<LogEntry>,
+    /// Lane for information that is useful in debugging an application.
+    debug_lane: SupplyLane<LogEntry>,
+    /// Lane for information that denotes the progress of an application.
+    info_lane: SupplyLane<LogEntry>,
+    /// Lane for potentially harmful events to the application.
+    warn_lane: SupplyLane<LogEntry>,
+    /// Lane for log entries that have originated from an error in the application.
+    error_lane: SupplyLane<LogEntry>,
+    /// Lane for events that may lead to the application to exit.
+    fail_lane: SupplyLane<LogEntry>,
+}
+
+impl LogLanes {
+    /// Send `entry` to the corresponding supply lane for its log level. This will only error if the
+    /// channel to the lane is closed.
+    async fn send(&self, entry: LogEntry) -> Result<(), SendError<LogEntry>> {
+        let LogLanes {
             trace_lane,
             debug_lane,
             info_lane,
             warn_lane,
             error_lane,
             fail_lane,
+        } = self;
+
+        match &entry.level {
+            LogLevel::Trace => trace_lane.send(entry).await,
+            LogLevel::Debug => debug_lane.send(entry).await,
+            LogLevel::Info => info_lane.send(entry).await,
+            LogLevel::Warn => warn_lane.send(entry).await,
+            LogLevel::Error => error_lane.send(entry).await,
+            LogLevel::Fail => fail_lane.send(entry).await,
         }
+    }
+}
+
+impl NodeLogger {
+    fn new(
+        node_uri: RelativeUri,
+        yield_after: NonZeroUsize,
+        stop_rx: trigger::Receiver,
+        log_lanes: LogLanes,
+        config: LogConfig,
+    ) -> (NodeLogger, impl Future<Output = ()>) {
+        let LogConfig {
+            flush_interval,
+            channel_buffer_size,
+            flush_strategy,
+            max_pending_messages,
+            ..
+        } = config;
+
+        let (tx, rx) = mpsc::channel(channel_buffer_size.get());
+        let task = LogTask {
+            rx,
+            flush_interval,
+            buffer: flush_strategy.into(),
+            log_lanes,
+        };
+
+        let node_logger = NodeLogger {
+            sender: tx,
+            node_uri,
+        };
+
+        (
+            node_logger,
+            task.run(yield_after, stop_rx, max_pending_messages),
+        )
     }
 
     /// Log `entry` at `level` and send it to the corresponding lane for `level`.
     ///
     /// See `LogHandler` for message delivery guarantees.
-    pub fn log<F: Form>(&self, entry: F, level: LogLevel) {
-        let NodeLogger { node_uri, .. } = self;
+    pub async fn log<F: Form>(
+        &self,
+        entry: F,
+        lane_uri: String,
+        level: LogLevel,
+    ) -> Result<(), SendError<LogEntry>> {
+        let NodeLogger { sender, node_uri } = self;
+        let entry = LogEntry::make(entry, level, node_uri.clone(), lane_uri);
 
-        let entry = LogEntry::make(entry, level, node_uri.clone(), None);
-        self.log_entry(entry);
-    }
-
-    /// Log `entry` to its corresponding log lane.
-    pub fn log_entry(&self, entry: LogEntry) {
-        self.buffer.push(entry);
-        self.flush();
-    }
-
-    /// Flushes any available log entries in the buffer.
-    fn flush(&self) {
-        if let Some(entries) = self.buffer.next() {
-            for entry in entries {
-                let result = match &entry.level {
-                    LogLevel::Trace => self.trace_lane.try_send(entry),
-                    LogLevel::Debug => self.debug_lane.try_send(entry),
-                    LogLevel::Info => self.info_lane.try_send(entry),
-                    LogLevel::Warn => self.warn_lane.try_send(entry),
-                    LogLevel::Error => self.error_lane.try_send(entry),
-                    LogLevel::Fail => self.fail_lane.try_send(entry),
-                };
-
-                if result.is_err() {
-                    let uri = &self.node_uri;
-                    event!(Level::WARN, %uri, LOG_FAIL);
-                }
-            }
-        }
+        sender.send(entry).await
     }
 }
 
-/// A configurable buffer for log entries. Entries will be available once the buffer's size is equal
-/// to or greater than `cap`.  
-#[derive(Debug)]
-struct LogBuffer {
-    buffer: SegQueue<LogEntry>,
-    cap: usize,
+/// An internal task for a `NodeLogger` which forwards all messages from its receive stream to the
+/// corresponding supply lane for the log level.
+struct LogTask {
+    /// The channel to listen to log entries from.
+    rx: mpsc::Receiver<LogEntry>,
+    /// The interval at which to flush any pending messages from the log buffer.
+    flush_interval: Duration,
+    /// An internal buffer that may batch messages before sending them to the corresponding supply
+    /// lane.
+    buffer: LogBuffer,
+
+    log_lanes: LogLanes,
+}
+
+/// An optional internal buffer for log entries.
+enum LogBuffer {
+    /// No entries are buffered and any entries pushed into the buffer will be returned immediately.
+    None,
+    /// A buffer with a fixed capacity. Once this limit has been reached all buffered entries will
+    /// be returned.
+    Capped(Vec<LogEntry>),
 }
 
 impl LogBuffer {
-    /// Create a new buffer that will produce values according to `strategy`.
-    fn new(strategy: FlushStrategy) -> Self {
-        let cap = match strategy {
-            FlushStrategy::Immediate => 1,
-            FlushStrategy::Buffer(n) => n.get(),
-        };
-
-        LogBuffer {
-            buffer: SegQueue::new(),
-            cap,
+    /// Push an entry into the buffer.
+    ///
+    /// Returns any entries once the limit has been reached.
+    fn push(&mut self, entry: LogEntry) -> Option<Vec<LogEntry>> {
+        match self {
+            LogBuffer::None => Some(vec![entry]),
+            LogBuffer::Capped(buffer) => {
+                if buffer.len() + 1 == buffer.capacity() {
+                    let mut drained = buffer.drain(0..).collect::<Vec<_>>();
+                    drained.push(entry);
+                    Some(drained)
+                } else {
+                    buffer.push(entry);
+                    None
+                }
+            }
         }
     }
 
-    /// Push a value into the buffer.
-    fn push(&self, entry: LogEntry) {
-        self.buffer.push(entry);
+    /// Drain the buffer.
+    fn drain(&mut self) -> Vec<LogEntry> {
+        match self {
+            LogBuffer::None => Vec::new(),
+            LogBuffer::Capped(buffer) => buffer.drain(0..).collect(),
+        }
     }
+}
 
-    /// Takes any entries that are available in the buffer. If the buffer's capacity is greater than
-    /// or equal to the configured capacity then the buffer is drained.
-    fn next(&self) -> Option<Vec<LogEntry>> {
-        let LogBuffer { buffer, cap } = self;
+impl From<FlushStrategy> for LogBuffer {
+    fn from(strategy: FlushStrategy) -> Self {
+        match strategy {
+            FlushStrategy::Immediate => LogBuffer::None,
+            FlushStrategy::Buffer(capacity) => {
+                LogBuffer::Capped(Vec::with_capacity(capacity.get()))
+            }
+        }
+    }
+}
 
-        if buffer.len() >= *cap {
-            let len = buffer.len();
+impl LogTask {
+    async fn run(
+        self,
+        yield_after: NonZeroUsize,
+        stop_rx: trigger::Receiver,
+        max_pending: NonZeroUsize,
+    ) {
+        let LogTask {
+            rx,
+            flush_interval,
+            mut buffer,
+            log_lanes,
+        } = self;
 
-            let end = if *cap == 1 || len >= *cap {
-                len
-            } else {
-                return None;
+        let mut stream = ReceiverStream::new(rx).take_until(stop_rx);
+        let mut pending = FuturesUnordered::new();
+        let mut timer = interval(flush_interval).fuse();
+
+        let capacity = max_pending.get();
+        let yield_mod = yield_after.get();
+        let mut iteration_count: usize = 0;
+
+        loop {
+            let event: Option<Either<Result<(), SendError<LogEntry>>, LogEntry>> = select_biased! {
+                _ = timer.next() => {
+                    for entry in buffer.drain() {
+                        while pending.len() >= capacity {
+                            if let Some(result) = pending.next().await {
+                                LogTask::on_result(result)
+                            }
+                        }
+
+                        let fut = log_lanes.send(entry);
+                        pending.push(fut);
+                    }
+
+                    continue;
+                },
+                entry = stream.next() => entry.map(Either::Right),
+                result = pending.next() => {
+                    match result {
+                        Some(inner) => Some(Either::Left(inner)),
+                        None => continue,
+                    }
+                },
             };
 
-            let mut drained = 0;
-            let mut results = Vec::new();
+            match event {
+                None => break,
+                Some(event) => match event {
+                    Either::Left(result) => LogTask::on_result(result),
+                    Either::Right(entry) => {
+                        if let Some(entries) = buffer.push(entry) {
+                            for entry in entries {
+                                while pending.len() >= capacity {
+                                    if let Some(result) = pending.next().await {
+                                        LogTask::on_result(result)
+                                    }
+                                }
 
-            while drained < end {
-                match buffer.pop() {
-                    Some(entry) => {
-                        drained += 1;
-                        results.push(entry);
+                                let fut = log_lanes.send(entry);
+                                pending.push(fut);
+                            }
+                        }
                     }
-                    None => break,
-                }
+                },
             }
 
-            if results.is_empty() {
-                None
-            } else {
-                Some(results)
+            iteration_count += 1;
+            if iteration_count % yield_mod == 0 {
+                tokio::task::yield_now().await;
             }
-        } else {
-            None
+        }
+    }
+
+    fn on_result(result: Result<(), SendError<LogEntry>>) {
+        if result.is_err() {
+            event!(Level::WARN, LOG_FAIL);
         }
     }
 }
 
 #[cfg(test)]
 pub(crate) fn make_node_logger(node_uri: RelativeUri) -> NodeLogger {
-    use tokio::sync::mpsc;
-
     NodeLogger {
-        buffer: Arc::new(LogBuffer::new(FlushStrategy::Immediate)),
+        sender: mpsc::channel(1).0,
         node_uri,
-        trace_lane: Arc::new(SupplyLane::new(Box::new(mpsc::channel(1).0))),
-        debug_lane: Arc::new(SupplyLane::new(Box::new(mpsc::channel(1).0))),
-        info_lane: Arc::new(SupplyLane::new(Box::new(mpsc::channel(1).0))),
-        warn_lane: Arc::new(SupplyLane::new(Box::new(mpsc::channel(1).0))),
-        error_lane: Arc::new(SupplyLane::new(Box::new(mpsc::channel(1).0))),
-        fail_lane: Arc::new(SupplyLane::new(Box::new(mpsc::channel(1).0))),
     }
 }
 
@@ -335,6 +429,9 @@ pub(crate) fn make_node_logger(node_uri: RelativeUri) -> NodeLogger {
 pub fn open_log_lanes<Config, Agent, Context>(
     node_uri: RelativeUri,
     config: LogConfig,
+    stop_rx: trigger::Receiver,
+    yield_after: NonZeroUsize,
+    task_manager: &FuturesUnordered<Instrumented<Eff>>,
 ) -> (
     NodeLogger,
     DynamicLaneTasks<Agent, Context>,
@@ -344,17 +441,12 @@ where
     Agent: SwimAgent<Config> + 'static,
     Context: AgentContext<Agent> + AgentExecutionContext + Send + Sync + 'static,
 {
-    let LogConfig {
-        send_strategy,
-        flush_strategy,
-    } = config;
-
     let lane_count = LogLevel::enumerated().len();
     let mut lane_tasks = Vec::with_capacity(lane_count);
     let mut lane_ios = HashMap::with_capacity(lane_count);
 
     let mut make_log_lane = |level: LogLevel| {
-        let (lane, task, io) = make_supply_lane(level.uri_ref(), true, send_strategy);
+        let (lane, task, io) = make_supply_lane(level.uri_ref(), true, config.lane_buffer);
 
         lane_tasks.push(task.boxed());
         lane_ios.insert(
@@ -362,12 +454,10 @@ where
             io.expect("Public lane didn't return any lane IO").boxed(),
         );
 
-        Arc::new(lane)
+        lane
     };
 
-    let node_logger = NodeLogger {
-        buffer: Arc::new(LogBuffer::new(flush_strategy)),
-        node_uri,
+    let log_lanes = LogLanes {
         trace_lane: make_log_lane(LogLevel::Trace),
         debug_lane: make_log_lane(LogLevel::Debug),
         info_lane: make_log_lane(LogLevel::Info),
@@ -375,6 +465,13 @@ where
         error_lane: make_log_lane(LogLevel::Error),
         fail_lane: make_log_lane(LogLevel::Fail),
     };
+
+    let (node_logger, task) =
+        NodeLogger::new(node_uri.clone(), yield_after, stop_rx, log_lanes, config);
+
+    let task = futures::FutureExt::boxed(task).instrument(span!(Level::DEBUG, LOG_TASK, ?node_uri));
+
+    task_manager.push(task);
 
     (node_logger, lane_tasks, lane_ios)
 }

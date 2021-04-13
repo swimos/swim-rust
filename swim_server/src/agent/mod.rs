@@ -36,7 +36,7 @@ use crate::agent::lane::lifecycle::{
     ActionLaneLifecycle, CommandLaneLifecycle, DemandLaneLifecycle, DemandMapLaneLifecycle,
     StatefulLaneLifecycle,
 };
-use crate::agent::lane::model;
+pub use crate::agent::lane::model;
 use crate::agent::lane::model::action::{Action, ActionLane};
 use crate::agent::lane::model::command::{Command, CommandLane};
 use crate::agent::lane::model::demand::DemandLane;
@@ -75,7 +75,6 @@ use utilities::future::SwimStreamExt;
 use utilities::sync::{topic, trigger};
 use utilities::uri::RelativeUri;
 
-use crate::agent::lane::model::supply::supplier::SupplyLaneObserver;
 use crate::meta::info::{LaneInfo, LaneKind};
 use crate::meta::log::NodeLogger;
 use crate::meta::open_meta_lanes;
@@ -216,11 +215,15 @@ where
         });
 
     let task = async move {
+        let task_manager: FuturesUnordered<Instrumented<Eff>> = FuturesUnordered::new();
+
         let (meta_context, mut meta_tasks, meta_io) =
             open_meta_lanes::<Config, Agent, ContextImpl<Agent, Clk, Router>>(
                 uri.clone(),
                 &execution_config,
                 lane_summary,
+                stop_trigger.clone(),
+                &task_manager,
             );
 
         tasks.append(&mut meta_tasks);
@@ -242,8 +245,6 @@ where
                 .instrument(span!(Level::DEBUG, LANE_START, name = lane_name))
                 .await;
         }
-
-        let task_manager: FuturesUnordered<Instrumented<Eff>> = FuturesUnordered::new();
 
         let scheduler_task = ReceiverStream::new(rx)
             .take_until(stop_trigger)
@@ -1141,10 +1142,10 @@ where
 /// * `name` - The name of the lane.
 /// * `is_public` - Whether the lane is public (with respect to external message routing).
 /// * `buffer_size` - Buffer size for the MPSC channel accepting the events.
-pub fn make_supply_lane<Agent, Context, T, O>(
+pub fn make_supply_lane<Agent, Context, T>(
     name: impl Into<String>,
     is_public: bool,
-    observer: O,
+    buffer_size: NonZeroUsize,
 ) -> (
     SupplyLane<T>,
     impl LaneTasks<Agent, Context>,
@@ -1154,9 +1155,8 @@ where
     Agent: 'static,
     Context: AgentContext<Agent> + AgentExecutionContext + Send + Sync + 'static,
     T: Any + Clone + Send + Sync + Form + Debug,
-    O: SupplyLaneObserver<T>,
 {
-    let (lane, view) = make_lane_model(observer);
+    let (lane, view) = make_lane_model(buffer_size);
 
     let tasks = StatelessLifecycleTasks {
         name: name.into(),
@@ -1258,7 +1258,7 @@ where
     (lane, tasks, lane_io)
 }
 
-struct DemandLaneIo<Event> {
+pub struct DemandLaneIo<Event> {
     response_rx: mpsc::Receiver<Event>,
 }
 
@@ -1266,7 +1266,7 @@ impl<Event> DemandLaneIo<Event>
 where
     Event: Send + Sync + 'static,
 {
-    fn new(response_rx: mpsc::Receiver<Event>) -> DemandLaneIo<Event> {
+    pub fn new(response_rx: mpsc::Receiver<Event>) -> DemandLaneIo<Event> {
         DemandLaneIo { response_rx }
     }
 }
