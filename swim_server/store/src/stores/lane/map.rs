@@ -15,15 +15,15 @@
 use crate::stores::lane::{serialize, serialize_then, LaneKey};
 use crate::stores::node::SwimNodeStore;
 use crate::stores::{MapStorageKey, StoreKey};
-use crate::{KeyedSnapshot, PlaneStore, RangedSnapshot, Snapshot, StoreEngine, StoreError};
+use crate::{KeyedSnapshot, PlaneStore, RangedSnapshotLoad, Snapshot, StoreEngine, StoreError};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::marker::PhantomData;
-use std::sync::Arc;
+use swim_common::model::text::Text;
 
 pub struct MapDataModel<D, K, V> {
     delegate: MapDataModelDelegate<D>,
-    lane_uri: Arc<String>,
+    lane_uri: Text,
     _key: PhantomData<K>,
     _value: PhantomData<V>,
 }
@@ -34,7 +34,7 @@ pub enum MapDataModelDelegate<D> {
 }
 
 impl<D, K, V> MapDataModel<D, K, V> {
-    pub fn new(delegate: SwimNodeStore<D>, lane_uri: String, transient: bool) -> Self {
+    pub fn new<I: Into<Text>>(delegate: SwimNodeStore<D>, lane_uri: I, transient: bool) -> Self {
         let delegate = if transient {
             MapDataModelDelegate::Mem
         } else {
@@ -43,7 +43,7 @@ impl<D, K, V> MapDataModel<D, K, V> {
 
         MapDataModel {
             delegate,
-            lane_uri: Arc::new(lane_uri),
+            lane_uri: lane_uri.into(),
             _key: Default::default(),
             _value: Default::default(),
         }
@@ -117,13 +117,13 @@ where
     }
 }
 
-impl<D, K, V> RangedSnapshot for MapDataModel<D, K, V>
+impl<D, K, V> RangedSnapshotLoad for MapDataModel<D, K, V>
 where
     D: PlaneStore<Prefix = StoreKey>,
 {
-    type Prefix = Arc<String>;
+    type Prefix = Text;
 
-    fn ranged_snapshot<F, DK, DV>(
+    fn load_ranged_snapshot<F, DK, DV>(
         &self,
         prefix: Self::Prefix,
         map_fn: F,
@@ -140,7 +140,7 @@ where
             MapDataModelDelegate::Mem => {
                 unimplemented!()
             }
-            MapDataModelDelegate::Db(store) => store.ranged_snapshot(prefix, map_fn),
+            MapDataModelDelegate::Db(store) => store.load_ranged_snapshot(prefix, map_fn),
         }
     }
 }
@@ -158,7 +158,7 @@ where
     type Snapshot = KeyedSnapshot<K, V>;
 
     fn snapshot(&self) -> Result<Option<Self::Snapshot>, StoreError> {
-        self.ranged_snapshot(self.lane_uri.clone(), |key, value| {
+        self.load_ranged_snapshot(self.lane_uri.clone(), |key, value| {
             let store_key = deserialize::<MapStorageKey>(&key)?;
 
             let key = deserialize::<K>(&store_key.key.ok_or(StoreError::KeyNotFound)?)?;

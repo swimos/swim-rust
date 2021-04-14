@@ -15,7 +15,9 @@
 #[cfg(test)]
 mod tests;
 
-use crate::{ByteEngine, FromOpts, KeyedSnapshot, RangedSnapshot, Store, StoreError, StoreOpts};
+use crate::{
+    ByteEngine, FromOpts, KeyedSnapshot, RangedSnapshotLoad, Store, StoreError, StoreOpts,
+};
 use rocksdb::{Error, Options, DB};
 use std::path::Path;
 use std::sync::Arc;
@@ -37,10 +39,6 @@ impl RocksDatabase {
             delegate: Arc::new(delegate),
         }
     }
-
-    pub fn path(&self) -> &Path {
-        &self.delegate.path()
-    }
 }
 
 impl ByteEngine for RocksDatabase {
@@ -60,7 +58,11 @@ impl ByteEngine for RocksDatabase {
     }
 }
 
-impl Store for RocksDatabase {}
+impl Store for RocksDatabase {
+    fn path(&self) -> &Path {
+        &self.delegate.path()
+    }
+}
 
 impl FromOpts for RocksDatabase {
     type Opts = RocksOpts;
@@ -85,10 +87,10 @@ impl Default for RocksOpts {
     }
 }
 
-impl RangedSnapshot for RocksDatabase {
+impl RangedSnapshotLoad for RocksDatabase {
     type Prefix = Vec<u8>;
 
-    fn ranged_snapshot<F, K, V>(
+    fn load_ranged_snapshot<F, K, V>(
         &self,
         prefix: Self::Prefix,
         map_fn: F,

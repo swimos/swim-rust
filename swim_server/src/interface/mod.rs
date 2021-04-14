@@ -31,7 +31,7 @@ use std::fmt::{Display, Formatter};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use store::SwimPlaneStore;
-use store::{RocksDatabase, ServerStore, StoreEngineOpts, SwimStore};
+use store::{RocksDatabase, ServerStore, SwimStore};
 use swim_common::routing::ws::tungstenite::TungsteniteWsConnections;
 use swim_runtime::task::TaskError;
 use swim_runtime::time::clock::RuntimeClock;
@@ -63,7 +63,7 @@ impl Default for SwimServerBuilder {
             address: None,
             config: SwimServerConfig::default(),
             planes: Vec::new(),
-            store: ServerStore::new(StoreEngineOpts::default(), "target".into()),
+            store: ServerStore::new(Default::default(), "target".into()),
         }
     }
 }

@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::engines::db::lmdbx::{LmdbOpts, LmdbxDatabase};
-use crate::engines::db::test_suite;
-use crate::engines::db::test_suite::TransientDatabase;
+use crate::engines::lmdbx::{LmdbOpts, LmdbxDatabase};
+use crate::engines::test_suite;
+use crate::engines::test_suite::TransientDatabase;
 
 fn delegate() -> TransientDatabase<LmdbxDatabase> {
     TransientDatabase::new(LmdbOpts::default())

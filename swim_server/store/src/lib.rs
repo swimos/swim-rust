@@ -1,27 +1,3 @@
-// Copyright 2015-2021 SWIM.AI inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-pub mod mock;
-
-mod engines;
-mod stores;
-
-pub use engines::db::{lmdbx::LmdbxDatabase, rocks::RocksDatabase};
-pub use stores::lane::value::ValueDataModel;
-pub use stores::node::{NodeStore, SwimNodeStore};
-pub use stores::plane::{PlaneStore, SwimPlaneStore};
-
 use std::error::Error;
 use std::fmt::{Debug, Formatter};
 use std::io::ErrorKind;
@@ -29,7 +5,18 @@ use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 use std::vec::IntoIter;
 use std::{fs, io};
+
 use tempdir::TempDir;
+
+pub use engines::{LmdbxDatabase, RocksDatabase};
+pub use stores::lane::value::ValueDataModel;
+pub use stores::node::{NodeStore, SwimNodeStore};
+pub use stores::plane::{PlaneStore, SwimPlaneStore};
+
+pub mod mock;
+
+mod engines;
+mod stores;
 
 /// A directory on the file system used for sever stores.
 #[derive(Debug)]
@@ -93,17 +80,14 @@ pub enum StoreError {
     Closing,
 }
 
-/// Engine options for both map and value lanes.
-#[derive(Debug, Clone, Default)]
-pub struct StoreEngineOpts<O> {
-    /// Options that are used to instantiate stores.
-    opts: O,
-}
-
 /// A Swim server store.
 ///
-/// This trait only serves to compose the multiple traits that are required for the store.
-pub trait Store: FromOpts + RangedSnapshot + Send + Sync + Debug + ByteEngine + 'static {}
+/// This trait only serves to compose the multiple traits that are required for a store.
+pub trait Store:
+    FromOpts + RangedSnapshotLoad + Send + Sync + Debug + ByteEngine + 'static
+{
+    fn path(&self) -> &Path;
+}
 
 /// A Swim server store which will create plane stores on demand.
 ///
@@ -122,14 +106,14 @@ pub trait SwimStore {
         I: ToString;
 }
 
-/// A trait for executing ranged snapshots on stores.
+/// A trait for executing ranged snapshot reads on stores.
 // Todo: implement borrowed streaming snapshots.
-pub trait RangedSnapshot {
+pub trait RangedSnapshotLoad {
     /// The prefix to seek for.
     type Prefix;
 
-    /// Execute a ranged snapshot on the store, seeking by `prefix` and deserializing results with
-    /// `map_fn`.
+    /// Execute a ranged snapshot read on the store, seeking by `prefix` and deserializing results
+    /// with `map_fn`.
     ///
     /// Returns `Ok(None)` if no records matched `prefix` or `Ok(Some)` if matches were found.
     ///
@@ -142,7 +126,7 @@ pub trait RangedSnapshot {
     /// # Errors
     /// Errors if an error is encountered when attempting to execute the ranged snapshot on the
     /// store engine or if the `map_fn` fails to deserialize a key or value.
-    fn ranged_snapshot<F, K, V>(
+    fn load_ranged_snapshot<F, K, V>(
         &self,
         prefix: Self::Prefix,
         map_fn: F,
@@ -174,7 +158,7 @@ impl<K, V> Iterator for KeyedSnapshot<K, V> {
 ///
 /// Typically used by node stores and will delegate the snapshot to a ranged snapshot that uses a
 /// stored prefix owned by the lane.
-pub trait Snapshot<K, V>: RangedSnapshot {
+pub trait Snapshot<K, V>: RangedSnapshotLoad {
     /// The type of the snapshot. An iterator that will yield a deserialized key-value pair.
     type Snapshot: IntoIterator<Item = (K, V)>;
 
@@ -239,7 +223,7 @@ pub struct ServerStore<D: Store> {
     /// The directory that this store is operating from.
     dir: StoreDir,
     /// The options that all stores will be opened with.
-    opts: StoreEngineOpts<D::Opts>,
+    opts: D::Opts,
     _delegate_pd: PhantomData<D>,
 }
 
@@ -255,7 +239,7 @@ impl<D: Store> ServerStore<D> {
     ///
     /// # Panics
     /// Panics if the directory cannot be created.
-    pub fn new(opts: StoreEngineOpts<D::Opts>, base_path: PathBuf) -> ServerStore<D> {
+    pub fn new(opts: D::Opts, base_path: PathBuf) -> ServerStore<D> {
         ServerStore {
             dir: StoreDir::persistent(base_path).expect("Failed to create server store"),
             opts,
@@ -268,7 +252,7 @@ impl<D: Store> ServerStore<D> {
     ///
     /// # Panics
     /// Panics if the directory cannot be created.
-    pub fn transient(opts: StoreEngineOpts<D::Opts>, prefix: &str) -> ServerStore<D> {
+    pub fn transient(opts: D::Opts, prefix: &str) -> ServerStore<D> {
         ServerStore {
             dir: StoreDir::transient(prefix),
             opts,
@@ -290,23 +274,19 @@ impl<D: Store<Prefix = Vec<u8>>> SwimStore for ServerStore<D> {
 
 #[cfg(test)]
 mod tests {
-    use crate::engines::db::rocks::{RocksDatabase, RocksOpts};
+    use crate::engines::{RocksDatabase, RocksOpts};
     use crate::stores::{StoreKey, ValueStorageKey};
-    use crate::{ServerStore, StoreEngine, StoreEngineOpts, SwimStore};
-    use std::sync::Arc;
+    use crate::{ServerStore, StoreEngine, SwimStore};
 
     #[test]
     fn put_get() {
-        let server_opts = StoreEngineOpts {
-            opts: RocksOpts::default(),
-        };
-
+        let server_opts = RocksOpts::default();
         let mut store = ServerStore::<RocksDatabase>::transient(server_opts, "target".into());
         let plane_store = store.plane_store("unit").unwrap();
 
         let node_key = StoreKey::Value(ValueStorageKey {
-            node_uri: Arc::new("node".to_string()),
-            lane_uri: Arc::new("lane".to_string()),
+            node_uri: "node".into(),
+            lane_uri: "lane".into(),
         });
 
         let test_data = "test";

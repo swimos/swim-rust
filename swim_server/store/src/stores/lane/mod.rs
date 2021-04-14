@@ -14,7 +14,7 @@
 
 use crate::{StoreEngine, StoreError};
 use serde::Serialize;
-use std::sync::Arc;
+use swim_common::model::text::Text;
 
 pub mod map;
 pub mod value;
@@ -27,7 +27,7 @@ pub enum LaneKey {
     /// where `key` is the key of a lane's map data structure.
     Map {
         /// The lane URI.
-        lane_uri: Arc<String>,
+        lane_uri: Text,
         /// An optional, serialized, key. This is optional as ranged snapshots to not require the
         /// key.
         key: Option<Vec<u8>>,
@@ -35,7 +35,7 @@ pub enum LaneKey {
     /// A value lane key.
     Value {
         /// The lane URi.
-        lane_uri: Arc<String>,
+        lane_uri: Text,
     },
 }
 

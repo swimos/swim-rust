@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::engines::db::rocks::{RocksDatabase, RocksOpts};
-use crate::engines::db::test_suite;
-use crate::engines::db::test_suite::TransientDatabase;
+use crate::engines::rocks::{RocksDatabase, RocksOpts};
+use crate::engines::test_suite;
+use crate::engines::test_suite::TransientDatabase;
 
 fn delegate() -> TransientDatabase<RocksDatabase> {
     TransientDatabase::new(RocksOpts::default())

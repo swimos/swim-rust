@@ -15,13 +15,12 @@
 use crate::stores::lane::serialize;
 use crate::stores::node::{NodeStore, SwimNodeStore};
 use crate::stores::StoreKey;
-use crate::{
-    ByteEngine, KeyedSnapshot, RangedSnapshot, Store, StoreEngine, StoreEngineOpts, StoreError,
-};
+use crate::{ByteEngine, KeyedSnapshot, RangedSnapshotLoad, Store, StoreEngine, StoreError};
 use std::ffi::OsStr;
 use std::fmt::{Debug, Formatter};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use swim_common::model::text::Text;
 
 const STORE_DIR: &str = "store";
 const PLANES_DIR: &str = "planes";
@@ -47,7 +46,7 @@ where
         + Send
         + Sync
         + for<'a> StoreEngine<'a, Key = StoreKey>
-        + RangedSnapshot<Prefix = StoreKey>
+        + RangedSnapshotLoad<Prefix = StoreKey>
         + 'static,
 {
     /// The type of node stores which are created.
@@ -56,7 +55,7 @@ where
     /// Create a node store for `node_uri`.
     fn node_store<I>(&self, node_uri: I) -> Self::NodeStore
     where
-        I: ToString;
+        I: Into<Text>;
 }
 
 /// A store engine for planes.
@@ -65,7 +64,7 @@ where
 /// checked and the operation is delegated to the corresponding store.
 pub struct SwimPlaneStore<D> {
     /// The name of the plane.
-    plane_name: Arc<String>,
+    plane_name: Text,
     delegate: Arc<D>,
 }
 
@@ -94,16 +93,16 @@ where
 
     fn node_store<I>(&self, node: I) -> Self::NodeStore
     where
-        I: ToString,
+        I: Into<Text>,
     {
-        SwimNodeStore::new(self.clone(), node.to_string())
+        SwimNodeStore::new(self.clone(), node)
     }
 }
 
 impl<D: Store> SwimPlaneStore<D> {
-    pub(crate) fn new(plane_name: String, delegate: D) -> SwimPlaneStore<D> {
+    pub(crate) fn new<I: Into<Text>>(plane_name: I, delegate: D) -> SwimPlaneStore<D> {
         SwimPlaneStore {
-            plane_name: Arc::new(plane_name),
+            plane_name: plane_name.into(),
             delegate: Arc::new(delegate),
         }
     }
@@ -111,14 +110,12 @@ impl<D: Store> SwimPlaneStore<D> {
     pub(crate) fn open<B, P>(
         base_path: B,
         plane_name: P,
-        opts: &StoreEngineOpts<D::Opts>,
+        opts: &D::Opts,
     ) -> Result<SwimPlaneStore<D>, StoreError>
     where
         B: AsRef<Path>,
         P: AsRef<Path>,
     {
-        let StoreEngineOpts { opts } = opts;
-
         let path = path_for(base_path.as_ref(), plane_name.as_ref());
         let delegate = D::from_opts(&path, &opts)?;
         let plane_name = plane_name
@@ -150,13 +147,13 @@ where
     }
 }
 
-impl<D> RangedSnapshot for SwimPlaneStore<D>
+impl<D> RangedSnapshotLoad for SwimPlaneStore<D>
 where
     D: Store<Prefix = Vec<u8>>,
 {
     type Prefix = StoreKey;
 
-    fn ranged_snapshot<F, K, V>(
+    fn load_ranged_snapshot<F, K, V>(
         &self,
         prefix: Self::Prefix,
         map_fn: F,
@@ -164,18 +161,18 @@ where
     where
         F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
     {
-        self.delegate.ranged_snapshot(serialize(&prefix)?, map_fn)
+        self.delegate
+            .load_ranged_snapshot(serialize(&prefix)?, map_fn)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::engines::db::rocks::RocksDatabase;
+    use crate::engines::RocksDatabase;
     use crate::stores::plane::SwimPlaneStore;
     use crate::stores::{StoreKey, ValueStorageKey};
     use crate::StoreEngine;
     use rocksdb::{Options, DB};
-    use std::sync::Arc;
 
     #[test]
     fn put_get() {
@@ -185,11 +182,11 @@ mod tests {
         {
             let delegate = RocksDatabase::new(db);
 
-            let plane_store = SwimPlaneStore::new("test".into(), delegate);
+            let plane_store = SwimPlaneStore::new("test", delegate);
 
             let value_key = StoreKey::Value(ValueStorageKey {
-                node_uri: Arc::new("/node".to_string()),
-                lane_uri: Arc::new("/lane".to_string()),
+                node_uri: "/node".into(),
+                lane_uri: "/lane".into(),
             });
 
             let test_data = "test";

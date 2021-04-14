@@ -17,14 +17,14 @@ use crate::stores::node::SwimNodeStore;
 use crate::{PlaneStore, StoreEngine, StoreError};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
-use std::sync::Arc;
+use swim_common::model::text::Text;
 
 /// A value lane data model.
 pub struct ValueDataModel<D> {
     /// The store to delegate this model's operations to.
     delegate: ValueDataModelDelegate<D>,
     /// The lane URI that this store is operating on.
-    lane_uri: Arc<String>,
+    lane_uri: Text,
 }
 
 impl<D> ValueDataModel<D> {
@@ -34,16 +34,16 @@ impl<D> ValueDataModel<D> {
     /// `delegate`: if this data model is *not* transient, then delegate operations to this store.
     /// `lane_uri`: the lane URI that this store represents.
     /// `transient`: whether this store should be an in-memory model.
-    pub fn new(delegate: SwimNodeStore<D>, lane_uri: String, transient: bool) -> Self {
+    pub fn new<I: Into<Text>>(delegate: SwimNodeStore<D>, lane_uri: I, transient: bool) -> Self {
         if transient {
             ValueDataModel {
                 delegate: ValueDataModelDelegate::Mem,
-                lane_uri: Arc::new(lane_uri),
+                lane_uri: lane_uri.into(),
             }
         } else {
             ValueDataModel {
                 delegate: ValueDataModelDelegate::Db(delegate),
-                lane_uri: Arc::new(lane_uri),
+                lane_uri: lane_uri.into(),
             }
         }
     }

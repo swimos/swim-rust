@@ -18,16 +18,24 @@ use crate::stores::node::NodeStore;
 use crate::stores::plane::{PlaneStore, SwimPlaneStore};
 use crate::stores::StoreKey;
 use crate::{
-    ByteEngine, FromOpts, KeyedSnapshot, RangedSnapshot, Store, StoreEngine, StoreError, StoreOpts,
-    SwimStore,
+    ByteEngine, FromOpts, KeyedSnapshot, RangedSnapshotLoad, Store, StoreEngine, StoreError,
+    StoreOpts, SwimStore,
 };
 use serde::Serialize;
 use std::path::Path;
+use swim_common::model::text::Text;
+use tempdir::TempDir;
 
 #[derive(Debug)]
-pub struct MockServerStore;
+pub struct MockServerStore {
+    pub dir: TempDir,
+}
 
-impl Store for MockServerStore {}
+impl Store for MockServerStore {
+    fn path(&self) -> &Path {
+        self.dir.path()
+    }
+}
 
 pub struct MockOpts;
 
@@ -42,8 +50,11 @@ impl Default for MockOpts {
 impl FromOpts for MockServerStore {
     type Opts = MockOpts;
 
-    fn from_opts<I: AsRef<Path>>(_path: I, _opts: &Self::Opts) -> Result<Self, StoreError> {
-        Ok(MockServerStore)
+    fn from_opts<I: AsRef<Path>>(path: I, _opts: &Self::Opts) -> Result<Self, StoreError> {
+        Ok(MockServerStore {
+            dir: TempDir::new(path.as_ref().to_string_lossy().as_ref())
+                .expect("Failed to build temporary directory"),
+        })
     }
 }
 
@@ -61,10 +72,10 @@ impl ByteEngine for MockServerStore {
     }
 }
 
-impl RangedSnapshot for MockServerStore {
+impl RangedSnapshotLoad for MockServerStore {
     type Prefix = Vec<u8>;
 
-    fn ranged_snapshot<F, K, V>(
+    fn load_ranged_snapshot<F, K, V>(
         &self,
         _prefix: Self::Prefix,
         _map_fn: F,
@@ -79,11 +90,15 @@ impl RangedSnapshot for MockServerStore {
 impl SwimStore for MockServerStore {
     type PlaneStore = SwimPlaneStore<MockServerStore>;
 
-    fn plane_store<I>(&mut self, _path: I) -> Result<Self::PlaneStore, StoreError>
+    fn plane_store<I>(&mut self, path: I) -> Result<Self::PlaneStore, StoreError>
     where
         I: ToString,
     {
-        Ok(SwimPlaneStore::new("target".into(), MockServerStore))
+        Ok(SwimPlaneStore::new(
+            "target".to_string(),
+            MockServerStore::from_opts(path.to_string(), &Default::default())
+                .expect("Failed to build mock server store"),
+        ))
     }
 }
 
@@ -121,10 +136,10 @@ impl<'a> StoreEngine<'a> for EmptyDelegateStore {
     }
 }
 
-impl RangedSnapshot for EmptyDelegateStore {
+impl RangedSnapshotLoad for EmptyDelegateStore {
     type Prefix = StoreKey;
 
-    fn ranged_snapshot<F, K, V>(
+    fn load_ranged_snapshot<F, K, V>(
         &self,
         _prefix: Self::Prefix,
         _map_fn: F,
@@ -147,7 +162,7 @@ impl NodeStore for MockNodeStore {
         _transient: bool,
     ) -> MapDataModel<Self::Delegate, K, V>
     where
-        I: ToString,
+        I: Into<Text>,
         K: Serialize,
         V: Serialize,
         Self: Sized,
@@ -157,7 +172,7 @@ impl NodeStore for MockNodeStore {
 
     fn value_lane_store<I, V>(&self, _lane: I, _transient: bool) -> ValueDataModel<Self::Delegate>
     where
-        I: ToString,
+        I: Into<Text>,
         V: Serialize,
         Self: Sized,
     {
@@ -165,10 +180,10 @@ impl NodeStore for MockNodeStore {
     }
 }
 
-impl RangedSnapshot for MockPlaneStore {
+impl RangedSnapshotLoad for MockPlaneStore {
     type Prefix = StoreKey;
 
-    fn ranged_snapshot<F, K, V>(
+    fn load_ranged_snapshot<F, K, V>(
         &self,
         _prefix: Self::Prefix,
         _map_fn: F,
@@ -203,7 +218,7 @@ impl PlaneStore for MockPlaneStore {
 
     fn node_store<I>(&self, _node: I) -> Self::NodeStore
     where
-        I: ToString,
+        I: Into<Text>,
     {
         MockNodeStore
     }

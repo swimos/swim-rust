@@ -8,11 +8,11 @@
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KINDither express or implied.
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::{ByteEngine, RangedSnapshot, Store, StoreError};
+use crate::{ByteEngine, RangedSnapshotLoad, Store, StoreError};
 use std::collections::HashMap;
 use std::ops::Deref;
 use tempdir::TempDir;
@@ -103,16 +103,16 @@ pub fn empty_snapshot<D>(db: TransientDatabase<D>)
 where
     D: Store,
     D: ByteEngine,
-    D: RangedSnapshot<Prefix = Vec<u8>>,
+    D: RangedSnapshotLoad<Prefix = Vec<u8>>,
 {
-    let result = db.ranged_snapshot(b"prefix".to_vec(), map_fn);
+    let result = db.load_ranged_snapshot(b"prefix".to_vec(), map_fn);
     assert!(matches!(result, Ok(None)));
 }
 
 pub fn ranged_snapshot<D>(db: TransientDatabase<D>)
 where
     D: ByteEngine,
-    D: RangedSnapshot<Prefix = Vec<u8>>,
+    D: RangedSnapshotLoad<Prefix = Vec<u8>>,
 {
     let prefix = "/foo/bar";
     let limit = 256;
@@ -140,7 +140,7 @@ where
         assert!(result.is_ok());
     }
 
-    let snapshot_result = db.ranged_snapshot(prefix.as_bytes().to_vec(), map_fn);
+    let snapshot_result = db.load_ranged_snapshot(prefix.as_bytes().to_vec(), map_fn);
     assert!(matches!(snapshot_result, Ok(Some(_))));
 
     let snapshot = snapshot_result.unwrap().unwrap();

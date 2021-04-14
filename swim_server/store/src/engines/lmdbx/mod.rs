@@ -15,13 +15,14 @@
 #[cfg(test)]
 mod tests;
 
-use crate::{ByteEngine, FromOpts, KeyedSnapshot, RangedSnapshot, Store, StoreError, StoreOpts};
+use crate::{
+    ByteEngine, FromOpts, KeyedSnapshot, RangedSnapshotLoad, Store, StoreError, StoreOpts,
+};
 use heed::types::ByteSlice;
 use heed::{Database, Env, EnvOpenOptions, Error};
 use std::fmt::{Debug, Formatter};
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 impl From<heed::Error> for StoreError {
     fn from(e: heed::Error) -> Self {
@@ -36,56 +37,27 @@ impl From<heed::Error> for StoreError {
     }
 }
 
-pub struct LmdbxDatabaseInner {
-    path: PathBuf,
-    delegate: Arc<Database<ByteSlice, ByteSlice>>,
-    env: Arc<Env>,
-}
-
-impl PartialEq for LmdbxDatabaseInner {
+impl PartialEq for LmdbxDatabase {
     fn eq(&self, other: &Self) -> bool {
         self.path.eq(&other.path)
     }
 }
 
-impl LmdbxDatabaseInner {
-    pub fn new(
-        path: PathBuf,
-        delegate: Arc<Database<ByteSlice, ByteSlice>>,
-        env: Arc<Env>,
-    ) -> Self {
-        LmdbxDatabaseInner {
-            path,
-            delegate,
-            env,
-        }
-    }
-}
-
-#[derive(PartialEq)]
 pub struct LmdbxDatabase {
-    inner: Arc<LmdbxDatabaseInner>,
+    path: PathBuf,
+    delegate: Database<ByteSlice, ByteSlice>,
+    env: Env,
 }
 
 impl Debug for LmdbxDatabase {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("LmdbxDatabase")
-            .field("path", &self.inner.path)
+            .field("path", &self.path)
             .finish()
     }
 }
 
 impl LmdbxDatabase {
-    fn from_raw(path: PathBuf, delegate: Database<ByteSlice, ByteSlice>, env: Env) -> Self {
-        LmdbxDatabase {
-            inner: Arc::new(LmdbxDatabaseInner::new(
-                path,
-                Arc::new(delegate),
-                Arc::new(env),
-            )),
-        }
-    }
-
     fn init<P: AsRef<Path>>(path: P, config: &EnvOpenOptions) -> Result<Self, StoreError> {
         let path = path.as_ref().to_owned();
 
@@ -97,15 +69,23 @@ impl LmdbxDatabase {
         let env = config.open(path.deref())?;
         let db = env.create_database(None)?;
 
-        Ok(LmdbxDatabase::from_raw(path, db, env))
+        Ok(LmdbxDatabase {
+            path,
+            delegate: db,
+            env,
+        })
     }
 
     pub fn path(&self) -> &Path {
-        &self.inner.path.as_path()
+        &self.path.as_path()
     }
 }
 
-impl Store for LmdbxDatabase {}
+impl Store for LmdbxDatabase {
+    fn path(&self) -> &Path {
+        self.path.as_path()
+    }
+}
 
 impl FromOpts for LmdbxDatabase {
     type Opts = LmdbOpts;
@@ -125,10 +105,10 @@ impl Default for LmdbOpts {
     }
 }
 
-impl RangedSnapshot for LmdbxDatabase {
+impl RangedSnapshotLoad for LmdbxDatabase {
     type Prefix = Vec<u8>;
 
-    fn ranged_snapshot<F, K, V>(
+    fn load_ranged_snapshot<F, K, V>(
         &self,
         prefix: Self::Prefix,
         map_fn: F,
@@ -136,7 +116,7 @@ impl RangedSnapshot for LmdbxDatabase {
     where
         F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
     {
-        let LmdbxDatabaseInner { delegate, env, .. } = &*self.inner;
+        let LmdbxDatabase { delegate, env, .. } = self;
         let tx = env.read_txn()?;
 
         let mut it = delegate
@@ -161,14 +141,9 @@ impl RangedSnapshot for LmdbxDatabase {
     }
 }
 
-#[derive(Clone)]
-pub struct LmdbxOpts {
-    pub open_opts: EnvOpenOptions,
-}
-
 impl ByteEngine for LmdbxDatabase {
     fn put(&self, key: Vec<u8>, value: Vec<u8>) -> Result<(), StoreError> {
-        let LmdbxDatabaseInner { delegate, env, .. } = &*self.inner;
+        let LmdbxDatabase { delegate, env, .. } = self;
         let mut wtxn = env.write_txn()?;
 
         delegate.put(&mut wtxn, key.as_slice(), value.as_slice())?;
@@ -176,7 +151,7 @@ impl ByteEngine for LmdbxDatabase {
     }
 
     fn get(&self, key: Vec<u8>) -> Result<Option<Vec<u8>>, StoreError> {
-        let LmdbxDatabaseInner { delegate, env, .. } = &*self.inner;
+        let LmdbxDatabase { delegate, env, .. } = self;
         let rtxn = env.read_txn()?;
 
         delegate
@@ -186,7 +161,7 @@ impl ByteEngine for LmdbxDatabase {
     }
 
     fn delete(&self, key: Vec<u8>) -> Result<(), StoreError> {
-        let LmdbxDatabaseInner { delegate, env, .. } = &*self.inner;
+        let LmdbxDatabase { delegate, env, .. } = self;
         let mut wtxn = env.write_txn()?;
         let _result = delegate.delete(&mut wtxn, key.as_slice())?;
 
