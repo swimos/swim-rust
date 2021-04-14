@@ -23,7 +23,7 @@ use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
 use std::sync::Arc;
-use swim_common::routing::{ServerRouter, TaggedEnvelope};
+use swim_common::routing::{Router, TaggedEnvelope};
 use swim_runtime::time::clock::Clock;
 use utilities::uri::RelativeUri;
 
@@ -62,19 +62,19 @@ where
         }
     }
 
-    pub fn run<Clk, Envelopes, Router>(
+    pub fn run<Clk, Envelopes, R>(
         &self,
         uri: RelativeUri,
         parameters: HashMap<String, String>,
         execution_config: AgentExecutionConfig,
         clock: Clk,
         incoming_envelopes: Envelopes,
-        router: Router,
+        router: R,
     ) -> (Arc<dyn Any + Send + Sync>, BoxFuture<'static, AgentResult>)
     where
         Clk: Clock,
         Envelopes: Stream<Item = TaggedEnvelope> + Send + 'static,
-        Router: ServerRouter + Clone + 'static,
+        R: Router + Clone + 'static,
     {
         let AgentProvider {
             configuration,
@@ -96,12 +96,12 @@ where
     }
 }
 
-impl<Clk, Envelopes, Router, Agent, Config, Lifecycle> AgentRoute<Clk, Envelopes, Router>
+impl<Clk, Envelopes, R, Agent, Config, Lifecycle> AgentRoute<Clk, Envelopes, R>
     for AgentProvider<Agent, Config, Lifecycle>
 where
     Clk: Clock,
     Envelopes: Stream<Item = TaggedEnvelope> + Send + 'static,
-    Router: ServerRouter + Clone + 'static,
+    R: Router + Clone + 'static,
     Agent: SwimAgent<Config> + Send + Sync + Debug + 'static,
     Config: Send + Sync + Clone + Debug + 'static,
     Lifecycle: AgentLifecycle<Agent> + Send + Sync + Clone + Debug + 'static,
@@ -113,7 +113,7 @@ where
         execution_config: AgentExecutionConfig,
         clock: Clk,
         incoming_envelopes: Envelopes,
-        router: Router,
+        router: R,
     ) -> (Arc<dyn Any + Send + Sync>, BoxFuture<'static, AgentResult>) {
         self.run(
             uri,

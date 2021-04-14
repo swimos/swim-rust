@@ -30,7 +30,7 @@ use std::fmt::{Display, Formatter};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use swim_common::model::Value;
-use swim_common::routing::{RoutingAddr, ServerRouter};
+use swim_common::routing::{RoutingAddr, Router};
 use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
@@ -117,13 +117,13 @@ where
     /// #Type Paramameters
     ///
     /// * `Router` - The type of the server router.
-    pub async fn run<Router>(
+    pub async fn run<R>(
         mut self,
-        mut router: Router,
+        mut router: R,
         mut spawn_tx: mpsc::Sender<Eff>,
         error_collector: mpsc::Sender<UplinkErrorReport>,
     ) where
-        Router: ServerRouter,
+        R: Router,
     {
         let mut uplink_senders: HashMap<RoutingAddr, UplinkHandle> = HashMap::new();
         let mut iteration_count: usize = 0;
@@ -193,15 +193,15 @@ where
     }
 
     //Create a new uplink state machine and attach it to the router
-    async fn make_uplink<Router>(
+    async fn make_uplink<R>(
         &mut self,
         addr: RoutingAddr,
         err_tx: mpsc::Sender<UplinkErrorReport>,
         spawn_tx: &mut mpsc::Sender<Eff>,
-        router: &mut Router,
+        router: &mut R,
     ) -> Option<UplinkHandle>
     where
-        Router: ServerRouter,
+        R: Router,
     {
         let UplinkSpawner {
             handler,

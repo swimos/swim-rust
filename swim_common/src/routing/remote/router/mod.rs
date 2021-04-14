@@ -16,7 +16,7 @@ use crate::request::Request;
 use crate::routing::remote::{RawRoute, RoutingRequest};
 use crate::routing::ResolutionError;
 use crate::routing::RouterError;
-use crate::routing::{Route, RoutingAddr, ServerRouter, TaggedSender};
+use crate::routing::{Route, RoutingAddr, Router, TaggedSender};
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use std::net::SocketAddr;
@@ -50,7 +50,7 @@ impl<Delegate> RemoteRouter<Delegate> {
     }
 }
 
-impl<Delegate: ServerRouter> ServerRouter for RemoteRouter<Delegate> {
+impl<Delegate: Router> Router for RemoteRouter<Delegate> {
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,

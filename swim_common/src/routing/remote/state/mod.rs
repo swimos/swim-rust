@@ -23,7 +23,7 @@ use crate::routing::remote::{
 };
 use crate::routing::ws::WsConnections;
 use crate::routing::ConnectionError;
-use crate::routing::{ConnectionDropped, RoutingAddr, ServerRouterFactory};
+use crate::routing::{ConnectionDropped, RoutingAddr, RouterFactory};
 use futures::future::{BoxFuture, Fuse};
 use futures::StreamExt;
 use futures::{select_biased, FutureExt};
@@ -130,7 +130,7 @@ where
     External: ExternalConnections,
     Ws: WsConnections<External::Socket> + Send + Sync + 'static,
     Sp: Spawner<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>> + Unpin,
-    RouterFac: ServerRouterFactory + 'static,
+    RouterFac: RouterFactory + 'static,
 {
     type Socket = External::Socket;
     type WebSocket = Ws::StreamSink;
@@ -243,7 +243,7 @@ where
     External: ExternalConnections,
     Ws: WsConnections<External::Socket> + Send + Sync + 'static,
     Sp: Spawner<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>> + Unpin,
-    RouterFac: ServerRouterFactory + 'static,
+    RouterFac: RouterFactory + 'static,
 {
     /// Create a new, empty state.
     ///

@@ -29,7 +29,7 @@ use swim_common::record;
 use swim_common::routing::error::ResolutionError;
 use swim_common::routing::error::RouterError;
 use swim_common::routing::{
-    ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedEnvelope, TaggedSender,
+    ConnectionDropped, Route, RoutingAddr, Router, TaggedEnvelope, TaggedSender,
 };
 use swim_common::warp::envelope::Envelope;
 use swim_runtime::time::timeout;
@@ -134,7 +134,7 @@ impl MockRouter {
     }
 }
 
-impl ServerRouter for MockRouter {
+impl Router for MockRouter {
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,

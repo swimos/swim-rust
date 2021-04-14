@@ -7,7 +7,7 @@ use swim_common::request::Request;
 use swim_common::routing::error::ResolutionError;
 use swim_common::routing::error::RouterError;
 use swim_common::routing::remote::{RawRoute, RoutingRequest};
-use swim_common::routing::{Route, RoutingAddr, ServerRouter, ServerRouterFactory, TaggedSender};
+use swim_common::routing::{Route, RoutingAddr, Router, RouterFactory, TaggedSender};
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use url::Url;
@@ -31,7 +31,7 @@ impl TopLevelRouterFactory {
     }
 }
 
-impl ServerRouterFactory for TopLevelRouterFactory {
+impl RouterFactory for TopLevelRouterFactory {
     type Router = TopLevelRouter;
 
     fn create_for(&self, addr: RoutingAddr) -> Self::Router {
@@ -60,7 +60,7 @@ impl TopLevelRouter {
     }
 }
 
-impl ServerRouter for TopLevelRouter {
+impl Router for TopLevelRouter {
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,

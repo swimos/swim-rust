@@ -31,7 +31,7 @@ use swim_common::model::Value;
 use swim_common::routing::error::ResolutionError;
 use swim_common::routing::error::RouterError;
 use swim_common::routing::{
-    ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedClientEnvelope, TaggedEnvelope,
+    ConnectionDropped, Route, RoutingAddr, Router, TaggedClientEnvelope, TaggedEnvelope,
     TaggedSender,
 };
 use swim_common::warp::envelope::{Envelope, OutgoingHeader, OutgoingLinkMessage};
@@ -92,7 +92,7 @@ impl MockRouterInner {
 #[derive(Debug, Clone)]
 pub struct MockRouter(Arc<Mutex<MockRouterInner>>);
 
-impl ServerRouter for MockRouter {
+impl Router for MockRouter {
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,

@@ -44,7 +44,7 @@ use swim_common::routing::error::RouterError;
 use swim_common::routing::error::RoutingError;
 use swim_common::routing::error::SendError;
 use swim_common::routing::{
-    ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedClientEnvelope, TaggedEnvelope,
+    ConnectionDropped, Route, RoutingAddr, Router, TaggedClientEnvelope, TaggedEnvelope,
     TaggedSender,
 };
 use swim_common::sink::item::ItemSink;
@@ -356,7 +356,7 @@ impl<'a> ItemSink<'a, Envelope> for TestSender {
     }
 }
 
-impl ServerRouter for TestRouter {
+impl Router for TestRouter {
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,
@@ -1315,7 +1315,7 @@ impl AgentExecutionContext for MultiTestContext {
     }
 }
 
-impl ServerRouter for MultiTestRouter {
+impl Router for MultiTestRouter {
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,

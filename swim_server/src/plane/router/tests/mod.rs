@@ -19,7 +19,7 @@ use futures::future::join;
 use swim_common::routing::error::{ConnectionError, ProtocolError, ResolutionErrorKind};
 use swim_common::routing::error::{RouterError, Unresolvable};
 use swim_common::routing::remote::RawRoute;
-use swim_common::routing::{RoutingAddr, ServerRouter, ServerRouterFactory, TaggedEnvelope};
+use swim_common::routing::{RoutingAddr, Router, RouterFactory, TaggedEnvelope};
 use swim_common::warp::envelope::Envelope;
 use tokio::sync::mpsc;
 use url::Url;

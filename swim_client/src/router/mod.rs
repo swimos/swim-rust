@@ -47,7 +47,7 @@ use swim_common::routing::remote::{
 };
 use swim_common::routing::ws::tungstenite::TungsteniteWsConnections;
 use swim_common::routing::{
-    Route, RoutingAddr, ServerRouter, ServerRouterFactory, TaggedEnvelope, TaggedSender,
+    Route, RoutingAddr, Router, RouterFactory, TaggedEnvelope, TaggedSender,
 };
 use tokio::time::sleep;
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
@@ -90,7 +90,7 @@ impl ClientRouterFactory {
     }
 }
 
-impl ServerRouterFactory for ClientRouterFactory {
+impl RouterFactory for ClientRouterFactory {
     type Router = ClientRouter;
 
     fn create_for(&self, addr: RoutingAddr) -> Self::Router {
@@ -107,7 +107,7 @@ pub(crate) struct ClientRouter {
     request_sender: mpsc::Sender<ClientRequest>,
 }
 
-impl ServerRouter for ClientRouter {
+impl Router for ClientRouter {
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,
@@ -173,7 +173,7 @@ impl ServerRouter for ClientRouter {
 
 /// The Router is responsible for routing messages between the downlinks and the connections from the
 /// connection pool. It can be used to obtain a connection for a downlink or to send direct messages.
-pub trait Router: Send {
+pub trait OldRouter: Send {
     type ConnectionFut: Future<Output = Result<ConnectionChannel, RequestError>> + Send;
 
     /// For full duplex connections
@@ -653,7 +653,7 @@ impl<Pool: ConnectionPool> HostManager<Pool> {
 
 type ConnectionChannel = (mpsc::Sender<Envelope>, mpsc::Receiver<RouterEvent>);
 
-impl<Pool: ConnectionPool> Router for SwimRouter<Pool> {
+impl<Pool: ConnectionPool> OldRouter for SwimRouter<Pool> {
     type ConnectionFut = BoxFuture<'static, Result<ConnectionChannel, RequestError>>;
 
     fn connection_for(&mut self, target: &AbsolutePath) -> Self::ConnectionFut {

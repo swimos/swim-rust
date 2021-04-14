@@ -113,7 +113,7 @@ impl Route {
 }
 
 /// Interface for interacting with the server [`Envelope`] router.
-pub trait ServerRouter: Send + Sync {
+pub trait Router: Send + Sync {
     fn resolve_sender(&mut self, addr: RoutingAddr, origin: Option<SocketAddr>) -> BoxFuture<Result<Route, ResolutionError>>;
 
     fn lookup(
@@ -124,8 +124,8 @@ pub trait ServerRouter: Send + Sync {
 }
 
 /// Create router instances bound to particular routing addresses.
-pub trait ServerRouterFactory: Send + Sync {
-    type Router: ServerRouter;
+pub trait RouterFactory: Send + Sync {
+    type Router: Router;
 
     fn create_for(&self, addr: RoutingAddr) -> Self::Router;
 }

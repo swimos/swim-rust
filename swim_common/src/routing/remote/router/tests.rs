@@ -18,7 +18,7 @@ use crate::routing::error::{RouterError, Unresolvable};
 use crate::routing::remote::router::RemoteRouter;
 use crate::routing::remote::test_fixture::LocalRoutes;
 use crate::routing::remote::{RawRoute, RoutingRequest};
-use crate::routing::{Route, RoutingAddr, ServerRouter, TaggedEnvelope};
+use crate::routing::{Route, RoutingAddr, Router, TaggedEnvelope};
 use crate::warp::envelope::Envelope;
 use futures::future::join;
 use futures::io::ErrorKind;

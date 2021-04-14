@@ -19,7 +19,7 @@ use swim_common::request::Request;
 use swim_common::routing::error::ResolutionError;
 use swim_common::routing::error::RouterError;
 use swim_common::routing::remote::RawRoute;
-use swim_common::routing::{Route, RoutingAddr, ServerRouter, ServerRouterFactory, TaggedSender};
+use swim_common::routing::{Route, RoutingAddr, Router, RouterFactory, TaggedSender};
 use tokio::sync::{mpsc, oneshot};
 use url::Url;
 use utilities::uri::RelativeUri;
@@ -30,12 +30,12 @@ mod tests;
 
 /// Creates [`PlaneRouter`] instances by cloning a channel back to the plane.
 #[derive(Debug)]
-pub struct PlaneRouterFactory<DelegateFac: ServerRouterFactory> {
+pub struct PlaneRouterFactory<DelegateFac: RouterFactory> {
     request_sender: mpsc::Sender<PlaneRequest>,
     delegate_fac: DelegateFac,
 }
 
-impl<DelegateFac: ServerRouterFactory> PlaneRouterFactory<DelegateFac> {
+impl<DelegateFac: RouterFactory> PlaneRouterFactory<DelegateFac> {
     /// Create a factory from a channel back to the owning plane.
     pub(in crate) fn new(
         request_sender: mpsc::Sender<PlaneRequest>,
@@ -48,7 +48,7 @@ impl<DelegateFac: ServerRouterFactory> PlaneRouterFactory<DelegateFac> {
     }
 }
 
-impl<DelegateFac: ServerRouterFactory> ServerRouterFactory for PlaneRouterFactory<DelegateFac> {
+impl<DelegateFac: RouterFactory> RouterFactory for PlaneRouterFactory<DelegateFac> {
     type Router = PlaneRouter<DelegateFac::Router>;
 
     fn create_for(&self, addr: RoutingAddr) -> Self::Router {
@@ -60,7 +60,7 @@ impl<DelegateFac: ServerRouterFactory> ServerRouterFactory for PlaneRouterFactor
     }
 }
 
-/// An implementation of [`ServerRouter`] tied to a plane.
+/// An implementation of [`Router`] tied to a plane.
 #[derive(Debug, Clone)]
 pub struct PlaneRouter<Delegate> {
     tag: RoutingAddr,
@@ -82,7 +82,7 @@ impl<Delegate> PlaneRouter<Delegate> {
     }
 }
 
-impl<Delegate: ServerRouter> ServerRouter for PlaneRouter<Delegate> {
+impl<Delegate: Router> Router for PlaneRouter<Delegate> {
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,

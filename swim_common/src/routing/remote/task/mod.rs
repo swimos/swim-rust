@@ -27,7 +27,7 @@ use crate::routing::ws::selector::{SelectorResult, WsStreamSelector};
 use crate::routing::ws::{CloseCode, CloseReason, JoinedStreamSink, WsMessage};
 use crate::routing::RouterError;
 use crate::routing::{
-    ConnectionDropped, Route, RoutingAddr, ServerRouter, ServerRouterFactory, TaggedEnvelope,
+    ConnectionDropped, Route, RoutingAddr, Router, RouterFactory, TaggedEnvelope,
 };
 use crate::warp::envelope::{Envelope, EnvelopeHeader, EnvelopeParseErr, OutgoingHeader};
 use crate::warp::path::RelativePath;
@@ -96,10 +96,10 @@ impl From<EnvelopeParseErr> for Completion {
 const IGNORING_MESSAGE: &str = "Ignoring unexpected message.";
 const ERROR_ON_CLOSE: &str = "Error whilst closing connection.";
 
-impl<Str, Router> ConnectionTask<Str, Router>
+impl<Str, R> ConnectionTask<Str, R>
 where
     Str: JoinedStreamSink<WsMessage, ConnectionError> + Unpin,
-    Router: ServerRouter,
+    R: Router,
 {
     /// Create a new task.
     ///
@@ -115,7 +115,7 @@ where
     pub fn new(
         addr: SocketAddr,
         ws_stream: Str,
-        router: Router,
+        router: R,
         messages: mpsc::Receiver<TaggedEnvelope>,
         message_injector: mpsc::Sender<TaggedEnvelope>,
         stop_signal: trigger::Receiver,
@@ -339,8 +339,8 @@ impl From<RouterError> for DispatchError {
     }
 }
 
-async fn dispatch_envelope<Router, F, D>(
-    router: &mut Router,
+async fn dispatch_envelope<R, F, D>(
+    router: &mut R,
     resolved: &mut HashMap<RelativePath, Route>,
     mut envelope: Envelope,
     origin: SocketAddr,
@@ -348,7 +348,7 @@ async fn dispatch_envelope<Router, F, D>(
     delay_fn: F,
 ) -> Result<(), (Envelope, DispatchError)>
 where
-    Router: ServerRouter,
+    R: Router,
     F: Fn(Duration) -> D,
     D: Future<Output = ()>,
 {
@@ -377,14 +377,14 @@ where
     }
 }
 
-async fn try_dispatch_envelope<Router>(
-    router: &mut Router,
+async fn try_dispatch_envelope<R>(
+    router: &mut R,
     resolved: &mut HashMap<RelativePath, Route>,
     envelope: Envelope,
     origin: SocketAddr,
 ) -> Result<(), (Envelope, DispatchError)>
 where
-    Router: ServerRouter,
+    R: Router,
 {
     if let Some(target) = envelope.header.relative_path().as_ref() {
         let Route { sender, .. } = if let Some(route) = resolved.get_mut(target) {
@@ -420,13 +420,13 @@ where
     }
 }
 
-async fn get_route<Router>(
-    router: &mut Router,
+async fn get_route<R>(
+    router: &mut R,
     target: &RelativePath,
     origin: SocketAddr,
 ) -> Result<Route, DispatchError>
 where
-    Router: ServerRouter,
+    R: Router,
 {
     let target_addr = router
         .lookup(None, RelativeUri::from_str(&target.node.as_str())?)
@@ -459,7 +459,7 @@ impl<RouterFac> TaskFactory<RouterFac> {
 }
 impl<RouterFac> TaskFactory<RouterFac>
 where
-    RouterFac: ServerRouterFactory + 'static,
+    RouterFac: RouterFactory + 'static,
 {
     pub fn spawn_connection_task<Str, Sp>(
         &self,

@@ -17,7 +17,7 @@ use crate::agent::Eff;
 use futures::future::{join, ready, BoxFuture};
 use futures::FutureExt;
 use swim_common::routing::{
-    ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedEnvelope, TaggedSender,
+    ConnectionDropped, Route, RoutingAddr, Router, TaggedEnvelope, TaggedSender,
 };
 use tokio::sync::mpsc;
 
@@ -56,7 +56,7 @@ impl TestRouter {
     }
 }
 
-impl ServerRouter for TestRouter {
+impl Router for TestRouter {
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,

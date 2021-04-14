@@ -29,7 +29,7 @@ use crate::downlink::{
     command_downlink, event_downlink, map_downlink, value_downlink, Command, Downlink,
     DownlinkError, Message, SchemaViolations,
 };
-use crate::router::{ClientRequest, ClientRouterFactory, Router, RouterEvent, SubscriberRequest};
+use crate::router::{ClientRequest, ClientRouterFactory, OldRouter, RouterEvent, SubscriberRequest};
 use either::Either;
 use futures::stream::Fuse;
 use futures::{SinkExt, Stream};
@@ -97,7 +97,7 @@ use swim_common::routing::remote::net::dns::Resolver;
 use swim_common::routing::remote::net::plain::TokioPlainTextNetworking;
 use swim_common::routing::ws::tungstenite::TungsteniteWsConnections;
 use swim_common::routing::{
-    ConnectionDropped, Route, RoutingAddr, ServerRouter, ServerRouterFactory, TaggedEnvelope,
+    ConnectionDropped, Route, RoutingAddr, Router, RouterFactory, TaggedEnvelope,
     TaggedSender,
 };
 use tokio::sync::mpsc::Receiver;
@@ -197,7 +197,9 @@ impl OutgoingManager {
                 Either::Left(Some(envelope)) => {
                     //Todo dm this should run in parallel
                     for mut sub in &mut subs {
-                        sub.send(envelope.clone()).await.unwrap();
+                        if sub.send(envelope.clone()).await.is_err() {
+                            eprintln!("err");
+                        }
                     }
                 }
                 Either::Right(Some(sub_request)) => {

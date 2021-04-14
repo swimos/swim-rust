@@ -21,7 +21,7 @@ use crate::routing::remote::{ExternalConnections, Listener};
 use crate::routing::ws::{CloseReason, JoinedStreamSink, WsConnections, WsMessage};
 use crate::routing::RouterError;
 use crate::routing::{
-    Route, RoutingAddr, ServerRouter, ServerRouterFactory, TaggedEnvelope, TaggedSender,
+    Route, RoutingAddr, Router, RouterFactory, TaggedEnvelope, TaggedSender,
 };
 use futures::future::{ready, BoxFuture};
 use futures::io::ErrorKind;
@@ -66,7 +66,7 @@ impl LocalRoutes {
     }
 }
 
-impl ServerRouter for LocalRoutes {
+impl Router for LocalRoutes {
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,
@@ -187,7 +187,7 @@ impl LocalRoutes {
     }
 }
 
-impl ServerRouterFactory for LocalRoutes {
+impl RouterFactory for LocalRoutes {
     type Router = LocalRoutes;
 
     fn create_for(&self, addr: RoutingAddr) -> Self::Router {

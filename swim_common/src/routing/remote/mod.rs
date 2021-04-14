@@ -45,7 +45,7 @@ use crate::routing::remote::config::ConnectionConfig;
 use crate::routing::remote::state::{DeferredResult, Event, RemoteConnections, RemoteTasksState};
 use crate::routing::remote::table::HostAndPort;
 use crate::routing::ws::WsConnections;
-use crate::routing::{ConnectionDropped, RoutingAddr, ServerRouterFactory, TaggedEnvelope};
+use crate::routing::{ConnectionDropped, RoutingAddr, RouterFactory, TaggedEnvelope};
 use futures::stream::FusedStream;
 use std::io;
 use std::io::Error;
@@ -137,7 +137,7 @@ impl<External, Ws, RouterFac, Sp> RemoteConnectionsTask<External, Ws, RouterFac,
 where
     External: ExternalConnections,
     Ws: WsConnections<External::Socket> + Send + Sync + 'static,
-    RouterFac: ServerRouterFactory + 'static,
+    RouterFac: RouterFactory + 'static,
     Sp: Spawner<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>> + Send + Unpin,
 {
     pub async fn new_client_task(
