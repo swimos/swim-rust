@@ -17,6 +17,11 @@ use num_bigint::{BigInt, BigUint};
 use std::borrow::Cow;
 use std::marker::PhantomData;
 
+/// Utility type used in the automatic derivation of [`StructuralReadable`] instances.
+/// It should never be necessary to use this type directly. This wraps a generic
+/// state type, built from tuples and [`Option`] so that it can be used to produce
+/// a unique implementation of [`HeaderReader`] for a type without having to generate
+/// new structs.
 pub struct Builder<T, State> {
     _type: PhantomData<fn(State) -> T>,
     pub state: State,
@@ -35,6 +40,9 @@ impl<T, State: Default> Default for Builder<T, State> {
     }
 }
 
+/// Many types do not require attributes. Implementing this empty trait will prove
+/// a default implementation of [`HeaderReader`] that will return an error if any
+/// attributes are read.
 pub trait NoAttributes {}
 
 impl<B: NoAttributes + BodyReader> HeaderReader for B {
@@ -54,6 +62,9 @@ impl<B: NoAttributes + BodyReader> HeaderReader for B {
     }
 }
 
+/// This type wraps instances of [`HeaderReader`] and [`BodyReader`] with an additional
+/// payload (to be extracted after the complete). This is to facilitate nested, stateful
+/// readers where the type of the reader changes as the depth increases.
 pub struct Wrapped<Payload, Reader> {
     pub payload: Payload,
     pub reader: Reader,

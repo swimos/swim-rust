@@ -12,13 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::form::structural::read::builder::{Builder, NoAttributes, Wrapped};
 use crate::form::structural::read::{
     BodyReader, HeaderReader, ReadError, StructuralReadable, ValueReadable,
 };
 use crate::model::text::Text;
 use crate::model::ValueKind;
-use either::Either;
 use num_bigint::{BigInt, BigUint};
 use std::borrow::Cow;
 use std::sync::Arc;
@@ -116,7 +114,7 @@ fn read_optional_prim() {
 
 #[test]
 fn read_prim_vec() {
-    let mut reader = <Vec<i32> as StructuralReadable>::make_reader()
+    let mut reader = <Vec<i32> as StructuralReadable>::record_reader()
         .unwrap()
         .start_body()
         .unwrap();

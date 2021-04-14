@@ -24,79 +24,46 @@ use crate::model::{Value, ValueKind};
 use either::Either;
 use num_bigint::{BigInt, BigUint};
 use std::borrow::Cow;
-use std::error::Error;
-use std::fmt::{Display, Formatter};
 use std::sync::Arc;
-use utilities::print;
 
-#[derive(Debug, PartialEq, Eq, Clone, Hash)]
-pub enum ReadError {
-    UnexpectedKind(ValueKind),
-    ReaderUnderflow,
-    DoubleSlot,
-    ReaderOverflow,
-    IncompleteRecord,
-    MissingFields(Vec<Text>),
-    UnexpectedAttribute(Text),
-    InconsistentState,
-    UnexpectedSlot,
-    DuplicateField(Text),
-    UnexpectedField(Text),
-}
+mod error;
 
-impl Display for ReadError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ReadError::UnexpectedKind(kind) => write!(f, "Unexpected value kind: {}", kind),
-            ReadError::ReaderUnderflow => write!(f, "Stack undeflow deserializing the value."),
-            ReadError::DoubleSlot => {
-                write!(f, "Slot divider encountered within the value of a slot.")
-            }
-            ReadError::ReaderOverflow => {
-                write!(f, "Record more deeply nested than expected for type.")
-            }
-            ReadError::IncompleteRecord => write!(
-                f,
-                "The record ended before all parts of the value were deserialized."
-            ),
-            ReadError::MissingFields(names) => {
-                write!(f, "Fields [{}] are required.", print::comma_sep(names))
-            }
-            ReadError::UnexpectedAttribute(name) => write!(f, "Unexpected attribute: '{}'", name),
-            ReadError::InconsistentState => {
-                write!(f, "The deserialization state became corrupted.")
-            }
-            ReadError::UnexpectedSlot => write!(f, "Unexpected slot in record."),
-            ReadError::DuplicateField(name) => {
-                write!(f, "Field '{}' ocurred more than once.", name)
-            }
-            ReadError::UnexpectedField(name) => write!(f, "Unexpected field: '{}'", name),
-        }
-    }
-}
+pub use error::ReadError;
 
-impl Error for ReadError {}
-
+/// Trait for types that can be structurally deserialized, from the Swim data model.
 pub trait StructuralReadable: ValueReadable {
     type Reader: HeaderReader;
 
-    fn make_reader() -> Result<Self::Reader, ReadError>;
+    /// Create a record reader from which the value can be constructed from attributes, values and slots.
+    /// Typically, types that are represented by a single value will return an error if this method is
+    /// called.
+    fn record_reader() -> Result<Self::Reader, ReadError>;
 
+    /// Attempt to create the complete deserialized object from the record reader. If the record is yet
+    /// incomplete this will return an error.
     fn try_terminate(reader: <Self::Reader as HeaderReader>::Body) -> Result<Self, ReadError>;
 
+    /// Optionally provide a default value for absent fields.
     fn on_absent() -> Option<Self> {
         None
     }
 
+    /// Attempt to write a value of a ['StructuralWritable'] type into an instance of this type.
+    /// TODO This will be filled in in a later PR.
     fn try_read_from<T: StructuralWritable>(_writable: &T) -> Result<Self, ReadError> {
         todo!()
     }
 
+    /// Attempt to transform a value of a ['StructuralWritable'] type into an instance of this type.
+    /// TODO This will be filled in in a later PR.
     fn try_transform<T: StructuralWritable>(_writable: T) -> Result<Self, ReadError> {
         todo!()
     }
 }
 
+/// Trait for types that can (potentially) be deserialized from a single primitive value.
+/// Types that are represented as complex records will typeically return an error
+/// for all methods in this trait.
 pub trait ValueReadable: Sized {
     fn read_extant() -> Result<Self, ReadError> {
         Err(ReadError::UnexpectedKind(ValueKind::Extant))
@@ -133,23 +100,31 @@ pub trait ValueReadable: Sized {
     }
 }
 
+/// Trait for readers that will deserialize a value from a record with attributes.
 pub trait HeaderReader: Sized {
     type Body: BodyReader;
     type Delegate: BodyReader;
 
+    /// Start reading an attribute.
     fn read_attribute<'a>(self, name: Cow<'a, str>) -> Result<Self::Delegate, ReadError>;
 
+    /// Read an attribute with no value.
     fn push_attr<'a>(self, name: Cow<'a, str>) -> Result<Self, ReadError> {
         let mut reader = self.read_attribute(name)?;
         reader.push_extant()?;
         Self::restore(reader)
     }
 
+    /// Complete an attribute and continue reading the record.
     fn restore(delegate: Self::Delegate) -> Result<Self, ReadError>;
 
+    /// Start reading the body of the record (no further attributes can be read).
     fn start_body(self) -> Result<Self::Body, ReadError>;
 }
 
+/// Trait for readers that will deserialize a value from a record. To read a slot,
+/// first call the relevant push methods to read the key of the slot, then call
+/// `start_slot` and then repeat for the value of the slot.
 pub trait BodyReader: Sized {
     type Delegate: HeaderReader;
 
@@ -187,19 +162,27 @@ pub trait BodyReader: Sized {
         Err(ReadError::UnexpectedKind(ValueKind::Data))
     }
 
+    /// Treat the last pushed value as the key of a slot; the next pushed value will
+    /// ne treated as the value of the slot.
     fn start_slot(&mut self) -> Result<(), ReadError> {
         Err(ReadError::UnexpectedSlot)
     }
+
+    /// Push a nested record.
     fn push_record(self) -> Result<Self::Delegate, ReadError>;
 
+    /// Complete a nested record and continue reading this record.
     fn restore(delegate: <Self::Delegate as HeaderReader>::Body) -> Result<Self, ReadError>;
 }
 
+/// Empty type for cases that can never ocurr (reading a primitive as a record for example).
 pub enum Never {}
 
 impl Never {
+    /// Witnesses that an instance of [Never] cannot exist.
     fn explode(&self) -> ! {
         use std::hint;
+        // Safe as Never has no instances.
         unsafe { hint::unreachable_unchecked() }
     }
 }
@@ -455,8 +438,8 @@ impl<T: ValueReadable> ValueReadable for Arc<T> {
 impl<T: StructuralReadable> StructuralReadable for Arc<T> {
     type Reader = T::Reader;
 
-    fn make_reader() -> Result<Self::Reader, ReadError> {
-        T::make_reader()
+    fn record_reader() -> Result<Self::Reader, ReadError> {
+        T::record_reader()
     }
 
     fn try_terminate(reader: <Self::Reader as HeaderReader>::Body) -> Result<Self, ReadError> {
@@ -655,8 +638,8 @@ where
 {
     type Reader = T::Reader;
 
-    fn make_reader() -> Result<Self::Reader, ReadError> {
-        T::make_reader()
+    fn record_reader() -> Result<Self::Reader, ReadError> {
+        T::record_reader()
     }
 
     fn try_terminate(reader: <Self::Reader as HeaderReader>::Body) -> Result<Self, ReadError> {
@@ -684,7 +667,7 @@ where
 {
     type Reader = VecReader<T>;
 
-    fn make_reader() -> Result<Self::Reader, ReadError> {
+    fn record_reader() -> Result<Self::Reader, ReadError> {
         Ok(Default::default())
     }
 
@@ -771,7 +754,7 @@ where
     fn push_record(self) -> Result<Self::Delegate, ReadError> {
         Ok(Wrapped {
             payload: self,
-            reader: T::make_reader()?,
+            reader: T::record_reader()?,
         })
     }
 
