@@ -29,8 +29,13 @@ use crate::downlink::{
     command_downlink, event_downlink, map_downlink, value_downlink, Command, Downlink,
     DownlinkError, Message, SchemaViolations,
 };
-use crate::router::{ClientRequest, ClientRouterFactory, OldRouter, RouterEvent, SubscriberRequest};
+use crate::router::{run_client_router, SubscribeRequest};
+use crate::router::{
+    create_remote_conns, ClientRequest, ClientRouterFactory, OldRouter, RouterEvent,
+    SubscriberRequest,
+};
 use either::Either;
+use futures::join;
 use futures::stream::Fuse;
 use futures::{SinkExt, Stream};
 use futures_util::future::TryFutureExt;
@@ -48,6 +53,7 @@ use swim_common::routing::error::{ResolutionError, RouterError, RoutingError};
 use swim_common::routing::remote::{
     RawRoute, RemoteConnectionChannels, RemoteConnectionsTask, RoutingRequest,
 };
+use swim_common::routing::{TaggedEnvelope, RoutingAddr};
 use swim_common::sink::item;
 use swim_common::sink::item::either::SplitSink;
 use swim_common::sink::item::ItemSender;
@@ -55,12 +61,13 @@ use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::AbsolutePath;
 use swim_runtime::task::{spawn, TaskError, TaskHandle};
 use swim_warp::backpressure;
+use tokio::sync::mpsc::Receiver;
 use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{error, info, instrument, trace_span};
 use utilities::future::{SwimFutureExt, TransformOnce, TransformedFuture};
 use utilities::sync::promise::PromiseError;
-use utilities::sync::{circular_buffer, promise};
+use utilities::sync::{circular_buffer, promise, trigger};
 
 pub mod envelopes;
 #[cfg(test)]
@@ -84,201 +91,6 @@ enum DownlinkRequest {
 impl From<mpsc::error::SendError<DownlinkRequest>> for SubscriptionError {
     fn from(_: mpsc::error::SendError<DownlinkRequest>) -> Self {
         SubscriptionError::DownlinkTaskStopped
-    }
-}
-
-//Todo dm move
-use futures::future::BoxFuture;
-use futures::join;
-use futures::select;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-use swim_common::routing::remote::config::ConnectionConfig;
-use swim_common::routing::remote::net::dns::Resolver;
-use swim_common::routing::remote::net::plain::TokioPlainTextNetworking;
-use swim_common::routing::ws::tungstenite::TungsteniteWsConnections;
-use swim_common::routing::{
-    ConnectionDropped, Route, RoutingAddr, Router, RouterFactory, TaggedEnvelope,
-    TaggedSender,
-};
-use tokio::sync::mpsc::Receiver;
-use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
-use url::Url;
-use utilities::future::open_ended::OpenEndedFutures;
-use utilities::sync::trigger;
-use utilities::uri::RelativeUri;
-
-//Todo dm move
-async fn create_remote_conns() -> (
-    mpsc::Receiver<ClientRequest>,
-    mpsc::Sender<RoutingRequest>,
-    trigger::Sender,
-    RemoteConnectionsTask<
-        TokioPlainTextNetworking,
-        TungsteniteWsConnections,
-        ClientRouterFactory,
-        OpenEndedFutures<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>>,
-    >,
-) {
-    let conn_config = ConnectionConfig::default();
-    let websocket_config = WebSocketConfig::default();
-
-    let (remote_tx, remote_rx) = mpsc::channel(conn_config.router_buffer_size.get());
-    let (request_tx, request_rx) = mpsc::channel(conn_config.router_buffer_size.get());
-    let top_level_router_fac = ClientRouterFactory::new(request_tx);
-
-    let (stop_trigger_tx, stop_trigger_rx) = trigger::trigger();
-
-    (
-        request_rx,
-        remote_tx.clone(),
-        stop_trigger_tx,
-        RemoteConnectionsTask::new_client_task(
-            conn_config,
-            TokioPlainTextNetworking::new(Arc::new(Resolver::new().await)),
-            TungsteniteWsConnections {
-                config: websocket_config,
-            },
-            top_level_router_fac,
-            OpenEndedFutures::new(),
-            RemoteConnectionChannels {
-                request_tx: remote_tx,
-                request_rx: remote_rx,
-                stop_trigger: stop_trigger_rx,
-            },
-        )
-        .await,
-    )
-}
-
-struct OutgoingManager {
-    envelope_rx: mpsc::Receiver<TaggedEnvelope>,
-    sub_rx: mpsc::Receiver<Request<mpsc::Receiver<TaggedEnvelope>>>,
-}
-
-impl OutgoingManager {
-    fn new() -> (
-        OutgoingManager,
-        OutgoingManagerSender,
-        mpsc::Sender<Request<mpsc::Receiver<TaggedEnvelope>>>,
-    ) {
-        let (envelope_tx, envelope_rx) = mpsc::channel(8);
-        let (sub_tx, sub_rx) = mpsc::channel(8);
-        (
-            OutgoingManager {
-                envelope_rx,
-                sub_rx,
-            },
-            envelope_tx,
-            sub_tx,
-        )
-    }
-
-    async fn run(mut self) {
-        let OutgoingManager {
-            mut envelope_rx,
-            mut sub_rx,
-        } = self;
-
-        let mut envelope_rx = ReceiverStream::new(envelope_rx).fuse();
-        let mut sub_rx = ReceiverStream::new(sub_rx).fuse();
-
-        let mut subs: Vec<mpsc::Sender<TaggedEnvelope>> = Vec::new();
-
-        loop {
-            let next: Either<
-                Option<TaggedEnvelope>,
-                Option<Request<mpsc::Receiver<TaggedEnvelope>>>,
-            > = select_biased! {
-                envelope = envelope_rx.next() => Either::Left(envelope),
-                sub = sub_rx.next() => Either::Right(sub),
-            };
-
-            match next {
-                Either::Left(Some(envelope)) => {
-                    //Todo dm this should run in parallel
-                    for mut sub in &mut subs {
-                        if sub.send(envelope.clone()).await.is_err() {
-                            eprintln!("err");
-                        }
-                    }
-                }
-                Either::Right(Some(sub_request)) => {
-                    let (sub_tx, sub_rx) = mpsc::channel(8);
-                    subs.push(sub_tx);
-                    sub_request.send(sub_rx).unwrap();
-                }
-                _ => break,
-            }
-        }
-    }
-}
-
-type OutgoingManagerSender = mpsc::Sender<TaggedEnvelope>;
-
-//Todo dm move somewhere
-async fn run_client_router(
-    mut request_rx: mpsc::Receiver<ClientRequest>,
-    mut local_rx: mpsc::Receiver<SubscribeRequest>,
-) {
-    let mut outgoing_managers: HashMap<
-        Url,
-        (
-            OutgoingManagerSender,
-            mpsc::Sender<Request<mpsc::Receiver<TaggedEnvelope>>>,
-        ),
-    > = HashMap::new();
-
-    let mut request_rx = ReceiverStream::new(request_rx).fuse();
-    let mut local_rx = ReceiverStream::new(local_rx).fuse();
-    loop {
-        let next: Either<
-            Option<ClientRequest>,
-            Option<(AbsolutePath, Request<mpsc::Receiver<TaggedEnvelope>>)>,
-        > = select_biased! {
-            request = request_rx.next() => Either::Left(request),
-            sub = local_rx.next() => Either::Right(sub),
-        };
-
-        match next {
-            Either::Left(Some(request)) => {
-                match request {
-                    ClientRequest::Resolve { request, .. } => {
-                        request.send(Ok(RoutingAddr::local(0))).unwrap();
-                    }
-                    ClientRequest::Subscribe { request, origin } => {
-                        //Todo change this
-                        let url = Url::parse(&format!("ws://{}", origin.to_string())).unwrap();
-
-                        let (sender, _) = outgoing_managers
-                            .entry(url)
-                            .or_insert_with(|| {
-                                let (manager, sender, sub_tx) = OutgoingManager::new();
-                                spawn(manager.run());
-                                (sender, sub_tx)
-                            })
-                            .clone();
-
-                        // Todo move in right place
-                        let (_on_drop_tx, on_drop_rx) = promise::promise();
-
-                        request.send(Ok(RawRoute::new(sender, on_drop_rx))).unwrap();
-                    }
-                }
-            }
-            Either::Right(Some((sub_addr, sub_req))) => {
-                let (_, sub_sender) = outgoing_managers
-                    .entry(sub_addr.host.clone())
-                    .or_insert_with(|| {
-                        let (manager, sender, sub_tx) = OutgoingManager::new();
-                        spawn(manager.run());
-                        (sender, sub_tx)
-                    });
-
-                //Todo dm add relative path
-                sub_sender.send(sub_req).await.unwrap();
-            }
-            _ => break,
-        }
     }
 }
 
@@ -614,8 +426,6 @@ struct DownlinkTask {
     local_tx: mpsc::Sender<SubscribeRequest>,
 }
 
-type SubscribeRequest = (AbsolutePath, Request<mpsc::Receiver<TaggedEnvelope>>);
-
 /// Event that is generated after a downlink stops to allow it to be cleaned up.
 struct DownlinkStoppedEvent {
     kind: DownlinkKind,
@@ -732,7 +542,6 @@ impl DownlinkTask {
         let sink_path = path.clone();
         let cmd_sink = item::for_mpsc_sender(sink.sender).map_err_into().comap(
             move |cmd: Command<SharedValue>| {
-                //Todo dm change the tagged envelope
                 TaggedEnvelope(
                     RoutingAddr::local(0),
                     envelopes::value_envelope(&sink_path, cmd).1.into(),
@@ -896,7 +705,7 @@ impl DownlinkTask {
         path: AbsolutePath,
         schema: StandardSchema,
     ) -> RequestResult<Arc<UntypedCommandDownlink>> {
-        //Todo dm change the function to allow for partial requests
+        //Todo dm change the function to allow for partial connections
         let (_, sink) = self.connection_for(&path).await;
 
         let config = self.config.config_for(&path);

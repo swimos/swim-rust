@@ -528,7 +528,7 @@ async fn connect_and_handshake_single<External: ExternalConnections, Ws>(
 where
     Ws: WsConnections<External::Socket>,
 {
-    //Todo dm bug needs the protocol
+    //Todo dm bug - needs the protocol
     let host = format!("ws://{}", host);
     eprintln!("host = {:#?}", host);
     websockets

@@ -18,10 +18,8 @@
 use crate::configuration::downlink::Config;
 use crate::configuration::downlink::ConfigHierarchy;
 use crate::configuration::downlink::ConfigParseError;
-use crate::connections::SwimConnPool;
 use crate::downlink::error::{DownlinkError, SubscriptionError};
 use crate::downlink::Downlinks;
-use crate::router::SwimRouter;
 use std::error::Error;
 use std::fmt;
 use std::fmt::{Display, Formatter};
@@ -47,13 +45,6 @@ use crate::downlink::typed::{
 };
 use crate::downlink::SchemaViolations;
 use swim_common::routing::remote::ExternalConnections;
-
-#[cfg(feature = "websocket")]
-use {
-    swim_common::routing::remote::net::dns::Resolver,
-    swim_common::routing::remote::net::plain::TokioPlainTextNetworking,
-    swim_common::routing::ws::tungstenite::TungsteniteWsConnections,
-};
 
 /// Builder to create Swim client instance.
 ///
@@ -95,20 +86,7 @@ impl SwimClientBuilder {
     }
 
     /// Build the Swim client.
-    ///
-    /// # Arguments
-    /// * `ws_factory` - Websocket factory for the client.
-    /// * `conn_factory` - Connection factory for the client.
-    pub async fn build<WSFac, ConnFac, Socket>(
-        self,
-        ws_factory: WSFac,
-        conn_factory: ConnFac,
-    ) -> SwimClient
-    where
-        WSFac: WsConnections<Socket> + Send + Sync + 'static,
-        ConnFac: ExternalConnections<Socket = Socket>,
-        Socket: Send + Sync + Unpin + 'static,
-    {
+    pub async fn build(self) -> SwimClient {
         let SwimClientBuilder {
             config: downlinks_config,
         } = self;
