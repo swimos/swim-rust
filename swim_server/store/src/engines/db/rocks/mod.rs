@@ -15,8 +15,7 @@
 #[cfg(test)]
 mod tests;
 
-use crate::engines::db::StoreDelegate;
-use crate::{FromOpts, KeyedSnapshot, RangedSnapshot, Store, StoreEngine, StoreError};
+use crate::{ByteEngine, FromOpts, KeyedSnapshot, RangedSnapshot, Store, StoreError, StoreOpts};
 use rocksdb::{Error, Options, DB};
 use std::path::Path;
 use std::sync::Arc;
@@ -27,6 +26,7 @@ impl From<rocksdb::Error> for StoreError {
     }
 }
 
+#[derive(Debug)]
 pub struct RocksDatabase {
     delegate: Arc<DB>,
 }
@@ -43,41 +43,45 @@ impl RocksDatabase {
     }
 }
 
-impl From<RocksDatabase> for StoreDelegate {
-    fn from(d: RocksDatabase) -> Self {
-        StoreDelegate::Rocksdb(d)
-    }
-}
-
-impl<'i> StoreEngine<'i> for RocksDatabase {
-    type Key = &'i [u8];
-    type Value = &'i [u8];
-    type Error = rocksdb::Error;
-
-    fn put(&self, key: Self::Key, value: Self::Value) -> Result<(), Self::Error> {
+impl ByteEngine for RocksDatabase {
+    fn put(&self, key: Vec<u8>, value: Vec<u8>) -> Result<(), StoreError> {
         let RocksDatabase { delegate, .. } = self;
-        delegate.put(key, value)
+        delegate.put(key, value).map_err(Into::into)
     }
 
-    fn get(&self, key: Self::Key) -> Result<Option<Vec<u8>>, Self::Error> {
+    fn get(&self, key: Vec<u8>) -> Result<Option<Vec<u8>>, StoreError> {
         let RocksDatabase { delegate, .. } = self;
-        delegate.get(key)
+        delegate.get(key).map_err(Into::into)
     }
 
-    fn delete(&self, key: Self::Key) -> Result<(), Self::Error> {
+    fn delete(&self, key: Vec<u8>) -> Result<(), StoreError> {
         let RocksDatabase { delegate, .. } = self;
-        delegate.delete(key)
+        delegate.delete(key).map_err(Into::into)
     }
 }
 
 impl Store for RocksDatabase {}
 
 impl FromOpts for RocksDatabase {
-    type Opts = Options;
+    type Opts = RocksOpts;
 
     fn from_opts<I: AsRef<Path>>(path: I, opts: &Self::Opts) -> Result<Self, StoreError> {
-        let db = DB::open(opts, path)?;
+        let db = DB::open(&opts.0, path)?;
         Ok(RocksDatabase::new(db))
+    }
+}
+
+pub struct RocksOpts(pub Options);
+
+impl StoreOpts for RocksOpts {}
+
+impl Default for RocksOpts {
+    fn default() -> Self {
+        let mut rock_opts = rocksdb::Options::default();
+        rock_opts.create_if_missing(true);
+        rock_opts.create_missing_column_families(true);
+
+        RocksOpts(rock_opts)
     }
 }
 

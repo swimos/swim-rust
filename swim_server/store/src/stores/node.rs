@@ -15,9 +15,8 @@
 use crate::stores::lane::map::MapDataModel;
 use crate::stores::lane::value::ValueDataModel;
 use crate::stores::lane::LaneKey;
-use crate::stores::plane::SwimPlaneStore;
 use crate::stores::{MapStorageKey, StoreKey, ValueStorageKey};
-use crate::{KeyedSnapshot, RangedSnapshot, StoreEngine, StoreError};
+use crate::{KeyedSnapshot, PlaneStore, RangedSnapshot, StoreEngine, StoreError};
 use serde::Serialize;
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -34,13 +33,19 @@ use std::sync::Arc;
 ///
 /// Transient data models will live in memory for the duration that a handle to the model exists.
 pub trait NodeStore: for<'a> StoreEngine<'a> + Send + Sync + Clone + Debug {
+    type Delegate: PlaneStore;
+
     /// Open a new map data model.
     ///
     /// # Arguments
     /// `lane_uri`: the URI of the lane.
     /// `transient`: whether the lane is a transient lane. If this is `true`, then the data model
     /// returned should be an in-memory store.
-    fn map_lane_store<I, K, V>(&self, lane_uri: I, transient: bool) -> MapDataModel<K, V>
+    fn map_lane_store<I, K, V>(
+        &self,
+        lane_uri: I,
+        transient: bool,
+    ) -> MapDataModel<Self::Delegate, K, V>
     where
         I: ToString,
         K: Serialize,
@@ -53,7 +58,11 @@ pub trait NodeStore: for<'a> StoreEngine<'a> + Send + Sync + Clone + Debug {
     /// `lane_uri`: the URI of the lane.
     /// `transient`: whether the lane is a transient lane. If this is `true`, then the data model
     /// returned should be an in-memory store.
-    fn value_lane_store<I, V>(&self, lane_uri: I, transient: bool) -> ValueDataModel
+    fn value_lane_store<I, V>(
+        &self,
+        lane_uri: I,
+        transient: bool,
+    ) -> ValueDataModel<Self::Delegate>
     where
         I: ToString,
         V: Serialize,
@@ -62,15 +71,18 @@ pub trait NodeStore: for<'a> StoreEngine<'a> + Send + Sync + Clone + Debug {
 
 /// A node store which is used to open value and map lane data models.
 #[derive(Debug)]
-pub struct SwimNodeStore {
+pub struct SwimNodeStore<D> {
     /// The plane store that value and map data models will delegate their store engine operations
     /// to.
-    delegate: Arc<SwimPlaneStore>,
+    delegate: Arc<D>,
     /// The node URI that this store represents.
     node_uri: Arc<String>,
 }
 
-impl RangedSnapshot for SwimNodeStore {
+impl<D> RangedSnapshot for SwimNodeStore<D>
+where
+    D: PlaneStore<Prefix = StoreKey>,
+{
     type Prefix = LaneKey;
 
     fn ranged_snapshot<F, K, V>(
@@ -97,7 +109,7 @@ impl RangedSnapshot for SwimNodeStore {
     }
 }
 
-impl Clone for SwimNodeStore {
+impl<D> Clone for SwimNodeStore<D> {
     fn clone(&self) -> Self {
         SwimNodeStore {
             delegate: self.delegate.clone(),
@@ -106,10 +118,10 @@ impl Clone for SwimNodeStore {
     }
 }
 
-impl SwimNodeStore {
+impl<D> SwimNodeStore<D> {
     /// Create a new Swim node store which will delegate its engine operations to `delegate` and
     /// represents a node at `node_uri`.
-    pub fn new(delegate: SwimPlaneStore, node_uri: String) -> SwimNodeStore {
+    pub fn new(delegate: D, node_uri: String) -> SwimNodeStore<D> {
         SwimNodeStore {
             delegate: Arc::new(delegate),
             node_uri: Arc::new(node_uri),
@@ -117,8 +129,17 @@ impl SwimNodeStore {
     }
 }
 
-impl NodeStore for SwimNodeStore {
-    fn map_lane_store<I, K, V>(&self, lane: I, transient: bool) -> MapDataModel<K, V>
+impl<D> NodeStore for SwimNodeStore<D>
+where
+    D: PlaneStore,
+{
+    type Delegate = D;
+
+    fn map_lane_store<I, K, V>(
+        &self,
+        lane: I,
+        transient: bool,
+    ) -> MapDataModel<Self::Delegate, K, V>
     where
         I: ToString,
         K: Serialize,
@@ -127,7 +148,7 @@ impl NodeStore for SwimNodeStore {
         MapDataModel::new(self.clone(), lane.to_string(), transient)
     }
 
-    fn value_lane_store<I, V>(&self, lane: I, transient: bool) -> ValueDataModel
+    fn value_lane_store<I, V>(&self, lane: I, transient: bool) -> ValueDataModel<Self::Delegate>
     where
         I: ToString,
         V: Serialize,
@@ -147,26 +168,27 @@ fn map_key(lane_key: LaneKey, node_uri: Arc<String>) -> StoreKey {
     }
 }
 
-impl<'a> StoreEngine<'a> for SwimNodeStore {
+impl<'a, D> StoreEngine<'a> for SwimNodeStore<D>
+where
+    D: PlaneStore<Key = StoreKey>,
+{
     type Key = LaneKey;
-    type Value = Vec<u8>;
-    type Error = StoreError;
 
-    fn put(&self, key: Self::Key, value: Self::Value) -> Result<(), Self::Error> {
+    fn put(&self, key: Self::Key, value: Vec<u8>) -> Result<(), StoreError> {
         let SwimNodeStore { delegate, node_uri } = self;
         let key = map_key(key, node_uri.clone());
 
         delegate.put(key, value)
     }
 
-    fn get(&self, key: Self::Key) -> Result<Option<Vec<u8>>, Self::Error> {
+    fn get(&self, key: Self::Key) -> Result<Option<Vec<u8>>, StoreError> {
         let SwimNodeStore { delegate, node_uri } = self;
         let key = map_key(key, node_uri.clone());
 
         delegate.get(key)
     }
 
-    fn delete(&self, key: Self::Key) -> Result<(), Self::Error> {
+    fn delete(&self, key: Self::Key) -> Result<(), StoreError> {
         let SwimNodeStore { delegate, node_uri } = self;
         let key = map_key(key, node_uri.clone());
 

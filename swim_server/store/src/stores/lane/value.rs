@@ -14,27 +14,27 @@
 
 use crate::stores::lane::{serialize_then, LaneKey};
 use crate::stores::node::SwimNodeStore;
-use crate::{StoreEngine, StoreError};
+use crate::{PlaneStore, StoreEngine, StoreError};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::sync::Arc;
 
 /// A value lane data model.
-pub struct ValueDataModel {
+pub struct ValueDataModel<D> {
     /// The store to delegate this model's operations to.
-    delegate: ValueDataModelDelegate,
+    delegate: ValueDataModelDelegate<D>,
     /// The lane URI that this store is operating on.
     lane_uri: Arc<String>,
 }
 
-impl ValueDataModel {
+impl<D> ValueDataModel<D> {
     /// Constructs a new value data model.
     ///
     /// # Arguments
     /// `delegate`: if this data model is *not* transient, then delegate operations to this store.
     /// `lane_uri`: the lane URI that this store represents.
     /// `transient`: whether this store should be an in-memory model.
-    pub fn new(delegate: SwimNodeStore, lane_uri: String, transient: bool) -> Self {
+    pub fn new(delegate: SwimNodeStore<D>, lane_uri: String, transient: bool) -> Self {
         if transient {
             ValueDataModel {
                 delegate: ValueDataModelDelegate::Mem,
@@ -55,12 +55,15 @@ impl ValueDataModel {
     }
 }
 
-pub enum ValueDataModelDelegate {
+pub enum ValueDataModelDelegate<D> {
     Mem,
-    Db(SwimNodeStore),
+    Db(SwimNodeStore<D>),
 }
 
-impl ValueDataModel {
+impl<D> ValueDataModel<D>
+where
+    D: PlaneStore,
+{
     /// Serializes and stores `value`.
     pub async fn store<V>(&self, value: &V) -> Result<(), StoreError>
     where

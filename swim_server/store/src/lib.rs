@@ -17,13 +17,15 @@ pub mod mock;
 mod engines;
 mod stores;
 
+pub use engines::db::{lmdbx::LmdbxDatabase, rocks::RocksDatabase};
 pub use stores::lane::value::ValueDataModel;
 pub use stores::node::{NodeStore, SwimNodeStore};
 pub use stores::plane::{PlaneStore, SwimPlaneStore};
 
-use crate::engines::db::StoreDelegateConfig;
 use std::error::Error;
+use std::fmt::{Debug, Formatter};
 use std::io::ErrorKind;
+use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 use std::vec::IntoIter;
 use std::{fs, io};
@@ -93,20 +95,15 @@ pub enum StoreError {
 
 /// Engine options for both map and value lanes.
 #[derive(Debug, Clone, Default)]
-pub struct StoreEngineOpts {
-    /// Options that are used to instantiate map stores.
-    map_opts: StoreDelegateConfig,
-    /// Options that are used to instantiate value stores.
-    value_opts: StoreDelegateConfig,
+pub struct StoreEngineOpts<O> {
+    /// Options that are used to instantiate stores.
+    opts: O,
 }
 
 /// A Swim server store.
 ///
 /// This trait only serves to compose the multiple traits that are required for the store.
-pub trait Store:
-    for<'a> StoreEngine<'a> + FromOpts + RangedSnapshot + Send + Sync + 'static
-{
-}
+pub trait Store: FromOpts + RangedSnapshot + Send + Sync + Debug + ByteEngine + 'static {}
 
 /// A Swim server store which will create plane stores on demand.
 ///
@@ -194,7 +191,7 @@ pub trait Snapshot<K, V>: RangedSnapshot {
 /// A trait for building stores from their options.
 pub trait FromOpts: Sized {
     /// The type of options this store accepts.
-    type Opts;
+    type Opts: StoreOpts;
 
     /// Build a store from options.
     ///
@@ -207,6 +204,8 @@ pub trait FromOpts: Sized {
     fn from_opts<I: AsRef<Path>>(path: I, opts: &Self::Opts) -> Result<Self, StoreError>;
 }
 
+pub trait StoreOpts: Default {}
+
 /// A key-value store.
 ///
 /// These may be either a delegate store or a concrete implementation.
@@ -214,40 +213,53 @@ pub trait StoreEngine<'i>: 'static {
     /// The key type that this store accepts.
     type Key: 'i;
 
-    /// The value type that this store accepts.
-    type Value: 'i;
-
-    /// The error type that this store will return.
-    type Error: Into<StoreError>;
-
     /// Put a key-value pair into this store.
-    fn put(&self, key: Self::Key, value: Self::Value) -> Result<(), Self::Error>;
+    fn put(&self, key: Self::Key, value: Vec<u8>) -> Result<(), StoreError>;
 
     /// Get an entry from this store by its key.
-    fn get(&self, key: Self::Key) -> Result<Option<Vec<u8>>, Self::Error>;
+    fn get(&self, key: Self::Key) -> Result<Option<Vec<u8>>, StoreError>;
 
     /// Delete a value from this store by its key.
-    fn delete(&self, key: Self::Key) -> Result<(), Self::Error>;
+    fn delete(&self, key: Self::Key) -> Result<(), StoreError>;
+}
+
+pub trait ByteEngine: 'static {
+    /// Put a key-value pair into this store.
+    fn put(&self, key: Vec<u8>, value: Vec<u8>) -> Result<(), StoreError>;
+
+    /// Get an entry from this store by its key.
+    fn get(&self, key: Vec<u8>) -> Result<Option<Vec<u8>>, StoreError>;
+
+    /// Delete a value from this store by its key.
+    fn delete(&self, key: Vec<u8>) -> Result<(), StoreError>;
 }
 
 /// A Swim server store that will open plane stores on request.
-pub struct ServerStore {
+pub struct ServerStore<D: Store> {
     /// The directory that this store is operating from.
     dir: StoreDir,
     /// The options that all stores will be opened with.
-    opts: StoreEngineOpts,
+    opts: StoreEngineOpts<D::Opts>,
+    _delegate_pd: PhantomData<D>,
 }
 
-impl ServerStore {
+impl<D: Store> Debug for ServerStore<D> {
+    fn fmt(&self, _f: &mut Formatter<'_>) -> std::fmt::Result {
+        todo!()
+    }
+}
+
+impl<D: Store> ServerStore<D> {
     /// Constructs a new server store that will open stores using `opts` and will use the directory
     /// `base_path` for opening all new stores.
     ///
     /// # Panics
     /// Panics if the directory cannot be created.
-    pub fn new(opts: StoreEngineOpts, base_path: PathBuf) -> ServerStore {
+    pub fn new(opts: StoreEngineOpts<D::Opts>, base_path: PathBuf) -> ServerStore<D> {
         ServerStore {
             dir: StoreDir::persistent(base_path).expect("Failed to create server store"),
             opts,
+            _delegate_pd: Default::default(),
         }
     }
 
@@ -256,19 +268,20 @@ impl ServerStore {
     ///
     /// # Panics
     /// Panics if the directory cannot be created.
-    pub fn transient(opts: StoreEngineOpts, prefix: &str) -> ServerStore {
+    pub fn transient(opts: StoreEngineOpts<D::Opts>, prefix: &str) -> ServerStore<D> {
         ServerStore {
             dir: StoreDir::transient(prefix),
             opts,
+            _delegate_pd: Default::default(),
         }
     }
 }
 
-impl SwimStore for ServerStore {
-    type PlaneStore = SwimPlaneStore;
+impl<D: Store<Prefix = Vec<u8>>> SwimStore for ServerStore<D> {
+    type PlaneStore = SwimPlaneStore<D>;
 
     fn plane_store<I: ToString>(&mut self, plane_name: I) -> Result<Self::PlaneStore, StoreError> {
-        let ServerStore { opts, dir } = self;
+        let ServerStore { opts, dir, .. } = self;
         let plane_name = plane_name.to_string();
 
         SwimPlaneStore::open(dir.path(), &plane_name, opts)
@@ -277,7 +290,7 @@ impl SwimStore for ServerStore {
 
 #[cfg(test)]
 mod tests {
-    use crate::engines::db::StoreDelegateConfig;
+    use crate::engines::db::rocks::{RocksDatabase, RocksOpts};
     use crate::stores::{StoreKey, ValueStorageKey};
     use crate::{ServerStore, StoreEngine, StoreEngineOpts, SwimStore};
     use std::sync::Arc;
@@ -285,11 +298,10 @@ mod tests {
     #[test]
     fn put_get() {
         let server_opts = StoreEngineOpts {
-            map_opts: StoreDelegateConfig::lmdbx(),
-            value_opts: StoreDelegateConfig::rocksdb(),
+            opts: RocksOpts::default(),
         };
 
-        let mut store = ServerStore::transient(server_opts, "target".into());
+        let mut store = ServerStore::<RocksDatabase>::transient(server_opts, "target".into());
         let plane_store = store.plane_store("unit").unwrap();
 
         let node_key = StoreKey::Value(ValueStorageKey {

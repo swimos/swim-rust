@@ -8,13 +8,12 @@
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KINDither express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::{RangedSnapshot, Store, StoreEngine, StoreError};
+use crate::{ByteEngine, RangedSnapshot, Store, StoreError};
 use std::collections::HashMap;
-use std::fmt::Debug;
 use std::ops::Deref;
 use tempdir::TempDir;
 
@@ -50,49 +49,46 @@ pub fn temp_dir() -> TempDir {
     TempDir::new("test").expect("Failed to create temporary directory")
 }
 
-pub fn crud<D, E>(db: TransientDatabase<D>)
+pub fn crud<D>(db: TransientDatabase<D>)
 where
-    E: Debug,
-    D: for<'i> StoreEngine<'i, Key = &'i [u8], Value = &'i [u8], Error = E>,
+    D: ByteEngine,
 {
     let key = b"key_a";
     let value_1 = b"value_a";
     let value_2 = b"value_b";
 
-    assert!(db.put(key, value_1).is_ok());
+    assert!(db.put(key.to_vec(), value_1.to_vec()).is_ok());
 
-    let get_result = db.get(key);
+    let get_result = db.get(key.to_vec());
     assert!(matches!(get_result, Ok(Some(_))));
     let get_value = get_result.unwrap().unwrap();
     assert_eq!(value_1, String::from_utf8(get_value).unwrap().as_bytes());
 
-    let update_result = db.put(key, value_2);
+    let update_result = db.put(key.to_vec(), value_2.to_vec());
     assert!(update_result.is_ok());
 
-    let get_result = db.get(key);
+    let get_result = db.get(key.to_vec());
     assert!(matches!(get_result, Ok(Some(_))));
     let get_value = get_result.unwrap().unwrap();
     assert_eq!(value_2, String::from_utf8(get_value).unwrap().as_bytes());
 
-    let delete_result = db.delete(key);
+    let delete_result = db.delete(key.to_vec());
     assert!(matches!(delete_result, Ok(())));
 }
 
-pub fn get_missing<D, E>(db: TransientDatabase<D>)
+pub fn get_missing<D>(db: TransientDatabase<D>)
 where
-    E: Debug,
-    D: for<'i> StoreEngine<'i, Key = &'i [u8], Value = &'i [u8], Error = E>,
+    D: ByteEngine,
 {
-    let get_result = db.get(b"key_a");
+    let get_result = db.get(b"key_a".to_vec());
     assert!(matches!(get_result, Ok(None)));
 }
 
-pub fn delete_missing<D, E>(db: TransientDatabase<D>)
+pub fn delete_missing<D>(db: TransientDatabase<D>)
 where
-    E: Debug,
-    D: for<'i> StoreEngine<'i, Key = &'i [u8], Value = &'i [u8], Error = E>,
+    D: ByteEngine,
 {
-    let get_result = db.delete(b"key_a");
+    let get_result = db.delete(b"key_a".to_vec());
     assert!(matches!(get_result, Ok(())));
 }
 
@@ -103,21 +99,19 @@ fn map_fn<'a>(key: &'a [u8], value: &'a [u8]) -> Result<(String, String), StoreE
     Ok((k, v))
 }
 
-pub fn empty_snapshot<D, E>(db: TransientDatabase<D>)
+pub fn empty_snapshot<D>(db: TransientDatabase<D>)
 where
-    E: Debug,
     D: Store,
-    D: for<'i> StoreEngine<'i, Key = &'i [u8], Value = &'i [u8], Error = E>,
+    D: ByteEngine,
     D: RangedSnapshot<Prefix = Vec<u8>>,
 {
     let result = db.ranged_snapshot(b"prefix".to_vec(), map_fn);
     assert!(matches!(result, Ok(None)));
 }
 
-pub fn ranged_snapshot<D, E>(db: TransientDatabase<D>)
+pub fn ranged_snapshot<D>(db: TransientDatabase<D>)
 where
-    E: Debug,
-    D: for<'i> StoreEngine<'i, Key = &'i [u8], Value = &'i [u8], Error = E>,
+    D: ByteEngine,
     D: RangedSnapshot<Prefix = Vec<u8>>,
 {
     let prefix = "/foo/bar";
@@ -130,7 +124,7 @@ where
     for i in 0..limit {
         let key = format(i);
         let value = i.to_string();
-        let result = db.put(key.as_bytes(), i.to_string().as_bytes());
+        let result = db.put(key.as_bytes().to_vec(), i.to_string().as_bytes().to_vec());
 
         assert!(result.is_ok());
 
@@ -141,7 +135,7 @@ where
     for i in 0..limit {
         let key = format!("/foo/{}", i);
         let value = i.to_string();
-        let result = db.put(key.as_bytes(), value.as_bytes());
+        let result = db.put(key.as_bytes().to_vec(), value.as_bytes().to_vec());
 
         assert!(result.is_ok());
     }

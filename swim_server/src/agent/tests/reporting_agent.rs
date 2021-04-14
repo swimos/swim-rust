@@ -27,7 +27,6 @@ use crate::agent::lane::tests::ExactlyOnce;
 use crate::agent::lifecycle::AgentLifecycle;
 use crate::agent::tests::reporting_macro_agent::ReportingAgentEvent;
 use crate::agent::{AgentContext, LaneIo, LaneTasks, SwimAgent};
-use crate::NodeStore;
 use futures::future::{ready, BoxFuture, Ready};
 use futures::FutureExt;
 use std::collections::HashMap;
@@ -36,6 +35,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use stm::stm::Stm;
 use stm::transaction::atomically;
+use store::NodeStore;
 use tokio::sync::{mpsc, Mutex};
 
 /// An agent for use in tests of the agent execution loop. All events that occur in the lifecycle

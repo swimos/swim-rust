@@ -14,27 +14,27 @@
 
 use crate::stores::lane::{serialize, serialize_then, LaneKey};
 use crate::stores::node::SwimNodeStore;
-use crate::stores::MapStorageKey;
-use crate::{KeyedSnapshot, RangedSnapshot, Snapshot, StoreEngine, StoreError};
+use crate::stores::{MapStorageKey, StoreKey};
+use crate::{KeyedSnapshot, PlaneStore, RangedSnapshot, Snapshot, StoreEngine, StoreError};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-pub struct MapDataModel<K, V> {
-    delegate: MapDataModelDelegate,
+pub struct MapDataModel<D, K, V> {
+    delegate: MapDataModelDelegate<D>,
     lane_uri: Arc<String>,
     _key: PhantomData<K>,
     _value: PhantomData<V>,
 }
 
-pub enum MapDataModelDelegate {
+pub enum MapDataModelDelegate<D> {
     Mem,
-    Db(SwimNodeStore),
+    Db(SwimNodeStore<D>),
 }
 
-impl<K, V> MapDataModel<K, V> {
-    pub fn new(delegate: SwimNodeStore, lane_uri: String, transient: bool) -> Self {
+impl<D, K, V> MapDataModel<D, K, V> {
+    pub fn new(delegate: SwimNodeStore<D>, lane_uri: String, transient: bool) -> Self {
         let delegate = if transient {
             MapDataModelDelegate::Mem
         } else {
@@ -50,8 +50,9 @@ impl<K, V> MapDataModel<K, V> {
     }
 }
 
-impl<K, V> MapDataModel<K, V>
+impl<D, K, V> MapDataModel<D, K, V>
 where
+    D: PlaneStore,
     K: Serialize,
     V: Serialize + DeserializeOwned,
 {
@@ -116,7 +117,10 @@ where
     }
 }
 
-impl<K, V> RangedSnapshot for MapDataModel<K, V> {
+impl<D, K, V> RangedSnapshot for MapDataModel<D, K, V>
+where
+    D: PlaneStore<Prefix = StoreKey>,
+{
     type Prefix = Arc<String>;
 
     fn ranged_snapshot<F, DK, DV>(
@@ -145,8 +149,9 @@ fn deserialize<K: DeserializeOwned>(value: &[u8]) -> Result<K, StoreError> {
     bincode::deserialize(value).map_err(|e| StoreError::Decoding(e.to_string()))
 }
 
-impl<K, V> Snapshot<K, V> for MapDataModel<K, V>
+impl<D, K, V> Snapshot<K, V> for MapDataModel<D, K, V>
 where
+    D: PlaneStore<Prefix = StoreKey>,
     K: DeserializeOwned,
     V: DeserializeOwned,
 {

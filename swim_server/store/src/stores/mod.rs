@@ -16,12 +16,6 @@ pub mod lane;
 pub mod node;
 pub mod plane;
 
-use std::marker::PhantomData;
-
-use crate::engines::db::StoreDelegate;
-use crate::{KeyedSnapshot, RangedSnapshot, StoreEngine, StoreError};
-
-use crate::stores::lane::{serialize, serialize_then};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -51,74 +45,4 @@ pub struct MapStorageKey {
 pub struct ValueStorageKey {
     pub node_uri: Arc<String>,
     pub lane_uri: Arc<String>,
-}
-
-/// A store which may either be an LMDB or Rocks database.
-pub struct DatabaseStore<K> {
-    /// The delegate store.
-    delegate: StoreDelegate,
-    _key_pd: PhantomData<K>,
-}
-
-impl<K> RangedSnapshot for DatabaseStore<K> {
-    type Prefix = StoreKey;
-
-    fn ranged_snapshot<F, DK, DV>(
-        &self,
-        prefix: Self::Prefix,
-        map_fn: F,
-    ) -> Result<Option<KeyedSnapshot<DK, DV>>, StoreError>
-    where
-        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(DK, DV), StoreError>,
-    {
-        match prefix {
-            StoreKey::Map(key) => {
-                let prefix = serialize(&key)?;
-                self.delegate.ranged_snapshot(prefix, map_fn)
-            }
-            StoreKey::Value(key) => {
-                let prefix = serialize(&key)?;
-                self.delegate.ranged_snapshot(prefix, map_fn)
-            }
-        }
-    }
-}
-
-impl<'a, K> DatabaseStore<K> {
-    pub fn new<D>(delegate: D) -> Self
-    where
-        D: StoreEngine<'a> + Into<StoreDelegate>,
-    {
-        DatabaseStore {
-            delegate: delegate.into(),
-            _key_pd: Default::default(),
-        }
-    }
-}
-
-impl<'a, K: 'a> StoreEngine<'a> for DatabaseStore<K>
-where
-    K: Serialize + 'static,
-{
-    type Key = &'a K;
-    type Value = Vec<u8>;
-    type Error = StoreError;
-
-    fn put(&self, key: Self::Key, value: Self::Value) -> Result<(), Self::Error> {
-        serialize_then(&self.delegate, key, |delegate, key| {
-            delegate.put(key.as_slice(), value.as_slice())
-        })
-    }
-
-    fn get(&self, key: Self::Key) -> Result<Option<Vec<u8>>, Self::Error> {
-        serialize_then(&self.delegate, key, |delegate, key| {
-            delegate.get(key.as_slice())
-        })
-    }
-
-    fn delete(&self, key: Self::Key) -> Result<(), Self::Error> {
-        serialize_then(&self.delegate, key, |delegate, key| {
-            delegate.delete(key.as_slice())
-        })
-    }
 }

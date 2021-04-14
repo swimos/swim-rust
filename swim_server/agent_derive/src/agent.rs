@@ -137,7 +137,7 @@ pub fn derive_swim_agent(input: DeriveInput) -> Result<TokenStream, TokenStream>
             )
             where
                 Context: AgentContext<Self> + AgentExecutionContext + Send + Sync + 'static,
-                Store: swim_server::NodeStore,
+                Store: swim_server::store::NodeStore,
             {
                 let mut io_map: HashMap<String, Box<dyn LaneIo<Context>>> = HashMap::new();
 

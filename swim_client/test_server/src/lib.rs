@@ -22,12 +22,14 @@ use swim_server::agent::map_lifecycle;
 use swim_server::agent::value_lifecycle;
 use swim_server::agent::AgentContext;
 use swim_server::agent::SwimAgent;
-use swim_server::interface::{ServerHandle, SwimServer, SwimServerBuilder};
+use swim_server::interface::{ServerHandle, SwimServer, SwimServerBuilder, SwimServerConfig};
 use swim_server::RoutePattern;
 
 pub async fn build_server() -> (SwimServer, ServerHandle) {
     let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 0);
-    let mut swim_server_builder = SwimServerBuilder::default();
+
+    let mut swim_server_builder =
+        SwimServerBuilder::transient_store(SwimServerConfig::default(), "test");
     let mut plane_builder = swim_server_builder.plane_builder("test");
 
     plane_builder

@@ -12,13 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::engines::db::lmdbx::LmdbxDatabase;
+use crate::engines::db::lmdbx::{LmdbOpts, LmdbxDatabase};
 use crate::engines::db::test_suite;
 use crate::engines::db::test_suite::TransientDatabase;
-use heed::EnvOpenOptions;
 
 fn delegate() -> TransientDatabase<LmdbxDatabase> {
-    TransientDatabase::new(EnvOpenOptions::new())
+    TransientDatabase::new(LmdbOpts::default())
 }
 
 #[test]

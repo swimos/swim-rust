@@ -29,4 +29,6 @@ pub use utilities::route_pattern::RoutePattern;
 
 pub use utilities::{stringify_attr, stringify_attr_raw};
 
-pub use store::*;
+pub mod store {
+    pub use store::NodeStore;
+}

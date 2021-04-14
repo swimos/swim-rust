@@ -15,8 +15,7 @@
 #[cfg(test)]
 mod tests;
 
-use crate::engines::db::StoreDelegate;
-use crate::{FromOpts, KeyedSnapshot, RangedSnapshot, Store, StoreEngine, StoreError};
+use crate::{ByteEngine, FromOpts, KeyedSnapshot, RangedSnapshot, Store, StoreError, StoreOpts};
 use heed::types::ByteSlice;
 use heed::{Database, Env, EnvOpenOptions, Error};
 use std::fmt::{Debug, Formatter};
@@ -76,12 +75,6 @@ impl Debug for LmdbxDatabase {
     }
 }
 
-impl From<LmdbxDatabase> for StoreDelegate {
-    fn from(d: LmdbxDatabase) -> Self {
-        StoreDelegate::Lmdbx(d)
-    }
-}
-
 impl LmdbxDatabase {
     fn from_raw(path: PathBuf, delegate: Database<ByteSlice, ByteSlice>, env: Env) -> Self {
         LmdbxDatabase {
@@ -115,10 +108,20 @@ impl LmdbxDatabase {
 impl Store for LmdbxDatabase {}
 
 impl FromOpts for LmdbxDatabase {
-    type Opts = EnvOpenOptions;
+    type Opts = LmdbOpts;
 
     fn from_opts<I: AsRef<Path>>(path: I, opts: &Self::Opts) -> Result<Self, StoreError> {
-        LmdbxDatabase::init(path, opts)
+        LmdbxDatabase::init(path, &opts.0)
+    }
+}
+
+pub struct LmdbOpts(pub EnvOpenOptions);
+
+impl StoreOpts for LmdbOpts {}
+
+impl Default for LmdbOpts {
+    fn default() -> Self {
+        LmdbOpts(EnvOpenOptions::new())
     }
 }
 
@@ -163,30 +166,29 @@ pub struct LmdbxOpts {
     pub open_opts: EnvOpenOptions,
 }
 
-impl<'i> StoreEngine<'i> for LmdbxDatabase {
-    type Key = &'i [u8];
-    type Value = &'i [u8];
-    type Error = heed::Error;
-
-    fn put(&self, key: Self::Key, value: Self::Value) -> Result<(), Self::Error> {
+impl ByteEngine for LmdbxDatabase {
+    fn put(&self, key: Vec<u8>, value: Vec<u8>) -> Result<(), StoreError> {
         let LmdbxDatabaseInner { delegate, env, .. } = &*self.inner;
         let mut wtxn = env.write_txn()?;
 
-        delegate.put(&mut wtxn, key, value)?;
-        wtxn.commit()
+        delegate.put(&mut wtxn, key.as_slice(), value.as_slice())?;
+        wtxn.commit().map_err(Into::into)
     }
 
-    fn get(&self, key: Self::Key) -> Result<Option<Vec<u8>>, Self::Error> {
+    fn get(&self, key: Vec<u8>) -> Result<Option<Vec<u8>>, StoreError> {
         let LmdbxDatabaseInner { delegate, env, .. } = &*self.inner;
         let rtxn = env.read_txn()?;
 
-        delegate.get(&rtxn, key).map(|e| e.map(|e| e.to_vec()))
+        delegate
+            .get(&rtxn, key.as_slice())
+            .map(|e| e.map(|e| e.to_vec()))
+            .map_err(Into::into)
     }
 
-    fn delete(&self, key: Self::Key) -> Result<(), Self::Error> {
+    fn delete(&self, key: Vec<u8>) -> Result<(), StoreError> {
         let LmdbxDatabaseInner { delegate, env, .. } = &*self.inner;
         let mut wtxn = env.write_txn()?;
-        let _result = delegate.delete(&mut wtxn, key)?;
+        let _result = delegate.delete(&mut wtxn, key.as_slice())?;
 
         wtxn.commit()?;
         Ok(())

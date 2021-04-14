@@ -12,17 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::engines::db::rocks::RocksDatabase;
+use crate::engines::db::rocks::{RocksDatabase, RocksOpts};
 use crate::engines::db::test_suite;
 use crate::engines::db::test_suite::TransientDatabase;
-use rocksdb::Options;
 
 fn delegate() -> TransientDatabase<RocksDatabase> {
-    let mut opts = Options::default();
-    opts.create_if_missing(true);
-    opts.create_missing_column_families(true);
-
-    TransientDatabase::new(opts)
+    TransientDatabase::new(RocksOpts::default())
 }
 
 #[test]

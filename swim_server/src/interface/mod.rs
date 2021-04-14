@@ -31,7 +31,7 @@ use std::fmt::{Display, Formatter};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use store::SwimPlaneStore;
-use store::{ServerStore, StoreEngineOpts, SwimStore};
+use store::{RocksDatabase, ServerStore, StoreEngineOpts, SwimStore};
 use swim_common::routing::ws::tungstenite::TungsteniteWsConnections;
 use swim_runtime::task::TaskError;
 use swim_runtime::time::clock::RuntimeClock;
@@ -46,8 +46,15 @@ use utilities::sync::{promise, trigger};
 pub struct SwimServerBuilder {
     address: Option<SocketAddr>,
     config: SwimServerConfig,
-    planes: Vec<PlaneSpec<RuntimeClock, EnvChannel, PlaneRouter<TopLevelRouter>, SwimPlaneStore>>,
-    store: ServerStore,
+    planes: Vec<
+        PlaneSpec<
+            RuntimeClock,
+            EnvChannel,
+            PlaneRouter<TopLevelRouter>,
+            SwimPlaneStore<RocksDatabase>,
+        >,
+    >,
+    store: ServerStore<RocksDatabase>,
 }
 
 impl Default for SwimServerBuilder {
@@ -66,12 +73,20 @@ impl SwimServerBuilder {
     ///
     /// # Arguments
     /// * `config` - The custom configuration for the server.
-    pub fn new(config: SwimServerConfig, store: ServerStore) -> Self {
+    pub fn new(config: SwimServerConfig, store: ServerStore<RocksDatabase>) -> Self {
         SwimServerBuilder {
             address: None,
             config,
             planes: Vec::new(),
             store,
+        }
+    }
+
+    pub fn transient_store(config: SwimServerConfig, prefix: &str) -> Self {
+        SwimServerBuilder {
+            store: ServerStore::<RocksDatabase>::transient(Default::default(), prefix),
+            config,
+            ..Default::default()
         }
     }
 
@@ -94,7 +109,7 @@ impl SwimServerBuilder {
     /// # Example
     /// ```
     /// use std::net::{SocketAddr, IpAddr, Ipv4Addr};
-    /// use swim_server::interface::{SwimServer, SwimServerBuilder};
+    /// use swim_server::interface::{SwimServer, SwimServerBuilder, SwimServerConfig};
     /// use swim_server::RoutePattern;
     /// use swim_server::agent_lifecycle;
     /// use swim_server::agent::SwimAgent;
@@ -121,7 +136,7 @@ impl SwimServerBuilder {
     ///     }
     /// }
     ///
-    /// let mut swim_server_builder = SwimServerBuilder::default();
+    /// let mut swim_server_builder = SwimServerBuilder::transient_store(SwimServerConfig::default(), "test");
     /// let mut plane_builder = swim_server_builder.plane_builder("test");
     ///
     /// plane_builder
@@ -135,7 +150,12 @@ impl SwimServerBuilder {
     /// ```
     pub fn add_plane(
         &mut self,
-        plane: PlaneSpec<RuntimeClock, EnvChannel, PlaneRouter<TopLevelRouter>, SwimPlaneStore>,
+        plane: PlaneSpec<
+            RuntimeClock,
+            EnvChannel,
+            PlaneRouter<TopLevelRouter>,
+            SwimPlaneStore<RocksDatabase>,
+        >,
     ) {
         if !self.planes.is_empty() {
             panic!("Multiple planes are not supported yet")
@@ -146,7 +166,12 @@ impl SwimServerBuilder {
     pub fn plane_builder<I: Into<String>>(
         &mut self,
         name: I,
-    ) -> PlaneBuilder<RuntimeClock, EnvChannel, PlaneRouter<TopLevelRouter>, SwimPlaneStore> {
+    ) -> PlaneBuilder<
+        RuntimeClock,
+        EnvChannel,
+        PlaneRouter<TopLevelRouter>,
+        SwimPlaneStore<RocksDatabase>,
+    > {
         let store = self
             .store
             .plane_store(name.into())
@@ -161,7 +186,7 @@ impl SwimServerBuilder {
     /// # Example
     /// ```
     /// use std::net::{SocketAddr, IpAddr, Ipv4Addr};
-    /// use swim_server::interface::{SwimServer, SwimServerBuilder};
+    /// use swim_server::interface::{SwimServer, SwimServerBuilder, SwimServerConfig};
     /// use swim_server::RoutePattern;
     /// use swim_server::agent_lifecycle;
     /// use swim_server::agent::SwimAgent;
@@ -187,7 +212,7 @@ impl SwimServerBuilder {
     ///     }
     /// }
     ///
-    /// let mut swim_server_builder = SwimServerBuilder::default();
+    /// let mut swim_server_builder = SwimServerBuilder::transient_store(SwimServerConfig::default(), "test");
     /// let mut plane_builder = swim_server_builder.plane_builder("test");
     ///
     /// plane_builder
@@ -236,9 +261,16 @@ impl SwimServerBuilder {
 pub struct SwimServer {
     address: SocketAddr,
     config: SwimServerConfig,
-    planes: Vec<PlaneSpec<RuntimeClock, EnvChannel, PlaneRouter<TopLevelRouter>, SwimPlaneStore>>,
+    planes: Vec<
+        PlaneSpec<
+            RuntimeClock,
+            EnvChannel,
+            PlaneRouter<TopLevelRouter>,
+            SwimPlaneStore<RocksDatabase>,
+        >,
+    >,
     stop_trigger_rx: trigger::Receiver,
-    _store: ServerStore,
+    _store: ServerStore<RocksDatabase>,
     address_tx: promise::Sender<SocketAddr>,
 }
 

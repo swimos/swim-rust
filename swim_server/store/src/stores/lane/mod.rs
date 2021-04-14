@@ -47,7 +47,7 @@ where
     E: StoreEngine<'a>,
     F: Fn(&E, Vec<u8>) -> Result<O, StoreError>,
 {
-    f(engine, serialize(obj)?)
+    f(engine, serialize(obj)?).map_err(Into::into)
 }
 
 pub fn serialize<S: Serialize>(obj: &S) -> Result<Vec<u8>, StoreError> {
