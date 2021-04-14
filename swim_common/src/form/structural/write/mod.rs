@@ -13,6 +13,8 @@
 // limitations under the License.
 
 pub mod interpreters;
+#[cfg(test)]
+mod tests;
 
 use crate::form::structural::write::interpreters::value::ValueInterpreter;
 use crate::model::blob::Blob;
@@ -52,6 +54,10 @@ pub trait StructuralWritable: Sized {
 
     fn into_structure(self) -> Value {
         self.write_into_infallible(ValueInterpreter::default())
+    }
+
+    fn ommit_as_field(&self) -> bool {
+        false
     }
 }
 
@@ -452,6 +458,16 @@ impl StructuralWritable for &[u8] {
     }
 }
 
+impl StructuralWritable for Box<[u8]> {
+    fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
+        writer.write_blob(self.as_ref())
+    }
+
+    fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error> {
+        writer.write_blob_vec(self.into_vec())
+    }
+}
+
 impl StructuralWritable for Value {
     fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
         match self {
@@ -523,10 +539,7 @@ impl StructuralWritable for Value {
 }
 
 impl<T: StructuralWritable> StructuralWritable for Vec<T> {
-    fn write_with<W: StructuralWriter>(
-        &self,
-        writer: W,
-    ) -> Result<<W as PrimitiveWriter>::Repr, <W as PrimitiveWriter>::Error> {
+    fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
         self.iter()
             .try_fold(
                 writer.record()?.complete_header(self.len())?,
@@ -535,10 +548,7 @@ impl<T: StructuralWritable> StructuralWritable for Vec<T> {
             .done()
     }
 
-    fn write_into<W: StructuralWriter>(
-        self,
-        writer: W,
-    ) -> Result<<W as PrimitiveWriter>::Repr, <W as PrimitiveWriter>::Error> {
+    fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error> {
         let len = self.len();
         self.into_iter()
             .try_fold(
@@ -546,5 +556,27 @@ impl<T: StructuralWritable> StructuralWritable for Vec<T> {
                 |record_writer, value| record_writer.write_value_into(value),
             )?
             .done()
+    }
+}
+
+impl<T: StructuralWritable> StructuralWritable for Option<T> {
+    fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
+        if let Some(value) = self {
+            value.write_with(writer)
+        } else {
+            writer.write_extant()
+        }
+    }
+
+    fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error> {
+        if let Some(value) = self {
+            value.write_into(writer)
+        } else {
+            writer.write_extant()
+        }
+    }
+
+    fn ommit_as_field(&self) -> bool {
+        self.is_none()
     }
 }
