@@ -83,16 +83,6 @@ impl From<LmdbxDatabase> for StoreDelegate {
 }
 
 impl LmdbxDatabase {
-    pub fn new(
-        path: PathBuf,
-        delegate: Arc<Database<ByteSlice, ByteSlice>>,
-        env: Arc<Env>,
-    ) -> Self {
-        LmdbxDatabase {
-            inner: Arc::new(LmdbxDatabaseInner::new(path, delegate, env)),
-        }
-    }
-
     fn from_raw(path: PathBuf, delegate: Database<ByteSlice, ByteSlice>, env: Env) -> Self {
         LmdbxDatabase {
             inner: Arc::new(LmdbxDatabaseInner::new(

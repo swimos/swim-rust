@@ -26,24 +26,6 @@ const PLANES_DIR: &str = "planes";
 const MAP_DIR: &str = "map";
 const VALUE_DIR: &str = "value";
 
-/// The core of a plane store.
-pub struct PlaneStoreInner {
-    /// The name of the plane.
-    plane_name: String,
-    /// A store for map lanes.
-    map_store: DatabaseStore<MapStorageKey>,
-    /// A store for value lanes.
-    value_store: DatabaseStore<ValueStorageKey>,
-}
-
-impl Debug for PlaneStoreInner {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("PlaneStoreInner")
-            .field("plane_name", &self.plane_name)
-            .finish()
-    }
-}
-
 /// Creates paths for both map and value stores with a base path of `base_path` and appended by
 /// `plane_name`.
 fn paths_for<B, P>(base_path: &B, plane_name: &P) -> (PathBuf, PathBuf)
@@ -72,12 +54,57 @@ pub trait PlaneStore: Debug {
         I: ToString;
 }
 
-impl PlaneStoreInner {
+/// A store engine for planes.
+///
+/// Backed by a value store and a map store, any operations on this store have their key variant
+/// checked and the operation is delegated to the corresponding store.
+#[derive(Clone)]
+pub struct SwimPlaneStore {
+    /// The name of the plane.
+    plane_name: Arc<String>,
+    /// A store for map lanes.
+    map_store: Arc<DatabaseStore<MapStorageKey>>,
+    /// A store for value lanes.
+    value_store: Arc<DatabaseStore<ValueStorageKey>>,
+}
+
+impl Debug for SwimPlaneStore {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SwimPlaneStore")
+            .field("plane_name", &self.plane_name)
+            .finish()
+    }
+}
+
+impl PlaneStore for SwimPlaneStore {
+    type NodeStore = SwimNodeStore;
+
+    fn node_store<I>(&self, node: I) -> Self::NodeStore
+    where
+        I: ToString,
+    {
+        SwimNodeStore::new(self.clone(), node.to_string())
+    }
+}
+
+impl SwimPlaneStore {
+    pub(crate) fn new(
+        plane_name: String,
+        map_store: StoreDelegate,
+        value_store: StoreDelegate,
+    ) -> SwimPlaneStore {
+        SwimPlaneStore {
+            plane_name: Arc::new(plane_name),
+            map_store: Arc::new(DatabaseStore::new(map_store)),
+            value_store: Arc::new(DatabaseStore::new(value_store)),
+        }
+    }
+
     pub(crate) fn open<B, P>(
         base_path: B,
         plane_name: P,
         opts: &StoreEngineOpts,
-    ) -> Result<PlaneStoreInner, StoreError>
+    ) -> Result<SwimPlaneStore, StoreError>
     where
         B: AsRef<Path>,
         P: AsRef<Path>,
@@ -96,57 +123,7 @@ impl PlaneStoreInner {
             .expect("Expected valid UTF-8")
             .to_string();
 
-        Ok(PlaneStoreInner {
-            plane_name,
-            map_store: DatabaseStore::new(map_store),
-            value_store: DatabaseStore::new(value_store),
-        })
-    }
-}
-
-/// A store engine for planes.
-///
-/// Backed by a value store and a map store, any operations on this store have their key variant
-/// checked and the operation is delegated to the corresponding store.
-#[derive(Clone, Debug)]
-pub struct SwimPlaneStore {
-    inner: Arc<PlaneStoreInner>,
-}
-
-impl PlaneStore for SwimPlaneStore {
-    type NodeStore = SwimNodeStore;
-
-    fn node_store<I>(&self, node: I) -> Self::NodeStore
-    where
-        I: ToString,
-    {
-        SwimNodeStore::new(self.clone(), node.to_string())
-    }
-}
-
-impl SwimPlaneStore {
-    /// Creates a new plane store.
-    ///
-    /// # Arguments
-    /// `plane_name`: the name of the plane.
-    /// `map_store`: a store for delegating map lane store engine operations to.
-    /// `value_store`: a store for delegating value lane store engine operations to.
-    pub fn new(
-        plane_name: String,
-        map_store: DatabaseStore<MapStorageKey>,
-        value_store: DatabaseStore<ValueStorageKey>,
-    ) -> Self {
-        SwimPlaneStore {
-            inner: Arc::new(PlaneStoreInner {
-                plane_name,
-                map_store,
-                value_store,
-            }),
-        }
-    }
-
-    pub fn from_inner(inner: Arc<PlaneStoreInner>) -> SwimPlaneStore {
-        SwimPlaneStore { inner }
+        Ok(Self::new(plane_name, map_store, value_store))
     }
 }
 
@@ -156,12 +133,11 @@ impl<'a> StoreEngine<'a> for SwimPlaneStore {
     type Error = StoreError;
 
     fn put(&self, key: Self::Key, value: Self::Value) -> Result<(), Self::Error> {
-        let PlaneStoreInner {
+        let SwimPlaneStore {
             map_store,
             value_store,
             ..
-        } = &*self.inner;
-
+        } = self;
         match key {
             StoreKey::Map(key) => map_store.put(&key, value),
             StoreKey::Value(key) => value_store.put(&key, value),
@@ -169,11 +145,11 @@ impl<'a> StoreEngine<'a> for SwimPlaneStore {
     }
 
     fn get(&self, key: Self::Key) -> Result<Option<Vec<u8>>, Self::Error> {
-        let PlaneStoreInner {
+        let SwimPlaneStore {
             map_store,
             value_store,
             ..
-        } = &*self.inner;
+        } = self;
         match key {
             StoreKey::Map(key) => map_store.get(&key),
             StoreKey::Value(key) => value_store.get(&key),
@@ -181,11 +157,11 @@ impl<'a> StoreEngine<'a> for SwimPlaneStore {
     }
 
     fn delete(&self, key: Self::Key) -> Result<(), Self::Error> {
-        let PlaneStoreInner {
+        let SwimPlaneStore {
             map_store,
             value_store,
             ..
-        } = &*self.inner;
+        } = self;
         match key {
             StoreKey::Map(key) => map_store.delete(&key),
             StoreKey::Value(key) => value_store.delete(&key),
@@ -205,8 +181,8 @@ impl RangedSnapshot for SwimPlaneStore {
         F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
     {
         match prefix {
-            p @ StoreKey::Map(..) => self.inner.map_store.ranged_snapshot(p, map_fn),
-            p @ StoreKey::Value(..) => self.inner.value_store.ranged_snapshot(p, map_fn),
+            p @ StoreKey::Map(..) => self.map_store.ranged_snapshot(p, map_fn),
+            p @ StoreKey::Value(..) => self.value_store.ranged_snapshot(p, map_fn),
         }
     }
 }
@@ -214,8 +190,9 @@ impl RangedSnapshot for SwimPlaneStore {
 #[cfg(test)]
 mod tests {
     use crate::engines::db::rocks::RocksDatabase;
-    use crate::stores::plane::{PlaneStoreInner, SwimPlaneStore};
-    use crate::stores::{DatabaseStore, StoreKey, ValueStorageKey};
+    use crate::engines::db::StoreDelegate;
+    use crate::stores::plane::SwimPlaneStore;
+    use crate::stores::{StoreKey, ValueStorageKey};
     use crate::{StoreEngine, StoreEngineOpts};
     use rocksdb::{Options, DB};
     use std::sync::Arc;
@@ -231,12 +208,13 @@ mod tests {
 
         {
             let map_delegate = RocksDatabase::new(map_db);
-            let map_store = DatabaseStore::new(map_delegate);
-
             let value_delegate = RocksDatabase::new(value_db);
-            let value_store = DatabaseStore::new(value_delegate);
 
-            let plane_store = SwimPlaneStore::new("test".into(), map_store, value_store);
+            let plane_store = SwimPlaneStore::new(
+                "test".into(),
+                StoreDelegate::from(map_delegate),
+                StoreDelegate::from(value_delegate),
+            );
 
             let value_key = StoreKey::Value(ValueStorageKey {
                 node_uri: Arc::new("/node".to_string()),
@@ -263,17 +241,17 @@ mod tests {
         let plane_name = "test_plane";
         let temp_dir = TempDir::new("test").expect("Failed to create temporary directory");
 
-        let plane_inner =
-            PlaneStoreInner::open(temp_dir.path(), plane_name, &StoreEngineOpts::default())
+        let plane_store =
+            SwimPlaneStore::open(temp_dir.path(), plane_name, &StoreEngineOpts::default())
                 .expect("Failed to create plane store");
 
-        let PlaneStoreInner {
+        let SwimPlaneStore {
             plane_name: inner_plane_name,
             map_store,
             value_store,
-        } = plane_inner;
+        } = plane_store;
 
-        assert_eq!(inner_plane_name, plane_name);
+        assert_eq!(*inner_plane_name, plane_name);
 
         let map_dir = map_store.delegate.path();
         assert!(map_dir.ends_with("map"));

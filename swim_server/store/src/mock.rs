@@ -17,7 +17,7 @@ use crate::stores::lane::map::MapDataModel;
 use crate::stores::lane::value::ValueDataModel;
 use crate::stores::node::NodeStore;
 use crate::stores::plane::{PlaneStore, SwimPlaneStore};
-use crate::stores::{DatabaseStore, StoreKey};
+use crate::stores::StoreKey;
 use crate::{FromOpts, KeyedSnapshot, RangedSnapshot, Store, StoreEngine, StoreError, SwimStore};
 use serde::Serialize;
 use std::path::Path;
@@ -58,8 +58,8 @@ impl SwimStore for MockServerStore {
     {
         Ok(SwimPlaneStore::new(
             "target".into(),
-            DatabaseStore::new(EmptyDelegateStore),
-            DatabaseStore::new(EmptyDelegateStore),
+            StoreDelegate::from(EmptyDelegateStore),
+            StoreDelegate::from(EmptyDelegateStore),
         ))
     }
 }

@@ -22,12 +22,9 @@ pub use stores::node::{NodeStore, SwimNodeStore};
 pub use stores::plane::{PlaneStore, SwimPlaneStore};
 
 use crate::engines::db::StoreDelegateConfig;
-use crate::stores::plane::PlaneStoreInner;
-use std::collections::HashMap;
 use std::error::Error;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Weak};
 use std::vec::IntoIter;
 use std::{fs, io};
 use tempdir::TempDir;
@@ -237,8 +234,6 @@ pub trait StoreEngine<'i>: 'static {
 pub struct ServerStore {
     /// The directory that this store is operating from.
     dir: StoreDir,
-    /// Weak pointers to all open plane stores.
-    refs: HashMap<String, Weak<PlaneStoreInner>>,
     /// The options that all stores will be opened with.
     opts: StoreEngineOpts,
 }
@@ -252,7 +247,6 @@ impl ServerStore {
     pub fn new(opts: StoreEngineOpts, base_path: PathBuf) -> ServerStore {
         ServerStore {
             dir: StoreDir::persistent(base_path).expect("Failed to create server store"),
-            refs: HashMap::new(),
             opts,
         }
     }
@@ -265,7 +259,6 @@ impl ServerStore {
     pub fn transient(opts: StoreEngineOpts, prefix: &str) -> ServerStore {
         ServerStore {
             dir: StoreDir::transient(prefix),
-            refs: HashMap::new(),
             opts,
         }
     }
@@ -275,20 +268,10 @@ impl SwimStore for ServerStore {
     type PlaneStore = SwimPlaneStore;
 
     fn plane_store<I: ToString>(&mut self, plane_name: I) -> Result<Self::PlaneStore, StoreError> {
-        let ServerStore { refs, opts, dir } = self;
+        let ServerStore { opts, dir } = self;
         let plane_name = plane_name.to_string();
 
-        let store = match refs.get(&plane_name) {
-            Some(store) => match store.upgrade() {
-                Some(store) => return Ok(SwimPlaneStore::from_inner(store)),
-                None => Arc::new(PlaneStoreInner::open(dir.path(), &plane_name, opts)?),
-            },
-            None => Arc::new(PlaneStoreInner::open(dir.path(), &plane_name, opts)?),
-        };
-
-        let weak = Arc::downgrade(&store);
-        refs.insert(plane_name, weak);
-        Ok(SwimPlaneStore::from_inner(store))
+        SwimPlaneStore::open(dir.path(), &plane_name, opts)
     }
 }
 
