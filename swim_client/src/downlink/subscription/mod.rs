@@ -29,7 +29,7 @@ use crate::downlink::{
     command_downlink, event_downlink, map_downlink, value_downlink, Command, Downlink,
     DownlinkError, Message, SchemaViolations,
 };
-use crate::router::{run_client_router, SubscribeRequest};
+use crate::router::run_client_router;
 use crate::router::{
     create_remote_conns, ClientRequest, ClientRouterFactory, OldRouter, RouterEvent,
     SubscriberRequest,
@@ -53,7 +53,7 @@ use swim_common::routing::error::{ResolutionError, RouterError, RoutingError};
 use swim_common::routing::remote::{
     RawRoute, RemoteConnectionChannels, RemoteConnectionsTask, RoutingRequest,
 };
-use swim_common::routing::{TaggedEnvelope, RoutingAddr};
+use swim_common::routing::{RoutingAddr, TaggedEnvelope};
 use swim_common::sink::item;
 use swim_common::sink::item::either::SplitSink;
 use swim_common::sink::item::ItemSender;
@@ -423,7 +423,7 @@ struct DownlinkTask {
     event_downlinks: HashMap<(AbsolutePath, SchemaViolations), EventHandle>,
     stopped_watch: StopEvents,
     remote_tx: mpsc::Sender<RoutingRequest>,
-    local_tx: mpsc::Sender<SubscribeRequest>,
+    local_tx: mpsc::Sender<ClientRequest>,
 }
 
 /// Event that is generated after a downlink stops to allow it to be cleaned up.
@@ -461,7 +461,7 @@ impl DownlinkTask {
     fn new<C>(
         config: Arc<C>,
         remote_tx: mpsc::Sender<RoutingRequest>,
-        local_tx: mpsc::Sender<SubscribeRequest>,
+        local_tx: mpsc::Sender<ClientRequest>,
     ) -> DownlinkTask
     where
         C: Config + 'static,
@@ -508,7 +508,10 @@ impl DownlinkTask {
         // Get the stream
         let (tx, rx) = oneshot::channel();
         self.local_tx
-            .send((path.clone(), Request::new(tx)))
+            .send(ClientRequest::Subscribe {
+                path: path.clone(),
+                request: Request::new(tx),
+            })
             .await
             .unwrap();
 

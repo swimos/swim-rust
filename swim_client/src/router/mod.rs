@@ -32,7 +32,7 @@ use swim_runtime::task::*;
 use crate::configuration::router::RouterParams;
 use crate::connections::{ConnectionPool, ConnectionSender};
 use crate::router::incoming::{IncomingHostTask, IncomingRequest};
-use crate::router::outgoing::OutgoingHostTask;
+use either::Either;
 use futures::future::BoxFuture;
 use futures::join;
 use futures::select;
@@ -60,55 +60,159 @@ use utilities::errors::Recoverable;
 use utilities::future::open_ended::OpenEndedFutures;
 use utilities::sync::{promise, trigger};
 use utilities::uri::RelativeUri;
-use either::Either;
 
 pub mod incoming;
-pub mod outgoing;
 mod retry;
 
 #[cfg(test)]
 mod tests;
 
-pub(crate) async fn create_remote_conns() -> (
-    mpsc::Receiver<ClientRequest>,
-    mpsc::Sender<RoutingRequest>,
-    trigger::Sender,
-    RemoteConnectionsTask<
-        TokioPlainTextNetworking,
-        TungsteniteWsConnections,
-        ClientRouterFactory,
-        OpenEndedFutures<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>>,
-    >,
+#[derive(Debug, Clone)]
+pub(crate) struct ClientRouterFactory {
+    request_sender: mpsc::Sender<ClientRequest>,
+}
+
+impl ClientRouterFactory {
+    pub(crate) fn new(request_sender: mpsc::Sender<ClientRequest>) -> Self {
+        ClientRouterFactory { request_sender }
+    }
+}
+
+impl RouterFactory for ClientRouterFactory {
+    type Router = ClientRouter;
+
+    fn create_for(&self, addr: RoutingAddr) -> Self::Router {
+        ClientRouter {
+            tag: addr,
+            request_sender: self.request_sender.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ClientRouter {
+    tag: RoutingAddr,
+    request_sender: mpsc::Sender<ClientRequest>,
+}
+
+impl Router for ClientRouter {
+    fn resolve_sender(
+        &mut self,
+        _addr: RoutingAddr,
+        origin: Option<SocketAddr>,
+    ) -> BoxFuture<'_, Result<Route, ResolutionError>> {
+        async move {
+            let ClientRouter {
+                tag,
+                request_sender,
+            } = self;
+            let (tx, rx) = oneshot::channel();
+            if request_sender
+                .send(ClientRequest::Connect {
+                    request: Request::new(tx),
+                    origin: origin.unwrap(),
+                })
+                .await
+                .is_err()
+            {
+                Err(ResolutionError::router_dropped())
+            } else {
+                match rx.await {
+                    Ok(Ok(RawRoute { sender, on_drop })) => {
+                        Ok(Route::new(TaggedSender::new(*tag, sender), on_drop))
+                    }
+                    Ok(Err(err)) => Err(ResolutionError::unresolvable(err.to_string())),
+                    Err(_) => Err(ResolutionError::router_dropped()),
+                }
+            }
+        }
+        .boxed()
+    }
+
+    fn lookup(
+        &mut self,
+        _host: Option<Url>,
+        _route: RelativeUri,
+    ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
+        async move { Ok(RoutingAddr::local(0)) }.boxed()
+    }
+}
+
+//Todo dm maybe unify them into one
+#[derive(Debug)]
+pub(crate) enum ClientRequest {
+    /// Obtain a connection.
+    Connect {
+        request: Request<Result<RawRoute, Unresolvable>>,
+        origin: SocketAddr,
+    },
+    /// Subscribe to a connection.
+    Subscribe {
+        path: AbsolutePath,
+        request: Request<mpsc::Receiver<TaggedEnvelope>>,
+    },
+}
+
+pub(crate) type OutgoingManagerSender = mpsc::Sender<TaggedEnvelope>;
+
+pub(crate) async fn run_client_router(
+    mut request_rx: mpsc::Receiver<ClientRequest>,
+    mut local_rx: mpsc::Receiver<ClientRequest>,
 ) {
-    let conn_config = ConnectionConfig::default();
-    let websocket_config = WebSocketConfig::default();
+    let mut outgoing_managers: HashMap<
+        Url,
+        (
+            OutgoingManagerSender,
+            mpsc::Sender<Request<mpsc::Receiver<TaggedEnvelope>>>,
+        ),
+    > = HashMap::new();
 
-    let (remote_tx, remote_rx) = mpsc::channel(conn_config.router_buffer_size.get());
-    let (request_tx, request_rx) = mpsc::channel(conn_config.router_buffer_size.get());
-    let top_level_router_fac = ClientRouterFactory::new(request_tx);
+    let mut request_rx = ReceiverStream::new(request_rx).fuse();
+    let mut local_rx = ReceiverStream::new(local_rx).fuse();
+    loop {
+        let next: Option<ClientRequest> = select_biased! {
+            request = request_rx.next() => request,
+            sub = local_rx.next() => sub,
+        };
 
-    let (stop_trigger_tx, stop_trigger_rx) = trigger::trigger();
+        match next {
+            Some(ClientRequest::Connect { request, origin }) => {
+                //Todo dm change this
+                eprintln!("origin.to_string() = {:#?}", origin.to_string());
+                let url = Url::parse(&format!("ws://{}", origin.to_string())).unwrap();
 
-    (
-        request_rx,
-        remote_tx.clone(),
-        stop_trigger_tx,
-        RemoteConnectionsTask::new_client_task(
-            conn_config,
-            TokioPlainTextNetworking::new(Arc::new(Resolver::new().await)),
-            TungsteniteWsConnections {
-                config: websocket_config,
-            },
-            top_level_router_fac,
-            OpenEndedFutures::new(),
-            RemoteConnectionChannels {
-                request_tx: remote_tx,
-                request_rx: remote_rx,
-                stop_trigger: stop_trigger_rx,
-            },
-        )
-        .await,
-    )
+                let (sender, _) = outgoing_managers
+                    .entry(url)
+                    .or_insert_with(|| {
+                        let (manager, sender, sub_tx) = OutgoingManager::new();
+                        spawn(manager.run());
+                        (sender, sub_tx)
+                    })
+                    .clone();
+
+                // Todo dm move in right place
+                let (_on_drop_tx, on_drop_rx) = promise::promise();
+
+                request.send(Ok(RawRoute::new(sender, on_drop_rx))).unwrap();
+            }
+            Some(ClientRequest::Subscribe {
+                path: sub_addr,
+                request: sub_req,
+            }) => {
+                let (_, sub_sender) = outgoing_managers
+                    .entry(sub_addr.host.clone())
+                    .or_insert_with(|| {
+                        let (manager, sender, sub_tx) = OutgoingManager::new();
+                        spawn(manager.run());
+                        (sender, sub_tx)
+                    });
+
+                //Todo dm add relative path
+                sub_sender.send(sub_req).await.unwrap();
+            }
+            _ => break,
+        }
+    }
 }
 
 pub(crate) struct OutgoingManager {
@@ -174,180 +278,50 @@ impl OutgoingManager {
     }
 }
 
-pub(crate) type OutgoingManagerSender = mpsc::Sender<TaggedEnvelope>;
-pub(crate) type SubscribeRequest = (AbsolutePath, Request<mpsc::Receiver<TaggedEnvelope>>);
-
-pub(crate) async fn run_client_router(
-    mut request_rx: mpsc::Receiver<ClientRequest>,
-    mut local_rx: mpsc::Receiver<SubscribeRequest>,
+//Todo dm this may need to be moved
+pub(crate) async fn create_remote_conns() -> (
+    mpsc::Receiver<ClientRequest>,
+    mpsc::Sender<RoutingRequest>,
+    trigger::Sender,
+    RemoteConnectionsTask<
+        TokioPlainTextNetworking,
+        TungsteniteWsConnections,
+        ClientRouterFactory,
+        OpenEndedFutures<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>>,
+    >,
 ) {
-    let mut outgoing_managers: HashMap<
-        Url,
-        (
-            OutgoingManagerSender,
-            mpsc::Sender<Request<mpsc::Receiver<TaggedEnvelope>>>,
-        ),
-    > = HashMap::new();
+    let conn_config = ConnectionConfig::default();
+    let websocket_config = WebSocketConfig::default();
 
-    let mut request_rx = ReceiverStream::new(request_rx).fuse();
-    let mut local_rx = ReceiverStream::new(local_rx).fuse();
-    loop {
-        let next: Either<
-            Option<ClientRequest>,
-            Option<(AbsolutePath, Request<mpsc::Receiver<TaggedEnvelope>>)>,
-        > = select_biased! {
-            request = request_rx.next() => Either::Left(request),
-            sub = local_rx.next() => Either::Right(sub),
-        };
+    let (remote_tx, remote_rx) = mpsc::channel(conn_config.router_buffer_size.get());
+    let (request_tx, request_rx) = mpsc::channel(conn_config.router_buffer_size.get());
+    let top_level_router_fac = ClientRouterFactory::new(request_tx);
 
-        match next {
-            Either::Left(Some(request)) => {
-                match request {
-                    ClientRequest::Resolve { request, .. } => {
-                        request.send(Ok(RoutingAddr::local(0))).unwrap();
-                    }
-                    ClientRequest::Subscribe { request, origin } => {
-                        //Todo dm change this
-                        let url = Url::parse(&format!("ws://{}", origin.to_string())).unwrap();
+    let (stop_trigger_tx, stop_trigger_rx) = trigger::trigger();
 
-                        let (sender, _) = outgoing_managers
-                            .entry(url)
-                            .or_insert_with(|| {
-                                let (manager, sender, sub_tx) = OutgoingManager::new();
-                                spawn(manager.run());
-                                (sender, sub_tx)
-                            })
-                            .clone();
-
-                        // Todo dm move in right place
-                        let (_on_drop_tx, on_drop_rx) = promise::promise();
-
-                        request.send(Ok(RawRoute::new(sender, on_drop_rx))).unwrap();
-                    }
-                }
-            }
-            Either::Right(Some((sub_addr, sub_req))) => {
-                let (_, sub_sender) = outgoing_managers
-                    .entry(sub_addr.host.clone())
-                    .or_insert_with(|| {
-                        let (manager, sender, sub_tx) = OutgoingManager::new();
-                        spawn(manager.run());
-                        (sender, sub_tx)
-                    });
-
-                //Todo dm add relative path
-                sub_sender.send(sub_req).await.unwrap();
-            }
-            _ => break,
-        }
-    }
+    (
+        request_rx,
+        remote_tx.clone(),
+        stop_trigger_tx,
+        RemoteConnectionsTask::new_client_task(
+            conn_config,
+            TokioPlainTextNetworking::new(Arc::new(Resolver::new().await)),
+            TungsteniteWsConnections {
+                config: websocket_config,
+            },
+            top_level_router_fac,
+            OpenEndedFutures::new(),
+            RemoteConnectionChannels {
+                request_tx: remote_tx,
+                request_rx: remote_rx,
+                stop_trigger: stop_trigger_rx,
+            },
+        )
+        .await,
+    )
 }
 
-#[derive(Debug)]
-pub(crate) enum ClientRequest {
-    /// Resolve the routing address for a downlink.
-    Resolve {
-        host: Option<Url>,
-        name: RelativeUri,
-        request: Request<Result<RoutingAddr, RouterError>>,
-    },
-    Subscribe {
-        request: Request<Result<RawRoute, Unresolvable>>,
-        origin: SocketAddr,
-    },
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct ClientRouterFactory {
-    request_sender: mpsc::Sender<ClientRequest>,
-}
-
-impl ClientRouterFactory {
-    pub(crate) fn new(request_sender: mpsc::Sender<ClientRequest>) -> Self {
-        ClientRouterFactory { request_sender }
-    }
-}
-
-impl RouterFactory for ClientRouterFactory {
-    type Router = ClientRouter;
-
-    fn create_for(&self, addr: RoutingAddr) -> Self::Router {
-        ClientRouter {
-            tag: addr,
-            request_sender: self.request_sender.clone(),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct ClientRouter {
-    tag: RoutingAddr,
-    request_sender: mpsc::Sender<ClientRequest>,
-}
-
-impl Router for ClientRouter {
-    fn resolve_sender(
-        &mut self,
-        addr: RoutingAddr,
-        origin: Option<SocketAddr>,
-    ) -> BoxFuture<'_, Result<Route, ResolutionError>> {
-        async move {
-            let ClientRouter {
-                tag,
-                request_sender,
-            } = self;
-            let (tx, rx) = oneshot::channel();
-            if request_sender
-                .send(ClientRequest::Subscribe {
-                    request: Request::new(tx),
-                    origin: origin.unwrap(),
-                })
-                .await
-                .is_err()
-            {
-                Err(ResolutionError::router_dropped())
-            } else {
-                match rx.await {
-                    Ok(Ok(RawRoute { sender, on_drop })) => {
-                        Ok(Route::new(TaggedSender::new(*tag, sender), on_drop))
-                    }
-                    Ok(Err(err)) => Err(ResolutionError::unresolvable(err.to_string())),
-                    Err(_) => Err(ResolutionError::router_dropped()),
-                }
-            }
-        }
-        .boxed()
-    }
-
-    fn lookup(
-        &mut self,
-        host: Option<Url>,
-        route: RelativeUri,
-    ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
-        async move {
-            let ClientRouter { request_sender, .. } = self;
-            let (tx, rx) = oneshot::channel();
-            if request_sender
-                .send(ClientRequest::Resolve {
-                    host,
-                    name: route,
-                    request: Request::new(tx),
-                })
-                .await
-                .is_err()
-            {
-                Err(RouterError::RouterDropped)
-            } else {
-                match rx.await {
-                    Ok(Ok(addr)) => Ok(addr),
-                    Ok(Err(err)) => Err(err),
-                    Err(_) => Err(RouterError::RouterDropped),
-                }
-            }
-        }
-        .boxed()
-    }
-}
+//Todo dm old stuff bellow
 
 /// The Router is responsible for routing messages between the downlinks and the connections from the
 /// connection pool. It can be used to obtain a connection for a downlink or to send direct messages.
@@ -660,19 +634,19 @@ impl<Pool: ConnectionPool> HostManager<Pool> {
 
         let (incoming_task, incoming_task_tx) =
             IncomingHostTask::new(close_rx.clone(), config.buffer_size().get());
-        let outgoing_task =
-            OutgoingHostTask::new(sink_rx, connection_request_tx, close_rx.clone(), config);
+        // let outgoing_task =
+        //     OutgoingHostTask::new(sink_rx, connection_request_tx, close_rx.clone(), config);
 
         let incoming_handle = spawn(
             incoming_task
                 .run()
                 .instrument(span!(Level::TRACE, INCOMING_TASK_NAME)),
         );
-        let outgoing_handle = spawn(
-            outgoing_task
-                .run()
-                .instrument(span!(Level::TRACE, OUTGOING_TASK_NAME)),
-        );
+        // let outgoing_handle = spawn(
+        //     outgoing_task
+        //         .run()
+        //         .instrument(span!(Level::TRACE, OUTGOING_TASK_NAME)),
+        // );
 
         let mut close_trigger = close_rx.fuse();
         let mut connection_request_rx = ReceiverStream::new(connection_request_rx).fuse();
@@ -747,7 +721,7 @@ impl<Pool: ConnectionPool> HostManager<Pool> {
                         let futures = FuturesUnordered::new();
 
                         futures.push(incoming_handle);
-                        futures.push(outgoing_handle);
+                        // futures.push(outgoing_handle);
 
                         for result in futures.collect::<Vec<_>>().await {
                             close_response_tx

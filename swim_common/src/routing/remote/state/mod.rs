@@ -495,6 +495,7 @@ where
     if server {
         websockets.accept_connection(socket).await
     } else {
+        //Todo dm this will have the same bug as bellow
         websockets
             .open_connection(socket, peer_addr.to_string())
             .await
