@@ -12,35 +12,24 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::stores::lane::{serialize, serialize_then, LaneKey};
+use crate::stores::lane::{serialize, serialize_then};
 use crate::stores::node::SwimNodeStore;
-use crate::stores::{MapStorageKey, StoreKey};
-use crate::{KeyedSnapshot, PlaneStore, RangedSnapshotLoad, Snapshot, StoreEngine, StoreError};
+use crate::stores::{LaneKey, MapStorageKey};
+use crate::{KeyedSnapshot, NodeStore, PlaneStore, Snapshot, StoreError};
 use serde::de::DeserializeOwned;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
 use swim_common::model::text::Text;
 
 pub struct MapDataModel<D, K, V> {
-    delegate: MapDataModelDelegate<D>,
+    delegate: SwimNodeStore<D>,
     lane_uri: Text,
     _key: PhantomData<K>,
     _value: PhantomData<V>,
 }
 
-pub enum MapDataModelDelegate<D> {
-    Mem,
-    Db(SwimNodeStore<D>),
-}
-
 impl<D, K, V> MapDataModel<D, K, V> {
-    pub fn new<I: Into<Text>>(delegate: SwimNodeStore<D>, lane_uri: I, transient: bool) -> Self {
-        let delegate = if transient {
-            MapDataModelDelegate::Mem
-        } else {
-            MapDataModelDelegate::Db(delegate)
-        };
-
+    pub fn new<I: Into<Text>>(delegate: SwimNodeStore<D>, lane_uri: I) -> Self {
         MapDataModel {
             delegate,
             lane_uri: lane_uri.into(),
@@ -56,109 +45,73 @@ where
     K: Serialize,
     V: Serialize + DeserializeOwned,
 {
-    pub async fn put(&self, key: &K, value: &V) -> Result<(), StoreError> {
+    pub fn put(&self, key: &K, value: &V) -> Result<(), StoreError> {
         let MapDataModel {
             delegate, lane_uri, ..
         } = self;
 
-        match delegate {
-            MapDataModelDelegate::Mem => unimplemented!(),
-            MapDataModelDelegate::Db(store) => {
-                let key = serialize(key)?;
-                let value = serialize(value)?;
-                let k = LaneKey::Map {
-                    lane_uri: lane_uri.clone(),
-                    key: Some(key),
-                };
-                store.put(k, value)
-            }
-        }
-    }
-
-    pub async fn get(&self, key: &K) -> Result<Option<V>, StoreError> {
-        let MapDataModel {
-            delegate, lane_uri, ..
-        } = self;
-
-        match delegate {
-            MapDataModelDelegate::Mem => unimplemented!(),
-            MapDataModelDelegate::Db(store) => {
-                let opt = serialize_then(store, key, |del, key| {
-                    del.get(LaneKey::Map {
-                        lane_uri: lane_uri.clone(),
-                        key: Some(key),
-                    })
-                })?;
-
-                match opt {
-                    Some(bytes) => bincode::deserialize(bytes.as_slice())
-                        .map_err(|e| StoreError::Decoding(e.to_string()))
-                        .map(Some),
-                    None => Ok(None),
-                }
-            }
-        }
-    }
-
-    pub async fn delete(&self, key: &K) -> Result<(), StoreError> {
-        let MapDataModel {
-            delegate, lane_uri, ..
-        } = self;
-
-        match delegate {
-            MapDataModelDelegate::Mem => unimplemented!(),
-            MapDataModelDelegate::Db(store) => serialize_then(store, key, |del, key| {
-                del.delete(LaneKey::Map {
-                    lane_uri: lane_uri.clone(),
-                    key: Some(key),
-                })
-            }),
-        }
-    }
-}
-
-impl<D, K, V> RangedSnapshotLoad for MapDataModel<D, K, V>
-where
-    D: PlaneStore<Prefix = StoreKey>,
-{
-    type Prefix = Text;
-
-    fn load_ranged_snapshot<F, DK, DV>(
-        &self,
-        prefix: Self::Prefix,
-        map_fn: F,
-    ) -> Result<Option<KeyedSnapshot<DK, DV>>, StoreError>
-    where
-        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(DK, DV), StoreError>,
-    {
-        let prefix = LaneKey::Map {
-            lane_uri: prefix,
-            key: None,
+        let key = serialize(key)?;
+        let value = serialize(value)?;
+        let k = LaneKey::Map {
+            lane_uri,
+            key: Some(key),
         };
+        delegate.put(k, value)
+    }
 
-        match &self.delegate {
-            MapDataModelDelegate::Mem => {
-                unimplemented!()
-            }
-            MapDataModelDelegate::Db(store) => store.load_ranged_snapshot(prefix, map_fn),
+    pub fn get(&self, key: &K) -> Result<Option<V>, StoreError> {
+        let MapDataModel {
+            delegate, lane_uri, ..
+        } = self;
+
+        let opt = serialize_then(delegate, key, |del, key| {
+            del.get(LaneKey::Map {
+                lane_uri,
+                key: Some(key),
+            })
+        })?;
+
+        match opt {
+            Some(bytes) => bincode::deserialize(bytes.as_slice())
+                .map_err(|e| StoreError::Decoding(e.to_string()))
+                .map(Some),
+            None => Ok(None),
         }
+    }
+
+    pub fn delete(&self, key: &K) -> Result<(), StoreError> {
+        let MapDataModel {
+            delegate, lane_uri, ..
+        } = self;
+
+        serialize_then(delegate, key, |del, key| {
+            del.delete(LaneKey::Map {
+                lane_uri,
+                key: Some(key),
+            })
+        })
     }
 }
 
-fn deserialize<K: DeserializeOwned>(value: &[u8]) -> Result<K, StoreError> {
+fn deserialize<'de, K: Deserialize<'de>>(value: &'de [u8]) -> Result<K, StoreError> {
     bincode::deserialize(value).map_err(|e| StoreError::Decoding(e.to_string()))
 }
 
 impl<D, K, V> Snapshot<K, V> for MapDataModel<D, K, V>
 where
-    D: PlaneStore<Prefix = StoreKey>,
+    D: PlaneStore,
     K: DeserializeOwned,
     V: DeserializeOwned,
 {
     type Snapshot = KeyedSnapshot<K, V>;
 
     fn snapshot(&self) -> Result<Option<Self::Snapshot>, StoreError> {
-        self.load_ranged_snapshot(self.lane_uri.clone(), |key, value| {
+        let lane_key = LaneKey::Map {
+            lane_uri: &self.lane_uri,
+            key: None,
+        };
+
+        self.delegate.load_ranged_snapshot(lane_key, |key, value| {
             let store_key = deserialize::<MapStorageKey>(&key)?;
 
             let key = deserialize::<K>(&store_key.key.ok_or(StoreError::KeyNotFound)?)?;

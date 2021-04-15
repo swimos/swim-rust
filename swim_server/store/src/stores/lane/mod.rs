@@ -12,39 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::{StoreEngine, StoreError};
+use crate::StoreError;
 use serde::Serialize;
-use swim_common::model::text::Text;
 
 pub mod map;
 pub mod value;
-
-/// A lane key that is either a map lane key or a value lane key.
-pub enum LaneKey {
-    /// A map lane key.
-    ///
-    /// Within plane stores, map lane keys are defined in the format of `/node_uri/lane_uri/key`
-    /// where `key` is the key of a lane's map data structure.
-    Map {
-        /// The lane URI.
-        lane_uri: Text,
-        /// An optional, serialized, key. This is optional as ranged snapshots to not require the
-        /// key.
-        key: Option<Vec<u8>>,
-    },
-    /// A value lane key.
-    Value {
-        /// The lane URi.
-        lane_uri: Text,
-    },
-}
 
 /// Serialize `obj` and then execute `f` with the bytes if the operation succeeded. Returns the
 /// output of `f`.
 pub fn serialize_then<'a, S, F, O, E>(engine: &E, obj: &S, f: F) -> Result<O, StoreError>
 where
     S: Serialize,
-    E: StoreEngine<'a>,
     F: Fn(&E, Vec<u8>) -> Result<O, StoreError>,
 {
     f(engine, serialize(obj)?).map_err(Into::into)

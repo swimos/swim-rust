@@ -22,6 +22,8 @@ use rocksdb::{Error, Options, DB};
 use std::path::Path;
 use std::sync::Arc;
 
+const INCONSISTENT_DB: &str = "Missing key or value in store";
+
 impl From<rocksdb::Error> for StoreError {
     fn from(e: Error) -> Self {
         StoreError::Delegate(Box::new(e))
@@ -88,11 +90,9 @@ impl Default for RocksOpts {
 }
 
 impl RangedSnapshotLoad for RocksDatabase {
-    type Prefix = Vec<u8>;
-
     fn load_ranged_snapshot<F, K, V>(
         &self,
-        prefix: Self::Prefix,
+        prefix: Vec<u8>,
         map_fn: F,
     ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
     where
@@ -116,7 +116,7 @@ impl RangedSnapshotLoad for RocksDatabase {
                             raw.next();
                         }
                     }
-                    _ => panic!(),
+                    _ => return Err(StoreError::Decoding(INCONSISTENT_DB.to_string())),
                 }
             } else {
                 break;

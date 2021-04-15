@@ -12,14 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::engines::NoStore;
 use crate::stores::lane::map::MapDataModel;
 use crate::stores::lane::value::ValueDataModel;
 use crate::stores::node::NodeStore;
 use crate::stores::plane::{PlaneStore, SwimPlaneStore};
-use crate::stores::StoreKey;
+use crate::stores::{LaneKey, StoreKey};
 use crate::{
-    ByteEngine, FromOpts, KeyedSnapshot, RangedSnapshotLoad, Store, StoreEngine, StoreError,
-    StoreOpts, SwimStore,
+    ByteEngine, FromOpts, KeyedSnapshot, RangedSnapshotLoad, Store, StoreError, StoreOpts,
+    SwimStore,
 };
 use serde::Serialize;
 use std::path::Path;
@@ -34,6 +35,19 @@ pub struct MockServerStore {
 impl Store for MockServerStore {
     fn path(&self) -> &Path {
         self.dir.path()
+    }
+}
+
+impl RangedSnapshotLoad for MockServerStore {
+    fn load_ranged_snapshot<F, K, V>(
+        &self,
+        _prefix: Vec<u8>,
+        _map_fn: F,
+    ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
+    where
+        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
+    {
+        Ok(None)
     }
 }
 
@@ -72,82 +86,34 @@ impl ByteEngine for MockServerStore {
     }
 }
 
-impl RangedSnapshotLoad for MockServerStore {
-    type Prefix = Vec<u8>;
-
-    fn load_ranged_snapshot<F, K, V>(
-        &self,
-        _prefix: Self::Prefix,
-        _map_fn: F,
-    ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
-    where
-        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
-    {
-        Ok(None)
-    }
-}
+// impl RangedSnapshotLoad for MockServerStore {
+//     type Prefix = Vec<u8>;
+//
+//     fn load_ranged_snapshot<F, K, V>(
+//         &self,
+//         _prefix: Self::Prefix,
+//         _map_fn: F,
+//     ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
+//     where
+//         F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
+//     {
+//         Ok(None)
+//     }
+// }
 
 impl SwimStore for MockServerStore {
-    type PlaneStore = SwimPlaneStore<MockServerStore>;
+    type PlaneStore = SwimPlaneStore<NoStore>;
 
     fn plane_store<I>(&mut self, path: I) -> Result<Self::PlaneStore, StoreError>
     where
         I: ToString,
     {
         Ok(SwimPlaneStore::new(
-            "target".to_string(),
-            MockServerStore::from_opts(path.to_string(), &Default::default())
-                .expect("Failed to build mock server store"),
+            path.to_string(),
+            NoStore {
+                path: path.to_string().into(),
+            },
         ))
-    }
-}
-
-impl<'a> StoreEngine<'a> for MockServerStore {
-    type Key = &'a [u8];
-
-    fn put(&self, _key: Self::Key, _value: Vec<u8>) -> Result<(), StoreError> {
-        Ok(())
-    }
-
-    fn get(&self, _key: Self::Key) -> Result<Option<Vec<u8>>, StoreError> {
-        Ok(None)
-    }
-
-    fn delete(&self, _key: Self::Key) -> Result<(), StoreError> {
-        Ok(())
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct EmptyDelegateStore;
-impl<'a> StoreEngine<'a> for EmptyDelegateStore {
-    type Key = &'a [u8];
-
-    fn put(&self, _key: Self::Key, _value: Vec<u8>) -> Result<(), StoreError> {
-        Ok(())
-    }
-
-    fn get(&self, _key: Self::Key) -> Result<Option<Vec<u8>>, StoreError> {
-        Ok(None)
-    }
-
-    fn delete(&self, _key: Self::Key) -> Result<(), StoreError> {
-        Ok(())
-    }
-}
-
-impl RangedSnapshotLoad for EmptyDelegateStore {
-    type Prefix = StoreKey;
-
-    fn load_ranged_snapshot<F, K, V>(
-        &self,
-        _prefix: Self::Prefix,
-        _map_fn: F,
-    ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
-    where
-        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
-    {
-        Ok(None)
     }
 }
 
@@ -156,11 +122,7 @@ pub struct MockNodeStore;
 impl NodeStore for MockNodeStore {
     type Delegate = MockPlaneStore;
 
-    fn map_lane_store<I, K, V>(
-        &self,
-        _lane: I,
-        _transient: bool,
-    ) -> MapDataModel<Self::Delegate, K, V>
+    fn map_lane_store<I, K, V>(&self, _lane: I) -> MapDataModel<Self::Delegate, K, V>
     where
         I: Into<Text>,
         K: Serialize,
@@ -170,7 +132,7 @@ impl NodeStore for MockNodeStore {
         unimplemented!()
     }
 
-    fn value_lane_store<I, V>(&self, _lane: I, _transient: bool) -> ValueDataModel<Self::Delegate>
+    fn value_lane_store<I, V>(&self, _lane: I) -> ValueDataModel<Self::Delegate>
     where
         I: Into<Text>,
         V: Serialize,
@@ -178,36 +140,17 @@ impl NodeStore for MockNodeStore {
     {
         unimplemented!()
     }
-}
 
-impl RangedSnapshotLoad for MockPlaneStore {
-    type Prefix = StoreKey;
-
-    fn load_ranged_snapshot<F, K, V>(
-        &self,
-        _prefix: Self::Prefix,
-        _map_fn: F,
-    ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
-    where
-        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
-    {
+    fn put(&self, _key: LaneKey, _value: Vec<u8>) -> Result<(), StoreError> {
         todo!()
     }
-}
 
-impl<'a> StoreEngine<'a> for MockNodeStore {
-    type Key = &'a [u8];
-
-    fn put(&self, _key: Self::Key, _value: Vec<u8>) -> Result<(), StoreError> {
-        Ok(())
+    fn get(&self, _key: LaneKey) -> Result<Option<Vec<u8>>, StoreError> {
+        todo!()
     }
 
-    fn get(&self, _key: Self::Key) -> Result<Option<Vec<u8>>, StoreError> {
-        Ok(None)
-    }
-
-    fn delete(&self, _key: Self::Key) -> Result<(), StoreError> {
-        Ok(())
+    fn delete(&self, _key: LaneKey) -> Result<(), StoreError> {
+        todo!()
     }
 }
 
@@ -222,20 +165,27 @@ impl PlaneStore for MockPlaneStore {
     {
         MockNodeStore
     }
-}
 
-impl<'a> StoreEngine<'a> for MockPlaneStore {
-    type Key = StoreKey;
-
-    fn put(&self, _key: Self::Key, _value: Vec<u8>) -> Result<(), StoreError> {
-        Ok(())
-    }
-
-    fn get(&self, _key: Self::Key) -> Result<Option<Vec<u8>>, StoreError> {
+    fn load_ranged_snapshot<F, K, V>(
+        &self,
+        _prefix: StoreKey<'_, '_>,
+        _map_fn: F,
+    ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
+    where
+        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
+    {
         Ok(None)
     }
 
-    fn delete(&self, _key: Self::Key) -> Result<(), StoreError> {
-        Ok(())
+    fn put(&self, _key: StoreKey, _value: Vec<u8>) -> Result<(), StoreError> {
+        todo!()
+    }
+
+    fn get(&self, _key: StoreKey) -> Result<Option<Vec<u8>>, StoreError> {
+        todo!()
+    }
+
+    fn delete(&self, _key: StoreKey) -> Result<(), StoreError> {
+        todo!()
     }
 }

@@ -106,11 +106,9 @@ impl Default for LmdbOpts {
 }
 
 impl RangedSnapshotLoad for LmdbxDatabase {
-    type Prefix = Vec<u8>;
-
     fn load_ranged_snapshot<F, K, V>(
         &self,
-        prefix: Self::Prefix,
+        prefix: Vec<u8>,
         map_fn: F,
     ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
     where

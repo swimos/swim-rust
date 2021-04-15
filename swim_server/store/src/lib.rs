@@ -109,9 +109,6 @@ pub trait SwimStore {
 /// A trait for executing ranged snapshot reads on stores.
 // Todo: implement borrowed streaming snapshots.
 pub trait RangedSnapshotLoad {
-    /// The prefix to seek for.
-    type Prefix;
-
     /// Execute a ranged snapshot read on the store, seeking by `prefix` and deserializing results
     /// with `map_fn`.
     ///
@@ -128,7 +125,7 @@ pub trait RangedSnapshotLoad {
     /// store engine or if the `map_fn` fails to deserialize a key or value.
     fn load_ranged_snapshot<F, K, V>(
         &self,
-        prefix: Self::Prefix,
+        prefix: Vec<u8>,
         map_fn: F,
     ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
     where
@@ -158,7 +155,7 @@ impl<K, V> Iterator for KeyedSnapshot<K, V> {
 ///
 /// Typically used by node stores and will delegate the snapshot to a ranged snapshot that uses a
 /// stored prefix owned by the lane.
-pub trait Snapshot<K, V>: RangedSnapshotLoad {
+pub trait Snapshot<K, V> {
     /// The type of the snapshot. An iterator that will yield a deserialized key-value pair.
     type Snapshot: IntoIterator<Item = (K, V)>;
 
@@ -189,23 +186,6 @@ pub trait FromOpts: Sized {
 }
 
 pub trait StoreOpts: Default {}
-
-/// A key-value store.
-///
-/// These may be either a delegate store or a concrete implementation.
-pub trait StoreEngine<'i>: 'static {
-    /// The key type that this store accepts.
-    type Key: 'i;
-
-    /// Put a key-value pair into this store.
-    fn put(&self, key: Self::Key, value: Vec<u8>) -> Result<(), StoreError>;
-
-    /// Get an entry from this store by its key.
-    fn get(&self, key: Self::Key) -> Result<Option<Vec<u8>>, StoreError>;
-
-    /// Delete a value from this store by its key.
-    fn delete(&self, key: Self::Key) -> Result<(), StoreError>;
-}
 
 pub trait ByteEngine: 'static {
     /// Put a key-value pair into this store.
@@ -261,7 +241,7 @@ impl<D: Store> ServerStore<D> {
     }
 }
 
-impl<D: Store<Prefix = Vec<u8>>> SwimStore for ServerStore<D> {
+impl<D: Store> SwimStore for ServerStore<D> {
     type PlaneStore = SwimPlaneStore<D>;
 
     fn plane_store<I: ToString>(&mut self, plane_name: I) -> Result<Self::PlaneStore, StoreError> {
@@ -276,7 +256,8 @@ impl<D: Store<Prefix = Vec<u8>>> SwimStore for ServerStore<D> {
 mod tests {
     use crate::engines::{RocksDatabase, RocksOpts};
     use crate::stores::{StoreKey, ValueStorageKey};
-    use crate::{ServerStore, StoreEngine, SwimStore};
+    use crate::{PlaneStore, ServerStore, SwimStore};
+    use std::borrow::Cow;
 
     #[test]
     fn put_get() {
@@ -285,8 +266,8 @@ mod tests {
         let plane_store = store.plane_store("unit").unwrap();
 
         let node_key = StoreKey::Value(ValueStorageKey {
-            node_uri: "node".into(),
-            lane_uri: "lane".into(),
+            node_uri: Cow::Owned("node".into()),
+            lane_uri: Cow::Owned("lane".into()),
         });
 
         let test_data = "test";

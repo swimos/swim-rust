@@ -12,9 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::stores::lane::{serialize_then, LaneKey};
+use crate::stores::lane::serialize_then;
 use crate::stores::node::SwimNodeStore;
-use crate::{PlaneStore, StoreEngine, StoreError};
+use crate::stores::LaneKey;
+use crate::{NodeStore, PlaneStore, StoreError};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use swim_common::model::text::Text;
@@ -22,7 +23,7 @@ use swim_common::model::text::Text;
 /// A value lane data model.
 pub struct ValueDataModel<D> {
     /// The store to delegate this model's operations to.
-    delegate: ValueDataModelDelegate<D>,
+    delegate: SwimNodeStore<D>,
     /// The lane URI that this store is operating on.
     lane_uri: Text,
 }
@@ -33,73 +34,48 @@ impl<D> ValueDataModel<D> {
     /// # Arguments
     /// `delegate`: if this data model is *not* transient, then delegate operations to this store.
     /// `lane_uri`: the lane URI that this store represents.
-    /// `transient`: whether this store should be an in-memory model.
-    pub fn new<I: Into<Text>>(delegate: SwimNodeStore<D>, lane_uri: I, transient: bool) -> Self {
-        if transient {
-            ValueDataModel {
-                delegate: ValueDataModelDelegate::Mem,
-                lane_uri: lane_uri.into(),
-            }
-        } else {
-            ValueDataModel {
-                delegate: ValueDataModelDelegate::Db(delegate),
-                lane_uri: lane_uri.into(),
-            }
+    pub fn new<I: Into<Text>>(delegate: SwimNodeStore<D>, lane_uri: I) -> Self {
+        ValueDataModel {
+            delegate,
+            lane_uri: lane_uri.into(),
         }
     }
 
     fn key(&self) -> LaneKey {
         LaneKey::Value {
-            lane_uri: self.lane_uri.clone(),
+            lane_uri: &self.lane_uri,
         }
     }
 }
 
-pub enum ValueDataModelDelegate<D> {
-    Mem,
-    Db(SwimNodeStore<D>),
-}
-
-impl<D> ValueDataModel<D>
-where
-    D: PlaneStore,
-{
+impl<D: PlaneStore> ValueDataModel<D> {
     /// Serializes and stores `value`.
-    pub async fn store<V>(&self, value: &V) -> Result<(), StoreError>
+    pub fn store<V>(&self, value: &V) -> Result<(), StoreError>
     where
         V: Serialize,
     {
-        match &self.delegate {
-            ValueDataModelDelegate::Mem => unimplemented!(),
-            ValueDataModelDelegate::Db(store) => serialize_then(store, value, |delegate, bytes| {
-                delegate.put(self.key(), bytes)
-            }),
-        }
+        serialize_then(&self.delegate, value, |delegate, bytes| {
+            delegate.put(self.key(), bytes)
+        })
     }
 
     /// Loads the value in the data model if it exists.
-    pub async fn load<V>(&self) -> Result<Option<V>, StoreError>
+    pub fn load<V>(&self) -> Result<Option<V>, StoreError>
     where
         V: DeserializeOwned,
     {
-        match &self.delegate {
-            ValueDataModelDelegate::Mem => unimplemented!(),
-            ValueDataModelDelegate::Db(store) => match store.get(self.key()) {
-                Ok(Some(bytes)) => {
-                    let slice = bytes.as_slice();
-                    bincode::deserialize(slice).map_err(|e| StoreError::Decoding(e.to_string()))
-                }
-                Ok(None) => Ok(None),
-                Err(e) => Err(e),
-            },
+        match self.delegate.get(self.key()) {
+            Ok(Some(bytes)) => {
+                let slice = bytes.as_slice();
+                bincode::deserialize(slice).map_err(|e| StoreError::Decoding(e.to_string()))
+            }
+            Ok(None) => Ok(None),
+            Err(e) => Err(e),
         }
     }
 
     /// Clears the value within the data model.
-    pub async fn clear(&self) -> Result<(), StoreError> {
-        match &self.delegate {
-            ValueDataModelDelegate::Mem => unimplemented!(),
-            ValueDataModelDelegate::Db(store) => store.delete(self.key()).map(|_| ()),
-        }
+    pub fn clear(&self) -> Result<(), StoreError> {
+        self.delegate.delete(self.key()).map(|_| ())
     }
 }

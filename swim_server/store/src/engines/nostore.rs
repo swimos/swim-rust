@@ -20,12 +20,25 @@ use std::path::{Path, PathBuf};
 
 #[derive(Debug)]
 pub struct NoStore {
-    path: PathBuf,
+    pub(crate) path: PathBuf,
 }
 
 impl Store for NoStore {
     fn path(&self) -> &Path {
         self.path.borrow()
+    }
+}
+
+impl RangedSnapshotLoad for NoStore {
+    fn load_ranged_snapshot<F, K, V>(
+        &self,
+        _prefix: Vec<u8>,
+        _map_fn: F,
+    ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
+    where
+        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
+    {
+        Ok(None)
     }
 }
 
@@ -58,17 +71,17 @@ impl ByteEngine for NoStore {
     }
 }
 
-impl RangedSnapshotLoad for NoStore {
-    type Prefix = Vec<u8>;
-
-    fn load_ranged_snapshot<F, K, V>(
-        &self,
-        _prefix: Self::Prefix,
-        _map_fn: F,
-    ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
-    where
-        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
-    {
-        Ok(None)
-    }
-}
+// impl RangedSnapshotLoad for NoStore {
+//     type Prefix = Vec<u8>;
+//
+//     fn load_ranged_snapshot<F, K, V>(
+//         &self,
+//         _prefix: Self::Prefix,
+//         _map_fn: F,
+//     ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
+//     where
+//         F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
+//     {
+//         Ok(None)
+//     }
+// }

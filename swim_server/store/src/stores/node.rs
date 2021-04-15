@@ -14,11 +14,11 @@
 
 use crate::stores::lane::map::MapDataModel;
 use crate::stores::lane::value::ValueDataModel;
-use crate::stores::lane::LaneKey;
-use crate::stores::{MapStorageKey, StoreKey, ValueStorageKey};
-use crate::{KeyedSnapshot, PlaneStore, RangedSnapshotLoad, StoreEngine, StoreError};
+use crate::stores::{LaneKey, MapStorageKey, StoreKey, ValueStorageKey};
+use crate::{KeyedSnapshot, PlaneStore, StoreError};
 use serde::Serialize;
-use std::fmt::Debug;
+use std::borrow::Cow;
+use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
 use swim_common::model::text::Text;
 
@@ -33,7 +33,7 @@ use swim_common::model::text::Text;
 /// the store; providing that the top-level server store is also persistent.
 ///
 /// Transient data models will live in memory for the duration that a handle to the model exists.
-pub trait NodeStore: for<'a> StoreEngine<'a> + Send + Sync + Clone + Debug {
+pub trait NodeStore: Send + Sync + Clone + Debug + 'static {
     type Delegate: PlaneStore;
 
     /// Open a new map data model.
@@ -42,11 +42,7 @@ pub trait NodeStore: for<'a> StoreEngine<'a> + Send + Sync + Clone + Debug {
     /// `lane_uri`: the URI of the lane.
     /// `transient`: whether the lane is a transient lane. If this is `true`, then the data model
     /// returned should be an in-memory store.
-    fn map_lane_store<I, K, V>(
-        &self,
-        lane_uri: I,
-        transient: bool,
-    ) -> MapDataModel<Self::Delegate, K, V>
+    fn map_lane_store<I, K, V>(&self, lane_uri: I) -> MapDataModel<Self::Delegate, K, V>
     where
         I: Into<Text>,
         K: Serialize,
@@ -59,19 +55,20 @@ pub trait NodeStore: for<'a> StoreEngine<'a> + Send + Sync + Clone + Debug {
     /// `lane_uri`: the URI of the lane.
     /// `transient`: whether the lane is a transient lane. If this is `true`, then the data model
     /// returned should be an in-memory store.
-    fn value_lane_store<I, V>(
-        &self,
-        lane_uri: I,
-        transient: bool,
-    ) -> ValueDataModel<Self::Delegate>
+    fn value_lane_store<I, V>(&self, lane_uri: I) -> ValueDataModel<Self::Delegate>
     where
         I: Into<Text>,
         V: Serialize,
         Self: Sized;
+
+    fn put(&self, key: LaneKey<'_>, value: Vec<u8>) -> Result<(), StoreError>;
+
+    fn get(&self, key: LaneKey<'_>) -> Result<Option<Vec<u8>>, StoreError>;
+
+    fn delete(&self, key: LaneKey<'_>) -> Result<(), StoreError>;
 }
 
 /// A node store which is used to open value and map lane data models.
-#[derive(Debug)]
 pub struct SwimNodeStore<D> {
     /// The plane store that value and map data models will delegate their store engine operations
     /// to.
@@ -80,33 +77,11 @@ pub struct SwimNodeStore<D> {
     node_uri: Text,
 }
 
-impl<D> RangedSnapshotLoad for SwimNodeStore<D>
-where
-    D: PlaneStore<Prefix = StoreKey>,
-{
-    type Prefix = LaneKey;
-
-    fn load_ranged_snapshot<F, K, V>(
-        &self,
-        prefix: Self::Prefix,
-        map_fn: F,
-    ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
-    where
-        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
-    {
-        let prefix = match prefix {
-            LaneKey::Map { lane_uri, .. } => StoreKey::Map(MapStorageKey {
-                node_uri: self.node_uri.clone(),
-                lane_uri,
-                key: None,
-            }),
-            LaneKey::Value { lane_uri } => StoreKey::Value(ValueStorageKey {
-                node_uri: self.node_uri.clone(),
-                lane_uri,
-            }),
-        };
-
-        self.delegate.load_ranged_snapshot(prefix, map_fn)
+impl<D> Debug for SwimNodeStore<D> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SwimNodeStore")
+            .field("node_uri", &self.node_uri)
+            .finish()
     }
 }
 
@@ -119,7 +94,7 @@ impl<D> Clone for SwimNodeStore<D> {
     }
 }
 
-impl<D> SwimNodeStore<D> {
+impl<D: PlaneStore> SwimNodeStore<D> {
     /// Create a new Swim node store which will delegate its engine operations to `delegate` and
     /// represents a node at `node_uri`.
     pub fn new<I: Into<Text>>(delegate: D, node_uri: I) -> SwimNodeStore<D> {
@@ -128,71 +103,83 @@ impl<D> SwimNodeStore<D> {
             node_uri: node_uri.into(),
         }
     }
+
+    pub(crate) fn load_ranged_snapshot<F, K, V>(
+        &self,
+        prefix: LaneKey,
+        map_fn: F,
+    ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
+    where
+        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
+    {
+        let prefix = match prefix {
+            LaneKey::Map { lane_uri, .. } => StoreKey::Map(MapStorageKey {
+                node_uri: Cow::Borrowed(&self.node_uri),
+                lane_uri: Cow::Borrowed(lane_uri),
+                key: None,
+            }),
+            LaneKey::Value { lane_uri } => StoreKey::Value(ValueStorageKey {
+                node_uri: Cow::Borrowed(&self.node_uri),
+                lane_uri: Cow::Borrowed(lane_uri),
+            }),
+        };
+
+        self.delegate.load_ranged_snapshot(prefix, map_fn)
+    }
 }
 
-impl<D> NodeStore for SwimNodeStore<D>
-where
-    D: PlaneStore,
-{
+impl<D: PlaneStore> NodeStore for SwimNodeStore<D> {
     type Delegate = D;
 
-    fn map_lane_store<I, K, V>(
-        &self,
-        lane: I,
-        transient: bool,
-    ) -> MapDataModel<Self::Delegate, K, V>
+    fn map_lane_store<I, K, V>(&self, lane: I) -> MapDataModel<D, K, V>
     where
         I: Into<Text>,
         K: Serialize,
         V: Serialize,
     {
-        MapDataModel::new(self.clone(), lane, transient)
+        MapDataModel::new(self.clone(), lane)
     }
 
-    fn value_lane_store<I, V>(&self, lane: I, transient: bool) -> ValueDataModel<Self::Delegate>
+    fn value_lane_store<I, V>(&self, lane: I) -> ValueDataModel<D>
     where
         I: Into<Text>,
         V: Serialize,
     {
-        ValueDataModel::new(self.clone(), lane, transient)
+        ValueDataModel::new(self.clone(), lane)
     }
-}
 
-fn map_key(lane_key: LaneKey, node_uri: Text) -> StoreKey {
-    match lane_key {
-        LaneKey::Map { lane_uri, key } => StoreKey::Map(MapStorageKey {
-            node_uri,
-            lane_uri,
-            key,
-        }),
-        LaneKey::Value { lane_uri } => StoreKey::Value(ValueStorageKey { node_uri, lane_uri }),
-    }
-}
-
-impl<'a, D> StoreEngine<'a> for SwimNodeStore<D>
-where
-    D: PlaneStore<Key = StoreKey>,
-{
-    type Key = LaneKey;
-
-    fn put(&self, key: Self::Key, value: Vec<u8>) -> Result<(), StoreError> {
+    fn put(&self, key: LaneKey, value: Vec<u8>) -> Result<(), StoreError> {
         let SwimNodeStore { delegate, node_uri } = self;
-        let key = map_key(key, node_uri.clone());
+        let key = map_key(key, node_uri);
 
         delegate.put(key, value)
     }
 
-    fn get(&self, key: Self::Key) -> Result<Option<Vec<u8>>, StoreError> {
+    fn get(&self, key: LaneKey) -> Result<Option<Vec<u8>>, StoreError> {
         let SwimNodeStore { delegate, node_uri } = self;
-        let key = map_key(key, node_uri.clone());
+        let key = map_key(key, node_uri);
 
         delegate.get(key)
     }
 
-    fn delete(&self, key: Self::Key) -> Result<(), StoreError> {
+    fn delete(&self, key: LaneKey) -> Result<(), StoreError> {
         let SwimNodeStore { delegate, node_uri } = self;
-        let key = map_key(key, node_uri.clone());
+        let key = map_key(key, node_uri);
 
         delegate.delete(key)
+    }
+}
+
+fn map_key<'n, 'l>(lane_key: LaneKey<'l>, node_uri: &'n Text) -> StoreKey<'n, 'l> {
+    match lane_key {
+        LaneKey::Map { lane_uri, key } => StoreKey::Map(MapStorageKey {
+            node_uri: Cow::Borrowed(node_uri),
+            lane_uri: Cow::Borrowed(lane_uri),
+            key,
+        }),
+        LaneKey::Value { lane_uri } => StoreKey::Value(ValueStorageKey {
+            node_uri: Cow::Borrowed(node_uri),
+            lane_uri: Cow::Borrowed(lane_uri),
+        }),
     }
 }

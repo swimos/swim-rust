@@ -15,7 +15,7 @@
 use crate::stores::lane::serialize;
 use crate::stores::node::{NodeStore, SwimNodeStore};
 use crate::stores::StoreKey;
-use crate::{ByteEngine, KeyedSnapshot, RangedSnapshotLoad, Store, StoreEngine, StoreError};
+use crate::{KeyedSnapshot, Store, StoreError};
 use std::ffi::OsStr;
 use std::fmt::{Debug, Formatter};
 use std::path::{Path, PathBuf};
@@ -41,21 +41,29 @@ where
 /// A trait for defining plane stores which will create node stores.
 pub trait PlaneStore
 where
-    Self: Sized
-        + Debug
-        + Send
-        + Sync
-        + for<'a> StoreEngine<'a, Key = StoreKey>
-        + RangedSnapshotLoad<Prefix = StoreKey>
-        + 'static,
+    Self: Sized + Debug + Send + Sync + 'static,
 {
     /// The type of node stores which are created.
-    type NodeStore: NodeStore<Delegate = Self>;
+    type NodeStore: NodeStore;
 
     /// Create a node store for `node_uri`.
     fn node_store<I>(&self, node_uri: I) -> Self::NodeStore
     where
         I: Into<Text>;
+
+    fn load_ranged_snapshot<F, K, V>(
+        &self,
+        _prefix: StoreKey,
+        _map_fn: F,
+    ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
+    where
+        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>;
+
+    fn put(&self, key: StoreKey<'_, '_>, value: Vec<u8>) -> Result<(), StoreError>;
+
+    fn get(&self, key: StoreKey) -> Result<Option<Vec<u8>>, StoreError>;
+
+    fn delete(&self, key: StoreKey) -> Result<(), StoreError>;
 }
 
 /// A store engine for planes.
@@ -87,7 +95,7 @@ impl<D> Debug for SwimPlaneStore<D> {
 
 impl<D> PlaneStore for SwimPlaneStore<D>
 where
-    D: Store<Prefix = Vec<u8>>,
+    D: Store,
 {
     type NodeStore = SwimNodeStore<Self>;
 
@@ -97,9 +105,36 @@ where
     {
         SwimNodeStore::new(self.clone(), node)
     }
+
+    fn load_ranged_snapshot<F, K, V>(
+        &self,
+        prefix: StoreKey,
+        map_fn: F,
+    ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
+    where
+        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
+    {
+        self.delegate
+            .load_ranged_snapshot(serialize(&prefix)?, map_fn)
+    }
+
+    fn put(&self, key: StoreKey, value: Vec<u8>) -> Result<(), StoreError> {
+        self.delegate.put(serialize(&key)?, value)
+    }
+
+    fn get(&self, key: StoreKey) -> Result<Option<Vec<u8>>, StoreError> {
+        self.delegate.get(serialize(&key)?)
+    }
+
+    fn delete(&self, key: StoreKey) -> Result<(), StoreError> {
+        self.delegate.delete(serialize(&key)?)
+    }
 }
 
-impl<D: Store> SwimPlaneStore<D> {
+impl<D> SwimPlaneStore<D>
+where
+    D: Store,
+{
     pub(crate) fn new<I: Into<Text>>(plane_name: I, delegate: D) -> SwimPlaneStore<D> {
         SwimPlaneStore {
             plane_name: plane_name.into(),
@@ -128,51 +163,14 @@ impl<D: Store> SwimPlaneStore<D> {
     }
 }
 
-impl<'a, D> StoreEngine<'a> for SwimPlaneStore<D>
-where
-    D: ByteEngine,
-{
-    type Key = StoreKey;
-
-    fn put(&self, key: Self::Key, value: Vec<u8>) -> Result<(), StoreError> {
-        self.delegate.put(serialize(&key)?, value)
-    }
-
-    fn get(&self, key: Self::Key) -> Result<Option<Vec<u8>>, StoreError> {
-        self.delegate.get(serialize(&key)?)
-    }
-
-    fn delete(&self, key: Self::Key) -> Result<(), StoreError> {
-        self.delegate.delete(serialize(&key)?)
-    }
-}
-
-impl<D> RangedSnapshotLoad for SwimPlaneStore<D>
-where
-    D: Store<Prefix = Vec<u8>>,
-{
-    type Prefix = StoreKey;
-
-    fn load_ranged_snapshot<F, K, V>(
-        &self,
-        prefix: Self::Prefix,
-        map_fn: F,
-    ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
-    where
-        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
-    {
-        self.delegate
-            .load_ranged_snapshot(serialize(&prefix)?, map_fn)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use crate::engines::RocksDatabase;
     use crate::stores::plane::SwimPlaneStore;
     use crate::stores::{StoreKey, ValueStorageKey};
-    use crate::StoreEngine;
+    use crate::PlaneStore;
     use rocksdb::{Options, DB};
+    use std::borrow::Cow;
 
     #[test]
     fn put_get() {
@@ -185,8 +183,8 @@ mod tests {
             let plane_store = SwimPlaneStore::new("test", delegate);
 
             let value_key = StoreKey::Value(ValueStorageKey {
-                node_uri: "/node".into(),
-                lane_uri: "/lane".into(),
+                node_uri: Cow::Owned("/node".into()),
+                lane_uri: Cow::Owned("/lane".into()),
             });
 
             let test_data = "test";

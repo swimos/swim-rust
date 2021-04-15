@@ -17,24 +17,47 @@ pub mod node;
 pub mod plane;
 
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
 use swim_common::model::text::Text;
+
+/// A lane key that is either a map lane key or a value lane key.
+pub enum LaneKey<'l> {
+    /// A map lane key.
+    ///
+    /// Within plane stores, map lane keys are defined in the format of `/node_uri/lane_uri/key`
+    /// where `key` is the key of a lane's map data structure.
+    Map {
+        /// The lane URI.
+        lane_uri: &'l Text,
+        /// An optional, serialized, key. This is optional as ranged snapshots to not require the
+        /// key.
+        key: Option<Vec<u8>>,
+    },
+    /// A value lane key.
+    Value {
+        /// The lane URi.
+        lane_uri: &'l Text,
+    },
+}
 
 /// A storage key used for either map or value lanes.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialOrd, PartialEq)]
-pub enum StoreKey {
-    Map(MapStorageKey),
-    Value(ValueStorageKey),
+pub enum StoreKey<'n, 'l> {
+    #[serde(borrow)]
+    Map(MapStorageKey<'n, 'l>),
+    #[serde(borrow)]
+    Value(ValueStorageKey<'n, 'l>),
 }
 
 /// A storage key for map lanes.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialOrd, PartialEq)]
-pub struct MapStorageKey {
+pub struct MapStorageKey<'n, 'l> {
     /// The node URI that this key corresponds to.
-    #[serde(with = "text_serde")]
-    pub node_uri: Text,
+    #[serde(with = "text_serde", borrow)]
+    pub node_uri: Cow<'n, Text>,
     /// The lane URI that this key corresponds to.
-    #[serde(with = "text_serde")]
-    pub lane_uri: Text,
+    #[serde(with = "text_serde", borrow)]
+    pub lane_uri: Cow<'l, Text>,
     /// An optional serialized key for the key within the lane.
     ///
     /// This is optional as it is not required for executing ranged snapshots on a storage engine.
@@ -44,45 +67,49 @@ pub struct MapStorageKey {
 
 /// A storage key for value lanes.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialOrd, PartialEq)]
-pub struct ValueStorageKey {
-    #[serde(with = "text_serde")]
-    pub node_uri: Text,
-    #[serde(with = "text_serde")]
-    pub lane_uri: Text,
+pub struct ValueStorageKey<'n, 'l> {
+    #[serde(with = "text_serde", borrow)]
+    pub node_uri: Cow<'n, Text>,
+    #[serde(with = "text_serde", borrow)]
+    pub lane_uri: Cow<'l, Text>,
 }
 
 mod text_serde {
     use serde::de::{Error, Visitor};
     use serde::{Deserializer, Serializer};
+    use std::borrow::Cow;
     use std::fmt::Formatter;
     use std::str::FromStr;
     use swim_common::model::text::Text;
 
-    pub fn serialize<S>(text: &Text, serializer: S) -> Result<S::Ok, S::Error>
+    pub fn serialize<S>(text: &Cow<'_, Text>, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
         serializer.serialize_str(text.as_str())
     }
 
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<Text, D::Error>
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Cow<'de, Text>, D::Error>
     where
         D: Deserializer<'de>,
     {
         struct TextVisitor;
 
         impl<'de> Visitor<'de> for TextVisitor {
-            type Value = Text;
+            type Value = Cow<'de, Text>;
 
             fn expecting(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
                 formatter.write_str("Expected a string literal")
             }
 
-            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            fn visit_borrowed_str<E>(self, v: &str) -> Result<Self::Value, E>
             where
                 E: Error,
             {
-                Text::from_str(v).map_err(E::custom)
+                match Text::from_str(v) {
+                    Ok(s) => Ok(Cow::Owned(s)),
+                    Err(e) => Err(E::custom(e)),
+                }
             }
         }
 
