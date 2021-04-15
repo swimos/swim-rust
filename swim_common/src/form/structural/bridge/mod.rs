@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[cfg(test)]
+mod tests;
+
 use crate::form::structural::read::{BodyReader, HeaderReader, ReadError, StructuralReadable};
 use crate::form::structural::write::{
     BodyWriter, HeaderWriter, Label, PrimitiveWriter, StructuralWritable, StructuralWriter,
@@ -20,6 +23,8 @@ use num_bigint::{BigInt, BigUint};
 use std::borrow::Cow;
 use std::marker::PhantomData;
 
+/// Bridge to forward writes to a [`StructuralWriter`] instance to the builder methods
+/// on a [`StructuralReadable`] type.
 pub struct ReadWriteBridge<T>(PhantomData<fn() -> T>);
 
 impl<T> Default for ReadWriteBridge<T> {
