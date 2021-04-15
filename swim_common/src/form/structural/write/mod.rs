@@ -111,6 +111,7 @@ pub trait StructuralWriter: PrimitiveWriter {
     fn record(self) -> Result<Self::Header, Self::Error>;
 }
 
+/// Convenience trait for variable string related conversions.
 pub trait Label: Into<String> + Into<Text> + AsRef<str> {
     fn as_cow(&self) -> Cow<'_, str> {
         Cow::Borrowed(self.as_ref())
