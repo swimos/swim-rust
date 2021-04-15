@@ -15,6 +15,7 @@
 use crate::form::structural::read::StructuralReadable;
 use crate::form::structural::write::StructuralWritable;
 
+mod bridge;
 pub mod read;
 pub mod write;
 

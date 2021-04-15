@@ -28,6 +28,7 @@ use std::sync::Arc;
 
 mod error;
 
+use crate::form::structural::bridge::ReadWriteBridge;
 pub use error::ReadError;
 
 /// Trait for types that can be structurally deserialized, from the Swim data model.
@@ -49,15 +50,15 @@ pub trait StructuralReadable: ValueReadable {
     }
 
     /// Attempt to write a value of a ['StructuralWritable'] type into an instance of this type.
-    /// TODO This will be filled in in a later PR.
-    fn try_read_from<T: StructuralWritable>(_writable: &T) -> Result<Self, ReadError> {
-        todo!()
+    fn try_read_from<T: StructuralWritable>(writable: &T) -> Result<Self, ReadError> {
+        let bridge: ReadWriteBridge<Self> = Default::default();
+        writable.write_with(bridge)
     }
 
     /// Attempt to transform a value of a ['StructuralWritable'] type into an instance of this type.
-    /// TODO This will be filled in in a later PR.
-    fn try_transform<T: StructuralWritable>(_writable: T) -> Result<Self, ReadError> {
-        todo!()
+    fn try_transform<T: StructuralWritable>(writable: T) -> Result<Self, ReadError> {
+        let bridge: ReadWriteBridge<Self> = Default::default();
+        writable.write_into(bridge)
     }
 }
 
