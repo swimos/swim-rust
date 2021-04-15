@@ -18,7 +18,9 @@ use crate::stores::lane::value::ValueDataModel;
 use crate::stores::node::NodeStore;
 use crate::stores::plane::{PlaneStore, SwimPlaneStore};
 use crate::stores::{LaneKey, StoreKey};
-use crate::{ByteEngine, FromOpts, RangedSnapshotLoad, Store, StoreError, SwimStore};
+use crate::{
+    ByteEngine, FromOpts, RangedSnapshotLoad, Store, StoreError, SwimNodeStore, SwimStore,
+};
 use serde::Serialize;
 use std::path::Path;
 use swim_common::model::text::Text;
@@ -101,38 +103,46 @@ impl SwimStore for MockServerStore {
 
 #[derive(Clone, Debug)]
 pub struct MockNodeStore;
+
+impl MockNodeStore {
+    fn mock() -> SwimNodeStore<MockPlaneStore> {
+        let plane_store = MockPlaneStore;
+        SwimNodeStore::new(plane_store, "test_node")
+    }
+}
+
 impl NodeStore for MockNodeStore {
     type Delegate = MockPlaneStore;
 
-    fn map_lane_store<I, K, V>(&self, _lane: I) -> MapDataModel<Self::Delegate, K, V>
+    fn map_lane_store<I, K, V>(&self, lane: I) -> MapDataModel<Self::Delegate, K, V>
     where
         I: Into<Text>,
         K: Serialize,
         V: Serialize,
         Self: Sized,
     {
-        unimplemented!()
+        MapDataModel::new(MockNodeStore::mock(), lane)
     }
 
-    fn value_lane_store<I, V>(&self, _lane: I) -> ValueDataModel<Self::Delegate>
+    fn value_lane_store<I, V>(&self, lane: I) -> ValueDataModel<Self::Delegate>
     where
         I: Into<Text>,
         V: Serialize,
         Self: Sized,
     {
-        unimplemented!()
+        ValueDataModel::new(MockNodeStore::mock(), lane)
     }
 
     fn put(&self, _key: LaneKey, _value: &[u8]) -> Result<(), StoreError> {
-        todo!()
+        Ok(())
     }
 
     fn get(&self, _key: LaneKey) -> Result<Option<Vec<u8>>, StoreError> {
-        todo!()
+        Ok(None)
     }
 
     fn delete(&self, _key: LaneKey) -> Result<(), StoreError> {
-        todo!()
+        Ok(())
     }
 }
 
@@ -160,14 +170,14 @@ impl PlaneStore for MockPlaneStore {
     }
 
     fn put(&self, _key: StoreKey, _value: &[u8]) -> Result<(), StoreError> {
-        todo!()
+        Ok(())
     }
 
     fn get(&self, _key: StoreKey) -> Result<Option<Vec<u8>>, StoreError> {
-        todo!()
+        Ok(None)
     }
 
     fn delete(&self, _key: StoreKey) -> Result<(), StoreError> {
-        todo!()
+        Ok(())
     }
 }

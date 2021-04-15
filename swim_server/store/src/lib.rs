@@ -157,8 +157,10 @@ pub struct ServerStore<D: Store> {
 }
 
 impl<D: Store> Debug for ServerStore<D> {
-    fn fmt(&self, _f: &mut Formatter<'_>) -> std::fmt::Result {
-        todo!()
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ServerStore")
+            .field("directory", &self.dir.path())
+            .finish()
     }
 }
 
