@@ -13,9 +13,10 @@
 // limitations under the License.
 
 use crate::form::structural::read::StructuralReadable;
+use crate::form::structural::tests::GeneralType;
 use crate::model::blob::Blob;
 use crate::model::text::Text;
-use crate::model::Value;
+use crate::model::{Item, Value};
 
 #[test]
 fn bridge_numeric_and_logical() {
@@ -133,4 +134,92 @@ fn bridge_transform_vec() {
         <Vec<i32> as StructuralReadable>::try_transform(rep),
         Ok(vec![1, 2, 3])
     );
+}
+
+#[test]
+fn bridge_simple_compound() {
+    let expected = GeneralType::new(2, 3);
+    let rep = Value::record(vec![Item::slot("first", 2), Item::slot("second", 3)]);
+    let result = <GeneralType<i32, i32> as StructuralReadable>::try_read_from(&rep);
+    assert_eq!(result, Ok(expected));
+}
+
+#[test]
+fn bridge_simple_compound_into() {
+    let expected = GeneralType::new(2, 3);
+    let rep = Value::record(vec![Item::slot("first", 2), Item::slot("second", 3)]);
+    let result = <GeneralType<i32, i32> as StructuralReadable>::try_transform(rep);
+    assert_eq!(result, Ok(expected));
+}
+
+#[test]
+fn bridge_simple_missing_field() {
+    type WithOpt = GeneralType<i32, Option<i32>>;
+
+    let expected1: WithOpt = GeneralType::new(2, Some(3));
+    let expected2: WithOpt = GeneralType::new(2, None);
+    let rep1 = Value::record(vec![Item::slot("first", 2), Item::slot("second", 3)]);
+    let rep2 = Value::record(vec![Item::slot("first", 2)]);
+    let rep3 = Value::record(vec![
+        Item::slot("first", 2),
+        Item::slot("second", Value::Extant),
+    ]);
+
+    let result1 = WithOpt::try_read_from(&rep1);
+    assert_eq!(result1, Ok(expected1));
+
+    let result2 = WithOpt::try_read_from(&rep2);
+    assert_eq!(result2, Ok(expected2.clone()));
+
+    let result3 = WithOpt::try_read_from(&rep3);
+    assert_eq!(result3, Ok(expected2));
+}
+
+#[test]
+fn bridge_simple_missing_field_into() {
+    type WithOpt = GeneralType<i32, Option<i32>>;
+
+    let expected1: WithOpt = GeneralType::new(2, Some(3));
+    let expected2: WithOpt = GeneralType::new(2, None);
+    let rep1 = Value::record(vec![Item::slot("first", 2), Item::slot("second", 3)]);
+    let rep2 = Value::record(vec![Item::slot("first", 2)]);
+    let rep3 = Value::record(vec![
+        Item::slot("first", 2),
+        Item::slot("second", Value::Extant),
+    ]);
+
+    let result1 = WithOpt::try_transform(rep1);
+    assert_eq!(result1, Ok(expected1));
+
+    let result2 = WithOpt::try_transform(rep2);
+    assert_eq!(result2, Ok(expected2.clone()));
+
+    let result3 = WithOpt::try_transform(rep3);
+    assert_eq!(result3, Ok(expected2));
+}
+
+#[test]
+fn bridge_nested() {
+    type WithVec = GeneralType<i32, Vec<i32>>;
+    let expected = GeneralType::new(6, vec![5, 6, 7, 8]);
+    let rep = Value::record(vec![
+        Item::slot("first", 6),
+        Item::slot("second", Value::from_vec(vec![5, 6, 7, 8])),
+    ]);
+
+    let result = WithVec::try_read_from(&rep);
+    assert_eq!(result, Ok(expected));
+}
+
+#[test]
+fn bridge_nested_into() {
+    type WithVec = GeneralType<i32, Vec<i32>>;
+    let expected = GeneralType::new(6, vec![5, 6, 7, 8]);
+    let rep = Value::record(vec![
+        Item::slot("first", 6),
+        Item::slot("second", Value::from_vec(vec![5, 6, 7, 8])),
+    ]);
+
+    let result = WithVec::try_transform(rep);
+    assert_eq!(result, Ok(expected));
 }

@@ -12,19 +12,29 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
-use crate::form::structural::read::{StructuralReadable, ValueReadable, ReadError, HeaderReader, BodyReader};
 use crate::form::structural::read::builder::{Builder, NoAttributes, Wrapped};
+use crate::form::structural::read::{
+    BodyReader, HeaderReader, ReadError, StructuralReadable, ValueReadable,
+};
+use crate::form::structural::write::{
+    BodyWriter, HeaderWriter, StructuralWritable, StructuralWriter,
+};
 use crate::model::text::Text;
 use crate::model::ValueKind;
 use either::Either;
 use num_bigint::{BigInt, BigUint};
 use std::borrow::Cow;
-use crate::form::structural::write::{StructuralWritable, StructuralWriter, HeaderWriter, BodyWriter};
 
+#[derive(Clone, PartialEq, Eq, Debug, Default)]
 pub struct GeneralType<S, T> {
     first: S,
     second: T,
+}
+
+impl<S, T> GeneralType<S, T> {
+    pub fn new(first: S, second: T) -> Self {
+        GeneralType { first, second }
+    }
 }
 
 type GeneralTypeFields<S, T> = (
@@ -71,14 +81,14 @@ impl<S: StructuralReadable, T: StructuralReadable> StructuralReadable for Genera
 }
 
 impl<S, T> NoAttributes for Builder<GeneralType<S, T>, GeneralTypeFields<S, T>>
-    where
-        S: StructuralReadable,
-        T: StructuralReadable,
+where
+    S: StructuralReadable,
+    T: StructuralReadable,
 {
 }
 
 impl<S: StructuralReadable, T: StructuralReadable>
-Builder<GeneralType<S, T>, GeneralTypeFields<S, T>>
+    Builder<GeneralType<S, T>, GeneralTypeFields<S, T>>
 {
     fn push_prim<V, F1, F2>(
         &mut self,
@@ -87,9 +97,9 @@ Builder<GeneralType<S, T>, GeneralTypeFields<S, T>>
         value: V,
         kind: ValueKind,
     ) -> Result<bool, ReadError>
-        where
-            F1: FnOnce(V) -> Result<S, ReadError>,
-            F2: FnOnce(V) -> Result<T, ReadError>,
+    where
+        F1: FnOnce(V) -> Result<S, ReadError>,
+        F2: FnOnce(V) -> Result<T, ReadError>,
     {
         let (first, second, _, _) = &mut self.state;
 
@@ -124,9 +134,9 @@ Builder<GeneralType<S, T>, GeneralTypeFields<S, T>>
 }
 
 impl<S, T> BodyReader for Builder<GeneralType<S, T>, GeneralTypeFields<S, T>>
-    where
-        S: StructuralReadable,
-        T: StructuralReadable,
+where
+    S: StructuralReadable,
+    T: StructuralReadable,
 {
     type Delegate = Either<Wrapped<Self, S::Reader>, Wrapped<Self, T::Reader>>;
 
@@ -232,7 +242,7 @@ impl<S, T> BodyReader for Builder<GeneralType<S, T>, GeneralTypeFields<S, T>>
                     Ok(first.is_none())
                 }
                 "second" => {
-                    self.current_field = Some(0);
+                    self.current_field = Some(1);
                     Ok(second.is_none())
                 }
                 _ => Err(ReadError::UnexpectedKind(ValueKind::Text)),
@@ -270,17 +280,17 @@ impl<S, T> BodyReader for Builder<GeneralType<S, T>, GeneralTypeFields<S, T>>
     fn restore(delegate: <Self::Delegate as HeaderReader>::Body) -> Result<Self, ReadError> {
         match delegate {
             Either::Left(Wrapped {
-                             mut payload,
-                             reader,
-                         }) => {
+                mut payload,
+                reader,
+            }) => {
                 let (first, _, _, _) = &mut payload.state;
                 *first = Some(S::try_terminate(reader)?);
                 Ok(payload)
             }
             Either::Right(Wrapped {
-                              mut payload,
-                              reader,
-                          }) => {
+                mut payload,
+                reader,
+            }) => {
                 let (_, second, _, _) = &mut payload.state;
                 *second = Some(T::try_terminate(reader)?);
                 Ok(payload)
@@ -290,12 +300,9 @@ impl<S, T> BodyReader for Builder<GeneralType<S, T>, GeneralTypeFields<S, T>>
 }
 
 impl<S: StructuralWritable, T: StructuralWritable> StructuralWritable for GeneralType<S, T> {
-    fn write_with<W: StructuralWriter>(&self,
-                                       writer: W) -> Result<W::Repr, W::Error> {
+    fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
         let GeneralType { first, second } = self;
-        let mut rec_writer = writer
-            .record()?
-            .complete_header(2)?;
+        let mut rec_writer = writer.record()?.complete_header(2)?;
         if !first.omit_as_field() {
             rec_writer = rec_writer.write_slot(&"first", first)?;
         }
@@ -307,9 +314,7 @@ impl<S: StructuralWritable, T: StructuralWritable> StructuralWritable for Genera
 
     fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error> {
         let GeneralType { first, second } = self;
-        let mut rec_writer = writer
-            .record()?
-            .complete_header(2)?;
+        let mut rec_writer = writer.record()?.complete_header(2)?;
         if !first.omit_as_field() {
             rec_writer = rec_writer.write_slot_into("first", first)?;
         }
