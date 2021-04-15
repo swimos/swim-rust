@@ -1,13 +1,27 @@
+// Copyright 2015-2020 SWIM.AI inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 use std::error::Error;
 use std::fmt::{Debug, Formatter};
 use std::io::ErrorKind;
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
-use std::vec::IntoIter;
 use std::{fs, io};
 
 use tempdir::TempDir;
 
+use crate::engines::{ByteEngine, FromOpts, RangedSnapshotLoad};
 pub use engines::{LmdbxDatabase, RocksDatabase};
 pub use stores::lane::value::ValueDataModel;
 pub use stores::node::{NodeStore, SwimNodeStore};
@@ -70,13 +84,21 @@ impl StoreDir {
 /// Store errors.
 #[derive(Debug)]
 pub enum StoreError {
+    /// The provided key was not found in the store.
     KeyNotFound,
+    /// An error produced when attempting to execute a snapshot read.
     Snapshot(String),
+    /// The delegate byte engine failed to initialised.
     InitialisationFailure(String),
+    /// An IO error produced by the delegate byte engine.
     Io(io::Error),
+    /// An error produced when attempting to encode a value.
     Encoding(String),
+    /// An error produced when attempting to decode a value.
     Decoding(String),
+    /// A raw error produced by the delegate byte engine.
     Delegate(Box<dyn Error>),
+    /// An operation was attempted on the byte engine when it was closing.
     Closing,
 }
 
@@ -86,6 +108,7 @@ pub enum StoreError {
 pub trait Store:
     FromOpts + RangedSnapshotLoad + Send + Sync + Debug + ByteEngine + 'static
 {
+    /// Returns a reference to the path that the delegate byte engine is operating from.
     fn path(&self) -> &Path;
 }
 
@@ -106,51 +129,6 @@ pub trait SwimStore {
         I: ToString;
 }
 
-/// A trait for executing ranged snapshot reads on stores.
-// Todo: implement borrowed streaming snapshots.
-pub trait RangedSnapshotLoad {
-    /// Execute a ranged snapshot read on the store, seeking by `prefix` and deserializing results
-    /// with `map_fn`.
-    ///
-    /// Returns `Ok(None)` if no records matched `prefix` or `Ok(Some)` if matches were found.
-    ///
-    /// # Example:
-    /// Given a store engine that stores records for map lanes where the format of
-    /// `/node_uri/lane_uri/key` is used as the key. One could execute a ranged snapshot on the
-    /// store engine with a prefix of `/node_1/lane_1/` to load all of the keys and values for that
-    /// lane.
-    ///
-    /// # Errors
-    /// Errors if an error is encountered when attempting to execute the ranged snapshot on the
-    /// store engine or if the `map_fn` fails to deserialize a key or value.
-    fn load_ranged_snapshot<F, K, V>(
-        &self,
-        prefix: Vec<u8>,
-        map_fn: F,
-    ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
-    where
-        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>;
-}
-
-/// An owned snapshot of deserialized keys and values produced by `RangedSnapshot`.
-pub struct KeyedSnapshot<K, V> {
-    data: IntoIter<(K, V)>,
-}
-
-impl<K, V> KeyedSnapshot<K, V> {
-    pub fn new(data: IntoIter<(K, V)>) -> Self {
-        KeyedSnapshot { data }
-    }
-}
-
-impl<K, V> Iterator for KeyedSnapshot<K, V> {
-    type Item = (K, V);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.data.next()
-    }
-}
-
 /// A trait for defining snapshots.
 ///
 /// Typically used by node stores and will delegate the snapshot to a ranged snapshot that uses a
@@ -167,35 +145,6 @@ pub trait Snapshot<K, V> {
     /// Errors if an error is encountered when attempting to execute the snapshot on the store
     /// engine or if deserializing a key or value fails.
     fn snapshot(&self) -> Result<Option<Self::Snapshot>, StoreError>;
-}
-
-/// A trait for building stores from their options.
-pub trait FromOpts: Sized {
-    /// The type of options this store accepts.
-    type Opts: StoreOpts;
-
-    /// Build a store from options.
-    ///
-    /// Errors if there was an issue opening the store.
-    ///
-    /// # Arguments:
-    /// `path`: the path that this store should open in.
-    /// `opts`: the options.
-    ///
-    fn from_opts<I: AsRef<Path>>(path: I, opts: &Self::Opts) -> Result<Self, StoreError>;
-}
-
-pub trait StoreOpts: Default {}
-
-pub trait ByteEngine: 'static {
-    /// Put a key-value pair into this store.
-    fn put(&self, key: Vec<u8>, value: Vec<u8>) -> Result<(), StoreError>;
-
-    /// Get an entry from this store by its key.
-    fn get(&self, key: Vec<u8>) -> Result<Option<Vec<u8>>, StoreError>;
-
-    /// Delete a value from this store by its key.
-    fn delete(&self, key: Vec<u8>) -> Result<(), StoreError>;
 }
 
 /// A Swim server store that will open plane stores on request.
@@ -273,7 +222,7 @@ mod tests {
         let test_data = "test";
 
         assert!(plane_store
-            .put(node_key.clone(), test_data.as_bytes().to_vec())
+            .put(node_key.clone(), test_data.as_bytes())
             .is_ok());
         let value = plane_store.get(node_key).unwrap().unwrap();
         assert_eq!(Ok(test_data.to_string()), String::from_utf8(value));

@@ -12,12 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::stores::lane::{serialize, serialize_then};
+use crate::engines::KeyedSnapshot;
+use crate::stores::lane::{deserialize, serialize, serialize_then};
 use crate::stores::node::SwimNodeStore;
 use crate::stores::{LaneKey, MapStorageKey};
-use crate::{KeyedSnapshot, NodeStore, PlaneStore, Snapshot, StoreError};
+use crate::{NodeStore, PlaneStore, Snapshot, StoreError};
 use serde::de::DeserializeOwned;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::marker::PhantomData;
 use swim_common::model::text::Text;
 
@@ -56,7 +57,7 @@ where
             lane_uri,
             key: Some(key),
         };
-        delegate.put(k, value)
+        delegate.put(k, value.as_slice())
     }
 
     pub fn get(&self, key: &K) -> Result<Option<V>, StoreError> {
@@ -72,9 +73,7 @@ where
         })?;
 
         match opt {
-            Some(bytes) => bincode::deserialize(bytes.as_slice())
-                .map_err(|e| StoreError::Decoding(e.to_string()))
-                .map(Some),
+            Some(bytes) => deserialize(bytes.as_slice()).map(Some),
             None => Ok(None),
         }
     }
@@ -91,10 +90,6 @@ where
             })
         })
     }
-}
-
-fn deserialize<'de, K: Deserialize<'de>>(value: &'de [u8]) -> Result<K, StoreError> {
-    bincode::deserialize(value).map_err(|e| StoreError::Decoding(e.to_string()))
 }
 
 impl<D, K, V> Snapshot<K, V> for MapDataModel<D, K, V>

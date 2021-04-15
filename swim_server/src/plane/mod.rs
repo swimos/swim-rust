@@ -285,6 +285,7 @@ where
     execution_config: AgentExecutionConfig,
     /// The routes for the plane.
     routes: Vec<PlaneRouteSpec<Clk, DelegateFac, Store>>,
+    /// The store that this plane uses to create node stores.
     store: Store,
     /// Factory to create handles to the plane router when an agent is opened.
     router_fac: PlaneRouterFactory<DelegateFac>,

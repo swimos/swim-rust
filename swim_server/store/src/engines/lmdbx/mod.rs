@@ -15,9 +15,8 @@
 #[cfg(test)]
 mod tests;
 
-use crate::{
-    ByteEngine, FromOpts, KeyedSnapshot, RangedSnapshotLoad, Store, StoreError, StoreOpts,
-};
+use crate::engines::{KeyedSnapshot, RangedSnapshotLoad, StoreOpts};
+use crate::{ByteEngine, FromOpts, Store, StoreError};
 use heed::types::ByteSlice;
 use heed::{Database, Env, EnvOpenOptions, Error};
 use std::fmt::{Debug, Formatter};
@@ -43,9 +42,15 @@ impl PartialEq for LmdbxDatabase {
     }
 }
 
+/// An Libmdbx database engine.
+///
+/// See https://github.com/erthink/libmdbx for details about its features and limitations.
 pub struct LmdbxDatabase {
+    /// The path to the database directory.
     path: PathBuf,
+    /// The delegate Libmdbx database.
     delegate: Database<ByteSlice, ByteSlice>,
+    /// Libmdbx environment handle.
     env: Env,
 }
 
@@ -58,6 +63,7 @@ impl Debug for LmdbxDatabase {
 }
 
 impl LmdbxDatabase {
+    /// Initialise a Libmdbx database at `path` with the provided environment open options.
     fn init<P: AsRef<Path>>(path: P, config: &EnvOpenOptions) -> Result<Self, StoreError> {
         let path = path.as_ref().to_owned();
 
@@ -76,6 +82,7 @@ impl LmdbxDatabase {
         })
     }
 
+    /// Returns a reference to the path that the database is opened in.
     pub fn path(&self) -> &Path {
         &self.path.as_path()
     }
@@ -95,6 +102,7 @@ impl FromOpts for LmdbxDatabase {
     }
 }
 
+/// Configuration wrapper for a Libmdbx database used by `FromOpts`.
 pub struct LmdbOpts(pub EnvOpenOptions);
 
 impl StoreOpts for LmdbOpts {}
@@ -106,9 +114,11 @@ impl Default for LmdbOpts {
 }
 
 impl RangedSnapshotLoad for LmdbxDatabase {
+    /// Returns a lexicographically ordered iterator of deserialized key-value pairs that exist
+    /// in this store that start with `prefix`.
     fn load_ranged_snapshot<F, K, V>(
         &self,
-        prefix: Vec<u8>,
+        prefix: &[u8],
         map_fn: F,
     ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
     where
@@ -118,7 +128,7 @@ impl RangedSnapshotLoad for LmdbxDatabase {
         let tx = env.read_txn()?;
 
         let mut it = delegate
-            .prefix_iter(&tx, &prefix)
+            .prefix_iter(&tx, prefix)
             .map_err(|e| StoreError::Snapshot(e.to_string()))?;
 
         let data = it.try_fold(Vec::new(), |mut vec, result| match result {
@@ -140,28 +150,32 @@ impl RangedSnapshotLoad for LmdbxDatabase {
 }
 
 impl ByteEngine for LmdbxDatabase {
-    fn put(&self, key: Vec<u8>, value: Vec<u8>) -> Result<(), StoreError> {
+    /// Inserts a key-value pair into this Libmdbx database. If a write transaction already exists,
+    /// then this will block the current thread until it finishes.
+    fn put(&self, key: &[u8], value: &[u8]) -> Result<(), StoreError> {
         let LmdbxDatabase { delegate, env, .. } = self;
         let mut wtxn = env.write_txn()?;
 
-        delegate.put(&mut wtxn, key.as_slice(), value.as_slice())?;
+        delegate.put(&mut wtxn, key, value)?;
         wtxn.commit().map_err(Into::into)
     }
 
-    fn get(&self, key: Vec<u8>) -> Result<Option<Vec<u8>>, StoreError> {
+    /// Gets the value associated with `key` if it exists.
+    fn get(&self, key: &[u8]) -> Result<Option<Vec<u8>>, StoreError> {
         let LmdbxDatabase { delegate, env, .. } = self;
         let rtxn = env.read_txn()?;
 
         delegate
-            .get(&rtxn, key.as_slice())
+            .get(&rtxn, key)
             .map(|e| e.map(|e| e.to_vec()))
             .map_err(Into::into)
     }
 
-    fn delete(&self, key: Vec<u8>) -> Result<(), StoreError> {
+    /// Delete the key-value pair associated with `key`.
+    fn delete(&self, key: &[u8]) -> Result<(), StoreError> {
         let LmdbxDatabase { delegate, env, .. } = self;
         let mut wtxn = env.write_txn()?;
-        let _result = delegate.delete(&mut wtxn, key.as_slice())?;
+        let _result = delegate.delete(&mut wtxn, key)?;
 
         wtxn.commit()?;
         Ok(())

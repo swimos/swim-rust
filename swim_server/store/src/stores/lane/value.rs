@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::stores::lane::serialize_then;
+use crate::stores::lane::{deserialize, serialize_then};
 use crate::stores::node::SwimNodeStore;
 use crate::stores::LaneKey;
 use crate::{NodeStore, PlaneStore, StoreError};
@@ -49,32 +49,29 @@ impl<D> ValueDataModel<D> {
 }
 
 impl<D: PlaneStore> ValueDataModel<D> {
-    /// Serializes and stores `value`.
+    /// Serialize and store `value`.
     pub fn store<V>(&self, value: &V) -> Result<(), StoreError>
     where
         V: Serialize,
     {
         serialize_then(&self.delegate, value, |delegate, bytes| {
-            delegate.put(self.key(), bytes)
+            delegate.put(self.key(), bytes.as_slice())
         })
     }
 
-    /// Loads the value in the data model if it exists.
+    /// Loads the value in the store if it exists.
     pub fn load<V>(&self) -> Result<Option<V>, StoreError>
     where
         V: DeserializeOwned,
     {
         match self.delegate.get(self.key()) {
-            Ok(Some(bytes)) => {
-                let slice = bytes.as_slice();
-                bincode::deserialize(slice).map_err(|e| StoreError::Decoding(e.to_string()))
-            }
+            Ok(Some(bytes)) => deserialize(bytes.as_slice()),
             Ok(None) => Ok(None),
             Err(e) => Err(e),
         }
     }
 
-    /// Clears the value within the data model.
+    /// Clears the value within the store.
     pub fn clear(&self) -> Result<(), StoreError> {
         self.delegate.delete(self.key()).map(|_| ())
     }

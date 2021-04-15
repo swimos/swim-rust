@@ -15,9 +15,8 @@
 #[cfg(test)]
 mod tests;
 
-use crate::{
-    ByteEngine, FromOpts, KeyedSnapshot, RangedSnapshotLoad, Store, StoreError, StoreOpts,
-};
+use crate::engines::{KeyedSnapshot, RangedSnapshotLoad, StoreOpts};
+use crate::{ByteEngine, FromOpts, Store, StoreError};
 use rocksdb::{Error, Options, DB};
 use std::path::Path;
 use std::sync::Arc;
@@ -30,6 +29,9 @@ impl From<rocksdb::Error> for StoreError {
     }
 }
 
+/// A Rocks database engine.
+///
+/// See https://github.com/facebook/rocksdb/wiki for details about the features and limitations.
 #[derive(Debug)]
 pub struct RocksDatabase {
     delegate: Arc<DB>,
@@ -44,17 +46,20 @@ impl RocksDatabase {
 }
 
 impl ByteEngine for RocksDatabase {
-    fn put(&self, key: Vec<u8>, value: Vec<u8>) -> Result<(), StoreError> {
+    /// Inserts a key-value pair into this Rocks database.
+    fn put(&self, key: &[u8], value: &[u8]) -> Result<(), StoreError> {
         let RocksDatabase { delegate, .. } = self;
         delegate.put(key, value).map_err(Into::into)
     }
 
-    fn get(&self, key: Vec<u8>) -> Result<Option<Vec<u8>>, StoreError> {
+    /// Gets the value associated with `key` if it exists.
+    fn get(&self, key: &[u8]) -> Result<Option<Vec<u8>>, StoreError> {
         let RocksDatabase { delegate, .. } = self;
         delegate.get(key).map_err(Into::into)
     }
 
-    fn delete(&self, key: Vec<u8>) -> Result<(), StoreError> {
+    /// Delete the key-value pair associated with `key`.
+    fn delete(&self, key: &[u8]) -> Result<(), StoreError> {
         let RocksDatabase { delegate, .. } = self;
         delegate.delete(key).map_err(Into::into)
     }
@@ -75,6 +80,7 @@ impl FromOpts for RocksDatabase {
     }
 }
 
+/// Configuration wrapper for a Rocks database used by `FromOpts`.
 pub struct RocksOpts(pub Options);
 
 impl StoreOpts for RocksOpts {}
@@ -92,7 +98,7 @@ impl Default for RocksOpts {
 impl RangedSnapshotLoad for RocksDatabase {
     fn load_ranged_snapshot<F, K, V>(
         &self,
-        prefix: Vec<u8>,
+        prefix: &[u8],
         map_fn: F,
     ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
     where
@@ -102,13 +108,14 @@ impl RangedSnapshotLoad for RocksDatabase {
         let mut raw = db.raw_iterator();
         let mut data = Vec::new();
 
-        raw.seek(prefix.clone());
+        raw.seek(prefix);
 
         loop {
             if raw.valid() {
                 match (raw.key(), raw.value()) {
                     (Some(key), Some(value)) => {
-                        if !key.starts_with(&prefix) {
+                        if !key.starts_with(prefix) {
+                            // At this point we've hit the next set of keys
                             break;
                         } else {
                             let mapped = map_fn(key, value)?;
@@ -119,6 +126,10 @@ impl RangedSnapshotLoad for RocksDatabase {
                     _ => return Err(StoreError::Decoding(INCONSISTENT_DB.to_string())),
                 }
             } else {
+                if let Err(e) = raw.status() {
+                    return Err(StoreError::Delegate(Box::new(e)));
+                }
+
                 break;
             }
         }

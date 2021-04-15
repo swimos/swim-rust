@@ -235,6 +235,7 @@ pub trait AgentExecutionContext {
     /// Provide a channel to dispatch events to the agent scheduler.
     fn spawner(&self) -> mpsc::Sender<Eff>;
 
+    /// Provides a handle to the store engine for this node.
     fn store(&self) -> Self::Store;
 }
 

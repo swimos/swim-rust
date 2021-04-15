@@ -12,16 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::engines::NoStore;
+use crate::engines::{KeyedSnapshot, NoStore, StoreOpts};
 use crate::stores::lane::map::MapDataModel;
 use crate::stores::lane::value::ValueDataModel;
 use crate::stores::node::NodeStore;
 use crate::stores::plane::{PlaneStore, SwimPlaneStore};
 use crate::stores::{LaneKey, StoreKey};
-use crate::{
-    ByteEngine, FromOpts, KeyedSnapshot, RangedSnapshotLoad, Store, StoreError, StoreOpts,
-    SwimStore,
-};
+use crate::{ByteEngine, FromOpts, RangedSnapshotLoad, Store, StoreError, SwimStore};
 use serde::Serialize;
 use std::path::Path;
 use swim_common::model::text::Text;
@@ -41,7 +38,7 @@ impl Store for MockServerStore {
 impl RangedSnapshotLoad for MockServerStore {
     fn load_ranged_snapshot<F, K, V>(
         &self,
-        _prefix: Vec<u8>,
+        _prefix: &[u8],
         _map_fn: F,
     ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
     where
@@ -73,33 +70,18 @@ impl FromOpts for MockServerStore {
 }
 
 impl ByteEngine for MockServerStore {
-    fn put(&self, _key: Vec<u8>, _value: Vec<u8>) -> Result<(), StoreError> {
+    fn put(&self, _key: &[u8], _value: &[u8]) -> Result<(), StoreError> {
         Ok(())
     }
 
-    fn get(&self, _key: Vec<u8>) -> Result<Option<Vec<u8>>, StoreError> {
+    fn get(&self, _key: &[u8]) -> Result<Option<Vec<u8>>, StoreError> {
         Ok(None)
     }
 
-    fn delete(&self, _key: Vec<u8>) -> Result<(), StoreError> {
+    fn delete(&self, _key: &[u8]) -> Result<(), StoreError> {
         Ok(())
     }
 }
-
-// impl RangedSnapshotLoad for MockServerStore {
-//     type Prefix = Vec<u8>;
-//
-//     fn load_ranged_snapshot<F, K, V>(
-//         &self,
-//         _prefix: Self::Prefix,
-//         _map_fn: F,
-//     ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
-//     where
-//         F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
-//     {
-//         Ok(None)
-//     }
-// }
 
 impl SwimStore for MockServerStore {
     type PlaneStore = SwimPlaneStore<NoStore>;
@@ -141,7 +123,7 @@ impl NodeStore for MockNodeStore {
         unimplemented!()
     }
 
-    fn put(&self, _key: LaneKey, _value: Vec<u8>) -> Result<(), StoreError> {
+    fn put(&self, _key: LaneKey, _value: &[u8]) -> Result<(), StoreError> {
         todo!()
     }
 
@@ -177,7 +159,7 @@ impl PlaneStore for MockPlaneStore {
         Ok(None)
     }
 
-    fn put(&self, _key: StoreKey, _value: Vec<u8>) -> Result<(), StoreError> {
+    fn put(&self, _key: StoreKey, _value: &[u8]) -> Result<(), StoreError> {
         todo!()
     }
 

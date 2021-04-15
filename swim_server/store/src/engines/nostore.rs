@@ -12,14 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::{
-    ByteEngine, FromOpts, KeyedSnapshot, RangedSnapshotLoad, Store, StoreError, StoreOpts,
-};
+use crate::engines::{KeyedSnapshot, RangedSnapshotLoad, StoreOpts};
+use crate::{ByteEngine, FromOpts, Store, StoreError};
 use std::borrow::Borrow;
 use std::path::{Path, PathBuf};
 
+/// A delegate store database that does nothing.
 #[derive(Debug)]
 pub struct NoStore {
+    /// A path stub that is the name of the plane that created it.
     pub(crate) path: PathBuf,
 }
 
@@ -32,7 +33,7 @@ impl Store for NoStore {
 impl RangedSnapshotLoad for NoStore {
     fn load_ranged_snapshot<F, K, V>(
         &self,
-        _prefix: Vec<u8>,
+        _prefix: &[u8],
         _map_fn: F,
     ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
     where
@@ -58,30 +59,18 @@ impl FromOpts for NoStore {
 }
 
 impl ByteEngine for NoStore {
-    fn put(&self, _key: Vec<u8>, _value: Vec<u8>) -> Result<(), StoreError> {
+    /// Put operation does nothing and that always succeeds.
+    fn put(&self, _key: &[u8], _value: &[u8]) -> Result<(), StoreError> {
         Ok(())
     }
 
-    fn get(&self, _key: Vec<u8>) -> Result<Option<Vec<u8>>, StoreError> {
+    /// Get operation does nothing and always returns `Ok(None)`.
+    fn get(&self, _key: &[u8]) -> Result<Option<Vec<u8>>, StoreError> {
         Ok(None)
     }
 
-    fn delete(&self, _key: Vec<u8>) -> Result<(), StoreError> {
+    /// Delete operation does nothing and always returns `Ok(())`.
+    fn delete(&self, _key: &[u8]) -> Result<(), StoreError> {
         Ok(())
     }
 }
-
-// impl RangedSnapshotLoad for NoStore {
-//     type Prefix = Vec<u8>;
-//
-//     fn load_ranged_snapshot<F, K, V>(
-//         &self,
-//         _prefix: Self::Prefix,
-//         _map_fn: F,
-//     ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
-//     where
-//         F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
-//     {
-//         Ok(None)
-//     }
-// }

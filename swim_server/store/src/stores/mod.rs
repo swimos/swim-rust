@@ -35,7 +35,7 @@ pub enum LaneKey<'l> {
     },
     /// A value lane key.
     Value {
-        /// The lane URi.
+        /// The lane URI.
         lane_uri: &'l Text,
     },
 }
@@ -74,6 +74,7 @@ pub struct ValueStorageKey<'n, 'l> {
     pub lane_uri: Cow<'l, Text>,
 }
 
+/// Cow<'_, Text> serde implementation
 mod text_serde {
     use serde::de::{Error, Visitor};
     use serde::{Deserializer, Serializer};
@@ -82,7 +83,7 @@ mod text_serde {
     use std::str::FromStr;
     use swim_common::model::text::Text;
 
-    pub fn serialize<S>(text: &Cow<'_, Text>, serializer: S) -> Result<S::Ok, S::Error>
+    pub fn serialize<S>(text: &Text, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {

@@ -13,14 +13,14 @@
 // limitations under the License.
 
 use crate::StoreError;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 pub mod map;
 pub mod value;
 
 /// Serialize `obj` and then execute `f` with the bytes if the operation succeeded. Returns the
 /// output of `f`.
-pub fn serialize_then<'a, S, F, O, E>(engine: &E, obj: &S, f: F) -> Result<O, StoreError>
+pub fn serialize_then<S, F, O, E>(engine: &E, obj: &S, f: F) -> Result<O, StoreError>
 where
     S: Serialize,
     F: Fn(&E, Vec<u8>) -> Result<O, StoreError>,
@@ -30,4 +30,8 @@ where
 
 pub fn serialize<S: Serialize>(obj: &S) -> Result<Vec<u8>, StoreError> {
     bincode::serialize(obj).map_err(|e| StoreError::Encoding(e.to_string()))
+}
+
+pub fn deserialize<'de, D: Deserialize<'de>>(obj: &'de [u8]) -> Result<D, StoreError> {
+    bincode::deserialize(obj).map_err(|e| StoreError::Decoding(e.to_string()))
 }

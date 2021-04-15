@@ -12,10 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::engines::KeyedSnapshot;
 use crate::stores::lane::map::MapDataModel;
 use crate::stores::lane::value::ValueDataModel;
 use crate::stores::{LaneKey, MapStorageKey, StoreKey, ValueStorageKey};
-use crate::{KeyedSnapshot, PlaneStore, StoreError};
+use crate::{PlaneStore, StoreError};
 use serde::Serialize;
 use std::borrow::Cow;
 use std::fmt::{Debug, Formatter};
@@ -61,10 +62,13 @@ pub trait NodeStore: Send + Sync + Clone + Debug + 'static {
         V: Serialize,
         Self: Sized;
 
-    fn put(&self, key: LaneKey<'_>, value: Vec<u8>) -> Result<(), StoreError>;
+    /// Put a key-value pair into the delegate store.
+    fn put(&self, key: LaneKey<'_>, value: &[u8]) -> Result<(), StoreError>;
 
+    /// Get a value keyed by a lane key from the delegate store.
     fn get(&self, key: LaneKey<'_>) -> Result<Option<Vec<u8>>, StoreError>;
 
+    /// Delete a key-value pair by its lane key from the delegate store.
     fn delete(&self, key: LaneKey<'_>) -> Result<(), StoreError>;
 }
 
@@ -104,6 +108,11 @@ impl<D: PlaneStore> SwimNodeStore<D> {
         }
     }
 
+    /// Executes a ranged snapshot read prefixed by a lane key and deserialize each key-value pair
+    /// using `map_fn`.
+    ///
+    /// Returns an optional snapshot iterator if entries were found that will yield deserialized
+    /// key-value pairs.
     pub(crate) fn load_ranged_snapshot<F, K, V>(
         &self,
         prefix: LaneKey,
@@ -148,7 +157,7 @@ impl<D: PlaneStore> NodeStore for SwimNodeStore<D> {
         ValueDataModel::new(self.clone(), lane)
     }
 
-    fn put(&self, key: LaneKey, value: Vec<u8>) -> Result<(), StoreError> {
+    fn put(&self, key: LaneKey, value: &[u8]) -> Result<(), StoreError> {
         let SwimNodeStore { delegate, node_uri } = self;
         let key = map_key(key, node_uri);
 

@@ -12,10 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::engines::KeyedSnapshot;
 use crate::stores::lane::serialize;
 use crate::stores::node::{NodeStore, SwimNodeStore};
 use crate::stores::StoreKey;
-use crate::{KeyedSnapshot, Store, StoreError};
+use crate::{Store, StoreError};
 use std::ffi::OsStr;
 use std::fmt::{Debug, Formatter};
 use std::path::{Path, PathBuf};
@@ -41,7 +42,7 @@ where
 /// A trait for defining plane stores which will create node stores.
 pub trait PlaneStore
 where
-    Self: Sized + Debug + Send + Sync + 'static,
+    Self: Sized + Debug + Send + Sync + Clone + 'static,
 {
     /// The type of node stores which are created.
     type NodeStore: NodeStore;
@@ -51,6 +52,11 @@ where
     where
         I: Into<Text>;
 
+    /// Executes a ranged snapshot read prefixed by a lane key and deserialize each key-value pair
+    /// using `map_fn`.
+    ///
+    /// Returns an optional snapshot iterator if entries were found that will yield deserialized
+    /// key-value pairs.
     fn load_ranged_snapshot<F, K, V>(
         &self,
         _prefix: StoreKey,
@@ -59,10 +65,13 @@ where
     where
         F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>;
 
-    fn put(&self, key: StoreKey<'_, '_>, value: Vec<u8>) -> Result<(), StoreError>;
+    /// Serialize `key` and insert the key-value pair into the delegate store.
+    fn put(&self, key: StoreKey<'_, '_>, value: &[u8]) -> Result<(), StoreError>;
 
+    /// Gets the value associated with the provided store key if it exists.
     fn get(&self, key: StoreKey) -> Result<Option<Vec<u8>>, StoreError>;
 
+    /// Delete the key-value pair associated with `key`.
     fn delete(&self, key: StoreKey) -> Result<(), StoreError>;
 }
 
@@ -73,6 +82,7 @@ where
 pub struct SwimPlaneStore<D> {
     /// The name of the plane.
     plane_name: Text,
+    /// Delegate byte engine.
     delegate: Arc<D>,
 }
 
@@ -115,19 +125,19 @@ where
         F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
     {
         self.delegate
-            .load_ranged_snapshot(serialize(&prefix)?, map_fn)
+            .load_ranged_snapshot(serialize(&prefix)?.as_slice(), map_fn)
     }
 
-    fn put(&self, key: StoreKey, value: Vec<u8>) -> Result<(), StoreError> {
-        self.delegate.put(serialize(&key)?, value)
+    fn put(&self, key: StoreKey, value: &[u8]) -> Result<(), StoreError> {
+        self.delegate.put(serialize(&key)?.as_slice(), value)
     }
 
     fn get(&self, key: StoreKey) -> Result<Option<Vec<u8>>, StoreError> {
-        self.delegate.get(serialize(&key)?)
+        self.delegate.get(serialize(&key)?.as_slice())
     }
 
     fn delete(&self, key: StoreKey) -> Result<(), StoreError> {
-        self.delegate.delete(serialize(&key)?)
+        self.delegate.delete(serialize(&key)?.as_slice())
     }
 }
 
@@ -190,7 +200,7 @@ mod tests {
             let test_data = "test";
 
             assert!(plane_store
-                .put(value_key.clone(), test_data.as_bytes().to_vec())
+                .put(value_key.clone(), test_data.as_bytes())
                 .is_ok());
 
             let result = plane_store.get(value_key);
@@ -200,24 +210,4 @@ mod tests {
 
         assert!(DB::destroy(&Options::default(), path).is_ok());
     }
-
-    // #[test]
-    // fn directories() {
-    //     let plane_name = "test_plane";
-    //     let temp_dir = TempDir::new("test").expect("Failed to create temporary directory");
-    //
-    //     let plane_store =
-    //         SwimPlaneStore::open(temp_dir.path(), plane_name, &StoreEngineOpts::default())
-    //             .expect("Failed to create plane store");
-    //
-    //     let SwimPlaneStore {
-    //         plane_name: inner_plane_name,
-    //         delegate,
-    //     } = plane_store;
-    //
-    //     assert_eq!(*inner_plane_name, plane_name);
-    //
-    //     // let map_dir = delegate.path();
-    //     // assert!(map_dir.ends_with("map"));
-    // }
 }
