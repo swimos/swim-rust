@@ -36,7 +36,7 @@ use tracing::{event, Level};
 
 use crate::routing::remote::net::dns::{DnsResolver, Resolver};
 use crate::routing::remote::net::{ExternalConnections, IoResult, Listener};
-use crate::routing::remote::table::HostAndPort;
+use crate::routing::remote::table::SchemeHostPort;
 use im::HashMap;
 use pin_project::pin_project;
 use std::path::PathBuf;
@@ -107,7 +107,7 @@ impl ExternalConnections for TokioTlsNetworking {
         })
     }
 
-    fn lookup(&self, host: HostAndPort) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>> {
+    fn lookup(&self, host: SchemeHostPort) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>> {
         self.resolver.resolve(host)
     }
 }

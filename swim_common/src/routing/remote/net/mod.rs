@@ -18,7 +18,7 @@ use std::pin::Pin;
 use crate::routing::remote::net::dns::{DnsResolver, Resolver};
 use crate::routing::remote::net::plain::TokioPlainTextNetworking;
 use crate::routing::remote::net::tls::{TlsListener, TlsStream, TokioTlsNetworking};
-use crate::routing::remote::table::HostAndPort;
+use crate::routing::remote::table::SchemeHostPort;
 use crate::routing::remote::{ExternalConnections, IoResult, Listener};
 use either::Either;
 use futures::stream::{Fuse, StreamExt};
@@ -129,7 +129,7 @@ impl ExternalConnections for TokioNetworking {
         }
     }
 
-    fn lookup(&self, host: HostAndPort) -> BoxFuture<'static, io::Result<Vec<SocketAddr>>> {
+    fn lookup(&self, host: SchemeHostPort) -> BoxFuture<'static, io::Result<Vec<SocketAddr>>> {
         self.resolver.resolve(host).boxed()
     }
 }

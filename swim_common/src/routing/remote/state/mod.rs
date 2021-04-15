@@ -15,7 +15,7 @@
 use crate::routing::remote::addresses::RemoteRoutingAddresses;
 use crate::routing::remote::config::ConnectionConfig;
 use crate::routing::remote::pending::PendingRequests;
-use crate::routing::remote::table::{HostAndPort, RoutingTable};
+use crate::routing::remote::table::{RoutingTable, SchemeHostPort};
 use crate::routing::remote::task::TaskFactory;
 use crate::routing::remote::{ExternalConnections, Listener};
 use crate::routing::remote::{
@@ -23,7 +23,7 @@ use crate::routing::remote::{
 };
 use crate::routing::ws::WsConnections;
 use crate::routing::ConnectionError;
-use crate::routing::{ConnectionDropped, RoutingAddr, RouterFactory};
+use crate::routing::{ConnectionDropped, RouterFactory, RoutingAddr};
 use futures::future::{BoxFuture, Fuse};
 use futures::StreamExt;
 use futures::{select_biased, FutureExt};
@@ -55,16 +55,16 @@ pub trait RemoteTasksState {
         &mut self,
         sock_addr: SocketAddr,
         ws_stream: Self::WebSocket,
-        host: Option<HostAndPort>,
+        host: Option<SchemeHostPort>,
     );
 
     /// Check a pair of host/socket address, registering the hose with the address if a connection
     /// is already open to it and fulfilling any requests for that host.
     fn check_socket_addr(
         &mut self,
-        host: HostAndPort,
+        host: SchemeHostPort,
         sock_addr: SocketAddr,
-    ) -> Result<(), HostAndPort>;
+    ) -> Result<(), SchemeHostPort>;
 
     /// Add a deferred web socket handshake.
     fn defer_handshake(&self, stream: Self::Socket, peer_addr: SocketAddr);
@@ -72,22 +72,22 @@ pub trait RemoteTasksState {
     /// Add a deferred new connection followed by a websocket handshake.
     fn defer_connect_and_handshake(
         &mut self,
-        host: HostAndPort,
+        host: SchemeHostPort,
         sock_addr: SocketAddr,
         remaining: SocketAddrIt,
     );
 
     /// Add a deferred DNS lookup for a host.
-    fn defer_dns_lookup(&mut self, target: HostAndPort, request: ResolutionRequest);
+    fn defer_dns_lookup(&mut self, target: SchemeHostPort, request: ResolutionRequest);
 
     /// Flush out pending state for a failed connection.
-    fn fail_connection(&mut self, host: &HostAndPort, error: ConnectionError);
+    fn fail_connection(&mut self, host: &SchemeHostPort, error: ConnectionError);
 
     /// Resolve an entry in the routing table.
     fn table_resolve(&self, addr: RoutingAddr) -> Option<RawRoute>;
 
     /// Try to resolve a host in the routing table.
-    fn table_try_resolve(&self, target: &HostAndPort) -> Option<RoutingAddr>;
+    fn table_try_resolve(&self, target: &SchemeHostPort) -> Option<RoutingAddr>;
 
     /// Remote an entry from the routing table return the promise to use to indicate why the entry
     /// was removed.
@@ -155,7 +155,7 @@ where
         &mut self,
         sock_addr: SocketAddr,
         ws_stream: Ws::StreamSink,
-        host: Option<HostAndPort>,
+        host: Option<SchemeHostPort>,
     ) {
         let addr = self.next_address();
         let RemoteConnections {
@@ -174,9 +174,9 @@ where
 
     fn check_socket_addr(
         &mut self,
-        host: HostAndPort,
+        host: SchemeHostPort,
         sock_addr: SocketAddr,
-    ) -> Result<(), HostAndPort> {
+    ) -> Result<(), SchemeHostPort> {
         let RemoteConnections { table, pending, .. } = self;
         if let Some(addr) = table.get_resolved(&sock_addr) {
             pending.send_ok(&host, addr);
@@ -197,7 +197,7 @@ where
 
     fn defer_connect_and_handshake(
         &mut self,
-        host: HostAndPort,
+        host: SchemeHostPort,
         sock_addr: SocketAddr,
         remaining: SocketAddrIt,
     ) {
@@ -208,7 +208,7 @@ where
         });
     }
 
-    fn defer_dns_lookup(&mut self, target: HostAndPort, request: ResolutionRequest) {
+    fn defer_dns_lookup(&mut self, target: SchemeHostPort, request: ResolutionRequest) {
         let target_cpy = target.clone();
         let external = self.external.clone();
         self.defer(async move {
@@ -221,7 +221,7 @@ where
         self.pending.add(target, request);
     }
 
-    fn fail_connection(&mut self, host: &HostAndPort, error: ConnectionError) {
+    fn fail_connection(&mut self, host: &SchemeHostPort, error: ConnectionError) {
         self.pending.send_err(host, error);
     }
 
@@ -229,7 +229,7 @@ where
         self.table.resolve(addr)
     }
 
-    fn table_try_resolve(&self, target: &HostAndPort) -> Option<RoutingAddr> {
+    fn table_try_resolve(&self, target: &SchemeHostPort) -> Option<RoutingAddr> {
         self.table.try_resolve(target)
     }
 
@@ -414,16 +414,16 @@ pub enum DeferredResult<Snk> {
     },
     ClientHandshake {
         result: Result<(Snk, SocketAddr), ConnectionError>,
-        host: HostAndPort,
+        host: SchemeHostPort,
     },
     FailedConnection {
         error: ConnectionError,
         remaining: SocketAddrIt,
-        host: HostAndPort,
+        host: SchemeHostPort,
     },
     Dns {
         result: io::Result<SocketAddrIt>,
-        host: HostAndPort,
+        host: SchemeHostPort,
     },
 }
 
@@ -434,19 +434,19 @@ impl<Snk> DeferredResult<Snk> {
 
     fn outgoing_handshake(
         result: Result<(Snk, SocketAddr), ConnectionError>,
-        host: HostAndPort,
+        host: SchemeHostPort,
     ) -> Self {
         DeferredResult::ClientHandshake { result, host }
     }
 
-    fn dns(result: io::Result<SocketAddrIt>, host: HostAndPort) -> Self {
+    fn dns(result: io::Result<SocketAddrIt>, host: SchemeHostPort) -> Self {
         DeferredResult::Dns { result, host }
     }
 
     fn failed_connection(
         error: ConnectionError,
         remaining: std::vec::IntoIter<SocketAddr>,
-        host: HostAndPort,
+        host: SchemeHostPort,
     ) -> Self {
         DeferredResult::FailedConnection {
             error,
@@ -506,17 +506,26 @@ async fn connect_and_handshake<External: ExternalConnections, Ws>(
     external: External,
     sock_addr: SocketAddr,
     remaining: SocketAddrIt,
-    host_port: HostAndPort,
+    scheme_host_port: SchemeHostPort,
     websockets: &Ws,
 ) -> DeferredResult<Ws::StreamSink>
 where
     Ws: WsConnections<External::Socket>,
 {
-    match connect_and_handshake_single(external, sock_addr, websockets, host_port.host().clone())
-        .await
+    match connect_and_handshake_single(
+        external,
+        sock_addr,
+        websockets,
+        format!(
+            "{}://{}",
+            scheme_host_port.scheme(),
+            scheme_host_port.host()
+        ),
+    )
+    .await
     {
-        Ok(str) => DeferredResult::outgoing_handshake(Ok((str, sock_addr)), host_port),
-        Err(err) => DeferredResult::failed_connection(err, remaining, host_port),
+        Ok(str) => DeferredResult::outgoing_handshake(Ok((str, sock_addr)), scheme_host_port),
+        Err(err) => DeferredResult::failed_connection(err, remaining, scheme_host_port),
     }
 }
 
@@ -524,15 +533,15 @@ async fn connect_and_handshake_single<External: ExternalConnections, Ws>(
     external: External,
     addr: SocketAddr,
     websockets: &Ws,
-    host: String,
+    host_addr: String,
 ) -> Result<Ws::StreamSink, ConnectionError>
 where
     Ws: WsConnections<External::Socket>,
 {
     //Todo dm bug - needs the protocol
-    let host = format!("ws://{}", host);
-    eprintln!("host = {:#?}", host);
+    // let host = format!("ws://{}", host);
+    // eprintln!("host = {:#?}", host);
     websockets
-        .open_connection(external.try_open(addr).await?, host)
+        .open_connection(external.try_open(addr).await?, host_addr)
         .await
 }

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::routing::remote::table::HostAndPort;
+use crate::routing::remote::table::SchemeHostPort;
 use futures::Future;
 use futures::FutureExt;
 use futures_util::future::BoxFuture;
@@ -28,7 +28,7 @@ pub trait DnsResolver {
 
     /// Perform a DNS query for A and AAAA records for the provided address. This *may* resolve to
     /// multiple IP addresses.
-    fn resolve(&self, host: HostAndPort) -> Self::ResolveFuture;
+    fn resolve(&self, host: SchemeHostPort) -> Self::ResolveFuture;
 }
 
 /// A resolver which will use the operating system's `getaddrinfo` function to resolve the provided
@@ -39,8 +39,8 @@ pub struct GetAddressInfoResolver;
 impl DnsResolver for GetAddressInfoResolver {
     type ResolveFuture = BoxFuture<'static, io::Result<Vec<SocketAddr>>>;
 
-    fn resolve(&self, host: HostAndPort) -> Self::ResolveFuture {
-        let (host, port) = host.split();
+    fn resolve(&self, host: SchemeHostPort) -> Self::ResolveFuture {
+        let (_, host, port) = host.split();
         Box::pin(
             lookup_host(format!("{}:{}", host, port)).map(|r| r.map(|it| it.collect::<Vec<_>>())),
         )
@@ -71,7 +71,7 @@ impl Resolver {
 impl DnsResolver for Resolver {
     type ResolveFuture = BoxFuture<'static, io::Result<Vec<SocketAddr>>>;
 
-    fn resolve(&self, host: HostAndPort) -> Self::ResolveFuture {
+    fn resolve(&self, host: SchemeHostPort) -> Self::ResolveFuture {
         match self {
             #[cfg(not(feature = "trust-dns"))]
             Resolver::GetAddressInfo(resolver) => resolver.resolve(host).boxed(),
@@ -84,7 +84,7 @@ impl DnsResolver for Resolver {
 #[cfg(feature = "trust-dns")]
 mod trust_dns_impl {
     use crate::routing::remote::net::dns::DnsResolver;
-    use crate::routing::remote::table::HostAndPort;
+    use crate::routing::remote::table::SchemeHostPort;
     use futures::future::BoxFuture;
     use std::io;
     use std::net::{SocketAddr, ToSocketAddrs};
@@ -109,7 +109,7 @@ mod trust_dns_impl {
     impl DnsResolver for TrustDnsResolver {
         type ResolveFuture = BoxFuture<'static, io::Result<Vec<SocketAddr>>>;
 
-        fn resolve(&self, host_and_port: HostAndPort) -> Self::ResolveFuture {
+        fn resolve(&self, host_and_port: SchemeHostPort) -> Self::ResolveFuture {
             let resolver = self.inner.clone();
             Box::pin(async move {
                 let (host, port) = host_and_port.split();

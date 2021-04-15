@@ -17,7 +17,7 @@ use std::pin::Pin;
 
 use crate::routing::remote::net::dns::{DnsResolver, Resolver};
 use crate::routing::remote::net::{ExternalConnections, IoResult, Listener};
-use crate::routing::remote::table::HostAndPort;
+use crate::routing::remote::table::SchemeHostPort;
 use futures::future::BoxFuture;
 use futures::stream::Fuse;
 use futures::task::{Context, Poll};
@@ -51,7 +51,7 @@ impl ExternalConnections for TokioPlainTextNetworking {
         TcpStream::connect(addr).boxed()
     }
 
-    fn lookup(&self, host: HostAndPort) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>> {
+    fn lookup(&self, host: SchemeHostPort) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>> {
         self.resolver.resolve(host)
     }
 }

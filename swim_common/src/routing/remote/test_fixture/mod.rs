@@ -15,7 +15,7 @@
 use crate::routing::error::{
     CloseError, ConnectionError, HttpError, HttpErrorKind, ResolutionError, ResolutionErrorKind,
 };
-use crate::routing::remote::table::HostAndPort;
+use crate::routing::remote::table::SchemeHostPort;
 use crate::routing::remote::ConnectionDropped;
 use crate::routing::remote::{ExternalConnections, Listener};
 use crate::routing::ws::{CloseReason, JoinedStreamSink, WsConnections, WsMessage};
@@ -419,7 +419,7 @@ impl ExternalConnections for FakeConnections {
 
     fn lookup(
         &self,
-        host_and_port: HostAndPort,
+        host_and_port: SchemeHostPort,
     ) -> BoxFuture<'static, io::Result<Vec<SocketAddr>>> {
         let result = self
             .inner

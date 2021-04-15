@@ -25,31 +25,35 @@ use utilities::sync::promise;
 
 /// A combination of host name and port to be used as a key into the routing table.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct HostAndPort(String, u16);
+pub struct SchemeHostPort(String, String, u16);
 
-impl HostAndPort {
-    pub fn new(host: String, port: u16) -> Self {
-        HostAndPort(host, port)
+impl SchemeHostPort {
+    pub fn new(scheme: String, host: String, port: u16) -> Self {
+        SchemeHostPort(scheme, host, port)
     }
 
-    pub fn host(&self) -> &String {
+    pub fn scheme(&self) -> &String {
         &self.0
     }
 
-    pub fn port(&self) -> u16 {
-        self.1
+    pub fn host(&self) -> &String {
+        &self.1
     }
 
-    pub fn split(self) -> (String, u16) {
-        let HostAndPort(host, port) = self;
-        (host, port)
+    pub fn port(&self) -> u16 {
+        self.2
+    }
+
+    pub fn split(self) -> (String, String, u16) {
+        let SchemeHostPort(scheme, host, port) = self;
+        (scheme, host, port)
     }
 }
 
-impl Display for HostAndPort {
+impl Display for SchemeHostPort {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let HostAndPort(host, port) = self;
-        write!(f, "{}:{}", host, port)
+        let SchemeHostPort(scheme, host, port) = self;
+        write!(f, "{}://{}:{}", scheme, host, port)
     }
 }
 
@@ -59,13 +63,13 @@ impl Display for HostAndPort {
 #[derive(Debug, Default)]
 pub struct RoutingTable {
     open_sockets: HashMap<SocketAddr, RoutingAddr>,
-    resolved_forward: HashMap<HostAndPort, RoutingAddr>,
+    resolved_forward: HashMap<SchemeHostPort, RoutingAddr>,
     endpoints: HashMap<RoutingAddr, Handle>,
 }
 
 impl RoutingTable {
     /// Try to get the routing key in the table for a given host/port combination.
-    pub fn try_resolve(&self, target: &HostAndPort) -> Option<RoutingAddr> {
+    pub fn try_resolve(&self, target: &SchemeHostPort) -> Option<RoutingAddr> {
         self.resolved_forward.get(target).copied()
     }
 
@@ -85,7 +89,7 @@ impl RoutingTable {
     pub fn insert(
         &mut self,
         addr: RoutingAddr,
-        host: Option<HostAndPort>,
+        host: Option<SchemeHostPort>,
         sock_addr: SocketAddr,
         tx: mpsc::Sender<TaggedEnvelope>,
     ) {
@@ -109,7 +113,7 @@ impl RoutingTable {
     /// Associate another hose/port combination with a socket address that already has an entry in
     /// the table. This will return [`Some`] if and only if there is already an entry for that
     /// address.
-    pub fn add_host(&mut self, host: HostAndPort, sock_addr: SocketAddr) -> Option<RoutingAddr> {
+    pub fn add_host(&mut self, host: SchemeHostPort, sock_addr: SocketAddr) -> Option<RoutingAddr> {
         let RoutingTable {
             open_sockets,
             resolved_forward,
@@ -161,14 +165,14 @@ struct Handle {
     drop_tx: promise::Sender<ConnectionDropped>,
     drop_rx: promise::Receiver<ConnectionDropped>,
     peer: SocketAddr,
-    bindings: HashSet<HostAndPort>,
+    bindings: HashSet<SchemeHostPort>,
 }
 
 impl Handle {
     fn new(
         tx: mpsc::Sender<TaggedEnvelope>,
         peer: SocketAddr,
-        bindings: HashSet<HostAndPort>,
+        bindings: HashSet<SchemeHostPort>,
     ) -> Self {
         let (drop_tx, drop_rx) = promise::promise();
         Handle {

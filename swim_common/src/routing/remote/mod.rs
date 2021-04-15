@@ -43,9 +43,9 @@ use crate::routing::error::Unresolvable;
 use crate::routing::error::{HttpError, ResolutionErrorKind};
 use crate::routing::remote::config::ConnectionConfig;
 use crate::routing::remote::state::{DeferredResult, Event, RemoteConnections, RemoteTasksState};
-use crate::routing::remote::table::HostAndPort;
+use crate::routing::remote::table::SchemeHostPort;
 use crate::routing::ws::WsConnections;
-use crate::routing::{ConnectionDropped, RoutingAddr, RouterFactory, TaggedEnvelope};
+use crate::routing::{ConnectionDropped, RouterFactory, RoutingAddr, TaggedEnvelope};
 use futures::stream::FusedStream;
 use std::io;
 use std::io::Error;
@@ -392,11 +392,17 @@ enum BadUrl {
     NoHost,
 }
 
-fn unpack_url(url: &Url) -> Result<HostAndPort, BadUrl> {
-    if let Some(default_port) = validate_scheme(url.scheme()) {
+fn unpack_url(url: &Url) -> Result<SchemeHostPort, BadUrl> {
+    if let Some((default_port, scheme)) = validate_scheme(url.scheme()) {
         match (url.host_str(), url.port()) {
-            (Some(host_str), Some(port)) => Ok(HostAndPort::new(host_str.to_owned(), port)),
-            (Some(host_str), _) => Ok(HostAndPort::new(host_str.to_owned(), default_port)),
+            (Some(host_str), Some(port)) => {
+                Ok(SchemeHostPort::new(scheme, host_str.to_owned(), port))
+            }
+            (Some(host_str), _) => Ok(SchemeHostPort::new(
+                scheme,
+                host_str.to_owned(),
+                default_port,
+            )),
             _ => Err(BadUrl::NoHost),
         }
     } else {
@@ -405,10 +411,10 @@ fn unpack_url(url: &Url) -> Result<HostAndPort, BadUrl> {
 }
 
 /// Get the default port for supported schemes.
-fn validate_scheme(scheme: &str) -> Option<u16> {
+fn validate_scheme(scheme: &str) -> Option<(u16, String)> {
     match scheme {
-        "ws" | "swim" | "warp" => Some(80),
-        "wss" | "swims" | "warps" => Some(443),
+        "ws" | "swim" | "warp" => Some((80, "ws".to_string())),
+        "wss" | "swims" | "warps" => Some((443, "wss".to_string())),
         _ => None,
     }
 }
@@ -432,5 +438,5 @@ pub trait ExternalConnections: Clone + Send + Sync + 'static {
 
     fn bind(&self, addr: SocketAddr) -> BoxFuture<'static, IoResult<Self::ListenerType>>;
     fn try_open(&self, addr: SocketAddr) -> BoxFuture<'static, IoResult<Self::Socket>>;
-    fn lookup(&self, host: HostAndPort) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>>;
+    fn lookup(&self, host: SchemeHostPort) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>>;
 }

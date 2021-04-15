@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::routing::remote::table::HostAndPort;
+use crate::routing::remote::table::SchemeHostPort;
 use crate::routing::remote::{ResolutionRequest, REQUEST_DROPPED};
 use crate::routing::ConnectionError;
 use crate::routing::RoutingAddr;
@@ -25,11 +25,11 @@ mod tests;
 /// Keeps track of pending routing requests to ensure that two requests for the same point are not
 /// started simultaneously.
 #[derive(Debug, Default)]
-pub struct PendingRequests(HashMap<HostAndPort, Vec<ResolutionRequest>>);
+pub struct PendingRequests(HashMap<SchemeHostPort, Vec<ResolutionRequest>>);
 
 impl PendingRequests {
     /// Add a new pending request for a specific host/port combination.
-    pub fn add(&mut self, host: HostAndPort, request: ResolutionRequest) {
+    pub fn add(&mut self, host: SchemeHostPort, request: ResolutionRequest) {
         let PendingRequests(map) = self;
         match map.entry(host) {
             Entry::Occupied(mut entry) => {
@@ -42,7 +42,7 @@ impl PendingRequests {
     }
 
     /// Complete all requests for a given host/port combination with a successful result.
-    pub fn send_ok(&mut self, host: &HostAndPort, addr: RoutingAddr) {
+    pub fn send_ok(&mut self, host: &SchemeHostPort, addr: RoutingAddr) {
         let PendingRequests(map) = self;
         if let Some(requests) = map.remove(host) {
             for request in requests.into_iter() {
@@ -52,7 +52,7 @@ impl PendingRequests {
     }
 
     /// Complete all requests for a given host/port combination with an error.
-    pub fn send_err(&mut self, host: &HostAndPort, err: ConnectionError) {
+    pub fn send_err(&mut self, host: &SchemeHostPort, err: ConnectionError) {
         let PendingRequests(map) = self;
         if let Some(mut requests) = map.remove(host) {
             let first = requests.pop();
