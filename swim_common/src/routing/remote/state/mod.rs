@@ -495,7 +495,7 @@ where
     if server {
         websockets.accept_connection(socket).await
     } else {
-        //Todo dm this will have the same bug as bellow
+        //Todo dm this will have the same bug as bellow for missing scheme
         websockets
             .open_connection(socket, peer_addr.to_string())
             .await
@@ -538,9 +538,6 @@ async fn connect_and_handshake_single<External: ExternalConnections, Ws>(
 where
     Ws: WsConnections<External::Socket>,
 {
-    //Todo dm bug - needs the protocol
-    // let host = format!("ws://{}", host);
-    // eprintln!("host = {:#?}", host);
     websockets
         .open_connection(external.try_open(addr).await?, host_addr)
         .await
