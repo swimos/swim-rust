@@ -25,12 +25,8 @@ use num_bigint::{BigInt, BigUint};
 use std::borrow::Cow;
 use std::convert::Infallible;
 
-#[derive(Default)]
-struct RecordBuilder {
-    attrs: Vec<Attr>,
-    items: Vec<Item>,
-}
-
+/// [`StructuralWriter`] that constructs [`Value`] instances representing the
+/// strucuture that is described.
 #[derive(Default)]
 pub struct ValueInterpreter(Option<RecordBuilder>);
 
@@ -67,6 +63,12 @@ impl ValueInterpreter {
             Value::empty_record()
         }
     }
+}
+
+#[derive(Default)]
+struct RecordBuilder {
+    attrs: Vec<Attr>,
+    items: Vec<Item>,
 }
 
 impl PrimitiveWriter for ValueInterpreter {
@@ -136,9 +138,9 @@ impl HeaderWriter for ValueInterpreter {
     type Error = Infallible;
     type Body = Self;
 
-    fn write_attr<'a, V: StructuralWritable>(
+    fn write_attr<V: StructuralWritable>(
         mut self,
-        name: Cow<'a, str>,
+        name: Cow<'_, str>,
         value: &V,
     ) -> Result<Self, Self::Error> {
         let interpereter = ValueInterpreter::default();

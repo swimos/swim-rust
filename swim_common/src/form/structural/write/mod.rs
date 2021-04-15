@@ -27,42 +27,61 @@ use std::hint;
 use std::rc::Rc;
 use std::sync::Arc;
 
+/// Trait for types that can describe their structure using a [`StructuralWriter`].
+/// Each writer is an interpreter which could, for example, realize the structure
+/// as a [`Value`] or format it is a Recon string.
 pub trait StructuralWritable: Sized {
+    /// Write he strucutre of this value using the provided interpreter.
     fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error>;
 
+    /// Write he strucutre of this value using the provided interpreter, allowing
+    /// the interpreter to consume this value if needed.
     fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error>;
 
+    /// Write the structure of this value with an interpreter that cannnot generate an error.
     fn write_with_infallible<W: StructuralWriter<Error = Infallible>>(&self, writer: W) -> W::Repr {
         if let Ok(repr) = self.write_with(writer) {
             repr
         } else {
+            // This is safe as Infallible has no instances.
             unsafe { hint::unreachable_unchecked() }
         }
     }
 
+    /// Write the structure of this value with an interpreter that cannnot generate an error,
+    /// allowing in t interpreter to consume this value if needed.
     fn write_into_infallible<W: StructuralWriter<Error = Infallible>>(self, writer: W) -> W::Repr {
         if let Ok(repr) = self.write_into(writer) {
             repr
         } else {
+            // This is safe as Infallible has no instances.
             unsafe { hint::unreachable_unchecked() }
         }
     }
 
+    /// Create a [`Value`] based on the strucuture of this value.
     fn structure(&self) -> Value {
         self.write_with_infallible(ValueInterpreter::default())
     }
 
+    /// Covert this value into a [`Value`].
     fn into_structure(self) -> Value {
         self.write_into_infallible(ValueInterpreter::default())
     }
 
+    /// If this value ocurrs as the field of a compound object, determine whehter that field
+    /// can be omitted (for example the `None` case of [`Option`]). This is inteded to be
+    /// used in the derive macro for this trait and should be generally need to be used.
     fn ommit_as_field(&self) -> bool {
         false
     }
 }
 
+/// Base trait for strucutral writers that allow for a single, primitive value to be written.
 pub trait PrimitiveWriter: Sized {
+    /// The result type of the writer.
     type Repr;
+    /// The type of errors that the writer can generate.
     type Error;
 
     fn write_extant(self) -> Result<Self::Repr, Self::Error>;
@@ -79,25 +98,69 @@ pub trait PrimitiveWriter: Sized {
     fn write_blob(self, value: &[u8]) -> Result<Self::Repr, Self::Error>;
 }
 
+/// Interpreter into which the strucutre of a value can be described, producing either
+/// some some result or an error. The canonical implementation is [`ValueInterpreter`]
+/// which will realize the structure as a [`Value`] tree.
 pub trait StructuralWriter: PrimitiveWriter {
+    /// Type that will consume the attributes of the structure.
     type Header: HeaderWriter<Repr = Self::Repr, Body = Self::Body, Error = Self::Error>;
+    /// Type that will consume the items of the structure.
     type Body: BodyWriter<Repr = Self::Repr, Error = Self::Error>;
 
+    /// Describe a compound type.
     fn record(self) -> Result<Self::Header, Self::Error>;
 }
 
 pub trait Label: Into<String> + Into<Text> + AsRef<str> {
-    fn as_cow<'a>(&'a self) -> Cow<'a, str> {
+    fn as_cow(&self) -> Cow<'_, str> {
         Cow::Borrowed(self.as_ref())
     }
 }
 
 impl<T: Into<String> + Into<Text> + AsRef<str>> Label for T {}
 
+/// Describing the structure of a record proceeds in two stages, first describing
+/// the attributes in the header and then listing the items in the body (consiting
+/// of either simple values or slot fields). This is used to describe the attributes.
 pub trait HeaderWriter: Sized {
+    /// The result type of the writer.
     type Repr;
+    /// The type of errors that the writer can generate.
     type Error;
+    /// The type into which this will transform when writing switches from attributes to items.
     type Body: BodyWriter;
+
+    /// Write an attribute into the header.
+    /// #Arguments
+    /// * `name` - The name of the attribute.
+    /// * `value` - The value whose strucuture will be used for the value of the attribute.
+    fn write_attr<V: StructuralWritable>(
+        self,
+        name: Cow<'_, str>,
+        value: &V,
+    ) -> Result<Self, Self::Error>;
+
+    /// Delegate the remainder of the process to another value (its attributes will be appended
+    /// to those already described).
+    /// #Arguments
+    /// * `value` - The value whose strucuture will be used for the remainder of the process.
+    fn delegate<V: StructuralWritable>(self, value: &V) -> Result<Self::Repr, Self::Error>;
+
+    /// Write an attribute into the header, consuming the value.
+    /// #Arguments
+    /// * `name` - The name of the attribute.
+    /// * `value` - The value whose strucuture will be used for the value of the attribute.
+    fn write_attr_into<L: Label, V: StructuralWritable>(
+        self,
+        name: L,
+        value: V,
+    ) -> Result<Self, Self::Error>;
+
+    /// Delegate the remainder of the process to another value (its attributes will be appended
+    /// to those already described), consuming it.
+    /// #Arguments
+    /// * `value` - The value whose strucuture will be used for the remainder of the process.
+    fn delegate_into<V: StructuralWritable>(self, value: V) -> Result<Self::Repr, Self::Error>;
 
     fn write_extant_attr<L: Label>(self, name: L) -> Result<Self, Self::Error> {
         self.write_attr(name.as_cow(), &())
@@ -132,28 +195,17 @@ pub trait HeaderWriter: Sized {
     fn write_blob_attr<L: Label>(self, name: L, value: &[u8]) -> Result<Self, Self::Error> {
         self.write_attr(name.as_cow(), &value)
     }
-
-    fn write_attr<'a, V: StructuralWritable>(
-        self,
-        name: Cow<'a, str>,
-        value: &V,
-    ) -> Result<Self, Self::Error>;
-
-    fn delegate<V: StructuralWritable>(self, value: &V) -> Result<Self::Repr, Self::Error>;
-
-    fn write_attr_into<L: Label, V: StructuralWritable>(
-        self,
-        name: L,
-        value: V,
-    ) -> Result<Self, Self::Error>;
-
-    fn delegate_into<V: StructuralWritable>(self, value: V) -> Result<Self::Repr, Self::Error>;
-
+    /// Transform this writer into another which can be used to describe the items.
     fn complete_header(self, num_items: usize) -> Result<Self::Body, Self::Error>;
 }
 
+/// Describing the structure of a record proceeds in two stages, first describing
+/// the attributes in the header and then listing the items in the body (consiting
+/// of either simple values or slot fields). This is used to describe the items.
 pub trait BodyWriter: Sized {
+    /// The result type of the writer.
     type Repr;
+    /// The type of errors that the writer can generate.
     type Error;
 
     fn write_extant(self) -> Result<Self, Self::Error> {
@@ -247,6 +299,7 @@ pub trait BodyWriter: Sized {
         value: V,
     ) -> Result<Self, Self::Error>;
 
+    /// Finish describing the record and attempt to produce the final result.
     fn done(self) -> Result<Self::Repr, Self::Error>;
 }
 

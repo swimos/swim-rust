@@ -92,7 +92,7 @@ pub trait ValueReadable: Sized {
     fn read_big_uint(_value: BigUint) -> Result<Self, ReadError> {
         Err(ReadError::UnexpectedKind(ValueKind::BigUint))
     }
-    fn read_text<'a>(_value: Cow<'a, str>) -> Result<Self, ReadError> {
+    fn read_text(_value: Cow<'_, str>) -> Result<Self, ReadError> {
         Err(ReadError::UnexpectedKind(ValueKind::Text))
     }
     fn read_blob(_value: Vec<u8>) -> Result<Self, ReadError> {
@@ -106,10 +106,10 @@ pub trait HeaderReader: Sized {
     type Delegate: BodyReader;
 
     /// Start reading an attribute.
-    fn read_attribute<'a>(self, name: Cow<'a, str>) -> Result<Self::Delegate, ReadError>;
+    fn read_attribute(self, name: Cow<'_, str>) -> Result<Self::Delegate, ReadError>;
 
     /// Read an attribute with no value.
-    fn push_attr<'a>(self, name: Cow<'a, str>) -> Result<Self, ReadError> {
+    fn push_attr(self, name: Cow<'_, str>) -> Result<Self, ReadError> {
         let mut reader = self.read_attribute(name)?;
         reader.push_extant()?;
         Self::restore(reader)
@@ -155,7 +155,7 @@ pub trait BodyReader: Sized {
     fn push_big_uint(&mut self, _value: BigUint) -> Result<bool, ReadError> {
         Err(ReadError::UnexpectedKind(ValueKind::BigUint))
     }
-    fn push_text<'a>(&mut self, _value: Cow<'a, str>) -> Result<bool, ReadError> {
+    fn push_text(&mut self, _value: Cow<'_, str>) -> Result<bool, ReadError> {
         Err(ReadError::UnexpectedKind(ValueKind::Text))
     }
     fn push_blob(&mut self, _value: Vec<u8>) -> Result<bool, ReadError> {
@@ -191,7 +191,7 @@ impl HeaderReader for Never {
     type Body = Self;
     type Delegate = Self;
 
-    fn read_attribute<'a>(self, _: Cow<'a, str>) -> Result<Self::Delegate, ReadError> {
+    fn read_attribute(self, _: Cow<'_, str>) -> Result<Self::Delegate, ReadError> {
         self.explode()
     }
 
@@ -243,7 +243,7 @@ impl BodyReader for Never {
         self.explode()
     }
 
-    fn push_text<'a>(&mut self, _: Cow<'a, str>) -> Result<bool, ReadError> {
+    fn push_text(&mut self, _: Cow<'_, str>) -> Result<bool, ReadError> {
         self.explode()
     }
 
@@ -275,7 +275,7 @@ macro_rules! record_forbidden {
         impl StructuralReadable for $target {
             type Reader = Never;
 
-            fn make_reader() -> Result<Self::Reader, ReadError> {
+            fn record_reader() -> Result<Self::Reader, ReadError> {
                 Err(ReadError::UnexpectedKind(ValueKind::Record))
             }
 
@@ -311,7 +311,7 @@ primitive_readable!(BigUint, read_big_uint);
 primitive_readable!(Vec<u8>, read_blob);
 
 impl ValueReadable for Text {
-    fn read_text<'a>(value: Cow<'a, str>) -> Result<Self, ReadError> {
+    fn read_text(value: Cow<'_, str>) -> Result<Self, ReadError> {
         Ok(value.into())
     }
 }
@@ -319,7 +319,7 @@ impl ValueReadable for Text {
 record_forbidden!(Text);
 
 impl ValueReadable for String {
-    fn read_text<'a>(value: Cow<'a, str>) -> Result<Self, ReadError> {
+    fn read_text(value: Cow<'_, str>) -> Result<Self, ReadError> {
         let text: Text = value.into();
         Ok(text.into())
     }
@@ -380,7 +380,7 @@ impl ValueReadable for Value {
         Ok(Value::BigUint(value))
     }
 
-    fn read_text<'a>(value: Cow<'a, str>) -> Result<Self, ReadError> {
+    fn read_text(value: Cow<'_, str>) -> Result<Self, ReadError> {
         Ok(Value::Text(value.into()))
     }
 
@@ -426,7 +426,7 @@ impl<T: ValueReadable> ValueReadable for Arc<T> {
         T::read_big_uint(value).map(Arc::new)
     }
 
-    fn read_text<'a>(value: Cow<'a, str>) -> Result<Self, ReadError> {
+    fn read_text(value: Cow<'_, str>) -> Result<Self, ReadError> {
         T::read_text(value).map(Arc::new)
     }
 
@@ -455,7 +455,7 @@ where
     type Body = Either<L::Body, R::Body>;
     type Delegate = Either<L::Delegate, R::Delegate>;
 
-    fn read_attribute<'a>(self, name: Cow<'a, str>) -> Result<Self::Delegate, ReadError> {
+    fn read_attribute(self, name: Cow<'_, str>) -> Result<Self::Delegate, ReadError> {
         match self {
             Either::Left(h) => Ok(Either::Left(h.read_attribute(name)?)),
             Either::Right(h) => Ok(Either::Right(h.read_attribute(name)?)),
@@ -547,7 +547,7 @@ where
         }
     }
 
-    fn push_text<'a>(&mut self, value: Cow<'a, str>) -> Result<bool, ReadError> {
+    fn push_text(&mut self, value: Cow<'_, str>) -> Result<bool, ReadError> {
         match self {
             Either::Left(r) => r.push_text(value),
             Either::Right(r) => r.push_text(value),
@@ -623,7 +623,7 @@ where
         T::read_big_uint(value).map(Some)
     }
 
-    fn read_text<'a>(value: Cow<'a, str>) -> Result<Self, ReadError> {
+    fn read_text(value: Cow<'_, str>) -> Result<Self, ReadError> {
         T::read_text(value).map(Some)
     }
 
@@ -739,7 +739,7 @@ where
         Ok(true)
     }
 
-    fn push_text<'a>(&mut self, value: Cow<'a, str>) -> Result<bool, ReadError> {
+    fn push_text(&mut self, value: Cow<'_, str>) -> Result<bool, ReadError> {
         let VecReader(vec) = self;
         vec.push(T::read_text(value)?);
         Ok(true)

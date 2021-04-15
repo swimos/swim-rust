@@ -49,7 +49,7 @@ impl<B: NoAttributes + BodyReader> HeaderReader for B {
     type Body = Self;
     type Delegate = Never;
 
-    fn read_attribute<'a>(self, name: Cow<'a, str>) -> Result<Self::Delegate, ReadError> {
+    fn read_attribute(self, name: Cow<'_, str>) -> Result<Self::Delegate, ReadError> {
         Err(ReadError::UnexpectedAttribute(name.into()))
     }
 
@@ -91,7 +91,7 @@ where
     type Body = Wrapped<Payload, Reader::Body>;
     type Delegate = Wrapped<Payload, Reader::Delegate>;
 
-    fn read_attribute<'a>(self, name: Cow<'a, str>) -> Result<Self::Delegate, ReadError> {
+    fn read_attribute(self, name: Cow<'_, str>) -> Result<Self::Delegate, ReadError> {
         self.try_map(move |reader| reader.read_attribute(name))
     }
 
@@ -146,7 +146,7 @@ where
         self.reader.push_big_uint(value)
     }
 
-    fn push_text<'a>(&mut self, value: Cow<'a, str>) -> Result<bool, ReadError> {
+    fn push_text(&mut self, value: Cow<'_, str>) -> Result<bool, ReadError> {
         self.reader.push_text(value)
     }
 

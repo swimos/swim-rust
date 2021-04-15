@@ -18,6 +18,9 @@ use crate::form::structural::write::StructuralWritable;
 pub mod read;
 pub mod write;
 
+/// A more flexible alternative to [`Form`] where readers and writers have full
+/// visbility of the strucutures of the values that the work on. This will eventually
+/// replace the [`Form`] trait.
 pub trait StructuralForm: StructuralReadable + StructuralWritable {}
 
 impl<T: StructuralReadable + StructuralWritable> StructuralForm for T {}
