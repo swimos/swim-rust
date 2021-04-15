@@ -5,7 +5,7 @@ authors = ["Swim.AI developers info@swim.ai"]
 edition = "2018"
 
 [features]
-default = ["store/rocksdb", "store/libmdbx"]
+default = ["store/rocksdb"]
 rocksdb = ["store/rocksdb"]
 libmdbx = ["store/libmdbx"]
 debug = ["log_verbose"]
