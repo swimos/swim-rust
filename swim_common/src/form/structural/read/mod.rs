@@ -14,6 +14,7 @@
 
 pub mod builder;
 pub mod materializers;
+pub mod parser;
 #[cfg(test)]
 mod tests;
 

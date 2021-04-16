@@ -34,6 +34,8 @@ form_derive = { path = "form_derive" }
 im = "15.0.0"
 chrono = "0.4"
 tokio-tungstenite = { version = "0.13.0", git = "https://github.com/swimos/tokio-tungstenite/", branch = "deflate-v13", features = ["deflate"], optional = true }
+nom = "6.1"
+nom_locate = "3.0"
 
 [dependencies.tokio-native-tls]
 version = "0.3"

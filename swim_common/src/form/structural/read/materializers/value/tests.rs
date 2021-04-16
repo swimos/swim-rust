@@ -12,14 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::form::structural::read::{
-    BodyReader, HeaderReader, ReadError, StructuralReadable, ValueReadable,
-};
+use crate::form::structural::read::StructuralReadable;
 use crate::model::blob::Blob;
 use crate::model::text::Text;
 use crate::model::{Attr, Item, Value};
 use num_bigint::{BigInt, BigUint};
-use std::borrow::Cow;
 
 fn round_trip(value: Value) {
     let result1 = Value::try_read_from(&value);
