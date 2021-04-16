@@ -136,8 +136,13 @@ async fn drain() {
     let stream = futures::stream::iter(vec![make_profile(1), make_profile(2), make_profile(3)]);
     let (out_tx, _out_rx) = mpsc::channel(4096);
 
-    let aggregator =
-        AggregatorTask::new(lane_map, Duration::from_secs(1), trigger_rx, stream, out_tx);
+    let aggregator = AggregatorTask::new(
+        lane_map,
+        Duration::from_secs(30),
+        trigger_rx,
+        stream,
+        out_tx,
+    );
 
     let assert_task = async move {
         let first = lane_rx.recv().await.unwrap();

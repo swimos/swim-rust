@@ -17,7 +17,7 @@ use crate::meta::metric::{AggregatorError, AggregatorErrorKind, MetricStage};
 use crate::meta::metric::{STOP_CLOSED, STOP_OK};
 use futures::FutureExt;
 use futures::StreamExt;
-use futures::{select, Stream};
+use futures::{select_biased, Stream};
 use std::collections::{HashMap, HashSet};
 use std::num::NonZeroUsize;
 use std::time::{Duration, Instant};
@@ -109,7 +109,7 @@ where
         profile
     }
 
-    /// Flush the profile.
+    /// Flush the pulse.
     fn flush_pulse(&mut self) {
         let MetricState { inner, lane, .. } = self;
 
@@ -210,7 +210,7 @@ where
         let yield_mod = yield_after.get();
 
         let error = loop {
-            let event: Option<In> = select! {
+            let event: Option<In> = select_biased! {
                 _ = fused_trigger => {
                     event!(Level::DEBUG, STOP_OK);
 
