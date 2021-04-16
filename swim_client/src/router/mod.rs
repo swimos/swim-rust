@@ -24,6 +24,7 @@ use futures::join;
 use futures::select;
 use futures::stream::FuturesUnordered;
 use futures::{select_biased, Future, FutureExt, SinkExt, StreamExt};
+use std::collections::hash_map::Entry;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 use std::time::Duration;
@@ -45,7 +46,7 @@ use swim_common::warp::envelope::{Envelope, IncomingLinkMessage};
 use swim_common::warp::path::{AbsolutePath, RelativePath};
 use swim_runtime::task::*;
 use tokio::sync::mpsc;
-use tokio::sync::mpsc::Receiver;
+use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::oneshot;
 use tokio::time::sleep;
 use tokio_stream::wrappers::ReceiverStream;
@@ -157,12 +158,11 @@ pub(crate) async fn run_client_router(
     mut request_rx: mpsc::Receiver<ClientRequest>,
     mut local_rx: mpsc::Receiver<ClientRequest>,
 ) {
-    //Todo dm maybe use the scheme also as part of the key
     let mut outgoing_managers: HashMap<
         String,
         (
             OutgoingManagerSender,
-            mpsc::Sender<Request<mpsc::Receiver<TaggedEnvelope>>>,
+            mpsc::Sender<(RelativePath, Request<mpsc::Receiver<TaggedEnvelope>>)>,
         ),
     > = HashMap::new();
 
@@ -204,8 +204,10 @@ pub(crate) async fn run_client_router(
                         (sender, sub_tx)
                     });
 
-                //Todo dm add relative path
-                sub_sender.send(sub_req).await.unwrap();
+                sub_sender
+                    .send((sub_addr.relative_path(), sub_req))
+                    .await
+                    .unwrap();
             }
             _ => break,
         }
@@ -214,14 +216,14 @@ pub(crate) async fn run_client_router(
 
 pub(crate) struct OutgoingManager {
     envelope_rx: mpsc::Receiver<TaggedEnvelope>,
-    sub_rx: mpsc::Receiver<Request<mpsc::Receiver<TaggedEnvelope>>>,
+    sub_rx: mpsc::Receiver<(RelativePath, Request<mpsc::Receiver<TaggedEnvelope>>)>,
 }
 
 impl OutgoingManager {
     pub(crate) fn new() -> (
         OutgoingManager,
         OutgoingManagerSender,
-        mpsc::Sender<Request<mpsc::Receiver<TaggedEnvelope>>>,
+        mpsc::Sender<(RelativePath, Request<mpsc::Receiver<TaggedEnvelope>>)>,
     ) {
         let (envelope_tx, envelope_rx) = mpsc::channel(8);
         let (sub_tx, sub_rx) = mpsc::channel(8);
@@ -244,12 +246,12 @@ impl OutgoingManager {
         let mut envelope_rx = ReceiverStream::new(envelope_rx).fuse();
         let mut sub_rx = ReceiverStream::new(sub_rx).fuse();
 
-        let mut subs: Vec<mpsc::Sender<TaggedEnvelope>> = Vec::new();
+        let mut subs: HashMap<RelativePath, Vec<mpsc::Sender<TaggedEnvelope>>> = HashMap::new();
 
         loop {
             let next: Either<
                 Option<TaggedEnvelope>,
-                Option<Request<mpsc::Receiver<TaggedEnvelope>>>,
+                Option<(RelativePath, Request<mpsc::Receiver<TaggedEnvelope>>)>,
             > = select_biased! {
                 envelope = envelope_rx.next() => Either::Left(envelope),
                 sub = sub_rx.next() => Either::Right(sub),
@@ -257,16 +259,27 @@ impl OutgoingManager {
 
             match next {
                 Either::Left(Some(envelope)) => {
-                    //Todo dm this should run in parallel
-                    for mut sub in &mut subs {
+                    //Todo dm this should run in parallel and should have proper error handling
+                    let path = envelope.1.header.relative_path().unwrap();
+                    let path_subs = subs.get_mut(&path).unwrap();
+
+                    for mut sub in path_subs {
                         if sub.send(envelope.clone()).await.is_err() {
                             eprintln!("err");
                         }
                     }
                 }
-                Either::Right(Some(sub_request)) => {
+                Either::Right(Some((rel_path, sub_request))) => {
                     let (sub_tx, sub_rx) = mpsc::channel(8);
-                    subs.push(sub_tx);
+
+                    match subs.entry(rel_path) {
+                        Entry::Occupied(mut entry) => {
+                            entry.get_mut().push(sub_tx);
+                        }
+                        Entry::Vacant(entry) => {
+                            entry.insert(vec![sub_tx]);
+                        }
+                    }
                     sub_request.send(sub_rx).unwrap();
                 }
                 _ => break,
