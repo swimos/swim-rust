@@ -23,7 +23,7 @@ use crate::routing::remote::test_fixture::{
     ErrorMode, FakeConnections, FakeListener, FakeSocket, FakeWebsocket, FakeWebsockets,
     LocalRoutes,
 };
-use crate::routing::remote::ConnectionDropped;
+use crate::routing::remote::{ConnectionDropped, SchemeSocketAddr};
 use crate::routing::RoutingAddr;
 use futures::future::BoxFuture;
 use futures::io::ErrorKind;
@@ -52,7 +52,7 @@ struct TestFixture<'a> {
 fn make_state(
     addr: RoutingAddr,
     ws: &FakeWebsockets,
-    incoming: mpsc::Receiver<io::Result<(FakeSocket, SocketAddr)>>,
+    incoming: mpsc::Receiver<io::Result<(FakeSocket, SchemeSocketAddr)>>,
 ) -> TestFixture<'_> {
     let buffer_size = NonZeroUsize::new(8).unwrap();
 

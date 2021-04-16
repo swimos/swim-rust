@@ -19,7 +19,7 @@ use crate::routing::remote::net::dns::{DnsResolver, Resolver};
 use crate::routing::remote::net::plain::TokioPlainTextNetworking;
 use crate::routing::remote::net::tls::{TlsListener, TlsStream, TokioTlsNetworking};
 use crate::routing::remote::table::SchemeHostPort;
-use crate::routing::remote::{ExternalConnections, IoResult, Listener};
+use crate::routing::remote::{ExternalConnections, IoResult, Listener, SchemeSocketAddr};
 use either::Either;
 use futures::stream::{Fuse, StreamExt};
 use futures::task::{Context, Poll};
@@ -56,14 +56,15 @@ impl Listener for MaybeTlsListener {
 pub(crate) struct EitherStream(MaybeTlsListener);
 
 impl Stream for EitherStream {
-    type Item = IoResult<(Either<TcpStream, TlsStream>, SocketAddr)>;
+    type Item = IoResult<(Either<TcpStream, TlsStream>, SchemeSocketAddr)>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         match &mut self.0 {
             MaybeTlsListener::PlainText(listener) => match listener.poll_accept(cx) {
-                Poll::Ready(Ok((stream, addr))) => {
-                    Poll::Ready(Some(Ok((Either::Left(stream), addr))))
-                }
+                Poll::Ready(Ok((stream, addr))) => Poll::Ready(Some(Ok((
+                    Either::Left(stream),
+                    SchemeSocketAddr::new("ws".to_owned(), addr),
+                )))),
                 Poll::Ready(Err(e)) => Poll::Ready(Some(Err(e))),
                 Poll::Pending => Poll::Pending,
             },

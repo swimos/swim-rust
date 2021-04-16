@@ -17,7 +17,7 @@ use crate::routing::remote::config::ConnectionConfig;
 use crate::routing::remote::pending::PendingRequests;
 use crate::routing::remote::table::{RoutingTable, SchemeHostPort};
 use crate::routing::remote::task::TaskFactory;
-use crate::routing::remote::{ExternalConnections, Listener};
+use crate::routing::remote::{ExternalConnections, Listener, SchemeSocketAddr};
 use crate::routing::remote::{
     RawRoute, RemoteConnectionChannels, ResolutionRequest, RoutingRequest, SocketAddrIt,
 };
@@ -67,7 +67,7 @@ pub trait RemoteTasksState {
     ) -> Result<(), SchemeHostPort>;
 
     /// Add a deferred web socket handshake.
-    fn defer_handshake(&self, stream: Self::Socket, peer_addr: SocketAddr);
+    fn defer_handshake(&self, stream: Self::Socket, peer_addr: SchemeSocketAddr);
 
     /// Add a deferred new connection followed by a websocket handshake.
     fn defer_connect_and_handshake(
@@ -187,11 +187,11 @@ where
         }
     }
 
-    fn defer_handshake(&self, stream: External::Socket, peer_addr: SocketAddr) {
+    fn defer_handshake(&self, stream: External::Socket, peer_addr: SchemeSocketAddr) {
         let websockets = self.websockets;
         self.defer(async move {
-            let result = do_handshake(true, stream, websockets, peer_addr).await;
-            DeferredResult::incoming_handshake(result, peer_addr)
+            let result = do_handshake(true, stream, websockets, peer_addr.clone()).await;
+            DeferredResult::incoming_handshake(result, peer_addr.addr)
         });
     }
 
@@ -473,7 +473,7 @@ enum State {
 #[derive(Debug)]
 pub enum Event<Socket, Snk> {
     /// An incoming connection has been opened.
-    Incoming(io::Result<(Socket, SocketAddr)>),
+    Incoming(io::Result<(Socket, SchemeSocketAddr)>),
     /// A routing request has been received.
     Request(RoutingRequest),
     /// A task that the manager deferred has completed.
@@ -486,7 +486,7 @@ async fn do_handshake<Socket, Ws>(
     server: bool,
     socket: Socket,
     websockets: &Ws,
-    peer_addr: SocketAddr,
+    peer_addr: SchemeSocketAddr,
 ) -> Result<Ws::StreamSink, ConnectionError>
 where
     Socket: Send + Sync + Unpin + 'static,

@@ -47,6 +47,7 @@ use crate::routing::remote::table::SchemeHostPort;
 use crate::routing::ws::WsConnections;
 use crate::routing::{ConnectionDropped, RouterFactory, RoutingAddr, TaggedEnvelope};
 use futures::stream::FusedStream;
+use std::fmt::{Display, Formatter};
 use std::io;
 use std::io::Error;
 
@@ -432,11 +433,29 @@ fn get_default_port(scheme: &str) -> Option<u16> {
 
 type IoResult<T> = io::Result<T>;
 
+#[derive(Debug, Clone)]
+pub struct SchemeSocketAddr {
+    scheme: String,
+    addr: SocketAddr,
+}
+
+impl SchemeSocketAddr {
+    fn new(scheme: String, addr: SocketAddr) -> SchemeSocketAddr {
+        SchemeSocketAddr { scheme, addr }
+    }
+}
+
+impl Display for SchemeSocketAddr {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}://{}/", self.scheme, self.addr)
+    }
+}
+
 /// Trait for servers that listen for incoming remote connections. This is primarily used to
 /// abstract over [`std::net::TcpListener`] for testing purposes.
 pub trait Listener {
     type Socket: Unpin + Send + Sync + 'static;
-    type AcceptStream: FusedStream<Item = IoResult<(Self::Socket, SocketAddr)>> + Unpin;
+    type AcceptStream: FusedStream<Item = IoResult<(Self::Socket, SchemeSocketAddr)>> + Unpin;
 
     fn into_stream(self) -> Self::AcceptStream;
 }

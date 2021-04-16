@@ -22,12 +22,12 @@ use crate::routing::error::{
 };
 use crate::routing::remote::config::ConnectionConfig;
 use crate::routing::remote::router::RemoteRouter;
-use crate::routing::remote::RoutingRequest;
+use crate::routing::remote::{RoutingRequest, SchemeSocketAddr};
 use crate::routing::ws::selector::{SelectorResult, WsStreamSelector};
 use crate::routing::ws::{CloseCode, CloseReason, JoinedStreamSink, WsMessage};
 use crate::routing::RouterError;
 use crate::routing::{
-    ConnectionDropped, Route, RoutingAddr, Router, RouterFactory, TaggedEnvelope,
+    ConnectionDropped, Route, Router, RouterFactory, RoutingAddr, TaggedEnvelope,
 };
 use crate::warp::envelope::{Envelope, EnvelopeHeader, EnvelopeParseErr, OutgoingHeader};
 use crate::warp::path::RelativePath;
