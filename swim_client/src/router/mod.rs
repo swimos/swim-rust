@@ -15,20 +15,6 @@
 use std::collections::HashMap;
 use std::ops::Deref;
 
-use futures::stream::FuturesUnordered;
-use futures::{select_biased, Future, FutureExt, SinkExt, StreamExt};
-use tokio::sync::mpsc;
-use tokio::sync::oneshot;
-use tokio_stream::wrappers::ReceiverStream;
-use tracing::trace_span;
-use tracing::{span, Level};
-use tracing_futures::Instrument;
-
-use swim_common::request::request_future::RequestError;
-use swim_common::warp::envelope::{Envelope, IncomingLinkMessage};
-use swim_common::warp::path::{AbsolutePath, RelativePath};
-use swim_runtime::task::*;
-
 use crate::configuration::router::RouterParams;
 use crate::connections::{ConnectionPool, ConnectionSender};
 use crate::router::incoming::{IncomingHostTask, IncomingRequest};
@@ -36,9 +22,12 @@ use either::Either;
 use futures::future::BoxFuture;
 use futures::join;
 use futures::select;
+use futures::stream::FuturesUnordered;
+use futures::{select_biased, Future, FutureExt, SinkExt, StreamExt};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 use std::time::Duration;
+use swim_common::request::request_future::RequestError;
 use swim_common::request::Request;
 use swim_common::routing::error::{ResolutionError, RouterError, RoutingError, Unresolvable};
 use swim_common::routing::remote::config::ConnectionConfig;
@@ -52,9 +41,18 @@ use swim_common::routing::ConnectionDropped;
 use swim_common::routing::{
     Route, Router, RouterFactory, RoutingAddr, TaggedEnvelope, TaggedSender,
 };
+use swim_common::warp::envelope::{Envelope, IncomingLinkMessage};
+use swim_common::warp::path::{AbsolutePath, RelativePath};
+use swim_runtime::task::*;
+use tokio::sync::mpsc;
 use tokio::sync::mpsc::Receiver;
+use tokio::sync::oneshot;
 use tokio::time::sleep;
+use tokio_stream::wrappers::ReceiverStream;
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
+use tracing::trace_span;
+use tracing::{span, Level};
+use tracing_futures::Instrument;
 use url::Url;
 use utilities::errors::Recoverable;
 use utilities::future::open_ended::OpenEndedFutures;
@@ -159,8 +157,9 @@ pub(crate) async fn run_client_router(
     mut request_rx: mpsc::Receiver<ClientRequest>,
     mut local_rx: mpsc::Receiver<ClientRequest>,
 ) {
+    //Todo dm maybe use the scheme also as part of the key
     let mut outgoing_managers: HashMap<
-        Url,
+        String,
         (
             OutgoingManagerSender,
             mpsc::Sender<Request<mpsc::Receiver<TaggedEnvelope>>>,
@@ -176,13 +175,12 @@ pub(crate) async fn run_client_router(
         };
 
         match next {
+            //Todo dm change this to be Url
             Some(ClientRequest::Connect { request, origin }) => {
-                //Todo dm change this
-                eprintln!("origin.to_string() = {:#?}", origin.to_string());
-                let url = Url::parse(&format!("ws://{}", origin.to_string())).unwrap();
-
+                let addr = &format!("ws://{}/", origin);
+                eprintln!("addr = {:#?}", addr);
                 let (sender, _) = outgoing_managers
-                    .entry(url)
+                    .entry(addr.to_owned())
                     .or_insert_with(|| {
                         let (manager, sender, sub_tx) = OutgoingManager::new();
                         spawn(manager.run());
@@ -199,8 +197,9 @@ pub(crate) async fn run_client_router(
                 path: sub_addr,
                 request: sub_req,
             }) => {
+                eprintln!("host = {:#?}", sub_addr.host.to_string());
                 let (_, sub_sender) = outgoing_managers
-                    .entry(sub_addr.host.clone())
+                    .entry(sub_addr.host.to_string())
                     .or_insert_with(|| {
                         let (manager, sender, sub_tx) = OutgoingManager::new();
                         spawn(manager.run());
