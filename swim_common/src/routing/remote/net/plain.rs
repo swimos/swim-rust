@@ -53,7 +53,7 @@ impl ExternalConnections for TokioPlainTextNetworking {
         TcpStream::connect(addr).boxed()
     }
 
-    fn lookup(&self, host: SchemeHostPort) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>> {
+    fn lookup(&self, host: SchemeHostPort) -> BoxFuture<'static, IoResult<Vec<SchemeSocketAddr>>> {
         self.resolver.resolve(host)
     }
 }

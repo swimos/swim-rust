@@ -130,7 +130,7 @@ impl ExternalConnections for TokioNetworking {
         }
     }
 
-    fn lookup(&self, host: SchemeHostPort) -> BoxFuture<'static, io::Result<Vec<SocketAddr>>> {
+    fn lookup(&self, host: SchemeHostPort) -> BoxFuture<'static, io::Result<Vec<SchemeSocketAddr>>> {
         self.resolver.resolve(host).boxed()
     }
 }

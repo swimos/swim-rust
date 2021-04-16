@@ -13,10 +13,10 @@
 // limitations under the License.
 
 use crate::request::Request;
-use crate::routing::remote::{RawRoute, RoutingRequest};
+use crate::routing::remote::{RawRoute, RoutingRequest, SchemeSocketAddr};
 use crate::routing::ResolutionError;
 use crate::routing::RouterError;
-use crate::routing::{Route, RoutingAddr, Router, TaggedSender};
+use crate::routing::{Route, Router, RoutingAddr, TaggedSender};
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use std::net::SocketAddr;
@@ -54,7 +54,7 @@ impl<Delegate: Router> Router for RemoteRouter<Delegate> {
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,
-        origin: Option<SocketAddr>,
+        origin: Option<SchemeSocketAddr>,
     ) -> BoxFuture<'_, Result<Route, ResolutionError>> {
         async move {
             let RemoteRouter {

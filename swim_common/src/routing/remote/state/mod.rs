@@ -19,7 +19,7 @@ use crate::routing::remote::table::{RoutingTable, SchemeHostPort};
 use crate::routing::remote::task::TaskFactory;
 use crate::routing::remote::{ExternalConnections, Listener, SchemeSocketAddr};
 use crate::routing::remote::{
-    RawRoute, RemoteConnectionChannels, ResolutionRequest, RoutingRequest, SocketAddrIt,
+    RawRoute, RemoteConnectionChannels, ResolutionRequest, RoutingRequest, SchemeSocketAddrIt,
 };
 use crate::routing::ws::WsConnections;
 use crate::routing::ConnectionError;
@@ -53,7 +53,7 @@ pub trait RemoteTasksState {
     /// Spawn a new connection task, attached to the provided web socket.
     fn spawn_task(
         &mut self,
-        sock_addr: SocketAddr,
+        sock_addr: SchemeSocketAddr,
         ws_stream: Self::WebSocket,
         host: Option<SchemeHostPort>,
     );
@@ -63,7 +63,7 @@ pub trait RemoteTasksState {
     fn check_socket_addr(
         &mut self,
         host: SchemeHostPort,
-        sock_addr: SocketAddr,
+        sock_addr: SchemeSocketAddr,
     ) -> Result<(), SchemeHostPort>;
 
     /// Add a deferred web socket handshake.
@@ -73,8 +73,8 @@ pub trait RemoteTasksState {
     fn defer_connect_and_handshake(
         &mut self,
         host: SchemeHostPort,
-        sock_addr: SocketAddr,
-        remaining: SocketAddrIt,
+        sock_addr: SchemeSocketAddr,
+        remaining: SchemeSocketAddrIt,
     );
 
     /// Add a deferred DNS lookup for a host.
@@ -153,7 +153,7 @@ where
 
     fn spawn_task(
         &mut self,
-        sock_addr: SocketAddr,
+        sock_addr: SchemeSocketAddr,
         ws_stream: Ws::StreamSink,
         host: Option<SchemeHostPort>,
     ) {
@@ -165,7 +165,7 @@ where
             pending,
             ..
         } = self;
-        let msg_tx = tasks.spawn_connection_task(sock_addr, ws_stream, addr, spawner);
+        let msg_tx = tasks.spawn_connection_task(sock_addr.clone(), ws_stream, addr, spawner);
         table.insert(addr, host.clone(), sock_addr, msg_tx);
         if let Some(host) = host {
             pending.send_ok(&host, addr);
@@ -175,7 +175,7 @@ where
     fn check_socket_addr(
         &mut self,
         host: SchemeHostPort,
-        sock_addr: SocketAddr,
+        sock_addr: SchemeSocketAddr,
     ) -> Result<(), SchemeHostPort> {
         let RemoteConnections { table, pending, .. } = self;
         if let Some(addr) = table.get_resolved(&sock_addr) {
@@ -191,15 +191,15 @@ where
         let websockets = self.websockets;
         self.defer(async move {
             let result = do_handshake(true, stream, websockets, peer_addr.clone()).await;
-            DeferredResult::incoming_handshake(result, peer_addr.addr)
+            DeferredResult::incoming_handshake(result, peer_addr)
         });
     }
 
     fn defer_connect_and_handshake(
         &mut self,
         host: SchemeHostPort,
-        sock_addr: SocketAddr,
-        remaining: SocketAddrIt,
+        sock_addr: SchemeSocketAddr,
+        remaining: SchemeSocketAddrIt,
     ) {
         let websockets = self.websockets;
         let external = self.external.clone();
@@ -410,42 +410,45 @@ where
 pub enum DeferredResult<Snk> {
     ServerHandshake {
         result: Result<Snk, ConnectionError>,
-        sock_addr: SocketAddr,
+        sock_addr: SchemeSocketAddr,
     },
     ClientHandshake {
-        result: Result<(Snk, SocketAddr), ConnectionError>,
+        result: Result<(Snk, SchemeSocketAddr), ConnectionError>,
         host: SchemeHostPort,
     },
     FailedConnection {
         error: ConnectionError,
-        remaining: SocketAddrIt,
+        remaining: SchemeSocketAddrIt,
         host: SchemeHostPort,
     },
     Dns {
-        result: io::Result<SocketAddrIt>,
+        result: io::Result<SchemeSocketAddrIt>,
         host: SchemeHostPort,
     },
 }
 
 impl<Snk> DeferredResult<Snk> {
-    fn incoming_handshake(result: Result<Snk, ConnectionError>, sock_addr: SocketAddr) -> Self {
+    fn incoming_handshake(
+        result: Result<Snk, ConnectionError>,
+        sock_addr: SchemeSocketAddr,
+    ) -> Self {
         DeferredResult::ServerHandshake { result, sock_addr }
     }
 
     fn outgoing_handshake(
-        result: Result<(Snk, SocketAddr), ConnectionError>,
+        result: Result<(Snk, SchemeSocketAddr), ConnectionError>,
         host: SchemeHostPort,
     ) -> Self {
         DeferredResult::ClientHandshake { result, host }
     }
 
-    fn dns(result: io::Result<SocketAddrIt>, host: SchemeHostPort) -> Self {
+    fn dns(result: io::Result<SchemeSocketAddrIt>, host: SchemeHostPort) -> Self {
         DeferredResult::Dns { result, host }
     }
 
     fn failed_connection(
         error: ConnectionError,
-        remaining: std::vec::IntoIter<SocketAddr>,
+        remaining: std::vec::IntoIter<SchemeSocketAddr>,
         host: SchemeHostPort,
     ) -> Self {
         DeferredResult::FailedConnection {
@@ -495,7 +498,6 @@ where
     if server {
         websockets.accept_connection(socket).await
     } else {
-        //Todo dm this will have the same bug as bellow for missing scheme
         websockets
             .open_connection(socket, peer_addr.to_string())
             .await
@@ -504,8 +506,8 @@ where
 
 async fn connect_and_handshake<External: ExternalConnections, Ws>(
     external: External,
-    sock_addr: SocketAddr,
-    remaining: SocketAddrIt,
+    sock_addr: SchemeSocketAddr,
+    remaining: SchemeSocketAddrIt,
     scheme_host_port: SchemeHostPort,
     websockets: &Ws,
 ) -> DeferredResult<Ws::StreamSink>
@@ -514,7 +516,7 @@ where
 {
     match connect_and_handshake_single(
         external,
-        sock_addr,
+        sock_addr.addr,
         websockets,
         format!(
             "{}://{}",

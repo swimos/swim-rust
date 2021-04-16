@@ -15,15 +15,15 @@
 use crate::plane::PlaneRequest;
 use futures::future::BoxFuture;
 use futures::FutureExt;
+use std::net::SocketAddr;
 use swim_common::request::Request;
 use swim_common::routing::error::ResolutionError;
 use swim_common::routing::error::RouterError;
-use swim_common::routing::remote::RawRoute;
-use swim_common::routing::{Route, RoutingAddr, Router, RouterFactory, TaggedSender};
+use swim_common::routing::remote::{RawRoute, SchemeSocketAddr};
+use swim_common::routing::{Route, Router, RouterFactory, RoutingAddr, TaggedSender};
 use tokio::sync::{mpsc, oneshot};
 use url::Url;
 use utilities::uri::RelativeUri;
-use std::net::SocketAddr;
 
 #[cfg(test)]
 mod tests;
@@ -86,7 +86,7 @@ impl<Delegate: Router> Router for PlaneRouter<Delegate> {
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,
-        _origin: Option<SocketAddr>,
+        _origin: Option<SchemeSocketAddr>,
     ) -> BoxFuture<Result<Route, ResolutionError>> {
         async move {
             let PlaneRouter {

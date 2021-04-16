@@ -108,7 +108,7 @@ impl ExternalConnections for TokioTlsNetworking {
         })
     }
 
-    fn lookup(&self, host: SchemeHostPort) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>> {
+    fn lookup(&self, host: SchemeHostPort) -> BoxFuture<'static, IoResult<Vec<SchemeSocketAddr>>> {
         self.resolver.resolve(host)
     }
 }

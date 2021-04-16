@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use crate::routing::remote::table::SchemeHostPort;
+use crate::routing::remote::SchemeSocketAddr;
 use futures::Future;
 use futures::FutureExt;
 use futures_util::future::BoxFuture;
@@ -24,7 +25,7 @@ use tokio::net::lookup_host;
 pub trait DnsResolver {
     /// A future which resolves to either a vector of resolved socket addresses for the provided
     /// host and port, or an IO error.
-    type ResolveFuture: Future<Output = io::Result<Vec<SocketAddr>>> + 'static;
+    type ResolveFuture: Future<Output = io::Result<Vec<SchemeSocketAddr>>> + 'static;
 
     /// Perform a DNS query for A and AAAA records for the provided address. This *may* resolve to
     /// multiple IP addresses.
@@ -37,13 +38,17 @@ pub trait DnsResolver {
 pub struct GetAddressInfoResolver;
 
 impl DnsResolver for GetAddressInfoResolver {
-    type ResolveFuture = BoxFuture<'static, io::Result<Vec<SocketAddr>>>;
+    type ResolveFuture = BoxFuture<'static, io::Result<Vec<SchemeSocketAddr>>>;
 
     fn resolve(&self, host: SchemeHostPort) -> Self::ResolveFuture {
-        let (_, host, port) = host.split();
-        Box::pin(
-            lookup_host(format!("{}:{}", host, port)).map(|r| r.map(|it| it.collect::<Vec<_>>())),
-        )
+        let (scheme, host, port) = host.split();
+
+        Box::pin(lookup_host(format!("{}:{}", host, port)).map(move |r| {
+            r.map(|it| {
+                it.map(|socket_addr| SchemeSocketAddr::new(scheme.clone(), socket_addr))
+                    .collect::<Vec<_>>()
+            })
+        }))
     }
 }
 
@@ -69,7 +74,7 @@ impl Resolver {
 }
 
 impl DnsResolver for Resolver {
-    type ResolveFuture = BoxFuture<'static, io::Result<Vec<SocketAddr>>>;
+    type ResolveFuture = BoxFuture<'static, io::Result<Vec<SchemeSocketAddr>>>;
 
     fn resolve(&self, host: SchemeHostPort) -> Self::ResolveFuture {
         match self {

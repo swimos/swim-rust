@@ -15,17 +15,18 @@
 use crate::routing::error::{
     ConnectionError, ResolutionError, RouterError, RoutingError, SendError,
 };
+use crate::routing::remote::SchemeSocketAddr;
 use crate::routing::ws::WsMessage;
 use crate::warp::envelope::{Envelope, OutgoingLinkMessage};
 use futures::future::BoxFuture;
 use std::fmt::{Display, Formatter};
+use std::net::SocketAddr;
 use std::time::Duration;
 use tokio::sync::mpsc;
 use url::Url;
 use utilities::errors::Recoverable;
 use utilities::sync::promise;
 use utilities::uri::RelativeUri;
-use std::net::SocketAddr;
 
 pub mod error;
 pub mod remote;
@@ -114,7 +115,11 @@ impl Route {
 
 /// Interface for interacting with the server [`Envelope`] router.
 pub trait Router: Send + Sync {
-    fn resolve_sender(&mut self, addr: RoutingAddr, origin: Option<SocketAddr>) -> BoxFuture<Result<Route, ResolutionError>>;
+    fn resolve_sender(
+        &mut self,
+        addr: RoutingAddr,
+        origin: Option<SchemeSocketAddr>,
+    ) -> BoxFuture<Result<Route, ResolutionError>>;
 
     fn lookup(
         &mut self,

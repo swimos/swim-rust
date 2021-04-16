@@ -117,7 +117,7 @@ pub enum RemoteConnectionsTask<External: ExternalConnections, Ws, Router, Sp> {
     },
 }
 
-type SocketAddrIt = std::vec::IntoIter<SocketAddr>;
+type SchemeSocketAddrIt = std::vec::IntoIter<SchemeSocketAddr>;
 
 const REQUEST_DROPPED: &str = "The receiver of a routing request was dropped before it completed.";
 const FAILED_SERVER_CONN: &str = "Failed to establish a server connection.";
@@ -360,7 +360,7 @@ fn update_state<State: RemoteTasksState>(
             host,
         }) => {
             if let Some(sock_addr) = addrs.next() {
-                if let Err(host) = state.check_socket_addr(host, sock_addr) {
+                if let Err(host) = state.check_socket_addr(host, sock_addr.clone()) {
                     state.defer_connect_and_handshake(host, sock_addr, addrs);
                 }
             } else {
@@ -433,7 +433,7 @@ fn get_default_port(scheme: &str) -> Option<u16> {
 
 type IoResult<T> = io::Result<T>;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SchemeSocketAddr {
     scheme: String,
     addr: SocketAddr,
@@ -468,5 +468,5 @@ pub trait ExternalConnections: Clone + Send + Sync + 'static {
 
     fn bind(&self, addr: SocketAddr) -> BoxFuture<'static, IoResult<Self::ListenerType>>;
     fn try_open(&self, addr: SocketAddr) -> BoxFuture<'static, IoResult<Self::Socket>>;
-    fn lookup(&self, host: SchemeHostPort) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>>;
+    fn lookup(&self, host: SchemeHostPort) -> BoxFuture<'static, IoResult<Vec<SchemeSocketAddr>>>;
 }

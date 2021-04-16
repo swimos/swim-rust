@@ -34,7 +34,7 @@ use swim_common::routing::remote::config::ConnectionConfig;
 use swim_common::routing::remote::net::dns::Resolver;
 use swim_common::routing::remote::net::plain::TokioPlainTextNetworking;
 use swim_common::routing::remote::{
-    RawRoute, RemoteConnectionChannels, RemoteConnectionsTask, RoutingRequest,
+    RawRoute, RemoteConnectionChannels, RemoteConnectionsTask, RoutingRequest, SchemeSocketAddr,
 };
 use swim_common::routing::ws::tungstenite::TungsteniteWsConnections;
 use swim_common::routing::ConnectionDropped;
@@ -97,7 +97,7 @@ impl Router for ClientRouter {
     fn resolve_sender(
         &mut self,
         _addr: RoutingAddr,
-        origin: Option<SocketAddr>,
+        origin: Option<SchemeSocketAddr>,
     ) -> BoxFuture<'_, Result<Route, ResolutionError>> {
         async move {
             let ClientRouter {
@@ -142,7 +142,7 @@ pub(crate) enum ClientRequest {
     /// Obtain a connection.
     Connect {
         request: Request<Result<RawRoute, Unresolvable>>,
-        origin: SocketAddr,
+        origin: SchemeSocketAddr,
     },
     /// Subscribe to a connection.
     Subscribe {
@@ -175,12 +175,10 @@ pub(crate) async fn run_client_router(
         };
 
         match next {
-            //Todo dm change this to be Url
             Some(ClientRequest::Connect { request, origin }) => {
-                let addr = &format!("ws://{}/", origin);
-                eprintln!("addr = {:#?}", addr);
+                eprintln!("addr = {:#?}", origin.to_string());
                 let (sender, _) = outgoing_managers
-                    .entry(addr.to_owned())
+                    .entry(origin.to_string())
                     .or_insert_with(|| {
                         let (manager, sender, sub_tx) = OutgoingManager::new();
                         spawn(manager.run());

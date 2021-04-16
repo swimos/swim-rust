@@ -55,7 +55,7 @@ use utilities::uri::{BadRelativeUri, RelativeUri};
 
 /// A task that manages reading from and writing to a web-sockets channel.
 pub struct ConnectionTask<Str, Router> {
-    addr: SocketAddr,
+    addr: SchemeSocketAddr,
     ws_stream: Str,
     messages: mpsc::Receiver<TaggedEnvelope>,
     message_injector: mpsc::Sender<TaggedEnvelope>,
@@ -113,7 +113,7 @@ where
     /// * `config` - Configuration for the connectino task.
     /// runtime.
     pub fn new(
-        addr: SocketAddr,
+        addr: SchemeSocketAddr,
         ws_stream: Str,
         router: R,
         messages: mpsc::Receiver<TaggedEnvelope>,
@@ -191,7 +191,7 @@ where
                                         &mut router,
                                         &mut resolved,
                                         envelope,
-                                        addr,
+                                        addr.clone(),
                                         config.connection_retries,
                                         sleep,
                                     )
@@ -343,7 +343,7 @@ async fn dispatch_envelope<R, F, D>(
     router: &mut R,
     resolved: &mut HashMap<RelativePath, Route>,
     mut envelope: Envelope,
-    origin: SocketAddr,
+    origin: SchemeSocketAddr,
     mut retry_strategy: RetryStrategy,
     delay_fn: F,
 ) -> Result<(), (Envelope, DispatchError)>
@@ -353,7 +353,7 @@ where
     D: Future<Output = ()>,
 {
     loop {
-        let result = try_dispatch_envelope(router, resolved, envelope, origin).await;
+        let result = try_dispatch_envelope(router, resolved, envelope, origin.clone()).await;
         match result {
             Err((env, err)) if !err.is_fatal() => {
                 match retry_strategy.next() {
@@ -381,7 +381,7 @@ async fn try_dispatch_envelope<R>(
     router: &mut R,
     resolved: &mut HashMap<RelativePath, Route>,
     envelope: Envelope,
-    origin: SocketAddr,
+    origin: SchemeSocketAddr,
 ) -> Result<(), (Envelope, DispatchError)>
 where
     R: Router,
@@ -423,7 +423,7 @@ where
 async fn get_route<R>(
     router: &mut R,
     target: &RelativePath,
-    origin: SocketAddr,
+    origin: SchemeSocketAddr,
 ) -> Result<Route, DispatchError>
 where
     R: Router,
@@ -463,7 +463,7 @@ where
 {
     pub fn spawn_connection_task<Str, Sp>(
         &self,
-        addr: SocketAddr,
+        addr: SchemeSocketAddr,
         ws_stream: Str,
         tag: RoutingAddr,
         spawner: &Sp,

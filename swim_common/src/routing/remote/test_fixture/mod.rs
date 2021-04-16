@@ -68,7 +68,7 @@ impl Router for LocalRoutes {
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,
-        _origin: Option<SocketAddr>,
+        _origin: Option<SchemeSocketAddr>,
     ) -> BoxFuture<'_, Result<Route, ResolutionError>> {
         let lock = self.1.lock();
         let result = if let Some(Entry {
@@ -345,7 +345,7 @@ impl FakeSocket {
 struct FakeConnectionsInner {
     sockets: HashMap<SocketAddr, Result<FakeSocket, io::Error>>,
     incoming: Option<FakeListener>,
-    dns: HashMap<String, Vec<SocketAddr>>,
+    dns: HashMap<String, Vec<SchemeSocketAddr>>,
 }
 
 #[derive(Debug, Clone)]
@@ -358,7 +358,7 @@ pub struct FakeConnections {
 impl FakeConnections {
     pub fn new(
         sockets: HashMap<SocketAddr, Result<FakeSocket, io::Error>>,
-        dns: HashMap<String, Vec<SocketAddr>>,
+        dns: HashMap<String, Vec<SchemeSocketAddr>>,
         incoming: Option<mpsc::Receiver<io::Result<(FakeSocket, SchemeSocketAddr)>>>,
         open_error_count: usize,
     ) -> Self {
@@ -372,7 +372,7 @@ impl FakeConnections {
         }
     }
 
-    pub fn add_dns(&self, host: String, sock_addr: SocketAddr) {
+    pub fn add_dns(&self, host: String, sock_addr: SchemeSocketAddr) {
         self.inner.lock().dns.insert(host, vec![sock_addr]);
     }
 
@@ -418,7 +418,7 @@ impl ExternalConnections for FakeConnections {
     fn lookup(
         &self,
         host_and_port: SchemeHostPort,
-    ) -> BoxFuture<'static, io::Result<Vec<SocketAddr>>> {
+    ) -> BoxFuture<'static, io::Result<Vec<SchemeSocketAddr>>> {
         let result = self
             .inner
             .lock()
