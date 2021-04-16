@@ -393,16 +393,19 @@ enum BadUrl {
 }
 
 fn unpack_url(url: &Url) -> Result<SchemeHostPort, BadUrl> {
-    if let Some((default_port, scheme)) = validate_scheme(url.scheme()) {
+    if let Some(scheme) = convert_scheme(url.scheme()) {
         match (url.host_str(), url.port()) {
             (Some(host_str), Some(port)) => {
                 Ok(SchemeHostPort::new(scheme, host_str.to_owned(), port))
             }
-            (Some(host_str), _) => Ok(SchemeHostPort::new(
-                scheme,
-                host_str.to_owned(),
-                default_port,
-            )),
+            (Some(host_str), _) => {
+                let default_port = get_default_port(&scheme).unwrap();
+                Ok(SchemeHostPort::new(
+                    scheme,
+                    host_str.to_owned(),
+                    default_port,
+                ))
+            }
             _ => Err(BadUrl::NoHost),
         }
     } else {
@@ -411,10 +414,18 @@ fn unpack_url(url: &Url) -> Result<SchemeHostPort, BadUrl> {
 }
 
 /// Get the default port for supported schemes.
-fn validate_scheme(scheme: &str) -> Option<(u16, String)> {
+fn convert_scheme(scheme: &str) -> Option<String> {
     match scheme {
-        "ws" | "swim" | "warp" => Some((80, "ws".to_string())),
-        "wss" | "swims" | "warps" => Some((443, "wss".to_string())),
+        "ws" | "swim" | "warp" => Some("ws".to_string()),
+        "wss" | "swims" | "warps" => Some("wss".to_string()),
+        _ => None,
+    }
+}
+
+fn get_default_port(scheme: &str) -> Option<u16> {
+    match scheme {
+        "ws" | "swim" | "warp" => Some(80),
+        "wss" | "swims" | "warps" => Some(443),
         _ => None,
     }
 }
