@@ -19,14 +19,15 @@ mod tests;
 mod tokens;
 
 pub use crate::form::structural::read::parser::error::ParseError;
-use crate::form::structural::read::{StructuralReadable, HeaderReader};
+use crate::form::structural::read::{HeaderReader, StructuralReadable};
 use nom_locate::LocatedSpan;
-use std::borrow::Cow;
 use num_bigint::{BigInt, BigUint};
+use std::borrow::Cow;
 use std::convert::TryFrom;
 
 pub type Span<'a> = LocatedSpan<&'a str>;
 
+#[derive(Debug, PartialEq)]
 pub enum NumericLiteral {
     Int(i64),
     UInt(u64),

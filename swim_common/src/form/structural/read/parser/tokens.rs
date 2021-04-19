@@ -12,16 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::fmt::{Display, Formatter};
-use std::convert::TryFrom;
-use std::ops::Neg;
 use crate::form::structural::read::parser::{NumericLiteral, Span};
 use crate::model::parser::{is_identifier_char, is_identifier_start, unescape};
+use crate::model::text::Text;
 use either::Either;
 use nom::branch::alt;
 use nom::bytes::streaming::tag_no_case;
 use nom::character::streaming as character;
-use nom::combinator::{map, map_res, opt, recognize};
+use nom::combinator::{map, map_res, opt, peek, recognize};
 use nom::multi::{many0_count, many1_count};
 use nom::number::streaming as number;
 use nom::sequence::{delimited, pair, preceded, tuple};
@@ -29,7 +27,9 @@ use nom::IResult;
 use num_bigint::{BigInt, BigUint, ParseBigIntError, Sign};
 use num_traits::Num;
 use std::borrow::Cow;
-use crate::model::text::Text;
+use std::convert::TryFrom;
+use std::fmt::{Display, Formatter};
+use std::ops::Neg;
 
 fn unwrap_span(span: Span<'_>) -> &str {
     *span
@@ -74,7 +74,6 @@ pub fn string_literal(input: Span<'_>) -> IResult<Span<'_>, Cow<'_, str>> {
     )(input)
 }
 
-
 #[derive(Debug)]
 struct InvalidEscapes(Text);
 
@@ -111,17 +110,12 @@ fn natural(
 }
 
 pub fn numeric_literal(input: Span<'_>) -> IResult<Span<'_>, NumericLiteral> {
-    alt((
-        binary,
-        hexadecimal,
-        decimal,
-        map(number::double, NumericLiteral::Float),
-    ))(input)
+    alt((binary, hexadecimal, decimal_or_float))(input)
 }
 
 fn signed<F>(mut base: F) -> impl FnMut(Span<'_>) -> IResult<Span<'_>, (bool, Span<'_>)>
-    where
-        F: FnMut(Span<'_>) -> IResult<Span<'_>, Span<'_>>,
+where
+    F: FnMut(Span<'_>) -> IResult<Span<'_>, Span<'_>>,
 {
     move |input: Span<'_>| {
         pair(
@@ -155,10 +149,23 @@ fn decimal_str(input: Span<'_>) -> IResult<Span<'_>, Span<'_>> {
     recognize(many1_count(character::one_of("0123456789")))(input)
 }
 
-fn decimal(input: Span<'_>) -> IResult<Span<'_>, NumericLiteral> {
-    map_res(signed(decimal_str), |(negative, rep)| {
-        try_to_int_literal(negative, *rep, 10)
-    })(input)
+fn decimal_or_float(input: Span<'_>) -> IResult<Span<'_>, NumericLiteral> {
+    alt((
+        map_res(
+            map_res(
+                pair(signed(decimal_str), peek(opt(character::one_of(".eE")))),
+                |(r, is_float)| {
+                    if is_float.is_some() {
+                        Err(())
+                    } else {
+                        Ok(r)
+                    }
+                },
+            ),
+            |(negative, rep)| try_to_int_literal(negative, *rep, 10),
+        ),
+        map(number::double, NumericLiteral::Float),
+    ))(input)
 }
 
 fn try_to_int_literal(

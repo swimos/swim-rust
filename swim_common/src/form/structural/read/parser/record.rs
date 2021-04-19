@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use super::{NumericLiteral, ParseEvent, Span};
 use super::tokens::*;
+use super::{NumericLiteral, ParseEvent, Span};
 use crate::form::structural::read::parser::error::ParseError;
 use crate::form::structural::read::{BodyReader, HeaderReader, ReadError};
 use either::Either;
@@ -112,8 +112,6 @@ impl ParseState {
         *self = new_state;
     }
 }
-
-
 
 fn attr_name(input: Span<'_>) -> IResult<Span<'_>, Cow<'_, str>> {
     alt((string_literal, map(identifier, Cow::Borrowed)))(input)
@@ -752,5 +750,3 @@ fn parse_after_slot<K: ItemsKind>(input: Span<'_>) -> IResult<Span<'_>, Option<P
         map(character::char(K::end_delim()), |_| None),
     ))(input)
 }
-
-
