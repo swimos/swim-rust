@@ -129,6 +129,7 @@ pub trait ServerRouter: Send + Sync {
 pub trait ServerRouterFactory: Send + Sync {
     type Router: ServerRouter;
 
+    /// Create a new router for a given routing address.
     fn create_for(&self, addr: RoutingAddr) -> Self::Router;
 }
 
