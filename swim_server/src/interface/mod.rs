@@ -276,16 +276,12 @@ impl SwimServer {
             },
             top_level_router_fac,
             OpenEndedFutures::new(),
-            RemoteConnectionChannels {
-                request_tx: remote_tx,
-                request_rx: remote_rx,
-                stop_trigger: stop_trigger_rx,
-            },
+            RemoteConnectionChannels::new(remote_tx, remote_rx, stop_trigger_rx),
         )
         .await
         .unwrap_or_else(|err| panic!("Could not connect to \"{}\": {}", address, err));
 
-        let _ = match connections_task.listener.local_addr() {
+        let _ = match connections_task.local_addr() {
             Ok(local_addr) => address_tx.provide(local_addr),
             Err(err) => panic!("Could not resolve server address: {}", err),
         };

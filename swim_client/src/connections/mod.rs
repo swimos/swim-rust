@@ -17,26 +17,31 @@ use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
+use crate::configuration::router::ConnectionPoolParams;
 use futures::future::BoxFuture;
 use futures::select;
 use futures::stream;
 use futures::{FutureExt, Sink, Stream, StreamExt};
 use futures_util::future::TryFutureExt;
 use futures_util::TryStreamExt;
+use swim_common::request::request_future::RequestError;
+use swim_common::routing::error::{
+    CloseError, ConnectionError, ResolutionError, ResolutionErrorKind,
+};
+use swim_common::routing::remote::ExternalConnections;
+use swim_common::routing::ws::{WsConnections, WsMessage};
+use swim_runtime::task::*;
+use swim_runtime::time::instant::Instant;
+use swim_runtime::time::interval::interval;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::{SendError, TrySendError};
 use tokio::sync::oneshot;
+use tokio_stream::wrappers::ReceiverStream;
 #[allow(unused_imports)]
 #[cfg(feature = "websocket")]
 use tokio_tungstenite::tungstenite;
 use tracing::{instrument, trace};
 use url::Host;
-
-use crate::configuration::router::ConnectionPoolParams;
-use swim_common::request::request_future::RequestError;
-
-#[cfg(test)]
-mod tests;
 
 /// Connection pool message wraps a message from a remote host.
 #[derive(Debug)]
@@ -295,7 +300,7 @@ where
                     connections.retain(|_, v| v.last_accessed.elapsed() < conn_timeout);
                     let after_size = connections.len();
 
-                    trace!("Pruned {} inactive networking", (before_size - after_size));
+                    trace!("Pruned {} inactive connections", (before_size - after_size));
                 }
 
                 RequestType::Close => {
@@ -493,16 +498,6 @@ impl ClientConnection {
         })
     }
 }
-
-use swim_common::routing::error::{
-    CloseError, ConnectionError, ResolutionError, ResolutionErrorKind,
-};
-use swim_common::routing::remote::ExternalConnections;
-use swim_common::routing::ws::{WsConnections, WsMessage};
-use swim_runtime::task::*;
-use swim_runtime::time::instant::Instant;
-use swim_runtime::time::interval::interval;
-use tokio_stream::wrappers::ReceiverStream;
 
 pub type ConnectionChannel = (ConnectionSender, Option<ConnectionReceiver>);
 

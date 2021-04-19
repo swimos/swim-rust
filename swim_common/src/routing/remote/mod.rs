@@ -48,7 +48,9 @@ use crate::routing::ws::WsConnections;
 use crate::routing::{ConnectionDropped, RoutingAddr, ServerRouterFactory, TaggedEnvelope};
 use futures::stream::FusedStream;
 use std::io;
+use tokio::net::TcpListener;
 
+#[cfg(test)]
 pub mod test_fixture;
 
 #[derive(Clone, Debug)]
@@ -85,15 +87,29 @@ pub enum RoutingRequest {
 }
 
 pub struct RemoteConnectionChannels {
-    pub request_tx: mpsc::Sender<RoutingRequest>,
-    pub request_rx: mpsc::Receiver<RoutingRequest>,
-    pub stop_trigger: trigger::Receiver,
+    request_tx: mpsc::Sender<RoutingRequest>,
+    request_rx: mpsc::Receiver<RoutingRequest>,
+    stop_trigger: trigger::Receiver,
+}
+
+impl RemoteConnectionChannels {
+    pub fn new(
+        request_tx: mpsc::Sender<RoutingRequest>,
+        request_rx: mpsc::Receiver<RoutingRequest>,
+        stop_trigger: trigger::Receiver,
+    ) -> RemoteConnectionChannels {
+        RemoteConnectionChannels {
+            request_tx,
+            request_rx,
+            stop_trigger,
+        }
+    }
 }
 
 #[derive(Debug)]
 pub struct RemoteConnectionsTask<External: ExternalConnections, Ws, Router, Sp> {
     external: External,
-    pub listener: External::ListenerType,
+    listener: External::ListenerType,
     websockets: Ws,
     delegate_router: Router,
     stop_trigger: trigger::Receiver,
@@ -101,6 +117,14 @@ pub struct RemoteConnectionsTask<External: ExternalConnections, Ws, Router, Sp> 
     configuration: ConnectionConfig,
     remote_tx: mpsc::Sender<RoutingRequest>,
     remote_rx: mpsc::Receiver<RoutingRequest>,
+}
+
+impl<External: ExternalConnections<ListenerType = TcpListener>, Ws, Router, Sp>
+    RemoteConnectionsTask<External, Ws, Router, Sp>
+{
+    pub fn local_addr(&self) -> io::Result<SocketAddr> {
+        self.listener.local_addr()
+    }
 }
 
 type SocketAddrIt = std::vec::IntoIter<SocketAddr>;

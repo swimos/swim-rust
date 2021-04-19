@@ -60,7 +60,6 @@ pub struct LocalRoutesInner {
 pub struct LocalRoutes(RoutingAddr, Arc<Mutex<LocalRoutesInner>>);
 
 impl LocalRoutes {
-    #[allow(dead_code)]
     pub(crate) fn new(owner_addr: RoutingAddr) -> Self {
         LocalRoutes(owner_addr, Default::default())
     }
