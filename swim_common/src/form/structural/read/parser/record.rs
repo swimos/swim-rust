@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use super::tokens::streaming::*;
 use super::tokens::*;
 use super::{NumericLiteral, ParseEvent, Span};
 use crate::form::structural::read::parser::error::ParseError;
