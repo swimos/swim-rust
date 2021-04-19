@@ -8,21 +8,21 @@ jobs:
   - template: ci/azure-test-stable.yml
     parameters:
       name: test_crates
-      rust: 1.50.0
+      rust: 1.51.0
       displayName: Test all crates
       cross: eq(variables['Build.SourceBranch'], 'refs/heads/master')
 
   - template: ci/azure-clippy.yml
     parameters:
-      rust: 1.50.0
+      rust: 1.51.0
       name: clippy
 
   - template: ci/azure-fmt.yml
     parameters:
-      rust: 1.50.0
+      rust: 1.51.0
       name: rustfmt
 
   - template: ci/azure-check-docs.yml
     parameters:
-      rust: 1.50.0
+      rust: 1.51.0
       name: docs

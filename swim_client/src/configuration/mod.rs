@@ -355,7 +355,7 @@ pub mod downlink {
                 yield_after = yield_after.or(Some(DEFAULT_YIELD_AFTER));
             }
 
-            Ok(DownlinkParams::new(
+            DownlinkParams::new(
                 back_pressure.ok_or(ConfigParseError::MissingKey(
                     BACK_PRESSURE_TAG,
                     DOWNLINKS_TAG,
@@ -368,7 +368,7 @@ pub mod downlink {
                 on_invalid.ok_or(ConfigParseError::MissingKey(ON_INVALID_TAG, DOWNLINKS_TAG))?,
                 yield_after.ok_or(ConfigParseError::MissingKey(YIELD_AFTER_TAG, DOWNLINKS_TAG))?,
             )
-            .map_err(ConfigParseError::DownlinkError)?)
+            .map_err(ConfigParseError::DownlinkError)
         }
     }
 

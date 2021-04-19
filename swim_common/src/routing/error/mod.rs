@@ -52,18 +52,18 @@ mod tests;
 
 pub type FmtResult = std::fmt::Result;
 
-// An error returned by the router
+/// An error returned by the router
 #[derive(Clone, Debug, PartialEq)]
 pub enum RoutingError {
-    // The connection to the remote host has been lost.
+    /// The connection to the remote host has been lost.
     ConnectionError,
-    // The remote host is unreachable.
+    /// The remote host is unreachable.
     HostUnreachable,
-    // The connection pool has encountered an error.
+    /// The connection pool has encountered an error.
     PoolError(ConnectionError),
-    // The router has been stopped.
+    /// The router has been stopped.
     RouterDropped,
-    // The router has encountered an error while stopping.
+    /// The router has encountered an error while stopping.
     CloseError,
 }
 

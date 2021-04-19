@@ -968,9 +968,9 @@ impl Attr {
     }
 }
 
-impl Into<Value> for Attr {
-    fn into(self) -> Value {
-        Value::Record(vec![self], vec![])
+impl From<Attr> for Value {
+    fn from(attr: Attr) -> Self {
+        Value::Record(vec![attr], vec![])
     }
 }
 

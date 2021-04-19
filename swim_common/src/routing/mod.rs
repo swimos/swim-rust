@@ -115,12 +115,15 @@ impl Route {
 
 /// Interface for interacting with the server [`Envelope`] router.
 pub trait Router: Send + Sync {
+    /// Given a routing address, resolve the corresponding router entry
+   /// consisting of a sender that will push envelopes to the endpoint.
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,
         origin: Option<SchemeSocketAddr>,
     ) -> BoxFuture<Result<Route, ResolutionError>>;
 
+    /// Find and return the corresponding routing address of an endpoint for a given route.
     fn lookup(
         &mut self,
         host: Option<Url>,
@@ -132,6 +135,7 @@ pub trait Router: Send + Sync {
 pub trait RouterFactory: Send + Sync {
     type Router: Router;
 
+    /// Create a new router for a given routing address.
     fn create_for(&self, addr: RoutingAddr) -> Self::Router;
 }
 

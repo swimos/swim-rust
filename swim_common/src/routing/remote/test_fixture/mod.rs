@@ -58,7 +58,6 @@ pub struct LocalRoutesInner {
 pub struct LocalRoutes(RoutingAddr, Arc<Mutex<LocalRoutesInner>>);
 
 impl LocalRoutes {
-    #[allow(dead_code)]
     pub(crate) fn new(owner_addr: RoutingAddr) -> Self {
         LocalRoutes(owner_addr, Default::default())
     }
@@ -107,7 +106,7 @@ impl Router for LocalRoutes {
                 }
                 // A non-fatal error that will allow a retry.
                 Err(RouterError::ConnectionFailure(ConnectionError::Http(
-                    HttpError::new(HttpErrorKind::StatusCode(Some(StatusCode::OK)), None),
+                    HttpError::new(HttpErrorKind::StatusCode(Some(StatusCode::CONTINUE)), None),
                 )))
             }
         } else {

@@ -17,6 +17,7 @@ use crate::agent::lane::channels::uplink::backpressure::{
     KeyedBackpressureConfig, SimpleBackpressureConfig,
 };
 use crate::agent::lane::channels::uplink::{UplinkAction, UplinkStateMachine};
+use crate::meta::log::config::LogConfig;
 use std::num::NonZeroUsize;
 use std::time::Duration;
 use swim_common::routing::RoutingAddr;
@@ -61,6 +62,8 @@ pub struct AgentExecutionConfig {
     pub value_lane_backpressure: Option<SimpleBackpressureConfig>,
     /// Back-pressure relief configuration for map lane uplinks.
     pub map_lane_backpressure: Option<KeyedBackpressureConfig>,
+    /// Node logging configuration.
+    pub node_log: LogConfig,
 }
 
 const DEFAULT_YIELD_COUNT: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(2048) };
@@ -93,6 +96,7 @@ impl AgentExecutionConfig {
                 yield_after: kc.buffer_size,
             }),
             map_lane_backpressure: backpressure,
+            node_log: LogConfig::default(),
         }
     }
 }
@@ -118,6 +122,7 @@ impl Default for AgentExecutionConfig {
             scheduler_buffer: default_buffer,
             value_lane_backpressure: None,
             map_lane_backpressure: None,
+            node_log: LogConfig::default(),
         }
     }
 }

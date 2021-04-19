@@ -279,11 +279,7 @@ impl SwimServer {
             },
             top_level_router_fac,
             OpenEndedFutures::new(),
-            RemoteConnectionChannels {
-                request_tx: remote_tx,
-                request_rx: remote_rx,
-                stop_trigger: stop_trigger_rx,
-            },
+            RemoteConnectionChannels::new(remote_tx, remote_rx, stop_trigger_rx),
         )
         .await
         .unwrap_or_else(|err| panic!("Could not connect to \"{}\": {}", address, err));

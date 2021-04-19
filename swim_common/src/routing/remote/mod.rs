@@ -50,7 +50,9 @@ use futures::stream::FusedStream;
 use std::fmt::{Display, Formatter};
 use std::io;
 use std::io::Error;
+use tokio::net::TcpListener;
 
+#[cfg(test)]
 pub mod test_fixture;
 
 #[derive(Clone, Debug)]
@@ -87,9 +89,23 @@ pub enum RoutingRequest {
 }
 
 pub struct RemoteConnectionChannels {
-    pub request_tx: mpsc::Sender<RoutingRequest>,
-    pub request_rx: mpsc::Receiver<RoutingRequest>,
-    pub stop_trigger: trigger::Receiver,
+    request_tx: mpsc::Sender<RoutingRequest>,
+    request_rx: mpsc::Receiver<RoutingRequest>,
+    stop_trigger: trigger::Receiver,
+}
+
+impl RemoteConnectionChannels {
+    pub fn new(
+        request_tx: mpsc::Sender<RoutingRequest>,
+        request_rx: mpsc::Receiver<RoutingRequest>,
+        stop_trigger: trigger::Receiver,
+    ) -> RemoteConnectionChannels {
+        RemoteConnectionChannels {
+            request_tx,
+            request_rx,
+            stop_trigger,
+        }
+    }
 }
 
 #[derive(Debug)]
