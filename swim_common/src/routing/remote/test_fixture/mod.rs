@@ -107,7 +107,7 @@ impl ServerRouter for LocalRoutes {
                 }
                 // A non-fatal error that will allow a retry.
                 Err(RouterError::ConnectionFailure(ConnectionError::Http(
-                    HttpError::new(HttpErrorKind::StatusCode(Some(StatusCode::OK)), None),
+                    HttpError::new(HttpErrorKind::StatusCode(Some(StatusCode::CONTINUE)), None),
                 )))
             }
         } else {
