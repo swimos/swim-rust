@@ -321,11 +321,7 @@ pub(crate) async fn create_remote_conns() -> (
             },
             top_level_router_fac,
             OpenEndedFutures::new(),
-            RemoteConnectionChannels {
-                request_tx: remote_tx,
-                request_rx: remote_rx,
-                stop_trigger: stop_trigger_rx,
-            },
+            RemoteConnectionChannels::new(remote_tx, remote_rx, stop_trigger_rx),
         )
         .await,
     )
