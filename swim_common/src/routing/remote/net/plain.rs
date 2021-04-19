@@ -66,7 +66,6 @@ impl Stream for WithPeer {
     type Item = IoResult<(TcpStream, SchemeSocketAddr)>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        //Todo dm change ws scheme
         self.project()
             .0
             .poll_accept(cx)?

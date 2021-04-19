@@ -142,7 +142,6 @@ impl Stream for TlsListener {
     type Item = IoResult<(TlsStream, SchemeSocketAddr)>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        //Todo dm change wss scheme
         self.project()
             .receiver
             .poll_next(cx)?

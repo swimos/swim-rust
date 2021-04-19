@@ -30,10 +30,7 @@ use crate::downlink::{
     DownlinkError, Message, SchemaViolations,
 };
 use crate::router::run_client_router;
-use crate::router::{
-    create_remote_conns, ClientRequest, ClientRouterFactory, OldRouter, RouterEvent,
-    SubscriberRequest,
-};
+use crate::router::{create_remote_conns, ClientRequest, ClientRouterFactory};
 use either::Either;
 use futures::join;
 use futures::stream::Fuse;
@@ -105,7 +102,6 @@ impl Downlinks {
     {
         info!("Initialising downlink manager");
 
-        //TODO dm stop_trigger_tx should be used
         let (request_rx, remote_tx, stop_trigger_tx, remote_connections) =
             create_remote_conns().await;
 
@@ -145,7 +141,14 @@ impl Downlinks {
     }
 
     pub async fn close(self) -> Result<RequestResult<()>, TaskError> {
-        let Downlinks { sender, task, .. } = self;
+        let Downlinks {
+            sender,
+            task,
+            stop_trigger_tx,
+        } = self;
+        if stop_trigger_tx.trigger() == false {
+            return Err(TaskError);
+        }
         drop(sender);
 
         task.await
@@ -478,11 +481,8 @@ impl DownlinkTask {
         }
     }
 
-    async fn connection_for(
-        &mut self,
-        path: &AbsolutePath,
-    ) -> (Receiver<TaggedEnvelope>, RawRoute) {
-        // Get the sink
+    //Todo dm unwraps
+    async fn get_sink_for(&mut self, path: &AbsolutePath) -> RawRoute {
         let (tx, rx) = oneshot::channel();
         self.remote_tx
             .send(RoutingRequest::ResolveUrl {
@@ -503,9 +503,10 @@ impl DownlinkTask {
             .await
             .unwrap();
 
-        let raw = rx.await.unwrap().unwrap();
+        rx.await.unwrap().unwrap()
+    }
 
-        // Get the stream
+    async fn get_stream_for(&mut self, path: &AbsolutePath) -> Receiver<TaggedEnvelope> {
         let (tx, rx) = oneshot::channel();
         self.local_tx
             .send(ClientRequest::Subscribe {
@@ -515,9 +516,17 @@ impl DownlinkTask {
             .await
             .unwrap();
 
-        let stream = rx.await.unwrap();
+        rx.await.unwrap()
+    }
 
-        (stream, raw)
+    async fn connection_for(
+        &mut self,
+        path: &AbsolutePath,
+    ) -> (Receiver<TaggedEnvelope>, RawRoute) {
+        (
+            self.get_stream_for(path).await,
+            self.get_sink_for(path).await,
+        )
     }
 
     async fn create_new_value_downlink(
@@ -531,7 +540,6 @@ impl DownlinkTask {
 
         let config = self.config.config_for(&path);
 
-        //Todo dm the sink's `on_drop` is not used
         let (incoming, sink) = self.connection_for(&path).await;
 
         let schema_cpy = schema.clone();
@@ -708,8 +716,7 @@ impl DownlinkTask {
         path: AbsolutePath,
         schema: StandardSchema,
     ) -> RequestResult<Arc<UntypedCommandDownlink>> {
-        //Todo dm change the function to allow for partial connections
-        let (_, sink) = self.connection_for(&path).await;
+        let sink = self.get_sink_for(&path).await;
 
         let config = self.config.config_for(&path);
 
@@ -1131,7 +1138,7 @@ impl DownlinkTask {
         path: AbsolutePath,
         envelope: Envelope,
     ) -> RequestResult<()> {
-        let (_, sink) = self.connection_for(&path).await;
+        let sink = self.get_sink_for(&path).await;
 
         sink.sender
             .send(TaggedEnvelope(RoutingAddr::local(0), envelope))
@@ -1142,11 +1149,12 @@ impl DownlinkTask {
     }
 }
 
-fn map_router_events(event: RouterEvent) -> Result<Message<Value>, RoutingError> {
-    match event {
-        RouterEvent::Message(l) => Ok(envelopes::value::from_envelope(l)),
-        RouterEvent::ConnectionClosed => Err(RoutingError::ConnectionError),
-        RouterEvent::Unreachable(_) => Err(RoutingError::HostUnreachable),
-        RouterEvent::Stopping => Err(RoutingError::RouterDropped),
-    }
-}
+//Todo dm refactor
+// fn map_router_events(event: RouterEvent) -> Result<Message<Value>, RoutingError> {
+//     match event {
+//         RouterEvent::Message(l) => Ok(envelopes::value::from_envelope(l)),
+//         RouterEvent::ConnectionClosed => Err(RoutingError::ConnectionError),
+//         RouterEvent::Unreachable(_) => Err(RoutingError::HostUnreachable),
+//         RouterEvent::Stopping => Err(RoutingError::RouterDropped),
+//     }
+// }
