@@ -63,27 +63,28 @@ impl SwimClientBuilder {
         SwimClientBuilder { config }
     }
 
-    /// Create a new client builder with configuration from a file.
-    ///
-    /// # Arguments
-    /// * `config_file` - Configuration file for the client.
-    /// * `use_defaults` - Whether or not missing values should be replaced with default ones.
-    pub fn new_from_file(
-        mut config_file: File,
-        use_defaults: bool,
-    ) -> Result<Self, ConfigParseError> {
-        let mut contents = String::new();
-        config_file
-            .read_to_string(&mut contents)
-            .map_err(ConfigParseError::FileError)?;
-
-        let config = ConfigHierarchy::try_from_value(
-            parse_single(&contents).map_err(ConfigParseError::ReconError)?,
-            use_defaults,
-        )?;
-
-        Ok(SwimClientBuilder { config })
-    }
+    //Todo dm this needs to be changed after the new client configuration is finalised.
+    // /// Create a new client builder with configuration from a file.
+    // ///
+    // /// # Arguments
+    // /// * `config_file` - Configuration file for the client.
+    // /// * `use_defaults` - Whether or not missing values should be replaced with default ones.
+    // pub fn new_from_file(
+    //     mut config_file: File,
+    //     use_defaults: bool,
+    // ) -> Result<Self, ConfigParseError> {
+    //     let mut contents = String::new();
+    //     config_file
+    //         .read_to_string(&mut contents)
+    //         .map_err(ConfigParseError::FileError)?;
+    //
+    //     let config = ConfigHierarchy::try_from_value(
+    //         parse_single(&contents).map_err(ConfigParseError::ReconError)?,
+    //         use_defaults,
+    //     )?;
+    //
+    //     Ok(SwimClientBuilder { config })
+    // }
 
     /// Build the Swim client.
     pub async fn build(self) -> SwimClient {

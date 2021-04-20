@@ -30,8 +30,9 @@ use crate::downlink::{
     DownlinkError, Message, SchemaViolations,
 };
 use crate::router::run_client_router;
-use crate::router::{create_remote_conns, ClientRequest, ClientRouterFactory};
+use crate::router::{ClientRequest, ClientRouterFactory};
 use either::Either;
+use futures::future::BoxFuture;
 use futures::join;
 use futures::stream::Fuse;
 use futures::{SinkExt, Stream};
@@ -47,10 +48,14 @@ use swim_common::model::schema::StandardSchema;
 use swim_common::model::Value;
 use swim_common::request::Request;
 use swim_common::routing::error::{ResolutionError, RouterError, RoutingError};
+use swim_common::routing::remote::config::ConnectionConfig;
+use swim_common::routing::remote::net::dns::Resolver;
+use swim_common::routing::remote::net::plain::TokioPlainTextNetworking;
 use swim_common::routing::remote::{
     RawRoute, RemoteConnectionChannels, RemoteConnectionsTask, RoutingRequest,
 };
-use swim_common::routing::{RoutingAddr, TaggedEnvelope};
+use swim_common::routing::ws::tungstenite::TungsteniteWsConnections;
+use swim_common::routing::{ConnectionDropped, RoutingAddr, TaggedEnvelope};
 use swim_common::sink::item;
 use swim_common::sink::item::either::SplitSink;
 use swim_common::sink::item::ItemSender;
@@ -61,7 +66,9 @@ use swim_warp::backpressure;
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::ReceiverStream;
+use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use tracing::{error, info, instrument, trace_span};
+use utilities::future::open_ended::OpenEndedFutures;
 use utilities::future::{SwimFutureExt, TransformOnce, TransformedFuture};
 use utilities::sync::promise::PromiseError;
 use utilities::sync::{circular_buffer, promise, trigger};
@@ -102,8 +109,11 @@ impl Downlinks {
     {
         info!("Initialising downlink manager");
 
+        let conn_config = config.client_params().connections_params;
+        let websocket_config = config.client_params().websocket_params;
+
         let (request_rx, remote_tx, stop_trigger_tx, remote_connections) =
-            create_remote_conns().await;
+            create_remote_connections_task(conn_config, websocket_config).await;
 
         let client_params = config.client_params();
 
@@ -345,6 +355,44 @@ impl Downlinks {
     }
 }
 
+pub(crate) async fn create_remote_connections_task(
+    conn_config: ConnectionConfig,
+    websocket_config: WebSocketConfig,
+) -> (
+    mpsc::Receiver<ClientRequest>,
+    mpsc::Sender<RoutingRequest>,
+    trigger::Sender,
+    RemoteConnectionsTask<
+        TokioPlainTextNetworking,
+        TungsteniteWsConnections,
+        ClientRouterFactory,
+        OpenEndedFutures<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>>,
+    >,
+) {
+    let (remote_tx, remote_rx) = mpsc::channel(conn_config.router_buffer_size.get());
+    let (request_tx, request_rx) = mpsc::channel(conn_config.router_buffer_size.get());
+    let top_level_router_fac = ClientRouterFactory::new(request_tx);
+
+    let (stop_trigger_tx, stop_trigger_rx) = trigger::trigger();
+
+    (
+        request_rx,
+        remote_tx.clone(),
+        stop_trigger_tx,
+        RemoteConnectionsTask::new_client_task(
+            conn_config,
+            TokioPlainTextNetworking::new(Arc::new(Resolver::new().await)),
+            TungsteniteWsConnections {
+                config: websocket_config,
+            },
+            top_level_router_fac,
+            OpenEndedFutures::new(),
+            RemoteConnectionChannels::new(remote_tx, remote_rx, stop_trigger_rx),
+        )
+        .await,
+    )
+}
+
 pub type RequestResult<T> = Result<T, SubscriptionError>;
 
 pub enum DownlinkSpecifier {
@@ -481,7 +529,6 @@ impl DownlinkTask {
         }
     }
 
-    //Todo dm unwraps
     async fn get_sink_for(&mut self, path: &AbsolutePath) -> RawRoute {
         let (tx, rx) = oneshot::channel();
         self.remote_tx
@@ -1148,13 +1195,3 @@ impl DownlinkTask {
         Ok(())
     }
 }
-
-//Todo dm refactor
-// fn map_router_events(event: RouterEvent) -> Result<Message<Value>, RoutingError> {
-//     match event {
-//         RouterEvent::Message(l) => Ok(envelopes::value::from_envelope(l)),
-//         RouterEvent::ConnectionClosed => Err(RoutingError::ConnectionError),
-//         RouterEvent::Unreachable(_) => Err(RoutingError::HostUnreachable),
-//         RouterEvent::Stopping => Err(RoutingError::RouterDropped),
-//     }
-// }
