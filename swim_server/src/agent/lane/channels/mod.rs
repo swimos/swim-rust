@@ -64,6 +64,8 @@ pub struct AgentExecutionConfig {
     pub map_lane_backpressure: Option<KeyedBackpressureConfig>,
     /// Node logging configuration.
     pub node_log: LogConfig,
+    /// Maximum number of fatal store errors before the task running a lane will stop.
+    pub max_store_errors: usize,
 }
 
 const DEFAULT_YIELD_COUNT: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(2048) };
@@ -97,6 +99,7 @@ impl AgentExecutionConfig {
             }),
             map_lane_backpressure: backpressure,
             node_log: LogConfig::default(),
+            max_store_errors: error_threshold,
         }
     }
 }
@@ -123,6 +126,7 @@ impl Default for AgentExecutionConfig {
             value_lane_backpressure: None,
             map_lane_backpressure: None,
             node_log: LogConfig::default(),
+            max_store_errors: 0,
         }
     }
 }

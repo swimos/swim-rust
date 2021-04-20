@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::engines::{KeyedSnapshot, RangedSnapshotLoad, StoreOpts};
-use crate::{ByteEngine, FromOpts, Store, StoreError};
+use crate::{ByteEngine, FromOpts, Store, StoreError, StoreInfo};
 use std::borrow::Borrow;
 use std::path::{Path, PathBuf};
 
@@ -27,6 +27,13 @@ pub struct NoStore {
 impl Store for NoStore {
     fn path(&self) -> &Path {
         self.path.borrow()
+    }
+
+    fn store_info(&self) -> StoreInfo {
+        StoreInfo {
+            path: self.path.to_string_lossy().to_string(),
+            kind: "NoStore".to_string(),
+        }
     }
 }
 

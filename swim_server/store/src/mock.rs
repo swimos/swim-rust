@@ -19,7 +19,8 @@ use crate::stores::node::NodeStore;
 use crate::stores::plane::{PlaneStore, SwimPlaneStore};
 use crate::stores::{LaneKey, StoreKey};
 use crate::{
-    ByteEngine, FromOpts, RangedSnapshotLoad, Store, StoreError, SwimNodeStore, SwimStore,
+    ByteEngine, FromOpts, RangedSnapshotLoad, Store, StoreError, StoreInfo, SwimNodeStore,
+    SwimStore,
 };
 use serde::Serialize;
 use std::path::Path;
@@ -34,6 +35,13 @@ pub struct MockServerStore {
 impl Store for MockServerStore {
     fn path(&self) -> &Path {
         self.dir.path()
+    }
+
+    fn store_info(&self) -> StoreInfo {
+        StoreInfo {
+            path: "mock".to_string(),
+            kind: "mock".to_string(),
+        }
     }
 }
 
@@ -144,6 +152,13 @@ impl NodeStore for MockNodeStore {
     fn delete(&self, _key: LaneKey) -> Result<(), StoreError> {
         Ok(())
     }
+
+    fn store_info(&self) -> StoreInfo {
+        StoreInfo {
+            path: "Mock".to_string(),
+            kind: "Mock".to_string(),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -179,5 +194,9 @@ impl PlaneStore for MockPlaneStore {
 
     fn delete(&self, _key: StoreKey) -> Result<(), StoreError> {
         Ok(())
+    }
+
+    fn store_info(&self) -> StoreInfo {
+        todo!()
     }
 }

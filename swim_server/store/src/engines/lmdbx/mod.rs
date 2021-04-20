@@ -16,7 +16,7 @@
 mod tests;
 
 use crate::engines::{KeyedSnapshot, RangedSnapshotLoad, StoreOpts};
-use crate::{ByteEngine, FromOpts, Store, StoreError};
+use crate::{ByteEngine, FromOpts, Store, StoreError, StoreInfo};
 use heed::types::ByteSlice;
 use heed::{Database, Env, EnvOpenOptions, Error};
 use std::fmt::{Debug, Formatter};
@@ -28,9 +28,9 @@ impl From<heed::Error> for StoreError {
         match e {
             Error::Io(e) => StoreError::Io(e),
             Error::Mdb(e) => StoreError::Delegate(Box::new(e)),
-            e @ Error::Encoding => StoreError::Encoding(e.to_string()),
-            e @ Error::Decoding => StoreError::Encoding(e.to_string()),
-            e @ Error::InvalidDatabaseTyping => StoreError::Delegate(Box::new(e)),
+            Error::Encoding(e) => StoreError::Encoding(e.to_string()),
+            Error::Decoding(e) => StoreError::Encoding(e.to_string()),
+            e @ Error::InvalidDatabaseTyping => StoreError::DelegateMessage(e.to_string()),
             Error::DatabaseClosing => StoreError::Closing,
         }
     }
@@ -91,6 +91,13 @@ impl LmdbxDatabase {
 impl Store for LmdbxDatabase {
     fn path(&self) -> &Path {
         self.path.as_path()
+    }
+
+    fn store_info(&self) -> StoreInfo {
+        StoreInfo {
+            path: self.path.to_string_lossy().to_string(),
+            kind: "Libmdbx".to_string(),
+        }
     }
 }
 

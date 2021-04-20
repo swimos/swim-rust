@@ -18,7 +18,7 @@ use crate::agent::lane::channels::update::UpdateError;
 use crate::agent::lane::channels::uplink::spawn::UplinkErrorReport;
 use crate::agent::lane::channels::uplink::UplinkError;
 use crate::agent::lane::channels::AgentExecutionConfig;
-use crate::agent::{AttachError, Eff, LaneIo};
+use crate::agent::{AttachError, Eff, RoutingIo};
 use crate::routing::error::RouterError;
 use crate::routing::{
     ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedClientEnvelope, TaggedEnvelope,
@@ -184,7 +184,7 @@ impl MockExecutionContext {
 
 pub const POISON_PILL: &str = "FAIL";
 
-impl LaneIo<MockExecutionContext> for MockLane {
+impl RoutingIo<MockExecutionContext> for MockLane {
     fn attach(
         self,
         route: RelativePath,

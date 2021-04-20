@@ -119,27 +119,29 @@ pub fn derive_swim_agent(input: DeriveInput) -> Result<TokenStream, TokenStream>
         use std::collections::HashMap;
         use std::boxed::Box;
 
-        use swim_server::agent::{LaneTasks, SwimAgent, AgentContext, LaneIo};
+        use swim_server::agent::{LaneTasks, SwimAgent, AgentContext, LaneIo, StoreIo, RoutingIo};
         use swim_server::agent::lane::channels::AgentExecutionConfig;
         use swim_server::agent::context::AgentExecutionContext;
         use swim_server::agent::lane::lifecycle::LaneLifecycle;
+        use swim_server::agent::model::value::value_store2::ValueLaneStoreIo;
+        use swim_server::agent::lane::store::LaneNoStore;
 
         #[automatically_derived]
         impl SwimAgent<#config_type> for #agent_name {
             fn instantiate<Context, Store>(
                 configuration: &#config_type,
                 exec_conf: &AgentExecutionConfig,
-                store:&Store
+                store: &Store
             ) -> (
                 Self,
                 Vec<Box<dyn LaneTasks<Self, Context>>>,
-                HashMap<String, Box<dyn LaneIo<Context>>>,
+                HashMap<String, LaneIo<Box<dyn RoutingIo<Context>>, Box<dyn StoreIo<Store>>>>
             )
             where
                 Context: AgentContext<Self> + AgentExecutionContext + Send + Sync + 'static,
                 Store: swim_server::store::NodeStore,
             {
-                let mut io_map: HashMap<String, Box<dyn LaneIo<Context>>> = HashMap::new();
+                let mut io_map: HashMap<String, LaneIo<Box<dyn RoutingIo<Context>>, Box<dyn StoreIo<Store>>>> = HashMap::new();
 
                 #(#lifecycles_ast)*
 
@@ -259,7 +261,7 @@ fn create_lane(
 
                     io_map.insert (
                         #lane_name_lit.to_string(),
-                        Box::new(swim_server::agent::CommandLaneIo::new(#lane_name.clone()))
+                        LaneIo::new(Some(Box::new(swim_server::agent::CommandLaneIo::new(#lane_name.clone()))), Box::new(LaneNoStore))
                     );
                 },
                 model,
@@ -275,7 +277,7 @@ fn create_lane(
 
                     io_map.insert (
                         #lane_name_lit.to_string(),
-                        Box::new(swim_server::agent::ActionLaneIo::new(#lane_name.clone()))
+                        LaneIo::new(Some(Box::new(swim_server::agent::ActionLaneIo::new(#lane_name.clone()))), Box::new(LaneNoStore))
                     );
                 },
                 model,
@@ -285,7 +287,7 @@ fn create_lane(
             let model = quote! {
                 let (#lane_name, observer) = swim_server::agent::lane::model::value::ValueLane::observable(Default::default(), exec_conf.observation_buffer);
                 let subscriber = observer.subscriber();
-                let event_stream = observer.into_stream();
+                let event_stream = observer.clone().into_stream();
             };
 
             build_lane_io(
@@ -295,7 +297,10 @@ fn create_lane(
 
                     io_map.insert (
                         #lane_name_lit.to_string(),
-                        Box::new(swim_server::agent::ValueLaneIo::new(#lane_name.clone(), subscriber))
+                        LaneIo::new(
+                            Some(Box::new(swim_server::agent::ValueLaneIo::new(#lane_name.clone(), subscriber))),
+                            Box::new(ValueLaneStoreIo::new(#lane_name.clone(), observer.into_stream()))
+                        )
                     );
                 },
                 model,
@@ -312,7 +317,8 @@ fn create_lane(
                     #model
 
                     io_map.insert (
-                        #lane_name_lit.to_string(), Box::new(swim_server::agent::MapLaneIo::new(#lane_name.clone(), subscriber))
+                        #lane_name_lit.to_string(),
+                        LaneIo::new(Some(Box::new(swim_server::agent::MapLaneIo::new(#lane_name.clone(), subscriber))), Box::new(LaneNoStore))
                     );
                 },
                 model,
@@ -428,7 +434,7 @@ fn build_demand_lane_io(lane_data: LaneData) -> proc_macro2::TokenStream {
         };
 
         io_map.insert (
-            #lane_name_lit.to_string(), Box::new(swim_server::agent::DemandLaneIo::new(response_rx))
+            #lane_name_lit.to_string(), LaneIo::new(Some(Box::new(swim_server::agent::DemandLaneIo::new(response_rx))), Box::new(LaneNoStore))
         );
     }
 }
@@ -461,7 +467,7 @@ fn build_demand_map_lane_io(lane_data: LaneData) -> proc_macro2::TokenStream {
 
         if #is_public {
             io_map.insert (
-                #lane_name_lit.to_string(), Box::new(swim_server::agent::DemandMapLaneIo::new(#lane_name.clone(), topic))
+                #lane_name_lit.to_string(), LaneIo::new(Some(Box::new(swim_server::agent::DemandMapLaneIo::new(#lane_name.clone(), topic))), Box::new(LaneNoStore))
             );
         }
     }

@@ -17,12 +17,12 @@ use std::fmt::{Debug, Formatter};
 use std::io::ErrorKind;
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
-use std::{fs, io};
+use std::{error::Error as StdError, fs, io};
 
 use tempdir::TempDir;
 
 use crate::engines::{ByteEngine, FromOpts, RangedSnapshotLoad};
-pub use engines::{LmdbxDatabase, RocksDatabase};
+pub use engines::{LmdbOpts, LmdbxDatabase, RocksDatabase, RocksOpts};
 pub use stores::lane::value::ValueDataModel;
 pub use stores::node::{NodeStore, SwimNodeStore};
 pub use stores::plane::{PlaneStore, SwimPlaneStore};
@@ -97,9 +97,41 @@ pub enum StoreError {
     /// An error produced when attempting to decode a value.
     Decoding(String),
     /// A raw error produced by the delegate byte engine.
-    Delegate(Box<dyn Error>),
+    Delegate(Box<dyn Error + Send + Sync>),
+    /// A raw error produced by the delegate byte engine that isnt send or sync
+    DelegateMessage(String),
     /// An operation was attempted on the byte engine when it was closing.
     Closing,
+}
+
+impl StoreError {
+    pub fn downcast_ref<E: StdError + 'static>(&self) -> Option<&E> {
+        match self {
+            StoreError::Delegate(d) => {
+                if let Some(ref downcasted) = d.downcast_ref() {
+                    return Some(downcasted);
+                }
+                None
+            }
+            _ => None,
+        }
+    }
+}
+
+impl PartialEq for StoreError {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (StoreError::KeyNotFound, StoreError::KeyNotFound) => true,
+            (StoreError::Snapshot(l), StoreError::Snapshot(r)) => l.eq(r),
+            (StoreError::InitialisationFailure(l), StoreError::InitialisationFailure(r)) => l.eq(r),
+            (StoreError::Io(l), StoreError::Io(r)) => l.kind().eq(&r.kind()),
+            (StoreError::Encoding(l), StoreError::Encoding(r)) => l.eq(r),
+            (StoreError::Decoding(l), StoreError::Decoding(r)) => l.eq(r),
+            (StoreError::Delegate(l), StoreError::Delegate(r)) => l.to_string().eq(&r.to_string()),
+            (StoreError::Closing, StoreError::Closing) => true,
+            _ => false,
+        }
+    }
 }
 
 /// A Swim server store.
@@ -110,6 +142,9 @@ pub trait Store:
 {
     /// Returns a reference to the path that the delegate byte engine is operating from.
     fn path(&self) -> &Path;
+
+    /// Returns information about the delegate store
+    fn store_info(&self) -> StoreInfo;
 }
 
 /// A Swim server store which will create plane stores on demand.
@@ -201,6 +236,12 @@ impl<D: Store> SwimStore for ServerStore<D> {
 
         SwimPlaneStore::open(dir.path(), &plane_name, opts)
     }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct StoreInfo {
+    pub path: String,
+    pub kind: String,
 }
 
 #[cfg(test)]

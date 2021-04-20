@@ -48,6 +48,8 @@ lazy_static = "1.4.0"
 percent-encoding = "2.1.0"
 thiserror = "1.0"
 crossbeam-queue = "0.3"
+serde = "1.0.124"
+tempdir = "0.3.7"
 
 [dependencies.store]
 version = "0.1.0"

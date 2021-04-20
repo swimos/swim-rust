@@ -16,7 +16,7 @@
 mod tests;
 
 use crate::engines::{KeyedSnapshot, RangedSnapshotLoad, StoreOpts};
-use crate::{ByteEngine, FromOpts, Store, StoreError};
+use crate::{ByteEngine, FromOpts, Store, StoreError, StoreInfo};
 use rocksdb::{Error, Options, DB};
 use std::path::Path;
 use std::sync::Arc;
@@ -68,6 +68,13 @@ impl ByteEngine for RocksDatabase {
 impl Store for RocksDatabase {
     fn path(&self) -> &Path {
         &self.delegate.path()
+    }
+
+    fn store_info(&self) -> StoreInfo {
+        StoreInfo {
+            path: self.path().to_string_lossy().to_string(),
+            kind: "RocksDB".to_string(),
+        }
     }
 }
 

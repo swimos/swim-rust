@@ -16,7 +16,7 @@ use crate::engines::KeyedSnapshot;
 use crate::stores::lane::serialize;
 use crate::stores::node::{NodeStore, SwimNodeStore};
 use crate::stores::StoreKey;
-use crate::{Store, StoreError};
+use crate::{Store, StoreError, StoreInfo};
 use std::ffi::OsStr;
 use std::fmt::{Debug, Formatter};
 use std::path::{Path, PathBuf};
@@ -73,6 +73,9 @@ where
 
     /// Delete the key-value pair associated with `key`.
     fn delete(&self, key: StoreKey) -> Result<(), StoreError>;
+
+    /// Returns information about the delegate store
+    fn store_info(&self) -> StoreInfo;
 }
 
 /// A store engine for planes.
@@ -138,6 +141,10 @@ where
 
     fn delete(&self, key: StoreKey) -> Result<(), StoreError> {
         self.delegate.delete(serialize(&key)?.as_slice())
+    }
+
+    fn store_info(&self) -> StoreInfo {
+        self.delegate.store_info()
     }
 }
 

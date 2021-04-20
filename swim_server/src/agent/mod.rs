@@ -75,12 +75,18 @@ use utilities::future::SwimStreamExt;
 use utilities::sync::{topic, trigger};
 use utilities::uri::RelativeUri;
 
+use crate::agent::lane::store::task::{LaneStoreErrors, LaneStoreTask};
+use crate::agent::lane::store::LaneNoStore;
+pub use crate::agent::lane::store::StoreIo;
+use crate::agent::model::value::value_store2::ValueLaneStoreIo;
 use crate::meta::info::{LaneInfo, LaneKind};
 use crate::meta::log::NodeLogger;
 use crate::meta::open_meta_lanes;
 #[doc(hidden)]
 #[allow(unused_imports)]
 pub use agent_derive::*;
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 use store::NodeStore;
 use tokio_stream::wrappers::ReceiverStream;
 
@@ -95,7 +101,7 @@ pub trait SwimAgent<Config>: Any + Send + Sync + Sized {
     ) -> (
         Self,
         DynamicLaneTasks<Self, Context>,
-        DynamicAgentIo<Context>,
+        DynamicAgentIo<Context, Store>,
     )
     where
         Context: AgentContext<Self> + AgentExecutionContext + Send + Sync + 'static,
@@ -103,7 +109,8 @@ pub trait SwimAgent<Config>: Any + Send + Sync + Sized {
 }
 
 pub type DynamicLaneTasks<Agent, Context> = Vec<Box<dyn LaneTasks<Agent, Context>>>;
-pub type DynamicAgentIo<Context> = HashMap<String, Box<dyn LaneIo<Context>>>;
+pub type DynamicAgentIo<Context, Store> =
+    HashMap<String, LaneIo<Box<dyn RoutingIo<Context>>, Box<dyn StoreIo<Store>>>>;
 
 pub const COMMANDED: &str = "Command received";
 pub const ON_COMMAND: &str = "On command handler";
@@ -115,29 +122,56 @@ const AGENT_START: &str = "Agent start";
 const LANE_START: &str = "Lane start";
 const SCHEDULER_TASK: &str = "Agent scheduler";
 const ROOT_DISPATCHER_TASK: &str = "Agent envelope dispatcher.";
+const STORE_TASK: &str = "Lane store task.";
 const LANE_EVENTS: &str = "Lane events";
+
+type TaskIoResult<Err> = Result<Result<Err, Err>, oneshot::error::RecvError>;
+type DispatchTaskResult = TaskIoResult<DispatcherErrors>;
+type StoreTaskResult = TaskIoResult<LaneStoreErrors>;
+
+#[derive(Debug, Default)]
+pub struct AgentTaskResult<Err: Debug + Default> {
+    pub errors: Err,
+    pub failed: bool,
+}
 
 #[derive(Debug)]
 pub struct AgentResult {
     pub route: RelativeUri,
-    pub dispatcher_errors: DispatcherErrors,
-    pub failed: bool,
+    pub dispatcher_task: AgentTaskResult<DispatcherErrors>,
+    pub store_task: AgentTaskResult<LaneStoreErrors>,
 }
 
 impl AgentResult {
+    fn result_for<E: Default + Debug>(result: TaskIoResult<E>) -> AgentTaskResult<E> {
+        match result {
+            Ok(Ok(errs)) => AgentTaskResult {
+                errors: errs,
+                failed: false,
+            },
+            Ok(Err(errs)) => AgentTaskResult {
+                errors: errs,
+                failed: true,
+            },
+            _ => AgentTaskResult {
+                errors: E::default(),
+                failed: true,
+            },
+        }
+    }
+
     fn from(
         route: RelativeUri,
-        result: Result<Result<DispatcherErrors, DispatcherErrors>, oneshot::error::RecvError>,
+        dispatcher_result: DispatchTaskResult,
+        store_result: StoreTaskResult,
     ) -> Self {
-        let (errs, failed) = match result {
-            Ok(Ok(errs)) => (errs, false),
-            Ok(Err(errs)) => (errs, true),
-            _ => (Default::default(), true),
-        };
+        let dispatcher_task = Self::result_for(dispatcher_result);
+        let store_task = Self::result_for(store_result);
+
         AgentResult {
             route,
-            dispatcher_errors: errs,
-            failed,
+            dispatcher_task,
+            store_task,
         }
     }
 }
@@ -243,7 +277,7 @@ where
             routing_context,
             schedule_context,
             meta_context,
-            store,
+            store.clone(),
         );
 
         lifecycle
@@ -260,7 +294,7 @@ where
         }
 
         let scheduler_task = ReceiverStream::new(rx)
-            .take_until(stop_trigger)
+            .take_until(stop_trigger.clone())
             .for_each_concurrent(None, |eff| eff)
             .boxed()
             .instrument(span!(Level::TRACE, SCHEDULER_TASK));
@@ -275,23 +309,46 @@ where
             );
         }
 
-        let mut io_providers = io_providers
-            .into_iter()
-            .map(|(k, v)| (LaneIdentifier::agent(k), v))
-            .collect::<HashMap<_, _>>();
+        let (mut routing_io, persistence_io) = io_providers.into_iter().fold(
+            (HashMap::new(), HashMap::new()),
+            |(mut routing_io, mut persistence_io), (lane_uri, lane_io)| {
+                let LaneIo {
+                    routing,
+                    persistence,
+                } = lane_io;
 
-        io_providers.extend(meta_io);
+                if let Some(routing) = routing {
+                    let ident = LaneIdentifier::agent(lane_uri.clone());
+                    routing_io.insert(ident, routing);
+                }
+                persistence_io.insert(lane_uri, persistence);
+                (routing_io, persistence_io)
+            },
+        );
+
+        routing_io.extend(meta_io);
+
+        let (store_result_tx, store_result_rx) = oneshot::channel();
+        let max_store_errors = execution_config.max_store_errors;
+        let store_task = async move {
+            let task = LaneStoreTask::new(stop_trigger.clone(), store);
+            let result = task.run(persistence_io, max_store_errors).await;
+            let _ = store_result_tx.send(result);
+        }
+        .boxed()
+        .instrument(span!(Level::INFO, STORE_TASK));
+        task_manager.push(store_task);
 
         let dispatcher =
-            AgentDispatcher::new(uri.clone(), execution_config, context.clone(), io_providers);
+            AgentDispatcher::new(uri.clone(), execution_config, context.clone(), routing_io);
 
-        let (result_tx, result_rx) = oneshot::channel();
+        let (dispatch_result_tx, dispatch_result_rx) = oneshot::channel();
 
         let dispatch_task = async move {
             let tripwire = tripwire;
             let result = dispatcher.run(incoming_envelopes).await;
             tripwire.trigger();
-            let _ = result_tx.send(result);
+            let _ = dispatch_result_tx.send(result);
         }
         .boxed()
         .instrument(span!(Level::INFO, ROOT_DISPATCHER_TASK));
@@ -305,7 +362,7 @@ where
             .map(|_| ()) //Never is an empty type so we can discard the errors.
             .await;
 
-        AgentResult::from(uri, result_rx.await)
+        AgentResult::from(uri, dispatch_result_rx.await, store_result_rx.await)
     }
     .instrument(span);
     (agent_cpy, task)
@@ -475,7 +532,7 @@ impl Display for AttachError {
 impl Error for AttachError {}
 
 /// Lazily initialized envelope IO for a lane.
-pub trait LaneIo<Context: AgentExecutionContext + Sized + Send + Sync + 'static>:
+pub trait RoutingIo<Context: AgentExecutionContext + Sized + Send + Sync + 'static>:
     Send + Sync
 {
     /// Attempt to attach the running lane to a stream of envelopes.
@@ -495,7 +552,7 @@ pub trait LaneIo<Context: AgentExecutionContext + Sized + Send + Sync + 'static>
         context: Context,
     ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError>;
 
-    fn boxed(self) -> Box<dyn LaneIo<Context>>
+    fn boxed(self) -> Box<dyn RoutingIo<Context>>
     where
         Self: Sized + 'static,
     {
@@ -518,7 +575,7 @@ where
     }
 }
 
-impl<T, Context, D> LaneIo<Context> for ValueLaneIo<T, D>
+impl<T, Context, D> RoutingIo<Context> for ValueLaneIo<T, D>
 where
     T: Any + Send + Sync + Form + Debug,
     D: DeferredSubscription<Arc<T>>,
@@ -575,7 +632,7 @@ where
     }
 }
 
-impl<K, V, Context, D> LaneIo<Context> for MapLaneIo<K, V, D>
+impl<K, V, Context, D> RoutingIo<Context> for MapLaneIo<K, V, D>
 where
     K: Any + Send + Sync + Form + Clone + Debug,
     V: Any + Send + Sync + Form + Debug,
@@ -635,7 +692,7 @@ where
     }
 }
 
-impl<Command, Response, Context> LaneIo<Context> for ActionLaneIo<Command, Response>
+impl<Command, Response, Context> RoutingIo<Context> for ActionLaneIo<Command, Response>
 where
     Command: Send + Sync + Form + Debug + 'static,
     Response: Send + Sync + Form + Debug + 'static,
@@ -684,7 +741,7 @@ where
     }
 }
 
-impl<T, Context> LaneIo<Context> for CommandLaneIo<T>
+impl<T, Context> RoutingIo<Context> for CommandLaneIo<T>
 where
     T: Send + Sync + Form + Debug + 'static,
     Context: AgentExecutionContext + Sized + Send + Sync + 'static,
@@ -807,6 +864,26 @@ where
     }
 }
 
+pub struct LaneIo<Routing, Store> {
+    routing: Option<Routing>,
+    persistence: Store,
+}
+
+impl<Routing, Store> LaneIo<Routing, Store> {
+    pub fn new(routing: Option<Routing>, persistence: Store) -> Self {
+        LaneIo {
+            routing,
+            persistence,
+        }
+    }
+}
+
+pub trait StatefulParam: Any + Send + Sync + Form + Default + Serialize + DeserializeOwned {}
+impl<T> StatefulParam for T where
+    T: Any + Send + Sync + Form + Default + Serialize + DeserializeOwned
+{
+}
+
 /// Create a value lane instance along with its life-cycle.
 ///
 /// #Arguments
@@ -817,23 +894,26 @@ where
 /// * `init` - The initial value of the lane.
 /// * `lifecycle` - Life-cycle event handler for the lane.
 /// * `projection` - A projection from the agent type to this lane.
-pub fn make_value_lane<Agent, Context, T, L>(
-    name: impl Into<String>,
+pub fn make_value_lane<Agent, Context, T, L, Store, P>(
+    name: String,
     is_public: bool,
     config: &AgentExecutionConfig,
     init: T,
     lifecycle: L,
-    projection: impl Fn(&Agent) -> &ValueLane<T> + Send + Sync + 'static,
+    projection: P,
+    transient: bool,
 ) -> (
     ValueLane<T>,
     impl LaneTasks<Agent, Context>,
-    Option<impl LaneIo<Context>>,
+    LaneIo<impl RoutingIo<Context>, Box<dyn StoreIo<Store>>>,
 )
 where
     Agent: 'static,
     Context: AgentContext<Agent> + AgentExecutionContext + Send + Sync + 'static,
-    T: Any + Send + Sync + Form + Debug + Default,
+    T: StatefulParam + Debug,
     L: for<'l> StatefulLaneLifecycle<'l, ValueLane<T>, Agent>,
+    Store: NodeStore,
+    P: Fn(&Agent) -> &ValueLane<T> + Send + Sync + 'static,
 {
     let (lane, observer) = ValueLane::observable(init, config.observation_buffer);
 
@@ -846,11 +926,22 @@ where
     let tasks = ValueLifecycleTasks(LifecycleTasks {
         name: name.into(),
         lifecycle,
-        event_stream: observer.into_stream(),
+        event_stream: observer.clone().into_stream(),
         projection,
     });
 
-    (lane, tasks, lane_io)
+    let store_io: Box<dyn StoreIo<Store>> = if transient {
+        Box::new(LaneNoStore)
+    } else {
+        Box::new(ValueLaneStoreIo::new(lane.clone(), observer.into_stream()))
+    };
+
+    let io = LaneIo {
+        routing: lane_io,
+        persistence: store_io,
+    };
+
+    (lane, tasks, io)
 }
 
 impl<L, S, P> Lane for MapLifecycleTasks<L, S, P> {
@@ -923,7 +1014,7 @@ pub fn make_map_lane<Agent, Context, K, V, L>(
 ) -> (
     MapLane<K, V>,
     impl LaneTasks<Agent, Context>,
-    Option<impl LaneIo<Context>>,
+    Option<impl RoutingIo<Context>>,
 )
 where
     Agent: 'static,
@@ -1076,7 +1167,7 @@ pub fn make_action_lane<Agent, Context, Command, Response, L, S, P>(
 ) -> (
     ActionLane<Command, Response>,
     impl LaneTasks<Agent, Context>,
-    Option<impl LaneIo<Context>>,
+    Option<impl RoutingIo<Context>>,
 )
 where
     Agent: 'static,
@@ -1122,7 +1213,7 @@ pub fn make_command_lane<Agent, Context, T, L>(
 ) -> (
     CommandLane<T>,
     impl LaneTasks<Agent, Context>,
-    Option<impl LaneIo<Context>>,
+    Option<impl RoutingIo<Context>>,
 )
 where
     Agent: 'static,
@@ -1162,7 +1253,7 @@ pub fn make_supply_lane<Agent, Context, T>(
 ) -> (
     SupplyLane<T>,
     impl LaneTasks<Agent, Context>,
-    Option<impl LaneIo<Context>>,
+    Option<impl RoutingIo<Context>>,
 )
 where
     Agent: 'static,
@@ -1195,7 +1286,7 @@ impl<S> SupplyLaneIo<S> {
     }
 }
 
-impl<S, Item, Context> LaneIo<Context> for SupplyLaneIo<S>
+impl<S, Item, Context> RoutingIo<Context> for SupplyLaneIo<S>
 where
     S: Stream<Item = Item> + Send + Sync + 'static,
     Item: Send + Sync + Form + Debug + 'static,
@@ -1247,7 +1338,7 @@ pub fn make_demand_lane<Agent, Context, Event, L>(
 ) -> (
     DemandLane<Event>,
     impl LaneTasks<Agent, Context>,
-    impl LaneIo<Context>,
+    impl RoutingIo<Context>,
 )
 where
     Agent: 'static,
@@ -1284,7 +1375,7 @@ where
     }
 }
 
-impl<Event, Context> LaneIo<Context> for DemandLaneIo<Event>
+impl<Event, Context> RoutingIo<Context> for DemandLaneIo<Event>
 where
     Event: Form + Send + Sync + 'static,
     Context: AgentExecutionContext + Sized + Send + Sync + 'static,
@@ -1386,7 +1477,7 @@ pub fn make_demand_map_lane<Agent, Context, Key, Value, L>(
 ) -> (
     DemandMapLane<Key, Value>,
     impl LaneTasks<Agent, Context>,
-    Option<impl LaneIo<Context>>,
+    Option<impl RoutingIo<Context>>,
 )
 where
     Agent: 'static,
@@ -1436,7 +1527,7 @@ where
     }
 }
 
-impl<Key, Value, Context> LaneIo<Context> for DemandMapLaneIo<Key, Value>
+impl<Key, Value, Context> RoutingIo<Context> for DemandMapLaneIo<Key, Value>
 where
     Key: Any + Send + Sync + Form + Clone + Debug,
     Value: Any + Send + Sync + Form + Clone + Debug,

@@ -16,7 +16,7 @@ use crate::engines::KeyedSnapshot;
 use crate::stores::lane::map::MapDataModel;
 use crate::stores::lane::value::ValueDataModel;
 use crate::stores::{LaneKey, MapStorageKey, StoreKey, ValueStorageKey};
-use crate::{PlaneStore, StoreError};
+use crate::{PlaneStore, StoreError, StoreInfo};
 use serde::Serialize;
 use std::borrow::Cow;
 use std::fmt::{Debug, Formatter};
@@ -70,6 +70,9 @@ pub trait NodeStore: Send + Sync + Clone + Debug + 'static {
 
     /// Delete a key-value pair by its lane key from the delegate store.
     fn delete(&self, key: LaneKey<'_>) -> Result<(), StoreError>;
+
+    /// Returns information about the delegate store
+    fn store_info(&self) -> StoreInfo;
 }
 
 /// A node store which is used to open value and map lane data models.
@@ -176,6 +179,10 @@ impl<D: PlaneStore> NodeStore for SwimNodeStore<D> {
         let key = map_key(key, node_uri);
 
         delegate.delete(key)
+    }
+
+    fn store_info(&self) -> StoreInfo {
+        self.delegate.store_info()
     }
 }
 

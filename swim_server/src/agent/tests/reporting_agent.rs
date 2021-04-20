@@ -26,7 +26,7 @@ use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 use crate::agent::lane::tests::ExactlyOnce;
 use crate::agent::lifecycle::AgentLifecycle;
 use crate::agent::tests::reporting_macro_agent::ReportingAgentEvent;
-use crate::agent::{AgentContext, LaneIo, LaneTasks, SwimAgent};
+use crate::agent::{AgentContext, LaneIo, LaneTasks, RoutingIo, StoreIo, SwimAgent};
 use futures::future::{ready, BoxFuture, Ready};
 use futures::FutureExt;
 use std::collections::HashMap;
@@ -351,7 +351,7 @@ impl SwimAgent<TestAgentConfig> for ReportingAgent {
     ) -> (
         Self,
         Vec<Box<dyn LaneTasks<Self, Context>>>,
-        HashMap<String, Box<dyn LaneIo<Context>>>,
+        HashMap<String, LaneIo<Box<dyn RoutingIo<Context>>, Box<dyn StoreIo<Store>>>>,
     )
     where
         Context: AgentContext<Self> + AgentExecutionContext + Send + Sync + 'static,
@@ -371,8 +371,8 @@ impl SwimAgent<TestAgentConfig> for ReportingAgent {
             |agent: &ReportingAgent| &agent.data,
         );
 
-        let (total, total_tasks, _) = agent::make_value_lane(
-            "total",
+        let (total, total_tasks, _io) = agent::make_value_lane::<_, _, _, _, Store, _>(
+            "total".to_string(),
             false,
             exec_conf,
             0,
@@ -380,6 +380,7 @@ impl SwimAgent<TestAgentConfig> for ReportingAgent {
                 inner: inner.clone(),
             },
             |agent: &ReportingAgent| &agent.total,
+            true,
         );
 
         let (action, action_tasks, _) = agent::make_command_lane(

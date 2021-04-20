@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+pub mod value_store2;
+
 use crate::agent::lane::LaneModel;
 use std::any::Any;
 use std::num::NonZeroUsize;

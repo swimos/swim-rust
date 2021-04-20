@@ -531,27 +531,25 @@ pub(crate) async fn run_plane<Clk, S, DelegateFac: ServerRouterFactory, Store>(
                 }
                 Either::Right(Some(AgentResult {
                     route,
-                    dispatcher_errors,
-                    failed,
+                    dispatcher_task,
+                    store_task,
                 })) => {
                     if let Some(LocalEndpoint { drop_tx, .. }) =
                         resolver.active_routes.remove_endpoint(&route)
                     {
-                        let _ = if failed {
+                        let _ = if dispatcher_task.failed {
                             drop_tx.provide(ConnectionDropped::AgentFailed)
                         } else {
                             drop_tx.provide(ConnectionDropped::Closed)
                         };
                     }
-                    if failed {
-                        event!(Level::ERROR, AGENT_TASK_FAILED, ?route, ?dispatcher_errors);
+                    if dispatcher_task.failed {
+                        event!(Level::ERROR, AGENT_TASK_FAILED, ?route, ?dispatcher_task);
                     } else {
-                        event!(
-                            Level::DEBUG,
-                            AGENT_TASK_COMPLETE,
-                            ?route,
-                            ?dispatcher_errors
-                        );
+                        event!(Level::DEBUG, AGENT_TASK_COMPLETE, ?route, ?dispatcher_task);
+                    }
+                    if store_task.failed {
+                        event!(Level::ERROR, AGENT_TASK_FAILED, ?route, ?store_task);
                     }
                 }
                 Either::Left(None) => {
