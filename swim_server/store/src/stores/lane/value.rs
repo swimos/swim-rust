@@ -65,7 +65,7 @@ impl<D: PlaneStore> ValueDataModel<D> {
         V: DeserializeOwned,
     {
         match self.delegate.get(self.key()) {
-            Ok(Some(bytes)) => deserialize(bytes.as_slice()),
+            Ok(Some(bytes)) => deserialize::<V>(bytes.as_slice()).map(Some),
             Ok(None) => Ok(None),
             Err(e) => Err(e),
         }

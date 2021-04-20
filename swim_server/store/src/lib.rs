@@ -22,10 +22,11 @@ use std::{error::Error as StdError, fs, io};
 use tempdir::TempDir;
 
 use crate::engines::{ByteEngine, FromOpts, RangedSnapshotLoad};
-pub use engines::{LmdbOpts, LmdbxDatabase, RocksDatabase, RocksOpts};
+pub use engines::{KeyedSnapshot, LmdbOpts, LmdbxDatabase, RocksDatabase, RocksOpts};
 pub use stores::lane::value::ValueDataModel;
 pub use stores::node::{NodeStore, SwimNodeStore};
 pub use stores::plane::{PlaneStore, SwimPlaneStore};
+pub use stores::StoreKey;
 
 pub mod mock;
 

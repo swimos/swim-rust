@@ -17,6 +17,8 @@ mod declarive_macro_agent;
 mod derive;
 mod reporting_agent;
 mod reporting_macro_agent;
+mod store_agent;
+
 pub(crate) mod test_clock;
 
 use crate::agent::lane::channels::AgentExecutionConfig;
