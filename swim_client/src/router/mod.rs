@@ -16,7 +16,7 @@ use std::collections::HashMap;
 use std::ops::Deref;
 
 use crate::configuration::router::RouterParams;
-use crate::connections::{ConnectionPool, ConnectionSender};
+use crate::connections::{ConnectionPool, ConnectionRequest, ConnectionSender};
 use either::Either;
 use futures::future::ready;
 use futures::future::BoxFuture;
@@ -150,9 +150,10 @@ pub(crate) enum ClientRequest {
 
 pub(crate) type OutgoingManagerSender = mpsc::Sender<TaggedEnvelope>;
 
+//Todo dm rename the channels to something that makes sense
 pub(crate) async fn run_client_router(
     mut request_rx: mpsc::Receiver<ClientRequest>,
-    mut local_rx: mpsc::Receiver<ClientRequest>,
+    mut conn_req_rx: mpsc::Receiver<ConnectionRequest>,
 ) {
     let mut outgoing_managers: HashMap<
         String,

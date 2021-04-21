@@ -68,6 +68,7 @@ use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use tracing::{error, info, instrument, trace_span};
+use url::Url;
 use utilities::future::open_ended::OpenEndedFutures;
 use utilities::future::{SwimFutureExt, TransformOnce, TransformedFuture};
 use utilities::sync::promise::PromiseError;
@@ -117,14 +118,15 @@ impl Downlinks {
 
         let client_params = config.client_params();
 
-        let (local_tx, local_rx) = mpsc::channel(8);
+        let (conn_req_tx, conn_req_rx) =
+            mpsc::channel(client_params.router_params.buffer_size().get());
 
-        let task = DownlinkTask::new(config, remote_tx, local_tx);
+        let task = DownlinkTask::new(config, conn_req_tx);
         let (tx, rx) = mpsc::channel(client_params.dl_req_buffer_size.get());
         let task_handle = spawn(async {
             join!(
                 task.run(ReceiverStream::new(rx)),
-                run_client_router(request_rx, local_rx),
+                run_client_router(request_rx, conn_req_rx),
                 remote_connections.run()
             )
             .0
@@ -473,8 +475,7 @@ struct DownlinkTask {
     command_downlinks: HashMap<AbsolutePath, CommandHandle>,
     event_downlinks: HashMap<(AbsolutePath, SchemaViolations), EventHandle>,
     stopped_watch: StopEvents,
-    remote_tx: mpsc::Sender<RoutingRequest>,
-    local_tx: mpsc::Sender<ClientRequest>,
+    conn_req_tx: mpsc::Sender<ConnectionRequest>,
 }
 
 /// Event that is generated after a downlink stops to allow it to be cleaned up.
@@ -508,12 +509,23 @@ impl TransformOnce<Result<Arc<Result<(), DownlinkError>>, PromiseError>> for Mak
     }
 }
 
+#[derive(Debug)]
+struct ConnectionRequest {
+    path: AbsolutePath,
+    request: Request<(Receiver<TaggedEnvelope>, RawRoute)>,
+}
+
+impl ConnectionRequest {
+    fn new(
+        path: AbsolutePath,
+        request: Request<(Receiver<TaggedEnvelope>, RawRoute)>,
+    ) -> ConnectionRequest {
+        ConnectionRequest { path, request }
+    }
+}
+
 impl DownlinkTask {
-    fn new<C>(
-        config: Arc<C>,
-        remote_tx: mpsc::Sender<RoutingRequest>,
-        local_tx: mpsc::Sender<ClientRequest>,
-    ) -> DownlinkTask
+    fn new<C>(config: Arc<C>, conn_req_tx: mpsc::Sender<ConnectionRequest>) -> DownlinkTask
     where
         C: Config + 'static,
     {
@@ -524,56 +536,58 @@ impl DownlinkTask {
             command_downlinks: HashMap::new(),
             event_downlinks: HashMap::new(),
             stopped_watch: StopEvents::new(),
-            remote_tx,
-            local_tx,
+            conn_req_tx,
         }
     }
 
-    async fn get_sink_for(&mut self, path: &AbsolutePath) -> RawRoute {
-        let (tx, rx) = oneshot::channel();
-        self.remote_tx
-            .send(RoutingRequest::ResolveUrl {
-                host: path.host.clone(),
-                request: Request::new(tx),
-            })
-            .await
-            .unwrap();
+    // async fn get_sink_for(&mut self, path: &AbsolutePath) -> RawRoute {
+    //     let (tx, rx) = oneshot::channel();
+    //     self.remote_tx
+    //         .send(RoutingRequest::ResolveUrl {
+    //             host: path.host.clone(),
+    //             request: Request::new(tx),
+    //         })
+    //         .await
+    //         .unwrap();
+    //
+    //     let addr = rx.await.unwrap().unwrap();
+    //
+    //     let (tx, rx) = oneshot::channel();
+    //     self.remote_tx
+    //         .send(RoutingRequest::Endpoint {
+    //             addr,
+    //             request: Request::new(tx),
+    //         })
+    //         .await
+    //         .unwrap();
+    //
+    //     rx.await.unwrap().unwrap()
+    // }
+    //
+    // async fn get_stream_for(&mut self, path: &AbsolutePath) -> Receiver<TaggedEnvelope> {
+    //     let (tx, rx) = oneshot::channel();
+    //     self.local_tx
+    //         .send(ClientRequest::Subscribe {
+    //             path: path.clone(),
+    //             request: Request::new(tx),
+    //         })
+    //         .await
+    //         .unwrap();
+    //
+    //     rx.await.unwrap()
+    // }
 
-        let addr = rx.await.unwrap().unwrap();
-
-        let (tx, rx) = oneshot::channel();
-        self.remote_tx
-            .send(RoutingRequest::Endpoint {
-                addr,
-                request: Request::new(tx),
-            })
-            .await
-            .unwrap();
-
-        rx.await.unwrap().unwrap()
-    }
-
-    async fn get_stream_for(&mut self, path: &AbsolutePath) -> Receiver<TaggedEnvelope> {
-        let (tx, rx) = oneshot::channel();
-        self.local_tx
-            .send(ClientRequest::Subscribe {
-                path: path.clone(),
-                request: Request::new(tx),
-            })
-            .await
-            .unwrap();
-
-        rx.await.unwrap()
-    }
-
+    //Todo dm unwraps
     async fn connection_for(
         &mut self,
         path: &AbsolutePath,
     ) -> (Receiver<TaggedEnvelope>, RawRoute) {
-        (
-            self.get_stream_for(path).await,
-            self.get_sink_for(path).await,
-        )
+        let (tx, rx) = oneshot::channel();
+        self.conn_req_tx
+            .send(ConnectionRequest::new(path.clone(), Request::new(tx)))
+            .await
+            .unwrap();
+        rx.await.unwrap()
     }
 
     async fn create_new_value_downlink(
@@ -763,7 +777,7 @@ impl DownlinkTask {
         path: AbsolutePath,
         schema: StandardSchema,
     ) -> RequestResult<Arc<UntypedCommandDownlink>> {
-        let sink = self.get_sink_for(&path).await;
+        let (_, sink) = self.connection_for(&path).await;
 
         let config = self.config.config_for(&path);
 
@@ -1185,7 +1199,7 @@ impl DownlinkTask {
         path: AbsolutePath,
         envelope: Envelope,
     ) -> RequestResult<()> {
-        let sink = self.get_sink_for(&path).await;
+        let (_, sink) = self.connection_for(&path).await;
 
         sink.sender
             .send(TaggedEnvelope(RoutingAddr::local(0), envelope))
