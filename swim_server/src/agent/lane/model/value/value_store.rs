@@ -1,66 +1,73 @@
-use crate::agent::lane::store::error::{StoreErrorHandler, StoreErrorReport};
-use crate::agent::lane::store::m2::StoreIo;
-use crate::agent::lane::store::{LaneStoreTask, UninitialisedLaneStore};
+use crate::agent::lane::store::error::{LaneStoreErrorReport, StoreErrorHandler};
+use crate::agent::lane::store::StoreIo;
 use crate::agent::model::value::ValueLane;
 use futures::future::BoxFuture;
-use futures::{FutureExt, Stream, StreamExt};
+use futures::{Stream, StreamExt};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
-use std::marker::PhantomData;
 use std::sync::Arc;
-use store::{PlaneStore, StoreError, ValueDataModel};
+use store::NodeStore;
 
-pub struct UninitialisedValueLaneStore<D, T> {
+/// Value lane store IO task.
+///
+/// This task loads the backing value lane with a value from the store if it exists and then
+/// stores all of the events into the delegate store. If any errors are produced, the task will fail
+/// after the store error handler's maximum allowed error policy has been reached.
+///
+/// # Type parameters:
+/// `T` - the type of the value lane.
+/// `Events` - events produced by the lane.
+pub struct ValueLaneStoreIo<T, Events> {
     lane: ValueLane<T>,
-    model: ValueDataModel<D>,
+    events: Events,
 }
 
-impl<D, T> UninitialisedValueLaneStore<D, T> {
-    pub fn new(lane: ValueLane<T>, model: ValueDataModel<D>) -> Self {
-        UninitialisedValueLaneStore { lane, model }
+impl<T, Events> ValueLaneStoreIo<T, Events> {
+    pub fn new(lane: ValueLane<T>, events: Events) -> ValueLaneStoreIo<T, Events> {
+        ValueLaneStoreIo { lane, events }
     }
 }
 
-impl<D, T> UninitialisedLaneStore for UninitialisedValueLaneStore<D, T>
+impl<Store, Events, T> StoreIo<Store> for ValueLaneStoreIo<T, Events>
 where
-    D: PlaneStore,
+    Store: NodeStore,
+    Events: Stream<Item = Arc<T>> + Unpin + Send + Sync + 'static,
     T: Send + Sync + Serialize + DeserializeOwned + 'static,
 {
-    type Initialised = ValueLaneStore<D, Arc<T>>;
+    fn attach(
+        self,
+        store: Store,
+        lane_uri: String,
+        mut error_handler: StoreErrorHandler,
+    ) -> BoxFuture<'static, Result<(), LaneStoreErrorReport>> {
+        Box::pin(async move {
+            let ValueLaneStoreIo { lane, mut events } = self;
+            let model = store.value_lane_store::<_, T>(lane_uri);
 
-    fn initialise(self) -> BoxFuture<'static, Result<Self::Initialised, StoreError>> {
-        let f = async move {
-            let UninitialisedValueLaneStore { lane, model } = self;
             match model.load() {
-                Ok(Some(value)) => {
-                    lane.store(value).await;
-                    Ok(ValueLaneStore {
-                        model,
-                        _pd: Default::default(),
-                    })
+                Ok(Some(value)) => lane.store(value).await,
+                Ok(None) => {}
+                Err(e) => {
+                    return Err(LaneStoreErrorReport::for_error(store.store_info(), e));
                 }
-                Ok(None) => Ok(ValueLaneStore {
-                    model,
-                    _pd: Default::default(),
-                }),
-                Err(e) => Err(e),
+            };
+
+            while let Some(event) = events.next().await {
+                match model.store(&event) {
+                    Ok(()) => continue,
+                    Err(e) => error_handler.on_error(e)?,
+                }
             }
-        };
-        f.boxed()
+            Ok(())
+        })
     }
-}
 
-pub struct ValueLaneStore<D, T> {
-    model: ValueDataModel<D>,
-    _pd: PhantomData<T>,
-}
-
-impl<D, T> ValueLaneStore<D, T> {
-    #[cfg(test)]
-    pub fn new(model: ValueDataModel<D>) -> Self {
-        ValueLaneStore {
-            model,
-            _pd: Default::default(),
-        }
+    fn attach_boxed(
+        self: Box<Self>,
+        store: Store,
+        lane_uri: String,
+        error_handler: StoreErrorHandler,
+    ) -> BoxFuture<'static, Result<(), LaneStoreErrorReport>> {
+        (*self).attach(store, lane_uri, error_handler)
     }
 }

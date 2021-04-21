@@ -16,30 +16,33 @@ use std::fmt::{Display, Formatter};
 use store::{StoreError, StoreInfo};
 use swim_common::model::time::Timestamp;
 
+/// A lane store error report.
 #[derive(Debug)]
-pub struct StoreErrorReport {
+pub struct LaneStoreErrorReport {
+    /// Details about the store that generated this error report.
     pub(crate) store_info: StoreInfo,
+    /// A vector of the store errors and the time at which they were generated.
     pub(crate) errors: Vec<(Timestamp, StoreError)>,
 }
 
-impl StoreErrorReport {
+impl LaneStoreErrorReport {
     pub fn new(store_info: StoreInfo, errors: Vec<(Timestamp, StoreError)>) -> Self {
-        StoreErrorReport { store_info, errors }
+        LaneStoreErrorReport { store_info, errors }
     }
 
     pub fn for_error(store_info: StoreInfo, error: StoreError) -> Self {
-        StoreErrorReport {
+        LaneStoreErrorReport {
             store_info,
             errors: vec![(Timestamp::now(), error)],
         }
     }
 }
 
-impl Display for StoreErrorReport {
+impl Display for LaneStoreErrorReport {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let StoreErrorReport { store_info, errors } = self;
+        let LaneStoreErrorReport { store_info, errors } = self;
 
-        writeln!(f, "Store error report: ")?;
+        writeln!(f, "Lane store error report: ")?;
         writeln!(f, "\t- Delegate store:")?;
         writeln!(f, "\t\tPath: `{}`", store_info.path)?;
         writeln!(f, "\t\tKind: `{}`", store_info.kind)?;
@@ -54,9 +57,14 @@ impl Display for StoreErrorReport {
     }
 }
 
+/// A store error handler which aggregates and timestamps any store errors which are provided.
+/// Upon reaching `max_errors`, the handler will return an error report.
 pub struct StoreErrorHandler {
+    /// The maximum number of errors to aggregate before returning a report.
     max_errors: usize,
+    /// Details about the store generating the errors.
     store_info: StoreInfo,
+    /// A vector of the store errors and the time at which they were generated.
     errors: Vec<(Timestamp, StoreError)>,
 }
 
@@ -76,7 +84,7 @@ impl StoreErrorHandler {
         }
     }
 
-    pub fn on_error(&mut self, error: StoreError) -> Result<(), StoreErrorReport> {
+    pub fn on_error(&mut self, error: StoreError) -> Result<(), LaneStoreErrorReport> {
         let StoreErrorHandler {
             max_errors,
             errors,
@@ -89,7 +97,7 @@ impl StoreErrorHandler {
             let len = errors.len();
             let errors: Vec<(Timestamp, StoreError)> = errors.drain(0..len).collect();
 
-            Err(StoreErrorReport {
+            Err(LaneStoreErrorReport {
                 errors,
                 store_info: store_info.clone(),
             })
@@ -100,7 +108,7 @@ impl StoreErrorHandler {
 
             if len >= *max_errors {
                 let errors: Vec<(Timestamp, StoreError)> = errors.drain(0..len).collect();
-                Err(StoreErrorReport {
+                Err(LaneStoreErrorReport {
                     errors,
                     store_info: store_info.to_owned(),
                 })

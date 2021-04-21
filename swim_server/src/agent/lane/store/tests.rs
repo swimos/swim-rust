@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::lane::store::error::{StoreErrorHandler, StoreErrorReport};
-use crate::agent::lane::store::task::{LaneStoreErrors, LaneStoreTask};
+use crate::agent::lane::store::error::{LaneStoreErrorReport, StoreErrorHandler};
+use crate::agent::lane::store::task::{NodeStoreErrors, NodeStoreTask};
 use crate::agent::StoreIo;
 use futures::future::pending;
 use futures::future::BoxFuture;
@@ -117,14 +117,14 @@ fn err_operational() {
 struct TestStoreIo<T>(T);
 impl<T> StoreIo<MockNodeStore> for TestStoreIo<T>
 where
-    T: Future<Output = Result<(), StoreErrorReport>> + Send + 'static,
+    T: Future<Output = Result<(), LaneStoreErrorReport>> + Send + 'static,
 {
     fn attach(
         self,
         _store: MockNodeStore,
         _lane_uri: String,
         _error_handler: StoreErrorHandler,
-    ) -> BoxFuture<'static, Result<(), StoreErrorReport>> {
+    ) -> BoxFuture<'static, Result<(), LaneStoreErrorReport>> {
         Box::pin(async move { self.0.await })
     }
 
@@ -133,7 +133,7 @@ where
         store: MockNodeStore,
         lane_uri: String,
         error_handler: StoreErrorHandler,
-    ) -> BoxFuture<'static, Result<(), StoreErrorReport>> {
+    ) -> BoxFuture<'static, Result<(), LaneStoreErrorReport>> {
         (*self).attach(store, lane_uri, error_handler)
     }
 }
@@ -142,7 +142,7 @@ where
 async fn task_ok() {
     let test_io: Box<dyn StoreIo<MockNodeStore>> = Box::new(TestStoreIo(async { Ok(()) }));
     let (_trigger_tx, trigger_rx) = trigger::trigger();
-    let store_task = LaneStoreTask::new(trigger_rx, MockNodeStore);
+    let store_task = NodeStoreTask::new(trigger_rx, MockNodeStore);
     let mut tasks = HashMap::new();
     tasks.insert("lane".to_string(), test_io);
 
@@ -160,19 +160,19 @@ fn store_info() -> StoreInfo {
 #[tokio::test]
 async fn task_err() {
     let test_io: Box<dyn StoreIo<MockNodeStore>> = Box::new(TestStoreIo(async {
-        Err(StoreErrorReport::for_error(
+        Err(LaneStoreErrorReport::for_error(
             store_info(),
             StoreError::KeyNotFound,
         ))
     }));
     let (_trigger_tx, trigger_rx) = trigger::trigger();
-    let store_task = LaneStoreTask::new(trigger_rx, MockNodeStore);
+    let store_task = NodeStoreTask::new(trigger_rx, MockNodeStore);
     let mut tasks = HashMap::new();
     tasks.insert("lane".to_string(), test_io);
 
     let result = store_task.run(tasks, 0).await;
     assert!(result.is_err());
-    let LaneStoreErrors { failed, mut errors } = result.unwrap_err();
+    let NodeStoreErrors { failed, mut errors } = result.unwrap_err();
     assert!(failed);
     assert_eq!(errors.len(), 1);
     store_err_partial_eq(
@@ -185,7 +185,7 @@ async fn task_err() {
 async fn triggers() {
     let test_io: Box<dyn StoreIo<MockNodeStore>> = Box::new(TestStoreIo(pending()));
     let (trigger_tx, trigger_rx) = trigger::trigger();
-    let store_task = LaneStoreTask::new(trigger_rx, MockNodeStore);
+    let store_task = NodeStoreTask::new(trigger_rx, MockNodeStore);
     let mut tasks = HashMap::new();
     tasks.insert("lane".to_string(), test_io);
 
@@ -206,7 +206,7 @@ async fn triggers() {
 async fn multiple_ios() {
     let failing_io_uri = "err_io".to_string();
     let (trigger_tx, trigger_rx) = trigger::trigger();
-    let store_task = LaneStoreTask::new(trigger_rx, MockNodeStore);
+    let store_task = NodeStoreTask::new(trigger_rx, MockNodeStore);
 
     let mut tasks = HashMap::new();
 
@@ -217,7 +217,7 @@ async fn multiple_ios() {
     tasks.insert("ok_io".to_string(), ok_io);
 
     let err_io: Box<dyn StoreIo<MockNodeStore>> = Box::new(TestStoreIo(async {
-        Err(StoreErrorReport::for_error(
+        Err(LaneStoreErrorReport::for_error(
             store_info(),
             StoreError::KeyNotFound,
         ))

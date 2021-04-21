@@ -75,10 +75,10 @@ use utilities::future::SwimStreamExt;
 use utilities::sync::{topic, trigger};
 use utilities::uri::RelativeUri;
 
-use crate::agent::lane::store::task::{LaneStoreErrors, LaneStoreTask};
+use crate::agent::lane::store::task::{NodeStoreErrors, NodeStoreTask};
 use crate::agent::lane::store::LaneNoStore;
 pub use crate::agent::lane::store::StoreIo;
-use crate::agent::model::value::value_store2::ValueLaneStoreIo;
+use crate::agent::model::value::value_store::ValueLaneStoreIo;
 use crate::meta::info::{LaneInfo, LaneKind};
 use crate::meta::log::NodeLogger;
 use crate::meta::open_meta_lanes;
@@ -127,7 +127,7 @@ const LANE_EVENTS: &str = "Lane events";
 
 type TaskIoResult<Err> = Result<Result<Err, Err>, oneshot::error::RecvError>;
 type DispatchTaskResult = TaskIoResult<DispatcherErrors>;
-type StoreTaskResult = TaskIoResult<LaneStoreErrors>;
+type StoreTaskResult = TaskIoResult<NodeStoreErrors>;
 
 #[derive(Debug, Default)]
 pub struct AgentTaskResult<Err: Debug + Default> {
@@ -139,7 +139,7 @@ pub struct AgentTaskResult<Err: Debug + Default> {
 pub struct AgentResult {
     pub route: RelativeUri,
     pub dispatcher_task: AgentTaskResult<DispatcherErrors>,
-    pub store_task: AgentTaskResult<LaneStoreErrors>,
+    pub store_task: AgentTaskResult<NodeStoreErrors>,
 }
 
 impl AgentResult {
@@ -331,7 +331,7 @@ where
         let (store_result_tx, store_result_rx) = oneshot::channel();
         let max_store_errors = execution_config.max_store_errors;
         let store_task = async move {
-            let task = LaneStoreTask::new(stop_trigger.clone(), store);
+            let task = NodeStoreTask::new(stop_trigger.clone(), store);
             let result = task.run(persistence_io, max_store_errors).await;
             let _ = store_result_tx.send(result);
         }
@@ -864,6 +864,7 @@ where
     }
 }
 
+/// Lane IO pair consisting of routing IO and store IO.
 pub struct LaneIo<Routing, Store> {
     routing: Option<Routing>,
     persistence: Store,
@@ -878,6 +879,7 @@ impl<Routing, Store> LaneIo<Routing, Store> {
     }
 }
 
+/// Super trait for all required bounds on a stateful lane with persistence.
 pub trait StatefulParam: Any + Send + Sync + Form + Default + Serialize + DeserializeOwned {}
 impl<T> StatefulParam for T where
     T: Any + Send + Sync + Form + Default + Serialize + DeserializeOwned

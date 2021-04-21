@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::lane::store::error::{StoreErrorHandler, StoreErrorReport};
+use crate::agent::lane::store::error::{LaneStoreErrorReport, StoreErrorHandler};
 use futures::future::BoxFuture;
 use store::NodeStore;
 
@@ -25,22 +25,31 @@ pub use tests::store_err_partial_eq;
 pub mod error;
 pub mod task;
 
+/// Deferred lane store IO attachment task.
 pub trait StoreIo<Store: NodeStore + Sized>: Send + 'static {
+    /// Attempt to attach the lane event stream to the provided node store.
+    ///
+    /// # Arguments:
+    /// `store`: the node store that can be used to request a value or map lane store.
+    /// `lane_uri`: the URI of the lane.
+    /// `error_handler`: a store error handler for reporting store error events to. The handler
+    /// is already initialised with an error handling strategy.
     fn attach(
         self,
         store: Store,
         lane_uri: String,
         error_handler: StoreErrorHandler,
-    ) -> BoxFuture<'static, Result<(), StoreErrorReport>>;
+    ) -> BoxFuture<'static, Result<(), LaneStoreErrorReport>>;
 
     fn attach_boxed(
         self: Box<Self>,
         store: Store,
         lane_uri: String,
         error_handler: StoreErrorHandler,
-    ) -> BoxFuture<'static, Result<(), StoreErrorReport>>;
+    ) -> BoxFuture<'static, Result<(), LaneStoreErrorReport>>;
 }
 
+/// A transient lane store which completes immediately.
 #[derive(Debug)]
 pub struct LaneNoStore;
 impl<Store> StoreIo<Store> for LaneNoStore
@@ -52,7 +61,7 @@ where
         _store: Store,
         _lane_uri: String,
         _error_handler: StoreErrorHandler,
-    ) -> BoxFuture<'static, Result<(), StoreErrorReport>> {
+    ) -> BoxFuture<'static, Result<(), LaneStoreErrorReport>> {
         Box::pin(async move { Ok(()) })
     }
 
@@ -61,7 +70,7 @@ where
         store: Store,
         lane_uri: String,
         error_handler: StoreErrorHandler,
-    ) -> BoxFuture<'static, Result<(), StoreErrorReport>> {
+    ) -> BoxFuture<'static, Result<(), LaneStoreErrorReport>> {
         (*self).attach(store, lane_uri, error_handler)
     }
 }

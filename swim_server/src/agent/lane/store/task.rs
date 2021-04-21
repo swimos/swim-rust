@@ -1,4 +1,4 @@
-use crate::agent::lane::store::error::{StoreErrorHandler, StoreErrorReport};
+use crate::agent::lane::store::error::{LaneStoreErrorReport, StoreErrorHandler};
 use crate::agent::StoreIo;
 use futures::future::BoxFuture;
 use futures::stream::FuturesUnordered;
@@ -8,19 +8,22 @@ use std::fmt::{Display, Formatter};
 use store::NodeStore;
 use utilities::sync::trigger;
 
-type LaneIdentifiedResult = (String, Result<(), StoreErrorReport>);
+type LaneIdentifiedResult = (String, Result<(), LaneStoreErrorReport>);
 
+/// Aggregated node store errors.
 #[derive(Debug, Default)]
-pub struct LaneStoreErrors {
+pub struct NodeStoreErrors {
+    /// Whether one of the lanes on this node failed.
     pub failed: bool,
-    pub errors: Vec<(String, StoreErrorReport)>,
+    /// A vector of lane errors and the time at which they were generated.
+    pub errors: Vec<(String, LaneStoreErrorReport)>,
 }
 
-impl Display for LaneStoreErrors {
+impl Display for NodeStoreErrors {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let LaneStoreErrors { failed, errors } = self;
+        let NodeStoreErrors { failed, errors } = self;
 
-        writeln!(f, "Store errors:")?;
+        writeln!(f, "Node store errors:")?;
         writeln!(f, "\tfailed: {}", failed)?;
         writeln!(f, "\terror reports:")?;
 
@@ -33,15 +36,19 @@ impl Display for LaneStoreErrors {
     }
 }
 
-pub struct LaneStoreTask<Store> {
+/// Node store task manager which attaches lane store IO and aggregates any lane store IO errors.
+pub struct NodeStoreTask<Store> {
+    /// Running lane store IO tasks.
     pending: FuturesUnordered<BoxFuture<'static, LaneIdentifiedResult>>,
+    /// A stop trigger to run lane IO tasks until.
     stop_rx: trigger::Receiver,
+    /// The node store which lane IO will be attached to.
     node_store: Store,
 }
 
-impl<Store> LaneStoreTask<Store> {
+impl<Store> NodeStoreTask<Store> {
     pub fn new(stop_rx: trigger::Receiver, node_store: Store) -> Self {
-        LaneStoreTask {
+        NodeStoreTask {
             pending: FuturesUnordered::default(),
             stop_rx,
             node_store,
@@ -49,13 +56,16 @@ impl<Store> LaneStoreTask<Store> {
     }
 }
 
-impl<Store: NodeStore> LaneStoreTask<Store> {
+impl<Store: NodeStore> NodeStoreTask<Store> {
+    /// Run the node store `tasks` and allow each lane to error `max_store_errors` times. Returns
+    /// `Ok(empty error report)` if no tasks failed or `Err(error report)` with reports of any
+    /// failed IO tasks.
     pub async fn run(
         self,
         tasks: HashMap<String, Box<dyn StoreIo<Store>>>,
         max_store_errors: usize,
-    ) -> Result<LaneStoreErrors, LaneStoreErrors> {
-        let LaneStoreTask {
+    ) -> Result<NodeStoreErrors, NodeStoreErrors> {
+        let NodeStoreTask {
             pending,
             stop_rx,
             node_store,
@@ -79,7 +89,7 @@ impl<Store: NodeStore> LaneStoreTask<Store> {
         let tasks = pending.take_until(stop_rx).fuse();
         let report = tasks
             .fold(
-                LaneStoreErrors::default(),
+                NodeStoreErrors::default(),
                 |mut report, (lane_uri, result)| async {
                     if let Err(err) = result {
                         report.failed = true;
