@@ -14,10 +14,12 @@
 
 use super::tokens::{complete, streaming, string_literal};
 use super::Span;
-use crate::form::structural::read::parser::NumericLiteral;
+use crate::form::structural::read::parser::record::ParseIterator;
+use crate::form::structural::read::parser::{NumericLiteral, ParseEvent};
 use either::Either;
 use nom::IResult;
 use num_bigint::{BigInt, BigUint};
+use std::borrow::Cow;
 use std::ops::{Add, Neg, Sub};
 
 fn span(input: &str) -> Span<'_> {
@@ -223,7 +225,7 @@ fn parse_decimal_int_final() {
 
 #[test]
 fn parse_hex_int() {
-    let input = span("0x0 ");
+    let input = span("0x0");
     assert!(matches!(
         streaming::numeric_literal(input),
         Err(nom::Err::Incomplete(_))
@@ -551,4 +553,691 @@ fn parse_blob_final() {
     let (rem, result) = complete::blob(input).unwrap();
     assert_eq!(*rem, "");
     assert_eq!(result.as_slice(), expected.as_bytes());
+}
+
+fn run_parser_iterator(input: &str) -> Result<Vec<ParseEvent<'_>>, nom::error::Error<Span<'_>>> {
+    let it = ParseIterator::new(Span::new(input));
+    let mut v = Vec::new();
+    for r in it {
+        v.push(r?);
+    }
+    Ok(v)
+}
+
+#[test]
+fn single_int() {
+    let result = run_parser_iterator("1").unwrap();
+    assert!(matches!(
+        result.as_slice(),
+        [ParseEvent::Number(NumericLiteral::UInt(1))]
+    ));
+
+    let result = run_parser_iterator(" 1").unwrap();
+    assert!(matches!(
+        result.as_slice(),
+        [ParseEvent::Number(NumericLiteral::UInt(1))]
+    ));
+
+    let result = run_parser_iterator("1 ").unwrap();
+    assert!(matches!(
+        result.as_slice(),
+        [ParseEvent::Number(NumericLiteral::UInt(1))]
+    ));
+
+    let result = run_parser_iterator("\n1").unwrap();
+    assert!(matches!(
+        result.as_slice(),
+        [ParseEvent::Number(NumericLiteral::UInt(1))]
+    ));
+}
+
+#[test]
+fn single_string() {
+    let result = run_parser_iterator(r#""two words""#).unwrap();
+    assert!(matches!(result.as_slice(), [ParseEvent::TextValue(t)] if t == "two words"));
+
+    let result = run_parser_iterator(r#" "two words""#).unwrap();
+    assert!(matches!(result.as_slice(), [ParseEvent::TextValue(t)] if t == "two words"));
+
+    let result = run_parser_iterator(r#""two words" "#).unwrap();
+    assert!(matches!(result.as_slice(), [ParseEvent::TextValue(t)] if t == "two words"));
+
+    let result = run_parser_iterator("\n\"two words\"").unwrap();
+    assert!(matches!(result.as_slice(), [ParseEvent::TextValue(t)] if t == "two words"));
+}
+
+#[test]
+fn single_identifier() {
+    let result = run_parser_iterator("text").unwrap();
+    assert!(matches!(result.as_slice(), [ParseEvent::TextValue(t)] if t == "text"));
+
+    let result = run_parser_iterator(" text").unwrap();
+    assert!(matches!(result.as_slice(), [ParseEvent::TextValue(t)] if t == "text"));
+
+    let result = run_parser_iterator("text ").unwrap();
+    assert!(matches!(result.as_slice(), [ParseEvent::TextValue(t)] if t == "text"));
+
+    let result = run_parser_iterator("\ntext").unwrap();
+    assert!(matches!(result.as_slice(), [ParseEvent::TextValue(t)] if t == "text"));
+}
+
+#[test]
+fn single_float() {
+    let result = run_parser_iterator("-1.5e67").unwrap();
+    assert!(
+        matches!(result.as_slice(), [ParseEvent::Number(NumericLiteral::Float(x))] if x.eq(&-1.5e67))
+    );
+
+    let result = run_parser_iterator(" -1.5e67").unwrap();
+    assert!(
+        matches!(result.as_slice(), [ParseEvent::Number(NumericLiteral::Float(x))] if x.eq(&-1.5e67))
+    );
+
+    let result = run_parser_iterator("-1.5e67 ").unwrap();
+    assert!(
+        matches!(result.as_slice(), [ParseEvent::Number(NumericLiteral::Float(x))] if x.eq(&-1.5e67))
+    );
+
+    let result = run_parser_iterator("\n-1.5e67").unwrap();
+    assert!(
+        matches!(result.as_slice(), [ParseEvent::Number(NumericLiteral::Float(x))] if x.eq(&-1.5e67))
+    );
+}
+
+#[test]
+fn empty() {
+    let result = run_parser_iterator("").unwrap();
+    assert!(matches!(result.as_slice(), [ParseEvent::Extant]));
+
+    let result = run_parser_iterator(" ").unwrap();
+    assert!(matches!(result.as_slice(), [ParseEvent::Extant]));
+
+    let result = run_parser_iterator("\n").unwrap();
+    assert!(matches!(result.as_slice(), [ParseEvent::Extant]));
+}
+
+#[test]
+fn empty_record() {
+    let result = run_parser_iterator("{}").unwrap();
+    assert!(matches!(
+        result.as_slice(),
+        [ParseEvent::StartBody, ParseEvent::EndRecord]
+    ));
+
+    let result = run_parser_iterator("{ }").unwrap();
+    assert!(matches!(
+        result.as_slice(),
+        [ParseEvent::StartBody, ParseEvent::EndRecord]
+    ));
+
+    let result = run_parser_iterator("{\n}").unwrap();
+    assert!(matches!(
+        result.as_slice(),
+        [ParseEvent::StartBody, ParseEvent::EndRecord]
+    ));
+}
+
+fn uint_event<'a>(n: u64) -> ParseEvent<'a> {
+    ParseEvent::Number(NumericLiteral::UInt(n))
+}
+
+fn string_event(string: &str) -> ParseEvent<'_> {
+    ParseEvent::TextValue(Cow::Borrowed(string))
+}
+
+#[test]
+fn singleton_record() {
+    let expected = vec![ParseEvent::StartBody, uint_event(1), ParseEvent::EndRecord];
+
+    let result = run_parser_iterator("{1}").unwrap();
+    assert_eq!(result, expected);
+
+    let result = run_parser_iterator("{ 1 }").unwrap();
+    assert_eq!(result, expected);
+
+    let result = run_parser_iterator("{\n 1 }").unwrap();
+    assert_eq!(result, expected);
+}
+
+#[test]
+fn simple_record() {
+    let expected = vec![
+        ParseEvent::StartBody,
+        uint_event(1),
+        string_event("two"),
+        uint_event(3),
+        ParseEvent::EndRecord,
+    ];
+
+    let result = run_parser_iterator("{1,two,3}").unwrap();
+    assert_eq!(result, expected);
+
+    let result = run_parser_iterator("{ 1, two, 3 }").unwrap();
+    assert_eq!(result, expected);
+}
+
+#[test]
+fn missing_items() {
+    let result = run_parser_iterator("{,two,3}").unwrap();
+    assert_eq!(
+        result,
+        vec![
+            ParseEvent::StartBody,
+            ParseEvent::Extant,
+            string_event("two"),
+            uint_event(3),
+            ParseEvent::EndRecord
+        ]
+    );
+
+    let result = run_parser_iterator("{1,,3}").unwrap();
+    assert_eq!(
+        result,
+        vec![
+            ParseEvent::StartBody,
+            uint_event(1),
+            ParseEvent::Extant,
+            uint_event(3),
+            ParseEvent::EndRecord
+        ]
+    );
+
+    let result = run_parser_iterator("{1,two,}").unwrap();
+    assert_eq!(
+        result,
+        vec![
+            ParseEvent::StartBody,
+            uint_event(1),
+            string_event("two"),
+            ParseEvent::Extant,
+            ParseEvent::EndRecord
+        ]
+    );
+}
+
+#[test]
+fn newline_seperators() {
+    let expected = vec![
+        ParseEvent::StartBody,
+        uint_event(1),
+        string_event("two"),
+        uint_event(3),
+        ParseEvent::EndRecord,
+    ];
+
+    let result = run_parser_iterator(
+        r#"{1
+            two
+            3}"#,
+    )
+    .unwrap();
+    assert_eq!(result, expected);
+
+    let result = run_parser_iterator(
+        r#"{
+                1
+                two
+                3
+            }"#,
+    )
+    .unwrap();
+    assert_eq!(result, expected);
+}
+
+#[test]
+fn singleton_slot() {
+    let expected = vec![
+        ParseEvent::StartBody,
+        string_event("name"),
+        ParseEvent::Slot,
+        uint_event(1),
+        ParseEvent::EndRecord,
+    ];
+
+    let result = run_parser_iterator("{name:1}").unwrap();
+    assert_eq!(result, expected);
+
+    let result = run_parser_iterator("{ name: 1 }").unwrap();
+    assert_eq!(result, expected);
+
+    let result = run_parser_iterator("{\n name: 1 }").unwrap();
+    assert_eq!(result, expected);
+}
+
+#[test]
+fn missing_slot_value() {
+    let expected = vec![
+        ParseEvent::StartBody,
+        string_event("name"),
+        ParseEvent::Slot,
+        ParseEvent::Extant,
+        ParseEvent::EndRecord,
+    ];
+
+    let result = run_parser_iterator("{name:}").unwrap();
+    assert_eq!(result, expected);
+
+    let result = run_parser_iterator("{ name: }").unwrap();
+    assert_eq!(result, expected);
+
+    let result = run_parser_iterator("{\n name:\n }").unwrap();
+    assert_eq!(result, expected);
+}
+
+#[test]
+fn missing_slot_key() {
+    let expected = vec![
+        ParseEvent::StartBody,
+        ParseEvent::Extant,
+        ParseEvent::Slot,
+        uint_event(1),
+        ParseEvent::EndRecord,
+    ];
+
+    let result = run_parser_iterator("{:1}").unwrap();
+    assert_eq!(result, expected);
+
+    let result = run_parser_iterator("{ : 1 }").unwrap();
+    assert_eq!(result, expected);
+
+    let result = run_parser_iterator("{\n : 1 }").unwrap();
+    assert_eq!(result, expected);
+}
+
+#[test]
+fn simple_slots_record() {
+    let expected = vec![
+        ParseEvent::StartBody,
+        string_event("first"),
+        ParseEvent::Slot,
+        uint_event(1),
+        string_event("second"),
+        ParseEvent::Slot,
+        string_event("two"),
+        string_event("third"),
+        ParseEvent::Slot,
+        uint_event(3),
+        ParseEvent::EndRecord,
+    ];
+
+    let result = run_parser_iterator("{first:1,second:two,third:3}").unwrap();
+    assert_eq!(result, expected);
+
+    let result = run_parser_iterator("{ first: 1, second: two, third: 3 }").unwrap();
+    assert_eq!(result, expected);
+}
+
+#[test]
+fn missing_slot_parts() {
+    let expected = vec![
+        ParseEvent::StartBody,
+        string_event("first"),
+        ParseEvent::Slot,
+        uint_event(1),
+        string_event("second"),
+        ParseEvent::Slot,
+        ParseEvent::Extant,
+        ParseEvent::Extant,
+        ParseEvent::Slot,
+        uint_event(3),
+        ParseEvent::EndRecord,
+    ];
+
+    let result = run_parser_iterator("{first:1,second:,:3}").unwrap();
+    assert_eq!(result, expected);
+
+    let result = run_parser_iterator("{ first: 1, second: , : 3 }").unwrap();
+    assert_eq!(result, expected);
+}
+
+fn attr_event(name: &str) -> ParseEvent<'_> {
+    ParseEvent::StartAttribute(Cow::Borrowed(name))
+}
+
+#[test]
+fn tag_attribute() {
+    let expected = vec![
+        attr_event("tag"),
+        ParseEvent::EndAttribute,
+        ParseEvent::StartBody,
+        ParseEvent::EndRecord,
+    ];
+
+    let result = run_parser_iterator("@tag").unwrap();
+    assert_eq!(result, expected);
+
+    let result = run_parser_iterator("@tag {}").unwrap();
+    assert_eq!(result, expected);
+}
+
+#[test]
+fn attr_simple_body() {
+    let expected = vec![
+        attr_event("name"),
+        uint_event(2),
+        ParseEvent::EndAttribute,
+        ParseEvent::StartBody,
+        ParseEvent::EndRecord,
+    ];
+
+    let result = run_parser_iterator("@name(2)").unwrap();
+    assert_eq!(result, expected);
+
+    let result = run_parser_iterator("@name(2) {}").unwrap();
+    assert_eq!(result, expected);
+}
+
+#[test]
+fn attr_slot_body() {
+    let expected = vec![
+        attr_event("name"),
+        string_event("a"),
+        ParseEvent::Slot,
+        ParseEvent::Boolean(true),
+        ParseEvent::EndAttribute,
+        ParseEvent::StartBody,
+        ParseEvent::EndRecord,
+    ];
+
+    let result = run_parser_iterator("@name(a:true)").unwrap();
+    assert_eq!(result, expected);
+
+    let result = run_parser_iterator("@name(a:true) {}").unwrap();
+    assert_eq!(result, expected);
+}
+
+#[test]
+fn attr_multiple_item_body() {
+    let expected = vec![
+        attr_event("name"),
+        uint_event(1),
+        string_event("a"),
+        ParseEvent::Slot,
+        ParseEvent::Boolean(true),
+        ParseEvent::Extant,
+        ParseEvent::EndAttribute,
+        ParseEvent::StartBody,
+        ParseEvent::EndRecord,
+    ];
+
+    let result = run_parser_iterator("@name(1, a: true,)").unwrap();
+    assert_eq!(result, expected);
+
+    let result = run_parser_iterator("@name(1, a: true,) {}").unwrap();
+    assert_eq!(result, expected);
+}
+
+#[test]
+fn multiple_attributes() {
+    let expected = vec![
+        attr_event("first"),
+        ParseEvent::EndAttribute,
+        attr_event("second"),
+        ParseEvent::EndAttribute,
+        ParseEvent::StartBody,
+        ParseEvent::EndRecord,
+    ];
+
+    let result = run_parser_iterator("@first@second").unwrap();
+    assert_eq!(result, expected);
+
+    let result = run_parser_iterator("@first@second {}").unwrap();
+    assert_eq!(result, expected);
+}
+
+#[test]
+fn multiple_attributes_with_bodies() {
+    let expected = vec![
+        attr_event("first"),
+        uint_event(1),
+        ParseEvent::EndAttribute,
+        attr_event("second"),
+        uint_event(2),
+        ParseEvent::EndAttribute,
+        ParseEvent::StartBody,
+        ParseEvent::EndRecord,
+    ];
+
+    let result = run_parser_iterator("@first(1)@second(2)").unwrap();
+    assert_eq!(result, expected);
+
+    let result = run_parser_iterator("@first(1)@second(2) {}").unwrap();
+    assert_eq!(result, expected);
+}
+
+#[test]
+fn empty_nested() {
+    let expected = vec![
+        ParseEvent::StartBody,
+        ParseEvent::StartBody,
+        ParseEvent::EndRecord,
+        ParseEvent::StartBody,
+        ParseEvent::EndRecord,
+        ParseEvent::StartBody,
+        ParseEvent::EndRecord,
+        ParseEvent::EndRecord,
+    ];
+
+    let result = run_parser_iterator("{{},{},{}}").unwrap();
+    assert_eq!(result, expected);
+}
+
+#[test]
+fn simple_nested() {
+    let expected = vec![
+        ParseEvent::StartBody,
+        ParseEvent::StartBody,
+        uint_event(4),
+        string_event("slot"),
+        ParseEvent::Slot,
+        string_event("word"),
+        ParseEvent::EndRecord,
+        uint_event(1),
+        ParseEvent::EndRecord,
+    ];
+
+    let result = run_parser_iterator(
+        r#"{
+            { 4, slot: word }
+            1
+        }"#,
+    )
+    .unwrap();
+    assert_eq!(result, expected);
+}
+
+#[test]
+fn nested_with_attr() {
+    let expected = vec![
+        ParseEvent::StartBody,
+        attr_event("inner"),
+        ParseEvent::EndAttribute,
+        ParseEvent::StartBody,
+        ParseEvent::EndRecord,
+        ParseEvent::EndRecord,
+    ];
+
+    let result = run_parser_iterator("{ @inner }").unwrap();
+    assert_eq!(result, expected);
+
+    let result = run_parser_iterator("{ @inner {} }").unwrap();
+    assert_eq!(result, expected);
+}
+
+#[test]
+fn nested_with_attr_with_body() {
+    let expected = vec![
+        ParseEvent::StartBody,
+        attr_event("inner"),
+        uint_event(0),
+        ParseEvent::EndAttribute,
+        ParseEvent::StartBody,
+        ParseEvent::EndRecord,
+        ParseEvent::EndRecord,
+    ];
+
+    let result = run_parser_iterator("{ @inner(0) }").unwrap();
+    assert_eq!(result, expected);
+
+    let result = run_parser_iterator("{ @inner(0) {} }").unwrap();
+    assert_eq!(result, expected);
+}
+
+#[test]
+fn nested_with_attr_with_body_followed() {
+    let expected = vec![
+        ParseEvent::StartBody,
+        attr_event("inner"),
+        uint_event(0),
+        ParseEvent::EndAttribute,
+        ParseEvent::StartBody,
+        ParseEvent::EndRecord,
+        string_event("after"),
+        ParseEvent::EndRecord,
+    ];
+
+    let result = run_parser_iterator("{ @inner(0), after }").unwrap();
+    assert_eq!(result, expected);
+
+    let result = run_parser_iterator("{ @inner(0) {}, after }").unwrap();
+    assert_eq!(result, expected);
+}
+
+#[test]
+fn empty_nested_in_attr() {
+    let expected = vec![
+        attr_event("outer"),
+        ParseEvent::StartBody,
+        ParseEvent::EndRecord,
+        ParseEvent::EndAttribute,
+        ParseEvent::StartBody,
+        ParseEvent::EndRecord,
+    ];
+
+    let result = run_parser_iterator("@outer({})").unwrap();
+    assert_eq!(result, expected);
+}
+
+#[test]
+fn simple_nested_in_attr() {
+    let expected = vec![
+        attr_event("outer"),
+        ParseEvent::StartBody,
+        uint_event(4),
+        string_event("slot"),
+        ParseEvent::Slot,
+        string_event("word"),
+        ParseEvent::EndRecord,
+        ParseEvent::EndAttribute,
+        ParseEvent::StartBody,
+        ParseEvent::EndRecord,
+    ];
+
+    let result = run_parser_iterator("@outer({ 4, slot: word })").unwrap();
+    assert_eq!(result, expected);
+}
+
+#[test]
+fn nested_with_attr_in_attr() {
+    let expected = vec![
+        attr_event("outer"),
+        attr_event("inner"),
+        ParseEvent::EndAttribute,
+        ParseEvent::StartBody,
+        ParseEvent::EndRecord,
+        ParseEvent::EndAttribute,
+        ParseEvent::StartBody,
+        ParseEvent::EndRecord,
+    ];
+
+    let result = run_parser_iterator("@outer(@inner)").unwrap();
+    assert_eq!(result, expected);
+
+    let result = run_parser_iterator("@outer(@inner {})").unwrap();
+    assert_eq!(result, expected);
+}
+
+#[test]
+fn nested_with_attr_with_body_in_attr() {
+    let expected = vec![
+        attr_event("outer"),
+        attr_event("inner"),
+        uint_event(0),
+        ParseEvent::EndAttribute,
+        ParseEvent::StartBody,
+        ParseEvent::EndRecord,
+        ParseEvent::EndAttribute,
+        ParseEvent::StartBody,
+        ParseEvent::EndRecord,
+    ];
+
+    let result = run_parser_iterator("@outer(@inner(0))").unwrap();
+    assert_eq!(result, expected);
+
+    let result = run_parser_iterator("@outer(@inner(0) {})").unwrap();
+    assert_eq!(result, expected);
+}
+
+#[test]
+fn nested_with_attr_with_body_followed_in_attr() {
+    let expected = vec![
+        attr_event("outer"),
+        attr_event("inner"),
+        uint_event(0),
+        ParseEvent::EndAttribute,
+        ParseEvent::StartBody,
+        ParseEvent::EndRecord,
+        uint_event(3),
+        ParseEvent::EndAttribute,
+        ParseEvent::StartBody,
+        ParseEvent::EndRecord,
+    ];
+
+    let result = run_parser_iterator("@outer(@inner(0), 3)").unwrap();
+    assert_eq!(result, expected);
+
+    let result = run_parser_iterator("@outer(@inner(0) {}, 3)").unwrap();
+    assert_eq!(result, expected);
+}
+
+#[test]
+fn double_nested() {
+    let expected = vec![
+        ParseEvent::StartBody,
+        uint_event(1),
+        ParseEvent::StartBody,
+        uint_event(2),
+        ParseEvent::StartBody,
+        uint_event(3),
+        uint_event(4),
+        ParseEvent::EndRecord,
+        ParseEvent::EndRecord,
+        uint_event(5),
+        ParseEvent::EndRecord,
+    ];
+
+    let result = run_parser_iterator("{1, {2, {3, 4}}, 5}").unwrap();
+    assert_eq!(result, expected);
+}
+
+#[test]
+fn complex_slot() {
+    let expected = vec![
+        ParseEvent::StartBody,
+        attr_event("key"),
+        ParseEvent::EndAttribute,
+        ParseEvent::StartBody,
+        uint_event(1),
+        ParseEvent::EndRecord,
+        ParseEvent::Slot,
+        attr_event("value"),
+        ParseEvent::EndAttribute,
+        ParseEvent::StartBody,
+        uint_event(2),
+        ParseEvent::EndRecord,
+        ParseEvent::EndRecord,
+    ];
+
+    let result = run_parser_iterator("{@key {1}: @value {2}}").unwrap();
+    assert_eq!(result, expected);
 }

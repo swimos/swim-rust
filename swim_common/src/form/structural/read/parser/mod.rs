@@ -36,6 +36,7 @@ pub enum NumericLiteral {
     Float(f64),
 }
 
+#[derive(Debug, PartialEq)]
 pub enum ParseEvent<'a> {
     Extant,
     TextValue(Cow<'a, str>),

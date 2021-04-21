@@ -21,14 +21,16 @@ use either::Either;
 use nom::branch::alt;
 use nom::character::complete as char_comp;
 use nom::character::streaming as char_str;
-use nom::combinator::{map, opt, peek, recognize};
+use nom::combinator::{eof, map, opt, peek, recognize};
 use nom::error::ErrorKind;
 use nom::sequence::{pair, preceded};
 use nom::{Finish, IResult, Parser};
 use std::borrow::Cow;
 use std::convert::TryFrom;
 
+#[derive(Debug)]
 enum StateChange {
+    PopAfterAttr,
     PopAfterItem,
     ChangeState(ParseState),
     PushAttr,
@@ -39,6 +41,12 @@ enum StateChange {
 impl StateChange {
     fn apply(self, state_stack: &mut Vec<ParseState>) {
         match self {
+            StateChange::PopAfterAttr => {
+                state_stack.pop();
+                if let Some(top) = state_stack.last_mut() {
+                    *top = ParseState::AfterAttr;
+                }
+            }
             StateChange::PopAfterItem => {
                 state_stack.pop();
                 if let Some(top) = state_stack.last_mut() {
@@ -110,7 +118,7 @@ impl ParseState {
                 ParseState::RecordBodyAfterValue
             }
             ParseState::RecordBodySlot => ParseState::RecordBodyAfterSlot,
-            _ => panic!("Invalid state transition."),
+            ow => panic!("Invalid state transition. {:?}", ow),
         };
         *self = new_state;
     }
@@ -124,6 +132,7 @@ fn attr_name_final(input: Span<'_>) -> IResult<Span<'_>, Cow<'_, str>> {
     map(complete::identifier, Cow::Borrowed)(input)
 }
 
+#[derive(Debug)]
 pub enum FinalAttrStage<'a> {
     Start(Cow<'a, str>),
     EndAttr,
@@ -131,6 +140,7 @@ pub enum FinalAttrStage<'a> {
     EndBody,
 }
 
+#[derive(Debug)]
 pub enum ParseEvents<'a> {
     NoEvent,
     SingleEvent(ParseEvent<'a>),
@@ -198,7 +208,7 @@ impl<'a> ParseIterator<'a> {
     pub(crate) fn new(input: Span<'a>) -> Self {
         ParseIterator {
             input,
-            parser: Default::default(),
+            parser: Some(Default::default()),
             pending: None,
         }
     }
@@ -228,7 +238,8 @@ impl<'a> Iterator for ParseIterator<'a> {
             }
         } else {
             loop {
-                let (rem, mut events) = match parser.as_mut()?.parse(*input) {
+                let ex = parser.as_mut()?.parse(*input);
+                let (rem, mut events) = match ex {
                     Ok(r) => r,
                     Err(nom::Err::Incomplete(_)) => {
                         if let Some(mut p) = parser
@@ -417,17 +428,19 @@ impl<'a> Parser<Span<'a>, ParseEvents<'a>, nom::error::Error<Span<'a>>> for Incr
         input: Span<'a>,
     ) -> IResult<Span<'a>, ParseEvents<'a>, nom::error::Error<Span<'a>>> {
         let IncrementalReconParser { state } = self;
-        let (input, _) = char_str::space0(input)?;
         if let Some(top) = state.last_mut() {
+            let (input, _) = char_str::space0(input)?;
             match top {
                 ParseState::Init => {
                     let (input, (events, change)) =
                         map(preceded(char_str::multispace0, opt(parse_init)), |r| {
-                            r.unwrap_or_else(|| {
-                                (ParseEvent::Extant.single(), StateChange::PopAfterItem)
-                            })
+                            r.unwrap_or_else(|| (ParseEvent::Extant.single(), None))
                         })(input)?;
-                    change.apply(state);
+                    if let Some(change) = change {
+                        change.apply(state);
+                    } else {
+                        state.clear();
+                    }
                     Ok((input, events))
                 }
                 ParseState::AfterAttr => {
@@ -440,7 +453,7 @@ impl<'a> Parser<Span<'a>, ParseEvents<'a>, nom::error::Error<Span<'a>>> for Incr
                 ParseState::RecordBodyStartOrNl => {
                     let (input, (events, change)) = preceded(
                         char_str::multispace0,
-                        parse_not_after_item::<AttrBody>(false),
+                        parse_not_after_item::<RecBody>(false),
                     )(input)?;
                     change.apply(state);
                     Ok((input, events))
@@ -448,7 +461,7 @@ impl<'a> Parser<Span<'a>, ParseEvents<'a>, nom::error::Error<Span<'a>>> for Incr
                 ParseState::AttrBodyStartOrNl => {
                     let (input, (events, change)) = preceded(
                         char_str::multispace0,
-                        parse_not_after_item::<RecBody>(false),
+                        parse_not_after_item::<AttrBody>(false),
                     )(input)?;
                     change.apply(state);
                     Ok((input, events))
@@ -456,7 +469,7 @@ impl<'a> Parser<Span<'a>, ParseEvents<'a>, nom::error::Error<Span<'a>>> for Incr
                 ParseState::RecordBodyAfterSep => {
                     let (input, (events, change)) = preceded(
                         char_str::multispace0,
-                        parse_not_after_item::<AttrBody>(true),
+                        parse_not_after_item::<RecBody>(true),
                     )(input)?;
                     change.apply(state);
                     Ok((input, events))
@@ -464,7 +477,7 @@ impl<'a> Parser<Span<'a>, ParseEvents<'a>, nom::error::Error<Span<'a>>> for Incr
                 ParseState::AttrBodyAfterSep => {
                     let (input, (events, change)) = preceded(
                         char_str::multispace0,
-                        parse_not_after_item::<RecBody>(true),
+                        parse_not_after_item::<AttrBody>(true),
                     )(input)?;
                     change.apply(state);
                     Ok((input, events))
@@ -496,7 +509,7 @@ impl<'a> Parser<Span<'a>, ParseEvents<'a>, nom::error::Error<Span<'a>>> for Incr
                             ParseEvents::NoEvent
                         }
                     } else {
-                        StateChange::PopAfterItem.apply(state);
+                        StateChange::PopAfterAttr.apply(state);
                         ParseEvent::EndAttribute.single()
                     };
                     Ok((input, events))
@@ -520,7 +533,7 @@ impl<'a> Parser<Span<'a>, ParseEvents<'a>, nom::error::Error<Span<'a>>> for Incr
                         *top = new_state;
                         ParseEvents::NoEvent
                     } else {
-                        StateChange::PopAfterItem.apply(state);
+                        StateChange::PopAfterAttr.apply(state);
                         ParseEvent::EndAttribute.single()
                     };
                     Ok((input, events))
@@ -551,14 +564,21 @@ impl<'a> Parser<Span<'a>, ParseEvents<'a>, nom::error::Error<Span<'a>>> for Fina
     ) -> IResult<Span<'a>, ParseEvents<'a>, nom::error::Error<Span<'a>>> {
         let FinalSegmentParser(state) = self;
         match state {
-            FinalState::Init => parse_init_final(input),
-            FinalState::AfterAttr => parse_after_attr_final(input),
+            FinalState::Init => {
+                let (input, _) = char_comp::multispace0(input)?;
+                parse_init_final(input)
+            }
+            FinalState::AfterAttr => {
+                let (input, _) = char_comp::space0(input)?;
+                parse_after_attr_final(input)
+            }
         }
     }
 }
 
 fn parse_init_final(input: Span<'_>) -> IResult<Span<'_>, ParseEvents<'_>> {
     alt((
+        map(eof, |_| ParseEvent::Extant.single()),
         map(complete::identifier_or_bool, |v| {
             identifier_event(v).single()
         }),
@@ -572,6 +592,9 @@ fn parse_init_final(input: Span<'_>) -> IResult<Span<'_>, ParseEvents<'_>> {
 
 fn parse_after_attr_final(input: Span<'_>) -> IResult<Span<'_>, ParseEvents<'_>> {
     alt((
+        map(eof, |_| {
+            ParseEvent::StartBody.followed_by(ParseEvent::EndRecord)
+        }),
         map(complete::identifier_or_bool, |v| {
             identifier_event(v).singleton_body()
         }),
@@ -585,25 +608,25 @@ fn parse_after_attr_final(input: Span<'_>) -> IResult<Span<'_>, ParseEvents<'_>>
     ))(input)
 }
 
-fn parse_init(input: Span<'_>) -> IResult<Span<'_>, (ParseEvents<'_>, StateChange)> {
+fn parse_init(input: Span<'_>) -> IResult<Span<'_>, (ParseEvents<'_>, Option<StateChange>)> {
     alt((
         map(string_literal, |s| {
-            (ParseEvent::TextValue(s).single(), StateChange::PopAfterItem)
+            (ParseEvent::TextValue(s).single(), None)
         }),
         map(complete::identifier_or_bool, |v| {
-            (identifier_event(v).single(), StateChange::PopAfterItem)
+            (identifier_event(v).single(), None)
         }),
         map(complete::numeric_literal, |l| {
-            (ParseEvent::Number(l).single(), StateChange::PopAfterItem)
+            (ParseEvent::Number(l).single(), None)
         }),
         map(complete::blob, |data| {
-            (ParseEvent::Blob(data).single(), StateChange::PopAfterItem)
+            (ParseEvent::Blob(data).single(), None)
         }),
-        secondary_attr,
+        map(secondary_attr, |(e, c)| (e, Some(c))),
         map(char_str::char('{'), |_| {
             (
                 ParseEvent::StartBody.single(),
-                StateChange::ChangeState(ParseState::RecordBodyStartOrNl),
+                Some(StateChange::ChangeState(ParseState::RecordBodyStartOrNl)),
             )
         }),
     ))(input)
@@ -725,6 +748,7 @@ trait ItemsKind {
     fn after_slot() -> ParseState;
     fn end_delim() -> char;
     fn end_event<'a>() -> ParseEvent<'a>;
+    fn end_state_change() -> StateChange;
 }
 
 struct AttrBody;
@@ -758,6 +782,10 @@ impl ItemsKind for AttrBody {
     fn end_event<'a>() -> ParseEvent<'a> {
         ParseEvent::EndAttribute
     }
+
+    fn end_state_change() -> StateChange {
+        StateChange::PopAfterAttr
+    }
 }
 
 impl ItemsKind for RecBody {
@@ -787,6 +815,10 @@ impl ItemsKind for RecBody {
 
     fn after_slot() -> ParseState {
         ParseState::RecordBodyAfterSlot
+    }
+
+    fn end_state_change() -> StateChange {
+        StateChange::PopAfterItem
     }
 }
 
@@ -820,7 +852,7 @@ fn parse_not_after_item<K: ItemsKind>(
                 } else {
                     event.single()
                 };
-                (events, StateChange::PopAfterItem)
+                (events, K::end_state_change())
             }),
             primary_attr,
             map(char_str::char('{'), |_| {
@@ -847,7 +879,7 @@ fn parse_slot_value<K: ItemsKind>(
         map(char_str::char(K::end_delim()), move |_| {
             (
                 ParseEvent::Extant.followed_by(K::end_event()),
-                StateChange::PopAfterItem,
+                K::end_state_change(),
             )
         }),
         primary_attr,
