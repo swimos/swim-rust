@@ -69,8 +69,8 @@ pub trait StructuralWritable: Sized {
         self.write_into_infallible(ValueInterpreter::default())
     }
 
-    /// If this value ocurrs as the field of a compound object, determine whehter that field
-    /// can be omitted (for example the `None` case of [`Option`]). This is inteded to be
+    /// If this value ocurrs as the field of a compound object, determine whether that field
+    /// can be omitted (for example the `None` case of [`Option`]). This is intended to be
     /// used in the derive macro for this trait and should be generally need to be used.
     fn ommit_as_field(&self) -> bool {
         false

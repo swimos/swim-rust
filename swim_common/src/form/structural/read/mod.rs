@@ -62,7 +62,7 @@ pub trait StructuralReadable: ValueReadable {
 }
 
 /// Trait for types that can (potentially) be deserialized from a single primitive value.
-/// Types that are represented as complex records will typeically return an error
+/// Types that are represented as complex records will typically return an error
 /// for all methods in this trait.
 pub trait ValueReadable: Sized {
     fn read_extant() -> Result<Self, ReadError> {
