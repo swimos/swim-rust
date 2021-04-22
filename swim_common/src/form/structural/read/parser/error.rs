@@ -18,15 +18,22 @@ use nom::error::ErrorKind;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
+/// Error that can occur when parsing into a structurally readable type.
 #[derive(Debug)]
 pub enum ParseError {
+    /// Parsing the input text failed. At the moment this just indicates the location
+    /// in the input and the `nom` rule that failed.
+    /// TODO Post-process this to produce a meaninful error message.
     Syntax {
         kind: ErrorKind,
         offset: usize,
         line: u32,
         column: usize,
     },
+    /// The parsed strucuture was not valid for the target type.
     Structure(ReadError),
+    /// The parser produced an invalid stream of events. This likely indicates
+    /// a bug in the parser.
     InvalidEventStream,
 }
 
@@ -58,7 +65,7 @@ impl Display for ParseError {
                 kind, line, column, ..
             } => write!(
                 f,
-                "Failed to parse the input. {:?} at {}:{}.",
+                "Failed to parse the input. rule = '{:?}' at ({}:{}).",
                 kind, line, column
             ),
             ParseError::InvalidEventStream => write!(f, "Parser internal error."),
@@ -67,3 +74,31 @@ impl Display for ParseError {
 }
 
 impl Error for ParseError {}
+
+#[cfg(test)]
+mod tests {
+
+    use super::ParseError;
+    use crate::form::structural::read::ReadError;
+    use nom::error::ErrorKind;
+
+    #[test]
+    fn parse_error_display() {
+        let err = ParseError::Syntax {
+            kind: ErrorKind::Tag,
+            offset: 567,
+            line: 5,
+            column: 12,
+        };
+        let string = format!("{}", err);
+        assert_eq!(string, "Failed to parse the input. rule = 'Tag' at (5:12).");
+
+        let err = ParseError::InvalidEventStream;
+        let string = format!("{}", err);
+        assert_eq!(string, "Parser internal error.");
+
+        let err = ParseError::Structure(ReadError::DoubleSlot);
+        let string = format!("{}", err);
+        assert_eq!(string, "Document did not match the expected structure: Slot divider encountered within the value of a slot.");
+    }
+}
