@@ -15,7 +15,9 @@
 use super::tokens::{complete, streaming, string_literal};
 use super::Span;
 use crate::form::structural::read::parser::record::ParseIterator;
-use crate::form::structural::read::parser::{NumericLiteral, ParseEvent};
+use crate::form::structural::read::parser::{NumericLiteral, ParseError, ParseEvent};
+use crate::model::text::Text;
+use crate::model::{Attr, Item, Value};
 use either::Either;
 use nom::IResult;
 use num_bigint::{BigInt, BigUint};
@@ -1240,4 +1242,126 @@ fn complex_slot() {
 
     let result = run_parser_iterator("{@key {1}: @value {2}}").unwrap();
     assert_eq!(result, expected);
+}
+
+fn value_from_string(rep: &str) -> Result<Value, ParseError> {
+    let span = Span::new(rep);
+    super::parse_from_str(span)
+}
+
+#[test]
+fn primitive_values_from_string() {
+    assert_eq!(value_from_string("").unwrap(), Value::Extant);
+    assert!(matches!(
+        value_from_string("5").unwrap(),
+        Value::Int32Value(5)
+    ));
+    assert!(matches!(
+        value_from_string("4000000000").unwrap(),
+        Value::Int64Value(4000000000i64)
+    ));
+    let n = u64::max_value() - 1;
+    let n_str = n.to_string();
+    assert!(matches!(value_from_string(n_str.as_str()).unwrap(), Value::UInt64Value(m) if m == n));
+    assert_eq!(
+        value_from_string("true").unwrap(),
+        Value::BooleanValue(true)
+    );
+    assert_eq!(
+        value_from_string("false").unwrap(),
+        Value::BooleanValue(false)
+    );
+    assert_eq!(
+        value_from_string("name").unwrap(),
+        Value::Text(Text::new("name"))
+    );
+    assert_eq!(
+        value_from_string(r#""two words""#).unwrap(),
+        Value::Text(Text::new("two words"))
+    );
+    assert_eq!(
+        value_from_string(r#""true""#).unwrap(),
+        Value::Text(Text::new("true"))
+    );
+    assert_eq!(
+        value_from_string(r#""false""#).unwrap(),
+        Value::Text(Text::new("false"))
+    );
+    if let Ok(Value::Data(blob)) = value_from_string("%YW55IGNhcm5hbCBwbGVhc3VyZQ==") {
+        assert_eq!(blob.as_ref(), "any carnal pleasure".as_bytes());
+    } else {
+        panic!("Incorrect blob.")
+    }
+    assert_eq!(value_from_string("0.5").unwrap(), Value::Float64Value(0.5));
+}
+
+#[test]
+fn simple_record_from_string() {
+    assert_eq!(
+        value_from_string("{1, 2, 3}").unwrap(),
+        Value::from_vec(vec![1, 2, 3])
+    );
+    assert_eq!(
+        value_from_string("{a: 1, b: 2, c: 3}").unwrap(),
+        Value::from_vec(vec![("a", 1), ("b", 2), ("c", 3)])
+    );
+}
+
+#[test]
+fn record_with_attrs_from_string() {
+    assert_eq!(
+        value_from_string("@first").unwrap(),
+        Value::of_attr("first")
+    );
+    assert_eq!(
+        value_from_string("@first(1)").unwrap(),
+        Value::of_attr(("first", 1))
+    );
+    assert_eq!(
+        value_from_string("@\"two words\"(1)").unwrap(),
+        Value::of_attr(("two words", 1))
+    );
+    assert_eq!(
+        value_from_string("@first({})").unwrap(),
+        Value::of_attr(("first", Value::empty_record()))
+    );
+    assert_eq!(
+        value_from_string("@first@second").unwrap(),
+        Value::of_attrs(vec![Attr::of("first"), Attr::of("second")])
+    );
+    assert_eq!(
+        value_from_string("@first(a:1)").unwrap(),
+        Value::of_attr(("first", Value::from_vec(vec![("a", 1)])))
+    );
+    assert_eq!(
+        value_from_string("@first(1, 2, 3)").unwrap(),
+        Value::of_attr(("first", Value::from_vec(vec![1, 2, 3])))
+    );
+}
+
+#[test]
+fn nested_record_from_string() {
+    let string = "{ {1, {2, 3} }, name: {4} }";
+    let value = value_from_string(string).unwrap();
+    assert_eq!(
+        value,
+        Value::record(vec![
+            Item::ValueItem(Value::record(vec![
+                Item::of(1),
+                Item::of(Value::from_vec(vec![2, 3])),
+            ])),
+            Item::slot("name", Value::from_vec(vec![4])),
+        ])
+    );
+}
+
+#[test]
+fn complex_slot_from_string() {
+    let string = "{@key {1}: @value {2}}";
+    let key = Value::Record(vec![Attr::of("key")], vec![Item::of(1)]);
+    let value = Value::Record(vec![Attr::of("value")], vec![Item::of(2)]);
+    let expected = Value::from_vec(vec![(key, value)]);
+
+    let value = value_from_string(string).unwrap();
+    assert_eq!(value, expected);
 }

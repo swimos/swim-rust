@@ -70,8 +70,10 @@ pub fn parse_from_str<T: StructuralReadable>(input: Span<'_>) -> Result<T, Parse
                 }
             }
             ParseEvent::Number(NumericLiteral::UInt(value)) => {
-                if let Ok(n) = u32::try_from(value) {
-                    T::read_u32(n)?
+                if let Ok(n) = i32::try_from(value) {
+                    T::read_i32(n)?
+                } else if let Ok(n) = i64::try_from(value) {
+                    T::read_i64(n)?
                 } else {
                     T::read_u64(value)?
                 }
