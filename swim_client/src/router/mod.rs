@@ -16,7 +16,7 @@ use std::collections::HashMap;
 use std::ops::Deref;
 
 use crate::configuration::router::RouterParams;
-use crate::connections::{ConnectionPool, ConnectionRequest, ConnectionSender};
+use crate::connections::{ConnectionPool, ConnectionRequest, ConnectionSender, SwimConnPool};
 use either::Either;
 use futures::future::ready;
 use futures::future::BoxFuture;
@@ -135,7 +135,7 @@ impl Router for ClientRouter {
 }
 
 #[derive(Debug)]
-pub(crate) enum ClientRequest {
+pub enum ClientRequest {
     /// Obtain a connection.
     Connect {
         request: Request<Result<RawRoute, Unresolvable>>,
@@ -143,7 +143,7 @@ pub(crate) enum ClientRequest {
     },
     /// Subscribe to a connection.
     Subscribe {
-        path: AbsolutePath,
+        url: Url,
         request: Request<mpsc::Receiver<TaggedEnvelope>>,
     },
 }
@@ -151,15 +151,16 @@ pub(crate) enum ClientRequest {
 pub(crate) type OutgoingManagerSender = mpsc::Sender<TaggedEnvelope>;
 
 //Todo dm rename the channels to something that makes sense
-pub(crate) async fn run_client_router(
+//Todo this is the client router task factory
+pub(crate) async fn run_client_router_task(
     mut request_rx: mpsc::Receiver<ClientRequest>,
-    mut conn_req_rx: mpsc::Receiver<ConnectionRequest>,
+    mut local_rx: mpsc::Receiver<ClientRequest>,
 ) {
     let mut outgoing_managers: HashMap<
         String,
         (
             OutgoingManagerSender,
-            mpsc::Sender<(RelativePath, Request<mpsc::Receiver<TaggedEnvelope>>)>,
+            mpsc::Sender<Request<mpsc::Receiver<TaggedEnvelope>>>,
         ),
     > = HashMap::new();
 
@@ -180,6 +181,7 @@ pub(crate) async fn run_client_router(
                 let (sender, _) = outgoing_managers
                     .entry(origin.to_string())
                     .or_insert_with(|| {
+                        //Todo and this is the client router task
                         let (manager, sender, sub_tx) = IncomingManager::new();
 
                         let handle = spawn(manager.run());
@@ -194,13 +196,12 @@ pub(crate) async fn run_client_router(
                 request.send(Ok(RawRoute::new(sender, on_drop_rx))).unwrap();
             }
             Some(ClientRequest::Subscribe {
-                path: sub_addr,
+                url,
                 request: sub_req,
             }) => {
-                eprintln!("host = {:#?}", sub_addr.host.to_string());
-                let (_, sub_sender) = outgoing_managers
-                    .entry(sub_addr.host.to_string())
-                    .or_insert_with(|| {
+                eprintln!("url = {:#?}", url.to_string());
+                let (_, sub_sender) =
+                    outgoing_managers.entry(url.to_string()).or_insert_with(|| {
                         let (manager, sender, sub_tx) = IncomingManager::new();
 
                         let handle = spawn(manager.run());
@@ -208,10 +209,7 @@ pub(crate) async fn run_client_router(
                         (sender, sub_tx)
                     });
 
-                sub_sender
-                    .send((sub_addr.relative_path(), sub_req))
-                    .await
-                    .unwrap();
+                sub_sender.send(sub_req).await.unwrap();
             }
             _ => {
                 close_txs.into_iter().for_each(|trigger| {
@@ -241,14 +239,14 @@ pub(crate) async fn run_client_router(
 
 pub(crate) struct IncomingManager {
     envelope_rx: mpsc::Receiver<TaggedEnvelope>,
-    sub_rx: mpsc::Receiver<(RelativePath, Request<mpsc::Receiver<TaggedEnvelope>>)>,
+    sub_rx: mpsc::Receiver<Request<mpsc::Receiver<TaggedEnvelope>>>,
 }
 
 impl IncomingManager {
     pub(crate) fn new() -> (
         IncomingManager,
         OutgoingManagerSender,
-        mpsc::Sender<(RelativePath, Request<mpsc::Receiver<TaggedEnvelope>>)>,
+        mpsc::Sender<Request<mpsc::Receiver<TaggedEnvelope>>>,
     ) {
         let (envelope_tx, envelope_rx) = mpsc::channel(8);
         let (sub_tx, sub_rx) = mpsc::channel(8);
@@ -271,12 +269,12 @@ impl IncomingManager {
         let mut envelope_rx = ReceiverStream::new(envelope_rx).fuse();
         let mut sub_rx = ReceiverStream::new(sub_rx).fuse();
 
-        let mut subs: HashMap<RelativePath, Vec<mpsc::Sender<TaggedEnvelope>>> = HashMap::new();
+        let mut subs: Vec<mpsc::Sender<TaggedEnvelope>> = Vec::new();
 
         loop {
             let next: Either<
                 Option<TaggedEnvelope>,
-                Option<(RelativePath, Request<mpsc::Receiver<TaggedEnvelope>>)>,
+                Option<Request<mpsc::Receiver<TaggedEnvelope>>>,
             > = select_biased! {
                 envelope = envelope_rx.next() => Either::Left(envelope),
                 sub = sub_rx.next() => Either::Right(sub),
@@ -285,23 +283,15 @@ impl IncomingManager {
             match next {
                 Either::Left(Some(envelope)) => match envelope.1.clone().into_incoming() {
                     Ok(env) => {
-                        broadcast_destination(&mut subs, env.path, envelope).await?;
+                        broadcast(&mut subs, envelope).await?;
                     }
                     Err(env) => {
                         warn!("Unsupported message: {:?}", env);
                     }
                 },
-                Either::Right(Some((rel_path, sub_request))) => {
+                Either::Right(Some(sub_request)) => {
                     let (sub_tx, sub_rx) = mpsc::channel(8);
-
-                    match subs.entry(rel_path) {
-                        Entry::Occupied(mut entry) => {
-                            entry.get_mut().push(sub_tx);
-                        }
-                        Entry::Vacant(entry) => {
-                            entry.insert(vec![sub_tx]);
-                        }
-                    }
+                    subs.push(sub_tx);
                     sub_request.send(sub_rx).unwrap();
                 }
                 _ => break Ok(()),
@@ -318,40 +308,31 @@ impl IncomingManager {
 /// * `subscribers`             - A map of all subscribers.
 /// * `destination`             - The node and lane.
 /// * `event`                   - An event to be broadcasted.
-async fn broadcast_destination(
-    subscribers: &mut HashMap<RelativePath, Vec<mpsc::Sender<TaggedEnvelope>>>,
-    destination: RelativePath,
+async fn broadcast(
+    subscribers: &mut Vec<mpsc::Sender<TaggedEnvelope>>,
     envelope: TaggedEnvelope,
 ) -> Result<(), RoutingError> {
-    if subscribers.contains_key(&destination) {
-        let destination_subs = subscribers
-            .get_mut(&destination)
-            .ok_or(RoutingError::ConnectionError)?;
+    if subscribers.len() == 1 {
+        let result = subscribers
+            .get_mut(0)
+            .ok_or(RoutingError::ConnectionError)?
+            .send(envelope)
+            .await;
 
-        if destination_subs.len() == 1 {
-            let result = destination_subs
-                .get_mut(0)
-                .ok_or(RoutingError::ConnectionError)?
-                .send(envelope)
-                .await;
-
-            if result.is_err() {
-                destination_subs.remove(0);
-            }
-        } else {
-            let futures: FuturesUnordered<_> = destination_subs
-                .iter_mut()
-                .enumerate()
-                .map(|(index, sender)| index_sender(sender, envelope.clone(), index))
-                .collect();
-
-            for index in futures.filter_map(ready).collect::<Vec<_>>().await {
-                destination_subs.remove(index);
-            }
+        if result.is_err() {
+            subscribers.remove(0);
         }
     } else {
-        trace!("No downlink interested in event: {:?}", envelope);
-    };
+        let futures: FuturesUnordered<_> = subscribers
+            .iter_mut()
+            .enumerate()
+            .map(|(index, sender)| index_sender(sender, envelope.clone(), index))
+            .collect();
+
+        for index in futures.filter_map(ready).collect::<Vec<_>>().await {
+            subscribers.remove(index);
+        }
+    }
 
     Ok(())
 }
