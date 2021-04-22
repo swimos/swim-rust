@@ -25,6 +25,8 @@ use num_bigint::{BigInt, BigUint};
 use std::borrow::Cow;
 use std::convert::TryFrom;
 
+/// Wraps a string in a strucutre that keeps track of the line and column
+/// as the input is parsed.
 pub type Span<'a> = LocatedSpan<&'a str>;
 
 #[derive(Debug, PartialEq)]
@@ -36,6 +38,12 @@ pub enum NumericLiteral {
     Float(f64),
 }
 
+/// Incrementally parsing a Recon document produces a sequence of these events. An
+/// event is either a token, a notification that an attribute or record body has
+/// started or ended or a notifcation of a slot (this will occur between the slot
+/// key and the slot value). If a string does not requires escaping it will be
+/// provided as a reference into the original input rather than an separate
+/// allocation.
 #[derive(Debug, PartialEq)]
 pub enum ParseEvent<'a> {
     Extant,
@@ -50,12 +58,15 @@ pub enum ParseEvent<'a> {
     EndRecord,
 }
 
+/// Create an itearator that will parse a sequence of events from a complete string.
 pub fn parse_iterator(
     input: Span<'_>,
 ) -> impl Iterator<Item = Result<ParseEvent<'_>, nom::error::Error<Span<'_>>>> + '_ {
     record::ParseIterator::new(input)
 }
 
+/// Drive the deserialization of a [`StrucutralReadable`] type from the sequence of
+/// events generated from a Recon parser iterator.
 pub fn parse_from_str<T: StructuralReadable>(input: Span<'_>) -> Result<T, ParseError> {
     let mut iterator = record::ParseIterator::new(input);
     let parsed = if let Some(event) = iterator.next() {
