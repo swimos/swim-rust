@@ -28,13 +28,20 @@ use nom::{Finish, IResult, Parser};
 use std::borrow::Cow;
 use std::convert::TryFrom;
 
+/// Change the state of the parser after producing an event.
 #[derive(Debug)]
 enum StateChange {
+    /// Pop the frame for an attribute body and move into the 'after attribute' state.
     PopAfterAttr,
+    /// Pop the frame for a record item and move into the 'after item' state.
     PopAfterItem,
+    /// Change the state of the current frame to the specified value.
     ChangeState(ParseState),
+    /// Push a new attribute body frame onto the stack.
     PushAttr,
+    /// Start a new record frame, starting with an attribute.
     PushAttrNewRec(bool),
+    /// Push a new frame for the items of a record body.
     PushBody,
 }
 
@@ -90,6 +97,7 @@ impl<'a> ParseEvent<'a> {
     }
 }
 
+/// Possible states, within a single stack frame, for the parser.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ParseState {
     Init,
@@ -107,6 +115,7 @@ pub enum ParseState {
 }
 
 impl ParseState {
+    /// Advanve the state after an item.
     fn after_item(&mut self) {
         let new_state = match self {
             ParseState::Init => ParseState::AfterAttr,
@@ -140,8 +149,11 @@ pub enum FinalAttrStage<'a> {
     EndBody,
 }
 
+/// A single parse result can produce several events. This enumeration allows
+/// an iterator to consume them in turn. Note that in the cases with multiple
+/// events, the events are stored as a stack so are in reverse order.
 #[derive(Debug)]
-pub enum ParseEvents<'a> {
+enum ParseEvents<'a> {
     NoEvent,
     SingleEvent(ParseEvent<'a>),
     TwoEvents(ParseEvent<'a>, ParseEvent<'a>),
@@ -151,6 +163,7 @@ pub enum ParseEvents<'a> {
 }
 
 impl<'a> ParseEvents<'a> {
+    /// Take the next event for the iterator.
     fn take_event(&mut self) -> Option<EventOrEnd<'a>> {
         match std::mem::take(self) {
             ParseEvents::SingleEvent(ev) => Some(EventOrEnd::Event(ev, false)),
@@ -198,14 +211,16 @@ enum EventOrEnd<'a> {
     End,
 }
 
-pub(crate) struct ParseIterator<'a> {
+/// An iterator which produces a sequence of parse events from a complete string by
+/// applying an [`IncrementalReconParser`] repeatedly.
+pub struct ParseIterator<'a> {
     input: Span<'a>,
     parser: Option<IncrementalReconParser>,
     pending: Option<ParseEvents<'a>>,
 }
 
 impl<'a> ParseIterator<'a> {
-    pub(crate) fn new(input: Span<'a>) -> Self {
+    pub fn new(input: Span<'a>) -> Self {
         ParseIterator {
             input,
             parser: Some(Default::default()),
@@ -287,7 +302,8 @@ impl<'a> From<ParseEvent<'a>> for ParseEvents<'a> {
     }
 }
 
-pub(crate) fn read_from_header<'a, H: HeaderReader>(
+/// Drive a [`HeaderReader`] from an iterator of parse events.
+pub fn read_from_header<'a, H: HeaderReader>(
     mut reader: H,
     it: &mut ParseIterator<'a>,
     first_attr: Cow<'a, str>,
@@ -314,7 +330,8 @@ pub(crate) fn read_from_header<'a, H: HeaderReader>(
     }
 }
 
-pub(crate) fn read_body<B: BodyReader>(
+/// Drive a [`BodyReader`] from an iterator of parse events.
+pub fn read_body<B: BodyReader>(
     mut reader: B,
     it: &mut ParseIterator<'_>,
     attr_body: bool,
@@ -386,6 +403,8 @@ pub(crate) fn read_body<B: BodyReader>(
     }
 }
 
+/// A stateful, incremental Recon parser. Each call to `parse` will produce zero
+/// or more parse events which are guaranteed to be consistent.
 #[derive(Debug)]
 pub struct IncrementalReconParser {
     state: Vec<ParseState>,
@@ -404,10 +423,15 @@ enum FinalState {
     AfterAttr,
 }
 
-pub struct FinalSegmentParser(FinalState);
+/// The incremental recon parser will fail if it is possible that providing more input
+/// could change the final result (to allow it be used in cases where the whole string
+/// may not be available all at once). When the end of the data is reached, it should
+/// be converted into the final segment parser which can read the final events.
+struct FinalSegmentParser(FinalState);
 
 impl IncrementalReconParser {
-    pub fn into_final_parser(self) -> Option<FinalSegmentParser> {
+    /// Convert to the final segment parser to handle the end of the input.
+    fn into_final_parser(self) -> Option<FinalSegmentParser> {
         let IncrementalReconParser { mut state } = self;
         let top = state.pop();
         if state.is_empty() {
@@ -740,6 +764,9 @@ fn slot_item<K: ItemsKind>(event: ParseEvent<'_>) -> (ParseEvents<'_>, StateChan
     (event.single(), StateChange::ChangeState(K::after_slot()))
 }
 
+/// Parsing of the body of an attribute and of the body of a record is very similar.
+/// This trait encodes the differenes between the two to allow the same method to be
+/// used for both.
 trait ItemsKind {
     fn start_or_nl() -> ParseState;
     fn after_sep() -> ParseState;
