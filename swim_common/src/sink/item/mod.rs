@@ -235,7 +235,7 @@ pub fn for_broadcast_sender<T: Send + 'static>(
 
 impl<'a, T> ItemSink<'a, T> for topic::Sender<T>
 where
-    T: Send + 'a,
+    T: Send + Sync + 'a,
 {
     type Error = topic::SendError<T>;
     type SendFuture = topic::TopicSend<'a, T>;
@@ -250,7 +250,7 @@ pub struct Discarding<T>(pub topic::Sender<T>);
 
 impl<'a, T> ItemSink<'a, T> for Discarding<T>
 where
-    T: Send + 'a,
+    T: Send + Sync + 'a,
 {
     type Error = topic::SendError<T>;
     type SendFuture = topic::TopicSend<'a, T>;
