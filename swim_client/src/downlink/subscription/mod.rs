@@ -31,8 +31,11 @@ use crate::downlink::{
     command_downlink, event_downlink, map_downlink, value_downlink, Command, Downlink,
     DownlinkError, Message, SchemaViolations,
 };
-use crate::router::run_client_router_task;
+use crate::router::RouterMessageRequest;
+use crate::router::TaskManager;
+use crate::router::{run_client_router_task, RouterEvent};
 use crate::router::{ClientRequest, ClientRouterFactory};
+use crate::router::{CloseSender, RouterConnRequest};
 use either::Either;
 use futures::future::BoxFuture;
 use futures::join;
@@ -123,20 +126,26 @@ impl Downlinks {
         let (local_tx, local_rx) =
             mpsc::channel(client_params.connections_params.channel_buffer_size.get());
 
-        // let (conn_req_tx, conn_req_rx) =
-        //     mpsc::channel(client_params.router_params.buffer_size().get());
+        let (close_tx, close_rx) = promise::promise();
 
         //Todo dm replace the config
         let mut connection_pool =
             SwimConnPool::new(ConnectionPoolParams::default(), remote_router_tx, local_tx);
 
-        let task = DownlinkTask::new(config, connection_pool);
+        let (task_manager, connection_request_tx, router_sink_tx) = TaskManager::new(
+            connection_pool.clone(),
+            close_rx,
+            client_params.router_params,
+        );
+
+        let task = DownlinkTask::new(config, connection_request_tx, router_sink_tx, close_tx);
         let (tx, rx) = mpsc::channel(client_params.dl_req_buffer_size.get());
         let task_handle = spawn(async {
             join!(
                 task.run(ReceiverStream::new(rx)),
                 run_client_router_task(request_rx, local_rx),
-                remote_connections_task.run()
+                remote_connections_task.run(),
+                task_manager.run()
             )
             .0
         });
@@ -484,7 +493,9 @@ struct DownlinkTask {
     command_downlinks: HashMap<AbsolutePath, CommandHandle>,
     event_downlinks: HashMap<(AbsolutePath, SchemaViolations), EventHandle>,
     stopped_watch: StopEvents,
-    conn_pool: SwimConnPool,
+    conn_request_tx: mpsc::Sender<RouterConnRequest>,
+    sink_tx: mpsc::Sender<RouterMessageRequest>,
+    close_tx: CloseSender,
 }
 
 /// Event that is generated after a downlink stops to allow it to be cleaned up.
@@ -534,7 +545,12 @@ impl ConnectionRequest {
 }
 
 impl DownlinkTask {
-    fn new<C>(config: Arc<C>, conn_pool: SwimConnPool) -> DownlinkTask
+    fn new<C>(
+        config: Arc<C>,
+        conn_request_tx: mpsc::Sender<RouterConnRequest>,
+        sink_tx: mpsc::Sender<RouterMessageRequest>,
+        close_tx: CloseSender,
+    ) -> DownlinkTask
     where
         C: Config + 'static,
     {
@@ -545,7 +561,9 @@ impl DownlinkTask {
             command_downlinks: HashMap::new(),
             event_downlinks: HashMap::new(),
             stopped_watch: StopEvents::new(),
-            conn_pool,
+            conn_request_tx,
+            sink_tx,
+            close_tx,
         }
     }
 
@@ -590,15 +608,12 @@ impl DownlinkTask {
     async fn connection_for(
         &mut self,
         path: &AbsolutePath,
-    ) -> (mpsc::Sender<TaggedEnvelope>, mpsc::Receiver<TaggedEnvelope>) {
-        let (sender, receiver) = self
-            .conn_pool
-            .request_connection(path.host.clone(), false)
-            .await
-            .unwrap()
-            .unwrap();
+    ) -> (mpsc::Sender<Envelope>, mpsc::Receiver<RouterEvent>) {
+        let (tx, rx) = oneshot::channel();
 
-        (sender.tx, receiver.unwrap())
+        self.conn_request_tx.send((path.clone(), tx)).await.unwrap();
+
+        rx.await.unwrap()
     }
 
     async fn create_new_value_downlink(
@@ -611,26 +626,17 @@ impl DownlinkTask {
         let _g = span.enter();
 
         let config = self.config.config_for(&path);
-
-        let (sink, stream) = self.connection_for(&path).await;
-
+        let (sink, incoming) = self.connection_for(&path).await;
         let schema_cpy = schema.clone();
 
-        let updates = ReceiverStream::new(stream).map(|tagged_env| {
-            Ok(envelopes::value::from_envelope(
-                tagged_env.1.into_incoming().unwrap(),
-            ))
-        });
+        let updates = ReceiverStream::new(incoming).map(map_router_events);
 
         let sink_path = path.clone();
         let cmd_sink =
             item::for_mpsc_sender(sink)
                 .map_err_into()
                 .comap(move |cmd: Command<SharedValue>| {
-                    TaggedEnvelope(
-                        RoutingAddr::local(0),
-                        envelopes::value_envelope(&sink_path, cmd).1.into(),
-                    )
+                    envelopes::value_envelope(&sink_path, cmd).1.into()
                 });
 
         let (raw_dl, rec) = match config.back_pressure {
@@ -685,16 +691,15 @@ impl DownlinkTask {
         let _g = span.enter();
 
         let config = self.config.config_for(&path);
-
-        let (sink, stream) = self.connection_for(&path).await;
-
+        let (sink, incoming) = self.connection_for(&path).await;
         let key_schema_cpy = key_schema.clone();
         let value_schema_cpy = value_schema.clone();
 
-        let updates = ReceiverStream::new(stream).map(|tagged_env| {
-            Ok(envelopes::map::from_envelope(
-                tagged_env.1.into_incoming().unwrap(),
-            ))
+        let updates = ReceiverStream::new(incoming).map(|e| match e {
+            RouterEvent::Message(l) => Ok(envelopes::map::from_envelope(l)),
+            RouterEvent::ConnectionClosed => Err(RoutingError::ConnectionError),
+            RouterEvent::Unreachable(_) => Err(RoutingError::HostUnreachable),
+            RouterEvent::Stopping => Err(RoutingError::RouterDropped),
         });
 
         let sink_path = path.clone();
@@ -703,10 +708,7 @@ impl DownlinkTask {
             BackpressureMode::Propagate => {
                 let cmd_sink = item::for_mpsc_sender(sink).comap(
                     move |cmd: Command<UntypedMapModification<Value>>| {
-                        TaggedEnvelope(
-                            RoutingAddr::local(0),
-                            envelopes::map_envelope(&sink_path, cmd).1.into(),
-                        )
+                        envelopes::map_envelope(&sink_path, cmd).1.into()
                     },
                 );
                 map_downlink(
@@ -724,24 +726,16 @@ impl DownlinkTask {
                 yield_after,
             } => {
                 let sink_path_duplicate = sink_path.clone();
-
                 let direct_sink = item::for_mpsc_sender(sink.clone()).map_err_into().comap(
                     move |cmd: Command<UntypedMapModification<Value>>| {
-                        TaggedEnvelope(
-                            RoutingAddr::local(0),
-                            envelopes::map_envelope(&sink_path_duplicate, cmd).1.into(),
-                        )
+                        envelopes::map_envelope(&sink_path_duplicate, cmd).1.into()
                     },
                 );
-
                 let action_sink = item::for_mpsc_sender(sink).map_err_into().comap(
                     move |act: UntypedMapModification<Value>| {
-                        TaggedEnvelope(
-                            RoutingAddr::local(0),
-                            envelopes::map_envelope(&sink_path, Command::Action(act))
-                                .1
-                                .into(),
-                        )
+                        envelopes::map_envelope(&sink_path, Command::Action(act))
+                            .1
+                            .into()
                     },
                 );
 
@@ -799,10 +793,7 @@ impl DownlinkTask {
             item::for_mpsc_sender(sink)
                 .map_err_into()
                 .comap(move |cmd: Command<Value>| {
-                    TaggedEnvelope(
-                        RoutingAddr::local(0),
-                        envelopes::command_envelope(&sink_path, cmd).1.into(),
-                    )
+                    envelopes::command_envelope(&sink_path, cmd).1.into()
                 });
 
         let dl = match config.back_pressure {
@@ -855,26 +846,16 @@ impl DownlinkTask {
         schema: StandardSchema,
         violations: SchemaViolations,
     ) -> RequestResult<Arc<UntypedEventDownlink>> {
-        let (sink, stream) = self.connection_for(&path).await;
+        let (sink, incoming) = self.connection_for(&path).await;
 
-        let updates = ReceiverStream::new(stream).map(|tagged_env| {
-            Ok(envelopes::value::from_envelope(
-                tagged_env.1.into_incoming().unwrap(),
-            ))
-        });
+        let updates = ReceiverStream::new(incoming).map(map_router_events);
 
         let config = self.config.config_for(&path);
 
         let path_cpy = path.clone();
-
         let cmd_sink = item::for_mpsc_sender(sink)
             .map_err_into()
-            .comap(move |cmd: Command<()>| {
-                TaggedEnvelope(
-                    RoutingAddr::local(0),
-                    envelopes::dummy_envelope(&path_cpy, cmd).1.into(),
-                )
-            });
+            .comap(move |cmd: Command<()>| envelopes::dummy_envelope(&path_cpy, cmd).1.into());
 
         let (raw_dl, _) = event_downlink(
             schema.clone(),
@@ -1212,10 +1193,17 @@ impl DownlinkTask {
     ) -> RequestResult<()> {
         let (sink, _) = self.connection_for(&path).await;
 
-        sink.send(TaggedEnvelope(RoutingAddr::local(0), envelope))
-            .await
-            .unwrap();
+        sink.send(envelope).await.unwrap();
 
         Ok(())
+    }
+}
+
+fn map_router_events(event: RouterEvent) -> Result<Message<Value>, RoutingError> {
+    match event {
+        RouterEvent::Message(l) => Ok(envelopes::value::from_envelope(l)),
+        RouterEvent::ConnectionClosed => Err(RoutingError::ConnectionError),
+        RouterEvent::Unreachable(_) => Err(RoutingError::HostUnreachable),
+        RouterEvent::Stopping => Err(RoutingError::RouterDropped),
     }
 }

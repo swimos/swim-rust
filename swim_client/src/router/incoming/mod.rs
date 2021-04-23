@@ -22,6 +22,7 @@ use std::convert::TryFrom;
 use swim_common::model::parser::parse_single;
 use swim_common::routing::error::RoutingError;
 use swim_common::routing::ws::WsMessage;
+use swim_common::routing::TaggedEnvelope;
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc;
@@ -33,9 +34,9 @@ use tracing::{debug, error, span, trace, warn, Level};
 /// Tasks that the incoming task can handle.
 #[derive(Debug)]
 pub(crate) enum IncomingRequest {
-    Connection(mpsc::Receiver<WsMessage>),
+    Connection(mpsc::Receiver<TaggedEnvelope>),
     Subscribe(SubscriberRequest),
-    Message(WsMessage),
+    Message(TaggedEnvelope),
     Unreachable(String),
     Disconnect,
     Close(Option<CloseResponseSender>),
@@ -68,7 +69,7 @@ impl IncomingHostTask {
         } = self;
 
         let mut subscribers: HashMap<RelativePath, Vec<mpsc::Sender<RouterEvent>>> = HashMap::new();
-        let mut connection: Option<mpsc::Receiver<WsMessage>> = None;
+        let mut connection: Option<mpsc::Receiver<TaggedEnvelope>> = None;
 
         let mut close_trigger = close_rx.fuse();
 
@@ -129,43 +130,17 @@ impl IncomingHostTask {
                 }
 
                 IncomingRequest::Message(message) => {
-                    let value = {
-                        match &message {
-                            WsMessage::Text(s) => parse_single(&s),
-                            m => {
-                                error!("Unimplemented message type received: {:?}", m);
-                                continue;
-                            }
-                        }
-                    };
+                    let message = message.1.into_incoming();
 
-                    match value {
-                        Ok(val) => {
-                            let envelope = Envelope::try_from(val);
-
-                            match envelope {
-                                Ok(env) => {
-                                    let message = env.into_incoming();
-
-                                    if let Ok(incoming) = message {
-                                        broadcast_destination(
-                                            &mut subscribers,
-                                            incoming.path.clone(),
-                                            RouterEvent::Message(incoming),
-                                        )
-                                        .await?;
-                                    } else {
-                                        warn!("Unsupported message: {:?}", message)
-                                    }
-                                }
-                                Err(e) => {
-                                    error!("Parsing error {:?}", e);
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            error!("Parsing error {:?}", e);
-                        }
+                    if let Ok(incoming) = message {
+                        broadcast_destination(
+                            &mut subscribers,
+                            incoming.path.clone(),
+                            RouterEvent::Message(incoming),
+                        )
+                        .await?;
+                    } else {
+                        warn!("Unsupported message: {:?}", message)
                     }
                 }
 

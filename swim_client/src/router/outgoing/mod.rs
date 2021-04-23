@@ -13,16 +13,18 @@
 // limitations under the License.
 
 use crate::configuration::router::RouterParams;
-use crate::router::{CloseReceiver, CloseResponseSender, ConnectionRequest};
+use crate::router::{CloseReceiver, CloseResponseSender, ConnectionRequest, OldConnectionRequest};
 use futures::{select, FutureExt, StreamExt};
-use swim_common::routing::RoutingError;
 use swim_common::warp::envelope::Envelope;
 use tokio::sync::mpsc;
 use tracing::{error, info, span, trace, Level};
 
 use crate::router::retry::new_request;
+use swim_common::routing::error::RoutingError;
+use swim_common::routing::{RoutingAddr, TaggedEnvelope};
 use tokio_stream::wrappers::ReceiverStream;
 use utilities::future::retryable::RetryableFuture;
+use utilities::FieldKind::Tagged;
 
 //----------------------------------Downlink to Connection Pool---------------------------------
 
@@ -43,7 +45,7 @@ enum OutgoingRequest {
 /// It will only open connections when required.
 pub(crate) struct OutgoingHostTask {
     envelope_rx: mpsc::Receiver<Envelope>,
-    connection_request_tx: mpsc::Sender<ConnectionRequest>,
+    connection_request_tx: mpsc::Sender<OldConnectionRequest>,
     close_rx: CloseReceiver,
     config: RouterParams,
 }
@@ -51,7 +53,7 @@ pub(crate) struct OutgoingHostTask {
 impl OutgoingHostTask {
     pub fn new(
         envelope_rx: mpsc::Receiver<Envelope>,
-        connection_request_tx: mpsc::Sender<ConnectionRequest>,
+        connection_request_tx: mpsc::Sender<OldConnectionRequest>,
         close_rx: CloseReceiver,
         config: RouterParams,
     ) -> Self {
@@ -93,7 +95,8 @@ impl OutgoingHostTask {
 
             match task {
                 OutgoingRequest::Message(envelope) => {
-                    let message = envelope.into_value().to_string();
+                    let message = TaggedEnvelope(RoutingAddr::local(0), envelope);
+
                     let request = new_request(connection_request_tx.clone(), message.into());
 
                     RetryableFuture::new(request, config.retry_strategy())
