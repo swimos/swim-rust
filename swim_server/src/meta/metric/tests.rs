@@ -15,14 +15,13 @@
 use crate::agent::lane::channels::uplink::backpressure::KeyedBackpressureConfig;
 use crate::agent::lane::model::supply::SupplyLane;
 use crate::meta::log::make_node_logger;
-use crate::meta::metric::aggregator::{AddressedMetric, AggregatorTask, MetricState};
+use crate::meta::metric::aggregator::{AggregatorTask, MetricState};
 use crate::meta::metric::config::MetricAggregatorConfig;
-use crate::meta::metric::lane::{LanePulse, TaggedLaneProfile};
+use crate::meta::metric::lane::{LaneMetricReporter, LanePulse};
 use crate::meta::metric::node::NodePulse;
-use crate::meta::metric::uplink::{TaggedWarpUplinkProfile, WarpUplinkPulse};
+use crate::meta::metric::uplink::{WarpUplinkProfile, WarpUplinkPulse};
 use crate::meta::metric::{
-    AggregatorError, AggregatorErrorKind, MetricStage, NodeMetricAggregator, WarpLaneProfile,
-    WarpUplinkProfile,
+    AggregatorError, AggregatorErrorKind, MetricStage, NodeMetricAggregator,
 };
 use futures::future::{join, join3};
 use futures::FutureExt;
@@ -47,7 +46,7 @@ pub fn create_lane_map(
     buffer_size: NonZeroUsize,
 ) -> (
     HashMap<RelativePath, mpsc::Receiver<LanePulse>>,
-    HashMap<RelativePath, MetricState<TaggedLaneProfile, TaggedWarpUplinkProfile>>,
+    HashMap<RelativePath, MetricState<LaneMetricReporter>>,
 ) {
     let mut lane_map = HashMap::new();
     let mut rx_map = HashMap::new();
@@ -58,10 +57,7 @@ pub fn create_lane_map(
 
         let path = RelativePath::new("/node", format!("lane_{}", i));
 
-        let value = MetricState::new(
-            TaggedLaneProfile::pack(WarpLaneProfile::default(), path.clone()),
-            lane,
-        );
+        let value = MetricState::new(LaneMetricReporter::default(), lane);
 
         lane_map.insert(path.clone(), value);
         rx_map.insert(path, lane_rx);
@@ -70,22 +66,18 @@ pub fn create_lane_map(
     (rx_map, lane_map)
 }
 
-pub fn make_profile(count: u32) -> TaggedWarpUplinkProfile {
+pub fn make_profile(count: u32) -> (RelativePath, WarpUplinkProfile) {
     let path = RelativePath::new("/node", "lane");
-    TaggedWarpUplinkProfile::pack(
+    (
+        path,
         WarpUplinkProfile {
             event_delta: count,
             event_rate: count as u64,
-            event_count: count as u64,
             command_delta: count,
             command_rate: count as u64,
-            command_count: count as u64,
             open_delta: count,
-            open_count: count,
             close_delta: count,
-            close_count: count,
         },
-        path,
     )
 }
 
@@ -98,22 +90,18 @@ pub fn backpressure_config() -> KeyedBackpressureConfig {
     }
 }
 
-pub fn build_uplink_profile(path: RelativePath, n: u32) -> TaggedWarpUplinkProfile {
-    TaggedWarpUplinkProfile {
+pub fn build_uplink_profile(path: RelativePath, n: u32) -> (RelativePath, WarpUplinkProfile) {
+    (
         path,
-        profile: WarpUplinkProfile {
+        WarpUplinkProfile {
             event_delta: n,
             event_rate: n as u64,
-            event_count: n as u64,
             command_delta: n,
             command_rate: n as u64,
-            command_count: n as u64,
             open_delta: n,
-            open_count: n,
             close_delta: n,
-            close_count: n,
         },
-    }
+    )
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -127,10 +115,7 @@ async fn drain() {
     let mut lane_map = HashMap::new();
     let path = RelativePath::new("/node", "lane");
 
-    let value = MetricState::new(
-        TaggedLaneProfile::pack(WarpLaneProfile::default(), path.clone()),
-        lane,
-    );
+    let value = MetricState::new(LaneMetricReporter::default(), lane);
     lane_map.insert(path, value);
 
     let stream = futures::stream::iter(vec![make_profile(1), make_profile(2), make_profile(3)]);
@@ -188,7 +173,7 @@ async fn drain() {
     let task = async move {
         let result = join(aggregator.run(DEFAULT_YIELD), assert_task).await;
         match result {
-            (Ok(()), _) => {}
+            (Ok(_), _) => {}
             (Err(e), _) => {
                 panic!("{}", e)
             }
@@ -208,10 +193,7 @@ async fn abnormal() {
     let mut lane_map = HashMap::new();
     let path = RelativePath::new("/node", "lane");
 
-    let value = MetricState::new(
-        TaggedLaneProfile::pack(WarpLaneProfile::default(), path.clone()),
-        lane,
-    );
+    let value = MetricState::new(LaneMetricReporter::default(), lane);
     lane_map.insert(path.clone(), value);
 
     let (metric_tx, metric_rx) = mpsc::channel(2);
@@ -230,7 +212,7 @@ async fn abnormal() {
     let task = async move {
         let result = aggregator.run(DEFAULT_YIELD).await;
         match result {
-            Ok(()) => {
+            Ok(_) => {
                 panic!("Expected abnormal stop code")
             }
             Err(AggregatorError { aggregator, error }) => {
@@ -533,9 +515,7 @@ async fn full_pipeline_multiple_observers() {
 
     let second = WarpUplinkProfile {
         event_delta: 5,
-        event_count: 10,
         command_delta: 5,
-        command_count: 10,
         ..Default::default()
     };
 

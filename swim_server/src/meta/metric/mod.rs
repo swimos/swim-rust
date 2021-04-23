@@ -12,107 +12,46 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#[cfg(test)]
-mod tests;
-
-mod aggregator;
-pub mod config;
-mod lane;
-mod node;
-pub mod pulse;
-mod uplink;
-
-use std::collections::HashMap;
-
-use tokio::sync::mpsc;
-use tokio::sync::mpsc::Sender;
-
-use swim_common::warp::path::RelativePath;
-use utilities::sync::trigger;
-
 use crate::agent::lane::model::supply::SupplyLane;
-use pin_utils::core_reexport::fmt::Formatter;
-use std::fmt::{Debug, Display};
-use utilities::uri::RelativeUri;
-
 use crate::meta::log::{LogEntry, LogLevel, NodeLogger};
-use crate::meta::metric::aggregator::{AddressedMetric, AggregatorTask, MetricState};
+use crate::meta::metric::aggregator::{AggregatorTask, MetricState};
 use crate::meta::metric::config::MetricAggregatorConfig;
-use crate::meta::metric::lane::{LanePulse, TaggedLaneProfile};
+use crate::meta::metric::lane::{LaneMetricReporter, LanePulse};
 use crate::meta::metric::node::{NodeAggregatorTask, NodePulse};
 use crate::meta::metric::uplink::{
-    uplink_aggregator, uplink_observer, TaggedWarpUplinkProfile, UplinkProfileSender,
-    WarpUplinkPulse,
+    uplink_aggregator, uplink_observer, TaggedWarpUplinkProfile, UplinkActionObserver,
+    UplinkEventObserver, UplinkProfileSender, WarpUplinkPulse,
 };
 use futures::future::try_join3;
 use futures::Future;
-pub use lane::WarpLaneProfile;
-pub use node::NodeProfile;
-use std::time::Duration;
+use std::collections::HashMap;
+use std::fmt::{Display, Formatter};
+use std::ops::Add;
+use swim_common::warp::path::RelativePath;
+use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::SendError as TokioSendError;
+use tokio::sync::mpsc::Sender;
+use tokio::time::Duration;
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{span, Level};
 use tracing_futures::Instrument;
-pub use uplink::{UplinkActionObserver, UplinkEventObserver, WarpUplinkProfile};
+use utilities::sync::trigger;
+use utilities::uri::RelativeUri;
+
+pub mod aggregator;
+pub mod config;
+pub mod lane;
+pub mod node;
+pub mod uplink;
+
+#[cfg(test)]
+mod tests;
 
 const AGGREGATOR_TASK: &str = "Metric aggregator task";
-const STOP_OK: &str = "Aggregator stopped normally";
-const STOP_CLOSED: &str = "Aggregator event stream unexpectedly closed";
+pub(crate) const STOP_OK: &str = "Aggregator stopped normally";
+pub(crate) const STOP_CLOSED: &str = "Aggregator event stream unexpectedly closed";
 const LOG_ERROR_MSG: &str = "Node aggregator failed";
 const LOG_TASK_FINISHED_MSG: &str = "Node aggregator task completed";
-
-/// A node metric aggregator.
-///
-/// The aggregator has an input channel which is fed WARP uplink profiles which are produced by
-/// uplink observers. The reporting interval of these profiles is configurable and backpressure
-/// relief is also applied. Profile reporting is event driven and a profile will only be reported
-/// if a metric is reported *and* the sample period has elapsed; no periodic flushing of stale
-/// profiles is applied. These profiles are then aggregated by an uplink aggregator and a WARP
-/// uplink pulse is produced at the corresponding supply lane as well as a WARP uplink profile being
-/// forwarded the the next stage in the pipeline. The same process is repeated for lanes and finally
-/// a node pulse and profile is produced.
-///
-/// This aggregator is structured in a fan-in fashion and profiles and pulses are debounced by the
-/// sample rate which is provided at creation. In addition to this, no guarantees are made as to
-/// whether the the pulse or profiles will be delivered; if the channel is full, then the message is
-/// dropped.
-pub struct NodeMetricAggregator {
-    /// An inner observer factory for creating uplink observer pairs.
-    observer: UplinkMetricObserver,
-}
-
-impl Debug for NodeMetricAggregator {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("MetricAggregator")
-            .field("observer", &self.observer)
-            .finish()
-    }
-}
-
-/// An error produced by a metric aggregator.
-#[derive(Debug, PartialEq, Clone)]
-pub struct AggregatorError {
-    /// The type of aggregator that errored.
-    aggregator: MetricStage,
-    /// The underlying error.
-    error: AggregatorErrorKind,
-}
-
-impl From<TokioSendError<TaggedWarpUplinkProfile>> for AggregatorError {
-    fn from(_: TokioSendError<TaggedWarpUplinkProfile>) -> Self {
-        AggregatorError {
-            aggregator: MetricStage::Uplink,
-            error: AggregatorErrorKind::ForwardChannelClosed,
-        }
-    }
-}
-
-impl Display for AggregatorError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let AggregatorError { aggregator, error } = self;
-        write!(f, "{} aggregator errored with: {}", aggregator, error)
-    }
-}
 
 /// A metric aggregator kind or stage in the pipeline.
 #[derive(Clone, Eq, PartialEq, Debug)]
@@ -129,6 +68,30 @@ pub enum MetricStage {
 impl Display for MetricStage {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}", self)
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct AggregatorError {
+    /// The type of aggregator that errored.
+    pub(crate) aggregator: MetricStage,
+    /// The underlying error.
+    error: AggregatorErrorKind,
+}
+
+impl Display for AggregatorError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let AggregatorError { aggregator, error } = self;
+        write!(f, "{} aggregator errored with: {}", aggregator, error)
+    }
+}
+
+impl From<TokioSendError<TaggedWarpUplinkProfile>> for AggregatorError {
+    fn from(_: TokioSendError<TaggedWarpUplinkProfile>) -> Self {
+        AggregatorError {
+            aggregator: MetricStage::Uplink,
+            error: AggregatorErrorKind::ForwardChannelClosed,
+        }
     }
 }
 
@@ -152,6 +115,36 @@ impl Display for AggregatorErrorKind {
             }
         }
     }
+}
+
+pub trait MetricReporter {
+    const METRIC_STAGE: MetricStage;
+
+    type Pulse: Send + Sync + 'static;
+    type Profile: Send + Sync + 'static;
+    type Input: Add<Self::Input, Output = Self::Input> + Copy + Default;
+
+    fn report(&mut self, part: Self::Input) -> (Self::Pulse, Self::Profile);
+}
+
+/// A node metric aggregator.
+///
+/// The aggregator has an input channel which is fed WARP uplink profiles which are produced by
+/// uplink observers. The reporting interval of these profiles is configurable and backpressure
+/// relief is also applied. Profile reporting is event driven and a profile will only be reported
+/// if a metric is reported *and* the sample period has elapsed; no periodic flushing of stale
+/// profiles is applied. These profiles are then aggregated by an uplink aggregator and a WARP
+/// uplink pulse is produced at the corresponding supply lane as well as a WARP uplink profile being
+/// forwarded the the next stage in the pipeline. The same process is repeated for lanes and finally
+/// a node pulse and profile is produced.
+///
+/// This aggregator is structured in a fan-in fashion and profiles and pulses are debounced by the
+/// sample rate which is provided at creation. In addition to this, no guarantees are made as to
+/// whether the the pulse or profiles will be delivered; if the channel is full, then the message is
+/// dropped.
+pub struct NodeMetricAggregator {
+    /// An inner observer factory for creating uplink observer pairs.
+    observer: UplinkMetricObserver,
 }
 
 impl NodeMetricAggregator {
@@ -201,10 +194,7 @@ impl NodeMetricAggregator {
         let lane_pulse_lanes = lane_pulse_lanes
             .into_iter()
             .map(|(k, v)| {
-                let inner = MetricState::new(
-                    TaggedLaneProfile::pack(WarpLaneProfile::default(), k.clone()),
-                    v,
-                );
+                let inner = MetricState::new(LaneMetricReporter::default(), v);
                 (k, inner)
             })
             .collect();
@@ -236,25 +226,35 @@ impl NodeMetricAggregator {
                 uplink_task,
             )
             .instrument(span!(Level::DEBUG, AGGREGATOR_TASK, ?task_node_uri))
-            .await
-            .map(|_| ());
+            .await;
 
-            let entry = match &result {
-                Ok(()) => LogEntry::make(
-                    LOG_TASK_FINISHED_MSG.to_string(),
-                    LogLevel::Debug,
-                    task_node_uri,
-                    None,
-                ),
+            match &result {
+                Ok((node, lane, uplink)) => {
+                    let stages = vec![node, lane, uplink];
+                    for state in stages {
+                        let entry = LogEntry::make(
+                            LOG_TASK_FINISHED_MSG.to_string(),
+                            LogLevel::Debug,
+                            task_node_uri.clone(),
+                            state.to_string().to_lowercase(),
+                        );
+                        let _res = log_context.log_entry(entry).await;
+                    }
+                }
                 Err(e) => {
                     let message = format!("{}: {}", LOG_ERROR_MSG, e);
-                    LogEntry::make(message, LogLevel::Error, task_node_uri, None)
+                    let entry = LogEntry::make(
+                        message,
+                        LogLevel::Error,
+                        task_node_uri,
+                        e.aggregator.to_string().to_lowercase(),
+                    );
+
+                    let _res = log_context.log_entry(entry).await;
                 }
             };
 
-            let _res = log_context.log_entry(entry).await;
-
-            result
+            result.map(|_| ())
         };
 
         let metrics = NodeMetricAggregator {

@@ -1,4 +1,4 @@
-// Copyright 2015-2021 SWIM.AI inc.
+// Copyright 2015-2020 SWIM.AI inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,19 +13,22 @@
 // limitations under the License.
 
 use crate::agent::lane::channels::uplink::backpressure::KeyedBackpressureConfig;
-use crate::agent::lane::model::supply::{make_lane_model, SupplyLane};
+use crate::agent::lane::model::supply::SupplyLane;
+use crate::agent::model::supply::make_lane_model;
 use crate::meta::metric::config::MetricAggregatorConfig;
 use crate::meta::metric::tests::{backpressure_config, DEFAULT_BUFFER, DEFAULT_YIELD};
 use crate::meta::metric::uplink::{
-    uplink_aggregator, uplink_observer, TaggedWarpUplinkProfile, TrySendError, UplinkProfileSender,
+    uplink_aggregator, uplink_observer, TaggedWarpUplinkProfile, TrySendError,
+    UplinkActionObserver, UplinkEventObserver, UplinkProfileSender, WarpUplinkProfile,
     WarpUplinkPulse,
 };
-use crate::meta::metric::{UplinkMetricObserver, WarpUplinkProfile};
+use crate::meta::metric::{MetricStage, UplinkMetricObserver};
 use futures::future::{join, join3};
 use futures::stream::iter;
 use futures::{FutureExt, StreamExt};
 use std::collections::{HashMap, HashSet};
 use std::num::NonZeroUsize;
+use std::ops::Add;
 use std::str::FromStr;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
@@ -63,7 +66,7 @@ async fn uplink_sender_err() {
 }
 
 #[tokio::test]
-async fn test_receive() {
+async fn receive() {
     let path = RelativePath::new("/node", "/lane");
     let (tx, mut rx) = mpsc::channel(1);
     let sender = UplinkProfileSender::new(path.clone(), tx);
@@ -72,23 +75,23 @@ async fn test_receive() {
 
     event_observer
         .inner
-        .command_count
+        .command_delta
         .fetch_add(2, Ordering::Acquire);
     action_observer
         .inner
-        .event_count
+        .event_delta
         .fetch_add(2, Ordering::Acquire);
 
     event_observer.inner.flush();
 
     let tagged = rx.recv().await.unwrap();
 
-    assert_eq!(tagged.profile.event_count, 2);
-    assert_eq!(tagged.profile.command_count, 2);
+    assert_eq!(tagged.profile.event_delta, 2);
+    assert_eq!(tagged.profile.command_delta, 2);
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn test_receive_threaded() {
+async fn receive_threaded() {
     let path = RelativePath::new("/node", "/lane");
     let (tx, mut rx) = mpsc::channel(2048);
     let sender = UplinkProfileSender::new(path.clone(), tx);
@@ -96,70 +99,38 @@ async fn test_receive_threaded() {
     let sample_rate = Duration::from_secs(1);
     let (event_observer, action_observer) = uplink_observer(sample_rate, sender);
 
-    let left_event_observer = event_observer.clone();
-    let left_action_observer = action_observer.clone();
-
-    let right_event_observer = event_observer.clone();
-    let right_action_observer = action_observer.clone();
-
-    let task_left = async move {
+    let make_task = |event_observer: UplinkEventObserver, action_observer: UplinkActionObserver| async move {
         for i in 0..100 {
-            left_event_observer.on_event();
-            left_action_observer.on_command();
-            left_action_observer.did_open();
-            left_action_observer.did_close();
+            event_observer.on_event();
+            action_observer.on_command();
+            action_observer.did_open();
+            action_observer.did_close();
 
             if i % 10 == 0 {
                 sleep(Duration::from_millis(100)).await;
             }
         }
+
+        action_observer.inner.accumulate_and_send();
     };
 
-    let task_right = async move {
-        for i in 0..100 {
-            right_action_observer.on_command();
-            right_event_observer.on_event();
-            right_action_observer.did_close();
-            right_action_observer.did_open();
-
-            if i % 10 == 0 {
-                sleep(Duration::from_millis(100)).await;
-            }
-        }
-    };
+    let task_left = make_task(event_observer.clone(), action_observer.clone());
+    let task_right = make_task(event_observer, action_observer);
 
     let _r = join(task_left, task_right).await;
 
-    sleep(sample_rate).await;
+    sleep(sample_rate * 2).await;
 
-    event_observer.inner.flush();
+    let mut accumulated = WarpUplinkProfile::default();
 
-    drop(event_observer);
-    drop(action_observer);
-
-    let mut profiles = Vec::new();
-
-    while let Some(profile) = rx.recv().await {
-        profiles.push(profile);
+    while let Some(part) = rx.recv().await {
+        accumulated = accumulated.add(part.profile);
     }
 
-    let tagged = profiles.pop().expect("Missing profile");
-    let WarpUplinkProfile {
-        event_delta,
-        event_count,
-        command_delta,
-        command_count,
-        open_delta,
-        open_count,
-        close_delta,
-        close_count,
-        ..
-    } = tagged.profile;
-
-    assert_eq!(event_delta as u64 + event_count, 200);
-    assert_eq!(command_delta as u64 + command_count, 200);
-    assert_eq!(open_delta + open_count, 200);
-    assert_eq!(close_delta + close_count, 200);
+    assert_eq!(accumulated.event_delta as u64, 200);
+    assert_eq!(accumulated.command_delta as u64, 200);
+    assert_eq!(accumulated.open_delta, 200);
+    assert_eq!(accumulated.close_delta, 200);
 }
 
 #[tokio::test]
@@ -300,11 +271,11 @@ async fn with_observer() {
     };
 
     let lane_rcv_task = async move {
-        let tagged: TaggedWarpUplinkProfile = lane_rx.recv().await.unwrap();
+        let (_path, profile): (_, WarpUplinkProfile) = lane_rx.recv().await.unwrap();
 
-        assert_eq!(tagged.profile.event_delta, 1);
-        assert_eq!(tagged.profile.open_delta, 1);
-        assert_eq!(tagged.profile.close_delta, 1);
+        assert_eq!(profile.event_delta, 1);
+        assert_eq!(profile.open_delta, 1);
+        assert_eq!(profile.close_delta, 1);
     };
 
     let (uplink_task, uplink_tx) = uplink_aggregator(
@@ -350,5 +321,5 @@ async fn with_observer() {
 
     let (task_result, _, _) = task.await.unwrap();
 
-    assert_eq!(task_result, Ok(()));
+    assert_eq!(task_result, Ok(MetricStage::Uplink));
 }

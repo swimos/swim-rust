@@ -1,4 +1,4 @@
-// Copyright 2015-2021 SWIM.AI inc.
+// Copyright 2015-2020 SWIM.AI inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,13 +13,12 @@
 // limitations under the License.
 
 use crate::agent::lane::model::supply::SupplyLane;
-use crate::meta::metric::aggregator::{AddressedMetric, AggregatorTask, MetricState};
-use crate::meta::metric::lane::{LanePulse, TaggedLaneProfile};
+use crate::meta::metric::aggregator::{AggregatorTask, MetricState};
+use crate::meta::metric::lane::{LaneMetricReporter, LanePulse, WarpLaneProfile};
 use crate::meta::metric::tests::{
     build_uplink_profile, create_lane_map, DEFAULT_BUFFER, DEFAULT_YIELD,
 };
-use crate::meta::metric::uplink::{TaggedWarpUplinkProfile, WarpUplinkPulse};
-use crate::meta::metric::{WarpLaneProfile, WarpUplinkProfile};
+use crate::meta::metric::uplink::{WarpUplinkProfile, WarpUplinkPulse};
 use futures::future::join;
 use std::collections::HashMap;
 use std::time::Duration;
@@ -38,10 +37,7 @@ async fn single() {
     let mut lane_map = HashMap::new();
     let path = RelativePath::new("/node", "lane");
 
-    let value = MetricState::new(
-        TaggedLaneProfile::pack(WarpLaneProfile::default(), path.clone()),
-        lane,
-    );
+    let value = MetricState::new(LaneMetricReporter::default(), lane);
     lane_map.insert(path.clone(), value);
 
     let (lane_profile_tx, lane_profile_rx) = mpsc::channel(5);
@@ -72,40 +68,33 @@ async fn single() {
         assert_eq!(received, expected);
 
         let received = node_rx.recv().await.expect("Expected a lane profile");
-        let expected = TaggedLaneProfile {
+        let expected = (
             path,
-            profile: WarpLaneProfile {
+            WarpLaneProfile {
                 uplink_event_delta: 1,
                 uplink_event_rate: 2,
-                uplink_event_count: 1,
                 uplink_command_delta: 4,
                 uplink_command_rate: 5,
-                uplink_command_count: 4,
                 uplink_open_delta: 7,
-                uplink_open_count: 8,
                 uplink_close_delta: 9,
-                uplink_close_count: 10,
             },
-        };
+        );
+
         assert_eq!(received, expected);
     };
     let receive_task = tokio::spawn(receive_task);
 
-    let input = TaggedWarpUplinkProfile {
-        path: RelativePath::new("/node", "lane"),
-        profile: WarpUplinkProfile {
+    let input = (
+        RelativePath::new("/node", "lane"),
+        WarpUplinkProfile {
             event_delta: 1,
             event_rate: 2,
-            event_count: 3,
             command_delta: 4,
             command_rate: 5,
-            command_count: 6,
             open_delta: 7,
-            open_count: 8,
             close_delta: 9,
-            close_count: 10,
         },
-    };
+    );
 
     assert!(lane_profile_tx.send(input).await.is_ok());
 

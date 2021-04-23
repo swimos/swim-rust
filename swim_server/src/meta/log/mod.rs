@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#[cfg(test)]
-mod tests;
+// #[cfg(test)]
+// mod tests;
 
 pub mod config;
 
@@ -143,11 +143,11 @@ pub struct LogEntry {
     /// The node URI that produced this entry.
     node: RelativeUri,
     /// The lane URI that produced this entry.
-    lane: Option<String>,
+    lane: String,
 }
 
 impl LogEntry {
-    pub fn make<F>(message: F, level: LogLevel, node: RelativeUri, lane: Option<String>) -> LogEntry
+    pub fn make<F>(message: F, level: LogLevel, node: RelativeUri, lane: String) -> LogEntry
     where
         F: Form,
     {
@@ -182,7 +182,7 @@ impl Debug for NodeLogger {
     }
 }
 
-struct LogLanes {
+pub(crate) struct LogLanes {
     /// Lane for fine-grained informational events.
     trace_lane: SupplyLane<LogEntry>,
     /// Lane for information that is useful in debugging an application.
@@ -266,7 +266,7 @@ impl NodeLogger {
         level: LogLevel,
     ) -> Result<(), SendError<LogEntry>> {
         let NodeLogger { sender, node_uri } = self;
-        let entry = LogEntry::make(entry, level, node_uri.clone(), Some(lane_uri));
+        let entry = LogEntry::make(entry, level, node_uri.clone(), lane_uri);
 
         sender.send(entry).await
     }
@@ -291,7 +291,7 @@ struct LogTask {
 }
 
 /// An optional internal buffer for log entries.
-enum LogBuffer {
+pub(crate) enum LogBuffer {
     /// No entries are buffered and any entries pushed into the buffer will be returned immediately.
     None,
     /// A buffer with a fixed capacity. Once this limit has been reached all buffered entries will
