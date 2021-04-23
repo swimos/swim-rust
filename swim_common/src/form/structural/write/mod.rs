@@ -108,7 +108,7 @@ pub trait StructuralWriter: PrimitiveWriter {
     type Body: BodyWriter<Repr = Self::Repr, Error = Self::Error>;
 
     /// Describe a compound type.
-    fn record(self) -> Result<Self::Header, Self::Error>;
+    fn record(self, num_attrs: usize) -> Result<Self::Header, Self::Error>;
 }
 
 /// Convenience trait for variable string related conversions.
@@ -537,7 +537,7 @@ impl StructuralWritable for Value {
             Value::Text(v) => writer.write_text(v.clone()),
             Value::Data(v) => writer.write_blob(v.as_ref()),
             Value::Record(attrs, items) => {
-                let mut header = writer.record()?;
+                let mut header = writer.record(attrs.len())?;
                 for Attr { name, value } in attrs.iter() {
                     header = header.write_attr(name.as_cow(), value)?;
                 }
@@ -567,7 +567,7 @@ impl StructuralWritable for Value {
             Value::Text(v) => writer.write_text(v),
             Value::Data(v) => writer.write_blob_vec(v.into_vec()),
             Value::Record(attrs, items) => {
-                let mut header = writer.record()?;
+                let mut header = writer.record(attrs.len())?;
                 for Attr { name, value } in attrs.into_iter() {
                     header = header.write_attr_into(name, value)?;
                 }
@@ -596,7 +596,7 @@ impl<T: StructuralWritable> StructuralWritable for Vec<T> {
     fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
         self.iter()
             .try_fold(
-                writer.record()?.complete_header(self.len())?,
+                writer.record(0)?.complete_header(self.len())?,
                 |record_writer, value| record_writer.write_value(value),
             )?
             .done()
@@ -606,7 +606,7 @@ impl<T: StructuralWritable> StructuralWritable for Vec<T> {
         let len = self.len();
         self.into_iter()
             .try_fold(
-                writer.record()?.complete_header(len)?,
+                writer.record(0)?.complete_header(len)?,
                 |record_writer, value| record_writer.write_value_into(value),
             )?
             .done()

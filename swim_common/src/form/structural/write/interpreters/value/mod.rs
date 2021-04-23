@@ -128,7 +128,7 @@ impl StructuralWriter for ValueInterpreter {
     type Header = Self;
     type Body = Self;
 
-    fn record(self) -> Result<Self::Header, Self::Error> {
+    fn record(self, _num_attrs: usize) -> Result<Self::Header, Self::Error> {
         Ok(self)
     }
 }

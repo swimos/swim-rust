@@ -101,7 +101,7 @@ impl<T: StructuralReadable> StructuralWriter for ReadWriteBridge<T> {
     type Header = ReadWriteHeaderBridge<T>;
     type Body = ReadWriteBodyBridge<T>;
 
-    fn record(self) -> Result<Self::Header, Self::Error> {
+    fn record(self, _num_attrs: usize) -> Result<Self::Header, Self::Error> {
         Ok(ReadWriteHeaderBridge(self, T::record_reader()?))
     }
 }
@@ -392,7 +392,7 @@ impl<B: BodyReader> StructuralWriter for ItemDelegateBridge<B> {
     type Header = HeaderDelegateBridge<B>;
     type Body = BodyDelegateBridge<B>;
 
-    fn record(self) -> Result<Self::Header, Self::Error> {
+    fn record(self, _num_attrs: usize) -> Result<Self::Header, Self::Error> {
         let ItemDelegateBridge(inner) = self;
         Ok(HeaderDelegateBridge(inner.push_record()?))
     }
@@ -537,7 +537,7 @@ impl<H: HeaderReader> StructuralWriter for ValueDelegateBridge<H> {
     type Header = Self;
     type Body = NestedBodyBridge<H::Body>;
 
-    fn record(self) -> Result<Self::Header, Self::Error> {
+    fn record(self, _num_attrs: usize) -> Result<Self::Header, Self::Error> {
         Ok(self)
     }
 }

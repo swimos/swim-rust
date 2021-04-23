@@ -221,7 +221,7 @@ impl<'a, 'b> StructuralWriter for StructurePrinter<'a, 'b> {
     type Header = Self;
     type Body = Self;
 
-    fn record(self) -> Result<Self::Header, Self::Error> {
+    fn record(self, _num_attrs: usize) -> Result<Self::Header, Self::Error> {
         Ok(self)
     }
 }
@@ -545,7 +545,7 @@ impl<'a, 'b> StructuralWriter for AttributePrinter<'a, 'b> {
     type Header = Self;
     type Body = Self;
 
-    fn record(mut self) -> Result<Self::Header, Self::Error> {
+    fn record(mut self, _num_attrs: usize) -> Result<Self::Header, Self::Error> {
         let AttributePrinter { fmt, .. } = &mut self;
         fmt.write_str("(")?;
         Ok(self)
