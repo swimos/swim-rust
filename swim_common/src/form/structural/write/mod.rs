@@ -197,7 +197,54 @@ pub trait HeaderWriter: Sized {
         self.write_attr(name.as_cow(), &value)
     }
     /// Transform this writer into another which can be used to describe the items.
-    fn complete_header(self, num_items: usize) -> Result<Self::Body, Self::Error>;
+    ///
+    /// #Arguments
+    /// * `kind` - Description of the contents of the body. If an incorrect value is provided,
+    /// implementations may return an error but should not panic.
+    /// * `num_items` - The number of items in the record. If an incorrect number is provided,
+    /// implementations may return an error but should not panic.
+    fn complete_header(
+        self,
+        kind: RecordBodyKind,
+        num_items: usize,
+    ) -> Result<Self::Body, Self::Error>;
+}
+
+/// Description of the overally format of a record body which writers may use to generate a
+/// more optimal representation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RecordBodyKind {
+    /// The record contains only value items and no slots.
+    ArrayLike,
+    /// The record contains only slots and no value items.
+    MapLike,
+    /// The record may (or may not) contain a mixture of any items. This is valid for any record.
+    Mixed,
+}
+
+impl RecordBodyKind {
+    fn of_iter<'a, It>(it: It) -> Option<RecordBodyKind>
+    where
+        It: Iterator<Item = &'a Item>,
+    {
+        let mut kind = None;
+        for item in it {
+            match (&kind, item) {
+                (Some(RecordBodyKind::ArrayLike), Item::ValueItem(_))
+                | (Some(RecordBodyKind::MapLike), Item::Slot(_, _)) => {}
+                (None, Item::ValueItem(_)) => {
+                    kind = Some(RecordBodyKind::ArrayLike);
+                }
+                (None, Item::Slot(_, _)) => {
+                    kind = Some(RecordBodyKind::MapLike);
+                }
+                _ => {
+                    return Some(RecordBodyKind::Mixed);
+                }
+            }
+        }
+        kind
+    }
 }
 
 /// Describing the structure of a record proceeds in two stages, first describing
@@ -541,7 +588,10 @@ impl StructuralWritable for Value {
                 for Attr { name, value } in attrs.iter() {
                     header = header.write_attr(name.as_cow(), value)?;
                 }
-                let mut body = header.complete_header(items.len())?;
+                let mut body = header.complete_header(
+                    RecordBodyKind::of_iter(items.iter()).unwrap_or(RecordBodyKind::Mixed),
+                    items.len(),
+                )?;
                 for item in items.iter() {
                     body = match item {
                         Item::ValueItem(v) => body.write_value(v)?,
@@ -571,7 +621,10 @@ impl StructuralWritable for Value {
                 for Attr { name, value } in attrs.into_iter() {
                     header = header.write_attr_into(name, value)?;
                 }
-                let mut body = header.complete_header(items.len())?;
+                let mut body = header.complete_header(
+                    RecordBodyKind::of_iter(items.iter()).unwrap_or(RecordBodyKind::Mixed),
+                    items.len(),
+                )?;
                 for item in items.into_iter() {
                     body = match item {
                         Item::ValueItem(v) => body.write_value_into(v)?,
@@ -596,7 +649,9 @@ impl<T: StructuralWritable> StructuralWritable for Vec<T> {
     fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
         self.iter()
             .try_fold(
-                writer.record(0)?.complete_header(self.len())?,
+                writer
+                    .record(0)?
+                    .complete_header(RecordBodyKind::ArrayLike, self.len())?,
                 |record_writer, value| record_writer.write_value(value),
             )?
             .done()
@@ -606,7 +661,9 @@ impl<T: StructuralWritable> StructuralWritable for Vec<T> {
         let len = self.len();
         self.into_iter()
             .try_fold(
-                writer.record(0)?.complete_header(len)?,
+                writer
+                    .record(0)?
+                    .complete_header(RecordBodyKind::ArrayLike, len)?,
                 |record_writer, value| record_writer.write_value_into(value),
             )?
             .done()

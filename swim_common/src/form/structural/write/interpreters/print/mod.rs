@@ -16,7 +16,8 @@
 mod tests;
 
 use crate::form::structural::write::{
-    BodyWriter, HeaderWriter, Label, PrimitiveWriter, StructuralWritable, StructuralWriter,
+    BodyWriter, HeaderWriter, Label, PrimitiveWriter, RecordBodyKind, StructuralWritable,
+    StructuralWriter,
 };
 use crate::model::write_string_literal;
 use base64::display::Base64Display;
@@ -264,7 +265,11 @@ impl<'a, 'b> HeaderWriter for StructurePrinter<'a, 'b> {
         value.write_with(self.delegate())
     }
 
-    fn complete_header(mut self, num_items: usize) -> Result<Self::Body, Self::Error> {
+    fn complete_header(
+        mut self,
+        _kind: RecordBodyKind,
+        num_items: usize,
+    ) -> Result<Self::Body, Self::Error> {
         let StructurePrinter {
             fmt,
             has_attr,
@@ -590,7 +595,11 @@ impl<'a, 'b> HeaderWriter for AttributePrinter<'a, 'b> {
         value.write_with(self.delegate())
     }
 
-    fn complete_header(mut self, num_items: usize) -> Result<Self::Body, Self::Error> {
+    fn complete_header(
+        mut self,
+        _kind: RecordBodyKind,
+        num_items: usize,
+    ) -> Result<Self::Body, Self::Error> {
         let AttributePrinter {
             fmt,
             has_attr,

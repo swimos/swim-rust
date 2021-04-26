@@ -17,7 +17,8 @@ mod tests;
 
 use crate::form::structural::read::{BodyReader, HeaderReader, ReadError, StructuralReadable};
 use crate::form::structural::write::{
-    BodyWriter, HeaderWriter, Label, PrimitiveWriter, StructuralWritable, StructuralWriter,
+    BodyWriter, HeaderWriter, Label, PrimitiveWriter, RecordBodyKind, StructuralWritable,
+    StructuralWriter,
 };
 use num_bigint::{BigInt, BigUint};
 use std::borrow::Cow;
@@ -150,7 +151,11 @@ impl<T: StructuralReadable> HeaderWriter for ReadWriteHeaderBridge<T> {
         T::try_terminate(body_reader)
     }
 
-    fn complete_header(self, _num_items: usize) -> Result<Self::Body, Self::Error> {
+    fn complete_header(
+        self,
+        _kind: RecordBodyKind,
+        _num_items: usize,
+    ) -> Result<Self::Body, Self::Error> {
         let ReadWriteHeaderBridge(root, header_reader) = self;
         Ok(ReadWriteBodyBridge(root, header_reader.start_body()?))
     }
@@ -252,7 +257,11 @@ impl<B: BodyReader> HeaderWriter for HeaderDelegateBridge<B> {
         B::restore(body_reader)
     }
 
-    fn complete_header(self, _num_items: usize) -> Result<Self::Body, Self::Error> {
+    fn complete_header(
+        self,
+        _kind: RecordBodyKind,
+        _num_items: usize,
+    ) -> Result<Self::Body, Self::Error> {
         let HeaderDelegateBridge(delegate) = self;
         let body_reader = delegate.start_body()?;
         Ok(BodyDelegateBridge(body_reader))
@@ -527,7 +536,11 @@ impl<H: HeaderReader> HeaderWriter for ValueDelegateBridge<H> {
         value.write_into(self)
     }
 
-    fn complete_header(self, _num_items: usize) -> Result<Self::Body, Self::Error> {
+    fn complete_header(
+        self,
+        _kind: RecordBodyKind,
+        _num_items: usize,
+    ) -> Result<Self::Body, Self::Error> {
         let ValueDelegateBridge(header_reader) = self;
         Ok(NestedBodyBridge(header_reader.start_body()?))
     }

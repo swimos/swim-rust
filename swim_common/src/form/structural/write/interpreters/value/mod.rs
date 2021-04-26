@@ -16,7 +16,8 @@
 mod tests;
 
 use crate::form::structural::write::{
-    BodyWriter, HeaderWriter, Label, PrimitiveWriter, StructuralWritable, StructuralWriter,
+    BodyWriter, HeaderWriter, Label, PrimitiveWriter, RecordBodyKind, StructuralWritable,
+    StructuralWriter,
 };
 use crate::model::blob::Blob;
 use crate::model::text::Text;
@@ -174,7 +175,11 @@ impl HeaderWriter for ValueInterpreter {
         Ok(self.with_delegate_body(body))
     }
 
-    fn complete_header(self, _num_items: usize) -> Result<Self::Body, Self::Error> {
+    fn complete_header(
+        self,
+        _kind: RecordBodyKind,
+        _num_items: usize,
+    ) -> Result<Self::Body, Self::Error> {
         Ok(self)
     }
 }
