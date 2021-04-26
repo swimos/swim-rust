@@ -1,4 +1,4 @@
-// Copyright 2015-2020 SWIM.AI inc.
+// Copyright 2015-2021 SWIM.AI inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -45,12 +45,12 @@ impl Add<WarpUplinkProfile> for WarpUplinkProfile {
 
     fn add(self, rhs: WarpUplinkProfile) -> Self::Output {
         WarpUplinkProfile {
-            event_delta: self.event_delta + rhs.event_delta,
-            event_rate: self.event_rate + rhs.event_rate,
-            command_delta: self.command_delta + rhs.command_delta,
-            command_rate: self.command_rate + rhs.command_rate,
-            open_delta: self.open_delta + rhs.open_delta,
-            close_delta: self.close_delta + rhs.close_delta,
+            event_delta: self.event_delta.saturating_add(rhs.event_delta),
+            event_rate: self.event_rate.saturating_add(rhs.event_rate),
+            command_delta: self.command_delta.saturating_add(rhs.command_delta),
+            command_rate: self.command_rate.saturating_add(rhs.command_rate),
+            open_delta: self.open_delta.saturating_add(rhs.open_delta),
+            close_delta: self.close_delta.saturating_add(rhs.close_delta),
         }
     }
 }
@@ -87,10 +87,10 @@ impl MetricReporter for UplinkMetricReporter {
             close_delta,
         } = accumulated;
 
-        *open_count += open_delta;
-        *close_count += close_delta;
-        *event_count += event_delta as u64;
-        *command_count += command_delta as u64;
+        *open_count = open_count.saturating_add(open_delta);
+        *close_count = close_count.saturating_add(close_delta);
+        *event_count = event_count.saturating_add(event_delta as u64);
+        *command_count = command_count.saturating_add(command_delta as u64);
 
         let link_count = open_count.saturating_sub(*close_count);
 

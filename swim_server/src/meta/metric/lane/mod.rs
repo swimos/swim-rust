@@ -1,4 +1,4 @@
-// Copyright 2015-2020 SWIM.AI inc.
+// Copyright 2015-2021 SWIM.AI inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -44,12 +44,20 @@ impl Add<WarpLaneProfile> for WarpLaneProfile {
 
     fn add(self, rhs: WarpLaneProfile) -> Self::Output {
         WarpLaneProfile {
-            uplink_event_delta: self.uplink_event_delta + rhs.uplink_event_delta,
-            uplink_event_rate: self.uplink_event_rate + rhs.uplink_event_rate,
-            uplink_command_delta: self.uplink_command_delta + rhs.uplink_command_delta,
-            uplink_command_rate: self.uplink_command_rate + rhs.uplink_command_rate,
-            uplink_open_delta: self.uplink_open_delta + rhs.uplink_open_delta,
-            uplink_close_delta: self.uplink_close_delta + rhs.uplink_close_delta,
+            uplink_event_delta: self
+                .uplink_event_delta
+                .saturating_add(rhs.uplink_event_delta),
+            uplink_event_rate: self.uplink_event_rate.saturating_add(rhs.uplink_event_rate),
+            uplink_command_delta: self
+                .uplink_command_delta
+                .saturating_add(rhs.uplink_command_delta),
+            uplink_command_rate: self
+                .uplink_command_rate
+                .saturating_add(rhs.uplink_command_rate),
+            uplink_open_delta: self.uplink_open_delta.saturating_add(rhs.uplink_open_delta),
+            uplink_close_delta: self
+                .uplink_close_delta
+                .saturating_add(rhs.uplink_close_delta),
         }
     }
 }
@@ -86,10 +94,10 @@ impl MetricReporter for LaneMetricReporter {
             close_delta,
         } = part;
 
-        *open_count += open_delta;
-        *close_count += close_delta;
-        *event_count += event_delta as u64;
-        *command_count += command_delta as u64;
+        *open_count = open_count.saturating_add(open_delta);
+        *close_count = close_count.saturating_add(close_delta);
+        *event_count = event_count.saturating_add(event_delta as u64);
+        *command_count = command_count.saturating_add(command_delta as u64);
 
         let link_count = open_count.saturating_sub(*close_count);
 
@@ -139,12 +147,12 @@ impl Add<WarpUplinkProfile> for WarpLaneProfile {
         } = rhs;
 
         WarpLaneProfile {
-            uplink_event_delta: uplink_event_delta + event_delta,
-            uplink_event_rate: uplink_event_rate + event_rate,
-            uplink_command_delta: uplink_command_delta + command_delta,
-            uplink_command_rate: uplink_command_rate + command_rate,
-            uplink_open_delta: uplink_open_delta + open_delta,
-            uplink_close_delta: uplink_close_delta + close_delta,
+            uplink_event_delta: uplink_event_delta.saturating_add(event_delta),
+            uplink_event_rate: uplink_event_rate.saturating_add(event_rate),
+            uplink_command_delta: uplink_command_delta.saturating_add(command_delta),
+            uplink_command_rate: uplink_command_rate.saturating_add(command_rate),
+            uplink_open_delta: uplink_open_delta.saturating_add(open_delta),
+            uplink_close_delta: uplink_close_delta.saturating_add(close_delta),
         }
     }
 }

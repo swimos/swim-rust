@@ -1,4 +1,4 @@
-// Copyright 2015-2020 SWIM.AI inc.
+// Copyright 2015-2021 SWIM.AI inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -63,10 +63,10 @@ impl MetricReporter for ModeMetricReporter {
             uplink_close_delta,
         } = part;
 
-        *open_count += uplink_open_delta;
-        *close_count += uplink_close_delta;
-        *event_count += uplink_event_delta as u64;
-        *command_count += uplink_command_delta as u64;
+        *open_count = open_count.saturating_add(uplink_open_delta);
+        *close_count = close_count.saturating_add(uplink_close_delta);
+        *event_count = event_count.saturating_add(uplink_event_delta as u64);
+        *command_count = command_count.saturating_add(uplink_command_delta as u64);
         let link_count = open_count.saturating_sub(*close_count);
 
         let pulse = NodePulse {
