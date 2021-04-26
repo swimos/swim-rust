@@ -27,6 +27,7 @@ use crate::model::Value;
 
 pub mod impls;
 pub mod macros;
+pub mod structural;
 
 #[cfg(test)]
 mod tests;
