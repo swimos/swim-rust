@@ -21,8 +21,8 @@
 //! - `websocket`: Provides a WebSocket connector that works on non-WASM platforms.
 //!
 
+//Todo dm this needs to be refactored after the client is finalised
 pub mod configuration;
-//Todo dm this needs to be removed but after router/retry is refactored.
 pub mod connections;
 pub mod downlink;
 pub mod interface;

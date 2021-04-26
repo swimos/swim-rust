@@ -504,15 +504,17 @@ pub struct ConnectionPoolParams {
     buffer_size: NonZeroUsize,
 }
 
-impl ConnectionPoolParams {
-    pub fn default() -> ConnectionPoolParams {
+impl Default for ConnectionPoolParams {
+    fn default() -> Self {
         ConnectionPoolParams {
             idle_timeout: Duration::from_secs(60),
             conn_reaper_frequency: Duration::from_secs(60),
             buffer_size: NonZeroUsize::new(5).unwrap(),
         }
     }
+}
 
+impl ConnectionPoolParams {
     fn new(
         idle_timeout: Duration,
         conn_reaper_frequency: Duration,

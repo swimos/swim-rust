@@ -31,10 +31,11 @@ use crate::downlink::{
     command_downlink, event_downlink, map_downlink, value_downlink, Command, Downlink,
     DownlinkError, Message, SchemaViolations,
 };
+use crate::router::RemoteConnectionsManager;
+use crate::router::RouterEvent;
 use crate::router::RouterMessageRequest;
 use crate::router::TaskManager;
-use crate::router::{run_client_router_task, RouterEvent};
-use crate::router::{ClientRequest, ClientRouterFactory};
+use crate::router::{ClientConnectionRequest, ClientRouterFactory};
 use crate::router::{CloseSender, RouterConnRequest};
 use either::Either;
 use futures::future::BoxFuture;
@@ -106,6 +107,7 @@ impl From<mpsc::error::SendError<DownlinkRequest>> for SubscriptionError {
 
 /// Contains all running WARP downlinks and allows requests for downlink subscriptions.
 impl Downlinks {
+    ///Todo dm doc
     /// Create a new downlink manager, using the specified configuration, which will attach all
     /// create downlinks to the provided router.
     #[instrument(skip(config))]
@@ -115,36 +117,48 @@ impl Downlinks {
     {
         info!("Initialising downlink manager");
 
-        let conn_config = config.client_params().connections_params;
-        let websocket_config = config.client_params().websocket_params;
-
-        let (request_rx, remote_router_tx, stop_trigger_tx, remote_connections_task) =
-            create_remote_connections_task(conn_config, websocket_config).await;
-
         let client_params = config.client_params();
 
-        let (local_tx, local_rx) =
-            mpsc::channel(client_params.connections_params.channel_buffer_size.get());
+        //Todo dm try to route this trough the remote connections manager
+        let (
+            client_conn_request_tx,
+            client_conn_request_rx,
+            remote_router_tx,
+            stop_trigger_tx,
+            remote_connections_task,
+        ) = create_remote_connections_task(
+            client_params.connections_params,
+            client_params.websocket_params,
+        )
+        .await;
 
-        let (close_tx, close_rx) = promise::promise();
+        let conn_manager =
+            RemoteConnectionsManager::new(client_conn_request_rx, remote_router_tx.clone());
 
-        //Todo dm replace the config
+        let (task_manager_close_tx, task_manager_close_rx) = promise::promise();
+
         let mut connection_pool =
-            SwimConnPool::new(ConnectionPoolParams::default(), remote_router_tx, local_tx);
+            SwimConnPool::new(client_params.conn_pool_params, client_conn_request_tx);
 
         let (task_manager, connection_request_tx, router_sink_tx) = TaskManager::new(
-            connection_pool.clone(),
-            close_rx,
+            connection_pool,
+            task_manager_close_rx,
             client_params.router_params,
         );
 
-        let task = DownlinkTask::new(config, connection_request_tx, router_sink_tx, close_tx);
+        let downlink_task = DownlinkTask::new(
+            config,
+            connection_request_tx,
+            router_sink_tx,
+            task_manager_close_tx,
+        );
         let (tx, rx) = mpsc::channel(client_params.dl_req_buffer_size.get());
+
         let task_handle = spawn(async {
             join!(
-                task.run(ReceiverStream::new(rx)),
-                run_client_router_task(request_rx, local_rx),
+                downlink_task.run(ReceiverStream::new(rx)),
                 remote_connections_task.run(),
+                conn_manager.run(),
                 task_manager.run()
             )
             .0
@@ -379,7 +393,8 @@ pub(crate) async fn create_remote_connections_task(
     conn_config: ConnectionConfig,
     websocket_config: WebSocketConfig,
 ) -> (
-    mpsc::Receiver<ClientRequest>,
+    mpsc::Sender<ClientConnectionRequest>,
+    mpsc::Receiver<ClientConnectionRequest>,
     mpsc::Sender<RoutingRequest>,
     trigger::Sender,
     RemoteConnectionsTask<
@@ -391,11 +406,12 @@ pub(crate) async fn create_remote_connections_task(
 ) {
     let (remote_tx, remote_rx) = mpsc::channel(conn_config.router_buffer_size.get());
     let (request_tx, request_rx) = mpsc::channel(conn_config.router_buffer_size.get());
-    let top_level_router_fac = ClientRouterFactory::new(request_tx);
+    let top_level_router_fac = ClientRouterFactory::new(request_tx.clone());
 
     let (stop_trigger_tx, stop_trigger_rx) = trigger::trigger();
 
     (
+        request_tx,
         request_rx,
         remote_tx.clone(),
         stop_trigger_tx,

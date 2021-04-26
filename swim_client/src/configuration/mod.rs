@@ -19,7 +19,7 @@ mod tests;
 
 pub mod downlink {
     use crate::configuration::downlink::ConfigParseError::UnexpectedValue;
-    use crate::configuration::router::RouterParams;
+    use crate::configuration::router::{ConnectionPoolParams, RouterParams};
     use std::collections::HashMap;
     use std::error::Error;
     use std::fmt::{Display, Formatter};
@@ -290,89 +290,89 @@ pub mod downlink {
             }
         }
 
-    //Todo dm this needs to be changed after the new client configuration is finalised.
-    //     fn try_from_items(items: Vec<Item>, use_defaults: bool) -> Result<Self, ConfigParseError> {
-    //         let mut back_pressure: Option<BackpressureMode> = None;
-    //         let mut idle_timeout: Option<Duration> = None;
-    //         let mut buffer_size: Option<usize> = None;
-    //         let mut on_invalid: Option<OnInvalidMessage> = None;
-    //         let mut yield_after: Option<usize> = None;
-    //
-    //         for item in items {
-    //             match item {
-    //                 Item::Slot(Value::Text(name), value) => match name.as_str() {
-    //                     BACK_PRESSURE_TAG => {
-    //                         back_pressure =
-    //                             Some(BackpressureMode::try_from_value(value, use_defaults)?)
-    //                     }
-    //                     IDLE_TIMEOUT_TAG => {
-    //                         let timeout = u64::try_from_value(&value).map_err(|_| {
-    //                             ConfigParseError::InvalidValue(value, IDLE_TIMEOUT_TAG)
-    //                         })?;
-    //                         idle_timeout = Some(Duration::from_secs(timeout))
-    //                     }
-    //                     BUFFER_SIZE_TAG => {
-    //                         let size = usize::try_from_value(&value).map_err(|_| {
-    //                             ConfigParseError::InvalidValue(value, BUFFER_SIZE_TAG)
-    //                         })?;
-    //                         buffer_size = Some(size);
-    //                     }
-    //                     ON_INVALID_TAG => {
-    //                         on_invalid = Some(try_on_invalid_from_value(value)?);
-    //                     }
-    //                     YIELD_AFTER_TAG => {
-    //                         let size = usize::try_from_value(&value).map_err(|_| {
-    //                             ConfigParseError::InvalidValue(value, YIELD_AFTER_TAG)
-    //                         })?;
-    //                         yield_after = Some(size);
-    //                     }
-    //
-    //                     _ => {
-    //                         return Err(ConfigParseError::UnexpectedKey(
-    //                             name.to_string(),
-    //                             DOWNLINKS_TAG,
-    //                         ))
-    //                     }
-    //                 },
-    //                 Item::Slot(value, _) => {
-    //                     return Err(ConfigParseError::UnexpectedValue(
-    //                         value,
-    //                         Some(DOWNLINKS_TAG),
-    //                     ))
-    //                 }
-    //                 Item::ValueItem(value) => {
-    //                     return Err(ConfigParseError::UnexpectedValue(
-    //                         value,
-    //                         Some(DOWNLINKS_TAG),
-    //                     ))
-    //                 }
-    //             }
-    //         }
-    //
-    //         if use_defaults {
-    //             back_pressure = back_pressure.or(Some(DEFAULT_BACK_PRESSURE));
-    //             idle_timeout =
-    //                 idle_timeout.or_else(|| Some(Duration::from_secs(DEFAULT_IDLE_TIMEOUT)));
-    //             buffer_size = buffer_size.or(Some(DEFAULT_DOWNLINK_BUFFER_SIZE));
-    //             on_invalid = on_invalid.or(Some(DEFAULT_ON_INVALID));
-    //             yield_after = yield_after.or(Some(DEFAULT_YIELD_AFTER));
-    //         }
-    //
-    //         DownlinkParams::new(
-    //             back_pressure.ok_or(ConfigParseError::MissingKey(
-    //                 BACK_PRESSURE_TAG,
-    //                 DOWNLINKS_TAG,
-    //             ))?,
-    //             idle_timeout.ok_or(ConfigParseError::MissingKey(
-    //                 IDLE_TIMEOUT_TAG,
-    //                 DOWNLINKS_TAG,
-    //             ))?,
-    //             buffer_size.ok_or(ConfigParseError::MissingKey(BUFFER_SIZE_TAG, DOWNLINKS_TAG))?,
-    //             on_invalid.ok_or(ConfigParseError::MissingKey(ON_INVALID_TAG, DOWNLINKS_TAG))?,
-    //             yield_after.ok_or(ConfigParseError::MissingKey(YIELD_AFTER_TAG, DOWNLINKS_TAG))?,
-    //         )
-    //         .map_err(ConfigParseError::DownlinkError)
-    //     }
+        //Todo dm this needs to be changed after the new client configuration is finalised.
+        //     fn try_from_items(items: Vec<Item>, use_defaults: bool) -> Result<Self, ConfigParseError> {
+        //         let mut back_pressure: Option<BackpressureMode> = None;
+        //         let mut idle_timeout: Option<Duration> = None;
+        //         let mut buffer_size: Option<usize> = None;
+        //         let mut on_invalid: Option<OnInvalidMessage> = None;
+        //         let mut yield_after: Option<usize> = None;
+        //
+        //         for item in items {
+        //             match item {
+        //                 Item::Slot(Value::Text(name), value) => match name.as_str() {
+        //                     BACK_PRESSURE_TAG => {
+        //                         back_pressure =
+        //                             Some(BackpressureMode::try_from_value(value, use_defaults)?)
+        //                     }
+        //                     IDLE_TIMEOUT_TAG => {
+        //                         let timeout = u64::try_from_value(&value).map_err(|_| {
+        //                             ConfigParseError::InvalidValue(value, IDLE_TIMEOUT_TAG)
+        //                         })?;
+        //                         idle_timeout = Some(Duration::from_secs(timeout))
+        //                     }
+        //                     BUFFER_SIZE_TAG => {
+        //                         let size = usize::try_from_value(&value).map_err(|_| {
+        //                             ConfigParseError::InvalidValue(value, BUFFER_SIZE_TAG)
+        //                         })?;
+        //                         buffer_size = Some(size);
+        //                     }
+        //                     ON_INVALID_TAG => {
+        //                         on_invalid = Some(try_on_invalid_from_value(value)?);
+        //                     }
+        //                     YIELD_AFTER_TAG => {
+        //                         let size = usize::try_from_value(&value).map_err(|_| {
+        //                             ConfigParseError::InvalidValue(value, YIELD_AFTER_TAG)
+        //                         })?;
+        //                         yield_after = Some(size);
+        //                     }
+        //
+        //                     _ => {
+        //                         return Err(ConfigParseError::UnexpectedKey(
+        //                             name.to_string(),
+        //                             DOWNLINKS_TAG,
+        //                         ))
+        //                     }
+        //                 },
+        //                 Item::Slot(value, _) => {
+        //                     return Err(ConfigParseError::UnexpectedValue(
+        //                         value,
+        //                         Some(DOWNLINKS_TAG),
+        //                     ))
+        //                 }
+        //                 Item::ValueItem(value) => {
+        //                     return Err(ConfigParseError::UnexpectedValue(
+        //                         value,
+        //                         Some(DOWNLINKS_TAG),
+        //                     ))
+        //                 }
+        //             }
+        //         }
+        //
+        //         if use_defaults {
+        //             back_pressure = back_pressure.or(Some(DEFAULT_BACK_PRESSURE));
+        //             idle_timeout =
+        //                 idle_timeout.or_else(|| Some(Duration::from_secs(DEFAULT_IDLE_TIMEOUT)));
+        //             buffer_size = buffer_size.or(Some(DEFAULT_DOWNLINK_BUFFER_SIZE));
+        //             on_invalid = on_invalid.or(Some(DEFAULT_ON_INVALID));
+        //             yield_after = yield_after.or(Some(DEFAULT_YIELD_AFTER));
+        //         }
+        //
+        //         DownlinkParams::new(
+        //             back_pressure.ok_or(ConfigParseError::MissingKey(
+        //                 BACK_PRESSURE_TAG,
+        //                 DOWNLINKS_TAG,
+        //             ))?,
+        //             idle_timeout.ok_or(ConfigParseError::MissingKey(
+        //                 IDLE_TIMEOUT_TAG,
+        //                 DOWNLINKS_TAG,
+        //             ))?,
+        //             buffer_size.ok_or(ConfigParseError::MissingKey(BUFFER_SIZE_TAG, DOWNLINKS_TAG))?,
+        //             on_invalid.ok_or(ConfigParseError::MissingKey(ON_INVALID_TAG, DOWNLINKS_TAG))?,
+        //             yield_after.ok_or(ConfigParseError::MissingKey(YIELD_AFTER_TAG, DOWNLINKS_TAG))?,
+        //         )
+        //         .map_err(ConfigParseError::DownlinkError)
+        //     }
     }
 
     //Todo dm this needs to be changed after the new client configuration is finalised.
@@ -414,6 +414,8 @@ pub mod downlink {
         pub connections_params: ConnectionConfig,
         /// Configuration parameters the WebSocket connections.
         pub websocket_params: WebSocketConfig,
+        /// Configuration parameter for the connection pool.
+        pub conn_pool_params: ConnectionPoolParams,
     }
 
     const DEFAULT_CLIENT_BUFFER_SIZE: usize = 2;
@@ -428,12 +430,14 @@ pub mod downlink {
             router_params: RouterParams,
             connections_params: ConnectionConfig,
             websocket_params: WebSocketConfig,
+            conn_pool_params: ConnectionPoolParams,
         ) -> ClientParams {
             ClientParams {
                 dl_req_buffer_size,
                 router_params,
                 connections_params,
                 websocket_params,
+                conn_pool_params,
             }
         }
 
@@ -498,6 +502,7 @@ pub mod downlink {
                 Default::default(),
                 Default::default(),
                 Default::default(),
+                Default::default(),
             )
         }
     }
@@ -534,198 +539,198 @@ pub mod downlink {
             self.by_lane.insert(lane.clone(), params);
         }
 
-    //Todo dm this needs to be changed after the new client configuration is finalised.
-    //     pub fn try_from_value(value: Value, use_defaults: bool) -> Result<Self, ConfigParseError> {
-    //         let (mut attrs, items) = match value {
-    //             Value::Record(attrs, items) if attrs.len() <= 1 => (attrs, items),
-    //             _ => return Err(ConfigParseError::UnexpectedValue(value, None)),
-    //         };
-    //
-    //         if let Some(Attr { name, value: _ }) = attrs.pop() {
-    //             if name == CONFIG_TAG {
-    //                 ConfigHierarchy::try_from_items(items, use_defaults)
-    //             } else {
-    //                 Err(ConfigParseError::UnexpectedAttribute(
-    //                     name.to_string(),
-    //                     None,
-    //                 ))
-    //             }
-    //         } else {
-    //             Err(ConfigParseError::UnnamedRecord(
-    //                 Value::Record(attrs, items),
-    //                 None,
-    //             ))
-    //         }
-    //     }
-    //
-    //     fn try_from_items(items: Vec<Item>, use_defaults: bool) -> Result<Self, ConfigParseError> {
-    //         let mut client_params: Option<ClientParams> = None;
-    //         let mut downlink_params: Option<DownlinkParams> = None;
-    //         let mut host_params: HashMap<Url, DownlinkParams> = HashMap::new();
-    //         let mut lane_params: HashMap<AbsolutePath, DownlinkParams> = HashMap::new();
-    //
-    //         for item in items {
-    //             match item {
-    //                 Item::ValueItem(value) => {
-    //                     let (mut attrs, items) = match value {
-    //                         Value::Record(attrs, items) if attrs.len() <= 1 => (attrs, items),
-    //                         _ => {
-    //                             return Err(ConfigParseError::UnexpectedValue(
-    //                                 value,
-    //                                 Some(CONFIG_TAG),
-    //                             ))
-    //                         }
-    //                     };
-    //
-    //                     if let Some(Attr { name, value: _ }) = attrs.pop() {
-    //                         match name.as_str() {
-    //                             CLIENT_TAG => {
-    //                                 client_params =
-    //                                     Some(ClientParams::try_from_items(items, use_defaults)?);
-    //                             }
-    //                             DOWNLINKS_TAG => {
-    //                                 downlink_params =
-    //                                     Some(DownlinkParams::try_from_items(items, use_defaults)?);
-    //                             }
-    //                             HOST_TAG => {
-    //                                 for item in items {
-    //                                     let (url, params) =
-    //                                         try_host_params_from_item(item, use_defaults)?;
-    //                                     host_params.insert(url, params);
-    //                                 }
-    //                             }
-    //                             LANE_TAG => {
-    //                                 for item in items {
-    //                                     let (path, params) =
-    //                                         try_lane_params_from_item(item, use_defaults)?;
-    //                                     lane_params.insert(path, params);
-    //                                 }
-    //                             }
-    //                             _ => {
-    //                                 return Err(ConfigParseError::UnexpectedAttribute(
-    //                                     name.to_string(),
-    //                                     Some(CONFIG_TAG),
-    //                                 ))
-    //                             }
-    //                         }
-    //                     } else {
-    //                         return Err(ConfigParseError::UnnamedRecord(
-    //                             Value::Record(attrs, items),
-    //                             Some(CONFIG_TAG),
-    //                         ));
-    //                     }
-    //                 }
-    //                 _ => return Err(ConfigParseError::UnexpectedSlot(item, CONFIG_TAG)),
-    //             }
-    //         }
-    //
-    //         if use_defaults {
-    //             client_params = client_params.or_else(|| Some(ClientParams::default()));
-    //             downlink_params = downlink_params.or_else(|| Some(DownlinkParams::default()));
-    //         }
-    //
-    //         Ok(ConfigHierarchy {
-    //             client_params: client_params
-    //                 .ok_or(ConfigParseError::MissingAttribute(CLIENT_TAG, CONFIG_TAG))?,
-    //             default: downlink_params.ok_or(ConfigParseError::MissingAttribute(
-    //                 DOWNLINKS_TAG,
-    //                 CONFIG_TAG,
-    //             ))?,
-    //             by_host: host_params,
-    //             by_lane: lane_params,
-    //         })
-    //     }
-    // }
-    //
-    // fn try_host_params_from_item(
-    //     item: Item,
-    //     use_defaults: bool,
-    // ) -> Result<(Url, DownlinkParams), ConfigParseError> {
-    //     match item {
-    //         Item::Slot(Value::Text(name), Value::Record(_, items)) => {
-    //             let host = Url::parse(name.as_str())
-    //                 .map_err(|_| ConfigParseError::InvalidKey(Value::Text(name), HOST_TAG))?;
-    //             let downlink_params = DownlinkParams::try_from_items(items, use_defaults)?;
-    //             Ok((host, downlink_params))
-    //         }
-    //         Item::Slot(value, _) => Err(ConfigParseError::UnexpectedValue(value, Some(HOST_TAG))),
-    //         Item::ValueItem(value) => Err(ConfigParseError::UnexpectedValue(value, Some(HOST_TAG))),
-    //     }
-    // }
-    //
-    // fn try_lane_params_from_item(
-    //     item: Item,
-    //     use_defaults: bool,
-    // ) -> Result<(AbsolutePath, DownlinkParams), ConfigParseError> {
-    //     match item {
-    //         Item::ValueItem(Value::Record(mut attrs, items)) if attrs.len() <= 1 => {
-    //             if let Some(Attr { name, value }) = attrs.pop() {
-    //                 if name == PATH_TAG {
-    //                     let path = try_absolute_path_from_record(value)?;
-    //                     let downlink_params = DownlinkParams::try_from_items(items, use_defaults)?;
-    //                     Ok((path, downlink_params))
-    //                 } else {
-    //                     Err(ConfigParseError::UnexpectedAttribute(
-    //                         name.to_string(),
-    //                         Some(LANE_TAG),
-    //                     ))
-    //                 }
-    //             } else {
-    //                 Err(ConfigParseError::UnnamedRecord(
-    //                     Value::Record(attrs, items),
-    //                     Some(LANE_TAG),
-    //                 ))
-    //             }
-    //         }
-    //         Item::ValueItem(value) => Err(ConfigParseError::UnexpectedValue(value, Some(LANE_TAG))),
-    //         _ => Err(ConfigParseError::UnexpectedSlot(item, LANE_TAG)),
-    //     }
-    // }
-    //
-    // fn try_absolute_path_from_record(record: Value) -> Result<AbsolutePath, ConfigParseError> {
-    //     let mut host: Option<Url> = None;
-    //     let mut node: Option<String> = None;
-    //     let mut lane: Option<String> = None;
-    //
-    //     match record {
-    //         Value::Record(_, items) => {
-    //             for item in items {
-    //                 match item {
-    //                     Item::Slot(Value::Text(name), Value::Text(value)) => match name.as_str() {
-    //                         HOST_TAG => {
-    //                             host = Some(Url::parse(value.as_str()).map_err(|_| {
-    //                                 ConfigParseError::InvalidKey(Value::Text(name), HOST_TAG)
-    //                             })?)
-    //                         }
-    //                         NODE_TAG => node = Some(value.to_string()),
-    //                         LANE_TAG => lane = Some(value.to_string()),
-    //                         _ => {
-    //                             return Err(ConfigParseError::UnexpectedKey(
-    //                                 name.to_string(),
-    //                                 PATH_TAG,
-    //                             ))
-    //                         }
-    //                     },
-    //                     Item::Slot(Value::Text(_), value) => {
-    //                         return Err(ConfigParseError::UnexpectedValue(value, Some(LANE_TAG)))
-    //                     }
-    //                     Item::Slot(value, _) => {
-    //                         return Err(ConfigParseError::UnexpectedValue(value, Some(LANE_TAG)))
-    //                     }
-    //                     Item::ValueItem(value) => {
-    //                         return Err(ConfigParseError::UnexpectedValue(value, Some(LANE_TAG)))
-    //                     }
-    //                 }
-    //             }
-    //         }
-    //         _ => return Err(ConfigParseError::UnexpectedValue(record, Some(LANE_TAG))),
-    //     };
-    //
-    //     Ok(AbsolutePath::new(
-    //         host.ok_or(ConfigParseError::MissingKey(HOST_TAG, PATH_TAG))?,
-    //         &node.ok_or(ConfigParseError::MissingKey(NODE_TAG, PATH_TAG))?,
-    //         &lane.ok_or(ConfigParseError::MissingKey(LANE_TAG, PATH_TAG))?,
-    //     ))
+        //Todo dm this needs to be changed after the new client configuration is finalised.
+        //     pub fn try_from_value(value: Value, use_defaults: bool) -> Result<Self, ConfigParseError> {
+        //         let (mut attrs, items) = match value {
+        //             Value::Record(attrs, items) if attrs.len() <= 1 => (attrs, items),
+        //             _ => return Err(ConfigParseError::UnexpectedValue(value, None)),
+        //         };
+        //
+        //         if let Some(Attr { name, value: _ }) = attrs.pop() {
+        //             if name == CONFIG_TAG {
+        //                 ConfigHierarchy::try_from_items(items, use_defaults)
+        //             } else {
+        //                 Err(ConfigParseError::UnexpectedAttribute(
+        //                     name.to_string(),
+        //                     None,
+        //                 ))
+        //             }
+        //         } else {
+        //             Err(ConfigParseError::UnnamedRecord(
+        //                 Value::Record(attrs, items),
+        //                 None,
+        //             ))
+        //         }
+        //     }
+        //
+        //     fn try_from_items(items: Vec<Item>, use_defaults: bool) -> Result<Self, ConfigParseError> {
+        //         let mut client_params: Option<ClientParams> = None;
+        //         let mut downlink_params: Option<DownlinkParams> = None;
+        //         let mut host_params: HashMap<Url, DownlinkParams> = HashMap::new();
+        //         let mut lane_params: HashMap<AbsolutePath, DownlinkParams> = HashMap::new();
+        //
+        //         for item in items {
+        //             match item {
+        //                 Item::ValueItem(value) => {
+        //                     let (mut attrs, items) = match value {
+        //                         Value::Record(attrs, items) if attrs.len() <= 1 => (attrs, items),
+        //                         _ => {
+        //                             return Err(ConfigParseError::UnexpectedValue(
+        //                                 value,
+        //                                 Some(CONFIG_TAG),
+        //                             ))
+        //                         }
+        //                     };
+        //
+        //                     if let Some(Attr { name, value: _ }) = attrs.pop() {
+        //                         match name.as_str() {
+        //                             CLIENT_TAG => {
+        //                                 client_params =
+        //                                     Some(ClientParams::try_from_items(items, use_defaults)?);
+        //                             }
+        //                             DOWNLINKS_TAG => {
+        //                                 downlink_params =
+        //                                     Some(DownlinkParams::try_from_items(items, use_defaults)?);
+        //                             }
+        //                             HOST_TAG => {
+        //                                 for item in items {
+        //                                     let (url, params) =
+        //                                         try_host_params_from_item(item, use_defaults)?;
+        //                                     host_params.insert(url, params);
+        //                                 }
+        //                             }
+        //                             LANE_TAG => {
+        //                                 for item in items {
+        //                                     let (path, params) =
+        //                                         try_lane_params_from_item(item, use_defaults)?;
+        //                                     lane_params.insert(path, params);
+        //                                 }
+        //                             }
+        //                             _ => {
+        //                                 return Err(ConfigParseError::UnexpectedAttribute(
+        //                                     name.to_string(),
+        //                                     Some(CONFIG_TAG),
+        //                                 ))
+        //                             }
+        //                         }
+        //                     } else {
+        //                         return Err(ConfigParseError::UnnamedRecord(
+        //                             Value::Record(attrs, items),
+        //                             Some(CONFIG_TAG),
+        //                         ));
+        //                     }
+        //                 }
+        //                 _ => return Err(ConfigParseError::UnexpectedSlot(item, CONFIG_TAG)),
+        //             }
+        //         }
+        //
+        //         if use_defaults {
+        //             client_params = client_params.or_else(|| Some(ClientParams::default()));
+        //             downlink_params = downlink_params.or_else(|| Some(DownlinkParams::default()));
+        //         }
+        //
+        //         Ok(ConfigHierarchy {
+        //             client_params: client_params
+        //                 .ok_or(ConfigParseError::MissingAttribute(CLIENT_TAG, CONFIG_TAG))?,
+        //             default: downlink_params.ok_or(ConfigParseError::MissingAttribute(
+        //                 DOWNLINKS_TAG,
+        //                 CONFIG_TAG,
+        //             ))?,
+        //             by_host: host_params,
+        //             by_lane: lane_params,
+        //         })
+        //     }
+        // }
+        //
+        // fn try_host_params_from_item(
+        //     item: Item,
+        //     use_defaults: bool,
+        // ) -> Result<(Url, DownlinkParams), ConfigParseError> {
+        //     match item {
+        //         Item::Slot(Value::Text(name), Value::Record(_, items)) => {
+        //             let host = Url::parse(name.as_str())
+        //                 .map_err(|_| ConfigParseError::InvalidKey(Value::Text(name), HOST_TAG))?;
+        //             let downlink_params = DownlinkParams::try_from_items(items, use_defaults)?;
+        //             Ok((host, downlink_params))
+        //         }
+        //         Item::Slot(value, _) => Err(ConfigParseError::UnexpectedValue(value, Some(HOST_TAG))),
+        //         Item::ValueItem(value) => Err(ConfigParseError::UnexpectedValue(value, Some(HOST_TAG))),
+        //     }
+        // }
+        //
+        // fn try_lane_params_from_item(
+        //     item: Item,
+        //     use_defaults: bool,
+        // ) -> Result<(AbsolutePath, DownlinkParams), ConfigParseError> {
+        //     match item {
+        //         Item::ValueItem(Value::Record(mut attrs, items)) if attrs.len() <= 1 => {
+        //             if let Some(Attr { name, value }) = attrs.pop() {
+        //                 if name == PATH_TAG {
+        //                     let path = try_absolute_path_from_record(value)?;
+        //                     let downlink_params = DownlinkParams::try_from_items(items, use_defaults)?;
+        //                     Ok((path, downlink_params))
+        //                 } else {
+        //                     Err(ConfigParseError::UnexpectedAttribute(
+        //                         name.to_string(),
+        //                         Some(LANE_TAG),
+        //                     ))
+        //                 }
+        //             } else {
+        //                 Err(ConfigParseError::UnnamedRecord(
+        //                     Value::Record(attrs, items),
+        //                     Some(LANE_TAG),
+        //                 ))
+        //             }
+        //         }
+        //         Item::ValueItem(value) => Err(ConfigParseError::UnexpectedValue(value, Some(LANE_TAG))),
+        //         _ => Err(ConfigParseError::UnexpectedSlot(item, LANE_TAG)),
+        //     }
+        // }
+        //
+        // fn try_absolute_path_from_record(record: Value) -> Result<AbsolutePath, ConfigParseError> {
+        //     let mut host: Option<Url> = None;
+        //     let mut node: Option<String> = None;
+        //     let mut lane: Option<String> = None;
+        //
+        //     match record {
+        //         Value::Record(_, items) => {
+        //             for item in items {
+        //                 match item {
+        //                     Item::Slot(Value::Text(name), Value::Text(value)) => match name.as_str() {
+        //                         HOST_TAG => {
+        //                             host = Some(Url::parse(value.as_str()).map_err(|_| {
+        //                                 ConfigParseError::InvalidKey(Value::Text(name), HOST_TAG)
+        //                             })?)
+        //                         }
+        //                         NODE_TAG => node = Some(value.to_string()),
+        //                         LANE_TAG => lane = Some(value.to_string()),
+        //                         _ => {
+        //                             return Err(ConfigParseError::UnexpectedKey(
+        //                                 name.to_string(),
+        //                                 PATH_TAG,
+        //                             ))
+        //                         }
+        //                     },
+        //                     Item::Slot(Value::Text(_), value) => {
+        //                         return Err(ConfigParseError::UnexpectedValue(value, Some(LANE_TAG)))
+        //                     }
+        //                     Item::Slot(value, _) => {
+        //                         return Err(ConfigParseError::UnexpectedValue(value, Some(LANE_TAG)))
+        //                     }
+        //                     Item::ValueItem(value) => {
+        //                         return Err(ConfigParseError::UnexpectedValue(value, Some(LANE_TAG)))
+        //                     }
+        //                 }
+        //             }
+        //         }
+        //         _ => return Err(ConfigParseError::UnexpectedValue(record, Some(LANE_TAG))),
+        //     };
+        //
+        //     Ok(AbsolutePath::new(
+        //         host.ok_or(ConfigParseError::MissingKey(HOST_TAG, PATH_TAG))?,
+        //         &node.ok_or(ConfigParseError::MissingKey(NODE_TAG, PATH_TAG))?,
+        //         &lane.ok_or(ConfigParseError::MissingKey(LANE_TAG, PATH_TAG))?,
+        //     ))
     }
 
     type Key = String;

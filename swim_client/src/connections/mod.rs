@@ -18,7 +18,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use crate::configuration::router::ConnectionPoolParams;
-use crate::router::ClientRequest;
+use crate::router::ClientConnectionRequest;
 use futures::future::BoxFuture;
 use futures::select;
 use futures::stream;
@@ -95,11 +95,11 @@ impl SwimConnPool {
     /// * `buffer_size`             - The buffer size of the internal channels in the connection
     ///                               pool as an integer.
     /// * `remote_router_tx` - ...
+    /// * `client_conn_request_tx` - ...
     #[instrument(skip(config))]
     pub fn new(
         config: ConnectionPoolParams,
-        remote_router_tx: mpsc::Sender<RoutingRequest>,
-        local_tx: mpsc::Sender<ClientRequest>,
+        client_conn_request_tx: mpsc::Sender<ClientConnectionRequest>,
     ) -> SwimConnPool {
         let (connection_request_tx, connection_request_rx) =
             mpsc::channel(config.buffer_size().get());
@@ -107,8 +107,7 @@ impl SwimConnPool {
 
         let task = PoolTask::new(
             connection_request_rx,
-            remote_router_tx,
-            local_tx,
+            client_conn_request_tx,
             config.buffer_size(),
             stop_request_rx,
         );
@@ -187,8 +186,7 @@ enum RequestType {
 
 struct PoolTask {
     connection_request_rx: mpsc::Receiver<ConnectionRequest>,
-    remote_router_tx: mpsc::Sender<RoutingRequest>,
-    local_tx: mpsc::Sender<ClientRequest>,
+    client_conn_request_tx: mpsc::Sender<ClientConnectionRequest>,
     buffer_size: NonZeroUsize,
     stop_request_rx: mpsc::Receiver<()>,
 }
@@ -196,15 +194,13 @@ struct PoolTask {
 impl PoolTask {
     fn new(
         connection_request_rx: mpsc::Receiver<ConnectionRequest>,
-        remote_router_tx: mpsc::Sender<RoutingRequest>,
-        local_tx: mpsc::Sender<ClientRequest>,
+        client_conn_request_tx: mpsc::Sender<ClientConnectionRequest>,
         buffer_size: NonZeroUsize,
         stop_request_rx: mpsc::Receiver<()>,
     ) -> Self {
         PoolTask {
             connection_request_rx,
-            remote_router_tx,
-            local_tx,
+            client_conn_request_tx,
             buffer_size,
             stop_request_rx,
         }
@@ -214,8 +210,7 @@ impl PoolTask {
     async fn run(self, config: ConnectionPoolParams) -> Result<(), ConnectionError> {
         let PoolTask {
             connection_request_rx,
-            remote_router_tx,
-            local_tx,
+            client_conn_request_tx,
             buffer_size,
             stop_request_rx,
         } = self;
@@ -258,8 +253,7 @@ impl PoolTask {
                         ClientConnection::new(
                             host_url.clone(),
                             buffer_size.get(),
-                            &remote_router_tx,
-                            &local_tx,
+                            &client_conn_request_tx,
                         )
                         .await
                         .and_then(|connection| {
@@ -446,63 +440,24 @@ impl ClientConnection {
     async fn new(
         host_url: url::Url,
         buffer_size: usize,
-        remote_router_tx: &mpsc::Sender<RoutingRequest>,
-        local_tx: &mpsc::Sender<ClientRequest>,
+        client_conn_request_tx: &mpsc::Sender<ClientConnectionRequest>,
     ) -> Result<ClientConnection, ConnectionError> {
         let (sender_tx, sender_rx) = mpsc::channel(buffer_size);
         let (receiver_tx, receiver_rx) = mpsc::channel(buffer_size);
 
         let (tx, rx) = oneshot::channel();
-        remote_router_tx
-            .send(RoutingRequest::ResolveUrl {
-                host: host_url.clone(),
-                request: Request::new(tx),
-            })
-            .await
-            .unwrap();
-
-        let routing_addr = rx.await.unwrap().unwrap();
-
-        let (tx, rx) = oneshot::channel();
-        remote_router_tx
-            .send(RoutingRequest::Endpoint {
-                addr: routing_addr,
-                request: Request::new(tx),
-            })
-            .await
-            .unwrap();
-
-        let raw_route = rx.await.unwrap().unwrap();
-
-        let write_sink = raw_route.sender;
-
-        let (tx, rx) = oneshot::channel();
-        local_tx
-            .send(ClientRequest::Subscribe {
+        client_conn_request_tx
+            .send(ClientConnectionRequest::Subscribe {
                 url: host_url,
                 request: Request::new(tx),
             })
             .await
             .unwrap();
 
-        let stream = rx.await.unwrap();
+        let (raw_route, stream) = rx.await.unwrap()?;
+        let write_sink = raw_route.sender;
 
         let read_stream = ReceiverStream::new(stream).fuse();
-
-        // let (write_sink, read_stream) = ws_factory
-        //     .open_connection(
-        //         conn_factory
-        //             .try_open(
-        //                 host_url
-        //                     .socket_addrs(|| None)
-        //                     .map_err(|err| ConnectionError::Io(err.into()))?
-        //                     .remove(0),
-        //             )
-        //             .await?,
-        //         host_url.to_string(),
-        //     )
-        //     .await?
-        //     .split();
 
         let stopped = Arc::new(AtomicBool::new(false));
 

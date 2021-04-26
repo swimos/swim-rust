@@ -12,11 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::HashMap;
-use std::ops::Deref;
-
 use crate::configuration::router::RouterParams;
 use crate::connections::{ConnectionPool, ConnectionRequest, ConnectionSender, SwimConnPool};
+use crate::interface::ClientError;
 use crate::router::incoming::{IncomingHostTask, IncomingRequest};
 use crate::router::outgoing::OutgoingHostTask;
 use either::Either;
@@ -27,12 +25,16 @@ use futures::select;
 use futures::stream::FuturesUnordered;
 use futures::{select_biased, Future, FutureExt, SinkExt, StreamExt};
 use std::collections::hash_map::Entry;
+use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::ops::Deref;
 use std::sync::Arc;
 use std::time::Duration;
 use swim_common::request::request_future::RequestError;
 use swim_common::request::Request;
-use swim_common::routing::error::{ResolutionError, RouterError, RoutingError, Unresolvable};
+use swim_common::routing::error::{
+    ConnectionError, ResolutionError, RouterError, RoutingError, Unresolvable,
+};
 use swim_common::routing::remote::config::ConnectionConfig;
 use swim_common::routing::remote::net::dns::Resolver;
 use swim_common::routing::remote::net::plain::TokioPlainTextNetworking;
@@ -50,6 +52,7 @@ use swim_runtime::task::*;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::oneshot;
+use tokio::sync::oneshot::error::RecvError;
 use tokio::time::sleep;
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
@@ -71,11 +74,11 @@ mod retry;
 
 #[derive(Debug, Clone)]
 pub(crate) struct ClientRouterFactory {
-    request_sender: mpsc::Sender<ClientRequest>,
+    request_sender: mpsc::Sender<ClientConnectionRequest>,
 }
 
 impl ClientRouterFactory {
-    pub(crate) fn new(request_sender: mpsc::Sender<ClientRequest>) -> Self {
+    pub(crate) fn new(request_sender: mpsc::Sender<ClientConnectionRequest>) -> Self {
         ClientRouterFactory { request_sender }
     }
 }
@@ -94,7 +97,7 @@ impl RouterFactory for ClientRouterFactory {
 #[derive(Debug, Clone)]
 pub(crate) struct ClientRouter {
     tag: RoutingAddr,
-    request_sender: mpsc::Sender<ClientRequest>,
+    request_sender: mpsc::Sender<ClientConnectionRequest>,
 }
 
 impl Router for ClientRouter {
@@ -110,7 +113,7 @@ impl Router for ClientRouter {
             } = self;
             let (tx, rx) = oneshot::channel();
             if request_sender
-                .send(ClientRequest::Connect {
+                .send(ClientConnectionRequest::Connect {
                     request: Request::new(tx),
                     origin: origin.unwrap(),
                 })
@@ -141,7 +144,7 @@ impl Router for ClientRouter {
 }
 
 #[derive(Debug)]
-pub enum ClientRequest {
+pub enum ClientConnectionRequest {
     /// Obtain a connection.
     Connect {
         request: Request<Result<RawRoute, Unresolvable>>,
@@ -150,110 +153,198 @@ pub enum ClientRequest {
     /// Subscribe to a connection.
     Subscribe {
         url: Url,
-        request: Request<mpsc::Receiver<TaggedEnvelope>>,
+        request: Request<Result<(RawRoute, mpsc::Receiver<TaggedEnvelope>), ConnectionError>>,
     },
 }
 
+//Todo dm rename
 pub(crate) type OutgoingManagerSender = mpsc::Sender<TaggedEnvelope>;
 
-//Todo dm rename the channels to something that makes sense
-//Todo this is the client router task factory
-pub(crate) async fn run_client_router_task(
-    mut request_rx: mpsc::Receiver<ClientRequest>,
-    mut local_rx: mpsc::Receiver<ClientRequest>,
-) {
-    let mut outgoing_managers: HashMap<
-        String,
-        (
-            OutgoingManagerSender,
-            mpsc::Sender<Request<mpsc::Receiver<TaggedEnvelope>>>,
-        ),
-    > = HashMap::new();
+pub struct RemoteConnectionsManager {
+    router_request_rx: mpsc::Receiver<ClientConnectionRequest>,
+    remote_router_tx: mpsc::Sender<RoutingRequest>,
+}
 
-    let mut request_rx = ReceiverStream::new(request_rx).fuse();
-    let mut local_rx = ReceiverStream::new(local_rx).fuse();
-    let futures = FuturesUnordered::new();
-    let mut close_txs = Vec::new();
+impl RemoteConnectionsManager {
+    pub(crate) fn new(
+        router_request_rx: mpsc::Receiver<ClientConnectionRequest>,
+        remote_router_tx: mpsc::Sender<RoutingRequest>,
+    ) -> RemoteConnectionsManager {
+        RemoteConnectionsManager {
+            router_request_rx,
+            remote_router_tx,
+        }
+    }
 
-    loop {
-        let next: Option<ClientRequest> = select_biased! {
-            request = request_rx.next() => request,
-            sub = local_rx.next() => sub,
-        };
+    pub(crate) async fn run(self) {
+        let RemoteConnectionsManager {
+            router_request_rx,
+            remote_router_tx,
+        } = self;
 
-        match next {
-            Some(ClientRequest::Connect { request, origin }) => {
-                eprintln!("addr = {:#?}", origin.to_string());
-                let (sender, _) = outgoing_managers
-                    .entry(origin.to_string())
-                    .or_insert_with(|| {
-                        //Todo and this is the client router task
-                        let (manager, sender, sub_tx) = IncomingManager::new();
+        let mut outgoing_managers: HashMap<
+            String,
+            (
+                OutgoingManagerSender,
+                mpsc::Sender<(
+                    RawRoute,
+                    Request<Result<(RawRoute, mpsc::Receiver<TaggedEnvelope>), ConnectionError>>,
+                )>,
+            ),
+        > = HashMap::new();
 
-                        let handle = spawn(manager.run());
-                        futures.push(handle);
-                        (sender, sub_tx)
-                    })
-                    .clone();
+        let mut router_request_rx = ReceiverStream::new(router_request_rx).fuse();
+        let futures = FuturesUnordered::new();
+        let mut close_txs = Vec::new();
 
-                let (on_drop_tx, on_drop_rx) = promise::promise();
-                close_txs.push(on_drop_tx);
+        loop {
+            let next: Option<ClientConnectionRequest> = router_request_rx.next().await;
 
-                request.send(Ok(RawRoute::new(sender, on_drop_rx))).unwrap();
-            }
-            Some(ClientRequest::Subscribe {
-                url,
-                request: sub_req,
-            }) => {
-                eprintln!("url = {:#?}", url.to_string());
-                let (_, sub_sender) =
-                    outgoing_managers.entry(url.to_string()).or_insert_with(|| {
-                        let (manager, sender, sub_tx) = IncomingManager::new();
+            match next {
+                Some(ClientConnectionRequest::Connect { request, origin }) => {
+                    let (sender, _) = outgoing_managers
+                        .entry(origin.to_string())
+                        .or_insert_with(|| {
+                            let (manager, sender, sub_tx) = IncomingManager::new();
 
-                        let handle = spawn(manager.run());
-                        futures.push(handle);
-                        (sender, sub_tx)
+                            let handle = spawn(manager.run());
+                            futures.push(handle);
+                            (sender, sub_tx)
+                        })
+                        .clone();
+
+                    let (on_drop_tx, on_drop_rx) = promise::promise();
+                    close_txs.push(on_drop_tx);
+
+                    request.send(Ok(RawRoute::new(sender, on_drop_rx))).unwrap();
+                }
+                Some(ClientConnectionRequest::Subscribe {
+                    url,
+                    //todo dm refactor the type of this
+                    request: sub_req,
+                }) => {
+                    let (tx, rx) = oneshot::channel();
+
+                    if remote_router_tx
+                        .send(RoutingRequest::ResolveUrl {
+                            host: url.clone(),
+                            request: Request::new(tx),
+                        })
+                        .await
+                        .is_err()
+                    {
+                        sub_req.send(Err(ConnectionError::Resolution(
+                            ResolutionError::router_dropped(),
+                        )));
+                        continue;
+                    }
+
+                    let routing_addr = match rx.await {
+                        Ok(result) => match result {
+                            Ok(routing_addr) => routing_addr,
+                            Err(err) => {
+                                sub_req.send(Err(err));
+                                continue;
+                            }
+                        },
+                        Err(_) => {
+                            sub_req.send(Err(ConnectionError::Resolution(
+                                ResolutionError::router_dropped(),
+                            )));
+                            continue;
+                        }
+                    };
+
+                    let (tx, rx) = oneshot::channel();
+                    if remote_router_tx
+                        .send(RoutingRequest::Endpoint {
+                            addr: routing_addr,
+                            request: Request::new(tx),
+                        })
+                        .await
+                        .is_err()
+                    {
+                        sub_req.send(Err(ConnectionError::Resolution(
+                            ResolutionError::router_dropped(),
+                        )));
+                        continue;
+                    }
+
+                    let raw_route = match rx.await {
+                        Ok(result) => match result {
+                            Ok(raw_route) => raw_route,
+                            Err(_) => {
+                                sub_req.send(Err(ConnectionError::Resolution(
+                                    ResolutionError::unresolvable(url.to_string()),
+                                )));
+                                continue;
+                            }
+                        },
+                        Err(_) => {
+                            sub_req.send(Err(ConnectionError::Resolution(
+                                ResolutionError::router_dropped(),
+                            )));
+                            continue;
+                        }
+                    };
+
+                    let (_, sub_sender) =
+                        outgoing_managers.entry(url.to_string()).or_insert_with(|| {
+                            let (manager, sender, sub_tx) = IncomingManager::new();
+
+                            let handle = spawn(manager.run());
+                            futures.push(handle);
+                            (sender, sub_tx)
+                        });
+
+                    sub_sender.send((raw_route, sub_req)).await.unwrap();
+                }
+                _ => {
+                    close_txs.into_iter().for_each(|trigger| {
+                        if let Err(err) = trigger.provide(ConnectionDropped::Closed) {
+                            tracing::error!("{:?}", err);
+                        }
                     });
 
-                sub_sender.send(sub_req).await.unwrap();
-            }
-            _ => {
-                close_txs.into_iter().for_each(|trigger| {
-                    if let Err(err) = trigger.provide(ConnectionDropped::Closed) {
-                        tracing::error!("{:?}", err);
-                    }
-                });
-
-                for result in futures.collect::<Vec<_>>().await {
-                    match result {
-                        Ok(res) => {
-                            if let Err(err) = res {
+                    for result in futures.collect::<Vec<_>>().await {
+                        match result {
+                            Ok(res) => {
+                                if let Err(err) = res {
+                                    tracing::error!("{:?}", err);
+                                }
+                            }
+                            Err(err) => {
                                 tracing::error!("{:?}", err);
                             }
                         }
-                        Err(err) => {
-                            tracing::error!("{:?}", err);
-                        }
                     }
-                }
 
-                break;
+                    break;
+                }
             }
         }
     }
 }
 
+//Todo dm rename
 pub(crate) struct IncomingManager {
     envelope_rx: mpsc::Receiver<TaggedEnvelope>,
-    sub_rx: mpsc::Receiver<Request<mpsc::Receiver<TaggedEnvelope>>>,
+    sub_rx: mpsc::Receiver<(
+        RawRoute,
+        Request<Result<(RawRoute, mpsc::Receiver<TaggedEnvelope>), ConnectionError>>,
+    )>,
 }
 
 impl IncomingManager {
     pub(crate) fn new() -> (
         IncomingManager,
         OutgoingManagerSender,
-        mpsc::Sender<Request<mpsc::Receiver<TaggedEnvelope>>>,
+        mpsc::Sender<(
+            RawRoute,
+            Request<Result<(RawRoute, mpsc::Receiver<TaggedEnvelope>), ConnectionError>>,
+        )>,
     ) {
+        //todo dm config buffer size
         let (envelope_tx, envelope_rx) = mpsc::channel(8);
         let (sub_tx, sub_rx) = mpsc::channel(8);
         (
@@ -280,7 +371,10 @@ impl IncomingManager {
         loop {
             let next: Either<
                 Option<TaggedEnvelope>,
-                Option<Request<mpsc::Receiver<TaggedEnvelope>>>,
+                Option<(
+                    RawRoute,
+                    Request<Result<(RawRoute, mpsc::Receiver<TaggedEnvelope>), ConnectionError>>,
+                )>,
             > = select_biased! {
                 envelope = envelope_rx.next() => Either::Left(envelope),
                 sub = sub_rx.next() => Either::Right(sub),
@@ -295,10 +389,10 @@ impl IncomingManager {
                         warn!("Unsupported message: {:?}", env);
                     }
                 },
-                Either::Right(Some(sub_request)) => {
+                Either::Right(Some((raw_route, sub_request))) => {
                     let (sub_tx, sub_rx) = mpsc::channel(8);
                     subs.push(sub_tx);
-                    sub_request.send(sub_rx).unwrap();
+                    sub_request.send(Ok((raw_route, sub_rx))).unwrap();
                 }
                 _ => break Ok(()),
             }
@@ -356,6 +450,30 @@ async fn index_sender(
 }
 
 //Todo dm old stuff bellow
+
+type ConnectionChannel = (mpsc::Sender<Envelope>, mpsc::Receiver<RouterEvent>);
+
+impl<Pool: ConnectionPool> OldRouter for SwimRouter<Pool> {
+    type ConnectionFut = BoxFuture<'static, Result<ConnectionChannel, RequestError>>;
+
+    fn connection_for(&mut self, target: &AbsolutePath) -> Self::ConnectionFut {
+        let tx = self.router_connection_request_tx.clone();
+        let path = target.clone();
+        async move {
+            let (resp_tx, resp_rx) = oneshot::channel();
+            if tx.send((path, resp_tx)).await.is_ok() {
+                Ok(resp_rx.await?)
+            } else {
+                Err(RequestError)
+            }
+        }
+        .boxed()
+    }
+
+    fn general_sink(&mut self) -> mpsc::Sender<(url::Url, Envelope)> {
+        self.router_sink_tx.clone()
+    }
+}
 
 /// The Router is responsible for routing messages between the downlinks and the connections from the
 /// connection pool. It can be used to obtain a connection for a downlink or to send direct messages.
@@ -834,29 +952,5 @@ impl<Pool: ConnectionPool> HostManager<Pool> {
                 }
             }
         }
-    }
-}
-
-type ConnectionChannel = (mpsc::Sender<Envelope>, mpsc::Receiver<RouterEvent>);
-
-impl<Pool: ConnectionPool> OldRouter for SwimRouter<Pool> {
-    type ConnectionFut = BoxFuture<'static, Result<ConnectionChannel, RequestError>>;
-
-    fn connection_for(&mut self, target: &AbsolutePath) -> Self::ConnectionFut {
-        let tx = self.router_connection_request_tx.clone();
-        let path = target.clone();
-        async move {
-            let (resp_tx, resp_rx) = oneshot::channel();
-            if tx.send((path, resp_tx)).await.is_ok() {
-                Ok(resp_rx.await?)
-            } else {
-                Err(RequestError)
-            }
-        }
-        .boxed()
-    }
-
-    fn general_sink(&mut self) -> mpsc::Sender<(url::Url, Envelope)> {
-        self.router_sink_tx.clone()
     }
 }
