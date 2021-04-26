@@ -1124,7 +1124,10 @@ impl<K: Into<Value>, V: Into<Value>> From<(K, V)> for Item {
     }
 }
 
-fn write_string_literal(literal: &str, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+pub(crate) fn write_string_literal(
+    literal: &str,
+    f: &mut Formatter<'_>,
+) -> Result<(), std::fmt::Error> {
     if parser::is_identifier(literal) {
         f.write_str(literal)
     } else if needs_escape(literal) {
