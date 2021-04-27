@@ -20,8 +20,8 @@ use bytes::buf::Writer;
 use bytes::{BufMut, BytesMut};
 use num_bigint::{BigInt, BigUint, Sign};
 use rmp::encode::{
-    write_array_len, write_bin, write_bool, write_ext_meta, write_f64, write_i32, write_i64,
-    write_map_len, write_nil, write_str, write_u32, write_u64,
+    write_array_len, write_bin, write_bool, write_ext_meta, write_f64, write_map_len, write_nil,
+    write_sint, write_str, write_u64,
 };
 use std::borrow::Cow;
 use std::convert::TryFrom;
@@ -84,8 +84,8 @@ pub enum MsgPackError {
     WrongNumberOfItems,
 }
 
-const BIG_INT_EXT: i8 = 0;
-const BIG_UINT_EXT: i8 = 1;
+pub(in crate::form::structural) const BIG_INT_EXT: i8 = 0;
+pub(in crate::form::structural) const BIG_UINT_EXT: i8 = 1;
 
 impl Display for MsgPackError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -134,17 +134,17 @@ impl<'a> PrimitiveWriter for MsgPackInterpreter<'a> {
     }
 
     fn write_i32(mut self, value: i32) -> Result<Self::Repr, Self::Error> {
-        write_i32(&mut self.bytes, value)?;
+        write_sint(&mut self.bytes, value as i64)?;
         Ok(self.split())
     }
 
     fn write_i64(mut self, value: i64) -> Result<Self::Repr, Self::Error> {
-        write_i64(&mut self.bytes, value)?;
+        write_sint(&mut self.bytes, value)?;
         Ok(self.split())
     }
 
     fn write_u32(mut self, value: u32) -> Result<Self::Repr, Self::Error> {
-        write_u32(&mut self.bytes, value)?;
+        write_sint(&mut self.bytes, value as i64)?;
         Ok(self.split())
     }
 
