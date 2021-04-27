@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//Todo dm remove after refactoring
+#![allow(warnings, unused)]
+
 pub mod router;
 
 #[cfg(test)]

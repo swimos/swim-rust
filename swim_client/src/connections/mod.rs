@@ -22,17 +22,12 @@ use crate::router::ClientConnectionRequest;
 use futures::future::BoxFuture;
 use futures::select;
 use futures::stream;
-use futures::{FutureExt, Sink, Stream, StreamExt};
-use futures_util::future::TryFutureExt;
-use futures_util::TryStreamExt;
-use swim_common::form::Tag;
+use futures::{FutureExt, Stream, StreamExt};
 use swim_common::request::request_future::RequestError;
 use swim_common::request::Request;
 use swim_common::routing::error::{
     CloseError, ConnectionError, ResolutionError, ResolutionErrorKind,
 };
-use swim_common::routing::remote::{ExternalConnections, RoutingRequest};
-use swim_common::routing::ws::{WsConnections, WsMessage};
 use swim_common::routing::TaggedEnvelope;
 use swim_runtime::task::*;
 use swim_runtime::time::instant::Instant;
@@ -87,15 +82,12 @@ pub struct SwimConnPool {
 }
 
 impl SwimConnPool {
-    /// Todo dm update documentation
     /// Creates a new connection pool for managing connections to remote hosts.
     ///
     /// # Arguments
     ///
-    /// * `buffer_size`             - The buffer size of the internal channels in the connection
-    ///                               pool as an integer.
-    /// * `remote_router_tx` - ...
-    /// * `client_conn_request_tx` - ...
+    /// * `config`                 - The configuration for the connection pool.
+    /// * `client_conn_request_tx` - A channel for requesting remote connections.
     #[instrument(skip(config))]
     pub fn new(
         config: ConnectionPoolParams,

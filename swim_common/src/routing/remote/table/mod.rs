@@ -19,7 +19,6 @@ use crate::routing::remote::{RawRoute, SchemeSocketAddr};
 use crate::routing::{ConnectionDropped, RoutingAddr, TaggedEnvelope};
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
-use std::net::SocketAddr;
 use tokio::sync::mpsc;
 use utilities::sync::promise;
 

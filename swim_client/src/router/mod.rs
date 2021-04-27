@@ -13,56 +13,39 @@
 // limitations under the License.
 
 use crate::configuration::router::RouterParams;
-use crate::connections::{ConnectionPool, ConnectionRequest, ConnectionSender, SwimConnPool};
-use crate::interface::ClientError;
+use crate::connections::{ConnectionPool, ConnectionSender};
+use crate::router::incoming::broadcast;
 use crate::router::incoming::{IncomingHostTask, IncomingRequest};
 use crate::router::outgoing::OutgoingHostTask;
 use either::Either;
 use futures::future::ready;
 use futures::future::BoxFuture;
-use futures::join;
-use futures::select;
 use futures::stream::FuturesUnordered;
-use futures::{select_biased, Future, FutureExt, SinkExt, StreamExt};
-use std::collections::hash_map::Entry;
+use futures::{select_biased, FutureExt, StreamExt};
 use std::collections::HashMap;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::num::NonZeroUsize;
 use std::ops::Deref;
-use std::sync::Arc;
-use std::time::Duration;
-use swim_common::request::request_future::RequestError;
 use swim_common::request::Request;
 use swim_common::routing::error::{
     ConnectionError, ResolutionError, RouterError, RoutingError, Unresolvable,
 };
-use swim_common::routing::remote::config::ConnectionConfig;
-use swim_common::routing::remote::net::dns::Resolver;
-use swim_common::routing::remote::net::plain::TokioPlainTextNetworking;
-use swim_common::routing::remote::{
-    RawRoute, RemoteConnectionChannels, RemoteConnectionsTask, RoutingRequest, SchemeSocketAddr,
-};
-use swim_common::routing::ws::tungstenite::TungsteniteWsConnections;
+use swim_common::routing::remote::{RawRoute, RoutingRequest, SchemeSocketAddr};
 use swim_common::routing::ConnectionDropped;
 use swim_common::routing::{
     Route, Router, RouterFactory, RoutingAddr, TaggedEnvelope, TaggedSender,
 };
-use swim_common::warp::envelope::{Envelope, IncomingHeader, IncomingLinkMessage, LinkMessage};
+use swim_common::warp::envelope::{Envelope, IncomingLinkMessage};
 use swim_common::warp::path::{AbsolutePath, RelativePath};
 use swim_runtime::task::*;
 use tokio::sync::mpsc;
-use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::oneshot;
-use tokio::sync::oneshot::error::RecvError;
-use tokio::time::sleep;
 use tokio_stream::wrappers::ReceiverStream;
-use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use tracing::trace_span;
-use tracing::{debug, error, span, trace, warn, Level};
+use tracing::{span, warn, Level};
 use tracing_futures::Instrument;
 use url::Url;
 use utilities::errors::Recoverable;
-use utilities::future::open_ended::OpenEndedFutures;
-use utilities::sync::{promise, trigger};
+use utilities::sync::promise;
 use utilities::uri::RelativeUri;
 
 #[cfg(test)]
@@ -157,22 +140,22 @@ pub enum ClientConnectionRequest {
     },
 }
 
-//Todo dm rename
-pub(crate) type OutgoingManagerSender = mpsc::Sender<TaggedEnvelope>;
-
 pub struct RemoteConnectionsManager {
     router_request_rx: mpsc::Receiver<ClientConnectionRequest>,
     remote_router_tx: mpsc::Sender<RoutingRequest>,
+    buffer_size: NonZeroUsize,
 }
 
 impl RemoteConnectionsManager {
     pub(crate) fn new(
         router_request_rx: mpsc::Receiver<ClientConnectionRequest>,
         remote_router_tx: mpsc::Sender<RoutingRequest>,
+        buffer_size: NonZeroUsize,
     ) -> RemoteConnectionsManager {
         RemoteConnectionsManager {
             router_request_rx,
             remote_router_tx,
+            buffer_size,
         }
     }
 
@@ -180,12 +163,13 @@ impl RemoteConnectionsManager {
         let RemoteConnectionsManager {
             router_request_rx,
             remote_router_tx,
+            buffer_size,
         } = self;
 
         let mut outgoing_managers: HashMap<
             String,
             (
-                OutgoingManagerSender,
+                mpsc::Sender<TaggedEnvelope>,
                 mpsc::Sender<(
                     RawRoute,
                     Request<Result<(RawRoute, mpsc::Receiver<TaggedEnvelope>), ConnectionError>>,
@@ -205,7 +189,8 @@ impl RemoteConnectionsManager {
                     let (sender, _) = outgoing_managers
                         .entry(origin.to_string())
                         .or_insert_with(|| {
-                            let (manager, sender, sub_tx) = IncomingManager::new();
+                            let (manager, sender, sub_tx) =
+                                RemoteConnectionManager::new(buffer_size);
 
                             let handle = spawn(manager.run());
                             futures.push(handle);
@@ -233,9 +218,11 @@ impl RemoteConnectionsManager {
                         .await
                         .is_err()
                     {
-                        sub_req.send(Err(ConnectionError::Resolution(
-                            ResolutionError::router_dropped(),
-                        )));
+                        sub_req
+                            .send(Err(ConnectionError::Resolution(
+                                ResolutionError::router_dropped(),
+                            )))
+                            .unwrap();
                         continue;
                     }
 
@@ -243,14 +230,16 @@ impl RemoteConnectionsManager {
                         Ok(result) => match result {
                             Ok(routing_addr) => routing_addr,
                             Err(err) => {
-                                sub_req.send(Err(err));
+                                sub_req.send(Err(err)).unwrap();
                                 continue;
                             }
                         },
                         Err(_) => {
-                            sub_req.send(Err(ConnectionError::Resolution(
-                                ResolutionError::router_dropped(),
-                            )));
+                            sub_req
+                                .send(Err(ConnectionError::Resolution(
+                                    ResolutionError::router_dropped(),
+                                )))
+                                .unwrap();
                             continue;
                         }
                     };
@@ -264,9 +253,11 @@ impl RemoteConnectionsManager {
                         .await
                         .is_err()
                     {
-                        sub_req.send(Err(ConnectionError::Resolution(
-                            ResolutionError::router_dropped(),
-                        )));
+                        sub_req
+                            .send(Err(ConnectionError::Resolution(
+                                ResolutionError::router_dropped(),
+                            )))
+                            .unwrap();
                         continue;
                     }
 
@@ -274,23 +265,28 @@ impl RemoteConnectionsManager {
                         Ok(result) => match result {
                             Ok(raw_route) => raw_route,
                             Err(_) => {
-                                sub_req.send(Err(ConnectionError::Resolution(
-                                    ResolutionError::unresolvable(url.to_string()),
-                                )));
+                                sub_req
+                                    .send(Err(ConnectionError::Resolution(
+                                        ResolutionError::unresolvable(url.to_string()),
+                                    )))
+                                    .unwrap();
                                 continue;
                             }
                         },
                         Err(_) => {
-                            sub_req.send(Err(ConnectionError::Resolution(
-                                ResolutionError::router_dropped(),
-                            )));
+                            sub_req
+                                .send(Err(ConnectionError::Resolution(
+                                    ResolutionError::router_dropped(),
+                                )))
+                                .unwrap();
                             continue;
                         }
                     };
 
                     let (_, sub_sender) =
                         outgoing_managers.entry(url.to_string()).or_insert_with(|| {
-                            let (manager, sender, sub_tx) = IncomingManager::new();
+                            let (manager, sender, sub_tx) =
+                                RemoteConnectionManager::new(buffer_size);
 
                             let handle = spawn(manager.run());
                             futures.push(handle);
@@ -326,8 +322,7 @@ impl RemoteConnectionsManager {
     }
 }
 
-//Todo dm rename
-pub(crate) struct IncomingManager {
+pub(crate) struct RemoteConnectionManager {
     envelope_rx: mpsc::Receiver<TaggedEnvelope>,
     sub_rx: mpsc::Receiver<(
         RawRoute,
@@ -335,20 +330,21 @@ pub(crate) struct IncomingManager {
     )>,
 }
 
-impl IncomingManager {
-    pub(crate) fn new() -> (
-        IncomingManager,
-        OutgoingManagerSender,
+impl RemoteConnectionManager {
+    pub(crate) fn new(
+        buffer_size: NonZeroUsize,
+    ) -> (
+        RemoteConnectionManager,
+        mpsc::Sender<TaggedEnvelope>,
         mpsc::Sender<(
             RawRoute,
             Request<Result<(RawRoute, mpsc::Receiver<TaggedEnvelope>), ConnectionError>>,
         )>,
     ) {
-        //todo dm config buffer size
-        let (envelope_tx, envelope_rx) = mpsc::channel(8);
-        let (sub_tx, sub_rx) = mpsc::channel(8);
+        let (envelope_tx, envelope_rx) = mpsc::channel(buffer_size.get());
+        let (sub_tx, sub_rx) = mpsc::channel(buffer_size.get());
         (
-            IncomingManager {
+            RemoteConnectionManager {
                 envelope_rx,
                 sub_rx,
             },
@@ -357,10 +353,10 @@ impl IncomingManager {
         )
     }
 
-    pub(crate) async fn run(mut self) -> Result<(), RoutingError> {
-        let IncomingManager {
-            mut envelope_rx,
-            mut sub_rx,
+    pub(crate) async fn run(self) -> Result<(), RoutingError> {
+        let RemoteConnectionManager {
+            envelope_rx,
+            sub_rx,
         } = self;
 
         let mut envelope_rx = ReceiverStream::new(envelope_rx).fuse();
@@ -400,97 +396,10 @@ impl IncomingManager {
     }
 }
 
-/// Broadcasts an event to all subscribers of the task that are subscribed to a given path.
-/// The path is the combination of the node and lane.
-///
-/// # Arguments
-///
-/// * `subscribers`             - A map of all subscribers.
-/// * `destination`             - The node and lane.
-/// * `event`                   - An event to be broadcasted.
-async fn broadcast(
-    subscribers: &mut Vec<mpsc::Sender<TaggedEnvelope>>,
-    envelope: TaggedEnvelope,
-) -> Result<(), RoutingError> {
-    if subscribers.len() == 1 {
-        let result = subscribers
-            .get_mut(0)
-            .ok_or(RoutingError::ConnectionError)?
-            .send(envelope)
-            .await;
-
-        if result.is_err() {
-            subscribers.remove(0);
-        }
-    } else {
-        let futures: FuturesUnordered<_> = subscribers
-            .iter_mut()
-            .enumerate()
-            .map(|(index, sender)| index_sender(sender, envelope.clone(), index))
-            .collect();
-
-        for index in futures.filter_map(ready).collect::<Vec<_>>().await {
-            subscribers.remove(index);
-        }
-    }
-
-    Ok(())
-}
-
-async fn index_sender(
-    sender: &mut mpsc::Sender<TaggedEnvelope>,
-    envelope: TaggedEnvelope,
-    index: usize,
-) -> Option<usize> {
-    if sender.send(envelope).await.is_err() {
-        Some(index)
-    } else {
-        None
-    }
-}
-
-//Todo dm old stuff bellow
-
-type ConnectionChannel = (mpsc::Sender<Envelope>, mpsc::Receiver<RouterEvent>);
-
-impl<Pool: ConnectionPool> OldRouter for SwimRouter<Pool> {
-    type ConnectionFut = BoxFuture<'static, Result<ConnectionChannel, RequestError>>;
-
-    fn connection_for(&mut self, target: &AbsolutePath) -> Self::ConnectionFut {
-        let tx = self.router_connection_request_tx.clone();
-        let path = target.clone();
-        async move {
-            let (resp_tx, resp_rx) = oneshot::channel();
-            if tx.send((path, resp_tx)).await.is_ok() {
-                Ok(resp_rx.await?)
-            } else {
-                Err(RequestError)
-            }
-        }
-        .boxed()
-    }
-
-    fn general_sink(&mut self) -> mpsc::Sender<(url::Url, Envelope)> {
-        self.router_sink_tx.clone()
-    }
-}
-
-/// The Router is responsible for routing messages between the downlinks and the connections from the
-/// connection pool. It can be used to obtain a connection for a downlink or to send direct messages.
-pub trait OldRouter: Send {
-    type ConnectionFut: Future<Output = Result<ConnectionChannel, RequestError>> + Send;
-
-    /// For full duplex connections
-    fn connection_for(&mut self, target: &AbsolutePath) -> Self::ConnectionFut;
-
-    /// For sending direct messages
-    fn general_sink(&mut self) -> mpsc::Sender<(url::Url, Envelope)>;
-}
-
 pub(crate) type RouterConnRequest = (AbsolutePath, oneshot::Sender<ConnectionChannel>);
-
 pub(crate) type RouterMessageRequest = (url::Url, Envelope);
 pub(crate) type CloseSender = promise::Sender<mpsc::Sender<Result<(), RoutingError>>>;
+type ConnectionChannel = (mpsc::Sender<Envelope>, mpsc::Receiver<RouterEvent>);
 type CloseResponseSender = mpsc::Sender<Result<(), RoutingError>>;
 type CloseReceiver = promise::Receiver<mpsc::Sender<Result<(), RoutingError>>>;
 
@@ -506,71 +415,6 @@ pub enum RouterEvent {
     Unreachable(String),
     // The router is stopping.
     Stopping,
-}
-
-pub struct SwimRouter<Pool: ConnectionPool> {
-    router_connection_request_tx: mpsc::Sender<RouterConnRequest>,
-    router_sink_tx: mpsc::Sender<RouterMessageRequest>,
-    task_manager_handle: TaskHandle<Result<(), RoutingError>>,
-    connection_pool: Pool,
-    close_tx: CloseSender,
-    configuration: RouterParams,
-}
-
-impl<Pool: ConnectionPool> SwimRouter<Pool> {
-    /// Creates a new connection router for routing messages between the downlinks and the
-    /// connection pool.
-    ///
-    /// # Arguments
-    ///
-    /// * `configuration`             - The configuration parameters of the router.
-    /// * `connection_pool`           - A connection pool for obtaining connections to remote hosts.
-    pub fn new(configuration: RouterParams, connection_pool: Pool) -> SwimRouter<Pool>
-    where
-        Pool: ConnectionPool,
-    {
-        let (close_tx, close_rx) = promise::promise();
-
-        let (task_manager, router_connection_request_tx, router_sink_tx) =
-            TaskManager::new(connection_pool.clone(), close_rx, configuration);
-
-        let task_manager_handle = spawn(task_manager.run());
-
-        SwimRouter {
-            router_connection_request_tx,
-            router_sink_tx,
-            task_manager_handle,
-            connection_pool,
-            close_tx,
-            configuration,
-        }
-    }
-
-    /// Closes the router and all of its sub-tasks, logging any errors that have been encountered.
-    /// Returns a [`RoutingError::CloseError`] if the closing fails.
-    pub async fn close(self) -> Result<(), RoutingError> {
-        let (result_tx, mut result_rx) = mpsc::channel(self.configuration.buffer_size().get());
-
-        self.close_tx
-            .provide(result_tx)
-            .map_err(|_| RoutingError::CloseError)?;
-
-        while let Some(result) = result_rx.recv().await {
-            if let Err(e) = result {
-                tracing::error!("{:?}", e);
-            }
-        }
-
-        if let Err(e) = self.task_manager_handle.await {
-            tracing::error!("{:?}", e);
-        };
-
-        self.connection_pool
-            .close()
-            .await
-            .map_err(|_| RoutingError::CloseError)?
-            .map_err(|_| RoutingError::CloseError)
-    }
 }
 
 /// Tasks that the router can handle.
@@ -745,18 +589,18 @@ where
 
 /// A connection request is used by the [`OutgoingHostTask`] to request a connection when
 /// it is trying to send a message.
-pub(crate) struct OldConnectionRequest {
+pub(crate) struct ConnectionRequest {
     request_tx: oneshot::Sender<Result<ConnectionSender, RoutingError>>,
     //If the connection should be recreated or returned from cache.
     recreate: bool,
 }
 
-impl OldConnectionRequest {
+impl ConnectionRequest {
     fn new(
         request_tx: oneshot::Sender<Result<ConnectionSender, RoutingError>>,
         recreate: bool,
     ) -> Self {
-        OldConnectionRequest {
+        ConnectionRequest {
             request_tx,
             recreate,
         }
@@ -786,7 +630,7 @@ const HOST_MANAGER_TASK_NAME: &str = "host manager";
 
 /// Tasks that the host manager can handle.
 enum HostTask {
-    Connect(OldConnectionRequest),
+    Connect(ConnectionRequest),
     Subscribe(SubscriberRequest),
     Close(Option<CloseResponseSender>),
 }
@@ -883,7 +727,7 @@ impl<Pool: ConnectionPool> HostManager<Pool> {
             .ok_or(RoutingError::ConnectionError)?;
 
             match task {
-                HostTask::Connect(OldConnectionRequest {
+                HostTask::Connect(ConnectionRequest {
                     request_tx: connection_response_tx,
                     recreate,
                 }) => {

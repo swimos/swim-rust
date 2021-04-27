@@ -20,7 +20,6 @@ use crate::routing::ws::WsMessage;
 use crate::warp::envelope::{Envelope, OutgoingLinkMessage};
 use futures::future::BoxFuture;
 use std::fmt::{Display, Formatter};
-use std::net::SocketAddr;
 use std::time::Duration;
 use tokio::sync::mpsc;
 use url::Url;

@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use std::io;
-use std::io::{Error, ErrorKind};
+use std::io::ErrorKind;
 use std::net::SocketAddr;
 use std::pin::Pin;
 use std::task::Context;

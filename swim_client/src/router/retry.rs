@@ -18,13 +18,12 @@ use tokio::sync::{mpsc, oneshot};
 use utilities::future::retryable::ResettableFuture;
 
 use crate::connections::ConnectionSender;
-use crate::router::OldConnectionRequest;
+use crate::router::ConnectionRequest;
 use futures::task::{Context, Poll};
 use futures::Future;
 use pin_project::pin_project;
 use std::pin::Pin;
 use swim_common::routing::error::RoutingError;
-use swim_common::routing::ws::WsMessage;
 use swim_common::routing::TaggedEnvelope;
 use tracing::trace;
 use utilities::errors::Recoverable;
@@ -64,7 +63,7 @@ where
 }
 
 pub(crate) fn new_request(
-    sender: mpsc::Sender<OldConnectionRequest>,
+    sender: mpsc::Sender<ConnectionRequest>,
     payload: TaggedEnvelope,
 ) -> impl ResettableFuture<Output = Result<(), RoutingError>> {
     let retryable = RetryableRequest::new(
@@ -112,13 +111,13 @@ pub(crate) fn new_request(
 }
 
 async fn acquire_sender(
-    sender: mpsc::Sender<OldConnectionRequest>,
+    sender: mpsc::Sender<ConnectionRequest>,
     is_retry: bool,
-) -> SendResult<mpsc::Sender<OldConnectionRequest>, ConnectionSender, MpscRetryErr> {
+) -> SendResult<mpsc::Sender<ConnectionRequest>, ConnectionSender, MpscRetryErr> {
     let (connection_tx, connection_rx) = oneshot::channel();
 
     if sender
-        .send(OldConnectionRequest::new(connection_tx, is_retry))
+        .send(ConnectionRequest::new(connection_tx, is_retry))
         .await
         .is_err()
     {
@@ -144,9 +143,9 @@ struct MpscRetryErr {
 impl MpscRetryErr {
     fn from(
         kind: RoutingError,
-        sender: Option<mpsc::Sender<OldConnectionRequest>>,
+        sender: Option<mpsc::Sender<ConnectionRequest>>,
         payload: Option<TaggedEnvelope>,
-    ) -> SendResult<mpsc::Sender<OldConnectionRequest>, ConnectionSender, MpscRetryErr> {
+    ) -> SendResult<mpsc::Sender<ConnectionRequest>, ConnectionSender, MpscRetryErr> {
         let transient = kind.is_transient();
 
         Err((

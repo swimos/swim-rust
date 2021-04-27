@@ -40,7 +40,6 @@ use std::convert::TryFrom;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::future::Future;
-use std::net::SocketAddr;
 use std::str::FromStr;
 use std::time::Duration;
 use tokio::sync::mpsc;

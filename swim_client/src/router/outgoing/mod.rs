@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::configuration::router::RouterParams;
-use crate::router::{CloseReceiver, CloseResponseSender, ConnectionRequest, OldConnectionRequest};
+use crate::router::{CloseReceiver, CloseResponseSender, ConnectionRequest};
 use futures::{select, FutureExt, StreamExt};
 use swim_common::warp::envelope::Envelope;
 use tokio::sync::mpsc;
@@ -24,7 +24,6 @@ use swim_common::routing::error::RoutingError;
 use swim_common::routing::{RoutingAddr, TaggedEnvelope};
 use tokio_stream::wrappers::ReceiverStream;
 use utilities::future::retryable::RetryableFuture;
-use utilities::FieldKind::Tagged;
 
 //----------------------------------Downlink to Connection Pool---------------------------------
 
@@ -45,7 +44,7 @@ enum OutgoingRequest {
 /// It will only open connections when required.
 pub(crate) struct OutgoingHostTask {
     envelope_rx: mpsc::Receiver<Envelope>,
-    connection_request_tx: mpsc::Sender<OldConnectionRequest>,
+    connection_request_tx: mpsc::Sender<ConnectionRequest>,
     close_rx: CloseReceiver,
     config: RouterParams,
 }
@@ -53,7 +52,7 @@ pub(crate) struct OutgoingHostTask {
 impl OutgoingHostTask {
     pub fn new(
         envelope_rx: mpsc::Receiver<Envelope>,
-        connection_request_tx: mpsc::Sender<OldConnectionRequest>,
+        connection_request_tx: mpsc::Sender<ConnectionRequest>,
         close_rx: CloseReceiver,
         config: RouterParams,
     ) -> Self {

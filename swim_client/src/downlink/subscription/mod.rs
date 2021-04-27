@@ -13,8 +13,7 @@
 // limitations under the License.
 
 use crate::configuration::downlink::{BackpressureMode, Config, DownlinkKind};
-use crate::configuration::router::ConnectionPoolParams;
-use crate::connections::{ConnectionPool, SwimConnPool};
+use crate::connections::SwimConnPool;
 use crate::downlink::error::SubscriptionError;
 use crate::downlink::model::map::UntypedMapModification;
 use crate::downlink::model::value::SharedValue;
@@ -41,7 +40,7 @@ use either::Either;
 use futures::future::BoxFuture;
 use futures::join;
 use futures::stream::Fuse;
-use futures::{SinkExt, Stream};
+use futures::Stream;
 use futures_util::future::TryFutureExt;
 use futures_util::select_biased;
 use futures_util::stream::{FuturesUnordered, StreamExt};
@@ -53,15 +52,15 @@ use swim_common::form::ValidatedForm;
 use swim_common::model::schema::StandardSchema;
 use swim_common::model::Value;
 use swim_common::request::Request;
-use swim_common::routing::error::{ResolutionError, RouterError, RoutingError};
+use swim_common::routing::error::RoutingError;
 use swim_common::routing::remote::config::ConnectionConfig;
 use swim_common::routing::remote::net::dns::Resolver;
 use swim_common::routing::remote::net::plain::TokioPlainTextNetworking;
 use swim_common::routing::remote::{
-    RawRoute, RemoteConnectionChannels, RemoteConnectionsTask, RoutingRequest,
+    RemoteConnectionChannels, RemoteConnectionsTask, RoutingRequest,
 };
 use swim_common::routing::ws::tungstenite::TungsteniteWsConnections;
-use swim_common::routing::{ConnectionDropped, RoutingAddr, TaggedEnvelope};
+use swim_common::routing::{ConnectionDropped, RoutingAddr};
 use swim_common::sink::item;
 use swim_common::sink::item::either::SplitSink;
 use swim_common::sink::item::ItemSender;
@@ -69,12 +68,10 @@ use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::AbsolutePath;
 use swim_runtime::task::{spawn, TaskError, TaskHandle};
 use swim_warp::backpressure;
-use tokio::sync::mpsc::Receiver;
 use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use tracing::{error, info, instrument, trace_span};
-use url::Url;
 use utilities::future::open_ended::OpenEndedFutures;
 use utilities::future::{SwimFutureExt, TransformOnce, TransformedFuture};
 use utilities::sync::promise::PromiseError;
@@ -107,9 +104,7 @@ impl From<mpsc::error::SendError<DownlinkRequest>> for SubscriptionError {
 
 /// Contains all running WARP downlinks and allows requests for downlink subscriptions.
 impl Downlinks {
-    ///Todo dm doc
-    /// Create a new downlink manager, using the specified configuration, which will attach all
-    /// create downlinks to the provided router.
+    /// Create tasks for opening remote connections and attaching them to downlinks.
     #[instrument(skip(config))]
     pub async fn new<C>(config: Arc<C>) -> Downlinks
     where
@@ -119,7 +114,6 @@ impl Downlinks {
 
         let client_params = config.client_params();
 
-        //Todo dm try to route this trough the remote connections manager
         let (
             client_conn_request_tx,
             client_conn_request_rx,
@@ -132,12 +126,15 @@ impl Downlinks {
         )
         .await;
 
-        let conn_manager =
-            RemoteConnectionsManager::new(client_conn_request_rx, remote_router_tx.clone());
+        let conn_manager = RemoteConnectionsManager::new(
+            client_conn_request_rx,
+            remote_router_tx.clone(),
+            client_params.dl_req_buffer_size,
+        );
 
         let (task_manager_close_tx, task_manager_close_rx) = promise::promise();
 
-        let mut connection_pool =
+        let connection_pool =
             SwimConnPool::new(client_params.conn_pool_params, client_conn_request_tx);
 
         let (task_manager, connection_request_tx, router_sink_tx) = TaskManager::new(
@@ -545,21 +542,6 @@ impl TransformOnce<Result<Arc<Result<(), DownlinkError>>, PromiseError>> for Mak
     }
 }
 
-#[derive(Debug)]
-struct ConnectionRequest {
-    path: AbsolutePath,
-    request: Request<(Receiver<TaggedEnvelope>, RawRoute)>,
-}
-
-impl ConnectionRequest {
-    fn new(
-        path: AbsolutePath,
-        request: Request<(Receiver<TaggedEnvelope>, RawRoute)>,
-    ) -> ConnectionRequest {
-        ConnectionRequest { path, request }
-    }
-}
-
 impl DownlinkTask {
     fn new<C>(
         config: Arc<C>,
@@ -582,54 +564,18 @@ impl DownlinkTask {
             close_tx,
         }
     }
-
-    // async fn get_sink_for(&mut self, path: &AbsolutePath) -> RawRoute {
-    //     let (tx, rx) = oneshot::channel();
-    //     self.remote_tx
-    //         .send(RoutingRequest::ResolveUrl {
-    //             host: path.host.clone(),
-    //             request: Request::new(tx),
-    //         })
-    //         .await
-    //         .unwrap();
-    //
-    //     let addr = rx.await.unwrap().unwrap();
-    //
-    //     let (tx, rx) = oneshot::channel();
-    //     self.remote_tx
-    //         .send(RoutingRequest::Endpoint {
-    //             addr,
-    //             request: Request::new(tx),
-    //         })
-    //         .await
-    //         .unwrap();
-    //
-    //     rx.await.unwrap().unwrap()
-    // }
-    //
-    // async fn get_stream_for(&mut self, path: &AbsolutePath) -> Receiver<TaggedEnvelope> {
-    //     let (tx, rx) = oneshot::channel();
-    //     self.local_tx
-    //         .send(ClientRequest::Subscribe {
-    //             path: path.clone(),
-    //             request: Request::new(tx),
-    //         })
-    //         .await
-    //         .unwrap();
-    //
-    //     rx.await.unwrap()
-    // }
-
-    //Todo dm unwraps
     async fn connection_for(
         &mut self,
         path: &AbsolutePath,
-    ) -> (mpsc::Sender<Envelope>, mpsc::Receiver<RouterEvent>) {
+    ) -> RequestResult<(mpsc::Sender<Envelope>, mpsc::Receiver<RouterEvent>)> {
         let (tx, rx) = oneshot::channel();
 
-        self.conn_request_tx.send((path.clone(), tx)).await.unwrap();
+        self.conn_request_tx
+            .send((path.clone(), tx))
+            .await
+            .map_err(|_| SubscriptionError::ConnectionError)?;
 
-        rx.await.unwrap()
+        rx.await.map_err(|_| SubscriptionError::ConnectionError)
     }
 
     async fn create_new_value_downlink(
@@ -642,7 +588,7 @@ impl DownlinkTask {
         let _g = span.enter();
 
         let config = self.config.config_for(&path);
-        let (sink, incoming) = self.connection_for(&path).await;
+        let (sink, incoming) = self.connection_for(&path).await?;
         let schema_cpy = schema.clone();
 
         let updates = ReceiverStream::new(incoming).map(map_router_events);
@@ -707,7 +653,7 @@ impl DownlinkTask {
         let _g = span.enter();
 
         let config = self.config.config_for(&path);
-        let (sink, incoming) = self.connection_for(&path).await;
+        let (sink, incoming) = self.connection_for(&path).await?;
         let key_schema_cpy = key_schema.clone();
         let value_schema_cpy = value_schema.clone();
 
@@ -799,7 +745,7 @@ impl DownlinkTask {
         path: AbsolutePath,
         schema: StandardSchema,
     ) -> RequestResult<Arc<UntypedCommandDownlink>> {
-        let (sink, _) = self.connection_for(&path).await;
+        let (sink, _) = self.connection_for(&path).await?;
 
         let config = self.config.config_for(&path);
 
@@ -862,7 +808,7 @@ impl DownlinkTask {
         schema: StandardSchema,
         violations: SchemaViolations,
     ) -> RequestResult<Arc<UntypedEventDownlink>> {
-        let (sink, incoming) = self.connection_for(&path).await;
+        let (sink, incoming) = self.connection_for(&path).await?;
 
         let updates = ReceiverStream::new(incoming).map(map_router_events);
 
@@ -1207,10 +1153,8 @@ impl DownlinkTask {
         path: AbsolutePath,
         envelope: Envelope,
     ) -> RequestResult<()> {
-        let (sink, _) = self.connection_for(&path).await;
-
+        let (sink, _) = self.connection_for(&path).await?;
         sink.send(envelope).await.unwrap();
-
         Ok(())
     }
 }
