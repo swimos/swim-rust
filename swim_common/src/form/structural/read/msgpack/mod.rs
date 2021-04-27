@@ -85,12 +85,12 @@ pub fn read_from_msg_pack<T: StructuralReadable, R: Buf>(
         Marker::U64 => compose_simple(input, Buf::get_u64, 8, T::read_u64),
         Marker::F32 => compose_simple(input, Buf::get_f32, 4, T::read_f64),
         Marker::F64 => compose_simple(input, Buf::get_f64, 8, T::read_f64),
-        Marker::FixStr(len) => read_string(input, len as usize, T::read_text),
+        Marker::FixStr(len) => read_string(input, len as u32, T::read_text),
         Marker::Str8 => {
             let len = if input.remaining() < 1 {
                 return Err(MsgPackReadError::Incomplete);
             } else {
-                input.get_u8() as usize
+                input.get_u8() as u32
             };
             read_string(input, len, T::read_text)
         }
@@ -98,7 +98,7 @@ pub fn read_from_msg_pack<T: StructuralReadable, R: Buf>(
             let len = if input.remaining() < 2 {
                 return Err(MsgPackReadError::Incomplete);
             } else {
-                input.get_u16() as usize
+                input.get_u16() as u32
             };
             read_string(input, len, T::read_text)
         }
@@ -106,7 +106,7 @@ pub fn read_from_msg_pack<T: StructuralReadable, R: Buf>(
             let len = if input.remaining() < 4 {
                 return Err(MsgPackReadError::Incomplete);
             } else {
-                input.get_u32() as usize
+                input.get_u32()
             };
             read_string(input, len, T::read_text)
         }
@@ -276,11 +276,12 @@ where
     }
 }
 
-fn read_string<R, F, T>(reader: &mut R, len: usize, to_value: F) -> Result<T, MsgPackReadError>
+fn read_string<R, F, T>(reader: &mut R, len: u32, to_value: F) -> Result<T, MsgPackReadError>
 where
     R: Buf,
     F: FnOnce(Cow<'_, str>) -> Result<T, ReadError>,
 {
+    let len = usize::try_from(len).expect("u32 did not fit into usize");
     let string_bytes = reader.copy_to_bytes(len);
     if string_bytes.len() < len {
         Err(MsgPackReadError::Incomplete)
@@ -316,7 +317,7 @@ where
 {
     for _ in 0..attrs {
         let name_len = read_str_len(&mut reader.reader())?;
-        let mut delegate = read_string(reader, name_len as usize, move |name| {
+        let mut delegate = read_string(reader, name_len, move |name| {
             header_reader.read_attribute(name)
         })?;
         delegate = push_value_dynamic(reader, delegate)?;
@@ -365,12 +366,12 @@ where
         Marker::U64 => compose_simple(reader, Buf::get_u64, 8, |n| body_reader.push_u64(n))?,
         Marker::F32 => compose_simple(reader, Buf::get_f32, 2, |n| body_reader.push_f64(n))?,
         Marker::F64 => compose_simple(reader, Buf::get_f64, 2, |n| body_reader.push_f64(n))?,
-        Marker::FixStr(len) => read_string(reader, len as usize, |t| body_reader.push_text(t))?,
+        Marker::FixStr(len) => read_string(reader, len as u32, |t| body_reader.push_text(t))?,
         Marker::Str8 => {
             let len = if reader.remaining() < 1 {
                 return Err(MsgPackReadError::Incomplete);
             } else {
-                reader.get_u8() as usize
+                reader.get_u8() as u32
             };
             read_string(reader, len, |t| body_reader.push_text(t))?
         }
@@ -378,7 +379,7 @@ where
             let len = if reader.remaining() < 2 {
                 return Err(MsgPackReadError::Incomplete);
             } else {
-                reader.get_u16() as usize
+                reader.get_u16() as u32
             };
             read_string(reader, len, |t| body_reader.push_text(t))?
         }
@@ -386,7 +387,7 @@ where
             let len = if reader.remaining() < 4 {
                 return Err(MsgPackReadError::Incomplete);
             } else {
-                reader.get_u32() as usize
+                reader.get_u32()
             };
             read_string(reader, len, |t| body_reader.push_text(t))?
         }
