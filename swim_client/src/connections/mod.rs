@@ -87,10 +87,9 @@ impl SwimConnPool {
     ///
     /// # Arguments
     ///
-    /// * `buffer_size`             - The buffer size of the internal channels in the connection
-    ///                               pool as an integer.
-    /// * `ws_factory` - Websocket factory for the client.
+    /// * `config`       - The configuration for the connection pool.
     /// * `conn_factory` - Connection factory for the client.
+    /// * `ws_factory`   - Websocket factory for the client.
     #[instrument(skip(config, conn_factory, ws_factory))]
     pub fn new<WSFac, ConnFac, Socket>(
         config: ConnectionPoolParams,
