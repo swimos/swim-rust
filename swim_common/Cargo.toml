@@ -12,6 +12,7 @@ tls = ["tokio-native-tls", "tokio-tungstenite/tls"]
 [dependencies]
 swim_runtime = { path = "../swim_runtime" }
 pin-utils = "0.1.0"
+byteorder = "1.4"
 bytes = "^1.0.0"
 either = "1.5.3"
 futures = "0.3.4"

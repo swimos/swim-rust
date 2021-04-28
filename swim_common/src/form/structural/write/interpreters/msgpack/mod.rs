@@ -16,8 +16,7 @@ use crate::form::structural::write::{
     BodyWriter, HeaderWriter, Label, PrimitiveWriter, RecordBodyKind, StructuralWritable,
     StructuralWriter,
 };
-use bytes::buf::Writer;
-use bytes::{BufMut, BytesMut};
+use byteorder::WriteBytesExt;
 use num_bigint::{BigInt, BigUint, Sign};
 use rmp::encode::{
     write_array_len, write_bin, write_bool, write_ext_meta, write_f64, write_map_len, write_nil,
@@ -26,50 +25,46 @@ use rmp::encode::{
 use std::borrow::Cow;
 use std::convert::TryFrom;
 use std::fmt::{Display, Formatter};
-use std::io::ErrorKind;
+use std::io::{ErrorKind, Write};
 
-pub struct MsgPackInterpreter<'a> {
-    bytes: Writer<&'a mut BytesMut>,
+pub struct MsgPackInterpreter<W> {
+    writer: W,
     expecting: u32,
 }
 
-pub struct MsgPackBodyInterpreter<'a> {
-    bytes: Writer<&'a mut BytesMut>,
+pub struct MsgPackBodyInterpreter<W> {
+    writer: W,
     expecting: u32,
     kind: RecordBodyKind,
 }
 
-impl<'a> MsgPackInterpreter<'a> {
-    pub fn new(bytes: &'a mut BytesMut) -> Self {
+impl<W> MsgPackInterpreter<W> {
+    pub fn new(writer: W) -> Self {
         MsgPackInterpreter {
-            bytes: bytes.writer(),
+            writer,
             expecting: 0,
         }
     }
 
-    fn split(&mut self) -> BytesMut {
-        self.bytes.get_mut().split()
+    fn child(&mut self) -> MsgPackInterpreter<&mut W> {
+        let MsgPackInterpreter { writer, .. } = self;
+        MsgPackInterpreter::new(writer)
     }
 
-    fn child(&mut self) -> MsgPackInterpreter<'_> {
-        let MsgPackInterpreter { bytes, .. } = self;
-        MsgPackInterpreter::new(*bytes.get_mut())
-    }
-
-    fn body_interpreter(self, expecting: u32, kind: RecordBodyKind) -> MsgPackBodyInterpreter<'a> {
-        let MsgPackInterpreter { bytes, .. } = self;
+    fn body_interpreter(self, expecting: u32, kind: RecordBodyKind) -> MsgPackBodyInterpreter<W> {
+        let MsgPackInterpreter { writer, .. } = self;
         MsgPackBodyInterpreter {
-            bytes,
+            writer,
             expecting,
             kind,
         }
     }
 }
 
-impl<'a> MsgPackBodyInterpreter<'a> {
-    fn child(&mut self) -> MsgPackInterpreter<'_> {
-        let MsgPackBodyInterpreter { bytes, .. } = self;
-        MsgPackInterpreter::new(*bytes.get_mut())
+impl<W> MsgPackBodyInterpreter<W> {
+    fn child(&mut self) -> MsgPackInterpreter<&mut W> {
+        let MsgPackBodyInterpreter { writer, .. } = self;
+        MsgPackInterpreter::new(writer)
     }
 }
 
@@ -124,55 +119,53 @@ impl Display for MsgPackError {
 
 impl std::error::Error for MsgPackError {}
 
-impl<'a> PrimitiveWriter for MsgPackInterpreter<'a> {
-    type Repr = BytesMut;
+impl<W: Write> PrimitiveWriter for MsgPackInterpreter<W> {
+    type Repr = ();
     type Error = std::io::Error;
 
     fn write_extant(mut self) -> Result<Self::Repr, Self::Error> {
-        write_nil(&mut self.bytes)?;
-        Ok(self.split())
+        write_nil(&mut self.writer)?;
+        Ok(())
     }
 
     fn write_i32(mut self, value: i32) -> Result<Self::Repr, Self::Error> {
-        write_sint(&mut self.bytes, value as i64)?;
-        Ok(self.split())
+        write_sint(&mut self.writer, value as i64)?;
+        Ok(())
     }
 
     fn write_i64(mut self, value: i64) -> Result<Self::Repr, Self::Error> {
-        write_sint(&mut self.bytes, value)?;
-        Ok(self.split())
+        write_sint(&mut self.writer, value)?;
+        Ok(())
     }
 
     fn write_u32(mut self, value: u32) -> Result<Self::Repr, Self::Error> {
-        write_sint(&mut self.bytes, value as i64)?;
-        Ok(self.split())
+        write_sint(&mut self.writer, value as i64)?;
+        Ok(())
     }
 
     fn write_u64(mut self, value: u64) -> Result<Self::Repr, Self::Error> {
-        write_u64(&mut self.bytes, value)?;
-        Ok(self.split())
+        write_u64(&mut self.writer, value)?;
+        Ok(())
     }
 
     fn write_f64(mut self, value: f64) -> Result<Self::Repr, Self::Error> {
-        write_f64(&mut self.bytes, value)?;
-        Ok(self.split())
+        write_f64(&mut self.writer, value)?;
+        Ok(())
     }
 
     fn write_bool(mut self, value: bool) -> Result<Self::Repr, Self::Error> {
-        write_bool(&mut self.bytes, value)?;
-        Ok(self.split())
+        write_bool(&mut self.writer, value)?;
+        Ok(())
     }
 
     fn write_big_int(mut self, value: BigInt) -> Result<Self::Repr, Self::Error> {
-        //TODO Allocating this vector is not ideal. Can we do better?
         let (sign, bytes) = value.to_bytes_be();
         if let Ok(n) = u32::try_from(bytes.len() + 1) {
-            write_ext_meta(&mut self.bytes, n, BIG_INT_EXT)?;
+            write_ext_meta(&mut self.writer, n, BIG_INT_EXT)?;
             let sign_byte: u8 = if sign == Sign::Minus { 0 } else { 1 };
-            let buf = self.bytes.get_mut();
-            buf.put_u8(sign_byte);
-            buf.put(bytes.as_slice());
-            Ok(self.split())
+            self.writer.write_u8(sign_byte)?;
+            self.writer.write_all(bytes.as_slice())?;
+            Ok(())
         } else {
             Err(std::io::Error::new(
                 ErrorKind::InvalidData,
@@ -182,13 +175,11 @@ impl<'a> PrimitiveWriter for MsgPackInterpreter<'a> {
     }
 
     fn write_big_uint(mut self, value: BigUint) -> Result<Self::Repr, Self::Error> {
-        //TODO Allocating this vector is not ideal. Can we do better?
         let bytes = value.to_bytes_be();
         if let Ok(n) = u32::try_from(bytes.len()) {
-            write_ext_meta(&mut self.bytes, n, BIG_UINT_EXT)?;
-            let buf = self.bytes.get_mut();
-            buf.put(bytes.as_slice());
-            Ok(self.split())
+            write_ext_meta(&mut self.writer, n, BIG_UINT_EXT)?;
+            self.writer.write_all(bytes.as_slice())?;
+            Ok(())
         } else {
             Err(std::io::Error::new(
                 ErrorKind::InvalidData,
@@ -198,28 +189,28 @@ impl<'a> PrimitiveWriter for MsgPackInterpreter<'a> {
     }
 
     fn write_text<T: Label>(mut self, value: T) -> Result<Self::Repr, Self::Error> {
-        write_str(&mut self.bytes, value.as_ref())?;
-        Ok(self.split())
+        write_str(&mut self.writer, value.as_ref())?;
+        Ok(())
     }
 
     fn write_blob_vec(mut self, blob: Vec<u8>) -> Result<Self::Repr, Self::Error> {
-        write_bin(&mut self.bytes, blob.as_slice())?;
-        Ok(self.split())
+        write_bin(&mut self.writer, blob.as_slice())?;
+        Ok(())
     }
 
     fn write_blob(mut self, value: &[u8]) -> Result<Self::Repr, Self::Error> {
-        write_bin(&mut self.bytes, value)?;
-        Ok(self.split())
+        write_bin(&mut self.writer, value)?;
+        Ok(())
     }
 }
 
-impl<'a> StructuralWriter for MsgPackInterpreter<'a> {
+impl<W: Write> StructuralWriter for MsgPackInterpreter<W> {
     type Header = Self;
-    type Body = MsgPackBodyInterpreter<'a>;
+    type Body = MsgPackBodyInterpreter<W>;
 
     fn record(mut self, num_attrs: usize) -> Result<Self::Header, Self::Error> {
         self.expecting = to_expecting(num_attrs)?;
-        write_map_len(&mut self.bytes, self.expecting)?;
+        write_map_len(&mut self.writer, self.expecting)?;
         Ok(self)
     }
 }
@@ -229,10 +220,10 @@ fn to_expecting(n: usize) -> Result<u32, std::io::Error> {
         .map_err(|_| std::io::Error::new(ErrorKind::InvalidData, MsgPackError::ToManyAttrs(n)))
 }
 
-impl<'a> HeaderWriter for MsgPackInterpreter<'a> {
-    type Repr = BytesMut;
+impl<W: Write> HeaderWriter for MsgPackInterpreter<W> {
+    type Repr = ();
     type Error = std::io::Error;
-    type Body = MsgPackBodyInterpreter<'a>;
+    type Body = MsgPackBodyInterpreter<W>;
 
     fn write_attr<V: StructuralWritable>(
         mut self,
@@ -246,7 +237,7 @@ impl<'a> HeaderWriter for MsgPackInterpreter<'a> {
             ))
         } else {
             self.expecting -= 1;
-            write_str(&mut self.bytes, name.as_ref())?;
+            write_str(&mut self.writer, name.as_ref())?;
             let value_interp = self.child();
             value.write_with(value_interp)?;
             Ok(self)
@@ -282,17 +273,17 @@ impl<'a> HeaderWriter for MsgPackInterpreter<'a> {
         } else {
             let expecting_items = to_expecting(num_items)?;
             if kind == RecordBodyKind::MapLike {
-                write_map_len(&mut self.bytes, expecting_items)?;
+                write_map_len(&mut self.writer, expecting_items)?;
             } else {
-                write_array_len(&mut self.bytes, expecting_items)?;
+                write_array_len(&mut self.writer, expecting_items)?;
             }
             Ok(self.body_interpreter(expecting_items, kind))
         }
     }
 }
 
-impl<'a> BodyWriter for MsgPackBodyInterpreter<'a> {
-    type Repr = BytesMut;
+impl<W: Write> BodyWriter for MsgPackBodyInterpreter<W> {
+    type Repr = ();
     type Error = std::io::Error;
 
     fn write_value<V: StructuralWritable>(mut self, value: &V) -> Result<Self, Self::Error> {
@@ -333,7 +324,7 @@ impl<'a> BodyWriter for MsgPackBodyInterpreter<'a> {
                     ));
                 }
                 RecordBodyKind::Mixed => {
-                    write_array_len(&mut self.bytes, 2)?;
+                    write_array_len(&mut self.writer, 2)?;
                 }
                 _ => {}
             }
@@ -358,14 +349,14 @@ impl<'a> BodyWriter for MsgPackBodyInterpreter<'a> {
         self.write_slot(&key, &value)
     }
 
-    fn done(mut self) -> Result<Self::Repr, Self::Error> {
+    fn done(self) -> Result<Self::Repr, Self::Error> {
         if self.expecting != 0 {
             Err(std::io::Error::new(
                 ErrorKind::InvalidData,
                 MsgPackError::WrongNumberOfItems,
             ))
         } else {
-            Ok(self.bytes.get_mut().split())
+            Ok(())
         }
     }
 }

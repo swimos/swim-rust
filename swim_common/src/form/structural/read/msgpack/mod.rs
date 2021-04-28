@@ -161,9 +161,7 @@ pub fn read_from_msg_pack<T: StructuralReadable, R: Buf>(
             let read_big_uint = |_: &mut (), n| T::read_big_uint(n);
             read_ext(input, marker, &mut (), read_big_int, read_big_uint)
         }
-        ow => {
-            Err(MsgPackReadError::InvalidMarker(ow))
-        }
+        ow => Err(MsgPackReadError::InvalidMarker(ow)),
     }
 }
 
