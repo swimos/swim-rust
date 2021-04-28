@@ -170,10 +170,7 @@ impl RemoteConnectionsManager {
             String,
             (
                 mpsc::Sender<TaggedEnvelope>,
-                mpsc::Sender<(
-                    RawRoute,
-                    Request<Result<(RawRoute, mpsc::Receiver<TaggedEnvelope>), ConnectionError>>,
-                )>,
+                mpsc::Sender<(RawRoute, SubscriptionRequest)>,
             ),
         > = HashMap::new();
 
@@ -205,7 +202,6 @@ impl RemoteConnectionsManager {
                 }
                 Some(ClientConnectionRequest::Subscribe {
                     url,
-                    //todo dm refactor the type of this
                     request: sub_req,
                 }) => {
                     let (tx, rx) = oneshot::channel();
@@ -324,10 +320,7 @@ impl RemoteConnectionsManager {
 
 pub(crate) struct RemoteConnectionManager {
     envelope_rx: mpsc::Receiver<TaggedEnvelope>,
-    sub_rx: mpsc::Receiver<(
-        RawRoute,
-        Request<Result<(RawRoute, mpsc::Receiver<TaggedEnvelope>), ConnectionError>>,
-    )>,
+    sub_rx: mpsc::Receiver<(RawRoute, SubscriptionRequest)>,
 }
 
 impl RemoteConnectionManager {
@@ -336,10 +329,7 @@ impl RemoteConnectionManager {
     ) -> (
         RemoteConnectionManager,
         mpsc::Sender<TaggedEnvelope>,
-        mpsc::Sender<(
-            RawRoute,
-            Request<Result<(RawRoute, mpsc::Receiver<TaggedEnvelope>), ConnectionError>>,
-        )>,
+        mpsc::Sender<(RawRoute, SubscriptionRequest)>,
     ) {
         let (envelope_tx, envelope_rx) = mpsc::channel(buffer_size.get());
         let (sub_tx, sub_rx) = mpsc::channel(buffer_size.get());
@@ -365,13 +355,7 @@ impl RemoteConnectionManager {
         let mut subs: Vec<mpsc::Sender<TaggedEnvelope>> = Vec::new();
 
         loop {
-            let next: Either<
-                Option<TaggedEnvelope>,
-                Option<(
-                    RawRoute,
-                    Request<Result<(RawRoute, mpsc::Receiver<TaggedEnvelope>), ConnectionError>>,
-                )>,
-            > = select_biased! {
+            let next: Either<Option<TaggedEnvelope>, Option<(RawRoute, SubscriptionRequest)>> = select_biased! {
                 envelope = envelope_rx.next() => Either::Left(envelope),
                 sub = sub_rx.next() => Either::Right(sub),
             };
@@ -402,6 +386,8 @@ pub(crate) type CloseSender = promise::Sender<mpsc::Sender<Result<(), RoutingErr
 type ConnectionChannel = (mpsc::Sender<Envelope>, mpsc::Receiver<RouterEvent>);
 type CloseResponseSender = mpsc::Sender<Result<(), RoutingError>>;
 type CloseReceiver = promise::Receiver<mpsc::Sender<Result<(), RoutingError>>>;
+type SubscriptionRequest =
+    Request<Result<(RawRoute, mpsc::Receiver<TaggedEnvelope>), ConnectionError>>;
 
 /// The Router events are emitted by the connection streams of the router and indicate
 /// messages or errors from the remote host.
