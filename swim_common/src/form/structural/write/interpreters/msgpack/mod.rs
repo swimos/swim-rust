@@ -69,7 +69,7 @@ impl<W> MsgPackBodyInterpreter<W> {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum MsgPackError {
+pub enum MsgPackWriteError {
     BigIntTooLarge(BigInt),
     BigUIntTooLarge(BigUint),
     ToManyAttrs(usize),
@@ -82,32 +82,32 @@ pub enum MsgPackError {
 pub(in crate::form::structural) const BIG_INT_EXT: i8 = 0;
 pub(in crate::form::structural) const BIG_UINT_EXT: i8 = 1;
 
-impl Display for MsgPackError {
+impl Display for MsgPackWriteError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            MsgPackError::BigIntTooLarge(_) | MsgPackError::BigUIntTooLarge(_) => {
+            MsgPackWriteError::BigIntTooLarge(_) | MsgPackWriteError::BigUIntTooLarge(_) => {
                 //If it's too big for MessagePack, it's too big to print!
                 write!(f, "Big integer too large to be written in MessagePack.")
             }
-            MsgPackError::ToManyAttrs(n) => {
+            MsgPackWriteError::ToManyAttrs(n) => {
                 write!(f, "{} attributes is too many to encode as MessagePack.", n)
             }
-            MsgPackError::TooManyItems(n) => {
+            MsgPackWriteError::TooManyItems(n) => {
                 write!(f, "{} items is too many to encode as MessagePack.", n)
             }
-            MsgPackError::WrongNumberOfAttrs => {
+            MsgPackWriteError::WrongNumberOfAttrs => {
                 write!(
                     f,
                     "The number of attributes written did not match the number reported."
                 )
             }
-            MsgPackError::IncorrectRecordKind => {
+            MsgPackWriteError::IncorrectRecordKind => {
                 write!(
                     f,
                     "The record items written did not match the kind reported."
                 )
             }
-            MsgPackError::WrongNumberOfItems => {
+            MsgPackWriteError::WrongNumberOfItems => {
                 write!(
                     f,
                     "The number of items written did not match the number reported."
@@ -117,7 +117,7 @@ impl Display for MsgPackError {
     }
 }
 
-impl std::error::Error for MsgPackError {}
+impl std::error::Error for MsgPackWriteError {}
 
 impl<W: Write> PrimitiveWriter for MsgPackInterpreter<W> {
     type Repr = ();
@@ -169,7 +169,7 @@ impl<W: Write> PrimitiveWriter for MsgPackInterpreter<W> {
         } else {
             Err(std::io::Error::new(
                 ErrorKind::InvalidData,
-                MsgPackError::BigIntTooLarge(value),
+                MsgPackWriteError::BigIntTooLarge(value),
             ))
         }
     }
@@ -183,7 +183,7 @@ impl<W: Write> PrimitiveWriter for MsgPackInterpreter<W> {
         } else {
             Err(std::io::Error::new(
                 ErrorKind::InvalidData,
-                MsgPackError::BigUIntTooLarge(value),
+                MsgPackWriteError::BigUIntTooLarge(value),
             ))
         }
     }
@@ -217,7 +217,7 @@ impl<W: Write> StructuralWriter for MsgPackInterpreter<W> {
 
 fn to_expecting(n: usize) -> Result<u32, std::io::Error> {
     u32::try_from(n)
-        .map_err(|_| std::io::Error::new(ErrorKind::InvalidData, MsgPackError::ToManyAttrs(n)))
+        .map_err(|_| std::io::Error::new(ErrorKind::InvalidData, MsgPackWriteError::ToManyAttrs(n)))
 }
 
 impl<W: Write> HeaderWriter for MsgPackInterpreter<W> {
@@ -233,7 +233,7 @@ impl<W: Write> HeaderWriter for MsgPackInterpreter<W> {
         if self.expecting == 0 {
             Err(std::io::Error::new(
                 ErrorKind::InvalidData,
-                MsgPackError::WrongNumberOfAttrs,
+                MsgPackWriteError::WrongNumberOfAttrs,
             ))
         } else {
             self.expecting -= 1;
@@ -268,7 +268,7 @@ impl<W: Write> HeaderWriter for MsgPackInterpreter<W> {
         if self.expecting != 0 {
             Err(std::io::Error::new(
                 ErrorKind::InvalidData,
-                MsgPackError::WrongNumberOfAttrs,
+                MsgPackWriteError::WrongNumberOfAttrs,
             ))
         } else {
             let expecting_items = to_expecting(num_items)?;
@@ -290,12 +290,12 @@ impl<W: Write> BodyWriter for MsgPackBodyInterpreter<W> {
         if self.expecting == 0 {
             Err(std::io::Error::new(
                 ErrorKind::InvalidData,
-                MsgPackError::WrongNumberOfItems,
+                MsgPackWriteError::WrongNumberOfItems,
             ))
         } else if self.kind == RecordBodyKind::MapLike {
             Err(std::io::Error::new(
                 ErrorKind::InvalidData,
-                MsgPackError::IncorrectRecordKind,
+                MsgPackWriteError::IncorrectRecordKind,
             ))
         } else {
             self.expecting -= 1;
@@ -313,14 +313,14 @@ impl<W: Write> BodyWriter for MsgPackBodyInterpreter<W> {
         if self.expecting == 0 {
             Err(std::io::Error::new(
                 ErrorKind::InvalidData,
-                MsgPackError::WrongNumberOfItems,
+                MsgPackWriteError::WrongNumberOfItems,
             ))
         } else {
             match self.kind {
                 RecordBodyKind::ArrayLike => {
                     return Err(std::io::Error::new(
                         ErrorKind::InvalidData,
-                        MsgPackError::IncorrectRecordKind,
+                        MsgPackWriteError::IncorrectRecordKind,
                     ));
                 }
                 RecordBodyKind::Mixed => {
@@ -353,7 +353,7 @@ impl<W: Write> BodyWriter for MsgPackBodyInterpreter<W> {
         if self.expecting != 0 {
             Err(std::io::Error::new(
                 ErrorKind::InvalidData,
-                MsgPackError::WrongNumberOfItems,
+                MsgPackWriteError::WrongNumberOfItems,
             ))
         } else {
             Ok(())

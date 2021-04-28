@@ -20,6 +20,7 @@ use std::borrow::Cow;
 use std::convert::TryFrom;
 use std::str::Utf8Error;
 
+#[derive(Debug, PartialEq)]
 pub enum MsgPackReadError {
     /// The parsed strucuture was not valid for the target type.
     Structure(ReadError),
@@ -29,6 +30,33 @@ pub enum MsgPackReadError {
     EmptyBigInt,
     Incomplete,
 }
+
+impl Display for MsgPackReadError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MsgPackReadError::Structure(err) => {
+                write!(f, "Invalid structure: {}", err)
+            }
+            MsgPackReadError::StringDecode(_) => {
+                write!(f, "A string value contained invalid UTF8.")
+            }
+            MsgPackReadError::InvalidMarker(marker) => {
+                write!(f, "Unexpected message pack marker: {:?}", marker)
+            }
+            MsgPackReadError::UnknownExtType(code) => {
+                write!(f, "{} is not a regognized extension code.", code)
+            }
+            MsgPackReadError::EmptyBigInt => {
+                write!(f, "A big integer consisted of 0 bytes.")
+            }
+            MsgPackReadError::Incomplete => {
+                write!(f, "The input ended part way through a record.")
+            }
+        }
+    }
+}
+
+impl std::error::Error for MsgPackReadError {}
 
 impl From<ReadError> for MsgPackReadError {
     fn from(err: ReadError) -> Self {
@@ -64,6 +92,7 @@ where
 
 use crate::form::structural::write::interpreters::msgpack::{BIG_INT_EXT, BIG_UINT_EXT};
 use num_bigint::{BigInt, BigUint, Sign};
+use std::fmt::{Display, Formatter};
 
 pub fn read_from_msg_pack<T: StructuralReadable, R: Buf>(
     input: &mut R,
