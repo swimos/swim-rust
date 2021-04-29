@@ -14,8 +14,8 @@
 
 pub mod error;
 pub mod model;
+pub mod subscription;
 mod state_machine;
-mod subscription;
 #[cfg(test)]
 mod tests;
 pub mod typed;

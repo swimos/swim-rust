@@ -6,13 +6,14 @@ edition = "2018"
 
 [features]
 default = ["websocket"]
-websocket = ["tokio-tungstenite", "http", "tokio-native-tls", "swim_common/tls", "swim_common/tungstenite", "test_server"]
+websocket = ["tokio-tungstenite", "http", "tokio-native-tls", "swim_common/tls", "swim_common/tungstenite"]
 debug = ["log_verbose"]
 log_verbose = []
 
-[dependencies.test_server]
-path = "test_server"
-optional = true
+#Todo dm revert this
+#[dependencies.test_server]
+#path = "test_server"
+#optional = true
 
 [dependencies.tokio-tungstenite]
 version = "0.13.0"

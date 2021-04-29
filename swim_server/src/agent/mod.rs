@@ -63,9 +63,9 @@ use std::future::Future;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
-use swim_common::form::Form;
+use swim_common::form::{Form, ValidatedForm};
 use swim_common::routing::{Router, TaggedClientEnvelope, TaggedEnvelope};
-use swim_common::warp::path::RelativePath;
+use swim_common::warp::path::{AbsolutePath, RelativePath};
 use swim_runtime::time::clock::Clock;
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::{mpsc, oneshot};
@@ -305,6 +305,19 @@ pub type EffStream = BoxStream<'static, ()>;
 /// agent and lane life-cycle events and allows events to be scheduled within the task that
 /// is running the agent.
 pub trait AgentContext<Agent> {
+    fn command_downlink<T>(&mut self, path: AbsolutePath)
+    // Todo dm maybe this can be a promise to avoid async in trait?
+    // -> Result<TypedCommandDownlink<T>, ClientError>
+    where
+        T: ValidatedForm + Send + 'static,
+    {
+        unimplemented!()
+        // self.downlinks
+        //     .subscribe_command(path)
+        //     .await
+        //     .map_err(ClientError::SubscriptionError)
+    }
+
     /// Schedule events to be executed on a provided schedule. The events will be executed within
     /// the task that runs the agent and so should not block.
     ///

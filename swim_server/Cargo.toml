@@ -17,6 +17,7 @@ tracing = { version = "0.1.13", features = ["max_level_debug"] }
 tracing = "0.1.16"
 
 [dependencies]
+swim_client = { path = "../swim_client" }
 either = "1.5.3"
 futures = "0.3.4"
 futures-util = "0.3.4"

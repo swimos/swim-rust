@@ -56,12 +56,12 @@ mod outgoing;
 mod retry;
 
 #[derive(Debug, Clone)]
-pub(crate) struct ClientRouterFactory {
+pub struct ClientRouterFactory {
     request_sender: mpsc::Sender<ClientConnectionRequest>,
 }
 
 impl ClientRouterFactory {
-    pub(crate) fn new(request_sender: mpsc::Sender<ClientConnectionRequest>) -> Self {
+    pub fn new(request_sender: mpsc::Sender<ClientConnectionRequest>) -> Self {
         ClientRouterFactory { request_sender }
     }
 }
@@ -78,7 +78,7 @@ impl RouterFactory for ClientRouterFactory {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct ClientRouter {
+pub struct ClientRouter {
     tag: RoutingAddr,
     request_sender: mpsc::Sender<ClientConnectionRequest>,
 }
@@ -147,7 +147,7 @@ pub struct RemoteConnectionsManager {
 }
 
 impl RemoteConnectionsManager {
-    pub(crate) fn new(
+    pub fn new(
         router_request_rx: mpsc::Receiver<ClientConnectionRequest>,
         remote_router_tx: mpsc::Sender<RoutingRequest>,
         buffer_size: NonZeroUsize,
@@ -159,7 +159,7 @@ impl RemoteConnectionsManager {
         }
     }
 
-    pub(crate) async fn run(self) {
+    pub async fn run(self) {
         let RemoteConnectionsManager {
             router_request_rx,
             remote_router_tx,
@@ -419,7 +419,7 @@ type HostManagerHandle = (
 /// The task manager is the main task in the router. It is responsible for creating sub-tasks
 /// for each unique remote host. It can also handle direct messages by sending them directly
 /// to the appropriate sub-task.
-pub(crate) struct TaskManager<Pool: ConnectionPool> {
+pub struct TaskManager<Pool: ConnectionPool> {
     conn_request_rx: mpsc::Receiver<RouterConnRequest>,
     message_request_rx: mpsc::Receiver<RouterMessageRequest>,
     connection_pool: Pool,
@@ -428,7 +428,7 @@ pub(crate) struct TaskManager<Pool: ConnectionPool> {
 }
 
 impl<Pool: ConnectionPool> TaskManager<Pool> {
-    pub(crate) fn new(
+    pub fn new(
         connection_pool: Pool,
         close_rx: CloseReceiver,
         config: RouterParams,
@@ -452,7 +452,7 @@ impl<Pool: ConnectionPool> TaskManager<Pool> {
         )
     }
 
-    pub(crate) async fn run(self) -> Result<(), RoutingError> {
+    pub async fn run(self) -> Result<(), RoutingError> {
         let TaskManager {
             conn_request_rx,
             message_request_rx,

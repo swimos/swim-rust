@@ -88,7 +88,7 @@ pub struct Downlinks {
     stop_trigger_tx: trigger::Sender,
 }
 
-enum DownlinkRequest {
+pub enum DownlinkRequest {
     Subscription(DownlinkSpecifier),
     DirectCommand {
         path: AbsolutePath,
@@ -499,7 +499,7 @@ struct EventHandle {
     schema: StandardSchema,
 }
 
-struct DownlinkTask {
+pub struct DownlinkTask {
     config: Arc<dyn Config>,
     value_downlinks: HashMap<AbsolutePath, ValueHandle>,
     map_downlinks: HashMap<AbsolutePath, MapHandle>,
@@ -543,7 +543,7 @@ impl TransformOnce<Result<Arc<Result<(), DownlinkError>>, PromiseError>> for Mak
 }
 
 impl DownlinkTask {
-    fn new<C>(
+    pub fn new<C>(
         config: Arc<C>,
         conn_request_tx: mpsc::Sender<RouterConnRequest>,
         sink_tx: mpsc::Sender<RouterMessageRequest>,
@@ -564,7 +564,8 @@ impl DownlinkTask {
             close_tx,
         }
     }
-    async fn connection_for(
+
+    pub async fn connection_for(
         &mut self,
         path: &AbsolutePath,
     ) -> RequestResult<(mpsc::Sender<Envelope>, mpsc::Receiver<RouterEvent>)> {
@@ -1077,7 +1078,7 @@ impl DownlinkTask {
         }
     }
 
-    async fn run<Req>(mut self, requests: Req) -> RequestResult<()>
+    pub async fn run<Req>(mut self, requests: Req) -> RequestResult<()>
     where
         Req: Stream<Item = DownlinkRequest>,
     {

@@ -25,7 +25,14 @@ use futures::{io, join};
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::net::SocketAddr;
+use std::num::NonZeroUsize;
 use std::sync::Arc;
+use swim_client::configuration::downlink::{ClientParams, ConfigHierarchy};
+use swim_client::configuration::router::{ConnectionPoolParams, RouterParams};
+use swim_client::connections::SwimConnPool;
+use swim_client::downlink::subscription::{DownlinkRequest, DownlinkTask};
+use swim_client::downlink::Downlinks;
+use swim_client::router::{ClientRouterFactory, RemoteConnectionsManager, TaskManager};
 use swim_common::routing::remote::config::ConnectionConfig;
 use swim_common::routing::remote::net::dns::Resolver;
 use swim_common::routing::remote::net::plain::TokioPlainTextNetworking;
@@ -34,6 +41,7 @@ use swim_common::routing::ws::tungstenite::TungsteniteWsConnections;
 use swim_runtime::task::TaskError;
 use swim_runtime::time::clock::RuntimeClock;
 use tokio::sync::mpsc;
+use tokio_stream::wrappers::ReceiverStream;
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use utilities::future::open_ended::OpenEndedFutures;
 use utilities::sync::{promise, trigger};
@@ -196,6 +204,8 @@ impl SwimServerBuilder {
         let (stop_trigger_tx, stop_trigger_rx) = trigger::trigger();
         let (address_tx, address_rx) = promise::promise();
 
+        let (downlinks_request_tx, downlinks_request_rx) = mpsc::channel(8);
+
         Ok((
             SwimServer {
                 config,
@@ -203,8 +213,10 @@ impl SwimServerBuilder {
                 address: address.ok_or(SwimServerBuilderError::MissingAddress)?,
                 stop_trigger_rx,
                 address_tx,
+                downlinks_request_rx,
             },
             ServerHandle {
+                downlinks_request_tx,
                 either_address: Either::Left(address_rx),
                 stop_trigger_tx,
             },
@@ -221,6 +233,7 @@ pub struct SwimServer {
     planes: Vec<PlaneSpec<RuntimeClock, EnvChannel, PlaneRouter<TopLevelRouter>>>,
     stop_trigger_rx: trigger::Receiver,
     address_tx: promise::Sender<SocketAddr>,
+    downlinks_request_rx: mpsc::Receiver<DownlinkRequest>,
 }
 
 impl SwimServer {
@@ -238,6 +251,7 @@ impl SwimServer {
             mut planes,
             stop_trigger_rx,
             address_tx,
+            downlinks_request_rx,
         } = self;
 
         let SwimServerConfig {
@@ -267,6 +281,32 @@ impl SwimServer {
             top_level_router_fac.clone(),
         );
 
+        let (client_tx, client_rx) = mpsc::channel(conn_config.router_buffer_size.get());
+        let client_router_fac = ClientRouterFactory::new(client_tx.clone());
+
+        let conn_manager = RemoteConnectionsManager::new(
+            client_rx,
+            remote_tx.clone(),
+            NonZeroUsize::new(8).unwrap(),
+        );
+
+        let connection_pool = SwimConnPool::new(ConnectionPoolParams::default(), client_tx);
+
+        let (task_manager_close_tx, task_manager_close_rx) = promise::promise();
+
+        let (task_manager, connection_request_tx, router_sink_tx) = TaskManager::new(
+            connection_pool,
+            task_manager_close_rx,
+            RouterParams::default(),
+        );
+
+        let downlink_task = DownlinkTask::new(
+            Arc::new(ConfigHierarchy::default()),
+            connection_request_tx,
+            router_sink_tx,
+            task_manager_close_tx,
+        );
+
         let connections_task = RemoteConnectionsTask::new_server_task(
             conn_config,
             TokioPlainTextNetworking::new(Arc::new(Resolver::new().await)),
@@ -293,7 +333,21 @@ impl SwimServer {
 
         let connections_future = connections_task.run();
 
-        join!(connections_future, plane_future).0
+        //Todo dm replace with ::new()
+        // let downlinks = Downlinks {
+        //     sender: tx,
+        //     task: task_handle,
+        //     stop_trigger_tx,
+        // };
+
+        join!(
+            connections_future,
+            plane_future,
+            downlink_task.run(ReceiverStream::new(downlinks_request_rx)),
+            conn_manager.run(),
+            task_manager.run()
+        )
+        .0
     }
 }
 
@@ -362,8 +416,9 @@ impl Default for SwimServerConfig {
 /// The handle is returned when a new server instance is created and is used for terminating
 /// the server or obtaining its address.
 pub struct ServerHandle {
-    either_address: Either<promise::Receiver<SocketAddr>, Option<SocketAddr>>,
-    stop_trigger_tx: trigger::Sender,
+    pub either_address: Either<promise::Receiver<SocketAddr>, Option<SocketAddr>>,
+    pub stop_trigger_tx: trigger::Sender,
+    pub downlinks_request_tx: mpsc::Sender<DownlinkRequest>,
 }
 
 impl ServerHandle {
@@ -372,10 +427,7 @@ impl ServerHandle {
     /// This can be useful, for example, when binding to port 0 to figure out
     /// which port was actually bound.
     pub async fn address(&mut self) -> Option<&SocketAddr> {
-        let ServerHandle {
-            either_address,
-            stop_trigger_tx: _,
-        } = self;
+        let ServerHandle { either_address, .. } = self;
 
         if either_address.is_left() {
             if let Either::Left(promise) = std::mem::replace(either_address, Either::Right(None)) {
