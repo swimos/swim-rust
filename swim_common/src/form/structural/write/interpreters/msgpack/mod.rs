@@ -20,21 +20,37 @@ use byteorder::WriteBytesExt;
 use num_bigint::{BigInt, BigUint, Sign};
 use rmp::encode::{
     write_array_len, write_bin, write_bool, write_ext_meta, write_f64, write_map_len, write_nil,
-    write_sint, write_str, write_u64,
+    write_sint, write_str, write_u64, ValueWriteError,
 };
 use std::borrow::Cow;
 use std::convert::TryFrom;
 use std::fmt::{Display, Formatter};
-use std::io::{ErrorKind, Write};
+use std::io::{Error, Write};
 
+/// [`StructuralWriter`] implementation that uses the MessagePack format. Primitive value are
+/// written with the corresponding MessagePack types. Big integers are written as MessagePack
+/// extensions as raw bytes in big endian order. Strings and binary blobs are written as
+/// MessagePack string and bin values. Records have the following encoding.
+///
+/// - Attributes are writen as MessagePack map where the keys are strings. If there are no
+/// attributes an empty map value is still required.
+/// - The items in the body follow the attributes immediately. If the body consists entirely of
+/// slots it is written as a map. If the body consists of all value items or a mix of value items
+/// and slots it is written as an array. When a slot occurs in an array body it is written as
+/// an array of size two.
+///
+/// # Type Parameters
+///
+/// * `W` - Any type that implements [`std::io::Write`].
 pub struct MsgPackInterpreter<'a, W> {
     writer: &'a mut W,
-    expecting: u32,
+    expecting: u32, //Keeps track of the number of attributes to write.
 }
 
+/// [`BodyWriter`] implementation for [`MsgPackInterpreter`].
 pub struct MsgPackBodyInterpreter<'a, W> {
     writer: &'a mut W,
-    expecting: u32,
+    expecting: u32, //Keeps track of the number of items to be written.
     kind: RecordBodyKind,
 }
 
@@ -72,15 +88,47 @@ impl<'a, W> MsgPackBodyInterpreter<'a, W> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug)]
 pub enum MsgPackWriteError {
+    IoError(std::io::Error),
     BigIntTooLarge(BigInt),
     BigUIntTooLarge(BigUint),
-    ToManyAttrs(usize),
+    TooManyAttrs(usize),
     TooManyItems(usize),
     WrongNumberOfAttrs,
     IncorrectRecordKind,
     WrongNumberOfItems,
+}
+
+impl PartialEq for MsgPackWriteError {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (MsgPackWriteError::BigIntTooLarge(n), MsgPackWriteError::BigIntTooLarge(m)) => n == m,
+            (MsgPackWriteError::BigUIntTooLarge(n), MsgPackWriteError::BigUIntTooLarge(m)) => {
+                n == m
+            }
+            (MsgPackWriteError::TooManyAttrs(n), MsgPackWriteError::TooManyAttrs(m)) => n == m,
+            (MsgPackWriteError::TooManyItems(n), MsgPackWriteError::TooManyItems(m)) => n == m,
+            (MsgPackWriteError::WrongNumberOfAttrs, MsgPackWriteError::WrongNumberOfAttrs) => true,
+            (MsgPackWriteError::IncorrectRecordKind, MsgPackWriteError::IncorrectRecordKind) => {
+                true
+            }
+            (MsgPackWriteError::WrongNumberOfItems, MsgPackWriteError::WrongNumberOfItems) => true,
+            _ => false,
+        }
+    }
+}
+
+impl From<std::io::Error> for MsgPackWriteError {
+    fn from(err: Error) -> Self {
+        MsgPackWriteError::IoError(err)
+    }
+}
+
+impl From<ValueWriteError> for MsgPackWriteError {
+    fn from(err: ValueWriteError) -> Self {
+        MsgPackWriteError::IoError(err.into())
+    }
 }
 
 pub(in crate::form::structural) const BIG_INT_EXT: i8 = 0;
@@ -89,11 +137,14 @@ pub(in crate::form::structural) const BIG_UINT_EXT: i8 = 1;
 impl Display for MsgPackWriteError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
+            MsgPackWriteError::IoError(err) => {
+                write!(f, "An error ocurred writing the content: {}", err)
+            }
             MsgPackWriteError::BigIntTooLarge(_) | MsgPackWriteError::BigUIntTooLarge(_) => {
                 //If it's too big for MessagePack, it's too big to print!
                 write!(f, "Big integer too large to be written in MessagePack.")
             }
-            MsgPackWriteError::ToManyAttrs(n) => {
+            MsgPackWriteError::TooManyAttrs(n) => {
                 write!(f, "{} attributes is too many to encode as MessagePack.", n)
             }
             MsgPackWriteError::TooManyItems(n) => {
@@ -125,7 +176,7 @@ impl std::error::Error for MsgPackWriteError {}
 
 impl<'a, W: Write> PrimitiveWriter for MsgPackInterpreter<'a, W> {
     type Repr = ();
-    type Error = std::io::Error;
+    type Error = MsgPackWriteError;
 
     fn write_extant(mut self) -> Result<Self::Repr, Self::Error> {
         write_nil(&mut self.writer)?;
@@ -175,10 +226,7 @@ impl<'a, W: Write> PrimitiveWriter for MsgPackInterpreter<'a, W> {
             self.writer.write_all(bytes.as_slice())?;
             Ok(())
         } else {
-            Err(std::io::Error::new(
-                ErrorKind::InvalidData,
-                MsgPackWriteError::BigIntTooLarge(value),
-            ))
+            Err(MsgPackWriteError::BigIntTooLarge(value))
         }
     }
 
@@ -189,10 +237,7 @@ impl<'a, W: Write> PrimitiveWriter for MsgPackInterpreter<'a, W> {
             self.writer.write_all(bytes.as_slice())?;
             Ok(())
         } else {
-            Err(std::io::Error::new(
-                ErrorKind::InvalidData,
-                MsgPackWriteError::BigUIntTooLarge(value),
-            ))
+            Err(MsgPackWriteError::BigUIntTooLarge(value))
         }
     }
 
@@ -223,14 +268,13 @@ impl<'a, W: Write> StructuralWriter for MsgPackInterpreter<'a, W> {
     }
 }
 
-fn to_expecting(n: usize) -> Result<u32, std::io::Error> {
-    u32::try_from(n)
-        .map_err(|_| std::io::Error::new(ErrorKind::InvalidData, MsgPackWriteError::ToManyAttrs(n)))
+fn to_expecting(n: usize) -> Result<u32, MsgPackWriteError> {
+    u32::try_from(n).map_err(|_| MsgPackWriteError::TooManyAttrs(n))
 }
 
 impl<'a, W: Write> HeaderWriter for MsgPackInterpreter<'a, W> {
     type Repr = ();
-    type Error = std::io::Error;
+    type Error = MsgPackWriteError;
     type Body = MsgPackBodyInterpreter<'a, W>;
 
     fn write_attr<V: StructuralWritable>(
@@ -239,10 +283,7 @@ impl<'a, W: Write> HeaderWriter for MsgPackInterpreter<'a, W> {
         value: &V,
     ) -> Result<Self, Self::Error> {
         if self.expecting == 0 {
-            Err(std::io::Error::new(
-                ErrorKind::InvalidData,
-                MsgPackWriteError::WrongNumberOfAttrs,
-            ))
+            Err(MsgPackWriteError::WrongNumberOfAttrs)
         } else {
             self.expecting -= 1;
             write_str(&mut self.writer, name.as_ref())?;
@@ -274,10 +315,7 @@ impl<'a, W: Write> HeaderWriter for MsgPackInterpreter<'a, W> {
         num_items: usize,
     ) -> Result<Self::Body, Self::Error> {
         if self.expecting != 0 {
-            Err(std::io::Error::new(
-                ErrorKind::InvalidData,
-                MsgPackWriteError::WrongNumberOfAttrs,
-            ))
+            Err(MsgPackWriteError::WrongNumberOfAttrs)
         } else {
             let expecting_items = to_expecting(num_items)?;
             if kind == RecordBodyKind::MapLike {
@@ -292,19 +330,13 @@ impl<'a, W: Write> HeaderWriter for MsgPackInterpreter<'a, W> {
 
 impl<'a, W: Write> BodyWriter for MsgPackBodyInterpreter<'a, W> {
     type Repr = ();
-    type Error = std::io::Error;
+    type Error = MsgPackWriteError;
 
     fn write_value<V: StructuralWritable>(mut self, value: &V) -> Result<Self, Self::Error> {
         if self.expecting == 0 {
-            Err(std::io::Error::new(
-                ErrorKind::InvalidData,
-                MsgPackWriteError::WrongNumberOfItems,
-            ))
+            Err(MsgPackWriteError::WrongNumberOfItems)
         } else if self.kind == RecordBodyKind::MapLike {
-            Err(std::io::Error::new(
-                ErrorKind::InvalidData,
-                MsgPackWriteError::IncorrectRecordKind,
-            ))
+            Err(MsgPackWriteError::IncorrectRecordKind)
         } else {
             self.expecting -= 1;
             let value_writer = self.child();
@@ -319,17 +351,11 @@ impl<'a, W: Write> BodyWriter for MsgPackBodyInterpreter<'a, W> {
         value: &V,
     ) -> Result<Self, Self::Error> {
         if self.expecting == 0 {
-            Err(std::io::Error::new(
-                ErrorKind::InvalidData,
-                MsgPackWriteError::WrongNumberOfItems,
-            ))
+            Err(MsgPackWriteError::WrongNumberOfItems)
         } else {
             match self.kind {
                 RecordBodyKind::ArrayLike => {
-                    return Err(std::io::Error::new(
-                        ErrorKind::InvalidData,
-                        MsgPackWriteError::IncorrectRecordKind,
-                    ));
+                    return Err(MsgPackWriteError::IncorrectRecordKind);
                 }
                 RecordBodyKind::Mixed => {
                     write_array_len(&mut self.writer, 2)?;
@@ -359,10 +385,7 @@ impl<'a, W: Write> BodyWriter for MsgPackBodyInterpreter<'a, W> {
 
     fn done(self) -> Result<Self::Repr, Self::Error> {
         if self.expecting != 0 {
-            Err(std::io::Error::new(
-                ErrorKind::InvalidData,
-                MsgPackWriteError::WrongNumberOfItems,
-            ))
+            Err(MsgPackWriteError::WrongNumberOfItems)
         } else {
             Ok(())
         }
