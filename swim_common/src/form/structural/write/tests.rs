@@ -15,8 +15,9 @@
 use crate::form::structural::write::StructuralWritable;
 use crate::model::blob::Blob;
 use crate::model::text::Text;
-use crate::model::Value;
+use crate::model::{Item, Value};
 use num_bigint::{BigInt, BigUint};
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -268,6 +269,58 @@ fn vec_into_structure() {
     let vec = vec![1, 2, 3];
     let value = vec.into_structure();
     assert_eq!(value, Value::from_vec(vec![1, 2, 3]));
+}
+
+#[test]
+fn hash_map_strucuture() {
+    let mut map = HashMap::new();
+    map.insert("first".to_string(), 1);
+    map.insert("second".to_string(), 2);
+    let value = map.into_structure();
+
+    let expected1 = Item::slot("first", 1);
+    let expected2 = Item::slot("second", 2);
+
+    match value {
+        Value::Record(attrs, items) if attrs.is_empty() => match items.as_slice() {
+            [item1, item2] => {
+                assert!(
+                    (item1 == &expected1 && item2 == &expected2)
+                        || (item1 == &expected2 && item2 == &expected1)
+                );
+            }
+            _ => {
+                panic!("Wrong number of items.");
+            }
+        },
+        ow => panic!("Unepected value: {}", ow),
+    };
+}
+
+#[test]
+fn nested_collection_strucuture() {
+    let mut map = HashMap::new();
+    map.insert("first".to_string(), vec![1, 2, 3]);
+    map.insert("second".to_string(), vec![4, 5, 6]);
+    let value = map.into_structure();
+
+    let expected1 = Item::slot("first", Value::from_vec(vec![1, 2, 3]));
+    let expected2 = Item::slot("second", Value::from_vec(vec![4, 5, 6]));
+
+    match value {
+        Value::Record(attrs, items) if attrs.is_empty() => match items.as_slice() {
+            [item1, item2] => {
+                assert!(
+                    (item1 == &expected1 && item2 == &expected2)
+                        || (item1 == &expected2 && item2 == &expected1)
+                );
+            }
+            _ => {
+                panic!("Wrong number of items.");
+            }
+        },
+        ow => panic!("Unepected value: {}", ow),
+    };
 }
 
 #[test]

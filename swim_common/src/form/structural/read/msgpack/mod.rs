@@ -86,7 +86,8 @@ where
     if !input.has_remaining() {
         Err(MsgPackReadError::Incomplete)
     } else {
-        Ok(Marker::from_u8(input.get_u8()))
+        let marker = Marker::from_u8(input.get_u8());
+        Ok(marker)
     }
 }
 
@@ -296,10 +297,10 @@ where
     S: Into<T>,
     F2: FnOnce(T) -> Result<U, ReadError>,
 {
-    if input.remaining() > len {
-        Ok(to_value(read(input).into())?)
-    } else {
+    if input.remaining() < len {
         Err(MsgPackReadError::Incomplete)
+    } else {
+        Ok(to_value(read(input).into())?)
     }
 }
 

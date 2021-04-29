@@ -27,31 +27,35 @@ use std::convert::TryFrom;
 use std::fmt::{Display, Formatter};
 use std::io::{ErrorKind, Write};
 
-pub struct MsgPackInterpreter<W> {
-    writer: W,
+pub struct MsgPackInterpreter<'a, W> {
+    writer: &'a mut W,
     expecting: u32,
 }
 
-pub struct MsgPackBodyInterpreter<W> {
-    writer: W,
+pub struct MsgPackBodyInterpreter<'a, W> {
+    writer: &'a mut W,
     expecting: u32,
     kind: RecordBodyKind,
 }
 
-impl<W> MsgPackInterpreter<W> {
-    pub fn new(writer: W) -> Self {
+impl<'a, W> MsgPackInterpreter<'a, W> {
+    pub fn new(writer: &'a mut W) -> Self {
         MsgPackInterpreter {
             writer,
             expecting: 0,
         }
     }
 
-    fn child(&mut self) -> MsgPackInterpreter<&mut W> {
+    fn child(&mut self) -> MsgPackInterpreter<'_, W> {
         let MsgPackInterpreter { writer, .. } = self;
-        MsgPackInterpreter::new(writer)
+        MsgPackInterpreter::new(*writer)
     }
 
-    fn body_interpreter(self, expecting: u32, kind: RecordBodyKind) -> MsgPackBodyInterpreter<W> {
+    fn body_interpreter(
+        self,
+        expecting: u32,
+        kind: RecordBodyKind,
+    ) -> MsgPackBodyInterpreter<'a, W> {
         let MsgPackInterpreter { writer, .. } = self;
         MsgPackBodyInterpreter {
             writer,
@@ -61,10 +65,10 @@ impl<W> MsgPackInterpreter<W> {
     }
 }
 
-impl<W> MsgPackBodyInterpreter<W> {
-    fn child(&mut self) -> MsgPackInterpreter<&mut W> {
+impl<'a, W> MsgPackBodyInterpreter<'a, W> {
+    fn child(&mut self) -> MsgPackInterpreter<'_, W> {
         let MsgPackBodyInterpreter { writer, .. } = self;
-        MsgPackInterpreter::new(writer)
+        MsgPackInterpreter::new(*writer)
     }
 }
 
@@ -119,7 +123,7 @@ impl Display for MsgPackWriteError {
 
 impl std::error::Error for MsgPackWriteError {}
 
-impl<W: Write> PrimitiveWriter for MsgPackInterpreter<W> {
+impl<'a, W: Write> PrimitiveWriter for MsgPackInterpreter<'a, W> {
     type Repr = ();
     type Error = std::io::Error;
 
@@ -144,7 +148,11 @@ impl<W: Write> PrimitiveWriter for MsgPackInterpreter<W> {
     }
 
     fn write_u64(mut self, value: u64) -> Result<Self::Repr, Self::Error> {
-        write_u64(&mut self.writer, value)?;
+        if let Ok(n) = i64::try_from(value) {
+            write_sint(&mut self.writer, n)?;
+        } else {
+            write_u64(&mut self.writer, value)?;
+        }
         Ok(())
     }
 
@@ -204,9 +212,9 @@ impl<W: Write> PrimitiveWriter for MsgPackInterpreter<W> {
     }
 }
 
-impl<W: Write> StructuralWriter for MsgPackInterpreter<W> {
+impl<'a, W: Write> StructuralWriter for MsgPackInterpreter<'a, W> {
     type Header = Self;
-    type Body = MsgPackBodyInterpreter<W>;
+    type Body = MsgPackBodyInterpreter<'a, W>;
 
     fn record(mut self, num_attrs: usize) -> Result<Self::Header, Self::Error> {
         self.expecting = to_expecting(num_attrs)?;
@@ -220,10 +228,10 @@ fn to_expecting(n: usize) -> Result<u32, std::io::Error> {
         .map_err(|_| std::io::Error::new(ErrorKind::InvalidData, MsgPackWriteError::ToManyAttrs(n)))
 }
 
-impl<W: Write> HeaderWriter for MsgPackInterpreter<W> {
+impl<'a, W: Write> HeaderWriter for MsgPackInterpreter<'a, W> {
     type Repr = ();
     type Error = std::io::Error;
-    type Body = MsgPackBodyInterpreter<W>;
+    type Body = MsgPackBodyInterpreter<'a, W>;
 
     fn write_attr<V: StructuralWritable>(
         mut self,
@@ -282,7 +290,7 @@ impl<W: Write> HeaderWriter for MsgPackInterpreter<W> {
     }
 }
 
-impl<W: Write> BodyWriter for MsgPackBodyInterpreter<W> {
+impl<'a, W: Write> BodyWriter for MsgPackBodyInterpreter<'a, W> {
     type Repr = ();
     type Error = std::io::Error;
 

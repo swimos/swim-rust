@@ -35,6 +35,8 @@ mod error;
 use crate::form::structural::bridge::ReadWriteBridge;
 use crate::form::structural::read::materializers::value::ValueMaterializer;
 pub use error::ReadError;
+use std::collections::HashMap;
+use std::hash::Hash;
 
 /// Trait for types that can be structurally deserialized, from the Swim data model.
 pub trait StructuralReadable: ValueReadable {
@@ -306,10 +308,86 @@ macro_rules! primitive_readable {
     };
 }
 
-primitive_readable!(i32, read_i32);
-primitive_readable!(i64, read_i64);
-primitive_readable!(u32, read_u32);
-primitive_readable!(u64, read_u64);
+impl ValueReadable for i32 {
+    fn read_i32(value: i32) -> Result<Self, ReadError> {
+        Ok(value)
+    }
+
+    fn read_i64(value: i64) -> Result<Self, ReadError> {
+        i32::try_from(value).map_err(|_| ReadError::NumberOutOfRange)
+    }
+
+    fn read_u32(value: u32) -> Result<Self, ReadError> {
+        i32::try_from(value).map_err(|_| ReadError::NumberOutOfRange)
+    }
+
+    fn read_u64(value: u64) -> Result<Self, ReadError> {
+        i32::try_from(value).map_err(|_| ReadError::NumberOutOfRange)
+    }
+}
+
+record_forbidden!(i32);
+
+impl ValueReadable for i64 {
+    fn read_i32(value: i32) -> Result<Self, ReadError> {
+        Ok(value as i64)
+    }
+
+    fn read_i64(value: i64) -> Result<Self, ReadError> {
+        Ok(value)
+    }
+
+    fn read_u32(value: u32) -> Result<Self, ReadError> {
+        Ok(value as i64)
+    }
+
+    fn read_u64(value: u64) -> Result<Self, ReadError> {
+        i64::try_from(value).map_err(|_| ReadError::NumberOutOfRange)
+    }
+}
+
+record_forbidden!(i64);
+
+impl ValueReadable for u32 {
+    fn read_i32(value: i32) -> Result<Self, ReadError> {
+        u32::try_from(value).map_err(|_| ReadError::NumberOutOfRange)
+    }
+
+    fn read_i64(value: i64) -> Result<Self, ReadError> {
+        u32::try_from(value).map_err(|_| ReadError::NumberOutOfRange)
+    }
+
+    fn read_u32(value: u32) -> Result<Self, ReadError> {
+        Ok(value)
+    }
+
+    fn read_u64(value: u64) -> Result<Self, ReadError> {
+        u32::try_from(value).map_err(|_| ReadError::NumberOutOfRange)
+    }
+}
+
+record_forbidden!(u32);
+
+impl ValueReadable for u64 {
+    fn read_i32(value: i32) -> Result<Self, ReadError> {
+        u64::try_from(value).map_err(|_| ReadError::NumberOutOfRange)
+    }
+
+    fn read_i64(value: i64) -> Result<Self, ReadError> {
+        u64::try_from(value).map_err(|_| ReadError::NumberOutOfRange)
+    }
+
+    fn read_u32(value: u32) -> Result<Self, ReadError> {
+        Ok(value as u64)
+    }
+
+    fn read_u64(value: u64) -> Result<Self, ReadError> {
+        Ok(value)
+    }
+}
+
+record_forbidden!(u64);
+
 primitive_readable!(bool, read_bool);
 primitive_readable!(f64, read_f64);
 primitive_readable!(BigInt, read_big_int);
@@ -784,5 +862,205 @@ impl StructuralReadable for Value {
 
     fn try_terminate(reader: ValueMaterializer) -> Result<Self, ReadError> {
         Value::try_from(reader)
+    }
+}
+
+enum KeyState<K> {
+    NoKey,
+    KeyRead(K),
+    ReadingSlot(K),
+}
+
+impl<K> Default for KeyState<K> {
+    fn default() -> Self {
+        KeyState::NoKey
+    }
+}
+
+pub struct HashMapReader<K, V> {
+    key: KeyState<K>,
+    map: HashMap<K, V>,
+}
+
+impl<K, V> Default for HashMapReader<K, V> {
+    fn default() -> Self {
+        HashMapReader {
+            key: KeyState::NoKey,
+            map: Default::default(),
+        }
+    }
+}
+
+impl<K, V> ValueReadable for HashMap<K, V> {}
+
+impl<K, V> StructuralReadable for HashMap<K, V>
+where
+    K: Hash + Eq + StructuralReadable,
+    V: StructuralReadable,
+{
+    type Reader = HashMapReader<K, V>;
+
+    fn record_reader() -> Result<Self::Reader, ReadError> {
+        Ok(Default::default())
+    }
+
+    fn try_terminate(reader: HashMapReader<K, V>) -> Result<Self, ReadError> {
+        let HashMapReader { map, key } = reader;
+        if matches!(key, KeyState::NoKey) {
+            Ok(map)
+        } else {
+            Err(ReadError::IncompleteRecord)
+        }
+    }
+}
+
+impl<K, V> NoAttributes for HashMapReader<K, V> {}
+
+impl<K, V> BodyReader for HashMapReader<K, V>
+where
+    K: Hash + Eq + StructuralReadable,
+    V: StructuralReadable,
+{
+    type Delegate = Wrapped<Self, Either<K::Reader, V::Reader>>;
+
+    fn push_extant(&mut self) -> Result<bool, ReadError> {
+        if let KeyState::ReadingSlot(key) = std::mem::take(&mut self.key) {
+            self.map.insert(key, V::read_extant()?);
+        } else {
+            self.key = KeyState::KeyRead(K::read_extant()?);
+        }
+        Ok(true)
+    }
+
+    fn push_i32(&mut self, value: i32) -> Result<bool, ReadError> {
+        if let KeyState::ReadingSlot(key) = std::mem::take(&mut self.key) {
+            self.map.insert(key, V::read_i32(value)?);
+        } else {
+            self.key = KeyState::KeyRead(K::read_i32(value)?);
+        }
+        Ok(true)
+    }
+
+    fn push_i64(&mut self, value: i64) -> Result<bool, ReadError> {
+        if let KeyState::ReadingSlot(key) = std::mem::take(&mut self.key) {
+            self.map.insert(key, V::read_i64(value)?);
+        } else {
+            self.key = KeyState::KeyRead(K::read_i64(value)?);
+        }
+        Ok(true)
+    }
+
+    fn push_u32(&mut self, value: u32) -> Result<bool, ReadError> {
+        if let KeyState::ReadingSlot(key) = std::mem::take(&mut self.key) {
+            self.map.insert(key, V::read_u32(value)?);
+        } else {
+            self.key = KeyState::KeyRead(K::read_u32(value)?);
+        }
+        Ok(true)
+    }
+
+    fn push_u64(&mut self, value: u64) -> Result<bool, ReadError> {
+        if let KeyState::ReadingSlot(key) = std::mem::take(&mut self.key) {
+            self.map.insert(key, V::read_u64(value)?);
+        } else {
+            self.key = KeyState::KeyRead(K::read_u64(value)?);
+        }
+        Ok(true)
+    }
+
+    fn push_f64(&mut self, value: f64) -> Result<bool, ReadError> {
+        if let KeyState::ReadingSlot(key) = std::mem::take(&mut self.key) {
+            self.map.insert(key, V::read_f64(value)?);
+        } else {
+            self.key = KeyState::KeyRead(K::read_f64(value)?);
+        }
+        Ok(true)
+    }
+
+    fn push_bool(&mut self, value: bool) -> Result<bool, ReadError> {
+        if let KeyState::ReadingSlot(key) = std::mem::take(&mut self.key) {
+            self.map.insert(key, V::read_bool(value)?);
+        } else {
+            self.key = KeyState::KeyRead(K::read_bool(value)?);
+        }
+        Ok(true)
+    }
+
+    fn push_big_int(&mut self, value: BigInt) -> Result<bool, ReadError> {
+        if let KeyState::ReadingSlot(key) = std::mem::take(&mut self.key) {
+            self.map.insert(key, V::read_big_int(value)?);
+        } else {
+            self.key = KeyState::KeyRead(K::read_big_int(value)?);
+        }
+        Ok(true)
+    }
+
+    fn push_big_uint(&mut self, value: BigUint) -> Result<bool, ReadError> {
+        if let KeyState::ReadingSlot(key) = std::mem::take(&mut self.key) {
+            self.map.insert(key, V::read_big_uint(value)?);
+        } else {
+            self.key = KeyState::KeyRead(K::read_big_uint(value)?);
+        }
+        Ok(true)
+    }
+
+    fn push_text(&mut self, value: Cow<'_, str>) -> Result<bool, ReadError> {
+        if let KeyState::ReadingSlot(key) = std::mem::take(&mut self.key) {
+            self.map.insert(key, V::read_text(value)?);
+        } else {
+            self.key = KeyState::KeyRead(K::read_text(value)?);
+        }
+        Ok(true)
+    }
+
+    fn push_blob(&mut self, value: Vec<u8>) -> Result<bool, ReadError> {
+        if let KeyState::ReadingSlot(key) = std::mem::take(&mut self.key) {
+            self.map.insert(key, V::read_blob(value)?);
+        } else {
+            self.key = KeyState::KeyRead(K::read_blob(value)?);
+        }
+        Ok(true)
+    }
+
+    fn start_slot(&mut self) -> Result<(), ReadError> {
+        if let KeyState::KeyRead(key) = std::mem::take(&mut self.key) {
+            self.key = KeyState::ReadingSlot(key);
+            Ok(())
+        } else {
+            Err(ReadError::InconsistentState)
+        }
+    }
+
+    fn push_record(self) -> Result<Self::Delegate, ReadError> {
+        match &self.key {
+            KeyState::NoKey => Ok(Wrapped {
+                payload: self,
+                reader: Either::Left(K::record_reader()?),
+            }),
+            KeyState::ReadingSlot(_) => Ok(Wrapped {
+                payload: self,
+                reader: Either::Right(V::record_reader()?),
+            }),
+            _ => Err(ReadError::InconsistentState),
+        }
+    }
+
+    fn restore(delegate: <Self::Delegate as HeaderReader>::Body) -> Result<Self, ReadError> {
+        let Wrapped {
+            mut payload,
+            reader,
+        } = delegate;
+        match (std::mem::take(&mut payload.key), reader) {
+            (KeyState::NoKey, Either::Left(key_reader)) => {
+                let key = K::try_terminate(key_reader)?;
+                payload.key = KeyState::KeyRead(key);
+                Ok(payload)
+            }
+            (KeyState::ReadingSlot(key), Either::Right(value_reader)) => {
+                payload.map.insert(key, V::try_terminate(value_reader)?);
+                Ok(payload)
+            }
+            _ => Err(ReadError::InconsistentState),
+        }
     }
 }

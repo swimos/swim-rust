@@ -12,12 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+mod msgpack;
+
 use crate::form::structural::read::builder::{Builder, NoAttributes, Wrapped};
 use crate::form::structural::read::{
     BodyReader, HeaderReader, ReadError, StructuralReadable, ValueReadable,
 };
 use crate::form::structural::write::{
-    BodyWriter, HeaderWriter, StructuralWritable, StructuralWriter,
+    BodyWriter, HeaderWriter, RecordBodyKind, StructuralWritable, StructuralWriter,
 };
 use crate::model::text::Text;
 use crate::model::ValueKind;
@@ -302,7 +304,9 @@ where
 impl<S: StructuralWritable, T: StructuralWritable> StructuralWritable for GeneralType<S, T> {
     fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
         let GeneralType { first, second } = self;
-        let mut rec_writer = writer.record()?.complete_header(2)?;
+        let mut rec_writer = writer
+            .record(0)?
+            .complete_header(RecordBodyKind::MapLike, 2)?;
         if !first.omit_as_field() {
             rec_writer = rec_writer.write_slot(&"first", first)?;
         }
@@ -314,7 +318,9 @@ impl<S: StructuralWritable, T: StructuralWritable> StructuralWritable for Genera
 
     fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error> {
         let GeneralType { first, second } = self;
-        let mut rec_writer = writer.record()?.complete_header(2)?;
+        let mut rec_writer = writer
+            .record(0)?
+            .complete_header(RecordBodyKind::MapLike, 2)?;
         if !first.omit_as_field() {
             rec_writer = rec_writer.write_slot_into("first", first)?;
         }

@@ -31,6 +31,7 @@ pub enum ReadError {
     UnexpectedSlot,
     DuplicateField(Text),
     UnexpectedField(Text),
+    NumberOutOfRange,
 }
 
 impl Display for ReadError {
@@ -60,6 +61,7 @@ impl Display for ReadError {
                 write!(f, "Field '{}' ocurred more than once.", name)
             }
             ReadError::UnexpectedField(name) => write!(f, "Unexpected field: '{}'", name),
+            ReadError::NumberOutOfRange => write!(f, "Number out of range."),
         }
     }
 }

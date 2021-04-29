@@ -22,6 +22,7 @@ use crate::model::text::Text;
 use crate::model::{Attr, Item, Value};
 use num_bigint::{BigInt, BigUint};
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::convert::Infallible;
 use std::hint;
 use std::rc::Rc;
@@ -689,5 +690,35 @@ impl<T: StructuralWritable> StructuralWritable for Option<T> {
 
     fn omit_as_field(&self) -> bool {
         self.is_none()
+    }
+}
+
+impl<K, V, S> StructuralWritable for HashMap<K, V, S>
+where
+    K: StructuralWritable,
+    V: StructuralWritable,
+{
+    fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
+        let len = self.len();
+        self.iter()
+            .try_fold(
+                writer
+                    .record(0)?
+                    .complete_header(RecordBodyKind::MapLike, len)?,
+                |record_writer, (key, value)| record_writer.write_slot(key, value),
+            )?
+            .done()
+    }
+
+    fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error> {
+        let len = self.len();
+        self.into_iter()
+            .try_fold(
+                writer
+                    .record(0)?
+                    .complete_header(RecordBodyKind::MapLike, len)?,
+                |record_writer, (key, value)| record_writer.write_slot_into(key, value),
+            )?
+            .done()
     }
 }
