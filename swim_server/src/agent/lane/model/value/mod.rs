@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-mod value_store;
+pub(crate) mod value_store;
 pub use value_store::ValueLaneStoreIo;
 
 use crate::agent::lane::LaneModel;
