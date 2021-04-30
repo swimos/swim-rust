@@ -148,7 +148,7 @@ impl PartialEq for StoreError {
 ///
 /// This trait only serves to compose the multiple traits that are required for a store.
 pub trait Store:
-    FromKeyspaces + RangedSnapshotLoad + Send + Sync + Debug + ByteEngine + KeyspaceByteEngine + 'static
+    FromKeyspaces + RangedSnapshotLoad + KeyspaceByteEngine + Send + Sync + Debug + 'static
 {
     /// Returns a reference to the path that the delegate byte engine is operating from.
     fn path(&self) -> &Path;
@@ -196,7 +196,7 @@ pub trait Snapshot<K, V> {
 pub struct ServerStore<D: Store> {
     /// The directory that this store is operating from.
     dir: StoreDir,
-    db_opts: D::Opts,
+    db_opts: D::EnvironmentOpts,
     /// The keyspaces that all stores will be opened with.
     keyspaces: Keyspaces<D>,
     _delegate_pd: PhantomData<D>,
@@ -217,8 +217,8 @@ impl<D: Store> ServerStore<D> {
     /// # Panics
     /// Panics if the directory cannot be created.
     pub fn new(
-        db_opts: D::Opts,
-        keyspaces: KeyspaceOptions<D::Opts>,
+        db_opts: D::EnvironmentOpts,
+        keyspaces: KeyspaceOptions<D::KeyspaceOpts>,
         base_path: PathBuf,
     ) -> ServerStore<D> {
         ServerStore {
@@ -235,8 +235,8 @@ impl<D: Store> ServerStore<D> {
     /// # Panics
     /// Panics if the directory cannot be created.
     pub fn transient(
-        db_opts: D::Opts,
-        keyspaces: KeyspaceOptions<D::Opts>,
+        db_opts: D::EnvironmentOpts,
+        keyspaces: KeyspaceOptions<D::KeyspaceOpts>,
         prefix: &str,
     ) -> ServerStore<D> {
         ServerStore {

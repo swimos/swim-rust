@@ -26,11 +26,11 @@ use tokio_stream::wrappers::ReceiverStream;
 pub type KeySize = u64;
 pub type KeyRequest = (String, oneshot::Sender<KeySize>);
 
-pub(crate) const LANE_KS: &'static str = "default";
-pub(crate) const VALUE_LANE_KS: &'static str = "value_lanes";
-pub(crate) const MAP_LANE_KS: &'static str = "map_lanes";
-const COUNTER_KEY: &'static str = "counter";
-const LANE_PREFIX: &'static str = "lane/";
+pub(crate) const LANE_KS: &str = "default";
+pub(crate) const VALUE_LANE_KS: &str = "value_lanes";
+pub(crate) const MAP_LANE_KS: &str = "map_lanes";
+const COUNTER_KEY: &str = "counter";
+const LANE_PREFIX: &str = "lane/";
 
 pub enum KeyspaceName {
     Lane,
@@ -85,14 +85,14 @@ impl<O> KeyspaceDef<O> {
 }
 
 pub struct Keyspaces<O: FromKeyspaces> {
-    pub(crate) lane: KeyspaceDef<O::Opts>,
-    pub(crate) value: KeyspaceDef<O::Opts>,
-    pub(crate) map: KeyspaceDef<O::Opts>,
+    pub(crate) lane: KeyspaceDef<O::KeyspaceOpts>,
+    pub(crate) value: KeyspaceDef<O::KeyspaceOpts>,
+    pub(crate) map: KeyspaceDef<O::KeyspaceOpts>,
 }
 
 impl<K, O> From<KeyspaceOptions<O>> for Keyspaces<K>
 where
-    K: FromKeyspaces<Opts = O>,
+    K: FromKeyspaces<KeyspaceOpts = O>,
 {
     fn from(opts: KeyspaceOptions<O>) -> Self {
         let KeyspaceOptions { lane, value, map } = opts;
@@ -127,12 +127,8 @@ impl<S: KeyspaceByteEngine> KeyStoreTask<S> {
                     let _ = responder.send(id);
                 }
                 Ok(None) => {
-                    db.merge_keyspace(
-                        KeyspaceName::Lane,
-                        COUNTER_KEY.as_bytes(),
-                        serialize(&1_u64).unwrap().as_slice(),
-                    )
-                    .unwrap();
+                    db.merge_keyspace(KeyspaceName::Lane, COUNTER_KEY.as_bytes(), 1)
+                        .unwrap();
 
                     let counter_bytes = db
                         .get_keyspace(KeyspaceName::Lane, COUNTER_KEY.as_bytes())
@@ -236,7 +232,7 @@ pub trait KeyspaceByteEngine: Send + Sync + 'static {
         &self,
         keyspace: KeyspaceName,
         key: &[u8],
-        value: &[u8],
+        value: u64,
     ) -> Result<(), StoreError>;
 }
 

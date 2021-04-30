@@ -147,8 +147,13 @@ where
     where
         F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
     {
+        let namespace = match &prefix {
+            StoreKey::Map { .. } => KeyspaceName::Map,
+            StoreKey::Value { .. } => KeyspaceName::Value,
+        };
+
         self.delegate
-            .load_ranged_snapshot(serialize(&prefix)?.as_slice(), map_fn)
+            .load_ranged_snapshot(namespace, serialize(&prefix)?.as_slice(), map_fn)
     }
 
     fn put(&self, key: StoreKey, value: &[u8]) -> Result<(), StoreError> {
@@ -201,7 +206,7 @@ where
     pub(crate) fn open<B, P>(
         base_path: B,
         plane_name: P,
-        db_opts: &D::Opts,
+        db_opts: &D::EnvironmentOpts,
         keyspaces: &Keyspaces<D>,
     ) -> Result<SwimPlaneStore<D>, StoreError>
     where

@@ -76,7 +76,7 @@ impl KeyspaceByteEngine for MockServerStore {
         &self,
         _keyspace: KeyspaceName,
         _key: &[u8],
-        _value: &[u8],
+        _value: u64,
     ) -> Result<(), StoreError> {
         Ok(())
     }
@@ -85,6 +85,7 @@ impl KeyspaceByteEngine for MockServerStore {
 impl RangedSnapshotLoad for MockServerStore {
     fn load_ranged_snapshot<F, K, V>(
         &self,
+        _keyspace: KeyspaceName,
         _prefix: &[u8],
         _map_fn: F,
     ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
@@ -106,11 +107,12 @@ impl Default for MockOpts {
 }
 
 impl FromKeyspaces for MockServerStore {
-    type Opts = MockOpts;
+    type EnvironmentOpts = MockOpts;
+    type KeyspaceOpts = ();
 
     fn from_keyspaces<I: AsRef<Path>>(
         path: I,
-        _db_opts: &Self::Opts,
+        _db_opts: &Self::EnvironmentOpts,
         _keyspaces: &Keyspaces<Self>,
     ) -> Result<Self, StoreError> {
         Ok(MockServerStore {

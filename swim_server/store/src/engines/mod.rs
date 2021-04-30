@@ -21,7 +21,7 @@ pub use nostore::{NoStore, NoStoreOpts};
 #[cfg(feature = "rocks-db")]
 pub use rocks::{RocksDatabase, RocksOpts};
 
-use crate::engines::keyspaces::Keyspaces;
+use crate::engines::keyspaces::{KeyspaceName, Keyspaces};
 use crate::StoreError;
 
 #[cfg(test)]
@@ -48,8 +48,9 @@ pub trait ByteEngine: 'static {
 
 /// A trait for building stores from their options.
 pub trait FromKeyspaces: Sized {
+    type EnvironmentOpts: StoreOpts;
     /// The type of options this store accepts.
-    type Opts: StoreOpts;
+    type KeyspaceOpts;
 
     /// Build a store from options.
     ///
@@ -61,7 +62,7 @@ pub trait FromKeyspaces: Sized {
     ///
     fn from_keyspaces<I: AsRef<Path>>(
         path: I,
-        db_opts: &Self::Opts,
+        db_opts: &Self::EnvironmentOpts,
         keyspaces: &Keyspaces<Self>,
     ) -> Result<Self, StoreError>;
 }
@@ -87,6 +88,7 @@ pub trait RangedSnapshotLoad {
     /// store engine or if the `map_fn` fails to deserialize a key or value.
     fn load_ranged_snapshot<F, K, V>(
         &self,
+        keyspace: KeyspaceName,
         prefix: &[u8],
         map_fn: F,
     ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>

@@ -15,11 +15,10 @@
 #[cfg(test)]
 mod tests;
 
-use crate::engines::{
-    KeyedSnapshot, Keyspace, KeyspaceByteEngine, KeyspaceDescriptor, KeyspaceHandle,
-    RangedSnapshotLoad, StoreOpts,
-};
-use crate::{ByteEngine, FromKeyspaces, Store, StoreError, StoreInfo};
+use crate::engines::keyspaces::{KeyspaceByteEngine, KeyspaceName, Keyspaces};
+use crate::engines::{KeyedSnapshot, RangedSnapshotLoad, StoreOpts};
+use crate::stores::lane::{deserialize, serialize};
+use crate::{FromKeyspaces, Store, StoreError, StoreInfo};
 use heed::types::ByteSlice;
 use heed::{Database, Env, EnvOpenOptions, Error};
 use std::fmt::{Debug, Formatter};
@@ -45,14 +44,30 @@ impl PartialEq for LmdbxDatabase {
     }
 }
 
+struct SubDatabases {
+    lanes: Database<ByteSlice, ByteSlice>,
+    map: Database<ByteSlice, ByteSlice>,
+    value: Database<ByteSlice, ByteSlice>,
+}
+
+impl SubDatabases {
+    fn get(&self, keyspace: KeyspaceName) -> &Database<ByteSlice, ByteSlice> {
+        match keyspace {
+            KeyspaceName::Lane => &self.lanes,
+            KeyspaceName::Map => &self.map,
+            KeyspaceName::Value => &self.value,
+        }
+    }
+}
+
 /// An Libmdbx database engine.
 ///
 /// See https://github.com/erthink/libmdbx for details about its features and limitations.
 pub struct LmdbxDatabase {
     /// The path to the database directory.
     path: PathBuf,
-    /// The delegate Libmdbx database.
-    delegate: Database<ByteSlice, ByteSlice>,
+    /// The delegate Libmdbx databases.
+    sub_databases: SubDatabases,
     /// Libmdbx environment handle.
     env: Env,
 }
@@ -67,7 +82,11 @@ impl Debug for LmdbxDatabase {
 
 impl LmdbxDatabase {
     /// Initialise a Libmdbx database at `path` with the provided environment open options.
-    fn init<P: AsRef<Path>>(path: P, config: &EnvOpenOptions) -> Result<Self, StoreError> {
+    fn init<P: AsRef<Path>>(
+        path: P,
+        config: &EnvOpenOptions,
+        keyspaces: &Keyspaces<Self>,
+    ) -> Result<Self, StoreError> {
         let path = path.as_ref().to_owned();
 
         if !path.exists() {
@@ -76,11 +95,21 @@ impl LmdbxDatabase {
         }
 
         let env = config.open(path.deref())?;
-        let db = env.create_database(None)?;
+
+        let Keyspaces { lane, value, map } = keyspaces;
+        let lane_db = env.create_database(Some(lane.name))?;
+        let value_db = env.create_database(Some(value.name))?;
+        let map_db = env.create_database(Some(map.name))?;
+
+        let sub_databases = SubDatabases {
+            lanes: lane_db,
+            map: map_db,
+            value: value_db,
+        };
 
         Ok(LmdbxDatabase {
             path,
-            delegate: db,
+            sub_databases,
             env,
         })
     }
@@ -105,10 +134,15 @@ impl Store for LmdbxDatabase {
 }
 
 impl FromKeyspaces for LmdbxDatabase {
-    type Opts = LmdbOpts;
+    type EnvironmentOpts = LmdbOpts;
+    type KeyspaceOpts = ();
 
-    fn from_keyspaces<I: AsRef<Path>>(path: I, opts: &Self::Opts) -> Result<Self, StoreError> {
-        LmdbxDatabase::init(path, &opts.0)
+    fn from_keyspaces<I: AsRef<Path>>(
+        path: I,
+        db_opts: &Self::EnvironmentOpts,
+        keyspaces: &Keyspaces<Self>,
+    ) -> Result<Self, StoreError> {
+        LmdbxDatabase::init(path, &db_opts.0, keyspaces)
     }
 }
 
@@ -128,13 +162,17 @@ impl RangedSnapshotLoad for LmdbxDatabase {
     /// in this store that start with `prefix`.
     fn load_ranged_snapshot<F, K, V>(
         &self,
+        keyspace: KeyspaceName,
         prefix: &[u8],
         map_fn: F,
     ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
     where
         F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
     {
-        let LmdbxDatabase { delegate, env, .. } = self;
+        let LmdbxDatabase {
+            sub_databases, env, ..
+        } = self;
+        let delegate = sub_databases.get(keyspace);
         let tx = env.read_txn()?;
 
         let mut it = delegate
@@ -159,21 +197,33 @@ impl RangedSnapshotLoad for LmdbxDatabase {
     }
 }
 
-impl ByteEngine for LmdbxDatabase {
-    /// Inserts a key-value pair into this Libmdbx database. If a write transaction already exists,
-    /// then this will block the current thread until it finishes.
-    fn put(&self, key: &[u8], value: &[u8]) -> Result<(), StoreError> {
-        let LmdbxDatabase { delegate, env, .. } = self;
+impl KeyspaceByteEngine for LmdbxDatabase {
+    fn put_keyspace(
+        &self,
+        keyspace: KeyspaceName,
+        key: &[u8],
+        value: &[u8],
+    ) -> Result<(), StoreError> {
+        let LmdbxDatabase {
+            sub_databases, env, ..
+        } = self;
         let mut wtxn = env.write_txn()?;
+        let delegate = sub_databases.get(keyspace);
 
         delegate.put(&mut wtxn, key, value)?;
         wtxn.commit().map_err(Into::into)
     }
 
-    /// Gets the value associated with `key` if it exists.
-    fn get(&self, key: &[u8]) -> Result<Option<Vec<u8>>, StoreError> {
-        let LmdbxDatabase { delegate, env, .. } = self;
+    fn get_keyspace(
+        &self,
+        keyspace: KeyspaceName,
+        key: &[u8],
+    ) -> Result<Option<Vec<u8>>, StoreError> {
+        let LmdbxDatabase {
+            sub_databases, env, ..
+        } = self;
         let rtxn = env.read_txn()?;
+        let delegate = sub_databases.get(keyspace);
 
         delegate
             .get(&rtxn, key)
@@ -181,63 +231,42 @@ impl ByteEngine for LmdbxDatabase {
             .map_err(Into::into)
     }
 
-    /// Delete the key-value pair associated with `key`.
-    fn delete(&self, key: &[u8]) -> Result<(), StoreError> {
-        let LmdbxDatabase { delegate, env, .. } = self;
+    fn delete_keyspace(&self, keyspace: KeyspaceName, key: &[u8]) -> Result<(), StoreError> {
+        let LmdbxDatabase {
+            sub_databases, env, ..
+        } = self;
         let mut wtxn = env.write_txn()?;
+        let delegate = sub_databases.get(keyspace);
         let _result = delegate.delete(&mut wtxn, key)?;
 
         wtxn.commit()?;
         Ok(())
     }
-}
-
-pub struct LmdbxKeyspaceDescriptor;
-impl KeyspaceDescriptor for LmdbxKeyspaceDescriptor {
-    type Options = ();
-
-    fn new<S>(_name: S, _options: Self::Options) -> Self
-    where
-        S: Into<String>,
-    {
-        LmdbxKeyspaceDescriptor
-    }
-}
-
-pub struct LmdbxKeyspaceHandle;
-impl KeyspaceHandle for LmdbxKeyspaceHandle {}
-
-impl Keyspace for LmdbxDatabase {
-    type Descriptor = LmdbxKeyspaceDescriptor;
-    type Handle = LmdbxKeyspaceHandle;
-
-    fn keyspace_handle<S>(&self, _name: S) -> Option<&Self::Handle>
-    where
-        S: AsRef<str>,
-    {
-        None
-    }
-}
-
-impl KeyspaceByteEngine for LmdbxDatabase {
-    fn put_keyspace(&self, _keyspace: &str, _key: &[u8], _value: &[u8]) -> Result<(), StoreError> {
-        Ok(())
-    }
-
-    fn get_keyspace(&self, _keyspace: &str, _key: &[u8]) -> Result<Option<Vec<u8>>, StoreError> {
-        Ok(None)
-    }
-
-    fn delete_keyspace(&self, _keyspace: &str, _key: &[u8]) -> Result<(), StoreError> {
-        Ok(())
-    }
 
     fn merge_keyspace(
         &self,
-        _keyspace: &str,
-        _key: &[u8],
-        _value: &[u8],
+        keyspace: KeyspaceName,
+        key: &[u8],
+        value: u64,
     ) -> Result<(), StoreError> {
-        Ok(())
+        let LmdbxDatabase {
+            sub_databases, env, ..
+        } = self;
+        let delegate = sub_databases.get(keyspace);
+
+        let rtxn = env.read_txn()?;
+        let value_opt = delegate.get(&rtxn, key)?;
+
+        let mut new_value = match value_opt {
+            Some(value) => deserialize::<u64>(value)?,
+            None => 0,
+        };
+
+        new_value += value;
+
+        let mut wtxn = env.write_txn()?;
+        delegate
+            .put(&mut wtxn, key, serialize(&new_value)?.as_slice())
+            .map_err(Into::into)
     }
 }

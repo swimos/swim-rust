@@ -17,8 +17,9 @@ mod tests;
 
 use crate::engines::keyspaces::{KeyspaceByteEngine, KeyspaceName, Keyspaces};
 use crate::engines::{KeyedSnapshot, RangedSnapshotLoad, StoreOpts};
+use crate::stores::lane::serialize;
 use crate::stores::INCONSISTENT_DB;
-use crate::{ByteEngine, FromKeyspaces, Store, StoreError, StoreInfo};
+use crate::{FromKeyspaces, Store, StoreError, StoreInfo};
 use rocksdb::{ColumnFamily, ColumnFamilyDescriptor};
 use rocksdb::{Error, Options, DB};
 use std::path::Path;
@@ -46,26 +47,6 @@ impl RocksDatabase {
     }
 }
 
-impl ByteEngine for RocksDatabase {
-    /// Inserts a key-value pair into this Rocks database.
-    fn put(&self, key: &[u8], value: &[u8]) -> Result<(), StoreError> {
-        let RocksDatabase { delegate, .. } = self;
-        delegate.put(key, value).map_err(Into::into)
-    }
-
-    /// Gets the value associated with `key` if it exists.
-    fn get(&self, key: &[u8]) -> Result<Option<Vec<u8>>, StoreError> {
-        let RocksDatabase { delegate, .. } = self;
-        delegate.get(key).map_err(Into::into)
-    }
-
-    /// Delete the key-value pair associated with `key`.
-    fn delete(&self, key: &[u8]) -> Result<(), StoreError> {
-        let RocksDatabase { delegate, .. } = self;
-        delegate.delete(key).map_err(Into::into)
-    }
-}
-
 impl Store for RocksDatabase {
     fn path(&self) -> &Path {
         &self.delegate.path()
@@ -80,11 +61,12 @@ impl Store for RocksDatabase {
 }
 
 impl FromKeyspaces for RocksDatabase {
-    type Opts = RocksOpts;
+    type EnvironmentOpts = RocksOpts;
+    type KeyspaceOpts = RocksOpts;
 
     fn from_keyspaces<I: AsRef<Path>>(
         path: I,
-        db_opts: &Self::Opts,
+        db_opts: &Self::KeyspaceOpts,
         keyspaces: &Keyspaces<Self>,
     ) -> Result<Self, StoreError> {
         let Keyspaces { lane, value, map } = keyspaces;
@@ -117,6 +99,7 @@ impl Default for RocksOpts {
 impl RangedSnapshotLoad for RocksDatabase {
     fn load_ranged_snapshot<F, K, V>(
         &self,
+        keyspace: KeyspaceName,
         prefix: &[u8],
         map_fn: F,
     ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
@@ -124,7 +107,10 @@ impl RangedSnapshotLoad for RocksDatabase {
         F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
     {
         let db = &*self.delegate;
-        let mut raw = db.raw_iterator();
+        let cf = db
+            .cf_handle(keyspace.as_ref())
+            .ok_or(StoreError::KeyspaceNotFound)?;
+        let mut raw = db.raw_iterator_cf(cf);
         let mut data = Vec::new();
 
         raw.seek(prefix);
@@ -203,10 +189,11 @@ impl KeyspaceByteEngine for RocksDatabase {
         &self,
         keyspace: KeyspaceName,
         key: &[u8],
-        value: &[u8],
+        value: u64,
     ) -> Result<(), StoreError> {
-        exec_keyspace(&self.delegate, keyspace, |delegate, keyspace| {
-            delegate.merge_cf(keyspace, key, value)
+        let value = serialize(&value)?;
+        exec_keyspace(&self.delegate, keyspace, move |delegate, keyspace| {
+            delegate.merge_cf(keyspace, key, value.as_slice())
         })
     }
 }
