@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::engines::keyspaces::{KeyStore, Keyspaces};
+use crate::engines::keyspaces::{KeyStore, KeyspaceName, Keyspaces};
 use crate::engines::KeyedSnapshot;
 use crate::stores::lane::serialize;
 use crate::stores::node::{NodeStore, SwimNodeStore};
@@ -116,6 +116,16 @@ impl<D> Debug for SwimPlaneStore<D> {
     }
 }
 
+fn exec_keyspace<F, O>(key: StoreKey, f: F) -> Result<O, StoreError>
+where
+    F: Fn(KeyspaceName, Vec<u8>) -> Result<O, StoreError>,
+{
+    match key {
+        s @ StoreKey::Map { .. } => f(KeyspaceName::Map, serialize(&s)?),
+        s @ StoreKey::Value { .. } => f(KeyspaceName::Value, serialize(&s)?),
+    }
+}
+
 impl<D> PlaneStore for SwimPlaneStore<D>
 where
     D: Store,
@@ -142,15 +152,22 @@ where
     }
 
     fn put(&self, key: StoreKey, value: &[u8]) -> Result<(), StoreError> {
-        self.delegate.put(serialize(&key)?.as_slice(), value)
+        exec_keyspace(key, |namespace, bytes| {
+            self.delegate
+                .put_keyspace(namespace, bytes.as_slice(), value)
+        })
     }
 
     fn get(&self, key: StoreKey) -> Result<Option<Vec<u8>>, StoreError> {
-        self.delegate.get(serialize(&key)?.as_slice())
+        exec_keyspace(key, |namespace, bytes| {
+            self.delegate.get_keyspace(namespace, bytes.as_slice())
+        })
     }
 
     fn delete(&self, key: StoreKey) -> Result<(), StoreError> {
-        self.delegate.delete(serialize(&key)?.as_slice())
+        exec_keyspace(key, |namespace, bytes| {
+            self.delegate.delete_keyspace(namespace, bytes.as_slice())
+        })
     }
 
     fn store_info(&self) -> StoreInfo {
