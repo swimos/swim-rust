@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[cfg(test)]
+mod tests;
+
 use crate::form::structural::write::{
     BodyWriter, HeaderWriter, Label, PrimitiveWriter, RecordBodyKind, StructuralWritable,
     StructuralWriter,
@@ -88,15 +91,26 @@ impl<'a, W> MsgPackBodyInterpreter<'a, W> {
     }
 }
 
+/// Writing out to MessagePack can fail beacause of an IO error or because a value exceeds the
+/// limitations of the MessagePack format.
 #[derive(Debug)]
 pub enum MsgPackWriteError {
+    /// An error ocurred in the underlying writer.
     IoError(std::io::Error),
+    /// The byte representation of a big integer could not fit into a MessagePack extension value.
     BigIntTooLarge(BigInt),
+    /// The byte representation of a big unsigned. integer could not fit into a MessagePack
+    /// extension value.
     BigUIntTooLarge(BigUint),
+    /// The record has more attributes than be be reprsented by a `u32`.
     TooManyAttrs(usize),
+    /// The record has more items than can be represented by a `u32`.
     TooManyItems(usize),
+    /// The reported number of attributes in the record did not match the number written.
     WrongNumberOfAttrs,
+    /// The reported kind of the record did not matche the items written.
     IncorrectRecordKind,
+    /// The reported number of items in the record did not match the number written.
     WrongNumberOfItems,
 }
 
