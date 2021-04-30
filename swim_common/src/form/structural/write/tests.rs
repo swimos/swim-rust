@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::form::structural::write::StructuralWritable;
+use crate::form::structural::write::{RecordBodyKind, StructuralWritable};
 use crate::model::blob::Blob;
 use crate::model::text::Text;
 use crate::model::{Item, Value};
@@ -349,4 +349,29 @@ fn none_into_structure() {
     let opt: Option<i32> = None;
     let value = opt.into_structure();
     assert_eq!(value, Value::Extant);
+}
+
+#[test]
+fn calculate_body_kind() {
+    let array_like = vec![Item::of(1), Item::of("name"), Item::of(true)];
+    let map_like = vec![
+        Item::slot("first", 1),
+        Item::slot(2, "second"),
+        Item::slot(true, false),
+    ];
+    let mixed = vec![Item::of(1), Item::slot("second", 2)];
+
+    assert_eq!(
+        RecordBodyKind::of_iter(array_like.iter()),
+        Some(RecordBodyKind::ArrayLike)
+    );
+    assert_eq!(
+        RecordBodyKind::of_iter(map_like.iter()),
+        Some(RecordBodyKind::MapLike)
+    );
+    assert_eq!(
+        RecordBodyKind::of_iter(mixed.iter()),
+        Some(RecordBodyKind::Mixed)
+    );
+    assert_eq!(RecordBodyKind::of_iter(vec![].iter()), None);
 }

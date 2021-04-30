@@ -224,6 +224,7 @@ pub enum RecordBodyKind {
 }
 
 impl RecordBodyKind {
+    /// Determine the record body type by iterating a sequence of items.
     fn of_iter<'a, It>(it: It) -> Option<RecordBodyKind>
     where
         It: Iterator<Item = &'a Item>,
