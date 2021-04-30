@@ -81,6 +81,7 @@ use crate::meta::open_meta_lanes;
 #[doc(hidden)]
 #[allow(unused_imports)]
 pub use agent_derive::*;
+use swim_client::downlink::Downlinks;
 use tokio_stream::wrappers::ReceiverStream;
 
 /// Trait that must be implemented for any agent. This is essentially just boilerplate and will
@@ -177,6 +178,7 @@ impl<Config> AgentParameters<Config> {
 pub fn run_agent<Config, Clk, Agent, L, R>(
     lifecycle: L,
     clock: Clk,
+    downlinks: Downlinks,
     parameters: AgentParameters<Config>,
     incoming_envelopes: impl Stream<Item = TaggedEnvelope> + Send + 'static,
     router: R,
@@ -231,7 +233,13 @@ where
         let (tx, rx) = mpsc::channel(execution_config.scheduler_buffer.get());
         let routing_context = RoutingContext::new(uri.clone(), router, parameters);
         let schedule_context = SchedulerContext::new(tx, clock, stop_trigger.clone());
-        let context = ContextImpl::new(agent_ref, routing_context, schedule_context, meta_context);
+        let context = ContextImpl::new(
+            agent_ref,
+            routing_context,
+            schedule_context,
+            meta_context,
+            downlinks,
+        );
 
         lifecycle
             .starting(&context)
@@ -305,18 +313,8 @@ pub type EffStream = BoxStream<'static, ()>;
 /// agent and lane life-cycle events and allows events to be scheduled within the task that
 /// is running the agent.
 pub trait AgentContext<Agent> {
-    fn command_downlink<T>(&mut self, path: AbsolutePath)
-    // Todo dm maybe this can be a promise to avoid async in trait?
-    // -> Result<TypedCommandDownlink<T>, ClientError>
-    where
-        T: ValidatedForm + Send + 'static,
-    {
-        unimplemented!()
-        // self.downlinks
-        //     .subscribe_command(path)
-        //     .await
-        //     .map_err(ClientError::SubscriptionError)
-    }
+    //Todo dm
+    fn downlinks(&self) -> Downlinks;
 
     /// Schedule events to be executed on a provided schedule. The events will be executed within
     /// the task that runs the agent and so should not block.

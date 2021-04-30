@@ -82,10 +82,11 @@ pub mod envelopes;
 mod tests;
 mod watch_adapter;
 
+#[derive(Clone, Debug)]
 pub struct Downlinks {
     pub sender: mpsc::Sender<DownlinkRequest>,
-    pub task: Option<TaskHandle<RequestResult<()>>>,
-    pub stop_trigger_tx: Option<trigger::Sender>,
+    pub task: Arc<Option<TaskHandle<RequestResult<()>>>>,
+    pub stop_trigger_tx: Arc<Option<trigger::Sender>>,
 }
 
 pub enum DownlinkRequest {
@@ -163,8 +164,8 @@ impl Downlinks {
 
         Downlinks {
             sender: tx,
-            task: Some(task_handle),
-            stop_trigger_tx: Some(stop_trigger_tx),
+            task: Arc::new(Some(task_handle)),
+            stop_trigger_tx: Arc::new(Some(stop_trigger_tx)),
         }
     }
 
@@ -187,12 +188,14 @@ impl Downlinks {
             task,
             stop_trigger_tx,
         } = self;
-        if stop_trigger_tx.unwrap().trigger() == false {
-            return Err(TaskError);
-        }
+        //Todo dm
+        // if *stop_trigger_tx.unwrap().trigger() == false {
+        //     return Err(TaskError);
+        // }
         drop(sender);
 
-        task.unwrap().await
+        // task.unwrap().await
+        Ok(RequestResult::Ok(()))
     }
 
     /// Attempt to subscribe to a value lane. The downlink is returned with a single active

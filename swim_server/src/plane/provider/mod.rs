@@ -23,6 +23,7 @@ use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
 use std::sync::Arc;
+use swim_client::downlink::Downlinks;
 use swim_common::routing::{Router, TaggedEnvelope};
 use swim_runtime::time::clock::Clock;
 use utilities::uri::RelativeUri;
@@ -68,6 +69,7 @@ where
         parameters: HashMap<String, String>,
         execution_config: AgentExecutionConfig,
         clock: Clk,
+        downlinks: Downlinks,
         incoming_envelopes: Envelopes,
         router: R,
     ) -> (Arc<dyn Any + Send + Sync>, BoxFuture<'static, AgentResult>)
@@ -88,6 +90,7 @@ where
         let (agent, task) = crate::agent::run_agent(
             lifecycle.clone(),
             clock,
+            downlinks,
             parameters,
             incoming_envelopes,
             router,
@@ -112,6 +115,7 @@ where
         parameters: HashMap<String, String>,
         execution_config: AgentExecutionConfig,
         clock: Clk,
+        downlinks: Downlinks,
         incoming_envelopes: Envelopes,
         router: R,
     ) -> (Arc<dyn Any + Send + Sync>, BoxFuture<'static, AgentResult>) {
@@ -120,6 +124,7 @@ where
             parameters,
             execution_config,
             clock,
+            downlinks,
             incoming_envelopes,
             router,
         )

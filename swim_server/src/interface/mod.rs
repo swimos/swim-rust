@@ -209,8 +209,8 @@ impl SwimServerBuilder {
         //Todo dm replace with ::new()
         let downlinks = Downlinks {
             sender: downlinks_request_tx,
-            task: None,
-            stop_trigger_tx: None,
+            task: Arc::new(None),
+            stop_trigger_tx: Arc::new(None),
         };
 
         Ok((
@@ -221,6 +221,7 @@ impl SwimServerBuilder {
                 stop_trigger_rx,
                 address_tx,
                 downlinks_request_rx,
+                downlinks: downlinks.clone(),
             },
             ServerHandle {
                 downlinks,
@@ -241,6 +242,7 @@ pub struct SwimServer {
     stop_trigger_rx: trigger::Receiver,
     address_tx: promise::Sender<SocketAddr>,
     downlinks_request_rx: mpsc::Receiver<DownlinkRequest>,
+    downlinks: Downlinks,
 }
 
 impl SwimServer {
@@ -259,6 +261,7 @@ impl SwimServer {
             stop_trigger_rx,
             address_tx,
             downlinks_request_rx,
+            downlinks,
         } = self;
 
         let SwimServerConfig {
@@ -284,6 +287,7 @@ impl SwimServer {
         let plane_future = run_plane(
             agent_config.clone(),
             clock,
+            downlinks,
             spec,
             stop_trigger_rx.clone(),
             OpenEndedFutures::new(),
