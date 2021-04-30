@@ -15,14 +15,14 @@
 #[cfg(test)]
 mod tests;
 
-use crate::engines::{KeyedSnapshot, KeyspaceByteEngine, RangedSnapshotLoad, StoreOpts};
-use crate::{ByteEngine, FromOpts, Store, StoreError, StoreInfo};
-use rocksdb::ColumnFamily;
+use crate::engines::keyspaces::{KeyspaceByteEngine, KeyspaceName, Keyspaces};
+use crate::engines::{KeyedSnapshot, RangedSnapshotLoad, StoreOpts};
+use crate::stores::INCONSISTENT_DB;
+use crate::{ByteEngine, FromKeyspaces, Store, StoreError, StoreInfo};
+use rocksdb::{ColumnFamily, ColumnFamilyDescriptor};
 use rocksdb::{Error, Options, DB};
 use std::path::Path;
 use std::sync::Arc;
-
-const INCONSISTENT_DB: &str = "Missing key or value in store";
 
 impl From<rocksdb::Error> for StoreError {
     fn from(e: Error) -> Self {
@@ -79,11 +79,22 @@ impl Store for RocksDatabase {
     }
 }
 
-impl FromOpts for RocksDatabase {
+impl FromKeyspaces for RocksDatabase {
     type Opts = RocksOpts;
 
-    fn from_opts<I: AsRef<Path>>(path: I, opts: &Self::Opts) -> Result<Self, StoreError> {
-        let db = DB::open(&opts.0, path)?;
+    fn from_keyspaces<I: AsRef<Path>>(
+        path: I,
+        db_opts: &Self::Opts,
+        keyspaces: &Keyspaces<Self>,
+    ) -> Result<Self, StoreError> {
+        let Keyspaces { lane, value, map } = keyspaces;
+        let descriptors = vec![
+            ColumnFamilyDescriptor::new(lane.name.to_string(), lane.opts.0.clone()),
+            ColumnFamilyDescriptor::new(value.name.to_string(), value.opts.0.clone()),
+            ColumnFamilyDescriptor::new(map.name.to_string(), map.opts.0.clone()),
+        ];
+
+        let db = DB::open_cf_descriptors(&db_opts.0, path, descriptors)?;
         Ok(RocksDatabase::new(db))
     }
 }
@@ -150,36 +161,50 @@ impl RangedSnapshotLoad for RocksDatabase {
     }
 }
 
-fn exec_keyspace<F, O>(delegate: &Arc<DB>, keyspace: &str, f: F) -> Result<O, StoreError>
+fn exec_keyspace<F, O>(delegate: &Arc<DB>, keyspace: KeyspaceName, f: F) -> Result<O, StoreError>
 where
     F: Fn(&Arc<DB>, &ColumnFamily) -> Result<O, rocksdb::Error>,
 {
-    match delegate.cf_handle(keyspace) {
+    match delegate.cf_handle(keyspace.as_ref()) {
         Some(cf) => f(delegate, cf).map_err(Into::into),
         None => Err(StoreError::KeyspaceNotFound),
     }
 }
 
 impl KeyspaceByteEngine for RocksDatabase {
-    fn put_keyspace(&self, keyspace: &str, key: &[u8], value: &[u8]) -> Result<(), StoreError> {
+    fn put_keyspace(
+        &self,
+        keyspace: KeyspaceName,
+        key: &[u8],
+        value: &[u8],
+    ) -> Result<(), StoreError> {
         exec_keyspace(&self.delegate, keyspace, |delegate, keyspace| {
             delegate.put_cf(keyspace, key, value)
         })
     }
 
-    fn get_keyspace(&self, keyspace: &str, key: &[u8]) -> Result<Option<Vec<u8>>, StoreError> {
+    fn get_keyspace(
+        &self,
+        keyspace: KeyspaceName,
+        key: &[u8],
+    ) -> Result<Option<Vec<u8>>, StoreError> {
         exec_keyspace(&self.delegate, keyspace, |delegate, keyspace| {
             delegate.get_cf(keyspace, key)
         })
     }
 
-    fn delete_keyspace(&self, keyspace: &str, key: &[u8]) -> Result<(), StoreError> {
+    fn delete_keyspace(&self, keyspace: KeyspaceName, key: &[u8]) -> Result<(), StoreError> {
         exec_keyspace(&self.delegate, keyspace, |delegate, keyspace| {
             delegate.delete_cf(keyspace, key)
         })
     }
 
-    fn merge_keyspace(&self, keyspace: &str, key: &[u8], value: &[u8]) -> Result<(), StoreError> {
+    fn merge_keyspace(
+        &self,
+        keyspace: KeyspaceName,
+        key: &[u8],
+        value: &[u8],
+    ) -> Result<(), StoreError> {
         exec_keyspace(&self.delegate, keyspace, |delegate, keyspace| {
             delegate.merge_cf(keyspace, key, value)
         })

@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::engines::KeyspaceByteEngine;
+use crate::engines::{FromKeyspaces, StoreOpts};
 use crate::stores::lane::{deserialize, serialize};
-use crate::LANE_KS;
+use crate::StoreError;
 use futures::StreamExt;
 use rocksdb::MergeOperands;
 use std::num::NonZeroUsize;
@@ -22,13 +22,87 @@ use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 use tokio_stream::wrappers::ReceiverStream;
-use utilities::sync::trigger;
 
 pub type KeySize = u64;
 pub type KeyRequest = (String, oneshot::Sender<KeySize>);
 
+pub(crate) const LANE_KS: &'static str = "default";
+pub(crate) const VALUE_LANE_KS: &'static str = "value_lanes";
+pub(crate) const MAP_LANE_KS: &'static str = "map_lanes";
 const COUNTER_KEY: &'static str = "counter";
 const LANE_PREFIX: &'static str = "lane/";
+
+pub enum KeyspaceName {
+    Lane,
+    Value,
+    Map,
+}
+
+impl AsRef<str> for KeyspaceName {
+    fn as_ref(&self) -> &str {
+        match self {
+            KeyspaceName::Lane => LANE_KS,
+            KeyspaceName::Value => VALUE_LANE_KS,
+            KeyspaceName::Map => MAP_LANE_KS,
+        }
+    }
+}
+
+pub struct KeyspaceOptions<O> {
+    lane: O,
+    value: O,
+    map: O,
+}
+
+impl<O> Default for KeyspaceOptions<O>
+where
+    O: StoreOpts,
+{
+    fn default() -> Self {
+        KeyspaceOptions {
+            lane: O::default(),
+            value: O::default(),
+            map: O::default(),
+        }
+    }
+}
+
+impl<O> KeyspaceOptions<O> {
+    pub fn new(lane: O, value: O, map: O) -> Self {
+        KeyspaceOptions { lane, value, map }
+    }
+}
+
+pub struct KeyspaceDef<O> {
+    pub(crate) name: &'static str,
+    pub(crate) opts: O,
+}
+
+impl<O> KeyspaceDef<O> {
+    fn new(name: &'static str, opts: O) -> Self {
+        KeyspaceDef { name, opts }
+    }
+}
+
+pub struct Keyspaces<O: FromKeyspaces> {
+    pub(crate) lane: KeyspaceDef<O::Opts>,
+    pub(crate) value: KeyspaceDef<O::Opts>,
+    pub(crate) map: KeyspaceDef<O::Opts>,
+}
+
+impl<K, O> From<KeyspaceOptions<O>> for Keyspaces<K>
+where
+    K: FromKeyspaces<Opts = O>,
+{
+    fn from(opts: KeyspaceOptions<O>) -> Self {
+        let KeyspaceOptions { lane, value, map } = opts;
+        Keyspaces {
+            lane: KeyspaceDef::new(LANE_KS, lane),
+            value: KeyspaceDef::new(VALUE_LANE_KS, value),
+            map: KeyspaceDef::new(MAP_LANE_KS, map),
+        }
+    }
+}
 
 pub struct KeyStoreTask<S: KeyspaceByteEngine> {
     db: Arc<S>,
@@ -40,34 +114,38 @@ impl<S: KeyspaceByteEngine> KeyStoreTask<S> {
         KeyStoreTask { db, rx }
     }
 
-    async fn run(self, stop_on: trigger::Receiver) {
+    async fn run(self) {
         let KeyStoreTask { db, rx } = self;
-        let mut requests = rx.take_until(stop_on).fuse();
+        let mut requests = rx.fuse();
 
         while let Some((uri, responder)) = requests.next().await {
             let prefixed = format!("{}/{}", LANE_PREFIX, uri);
 
-            match db.get_keyspace(LANE_KS, prefixed.as_bytes()) {
+            match db.get_keyspace(KeyspaceName::Lane, prefixed.as_bytes()) {
                 Ok(Some(bytes)) => {
                     let id = deserialize::<u64>(bytes.as_ref()).unwrap();
                     let _ = responder.send(id);
                 }
                 Ok(None) => {
                     db.merge_keyspace(
-                        LANE_KS,
+                        KeyspaceName::Lane,
                         COUNTER_KEY.as_bytes(),
                         serialize(&1_u64).unwrap().as_slice(),
                     )
                     .unwrap();
 
                     let counter_bytes = db
-                        .get_keyspace(LANE_KS, COUNTER_KEY.as_bytes())
+                        .get_keyspace(KeyspaceName::Lane, COUNTER_KEY.as_bytes())
                         .unwrap()
                         .unwrap();
                     let id = deserialize::<u64>(counter_bytes.as_ref()).unwrap();
 
-                    db.put_keyspace(LANE_KS, prefixed.as_bytes(), counter_bytes.as_slice())
-                        .unwrap();
+                    db.put_keyspace(
+                        KeyspaceName::Lane,
+                        prefixed.as_bytes(),
+                        counter_bytes.as_slice(),
+                    )
+                    .unwrap();
 
                     let _ = responder.send(id);
                 }
@@ -85,18 +163,23 @@ pub struct KeyStore {
     task: Arc<JoinHandle<()>>,
 }
 
+pub(crate) fn failing_keystore() -> KeyStore {
+    let (tx, _rx) = mpsc::channel(1);
+    let task = tokio::spawn(futures::future::ready(()));
+    KeyStore {
+        tx,
+        task: Arc::new(task),
+    }
+}
+
 impl KeyStore {
-    pub fn new<S: KeyspaceByteEngine>(
-        db: Arc<S>,
-        buffer_size: NonZeroUsize,
-        stop_on: trigger::Receiver,
-    ) -> KeyStore {
+    pub fn new<S: KeyspaceByteEngine>(db: Arc<S>, buffer_size: NonZeroUsize) -> KeyStore {
         let (tx, rx) = mpsc::channel(buffer_size.get());
         let task = KeyStoreTask::new(db, ReceiverStream::new(rx));
 
         KeyStore {
             tx,
-            task: Arc::new(tokio::spawn(task.run(stop_on))),
+            task: Arc::new(tokio::spawn(task.run())),
         }
     }
 
@@ -130,22 +213,41 @@ fn incrementing_operator(
     Some(serialize(&value).unwrap())
 }
 
+pub trait KeyspaceByteEngine: Send + Sync + 'static {
+    /// Put a key-value pair into this store.
+    fn put_keyspace(
+        &self,
+        keyspace: KeyspaceName,
+        key: &[u8],
+        value: &[u8],
+    ) -> Result<(), StoreError>;
+
+    /// Get an entry from this store by its key.
+    fn get_keyspace(
+        &self,
+        keyspace: KeyspaceName,
+        key: &[u8],
+    ) -> Result<Option<Vec<u8>>, StoreError>;
+
+    /// Delete a value from this store by its key.
+    fn delete_keyspace(&self, keyspace: KeyspaceName, key: &[u8]) -> Result<(), StoreError>;
+
+    fn merge_keyspace(
+        &self,
+        keyspace: KeyspaceName,
+        key: &[u8],
+        value: &[u8],
+    ) -> Result<(), StoreError>;
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::stores::keystore::{incrementing_operator, KeyStore};
-    use crate::{RocksDatabase, LANE_KS, MAP_LANE_KS};
+    use crate::engines::keyspaces::{incrementing_operator, KeyStore, LANE_KS, MAP_LANE_KS};
+    use crate::RocksDatabase;
     use rocksdb::{ColumnFamilyDescriptor, DB};
     use std::num::NonZeroUsize;
     use std::sync::Arc;
     use tempdir::TempDir;
-    use utilities::sync::trigger::trigger;
-
-    fn lane_table_cf() -> ColumnFamilyDescriptor {
-        let mut lane_opts = rocksdb::Options::default();
-        lane_opts.set_merge_operator_associative("lane_id_counter", incrementing_operator);
-
-        ColumnFamilyDescriptor::new(LANE_KS, lane_opts)
-    }
 
     fn make_db() -> (TempDir, RocksDatabase) {
         let temp_file = TempDir::new("test").unwrap();
@@ -155,7 +257,11 @@ mod tests {
 
         let map_cf = ColumnFamilyDescriptor::new(MAP_LANE_KS, rocksdb::Options::default());
 
-        let db = DB::open_cf_descriptors(&db_opts, temp_file.path(), vec![lane_table_cf(), map_cf])
+        let mut lane_opts = rocksdb::Options::default();
+        lane_opts.set_merge_operator_associative("lane_id_counter", incrementing_operator);
+        let lane_table_cf = ColumnFamilyDescriptor::new(LANE_KS, lane_opts);
+
+        let db = DB::open_cf_descriptors(&db_opts, temp_file.path(), vec![lane_table_cf, map_cf])
             .unwrap();
 
         (temp_file, RocksDatabase::new(db))
@@ -164,8 +270,7 @@ mod tests {
     #[tokio::test]
     async fn keyspace() {
         let (_dir, arc_db) = make_db();
-        let (_trigger_tx, trigger_rx) = trigger();
-        let key_store = KeyStore::new(Arc::new(arc_db), NonZeroUsize::new(8).unwrap(), trigger_rx);
+        let key_store = KeyStore::new(Arc::new(arc_db), NonZeroUsize::new(8).unwrap());
 
         assert_eq!(key_store.id_for("lane_a").await, 1);
         assert_eq!(key_store.id_for("lane_a").await, 1);

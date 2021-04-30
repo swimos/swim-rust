@@ -12,18 +12,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::engines::{KeyedSnapshot, KeyspaceByteEngine, NoStore, StoreOpts};
+use crate::engines::keyspaces::{failing_keystore, KeyspaceByteEngine, KeyspaceName, Keyspaces};
+use crate::engines::{KeyedSnapshot, NoStore, StoreOpts};
 use crate::stores::lane::map::MapDataModel;
 use crate::stores::lane::value::ValueDataModel;
 use crate::stores::node::NodeStore;
 use crate::stores::plane::{PlaneStore, SwimPlaneStore};
-use crate::stores::{LaneKey, StoreKey};
+use crate::stores::StoreKey;
 use crate::{
-    ByteEngine, FromOpts, RangedSnapshotLoad, Store, StoreError, StoreInfo, SwimNodeStore,
+    ByteEngine, FromKeyspaces, RangedSnapshotLoad, Store, StoreError, StoreInfo, SwimNodeStore,
     SwimStore,
 };
+use futures::future::ready;
+use futures::future::BoxFuture;
+use futures::FutureExt;
 use serde::Serialize;
 use std::path::Path;
+use std::sync::Arc;
 use swim_common::model::text::Text;
 use tempdir::TempDir;
 
@@ -46,21 +51,30 @@ impl Store for MockServerStore {
 }
 
 impl KeyspaceByteEngine for MockServerStore {
-    fn put_keyspace(&self, _keyspace: &str, _key: &[u8], _value: &[u8]) -> Result<(), StoreError> {
+    fn put_keyspace(
+        &self,
+        _keyspace: KeyspaceName,
+        _key: &[u8],
+        _value: &[u8],
+    ) -> Result<(), StoreError> {
         Ok(())
     }
 
-    fn get_keyspace(&self, _keyspace: &str, _key: &[u8]) -> Result<Option<Vec<u8>>, StoreError> {
+    fn get_keyspace(
+        &self,
+        _keyspace: KeyspaceName,
+        _key: &[u8],
+    ) -> Result<Option<Vec<u8>>, StoreError> {
         Ok(None)
     }
 
-    fn delete_keyspace(&self, _keyspace: &str, _key: &[u8]) -> Result<(), StoreError> {
+    fn delete_keyspace(&self, _keyspace: KeyspaceName, _key: &[u8]) -> Result<(), StoreError> {
         Ok(())
     }
 
     fn merge_keyspace(
         &self,
-        _keyspace: &str,
+        _keyspace: KeyspaceName,
         _key: &[u8],
         _value: &[u8],
     ) -> Result<(), StoreError> {
@@ -91,10 +105,14 @@ impl Default for MockOpts {
     }
 }
 
-impl FromOpts for MockServerStore {
+impl FromKeyspaces for MockServerStore {
     type Opts = MockOpts;
 
-    fn from_opts<I: AsRef<Path>>(path: I, _opts: &Self::Opts) -> Result<Self, StoreError> {
+    fn from_keyspaces<I: AsRef<Path>>(
+        path: I,
+        _db_opts: &Self::Opts,
+        _keyspaces: &Keyspaces<Self>,
+    ) -> Result<Self, StoreError> {
         Ok(MockServerStore {
             dir: TempDir::new(path.as_ref().to_string_lossy().as_ref())
                 .expect("Failed to build temporary directory"),
@@ -125,9 +143,10 @@ impl SwimStore for MockServerStore {
     {
         Ok(SwimPlaneStore::new(
             path.to_string(),
-            NoStore {
+            Arc::new(NoStore {
                 path: path.to_string().into(),
-            },
+            }),
+            failing_keystore(),
         ))
     }
 }
@@ -145,34 +164,37 @@ impl MockNodeStore {
 impl NodeStore for MockNodeStore {
     type Delegate = MockPlaneStore;
 
-    fn map_lane_store<I, K, V>(&self, lane: I) -> MapDataModel<Self::Delegate, K, V>
+    fn map_lane_store<I, K, V>(
+        &self,
+        _lane: I,
+    ) -> BoxFuture<'static, MapDataModel<Self::Delegate, K, V>>
     where
-        I: Into<Text>,
-        K: Serialize,
-        V: Serialize,
+        I: ToString,
+        K: Serialize + Send + 'static,
+        V: Serialize + Send + 'static,
         Self: Sized,
     {
-        MapDataModel::new(MockNodeStore::mock(), lane)
+        ready(MapDataModel::new(MockNodeStore::mock(), 0)).boxed()
     }
 
-    fn value_lane_store<I, V>(&self, lane: I) -> ValueDataModel<Self::Delegate>
+    fn value_lane_store<I, V>(&self, _lane: I) -> BoxFuture<'static, ValueDataModel<Self::Delegate>>
     where
-        I: Into<Text>,
-        V: Serialize,
+        I: ToString,
+        V: Serialize + Send + 'static,
         Self: Sized,
     {
-        ValueDataModel::new(MockNodeStore::mock(), lane)
+        ready(ValueDataModel::new(MockNodeStore::mock(), 0)).boxed()
     }
 
-    fn put(&self, _key: LaneKey, _value: &[u8]) -> Result<(), StoreError> {
+    fn put(&self, _key: StoreKey, _value: &[u8]) -> Result<(), StoreError> {
         Ok(())
     }
 
-    fn get(&self, _key: LaneKey) -> Result<Option<Vec<u8>>, StoreError> {
+    fn get(&self, _key: StoreKey) -> Result<Option<Vec<u8>>, StoreError> {
         Ok(None)
     }
 
-    fn delete(&self, _key: LaneKey) -> Result<(), StoreError> {
+    fn delete(&self, _key: StoreKey) -> Result<(), StoreError> {
         Ok(())
     }
 
@@ -198,7 +220,7 @@ impl PlaneStore for MockPlaneStore {
 
     fn load_ranged_snapshot<F, K, V>(
         &self,
-        _prefix: StoreKey<'_, '_>,
+        _prefix: StoreKey,
         _map_fn: F,
     ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
     where
@@ -221,5 +243,12 @@ impl PlaneStore for MockPlaneStore {
 
     fn store_info(&self) -> StoreInfo {
         todo!()
+    }
+
+    fn id_for<I>(&self, _lane_id: I) -> BoxFuture<'static, u64>
+    where
+        I: Into<String>,
+    {
+        async { 0 }.boxed()
     }
 }

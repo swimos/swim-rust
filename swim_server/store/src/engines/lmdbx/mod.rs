@@ -19,7 +19,7 @@ use crate::engines::{
     KeyedSnapshot, Keyspace, KeyspaceByteEngine, KeyspaceDescriptor, KeyspaceHandle,
     RangedSnapshotLoad, StoreOpts,
 };
-use crate::{ByteEngine, FromOpts, Store, StoreError, StoreInfo};
+use crate::{ByteEngine, FromKeyspaces, Store, StoreError, StoreInfo};
 use heed::types::ByteSlice;
 use heed::{Database, Env, EnvOpenOptions, Error};
 use std::fmt::{Debug, Formatter};
@@ -104,10 +104,10 @@ impl Store for LmdbxDatabase {
     }
 }
 
-impl FromOpts for LmdbxDatabase {
+impl FromKeyspaces for LmdbxDatabase {
     type Opts = LmdbOpts;
 
-    fn from_opts<I: AsRef<Path>>(path: I, opts: &Self::Opts) -> Result<Self, StoreError> {
+    fn from_keyspaces<I: AsRef<Path>>(path: I, opts: &Self::Opts) -> Result<Self, StoreError> {
         LmdbxDatabase::init(path, &opts.0)
     }
 }

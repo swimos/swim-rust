@@ -12,13 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::engines::keyspaces::{KeyStore, Keyspaces};
 use crate::engines::KeyedSnapshot;
 use crate::stores::lane::serialize;
 use crate::stores::node::{NodeStore, SwimNodeStore};
 use crate::stores::StoreKey;
 use crate::{Store, StoreError, StoreInfo};
+use futures::future::BoxFuture;
+use futures::FutureExt;
 use std::ffi::OsStr;
 use std::fmt::{Debug, Formatter};
+use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use swim_common::model::text::Text;
@@ -59,14 +63,14 @@ where
     /// key-value pairs.
     fn load_ranged_snapshot<F, K, V>(
         &self,
-        _prefix: StoreKey,
-        _map_fn: F,
+        prefix: StoreKey,
+        map_fn: F,
     ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
     where
         F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>;
 
     /// Serialize `key` and insert the key-value pair into the delegate store.
-    fn put(&self, key: StoreKey<'_, '_>, value: &[u8]) -> Result<(), StoreError>;
+    fn put(&self, key: StoreKey, value: &[u8]) -> Result<(), StoreError>;
 
     /// Gets the value associated with the provided store key if it exists.
     fn get(&self, key: StoreKey) -> Result<Option<Vec<u8>>, StoreError>;
@@ -76,6 +80,10 @@ where
 
     /// Returns information about the delegate store
     fn store_info(&self) -> StoreInfo;
+
+    fn id_for<I>(&self, lane_id: I) -> BoxFuture<u64>
+    where
+        I: Into<String>;
 }
 
 /// A store engine for planes.
@@ -87,6 +95,7 @@ pub struct SwimPlaneStore<D> {
     plane_name: Text,
     /// Delegate byte engine.
     delegate: Arc<D>,
+    keystore: KeyStore,
 }
 
 impl<D> Clone for SwimPlaneStore<D> {
@@ -94,6 +103,7 @@ impl<D> Clone for SwimPlaneStore<D> {
         SwimPlaneStore {
             plane_name: self.plane_name.clone(),
             delegate: self.delegate.clone(),
+            keystore: self.keystore.clone(),
         }
     }
 }
@@ -146,48 +156,66 @@ where
     fn store_info(&self) -> StoreInfo {
         self.delegate.store_info()
     }
+
+    fn id_for<I>(&self, lane_id: I) -> BoxFuture<u64>
+    where
+        I: Into<String>,
+    {
+        self.keystore.id_for(lane_id.into()).boxed()
+    }
 }
 
 impl<D> SwimPlaneStore<D>
 where
     D: Store,
 {
-    pub(crate) fn new<I: Into<Text>>(plane_name: I, delegate: D) -> SwimPlaneStore<D> {
+    pub(crate) fn new<I: Into<Text>>(
+        plane_name: I,
+        delegate: Arc<D>,
+        keystore: KeyStore,
+    ) -> SwimPlaneStore<D> {
         SwimPlaneStore {
             plane_name: plane_name.into(),
-            delegate: Arc::new(delegate),
+            delegate,
+            keystore,
         }
     }
 
     pub(crate) fn open<B, P>(
         base_path: B,
         plane_name: P,
-        opts: &D::Opts,
+        db_opts: &D::Opts,
+        keyspaces: &Keyspaces<D>,
     ) -> Result<SwimPlaneStore<D>, StoreError>
     where
         B: AsRef<Path>,
         P: AsRef<Path>,
     {
         let path = path_for(base_path.as_ref(), plane_name.as_ref());
-        let delegate = D::from_opts(&path, &opts)?;
+        let delegate = D::from_keyspaces(&path, db_opts, keyspaces)?;
         let plane_name = plane_name
             .as_ref()
             .to_str()
             .expect("Expected valid UTF-8")
             .to_string();
 
-        Ok(Self::new(plane_name, delegate))
+        let arcd_delegate = Arc::new(delegate);
+        // todo config
+        let keystore = KeyStore::new(arcd_delegate.clone(), NonZeroUsize::new(8).unwrap());
+
+        Ok(Self::new(plane_name, arcd_delegate, keystore))
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::engines::keyspaces::failing_keystore;
     use crate::engines::RocksDatabase;
     use crate::stores::plane::SwimPlaneStore;
-    use crate::stores::{StoreKey, ValueStorageKey};
+    use crate::stores::StoreKey;
     use crate::PlaneStore;
     use rocksdb::{Options, DB};
-    use std::borrow::Cow;
+    use std::sync::Arc;
 
     #[test]
     fn put_get() {
@@ -197,13 +225,8 @@ mod tests {
         {
             let delegate = RocksDatabase::new(db);
 
-            let plane_store = SwimPlaneStore::new("test", delegate);
-
-            let value_key = StoreKey::Value(ValueStorageKey {
-                node_uri: Cow::Owned("/node".into()),
-                lane_uri: Cow::Owned("/lane".into()),
-            });
-
+            let plane_store = SwimPlaneStore::new("test", Arc::new(delegate), failing_keystore());
+            let value_key = StoreKey::Value { lane_id: 0 };
             let test_data = "test";
 
             assert!(plane_store

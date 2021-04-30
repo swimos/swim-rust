@@ -15,25 +15,24 @@
 use crate::engines::KeyedSnapshot;
 use crate::stores::lane::{deserialize, serialize, serialize_then};
 use crate::stores::node::SwimNodeStore;
-use crate::stores::{LaneKey, MapStorageKey};
-use crate::{NodeStore, PlaneStore, Snapshot, StoreError};
+use crate::stores::INCONSISTENT_DB;
+use crate::{NodeStore, PlaneStore, Snapshot, StoreError, StoreKey};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::marker::PhantomData;
-use swim_common::model::text::Text;
 
 pub struct MapDataModel<D, K, V> {
     delegate: SwimNodeStore<D>,
-    lane_uri: Text,
+    lane_id: u64,
     _key: PhantomData<K>,
     _value: PhantomData<V>,
 }
 
 impl<D, K, V> MapDataModel<D, K, V> {
-    pub fn new<I: Into<Text>>(delegate: SwimNodeStore<D>, lane_uri: I) -> Self {
+    pub fn new(delegate: SwimNodeStore<D>, lane_id: u64) -> Self {
         MapDataModel {
             delegate,
-            lane_uri: lane_uri.into(),
+            lane_id,
             _key: Default::default(),
             _value: Default::default(),
         }
@@ -48,13 +47,13 @@ where
 {
     pub fn put(&self, key: &K, value: &V) -> Result<(), StoreError> {
         let MapDataModel {
-            delegate, lane_uri, ..
+            delegate, lane_id, ..
         } = self;
 
         let key = serialize(key)?;
         let value = serialize(value)?;
-        let k = LaneKey::Map {
-            lane_uri,
+        let k = StoreKey::Map {
+            lane_id: *lane_id,
             key: Some(key),
         };
         delegate.put(k, value.as_slice())
@@ -62,12 +61,12 @@ where
 
     pub fn get(&self, key: &K) -> Result<Option<V>, StoreError> {
         let MapDataModel {
-            delegate, lane_uri, ..
+            delegate, lane_id, ..
         } = self;
 
         let opt = serialize_then(delegate, key, |del, key| {
-            del.get(LaneKey::Map {
-                lane_uri,
+            del.get(StoreKey::Map {
+                lane_id: *lane_id,
                 key: Some(key),
             })
         })?;
@@ -80,12 +79,12 @@ where
 
     pub fn delete(&self, key: &K) -> Result<(), StoreError> {
         let MapDataModel {
-            delegate, lane_uri, ..
+            delegate, lane_id, ..
         } = self;
 
         serialize_then(delegate, key, |del, key| {
-            del.delete(LaneKey::Map {
-                lane_uri,
+            del.delete(StoreKey::Map {
+                lane_id: *lane_id,
                 key: Some(key),
             })
         })
@@ -101,18 +100,25 @@ where
     type Snapshot = KeyedSnapshot<K, V>;
 
     fn snapshot(&self) -> Result<Option<Self::Snapshot>, StoreError> {
-        let lane_key = LaneKey::Map {
-            lane_uri: &self.lane_uri,
+        let store_key = StoreKey::Map {
+            lane_id: self.lane_id,
             key: None,
         };
 
-        self.delegate.load_ranged_snapshot(lane_key, |key, value| {
-            let store_key = deserialize::<MapStorageKey>(&key)?;
+        self.delegate.load_ranged_snapshot(store_key, |key, value| {
+            let store_key = deserialize::<StoreKey>(&key)?;
 
-            let key = deserialize::<K>(&store_key.key.ok_or(StoreError::KeyNotFound)?)?;
-            let value = deserialize::<V>(&value)?;
+            match store_key {
+                StoreKey::Map { key, .. } => {
+                    let key = deserialize::<K>(&key.ok_or(StoreError::KeyNotFound)?)?;
+                    let value = deserialize::<V>(&value)?;
 
-            Ok((key, value))
+                    Ok((key, value))
+                }
+                StoreKey::Value { .. } => {
+                    return Err(StoreError::Decoding(INCONSISTENT_DB.to_string()))
+                }
+            }
         })
     }
 }

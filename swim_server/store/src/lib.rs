@@ -21,7 +21,7 @@ use std::{error::Error as StdError, fs, io};
 
 use tempdir::TempDir;
 
-use crate::engines::{ByteEngine, FromOpts, KeyspaceByteEngine, RangedSnapshotLoad};
+use crate::engines::{ByteEngine, FromKeyspaces, RangedSnapshotLoad};
 pub use engines::KeyedSnapshot;
 
 #[cfg(feature = "libmdbx")]
@@ -29,6 +29,7 @@ pub use engines::{LmdbOpts, LmdbxDatabase};
 #[cfg(feature = "rocks-db")]
 pub use engines::{RocksDatabase, RocksOpts};
 
+use crate::engines::keyspaces::{KeyspaceByteEngine, KeyspaceOptions, Keyspaces};
 pub use stores::lane::value::ValueDataModel;
 pub use stores::node::{NodeStore, SwimNodeStore};
 pub use stores::plane::{PlaneStore, SwimPlaneStore};
@@ -38,10 +39,6 @@ pub mod mock;
 
 mod engines;
 mod stores;
-
-pub(crate) const LANE_KS: &'static str = "default";
-pub(crate) const VALUE_LANE_KS: &'static str = "value_lanes";
-pub(crate) const MAP_LANE_KS: &'static str = "map_lanes";
 
 /// A directory on the file system used for sever stores.
 #[derive(Debug)]
@@ -151,7 +148,7 @@ impl PartialEq for StoreError {
 ///
 /// This trait only serves to compose the multiple traits that are required for a store.
 pub trait Store:
-    FromOpts + RangedSnapshotLoad + Send + Sync + Debug + ByteEngine + KeyspaceByteEngine + 'static
+    FromKeyspaces + RangedSnapshotLoad + Send + Sync + Debug + ByteEngine + KeyspaceByteEngine + 'static
 {
     /// Returns a reference to the path that the delegate byte engine is operating from.
     fn path(&self) -> &Path;
@@ -199,8 +196,9 @@ pub trait Snapshot<K, V> {
 pub struct ServerStore<D: Store> {
     /// The directory that this store is operating from.
     dir: StoreDir,
-    /// The options that all stores will be opened with.
-    opts: D::Opts,
+    db_opts: D::Opts,
+    /// The keyspaces that all stores will be opened with.
+    keyspaces: Keyspaces<D>,
     _delegate_pd: PhantomData<D>,
 }
 
@@ -218,10 +216,15 @@ impl<D: Store> ServerStore<D> {
     ///
     /// # Panics
     /// Panics if the directory cannot be created.
-    pub fn new(opts: D::Opts, base_path: PathBuf) -> ServerStore<D> {
+    pub fn new(
+        db_opts: D::Opts,
+        keyspaces: KeyspaceOptions<D::Opts>,
+        base_path: PathBuf,
+    ) -> ServerStore<D> {
         ServerStore {
             dir: StoreDir::persistent(base_path).expect("Failed to create server store"),
-            opts,
+            db_opts,
+            keyspaces: keyspaces.into(),
             _delegate_pd: Default::default(),
         }
     }
@@ -231,10 +234,15 @@ impl<D: Store> ServerStore<D> {
     ///
     /// # Panics
     /// Panics if the directory cannot be created.
-    pub fn transient(opts: D::Opts, prefix: &str) -> ServerStore<D> {
+    pub fn transient(
+        db_opts: D::Opts,
+        keyspaces: KeyspaceOptions<D::Opts>,
+        prefix: &str,
+    ) -> ServerStore<D> {
         ServerStore {
             dir: StoreDir::transient(prefix),
-            opts,
+            db_opts,
+            keyspaces: keyspaces.into(),
             _delegate_pd: Default::default(),
         }
     }
@@ -244,10 +252,15 @@ impl<D: Store> SwimStore for ServerStore<D> {
     type PlaneStore = SwimPlaneStore<D>;
 
     fn plane_store<I: ToString>(&mut self, plane_name: I) -> Result<Self::PlaneStore, StoreError> {
-        let ServerStore { opts, dir, .. } = self;
+        let ServerStore {
+            db_opts,
+            keyspaces,
+            dir,
+            ..
+        } = self;
         let plane_name = plane_name.to_string();
 
-        SwimPlaneStore::open(dir.path(), &plane_name, opts)
+        SwimPlaneStore::open(dir.path(), &plane_name, db_opts, keyspaces)
     }
 }
 
@@ -259,21 +272,20 @@ pub struct StoreInfo {
 
 #[cfg(test)]
 mod tests {
+    use crate::engines::keyspaces::KeyspaceOptions;
     use crate::engines::{RocksDatabase, RocksOpts};
-    use crate::stores::{StoreKey, ValueStorageKey};
+    use crate::stores::StoreKey;
     use crate::{PlaneStore, ServerStore, SwimStore};
-    use std::borrow::Cow;
 
     #[test]
     fn put_get() {
-        let server_opts = RocksOpts::default();
-        let mut store = ServerStore::<RocksDatabase>::transient(server_opts, "target".into());
+        let mut store = ServerStore::<RocksDatabase>::transient(
+            RocksOpts::default(),
+            KeyspaceOptions::default(),
+            "target".into(),
+        );
         let plane_store = store.plane_store("unit").unwrap();
-
-        let node_key = StoreKey::Value(ValueStorageKey {
-            node_uri: Cow::Owned("node".into()),
-            lane_uri: Cow::Owned("lane".into()),
-        });
+        let node_key = StoreKey::Value { lane_id: 0 };
 
         let test_data = "test";
 

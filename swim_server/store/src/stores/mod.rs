@@ -12,109 +12,32 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod keystore;
+use serde::{Deserialize, Serialize};
+
 pub mod lane;
 pub mod node;
 pub mod plane;
 
-use serde::{Deserialize, Serialize};
-use std::borrow::Cow;
-use swim_common::model::text::Text;
+pub const INCONSISTENT_DB: &str = "Missing key or value in store";
 
 /// A lane key that is either a map lane key or a value lane key.
-pub enum LaneKey<'l> {
+#[derive(Serialize, Deserialize, Clone, Debug, PartialOrd, PartialEq)]
+pub enum StoreKey {
     /// A map lane key.
     ///
-    /// Within plane stores, map lane keys are defined in the format of `/node_uri/lane_uri/key`
-    /// where `key` is the key of a lane's map data structure.
+    /// Within plane stores, map lane keys are defined in the format of `/lane_id/key` where `key`
+    /// is the key of a lane's map data structure.
     Map {
-        /// The lane URI.
-        lane_uri: &'l Text,
+        /// The lane ID.
+        lane_id: u64,
         /// An optional, serialized, key. This is optional as ranged snapshots to not require the
         /// key.
+        #[serde(skip_serializing_if = "Option::is_none")]
         key: Option<Vec<u8>>,
     },
     /// A value lane key.
     Value {
-        /// The lane URI.
-        lane_uri: &'l Text,
+        /// The lane ID.
+        lane_id: u64,
     },
-}
-
-/// A storage key used for either map or value lanes.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialOrd, PartialEq)]
-pub enum StoreKey<'n, 'l> {
-    #[serde(borrow)]
-    Map(MapStorageKey<'n, 'l>),
-    #[serde(borrow)]
-    Value(ValueStorageKey<'n, 'l>),
-}
-
-/// A storage key for map lanes.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialOrd, PartialEq)]
-pub struct MapStorageKey<'n, 'l> {
-    /// The node URI that this key corresponds to.
-    #[serde(with = "text_serde", borrow)]
-    pub node_uri: Cow<'n, Text>,
-    /// The lane URI that this key corresponds to.
-    #[serde(with = "text_serde", borrow)]
-    pub lane_uri: Cow<'l, Text>,
-    /// An optional serialized key for the key within the lane.
-    ///
-    /// This is optional as it is not required for executing ranged snapshots on a storage engine.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub key: Option<Vec<u8>>,
-}
-
-/// A storage key for value lanes.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialOrd, PartialEq)]
-pub struct ValueStorageKey<'n, 'l> {
-    #[serde(with = "text_serde", borrow)]
-    pub node_uri: Cow<'n, Text>,
-    #[serde(with = "text_serde", borrow)]
-    pub lane_uri: Cow<'l, Text>,
-}
-
-/// Cow<'_, Text> serde implementation
-mod text_serde {
-    use serde::de::{Error, Visitor};
-    use serde::{Deserializer, Serializer};
-    use std::borrow::Cow;
-    use std::fmt::Formatter;
-    use std::str::FromStr;
-    use swim_common::model::text::Text;
-
-    pub fn serialize<S>(text: &Text, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        serializer.serialize_str(text.as_str())
-    }
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<Cow<'de, Text>, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        struct TextVisitor;
-
-        impl<'de> Visitor<'de> for TextVisitor {
-            type Value = Cow<'de, Text>;
-
-            fn expecting(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-                formatter.write_str("Expected a string literal")
-            }
-
-            fn visit_borrowed_str<E>(self, v: &str) -> Result<Self::Value, E>
-            where
-                E: Error,
-            {
-                match Text::from_str(v) {
-                    Ok(s) => Ok(Cow::Owned(s)),
-                    Err(e) => Err(E::custom(e)),
-                }
-            }
-        }
-
-        deserializer.deserialize_str(TextVisitor)
-    }
 }

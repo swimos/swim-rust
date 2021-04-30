@@ -15,10 +15,11 @@
 use crate::engines::KeyedSnapshot;
 use crate::stores::lane::map::MapDataModel;
 use crate::stores::lane::value::ValueDataModel;
-use crate::stores::{LaneKey, MapStorageKey, StoreKey, ValueStorageKey};
+use crate::stores::StoreKey;
 use crate::{PlaneStore, StoreError, StoreInfo};
+use futures::future::BoxFuture;
+use futures::FutureExt;
 use serde::Serialize;
-use std::borrow::Cow;
 use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
 use swim_common::model::text::Text;
@@ -43,11 +44,14 @@ pub trait NodeStore: Send + Sync + Clone + Debug + 'static {
     /// `lane_uri`: the URI of the lane.
     /// `transient`: whether the lane is a transient lane. If this is `true`, then the data model
     /// returned should be an in-memory store.
-    fn map_lane_store<I, K, V>(&self, lane_uri: I) -> MapDataModel<Self::Delegate, K, V>
+    fn map_lane_store<I, K, V>(
+        &self,
+        lane_uri: I,
+    ) -> BoxFuture<'static, MapDataModel<Self::Delegate, K, V>>
     where
-        I: Into<Text>,
-        K: Serialize,
-        V: Serialize,
+        I: ToString + Send + 'static,
+        K: Serialize + Send + 'static,
+        V: Serialize + Send + 'static,
         Self: Sized;
 
     /// Open a new value data model.
@@ -56,20 +60,23 @@ pub trait NodeStore: Send + Sync + Clone + Debug + 'static {
     /// `lane_uri`: the URI of the lane.
     /// `transient`: whether the lane is a transient lane. If this is `true`, then the data model
     /// returned should be an in-memory store.
-    fn value_lane_store<I, V>(&self, lane_uri: I) -> ValueDataModel<Self::Delegate>
+    fn value_lane_store<I, V>(
+        &self,
+        lane_uri: I,
+    ) -> BoxFuture<'static, ValueDataModel<Self::Delegate>>
     where
-        I: Into<Text>,
-        V: Serialize,
+        I: ToString + Send + 'static,
+        V: Serialize + Send + 'static,
         Self: Sized;
 
     /// Put a key-value pair into the delegate store.
-    fn put(&self, key: LaneKey<'_>, value: &[u8]) -> Result<(), StoreError>;
+    fn put(&self, key: StoreKey, value: &[u8]) -> Result<(), StoreError>;
 
     /// Get a value keyed by a lane key from the delegate store.
-    fn get(&self, key: LaneKey<'_>) -> Result<Option<Vec<u8>>, StoreError>;
+    fn get(&self, key: StoreKey) -> Result<Option<Vec<u8>>, StoreError>;
 
     /// Delete a key-value pair by its lane key from the delegate store.
-    fn delete(&self, key: LaneKey<'_>) -> Result<(), StoreError>;
+    fn delete(&self, key: StoreKey) -> Result<(), StoreError>;
 
     /// Returns information about the delegate store
     fn store_info(&self) -> StoreInfo;
@@ -85,7 +92,7 @@ pub struct SwimNodeStore<D> {
 }
 
 impl<D> Debug for SwimNodeStore<D> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         f.debug_struct("SwimNodeStore")
             .field("node_uri", &self.node_uri)
             .finish()
@@ -118,24 +125,12 @@ impl<D: PlaneStore> SwimNodeStore<D> {
     /// key-value pairs.
     pub(crate) fn load_ranged_snapshot<F, K, V>(
         &self,
-        prefix: LaneKey,
+        prefix: StoreKey,
         map_fn: F,
     ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
     where
         F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
     {
-        let prefix = match prefix {
-            LaneKey::Map { lane_uri, .. } => StoreKey::Map(MapStorageKey {
-                node_uri: Cow::Borrowed(&self.node_uri),
-                lane_uri: Cow::Borrowed(lane_uri),
-                key: None,
-            }),
-            LaneKey::Value { lane_uri } => StoreKey::Value(ValueStorageKey {
-                node_uri: Cow::Borrowed(&self.node_uri),
-                lane_uri: Cow::Borrowed(lane_uri),
-            }),
-        };
-
         self.delegate.load_ranged_snapshot(prefix, map_fn)
     }
 }
@@ -143,59 +138,49 @@ impl<D: PlaneStore> SwimNodeStore<D> {
 impl<D: PlaneStore> NodeStore for SwimNodeStore<D> {
     type Delegate = D;
 
-    fn map_lane_store<I, K, V>(&self, lane: I) -> MapDataModel<D, K, V>
+    fn map_lane_store<I, K, V>(&self, lane: I) -> BoxFuture<'static, MapDataModel<D, K, V>>
     where
-        I: Into<Text>,
-        K: Serialize,
-        V: Serialize,
+        I: ToString + Send + 'static,
+        K: Serialize + Send + 'static,
+        V: Serialize + Send + 'static,
     {
-        MapDataModel::new(self.clone(), lane)
+        let node_store = self.clone();
+        let key = format!("{}/{}", self.node_uri, lane.to_string());
+
+        async move {
+            let lane_id = node_store.delegate.id_for(key).await;
+            MapDataModel::new(node_store, lane_id)
+        }
+        .boxed()
     }
 
-    fn value_lane_store<I, V>(&self, lane: I) -> ValueDataModel<D>
+    fn value_lane_store<I, V>(&self, lane: I) -> BoxFuture<'static, ValueDataModel<D>>
     where
-        I: Into<Text>,
-        V: Serialize,
+        I: ToString + Send + 'static,
+        V: Serialize + Send + 'static,
     {
-        ValueDataModel::new(self.clone(), lane)
+        let node_store = self.clone();
+        let key = format!("{}/{}", self.node_uri, lane.to_string());
+        async move {
+            let lane_id = node_store.delegate.id_for(key).await;
+            ValueDataModel::new(node_store, lane_id)
+        }
+        .boxed()
     }
 
-    fn put(&self, key: LaneKey, value: &[u8]) -> Result<(), StoreError> {
-        let SwimNodeStore { delegate, node_uri } = self;
-        let key = map_key(key, node_uri);
-
-        delegate.put(key, value)
+    fn put(&self, key: StoreKey, value: &[u8]) -> Result<(), StoreError> {
+        self.delegate.put(key, value)
     }
 
-    fn get(&self, key: LaneKey) -> Result<Option<Vec<u8>>, StoreError> {
-        let SwimNodeStore { delegate, node_uri } = self;
-        let key = map_key(key, node_uri);
-
-        delegate.get(key)
+    fn get(&self, key: StoreKey) -> Result<Option<Vec<u8>>, StoreError> {
+        self.delegate.get(key)
     }
 
-    fn delete(&self, key: LaneKey) -> Result<(), StoreError> {
-        let SwimNodeStore { delegate, node_uri } = self;
-        let key = map_key(key, node_uri);
-
-        delegate.delete(key)
+    fn delete(&self, key: StoreKey) -> Result<(), StoreError> {
+        self.delegate.delete(key)
     }
 
     fn store_info(&self) -> StoreInfo {
         self.delegate.store_info()
-    }
-}
-
-fn map_key<'n, 'l>(lane_key: LaneKey<'l>, node_uri: &'n Text) -> StoreKey<'n, 'l> {
-    match lane_key {
-        LaneKey::Map { lane_uri, key } => StoreKey::Map(MapStorageKey {
-            node_uri: Cow::Borrowed(node_uri),
-            lane_uri: Cow::Borrowed(lane_uri),
-            key,
-        }),
-        LaneKey::Value { lane_uri } => StoreKey::Value(ValueStorageKey {
-            node_uri: Cow::Borrowed(node_uri),
-            lane_uri: Cow::Borrowed(lane_uri),
-        }),
     }
 }

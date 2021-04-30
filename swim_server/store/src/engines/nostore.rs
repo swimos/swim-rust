@@ -12,8 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::engines::{KeyedSnapshot, KeyspaceByteEngine, RangedSnapshotLoad, StoreOpts};
-use crate::{ByteEngine, FromOpts, Store, StoreError, StoreInfo};
+use crate::engines::keyspaces::{KeyspaceByteEngine, KeyspaceName, Keyspaces};
+use crate::engines::{KeyedSnapshot, RangedSnapshotLoad, StoreOpts};
+use crate::{ByteEngine, FromKeyspaces, Store, StoreError, StoreInfo};
 use std::borrow::Borrow;
 use std::path::{Path, PathBuf};
 
@@ -38,21 +39,30 @@ impl Store for NoStore {
 }
 
 impl KeyspaceByteEngine for NoStore {
-    fn put_keyspace(&self, _keyspace: &str, _key: &[u8], _value: &[u8]) -> Result<(), StoreError> {
+    fn put_keyspace(
+        &self,
+        _keyspace: KeyspaceName,
+        _key: &[u8],
+        _value: &[u8],
+    ) -> Result<(), StoreError> {
         Ok(())
     }
 
-    fn get_keyspace(&self, _keyspace: &str, _key: &[u8]) -> Result<Option<Vec<u8>>, StoreError> {
+    fn get_keyspace(
+        &self,
+        _keyspace: KeyspaceName,
+        _key: &[u8],
+    ) -> Result<Option<Vec<u8>>, StoreError> {
         Ok(None)
     }
 
-    fn delete_keyspace(&self, _keyspace: &str, _key: &[u8]) -> Result<(), StoreError> {
+    fn delete_keyspace(&self, _keyspace: KeyspaceName, _key: &[u8]) -> Result<(), StoreError> {
         Ok(())
     }
 
     fn merge_keyspace(
         &self,
-        _keyspace: &str,
+        _keyspace: KeyspaceName,
         _key: &[u8],
         _value: &[u8],
     ) -> Result<(), StoreError> {
@@ -78,10 +88,14 @@ pub struct NoStoreOpts;
 
 impl StoreOpts for NoStoreOpts {}
 
-impl FromOpts for NoStore {
+impl FromKeyspaces for NoStore {
     type Opts = NoStoreOpts;
 
-    fn from_opts<I: AsRef<Path>>(path: I, _opts: &Self::Opts) -> Result<Self, StoreError> {
+    fn from_keyspaces<I: AsRef<Path>>(
+        path: I,
+        _db_opts: &Self::Opts,
+        _keyspaces: &Keyspaces<Self>,
+    ) -> Result<Self, StoreError> {
         Ok(NoStore {
             path: path.as_ref().to_path_buf(),
         })

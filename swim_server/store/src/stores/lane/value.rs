@@ -14,18 +14,16 @@
 
 use crate::stores::lane::{deserialize, serialize_then};
 use crate::stores::node::SwimNodeStore;
-use crate::stores::LaneKey;
-use crate::{NodeStore, PlaneStore, StoreError};
+use crate::{NodeStore, PlaneStore, StoreError, StoreKey};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
-use swim_common::model::text::Text;
 
 /// A value lane data model.
 pub struct ValueDataModel<D> {
     /// The store to delegate this model's operations to.
     delegate: SwimNodeStore<D>,
     /// The lane URI that this store is operating on.
-    lane_uri: Text,
+    lane_id: u64,
 }
 
 impl<D> ValueDataModel<D> {
@@ -33,17 +31,14 @@ impl<D> ValueDataModel<D> {
     ///
     /// # Arguments
     /// `delegate`: if this data model is *not* transient, then delegate operations to this store.
-    /// `lane_uri`: the lane URI that this store represents.
-    pub fn new<I: Into<Text>>(delegate: SwimNodeStore<D>, lane_uri: I) -> Self {
-        ValueDataModel {
-            delegate,
-            lane_uri: lane_uri.into(),
-        }
+    /// `lane_id`: the lane URI that this store represents.
+    pub fn new(delegate: SwimNodeStore<D>, lane_id: u64) -> Self {
+        ValueDataModel { delegate, lane_id }
     }
 
-    fn key(&self) -> LaneKey {
-        LaneKey::Value {
-            lane_uri: &self.lane_uri,
+    fn key(&self) -> StoreKey {
+        StoreKey::Value {
+            lane_id: self.lane_id,
         }
     }
 }

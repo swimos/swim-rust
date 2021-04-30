@@ -12,14 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#[cfg(test)]
-mod test_suite;
-
-#[cfg(feature = "libmdbx")]
-mod lmdbx;
-mod nostore;
-#[cfg(feature = "rocks-db")]
-mod rocks;
+use std::path::Path;
+use std::vec::IntoIter;
 
 #[cfg(feature = "libmdbx")]
 pub use lmdbx::{LmdbOpts, LmdbxDatabase};
@@ -27,9 +21,18 @@ pub use nostore::{NoStore, NoStoreOpts};
 #[cfg(feature = "rocks-db")]
 pub use rocks::{RocksDatabase, RocksOpts};
 
+use crate::engines::keyspaces::Keyspaces;
 use crate::StoreError;
-use std::path::Path;
-use std::vec::IntoIter;
+
+#[cfg(test)]
+mod test_suite;
+
+pub mod keyspaces;
+#[cfg(feature = "libmdbx")]
+mod lmdbx;
+mod nostore;
+#[cfg(feature = "rocks-db")]
+mod rocks;
 
 /// A storage engine for server stores that handles byte arrays.
 pub trait ByteEngine: 'static {
@@ -43,21 +46,8 @@ pub trait ByteEngine: 'static {
     fn delete(&self, key: &[u8]) -> Result<(), StoreError>;
 }
 
-pub trait KeyspaceByteEngine: Send + Sync + 'static {
-    /// Put a key-value pair into this store.
-    fn put_keyspace(&self, keyspace: &str, key: &[u8], value: &[u8]) -> Result<(), StoreError>;
-
-    /// Get an entry from this store by its key.
-    fn get_keyspace(&self, keyspace: &str, key: &[u8]) -> Result<Option<Vec<u8>>, StoreError>;
-
-    /// Delete a value from this store by its key.
-    fn delete_keyspace(&self, keyspace: &str, key: &[u8]) -> Result<(), StoreError>;
-
-    fn merge_keyspace(&self, keyspace: &str, key: &[u8], value: &[u8]) -> Result<(), StoreError>;
-}
-
 /// A trait for building stores from their options.
-pub trait FromOpts: Sized {
+pub trait FromKeyspaces: Sized {
     /// The type of options this store accepts.
     type Opts: StoreOpts;
 
@@ -69,7 +59,11 @@ pub trait FromOpts: Sized {
     /// `path`: the path that this store should open in.
     /// `opts`: the options.
     ///
-    fn from_opts<I: AsRef<Path>>(path: I, opts: &Self::Opts) -> Result<Self, StoreError>;
+    fn from_keyspaces<I: AsRef<Path>>(
+        path: I,
+        db_opts: &Self::Opts,
+        keyspaces: &Keyspaces<Self>,
+    ) -> Result<Self, StoreError>;
 }
 
 pub trait StoreOpts: Default {}
