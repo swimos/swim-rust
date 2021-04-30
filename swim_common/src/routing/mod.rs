@@ -127,6 +127,7 @@ pub trait Router: Send + Sync {
         &mut self,
         host: Option<Url>,
         route: RelativeUri,
+        origin: Option<SchemeSocketAddr>,
     ) -> BoxFuture<Result<RoutingAddr, RouterError>>;
 }
 

@@ -56,9 +56,7 @@ use swim_common::routing::error::RoutingError;
 use swim_common::routing::remote::config::ConnectionConfig;
 use swim_common::routing::remote::net::dns::Resolver;
 use swim_common::routing::remote::net::plain::TokioPlainTextNetworking;
-use swim_common::routing::remote::{
-    RemoteConnectionChannels, RemoteConnectionsTask, RoutingRequest,
-};
+use swim_common::routing::remote::{RemoteConnectionChannels, RemoteConnectionsTask, RoutingRequest, TempRouterFac};
 use swim_common::routing::ws::tungstenite::TungsteniteWsConnections;
 use swim_common::routing::{ConnectionDropped, RoutingAddr};
 use swim_common::sink::item;
@@ -397,6 +395,7 @@ pub(crate) async fn create_remote_connections_task(
     RemoteConnectionsTask<
         TokioPlainTextNetworking,
         TungsteniteWsConnections,
+        TempRouterFac,
         ClientRouterFactory,
         OpenEndedFutures<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>>,
     >,

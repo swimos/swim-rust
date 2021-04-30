@@ -56,6 +56,7 @@ pub trait RemoteTasksState {
         sock_addr: SchemeSocketAddr,
         ws_stream: Self::WebSocket,
         host: Option<SchemeHostPort>,
+        server: bool,
     );
 
     /// Check a pair of host/socket address, registering the hose with the address if a connection
@@ -104,7 +105,7 @@ pub trait RemoteTasksState {
 /// * `Ws` - Negotiates a web socket connection on top of the sockets provided by `External`.
 /// * `Sp` - Spawner to run the tasks that manage the connections opened by this state machine.
 /// * `Routerfac` - Creates router instances to be provided to the connection management tasks.
-pub struct RemoteConnections<'a, External, Ws, Sp, RouterFac>
+pub struct RemoteConnections<'a, External, Ws, Sp, PlaneRouterFac, ClientRouterFac>
 where
     External: ExternalConnections,
     Ws: WsConnections<External::Socket>,
@@ -117,20 +118,21 @@ where
     table: RoutingTable,
     pending: PendingRequests,
     addresses: RemoteRoutingAddresses,
-    tasks: TaskFactory<RouterFac>,
+    tasks: TaskFactory<PlaneRouterFac, ClientRouterFac>,
     deferred: OpenEndedFutures<BoxFuture<'a, DeferredResult<Ws::StreamSink>>>,
     state: State,
     external_stop: Fuse<trigger::Receiver>,
     internal_stop: Option<trigger::Sender>,
 }
 
-impl<'a, External, Ws, Sp, RouterFac> RemoteTasksState
-    for RemoteConnections<'a, External, Ws, Sp, RouterFac>
+impl<'a, External, Ws, Sp, PlaneRouterFac, ClientRouterFac> RemoteTasksState
+    for RemoteConnections<'a, External, Ws, Sp, PlaneRouterFac, ClientRouterFac>
 where
     External: ExternalConnections,
     Ws: WsConnections<External::Socket> + Send + Sync + 'static,
     Sp: Spawner<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>> + Unpin,
-    RouterFac: RouterFactory + 'static,
+    PlaneRouterFac: RouterFactory + 'static,
+    ClientRouterFac: RouterFactory + 'static,
 {
     type Socket = External::Socket;
     type WebSocket = Ws::StreamSink;
@@ -156,6 +158,7 @@ where
         sock_addr: SchemeSocketAddr,
         ws_stream: Ws::StreamSink,
         host: Option<SchemeHostPort>,
+        server: bool,
     ) {
         let addr = self.next_address();
         let RemoteConnections {
@@ -165,7 +168,8 @@ where
             pending,
             ..
         } = self;
-        let msg_tx = tasks.spawn_connection_task(sock_addr.clone(), ws_stream, addr, spawner);
+        let msg_tx =
+            tasks.spawn_connection_task(sock_addr.clone(), ws_stream, addr, spawner, server);
         table.insert(addr, host.clone(), sock_addr, msg_tx);
         if let Some(host) = host {
             pending.send_ok(&host, addr);
@@ -238,12 +242,14 @@ where
     }
 }
 
-impl<'a, External, Ws, Sp, RouterFac> RemoteConnections<'a, External, Ws, Sp, RouterFac>
+impl<'a, External, Ws, Sp, PlaneRouterFac, ClientRouterFac>
+    RemoteConnections<'a, External, Ws, Sp, PlaneRouterFac, ClientRouterFac>
 where
     External: ExternalConnections,
     Ws: WsConnections<External::Socket> + Send + Sync + 'static,
     Sp: Spawner<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>> + Unpin,
-    RouterFac: RouterFactory + 'static,
+    PlaneRouterFac: RouterFactory + 'static,
+    ClientRouterFac: RouterFactory + 'static,
 {
     /// Create a new, empty state.
     ///
@@ -264,7 +270,8 @@ where
         spawner: Sp,
         external: External,
         listener: Option<External::ListenerType>,
-        delegate_router: RouterFac,
+        plane_router_fac: PlaneRouterFac,
+        client_router_fac: ClientRouterFac,
         channels: RemoteConnectionChannels,
     ) -> Self {
         let RemoteConnectionChannels {
@@ -274,7 +281,13 @@ where
         } = channels;
 
         let (stop_tx, stop_rx) = trigger::trigger();
-        let tasks = TaskFactory::new(request_tx, stop_rx.clone(), configuration, delegate_router);
+        let tasks = TaskFactory::new(
+            request_tx,
+            stop_rx.clone(),
+            configuration,
+            plane_router_fac,
+            client_router_fac,
+        );
         RemoteConnections {
             websockets,
             listener: listener.map(Listener::into_stream),

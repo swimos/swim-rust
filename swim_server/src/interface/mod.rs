@@ -315,6 +315,7 @@ impl SwimServer {
                 config: websocket_config,
             },
             top_level_router_fac,
+            client_router_fac,
             OpenEndedFutures::new(),
             RemoteConnectionChannels::new(remote_tx, remote_rx, stop_trigger_rx),
         )

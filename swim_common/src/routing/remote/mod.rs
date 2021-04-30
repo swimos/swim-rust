@@ -35,12 +35,12 @@ use tracing::{event, Level};
 use url::Url;
 use utilities::sync::promise;
 
-use crate::routing::{ConnectionError, ResolutionError};
+use crate::routing::{ConnectionError, ResolutionError, Route, Router};
 use utilities::sync::trigger;
 use utilities::task::Spawner;
 
-use crate::routing::error::Unresolvable;
 use crate::routing::error::{HttpError, ResolutionErrorKind};
+use crate::routing::error::{RouterError, Unresolvable};
 use crate::routing::remote::config::ConnectionConfig;
 use crate::routing::remote::state::{DeferredResult, Event, RemoteConnections, RemoteTasksState};
 use crate::routing::remote::table::SchemeHostPort;
@@ -50,6 +50,7 @@ use futures::stream::FusedStream;
 use std::fmt::{Display, Formatter};
 use std::io;
 use std::io::Error;
+use utilities::uri::RelativeUri;
 
 #[cfg(test)]
 pub mod test_fixture;
@@ -108,12 +109,19 @@ impl RemoteConnectionChannels {
 }
 
 #[derive(Debug)]
-pub enum RemoteConnectionsTask<External: ExternalConnections, Ws, Router, Sp> {
+pub enum RemoteConnectionsTask<
+    External: ExternalConnections,
+    Ws,
+    PlaneRouterFac,
+    ClientRouterFac,
+    Sp,
+> {
     Server {
         external: External,
         listener: External::ListenerType,
         websockets: Ws,
-        delegate_router: Router,
+        plane_router_fac: PlaneRouterFac,
+        client_router_fac: ClientRouterFac,
         stop_trigger: trigger::Receiver,
         spawner: Sp,
         configuration: ConnectionConfig,
@@ -123,7 +131,7 @@ pub enum RemoteConnectionsTask<External: ExternalConnections, Ws, Router, Sp> {
     Client {
         external: External,
         websockets: Ws,
-        delegate_router: Router,
+        client_router_fac: ClientRouterFac,
         stop_trigger: trigger::Receiver,
         spawner: Sp,
         configuration: ConnectionConfig,
@@ -149,18 +157,20 @@ const CLOSED_NO_HANDLES: &str = "A connection closed with no handles remaining."
 /// * `Ws` - Negotiates a web socket connection on top of the sockets provided by `External`.
 /// * `Sp` - Spawner to run the tasks that manage the connections opened by this state machine.
 /// * `Routerfac` - Creates router instances to be provided to the connection management tasks.
-impl<External, Ws, RouterFac, Sp> RemoteConnectionsTask<External, Ws, RouterFac, Sp>
+impl<External, Ws, PlaneRouterFac, ClientRouterFac, Sp>
+    RemoteConnectionsTask<External, Ws, PlaneRouterFac, ClientRouterFac, Sp>
 where
     External: ExternalConnections,
     Ws: WsConnections<External::Socket> + Send + Sync + 'static,
-    RouterFac: RouterFactory + 'static,
+    PlaneRouterFac: RouterFactory + 'static,
+    ClientRouterFac: RouterFactory + 'static,
     Sp: Spawner<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>> + Send + Unpin,
 {
     pub async fn new_client_task(
         configuration: ConnectionConfig,
         external: External,
         websockets: Ws,
-        delegate_router: RouterFac,
+        client_router_fac: ClientRouterFac,
         spawner: Sp,
         channels: RemoteConnectionChannels,
     ) -> Self {
@@ -173,7 +183,7 @@ where
         RemoteConnectionsTask::Client {
             external,
             websockets,
-            delegate_router,
+            client_router_fac,
             stop_trigger,
             spawner,
             configuration,
@@ -187,7 +197,8 @@ where
         external: External,
         bind_addr: SocketAddr,
         websockets: Ws,
-        delegate_router: RouterFac,
+        plane_router_fac: PlaneRouterFac,
+        client_router_fac: ClientRouterFac,
         spawner: Sp,
         channels: RemoteConnectionChannels,
     ) -> io::Result<Self> {
@@ -203,7 +214,8 @@ where
             external,
             listener,
             websockets,
-            delegate_router,
+            plane_router_fac,
+            client_router_fac,
             stop_trigger,
             spawner,
             configuration,
@@ -218,7 +230,8 @@ where
                 external,
                 listener,
                 websockets,
-                delegate_router,
+                plane_router_fac,
+                client_router_fac,
                 stop_trigger,
                 spawner,
                 configuration,
@@ -231,7 +244,8 @@ where
                     spawner,
                     external,
                     Some(listener),
-                    delegate_router,
+                    plane_router_fac,
+                    client_router_fac,
                     RemoteConnectionChannels {
                         request_tx: remote_tx,
                         request_rx: remote_rx,
@@ -244,20 +258,24 @@ where
             RemoteConnectionsTask::Client {
                 external,
                 websockets,
-                delegate_router,
+                client_router_fac,
                 stop_trigger,
                 spawner,
                 configuration,
                 remote_tx,
                 remote_rx,
             } => {
+                //todo dm remove this temp fix
+                let temp_router_fac = TempRouterFac {};
+
                 let state = RemoteConnections::new(
                     &websockets,
                     configuration,
                     spawner,
                     external,
                     None,
-                    delegate_router,
+                    temp_router_fac,
+                    client_router_fac,
                     RemoteConnectionChannels {
                         request_tx: remote_tx,
                         request_rx: remote_rx,
@@ -271,7 +289,7 @@ where
     }
 
     async fn run_loop(
-        mut state: RemoteConnections<'_, External, Ws, Sp, RouterFac>,
+        mut state: RemoteConnections<'_, External, Ws, Sp, PlaneRouterFac, ClientRouterFac>,
         configuration: ConnectionConfig,
     ) -> Result<(), Error> {
         let mut overall_result = Ok(());
@@ -287,6 +305,38 @@ where
             }
         }
         overall_result
+    }
+}
+
+//todo dm remove this temp fix
+pub struct TempRouter {}
+
+impl Router for TempRouter {
+    fn resolve_sender(
+        &mut self,
+        _addr: RoutingAddr,
+        _origin: Option<SchemeSocketAddr>,
+    ) -> BoxFuture<'_, Result<Route, ResolutionError>> {
+        unimplemented!()
+    }
+
+    fn lookup(
+        &mut self,
+        _host: Option<Url>,
+        _route: RelativeUri,
+        _origin: Option<SchemeSocketAddr>,
+    ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
+        unimplemented!()
+    }
+}
+
+pub struct TempRouterFac {}
+
+impl RouterFactory for TempRouterFac {
+    type Router = TempRouter;
+
+    fn create_for(&self, _addr: RoutingAddr) -> Self::Router {
+        TempRouter {}
     }
 }
 
@@ -331,7 +381,7 @@ fn update_state<State: RemoteTasksState>(
             result: Ok(ws_stream),
             sock_addr,
         }) => {
-            state.spawn_task(sock_addr, ws_stream, None);
+            state.spawn_task(sock_addr, ws_stream, None, true);
         }
         Event::Deferred(DeferredResult::ServerHandshake {
             result: Err(error), ..
@@ -342,7 +392,7 @@ fn update_state<State: RemoteTasksState>(
             result: Ok((ws_stream, sock_addr)),
             host,
         }) => {
-            state.spawn_task(sock_addr, ws_stream, Some(host));
+            state.spawn_task(sock_addr, ws_stream, Some(host), false);
         }
         Event::Deferred(DeferredResult::ClientHandshake {
             result: Err(error),

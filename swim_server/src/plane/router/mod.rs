@@ -124,6 +124,7 @@ impl<Delegate: Router> Router for PlaneRouter<Delegate> {
         &mut self,
         host: Option<Url>,
         route: RelativeUri,
+        _origin: Option<SchemeSocketAddr>,
     ) -> BoxFuture<Result<RoutingAddr, RouterError>> {
         async move {
             let PlaneRouter { request_sender, .. } = self;

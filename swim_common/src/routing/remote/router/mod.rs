@@ -29,27 +29,32 @@ mod tests;
 /// Router implementation that will route to running [`ConnectionTask`]s for remote addresses and
 /// will delegate to another router instance for local addresses.
 #[derive(Debug)]
-pub struct RemoteRouter<Delegate> {
+pub struct RemoteRouter<PlaneDelegate, ClientDelegate> {
     tag: RoutingAddr,
-    delegate_router: Delegate,
+    plane_delegate_router: PlaneDelegate,
+    client_delegate_router: ClientDelegate,
     request_tx: mpsc::Sender<RoutingRequest>,
 }
 
-impl<Delegate> RemoteRouter<Delegate> {
+impl<PlaneDelegate, ClientDelegate> RemoteRouter<PlaneDelegate, ClientDelegate> {
     pub fn new(
         tag: RoutingAddr,
-        delegate_router: Delegate,
+        plane_delegate_router: PlaneDelegate,
+        client_delegate_router: ClientDelegate,
         request_tx: mpsc::Sender<RoutingRequest>,
     ) -> Self {
         RemoteRouter {
             tag,
-            delegate_router,
+            plane_delegate_router,
+            client_delegate_router,
             request_tx,
         }
     }
 }
 
-impl<Delegate: Router> Router for RemoteRouter<Delegate> {
+impl<PlaneDelegate: Router, ClientDelegate: Router> Router
+    for RemoteRouter<PlaneDelegate, ClientDelegate>
+{
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,
@@ -58,7 +63,8 @@ impl<Delegate: Router> Router for RemoteRouter<Delegate> {
         async move {
             let RemoteRouter {
                 tag,
-                delegate_router,
+                plane_delegate_router,
+                client_delegate_router,
                 request_tx,
             } = self;
             if addr.is_remote() {
@@ -77,7 +83,11 @@ impl<Delegate: Router> Router for RemoteRouter<Delegate> {
                     }
                 }
             } else {
-                delegate_router.resolve_sender(addr, origin).await
+                if origin.is_some() {
+                    client_delegate_router.resolve_sender(addr, origin).await
+                } else {
+                    plane_delegate_router.resolve_sender(addr, origin).await
+                }
             }
         }
         .boxed()
@@ -87,11 +97,13 @@ impl<Delegate: Router> Router for RemoteRouter<Delegate> {
         &mut self,
         host: Option<Url>,
         route: RelativeUri,
+        origin: Option<SchemeSocketAddr>,
     ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
         async move {
             let RemoteRouter {
                 request_tx,
-                delegate_router,
+                plane_delegate_router,
+                client_delegate_router,
                 ..
             } = self;
             if let Some(url) = host {
@@ -108,7 +120,11 @@ impl<Delegate: Router> Router for RemoteRouter<Delegate> {
                     }
                 }
             } else {
-                delegate_router.lookup(host, route).await
+                if origin.is_some() {
+                    client_delegate_router.lookup(host, route, origin).await
+                } else {
+                    plane_delegate_router.lookup(host, route, origin).await
+                }
             }
         }
         .boxed()

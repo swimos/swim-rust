@@ -121,6 +121,7 @@ impl Router for ClientRouter {
         &mut self,
         _host: Option<Url>,
         _route: RelativeUri,
+        _origin: Option<SchemeSocketAddr>,
     ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
         async move { Ok(RoutingAddr::local(0)) }.boxed()
     }

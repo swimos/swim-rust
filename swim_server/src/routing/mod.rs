@@ -117,6 +117,7 @@ impl Router for TopLevelRouter {
         &mut self,
         host: Option<Url>,
         route: RelativeUri,
+        _origin: Option<SchemeSocketAddr>,
     ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
         async move {
             let TopLevelRouter { plane_sender, .. } = self;
