@@ -34,7 +34,7 @@ use crate::router::RemoteConnectionsManager;
 use crate::router::RouterEvent;
 use crate::router::RouterMessageRequest;
 use crate::router::TaskManager;
-use crate::router::{ClientConnectionRequest, ClientRouterFactory};
+use crate::router::{ClientRequest, ClientRouterFactory};
 use crate::router::{CloseSender, RouterConnRequest};
 use either::Either;
 use futures::future::BoxFuture;
@@ -56,7 +56,9 @@ use swim_common::routing::error::RoutingError;
 use swim_common::routing::remote::config::ConnectionConfig;
 use swim_common::routing::remote::net::dns::Resolver;
 use swim_common::routing::remote::net::plain::TokioPlainTextNetworking;
-use swim_common::routing::remote::{RemoteConnectionChannels, RemoteConnectionsTask, RoutingRequest, TempRouterFac};
+use swim_common::routing::remote::{
+    RemoteConnectionChannels, RemoteConnectionsTask, RoutingRequest,
+};
 use swim_common::routing::ws::tungstenite::TungsteniteWsConnections;
 use swim_common::routing::{ConnectionDropped, RoutingAddr};
 use swim_common::sink::item;
@@ -81,9 +83,9 @@ mod tests;
 mod watch_adapter;
 
 pub struct Downlinks {
-    sender: mpsc::Sender<DownlinkRequest>,
-    task: TaskHandle<RequestResult<()>>,
-    stop_trigger_tx: trigger::Sender,
+    pub sender: mpsc::Sender<DownlinkRequest>,
+    pub task: Option<TaskHandle<RequestResult<()>>>,
+    pub stop_trigger_tx: Option<trigger::Sender>,
 }
 
 pub enum DownlinkRequest {
@@ -161,8 +163,8 @@ impl Downlinks {
 
         Downlinks {
             sender: tx,
-            task: task_handle,
-            stop_trigger_tx,
+            task: Some(task_handle),
+            stop_trigger_tx: Some(stop_trigger_tx),
         }
     }
 
@@ -185,12 +187,12 @@ impl Downlinks {
             task,
             stop_trigger_tx,
         } = self;
-        if stop_trigger_tx.trigger() == false {
+        if stop_trigger_tx.unwrap().trigger() == false {
             return Err(TaskError);
         }
         drop(sender);
 
-        task.await
+        task.unwrap().await
     }
 
     /// Attempt to subscribe to a value lane. The downlink is returned with a single active
@@ -388,14 +390,13 @@ pub(crate) async fn create_remote_connections_task(
     conn_config: ConnectionConfig,
     websocket_config: WebSocketConfig,
 ) -> (
-    mpsc::Sender<ClientConnectionRequest>,
-    mpsc::Receiver<ClientConnectionRequest>,
+    mpsc::Sender<ClientRequest>,
+    mpsc::Receiver<ClientRequest>,
     mpsc::Sender<RoutingRequest>,
     trigger::Sender,
     RemoteConnectionsTask<
         TokioPlainTextNetworking,
         TungsteniteWsConnections,
-        TempRouterFac,
         ClientRouterFactory,
         OpenEndedFutures<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>>,
     >,

@@ -18,7 +18,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use crate::configuration::router::ConnectionPoolParams;
-use crate::router::ClientConnectionRequest;
+use crate::router::ClientRequest;
 use futures::future::BoxFuture;
 use futures::select;
 use futures::stream;
@@ -91,7 +91,7 @@ impl SwimConnPool {
     #[instrument(skip(config))]
     pub fn new(
         config: ConnectionPoolParams,
-        client_conn_request_tx: mpsc::Sender<ClientConnectionRequest>,
+        client_conn_request_tx: mpsc::Sender<ClientRequest>,
     ) -> SwimConnPool {
         let (connection_request_tx, connection_request_rx) =
             mpsc::channel(config.buffer_size().get());
@@ -178,7 +178,7 @@ enum RequestType {
 
 struct PoolTask {
     connection_request_rx: mpsc::Receiver<ConnectionRequest>,
-    client_conn_request_tx: mpsc::Sender<ClientConnectionRequest>,
+    client_conn_request_tx: mpsc::Sender<ClientRequest>,
     buffer_size: NonZeroUsize,
     stop_request_rx: mpsc::Receiver<()>,
 }
@@ -186,7 +186,7 @@ struct PoolTask {
 impl PoolTask {
     fn new(
         connection_request_rx: mpsc::Receiver<ConnectionRequest>,
-        client_conn_request_tx: mpsc::Sender<ClientConnectionRequest>,
+        client_conn_request_tx: mpsc::Sender<ClientRequest>,
         buffer_size: NonZeroUsize,
         stop_request_rx: mpsc::Receiver<()>,
     ) -> Self {
@@ -432,14 +432,14 @@ impl ClientConnection {
     async fn new(
         host_url: url::Url,
         buffer_size: usize,
-        client_conn_request_tx: &mpsc::Sender<ClientConnectionRequest>,
+        client_conn_request_tx: &mpsc::Sender<ClientRequest>,
     ) -> Result<ClientConnection, ConnectionError> {
         let (sender_tx, sender_rx) = mpsc::channel(buffer_size);
         let (receiver_tx, receiver_rx) = mpsc::channel(buffer_size);
 
         let (tx, rx) = oneshot::channel();
         client_conn_request_tx
-            .send(ClientConnectionRequest::Subscribe {
+            .send(ClientRequest::Subscribe {
                 url: host_url,
                 request: Request::new(tx),
             })

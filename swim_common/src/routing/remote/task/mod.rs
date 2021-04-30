@@ -441,41 +441,41 @@ where
     R: Router,
 {
     let target_addr = router
-        .lookup(None, RelativeUri::from_str(&target.node.as_str())?, origin.clone())
+        .lookup(
+            None,
+            RelativeUri::from_str(&target.node.as_str())?,
+            origin.clone(),
+        )
         .await?;
     Ok(router.resolve_sender(target_addr, origin).await?)
 }
 
 /// Factory to create and spawn new connection tasks.
-pub struct TaskFactory<PlaneRouterFac, ClientRouterFac> {
+pub struct TaskFactory<DelegateRouterFac> {
     request_tx: mpsc::Sender<RoutingRequest>,
     stop_trigger: trigger::Receiver,
     configuration: ConnectionConfig,
-    plane_router_fac: PlaneRouterFac,
-    client_router_fac: ClientRouterFac,
+    delegate_router_fac: DelegateRouterFac,
 }
 
-impl<PlaneRouterFac, ClientRouterFac> TaskFactory<PlaneRouterFac, ClientRouterFac> {
+impl<DelegateRouterFac> TaskFactory<DelegateRouterFac> {
     pub fn new(
         request_tx: mpsc::Sender<RoutingRequest>,
         stop_trigger: trigger::Receiver,
         configuration: ConnectionConfig,
-        plane_router_fac: PlaneRouterFac,
-        client_router_fac: ClientRouterFac,
+        delegate_router_fac: DelegateRouterFac,
     ) -> Self {
         TaskFactory {
             request_tx,
             stop_trigger,
             configuration,
-            plane_router_fac,
-            client_router_fac,
+            delegate_router_fac,
         }
     }
 }
-impl<PlaneRouterFac, ClientRouterFac> TaskFactory<PlaneRouterFac, ClientRouterFac>
+impl<DelegateRouterFac> TaskFactory<DelegateRouterFac>
 where
-    PlaneRouterFac: RouterFactory + 'static,
-    ClientRouterFac: RouterFactory + 'static,
+    DelegateRouterFac: RouterFactory + 'static,
 {
     pub fn spawn_connection_task<Str, Sp>(
         &self,
@@ -493,19 +493,13 @@ where
             request_tx,
             stop_trigger,
             configuration,
-            plane_router_fac,
-            client_router_fac,
+            delegate_router_fac,
         } = self;
         let (msg_tx, msg_rx) = mpsc::channel(configuration.channel_buffer_size.get());
         let task = ConnectionTask::new(
             addr,
             ws_stream,
-            RemoteRouter::new(
-                tag,
-                plane_router_fac.create_for(tag),
-                client_router_fac.create_for(tag),
-                request_tx.clone(),
-            ),
+            RemoteRouter::new(tag, delegate_router_fac.create_for(tag), request_tx.clone()),
             msg_rx,
             msg_tx.clone(),
             stop_trigger.clone(),

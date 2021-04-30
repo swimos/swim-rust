@@ -57,11 +57,11 @@ mod retry;
 
 #[derive(Debug, Clone)]
 pub struct ClientRouterFactory {
-    request_sender: mpsc::Sender<ClientConnectionRequest>,
+    request_sender: mpsc::Sender<ClientRequest>,
 }
 
 impl ClientRouterFactory {
-    pub fn new(request_sender: mpsc::Sender<ClientConnectionRequest>) -> Self {
+    pub fn new(request_sender: mpsc::Sender<ClientRequest>) -> Self {
         ClientRouterFactory { request_sender }
     }
 }
@@ -80,7 +80,7 @@ impl RouterFactory for ClientRouterFactory {
 #[derive(Debug, Clone)]
 pub struct ClientRouter {
     tag: RoutingAddr,
-    request_sender: mpsc::Sender<ClientConnectionRequest>,
+    request_sender: mpsc::Sender<ClientRequest>,
 }
 
 impl Router for ClientRouter {
@@ -96,7 +96,7 @@ impl Router for ClientRouter {
             } = self;
             let (tx, rx) = oneshot::channel();
             if request_sender
-                .send(ClientConnectionRequest::Connect {
+                .send(ClientRequest::Connect {
                     request: Request::new(tx),
                     origin: origin.unwrap(),
                 })
@@ -128,7 +128,7 @@ impl Router for ClientRouter {
 }
 
 #[derive(Debug)]
-pub enum ClientConnectionRequest {
+pub enum ClientRequest {
     /// Obtain a connection.
     Connect {
         request: Request<Result<RawRoute, Unresolvable>>,
@@ -142,14 +142,14 @@ pub enum ClientConnectionRequest {
 }
 
 pub struct RemoteConnectionsManager {
-    router_request_rx: mpsc::Receiver<ClientConnectionRequest>,
+    router_request_rx: mpsc::Receiver<ClientRequest>,
     remote_router_tx: mpsc::Sender<RoutingRequest>,
     buffer_size: NonZeroUsize,
 }
 
 impl RemoteConnectionsManager {
     pub fn new(
-        router_request_rx: mpsc::Receiver<ClientConnectionRequest>,
+        router_request_rx: mpsc::Receiver<ClientRequest>,
         remote_router_tx: mpsc::Sender<RoutingRequest>,
         buffer_size: NonZeroUsize,
     ) -> RemoteConnectionsManager {
@@ -180,10 +180,10 @@ impl RemoteConnectionsManager {
         let mut close_txs = Vec::new();
 
         loop {
-            let next: Option<ClientConnectionRequest> = router_request_rx.next().await;
+            let next: Option<ClientRequest> = router_request_rx.next().await;
 
             match next {
-                Some(ClientConnectionRequest::Connect { request, origin }) => {
+                Some(ClientRequest::Connect { request, origin }) => {
                     let (sender, _) = outgoing_managers
                         .entry(origin.to_string())
                         .or_insert_with(|| {
@@ -201,7 +201,7 @@ impl RemoteConnectionsManager {
 
                     request.send(Ok(RawRoute::new(sender, on_drop_rx))).unwrap();
                 }
-                Some(ClientConnectionRequest::Subscribe {
+                Some(ClientRequest::Subscribe {
                     url,
                     request: sub_req,
                 }) => {

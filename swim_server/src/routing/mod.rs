@@ -2,6 +2,7 @@ use crate::plane::PlaneRequest;
 
 use futures::future::BoxFuture;
 use futures::FutureExt;
+use swim_client::router::ClientRequest;
 use swim_common::request::Request;
 use swim_common::routing::error::ResolutionError;
 use swim_common::routing::error::RouterError;
@@ -15,16 +16,19 @@ use utilities::uri::RelativeUri;
 #[derive(Debug, Clone)]
 pub(crate) struct TopLevelRouterFactory {
     plane_sender: mpsc::Sender<PlaneRequest>,
+    client_sender: mpsc::Sender<ClientRequest>,
     remote_sender: mpsc::Sender<RoutingRequest>,
 }
 
 impl TopLevelRouterFactory {
     pub(in crate) fn new(
         plane_sender: mpsc::Sender<PlaneRequest>,
+        client_sender: mpsc::Sender<ClientRequest>,
         remote_sender: mpsc::Sender<RoutingRequest>,
     ) -> Self {
         TopLevelRouterFactory {
             plane_sender,
+            client_sender,
             remote_sender,
         }
     }
@@ -34,7 +38,12 @@ impl RouterFactory for TopLevelRouterFactory {
     type Router = TopLevelRouter;
 
     fn create_for(&self, addr: RoutingAddr) -> Self::Router {
-        TopLevelRouter::new(addr, self.plane_sender.clone(), self.remote_sender.clone())
+        TopLevelRouter::new(
+            addr,
+            self.plane_sender.clone(),
+            self.client_sender.clone(),
+            self.remote_sender.clone(),
+        )
     }
 }
 
@@ -42,6 +51,7 @@ impl RouterFactory for TopLevelRouterFactory {
 pub struct TopLevelRouter {
     addr: RoutingAddr,
     plane_sender: mpsc::Sender<PlaneRequest>,
+    client_sender: mpsc::Sender<ClientRequest>,
     remote_sender: mpsc::Sender<RoutingRequest>,
 }
 
@@ -49,11 +59,13 @@ impl TopLevelRouter {
     pub(crate) fn new(
         addr: RoutingAddr,
         plane_sender: mpsc::Sender<PlaneRequest>,
+        client_sender: mpsc::Sender<ClientRequest>,
         remote_sender: mpsc::Sender<RoutingRequest>,
     ) -> Self {
         TopLevelRouter {
             addr,
             plane_sender,
+            client_sender,
             remote_sender,
         }
     }
@@ -63,12 +75,13 @@ impl Router for TopLevelRouter {
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,
-        _origin: Option<SchemeSocketAddr>,
+        origin: Option<SchemeSocketAddr>,
     ) -> BoxFuture<'_, Result<Route, ResolutionError>> {
         async move {
             let TopLevelRouter {
                 plane_sender,
                 remote_sender,
+                client_sender,
                 addr: tag,
             } = self;
 
@@ -91,21 +104,44 @@ impl Router for TopLevelRouter {
                     }
                 }
             } else {
-                let (tx, rx) = oneshot::channel();
-                let request = Request::new(tx);
-                if plane_sender
-                    .send(PlaneRequest::Endpoint { id: addr, request })
-                    .await
-                    .is_err()
-                {
-                    Err(ResolutionError::router_dropped())
-                } else {
-                    match rx.await {
-                        Ok(Ok(RawRoute { sender, on_drop })) => {
-                            Ok(Route::new(TaggedSender::new(*tag, sender), on_drop))
+                if origin.is_some() {
+                    let (tx, rx) = oneshot::channel();
+                    let request = Request::new(tx);
+                    if client_sender
+                        .send(ClientRequest::Connect {
+                            request,
+                            origin: origin.unwrap(),
+                        })
+                        .await
+                        .is_err()
+                    {
+                        Err(ResolutionError::router_dropped())
+                    } else {
+                        match rx.await {
+                            Ok(Ok(RawRoute { sender, on_drop })) => {
+                                Ok(Route::new(TaggedSender::new(*tag, sender), on_drop))
+                            }
+                            Ok(Err(_)) => Err(ResolutionError::unresolvable(addr.to_string())),
+                            Err(_) => Err(ResolutionError::router_dropped()),
                         }
-                        Ok(Err(_)) => Err(ResolutionError::unresolvable(addr.to_string())),
-                        Err(_) => Err(ResolutionError::router_dropped()),
+                    }
+                } else {
+                    let (tx, rx) = oneshot::channel();
+                    let request = Request::new(tx);
+                    if plane_sender
+                        .send(PlaneRequest::Endpoint { id: addr, request })
+                        .await
+                        .is_err()
+                    {
+                        Err(ResolutionError::router_dropped())
+                    } else {
+                        match rx.await {
+                            Ok(Ok(RawRoute { sender, on_drop })) => {
+                                Ok(Route::new(TaggedSender::new(*tag, sender), on_drop))
+                            }
+                            Ok(Err(_)) => Err(ResolutionError::unresolvable(addr.to_string())),
+                            Err(_) => Err(ResolutionError::router_dropped()),
+                        }
                     }
                 }
             }
@@ -120,7 +156,11 @@ impl Router for TopLevelRouter {
         _origin: Option<SchemeSocketAddr>,
     ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
         async move {
-            let TopLevelRouter { plane_sender, .. } = self;
+            let TopLevelRouter {
+                plane_sender,
+                client_sender,
+                ..
+            } = self;
 
             let (tx, rx) = oneshot::channel();
             if plane_sender

@@ -206,6 +206,13 @@ impl SwimServerBuilder {
 
         let (downlinks_request_tx, downlinks_request_rx) = mpsc::channel(8);
 
+        //Todo dm replace with ::new()
+        let downlinks = Downlinks {
+            sender: downlinks_request_tx,
+            task: None,
+            stop_trigger_tx: None,
+        };
+
         Ok((
             SwimServer {
                 config,
@@ -216,7 +223,7 @@ impl SwimServerBuilder {
                 downlinks_request_rx,
             },
             ServerHandle {
-                downlinks_request_tx,
+                downlinks,
                 either_address: Either::Left(address_rx),
                 stop_trigger_tx,
             },
@@ -266,8 +273,11 @@ impl SwimServer {
             .expect("The server cannot be started without a plane");
 
         let (plane_tx, plane_rx) = mpsc::channel(agent_config.lane_attachment_buffer.get());
+        let (client_tx, client_rx) = mpsc::channel(conn_config.router_buffer_size.get());
         let (remote_tx, remote_rx) = mpsc::channel(conn_config.router_buffer_size.get());
-        let top_level_router_fac = TopLevelRouterFactory::new(plane_tx.clone(), remote_tx.clone());
+
+        let top_level_router_fac =
+            TopLevelRouterFactory::new(plane_tx.clone(), client_tx.clone(), remote_tx.clone());
 
         let clock = swim_runtime::time::clock::runtime_clock();
 
@@ -281,9 +291,6 @@ impl SwimServer {
             top_level_router_fac.clone(),
         );
 
-        let (client_tx, client_rx) = mpsc::channel(conn_config.router_buffer_size.get());
-        let client_router_fac = ClientRouterFactory::new(client_tx.clone());
-
         let conn_manager = RemoteConnectionsManager::new(
             client_rx,
             remote_tx.clone(),
@@ -291,7 +298,6 @@ impl SwimServer {
         );
 
         let connection_pool = SwimConnPool::new(ConnectionPoolParams::default(), client_tx);
-
         let (task_manager_close_tx, task_manager_close_rx) = promise::promise();
 
         let (task_manager, connection_request_tx, router_sink_tx) = TaskManager::new(
@@ -315,7 +321,6 @@ impl SwimServer {
                 config: websocket_config,
             },
             top_level_router_fac,
-            client_router_fac,
             OpenEndedFutures::new(),
             RemoteConnectionChannels::new(remote_tx, remote_rx, stop_trigger_rx),
         )
@@ -333,13 +338,6 @@ impl SwimServer {
         }
 
         let connections_future = connections_task.run();
-
-        //Todo dm replace with ::new()
-        // let downlinks = Downlinks {
-        //     sender: tx,
-        //     task: task_handle,
-        //     stop_trigger_tx,
-        // };
 
         join!(
             connections_future,
@@ -419,7 +417,7 @@ impl Default for SwimServerConfig {
 pub struct ServerHandle {
     pub either_address: Either<promise::Receiver<SocketAddr>, Option<SocketAddr>>,
     pub stop_trigger_tx: trigger::Sender,
-    pub downlinks_request_tx: mpsc::Sender<DownlinkRequest>,
+    pub downlinks: Downlinks,
 }
 
 impl ServerHandle {

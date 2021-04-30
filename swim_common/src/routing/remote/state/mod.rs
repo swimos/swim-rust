@@ -105,7 +105,7 @@ pub trait RemoteTasksState {
 /// * `Ws` - Negotiates a web socket connection on top of the sockets provided by `External`.
 /// * `Sp` - Spawner to run the tasks that manage the connections opened by this state machine.
 /// * `Routerfac` - Creates router instances to be provided to the connection management tasks.
-pub struct RemoteConnections<'a, External, Ws, Sp, PlaneRouterFac, ClientRouterFac>
+pub struct RemoteConnections<'a, External, Ws, Sp, DelegateRouterFac>
 where
     External: ExternalConnections,
     Ws: WsConnections<External::Socket>,
@@ -118,21 +118,20 @@ where
     table: RoutingTable,
     pending: PendingRequests,
     addresses: RemoteRoutingAddresses,
-    tasks: TaskFactory<PlaneRouterFac, ClientRouterFac>,
+    tasks: TaskFactory<DelegateRouterFac>,
     deferred: OpenEndedFutures<BoxFuture<'a, DeferredResult<Ws::StreamSink>>>,
     state: State,
     external_stop: Fuse<trigger::Receiver>,
     internal_stop: Option<trigger::Sender>,
 }
 
-impl<'a, External, Ws, Sp, PlaneRouterFac, ClientRouterFac> RemoteTasksState
-    for RemoteConnections<'a, External, Ws, Sp, PlaneRouterFac, ClientRouterFac>
+impl<'a, External, Ws, Sp, DelegateRouterFac> RemoteTasksState
+    for RemoteConnections<'a, External, Ws, Sp, DelegateRouterFac>
 where
     External: ExternalConnections,
     Ws: WsConnections<External::Socket> + Send + Sync + 'static,
     Sp: Spawner<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>> + Unpin,
-    PlaneRouterFac: RouterFactory + 'static,
-    ClientRouterFac: RouterFactory + 'static,
+    DelegateRouterFac: RouterFactory + 'static,
 {
     type Socket = External::Socket;
     type WebSocket = Ws::StreamSink;
@@ -242,14 +241,13 @@ where
     }
 }
 
-impl<'a, External, Ws, Sp, PlaneRouterFac, ClientRouterFac>
-    RemoteConnections<'a, External, Ws, Sp, PlaneRouterFac, ClientRouterFac>
+impl<'a, External, Ws, Sp, DelegateRouterFac>
+    RemoteConnections<'a, External, Ws, Sp, DelegateRouterFac>
 where
     External: ExternalConnections,
     Ws: WsConnections<External::Socket> + Send + Sync + 'static,
     Sp: Spawner<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>> + Unpin,
-    PlaneRouterFac: RouterFactory + 'static,
-    ClientRouterFac: RouterFactory + 'static,
+    DelegateRouterFac: RouterFactory + 'static,
 {
     /// Create a new, empty state.
     ///
@@ -270,8 +268,7 @@ where
         spawner: Sp,
         external: External,
         listener: Option<External::ListenerType>,
-        plane_router_fac: PlaneRouterFac,
-        client_router_fac: ClientRouterFac,
+        delegate_router_fac: DelegateRouterFac,
         channels: RemoteConnectionChannels,
     ) -> Self {
         let RemoteConnectionChannels {
@@ -285,8 +282,7 @@ where
             request_tx,
             stop_rx.clone(),
             configuration,
-            plane_router_fac,
-            client_router_fac,
+            delegate_router_fac,
         );
         RemoteConnections {
             websockets,

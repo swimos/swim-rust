@@ -32,6 +32,7 @@ use tracing_futures::Instrument;
 use utilities::future::SwimStreamExt;
 use utilities::sync::trigger;
 use utilities::uri::RelativeUri;
+use swim_client::downlink::Downlinks;
 
 #[cfg(test)]
 mod tests;
