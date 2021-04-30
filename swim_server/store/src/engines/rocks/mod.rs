@@ -15,8 +15,9 @@
 #[cfg(test)]
 mod tests;
 
-use crate::engines::{KeyedSnapshot, RangedSnapshotLoad, StoreOpts};
+use crate::engines::{KeyedSnapshot, KeyspaceByteEngine, RangedSnapshotLoad, StoreOpts};
 use crate::{ByteEngine, FromOpts, Store, StoreError, StoreInfo};
+use rocksdb::ColumnFamily;
 use rocksdb::{Error, Options, DB};
 use std::path::Path;
 use std::sync::Arc;
@@ -146,5 +147,41 @@ impl RangedSnapshotLoad for RocksDatabase {
         } else {
             Ok(Some(KeyedSnapshot::new(data.into_iter())))
         }
+    }
+}
+
+fn exec_keyspace<F, O>(delegate: &Arc<DB>, keyspace: &str, f: F) -> Result<O, StoreError>
+where
+    F: Fn(&Arc<DB>, &ColumnFamily) -> Result<O, rocksdb::Error>,
+{
+    match delegate.cf_handle(keyspace) {
+        Some(cf) => f(delegate, cf).map_err(Into::into),
+        None => Err(StoreError::KeyspaceNotFound),
+    }
+}
+
+impl KeyspaceByteEngine for RocksDatabase {
+    fn put_keyspace(&self, keyspace: &str, key: &[u8], value: &[u8]) -> Result<(), StoreError> {
+        exec_keyspace(&self.delegate, keyspace, |delegate, keyspace| {
+            delegate.put_cf(keyspace, key, value)
+        })
+    }
+
+    fn get_keyspace(&self, keyspace: &str, key: &[u8]) -> Result<Option<Vec<u8>>, StoreError> {
+        exec_keyspace(&self.delegate, keyspace, |delegate, keyspace| {
+            delegate.get_cf(keyspace, key)
+        })
+    }
+
+    fn delete_keyspace(&self, keyspace: &str, key: &[u8]) -> Result<(), StoreError> {
+        exec_keyspace(&self.delegate, keyspace, |delegate, keyspace| {
+            delegate.delete_cf(keyspace, key)
+        })
+    }
+
+    fn merge_keyspace(&self, keyspace: &str, key: &[u8], value: &[u8]) -> Result<(), StoreError> {
+        exec_keyspace(&self.delegate, keyspace, |delegate, keyspace| {
+            delegate.merge_cf(keyspace, key, value)
+        })
     }
 }

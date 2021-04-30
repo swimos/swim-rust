@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::engines::{KeyedSnapshot, NoStore, StoreOpts};
+use crate::engines::{KeyedSnapshot, KeyspaceByteEngine, NoStore, StoreOpts};
 use crate::stores::lane::map::MapDataModel;
 use crate::stores::lane::value::ValueDataModel;
 use crate::stores::node::NodeStore;
@@ -42,6 +42,29 @@ impl Store for MockServerStore {
             path: "mock".to_string(),
             kind: "mock".to_string(),
         }
+    }
+}
+
+impl KeyspaceByteEngine for MockServerStore {
+    fn put_keyspace(&self, _keyspace: &str, _key: &[u8], _value: &[u8]) -> Result<(), StoreError> {
+        Ok(())
+    }
+
+    fn get_keyspace(&self, _keyspace: &str, _key: &[u8]) -> Result<Option<Vec<u8>>, StoreError> {
+        Ok(None)
+    }
+
+    fn delete_keyspace(&self, _keyspace: &str, _key: &[u8]) -> Result<(), StoreError> {
+        Ok(())
+    }
+
+    fn merge_keyspace(
+        &self,
+        _keyspace: &str,
+        _key: &[u8],
+        _value: &[u8],
+    ) -> Result<(), StoreError> {
+        Ok(())
     }
 }
 

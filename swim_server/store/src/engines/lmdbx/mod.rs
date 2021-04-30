@@ -15,7 +15,10 @@
 #[cfg(test)]
 mod tests;
 
-use crate::engines::{KeyedSnapshot, RangedSnapshotLoad, StoreOpts};
+use crate::engines::{
+    KeyedSnapshot, Keyspace, KeyspaceByteEngine, KeyspaceDescriptor, KeyspaceHandle,
+    RangedSnapshotLoad, StoreOpts,
+};
 use crate::{ByteEngine, FromOpts, Store, StoreError, StoreInfo};
 use heed::types::ByteSlice;
 use heed::{Database, Env, EnvOpenOptions, Error};
@@ -185,6 +188,56 @@ impl ByteEngine for LmdbxDatabase {
         let _result = delegate.delete(&mut wtxn, key)?;
 
         wtxn.commit()?;
+        Ok(())
+    }
+}
+
+pub struct LmdbxKeyspaceDescriptor;
+impl KeyspaceDescriptor for LmdbxKeyspaceDescriptor {
+    type Options = ();
+
+    fn new<S>(_name: S, _options: Self::Options) -> Self
+    where
+        S: Into<String>,
+    {
+        LmdbxKeyspaceDescriptor
+    }
+}
+
+pub struct LmdbxKeyspaceHandle;
+impl KeyspaceHandle for LmdbxKeyspaceHandle {}
+
+impl Keyspace for LmdbxDatabase {
+    type Descriptor = LmdbxKeyspaceDescriptor;
+    type Handle = LmdbxKeyspaceHandle;
+
+    fn keyspace_handle<S>(&self, _name: S) -> Option<&Self::Handle>
+    where
+        S: AsRef<str>,
+    {
+        None
+    }
+}
+
+impl KeyspaceByteEngine for LmdbxDatabase {
+    fn put_keyspace(&self, _keyspace: &str, _key: &[u8], _value: &[u8]) -> Result<(), StoreError> {
+        Ok(())
+    }
+
+    fn get_keyspace(&self, _keyspace: &str, _key: &[u8]) -> Result<Option<Vec<u8>>, StoreError> {
+        Ok(None)
+    }
+
+    fn delete_keyspace(&self, _keyspace: &str, _key: &[u8]) -> Result<(), StoreError> {
+        Ok(())
+    }
+
+    fn merge_keyspace(
+        &self,
+        _keyspace: &str,
+        _key: &[u8],
+        _value: &[u8],
+    ) -> Result<(), StoreError> {
         Ok(())
     }
 }

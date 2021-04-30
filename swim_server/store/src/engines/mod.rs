@@ -43,6 +43,19 @@ pub trait ByteEngine: 'static {
     fn delete(&self, key: &[u8]) -> Result<(), StoreError>;
 }
 
+pub trait KeyspaceByteEngine: Send + Sync + 'static {
+    /// Put a key-value pair into this store.
+    fn put_keyspace(&self, keyspace: &str, key: &[u8], value: &[u8]) -> Result<(), StoreError>;
+
+    /// Get an entry from this store by its key.
+    fn get_keyspace(&self, keyspace: &str, key: &[u8]) -> Result<Option<Vec<u8>>, StoreError>;
+
+    /// Delete a value from this store by its key.
+    fn delete_keyspace(&self, keyspace: &str, key: &[u8]) -> Result<(), StoreError>;
+
+    fn merge_keyspace(&self, keyspace: &str, key: &[u8], value: &[u8]) -> Result<(), StoreError>;
+}
+
 /// A trait for building stores from their options.
 pub trait FromOpts: Sized {
     /// The type of options this store accepts.

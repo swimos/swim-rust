@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::engines::{KeyedSnapshot, RangedSnapshotLoad, StoreOpts};
+use crate::engines::{KeyedSnapshot, KeyspaceByteEngine, RangedSnapshotLoad, StoreOpts};
 use crate::{ByteEngine, FromOpts, Store, StoreError, StoreInfo};
 use std::borrow::Borrow;
 use std::path::{Path, PathBuf};
@@ -34,6 +34,29 @@ impl Store for NoStore {
             path: self.path.to_string_lossy().to_string(),
             kind: "NoStore".to_string(),
         }
+    }
+}
+
+impl KeyspaceByteEngine for NoStore {
+    fn put_keyspace(&self, _keyspace: &str, _key: &[u8], _value: &[u8]) -> Result<(), StoreError> {
+        Ok(())
+    }
+
+    fn get_keyspace(&self, _keyspace: &str, _key: &[u8]) -> Result<Option<Vec<u8>>, StoreError> {
+        Ok(None)
+    }
+
+    fn delete_keyspace(&self, _keyspace: &str, _key: &[u8]) -> Result<(), StoreError> {
+        Ok(())
+    }
+
+    fn merge_keyspace(
+        &self,
+        _keyspace: &str,
+        _key: &[u8],
+        _value: &[u8],
+    ) -> Result<(), StoreError> {
+        Ok(())
     }
 }
 

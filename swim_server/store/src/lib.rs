@@ -21,8 +21,14 @@ use std::{error::Error as StdError, fs, io};
 
 use tempdir::TempDir;
 
-use crate::engines::{ByteEngine, FromOpts, RangedSnapshotLoad};
-pub use engines::{KeyedSnapshot, LmdbOpts, LmdbxDatabase, RocksDatabase, RocksOpts};
+use crate::engines::{ByteEngine, FromOpts, KeyspaceByteEngine, RangedSnapshotLoad};
+pub use engines::KeyedSnapshot;
+
+#[cfg(feature = "libmdbx")]
+pub use engines::{LmdbOpts, LmdbxDatabase};
+#[cfg(feature = "rocks-db")]
+pub use engines::{RocksDatabase, RocksOpts};
+
 pub use stores::lane::value::ValueDataModel;
 pub use stores::node::{NodeStore, SwimNodeStore};
 pub use stores::plane::{PlaneStore, SwimPlaneStore};
@@ -32,6 +38,10 @@ pub mod mock;
 
 mod engines;
 mod stores;
+
+pub(crate) const LANE_KS: &'static str = "default";
+pub(crate) const VALUE_LANE_KS: &'static str = "value_lanes";
+pub(crate) const MAP_LANE_KS: &'static str = "map_lanes";
 
 /// A directory on the file system used for sever stores.
 #[derive(Debug)]
@@ -103,6 +113,7 @@ pub enum StoreError {
     DelegateMessage(String),
     /// An operation was attempted on the byte engine when it was closing.
     Closing,
+    KeyspaceNotFound,
 }
 
 impl StoreError {
@@ -130,6 +141,7 @@ impl PartialEq for StoreError {
             (StoreError::Decoding(l), StoreError::Decoding(r)) => l.eq(r),
             (StoreError::Delegate(l), StoreError::Delegate(r)) => l.to_string().eq(&r.to_string()),
             (StoreError::Closing, StoreError::Closing) => true,
+            (StoreError::KeyspaceNotFound, StoreError::KeyspaceNotFound) => true,
             _ => false,
         }
     }
@@ -139,7 +151,7 @@ impl PartialEq for StoreError {
 ///
 /// This trait only serves to compose the multiple traits that are required for a store.
 pub trait Store:
-    FromOpts + RangedSnapshotLoad + Send + Sync + Debug + ByteEngine + 'static
+    FromOpts + RangedSnapshotLoad + Send + Sync + Debug + ByteEngine + KeyspaceByteEngine + 'static
 {
     /// Returns a reference to the path that the delegate byte engine is operating from.
     fn path(&self) -> &Path;
