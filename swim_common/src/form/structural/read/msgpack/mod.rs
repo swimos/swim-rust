@@ -12,22 +12,134 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[cfg(test)]
+mod tests;
+
 use crate::form::structural::read::{BodyReader, HeaderReader, ReadError, StructuralReadable};
+use crate::form::structural::write::interpreters::msgpack::{BIG_INT_EXT, BIG_UINT_EXT};
 use bytes::Buf;
+use num_bigint::{BigInt, BigUint, Sign};
 use rmp::decode::{read_str_len, ValueReadError};
 use rmp::Marker;
 use std::borrow::Cow;
 use std::convert::TryFrom;
+use std::fmt::{Display, Formatter};
 use std::str::Utf8Error;
+
+/// Attempt to read a [`StructuralReadable`] type from MessagePack data in a buffer.
+pub fn read_from_msg_pack<T: StructuralReadable, R: Buf>(
+    input: &mut R,
+) -> Result<T, MsgPackReadError> {
+    let marker = read_marker(input)?;
+    match marker {
+        Marker::Null => Ok(T::read_extant()?),
+        Marker::True => Ok(T::read_bool(true)?),
+        Marker::False => Ok(T::read_bool(false)?),
+        Marker::FixPos(n) => Ok(T::read_i32(n as i32)?),
+        Marker::FixNeg(n) => Ok(T::read_i32(n as i32)?),
+        Marker::I8 => compose_simple(input, Buf::get_i8, T::read_i32),
+        Marker::I16 => compose_simple(input, Buf::get_i16, T::read_i32),
+        Marker::I32 => compose_simple(input, Buf::get_i32, T::read_i32),
+        Marker::I64 => compose_simple(input, Buf::get_i64, T::read_i64),
+        Marker::U8 => compose_simple(input, Buf::get_u8, T::read_i32),
+        Marker::U16 => compose_simple(input, Buf::get_u16, T::read_i32),
+        Marker::U32 => compose_simple(input, Buf::get_u32, T::read_u32),
+        Marker::U64 => compose_simple(input, Buf::get_u64, T::read_u64),
+        Marker::F32 => compose_simple(input, Buf::get_f32, T::read_f64),
+        Marker::F64 => compose_simple(input, Buf::get_f64, T::read_f64),
+        Marker::FixStr(len) => read_string(input, len as u32, T::read_text),
+        Marker::Str8 => {
+            let len = if input.remaining() < u8::len() {
+                return Err(MsgPackReadError::Incomplete);
+            } else {
+                input.get_u8() as u32
+            };
+            read_string(input, len, T::read_text)
+        }
+        Marker::Str16 => {
+            let len = if input.remaining() < u16::len() {
+                return Err(MsgPackReadError::Incomplete);
+            } else {
+                input.get_u16() as u32
+            };
+            read_string(input, len, T::read_text)
+        }
+        Marker::Str32 => {
+            let len = if input.remaining() < u32::len() {
+                return Err(MsgPackReadError::Incomplete);
+            } else {
+                input.get_u32()
+            };
+            read_string(input, len, T::read_text)
+        }
+        Marker::Bin8 => {
+            let len = if input.remaining() < u8::len() {
+                return Err(MsgPackReadError::Incomplete);
+            } else {
+                input.get_u8() as u32
+            };
+            read_blob(input, len, T::read_blob)
+        }
+        Marker::Bin16 => {
+            let len = if input.remaining() < u16::len() {
+                return Err(MsgPackReadError::Incomplete);
+            } else {
+                input.get_u16() as u32
+            };
+            read_blob(input, len, T::read_blob)
+        }
+        Marker::Bin32 => {
+            let len = if input.remaining() < u32::len() {
+                return Err(MsgPackReadError::Incomplete);
+            } else {
+                input.get_u32()
+            };
+            read_blob(input, len, T::read_blob)
+        }
+        Marker::FixMap(n) => {
+            let body_reader = read_record(input, n as u32, T::record_reader()?)?;
+            Ok(T::try_terminate(body_reader)?)
+        }
+        Marker::Map16 => {
+            let len = if input.remaining() < u16::len() {
+                return Err(MsgPackReadError::Incomplete);
+            } else {
+                input.get_u16() as u32
+            };
+            let body_reader = read_record(input, len, T::record_reader()?)?;
+            Ok(T::try_terminate(body_reader)?)
+        }
+        Marker::Map32 => {
+            let len = if input.remaining() < u32::len() {
+                return Err(MsgPackReadError::Incomplete);
+            } else {
+                input.get_u32()
+            };
+            let body_reader = read_record(input, len, T::record_reader()?)?;
+            Ok(T::try_terminate(body_reader)?)
+        }
+        marker if is_ext(marker) => {
+            let read_big_int = |_: &mut (), n| T::read_big_int(n);
+            let read_big_uint = |_: &mut (), n| T::read_big_uint(n);
+            read_ext(input, marker, &mut (), read_big_int, read_big_uint)
+        }
+        ow => Err(MsgPackReadError::InvalidMarker(ow)),
+    }
+}
 
 #[derive(Debug, PartialEq)]
 pub enum MsgPackReadError {
     /// The parsed strucuture was not valid for the target type.
     Structure(ReadError),
+    /// The MessagePack data contained invalid UTF8 in a string.
     StringDecode(Utf8Error),
+    /// An unexpected MessagePack marker was encountered.
     InvalidMarker(Marker),
+    /// An unknowen extension type ocurred in the data.
     UnknownExtType(i8),
+    /// A big integer contained 0 bytes (at least one is required for the sign).
     EmptyBigInt,
+    /// The input terminated mid-way through a record.
     Incomplete,
 }
 
@@ -91,110 +203,7 @@ where
     }
 }
 
-use crate::form::structural::write::interpreters::msgpack::{BIG_INT_EXT, BIG_UINT_EXT};
-use num_bigint::{BigInt, BigUint, Sign};
-use std::fmt::{Display, Formatter};
-
-pub fn read_from_msg_pack<T: StructuralReadable, R: Buf>(
-    input: &mut R,
-) -> Result<T, MsgPackReadError> {
-    let marker = read_marker(input)?;
-    match marker {
-        Marker::Null => Ok(T::read_extant()?),
-        Marker::True => Ok(T::read_bool(true)?),
-        Marker::False => Ok(T::read_bool(false)?),
-        Marker::FixPos(n) => Ok(T::read_i32(n as i32)?),
-        Marker::FixNeg(n) => Ok(T::read_i32(n as i32)?),
-        Marker::I8 => compose_simple(input, Buf::get_i8, 1, T::read_i32),
-        Marker::I16 => compose_simple(input, Buf::get_i16, 2, T::read_i32),
-        Marker::I32 => compose_simple(input, Buf::get_i32, 4, T::read_i32),
-        Marker::I64 => compose_simple(input, Buf::get_i64, 8, T::read_i64),
-        Marker::U8 => compose_simple(input, Buf::get_u8, 1, T::read_i32),
-        Marker::U16 => compose_simple(input, Buf::get_u16, 2, T::read_i32),
-        Marker::U32 => compose_simple(input, Buf::get_u32, 4, T::read_u32),
-        Marker::U64 => compose_simple(input, Buf::get_u64, 8, T::read_u64),
-        Marker::F32 => compose_simple(input, Buf::get_f32, 4, T::read_f64),
-        Marker::F64 => compose_simple(input, Buf::get_f64, 8, T::read_f64),
-        Marker::FixStr(len) => read_string(input, len as u32, T::read_text),
-        Marker::Str8 => {
-            let len = if input.remaining() < 1 {
-                return Err(MsgPackReadError::Incomplete);
-            } else {
-                input.get_u8() as u32
-            };
-            read_string(input, len, T::read_text)
-        }
-        Marker::Str16 => {
-            let len = if input.remaining() < 2 {
-                return Err(MsgPackReadError::Incomplete);
-            } else {
-                input.get_u16() as u32
-            };
-            read_string(input, len, T::read_text)
-        }
-        Marker::Str32 => {
-            let len = if input.remaining() < 4 {
-                return Err(MsgPackReadError::Incomplete);
-            } else {
-                input.get_u32()
-            };
-            read_string(input, len, T::read_text)
-        }
-        Marker::Bin8 => {
-            let len = if input.remaining() < 1 {
-                return Err(MsgPackReadError::Incomplete);
-            } else {
-                input.get_u8() as u32
-            };
-            read_blob(input, len, T::read_blob)
-        }
-        Marker::Bin16 => {
-            let len = if input.remaining() < 2 {
-                return Err(MsgPackReadError::Incomplete);
-            } else {
-                input.get_u16() as u32
-            };
-            read_blob(input, len, T::read_blob)
-        }
-        Marker::Bin32 => {
-            let len = if input.remaining() < 4 {
-                return Err(MsgPackReadError::Incomplete);
-            } else {
-                input.get_u32()
-            };
-            read_blob(input, len, T::read_blob)
-        }
-        Marker::FixMap(n) => {
-            let body_reader = read_record(input, n as u32, T::record_reader()?)?;
-            Ok(T::try_terminate(body_reader)?)
-        }
-        Marker::Map16 => {
-            let len = if input.remaining() < 2 {
-                return Err(MsgPackReadError::Incomplete);
-            } else {
-                input.get_u16() as u32
-            };
-            let body_reader = read_record(input, len, T::record_reader()?)?;
-            Ok(T::try_terminate(body_reader)?)
-        }
-        Marker::Map32 => {
-            let len = if input.remaining() < 4 {
-                return Err(MsgPackReadError::Incomplete);
-            } else {
-                input.get_u32()
-            };
-            let body_reader = read_record(input, len, T::record_reader()?)?;
-            Ok(T::try_terminate(body_reader)?)
-        }
-        marker if is_ext(marker) => {
-            let read_big_int = |_: &mut (), n| T::read_big_int(n);
-            let read_big_uint = |_: &mut (), n| T::read_big_uint(n);
-            read_ext(input, marker, &mut (), read_big_int, read_big_uint)
-        }
-        ow => Err(MsgPackReadError::InvalidMarker(ow)),
-    }
-}
-
+/// Read extnesion data. Curently we only use this for big integers.
 fn read_ext<R, B, F, G, T>(
     input: &mut R,
     marker: Marker,
@@ -261,21 +270,21 @@ where
         Marker::FixExt8 => Ok(8),
         Marker::FixExt16 => Ok(16),
         Marker::Ext8 => {
-            if input.remaining() < 1 {
+            if input.remaining() < u8::len() {
                 Err(MsgPackReadError::Incomplete)
             } else {
                 Ok(input.get_u8() as u32)
             }
         }
         Marker::Ext16 => {
-            if input.remaining() < 2 {
+            if input.remaining() < u16::len() {
                 Err(MsgPackReadError::Incomplete)
             } else {
                 Ok(input.get_u16() as u32)
             }
         }
         Marker::Ext32 => {
-            if input.remaining() < 4 {
+            if input.remaining() < u32::len() {
                 Err(MsgPackReadError::Incomplete)
             } else {
                 Ok(input.get_u32())
@@ -288,16 +297,15 @@ where
 fn compose_simple<R, F1, F2, S, T, U>(
     input: &mut R,
     read: F1,
-    len: usize,
     to_value: F2,
 ) -> Result<U, MsgPackReadError>
 where
     R: Buf,
     F1: Fn(&mut R) -> S,
-    S: Into<T>,
+    S: BytesLen + Into<T>,
     F2: FnOnce(T) -> Result<U, ReadError>,
 {
-    if input.remaining() < len {
+    if input.remaining() < S::len() {
         Err(MsgPackReadError::Incomplete)
     } else {
         Ok(to_value(read(input).into())?)
@@ -369,6 +377,71 @@ where
     push_value(reader, body_reader, marker)
 }
 
+/// Required number of bytes remaining in the stream to read a primitive value.
+trait BytesLen {
+    fn len() -> usize;
+}
+
+impl BytesLen for i8 {
+    fn len() -> usize {
+        1
+    }
+}
+
+impl BytesLen for u8 {
+    fn len() -> usize {
+        1
+    }
+}
+
+impl BytesLen for i16 {
+    fn len() -> usize {
+        2
+    }
+}
+
+impl BytesLen for u16 {
+    fn len() -> usize {
+        2
+    }
+}
+
+impl BytesLen for i32 {
+    fn len() -> usize {
+        4
+    }
+}
+
+impl BytesLen for u32 {
+    fn len() -> usize {
+        4
+    }
+}
+
+impl BytesLen for i64 {
+    fn len() -> usize {
+        8
+    }
+}
+
+impl BytesLen for u64 {
+    fn len() -> usize {
+        8
+    }
+}
+
+impl BytesLen for f32 {
+    fn len() -> usize {
+        4
+    }
+}
+
+impl BytesLen for f64 {
+    fn len() -> usize {
+        8
+    }
+}
+
 fn push_value<R, B>(
     reader: &mut R,
     mut body_reader: B,
@@ -384,19 +457,19 @@ where
         Marker::False => body_reader.push_bool(false)?,
         Marker::FixPos(n) => body_reader.push_i32(n as i32)?,
         Marker::FixNeg(n) => body_reader.push_i32(n as i32)?,
-        Marker::I8 => compose_simple(reader, Buf::get_i8, 1, |n| body_reader.push_i32(n))?,
-        Marker::I16 => compose_simple(reader, Buf::get_i16, 2, |n| body_reader.push_i32(n))?,
-        Marker::I32 => compose_simple(reader, Buf::get_i32, 4, |n| body_reader.push_i32(n))?,
-        Marker::I64 => compose_simple(reader, Buf::get_i64, 8, |n| body_reader.push_i64(n))?,
-        Marker::U8 => compose_simple(reader, Buf::get_u8, 1, |n| body_reader.push_i32(n))?,
-        Marker::U16 => compose_simple(reader, Buf::get_u16, 2, |n| body_reader.push_i32(n))?,
-        Marker::U32 => compose_simple(reader, Buf::get_u32, 4, |n| body_reader.push_u32(n))?,
-        Marker::U64 => compose_simple(reader, Buf::get_u64, 8, |n| body_reader.push_u64(n))?,
-        Marker::F32 => compose_simple(reader, Buf::get_f32, 2, |n| body_reader.push_f64(n))?,
-        Marker::F64 => compose_simple(reader, Buf::get_f64, 2, |n| body_reader.push_f64(n))?,
+        Marker::I8 => compose_simple(reader, Buf::get_i8, |n| body_reader.push_i32(n))?,
+        Marker::I16 => compose_simple(reader, Buf::get_i16, |n| body_reader.push_i32(n))?,
+        Marker::I32 => compose_simple(reader, Buf::get_i32, |n| body_reader.push_i32(n))?,
+        Marker::I64 => compose_simple(reader, Buf::get_i64, |n| body_reader.push_i64(n))?,
+        Marker::U8 => compose_simple(reader, Buf::get_u8, |n| body_reader.push_i32(n))?,
+        Marker::U16 => compose_simple(reader, Buf::get_u16, |n| body_reader.push_i32(n))?,
+        Marker::U32 => compose_simple(reader, Buf::get_u32, |n| body_reader.push_u32(n))?,
+        Marker::U64 => compose_simple(reader, Buf::get_u64, |n| body_reader.push_u64(n))?,
+        Marker::F32 => compose_simple(reader, Buf::get_f32, |n| body_reader.push_f64(n))?,
+        Marker::F64 => compose_simple(reader, Buf::get_f64, |n| body_reader.push_f64(n))?,
         Marker::FixStr(len) => read_string(reader, len as u32, |t| body_reader.push_text(t))?,
         Marker::Str8 => {
-            let len = if reader.remaining() < 1 {
+            let len = if reader.remaining() < u8::len() {
                 return Err(MsgPackReadError::Incomplete);
             } else {
                 reader.get_u8() as u32
@@ -404,7 +477,7 @@ where
             read_string(reader, len, |t| body_reader.push_text(t))?
         }
         Marker::Str16 => {
-            let len = if reader.remaining() < 2 {
+            let len = if reader.remaining() < u16::len() {
                 return Err(MsgPackReadError::Incomplete);
             } else {
                 reader.get_u16() as u32
@@ -412,7 +485,7 @@ where
             read_string(reader, len, |t| body_reader.push_text(t))?
         }
         Marker::Str32 => {
-            let len = if reader.remaining() < 4 {
+            let len = if reader.remaining() < u32::len() {
                 return Err(MsgPackReadError::Incomplete);
             } else {
                 reader.get_u32()
@@ -420,7 +493,7 @@ where
             read_string(reader, len, |t| body_reader.push_text(t))?
         }
         Marker::Bin8 => {
-            let len = if reader.remaining() < 1 {
+            let len = if reader.remaining() < u8::len() {
                 return Err(MsgPackReadError::Incomplete);
             } else {
                 reader.get_u8() as u32
@@ -428,7 +501,7 @@ where
             read_blob(reader, len, |blob| body_reader.push_blob(blob))?
         }
         Marker::Bin16 => {
-            let len = if reader.remaining() < 2 {
+            let len = if reader.remaining() < u16::len() {
                 return Err(MsgPackReadError::Incomplete);
             } else {
                 reader.get_u16() as u32
@@ -436,7 +509,7 @@ where
             read_blob(reader, len, |blob| body_reader.push_blob(blob))?
         }
         Marker::Bin32 => {
-            let len = if reader.remaining() < 4 {
+            let len = if reader.remaining() < u32::len() {
                 return Err(MsgPackReadError::Incomplete);
             } else {
                 reader.get_u32() as u32
@@ -450,7 +523,7 @@ where
             true
         }
         Marker::Map16 => {
-            let len = if reader.remaining() < 2 {
+            let len = if reader.remaining() < u16::len() {
                 return Err(MsgPackReadError::Incomplete);
             } else {
                 reader.get_u16() as u32
@@ -461,7 +534,7 @@ where
             true
         }
         Marker::Map32 => {
-            let len = if reader.remaining() < 2 {
+            let len = if reader.remaining() < u32::len() {
                 return Err(MsgPackReadError::Incomplete);
             } else {
                 reader.get_u32()
@@ -488,6 +561,8 @@ where
     Ok(body_reader)
 }
 
+const SLOT_MARKER: Marker = Marker::FixArray(2);
+
 fn read_array_body<R, B>(
     input: &mut R,
     items: u32,
@@ -499,7 +574,7 @@ where
 {
     for _ in 0..items {
         let marker = read_marker(input)?;
-        if marker == Marker::FixArray(2) {
+        if marker == SLOT_MARKER {
             body_reader = push_value_dynamic(input, body_reader)?;
             body_reader.start_slot()?;
             body_reader = push_value_dynamic(input, body_reader)?;
@@ -532,7 +607,7 @@ where
         Marker::FixMap(n) => Ok((n as u32, true)),
         Marker::FixArray(n) => Ok((n as u32, false)),
         marker @ Marker::Map16 | marker @ Marker::Array16 => {
-            let len = if input.remaining() < 2 {
+            let len = if input.remaining() < u16::len() {
                 return Err(MsgPackReadError::Incomplete);
             } else {
                 input.get_u16() as u32
@@ -540,7 +615,7 @@ where
             Ok((len, marker == Marker::Map16))
         }
         marker @ Marker::Map32 | marker @ Marker::Array32 => {
-            let len = if input.remaining() < 4 {
+            let len = if input.remaining() < u32::len() {
                 return Err(MsgPackReadError::Incomplete);
             } else {
                 input.get_u32()
