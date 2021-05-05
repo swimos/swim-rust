@@ -12,9 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[cfg(test)]
+mod tests;
+
 use crate::form::structural::read::StructuralReadable;
 use crate::form::structural::write::StructuralWritable;
 
+mod bridge;
 pub mod read;
 pub mod write;
 

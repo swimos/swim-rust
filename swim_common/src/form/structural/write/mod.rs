@@ -72,7 +72,7 @@ pub trait StructuralWritable: Sized {
     /// If this value ocurrs as the field of a compound object, determine whether that field
     /// can be omitted (for example the `None` case of [`Option`]). This is intended to be
     /// used in the derive macro for this trait and should be generally need to be used.
-    fn ommit_as_field(&self) -> bool {
+    fn omit_as_field(&self) -> bool {
         false
     }
 }
@@ -630,7 +630,7 @@ impl<T: StructuralWritable> StructuralWritable for Option<T> {
         }
     }
 
-    fn ommit_as_field(&self) -> bool {
+    fn omit_as_field(&self) -> bool {
         self.is_none()
     }
 }
