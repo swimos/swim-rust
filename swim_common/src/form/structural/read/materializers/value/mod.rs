@@ -73,10 +73,6 @@ impl TryFrom<ValueMaterializer> for Value {
         if stack.is_empty() && slot_key.is_none() {
             Ok(Value::Record(attrs, items))
         } else {
-            println!(
-                "attrs: {:?}, items: {:?},stack: {:?}, slot_key: {:?}",
-                attrs, items, stack, slot_key
-            );
             Err(ReadError::IncompleteRecord)
         }
     }
