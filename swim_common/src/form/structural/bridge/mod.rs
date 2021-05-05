@@ -119,7 +119,7 @@ impl<T: StructuralReadable> HeaderWriter for ReadWriteHeaderBridge<T> {
         let ReadWriteHeaderBridge(root, header_reader) = self;
         let delegate = ItemDelegateBridge(header_reader.read_attribute(name)?);
         let delegate_reader = value.write_with(delegate)?;
-        let header_reader = <T as StructuralReadable>::Reader::restore(delegate_reader)?;
+        let header_reader = T::Reader::restore(delegate_reader)?;
         Ok(ReadWriteHeaderBridge(root, header_reader))
     }
 
@@ -139,7 +139,7 @@ impl<T: StructuralReadable> HeaderWriter for ReadWriteHeaderBridge<T> {
         let delegate =
             ItemDelegateBridge(header_reader.read_attribute(Cow::Borrowed(name.as_ref()))?);
         let delegate_reader = value.write_with(delegate)?;
-        let header_reader = <T as StructuralReadable>::Reader::restore(delegate_reader)?;
+        let header_reader = T::Reader::restore(delegate_reader)?;
         Ok(ReadWriteHeaderBridge(root, header_reader))
     }
 
@@ -221,7 +221,7 @@ impl<B: BodyReader> HeaderWriter for HeaderDelegateBridge<B> {
         let HeaderDelegateBridge(header_reader) = self;
         let delegate = ItemDelegateBridge(header_reader.read_attribute(name)?);
         let delegate_reader = value.write_with(delegate)?;
-        let header_reader = <B as BodyReader>::Delegate::restore(delegate_reader)?;
+        let header_reader = B::Delegate::restore(delegate_reader)?;
         Ok(HeaderDelegateBridge(header_reader))
     }
 
@@ -241,7 +241,7 @@ impl<B: BodyReader> HeaderWriter for HeaderDelegateBridge<B> {
         let delegate =
             ItemDelegateBridge(header_reader.read_attribute(Cow::Borrowed(name.as_ref()))?);
         let delegate_reader = value.write_into(delegate)?;
-        let header_reader = <B as BodyReader>::Delegate::restore(delegate_reader)?;
+        let header_reader = B::Delegate::restore(delegate_reader)?;
         Ok(HeaderDelegateBridge(header_reader))
     }
 
