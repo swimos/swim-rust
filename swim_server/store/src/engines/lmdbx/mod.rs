@@ -16,7 +16,7 @@
 mod tests;
 
 use crate::engines::keyspaces::{KeyType, KeyspaceByteEngine, KeyspaceName, Keyspaces};
-use crate::engines::{KeyedSnapshot, RangedSnapshotLoad, StoreOpts};
+use crate::engines::{KeyedSnapshot, RangedSnapshotLoad};
 use crate::stores::lane::{deserialize, serialize};
 use crate::{FromKeyspaces, Store, StoreError, StoreInfo};
 use heed::types::ByteSlice;
@@ -148,8 +148,6 @@ impl FromKeyspaces for LmdbxDatabase {
 
 /// Configuration wrapper for a Libmdbx database used by `FromOpts`.
 pub struct LmdbOpts(pub EnvOpenOptions);
-
-impl StoreOpts for LmdbOpts {}
 
 impl Default for LmdbOpts {
     fn default() -> Self {

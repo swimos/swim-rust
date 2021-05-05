@@ -5,14 +5,13 @@ authors = ["Swim.AI developers info@swim.ai"]
 edition = "2018"
 
 [features]
-default = ["rocks-db", "libmdbx"]
-rocks-db = ["rocksdb"]
 libmdbx = ["heed/mdbx"]
 
 [dependencies]
 swim_common = { path = "../../swim_common" }
 utilities = { path = "../../utilities" }
 
+rocksdb = "0.16.0"
 bincode = "1.3.2"
 serde = { version = "1.0.124", features = ["derive", "rc"] }
 tokio = { version = "1.1.1" }
@@ -21,10 +20,6 @@ tokio-stream = { version = "0.1.2", features = ["sync"] }
 futures = "0.3.4"
 tracing = "0.1.16"
 thiserror = "1.0"
-
-[dependencies.rocksdb]
-version = "0.16.0"
-optional = true
 
 [dependencies.heed]
 version = "*"

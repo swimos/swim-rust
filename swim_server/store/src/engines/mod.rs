@@ -18,7 +18,6 @@ use std::vec::IntoIter;
 #[cfg(feature = "libmdbx")]
 pub use lmdbx::{LmdbOpts, LmdbxDatabase};
 pub use nostore::{NoStore, NoStoreOpts};
-#[cfg(feature = "rocks-db")]
 pub use rocks::{RocksDatabase, RocksOpts};
 
 use crate::engines::keyspaces::{KeyspaceName, Keyspaces};
@@ -31,7 +30,7 @@ pub mod keyspaces;
 #[cfg(feature = "libmdbx")]
 mod lmdbx;
 mod nostore;
-#[cfg(feature = "rocks-db")]
+
 mod rocks;
 
 /// A storage engine for server stores that handles byte arrays.
@@ -49,9 +48,9 @@ pub trait ByteEngine: 'static {
 /// A trait for building stores from their keyspace definitions..
 pub trait FromKeyspaces: Sized {
     /// Store environment open options. For some delegates, this may not be used - such as libmdbx.
-    type EnvironmentOpts: StoreOpts;
+    type EnvironmentOpts: Default;
     /// The type of options to open a keyspace with.
-    type KeyspaceOpts;
+    type KeyspaceOpts: Default;
 
     /// Build a store from options.
     ///
@@ -67,8 +66,6 @@ pub trait FromKeyspaces: Sized {
         keyspaces: &Keyspaces<Self>,
     ) -> Result<Self, StoreError>;
 }
-
-pub trait StoreOpts: Default {}
 
 /// A trait for executing ranged snapshot reads on stores.
 // Todo: implement borrowed streaming snapshots.

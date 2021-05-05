@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::engines::keyspaces::{KeyType, KeyspaceByteEngine, KeyspaceName, Keyspaces};
-use crate::engines::{KeyedSnapshot, RangedSnapshotLoad, StoreOpts};
+use crate::engines::{KeyedSnapshot, RangedSnapshotLoad};
 use crate::{ByteEngine, FromKeyspaces, Store, StoreError, StoreInfo};
 use std::borrow::Borrow;
 use std::path::{Path, PathBuf};
@@ -86,8 +86,6 @@ impl RangedSnapshotLoad for NoStore {
 
 #[derive(Default)]
 pub struct NoStoreOpts;
-
-impl StoreOpts for NoStoreOpts {}
 
 impl FromKeyspaces for NoStore {
     type EnvironmentOpts = NoStoreOpts;

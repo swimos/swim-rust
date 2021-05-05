@@ -98,6 +98,17 @@ pub struct SwimPlaneStore<D> {
     keystore: KeyStore,
 }
 
+impl<D: Store> SwimPlaneStore<D> {
+    #[cfg(test)]
+    pub(crate) fn get_keyspace(
+        &self,
+        space: KeyspaceName,
+        key: &[u8],
+    ) -> Result<Option<Vec<u8>>, StoreError> {
+        self.delegate.get_keyspace(space, key)
+    }
+}
+
 impl<D> Clone for SwimPlaneStore<D> {
     fn clone(&self) -> Self {
         SwimPlaneStore {

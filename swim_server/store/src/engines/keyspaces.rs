@@ -25,8 +25,9 @@ use tokio::task::JoinHandle;
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, Level};
 
-/// The type to use for the storing unique lane identifiers. It is not recommended to change this
-/// after a store has already been initialised.
+/// The type to use for the storing unique lane identifiers.
+///
+/// Note: It is not recommended to change this after a store has already been initialised.
 pub type KeyType = u64;
 pub type KeyRequest = (String, oneshot::Sender<KeyType>);
 
@@ -41,10 +42,10 @@ pub(crate) const VALUE_LANE_KS: &str = "value_lanes";
 pub(crate) const MAP_LANE_KS: &str = "map_lanes";
 
 /// The lane keyspace's counter key.
-const COUNTER_KEY: &str = "counter";
+pub const COUNTER_KEY: &str = "counter";
 const COUNTER_BYTES: &'static [u8] = COUNTER_KEY.as_bytes();
 /// The prefix that all lane identifiers in the counter keyspace will be prefixed by.
-const LANE_PREFIX: &str = "lane/";
+const LANE_PREFIX: &str = "lane";
 
 const DESERIALIZATION_FAILURE: &str = "Failed to deserialize key";
 const SERIALIZATION_FAILURE: &str = "Failed to serialize key";
@@ -160,6 +161,10 @@ impl From<StoreError> for KeyspaceTaskError {
     }
 }
 
+pub fn format_key<I: ToString>(uri: I) -> String {
+    format!("{}/{}", LANE_PREFIX, uri.to_string())
+}
+
 impl<S: KeyspaceByteEngine> KeyStoreTask<S> {
     pub fn new(db: Arc<S>, rx: ReceiverStream<KeyRequest>) -> Self {
         KeyStoreTask { db, rx }
@@ -170,7 +175,7 @@ impl<S: KeyspaceByteEngine> KeyStoreTask<S> {
         let mut requests = rx.fuse();
 
         while let Some((uri, responder)) = requests.next().await {
-            let prefixed = format!("{}/{}", LANE_PREFIX, uri);
+            let prefixed = format_key(uri);
 
             match db.get_keyspace(KeyspaceName::Lane, prefixed.as_bytes())? {
                 Some(bytes) => {
@@ -250,7 +255,7 @@ impl KeyStore {
 }
 
 /// An incrementing merge operator for use in Rocks databases in the lane keyspace.
-#[cfg(feature = "rocks-db")]
+
 #[allow(clippy::unnecessary_wraps)]
 pub(crate) fn incrementing_merge_operator(
     _new_key: &[u8],
@@ -299,8 +304,11 @@ pub trait KeyspaceByteEngine: Send + Sync + 'static {
 
 #[cfg(test)]
 mod tests {
+    use crate::engines::keyspaces::{format_key, KeyType, KeyspaceName, COUNTER_KEY};
     use crate::engines::keyspaces::{incrementing_merge_operator, KeyStore, LANE_KS, MAP_LANE_KS};
+    use crate::stores::lane::deserialize;
     use crate::RocksDatabase;
+    use crate::{NodeStore, RocksOpts, ServerStore, SwimNodeStore, SwimPlaneStore, SwimStore};
     use rocksdb::{ColumnFamilyDescriptor, DB};
     use std::num::NonZeroUsize;
     use std::sync::Arc;
@@ -334,5 +342,138 @@ mod tests {
 
         assert_eq!(key_store.id_for("lane_b").await, 2);
         assert_eq!(key_store.id_for("lane_b").await, 2);
+    }
+
+    fn assert_counters(
+        plane_store: &SwimPlaneStore<RocksDatabase>,
+        node_uri: &str,
+        lane_uri: &str,
+        lane_count_at: KeyType,
+        counter_at: KeyType,
+    ) {
+        let key = format_key(format!("{}/{}", node_uri, lane_uri));
+        let lane_id = plane_store
+            .get_keyspace(KeyspaceName::Lane, key.as_bytes())
+            .unwrap()
+            .expect("Missing key");
+        assert_eq!(
+            deserialize::<KeyType>(lane_id.as_slice()).unwrap(),
+            lane_count_at
+        );
+
+        let counter = plane_store
+            .get_keyspace(KeyspaceName::Lane, COUNTER_KEY.as_bytes())
+            .unwrap()
+            .expect("Missing counter");
+        assert_eq!(
+            deserialize::<KeyType>(counter.as_slice()).unwrap(),
+            counter_at
+        );
+    }
+
+    #[tokio::test]
+    async fn lane_id() {
+        let mut server_store = ServerStore::<RocksDatabase>::transient(
+            RocksOpts::default(),
+            RocksOpts::keyspace_options(),
+            "test",
+        );
+
+        let lane_uri = "lane";
+        let node_uri = "node";
+
+        let plane_store = server_store.plane_store("plane").unwrap();
+        let node_store = SwimNodeStore::new(plane_store.clone(), node_uri);
+        let lane_store = node_store.value_lane_store::<_, String>(lane_uri).await;
+
+        assert_eq!(lane_store.lane_id(), 1);
+
+        assert_counters(&plane_store, node_uri, lane_uri, 1, 1);
+    }
+
+    #[tokio::test]
+    async fn multiple_lane_ids() {
+        let mut server_store = ServerStore::<RocksDatabase>::transient(
+            RocksOpts::default(),
+            RocksOpts::keyspace_options(),
+            "test",
+        );
+
+        let node_uri = "node";
+        let lane_prefix = "lane";
+
+        let plane_store = server_store.plane_store("plane").unwrap();
+        let node_store = SwimNodeStore::new(plane_store.clone(), node_uri);
+        let mut lane_count = 0;
+
+        for lane_id in 1..=10 {
+            lane_count += 1;
+
+            let lane_uri = format!("{}/{}", lane_prefix, lane_id);
+            let lane_store = node_store
+                .value_lane_store::<_, String>(lane_uri.clone())
+                .await;
+
+            assert_eq!(lane_count, lane_store.lane_id());
+            assert_counters(
+                &plane_store,
+                node_uri,
+                lane_uri.as_str(),
+                lane_count,
+                lane_count,
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn multiple_nodes_lanes() {
+        let mut server_store = ServerStore::<RocksDatabase>::transient(
+            RocksOpts::default(),
+            RocksOpts::keyspace_options(),
+            "test",
+        );
+
+        let node_prefix = "node";
+        let lane_prefix = "lane";
+
+        let append = |left, right| format!("{}/{}", left, right);
+        let plane_store = server_store.plane_store("plane").unwrap();
+
+        let mut lane_count = 0;
+
+        for node_id in 1..=10 {
+            let start_lane_count = lane_count;
+
+            for lane_id in 1..=10 {
+                lane_count += 1;
+                let node_uri = append(node_prefix, node_id);
+                let lane_uri = append(lane_prefix, lane_id);
+
+                let node_store = SwimNodeStore::new(plane_store.clone(), node_uri.clone());
+                let lane_store = node_store
+                    .value_lane_store::<_, String>(lane_uri.clone())
+                    .await;
+
+                assert_eq!(lane_count, lane_store.lane_id());
+                assert_counters(
+                    &plane_store,
+                    node_uri.as_str(),
+                    lane_uri.as_str(),
+                    lane_count,
+                    lane_count,
+                );
+            }
+
+            // rerun the loop and check that the task returns the same IDs when called again
+            for i in 1..=10 {
+                let node_uri = append(node_prefix, node_id);
+                let lane_uri = append(lane_prefix, i);
+                let node_store = SwimNodeStore::new(plane_store.clone(), node_uri);
+                let lane_store = node_store.value_lane_store::<_, String>(lane_uri).await;
+
+                let lane_id = start_lane_count + i;
+                assert_eq!(lane_id, lane_store.lane_id());
+            }
+        }
     }
 }

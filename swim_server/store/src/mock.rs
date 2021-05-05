@@ -15,7 +15,7 @@
 use crate::engines::keyspaces::{
     failing_keystore, KeyType, KeyspaceByteEngine, KeyspaceName, Keyspaces,
 };
-use crate::engines::{KeyedSnapshot, NoStore, StoreOpts};
+use crate::engines::{KeyedSnapshot, NoStore};
 use crate::stores::lane::map::MapDataModel;
 use crate::stores::lane::value::ValueDataModel;
 use crate::stores::node::NodeStore;
@@ -99,8 +99,6 @@ impl RangedSnapshotLoad for MockServerStore {
 }
 
 pub struct MockOpts;
-
-impl StoreOpts for MockOpts {}
 
 impl Default for MockOpts {
     fn default() -> Self {

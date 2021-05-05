@@ -15,6 +15,9 @@
 use crate::StoreError;
 use serde::{Deserialize, Serialize};
 
+#[cfg(test)]
+mod tests;
+
 pub mod map;
 pub mod value;
 

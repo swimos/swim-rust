@@ -42,6 +42,11 @@ impl<D> ValueDataModel<D> {
             lane_id: self.lane_id,
         }
     }
+
+    #[cfg(test)]
+    pub(crate) fn lane_id(&self) -> KeyType {
+        self.lane_id
+    }
 }
 
 impl<D: PlaneStore> ValueDataModel<D> {

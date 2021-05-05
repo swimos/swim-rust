@@ -19,7 +19,7 @@ use crate::engines::keyspaces::{
     incrementing_merge_operator, KeyType, KeyspaceByteEngine, KeyspaceName, KeyspaceOptions,
     Keyspaces, LANE_KS, MAP_LANE_KS, VALUE_LANE_KS,
 };
-use crate::engines::{KeyedSnapshot, RangedSnapshotLoad, StoreOpts};
+use crate::engines::{KeyedSnapshot, RangedSnapshotLoad};
 use crate::stores::lane::serialize;
 use crate::stores::INCONSISTENT_DB;
 use crate::{FromKeyspaces, Store, StoreError, StoreInfo};
@@ -133,8 +133,6 @@ impl RocksOpts {
         }
     }
 }
-
-impl StoreOpts for RocksOpts {}
 
 impl Default for RocksOpts {
     fn default() -> Self {

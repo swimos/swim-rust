@@ -26,7 +26,7 @@ pub use engines::KeyedSnapshot;
 
 #[cfg(feature = "libmdbx")]
 pub use engines::{LmdbOpts, LmdbxDatabase};
-#[cfg(feature = "rocks-db")]
+
 pub use engines::{RocksDatabase, RocksOpts};
 
 use crate::engines::keyspaces::{KeyspaceByteEngine, KeyspaceOptions, Keyspaces};
