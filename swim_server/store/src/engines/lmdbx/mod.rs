@@ -15,7 +15,7 @@
 #[cfg(test)]
 mod tests;
 
-use crate::engines::keyspaces::{KeyspaceByteEngine, KeyspaceName, Keyspaces};
+use crate::engines::keyspaces::{KeyType, KeyspaceByteEngine, KeyspaceName, Keyspaces};
 use crate::engines::{KeyedSnapshot, RangedSnapshotLoad, StoreOpts};
 use crate::stores::lane::{deserialize, serialize};
 use crate::{FromKeyspaces, Store, StoreError, StoreInfo};
@@ -247,7 +247,7 @@ impl KeyspaceByteEngine for LmdbxDatabase {
         &self,
         keyspace: KeyspaceName,
         key: &[u8],
-        value: u64,
+        value: KeyType,
     ) -> Result<(), StoreError> {
         let LmdbxDatabase {
             sub_databases, env, ..
@@ -258,7 +258,7 @@ impl KeyspaceByteEngine for LmdbxDatabase {
         let value_opt = delegate.get(&rtxn, key)?;
 
         let mut new_value = match value_opt {
-            Some(value) => deserialize::<u64>(value)?,
+            Some(value) => deserialize::<KeyType>(value)?,
             None => 0,
         };
 

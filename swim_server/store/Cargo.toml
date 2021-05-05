@@ -19,6 +19,8 @@ tokio = { version = "1.1.1" }
 tempdir = "0.3.7"
 tokio-stream = { version = "0.1.2", features = ["sync"] }
 futures = "0.3.4"
+tracing = "0.1.16"
+thiserror = "1.0"
 
 [dependencies.rocksdb]
 version = "0.16.0"

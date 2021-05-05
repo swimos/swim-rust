@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::engines::keyspaces::{KeyspaceByteEngine, KeyspaceName, Keyspaces};
+use crate::engines::keyspaces::{KeyType, KeyspaceByteEngine, KeyspaceName, Keyspaces};
 use crate::engines::{KeyedSnapshot, RangedSnapshotLoad, StoreOpts};
 use crate::{ByteEngine, FromKeyspaces, Store, StoreError, StoreInfo};
 use std::borrow::Borrow;
@@ -64,7 +64,7 @@ impl KeyspaceByteEngine for NoStore {
         &self,
         _keyspace: KeyspaceName,
         _key: &[u8],
-        _value: u64,
+        _value: KeyType,
     ) -> Result<(), StoreError> {
         Ok(())
     }

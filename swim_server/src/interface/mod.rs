@@ -30,8 +30,8 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::net::SocketAddr;
 use std::sync::Arc;
-use store::SwimPlaneStore;
 use store::{RocksDatabase, ServerStore, SwimStore};
+use store::{RocksOpts, SwimPlaneStore};
 use swim_common::routing::ws::tungstenite::TungsteniteWsConnections;
 use swim_runtime::task::TaskError;
 use swim_runtime::time::clock::RuntimeClock;
@@ -57,13 +57,18 @@ pub struct SwimServerBuilder {
     store: ServerStore<RocksDatabase>,
 }
 
+// todo this should be removed as the delegate DB should be provided as well as the target path
 impl Default for SwimServerBuilder {
     fn default() -> Self {
         SwimServerBuilder {
             address: None,
             config: SwimServerConfig::default(),
             planes: Vec::new(),
-            store: ServerStore::new(Default::default(), "target".into()),
+            store: ServerStore::new(
+                Default::default(),
+                RocksOpts::keyspace_options(),
+                "target".into(),
+            ),
         }
     }
 }
@@ -84,7 +89,11 @@ impl SwimServerBuilder {
 
     pub fn transient_store(config: SwimServerConfig, prefix: &str) -> Self {
         SwimServerBuilder {
-            store: ServerStore::<RocksDatabase>::transient(Default::default(), prefix),
+            store: ServerStore::<RocksDatabase>::transient(
+                Default::default(),
+                RocksOpts::keyspace_options(),
+                prefix,
+            ),
             config,
             ..Default::default()
         }
@@ -117,6 +126,8 @@ impl SwimServerBuilder {
     /// use swim_server::plane::spec::PlaneBuilder;
     /// use store::{ServerStore, SwimStore};
     ///
+    /// # #[tokio::main]
+    /// # async fn main() {
     /// #[derive(Debug, SwimAgent)]
     /// #[agent(config = "RustAgentConfig")]
     /// pub struct RustAgent;
@@ -147,6 +158,7 @@ impl SwimServerBuilder {
     ///     ).unwrap();
     ///
     /// swim_server_builder.add_plane(plane_builder.build());
+    /// # }
     /// ```
     pub fn add_plane(
         &mut self,
@@ -193,6 +205,8 @@ impl SwimServerBuilder {
     /// use swim_server::agent::AgentContext;
     /// use swim_server::plane::spec::PlaneBuilder;
     ///
+    /// # #[tokio::main]
+    /// # async fn main() {
     /// #[derive(Debug, SwimAgent)]
     /// #[agent(config = "RustAgentConfig")]
     /// pub struct RustAgent;
@@ -226,6 +240,7 @@ impl SwimServerBuilder {
     ///
     /// let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
     /// let (swim_server, server_handle) = swim_server_builder.bind_to(address).build().unwrap();
+    /// # }
     /// ```
     pub fn build(self) -> Result<(SwimServer, ServerHandle), SwimServerBuilderError> {
         let SwimServerBuilder {

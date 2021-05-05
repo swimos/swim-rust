@@ -28,6 +28,7 @@ use crate::routing::RoutingAddr;
 use crate::store::NodeStore;
 use futures::future::ready;
 use futures::future::{BoxFuture, Ready};
+use futures::FutureExt;
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
@@ -216,6 +217,13 @@ impl PlaneStore for PlaneEventStore {
             path: "Mock".to_string(),
             kind: "Mock".to_string(),
         }
+    }
+
+    fn lane_id_of<I>(&self, _lane: I) -> BoxFuture<'_, u64>
+    where
+        I: Into<String>,
+    {
+        ready(1).boxed()
     }
 }
 

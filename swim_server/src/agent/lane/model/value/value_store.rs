@@ -42,7 +42,7 @@ where
     ) -> BoxFuture<'static, Result<(), LaneStoreErrorReport>> {
         Box::pin(async move {
             let ValueLaneStoreIo { lane, mut events } = self;
-            let model = store.value_lane_store::<_, T>(lane_uri);
+            let model = store.value_lane_store::<_, T>(lane_uri).await;
 
             match model.load() {
                 Ok(Some(value)) => lane.store(value).await,

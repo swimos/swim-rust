@@ -15,13 +15,17 @@
 #[cfg(test)]
 mod tests;
 
-use crate::engines::keyspaces::{KeyspaceByteEngine, KeyspaceName, Keyspaces};
+use crate::engines::keyspaces::{
+    incrementing_merge_operator, KeyType, KeyspaceByteEngine, KeyspaceName, KeyspaceOptions,
+    Keyspaces, LANE_KS, MAP_LANE_KS, VALUE_LANE_KS,
+};
 use crate::engines::{KeyedSnapshot, RangedSnapshotLoad, StoreOpts};
 use crate::stores::lane::serialize;
 use crate::stores::INCONSISTENT_DB;
 use crate::{FromKeyspaces, Store, StoreError, StoreInfo};
-use rocksdb::{ColumnFamily, ColumnFamilyDescriptor};
+use rocksdb::{ColumnFamily, ColumnFamilyDescriptor, SliceTransform};
 use rocksdb::{Error, Options, DB};
+use std::mem::size_of;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -39,11 +43,44 @@ pub struct RocksDatabase {
     delegate: Arc<DB>,
 }
 
+fn default_lane_opts() -> Options {
+    let mut opts = rocksdb::Options::default();
+    opts.set_prefix_extractor(SliceTransform::create_fixed_prefix(size_of::<KeyType>()));
+    opts.set_memtable_prefix_bloom_ratio(0.2);
+
+    opts
+}
+
+fn build_cf(name: &str) -> ColumnFamilyDescriptor {
+    ColumnFamilyDescriptor::new(name, default_lane_opts())
+}
+
 impl RocksDatabase {
     pub fn new(delegate: DB) -> RocksDatabase {
         RocksDatabase {
             delegate: Arc::new(delegate),
         }
+    }
+
+    pub fn open_default<P>(path: P) -> Result<RocksDatabase, StoreError>
+    where
+        P: AsRef<Path>,
+    {
+        let mut rock_opts = rocksdb::Options::default();
+        rock_opts.create_if_missing(true);
+        rock_opts.create_missing_column_families(true);
+
+        let mut lane_opts = rocksdb::Options::default();
+        lane_opts.set_merge_operator_associative("lane_id_counter", incrementing_merge_operator);
+        let lane_table_cf = ColumnFamilyDescriptor::new(LANE_KS, lane_opts);
+
+        let value_cf = build_cf(VALUE_LANE_KS);
+        let map_cf = build_cf(MAP_LANE_KS);
+        let db = DB::open_cf_descriptors(&rock_opts, path, vec![lane_table_cf, value_cf, map_cf])?;
+
+        Ok(RocksDatabase {
+            delegate: Arc::new(db),
+        })
     }
 }
 
@@ -83,6 +120,19 @@ impl FromKeyspaces for RocksDatabase {
 
 /// Configuration wrapper for a Rocks database used by `FromOpts`.
 pub struct RocksOpts(pub Options);
+
+impl RocksOpts {
+    pub fn keyspace_options() -> KeyspaceOptions<Self> {
+        let mut lane_opts = rocksdb::Options::default();
+        lane_opts.set_merge_operator_associative("lane_id_counter", incrementing_merge_operator);
+
+        KeyspaceOptions {
+            lane: RocksOpts(lane_opts),
+            value: RocksOpts(default_lane_opts()),
+            map: RocksOpts(default_lane_opts()),
+        }
+    }
+}
 
 impl StoreOpts for RocksOpts {}
 
@@ -189,7 +239,7 @@ impl KeyspaceByteEngine for RocksDatabase {
         &self,
         keyspace: KeyspaceName,
         key: &[u8],
-        value: u64,
+        value: KeyType,
     ) -> Result<(), StoreError> {
         let value = serialize(&value)?;
         exec_keyspace(&self.delegate, keyspace, move |delegate, keyspace| {

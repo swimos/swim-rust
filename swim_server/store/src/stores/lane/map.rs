@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::engines::keyspaces::KeyType;
 use crate::engines::KeyedSnapshot;
 use crate::stores::lane::{deserialize, serialize, serialize_then};
 use crate::stores::node::SwimNodeStore;
@@ -23,13 +24,13 @@ use std::marker::PhantomData;
 
 pub struct MapDataModel<D, K, V> {
     delegate: SwimNodeStore<D>,
-    lane_id: u64,
+    lane_id: KeyType,
     _key: PhantomData<K>,
     _value: PhantomData<V>,
 }
 
 impl<D, K, V> MapDataModel<D, K, V> {
-    pub fn new(delegate: SwimNodeStore<D>, lane_id: u64) -> Self {
+    pub fn new(delegate: SwimNodeStore<D>, lane_id: KeyType) -> Self {
         MapDataModel {
             delegate,
             lane_id,

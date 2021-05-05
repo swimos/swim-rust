@@ -148,7 +148,7 @@ impl<D: PlaneStore> NodeStore for SwimNodeStore<D> {
         let key = format!("{}/{}", self.node_uri, lane.to_string());
 
         async move {
-            let lane_id = node_store.delegate.id_for(key).await;
+            let lane_id = node_store.delegate.lane_id_of(key).await;
             MapDataModel::new(node_store, lane_id)
         }
         .boxed()
@@ -162,7 +162,7 @@ impl<D: PlaneStore> NodeStore for SwimNodeStore<D> {
         let node_store = self.clone();
         let key = format!("{}/{}", self.node_uri, lane.to_string());
         async move {
-            let lane_id = node_store.delegate.id_for(key).await;
+            let lane_id = node_store.delegate.lane_id_of(key).await;
             ValueDataModel::new(node_store, lane_id)
         }
         .boxed()

@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::engines::keyspaces::KeyType;
 use serde::{Deserialize, Serialize};
 
 pub mod lane;
@@ -29,7 +30,7 @@ pub enum StoreKey {
     /// is the key of a lane's map data structure.
     Map {
         /// The lane ID.
-        lane_id: u64,
+        lane_id: KeyType,
         /// An optional, serialized, key. This is optional as ranged snapshots to not require the
         /// key.
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -38,6 +39,6 @@ pub enum StoreKey {
     /// A value lane key.
     Value {
         /// The lane ID.
-        lane_id: u64,
+        lane_id: KeyType,
     },
 }

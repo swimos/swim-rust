@@ -18,8 +18,8 @@ use std::io::ErrorKind;
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 use std::{error::Error as StdError, fs, io};
-
 use tempdir::TempDir;
+use thiserror::Error;
 
 use crate::engines::{ByteEngine, FromKeyspaces, RangedSnapshotLoad};
 pub use engines::KeyedSnapshot;
@@ -90,26 +90,37 @@ impl StoreDir {
 }
 
 /// Store errors.
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum StoreError {
     /// The provided key was not found in the store.
+    #[error("The specified key was not found")]
     KeyNotFound,
     /// An error produced when attempting to execute a snapshot read.
+    #[error("An error was produced when attempting to create a snapshot: {0}")]
     Snapshot(String),
     /// The delegate byte engine failed to initialised.
+    #[error("The delegate store engine failed to initialise: {0}")]
     InitialisationFailure(String),
     /// An IO error produced by the delegate byte engine.
+    #[error("IO error: {0}")]
     Io(io::Error),
     /// An error produced when attempting to encode a value.
+    #[error("Encoding error: {0}")]
     Encoding(String),
     /// An error produced when attempting to decode a value.
+    #[error("Decoding error: {0}")]
     Decoding(String),
     /// A raw error produced by the delegate byte engine.
+    #[error("Delegate store error: {0}")]
     Delegate(Box<dyn Error + Send + Sync>),
     /// A raw error produced by the delegate byte engine that isnt send or sync
+    #[error("Delegate store error: {0}")]
     DelegateMessage(String),
     /// An operation was attempted on the byte engine when it was closing.
+    #[error("An operation was attempted on the delegate store engine when it was closing")]
     Closing,
+    /// The requested keyspace was not found.
+    #[error("The requested keyspace was not found")]
     KeyspaceNotFound,
 }
 
@@ -196,6 +207,7 @@ pub trait Snapshot<K, V> {
 pub struct ServerStore<D: Store> {
     /// The directory that this store is operating from.
     dir: StoreDir,
+    /// Database environment open options
     db_opts: D::EnvironmentOpts,
     /// The keyspaces that all stores will be opened with.
     keyspaces: Keyspaces<D>,
@@ -272,16 +284,15 @@ pub struct StoreInfo {
 
 #[cfg(test)]
 mod tests {
-    use crate::engines::keyspaces::KeyspaceOptions;
     use crate::engines::{RocksDatabase, RocksOpts};
     use crate::stores::StoreKey;
     use crate::{PlaneStore, ServerStore, SwimStore};
 
-    #[test]
-    fn put_get() {
+    #[tokio::test]
+    async fn put_get() {
         let mut store = ServerStore::<RocksDatabase>::transient(
             RocksOpts::default(),
-            KeyspaceOptions::default(),
+            RocksOpts::keyspace_options(),
             "target".into(),
         );
         let plane_store = store.plane_store("unit").unwrap();

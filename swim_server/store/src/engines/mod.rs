@@ -46,10 +46,11 @@ pub trait ByteEngine: 'static {
     fn delete(&self, key: &[u8]) -> Result<(), StoreError>;
 }
 
-/// A trait for building stores from their options.
+/// A trait for building stores from their keyspace definitions..
 pub trait FromKeyspaces: Sized {
+    /// Store environment open options. For some delegates, this may not be used - such as libmdbx.
     type EnvironmentOpts: StoreOpts;
-    /// The type of options this store accepts.
+    /// The type of options to open a keyspace with.
     type KeyspaceOpts;
 
     /// Build a store from options.
@@ -59,7 +60,7 @@ pub trait FromKeyspaces: Sized {
     /// # Arguments:
     /// `path`: the path that this store should open in.
     /// `opts`: the options.
-    ///
+    /// `keyspaces`: a set of keyspaces to open.
     fn from_keyspaces<I: AsRef<Path>>(
         path: I,
         db_opts: &Self::EnvironmentOpts,

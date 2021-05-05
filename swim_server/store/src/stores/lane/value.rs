@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::engines::keyspaces::KeyType;
 use crate::stores::lane::{deserialize, serialize_then};
 use crate::stores::node::SwimNodeStore;
 use crate::{NodeStore, PlaneStore, StoreError, StoreKey};
@@ -23,7 +24,7 @@ pub struct ValueDataModel<D> {
     /// The store to delegate this model's operations to.
     delegate: SwimNodeStore<D>,
     /// The lane URI that this store is operating on.
-    lane_id: u64,
+    lane_id: KeyType,
 }
 
 impl<D> ValueDataModel<D> {
@@ -32,7 +33,7 @@ impl<D> ValueDataModel<D> {
     /// # Arguments
     /// `delegate`: if this data model is *not* transient, then delegate operations to this store.
     /// `lane_id`: the lane URI that this store represents.
-    pub fn new(delegate: SwimNodeStore<D>, lane_id: u64) -> Self {
+    pub fn new(delegate: SwimNodeStore<D>, lane_id: KeyType) -> Self {
         ValueDataModel { delegate, lane_id }
     }
 

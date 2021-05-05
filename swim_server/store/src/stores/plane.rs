@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::engines::keyspaces::{KeyStore, KeyspaceName, Keyspaces};
+use crate::engines::keyspaces::{KeyStore, KeyType, KeyspaceName, Keyspaces};
 use crate::engines::KeyedSnapshot;
 use crate::stores::lane::serialize;
 use crate::stores::node::{NodeStore, SwimNodeStore};
@@ -81,7 +81,7 @@ where
     /// Returns information about the delegate store
     fn store_info(&self) -> StoreInfo;
 
-    fn id_for<I>(&self, lane_id: I) -> BoxFuture<u64>
+    fn lane_id_of<I>(&self, lane: I) -> BoxFuture<KeyType>
     where
         I: Into<String>;
 }
@@ -179,11 +179,11 @@ where
         self.delegate.store_info()
     }
 
-    fn id_for<I>(&self, lane_id: I) -> BoxFuture<u64>
+    fn lane_id_of<I>(&self, lane: I) -> BoxFuture<KeyType>
     where
         I: Into<String>,
     {
-        self.keystore.id_for(lane_id.into()).boxed()
+        self.keystore.id_for(lane.into()).boxed()
     }
 }
 
@@ -236,30 +236,25 @@ mod tests {
     use crate::stores::plane::SwimPlaneStore;
     use crate::stores::StoreKey;
     use crate::PlaneStore;
-    use rocksdb::{Options, DB};
     use std::sync::Arc;
 
-    #[test]
-    fn put_get() {
-        let path = "__test_rocks_db_map";
-        let db = DB::open_default(path).unwrap();
+    #[tokio::test]
+    async fn put_get() {
+        let tempdir = tempdir::TempDir::new("test").expect("Failed to build temporary directory");
 
-        {
-            let delegate = RocksDatabase::new(db);
+        let delegate =
+            RocksDatabase::open_default(tempdir.path()).expect("Failed to build rocks DB");
 
-            let plane_store = SwimPlaneStore::new("test", Arc::new(delegate), failing_keystore());
-            let value_key = StoreKey::Value { lane_id: 0 };
-            let test_data = "test";
+        let plane_store = SwimPlaneStore::new("test", Arc::new(delegate), failing_keystore());
+        let value_key = StoreKey::Value { lane_id: 0 };
+        let test_data = "test";
 
-            assert!(plane_store
-                .put(value_key.clone(), test_data.as_bytes())
-                .is_ok());
+        assert!(plane_store
+            .put(value_key.clone(), test_data.as_bytes())
+            .is_ok());
 
-            let result = plane_store.get(value_key);
-            let vec = result.unwrap().unwrap();
-            assert_eq!(Ok(test_data.to_string()), String::from_utf8(vec));
-        }
-
-        assert!(DB::destroy(&Options::default(), path).is_ok());
+        let result = plane_store.get(value_key);
+        let vec = result.unwrap().unwrap();
+        assert_eq!(Ok(test_data.to_string()), String::from_utf8(vec));
     }
 }

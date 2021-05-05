@@ -12,7 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::engines::keyspaces::{failing_keystore, KeyspaceByteEngine, KeyspaceName, Keyspaces};
+use crate::engines::keyspaces::{
+    failing_keystore, KeyType, KeyspaceByteEngine, KeyspaceName, Keyspaces,
+};
 use crate::engines::{KeyedSnapshot, NoStore, StoreOpts};
 use crate::stores::lane::map::MapDataModel;
 use crate::stores::lane::value::ValueDataModel;
@@ -76,7 +78,7 @@ impl KeyspaceByteEngine for MockServerStore {
         &self,
         _keyspace: KeyspaceName,
         _key: &[u8],
-        _value: u64,
+        _value: KeyType,
     ) -> Result<(), StoreError> {
         Ok(())
     }
@@ -247,7 +249,7 @@ impl PlaneStore for MockPlaneStore {
         todo!()
     }
 
-    fn id_for<I>(&self, _lane_id: I) -> BoxFuture<'static, u64>
+    fn lane_id_of<I>(&self, _lane: I) -> BoxFuture<'static, KeyType>
     where
         I: Into<String>,
     {
