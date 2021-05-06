@@ -13,6 +13,7 @@
 // limitations under the License.
 
 pub mod builder;
+pub mod materializers;
 #[cfg(test)]
 mod tests;
 
@@ -24,11 +25,13 @@ use crate::model::{Value, ValueKind};
 use either::Either;
 use num_bigint::{BigInt, BigUint};
 use std::borrow::Cow;
+use std::convert::TryFrom;
 use std::sync::Arc;
 
 mod error;
 
 use crate::form::structural::bridge::ReadWriteBridge;
+use crate::form::structural::read::materializers::value::ValueMaterializer;
 pub use error::ReadError;
 
 /// Trait for types that can be structurally deserialized, from the Swim data model.
@@ -767,5 +770,17 @@ where
         let VecReader(vec) = &mut payload;
         vec.push(T::try_terminate(reader)?);
         Ok(payload)
+    }
+}
+
+impl StructuralReadable for Value {
+    type Reader = ValueMaterializer;
+
+    fn record_reader() -> Result<Self::Reader, ReadError> {
+        Ok(ValueMaterializer::default())
+    }
+
+    fn try_terminate(reader: ValueMaterializer) -> Result<Self, ReadError> {
+        Value::try_from(reader)
     }
 }
