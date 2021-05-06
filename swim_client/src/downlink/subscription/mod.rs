@@ -57,10 +57,11 @@ use swim_common::routing::remote::config::ConnectionConfig;
 use swim_common::routing::remote::net::dns::Resolver;
 use swim_common::routing::remote::net::plain::TokioPlainTextNetworking;
 use swim_common::routing::remote::{
-    RemoteConnectionChannels, RemoteConnectionsTask, RoutingRequest,
+    ExternalConnections, Listener, RemoteConnectionChannels, RemoteConnectionsTask, RoutingRequest,
 };
 use swim_common::routing::ws::tungstenite::TungsteniteWsConnections;
-use swim_common::routing::{ConnectionDropped, RoutingAddr};
+use swim_common::routing::ws::WsConnections;
+use swim_common::routing::{ConnectionDropped, RouterFactory, RoutingAddr};
 use swim_common::sink::item;
 use swim_common::sink::item::either::SplitSink;
 use swim_common::sink::item::ItemSender;
@@ -76,6 +77,7 @@ use utilities::future::open_ended::OpenEndedFutures;
 use utilities::future::{SwimFutureExt, TransformOnce, TransformedFuture};
 use utilities::sync::promise::PromiseError;
 use utilities::sync::{circular_buffer, promise, trigger};
+use utilities::task::Spawner;
 
 pub mod envelopes;
 #[cfg(test)]
@@ -84,9 +86,13 @@ mod watch_adapter;
 
 #[derive(Clone, Debug)]
 pub struct Downlinks {
-    pub sender: mpsc::Sender<DownlinkRequest>,
-    pub task: Arc<Option<TaskHandle<RequestResult<()>>>>,
-    pub stop_trigger_tx: Arc<Option<trigger::Sender>>,
+    sender: mpsc::Sender<DownlinkRequest>,
+}
+
+pub struct DownlinksHandle {
+    pub downlinks_task: DownlinksTask,
+    pub request_receiver: mpsc::Receiver<DownlinkRequest>,
+    pub task_manager: TaskManager<SwimConnPool>,
 }
 
 pub enum DownlinkRequest {
@@ -106,32 +112,17 @@ impl From<mpsc::error::SendError<DownlinkRequest>> for SubscriptionError {
 /// Contains all running WARP downlinks and allows requests for downlink subscriptions.
 impl Downlinks {
     /// Create tasks for opening remote connections and attaching them to downlinks.
-    #[instrument(skip(config))]
-    pub async fn new<C>(config: Arc<C>) -> Downlinks
+    #[instrument(skip(client_conn_request_tx, config))]
+    pub fn new<Cfg>(
+        client_conn_request_tx: mpsc::Sender<ClientRequest>,
+        config: Arc<Cfg>,
+    ) -> (Downlinks, DownlinksHandle)
     where
-        C: Config + 'static,
+        Cfg: Config + 'static,
     {
         info!("Initialising downlink manager");
 
         let client_params = config.client_params();
-
-        let (
-            client_conn_request_tx,
-            client_conn_request_rx,
-            remote_router_tx,
-            stop_trigger_tx,
-            remote_connections_task,
-        ) = create_remote_connections_task(
-            client_params.connections_params,
-            client_params.websocket_params,
-        )
-        .await;
-
-        let conn_manager = RemoteConnectionsManager::new(
-            client_conn_request_rx,
-            remote_router_tx.clone(),
-            client_params.dl_req_buffer_size,
-        );
 
         let (task_manager_close_tx, task_manager_close_rx) = promise::promise();
 
@@ -144,7 +135,7 @@ impl Downlinks {
             client_params.router_params,
         );
 
-        let downlink_task = DownlinkTask::new(
+        let downlinks_task = DownlinksTask::new(
             config,
             connection_request_tx,
             router_sink_tx,
@@ -152,21 +143,14 @@ impl Downlinks {
         );
         let (tx, rx) = mpsc::channel(client_params.dl_req_buffer_size.get());
 
-        let task_handle = spawn(async {
-            join!(
-                downlink_task.run(ReceiverStream::new(rx)),
-                remote_connections_task.run(),
-                conn_manager.run(),
-                task_manager.run()
-            )
-            .0
-        });
-
-        Downlinks {
-            sender: tx,
-            task: Arc::new(Some(task_handle)),
-            stop_trigger_tx: Arc::new(Some(stop_trigger_tx)),
-        }
+        (
+            Downlinks { sender: tx },
+            DownlinksHandle {
+                downlinks_task,
+                request_receiver: rx,
+                task_manager,
+            },
+        )
     }
 
     pub async fn send_command(
@@ -182,21 +166,17 @@ impl Downlinks {
         Ok(())
     }
 
-    pub async fn close(self) -> Result<RequestResult<()>, TaskError> {
-        let Downlinks {
-            sender,
-            task,
-            stop_trigger_tx,
-        } = self;
-        //Todo dm
-        // if *stop_trigger_tx.unwrap().trigger() == false {
-        //     return Err(TaskError);
-        // }
-        drop(sender);
-
-        // task.unwrap().await
-        Ok(RequestResult::Ok(()))
-    }
+    // pub async fn close(self) -> Result<RequestResult<()>, TaskError> {
+    //     let Downlinks { sender, task } = self;
+    //     //Todo dm
+    //     // if *stop_trigger_tx.unwrap().trigger() == false {
+    //     //     return Err(TaskError);
+    //     // }
+    //     drop(sender);
+    //
+    //     // task.unwrap().await
+    //     Ok(RequestResult::Ok(()))
+    // }
 
     /// Attempt to subscribe to a value lane. The downlink is returned with a single active
     /// subscription to its events.
@@ -502,7 +482,7 @@ struct EventHandle {
     schema: StandardSchema,
 }
 
-pub struct DownlinkTask {
+pub struct DownlinksTask {
     config: Arc<dyn Config>,
     value_downlinks: HashMap<AbsolutePath, ValueHandle>,
     map_downlinks: HashMap<AbsolutePath, MapHandle>,
@@ -545,17 +525,17 @@ impl TransformOnce<Result<Arc<Result<(), DownlinkError>>, PromiseError>> for Mak
     }
 }
 
-impl DownlinkTask {
+impl DownlinksTask {
     pub fn new<C>(
         config: Arc<C>,
         conn_request_tx: mpsc::Sender<RouterConnRequest>,
         sink_tx: mpsc::Sender<RouterMessageRequest>,
         close_tx: CloseSender,
-    ) -> DownlinkTask
+    ) -> DownlinksTask
     where
         C: Config + 'static,
     {
-        DownlinkTask {
+        DownlinksTask {
             config,
             value_downlinks: HashMap::new(),
             map_downlinks: HashMap::new(),

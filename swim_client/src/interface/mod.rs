@@ -15,8 +15,9 @@
 //! Interface for creating and running Swim client instances.
 //!
 //! The module provides methods and structures for creating and running Swim client instances.
-use crate::configuration::downlink::ConfigHierarchy;
+use crate::configuration::downlink::{Config, ConfigHierarchy};
 use crate::downlink::error::{DownlinkError, SubscriptionError};
+use crate::downlink::subscription::{DownlinksHandle, RequestResult};
 use crate::downlink::typed::command::TypedCommandDownlink;
 use crate::downlink::typed::event::TypedEventDownlink;
 use crate::downlink::typed::map::{MapDownlinkReceiver, TypedMapDownlink};
@@ -27,6 +28,9 @@ use crate::downlink::typed::{
 };
 use crate::downlink::Downlinks;
 use crate::downlink::SchemaViolations;
+use crate::router::{ClientRouterFactory, RemoteConnectionsManager};
+use crate::runtime::task::TaskHandle;
+use futures::join;
 use std::error::Error;
 use std::fmt;
 use std::fmt::{Display, Formatter};
@@ -34,9 +38,18 @@ use std::sync::Arc;
 use swim_common::form::{Form, ValidatedForm};
 use swim_common::model::Value;
 use swim_common::routing::error::RoutingError;
+use swim_common::routing::remote::net::dns::Resolver;
+use swim_common::routing::remote::net::plain::TokioPlainTextNetworking;
+use swim_common::routing::remote::{RemoteConnectionChannels, RemoteConnectionsTask};
+use swim_common::routing::ws::tungstenite::TungsteniteWsConnections;
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::AbsolutePath;
+use swim_runtime::task::spawn;
+use tokio::sync::{mpsc, oneshot};
+use tokio_stream::wrappers::ReceiverStream;
 use tracing::info;
+use utilities::future::open_ended::OpenEndedFutures;
+use utilities::sync::trigger;
 
 /// Builder to create Swim client instance.
 ///
@@ -79,28 +92,136 @@ impl SwimClientBuilder {
     // }
 
     /// Build the Swim client.
-    pub async fn build(self) -> SwimClient {
+    pub async fn build(self) -> (SwimClient, ClientHandle) {
         let SwimClientBuilder {
             config: downlinks_config,
         } = self;
 
         info!("Initialising Swim Client");
 
-        SwimClient {
-            downlinks: Downlinks::new(Arc::new(downlinks_config)).await,
-        }
+        let client_params = downlinks_config.client_params();
+
+        let (remote_router_tx, remote_router_rx) =
+            mpsc::channel(client_params.connections_params.router_buffer_size.get());
+        let (client_conn_request_tx, client_conn_request_rx) =
+            mpsc::channel(client_params.connections_params.router_buffer_size.get());
+        let top_level_router_fac = ClientRouterFactory::new(client_conn_request_tx.clone());
+        let (stop_trigger_tx, stop_trigger_rx) = trigger::trigger();
+
+        let remote_connections_task = RemoteConnectionsTask::new_client_task(
+            client_params.connections_params,
+            TokioPlainTextNetworking::new(Arc::new(Resolver::new().await)),
+            TungsteniteWsConnections {
+                config: client_params.websocket_params,
+            },
+            top_level_router_fac,
+            OpenEndedFutures::new(),
+            RemoteConnectionChannels::new(
+                remote_router_tx.clone(),
+                remote_router_rx,
+                stop_trigger_rx,
+            ),
+        )
+        .await;
+
+        let remote_conn_manager = RemoteConnectionsManager::new(
+            client_conn_request_rx,
+            remote_router_tx,
+            client_params.dl_req_buffer_size,
+        );
+
+        let (downlinks, downlinks_handle) =
+            Downlinks::new(client_conn_request_tx, Arc::new(downlinks_config));
+
+        let DownlinksHandle {
+            downlinks_task,
+            request_receiver,
+            task_manager,
+        } = downlinks_handle;
+
+        let task_handle = spawn(async {
+            join!(
+                downlinks_task.run(ReceiverStream::new(request_receiver)),
+                remote_connections_task.run(),
+                remote_conn_manager.run(),
+                task_manager.run()
+            )
+            .0
+        });
+
+        (
+            SwimClient { downlinks },
+            ClientHandle {
+                task_handle,
+                stop_trigger: stop_trigger_tx,
+            },
+        )
     }
 
     /// Build the Swim client with default WS factory and configuration.
     #[cfg(feature = "websocket")]
-    pub async fn build_with_default() -> SwimClient {
+    pub async fn build_with_default() -> (SwimClient, ClientHandle) {
         info!("Initialising Swim Client");
 
         let config = ConfigHierarchy::default();
 
-        SwimClient {
-            downlinks: Downlinks::new(Arc::new(config)).await,
-        }
+        let client_params = config.client_params();
+
+        let (remote_router_tx, remote_router_rx) =
+            mpsc::channel(client_params.connections_params.router_buffer_size.get());
+        let (client_conn_request_tx, client_conn_request_rx) =
+            mpsc::channel(client_params.connections_params.router_buffer_size.get());
+        let top_level_router_fac = ClientRouterFactory::new(client_conn_request_tx.clone());
+        let (stop_trigger_tx, stop_trigger_rx) = trigger::trigger();
+
+        let remote_connections_task = RemoteConnectionsTask::new_client_task(
+            client_params.connections_params,
+            TokioPlainTextNetworking::new(Arc::new(Resolver::new().await)),
+            TungsteniteWsConnections {
+                config: client_params.websocket_params,
+            },
+            top_level_router_fac,
+            OpenEndedFutures::new(),
+            RemoteConnectionChannels::new(
+                remote_router_tx.clone(),
+                remote_router_rx,
+                stop_trigger_rx,
+            ),
+        )
+        .await;
+
+        let remote_conn_manager = RemoteConnectionsManager::new(
+            client_conn_request_rx,
+            remote_router_tx,
+            client_params.dl_req_buffer_size,
+        );
+
+        let (downlinks, downlinks_handle) =
+            Downlinks::new(client_conn_request_tx, Arc::new(config));
+
+        let DownlinksHandle {
+            downlinks_task,
+            request_receiver,
+            task_manager,
+        } = downlinks_handle;
+
+        let task_handle = spawn(async {
+            join!(
+                downlinks_task.run(ReceiverStream::new(request_receiver)),
+                remote_connections_task.run(),
+                remote_conn_manager.run(),
+                task_manager.run()
+            )
+            .0
+        });
+
+        (
+            SwimClient { downlinks },
+            ClientHandle {
+                task_handle,
+                stop_trigger: stop_trigger_tx,
+            },
+        )
     }
 }
 
@@ -122,22 +243,39 @@ impl SwimClientBuilder {
 /// conform to a contract that is imposed by a `Form` implementation and all actions are verified
 /// against the provided schema to ensure that its views are consistent.
 ///
+#[derive(Clone, Debug)]
 pub struct SwimClient {
-    /// The downlink manager attached to this Swim Client.
-    downlinks: Downlinks,
+    /// The downlinks manager attached to this Swim Client.
+    pub downlinks: Downlinks,
 }
 
-impl SwimClient {
+pub struct ClientHandle {
+    task_handle: TaskHandle<RequestResult<()>>,
+    stop_trigger: trigger::Sender,
+}
+
+impl ClientHandle {
     /// Shut down the client and wait for all tasks to finish running.
     pub async fn close(self) -> Result<(), ClientError> {
-        let result = self.downlinks.close().await;
+        let ClientHandle {
+            task_handle,
+            stop_trigger,
+        } = self;
+
+        if !stop_trigger.trigger() {
+            return Err(ClientError::CloseError);
+        }
+
+        let result = task_handle.await;
 
         match result {
             Ok(r) => r.map_err(ClientError::SubscriptionError),
             Err(_) => Err(ClientError::CloseError),
         }
     }
+}
 
+impl SwimClient {
     /// Sends a command directly to the provided `target` lane.
     pub async fn send_command<T: Form>(
         &mut self,

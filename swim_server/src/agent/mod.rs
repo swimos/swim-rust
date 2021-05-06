@@ -82,6 +82,7 @@ use crate::meta::open_meta_lanes;
 #[allow(unused_imports)]
 pub use agent_derive::*;
 use swim_client::downlink::Downlinks;
+use swim_client::interface::SwimClient;
 use tokio_stream::wrappers::ReceiverStream;
 
 /// Trait that must be implemented for any agent. This is essentially just boilerplate and will
@@ -178,7 +179,7 @@ impl<Config> AgentParameters<Config> {
 pub fn run_agent<Config, Clk, Agent, L, R>(
     lifecycle: L,
     clock: Clk,
-    downlinks: Downlinks,
+    client: SwimClient,
     parameters: AgentParameters<Config>,
     incoming_envelopes: impl Stream<Item = TaggedEnvelope> + Send + 'static,
     router: R,
@@ -238,7 +239,7 @@ where
             routing_context,
             schedule_context,
             meta_context,
-            downlinks,
+            client,
         );
 
         lifecycle
@@ -246,11 +247,11 @@ where
             .instrument(span!(Level::DEBUG, AGENT_START))
             .await;
 
-        for lane_task in tasks.iter() {
-            let lane_name = lane_task.name();
+        for lane_task in tasks.iter_mut() {
+            let lane_name = lane_task.name().to_string();
             (**lane_task)
                 .start(&context)
-                .instrument(span!(Level::DEBUG, LANE_START, name = lane_name))
+                .instrument(span!(Level::DEBUG, LANE_START, name = lane_name.as_str()))
                 .await;
         }
 
@@ -314,7 +315,7 @@ pub type EffStream = BoxStream<'static, ()>;
 /// is running the agent.
 pub trait AgentContext<Agent> {
     //Todo dm
-    fn downlinks(&self) -> Downlinks;
+    fn client(&self) -> SwimClient;
 
     /// Schedule events to be executed on a provided schedule. The events will be executed within
     /// the task that runs the agent and so should not block.

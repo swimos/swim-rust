@@ -30,9 +30,12 @@ use std::sync::Arc;
 use swim_client::configuration::downlink::{ClientParams, ConfigHierarchy};
 use swim_client::configuration::router::{ConnectionPoolParams, RouterParams};
 use swim_client::connections::SwimConnPool;
-use swim_client::downlink::subscription::{DownlinkRequest, DownlinkTask};
+use swim_client::downlink::subscription::{DownlinkRequest, DownlinksHandle, DownlinksTask};
 use swim_client::downlink::Downlinks;
-use swim_client::router::{ClientRouterFactory, RemoteConnectionsManager, TaskManager};
+use swim_client::interface::SwimClient;
+use swim_client::router::{
+    ClientRequest, ClientRouterFactory, RemoteConnectionsManager, TaskManager,
+};
 use swim_common::routing::remote::config::ConnectionConfig;
 use swim_common::routing::remote::net::dns::Resolver;
 use swim_common::routing::remote::net::plain::TokioPlainTextNetworking;
@@ -204,27 +207,25 @@ impl SwimServerBuilder {
         let (stop_trigger_tx, stop_trigger_rx) = trigger::trigger();
         let (address_tx, address_rx) = promise::promise();
 
-        let (downlinks_request_tx, downlinks_request_rx) = mpsc::channel(8);
+        let (client_conn_request_tx, client_conn_request_rx) = mpsc::channel(8);
 
-        //Todo dm replace with ::new()
-        let downlinks = Downlinks {
-            sender: downlinks_request_tx,
-            task: Arc::new(None),
-            stop_trigger_tx: Arc::new(None),
-        };
+        let (downlinks, downlinks_handle) =
+            Downlinks::new(client_conn_request_tx, Arc::new(ConfigHierarchy::default()));
+
+        let client = SwimClient { downlinks };
 
         Ok((
             SwimServer {
                 config,
                 planes,
-                address: address.ok_or(SwimServerBuilderError::MissingAddress)?,
                 stop_trigger_rx,
+                address: address.ok_or(SwimServerBuilderError::MissingAddress)?,
                 address_tx,
-                downlinks_request_rx,
-                downlinks: downlinks.clone(),
+                client,
+                downlinks_handle,
+                client_conn_request_rx,
             },
             ServerHandle {
-                downlinks,
                 either_address: Either::Left(address_rx),
                 stop_trigger_tx,
             },
@@ -241,8 +242,9 @@ pub struct SwimServer {
     planes: Vec<PlaneSpec<RuntimeClock, EnvChannel, PlaneRouter<TopLevelRouter>>>,
     stop_trigger_rx: trigger::Receiver,
     address_tx: promise::Sender<SocketAddr>,
-    downlinks_request_rx: mpsc::Receiver<DownlinkRequest>,
-    downlinks: Downlinks,
+    client: SwimClient,
+    downlinks_handle: DownlinksHandle,
+    client_conn_request_rx: mpsc::Receiver<ClientRequest>,
 }
 
 impl SwimServer {
@@ -260,8 +262,9 @@ impl SwimServer {
             mut planes,
             stop_trigger_rx,
             address_tx,
-            downlinks_request_rx,
-            downlinks,
+            client,
+            downlinks_handle,
+            client_conn_request_rx,
         } = self;
 
         let SwimServerConfig {
@@ -269,6 +272,12 @@ impl SwimServer {
             agent_config,
             conn_config,
         } = config;
+
+        let DownlinksHandle {
+            downlinks_task,
+            request_receiver,
+            task_manager,
+        } = downlinks_handle;
 
         // Todo add support for multiple planes in the future
         let spec = planes
@@ -287,7 +296,7 @@ impl SwimServer {
         let plane_future = run_plane(
             agent_config.clone(),
             clock,
-            downlinks,
+            client,
             spec,
             stop_trigger_rx.clone(),
             OpenEndedFutures::new(),
@@ -299,22 +308,6 @@ impl SwimServer {
             client_rx,
             remote_tx.clone(),
             NonZeroUsize::new(8).unwrap(),
-        );
-
-        let connection_pool = SwimConnPool::new(ConnectionPoolParams::default(), client_tx);
-        let (task_manager_close_tx, task_manager_close_rx) = promise::promise();
-
-        let (task_manager, connection_request_tx, router_sink_tx) = TaskManager::new(
-            connection_pool,
-            task_manager_close_rx,
-            RouterParams::default(),
-        );
-
-        let downlink_task = DownlinkTask::new(
-            Arc::new(ConfigHierarchy::default()),
-            connection_request_tx,
-            router_sink_tx,
-            task_manager_close_tx,
         );
 
         let connections_task = RemoteConnectionsTask::new_server_task(
@@ -346,8 +339,8 @@ impl SwimServer {
         join!(
             connections_future,
             plane_future,
-            downlink_task.run(ReceiverStream::new(downlinks_request_rx)),
             conn_manager.run(),
+            downlinks_task.run(ReceiverStream::new(request_receiver)),
             task_manager.run()
         )
         .0
@@ -421,7 +414,6 @@ impl Default for SwimServerConfig {
 pub struct ServerHandle {
     pub either_address: Either<promise::Receiver<SocketAddr>, Option<SocketAddr>>,
     pub stop_trigger_tx: trigger::Sender,
-    pub downlinks: Downlinks,
 }
 
 impl ServerHandle {

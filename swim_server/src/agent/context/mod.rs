@@ -23,6 +23,7 @@ use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use swim_client::downlink::Downlinks;
+use swim_client::interface::SwimClient;
 use swim_common::routing::Router;
 use swim_runtime::time::clock::Clock;
 use tokio::sync::mpsc;
@@ -45,7 +46,7 @@ pub(super) struct ContextImpl<Agent, Clk, Router> {
     routing_context: RoutingContext<Router>,
     schedule_context: SchedulerContext<Clk>,
     meta_context: Arc<MetaContext>,
-    downlinks: Downlinks,
+    client: SwimClient,
 }
 
 const SCHEDULE: &str = "Schedule";
@@ -59,14 +60,14 @@ impl<Agent, Clk, Router> ContextImpl<Agent, Clk, Router> {
         routing_context: RoutingContext<Router>,
         schedule_context: SchedulerContext<Clk>,
         meta_context: MetaContext,
-        downlinks: Downlinks,
+        client: SwimClient,
     ) -> Self {
         ContextImpl {
             agent_ref,
             routing_context,
             schedule_context,
             meta_context: Arc::new(meta_context),
-            downlinks,
+            client,
         }
     }
 }
@@ -81,7 +82,7 @@ where
             agent_ref: self.agent_ref.clone(),
             routing_context: self.routing_context.clone(),
             schedule_context: self.schedule_context.clone(),
-            downlinks: self.downlinks.clone(),
+            client: self.client.clone(),
             meta_context: self.meta_context.clone(),
         }
     }
@@ -189,8 +190,8 @@ where
     Agent: Send + Sync + 'static,
     Clk: Clock,
 {
-    fn downlinks(&self) -> Downlinks {
-        self.downlinks.clone()
+    fn client(&self) -> SwimClient {
+        self.client.clone()
     }
 
     fn schedule<Effect, Str, Sch>(&self, effects: Str, schedule: Sch) -> BoxFuture<()>

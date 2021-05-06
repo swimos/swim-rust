@@ -39,6 +39,7 @@ use std::fmt::Debug;
 use std::ops::Deref;
 use std::sync::{Arc, Weak};
 use swim_client::downlink::Downlinks;
+use swim_client::interface::SwimClient;
 use swim_common::request::Request;
 use swim_common::routing::error::{ConnectionError, ProtocolError, ProtocolErrorKind};
 use swim_common::routing::error::{RouterError, Unresolvable};
@@ -74,7 +75,7 @@ trait AgentRoute<Clk, Envelopes, Router>: Debug + Send {
         parameters: HashMap<String, String>,
         execution_config: AgentExecutionConfig,
         clock: Clk,
-        downlinks: Downlinks,
+        client: SwimClient,
         incoming_envelopes: Envelopes,
         router: Router,
     ) -> (Arc<dyn Any + Send + Sync>, BoxFuture<'static, AgentResult>);
@@ -271,7 +272,7 @@ struct RouteResolver<Clk, DelegateFac: RouterFactory> {
     /// Clock for scheduling tasks.
     clock: Clk,
     /// Todo dm
-    downlinks: Downlinks,
+    client: SwimClient,
     /// The configuration for the agent routes that are opened.
     execution_config: AgentExecutionConfig,
     /// The routes for the plane.
@@ -298,7 +299,7 @@ impl<Clk: Clock, DelegateFac: RouterFactory> RouteResolver<Clk, DelegateFac> {
     {
         let RouteResolver {
             clock,
-            downlinks,
+            client,
             execution_config,
             routes,
             router_fac,
@@ -317,7 +318,7 @@ impl<Clk: Clock, DelegateFac: RouterFactory> RouteResolver<Clk, DelegateFac> {
             params,
             execution_config.clone(),
             clock.clone(),
-            downlinks.clone(),
+            client.clone(),
             ReceiverStream::new(rx).take_until(stop_trigger.clone()),
             router_fac.create_for(addr),
         );
@@ -360,7 +361,7 @@ const PLANE_STOPPED: &str = "The plane has stopped.";
 pub(crate) async fn run_plane<Clk, S, DelegateFac: RouterFactory>(
     execution_config: AgentExecutionConfig,
     clock: Clk,
-    downlinks: Downlinks,
+    client: SwimClient,
     spec: PlaneSpec<Clk, EnvChannel, PlaneRouter<DelegateFac::Router>>,
     stop_trigger: trigger::Receiver,
     spawner: S,
@@ -397,7 +398,7 @@ pub(crate) async fn run_plane<Clk, S, DelegateFac: RouterFactory>(
     let event_loop = async move {
         let mut resolver = RouteResolver {
             clock,
-            downlinks,
+            client,
             execution_config,
             routes,
             router_fac: PlaneRouterFactory::new(context_tx, delegate_fac),
