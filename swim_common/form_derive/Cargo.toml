@@ -9,6 +9,7 @@ name = "form_derive"
 proc-macro = true
 
 [dependencies]
+utilities = { path = "../../utilities" }
 macro_helpers = { path = "../../utilities/macro_helpers" }
 proc-macro2 = "1.0"
 syn = { version = "1.0", features = ["parsing"] }

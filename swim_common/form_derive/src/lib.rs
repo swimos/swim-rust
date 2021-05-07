@@ -33,6 +33,7 @@ mod form;
 mod parser;
 mod tag;
 mod validated_form;
+mod structural;
 
 #[proc_macro_derive(Form, attributes(form))]
 pub fn derive_form(input: TokenStream) -> TokenStream {

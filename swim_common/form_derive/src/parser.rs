@@ -230,4 +230,6 @@ pub struct FieldManifest {
     pub has_slot_fields: bool,
     /// Whether or not there are fields tha are written as headers in the record.
     pub has_header_fields: bool,
+    /// Whether one of the fields determines the tag.
+    pub has_tag_field: bool,
 }
