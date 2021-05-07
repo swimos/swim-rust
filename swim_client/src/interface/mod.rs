@@ -246,6 +246,7 @@ impl SwimClientBuilder {
 #[derive(Clone, Debug)]
 pub struct SwimClient {
     /// The downlinks manager attached to this Swim Client.
+    /// Todo dm refactor client creation.
     pub downlinks: Downlinks,
 }
 

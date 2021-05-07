@@ -353,46 +353,6 @@ impl Downlinks {
     }
 }
 
-pub(crate) async fn create_remote_connections_task(
-    conn_config: ConnectionConfig,
-    websocket_config: WebSocketConfig,
-) -> (
-    mpsc::Sender<ClientRequest>,
-    mpsc::Receiver<ClientRequest>,
-    mpsc::Sender<RoutingRequest>,
-    trigger::Sender,
-    RemoteConnectionsTask<
-        TokioPlainTextNetworking,
-        TungsteniteWsConnections,
-        ClientRouterFactory,
-        OpenEndedFutures<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>>,
-    >,
-) {
-    let (remote_tx, remote_rx) = mpsc::channel(conn_config.router_buffer_size.get());
-    let (request_tx, request_rx) = mpsc::channel(conn_config.router_buffer_size.get());
-    let top_level_router_fac = ClientRouterFactory::new(request_tx.clone());
-
-    let (stop_trigger_tx, stop_trigger_rx) = trigger::trigger();
-
-    (
-        request_tx,
-        request_rx,
-        remote_tx.clone(),
-        stop_trigger_tx,
-        RemoteConnectionsTask::new_client_task(
-            conn_config,
-            TokioPlainTextNetworking::new(Arc::new(Resolver::new().await)),
-            TungsteniteWsConnections {
-                config: websocket_config,
-            },
-            top_level_router_fac,
-            OpenEndedFutures::new(),
-            RemoteConnectionChannels::new(remote_tx, remote_rx, stop_trigger_rx),
-        )
-        .await,
-    )
-}
-
 pub type RequestResult<T> = Result<T, SubscriptionError>;
 
 pub enum DownlinkSpecifier {
@@ -713,6 +673,7 @@ impl DownlinksTask {
         path: AbsolutePath,
         schema: StandardSchema,
     ) -> RequestResult<Arc<UntypedCommandDownlink>> {
+        //Todo dm get only sink
         let (sink, _) = self.connection_for(&path).await?;
 
         let config = self.config.config_for(&path);
