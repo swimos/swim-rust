@@ -28,6 +28,7 @@ use swim_common::routing::TaggedEnvelope;
 use tracing::trace;
 use utilities::errors::Recoverable;
 use utilities::future::retryable::request::{RetrySendError, RetryableRequest, SendResult};
+use swim_common::warp::envelope::Envelope;
 
 #[pin_project]
 struct LoggingRetryable<F> {
@@ -64,7 +65,7 @@ where
 
 pub(crate) fn new_request(
     sender: mpsc::Sender<ConnectionRequest>,
-    payload: TaggedEnvelope,
+    payload: Envelope,
 ) -> impl ResettableFuture<Output = Result<(), RoutingError>> {
     let retryable = RetryableRequest::new(
         sender,
@@ -137,14 +138,14 @@ async fn acquire_sender(
 struct MpscRetryErr {
     kind: RoutingError,
     transient: bool,
-    payload: Option<TaggedEnvelope>,
+    payload: Option<Envelope>,
 }
 
 impl MpscRetryErr {
     fn from(
         kind: RoutingError,
         sender: Option<mpsc::Sender<ConnectionRequest>>,
-        payload: Option<TaggedEnvelope>,
+        payload: Option<Envelope>,
     ) -> SendResult<mpsc::Sender<ConnectionRequest>, ConnectionSender, MpscRetryErr> {
         let transient = kind.is_transient();
 

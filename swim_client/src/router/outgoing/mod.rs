@@ -94,9 +94,7 @@ impl OutgoingHostTask {
 
             match task {
                 OutgoingRequest::Message(envelope) => {
-                    let message = TaggedEnvelope(RoutingAddr::local(0), envelope);
-
-                    let request = new_request(connection_request_tx.clone(), message.into());
+                    let request = new_request(connection_request_tx.clone(), envelope);
 
                     RetryableFuture::new(request, config.retry_strategy())
                         .await

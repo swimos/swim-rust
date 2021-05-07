@@ -28,7 +28,8 @@ use swim_common::request::Request;
 use swim_common::routing::error::{
     CloseError, ConnectionError, ResolutionError, ResolutionErrorKind,
 };
-use swim_common::routing::TaggedEnvelope;
+use swim_common::routing::{RoutingAddr, TaggedEnvelope};
+use swim_common::warp::envelope::Envelope;
 use swim_runtime::task::*;
 use swim_runtime::time::instant::Instant;
 use swim_runtime::time::interval::interval;
@@ -41,7 +42,6 @@ use tokio_stream::wrappers::ReceiverStream;
 use tokio_tungstenite::tungstenite;
 use tracing::{instrument, trace};
 use url::Host;
-use swim_common::warp::envelope::Envelope;
 
 /// Connection pool message wraps a message from a remote host.
 #[derive(Debug)]
@@ -301,13 +301,13 @@ fn combine_connection_streams(
 struct SendTask {
     stopped: Arc<AtomicBool>,
     write_sink: mpsc::Sender<TaggedEnvelope>,
-    rx: mpsc::Receiver<TaggedEnvelope>,
+    rx: mpsc::Receiver<Envelope>,
 }
 
 impl SendTask {
     fn new(
         write_sink: mpsc::Sender<TaggedEnvelope>,
-        rx: mpsc::Receiver<TaggedEnvelope>,
+        rx: mpsc::Receiver<Envelope>,
         stopped: Arc<AtomicBool>,
     ) -> Self {
         SendTask {
@@ -329,7 +329,7 @@ impl SendTask {
         loop {
             match recv_stream.next().await {
                 Some(env) => write_sink
-                    .send(env)
+                    .send(TaggedEnvelope(RoutingAddr::local(0), env))
                     .await
                     .map_err(|_| ConnectionError::Closed(CloseError::unexpected()))?,
                 None => {
@@ -363,6 +363,7 @@ where
     }
 
     async fn run(self) -> Result<(), ConnectionError> {
+        //Todo dm
         let ReceiveTask {
             stopped,
             mut read_stream,
@@ -396,14 +397,8 @@ impl InnerConnection {
 
     pub fn from(
         mut conn: ClientConnection,
-    ) -> Result<
-        (
-            InnerConnection,
-            ConnectionSender,
-            mpsc::Receiver<Envelope>,
-        ),
-        ConnectionError,
-    > {
+    ) -> Result<(InnerConnection, ConnectionSender, mpsc::Receiver<Envelope>), ConnectionError>
+    {
         let sender = ConnectionSender {
             tx: conn.tx.clone(),
         };
@@ -426,7 +421,7 @@ impl InnerConnection {
 /// Connection to a remote host.
 pub struct ClientConnection {
     stopped: Arc<AtomicBool>,
-    tx: mpsc::Sender<TaggedEnvelope>,
+    tx: mpsc::Sender<Envelope>,
     rx: Option<mpsc::Receiver<Envelope>>,
     _send_handle: TaskHandle<Result<(), ConnectionError>>,
     _receive_handle: TaskHandle<Result<(), ConnectionError>>,
@@ -478,14 +473,14 @@ pub type ConnectionChannel = (ConnectionSender, Option<ConnectionReceiver>);
 /// Wrapper for the transmitting end of a channel to an open connection.
 #[derive(Debug, Clone)]
 pub struct ConnectionSender {
-    pub tx: mpsc::Sender<TaggedEnvelope>,
+    pub tx: mpsc::Sender<Envelope>,
 }
 
 impl ConnectionSender {
     /// Crate-only function for creating a sender. Useful for unit testing.
     #[doc(hidden)]
     #[allow(dead_code)]
-    pub(crate) fn new(tx: mpsc::Sender<TaggedEnvelope>) -> ConnectionSender {
+    pub(crate) fn new(tx: mpsc::Sender<Envelope>) -> ConnectionSender {
         ConnectionSender { tx }
     }
 
@@ -501,15 +496,15 @@ impl ConnectionSender {
     /// `SendError` if it failed.
     pub async fn send_message(
         &mut self,
-        message: TaggedEnvelope,
-    ) -> Result<(), SendError<TaggedEnvelope>> {
+        message: Envelope,
+    ) -> Result<(), SendError<Envelope>> {
         self.tx.send(message).await
     }
 
     pub fn try_send(
         &mut self,
-        message: TaggedEnvelope,
-    ) -> Result<(), TrySendError<TaggedEnvelope>> {
+        message: Envelope,
+    ) -> Result<(), TrySendError<Envelope>> {
         self.tx.try_send(message)
     }
 }
