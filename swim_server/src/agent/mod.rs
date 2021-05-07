@@ -314,19 +314,19 @@ pub type EffStream = BoxStream<'static, ()>;
 /// agent and lane life-cycle events and allows events to be scheduled within the task that
 /// is running the agent.
 pub trait AgentContext<Agent> {
-    //Todo dm
+    /// Get a swim client capable of opening downlinks to other servers.
     fn client(&self) -> SwimClient;
 
     /// Schedule events to be executed on a provided schedule. The events will be executed within
     /// the task that runs the agent and so should not block.
     ///
-    /// #Type Parameters
+    /// # Type Parameters
     ///
     /// * `Effect` - The type of the events to schedule.
     /// * `Str` - The type of the stream of events.
     /// * `Sch` - The type of the stream of [`Duration`]s defining the schedule.
     ///
-    /// #Arguments
+    /// # Arguments
     ///
     /// * `effects` - A stream of events to be executed.
     /// * `schedule` - A stream of [`Duration`]s describing the schedule on which the effects
@@ -339,12 +339,12 @@ pub trait AgentContext<Agent> {
 
     /// Schedule an event to be run on a fixed schedule.
     ///
-    /// #Type Parameters
+    /// # Type Parameters
     ///
     /// * `Fut` - Type of the event to schedule.
     /// * `F` - Event factory closure type.
     ///
-    /// #Arguments
+    /// # Arguments
     ///
     /// * `effect` - Factory closure to generate the events.
     /// * `interval` - The fixed interval on which to generate the events.
@@ -381,11 +381,11 @@ pub trait AgentContext<Agent> {
 
     /// Schedule a single event to run after a fixed delay.
     ///
-    /// #Type Parameters
+    /// # Type Parameters
     ///
     /// * `Fut` - Type of the event to schedule.
     ///
-    /// #Arguments
+    /// # Arguments
     ///
     /// * `effect` - The single event.
     /// * `duration` - The delay before executing the event.

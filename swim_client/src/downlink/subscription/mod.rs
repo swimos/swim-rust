@@ -153,11 +153,7 @@ impl Downlinks {
         )
     }
 
-    pub async fn send_command(
-        &mut self,
-        path: AbsolutePath,
-        envelope: Envelope,
-    ) -> RequestResult<()> {
+    pub async fn send_command(&self, path: AbsolutePath, envelope: Envelope) -> RequestResult<()> {
         self.sender
             .send(DownlinkRequest::DirectCommand { path, envelope })
             .map_err(|_| SubscriptionError::ConnectionError)
@@ -166,23 +162,11 @@ impl Downlinks {
         Ok(())
     }
 
-    // pub async fn close(self) -> Result<RequestResult<()>, TaskError> {
-    //     let Downlinks { sender, task } = self;
-    //     //Todo dm
-    //     // if *stop_trigger_tx.unwrap().trigger() == false {
-    //     //     return Err(TaskError);
-    //     // }
-    //     drop(sender);
-    //
-    //     // task.unwrap().await
-    //     Ok(RequestResult::Ok(()))
-    // }
-
     /// Attempt to subscribe to a value lane. The downlink is returned with a single active
     /// subscription to its events.
     #[instrument(skip(self), level = "info")]
     pub async fn subscribe_value_untyped(
-        &mut self,
+        &self,
         init: Value,
         path: AbsolutePath,
     ) -> RequestResult<(Arc<UntypedValueDownlink>, UntypedValueReceiver)> {
@@ -197,7 +181,7 @@ impl Downlinks {
     /// subscription to its events.
     #[instrument(skip(self, init), level = "info")]
     pub async fn subscribe_value<T>(
-        &mut self,
+        &self,
         init: T,
         path: AbsolutePath,
     ) -> RequestResult<(TypedValueDownlink<T>, ValueDownlinkReceiver<T>)>
@@ -215,7 +199,7 @@ impl Downlinks {
     }
 
     async fn subscribe_value_inner(
-        &mut self,
+        &self,
         init: Value,
         schema: StandardSchema,
         path: AbsolutePath,
@@ -237,7 +221,7 @@ impl Downlinks {
     /// subscription to its events.
     #[instrument(skip(self), level = "info")]
     pub async fn subscribe_map_untyped(
-        &mut self,
+        &self,
         path: AbsolutePath,
     ) -> RequestResult<(Arc<UntypedMapDownlink>, UntypedMapReceiver)> {
         info!("Subscribing to untyped map lane");
@@ -251,7 +235,7 @@ impl Downlinks {
     /// subscription to its events.
     #[instrument(skip(self), level = "info")]
     pub async fn subscribe_map<K, V>(
-        &mut self,
+        &self,
         path: AbsolutePath,
     ) -> RequestResult<(TypedMapDownlink<K, V>, MapDownlinkReceiver<K, V>)>
     where
@@ -268,7 +252,7 @@ impl Downlinks {
     }
 
     async fn subscribe_map_inner(
-        &mut self,
+        &self,
         key_schema: StandardSchema,
         value_schema: StandardSchema,
         path: AbsolutePath,
@@ -287,7 +271,7 @@ impl Downlinks {
     }
 
     pub async fn subscribe_command_untyped(
-        &mut self,
+        &self,
         path: AbsolutePath,
     ) -> RequestResult<Arc<UntypedCommandDownlink>> {
         self.subscribe_command_inner(StandardSchema::Anything, path)
@@ -295,7 +279,7 @@ impl Downlinks {
     }
 
     pub async fn subscribe_command<T>(
-        &mut self,
+        &self,
         path: AbsolutePath,
     ) -> RequestResult<TypedCommandDownlink<T>>
     where
@@ -307,7 +291,7 @@ impl Downlinks {
     }
 
     async fn subscribe_command_inner(
-        &mut self,
+        &self,
         schema: StandardSchema,
         path: AbsolutePath,
     ) -> RequestResult<Arc<UntypedCommandDownlink>> {
@@ -326,7 +310,7 @@ impl Downlinks {
     }
 
     pub async fn subscribe_event_untyped(
-        &mut self,
+        &self,
         path: AbsolutePath,
     ) -> RequestResult<Arc<UntypedEventDownlink>> {
         self.subscribe_event_inner(StandardSchema::Anything, path, SchemaViolations::Ignore)
@@ -334,7 +318,7 @@ impl Downlinks {
     }
 
     pub async fn subscribe_event<T>(
-        &mut self,
+        &self,
         path: AbsolutePath,
         violations: SchemaViolations,
     ) -> RequestResult<TypedEventDownlink<T>>
@@ -348,7 +332,7 @@ impl Downlinks {
     }
 
     async fn subscribe_event_inner(
-        &mut self,
+        &self,
         schema: StandardSchema,
         path: AbsolutePath,
         violations: SchemaViolations,

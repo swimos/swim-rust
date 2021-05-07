@@ -278,7 +278,7 @@ impl ClientHandle {
 impl SwimClient {
     /// Sends a command directly to the provided `target` lane.
     pub async fn send_command<T: Form>(
-        &mut self,
+        &self,
         target: AbsolutePath,
         message: T,
     ) -> Result<(), ClientError> {
@@ -296,7 +296,7 @@ impl SwimClient {
 
     /// Opens a new typed value downlink at the provided path and initialises it with `initial`.
     pub async fn value_downlink<T>(
-        &mut self,
+        &self,
         path: AbsolutePath,
         initial: T,
     ) -> Result<(TypedValueDownlink<T>, ValueDownlinkReceiver<T>), ClientError>
@@ -311,7 +311,7 @@ impl SwimClient {
 
     /// Opens a new typed map downlink at the provided path.
     pub async fn map_downlink<K, V>(
-        &mut self,
+        &self,
         path: AbsolutePath,
     ) -> Result<(TypedMapDownlink<K, V>, MapDownlinkReceiver<K, V>), ClientError>
     where
@@ -326,7 +326,7 @@ impl SwimClient {
 
     /// Opens a new command downlink at the provided path.
     pub async fn command_downlink<T>(
-        &mut self,
+        &self,
         path: AbsolutePath,
     ) -> Result<TypedCommandDownlink<T>, ClientError>
     where
@@ -340,7 +340,7 @@ impl SwimClient {
 
     /// Opens a new event downlink at the provided path.
     pub async fn event_downlink<T>(
-        &mut self,
+        &self,
         path: AbsolutePath,
         violations: SchemaViolations,
     ) -> Result<TypedEventDownlink<T>, ClientError>
@@ -356,7 +356,7 @@ impl SwimClient {
     /// Opens a new untyped value downlink at the provided path and initialises it with `initial`
     /// value.
     pub async fn untyped_value_downlink(
-        &mut self,
+        &self,
         path: AbsolutePath,
         initial: Value,
     ) -> Result<(Arc<UntypedValueDownlink>, UntypedValueReceiver), ClientError> {
@@ -368,7 +368,7 @@ impl SwimClient {
 
     /// Opens a new untyped value downlink at the provided path.
     pub async fn untyped_map_downlink(
-        &mut self,
+        &self,
         path: AbsolutePath,
     ) -> Result<(Arc<UntypedMapDownlink>, UntypedMapReceiver), ClientError> {
         self.downlinks
@@ -379,7 +379,7 @@ impl SwimClient {
 
     /// Opens a new untyped command downlink at the provided path.
     pub async fn untyped_command_downlink(
-        &mut self,
+        &self,
         path: AbsolutePath,
     ) -> Result<Arc<UntypedCommandDownlink>, ClientError> {
         self.downlinks
@@ -390,7 +390,7 @@ impl SwimClient {
 
     /// Opens a new untyped event downlink at the provided path.
     pub async fn untyped_event_downlink(
-        &mut self,
+        &self,
         path: AbsolutePath,
     ) -> Result<Arc<UntypedEventDownlink>, ClientError> {
         self.downlinks

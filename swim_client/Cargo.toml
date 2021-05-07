@@ -10,7 +10,7 @@ websocket = ["tokio-tungstenite", "http", "tokio-native-tls", "swim_common/tls",
 debug = ["log_verbose"]
 log_verbose = []
 
-#Todo dm revert this
+#Todo dm move the test server into the server crate
 #[dependencies.test_server]
 #path = "test_server"
 #optional = true

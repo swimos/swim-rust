@@ -271,7 +271,7 @@ impl PlaneContext for ContextImpl {
 struct RouteResolver<Clk, DelegateFac: RouterFactory> {
     /// Clock for scheduling tasks.
     clock: Clk,
-    /// Todo dm
+    /// Client for opening downlinks.
     client: SwimClient,
     /// The configuration for the agent routes that are opened.
     execution_config: AgentExecutionConfig,
