@@ -412,8 +412,8 @@ impl Default for SwimServerConfig {
 /// The handle is returned when a new server instance is created and is used for terminating
 /// the server or obtaining its address.
 pub struct ServerHandle {
-    pub either_address: Either<promise::Receiver<SocketAddr>, Option<SocketAddr>>,
-    pub stop_trigger_tx: trigger::Sender,
+    either_address: Either<promise::Receiver<SocketAddr>, Option<SocketAddr>>,
+    stop_trigger_tx: trigger::Sender,
 }
 
 impl ServerHandle {

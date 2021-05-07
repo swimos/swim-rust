@@ -41,6 +41,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use tokio_tungstenite::tungstenite;
 use tracing::{instrument, trace};
 use url::Host;
+use swim_common::warp::envelope::Envelope;
 
 /// Connection pool message wraps a message from a remote host.
 #[derive(Debug)]
@@ -327,7 +328,10 @@ impl SendTask {
 
         loop {
             match recv_stream.next().await {
-                Some(env) => write_sink.send(env).await.unwrap(),
+                Some(env) => write_sink
+                    .send(env)
+                    .await
+                    .map_err(|_| ConnectionError::Closed(CloseError::unexpected()))?,
                 None => {
                     stopped.store(true, Ordering::Release);
                     return Err(ConnectionError::Closed(CloseError::unexpected()));
@@ -339,18 +343,18 @@ impl SendTask {
 
 struct ReceiveTask<S>
 where
-    S: Stream<Item = TaggedEnvelope> + Send + Unpin + 'static,
+    S: Stream<Item = Envelope> + Send + Unpin + 'static,
 {
     stopped: Arc<AtomicBool>,
     read_stream: S,
-    tx: mpsc::Sender<TaggedEnvelope>,
+    tx: mpsc::Sender<Envelope>,
 }
 
 impl<S> ReceiveTask<S>
 where
-    S: Stream<Item = TaggedEnvelope> + Send + Unpin + 'static,
+    S: Stream<Item = Envelope> + Send + Unpin + 'static,
 {
-    fn new(read_stream: S, tx: mpsc::Sender<TaggedEnvelope>, stopped: Arc<AtomicBool>) -> Self {
+    fn new(read_stream: S, tx: mpsc::Sender<Envelope>, stopped: Arc<AtomicBool>) -> Self {
         ReceiveTask {
             stopped,
             read_stream,
@@ -396,7 +400,7 @@ impl InnerConnection {
         (
             InnerConnection,
             ConnectionSender,
-            mpsc::Receiver<TaggedEnvelope>,
+            mpsc::Receiver<Envelope>,
         ),
         ConnectionError,
     > {
@@ -423,7 +427,7 @@ impl InnerConnection {
 pub struct ClientConnection {
     stopped: Arc<AtomicBool>,
     tx: mpsc::Sender<TaggedEnvelope>,
-    rx: Option<mpsc::Receiver<TaggedEnvelope>>,
+    rx: Option<mpsc::Receiver<Envelope>>,
     _send_handle: TaskHandle<Result<(), ConnectionError>>,
     _receive_handle: TaskHandle<Result<(), ConnectionError>>,
 }
@@ -510,4 +514,4 @@ impl ConnectionSender {
     }
 }
 
-pub(crate) type ConnectionReceiver = mpsc::Receiver<TaggedEnvelope>;
+pub(crate) type ConnectionReceiver = mpsc::Receiver<Envelope>;

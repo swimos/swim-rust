@@ -20,6 +20,7 @@ use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
 use swim_common::routing::error::RoutingError;
 use swim_common::routing::TaggedEnvelope;
+use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc;
 use tracing::level_filters::STATIC_MAX_LEVEL;
@@ -30,9 +31,9 @@ use tracing::{debug, span, trace, warn, Level};
 /// Tasks that the incoming task can handle.
 #[derive(Debug)]
 pub(crate) enum IncomingRequest {
-    Connection(mpsc::Receiver<TaggedEnvelope>),
+    Connection(mpsc::Receiver<Envelope>),
     Subscribe(SubscriberRequest),
-    Message(TaggedEnvelope),
+    Message(Envelope),
     Unreachable(String),
     Disconnect,
     Close(Option<CloseResponseSender>),
@@ -65,7 +66,7 @@ impl IncomingHostTask {
         } = self;
 
         let mut subscribers: HashMap<RelativePath, Vec<mpsc::Sender<RouterEvent>>> = HashMap::new();
-        let mut connection: Option<mpsc::Receiver<TaggedEnvelope>> = None;
+        let mut connection: Option<mpsc::Receiver<Envelope>> = None;
 
         let mut close_trigger = close_rx.fuse();
 
@@ -126,7 +127,7 @@ impl IncomingHostTask {
                 }
 
                 IncomingRequest::Message(message) => {
-                    let message = message.1.into_incoming();
+                    let message = message.into_incoming();
 
                     if let Ok(incoming) = message {
                         broadcast_destination(

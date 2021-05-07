@@ -17,7 +17,6 @@ tracing = { version = "0.1.13", features = ["max_level_debug"] }
 tracing = "0.1.16"
 
 [dependencies]
-swim_client = { path = "../swim_client" }
 either = "1.5.3"
 futures = "0.3.4"
 futures-util = "0.3.4"
@@ -29,6 +28,7 @@ pin-utils = "0.1.0"
 tokio = { version = "1.1.1", features = ["rt", "net"] }
 tokio-stream = { version = "0.1.2", features = ["sync"] }
 url = "2.1.1"
+swim_client = { path = "../swim_client" }
 swim_common = { path = "../swim_common", features = ["tls"] }
 swim_warp = { path = "../swim_warp" }
 utilities = { path = "../utilities" }

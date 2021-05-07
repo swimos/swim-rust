@@ -137,7 +137,7 @@ pub enum ClientRequest {
     /// Subscribe to a connection.
     Subscribe {
         url: Url,
-        request: Request<Result<(RawRoute, mpsc::Receiver<TaggedEnvelope>), ConnectionError>>,
+        request: Request<Result<(RawRoute, mpsc::Receiver<Envelope>), ConnectionError>>,
     },
 }
 
@@ -353,7 +353,7 @@ impl RemoteConnectionManager {
         let mut envelope_rx = ReceiverStream::new(envelope_rx).fuse();
         let mut sub_rx = ReceiverStream::new(sub_rx).fuse();
 
-        let mut subs: Vec<mpsc::Sender<TaggedEnvelope>> = Vec::new();
+        let mut subs: Vec<mpsc::Sender<Envelope>> = Vec::new();
 
         loop {
             let next: Either<Option<TaggedEnvelope>, Option<(RawRoute, SubscriptionRequest)>> = select_biased! {
@@ -364,7 +364,7 @@ impl RemoteConnectionManager {
             match next {
                 Either::Left(Some(envelope)) => match envelope.1.clone().into_incoming() {
                     Ok(env) => {
-                        broadcast(&mut subs, envelope).await?;
+                        broadcast(&mut subs, envelope.1).await?;
                     }
                     Err(env) => {
                         warn!("Unsupported message: {:?}", env);
@@ -387,8 +387,7 @@ pub(crate) type CloseSender = promise::Sender<mpsc::Sender<Result<(), RoutingErr
 type ConnectionChannel = (mpsc::Sender<Envelope>, mpsc::Receiver<RouterEvent>);
 type CloseResponseSender = mpsc::Sender<Result<(), RoutingError>>;
 type CloseReceiver = promise::Receiver<mpsc::Sender<Result<(), RoutingError>>>;
-type SubscriptionRequest =
-    Request<Result<(RawRoute, mpsc::Receiver<TaggedEnvelope>), ConnectionError>>;
+type SubscriptionRequest = Request<Result<(RawRoute, mpsc::Receiver<Envelope>), ConnectionError>>;
 
 /// The Router events are emitted by the connection streams of the router and indicate
 /// messages or errors from the remote host.
