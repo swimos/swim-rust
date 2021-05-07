@@ -12,26 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+pub mod keyspaces;
+mod nostore;
+mod rocks;
+
 use std::path::Path;
 use std::vec::IntoIter;
 
-#[cfg(feature = "libmdbx")]
-pub use lmdbx::{LmdbOpts, LmdbxDatabase};
 pub use nostore::{NoStore, NoStoreOpts};
 pub use rocks::{RocksDatabase, RocksOpts};
 
 use crate::engines::keyspaces::{KeyspaceName, Keyspaces};
 use crate::StoreError;
-
-#[cfg(test)]
-mod test_suite;
-
-pub mod keyspaces;
-#[cfg(feature = "libmdbx")]
-mod lmdbx;
-mod nostore;
-
-mod rocks;
 
 /// A storage engine for server stores that handles byte arrays.
 pub trait ByteEngine: 'static {

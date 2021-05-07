@@ -17,17 +17,21 @@ mod tests;
 
 use crate::engines::keyspaces::{
     incrementing_merge_operator, KeyType, KeyspaceByteEngine, KeyspaceName, KeyspaceOptions,
-    Keyspaces, LANE_KS, MAP_LANE_KS, VALUE_LANE_KS,
+    KeyspaceResolver, Keyspaces, LANE_KS, MAP_LANE_KS, VALUE_LANE_KS,
 };
 use crate::engines::{KeyedSnapshot, RangedSnapshotLoad};
+use crate::iterator::{
+    EngineIterOpts, EngineIterator, EnginePrefixIterator, EngineRefIterator, IteratorKey,
+};
 use crate::stores::lane::serialize;
 use crate::stores::INCONSISTENT_DB;
 use crate::{FromKeyspaces, Store, StoreError, StoreInfo};
-use rocksdb::{ColumnFamily, ColumnFamilyDescriptor, SliceTransform};
+use rocksdb::{ColumnFamily, ColumnFamilyDescriptor, DBRawIterator, SliceTransform};
 use rocksdb::{Error, Options, DB};
 use std::mem::size_of;
 use std::path::Path;
 use std::sync::Arc;
+use swim_common::model::text::Text;
 
 impl From<rocksdb::Error> for StoreError {
     fn from(e: Error) -> Self {
@@ -40,7 +44,7 @@ impl From<rocksdb::Error> for StoreError {
 /// See https://github.com/facebook/rocksdb/wiki for details about the features and limitations.
 #[derive(Debug)]
 pub struct RocksDatabase {
-    delegate: Arc<DB>,
+    pub(crate) delegate: Arc<DB>,
 }
 
 fn default_lane_opts() -> Options {
@@ -94,6 +98,14 @@ impl Store for RocksDatabase {
             path: self.path().to_string_lossy().to_string(),
             kind: "RocksDB".to_string(),
         }
+    }
+}
+
+impl KeyspaceResolver for RocksDatabase {
+    type ResolvedKeyspace = ColumnFamily;
+
+    fn resolve_keyspace(&self, space: &KeyspaceName) -> Option<&Self::ResolvedKeyspace> {
+        self.delegate.cf_handle(space.as_ref())
     }
 }
 
@@ -243,5 +255,112 @@ impl KeyspaceByteEngine for RocksDatabase {
         exec_keyspace(&self.delegate, keyspace, move |delegate, keyspace| {
             delegate.merge_cf(keyspace, key, value.as_slice())
         })
+    }
+}
+
+impl<'a: 'b, 'b> EngineRefIterator<'a, 'b> for RocksDatabase {
+    type EngineIterator = RocksIterator<'b>;
+    type EnginePrefixIterator = RocksPrefixIterator<'b>;
+
+    fn iterator_opt(
+        &'a self,
+        space: &'b Self::ResolvedKeyspace,
+        _opts: EngineIterOpts,
+    ) -> Result<Self::EngineIterator, StoreError> {
+        let mut iter = self.delegate.raw_iterator_cf(space);
+        iter.seek_to_first();
+
+        Ok(RocksIterator { iter })
+    }
+
+    fn prefix_iterator_opt(
+        &'a self,
+        space: &'b Self::ResolvedKeyspace,
+        opts: EngineIterOpts,
+        prefix: Text,
+    ) -> Result<Self::EnginePrefixIterator, StoreError> {
+        let mut it = self.clone().iterator_opt(space, opts)?;
+        it.seek_to(IteratorKey::ToKey(prefix.clone()))?;
+
+        Ok(RocksPrefixIterator {
+            complete: false,
+            delegate: it,
+            needle: prefix,
+        })
+    }
+}
+
+pub struct RocksPrefixIterator<'p> {
+    complete: bool,
+    delegate: RocksIterator<'p>,
+    needle: Text,
+}
+
+impl<'d> EnginePrefixIterator for RocksPrefixIterator<'d> {
+    fn seek_next(&mut self) -> Result<bool, StoreError> {
+        self.delegate.seek_next()
+    }
+
+    fn key(&mut self) -> Option<&[u8]> {
+        let RocksPrefixIterator {
+            complete,
+            delegate,
+            needle,
+        } = self;
+
+        if *complete {
+            return None;
+        }
+
+        let key = delegate.key()?;
+        if !key.starts_with(needle.as_ref()) {
+            *complete = true;
+            None
+        } else {
+            Some(key)
+        }
+    }
+
+    fn value(&self) -> Option<&[u8]> {
+        self.delegate.value()
+    }
+
+    fn valid(&self) -> Result<bool, StoreError> {
+        Ok(!self.complete || self.delegate.valid()?)
+    }
+}
+
+pub struct RocksIterator<'d> {
+    iter: DBRawIterator<'d>,
+}
+
+impl<'d> EngineIterator for RocksIterator<'d> {
+    fn seek_to(&mut self, key: IteratorKey) -> Result<bool, StoreError> {
+        match key {
+            IteratorKey::Start => self.iter.seek_to_first(),
+            IteratorKey::End => self.iter.seek_to_last(),
+            IteratorKey::ToKey(key) => self.iter.seek(key),
+        }
+        self.valid()
+    }
+
+    fn seek_next(&mut self) -> Result<bool, StoreError> {
+        self.iter.next();
+        self.valid()
+    }
+
+    fn key(&self) -> Option<&[u8]> {
+        self.iter.key()
+    }
+
+    fn value(&self) -> Option<&[u8]> {
+        self.iter.value()
+    }
+
+    fn valid(&self) -> Result<bool, StoreError> {
+        if !self.iter.valid() {
+            self.iter.status().map_err(|e| StoreError::from(e))?;
+        }
+        Ok(self.iter.valid())
     }
 }

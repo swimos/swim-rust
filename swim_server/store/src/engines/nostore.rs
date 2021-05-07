@@ -12,11 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::engines::keyspaces::{KeyType, KeyspaceByteEngine, KeyspaceName, Keyspaces};
+use crate::engines::keyspaces::{
+    KeyType, KeyspaceByteEngine, KeyspaceName, KeyspaceResolver, Keyspaces,
+};
 use crate::engines::{KeyedSnapshot, RangedSnapshotLoad};
+use crate::iterator::{
+    EngineIterOpts, EngineIterator, EnginePrefixIterator, EngineRefIterator, IteratorKey,
+};
 use crate::{ByteEngine, FromKeyspaces, Store, StoreError, StoreInfo};
 use std::borrow::Borrow;
 use std::path::{Path, PathBuf};
+use swim_common::model::text::Text;
 
 /// A delegate store database that does nothing.
 #[derive(Debug)]
@@ -35,6 +41,15 @@ impl Store for NoStore {
             path: self.path.to_string_lossy().to_string(),
             kind: "NoStore".to_string(),
         }
+    }
+}
+
+impl KeyspaceResolver for NoStore {
+    type ResolvedKeyspace = KeyspaceName;
+
+    fn resolve_keyspace(&self, _space: &KeyspaceName) -> Option<&Self::ResolvedKeyspace> {
+        // Some(space)
+        unimplemented!()
     }
 }
 
@@ -116,5 +131,69 @@ impl ByteEngine for NoStore {
     /// Delete operation does nothing and always returns `Ok(())`.
     fn delete(&self, _key: &[u8]) -> Result<(), StoreError> {
         Ok(())
+    }
+}
+
+pub struct NoStoreEngineIterator;
+impl EngineIterator for NoStoreEngineIterator {
+    fn seek_to(&mut self, _key: IteratorKey) -> Result<bool, StoreError> {
+        Ok(true)
+    }
+
+    fn seek_next(&mut self) -> Result<bool, StoreError> {
+        Ok(true)
+    }
+
+    fn key(&self) -> Option<&[u8]> {
+        None
+    }
+
+    fn value(&self) -> Option<&[u8]> {
+        None
+    }
+
+    fn valid(&self) -> Result<bool, StoreError> {
+        Ok(true)
+    }
+}
+
+pub struct NoStoreEnginePrefixIterator;
+impl EnginePrefixIterator for NoStoreEnginePrefixIterator {
+    fn seek_next(&mut self) -> Result<bool, StoreError> {
+        Ok(true)
+    }
+
+    fn key(&mut self) -> Option<&[u8]> {
+        None
+    }
+
+    fn value(&self) -> Option<&[u8]> {
+        None
+    }
+
+    fn valid(&self) -> Result<bool, StoreError> {
+        Ok(true)
+    }
+}
+
+impl<'a: 'b, 'b> EngineRefIterator<'a, 'b> for NoStore {
+    type EngineIterator = NoStoreEngineIterator;
+    type EnginePrefixIterator = NoStoreEnginePrefixIterator;
+
+    fn iterator_opt(
+        &'a self,
+        _space: &'b Self::ResolvedKeyspace,
+        _pts: EngineIterOpts,
+    ) -> Result<Self::EngineIterator, StoreError> {
+        Ok(NoStoreEngineIterator)
+    }
+
+    fn prefix_iterator_opt(
+        &'a self,
+        _space: &'b Self::ResolvedKeyspace,
+        _opts: EngineIterOpts,
+        _prefix: Text,
+    ) -> Result<Self::EnginePrefixIterator, StoreError> {
+        Ok(NoStoreEnginePrefixIterator)
     }
 }

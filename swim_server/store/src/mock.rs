@@ -13,9 +13,12 @@
 // limitations under the License.
 
 use crate::engines::keyspaces::{
-    failing_keystore, KeyType, KeyspaceByteEngine, KeyspaceName, Keyspaces,
+    failing_keystore, KeyType, KeyspaceByteEngine, KeyspaceName, KeyspaceResolver, Keyspaces,
 };
 use crate::engines::{KeyedSnapshot, NoStore};
+use crate::iterator::{
+    EngineIterOpts, EngineIterator, EnginePrefixIterator, EngineRefIterator, IteratorKey,
+};
 use crate::stores::lane::map::MapDataModel;
 use crate::stores::lane::value::ValueDataModel;
 use crate::stores::node::NodeStore;
@@ -49,6 +52,79 @@ impl Store for MockServerStore {
             path: "mock".to_string(),
             kind: "mock".to_string(),
         }
+    }
+}
+
+impl KeyspaceResolver for MockServerStore {
+    type ResolvedKeyspace = KeyspaceName;
+
+    fn resolve_keyspace(&self, _space: &KeyspaceName) -> Option<&Self::ResolvedKeyspace> {
+        // Some(space)
+        unimplemented!()
+    }
+}
+
+pub struct MockEngineIterator;
+impl EngineIterator for MockEngineIterator {
+    fn seek_to(&mut self, _key: IteratorKey) -> Result<bool, StoreError> {
+        Ok(true)
+    }
+
+    fn seek_next(&mut self) -> Result<bool, StoreError> {
+        Ok(true)
+    }
+
+    fn key(&self) -> Option<&[u8]> {
+        None
+    }
+
+    fn value(&self) -> Option<&[u8]> {
+        None
+    }
+
+    fn valid(&self) -> Result<bool, StoreError> {
+        Ok(true)
+    }
+}
+
+pub struct MockEnginePrefixIterator;
+impl EnginePrefixIterator for MockEnginePrefixIterator {
+    fn seek_next(&mut self) -> Result<bool, StoreError> {
+        Ok(true)
+    }
+
+    fn key(&mut self) -> Option<&[u8]> {
+        None
+    }
+
+    fn value(&self) -> Option<&[u8]> {
+        None
+    }
+
+    fn valid(&self) -> Result<bool, StoreError> {
+        Ok(true)
+    }
+}
+
+impl<'a: 'b, 'b> EngineRefIterator<'a, 'b> for MockServerStore {
+    type EngineIterator = MockEngineIterator;
+    type EnginePrefixIterator = MockEnginePrefixIterator;
+
+    fn iterator_opt(
+        &'a self,
+        _space: &'b Self::ResolvedKeyspace,
+        _pts: EngineIterOpts,
+    ) -> Result<Self::EngineIterator, StoreError> {
+        Ok(MockEngineIterator)
+    }
+
+    fn prefix_iterator_opt(
+        &'a self,
+        _space: &'b Self::ResolvedKeyspace,
+        _opts: EngineIterOpts,
+        _prefix: Text,
+    ) -> Result<Self::EnginePrefixIterator, StoreError> {
+        Ok(MockEnginePrefixIterator)
     }
 }
 

@@ -302,6 +302,12 @@ pub trait KeyspaceByteEngine: Send + Sync + 'static {
     ) -> Result<(), StoreError>;
 }
 
+pub trait KeyspaceResolver {
+    type ResolvedKeyspace;
+
+    fn resolve_keyspace(&self, space: &KeyspaceName) -> Option<&Self::ResolvedKeyspace>;
+}
+
 #[cfg(test)]
 mod tests {
     use crate::engines::keyspaces::{format_key, KeyType, KeyspaceName, COUNTER_KEY};

@@ -18,26 +18,26 @@ use std::io::ErrorKind;
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 use std::{error::Error as StdError, fs, io};
+
 use tempdir::TempDir;
 use thiserror::Error;
 
-use crate::engines::{ByteEngine, FromKeyspaces, RangedSnapshotLoad};
 pub use engines::KeyedSnapshot;
-
-#[cfg(feature = "libmdbx")]
-pub use engines::{LmdbOpts, LmdbxDatabase};
-
-pub use engines::{RocksDatabase, RocksOpts};
-
-use crate::engines::keyspaces::{KeyspaceByteEngine, KeyspaceOptions, Keyspaces};
 pub use stores::lane::value::ValueDataModel;
 pub use stores::node::{NodeStore, SwimNodeStore};
 pub use stores::plane::{PlaneStore, SwimPlaneStore};
 pub use stores::StoreKey;
 
+use crate::engines::keyspaces::{KeyspaceByteEngine, KeyspaceOptions, KeyspaceResolver, Keyspaces};
+use crate::engines::{ByteEngine, FromKeyspaces, RangedSnapshotLoad};
+pub use crate::iterator::{EngineRefIterator, IteratorKey, OwnedEngineRefIterator};
+
+pub use engines::{RocksDatabase, RocksOpts};
+
 pub mod mock;
 
 mod engines;
+mod iterator;
 mod stores;
 
 /// A directory on the file system used for sever stores.
@@ -159,7 +159,15 @@ impl PartialEq for StoreError {
 ///
 /// This trait only serves to compose the multiple traits that are required for a store.
 pub trait Store:
-    FromKeyspaces + RangedSnapshotLoad + KeyspaceByteEngine + Send + Sync + Debug + 'static
+    FromKeyspaces
+    + RangedSnapshotLoad
+    + KeyspaceByteEngine
+    + KeyspaceResolver
+    + Send
+    + Sync
+    + Debug
+    + OwnedEngineRefIterator
+    + 'static
 {
     /// Returns a reference to the path that the delegate byte engine is operating from.
     fn path(&self) -> &Path;

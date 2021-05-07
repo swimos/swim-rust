@@ -4,9 +4,6 @@ version = "0.1.0"
 authors = ["Swim.AI developers info@swim.ai"]
 edition = "2018"
 
-[features]
-libmdbx = ["heed/mdbx"]
-
 [dependencies]
 swim_common = { path = "../../swim_common" }
 utilities = { path = "../../utilities" }
@@ -20,11 +17,6 @@ tokio-stream = { version = "0.1.2", features = ["sync"] }
 futures = "0.3.4"
 tracing = "0.1.16"
 thiserror = "1.0"
-
-[dependencies.heed]
-version = "*"
-optional = true
-default-features = false
 
 [dev-dependencies]
 tokio = { version = "1.1.1", features = ["rt-multi-thread", "macros", "test-util"] }
