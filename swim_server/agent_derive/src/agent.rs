@@ -123,7 +123,7 @@ pub fn derive_swim_agent(input: DeriveInput) -> Result<TokenStream, TokenStream>
         use swim_server::agent::lane::channels::AgentExecutionConfig;
         use swim_server::agent::context::AgentExecutionContext;
         use swim_server::agent::lane::lifecycle::LaneLifecycle;
-        use swim_server::agent::model::value::value_store2::ValueLaneStoreIo;
+        use swim_server::agent::model::value::ValueLaneStoreIo;
         use swim_server::agent::lane::store::LaneNoStore;
 
         #[automatically_derived]
