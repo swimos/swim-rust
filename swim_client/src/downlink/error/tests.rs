@@ -15,7 +15,7 @@
 use crate::downlink::error::{DownlinkError, TransitionError};
 use swim_common::model::schema::StandardSchema;
 use swim_common::model::Value;
-use swim_common::routing::{CloseError, ConnectionError, RoutingError};
+use swim_common::routing::error::{CloseError, ConnectionError, RoutingError};
 
 #[test]
 fn transition_error_display() {

@@ -22,10 +22,6 @@ use crate::agent::{
 use crate::meta::log::config::{FlushStrategy, LogConfig};
 use crate::meta::log::{LogBuffer, LogEntry, LogLanes, LogLevel, NodeLogger};
 use crate::plane::provider::AgentProvider;
-use crate::routing::error::RouterError;
-use crate::routing::{
-    ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedEnvelope, TaggedSender,
-};
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use std::collections::HashMap;
@@ -35,7 +31,10 @@ use std::str::FromStr;
 use std::sync::Arc;
 use swim_common::form::Form;
 use swim_common::model::Value;
-use swim_common::routing::ResolutionError;
+use swim_common::routing::error::{ResolutionError, RouterError};
+use swim_common::routing::{
+    ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedEnvelope, TaggedSender,
+};
 use swim_common::warp::envelope::{Envelope, OutgoingHeader, OutgoingLinkMessage};
 use swim_common::warp::path::RelativePath;
 use swim_warp::model::map::MapUpdate;

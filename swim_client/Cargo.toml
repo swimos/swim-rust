@@ -8,6 +8,7 @@ edition = "2018"
 default = ["websocket"]
 websocket = ["tokio-tungstenite", "http", "tokio-native-tls", "swim_common/tls", "swim_common/tungstenite", "test_server"]
 debug = ["log_verbose"]
+trust-dns = ["trust-dns-resolver"]
 log_verbose = []
 
 [dependencies.test_server]
@@ -57,6 +58,7 @@ tracing-futures = "0.2.4"
 tokio = { version = "1.1.1", features = ["sync", "rt", "macros", "time"] }
 tokio-stream = "0.1.2"
 num-bigint = "0.3"
+trust-dns-resolver = { version = "0.20", optional = true, features = ["tokio-runtime"] }
 
 [dev-dependencies]
 tokio = { version = "1.1.1", features = ["rt-multi-thread"] }

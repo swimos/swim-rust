@@ -40,7 +40,6 @@ use crate::agent::{
 use crate::meta::info::LaneKind;
 use crate::meta::log::NodeLogger;
 use crate::plane::provider::AgentProvider;
-use crate::routing::RoutingAddr;
 use futures::future::{join, BoxFuture};
 use futures::Stream;
 use std::collections::HashMap;
@@ -48,6 +47,7 @@ use std::fmt::Debug;
 use std::future::Future;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
+use swim_common::routing::RoutingAddr;
 use swim_runtime::task;
 use tokio::sync::{mpsc, Mutex};
 use tokio::time::{timeout, Duration};
@@ -57,14 +57,14 @@ use utilities::sync::trigger::Receiver;
 use utilities::uri::RelativeUri;
 
 mod stub_router {
-    use crate::routing::error::RouterError;
-    use crate::routing::{
-        ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedEnvelope, TaggedSender,
-    };
     use futures::future::BoxFuture;
     use futures::FutureExt;
     use std::sync::Arc;
-    use swim_common::routing::ResolutionError;
+    use swim_common::routing::error::ResolutionError;
+    use swim_common::routing::error::RouterError;
+    use swim_common::routing::{
+        ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedEnvelope, TaggedSender,
+    };
     use tokio::sync::mpsc;
     use url::Url;
     use utilities::sync::promise;

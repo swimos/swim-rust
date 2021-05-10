@@ -21,7 +21,7 @@ use crate::downlink::{Downlink, DownlinkState};
 use futures::StreamExt;
 use std::num::NonZeroUsize;
 use std::time::Instant;
-use swim_common::routing::RoutingError;
+use swim_common::routing::error::RoutingError;
 use swim_common::sink::item;
 
 struct State(i32);

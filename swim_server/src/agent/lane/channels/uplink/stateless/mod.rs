@@ -18,7 +18,6 @@ use crate::agent::lane::channels::uplink::{
     UplinkMessageSender,
 };
 use crate::agent::lane::channels::TaggedAction;
-use crate::routing::{RoutingAddr, ServerRouter, TaggedSender};
 use either::Either;
 use futures::{select_biased, Stream, StreamExt};
 use pin_utils::pin_mut;
@@ -26,6 +25,7 @@ use std::collections::{hash_map::Entry, HashMap};
 use std::marker::PhantomData;
 use swim_common::form::Form;
 use swim_common::model::Value;
+use swim_common::routing::{RoutingAddr, ServerRouter, TaggedSender};
 use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc;
 use tracing::{event, Level};

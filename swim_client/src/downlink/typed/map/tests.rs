@@ -28,7 +28,7 @@ use std::sync::Arc;
 use swim_common::form::ValidatedForm;
 use swim_common::model::schema::StandardSchema;
 use swim_common::model::Value;
-use swim_common::routing::RoutingError;
+use swim_common::routing::error::RoutingError;
 use swim_common::sink::item::ItemSender;
 use swim_warp::model::map::MapUpdate;
 use tokio::sync::mpsc;

@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::routing::{RoutingAddr, TaggedEnvelope, TaggedSender};
-use swim_common::warp::envelope::Envelope;
+use crate::warp::envelope::Envelope;
 use tokio::sync::mpsc;
 
 #[tokio::test]

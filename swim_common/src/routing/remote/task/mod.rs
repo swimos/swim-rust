@@ -15,13 +15,22 @@
 #[cfg(test)]
 mod tests;
 
-use crate::routing::error::RouterError;
+use crate::model::parser::{self, ParseFailure};
+use crate::routing::error::{
+    CloseError, CloseErrorKind, ConnectionError, ProtocolError, ProtocolErrorKind, ResolutionError,
+    ResolutionErrorKind,
+};
 use crate::routing::remote::config::ConnectionConfig;
 use crate::routing::remote::router::RemoteRouter;
 use crate::routing::remote::RoutingRequest;
+use crate::routing::ws::selector::{SelectorResult, WsStreamSelector};
+use crate::routing::ws::{CloseCode, CloseReason, JoinedStreamSink, WsMessage};
+use crate::routing::RouterError;
 use crate::routing::{
     ConnectionDropped, Route, RoutingAddr, ServerRouter, ServerRouterFactory, TaggedEnvelope,
 };
+use crate::warp::envelope::{Envelope, EnvelopeHeader, EnvelopeParseErr, OutgoingHeader};
+use crate::warp::path::RelativePath;
 use futures::future::{join, BoxFuture};
 use futures::{select_biased, stream, FutureExt, Sink, Stream, StreamExt};
 use pin_utils::pin_mut;
@@ -33,15 +42,6 @@ use std::fmt::{Display, Formatter};
 use std::future::Future;
 use std::str::FromStr;
 use std::time::Duration;
-use swim_common::model::parser::{self, ParseFailure};
-use swim_common::routing::ws::selector::{SelectorResult, WsStreamSelector};
-use swim_common::routing::ws::{CloseCode, CloseReason, JoinedStreamSink, WsMessage};
-use swim_common::routing::{
-    CloseError, CloseErrorKind, ConnectionError, ProtocolError, ProtocolErrorKind, ResolutionError,
-    ResolutionErrorKind,
-};
-use swim_common::warp::envelope::{Envelope, EnvelopeHeader, EnvelopeParseErr, OutgoingHeader};
-use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc;
 use tokio::time::{sleep, Instant};
 use tokio_stream::wrappers::ReceiverStream;

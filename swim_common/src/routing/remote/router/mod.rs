@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::routing::error::RouterError;
+use crate::request::Request;
 use crate::routing::remote::{RawRoute, RoutingRequest};
+use crate::routing::ResolutionError;
+use crate::routing::RouterError;
 use crate::routing::{Route, RoutingAddr, ServerRouter, TaggedSender};
 use futures::future::BoxFuture;
 use futures::FutureExt;
-use swim_common::request::Request;
-use swim_common::routing::ResolutionError;
 use tokio::sync::{mpsc, oneshot};
 use url::Url;
 use utilities::uri::RelativeUri;

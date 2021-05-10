@@ -19,10 +19,6 @@ use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::plane::router::PlaneRouter;
 use crate::plane::spec::PlaneSpec;
 use crate::plane::{run_plane, EnvChannel};
-use crate::routing::remote::config::ConnectionConfig;
-use crate::routing::remote::net::dns::Resolver;
-use crate::routing::remote::net::plain::TokioPlainTextNetworking;
-use crate::routing::remote::{RemoteConnectionChannels, RemoteConnectionsTask};
 use crate::routing::{TopLevelRouter, TopLevelRouterFactory};
 use either::Either;
 use futures::{io, join};
@@ -30,6 +26,10 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::net::SocketAddr;
 use std::sync::Arc;
+use swim_common::routing::remote::config::ConnectionConfig;
+use swim_common::routing::remote::net::dns::Resolver;
+use swim_common::routing::remote::net::plain::TokioPlainTextNetworking;
+use swim_common::routing::remote::{RemoteConnectionChannels, RemoteConnectionsTask};
 use swim_common::routing::ws::tungstenite::TungsteniteWsConnections;
 use swim_runtime::task::TaskError;
 use swim_runtime::time::clock::RuntimeClock;
@@ -276,16 +276,12 @@ impl SwimServer {
             },
             top_level_router_fac,
             OpenEndedFutures::new(),
-            RemoteConnectionChannels {
-                request_tx: remote_tx,
-                request_rx: remote_rx,
-                stop_trigger: stop_trigger_rx,
-            },
+            RemoteConnectionChannels::new(remote_tx, remote_rx, stop_trigger_rx),
         )
         .await
         .unwrap_or_else(|err| panic!("Could not connect to \"{}\": {}", address, err));
 
-        let _ = match connections_task.listener.local_addr() {
+        let _ = match connections_task.local_addr() {
             Ok(local_addr) => address_tx.provide(local_addr),
             Err(err) => panic!("Could not resolve server address: {}", err),
         };

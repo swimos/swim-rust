@@ -14,36 +14,41 @@
 
 mod addresses;
 pub mod config;
-pub mod net;
 mod pending;
 pub(crate) mod router;
 mod state;
-mod table;
+pub mod table;
 mod task;
+
+#[cfg(not(target_arch = "wasm32"))]
+pub mod net;
+
 #[cfg(test)]
 mod tests;
 
 use std::net::SocketAddr;
 
+use crate::request::Request;
 use futures::future::BoxFuture;
-use swim_common::request::Request;
 use tokio::sync::mpsc;
 use tracing::{event, Level};
 use url::Url;
 use utilities::sync::promise;
 
-use swim_common::routing::{ConnectionError, HttpError, ResolutionError, ResolutionErrorKind};
+use crate::routing::{ConnectionError, ResolutionError};
 use utilities::sync::trigger;
 use utilities::task::Spawner;
 
 use crate::routing::error::Unresolvable;
+use crate::routing::error::{HttpError, ResolutionErrorKind};
 use crate::routing::remote::config::ConnectionConfig;
-use crate::routing::remote::net::ExternalConnections;
 use crate::routing::remote::state::{DeferredResult, Event, RemoteConnections, RemoteTasksState};
 use crate::routing::remote::table::HostAndPort;
+use crate::routing::ws::WsConnections;
 use crate::routing::{ConnectionDropped, RoutingAddr, ServerRouterFactory, TaggedEnvelope};
+use futures::stream::FusedStream;
 use std::io;
-use swim_common::routing::ws::WsConnections;
+use tokio::net::TcpListener;
 
 #[cfg(test)]
 pub mod test_fixture;
@@ -82,15 +87,29 @@ pub enum RoutingRequest {
 }
 
 pub struct RemoteConnectionChannels {
-    pub(crate) request_tx: mpsc::Sender<RoutingRequest>,
-    pub(crate) request_rx: mpsc::Receiver<RoutingRequest>,
-    pub(crate) stop_trigger: trigger::Receiver,
+    request_tx: mpsc::Sender<RoutingRequest>,
+    request_rx: mpsc::Receiver<RoutingRequest>,
+    stop_trigger: trigger::Receiver,
+}
+
+impl RemoteConnectionChannels {
+    pub fn new(
+        request_tx: mpsc::Sender<RoutingRequest>,
+        request_rx: mpsc::Receiver<RoutingRequest>,
+        stop_trigger: trigger::Receiver,
+    ) -> RemoteConnectionChannels {
+        RemoteConnectionChannels {
+            request_tx,
+            request_rx,
+            stop_trigger,
+        }
+    }
 }
 
 #[derive(Debug)]
 pub struct RemoteConnectionsTask<External: ExternalConnections, Ws, Router, Sp> {
     external: External,
-    pub(crate) listener: External::ListenerType,
+    listener: External::ListenerType,
     websockets: Ws,
     delegate_router: Router,
     stop_trigger: trigger::Receiver,
@@ -98,6 +117,14 @@ pub struct RemoteConnectionsTask<External: ExternalConnections, Ws, Router, Sp> 
     configuration: ConnectionConfig,
     remote_tx: mpsc::Sender<RoutingRequest>,
     remote_rx: mpsc::Receiver<RoutingRequest>,
+}
+
+impl<External: ExternalConnections<ListenerType = TcpListener>, Ws, Router, Sp>
+    RemoteConnectionsTask<External, Ws, Router, Sp>
+{
+    pub fn local_addr(&self) -> io::Result<SocketAddr> {
+        self.listener.local_addr()
+    }
 }
 
 type SocketAddrIt = std::vec::IntoIter<SocketAddr>;
@@ -333,4 +360,26 @@ fn validate_scheme(scheme: &str) -> Option<u16> {
         "wss" | "swims" | "warps" => Some(443),
         _ => None,
     }
+}
+
+type IoResult<T> = io::Result<T>;
+
+/// Trait for servers that listen for incoming remote connections. This is primarily used to
+/// abstract over [`std::net::TcpListener`] for testing purposes.
+pub trait Listener {
+    type Socket: Unpin + Send + Sync + 'static;
+    type AcceptStream: FusedStream<Item = IoResult<(Self::Socket, SocketAddr)>> + Unpin;
+
+    fn into_stream(self) -> Self::AcceptStream;
+}
+
+/// Trait for types that can create remote network connections asynchronously. This is primarily
+/// used to abstract over [`std::net::TcpListener`] and [`std::net::TcpStream`] for testing purposes.
+pub trait ExternalConnections: Clone + Send + Sync + 'static {
+    type Socket: Unpin + Send + Sync + 'static;
+    type ListenerType: Listener<Socket = Self::Socket>;
+
+    fn bind(&self, addr: SocketAddr) -> BoxFuture<'static, IoResult<Self::ListenerType>>;
+    fn try_open(&self, addr: SocketAddr) -> BoxFuture<'static, IoResult<Self::Socket>>;
+    fn lookup(&self, host: HostAndPort) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>>;
 }

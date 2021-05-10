@@ -12,20 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::model::Value;
+use crate::request::Request;
+use crate::routing::error::{ConnectionError, IoError, ResolutionError, ResolutionErrorKind};
 use crate::routing::remote::state::{DeferredResult, Event, RemoteTasksState};
 use crate::routing::remote::table::{HostAndPort, RoutingTable};
 use crate::routing::remote::{
     ConnectionDropped, RawRoute, ResolutionRequest, RoutingRequest, SocketAddrIt, Unresolvable,
 };
 use crate::routing::{RoutingAddr, TaggedEnvelope};
+use crate::warp::envelope::Envelope;
 use futures::FutureExt;
 use std::cell::RefCell;
 use std::io::ErrorKind;
 use std::net::SocketAddr;
-use swim_common::model::Value;
-use swim_common::request::Request;
-use swim_common::routing::{ConnectionError, IoError, ResolutionError, ResolutionErrorKind};
-use swim_common::warp::envelope::Envelope;
 use tokio::sync::{mpsc, oneshot};
 use utilities::sync::promise::Sender;
 

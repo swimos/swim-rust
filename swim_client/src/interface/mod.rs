@@ -31,14 +31,12 @@ use std::sync::Arc;
 use swim_common::form::{Form, ValidatedForm};
 use swim_common::model::parser::parse_single;
 use swim_common::model::Value;
-use swim_common::routing::ws::WebsocketFactory;
-use swim_common::routing::RoutingError;
+use swim_common::routing::error::RoutingError;
+use swim_common::routing::ws::WsConnections;
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::AbsolutePath;
 use tracing::info;
 
-#[cfg(feature = "websocket")]
-use crate::connections::factory::tungstenite::TungsteniteWsFactory;
 use crate::downlink::typed::command::TypedCommandDownlink;
 use crate::downlink::typed::event::TypedEventDownlink;
 use crate::downlink::typed::map::{MapDownlinkReceiver, TypedMapDownlink};
@@ -48,6 +46,14 @@ use crate::downlink::typed::{
     UntypedValueDownlink, UntypedValueReceiver,
 };
 use crate::downlink::SchemaViolations;
+use swim_common::routing::remote::ExternalConnections;
+
+#[cfg(feature = "websocket")]
+use {
+    swim_common::routing::remote::net::dns::Resolver,
+    swim_common::routing::remote::net::plain::TokioPlainTextNetworking,
+    swim_common::routing::ws::tungstenite::TungsteniteWsConnections,
+};
 
 /// Builder to create Swim client instance.
 ///
@@ -92,7 +98,17 @@ impl SwimClientBuilder {
     ///
     /// # Arguments
     /// * `ws_factory` - Websocket factory for the client.
-    pub async fn build<WsFac: WebsocketFactory + 'static>(self, ws_factory: WsFac) -> SwimClient {
+    /// * `conn_factory` - Connection factory for the client.
+    pub async fn build<WSFac, ConnFac, Socket>(
+        self,
+        ws_factory: WSFac,
+        conn_factory: ConnFac,
+    ) -> SwimClient
+    where
+        WSFac: WsConnections<Socket> + Send + Sync + 'static,
+        ConnFac: ExternalConnections<Socket = Socket>,
+        Socket: Send + Sync + Unpin + 'static,
+    {
         let SwimClientBuilder {
             config: downlinks_config,
         } = self;
@@ -100,7 +116,11 @@ impl SwimClientBuilder {
         info!("Initialising Swim Client");
 
         let router_params = downlinks_config.client_params().router_params;
-        let pool = SwimConnPool::new(router_params.connection_pool_params(), ws_factory);
+        let pool = SwimConnPool::new(
+            router_params.connection_pool_params(),
+            conn_factory,
+            ws_factory,
+        );
         let router = SwimRouter::new(router_params, pool);
 
         SwimClient {
@@ -114,10 +134,18 @@ impl SwimClientBuilder {
         info!("Initialising Swim Client");
 
         let config = ConfigHierarchy::default();
-        let buffer_size = config.client_params().dl_req_buffer_size.get();
-        let connection_factory = TungsteniteWsFactory::new(buffer_size).await;
+
+        let ws_factory = TungsteniteWsConnections {
+            config: Default::default(),
+        };
+        let conn_factory = TokioPlainTextNetworking::new(Arc::new(Resolver::new().await));
+
         let router_params = config.client_params().router_params;
-        let pool = SwimConnPool::new(router_params.connection_pool_params(), connection_factory);
+        let pool = SwimConnPool::new(
+            router_params.connection_pool_params(),
+            conn_factory,
+            ws_factory,
+        );
         let router = SwimRouter::new(router_params, pool);
 
         SwimClient {

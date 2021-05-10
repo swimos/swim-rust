@@ -22,27 +22,27 @@ use http::Uri;
 use parking_lot::Mutex;
 use tokio::sync::{mpsc, watch};
 
-use swim_common::model::Value;
-use swim_common::warp::envelope::Envelope;
-use swim_common::warp::path::RelativePath;
+use crate::model::Value;
+use crate::warp::envelope::Envelope;
+use crate::warp::path::RelativePath;
 use swim_runtime::time::timeout;
 use utilities::future::retryable::strategy::{Quantity, RetryStrategy};
 use utilities::sync::{promise, trigger};
 use utilities::uri::{BadRelativeUri, RelativeUri, UriIsAbsolute};
 
-use crate::routing::error::RouterError;
+use crate::routing::error::{
+    CloseError, CloseErrorKind, ConnectionError, IoError, ProtocolError, ResolutionError,
+};
 use crate::routing::remote::config::ConnectionConfig;
 use crate::routing::remote::task::{ConnectionTask, DispatchError};
 use crate::routing::remote::test_fixture::fake_channel::TwoWayMpsc;
 use crate::routing::remote::test_fixture::LocalRoutes;
+use crate::routing::ws::WsMessage;
+use crate::routing::RouterError;
 use crate::routing::{ConnectionDropped, Route, RoutingAddr, TaggedEnvelope, TaggedSender};
 use futures::io::ErrorKind;
 use std::num::NonZeroUsize;
 use std::time::Duration;
-use swim_common::routing::ws::WsMessage;
-use swim_common::routing::{
-    CloseError, CloseErrorKind, ConnectionError, IoError, ProtocolError, ResolutionError,
-};
 
 #[test]
 fn dispatch_error_display() {

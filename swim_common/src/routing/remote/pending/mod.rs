@@ -14,10 +14,10 @@
 
 use crate::routing::remote::table::HostAndPort;
 use crate::routing::remote::{ResolutionRequest, REQUEST_DROPPED};
+use crate::routing::ConnectionError;
 use crate::routing::RoutingAddr;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
-use swim_common::routing::ConnectionError;
 
 #[cfg(test)]
 mod tests;

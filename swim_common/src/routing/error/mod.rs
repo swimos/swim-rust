@@ -24,30 +24,91 @@ mod send;
 mod tls;
 
 pub use self::http::*;
+use crate::request::request_future::RequestError;
+use crate::routing::RoutingAddr;
 pub use capacity::*;
 pub use closed::*;
 pub use encoding::*;
+use futures::channel::mpsc::SendError as FutSendError;
 pub use io::*;
 pub use protocol::*;
 pub use resolution::*;
 pub use send::*;
-#[cfg(feature = "tls")]
-pub use tls::*;
-
-use futures::channel::mpsc::SendError as FutSendError;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::io::ErrorKind;
-use utilities::errors::Recoverable;
-
-pub type FmtResult = std::fmt::Result;
-
 use std::time::Duration;
+#[cfg(feature = "tls")]
+pub use tls::*;
+use tokio::sync::mpsc::error::SendError as MpscSendError;
+use utilities::errors::Recoverable;
+use utilities::sync::circular_buffer;
+use utilities::uri::RelativeUri;
 #[cfg(feature = "tungstenite")]
 use {std::ops::Deref, tokio_tungstenite::tungstenite};
 
 #[cfg(test)]
 mod tests;
+
+pub type FmtResult = std::fmt::Result;
+
+/// An error returned by the router
+#[derive(Clone, Debug, PartialEq)]
+pub enum RoutingError {
+    /// The connection to the remote host has been lost.
+    ConnectionError,
+    /// The remote host is unreachable.
+    HostUnreachable,
+    /// The connection pool has encountered an error.
+    PoolError(ConnectionError),
+    /// The router has been stopped.
+    RouterDropped,
+    /// The router has encountered an error while stopping.
+    CloseError,
+}
+
+impl Recoverable for RoutingError {
+    fn is_fatal(&self) -> bool {
+        match &self {
+            RoutingError::ConnectionError => false,
+            RoutingError::HostUnreachable => false,
+            RoutingError::PoolError(e) => e.is_fatal(),
+            _ => true,
+        }
+    }
+}
+
+impl Display for RoutingError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RoutingError::ConnectionError => write!(f, "Connection error."),
+            RoutingError::HostUnreachable => write!(f, "Host unreachable."),
+            RoutingError::PoolError(e) => write!(f, "Connection pool error. {}", e),
+            RoutingError::RouterDropped => write!(f, "Router was dropped."),
+            RoutingError::CloseError => write!(f, "Closing error."),
+        }
+    }
+}
+
+impl Error for RoutingError {}
+
+impl<T> From<MpscSendError<T>> for RoutingError {
+    fn from(_: MpscSendError<T>) -> Self {
+        RoutingError::RouterDropped
+    }
+}
+
+impl From<RoutingError> for RequestError {
+    fn from(_: RoutingError) -> Self {
+        RequestError {}
+    }
+}
+
+impl<T> From<circular_buffer::error::SendError<T>> for RoutingError {
+    fn from(_: circular_buffer::error::SendError<T>) -> Self {
+        RoutingError::RouterDropped
+    }
+}
 
 /// An error denoting that a connection error has occurred.
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -206,3 +267,51 @@ pub(crate) fn format_cause(cause: &Option<String>) -> String {
         None => String::new(),
     }
 }
+
+/// Ways in which the router can fail to provide a route.
+#[derive(Debug, PartialEq, Eq)]
+pub enum RouterError {
+    /// For a local endpoint it can be determined that no agent exists.
+    NoAgentAtRoute(RelativeUri),
+    /// Connecting to a remote endpoint failed (the endpoint may or may not exist).
+    ConnectionFailure(ConnectionError),
+    /// The router was dropped (the application is likely stopping).
+    RouterDropped,
+}
+
+impl Display for RouterError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RouterError::NoAgentAtRoute(route) => write!(f, "No agent at: '{}'", route),
+            RouterError::ConnectionFailure(err) => {
+                write!(f, "Failed to route to requested endpoint: '{}'", err)
+            }
+            RouterError::RouterDropped => write!(f, "The router channel was dropped."),
+        }
+    }
+}
+
+impl Error for RouterError {}
+
+impl Recoverable for RouterError {
+    fn is_fatal(&self) -> bool {
+        match self {
+            RouterError::ConnectionFailure(err) => err.is_fatal(),
+            _ => true,
+        }
+    }
+}
+
+/// Error indicating that a routing address is invalid. (Typically, this should not occur and
+/// suggests a bug).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Unresolvable(pub RoutingAddr);
+
+impl Display for Unresolvable {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let Unresolvable(addr) = self;
+        write!(f, "No active endpoint with ID: {}", addr)
+    }
+}
+
+impl Error for Unresolvable {}

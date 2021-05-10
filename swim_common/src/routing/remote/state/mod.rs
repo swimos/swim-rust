@@ -14,13 +14,15 @@
 
 use crate::routing::remote::addresses::RemoteRoutingAddresses;
 use crate::routing::remote::config::ConnectionConfig;
-use crate::routing::remote::net::{ExternalConnections, Listener};
 use crate::routing::remote::pending::PendingRequests;
 use crate::routing::remote::table::{HostAndPort, RoutingTable};
 use crate::routing::remote::task::TaskFactory;
+use crate::routing::remote::{ExternalConnections, Listener};
 use crate::routing::remote::{
     RawRoute, RemoteConnectionChannels, ResolutionRequest, RoutingRequest, SocketAddrIt,
 };
+use crate::routing::ws::WsConnections;
+use crate::routing::ConnectionError;
 use crate::routing::{ConnectionDropped, RoutingAddr, ServerRouterFactory};
 use futures::future::{BoxFuture, Fuse};
 use futures::StreamExt;
@@ -29,8 +31,6 @@ use futures_util::stream::TakeUntil;
 use std::future::Future;
 use std::io;
 use std::net::SocketAddr;
-use swim_common::routing::ws::WsConnections;
-use swim_common::routing::ConnectionError;
 use tokio_stream::wrappers::ReceiverStream;
 use utilities::future::open_ended::OpenEndedFutures;
 use utilities::sync::promise::Sender;
@@ -444,7 +444,7 @@ async fn do_handshake<Socket, Ws>(
     peer_addr: SocketAddr,
 ) -> Result<Ws::StreamSink, ConnectionError>
 where
-    Socket: Send + Sync + Unpin,
+    Socket: Send + Sync + Unpin + 'static,
     Ws: WsConnections<Socket>,
 {
     if server {

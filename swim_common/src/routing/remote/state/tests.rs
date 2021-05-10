@@ -12,13 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::request::Request;
+use crate::routing::error::{ConnectionError, IoError};
 use crate::routing::remote::config::ConnectionConfig;
 use crate::routing::remote::state::{
     DeferredResult, Event, RemoteConnectionChannels, RemoteConnections, RemoteTasksState, State,
 };
 use crate::routing::remote::table::HostAndPort;
 use crate::routing::remote::test_fixture::{
-    FakeConnections, FakeListener, FakeSocket, FakeWebsocket, FakeWebsockets, LocalRoutes,
+    ErrorMode, FakeConnections, FakeListener, FakeSocket, FakeWebsocket, FakeWebsockets,
+    LocalRoutes,
 };
 use crate::routing::remote::ConnectionDropped;
 use crate::routing::RoutingAddr;
@@ -29,8 +32,6 @@ use std::io;
 use std::net::SocketAddr;
 use std::num::NonZeroUsize;
 use std::time::Duration;
-use swim_common::request::Request;
-use swim_common::routing::{ConnectionError, IoError};
 use swim_runtime::time::timeout::timeout;
 use tokio::sync::{mpsc, oneshot};
 use utilities::future::open_ended::OpenEndedFutures;
@@ -64,7 +65,7 @@ fn make_state(
         yield_after: NonZeroUsize::new(256).unwrap(),
     };
 
-    let fake_connections = FakeConnections::new(HashMap::new(), HashMap::new(), None);
+    let fake_connections = FakeConnections::new(HashMap::new(), HashMap::new(), None, 0);
     let router = LocalRoutes::new(addr);
 
     let (stop_tx, stop_rx) = trigger::trigger();
@@ -455,7 +456,7 @@ async fn connections_state_shutdown_process() {
 
     let sa = sock_addr();
 
-    let web_sock = FakeWebsocket::new(FakeSocket::new(vec![], 0, false));
+    let web_sock = FakeWebsocket::new(FakeSocket::new(vec![], false, None, ErrorMode::None));
     let host1 = HostAndPort::new("my_host".to_string(), 80);
     let host2 = HostAndPort::new("other".to_string(), 80);
 

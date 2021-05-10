@@ -13,16 +13,27 @@
 // limitations under the License.
 
 mod tests {
+    use std::sync::Arc;
     use swim_client::configuration::router::{ConnectionPoolParams, RouterParamBuilder};
-    use swim_client::connections::factory::tungstenite::TungsteniteWsFactory;
     use swim_client::connections::SwimConnPool;
     use swim_client::router::{Router, RouterEvent, SwimRouter};
     use swim_common::model::Value;
+    use swim_common::routing::remote::net::dns::Resolver;
+    use swim_common::routing::remote::net::plain::TokioPlainTextNetworking;
+    use swim_common::routing::ws::tungstenite::TungsteniteWsConnections;
     use swim_common::warp::envelope::Envelope;
     use swim_common::warp::path::AbsolutePath;
     use swim_runtime::time::timeout::timeout;
     use test_server::build_server;
     use tokio::time::Duration;
+
+    async fn create_pool() -> SwimConnPool {
+        let conn_factory = TokioPlainTextNetworking::new(Arc::new(Resolver::new().await));
+        let ws_factory = TungsteniteWsConnections {
+            config: Default::default(),
+        };
+        SwimConnPool::new(ConnectionPoolParams::default(), conn_factory, ws_factory)
+    }
 
     #[tokio::test]
     #[ignore]
@@ -33,10 +44,7 @@ mod tests {
 
         let host = format!("ws://127.0.0.1:{}", port);
         let config = RouterParamBuilder::default().build();
-        let pool = SwimConnPool::new(
-            ConnectionPoolParams::default(),
-            TungsteniteWsFactory::new(5).await,
-        );
+        let pool = create_pool().await;
 
         let mut router = SwimRouter::new(config, pool);
 
@@ -61,10 +69,7 @@ mod tests {
 
         let host = format!("ws://127.0.0.1:{}", port);
         let config = RouterParamBuilder::default().build();
-        let pool = SwimConnPool::new(
-            ConnectionPoolParams::default(),
-            TungsteniteWsFactory::new(5).await,
-        );
+        let pool = create_pool().await;
 
         let mut router = SwimRouter::new(config, pool);
 
@@ -107,10 +112,7 @@ mod tests {
 
         let host = format!("ws://127.0.0.1:{}", port);
         let config = RouterParamBuilder::default().build();
-        let pool = SwimConnPool::new(
-            ConnectionPoolParams::default(),
-            TungsteniteWsFactory::new(5).await,
-        );
+        let pool = create_pool().await;
         let mut router = SwimRouter::new(config, pool);
 
         let path = AbsolutePath::new(
@@ -143,10 +145,7 @@ mod tests {
 
         let host = format!("ws://127.0.0.1:{}", port);
         let config = RouterParamBuilder::default().build();
-        let pool = SwimConnPool::new(
-            ConnectionPoolParams::default(),
-            TungsteniteWsFactory::new(5).await,
-        );
+        let pool = create_pool().await;
         let mut router = SwimRouter::new(config, pool);
 
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "/unit/foo", "non_existent");
@@ -175,10 +174,7 @@ mod tests {
 
         let host = format!("ws://127.0.0.1:{}", port);
         let config = RouterParamBuilder::default().build();
-        let pool = SwimConnPool::new(
-            ConnectionPoolParams::default(),
-            TungsteniteWsFactory::new(5).await,
-        );
+        let pool = create_pool().await;
         let mut router = SwimRouter::new(config, pool);
 
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "foo", "bar");
@@ -202,10 +198,7 @@ mod tests {
 
         let host = format!("ws://127.0.0.1:{}", port);
         let config = RouterParamBuilder::default().build();
-        let pool = SwimConnPool::new(
-            ConnectionPoolParams::default(),
-            TungsteniteWsFactory::new(5).await,
-        );
+        let pool = create_pool().await;
         let mut router = SwimRouter::new(config, pool);
 
         let path = AbsolutePath::new(
@@ -238,10 +231,7 @@ mod tests {
 
         let host = format!("ws://127.0.0.1:{}", port);
         let config = RouterParamBuilder::default().build();
-        let pool = SwimConnPool::new(
-            ConnectionPoolParams::default(),
-            TungsteniteWsFactory::new(5).await,
-        );
+        let pool = create_pool().await;
         let mut router = SwimRouter::new(config, pool);
 
         let url = url::Url::parse(&host).unwrap();
