@@ -12,19 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#[cfg(test)]
-mod test_suite;
-
-#[cfg(feature = "libmdbx")]
-mod lmdbx;
 mod nostore;
-#[cfg(feature = "rocks-db")]
 mod rocks;
 
-#[cfg(feature = "libmdbx")]
-pub use lmdbx::{LmdbOpts, LmdbxDatabase};
 pub use nostore::{NoStore, NoStoreOpts};
-#[cfg(feature = "rocks-db")]
 pub use rocks::{RocksDatabase, RocksOpts};
 
 use crate::StoreError;

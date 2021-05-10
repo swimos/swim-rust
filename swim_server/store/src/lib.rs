@@ -22,7 +22,8 @@ use std::{error::Error as StdError, fs, io};
 use tempdir::TempDir;
 
 use crate::engines::{ByteEngine, FromOpts, RangedSnapshotLoad};
-pub use engines::{KeyedSnapshot, LmdbOpts, LmdbxDatabase, RocksDatabase, RocksOpts};
+pub use engines::RocksDatabase;
+pub use engines::{KeyedSnapshot,  RocksDatabase, RocksOpts};
 pub use stores::lane::value::ValueDataModel;
 pub use stores::node::{NodeStore, SwimNodeStore};
 pub use stores::plane::{PlaneStore, SwimPlaneStore};
