@@ -1,4 +1,4 @@
-// Copyright 2015-2020 SWIM.AI inc.
+// Copyright 2015-2021 SWIM.AI inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -43,7 +43,7 @@ pub(crate) const MAP_LANE_KS: &str = "map_lanes";
 
 /// The lane keyspace's counter key.
 pub const COUNTER_KEY: &str = "counter";
-const COUNTER_BYTES: &'static [u8] = COUNTER_KEY.as_bytes();
+const COUNTER_BYTES: &[u8] = COUNTER_KEY.as_bytes();
 /// The prefix that all lane identifiers in the counter keyspace will be prefixed by.
 const LANE_PREFIX: &str = "lane";
 

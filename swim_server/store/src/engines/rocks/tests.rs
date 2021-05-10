@@ -1,4 +1,4 @@
-// Copyright 2015-2020 SWIM.AI inc.
+// Copyright 2015-2021 SWIM.AI inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,53 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::engines::keyspaces::{
-    KeyspaceByteEngine, KeyspaceName, KeyspaceOptions, KeyspaceResolver, Keyspaces,
-};
+use crate::engines::keyspaces::{KeyspaceByteEngine, KeyspaceName, KeyspaceResolver};
+use crate::engines::RangedSnapshotLoad;
 use crate::iterator::EngineIterator;
+use crate::mock::TransientDatabase;
 use crate::stores::lane::{deserialize, serialize};
-use crate::{EngineRefIterator, Store};
+use crate::{EngineRefIterator, Store, StoreError};
 use crate::{RocksDatabase, RocksOpts};
 use std::collections::HashMap;
-use std::ops::{Deref, Range};
-use tempdir::TempDir;
-
-fn temp_dir() -> TempDir {
-    TempDir::new("test").expect("Failed to create temporary directory")
-}
-
-impl<D> Deref for TransientDatabase<D> {
-    type Target = D;
-
-    fn deref(&self) -> &Self::Target {
-        &self.delegate
-    }
-}
-
-pub struct TransientDatabase<D> {
-    _dir: TempDir,
-    delegate: D,
-}
-
-impl<D> TransientDatabase<D>
-where
-    D: Store,
-{
-    fn new(keyspace_opts: KeyspaceOptions<D::KeyspaceOpts>) -> TransientDatabase<D> {
-        let dir = temp_dir();
-        let delegate = D::from_keyspaces(
-            dir.path(),
-            &Default::default(),
-            &Keyspaces::from(keyspace_opts),
-        )
-        .expect("Failed to build delegate store");
-
-        TransientDatabase {
-            _dir: dir,
-            delegate,
-        }
-    }
-}
+use std::ops::Range;
 
 fn default_db() -> TransientDatabase<RocksDatabase> {
     TransientDatabase::<RocksDatabase>::new(RocksOpts::keyspace_options())
@@ -139,11 +101,7 @@ fn engine_iterator() {
                     panic!("Inconsistent state: {:?}", e);
                 }
             }
-            match iter.seek_next() {
-                Ok(true) => continue,
-                Ok(false) => break,
-                Err(e) => panic!("Inconsistent state: {:?}", e),
-            }
+            iter.seek_next();
         } else {
             panic!("Invalid iterator");
         }
@@ -153,45 +111,44 @@ fn engine_iterator() {
     assert_keyspaces_empty(&db, &[KeyspaceName::Lane, KeyspaceName::Map]);
 }
 
-
 #[test]
 pub fn crud() {
-    let db = TransientDatabase::<RocksDatabase>::new(RocksOpts::default());
+    let db = default_db();
 
     let key = b"key_a";
     let value_1 = b"value_a";
     let value_2 = b"value_b";
 
-    assert!(db.put(key, value_1).is_ok());
+    assert!(db.put_keyspace(KeyspaceName::Value, key, value_1).is_ok());
 
-    let get_result = db.get(key);
+    let get_result = db.get_keyspace(KeyspaceName::Value, key);
     assert!(matches!(get_result, Ok(Some(_))));
     let get_value = get_result.unwrap().unwrap();
     assert_eq!(value_1, String::from_utf8(get_value).unwrap().as_bytes());
 
-    let update_result = db.put(key, value_2);
+    let update_result = db.put_keyspace(KeyspaceName::Value, key, value_2);
     assert!(update_result.is_ok());
 
-    let get_result = db.get(key);
+    let get_result = db.get_keyspace(KeyspaceName::Value, key);
     assert!(matches!(get_result, Ok(Some(_))));
     let get_value = get_result.unwrap().unwrap();
     assert_eq!(value_2, String::from_utf8(get_value).unwrap().as_bytes());
 
-    let delete_result = db.delete(key);
+    let delete_result = db.delete_keyspace(KeyspaceName::Value, key);
     assert!(matches!(delete_result, Ok(())));
 }
 
 #[test]
 pub fn get_missing() {
-    let db = TransientDatabase::<RocksDatabase>::new(RocksOpts::default());
-    let get_result = db.get(b"key_a");
+    let db = default_db();
+    let get_result = db.get_keyspace(KeyspaceName::Value, b"key_a");
     assert!(matches!(get_result, Ok(None)));
 }
 
 #[test]
 pub fn delete_missing() {
-    let db = TransientDatabase::<RocksDatabase>::new(RocksOpts::default());
-    let get_result = db.delete(b"key_a");
+    let db = default_db();
+    let get_result = db.delete_keyspace(KeyspaceName::Value, b"key_a");
     assert!(matches!(get_result, Ok(())));
 }
 
@@ -204,14 +161,14 @@ fn map_fn<'a>(key: &'a [u8], value: &'a [u8]) -> Result<(String, String), StoreE
 
 #[test]
 pub fn empty_snapshot() {
-    let db = TransientDatabase::<RocksDatabase>::new(RocksOpts::default());
-    let result = db.load_ranged_snapshot(b"prefix", map_fn);
+    let db = default_db();
+    let result = db.load_ranged_snapshot(KeyspaceName::Value, b"prefix", map_fn);
     assert!(matches!(result, Ok(None)));
 }
 
 #[test]
 pub fn ranged_snapshot() {
-    let db = TransientDatabase::<RocksDatabase>::new(RocksOpts::default());
+    let db = default_db();
     let prefix = "/foo/bar";
     let limit = 256;
 
@@ -222,7 +179,11 @@ pub fn ranged_snapshot() {
     for i in 0..limit {
         let key = format(i);
         let value = i.to_string();
-        let result = db.put(key.as_bytes(), i.to_string().as_bytes());
+        let result = db.put_keyspace(
+            KeyspaceName::Value,
+            key.as_bytes(),
+            i.to_string().as_bytes(),
+        );
 
         assert!(result.is_ok());
 
@@ -233,16 +194,16 @@ pub fn ranged_snapshot() {
     for i in 0..limit {
         let key = format!("/foo/{}", i);
         let value = i.to_string();
-        let result = db.put(key.as_bytes(), value.as_bytes());
+        let result = db.put_keyspace(KeyspaceName::Value, key.as_bytes(), value.as_bytes());
 
         assert!(result.is_ok());
     }
 
-    let snapshot_result = db.load_ranged_snapshot(prefix.as_bytes(), map_fn);
+    let snapshot_result = db.load_ranged_snapshot(KeyspaceName::Value, prefix.as_bytes(), map_fn);
     assert!(matches!(snapshot_result, Ok(Some(_))));
 
     let snapshot = snapshot_result.unwrap().unwrap();
-    let mut iter = snapshot.into_iter().peekable();
+    let mut iter = snapshot.into_iter();
 
     for i in 0..limit {
         match iter.next() {
@@ -260,6 +221,6 @@ pub fn ranged_snapshot() {
         }
     }
 
-    assert!(iter.peek().is_none());
+    assert!(iter.next().is_none());
     assert!(expected.is_empty());
 }

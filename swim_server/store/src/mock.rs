@@ -1,4 +1,4 @@
-// Copyright 2015-2020 SWIM.AI inc.
+// Copyright 2015-2021 SWIM.AI inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,7 +13,8 @@
 // limitations under the License.
 
 use crate::engines::keyspaces::{
-    failing_keystore, KeyType, KeyspaceByteEngine, KeyspaceName, KeyspaceResolver, Keyspaces,
+    failing_keystore, KeyType, KeyspaceByteEngine, KeyspaceName, KeyspaceOptions, KeyspaceResolver,
+    Keyspaces,
 };
 use crate::engines::{KeyedSnapshot, NoStore};
 use crate::iterator::{
@@ -32,10 +33,45 @@ use futures::future::ready;
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use serde::Serialize;
+use std::ops::Deref;
 use std::path::Path;
 use std::sync::Arc;
 use swim_common::model::text::Text;
 use tempdir::TempDir;
+
+impl<D> Deref for TransientDatabase<D> {
+    type Target = D;
+
+    fn deref(&self) -> &Self::Target {
+        &self.delegate
+    }
+}
+
+pub struct TransientDatabase<D> {
+    _dir: TempDir,
+    delegate: D,
+}
+
+impl<D> TransientDatabase<D>
+where
+    D: Store,
+{
+    #[allow(dead_code)]
+    pub(crate) fn new(keyspace_opts: KeyspaceOptions<D::KeyspaceOpts>) -> TransientDatabase<D> {
+        let dir = TempDir::new("test").expect("Failed to create temporary directory");
+        let delegate = D::from_keyspaces(
+            dir.path(),
+            &Default::default(),
+            &Keyspaces::from(keyspace_opts),
+        )
+        .expect("Failed to build delegate store");
+
+        TransientDatabase {
+            _dir: dir,
+            delegate,
+        }
+    }
+}
 
 #[derive(Debug)]
 pub struct MockServerStore {
@@ -70,9 +106,7 @@ impl EngineIterator for MockEngineIterator {
         Ok(true)
     }
 
-    fn seek_next(&mut self) -> Result<bool, StoreError> {
-        Ok(true)
-    }
+    fn seek_next(&mut self) {}
 
     fn key(&self) -> Option<&[u8]> {
         None
@@ -89,8 +123,10 @@ impl EngineIterator for MockEngineIterator {
 
 pub struct MockEnginePrefixIterator;
 impl EnginePrefixIterator for MockEnginePrefixIterator {
-    fn seek_next(&mut self) -> Result<bool, StoreError> {
-        Ok(true)
+    fn seek_next(&mut self) {}
+
+    fn next_pair(&mut self) -> (Option<&[u8]>, Option<&[u8]>) {
+        (None, None)
     }
 
     fn key(&mut self) -> Option<&[u8]> {
@@ -122,7 +158,7 @@ impl<'a: 'b, 'b> EngineRefIterator<'a, 'b> for MockServerStore {
         &'a self,
         _space: &'b Self::ResolvedKeyspace,
         _opts: EngineIterOpts,
-        _prefix: Text,
+        _prefix: &'b [u8],
     ) -> Result<Self::EnginePrefixIterator, StoreError> {
         Ok(MockEnginePrefixIterator)
     }

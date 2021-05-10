@@ -1,4 +1,4 @@
-// Copyright 2015-2020 SWIM.AI inc.
+// Copyright 2015-2021 SWIM.AI inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,7 +22,6 @@ use crate::iterator::{
 use crate::{ByteEngine, FromKeyspaces, Store, StoreError, StoreInfo};
 use std::borrow::Borrow;
 use std::path::{Path, PathBuf};
-use swim_common::model::text::Text;
 
 /// A delegate store database that does nothing.
 #[derive(Debug)]
@@ -140,9 +139,7 @@ impl EngineIterator for NoStoreEngineIterator {
         Ok(true)
     }
 
-    fn seek_next(&mut self) -> Result<bool, StoreError> {
-        Ok(true)
-    }
+    fn seek_next(&mut self) {}
 
     fn key(&self) -> Option<&[u8]> {
         None
@@ -159,8 +156,10 @@ impl EngineIterator for NoStoreEngineIterator {
 
 pub struct NoStoreEnginePrefixIterator;
 impl EnginePrefixIterator for NoStoreEnginePrefixIterator {
-    fn seek_next(&mut self) -> Result<bool, StoreError> {
-        Ok(true)
+    fn seek_next(&mut self) {}
+
+    fn next_pair(&mut self) -> (Option<&[u8]>, Option<&[u8]>) {
+        (None, None)
     }
 
     fn key(&mut self) -> Option<&[u8]> {
@@ -192,7 +191,7 @@ impl<'a: 'b, 'b> EngineRefIterator<'a, 'b> for NoStore {
         &'a self,
         _space: &'b Self::ResolvedKeyspace,
         _opts: EngineIterOpts,
-        _prefix: Text,
+        _prefix: &'b [u8],
     ) -> Result<Self::EnginePrefixIterator, StoreError> {
         Ok(NoStoreEnginePrefixIterator)
     }

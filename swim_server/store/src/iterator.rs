@@ -1,4 +1,4 @@
-// Copyright 2015-2020 SWIM.AI inc.
+// Copyright 2015-2021 SWIM.AI inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,15 +14,14 @@
 
 use crate::engines::keyspaces::KeyspaceResolver;
 use crate::StoreError;
-use swim_common::model::text::Text;
 
 pub trait OwnedEngineRefIterator: for<'t> EngineRefIterator<'t, 't> {}
 impl<D> OwnedEngineRefIterator for D where D: for<'t> EngineRefIterator<'t, 't> {}
 
-pub enum IteratorKey {
+pub enum IteratorKey<'p> {
     Start,
     End,
-    ToKey(Text),
+    ToKey(&'p [u8]),
 }
 
 pub trait EngineIterator {
@@ -36,7 +35,7 @@ pub trait EngineIterator {
 
     fn seek_to(&mut self, key: IteratorKey) -> Result<bool, StoreError>;
 
-    fn seek_next(&mut self) -> Result<bool, StoreError>;
+    fn seek_next(&mut self);
 
     fn key(&self) -> Option<&[u8]>;
 
@@ -46,7 +45,9 @@ pub trait EngineIterator {
 }
 
 pub trait EnginePrefixIterator {
-    fn seek_next(&mut self) -> Result<bool, StoreError>;
+    fn seek_next(&mut self);
+
+    fn next_pair(&mut self) -> (Option<&[u8]>, Option<&[u8]>);
 
     fn key(&mut self) -> Option<&[u8]>;
 
@@ -79,7 +80,7 @@ pub trait EngineRefIterator<'a: 'b, 'b>: KeyspaceResolver {
     fn prefix_iterator(
         &'a self,
         space: &'b Self::ResolvedKeyspace,
-        prefix: Text,
+        prefix: &'b [u8],
     ) -> Result<Self::EnginePrefixIterator, StoreError> {
         self.prefix_iterator_opt(space, EngineIterOpts::default(), prefix)
     }
@@ -88,6 +89,6 @@ pub trait EngineRefIterator<'a: 'b, 'b>: KeyspaceResolver {
         &'a self,
         space: &'b Self::ResolvedKeyspace,
         opts: EngineIterOpts,
-        prefix: Text,
+        prefix: &'b [u8],
     ) -> Result<Self::EnginePrefixIterator, StoreError>;
 }
