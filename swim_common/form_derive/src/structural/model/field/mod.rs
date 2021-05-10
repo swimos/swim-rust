@@ -17,7 +17,7 @@ use crate::parser::{
     ATTR_PATH, BODY_PATH, HEADER_BODY_PATH, HEADER_PATH, NAME_PATH, SKIP_PATH,
     SLOT_PATH, TAG_PATH,
 };
-use crate::structural::{NameTransform, SynValidation};
+use crate::structural::model::{NameTransform, SynValidation};
 use macro_helpers::{FieldKind, Symbol};
 use std::convert::TryFrom;
 use syn::{Field, Ident, Lit, Meta, NestedMeta, Type};

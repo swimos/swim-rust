@@ -12,38 +12,72 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use syn::{Fields, Attribute, Meta, NestedMeta, Lit, DataStruct};
+use syn::{Fields, Attribute};
 use macro_helpers::CompoundTypeKind;
 use super::TryValidate;
-//use crate::parser::{FORM_PATH, HEADER_PATH, HEADER_BODY_PATH, SLOT_PATH, SKIP_PATH, ATTR_PATH, TAG_PATH, BODY_PATH, NAME_PATH, FieldManifest};
-use crate::parser::TAG_PATH;
 use utilities::validation::{Validation, ValidationItExt, validate2};
-use crate::structural::field::FieldModel;
+use crate::structural::model::field::FieldModel;
 use crate::parser::FieldManifest;
-use crate::structural::{NameTransform, SynValidation};
-use std::convert::TryFrom;
+use crate::structural::model::{NameTransform, SynValidation, StructLike};
 use utilities::FieldKind;
 use quote::ToTokens;
 
-pub struct StructModel<'a> {
+pub struct FieldsModel<'a> {
     kind: CompoundTypeKind,
     manifest: FieldManifest,
-    transform: Option<NameTransform>,
     fields: Vec<FieldModel<'a>>,
 }
 
-struct StructDef<'a> {
-    top: &'a dyn ToTokens,
-    attributes: &'a Vec<Attribute>,
-    definition: &'a DataStruct,
+pub struct StructModel<'a> {
+    fields_model: FieldsModel<'a>,
+    transform: Option<NameTransform>,
 }
 
-impl<'a> TryValidate<StructDef<'a>> for StructModel<'a> {
-    fn try_validate(input: StructDef<'a>) -> SynValidation<Self> {
+pub(crate) struct StructDef<'a, Flds> {
+    top: &'a dyn ToTokens,
+    attributes: &'a Vec<Attribute>,
+    definition: &'a Flds,
+}
 
+impl<'a, Flds> StructDef<'a, Flds> {
+
+    pub(crate) fn new(top: &'a dyn ToTokens,
+                      attributes: &'a Vec<Attribute>,
+                      definition: &'a Flds) -> Self {
+        StructDef {
+            top, attributes, definition,
+        }
+    }
+
+}
+
+impl<'a, Flds> TryValidate<StructDef<'a, Flds>> for StructModel<'a>
+where
+    Flds: StructLike,
+{
+    fn try_validate(input: StructDef<'a, Flds>) -> SynValidation<Self> {
         let StructDef { top, attributes, definition } = input;
 
-        let (kind, fields) = match &definition.fields {
+        let fields_model = FieldsModel::try_validate(definition.fields());
+
+        let rename = super::fold_attr_meta(attributes.iter(), None, super::acc_rename);
+
+        validate2(fields_model, rename).and_then(|(model, transform)| {
+            let struct_model = StructModel { fields_model: model, transform };
+            if struct_model.fields_model.manifest.has_tag_field && struct_model.transform.is_some() {
+                let err = syn::Error::new_spanned(top, "Cannot apply a tag using a field when one has already been applied at the container level");
+                Validation::Validated(struct_model, err.into())
+            } else {
+                Validation::valid(struct_model)
+            }
+        })
+    }
+}
+
+impl<'a> TryValidate<&'a Fields> for FieldsModel<'a> {
+    fn try_validate(definition: &'a Fields) -> SynValidation<Self> {
+
+        let (kind, fields) = match definition {
             Fields::Named(fields) => {
                 (CompoundTypeKind::Struct, Some(fields.named.iter()))
             }
@@ -67,67 +101,18 @@ impl<'a> TryValidate<StructDef<'a>> for StructModel<'a> {
             Validation::valid(vec![])
         };
 
-        let rename = super::fold_attr_meta(attributes.iter(), None, |mut state, nested_meta| {
-            let err = match NameTransform::try_from(&nested_meta) {
-                Ok(rename) => {
-                    if state.is_some() {
-                        Some(syn::Error::new_spanned(nested_meta, "Duplicate tag"))
-                    } else {
-                        state = Some(rename);
-                        None
-                    }
-                }
-                Err(e) => {
-                    Some(e)
-                }
-            };
-            Validation::Validated(state, err.into())
-        });
-
-        let flds_with_manifest = field_models.and_then(|flds| {
+        field_models.and_then(move |flds| {
             let manifest = derive_manifest(definition, flds.iter());
-            manifest.map(|man| (flds, man))
-        });
-
-        validate2(flds_with_manifest, rename).and_then(move |((flds, manifest), rename)| {
-            let model = StructModel {
+            manifest.map(move |man| FieldsModel {
                 kind,
-                manifest,
-                transform: rename,
+                manifest: man,
                 fields: flds
-            };
-            if model.manifest.has_tag_field && model.transform.is_some() {
-                let err = syn::Error::new_spanned(top, "Cannot apply a tag using a field when one has already been applied at the container level");
-                Validation::Validated(model, err.into())
-            } else {
-                Validation::valid(model)
-            }
+            })
         })
     }
 }
 
-impl TryFrom<&NestedMeta> for NameTransform {
-    type Error = syn::Error;
-
-    fn try_from(nested_meta: &NestedMeta) -> Result<Self, Self::Error> {
-        match nested_meta {
-            NestedMeta::Meta(Meta::NameValue(name)) if name.path == TAG_PATH => match &name.lit {
-                Lit::Str(s) => {
-                    let tag = s.value();
-                    if tag.is_empty() {
-                        Err(syn::Error::new_spanned(nested_meta, "New tag cannot be empty"))
-                    } else {
-                        Ok(NameTransform::Rename(tag))
-                    }
-                }
-                _ => Err(syn::Error::new_spanned(nested_meta, "Expecting string argument"))
-            },
-            _ => Err(syn::Error::new_spanned(nested_meta, "Unknown container artribute"))
-        }
-    }
-}
-
-fn derive_manifest<'a, It>(data_struct: &'a DataStruct, fields: It) -> SynValidation<FieldManifest>
+fn derive_manifest<'a, It>(definition: &'a Fields, fields: It) -> SynValidation<FieldManifest>
 where
     It: Iterator<Item = &'a FieldModel<'a>> + 'a,
 {
@@ -149,7 +134,7 @@ where
             }
             FieldKind::HeaderBody => {
                 if *header_body {
-                    Some(syn::Error::new_spanned(&data_struct.fields, "At most one field can replace the tag attribute body."))
+                    Some(syn::Error::new_spanned(definition, "At most one field can replace the tag attribute body."))
                 } else {
                     *header_body = true;
                     None
@@ -161,7 +146,7 @@ where
             }
             FieldKind::Body => {
                 if *replaces_body {
-                    Some(syn::Error::new_spanned(&data_struct.fields, "At most one field can replace the body."))
+                    Some(syn::Error::new_spanned(definition, "At most one field can replace the body."))
                 } else {
                     *replaces_body = true;
                     None
@@ -173,7 +158,7 @@ where
             }
             FieldKind::Tagged => {
                 if *has_tag_field {
-                    Some(syn::Error::new_spanned(&data_struct.fields, "Duplicate tag"))
+                    Some(syn::Error::new_spanned(definition, "Duplicate tag"))
                 } else {
                     *has_tag_field = true;
                     None
