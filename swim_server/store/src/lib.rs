@@ -22,7 +22,7 @@ use std::{fs, io};
 use tempdir::TempDir;
 
 use crate::engines::{ByteEngine, FromOpts, RangedSnapshotLoad};
-pub use engines::{LmdbxDatabase, RocksDatabase};
+pub use engines::RocksDatabase;
 pub use stores::lane::value::ValueDataModel;
 pub use stores::node::{NodeStore, SwimNodeStore};
 pub use stores::plane::{PlaneStore, SwimPlaneStore};
