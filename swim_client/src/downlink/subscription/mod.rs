@@ -1082,8 +1082,11 @@ impl DownlinksTask {
         path: AbsolutePath,
         envelope: Envelope,
     ) -> RequestResult<()> {
+        //Todo dm get only sink
         let (sink, _) = self.connection_for(&path).await?;
-        sink.send(envelope).await.unwrap();
+        sink.send(envelope)
+            .await
+            .map_err(|_| SubscriptionError::ConnectionError)?;
         Ok(())
     }
 }

@@ -363,7 +363,6 @@ where
     }
 
     async fn run(self) -> Result<(), ConnectionError> {
-        //Todo dm
         let ReceiveTask {
             stopped,
             mut read_stream,
@@ -371,14 +370,17 @@ where
         } = self;
 
         loop {
-            let message = read_stream
-                .next()
-                .await
-                .ok_or_else(|| ConnectionError::Closed(CloseError::unexpected()))?;
-
-            tx.send(message)
-                .await
-                .map_err(|_| ConnectionError::Closed(CloseError::unexpected()))?;
+            match read_stream.next().await {
+                Some(message) => {
+                    tx.send(message)
+                        .await
+                        .map_err(|_| ConnectionError::Closed(CloseError::unexpected()))?;
+                }
+                None => {
+                    stopped.store(true, Ordering::Release);
+                    return Err(ConnectionError::Closed(CloseError::unexpected()));
+                }
+            }
         }
     }
 }
@@ -443,9 +445,11 @@ impl ClientConnection {
                 request: Request::new(tx),
             })
             .await
-            .unwrap();
+            .map_err(|_| ConnectionError::Resolution(ResolutionError::router_dropped()))?;
 
-        let (raw_route, stream) = rx.await.unwrap()?;
+        let (raw_route, stream) = rx
+            .await
+            .map_err(|_| ConnectionError::Resolution(ResolutionError::router_dropped()))??;
         let write_sink = raw_route.sender;
 
         let read_stream = ReceiverStream::new(stream).fuse();
@@ -473,7 +477,7 @@ pub type ConnectionChannel = (ConnectionSender, Option<ConnectionReceiver>);
 /// Wrapper for the transmitting end of a channel to an open connection.
 #[derive(Debug, Clone)]
 pub struct ConnectionSender {
-    pub tx: mpsc::Sender<Envelope>,
+    tx: mpsc::Sender<Envelope>,
 }
 
 impl ConnectionSender {
@@ -494,17 +498,11 @@ impl ConnectionSender {
     ///
     /// `Ok` if the message has been sent.
     /// `SendError` if it failed.
-    pub async fn send_message(
-        &mut self,
-        message: Envelope,
-    ) -> Result<(), SendError<Envelope>> {
+    pub async fn send_message(&mut self, message: Envelope) -> Result<(), SendError<Envelope>> {
         self.tx.send(message).await
     }
 
-    pub fn try_send(
-        &mut self,
-        message: Envelope,
-    ) -> Result<(), TrySendError<Envelope>> {
+    pub fn try_send(&mut self, message: Envelope) -> Result<(), TrySendError<Envelope>> {
         self.tx.try_send(message)
     }
 }

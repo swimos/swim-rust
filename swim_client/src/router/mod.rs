@@ -98,7 +98,7 @@ impl Router for ClientRouter {
             if request_sender
                 .send(ClientRequest::Connect {
                     request: Request::new(tx),
-                    origin: origin.unwrap(),
+                    origin: origin.ok_or(ResolutionError::router_dropped())?,
                 })
                 .await
                 .is_err()
@@ -160,8 +160,7 @@ impl RemoteConnectionsManager {
         }
     }
 
-    //Todo dm remove unwraps
-    pub async fn run(self) {
+    pub async fn run(self) -> Result<(), ConnectionError> {
         let RemoteConnectionsManager {
             router_request_rx,
             remote_router_tx,
@@ -200,7 +199,11 @@ impl RemoteConnectionsManager {
                     let (on_drop_tx, on_drop_rx) = promise::promise();
                     close_txs.push(on_drop_tx);
 
-                    request.send(Ok(RawRoute::new(sender, on_drop_rx))).unwrap();
+                    if request.send(Ok(RawRoute::new(sender, on_drop_rx))).is_err() {
+                        break Err(ConnectionError::Resolution(
+                            ResolutionError::router_dropped(),
+                        ));
+                    }
                 }
                 Some(ClientRequest::Subscribe {
                     url,
@@ -216,11 +219,16 @@ impl RemoteConnectionsManager {
                         .await
                         .is_err()
                     {
-                        sub_req
+                        if sub_req
                             .send(Err(ConnectionError::Resolution(
                                 ResolutionError::router_dropped(),
                             )))
-                            .unwrap();
+                            .is_err()
+                        {
+                            break Err(ConnectionError::Resolution(
+                                ResolutionError::router_dropped(),
+                            ));
+                        }
                         continue;
                     }
 
@@ -228,16 +236,25 @@ impl RemoteConnectionsManager {
                         Ok(result) => match result {
                             Ok(routing_addr) => routing_addr,
                             Err(err) => {
-                                sub_req.send(Err(err)).unwrap();
+                                if sub_req.send(Err(err)).is_err() {
+                                    break Err(ConnectionError::Resolution(
+                                        ResolutionError::router_dropped(),
+                                    ));
+                                }
                                 continue;
                             }
                         },
                         Err(_) => {
-                            sub_req
+                            if sub_req
                                 .send(Err(ConnectionError::Resolution(
                                     ResolutionError::router_dropped(),
                                 )))
-                                .unwrap();
+                                .is_err()
+                            {
+                                break Err(ConnectionError::Resolution(
+                                    ResolutionError::router_dropped(),
+                                ));
+                            }
                             continue;
                         }
                     };
@@ -251,11 +268,16 @@ impl RemoteConnectionsManager {
                         .await
                         .is_err()
                     {
-                        sub_req
+                        if sub_req
                             .send(Err(ConnectionError::Resolution(
                                 ResolutionError::router_dropped(),
                             )))
-                            .unwrap();
+                            .is_err()
+                        {
+                            break Err(ConnectionError::Resolution(
+                                ResolutionError::router_dropped(),
+                            ));
+                        }
                         continue;
                     }
 
@@ -263,20 +285,30 @@ impl RemoteConnectionsManager {
                         Ok(result) => match result {
                             Ok(raw_route) => raw_route,
                             Err(_) => {
-                                sub_req
+                                if sub_req
                                     .send(Err(ConnectionError::Resolution(
                                         ResolutionError::unresolvable(url.to_string()),
                                     )))
-                                    .unwrap();
+                                    .is_err()
+                                {
+                                    break Err(ConnectionError::Resolution(
+                                        ResolutionError::router_dropped(),
+                                    ));
+                                }
                                 continue;
                             }
                         },
                         Err(_) => {
-                            sub_req
+                            if sub_req
                                 .send(Err(ConnectionError::Resolution(
                                     ResolutionError::router_dropped(),
                                 )))
-                                .unwrap();
+                                .is_err()
+                            {
+                                break Err(ConnectionError::Resolution(
+                                    ResolutionError::router_dropped(),
+                                ));
+                            }
                             continue;
                         }
                     };
@@ -291,7 +323,11 @@ impl RemoteConnectionsManager {
                             (sender, sub_tx)
                         });
 
-                    sub_sender.send((raw_route, sub_req)).await.unwrap();
+                    if sub_sender.send((raw_route, sub_req)).await.is_err() {
+                        break Err(ConnectionError::Resolution(
+                            ResolutionError::router_dropped(),
+                        ));
+                    }
                 }
                 _ => {
                     close_txs.into_iter().for_each(|trigger| {
@@ -313,7 +349,7 @@ impl RemoteConnectionsManager {
                         }
                     }
 
-                    break;
+                    break Ok(());
                 }
             }
         }
@@ -374,7 +410,9 @@ impl RemoteConnectionManager {
                 Either::Right(Some((raw_route, sub_request))) => {
                     let (sub_tx, sub_rx) = mpsc::channel(8);
                     subs.push(sub_tx);
-                    sub_request.send(Ok((raw_route, sub_rx))).unwrap();
+                    if sub_request.send(Ok((raw_route, sub_rx))).is_err() {
+                        break Err(RoutingError::RouterDropped);
+                    };
                 }
                 _ => break Ok(()),
             }

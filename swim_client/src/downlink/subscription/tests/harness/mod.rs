@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::router::{OldRouter, RouterEvent};
+use crate::router::RouterEvent;
 use futures::future::{ready, Ready};
 use swim_common::request::request_future::RequestError;
 use swim_common::warp::envelope::Envelope;
@@ -26,20 +26,20 @@ pub struct StubRouter {
     inner: Vec<mpsc::Sender<RouterEvent>>,
 }
 
-impl OldRouter for StubRouter {
-    type ConnectionFut =
-        Ready<Result<(mpsc::Sender<Envelope>, mpsc::Receiver<RouterEvent>), RequestError>>;
-
-    fn connection_for(&mut self, _target: &AbsolutePath) -> Self::ConnectionFut {
-        let (tx, rx) = mpsc::channel(32);
-        self.inner.push(tx);
-        ready(Ok((self.specific_tx.clone(), rx)))
-    }
-
-    fn general_sink(&mut self) -> mpsc::Sender<(url::Url, Envelope)> {
-        self.general_tx.clone()
-    }
-}
+// impl Router for StubRouter {
+//     type ConnectionFut =
+//         Ready<Result<(mpsc::Sender<Envelope>, mpsc::Receiver<RouterEvent>), RequestError>>;
+//
+//     fn connection_for(&mut self, _target: &AbsolutePath) -> Self::ConnectionFut {
+//         let (tx, rx) = mpsc::channel(32);
+//         self.inner.push(tx);
+//         ready(Ok((self.specific_tx.clone(), rx)))
+//     }
+//
+//     fn general_sink(&mut self) -> mpsc::Sender<(url::Url, Envelope)> {
+//         self.general_tx.clone()
+//     }
+// }
 
 impl StubRouter {
     pub fn new(

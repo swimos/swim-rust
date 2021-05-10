@@ -91,6 +91,10 @@ impl SwimClientBuilder {
     //     Ok(SwimClientBuilder { config })
     // }
 
+    pub fn build_from_downlinks(downlinks: Downlinks) -> SwimClient {
+        SwimClient { downlinks }
+    }
+
     /// Build the Swim client.
     pub async fn build(self) -> (SwimClient, ClientHandle) {
         let SwimClientBuilder {
@@ -246,8 +250,7 @@ impl SwimClientBuilder {
 #[derive(Clone, Debug)]
 pub struct SwimClient {
     /// The downlinks manager attached to this Swim Client.
-    /// Todo dm refactor client creation.
-    pub downlinks: Downlinks,
+    downlinks: Downlinks,
 }
 
 pub struct ClientHandle {

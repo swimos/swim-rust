@@ -32,7 +32,7 @@ use swim_client::configuration::router::{ConnectionPoolParams, RouterParams};
 use swim_client::connections::SwimConnPool;
 use swim_client::downlink::subscription::{DownlinkRequest, DownlinksHandle, DownlinksTask};
 use swim_client::downlink::Downlinks;
-use swim_client::interface::SwimClient;
+use swim_client::interface::{SwimClient, SwimClientBuilder};
 use swim_client::router::{
     ClientRequest, ClientRouterFactory, RemoteConnectionsManager, TaskManager,
 };
@@ -212,7 +212,7 @@ impl SwimServerBuilder {
         let (downlinks, downlinks_handle) =
             Downlinks::new(client_conn_request_tx, Arc::new(ConfigHierarchy::default()));
 
-        let client = SwimClient { downlinks };
+        let client = SwimClientBuilder::build_from_downlinks(downlinks);
 
         Ok((
             SwimServer {

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//Todo dm remove after refactoring
+//Todo dm this needs to be changed after the new client configuration is finalised.
 #![allow(warnings, unused)]
 
 pub mod router;
