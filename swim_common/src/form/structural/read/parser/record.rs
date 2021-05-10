@@ -42,7 +42,7 @@ enum StateChange {
     /// Start a new record frame, starting with an attribute.
     PushAttrNewRec {
         /// Whether the attribute has a body.
-        has_body: bool
+        has_body: bool,
     },
     /// Push a new frame for the items of a record body.
     PushBody,
@@ -677,7 +677,7 @@ fn primary_attr(input: Span<'_>) -> IResult<Span<'_>, (ParseEvents<'_>, StateCha
         if has_body {
             (
                 ParseEvent::StartAttribute(name).single(),
-                StateChange::PushAttrNewRec { has_body: true} ,
+                StateChange::PushAttrNewRec { has_body: true },
             )
         } else {
             (
