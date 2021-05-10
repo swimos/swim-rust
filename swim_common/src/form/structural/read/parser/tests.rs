@@ -591,6 +591,12 @@ fn single_int() {
         result.as_slice(),
         [ParseEvent::Number(NumericLiteral::UInt(1))]
     ));
+
+    let result = run_parser_iterator("\r\n1").unwrap();
+    assert!(matches!(
+        result.as_slice(),
+        [ParseEvent::Number(NumericLiteral::UInt(1))]
+    ));
 }
 
 #[test]
@@ -606,6 +612,9 @@ fn single_string() {
 
     let result = run_parser_iterator("\n\"two words\"").unwrap();
     assert!(matches!(result.as_slice(), [ParseEvent::TextValue(t)] if t == "two words"));
+
+    let result = run_parser_iterator("\r\n\"two words\"").unwrap();
+    assert!(matches!(result.as_slice(), [ParseEvent::TextValue(t)] if t == "two words"));
 }
 
 #[test]
@@ -620,6 +629,9 @@ fn single_identifier() {
     assert!(matches!(result.as_slice(), [ParseEvent::TextValue(t)] if t == "text"));
 
     let result = run_parser_iterator("\ntext").unwrap();
+    assert!(matches!(result.as_slice(), [ParseEvent::TextValue(t)] if t == "text"));
+
+    let result = run_parser_iterator("\r\ntext").unwrap();
     assert!(matches!(result.as_slice(), [ParseEvent::TextValue(t)] if t == "text"));
 }
 
@@ -644,6 +656,11 @@ fn single_float() {
     assert!(
         matches!(result.as_slice(), [ParseEvent::Number(NumericLiteral::Float(x))] if x.eq(&-1.5e67))
     );
+
+    let result = run_parser_iterator("\r\n-1.5e67").unwrap();
+    assert!(
+        matches!(result.as_slice(), [ParseEvent::Number(NumericLiteral::Float(x))] if x.eq(&-1.5e67))
+    );
 }
 
 #[test]
@@ -655,6 +672,9 @@ fn empty() {
     assert!(matches!(result.as_slice(), [ParseEvent::Extant]));
 
     let result = run_parser_iterator("\n").unwrap();
+    assert!(matches!(result.as_slice(), [ParseEvent::Extant]));
+
+    let result = run_parser_iterator("\r\n").unwrap();
     assert!(matches!(result.as_slice(), [ParseEvent::Extant]));
 }
 
@@ -673,6 +693,12 @@ fn empty_record() {
     ));
 
     let result = run_parser_iterator("{\n}").unwrap();
+    assert!(matches!(
+        result.as_slice(),
+        [ParseEvent::StartBody, ParseEvent::EndRecord]
+    ));
+
+    let result = run_parser_iterator("{\r\n}").unwrap();
     assert!(matches!(
         result.as_slice(),
         [ParseEvent::StartBody, ParseEvent::EndRecord]
@@ -698,6 +724,9 @@ fn singleton_record() {
     assert_eq!(result, expected);
 
     let result = run_parser_iterator("{\n 1 }").unwrap();
+    assert_eq!(result, expected);
+
+    let result = run_parser_iterator("{\r\n 1 }").unwrap();
     assert_eq!(result, expected);
 }
 
