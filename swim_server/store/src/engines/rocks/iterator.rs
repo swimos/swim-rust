@@ -14,7 +14,7 @@
 
 use crate::iterator::{EngineIterOpts, EngineIterator, EnginePrefixIterator};
 use crate::{EngineRefIterator, IteratorKey, RocksDatabase, StoreError};
-use rocksdb::DBRawIterator;
+use rocksdb::{DBIteratorWithThreadMode, DBRawIterator, DBWithThreadMode, SingleThreaded};
 
 impl<'a: 'b, 'b> EngineRefIterator<'a, 'b> for RocksDatabase {
     type EngineIterator = RocksIterator<'b>;
@@ -34,81 +34,32 @@ impl<'a: 'b, 'b> EngineRefIterator<'a, 'b> for RocksDatabase {
     fn prefix_iterator_opt(
         &'a self,
         space: &'b Self::ResolvedKeyspace,
-        opts: EngineIterOpts,
+        _opts: EngineIterOpts,
         prefix: &'b [u8],
     ) -> Result<Self::EnginePrefixIterator, StoreError> {
-        let mut it = self.iterator_opt(space, opts)?;
-        it.seek_to(IteratorKey::ToKey(prefix))?;
-
-        Ok(RocksPrefixIterator {
-            complete: false,
-            delegate: it,
-            needle: prefix,
-        })
+        let it = self.delegate.prefix_iterator_cf(space, prefix);
+        Ok(RocksPrefixIterator { delegate: it })
     }
 }
 
 pub struct RocksPrefixIterator<'p> {
-    complete: bool,
-    delegate: RocksIterator<'p>,
-    needle: &'p [u8],
+    delegate: DBIteratorWithThreadMode<'p, DBWithThreadMode<SingleThreaded>>,
 }
 
 impl<'d> EnginePrefixIterator for RocksPrefixIterator<'d> {
-    fn seek_next(&mut self) {
-        self.delegate.seek_next();
-    }
-
-    fn next_pair(&mut self) -> (Option<&[u8]>, Option<&[u8]>) {
-        let RocksPrefixIterator {
-            complete,
-            delegate,
-            needle,
-        } = self;
-
-        if *complete {
-            return (None, None);
-        }
-
-        match delegate.key() {
-            Some(key) if key.starts_with(needle.as_ref()) => (Some(key), delegate.value()),
-            None => {
-                *complete = true;
-                (None, None)
-            }
-            _ => {
-                *complete = true;
-                (None, None)
-            }
-        }
-    }
-
-    fn key(&mut self) -> Option<&[u8]> {
-        let RocksPrefixIterator {
-            complete,
-            delegate,
-            needle,
-        } = self;
-
-        if *complete {
-            return None;
-        }
-
-        let key = delegate.key()?;
-        if !key.starts_with(needle.as_ref()) {
-            *complete = true;
-            None
-        } else {
-            Some(key)
-        }
-    }
-
-    fn value(&self) -> Option<&[u8]> {
-        self.delegate.value()
+    fn next(&mut self) -> Option<(Box<[u8]>, Box<[u8]>)> {
+        self.delegate.next()
     }
 
     fn valid(&self) -> Result<bool, StoreError> {
-        Ok(!self.complete || self.delegate.valid()?)
+        if self.delegate.valid() {
+            Ok(true)
+        } else {
+            match self.delegate.status() {
+                Ok(_) => Ok(false),
+                Err(e) => Err(StoreError::from(e)),
+            }
+        }
     }
 }
 

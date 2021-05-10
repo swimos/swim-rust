@@ -156,22 +156,12 @@ impl EngineIterator for NoStoreEngineIterator {
 
 pub struct NoStoreEnginePrefixIterator;
 impl EnginePrefixIterator for NoStoreEnginePrefixIterator {
-    fn seek_next(&mut self) {}
-
-    fn next_pair(&mut self) -> (Option<&[u8]>, Option<&[u8]>) {
-        (None, None)
-    }
-
-    fn key(&mut self) -> Option<&[u8]> {
-        None
-    }
-
-    fn value(&self) -> Option<&[u8]> {
+    fn next(&mut self) -> Option<(Box<[u8]>, Box<[u8]>)> {
         None
     }
 
     fn valid(&self) -> Result<bool, StoreError> {
-        Ok(true)
+        Ok(false)
     }
 }
 

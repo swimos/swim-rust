@@ -163,7 +163,12 @@ fn map_fn<'a>(key: &'a [u8], value: &'a [u8]) -> Result<(String, String), StoreE
 pub fn empty_snapshot() {
     let db = default_db();
     let result = db.load_ranged_snapshot(KeyspaceName::Value, b"prefix", map_fn);
-    assert!(matches!(result, Ok(None)));
+    match result {
+        Ok(ss) => {
+            assert!(ss.is_none());
+        }
+        Err(e) => panic!("{:?}", e),
+    }
 }
 
 #[test]

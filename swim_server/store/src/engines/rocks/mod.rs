@@ -24,7 +24,6 @@ use crate::engines::keyspaces::{
 use crate::engines::{KeyedSnapshot, RangedSnapshotLoad};
 use crate::iterator::{EnginePrefixIterator, EngineRefIterator};
 use crate::stores::lane::serialize;
-use crate::stores::INCONSISTENT_DB;
 use crate::{FromKeyspaces, Store, StoreError, StoreInfo};
 use rocksdb::{ColumnFamily, ColumnFamilyDescriptor, SliceTransform};
 use rocksdb::{Error, Options, DB};
@@ -173,25 +172,15 @@ impl RangedSnapshotLoad for RocksDatabase {
 
         loop {
             match it.valid() {
-                Ok(true) => {
-                    match it.next_pair() {
-                        (Some(key), Some(value)) => {
-                            if !key.starts_with(prefix) {
-                                // At this point we've hit the next set of keys
-                                break;
-                            } else {
-                                let mapped = map_fn(key, value)?;
-                                data.push(mapped);
-                                it.seek_next();
-                            }
-                        }
-                        _ => return Err(StoreError::Decoding(INCONSISTENT_DB.to_string())),
+                Ok(true) => match it.next() {
+                    Some((key, value)) => {
+                        let mapped = map_fn(key.as_ref(), value.as_ref())?;
+                        data.push(mapped);
                     }
-                }
+                    None => break,
+                },
                 Ok(false) => break,
-                Err(e) => {
-                    return Err(StoreError::Delegate(Box::new(e)));
-                }
+                Err(e) => return Err(e),
             }
         }
 

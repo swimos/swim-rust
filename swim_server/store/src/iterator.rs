@@ -59,22 +59,13 @@ pub trait EngineIterator {
 
 /// An iterator over a range of keys in a keyspace that begin with a specified prefix.
 pub trait EnginePrefixIterator {
-    /// Seek to the next key that lexicographically follows the current and begins with the
-    /// specified prefix.
-    fn seek_next(&mut self);
+    /// Returns a tuple containing an optional key and value for the lexicographically following
+    /// cursor. If `None` is returned, the iterator has reached the end of its range.
+    fn next(&mut self) -> Option<(Box<[u8]>, Box<[u8]>)>;
 
-    /// Returns a tuple containing an optional key and value for the current cursor. Generally,
-    /// for one of the elements to be `None`, its considered that the database is inconsistent.
-    fn next_pair(&mut self) -> (Option<&[u8]>, Option<&[u8]>);
-
-    /// Returns the current key if the cursor points to a valid element.
-    fn key(&mut self) -> Option<&[u8]>;
-
-    /// Returns the current value if the cursor points to a valid element.
-    fn value(&self) -> Option<&[u8]>;
-
-    /// Returns `Ok` if the iterator is currently valid and has not reached the end of its range.
-    /// Or `Err` with a cause the error.
+    /// Returns `Ok(true)` if the iterator is currently valid and has not reached the end of its
+    /// range. `Ok(false)` if the iterator has not encountered any errors but has reached the end of
+    /// its range.  Or `Err` with a cause the error.
     fn valid(&self) -> Result<bool, StoreError>;
 }
 
