@@ -274,6 +274,7 @@ pub(crate) fn incrementing_merge_operator(
     Some(serialize(&value).expect(SERIALIZATION_FAILURE))
 }
 
+/// A trait for abstracting over database engines and partitioning data by a logical keyspace.
 pub trait KeyspaceByteEngine: Send + Sync + 'static {
     /// Put a key-value pair into the specified keyspace.
     fn put_keyspace(
@@ -302,9 +303,13 @@ pub trait KeyspaceByteEngine: Send + Sync + 'static {
     ) -> Result<(), StoreError>;
 }
 
+/// A trait for converting an abstract keyspace name to a reference to a handle of one in a delegate
+/// engine; such as RocksDB's Column Families.
 pub trait KeyspaceResolver {
+    /// The concrete type of the keyspace.
     type ResolvedKeyspace;
 
+    /// Resolve `space` in to a handle that can be used to make direct queries to a delegate engine.
     fn resolve_keyspace(&self, space: &KeyspaceName) -> Option<&Self::ResolvedKeyspace>;
 }
 

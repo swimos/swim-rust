@@ -74,11 +74,11 @@ impl<'d> EnginePrefixIterator for RocksPrefixIterator<'d> {
             Some(key) if key.starts_with(needle.as_ref()) => (Some(key), delegate.value()),
             None => {
                 *complete = true;
-                (None, delegate.value())
+                (None, None)
             }
             _ => {
                 *complete = true;
-                (None, delegate.value())
+                (None, None)
             }
         }
     }

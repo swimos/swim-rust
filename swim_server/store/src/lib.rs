@@ -80,7 +80,7 @@ impl StoreDir {
         StoreDir::Transient(temp_dir)
     }
 
-    /// Returns path of the temporary directory.
+    /// Returns path of the directory.
     pub fn path(&self) -> &Path {
         match self {
             StoreDir::Transient(dir) => dir.path(),
