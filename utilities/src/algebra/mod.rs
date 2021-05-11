@@ -12,26 +12,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::{HashMap, BTreeMap};
+use std::collections::{BTreeMap, HashMap};
 use std::hash::Hash;
 use std::iter::FromIterator;
 
 pub trait Zero: Sized {
-
     fn zero() -> Self;
 
     fn is_zero(&self) -> bool;
-
 }
 
 pub trait Semigroup: Sized {
-
     fn op(mut left: Self, right: Self) -> Self {
         left.op_in_place(right);
         left
     }
     fn op_in_place(&mut self, right: Self);
-
 }
 
 pub trait Monoid: Zero + Semigroup {}
@@ -43,7 +39,6 @@ impl<T: Zero + Semigroup> Monoid for T {}
 macro_rules! number_monoid {
     ($t:ty) => {
         impl Semigroup for $t {
-
             fn op(left: Self, right: Self) -> Self {
                 left + right
             }
@@ -54,7 +49,6 @@ macro_rules! number_monoid {
         }
 
         impl Zero for $t {
-
             fn zero() -> Self {
                 0
             }
@@ -63,7 +57,7 @@ macro_rules! number_monoid {
                 *self == 0
             }
         }
-    }
+    };
 }
 
 number_monoid!(i8);
@@ -88,7 +82,6 @@ impl<T> Zero for Option<T> {
 }
 
 impl<T> Semigroup for Vec<T> {
-
     fn op_in_place(&mut self, right: Self) {
         self.extend(right.into_iter());
     }
@@ -105,7 +98,6 @@ impl<T> Zero for Vec<T> {
 }
 
 impl<K: Hash + Eq, V: Semigroup> Semigroup for HashMap<K, V> {
-
     fn op_in_place(&mut self, mut right: Self) {
         for (k, left_value) in self.iter_mut() {
             if let Some(right_value) = right.remove(k) {
@@ -116,7 +108,6 @@ impl<K: Hash + Eq, V: Semigroup> Semigroup for HashMap<K, V> {
             self.insert(k, v);
         }
     }
-
 }
 
 impl<K, V> Zero for HashMap<K, V> {
@@ -130,7 +121,6 @@ impl<K, V> Zero for HashMap<K, V> {
 }
 
 impl<K: Ord + Eq, V: Semigroup> Semigroup for BTreeMap<K, V> {
-
     fn op_in_place(&mut self, mut right: Self) {
         for (k, left_value) in self.iter_mut() {
             if let Some(right_value) = right.remove(k) {
@@ -141,7 +131,6 @@ impl<K: Ord + Eq, V: Semigroup> Semigroup for BTreeMap<K, V> {
             self.insert(k, v);
         }
     }
-
 }
 
 impl<K: Ord + Eq, V> Zero for BTreeMap<K, V> {
@@ -165,7 +154,6 @@ enum ErrorsInner<E> {
 pub struct Errors<E>(ErrorsInner<E>);
 
 impl<E> Errors<E> {
-
     pub fn empty() -> Self {
         Errors(ErrorsInner::None)
     }
@@ -176,7 +164,7 @@ impl<E> Errors<E> {
 
     pub fn push(&mut self, err: E) {
         let Errors(inner) = self;
-        *inner= match std::mem::take(inner) {
+        *inner = match std::mem::take(inner) {
             ErrorsInner::None => ErrorsInner::Single(err),
             ErrorsInner::Single(e) => {
                 let v = vec![e, err];
@@ -188,7 +176,6 @@ impl<E> Errors<E> {
             }
         }
     }
-
 }
 
 impl<E> Default for ErrorsInner<E> {
@@ -219,9 +206,7 @@ impl<E> Semigroup for Errors<E> {
         let Errors(l) = self;
         let Errors(r) = right;
         *l = match (std::mem::take(l), r) {
-            (ErrorsInner::None, r) => {
-                r
-            }
+            (ErrorsInner::None, r) => r,
             (ErrorsInner::Single(e1), ErrorsInner::Single(e2)) => {
                 let v = vec![e1, e2];
                 ErrorsInner::Multiple(v)
@@ -272,7 +257,7 @@ impl<E> From<Vec<E>> for Errors<E> {
 }
 
 impl<E> FromIterator<E> for Errors<E> {
-    fn from_iter<T: IntoIterator<Item=E>>(iter: T) -> Self {
+    fn from_iter<T: IntoIterator<Item = E>>(iter: T) -> Self {
         let mut maybe = None;
         let mut it = iter.into_iter();
         if let Some(e) = it.next() {
@@ -280,12 +265,10 @@ impl<E> FromIterator<E> for Errors<E> {
         }
         match it.next() {
             Some(e) => {
-                let it = maybe.into_iter()
-                    .chain(std::iter::once(e))
-                    .chain(it);
+                let it = maybe.into_iter().chain(std::iter::once(e)).chain(it);
                 let v: Vec<E> = it.collect();
                 v.into()
-            },
+            }
             _ => maybe.into(),
         }
     }

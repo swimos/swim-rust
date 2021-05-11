@@ -14,12 +14,12 @@
 
 use super::TryValidate;
 use crate::parser::{
-    ATTR_PATH, BODY_PATH, HEADER_BODY_PATH, HEADER_PATH, NAME_PATH, SKIP_PATH,
-    SLOT_PATH, TAG_PATH,
+    ATTR_PATH, BODY_PATH, HEADER_BODY_PATH, HEADER_PATH, NAME_PATH, SKIP_PATH, SLOT_PATH, TAG_PATH,
 };
 use crate::structural::model::{NameTransform, SynValidation};
 use macro_helpers::{FieldKind, Symbol};
 use std::convert::TryFrom;
+use std::ops::Add;
 use syn::{Field, Ident, Lit, Meta, NestedMeta, Type};
 use utilities::validation::Validation;
 
@@ -27,6 +27,10 @@ pub struct FieldModel<'a> {
     pub name: Option<&'a Ident>,
     pub transform: Option<NameTransform>,
     pub field_ty: &'a Type,
+}
+
+pub struct TaggedFieldModel<'a> {
+    pub model: FieldModel<'a>,
     pub directive: FieldKind,
 }
 
@@ -42,11 +46,7 @@ struct FieldAttributes {
 }
 
 impl FieldAttributes {
-    fn add(
-        mut self,
-        field: &syn::Field,
-        attr: FieldAttr,
-    ) -> SynValidation<FieldAttributes> {
+    fn add(mut self, field: &syn::Field, attr: FieldAttr) -> SynValidation<FieldAttributes> {
         let FieldAttributes {
             transform,
             directive,
@@ -74,30 +74,31 @@ impl FieldAttributes {
     }
 }
 
-impl<'a> TryValidate<&'a Field> for FieldModel<'a> {
+impl<'a> TryValidate<&'a Field> for TaggedFieldModel<'a> {
     fn try_validate(input: &'a Field) -> SynValidation<Self> {
         let Field {
             attrs, ident, ty, ..
         } = input;
 
-        let field_attrs = super::fold_attr_meta(
-            attrs.iter(),
-            FieldAttributes::default(),
-            |attrs, nested| match FieldAttr::try_from(nested) {
-                Ok(field_attr) => attrs.add(input, field_attr),
-                Err(e) => Validation::Validated(attrs, e.into()),
-            },
-        );
+        let field_attrs =
+            super::fold_attr_meta(attrs.iter(), FieldAttributes::default(), |attrs, nested| {
+                match FieldAttr::try_from(nested) {
+                    Ok(field_attr) => attrs.add(input, field_attr),
+                    Err(e) => Validation::Validated(attrs, e.into()),
+                }
+            });
 
         field_attrs.map(
             |FieldAttributes {
                  transform,
                  directive,
              }| {
-                FieldModel {
-                    name: ident.as_ref(),
-                    transform,
-                    field_ty: ty,
+                TaggedFieldModel {
+                    model: FieldModel {
+                        name: ident.as_ref(),
+                        transform,
+                        field_ty: ty,
+                    },
                     directive: directive.unwrap_or(FieldKind::Slot),
                 }
             },
@@ -167,5 +168,67 @@ impl TryValidate<NestedMeta> for FieldAttr {
             _ => Err(syn::Error::new_spanned(input, "Unknown attribute")),
         };
         Validation::from(result)
+    }
+}
+
+pub struct HeaderFields<'a> {
+    pub tag_body: Option<FieldModel<'a>>,
+    pub header_fields: Vec<FieldModel<'a>>,
+    pub attributes: Vec<FieldModel<'a>>,
+}
+
+pub enum BodyFields<'a> {
+    ReplacedBody(FieldModel<'a>),
+    SlotBody(Vec<FieldModel<'a>>),
+}
+
+impl<'a> Default for BodyFields<'a> {
+    fn default() -> Self {
+        BodyFields::SlotBody(vec![])
+    }
+}
+
+pub struct SegregatedFields<'a> {
+    pub header: HeaderFields<'a>,
+    pub body: BodyFields<'a>,
+}
+
+impl<'a> Add<TaggedFieldModel<'a>> for SegregatedFields<'a> {
+    type Output = Self;
+
+    fn add(self, rhs: TaggedFieldModel<'a>) -> Self::Output {
+        let SegregatedFields {
+            mut header,
+            mut body,
+        } = self;
+        let TaggedFieldModel { model, directive } = rhs;
+        match directive {
+            FieldKind::HeaderBody => {
+                if !header.tag_body.is_some() {
+                    header.tag_body = Some(model);
+                }
+            }
+            FieldKind::Header => {
+                header.header_fields.push(model);
+            }
+            FieldKind::Attr => {
+                header.attributes.push(model);
+            }
+            FieldKind::Slot => {
+                if let BodyFields::SlotBody(slots) = &mut body {
+                    slots.push(model);
+                } else {
+                    header.header_fields.push(model);
+                }
+            }
+            FieldKind::Body => {
+                if let BodyFields::SlotBody(slots) = body {
+                    header.header_fields.extend(slots.into_iter());
+                    body = BodyFields::ReplacedBody(model);
+                }
+            }
+            _ => {}
+        }
+        SegregatedFields { header, body }
     }
 }

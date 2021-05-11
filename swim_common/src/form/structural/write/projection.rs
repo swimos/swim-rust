@@ -12,4 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod model;
+/// Wrapper required for derived implementations of [`StructuralWritable`] to move fields into
+/// the header of a record.
+pub struct HeaderProjection<T>;

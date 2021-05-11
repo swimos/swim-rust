@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::algebra::{Monoid, Semigroup, Zero, Errors};
+use crate::algebra::{Errors, Monoid, Semigroup, Zero};
 use std::iter::FromIterator;
 
 pub enum Validation<T, E> {
@@ -21,20 +21,16 @@ pub enum Validation<T, E> {
 }
 
 pub trait Append<T> {
-
     fn append(&mut self, value: T);
-
 }
 
 impl<T> Append<T> for Vec<T> {
-
     fn append(&mut self, value: T) {
         self.push(value);
     }
 }
 
 impl<T> Append<Option<T>> for Vec<T> {
-
     fn append(&mut self, value: Option<T>) {
         if let Some(value) = value {
             self.push(value);
@@ -43,7 +39,6 @@ impl<T> Append<Option<T>> for Vec<T> {
 }
 
 impl<T, E> Validation<T, E> {
-
     pub fn is_validated(&self) -> bool {
         matches!(self, Validation::Validated(_, _))
     }
@@ -82,7 +77,6 @@ impl<T, E> Validation<T, E> {
             Validation::Failed(e) => e,
         }
     }
-
 }
 
 impl<T, E, C: Append<E> + Zero> From<Result<T, E>> for Validation<T, C> {
@@ -98,9 +92,7 @@ impl<T, E, C: Append<E> + Zero> From<Result<T, E>> for Validation<T, C> {
     }
 }
 
-
 impl<T, E: Zero> Validation<T, E> {
-
     pub fn to_result(self) -> Result<T, E> {
         match self {
             Validation::Validated(value, err) if err.is_zero() => Ok(value),
@@ -111,37 +103,33 @@ impl<T, E: Zero> Validation<T, E> {
     pub fn valid(t: T) -> Self {
         Validation::Validated(t, E::zero())
     }
-
 }
 
 impl<T, C> Validation<T, C> {
-
     pub fn and_then_append<F, U, E>(self, f: F) -> Validation<U, C>
     where
         C: Append<E>,
         F: FnOnce(T) -> Validation<U, E>,
     {
         match self {
-            Validation::Validated(t, mut e1) => {
-                match f(t) {
-                    Validation::Validated(u, e2) => {
-                        e1.append(e2);
-                        Validation::Validated(u, e1)
-                    }
-                    Validation::Failed(e2) => {
-                        e1.append(e2);
-                        Validation::Failed(e1)
-                    }
+            Validation::Validated(t, mut e1) => match f(t) {
+                Validation::Validated(u, e2) => {
+                    e1.append(e2);
+                    Validation::Validated(u, e1)
                 }
-            }
+                Validation::Failed(e2) => {
+                    e1.append(e2);
+                    Validation::Failed(e1)
+                }
+            },
             Validation::Failed(e) => Validation::Failed(e),
         }
     }
 
     pub fn and_then_result<F, S, U, E>(self, result: Result<S, E>, f: F) -> Validation<U, C>
-        where
-            C: Append<E>,
-            F: FnOnce(T, Option<S>) -> Result<U, E>,
+    where
+        C: Append<E>,
+        F: FnOnce(T, Option<S>) -> Result<U, E>,
     {
         match self {
             Validation::Validated(t, mut errs) => {
@@ -178,30 +166,24 @@ impl<T, C> Validation<T, C> {
         }
         self
     }
-
 }
 
 impl<T, E: Semigroup> Validation<T, E> {
-
     pub fn and_then<F, U>(self, f: F) -> Validation<U, E>
     where
         F: FnOnce(T) -> Validation<U, E>,
     {
         match self {
-            Validation::Validated(t, e1) => {
-                match f(t) {
-                    Validation::Validated(u, e2) => Validation::Validated(u, Semigroup::op(e1, e2)),
-                    Validation::Failed(e2) => Validation::Failed(Semigroup::op(e1, e2)),
-                }
-            }
+            Validation::Validated(t, e1) => match f(t) {
+                Validation::Validated(u, e2) => Validation::Validated(u, Semigroup::op(e1, e2)),
+                Validation::Failed(e2) => Validation::Failed(Semigroup::op(e1, e2)),
+            },
             Validation::Failed(e) => Validation::Failed(e),
         }
     }
-
 }
 
 impl<T, C: Zero> Validation<T, C> {
-
     pub fn fail<E>(err: E) -> Self
     where
         C: Append<E>,
@@ -210,35 +192,28 @@ impl<T, C: Zero> Validation<T, C> {
         z.append(err);
         Validation::Failed(z)
     }
-
 }
 
 impl<L, R, E> Validation<(L, R), E> {
-
     pub fn and_then_second<F, U>(self, f: F) -> Validation<(L, U), E>
     where
         F: FnOnce(Validation<R, E>) -> Validation<U, E>,
     {
         match self {
-            Validation::Validated((l, r), e) => {
-                f(Validation::Validated(r, e)).map(move |u| (l, u))
-            }
+            Validation::Validated((l, r), e) => f(Validation::Validated(r, e)).map(move |u| (l, u)),
             Validation::Failed(e) => Validation::Failed(e),
         }
     }
 
     pub fn and_then_first<F, U>(self, f: F) -> Validation<(U, R), E>
-        where
-            F: FnOnce(Validation<L, E>) -> Validation<U, E>,
+    where
+        F: FnOnce(Validation<L, E>) -> Validation<U, E>,
     {
         match self {
-            Validation::Validated((l, r), e) => {
-                f(Validation::Validated(l, e)).map(move |u| (u, r))
-            }
+            Validation::Validated((l, r), e) => f(Validation::Validated(l, e)).map(move |u| (u, r)),
             Validation::Failed(e) => Validation::Failed(e),
         }
     }
-
 }
 
 impl<E> Append<E> for Errors<E> {
@@ -255,22 +230,28 @@ impl<E> Append<Option<E>> for Errors<E> {
     }
 }
 
-pub fn validate2<T1, T2, E: Semigroup>(first: Validation<T1, E>, second: Validation<T2, E>) -> Validation<(T1, T2), E> {
+pub fn validate2<T1, T2, E: Semigroup>(
+    first: Validation<T1, E>,
+    second: Validation<T2, E>,
+) -> Validation<(T1, T2), E> {
     first.and_then(|v1| second.map(move |v2| (v1, v2)))
 }
 
-pub fn validate3<T1, T2, T3, E: Semigroup>(first: Validation<T1, E>,
-                                       second: Validation<T2, E>,
-                                       third: Validation<T3, E>) -> Validation<(T1, T2, T3), E> {
+pub fn validate3<T1, T2, T3, E: Semigroup>(
+    first: Validation<T1, E>,
+    second: Validation<T2, E>,
+    third: Validation<T3, E>,
+) -> Validation<(T1, T2, T3), E> {
     first.and_then(|v1| second.and_then(move |v2| third.map(move |v3| (v1, v2, v3))))
 }
 
 pub trait ValidationItExt: Iterator {
-
-    fn validate_fold<R, E, F>(self,
-                              init: Validation<R, E>,
-                              break_on_err: bool,
-                              mut f: F) -> Validation<R, E>
+    fn validate_fold<R, E, F>(
+        self,
+        init: Validation<R, E>,
+        break_on_err: bool,
+        mut f: F,
+    ) -> Validation<R, E>
     where
         Self: Sized,
         E: Semigroup,
@@ -287,14 +268,16 @@ pub trait ValidationItExt: Iterator {
         v
     }
 
-    fn append_fold<R, E, C, F>(self,
-                               init: Validation<R, C>,
-                               break_on_err: bool,
-                               mut f: F) -> Validation<R, C>
-        where
-            Self: Sized,
-            C: Append<E>,
-            F: FnMut(R, Self::Item) -> Validation<R, E>,
+    fn append_fold<R, E, C, F>(
+        self,
+        init: Validation<R, C>,
+        break_on_err: bool,
+        mut f: F,
+    ) -> Validation<R, C>
+    where
+        Self: Sized,
+        C: Append<E>,
+        F: FnMut(R, Self::Item) -> Validation<R, E>,
     {
         let mut v = init;
         for item in self {
@@ -319,17 +302,15 @@ pub trait ValidationItExt: Iterator {
 
         let acc_ref = &mut acc;
         let failed_ref = &mut failed;
-        let outputs  = self.filter_map(move |item| {
-            match f(item) {
-                Validation::Validated(output, e) => {
-                    acc_ref.op_in_place(e);
-                    Some(output)
-                }
-                Validation::Failed(e) => {
-                    acc_ref.op_in_place(e);
-                    *failed_ref = true;
-                    None
-                }
+        let outputs = self.filter_map(move |item| match f(item) {
+            Validation::Validated(output, e) => {
+                acc_ref.op_in_place(e);
+                Some(output)
+            }
+            Validation::Failed(e) => {
+                acc_ref.op_in_place(e);
+                *failed_ref = true;
+                None
             }
         });
         let collection: B = outputs.collect();
@@ -341,28 +322,26 @@ pub trait ValidationItExt: Iterator {
     }
 
     fn append_collect<U, E, C, F, B>(self, allow_failures: bool, mut f: F) -> Validation<B, C>
-        where
-            Self: Sized,
-            C: Zero + Append<E>,
-            F: FnMut(Self::Item) -> Validation<U, E>,
-            B: FromIterator<U>,
+    where
+        Self: Sized,
+        C: Zero + Append<E>,
+        F: FnMut(Self::Item) -> Validation<U, E>,
+        B: FromIterator<U>,
     {
         let mut acc = C::zero();
         let mut failed = false;
 
         let acc_ref = &mut acc;
         let failed_ref = &mut failed;
-        let outputs  = self.filter_map(move |item| {
-            match f(item) {
-                Validation::Validated(output, e) => {
-                    acc_ref.append(e);
-                    Some(output)
-                }
-                Validation::Failed(e) => {
-                    acc_ref.append(e);
-                    *failed_ref = true;
-                    None
-                }
+        let outputs = self.filter_map(move |item| match f(item) {
+            Validation::Validated(output, e) => {
+                acc_ref.append(e);
+                Some(output)
+            }
+            Validation::Failed(e) => {
+                acc_ref.append(e);
+                *failed_ref = true;
+                None
             }
         });
         let collection: B = outputs.collect();
@@ -372,7 +351,6 @@ pub trait ValidationItExt: Iterator {
             Validation::Validated(collection, acc)
         }
     }
-
 }
 
 impl<It: Iterator> ValidationItExt for It {}

@@ -19,7 +19,7 @@ use crate::form::structural::read::{
     BodyReader, HeaderReader, ReadError, StructuralReadable, ValueReadable,
 };
 use crate::form::structural::write::{
-    BodyWriter, HeaderWriter, RecordBodyKind, StructuralWritable, StructuralWriter,
+    BodyWriter, HeaderWriter, PrimitiveWriter, RecordBodyKind, StructuralWritable, StructuralWriter,
 };
 use crate::model::text::Text;
 use crate::model::ValueKind;
@@ -328,5 +328,80 @@ impl<S: StructuralWritable, T: StructuralWritable> StructuralWritable for Genera
             rec_writer = rec_writer.write_slot_into("second", second)?;
         }
         rec_writer.done()
+    }
+}
+
+pub struct HeaderView<T>(pub T);
+
+struct WithHeaderBody<T> {
+    header: T,
+    attr: T,
+    slot: T,
+}
+
+impl<T: StructuralWritable> StructuralWritable for WithHeaderBody<T> {
+    fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
+        let mut rec_writer = writer.record(2)?;
+        rec_writer = rec_writer.write_attr(Cow::Borrowed("StructuralWritable"), &self.header)?;
+        rec_writer = rec_writer.write_attr(Cow::Borrowed("attr"), &self.attr)?;
+        let mut body_writer = rec_writer.complete_header(RecordBodyKind::MapLike, 1)?;
+        body_writer = body_writer.write_slot(&"slot", &self.slot)?;
+        body_writer.done()
+    }
+
+    fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error> {
+        let mut rec_writer = writer.record(2)?;
+        rec_writer = rec_writer.write_attr_into("StructuralWritable", self.header)?;
+        rec_writer = rec_writer.write_attr_into("attr", self.attr)?;
+        let mut body_writer = rec_writer.complete_header(RecordBodyKind::MapLike, 1)?;
+        body_writer = body_writer.write_slot_into("slot", self.slot)?;
+        body_writer.done()
+    }
+}
+
+struct WithHeaderField<T> {
+    header: T,
+    attr: T,
+    slot: T,
+}
+
+impl<T: StructuralWritable> StructuralWritable for HeaderView<&WithHeaderField<T>> {
+    fn write_with<W: StructuralWriter>(
+        &self,
+        writer: W,
+    ) -> Result<<W as PrimitiveWriter>::Repr, <W as PrimitiveWriter>::Error> {
+        let mut body_writer = writer
+            .record(0)?
+            .complete_header(RecordBodyKind::MapLike, 1)?;
+        body_writer = body_writer.write_slot(&"header", &self.0.header)?;
+        body_writer.done()
+    }
+
+    fn write_into<W: StructuralWriter>(
+        self,
+        writer: W,
+    ) -> Result<<W as PrimitiveWriter>::Repr, <W as PrimitiveWriter>::Error> {
+        self.write_with(writer)
+    }
+}
+
+impl<T: StructuralWritable> StructuralWritable for WithHeaderField<T> {
+    fn write_with<W: StructuralWriter>(
+        &self,
+        writer: W,
+    ) -> Result<<W as PrimitiveWriter>::Repr, <W as PrimitiveWriter>::Error> {
+        let mut rec_writer = writer.record(2)?;
+        rec_writer = rec_writer.write_attr_into("StructuralWritable", HeaderView(self))?;
+        rec_writer = rec_writer.write_attr_into("attr", &self.attr)?;
+        let mut body_writer = rec_writer.complete_header(RecordBodyKind::MapLike, 1)?;
+        body_writer = body_writer.write_slot_into("slot", &self.slot)?;
+        body_writer.done()
+    }
+
+    fn write_into<W: StructuralWriter>(
+        self,
+        writer: W,
+    ) -> Result<<W as PrimitiveWriter>::Repr, <W as PrimitiveWriter>::Error> {
+        self.write_with(writer)
     }
 }

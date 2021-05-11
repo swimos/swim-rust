@@ -31,9 +31,9 @@ use crate::validated_form::build_validated_form;
 
 mod form;
 mod parser;
+mod structural;
 mod tag;
 mod validated_form;
-mod structural;
 
 #[proc_macro_derive(Form, attributes(form))]
 pub fn derive_form(input: TokenStream) -> TokenStream {

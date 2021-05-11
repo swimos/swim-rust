@@ -13,6 +13,7 @@
 // limitations under the License.
 
 pub mod interpreters;
+pub mod projection;
 #[cfg(test)]
 mod tests;
 
