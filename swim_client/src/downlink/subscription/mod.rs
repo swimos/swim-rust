@@ -156,7 +156,7 @@ impl Downlinks {
             task,
             stop_trigger_tx,
         } = self;
-        if stop_trigger_tx.trigger() == false {
+        if !stop_trigger_tx.trigger() {
             return Err(TaskError);
         }
         drop(sender);
