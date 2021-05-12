@@ -18,6 +18,7 @@ use crate::meta::MetaContext;
 use futures::future::BoxFuture;
 use futures::sink::drain;
 use futures::{FutureExt, Stream, StreamExt};
+use http::Uri;
 use std::collections::HashMap;
 use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -41,9 +42,9 @@ mod tests;
 /// [`AgentContext`] implementation that dispatches effects to the scheduler through an MPSC
 /// channel.
 #[derive(Debug)]
-pub(super) struct ContextImpl<Agent, Clk, Router> {
+pub(super) struct ContextImpl<Agent, Clk, R: Router + Clone + 'static> {
     agent_ref: Arc<Agent>,
-    routing_context: RoutingContext<Router>,
+    routing_context: RoutingContext<R>,
     schedule_context: SchedulerContext<Clk>,
     meta_context: Arc<MetaContext>,
     client: SwimClient,
@@ -54,10 +55,10 @@ const SCHED_TRIGGERED: &str = "Schedule triggered";
 const SCHED_STOPPED: &str = "Scheduler unexpectedly stopped";
 const WAITING: &str = "Schedule waiting";
 
-impl<Agent, Clk, Router> ContextImpl<Agent, Clk, Router> {
+impl<Agent, Clk, R: Router + Clone + 'static> ContextImpl<Agent, Clk, R> {
     pub(super) fn new(
         agent_ref: Arc<Agent>,
-        routing_context: RoutingContext<Router>,
+        routing_context: RoutingContext<R>,
         schedule_context: SchedulerContext<Clk>,
         meta_context: MetaContext,
         client: SwimClient,
@@ -72,10 +73,10 @@ impl<Agent, Clk, Router> ContextImpl<Agent, Clk, Router> {
     }
 }
 
-impl<Agent, Clk, Router> Clone for ContextImpl<Agent, Clk, Router>
+impl<Agent, Clk, R: Router + Clone + 'static> Clone for ContextImpl<Agent, Clk, R>
 where
     Clk: Clone,
-    Router: Clone,
+    R: Clone,
 {
     fn clone(&self) -> Self {
         ContextImpl {
@@ -89,18 +90,14 @@ where
 }
 
 #[derive(Debug)]
-pub(super) struct RoutingContext<Router> {
+pub(super) struct RoutingContext<R: Router + Clone + 'static> {
     uri: RelativeUri,
-    router: Router,
+    router: R,
     parameters: HashMap<String, String>,
 }
 
-impl<Router> RoutingContext<Router> {
-    pub(super) fn new(
-        uri: RelativeUri,
-        router: Router,
-        parameters: HashMap<String, String>,
-    ) -> Self {
+impl<R: Router + Clone + 'static> RoutingContext<R> {
+    pub(super) fn new(uri: RelativeUri, router: R, parameters: HashMap<String, String>) -> Self {
         RoutingContext {
             uri,
             router,
@@ -109,7 +106,7 @@ impl<Router> RoutingContext<Router> {
     }
 }
 
-impl<Router: Clone> Clone for RoutingContext<Router> {
+impl<R: Router + Clone + 'static> Clone for RoutingContext<R> {
     fn clone(&self) -> Self {
         RoutingContext {
             uri: self.uri.clone(),
@@ -185,13 +182,18 @@ impl<Clk: Clone> Clone for SchedulerContext<Clk> {
     }
 }
 
-impl<Agent, Clk, Router> AgentContext<Agent> for ContextImpl<Agent, Clk, Router>
+impl<Agent, Clk, R: Router + Clone + 'static> AgentContext<Agent> for ContextImpl<Agent, Clk, R>
 where
     Agent: Send + Sync + 'static,
     Clk: Clock,
 {
     fn client(&self) -> SwimClient {
         self.client.clone()
+    }
+
+    //Todo dm
+    fn test_func(&self) -> Box<dyn Router> {
+        Box::new(self.routing_context.router.clone())
     }
 
     fn schedule<Effect, Str, Sch>(&self, effects: Str, schedule: Sch) -> BoxFuture<()>

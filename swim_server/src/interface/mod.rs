@@ -18,7 +18,7 @@
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::plane::router::PlaneRouter;
 use crate::plane::spec::PlaneSpec;
-use crate::plane::{run_plane, EnvChannel};
+use crate::plane::{run_plane, EnvChannel, PlaneRequest};
 use crate::routing::{TopLevelRouter, TopLevelRouterFactory};
 use either::Either;
 use futures::{io, join};

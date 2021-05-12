@@ -277,6 +277,8 @@ struct RouteResolver<Clk, DelegateFac: RouterFactory> {
     execution_config: AgentExecutionConfig,
     /// The routes for the plane.
     routes: Vec<RouteSpec<Clk, EnvChannel, PlaneRouter<DelegateFac::Router>>>,
+    // Todo dm
+    context_tx: mpsc::Sender<PlaneRequest>,
     /// Factory to create handles to the plane router when an agent is opened.
     router_fac: PlaneRouterFactory<DelegateFac>,
     /// External trigger that is fired when the plane should stop.
@@ -302,6 +304,7 @@ impl<Clk: Clock, DelegateFac: RouterFactory> RouteResolver<Clk, DelegateFac> {
             client,
             execution_config,
             routes,
+            context_tx,
             router_fac,
             stop_trigger,
             active_routes,
@@ -374,6 +377,7 @@ pub(crate) async fn run_plane<Clk, S, DelegateFac: RouterFactory>(
     event!(Level::DEBUG, STARTING);
     pin_mut!(spawner);
 
+    //Todo dm Get this down to the agent
     let (context_tx, context_rx) = context_channel;
     let mut context = ContextImpl::new(context_tx.clone(), spec.routes());
 
@@ -401,6 +405,7 @@ pub(crate) async fn run_plane<Clk, S, DelegateFac: RouterFactory>(
             client,
             execution_config,
             routes,
+            context_tx: context_tx.clone(),
             router_fac: PlaneRouterFactory::new(context_tx, delegate_fac),
             stop_trigger,
             active_routes: PlaneActiveRoutes::default(),

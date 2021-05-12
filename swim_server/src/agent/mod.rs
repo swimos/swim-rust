@@ -317,6 +317,8 @@ pub trait AgentContext<Agent> {
     /// Get a swim client capable of opening downlinks to other servers.
     fn client(&self) -> SwimClient;
 
+    fn test_func(&self) -> Box<dyn Router>;
+
     /// Schedule events to be executed on a provided schedule. The events will be executed within
     /// the task that runs the agent and so should not block.
     ///
