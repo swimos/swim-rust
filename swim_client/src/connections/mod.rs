@@ -450,7 +450,9 @@ impl ClientConnection {
         let (raw_route, stream) = rx
             .await
             .map_err(|_| ConnectionError::Resolution(ResolutionError::router_dropped()))??;
-        let write_sink = raw_route.sender;
+
+        //Todo dm remove unwrap
+        let write_sink = raw_route.unwrap().sender;
 
         let read_stream = ReceiverStream::new(stream).fuse();
 

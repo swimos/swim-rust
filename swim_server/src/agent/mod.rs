@@ -1287,7 +1287,7 @@ where
 
 impl<Event, Context> LaneIo<Context> for DemandLaneIo<Event>
 where
-    Event: Form + Send + Sync + 'static,
+    Event: Form + Send + Sync + Debug + 'static,
     Context: AgentExecutionContext + Sized + Send + Sync + 'static,
 {
     fn attach(

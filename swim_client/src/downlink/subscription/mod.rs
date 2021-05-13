@@ -506,6 +506,21 @@ impl DownlinksTask {
         rx.await.map_err(|_| SubscriptionError::ConnectionError)
     }
 
+    //Todo dm
+    pub async fn connection_for_local(
+        &mut self,
+        path: &AbsolutePath,
+    ) -> RequestResult<(mpsc::Sender<Envelope>, mpsc::Receiver<RouterEvent>)> {
+        let (tx, rx) = oneshot::channel();
+
+        self.conn_request_tx
+            .send((path.clone(), tx))
+            .await
+            .map_err(|_| SubscriptionError::ConnectionError)?;
+
+        rx.await.map_err(|_| SubscriptionError::ConnectionError)
+    }
+
     async fn create_new_value_downlink(
         &mut self,
         init: Value,

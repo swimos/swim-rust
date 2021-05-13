@@ -115,7 +115,7 @@ impl Route {
 /// Interface for interacting with the server [`Envelope`] router.
 pub trait Router: Send + Sync {
     /// Given a routing address, resolve the corresponding router entry
-   /// consisting of a sender that will push envelopes to the endpoint.
+    /// consisting of a sender that will push envelopes to the endpoint.
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,

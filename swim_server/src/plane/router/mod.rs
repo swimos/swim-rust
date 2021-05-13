@@ -85,7 +85,7 @@ impl<Delegate: Router> Router for PlaneRouter<Delegate> {
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,
-        _origin: Option<SchemeSocketAddr>,
+        origin: Option<SchemeSocketAddr>,
     ) -> BoxFuture<Result<Route, ResolutionError>> {
         async move {
             let PlaneRouter {
@@ -95,22 +95,26 @@ impl<Delegate: Router> Router for PlaneRouter<Delegate> {
             } = self;
             let (tx, rx) = oneshot::channel();
             if addr.is_local() {
-                if request_sender
-                    .send(PlaneRequest::Endpoint {
-                        id: addr,
-                        request: Request::new(tx),
-                    })
-                    .await
-                    .is_err()
-                {
-                    Err(ResolutionError::router_dropped())
+                if origin.is_some() {
+                    delegate_router.resolve_sender(addr, origin).await
                 } else {
-                    match rx.await {
-                        Ok(Ok(RawRoute { sender, on_drop })) => {
-                            Ok(Route::new(TaggedSender::new(*tag, sender), on_drop))
+                    if request_sender
+                        .send(PlaneRequest::Endpoint {
+                            id: addr,
+                            request: Request::new(tx),
+                        })
+                        .await
+                        .is_err()
+                    {
+                        Err(ResolutionError::router_dropped())
+                    } else {
+                        match rx.await {
+                            Ok(Ok(RawRoute { sender, on_drop })) => {
+                                Ok(Route::new(TaggedSender::new(*tag, sender), on_drop))
+                            }
+                            Ok(Err(err)) => Err(ResolutionError::unresolvable(err.to_string())),
+                            Err(_) => Err(ResolutionError::router_dropped()),
                         }
-                        Ok(Err(err)) => Err(ResolutionError::unresolvable(err.to_string())),
-                        Err(_) => Err(ResolutionError::router_dropped()),
                     }
                 }
             } else {

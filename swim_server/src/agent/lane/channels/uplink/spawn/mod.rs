@@ -27,10 +27,12 @@ use futures::{FutureExt, StreamExt};
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use swim_common::model::Value;
-use swim_common::routing::{RoutingAddr, Router};
+use swim_common::routing::remote::SchemeSocketAddr;
+use swim_common::routing::{Router, RoutingAddr};
 use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
@@ -220,7 +222,17 @@ where
         };
         let uplink = Uplink::new(state_machine, ReceiverStream::new(rx).fuse(), updates);
 
-        let sink = if let Ok(sender) = router.resolve_sender(addr, None).await {
+        //Todo dm
+        let sink = if let Ok(sender) = router
+            .resolve_sender(
+                addr,
+                Some(SchemeSocketAddr::new(
+                    "ws".to_string(),
+                    SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 9001),
+                )),
+            )
+            .await
+        {
             UplinkMessageSender::new(sender.sender, route.clone())
         } else {
             return None;

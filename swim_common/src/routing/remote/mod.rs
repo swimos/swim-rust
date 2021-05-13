@@ -456,7 +456,7 @@ pub struct SchemeSocketAddr {
 }
 
 impl SchemeSocketAddr {
-    fn new(scheme: String, addr: SocketAddr) -> SchemeSocketAddr {
+    pub fn new(scheme: String, addr: SocketAddr) -> SchemeSocketAddr {
         SchemeSocketAddr { scheme, addr }
     }
 }

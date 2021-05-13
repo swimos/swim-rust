@@ -207,12 +207,19 @@ impl SwimServerBuilder {
         let (stop_trigger_tx, stop_trigger_rx) = trigger::trigger();
         let (address_tx, address_rx) = promise::promise();
 
+        //Todo dm change buffer size
         let (client_conn_request_tx, client_conn_request_rx) = mpsc::channel(8);
 
-        let (downlinks, downlinks_handle) =
-            Downlinks::new(client_conn_request_tx, Arc::new(ConfigHierarchy::default()));
+        //Todo dm remove clone
+        let (downlinks, downlinks_handle) = Downlinks::new(
+            client_conn_request_tx.clone(),
+            Arc::new(ConfigHierarchy::default()),
+        );
 
-        let client = SwimClientBuilder::build_from_downlinks(downlinks);
+        let (plane_tx, plane_rx) = mpsc::channel(agent_config.lane_attachment_buffer.get());
+
+        let client =
+            SwimClientBuilder::build_from_downlinks(downlinks, client_conn_request_tx.clone());
 
         Ok((
             SwimServer {
@@ -223,6 +230,7 @@ impl SwimServerBuilder {
                 address_tx,
                 client,
                 downlinks_handle,
+                client_conn_request_tx,
                 client_conn_request_rx,
             },
             ServerHandle {
@@ -244,6 +252,7 @@ pub struct SwimServer {
     address_tx: promise::Sender<SocketAddr>,
     client: SwimClient,
     downlinks_handle: DownlinksHandle,
+    client_conn_request_tx: mpsc::Sender<ClientRequest>,
     client_conn_request_rx: mpsc::Receiver<ClientRequest>,
 }
 
@@ -264,7 +273,8 @@ impl SwimServer {
             address_tx,
             client,
             downlinks_handle,
-            client_conn_request_rx,
+            client_conn_request_tx: client_tx,
+            client_conn_request_rx: client_rx,
         } = self;
 
         let SwimServerConfig {
@@ -285,7 +295,6 @@ impl SwimServer {
             .expect("The server cannot be started without a plane");
 
         let (plane_tx, plane_rx) = mpsc::channel(agent_config.lane_attachment_buffer.get());
-        let (client_tx, client_rx) = mpsc::channel(conn_config.router_buffer_size.get());
         let (remote_tx, remote_rx) = mpsc::channel(conn_config.router_buffer_size.get());
 
         let top_level_router_fac =
