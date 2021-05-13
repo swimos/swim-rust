@@ -19,6 +19,7 @@ use futures::future::BoxFuture;
 use futures::FutureExt;
 use std::ffi::OsStr;
 use std::fmt::{Debug, Formatter};
+use std::io;
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -216,7 +217,7 @@ where
     pub(crate) fn open<B, P>(
         base_path: B,
         plane_name: P,
-        db_opts: &D::EnvironmentOpts,
+        db_opts: &D::Opts,
         keyspaces: &Keyspaces<D>,
     ) -> Result<SwimPlaneStore<D>, StoreError>
     where
@@ -225,11 +226,15 @@ where
     {
         let path = path_for(base_path.as_ref(), plane_name.as_ref());
         let delegate = D::from_keyspaces(&path, db_opts, keyspaces)?;
-        let plane_name = plane_name
-            .as_ref()
-            .to_str()
-            .expect("Expected valid UTF-8")
-            .to_string();
+        let plane_name = match plane_name.as_ref().to_str() {
+            Some(path) => path.to_string(),
+            None => {
+                return Err(StoreError::Io(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "Expected a valid UTF-8 path",
+                )));
+            }
+        };
 
         let arcd_delegate = Arc::new(delegate);
         // todo config

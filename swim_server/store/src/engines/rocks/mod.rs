@@ -19,9 +19,7 @@ mod iterator;
 
 use crate::engines::{KeyedSnapshot, RangedSnapshotLoad};
 use crate::iterator::{EnginePrefixIterator, EngineRefIterator};
-use crate::keyspaces::{
-    KeyType, Keyspace, KeyspaceByteEngine, KeyspaceOptions, KeyspaceResolver, Keyspaces,
-};
+use crate::keyspaces::{KeyType, Keyspace, KeyspaceByteEngine, KeyspaceResolver, Keyspaces};
 use crate::{serialize, FromKeyspaces, Store, StoreError, StoreInfo};
 use rocksdb::{ColumnFamily, ColumnFamilyDescriptor, SliceTransform};
 use rocksdb::{Error, Options, DB};
@@ -85,12 +83,11 @@ impl KeyspaceResolver for RocksDatabase {
 }
 
 impl FromKeyspaces for RocksDatabase {
-    type EnvironmentOpts = RocksOpts;
-    type KeyspaceOpts = RocksOpts;
+    type Opts = RocksOpts;
 
     fn from_keyspaces<I: AsRef<Path>>(
         path: I,
-        db_opts: &Self::KeyspaceOpts,
+        db_opts: &Self::Opts,
         keyspaces: &Keyspaces<Self>,
     ) -> Result<Self, StoreError> {
         let Keyspaces { keyspaces } = keyspaces;
@@ -111,20 +108,6 @@ impl FromKeyspaces for RocksDatabase {
 
 /// Configuration wrapper for a Rocks database used by `FromOpts`.
 pub struct RocksOpts(pub Options);
-
-impl RocksOpts {
-    pub fn keyspace_options() -> KeyspaceOptions<Self> {
-        // let mut lane_opts = rocksdb::Options::default();
-        // lane_opts.set_merge_operator_associative("lane_id_counter", incrementing_merge_operator);
-        //
-        // KeyspaceOptions {
-        //     lane: RocksOpts(lane_opts),
-        //     value: RocksOpts(default_lane_opts()),
-        //     map: RocksOpts(default_lane_opts()),
-        // }
-        unimplemented!()
-    }
-}
 
 impl Default for RocksOpts {
     fn default() -> Self {

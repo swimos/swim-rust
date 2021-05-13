@@ -39,9 +39,7 @@ pub trait ByteEngine: 'static {
 /// A trait for building stores from their keyspace definitions..
 pub trait FromKeyspaces: Sized {
     /// Store environment open options. For some delegates, this may not be used - such as libmdbx.
-    type EnvironmentOpts: Default;
-    /// The type of options to open a keyspace with.
-    type KeyspaceOpts: Default;
+    type Opts: Default;
 
     /// Build a store from options.
     ///
@@ -53,7 +51,7 @@ pub trait FromKeyspaces: Sized {
     /// `keyspaces`: a set of keyspaces to open.
     fn from_keyspaces<I: AsRef<Path>>(
         path: I,
-        db_opts: &Self::EnvironmentOpts,
+        db_opts: &Self::Opts,
         keyspaces: &Keyspaces<Self>,
     ) -> Result<Self, StoreError>;
 }

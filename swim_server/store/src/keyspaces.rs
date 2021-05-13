@@ -35,11 +35,7 @@ pub struct KeyspaceDef<O> {
 }
 
 pub struct Keyspaces<O: FromKeyspaces> {
-    pub keyspaces: Vec<KeyspaceDef<O::KeyspaceOpts>>,
-}
-
-pub struct KeyspaceOptions<O> {
-    pub opts: O,
+    pub keyspaces: Vec<KeyspaceDef<O::Opts>>,
 }
 
 impl<O> KeyspaceDef<O> {

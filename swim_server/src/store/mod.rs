@@ -20,7 +20,7 @@ use std::fmt::{Debug, Formatter};
 use std::io;
 use std::marker::PhantomData;
 use std::path::PathBuf;
-use store::keyspaces::{KeyType, Keyspace, KeyspaceOptions, Keyspaces};
+use store::keyspaces::{KeyType, Keyspace, Keyspaces};
 use store::{Store, StoreError};
 use utilities::fs::Dir;
 
@@ -46,7 +46,7 @@ pub struct ServerStore<D: Store> {
     /// The directory that this store is operating from.
     dir: Dir,
     /// Database environment open options
-    db_opts: D::EnvironmentOpts,
+    db_opts: D::Opts,
     /// The keyspaces that all stores will be opened with.
     keyspaces: Keyspaces<D>,
     _delegate_pd: PhantomData<D>,
@@ -67,7 +67,7 @@ impl<D: Store> ServerStore<D> {
     /// # Panics
     /// Panics if the directory cannot be created.
     pub fn new(
-        db_opts: D::EnvironmentOpts,
+        db_opts: D::Opts,
         keyspaces: Keyspaces<D>,
         base_path: PathBuf,
     ) -> io::Result<ServerStore<D>> {
@@ -85,7 +85,7 @@ impl<D: Store> ServerStore<D> {
     /// # Panics
     /// Panics if the directory cannot be created.
     pub fn transient(
-        db_opts: D::EnvironmentOpts,
+        db_opts: D::Opts,
         keyspaces: Keyspaces<D>,
         prefix: &str,
     ) -> io::Result<ServerStore<D>> {
