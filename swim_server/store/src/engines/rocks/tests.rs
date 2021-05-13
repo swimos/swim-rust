@@ -12,30 +12,116 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::engines::RangedSnapshotLoad;
+use crate::engines::{FromKeyspaces, RangedSnapshotLoad};
 use crate::iterator::EngineIterator;
-use crate::keyspaces::{KeyspaceByteEngine, KeyspaceResolver};
-use crate::mock::TransientDatabase;
+use crate::keyspaces::{
+    KeyType, Keyspace, KeyspaceByteEngine, KeyspaceDef, KeyspaceResolver, Keyspaces,
+};
 use crate::{deserialize, serialize};
-use crate::{EngineRefIterator, Store, StoreError};
+use crate::{EngineRefIterator, StoreError};
 use crate::{RocksDatabase, RocksOpts};
+use rocksdb::{MergeOperands, Options, SliceTransform};
 use std::collections::HashMap;
-use std::ops::Range;
+use std::mem::size_of;
+use std::ops::{Deref, Range};
+use tempdir::TempDir;
 
-fn default_db() -> TransientDatabase<RocksDatabase> {
-    TransientDatabase::<RocksDatabase>::new(RocksOpts::keyspace_options())
+impl Deref for TransientDatabase {
+    type Target = RocksDatabase;
+
+    fn deref(&self) -> &Self::Target {
+        &self.delegate
+    }
 }
 
-fn assert_keyspaces_empty<D>(db: &TransientDatabase<D>, spaces: &[KeyspaceName])
-where
-    D: Store,
-{
+pub struct TransientDatabase {
+    _dir: TempDir,
+    delegate: RocksDatabase,
+}
+
+impl TransientDatabase {
+    #[allow(dead_code)]
+    pub(crate) fn new(keyspaces: Keyspaces<RocksDatabase>) -> TransientDatabase {
+        let dir = TempDir::new("test").expect("Failed to create temporary directory");
+        let delegate = RocksDatabase::from_keyspaces(dir.path(), &Default::default(), &keyspaces)
+            .expect("Failed to build delegate store");
+
+        TransientDatabase {
+            _dir: dir,
+            delegate,
+        }
+    }
+}
+
+fn deserialize_key<B: AsRef<[u8]>>(bytes: B) -> Result<KeyType, ()> {
+    bincode::deserialize::<KeyType>(bytes.as_ref()).map_err(|_| ())
+}
+
+fn default_lane_opts() -> Options {
+    let mut opts = rocksdb::Options::default();
+    opts.set_prefix_extractor(SliceTransform::create_fixed_prefix(size_of::<KeyType>()));
+    opts.set_memtable_prefix_bloom_ratio(0.2);
+
+    opts
+}
+
+#[allow(clippy::unnecessary_wraps)]
+pub(crate) fn incrementing_merge_operator(
+    _new_key: &[u8],
+    existing_value: Option<&[u8]>,
+    operands: &mut MergeOperands,
+) -> Option<Vec<u8>> {
+    let mut value = match existing_value {
+        Some(bytes) => deserialize_key(bytes).unwrap(),
+        None => 0,
+    };
+
+    for op in operands {
+        let deserialized = deserialize_key(op).unwrap();
+        value += deserialized;
+    }
+    Some(serialize(&value).unwrap())
+}
+
+fn default_db() -> TransientDatabase {
+    let mut lane_opts = rocksdb::Options::default();
+    lane_opts.set_merge_operator_associative("lane_id_counter", incrementing_merge_operator);
+
+    let keyspaces = vec![
+        KeyspaceDef::new(KeyspaceName::Value.as_ref(), RocksOpts(default_lane_opts())),
+        KeyspaceDef::new(KeyspaceName::Map.as_ref(), RocksOpts(default_lane_opts())),
+        KeyspaceDef::new(KeyspaceName::Lane.as_ref(), RocksOpts(lane_opts)),
+    ];
+
+    TransientDatabase::new(Keyspaces::new(keyspaces))
+}
+
+fn assert_keyspaces_empty(db: &TransientDatabase, spaces: &[KeyspaceName]) {
     for key_space in spaces {
-        let resolved = db.resolve_keyspace(&key_space).unwrap();
+        let resolved = db.resolve_keyspace(key_space).unwrap();
         let iter = db.iterator(resolved).unwrap();
         assert_eq!(Ok(false), iter.valid())
     }
 }
+
+#[derive(Debug, Clone, Copy)]
+enum KeyspaceName {
+    Value,
+    Map,
+    Lane,
+}
+
+impl AsRef<str> for KeyspaceName {
+    fn as_ref(&self) -> &str {
+        match self {
+            KeyspaceName::Value => "value",
+            KeyspaceName::Map => "map",
+            KeyspaceName::Lane => "default",
+        }
+    }
+}
+
+impl Keyspace for KeyspaceName {}
 
 #[test]
 fn get_keyspace() {
@@ -52,8 +138,8 @@ fn format_key(id: i32) -> String {
     format!("key/{}", id)
 }
 
-fn populate_keyspace<D: Store>(
-    db: &TransientDatabase<D>,
+fn populate_keyspace(
+    db: &TransientDatabase,
     space: KeyspaceName,
     range: Range<i32>,
     clone_to: &mut HashMap<String, i32>,

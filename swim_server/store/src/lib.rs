@@ -25,7 +25,7 @@ use thiserror::Error;
 
 pub use engines::KeyedSnapshot;
 pub use engines::{RocksDatabase, RocksOpts};
-pub use rocksdb::MergeOperands;
+pub use rocksdb::{MergeOperands, SliceTransform};
 
 use crate::engines::{ByteEngine, FromKeyspaces, RangedSnapshotLoad};
 pub use crate::iterator::{EngineRefIterator, IteratorKey, OwnedEngineRefIterator};

@@ -15,7 +15,7 @@
 use crate::engines::FromKeyspaces;
 use crate::StoreError;
 
-/// The type to use for the storing unique lane identifiers.
+/// The type to use for prefixing keys.
 ///
 /// Note: It is not recommended to change this after a store has already been initialised.
 pub type KeyType = u64;
@@ -34,13 +34,20 @@ pub struct KeyspaceDef<O> {
     pub(crate) opts: O,
 }
 
-pub struct Keyspaces<O: FromKeyspaces> {
-    pub keyspaces: Vec<KeyspaceDef<O::Opts>>,
+impl<O> KeyspaceDef<O> {
+    pub fn new(name: &'static str, opts: O) -> Self {
+        KeyspaceDef { name, opts }
+    }
 }
 
-impl<O> KeyspaceDef<O> {
-    fn new(name: &'static str, opts: O) -> Self {
-        KeyspaceDef { name, opts }
+/// A list of keyspace definitions to initialise a store with.
+pub struct Keyspaces<O: FromKeyspaces> {
+    pub keyspaces: Vec<KeyspaceDef<O::KeyspaceOpts>>,
+}
+
+impl<O: FromKeyspaces> Keyspaces<O> {
+    pub fn new(keyspaces: Vec<KeyspaceDef<<O as FromKeyspaces>::KeyspaceOpts>>) -> Self {
+        Keyspaces { keyspaces }
     }
 }
 
