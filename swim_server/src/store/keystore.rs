@@ -12,11 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::store::KeyspaceName;
 use futures::StreamExt;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-use store::keyspaces::{KeyType, KeyspaceByteEngine};
+use store::keyspaces::{KeyType, Keyspace, KeyspaceByteEngine};
 use store::StoreError;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
@@ -40,6 +39,35 @@ const RESPOND_FAILURE: &str = "Failed to send response";
 /// already exist.
 const INITIAL: KeyType = 0;
 const STEP: KeyType = 1;
+
+/// Unique lane identifier keyspace. The name is `default` as either the Rust RocksDB crate or
+/// Rocks DB itself has an issue in using merge operators under a non-default column family.
+///
+/// See: https://github.com/rust-rocksdb/rust-rocksdb/issues/29
+pub(crate) const LANE_KS: &str = "default";
+/// Value lane store keyspace.
+pub(crate) const VALUE_LANE_KS: &str = "value_lanes";
+/// Map lane store keyspace.
+pub(crate) const MAP_LANE_KS: &str = "map_lanes";
+
+/// An enumeration over the keyspaces that exist in a store.
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub enum KeyspaceName {
+    Lane,
+    Value,
+    Map,
+}
+
+impl AsRef<str> for KeyspaceName {
+    fn as_ref(&self) -> &str {
+        match self {
+            KeyspaceName::Lane => LANE_KS,
+            KeyspaceName::Value => VALUE_LANE_KS,
+            KeyspaceName::Map => MAP_LANE_KS,
+        }
+    }
+}
+impl Keyspace for KeyspaceName {}
 
 /// A task for loading and assigning unique identifiers to lane addresses.
 pub struct KeyStoreTask<S: KeyspaceByteEngine> {

@@ -13,8 +13,8 @@
 // limitations under the License.
 
 use crate::agent::store::{NodeStore, SwimNodeStore};
-use crate::store::keystore::KeyStore;
-use crate::store::{KeyspaceName, StoreKey};
+use crate::store::keystore::{KeyStore, KeyspaceName};
+use crate::store::{StoreEngine, StoreKey};
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use std::ffi::OsStr;
@@ -46,7 +46,7 @@ where
 /// A trait for defining plane stores which will create node stores.
 pub trait PlaneStore
 where
-    Self: Sized + Debug + Send + Sync + Clone + 'static,
+    Self: StoreEngine + Sized + Debug + Send + Sync + Clone + 'static,
 {
     /// The type of node stores which are created.
     type NodeStore: NodeStore;
@@ -68,15 +68,6 @@ where
     ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
     where
         F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>;
-
-    /// Serialize `key` and insert the key-value pair into the delegate store.
-    fn put(&self, key: StoreKey, value: &[u8]) -> Result<(), StoreError>;
-
-    /// Gets the value associated with the provided store key if it exists.
-    fn get(&self, key: StoreKey) -> Result<Option<Vec<u8>>, StoreError>;
-
-    /// Delete the key-value pair associated with `key`.
-    fn delete(&self, key: StoreKey) -> Result<(), StoreError>;
 
     /// Returns information about the delegate store
     fn store_info(&self) -> StoreInfo;
@@ -167,6 +158,19 @@ where
             .load_ranged_snapshot(namespace, serialize(&prefix)?.as_slice(), map_fn)
     }
 
+    fn store_info(&self) -> StoreInfo {
+        self.delegate.store_info()
+    }
+
+    fn lane_id_of<I>(&self, lane: I) -> BoxFuture<KeyType>
+    where
+        I: Into<String>,
+    {
+        self.keystore.id_for(lane.into()).boxed()
+    }
+}
+
+impl<D: Store> StoreEngine for SwimPlaneStore<D> {
     fn put(&self, key: StoreKey, value: &[u8]) -> Result<(), StoreError> {
         exec_keyspace(key, |namespace, bytes| {
             self.delegate
@@ -184,17 +188,6 @@ where
         exec_keyspace(key, |namespace, bytes| {
             self.delegate.delete_keyspace(namespace, bytes.as_slice())
         })
-    }
-
-    fn store_info(&self) -> StoreInfo {
-        self.delegate.store_info()
-    }
-
-    fn lane_id_of<I>(&self, lane: I) -> BoxFuture<KeyType>
-    where
-        I: Into<String>,
-    {
-        self.keystore.id_for(lane.into()).boxed()
     }
 }
 

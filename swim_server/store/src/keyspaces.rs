@@ -42,11 +42,11 @@ impl<O> KeyspaceDef<O> {
 
 /// A list of keyspace definitions to initialise a store with.
 pub struct Keyspaces<O: FromKeyspaces> {
-    pub keyspaces: Vec<KeyspaceDef<O::KeyspaceOpts>>,
+    pub keyspaces: Vec<KeyspaceDef<O::Opts>>,
 }
 
 impl<O: FromKeyspaces> Keyspaces<O> {
-    pub fn new(keyspaces: Vec<KeyspaceDef<<O as FromKeyspaces>::KeyspaceOpts>>) -> Self {
+    pub fn new(keyspaces: Vec<KeyspaceDef<O::Opts>>) -> Self {
         Keyspaces { keyspaces }
     }
 }

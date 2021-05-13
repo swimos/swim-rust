@@ -13,9 +13,7 @@
 // limitations under the License.
 
 use crate::plane::store::PlaneStore;
-use crate::store::StoreKey;
-use futures::future::BoxFuture;
-use futures::FutureExt;
+use crate::store::{StoreEngine, StoreKey};
 use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
 use store::{KeyedSnapshot, StoreError, StoreInfo};
@@ -32,17 +30,8 @@ use swim_common::model::text::Text;
 /// the store; providing that the top-level server store is also persistent.
 ///
 /// Transient data models will live in memory for the duration that a handle to the model exists.
-pub trait NodeStore: Send + Sync + Clone + Debug + 'static {
+pub trait NodeStore: StoreEngine + Send + Sync + Clone + Debug + 'static {
     type Delegate: PlaneStore;
-
-    /// Put a key-value pair into the delegate store.
-    fn put(&self, key: StoreKey, value: &[u8]) -> Result<(), StoreError>;
-
-    /// Get a value keyed by a lane key from the delegate store.
-    fn get(&self, key: StoreKey) -> Result<Option<Vec<u8>>, StoreError>;
-
-    /// Delete a key-value pair by its lane key from the delegate store.
-    fn delete(&self, key: StoreKey) -> Result<(), StoreError>;
 
     /// Returns information about the delegate store
     fn store_info(&self) -> StoreInfo;
@@ -101,9 +90,7 @@ impl<D: PlaneStore> SwimNodeStore<D> {
     }
 }
 
-impl<D: PlaneStore> NodeStore for SwimNodeStore<D> {
-    type Delegate = D;
-
+impl<D: PlaneStore> StoreEngine for SwimNodeStore<D> {
     fn put(&self, key: StoreKey, value: &[u8]) -> Result<(), StoreError> {
         self.delegate.put(key, value)
     }
@@ -115,6 +102,10 @@ impl<D: PlaneStore> NodeStore for SwimNodeStore<D> {
     fn delete(&self, key: StoreKey) -> Result<(), StoreError> {
         self.delegate.delete(key)
     }
+}
+
+impl<D: PlaneStore> NodeStore for SwimNodeStore<D> {
+    type Delegate = D;
 
     fn store_info(&self) -> StoreInfo {
         self.delegate.store_info()

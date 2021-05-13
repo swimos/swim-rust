@@ -20,7 +20,7 @@ use std::fmt::{Debug, Formatter};
 use std::io;
 use std::marker::PhantomData;
 use std::path::PathBuf;
-use store::keyspaces::{KeyType, Keyspace, Keyspaces};
+use store::keyspaces::{KeyType, Keyspaces};
 use store::{Store, StoreError};
 use utilities::fs::Dir;
 
@@ -136,31 +136,13 @@ pub enum StoreKey {
     },
 }
 
-/// Unique lane identifier keyspace. The name is `default` as either the Rust RocksDB crate or
-/// Rocks DB itself has an issue in using merge operators under a non-default column family.
-///
-/// See: https://github.com/rust-rocksdb/rust-rocksdb/issues/29
-pub(crate) const LANE_KS: &str = "default";
-/// Value lane store keyspace.
-pub(crate) const VALUE_LANE_KS: &str = "value_lanes";
-/// Map lane store keyspace.
-pub(crate) const MAP_LANE_KS: &str = "map_lanes";
+pub trait StoreEngine {
+    /// Put a key-value pair into the delegate store.
+    fn put(&self, key: StoreKey, value: &[u8]) -> Result<(), StoreError>;
 
-/// An enumeration over the keyspaces that exist in a store.
-#[derive(Debug, Copy, Clone, PartialEq)]
-pub enum KeyspaceName {
-    Lane,
-    Value,
-    Map,
-}
+    /// Get a value keyed by a store key from the delegate store.
+    fn get(&self, key: StoreKey) -> Result<Option<Vec<u8>>, StoreError>;
 
-impl AsRef<str> for KeyspaceName {
-    fn as_ref(&self) -> &str {
-        match self {
-            KeyspaceName::Lane => LANE_KS,
-            KeyspaceName::Value => VALUE_LANE_KS,
-            KeyspaceName::Map => MAP_LANE_KS,
-        }
-    }
+    /// Delete a key-value pair by its store key from the delegate store.
+    fn delete(&self, key: StoreKey) -> Result<(), StoreError>;
 }
-impl Keyspace for KeyspaceName {}
