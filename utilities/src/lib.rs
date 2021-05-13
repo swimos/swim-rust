@@ -18,6 +18,7 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 
 pub mod errors;
+pub mod fs;
 pub mod future;
 pub mod iteratee;
 pub mod lru_cache;

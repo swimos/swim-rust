@@ -48,10 +48,6 @@ impl<O> KeyspaceDef<O> {
     }
 }
 
-fn deserialize_key<B: AsRef<[u8]>>(bytes: B) -> Result<KeyType, ()> {
-    bincode::deserialize::<KeyType>(bytes.as_ref()).map_err(|_| ())
-}
-
 /// A trait for abstracting over database engines and partitioning data by a logical keyspace.
 pub trait KeyspaceByteEngine: Send + Sync + 'static {
     /// Put a key-value pair into the specified keyspace.

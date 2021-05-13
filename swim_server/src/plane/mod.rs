@@ -18,6 +18,7 @@ pub mod lifecycle;
 pub(crate) mod provider;
 pub(crate) mod router;
 pub mod spec;
+pub mod store;
 #[cfg(test)]
 mod tests;
 

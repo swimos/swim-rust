@@ -12,16 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::engines::KeyedSnapshot;
-use crate::stores::lane::map::MapDataModel;
-use crate::stores::lane::value::ValueDataModel;
-use crate::stores::StoreKey;
-use crate::{PlaneStore, StoreError, StoreInfo};
+use crate::plane::store::PlaneStore;
+use crate::store::StoreKey;
 use futures::future::BoxFuture;
 use futures::FutureExt;
-use serde::Serialize;
 use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
+use store::{KeyedSnapshot, StoreError, StoreInfo};
 use swim_common::model::text::Text;
 
 /// A trait for defining store engines which open stores for nodes.
@@ -37,37 +34,6 @@ use swim_common::model::text::Text;
 /// Transient data models will live in memory for the duration that a handle to the model exists.
 pub trait NodeStore: Send + Sync + Clone + Debug + 'static {
     type Delegate: PlaneStore;
-
-    /// Open a new map data model.
-    ///
-    /// # Arguments
-    /// `lane_uri`: the URI of the lane.
-    /// `transient`: whether the lane is a transient lane. If this is `true`, then the data model
-    /// returned should be an in-memory store.
-    fn map_lane_store<I, K, V>(
-        &self,
-        lane_uri: I,
-    ) -> BoxFuture<'static, MapDataModel<Self::Delegate, K, V>>
-    where
-        I: ToString + Send + 'static,
-        K: Serialize + Send + 'static,
-        V: Serialize + Send + 'static,
-        Self: Sized;
-
-    /// Open a new value data model.
-    ///
-    /// # Arguments
-    /// `lane_uri`: the URI of the lane.
-    /// `transient`: whether the lane is a transient lane. If this is `true`, then the data model
-    /// returned should be an in-memory store.
-    fn value_lane_store<I, V>(
-        &self,
-        lane_uri: I,
-    ) -> BoxFuture<'static, ValueDataModel<Self::Delegate>>
-    where
-        I: ToString + Send + 'static,
-        V: Serialize + Send + 'static,
-        Self: Sized;
 
     /// Put a key-value pair into the delegate store.
     fn put(&self, key: StoreKey, value: &[u8]) -> Result<(), StoreError>;
@@ -137,36 +103,6 @@ impl<D: PlaneStore> SwimNodeStore<D> {
 
 impl<D: PlaneStore> NodeStore for SwimNodeStore<D> {
     type Delegate = D;
-
-    fn map_lane_store<I, K, V>(&self, lane: I) -> BoxFuture<'static, MapDataModel<D, K, V>>
-    where
-        I: ToString + Send + 'static,
-        K: Serialize + Send + 'static,
-        V: Serialize + Send + 'static,
-    {
-        let node_store = self.clone();
-        let key = format!("{}/{}", self.node_uri, lane.to_string());
-
-        async move {
-            let lane_id = node_store.delegate.lane_id_of(key).await;
-            MapDataModel::new(node_store, lane_id)
-        }
-        .boxed()
-    }
-
-    fn value_lane_store<I, V>(&self, lane: I) -> BoxFuture<'static, ValueDataModel<D>>
-    where
-        I: ToString + Send + 'static,
-        V: Serialize + Send + 'static,
-    {
-        let node_store = self.clone();
-        let key = format!("{}/{}", self.node_uri, lane.to_string());
-        async move {
-            let lane_id = node_store.delegate.lane_id_of(key).await;
-            ValueDataModel::new(node_store, lane_id)
-        }
-        .boxed()
-    }
 
     fn put(&self, key: StoreKey, value: &[u8]) -> Result<(), StoreError> {
         self.delegate.put(key, value)

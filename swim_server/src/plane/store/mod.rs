@@ -12,12 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::engines::keyspaces::{KeyStore, KeyType, KeyspaceName, Keyspaces};
-use crate::engines::KeyedSnapshot;
-use crate::stores::lane::serialize;
-use crate::stores::node::{NodeStore, SwimNodeStore};
-use crate::stores::StoreKey;
-use crate::{Store, StoreError, StoreInfo};
+use crate::agent::store::{NodeStore, SwimNodeStore};
+use crate::store::keystore::KeyStore;
+use crate::store::{KeyspaceName, StoreKey};
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use std::ffi::OsStr;
@@ -25,6 +22,8 @@ use std::fmt::{Debug, Formatter};
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use store::keyspaces::{KeyType, Keyspaces};
+use store::{serialize, KeyedSnapshot, Store, StoreError, StoreInfo};
 use swim_common::model::text::Text;
 
 const STORE_DIR: &str = "store";
@@ -237,35 +236,5 @@ where
         let keystore = KeyStore::new(arcd_delegate.clone(), NonZeroUsize::new(8).unwrap());
 
         Ok(Self::new(plane_name, arcd_delegate, keystore))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::engines::keyspaces::failing_keystore;
-    use crate::engines::RocksDatabase;
-    use crate::stores::plane::SwimPlaneStore;
-    use crate::stores::StoreKey;
-    use crate::PlaneStore;
-    use std::sync::Arc;
-
-    #[tokio::test]
-    async fn put_get() {
-        let tempdir = tempdir::TempDir::new("test").expect("Failed to build temporary directory");
-
-        let delegate =
-            RocksDatabase::open_default(tempdir.path()).expect("Failed to build rocks DB");
-
-        let plane_store = SwimPlaneStore::new("test", Arc::new(delegate), failing_keystore());
-        let value_key = StoreKey::Value { lane_id: 0 };
-        let test_data = "test";
-
-        assert!(plane_store
-            .put(value_key.clone(), test_data.as_bytes())
-            .is_ok());
-
-        let result = plane_store.get(value_key);
-        let vec = result.unwrap().unwrap();
-        assert_eq!(Ok(test_data.to_string()), String::from_utf8(vec));
     }
 }

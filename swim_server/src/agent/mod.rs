@@ -16,6 +16,8 @@ pub mod context;
 pub mod dispatch;
 pub mod lane;
 pub mod lifecycle;
+pub mod store;
+
 #[cfg(test)]
 mod tests;
 
