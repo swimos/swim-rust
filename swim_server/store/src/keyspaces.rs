@@ -15,7 +15,7 @@
 use crate::engines::FromKeyspaces;
 use crate::StoreError;
 
-/// The type to use for the storing unique lane identifiers.
+/// The type to use for prefixing keys.
 ///
 /// Note: It is not recommended to change this after a store has already been initialised.
 pub type KeyType = u64;
@@ -34,22 +34,21 @@ pub struct KeyspaceDef<O> {
     pub(crate) opts: O,
 }
 
-pub struct Keyspaces<O: FromKeyspaces> {
-    pub keyspaces: Vec<KeyspaceDef<O::KeyspaceOpts>>,
-}
-
-pub struct KeyspaceOptions<O> {
-    pub opts: O,
-}
-
 impl<O> KeyspaceDef<O> {
-    fn new(name: &'static str, opts: O) -> Self {
+    pub fn new(name: &'static str, opts: O) -> Self {
         KeyspaceDef { name, opts }
     }
 }
 
-fn deserialize_key<B: AsRef<[u8]>>(bytes: B) -> Result<KeyType, ()> {
-    bincode::deserialize::<KeyType>(bytes.as_ref()).map_err(|_| ())
+/// A list of keyspace definitions to initialise a store with.
+pub struct Keyspaces<O: FromKeyspaces> {
+    pub keyspaces: Vec<KeyspaceDef<O::KeyspaceOpts>>,
+}
+
+impl<O: FromKeyspaces> Keyspaces<O> {
+    pub fn new(keyspaces: Vec<KeyspaceDef<<O as FromKeyspaces>::KeyspaceOpts>>) -> Self {
+        Keyspaces { keyspaces }
+    }
 }
 
 /// A trait for abstracting over database engines and partitioning data by a logical keyspace.
