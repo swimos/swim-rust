@@ -70,12 +70,11 @@ impl KeyspaceResolver for RocksDatabase {
 }
 
 impl FromKeyspaces for RocksDatabase {
-    type EnvironmentOpts = RocksOpts;
-    type KeyspaceOpts = RocksOpts;
+    type Opts = RocksOpts;
 
     fn from_keyspaces<I: AsRef<Path>>(
         path: I,
-        db_opts: &Self::KeyspaceOpts,
+        db_opts: &Self::Opts,
         keyspaces: &Keyspaces<Self>,
     ) -> Result<Self, StoreError> {
         let Keyspaces { keyspaces } = keyspaces;

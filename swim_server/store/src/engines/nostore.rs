@@ -100,12 +100,11 @@ impl RangedSnapshotLoad for NoStore {
 pub struct NoStoreOpts;
 
 impl FromKeyspaces for NoStore {
-    type EnvironmentOpts = NoStoreOpts;
-    type KeyspaceOpts = ();
+    type Opts = NoStoreOpts;
 
     fn from_keyspaces<I: AsRef<Path>>(
         path: I,
-        _db_opts: &Self::EnvironmentOpts,
+        _db_opts: &Self::Opts,
         _keyspaces: &Keyspaces<Self>,
     ) -> Result<Self, StoreError> {
         Ok(NoStore {
