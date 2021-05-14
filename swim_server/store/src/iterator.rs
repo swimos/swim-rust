@@ -52,8 +52,9 @@ pub trait EngineIterator {
     /// Returns the current value if the cursor points to a valid element.
     fn value(&self) -> Option<&[u8]>;
 
-    /// Returns `Ok` if the iterator is currently valid and has not reached the end of its range.
-    /// Or `Err` with a cause the error.
+    /// Returns `Ok(true)` if the iterator is currently valid and has not reached the end of its
+    /// range. `Ok(false)` if the iterator has not encountered any errors but has reached the end of
+    /// its range.  Or `Err` with a cause the error.
     fn valid(&self) -> Result<bool, StoreError>;
 }
 

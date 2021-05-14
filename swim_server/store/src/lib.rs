@@ -119,10 +119,7 @@ pub trait Store:
     fn store_info(&self) -> StoreInfo;
 }
 
-/// A trait for defining snapshots.
-///
-/// Typically used by node stores and will delegate the snapshot to a ranged snapshot that uses a
-/// stored prefix owned by the lane.
+/// A trait for defining engine snapshots.
 pub trait Snapshot<K, V> {
     /// The type of the snapshot. An iterator that will yield a deserialized key-value pair.
     type Snapshot: IntoIterator<Item = (K, V)>;
