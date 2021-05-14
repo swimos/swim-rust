@@ -187,13 +187,14 @@ where
     Agent: Send + Sync + 'static,
     Clk: Clock,
 {
+    type LocalRouter = R;
+
     fn client(&self) -> SwimClient {
         self.client.clone()
     }
 
-    //Todo dm
-    fn test_func(&self) -> Box<dyn Router> {
-        Box::new(self.routing_context.router.clone())
+    fn local_router(&self) -> Self::LocalRouter {
+        self.routing_context.router.clone()
     }
 
     fn schedule<Effect, Str, Sch>(&self, effects: Str, schedule: Sch) -> BoxFuture<()>

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::plane::error::NoAgentAtRoute;
+use swim_common::routing::error::NoAgentAtRoute;
 use futures::future::BoxFuture;
 use std::any::Any;
 use std::collections::HashSet;

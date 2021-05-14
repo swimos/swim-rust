@@ -314,10 +314,12 @@ pub type EffStream = BoxStream<'static, ()>;
 /// agent and lane life-cycle events and allows events to be scheduled within the task that
 /// is running the agent.
 pub trait AgentContext<Agent> {
+    type LocalRouter: Router + Clone + 'static;
+
     /// Get a swim client capable of opening downlinks to other servers.
     fn client(&self) -> SwimClient;
 
-    fn test_func(&self) -> Box<dyn Router>;
+    fn local_router(&self) -> Self::LocalRouter;
 
     /// Schedule events to be executed on a provided schedule. The events will be executed within
     /// the task that runs the agent and so should not block.

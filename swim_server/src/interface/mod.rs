@@ -15,18 +15,18 @@
 //! Interface for creating and running Swim server instances.
 //!
 //! The module provides methods and structures for creating and running Swim server instances.
-use crate::agent::lane::channels::AgentExecutionConfig;
-use crate::plane::router::PlaneRouter;
-use crate::plane::spec::PlaneSpec;
-use crate::plane::{run_plane, EnvChannel, PlaneRequest};
-use crate::routing::{TopLevelRouter, TopLevelRouterFactory};
-use either::Either;
-use futures::{io, join};
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::net::SocketAddr;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
+
+use either::Either;
+use futures::{io, join};
+use tokio::sync::mpsc;
+use tokio_stream::wrappers::ReceiverStream;
+use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
+
 use swim_client::configuration::downlink::{ClientParams, ConfigHierarchy};
 use swim_client::configuration::router::{ConnectionPoolParams, RouterParams};
 use swim_client::connections::SwimConnPool;
@@ -34,20 +34,24 @@ use swim_client::downlink::subscription::{DownlinkRequest, DownlinksHandle, Down
 use swim_client::downlink::Downlinks;
 use swim_client::interface::{SwimClient, SwimClientBuilder};
 use swim_client::router::{
-    ClientRequest, ClientRouterFactory, RemoteConnectionsManager, TaskManager,
+    ClientConnectionsManager, ClientRequest, ClientRouterFactory, TaskManager,
 };
 use swim_common::routing::remote::config::ConnectionConfig;
 use swim_common::routing::remote::net::dns::Resolver;
 use swim_common::routing::remote::net::plain::TokioPlainTextNetworking;
 use swim_common::routing::remote::{RemoteConnectionChannels, RemoteConnectionsTask};
 use swim_common::routing::ws::tungstenite::TungsteniteWsConnections;
+use swim_common::routing::PlaneRoutingRequest;
 use swim_runtime::task::TaskError;
 use swim_runtime::time::clock::RuntimeClock;
-use tokio::sync::mpsc;
-use tokio_stream::wrappers::ReceiverStream;
-use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use utilities::future::open_ended::OpenEndedFutures;
 use utilities::sync::{promise, trigger};
+
+use crate::agent::lane::channels::AgentExecutionConfig;
+use crate::plane::router::PlaneRouter;
+use crate::plane::spec::PlaneSpec;
+use crate::plane::{run_plane, EnvChannel};
+use crate::routing::{TopLevelRouter, TopLevelRouterFactory};
 
 /// Builder to create Swim server instance.
 ///
@@ -216,8 +220,6 @@ impl SwimServerBuilder {
             Arc::new(ConfigHierarchy::default()),
         );
 
-        let (plane_tx, plane_rx) = mpsc::channel(agent_config.lane_attachment_buffer.get());
-
         let client =
             SwimClientBuilder::build_from_downlinks(downlinks, client_conn_request_tx.clone());
 
@@ -302,6 +304,13 @@ impl SwimServer {
 
         let clock = swim_runtime::time::clock::runtime_clock();
 
+        let conn_manager = ClientConnectionsManager::new(
+            client_rx,
+            remote_tx.clone(),
+            Some(plane_tx.clone()),
+            NonZeroUsize::new(conn_config.router_buffer_size.get()).unwrap(),
+        );
+
         let plane_future = run_plane(
             agent_config.clone(),
             clock,
@@ -311,12 +320,6 @@ impl SwimServer {
             OpenEndedFutures::new(),
             (plane_tx, plane_rx),
             top_level_router_fac.clone(),
-        );
-
-        let conn_manager = RemoteConnectionsManager::new(
-            client_rx,
-            remote_tx.clone(),
-            NonZeroUsize::new(8).unwrap(),
         );
 
         let connections_task = RemoteConnectionsTask::new_server_task(
@@ -344,7 +347,6 @@ impl SwimServer {
         }
 
         let connections_future = connections_task.run();
-
         join!(
             connections_future,
             plane_future,

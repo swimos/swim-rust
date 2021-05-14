@@ -30,7 +30,7 @@ use crate::downlink::{
     command_downlink, event_downlink, map_downlink, value_downlink, Command, Downlink,
     DownlinkError, Message, SchemaViolations,
 };
-use crate::router::RemoteConnectionsManager;
+use crate::router::ClientConnectionsManager;
 use crate::router::RouterEvent;
 use crate::router::RouterMessageRequest;
 use crate::router::TaskManager;
@@ -57,11 +57,12 @@ use swim_common::routing::remote::config::ConnectionConfig;
 use swim_common::routing::remote::net::dns::Resolver;
 use swim_common::routing::remote::net::plain::TokioPlainTextNetworking;
 use swim_common::routing::remote::{
-    ExternalConnections, Listener, RemoteConnectionChannels, RemoteConnectionsTask, RoutingRequest,
+    ExternalConnections, Listener, RemoteConnectionChannels, RemoteConnectionsTask,
+    RemoteRoutingRequest,
 };
 use swim_common::routing::ws::tungstenite::TungsteniteWsConnections;
 use swim_common::routing::ws::WsConnections;
-use swim_common::routing::{ConnectionDropped, RouterFactory, RoutingAddr};
+use swim_common::routing::{ConnectionDropped, Router, RouterFactory, RoutingAddr};
 use swim_common::sink::item;
 use swim_common::sink::item::either::SplitSink;
 use swim_common::sink::item::ItemSender;
@@ -489,6 +490,77 @@ impl DownlinksTask {
             conn_request_tx,
             sink_tx,
             close_tx,
+        }
+    }
+
+    pub async fn run<Req>(mut self, requests: Req) -> RequestResult<()>
+    where
+        Req: Stream<Item = DownlinkRequest>,
+    {
+        pin_mut!(requests);
+
+        let mut pinned_requests: Fuse<Pin<&mut Req>> = requests.fuse();
+
+        loop {
+            let item: Option<Either<DownlinkRequest, DownlinkStoppedEvent>> =
+                if self.stopped_watch.is_empty() {
+                    pinned_requests.next().await.map(Either::Left)
+                } else {
+                    select_biased! {
+                        maybe_req = pinned_requests.next() => maybe_req.map(Either::Left),
+                        maybe_closed = self.stopped_watch.next() => maybe_closed.map(Either::Right),
+                    }
+                };
+
+            match item {
+                Some(Either::Left(left)) => match left {
+                    DownlinkRequest::Subscription(DownlinkSpecifier::Value {
+                        init,
+                        path,
+                        schema,
+                        request,
+                    }) => {
+                        self.handle_value_request(init, path, schema, request)
+                            .await?;
+                    }
+
+                    DownlinkRequest::Subscription(DownlinkSpecifier::Map {
+                        path,
+                        key_schema,
+                        value_schema,
+                        request,
+                    }) => {
+                        self.handle_map_request(path, key_schema, value_schema, request)
+                            .await?;
+                    }
+
+                    DownlinkRequest::Subscription(DownlinkSpecifier::Command {
+                        path,
+                        schema,
+                        request,
+                    }) => {
+                        self.handle_command_request(path, schema, request).await?;
+                    }
+
+                    DownlinkRequest::Subscription(DownlinkSpecifier::Event {
+                        path,
+                        schema,
+                        request,
+                        violations,
+                    }) => {
+                        self.handle_event_request(path, schema, request, violations)
+                            .await?;
+                    }
+
+                    DownlinkRequest::DirectCommand { path, envelope } => {
+                        self.handle_command_message(path, envelope).await?;
+                    }
+                },
+                Some(Either::Right(stop_event)) => {
+                    self.handle_stop(stop_event).await;
+                }
+                None => break Ok(()),
+            }
         }
     }
 
@@ -1017,77 +1089,6 @@ impl DownlinksTask {
                         self.command_downlinks.remove(&stop_event.path);
                     }
                 }
-            }
-        }
-    }
-
-    pub async fn run<Req>(mut self, requests: Req) -> RequestResult<()>
-    where
-        Req: Stream<Item = DownlinkRequest>,
-    {
-        pin_mut!(requests);
-
-        let mut pinned_requests: Fuse<Pin<&mut Req>> = requests.fuse();
-
-        loop {
-            let item: Option<Either<DownlinkRequest, DownlinkStoppedEvent>> =
-                if self.stopped_watch.is_empty() {
-                    pinned_requests.next().await.map(Either::Left)
-                } else {
-                    select_biased! {
-                        maybe_req = pinned_requests.next() => maybe_req.map(Either::Left),
-                        maybe_closed = self.stopped_watch.next() => maybe_closed.map(Either::Right),
-                    }
-                };
-
-            match item {
-                Some(Either::Left(left)) => match left {
-                    DownlinkRequest::Subscription(DownlinkSpecifier::Value {
-                        init,
-                        path,
-                        schema,
-                        request,
-                    }) => {
-                        self.handle_value_request(init, path, schema, request)
-                            .await?;
-                    }
-
-                    DownlinkRequest::Subscription(DownlinkSpecifier::Map {
-                        path,
-                        key_schema,
-                        value_schema,
-                        request,
-                    }) => {
-                        self.handle_map_request(path, key_schema, value_schema, request)
-                            .await?;
-                    }
-
-                    DownlinkRequest::Subscription(DownlinkSpecifier::Command {
-                        path,
-                        schema,
-                        request,
-                    }) => {
-                        self.handle_command_request(path, schema, request).await?;
-                    }
-
-                    DownlinkRequest::Subscription(DownlinkSpecifier::Event {
-                        path,
-                        schema,
-                        request,
-                        violations,
-                    }) => {
-                        self.handle_event_request(path, schema, request, violations)
-                            .await?;
-                    }
-
-                    DownlinkRequest::DirectCommand { path, envelope } => {
-                        self.handle_command_message(path, envelope).await?;
-                    }
-                },
-                Some(Either::Right(stop_event)) => {
-                    self.handle_stop(stop_event).await;
-                }
-                None => break Ok(()),
             }
         }
     }

@@ -22,7 +22,7 @@ use crate::routing::error::{
 };
 use crate::routing::remote::config::ConnectionConfig;
 use crate::routing::remote::router::RemoteRouter;
-use crate::routing::remote::{RoutingRequest, SchemeSocketAddr};
+use crate::routing::remote::{RemoteRoutingRequest, SchemeSocketAddr};
 use crate::routing::ws::selector::{SelectorResult, WsStreamSelector};
 use crate::routing::ws::{CloseCode, CloseReason, JoinedStreamSink, WsMessage};
 use crate::routing::RouterError;
@@ -452,7 +452,7 @@ where
 
 /// Factory to create and spawn new connection tasks.
 pub struct TaskFactory<DelegateRouterFac> {
-    request_tx: mpsc::Sender<RoutingRequest>,
+    request_tx: mpsc::Sender<RemoteRoutingRequest>,
     stop_trigger: trigger::Receiver,
     configuration: ConnectionConfig,
     delegate_router_fac: DelegateRouterFac,
@@ -460,7 +460,7 @@ pub struct TaskFactory<DelegateRouterFac> {
 
 impl<DelegateRouterFac> TaskFactory<DelegateRouterFac> {
     pub fn new(
-        request_tx: mpsc::Sender<RoutingRequest>,
+        request_tx: mpsc::Sender<RemoteRoutingRequest>,
         stop_trigger: trigger::Receiver,
         configuration: ConnectionConfig,
         delegate_router_fac: DelegateRouterFac,

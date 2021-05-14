@@ -1,12 +1,11 @@
-use crate::plane::PlaneRequest;
-
+use swim_common::routing::PlaneRoutingRequest;
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use swim_client::router::ClientRequest;
 use swim_common::request::Request;
 use swim_common::routing::error::ResolutionError;
 use swim_common::routing::error::RouterError;
-use swim_common::routing::remote::{RawRoute, RoutingRequest, SchemeSocketAddr};
+use swim_common::routing::remote::{RawRoute, RemoteRoutingRequest, SchemeSocketAddr};
 use swim_common::routing::{Route, Router, RouterFactory, RoutingAddr, TaggedSender};
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
@@ -15,16 +14,16 @@ use utilities::uri::RelativeUri;
 
 #[derive(Debug, Clone)]
 pub(crate) struct TopLevelRouterFactory {
-    plane_sender: mpsc::Sender<PlaneRequest>,
+    plane_sender: mpsc::Sender<PlaneRoutingRequest>,
     client_sender: mpsc::Sender<ClientRequest>,
-    remote_sender: mpsc::Sender<RoutingRequest>,
+    remote_sender: mpsc::Sender<RemoteRoutingRequest>,
 }
 
 impl TopLevelRouterFactory {
     pub(in crate) fn new(
-        plane_sender: mpsc::Sender<PlaneRequest>,
+        plane_sender: mpsc::Sender<PlaneRoutingRequest>,
         client_sender: mpsc::Sender<ClientRequest>,
-        remote_sender: mpsc::Sender<RoutingRequest>,
+        remote_sender: mpsc::Sender<RemoteRoutingRequest>,
     ) -> Self {
         TopLevelRouterFactory {
             plane_sender,
@@ -50,17 +49,17 @@ impl RouterFactory for TopLevelRouterFactory {
 #[derive(Debug, Clone)]
 pub struct TopLevelRouter {
     addr: RoutingAddr,
-    plane_sender: mpsc::Sender<PlaneRequest>,
+    plane_sender: mpsc::Sender<PlaneRoutingRequest>,
     client_sender: mpsc::Sender<ClientRequest>,
-    remote_sender: mpsc::Sender<RoutingRequest>,
+    remote_sender: mpsc::Sender<RemoteRoutingRequest>,
 }
 
 impl TopLevelRouter {
     pub(crate) fn new(
         addr: RoutingAddr,
-        plane_sender: mpsc::Sender<PlaneRequest>,
+        plane_sender: mpsc::Sender<PlaneRoutingRequest>,
         client_sender: mpsc::Sender<ClientRequest>,
-        remote_sender: mpsc::Sender<RoutingRequest>,
+        remote_sender: mpsc::Sender<RemoteRoutingRequest>,
     ) -> Self {
         TopLevelRouter {
             addr,
@@ -89,7 +88,7 @@ impl Router for TopLevelRouter {
                 let (tx, rx) = oneshot::channel();
                 let request = Request::new(tx);
                 if remote_sender
-                    .send(RoutingRequest::Endpoint { addr, request })
+                    .send(RemoteRoutingRequest::Endpoint { addr, request })
                     .await
                     .is_err()
                 {
@@ -129,7 +128,7 @@ impl Router for TopLevelRouter {
                     let (tx, rx) = oneshot::channel();
                     let request = Request::new(tx);
                     if plane_sender
-                        .send(PlaneRequest::Endpoint { id: addr, request })
+                        .send(PlaneRoutingRequest::Endpoint { id: addr, request })
                         .await
                         .is_err()
                     {
@@ -156,15 +155,11 @@ impl Router for TopLevelRouter {
         _origin: Option<SchemeSocketAddr>,
     ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
         async move {
-            let TopLevelRouter {
-                plane_sender,
-                client_sender,
-                ..
-            } = self;
+            let TopLevelRouter { plane_sender, .. } = self;
 
             let (tx, rx) = oneshot::channel();
             if plane_sender
-                .send(PlaneRequest::Resolve {
+                .send(PlaneRoutingRequest::Resolve {
                     host,
                     name: route.clone(),
                     request: Request::new(tx),

@@ -12,14 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::request::Request;
 use crate::routing::error::{
-    ConnectionError, ResolutionError, RouterError, RoutingError, SendError,
+    ConnectionError, NoAgentAtRoute, ResolutionError, RouterError, RoutingError, SendError,
+    Unresolvable,
 };
-use crate::routing::remote::SchemeSocketAddr;
+use crate::routing::remote::{RawRoute, SchemeSocketAddr};
 use crate::routing::ws::WsMessage;
 use crate::warp::envelope::{Envelope, OutgoingLinkMessage};
 use futures::future::BoxFuture;
+use std::any::Any;
+use std::collections::HashSet;
 use std::fmt::{Display, Formatter};
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
 use url::Url;
@@ -33,6 +38,8 @@ pub mod ws;
 
 #[cfg(test)]
 mod tests;
+
+trait RoutingRequest {}
 
 /// A key into the server routing table specifying an endpoint to which [`Envelope`]s can be sent.
 /// This is deliberately non-descriptive to allow it to be [`Copy`] and so very cheap to use as a
@@ -200,4 +207,32 @@ impl ConnectionDropped {
             _ => false,
         }
     }
+}
+
+type AgentRequest = Request<Result<Arc<dyn Any + Send + Sync>, NoAgentAtRoute>>;
+type EndpointRequest = Request<Result<RawRoute, Unresolvable>>;
+type RoutesRequest = Request<HashSet<RelativeUri>>;
+type ResolutionRequest = Request<Result<RoutingAddr, RouterError>>;
+
+/// Requests that can be serviced by the plane event loop.
+#[derive(Debug)]
+pub enum PlaneRoutingRequest {
+    /// Get a handle to an agent (starting it where necessary).
+    Agent {
+        name: RelativeUri,
+        request: AgentRequest,
+    },
+    /// Get channel to route messages to a specified routing address.
+    Endpoint {
+        id: RoutingAddr,
+        request: EndpointRequest,
+    },
+    /// Resolve the routing address for an agent.
+    Resolve {
+        host: Option<Url>,
+        name: RelativeUri,
+        request: ResolutionRequest,
+    },
+    /// Get all of the active routes for the plane.
+    Routes(RoutesRequest),
 }

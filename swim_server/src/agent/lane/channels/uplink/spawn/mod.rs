@@ -228,7 +228,7 @@ where
                 addr,
                 Some(SchemeSocketAddr::new(
                     "ws".to_string(),
-                    SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 9001),
+                    SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0),
                 )),
             )
             .await

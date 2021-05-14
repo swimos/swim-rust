@@ -12,6 +12,46 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::any::Any;
+use std::collections::{HashMap, HashSet};
+use std::fmt::Debug;
+use std::ops::Deref;
+use std::sync::{Arc, Weak};
+
+use either::Either;
+use futures::{FutureExt, select_biased, StreamExt};
+use futures::future::{BoxFuture, join};
+use futures_util::stream::TakeUntil;
+use pin_utils::pin_mut;
+use tokio::sync::{mpsc, oneshot};
+use tokio_stream::wrappers::ReceiverStream;
+use tracing::{event, Level, span};
+use tracing_futures::Instrument;
+use url::Url;
+
+use swim_client::downlink::Downlinks;
+use swim_client::interface::SwimClient;
+use swim_common::request::Request;
+use swim_common::routing::{
+    ConnectionDropped, PlaneRoutingRequest, RouterFactory, RoutingAddr, TaggedEnvelope,
+};
+use swim_common::routing::error::{ConnectionError, ProtocolError, ProtocolErrorKind};
+use swim_common::routing::error::{RouterError, Unresolvable};
+use swim_common::routing::remote::RawRoute;
+use swim_runtime::time::clock::Clock;
+use utilities::route_pattern::RoutePattern;
+use utilities::sync::{promise, trigger};
+use utilities::task::Spawner;
+use utilities::uri::RelativeUri;
+
+use crate::agent::AgentResult;
+use crate::agent::lane::channels::AgentExecutionConfig;
+use crate::meta::get_route;
+use crate::plane::context::PlaneContext;
+use swim_common::routing::error::NoAgentAtRoute;
+use crate::plane::router::{PlaneRouter, PlaneRouterFactory};
+use crate::plane::spec::{PlaneSpec, RouteSpec};
+
 pub mod context;
 pub mod error;
 pub mod lifecycle;
@@ -20,41 +60,6 @@ pub(crate) mod router;
 pub mod spec;
 #[cfg(test)]
 mod tests;
-
-use crate::agent::lane::channels::AgentExecutionConfig;
-use crate::agent::AgentResult;
-use crate::meta::get_route;
-use crate::plane::context::PlaneContext;
-use crate::plane::error::NoAgentAtRoute;
-use crate::plane::router::{PlaneRouter, PlaneRouterFactory};
-use crate::plane::spec::{PlaneSpec, RouteSpec};
-use either::Either;
-use futures::future::{join, BoxFuture};
-use futures::{select_biased, FutureExt, StreamExt};
-use futures_util::stream::TakeUntil;
-use pin_utils::pin_mut;
-use std::any::Any;
-use std::collections::{HashMap, HashSet};
-use std::fmt::Debug;
-use std::ops::Deref;
-use std::sync::{Arc, Weak};
-use swim_client::downlink::Downlinks;
-use swim_client::interface::SwimClient;
-use swim_common::request::Request;
-use swim_common::routing::error::{ConnectionError, ProtocolError, ProtocolErrorKind};
-use swim_common::routing::error::{RouterError, Unresolvable};
-use swim_common::routing::remote::RawRoute;
-use swim_common::routing::{ConnectionDropped, RouterFactory, RoutingAddr, TaggedEnvelope};
-use swim_runtime::time::clock::Clock;
-use tokio::sync::{mpsc, oneshot};
-use tokio_stream::wrappers::ReceiverStream;
-use tracing::{event, span, Level};
-use tracing_futures::Instrument;
-use url::Url;
-use utilities::route_pattern::RoutePattern;
-use utilities::sync::{promise, trigger};
-use utilities::task::Spawner;
-use utilities::uri::RelativeUri;
 
 /// Trait for agent routes. An agent route can construct and run any number of instances of a
 /// [`SwimAgent`] type.
@@ -177,42 +182,14 @@ impl PlaneActiveRoutes {
     }
 }
 
-type AgentRequest = Request<Result<Arc<dyn Any + Send + Sync>, NoAgentAtRoute>>;
-type EndpointRequest = Request<Result<RawRoute, Unresolvable>>;
-type RoutesRequest = Request<HashSet<RelativeUri>>;
-type ResolutionRequest = Request<Result<RoutingAddr, RouterError>>;
-
-/// Requests that can be serviced by the plane event loop.
-#[derive(Debug)]
-pub(crate) enum PlaneRequest {
-    /// Get a handle to an agent (starting it where necessary).
-    Agent {
-        name: RelativeUri,
-        request: AgentRequest,
-    },
-    /// Get channel to route messages to a specified routing address.
-    Endpoint {
-        id: RoutingAddr,
-        request: EndpointRequest,
-    },
-    /// Resolve the routing address for an agent.
-    Resolve {
-        host: Option<Url>,
-        name: RelativeUri,
-        request: ResolutionRequest,
-    },
-    /// Get all of the active routes for the plane.
-    Routes(RoutesRequest),
-}
-
 /// Plane context implementation.
 struct ContextImpl {
-    request_tx: mpsc::Sender<PlaneRequest>,
+    request_tx: mpsc::Sender<PlaneRoutingRequest>,
     routes: Vec<RoutePattern>,
 }
 
 impl ContextImpl {
-    fn new(request_tx: mpsc::Sender<PlaneRequest>, routes: Vec<RoutePattern>) -> Self {
+    fn new(request_tx: mpsc::Sender<PlaneRoutingRequest>, routes: Vec<RoutePattern>) -> Self {
         ContextImpl { request_tx, routes }
     }
 }
@@ -226,7 +203,7 @@ impl PlaneContext for ContextImpl {
         async move {
             if self
                 .request_tx
-                .send(PlaneRequest::Agent {
+                .send(PlaneRoutingRequest::Agent {
                     name: route.clone(),
                     request: Request::new(tx),
                 })
@@ -252,7 +229,7 @@ impl PlaneContext for ContextImpl {
         async move {
             if self
                 .request_tx
-                .send(PlaneRequest::Routes(Request::new(tx)))
+                .send(PlaneRoutingRequest::Routes(Request::new(tx)))
                 .await
                 .is_err()
             {
@@ -278,7 +255,7 @@ struct RouteResolver<Clk, DelegateFac: RouterFactory> {
     /// The routes for the plane.
     routes: Vec<RouteSpec<Clk, EnvChannel, PlaneRouter<DelegateFac::Router>>>,
     // Todo dm
-    context_tx: mpsc::Sender<PlaneRequest>,
+    context_tx: mpsc::Sender<PlaneRoutingRequest>,
     /// Factory to create handles to the plane router when an agent is opened.
     router_fac: PlaneRouterFactory<DelegateFac>,
     /// External trigger that is fired when the plane should stop.
@@ -368,7 +345,10 @@ pub(crate) async fn run_plane<Clk, S, DelegateFac: RouterFactory>(
     spec: PlaneSpec<Clk, EnvChannel, PlaneRouter<DelegateFac::Router>>,
     stop_trigger: trigger::Receiver,
     spawner: S,
-    context_channel: (mpsc::Sender<PlaneRequest>, mpsc::Receiver<PlaneRequest>),
+    context_channel: (
+        mpsc::Sender<PlaneRoutingRequest>,
+        mpsc::Receiver<PlaneRoutingRequest>,
+    ),
     delegate_fac: DelegateFac,
 ) where
     Clk: Clock,
@@ -431,7 +411,7 @@ pub(crate) async fn run_plane<Clk, S, DelegateFac: RouterFactory>(
             };
 
             match req_or_res {
-                Either::Left(Some(PlaneRequest::Agent { name, request })) => {
+                Either::Left(Some(PlaneRoutingRequest::Agent { name, request })) => {
                     event!(Level::TRACE, GETTING_HANDLE, ?name);
 
                     let route = get_route(name);
@@ -451,7 +431,7 @@ pub(crate) async fn run_plane<Clk, S, DelegateFac: RouterFactory>(
                         event!(Level::WARN, DROPPED_REQUEST);
                     }
                 }
-                Either::Left(Some(PlaneRequest::Endpoint { id, request })) => {
+                Either::Left(Some(PlaneRoutingRequest::Endpoint { id, request })) => {
                     if id.is_local() {
                         event!(Level::TRACE, GETTING_LOCAL_ENDPOINT, ?id);
                         let result = if let Some(tx) = resolver
@@ -474,7 +454,7 @@ pub(crate) async fn run_plane<Clk, S, DelegateFac: RouterFactory>(
                         }
                     }
                 }
-                Either::Left(Some(PlaneRequest::Resolve {
+                Either::Left(Some(PlaneRoutingRequest::Resolve {
                     host: None,
                     name,
                     request,
@@ -495,7 +475,7 @@ pub(crate) async fn run_plane<Clk, S, DelegateFac: RouterFactory>(
                         event!(Level::WARN, DROPPED_REQUEST);
                     }
                 }
-                Either::Left(Some(PlaneRequest::Resolve {
+                Either::Left(Some(PlaneRoutingRequest::Resolve {
                     host: Some(host_url),
                     name,
                     request,
@@ -511,7 +491,7 @@ pub(crate) async fn run_plane<Clk, S, DelegateFac: RouterFactory>(
                         event!(Level::WARN, DROPPED_REQUEST);
                     }
                 }
-                Either::Left(Some(PlaneRequest::Routes(request))) => {
+                Either::Left(Some(PlaneRoutingRequest::Routes(request))) => {
                     event!(Level::TRACE, PROVIDING_ROUTES);
                     if request
                         .send(resolver.active_routes.routes().map(Clone::clone).collect())

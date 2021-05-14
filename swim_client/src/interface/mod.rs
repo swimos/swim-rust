@@ -28,7 +28,7 @@ use crate::downlink::typed::{
 };
 use crate::downlink::Downlinks;
 use crate::downlink::SchemaViolations;
-use crate::router::{ClientRequest, ClientRouterFactory, RemoteConnectionsManager};
+use crate::router::{ClientConnectionsManager, ClientRequest, ClientRouterFactory};
 use crate::runtime::task::TaskHandle;
 use futures::join;
 use std::error::Error;
@@ -134,9 +134,10 @@ impl SwimClientBuilder {
         )
         .await;
 
-        let remote_conn_manager = RemoteConnectionsManager::new(
+        let remote_conn_manager = ClientConnectionsManager::new(
             client_conn_request_rx,
             remote_router_tx,
+            None,
             client_params.dl_req_buffer_size,
         );
 
@@ -204,9 +205,10 @@ impl SwimClientBuilder {
         )
         .await;
 
-        let remote_conn_manager = RemoteConnectionsManager::new(
+        let remote_conn_manager = ClientConnectionsManager::new(
             client_conn_request_rx,
             remote_router_tx,
+            None,
             client_params.dl_req_buffer_size,
         );
 
