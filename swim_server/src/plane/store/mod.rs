@@ -22,14 +22,14 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use futures::future::BoxFuture;
-use futures::FutureExt;
+use futures::{FutureExt, Stream};
 
-use store::keyspaces::{KeyType, Keyspaces};
+use store::keyspaces::{KeyType, KeyspaceByteEngine, Keyspaces};
 use store::{serialize, KeyedSnapshot, Store, StoreError, StoreInfo};
 use swim_common::model::text::Text;
 
 use crate::agent::store::{NodeStore, SwimNodeStore};
-use crate::plane::store::keystore::KeyStore;
+use crate::plane::store::keystore::{KeyRequest, KeyStore, KeystoreTask, PlaneStoreTask};
 use crate::store::{KeyspaceName, StoreEngine, StoreKey};
 
 const STORE_DIR: &str = "store";
@@ -51,7 +51,7 @@ where
 /// A trait for defining plane stores which will create node stores.
 pub trait PlaneStore
 where
-    Self: StoreEngine + Sized + Debug + Send + Sync + Clone + 'static,
+    Self: StoreEngine + KeystoreTask + Sized + Debug + Send + Sync + Clone + 'static,
 {
     /// The type of node stores which are created.
     type NodeStore: NodeStore;
@@ -130,6 +130,16 @@ where
     match key {
         s @ StoreKey::Map { .. } => f(KeyspaceName::Map, serialize(&s)?),
         s @ StoreKey::Value { .. } => f(KeyspaceName::Value, serialize(&s)?),
+    }
+}
+
+impl<D> KeystoreTask for SwimPlaneStore<D> {
+    fn run<DB, S>(db: Arc<DB>, events: S) -> BoxFuture<'static, Result<(), StoreError>>
+    where
+        DB: KeyspaceByteEngine,
+        S: Stream<Item = KeyRequest> + Unpin + Send + 'static,
+    {
+        PlaneStoreTask::run(db, events)
     }
 }
 
@@ -236,7 +246,8 @@ where
 
         let arcd_delegate = Arc::new(delegate);
         // todo config
-        let keystore = KeyStore::new(arcd_delegate.clone(), NonZeroUsize::new(8).unwrap());
+        let keystore =
+            KeyStore::new::<D, Self>(arcd_delegate.clone(), NonZeroUsize::new(8).unwrap());
 
         Ok(Self::new(plane_name, arcd_delegate, keystore))
     }

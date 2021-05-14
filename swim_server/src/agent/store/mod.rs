@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[cfg(test)]
+mod tests;
+
 use crate::plane::store::PlaneStore;
 use crate::store::{StoreEngine, StoreKey};
 use std::fmt::{Debug, Formatter};

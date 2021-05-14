@@ -13,6 +13,9 @@
 // limitations under the License.
 
 mod config;
+
+#[cfg(test)]
+pub mod mock;
 #[cfg(test)]
 mod tests;
 

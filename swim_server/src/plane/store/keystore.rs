@@ -13,7 +13,8 @@
 // limitations under the License.
 
 use crate::store::KeyspaceName;
-use futures::StreamExt;
+use futures::future::BoxFuture;
+use futures::{Stream, StreamExt};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use store::keyspaces::{KeyType, KeyspaceByteEngine};
@@ -40,14 +41,13 @@ const RESPONSE_FAILURE: &str = "Failed to send response";
 /// The initial value that the lane identifier keyspace will be initialised with if it doesn't
 /// already exist.
 const INITIAL: KeyType = 0;
-const STEP: KeyType = 1;
+pub(crate) const STEP: KeyType = 1;
 
-/// A task for loading and assigning unique identifiers to lane addresses.
-pub struct KeyStoreTask<S: KeyspaceByteEngine> {
-    /// The delegate store for fetching and merging the unique identifier from.
-    db: Arc<S>,
-    /// A stream of incoming requests for the unique identifiers.
-    rx: ReceiverStream<KeyRequest>,
+pub trait KeystoreTask {
+    fn run<DB, S>(db: Arc<DB>, events: S) -> BoxFuture<'static, Result<(), StoreError>>
+    where
+        DB: KeyspaceByteEngine,
+        S: Stream<Item = KeyRequest> + Unpin + Send + 'static;
 }
 
 fn deserialize_key<B: AsRef<[u8]>>(bytes: B) -> Result<KeyType, StoreError> {
@@ -58,43 +58,47 @@ pub fn format_key<I: ToString>(uri: I) -> String {
     format!("{}/{}", LANE_PREFIX, uri.to_string())
 }
 
-impl<S: KeyspaceByteEngine> KeyStoreTask<S> {
-    pub fn new(db: Arc<S>, rx: ReceiverStream<KeyRequest>) -> Self {
-        KeyStoreTask { db, rx }
-    }
+/// A task for loading and assigning unique identifiers to lane addresses.
+pub struct PlaneStoreTask;
 
-    async fn run(self) -> Result<(), StoreError> {
-        let KeyStoreTask { db, rx } = self;
-        let mut requests = rx.fuse();
+impl KeystoreTask for PlaneStoreTask {
+    fn run<DB, S>(db: Arc<DB>, events: S) -> BoxFuture<'static, Result<(), StoreError>>
+    where
+        DB: KeyspaceByteEngine,
+        S: Stream<Item = KeyRequest> + Unpin + Send + 'static,
+    {
+        Box::pin(async move {
+            let mut requests = events.fuse();
 
-        while let Some((uri, responder)) = requests.next().await {
-            let prefixed = format_key(uri);
+            while let Some((uri, responder)) = requests.next().await {
+                let prefixed = format_key(uri);
 
-            match db.get_keyspace(KeyspaceName::Lane, prefixed.as_bytes())? {
-                Some(bytes) => {
-                    let id = deserialize_key(bytes)?;
-                    responder.send(id).expect(RESPONSE_FAILURE);
-                }
-                None => {
-                    db.merge_keyspace(KeyspaceName::Lane, COUNTER_BYTES, STEP)?;
+                match db.get_keyspace(KeyspaceName::Lane, prefixed.as_bytes())? {
+                    Some(bytes) => {
+                        let id = deserialize_key(bytes)?;
+                        responder.send(id).expect(RESPONSE_FAILURE);
+                    }
+                    None => {
+                        db.merge_keyspace(KeyspaceName::Lane, COUNTER_BYTES, STEP)?;
 
-                    let counter_bytes = db
-                        .get_keyspace(KeyspaceName::Lane, COUNTER_BYTES)?
-                        .expect(INCONSISTENT_KEYSPACE);
-                    let id = deserialize_key(counter_bytes.as_slice())?;
+                        let counter_bytes = db
+                            .get_keyspace(KeyspaceName::Lane, COUNTER_BYTES)?
+                            .expect(INCONSISTENT_KEYSPACE);
+                        let id = deserialize_key(counter_bytes.as_slice())?;
 
-                    db.put_keyspace(
-                        KeyspaceName::Lane,
-                        prefixed.as_bytes(),
-                        counter_bytes.as_slice(),
-                    )?;
+                        db.put_keyspace(
+                            KeyspaceName::Lane,
+                            prefixed.as_bytes(),
+                            counter_bytes.as_slice(),
+                        )?;
 
-                    responder.send(id).expect(RESPONSE_FAILURE);
+                        responder.send(id).expect(RESPONSE_FAILURE);
+                    }
                 }
             }
-        }
 
-        Ok(())
+            Ok(())
+        })
     }
 }
 
@@ -108,11 +112,14 @@ pub struct KeyStore {
 impl KeyStore {
     /// Produces a new keystore which will delegate its operations to `db` and will have an internal
     /// task communication buffer size of `buffer_size`.
-    pub fn new<S: KeyspaceByteEngine>(db: Arc<S>, buffer_size: NonZeroUsize) -> KeyStore {
+    pub fn new<S, T>(db: Arc<S>, buffer_size: NonZeroUsize) -> KeyStore
+    where
+        S: KeyspaceByteEngine,
+        T: KeystoreTask,
+    {
         let (tx, rx) = mpsc::channel(buffer_size.get());
-        let task = KeyStoreTask::new(db, ReceiverStream::new(rx));
         let task = async move {
-            if let Err(e) = task.run().await {
+            if let Err(e) = T::run(db, ReceiverStream::new(rx)).await {
                 event!(Level::ERROR, "Keystore failed with: {:?}", e);
             }
         };
@@ -159,75 +166,36 @@ pub(crate) fn incrementing_merge_operator(
 #[cfg(test)]
 mod tests {
     use crate::plane::store::keystore::{
-        deserialize_key, KeyStore, KeyspaceName, COUNTER_BYTES, INCONSISTENT_KEYSPACE, STEP,
+        deserialize_key, format_key, KeyStore, KeyspaceName, PlaneStoreTask, COUNTER_BYTES,
+        COUNTER_KEY, INCONSISTENT_KEYSPACE,
     };
-    use im::hashmap::Entry;
-    use im::HashMap;
+    use crate::store::mock::MockStore;
+
     use std::num::NonZeroUsize;
-    use std::sync::{Arc, Mutex};
+    use std::sync::Arc;
+    use store::deserialize;
     use store::keyspaces::{KeyType, Keyspace, KeyspaceByteEngine};
-    use store::{deserialize, serialize, StoreError};
 
-    #[derive(Default)]
-    struct IncrementingKeyspace {
-        values: Mutex<HashMap<Vec<u8>, Vec<u8>>>,
+    fn keyspaces() -> Vec<String> {
+        vec![
+            KeyspaceName::Lane.name().to_string(),
+            KeyspaceName::Value.name().to_string(),
+            KeyspaceName::Map.name().to_string(),
+        ]
     }
 
-    impl KeyspaceByteEngine for IncrementingKeyspace {
-        fn put_keyspace<K: Keyspace>(
-            &self,
-            _keyspace: K,
-            key: &[u8],
-            value: &[u8],
-        ) -> Result<(), StoreError> {
-            self.values
-                .lock()
-                .unwrap()
-                .insert(key.to_vec(), value.to_vec());
-            Ok(())
-        }
-
-        fn get_keyspace<K: Keyspace>(
-            &self,
-            _keyspace: K,
-            key: &[u8],
-        ) -> Result<Option<Vec<u8>>, StoreError> {
-            Ok(self.values.lock().unwrap().get(key).cloned())
-        }
-
-        fn delete_keyspace<K: Keyspace>(&self, _keyspace: K, key: &[u8]) -> Result<(), StoreError> {
-            self.values.lock().unwrap().remove(key);
-            Ok(())
-        }
-
-        fn merge_keyspace<K: Keyspace>(
-            &self,
-            _keyspace: K,
-            key: &[u8],
-            step: u64,
-        ) -> Result<(), StoreError> {
-            match self.values.lock().unwrap().entry(key.to_vec()) {
-                Entry::Occupied(mut entry) => {
-                    let mut value = deserialize::<KeyType>(entry.get()).unwrap();
-                    value += step;
-                    *entry.get_mut() = serialize(&value).unwrap();
-                    Ok(())
-                }
-                Entry::Vacant(entry) => {
-                    entry.insert(serialize(&STEP).unwrap());
-                    Ok(())
-                }
-            }
-        }
-    }
-
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     async fn lane_id() {
-        let delegate = Arc::new(IncrementingKeyspace::default());
-        let store = KeyStore::new(delegate.clone(), NonZeroUsize::new(8).unwrap());
+        let delegate = Arc::new(MockStore::with_keyspaces(keyspaces()));
+        let store = KeyStore::new::<MockStore, PlaneStoreTask>(
+            delegate.clone(),
+            NonZeroUsize::new(8).unwrap(),
+        );
 
-        assert_eq!(store.id_for("A").await, 1);
-        assert_eq!(store.id_for("A").await, 1);
+        let lane_uri = "A";
+
+        assert_eq!(store.id_for(lane_uri).await, 1);
+        assert_eq!(store.id_for(lane_uri).await, 1);
 
         let opt = delegate
             .get_keyspace(KeyspaceName::Lane, COUNTER_BYTES)
@@ -235,12 +203,16 @@ mod tests {
             .expect(INCONSISTENT_KEYSPACE);
 
         assert_eq!(deserialize_key(opt).unwrap(), 1);
+        assert_counters(&delegate, lane_uri, 1, 1);
     }
 
     #[tokio::test]
     async fn multiple_lane_ids() {
-        let delegate = Arc::new(IncrementingKeyspace::default());
-        let store = KeyStore::new(delegate.clone(), NonZeroUsize::new(8).unwrap());
+        let delegate = Arc::new(MockStore::with_keyspaces(keyspaces()));
+        let store = KeyStore::new::<MockStore, PlaneStoreTask>(
+            delegate.clone(),
+            NonZeroUsize::new(8).unwrap(),
+        );
 
         let lane_prefix = "lane";
         let mut lane_count = 0;
@@ -248,7 +220,35 @@ mod tests {
         for lane_id in 1..=10 {
             lane_count += 1;
             let lane_uri = format!("{}/{}", lane_prefix, lane_id);
-            assert_eq!(store.id_for(lane_uri).await, lane_count);
+            assert_eq!(store.id_for(lane_uri.as_str()).await, lane_count);
+
+            assert_counters(&delegate, lane_uri.as_str(), lane_count, lane_count);
         }
+    }
+
+    fn assert_counters(
+        store: &Arc<MockStore>,
+        lane_uri: &str,
+        lane_count_at: KeyType,
+        counter_at: KeyType,
+    ) {
+        let key = format_key(lane_uri.to_string());
+        let lane_id = store
+            .get_keyspace(KeyspaceName::Lane, key.as_bytes())
+            .unwrap()
+            .expect("Missing key");
+        assert_eq!(
+            deserialize::<KeyType>(lane_id.as_slice()).unwrap(),
+            lane_count_at
+        );
+
+        let counter = store
+            .get_keyspace(KeyspaceName::Lane, COUNTER_KEY.as_bytes())
+            .unwrap()
+            .expect("Missing counter");
+        assert_eq!(
+            deserialize::<KeyType>(counter.as_slice()).unwrap(),
+            counter_at
+        );
     }
 }
