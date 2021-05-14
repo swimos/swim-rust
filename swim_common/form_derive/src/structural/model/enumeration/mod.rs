@@ -12,19 +12,35 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::structural::model::record::{StructDef, StructModel};
+use crate::structural::model::record::{SegregatedStructModel, StructDef, StructModel};
 use crate::structural::model::{SynValidation, TryValidate};
 use quote::ToTokens;
-use syn::{Attribute, DataEnum};
+use syn::{Attribute, DataEnum, Ident};
 use utilities::validation::{validate2, Validation, ValidationItExt};
 
-struct VariantModel<'a>(StructModel<'a>);
+pub struct EnumModel<'a> {
+    pub name: &'a Ident,
+    pub variants: Vec<StructModel<'a>>,
+}
 
-struct EnumModel<'a> {
-    variants: Vec<VariantModel<'a>>,
+pub struct SegregatedEnumModel<'a, 'b> {
+    pub inner: &'b EnumModel<'b>,
+    pub variants: Vec<SegregatedStructModel<'a, 'b>>,
+}
+
+impl<'a, 'b> From<&'b EnumModel<'a>> for SegregatedEnumModel<'a, 'b> {
+    fn from(model: &'b EnumModel<'a>) -> Self {
+        let EnumModel { variants, .. } = model;
+        let seg_variants = variants.iter().map(Into::into).collect();
+        SegregatedEnumModel {
+            inner: model,
+            variants: seg_variants,
+        }
+    }
 }
 
 struct EnumDef<'a> {
+    name: &'a Ident,
     top: &'a dyn ToTokens,
     attributes: &'a Vec<Attribute>,
     definition: &'a DataEnum,
@@ -33,6 +49,7 @@ struct EnumDef<'a> {
 impl<'a> TryValidate<EnumDef<'a>> for EnumModel<'a> {
     fn try_validate(input: EnumDef<'a>) -> SynValidation<Self> {
         let EnumDef {
+            name,
             top,
             attributes,
             definition,
@@ -44,8 +61,9 @@ impl<'a> TryValidate<EnumDef<'a>> for EnumModel<'a> {
                 .variants
                 .iter()
                 .validate_fold(init, false, |mut var_models, variant| {
-                    let struct_def = StructDef::new(variant, &variant.attrs, variant);
-                    let model = StructModel::try_validate(struct_def).map(VariantModel);
+                    let struct_def =
+                        StructDef::new(&variant.ident, variant, &variant.attrs, variant);
+                    let model = StructModel::try_validate(struct_def);
                     match model {
                         Validation::Validated(model, errs) => {
                             var_models.push(model);
@@ -58,7 +76,7 @@ impl<'a> TryValidate<EnumDef<'a>> for EnumModel<'a> {
         let rename = super::fold_attr_meta(attributes.iter(), None, super::acc_rename);
 
         validate2(variants, rename).and_then(|(variants, transform)| {
-            let enum_model = EnumModel { variants };
+            let enum_model = EnumModel { name, variants };
             if transform.is_some() {
                 let err = syn::Error::new_spanned(
                     top,

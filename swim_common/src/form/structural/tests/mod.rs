@@ -392,7 +392,7 @@ impl<T: StructuralWritable> StructuralWritable for WithHeaderField<T> {
     ) -> Result<<W as PrimitiveWriter>::Repr, <W as PrimitiveWriter>::Error> {
         let mut rec_writer = writer.record(2)?;
         rec_writer = rec_writer.write_attr_into("StructuralWritable", HeaderView(self))?;
-        rec_writer = rec_writer.write_attr_into("attr", &self.attr)?;
+        rec_writer = rec_writer.write_attr(Cow::Borrowed("attr"), &self.attr)?;
         let mut body_writer = rec_writer.complete_header(RecordBodyKind::MapLike, 1)?;
         body_writer = body_writer.write_slot_into("slot", &self.slot)?;
         body_writer.done()

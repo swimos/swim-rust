@@ -14,26 +14,48 @@
 
 use super::TryValidate;
 use crate::parser::FieldManifest;
-use crate::structural::model::field::{FieldModel, TaggedFieldModel};
+use crate::structural::model::field::{FieldWithIndex, SegregatedFields, TaggedFieldModel};
 use crate::structural::model::{NameTransform, StructLike, SynValidation};
 use macro_helpers::CompoundTypeKind;
 use quote::ToTokens;
-use syn::{Attribute, Fields};
+use std::ops::Add;
+use syn::{Attribute, Fields, Ident};
 use utilities::validation::{validate2, Validation, ValidationItExt};
 use utilities::FieldKind;
 
 pub struct FieldsModel<'a> {
-    kind: CompoundTypeKind,
-    manifest: FieldManifest,
-    fields: Vec<FieldModel<'a>>,
+    pub kind: CompoundTypeKind,
+    pub manifest: FieldManifest,
+    pub fields: Vec<TaggedFieldModel<'a>>,
 }
 
 pub struct StructModel<'a> {
-    fields_model: FieldsModel<'a>,
-    transform: Option<NameTransform>,
+    pub name: &'a Ident,
+    pub fields_model: FieldsModel<'a>,
+    pub transform: Option<NameTransform>,
+}
+
+pub struct SegregatedStructModel<'a, 'b> {
+    pub inner: &'b StructModel<'a>,
+    pub fields: SegregatedFields<'a, 'b>,
+}
+
+impl<'a, 'b> From<&'b StructModel<'a>> for SegregatedStructModel<'a, 'b> {
+    fn from(model: &'b StructModel<'a>) -> Self {
+        let fields = &model.fields_model.fields;
+        let mut segregated = SegregatedFields::default();
+        for field in fields.iter() {
+            segregated = segregated.add(field);
+        }
+        SegregatedStructModel {
+            inner: model,
+            fields: segregated,
+        }
+    }
 }
 
 pub(crate) struct StructDef<'a, Flds> {
+    name: &'a Ident,
     top: &'a dyn ToTokens,
     attributes: &'a Vec<Attribute>,
     definition: &'a Flds,
@@ -41,11 +63,13 @@ pub(crate) struct StructDef<'a, Flds> {
 
 impl<'a, Flds> StructDef<'a, Flds> {
     pub(crate) fn new(
+        name: &'a Ident,
         top: &'a dyn ToTokens,
         attributes: &'a Vec<Attribute>,
         definition: &'a Flds,
     ) -> Self {
         StructDef {
+            name,
             top,
             attributes,
             definition,
@@ -59,6 +83,7 @@ where
 {
     fn try_validate(input: StructDef<'a, Flds>) -> SynValidation<Self> {
         let StructDef {
+            name,
             top,
             attributes,
             definition,
@@ -69,7 +94,7 @@ where
         let rename = super::fold_attr_meta(attributes.iter(), None, super::acc_rename);
 
         validate2(fields_model, rename).and_then(|(model, transform)| {
-            let struct_model = StructModel { fields_model: model, transform };
+            let struct_model = StructModel { name, fields_model: model, transform };
             if struct_model.fields_model.manifest.has_tag_field && struct_model.transform.is_some() {
                 let err = syn::Error::new_spanned(top, "Cannot apply a tag using a field when one has already been applied at the container level");
                 Validation::Validated(struct_model, err.into())
@@ -96,7 +121,10 @@ impl<'a> TryValidate<&'a Fields> for FieldsModel<'a> {
         };
 
         let field_models = if let Some(field_it) = fields {
-            field_it.validate_collect(true, TaggedFieldModel::try_validate)
+            field_it
+                .zip(0..)
+                .map(|(fld, i)| FieldWithIndex(fld, i))
+                .validate_collect(true, TaggedFieldModel::try_validate)
         } else {
             Validation::valid(vec![])
         };
@@ -106,7 +134,7 @@ impl<'a> TryValidate<&'a Fields> for FieldsModel<'a> {
             manifest.map(move |man| FieldsModel {
                 kind,
                 manifest: man,
-                fields: flds.into_iter().map(|f| f.model).collect(),
+                fields: flds,
             })
         })
     }

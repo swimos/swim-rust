@@ -18,15 +18,54 @@ use crate::parser::{
 };
 use crate::structural::model::{NameTransform, SynValidation};
 use macro_helpers::{FieldKind, Symbol};
+use proc_macro2::TokenStream;
+use quote::ToTokens;
 use std::convert::TryFrom;
 use std::ops::Add;
 use syn::{Field, Ident, Lit, Meta, NestedMeta, Type};
 use utilities::validation::Validation;
 
+pub enum FieldIndex<'a> {
+    Named(&'a Ident),
+    Ordinal(usize),
+}
+
+impl<'a> ToTokens for FieldIndex<'a> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        match self {
+            FieldIndex::Named(id) => id.to_tokens(tokens),
+            FieldIndex::Ordinal(i) => format_ident!("value_{}", *i).to_tokens(tokens),
+        }
+    }
+}
+
 pub struct FieldModel<'a> {
-    pub name: Option<&'a Ident>,
+    pub name: FieldIndex<'a>,
     pub transform: Option<NameTransform>,
     pub field_ty: &'a Type,
+}
+
+impl<'a> FieldModel<'a> {
+    pub fn resolve_name(&self) -> ResolvedName {
+        ResolvedName(self)
+    }
+}
+
+pub struct ResolvedName<'a, 'b>(&'b FieldModel<'a>);
+
+impl<'a, 'b> ToTokens for ResolvedName<'a, 'b> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let ResolvedName(field) = self;
+        if let Some(trans) = field.transform.as_ref() {
+            match trans {
+                NameTransform::Rename(name) => {
+                    proc_macro2::Literal::string(&name).to_tokens(tokens)
+                }
+            }
+        } else {
+            field.name.to_tokens(tokens)
+        }
+    }
 }
 
 pub struct TaggedFieldModel<'a> {
@@ -74,16 +113,18 @@ impl FieldAttributes {
     }
 }
 
-impl<'a> TryValidate<&'a Field> for TaggedFieldModel<'a> {
-    fn try_validate(input: &'a Field) -> SynValidation<Self> {
+pub struct FieldWithIndex<'a>(pub &'a Field, pub usize);
+
+impl<'a> TryValidate<FieldWithIndex<'a>> for TaggedFieldModel<'a> {
+    fn try_validate(input: FieldWithIndex<'a>) -> SynValidation<Self> {
+        let FieldWithIndex(field, i) = input;
         let Field {
             attrs, ident, ty, ..
-        } = input;
-
+        } = field;
         let field_attrs =
             super::fold_attr_meta(attrs.iter(), FieldAttributes::default(), |attrs, nested| {
                 match FieldAttr::try_from(nested) {
-                    Ok(field_attr) => attrs.add(input, field_attr),
+                    Ok(field_attr) => attrs.add(field, field_attr),
                     Err(e) => Validation::Validated(attrs, e.into()),
                 }
             });
@@ -95,7 +136,10 @@ impl<'a> TryValidate<&'a Field> for TaggedFieldModel<'a> {
              }| {
                 TaggedFieldModel {
                     model: FieldModel {
-                        name: ident.as_ref(),
+                        name: ident
+                            .as_ref()
+                            .map(FieldIndex::Named)
+                            .unwrap_or_else(|| FieldIndex::Ordinal(i)),
                         transform,
                         field_ty: ty,
                     },
@@ -171,32 +215,35 @@ impl TryValidate<NestedMeta> for FieldAttr {
     }
 }
 
-pub struct HeaderFields<'a> {
-    pub tag_body: Option<FieldModel<'a>>,
-    pub header_fields: Vec<FieldModel<'a>>,
-    pub attributes: Vec<FieldModel<'a>>,
+#[derive(Default)]
+pub struct HeaderFields<'a, 'b> {
+    pub tag_name: Option<&'b FieldModel<'a>>,
+    pub tag_body: Option<&'b FieldModel<'a>>,
+    pub header_fields: Vec<&'b FieldModel<'a>>,
+    pub attributes: Vec<&'b FieldModel<'a>>,
 }
 
-pub enum BodyFields<'a> {
-    ReplacedBody(FieldModel<'a>),
-    SlotBody(Vec<FieldModel<'a>>),
+pub enum BodyFields<'a, 'b> {
+    ReplacedBody(&'b FieldModel<'a>),
+    SlotBody(Vec<&'b FieldModel<'a>>),
 }
 
-impl<'a> Default for BodyFields<'a> {
+impl<'a, 'b> Default for BodyFields<'a, 'b> {
     fn default() -> Self {
         BodyFields::SlotBody(vec![])
     }
 }
 
-pub struct SegregatedFields<'a> {
-    pub header: HeaderFields<'a>,
-    pub body: BodyFields<'a>,
+#[derive(Default)]
+pub struct SegregatedFields<'a, 'b> {
+    pub header: HeaderFields<'a, 'b>,
+    pub body: BodyFields<'a, 'b>,
 }
 
-impl<'a> Add<TaggedFieldModel<'a>> for SegregatedFields<'a> {
+impl<'a, 'b> Add<&'b TaggedFieldModel<'a>> for SegregatedFields<'a, 'b> {
     type Output = Self;
 
-    fn add(self, rhs: TaggedFieldModel<'a>) -> Self::Output {
+    fn add(self, rhs: &'b TaggedFieldModel<'a>) -> Self::Output {
         let SegregatedFields {
             mut header,
             mut body,
@@ -225,6 +272,11 @@ impl<'a> Add<TaggedFieldModel<'a>> for SegregatedFields<'a> {
                 if let BodyFields::SlotBody(slots) = body {
                     header.header_fields.extend(slots.into_iter());
                     body = BodyFields::ReplacedBody(model);
+                }
+            }
+            FieldKind::Tagged => {
+                if !header.tag_name.is_some() {
+                    header.tag_name = Some(model);
                 }
             }
             _ => {}
