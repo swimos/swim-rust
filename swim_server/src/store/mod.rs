@@ -12,17 +12,50 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod keystore;
+mod config;
+#[cfg(test)]
+mod tests;
 
-use crate::plane::store::{PlaneStore, SwimPlaneStore};
-use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Formatter};
 use std::io;
-use std::marker::PhantomData;
 use std::path::PathBuf;
-use store::keyspaces::{KeyType, Keyspaces};
-use store::{Store, StoreError};
+
+use serde::{Deserialize, Serialize};
+
+use store::keyspaces::{KeyType, Keyspace, Keyspaces};
+use store::{RocksDatabase, Store, StoreError};
 use utilities::fs::Dir;
+
+use crate::plane::store::{PlaneStore, SwimPlaneStore};
+use crate::store::config::{default_db_opts, default_keyspaces};
+
+/// Unique lane identifier keyspace. The name is `default` as either the Rust RocksDB crate or
+/// Rocks DB itself has an issue in using merge operators under a non-default column family.
+///
+/// See: https://github.com/rust-rocksdb/rust-rocksdb/issues/29
+pub(crate) const LANE_KS: &str = "default";
+/// Value lane store keyspace.
+pub(crate) const VALUE_LANE_KS: &str = "value_lanes";
+/// Map lane store keyspace.
+pub(crate) const MAP_LANE_KS: &str = "map_lanes";
+
+/// An enumeration over the keyspaces that exist in a store.
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub enum KeyspaceName {
+    Lane,
+    Value,
+    Map,
+}
+
+impl Keyspace for KeyspaceName {
+    fn name(&self) -> &str {
+        match self {
+            KeyspaceName::Lane => LANE_KS,
+            KeyspaceName::Value => VALUE_LANE_KS,
+            KeyspaceName::Map => MAP_LANE_KS,
+        }
+    }
+}
 
 /// A Swim server store which will create plane stores on demand.
 ///
@@ -49,7 +82,6 @@ pub struct ServerStore<D: Store> {
     db_opts: D::Opts,
     /// The keyspaces that all stores will be opened with.
     keyspaces: Keyspaces<D>,
-    _delegate_pd: PhantomData<D>,
 }
 
 impl<D: Store> Debug for ServerStore<D> {
@@ -75,12 +107,11 @@ impl<D: Store> ServerStore<D> {
             dir: Dir::persistent(base_path)?,
             db_opts,
             keyspaces,
-            _delegate_pd: Default::default(),
         })
     }
 
-    /// Constructs a new transient server store that will clear the directory (prefixed by `prefix`
-    /// when dropped and open stores using `opts`.
+    /// Constructs a new transient server store that will clear the directory (prefixed by `prefix`)
+    /// when dropped and open stores using `db_opts`.
     ///
     /// # Panics
     /// Panics if the directory cannot be created.
@@ -93,8 +124,16 @@ impl<D: Store> ServerStore<D> {
             dir: Dir::transient(prefix)?,
             db_opts,
             keyspaces,
-            _delegate_pd: Default::default(),
         })
+    }
+}
+
+impl ServerStore<RocksDatabase> {
+    pub fn transient_default(prefix: &str) -> io::Result<ServerStore<RocksDatabase>> {
+        let db_opts = default_db_opts();
+        let keyspaces = default_keyspaces();
+
+        Self::transient(db_opts, keyspaces, prefix)
     }
 }
 

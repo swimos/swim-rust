@@ -65,7 +65,7 @@ impl KeyspaceResolver for RocksDatabase {
     type ResolvedKeyspace = ColumnFamily;
 
     fn resolve_keyspace<K: Keyspace>(&self, space: &K) -> Option<&Self::ResolvedKeyspace> {
-        self.delegate.cf_handle(space.as_ref())
+        self.delegate.cf_handle(space.name())
     }
 }
 
@@ -150,7 +150,7 @@ where
     F: Fn(&Arc<DB>, &ColumnFamily) -> Result<O, rocksdb::Error>,
     K: Keyspace,
 {
-    match delegate.cf_handle(keyspace.as_ref()) {
+    match delegate.cf_handle(keyspace.name()) {
         Some(cf) => f(delegate, cf).map_err(Into::into),
         None => Err(StoreError::KeyspaceNotFound),
     }

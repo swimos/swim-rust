@@ -78,7 +78,7 @@ impl<D: PlaneStore> SwimNodeStore<D> {
     ///
     /// Returns an optional snapshot iterator if entries were found that will yield deserialized
     /// key-value pairs.
-    pub(crate) fn load_ranged_snapshot<F, K, V>(
+    pub fn load_ranged_snapshot<F, K, V>(
         &self,
         prefix: StoreKey,
         map_fn: F,

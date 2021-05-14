@@ -20,7 +20,11 @@ use crate::StoreError;
 /// Note: It is not recommended to change this after a store has already been initialised.
 pub type KeyType = u64;
 
-pub trait Keyspace: AsRef<str> {}
+/// A handle to a portion of logically partitioned data.
+pub trait Keyspace {
+    /// The name of the keyspace.
+    fn name(&self) -> &str;
+}
 
 /// A keyspace definition for persisting logically related data.
 ///

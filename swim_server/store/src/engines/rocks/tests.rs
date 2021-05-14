@@ -12,50 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::engines::{FromKeyspaces, RangedSnapshotLoad};
+use crate::engines::RangedSnapshotLoad;
 use crate::iterator::EngineIterator;
 use crate::keyspaces::{
     KeyType, Keyspace, KeyspaceByteEngine, KeyspaceDef, KeyspaceResolver, Keyspaces,
 };
-use crate::{deserialize, serialize};
+use crate::RocksOpts;
+use crate::{deserialize, deserialize_key, serialize, TransientDatabase};
 use crate::{EngineRefIterator, StoreError};
-use crate::{RocksDatabase, RocksOpts};
 use rocksdb::{MergeOperands, Options, SliceTransform};
 use std::collections::HashMap;
 use std::mem::size_of;
-use std::ops::{Deref, Range};
-use tempdir::TempDir;
-
-impl Deref for TransientDatabase {
-    type Target = RocksDatabase;
-
-    fn deref(&self) -> &Self::Target {
-        &self.delegate
-    }
-}
-
-pub struct TransientDatabase {
-    _dir: TempDir,
-    delegate: RocksDatabase,
-}
-
-impl TransientDatabase {
-    #[allow(dead_code)]
-    pub(crate) fn new(keyspaces: Keyspaces<RocksDatabase>) -> TransientDatabase {
-        let dir = TempDir::new("test").expect("Failed to create temporary directory");
-        let delegate = RocksDatabase::from_keyspaces(dir.path(), &Default::default(), &keyspaces)
-            .expect("Failed to build delegate store");
-
-        TransientDatabase {
-            _dir: dir,
-            delegate,
-        }
-    }
-}
-
-fn deserialize_key<B: AsRef<[u8]>>(bytes: B) -> Result<KeyType, ()> {
-    bincode::deserialize::<KeyType>(bytes.as_ref()).map_err(|_| ())
-}
+use std::ops::Range;
 
 fn default_lane_opts() -> Options {
     let mut opts = rocksdb::Options::default();
@@ -88,12 +56,12 @@ fn default_db() -> TransientDatabase {
     lane_opts.set_merge_operator_associative("lane_id_counter", incrementing_merge_operator);
 
     let keyspaces = vec![
-        KeyspaceDef::new(KeyspaceName::Value.as_ref(), RocksOpts(default_lane_opts())),
-        KeyspaceDef::new(KeyspaceName::Map.as_ref(), RocksOpts(default_lane_opts())),
-        KeyspaceDef::new(KeyspaceName::Lane.as_ref(), RocksOpts(lane_opts)),
+        KeyspaceDef::new(KeyspaceName::Value.name(), RocksOpts(default_lane_opts())),
+        KeyspaceDef::new(KeyspaceName::Map.name(), RocksOpts(default_lane_opts())),
+        KeyspaceDef::new(KeyspaceName::Lane.name(), RocksOpts(lane_opts)),
     ];
 
-    TransientDatabase::new(Keyspaces::new(keyspaces))
+    TransientDatabase::new(Keyspaces::new(keyspaces)).expect("Failed to build transient database")
 }
 
 fn assert_keyspaces_empty(db: &TransientDatabase, spaces: &[KeyspaceName]) {
@@ -111,8 +79,8 @@ enum KeyspaceName {
     Lane,
 }
 
-impl AsRef<str> for KeyspaceName {
-    fn as_ref(&self) -> &str {
+impl Keyspace for KeyspaceName {
+    fn name(&self) -> &str {
         match self {
             KeyspaceName::Value => "value",
             KeyspaceName::Map => "map",
@@ -120,8 +88,6 @@ impl AsRef<str> for KeyspaceName {
         }
     }
 }
-
-impl Keyspace for KeyspaceName {}
 
 #[test]
 fn get_keyspace() {

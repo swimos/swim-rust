@@ -12,20 +12,25 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::store::{NodeStore, SwimNodeStore};
-use crate::store::keystore::{KeyStore, KeyspaceName};
-use crate::store::{StoreEngine, StoreKey};
-use futures::future::BoxFuture;
-use futures::FutureExt;
+pub mod keystore;
+
 use std::ffi::OsStr;
 use std::fmt::{Debug, Formatter};
 use std::io;
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+
+use futures::future::BoxFuture;
+use futures::FutureExt;
+
 use store::keyspaces::{KeyType, Keyspaces};
 use store::{serialize, KeyedSnapshot, Store, StoreError, StoreInfo};
 use swim_common::model::text::Text;
+
+use crate::agent::store::{NodeStore, SwimNodeStore};
+use crate::plane::store::keystore::KeyStore;
+use crate::store::{KeyspaceName, StoreEngine, StoreKey};
 
 const STORE_DIR: &str = "store";
 const PLANES_DIR: &str = "planes";

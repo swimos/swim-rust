@@ -15,7 +15,9 @@
 mod engines;
 mod iterator;
 pub mod keyspaces;
+mod transient;
 
+use serde::{Deserialize, Serialize};
 use std::error::Error;
 use std::fmt::Debug;
 use std::path::Path;
@@ -23,14 +25,13 @@ use std::{error::Error as StdError, io};
 
 use thiserror::Error;
 
-pub use engines::KeyedSnapshot;
-pub use engines::{RocksDatabase, RocksOpts};
-pub use rocksdb::{MergeOperands, SliceTransform};
-
 use crate::engines::{ByteEngine, FromKeyspaces, RangedSnapshotLoad};
+use crate::keyspaces::{KeyType, KeyspaceByteEngine, KeyspaceResolver};
+
 pub use crate::iterator::{EngineRefIterator, IteratorKey, OwnedEngineRefIterator};
-use crate::keyspaces::{KeyspaceByteEngine, KeyspaceResolver};
-use serde::{Deserialize, Serialize};
+pub use engines::{KeyedSnapshot, RocksDatabase, RocksOpts};
+pub use rocksdb::{MergeOperands, Options, SliceTransform};
+pub use transient::TransientDatabase;
 
 /// Store errors.
 #[derive(Debug, Error)]
@@ -154,4 +155,8 @@ pub fn serialize<S: Serialize>(obj: &S) -> Result<Vec<u8>, StoreError> {
 
 pub fn deserialize<'de, D: Deserialize<'de>>(obj: &'de [u8]) -> Result<D, StoreError> {
     bincode::deserialize(obj).map_err(|e| StoreError::Decoding(e.to_string()))
+}
+
+pub fn deserialize_key<B: AsRef<[u8]>>(bytes: B) -> Result<KeyType, StoreError> {
+    bincode::deserialize::<KeyType>(bytes.as_ref()).map_err(|e| StoreError::Decoding(e.to_string()))
 }
