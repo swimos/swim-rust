@@ -23,7 +23,7 @@ use std::fmt::{Display, Formatter};
 pub enum ParseError {
     /// Parsing the input text failed. At the moment this just indicates the location
     /// in the input and the `nom` rule that failed.
-    /// TODO Post-process this to produce a meaninful error message.
+    /// TODO Post-process this to produce a meaningful error message.
     Syntax {
         kind: ErrorKind,
         offset: usize,
