@@ -12,34 +12,26 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::store::{NodeStore, SwimNodeStore};
+use crate::agent::store::NodeStore;
 use crate::plane::store::mock::MockPlaneStore;
 use crate::store::{StoreEngine, StoreKey};
 use futures::future::{ready, BoxFuture};
 use futures::FutureExt;
+use std::fmt::Debug;
+use std::sync::{Arc, Mutex};
 use store::{StoreError, StoreInfo};
 
 #[derive(Clone, Debug)]
-pub struct MockNodeStore;
+struct TrackingValueStore(Arc<Mutex<Option<Vec<u8>>>>);
 
-impl MockNodeStore {
-    pub fn mock() -> SwimNodeStore<MockPlaneStore> {
-        let plane_store = MockPlaneStore;
-        SwimNodeStore::new(plane_store, "test_node")
-    }
-}
-
-impl NodeStore for MockNodeStore {
+impl NodeStore for TrackingValueStore {
     type Delegate = MockPlaneStore;
 
     fn store_info(&self) -> StoreInfo {
-        StoreInfo {
-            path: "".to_string(),
-            kind: "Mock".to_string(),
-        }
+        panic!("Unexpected store information request")
     }
 
-    fn lane_id_of<I>(&self, _lane: I) -> BoxFuture<'_, u64>
+    fn lane_id_of<I>(&self, _lane: I) -> BoxFuture<u64>
     where
         I: Into<String>,
     {
@@ -47,16 +39,18 @@ impl NodeStore for MockNodeStore {
     }
 }
 
-impl StoreEngine for MockNodeStore {
-    fn put(&self, _key: StoreKey, _value: &[u8]) -> Result<(), StoreError> {
+impl StoreEngine for TrackingValueStore {
+    fn put(&self, key: StoreKey, value: &[u8]) -> Result<(), StoreError> {
+        self.0.lock().unwrap().replace(value.to_vec());
         Ok(())
     }
 
-    fn get(&self, _key: StoreKey) -> Result<Option<Vec<u8>>, StoreError> {
-        Ok(None)
+    fn get(&self, key: StoreKey) -> Result<Option<Vec<u8>>, StoreError> {
+        Ok(self.0.lock().unwrap().clone())
     }
 
-    fn delete(&self, _key: StoreKey) -> Result<(), StoreError> {
+    fn delete(&self, key: StoreKey) -> Result<(), StoreError> {
+        self.0.lock().unwrap().take();
         Ok(())
     }
 }

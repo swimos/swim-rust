@@ -22,6 +22,7 @@ use stm::var::TVar;
 
 #[cfg(test)]
 mod tests;
+mod value_store;
 
 /// A lane containing a single value.
 #[derive(Debug)]
