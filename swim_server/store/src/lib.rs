@@ -27,7 +27,10 @@ use thiserror::Error;
 
 use crate::keyspaces::{KeyType, KeyspaceByteEngine, KeyspaceResolver};
 
-pub use crate::iterator::{EngineIterOpts, EngineRefIterator, IteratorKey, OwnedEngineRefIterator};
+pub use crate::iterator::{
+    EngineIterOpts, EngineIterator, EnginePrefixIterator, EngineRefIterator, IteratorKey,
+    OwnedEngineRefIterator,
+};
 pub use engines::{
     FromKeyspaces, KeyedSnapshot, RangedSnapshotLoad, RocksEngine, RocksIterator, RocksOpts,
     RocksPrefixIterator,
