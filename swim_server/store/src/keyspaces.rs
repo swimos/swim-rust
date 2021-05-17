@@ -31,6 +31,7 @@ pub trait Keyspace {
 /// Definitions of a keyspace will depend on the underlying delegate store implementation used to
 /// run a store with. For a RocksDB engine this will correspond to a column family and for libmdbx
 /// this will correspond to a sub-database that is keyed by `name`.
+#[derive(Debug, Clone)]
 pub struct KeyspaceDef<O> {
     /// The name of the keyspace.
     pub(crate) name: &'static str,
@@ -45,7 +46,11 @@ impl<O> KeyspaceDef<O> {
 }
 
 /// A list of keyspace definitions to initialise a store with.
-pub struct Keyspaces<O: FromKeyspaces> {
+#[derive(Debug, Clone)]
+pub struct Keyspaces<O>
+where
+    O: FromKeyspaces,
+{
     pub keyspaces: Vec<KeyspaceDef<O::Opts>>,
 }
 

@@ -16,7 +16,7 @@ use std::path::Path;
 use std::vec::IntoIter;
 
 pub use nostore::{NoStore, NoStoreOpts};
-pub use rocks::{RocksDatabase, RocksOpts};
+pub use rocks::{RocksEngine, RocksIterator, RocksOpts, RocksPrefixIterator};
 
 use crate::keyspaces::{Keyspace, Keyspaces};
 use crate::StoreError;
@@ -39,7 +39,7 @@ pub trait ByteEngine: 'static {
 /// A trait for building stores from their keyspace definitions..
 pub trait FromKeyspaces: Sized {
     /// Store environment open options. For some delegates, this may not be used - such as libmdbx.
-    type Opts: Default;
+    type Opts: Default + Clone;
 
     /// Build a store from options.
     ///
@@ -52,7 +52,7 @@ pub trait FromKeyspaces: Sized {
     fn from_keyspaces<I: AsRef<Path>>(
         path: I,
         db_opts: &Self::Opts,
-        keyspaces: &Keyspaces<Self>,
+        keyspaces: Keyspaces<Self>,
     ) -> Result<Self, StoreError>;
 }
 

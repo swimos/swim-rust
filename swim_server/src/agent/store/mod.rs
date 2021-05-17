@@ -12,15 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#[cfg(test)]
-mod tests;
+use std::fmt::{Debug, Formatter};
+use std::sync::Arc;
+
+use store::{KeyedSnapshot, StoreError, StoreInfo};
+use swim_common::model::text::Text;
 
 use crate::plane::store::PlaneStore;
 use crate::store::{StoreEngine, StoreKey};
-use std::fmt::{Debug, Formatter};
-use std::sync::Arc;
-use store::{KeyedSnapshot, StoreError, StoreInfo};
-use swim_common::model::text::Text;
+
+#[cfg(test)]
+pub mod mock;
+#[cfg(test)]
+mod tests;
 
 /// A trait for defining store engines which open stores for nodes.
 ///

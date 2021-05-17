@@ -17,6 +17,7 @@ mod tests;
 
 mod iterator;
 
+pub use crate::engines::rocks::iterator::{RocksIterator, RocksPrefixIterator};
 use crate::engines::{KeyedSnapshot, RangedSnapshotLoad};
 use crate::iterator::{EnginePrefixIterator, EngineRefIterator};
 use crate::keyspaces::{KeyType, Keyspace, KeyspaceByteEngine, KeyspaceResolver, Keyspaces};
@@ -35,20 +36,20 @@ impl From<rocksdb::Error> for StoreError {
 /// A Rocks database engine.
 ///
 /// See https://github.com/facebook/rocksdb/wiki for details about the features and limitations.
-#[derive(Debug)]
-pub struct RocksDatabase {
+#[derive(Debug, Clone)]
+pub struct RocksEngine {
     pub(crate) delegate: Arc<DB>,
 }
 
-impl RocksDatabase {
-    pub fn new(delegate: DB) -> RocksDatabase {
-        RocksDatabase {
+impl RocksEngine {
+    pub fn new(delegate: DB) -> RocksEngine {
+        RocksEngine {
             delegate: Arc::new(delegate),
         }
     }
 }
 
-impl Store for RocksDatabase {
+impl Store for RocksEngine {
     fn path(&self) -> &Path {
         &self.delegate.path()
     }
@@ -61,7 +62,7 @@ impl Store for RocksDatabase {
     }
 }
 
-impl KeyspaceResolver for RocksDatabase {
+impl KeyspaceResolver for RocksEngine {
     type ResolvedKeyspace = ColumnFamily;
 
     fn resolve_keyspace<K: Keyspace>(&self, space: &K) -> Option<&Self::ResolvedKeyspace> {
@@ -69,31 +70,28 @@ impl KeyspaceResolver for RocksDatabase {
     }
 }
 
-impl FromKeyspaces for RocksDatabase {
+impl FromKeyspaces for RocksEngine {
     type Opts = RocksOpts;
 
     fn from_keyspaces<I: AsRef<Path>>(
         path: I,
         db_opts: &Self::Opts,
-        keyspaces: &Keyspaces<Self>,
+        keyspaces: Keyspaces<Self>,
     ) -> Result<Self, StoreError> {
         let Keyspaces { keyspaces } = keyspaces;
-        let descriptors =
-            keyspaces
-                .into_iter()
-                .fold(Vec::with_capacity(keyspaces.len()), |mut vec, def| {
-                    let cf_descriptor =
-                        ColumnFamilyDescriptor::new(def.name.to_string(), def.opts.0.clone());
-                    vec.push(cf_descriptor);
-                    vec
-                });
+        let descriptors = keyspaces.into_iter().fold(Vec::new(), |mut vec, def| {
+            let cf_descriptor = ColumnFamilyDescriptor::new(def.name.to_string(), def.opts.0);
+            vec.push(cf_descriptor);
+            vec
+        });
 
         let db = DB::open_cf_descriptors(&db_opts.0, path, descriptors)?;
-        Ok(RocksDatabase::new(db))
+        Ok(RocksEngine::new(db))
     }
 }
 
 /// Configuration wrapper for a Rocks database used by `FromOpts`.
+#[derive(Clone)]
 pub struct RocksOpts(pub Options);
 
 impl Default for RocksOpts {
@@ -106,7 +104,7 @@ impl Default for RocksOpts {
     }
 }
 
-impl RangedSnapshotLoad for RocksDatabase {
+impl RangedSnapshotLoad for RocksEngine {
     fn load_ranged_snapshot<F, K, V, S>(
         &self,
         keyspace: S,
@@ -156,7 +154,7 @@ where
     }
 }
 
-impl KeyspaceByteEngine for RocksDatabase {
+impl KeyspaceByteEngine for RocksEngine {
     fn put_keyspace<K: Keyspace>(
         &self,
         keyspace: K,

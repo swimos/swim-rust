@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod keystore;
-
 use std::ffi::OsStr;
 use std::fmt::{Debug, Formatter};
 use std::io;
@@ -29,8 +27,11 @@ use store::{serialize, KeyedSnapshot, Store, StoreError, StoreInfo};
 use swim_common::model::text::Text;
 
 use crate::agent::store::{NodeStore, SwimNodeStore};
-use crate::plane::store::keystore::{KeyRequest, KeyStore, KeystoreTask, PlaneStoreTask};
+use crate::store::keystore::{KeyRequest, KeyStore, KeystoreTask};
 use crate::store::{KeyspaceName, StoreEngine, StoreKey};
+
+#[cfg(test)]
+pub mod mock;
 
 const STORE_DIR: &str = "store";
 const PLANES_DIR: &str = "planes";
@@ -94,17 +95,6 @@ pub struct SwimPlaneStore<D> {
     keystore: KeyStore,
 }
 
-impl<D: Store> SwimPlaneStore<D> {
-    #[cfg(test)]
-    pub(crate) fn get_keyspace(
-        &self,
-        space: KeyspaceName,
-        key: &[u8],
-    ) -> Result<Option<Vec<u8>>, StoreError> {
-        self.delegate.get_keyspace(space, key)
-    }
-}
-
 impl<D> Clone for SwimPlaneStore<D> {
     fn clone(&self) -> Self {
         SwimPlaneStore {
@@ -130,16 +120,6 @@ where
     match key {
         s @ StoreKey::Map { .. } => f(KeyspaceName::Map, serialize(&s)?),
         s @ StoreKey::Value { .. } => f(KeyspaceName::Value, serialize(&s)?),
-    }
-}
-
-impl<D> KeystoreTask for SwimPlaneStore<D> {
-    fn run<DB, S>(db: Arc<DB>, events: S) -> BoxFuture<'static, Result<(), StoreError>>
-    where
-        DB: KeyspaceByteEngine,
-        S: Stream<Item = KeyRequest> + Unpin + Send + 'static,
-    {
-        PlaneStoreTask::run(db, events)
     }
 }
 
@@ -185,6 +165,16 @@ where
     }
 }
 
+impl<D: Store> KeystoreTask for SwimPlaneStore<D> {
+    fn run<DB, S>(_db: Arc<DB>, _events: S) -> BoxFuture<'static, Result<(), StoreError>>
+    where
+        DB: KeyspaceByteEngine,
+        S: Stream<Item = KeyRequest> + Unpin + Send + 'static,
+    {
+        unimplemented!()
+    }
+}
+
 impl<D: Store> StoreEngine for SwimPlaneStore<D> {
     fn put(&self, key: StoreKey, value: &[u8]) -> Result<(), StoreError> {
         exec_keyspace(key, |namespace, bytes| {
@@ -208,7 +198,7 @@ impl<D: Store> StoreEngine for SwimPlaneStore<D> {
 
 impl<D> SwimPlaneStore<D>
 where
-    D: Store,
+    D: Store + KeystoreTask,
 {
     pub(crate) fn new<I: Into<Text>>(
         plane_name: I,
@@ -226,7 +216,7 @@ where
         base_path: B,
         plane_name: P,
         db_opts: &D::Opts,
-        keyspaces: &Keyspaces<D>,
+        keyspaces: Keyspaces<D>,
     ) -> Result<SwimPlaneStore<D>, StoreError>
     where
         B: AsRef<Path>,
@@ -246,8 +236,7 @@ where
 
         let arcd_delegate = Arc::new(delegate);
         // todo config
-        let keystore =
-            KeyStore::new::<D, Self>(arcd_delegate.clone(), NonZeroUsize::new(8).unwrap());
+        let keystore = KeyStore::new(arcd_delegate.clone(), NonZeroUsize::new(8).unwrap());
 
         Ok(Self::new(plane_name, arcd_delegate, keystore))
     }

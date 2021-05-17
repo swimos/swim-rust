@@ -14,12 +14,12 @@
 
 use crate::engines::FromKeyspaces;
 use crate::keyspaces::Keyspaces;
-use crate::{RocksDatabase, StoreError};
+use crate::{RocksEngine, StoreError};
 use std::ops::Deref;
 use tempdir::TempDir;
 
 impl Deref for TransientDatabase {
-    type Target = RocksDatabase;
+    type Target = RocksEngine;
 
     fn deref(&self) -> &Self::Target {
         &self.delegate
@@ -30,13 +30,13 @@ impl Deref for TransientDatabase {
 /// cleared when its dropped.
 pub struct TransientDatabase {
     _dir: TempDir,
-    delegate: RocksDatabase,
+    delegate: RocksEngine,
 }
 
 impl TransientDatabase {
-    pub fn new(keyspaces: Keyspaces<RocksDatabase>) -> Result<TransientDatabase, StoreError> {
+    pub fn new(keyspaces: Keyspaces<RocksEngine>) -> Result<TransientDatabase, StoreError> {
         let dir = TempDir::new("test").map_err(StoreError::Io)?;
-        let delegate = RocksDatabase::from_keyspaces(dir.path(), &Default::default(), &keyspaces)?;
+        let delegate = RocksEngine::from_keyspaces(dir.path(), &Default::default(), keyspaces)?;
 
         Ok(TransientDatabase {
             _dir: dir,

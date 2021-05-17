@@ -12,17 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::engines::{KeyedSnapshot, RangedSnapshotLoad};
+use crate::engines::{ByteEngine, KeyedSnapshot, RangedSnapshotLoad};
 use crate::iterator::{
     EngineIterOpts, EngineIterator, EnginePrefixIterator, EngineRefIterator, IteratorKey,
 };
 use crate::keyspaces::{KeyType, Keyspace, KeyspaceByteEngine, KeyspaceResolver, Keyspaces};
-use crate::{ByteEngine, FromKeyspaces, Store, StoreError, StoreInfo};
+use crate::{FromKeyspaces, Store, StoreError, StoreInfo};
 use std::borrow::Borrow;
 use std::path::{Path, PathBuf};
 
 /// A delegate store database that does nothing.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct NoStore {
     /// A path stub that is the name of the plane that created it.
     pub(crate) path: PathBuf,
@@ -96,7 +96,7 @@ impl RangedSnapshotLoad for NoStore {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct NoStoreOpts;
 
 impl FromKeyspaces for NoStore {
@@ -105,7 +105,7 @@ impl FromKeyspaces for NoStore {
     fn from_keyspaces<I: AsRef<Path>>(
         path: I,
         _db_opts: &Self::Opts,
-        _keyspaces: &Keyspaces<Self>,
+        _keyspaces: Keyspaces<Self>,
     ) -> Result<Self, StoreError> {
         Ok(NoStore {
             path: path.as_ref().to_path_buf(),

@@ -25,12 +25,14 @@ use std::{error::Error as StdError, io};
 
 use thiserror::Error;
 
-use crate::engines::{ByteEngine, FromKeyspaces, RangedSnapshotLoad};
 use crate::keyspaces::{KeyType, KeyspaceByteEngine, KeyspaceResolver};
 
-pub use crate::iterator::{EngineRefIterator, IteratorKey, OwnedEngineRefIterator};
-pub use engines::{KeyedSnapshot, RocksDatabase, RocksOpts};
-pub use rocksdb::{MergeOperands, Options, SliceTransform};
+pub use crate::iterator::{EngineIterOpts, EngineRefIterator, IteratorKey, OwnedEngineRefIterator};
+pub use engines::{
+    FromKeyspaces, KeyedSnapshot, RangedSnapshotLoad, RocksEngine, RocksIterator, RocksOpts,
+    RocksPrefixIterator,
+};
+pub use rocksdb::{ColumnFamily, MergeOperands, Options, SliceTransform};
 pub use transient::TransientDatabase;
 
 /// Store errors.
@@ -109,6 +111,7 @@ pub trait Store:
     + KeyspaceResolver
     + Send
     + Sync
+    + Clone
     + Debug
     + OwnedEngineRefIterator
     + 'static

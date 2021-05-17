@@ -13,10 +13,10 @@
 // limitations under the License.
 
 use crate::iterator::{EngineIterOpts, EngineIterator, EnginePrefixIterator};
-use crate::{EngineRefIterator, IteratorKey, RocksDatabase, StoreError};
+use crate::{EngineRefIterator, IteratorKey, RocksEngine, StoreError};
 use rocksdb::{DBIteratorWithThreadMode, DBRawIterator, DBWithThreadMode, SingleThreaded};
 
-impl<'a: 'b, 'b> EngineRefIterator<'a, 'b> for RocksDatabase {
+impl<'a: 'b, 'b> EngineRefIterator<'a, 'b> for RocksEngine {
     type EngineIterator = RocksIterator<'b>;
     type EnginePrefixIterator = RocksPrefixIterator<'b>;
 

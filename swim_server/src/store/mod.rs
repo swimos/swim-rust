@@ -12,25 +12,29 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-mod config;
-
-#[cfg(test)]
-pub mod mock;
-#[cfg(test)]
-mod tests;
-
 use std::fmt::{Debug, Formatter};
 use std::io;
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+use keystore::KeystoreTask;
 use store::keyspaces::{KeyType, Keyspace, Keyspaces};
-use store::{RocksDatabase, Store, StoreError};
+use store::{Store, StoreError};
 use utilities::fs::Dir;
 
 use crate::plane::store::{PlaneStore, SwimPlaneStore};
-use crate::store::config::{default_db_opts, default_keyspaces};
+use crate::store::rocks::RocksDatabase;
+use crate::store::rocks::{default_db_opts, default_keyspaces};
+
+#[cfg(test)]
+pub mod mock;
+#[cfg(test)]
+mod tests;
+
+pub mod keystore;
+mod nostore;
+mod rocks;
 
 /// Unique lane identifier keyspace. The name is `default` as either the Rust RocksDB crate or
 /// Rocks DB itself has an issue in using merge operators under a non-default column family.
@@ -78,7 +82,7 @@ pub trait SwimStore {
 }
 
 /// A Swim server store that will open plane stores on request.
-pub struct ServerStore<D: Store> {
+pub struct ServerStore<D: Store + KeystoreTask> {
     /// The directory that this store is operating from.
     dir: Dir,
     /// Database environment open options
@@ -87,7 +91,10 @@ pub struct ServerStore<D: Store> {
     keyspaces: Keyspaces<D>,
 }
 
-impl<D: Store> Debug for ServerStore<D> {
+impl<D> Debug for ServerStore<D>
+where
+    D: Store + KeystoreTask,
+{
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ServerStore")
             .field("directory", &self.dir.path())
@@ -95,7 +102,10 @@ impl<D: Store> Debug for ServerStore<D> {
     }
 }
 
-impl<D: Store> ServerStore<D> {
+impl<D> ServerStore<D>
+where
+    D: Store + KeystoreTask,
+{
     /// Constructs a new server store that will open stores using `opts` and will use the directory
     /// `base_path` for opening all new stores.
     ///
@@ -140,7 +150,10 @@ impl ServerStore<RocksDatabase> {
     }
 }
 
-impl<D: Store> SwimStore for ServerStore<D> {
+impl<D> SwimStore for ServerStore<D>
+where
+    D: Store + KeystoreTask,
+{
     type PlaneStore = SwimPlaneStore<D>;
 
     fn plane_store<I: ToString>(&mut self, plane_name: I) -> Result<Self::PlaneStore, StoreError> {
@@ -152,7 +165,7 @@ impl<D: Store> SwimStore for ServerStore<D> {
         } = self;
         let plane_name = plane_name.to_string();
 
-        SwimPlaneStore::open(dir.path(), &plane_name, db_opts, keyspaces)
+        SwimPlaneStore::open(dir.path(), &plane_name, db_opts, keyspaces.clone())
     }
 }
 
