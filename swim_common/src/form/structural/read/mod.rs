@@ -37,6 +37,7 @@ use crate::form::structural::read::materializers::value::ValueMaterializer;
 pub use error::ReadError;
 use std::collections::HashMap;
 use std::hash::Hash;
+use crate::form::structural::generic::coproduct::{CNil, CCons};
 
 /// Trait for types that can be structurally deserialized, from the Swim data model.
 pub trait StructuralReadable: ValueReadable {
@@ -188,7 +189,7 @@ pub enum Never {}
 
 impl Never {
     /// Witnesses that an instance of [Never] cannot exist.
-    fn explode(&self) -> ! {
+    pub fn explode(&self) -> ! {
         use std::hint;
         // Safe as Never has no instances.
         unsafe { hint::unreachable_unchecked() }
@@ -1061,6 +1062,163 @@ where
                 Ok(payload)
             }
             _ => Err(ReadError::InconsistentState),
+        }
+    }
+}
+
+impl HeaderReader for CNil {
+    type Body = Never;
+    type Delegate = Never;
+
+    fn read_attribute(self, _name: Cow<'_, str>) -> Result<Self::Delegate, ReadError> {
+        self.explode()
+    }
+
+    fn restore(delegate: Self::Delegate) -> Result<Self, ReadError> {
+        delegate.explode()
+    }
+
+    fn start_body(self) -> Result<Self::Body, ReadError> {
+        self.explode()
+    }
+}
+
+impl BodyReader for CNil {
+    type Delegate = Never;
+
+    fn push_record(self) -> Result<Self::Delegate, ReadError> {
+        self.explode()
+    }
+
+    fn restore(delegate: Never) -> Result<Self, ReadError> {
+        delegate.explode()
+    }
+}
+
+impl<H: HeaderReader, T: HeaderReader> HeaderReader for CCons<H, T> {
+    type Body = CCons<H::Body, T::Body>;
+    type Delegate = CCons<H::Delegate, T::Delegate>;
+
+    fn read_attribute(self, name: Cow<'_, str>) -> Result<Self::Delegate, ReadError> {
+        match self {
+            CCons::Head(h) => h.read_attribute(name).map(CCons::Head),
+            CCons::Tail(t) => t.read_attribute(name).map(CCons::Tail),
+        }
+    }
+
+    fn restore(delegate: Self::Delegate) -> Result<Self, ReadError> {
+        match delegate {
+            CCons::Head(h) => H::restore(h).map(CCons::Head),
+            CCons::Tail(t) => T::restore(t).map(CCons::Tail),
+        }
+    }
+
+    fn start_body(self) -> Result<Self::Body, ReadError> {
+        match self {
+            CCons::Head(h) => h.start_body().map(CCons::Head),
+            CCons::Tail(t) => t.start_body().map(CCons::Tail),
+        }
+    }
+}
+
+impl<H: BodyReader, T: BodyReader> BodyReader for CCons<H, T> {
+    type Delegate = CCons<H::Delegate, T::Delegate>;
+
+    fn push_extant(&mut self) -> Result<bool, ReadError> {
+        match self {
+            CCons::Head(h) => h.push_extant(),
+            CCons::Tail(t) => t.push_extant(),
+        }
+    }
+
+    fn push_i32(&mut self, value: i32) -> Result<bool, ReadError> {
+        match self {
+            CCons::Head(h) => h.push_i32(value),
+            CCons::Tail(t) => t.push_i32(value),
+        }
+    }
+
+    fn push_i64(&mut self, value: i64) -> Result<bool, ReadError> {
+        match self {
+            CCons::Head(h) => h.push_i64(value),
+            CCons::Tail(t) => t.push_i64(value),
+        }
+    }
+
+    fn push_u32(&mut self, value: u32) -> Result<bool, ReadError> {
+        match self {
+            CCons::Head(h) => h.push_u32(value),
+            CCons::Tail(t) => t.push_u32(value),
+        }
+    }
+
+    fn push_u64(&mut self, value: u64) -> Result<bool, ReadError> {
+        match self {
+            CCons::Head(h) => h.push_u64(value),
+            CCons::Tail(t) => t.push_u64(value),
+        }
+    }
+
+    fn push_f64(&mut self, value: f64) -> Result<bool, ReadError> {
+        match self {
+            CCons::Head(h) => h.push_f64(value),
+            CCons::Tail(t) => t.push_f64(value),
+        }
+    }
+
+    fn push_bool(&mut self, value: bool) -> Result<bool, ReadError> {
+        match self {
+            CCons::Head(h) => h.push_bool(value),
+            CCons::Tail(t) => t.push_bool(value),
+        }
+    }
+
+    fn push_big_int(&mut self, value: BigInt) -> Result<bool, ReadError> {
+        match self {
+            CCons::Head(h) => h.push_big_int(value),
+            CCons::Tail(t) => t.push_big_int(value),
+        }
+    }
+
+    fn push_big_uint(&mut self, value: BigUint) -> Result<bool, ReadError> {
+        match self {
+            CCons::Head(h) => h.push_big_uint(value),
+            CCons::Tail(t) => t.push_big_uint(value),
+        }
+    }
+
+    fn push_text(&mut self, value: Cow<'_, str>) -> Result<bool, ReadError> {
+        match self {
+            CCons::Head(h) => h.push_text(value),
+            CCons::Tail(t) => t.push_text(value),
+        }
+    }
+
+    fn push_blob(&mut self, value: Vec<u8>) -> Result<bool, ReadError> {
+        match self {
+            CCons::Head(h) => h.push_blob(value),
+            CCons::Tail(t) => t.push_blob(value),
+        }
+    }
+
+    fn start_slot(&mut self) -> Result<(), ReadError> {
+        match self {
+            CCons::Head(h) => h.start_slot(),
+            CCons::Tail(t) => t.start_slot(),
+        }
+    }
+
+    fn push_record(self) -> Result<Self::Delegate, ReadError> {
+        match self {
+            CCons::Head(h) => h.push_record().map(CCons::Head),
+            CCons::Tail(t) => t.push_record().map(CCons::Tail),
+        }
+    }
+
+    fn restore(delegate: <Self::Delegate as HeaderReader>::Body) -> Result<Self, ReadError> {
+        match delegate {
+            CCons::Head(h) => H::restore(h).map(CCons::Head),
+            CCons::Tail(t) => T::restore(t).map(CCons::Tail),
         }
     }
 }

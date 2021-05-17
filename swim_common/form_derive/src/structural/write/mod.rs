@@ -278,7 +278,7 @@ impl<'a, 'b> ToTokens for WriteWithFn<'a, 'b> {
 }
 
 fn make_header(tag_body: &Option<&FieldModel>, header_fields: &[&FieldModel]) -> TokenStream {
-    let base_expr = quote!(swim_common::form::structural::write::header::NoSlots);
+    let base_expr = quote!(swim_common::form::structural::generic::header::NoSlots);
     let header_expr = header_fields.iter().rev().fold(base_expr, |expr, field| {
         let field_index = &field.name;
         let literal_name = field.resolve_name();

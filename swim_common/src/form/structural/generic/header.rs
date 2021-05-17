@@ -86,9 +86,9 @@ impl AppendHeaders for NoSlots {
 }
 
 impl<T, Tail> AppendHeaders for HeaderSlots<T, Tail>
-where
-    T: StructuralWritable,
-    Tail: AppendHeaders,
+    where
+        T: StructuralWritable,
+        Tail: AppendHeaders,
 {
     const LEN: usize = Tail::LEN + 1;
 
@@ -106,9 +106,9 @@ where
 }
 
 impl<T, S> StructuralWritable for HeaderWithBody<T, S>
-where
-    T: StructuralWritable,
-    S: AppendHeaders,
+    where
+        T: StructuralWritable,
+        S: AppendHeaders,
 {
     fn write_with<W: StructuralWriter>(
         &self,
@@ -144,8 +144,8 @@ where
 }
 
 impl<A> StructuralWritable for SimpleHeader<A>
-where
-    A: AppendHeaders,
+    where
+        A: AppendHeaders,
 {
     fn write_with<W: StructuralWriter>(
         &self,

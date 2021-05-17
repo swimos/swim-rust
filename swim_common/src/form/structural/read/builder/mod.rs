@@ -63,7 +63,7 @@ impl<B: NoAttributes + BodyReader> HeaderReader for B {
 }
 
 /// This type wraps instances of [`HeaderReader`] and [`BodyReader`] with an additional
-/// payload (to be extracted after the complete). This is to facilitate nested, stateful
+/// payload (to be extracted after they complete). This is to facilitate nested, stateful
 /// readers where the type of the reader changes as the depth increases.
 pub struct Wrapped<Payload, Reader> {
     pub payload: Payload,

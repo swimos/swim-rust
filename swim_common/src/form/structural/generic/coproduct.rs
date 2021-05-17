@@ -12,20 +12,41 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#[cfg(test)]
-mod tests;
+use crate::form::structural::read::Never;
 
-use crate::form::structural::read::StructuralReadable;
-use crate::form::structural::write::StructuralWritable;
+mod private {
+    pub trait Sealed {}
 
-mod bridge;
-pub mod generic;
-pub mod read;
-pub mod write;
+    impl Sealed for super::CNil {}
 
-/// A more flexible alternative to [`Form`] where readers and writers have full
-/// visbility of the strucutures of the values that the work on. This will eventually
-/// replace the [`Form`] trait.
-pub trait StructuralForm: StructuralReadable + StructuralWritable {}
+    impl<H, T: super::Coproduct> Sealed for super::CCons<H, T> {}
+}
 
-impl<T: StructuralReadable + StructuralWritable> StructuralForm for T {}
+pub trait Coproduct: private::Sealed {
+
+    const NUM_OPTIONS: usize;
+
+}
+
+pub struct CNil(Never);
+
+impl CNil {
+
+    pub fn explode(&self) -> ! {
+        self.0.explode()
+    }
+
+}
+
+impl Coproduct for CNil {
+    const NUM_OPTIONS: usize = 0;
+}
+
+pub enum CCons<H, T> {
+    Head(H),
+    Tail(T),
+}
+
+impl<H, T: Coproduct> Coproduct for CCons<H, T> {
+    const NUM_OPTIONS: usize = T::NUM_OPTIONS + 1;
+}

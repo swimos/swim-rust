@@ -12,20 +12,5 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#[cfg(test)]
-mod tests;
-
-use crate::form::structural::read::StructuralReadable;
-use crate::form::structural::write::StructuralWritable;
-
-mod bridge;
-pub mod generic;
-pub mod read;
-pub mod write;
-
-/// A more flexible alternative to [`Form`] where readers and writers have full
-/// visbility of the strucutures of the values that the work on. This will eventually
-/// replace the [`Form`] trait.
-pub trait StructuralForm: StructuralReadable + StructuralWritable {}
-
-impl<T: StructuralReadable + StructuralWritable> StructuralForm for T {}
+pub mod header;
+pub mod coproduct;
