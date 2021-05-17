@@ -336,7 +336,7 @@ fn parse_hex_int_final() {
 }
 
 #[test]
-fn parse_bin_int() {
+fn parse_big_int() {
     let input = span("0b0");
     assert!(matches!(
         streaming::numeric_literal(input),
