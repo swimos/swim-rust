@@ -333,7 +333,7 @@ pub fn read_from_header<'a, H: HeaderReader>(
     }
 }
 
-/// Drive a [`BodyReader`] from an iterator of parse events.
+/// Derive a [`BodyReader`] from an iterator of parse events.
 pub fn read_body<B: BodyReader>(
     mut reader: B,
     it: &mut ParseIterator<'_>,
