@@ -398,7 +398,7 @@ fn parse_big_int() {
 }
 
 #[test]
-fn parse_bin_int_final() {
+fn parse_big_int_final() {
     let input = span("0b0");
     check_output(complete::numeric_literal(input), 3, NumericLiteral::UInt(0));
 
