@@ -43,7 +43,7 @@ use swim_common::routing::remote::net::plain::TokioPlainTextNetworking;
 use swim_common::routing::remote::{RemoteConnectionChannels, RemoteConnectionsTask};
 use swim_common::routing::ws::tungstenite::TungsteniteWsConnections;
 use swim_common::warp::envelope::Envelope;
-use swim_common::warp::path::AbsolutePath;
+use swim_common::warp::path::{AbsolutePath, RelativePath};
 use swim_runtime::task::spawn;
 use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::ReceiverStream;
@@ -91,14 +91,8 @@ impl SwimClientBuilder {
     //     Ok(SwimClientBuilder { config })
     // }
 
-    pub fn build_from_downlinks(
-        downlinks: Downlinks,
-        client_conn_request_tx: mpsc::Sender<ClientRequest>,
-    ) -> SwimClient {
-        SwimClient {
-            downlinks,
-            client_conn_request_tx,
-        }
+    pub fn build_from_downlinks(downlinks: Downlinks) -> SwimClient {
+        SwimClient { downlinks }
     }
 
     /// Build the Swim client.
@@ -141,9 +135,8 @@ impl SwimClientBuilder {
             client_params.dl_req_buffer_size,
         );
 
-        //Todo dm remove clone
         let (downlinks, downlinks_handle) =
-            Downlinks::new(client_conn_request_tx.clone(), Arc::new(downlinks_config));
+            Downlinks::new(client_conn_request_tx, Arc::new(downlinks_config));
 
         let DownlinksHandle {
             downlinks_task,
@@ -162,10 +155,7 @@ impl SwimClientBuilder {
         });
 
         (
-            SwimClient {
-                downlinks,
-                client_conn_request_tx,
-            },
+            SwimClient { downlinks },
             ClientHandle {
                 task_handle,
                 stop_trigger: stop_trigger_tx,
@@ -212,9 +202,8 @@ impl SwimClientBuilder {
             client_params.dl_req_buffer_size,
         );
 
-        //Todo dm remove clone
         let (downlinks, downlinks_handle) =
-            Downlinks::new(client_conn_request_tx.clone(), Arc::new(config));
+            Downlinks::new(client_conn_request_tx, Arc::new(config));
 
         let DownlinksHandle {
             downlinks_task,
@@ -233,10 +222,7 @@ impl SwimClientBuilder {
         });
 
         (
-            SwimClient {
-                downlinks,
-                client_conn_request_tx,
-            },
+            SwimClient { downlinks },
             ClientHandle {
                 task_handle,
                 stop_trigger: stop_trigger_tx,
@@ -266,9 +252,7 @@ impl SwimClientBuilder {
 #[derive(Clone, Debug)]
 pub struct SwimClient {
     /// The downlinks manager attached to this Swim Client.
-    /// Todo dm
     downlinks: Downlinks,
-    pub client_conn_request_tx: mpsc::Sender<ClientRequest>,
 }
 
 pub struct ClientHandle {

@@ -139,11 +139,7 @@ pub enum ClientRequest {
     /// Subscribe to a connection.
     Subscribe {
         url: Url,
-        request: Request<Result<(Option<RawRoute>, mpsc::Receiver<Envelope>), ConnectionError>>,
-    },
-    Foo {
-        url: Url,
-        request: Request<Result<(Option<RawRoute>, mpsc::Receiver<Envelope>), ConnectionError>>,
+        request: Request<Result<(RawRoute, mpsc::Receiver<Envelope>), ConnectionError>>,
     },
 }
 
@@ -181,7 +177,7 @@ impl ClientConnectionsManager {
             String,
             (
                 mpsc::Sender<TaggedEnvelope>,
-                mpsc::Sender<(Option<RawRoute>, SubscriptionRequest)>,
+                mpsc::Sender<(RawRoute, SubscriptionRequest)>,
             ),
         > = HashMap::new();
 
@@ -193,23 +189,6 @@ impl ClientConnectionsManager {
             let next: Option<ClientRequest> = router_request_rx.next().await;
 
             match next {
-                Some(ClientRequest::Foo { url, request }) => {
-                    let (_, sub_sender) =
-                        outgoing_managers.entry(url.to_string()).or_insert_with(|| {
-                            let (manager, sender, sub_tx) =
-                                ClientConnectionManager::new(buffer_size);
-
-                            let handle = spawn(manager.run());
-                            futures.push(handle);
-                            (sender, sub_tx)
-                        });
-
-                    if sub_sender.send((None, request)).await.is_err() {
-                        break Err(ConnectionError::Resolution(
-                            ResolutionError::router_dropped(),
-                        ));
-                    }
-                }
                 Some(ClientRequest::Connect { request, origin }) => {
                     let (sender, _) = outgoing_managers
                         .entry(origin.to_string())
@@ -236,17 +215,16 @@ impl ClientConnectionsManager {
                     url,
                     request: sub_req,
                 }) => {
+                    eprintln!("url = {:#?}", url);
                     //Todo dm
-                    if url.eq(&url::Url::parse(&"ws://0.0.0.0:0/".to_string()).unwrap())
-                        && plane_router_tx.is_some()
-                    {
+                    if plane_router_tx.is_some() && url.to_string().eq(&"ws://0.0.0.0:0/") {
                         let (tx, rx) = oneshot::channel();
                         let plane_tx = plane_router_tx.as_ref().unwrap();
 
                         plane_tx
                             .send(PlaneRoutingRequest::Resolve {
                                 host: None,
-                                //Todo dm
+                                //Todo dm the path should also be saved in the routing table
                                 name: RelativeUri::new(Uri::from_static("/unit/foo2")).unwrap(),
                                 request: Request::new(tx),
                             })
@@ -276,7 +254,7 @@ impl ClientConnectionsManager {
                                 (sender, sub_tx)
                             });
 
-                        if sub_sender.send((Some(raw_route), sub_req)).await.is_err() {
+                        if sub_sender.send((raw_route, sub_req)).await.is_err() {
                             break Err(ConnectionError::Resolution(
                                 ResolutionError::router_dropped(),
                             ));
@@ -396,7 +374,7 @@ impl ClientConnectionsManager {
                                 (sender, sub_tx)
                             });
 
-                        if sub_sender.send((Some(raw_route), sub_req)).await.is_err() {
+                        if sub_sender.send((raw_route, sub_req)).await.is_err() {
                             break Err(ConnectionError::Resolution(
                                 ResolutionError::router_dropped(),
                             ));
@@ -432,7 +410,8 @@ impl ClientConnectionsManager {
 
 pub(crate) struct ClientConnectionManager {
     envelope_rx: mpsc::Receiver<TaggedEnvelope>,
-    sub_rx: mpsc::Receiver<(Option<RawRoute>, SubscriptionRequest)>,
+    sub_rx: mpsc::Receiver<(RawRoute, SubscriptionRequest)>,
+    buffer_size: NonZeroUsize,
 }
 
 impl ClientConnectionManager {
@@ -441,7 +420,7 @@ impl ClientConnectionManager {
     ) -> (
         ClientConnectionManager,
         mpsc::Sender<TaggedEnvelope>,
-        mpsc::Sender<(Option<RawRoute>, SubscriptionRequest)>,
+        mpsc::Sender<(RawRoute, SubscriptionRequest)>,
     ) {
         let (envelope_tx, envelope_rx) = mpsc::channel(buffer_size.get());
         let (sub_tx, sub_rx) = mpsc::channel(buffer_size.get());
@@ -449,6 +428,7 @@ impl ClientConnectionManager {
             ClientConnectionManager {
                 envelope_rx,
                 sub_rx,
+                buffer_size,
             },
             envelope_tx,
             sub_tx,
@@ -459,6 +439,7 @@ impl ClientConnectionManager {
         let ClientConnectionManager {
             envelope_rx,
             sub_rx,
+            buffer_size,
         } = self;
 
         let mut envelope_rx = ReceiverStream::new(envelope_rx).fuse();
@@ -467,10 +448,7 @@ impl ClientConnectionManager {
         let mut subs: Vec<mpsc::Sender<Envelope>> = Vec::new();
 
         loop {
-            let next: Either<
-                Option<TaggedEnvelope>,
-                Option<(Option<RawRoute>, SubscriptionRequest)>,
-            > = select_biased! {
+            let next: Either<Option<TaggedEnvelope>, Option<(RawRoute, SubscriptionRequest)>> = select_biased! {
                 envelope = envelope_rx.next() => Either::Left(envelope),
                 sub = sub_rx.next() => Either::Right(sub),
             };
@@ -485,10 +463,9 @@ impl ClientConnectionManager {
                     }
                 },
                 Either::Right(Some((raw_route, sub_request))) => {
-                    //Todo dm change buffer size
-                    let (sub_tx, sub_rx) = mpsc::channel(8);
-                    subs.push(sub_tx);
-                    if sub_request.send(Ok((raw_route, sub_rx))).is_err() {
+                    let (subscriber_tx, subscriber_rx) = mpsc::channel(buffer_size.get());
+                    subs.push(subscriber_tx);
+                    if sub_request.send(Ok((raw_route, subscriber_rx))).is_err() {
                         break Err(RoutingError::RouterDropped);
                     };
                 }
@@ -504,8 +481,7 @@ pub(crate) type CloseSender = promise::Sender<mpsc::Sender<Result<(), RoutingErr
 type ConnectionChannel = (mpsc::Sender<Envelope>, mpsc::Receiver<RouterEvent>);
 type CloseResponseSender = mpsc::Sender<Result<(), RoutingError>>;
 type CloseReceiver = promise::Receiver<mpsc::Sender<Result<(), RoutingError>>>;
-type SubscriptionRequest =
-    Request<Result<(Option<RawRoute>, mpsc::Receiver<Envelope>), ConnectionError>>;
+type SubscriptionRequest = Request<Result<(RawRoute, mpsc::Receiver<Envelope>), ConnectionError>>;
 
 /// The Router events are emitted by the connection streams of the router and indicate
 /// messages or errors from the remote host.

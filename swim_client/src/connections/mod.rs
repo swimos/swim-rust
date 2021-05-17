@@ -451,9 +451,7 @@ impl ClientConnection {
             .await
             .map_err(|_| ConnectionError::Resolution(ResolutionError::router_dropped()))??;
 
-        //Todo dm remove unwrap
-        let write_sink = raw_route.unwrap().sender;
-
+        let write_sink = raw_route.sender;
         let read_stream = ReceiverStream::new(stream).fuse();
 
         let stopped = Arc::new(AtomicBool::new(false));

@@ -19,38 +19,38 @@ use std::ops::Deref;
 use std::sync::{Arc, Weak};
 
 use either::Either;
-use futures::{FutureExt, select_biased, StreamExt};
-use futures::future::{BoxFuture, join};
+use futures::future::{join, BoxFuture};
+use futures::{select_biased, FutureExt, StreamExt};
 use futures_util::stream::TakeUntil;
 use pin_utils::pin_mut;
 use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::ReceiverStream;
-use tracing::{event, Level, span};
+use tracing::{event, span, Level};
 use tracing_futures::Instrument;
 use url::Url;
 
 use swim_client::downlink::Downlinks;
 use swim_client::interface::SwimClient;
 use swim_common::request::Request;
-use swim_common::routing::{
-    ConnectionDropped, PlaneRoutingRequest, RouterFactory, RoutingAddr, TaggedEnvelope,
-};
 use swim_common::routing::error::{ConnectionError, ProtocolError, ProtocolErrorKind};
 use swim_common::routing::error::{RouterError, Unresolvable};
 use swim_common::routing::remote::RawRoute;
+use swim_common::routing::{
+    ConnectionDropped, PlaneRoutingRequest, RouterFactory, RoutingAddr, TaggedEnvelope,
+};
 use swim_runtime::time::clock::Clock;
 use utilities::route_pattern::RoutePattern;
 use utilities::sync::{promise, trigger};
 use utilities::task::Spawner;
 use utilities::uri::RelativeUri;
 
-use crate::agent::AgentResult;
 use crate::agent::lane::channels::AgentExecutionConfig;
+use crate::agent::AgentResult;
 use crate::meta::get_route;
 use crate::plane::context::PlaneContext;
-use swim_common::routing::error::NoAgentAtRoute;
 use crate::plane::router::{PlaneRouter, PlaneRouterFactory};
 use crate::plane::spec::{PlaneSpec, RouteSpec};
+use swim_common::routing::error::NoAgentAtRoute;
 
 pub mod context;
 pub mod error;
@@ -254,7 +254,7 @@ struct RouteResolver<Clk, DelegateFac: RouterFactory> {
     execution_config: AgentExecutionConfig,
     /// The routes for the plane.
     routes: Vec<RouteSpec<Clk, EnvChannel, PlaneRouter<DelegateFac::Router>>>,
-    // Todo dm
+    /// Channel for sending routing requests to the local plane.
     context_tx: mpsc::Sender<PlaneRoutingRequest>,
     /// Factory to create handles to the plane router when an agent is opened.
     router_fac: PlaneRouterFactory<DelegateFac>,
@@ -357,7 +357,6 @@ pub(crate) async fn run_plane<Clk, S, DelegateFac: RouterFactory>(
     event!(Level::DEBUG, STARTING);
     pin_mut!(spawner);
 
-    //Todo dm Get this down to the agent
     let (context_tx, context_rx) = context_channel;
     let mut context = ContextImpl::new(context_tx.clone(), spec.routes());
 

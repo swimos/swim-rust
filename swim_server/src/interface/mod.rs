@@ -211,17 +211,15 @@ impl SwimServerBuilder {
         let (stop_trigger_tx, stop_trigger_rx) = trigger::trigger();
         let (address_tx, address_rx) = promise::promise();
 
-        //Todo dm change buffer size
-        let (client_conn_request_tx, client_conn_request_rx) = mpsc::channel(8);
+        let (client_conn_request_tx, client_conn_request_rx) =
+            mpsc::channel(config.conn_config.channel_buffer_size.get());
 
-        //Todo dm remove clone
         let (downlinks, downlinks_handle) = Downlinks::new(
             client_conn_request_tx.clone(),
             Arc::new(ConfigHierarchy::default()),
         );
 
-        let client =
-            SwimClientBuilder::build_from_downlinks(downlinks, client_conn_request_tx.clone());
+        let client = SwimClientBuilder::build_from_downlinks(downlinks);
 
         Ok((
             SwimServer {
