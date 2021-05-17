@@ -16,6 +16,7 @@ use crate::agent::store::NodeStore;
 use crate::store::StoreKey;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
+use std::marker::PhantomData;
 use store::keyspaces::KeyType;
 use store::{deserialize, serialize_then, StoreError, StoreInfo};
 
@@ -24,21 +25,26 @@ mod tests;
 
 mod io;
 
-pub struct ValueDataModel<D> {
+pub struct ValueDataModel<D, V> {
     /// The store to delegate this model's operations to.
     delegate: D,
     /// The lane URI that this store is operating on.
     lane_id: KeyType,
+    _pd: PhantomData<V>,
 }
 
-impl<D: NodeStore> ValueDataModel<D> {
+impl<D: NodeStore, V> ValueDataModel<D, V> {
     /// Constructs a new value data model.
     ///
     /// # Arguments
     /// `delegate`: if this data model is *not* transient, then delegate operations to this store.
     /// `lane_id`: the lane URI that this store represents.
     pub fn new(delegate: D, lane_id: KeyType) -> Self {
-        ValueDataModel { delegate, lane_id }
+        ValueDataModel {
+            delegate,
+            lane_id,
+            _pd: Default::default(),
+        }
     }
 
     fn key(&self) -> StoreKey {
@@ -52,22 +58,20 @@ impl<D: NodeStore> ValueDataModel<D> {
     }
 }
 
-impl<D: NodeStore> ValueDataModel<D> {
+impl<D, V> ValueDataModel<D, V>
+where
+    D: NodeStore,
+    V: DeserializeOwned + Serialize,
+{
     /// Serialize and store `value`.
-    pub fn store<V>(&self, value: &V) -> Result<(), StoreError>
-    where
-        V: Serialize,
-    {
+    pub fn store(&self, value: &V) -> Result<(), StoreError> {
         serialize_then(&self.delegate, value, |delegate, bytes| {
             delegate.put(self.key(), bytes.as_slice())
         })
     }
 
     /// Loads the value in the store if it exists.
-    pub fn load<V>(&self) -> Result<Option<V>, StoreError>
-    where
-        V: DeserializeOwned,
-    {
+    pub fn load(&self) -> Result<Option<V>, StoreError> {
         match self.delegate.get(self.key()) {
             Ok(Some(bytes)) => deserialize::<V>(bytes.as_slice()).map(Some),
             Ok(None) => Ok(None),
