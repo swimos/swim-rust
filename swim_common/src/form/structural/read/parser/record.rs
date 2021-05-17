@@ -118,7 +118,7 @@ pub enum ParseState {
 }
 
 impl ParseState {
-    /// Advanve the state after an item.
+    /// Advance the state after an item.
     fn after_item(&mut self) {
         let new_state = match self {
             ParseState::Init => ParseState::AfterAttr,
