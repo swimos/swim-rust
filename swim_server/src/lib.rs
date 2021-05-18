@@ -29,3 +29,6 @@ pub use utilities::future::SwimStreamExt;
 pub use utilities::route_pattern::RoutePattern;
 
 pub use utilities::{stringify_attr, stringify_attr_raw};
+
+#[doc(hidden)]
+pub use agent::model::value::ValueLaneStoreIo;

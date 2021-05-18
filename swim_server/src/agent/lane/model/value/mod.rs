@@ -24,6 +24,8 @@ use stm::var::TVar;
 mod tests;
 mod value_store;
 
+pub use value_store::ValueLaneStoreIo;
+
 /// A lane containing a single value.
 #[derive(Debug)]
 pub struct ValueLane<T> {

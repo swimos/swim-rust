@@ -24,6 +24,7 @@ use store::{deserialize, serialize_then, StoreError, StoreInfo};
 mod tests;
 
 mod io;
+pub use io::ValueLaneStoreIo;
 
 pub struct ValueDataModel<D, V> {
     /// The store to delegate this model's operations to.
@@ -77,10 +78,5 @@ where
             Ok(None) => Ok(None),
             Err(e) => Err(e),
         }
-    }
-
-    /// Clears the value within the store.
-    pub fn clear(&self) -> Result<(), StoreError> {
-        self.delegate.delete(self.key()).map(|_| ())
     }
 }

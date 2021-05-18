@@ -48,7 +48,7 @@ use crate::agent::lane::model::demand_map::{
 use crate::agent::lane::model::map::MapLane;
 use crate::agent::lane::model::map::{summaries_to_events, MapLaneEvent, MapSubscriber};
 use crate::agent::lane::model::supply::{make_lane_model, SupplyLane};
-use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent};
+use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent, ValueLaneStoreIo};
 use crate::agent::lane::model::DeferredSubscription;
 use crate::agent::lifecycle::AgentLifecycle;
 use crate::routing::{ServerRouter, TaggedClientEnvelope, TaggedEnvelope};
@@ -859,7 +859,7 @@ pub fn make_value_lane<Agent, Context, T, L, Store, P>(
     lifecycle: L,
     projection: P,
     transient: bool,
-    _store: Store,
+    store: Store,
 ) -> (
     ValueLane<T>,
     impl LaneTasks<Agent, Context>,
@@ -884,14 +884,18 @@ where
     let tasks = ValueLifecycleTasks(LifecycleTasks {
         name: name.into(),
         lifecycle,
-        event_stream: observer.into_stream(),
+        event_stream: observer.clone().into_stream(),
         projection,
     });
 
     let store_io: Box<dyn StoreIo> = if transient {
         Box::new(LaneNoStore)
     } else {
-        unimplemented!()
+        Box::new(ValueLaneStoreIo::new(
+            store,
+            lane.clone(),
+            observer.into_stream(),
+        ))
     };
 
     let io = LaneIo {
