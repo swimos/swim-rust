@@ -12,8 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::iterator::{EngineIterOpts, EngineIterator, EnginePrefixIterator};
-use crate::{EngineRefIterator, IteratorKey, RocksEngine, StoreError};
+use crate::engines::RocksEngine;
+use crate::iterator::{
+    EngineIterOpts, EngineIterator, EnginePrefixIterator, EngineRefIterator, IteratorKey,
+};
+use crate::{KvBytes, StoreError};
 use rocksdb::{DBIteratorWithThreadMode, DBRawIterator, DBWithThreadMode, SingleThreaded};
 
 impl<'a: 'b, 'b> EngineRefIterator<'a, 'b> for RocksEngine {
@@ -47,7 +50,7 @@ pub struct RocksPrefixIterator<'p> {
 }
 
 impl<'d> EnginePrefixIterator for RocksPrefixIterator<'d> {
-    fn next(&mut self) -> Option<(Box<[u8]>, Box<[u8]>)> {
+    fn next(&mut self) -> Option<KvBytes> {
         self.delegate.next()
     }
 

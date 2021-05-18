@@ -19,8 +19,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 use keystore::KeystoreTask;
-use store::keyspaces::{KeyType, Keyspace, Keyspaces};
-use store::{Store, StoreError};
+
 use utilities::fs::Dir;
 
 use crate::plane::store::{PlaneStore, SwimPlaneStore};
@@ -35,6 +34,8 @@ mod nostore;
 mod rocks;
 
 pub use rocks::{default_db_opts, default_keyspaces, RocksDatabase};
+use store::keyspaces::{KeyType, Keyspace, Keyspaces};
+use store::{Store, StoreError};
 
 /// Unique lane identifier keyspace. The name is `default` as either the Rust RocksDB crate or
 /// Rocks DB itself has an issue in using merge operators under a non-default column family.

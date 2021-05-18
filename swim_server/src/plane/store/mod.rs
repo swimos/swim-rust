@@ -22,13 +22,14 @@ use std::sync::Arc;
 use futures::future::BoxFuture;
 use futures::{FutureExt, Stream};
 
-use store::keyspaces::{KeyType, KeyspaceByteEngine, Keyspaces};
-use store::{serialize, KeyedSnapshot, Store, StoreError, StoreInfo};
+use store::{serialize, Store, StoreError, StoreInfo};
 use swim_common::model::text::Text;
 
 use crate::agent::store::{NodeStore, SwimNodeStore};
 use crate::store::keystore::{KeyRequest, KeyStore, KeystoreTask};
 use crate::store::{KeyspaceName, StoreEngine, StoreKey};
+use store::engines::KeyedSnapshot;
+use store::keyspaces::{KeyType, KeyspaceByteEngine, Keyspaces};
 
 pub mod mock;
 

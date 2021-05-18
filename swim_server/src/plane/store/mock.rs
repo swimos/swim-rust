@@ -20,8 +20,9 @@ use crate::store::{StoreEngine, StoreKey};
 use futures::future::BoxFuture;
 use futures::{FutureExt, Stream};
 use std::sync::Arc;
+use store::engines::KeyedSnapshot;
 use store::keyspaces::{KeyType, KeyspaceByteEngine};
-use store::{KeyedSnapshot, StoreError, StoreInfo};
+use store::{StoreError, StoreInfo};
 use swim_common::model::text::Text;
 
 #[derive(Clone, Debug)]

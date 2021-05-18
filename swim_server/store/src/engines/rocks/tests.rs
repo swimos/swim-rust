@@ -12,14 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::engines::RangedSnapshotLoad;
-use crate::iterator::EngineIterator;
+use crate::engines::{RangedSnapshotLoad, RocksOpts};
+use crate::iterator::{EngineIterator, EngineRefIterator};
 use crate::keyspaces::{
     KeyType, Keyspace, KeyspaceByteEngine, KeyspaceDef, KeyspaceResolver, Keyspaces,
 };
-use crate::RocksOpts;
-use crate::{deserialize, deserialize_key, serialize, TransientDatabase};
-use crate::{EngineRefIterator, StoreError};
+use crate::{deserialize, deserialize_key, serialize, StoreError, TransientDatabase};
 use rocksdb::{MergeOperands, Options, SliceTransform};
 use std::collections::HashMap;
 use std::mem::size_of;

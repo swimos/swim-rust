@@ -240,7 +240,7 @@ fn check_lane_persistence(
     if !matches!(lane_type, LaneType::Map | LaneType::Value) && **transient {
         Err(syn::Error::new(
             transient.span(),
-            format!("Stateless lanes cannot persist their data"),
+            "Stateless lanes cannot persist their data",
         )
         .to_compile_error()
         .into())

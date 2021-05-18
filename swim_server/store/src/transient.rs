@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::engines::FromKeyspaces;
+use crate::engines::{FromKeyspaces, RocksEngine};
 use crate::keyspaces::Keyspaces;
-use crate::{RocksEngine, StoreError};
+use crate::StoreError;
 use std::ops::Deref;
 use tempdir::TempDir;
 

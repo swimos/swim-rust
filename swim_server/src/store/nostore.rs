@@ -17,11 +17,12 @@ use futures::future::BoxFuture;
 use futures::{Stream, StreamExt};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use store::keyspaces::{Keyspace, KeyspaceByteEngine, KeyspaceResolver, Keyspaces};
-use store::{
-    EngineIterOpts, EngineIterator, EnginePrefixIterator, EngineRefIterator, FromKeyspaces,
-    IteratorKey, KeyedSnapshot, RangedSnapshotLoad, Store, StoreError, StoreInfo,
+use store::engines::{FromKeyspaces, KeyedSnapshot, RangedSnapshotLoad};
+use store::iterator::{
+    EngineIterOpts, EngineIterator, EnginePrefixIterator, EngineRefIterator, IteratorKey,
 };
+use store::keyspaces::{Keyspace, KeyspaceByteEngine, KeyspaceResolver, Keyspaces};
+use store::{Store, StoreError, StoreInfo};
 
 /// A store which will persist no data and exists purely to uphold the minimum contract required
 /// between a lane and its store.

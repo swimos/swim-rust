@@ -15,13 +15,14 @@
 use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
 
-use store::{KeyedSnapshot, StoreError, StoreInfo};
+use store::{StoreError, StoreInfo};
 use swim_common::model::text::Text;
 
 use crate::plane::store::PlaneStore;
 use crate::store::{StoreEngine, StoreKey};
 use futures::future::BoxFuture;
 use futures::FutureExt;
+use store::engines::KeyedSnapshot;
 use store::keyspaces::KeyType;
 
 pub mod mock;

@@ -21,14 +21,15 @@ use futures::Stream;
 use std::mem::size_of;
 use std::path::Path;
 use std::sync::Arc;
-use store::keyspaces::{KeyType, KeyspaceDef, KeyspaceResolver, Keyspaces};
-use store::keyspaces::{Keyspace, KeyspaceByteEngine};
-use store::{
-    ColumnFamily, EngineIterOpts, EngineRefIterator, FromKeyspaces, KeyedSnapshot,
-    RangedSnapshotLoad, RocksEngine, RocksIterator, RocksPrefixIterator, Store, StoreError,
-    StoreInfo,
+use store::engines::{
+    FromKeyspaces, KeyedSnapshot, RangedSnapshotLoad, RocksEngine, RocksIterator, RocksOpts,
+    RocksPrefixIterator,
 };
-use store::{Options, RocksOpts, SliceTransform};
+use store::iterator::{EngineIterOpts, EngineRefIterator};
+use store::keyspaces::{
+    KeyType, Keyspace, KeyspaceByteEngine, KeyspaceDef, KeyspaceResolver, Keyspaces,
+};
+use store::{ColumnFamily, Options, SliceTransform, Store, StoreError, StoreInfo};
 
 #[derive(Debug, Clone)]
 pub struct RocksDatabase {

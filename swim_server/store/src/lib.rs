@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-mod engines;
-mod iterator;
+pub mod engines;
+pub mod iterator;
 pub mod keyspaces;
 mod transient;
 
@@ -25,18 +25,14 @@ use std::{error::Error as StdError, io};
 
 use thiserror::Error;
 
+use crate::engines::{FromKeyspaces, RangedSnapshotLoad};
+use crate::iterator::OwnedEngineRefIterator;
 use crate::keyspaces::{KeyType, KeyspaceByteEngine, KeyspaceResolver};
 
-pub use crate::iterator::{
-    EngineIterOpts, EngineIterator, EnginePrefixIterator, EngineRefIterator, IteratorKey,
-    OwnedEngineRefIterator,
-};
-pub use engines::{
-    FromKeyspaces, KeyedSnapshot, RangedSnapshotLoad, RocksEngine, RocksIterator, RocksOpts,
-    RocksPrefixIterator,
-};
 pub use rocksdb::{ColumnFamily, MergeOperands, Options, SliceTransform};
 pub use transient::TransientDatabase;
+
+pub(crate) type KvBytes = (Box<[u8]>, Box<[u8]>);
 
 /// Store errors.
 #[derive(Debug, Error)]
