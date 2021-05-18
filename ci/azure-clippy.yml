@@ -13,4 +13,4 @@ jobs:
         displayName: Install clippy
       - script: |
           cargo clippy --all-features -- -D warnings
-        displayName: cargo clippy --alls
+        displayName: cargo clippy --all
