@@ -25,7 +25,10 @@ use crate::agent::lane::channels::{
 use crate::agent::lane::model::action::{Action, ActionLane};
 use crate::agent::lane::model::command::{Command, CommandLane};
 use crate::agent::lane::model::DeferredSubscription;
+use crate::agent::store::mock::MockNodeStore;
+use crate::agent::store::SwimNodeStore;
 use crate::agent::Eff;
+use crate::plane::store::mock::MockPlaneStore;
 use crate::routing::error::RouterError;
 use crate::routing::{
     ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedClientEnvelope, TaggedEnvelope,
@@ -378,6 +381,7 @@ impl ServerRouter for TestRouter {
 
 impl AgentExecutionContext for TestContext {
     type Router = TestRouter;
+    type Store = SwimNodeStore<MockPlaneStore>;
 
     fn router_handle(&self) -> Self::Router {
         let TestContext {
@@ -391,6 +395,10 @@ impl AgentExecutionContext for TestContext {
 
     fn spawner(&self) -> Sender<Eff> {
         self.scheduler.clone()
+    }
+
+    fn store(&self) -> Self::Store {
+        MockNodeStore::mock()
     }
 }
 
@@ -1300,6 +1308,7 @@ struct MultiTestRouter(Arc<parking_lot::Mutex<MultiTestContextInner>>);
 
 impl AgentExecutionContext for MultiTestContext {
     type Router = MultiTestRouter;
+    type Store = SwimNodeStore<MockPlaneStore>;
 
     fn router_handle(&self) -> Self::Router {
         MultiTestRouter(self.0.clone())
@@ -1307,6 +1316,10 @@ impl AgentExecutionContext for MultiTestContext {
 
     fn spawner(&self) -> Sender<Eff> {
         self.1.clone()
+    }
+
+    fn store(&self) -> Self::Store {
+        MockNodeStore::mock()
     }
 }
 

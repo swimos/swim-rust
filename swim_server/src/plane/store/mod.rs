@@ -30,7 +30,6 @@ use crate::agent::store::{NodeStore, SwimNodeStore};
 use crate::store::keystore::{KeyRequest, KeyStore, KeystoreTask};
 use crate::store::{KeyspaceName, StoreEngine, StoreKey};
 
-#[cfg(test)]
 pub mod mock;
 
 const STORE_DIR: &str = "store";

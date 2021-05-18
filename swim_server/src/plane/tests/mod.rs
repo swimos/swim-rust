@@ -15,6 +15,7 @@
 use crate::plane::lifecycle::PlaneLifecycle;
 use crate::plane::router::PlaneRouter;
 use crate::plane::spec::{PlaneSpec, RouteSpec};
+use crate::plane::store::mock::MockPlaneStore;
 use crate::plane::tests::fixture::{ReceiveAgentRoute, SendAgentRoute, TestLifecycle};
 use crate::plane::{AgentRoute, EnvChannel};
 use crate::routing::{ServerRouter, TopLevelRouterFactory};
@@ -30,7 +31,7 @@ use utilities::sync::trigger;
 mod fixture;
 
 fn make_spec<Clk: Clock, Delegate: ServerRouter + 'static>() -> (
-    PlaneSpec<Clk, EnvChannel, PlaneRouter<Delegate>>,
+    PlaneSpec<Clk, EnvChannel, PlaneRouter<Delegate>, MockPlaneStore>,
     trigger::Receiver,
 ) {
     let send_pattern = RoutePattern::parse(
@@ -59,6 +60,7 @@ fn make_spec<Clk: Clock, Delegate: ServerRouter + 'static>() -> (
         PlaneSpec {
             routes: vec![sender, reciever],
             lifecycle: Some(lifecycle.boxed()),
+            store: MockPlaneStore,
         },
         rx,
     )

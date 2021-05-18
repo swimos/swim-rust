@@ -29,6 +29,7 @@ use crate::plane::context::PlaneContext;
 use crate::plane::error::NoAgentAtRoute;
 use crate::plane::router::{PlaneRouter, PlaneRouterFactory};
 use crate::plane::spec::{PlaneSpec, RouteSpec};
+use crate::plane::store::PlaneStore;
 use crate::routing::error::{RouterError, Unresolvable};
 use crate::routing::remote::RawRoute;
 use crate::routing::{ConnectionDropped, RoutingAddr, ServerRouterFactory, TaggedEnvelope};
@@ -57,7 +58,7 @@ use utilities::uri::RelativeUri;
 
 /// Trait for agent routes. An agent route can construct and run any number of instances of a
 /// [`SwimAgent`] type.
-trait AgentRoute<Clk, Envelopes, Router>: Debug + Send {
+trait AgentRoute<Clk, Envelopes, Router, Store>: Debug + Send {
     /// Run an instance of the agent.
     ///
     /// #Arguments
@@ -76,9 +77,10 @@ trait AgentRoute<Clk, Envelopes, Router>: Debug + Send {
         clock: Clk,
         incoming_envelopes: Envelopes,
         router: Router,
+        store: Store,
     ) -> (Arc<dyn Any + Send + Sync>, BoxFuture<'static, AgentResult>);
 
-    fn boxed(self) -> BoxAgentRoute<Clk, Envelopes, Router>
+    fn boxed(self) -> BoxAgentRoute<Clk, Envelopes, Router, Store>
     where
         Self: Sized + 'static,
     {
@@ -86,7 +88,8 @@ trait AgentRoute<Clk, Envelopes, Router>: Debug + Send {
     }
 }
 
-type BoxAgentRoute<Clk, Envelopes, Router> = Box<dyn AgentRoute<Clk, Envelopes, Router> + Send>;
+type BoxAgentRoute<Clk, Envelopes, Router, Store> =
+    Box<dyn AgentRoute<Clk, Envelopes, Router, Store> + Send>;
 
 /// Endpoint connected to an agent within the plane.
 #[derive(Debug)]
@@ -266,13 +269,19 @@ impl PlaneContext for ContextImpl {
 }
 /// Contains the specifications of all routes that are within a plane and maintains the map of
 /// currently active routes.
-struct RouteResolver<Clk, DelegateFac: ServerRouterFactory> {
+struct RouteResolver<Clk, DelegateFac, Store>
+where
+    DelegateFac: ServerRouterFactory,
+    Store: PlaneStore,
+{
     /// Clock for scheduling tasks.
     clock: Clk,
     /// The configuration for the agent routes that are opened.
     execution_config: AgentExecutionConfig,
     /// The routes for the plane.
-    routes: Vec<RouteSpec<Clk, EnvChannel, PlaneRouter<DelegateFac::Router>>>,
+    routes: Vec<PlaneRouteSpec<Clk, DelegateFac, Store>>,
+    /// The store that this plane uses to create node stores.
+    store: Store,
     /// Factory to create handles to the plane router when an agent is opened.
     router_fac: PlaneRouterFactory<DelegateFac>,
     /// External trigger that is fired when the plane should stop.
@@ -283,7 +292,19 @@ struct RouteResolver<Clk, DelegateFac: ServerRouterFactory> {
     counter: u32,
 }
 
-impl<Clk: Clock, DelegateFac: ServerRouterFactory> RouteResolver<Clk, DelegateFac> {
+type PlaneRouteSpec<Clk, DelegateFac, Store> = RouteSpec<
+    Clk,
+    EnvChannel,
+    PlaneRouter<<DelegateFac as ServerRouterFactory>::Router>,
+    <Store as PlaneStore>::NodeStore,
+>;
+
+impl<Clk, DelegateFac, Store> RouteResolver<Clk, DelegateFac, Store>
+where
+    Clk: Clock,
+    DelegateFac: ServerRouterFactory,
+    Store: PlaneStore,
+{
     /// Attempts to open an agent at a specified route.
     fn try_open_route<S>(
         &mut self,
@@ -297,6 +318,7 @@ impl<Clk: Clock, DelegateFac: ServerRouterFactory> RouteResolver<Clk, DelegateFa
             clock,
             execution_config,
             routes,
+            store,
             router_fac,
             stop_trigger,
             active_routes,
@@ -315,6 +337,7 @@ impl<Clk: Clock, DelegateFac: ServerRouterFactory> RouteResolver<Clk, DelegateFa
             clock.clone(),
             ReceiverStream::new(rx).take_until(stop_trigger.clone()),
             router_fac.create_for(addr),
+            store.node_store(route.path()),
         );
         active_routes.add_endpoint(addr, route, LocalEndpoint::new(Arc::downgrade(&agent), tx));
         if spawner.try_add(task).is_err() {
@@ -352,10 +375,10 @@ const PLANE_STOPPED: &str = "The plane has stopped.";
 /// * `spawner` - Spawns tasks to run the agents for the plane.
 /// * `context_channel` - Transmitter and receiver for plane requests.
 /// * `delegate_fac` - Factory for creating delegate routers.
-pub(crate) async fn run_plane<Clk, S, DelegateFac: ServerRouterFactory>(
+pub(crate) async fn run_plane<Clk, S, DelegateFac, Store>(
     execution_config: AgentExecutionConfig,
     clock: Clk,
-    spec: PlaneSpec<Clk, EnvChannel, PlaneRouter<DelegateFac::Router>>,
+    spec: PlaneSpec<Clk, EnvChannel, PlaneRouter<DelegateFac::Router>, Store>,
     stop_trigger: trigger::Receiver,
     spawner: S,
     context_channel: (mpsc::Sender<PlaneRequest>, mpsc::Receiver<PlaneRequest>),
@@ -363,6 +386,8 @@ pub(crate) async fn run_plane<Clk, S, DelegateFac: ServerRouterFactory>(
 ) where
     Clk: Clock,
     S: Spawner<BoxFuture<'static, AgentResult>>,
+    DelegateFac: ServerRouterFactory,
+    Store: PlaneStore,
 {
     event!(Level::DEBUG, STARTING);
     pin_mut!(spawner);
@@ -377,6 +402,7 @@ pub(crate) async fn run_plane<Clk, S, DelegateFac: ServerRouterFactory>(
     let PlaneSpec {
         routes,
         mut lifecycle,
+        store,
     } = spec;
 
     let start_task = async move {
@@ -393,6 +419,7 @@ pub(crate) async fn run_plane<Clk, S, DelegateFac: ServerRouterFactory>(
             clock,
             execution_config,
             routes,
+            store,
             router_fac: PlaneRouterFactory::new(context_tx, delegate_fac),
             stop_trigger,
             active_routes: PlaneActiveRoutes::default(),
@@ -557,15 +584,16 @@ pub(crate) async fn run_plane<Clk, S, DelegateFac: ServerRouterFactory>(
     event!(Level::DEBUG, PLANE_STOPPED);
 }
 
-type PlaneAgentRoute<Clk, Delegate> = BoxAgentRoute<Clk, EnvChannel, PlaneRouter<Delegate>>;
+type PlaneAgentRoute<Clk, Delegate, Store> =
+    BoxAgentRoute<Clk, EnvChannel, PlaneRouter<Delegate>, Store>;
 type Params = HashMap<String, String>;
 
 /// Find the appropriate specification for a route along with any parameters derived from the
 /// route pattern.
-fn route_for<'a, Clk, Delegate>(
+fn route_for<'a, Clk, Delegate, Store>(
     route: &RelativeUri,
-    routes: &'a [RouteSpec<Clk, EnvChannel, PlaneRouter<Delegate>>],
-) -> Result<(&'a PlaneAgentRoute<Clk, Delegate>, Params), NoAgentAtRoute> {
+    routes: &'a [RouteSpec<Clk, EnvChannel, PlaneRouter<Delegate>, Store>],
+) -> Result<(&'a PlaneAgentRoute<Clk, Delegate, Store>, Params), NoAgentAtRoute> {
     //TODO This could be a lot more efficient though it would probably only matter for planes with a large number of routes.
     let matched = routes
         .iter()

@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use crate::agent::store::mock::MockNodeStore;
+use crate::agent::store::SwimNodeStore;
 use crate::plane::store::PlaneStore;
 use crate::store::keystore::{KeyRequest, KeystoreTask};
 use crate::store::{StoreEngine, StoreKey};
@@ -26,13 +27,13 @@ use swim_common::model::text::Text;
 #[derive(Clone, Debug)]
 pub struct MockPlaneStore;
 impl PlaneStore for MockPlaneStore {
-    type NodeStore = MockNodeStore;
+    type NodeStore = SwimNodeStore<MockPlaneStore>;
 
     fn node_store<I>(&self, _node: I) -> Self::NodeStore
     where
         I: Into<Text>,
     {
-        MockNodeStore
+        MockNodeStore::mock()
     }
 
     fn load_ranged_snapshot<F, K, V>(

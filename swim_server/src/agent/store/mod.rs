@@ -24,7 +24,6 @@ use futures::future::BoxFuture;
 use futures::FutureExt;
 use store::keyspaces::KeyType;
 
-#[cfg(test)]
 pub mod mock;
 #[cfg(test)]
 mod tests;

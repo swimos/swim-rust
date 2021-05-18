@@ -20,7 +20,9 @@ use futures::FutureExt;
 use store::{StoreError, StoreInfo};
 
 #[derive(Clone, Debug)]
-pub struct MockNodeStore;
+pub struct MockNodeStore {
+    _priv: (),
+}
 
 impl MockNodeStore {
     pub fn mock() -> SwimNodeStore<MockPlaneStore> {
