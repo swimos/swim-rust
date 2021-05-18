@@ -40,7 +40,9 @@ use std::sync::{Arc, Mutex};
 use stm::stm::Stm;
 use stm::transaction::atomically;
 use store::engines::KeyedSnapshot;
-use store::keyspaces::KeyspaceByteEngine;
+use store::keyspaces::{
+    Keyspace, KeyspaceByteEngine, KeyspaceRangedSnapshotLoad, KeyspaceResolver,
+};
 use store::{StoreError, StoreInfo};
 use swim_common::model::text::Text;
 use tokio::sync::mpsc;
@@ -181,6 +183,29 @@ impl KeystoreTask for PlaneEventStore {
     }
 }
 
+impl KeyspaceResolver for PlaneEventStore {
+    type ResolvedKeyspace = ();
+
+    fn resolve_keyspace<K: Keyspace>(&self, _space: &K) -> Option<&Self::ResolvedKeyspace> {
+        None
+    }
+}
+
+impl KeyspaceRangedSnapshotLoad for PlaneEventStore {
+    fn keyspace_load_ranged_snapshot<F, K, V, S>(
+        &self,
+        _keyspace: &S,
+        _prefix: &[u8],
+        _map_fn: F,
+    ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
+    where
+        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
+        S: Keyspace,
+    {
+        Ok(None)
+    }
+}
+
 impl PlaneStore for PlaneEventStore {
     type NodeStore = SwimNodeStore<Self>;
 
@@ -189,17 +214,6 @@ impl PlaneStore for PlaneEventStore {
         I: Into<Text>,
     {
         SwimNodeStore::new(self.clone(), node_uri)
-    }
-
-    fn load_ranged_snapshot<F, K, V>(
-        &self,
-        _prefix: StoreKey,
-        _map_fn: F,
-    ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
-    where
-        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
-    {
-        panic!("Unexpected snapshot attempt");
     }
 
     fn store_info(&self) -> StoreInfo {

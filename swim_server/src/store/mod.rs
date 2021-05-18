@@ -192,6 +192,15 @@ pub enum StoreKey {
     },
 }
 
+impl StoreKey {
+    pub fn keyspace_name(&self) -> KeyspaceName {
+        match self {
+            StoreKey::Map { .. } => KeyspaceName::Map,
+            StoreKey::Value { .. } => KeyspaceName::Value,
+        }
+    }
+}
+
 pub trait StoreEngine {
     /// Put a key-value pair into the delegate store.
     fn put(&self, key: StoreKey, value: &[u8]) -> Result<(), StoreError>;

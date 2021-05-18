@@ -12,11 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::engines::{ByteEngine, KeyedSnapshot, RangedSnapshotLoad};
+use crate::engines::{ByteEngine, KeyedSnapshot};
 use crate::iterator::{
     EngineIterOpts, EngineIterator, EnginePrefixIterator, EngineRefIterator, IteratorKey,
 };
-use crate::keyspaces::{KeyType, Keyspace, KeyspaceByteEngine, KeyspaceResolver, Keyspaces};
+use crate::keyspaces::{
+    KeyType, Keyspace, KeyspaceByteEngine, KeyspaceRangedSnapshotLoad, KeyspaceResolver, Keyspaces,
+};
 use crate::{FromKeyspaces, KvBytes, Store, StoreError, StoreInfo};
 use std::borrow::Borrow;
 use std::path::{Path, PathBuf};
@@ -38,6 +40,21 @@ impl Store for NoStore {
             path: self.path.to_string_lossy().to_string(),
             kind: "NoStore".to_string(),
         }
+    }
+}
+
+impl KeyspaceRangedSnapshotLoad for NoStore {
+    fn keyspace_load_ranged_snapshot<F, K, V, S>(
+        &self,
+        _keyspace: &S,
+        _prefix: &[u8],
+        _map_fn: F,
+    ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
+    where
+        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
+        S: Keyspace,
+    {
+        Ok(None)
     }
 }
 
@@ -78,21 +95,6 @@ impl KeyspaceByteEngine for NoStore {
         _value: KeyType,
     ) -> Result<(), StoreError> {
         Ok(())
-    }
-}
-
-impl RangedSnapshotLoad for NoStore {
-    fn load_ranged_snapshot<F, K, V, S>(
-        &self,
-        _keyspace: S,
-        _prefix: &[u8],
-        _map_fn: F,
-    ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
-    where
-        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
-        S: Keyspace,
-    {
-        Ok(None)
     }
 }
 

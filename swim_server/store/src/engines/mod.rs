@@ -18,8 +18,9 @@ use std::vec::IntoIter;
 pub use nostore::{NoStore, NoStoreOpts};
 pub use rocks::{RocksEngine, RocksIterator, RocksOpts, RocksPrefixIterator};
 
-use crate::keyspaces::{Keyspace, Keyspaces};
+use crate::keyspaces::Keyspaces;
 use crate::StoreError;
+use serde::Serialize;
 
 mod nostore;
 mod rocks;
@@ -58,6 +59,8 @@ pub trait FromKeyspaces: Sized {
 
 /// A trait for executing ranged snapshot reads on stores.
 pub trait RangedSnapshotLoad {
+    type Prefix: Serialize;
+
     /// Execute a ranged snapshot read on the store, seeking by `prefix` and deserializing results
     /// with `map_fn`.
     ///
@@ -72,15 +75,13 @@ pub trait RangedSnapshotLoad {
     /// # Errors
     /// Errors if an error is encountered when attempting to execute the ranged snapshot on the
     /// store engine or if the `map_fn` fails to deserialize a key or value.
-    fn load_ranged_snapshot<F, K, V, S>(
+    fn load_ranged_snapshot<F, K, V>(
         &self,
-        keyspace: S,
-        prefix: &[u8],
+        prefix: Self::Prefix,
         map_fn: F,
     ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
     where
-        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
-        S: Keyspace;
+        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>;
 }
 
 /// An owned snapshot of deserialized keys and values produced by `RangedSnapshot`.

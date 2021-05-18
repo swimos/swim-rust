@@ -17,6 +17,7 @@ use crate::plane::store::mock::MockPlaneStore;
 use crate::store::{StoreEngine, StoreKey};
 use futures::future::{ready, BoxFuture};
 use futures::FutureExt;
+use store::engines::{KeyedSnapshot, RangedSnapshotLoad};
 use store::{StoreError, StoreInfo};
 
 #[derive(Clone, Debug)]
@@ -46,6 +47,21 @@ impl NodeStore for MockNodeStore {
         I: Into<String>,
     {
         ready(0).boxed()
+    }
+}
+
+impl RangedSnapshotLoad for MockNodeStore {
+    type Prefix = ();
+
+    fn load_ranged_snapshot<F, K, V>(
+        &self,
+        _prefix: Self::Prefix,
+        _map_fn: F,
+    ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
+    where
+        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
+    {
+        Ok(None)
     }
 }
 

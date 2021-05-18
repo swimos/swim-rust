@@ -29,7 +29,9 @@ use crate::agent::store::{NodeStore, SwimNodeStore};
 use crate::store::keystore::{KeyRequest, KeyStore, KeystoreTask};
 use crate::store::{KeyspaceName, StoreEngine, StoreKey};
 use store::engines::KeyedSnapshot;
-use store::keyspaces::{KeyType, KeyspaceByteEngine, Keyspaces};
+use store::keyspaces::{
+    KeyType, Keyspace, KeyspaceByteEngine, KeyspaceRangedSnapshotLoad, KeyspaceResolver, Keyspaces,
+};
 
 pub mod mock;
 
@@ -52,7 +54,16 @@ where
 /// A trait for defining plane stores which will create node stores.
 pub trait PlaneStore
 where
-    Self: StoreEngine + KeystoreTask + Sized + Debug + Send + Sync + Clone + 'static,
+    Self: StoreEngine
+        + KeystoreTask
+        + KeyspaceResolver
+        + KeyspaceRangedSnapshotLoad
+        + Sized
+        + Debug
+        + Send
+        + Sync
+        + Clone
+        + 'static,
 {
     /// The type of node stores which are created.
     type NodeStore: NodeStore;
@@ -61,19 +72,6 @@ where
     fn node_store<I>(&self, node_uri: I) -> Self::NodeStore
     where
         I: Into<Text>;
-
-    /// Executes a ranged snapshot read prefixed by a lane key and deserialize each key-value pair
-    /// using `map_fn`.
-    ///
-    /// Returns an optional snapshot iterator if entries were found that will yield deserialized
-    /// key-value pairs.
-    fn load_ranged_snapshot<F, K, V>(
-        &self,
-        prefix: StoreKey,
-        map_fn: F,
-    ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
-    where
-        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>;
 
     /// Returns information about the delegate store
     fn store_info(&self) -> StoreInfo;
@@ -136,23 +134,6 @@ where
         SwimNodeStore::new(self.clone(), node)
     }
 
-    fn load_ranged_snapshot<F, K, V>(
-        &self,
-        prefix: StoreKey,
-        map_fn: F,
-    ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
-    where
-        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
-    {
-        let namespace = match &prefix {
-            StoreKey::Map { .. } => KeyspaceName::Map,
-            StoreKey::Value { .. } => KeyspaceName::Value,
-        };
-
-        self.delegate
-            .load_ranged_snapshot(namespace, serialize(&prefix)?.as_slice(), map_fn)
-    }
-
     fn store_info(&self) -> StoreInfo {
         self.delegate.store_info()
     }
@@ -162,6 +143,33 @@ where
         I: Into<String>,
     {
         self.keystore.id_for(lane.into()).boxed()
+    }
+}
+
+impl<D: Store> KeyspaceResolver for SwimPlaneStore<D> {
+    type ResolvedKeyspace = D::ResolvedKeyspace;
+
+    fn resolve_keyspace<K: Keyspace>(&self, space: &K) -> Option<&Self::ResolvedKeyspace> {
+        self.delegate.resolve_keyspace(space)
+    }
+}
+
+impl<D> KeyspaceRangedSnapshotLoad for SwimPlaneStore<D>
+where
+    D: Store,
+{
+    fn keyspace_load_ranged_snapshot<F, K, V, S>(
+        &self,
+        keyspace: &S,
+        prefix: &[u8],
+        map_fn: F,
+    ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
+    where
+        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
+        S: Keyspace,
+    {
+        self.delegate
+            .keyspace_load_ranged_snapshot(keyspace, prefix, map_fn)
     }
 }
 

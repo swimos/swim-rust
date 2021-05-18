@@ -34,15 +34,19 @@ use crate::agent::lane::model::DeferredSubscription;
 use crate::agent::lane::{InvalidForm, LaneModel};
 use futures::stream::{iter, Iter};
 use futures::Stream;
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::num::NonZeroUsize;
 use stm::var::observer::{Observer, ObserverStream, ObserverSubscriber};
+use store::engines::KeyedSnapshot;
 use swim_warp::model::map::MapUpdate;
 use tracing::{event, Level};
 use utilities::future::{FlatmapStream, SwimStreamExt, Transform};
 
+pub mod map_store;
 mod summary;
 
 /// A lane consisting of a map from keys to values.
@@ -86,6 +90,20 @@ where
             },
             observer,
         )
+    }
+}
+
+impl<K, V> MapLane<K, V>
+where
+    K: Debug + Form + Send + Sync + Serialize + DeserializeOwned + 'static,
+    V: Debug + Send + Sync + Serialize + DeserializeOwned + 'static,
+{
+    pub(crate) async fn load_snapshot(&mut self, snapshot: KeyedSnapshot<K, V>) {
+        let map = snapshot
+            .into_iter()
+            .map(|(k, v)| (k.into_value(), TVar::new(v)))
+            .collect();
+        self.map_state = TVar::new(map);
     }
 }
 

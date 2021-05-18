@@ -21,7 +21,9 @@ use store::engines::{FromKeyspaces, KeyedSnapshot, RangedSnapshotLoad};
 use store::iterator::{
     EngineIterOpts, EngineIterator, EnginePrefixIterator, EngineRefIterator, IteratorKey,
 };
-use store::keyspaces::{Keyspace, KeyspaceByteEngine, KeyspaceResolver, Keyspaces};
+use store::keyspaces::{
+    Keyspace, KeyspaceByteEngine, KeyspaceRangedSnapshotLoad, KeyspaceResolver, Keyspaces,
+};
 use store::{KvBytes, Store, StoreError, StoreInfo};
 
 /// A store which will persist no data and exists purely to uphold the minimum contract required
@@ -45,16 +47,31 @@ impl Store for NoStore {
     }
 }
 
-impl RangedSnapshotLoad for NoStore {
-    fn load_ranged_snapshot<F, K, V, S>(
+impl KeyspaceRangedSnapshotLoad for NoStore {
+    fn keyspace_load_ranged_snapshot<F, K, V, S>(
         &self,
-        _keyspace: S,
+        _keyspace: &S,
         _prefix: &[u8],
         _map_fn: F,
     ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
     where
         F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
         S: Keyspace,
+    {
+        Ok(None)
+    }
+}
+
+impl RangedSnapshotLoad for NoStore {
+    type Prefix = ();
+
+    fn load_ranged_snapshot<F, K, V>(
+        &self,
+        _prefix: Self::Prefix,
+        _map_fn: F,
+    ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
+    where
+        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
     {
         Ok(None)
     }

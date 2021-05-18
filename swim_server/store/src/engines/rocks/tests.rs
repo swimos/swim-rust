@@ -12,10 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::engines::{RangedSnapshotLoad, RocksOpts};
+use crate::engines::RocksOpts;
 use crate::iterator::{EngineIterator, EngineRefIterator};
 use crate::keyspaces::{
-    KeyType, Keyspace, KeyspaceByteEngine, KeyspaceDef, KeyspaceResolver, Keyspaces,
+    KeyType, Keyspace, KeyspaceByteEngine, KeyspaceDef, KeyspaceRangedSnapshotLoad,
+    KeyspaceResolver, Keyspaces,
 };
 use crate::{deserialize, deserialize_key, serialize, StoreError, TransientDatabase};
 use rocksdb::{MergeOperands, Options, SliceTransform};
@@ -212,7 +213,7 @@ fn map_fn<'a>(key: &'a [u8], value: &'a [u8]) -> Result<(String, String), StoreE
 #[test]
 pub fn empty_snapshot() {
     let db = default_db();
-    let result = db.load_ranged_snapshot(KeyspaceName::Value, b"prefix", map_fn);
+    let result = db.keyspace_load_ranged_snapshot(&KeyspaceName::Value, b"prefix", map_fn);
     match result {
         Ok(ss) => {
             assert!(ss.is_none());
@@ -254,7 +255,8 @@ pub fn ranged_snapshot() {
         assert!(result.is_ok());
     }
 
-    let snapshot_result = db.load_ranged_snapshot(KeyspaceName::Value, prefix.as_bytes(), map_fn);
+    let snapshot_result =
+        db.keyspace_load_ranged_snapshot(&KeyspaceName::Value, prefix.as_bytes(), map_fn);
     assert!(matches!(snapshot_result, Ok(Some(_))));
 
     let snapshot = snapshot_result.unwrap().unwrap();

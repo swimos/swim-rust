@@ -1,0 +1,118 @@
+// Copyright 2015-2021 SWIM.AI inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+use crate::agent::lane::model::map::map_store::MapDataModel;
+use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
+use crate::agent::lane::store::error::{LaneStoreErrorReport, StoreErrorHandler};
+use crate::agent::lane::store::StoreIo;
+use crate::agent::store::NodeStore;
+use crate::store::StoreKey;
+use futures::future::BoxFuture;
+use futures::{Stream, StreamExt};
+use serde::de::DeserializeOwned;
+use serde::Serialize;
+use std::fmt::Debug;
+use store::engines::RangedSnapshotLoad;
+use store::Snapshot;
+use swim_common::form::Form;
+
+/// Map lane store IO task.
+///
+/// This task loads the backing Map lane with a Map from the store if it exists and then
+/// stores all of the events into the delegate store. If any errors are produced, the task will fail
+/// after the store error handler's maximum allowed error policy has been reached.
+///
+/// # Type parameters:
+/// `T` - the type of the Map lane.
+/// `Events` - events produced by the lane.
+pub struct MapLaneStoreIo<K, V, Events, Store> {
+    lane: MapLane<K, V>,
+    events: Events,
+    store: Store,
+}
+
+impl<K, V, Events, Store> MapLaneStoreIo<K, V, Events, Store> {
+    pub fn new(
+        lane: MapLane<K, V>,
+        events: Events,
+        store: Store,
+    ) -> MapLaneStoreIo<K, V, Events, Store> {
+        MapLaneStoreIo {
+            lane,
+            events,
+            store,
+        }
+    }
+}
+
+impl<Store, Events, K, V> StoreIo for MapLaneStoreIo<K, V, Events, Store>
+where
+    Store: NodeStore + RangedSnapshotLoad<Prefix = StoreKey>,
+    Events: Stream<Item = MapLaneEvent<K, V>> + Unpin + Send + Sync + 'static,
+    K: Form + Debug + Send + Sync + Serialize + DeserializeOwned + 'static,
+    V: Debug + Send + Sync + Serialize + DeserializeOwned + 'static,
+{
+    fn attach(
+        self,
+        lane_uri: String,
+        mut error_handler: StoreErrorHandler,
+    ) -> BoxFuture<'static, Result<(), LaneStoreErrorReport>> {
+        Box::pin(async move {
+            let MapLaneStoreIo {
+                mut lane,
+                mut events,
+                store,
+            } = self;
+            let lane_id = store.lane_id_of(lane_uri).await;
+            let info = store.store_info();
+            let model = MapDataModel::new(store, lane_id);
+
+            match model.snapshot() {
+                Ok(Some(snapshot)) => lane.load_snapshot(snapshot).await,
+                Ok(None) => {}
+                Err(e) => return Err(LaneStoreErrorReport::for_error(info, e)),
+            }
+
+            while let Some(event) = events.next().await {
+                match event {
+                    MapLaneEvent::Checkpoint(_) => {}
+                    MapLaneEvent::Clear => {
+                        if let Err(e) = model.clear() {
+                            error_handler.on_error(e)?;
+                        }
+                    }
+                    MapLaneEvent::Update(key, value) => {
+                        if let Err(e) = model.put(&key, &value) {
+                            error_handler.on_error(e)?;
+                        }
+                    }
+                    MapLaneEvent::Remove(key) => {
+                        if let Err(e) = model.delete(&key) {
+                            error_handler.on_error(e)?;
+                        }
+                    }
+                }
+            }
+            Ok(())
+        })
+    }
+
+    fn attach_boxed(
+        self: Box<Self>,
+        lane_uri: String,
+        error_handler: StoreErrorHandler,
+    ) -> BoxFuture<'static, Result<(), LaneStoreErrorReport>> {
+        (*self).attach(lane_uri, error_handler)
+    }
+}

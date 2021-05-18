@@ -22,12 +22,12 @@ use std::mem::size_of;
 use std::path::Path;
 use std::sync::Arc;
 use store::engines::{
-    FromKeyspaces, KeyedSnapshot, RangedSnapshotLoad, RocksEngine, RocksIterator, RocksOpts,
-    RocksPrefixIterator,
+    FromKeyspaces, KeyedSnapshot, RocksEngine, RocksIterator, RocksOpts, RocksPrefixIterator,
 };
 use store::iterator::{EngineIterOpts, EngineRefIterator};
 use store::keyspaces::{
-    KeyType, Keyspace, KeyspaceByteEngine, KeyspaceDef, KeyspaceResolver, Keyspaces,
+    KeyType, Keyspace, KeyspaceByteEngine, KeyspaceDef, KeyspaceRangedSnapshotLoad,
+    KeyspaceResolver, Keyspaces,
 };
 use store::{ColumnFamily, Options, SliceTransform, Store, StoreError, StoreInfo};
 
@@ -123,10 +123,10 @@ impl KeyspaceResolver for RocksDatabase {
     }
 }
 
-impl RangedSnapshotLoad for RocksDatabase {
-    fn load_ranged_snapshot<F, K, V, S>(
+impl KeyspaceRangedSnapshotLoad for RocksDatabase {
+    fn keyspace_load_ranged_snapshot<F, K, V, S>(
         &self,
-        keyspace: S,
+        keyspace: &S,
         prefix: &[u8],
         map_fn: F,
     ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
@@ -134,7 +134,8 @@ impl RangedSnapshotLoad for RocksDatabase {
         F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
         S: Keyspace,
     {
-        self.db.load_ranged_snapshot(keyspace, prefix, map_fn)
+        self.db
+            .keyspace_load_ranged_snapshot(keyspace, prefix, map_fn)
     }
 }
 

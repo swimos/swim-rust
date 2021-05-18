@@ -18,9 +18,11 @@ mod tests;
 mod iterator;
 
 pub use crate::engines::rocks::iterator::{RocksIterator, RocksPrefixIterator};
-use crate::engines::{KeyedSnapshot, RangedSnapshotLoad};
+use crate::engines::KeyedSnapshot;
 use crate::iterator::{EnginePrefixIterator, EngineRefIterator};
-use crate::keyspaces::{KeyType, Keyspace, KeyspaceByteEngine, KeyspaceResolver, Keyspaces};
+use crate::keyspaces::{
+    KeyType, Keyspace, KeyspaceByteEngine, KeyspaceRangedSnapshotLoad, KeyspaceResolver, Keyspaces,
+};
 use crate::{serialize, FromKeyspaces, Store, StoreError, StoreInfo};
 use rocksdb::{ColumnFamily, ColumnFamilyDescriptor};
 use rocksdb::{Error, Options, DB};
@@ -104,10 +106,10 @@ impl Default for RocksOpts {
     }
 }
 
-impl RangedSnapshotLoad for RocksEngine {
-    fn load_ranged_snapshot<F, K, V, S>(
+impl KeyspaceRangedSnapshotLoad for RocksEngine {
+    fn keyspace_load_ranged_snapshot<F, K, V, S>(
         &self,
-        keyspace: S,
+        keyspace: &S,
         prefix: &[u8],
         map_fn: F,
     ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
@@ -116,7 +118,7 @@ impl RangedSnapshotLoad for RocksEngine {
         S: Keyspace,
     {
         let resolved = self
-            .resolve_keyspace(&keyspace)
+            .resolve_keyspace(keyspace)
             .ok_or(StoreError::KeyspaceNotFound)?;
         let mut it = self.prefix_iterator(resolved, prefix)?;
         let mut data = Vec::new();

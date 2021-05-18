@@ -15,14 +15,14 @@
 use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
 
-use store::{StoreError, StoreInfo};
+use store::{serialize, StoreError, StoreInfo};
 use swim_common::model::text::Text;
 
 use crate::plane::store::PlaneStore;
 use crate::store::{StoreEngine, StoreKey};
 use futures::future::BoxFuture;
 use futures::FutureExt;
-use store::engines::KeyedSnapshot;
+use store::engines::{KeyedSnapshot, RangedSnapshotLoad};
 use store::keyspaces::KeyType;
 
 pub mod mock;
@@ -40,7 +40,9 @@ mod tests;
 /// the store; providing that the top-level server store is also persistent.
 ///
 /// Transient data models will live in memory for the duration that a handle to the model exists.
-pub trait NodeStore: StoreEngine + Send + Sync + Clone + Debug + 'static {
+pub trait NodeStore:
+    StoreEngine + RangedSnapshotLoad + Send + Sync + Clone + Debug + 'static
+{
     type Delegate: PlaneStore;
 
     /// Returns information about the delegate store
@@ -86,21 +88,23 @@ impl<D: PlaneStore> SwimNodeStore<D> {
             node_uri: node_uri.into(),
         }
     }
+}
 
-    /// Executes a ranged snapshot read prefixed by a lane key and deserialize each key-value pair
-    /// using `map_fn`.
-    ///
-    /// Returns an optional snapshot iterator if entries were found that will yield deserialized
-    /// key-value pairs.
-    pub fn load_ranged_snapshot<F, K, V>(
+impl<D: PlaneStore> RangedSnapshotLoad for SwimNodeStore<D> {
+    type Prefix = StoreKey;
+
+    fn load_ranged_snapshot<F, K, V>(
         &self,
-        prefix: StoreKey,
+        prefix: Self::Prefix,
         map_fn: F,
     ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
     where
         F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
     {
-        self.delegate.load_ranged_snapshot(prefix, map_fn)
+        let keyspace = prefix.keyspace_name();
+        let prefix = serialize(&prefix)?;
+        self.delegate
+            .keyspace_load_ranged_snapshot(&keyspace, prefix.as_slice(), map_fn)
     }
 }
 
