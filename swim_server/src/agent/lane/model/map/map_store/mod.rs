@@ -13,18 +13,19 @@
 // limitations under the License.
 
 use crate::agent::store::NodeStore;
-use crate::store::StoreKey;
+use crate::store::{KeyspaceName, StoreKey};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::marker::PhantomData;
-use store::engines::{KeyedSnapshot, RangedSnapshotLoad};
-use store::keyspaces::KeyType;
+use store::engines::KeyedSnapshot;
+use store::keyspaces::{KeyType, KeyspaceRangedSnapshotLoad};
 use store::{deserialize, serialize, serialize_then, Snapshot, StoreError};
 
 #[cfg(test)]
 mod tests;
 
 mod io;
+pub use io::MapLaneStoreIo;
 
 const INCONSISTENT_DB: &str = "Missing key or value in store";
 
@@ -104,7 +105,7 @@ where
 
 impl<D, K, V> Snapshot<K, V> for MapDataModel<D, K, V>
 where
-    D: NodeStore + RangedSnapshotLoad<Prefix = StoreKey>,
+    D: NodeStore + KeyspaceRangedSnapshotLoad,
     K: DeserializeOwned,
     V: DeserializeOwned,
 {
@@ -116,18 +117,26 @@ where
             key: None,
         };
 
-        self.delegate.load_ranged_snapshot(store_key, |key, value| {
-            let store_key = deserialize::<StoreKey>(&key)?;
+        let prefix = serialize(&store_key)?;
 
-            match store_key {
-                StoreKey::Map { key, .. } => {
-                    let key = deserialize::<K>(&key.ok_or(StoreError::KeyNotFound)?)?;
-                    let value = deserialize::<V>(&value)?;
+        self.delegate.keyspace_load_ranged_snapshot(
+            &KeyspaceName::Map,
+            prefix.as_slice(),
+            |key, value| {
+                let store_key = deserialize::<StoreKey>(&key)?;
 
-                    Ok((key, value))
+                match store_key {
+                    StoreKey::Map { key, .. } => {
+                        let key = deserialize::<K>(&key.ok_or(StoreError::KeyNotFound)?)?;
+                        let value = deserialize::<V>(&value)?;
+
+                        Ok((key, value))
+                    }
+                    StoreKey::Value { .. } => {
+                        Err(StoreError::Decoding(INCONSISTENT_DB.to_string()))
+                    }
                 }
-                StoreKey::Value { .. } => Err(StoreError::Decoding(INCONSISTENT_DB.to_string())),
-            }
-        })
+            },
+        )
     }
 }

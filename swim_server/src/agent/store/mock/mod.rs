@@ -17,7 +17,8 @@ use crate::plane::store::mock::MockPlaneStore;
 use crate::store::{StoreEngine, StoreKey};
 use futures::future::{ready, BoxFuture};
 use futures::FutureExt;
-use store::engines::{KeyedSnapshot, RangedSnapshotLoad};
+use store::engines::KeyedSnapshot;
+use store::keyspaces::{Keyspace, KeyspaceRangedSnapshotLoad};
 use store::{StoreError, StoreInfo};
 
 #[derive(Clone, Debug)]
@@ -50,16 +51,16 @@ impl NodeStore for MockNodeStore {
     }
 }
 
-impl RangedSnapshotLoad for MockNodeStore {
-    type Prefix = ();
-
-    fn load_ranged_snapshot<F, K, V>(
+impl KeyspaceRangedSnapshotLoad for MockNodeStore {
+    fn keyspace_load_ranged_snapshot<F, K, V, S>(
         &self,
-        _prefix: Self::Prefix,
+        _keyspace: &S,
+        _prefix: &[u8],
         _map_fn: F,
     ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
     where
         F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
+        S: Keyspace,
     {
         Ok(None)
     }

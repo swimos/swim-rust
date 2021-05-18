@@ -15,15 +15,15 @@
 use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
 
-use store::{serialize, StoreError, StoreInfo};
+use store::{StoreError, StoreInfo};
 use swim_common::model::text::Text;
 
 use crate::plane::store::PlaneStore;
 use crate::store::{StoreEngine, StoreKey};
 use futures::future::BoxFuture;
 use futures::FutureExt;
-use store::engines::{KeyedSnapshot, RangedSnapshotLoad};
-use store::keyspaces::KeyType;
+use store::engines::KeyedSnapshot;
+use store::keyspaces::{KeyType, Keyspace, KeyspaceRangedSnapshotLoad};
 
 pub mod mock;
 #[cfg(test)]
@@ -41,7 +41,7 @@ mod tests;
 ///
 /// Transient data models will live in memory for the duration that a handle to the model exists.
 pub trait NodeStore:
-    StoreEngine + RangedSnapshotLoad + Send + Sync + Clone + Debug + 'static
+    StoreEngine + KeyspaceRangedSnapshotLoad + Send + Sync + Clone + Debug + 'static
 {
     type Delegate: PlaneStore;
 
@@ -90,21 +90,19 @@ impl<D: PlaneStore> SwimNodeStore<D> {
     }
 }
 
-impl<D: PlaneStore> RangedSnapshotLoad for SwimNodeStore<D> {
-    type Prefix = StoreKey;
-
-    fn load_ranged_snapshot<F, K, V>(
+impl<D: PlaneStore> KeyspaceRangedSnapshotLoad for SwimNodeStore<D> {
+    fn keyspace_load_ranged_snapshot<F, K, V, S>(
         &self,
-        prefix: Self::Prefix,
+        keyspace: &S,
+        prefix: &[u8],
         map_fn: F,
     ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
     where
         F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
+        S: Keyspace,
     {
-        let keyspace = prefix.keyspace_name();
-        let prefix = serialize(&prefix)?;
         self.delegate
-            .keyspace_load_ranged_snapshot(&keyspace, prefix.as_slice(), map_fn)
+            .keyspace_load_ranged_snapshot(keyspace, prefix, map_fn)
     }
 }
 

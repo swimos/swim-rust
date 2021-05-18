@@ -17,7 +17,7 @@ use futures::future::BoxFuture;
 use futures::{Stream, StreamExt};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use store::engines::{FromKeyspaces, KeyedSnapshot, RangedSnapshotLoad};
+use store::engines::{FromKeyspaces, KeyedSnapshot};
 use store::iterator::{
     EngineIterOpts, EngineIterator, EnginePrefixIterator, EngineRefIterator, IteratorKey,
 };
@@ -57,21 +57,6 @@ impl KeyspaceRangedSnapshotLoad for NoStore {
     where
         F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
         S: Keyspace,
-    {
-        Ok(None)
-    }
-}
-
-impl RangedSnapshotLoad for NoStore {
-    type Prefix = ();
-
-    fn load_ranged_snapshot<F, K, V>(
-        &self,
-        _prefix: Self::Prefix,
-        _map_fn: F,
-    ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
-    where
-        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
     {
         Ok(None)
     }

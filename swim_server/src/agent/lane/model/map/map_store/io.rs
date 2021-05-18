@@ -17,13 +17,12 @@ use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::store::error::{LaneStoreErrorReport, StoreErrorHandler};
 use crate::agent::lane::store::StoreIo;
 use crate::agent::store::NodeStore;
-use crate::store::StoreKey;
 use futures::future::BoxFuture;
 use futures::{Stream, StreamExt};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::fmt::Debug;
-use store::engines::RangedSnapshotLoad;
+use store::keyspaces::KeyspaceRangedSnapshotLoad;
 use store::Snapshot;
 use swim_common::form::Form;
 
@@ -58,7 +57,7 @@ impl<K, V, Events, Store> MapLaneStoreIo<K, V, Events, Store> {
 
 impl<Store, Events, K, V> StoreIo for MapLaneStoreIo<K, V, Events, Store>
 where
-    Store: NodeStore + RangedSnapshotLoad<Prefix = StoreKey>,
+    Store: NodeStore + KeyspaceRangedSnapshotLoad,
     Events: Stream<Item = MapLaneEvent<K, V>> + Unpin + Send + Sync + 'static,
     K: Form + Debug + Send + Sync + Serialize + DeserializeOwned + 'static,
     V: Debug + Send + Sync + Serialize + DeserializeOwned + 'static,

@@ -79,6 +79,7 @@ use utilities::uri::RelativeUri;
 
 use crate::agent::lane::store::task::{NodeStoreErrors, NodeStoreTask};
 pub use crate::agent::lane::store::{LaneNoStore, StoreIo};
+use crate::agent::model::map::map_store::MapLaneStoreIo;
 use crate::agent::store::NodeStore;
 use crate::meta::info::{LaneInfo, LaneKind};
 use crate::meta::log::NodeLogger;
@@ -1037,7 +1038,7 @@ pub fn make_map_lane<Agent, Context, K, V, L, P, Store>(
     lifecycle: L,
     projection: P,
     transient: bool,
-    _store: Store,
+    store: Store,
 ) -> (
     MapLane<K, V>,
     impl LaneTasks<Agent, Context>,
@@ -1066,14 +1067,18 @@ where
     let tasks = MapLifecycleTasks(LifecycleTasks {
         name: name.into(),
         lifecycle,
-        event_stream: summaries_to_events(observer),
+        event_stream: summaries_to_events(observer.clone()),
         projection,
     });
 
     let store_io: Box<dyn StoreIo> = if transient {
         Box::new(LaneNoStore)
     } else {
-        unimplemented!()
+        Box::new(MapLaneStoreIo::new(
+            lane.clone(),
+            summaries_to_events(observer.clone()),
+            store,
+        ))
     };
 
     let io = LaneIo {

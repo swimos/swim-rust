@@ -25,7 +25,8 @@ use futures::FutureExt;
 use std::fmt::Debug;
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
-use store::engines::{KeyedSnapshot, RangedSnapshotLoad};
+use store::engines::KeyedSnapshot;
+use store::keyspaces::{Keyspace, KeyspaceRangedSnapshotLoad};
 use store::{serialize, StoreError, StoreInfo};
 use utilities::sync::trigger;
 
@@ -53,16 +54,16 @@ impl NodeStore for TrackingValueStore {
     }
 }
 
-impl RangedSnapshotLoad for TrackingValueStore {
-    type Prefix = ();
-
-    fn load_ranged_snapshot<F, K, V>(
+impl KeyspaceRangedSnapshotLoad for TrackingValueStore {
+    fn keyspace_load_ranged_snapshot<F, K, V, S>(
         &self,
-        _prefix: Self::Prefix,
+        _keyspace: &S,
+        _prefix: &[u8],
         _map_fn: F,
     ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
     where
         F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
+        S: Keyspace,
     {
         panic!("Unexpected snapshot request")
     }
@@ -249,16 +250,16 @@ impl NodeStore for FailingStore {
     }
 }
 
-impl RangedSnapshotLoad for FailingStore {
-    type Prefix = ();
-
-    fn load_ranged_snapshot<F, K, V>(
+impl KeyspaceRangedSnapshotLoad for FailingStore {
+    fn keyspace_load_ranged_snapshot<F, K, V, S>(
         &self,
-        _prefix: Self::Prefix,
+        _keyspace: &S,
+        _prefix: &[u8],
         _map_fn: F,
     ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
     where
         F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
+        S: Keyspace,
     {
         panic!("Unexpected snapshot request")
     }

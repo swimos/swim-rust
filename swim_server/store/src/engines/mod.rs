@@ -20,7 +20,6 @@ pub use rocks::{RocksEngine, RocksIterator, RocksOpts, RocksPrefixIterator};
 
 use crate::keyspaces::Keyspaces;
 use crate::StoreError;
-use serde::Serialize;
 
 mod nostore;
 mod rocks;
@@ -55,33 +54,6 @@ pub trait FromKeyspaces: Sized {
         db_opts: &Self::Opts,
         keyspaces: Keyspaces<Self>,
     ) -> Result<Self, StoreError>;
-}
-
-/// A trait for executing ranged snapshot reads on stores.
-pub trait RangedSnapshotLoad {
-    type Prefix: Serialize;
-
-    /// Execute a ranged snapshot read on the store, seeking by `prefix` and deserializing results
-    /// with `map_fn`.
-    ///
-    /// Returns `Ok(None)` if no records matched `prefix` or `Ok(Some)` if matches were found.
-    ///
-    /// # Example:
-    /// Given a store engine that stores records for map lanes where the format of
-    /// `/node_uri/lane_uri/key` is used as the key. One could execute a ranged snapshot on the
-    /// store engine with a prefix of `/node_1/lane_1/` to load all of the keys and values for that
-    /// lane.
-    ///
-    /// # Errors
-    /// Errors if an error is encountered when attempting to execute the ranged snapshot on the
-    /// store engine or if the `map_fn` fails to deserialize a key or value.
-    fn load_ranged_snapshot<F, K, V>(
-        &self,
-        prefix: Self::Prefix,
-        map_fn: F,
-    ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
-    where
-        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>;
 }
 
 /// An owned snapshot of deserialized keys and values produced by `RangedSnapshot`.
