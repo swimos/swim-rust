@@ -32,18 +32,27 @@ use std::sync::Arc;
 /// # Type parameters:
 /// `T` - the type of the value lane.
 /// `Events` - events produced by the lane.
-pub struct ValueLaneStoreIo<T, Events> {
+pub struct ValueLaneStoreIo<Store, T, Events> {
+    store: Store,
     lane: ValueLane<T>,
     events: Events,
 }
 
-impl<T, Events> ValueLaneStoreIo<T, Events> {
-    pub fn new(lane: ValueLane<T>, events: Events) -> ValueLaneStoreIo<T, Events> {
-        ValueLaneStoreIo { lane, events }
+impl<Store, T, Events> ValueLaneStoreIo<Store, T, Events> {
+    pub fn new(
+        store: Store,
+        lane: ValueLane<T>,
+        events: Events,
+    ) -> ValueLaneStoreIo<Store, T, Events> {
+        ValueLaneStoreIo {
+            store,
+            lane,
+            events,
+        }
     }
 }
 
-impl<Store, Events, T> StoreIo<Store> for ValueLaneStoreIo<T, Events>
+impl<Store, Events, T> StoreIo for ValueLaneStoreIo<Store, T, Events>
 where
     Store: NodeStore,
     Events: Stream<Item = Arc<T>> + Unpin + Send + Sync + 'static,
@@ -51,14 +60,17 @@ where
 {
     fn attach(
         self,
-        node_store: Store,
         lane_uri: String,
         mut error_handler: StoreErrorHandler,
     ) -> BoxFuture<'static, Result<(), LaneStoreErrorReport>> {
         Box::pin(async move {
-            let ValueLaneStoreIo { lane, mut events } = self;
-            let lane_id = node_store.lane_id_of(lane_uri).await;
-            let model = ValueDataModel::new(node_store, lane_id);
+            let ValueLaneStoreIo {
+                store,
+                lane,
+                mut events,
+            } = self;
+            let lane_id = store.lane_id_of(lane_uri).await;
+            let model = ValueDataModel::new(store, lane_id);
 
             match model.load() {
                 Ok(Some(value)) => lane.store(value).await,
@@ -80,10 +92,9 @@ where
 
     fn attach_boxed(
         self: Box<Self>,
-        store: Store,
         lane_uri: String,
         error_handler: StoreErrorHandler,
     ) -> BoxFuture<'static, Result<(), LaneStoreErrorReport>> {
-        (*self).attach(store, lane_uri, error_handler)
+        (*self).attach(lane_uri, error_handler)
     }
 }

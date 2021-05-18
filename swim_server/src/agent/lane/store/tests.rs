@@ -16,8 +16,6 @@ use crate::agent::lane::store::error::{LaneStoreErrorReport, StoreErrorHandler};
 use crate::agent::lane::store::task::{NodeStoreErrors, NodeStoreTask};
 use crate::agent::lane::store::StoreIo;
 use crate::agent::store::mock::MockNodeStore;
-use crate::agent::store::SwimNodeStore;
-use crate::plane::store::mock::MockPlaneStore;
 use futures::future::pending;
 use futures::future::BoxFuture;
 use futures::Future;
@@ -117,13 +115,12 @@ fn err_operational() {
 }
 
 struct TestStoreIo<T>(T);
-impl<T> StoreIo<SwimNodeStore<MockPlaneStore>> for TestStoreIo<T>
+impl<T> StoreIo for TestStoreIo<T>
 where
     T: Future<Output = Result<(), LaneStoreErrorReport>> + Send + 'static,
 {
     fn attach(
         self,
-        _store: SwimNodeStore<MockPlaneStore>,
         _lane_uri: String,
         _error_handler: StoreErrorHandler,
     ) -> BoxFuture<'static, Result<(), LaneStoreErrorReport>> {
@@ -132,18 +129,16 @@ where
 
     fn attach_boxed(
         self: Box<Self>,
-        store: SwimNodeStore<MockPlaneStore>,
         lane_uri: String,
         error_handler: StoreErrorHandler,
     ) -> BoxFuture<'static, Result<(), LaneStoreErrorReport>> {
-        (*self).attach(store, lane_uri, error_handler)
+        (*self).attach(lane_uri, error_handler)
     }
 }
 
 #[tokio::test]
 async fn task_ok() {
-    let test_io: Box<dyn StoreIo<SwimNodeStore<MockPlaneStore>>> =
-        Box::new(TestStoreIo(async { Ok(()) }));
+    let test_io: Box<dyn StoreIo> = Box::new(TestStoreIo(async { Ok(()) }));
     let (_trigger_tx, trigger_rx) = trigger::trigger();
     let store_task = NodeStoreTask::new(trigger_rx, MockNodeStore::mock());
     let mut tasks = HashMap::new();
@@ -162,7 +157,7 @@ fn store_info() -> StoreInfo {
 
 #[tokio::test]
 async fn task_err() {
-    let test_io: Box<dyn StoreIo<SwimNodeStore<MockPlaneStore>>> = Box::new(TestStoreIo(async {
+    let test_io: Box<dyn StoreIo> = Box::new(TestStoreIo(async {
         Err(LaneStoreErrorReport::for_error(
             store_info(),
             StoreError::KeyNotFound,
@@ -186,7 +181,7 @@ async fn task_err() {
 
 #[tokio::test]
 async fn triggers() {
-    let test_io: Box<dyn StoreIo<SwimNodeStore<MockPlaneStore>>> = Box::new(TestStoreIo(pending()));
+    let test_io: Box<dyn StoreIo> = Box::new(TestStoreIo(pending()));
     let (trigger_tx, trigger_rx) = trigger::trigger();
     let store_task = NodeStoreTask::new(trigger_rx, MockNodeStore::mock());
     let mut tasks = HashMap::new();
@@ -213,15 +208,13 @@ async fn multiple_ios() {
 
     let mut tasks = HashMap::new();
 
-    let pending_io: Box<dyn StoreIo<SwimNodeStore<MockPlaneStore>>> =
-        Box::new(TestStoreIo(pending()));
+    let pending_io: Box<dyn StoreIo> = Box::new(TestStoreIo(pending()));
     tasks.insert("pending_io".to_string(), pending_io);
 
-    let ok_io: Box<dyn StoreIo<SwimNodeStore<MockPlaneStore>>> =
-        Box::new(TestStoreIo(async { Ok(()) }));
+    let ok_io: Box<dyn StoreIo> = Box::new(TestStoreIo(async { Ok(()) }));
     tasks.insert("ok_io".to_string(), ok_io);
 
-    let err_io: Box<dyn StoreIo<SwimNodeStore<MockPlaneStore>>> = Box::new(TestStoreIo(async {
+    let err_io: Box<dyn StoreIo> = Box::new(TestStoreIo(async {
         Err(LaneStoreErrorReport::for_error(
             store_info(),
             StoreError::KeyNotFound,

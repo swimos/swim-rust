@@ -130,24 +130,24 @@ async fn io() {
     let (lane, observer) =
         ValueLane::observable("initial".to_string(), NonZeroUsize::new(8).unwrap());
     let observer_stream = observer.into_stream();
-
-    let store_io = ValueLaneStoreIo::new(lane.clone(), observer_stream);
-    let initial = "loaded".to_string();
     let (trigger_tx, trigger_rx) = trigger::trigger();
+    let store_initial = "loaded".to_string();
 
     let store = TrackingValueStore {
         load_tx: Arc::new(Mutex::new(Some(trigger_tx))),
-        value: Arc::new(Mutex::new(Some(serialize(&initial).unwrap()))),
+        value: Arc::new(Mutex::new(Some(serialize(&store_initial).unwrap()))),
     };
     let info = store.store_info();
 
+    let store_io = ValueLaneStoreIo::new(store, lane.clone(), observer_stream);
+
     let _task_handle =
-        tokio::spawn(store_io.attach(store, "test".to_string(), StoreErrorHandler::new(0, info)));
+        tokio::spawn(store_io.attach("test".to_string(), StoreErrorHandler::new(0, info)));
 
     assert!(trigger_rx.await.is_ok());
 
     let lane_value = lane.load().await;
-    assert_eq!(*lane_value, initial);
+    assert_eq!(*lane_value, store_initial);
 }
 
 #[tokio::test]
@@ -155,16 +155,15 @@ async fn load_fail() {
     let (lane, observer) =
         ValueLane::observable("initial".to_string(), NonZeroUsize::new(8).unwrap());
     let observer_stream = observer.into_stream();
-
-    let store_io = ValueLaneStoreIo::new(lane.clone(), observer_stream);
-
     let store = FailingStore {
         fail_on: FailingStoreMode::Get,
     };
     let info = store.store_info();
 
+    let store_io = ValueLaneStoreIo::new(store, lane.clone(), observer_stream);
+
     let task_result = store_io
-        .attach(store, "test".to_string(), StoreErrorHandler::new(0, info))
+        .attach("test".to_string(), StoreErrorHandler::new(0, info))
         .await;
     match task_result {
         Ok(_) => {
@@ -182,18 +181,17 @@ async fn store_fail() {
     let (lane, observer) =
         ValueLane::observable("initial".to_string(), NonZeroUsize::new(8).unwrap());
     let observer_stream = observer.into_stream();
-
-    let store_io = ValueLaneStoreIo::new(lane.clone(), observer_stream);
-
     let store = FailingStore {
         fail_on: FailingStoreMode::Put,
     };
     let info = store.store_info();
 
-    lane.store("bomb".to_string()).await;
+    let store_io = ValueLaneStoreIo::new(store, lane.clone(), observer_stream);
+
+    lane.store("avro vulcan".to_string()).await;
 
     let task_result = store_io
-        .attach(store, "test".to_string(), StoreErrorHandler::new(0, info))
+        .attach("test".to_string(), StoreErrorHandler::new(0, info))
         .await;
     match task_result {
         Ok(_) => {

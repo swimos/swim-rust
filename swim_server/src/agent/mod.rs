@@ -100,7 +100,7 @@ pub trait SwimAgent<Config>: Any + Send + Sync + Sized {
     ) -> (
         Self,
         DynamicLaneTasks<Self, Context>,
-        DynamicAgentIo<Context, Store>,
+        DynamicAgentIo<Context>,
     )
     where
         Context: AgentContext<Self> + AgentExecutionContext + Send + Sync + 'static,
@@ -108,8 +108,8 @@ pub trait SwimAgent<Config>: Any + Send + Sync + Sized {
 }
 
 pub type DynamicLaneTasks<Agent, Context> = Vec<Box<dyn LaneTasks<Agent, Context>>>;
-pub type DynamicAgentIo<Context, Store> =
-    HashMap<String, LaneIo<Box<dyn RoutingIo<Context>>, Box<dyn StoreIo<Store>>>>;
+pub type DynamicAgentIo<Context> =
+    HashMap<String, LaneIo<Box<dyn RoutingIo<Context>>, Box<dyn StoreIo>>>;
 
 pub const COMMANDED: &str = "Command received";
 pub const ON_COMMAND: &str = "On command handler";
@@ -863,7 +863,7 @@ pub fn make_value_lane<Agent, Context, T, L, Store, P>(
 ) -> (
     ValueLane<T>,
     impl LaneTasks<Agent, Context>,
-    LaneIo<impl RoutingIo<Context>, Box<dyn StoreIo<Store>>>,
+    LaneIo<impl RoutingIo<Context>, Box<dyn StoreIo>>,
 )
 where
     Agent: 'static,
@@ -888,7 +888,7 @@ where
         projection,
     });
 
-    let store_io: Box<dyn StoreIo<Store>> = if transient {
+    let store_io: Box<dyn StoreIo> = if transient {
         Box::new(LaneNoStore)
     } else {
         unimplemented!()
@@ -975,7 +975,7 @@ pub fn make_map_lane<Agent, Context, K, V, L, P, Store>(
 ) -> (
     MapLane<K, V>,
     impl LaneTasks<Agent, Context>,
-    LaneIo<impl RoutingIo<Context>, Box<dyn StoreIo<Store>>>,
+    LaneIo<impl RoutingIo<Context>, Box<dyn StoreIo>>,
 )
 where
     Agent: 'static,
@@ -1004,7 +1004,7 @@ where
         projection,
     });
 
-    let store_io: Box<dyn StoreIo<Store>> = if transient {
+    let store_io: Box<dyn StoreIo> = if transient {
         Box::new(LaneNoStore)
     } else {
         unimplemented!()

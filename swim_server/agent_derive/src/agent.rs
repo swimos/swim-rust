@@ -134,13 +134,13 @@ pub fn derive_swim_agent(input: DeriveInput) -> Result<TokenStream, TokenStream>
             ) -> (
                 Self,
                 Vec<Box<dyn LaneTasks<Self, Context>>>,
-                HashMap<String, LaneIo<Box<dyn RoutingIo<Context>>, Box<dyn StoreIo<Store>>>>
+                HashMap<String, LaneIo<Box<dyn RoutingIo<Context>>, Box<dyn StoreIo>>>
             )
                 where
                     Context: AgentContext<Self> + AgentExecutionContext + Send + Sync + 'static,
                     Store: swim_server::agent::store::NodeStore,
             {
-                let mut io_map: HashMap<String, LaneIo<Box<dyn RoutingIo<Context>>, Box<dyn StoreIo<Store>>>> = HashMap::new();
+                let mut io_map: HashMap<String, LaneIo<Box<dyn RoutingIo<Context>>, Box<dyn StoreIo>>> = HashMap::new();
 
                 #(#lifecycles_ast)*
 

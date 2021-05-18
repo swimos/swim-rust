@@ -18,7 +18,6 @@ use futures::future::BoxFuture;
 #[cfg(test)]
 mod tests;
 
-use crate::agent::store::NodeStore;
 #[cfg(test)]
 pub use tests::store_err_partial_eq;
 
@@ -26,7 +25,7 @@ pub mod error;
 pub mod task;
 
 /// Deferred lane store IO attachment task.
-pub trait StoreIo<Store: NodeStore + Sized>: Send + 'static {
+pub trait StoreIo: Send + 'static {
     /// Attempt to attach the lane event stream to the provided node store.
     ///
     /// # Arguments:
@@ -36,14 +35,12 @@ pub trait StoreIo<Store: NodeStore + Sized>: Send + 'static {
     /// is already initialised with an error handling strategy.
     fn attach(
         self,
-        store: Store,
         lane_uri: String,
         error_handler: StoreErrorHandler,
     ) -> BoxFuture<'static, Result<(), LaneStoreErrorReport>>;
 
     fn attach_boxed(
         self: Box<Self>,
-        store: Store,
         lane_uri: String,
         error_handler: StoreErrorHandler,
     ) -> BoxFuture<'static, Result<(), LaneStoreErrorReport>>;
@@ -52,13 +49,9 @@ pub trait StoreIo<Store: NodeStore + Sized>: Send + 'static {
 /// A transient lane store which completes immediately.
 #[derive(Debug)]
 pub struct LaneNoStore;
-impl<Store> StoreIo<Store> for LaneNoStore
-where
-    Store: NodeStore,
-{
+impl StoreIo for LaneNoStore {
     fn attach(
         self,
-        _store: Store,
         _lane_uri: String,
         _error_handler: StoreErrorHandler,
     ) -> BoxFuture<'static, Result<(), LaneStoreErrorReport>> {
@@ -67,10 +60,9 @@ where
 
     fn attach_boxed(
         self: Box<Self>,
-        store: Store,
         lane_uri: String,
         error_handler: StoreErrorHandler,
     ) -> BoxFuture<'static, Result<(), LaneStoreErrorReport>> {
-        (*self).attach(store, lane_uri, error_handler)
+        (*self).attach(lane_uri, error_handler)
     }
 }

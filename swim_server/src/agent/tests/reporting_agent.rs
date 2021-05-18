@@ -351,7 +351,7 @@ impl SwimAgent<TestAgentConfig> for ReportingAgent {
     ) -> (
         Self,
         DynamicLaneTasks<Self, Context>,
-        DynamicAgentIo<Context, Store>,
+        DynamicAgentIo<Context>,
     )
     where
         Context: AgentContext<Self> + AgentExecutionContext + Send + Sync + 'static,
