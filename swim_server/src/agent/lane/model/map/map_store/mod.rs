@@ -18,7 +18,7 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::marker::PhantomData;
 use store::engines::KeyedSnapshot;
-use store::keyspaces::{KeyType, KeyspaceRangedSnapshotLoad};
+use store::keyspaces::KeyType;
 use store::{deserialize, serialize, serialize_then, Snapshot, StoreError};
 
 #[cfg(test)]
@@ -105,7 +105,7 @@ where
 
 impl<D, K, V> Snapshot<K, V> for MapDataModel<D, K, V>
 where
-    D: NodeStore + KeyspaceRangedSnapshotLoad,
+    D: NodeStore,
     K: DeserializeOwned,
     V: DeserializeOwned,
 {

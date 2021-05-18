@@ -22,8 +22,7 @@ use futures::{Stream, StreamExt};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::fmt::Debug;
-use store::keyspaces::KeyspaceRangedSnapshotLoad;
-use store::Snapshot;
+use store::{Snapshot, StoreError};
 use swim_common::form::Form;
 
 /// Map lane store IO task.
@@ -33,8 +32,10 @@ use swim_common::form::Form;
 /// after the store error handler's maximum allowed error policy has been reached.
 ///
 /// # Type parameters:
-/// `T` - the type of the Map lane.
-/// `Events` - events produced by the lane.
+/// `K` - map lane key type.
+/// `V` - map lane value type.
+/// `Events` - map lane event stream.
+/// `Store` - delegate node store type.
 pub struct MapLaneStoreIo<K, V, Events, Store> {
     lane: MapLane<K, V>,
     events: Events,
@@ -57,7 +58,7 @@ impl<K, V, Events, Store> MapLaneStoreIo<K, V, Events, Store> {
 
 impl<Store, Events, K, V> StoreIo for MapLaneStoreIo<K, V, Events, Store>
 where
-    Store: NodeStore + KeyspaceRangedSnapshotLoad,
+    Store: NodeStore,
     Events: Stream<Item = MapLaneEvent<K, V>> + Unpin + Send + Sync + 'static,
     K: Form + Debug + Send + Sync + Serialize + DeserializeOwned + 'static,
     V: Debug + Send + Sync + Serialize + DeserializeOwned + 'static,
@@ -86,20 +87,12 @@ where
             while let Some(event) = events.next().await {
                 match event {
                     MapLaneEvent::Checkpoint(_) => {}
-                    MapLaneEvent::Clear => {
-                        if let Err(e) = model.clear() {
-                            error_handler.on_error(e)?;
-                        }
-                    }
+                    MapLaneEvent::Clear => on_event(&mut error_handler, || model.clear())?,
                     MapLaneEvent::Update(key, value) => {
-                        if let Err(e) = model.put(&key, &value) {
-                            error_handler.on_error(e)?;
-                        }
+                        on_event(&mut error_handler, || model.put(&key, &value))?
                     }
                     MapLaneEvent::Remove(key) => {
-                        if let Err(e) = model.delete(&key) {
-                            error_handler.on_error(e)?;
-                        }
+                        on_event(&mut error_handler, || model.delete(&key))?
                     }
                 }
             }
@@ -113,5 +106,15 @@ where
         error_handler: StoreErrorHandler,
     ) -> BoxFuture<'static, Result<(), LaneStoreErrorReport>> {
         (*self).attach(lane_uri, error_handler)
+    }
+}
+
+fn on_event<F>(handler: &mut StoreErrorHandler, f: F) -> Result<(), LaneStoreErrorReport>
+where
+    F: Fn() -> Result<(), StoreError>,
+{
+    match f() {
+        Ok(()) => Ok(()),
+        Err(e) => handler.on_error(e),
     }
 }

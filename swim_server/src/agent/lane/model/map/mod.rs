@@ -29,9 +29,12 @@ use summary::{clear_summary, remove_summary, update_summary};
 use swim_common::form::{Form, FormErr};
 use swim_common::model::Value;
 
+use crate::agent::lane::model::map::map_store::MapLaneStoreIo;
 use crate::agent::lane::model::map::summary::TransactionSummary;
 use crate::agent::lane::model::DeferredSubscription;
 use crate::agent::lane::{InvalidForm, LaneModel};
+use crate::agent::store::NodeStore;
+use crate::agent::{LaneNoStore, StoreIo};
 use futures::stream::{iter, Iter};
 use futures::Stream;
 use serde::de::DeserializeOwned;
@@ -838,19 +841,36 @@ where
 /// # Arguments
 ///
 /// * `buffer_size` - The size of the buffer for the observer.
-pub fn streamed_map_lane<K, V>(
+/// * `transient` - Whether to persist the lane's state
+/// * `store` - A node store which for persisting data, if the lane is not transient.
+pub fn streamed_map_lane<K, V, Store>(
     buffer_size: NonZeroUsize,
+    transient: bool,
+    store: Store,
 ) -> (
     MapLane<K, V>,
     MapSubscriber<K, V>,
     impl Stream<Item = MapLaneEvent<K, V>>,
+    Box<dyn StoreIo>,
 )
 where
-    K: Form + Send + Sync + 'static,
-    V: Send + Sync + 'static,
+    K: Form + Send + Sync + Serialize + DeserializeOwned + Debug + 'static,
+    V: Send + Sync + Debug + Serialize + DeserializeOwned + 'static,
+    Store: NodeStore,
 {
     let (lane, observer) = MapLane::observable(buffer_size);
     let subscriber = MapSubscriber::new(observer.subscriber());
-    let stream = summaries_to_events::<K, V>(observer);
-    (lane, subscriber, stream)
+    let stream = summaries_to_events::<K, V>(observer.clone());
+
+    let store_io: Box<dyn StoreIo> = if transient {
+        Box::new(LaneNoStore)
+    } else {
+        Box::new(MapLaneStoreIo::new(
+            lane.clone(),
+            summaries_to_events(observer),
+            store,
+        ))
+    };
+
+    (lane, subscriber, stream, store_io)
 }

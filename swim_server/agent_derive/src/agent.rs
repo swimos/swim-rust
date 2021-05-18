@@ -332,8 +332,11 @@ fn create_lane(
             )
         }
         LaneType::Map => {
+            let is_transient = *transient;
+            let transient = quote!(#is_transient);
+
             let model = quote! {
-                let (#lane_name, subscriber, event_stream) = swim_server::agent::lane::model::map::streamed_map_lane(exec_conf.observation_buffer);
+                let (#lane_name, subscriber, event_stream, store_io) = swim_server::agent::lane::model::map::streamed_map_lane(exec_conf.observation_buffer, #transient, store.clone());
             };
 
             build_lane_io(
@@ -343,7 +346,7 @@ fn create_lane(
 
                     io_map.insert (
                         #lane_name_lit.to_string(),
-                        LaneIo::new(Some(Box::new(swim_server::agent::MapLaneIo::new(#lane_name.clone(), subscriber))), Box::new(LaneNoStore))
+                        LaneIo::new(Some(Box::new(swim_server::agent::MapLaneIo::new(#lane_name.clone(), subscriber))), store_io)
                     );
                 },
                 model,

@@ -75,9 +75,7 @@ where
             match model.load() {
                 Ok(Some(value)) => lane.store(value).await,
                 Ok(None) => {}
-                Err(e) => {
-                    return Err(LaneStoreErrorReport::for_error(model.store_info(), e));
-                }
+                Err(e) => return Err(LaneStoreErrorReport::for_error(model.store_info(), e)),
             };
 
             while let Some(event) = events.next().await {
