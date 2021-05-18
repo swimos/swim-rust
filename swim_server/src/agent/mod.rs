@@ -234,12 +234,14 @@ where
         let (tx, rx) = mpsc::channel(execution_config.scheduler_buffer.get());
         let routing_context = RoutingContext::new(uri.clone(), router, parameters);
         let schedule_context = SchedulerContext::new(tx, clock, stop_trigger.clone());
+
         let context = ContextImpl::new(
             agent_ref,
             routing_context,
             schedule_context,
             meta_context,
             client,
+            uri.clone(),
         );
 
         lifecycle

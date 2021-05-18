@@ -1,4 +1,3 @@
-use swim_common::routing::PlaneRoutingRequest;
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use swim_client::router::ClientRequest;
@@ -6,6 +5,7 @@ use swim_common::request::Request;
 use swim_common::routing::error::ResolutionError;
 use swim_common::routing::error::RouterError;
 use swim_common::routing::remote::{RawRoute, RemoteRoutingRequest, SchemeSocketAddr};
+use swim_common::routing::{Origin, PlaneRoutingRequest};
 use swim_common::routing::{Route, Router, RouterFactory, RoutingAddr, TaggedSender};
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
@@ -74,7 +74,7 @@ impl Router for TopLevelRouter {
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,
-        origin: Option<SchemeSocketAddr>,
+        origin: Option<Origin>,
     ) -> BoxFuture<'_, Result<Route, ResolutionError>> {
         async move {
             let TopLevelRouter {
@@ -152,7 +152,7 @@ impl Router for TopLevelRouter {
         &mut self,
         host: Option<Url>,
         route: RelativeUri,
-        _origin: Option<SchemeSocketAddr>,
+        _origin: Option<Origin>,
     ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
         async move {
             let TopLevelRouter { plane_sender, .. } = self;

@@ -30,6 +30,7 @@ use swim_common::routing::error::{
 };
 use swim_common::routing::{RoutingAddr, TaggedEnvelope};
 use swim_common::warp::envelope::Envelope;
+use swim_common::warp::path::AbsolutePath;
 use swim_runtime::task::*;
 use swim_runtime::time::instant::Instant;
 use swim_runtime::time::interval::interval;
@@ -53,7 +54,7 @@ pub(crate) struct ConnectionPoolMessage {
 }
 
 pub struct ConnectionRequest {
-    host_url: url::Url,
+    target: AbsolutePath,
     tx: oneshot::Sender<Result<ConnectionChannel, ConnectionError>>,
     recreate_connection: bool,
 }
@@ -63,7 +64,7 @@ pub struct ConnectionRequest {
 pub trait ConnectionPool: Clone + Send + 'static {
     fn request_connection(
         &mut self,
-        host_url: url::Url,
+        target: AbsolutePath,
         recreate: bool,
     ) -> BoxFuture<Result<Result<Connection, ConnectionError>, RequestError>>;
 
@@ -133,7 +134,7 @@ impl ConnectionPool for SwimConnPool {
     /// time a connection is opened or when it is recreated.
     fn request_connection(
         &mut self,
-        host_url: url::Url,
+        target: AbsolutePath,
         recreate_connection: bool,
     ) -> BoxFuture<Result<Result<Connection, ConnectionError>, RequestError>> {
         async move {
@@ -141,7 +142,7 @@ impl ConnectionPool for SwimConnPool {
 
             self.connection_request_tx
                 .send(ConnectionRequest {
-                    host_url,
+                    target,
                     tx,
                     recreate_connection,
                 })
@@ -224,12 +225,13 @@ impl PoolTask {
             match request {
                 RequestType::NewConnection(conn_req) => {
                     let ConnectionRequest {
-                        host_url,
+                        target,
                         tx: request_tx,
                         recreate_connection,
                     } = conn_req;
 
-                    let host = host_url.as_str().to_owned();
+                    //Todo dm this should save node for local connections and host for all other
+                    let host = target.host.as_str().to_owned();
 
                     let recreate = match (recreate_connection, connections.get(&host)) {
                         // Connection has stopped and needs to be recreated
@@ -244,7 +246,7 @@ impl PoolTask {
 
                     let connection_channel = if recreate {
                         ClientConnection::new(
-                            host_url.clone(),
+                            target.clone(),
                             buffer_size.get(),
                             &client_conn_request_tx,
                         )
@@ -431,7 +433,7 @@ pub struct ClientConnection {
 
 impl ClientConnection {
     async fn new(
-        host_url: url::Url,
+        target: AbsolutePath,
         buffer_size: usize,
         client_conn_request_tx: &mpsc::Sender<ClientRequest>,
     ) -> Result<ClientConnection, ConnectionError> {
@@ -441,7 +443,7 @@ impl ClientConnection {
         let (tx, rx) = oneshot::channel();
         client_conn_request_tx
             .send(ClientRequest::Subscribe {
-                url: host_url,
+                target,
                 request: Request::new(tx),
             })
             .await

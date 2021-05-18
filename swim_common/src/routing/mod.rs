@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::model::text::Text;
 use crate::request::Request;
 use crate::routing::error::{
     ConnectionError, NoAgentAtRoute, ResolutionError, RouterError, RoutingError, SendError,
@@ -126,7 +127,7 @@ pub trait Router: Send + Sync {
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,
-        origin: Option<SchemeSocketAddr>,
+        origin: Option<Origin>,
     ) -> BoxFuture<Result<Route, ResolutionError>>;
 
     /// Find and return the corresponding routing address of an endpoint for a given route.
@@ -134,7 +135,7 @@ pub trait Router: Send + Sync {
         &mut self,
         host: Option<Url>,
         route: RelativeUri,
-        origin: Option<SchemeSocketAddr>,
+        origin: Option<Origin>,
     ) -> BoxFuture<Result<RoutingAddr, RouterError>>;
 }
 
@@ -235,4 +236,23 @@ pub enum PlaneRoutingRequest {
     },
     /// Get all of the active routes for the plane.
     Routes(RoutesRequest),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Origin {
+    Local(RelativeUri),
+    Remote(SchemeSocketAddr),
+}
+
+impl Display for Origin {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Origin::Local(relative_uri) => {
+                write!(f, "{}", relative_uri.to_string())
+            }
+            Origin::Remote(schema_socket_addr) => {
+                write!(f, "{}", schema_socket_addr.to_string())
+            }
+        }
+    }
 }

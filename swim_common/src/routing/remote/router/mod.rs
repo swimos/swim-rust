@@ -14,8 +14,8 @@
 
 use crate::request::Request;
 use crate::routing::remote::{RawRoute, RemoteRoutingRequest, SchemeSocketAddr};
-use crate::routing::ResolutionError;
 use crate::routing::RouterError;
+use crate::routing::{Origin, ResolutionError};
 use crate::routing::{Route, Router, RoutingAddr, TaggedSender};
 use futures::future::BoxFuture;
 use futures::FutureExt;
@@ -53,7 +53,7 @@ impl<DelegateRouter: Router> Router for RemoteRouter<DelegateRouter> {
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,
-        origin: Option<SchemeSocketAddr>,
+        origin: Option<Origin>,
     ) -> BoxFuture<'_, Result<Route, ResolutionError>> {
         async move {
             let RemoteRouter {
@@ -87,7 +87,7 @@ impl<DelegateRouter: Router> Router for RemoteRouter<DelegateRouter> {
         &mut self,
         host: Option<Url>,
         route: RelativeUri,
-        origin: Option<SchemeSocketAddr>,
+        origin: Option<Origin>,
     ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
         async move {
             let RemoteRouter {

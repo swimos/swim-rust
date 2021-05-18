@@ -48,6 +48,7 @@ pub(super) struct ContextImpl<Agent, Clk, R: Router + Clone + 'static> {
     schedule_context: SchedulerContext<Clk>,
     meta_context: Arc<MetaContext>,
     client: SwimClient,
+    agent_uri: RelativeUri,
 }
 
 const SCHEDULE: &str = "Schedule";
@@ -62,6 +63,7 @@ impl<Agent, Clk, R: Router + Clone + 'static> ContextImpl<Agent, Clk, R> {
         schedule_context: SchedulerContext<Clk>,
         meta_context: MetaContext,
         client: SwimClient,
+        agent_uri: RelativeUri,
     ) -> Self {
         ContextImpl {
             agent_ref,
@@ -69,6 +71,7 @@ impl<Agent, Clk, R: Router + Clone + 'static> ContextImpl<Agent, Clk, R> {
             schedule_context,
             meta_context: Arc::new(meta_context),
             client,
+            agent_uri,
         }
     }
 }
@@ -85,6 +88,7 @@ where
             schedule_context: self.schedule_context.clone(),
             client: self.client.clone(),
             meta_context: self.meta_context.clone(),
+            agent_uri: self.agent_uri.clone(),
         }
     }
 }
@@ -240,6 +244,9 @@ pub trait AgentExecutionContext {
 
     /// Provide a channel to dispatch events to the agent scheduler.
     fn spawner(&self) -> mpsc::Sender<Eff>;
+
+    /// Return the relative uri of this agent.
+    fn uri(&self) -> &RelativeUri;
 }
 
 impl<Agent, Clk, RouterInner> AgentExecutionContext for ContextImpl<Agent, Clk, RouterInner>
@@ -254,5 +261,9 @@ where
 
     fn spawner(&self) -> Sender<Eff> {
         self.schedule_context.scheduler.clone()
+    }
+
+    fn uri(&self) -> &RelativeUri {
+        &self.agent_uri
     }
 }

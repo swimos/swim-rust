@@ -14,6 +14,24 @@
 
 use crate::model::text::Text;
 use std::fmt::{Display, Formatter};
+use std::str::FromStr;
+use utilities::uri::RelativeUri;
+
+/// Todo dm documentation
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
+pub enum Path {
+    Remote(AbsolutePath),
+    Local(RelativePath),
+}
+
+impl Display for Path {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Path::Remote(abs_path) => write!(f, "{}", abs_path.to_string()),
+            Path::Local(rel_path) => write!(f, "{}", rel_path.to_string()),
+        }
+    }
+}
 
 /// Absolute path to an agent lane, on a specific host.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]

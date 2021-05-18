@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swim_common::routing::PlaneRoutingRequest;
+use swim_common::routing::{PlaneRoutingRequest, Origin};
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use swim_common::request::Request;
@@ -85,7 +85,7 @@ impl<Delegate: Router> Router for PlaneRouter<Delegate> {
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,
-        origin: Option<SchemeSocketAddr>,
+        origin: Option<Origin>,
     ) -> BoxFuture<Result<Route, ResolutionError>> {
         async move {
             let PlaneRouter {
@@ -128,7 +128,7 @@ impl<Delegate: Router> Router for PlaneRouter<Delegate> {
         &mut self,
         host: Option<Url>,
         route: RelativeUri,
-        _origin: Option<SchemeSocketAddr>,
+        _origin: Option<Origin>,
     ) -> BoxFuture<Result<RoutingAddr, RouterError>> {
         async move {
             let PlaneRouter { request_sender, .. } = self;

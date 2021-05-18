@@ -301,6 +301,29 @@ impl SwimClient {
     }
 
     /// Opens a new typed value downlink at the provided path and initialises it with `initial`.
+    pub async fn value_downlink_experimental<T>(
+        &self,
+        url: Option<url::Url>,
+        path: RelativePath,
+        initial: T,
+    ) -> Result<(TypedValueDownlink<T>, ValueDownlinkReceiver<T>), ClientError>
+    where
+        T: ValidatedForm + Send + 'static,
+    {
+        let RelativePath { node, lane } = path;
+
+        let url = url.unwrap_or(url::Url::parse(&"ws://0.0.0.0:0".to_string()).unwrap());
+
+        self.downlinks
+            .subscribe_value(
+                initial,
+                AbsolutePath::new(url, &node.to_string(), &lane.to_string()),
+            )
+            .await
+            .map_err(ClientError::SubscriptionError)
+    }
+
+    /// Opens a new typed value downlink at the provided path and initialises it with `initial`.
     pub async fn value_downlink<T>(
         &self,
         path: AbsolutePath,
