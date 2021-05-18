@@ -377,7 +377,10 @@ where
             .map(|_| ()) //Never is an empty type so we can discard the errors.
             .await;
 
-        AgentResult::from(uri, dispatch_result_rx.await, store_result_rx.await)
+        let dispatch_result = dispatch_result_rx.await;
+        let store_result = store_result_rx.await;
+
+        AgentResult::from(uri, dispatch_result, store_result)
     }
     .instrument(span);
     (agent_cpy, task)
@@ -879,6 +882,22 @@ where
     }
 }
 
+pub struct LaneConfig {
+    name: String,
+    is_public: bool,
+    transient: bool,
+}
+
+impl LaneConfig {
+    pub fn new(name: String, is_public: bool, transient: bool) -> Self {
+        LaneConfig {
+            name,
+            is_public,
+            transient,
+        }
+    }
+}
+
 /// Create a value lane instance along with its life-cycle.
 ///
 /// #Arguments
@@ -891,13 +910,11 @@ where
 /// * `projection` - A projection from the agent type to this lane.
 /// * `transient` - Whether to persist the lane's state
 pub fn make_value_lane<Agent, Context, T, L, Store, P>(
-    name: impl Into<String>,
-    is_public: bool,
-    config: &AgentExecutionConfig,
+    lane_config: LaneConfig,
+    exec_config: &AgentExecutionConfig,
     init: T,
     lifecycle: L,
     projection: P,
-    transient: bool,
     store: Store,
 ) -> (
     ValueLane<T>,
@@ -912,7 +929,13 @@ where
     Store: NodeStore,
     P: Fn(&Agent) -> &ValueLane<T> + Send + Sync + 'static,
 {
-    let (lane, observer) = ValueLane::observable(init, config.observation_buffer);
+    let LaneConfig {
+        name,
+        is_public,
+        transient,
+    } = lane_config;
+
+    let (lane, observer) = ValueLane::observable(init, exec_config.observation_buffer);
 
     let lane_io = if is_public {
         Some(ValueLaneIo::new(lane.clone(), observer.subscriber()))
@@ -921,7 +944,7 @@ where
     };
 
     let tasks = ValueLifecycleTasks(LifecycleTasks {
-        name: name.into(),
+        name,
         lifecycle,
         event_stream: observer.clone().into_stream(),
         projection,

@@ -44,8 +44,7 @@ impl FromKeyspaces for RocksDatabase {
         db_opts: &Self::Opts,
         keyspaces: Keyspaces<Self>,
     ) -> Result<Self, StoreError> {
-        let keyspace_defs = keyspaces.keyspaces.into_iter().map(|ks| ks).collect();
-        let keyspaces = Keyspaces::new(keyspace_defs);
+        let keyspaces = Keyspaces::new(keyspaces.keyspaces);
         let db = RocksEngine::from_keyspaces(path, db_opts, keyspaces)?;
 
         Ok(RocksDatabase { db })

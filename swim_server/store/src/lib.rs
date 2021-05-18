@@ -32,7 +32,7 @@ use crate::keyspaces::{KeyType, KeyspaceByteEngine, KeyspaceResolver};
 pub use rocksdb::{ColumnFamily, MergeOperands, Options, SliceTransform};
 pub use transient::TransientDatabase;
 
-pub(crate) type KvBytes = (Box<[u8]>, Box<[u8]>);
+pub type KvBytes = (Box<[u8]>, Box<[u8]>);
 
 /// Store errors.
 #[derive(Debug, Error)]

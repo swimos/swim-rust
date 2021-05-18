@@ -21,7 +21,9 @@ use crate::agent::lifecycle::AgentLifecycle;
 use crate::agent::model::value::{ValueLane, ValueLaneEvent};
 use crate::agent::store::{NodeStore, SwimNodeStore};
 use crate::agent::tests::stub_router::SingleChannelRouter;
-use crate::agent::{AgentContext, DynamicAgentIo, DynamicLaneTasks, SwimAgent, TestClock};
+use crate::agent::{
+    AgentContext, DynamicAgentIo, DynamicLaneTasks, LaneConfig, SwimAgent, TestClock,
+};
 use crate::agent::{LaneIo, LaneTasks};
 use crate::plane::provider::AgentProvider;
 use crate::plane::store::PlaneStore;
@@ -140,13 +142,11 @@ impl SwimAgent<AgentConfig> for StoreAgent {
         let AgentConfig { init, tx } = config;
 
         let (value, task, lane_io) = agent::make_value_lane(
-            "value".to_string(),
-            false,
+            LaneConfig::new("value".to_string(), false, false),
             exec_conf,
             *init,
             ValueLifecycle { tx: tx.clone() },
             |agent: &StoreAgent| &agent.value,
-            false,
             store,
         );
 

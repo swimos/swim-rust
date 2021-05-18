@@ -27,7 +27,9 @@ use crate::agent::lane::tests::ExactlyOnce;
 use crate::agent::lifecycle::AgentLifecycle;
 use crate::agent::store::NodeStore;
 use crate::agent::tests::reporting_macro_agent::ReportingAgentEvent;
-use crate::agent::{AgentContext, DynamicAgentIo, DynamicLaneTasks, LaneTasks, SwimAgent};
+use crate::agent::{
+    AgentContext, DynamicAgentIo, DynamicLaneTasks, LaneConfig, LaneTasks, SwimAgent,
+};
 use futures::future::{ready, BoxFuture, Ready};
 use futures::FutureExt;
 use std::collections::HashMap;
@@ -374,15 +376,13 @@ impl SwimAgent<TestAgentConfig> for ReportingAgent {
         );
 
         let (total, total_tasks, _) = agent::make_value_lane(
-            "total".to_string(),
-            false,
+            LaneConfig::new("total".to_string(), false, true),
             exec_conf,
             0,
             TotalLifecycle {
                 inner: inner.clone(),
             },
             |agent: &ReportingAgent| &agent.total,
-            true,
             store,
         );
 

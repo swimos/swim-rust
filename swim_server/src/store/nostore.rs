@@ -22,7 +22,7 @@ use store::iterator::{
     EngineIterOpts, EngineIterator, EnginePrefixIterator, EngineRefIterator, IteratorKey,
 };
 use store::keyspaces::{Keyspace, KeyspaceByteEngine, KeyspaceResolver, Keyspaces};
-use store::{Store, StoreError, StoreInfo};
+use store::{KvBytes, Store, StoreError, StoreInfo};
 
 /// A store which will persist no data and exists purely to uphold the minimum contract required
 /// between a lane and its store.
@@ -82,7 +82,7 @@ impl EngineIterator for NoStoreIterator {
 }
 
 impl EnginePrefixIterator for NoStoreIterator {
-    fn next(&mut self) -> Option<(Box<[u8]>, Box<[u8]>)> {
+    fn next(&mut self) -> Option<KvBytes> {
         None
     }
 
