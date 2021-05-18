@@ -12,15 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::dispatch::error::DispatcherErrors;
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::store::SwimNodeStore;
-use crate::agent::AgentResult;
+use crate::agent::{AgentResult, AgentTaskResult};
 use crate::plane::context::PlaneContext;
 use crate::plane::lifecycle::PlaneLifecycle;
 use crate::plane::router::PlaneRouter;
 use crate::plane::store::mock::MockPlaneStore;
-use crate::plane::{AgentRoute, EnvChannel};
+use crate::plane::{AgentRoute, EnvChannel, RouteAndParameters};
 use crate::routing::{ServerRouter, TaggedEnvelope};
 use futures::future::BoxFuture;
 use futures::{FutureExt, StreamExt};
@@ -28,7 +27,6 @@ use http::Uri;
 use parking_lot::Mutex;
 use pin_utils::pin_mut;
 use std::any::Any;
-use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
@@ -89,6 +87,7 @@ pub fn make_config() -> AgentExecutionConfig {
         value_lane_backpressure: None,
         map_lane_backpressure: None,
         node_log: Default::default(),
+        max_store_errors: 0,
     }
 }
 
@@ -104,19 +103,20 @@ impl<Clk: Clock, Delegate: ServerRouter + 'static>
 {
     fn run_agent(
         &self,
-        uri: RelativeUri,
-        parameters: HashMap<String, String>,
+        route: RouteAndParameters,
         execution_config: AgentExecutionConfig,
         _clock: Clk,
         incoming_envelopes: EnvChannel,
         mut router: PlaneRouter<Delegate>,
         _store: SwimNodeStore<MockPlaneStore>,
     ) -> (Arc<dyn Any + Send + Sync>, BoxFuture<'static, AgentResult>) {
+        let RouteAndParameters { route, parameters } = route;
+
         let id = parameters[PARAM_NAME].clone();
         let target = self.0.clone();
         let agent = Arc::new(SendAgent(id.clone()));
         let expected_route: RelativeUri = format!("/{}/{}", SENDER_PREFIX, id).parse().unwrap();
-        assert_eq!(uri, expected_route);
+        assert_eq!(route, expected_route);
         assert_eq!(execution_config, make_config());
         let task = async move {
             let target_node: RelativeUri =
@@ -134,9 +134,9 @@ impl<Clk: Clock, Delegate: ServerRouter + 'static>
             pin_mut!(incoming_envelopes);
             while incoming_envelopes.next().await.is_some() {}
             AgentResult {
-                route: uri,
-                dispatcher_errors: DispatcherErrors::default(),
-                failed: false,
+                route,
+                dispatcher_task: AgentTaskResult::default(),
+                store_task: AgentTaskResult::default(),
             }
         }
         .boxed();
@@ -150,14 +150,15 @@ impl<Clk: Clock, Delegate>
 {
     fn run_agent(
         &self,
-        uri: RelativeUri,
-        parameters: HashMap<String, String>,
+        route: RouteAndParameters,
         execution_config: AgentExecutionConfig,
         _clock: Clk,
         incoming_envelopes: EnvChannel,
         _router: PlaneRouter<Delegate>,
         _store: SwimNodeStore<MockPlaneStore>,
     ) -> (Arc<dyn Any + Send + Sync>, BoxFuture<'static, AgentResult>) {
+        let RouteAndParameters { route, parameters } = route;
+
         let ReceiveAgentRoute { expected_id, done } = self;
         let mut done_sender = done.lock().take();
         assert!(done_sender.is_some());
@@ -167,7 +168,7 @@ impl<Clk: Clock, Delegate>
         assert_eq!(id, expected_target);
         let agent = Arc::new(ReceiveAgent(id.clone()));
         let expected_route: Uri = format!("/{}/{}", RECEIVER_PREFIX, id).parse().unwrap();
-        assert_eq!(uri, expected_route);
+        assert_eq!(route, expected_route);
         assert_eq!(execution_config, make_config());
         let task = async move {
             pin_mut!(incoming_envelopes);
@@ -191,9 +192,12 @@ impl<Clk: Clock, Delegate>
                 }
             }
             AgentResult {
-                route: uri,
-                dispatcher_errors: DispatcherErrors::default(),
-                failed: times_seen != 1,
+                route,
+                dispatcher_task: AgentTaskResult {
+                    errors: Default::default(),
+                    failed: times_seen != 1,
+                },
+                store_task: AgentTaskResult::default(),
             }
         }
         .boxed();

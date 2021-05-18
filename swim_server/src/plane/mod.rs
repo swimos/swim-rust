@@ -63,16 +63,15 @@ trait AgentRoute<Clk, Envelopes, Router, Store>: Debug + Send {
     ///
     /// #Arguments
     ///
-    /// * `uri` The specific URI of the agent instance.
-    /// * `parameters` - Named parameters extracted from the agent URI with the route pattern.
+    /// * `route` - The route of the agent instance and named parameters extracted from the agent
+    /// URI with the route pattern.
     /// * `execution_config` - Configuration parameters controlling how the agent runs.
     /// * `clock` - Clock for scheduling events.
     /// * `incoming_envelopes`- The stream of envelopes routed to the agent.
     /// * `router` - The router by which the agent can send messages.
     fn run_agent(
         &self,
-        uri: RelativeUri,
-        parameters: HashMap<String, String>,
+        route: RouteAndParameters,
         execution_config: AgentExecutionConfig,
         clock: Clk,
         incoming_envelopes: Envelopes,
@@ -331,8 +330,7 @@ where
             .expect("Local endpoint counter overflow.");
         let addr = RoutingAddr::local(*counter);
         let (agent, task) = agent_route.run_agent(
-            route.clone(),
-            params,
+            RouteAndParameters::new(route.clone(), params),
             execution_config.clone(),
             clock.clone(),
             ReceiverStream::new(rx).take_until(stop_trigger.clone()),
@@ -536,27 +534,25 @@ pub(crate) async fn run_plane<Clk, S, DelegateFac, Store>(
                 }
                 Either::Right(Some(AgentResult {
                     route,
-                    dispatcher_errors,
-                    failed,
+                    dispatcher_task,
+                    store_task,
                 })) => {
                     if let Some(LocalEndpoint { drop_tx, .. }) =
                         resolver.active_routes.remove_endpoint(&route)
                     {
-                        let _ = if failed {
+                        let _ = if dispatcher_task.failed {
                             drop_tx.provide(ConnectionDropped::AgentFailed)
                         } else {
                             drop_tx.provide(ConnectionDropped::Closed)
                         };
                     }
-                    if failed {
-                        event!(Level::ERROR, AGENT_TASK_FAILED, ?route, ?dispatcher_errors);
+                    if dispatcher_task.failed {
+                        event!(Level::ERROR, AGENT_TASK_FAILED, ?route, ?dispatcher_task);
                     } else {
-                        event!(
-                            Level::DEBUG,
-                            AGENT_TASK_COMPLETE,
-                            ?route,
-                            ?dispatcher_errors
-                        );
+                        event!(Level::DEBUG, AGENT_TASK_COMPLETE, ?route, ?dispatcher_task);
+                    }
+                    if store_task.failed {
+                        event!(Level::ERROR, AGENT_TASK_FAILED, ?route, ?store_task);
                     }
                 }
                 Either::Left(None) => {
@@ -587,6 +583,17 @@ pub(crate) async fn run_plane<Clk, S, DelegateFac, Store>(
 type PlaneAgentRoute<Clk, Delegate, Store> =
     BoxAgentRoute<Clk, EnvChannel, PlaneRouter<Delegate>, Store>;
 type Params = HashMap<String, String>;
+
+pub struct RouteAndParameters {
+    pub route: RelativeUri,
+    pub parameters: HashMap<String, String>,
+}
+
+impl RouteAndParameters {
+    pub fn new(route: RelativeUri, parameters: HashMap<String, String>) -> RouteAndParameters {
+        RouteAndParameters { route, parameters }
+    }
+}
 
 /// Find the appropriate specification for a route along with any parameters derived from the
 /// route pattern.

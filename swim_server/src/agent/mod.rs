@@ -77,6 +77,7 @@ use utilities::future::SwimStreamExt;
 use utilities::sync::{topic, trigger};
 use utilities::uri::RelativeUri;
 
+use crate::agent::lane::store::task::{NodeStoreErrors, NodeStoreTask};
 pub use crate::agent::lane::store::{LaneNoStore, StoreIo};
 use crate::agent::store::NodeStore;
 use crate::meta::info::{LaneInfo, LaneKind};
@@ -122,28 +123,55 @@ const LANE_START: &str = "Lane start";
 const SCHEDULER_TASK: &str = "Agent scheduler";
 const ROOT_DISPATCHER_TASK: &str = "Agent envelope dispatcher.";
 const LANE_EVENTS: &str = "Lane events";
+const STORE_TASK: &str = "Lane store task.";
+
+type TaskIoResult<Err> = Result<Result<Err, Err>, oneshot::error::RecvError>;
+type DispatchTaskResult = TaskIoResult<DispatcherErrors>;
+type StoreTaskResult = TaskIoResult<NodeStoreErrors>;
+
+#[derive(Debug, Default)]
+pub struct AgentTaskResult<Err: Debug + Default> {
+    pub errors: Err,
+    pub failed: bool,
+}
 
 #[derive(Debug)]
 pub struct AgentResult {
     pub route: RelativeUri,
-    pub dispatcher_errors: DispatcherErrors,
-    pub failed: bool,
+    pub dispatcher_task: AgentTaskResult<DispatcherErrors>,
+    pub store_task: AgentTaskResult<NodeStoreErrors>,
 }
 
 impl AgentResult {
+    fn result_for<E: Default + Debug>(result: TaskIoResult<E>) -> AgentTaskResult<E> {
+        match result {
+            Ok(Ok(errs)) => AgentTaskResult {
+                errors: errs,
+                failed: false,
+            },
+            Ok(Err(errs)) => AgentTaskResult {
+                errors: errs,
+                failed: true,
+            },
+            _ => AgentTaskResult {
+                errors: E::default(),
+                failed: true,
+            },
+        }
+    }
+
     fn from(
         route: RelativeUri,
-        result: Result<Result<DispatcherErrors, DispatcherErrors>, oneshot::error::RecvError>,
+        dispatcher_result: DispatchTaskResult,
+        store_result: StoreTaskResult,
     ) -> Self {
-        let (errs, failed) = match result {
-            Ok(Ok(errs)) => (errs, false),
-            Ok(Err(errs)) => (errs, true),
-            _ => (Default::default(), true),
-        };
+        let dispatcher_task = Self::result_for(dispatcher_result);
+        let store_task = Self::result_for(store_result);
+
         AgentResult {
             route,
-            dispatcher_errors: errs,
-            failed,
+            dispatcher_task,
+            store_task,
         }
     }
 }
@@ -264,7 +292,7 @@ where
             routing_context,
             schedule_context,
             meta_context,
-            store,
+            store.clone(),
         );
 
         lifecycle
@@ -281,7 +309,7 @@ where
         }
 
         let scheduler_task = ReceiverStream::new(rx)
-            .take_until(stop_trigger)
+            .take_until(stop_trigger.clone())
             .for_each_concurrent(None, |eff| eff)
             .boxed()
             .instrument(span!(Level::TRACE, SCHEDULER_TASK));
@@ -296,7 +324,7 @@ where
             );
         }
 
-        let (mut routing_io, _persistence_io) = io_providers.into_iter().fold(
+        let (mut routing_io, persistence_io) = io_providers.into_iter().fold(
             (HashMap::new(), HashMap::new()),
             |(mut routing_io, mut persistence_io), (lane_uri, lane_io)| {
                 let LaneIo {
@@ -315,16 +343,27 @@ where
 
         routing_io.extend(meta_io);
 
+        let (store_result_tx, store_result_rx) = oneshot::channel();
+        let max_store_errors = execution_config.max_store_errors;
+        let store_task = async move {
+            let task = NodeStoreTask::new(stop_trigger.clone(), store);
+            let result = task.run(persistence_io, max_store_errors).await;
+            let _ = store_result_tx.send(result);
+        }
+        .boxed()
+        .instrument(span!(Level::INFO, STORE_TASK));
+        task_manager.push(store_task);
+
         let dispatcher =
             AgentDispatcher::new(uri.clone(), execution_config, context.clone(), routing_io);
 
-        let (result_tx, result_rx) = oneshot::channel();
+        let (dispatch_result_tx, dispatch_result_rx) = oneshot::channel();
 
         let dispatch_task = async move {
             let tripwire = tripwire;
             let result = dispatcher.run(incoming_envelopes).await;
             tripwire.trigger();
-            let _ = result_tx.send(result);
+            let _ = dispatch_result_tx.send(result);
         }
         .boxed()
         .instrument(span!(Level::INFO, ROOT_DISPATCHER_TASK));
@@ -338,7 +377,7 @@ where
             .map(|_| ()) //Never is an empty type so we can discard the errors.
             .await;
 
-        AgentResult::from(uri, result_rx.await)
+        AgentResult::from(uri, dispatch_result_rx.await, store_result_rx.await)
     }
     .instrument(span);
     (agent_cpy, task)
