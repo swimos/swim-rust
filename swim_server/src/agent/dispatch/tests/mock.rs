@@ -18,7 +18,10 @@ use crate::agent::lane::channels::update::UpdateError;
 use crate::agent::lane::channels::uplink::spawn::UplinkErrorReport;
 use crate::agent::lane::channels::uplink::UplinkError;
 use crate::agent::lane::channels::AgentExecutionConfig;
-use crate::agent::{AttachError, Eff, LaneIo};
+use crate::agent::store::mock::MockNodeStore;
+use crate::agent::store::SwimNodeStore;
+use crate::agent::{AttachError, Eff, RoutingIo};
+use crate::plane::store::mock::MockPlaneStore;
 use crate::routing::error::RouterError;
 use crate::routing::{
     ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedClientEnvelope, TaggedEnvelope,
@@ -136,6 +139,7 @@ pub struct MockExecutionContext {
 
 impl AgentExecutionContext for MockExecutionContext {
     type Router = MockRouter;
+    type Store = SwimNodeStore<MockPlaneStore>;
 
     fn router_handle(&self) -> Self::Router {
         MockRouter(self.router.clone())
@@ -143,6 +147,10 @@ impl AgentExecutionContext for MockExecutionContext {
 
     fn spawner(&self) -> Sender<Eff> {
         self.spawner.clone()
+    }
+
+    fn store(&self) -> Self::Store {
+        MockNodeStore::mock()
     }
 }
 
@@ -178,7 +186,7 @@ impl MockExecutionContext {
 
 pub const POISON_PILL: &str = "FAIL";
 
-impl LaneIo<MockExecutionContext> for MockLane {
+impl RoutingIo<MockExecutionContext> for MockLane {
     fn attach(
         self,
         route: RelativePath,

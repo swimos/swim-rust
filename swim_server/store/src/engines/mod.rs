@@ -57,7 +57,6 @@ pub trait FromKeyspaces: Sized {
 }
 
 /// A trait for executing ranged snapshot reads on stores.
-// Todo: implement borrowed streaming snapshots.
 pub trait RangedSnapshotLoad {
     /// Execute a ranged snapshot read on the store, seeking by `prefix` and deserializing results
     /// with `map_fn`.

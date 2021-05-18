@@ -25,8 +25,9 @@ use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent};
 use crate::agent::lane::tests::ExactlyOnce;
 use crate::agent::lifecycle::AgentLifecycle;
+use crate::agent::store::NodeStore;
 use crate::agent::tests::reporting_macro_agent::ReportingAgentEvent;
-use crate::agent::{AgentContext, LaneIo, LaneTasks, SwimAgent};
+use crate::agent::{AgentContext, DynamicAgentIo, DynamicLaneTasks, LaneTasks, SwimAgent};
 use futures::future::{ready, BoxFuture, Ready};
 use futures::FutureExt;
 use std::collections::HashMap;
@@ -343,33 +344,37 @@ impl TestAgentConfig {
 }
 
 impl SwimAgent<TestAgentConfig> for ReportingAgent {
-    fn instantiate<Context: AgentContext<Self> + AgentExecutionContext>(
+    fn instantiate<Context, Store>(
         configuration: &TestAgentConfig,
         exec_conf: &AgentExecutionConfig,
+        store: Store,
     ) -> (
         Self,
-        Vec<Box<dyn LaneTasks<Self, Context>>>,
-        HashMap<String, Box<dyn LaneIo<Context>>>,
+        DynamicLaneTasks<Self, Context>,
+        DynamicAgentIo<Context, Store>,
     )
     where
-        Context: AgentContext<Self> + Send + Sync + 'static,
+        Context: AgentContext<Self> + AgentExecutionContext + Send + Sync + 'static,
+        Store: NodeStore,
     {
         let TestAgentConfig { collector } = configuration;
 
         let inner = ReportingLifecycleInner(collector.clone());
 
         let (data, data_tasks, _) = agent::make_map_lane(
-            "data",
+            "data".to_string(),
             false,
             exec_conf,
             DataLifecycle {
                 inner: inner.clone(),
             },
             |agent: &ReportingAgent| &agent.data,
+            true,
+            store.clone(),
         );
 
         let (total, total_tasks, _) = agent::make_value_lane(
-            "total",
+            "total".to_string(),
             false,
             exec_conf,
             0,
@@ -377,6 +382,8 @@ impl SwimAgent<TestAgentConfig> for ReportingAgent {
                 inner: inner.clone(),
             },
             |agent: &ReportingAgent| &agent.total,
+            true,
+            store,
         );
 
         let (action, action_tasks, _) = agent::make_command_lane(

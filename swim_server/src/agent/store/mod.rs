@@ -21,7 +21,6 @@ use swim_common::model::text::Text;
 use crate::plane::store::PlaneStore;
 use crate::store::{StoreEngine, StoreKey};
 
-#[cfg(test)]
 pub mod mock;
 #[cfg(test)]
 mod tests;

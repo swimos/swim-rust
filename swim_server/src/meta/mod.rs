@@ -22,7 +22,7 @@ mod tests;
 use crate::agent::context::AgentExecutionContext;
 use crate::agent::dispatch::LaneIdentifier;
 use crate::agent::lane::channels::AgentExecutionConfig;
-use crate::agent::{AgentContext, DynamicLaneTasks, Eff, LaneIo, SwimAgent};
+use crate::agent::{AgentContext, DynamicLaneTasks, Eff, RoutingIo, SwimAgent};
 use crate::meta::info::{open_info_lane, LaneInfo, LaneInformation};
 use crate::meta::log::{open_log_lanes, LogLevel, NodeLogger};
 use crate::meta::uri::{parse, MetaParseErr};
@@ -54,7 +54,7 @@ pub const UPLINK_URI: &str = "uplink";
 
 pub const META_NODE: &str = "swim:meta:node";
 
-pub type IdentifiedAgentIo<Context> = HashMap<LaneIdentifier, Box<dyn LaneIo<Context>>>;
+pub type IdentifiedAgentIo<Context> = HashMap<LaneIdentifier, Box<dyn RoutingIo<Context>>>;
 
 /// Attempts to decode a meta-encoded node URI. Returns a decoded node URI if `uri` matches or
 /// returns `uri`.

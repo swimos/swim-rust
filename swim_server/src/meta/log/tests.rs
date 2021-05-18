@@ -16,6 +16,7 @@ use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::supply::SupplyLane;
 use crate::agent::lane::model::value::ValueLane;
+use crate::agent::store::mock::MockNodeStore;
 use crate::agent::{
     agent_lifecycle, map_lifecycle, value_lifecycle, AgentContext, SwimAgent, TestClock,
 };
@@ -148,6 +149,7 @@ async fn agent_log() {
         clock.clone(),
         ReceiverStream::new(envelope_rx),
         MockRouter::new(RoutingAddr::local(1024), tx),
+        MockNodeStore::mock(),
     );
 
     let _agent_task = swim_runtime::task::spawn(agent_proc);
