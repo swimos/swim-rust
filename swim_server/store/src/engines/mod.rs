@@ -57,12 +57,13 @@ pub trait FromKeyspaces: Sized {
 }
 
 /// An owned snapshot of deserialized keys and values produced by `RangedSnapshot`.
+#[derive(Debug)]
 pub struct KeyedSnapshot<K, V> {
     data: IntoIter<(K, V)>,
 }
 
 impl<K, V> KeyedSnapshot<K, V> {
-    pub(crate) fn new(data: IntoIter<(K, V)>) -> Self {
+    pub fn new(data: IntoIter<(K, V)>) -> Self {
         KeyedSnapshot { data }
     }
 }

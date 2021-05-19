@@ -50,7 +50,7 @@ impl<D, K, V> MapDataModel<D, K, V> {
 impl<D, K, V> MapDataModel<D, K, V>
 where
     D: NodeStore,
-    K: Serialize,
+    K: Serialize + DeserializeOwned,
     V: Serialize + DeserializeOwned,
 {
     pub fn clear(&self) -> Result<(), StoreError> {
