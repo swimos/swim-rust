@@ -65,7 +65,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use swim_common::form::{Form, ValidatedForm};
 use swim_common::routing::{Router, TaggedClientEnvelope, TaggedEnvelope};
-use swim_common::warp::path::{AbsolutePath, RelativePath};
+use swim_common::warp::path::{AbsolutePath, Path, RelativePath};
 use swim_runtime::time::clock::Clock;
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::{mpsc, oneshot};
@@ -179,7 +179,7 @@ impl<Config> AgentParameters<Config> {
 pub fn run_agent<Config, Clk, Agent, L, R>(
     lifecycle: L,
     clock: Clk,
-    client: SwimClient,
+    client: SwimClient<Path>,
     parameters: AgentParameters<Config>,
     incoming_envelopes: impl Stream<Item = TaggedEnvelope> + Send + 'static,
     router: R,
@@ -319,7 +319,7 @@ pub trait AgentContext<Agent> {
     type LocalRouter: Router + Clone + 'static;
 
     /// Get a swim client capable of opening downlinks to other servers.
-    fn client(&self) -> SwimClient;
+    fn client(&self) -> SwimClient<Path>;
 
     fn local_router(&self) -> Self::LocalRouter;
 

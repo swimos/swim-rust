@@ -51,6 +51,7 @@ use crate::plane::context::PlaneContext;
 use crate::plane::router::{PlaneRouter, PlaneRouterFactory};
 use crate::plane::spec::{PlaneSpec, RouteSpec};
 use swim_common::routing::error::NoAgentAtRoute;
+use swim_common::warp::path::Path;
 
 pub mod context;
 pub mod error;
@@ -80,7 +81,7 @@ trait AgentRoute<Clk, Envelopes, Router>: Debug + Send {
         parameters: HashMap<String, String>,
         execution_config: AgentExecutionConfig,
         clock: Clk,
-        client: SwimClient,
+        client: SwimClient<Path>,
         incoming_envelopes: Envelopes,
         router: Router,
     ) -> (Arc<dyn Any + Send + Sync>, BoxFuture<'static, AgentResult>);
@@ -249,7 +250,7 @@ struct RouteResolver<Clk, DelegateFac: RouterFactory> {
     /// Clock for scheduling tasks.
     clock: Clk,
     /// Client for opening downlinks.
-    client: SwimClient,
+    client: SwimClient<Path>,
     /// The configuration for the agent routes that are opened.
     execution_config: AgentExecutionConfig,
     /// The routes for the plane.
@@ -341,7 +342,7 @@ const PLANE_STOPPED: &str = "The plane has stopped.";
 pub(crate) async fn run_plane<Clk, S, DelegateFac: RouterFactory>(
     execution_config: AgentExecutionConfig,
     clock: Clk,
-    client: SwimClient,
+    client: SwimClient<Path>,
     spec: PlaneSpec<Clk, EnvChannel, PlaneRouter<DelegateFac::Router>>,
     stop_trigger: trigger::Receiver,
     spawner: S,

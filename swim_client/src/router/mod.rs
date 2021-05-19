@@ -38,7 +38,7 @@ use swim_common::routing::{
     Route, Router, RouterFactory, RoutingAddr, TaggedEnvelope, TaggedSender,
 };
 use swim_common::warp::envelope::{Envelope, IncomingLinkMessage};
-use swim_common::warp::path::{AbsolutePath, RelativePath};
+use swim_common::warp::path::{AbsolutePath, Addressable, RelativePath};
 use swim_runtime::task::*;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
@@ -59,18 +59,18 @@ mod outgoing;
 mod retry;
 
 #[derive(Debug, Clone)]
-pub struct ClientRouterFactory {
-    request_sender: mpsc::Sender<ClientRequest>,
+pub struct ClientRouterFactory<Path: Addressable> {
+    request_sender: mpsc::Sender<ClientRequest<Path>>,
 }
 
-impl ClientRouterFactory {
-    pub fn new(request_sender: mpsc::Sender<ClientRequest>) -> Self {
+impl<Path: Addressable> ClientRouterFactory<Path> {
+    pub fn new(request_sender: mpsc::Sender<ClientRequest<Path>>) -> Self {
         ClientRouterFactory { request_sender }
     }
 }
 
-impl RouterFactory for ClientRouterFactory {
-    type Router = ClientRouter;
+impl<Path: Addressable> RouterFactory for ClientRouterFactory<Path> {
+    type Router = ClientRouter<Path>;
 
     fn create_for(&self, addr: RoutingAddr) -> Self::Router {
         ClientRouter {
@@ -81,12 +81,12 @@ impl RouterFactory for ClientRouterFactory {
 }
 
 #[derive(Debug, Clone)]
-pub struct ClientRouter {
+pub struct ClientRouter<Path: Addressable> {
     tag: RoutingAddr,
-    request_sender: mpsc::Sender<ClientRequest>,
+    request_sender: mpsc::Sender<ClientRequest<Path>>,
 }
 
-impl Router for ClientRouter {
+impl<Path: Addressable> Router for ClientRouter<Path> {
     fn resolve_sender(
         &mut self,
         _addr: RoutingAddr,
@@ -131,7 +131,7 @@ impl Router for ClientRouter {
 }
 
 #[derive(Debug)]
-pub enum ClientRequest {
+pub enum ClientRequest<Path: Addressable> {
     /// Obtain a connection.
     Connect {
         request: Request<Result<RawRoute, Unresolvable>>,
@@ -139,25 +139,25 @@ pub enum ClientRequest {
     },
     /// Subscribe to a connection.
     Subscribe {
-        target: AbsolutePath,
+        target: Path,
         request: Request<Result<(RawRoute, mpsc::Receiver<Envelope>), ConnectionError>>,
     },
 }
 
-pub struct ClientConnectionsManager {
-    router_request_rx: mpsc::Receiver<ClientRequest>,
+pub struct ClientConnectionsManager<Path: Addressable> {
+    router_request_rx: mpsc::Receiver<ClientRequest<Path>>,
     remote_router_tx: mpsc::Sender<RemoteRoutingRequest>,
     plane_router_tx: Option<mpsc::Sender<PlaneRoutingRequest>>,
     buffer_size: NonZeroUsize,
 }
 
-impl ClientConnectionsManager {
+impl<Path: Addressable> ClientConnectionsManager<Path> {
     pub fn new(
-        router_request_rx: mpsc::Receiver<ClientRequest>,
+        router_request_rx: mpsc::Receiver<ClientRequest<Path>>,
         remote_router_tx: mpsc::Sender<RemoteRoutingRequest>,
         plane_router_tx: Option<mpsc::Sender<PlaneRoutingRequest>>,
         buffer_size: NonZeroUsize,
-    ) -> ClientConnectionsManager {
+    ) -> ClientConnectionsManager<Path> {
         ClientConnectionsManager {
             router_request_rx,
             remote_router_tx,
@@ -187,7 +187,7 @@ impl ClientConnectionsManager {
         let mut close_txs = Vec::new();
 
         loop {
-            let next: Option<ClientRequest> = router_request_rx.next().await;
+            let next: Option<ClientRequest<Path>> = router_request_rx.next().await;
 
             match next {
                 Some(ClientRequest::Connect { request, origin }) => {
@@ -215,16 +215,17 @@ impl ClientConnectionsManager {
                 Some(ClientRequest::Subscribe {
                     target,
                     request: sub_req,
-                }) => {
-                    //Todo dm
-                    if plane_router_tx.is_some() && target.host.to_string().eq(&"ws://0.0.0.0:0/") {
+                }) => match target.host() {
+                    None => {
+                        let node = target.node();
+
                         let (tx, rx) = oneshot::channel();
                         let plane_tx = plane_router_tx.as_ref().unwrap();
 
                         plane_tx
                             .send(PlaneRoutingRequest::Resolve {
                                 host: None,
-                                name: RelativeUri::from_str(target.node.as_str()).unwrap(),
+                                name: RelativeUri::from_str(node.as_str()).unwrap(),
                                 request: Request::new(tx),
                             })
                             .await
@@ -244,7 +245,7 @@ impl ClientConnectionsManager {
                         let raw_route = rx.await.unwrap().unwrap();
 
                         let (_, sub_sender) = outgoing_managers
-                            .entry(target.node.to_string())
+                            .entry(node.to_string())
                             .or_insert_with(|| {
                                 let (manager, sender, sub_tx) =
                                     ClientConnectionManager::new(buffer_size);
@@ -259,12 +260,13 @@ impl ClientConnectionsManager {
                                 ResolutionError::router_dropped(),
                             ));
                         }
-                    } else {
+                    }
+                    Some(host) => {
                         let (tx, rx) = oneshot::channel();
 
                         if remote_router_tx
                             .send(RemoteRoutingRequest::ResolveUrl {
-                                host: target.host.clone(),
+                                host: host.clone(),
                                 request: Request::new(tx),
                             })
                             .await
@@ -338,7 +340,7 @@ impl ClientConnectionsManager {
                                 Err(_) => {
                                     if sub_req
                                         .send(Err(ConnectionError::Resolution(
-                                            ResolutionError::unresolvable(target.host.to_string()),
+                                            ResolutionError::unresolvable(host.to_string()),
                                         )))
                                         .is_err()
                                     {
@@ -365,7 +367,7 @@ impl ClientConnectionsManager {
                         };
 
                         let (_, sub_sender) = outgoing_managers
-                            .entry(target.host.to_string())
+                            .entry(host.to_string())
                             .or_insert_with(|| {
                                 let (manager, sender, sub_tx) =
                                     ClientConnectionManager::new(buffer_size);
@@ -381,7 +383,7 @@ impl ClientConnectionsManager {
                             ));
                         }
                     }
-                }
+                },
                 _ => {
                     close_txs.into_iter().for_each(|trigger| {
                         if let Err(err) = trigger.provide(ConnectionDropped::Closed) {
@@ -476,7 +478,7 @@ impl ClientConnectionManager {
     }
 }
 
-pub(crate) type RouterConnRequest = (AbsolutePath, oneshot::Sender<ConnectionChannel>);
+pub(crate) type RouterConnRequest<Path: Addressable> = (Path, oneshot::Sender<ConnectionChannel>);
 pub(crate) type RouterMessageRequest = (url::Url, Envelope);
 pub(crate) type CloseSender = promise::Sender<mpsc::Sender<Result<(), RoutingError>>>;
 type ConnectionChannel = (mpsc::Sender<Envelope>, mpsc::Receiver<RouterEvent>);
@@ -499,8 +501,8 @@ pub enum RouterEvent {
 }
 
 /// Tasks that the router can handle.
-enum RouterTask {
-    Connect(RouterConnRequest),
+enum RouterTask<Path: Addressable> {
+    Connect(RouterConnRequest<Path>),
     SendMessage(Box<RouterMessageRequest>),
     Close(Option<CloseResponseSender>),
 }
@@ -514,22 +516,22 @@ type HostManagerHandle = (
 /// The task manager is the main task in the router. It is responsible for creating sub-tasks
 /// for each unique remote host. It can also handle direct messages by sending them directly
 /// to the appropriate sub-task.
-pub struct TaskManager<Pool: ConnectionPool> {
-    conn_request_rx: mpsc::Receiver<RouterConnRequest>,
+pub struct TaskManager<Pool: ConnectionPool<PathType = Path>, Path: Addressable> {
+    conn_request_rx: mpsc::Receiver<RouterConnRequest<Path>>,
     message_request_rx: mpsc::Receiver<RouterMessageRequest>,
     connection_pool: Pool,
     close_rx: CloseReceiver,
     config: RouterParams,
 }
 
-impl<Pool: ConnectionPool> TaskManager<Pool> {
+impl<Pool: ConnectionPool<PathType = Path>, Path: Addressable> TaskManager<Pool, Path> {
     pub fn new(
         connection_pool: Pool,
         close_rx: CloseReceiver,
         config: RouterParams,
     ) -> (
         Self,
-        mpsc::Sender<RouterConnRequest>,
+        mpsc::Sender<RouterConnRequest<Path>>,
         mpsc::Sender<RouterMessageRequest>,
     ) {
         let (conn_request_tx, conn_request_rx) = mpsc::channel(config.buffer_size().get());
@@ -560,7 +562,7 @@ impl<Pool: ConnectionPool> TaskManager<Pool> {
         let mut conn_request_rx = ReceiverStream::new(conn_request_rx).fuse();
         let mut close_trigger = close_rx.clone().fuse();
 
-        let mut host_managers: HashMap<url::Url, HostManagerHandle> = HashMap::new();
+        let mut host_managers: HashMap<String, HostManagerHandle> = HashMap::new();
 
         loop {
             let task = select_biased! {
@@ -586,7 +588,7 @@ impl<Pool: ConnectionPool> TaskManager<Pool> {
 
                     let (subscriber_tx, stream) = mpsc::channel(config.buffer_size().get());
 
-                    let (_, relative_path) = target.split();
+                    let relative_path = target.relative_path();
 
                     stream_registrator
                         .send(SubscriberRequest::new(relative_path, subscriber_tx))
@@ -599,25 +601,27 @@ impl<Pool: ConnectionPool> TaskManager<Pool> {
                 }
 
                 RouterTask::SendMessage(payload) => {
-                    let (host, message) = payload.deref();
-
-                    let target = message
-                        .header
-                        .relative_path()
-                        .ok_or(RoutingError::ConnectionError)?
-                        .for_host(host.clone());
-
-                    let (sink, _, _) = get_host_manager(
-                        &mut host_managers,
-                        target.clone(),
-                        connection_pool.clone(),
-                        close_rx.clone(),
-                        config,
-                    );
-
-                    sink.send(message.clone())
-                        .await
-                        .map_err(|_| RoutingError::ConnectionError)?;
+                    //TOdo fix
+                    unimplemented!();
+                    // let (host, message) = payload.deref();
+                    //
+                    // let target = message
+                    //     .header
+                    //     .relative_path()
+                    //     .ok_or(RoutingError::ConnectionError)?
+                    //     .for_host(host.clone());
+                    //
+                    // let (sink, _, _) = get_host_manager(
+                    //     &mut host_managers,
+                    //     target.clone(),
+                    //     connection_pool.clone(),
+                    //     close_rx.clone(),
+                    //     config,
+                    // );
+                    //
+                    // sink.send(message.clone())
+                    //     .await
+                    //     .map_err(|_| RoutingError::ConnectionError)?;
                 }
 
                 RouterTask::Close(close_rx) => {
@@ -643,17 +647,18 @@ impl<Pool: ConnectionPool> TaskManager<Pool> {
     }
 }
 
-fn get_host_manager<Pool>(
-    host_managers: &mut HashMap<url::Url, HostManagerHandle>,
-    target: AbsolutePath,
+fn get_host_manager<Pool, Path>(
+    host_managers: &mut HashMap<String, HostManagerHandle>,
+    target: Path,
     connection_pool: Pool,
     close_rx: CloseReceiver,
     config: RouterParams,
 ) -> &mut HostManagerHandle
 where
-    Pool: ConnectionPool,
+    Pool: ConnectionPool<PathType = Path>,
+    Path: Addressable,
 {
-    host_managers.entry(target.host.clone()).or_insert_with(|| {
+    host_managers.entry(target.to_string()).or_insert_with(|| {
         let (host_manager, sink, stream_registrator) =
             HostManager::new(target, connection_pool, close_rx, config);
         (
@@ -723,8 +728,8 @@ enum HostTask {
 ///
 /// Note: The host manager *DOES NOT* open connections by default when created.
 /// It will only open connections when required.
-struct HostManager<Pool: ConnectionPool> {
-    target: AbsolutePath,
+struct HostManager<Pool: ConnectionPool<PathType = Path>, Path: Addressable> {
+    target: Path,
     connection_pool: Pool,
     sink_rx: mpsc::Receiver<Envelope>,
     stream_registrator_rx: mpsc::Receiver<SubscriberRequest>,
@@ -732,14 +737,14 @@ struct HostManager<Pool: ConnectionPool> {
     config: RouterParams,
 }
 
-impl<Pool: ConnectionPool> HostManager<Pool> {
+impl<Pool: ConnectionPool<PathType = Path>, Path: Addressable> HostManager<Pool, Path> {
     fn new(
-        target: AbsolutePath,
+        target: Path,
         connection_pool: Pool,
         close_rx: CloseReceiver,
         config: RouterParams,
     ) -> (
-        HostManager<Pool>,
+        HostManager<Pool, Path>,
         mpsc::Sender<Envelope>,
         mpsc::Sender<SubscriberRequest>,
     ) {
@@ -812,8 +817,10 @@ impl<Pool: ConnectionPool> HostManager<Pool> {
                     request_tx: connection_response_tx,
                     recreate,
                 }) => {
+                    let conn_target = target.clone();
+
                     let maybe_connection_channel = connection_pool
-                        .request_connection(target.clone(), recreate)
+                        .request_connection(conn_target, recreate)
                         .await
                         .map_err(|_| RoutingError::ConnectionError)?;
 

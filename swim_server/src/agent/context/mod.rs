@@ -26,6 +26,7 @@ use std::sync::Arc;
 use swim_client::downlink::Downlinks;
 use swim_client::interface::SwimClient;
 use swim_common::routing::Router;
+use swim_common::warp::path::Path;
 use swim_runtime::time::clock::Clock;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
@@ -47,7 +48,7 @@ pub(super) struct ContextImpl<Agent, Clk, R: Router + Clone + 'static> {
     routing_context: RoutingContext<R>,
     schedule_context: SchedulerContext<Clk>,
     meta_context: Arc<MetaContext>,
-    client: SwimClient,
+    client: SwimClient<Path>,
     agent_uri: RelativeUri,
 }
 
@@ -62,7 +63,7 @@ impl<Agent, Clk, R: Router + Clone + 'static> ContextImpl<Agent, Clk, R> {
         routing_context: RoutingContext<R>,
         schedule_context: SchedulerContext<Clk>,
         meta_context: MetaContext,
-        client: SwimClient,
+        client: SwimClient<Path>,
         agent_uri: RelativeUri,
     ) -> Self {
         ContextImpl {
@@ -193,7 +194,7 @@ where
 {
     type LocalRouter = R;
 
-    fn client(&self) -> SwimClient {
+    fn client(&self) -> SwimClient<Path> {
         self.client.clone()
     }
 

@@ -13,10 +13,25 @@
 // limitations under the License.
 
 use crate::model::text::Text;
-use std::fmt::{Display, Formatter};
+use std::fmt::{Debug, Display, Formatter};
+use std::hash::Hash;
 use std::str::FromStr;
+use url::Url;
 use utilities::uri::RelativeUri;
 
+pub trait Addressable:
+    Clone + PartialEq + Eq + PartialOrd + Ord + Hash + Debug + Display + Send + Sync + 'static
+{
+    fn node(&self) -> Text;
+
+    fn lane(&self) -> Text;
+
+    fn relative_path(&self) -> RelativePath;
+
+    fn host(&self) -> Option<Url>;
+}
+
+//Todo add from for abs and rel paths
 /// Todo dm documentation
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub enum Path {
@@ -29,6 +44,36 @@ impl Display for Path {
         match self {
             Path::Remote(abs_path) => write!(f, "{}", abs_path.to_string()),
             Path::Local(rel_path) => write!(f, "{}", rel_path.to_string()),
+        }
+    }
+}
+
+impl Addressable for Path {
+    fn node(&self) -> Text {
+        match self {
+            Path::Remote(abs_path) => abs_path.node(),
+            Path::Local(rel_path) => rel_path.node(),
+        }
+    }
+
+    fn lane(&self) -> Text {
+        match self {
+            Path::Remote(abs_path) => abs_path.lane(),
+            Path::Local(rel_path) => rel_path.lane(),
+        }
+    }
+
+    fn relative_path(&self) -> RelativePath {
+        match self {
+            Path::Remote(abs_path) => abs_path.relative_path(),
+            Path::Local(rel_path) => rel_path.relative_path(),
+        }
+    }
+
+    fn host(&self) -> Option<Url> {
+        match self {
+            Path::Remote(abs_path) => abs_path.host(),
+            Path::Local(rel_path) => rel_path.host(),
         }
     }
 }
@@ -83,6 +128,24 @@ impl Display for AbsolutePath {
     }
 }
 
+impl Addressable for AbsolutePath {
+    fn node(&self) -> Text {
+        self.node.clone()
+    }
+
+    fn lane(&self) -> Text {
+        self.lane.clone()
+    }
+
+    fn relative_path(&self) -> RelativePath {
+        self.relative_path()
+    }
+
+    fn host(&self) -> Option<Url> {
+        Some(self.host.clone())
+    }
+}
+
 /// Relative path to an agent lane, leaving the host unspecified.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub struct RelativePath {
@@ -121,5 +184,23 @@ impl RelativePath {
 impl Display for RelativePath {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "RelativePath[{}, {}]", self.node, self.lane)
+    }
+}
+
+impl Addressable for RelativePath {
+    fn node(&self) -> Text {
+        self.node.clone()
+    }
+
+    fn lane(&self) -> Text {
+        self.lane.clone()
+    }
+
+    fn relative_path(&self) -> RelativePath {
+        self.clone()
+    }
+
+    fn host(&self) -> Option<Url> {
+        None
     }
 }

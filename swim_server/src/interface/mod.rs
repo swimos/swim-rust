@@ -52,6 +52,7 @@ use crate::plane::router::PlaneRouter;
 use crate::plane::spec::PlaneSpec;
 use crate::plane::{run_plane, EnvChannel};
 use crate::routing::{TopLevelRouter, TopLevelRouterFactory};
+use swim_common::warp::path::Path;
 
 /// Builder to create Swim server instance.
 ///
@@ -250,10 +251,10 @@ pub struct SwimServer {
     planes: Vec<PlaneSpec<RuntimeClock, EnvChannel, PlaneRouter<TopLevelRouter>>>,
     stop_trigger_rx: trigger::Receiver,
     address_tx: promise::Sender<SocketAddr>,
-    client: SwimClient,
-    downlinks_handle: DownlinksHandle,
-    client_conn_request_tx: mpsc::Sender<ClientRequest>,
-    client_conn_request_rx: mpsc::Receiver<ClientRequest>,
+    client: SwimClient<Path>,
+    downlinks_handle: DownlinksHandle<Path>,
+    client_conn_request_tx: mpsc::Sender<ClientRequest<Path>>,
+    client_conn_request_rx: mpsc::Receiver<ClientRequest<Path>>,
 }
 
 impl SwimServer {

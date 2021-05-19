@@ -11,18 +11,19 @@ use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use url::Url;
 use utilities::uri::RelativeUri;
+use swim_common::warp::path::Path;
 
 #[derive(Debug, Clone)]
 pub(crate) struct TopLevelRouterFactory {
     plane_sender: mpsc::Sender<PlaneRoutingRequest>,
-    client_sender: mpsc::Sender<ClientRequest>,
+    client_sender: mpsc::Sender<ClientRequest<Path>>,
     remote_sender: mpsc::Sender<RemoteRoutingRequest>,
 }
 
 impl TopLevelRouterFactory {
     pub(in crate) fn new(
         plane_sender: mpsc::Sender<PlaneRoutingRequest>,
-        client_sender: mpsc::Sender<ClientRequest>,
+        client_sender: mpsc::Sender<ClientRequest<Path>>,
         remote_sender: mpsc::Sender<RemoteRoutingRequest>,
     ) -> Self {
         TopLevelRouterFactory {
@@ -50,7 +51,7 @@ impl RouterFactory for TopLevelRouterFactory {
 pub struct TopLevelRouter {
     addr: RoutingAddr,
     plane_sender: mpsc::Sender<PlaneRoutingRequest>,
-    client_sender: mpsc::Sender<ClientRequest>,
+    client_sender: mpsc::Sender<ClientRequest<Path>>,
     remote_sender: mpsc::Sender<RemoteRoutingRequest>,
 }
 
@@ -58,7 +59,7 @@ impl TopLevelRouter {
     pub(crate) fn new(
         addr: RoutingAddr,
         plane_sender: mpsc::Sender<PlaneRoutingRequest>,
-        client_sender: mpsc::Sender<ClientRequest>,
+        client_sender: mpsc::Sender<ClientRequest<Path>>,
         remote_sender: mpsc::Sender<RemoteRoutingRequest>,
     ) -> Self {
         TopLevelRouter {

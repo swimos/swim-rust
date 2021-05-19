@@ -26,6 +26,7 @@ use std::sync::Arc;
 use swim_client::downlink::Downlinks;
 use swim_client::interface::SwimClient;
 use swim_common::routing::{Router, TaggedEnvelope};
+use swim_common::warp::path::Path;
 use swim_runtime::time::clock::Clock;
 use utilities::uri::RelativeUri;
 
@@ -70,7 +71,7 @@ where
         parameters: HashMap<String, String>,
         execution_config: AgentExecutionConfig,
         clock: Clk,
-        client: SwimClient,
+        client: SwimClient<Path>,
         incoming_envelopes: Envelopes,
         router: R,
     ) -> (Arc<dyn Any + Send + Sync>, BoxFuture<'static, AgentResult>)
@@ -116,7 +117,7 @@ where
         parameters: HashMap<String, String>,
         execution_config: AgentExecutionConfig,
         clock: Clk,
-        client: SwimClient,
+        client: SwimClient<Path>,
         incoming_envelopes: Envelopes,
         router: R,
     ) -> (Arc<dyn Any + Send + Sync>, BoxFuture<'static, AgentResult>) {
