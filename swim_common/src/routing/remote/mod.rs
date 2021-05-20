@@ -109,28 +109,16 @@ impl RemoteConnectionChannels {
 }
 
 #[derive(Debug)]
-pub enum RemoteConnectionsTask<External: ExternalConnections, Ws, Router, Sp> {
-    Server {
-        external: External,
-        listener: External::ListenerType,
-        websockets: Ws,
-        delegate_router: Router,
-        stop_trigger: trigger::Receiver,
-        spawner: Sp,
-        configuration: ConnectionConfig,
-        remote_tx: mpsc::Sender<RoutingRequest>,
-        remote_rx: mpsc::Receiver<RoutingRequest>,
-    },
-    Client {
-        external: External,
-        websockets: Ws,
-        delegate_router: Router,
-        stop_trigger: trigger::Receiver,
-        spawner: Sp,
-        configuration: ConnectionConfig,
-        remote_tx: mpsc::Sender<RoutingRequest>,
-        remote_rx: mpsc::Receiver<RoutingRequest>,
-    },
+pub struct RemoteConnectionsTask<External: ExternalConnections, Ws, Router, Sp> {
+    external: External,
+    listener: Option<External::ListenerType>,
+    websockets: Ws,
+    delegate_router: Router,
+    stop_trigger: trigger::Receiver,
+    spawner: Sp,
+    configuration: ConnectionConfig,
+    remote_tx: mpsc::Sender<RoutingRequest>,
+    remote_rx: mpsc::Receiver<RoutingRequest>,
 }
 
 type SchemeSocketAddrIt = std::vec::IntoIter<SchemeSocketAddr>;
@@ -171,8 +159,9 @@ where
             stop_trigger,
         } = channels;
 
-        RemoteConnectionsTask::Client {
+        RemoteConnectionsTask {
             external,
+            listener: None,
             websockets,
             delegate_router,
             stop_trigger,
@@ -200,9 +189,9 @@ where
 
         let listener = external.bind(bind_addr).await?;
 
-        Ok(RemoteConnectionsTask::Server {
+        Ok(RemoteConnectionsTask {
             external,
-            listener,
+            listener: Some(listener),
             websockets,
             delegate_router,
             stop_trigger,
@@ -213,9 +202,13 @@ where
         })
     }
 
+    pub fn listener(&self) -> Option<&External::ListenerType> {
+        self.listener.as_ref()
+    }
+
     pub async fn run(self) -> Result<(), io::Error> {
         match self {
-            RemoteConnectionsTask::Server {
+            RemoteConnectionsTask {
                 external,
                 listener,
                 websockets,
@@ -231,33 +224,7 @@ where
                     configuration,
                     spawner,
                     external,
-                    Some(listener),
-                    delegate_router,
-                    RemoteConnectionChannels {
-                        request_tx: remote_tx,
-                        request_rx: remote_rx,
-                        stop_trigger,
-                    },
-                );
-
-                RemoteConnectionsTask::run_loop(state, configuration).await
-            }
-            RemoteConnectionsTask::Client {
-                external,
-                websockets,
-                delegate_router,
-                stop_trigger,
-                spawner,
-                configuration,
-                remote_tx,
-                remote_rx,
-            } => {
-                let state = RemoteConnections::new(
-                    &websockets,
-                    configuration,
-                    spawner,
-                    external,
-                    None,
+                    listener,
                     delegate_router,
                     RemoteConnectionChannels {
                         request_tx: remote_tx,
