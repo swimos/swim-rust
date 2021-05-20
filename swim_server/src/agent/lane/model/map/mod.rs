@@ -102,11 +102,12 @@ where
     V: Debug + Send + Sync + Serialize + DeserializeOwned + 'static,
 {
     pub(crate) async fn load_snapshot(&mut self, snapshot: KeyedSnapshot<K, V>) {
-        let map = snapshot
+        let map: OrdMap<Value, TVar<V>> = snapshot
             .into_iter()
             .map(|(k, v)| (k.into_value(), TVar::new(v)))
             .collect();
-        self.map_state = TVar::new(map);
+
+        self.map_state.store(map).await;
     }
 }
 

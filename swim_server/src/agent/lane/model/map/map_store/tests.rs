@@ -12,24 +12,46 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::model::map::map_store::MapDataModel;
+use crate::agent::lane::model::map::summaries_to_events;
+use crate::agent::lane::store::error::StoreErrorHandler;
+use crate::agent::model::map::map_store::{MapDataModel, MapLaneStoreIo};
+use crate::agent::model::map::MapLane;
 use crate::agent::store::NodeStore;
+use crate::agent::StoreIo;
 use crate::plane::store::mock::MockPlaneStore;
 use crate::store::{StoreEngine, StoreKey};
-use futures::future::{ready, BoxFuture};
+use futures::future::{ready, BoxFuture, Ready};
+use futures::stream::{empty, Empty};
 use futures::FutureExt;
-use std::collections::BTreeMap;
+use std::collections::HashMap;
+use std::num::NonZeroUsize;
 use std::ops::Deref;
 use std::sync::{Arc, Mutex};
+use stm::transaction::{atomically, RetryManager};
 use store::engines::KeyedSnapshot;
 use store::keyspaces::{KeyType, Keyspace, KeyspaceRangedSnapshotLoad};
 use store::{serialize, Snapshot, StoreError, StoreInfo};
 use utilities::sync::trigger;
 
+struct ExactlyOnce;
+
+impl RetryManager for ExactlyOnce {
+    type ContentionManager = Empty<()>;
+    type RetryFut = Ready<bool>;
+
+    fn contention_manager(&self) -> Self::ContentionManager {
+        empty()
+    }
+
+    fn retry(&mut self) -> Self::RetryFut {
+        ready(false)
+    }
+}
+
 #[derive(Debug, Clone)]
 struct TrackingMapStore {
     load_tx: Arc<Mutex<Option<trigger::Sender>>>,
-    values: Arc<Mutex<BTreeMap<Vec<u8>, Vec<u8>>>>,
+    values: Arc<Mutex<HashMap<Vec<u8>, Vec<u8>>>>,
 }
 
 impl NodeStore for TrackingMapStore {
@@ -76,6 +98,10 @@ impl KeyspaceRangedSnapshotLoad for TrackingMapStore {
                 Ok(entries)
             }
         })?;
+
+        if let Some(tx) = self.load_tx.lock().unwrap().take() {
+            tx.trigger();
+        }
 
         if mapped.is_empty() {
             Ok(None)
@@ -127,7 +153,7 @@ impl StoreEngine for TrackingMapStore {
 
 #[test]
 fn empty_snapshot() {
-    let values = Arc::new(Mutex::new(BTreeMap::new()));
+    let values = Arc::new(Mutex::new(HashMap::new()));
     let loaded = Arc::new(Mutex::new(None));
     let store = TrackingMapStore {
         load_tx: loaded,
@@ -150,7 +176,7 @@ fn make_store_key(lane_id: KeyType, key: String) -> StoreKey {
 
 #[test]
 fn model_snapshot_single_id() {
-    let mut expected = BTreeMap::new();
+    let mut expected = HashMap::new();
     expected.insert("a".to_string(), 1);
     expected.insert("b".to_string(), 2);
     expected.insert("c".to_string(), 3);
@@ -160,7 +186,7 @@ fn model_snapshot_single_id() {
     let serialized = expected
         .clone()
         .into_iter()
-        .fold(BTreeMap::new(), |mut map, (k, v)| {
+        .fold(HashMap::new(), |mut map, (k, v)| {
             let store_key = make_store_key(0, k);
             map.insert(serialize(&store_key).unwrap(), serialize(&v).unwrap());
             map
@@ -176,7 +202,7 @@ fn model_snapshot_single_id() {
     let model = MapDataModel::<TrackingMapStore, String, i32>::new(store, 0);
     match model.snapshot() {
         Ok(Some(ss)) => {
-            let values_map: BTreeMap<String, i32> = ss.into_iter().collect();
+            let values_map: HashMap<String, i32> = ss.into_iter().collect();
             assert_eq!(values_map, expected)
         }
         r => panic!("Expected Ok(Some(_)). Found: `{:?}`", r),
@@ -185,41 +211,40 @@ fn model_snapshot_single_id() {
 
 #[test]
 fn model_snapshot_multiple_ids() {
-    let mut expected_id_0 = BTreeMap::new();
+    let mut expected_id_0 = HashMap::new();
     expected_id_0.insert("a".to_string(), 1);
     expected_id_0.insert("b".to_string(), 2);
     expected_id_0.insert("c".to_string(), 3);
     expected_id_0.insert("d".to_string(), 4);
     expected_id_0.insert("e".to_string(), 5);
 
-    let mut expected_id_1 = BTreeMap::new();
+    let mut expected_id_1 = HashMap::new();
     expected_id_1.insert("f".to_string(), 6);
     expected_id_1.insert("g".to_string(), 7);
     expected_id_1.insert("h".to_string(), 8);
     expected_id_1.insert("i".to_string(), 9);
     expected_id_1.insert("j".to_string(), 10);
 
-    let mut serialized_id_0 =
-        expected_id_0
-            .clone()
-            .into_iter()
-            .fold(BTreeMap::new(), |mut map, (k, v)| {
-                let store_key = make_store_key(0, k);
-                map.insert(serialize(&store_key).unwrap(), serialize(&v).unwrap());
-                map
-            });
+    let mut initial = expected_id_0
+        .clone()
+        .into_iter()
+        .fold(HashMap::new(), |mut map, (k, v)| {
+            let store_key = make_store_key(0, k);
+            map.insert(serialize(&store_key).unwrap(), serialize(&v).unwrap());
+            map
+        });
 
     let serialized_id_1 = expected_id_1
         .into_iter()
-        .fold(BTreeMap::new(), |mut map, (k, v)| {
+        .fold(HashMap::new(), |mut map, (k, v)| {
             let store_key = make_store_key(1, k);
             map.insert(serialize(&store_key).unwrap(), serialize(&v).unwrap());
             map
         });
 
-    serialized_id_0.extend(serialized_id_1);
+    initial.extend(serialized_id_1);
 
-    let values = Arc::new(Mutex::new(serialized_id_0));
+    let values = Arc::new(Mutex::new(initial));
     let loaded = Arc::new(Mutex::new(None));
     let store = TrackingMapStore {
         load_tx: loaded,
@@ -229,7 +254,7 @@ fn model_snapshot_multiple_ids() {
     let model = MapDataModel::<TrackingMapStore, String, i32>::new(store, 0);
     match model.snapshot() {
         Ok(Some(ss)) => {
-            let values_map: BTreeMap<String, i32> = ss.into_iter().collect();
+            let values_map: HashMap<String, i32> = ss.into_iter().collect();
             assert_eq!(values_map, expected_id_0)
         }
         r => panic!("Expected Ok(Some(_)). Found: `{:?}`", r),
@@ -238,7 +263,7 @@ fn model_snapshot_multiple_ids() {
 
 #[test]
 fn model_crud() {
-    let values = Arc::new(Mutex::new(BTreeMap::new()));
+    let values = Arc::new(Mutex::new(HashMap::new()));
     let loaded = Arc::new(Mutex::new(None));
     let store = TrackingMapStore {
         load_tx: loaded,
@@ -246,7 +271,7 @@ fn model_crud() {
     };
     let model = MapDataModel::<TrackingMapStore, String, i32>::new(store, 0);
 
-    let mut to_load = BTreeMap::new();
+    let mut to_load = HashMap::new();
     to_load.insert("a".to_string(), 1);
     to_load.insert("b".to_string(), 2);
     to_load.insert("c".to_string(), 3);
@@ -264,7 +289,7 @@ fn model_crud() {
     let store_result = model.delete(&"e".to_string());
     assert!(store_result.is_ok());
 
-    let mut expected = BTreeMap::new();
+    let mut expected = HashMap::new();
     expected.insert("a".to_string(), 1);
     expected.insert("b".to_string(), 13);
     expected.insert("c".to_string(), 3);
@@ -272,9 +297,125 @@ fn model_crud() {
 
     match model.snapshot() {
         Ok(Some(ss)) => {
-            let values_map: BTreeMap<String, i32> = ss.into_iter().collect();
+            let values_map: HashMap<String, i32> = ss.into_iter().collect();
             assert_eq!(values_map, expected)
         }
         r => panic!("Expected Ok(Some(_)). Found: `{:?}`", r),
     }
+}
+
+#[tokio::test]
+async fn io_load_some() {
+    let mut expected_id_0 = HashMap::new();
+    expected_id_0.insert("a".to_string(), Arc::new(1));
+    expected_id_0.insert("b".to_string(), Arc::new(2));
+    expected_id_0.insert("c".to_string(), Arc::new(3));
+    expected_id_0.insert("d".to_string(), Arc::new(4));
+    expected_id_0.insert("e".to_string(), Arc::new(5));
+
+    let mut expected_id_1 = HashMap::new();
+    expected_id_1.insert("f".to_string(), Arc::new(6));
+    expected_id_1.insert("g".to_string(), Arc::new(7));
+    expected_id_1.insert("h".to_string(), Arc::new(8));
+    expected_id_1.insert("i".to_string(), Arc::new(9));
+    expected_id_1.insert("j".to_string(), Arc::new(10));
+
+    let mut initial = expected_id_0
+        .clone()
+        .into_iter()
+        .fold(HashMap::new(), |mut map, (k, v)| {
+            let store_key = make_store_key(0, k);
+            map.insert(serialize(&store_key).unwrap(), serialize(&v).unwrap());
+            map
+        });
+
+    let serialized_id_1 = expected_id_1
+        .into_iter()
+        .fold(HashMap::new(), |mut map, (k, v)| {
+            let store_key = make_store_key(1, k);
+            map.insert(serialize(&store_key).unwrap(), serialize(&v).unwrap());
+            map
+        });
+
+    initial.extend(serialized_id_1);
+
+    let (lane, observer) = MapLane::<String, i32>::observable(NonZeroUsize::new(8).unwrap());
+    let events = summaries_to_events(observer.clone());
+
+    let (trigger_tx, trigger_rx) = trigger::trigger();
+
+    let values = Arc::new(Mutex::new(initial));
+    let loaded = Arc::new(Mutex::new(Some(trigger_tx)));
+    let store = TrackingMapStore {
+        load_tx: loaded,
+        values: values.clone(),
+    };
+
+    let info = store.store_info();
+    let store_io = MapLaneStoreIo::new(lane.clone(), events, store);
+
+    let _task_handle =
+        tokio::spawn(store_io.attach("test".to_string(), StoreErrorHandler::new(0, info)));
+
+    assert!(trigger_rx.await.is_ok());
+
+    let lane_snapshot: HashMap<String, Arc<i32>> =
+        atomically(&lane.snapshot(), ExactlyOnce).await.unwrap();
+    assert_eq!(lane_snapshot, expected_id_0);
+}
+
+#[tokio::test]
+async fn io_crud() {
+    let mut initial = HashMap::new();
+    initial.insert("a".to_string(), Arc::new(1));
+    initial.insert("b".to_string(), Arc::new(2));
+    initial.insert("c".to_string(), Arc::new(3));
+    initial.insert("d".to_string(), Arc::new(4));
+    initial.insert("e".to_string(), Arc::new(5));
+
+    let initial = initial
+        .clone()
+        .into_iter()
+        .fold(HashMap::new(), |mut map, (k, v)| {
+            let store_key = make_store_key(0, k);
+            map.insert(serialize(&store_key).unwrap(), serialize(&v).unwrap());
+            map
+        });
+
+    let (lane, observer) = MapLane::<String, i32>::observable(NonZeroUsize::new(8).unwrap());
+    let events = summaries_to_events(observer.clone());
+
+    let (trigger_tx, trigger_rx) = trigger::trigger();
+
+    let values = Arc::new(Mutex::new(initial));
+    let loaded = Arc::new(Mutex::new(Some(trigger_tx)));
+    let store = TrackingMapStore {
+        load_tx: loaded,
+        values: values.clone(),
+    };
+
+    let info = store.store_info();
+    let store_io = MapLaneStoreIo::new(lane.clone(), events, store);
+
+    let _task_handle =
+        tokio::spawn(store_io.attach("test".to_string(), StoreErrorHandler::new(0, info)));
+
+    assert!(trigger_rx.await.is_ok());
+
+    let update_stm = lane.update("b".to_string(), Arc::new(13));
+    assert!(atomically(&update_stm, ExactlyOnce).await.is_ok());
+
+    let delete_stm = lane.remove("c".to_string());
+    assert!(atomically(&delete_stm, ExactlyOnce).await.is_ok());
+
+    let lane_snapshot: HashMap<String, Arc<i32>> =
+        atomically(&lane.snapshot(), ExactlyOnce).await.unwrap();
+
+    let mut expected = HashMap::new();
+    expected.insert("a".to_string(), Arc::new(1));
+    expected.insert("b".to_string(), Arc::new(13));
+    expected.insert("d".to_string(), Arc::new(4));
+    expected.insert("e".to_string(), Arc::new(5));
+
+    assert_eq!(lane_snapshot, expected);
 }

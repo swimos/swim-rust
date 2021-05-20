@@ -301,6 +301,38 @@ where
             .instrument(span!(Level::DEBUG, AGENT_START))
             .await;
 
+        let (mut routing_io, persistence_io) = io_providers.into_iter().fold(
+            (HashMap::new(), HashMap::new()),
+            |(mut routing_io, mut persistence_io), (lane_uri, lane_io)| {
+                let LaneIo {
+                    routing,
+                    persistence,
+                } = lane_io;
+
+                if let Some(routing) = routing {
+                    let ident = LaneIdentifier::agent(lane_uri.clone());
+                    routing_io.insert(ident, routing);
+                }
+                persistence_io.insert(lane_uri, persistence);
+                (routing_io, persistence_io)
+            },
+        );
+
+        routing_io.extend(meta_io);
+
+        let (store_result_tx, store_result_rx) = oneshot::channel();
+        let max_store_errors = execution_config.max_store_errors;
+
+        let store_trigger = stop_trigger.clone();
+        let store_task = async move {
+            let task = NodeStoreTask::new(store_trigger, store);
+            let result = task.run(persistence_io, max_store_errors).await;
+            let _ = store_result_tx.send(result);
+        }
+        .boxed()
+        .instrument(span!(Level::INFO, STORE_TASK));
+        task_manager.push(store_task);
+
         for lane_task in tasks.iter() {
             let lane_name = lane_task.name();
             (**lane_task)
@@ -324,36 +356,6 @@ where
                     .instrument(span!(Level::DEBUG, LANE_EVENTS, name = %lane_name)),
             );
         }
-
-        let (mut routing_io, persistence_io) = io_providers.into_iter().fold(
-            (HashMap::new(), HashMap::new()),
-            |(mut routing_io, mut persistence_io), (lane_uri, lane_io)| {
-                let LaneIo {
-                    routing,
-                    persistence,
-                } = lane_io;
-
-                if let Some(routing) = routing {
-                    let ident = LaneIdentifier::agent(lane_uri.clone());
-                    routing_io.insert(ident, routing);
-                }
-                persistence_io.insert(lane_uri, persistence);
-                (routing_io, persistence_io)
-            },
-        );
-
-        routing_io.extend(meta_io);
-
-        let (store_result_tx, store_result_rx) = oneshot::channel();
-        let max_store_errors = execution_config.max_store_errors;
-        let store_task = async move {
-            let task = NodeStoreTask::new(stop_trigger.clone(), store);
-            let result = task.run(persistence_io, max_store_errors).await;
-            let _ = store_result_tx.send(result);
-        }
-        .boxed()
-        .instrument(span!(Level::INFO, STORE_TASK));
-        task_manager.push(store_task);
 
         let dispatcher =
             AgentDispatcher::new(uri.clone(), execution_config, context.clone(), routing_io);

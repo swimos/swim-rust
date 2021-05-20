@@ -60,6 +60,7 @@ pub struct StoreAgent {
 struct StoreAgentLifecycle {
     init: i32,
     count: Option<usize>,
+    loaded: Arc<Mutex<Option<trigger::Sender>>>,
 }
 
 impl AgentLifecycle<StoreAgent> for StoreAgentLifecycle {
@@ -67,7 +68,11 @@ impl AgentLifecycle<StoreAgent> for StoreAgentLifecycle {
     where
         C: AgentContext<StoreAgent> + Send + Sync + 'a,
     {
-        let StoreAgentLifecycle { init, count } = self;
+        let StoreAgentLifecycle {
+            init,
+            count,
+            loaded,
+        } = self;
 
         Box::pin(async move {
             let value_lane = context.agent().value.clone();
@@ -93,6 +98,11 @@ impl AgentLifecycle<StoreAgent> for StoreAgentLifecycle {
                         Some(*count),
                     )
                     .await;
+            }
+
+            let mut lock = loaded.lock().unwrap();
+            if let Some(trigger) = lock.take() {
+                trigger.trigger();
             }
         })
     }
@@ -170,7 +180,6 @@ impl SwimAgent<AgentConfig> for StoreAgent {
 struct PlaneEventStore {
     default_value: Option<i32>,
     events: Arc<Mutex<Vec<Vec<u8>>>>,
-    loaded: Arc<Mutex<Option<trigger::Sender>>>,
 }
 
 impl KeystoreTask for PlaneEventStore {
@@ -240,11 +249,6 @@ impl StoreEngine for PlaneEventStore {
     }
 
     fn get(&self, _key: StoreKey) -> Result<Option<Vec<u8>>, StoreError> {
-        let mut lock = self.loaded.lock().unwrap();
-        if let Some(trigger) = lock.take() {
-            trigger.trigger();
-        }
-
         match &self.default_value {
             Some(default) => {
                 let value = bincode::serialize(default).expect("Failed to serialize default value");
@@ -275,22 +279,22 @@ async fn events() {
         init: default_value,
         tx,
     };
+    let (trigger_tx, _trigger_rx) = trigger::trigger();
 
     let store_lifecycle = StoreAgentLifecycle {
         init: default_value,
         count: Some(event_count),
+        loaded: Arc::new(Mutex::new(Some(trigger_tx))),
     };
     let provider = AgentProvider::new(config, store_lifecycle);
     let uri: RelativeUri = "/test".parse().unwrap();
     let buffer_size = NonZeroUsize::new(10).unwrap();
     let clock = TestClock::default();
     let events = Arc::new(Mutex::new(vec![]));
-    let (trigger_tx, _trigger_rx) = trigger::trigger();
 
     let plane_store = PlaneEventStore {
         default_value: None,
         events: events.clone(),
-        loaded: Arc::new(Mutex::new(Some(trigger_tx))),
     };
 
     let exec_config = AgentExecutionConfig::with(buffer_size, 1, 0, Duration::from_secs(1), None);
@@ -333,9 +337,12 @@ async fn events() {
 
 #[tokio::test]
 async fn loads_store_default() {
+    let (trigger_tx, trigger_rx) = trigger::trigger();
+
     let store_lifecycle = StoreAgentLifecycle {
         init: 13,
         count: None,
+        loaded: Arc::new(Mutex::new(Some(trigger_tx))),
     };
     let (tx, _rx) = mpsc::channel(5);
 
@@ -345,12 +352,10 @@ async fn loads_store_default() {
     let buffer_size = NonZeroUsize::new(10).unwrap();
     let clock = TestClock::default();
     let events = Arc::new(Mutex::new(vec![]));
-    let (trigger_tx, trigger_rx) = trigger::trigger();
 
     let plane_store = PlaneEventStore {
         default_value: Some(i32::MAX),
         events: events.clone(),
-        loaded: Arc::new(Mutex::new(Some(trigger_tx))),
     };
 
     let exec_config = AgentExecutionConfig::with(buffer_size, 1, 0, Duration::from_secs(1), None);
