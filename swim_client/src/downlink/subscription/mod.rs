@@ -30,10 +30,10 @@ use crate::downlink::{
     command_downlink, event_downlink, map_downlink, value_downlink, Command, Downlink,
     DownlinkError, Message, SchemaViolations,
 };
-use crate::router::ClientConnectionsManager;
 use crate::router::RouterEvent;
 use crate::router::RouterMessageRequest;
 use crate::router::TaskManager;
+use crate::router::{ClientConnectionsManager, ConnectionRequestMode};
 use crate::router::{ClientRequest, ClientRouterFactory};
 use crate::router::{CloseSender, RouterConnRequest};
 use either::Either;
@@ -472,7 +472,7 @@ impl<Path: Addressable> TransformOnce<Result<Arc<Result<(), DownlinkError>>, Pro
 }
 
 impl<Path: Addressable> DownlinksTask<Path> {
-    pub fn new<C>(
+    pub(crate) fn new<C>(
         config: Arc<C>,
         conn_request_tx: mpsc::Sender<RouterConnRequest<Path>>,
         sink_tx: mpsc::Sender<RouterMessageRequest<Path>>,
@@ -572,7 +572,18 @@ impl<Path: Addressable> DownlinksTask<Path> {
         let (tx, rx) = oneshot::channel();
 
         self.conn_request_tx
-            .send((path.clone(), tx))
+            .send((path.clone(), ConnectionRequestMode::Full(tx)))
+            .await
+            .map_err(|_| SubscriptionError::ConnectionError)?;
+
+        rx.await.map_err(|_| SubscriptionError::ConnectionError)
+    }
+
+    pub async fn sink_for(&mut self, path: &Path) -> RequestResult<(mpsc::Sender<Envelope>), Path> {
+        let (tx, rx) = oneshot::channel();
+
+        self.conn_request_tx
+            .send((path.clone(), ConnectionRequestMode::Outgoing(tx)))
             .await
             .map_err(|_| SubscriptionError::ConnectionError)?;
 
@@ -744,11 +755,9 @@ impl<Path: Addressable> DownlinksTask<Path> {
         path: Path,
         schema: StandardSchema,
     ) -> RequestResult<Arc<UntypedCommandDownlink>, Path> {
-        //Todo dm get only sink
-        let (sink, _) = self.connection_for(&path).await?;
+        let sink = self.sink_for(&path).await?;
 
         let config = self.config.config_for(&path);
-
         let sink_path = path.clone();
 
         let cmd_sink = item::for_mpsc_sender(sink)
@@ -1079,8 +1088,7 @@ impl<Path: Addressable> DownlinksTask<Path> {
         path: Path,
         envelope: Envelope,
     ) -> RequestResult<(), Path> {
-        //Todo dm get only sink
-        let (sink, _) = self.connection_for(&path).await?;
+        let sink = self.sink_for(&path).await?;
         sink.send(envelope)
             .await
             .map_err(|_| SubscriptionError::ConnectionError)?;

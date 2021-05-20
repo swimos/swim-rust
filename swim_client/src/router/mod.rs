@@ -478,7 +478,12 @@ impl ClientConnectionManager {
     }
 }
 
-pub(crate) type RouterConnRequest<Path: Addressable> = (Path, oneshot::Sender<ConnectionChannel>);
+pub(crate) enum ConnectionRequestMode {
+    Full(oneshot::Sender<ConnectionChannel>),
+    Outgoing(oneshot::Sender<mpsc::Sender<Envelope>>),
+}
+
+pub(crate) type RouterConnRequest<Path: Addressable> = (Path, ConnectionRequestMode);
 pub(crate) type RouterMessageRequest<Path: Addressable> = (Path, Envelope);
 pub(crate) type CloseSender = promise::Sender<mpsc::Sender<Result<(), RoutingError>>>;
 type ConnectionChannel = (mpsc::Sender<Envelope>, mpsc::Receiver<RouterEvent>);
@@ -525,7 +530,7 @@ pub struct TaskManager<Pool: ConnectionPool<PathType = Path>, Path: Addressable>
 }
 
 impl<Pool: ConnectionPool<PathType = Path>, Path: Addressable> TaskManager<Pool, Path> {
-    pub fn new(
+    pub(crate) fn new(
         connection_pool: Pool,
         close_rx: CloseReceiver,
         config: RouterParams,
@@ -577,28 +582,43 @@ impl<Pool: ConnectionPool<PathType = Path>, Path: Addressable> TaskManager<Pool,
             }.ok_or(RoutingError::ConnectionError)?;
 
             match task {
-                RouterTask::Connect((target, response_tx)) => {
-                    let (sink, stream_registrator, _) = get_host_manager(
-                        &mut host_managers,
-                        target.clone(),
-                        connection_pool.clone(),
-                        close_rx.clone(),
-                        config,
-                    );
+                RouterTask::Connect((target, mode)) => match mode {
+                    ConnectionRequestMode::Full(response_tx) => {
+                        let (sink, stream_registrator, _) = get_host_manager(
+                            &mut host_managers,
+                            target.clone(),
+                            connection_pool.clone(),
+                            close_rx.clone(),
+                            config,
+                        );
 
-                    let (subscriber_tx, stream) = mpsc::channel(config.buffer_size().get());
+                        let (subscriber_tx, stream) = mpsc::channel(config.buffer_size().get());
 
-                    let relative_path = target.relative_path();
+                        let relative_path = target.relative_path();
 
-                    stream_registrator
-                        .send(SubscriberRequest::new(relative_path, subscriber_tx))
-                        .await
-                        .map_err(|_| RoutingError::ConnectionError)?;
+                        stream_registrator
+                            .send(SubscriberRequest::new(relative_path, subscriber_tx))
+                            .await
+                            .map_err(|_| RoutingError::ConnectionError)?;
 
-                    response_tx
-                        .send((sink.clone(), stream))
-                        .map_err(|_| RoutingError::ConnectionError)?;
-                }
+                        response_tx
+                            .send((sink.clone(), stream))
+                            .map_err(|_| RoutingError::ConnectionError)?;
+                    }
+                    ConnectionRequestMode::Outgoing(response_tx) => {
+                        let (sink, _, _) = get_host_manager(
+                            &mut host_managers,
+                            target.clone(),
+                            connection_pool.clone(),
+                            close_rx.clone(),
+                            config,
+                        );
+
+                        response_tx
+                            .send(sink.clone())
+                            .map_err(|_| RoutingError::ConnectionError)?;
+                    }
+                },
 
                 RouterTask::SendMessage(payload) => {
                     let (path, message) = payload.deref();

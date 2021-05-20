@@ -31,8 +31,7 @@ pub trait Addressable:
     fn host(&self) -> Option<Url>;
 }
 
-//Todo add from for abs and rel paths
-/// Todo dm documentation
+/// Wrapper around absolute and relative paths for addressing remote or local lanes respectively.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub enum Path {
     Remote(AbsolutePath),
