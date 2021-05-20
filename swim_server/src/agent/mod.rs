@@ -1073,7 +1073,7 @@ where
     };
 
     let tasks = MapLifecycleTasks(LifecycleTasks {
-        name: name.into(),
+        name,
         lifecycle,
         event_stream: summaries_to_events(observer.clone()),
         projection,
@@ -1082,10 +1082,7 @@ where
     let store_io: Box<dyn StoreIo> = if transient {
         Box::new(LaneNoStore)
     } else {
-        Box::new(MapLaneStoreIo::new(
-            summaries_to_events(observer.clone()),
-            model,
-        ))
+        Box::new(MapLaneStoreIo::new(summaries_to_events(observer), model))
     };
 
     let io = LaneIo {

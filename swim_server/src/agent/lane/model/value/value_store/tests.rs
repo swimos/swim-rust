@@ -42,7 +42,7 @@ impl NodeStore for TrackingValueStore {
         }
     }
 
-    fn lane_id_of(&self, _lane: &String) -> Result<KeyType, StoreError> {
+    fn lane_id_of(&self, _lane: &str) -> Result<KeyType, StoreError> {
         Ok(0)
     }
 }
@@ -186,7 +186,7 @@ impl NodeStore for FailingStore {
         }
     }
 
-    fn lane_id_of(&self, _lane: &String) -> Result<KeyType, StoreError> {
+    fn lane_id_of(&self, _lane: &str) -> Result<KeyType, StoreError> {
         Ok(0)
     }
 }
