@@ -234,10 +234,9 @@ impl<Path: Addressable> PoolTask<Path> {
                         recreate_connection,
                     } = conn_req;
 
-                    //Todo dm this should save node for local connections and host for all other
-                    let host = target.to_string();
+                    let path = target.to_string();
 
-                    let recreate = match (recreate_connection, connections.get(&host)) {
+                    let recreate = match (recreate_connection, connections.get(&path)) {
                         // Connection has stopped and needs to be recreated
                         (_, Some(inner)) if inner.stopped() => true,
                         // Connection doesn't exist
@@ -257,14 +256,14 @@ impl<Path: Addressable> PoolTask<Path> {
                         .await
                         .and_then(|connection| {
                             let (inner, sender, receiver) = InnerConnection::from(connection)?;
-                            let _ = connections.insert(host.clone(), inner);
+                            let _ = connections.insert(path.clone(), inner);
                             Ok((sender, Some(receiver)))
                         })
                     } else {
-                        let inner_connection = connections.get_mut(&host).ok_or_else(|| {
+                        let inner_connection = connections.get_mut(&path).ok_or_else(|| {
                             ConnectionError::Resolution(ResolutionError::new(
                                 ResolutionErrorKind::Unresolvable,
-                                Some(host.clone()),
+                                Some(path.clone()),
                             ))
                         })?;
                         inner_connection.last_accessed = Instant::now();

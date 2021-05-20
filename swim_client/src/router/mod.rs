@@ -479,7 +479,7 @@ impl ClientConnectionManager {
 }
 
 pub(crate) type RouterConnRequest<Path: Addressable> = (Path, oneshot::Sender<ConnectionChannel>);
-pub(crate) type RouterMessageRequest = (url::Url, Envelope);
+pub(crate) type RouterMessageRequest<Path: Addressable> = (Path, Envelope);
 pub(crate) type CloseSender = promise::Sender<mpsc::Sender<Result<(), RoutingError>>>;
 type ConnectionChannel = (mpsc::Sender<Envelope>, mpsc::Receiver<RouterEvent>);
 type CloseResponseSender = mpsc::Sender<Result<(), RoutingError>>;
@@ -503,7 +503,7 @@ pub enum RouterEvent {
 /// Tasks that the router can handle.
 enum RouterTask<Path: Addressable> {
     Connect(RouterConnRequest<Path>),
-    SendMessage(Box<RouterMessageRequest>),
+    SendMessage(Box<RouterMessageRequest<Path>>),
     Close(Option<CloseResponseSender>),
 }
 
@@ -518,7 +518,7 @@ type HostManagerHandle = (
 /// to the appropriate sub-task.
 pub struct TaskManager<Pool: ConnectionPool<PathType = Path>, Path: Addressable> {
     conn_request_rx: mpsc::Receiver<RouterConnRequest<Path>>,
-    message_request_rx: mpsc::Receiver<RouterMessageRequest>,
+    message_request_rx: mpsc::Receiver<RouterMessageRequest<Path>>,
     connection_pool: Pool,
     close_rx: CloseReceiver,
     config: RouterParams,
@@ -532,7 +532,7 @@ impl<Pool: ConnectionPool<PathType = Path>, Path: Addressable> TaskManager<Pool,
     ) -> (
         Self,
         mpsc::Sender<RouterConnRequest<Path>>,
-        mpsc::Sender<RouterMessageRequest>,
+        mpsc::Sender<RouterMessageRequest<Path>>,
     ) {
         let (conn_request_tx, conn_request_rx) = mpsc::channel(config.buffer_size().get());
         let (message_request_tx, message_request_rx) = mpsc::channel(config.buffer_size().get());
@@ -601,27 +601,19 @@ impl<Pool: ConnectionPool<PathType = Path>, Path: Addressable> TaskManager<Pool,
                 }
 
                 RouterTask::SendMessage(payload) => {
-                    //TOdo fix
-                    unimplemented!();
-                    // let (host, message) = payload.deref();
-                    //
-                    // let target = message
-                    //     .header
-                    //     .relative_path()
-                    //     .ok_or(RoutingError::ConnectionError)?
-                    //     .for_host(host.clone());
-                    //
-                    // let (sink, _, _) = get_host_manager(
-                    //     &mut host_managers,
-                    //     target.clone(),
-                    //     connection_pool.clone(),
-                    //     close_rx.clone(),
-                    //     config,
-                    // );
-                    //
-                    // sink.send(message.clone())
-                    //     .await
-                    //     .map_err(|_| RoutingError::ConnectionError)?;
+                    let (path, message) = payload.deref();
+
+                    let (sink, _, _) = get_host_manager(
+                        &mut host_managers,
+                        path.clone(),
+                        connection_pool.clone(),
+                        close_rx.clone(),
+                        config,
+                    );
+
+                    sink.send(message.clone())
+                        .await
+                        .map_err(|_| RoutingError::ConnectionError)?;
                 }
 
                 RouterTask::Close(close_rx) => {

@@ -434,7 +434,7 @@ pub struct DownlinksTask<Path: Addressable> {
     event_downlinks: HashMap<(Path, SchemaViolations), EventHandle>,
     stopped_watch: StopEvents<Path>,
     conn_request_tx: mpsc::Sender<RouterConnRequest<Path>>,
-    sink_tx: mpsc::Sender<RouterMessageRequest>,
+    sink_tx: mpsc::Sender<RouterMessageRequest<Path>>,
     close_tx: CloseSender,
 }
 
@@ -475,7 +475,7 @@ impl<Path: Addressable> DownlinksTask<Path> {
     pub fn new<C>(
         config: Arc<C>,
         conn_request_tx: mpsc::Sender<RouterConnRequest<Path>>,
-        sink_tx: mpsc::Sender<RouterMessageRequest>,
+        sink_tx: mpsc::Sender<RouterMessageRequest<Path>>,
         close_tx: CloseSender,
     ) -> DownlinksTask<Path>
     where
