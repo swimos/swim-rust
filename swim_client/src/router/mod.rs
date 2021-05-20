@@ -175,7 +175,6 @@ pub(crate) async fn run_client_router(
 
         match next {
             Some(ClientRequest::Connect { request, origin }) => {
-                eprintln!("addr = {:#?}", origin.to_string());
                 let (sender, _) = outgoing_managers
                     .entry(origin.to_string())
                     .or_insert_with(|| {
@@ -196,7 +195,6 @@ pub(crate) async fn run_client_router(
                 path: sub_addr,
                 request: sub_req,
             }) => {
-                eprintln!("host = {:#?}", sub_addr.host.to_string());
                 let (_, sub_sender) = outgoing_managers
                     .entry(sub_addr.host.to_string())
                     .or_insert_with(|| {
