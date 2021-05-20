@@ -20,8 +20,6 @@ use swim_common::model::text::Text;
 
 use crate::plane::store::PlaneStore;
 use crate::store::{StoreEngine, StoreKey};
-use futures::future::BoxFuture;
-use futures::FutureExt;
 use store::engines::KeyedSnapshot;
 use store::keyspaces::{KeyType, Keyspace, KeyspaceRangedSnapshotLoad};
 
@@ -48,9 +46,7 @@ pub trait NodeStore:
     /// Returns information about the delegate store
     fn store_info(&self) -> StoreInfo;
 
-    fn lane_id_of<I>(&self, lane: I) -> BoxFuture<KeyType>
-    where
-        I: Into<String>;
+    fn lane_id_of(&self, lane: &String) -> Result<KeyType, StoreError>;
 }
 
 /// A node store which is used to open value and map lane data models.
@@ -127,10 +123,8 @@ impl<D: PlaneStore> NodeStore for SwimNodeStore<D> {
         self.delegate.store_info()
     }
 
-    fn lane_id_of<I>(&self, lane: I) -> BoxFuture<'_, u64>
-    where
-        I: Into<String>,
-    {
-        self.delegate.lane_id_of(lane).boxed()
+    fn lane_id_of(&self, lane: &String) -> Result<KeyType, StoreError> {
+        let node_id = format!("{}/{}", self.node_uri, lane);
+        self.delegate.node_id_of(node_id)
     }
 }

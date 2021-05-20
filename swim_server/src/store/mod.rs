@@ -18,8 +18,6 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use keystore::KeystoreTask;
-
 use utilities::fs::Dir;
 
 use crate::plane::store::{PlaneStore, SwimPlaneStore};
@@ -83,7 +81,7 @@ pub trait SwimStore {
 }
 
 /// A Swim server store that will open plane stores on request.
-pub struct ServerStore<D: Store + KeystoreTask> {
+pub struct ServerStore<D: Store> {
     /// The directory that this store is operating from.
     dir: Dir,
     /// Database environment open options
@@ -94,7 +92,7 @@ pub struct ServerStore<D: Store + KeystoreTask> {
 
 impl<D> Debug for ServerStore<D>
 where
-    D: Store + KeystoreTask,
+    D: Store,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ServerStore")
@@ -105,7 +103,7 @@ where
 
 impl<D> ServerStore<D>
 where
-    D: Store + KeystoreTask,
+    D: Store,
 {
     /// Constructs a new server store that will open stores using `opts` and will use the directory
     /// `base_path` for opening all new stores.
@@ -153,7 +151,7 @@ impl ServerStore<RocksDatabase> {
 
 impl<D> SwimStore for ServerStore<D>
 where
-    D: Store + KeystoreTask,
+    D: Store,
 {
     type PlaneStore = SwimPlaneStore<D>;
 

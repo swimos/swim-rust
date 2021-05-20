@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::agent::lane::model::map::map_store::MapDataModel;
-use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
+use crate::agent::lane::model::map::MapLaneEvent;
 use crate::agent::lane::store::error::{LaneStoreErrorReport, StoreErrorHandler};
 use crate::agent::lane::store::StoreIo;
 use crate::agent::store::NodeStore;
@@ -22,7 +22,7 @@ use futures::{Stream, StreamExt};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::fmt::Debug;
-use store::{Snapshot, StoreError};
+use store::StoreError;
 use swim_common::form::Form;
 
 /// Map lane store IO task.
@@ -37,22 +37,16 @@ use swim_common::form::Form;
 /// `Events` - map lane event stream.
 /// `Store` - delegate node store type.
 pub struct MapLaneStoreIo<K, V, Events, Store> {
-    lane: MapLane<K, V>,
     events: Events,
-    store: Store,
+    model: MapDataModel<Store, K, V>,
 }
 
 impl<K, V, Events, Store> MapLaneStoreIo<K, V, Events, Store> {
     pub fn new(
-        lane: MapLane<K, V>,
         events: Events,
-        store: Store,
+        model: MapDataModel<Store, K, V>,
     ) -> MapLaneStoreIo<K, V, Events, Store> {
-        MapLaneStoreIo {
-            lane,
-            events,
-            store,
-        }
+        MapLaneStoreIo { events, model }
     }
 }
 
@@ -65,24 +59,10 @@ where
 {
     fn attach(
         self,
-        lane_uri: String,
         mut error_handler: StoreErrorHandler,
     ) -> BoxFuture<'static, Result<(), LaneStoreErrorReport>> {
         Box::pin(async move {
-            let MapLaneStoreIo {
-                mut lane,
-                mut events,
-                store,
-            } = self;
-            let lane_id = store.lane_id_of(lane_uri).await;
-            let info = store.store_info();
-            let model = MapDataModel::new(store, lane_id);
-
-            match model.snapshot() {
-                Ok(Some(snapshot)) => lane.load_snapshot(snapshot).await,
-                Ok(None) => {}
-                Err(e) => return Err(LaneStoreErrorReport::for_error(info, e)),
-            }
+            let MapLaneStoreIo { mut events, model } = self;
 
             while let Some(event) = events.next().await {
                 match event {
@@ -102,10 +82,9 @@ where
 
     fn attach_boxed(
         self: Box<Self>,
-        lane_uri: String,
         error_handler: StoreErrorHandler,
     ) -> BoxFuture<'static, Result<(), LaneStoreErrorReport>> {
-        (*self).attach(lane_uri, error_handler)
+        (*self).attach(error_handler)
     }
 }
 

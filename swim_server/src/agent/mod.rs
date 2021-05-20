@@ -48,7 +48,9 @@ use crate::agent::lane::model::demand_map::{
 use crate::agent::lane::model::map::MapLane;
 use crate::agent::lane::model::map::{summaries_to_events, MapLaneEvent, MapSubscriber};
 use crate::agent::lane::model::supply::{make_lane_model, SupplyLane};
-use crate::agent::lane::model::value::{ValueLane, ValueLaneEvent, ValueLaneStoreIo};
+use crate::agent::lane::model::value::{
+    ValueDataModel, ValueLane, ValueLaneEvent, ValueLaneStoreIo,
+};
 use crate::agent::lane::model::DeferredSubscription;
 use crate::agent::lifecycle::AgentLifecycle;
 use crate::routing::{ServerRouter, TaggedClientEnvelope, TaggedEnvelope};
@@ -77,6 +79,7 @@ use utilities::future::SwimStreamExt;
 use utilities::sync::{topic, trigger};
 use utilities::uri::RelativeUri;
 
+use crate::agent::lane::model::map::map_store::MapDataModel;
 use crate::agent::lane::store::task::{NodeStoreErrors, NodeStoreTask};
 pub use crate::agent::lane::store::{LaneNoStore, StoreIo};
 use crate::agent::model::map::map_store::MapLaneStoreIo;
@@ -938,7 +941,11 @@ where
         transient,
     } = lane_config;
 
-    let (lane, observer) = ValueLane::observable(init, exec_config.observation_buffer);
+    let lane_id = store.lane_id_of(&name).expect("Failed to fetch lane id");
+    let model = ValueDataModel::new(store, lane_id);
+
+    let (lane, observer) =
+        ValueLane::store_observable(&model, exec_config.observation_buffer, init);
 
     let lane_io = if is_public {
         Some(ValueLaneIo::new(lane.clone(), observer.subscriber()))
@@ -956,11 +963,7 @@ where
     let store_io: Box<dyn StoreIo> = if transient {
         Box::new(LaneNoStore)
     } else {
-        Box::new(ValueLaneStoreIo::new(
-            store,
-            lane.clone(),
-            observer.into_stream(),
-        ))
+        Box::new(ValueLaneStoreIo::new(observer.into_stream(), model))
     };
 
     let io = LaneIo {
@@ -1055,7 +1058,10 @@ where
     Store: NodeStore,
     P: Fn(&Agent) -> &MapLane<K, V> + Send + Sync + 'static,
 {
-    let (lane, observer) = MapLane::observable(config.observation_buffer);
+    let name = name.into();
+    let lane_id = store.lane_id_of(&name).expect("Failed to fetch lane id");
+    let model = MapDataModel::new(store, lane_id);
+    let (lane, observer) = MapLane::store_observable(&model, config.observation_buffer);
 
     let lane_io = if is_public {
         Some(MapLaneIo::new(
@@ -1077,9 +1083,8 @@ where
         Box::new(LaneNoStore)
     } else {
         Box::new(MapLaneStoreIo::new(
-            lane.clone(),
             summaries_to_events(observer.clone()),
-            store,
+            model,
         ))
     };
 

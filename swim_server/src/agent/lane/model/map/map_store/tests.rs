@@ -20,9 +20,8 @@ use crate::agent::store::NodeStore;
 use crate::agent::StoreIo;
 use crate::plane::store::mock::MockPlaneStore;
 use crate::store::{StoreEngine, StoreKey};
-use futures::future::{ready, BoxFuture, Ready};
+use futures::future::{ready, Ready};
 use futures::stream::{empty, Empty};
-use futures::FutureExt;
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::ops::Deref;
@@ -31,7 +30,6 @@ use stm::transaction::{atomically, RetryManager};
 use store::engines::KeyedSnapshot;
 use store::keyspaces::{KeyType, Keyspace, KeyspaceRangedSnapshotLoad};
 use store::{serialize, Snapshot, StoreError, StoreInfo};
-use utilities::sync::trigger;
 
 struct ExactlyOnce;
 
@@ -50,7 +48,6 @@ impl RetryManager for ExactlyOnce {
 
 #[derive(Debug, Clone)]
 struct TrackingMapStore {
-    load_tx: Arc<Mutex<Option<trigger::Sender>>>,
     values: Arc<Mutex<HashMap<Vec<u8>, Vec<u8>>>>,
 }
 
@@ -64,11 +61,8 @@ impl NodeStore for TrackingMapStore {
         }
     }
 
-    fn lane_id_of<I>(&self, _lane: I) -> BoxFuture<u64>
-    where
-        I: Into<String>,
-    {
-        ready(0).boxed()
+    fn lane_id_of(&self, _lane: &String) -> Result<KeyType, StoreError> {
+        Ok(0)
     }
 }
 
@@ -98,10 +92,6 @@ impl KeyspaceRangedSnapshotLoad for TrackingMapStore {
                 Ok(entries)
             }
         })?;
-
-        if let Some(tx) = self.load_tx.lock().unwrap().take() {
-            tx.trigger();
-        }
 
         if mapped.is_empty() {
             Ok(None)
@@ -154,11 +144,7 @@ impl StoreEngine for TrackingMapStore {
 #[test]
 fn empty_snapshot() {
     let values = Arc::new(Mutex::new(HashMap::new()));
-    let loaded = Arc::new(Mutex::new(None));
-    let store = TrackingMapStore {
-        load_tx: loaded,
-        values,
-    };
+    let store = TrackingMapStore { values };
 
     let model = MapDataModel::<TrackingMapStore, i32, i32>::new(store, 0);
     match model.snapshot() {
@@ -193,11 +179,7 @@ fn model_snapshot_single_id() {
         });
 
     let values = Arc::new(Mutex::new(serialized));
-    let loaded = Arc::new(Mutex::new(None));
-    let store = TrackingMapStore {
-        load_tx: loaded,
-        values,
-    };
+    let store = TrackingMapStore { values };
 
     let model = MapDataModel::<TrackingMapStore, String, i32>::new(store, 0);
     match model.snapshot() {
@@ -245,11 +227,7 @@ fn model_snapshot_multiple_ids() {
     initial.extend(serialized_id_1);
 
     let values = Arc::new(Mutex::new(initial));
-    let loaded = Arc::new(Mutex::new(None));
-    let store = TrackingMapStore {
-        load_tx: loaded,
-        values,
-    };
+    let store = TrackingMapStore { values };
 
     let model = MapDataModel::<TrackingMapStore, String, i32>::new(store, 0);
     match model.snapshot() {
@@ -264,9 +242,7 @@ fn model_snapshot_multiple_ids() {
 #[test]
 fn model_crud() {
     let values = Arc::new(Mutex::new(HashMap::new()));
-    let loaded = Arc::new(Mutex::new(None));
     let store = TrackingMapStore {
-        load_tx: loaded,
         values: values.clone(),
     };
     let model = MapDataModel::<TrackingMapStore, String, i32>::new(store, 0);
@@ -339,25 +315,19 @@ async fn io_load_some() {
 
     initial.extend(serialized_id_1);
 
-    let (lane, observer) = MapLane::<String, i32>::observable(NonZeroUsize::new(8).unwrap());
-    let events = summaries_to_events(observer.clone());
-
-    let (trigger_tx, trigger_rx) = trigger::trigger();
-
     let values = Arc::new(Mutex::new(initial));
-    let loaded = Arc::new(Mutex::new(Some(trigger_tx)));
     let store = TrackingMapStore {
-        load_tx: loaded,
         values: values.clone(),
     };
 
     let info = store.store_info();
-    let store_io = MapLaneStoreIo::new(lane.clone(), events, store);
+    let model = MapDataModel::new(store, 0);
+    let (lane, observer) =
+        MapLane::<String, i32>::store_observable(&model, NonZeroUsize::new(8).unwrap());
+    let events = summaries_to_events::<String, i32>(observer.clone());
+    let store_io = MapLaneStoreIo::new(events, model);
 
-    let _task_handle =
-        tokio::spawn(store_io.attach("test".to_string(), StoreErrorHandler::new(0, info)));
-
-    assert!(trigger_rx.await.is_ok());
+    let _task_handle = tokio::spawn(store_io.attach(StoreErrorHandler::new(0, info)));
 
     let lane_snapshot: HashMap<String, Arc<i32>> =
         atomically(&lane.snapshot(), ExactlyOnce).await.unwrap();
@@ -382,25 +352,21 @@ async fn io_crud() {
             map
         });
 
-    let (lane, observer) = MapLane::<String, i32>::observable(NonZeroUsize::new(8).unwrap());
-    let events = summaries_to_events(observer.clone());
-
-    let (trigger_tx, trigger_rx) = trigger::trigger();
-
     let values = Arc::new(Mutex::new(initial));
-    let loaded = Arc::new(Mutex::new(Some(trigger_tx)));
     let store = TrackingMapStore {
-        load_tx: loaded,
         values: values.clone(),
     };
 
     let info = store.store_info();
-    let store_io = MapLaneStoreIo::new(lane.clone(), events, store);
+    let model = MapDataModel::new(store, 0);
 
-    let _task_handle =
-        tokio::spawn(store_io.attach("test".to_string(), StoreErrorHandler::new(0, info)));
+    let (lane, observer) =
+        MapLane::<String, i32>::store_observable(&model, NonZeroUsize::new(8).unwrap());
+    let events = summaries_to_events::<String, i32>(observer.clone());
 
-    assert!(trigger_rx.await.is_ok());
+    let store_io = MapLaneStoreIo::new(events, model);
+
+    let _task_handle = tokio::spawn(store_io.attach(StoreErrorHandler::new(0, info)));
 
     let update_stm = lane.update("b".to_string(), Arc::new(13));
     assert!(atomically(&update_stm, ExactlyOnce).await.is_ok());

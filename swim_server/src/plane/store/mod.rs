@@ -15,22 +15,18 @@
 use std::ffi::OsStr;
 use std::fmt::{Debug, Formatter};
 use std::io;
-use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-
-use futures::future::BoxFuture;
-use futures::{FutureExt, Stream};
 
 use store::{serialize, Store, StoreError, StoreInfo};
 use swim_common::model::text::Text;
 
 use crate::agent::store::{NodeStore, SwimNodeStore};
-use crate::store::keystore::{KeyRequest, KeyStore, KeystoreTask};
+use crate::store::keystore::KeyStore;
 use crate::store::{KeyspaceName, StoreEngine, StoreKey};
 use store::engines::KeyedSnapshot;
 use store::keyspaces::{
-    KeyType, Keyspace, KeyspaceByteEngine, KeyspaceRangedSnapshotLoad, KeyspaceResolver, Keyspaces,
+    KeyType, Keyspace, KeyspaceRangedSnapshotLoad, KeyspaceResolver, Keyspaces,
 };
 
 pub mod mock;
@@ -55,7 +51,6 @@ where
 pub trait PlaneStore
 where
     Self: StoreEngine
-        + KeystoreTask
         + KeyspaceResolver
         + KeyspaceRangedSnapshotLoad
         + Sized
@@ -76,7 +71,7 @@ where
     /// Returns information about the delegate store
     fn store_info(&self) -> StoreInfo;
 
-    fn lane_id_of<I>(&self, lane: I) -> BoxFuture<KeyType>
+    fn node_id_of<I>(&self, node: I) -> Result<KeyType, StoreError>
     where
         I: Into<String>;
 }
@@ -90,7 +85,7 @@ pub struct SwimPlaneStore<D> {
     plane_name: Text,
     /// Delegate byte engine.
     delegate: Arc<D>,
-    keystore: KeyStore,
+    keystore: KeyStore<D>,
 }
 
 impl<D> Clone for SwimPlaneStore<D> {
@@ -138,11 +133,11 @@ where
         self.delegate.store_info()
     }
 
-    fn lane_id_of<I>(&self, lane: I) -> BoxFuture<KeyType>
+    fn node_id_of<I>(&self, node: I) -> Result<KeyType, StoreError>
     where
         I: Into<String>,
     {
-        self.keystore.id_for(lane.into()).boxed()
+        self.keystore.id_for(node.into())
     }
 }
 
@@ -173,16 +168,6 @@ where
     }
 }
 
-impl<D: Store> KeystoreTask for SwimPlaneStore<D> {
-    fn run<DB, S>(_db: Arc<DB>, _events: S) -> BoxFuture<'static, Result<(), StoreError>>
-    where
-        DB: KeyspaceByteEngine,
-        S: Stream<Item = KeyRequest> + Unpin + Send + 'static,
-    {
-        unimplemented!()
-    }
-}
-
 impl<D: Store> StoreEngine for SwimPlaneStore<D> {
     fn put(&self, key: StoreKey, value: &[u8]) -> Result<(), StoreError> {
         exec_keyspace(key, |namespace, bytes| {
@@ -206,12 +191,12 @@ impl<D: Store> StoreEngine for SwimPlaneStore<D> {
 
 impl<D> SwimPlaneStore<D>
 where
-    D: Store + KeystoreTask,
+    D: Store,
 {
     pub(crate) fn new<I: Into<Text>>(
         plane_name: I,
         delegate: Arc<D>,
-        keystore: KeyStore,
+        keystore: KeyStore<D>,
     ) -> SwimPlaneStore<D> {
         SwimPlaneStore {
             plane_name: plane_name.into(),
@@ -243,8 +228,7 @@ where
         };
 
         let arcd_delegate = Arc::new(delegate);
-        // todo config
-        let keystore = KeyStore::new(arcd_delegate.clone(), NonZeroUsize::new(8).unwrap());
+        let keystore = KeyStore::initialise_with(arcd_delegate.clone());
 
         Ok(Self::new(plane_name, arcd_delegate, keystore))
     }

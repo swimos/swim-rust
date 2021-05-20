@@ -15,15 +15,9 @@
 use crate::agent::store::mock::MockNodeStore;
 use crate::agent::store::SwimNodeStore;
 use crate::plane::store::PlaneStore;
-use crate::store::keystore::{KeyRequest, KeystoreTask};
 use crate::store::{StoreEngine, StoreKey};
-use futures::future::BoxFuture;
-use futures::{FutureExt, Stream};
-use std::sync::Arc;
 use store::engines::KeyedSnapshot;
-use store::keyspaces::{
-    KeyType, Keyspace, KeyspaceByteEngine, KeyspaceRangedSnapshotLoad, KeyspaceResolver,
-};
+use store::keyspaces::{KeyType, Keyspace, KeyspaceRangedSnapshotLoad, KeyspaceResolver};
 use store::{StoreError, StoreInfo};
 use swim_common::model::text::Text;
 
@@ -46,11 +40,11 @@ impl PlaneStore for MockPlaneStore {
         }
     }
 
-    fn lane_id_of<I>(&self, _lane: I) -> BoxFuture<'static, KeyType>
+    fn node_id_of<I>(&self, _lane: I) -> Result<KeyType, StoreError>
     where
         I: Into<String>,
     {
-        async { 0 }.boxed()
+        Ok(0)
     }
 }
 
@@ -74,16 +68,6 @@ impl KeyspaceResolver for MockPlaneStore {
 
     fn resolve_keyspace<K: Keyspace>(&self, _space: &K) -> Option<&Self::ResolvedKeyspace> {
         None
-    }
-}
-
-impl KeystoreTask for MockPlaneStore {
-    fn run<DB, S>(_db: Arc<DB>, _events: S) -> BoxFuture<'static, Result<(), StoreError>>
-    where
-        DB: KeyspaceByteEngine,
-        S: Stream<Item = KeyRequest> + Unpin + Send + 'static,
-    {
-        Box::pin(async { Ok(()) })
     }
 }
 

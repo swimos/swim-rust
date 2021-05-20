@@ -29,26 +29,21 @@ use crate::plane::provider::AgentProvider;
 use crate::plane::store::PlaneStore;
 use crate::plane::RouteAndParameters;
 use crate::routing::RoutingAddr;
-use crate::store::keystore::{KeyRequest, KeystoreTask};
 use crate::store::{StoreEngine, StoreKey};
 use futures::future::ready;
 use futures::future::{BoxFuture, Ready};
-use futures::{FutureExt, Stream};
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
 use stm::stm::Stm;
 use stm::transaction::atomically;
 use store::engines::KeyedSnapshot;
-use store::keyspaces::{
-    Keyspace, KeyspaceByteEngine, KeyspaceRangedSnapshotLoad, KeyspaceResolver,
-};
+use store::keyspaces::{KeyType, Keyspace, KeyspaceRangedSnapshotLoad, KeyspaceResolver};
 use store::{StoreError, StoreInfo};
 use swim_common::model::text::Text;
 use tokio::sync::mpsc;
 use tokio::time::Duration;
 use tokio_stream::wrappers::ReceiverStream;
-use utilities::sync::trigger;
 use utilities::uri::RelativeUri;
 
 #[derive(Debug)]
@@ -58,9 +53,7 @@ pub struct StoreAgent {
 
 #[derive(Debug, Clone)]
 struct StoreAgentLifecycle {
-    init: i32,
     count: Option<usize>,
-    loaded: Arc<Mutex<Option<trigger::Sender>>>,
 }
 
 impl AgentLifecycle<StoreAgent> for StoreAgentLifecycle {
@@ -68,17 +61,10 @@ impl AgentLifecycle<StoreAgent> for StoreAgentLifecycle {
     where
         C: AgentContext<StoreAgent> + Send + Sync + 'a,
     {
-        let StoreAgentLifecycle {
-            init,
-            count,
-            loaded,
-        } = self;
+        let StoreAgentLifecycle { count } = self;
 
         Box::pin(async move {
             let value_lane = context.agent().value.clone();
-            let value = value_lane.load().await;
-
-            assert_eq!(*value, *init);
 
             if let Some(count) = count {
                 context
@@ -98,11 +84,6 @@ impl AgentLifecycle<StoreAgent> for StoreAgentLifecycle {
                         Some(*count),
                     )
                     .await;
-            }
-
-            let mut lock = loaded.lock().unwrap();
-            if let Some(trigger) = lock.take() {
-                trigger.trigger();
             }
         })
     }
@@ -182,16 +163,6 @@ struct PlaneEventStore {
     events: Arc<Mutex<Vec<Vec<u8>>>>,
 }
 
-impl KeystoreTask for PlaneEventStore {
-    fn run<DB, S>(_db: Arc<DB>, _events: S) -> BoxFuture<'static, Result<(), StoreError>>
-    where
-        DB: KeyspaceByteEngine,
-        S: Stream<Item = KeyRequest> + Unpin + Send + 'static,
-    {
-        Box::pin(async { Ok(()) })
-    }
-}
-
 impl KeyspaceResolver for PlaneEventStore {
     type ResolvedKeyspace = ();
 
@@ -232,11 +203,11 @@ impl PlaneStore for PlaneEventStore {
         }
     }
 
-    fn lane_id_of<I>(&self, _lane: I) -> BoxFuture<'_, u64>
+    fn node_id_of<I>(&self, _lane: I) -> Result<KeyType, StoreError>
     where
         I: Into<String>,
     {
-        ready(1).boxed()
+        Ok(0)
     }
 }
 
@@ -279,12 +250,9 @@ async fn events() {
         init: default_value,
         tx,
     };
-    let (trigger_tx, _trigger_rx) = trigger::trigger();
 
     let store_lifecycle = StoreAgentLifecycle {
-        init: default_value,
         count: Some(event_count),
-        loaded: Arc::new(Mutex::new(Some(trigger_tx))),
     };
     let provider = AgentProvider::new(config, store_lifecycle);
     let uri: RelativeUri = "/test".parse().unwrap();
@@ -337,14 +305,8 @@ async fn events() {
 
 #[tokio::test]
 async fn loads_store_default() {
-    let (trigger_tx, trigger_rx) = trigger::trigger();
-
-    let store_lifecycle = StoreAgentLifecycle {
-        init: 13,
-        count: None,
-        loaded: Arc::new(Mutex::new(Some(trigger_tx))),
-    };
-    let (tx, _rx) = mpsc::channel(5);
+    let store_lifecycle = StoreAgentLifecycle { count: None };
+    let (tx, _rx) = mpsc::channel(8);
 
     let config = AgentConfig { init: 13, tx };
     let provider = AgentProvider::new(config, store_lifecycle);
@@ -375,7 +337,6 @@ async fn loads_store_default() {
 
     match agent.downcast_ref::<StoreAgent>() {
         Some(agent) => {
-            assert!(trigger_rx.await.is_ok());
             let value = agent.value.load().await;
             assert_eq!(*value, i32::MAX);
         }

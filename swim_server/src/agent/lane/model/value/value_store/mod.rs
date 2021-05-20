@@ -18,7 +18,7 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::marker::PhantomData;
 use store::keyspaces::KeyType;
-use store::{deserialize, serialize_then, StoreError, StoreInfo};
+use store::{deserialize, serialize_then, StoreError};
 
 #[cfg(test)]
 mod tests;
@@ -52,10 +52,6 @@ impl<D: NodeStore, V> ValueDataModel<D, V> {
         StoreKey::Value {
             lane_id: self.lane_id,
         }
-    }
-
-    pub fn store_info(&self) -> StoreInfo {
-        self.delegate.store_info()
     }
 }
 

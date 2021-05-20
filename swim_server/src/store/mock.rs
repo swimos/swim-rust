@@ -14,26 +14,14 @@
 
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 
-use crate::store::keystore::{lane_key_task, KeyRequest, KeystoreTask, STEP};
-use futures::future::BoxFuture;
-use futures::{FutureExt, Stream};
+use crate::store::keystore::STEP;
 use store::keyspaces::{KeyType, Keyspace, KeyspaceByteEngine};
 use store::{deserialize, serialize, StoreError};
 
 pub struct MockStore {
     values: Mutex<HashMap<String, HashMap<Vec<u8>, Vec<u8>>>>,
-}
-
-impl KeystoreTask for MockStore {
-    fn run<DB, S>(db: Arc<DB>, events: S) -> BoxFuture<'static, Result<(), StoreError>>
-    where
-        DB: KeyspaceByteEngine,
-        S: Stream<Item = KeyRequest> + Unpin + Send + 'static,
-    {
-        lane_key_task(db, events).boxed()
-    }
 }
 
 impl MockStore {

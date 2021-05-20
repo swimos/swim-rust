@@ -13,16 +13,11 @@
 // limitations under the License.
 
 use crate::store::KeyspaceName;
-use futures::future::BoxFuture;
-use futures::{Stream, StreamExt};
-use std::num::NonZeroUsize;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use store::keyspaces::{KeyType, KeyspaceByteEngine};
-use store::{serialize, MergeOperands, StoreError};
-use tokio::sync::{mpsc, oneshot};
-use tokio::task::JoinHandle;
-use tokio_stream::wrappers::ReceiverStream;
-use tracing::{event, Level};
+use store::{deserialize, serialize, MergeOperands, StoreError};
+use tokio::sync::oneshot;
 
 pub type KeyRequest = (String, oneshot::Sender<KeyType>);
 
@@ -32,7 +27,7 @@ pub const COUNTER_BYTES: &[u8] = COUNTER_KEY.as_bytes();
 const DESERIALIZATION_FAILURE: &str = "Failed to deserialize key";
 const SERIALIZATION_FAILURE: &str = "Failed to serialize key";
 pub const INCONSISTENT_KEYSPACE: &str = "Inconsistent keyspace";
-const RESPONSE_FAILURE: &str = "Failed to send response";
+const INIT_FAILURE: &str = "Failed to initialise keystore";
 
 /// The prefix that all lane identifiers in the counter keyspace will be prefixed by.
 pub const LANE_PREFIX: &str = "lane";
@@ -42,11 +37,56 @@ pub const LANE_PREFIX: &str = "lane";
 pub const INITIAL: KeyType = 0;
 pub const STEP: KeyType = 1;
 
-pub trait KeystoreTask {
-    fn run<DB, S>(db: Arc<DB>, events: S) -> BoxFuture<'static, Result<(), StoreError>>
-    where
-        DB: KeyspaceByteEngine,
-        S: Stream<Item = KeyRequest> + Unpin + Send + 'static;
+#[derive(Debug)]
+pub struct KeyStore<D> {
+    delegate: Arc<D>,
+    count: Arc<AtomicU64>,
+}
+
+impl<D> Clone for KeyStore<D> {
+    fn clone(&self) -> Self {
+        KeyStore {
+            delegate: self.delegate.clone(),
+            count: self.count.clone(),
+        }
+    }
+}
+
+impl<D: KeyspaceByteEngine> KeyStore<D> {
+    pub fn initialise_with(delegate: Arc<D>) -> KeyStore<D> {
+        let count = match delegate.get_keyspace(KeyspaceName::Lane, COUNTER_BYTES) {
+            Ok(Some(counter)) => deserialize::<u64>(counter.as_slice()).expect(INIT_FAILURE),
+            Ok(None) => INITIAL,
+            Err(e) => {
+                panic!("{}: `{:?}`", INIT_FAILURE, e)
+            }
+        };
+
+        KeyStore {
+            delegate,
+            count: Arc::new(AtomicU64::new(count)),
+        }
+    }
+
+    pub fn id_for(&self, lane_id: String) -> Result<u64, StoreError> {
+        let KeyStore { delegate, count } = self;
+        let prefixed = format_key(lane_id);
+
+        match delegate.get_keyspace(KeyspaceName::Lane, prefixed.as_bytes())? {
+            Some(bytes) => deserialize_key(bytes),
+            None => {
+                let id = count.fetch_add(STEP, Ordering::Acquire) + 1;
+                delegate.merge_keyspace(KeyspaceName::Lane, COUNTER_BYTES, STEP)?;
+                delegate.put_keyspace(
+                    KeyspaceName::Lane,
+                    prefixed.as_bytes(),
+                    serialize(&id)?.as_slice(),
+                )?;
+
+                Ok(id)
+            }
+        }
+    }
 }
 
 fn deserialize_key<B: AsRef<[u8]>>(bytes: B) -> Result<KeyType, StoreError> {
@@ -55,48 +95,6 @@ fn deserialize_key<B: AsRef<[u8]>>(bytes: B) -> Result<KeyType, StoreError> {
 
 pub fn format_key<I: ToString>(uri: I) -> String {
     format!("{}/{}", LANE_PREFIX, uri.to_string())
-}
-
-/// A keystore for assigning unique identifiers to lane addresses.
-#[derive(Clone)]
-pub struct KeyStore {
-    tx: mpsc::Sender<KeyRequest>,
-    task: Arc<JoinHandle<()>>,
-}
-
-impl KeyStore {
-    /// Produces a new keystore which will delegate its operations to `db` and will have an internal
-    /// task communication buffer size of `buffer_size`.
-    pub fn new<S>(db: Arc<S>, buffer_size: NonZeroUsize) -> KeyStore
-    where
-        S: KeyspaceByteEngine + KeystoreTask,
-    {
-        let (tx, rx) = mpsc::channel(buffer_size.get());
-        let task = async move {
-            if let Err(e) = S::run(db, ReceiverStream::new(rx)).await {
-                event!(Level::ERROR, "Keystore failed with: {:?}", e);
-            }
-        };
-
-        KeyStore {
-            tx,
-            task: Arc::new(tokio::spawn(task)),
-        }
-    }
-
-    /// Returns a unique identifier that has been assigned to the `lane_id`. This ID must be a
-    /// well-formed String of `/node_uri/lane_uri` for this host.
-    pub async fn id_for<I>(&self, lane_id: I) -> KeyType
-    where
-        I: Into<String>,
-    {
-        let (tx, rx) = oneshot::channel();
-        self.tx
-            .send((lane_id.into(), tx))
-            .await
-            .expect("Failed to make lane ID request");
-        rx.await.expect("No response received for lane ID")
-    }
 }
 
 #[allow(clippy::unnecessary_wraps)]
@@ -117,43 +115,6 @@ pub(crate) fn incrementing_merge_operator(
     Some(serialize(&value).expect(SERIALIZATION_FAILURE))
 }
 
-pub async fn lane_key_task<DB, S>(db: Arc<DB>, events: S) -> Result<(), StoreError>
-where
-    DB: KeyspaceByteEngine,
-    S: Stream<Item = KeyRequest> + Unpin + Send + 'static,
-{
-    let mut requests = events.fuse();
-
-    while let Some((uri, responder)) = requests.next().await {
-        let prefixed = format_key(uri);
-
-        match db.get_keyspace(KeyspaceName::Lane, prefixed.as_bytes())? {
-            Some(bytes) => {
-                let id = deserialize_key(bytes)?;
-                responder.send(id).expect(RESPONSE_FAILURE);
-            }
-            None => {
-                db.merge_keyspace(KeyspaceName::Lane, COUNTER_BYTES, STEP)?;
-
-                let counter_bytes = db
-                    .get_keyspace(KeyspaceName::Lane, COUNTER_BYTES)?
-                    .expect(INCONSISTENT_KEYSPACE);
-                let id = deserialize_key(counter_bytes.as_slice())?;
-
-                db.put_keyspace(
-                    KeyspaceName::Lane,
-                    prefixed.as_bytes(),
-                    counter_bytes.as_slice(),
-                )?;
-
-                responder.send(id).expect(RESPONSE_FAILURE);
-            }
-        }
-    }
-
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use crate::store::keystore::{
@@ -161,8 +122,6 @@ mod tests {
         INCONSISTENT_KEYSPACE,
     };
     use crate::store::mock::MockStore;
-
-    use std::num::NonZeroUsize;
     use std::sync::Arc;
     use store::deserialize;
     use store::keyspaces::{KeyType, Keyspace, KeyspaceByteEngine};
@@ -175,15 +134,15 @@ mod tests {
         ]
     }
 
-    #[tokio::test(flavor = "multi_thread")]
-    async fn lane_id() {
+    #[test]
+    fn lane_id() {
         let delegate = Arc::new(MockStore::with_keyspaces(keyspaces()));
-        let store = KeyStore::new(delegate.clone(), NonZeroUsize::new(8).unwrap());
+        let store = KeyStore::initialise_with(delegate.clone());
 
         let lane_uri = "A";
 
-        assert_eq!(store.id_for(lane_uri).await, 1);
-        assert_eq!(store.id_for(lane_uri).await, 1);
+        assert_eq!(store.id_for(lane_uri.to_string()), Ok(1));
+        assert_eq!(store.id_for(lane_uri.to_string()), Ok(1));
 
         let opt = delegate
             .get_keyspace(KeyspaceName::Lane, COUNTER_BYTES)
@@ -194,10 +153,10 @@ mod tests {
         assert_counters(&delegate, lane_uri, 1, 1);
     }
 
-    #[tokio::test]
-    async fn multiple_lane_ids() {
+    #[test]
+    fn multiple_lane_ids() {
         let delegate = Arc::new(MockStore::with_keyspaces(keyspaces()));
-        let store = KeyStore::new(delegate.clone(), NonZeroUsize::new(8).unwrap());
+        let store = KeyStore::initialise_with(delegate.clone());
 
         let lane_prefix = "lane";
         let mut lane_count = 0;
@@ -205,7 +164,7 @@ mod tests {
         for lane_id in 1..=10 {
             lane_count += 1;
             let lane_uri = format!("{}/{}", lane_prefix, lane_id);
-            assert_eq!(store.id_for(lane_uri.as_str()).await, lane_count);
+            assert_eq!(store.id_for(lane_uri.to_string()), Ok(lane_count));
 
             assert_counters(&delegate, lane_uri.as_str(), lane_count, lane_count);
         }

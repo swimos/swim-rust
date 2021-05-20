@@ -24,7 +24,10 @@ use stm::var::TVar;
 mod tests;
 mod value_store;
 
-pub use value_store::ValueLaneStoreIo;
+use crate::agent::store::NodeStore;
+use serde::de::DeserializeOwned;
+use serde::Serialize;
+pub use value_store::{ValueDataModel, ValueLaneStoreIo};
 
 /// A lane containing a single value.
 #[derive(Debug)]
@@ -50,6 +53,22 @@ impl<T: Any + Send + Sync> ValueLane<T> {
     pub fn observable(init: T, buffer_size: NonZeroUsize) -> (Self, Observer<T>) {
         let (var, observer) = TVar::new_with_observer(init, buffer_size);
         (ValueLane { value: var }, observer)
+    }
+}
+
+impl<T> ValueLane<T>
+where
+    T: Any + Send + Sync + Serialize + DeserializeOwned + 'static,
+{
+    pub fn store_observable<Store: NodeStore>(
+        model: &ValueDataModel<Store, T>,
+        buffer_size: NonZeroUsize,
+        default: T,
+    ) -> (Self, Observer<T>) {
+        match model.load().expect("Failed to load value lane state") {
+            Some(value) => Self::observable(value, buffer_size),
+            None => Self::observable(default, buffer_size),
+        }
     }
 }
 

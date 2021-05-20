@@ -13,14 +13,9 @@
 // limitations under the License.
 
 use crate::store::keystore::{incrementing_merge_operator, COUNTER_KEY};
-use crate::store::keystore::{lane_key_task, KeyRequest, KeystoreTask};
 use crate::store::{LANE_KS, MAP_LANE_KS, VALUE_LANE_KS};
-use futures::future::BoxFuture;
-use futures::FutureExt;
-use futures::Stream;
 use std::mem::size_of;
 use std::path::Path;
-use std::sync::Arc;
 use store::engines::{
     FromKeyspaces, KeyedSnapshot, RocksEngine, RocksIterator, RocksOpts, RocksPrefixIterator,
 };
@@ -136,16 +131,6 @@ impl KeyspaceRangedSnapshotLoad for RocksDatabase {
     {
         self.db
             .keyspace_load_ranged_snapshot(keyspace, prefix, map_fn)
-    }
-}
-
-impl KeystoreTask for RocksDatabase {
-    fn run<DB, S>(db: Arc<DB>, events: S) -> BoxFuture<'static, Result<(), StoreError>>
-    where
-        DB: KeyspaceByteEngine,
-        S: Stream<Item = KeyRequest> + Unpin + Send + 'static,
-    {
-        lane_key_task(db, events).boxed()
     }
 }
 

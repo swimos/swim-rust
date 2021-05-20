@@ -15,10 +15,8 @@
 use crate::agent::store::{NodeStore, SwimNodeStore};
 use crate::plane::store::mock::MockPlaneStore;
 use crate::store::{StoreEngine, StoreKey};
-use futures::future::{ready, BoxFuture};
-use futures::FutureExt;
 use store::engines::KeyedSnapshot;
-use store::keyspaces::{Keyspace, KeyspaceRangedSnapshotLoad};
+use store::keyspaces::{KeyType, Keyspace, KeyspaceRangedSnapshotLoad};
 use store::{StoreError, StoreInfo};
 
 #[derive(Clone, Debug)]
@@ -43,11 +41,8 @@ impl NodeStore for MockNodeStore {
         }
     }
 
-    fn lane_id_of<I>(&self, _lane: I) -> BoxFuture<'_, u64>
-    where
-        I: Into<String>,
-    {
-        ready(0).boxed()
+    fn lane_id_of(&self, _lane: &String) -> Result<KeyType, StoreError> {
+        Ok(0)
     }
 }
 

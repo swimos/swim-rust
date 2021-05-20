@@ -18,6 +18,7 @@ use crate::StoreError;
 /// The type to use for prefixing keys.
 ///
 /// Note: It is not recommended to change this after a store has already been initialised.
+// todo: remove this and replace with u64
 pub type KeyType = u64;
 
 /// A handle to a portion of logically partitioned data.

@@ -312,11 +312,13 @@ fn create_lane(
                 let event_stream = observer.clone().into_stream();
             };
 
-            let persistence = if *transient {
-                quote!(Box::new(LaneNoStore))
-            } else {
-                quote!(Box::new(swim_server::ValueLaneStoreIo::new(store.clone(), #lane_name.clone(), observer.into_stream())))
-            };
+            // let persistence = if *transient {
+            //     quote!(Box::new(LaneNoStore))
+            // } else {
+            //     quote!(Box::new(swim_server::ValueLaneStoreIo::new(store.clone(), #lane_name.clone(), observer.into_stream())))
+            // };
+
+            let persistence = quote!(Box::new(LaneNoStore));
 
             build_lane_io(
                 lane_data,
@@ -336,7 +338,7 @@ fn create_lane(
             let transient = quote!(#is_transient);
 
             let model = quote! {
-                let (#lane_name, subscriber, event_stream, store_io) = swim_server::agent::lane::model::map::streamed_map_lane(exec_conf.observation_buffer, #transient, store.clone());
+                let (#lane_name, subscriber, event_stream, store_io) = swim_server::agent::lane::model::map::streamed_map_lane(#lane_name_lit,exec_conf.observation_buffer, #transient, store.clone());
             };
 
             build_lane_io(
