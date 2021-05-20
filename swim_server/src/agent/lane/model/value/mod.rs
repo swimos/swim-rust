@@ -25,6 +25,7 @@ mod tests;
 mod value_store;
 
 use crate::agent::store::NodeStore;
+use crate::agent::{LaneNoStore, StoreIo};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 pub use value_store::{ValueDataModel, ValueLaneStoreIo};
@@ -116,4 +117,30 @@ impl<T: Any + Send + Sync> ValueLane<T> {
     pub async fn lock(&self) -> stm::var::TVarLock {
         self.value.lock().await
     }
+}
+
+pub fn streamed_value_lane<T, Store>(
+    name: impl Into<String>,
+    buffer_size: NonZeroUsize,
+    transient: bool,
+    store: Store,
+) -> (ValueLane<T>, Observer<T>, Box<dyn StoreIo>)
+where
+    Store: NodeStore,
+    T: Default + Send + Sync + Serialize + DeserializeOwned + 'static,
+{
+    let lane_id = store
+        .lane_id_of(&name.into())
+        .expect("Failed to fetch lane id");
+    let model = ValueDataModel::new(store, lane_id);
+
+    let (lane, observer) = ValueLane::store_observable(&model, buffer_size, Default::default());
+
+    let store_io: Box<dyn StoreIo> = if transient {
+        Box::new(LaneNoStore)
+    } else {
+        Box::new(ValueLaneStoreIo::new(observer.clone().into_stream(), model))
+    };
+
+    (lane, observer, store_io)
 }

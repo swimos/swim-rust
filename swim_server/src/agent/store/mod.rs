@@ -24,9 +24,6 @@ use store::engines::KeyedSnapshot;
 use store::keyspaces::{KeyType, Keyspace, KeyspaceRangedSnapshotLoad};
 
 pub mod mock;
-#[cfg(test)]
-mod tests;
-
 /// A trait for defining store engines which open stores for nodes.
 ///
 /// Node stores are responsible for ensuring that the data models that they open for their lanes

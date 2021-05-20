@@ -24,8 +24,6 @@ use crate::plane::store::{PlaneStore, SwimPlaneStore};
 
 #[cfg(test)]
 pub mod mock;
-#[cfg(test)]
-mod tests;
 
 pub mod keystore;
 mod nostore;

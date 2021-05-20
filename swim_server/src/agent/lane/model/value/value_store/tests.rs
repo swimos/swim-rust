@@ -26,11 +26,9 @@ use std::sync::{Arc, Mutex};
 use store::engines::KeyedSnapshot;
 use store::keyspaces::{KeyType, Keyspace, KeyspaceRangedSnapshotLoad};
 use store::{serialize, StoreError, StoreInfo};
-use utilities::sync::trigger;
 
 #[derive(Clone, Debug)]
 struct TrackingValueStore {
-    load_tx: Arc<Mutex<Option<trigger::Sender>>>,
     value: Arc<Mutex<Option<Vec<u8>>>>,
 }
 
@@ -71,10 +69,6 @@ impl StoreEngine for TrackingValueStore {
     }
 
     fn get(&self, _key: StoreKey) -> Result<Option<Vec<u8>>, StoreError> {
-        if let Some(tx) = self.load_tx.lock().unwrap().take() {
-            tx.trigger();
-        }
-
         Ok(self.value.lock().unwrap().clone())
     }
 
@@ -87,12 +81,8 @@ impl StoreEngine for TrackingValueStore {
 #[test]
 fn load_some() {
     let test_string = "test".to_string();
-
     let arcd = Arc::new(Mutex::new(Some(serialize(&test_string).unwrap())));
-    let store = TrackingValueStore {
-        load_tx: Arc::new(Mutex::new(None)),
-        value: arcd,
-    };
+    let store = TrackingValueStore { value: arcd };
     let model = ValueDataModel::<TrackingValueStore, String>::new(store, 0);
 
     match model.load() {
@@ -108,7 +98,6 @@ fn load_some() {
 #[test]
 fn load_none() {
     let store = TrackingValueStore {
-        load_tx: Arc::new(Mutex::new(None)),
         value: Arc::new(Mutex::new(None)),
     };
 
@@ -120,7 +109,6 @@ fn load_none() {
 #[test]
 fn store_load() {
     let store = TrackingValueStore {
-        load_tx: Arc::new(Mutex::new(None)),
         value: Arc::new(Mutex::new(None)),
     };
     let model = ValueDataModel::<TrackingValueStore, String>::new(store, 0);
@@ -139,52 +127,25 @@ fn store_load() {
 
 #[tokio::test]
 async fn io() {
-    let (lane, observer) =
-        ValueLane::observable("initial".to_string(), NonZeroUsize::new(8).unwrap());
-    let observer_stream = observer.into_stream();
-    let (trigger_tx, trigger_rx) = trigger::trigger();
     let store_initial = "loaded".to_string();
-
     let store = TrackingValueStore {
-        load_tx: Arc::new(Mutex::new(Some(trigger_tx))),
         value: Arc::new(Mutex::new(Some(serialize(&store_initial).unwrap()))),
     };
     let info = store.store_info();
 
-    let model = ValueDataModel::new(store, 0);
+    let model = ValueDataModel::<TrackingValueStore, String>::new(store, 0);
+    let (lane, observer) = ValueLane::<String>::store_observable(
+        &model,
+        NonZeroUsize::new(8).unwrap(),
+        Default::default(),
+    );
+    let observer_stream = observer.into_stream();
+
     let store_io = ValueLaneStoreIo::new(observer_stream, model);
-
     let _task_handle = tokio::spawn(store_io.attach(StoreErrorHandler::new(0, info)));
-
-    assert!(trigger_rx.await.is_ok());
 
     let lane_value = lane.load().await;
     assert_eq!(*lane_value, store_initial);
-}
-
-#[tokio::test]
-async fn load_fail() {
-    let (_lane, observer) =
-        ValueLane::observable("initial".to_string(), NonZeroUsize::new(8).unwrap());
-    let observer_stream = observer.into_stream();
-    let store = FailingStore {
-        fail_on: FailingStoreMode::Get,
-    };
-    let info = store.store_info();
-
-    let model = ValueDataModel::new(store, 0);
-    let store_io = ValueLaneStoreIo::new(observer_stream, model);
-
-    let task_result = store_io.attach(StoreErrorHandler::new(0, info)).await;
-    match task_result {
-        Ok(_) => {
-            panic!("Expected a store error")
-        }
-        Err(mut r) => {
-            let (_ts, error) = r.errors.pop().unwrap();
-            assert_eq!(error, StoreError::KeyNotFound)
-        }
-    }
 }
 
 #[tokio::test]
@@ -192,9 +153,7 @@ async fn store_fail() {
     let (lane, observer) =
         ValueLane::observable("initial".to_string(), NonZeroUsize::new(8).unwrap());
     let observer_stream = observer.into_stream();
-    let store = FailingStore {
-        fail_on: FailingStoreMode::Put,
-    };
+    let store = FailingStore;
     let info = store.store_info();
 
     let model = ValueDataModel::new(store, 0);
@@ -215,15 +174,7 @@ async fn store_fail() {
 }
 
 #[derive(Debug, Clone)]
-struct FailingStore {
-    fail_on: FailingStoreMode,
-}
-
-#[derive(Debug, Copy, Clone)]
-enum FailingStoreMode {
-    Put,
-    Get,
-}
+struct FailingStore;
 
 impl NodeStore for FailingStore {
     type Delegate = MockPlaneStore;
@@ -257,17 +208,11 @@ impl KeyspaceRangedSnapshotLoad for FailingStore {
 
 impl StoreEngine for FailingStore {
     fn put(&self, _: StoreKey, _: &[u8]) -> Result<(), StoreError> {
-        match self.fail_on {
-            FailingStoreMode::Put => Err(StoreError::Closing),
-            FailingStoreMode::Get => Ok(()),
-        }
+        Err(StoreError::Closing)
     }
 
     fn get(&self, _: StoreKey) -> Result<Option<Vec<u8>>, StoreError> {
-        match self.fail_on {
-            FailingStoreMode::Put => Ok(None),
-            FailingStoreMode::Get => Err(StoreError::KeyNotFound),
-        }
+        Err(StoreError::Closing)
     }
 
     fn delete(&self, _: StoreKey) -> Result<(), StoreError> {
