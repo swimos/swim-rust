@@ -27,7 +27,7 @@ use thiserror::Error;
 
 use crate::engines::FromKeyspaces;
 use crate::iterator::OwnedEngineRefIterator;
-use crate::keyspaces::{KeyType, KeyspaceByteEngine, KeyspaceRangedSnapshotLoad, KeyspaceResolver};
+use crate::keyspaces::{KeyspaceByteEngine, KeyspaceRangedSnapshotLoad, KeyspaceResolver};
 
 pub use rocksdb::{ColumnFamily, MergeOperands, Options, SliceTransform};
 pub use transient::TransientDatabase;
@@ -159,6 +159,6 @@ pub fn deserialize<'de, D: Deserialize<'de>>(obj: &'de [u8]) -> Result<D, StoreE
     bincode::deserialize(obj).map_err(|e| StoreError::Decoding(e.to_string()))
 }
 
-pub fn deserialize_key<B: AsRef<[u8]>>(bytes: B) -> Result<KeyType, StoreError> {
-    bincode::deserialize::<KeyType>(bytes.as_ref()).map_err(|e| StoreError::Decoding(e.to_string()))
+pub fn deserialize_key<B: AsRef<[u8]>>(bytes: B) -> Result<u64, StoreError> {
+    bincode::deserialize::<u64>(bytes.as_ref()).map_err(|e| StoreError::Decoding(e.to_string()))
 }

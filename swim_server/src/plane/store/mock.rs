@@ -17,7 +17,7 @@ use crate::agent::store::SwimNodeStore;
 use crate::plane::store::PlaneStore;
 use crate::store::{StoreEngine, StoreKey};
 use store::engines::KeyedSnapshot;
-use store::keyspaces::{KeyType, Keyspace, KeyspaceRangedSnapshotLoad, KeyspaceResolver};
+use store::keyspaces::{Keyspace, KeyspaceRangedSnapshotLoad, KeyspaceResolver};
 use store::{StoreError, StoreInfo};
 use swim_common::model::text::Text;
 
@@ -40,7 +40,7 @@ impl PlaneStore for MockPlaneStore {
         }
     }
 
-    fn node_id_of<I>(&self, _lane: I) -> Result<KeyType, StoreError>
+    fn node_id_of<I>(&self, _lane: I) -> Result<u64, StoreError>
     where
         I: Into<String>,
     {

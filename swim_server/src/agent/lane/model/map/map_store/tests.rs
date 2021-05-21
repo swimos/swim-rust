@@ -28,7 +28,7 @@ use std::ops::Deref;
 use std::sync::{Arc, Mutex};
 use stm::transaction::{atomically, RetryManager};
 use store::engines::KeyedSnapshot;
-use store::keyspaces::{KeyType, Keyspace, KeyspaceRangedSnapshotLoad};
+use store::keyspaces::{Keyspace, KeyspaceRangedSnapshotLoad};
 use store::{serialize, Snapshot, StoreError, StoreInfo};
 
 struct ExactlyOnce;
@@ -61,7 +61,7 @@ impl NodeStore for TrackingMapStore {
         }
     }
 
-    fn lane_id_of(&self, _lane: &str) -> Result<KeyType, StoreError> {
+    fn lane_id_of(&self, _lane: &str) -> Result<u64, StoreError> {
         Ok(0)
     }
 }
@@ -153,7 +153,7 @@ fn empty_snapshot() {
     }
 }
 
-fn make_store_key(lane_id: KeyType, key: String) -> StoreKey {
+fn make_store_key(lane_id: u64, key: String) -> StoreKey {
     StoreKey::Map {
         lane_id,
         key: Some(serialize(&key).expect("Failed to serialize store key")),

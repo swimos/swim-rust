@@ -25,9 +25,7 @@ use crate::agent::store::{NodeStore, SwimNodeStore};
 use crate::store::keystore::KeyStore;
 use crate::store::{KeyspaceName, StoreEngine, StoreKey};
 use store::engines::KeyedSnapshot;
-use store::keyspaces::{
-    KeyType, Keyspace, KeyspaceRangedSnapshotLoad, KeyspaceResolver, Keyspaces,
-};
+use store::keyspaces::{Keyspace, KeyspaceRangedSnapshotLoad, KeyspaceResolver, Keyspaces};
 
 pub mod mock;
 
@@ -71,7 +69,7 @@ where
     /// Returns information about the delegate store
     fn store_info(&self) -> StoreInfo;
 
-    fn node_id_of<I>(&self, node: I) -> Result<KeyType, StoreError>
+    fn node_id_of<I>(&self, node: I) -> Result<u64, StoreError>
     where
         I: Into<String>;
 }
@@ -133,7 +131,7 @@ where
         self.delegate.store_info()
     }
 
-    fn node_id_of<I>(&self, node: I) -> Result<KeyType, StoreError>
+    fn node_id_of<I>(&self, node: I) -> Result<u64, StoreError>
     where
         I: Into<String>,
     {

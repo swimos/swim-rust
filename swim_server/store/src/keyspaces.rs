@@ -15,12 +15,6 @@
 use crate::engines::{FromKeyspaces, KeyedSnapshot};
 use crate::StoreError;
 
-/// The type to use for prefixing keys.
-///
-/// Note: It is not recommended to change this after a store has already been initialised.
-// todo: remove this and replace with u64
-pub type KeyType = u64;
-
 /// A handle to a portion of logically partitioned data.
 pub trait Keyspace {
     /// The name of the keyspace.
@@ -86,7 +80,7 @@ pub trait KeyspaceByteEngine: Send + Sync + 'static {
         &self,
         keyspace: K,
         key: &[u8],
-        step: KeyType,
+        step: u64,
     ) -> Result<(), StoreError>;
 }
 

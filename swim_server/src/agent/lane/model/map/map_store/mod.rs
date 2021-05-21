@@ -18,7 +18,6 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::marker::PhantomData;
 use store::engines::KeyedSnapshot;
-use store::keyspaces::KeyType;
 use store::{deserialize, serialize, serialize_then, Snapshot, StoreError};
 
 #[cfg(test)]
@@ -31,13 +30,13 @@ const INCONSISTENT_DB: &str = "Missing key or value in store";
 
 pub struct MapDataModel<D, K, V> {
     delegate: D,
-    lane_id: KeyType,
+    lane_id: u64,
     _key: PhantomData<K>,
     _value: PhantomData<V>,
 }
 
 impl<D, K, V> MapDataModel<D, K, V> {
-    pub fn new(delegate: D, lane_id: KeyType) -> Self {
+    pub fn new(delegate: D, lane_id: u64) -> Self {
         MapDataModel {
             delegate,
             lane_id,

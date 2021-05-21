@@ -21,7 +21,7 @@ pub use crate::engines::rocks::iterator::{RocksIterator, RocksPrefixIterator};
 use crate::engines::KeyedSnapshot;
 use crate::iterator::{EnginePrefixIterator, EngineRefIterator};
 use crate::keyspaces::{
-    KeyType, Keyspace, KeyspaceByteEngine, KeyspaceRangedSnapshotLoad, KeyspaceResolver, Keyspaces,
+    Keyspace, KeyspaceByteEngine, KeyspaceRangedSnapshotLoad, KeyspaceResolver, Keyspaces,
 };
 use crate::{serialize, FromKeyspaces, Store, StoreError, StoreInfo};
 use rocksdb::{ColumnFamily, ColumnFamilyDescriptor};
@@ -188,7 +188,7 @@ impl KeyspaceByteEngine for RocksEngine {
         &self,
         keyspace: K,
         key: &[u8],
-        value: KeyType,
+        value: u64,
     ) -> Result<(), StoreError> {
         let value = serialize(&value)?;
         exec_keyspace(&self.delegate, keyspace, move |delegate, keyspace| {

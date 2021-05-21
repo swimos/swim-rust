@@ -17,7 +17,6 @@ use crate::store::StoreKey;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::marker::PhantomData;
-use store::keyspaces::KeyType;
 use store::{deserialize, serialize_then, StoreError};
 
 #[cfg(test)]
@@ -30,7 +29,7 @@ pub struct ValueDataModel<D, V> {
     /// The store to delegate this model's operations to.
     delegate: D,
     /// The lane URI that this store is operating on.
-    lane_id: KeyType,
+    lane_id: u64,
     _pd: PhantomData<V>,
 }
 
@@ -40,7 +39,7 @@ impl<D: NodeStore, V> ValueDataModel<D, V> {
     /// # Arguments
     /// `delegate`: if this data model is *not* transient, then delegate operations to this store.
     /// `lane_id`: the lane URI that this store represents.
-    pub fn new(delegate: D, lane_id: KeyType) -> Self {
+    pub fn new(delegate: D, lane_id: u64) -> Self {
         ValueDataModel {
             delegate,
             lane_id,

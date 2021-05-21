@@ -21,8 +21,8 @@ use store::engines::{
 };
 use store::iterator::{EngineIterOpts, EngineRefIterator};
 use store::keyspaces::{
-    KeyType, Keyspace, KeyspaceByteEngine, KeyspaceDef, KeyspaceRangedSnapshotLoad,
-    KeyspaceResolver, Keyspaces,
+    Keyspace, KeyspaceByteEngine, KeyspaceDef, KeyspaceRangedSnapshotLoad, KeyspaceResolver,
+    Keyspaces,
 };
 use store::{ColumnFamily, Options, SliceTransform, Store, StoreError, StoreInfo};
 
@@ -142,7 +142,7 @@ pub fn default_keyspaces() -> Keyspaces<RocksDatabase> {
     let value_def = KeyspaceDef::new(VALUE_LANE_KS, RocksOpts(Options::default()));
 
     let mut map_opts = Options::default();
-    map_opts.set_prefix_extractor(SliceTransform::create_fixed_prefix(size_of::<KeyType>()));
+    map_opts.set_prefix_extractor(SliceTransform::create_fixed_prefix(size_of::<u64>()));
     map_opts.set_memtable_prefix_bloom_ratio(0.2);
 
     let map_def = KeyspaceDef::new(MAP_LANE_KS, RocksOpts(map_opts));

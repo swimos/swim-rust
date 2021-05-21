@@ -17,7 +17,7 @@ use crate::iterator::{
     EngineIterOpts, EngineIterator, EnginePrefixIterator, EngineRefIterator, IteratorKey,
 };
 use crate::keyspaces::{
-    KeyType, Keyspace, KeyspaceByteEngine, KeyspaceRangedSnapshotLoad, KeyspaceResolver, Keyspaces,
+    Keyspace, KeyspaceByteEngine, KeyspaceRangedSnapshotLoad, KeyspaceResolver, Keyspaces,
 };
 use crate::{FromKeyspaces, KvBytes, Store, StoreError, StoreInfo};
 use std::borrow::Borrow;
@@ -92,7 +92,7 @@ impl KeyspaceByteEngine for NoStore {
         &self,
         _keyspace: K,
         _key: &[u8],
-        _value: KeyType,
+        _value: u64,
     ) -> Result<(), StoreError> {
         Ok(())
     }

@@ -17,7 +17,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use crate::store::keystore::STEP;
-use store::keyspaces::{KeyType, Keyspace, KeyspaceByteEngine};
+use store::keyspaces::{Keyspace, KeyspaceByteEngine};
 use store::{deserialize, serialize, StoreError};
 
 pub struct MockStore {
@@ -89,7 +89,7 @@ impl KeyspaceByteEngine for MockStore {
 
         match keyspace.entry(key.to_vec()) {
             Entry::Occupied(mut entry) => {
-                let mut value = deserialize::<KeyType>(entry.get()).unwrap();
+                let mut value = deserialize::<u64>(entry.get()).unwrap();
                 value += step;
                 *entry.get_mut() = serialize(&value).unwrap();
                 Ok(())

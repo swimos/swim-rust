@@ -24,7 +24,7 @@ use std::fmt::Debug;
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
 use store::engines::KeyedSnapshot;
-use store::keyspaces::{KeyType, Keyspace, KeyspaceRangedSnapshotLoad};
+use store::keyspaces::{Keyspace, KeyspaceRangedSnapshotLoad};
 use store::{serialize, StoreError, StoreInfo};
 
 #[derive(Clone, Debug)]
@@ -42,7 +42,7 @@ impl NodeStore for TrackingValueStore {
         }
     }
 
-    fn lane_id_of(&self, _lane: &str) -> Result<KeyType, StoreError> {
+    fn lane_id_of(&self, _lane: &str) -> Result<u64, StoreError> {
         Ok(0)
     }
 }
@@ -186,7 +186,7 @@ impl NodeStore for FailingStore {
         }
     }
 
-    fn lane_id_of(&self, _lane: &str) -> Result<KeyType, StoreError> {
+    fn lane_id_of(&self, _lane: &str) -> Result<u64, StoreError> {
         Ok(0)
     }
 }

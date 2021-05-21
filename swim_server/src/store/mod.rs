@@ -30,7 +30,7 @@ mod nostore;
 mod rocks;
 
 pub use rocks::{default_db_opts, default_keyspaces, RocksDatabase};
-use store::keyspaces::{KeyType, Keyspace, Keyspaces};
+use store::keyspaces::{Keyspace, Keyspaces};
 use store::{Store, StoreError};
 
 /// Unique lane identifier keyspace. The name is `default` as either the Rust RocksDB crate or
@@ -175,7 +175,7 @@ pub enum StoreKey {
     /// is the key of a lane's map data structure.
     Map {
         /// The lane ID.
-        lane_id: KeyType,
+        lane_id: u64,
         /// An optional, serialized, key. This is optional as ranged snapshots to not require the
         /// key.
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -184,7 +184,7 @@ pub enum StoreKey {
     /// A value lane key.
     Value {
         /// The lane ID.
-        lane_id: KeyType,
+        lane_id: u64,
     },
 }
 
