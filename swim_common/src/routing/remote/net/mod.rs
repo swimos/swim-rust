@@ -19,7 +19,7 @@ use crate::routing::remote::net::dns::{DnsResolver, Resolver};
 use crate::routing::remote::net::plain::TokioPlainTextNetworking;
 use crate::routing::remote::net::tls::{TlsListener, TlsStream, TokioTlsNetworking};
 use crate::routing::remote::table::SchemeHostPort;
-use crate::routing::remote::{ExternalConnections, IoResult, Listener, SchemeSocketAddr};
+use crate::routing::remote::{ExternalConnections, IoResult, Listener, Scheme, SchemeSocketAddr};
 use either::Either;
 use futures::stream::{Fuse, StreamExt};
 use futures::task::{Context, Poll};
@@ -63,7 +63,7 @@ impl Stream for EitherStream {
             MaybeTlsListener::PlainText(listener) => match listener.poll_accept(cx) {
                 Poll::Ready(Ok((stream, addr))) => Poll::Ready(Some(Ok((
                     Either::Left(stream),
-                    SchemeSocketAddr::new("ws".to_owned(), addr),
+                    SchemeSocketAddr::new(Scheme::WS, addr),
                 )))),
                 Poll::Ready(Err(e)) => Poll::Ready(Some(Err(e))),
                 Poll::Pending => Poll::Pending,
@@ -130,7 +130,10 @@ impl ExternalConnections for TokioNetworking {
         }
     }
 
-    fn lookup(&self, host: SchemeHostPort) -> BoxFuture<'static, io::Result<Vec<SchemeSocketAddr>>> {
+    fn lookup(
+        &self,
+        host: SchemeHostPort,
+    ) -> BoxFuture<'static, io::Result<Vec<SchemeSocketAddr>>> {
         self.resolver.resolve(host).boxed()
     }
 }

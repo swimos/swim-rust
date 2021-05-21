@@ -15,7 +15,7 @@
 #[cfg(test)]
 mod tests;
 
-use crate::routing::remote::{RawRoute, SchemeSocketAddr};
+use crate::routing::remote::{RawRoute, Scheme, SchemeSocketAddr};
 use crate::routing::{ConnectionDropped, RoutingAddr, TaggedEnvelope};
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
@@ -24,14 +24,14 @@ use utilities::sync::promise;
 
 /// A combination of host name and port to be used as a key into the routing table.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct SchemeHostPort(String, String, u16);
+pub struct SchemeHostPort(Scheme, String, u16);
 
 impl SchemeHostPort {
-    pub fn new(scheme: String, host: String, port: u16) -> Self {
+    pub fn new(scheme: Scheme, host: String, port: u16) -> Self {
         SchemeHostPort(scheme, host, port)
     }
 
-    pub fn scheme(&self) -> &String {
+    pub fn scheme(&self) -> &Scheme {
         &self.0
     }
 
@@ -43,7 +43,7 @@ impl SchemeHostPort {
         self.2
     }
 
-    pub fn split(self) -> (String, String, u16) {
+    pub fn split(self) -> (Scheme, String, u16) {
         let SchemeHostPort(scheme, host, port) = self;
         (scheme, host, port)
     }
