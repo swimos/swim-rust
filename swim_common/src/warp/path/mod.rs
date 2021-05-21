@@ -15,9 +15,7 @@
 use crate::model::text::Text;
 use std::fmt::{Debug, Display, Formatter};
 use std::hash::Hash;
-use std::str::FromStr;
 use url::Url;
-use utilities::uri::RelativeUri;
 
 pub trait Addressable:
     Clone + PartialEq + Eq + PartialOrd + Ord + Hash + Debug + Display + Send + Sync + 'static

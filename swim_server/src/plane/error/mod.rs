@@ -14,9 +14,7 @@
 
 use std::error::Error;
 use std::fmt::{Display, Formatter};
-
 use utilities::route_pattern::RoutePattern;
-use utilities::uri::RelativeUri;
 
 #[cfg(test)]
 mod tests;

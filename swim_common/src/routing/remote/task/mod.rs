@@ -110,7 +110,8 @@ where
     /// * `messages`- Stream of messages to be sent into the sink.
     /// * `message_injector` - Allows messages to be injected into the outgoing stream.
     /// * `stop_signal` - Signals to the task that it should stop.
-    /// * `config` - Configuration for the connectino task.
+    /// * `config` - Configuration for the connection task.
+    /// * `server` - Whether or not this connection task is for a sever.
     /// runtime.
     pub fn new(
         addr: SchemeSocketAddr,

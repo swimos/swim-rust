@@ -30,15 +30,13 @@ use crate::downlink::{
     command_downlink, event_downlink, map_downlink, value_downlink, Command, Downlink,
     DownlinkError, Message, SchemaViolations,
 };
+use crate::router::ClientRequest;
+use crate::router::ConnectionRequestMode;
 use crate::router::RouterEvent;
 use crate::router::RouterMessageRequest;
 use crate::router::TaskManager;
-use crate::router::{ClientConnectionsManager, ConnectionRequestMode};
-use crate::router::{ClientRequest, ClientRouterFactory};
 use crate::router::{CloseSender, RouterConnRequest};
 use either::Either;
-use futures::future::BoxFuture;
-use futures::join;
 use futures::stream::Fuse;
 use futures::Stream;
 use futures_util::future::TryFutureExt;
@@ -53,32 +51,18 @@ use swim_common::model::schema::StandardSchema;
 use swim_common::model::Value;
 use swim_common::request::Request;
 use swim_common::routing::error::RoutingError;
-use swim_common::routing::remote::config::ConnectionConfig;
-use swim_common::routing::remote::net::dns::Resolver;
-use swim_common::routing::remote::net::plain::TokioPlainTextNetworking;
-use swim_common::routing::remote::{
-    ExternalConnections, Listener, RemoteConnectionChannels, RemoteConnectionsTask,
-    RemoteRoutingRequest,
-};
-use swim_common::routing::ws::tungstenite::TungsteniteWsConnections;
-use swim_common::routing::ws::WsConnections;
-use swim_common::routing::{ConnectionDropped, Router, RouterFactory, RoutingAddr};
 use swim_common::sink::item;
 use swim_common::sink::item::either::SplitSink;
 use swim_common::sink::item::ItemSender;
 use swim_common::warp::envelope::Envelope;
-use swim_common::warp::path::{AbsolutePath, Addressable};
-use swim_runtime::task::{spawn, TaskError, TaskHandle};
+use swim_common::warp::path::Addressable;
 use swim_warp::backpressure;
 use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::ReceiverStream;
-use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use tracing::{error, info, instrument, trace_span};
-use utilities::future::open_ended::OpenEndedFutures;
 use utilities::future::{SwimFutureExt, TransformOnce, TransformedFuture};
 use utilities::sync::promise::PromiseError;
-use utilities::sync::{circular_buffer, promise, trigger};
-use utilities::task::Spawner;
+use utilities::sync::{circular_buffer, promise};
 
 pub mod envelopes;
 #[cfg(test)]
@@ -353,7 +337,7 @@ impl<Path: Addressable> Downlinks<Path> {
     }
 }
 
-pub type RequestResult<T, Path: Addressable> = Result<T, SubscriptionError<Path>>;
+pub type RequestResult<T, Path> = Result<T, SubscriptionError<Path>>;
 
 pub enum DownlinkSpecifier<Path: Addressable> {
     Value {
@@ -381,7 +365,7 @@ pub enum DownlinkSpecifier<Path: Addressable> {
     },
 }
 
-type StopEvents<Path: Addressable> = FuturesUnordered<
+type StopEvents<Path> = FuturesUnordered<
     TransformedFuture<promise::Receiver<Result<(), DownlinkError>>, MakeStopEvent<Path>>,
 >;
 
@@ -435,6 +419,7 @@ pub struct DownlinksTask<Path: Addressable> {
     stopped_watch: StopEvents<Path>,
     conn_request_tx: mpsc::Sender<RouterConnRequest<Path>>,
     sink_tx: mpsc::Sender<RouterMessageRequest<Path>>,
+    //Todo dm this is never used
     close_tx: CloseSender,
 }
 
@@ -579,7 +564,7 @@ impl<Path: Addressable> DownlinksTask<Path> {
         rx.await.map_err(|_| SubscriptionError::ConnectionError)
     }
 
-    pub async fn sink_for(&mut self, path: &Path) -> RequestResult<(mpsc::Sender<Envelope>), Path> {
+    pub async fn sink_for(&mut self, path: &Path) -> RequestResult<mpsc::Sender<Envelope>, Path> {
         let (tx, rx) = oneshot::channel();
 
         self.conn_request_tx

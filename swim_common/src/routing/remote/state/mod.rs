@@ -19,7 +19,7 @@ use crate::routing::remote::table::{RoutingTable, SchemeHostPort};
 use crate::routing::remote::task::TaskFactory;
 use crate::routing::remote::{ExternalConnections, Listener, SchemeSocketAddr};
 use crate::routing::remote::{
-    RawRoute, RemoteConnectionChannels, ResolutionRequest, RemoteRoutingRequest, SchemeSocketAddrIt,
+    RawRoute, RemoteConnectionChannels, RemoteRoutingRequest, ResolutionRequest, SchemeSocketAddrIt,
 };
 use crate::routing::ws::WsConnections;
 use crate::routing::ConnectionError;

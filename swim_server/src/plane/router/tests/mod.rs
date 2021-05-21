@@ -13,13 +13,13 @@
 // limitations under the License.
 
 use crate::plane::router::{PlaneRouter, PlaneRouterFactory};
-use swim_common::routing::PlaneRoutingRequest;
 use crate::routing::{TopLevelRouter, TopLevelRouterFactory};
 use futures::future::join;
 use swim_common::routing::error::{ConnectionError, ProtocolError, ResolutionErrorKind};
 use swim_common::routing::error::{RouterError, Unresolvable};
 use swim_common::routing::remote::RawRoute;
-use swim_common::routing::{RoutingAddr, Router, RouterFactory, TaggedEnvelope};
+use swim_common::routing::PlaneRoutingRequest;
+use swim_common::routing::{Router, RouterFactory, RoutingAddr, TaggedEnvelope};
 use swim_common::warp::envelope::Envelope;
 use tokio::sync::mpsc;
 use url::Url;

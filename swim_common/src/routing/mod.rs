@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::model::text::Text;
 use crate::request::Request;
 use crate::routing::error::{
     ConnectionError, NoAgentAtRoute, ResolutionError, RouterError, RoutingError, SendError,

@@ -30,7 +30,7 @@ use swim_common::routing::error::{
 };
 use swim_common::routing::{RoutingAddr, TaggedEnvelope};
 use swim_common::warp::envelope::Envelope;
-use swim_common::warp::path::{AbsolutePath, Addressable};
+use swim_common::warp::path::Addressable;
 use swim_runtime::task::*;
 use swim_runtime::time::instant::Instant;
 use swim_runtime::time::interval::interval;

@@ -23,13 +23,6 @@ use futures::future::{join, BoxFuture};
 use futures::{select_biased, FutureExt, StreamExt};
 use futures_util::stream::TakeUntil;
 use pin_utils::pin_mut;
-use tokio::sync::{mpsc, oneshot};
-use tokio_stream::wrappers::ReceiverStream;
-use tracing::{event, span, Level};
-use tracing_futures::Instrument;
-use url::Url;
-
-use swim_client::downlink::Downlinks;
 use swim_client::interface::SwimClient;
 use swim_common::request::Request;
 use swim_common::routing::error::{ConnectionError, ProtocolError, ProtocolErrorKind};
@@ -39,6 +32,10 @@ use swim_common::routing::{
     ConnectionDropped, PlaneRoutingRequest, RouterFactory, RoutingAddr, TaggedEnvelope,
 };
 use swim_runtime::time::clock::Clock;
+use tokio::sync::{mpsc, oneshot};
+use tokio_stream::wrappers::ReceiverStream;
+use tracing::{event, span, Level};
+use tracing_futures::Instrument;
 use utilities::route_pattern::RoutePattern;
 use utilities::sync::{promise, trigger};
 use utilities::task::Spawner;

@@ -20,8 +20,6 @@ use std::time::Duration;
 use futures::channel::mpsc::SendError as FutSendError;
 use tokio::sync::mpsc::error::SendError as MpscSendError;
 
-#[cfg(feature = "tungstenite")]
-use {std::ops::Deref, tokio_tungstenite::tungstenite};
 pub use capacity::*;
 pub use closed::*;
 pub use encoding::*;
@@ -34,6 +32,8 @@ pub use tls::*;
 use utilities::errors::Recoverable;
 use utilities::sync::circular_buffer;
 use utilities::uri::RelativeUri;
+#[cfg(feature = "tungstenite")]
+use {std::ops::Deref, tokio_tungstenite::tungstenite};
 
 use crate::request::request_future::RequestError;
 use crate::routing::RoutingAddr;

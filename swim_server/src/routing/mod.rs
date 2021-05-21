@@ -4,14 +4,14 @@ use swim_client::router::ClientRequest;
 use swim_common::request::Request;
 use swim_common::routing::error::ResolutionError;
 use swim_common::routing::error::RouterError;
-use swim_common::routing::remote::{RawRoute, RemoteRoutingRequest, SchemeSocketAddr};
+use swim_common::routing::remote::{RawRoute, RemoteRoutingRequest};
 use swim_common::routing::{Origin, PlaneRoutingRequest};
 use swim_common::routing::{Route, Router, RouterFactory, RoutingAddr, TaggedSender};
+use swim_common::warp::path::Path;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use url::Url;
 use utilities::uri::RelativeUri;
-use swim_common::warp::path::Path;
 
 #[derive(Debug, Clone)]
 pub(crate) struct TopLevelRouterFactory {

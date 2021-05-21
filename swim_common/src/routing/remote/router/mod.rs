@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::request::Request;
-use crate::routing::remote::{RawRoute, RemoteRoutingRequest, SchemeSocketAddr};
+use crate::routing::remote::{RawRoute, RemoteRoutingRequest};
 use crate::routing::RouterError;
 use crate::routing::{Origin, ResolutionError};
 use crate::routing::{Route, Router, RoutingAddr, TaggedSender};

@@ -12,18 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::configuration::downlink::DownlinkKind::Value;
 use crate::configuration::router::RouterParams;
 use crate::connections::{ConnectionPool, ConnectionSender};
 use crate::router::incoming::broadcast;
 use crate::router::incoming::{IncomingHostTask, IncomingRequest};
 use crate::router::outgoing::OutgoingHostTask;
 use either::Either;
-use futures::future::ready;
 use futures::future::BoxFuture;
 use futures::stream::FuturesUnordered;
 use futures::{select_biased, FutureExt, StreamExt};
-use http::Uri;
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::ops::Deref;
@@ -32,13 +29,13 @@ use swim_common::request::Request;
 use swim_common::routing::error::{
     ConnectionError, ResolutionError, RouterError, RoutingError, Unresolvable,
 };
-use swim_common::routing::remote::{RawRoute, RemoteRoutingRequest, SchemeSocketAddr};
+use swim_common::routing::remote::{RawRoute, RemoteRoutingRequest};
 use swim_common::routing::{ConnectionDropped, Origin, PlaneRoutingRequest};
 use swim_common::routing::{
     Route, Router, RouterFactory, RoutingAddr, TaggedEnvelope, TaggedSender,
 };
 use swim_common::warp::envelope::{Envelope, IncomingLinkMessage};
-use swim_common::warp::path::{AbsolutePath, Addressable, RelativePath};
+use swim_common::warp::path::{Addressable, RelativePath};
 use swim_runtime::task::*;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
@@ -458,7 +455,7 @@ impl ClientConnectionManager {
 
             match next {
                 Either::Left(Some(envelope)) => match envelope.1.clone().into_incoming() {
-                    Ok(env) => {
+                    Ok(_) => {
                         broadcast(&mut subs, envelope.1).await?;
                     }
                     Err(env) => {
@@ -483,8 +480,8 @@ pub(crate) enum ConnectionRequestMode {
     Outgoing(oneshot::Sender<mpsc::Sender<Envelope>>),
 }
 
-pub(crate) type RouterConnRequest<Path: Addressable> = (Path, ConnectionRequestMode);
-pub(crate) type RouterMessageRequest<Path: Addressable> = (Path, Envelope);
+pub(crate) type RouterConnRequest<Path> = (Path, ConnectionRequestMode);
+pub(crate) type RouterMessageRequest<Path> = (Path, Envelope);
 pub(crate) type CloseSender = promise::Sender<mpsc::Sender<Result<(), RoutingError>>>;
 type ConnectionChannel = (mpsc::Sender<Envelope>, mpsc::Receiver<RouterEvent>);
 type CloseResponseSender = mpsc::Sender<Result<(), RoutingError>>;

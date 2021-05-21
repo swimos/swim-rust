@@ -17,7 +17,7 @@ use crate::agent::Eff;
 use futures::future::{join, ready, BoxFuture};
 use futures::FutureExt;
 use swim_common::routing::{
-    ConnectionDropped, Route, RoutingAddr, Router, TaggedEnvelope, TaggedSender,
+    ConnectionDropped, Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender,
 };
 use tokio::sync::mpsc;
 
@@ -28,13 +28,13 @@ use swim_common::warp::path::RelativePath;
 use crate::agent::lane::channels::uplink::stateless::StatelessUplinks;
 use crate::agent::lane::channels::uplink::{AddressedUplinkMessage, UplinkAction, UplinkKind};
 use crate::agent::lane::channels::TaggedAction;
+use std::net::SocketAddr;
 use swim_common::routing::error::ResolutionError;
 use swim_common::routing::error::RouterError;
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
 use utilities::sync::promise;
 use utilities::uri::RelativeUri;
-use std::net::SocketAddr;
 
 #[derive(Clone, Debug)]
 struct TestRouter {

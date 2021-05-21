@@ -16,9 +16,10 @@ use crate::model::Value;
 use crate::request::Request;
 use crate::routing::error::{ConnectionError, IoError, ResolutionError, ResolutionErrorKind};
 use crate::routing::remote::state::{DeferredResult, Event, RemoteTasksState};
-use crate::routing::remote::table::{SchemeHostPort, RoutingTable};
+use crate::routing::remote::table::{RoutingTable, SchemeHostPort};
 use crate::routing::remote::{
-    ConnectionDropped, RawRoute, ResolutionRequest, RemoteRoutingRequest, SocketAddrIt, Unresolvable,
+    ConnectionDropped, RawRoute, RemoteRoutingRequest, ResolutionRequest, SocketAddrIt,
+    Unresolvable,
 };
 use crate::routing::{RoutingAddr, TaggedEnvelope};
 use crate::warp::envelope::Envelope;

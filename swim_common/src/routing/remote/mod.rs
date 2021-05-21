@@ -29,28 +29,25 @@ mod tests;
 use std::net::SocketAddr;
 
 use crate::request::Request;
-use futures::future::BoxFuture;
-use tokio::sync::mpsc;
-use tracing::{event, Level};
-use url::Url;
-use utilities::sync::promise;
-
-use crate::routing::{ConnectionError, ResolutionError, Route, Router};
-use utilities::sync::trigger;
-use utilities::task::Spawner;
-
+use crate::routing::error::Unresolvable;
 use crate::routing::error::{HttpError, ResolutionErrorKind};
-use crate::routing::error::{RouterError, Unresolvable};
 use crate::routing::remote::config::ConnectionConfig;
 use crate::routing::remote::state::{DeferredResult, Event, RemoteConnections, RemoteTasksState};
 use crate::routing::remote::table::SchemeHostPort;
 use crate::routing::ws::WsConnections;
 use crate::routing::{ConnectionDropped, RouterFactory, RoutingAddr, TaggedEnvelope};
+use crate::routing::{ConnectionError, ResolutionError};
+use futures::future::BoxFuture;
 use futures::stream::FusedStream;
 use std::fmt::{Display, Formatter};
 use std::io;
 use std::io::Error;
-use utilities::uri::RelativeUri;
+use tokio::sync::mpsc;
+use tracing::{event, Level};
+use url::Url;
+use utilities::sync::promise;
+use utilities::sync::trigger;
+use utilities::task::Spawner;
 
 #[cfg(test)]
 pub mod test_fixture;
@@ -207,35 +204,33 @@ where
     }
 
     pub async fn run(self) -> Result<(), io::Error> {
-        match self {
-            RemoteConnectionsTask {
-                external,
-                listener,
-                websockets,
-                delegate_router_fac,
-                stop_trigger,
-                spawner,
-                configuration,
-                remote_tx,
-                remote_rx,
-            } => {
-                let state = RemoteConnections::new(
-                    &websockets,
-                    configuration,
-                    spawner,
-                    external,
-                    listener,
-                    delegate_router_fac,
-                    RemoteConnectionChannels {
-                        request_tx: remote_tx,
-                        request_rx: remote_rx,
-                        stop_trigger,
-                    },
-                );
+        let RemoteConnectionsTask {
+            external,
+            listener,
+            websockets,
+            delegate_router_fac,
+            stop_trigger,
+            spawner,
+            configuration,
+            remote_tx,
+            remote_rx,
+        } = self;
 
-                RemoteConnectionsTask::run_loop(state, configuration).await
-            }
-        }
+        let state = RemoteConnections::new(
+            &websockets,
+            configuration,
+            spawner,
+            external,
+            listener,
+            delegate_router_fac,
+            RemoteConnectionChannels {
+                request_tx: remote_tx,
+                request_rx: remote_rx,
+                stop_trigger,
+            },
+        );
+
+        RemoteConnectionsTask::run_loop(state, configuration).await
     }
 
     async fn run_loop(
@@ -280,21 +275,23 @@ fn update_state<State: RemoteTasksState>(
             };
             request.send_debug(result, REQUEST_DROPPED);
         }
-        Event::Request(RemoteRoutingRequest::ResolveUrl { host, request }) => match unpack_url(&host) {
-            Ok(target) => {
-                if let Some(addr) = state.table_try_resolve(&target) {
-                    request.send_ok_debug(addr, REQUEST_DROPPED);
-                } else {
-                    state.defer_dns_lookup(target, request);
+        Event::Request(RemoteRoutingRequest::ResolveUrl { host, request }) => {
+            match unpack_url(&host) {
+                Ok(target) => {
+                    if let Some(addr) = state.table_try_resolve(&target) {
+                        request.send_ok_debug(addr, REQUEST_DROPPED);
+                    } else {
+                        state.defer_dns_lookup(target, request);
+                    }
+                }
+                _ => {
+                    request.send_err_debug(
+                        ConnectionError::Http(HttpError::invalid_url(host.to_string(), None)),
+                        REQUEST_DROPPED,
+                    );
                 }
             }
-            _ => {
-                request.send_err_debug(
-                    ConnectionError::Http(HttpError::invalid_url(host.to_string(), None)),
-                    REQUEST_DROPPED,
-                );
-            }
-        },
+        }
         Event::Deferred(DeferredResult::ServerHandshake {
             result: Ok(ws_stream),
             sock_addr,
@@ -400,15 +397,15 @@ fn unpack_url(url: &Url) -> Result<SchemeHostPort, BadUrl> {
 /// Supported websocket schemes
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Scheme {
-    WS,
-    WSS,
+    Ws,
+    Wss,
 }
 
 impl Scheme {
     fn convert_scheme(scheme: &str) -> Option<Scheme> {
         match scheme {
-            "ws" | "swim" | "warp" => Some(Scheme::WS),
-            "wss" | "swims" | "warps" => Some(Scheme::WSS),
+            "ws" | "swim" | "warp" => Some(Scheme::Ws),
+            "wss" | "swims" | "warps" => Some(Scheme::Wss),
             _ => None,
         }
     }
@@ -416,16 +413,17 @@ impl Scheme {
     /// Get the default port for the schemes.
     fn get_default_port(&self) -> u16 {
         match self {
-            Scheme::WS => 80,
-            Scheme::WSS => 443,
+            Scheme::Ws => 80,
+            Scheme::Wss => 443,
         }
     }
 
     /// Return if the scheme is secure.
+    #[allow(dead_code)]
     fn is_secure(&self) -> bool {
         match self {
-            Scheme::WS => false,
-            Scheme::WSS => true,
+            Scheme::Ws => false,
+            Scheme::Wss => true,
         }
     }
 }
@@ -433,10 +431,10 @@ impl Scheme {
 impl Display for Scheme {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Scheme::WS => {
+            Scheme::Ws => {
                 write!(f, "ws")
             }
-            Scheme::WSS => {
+            Scheme::Wss => {
                 write!(f, "wss")
             }
         }

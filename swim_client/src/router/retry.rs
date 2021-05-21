@@ -24,11 +24,10 @@ use futures::Future;
 use pin_project::pin_project;
 use std::pin::Pin;
 use swim_common::routing::error::RoutingError;
-use swim_common::routing::TaggedEnvelope;
+use swim_common::warp::envelope::Envelope;
 use tracing::trace;
 use utilities::errors::Recoverable;
 use utilities::future::retryable::request::{RetrySendError, RetryableRequest, SendResult};
-use swim_common::warp::envelope::Envelope;
 
 #[pin_project]
 struct LoggingRetryable<F> {

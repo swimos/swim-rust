@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swim_common::routing::{PlaneRoutingRequest, Origin};
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use swim_common::request::Request;
 use swim_common::routing::error::ResolutionError;
 use swim_common::routing::error::RouterError;
-use swim_common::routing::remote::{RawRoute, SchemeSocketAddr};
+use swim_common::routing::remote::RawRoute;
+use swim_common::routing::{Origin, PlaneRoutingRequest};
 use swim_common::routing::{Route, Router, RouterFactory, RoutingAddr, TaggedSender};
 use tokio::sync::{mpsc, oneshot};
 use url::Url;

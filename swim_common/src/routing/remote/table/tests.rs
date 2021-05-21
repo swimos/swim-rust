@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::routing::remote::table::{SchemeHostPort, RoutingTable};
+use crate::routing::remote::table::{RoutingTable, SchemeHostPort};
 use crate::routing::remote::RawRoute;
 use crate::routing::{ConnectionDropped, RoutingAddr, TaggedEnvelope};
 use crate::warp::envelope::Envelope;

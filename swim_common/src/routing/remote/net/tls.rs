@@ -147,7 +147,7 @@ impl Stream for TlsListener {
             .poll_next(cx)?
             .map(|result| match result {
                 Some((stream, addr)) => {
-                    Some(Ok((stream, SchemeSocketAddr::new(Scheme::WSS, addr))))
+                    Some(Ok((stream, SchemeSocketAddr::new(Scheme::Wss, addr))))
                 }
                 None => None,
             })

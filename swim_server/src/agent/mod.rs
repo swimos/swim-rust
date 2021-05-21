@@ -63,9 +63,9 @@ use std::future::Future;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
-use swim_common::form::{Form, ValidatedForm};
+use swim_common::form::Form;
 use swim_common::routing::{Router, TaggedClientEnvelope, TaggedEnvelope};
-use swim_common::warp::path::{AbsolutePath, Path, RelativePath};
+use swim_common::warp::path::{Path, RelativePath};
 use swim_runtime::time::clock::Clock;
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::{mpsc, oneshot};
@@ -81,7 +81,6 @@ use crate::meta::open_meta_lanes;
 #[doc(hidden)]
 #[allow(unused_imports)]
 pub use agent_derive::*;
-use swim_client::downlink::Downlinks;
 use swim_client::interface::SwimClient;
 use tokio_stream::wrappers::ReceiverStream;
 

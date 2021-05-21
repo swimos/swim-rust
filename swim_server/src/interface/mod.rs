@@ -27,21 +27,16 @@ use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 
-use swim_client::configuration::downlink::{ClientParams, ConfigHierarchy};
-use swim_client::configuration::router::{ConnectionPoolParams, RouterParams};
-use swim_client::connections::SwimConnPool;
-use swim_client::downlink::subscription::{DownlinkRequest, DownlinksHandle, DownlinksTask};
+use swim_client::configuration::downlink::ConfigHierarchy;
+use swim_client::downlink::subscription::DownlinksHandle;
 use swim_client::downlink::Downlinks;
 use swim_client::interface::{SwimClient, SwimClientBuilder};
-use swim_client::router::{
-    ClientConnectionsManager, ClientRequest, ClientRouterFactory, TaskManager,
-};
+use swim_client::router::{ClientConnectionsManager, ClientRequest};
 use swim_common::routing::remote::config::ConnectionConfig;
 use swim_common::routing::remote::net::dns::Resolver;
 use swim_common::routing::remote::net::plain::TokioPlainTextNetworking;
 use swim_common::routing::remote::{RemoteConnectionChannels, RemoteConnectionsTask};
 use swim_common::routing::ws::tungstenite::TungsteniteWsConnections;
-use swim_common::routing::PlaneRoutingRequest;
 use swim_runtime::task::TaskError;
 use swim_runtime::time::clock::RuntimeClock;
 use utilities::future::open_ended::OpenEndedFutures;

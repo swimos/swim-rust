@@ -27,6 +27,7 @@ use futures::stream::{BoxStream, FusedStream};
 use futures::{FutureExt, Stream, StreamExt};
 use pin_utils::pin_mut;
 use std::collections::{HashMap, HashSet};
+use std::net::SocketAddr;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
@@ -37,7 +38,7 @@ use swim_common::routing::error::RouterError;
 use swim_common::routing::error::RoutingError;
 use swim_common::routing::error::SendError;
 use swim_common::routing::{
-    ConnectionDropped, Route, RoutingAddr, Router, TaggedEnvelope, TaggedSender,
+    ConnectionDropped, Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender,
 };
 use swim_common::sink::item::ItemSink;
 use swim_common::warp::envelope::Envelope;
@@ -48,7 +49,6 @@ use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
 use utilities::sync::{promise, topic};
 use utilities::uri::RelativeUri;
-use std::net::SocketAddr;
 
 const INIT: i32 = 42;
 

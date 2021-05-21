@@ -17,7 +17,7 @@ use crate::downlink::model::value::SharedValue;
 use crate::downlink::Command;
 use swim_common::model::Value;
 use swim_common::warp::envelope::{OutgoingHeader, OutgoingLinkMessage};
-use swim_common::warp::path::{AbsolutePath, Addressable};
+use swim_common::warp::path::Addressable;
 
 #[cfg(test)]
 mod tests;

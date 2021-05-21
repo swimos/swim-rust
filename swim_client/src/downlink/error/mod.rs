@@ -21,7 +21,7 @@ use swim_common::request::request_future::RequestError;
 use swim_common::routing::error::ConnectionError;
 use swim_common::routing::error::RoutingError;
 use swim_common::sink::item;
-use swim_common::warp::path::{AbsolutePath, Addressable};
+use swim_common::warp::path::Addressable;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use utilities::errors::Recoverable;
