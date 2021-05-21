@@ -126,7 +126,7 @@ impl<Path: Addressable> Router for ClientRouter<Path> {
         _route: RelativeUri,
         _origin: Option<Origin>,
     ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
-        async move { Ok(RoutingAddr::local(0)) }.boxed()
+        async move { Ok(RoutingAddr::client()) }.boxed()
     }
 }
 

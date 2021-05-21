@@ -334,7 +334,7 @@ impl SendTask {
         loop {
             match recv_stream.next().await {
                 Some(env) => write_sink
-                    .send(TaggedEnvelope(RoutingAddr::local(0), env))
+                    .send(TaggedEnvelope(RoutingAddr::client(), env))
                     .await
                     .map_err(|_| ConnectionError::Closed(CloseError::unexpected()))?,
                 None => {

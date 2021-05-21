@@ -51,6 +51,8 @@ enum Location {
     RemoteEndpoint(u32),
     /// Indicates that envelopes will be routed to another agent on this host.
     Local(u32),
+    /// Indicates that envelopes will be routed to the client.
+    Client,
 }
 
 /// An opaque routing address.
@@ -66,8 +68,13 @@ impl RoutingAddr {
         RoutingAddr(Location::Local(id))
     }
 
+    pub const fn client() -> Self {
+        RoutingAddr(Location::Client)
+    }
+
     pub fn is_local(&self) -> bool {
         matches!(self, RoutingAddr(Location::Local(_)))
+            || matches!(self, RoutingAddr(Location::Client))
     }
 
     pub fn is_remote(&self) -> bool {
@@ -80,6 +87,9 @@ impl Display for RoutingAddr {
         match self {
             RoutingAddr(Location::RemoteEndpoint(id)) => write!(f, "Remote({:X})", id),
             RoutingAddr(Location::Local(id)) => write!(f, "Local({:X})", id),
+            RoutingAddr(Location::Client) => {
+                write!(f, "Client")
+            }
         }
     }
 }
