@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::form::structural::read::Never;
+use utilities::never::Never;
 
 mod private {
     pub trait Sealed {}
@@ -22,13 +22,20 @@ mod private {
     impl<H, T: super::Coproduct> Sealed for super::CCons<H, T> {}
 }
 
+/// Trait for the co-product of a number of types. Coproducts are used by the derivation macro
+/// for [`crate::form::structural::StructuralReadable`] to avoid needing to generate enumeration
+/// types.
 pub trait Coproduct: private::Sealed {
+    /// The number of types in the co-product.
     const NUM_OPTIONS: usize;
 }
 
+/// The empty coproduct (this type has no members).
 pub struct CNil(Never);
 
 impl CNil {
+    /// Witnesses that this type has no members.
+    #[inline]
     pub fn explode(&self) -> ! {
         self.0.explode()
     }
@@ -38,6 +45,9 @@ impl Coproduct for CNil {
     const NUM_OPTIONS: usize = 0;
 }
 
+/// A non-empty coproduct. In general, we should have `T: Coproduct`, however, this makes it
+/// impossible to implement traits for general co-products due the the potentially unbounded
+/// recursion.
 pub enum CCons<H, T> {
     Head(H),
     Tail(T),

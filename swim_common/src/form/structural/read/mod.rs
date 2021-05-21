@@ -29,6 +29,7 @@ use num_bigint::{BigInt, BigUint};
 use std::borrow::Cow;
 use std::convert::TryFrom;
 use std::sync::Arc;
+use utilities::never::Never;
 
 mod error;
 
@@ -69,6 +70,9 @@ pub trait StructuralReadable: ValueReadable {
         writable.write_into(bridge)
     }
 }
+
+pub type ReaderOf<T> = <T as StructuralReadable>::Reader;
+pub type BodyOf<T> = <ReaderOf<T> as HeaderReader>::Body;
 
 /// Trait for types that can (potentially) be deserialized from a single primitive value.
 /// Types that are represented as complex records will typeically return an error
@@ -186,18 +190,6 @@ pub trait BodyReader: Sized {
 
     /// Complete a nested record and continue reading this record.
     fn restore(delegate: <Self::Delegate as HeaderReader>::Body) -> Result<Self, ReadError>;
-}
-
-/// Empty type for cases that can never ocurr (reading a primitive as a record for example).
-pub enum Never {}
-
-impl Never {
-    /// Witnesses that an instance of [Never] cannot exist.
-    pub fn explode(&self) -> ! {
-        use std::hint;
-        // Safe as Never has no instances.
-        unsafe { hint::unreachable_unchecked() }
-    }
 }
 
 impl HeaderReader for Never {

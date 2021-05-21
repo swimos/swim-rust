@@ -15,7 +15,10 @@
 mod msgpack;
 
 use crate::form::structural::generic::coproduct::{CCons, CNil};
-use crate::form::structural::read::builder::{Builder, HeaderBuilder, NoAttributes, Wrapped};
+use crate::form::structural::read::builder::prim::PushPrimValue;
+use crate::form::structural::read::builder::{
+    AttrReader, Builder, HeaderBuilder, NoAttributes, Wrapped,
+};
 use crate::form::structural::read::{
     BodyReader, HeaderReader, ReadError, StructuralReadable, ValueReadable,
 };
@@ -456,180 +459,6 @@ impl<T: StructuralReadable> StructuralReadable for OneOfEach<T> {
     }
 }
 
-type ReaderOf<T> = <T as StructuralReadable>::Reader;
-type BodyOf<T> = <ReaderOf<T> as HeaderReader>::Body;
-
-pub enum AttrReader<T: StructuralReadable> {
-    Init(Option<T>),
-    Record(BodyOf<T>),
-}
-
-impl<T: StructuralReadable> Default for AttrReader<T> {
-    fn default() -> Self {
-        AttrReader::Init(None)
-    }
-}
-
-impl<T: StructuralReadable> AttrReader<T> {
-    fn read_prim_attr<U, F, G>(&mut self, v: U, f: F, g: G) -> Result<bool, ReadError>
-    where
-        F: FnOnce(U) -> Result<T, ReadError>,
-        G: FnOnce(&mut BodyOf<T>, U) -> Result<bool, ReadError>,
-    {
-        match self {
-            AttrReader::Init(value @ None) => {
-                *value = Some(f(v)?);
-                Ok(false)
-            }
-            AttrReader::Init(_) => Err(ReadError::InconsistentState),
-            AttrReader::Record(body_reader) => g(body_reader, v),
-        }
-    }
-
-    pub fn try_get_value(self) -> Result<T, ReadError> {
-        match self {
-            AttrReader::Init(Some(v)) => Ok(v),
-            AttrReader::Init(_) => Err(ReadError::UnexpectedKind(ValueKind::Extant)),
-            AttrReader::Record(reader) => T::try_terminate(reader),
-        }
-    }
-}
-
-impl<T: StructuralReadable> BodyReader for AttrReader<T> {
-    type Delegate = Either<ReaderOf<T>, <BodyOf<T> as BodyReader>::Delegate>;
-
-    fn push_extant(&mut self) -> Result<bool, ReadError> {
-        self.read_prim_attr(
-            (),
-            |_| <T as ValueReadable>::read_extant(),
-            |reader, _| <BodyOf<T> as BodyReader>::push_extant(reader),
-        )
-    }
-
-    fn push_i32(&mut self, value: i32) -> Result<bool, ReadError> {
-        self.read_prim_attr(
-            value,
-            <T as ValueReadable>::read_i32,
-            <BodyOf<T> as BodyReader>::push_i32,
-        )
-    }
-
-    fn push_i64(&mut self, value: i64) -> Result<bool, ReadError> {
-        self.read_prim_attr(
-            value,
-            <T as ValueReadable>::read_i64,
-            <BodyOf<T> as BodyReader>::push_i64,
-        )
-    }
-
-    fn push_u32(&mut self, value: u32) -> Result<bool, ReadError> {
-        self.read_prim_attr(
-            value,
-            <T as ValueReadable>::read_u32,
-            <BodyOf<T> as BodyReader>::push_u32,
-        )
-    }
-
-    fn push_u64(&mut self, value: u64) -> Result<bool, ReadError> {
-        self.read_prim_attr(
-            value,
-            <T as ValueReadable>::read_u64,
-            <BodyOf<T> as BodyReader>::push_u64,
-        )
-    }
-
-    fn push_f64(&mut self, value: f64) -> Result<bool, ReadError> {
-        self.read_prim_attr(
-            value,
-            <T as ValueReadable>::read_f64,
-            <BodyOf<T> as BodyReader>::push_f64,
-        )
-    }
-
-    fn push_bool(&mut self, value: bool) -> Result<bool, ReadError> {
-        self.read_prim_attr(
-            value,
-            <T as ValueReadable>::read_bool,
-            <BodyOf<T> as BodyReader>::push_bool,
-        )
-    }
-
-    fn push_big_int(&mut self, value: BigInt) -> Result<bool, ReadError> {
-        self.read_prim_attr(
-            value,
-            <T as ValueReadable>::read_big_int,
-            <BodyOf<T> as BodyReader>::push_big_int,
-        )
-    }
-
-    fn push_big_uint(&mut self, value: BigUint) -> Result<bool, ReadError> {
-        self.read_prim_attr(
-            value,
-            <T as ValueReadable>::read_big_uint,
-            <BodyOf<T> as BodyReader>::push_big_uint,
-        )
-    }
-
-    fn push_text(&mut self, value: Cow<'_, str>) -> Result<bool, ReadError> {
-        match self {
-            AttrReader::Init(output @ None) => {
-                let r = <T as ValueReadable>::read_text(value.clone());
-                match r {
-                    Ok(v) => {
-                        *output = Some(v);
-                        Ok(false)
-                    }
-                    Err(ReadError::UnexpectedKind(_)) => {
-                        let mut body_reader =
-                            <T as StructuralReadable>::record_reader()?.start_body()?;
-                        let p = body_reader.push_text(value)?;
-                        *self = AttrReader::Record(body_reader);
-                        Ok(p)
-                    }
-                    Err(e) => Err(e),
-                }
-            }
-            AttrReader::Init(_) => Err(ReadError::UnexpectedKind(ValueKind::Record)),
-            AttrReader::Record(body_reader) => body_reader.push_text(value),
-        }
-    }
-
-    fn push_blob(&mut self, value: Vec<u8>) -> Result<bool, ReadError> {
-        self.read_prim_attr(
-            value,
-            <T as ValueReadable>::read_blob,
-            <BodyOf<T> as BodyReader>::push_blob,
-        )
-    }
-
-    fn start_slot(&mut self) -> Result<(), ReadError> {
-        if let AttrReader::Record(body_reader) = self {
-            <BodyOf<T> as BodyReader>::start_slot(body_reader)
-        } else {
-            Err(ReadError::UnexpectedSlot)
-        }
-    }
-
-    fn push_record(self) -> Result<Self::Delegate, ReadError> {
-        match self {
-            AttrReader::Init(None) => Ok(Either::Left(<T as StructuralReadable>::record_reader()?)),
-            AttrReader::Init(_) => Err(ReadError::UnexpectedKind(ValueKind::Record)),
-            AttrReader::Record(body_reader) => Ok(Either::Right(body_reader.push_record()?)),
-        }
-    }
-
-    fn restore(delegate: <Self::Delegate as HeaderReader>::Body) -> Result<Self, ReadError> {
-        match delegate {
-            Either::Left(reader) => Ok(AttrReader::Init(Some(
-                <T as StructuralReadable>::try_terminate(reader)?,
-            ))),
-            Either::Right(body_reader) => Ok(AttrReader::Record(
-                <BodyOf<T> as BodyReader>::restore(body_reader)?,
-            )),
-        }
-    }
-}
-
 impl<T: StructuralReadable> HeaderReader for Builder<OneOfEach<T>, OneOfEachFields<T>> {
     type Body = Self;
     type Delegate = CCons<
@@ -685,71 +514,13 @@ impl<T: StructuralReadable> HeaderReader for Builder<OneOfEach<T>, OneOfEachFiel
     }
 }
 
-enum PushPrim<'a> {
-    Extant,
-    I32(i32),
-    I64(i64),
-    U32(u32),
-    U64(u64),
-    F64(f64),
-    Bool(bool),
-    BigInteger(BigInt),
-    BugUnsignedInteger(BigUint),
-    Blob(Vec<u8>),
-    Text(Cow<'a, str>),
-}
-
-impl<'a> PushPrim<'a> {
-    fn apply<T: ValueReadable>(
-        self,
-        location: &mut Option<T>,
-        name: &'static str,
-    ) -> Result<(), ReadError> {
-        let value = match self {
-            PushPrim::Extant => T::read_extant(),
-            PushPrim::I32(n) => T::read_i32(n),
-            PushPrim::I64(n) => T::read_i64(n),
-            PushPrim::U32(n) => T::read_u32(n),
-            PushPrim::U64(n) => T::read_u64(n),
-            PushPrim::F64(x) => T::read_f64(x),
-            PushPrim::Bool(p) => T::read_bool(p),
-            PushPrim::BigInteger(n) => T::read_big_int(n),
-            PushPrim::BugUnsignedInteger(n) => T::read_big_uint(n),
-            PushPrim::Blob(v) => T::read_blob(v),
-            PushPrim::Text(t) => T::read_text(t),
-        }?;
-        if location.is_some() {
-            Err(ReadError::DuplicateField(Text::new(name)))
-        } else {
-            *location = Some(value);
-            Ok(())
-        }
-    }
-
-    fn kind(&self) -> ValueKind {
-        match self {
-            PushPrim::Extant => ValueKind::Extant,
-            PushPrim::I32(_) => ValueKind::Int32,
-            PushPrim::I64(_) => ValueKind::Int64,
-            PushPrim::U32(_) => ValueKind::UInt32,
-            PushPrim::U64(_) => ValueKind::UInt64,
-            PushPrim::F64(_) => ValueKind::Float64,
-            PushPrim::Bool(_) => ValueKind::Boolean,
-            PushPrim::BigInteger(_) => ValueKind::BigInt,
-            PushPrim::BugUnsignedInteger(_) => ValueKind::BigUint,
-            PushPrim::Blob(_) => ValueKind::Data,
-            PushPrim::Text(_) => ValueKind::Text,
-        }
-    }
-}
-
 impl<T: StructuralReadable> Builder<OneOfEach<T>, OneOfEachFields<T>> {
     fn has_more(&self) -> bool {
         let (_, _, _, v1, v2) = &self.state;
         v1.is_none() || v2.is_none()
     }
 
-    fn apply(&mut self, push: PushPrim<'_>) -> Result<bool, ReadError> {
+    fn apply<P: PushPrimValue>(&mut self, push: P) -> Result<bool, ReadError> {
         if self.reading_slot {
             self.reading_slot = false;
             match self
@@ -763,8 +534,8 @@ impl<T: StructuralReadable> Builder<OneOfEach<T>, OneOfEachFields<T>> {
             }?;
             Ok(self.has_more())
         } else {
-            if let PushPrim::Text(name) = &push {
-                match name.borrow() {
+            if let Some(name) = push.text() {
+                match name {
                     "slot1" => {
                         self.current_field = Some(1);
                         Ok(true)
@@ -781,7 +552,7 @@ impl<T: StructuralReadable> Builder<OneOfEach<T>, OneOfEachFields<T>> {
         }
     }
 
-    fn apply_header(&mut self, push: PushPrim<'_>) -> Result<bool, ReadError> {
+    fn apply_header<P: PushPrimValue>(&mut self, push: P) -> Result<bool, ReadError> {
         if self.reading_slot {
             self.reading_slot = false;
             match self
@@ -794,8 +565,8 @@ impl<T: StructuralReadable> Builder<OneOfEach<T>, OneOfEachFields<T>> {
             }?;
             Ok(self.has_more())
         } else {
-            if let PushPrim::Text(name) = &push {
-                match name.borrow() {
+            if let Some(name) = push.text() {
+                match name {
                     "header_slot" => {
                         self.current_field = Some(0);
                         Ok(true)
@@ -813,47 +584,47 @@ impl<T: StructuralReadable> BodyReader for Builder<OneOfEach<T>, OneOfEachFields
     type Delegate = CCons<Wrapped<Self, T::Reader>, CCons<Wrapped<Self, T::Reader>, CNil>>;
 
     fn push_extant(&mut self) -> Result<bool, ReadError> {
-        self.apply(PushPrim::Extant)
+        self.apply(())
     }
 
     fn push_i32(&mut self, value: i32) -> Result<bool, ReadError> {
-        self.apply(PushPrim::I32(value))
+        self.apply(value)
     }
 
     fn push_i64(&mut self, value: i64) -> Result<bool, ReadError> {
-        self.apply(PushPrim::I64(value))
+        self.apply(value)
     }
 
     fn push_u32(&mut self, value: u32) -> Result<bool, ReadError> {
-        self.apply(PushPrim::U32(value))
+        self.apply(value)
     }
 
     fn push_u64(&mut self, value: u64) -> Result<bool, ReadError> {
-        self.apply(PushPrim::U64(value))
+        self.apply(value)
     }
 
     fn push_f64(&mut self, value: f64) -> Result<bool, ReadError> {
-        self.apply(PushPrim::F64(value))
+        self.apply(value)
     }
 
     fn push_bool(&mut self, value: bool) -> Result<bool, ReadError> {
-        self.apply(PushPrim::Bool(value))
+        self.apply(value)
     }
 
     fn push_big_int(&mut self, value: BigInt) -> Result<bool, ReadError> {
-        self.apply(PushPrim::BigInteger(value))
+        self.apply(value)
     }
 
     fn push_big_uint(&mut self, value: BigUint) -> Result<bool, ReadError> {
-        self.apply(PushPrim::BugUnsignedInteger(value))
+        self.apply(value)
     }
 
     fn push_text(&mut self, value: Cow<'_, str>) -> Result<bool, ReadError> {
-        self.apply(PushPrim::Text(value))
+        self.apply(value)
     }
 
     fn push_blob(&mut self, value: Vec<u8>) -> Result<bool, ReadError> {
-        self.apply(PushPrim::Blob(value))
+        self.apply(value)
     }
 
     fn start_slot(&mut self) -> Result<(), ReadError> {
@@ -921,7 +692,7 @@ impl<T: StructuralReadable> BodyReader for Builder<OneOfEach<T>, OneOfEachFields
 }
 
 impl<T: StructuralReadable> HeaderBuilder<OneOfEach<T>, OneOfEachFields<T>> {
-    fn apply(&mut self, push: PushPrim) -> Result<bool, ReadError> {
+    fn apply<P: PushPrimValue>(&mut self, push: P) -> Result<bool, ReadError> {
         if self.after_body {
             self.inner.apply_header(push)
         } else {
@@ -936,47 +707,47 @@ impl<T: StructuralReadable> BodyReader for HeaderBuilder<OneOfEach<T>, OneOfEach
     type Delegate = CCons<Wrapped<Self, T::Reader>, CCons<Wrapped<Self, T::Reader>, CNil>>;
 
     fn push_extant(&mut self) -> Result<bool, ReadError> {
-        self.apply(PushPrim::Extant)
+        self.apply(())
     }
 
     fn push_i32(&mut self, value: i32) -> Result<bool, ReadError> {
-        self.apply(PushPrim::I32(value))
+        self.apply(value)
     }
 
     fn push_i64(&mut self, value: i64) -> Result<bool, ReadError> {
-        self.apply(PushPrim::I64(value))
+        self.apply(value)
     }
 
     fn push_u32(&mut self, value: u32) -> Result<bool, ReadError> {
-        self.apply(PushPrim::U32(value))
+        self.apply(value)
     }
 
     fn push_u64(&mut self, value: u64) -> Result<bool, ReadError> {
-        self.apply(PushPrim::U64(value))
+        self.apply(value)
     }
 
     fn push_f64(&mut self, value: f64) -> Result<bool, ReadError> {
-        self.apply(PushPrim::F64(value))
+        self.apply(value)
     }
 
     fn push_bool(&mut self, value: bool) -> Result<bool, ReadError> {
-        self.apply(PushPrim::Bool(value))
+        self.apply(value)
     }
 
     fn push_big_int(&mut self, value: BigInt) -> Result<bool, ReadError> {
-        self.apply(PushPrim::BigInteger(value))
+        self.apply(value)
     }
 
     fn push_big_uint(&mut self, value: BigUint) -> Result<bool, ReadError> {
-        self.apply(PushPrim::BugUnsignedInteger(value))
+        self.apply(value)
     }
 
     fn push_text(&mut self, value: Cow<'_, str>) -> Result<bool, ReadError> {
-        self.apply(PushPrim::Text(value))
+        self.apply(value)
     }
 
     fn push_blob(&mut self, value: Vec<u8>) -> Result<bool, ReadError> {
-        self.apply(PushPrim::Blob(value))
+        self.apply(value)
     }
 
     fn start_slot(&mut self) -> Result<(), ReadError> {

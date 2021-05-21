@@ -22,6 +22,7 @@ pub mod errors;
 pub mod future;
 pub mod iteratee;
 pub mod lru_cache;
+pub mod never;
 pub mod num;
 pub mod print;
 pub mod ptr;
