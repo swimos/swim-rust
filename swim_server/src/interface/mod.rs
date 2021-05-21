@@ -324,15 +324,10 @@ impl SwimServer {
         .await
         .unwrap_or_else(|err| panic!("Could not connect to \"{}\": {}", address, err));
 
-        match &connections_task {
-            RemoteConnectionsTask::Server { listener, .. } => {
-                let _ = match listener.local_addr() {
-                    Ok(local_addr) => address_tx.provide(local_addr),
-                    Err(err) => panic!("Could not resolve server address: {}", err),
-                };
-            }
-            RemoteConnectionsTask::Client { .. } => {}
-        }
+        let _ = match connections_task.listener().unwrap().local_addr() {
+            Ok(local_addr) => address_tx.provide(local_addr),
+            Err(err) => panic!("Could not resolve server address: {}", err),
+        };
 
         let connections_future = connections_task.run();
 
