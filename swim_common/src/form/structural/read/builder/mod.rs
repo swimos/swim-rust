@@ -24,6 +24,7 @@ use std::marker::PhantomData;
 /// new structs.
 pub struct Builder<T, State> {
     _type: PhantomData<fn(State) -> T>,
+    pub read_tag: bool,
     pub state: State,
     pub current_field: Option<usize>,
     pub reading_slot: bool,
@@ -33,9 +34,26 @@ impl<T, State: Default> Default for Builder<T, State> {
     fn default() -> Self {
         Builder {
             _type: PhantomData,
-            state: State::default(),
+            read_tag: false,
+            state: Default::default(),
             current_field: None,
             reading_slot: false,
+        }
+    }
+}
+
+pub struct Header<T>(pub T);
+
+pub struct HeaderBuilder<T, State> {
+    pub inner: Builder<T, State>,
+    pub after_body: bool,
+}
+
+impl<T, State> HeaderBuilder<T, State> {
+    pub(crate) fn new(inner: Builder<T, State>, has_body: bool) -> Self {
+        HeaderBuilder {
+            inner,
+            after_body: !has_body,
         }
     }
 }

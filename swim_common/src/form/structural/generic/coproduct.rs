@@ -23,19 +23,15 @@ mod private {
 }
 
 pub trait Coproduct: private::Sealed {
-
     const NUM_OPTIONS: usize;
-
 }
 
 pub struct CNil(Never);
 
 impl CNil {
-
     pub fn explode(&self) -> ! {
         self.0.explode()
     }
-
 }
 
 impl Coproduct for CNil {

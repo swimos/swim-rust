@@ -33,11 +33,11 @@ use std::sync::Arc;
 mod error;
 
 use crate::form::structural::bridge::ReadWriteBridge;
+use crate::form::structural::generic::coproduct::{CCons, CNil};
 use crate::form::structural::read::materializers::value::ValueMaterializer;
 pub use error::ReadError;
 use std::collections::HashMap;
 use std::hash::Hash;
-use crate::form::structural::generic::coproduct::{CNil, CCons};
 
 /// Trait for types that can be structurally deserialized, from the Swim data model.
 pub trait StructuralReadable: ValueReadable {
@@ -74,6 +74,10 @@ pub trait StructuralReadable: ValueReadable {
 /// Types that are represented as complex records will typeically return an error
 /// for all methods in this trait.
 pub trait ValueReadable: Sized {
+    fn simple_representation() -> bool {
+        false
+    }
+
     fn read_extant() -> Result<Self, ReadError> {
         Err(ReadError::UnexpectedKind(ValueKind::Extant))
     }
@@ -274,6 +278,10 @@ impl BodyReader for Never {
 }
 
 impl ValueReadable for () {
+    fn simple_representation() -> bool {
+        true
+    }
+
     fn read_extant() -> Result<Self, ReadError> {
         Ok(())
     }
@@ -300,6 +308,10 @@ record_forbidden!(());
 macro_rules! primitive_readable {
     ($target:ty, $read:ident) => {
         impl ValueReadable for $target {
+            fn simple_representation() -> bool {
+                true
+            }
+
             fn $read(value: $target) -> Result<Self, ReadError> {
                 Ok(value)
             }
@@ -310,6 +322,10 @@ macro_rules! primitive_readable {
 }
 
 impl ValueReadable for i32 {
+    fn simple_representation() -> bool {
+        true
+    }
+
     fn read_i32(value: i32) -> Result<Self, ReadError> {
         Ok(value)
     }
@@ -330,6 +346,10 @@ impl ValueReadable for i32 {
 record_forbidden!(i32);
 
 impl ValueReadable for i64 {
+    fn simple_representation() -> bool {
+        true
+    }
+
     fn read_i32(value: i32) -> Result<Self, ReadError> {
         Ok(value as i64)
     }
@@ -350,6 +370,10 @@ impl ValueReadable for i64 {
 record_forbidden!(i64);
 
 impl ValueReadable for u32 {
+    fn simple_representation() -> bool {
+        true
+    }
+
     fn read_i32(value: i32) -> Result<Self, ReadError> {
         u32::try_from(value).map_err(|_| ReadError::NumberOutOfRange)
     }
@@ -370,6 +394,10 @@ impl ValueReadable for u32 {
 record_forbidden!(u32);
 
 impl ValueReadable for u64 {
+    fn simple_representation() -> bool {
+        true
+    }
+
     fn read_i32(value: i32) -> Result<Self, ReadError> {
         u64::try_from(value).map_err(|_| ReadError::NumberOutOfRange)
     }
@@ -396,6 +424,10 @@ primitive_readable!(BigUint, read_big_uint);
 primitive_readable!(Vec<u8>, read_blob);
 
 impl ValueReadable for Text {
+    fn simple_representation() -> bool {
+        true
+    }
+
     fn read_text(value: Cow<'_, str>) -> Result<Self, ReadError> {
         Ok(value.into())
     }
@@ -404,6 +436,10 @@ impl ValueReadable for Text {
 record_forbidden!(Text);
 
 impl ValueReadable for String {
+    fn simple_representation() -> bool {
+        true
+    }
+
     fn read_text(value: Cow<'_, str>) -> Result<Self, ReadError> {
         let text: Text = value.into();
         Ok(text.into())
@@ -413,6 +449,10 @@ impl ValueReadable for String {
 record_forbidden!(String);
 
 impl ValueReadable for Blob {
+    fn simple_representation() -> bool {
+        true
+    }
+
     fn read_blob(value: Vec<u8>) -> Result<Self, ReadError> {
         Ok(Blob::from_vec(value))
     }
@@ -421,6 +461,10 @@ impl ValueReadable for Blob {
 record_forbidden!(Blob);
 
 impl ValueReadable for Box<[u8]> {
+    fn simple_representation() -> bool {
+        true
+    }
+
     fn read_blob(value: Vec<u8>) -> Result<Self, ReadError> {
         Ok(value.into_boxed_slice())
     }
@@ -475,6 +519,10 @@ impl ValueReadable for Value {
 }
 
 impl<T: ValueReadable> ValueReadable for Arc<T> {
+    fn simple_representation() -> bool {
+        T::simple_representation()
+    }
+
     fn read_extant() -> Result<Self, ReadError> {
         T::read_extant().map(Arc::new)
     }
@@ -672,6 +720,10 @@ impl<T> ValueReadable for Option<T>
 where
     T: ValueReadable,
 {
+    fn simple_representation() -> bool {
+        T::simple_representation()
+    }
+
     fn read_extant() -> Result<Self, ReadError> {
         Ok(T::read_extant().map(Some).unwrap_or(None))
     }

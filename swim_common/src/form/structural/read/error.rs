@@ -32,6 +32,7 @@ pub enum ReadError {
     DuplicateField(Text),
     UnexpectedField(Text),
     NumberOutOfRange,
+    MissingTag,
 }
 
 impl Display for ReadError {
@@ -62,6 +63,7 @@ impl Display for ReadError {
             }
             ReadError::UnexpectedField(name) => write!(f, "Unexpected field: '{}'", name),
             ReadError::NumberOutOfRange => write!(f, "Number out of range."),
+            ReadError::MissingTag => write!(f, "Missing tag attribute for record type."),
         }
     }
 }

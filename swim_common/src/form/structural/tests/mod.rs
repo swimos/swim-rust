@@ -14,7 +14,8 @@
 
 mod msgpack;
 
-use crate::form::structural::read::builder::{Builder, NoAttributes, Wrapped};
+use crate::form::structural::generic::coproduct::{CCons, CNil};
+use crate::form::structural::read::builder::{Builder, HeaderBuilder, NoAttributes, Wrapped};
 use crate::form::structural::read::{
     BodyReader, HeaderReader, ReadError, StructuralReadable, ValueReadable,
 };
@@ -25,6 +26,7 @@ use crate::model::text::Text;
 use crate::model::ValueKind;
 use either::Either;
 use num_bigint::{BigInt, BigUint};
+use std::borrow::Borrow;
 use std::borrow::Cow;
 
 #[derive(Clone, PartialEq, Eq, Debug, Default)]
@@ -39,12 +41,7 @@ impl<S, T> GeneralType<S, T> {
     }
 }
 
-type GeneralTypeFields<S, T> = (
-    Option<S>,
-    Option<T>,
-    Option<<S as StructuralReadable>::Reader>,
-    Option<<T as StructuralReadable>::Reader>,
-);
+type GeneralTypeFields<S, T> = (Option<S>, Option<T>);
 
 impl<S: StructuralReadable, T: StructuralReadable> ValueReadable for GeneralType<S, T> {}
 
@@ -103,7 +100,7 @@ impl<S: StructuralReadable, T: StructuralReadable>
         F1: FnOnce(V) -> Result<S, ReadError>,
         F2: FnOnce(V) -> Result<T, ReadError>,
     {
-        let (first, second, _, _) = &mut self.state;
+        let (first, second) = &mut self.state;
 
         if self.reading_slot {
             self.reading_slot = false;
@@ -143,7 +140,7 @@ where
     type Delegate = Either<Wrapped<Self, S::Reader>, Wrapped<Self, T::Reader>>;
 
     fn push_extant(&mut self) -> Result<bool, ReadError> {
-        let (first, second, _, _) = &mut self.state;
+        let (first, second) = &mut self.state;
 
         if self.reading_slot {
             self.reading_slot = false;
@@ -212,7 +209,7 @@ where
     }
 
     fn push_text<'a>(&mut self, value: Cow<'a, str>) -> Result<bool, ReadError> {
-        let (first, second, _, _) = &mut self.state;
+        let (first, second) = &mut self.state;
 
         if self.reading_slot {
             self.reading_slot = false;
@@ -285,7 +282,7 @@ where
                 mut payload,
                 reader,
             }) => {
-                let (first, _, _, _) = &mut payload.state;
+                let (first, _) = &mut payload.state;
                 *first = Some(S::try_terminate(reader)?);
                 Ok(payload)
             }
@@ -293,7 +290,7 @@ where
                 mut payload,
                 reader,
             }) => {
-                let (_, second, _, _) = &mut payload.state;
+                let (_, second) = &mut payload.state;
                 *second = Some(T::try_terminate(reader)?);
                 Ok(payload)
             }
@@ -403,5 +400,667 @@ impl<T: StructuralWritable> StructuralWritable for WithHeaderField<T> {
         writer: W,
     ) -> Result<<W as PrimitiveWriter>::Repr, <W as PrimitiveWriter>::Error> {
         self.write_with(writer)
+    }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+struct OneOfEach<T> {
+    header: T,
+    header_slot: T,
+    attr: T,
+    slot1: T,
+    slot2: T,
+}
+
+type OneOfEachFields<T> = (Option<T>, Option<T>, Option<T>, Option<T>, Option<T>);
+
+impl<T> ValueReadable for OneOfEach<T> {}
+
+impl<T: StructuralReadable> StructuralReadable for OneOfEach<T> {
+    type Reader = Builder<OneOfEach<T>, OneOfEachFields<T>>;
+
+    fn record_reader() -> Result<Self::Reader, ReadError> {
+        Ok(Default::default())
+    }
+
+    fn try_terminate(reader: <Self::Reader as HeaderReader>::Body) -> Result<Self, ReadError> {
+        let Builder { state, .. } = reader;
+
+        let mut missing = vec![];
+        if state.0.is_none() {
+            missing.push(Text::new("header"));
+        }
+        if state.1.is_none() {
+            missing.push(Text::new("header_slot"));
+        }
+        if state.2.is_none() {
+            missing.push(Text::new("attr"));
+        }
+        if state.3.is_none() {
+            missing.push(Text::new("slot1"));
+        }
+        if state.4.is_none() {
+            missing.push(Text::new("slot2"));
+        }
+        if let (Some(header), Some(header_slot), Some(attr), Some(slot1), Some(slot2), ..) = state {
+            Ok(OneOfEach {
+                header,
+                header_slot,
+                attr,
+                slot1,
+                slot2,
+            })
+        } else {
+            Err(ReadError::MissingFields(missing))
+        }
+    }
+}
+
+type ReaderOf<T> = <T as StructuralReadable>::Reader;
+type BodyOf<T> = <ReaderOf<T> as HeaderReader>::Body;
+
+pub enum AttrReader<T: StructuralReadable> {
+    Init(Option<T>),
+    Record(BodyOf<T>),
+}
+
+impl<T: StructuralReadable> Default for AttrReader<T> {
+    fn default() -> Self {
+        AttrReader::Init(None)
+    }
+}
+
+impl<T: StructuralReadable> AttrReader<T> {
+    fn read_prim_attr<U, F, G>(&mut self, v: U, f: F, g: G) -> Result<bool, ReadError>
+    where
+        F: FnOnce(U) -> Result<T, ReadError>,
+        G: FnOnce(&mut BodyOf<T>, U) -> Result<bool, ReadError>,
+    {
+        match self {
+            AttrReader::Init(value @ None) => {
+                *value = Some(f(v)?);
+                Ok(false)
+            }
+            AttrReader::Init(_) => Err(ReadError::InconsistentState),
+            AttrReader::Record(body_reader) => g(body_reader, v),
+        }
+    }
+
+    pub fn try_get_value(self) -> Result<T, ReadError> {
+        match self {
+            AttrReader::Init(Some(v)) => Ok(v),
+            AttrReader::Init(_) => Err(ReadError::UnexpectedKind(ValueKind::Extant)),
+            AttrReader::Record(reader) => T::try_terminate(reader),
+        }
+    }
+}
+
+impl<T: StructuralReadable> BodyReader for AttrReader<T> {
+    type Delegate = Either<ReaderOf<T>, <BodyOf<T> as BodyReader>::Delegate>;
+
+    fn push_extant(&mut self) -> Result<bool, ReadError> {
+        self.read_prim_attr(
+            (),
+            |_| <T as ValueReadable>::read_extant(),
+            |reader, _| <BodyOf<T> as BodyReader>::push_extant(reader),
+        )
+    }
+
+    fn push_i32(&mut self, value: i32) -> Result<bool, ReadError> {
+        self.read_prim_attr(
+            value,
+            <T as ValueReadable>::read_i32,
+            <BodyOf<T> as BodyReader>::push_i32,
+        )
+    }
+
+    fn push_i64(&mut self, value: i64) -> Result<bool, ReadError> {
+        self.read_prim_attr(
+            value,
+            <T as ValueReadable>::read_i64,
+            <BodyOf<T> as BodyReader>::push_i64,
+        )
+    }
+
+    fn push_u32(&mut self, value: u32) -> Result<bool, ReadError> {
+        self.read_prim_attr(
+            value,
+            <T as ValueReadable>::read_u32,
+            <BodyOf<T> as BodyReader>::push_u32,
+        )
+    }
+
+    fn push_u64(&mut self, value: u64) -> Result<bool, ReadError> {
+        self.read_prim_attr(
+            value,
+            <T as ValueReadable>::read_u64,
+            <BodyOf<T> as BodyReader>::push_u64,
+        )
+    }
+
+    fn push_f64(&mut self, value: f64) -> Result<bool, ReadError> {
+        self.read_prim_attr(
+            value,
+            <T as ValueReadable>::read_f64,
+            <BodyOf<T> as BodyReader>::push_f64,
+        )
+    }
+
+    fn push_bool(&mut self, value: bool) -> Result<bool, ReadError> {
+        self.read_prim_attr(
+            value,
+            <T as ValueReadable>::read_bool,
+            <BodyOf<T> as BodyReader>::push_bool,
+        )
+    }
+
+    fn push_big_int(&mut self, value: BigInt) -> Result<bool, ReadError> {
+        self.read_prim_attr(
+            value,
+            <T as ValueReadable>::read_big_int,
+            <BodyOf<T> as BodyReader>::push_big_int,
+        )
+    }
+
+    fn push_big_uint(&mut self, value: BigUint) -> Result<bool, ReadError> {
+        self.read_prim_attr(
+            value,
+            <T as ValueReadable>::read_big_uint,
+            <BodyOf<T> as BodyReader>::push_big_uint,
+        )
+    }
+
+    fn push_text(&mut self, value: Cow<'_, str>) -> Result<bool, ReadError> {
+        match self {
+            AttrReader::Init(output @ None) => {
+                let r = <T as ValueReadable>::read_text(value.clone());
+                match r {
+                    Ok(v) => {
+                        *output = Some(v);
+                        Ok(false)
+                    }
+                    Err(ReadError::UnexpectedKind(_)) => {
+                        let mut body_reader =
+                            <T as StructuralReadable>::record_reader()?.start_body()?;
+                        let p = body_reader.push_text(value)?;
+                        *self = AttrReader::Record(body_reader);
+                        Ok(p)
+                    }
+                    Err(e) => Err(e),
+                }
+            }
+            AttrReader::Init(_) => Err(ReadError::UnexpectedKind(ValueKind::Record)),
+            AttrReader::Record(body_reader) => body_reader.push_text(value),
+        }
+    }
+
+    fn push_blob(&mut self, value: Vec<u8>) -> Result<bool, ReadError> {
+        self.read_prim_attr(
+            value,
+            <T as ValueReadable>::read_blob,
+            <BodyOf<T> as BodyReader>::push_blob,
+        )
+    }
+
+    fn start_slot(&mut self) -> Result<(), ReadError> {
+        if let AttrReader::Record(body_reader) = self {
+            <BodyOf<T> as BodyReader>::start_slot(body_reader)
+        } else {
+            Err(ReadError::UnexpectedSlot)
+        }
+    }
+
+    fn push_record(self) -> Result<Self::Delegate, ReadError> {
+        match self {
+            AttrReader::Init(None) => Ok(Either::Left(<T as StructuralReadable>::record_reader()?)),
+            AttrReader::Init(_) => Err(ReadError::UnexpectedKind(ValueKind::Record)),
+            AttrReader::Record(body_reader) => Ok(Either::Right(body_reader.push_record()?)),
+        }
+    }
+
+    fn restore(delegate: <Self::Delegate as HeaderReader>::Body) -> Result<Self, ReadError> {
+        match delegate {
+            Either::Left(reader) => Ok(AttrReader::Init(Some(
+                <T as StructuralReadable>::try_terminate(reader)?,
+            ))),
+            Either::Right(body_reader) => Ok(AttrReader::Record(
+                <BodyOf<T> as BodyReader>::restore(body_reader)?,
+            )),
+        }
+    }
+}
+
+impl<T: StructuralReadable> HeaderReader for Builder<OneOfEach<T>, OneOfEachFields<T>> {
+    type Body = Self;
+    type Delegate = CCons<
+        HeaderBuilder<OneOfEach<T>, OneOfEachFields<T>>,
+        CCons<Wrapped<Self, AttrReader<T>>, CNil>,
+    >;
+
+    fn read_attribute(self, name: Cow<'_, str>) -> Result<Self::Delegate, ReadError> {
+        if !self.read_tag {
+            if name == "OneOfEach" {
+                let builder = HeaderBuilder::new(self, true);
+                Ok(CCons::Head(builder))
+            } else {
+                Err(ReadError::MissingTag)
+            }
+        } else {
+            match name.borrow() {
+                "attr" => {
+                    let wrapped = Wrapped {
+                        payload: self,
+                        reader: AttrReader::default(),
+                    };
+                    Ok(CCons::Tail(CCons::Head(wrapped)))
+                }
+                ow => Err(ReadError::UnexpectedField(ow.into())),
+            }
+        }
+    }
+
+    fn restore(delegate: Self::Delegate) -> Result<Self, ReadError> {
+        match delegate {
+            CCons::Head(HeaderBuilder { mut inner, .. }) => {
+                inner.read_tag = true;
+                Ok(inner)
+            }
+            CCons::Tail(CCons::Head(Wrapped {
+                mut payload,
+                reader,
+            })) => {
+                if payload.state.2.is_some() {
+                    return Err(ReadError::DuplicateField(Text::new("attr")));
+                } else {
+                    payload.state.2 = Some(reader.try_get_value()?);
+                }
+                Ok(payload)
+            }
+            CCons::Tail(CCons::Tail(nil)) => nil.explode(),
+        }
+    }
+
+    fn start_body(self) -> Result<Self::Body, ReadError> {
+        Ok(self)
+    }
+}
+
+enum PushPrim<'a> {
+    Extant,
+    I32(i32),
+    I64(i64),
+    U32(u32),
+    U64(u64),
+    F64(f64),
+    Bool(bool),
+    BigInteger(BigInt),
+    BugUnsignedInteger(BigUint),
+    Blob(Vec<u8>),
+    Text(Cow<'a, str>),
+}
+
+impl<'a> PushPrim<'a> {
+    fn apply<T: ValueReadable>(
+        self,
+        location: &mut Option<T>,
+        name: &'static str,
+    ) -> Result<(), ReadError> {
+        let value = match self {
+            PushPrim::Extant => T::read_extant(),
+            PushPrim::I32(n) => T::read_i32(n),
+            PushPrim::I64(n) => T::read_i64(n),
+            PushPrim::U32(n) => T::read_u32(n),
+            PushPrim::U64(n) => T::read_u64(n),
+            PushPrim::F64(x) => T::read_f64(x),
+            PushPrim::Bool(p) => T::read_bool(p),
+            PushPrim::BigInteger(n) => T::read_big_int(n),
+            PushPrim::BugUnsignedInteger(n) => T::read_big_uint(n),
+            PushPrim::Blob(v) => T::read_blob(v),
+            PushPrim::Text(t) => T::read_text(t),
+        }?;
+        if location.is_some() {
+            Err(ReadError::DuplicateField(Text::new(name)))
+        } else {
+            *location = Some(value);
+            Ok(())
+        }
+    }
+
+    fn kind(&self) -> ValueKind {
+        match self {
+            PushPrim::Extant => ValueKind::Extant,
+            PushPrim::I32(_) => ValueKind::Int32,
+            PushPrim::I64(_) => ValueKind::Int64,
+            PushPrim::U32(_) => ValueKind::UInt32,
+            PushPrim::U64(_) => ValueKind::UInt64,
+            PushPrim::F64(_) => ValueKind::Float64,
+            PushPrim::Bool(_) => ValueKind::Boolean,
+            PushPrim::BigInteger(_) => ValueKind::BigInt,
+            PushPrim::BugUnsignedInteger(_) => ValueKind::BigUint,
+            PushPrim::Blob(_) => ValueKind::Data,
+            PushPrim::Text(_) => ValueKind::Text,
+        }
+    }
+}
+
+impl<T: StructuralReadable> Builder<OneOfEach<T>, OneOfEachFields<T>> {
+    fn has_more(&self) -> bool {
+        let (_, _, _, v1, v2) = &self.state;
+        v1.is_none() || v2.is_none()
+    }
+
+    fn apply(&mut self, push: PushPrim<'_>) -> Result<bool, ReadError> {
+        if self.reading_slot {
+            self.reading_slot = false;
+            match self
+                .current_field
+                .take()
+                .ok_or_else(|| ReadError::UnexpectedKind(push.kind()))?
+            {
+                1 => push.apply(&mut self.state.3, "slot1"),
+                2 => push.apply(&mut self.state.4, "slot2"),
+                _ => Err(ReadError::InconsistentState),
+            }?;
+            Ok(self.has_more())
+        } else {
+            if let PushPrim::Text(name) = &push {
+                match name.borrow() {
+                    "slot1" => {
+                        self.current_field = Some(1);
+                        Ok(true)
+                    }
+                    "slot2" => {
+                        self.current_field = Some(2);
+                        Ok(true)
+                    }
+                    name => Err(ReadError::UnexpectedField(Text::new(name))),
+                }
+            } else {
+                Err(ReadError::UnexpectedKind(push.kind()))
+            }
+        }
+    }
+
+    fn apply_header(&mut self, push: PushPrim<'_>) -> Result<bool, ReadError> {
+        if self.reading_slot {
+            self.reading_slot = false;
+            match self
+                .current_field
+                .take()
+                .ok_or_else(|| ReadError::UnexpectedKind(push.kind()))?
+            {
+                0 => push.apply(&mut self.state.1, "header_slot"),
+                _ => Err(ReadError::InconsistentState),
+            }?;
+            Ok(self.has_more())
+        } else {
+            if let PushPrim::Text(name) = &push {
+                match name.borrow() {
+                    "header_slot" => {
+                        self.current_field = Some(0);
+                        Ok(true)
+                    }
+                    name => Err(ReadError::UnexpectedField(Text::new(name))),
+                }
+            } else {
+                Err(ReadError::UnexpectedKind(push.kind()))
+            }
+        }
+    }
+}
+
+impl<T: StructuralReadable> BodyReader for Builder<OneOfEach<T>, OneOfEachFields<T>> {
+    type Delegate = CCons<Wrapped<Self, T::Reader>, CCons<Wrapped<Self, T::Reader>, CNil>>;
+
+    fn push_extant(&mut self) -> Result<bool, ReadError> {
+        self.apply(PushPrim::Extant)
+    }
+
+    fn push_i32(&mut self, value: i32) -> Result<bool, ReadError> {
+        self.apply(PushPrim::I32(value))
+    }
+
+    fn push_i64(&mut self, value: i64) -> Result<bool, ReadError> {
+        self.apply(PushPrim::I64(value))
+    }
+
+    fn push_u32(&mut self, value: u32) -> Result<bool, ReadError> {
+        self.apply(PushPrim::U32(value))
+    }
+
+    fn push_u64(&mut self, value: u64) -> Result<bool, ReadError> {
+        self.apply(PushPrim::U64(value))
+    }
+
+    fn push_f64(&mut self, value: f64) -> Result<bool, ReadError> {
+        self.apply(PushPrim::F64(value))
+    }
+
+    fn push_bool(&mut self, value: bool) -> Result<bool, ReadError> {
+        self.apply(PushPrim::Bool(value))
+    }
+
+    fn push_big_int(&mut self, value: BigInt) -> Result<bool, ReadError> {
+        self.apply(PushPrim::BigInteger(value))
+    }
+
+    fn push_big_uint(&mut self, value: BigUint) -> Result<bool, ReadError> {
+        self.apply(PushPrim::BugUnsignedInteger(value))
+    }
+
+    fn push_text(&mut self, value: Cow<'_, str>) -> Result<bool, ReadError> {
+        self.apply(PushPrim::Text(value))
+    }
+
+    fn push_blob(&mut self, value: Vec<u8>) -> Result<bool, ReadError> {
+        self.apply(PushPrim::Blob(value))
+    }
+
+    fn start_slot(&mut self) -> Result<(), ReadError> {
+        if self.reading_slot {
+            Err(ReadError::DoubleSlot)
+        } else {
+            self.reading_slot = true;
+            Ok(())
+        }
+    }
+
+    fn push_record(mut self) -> Result<Self::Delegate, ReadError> {
+        if self.reading_slot {
+            match self.current_field.take() {
+                Some(1) => {
+                    let wrapper = Wrapped {
+                        payload: self,
+                        reader: <T as StructuralReadable>::record_reader()?,
+                    };
+                    Ok(CCons::Head(wrapper))
+                }
+                Some(2) => {
+                    let wrapper = Wrapped {
+                        payload: self,
+                        reader: <T as StructuralReadable>::record_reader()?,
+                    };
+                    Ok(CCons::Tail(CCons::Head(wrapper)))
+                }
+                _ => Err(ReadError::InconsistentState),
+            }
+        } else {
+            Err(ReadError::UnexpectedKind(ValueKind::Record))
+        }
+    }
+
+    fn restore(delegate: <Self::Delegate as HeaderReader>::Body) -> Result<Self, ReadError> {
+        let mut payload = match delegate {
+            CCons::Head(Wrapped {
+                mut payload,
+                reader,
+            }) => {
+                if payload.state.3.is_some() {
+                    return Err(ReadError::DuplicateField(Text::new("slot1")));
+                } else {
+                    payload.state.3 = Some(<T as StructuralReadable>::try_terminate(reader)?);
+                }
+                payload
+            }
+            CCons::Tail(CCons::Head(Wrapped {
+                mut payload,
+                reader,
+            })) => {
+                if payload.state.4.is_some() {
+                    return Err(ReadError::DuplicateField(Text::new("slot2")));
+                } else {
+                    payload.state.4 = Some(<T as StructuralReadable>::try_terminate(reader)?);
+                }
+                payload
+            }
+            CCons::Tail(CCons::Tail(nil)) => nil.explode(),
+        };
+        payload.reading_slot = false;
+        Ok(payload)
+    }
+}
+
+impl<T: StructuralReadable> HeaderBuilder<OneOfEach<T>, OneOfEachFields<T>> {
+    fn apply(&mut self, push: PushPrim) -> Result<bool, ReadError> {
+        if self.after_body {
+            self.inner.apply_header(push)
+        } else {
+            push.apply(&mut self.inner.state.0, "header")?;
+            self.after_body = true;
+            Ok(self.inner.has_more())
+        }
+    }
+}
+
+impl<T: StructuralReadable> BodyReader for HeaderBuilder<OneOfEach<T>, OneOfEachFields<T>> {
+    type Delegate = CCons<Wrapped<Self, T::Reader>, CCons<Wrapped<Self, T::Reader>, CNil>>;
+
+    fn push_extant(&mut self) -> Result<bool, ReadError> {
+        self.apply(PushPrim::Extant)
+    }
+
+    fn push_i32(&mut self, value: i32) -> Result<bool, ReadError> {
+        self.apply(PushPrim::I32(value))
+    }
+
+    fn push_i64(&mut self, value: i64) -> Result<bool, ReadError> {
+        self.apply(PushPrim::I64(value))
+    }
+
+    fn push_u32(&mut self, value: u32) -> Result<bool, ReadError> {
+        self.apply(PushPrim::U32(value))
+    }
+
+    fn push_u64(&mut self, value: u64) -> Result<bool, ReadError> {
+        self.apply(PushPrim::U64(value))
+    }
+
+    fn push_f64(&mut self, value: f64) -> Result<bool, ReadError> {
+        self.apply(PushPrim::F64(value))
+    }
+
+    fn push_bool(&mut self, value: bool) -> Result<bool, ReadError> {
+        self.apply(PushPrim::Bool(value))
+    }
+
+    fn push_big_int(&mut self, value: BigInt) -> Result<bool, ReadError> {
+        self.apply(PushPrim::BigInteger(value))
+    }
+
+    fn push_big_uint(&mut self, value: BigUint) -> Result<bool, ReadError> {
+        self.apply(PushPrim::BugUnsignedInteger(value))
+    }
+
+    fn push_text(&mut self, value: Cow<'_, str>) -> Result<bool, ReadError> {
+        self.apply(PushPrim::Text(value))
+    }
+
+    fn push_blob(&mut self, value: Vec<u8>) -> Result<bool, ReadError> {
+        self.apply(PushPrim::Blob(value))
+    }
+
+    fn start_slot(&mut self) -> Result<(), ReadError> {
+        if !self.after_body {
+            Err(ReadError::UnexpectedSlot)
+        } else if self.inner.reading_slot {
+            Err(ReadError::DoubleSlot)
+        } else {
+            self.inner.reading_slot = true;
+            Ok(())
+        }
+    }
+
+    fn push_record(mut self) -> Result<Self::Delegate, ReadError> {
+        if !self.after_body {
+            let wrapper = Wrapped {
+                payload: self,
+                reader: <T as StructuralReadable>::record_reader()?,
+            };
+            Ok(CCons::Head(wrapper))
+        } else if self.inner.reading_slot {
+            match self.inner.current_field.take() {
+                Some(0) => {
+                    let wrapper = Wrapped {
+                        payload: self,
+                        reader: <T as StructuralReadable>::record_reader()?,
+                    };
+                    Ok(CCons::Tail(CCons::Head(wrapper)))
+                }
+                _ => Err(ReadError::InconsistentState),
+            }
+        } else {
+            Err(ReadError::UnexpectedKind(ValueKind::Record))
+        }
+    }
+
+    fn restore(delegate: <Self::Delegate as HeaderReader>::Body) -> Result<Self, ReadError> {
+        match delegate {
+            CCons::Head(Wrapped {
+                mut payload,
+                reader,
+            }) => {
+                if payload.inner.state.0.is_some() {
+                    return Err(ReadError::InconsistentState);
+                } else {
+                    payload.inner.state.0 = Some(<T as StructuralReadable>::try_terminate(reader)?);
+                }
+                payload.after_body = true;
+                Ok(payload)
+            }
+            CCons::Tail(CCons::Head(Wrapped {
+                mut payload,
+                reader,
+            })) => {
+                if payload.inner.state.1.is_some() {
+                    return Err(ReadError::DuplicateField(Text::new("header_slot")));
+                } else {
+                    payload.inner.state.1 = Some(<T as StructuralReadable>::try_terminate(reader)?);
+                }
+                payload.inner.reading_slot = false;
+                Ok(payload)
+            }
+            CCons::Tail(CCons::Tail(nil)) => nil.explode(),
+        }
+    }
+}
+
+#[test]
+fn one_of_each() {
+    use crate::form::structural::read::parser;
+    let recon = "@OneOfEach(5, header_slot: 3)@attr(6) { slot1: 1, slot2: 2 }";
+    let span = parser::Span::new(recon);
+    let result = parser::parse_from_str::<OneOfEach<i32>>(span);
+    match result {
+        Ok(v) => assert_eq!(
+            v,
+            OneOfEach {
+                header: 5,
+                header_slot: 3,
+                attr: 6,
+                slot1: 1,
+                slot2: 2,
+            }
+        ),
+        Err(e) => panic!("{:?}", e),
     }
 }
