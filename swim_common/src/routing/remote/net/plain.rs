@@ -18,7 +18,7 @@ use std::pin::Pin;
 use crate::routing::remote::net::dns::{DnsResolver, Resolver};
 use crate::routing::remote::net::{ExternalConnections, IoResult, Listener};
 use crate::routing::remote::table::SchemeHostPort;
-use crate::routing::remote::SchemeSocketAddr;
+use crate::routing::remote::{SchemeSocketAddr, Scheme};
 use futures::future::BoxFuture;
 use futures::stream::Fuse;
 use futures::task::{Context, Poll};
@@ -68,7 +68,7 @@ impl Stream for WithPeer {
         self.project()
             .0
             .poll_accept(cx)?
-            .map(|(stream, addr)| Some(Ok((stream, SchemeSocketAddr::new("ws".to_owned(), addr)))))
+            .map(|(stream, addr)| Some(Ok((stream, SchemeSocketAddr::new(Scheme::WS, addr)))))
     }
 }
 

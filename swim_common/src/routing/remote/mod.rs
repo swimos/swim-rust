@@ -109,28 +109,16 @@ impl RemoteConnectionChannels {
 }
 
 #[derive(Debug)]
-pub enum RemoteConnectionsTask<External: ExternalConnections, Ws, DelegateRouterFac, Sp> {
-    Server {
-        external: External,
-        listener: External::ListenerType,
-        websockets: Ws,
-        delegate_router_fac: DelegateRouterFac,
-        stop_trigger: trigger::Receiver,
-        spawner: Sp,
-        configuration: ConnectionConfig,
-        remote_tx: mpsc::Sender<RemoteRoutingRequest>,
-        remote_rx: mpsc::Receiver<RemoteRoutingRequest>,
-    },
-    Client {
-        external: External,
-        websockets: Ws,
-        delegate_router_fac: DelegateRouterFac,
-        stop_trigger: trigger::Receiver,
-        spawner: Sp,
-        configuration: ConnectionConfig,
-        remote_tx: mpsc::Sender<RemoteRoutingRequest>,
-        remote_rx: mpsc::Receiver<RemoteRoutingRequest>,
-    },
+pub struct RemoteConnectionsTask<External: ExternalConnections, Ws, DelegateRouterFac, Sp> {
+    external: External,
+    listener: Option<External::ListenerType>,
+    websockets: Ws,
+    delegate_router_fac: DelegateRouterFac,
+    stop_trigger: trigger::Receiver,
+    spawner: Sp,
+    configuration: ConnectionConfig,
+    remote_tx: mpsc::Sender<RemoteRoutingRequest>,
+    remote_rx: mpsc::Receiver<RemoteRoutingRequest>,
 }
 
 type SchemeSocketAddrIt = std::vec::IntoIter<SchemeSocketAddr>;
@@ -171,8 +159,9 @@ where
             stop_trigger,
         } = channels;
 
-        RemoteConnectionsTask::Client {
+        RemoteConnectionsTask {
             external,
+            listener: None,
             websockets,
             delegate_router_fac,
             stop_trigger,
@@ -200,9 +189,9 @@ where
 
         let listener = external.bind(bind_addr).await?;
 
-        Ok(RemoteConnectionsTask::Server {
+        Ok(RemoteConnectionsTask {
             external,
-            listener,
+            listener: Some(listener),
             websockets,
             delegate_router_fac,
             stop_trigger,
@@ -213,9 +202,13 @@ where
         })
     }
 
+    pub fn listener(&self) -> Option<&External::ListenerType> {
+        self.listener.as_ref()
+    }
+
     pub async fn run(self) -> Result<(), io::Error> {
         match self {
-            RemoteConnectionsTask::Server {
+            RemoteConnectionsTask {
                 external,
                 listener,
                 websockets,
@@ -231,33 +224,7 @@ where
                     configuration,
                     spawner,
                     external,
-                    Some(listener),
-                    delegate_router_fac,
-                    RemoteConnectionChannels {
-                        request_tx: remote_tx,
-                        request_rx: remote_rx,
-                        stop_trigger,
-                    },
-                );
-
-                RemoteConnectionsTask::run_loop(state, configuration).await
-            }
-            RemoteConnectionsTask::Client {
-                external,
-                websockets,
-                delegate_router_fac,
-                stop_trigger,
-                spawner,
-                configuration,
-                remote_tx,
-                remote_rx,
-            } => {
-                let state = RemoteConnections::new(
-                    &websockets,
-                    configuration,
-                    spawner,
-                    external,
-                    None,
+                    listener,
                     delegate_router_fac,
                     RemoteConnectionChannels {
                         request_tx: remote_tx,
@@ -410,13 +377,13 @@ enum BadUrl {
 }
 
 fn unpack_url(url: &Url) -> Result<SchemeHostPort, BadUrl> {
-    if let Some(scheme) = convert_scheme(url.scheme()) {
+    if let Some(scheme) = Scheme::convert_scheme(url.scheme()) {
         match (url.host_str(), url.port()) {
             (Some(host_str), Some(port)) => {
                 Ok(SchemeHostPort::new(scheme, host_str.to_owned(), port))
             }
             (Some(host_str), _) => {
-                let default_port = get_default_port(&scheme).unwrap();
+                let default_port = scheme.get_default_port();
                 Ok(SchemeHostPort::new(
                     scheme,
                     host_str.to_owned(),
@@ -430,20 +397,49 @@ fn unpack_url(url: &Url) -> Result<SchemeHostPort, BadUrl> {
     }
 }
 
-/// Get the default port for supported schemes.
-fn convert_scheme(scheme: &str) -> Option<String> {
-    match scheme {
-        "ws" | "swim" | "warp" => Some("ws".to_string()),
-        "wss" | "swims" | "warps" => Some("wss".to_string()),
-        _ => None,
+/// Supported websocket schemes
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Scheme {
+    WS,
+    WSS,
+}
+
+impl Scheme {
+    fn convert_scheme(scheme: &str) -> Option<Scheme> {
+        match scheme {
+            "ws" | "swim" | "warp" => Some(Scheme::WS),
+            "wss" | "swims" | "warps" => Some(Scheme::WSS),
+            _ => None,
+        }
+    }
+
+    /// Get the default port for the schemes.
+    fn get_default_port(&self) -> u16 {
+        match self {
+            Scheme::WS => 80,
+            Scheme::WSS => 443,
+        }
+    }
+
+    /// Return if the scheme is secure.
+    fn is_secure(&self) -> bool {
+        match self {
+            Scheme::WS => false,
+            Scheme::WSS => true,
+        }
     }
 }
 
-fn get_default_port(scheme: &str) -> Option<u16> {
-    match scheme {
-        "ws" | "swim" | "warp" => Some(80),
-        "wss" | "swims" | "warps" => Some(443),
-        _ => None,
+impl Display for Scheme {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Scheme::WS => {
+                write!(f, "ws")
+            }
+            Scheme::WSS => {
+                write!(f, "wss")
+            }
+        }
     }
 }
 
@@ -451,12 +447,12 @@ type IoResult<T> = io::Result<T>;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SchemeSocketAddr {
-    scheme: String,
+    scheme: Scheme,
     addr: SocketAddr,
 }
 
 impl SchemeSocketAddr {
-    pub fn new(scheme: String, addr: SocketAddr) -> SchemeSocketAddr {
+    pub fn new(scheme: Scheme, addr: SocketAddr) -> SchemeSocketAddr {
         SchemeSocketAddr { scheme, addr }
     }
 }
