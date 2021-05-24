@@ -1,0 +1,5 @@
+error: Unexpected literal
+  --> $DIR/container3.rs:19:38
+   |
+19 |     #[stringify_attr(serde(rename(A, "A")))]
+   |                                      ^^^

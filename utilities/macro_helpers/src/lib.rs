@@ -48,6 +48,14 @@ pub use utilities::*;
 #[derive(Copy, Clone)]
 pub struct Symbol(pub &'static str);
 
+impl ToTokens for Symbol {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let Symbol(inner) = self;
+        let quote = quote!(#inner);
+        quote.to_tokens(tokens);
+    }
+}
+
 impl PartialEq<Symbol> for Ident {
     fn eq(&self, symbol: &Symbol) -> bool {
         self == symbol.0

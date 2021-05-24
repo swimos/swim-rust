@@ -1,0 +1,5 @@
+error: Missing attribute: input
+  --> $DIR/invalid_raw_list.rs:20:11
+   |
+20 |         #[stringify_raw(path = "a", path = "b")]
+   |           ^^^^^^^^^^^^^

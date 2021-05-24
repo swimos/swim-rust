@@ -12,21 +12,31 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+pub mod info;
 pub mod log;
 pub mod uri;
 
 #[cfg(test)]
 mod tests;
 
-use crate::meta::log::LogLevel;
+use crate::agent::context::AgentExecutionContext;
+use crate::agent::dispatch::LaneIdentifier;
+use crate::agent::lane::channels::AgentExecutionConfig;
+use crate::agent::{AgentContext, DynamicLaneTasks, Eff, LaneIo, SwimAgent};
+use crate::meta::info::{open_info_lane, LaneInfo, LaneInformation};
+use crate::meta::log::{open_log_lanes, LogLevel, NodeLogger};
 use crate::meta::uri::{parse, MetaParseErr};
+use futures::stream::FuturesUnordered;
 use lazy_static::lazy_static;
 use percent_encoding::percent_decode_str;
 use regex::Regex;
+use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;
 use swim_common::model::text::Text;
 use swim_common::warp::path::RelativePath;
+use tracing_futures::Instrumented;
+use utilities::sync::trigger;
 use utilities::uri::RelativeUri;
 
 lazy_static! {
@@ -44,6 +54,8 @@ pub const UPLINK_URI: &str = "uplink";
 
 pub const META_NODE: &str = "swim:meta:node";
 
+pub type IdentifiedAgentIo<Context> = HashMap<LaneIdentifier, Box<dyn LaneIo<Context>>>;
+
 /// Attempts to decode a meta-encoded node URI. Returns a decoded node URI if `uri` matches or
 /// returns `uri`.
 pub fn get_route(uri: RelativeUri) -> RelativeUri {
@@ -57,6 +69,31 @@ pub fn get_route(uri: RelativeUri) -> RelativeUri {
             None => uri,
         },
         None => uri,
+    }
+}
+
+#[derive(Debug)]
+pub struct MetaContext {
+    lane_information: LaneInformation,
+    node_logger: NodeLogger,
+}
+
+impl MetaContext {
+    fn new(lane_information: LaneInformation, node_logger: NodeLogger) -> MetaContext {
+        MetaContext {
+            lane_information,
+            node_logger,
+        }
+    }
+
+    pub fn node_logger(&self) -> NodeLogger {
+        self.node_logger.clone()
+    }
+
+    #[allow(dead_code)]
+    // todo
+    pub fn lane_information(&self) -> &LaneInformation {
+        &self.lane_information
     }
 }
 
@@ -140,5 +177,60 @@ impl MetaNodeAddressed {
         let node_uri = RelativeUri::from_str(node.as_str())?;
 
         parse(node_uri, lane.as_str())
+    }
+}
+
+pub fn open_meta_lanes<Config, Agent, Context>(
+    node_uri: RelativeUri,
+    exec_conf: &AgentExecutionConfig,
+    lanes_summary: HashMap<String, LaneInfo>,
+    stop_rx: trigger::Receiver,
+    task_manager: &FuturesUnordered<Instrumented<Eff>>,
+) -> (
+    MetaContext,
+    DynamicLaneTasks<Agent, Context>,
+    IdentifiedAgentIo<Context>,
+)
+where
+    Agent: SwimAgent<Config> + 'static,
+    Context: AgentContext<Agent> + AgentExecutionContext + Send + Sync + 'static,
+{
+    let mut tasks = Vec::new();
+    let mut ios = HashMap::new();
+
+    let (node_logger, log_tasks, log_ios) = open_log_lanes(
+        node_uri,
+        exec_conf.node_log,
+        stop_rx,
+        exec_conf.yield_after,
+        task_manager,
+    );
+
+    tasks.extend(log_tasks);
+    ios.extend(log_ios);
+
+    let (lane_information, info_tasks, info_ios) =
+        open_info_lane(exec_conf.lane_buffer, lanes_summary);
+
+    tasks.extend(info_tasks);
+    ios.extend(info_ios);
+
+    let meta_context = MetaContext::new(lane_information, node_logger);
+
+    (meta_context, tasks, ios)
+}
+
+#[cfg(test)]
+pub(crate) fn make_test_meta_context() -> MetaContext {
+    use crate::agent::lane::model::demand_map::DemandMapLane;
+    use crate::meta::log::make_node_logger;
+    use tokio::sync::mpsc;
+
+    MetaContext {
+        lane_information: LaneInformation::new(DemandMapLane::new(
+            mpsc::channel(1).0,
+            mpsc::channel(1).0,
+        )),
+        node_logger: make_node_logger(RelativeUri::default()),
     }
 }

@@ -208,7 +208,7 @@ where
     /// * `context` - Context of the agent that owns the lane.
     /// * `key` - The key of the value.
     fn on_remove<C>(
-        &'a self,
+        &'a mut self,
         _model: &'a DemandMapLane<Key, Value>,
         _context: &'a C,
         _key: Key,

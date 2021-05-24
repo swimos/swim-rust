@@ -1,0 +1,5 @@
+error: Unexpected attribute
+  --> $DIR/raw_extra_attr.rs:20:69
+   |
+20 |         #[stringify_raw(path = "a", in(rename(B)), raw(path = "b"), extra = "C")]
+   |                                                                     ^^^^^^^^^^^

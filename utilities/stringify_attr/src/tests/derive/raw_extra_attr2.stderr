@@ -1,0 +1,5 @@
+error: Expected a list. Found `extra = "C"`
+  --> $DIR/raw_extra_attr2.rs:20:51
+   |
+20 |         #[stringify_raw(path = "a", in(rename(B), extra = "C"), raw(path = "b"))]
+   |                                                   ^^^^^^^^^^^

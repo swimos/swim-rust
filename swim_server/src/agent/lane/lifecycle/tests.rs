@@ -16,6 +16,7 @@ use super::StatefulLaneLifecycle;
 use crate::agent::lane::lifecycle::DefaultLifecycle;
 use crate::agent::lane::LaneModel;
 use crate::agent::AgentContext;
+use crate::meta::log::NodeLogger;
 use futures::future::BoxFuture;
 use futures::Stream;
 use std::collections::HashMap;
@@ -66,6 +67,10 @@ impl AgentContext<TestAgent> for TestContext {
 
     fn parameters(&self) -> HashMap<String, String> {
         HashMap::new()
+    }
+
+    fn logger(&self) -> NodeLogger {
+        panic!("Unexpected log event")
     }
 }
 
