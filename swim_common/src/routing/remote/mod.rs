@@ -47,6 +47,7 @@ use crate::routing::remote::table::SchemeHostPort;
 use crate::routing::ws::WsConnections;
 use crate::routing::{ConnectionDropped, RouterFactory, RoutingAddr, TaggedEnvelope};
 use futures::stream::FusedStream;
+use std::convert::TryFrom;
 use std::fmt::{Display, Formatter};
 use std::io;
 use std::io::Error;
@@ -371,48 +372,47 @@ fn update_state<State: RemoteTasksState>(
 }
 
 #[derive(Debug, PartialEq, Eq)]
-enum BadUrl {
+pub enum BadUrl {
     BadScheme(String),
     NoHost,
 }
 
 fn unpack_url(url: &Url) -> Result<SchemeHostPort, BadUrl> {
-    if let Some(scheme) = Scheme::convert_scheme(url.scheme()) {
-        match (url.host_str(), url.port()) {
-            (Some(host_str), Some(port)) => {
-                Ok(SchemeHostPort::new(scheme, host_str.to_owned(), port))
-            }
-            (Some(host_str), _) => {
-                let default_port = scheme.get_default_port();
-                Ok(SchemeHostPort::new(
-                    scheme,
-                    host_str.to_owned(),
-                    default_port,
-                ))
-            }
-            _ => Err(BadUrl::NoHost),
+    let scheme = Scheme::try_from(url.scheme())?;
+    match (url.host_str(), url.port()) {
+        (Some(host_str), Some(port)) => Ok(SchemeHostPort::new(scheme, host_str.to_owned(), port)),
+        (Some(host_str), _) => {
+            let default_port = scheme.get_default_port();
+            Ok(SchemeHostPort::new(
+                scheme,
+                host_str.to_owned(),
+                default_port,
+            ))
         }
-    } else {
-        Err(BadUrl::BadScheme(url.scheme().to_string()))
+        _ => Err(BadUrl::NoHost),
     }
 }
 
 /// Supported websocket schemes
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Scheme {
     WS,
     WSS,
 }
 
-impl Scheme {
-    fn convert_scheme(scheme: &str) -> Option<Scheme> {
-        match scheme {
-            "ws" | "swim" | "warp" => Some(Scheme::WS),
-            "wss" | "swims" | "warps" => Some(Scheme::WSS),
-            _ => None,
+impl TryFrom<&str> for Scheme {
+    type Error = BadUrl;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value {
+            "ws" | "swim" | "warp" => Ok(Scheme::WS),
+            "wss" | "swims" | "warps" => Ok(Scheme::WSS),
+            _ => Err(BadUrl::BadScheme(value.to_owned())),
         }
     }
+}
 
+impl Scheme {
     /// Get the default port for the schemes.
     fn get_default_port(&self) -> u16 {
         match self {
