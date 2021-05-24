@@ -97,24 +97,22 @@ impl<Delegate: Router> Router for PlaneRouter<Delegate> {
             if addr.is_local() {
                 if origin.is_some() {
                     delegate_router.resolve_sender(addr, origin).await
+                } else if request_sender
+                    .send(PlaneRoutingRequest::Endpoint {
+                        id: addr,
+                        request: Request::new(tx),
+                    })
+                    .await
+                    .is_err()
+                {
+                    Err(ResolutionError::router_dropped())
                 } else {
-                    if request_sender
-                        .send(PlaneRoutingRequest::Endpoint {
-                            id: addr,
-                            request: Request::new(tx),
-                        })
-                        .await
-                        .is_err()
-                    {
-                        Err(ResolutionError::router_dropped())
-                    } else {
-                        match rx.await {
-                            Ok(Ok(RawRoute { sender, on_drop })) => {
-                                Ok(Route::new(TaggedSender::new(*tag, sender), on_drop))
-                            }
-                            Ok(Err(err)) => Err(ResolutionError::unresolvable(err.to_string())),
-                            Err(_) => Err(ResolutionError::router_dropped()),
+                    match rx.await {
+                        Ok(Ok(RawRoute { sender, on_drop })) => {
+                            Ok(Route::new(TaggedSender::new(*tag, sender), on_drop))
                         }
+                        Ok(Err(err)) => Err(ResolutionError::unresolvable(err.to_string())),
+                        Err(_) => Err(ResolutionError::router_dropped()),
                     }
                 }
             } else {

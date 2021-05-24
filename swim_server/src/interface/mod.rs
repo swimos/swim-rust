@@ -15,18 +15,13 @@
 //! Interface for creating and running Swim server instances.
 //!
 //! The module provides methods and structures for creating and running Swim server instances.
+use either::Either;
+use futures::{io, join};
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::net::SocketAddr;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-
-use either::Either;
-use futures::{io, join};
-use tokio::sync::mpsc;
-use tokio_stream::wrappers::ReceiverStream;
-use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
-
 use swim_client::configuration::downlink::ConfigHierarchy;
 use swim_client::downlink::subscription::DownlinksHandle;
 use swim_client::downlink::Downlinks;
@@ -39,12 +34,18 @@ use swim_common::routing::remote::{RemoteConnectionChannels, RemoteConnectionsTa
 use swim_common::routing::ws::tungstenite::TungsteniteWsConnections;
 use swim_runtime::task::TaskError;
 use swim_runtime::time::clock::RuntimeClock;
+use tokio::sync::mpsc;
+use tokio_stream::wrappers::ReceiverStream;
+use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use utilities::future::open_ended::OpenEndedFutures;
 use utilities::sync::{promise, trigger};
 
 use crate::agent::lane::channels::AgentExecutionConfig;
-use crate::plane::router::PlaneRouter;
+use crate::plane::router::{PlaneRouter, PlaneRouterFactory};
 use crate::plane::spec::PlaneSpec;
+use crate::plane::ContextImpl;
+use crate::plane::PlaneActiveRoutes;
+use crate::plane::RouteResolver;
 use crate::plane::{run_plane, EnvChannel};
 use crate::routing::{TopLevelRouter, TopLevelRouterFactory};
 use swim_common::warp::path::Path;
@@ -305,15 +306,26 @@ impl SwimServer {
             NonZeroUsize::new(conn_config.router_buffer_size.get()).unwrap(),
         );
 
-        let plane_future = run_plane(
-            agent_config.clone(),
+        let context = ContextImpl::new(plane_tx.clone(), spec.routes());
+        let PlaneSpec { routes, lifecycle } = spec;
+
+        let resolver = RouteResolver::new(
             clock,
             client,
-            spec,
+            agent_config,
+            routes,
+            PlaneRouterFactory::new(plane_tx, top_level_router_fac.clone()),
+            stop_trigger_rx.clone(),
+            PlaneActiveRoutes::default(),
+        );
+
+        let plane_future = run_plane(
+            resolver,
+            lifecycle,
+            context,
             stop_trigger_rx.clone(),
             OpenEndedFutures::new(),
-            (plane_tx, plane_rx),
-            top_level_router_fac.clone(),
+            plane_rx,
         );
 
         let connections_task = RemoteConnectionsTask::new_server_task(

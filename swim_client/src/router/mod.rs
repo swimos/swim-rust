@@ -23,7 +23,6 @@ use futures::stream::FuturesUnordered;
 use futures::{select_biased, FutureExt, StreamExt};
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
-use std::ops::Deref;
 use std::str::FromStr;
 use swim_common::request::Request;
 use swim_common::routing::error::{
@@ -98,7 +97,7 @@ impl<Path: Addressable> Router for ClientRouter<Path> {
             if request_sender
                 .send(ClientRequest::Connect {
                     request: Request::new(tx),
-                    origin: origin.ok_or(ResolutionError::router_dropped())?,
+                    origin: origin.ok_or_else(ResolutionError::router_dropped)?,
                 })
                 .await
                 .is_err()
@@ -148,6 +147,8 @@ pub struct ClientConnectionsManager<Path: Addressable> {
     buffer_size: NonZeroUsize,
 }
 
+type SubscriptionRequestSender = mpsc::Sender<(RawRoute, SubscriptionRequest)>;
+
 impl<Path: Addressable> ClientConnectionsManager<Path> {
     pub fn new(
         router_request_rx: mpsc::Receiver<ClientRequest<Path>>,
@@ -173,10 +174,7 @@ impl<Path: Addressable> ClientConnectionsManager<Path> {
 
         let mut outgoing_managers: HashMap<
             String,
-            (
-                mpsc::Sender<TaggedEnvelope>,
-                mpsc::Sender<(RawRoute, SubscriptionRequest)>,
-            ),
+            (mpsc::Sender<TaggedEnvelope>, SubscriptionRequestSender),
         > = HashMap::new();
 
         let mut router_request_rx = ReceiverStream::new(router_request_rx).fuse();
@@ -481,8 +479,6 @@ pub(crate) enum ConnectionRequestMode {
 }
 
 pub(crate) type RouterConnRequest<Path> = (Path, ConnectionRequestMode);
-pub(crate) type RouterMessageRequest<Path> = (Path, Envelope);
-pub(crate) type CloseSender = promise::Sender<mpsc::Sender<Result<(), RoutingError>>>;
 type ConnectionChannel = (mpsc::Sender<Envelope>, mpsc::Receiver<RouterEvent>);
 type CloseResponseSender = mpsc::Sender<Result<(), RoutingError>>;
 type CloseReceiver = promise::Receiver<mpsc::Sender<Result<(), RoutingError>>>;
@@ -505,7 +501,6 @@ pub enum RouterEvent {
 /// Tasks that the router can handle.
 enum RouterTask<Path: Addressable> {
     Connect(RouterConnRequest<Path>),
-    SendMessage(Box<RouterMessageRequest<Path>>),
     Close(Option<CloseResponseSender>),
 }
 
@@ -520,7 +515,6 @@ type HostManagerHandle = (
 /// to the appropriate sub-task.
 pub struct TaskManager<Pool: ConnectionPool<PathType = Path>, Path: Addressable> {
     conn_request_rx: mpsc::Receiver<RouterConnRequest<Path>>,
-    message_request_rx: mpsc::Receiver<RouterMessageRequest<Path>>,
     connection_pool: Pool,
     close_rx: CloseReceiver,
     config: RouterParams,
@@ -531,36 +525,27 @@ impl<Pool: ConnectionPool<PathType = Path>, Path: Addressable> TaskManager<Pool,
         connection_pool: Pool,
         close_rx: CloseReceiver,
         config: RouterParams,
-    ) -> (
-        Self,
-        mpsc::Sender<RouterConnRequest<Path>>,
-        mpsc::Sender<RouterMessageRequest<Path>>,
-    ) {
+    ) -> (Self, mpsc::Sender<RouterConnRequest<Path>>) {
         let (conn_request_tx, conn_request_rx) = mpsc::channel(config.buffer_size().get());
-        let (message_request_tx, message_request_rx) = mpsc::channel(config.buffer_size().get());
         (
             TaskManager {
                 conn_request_rx,
-                message_request_rx,
                 connection_pool,
                 close_rx,
                 config,
             },
             conn_request_tx,
-            message_request_tx,
         )
     }
 
     pub async fn run(self) -> Result<(), RoutingError> {
         let TaskManager {
             conn_request_rx,
-            message_request_rx,
             connection_pool,
             close_rx,
             config,
         } = self;
 
-        let mut message_request_rx = ReceiverStream::new(message_request_rx).fuse();
         let mut conn_request_rx = ReceiverStream::new(conn_request_rx).fuse();
         let mut close_trigger = close_rx.clone().fuse();
 
@@ -575,8 +560,8 @@ impl<Pool: ConnectionPool<PathType = Path>, Path: Addressable> TaskManager<Pool,
                     }
                 },
                 maybe_req = conn_request_rx.next() => maybe_req.map(RouterTask::Connect),
-                maybe_req = message_request_rx.next() => maybe_req.map(|payload| RouterTask::SendMessage(Box::new(payload))),
-            }.ok_or(RoutingError::ConnectionError)?;
+            }
+            .ok_or(RoutingError::ConnectionError)?;
 
             match task {
                 RouterTask::Connect((target, mode)) => match mode {
@@ -616,22 +601,6 @@ impl<Pool: ConnectionPool<PathType = Path>, Path: Addressable> TaskManager<Pool,
                             .map_err(|_| RoutingError::ConnectionError)?;
                     }
                 },
-
-                RouterTask::SendMessage(payload) => {
-                    let (path, message) = payload.deref();
-
-                    let (sink, _, _) = get_host_manager(
-                        &mut host_managers,
-                        path.clone(),
-                        connection_pool.clone(),
-                        close_rx.clone(),
-                        config,
-                    );
-
-                    sink.send(message.clone())
-                        .await
-                        .map_err(|_| RoutingError::ConnectionError)?;
-                }
 
                 RouterTask::Close(close_rx) => {
                     if let Some(close_response_tx) = close_rx {

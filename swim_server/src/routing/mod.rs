@@ -103,45 +103,43 @@ impl Router for TopLevelRouter {
                         Err(_) => Err(ResolutionError::router_dropped()),
                     }
                 }
-            } else {
-                if origin.is_some() {
-                    let (tx, rx) = oneshot::channel();
-                    let request = Request::new(tx);
-                    if client_sender
-                        .send(ClientRequest::Connect {
-                            request,
-                            origin: origin.unwrap(),
-                        })
-                        .await
-                        .is_err()
-                    {
-                        Err(ResolutionError::router_dropped())
-                    } else {
-                        match rx.await {
-                            Ok(Ok(RawRoute { sender, on_drop })) => {
-                                Ok(Route::new(TaggedSender::new(*tag, sender), on_drop))
-                            }
-                            Ok(Err(_)) => Err(ResolutionError::unresolvable(addr.to_string())),
-                            Err(_) => Err(ResolutionError::router_dropped()),
-                        }
-                    }
+            } else if origin.is_some() {
+                let (tx, rx) = oneshot::channel();
+                let request = Request::new(tx);
+                if client_sender
+                    .send(ClientRequest::Connect {
+                        request,
+                        origin: origin.unwrap(),
+                    })
+                    .await
+                    .is_err()
+                {
+                    Err(ResolutionError::router_dropped())
                 } else {
-                    let (tx, rx) = oneshot::channel();
-                    let request = Request::new(tx);
-                    if plane_sender
-                        .send(PlaneRoutingRequest::Endpoint { id: addr, request })
-                        .await
-                        .is_err()
-                    {
-                        Err(ResolutionError::router_dropped())
-                    } else {
-                        match rx.await {
-                            Ok(Ok(RawRoute { sender, on_drop })) => {
-                                Ok(Route::new(TaggedSender::new(*tag, sender), on_drop))
-                            }
-                            Ok(Err(_)) => Err(ResolutionError::unresolvable(addr.to_string())),
-                            Err(_) => Err(ResolutionError::router_dropped()),
+                    match rx.await {
+                        Ok(Ok(RawRoute { sender, on_drop })) => {
+                            Ok(Route::new(TaggedSender::new(*tag, sender), on_drop))
                         }
+                        Ok(Err(_)) => Err(ResolutionError::unresolvable(addr.to_string())),
+                        Err(_) => Err(ResolutionError::router_dropped()),
+                    }
+                }
+            } else {
+                let (tx, rx) = oneshot::channel();
+                let request = Request::new(tx);
+                if plane_sender
+                    .send(PlaneRoutingRequest::Endpoint { id: addr, request })
+                    .await
+                    .is_err()
+                {
+                    Err(ResolutionError::router_dropped())
+                } else {
+                    match rx.await {
+                        Ok(Ok(RawRoute { sender, on_drop })) => {
+                            Ok(Route::new(TaggedSender::new(*tag, sender), on_drop))
+                        }
+                        Ok(Err(_)) => Err(ResolutionError::unresolvable(addr.to_string())),
+                        Err(_) => Err(ResolutionError::router_dropped()),
                     }
                 }
             }

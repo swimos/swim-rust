@@ -45,8 +45,9 @@ use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::AgentResult;
 use crate::meta::get_route;
 use crate::plane::context::PlaneContext;
+use crate::plane::lifecycle::PlaneLifecycle;
 use crate::plane::router::{PlaneRouter, PlaneRouterFactory};
-use crate::plane::spec::{PlaneSpec, RouteSpec};
+use crate::plane::spec::RouteSpec;
 use swim_common::routing::error::NoAgentAtRoute;
 use swim_common::warp::path::Path;
 
@@ -61,17 +62,19 @@ mod tests;
 
 /// Trait for agent routes. An agent route can construct and run any number of instances of a
 /// [`SwimAgent`] type.
-trait AgentRoute<Clk, Envelopes, Router>: Debug + Send {
+pub(crate) trait AgentRoute<Clk, Envelopes, Router>: Debug + Send {
     /// Run an instance of the agent.
     ///
-    /// #Arguments
+    /// # Arguments
     ///
     /// * `uri` The specific URI of the agent instance.
     /// * `parameters` - Named parameters extracted from the agent URI with the route pattern.
     /// * `execution_config` - Configuration parameters controlling how the agent runs.
     /// * `clock` - Clock for scheduling events.
+    /// * `client`: The client for opening downlinks.
     /// * `incoming_envelopes`- The stream of envelopes routed to the agent.
     /// * `router` - The router by which the agent can send messages.
+    #[allow(clippy::too_many_arguments)]
     fn run_agent(
         &self,
         uri: RelativeUri,
@@ -124,11 +127,11 @@ impl LocalEndpoint {
     }
 }
 
-pub(in crate) type EnvChannel = TakeUntil<ReceiverStream<TaggedEnvelope>, trigger::Receiver>;
+pub(crate) type EnvChannel = TakeUntil<ReceiverStream<TaggedEnvelope>, trigger::Receiver>;
 
 /// Container for the running routes within a plane.
 #[derive(Debug, Default)]
-struct PlaneActiveRoutes {
+pub(crate) struct PlaneActiveRoutes {
     local_endpoints: HashMap<RoutingAddr, LocalEndpoint>,
     local_routes: HashMap<RelativeUri, RoutingAddr>,
 }
@@ -181,13 +184,16 @@ impl PlaneActiveRoutes {
 }
 
 /// Plane context implementation.
-struct ContextImpl {
+pub(crate) struct ContextImpl {
     request_tx: mpsc::Sender<PlaneRoutingRequest>,
     routes: Vec<RoutePattern>,
 }
 
 impl ContextImpl {
-    fn new(request_tx: mpsc::Sender<PlaneRoutingRequest>, routes: Vec<RoutePattern>) -> Self {
+    pub(crate) fn new(
+        request_tx: mpsc::Sender<PlaneRoutingRequest>,
+        routes: Vec<RoutePattern>,
+    ) -> Self {
         ContextImpl { request_tx, routes }
     }
 }
@@ -243,7 +249,7 @@ impl PlaneContext for ContextImpl {
 }
 /// Contains the specifications of all routes that are within a plane and maintains the map of
 /// currently active routes.
-struct RouteResolver<Clk, DelegateFac: RouterFactory> {
+pub(crate) struct RouteResolver<Clk, DelegateFac: RouterFactory> {
     /// Clock for scheduling tasks.
     clock: Clk,
     /// Client for opening downlinks.
@@ -252,8 +258,6 @@ struct RouteResolver<Clk, DelegateFac: RouterFactory> {
     execution_config: AgentExecutionConfig,
     /// The routes for the plane.
     routes: Vec<RouteSpec<Clk, EnvChannel, PlaneRouter<DelegateFac::Router>>>,
-    /// Channel for sending routing requests to the local plane.
-    context_tx: mpsc::Sender<PlaneRoutingRequest>,
     /// Factory to create handles to the plane router when an agent is opened.
     router_fac: PlaneRouterFactory<DelegateFac>,
     /// External trigger that is fired when the plane should stop.
@@ -262,6 +266,29 @@ struct RouteResolver<Clk, DelegateFac: RouterFactory> {
     active_routes: PlaneActiveRoutes,
     /// Monotonically increasing counter for assigning local routing addresses.
     counter: u32,
+}
+
+impl<Clk, DelegateFac: RouterFactory> RouteResolver<Clk, DelegateFac> {
+    pub(crate) fn new(
+        clock: Clk,
+        client: SwimClient<Path>,
+        execution_config: AgentExecutionConfig,
+        routes: Vec<RouteSpec<Clk, EnvChannel, PlaneRouter<DelegateFac::Router>>>,
+        router_fac: PlaneRouterFactory<DelegateFac>,
+        stop_trigger: trigger::Receiver,
+        active_routes: PlaneActiveRoutes,
+    ) -> RouteResolver<Clk, DelegateFac> {
+        RouteResolver {
+            clock,
+            client,
+            execution_config,
+            routes,
+            router_fac,
+            stop_trigger,
+            active_routes,
+            counter: 0,
+        }
+    }
 }
 
 impl<Clk: Clock, DelegateFac: RouterFactory> RouteResolver<Clk, DelegateFac> {
@@ -279,7 +306,6 @@ impl<Clk: Clock, DelegateFac: RouterFactory> RouteResolver<Clk, DelegateFac> {
             client,
             execution_config,
             routes,
-            context_tx,
             router_fac,
             stop_trigger,
             active_routes,
@@ -331,23 +357,19 @@ const PLANE_STOPPED: &str = "The plane has stopped.";
 /// #Arguments
 /// * `execution_config` - The configuration for agents that belong to this plane.
 /// * `clock` - The clock to use for scheduling tasks.
+/// * `client` - The swim client for opening downlinks.
 /// * `spec` - The specification for the plane.
 /// * `stop_trigger` - Trigger to fire externally when the plane should stop.
 /// * `spawner` - Spawns tasks to run the agents for the plane.
 /// * `context_channel` - Transmitter and receiver for plane requests.
 /// * `delegate_fac` - Factory for creating delegate routers.
 pub(crate) async fn run_plane<Clk, S, DelegateFac: RouterFactory>(
-    execution_config: AgentExecutionConfig,
-    clock: Clk,
-    client: SwimClient<Path>,
-    spec: PlaneSpec<Clk, EnvChannel, PlaneRouter<DelegateFac::Router>>,
+    mut resolver: RouteResolver<Clk, DelegateFac>,
+    mut lifecycle: Option<Box<dyn PlaneLifecycle>>,
+    mut context: ContextImpl,
     stop_trigger: trigger::Receiver,
     spawner: S,
-    context_channel: (
-        mpsc::Sender<PlaneRoutingRequest>,
-        mpsc::Receiver<PlaneRoutingRequest>,
-    ),
-    delegate_fac: DelegateFac,
+    context_rx: mpsc::Receiver<PlaneRoutingRequest>,
 ) where
     Clk: Clock,
     S: Spawner<BoxFuture<'static, AgentResult>>,
@@ -355,17 +377,9 @@ pub(crate) async fn run_plane<Clk, S, DelegateFac: RouterFactory>(
     event!(Level::DEBUG, STARTING);
     pin_mut!(spawner);
 
-    let (context_tx, context_rx) = context_channel;
-    let mut context = ContextImpl::new(context_tx.clone(), spec.routes());
-
     let mut requests = ReceiverStream::new(context_rx)
         .take_until(stop_trigger.clone())
         .fuse();
-
-    let PlaneSpec {
-        routes,
-        mut lifecycle,
-    } = spec;
 
     let start_task = async move {
         if let Some(lc) = &mut lifecycle {
@@ -377,18 +391,6 @@ pub(crate) async fn run_plane<Clk, S, DelegateFac: RouterFactory>(
     .instrument(span!(Level::DEBUG, PLANE_START_TASK));
 
     let event_loop = async move {
-        let mut resolver = RouteResolver {
-            clock,
-            client,
-            execution_config,
-            routes,
-            context_tx: context_tx.clone(),
-            router_fac: PlaneRouterFactory::new(context_tx, delegate_fac),
-            stop_trigger,
-            active_routes: PlaneActiveRoutes::default(),
-            counter: 0,
-        };
-
         let mut stopping = false;
 
         loop {

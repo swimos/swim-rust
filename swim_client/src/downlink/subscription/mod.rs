@@ -32,10 +32,9 @@ use crate::downlink::{
 };
 use crate::router::ClientRequest;
 use crate::router::ConnectionRequestMode;
+use crate::router::RouterConnRequest;
 use crate::router::RouterEvent;
-use crate::router::RouterMessageRequest;
 use crate::router::TaskManager;
-use crate::router::{CloseSender, RouterConnRequest};
 use either::Either;
 use futures::stream::Fuse;
 use futures::Stream;
@@ -108,23 +107,19 @@ impl<Path: Addressable> Downlinks<Path> {
 
         let client_params = config.client_params();
 
-        let (task_manager_close_tx, task_manager_close_rx) = promise::promise();
+        //Todo dm this should be used
+        let (_task_manager_close_tx, task_manager_close_rx) = promise::promise();
 
         let connection_pool =
             SwimConnPool::new(client_params.conn_pool_params, client_conn_request_tx);
 
-        let (task_manager, connection_request_tx, router_sink_tx) = TaskManager::new(
+        let (task_manager, connection_request_tx) = TaskManager::new(
             connection_pool,
             task_manager_close_rx,
             client_params.router_params,
         );
 
-        let downlinks_task = DownlinksTask::new(
-            config,
-            connection_request_tx,
-            router_sink_tx,
-            task_manager_close_tx,
-        );
+        let downlinks_task = DownlinksTask::new(config, connection_request_tx);
         let (tx, rx) = mpsc::channel(client_params.dl_req_buffer_size.get());
 
         (
@@ -418,9 +413,6 @@ pub struct DownlinksTask<Path: Addressable> {
     event_downlinks: HashMap<(Path, SchemaViolations), EventHandle>,
     stopped_watch: StopEvents<Path>,
     conn_request_tx: mpsc::Sender<RouterConnRequest<Path>>,
-    sink_tx: mpsc::Sender<RouterMessageRequest<Path>>,
-    //Todo dm this is never used
-    close_tx: CloseSender,
 }
 
 /// Event that is generated after a downlink stops to allow it to be cleaned up.
@@ -460,8 +452,6 @@ impl<Path: Addressable> DownlinksTask<Path> {
     pub(crate) fn new<C>(
         config: Arc<C>,
         conn_request_tx: mpsc::Sender<RouterConnRequest<Path>>,
-        sink_tx: mpsc::Sender<RouterMessageRequest<Path>>,
-        close_tx: CloseSender,
     ) -> DownlinksTask<Path>
     where
         C: Config<PathType = Path> + 'static,
@@ -474,8 +464,6 @@ impl<Path: Addressable> DownlinksTask<Path> {
             event_downlinks: HashMap::new(),
             stopped_watch: StopEvents::new(),
             conn_request_tx,
-            sink_tx,
-            close_tx,
         }
     }
 
