@@ -250,7 +250,6 @@ where
 
     let aggregator_task = async move {
         let _ = aggregator_task.await;
-        ()
     };
 
     task_manager.push(aggregator_task.boxed().instrument(span!(

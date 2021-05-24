@@ -26,6 +26,7 @@ use crate::agent::lane::model::action::{Action, ActionLane};
 use crate::agent::lane::model::command::{Command, CommandLane};
 use crate::agent::lane::model::DeferredSubscription;
 use crate::agent::Eff;
+use crate::meta::metric::uplink::UplinkActionObserver;
 use crate::meta::metric::{aggregator_sink, NodeMetricAggregator};
 use crate::routing::error::RouterError;
 use crate::routing::{
@@ -168,6 +169,7 @@ impl LaneUplinks for TestUplinkSpawner {
         channels: UplinkChannels<Top>,
         _route: RelativePath,
         _context: &Context,
+        _action_observer: UplinkActionObserver,
     ) -> BoxFuture<'static, ()>
     where
         Handler: LaneMessageHandler + 'static,

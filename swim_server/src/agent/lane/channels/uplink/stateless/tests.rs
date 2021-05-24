@@ -28,9 +28,11 @@ use swim_common::warp::path::RelativePath;
 use crate::agent::lane::channels::uplink::stateless::StatelessUplinks;
 use crate::agent::lane::channels::uplink::{AddressedUplinkMessage, UplinkAction, UplinkKind};
 use crate::agent::lane::channels::TaggedAction;
+use crate::meta::metric::uplink::{uplink_observer, UplinkActionObserver, UplinkProfileSender};
 use crate::meta::metric::{aggregator_sink, NodeMetricAggregator};
 use crate::routing::error::RouterError;
 use swim_common::routing::ResolutionError;
+use tokio::time::Duration;
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
 use utilities::sync::promise;
@@ -118,6 +120,7 @@ async fn immediate_unlink_stateless_uplinks() {
         ReceiverStream::new(producer_rx),
         route.clone(),
         UplinkKind::Supply,
+        stub_action_observer(),
     );
 
     let router = TestRouter::new(RoutingAddr::local(1024), router_tx);
@@ -146,6 +149,13 @@ async fn immediate_unlink_stateless_uplinks() {
     join(uplinks_task, assertion_task).await;
 }
 
+fn stub_action_observer() -> UplinkActionObserver {
+    let (tx, _rx) = mpsc::channel(48);
+    let sender = UplinkProfileSender::new(RelativePath::new("node", "lane"), tx);
+
+    uplink_observer(Duration::from_secs(1), sender).1
+}
+
 #[tokio::test]
 async fn sync_with_stateless_uplinks() {
     let route = RelativePath::new("node", "lane");
@@ -158,6 +168,7 @@ async fn sync_with_stateless_uplinks() {
         ReceiverStream::new(producer_rx),
         route.clone(),
         UplinkKind::Action,
+        stub_action_observer(),
     );
 
     let router = TestRouter::new(RoutingAddr::local(1024), router_tx);
@@ -205,6 +216,7 @@ async fn sync_with_action_lane() {
         ReceiverStream::new(producer_rx),
         route.clone(),
         UplinkKind::Action,
+        stub_action_observer(),
     );
 
     let router = TestRouter::new(RoutingAddr::local(1024), router_tx);
@@ -258,6 +270,7 @@ async fn sync_after_link_on_stateless_uplinks() {
         ReceiverStream::new(producer_rx),
         route.clone(),
         UplinkKind::Supply,
+        stub_action_observer(),
     );
 
     let router = TestRouter::new(RoutingAddr::local(1024), router_tx);
@@ -317,6 +330,7 @@ async fn link_to_and_receive_from_broadcast_uplinks() {
         ReceiverStream::new(response_rx),
         route.clone(),
         UplinkKind::Supply,
+        stub_action_observer(),
     );
 
     let router = TestRouter::new(RoutingAddr::local(1024), router_tx);
@@ -386,6 +400,7 @@ async fn link_to_and_receive_from_addressed_uplinks() {
         ReceiverStream::new(response_rx),
         route.clone(),
         UplinkKind::Supply,
+        stub_action_observer(),
     );
 
     let router = TestRouter::new(RoutingAddr::local(1024), router_tx);
@@ -468,6 +483,7 @@ async fn link_twice_to_stateless_uplinks() {
         ReceiverStream::new(response_rx),
         route.clone(),
         UplinkKind::Supply,
+        stub_action_observer(),
     );
 
     let router = TestRouter::new(RoutingAddr::local(1024), router_tx);
@@ -533,6 +549,7 @@ async fn no_messages_after_unlink_from_stateless_uplinks() {
         ReceiverStream::new(response_rx),
         route.clone(),
         UplinkKind::Supply,
+        stub_action_observer(),
     );
 
     let router = TestRouter::new(RoutingAddr::local(1024), router_tx);
@@ -622,6 +639,7 @@ async fn send_no_uplink_stateless_uplinks() {
         ReceiverStream::new(producer_rx),
         route.clone(),
         UplinkKind::Supply,
+        stub_action_observer(),
     );
     let uplinks_task = uplinks.run(ReceiverStream::new(action_rx), router, error_tx, 256);
 
