@@ -14,6 +14,7 @@
 
 use crate::agent::{AgentContext, Eff};
 use crate::meta::log::NodeLogger;
+use crate::meta::metric::NodeMetricAggregator;
 use crate::meta::MetaContext;
 use crate::routing::ServerRouter;
 use futures::future::BoxFuture;
@@ -227,6 +228,10 @@ pub trait AgentExecutionContext {
 
     /// Provide a channel to dispatch events to the agent scheduler.
     fn spawner(&self) -> mpsc::Sender<Eff>;
+
+    /// Provides an observer factory that can be used to create observers that register events that
+    /// happen on nodes, lanes, and uplinks.
+    fn metrics(&self) -> NodeMetricAggregator;
 }
 
 impl<Agent, Clk, RouterInner> AgentExecutionContext for ContextImpl<Agent, Clk, RouterInner>
@@ -241,5 +246,9 @@ where
 
     fn spawner(&self) -> Sender<Eff> {
         self.schedule_context.scheduler.clone()
+    }
+
+    fn metrics(&self) -> NodeMetricAggregator {
+        self.meta_context.metrics()
     }
 }

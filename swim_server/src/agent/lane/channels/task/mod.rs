@@ -499,6 +499,8 @@ where
     let (feedback_tx, feedback_rx) = mpsc::channel(config.feedback_buffer.get());
     let feedback_rx = ReceiverStream::new(feedback_rx)
         .map(|(_, message)| AddressedUplinkMessage::Broadcast(message));
+    let (event_observer, action_observer) =
+        context.metrics().uplink_observer_for_path(route.clone());
 
     let updater =
         CommandLaneUpdateTask::new(lane.clone(), Some(feedback_tx), config.cleanup_timeout);

@@ -22,7 +22,7 @@ use crate::meta::metric::uplink::{
     UplinkActionObserver, UplinkEventObserver, UplinkProfileSender, WarpUplinkProfile,
     WarpUplinkPulse,
 };
-use crate::meta::metric::{MetricStage, UplinkMetricObserver};
+use crate::meta::metric::MetricStage;
 use futures::future::{join, join3};
 use futures::stream::iter;
 use futures::{FutureExt, StreamExt};
@@ -39,6 +39,38 @@ use tokio::sync::mpsc;
 use tokio::time::sleep;
 use utilities::sync::trigger;
 use utilities::uri::RelativeUri;
+
+struct UplinkMetricObserver {
+    sample_rate: Duration,
+    node_uri: String,
+    metric_tx: mpsc::Sender<TaggedWarpUplinkProfile>,
+}
+
+impl UplinkMetricObserver {
+    fn new(
+        sample_rate: Duration,
+        node_uri: RelativeUri,
+        metric_tx: mpsc::Sender<TaggedWarpUplinkProfile>,
+    ) -> UplinkMetricObserver {
+        UplinkMetricObserver {
+            sample_rate,
+            node_uri: node_uri.to_string(),
+            metric_tx,
+        }
+    }
+
+    fn uplink_observer(&self, lane_uri: String) -> (UplinkEventObserver, UplinkActionObserver) {
+        let UplinkMetricObserver {
+            sample_rate,
+            node_uri,
+            metric_tx,
+        } = self;
+        let profile_sender =
+            UplinkProfileSender::new(RelativePath::new(node_uri, lane_uri), metric_tx.clone());
+
+        uplink_observer(*sample_rate, profile_sender)
+    }
+}
 
 #[tokio::test]
 async fn uplink_sender_ok() {
