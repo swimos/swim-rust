@@ -396,8 +396,8 @@ fn unpack_url(url: &Url) -> Result<SchemeHostPort, BadUrl> {
 /// Supported websocket schemes
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Scheme {
-    WS,
-    WSS,
+    Ws,
+    Wss,
 }
 
 impl TryFrom<&str> for Scheme {
@@ -405,8 +405,8 @@ impl TryFrom<&str> for Scheme {
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         match value {
-            "ws" | "swim" | "warp" => Ok(Scheme::WS),
-            "wss" | "swims" | "warps" => Ok(Scheme::WSS),
+            "ws" | "swim" | "warp" => Ok(Scheme::Ws),
+            "wss" | "swims" | "warps" => Ok(Scheme::Wss),
             _ => Err(BadUrl::BadScheme(value.to_owned())),
         }
     }
@@ -416,16 +416,16 @@ impl Scheme {
     /// Get the default port for the schemes.
     fn get_default_port(&self) -> u16 {
         match self {
-            Scheme::WS => 80,
-            Scheme::WSS => 443,
+            Scheme::Ws => 80,
+            Scheme::Wss => 443,
         }
     }
 
     /// Return if the scheme is secure.
     fn is_secure(&self) -> bool {
         match self {
-            Scheme::WS => false,
-            Scheme::WSS => true,
+            Scheme::Ws => false,
+            Scheme::Wss => true,
         }
     }
 }
@@ -433,10 +433,10 @@ impl Scheme {
 impl Display for Scheme {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Scheme::WS => {
+            Scheme::Ws => {
                 write!(f, "ws")
             }
-            Scheme::WSS => {
+            Scheme::Wss => {
                 write!(f, "wss")
             }
         }

@@ -69,7 +69,7 @@ impl Stream for WithPeer {
         self.project()
             .0
             .poll_accept(cx)?
-            .map(|(stream, addr)| Some(Ok((stream, SchemeSocketAddr::new(Scheme::WS, addr)))))
+            .map(|(stream, addr)| Some(Ok((stream, SchemeSocketAddr::new(Scheme::Ws, addr)))))
     }
 }
 
