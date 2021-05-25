@@ -314,8 +314,8 @@ where
     ) -> Self {
         LaneAttachmentTask {
             agent_route,
-            config,
             lanes,
+            config,
             context,
         }
     }
