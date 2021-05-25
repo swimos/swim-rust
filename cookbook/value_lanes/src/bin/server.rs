@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-mod unit_agent;
+mod agents;
 
-use crate::unit_agent::UnitAgent;
+use crate::agents::UnitAgent;
 use futures::join;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::time::Duration;

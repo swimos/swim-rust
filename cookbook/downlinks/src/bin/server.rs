@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-mod unit_agent;
+mod agents;
 
-use crate::unit_agent::UnitAgent;
+use crate::agents::UnitAgent;
 use futures::join;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::time::Duration;
@@ -29,7 +29,15 @@ async fn main() {
     let mut plane_builder = PlaneBuilder::new();
 
     plane_builder
-        .add_route::<UnitAgent, (), ()>(RoutePattern::parse_str("/unit/foo").unwrap(), (), ())
+        .add_route::<UnitAgent, (), ()>(RoutePattern::parse_str("/unit/0").unwrap(), (), ())
+        .unwrap();
+
+    plane_builder
+        .add_route::<UnitAgent, (), ()>(RoutePattern::parse_str("/unit/1").unwrap(), (), ())
+        .unwrap();
+
+    plane_builder
+        .add_route::<UnitAgent, (), ()>(RoutePattern::parse_str("/unit/2").unwrap(), (), ())
         .unwrap();
 
     let mut swim_server_builder = SwimServerBuilder::default();

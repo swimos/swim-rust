@@ -73,7 +73,7 @@ impl PublishInfoLifecycle {
                 .set(format!("from publishInfo: {} ", command)),
             StmRetryStrategy::new(RetryStrategy::default()),
         )
-        .await;
+            .await;
     }
 }
 

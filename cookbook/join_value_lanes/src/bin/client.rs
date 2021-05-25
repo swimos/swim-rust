@@ -29,9 +29,9 @@ async fn did_update(map_recv: MapDownlinkReceiver<i32, bool>, default: bool) {
         .filter_map(|event| async {
             match event {
                 Remote(TypedViewWithEvent {
-                    view,
-                    event: MapEvent::Update(key),
-                }) => Some((key, view)),
+                           view,
+                           event: MapEvent::Update(key),
+                       }) => Some((key, view)),
                 _ => None,
             }
         })
