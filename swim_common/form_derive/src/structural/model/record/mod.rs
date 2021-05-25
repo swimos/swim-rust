@@ -17,6 +17,7 @@ use crate::parser::FieldManifest;
 use crate::structural::model::field::{FieldWithIndex, SegregatedFields, TaggedFieldModel};
 use crate::structural::model::{NameTransform, StructLike, SynValidation};
 use macro_helpers::CompoundTypeKind;
+use proc_macro2::TokenStream;
 use quote::ToTokens;
 use std::ops::Add;
 use syn::{Attribute, Fields, Ident};
@@ -24,7 +25,8 @@ use utilities::validation::{validate2, Validation, ValidationItExt};
 use utilities::FieldKind;
 
 pub struct FieldsModel<'a> {
-    pub kind: CompoundTypeKind,
+    pub type_kind: CompoundTypeKind,
+    pub body_kind: CompoundTypeKind,
     pub manifest: FieldManifest,
     pub fields: Vec<TaggedFieldModel<'a>>,
 }
@@ -33,6 +35,28 @@ pub struct StructModel<'a> {
     pub name: &'a Ident,
     pub fields_model: FieldsModel<'a>,
     pub transform: Option<NameTransform>,
+}
+
+impl<'a> StructModel<'a> {
+    pub fn resolve_name<'b>(&'b self) -> ResolvedName<'a, 'b> {
+        ResolvedName(self)
+    }
+}
+
+pub struct ResolvedName<'a, 'b>(&'b StructModel<'a>);
+
+impl<'a, 'b> ToTokens for ResolvedName<'a, 'b> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let ResolvedName(def) = self;
+        if let Some(trans) = def.transform.as_ref() {
+            match trans {
+                NameTransform::Rename(name) => proc_macro2::Literal::string(&name),
+            }
+        } else {
+            proc_macro2::Literal::string(&def.name.to_string())
+        }
+        .to_tokens(tokens);
+    }
 }
 
 pub struct SegregatedStructModel<'a, 'b> {
@@ -107,7 +131,7 @@ where
 
 impl<'a> TryValidate<&'a Fields> for FieldsModel<'a> {
     fn try_validate(definition: &'a Fields) -> SynValidation<Self> {
-        let (kind, fields) = match definition {
+        let (type_kind, fields) = match definition {
             Fields::Named(fields) => (CompoundTypeKind::Struct, Some(fields.named.iter())),
             Fields::Unnamed(fields) => {
                 let kind = if fields.unnamed.len() == 1 {
@@ -117,7 +141,7 @@ impl<'a> TryValidate<&'a Fields> for FieldsModel<'a> {
                 };
                 (kind, Some(fields.unnamed.iter()))
             }
-            Fields::Unit => (CompoundTypeKind::Unit, None),
+            _ => (CompoundTypeKind::Unit, None),
         };
 
         let field_models = if let Some(field_it) = fields {
@@ -131,13 +155,60 @@ impl<'a> TryValidate<&'a Fields> for FieldsModel<'a> {
 
         field_models.and_then(move |flds| {
             let manifest = derive_manifest(definition, flds.iter());
-            manifest.map(move |man| FieldsModel {
-                kind,
+
+            let kind = assess_kind(definition, flds.iter());
+
+            manifest.join(kind).map(move |(man, kind)| FieldsModel {
+                type_kind,
+                body_kind: kind,
                 manifest: man,
                 fields: flds,
             })
         })
     }
+}
+
+const BAD_FIELDS: &str = "Body fields cannot be a mix of labelled and unlabelled";
+
+fn assess_kind<'a, It>(definition: &'a Fields, fields: It) -> SynValidation<CompoundTypeKind>
+where
+    It: Iterator<Item = &'a TaggedFieldModel<'a>> + 'a,
+{
+    let mut kind = CompoundTypeKind::Unit;
+    for field in fields {
+        let TaggedFieldModel { directive, .. } = field;
+        if *directive == FieldKind::Slot {
+            match kind {
+                CompoundTypeKind::Struct => {
+                    if !field.is_labelled() {
+                        let err = syn::Error::new_spanned(definition, BAD_FIELDS);
+                        return Validation::fail(err);
+                    }
+                }
+                CompoundTypeKind::Tuple => {
+                    if field.is_labelled() {
+                        let err = syn::Error::new_spanned(definition, BAD_FIELDS);
+                        return Validation::fail(err);
+                    }
+                }
+                CompoundTypeKind::NewType => {
+                    if field.is_labelled() {
+                        let err = syn::Error::new_spanned(definition, BAD_FIELDS);
+                        return Validation::fail(err);
+                    }
+                    kind = CompoundTypeKind::Tuple;
+                }
+                _ => {
+                    kind = if field.is_labelled() {
+                        CompoundTypeKind::Struct
+                    } else {
+                        CompoundTypeKind::NewType
+                    };
+                }
+            }
+        }
+    }
+    Validation::valid(kind)
 }
 
 fn derive_manifest<'a, It>(definition: &'a Fields, fields: It) -> SynValidation<FieldManifest>

@@ -17,6 +17,7 @@ use crate::structural::model::enumeration::{EnumModel, SegregatedEnumModel};
 use crate::structural::model::field::{BodyFields, FieldModel, HeaderFields, SegregatedFields};
 use crate::structural::model::record::{SegregatedStructModel, StructModel};
 use crate::structural::model::NameTransform;
+use either::Either;
 use proc_macro2::TokenStream;
 use quote::ToTokens;
 use syn::{Ident, Pat, Path};
@@ -174,6 +175,20 @@ fn write_slot_ref(field: &FieldModel) -> TokenStream {
     }
 }
 
+fn write_value_ref(field: &FieldModel) -> TokenStream {
+    let field_index = &field.name;
+    quote! {
+        body_writer = body_writer.write_value(&#field_index)?;
+    }
+}
+
+fn write_value_into(field: &FieldModel) -> TokenStream {
+    let field_index = &field.name;
+    quote! {
+        body_writer = body_writer.write_value_into(#field_index)?;
+    }
+}
+
 fn write_slot_into(field: &FieldModel) -> TokenStream {
     let field_index = &field.name;
     let literal_name = field.resolve_name();
@@ -248,20 +263,25 @@ impl<'a, 'b> ToTokens for WriteWithFn<'a, 'b> {
                      rec_writer.delegate(&#field_index)
                 }
             }
-            BodyFields::SlotBody(fields) => {
+            BodyFields::StdBody(fields) => {
                 let num_slots = fields.len();
 
-                let body_kind = if fields_model.kind == CompoundTypeKind::Struct {
-                    quote!(swim_common::form::structural::write::RecordBodyKind::MapLike)
+                let (body_kind, statements) = if fields_model.body_kind == CompoundTypeKind::Struct
+                {
+                    (
+                        quote!(swim_common::form::structural::write::RecordBodyKind::MapLike),
+                        Either::Left(fields.iter().map(|f| write_slot_ref(*f))),
+                    )
                 } else {
-                    quote!(swim_common::form::structural::write::RecordBodyKind::ArrayLike)
+                    (
+                        quote!(swim_common::form::structural::write::RecordBodyKind::ArrayLike),
+                        Either::Right(fields.iter().map(|f| write_value_ref(*f))),
+                    )
                 };
-
-                let slot_statements = fields.iter().map(|f| write_slot_ref(*f));
 
                 quote! {
                     let mut body_writer = rec_writer.complete_header(#body_kind, #num_slots)?;
-                    #(#slot_statements)*
+                    #(#statements)*
                     body_writer.done()
                 }
             }
@@ -348,20 +368,25 @@ impl<'a, 'b> ToTokens for WriteIntoFn<'a, 'b> {
                      rec_writer.delegate_into(#field_index)
                 }
             }
-            BodyFields::SlotBody(fields) => {
+            BodyFields::StdBody(fields) => {
                 let num_slots = fields.len();
 
-                let body_kind = if fields_model.kind == CompoundTypeKind::Struct {
-                    quote!(swim_common::form::structural::write::RecordBodyKind::MapLike)
+                let (body_kind, statements) = if fields_model.body_kind == CompoundTypeKind::Struct
+                {
+                    (
+                        quote!(swim_common::form::structural::write::RecordBodyKind::MapLike),
+                        Either::Left(fields.iter().map(|f| write_slot_into(*f))),
+                    )
                 } else {
-                    quote!(swim_common::form::structural::write::RecordBodyKind::ArrayLike)
+                    (
+                        quote!(swim_common::form::structural::write::RecordBodyKind::ArrayLike),
+                        Either::Right(fields.iter().map(|f| write_value_into(*f))),
+                    )
                 };
-
-                let slot_statements = fields.iter().map(|f| write_slot_into(*f));
 
                 quote! {
                     let mut body_writer = rec_writer.complete_header(#body_kind, #num_slots)?;
-                    #(#slot_statements)*
+                    #(#statements)*
                     body_writer.done()
                 }
             }
@@ -385,7 +410,7 @@ impl<'a> ToTokens for Destructure<'a> {
             },
             is_match,
         ) = self;
-        let kind = fields_model.kind;
+        let kind = fields_model.body_kind;
         let indexers = fields_model.fields.iter().map(|f| &f.model.name);
         match kind {
             CompoundTypeKind::Unit => {

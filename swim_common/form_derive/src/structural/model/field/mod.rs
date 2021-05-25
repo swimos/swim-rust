@@ -41,6 +41,7 @@ impl<'a> ToTokens for FieldIndex<'a> {
 
 pub struct FieldModel<'a> {
     pub name: FieldIndex<'a>,
+    pub ordinal: usize,
     pub transform: Option<NameTransform>,
     pub field_ty: &'a Type,
 }
@@ -58,19 +59,41 @@ impl<'a, 'b> ToTokens for ResolvedName<'a, 'b> {
         let ResolvedName(field) = self;
         if let Some(trans) = field.transform.as_ref() {
             match trans {
-                NameTransform::Rename(name) => {
-                    proc_macro2::Literal::string(&name).to_tokens(tokens)
-                }
+                NameTransform::Rename(name) => proc_macro2::Literal::string(&name),
             }
         } else {
-            field.name.to_tokens(tokens)
+            match field.name {
+                FieldIndex::Ordinal(i) => {
+                    let string = format!("value_{}", i);
+                    proc_macro2::Literal::string(&string)
+                }
+                FieldIndex::Named(id) => proc_macro2::Literal::string(&id.to_string()),
+            }
         }
+        .to_tokens(tokens);
     }
 }
 
 pub struct TaggedFieldModel<'a> {
     pub model: FieldModel<'a>,
     pub directive: FieldKind,
+}
+
+impl<'a> TaggedFieldModel<'a> {
+    pub fn is_labelled(&self) -> bool {
+        !matches!(
+            &self.model,
+            FieldModel {
+                name: FieldIndex::Ordinal(_),
+                transform: None,
+                ..
+            }
+        )
+    }
+
+    pub fn is_valid(&self) -> bool {
+        !(matches!(self.directive, FieldKind::Header | FieldKind::Attr) && !self.is_labelled())
+    }
 }
 
 enum FieldAttr {
@@ -129,21 +152,31 @@ impl<'a> TryValidate<FieldWithIndex<'a>> for TaggedFieldModel<'a> {
                 }
             });
 
-        field_attrs.map(
+        field_attrs.and_then(
             |FieldAttributes {
                  transform,
                  directive,
              }| {
-                TaggedFieldModel {
+                let model = TaggedFieldModel {
                     model: FieldModel {
                         name: ident
                             .as_ref()
                             .map(FieldIndex::Named)
                             .unwrap_or_else(|| FieldIndex::Ordinal(i)),
+                        ordinal: i,
                         transform,
                         field_ty: ty,
                     },
                     directive: directive.unwrap_or(FieldKind::Slot),
+                };
+                if model.is_valid() {
+                    Validation::valid(model)
+                } else {
+                    let err = syn::Error::new_spanned(
+                        field,
+                        "Header and attribute fields must be labelled",
+                    );
+                    Validation::Validated(model, err.into())
                 }
             },
         )
@@ -225,12 +258,12 @@ pub struct HeaderFields<'a, 'b> {
 
 pub enum BodyFields<'a, 'b> {
     ReplacedBody(&'b FieldModel<'a>),
-    SlotBody(Vec<&'b FieldModel<'a>>),
+    StdBody(Vec<&'b FieldModel<'a>>),
 }
 
 impl<'a, 'b> Default for BodyFields<'a, 'b> {
     fn default() -> Self {
-        BodyFields::SlotBody(vec![])
+        BodyFields::StdBody(vec![])
     }
 }
 
@@ -262,14 +295,14 @@ impl<'a, 'b> Add<&'b TaggedFieldModel<'a>> for SegregatedFields<'a, 'b> {
                 header.attributes.push(model);
             }
             FieldKind::Slot => {
-                if let BodyFields::SlotBody(slots) = &mut body {
+                if let BodyFields::StdBody(slots) = &mut body {
                     slots.push(model);
                 } else {
                     header.header_fields.push(model);
                 }
             }
             FieldKind::Body => {
-                if let BodyFields::SlotBody(slots) = body {
+                if let BodyFields::StdBody(slots) = body {
                     header.header_fields.extend(slots.into_iter());
                     body = BodyFields::ReplacedBody(model);
                 }

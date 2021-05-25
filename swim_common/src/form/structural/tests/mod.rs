@@ -427,23 +427,48 @@ impl<T: StructuralReadable> StructuralReadable for OneOfEach<T> {
     }
 
     fn try_terminate(reader: <Self::Reader as HeaderReader>::Body) -> Result<Self, ReadError> {
-        let Builder { state, .. } = reader;
+        let Builder { mut state, .. } = reader;
 
         let mut missing = vec![];
         if state.0.is_none() {
-            missing.push(Text::new("header"));
+            let on_missing = <T as StructuralReadable>::on_absent();
+            if on_missing.is_none() {
+                missing.push(Text::new("header"));
+            } else {
+                state.0 = on_missing;
+            }
         }
         if state.1.is_none() {
-            missing.push(Text::new("header_slot"));
+            let on_missing = <T as StructuralReadable>::on_absent();
+            if on_missing.is_none() {
+                missing.push(Text::new("header_slot"));
+            } else {
+                state.1 = on_missing;
+            }
         }
         if state.2.is_none() {
-            missing.push(Text::new("attr"));
+            let on_missing = <T as StructuralReadable>::on_absent();
+            if on_missing.is_none() {
+                missing.push(Text::new("attr"));
+            } else {
+                state.2 = on_missing;
+            }
         }
         if state.3.is_none() {
-            missing.push(Text::new("slot1"));
+            let on_missing = <T as StructuralReadable>::on_absent();
+            if on_missing.is_none() {
+                missing.push(Text::new("slot1"));
+            } else {
+                state.3 = on_missing;
+            }
         }
         if state.4.is_none() {
-            missing.push(Text::new("slot2"));
+            let on_missing = <T as StructuralReadable>::on_absent();
+            if on_missing.is_none() {
+                missing.push(Text::new("slot2"));
+            } else {
+                state.4 = on_missing;
+            }
         }
         if let (Some(header), Some(header_slot), Some(attr), Some(slot1), Some(slot2), ..) = state {
             Ok(OneOfEach {

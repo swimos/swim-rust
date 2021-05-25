@@ -181,6 +181,10 @@ impl<T, E: Semigroup> Validation<T, E> {
             Validation::Failed(e) => Validation::Failed(e),
         }
     }
+
+    pub fn join<U>(self, other: Validation<U, E>) -> Validation<(T, U), E> {
+        self.and_then(|left| other.map(move |right| (left, right)))
+    }
 }
 
 impl<T, C: Zero> Validation<T, C> {
