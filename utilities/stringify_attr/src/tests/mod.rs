@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#![allow(non_snake_case, non_camel_case_types)]
+#![allow(non_snake_case, non_camel_case_types, legacy_derive_helpers)]
 
 use attr_derive::{stringify_attr, stringify_attr_raw};
 

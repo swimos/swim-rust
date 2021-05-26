@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#![allow(legacy_derive_helpers)]
+
 use std::fmt::Debug;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
