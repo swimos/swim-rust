@@ -122,7 +122,7 @@ pub trait DownlinkStateMachine<WarpMsg, ActionReq> {
     /// Type of commands that will be sent out to the Warp connection.
     type WarpCmd: Send;
     /// Type of events that will be issued to the observer of the downlink.
-    type Report: Send;
+    type Report: Send + Sync;
 
     /// Create the initial value of the state and any command that should be sent
     /// at initialization.
@@ -160,7 +160,7 @@ pub trait SyncStateMachine<WarpMsg, ActionReq> {
     /// Type of commands that will be sent out to the Warp connection.
     type WarpCmd: Send;
     /// Type of events that will be issued to the owner of the downlink.
-    type Report: Send;
+    type Report: Send + Sync;
 
     /// The initial value of the state.
     fn init(&self) -> Self::State;

@@ -302,8 +302,8 @@ fn add_receiver<T>(inner: &Arc<Inner<T>>, lock: &mut Guarded) -> Receiver<T> {
     }
 }
 
-unsafe impl<T> Send for Inner<T> {}
-unsafe impl<T> Sync for Inner<T> {}
+unsafe impl<T: Send + Sync> Send for Inner<T> {}
+unsafe impl<T: Send + Sync> Sync for Inner<T> {}
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct EntryGuard<'a, T> {
