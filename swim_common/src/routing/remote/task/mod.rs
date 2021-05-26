@@ -22,13 +22,13 @@ use crate::routing::error::{
 };
 use crate::routing::remote::config::ConnectionConfig;
 use crate::routing::remote::router::RemoteRouter;
-use crate::routing::remote::{RoutingRequest, SchemeSocketAddr};
+use crate::routing::remote::{RemoteRoutingRequest, SchemeSocketAddr};
 use crate::routing::ws::selector::{SelectorResult, WsStreamSelector};
 use crate::routing::ws::{CloseCode, CloseReason, JoinedStreamSink, WsMessage};
-use crate::routing::RouterError;
 use crate::routing::{
     ConnectionDropped, Route, Router, RouterFactory, RoutingAddr, TaggedEnvelope,
 };
+use crate::routing::{Origin, RouterError};
 use crate::warp::envelope::{Envelope, EnvelopeHeader, EnvelopeParseErr, OutgoingHeader};
 use crate::warp::path::RelativePath;
 use futures::future::{join, BoxFuture};
@@ -110,7 +110,8 @@ where
     /// * `messages`- Stream of messages to be sent into the sink.
     /// * `message_injector` - Allows messages to be injected into the outgoing stream.
     /// * `stop_signal` - Signals to the task that it should stop.
-    /// * `config` - Configuration for the connectino task.
+    /// * `config` - Configuration for the connection task.
+    /// * `server` - Whether or not this connection task is for a sever.
     /// runtime.
     pub fn new(
         addr: SchemeSocketAddr,
@@ -194,7 +195,7 @@ where
                                         &mut router,
                                         &mut resolved,
                                         envelope,
-                                        addr.clone(),
+                                        Origin::Remote(addr.clone()),
                                         config.connection_retries,
                                         sleep,
                                         server,
@@ -347,7 +348,7 @@ async fn dispatch_envelope<R, F, D>(
     router: &mut R,
     resolved: &mut HashMap<RelativePath, Route>,
     mut envelope: Envelope,
-    origin: SchemeSocketAddr,
+    origin: Origin,
     mut retry_strategy: RetryStrategy,
     delay_fn: F,
     server: bool,
@@ -387,7 +388,7 @@ async fn try_dispatch_envelope<R>(
     router: &mut R,
     resolved: &mut HashMap<RelativePath, Route>,
     envelope: Envelope,
-    origin: SchemeSocketAddr,
+    origin: Origin,
     server: bool,
 ) -> Result<(), (Envelope, DispatchError)>
 where
@@ -435,7 +436,7 @@ where
 async fn get_route<R>(
     router: &mut R,
     target: &RelativePath,
-    origin: Option<SchemeSocketAddr>,
+    origin: Option<Origin>,
 ) -> Result<Route, DispatchError>
 where
     R: Router,
@@ -452,7 +453,7 @@ where
 
 /// Factory to create and spawn new connection tasks.
 pub struct TaskFactory<DelegateRouterFac> {
-    request_tx: mpsc::Sender<RoutingRequest>,
+    request_tx: mpsc::Sender<RemoteRoutingRequest>,
     stop_trigger: trigger::Receiver,
     configuration: ConnectionConfig,
     delegate_router_fac: DelegateRouterFac,
@@ -460,7 +461,7 @@ pub struct TaskFactory<DelegateRouterFac> {
 
 impl<DelegateRouterFac> TaskFactory<DelegateRouterFac> {
     pub fn new(
-        request_tx: mpsc::Sender<RoutingRequest>,
+        request_tx: mpsc::Sender<RemoteRoutingRequest>,
         stop_trigger: trigger::Receiver,
         configuration: ConnectionConfig,
         delegate_router_fac: DelegateRouterFac,

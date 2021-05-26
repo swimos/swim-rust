@@ -28,7 +28,7 @@ use crate::downlink::typed::{
 };
 use crate::downlink::Downlinks;
 use crate::downlink::SchemaViolations;
-use crate::router::{ClientRouterFactory, RemoteConnectionsManager};
+use crate::router::{ClientConnectionsManager, ClientRouterFactory};
 use crate::runtime::task::TaskHandle;
 use futures::join;
 use std::error::Error;
@@ -43,9 +43,9 @@ use swim_common::routing::remote::net::plain::TokioPlainTextNetworking;
 use swim_common::routing::remote::{RemoteConnectionChannels, RemoteConnectionsTask};
 use swim_common::routing::ws::tungstenite::TungsteniteWsConnections;
 use swim_common::warp::envelope::Envelope;
-use swim_common::warp::path::AbsolutePath;
+use swim_common::warp::path::{AbsolutePath, Addressable, Path};
 use swim_runtime::task::spawn;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::info;
 use utilities::future::open_ended::OpenEndedFutures;
@@ -56,7 +56,7 @@ use utilities::sync::trigger;
 /// The builder can be created with default or custom configuration.
 /// The custom configuration can be read from a file.
 pub struct SwimClientBuilder {
-    config: ConfigHierarchy,
+    config: ConfigHierarchy<AbsolutePath>,
 }
 
 impl SwimClientBuilder {
@@ -64,7 +64,7 @@ impl SwimClientBuilder {
     ///
     /// # Arguments
     /// * `config` - The custom configuration for the client.
-    pub fn new(config: ConfigHierarchy) -> Self {
+    pub fn new(config: ConfigHierarchy<AbsolutePath>) -> Self {
         SwimClientBuilder { config }
     }
 
@@ -91,12 +91,12 @@ impl SwimClientBuilder {
     //     Ok(SwimClientBuilder { config })
     // }
 
-    pub fn build_from_downlinks(downlinks: Downlinks) -> SwimClient {
+    pub fn build_from_downlinks(downlinks: Downlinks<Path>) -> SwimClient<Path> {
         SwimClient { downlinks }
     }
 
     /// Build the Swim client.
-    pub async fn build(self) -> (SwimClient, ClientHandle) {
+    pub async fn build(self) -> (SwimClient<AbsolutePath>, ClientHandle<AbsolutePath>) {
         let SwimClientBuilder {
             config: downlinks_config,
         } = self;
@@ -128,9 +128,10 @@ impl SwimClientBuilder {
         )
         .await;
 
-        let remote_conn_manager = RemoteConnectionsManager::new(
+        let remote_conn_manager = ClientConnectionsManager::new(
             client_conn_request_rx,
             remote_router_tx,
+            None,
             client_params.dl_req_buffer_size,
         );
 
@@ -164,10 +165,10 @@ impl SwimClientBuilder {
 
     /// Build the Swim client with default WS factory and configuration.
     #[cfg(feature = "websocket")]
-    pub async fn build_with_default() -> (SwimClient, ClientHandle) {
+    pub async fn build_with_default() -> (SwimClient<AbsolutePath>, ClientHandle<AbsolutePath>) {
         info!("Initialising Swim Client");
 
-        let config = ConfigHierarchy::default();
+        let config: ConfigHierarchy<AbsolutePath> = ConfigHierarchy::default();
 
         let client_params = config.client_params();
 
@@ -194,9 +195,10 @@ impl SwimClientBuilder {
         )
         .await;
 
-        let remote_conn_manager = RemoteConnectionsManager::new(
+        let remote_conn_manager = ClientConnectionsManager::new(
             client_conn_request_rx,
             remote_router_tx,
+            None,
             client_params.dl_req_buffer_size,
         );
 
@@ -248,19 +250,19 @@ impl SwimClientBuilder {
 /// against the provided schema to ensure that its views are consistent.
 ///
 #[derive(Clone, Debug)]
-pub struct SwimClient {
+pub struct SwimClient<Path: Addressable> {
     /// The downlinks manager attached to this Swim Client.
-    downlinks: Downlinks,
+    downlinks: Downlinks<Path>,
 }
 
-pub struct ClientHandle {
-    task_handle: TaskHandle<RequestResult<()>>,
+pub struct ClientHandle<Path: Addressable> {
+    task_handle: TaskHandle<RequestResult<(), Path>>,
     stop_trigger: trigger::Sender,
 }
 
-impl ClientHandle {
+impl<Path: Addressable> ClientHandle<Path> {
     /// Shut down the client and wait for all tasks to finish running.
-    pub async fn close(self) -> Result<(), ClientError> {
+    pub async fn close(self) -> Result<(), ClientError<Path>> {
         let ClientHandle {
             task_handle,
             stop_trigger,
@@ -279,18 +281,15 @@ impl ClientHandle {
     }
 }
 
-impl SwimClient {
+impl<Path: Addressable> SwimClient<Path> {
     /// Sends a command directly to the provided `target` lane.
     pub async fn send_command<T: Form>(
         &self,
-        target: AbsolutePath,
+        target: Path,
         message: T,
-    ) -> Result<(), ClientError> {
-        let envelope = Envelope::make_command(
-            target.node.clone(),
-            target.lane.clone(),
-            Some(message.into_value()),
-        );
+    ) -> Result<(), ClientError<Path>> {
+        let envelope =
+            Envelope::make_command(target.node(), target.lane(), Some(message.into_value()));
 
         self.downlinks
             .send_command(target, envelope)
@@ -301,9 +300,9 @@ impl SwimClient {
     /// Opens a new typed value downlink at the provided path and initialises it with `initial`.
     pub async fn value_downlink<T>(
         &self,
-        path: AbsolutePath,
+        path: Path,
         initial: T,
-    ) -> Result<(TypedValueDownlink<T>, ValueDownlinkReceiver<T>), ClientError>
+    ) -> Result<(TypedValueDownlink<T>, ValueDownlinkReceiver<T>), ClientError<Path>>
     where
         T: ValidatedForm + Send + 'static,
     {
@@ -316,8 +315,8 @@ impl SwimClient {
     /// Opens a new typed map downlink at the provided path.
     pub async fn map_downlink<K, V>(
         &self,
-        path: AbsolutePath,
-    ) -> Result<(TypedMapDownlink<K, V>, MapDownlinkReceiver<K, V>), ClientError>
+        path: Path,
+    ) -> Result<(TypedMapDownlink<K, V>, MapDownlinkReceiver<K, V>), ClientError<Path>>
     where
         K: ValidatedForm + Send + 'static,
         V: ValidatedForm + Send + 'static,
@@ -331,8 +330,8 @@ impl SwimClient {
     /// Opens a new command downlink at the provided path.
     pub async fn command_downlink<T>(
         &self,
-        path: AbsolutePath,
-    ) -> Result<TypedCommandDownlink<T>, ClientError>
+        path: Path,
+    ) -> Result<TypedCommandDownlink<T>, ClientError<Path>>
     where
         T: ValidatedForm + Send + 'static,
     {
@@ -345,9 +344,9 @@ impl SwimClient {
     /// Opens a new event downlink at the provided path.
     pub async fn event_downlink<T>(
         &self,
-        path: AbsolutePath,
+        path: Path,
         violations: SchemaViolations,
-    ) -> Result<TypedEventDownlink<T>, ClientError>
+    ) -> Result<TypedEventDownlink<T>, ClientError<Path>>
     where
         T: ValidatedForm + Send + 'static,
     {
@@ -361,9 +360,9 @@ impl SwimClient {
     /// value.
     pub async fn untyped_value_downlink(
         &self,
-        path: AbsolutePath,
+        path: Path,
         initial: Value,
-    ) -> Result<(Arc<UntypedValueDownlink>, UntypedValueReceiver), ClientError> {
+    ) -> Result<(Arc<UntypedValueDownlink>, UntypedValueReceiver), ClientError<Path>> {
         self.downlinks
             .subscribe_value_untyped(initial, path)
             .await
@@ -373,8 +372,8 @@ impl SwimClient {
     /// Opens a new untyped value downlink at the provided path.
     pub async fn untyped_map_downlink(
         &self,
-        path: AbsolutePath,
-    ) -> Result<(Arc<UntypedMapDownlink>, UntypedMapReceiver), ClientError> {
+        path: Path,
+    ) -> Result<(Arc<UntypedMapDownlink>, UntypedMapReceiver), ClientError<Path>> {
         self.downlinks
             .subscribe_map_untyped(path)
             .await
@@ -384,8 +383,8 @@ impl SwimClient {
     /// Opens a new untyped command downlink at the provided path.
     pub async fn untyped_command_downlink(
         &self,
-        path: AbsolutePath,
-    ) -> Result<Arc<UntypedCommandDownlink>, ClientError> {
+        path: Path,
+    ) -> Result<Arc<UntypedCommandDownlink>, ClientError<Path>> {
         self.downlinks
             .subscribe_command_untyped(path)
             .await
@@ -395,8 +394,8 @@ impl SwimClient {
     /// Opens a new untyped event downlink at the provided path.
     pub async fn untyped_event_downlink(
         &self,
-        path: AbsolutePath,
-    ) -> Result<Arc<UntypedEventDownlink>, ClientError> {
+        path: Path,
+    ) -> Result<Arc<UntypedEventDownlink>, ClientError<Path>> {
         self.downlinks
             .subscribe_event_untyped(path)
             .await
@@ -406,9 +405,9 @@ impl SwimClient {
 
 /// Represents errors that can occur in the client.
 #[derive(Debug)]
-pub enum ClientError {
+pub enum ClientError<Path: Addressable> {
     /// An error that occurred when subscribing to a downlink.
-    SubscriptionError(SubscriptionError),
+    SubscriptionError(SubscriptionError<Path>),
     /// An error that occurred in the router.
     RoutingError(RoutingError),
     /// An error that occurred in a downlink.
@@ -417,7 +416,7 @@ pub enum ClientError {
     CloseError,
 }
 
-impl Display for ClientError {
+impl<Path: Addressable + 'static> Display for ClientError<Path> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self.source() {
             Some(e) => write!(f, "Client error. Caused by: {}", e),
@@ -426,7 +425,7 @@ impl Display for ClientError {
     }
 }
 
-impl Error for ClientError {
+impl<Path: Addressable + 'static> Error for ClientError<Path> {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match &self {
             ClientError::SubscriptionError(e) => Some(e),

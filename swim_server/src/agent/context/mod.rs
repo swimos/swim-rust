@@ -22,9 +22,9 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use swim_client::downlink::Downlinks;
 use swim_client::interface::SwimClient;
 use swim_common::routing::Router;
+use swim_common::warp::path::Path;
 use swim_runtime::time::clock::Clock;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
@@ -41,12 +41,13 @@ mod tests;
 /// [`AgentContext`] implementation that dispatches effects to the scheduler through an MPSC
 /// channel.
 #[derive(Debug)]
-pub(super) struct ContextImpl<Agent, Clk, Router> {
+pub(super) struct ContextImpl<Agent, Clk, R: Router + Clone + 'static> {
     agent_ref: Arc<Agent>,
-    routing_context: RoutingContext<Router>,
+    routing_context: RoutingContext<R>,
     schedule_context: SchedulerContext<Clk>,
     meta_context: Arc<MetaContext>,
-    client: SwimClient,
+    client: SwimClient<Path>,
+    agent_uri: RelativeUri,
 }
 
 const SCHEDULE: &str = "Schedule";
@@ -54,13 +55,14 @@ const SCHED_TRIGGERED: &str = "Schedule triggered";
 const SCHED_STOPPED: &str = "Scheduler unexpectedly stopped";
 const WAITING: &str = "Schedule waiting";
 
-impl<Agent, Clk, Router> ContextImpl<Agent, Clk, Router> {
+impl<Agent, Clk, R: Router + Clone + 'static> ContextImpl<Agent, Clk, R> {
     pub(super) fn new(
         agent_ref: Arc<Agent>,
-        routing_context: RoutingContext<Router>,
+        routing_context: RoutingContext<R>,
         schedule_context: SchedulerContext<Clk>,
         meta_context: MetaContext,
-        client: SwimClient,
+        client: SwimClient<Path>,
+        agent_uri: RelativeUri,
     ) -> Self {
         ContextImpl {
             agent_ref,
@@ -68,14 +70,15 @@ impl<Agent, Clk, Router> ContextImpl<Agent, Clk, Router> {
             schedule_context,
             meta_context: Arc::new(meta_context),
             client,
+            agent_uri,
         }
     }
 }
 
-impl<Agent, Clk, Router> Clone for ContextImpl<Agent, Clk, Router>
+impl<Agent, Clk, R: Router + Clone + 'static> Clone for ContextImpl<Agent, Clk, R>
 where
     Clk: Clone,
-    Router: Clone,
+    R: Clone,
 {
     fn clone(&self) -> Self {
         ContextImpl {
@@ -84,23 +87,20 @@ where
             schedule_context: self.schedule_context.clone(),
             client: self.client.clone(),
             meta_context: self.meta_context.clone(),
+            agent_uri: self.agent_uri.clone(),
         }
     }
 }
 
 #[derive(Debug)]
-pub(super) struct RoutingContext<Router> {
+pub(super) struct RoutingContext<R: Router + Clone + 'static> {
     uri: RelativeUri,
-    router: Router,
+    router: R,
     parameters: HashMap<String, String>,
 }
 
-impl<Router> RoutingContext<Router> {
-    pub(super) fn new(
-        uri: RelativeUri,
-        router: Router,
-        parameters: HashMap<String, String>,
-    ) -> Self {
+impl<R: Router + Clone + 'static> RoutingContext<R> {
+    pub(super) fn new(uri: RelativeUri, router: R, parameters: HashMap<String, String>) -> Self {
         RoutingContext {
             uri,
             router,
@@ -109,7 +109,7 @@ impl<Router> RoutingContext<Router> {
     }
 }
 
-impl<Router: Clone> Clone for RoutingContext<Router> {
+impl<R: Router + Clone + 'static> Clone for RoutingContext<R> {
     fn clone(&self) -> Self {
         RoutingContext {
             uri: self.uri.clone(),
@@ -185,13 +185,19 @@ impl<Clk: Clone> Clone for SchedulerContext<Clk> {
     }
 }
 
-impl<Agent, Clk, Router> AgentContext<Agent> for ContextImpl<Agent, Clk, Router>
+impl<Agent, Clk, R: Router + Clone + 'static> AgentContext<Agent> for ContextImpl<Agent, Clk, R>
 where
     Agent: Send + Sync + 'static,
     Clk: Clock,
 {
-    fn client(&self) -> SwimClient {
+    type LocalRouter = R;
+
+    fn client(&self) -> SwimClient<Path> {
         self.client.clone()
+    }
+
+    fn local_router(&self) -> Self::LocalRouter {
+        self.routing_context.router.clone()
     }
 
     fn schedule<Effect, Str, Sch>(&self, effects: Str, schedule: Sch) -> BoxFuture<()>
@@ -237,6 +243,9 @@ pub trait AgentExecutionContext {
 
     /// Provide a channel to dispatch events to the agent scheduler.
     fn spawner(&self) -> mpsc::Sender<Eff>;
+
+    /// Return the relative uri of this agent.
+    fn uri(&self) -> &RelativeUri;
 }
 
 impl<Agent, Clk, RouterInner> AgentExecutionContext for ContextImpl<Agent, Clk, RouterInner>
@@ -251,5 +260,9 @@ where
 
     fn spawner(&self) -> Sender<Eff> {
         self.schedule_context.scheduler.clone()
+    }
+
+    fn uri(&self) -> &RelativeUri {
+        &self.agent_uri
     }
 }

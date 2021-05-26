@@ -30,13 +30,14 @@ use std::fmt::{Display, Formatter};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use swim_common::model::Value;
-use swim_common::routing::{RoutingAddr, Router};
+use swim_common::routing::{Origin, Router, RoutingAddr};
 use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, span, Level};
 use tracing_futures::Instrument;
 use utilities::sync::trigger;
+use utilities::uri::RelativeUri;
 
 #[cfg(test)]
 mod tests;
@@ -112,15 +113,17 @@ where
     /// * `router` - Produces channels on which outgoing envelopes can be sent.
     /// * `spawn_tx` - Channel to an asynchronous tasks spawner (used to run the uplink state
     /// machines.
+    /// * `uri` - The relative uri of the agent to which this uplink belongs.
     /// * `error_collector` - Collects errors whenever an uplink fails.
     ///
-    /// #Type Paramameters
+    /// # Type Parameters
     ///
     /// * `Router` - The type of the server router.
     pub async fn run<R>(
         mut self,
         mut router: R,
         mut spawn_tx: mpsc::Sender<Eff>,
+        uri: RelativeUri,
         error_collector: mpsc::Sender<UplinkErrorReport>,
     ) where
         R: Router,
@@ -138,7 +141,13 @@ where
                         let span =
                             span!(Level::TRACE, NEW_UPLINK, lane = ?self.route, endpoint = ?addr);
                         if let Some(handle) = self
-                            .make_uplink(addr, error_collector.clone(), &mut spawn_tx, &mut router)
+                            .make_uplink(
+                                addr,
+                                error_collector.clone(),
+                                &mut spawn_tx,
+                                &mut router,
+                                uri.clone(),
+                            )
                             .instrument(span)
                             .await
                         {
@@ -199,6 +208,7 @@ where
         err_tx: mpsc::Sender<UplinkErrorReport>,
         spawn_tx: &mut mpsc::Sender<Eff>,
         router: &mut R,
+        uri: RelativeUri,
     ) -> Option<UplinkHandle>
     where
         R: Router,
@@ -220,7 +230,7 @@ where
         };
         let uplink = Uplink::new(state_machine, ReceiverStream::new(rx).fuse(), updates);
 
-        let sink = if let Ok(sender) = router.resolve_sender(addr, None).await {
+        let sink = if let Ok(sender) = router.resolve_sender(addr, Some(Origin::Local(uri))).await {
             UplinkMessageSender::new(sender.sender, route.clone())
         } else {
             return None;
@@ -347,7 +357,12 @@ impl LaneUplinks for SpawnerUplinkFactory {
         );
 
         spawner
-            .run(context.router_handle(), context.spawner(), error_collector)
+            .run(
+                context.router_handle(),
+                context.spawner(),
+                context.uri().clone(),
+                error_collector,
+            )
             .boxed()
     }
 }

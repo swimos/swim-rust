@@ -12,14 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::request::Request;
 use crate::routing::error::{
-    ConnectionError, ResolutionError, RouterError, RoutingError, SendError,
+    ConnectionError, NoAgentAtRoute, ResolutionError, RouterError, RoutingError, SendError,
+    Unresolvable,
 };
-use crate::routing::remote::SchemeSocketAddr;
+use crate::routing::remote::{RawRoute, SchemeSocketAddr};
 use crate::routing::ws::WsMessage;
 use crate::warp::envelope::{Envelope, OutgoingLinkMessage};
 use futures::future::BoxFuture;
+use std::any::Any;
+use std::collections::HashSet;
 use std::fmt::{Display, Formatter};
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
 use url::Url;
@@ -34,6 +39,8 @@ pub mod ws;
 #[cfg(test)]
 mod tests;
 
+trait RoutingRequest {}
+
 /// A key into the server routing table specifying an endpoint to which [`Envelope`]s can be sent.
 /// This is deliberately non-descriptive to allow it to be [`Copy`] and so very cheap to use as a
 /// key.
@@ -43,6 +50,8 @@ enum Location {
     RemoteEndpoint(u32),
     /// Indicates that envelopes will be routed to another agent on this host.
     Local(u32),
+    /// Indicates that envelopes will be routed to the client.
+    Client,
 }
 
 /// An opaque routing address.
@@ -58,8 +67,13 @@ impl RoutingAddr {
         RoutingAddr(Location::Local(id))
     }
 
+    pub const fn client() -> Self {
+        RoutingAddr(Location::Client)
+    }
+
     pub fn is_local(&self) -> bool {
         matches!(self, RoutingAddr(Location::Local(_)))
+            || matches!(self, RoutingAddr(Location::Client))
     }
 
     pub fn is_remote(&self) -> bool {
@@ -72,6 +86,9 @@ impl Display for RoutingAddr {
         match self {
             RoutingAddr(Location::RemoteEndpoint(id)) => write!(f, "Remote({:X})", id),
             RoutingAddr(Location::Local(id)) => write!(f, "Local({:X})", id),
+            RoutingAddr(Location::Client) => {
+                write!(f, "Client")
+            }
         }
     }
 }
@@ -115,11 +132,11 @@ impl Route {
 /// Interface for interacting with the server [`Envelope`] router.
 pub trait Router: Send + Sync {
     /// Given a routing address, resolve the corresponding router entry
-   /// consisting of a sender that will push envelopes to the endpoint.
+    /// consisting of a sender that will push envelopes to the endpoint.
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,
-        origin: Option<SchemeSocketAddr>,
+        origin: Option<Origin>,
     ) -> BoxFuture<Result<Route, ResolutionError>>;
 
     /// Find and return the corresponding routing address of an endpoint for a given route.
@@ -127,7 +144,7 @@ pub trait Router: Send + Sync {
         &mut self,
         host: Option<Url>,
         route: RelativeUri,
-        origin: Option<SchemeSocketAddr>,
+        origin: Option<Origin>,
     ) -> BoxFuture<Result<RoutingAddr, RouterError>>;
 }
 
@@ -198,6 +215,53 @@ impl ConnectionDropped {
             ConnectionDropped::Failed(err) => err.is_transient(),
             ConnectionDropped::AgentFailed => true,
             _ => false,
+        }
+    }
+}
+
+type AgentRequest = Request<Result<Arc<dyn Any + Send + Sync>, NoAgentAtRoute>>;
+type EndpointRequest = Request<Result<RawRoute, Unresolvable>>;
+type RoutesRequest = Request<HashSet<RelativeUri>>;
+type ResolutionRequest = Request<Result<RoutingAddr, RouterError>>;
+
+/// Requests that can be serviced by the plane event loop.
+#[derive(Debug)]
+pub enum PlaneRoutingRequest {
+    /// Get a handle to an agent (starting it where necessary).
+    Agent {
+        name: RelativeUri,
+        request: AgentRequest,
+    },
+    /// Get channel to route messages to a specified routing address.
+    Endpoint {
+        id: RoutingAddr,
+        request: EndpointRequest,
+    },
+    /// Resolve the routing address for an agent.
+    Resolve {
+        host: Option<Url>,
+        name: RelativeUri,
+        request: ResolutionRequest,
+    },
+    /// Get all of the active routes for the plane.
+    Routes(RoutesRequest),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Origin {
+    Local(RelativeUri),
+    Remote(SchemeSocketAddr),
+}
+
+impl Display for Origin {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Origin::Local(relative_uri) => {
+                write!(f, "{}", relative_uri.to_string())
+            }
+            Origin::Remote(schema_socket_addr) => {
+                write!(f, "{}", schema_socket_addr.to_string())
+            }
         }
     }
 }

@@ -22,10 +22,11 @@ use either::Either;
 use futures::{select_biased, Stream, StreamExt};
 use pin_utils::pin_mut;
 use std::collections::{hash_map::Entry, HashMap};
+use std::fmt::Debug;
 use std::marker::PhantomData;
 use swim_common::form::Form;
 use swim_common::model::Value;
-use swim_common::routing::{RoutingAddr, Router, TaggedSender};
+use swim_common::routing::{Router, RoutingAddr, TaggedSender};
 use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc;
 use tracing::{event, Level};
@@ -69,7 +70,7 @@ where
 impl<S, F> StatelessUplinks<S>
 where
     S: Stream<Item = AddressedUplinkMessage<F>>,
-    F: Send + Sync + Form + 'static,
+    F: Send + Sync + Form + Debug + 'static,
 {
     pub async fn run<R>(
         self,
@@ -182,6 +183,7 @@ where
     }
 }
 
+#[derive(Debug)]
 struct RespMsg<R>(R);
 
 impl<R: Form> From<RespMsg<R>> for Value {
@@ -204,7 +206,7 @@ struct RouterStopping;
 impl<Msg, R> Uplinks<Msg, R>
 where
     R: Router,
-    Msg: Form + Send + 'static,
+    Msg: Form + Send + Debug + 'static,
 {
     fn new(router: R, err_tx: mpsc::Sender<UplinkErrorReport>, route: RelativePath) -> Self {
         Uplinks {

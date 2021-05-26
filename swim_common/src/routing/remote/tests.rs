@@ -16,9 +16,10 @@ use crate::model::Value;
 use crate::request::Request;
 use crate::routing::error::{ConnectionError, IoError, ResolutionError, ResolutionErrorKind};
 use crate::routing::remote::state::{DeferredResult, Event, RemoteTasksState};
-use crate::routing::remote::table::{SchemeHostPort, RoutingTable};
+use crate::routing::remote::table::{RoutingTable, SchemeHostPort};
 use crate::routing::remote::{
-    ConnectionDropped, RawRoute, ResolutionRequest, RoutingRequest, SocketAddrIt, Unresolvable,
+    ConnectionDropped, RawRoute, RemoteRoutingRequest, ResolutionRequest, SocketAddrIt,
+    Unresolvable,
 };
 use crate::routing::{RoutingAddr, TaggedEnvelope};
 use crate::warp::envelope::Envelope;
@@ -213,7 +214,7 @@ async fn transition_request_endpoint_in_table() {
     state.table.insert(addr, None, sa, route_tx);
     let mut result = Ok(());
 
-    let event = Event::Request(RoutingRequest::Endpoint { addr, request });
+    let event = Event::Request(RemoteRoutingRequest::Endpoint { addr, request });
     super::update_state(&mut state, &mut result, event);
 
     state.check(vec![]);
@@ -242,7 +243,7 @@ async fn transition_request_endpoint_not_in_table() {
 
     let mut result = Ok(());
 
-    let event = Event::Request(RoutingRequest::Endpoint { addr, request });
+    let event = Event::Request(RemoteRoutingRequest::Endpoint { addr, request });
     super::update_state(&mut state, &mut result, event);
 
     state.check(vec![]);
@@ -271,7 +272,7 @@ async fn transition_request_resolve_in_table() {
     );
     let mut result = Ok(());
 
-    let event = Event::Request(RoutingRequest::ResolveUrl { host, request });
+    let event = Event::Request(RemoteRoutingRequest::ResolveUrl { host, request });
     super::update_state(&mut state, &mut result, event);
 
     state.check(vec![]);
@@ -292,7 +293,7 @@ async fn transition_request_resolve_not_in_table() {
 
     let mut result = Ok(());
 
-    let event = Event::Request(RoutingRequest::ResolveUrl { host, request });
+    let event = Event::Request(RemoteRoutingRequest::ResolveUrl { host, request });
     super::update_state(&mut state, &mut result, event);
 
     state.check(vec![StateMutation::DeferDns(SchemeHostPort::new(

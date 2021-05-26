@@ -59,17 +59,17 @@ use utilities::uri::RelativeUri;
 mod stub_router {
     use futures::future::BoxFuture;
     use futures::FutureExt;
+    use std::net::SocketAddr;
     use std::sync::Arc;
     use swim_common::routing::error::ResolutionError;
     use swim_common::routing::error::RouterError;
     use swim_common::routing::{
-        ConnectionDropped, Route, RoutingAddr, Router, TaggedEnvelope, TaggedSender,
+        ConnectionDropped, Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender,
     };
     use tokio::sync::mpsc;
     use url::Url;
     use utilities::sync::promise;
     use utilities::uri::RelativeUri;
-    use std::net::SocketAddr;
 
     #[derive(Clone)]
     pub struct SingleChannelRouter {

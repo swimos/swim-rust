@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::plane::PlaneRequest;
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use swim_common::request::Request;
 use swim_common::routing::error::ResolutionError;
 use swim_common::routing::error::RouterError;
-use swim_common::routing::remote::{RawRoute, SchemeSocketAddr};
+use swim_common::routing::remote::RawRoute;
+use swim_common::routing::{Origin, PlaneRoutingRequest};
 use swim_common::routing::{Route, Router, RouterFactory, RoutingAddr, TaggedSender};
 use tokio::sync::{mpsc, oneshot};
 use url::Url;
@@ -30,14 +30,14 @@ mod tests;
 /// Creates [`PlaneRouter`] instances by cloning a channel back to the plane.
 #[derive(Debug)]
 pub struct PlaneRouterFactory<DelegateFac: RouterFactory> {
-    request_sender: mpsc::Sender<PlaneRequest>,
+    request_sender: mpsc::Sender<PlaneRoutingRequest>,
     delegate_fac: DelegateFac,
 }
 
 impl<DelegateFac: RouterFactory> PlaneRouterFactory<DelegateFac> {
     /// Create a factory from a channel back to the owning plane.
     pub(in crate) fn new(
-        request_sender: mpsc::Sender<PlaneRequest>,
+        request_sender: mpsc::Sender<PlaneRoutingRequest>,
         delegate_fac: DelegateFac,
     ) -> Self {
         PlaneRouterFactory {
@@ -64,14 +64,14 @@ impl<DelegateFac: RouterFactory> RouterFactory for PlaneRouterFactory<DelegateFa
 pub struct PlaneRouter<Delegate> {
     tag: RoutingAddr,
     delegate_router: Delegate,
-    request_sender: mpsc::Sender<PlaneRequest>,
+    request_sender: mpsc::Sender<PlaneRoutingRequest>,
 }
 
 impl<Delegate> PlaneRouter<Delegate> {
     pub(in crate) fn new(
         tag: RoutingAddr,
         delegate_router: Delegate,
-        request_sender: mpsc::Sender<PlaneRequest>,
+        request_sender: mpsc::Sender<PlaneRoutingRequest>,
     ) -> Self {
         PlaneRouter {
             tag,
@@ -85,7 +85,7 @@ impl<Delegate: Router> Router for PlaneRouter<Delegate> {
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,
-        _origin: Option<SchemeSocketAddr>,
+        origin: Option<Origin>,
     ) -> BoxFuture<Result<Route, ResolutionError>> {
         async move {
             let PlaneRouter {
@@ -95,8 +95,10 @@ impl<Delegate: Router> Router for PlaneRouter<Delegate> {
             } = self;
             let (tx, rx) = oneshot::channel();
             if addr.is_local() {
-                if request_sender
-                    .send(PlaneRequest::Endpoint {
+                if origin.is_some() {
+                    delegate_router.resolve_sender(addr, origin).await
+                } else if request_sender
+                    .send(PlaneRoutingRequest::Endpoint {
                         id: addr,
                         request: Request::new(tx),
                     })
@@ -124,13 +126,13 @@ impl<Delegate: Router> Router for PlaneRouter<Delegate> {
         &mut self,
         host: Option<Url>,
         route: RelativeUri,
-        _origin: Option<SchemeSocketAddr>,
+        _origin: Option<Origin>,
     ) -> BoxFuture<Result<RoutingAddr, RouterError>> {
         async move {
             let PlaneRouter { request_sender, .. } = self;
             let (tx, rx) = oneshot::channel();
             if request_sender
-                .send(PlaneRequest::Resolve {
+                .send(PlaneRoutingRequest::Resolve {
                     host,
                     name: route,
                     request: Request::new(tx),

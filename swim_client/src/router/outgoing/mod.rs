@@ -21,7 +21,6 @@ use tracing::{error, info, span, trace, Level};
 
 use crate::router::retry::new_request;
 use swim_common::routing::error::RoutingError;
-use swim_common::routing::{RoutingAddr, TaggedEnvelope};
 use tokio_stream::wrappers::ReceiverStream;
 use utilities::future::retryable::RetryableFuture;
 

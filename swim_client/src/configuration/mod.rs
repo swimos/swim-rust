@@ -31,7 +31,7 @@ pub mod downlink {
     use swim_common::model::parser::ParseFailure;
     use swim_common::model::{Attr, Item, Value};
     use swim_common::routing::remote::config::ConnectionConfig;
-    use swim_common::warp::path::AbsolutePath;
+    use swim_common::warp::path::{AbsolutePath, Addressable};
     use tokio::time::Duration;
     use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
     use url::Url;
@@ -216,8 +216,10 @@ pub mod downlink {
 
     /// Configuration for the creation and management of downlinks for a Warp client.
     pub trait Config: Send + Sync {
+        type PathType: Addressable;
+
         /// Get the downlink configuration for a downlink a specific path.
-        fn config_for(&self, path: &AbsolutePath) -> DownlinkParams;
+        fn config_for(&self, path: &Self::PathType) -> DownlinkParams;
 
         /// Get the global parameters for any downlink.
         fn client_params(&self) -> ClientParams;
@@ -513,16 +515,16 @@ pub mod downlink {
     /// Basic [`Config`] implementation which allows for configuration to be specified by absolute
     /// path or host and provides a default fallback.
     #[derive(Clone, Debug)]
-    pub struct ConfigHierarchy {
+    pub struct ConfigHierarchy<Path: Addressable> {
         client_params: ClientParams,
         default: DownlinkParams,
         by_host: HashMap<Url, DownlinkParams>,
-        by_lane: HashMap<AbsolutePath, DownlinkParams>,
+        by_lane: HashMap<Path, DownlinkParams>,
     }
 
-    impl ConfigHierarchy {
+    impl<Path: Addressable> ConfigHierarchy<Path> {
         /// Create a new configuration store with just a default.
-        pub fn new(client_params: ClientParams, default: DownlinkParams) -> ConfigHierarchy {
+        pub fn new(client_params: ClientParams, default: DownlinkParams) -> ConfigHierarchy<Path> {
             ConfigHierarchy {
                 client_params,
                 default,
@@ -538,7 +540,7 @@ pub mod downlink {
 
         /// Add specific configuration for an absolute path (this will override host level
         /// configuration).
-        pub fn for_lane(&mut self, lane: &AbsolutePath, params: DownlinkParams) {
+        pub fn for_lane(&mut self, lane: &Path, params: DownlinkParams) {
             self.by_lane.insert(lane.clone(), params);
         }
 
@@ -827,8 +829,10 @@ pub mod downlink {
         }
     }
 
-    impl Config for ConfigHierarchy {
-        fn config_for(&self, path: &AbsolutePath) -> DownlinkParams {
+    impl<Path: Addressable + Sync> Config for ConfigHierarchy<Path> {
+        type PathType = Path;
+
+        fn config_for(&self, path: &Self::PathType) -> DownlinkParams {
             let ConfigHierarchy {
                 default,
                 by_host,
@@ -838,13 +842,14 @@ pub mod downlink {
             match by_lane.get(path) {
                 Some(params) => *params,
                 _ => {
-                    if path.host.has_host() {
-                        match by_host.get(&path.host.clone()) {
+                    let maybe_host = path.host();
+
+                    match maybe_host {
+                        Some(host) => match by_host.get(&host) {
                             Some(params) => *params,
                             _ => *default,
-                        }
-                    } else {
-                        *default
+                        },
+                        None => *default,
                     }
                 }
             }
@@ -855,7 +860,7 @@ pub mod downlink {
         }
     }
 
-    impl Default for ConfigHierarchy {
+    impl<Path: Addressable> Default for ConfigHierarchy<Path> {
         fn default() -> Self {
             let client_params = Default::default();
             let default_params = Default::default();
@@ -864,8 +869,10 @@ pub mod downlink {
         }
     }
 
-    impl<'a> Config for Box<dyn Config + 'a> {
-        fn config_for(&self, path: &AbsolutePath) -> DownlinkParams {
+    impl<'a, Path: Addressable> Config for Box<dyn Config<PathType = Path> + 'a> {
+        type PathType = Path;
+
+        fn config_for(&self, path: &Self::PathType) -> DownlinkParams {
             (**self).config_for(path)
         }
 

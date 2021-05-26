@@ -657,7 +657,7 @@ pub async fn run_auto_lane_io<S, Item>(
 ) -> Result<Vec<UplinkErrorReport>, LaneIoError>
 where
     S: Stream<Item = Item> + Send + Sync + 'static,
-    Item: Send + Sync + Form + 'static,
+    Item: Send + Sync + Form + Debug + 'static,
 {
     let span = span!(Level::INFO, LANE_IO_TASK, ?route);
     let _enter = span.enter();
@@ -707,7 +707,7 @@ pub async fn run_supply_lane_io<S, Item>(
 ) -> Result<Vec<UplinkErrorReport>, LaneIoError>
 where
     S: Stream<Item = Item> + Send + Sync + 'static,
-    Item: Send + Sync + Form + 'static,
+    Item: Send + Sync + Form + Debug + 'static,
 {
     run_auto_lane_io(
         envelopes,
@@ -891,7 +891,7 @@ pub async fn run_demand_lane_io<Event>(
     response_rx: mpsc::Receiver<Event>,
 ) -> Result<Vec<UplinkErrorReport>, LaneIoError>
 where
-    Event: Send + Sync + Form + 'static,
+    Event: Send + Sync + Form + Debug + 'static,
 {
     run_auto_lane_io(
         envelopes,

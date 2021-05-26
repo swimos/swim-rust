@@ -17,8 +17,8 @@ use crate::routing::error::{ConnectionError, IoError, ResolutionError};
 use crate::routing::error::{RouterError, Unresolvable};
 use crate::routing::remote::router::RemoteRouter;
 use crate::routing::remote::test_fixture::LocalRoutes;
-use crate::routing::remote::{RawRoute, RoutingRequest};
-use crate::routing::{Route, RoutingAddr, Router, TaggedEnvelope};
+use crate::routing::remote::{RawRoute, RemoteRoutingRequest};
+use crate::routing::{Route, Router, RoutingAddr, TaggedEnvelope};
 use crate::warp::envelope::Envelope;
 use futures::future::join;
 use futures::io::ErrorKind;
@@ -32,7 +32,7 @@ use utilities::uri::RelativeUri;
 const ADDR: RoutingAddr = RoutingAddr::remote(4);
 
 async fn fake_resolution(
-    rx: mpsc::Receiver<RoutingRequest>,
+    rx: mpsc::Receiver<RemoteRoutingRequest>,
     url: Url,
     sender: mpsc::Sender<TaggedEnvelope>,
     stop_trigger: trigger::Receiver,
@@ -44,7 +44,7 @@ async fn fake_resolution(
 
     while let Some(request) = rx.next().await {
         match request {
-            RoutingRequest::Endpoint { addr, request } => {
+            RemoteRoutingRequest::Endpoint { addr, request } => {
                 if resolved && addr == ADDR {
                     assert!(request
                         .send_ok(RawRoute::new(sender.clone(), drop_rx.clone()))
@@ -53,7 +53,7 @@ async fn fake_resolution(
                     assert!(request.send_err(Unresolvable(addr)).is_ok());
                 }
             }
-            RoutingRequest::ResolveUrl { host, request } => {
+            RemoteRoutingRequest::ResolveUrl { host, request } => {
                 if host == url {
                     resolved = true;
                     assert!(request.send_ok(ADDR).is_ok());

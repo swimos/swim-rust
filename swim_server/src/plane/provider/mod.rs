@@ -23,9 +23,9 @@ use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
 use std::sync::Arc;
-use swim_client::downlink::Downlinks;
 use swim_client::interface::SwimClient;
 use swim_common::routing::{Router, TaggedEnvelope};
+use swim_common::warp::path::Path;
 use swim_runtime::time::clock::Clock;
 use utilities::uri::RelativeUri;
 
@@ -66,11 +66,9 @@ where
 
     pub fn run<Clk, Envelopes, R>(
         &self,
-        uri: RelativeUri,
-        parameters: HashMap<String, String>,
-        execution_config: AgentExecutionConfig,
+        agent_parameters: AgentParameters<Config>,
         clock: Clk,
-        client: SwimClient,
+        client: SwimClient<Path>,
         incoming_envelopes: Envelopes,
         router: R,
     ) -> (Arc<dyn Any + Send + Sync>, BoxFuture<'static, AgentResult>)
@@ -79,20 +77,13 @@ where
         Envelopes: Stream<Item = TaggedEnvelope> + Send + 'static,
         R: Router + Clone + 'static,
     {
-        let AgentProvider {
-            configuration,
-            lifecycle,
-            ..
-        } = self;
-
-        let parameters =
-            AgentParameters::new(configuration.clone(), execution_config, uri, parameters);
+        let AgentProvider { lifecycle, .. } = self;
 
         let (agent, task) = crate::agent::run_agent(
             lifecycle.clone(),
             clock,
             client,
-            parameters,
+            agent_parameters,
             incoming_envelopes,
             router,
         );
@@ -110,24 +101,24 @@ where
     Config: Send + Sync + Clone + Debug + 'static,
     Lifecycle: AgentLifecycle<Agent> + Send + Sync + Clone + Debug + 'static,
 {
+    #[allow(clippy::too_many_arguments)]
     fn run_agent(
         &self,
         uri: RelativeUri,
         parameters: HashMap<String, String>,
         execution_config: AgentExecutionConfig,
         clock: Clk,
-        client: SwimClient,
+        client: SwimClient<Path>,
         incoming_envelopes: Envelopes,
         router: R,
     ) -> (Arc<dyn Any + Send + Sync>, BoxFuture<'static, AgentResult>) {
-        self.run(
+        let parameters = AgentParameters::new(
+            self.configuration.clone(),
+            execution_config,
             uri,
             parameters,
-            execution_config,
-            clock,
-            client,
-            incoming_envelopes,
-            router,
-        )
+        );
+
+        self.run(parameters, clock, client, incoming_envelopes, router)
     }
 }

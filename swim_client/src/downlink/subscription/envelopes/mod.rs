@@ -17,77 +17,71 @@ use crate::downlink::model::value::SharedValue;
 use crate::downlink::Command;
 use swim_common::model::Value;
 use swim_common::warp::envelope::{OutgoingHeader, OutgoingLinkMessage};
-use swim_common::warp::path::AbsolutePath;
+use swim_common::warp::path::Addressable;
 
 #[cfg(test)]
 mod tests;
 
 /// Convert a downlink [`Command`] into a Warp [`OutgoingLinkMessage`].
-fn envelope_for<T, F>(
+fn envelope_for<T, F, Path: Addressable>(
     to_body: F,
-    path: &AbsolutePath,
+    path: &Path,
     command: Command<T>,
-) -> (url::Url, OutgoingLinkMessage)
+) -> OutgoingLinkMessage
 where
     F: Fn(T) -> Value,
 {
-    let (host, path) = path.clone().split();
-    (
-        host,
-        match command {
-            Command::Sync => OutgoingLinkMessage {
-                header: OutgoingHeader::Sync(Default::default()),
-                path,
-                body: None,
-            },
-            Command::Link => OutgoingLinkMessage {
-                header: OutgoingHeader::Link(Default::default()),
-                path,
-                body: None,
-            },
-            Command::Action(v) => OutgoingLinkMessage {
-                header: OutgoingHeader::Command,
-                path,
-                body: Some(to_body(v)),
-            },
-            Command::Unlink => OutgoingLinkMessage {
-                header: OutgoingHeader::Unlink,
-                path,
-                body: None,
-            },
+    let path = path.relative_path();
+    match command {
+        Command::Sync => OutgoingLinkMessage {
+            header: OutgoingHeader::Sync(Default::default()),
+            path,
+            body: None,
         },
-    )
+        Command::Link => OutgoingLinkMessage {
+            header: OutgoingHeader::Link(Default::default()),
+            path,
+            body: None,
+        },
+        Command::Action(v) => OutgoingLinkMessage {
+            header: OutgoingHeader::Command,
+            path,
+            body: Some(to_body(v)),
+        },
+        Command::Unlink => OutgoingLinkMessage {
+            header: OutgoingHeader::Unlink,
+            path,
+            body: None,
+        },
+    }
 }
 
 /// Convert a downlink [`Command`], from a value downlink, into a Warp [`OutgoingLinkMessage`].
-pub fn value_envelope(
-    path: &AbsolutePath,
+pub fn value_envelope<Path: Addressable>(
+    path: &Path,
     command: Command<SharedValue>,
-) -> (url::Url, OutgoingLinkMessage) {
+) -> OutgoingLinkMessage {
     envelope_for(value::envelope_body, path, command)
 }
 
 /// Convert a downlink [`Command`], from a map downlink, into a Warp [`OutgoingLinkMessage`].
-pub fn map_envelope(
-    path: &AbsolutePath,
+pub fn map_envelope<Path: Addressable>(
+    path: &Path,
     command: Command<UntypedMapModification<Value>>,
-) -> (url::Url, OutgoingLinkMessage) {
+) -> OutgoingLinkMessage {
     envelope_for(map::envelope_body, path, command)
 }
 
 /// Convert a downlink [`Command`], from a command downkink, into a Warp [`OutgoingLinkMessage`].
-pub fn command_envelope(
-    path: &AbsolutePath,
+pub fn command_envelope<Path: Addressable>(
+    path: &Path,
     command: Command<Value>,
-) -> (url::Url, OutgoingLinkMessage) {
+) -> OutgoingLinkMessage {
     envelope_for(|v| v, path, command)
 }
 
 /// Convert a downlink [`Command`], from a event downlink, into a Warp [`OutgoingLinkMessage`].
-pub fn dummy_envelope(
-    path: &AbsolutePath,
-    command: Command<()>,
-) -> (url::Url, OutgoingLinkMessage) {
+pub fn dummy_envelope<Path: Addressable>(path: &Path, command: Command<()>) -> OutgoingLinkMessage {
     envelope_for(|_| Value::Extant, path, command)
 }
 

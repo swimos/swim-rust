@@ -63,9 +63,9 @@ use std::future::Future;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
-use swim_common::form::{Form, ValidatedForm};
+use swim_common::form::Form;
 use swim_common::routing::{Router, TaggedClientEnvelope, TaggedEnvelope};
-use swim_common::warp::path::{AbsolutePath, RelativePath};
+use swim_common::warp::path::{Path, RelativePath};
 use swim_runtime::time::clock::Clock;
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::{mpsc, oneshot};
@@ -81,7 +81,6 @@ use crate::meta::open_meta_lanes;
 #[doc(hidden)]
 #[allow(unused_imports)]
 pub use agent_derive::*;
-use swim_client::downlink::Downlinks;
 use swim_client::interface::SwimClient;
 use tokio_stream::wrappers::ReceiverStream;
 
@@ -179,7 +178,7 @@ impl<Config> AgentParameters<Config> {
 pub fn run_agent<Config, Clk, Agent, L, R>(
     lifecycle: L,
     clock: Clk,
-    client: SwimClient,
+    client: SwimClient<Path>,
     parameters: AgentParameters<Config>,
     incoming_envelopes: impl Stream<Item = TaggedEnvelope> + Send + 'static,
     router: R,
@@ -234,12 +233,14 @@ where
         let (tx, rx) = mpsc::channel(execution_config.scheduler_buffer.get());
         let routing_context = RoutingContext::new(uri.clone(), router, parameters);
         let schedule_context = SchedulerContext::new(tx, clock, stop_trigger.clone());
+
         let context = ContextImpl::new(
             agent_ref,
             routing_context,
             schedule_context,
             meta_context,
             client,
+            uri.clone(),
         );
 
         lifecycle
@@ -314,8 +315,12 @@ pub type EffStream = BoxStream<'static, ()>;
 /// agent and lane life-cycle events and allows events to be scheduled within the task that
 /// is running the agent.
 pub trait AgentContext<Agent> {
+    type LocalRouter: Router + Clone + 'static;
+
     /// Get a swim client capable of opening downlinks to other servers.
-    fn client(&self) -> SwimClient;
+    fn client(&self) -> SwimClient<Path>;
+
+    fn local_router(&self) -> Self::LocalRouter;
 
     /// Schedule events to be executed on a provided schedule. The events will be executed within
     /// the task that runs the agent and so should not block.
@@ -1285,7 +1290,7 @@ where
 
 impl<Event, Context> LaneIo<Context> for DemandLaneIo<Event>
 where
-    Event: Form + Send + Sync + 'static,
+    Event: Form + Send + Sync + Debug + 'static,
     Context: AgentExecutionContext + Sized + Send + Sync + 'static,
 {
     fn attach(

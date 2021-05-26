@@ -44,7 +44,7 @@ use swim_common::routing::error::RouterError;
 use swim_common::routing::error::RoutingError;
 use swim_common::routing::error::SendError;
 use swim_common::routing::{
-    ConnectionDropped, Route, RoutingAddr, Router, TaggedClientEnvelope, TaggedEnvelope,
+    ConnectionDropped, Route, Router, RoutingAddr, TaggedClientEnvelope, TaggedEnvelope,
     TaggedSender,
 };
 use swim_common::sink::item::ItemSink;

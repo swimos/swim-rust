@@ -13,9 +13,9 @@
 // limitations under the License.
 
 use crate::request::Request;
-use crate::routing::remote::{RawRoute, RoutingRequest, SchemeSocketAddr};
-use crate::routing::ResolutionError;
+use crate::routing::remote::{RawRoute, RemoteRoutingRequest};
 use crate::routing::RouterError;
+use crate::routing::{Origin, ResolutionError};
 use crate::routing::{Route, Router, RoutingAddr, TaggedSender};
 use futures::future::BoxFuture;
 use futures::FutureExt;
@@ -32,14 +32,14 @@ mod tests;
 pub struct RemoteRouter<DelegateRouter> {
     tag: RoutingAddr,
     delegate_router: DelegateRouter,
-    request_tx: mpsc::Sender<RoutingRequest>,
+    request_tx: mpsc::Sender<RemoteRoutingRequest>,
 }
 
 impl<DelegateRouter> RemoteRouter<DelegateRouter> {
     pub fn new(
         tag: RoutingAddr,
         delegate_router: DelegateRouter,
-        request_tx: mpsc::Sender<RoutingRequest>,
+        request_tx: mpsc::Sender<RemoteRoutingRequest>,
     ) -> Self {
         RemoteRouter {
             tag,
@@ -53,7 +53,7 @@ impl<DelegateRouter: Router> Router for RemoteRouter<DelegateRouter> {
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,
-        origin: Option<SchemeSocketAddr>,
+        origin: Option<Origin>,
     ) -> BoxFuture<'_, Result<Route, ResolutionError>> {
         async move {
             let RemoteRouter {
@@ -64,7 +64,7 @@ impl<DelegateRouter: Router> Router for RemoteRouter<DelegateRouter> {
             if addr.is_remote() {
                 let (tx, rx) = oneshot::channel();
                 let request = Request::new(tx);
-                let routing_req = RoutingRequest::Endpoint { addr, request };
+                let routing_req = RemoteRoutingRequest::Endpoint { addr, request };
                 if request_tx.send(routing_req).await.is_err() {
                     Err(ResolutionError::router_dropped())
                 } else {
@@ -87,7 +87,7 @@ impl<DelegateRouter: Router> Router for RemoteRouter<DelegateRouter> {
         &mut self,
         host: Option<Url>,
         route: RelativeUri,
-        origin: Option<SchemeSocketAddr>,
+        origin: Option<Origin>,
     ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
         async move {
             let RemoteRouter {
@@ -98,7 +98,7 @@ impl<DelegateRouter: Router> Router for RemoteRouter<DelegateRouter> {
             if let Some(url) = host {
                 let (tx, rx) = oneshot::channel();
                 let request = Request::new(tx);
-                let routing_req = RoutingRequest::ResolveUrl { host: url, request };
+                let routing_req = RemoteRoutingRequest::ResolveUrl { host: url, request };
                 if request_tx.send(routing_req).await.is_err() {
                     Err(RouterError::RouterDropped)
                 } else {

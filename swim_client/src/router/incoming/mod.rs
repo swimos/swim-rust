@@ -19,7 +19,6 @@ use futures::future::ready;
 use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
 use swim_common::routing::error::RoutingError;
-use swim_common::routing::TaggedEnvelope;
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc;

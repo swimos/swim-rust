@@ -12,6 +12,34 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::error::Error;
+use std::fmt::{Display, Formatter};
+use std::io::ErrorKind;
+use std::time::Duration;
+
+use futures::channel::mpsc::SendError as FutSendError;
+use tokio::sync::mpsc::error::SendError as MpscSendError;
+
+pub use capacity::*;
+pub use closed::*;
+pub use encoding::*;
+pub use io::*;
+pub use protocol::*;
+pub use resolution::*;
+pub use send::*;
+#[cfg(feature = "tls")]
+pub use tls::*;
+use utilities::errors::Recoverable;
+use utilities::sync::circular_buffer;
+use utilities::uri::RelativeUri;
+#[cfg(feature = "tungstenite")]
+use {std::ops::Deref, tokio_tungstenite::tungstenite};
+
+use crate::request::request_future::RequestError;
+use crate::routing::RoutingAddr;
+
+pub use self::http::*;
+
 mod capacity;
 mod closed;
 mod encoding;
@@ -22,30 +50,6 @@ mod resolution;
 mod send;
 #[cfg(feature = "tls")]
 mod tls;
-
-pub use self::http::*;
-use crate::request::request_future::RequestError;
-use crate::routing::RoutingAddr;
-pub use capacity::*;
-pub use closed::*;
-pub use encoding::*;
-use futures::channel::mpsc::SendError as FutSendError;
-pub use io::*;
-pub use protocol::*;
-pub use resolution::*;
-pub use send::*;
-use std::error::Error;
-use std::fmt::{Display, Formatter};
-use std::io::ErrorKind;
-use std::time::Duration;
-#[cfg(feature = "tls")]
-pub use tls::*;
-use tokio::sync::mpsc::error::SendError as MpscSendError;
-use utilities::errors::Recoverable;
-use utilities::sync::circular_buffer;
-use utilities::uri::RelativeUri;
-#[cfg(feature = "tungstenite")]
-use {std::ops::Deref, tokio_tungstenite::tungstenite};
 
 #[cfg(test)]
 mod tests;
@@ -315,3 +319,16 @@ impl Display for Unresolvable {
 }
 
 impl Error for Unresolvable {}
+
+/// Error indicating that request to route to a plane-local agent failed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NoAgentAtRoute(pub RelativeUri);
+
+impl Display for NoAgentAtRoute {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let NoAgentAtRoute(route) = self;
+        write!(f, "No agent at route: '{}'", route)
+    }
+}
+
+impl Error for NoAgentAtRoute {}

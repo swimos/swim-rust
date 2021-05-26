@@ -19,7 +19,7 @@ use crate::routing::remote::table::{RoutingTable, SchemeHostPort};
 use crate::routing::remote::task::TaskFactory;
 use crate::routing::remote::{ExternalConnections, Listener, SchemeSocketAddr};
 use crate::routing::remote::{
-    RawRoute, RemoteConnectionChannels, ResolutionRequest, RoutingRequest, SchemeSocketAddrIt,
+    RawRoute, RemoteConnectionChannels, RemoteRoutingRequest, ResolutionRequest, SchemeSocketAddrIt,
 };
 use crate::routing::ws::WsConnections;
 use crate::routing::ConnectionError;
@@ -114,7 +114,7 @@ where
     spawner: Sp,
     listener: Option<<External::ListenerType as Listener>::AcceptStream>,
     external: External,
-    requests: TakeUntil<ReceiverStream<RoutingRequest>, trigger::Receiver>,
+    requests: TakeUntil<ReceiverStream<RemoteRoutingRequest>, trigger::Receiver>,
     table: RoutingTable,
     pending: PendingRequests,
     addresses: RemoteRoutingAddresses,
@@ -458,7 +458,7 @@ pub enum Event<Socket, Snk> {
     /// An incoming connection has been opened.
     Incoming(io::Result<(Socket, SchemeSocketAddr)>),
     /// A routing request has been received.
-    Request(RoutingRequest),
+    Request(RemoteRoutingRequest),
     /// A task that the manager deferred has completed.
     Deferred(DeferredResult<Snk>),
     /// A connection task has terminated.

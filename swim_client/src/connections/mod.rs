@@ -30,6 +30,7 @@ use swim_common::routing::error::{
 };
 use swim_common::routing::{RoutingAddr, TaggedEnvelope};
 use swim_common::warp::envelope::Envelope;
+use swim_common::warp::path::Addressable;
 use swim_runtime::task::*;
 use swim_runtime::time::instant::Instant;
 use swim_runtime::time::interval::interval;
@@ -52,8 +53,8 @@ pub(crate) struct ConnectionPoolMessage {
     message: String,
 }
 
-pub struct ConnectionRequest {
-    host_url: url::Url,
+pub struct ConnectionRequest<Path: Addressable> {
+    target: Path,
     tx: oneshot::Sender<Result<ConnectionChannel, ConnectionError>>,
     recreate_connection: bool,
 }
@@ -61,9 +62,11 @@ pub struct ConnectionRequest {
 /// Connection pool is responsible for managing the opening and closing of connections
 /// to remote hosts.
 pub trait ConnectionPool: Clone + Send + 'static {
+    type PathType: Addressable;
+
     fn request_connection(
         &mut self,
-        host_url: url::Url,
+        target: Self::PathType,
         recreate: bool,
     ) -> BoxFuture<Result<Result<Connection, ConnectionError>, RequestError>>;
 
@@ -76,13 +79,13 @@ type ConnectionPoolSharedHandle = Arc<Mutex<Option<TaskHandle<Result<(), Connect
 /// them. It is possible to request a connection to be recreated or to return a cached connection
 /// for a given host if it already exists.
 #[derive(Clone)]
-pub struct SwimConnPool {
-    connection_request_tx: mpsc::Sender<ConnectionRequest>,
+pub struct SwimConnPool<Path: Addressable> {
+    connection_request_tx: mpsc::Sender<ConnectionRequest<Path>>,
     connection_requests_handle: ConnectionPoolSharedHandle,
     stop_request_tx: mpsc::Sender<()>,
 }
 
-impl SwimConnPool {
+impl<Path: Addressable> SwimConnPool<Path> {
     /// Creates a new connection pool for managing connections to remote hosts.
     ///
     /// # Arguments
@@ -92,8 +95,8 @@ impl SwimConnPool {
     #[instrument(skip(config))]
     pub fn new(
         config: ConnectionPoolParams,
-        client_conn_request_tx: mpsc::Sender<ClientRequest>,
-    ) -> SwimConnPool {
+        client_conn_request_tx: mpsc::Sender<ClientRequest<Path>>,
+    ) -> SwimConnPool<Path> {
         let (connection_request_tx, connection_request_rx) =
             mpsc::channel(config.buffer_size().get());
         let (stop_request_tx, stop_request_rx) = mpsc::channel(config.buffer_size().get());
@@ -117,7 +120,9 @@ impl SwimConnPool {
 
 pub type Connection = (ConnectionSender, Option<ConnectionReceiver>);
 
-impl ConnectionPool for SwimConnPool {
+impl<Path: Addressable> ConnectionPool for SwimConnPool<Path> {
+    type PathType = Path;
+
     /// Sends and asynchronous request for a connection to a specific host.
     ///
     /// # Arguments
@@ -133,7 +138,7 @@ impl ConnectionPool for SwimConnPool {
     /// time a connection is opened or when it is recreated.
     fn request_connection(
         &mut self,
-        host_url: url::Url,
+        target: Self::PathType,
         recreate_connection: bool,
     ) -> BoxFuture<Result<Result<Connection, ConnectionError>, RequestError>> {
         async move {
@@ -141,7 +146,7 @@ impl ConnectionPool for SwimConnPool {
 
             self.connection_request_tx
                 .send(ConnectionRequest {
-                    host_url,
+                    target,
                     tx,
                     recreate_connection,
                 })
@@ -171,23 +176,23 @@ impl ConnectionPool for SwimConnPool {
     }
 }
 
-enum RequestType {
-    NewConnection(ConnectionRequest),
+enum RequestType<Path: Addressable> {
+    NewConnection(ConnectionRequest<Path>),
     Prune,
     Close,
 }
 
-struct PoolTask {
-    connection_request_rx: mpsc::Receiver<ConnectionRequest>,
-    client_conn_request_tx: mpsc::Sender<ClientRequest>,
+struct PoolTask<Path: Addressable> {
+    connection_request_rx: mpsc::Receiver<ConnectionRequest<Path>>,
+    client_conn_request_tx: mpsc::Sender<ClientRequest<Path>>,
     buffer_size: NonZeroUsize,
     stop_request_rx: mpsc::Receiver<()>,
 }
 
-impl PoolTask {
+impl<Path: Addressable> PoolTask<Path> {
     fn new(
-        connection_request_rx: mpsc::Receiver<ConnectionRequest>,
-        client_conn_request_tx: mpsc::Sender<ClientRequest>,
+        connection_request_rx: mpsc::Receiver<ConnectionRequest<Path>>,
+        client_conn_request_tx: mpsc::Sender<ClientRequest<Path>>,
         buffer_size: NonZeroUsize,
         stop_request_rx: mpsc::Receiver<()>,
     ) -> Self {
@@ -215,7 +220,7 @@ impl PoolTask {
         let conn_timeout = config.idle_timeout();
 
         loop {
-            let request: RequestType = select! {
+            let request: RequestType<Path> = select! {
                 _ = prune_timer.next() => Some(RequestType::Prune),
                 req = fused_requests.next() => req,
             }
@@ -224,14 +229,14 @@ impl PoolTask {
             match request {
                 RequestType::NewConnection(conn_req) => {
                     let ConnectionRequest {
-                        host_url,
+                        target,
                         tx: request_tx,
                         recreate_connection,
                     } = conn_req;
 
-                    let host = host_url.as_str().to_owned();
+                    let path = target.to_string();
 
-                    let recreate = match (recreate_connection, connections.get(&host)) {
+                    let recreate = match (recreate_connection, connections.get(&path)) {
                         // Connection has stopped and needs to be recreated
                         (_, Some(inner)) if inner.stopped() => true,
                         // Connection doesn't exist
@@ -244,21 +249,21 @@ impl PoolTask {
 
                     let connection_channel = if recreate {
                         ClientConnection::new(
-                            host_url.clone(),
+                            target.clone(),
                             buffer_size.get(),
                             &client_conn_request_tx,
                         )
                         .await
                         .and_then(|connection| {
                             let (inner, sender, receiver) = InnerConnection::from(connection)?;
-                            let _ = connections.insert(host.clone(), inner);
+                            let _ = connections.insert(path.clone(), inner);
                             Ok((sender, Some(receiver)))
                         })
                     } else {
-                        let inner_connection = connections.get_mut(&host).ok_or_else(|| {
+                        let inner_connection = connections.get_mut(&path).ok_or_else(|| {
                             ConnectionError::Resolution(ResolutionError::new(
                                 ResolutionErrorKind::Unresolvable,
-                                Some(host.clone()),
+                                Some(path.clone()),
                             ))
                         })?;
                         inner_connection.last_accessed = Instant::now();
@@ -287,10 +292,10 @@ impl PoolTask {
     }
 }
 
-fn combine_connection_streams(
-    connection_requests_rx: mpsc::Receiver<ConnectionRequest>,
+fn combine_connection_streams<Path: Addressable>(
+    connection_requests_rx: mpsc::Receiver<ConnectionRequest<Path>>,
     close_requests_rx: mpsc::Receiver<()>,
-) -> impl stream::Stream<Item = RequestType> + Send + 'static {
+) -> impl stream::Stream<Item = RequestType<Path>> + Send + 'static {
     let connection_requests =
         ReceiverStream::new(connection_requests_rx).map(RequestType::NewConnection);
     let close_request = ReceiverStream::new(close_requests_rx).map(|_| RequestType::Close);
@@ -329,7 +334,7 @@ impl SendTask {
         loop {
             match recv_stream.next().await {
                 Some(env) => write_sink
-                    .send(TaggedEnvelope(RoutingAddr::local(0), env))
+                    .send(TaggedEnvelope(RoutingAddr::client(), env))
                     .await
                     .map_err(|_| ConnectionError::Closed(CloseError::unexpected()))?,
                 None => {
@@ -430,10 +435,10 @@ pub struct ClientConnection {
 }
 
 impl ClientConnection {
-    async fn new(
-        host_url: url::Url,
+    async fn new<Path: Addressable>(
+        target: Path,
         buffer_size: usize,
-        client_conn_request_tx: &mpsc::Sender<ClientRequest>,
+        client_conn_request_tx: &mpsc::Sender<ClientRequest<Path>>,
     ) -> Result<ClientConnection, ConnectionError> {
         let (sender_tx, sender_rx) = mpsc::channel(buffer_size);
         let (receiver_tx, receiver_rx) = mpsc::channel(buffer_size);
@@ -441,7 +446,7 @@ impl ClientConnection {
         let (tx, rx) = oneshot::channel();
         client_conn_request_tx
             .send(ClientRequest::Subscribe {
-                url: host_url,
+                target,
                 request: Request::new(tx),
             })
             .await
@@ -450,8 +455,8 @@ impl ClientConnection {
         let (raw_route, stream) = rx
             .await
             .map_err(|_| ConnectionError::Resolution(ResolutionError::router_dropped()))??;
-        let write_sink = raw_route.sender;
 
+        let write_sink = raw_route.sender;
         let read_stream = ReceiverStream::new(stream).fuse();
 
         let stopped = Arc::new(AtomicBool::new(false));

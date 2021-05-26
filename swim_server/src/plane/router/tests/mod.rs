@@ -13,13 +13,13 @@
 // limitations under the License.
 
 use crate::plane::router::{PlaneRouter, PlaneRouterFactory};
-use crate::plane::PlaneRequest;
 use crate::routing::{TopLevelRouter, TopLevelRouterFactory};
 use futures::future::join;
 use swim_common::routing::error::{ConnectionError, ProtocolError, ResolutionErrorKind};
 use swim_common::routing::error::{RouterError, Unresolvable};
 use swim_common::routing::remote::RawRoute;
-use swim_common::routing::{RoutingAddr, Router, RouterFactory, TaggedEnvelope};
+use swim_common::routing::PlaneRoutingRequest;
+use swim_common::routing::{Router, RouterFactory, RoutingAddr, TaggedEnvelope};
 use swim_common::warp::envelope::Envelope;
 use tokio::sync::mpsc;
 use url::Url;
@@ -40,7 +40,7 @@ async fn plane_router_get_sender() {
 
     let provider_task = async move {
         while let Some(req) = req_rx.recv().await {
-            if let PlaneRequest::Endpoint { id, request } = req {
+            if let PlaneRoutingRequest::Endpoint { id, request } = req {
                 if id == addr {
                     assert!(request
                         .send_ok(RawRoute::new(send_tx.clone(), drop_rx.clone()))
@@ -107,7 +107,7 @@ async fn plane_router_resolve() {
 
     let provider_task = async move {
         while let Some(req) = req_rx.recv().await {
-            if let PlaneRequest::Resolve {
+            if let PlaneRoutingRequest::Resolve {
                 host,
                 name,
                 request,

@@ -96,8 +96,8 @@ pub const RECEIVER_PREFIX: &str = "receiver";
 const LANE_NAME: &str = "receiver_lane";
 const MESSAGE: &str = "ping!";
 
-impl<Clk: Clock, Delegate: Router + 'static>
-    AgentRoute<Clk, EnvChannel, PlaneRouter<Delegate>> for SendAgentRoute
+impl<Clk: Clock, Delegate: Router + 'static> AgentRoute<Clk, EnvChannel, PlaneRouter<Delegate>>
+    for SendAgentRoute
 {
     fn run_agent(
         &self,

@@ -15,11 +15,6 @@
 //! Interface for creating and running Swim server instances.
 //!
 //! The module provides methods and structures for creating and running Swim server instances.
-use crate::agent::lane::channels::AgentExecutionConfig;
-use crate::plane::router::PlaneRouter;
-use crate::plane::spec::PlaneSpec;
-use crate::plane::{run_plane, EnvChannel};
-use crate::routing::{TopLevelRouter, TopLevelRouterFactory};
 use either::Either;
 use futures::{io, join};
 use std::error::Error;
@@ -27,15 +22,11 @@ use std::fmt::{Display, Formatter};
 use std::net::SocketAddr;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-use swim_client::configuration::downlink::{ClientParams, ConfigHierarchy};
-use swim_client::configuration::router::{ConnectionPoolParams, RouterParams};
-use swim_client::connections::SwimConnPool;
-use swim_client::downlink::subscription::{DownlinkRequest, DownlinksHandle, DownlinksTask};
+use swim_client::configuration::downlink::ConfigHierarchy;
+use swim_client::downlink::subscription::DownlinksHandle;
 use swim_client::downlink::Downlinks;
 use swim_client::interface::{SwimClient, SwimClientBuilder};
-use swim_client::router::{
-    ClientRequest, ClientRouterFactory, RemoteConnectionsManager, TaskManager,
-};
+use swim_client::router::{ClientConnectionsManager, ClientRequest};
 use swim_common::routing::remote::config::ConnectionConfig;
 use swim_common::routing::remote::net::dns::Resolver;
 use swim_common::routing::remote::net::plain::TokioPlainTextNetworking;
@@ -48,6 +39,16 @@ use tokio_stream::wrappers::ReceiverStream;
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use utilities::future::open_ended::OpenEndedFutures;
 use utilities::sync::{promise, trigger};
+
+use crate::agent::lane::channels::AgentExecutionConfig;
+use crate::plane::router::{PlaneRouter, PlaneRouterFactory};
+use crate::plane::spec::PlaneSpec;
+use crate::plane::ContextImpl;
+use crate::plane::PlaneActiveRoutes;
+use crate::plane::RouteResolver;
+use crate::plane::{run_plane, EnvChannel};
+use crate::routing::{TopLevelRouter, TopLevelRouterFactory};
+use swim_common::warp::path::Path;
 
 /// Builder to create Swim server instance.
 ///
@@ -207,10 +208,13 @@ impl SwimServerBuilder {
         let (stop_trigger_tx, stop_trigger_rx) = trigger::trigger();
         let (address_tx, address_rx) = promise::promise();
 
-        let (client_conn_request_tx, client_conn_request_rx) = mpsc::channel(8);
+        let (client_conn_request_tx, client_conn_request_rx) =
+            mpsc::channel(config.conn_config.channel_buffer_size.get());
 
-        let (downlinks, downlinks_handle) =
-            Downlinks::new(client_conn_request_tx, Arc::new(ConfigHierarchy::default()));
+        let (downlinks, downlinks_handle) = Downlinks::new(
+            client_conn_request_tx.clone(),
+            Arc::new(ConfigHierarchy::default()),
+        );
 
         let client = SwimClientBuilder::build_from_downlinks(downlinks);
 
@@ -223,6 +227,7 @@ impl SwimServerBuilder {
                 address_tx,
                 client,
                 downlinks_handle,
+                client_conn_request_tx,
                 client_conn_request_rx,
             },
             ServerHandle {
@@ -242,9 +247,10 @@ pub struct SwimServer {
     planes: Vec<PlaneSpec<RuntimeClock, EnvChannel, PlaneRouter<TopLevelRouter>>>,
     stop_trigger_rx: trigger::Receiver,
     address_tx: promise::Sender<SocketAddr>,
-    client: SwimClient,
-    downlinks_handle: DownlinksHandle,
-    client_conn_request_rx: mpsc::Receiver<ClientRequest>,
+    client: SwimClient<Path>,
+    downlinks_handle: DownlinksHandle<Path>,
+    client_conn_request_tx: mpsc::Sender<ClientRequest<Path>>,
+    client_conn_request_rx: mpsc::Receiver<ClientRequest<Path>>,
 }
 
 impl SwimServer {
@@ -264,7 +270,8 @@ impl SwimServer {
             address_tx,
             client,
             downlinks_handle,
-            client_conn_request_rx,
+            client_conn_request_tx: client_tx,
+            client_conn_request_rx: client_rx,
         } = self;
 
         let SwimServerConfig {
@@ -285,7 +292,6 @@ impl SwimServer {
             .expect("The server cannot be started without a plane");
 
         let (plane_tx, plane_rx) = mpsc::channel(agent_config.lane_attachment_buffer.get());
-        let (client_tx, client_rx) = mpsc::channel(conn_config.router_buffer_size.get());
         let (remote_tx, remote_rx) = mpsc::channel(conn_config.router_buffer_size.get());
 
         let top_level_router_fac =
@@ -293,21 +299,33 @@ impl SwimServer {
 
         let clock = swim_runtime::time::clock::runtime_clock();
 
-        let plane_future = run_plane(
-            agent_config.clone(),
-            clock,
-            client,
-            spec,
-            stop_trigger_rx.clone(),
-            OpenEndedFutures::new(),
-            (plane_tx, plane_rx),
-            top_level_router_fac.clone(),
-        );
-
-        let conn_manager = RemoteConnectionsManager::new(
+        let conn_manager = ClientConnectionsManager::new(
             client_rx,
             remote_tx.clone(),
-            NonZeroUsize::new(8).unwrap(),
+            Some(plane_tx.clone()),
+            NonZeroUsize::new(conn_config.router_buffer_size.get()).unwrap(),
+        );
+
+        let context = ContextImpl::new(plane_tx.clone(), spec.routes());
+        let PlaneSpec { routes, lifecycle } = spec;
+
+        let resolver = RouteResolver::new(
+            clock,
+            client,
+            agent_config,
+            routes,
+            PlaneRouterFactory::new(plane_tx, top_level_router_fac.clone()),
+            stop_trigger_rx.clone(),
+            PlaneActiveRoutes::default(),
+        );
+
+        let plane_future = run_plane(
+            resolver,
+            lifecycle,
+            context,
+            stop_trigger_rx.clone(),
+            OpenEndedFutures::new(),
+            plane_rx,
         );
 
         let connections_task = RemoteConnectionsTask::new_server_task(
@@ -330,7 +348,6 @@ impl SwimServer {
         };
 
         let connections_future = connections_task.run();
-
         join!(
             connections_future,
             plane_future,

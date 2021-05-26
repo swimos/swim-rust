@@ -30,13 +30,13 @@ mod tests;
 /// Specification of an agent route in a plane. The route pattern describes a parameterized
 /// family of agents, all of which share an implementation.
 #[derive(Debug)]
-pub(super) struct RouteSpec<Clk, Envelopes, Router> {
+pub(crate) struct RouteSpec<Clk, Envelopes, Router> {
     pub pattern: RoutePattern,
     pub agent_route: BoxAgentRoute<Clk, Envelopes, Router>,
 }
 
 impl<Clk, Envelopes, Router> RouteSpec<Clk, Envelopes, Router> {
-    pub(super) fn new(
+    pub(crate) fn new(
         pattern: RoutePattern,
         agent_route: BoxAgentRoute<Clk, Envelopes, Router>,
     ) -> Self {
@@ -51,8 +51,8 @@ impl<Clk, Envelopes, Router> RouteSpec<Clk, Envelopes, Router> {
 /// for the plane.
 #[derive(Debug)]
 pub struct PlaneSpec<Clk, Envelopes, Router> {
-    pub(super) routes: Vec<RouteSpec<Clk, Envelopes, Router>>,
-    pub(super) lifecycle: Option<Box<dyn PlaneLifecycle>>,
+    pub(crate) routes: Vec<RouteSpec<Clk, Envelopes, Router>>,
+    pub(crate) lifecycle: Option<Box<dyn PlaneLifecycle>>,
 }
 
 impl<Clk, Envelopes, Router> PlaneSpec<Clk, Envelopes, Router> {
