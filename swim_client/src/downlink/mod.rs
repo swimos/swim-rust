@@ -596,11 +596,7 @@ where
         select_biased! {
             maybe_upd = message_stream.next() => Some(maybe_upd.map(Either::Left)),
             maybe_act = actions.next() => {
-                if let Some(act) = maybe_act {
-                    Some(Some(Either::Right(act)))
-                } else {
-                    None
-                }
+                maybe_act.map(|act| Some(Either::Right(act)))
             }
         }
     } else {

@@ -44,7 +44,7 @@ impl DnsResolver for GetAddressInfoResolver {
 
         Box::pin(lookup_host(format!("{}:{}", host, port)).map(move |r| {
             r.map(|it| {
-                it.map(|socket_addr| SchemeSocketAddr::new(scheme.clone(), socket_addr))
+                it.map(|socket_addr| SchemeSocketAddr::new(scheme, socket_addr))
                     .collect::<Vec<_>>()
             })
         }))

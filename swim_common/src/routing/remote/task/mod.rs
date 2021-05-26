@@ -105,10 +105,11 @@ where
     ///
     /// #Arguments
     ///
+    /// * `addr` - Address of the connection.
     /// * `ws_stream` - The joined sink/stream that implements the web sockets protocol.
     /// * `router` - Router to route incoming messages to the appropriate destination.
-    /// * `messages`- Stream of messages to be sent into the sink.
-    /// * `message_injector` - Allows messages to be injected into the outgoing stream.
+    /// * `messages_tx` - Allows messages to be injected into the outgoing stream.
+    /// * `messages_rx`- Stream of messages to be sent into the sink.
     /// * `stop_signal` - Signals to the task that it should stop.
     /// * `config` - Configuration for the connection task.
     /// * `server` - Whether or not this connection task is for a sever.
@@ -117,8 +118,7 @@ where
         addr: SchemeSocketAddr,
         ws_stream: Str,
         router: R,
-        messages: mpsc::Receiver<TaggedEnvelope>,
-        message_injector: mpsc::Sender<TaggedEnvelope>,
+        (messages_tx, messages_rx): (mpsc::Sender<TaggedEnvelope>, mpsc::Receiver<TaggedEnvelope>),
         stop_signal: trigger::Receiver,
         config: ConnectionConfig,
         server: bool,
@@ -127,8 +127,8 @@ where
         ConnectionTask {
             addr,
             ws_stream,
-            messages,
-            message_injector,
+            messages: messages_rx,
+            message_injector: messages_tx,
             router,
             stop_signal,
             config,
@@ -501,8 +501,7 @@ where
             addr,
             ws_stream,
             RemoteRouter::new(tag, delegate_router_fac.create_for(tag), request_tx.clone()),
-            msg_rx,
-            msg_tx.clone(),
+            (msg_tx.clone(), msg_rx),
             stop_trigger.clone(),
             *configuration,
             server,
