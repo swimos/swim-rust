@@ -43,7 +43,7 @@ impl TransientDatabase {
     #[allow(dead_code)]
     pub(crate) fn new(keyspaces: Keyspaces<RocksOpts>) -> TransientDatabase {
         let dir = TempDir::new("test").expect("Failed to create temporary directory");
-        let delegate = RocksOpts(Default::default())
+        let delegate = RocksOpts::default()
             .build(dir.path(), &keyspaces)
             .expect("Failed to build delegate store");
 
