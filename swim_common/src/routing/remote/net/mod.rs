@@ -63,7 +63,7 @@ impl Stream for EitherStream {
             MaybeTlsListener::PlainText(listener) => match listener.poll_accept(cx) {
                 Poll::Ready(Ok((stream, addr))) => Poll::Ready(Some(Ok((
                     Either::Left(stream),
-                    SchemeSocketAddr::new(Scheme::WS, addr),
+                    SchemeSocketAddr::new(Scheme::Ws, addr),
                 )))),
                 Poll::Ready(Err(e)) => Poll::Ready(Some(Err(e))),
                 Poll::Pending => Poll::Pending,

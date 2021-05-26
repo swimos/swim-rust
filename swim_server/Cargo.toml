@@ -8,7 +8,6 @@ edition = "2018"
 default = []
 debug = ["log_verbose"]
 log_verbose = []
-trust-dns = ["trust-dns-resolver"]
 
 [target.'cfg(log_verbose)'.dependencies]
 tracing = { version = "0.1.13", features = ["max_level_debug"] }
@@ -38,7 +37,6 @@ agent_derive = { path = "agent_derive" }
 trybuild = "1.0.17"
 tokio-tungstenite = { version = "0.13.0", git = "https://github.com/swimos/tokio-tungstenite/", branch = "deflate-v13", features = ["tls", "deflate"] }
 tokio-native-tls = "0.3"
-trust-dns-resolver = { version = "0.20", optional = true, features = ["tokio-runtime"] }
 auth = { path = "auth" }
 regex = "1"
 lazy_static = "1.4.0"
