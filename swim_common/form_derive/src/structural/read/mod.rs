@@ -367,6 +367,18 @@ fn basic_types() -> [(syn::Ident, syn::Type); 10] {
     ]
 }
 
+fn prim_push_methods<'a>(
+    basic: &'a [(syn::Ident, syn::Type)],
+) -> impl Iterator<Item = syn::TraitItem> + 'a {
+    basic.iter().map(|(name, ty)| {
+        parse_quote! {
+            fn #name(&mut self, value: #ty) -> std::result::Result<bool, swim_common::form::structural::read::error::ReadError> {
+                self.apply(value)
+            }
+        }
+    })
+}
+
 fn builder_body_reader<'a, 'b>(
     builder: &syn::Type,
     fields: Vec<&'b FieldModel<'a>>,
@@ -381,14 +393,7 @@ fn builder_body_reader<'a, 'b>(
     let delegate_ty: syn::Type = make_ccons_ty(wrapped_tys);
 
     let basic = basic_types();
-
-    let push_methods = basic.iter().map(|(name, ty)| {
-        quote! {
-            fn #name(&mut self, value: #ty) -> std::result::Result<bool, swim_common::form::structural::read::error::ReadError> {
-                self.apply(value)
-            }
-        }
-    });
+    let push_methods = prim_push_methods(&basic);
 
     let wrapper_id: syn::Ident = parse_quote!(wrapper);
 
@@ -474,5 +479,201 @@ fn builder_body_reader<'a, 'b>(
             }
         }
 
+    }
+}
+
+fn header_builder_assoc<'a>(
+    header_builder: &syn::Type,
+    header_body: Option<&FieldModel<'a>>,
+) -> proc_macro2::TokenStream {
+    let apply_def = if let Some(fld) = header_body {
+        let index = syn::Index::from(fld.ordinal);
+        let name = fld.resolve_name();
+        quote! {
+            if self.after_body {
+                self.inner.apply_header(push)
+            } else {
+                push.apply(&mut self.inner.state.#index, #name)?;
+                self.after_body = true;
+                std::result::Result::Ok(self.inner.has_more_header())
+            }
+        }
+    } else {
+        quote! {
+            self.inner.apply_header(push)
+        }
+    };
+    quote! {
+        impl #header_builder {
+            fn apply<__P: swim_common::form::structural::read::builder::prim::PushPrimValue>(&mut self, push: __P)
+                -> std::result::Result<bool, swim_common::form::structural::read::error::ReadError> {
+                #apply_def
+            }
+        }
+    }
+}
+
+fn header_builder_body_reader<'a, 'b>(
+    header_builder: &syn::Type,
+    body: Option<&'b FieldModel<'a>>,
+    slots: Vec<&'b FieldModel<'a>>,
+) -> proc_macro2::TokenStream {
+    let wrapped_tys = body.iter().chain(slots.iter()).map(|fld| {
+        let ty = fld.field_ty;
+        parse_quote! {
+            swim_common::form::structural::read::builder::Wrapped<Self, <#ty as swim_common::form::structural::read::StructuralReadable>::Reader>
+        }
+    });
+
+    let delegate_ty: syn::Type = make_ccons_ty(wrapped_tys);
+
+    let basic = basic_types();
+    let push_methods = prim_push_methods(&basic);
+
+    let start_slot_base = quote! {
+        if self.inner.reading_slot {
+            std::result::Result::Err(swim_common::form::structural::read::error::ReadError::DoubleSlot)
+        } else {
+            self.inner.reading_slot = true;
+            std::result::Result::Ok(())
+        }
+    };
+
+    let start_slot_body = if body.is_some() {
+        quote! {
+            if !self.after_body {
+                std::result::Result::Err(swim_common::form::structural::read::error::ReadError::UnexpectedSlot)
+            } else #start_slot_base
+        }
+    } else {
+        start_slot_base
+    };
+
+    let wrapper_id: syn::Ident = parse_quote!(wrapper);
+
+    let offsets = if body.is_some() { 1.. } else { 0.. };
+
+    let push_record_matches = slots.iter().zip(offsets.clone()).map(|(fld, i)| {
+        let index = fld.ordinal;
+        let ty = fld.field_ty;
+        let ccons_expr = make_ccons_expr(i, &wrapper_id);
+        quote! {
+            std::option::Option::Some(#index) => {
+                let wrapper = swim_common::form::structural::read::builder::Wrapped {
+                    payload: self,
+                    reader: <#ty as swim_common::form::structural::read::StructuralReadable>::record_reader()?,
+                };
+                std::result::Result::Ok(#ccons_expr)
+            }
+        }
+    });
+
+    let push_record_base = quote! {
+        if self.inner.reading_slot {
+            match self.inner.current_field.take() {
+                #(#push_record_matches)*
+                _ => std::result::Result::Err(swim_common::form::structural::read::error::ReadError::InconsistentState),
+            }
+        } else {
+            std::result::Result::Err(swim_common::form::structural::read::error::ReadError::UnexpectedKind(swim_common::model::ValueKind::Record))
+        }
+    };
+
+    let push_record_body = if let Some(fld) = body {
+        let ty = fld.field_ty;
+        quote! {
+            if !self.after_body {
+                let wrapper = swim_common::form::structural::read::builder::Wrapped {
+                    payload: self,
+                    reader: <#ty as swim_common::form::structural::read::StructuralReadable>::record_reader()?,
+                };
+                std::result::Result::Ok(swim_common::form::structural::generic::coproduct::CCons::Head(wrapper))
+            } else #push_record_base
+        }
+    } else {
+        push_record_base
+    };
+
+    let restore_body_case = body.map(|fld| {
+        let index = syn::Index::from(fld.ordinal);
+        let ty = fld.field_ty;
+        quote! {
+            swim_common::form::structural::generic::coproduct::CCons::Head(swim_common::form::structural::read::builder::Wrapped {
+                mut payload,
+                reader,
+            }) => {
+                if payload.inner.state.#index.is_some() {
+                    return std::result::Result::Err(swim_common::form::structural::read::error::ReadError::InconsistentState);
+                } else {
+                    payload.inner.state.#index = Some(<#ty as swim_common::form::structural::read::StructuralReadable>::try_terminate(reader)?);
+                }
+                payload.after_body = true;
+                std::result::Result::Ok(payload)
+            }
+        }
+    });
+
+    let inner_pat: syn::Pat = parse_quote! {
+        swim_common::form::structural::read::builder::Wrapped {
+            mut payload,
+            reader,
+        }
+    };
+
+    let restore_slot_cases = slots.iter().zip(offsets).map(|(fld, i)| {
+        let index = syn::Index::from(fld.ordinal);
+        let name = fld.resolve_name();
+        let ty = fld.field_ty;
+        let pat = make_ccons_pat(i, inner_pat.clone());
+
+        quote! {
+            #pat => {
+                if payload.inner.state.#index.is_some() {
+                    return std::result::Result::Err(swim_common::form::structural::read::error::ReadError::DuplicateField(swim_common::model::text::Text::new(#name)));
+                } else {
+                    payload.inner.state.#index = Some(<#ty as swim_common::form::structural::read::StructuralReadable>::try_terminate(reader)?);
+                }
+                payload.inner.reading_slot = false;
+                std::result::Result::Ok(payload)
+            }
+        }
+    });
+
+    let num_options = if body.is_some() {
+        slots.len() + 1
+    } else {
+        slots.len()
+    };
+
+    let nil_pat = make_ccons_nil_pat(num_options);
+
+    quote! {
+        #[automatically_derived]
+        impl swim_common::form::structural::read::BodyReader for #header_builder {
+
+            type Delegate = #delegate_ty;
+
+            fn push_extant(&mut self) -> Result<bool, ReadError> {
+                self.apply(())
+            }
+
+            #(#push_methods)*
+
+            fn start_slot(&mut self) -> std::result::Result<(), swim_common::form::structural::read::error::ReadError> {
+                #start_slot_body
+            }
+
+            fn push_record(mut self) -> std::result::Result<Self::Delegate, swim_common::form::structural::read::error::ReadError> {
+                #push_record_body
+            }
+
+            fn restore(delegate: <Self::Delegate as swim_common::form::structural::read::HeaderReader>::Body) -> std::result::Result<Self, swim_common::form::structural::read::error::ReadError> {
+                match delegate {
+                    #restore_body_case
+                    #(#restore_slot_cases)*
+                    #nil_pat => nil.explode(),
+                }
+            }
+        }
     }
 }
