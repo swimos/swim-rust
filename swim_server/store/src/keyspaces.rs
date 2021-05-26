@@ -12,15 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::engines::FromKeyspaces;
 use crate::StoreError;
 
-/// The type to use for prefixing keys.
-///
-/// Note: It is not recommended to change this after a store has already been initialised.
-pub type KeyType = u64;
-
-pub trait Keyspace: AsRef<str> {}
+pub trait KeyspaceName: AsRef<str> {}
+pub trait Keyspace {}
 
 /// A keyspace definition for persisting logically related data.
 ///
@@ -41,12 +36,12 @@ impl<O> KeyspaceDef<O> {
 }
 
 /// A list of keyspace definitions to initialise a store with.
-pub struct Keyspaces<O: FromKeyspaces> {
-    pub keyspaces: Vec<KeyspaceDef<O::Opts>>,
+pub struct Keyspaces<O> {
+    pub keyspaces: Vec<KeyspaceDef<O>>,
 }
 
-impl<O: FromKeyspaces> Keyspaces<O> {
-    pub fn new(keyspaces: Vec<KeyspaceDef<O::Opts>>) -> Self {
+impl<O> Keyspaces<O> {
+    pub fn new(keyspaces: Vec<KeyspaceDef<O>>) -> Self {
         Keyspaces { keyspaces }
     }
 }
@@ -54,7 +49,7 @@ impl<O: FromKeyspaces> Keyspaces<O> {
 /// A trait for abstracting over database engines and partitioning data by a logical keyspace.
 pub trait KeyspaceByteEngine: Send + Sync + 'static {
     /// Put a key-value pair into the specified keyspace.
-    fn put_keyspace<K: Keyspace>(
+    fn put_keyspace<K: KeyspaceName>(
         &self,
         keyspace: K,
         key: &[u8],
@@ -62,30 +57,54 @@ pub trait KeyspaceByteEngine: Send + Sync + 'static {
     ) -> Result<(), StoreError>;
 
     /// Get an entry from the specified keyspace.
-    fn get_keyspace<K: Keyspace>(
+    fn get_keyspace<K: KeyspaceName>(
         &self,
         keyspace: K,
         key: &[u8],
     ) -> Result<Option<Vec<u8>>, StoreError>;
 
     /// Delete a value from the specified keyspace.
-    fn delete_keyspace<K: Keyspace>(&self, keyspace: K, key: &[u8]) -> Result<(), StoreError>;
+    fn delete_keyspace<K: KeyspaceName>(&self, keyspace: K, key: &[u8]) -> Result<(), StoreError>;
 
     /// Perform a merge operation on the specified keyspace and key, incrementing by `step`.
-    fn merge_keyspace<K: Keyspace>(
+    fn merge_keyspace<K: KeyspaceName>(
         &self,
         keyspace: K,
         key: &[u8],
-        step: KeyType,
+        step: u64,
     ) -> Result<(), StoreError>;
+
+    /// Execute a ranged read on the store, seeking by `prefix` and deserializing results with
+    /// `map_fn`.
+    ///
+    /// Returns `Ok(None)` if no records matched `prefix` or `Ok(Some)` if matches were found.
+    ///
+    /// # Example:
+    /// Given a store engine that stores records for map lanes where the format of
+    /// `/node_uri/lane_uri/key` is used as the key. One could execute a ranged read on the store
+    /// engine with a prefix of `/node_1/lane_1/` to load all of the keys and values for that
+    /// lane.
+    ///
+    /// # Errors
+    /// Errors if an error is encountered when attempting to execute the ranged read on the
+    /// store engine or if the `map_fn` fails to deserialize a key or value.
+    fn get_prefix_range<F, K, V, S>(
+        &self,
+        _keyspace: S,
+        _prefix: &[u8],
+        _map_fn: F,
+    ) -> Result<Option<Vec<(K, V)>>, StoreError>
+    where
+        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
+        S: KeyspaceName;
 }
 
 /// A trait for converting an abstract keyspace name to a reference to a handle of one in a delegate
 /// engine; such as RocksDB's Column Families.
 pub trait KeyspaceResolver {
     /// The concrete type of the keyspace.
-    type ResolvedKeyspace;
+    type ResolvedKeyspace: Keyspace;
 
     /// Resolve `space` in to a handle that can be used to make direct queries to a delegate engine.
-    fn resolve_keyspace<K: Keyspace>(&self, space: &K) -> Option<&Self::ResolvedKeyspace>;
+    fn resolve_keyspace<K: KeyspaceName>(&self, space: &K) -> Option<&Self::ResolvedKeyspace>;
 }

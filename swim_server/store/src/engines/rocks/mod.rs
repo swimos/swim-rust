@@ -17,10 +17,10 @@ mod tests;
 
 mod iterator;
 
-use crate::engines::{KeyedSnapshot, RangedSnapshotLoad};
+use crate::engines::StoreBuilder;
 use crate::iterator::{EnginePrefixIterator, EngineRefIterator};
-use crate::keyspaces::{KeyType, Keyspace, KeyspaceByteEngine, KeyspaceResolver, Keyspaces};
-use crate::{serialize, FromKeyspaces, Store, StoreError, StoreInfo};
+use crate::keyspaces::{Keyspace, KeyspaceByteEngine, KeyspaceName, KeyspaceResolver, Keyspaces};
+use crate::{serialize, EngineInfo, Store, StoreError};
 use rocksdb::{ColumnFamily, ColumnFamilyDescriptor};
 use rocksdb::{Error, Options, DB};
 use std::path::Path;
@@ -53,30 +53,35 @@ impl Store for RocksDatabase {
         &self.delegate.path()
     }
 
-    fn store_info(&self) -> StoreInfo {
-        StoreInfo {
+    fn engine_info(&self) -> EngineInfo {
+        EngineInfo {
             path: self.path().to_string_lossy().to_string(),
             kind: "RocksDB".to_string(),
         }
     }
 }
 
+impl Keyspace for ColumnFamily {}
+
 impl KeyspaceResolver for RocksDatabase {
     type ResolvedKeyspace = ColumnFamily;
 
-    fn resolve_keyspace<K: Keyspace>(&self, space: &K) -> Option<&Self::ResolvedKeyspace> {
+    fn resolve_keyspace<K: KeyspaceName>(&self, space: &K) -> Option<&Self::ResolvedKeyspace> {
         self.delegate.cf_handle(space.as_ref())
     }
 }
 
-impl FromKeyspaces for RocksDatabase {
-    type Opts = RocksOpts;
+/// Configuration wrapper for a Rocks database used by `FromOpts`.
+#[derive(Clone)]
+pub struct RocksOpts(pub Options);
 
-    fn from_keyspaces<I: AsRef<Path>>(
-        path: I,
-        db_opts: &Self::Opts,
-        keyspaces: &Keyspaces<Self>,
-    ) -> Result<Self, StoreError> {
+impl StoreBuilder for RocksOpts {
+    type Store = RocksDatabase;
+
+    fn build<I>(self, path: I, keyspaces: &Keyspaces<Self>) -> Result<Self::Store, StoreError>
+    where
+        I: AsRef<Path>,
+    {
         let Keyspaces { keyspaces } = keyspaces;
         let descriptors =
             keyspaces
@@ -88,13 +93,10 @@ impl FromKeyspaces for RocksDatabase {
                     vec
                 });
 
-        let db = DB::open_cf_descriptors(&db_opts.0, path, descriptors)?;
+        let db = DB::open_cf_descriptors(&self.0, path, descriptors)?;
         Ok(RocksDatabase::new(db))
     }
 }
-
-/// Configuration wrapper for a Rocks database used by `FromOpts`.
-pub struct RocksOpts(pub Options);
 
 impl Default for RocksOpts {
     fn default() -> Self {
@@ -106,16 +108,66 @@ impl Default for RocksOpts {
     }
 }
 
-impl RangedSnapshotLoad for RocksDatabase {
-    fn load_ranged_snapshot<F, K, V, S>(
+fn exec_keyspace<F, O, K>(delegate: &Arc<DB>, keyspace: K, f: F) -> Result<O, StoreError>
+where
+    F: Fn(&Arc<DB>, &ColumnFamily) -> Result<O, rocksdb::Error>,
+    K: KeyspaceName,
+{
+    match delegate.cf_handle(keyspace.as_ref()) {
+        Some(cf) => f(delegate, cf).map_err(Into::into),
+        None => Err(StoreError::KeyspaceNotFound),
+    }
+}
+
+impl KeyspaceByteEngine for RocksDatabase {
+    fn put_keyspace<K: KeyspaceName>(
+        &self,
+        keyspace: K,
+        key: &[u8],
+        value: &[u8],
+    ) -> Result<(), StoreError> {
+        exec_keyspace(&self.delegate, keyspace, |delegate, keyspace| {
+            delegate.put_cf(keyspace, key, value)
+        })
+    }
+
+    fn get_keyspace<K: KeyspaceName>(
+        &self,
+        keyspace: K,
+        key: &[u8],
+    ) -> Result<Option<Vec<u8>>, StoreError> {
+        exec_keyspace(&self.delegate, keyspace, |delegate, keyspace| {
+            delegate.get_cf(keyspace, key)
+        })
+    }
+
+    fn delete_keyspace<K: KeyspaceName>(&self, keyspace: K, key: &[u8]) -> Result<(), StoreError> {
+        exec_keyspace(&self.delegate, keyspace, |delegate, keyspace| {
+            delegate.delete_cf(keyspace, key)
+        })
+    }
+
+    fn merge_keyspace<K: KeyspaceName>(
+        &self,
+        keyspace: K,
+        key: &[u8],
+        value: u64,
+    ) -> Result<(), StoreError> {
+        let value = serialize(&value)?;
+        exec_keyspace(&self.delegate, keyspace, move |delegate, keyspace| {
+            delegate.merge_cf(keyspace, key, value.as_slice())
+        })
+    }
+
+    fn get_prefix_range<F, K, V, S>(
         &self,
         keyspace: S,
         prefix: &[u8],
         map_fn: F,
-    ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
+    ) -> Result<Option<Vec<(K, V)>>, StoreError>
     where
         F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
-        S: Keyspace,
+        S: KeyspaceName,
     {
         let resolved = self
             .resolve_keyspace(&keyspace)
@@ -140,59 +192,7 @@ impl RangedSnapshotLoad for RocksDatabase {
         if data.is_empty() {
             Ok(None)
         } else {
-            Ok(Some(KeyedSnapshot::new(data.into_iter())))
+            Ok(Some(data))
         }
-    }
-}
-
-fn exec_keyspace<F, O, K>(delegate: &Arc<DB>, keyspace: K, f: F) -> Result<O, StoreError>
-where
-    F: Fn(&Arc<DB>, &ColumnFamily) -> Result<O, rocksdb::Error>,
-    K: Keyspace,
-{
-    match delegate.cf_handle(keyspace.as_ref()) {
-        Some(cf) => f(delegate, cf).map_err(Into::into),
-        None => Err(StoreError::KeyspaceNotFound),
-    }
-}
-
-impl KeyspaceByteEngine for RocksDatabase {
-    fn put_keyspace<K: Keyspace>(
-        &self,
-        keyspace: K,
-        key: &[u8],
-        value: &[u8],
-    ) -> Result<(), StoreError> {
-        exec_keyspace(&self.delegate, keyspace, |delegate, keyspace| {
-            delegate.put_cf(keyspace, key, value)
-        })
-    }
-
-    fn get_keyspace<K: Keyspace>(
-        &self,
-        keyspace: K,
-        key: &[u8],
-    ) -> Result<Option<Vec<u8>>, StoreError> {
-        exec_keyspace(&self.delegate, keyspace, |delegate, keyspace| {
-            delegate.get_cf(keyspace, key)
-        })
-    }
-
-    fn delete_keyspace<K: Keyspace>(&self, keyspace: K, key: &[u8]) -> Result<(), StoreError> {
-        exec_keyspace(&self.delegate, keyspace, |delegate, keyspace| {
-            delegate.delete_cf(keyspace, key)
-        })
-    }
-
-    fn merge_keyspace<K: Keyspace>(
-        &self,
-        keyspace: K,
-        key: &[u8],
-        value: KeyType,
-    ) -> Result<(), StoreError> {
-        let value = serialize(&value)?;
-        exec_keyspace(&self.delegate, keyspace, move |delegate, keyspace| {
-            delegate.merge_cf(keyspace, key, value.as_slice())
-        })
     }
 }

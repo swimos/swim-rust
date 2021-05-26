@@ -12,20 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::engines::{KeyedSnapshot, RangedSnapshotLoad};
+use crate::engines::StoreBuilder;
 use crate::iterator::{
     EngineIterOpts, EngineIterator, EnginePrefixIterator, EngineRefIterator, IteratorKey,
 };
-use crate::keyspaces::{KeyType, Keyspace, KeyspaceByteEngine, KeyspaceResolver, Keyspaces};
-use crate::{ByteEngine, FromKeyspaces, Store, StoreError, StoreInfo};
+use crate::keyspaces::{Keyspace, KeyspaceByteEngine, KeyspaceName, KeyspaceResolver, Keyspaces};
+use crate::{ByteEngine, EngineInfo, Store, StoreError};
 use std::borrow::Borrow;
 use std::path::{Path, PathBuf};
 
 /// A delegate store database that does nothing.
 #[derive(Debug)]
 pub struct NoStore {
-    /// A path stub that is the name of the plane that created it.
-    pub(crate) path: PathBuf,
+    path: PathBuf,
 }
 
 impl Store for NoStore {
@@ -33,24 +32,27 @@ impl Store for NoStore {
         self.path.borrow()
     }
 
-    fn store_info(&self) -> StoreInfo {
-        StoreInfo {
-            path: self.path.to_string_lossy().to_string(),
+    fn engine_info(&self) -> EngineInfo {
+        EngineInfo {
+            path: "Transient".to_string(),
             kind: "NoStore".to_string(),
         }
     }
 }
 
-impl KeyspaceResolver for NoStore {
-    type ResolvedKeyspace = ();
+pub struct NoStoreKeyspace;
+impl Keyspace for NoStoreKeyspace {}
 
-    fn resolve_keyspace<K: Keyspace>(&self, _space: &K) -> Option<&Self::ResolvedKeyspace> {
+impl KeyspaceResolver for NoStore {
+    type ResolvedKeyspace = NoStoreKeyspace;
+
+    fn resolve_keyspace<K: KeyspaceName>(&self, _space: &K) -> Option<&Self::ResolvedKeyspace> {
         None
     }
 }
 
 impl KeyspaceByteEngine for NoStore {
-    fn put_keyspace<K: Keyspace>(
+    fn put_keyspace<K: KeyspaceName>(
         &self,
         _keyspace: K,
         _key: &[u8],
@@ -59,7 +61,7 @@ impl KeyspaceByteEngine for NoStore {
         Ok(())
     }
 
-    fn get_keyspace<K: Keyspace>(
+    fn get_keyspace<K: KeyspaceName>(
         &self,
         _keyspace: K,
         _key: &[u8],
@@ -67,30 +69,32 @@ impl KeyspaceByteEngine for NoStore {
         Ok(None)
     }
 
-    fn delete_keyspace<K: Keyspace>(&self, _keyspace: K, _key: &[u8]) -> Result<(), StoreError> {
-        Ok(())
-    }
-
-    fn merge_keyspace<K: Keyspace>(
+    fn delete_keyspace<K: KeyspaceName>(
         &self,
         _keyspace: K,
         _key: &[u8],
-        _value: KeyType,
     ) -> Result<(), StoreError> {
         Ok(())
     }
-}
 
-impl RangedSnapshotLoad for NoStore {
-    fn load_ranged_snapshot<F, K, V, S>(
+    fn merge_keyspace<K: KeyspaceName>(
+        &self,
+        _keyspace: K,
+        _key: &[u8],
+        _value: u64,
+    ) -> Result<(), StoreError> {
+        Ok(())
+    }
+
+    fn get_prefix_range<F, K, V, S>(
         &self,
         _keyspace: S,
         _prefix: &[u8],
         _map_fn: F,
-    ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
+    ) -> Result<Option<Vec<(K, V)>>, StoreError>
     where
         F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
-        S: Keyspace,
+        S: KeyspaceName,
     {
         Ok(None)
     }
@@ -98,17 +102,15 @@ impl RangedSnapshotLoad for NoStore {
 
 #[derive(Default)]
 pub struct NoStoreOpts;
+impl StoreBuilder for NoStoreOpts {
+    type Store = NoStore;
 
-impl FromKeyspaces for NoStore {
-    type Opts = NoStoreOpts;
-
-    fn from_keyspaces<I: AsRef<Path>>(
-        path: I,
-        _db_opts: &Self::Opts,
-        _keyspaces: &Keyspaces<Self>,
-    ) -> Result<Self, StoreError> {
+    fn build<I>(self, _path: I, _keyspaces: &Keyspaces<Self>) -> Result<Self::Store, StoreError>
+    where
+        I: AsRef<Path>,
+    {
         Ok(NoStore {
-            path: path.as_ref().to_path_buf(),
+            path: PathBuf::from("Transient".to_string()),
         })
     }
 }
