@@ -17,8 +17,8 @@ use crate::agent::Eff;
 use crate::routing::{
     ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedEnvelope, TaggedSender,
 };
-use futures::future::{join, ready, BoxFuture};
-use futures::FutureExt;
+use futures::future::{join, join3, ready, BoxFuture};
+use futures::{FutureExt, StreamExt};
 use tokio::sync::mpsc;
 
 use std::sync::Arc;
@@ -28,10 +28,15 @@ use swim_common::warp::path::RelativePath;
 use crate::agent::lane::channels::uplink::stateless::StatelessUplinks;
 use crate::agent::lane::channels::uplink::{AddressedUplinkMessage, UplinkAction, UplinkKind};
 use crate::agent::lane::channels::TaggedAction;
-use crate::meta::metric::uplink::{uplink_observer, UplinkActionObserver, UplinkProfileSender};
+use crate::meta::metric::uplink::{
+    uplink_observer, TaggedWarpUplinkProfile, UplinkActionObserver, UplinkEventObserver,
+    UplinkProfileSender, WarpUplinkProfile,
+};
 use crate::meta::metric::{aggregator_sink, NodeMetricAggregator};
 use crate::routing::error::RouterError;
+use std::ops::Add;
 use swim_common::routing::ResolutionError;
+use tokio::sync::mpsc::Receiver;
 use tokio::time::Duration;
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
@@ -699,4 +704,106 @@ async fn send_no_uplink_stateless_uplinks() {
     };
 
     join(uplinks_task, assertion_task).await;
+}
+
+fn tracking_observer() -> (
+    UplinkEventObserver,
+    UplinkActionObserver,
+    Receiver<TaggedWarpUplinkProfile>,
+) {
+    let (tx, rx) = mpsc::channel(48);
+    let sender = UplinkProfileSender::new(RelativePath::new("node", "lane"), tx);
+
+    let (event, action) = uplink_observer(Duration::from_secs(1), sender);
+    (event, action, rx)
+}
+
+#[tokio::test]
+async fn metrics() {
+    let route = RelativePath::new("node", "lane");
+    let (producer_tx, producer_rx) = mpsc::channel::<AddressedUplinkMessage<i32>>(5);
+    let (action_tx, action_rx) = mpsc::channel(5);
+    let (router_tx, mut router_rx) = mpsc::channel(10);
+    let (error_tx, _error_rx) = mpsc::channel(5);
+
+    let (event_observer, action_observer, metric_rx) = tracking_observer();
+
+    let uplinks = StatelessUplinks::new(
+        ReceiverStream::new(producer_rx),
+        route.clone(),
+        UplinkKind::Supply,
+        action_observer,
+    );
+
+    let router = TestRouter::new(RoutingAddr::local(1024), router_tx);
+
+    let uplinks_task = uplinks.run(ReceiverStream::new(action_rx), router, error_tx, 256);
+
+    let assertion_task = async move {
+        for i in 0..5 {
+            let addr = RoutingAddr::remote(i);
+
+            assert!(action_tx
+                .send(TaggedAction(addr, UplinkAction::Link))
+                .await
+                .is_ok());
+
+            check_receive(
+                &mut router_rx,
+                addr,
+                Envelope::linked(&route.node, &route.lane),
+            )
+            .await;
+
+            assert!(action_tx
+                .send(TaggedAction(addr, UplinkAction::Sync))
+                .await
+                .is_ok());
+
+            check_receive(
+                &mut router_rx,
+                addr,
+                Envelope::synced(&route.node, &route.lane),
+            )
+            .await;
+
+            assert!(action_tx
+                .send(TaggedAction(addr, UplinkAction::Unlink))
+                .await
+                .is_ok());
+
+            check_receive(
+                &mut router_rx,
+                addr,
+                Envelope::unlinked(&route.node, &route.lane),
+            )
+            .await;
+        }
+
+        drop(action_tx);
+        drop(producer_tx);
+
+        event_observer.force_flush();
+    };
+
+    let receive_task = async move {
+        let mut accumulated_profile = WarpUplinkProfile::default();
+        let mut metric_stream = ReceiverStream::new(metric_rx);
+
+        while let Some(tagged) = metric_stream.next().await {
+            accumulated_profile = accumulated_profile.add(tagged.profile);
+        }
+
+        let expected_profile = WarpUplinkProfile {
+            event_delta: 0,
+            event_rate: 0,
+            command_delta: 0,
+            command_rate: 0,
+            open_delta: 5,
+            close_delta: 5,
+        };
+        assert_eq!(expected_profile, accumulated_profile);
+    };
+
+    join3(assertion_task, uplinks_task, receive_task).await;
 }

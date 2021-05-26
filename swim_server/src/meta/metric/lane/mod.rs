@@ -164,3 +164,13 @@ pub struct LanePulse {
     #[form(name = "uplinkPulse")]
     pub uplink_pulse: WarpUplinkPulse,
 }
+
+impl Add<LanePulse> for LanePulse {
+    type Output = LanePulse;
+
+    fn add(self, rhs: LanePulse) -> Self::Output {
+        LanePulse {
+            uplink_pulse: self.uplink_pulse.add(rhs.uplink_pulse),
+        }
+    }
+}

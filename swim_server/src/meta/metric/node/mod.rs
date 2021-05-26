@@ -90,6 +90,16 @@ pub struct NodePulse {
     pub uplinks: WarpUplinkPulse,
 }
 
+impl Add<NodePulse> for NodePulse {
+    type Output = NodePulse;
+
+    fn add(self, rhs: NodePulse) -> Self::Output {
+        NodePulse {
+            uplinks: self.uplinks.add(rhs.uplinks),
+        }
+    }
+}
+
 /// An aggregator for node metrics.
 pub struct NodeAggregatorTask {
     /// A stop signal for consuming and producing metrics.
