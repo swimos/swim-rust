@@ -25,7 +25,6 @@ use futures::task::{Context, Poll};
 use futures::FutureExt;
 use futures::{Stream, StreamExt};
 use pin_project::pin_project;
-use std::io::Error;
 use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
 

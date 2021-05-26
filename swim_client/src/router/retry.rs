@@ -18,12 +18,13 @@ use tokio::sync::{mpsc, oneshot};
 use utilities::future::retryable::ResettableFuture;
 
 use crate::connections::ConnectionSender;
+use crate::router::ConnectionRequest;
 use futures::task::{Context, Poll};
 use futures::Future;
 use pin_project::pin_project;
 use std::pin::Pin;
 use swim_common::routing::error::RoutingError;
-use swim_common::routing::ws::WsMessage;
+use swim_common::routing::TaggedEnvelope;
 use tracing::trace;
 use utilities::errors::Recoverable;
 use utilities::future::retryable::request::{RetrySendError, RetryableRequest, SendResult};
@@ -63,7 +64,7 @@ where
 
 pub(crate) fn new_request(
     sender: mpsc::Sender<ConnectionRequest>,
-    payload: WsMessage,
+    payload: TaggedEnvelope,
 ) -> impl ResettableFuture<Output = Result<(), RoutingError>> {
     let retryable = RetryableRequest::new(
         sender,
@@ -136,14 +137,14 @@ async fn acquire_sender(
 struct MpscRetryErr {
     kind: RoutingError,
     transient: bool,
-    payload: Option<WsMessage>,
+    payload: Option<TaggedEnvelope>,
 }
 
 impl MpscRetryErr {
     fn from(
         kind: RoutingError,
         sender: Option<mpsc::Sender<ConnectionRequest>>,
-        payload: Option<WsMessage>,
+        payload: Option<TaggedEnvelope>,
     ) -> SendResult<mpsc::Sender<ConnectionRequest>, ConnectionSender, MpscRetryErr> {
         let transient = kind.is_transient();
 
@@ -181,6 +182,7 @@ mod tests {
     use crate::router::RoutingError;
     use futures::Future;
     use swim_common::routing::ws::WsMessage;
+    use swim_common::routing::TaggedEnvelope;
     use tokio::sync::mpsc;
     use utilities::future::retryable::request::{RetryableRequest, SendResult};
 
@@ -252,13 +254,13 @@ mod tests {
     }
 
     async fn new_retryable<Fac, F>(
-        payload: WsMessage,
-        tx: mpsc::Sender<WsMessage>,
+        payload: TaggedEnvelope,
+        tx: mpsc::Sender<TaggedEnvelope>,
         fac: Fac,
     ) -> Result<(), RoutingError>
     where
-        Fac: FnMut(mpsc::Sender<WsMessage>, WsMessage, bool) -> F,
-        F: Future<Output = SendResult<mpsc::Sender<WsMessage>, (), MpscRetryErr>>,
+        Fac: FnMut(mpsc::Sender<TaggedEnvelope>, TaggedEnvelope, bool) -> F,
+        F: Future<Output = SendResult<mpsc::Sender<TaggedEnvelope>, (), MpscRetryErr>>,
     {
         let retryable =
             RetryableRequest::new(tx, payload, fac, |e| e.payload.expect("Missing payload"));

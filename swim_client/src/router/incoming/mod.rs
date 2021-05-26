@@ -18,24 +18,21 @@ use crate::router::{CloseReceiver, CloseResponseSender, RouterEvent, SubscriberR
 use futures::future::ready;
 use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
-use std::convert::TryFrom;
-use swim_common::model::parser::parse_single;
 use swim_common::routing::error::RoutingError;
-use swim_common::routing::ws::WsMessage;
-use swim_common::warp::envelope::Envelope;
+use swim_common::routing::TaggedEnvelope;
 use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc;
 use tracing::level_filters::STATIC_MAX_LEVEL;
-use tracing::{debug, error, span, trace, warn, Level};
+use tracing::{debug, span, trace, warn, Level};
 
 //-------------------------------Connection Pool to Downlink------------------------------------
 
 /// Tasks that the incoming task can handle.
 #[derive(Debug)]
 pub(crate) enum IncomingRequest {
-    Connection(mpsc::Receiver<WsMessage>),
+    Connection(mpsc::Receiver<TaggedEnvelope>),
     Subscribe(SubscriberRequest),
-    Message(WsMessage),
+    Message(TaggedEnvelope),
     Unreachable(String),
     Disconnect,
     Close(Option<CloseResponseSender>),
@@ -68,7 +65,7 @@ impl IncomingHostTask {
         } = self;
 
         let mut subscribers: HashMap<RelativePath, Vec<mpsc::Sender<RouterEvent>>> = HashMap::new();
-        let mut connection: Option<mpsc::Receiver<WsMessage>> = None;
+        let mut connection: Option<mpsc::Receiver<TaggedEnvelope>> = None;
 
         let mut close_trigger = close_rx.fuse();
 
@@ -129,43 +126,17 @@ impl IncomingHostTask {
                 }
 
                 IncomingRequest::Message(message) => {
-                    let value = {
-                        match &message {
-                            WsMessage::Text(s) => parse_single(&s),
-                            m => {
-                                error!("Unimplemented message type received: {:?}", m);
-                                continue;
-                            }
-                        }
-                    };
+                    let message = message.1.into_incoming();
 
-                    match value {
-                        Ok(val) => {
-                            let envelope = Envelope::try_from(val);
-
-                            match envelope {
-                                Ok(env) => {
-                                    let message = env.into_incoming();
-
-                                    if let Ok(incoming) = message {
-                                        broadcast_destination(
-                                            &mut subscribers,
-                                            incoming.path.clone(),
-                                            RouterEvent::Message(incoming),
-                                        )
-                                        .await?;
-                                    } else {
-                                        warn!("Unsupported message: {:?}", message)
-                                    }
-                                }
-                                Err(e) => {
-                                    error!("Parsing error {:?}", e);
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            error!("Parsing error {:?}", e);
-                        }
+                    if let Ok(incoming) = message {
+                        broadcast_destination(
+                            &mut subscribers,
+                            incoming.path.clone(),
+                            RouterEvent::Message(incoming),
+                        )
+                        .await?;
+                    } else {
+                        warn!("Unsupported message: {:?}", message)
                     }
                 }
 
@@ -295,6 +266,41 @@ async fn broadcast_destination(
     Ok(())
 }
 
+/// Broadcasts an event to all subscribers.
+///
+/// # Arguments
+///
+/// * `subscribers`             - A map of all subscribers.
+/// * `event`                   - An event to be broadcasted.
+pub(crate) async fn broadcast<T: Clone>(
+    subscribers: &mut Vec<mpsc::Sender<T>>,
+    event: T,
+) -> Result<(), RoutingError> {
+    if subscribers.len() == 1 {
+        let result = subscribers
+            .get_mut(0)
+            .ok_or(RoutingError::ConnectionError)?
+            .send(event)
+            .await;
+
+        if result.is_err() {
+            subscribers.remove(0);
+        }
+    } else {
+        let futures: FuturesUnordered<_> = subscribers
+            .iter_mut()
+            .enumerate()
+            .map(|(index, sender)| index_sender(sender, event.clone(), index))
+            .collect();
+
+        for index in futures.filter_map(ready).collect::<Vec<_>>().await {
+            subscribers.remove(index);
+        }
+    }
+
+    Ok(())
+}
+
 fn remove_unreachable(
     subscribers: &mut HashMap<RelativePath, Vec<mpsc::Sender<RouterEvent>>>,
     unreachable: Vec<(RelativePath, usize)>,
@@ -314,9 +320,9 @@ fn remove_unreachable(
     Ok(())
 }
 
-async fn index_sender(
-    sender: &mut mpsc::Sender<RouterEvent>,
-    event: RouterEvent,
+async fn index_sender<T: Clone>(
+    sender: &mut mpsc::Sender<T>,
+    event: T,
     index: usize,
 ) -> Option<usize> {
     if sender.send(event).await.is_err() {

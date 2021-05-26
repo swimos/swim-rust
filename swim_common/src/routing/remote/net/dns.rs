@@ -18,7 +18,6 @@ use futures::Future;
 use futures::FutureExt;
 use futures_util::future::BoxFuture;
 use std::io;
-use std::net::SocketAddr;
 use tokio::net::lookup_host;
 
 /// A trait for defining DNS resolvers.

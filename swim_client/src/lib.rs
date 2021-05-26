@@ -22,7 +22,6 @@
 //!
 
 pub mod configuration;
-//Todo dm this needs to be removed but after router/retry is refactored.
 pub mod connections;
 pub mod downlink;
 pub mod interface;

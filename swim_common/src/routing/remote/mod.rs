@@ -51,7 +51,6 @@ use std::convert::TryFrom;
 use std::fmt::{Display, Formatter};
 use std::io;
 use std::io::Error;
-use tokio::net::TcpListener;
 
 #[cfg(test)]
 pub mod test_fixture;

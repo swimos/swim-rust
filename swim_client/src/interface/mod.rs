@@ -15,26 +15,8 @@
 //! Interface for creating and running Swim client instances.
 //!
 //! The module provides methods and structures for creating and running Swim client instances.
-use crate::configuration::downlink::Config;
 use crate::configuration::downlink::ConfigHierarchy;
-use crate::configuration::downlink::ConfigParseError;
 use crate::downlink::error::{DownlinkError, SubscriptionError};
-use crate::downlink::Downlinks;
-use std::error::Error;
-use std::fmt;
-use std::fmt::{Display, Formatter};
-use std::fs::File;
-use std::io::Read;
-use std::sync::Arc;
-use swim_common::form::{Form, ValidatedForm};
-use swim_common::model::parser::parse_single;
-use swim_common::model::Value;
-use swim_common::routing::error::RoutingError;
-use swim_common::routing::ws::WsConnections;
-use swim_common::warp::envelope::Envelope;
-use swim_common::warp::path::AbsolutePath;
-use tracing::info;
-
 use crate::downlink::typed::command::TypedCommandDownlink;
 use crate::downlink::typed::event::TypedEventDownlink;
 use crate::downlink::typed::map::{MapDownlinkReceiver, TypedMapDownlink};
@@ -43,8 +25,18 @@ use crate::downlink::typed::{
     UntypedCommandDownlink, UntypedEventDownlink, UntypedMapDownlink, UntypedMapReceiver,
     UntypedValueDownlink, UntypedValueReceiver,
 };
+use crate::downlink::Downlinks;
 use crate::downlink::SchemaViolations;
-use swim_common::routing::remote::ExternalConnections;
+use std::error::Error;
+use std::fmt;
+use std::fmt::{Display, Formatter};
+use std::sync::Arc;
+use swim_common::form::{Form, ValidatedForm};
+use swim_common::model::Value;
+use swim_common::routing::error::RoutingError;
+use swim_common::warp::envelope::Envelope;
+use swim_common::warp::path::AbsolutePath;
+use tracing::info;
 
 /// Builder to create Swim client instance.
 ///

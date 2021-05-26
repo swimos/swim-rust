@@ -15,7 +15,6 @@
 use crate::plane::PlaneRequest;
 use futures::future::BoxFuture;
 use futures::FutureExt;
-use std::net::SocketAddr;
 use swim_common::request::Request;
 use swim_common::routing::error::ResolutionError;
 use swim_common::routing::error::RouterError;
