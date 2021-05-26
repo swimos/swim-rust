@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::routing::remote::table::{HostAndPort, RoutingTable};
+use crate::routing::remote::table::{SchemeHostPort, RoutingTable};
 use crate::routing::remote::RawRoute;
 use crate::routing::{ConnectionDropped, RoutingAddr, TaggedEnvelope};
 use crate::warp::envelope::Envelope;
@@ -21,7 +21,7 @@ use tokio::sync::mpsc;
 
 #[test]
 fn host_and_port_display() {
-    let hp = HostAndPort::new("host".to_string(), 12);
+    let hp = SchemeHostPort::new("host".to_string(), 12);
     assert_eq!(hp.to_string(), "host:12");
 }
 
@@ -29,7 +29,7 @@ fn host_and_port_display() {
 async fn insert_and_retrieve() {
     let mut table = RoutingTable::default();
     let addr = RoutingAddr::remote(5);
-    let hp = HostAndPort::new("host".to_string(), 45);
+    let hp = SchemeHostPort::new("host".to_string(), 45);
     let sock_addr = "192.168.0.1:80".parse().unwrap();
     let (tx, mut rx) = mpsc::channel(8);
 
@@ -53,8 +53,8 @@ async fn insert_and_retrieve() {
 async fn add_host_to_existing() {
     let mut table = RoutingTable::default();
     let addr = RoutingAddr::remote(5);
-    let hp = HostAndPort::new("host".to_string(), 45);
-    let hp2 = HostAndPort::new("host2".to_string(), 45);
+    let hp = SchemeHostPort::new("host".to_string(), 45);
+    let hp2 = SchemeHostPort::new("host2".to_string(), 45);
     let sock_addr = "192.168.0.1:80".parse().unwrap();
     let (tx, _rx) = mpsc::channel(8);
 
@@ -69,7 +69,7 @@ async fn add_host_to_existing() {
 async fn remove_entry() {
     let mut table = RoutingTable::default();
     let addr = RoutingAddr::remote(5);
-    let hp = HostAndPort::new("host".to_string(), 45);
+    let hp = SchemeHostPort::new("host".to_string(), 45);
     let sock_addr = "192.168.0.1:80".parse().unwrap();
     let (tx, _rx) = mpsc::channel(8);
 

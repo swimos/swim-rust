@@ -13,12 +13,13 @@
 // limitations under the License.
 
 use crate::request::Request;
-use crate::routing::remote::{RawRoute, RoutingRequest};
+use crate::routing::remote::{RawRoute, RoutingRequest, SchemeSocketAddr};
 use crate::routing::ResolutionError;
 use crate::routing::RouterError;
-use crate::routing::{Route, RoutingAddr, ServerRouter, TaggedSender};
+use crate::routing::{Route, Router, RoutingAddr, TaggedSender};
 use futures::future::BoxFuture;
 use futures::FutureExt;
+use std::net::SocketAddr;
 use tokio::sync::{mpsc, oneshot};
 use url::Url;
 use utilities::uri::RelativeUri;
@@ -49,10 +50,11 @@ impl<Delegate> RemoteRouter<Delegate> {
     }
 }
 
-impl<Delegate: ServerRouter> ServerRouter for RemoteRouter<Delegate> {
+impl<Delegate: Router> Router for RemoteRouter<Delegate> {
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,
+        origin: Option<SchemeSocketAddr>,
     ) -> BoxFuture<'_, Result<Route, ResolutionError>> {
         async move {
             let RemoteRouter {
@@ -76,7 +78,7 @@ impl<Delegate: ServerRouter> ServerRouter for RemoteRouter<Delegate> {
                     }
                 }
             } else {
-                delegate_router.resolve_sender(addr).await
+                delegate_router.resolve_sender(addr, origin).await
             }
         }
         .boxed()

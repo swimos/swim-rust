@@ -29,7 +29,7 @@ use swim_common::record;
 use swim_common::routing::error::ResolutionError;
 use swim_common::routing::error::RouterError;
 use swim_common::routing::{
-    ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedEnvelope, TaggedSender,
+    ConnectionDropped, Route, RoutingAddr, Router, TaggedEnvelope, TaggedSender,
 };
 use swim_common::warp::envelope::Envelope;
 use swim_runtime::time::timeout;
@@ -39,6 +39,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
 use utilities::sync::promise;
 use utilities::uri::RelativeUri;
+use std::net::SocketAddr;
 
 mod swim_server {
     pub use crate::*;
@@ -133,8 +134,12 @@ impl MockRouter {
     }
 }
 
-impl ServerRouter for MockRouter {
-    fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>> {
+impl Router for MockRouter {
+    fn resolve_sender(
+        &mut self,
+        addr: RoutingAddr,
+        _origin: Option<SocketAddr>,
+    ) -> BoxFuture<Result<Route, ResolutionError>> {
         async move {
             let MockRouter { inner, drop_rx, .. } = self;
             let route = Route::new(TaggedSender::new(addr, inner.clone()), drop_rx.clone());

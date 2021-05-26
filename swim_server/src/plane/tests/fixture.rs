@@ -29,7 +29,7 @@ use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
-use swim_common::routing::{ServerRouter, TaggedEnvelope};
+use swim_common::routing::{Router, TaggedEnvelope};
 use swim_common::warp::envelope::Envelope;
 use swim_runtime::time::clock::Clock;
 use utilities::sync::trigger;
@@ -96,7 +96,7 @@ pub const RECEIVER_PREFIX: &str = "receiver";
 const LANE_NAME: &str = "receiver_lane";
 const MESSAGE: &str = "ping!";
 
-impl<Clk: Clock, Delegate: ServerRouter + 'static>
+impl<Clk: Clock, Delegate: Router + 'static>
     AgentRoute<Clk, EnvChannel, PlaneRouter<Delegate>> for SendAgentRoute
 {
     fn run_agent(
@@ -118,7 +118,7 @@ impl<Clk: Clock, Delegate: ServerRouter + 'static>
             let target_node: RelativeUri =
                 format!("/{}/{}", RECEIVER_PREFIX, target).parse().unwrap();
             let addr = router.lookup(None, target_node.clone()).await.unwrap();
-            let mut tx = router.resolve_sender(addr).await.unwrap().sender;
+            let mut tx = router.resolve_sender(addr, None).await.unwrap().sender;
             assert!(tx
                 .send_item(Envelope::make_event(
                     target_node.to_string(),

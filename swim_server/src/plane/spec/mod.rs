@@ -20,7 +20,7 @@ use crate::plane::provider::AgentProvider;
 use crate::plane::{AgentRoute, BoxAgentRoute};
 use futures::Stream;
 use std::fmt::Debug;
-use swim_common::routing::{ServerRouter, TaggedEnvelope};
+use swim_common::routing::{Router, TaggedEnvelope};
 use swim_runtime::time::clock::Clock;
 use utilities::route_pattern::RoutePattern;
 
@@ -85,11 +85,11 @@ impl<Clk, Envelopes, Router> Default for PlaneBuilder<Clk, Envelopes, Router> {
     }
 }
 
-impl<Clk, Envelopes, Router> PlaneBuilder<Clk, Envelopes, Router>
+impl<Clk, Envelopes, R> PlaneBuilder<Clk, Envelopes, R>
 where
     Clk: Clock,
     Envelopes: Stream<Item = TaggedEnvelope> + Send + 'static,
-    Router: ServerRouter + Clone + 'static,
+    R: Router + Clone + 'static,
 {
     /// Attempt to add a new agent route to the plane.
     ///
@@ -127,7 +127,7 @@ where
     }
 
     /// Construct the specification without adding a plane lifecycle.
-    pub fn build(self) -> PlaneSpec<Clk, Envelopes, Router> {
+    pub fn build(self) -> PlaneSpec<Clk, Envelopes, R> {
         self.0
     }
 
@@ -135,7 +135,7 @@ where
     pub fn build_with_lifecycle(
         mut self,
         custom_lc: Box<dyn PlaneLifecycle>,
-    ) -> PlaneSpec<Clk, Envelopes, Router> {
+    ) -> PlaneSpec<Clk, Envelopes, R> {
         self.0.lifecycle = Some(custom_lc);
         self.0
     }

@@ -21,10 +21,10 @@ use swim_client::runtime::time::delay::delay_for;
 use swim_common::warp::path::AbsolutePath;
 use tokio::task;
 
-async fn did_set(value_recv: ValueDownlinkReceiver<String>, initial_value: String) {
+async fn did_set(value_recv: ValueDownlinkReceiver<i32>, initial_value: i32) {
     value_recv
         .into_stream()
-        .filter_map(|event| async {
+        .filter_map(|event| async move {
             match event {
                 Remote(event) => Some(event),
                 _ => None,
@@ -32,7 +32,7 @@ async fn did_set(value_recv: ValueDownlinkReceiver<String>, initial_value: Strin
         })
         .scan(initial_value, |state, current| {
             let previous = std::mem::replace(state, current.clone());
-            async { Some((previous, current)) }
+            async move { Some((previous, current)) }
         })
         .for_each(|(previous, current)| async move {
             println!(
@@ -47,34 +47,25 @@ async fn did_set(value_recv: ValueDownlinkReceiver<String>, initial_value: Strin
 async fn main() {
     let mut client = SwimClientBuilder::build_with_default().await;
     let host_uri = url::Url::parse(&"ws://127.0.0.1:9001".to_string()).unwrap();
-    let node_uri = "unit/foo";
-    let lane_uri = "info";
+    let node_uri = "/rust";
+    let lane_uri = "counter";
 
     let path = AbsolutePath::new(host_uri, node_uri, lane_uri);
+
     let (value_downlink, value_recv) = client
-        .value_downlink(path.clone(), String::new())
+        .value_downlink(path.clone(), 0)
         .await
         .expect("Failed to create value downlink!");
 
-    let initial_value = value_downlink
-        .get()
-        .await
-        .expect("Failed to retrieve initial downlink value!");
+    task::spawn(did_set(value_recv, 0));
 
-    task::spawn(did_set(value_recv, initial_value));
-
-    // Send using either the proxy command lane...
-    client
-        .send_command(path, "Hello from command, world!".to_string())
-        .await
-        .expect("Failed to send command!");
     delay_for(Duration::from_secs(2)).await;
 
-    // ...or a downlink set()
-    value_downlink
-        .set("Hello from link, world!".to_string())
+    client
+        .send_command(path, 13)
         .await
-        .expect("Failed to send message!");
+        .expect("Failed to send command!");
+
     delay_for(Duration::from_secs(2)).await;
 
     println!("Stopping client in 2 seconds");

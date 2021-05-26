@@ -24,13 +24,16 @@ use either::Either;
 use futures::{io, join};
 use std::error::Error;
 use std::fmt::{Display, Formatter};
+use std::future::Future;
 use std::net::SocketAddr;
+use std::pin::Pin;
 use std::sync::Arc;
 use swim_common::routing::remote::config::ConnectionConfig;
 use swim_common::routing::remote::net::dns::Resolver;
 use swim_common::routing::remote::net::plain::TokioPlainTextNetworking;
 use swim_common::routing::remote::{RemoteConnectionChannels, RemoteConnectionsTask};
 use swim_common::routing::ws::tungstenite::TungsteniteWsConnections;
+use swim_common::routing::{ConnectionDropped, RoutingAddr};
 use swim_runtime::task::TaskError;
 use swim_runtime::time::clock::RuntimeClock;
 use tokio::sync::mpsc;
@@ -267,7 +270,7 @@ impl SwimServer {
             top_level_router_fac.clone(),
         );
 
-        let connections_task = RemoteConnectionsTask::new(
+        let connections_task = RemoteConnectionsTask::new_server_task(
             conn_config,
             TokioPlainTextNetworking::new(Arc::new(Resolver::new().await)),
             address,
@@ -281,7 +284,7 @@ impl SwimServer {
         .await
         .unwrap_or_else(|err| panic!("Could not connect to \"{}\": {}", address, err));
 
-        let _ = match connections_task.local_addr() {
+        let _ = match connections_task.listener().unwrap().local_addr() {
             Ok(local_addr) => address_tx.provide(local_addr),
             Err(err) => panic!("Could not resolve server address: {}", err),
         };

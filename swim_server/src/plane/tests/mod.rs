@@ -20,7 +20,7 @@ use crate::plane::{AgentRoute, EnvChannel};
 use crate::routing::TopLevelRouterFactory;
 use futures::future::join;
 use std::time::Duration;
-use swim_common::routing::ServerRouter;
+use swim_common::routing::Router;
 use swim_runtime::time::clock::Clock;
 use swim_runtime::time::timeout;
 use tokio::sync::mpsc;
@@ -30,7 +30,7 @@ use utilities::sync::trigger;
 
 mod fixture;
 
-fn make_spec<Clk: Clock, Delegate: ServerRouter + 'static>() -> (
+fn make_spec<Clk: Clock, Delegate: Router + 'static>() -> (
     PlaneSpec<Clk, EnvChannel, PlaneRouter<Delegate>>,
     trigger::Receiver,
 ) {

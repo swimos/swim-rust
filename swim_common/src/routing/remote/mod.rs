@@ -43,11 +43,14 @@ use crate::routing::error::Unresolvable;
 use crate::routing::error::{HttpError, ResolutionErrorKind};
 use crate::routing::remote::config::ConnectionConfig;
 use crate::routing::remote::state::{DeferredResult, Event, RemoteConnections, RemoteTasksState};
-use crate::routing::remote::table::HostAndPort;
+use crate::routing::remote::table::SchemeHostPort;
 use crate::routing::ws::WsConnections;
-use crate::routing::{ConnectionDropped, RoutingAddr, ServerRouterFactory, TaggedEnvelope};
+use crate::routing::{ConnectionDropped, RouterFactory, RoutingAddr, TaggedEnvelope};
 use futures::stream::FusedStream;
+use std::convert::TryFrom;
+use std::fmt::{Display, Formatter};
 use std::io;
+use std::io::Error;
 use tokio::net::TcpListener;
 
 #[cfg(test)]
@@ -109,7 +112,7 @@ impl RemoteConnectionChannels {
 #[derive(Debug)]
 pub struct RemoteConnectionsTask<External: ExternalConnections, Ws, Router, Sp> {
     external: External,
-    listener: External::ListenerType,
+    listener: Option<External::ListenerType>,
     websockets: Ws,
     delegate_router: Router,
     stop_trigger: trigger::Receiver,
@@ -119,15 +122,7 @@ pub struct RemoteConnectionsTask<External: ExternalConnections, Ws, Router, Sp> 
     remote_rx: mpsc::Receiver<RoutingRequest>,
 }
 
-impl<External: ExternalConnections<ListenerType = TcpListener>, Ws, Router, Sp>
-    RemoteConnectionsTask<External, Ws, Router, Sp>
-{
-    pub fn local_addr(&self) -> io::Result<SocketAddr> {
-        self.listener.local_addr()
-    }
-}
-
-type SocketAddrIt = std::vec::IntoIter<SocketAddr>;
+type SchemeSocketAddrIt = std::vec::IntoIter<SchemeSocketAddr>;
 
 const REQUEST_DROPPED: &str = "The receiver of a routing request was dropped before it completed.";
 const FAILED_SERVER_CONN: &str = "Failed to establish a server connection.";
@@ -148,10 +143,37 @@ impl<External, Ws, RouterFac, Sp> RemoteConnectionsTask<External, Ws, RouterFac,
 where
     External: ExternalConnections,
     Ws: WsConnections<External::Socket> + Send + Sync + 'static,
-    RouterFac: ServerRouterFactory + 'static,
+    RouterFac: RouterFactory + 'static,
     Sp: Spawner<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>> + Send + Unpin,
 {
-    pub async fn new(
+    pub async fn new_client_task(
+        configuration: ConnectionConfig,
+        external: External,
+        websockets: Ws,
+        delegate_router: RouterFac,
+        spawner: Sp,
+        channels: RemoteConnectionChannels,
+    ) -> Self {
+        let RemoteConnectionChannels {
+            request_tx: remote_tx,
+            request_rx: remote_rx,
+            stop_trigger,
+        } = channels;
+
+        RemoteConnectionsTask {
+            external,
+            listener: None,
+            websockets,
+            delegate_router,
+            stop_trigger,
+            spawner,
+            configuration,
+            remote_tx,
+            remote_rx,
+        }
+    }
+
+    pub async fn new_server_task(
         configuration: ConnectionConfig,
         external: External,
         bind_addr: SocketAddr,
@@ -167,9 +189,10 @@ where
         } = channels;
 
         let listener = external.bind(bind_addr).await?;
+
         Ok(RemoteConnectionsTask {
             external,
-            listener,
+            listener: Some(listener),
             websockets,
             delegate_router,
             stop_trigger,
@@ -180,33 +203,46 @@ where
         })
     }
 
+    pub fn listener(&self) -> Option<&External::ListenerType> {
+        self.listener.as_ref()
+    }
+
     pub async fn run(self) -> Result<(), io::Error> {
-        let RemoteConnectionsTask {
-            external,
-            listener,
-            websockets,
-            delegate_router,
-            stop_trigger,
-            spawner,
-            configuration,
-            remote_tx,
-            remote_rx,
-        } = self;
-
-        let mut state = RemoteConnections::new(
-            &websockets,
-            configuration,
-            spawner,
-            external,
-            listener,
-            delegate_router,
-            RemoteConnectionChannels {
-                request_tx: remote_tx,
-                request_rx: remote_rx,
+        match self {
+            RemoteConnectionsTask {
+                external,
+                listener,
+                websockets,
+                delegate_router,
                 stop_trigger,
-            },
-        );
+                spawner,
+                configuration,
+                remote_tx,
+                remote_rx,
+            } => {
+                let state = RemoteConnections::new(
+                    &websockets,
+                    configuration,
+                    spawner,
+                    external,
+                    listener,
+                    delegate_router,
+                    RemoteConnectionChannels {
+                        request_tx: remote_tx,
+                        request_rx: remote_rx,
+                        stop_trigger,
+                    },
+                );
 
+                RemoteConnectionsTask::run_loop(state, configuration).await
+            }
+        }
+    }
+
+    async fn run_loop(
+        mut state: RemoteConnections<'_, External, Ws, Sp, RouterFac>,
+        configuration: ConnectionConfig,
+    ) -> Result<(), Error> {
         let mut overall_result = Ok(());
         let mut iteration_count: usize = 0;
         let yield_mod = configuration.yield_after.get();
@@ -308,7 +344,7 @@ fn update_state<State: RemoteTasksState>(
             host,
         }) => {
             if let Some(sock_addr) = addrs.next() {
-                if let Err(host) = state.check_socket_addr(host, sock_addr) {
+                if let Err(host) = state.check_socket_addr(host, sock_addr.clone()) {
                     state.defer_connect_and_handshake(host, sock_addr, addrs);
                 }
             } else {
@@ -336,39 +372,102 @@ fn update_state<State: RemoteTasksState>(
 }
 
 #[derive(Debug, PartialEq, Eq)]
-enum BadUrl {
+pub enum BadUrl {
     BadScheme(String),
     NoHost,
 }
 
-fn unpack_url(url: &Url) -> Result<HostAndPort, BadUrl> {
-    if let Some(default_port) = validate_scheme(url.scheme()) {
-        match (url.host_str(), url.port()) {
-            (Some(host_str), Some(port)) => Ok(HostAndPort::new(host_str.to_owned(), port)),
-            (Some(host_str), _) => Ok(HostAndPort::new(host_str.to_owned(), default_port)),
-            _ => Err(BadUrl::NoHost),
+fn unpack_url(url: &Url) -> Result<SchemeHostPort, BadUrl> {
+    let scheme = Scheme::try_from(url.scheme())?;
+    match (url.host_str(), url.port()) {
+        (Some(host_str), Some(port)) => Ok(SchemeHostPort::new(scheme, host_str.to_owned(), port)),
+        (Some(host_str), _) => {
+            let default_port = scheme.get_default_port();
+            Ok(SchemeHostPort::new(
+                scheme,
+                host_str.to_owned(),
+                default_port,
+            ))
         }
-    } else {
-        Err(BadUrl::BadScheme(url.scheme().to_string()))
+        _ => Err(BadUrl::NoHost),
     }
 }
 
-/// Get the default port for supported schemes.
-fn validate_scheme(scheme: &str) -> Option<u16> {
-    match scheme {
-        "ws" | "swim" | "warp" => Some(80),
-        "wss" | "swims" | "warps" => Some(443),
-        _ => None,
+/// Supported websocket schemes
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Scheme {
+    Ws,
+    Wss,
+}
+
+impl TryFrom<&str> for Scheme {
+    type Error = BadUrl;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value {
+            "ws" | "swim" | "warp" => Ok(Scheme::Ws),
+            "wss" | "swims" | "warps" => Ok(Scheme::Wss),
+            _ => Err(BadUrl::BadScheme(value.to_owned())),
+        }
+    }
+}
+
+impl Scheme {
+    /// Get the default port for the schemes.
+    fn get_default_port(&self) -> u16 {
+        match self {
+            Scheme::Ws => 80,
+            Scheme::Wss => 443,
+        }
+    }
+
+    /// Return if the scheme is secure.
+    fn is_secure(&self) -> bool {
+        match self {
+            Scheme::Ws => false,
+            Scheme::Wss => true,
+        }
+    }
+}
+
+impl Display for Scheme {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Scheme::Ws => {
+                write!(f, "ws")
+            }
+            Scheme::Wss => {
+                write!(f, "wss")
+            }
+        }
     }
 }
 
 type IoResult<T> = io::Result<T>;
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct SchemeSocketAddr {
+    scheme: Scheme,
+    addr: SocketAddr,
+}
+
+impl SchemeSocketAddr {
+    fn new(scheme: Scheme, addr: SocketAddr) -> SchemeSocketAddr {
+        SchemeSocketAddr { scheme, addr }
+    }
+}
+
+impl Display for SchemeSocketAddr {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}://{}/", self.scheme, self.addr)
+    }
+}
+
 /// Trait for servers that listen for incoming remote connections. This is primarily used to
 /// abstract over [`std::net::TcpListener`] for testing purposes.
 pub trait Listener {
     type Socket: Unpin + Send + Sync + 'static;
-    type AcceptStream: FusedStream<Item = IoResult<(Self::Socket, SocketAddr)>> + Unpin;
+    type AcceptStream: FusedStream<Item = IoResult<(Self::Socket, SchemeSocketAddr)>> + Unpin;
 
     fn into_stream(self) -> Self::AcceptStream;
 }
@@ -381,5 +480,5 @@ pub trait ExternalConnections: Clone + Send + Sync + 'static {
 
     fn bind(&self, addr: SocketAddr) -> BoxFuture<'static, IoResult<Self::ListenerType>>;
     fn try_open(&self, addr: SocketAddr) -> BoxFuture<'static, IoResult<Self::Socket>>;
-    fn lookup(&self, host: HostAndPort) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>>;
+    fn lookup(&self, host: SchemeHostPort) -> BoxFuture<'static, IoResult<Vec<SchemeSocketAddr>>>;
 }

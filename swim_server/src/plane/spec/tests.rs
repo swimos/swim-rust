@@ -23,10 +23,11 @@ use crate::plane::router::PlaneRouter;
 use crate::plane::spec::{PlaneBuilder, PlaneSpec, RouteSpec};
 use futures::future::{ready, BoxFuture, Ready};
 use futures::FutureExt;
+use std::net::SocketAddr;
 use std::time::Duration;
 use swim_common::routing::error::ResolutionError;
 use swim_common::routing::error::RouterError;
-use swim_common::routing::{Route, RoutingAddr, ServerRouter, TaggedEnvelope};
+use swim_common::routing::{Route, RoutingAddr, Router, TaggedEnvelope};
 use swim_runtime::time::clock::Clock;
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
@@ -62,10 +63,11 @@ struct DummyPlaneLifecycle(i32);
 #[derive(Clone, Debug)]
 struct DummyDelegate;
 
-impl ServerRouter for DummyDelegate {
+impl Router for DummyDelegate {
     fn resolve_sender(
         &mut self,
         _addr: RoutingAddr,
+        _origin: Option<SocketAddr>,
     ) -> BoxFuture<'_, Result<Route, ResolutionError>> {
         unimplemented!()
     }

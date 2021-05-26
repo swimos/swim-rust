@@ -2,11 +2,12 @@ use crate::plane::PlaneRequest;
 
 use futures::future::BoxFuture;
 use futures::FutureExt;
+use std::net::SocketAddr;
 use swim_common::request::Request;
 use swim_common::routing::error::ResolutionError;
 use swim_common::routing::error::RouterError;
-use swim_common::routing::remote::{RawRoute, RoutingRequest};
-use swim_common::routing::{Route, RoutingAddr, ServerRouter, ServerRouterFactory, TaggedSender};
+use swim_common::routing::remote::{RawRoute, RoutingRequest, SchemeSocketAddr};
+use swim_common::routing::{Route, Router, RouterFactory, RoutingAddr, TaggedSender};
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use url::Url;
@@ -30,7 +31,7 @@ impl TopLevelRouterFactory {
     }
 }
 
-impl ServerRouterFactory for TopLevelRouterFactory {
+impl RouterFactory for TopLevelRouterFactory {
     type Router = TopLevelRouter;
 
     fn create_for(&self, addr: RoutingAddr) -> Self::Router {
@@ -59,10 +60,11 @@ impl TopLevelRouter {
     }
 }
 
-impl ServerRouter for TopLevelRouter {
+impl Router for TopLevelRouter {
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,
+        _origin: Option<SchemeSocketAddr>,
     ) -> BoxFuture<'_, Result<Route, ResolutionError>> {
         async move {
             let TopLevelRouter {

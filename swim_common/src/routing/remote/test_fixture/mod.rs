@@ -15,14 +15,12 @@
 use crate::routing::error::{
     CloseError, ConnectionError, HttpError, HttpErrorKind, ResolutionError, ResolutionErrorKind,
 };
-use crate::routing::remote::table::HostAndPort;
-use crate::routing::remote::ConnectionDropped;
+use crate::routing::remote::table::SchemeHostPort;
+use crate::routing::remote::{ConnectionDropped, SchemeSocketAddr};
 use crate::routing::remote::{ExternalConnections, Listener};
 use crate::routing::ws::{CloseReason, JoinedStreamSink, WsConnections, WsMessage};
 use crate::routing::RouterError;
-use crate::routing::{
-    Route, RoutingAddr, ServerRouter, ServerRouterFactory, TaggedEnvelope, TaggedSender,
-};
+use crate::routing::{Route, Router, RouterFactory, RoutingAddr, TaggedEnvelope, TaggedSender};
 use futures::future::{ready, BoxFuture};
 use futures::io::ErrorKind;
 use futures::stream::Fuse;
@@ -65,10 +63,11 @@ impl LocalRoutes {
     }
 }
 
-impl ServerRouter for LocalRoutes {
+impl Router for LocalRoutes {
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,
+        _origin: Option<SchemeSocketAddr>,
     ) -> BoxFuture<'_, Result<Route, ResolutionError>> {
         let lock = self.1.lock();
         let result = if let Some(Entry {
@@ -185,7 +184,7 @@ impl LocalRoutes {
     }
 }
 
-impl ServerRouterFactory for LocalRoutes {
+impl RouterFactory for LocalRoutes {
     type Router = LocalRoutes;
 
     fn create_for(&self, addr: RoutingAddr) -> Self::Router {
@@ -345,7 +344,7 @@ impl FakeSocket {
 struct FakeConnectionsInner {
     sockets: HashMap<SocketAddr, Result<FakeSocket, io::Error>>,
     incoming: Option<FakeListener>,
-    dns: HashMap<String, Vec<SocketAddr>>,
+    dns: HashMap<String, Vec<SchemeSocketAddr>>,
 }
 
 #[derive(Debug, Clone)]
@@ -358,8 +357,8 @@ pub struct FakeConnections {
 impl FakeConnections {
     pub fn new(
         sockets: HashMap<SocketAddr, Result<FakeSocket, io::Error>>,
-        dns: HashMap<String, Vec<SocketAddr>>,
-        incoming: Option<mpsc::Receiver<io::Result<(FakeSocket, SocketAddr)>>>,
+        dns: HashMap<String, Vec<SchemeSocketAddr>>,
+        incoming: Option<mpsc::Receiver<io::Result<(FakeSocket, SchemeSocketAddr)>>>,
         open_error_count: usize,
     ) -> Self {
         FakeConnections {
@@ -372,7 +371,7 @@ impl FakeConnections {
         }
     }
 
-    pub fn add_dns(&self, host: String, sock_addr: SocketAddr) {
+    pub fn add_dns(&self, host: String, sock_addr: SchemeSocketAddr) {
         self.inner.lock().dns.insert(host, vec![sock_addr]);
     }
 
@@ -417,8 +416,8 @@ impl ExternalConnections for FakeConnections {
 
     fn lookup(
         &self,
-        host_and_port: HostAndPort,
-    ) -> BoxFuture<'static, io::Result<Vec<SocketAddr>>> {
+        host_and_port: SchemeHostPort,
+    ) -> BoxFuture<'static, io::Result<Vec<SchemeSocketAddr>>> {
         let result = self
             .inner
             .lock()
@@ -432,10 +431,10 @@ impl ExternalConnections for FakeConnections {
 }
 
 #[derive(Debug)]
-pub struct FakeListener(mpsc::Receiver<io::Result<(FakeSocket, SocketAddr)>>);
+pub struct FakeListener(mpsc::Receiver<io::Result<(FakeSocket, SchemeSocketAddr)>>);
 
 impl FakeListener {
-    pub fn new(rx: mpsc::Receiver<io::Result<(FakeSocket, SocketAddr)>>) -> Self {
+    pub fn new(rx: mpsc::Receiver<io::Result<(FakeSocket, SchemeSocketAddr)>>) -> Self {
         FakeListener(rx)
     }
 }
@@ -443,7 +442,7 @@ impl FakeListener {
 impl Listener for FakeListener {
     type Socket = FakeSocket;
     #[allow(clippy::type_complexity)]
-    type AcceptStream = Fuse<ReceiverStream<io::Result<(Self::Socket, SocketAddr)>>>;
+    type AcceptStream = Fuse<ReceiverStream<io::Result<(Self::Socket, SchemeSocketAddr)>>>;
 
     fn into_stream(self) -> Self::AcceptStream {
         let FakeListener(rx) = self;

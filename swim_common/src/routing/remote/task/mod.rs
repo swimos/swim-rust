@@ -22,12 +22,12 @@ use crate::routing::error::{
 };
 use crate::routing::remote::config::ConnectionConfig;
 use crate::routing::remote::router::RemoteRouter;
-use crate::routing::remote::RoutingRequest;
+use crate::routing::remote::{RoutingRequest, SchemeSocketAddr};
 use crate::routing::ws::selector::{SelectorResult, WsStreamSelector};
 use crate::routing::ws::{CloseCode, CloseReason, JoinedStreamSink, WsMessage};
 use crate::routing::RouterError;
 use crate::routing::{
-    ConnectionDropped, Route, RoutingAddr, ServerRouter, ServerRouterFactory, TaggedEnvelope,
+    ConnectionDropped, Route, Router, RouterFactory, RoutingAddr, TaggedEnvelope,
 };
 use crate::warp::envelope::{Envelope, EnvelopeHeader, EnvelopeParseErr, OutgoingHeader};
 use crate::warp::path::RelativePath;
@@ -40,6 +40,7 @@ use std::convert::TryFrom;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::future::Future;
+use std::net::SocketAddr;
 use std::str::FromStr;
 use std::time::Duration;
 use tokio::sync::mpsc;
@@ -54,6 +55,7 @@ use utilities::uri::{BadRelativeUri, RelativeUri};
 
 /// A task that manages reading from and writing to a web-sockets channel.
 pub struct ConnectionTask<Str, Router> {
+    addr: SchemeSocketAddr,
     ws_stream: Str,
     messages: mpsc::Receiver<TaggedEnvelope>,
     message_injector: mpsc::Sender<TaggedEnvelope>,
@@ -94,10 +96,10 @@ impl From<EnvelopeParseErr> for Completion {
 const IGNORING_MESSAGE: &str = "Ignoring unexpected message.";
 const ERROR_ON_CLOSE: &str = "Error whilst closing connection.";
 
-impl<Str, Router> ConnectionTask<Str, Router>
+impl<Str, R> ConnectionTask<Str, R>
 where
     Str: JoinedStreamSink<WsMessage, ConnectionError> + Unpin,
-    Router: ServerRouter,
+    R: Router,
 {
     /// Create a new task.
     ///
@@ -111,8 +113,9 @@ where
     /// * `config` - Configuration for the connectino task.
     /// runtime.
     pub fn new(
+        addr: SchemeSocketAddr,
         ws_stream: Str,
-        router: Router,
+        router: R,
         messages: mpsc::Receiver<TaggedEnvelope>,
         message_injector: mpsc::Sender<TaggedEnvelope>,
         stop_signal: trigger::Receiver,
@@ -120,6 +123,7 @@ where
     ) -> Self {
         assert!(config.activity_timeout > ZERO);
         ConnectionTask {
+            addr,
             ws_stream,
             messages,
             message_injector,
@@ -131,6 +135,7 @@ where
 
     pub async fn run(self) -> ConnectionDropped {
         let ConnectionTask {
+            addr,
             mut ws_stream,
             messages,
             message_injector,
@@ -186,6 +191,7 @@ where
                                         &mut router,
                                         &mut resolved,
                                         envelope,
+                                        addr.clone(),
                                         config.connection_retries,
                                         sleep,
                                     )
@@ -333,20 +339,21 @@ impl From<RouterError> for DispatchError {
     }
 }
 
-async fn dispatch_envelope<Router, F, D>(
-    router: &mut Router,
+async fn dispatch_envelope<R, F, D>(
+    router: &mut R,
     resolved: &mut HashMap<RelativePath, Route>,
     mut envelope: Envelope,
+    origin: SchemeSocketAddr,
     mut retry_strategy: RetryStrategy,
     delay_fn: F,
 ) -> Result<(), (Envelope, DispatchError)>
 where
-    Router: ServerRouter,
+    R: Router,
     F: Fn(Duration) -> D,
     D: Future<Output = ()>,
 {
     loop {
-        let result = try_dispatch_envelope(router, resolved, envelope).await;
+        let result = try_dispatch_envelope(router, resolved, envelope, origin.clone()).await;
         match result {
             Err((env, err)) if !err.is_fatal() => {
                 match retry_strategy.next() {
@@ -370,19 +377,20 @@ where
     }
 }
 
-async fn try_dispatch_envelope<Router>(
-    router: &mut Router,
+async fn try_dispatch_envelope<R>(
+    router: &mut R,
     resolved: &mut HashMap<RelativePath, Route>,
     envelope: Envelope,
+    origin: SchemeSocketAddr,
 ) -> Result<(), (Envelope, DispatchError)>
 where
-    Router: ServerRouter,
+    R: Router,
 {
     if let Some(target) = envelope.header.relative_path().as_ref() {
         let Route { sender, .. } = if let Some(route) = resolved.get_mut(target) {
             route
         } else {
-            let route = get_route(router, target).await;
+            let route = get_route(router, target, origin).await;
             match route {
                 Ok(route) => match resolved.entry(target.clone()) {
                     Entry::Occupied(_) => unreachable!(),
@@ -412,17 +420,18 @@ where
     }
 }
 
-async fn get_route<Router>(
-    router: &mut Router,
+async fn get_route<R>(
+    router: &mut R,
     target: &RelativePath,
+    origin: SchemeSocketAddr,
 ) -> Result<Route, DispatchError>
 where
-    Router: ServerRouter,
+    R: Router,
 {
     let target_addr = router
         .lookup(None, RelativeUri::from_str(&target.node.as_str())?)
         .await?;
-    Ok(router.resolve_sender(target_addr).await?)
+    Ok(router.resolve_sender(target_addr, Some(origin)).await?)
 }
 
 /// Factory to create and spawn new connection tasks.
@@ -450,10 +459,11 @@ impl<RouterFac> TaskFactory<RouterFac> {
 }
 impl<RouterFac> TaskFactory<RouterFac>
 where
-    RouterFac: ServerRouterFactory + 'static,
+    RouterFac: RouterFactory + 'static,
 {
     pub fn spawn_connection_task<Str, Sp>(
         &self,
+        addr: SchemeSocketAddr,
         ws_stream: Str,
         tag: RoutingAddr,
         spawner: &Sp,
@@ -470,6 +480,7 @@ where
         } = self;
         let (msg_tx, msg_rx) = mpsc::channel(configuration.channel_buffer_size.get());
         let task = ConnectionTask::new(
+            addr,
             ws_stream,
             RemoteRouter::new(tag, delegate_router.create_for(tag), request_tx.clone()),
             msg_rx,

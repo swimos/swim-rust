@@ -24,13 +24,14 @@ use futures::FutureExt;
 use parking_lot::Mutex;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use stm::transaction::TransactionError;
 use swim_common::model::Value;
 use swim_common::routing::error::ResolutionError;
 use swim_common::routing::error::RouterError;
 use swim_common::routing::{
-    ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedClientEnvelope, TaggedEnvelope,
+    ConnectionDropped, Route, RoutingAddr, Router, TaggedClientEnvelope, TaggedEnvelope,
     TaggedSender,
 };
 use swim_common::warp::envelope::{Envelope, OutgoingHeader, OutgoingLinkMessage};
@@ -91,8 +92,12 @@ impl MockRouterInner {
 #[derive(Debug, Clone)]
 pub struct MockRouter(Arc<Mutex<MockRouterInner>>);
 
-impl ServerRouter for MockRouter {
-    fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>> {
+impl Router for MockRouter {
+    fn resolve_sender(
+        &mut self,
+        addr: RoutingAddr,
+        _origin: Option<SocketAddr>,
+    ) -> BoxFuture<Result<Route, ResolutionError>> {
         async move {
             let mut lock = self.0.lock();
             let MockRouterInner {
@@ -215,7 +220,7 @@ impl LaneIo<MockExecutionContext> for MockLane {
                         let sender = match senders.entry(addr) {
                             Entry::Occupied(entry) => entry.into_mut(),
                             Entry::Vacant(entry) => {
-                                if let Ok(sender) = router.resolve_sender(addr).await {
+                                if let Ok(sender) = router.resolve_sender(addr, None).await {
                                     entry.insert(sender.sender)
                                 } else {
                                     break Some(LaneIoError::for_uplink_errors(

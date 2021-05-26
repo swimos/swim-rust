@@ -89,7 +89,7 @@ impl CounterLifecycle {
 
 #[tokio::main]
 async fn main() {
-    let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
+    let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 9001);
 
     let mut plane_builder = PlaneBuilder::new();
     plane_builder
@@ -104,10 +104,8 @@ async fn main() {
     swim_server_builder.add_plane(plane_builder.build());
     let (swim_server, mut server_handle) = swim_server_builder.bind_to(address).build().unwrap();
 
-    let address = server_handle.address();
-
     let stop = async {
-        task::sleep(Duration::from_secs(60)).await;
+        task::sleep(Duration::from_secs(600)).await;
         server_handle.stop();
     };
 

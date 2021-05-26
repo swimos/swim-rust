@@ -22,7 +22,7 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use swim_common::routing::ServerRouter;
+use swim_common::routing::Router;
 use swim_runtime::time::clock::Clock;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
@@ -220,7 +220,7 @@ where
 
 /// A context, scoped to an agent, to provide shared functionality to each of its lanes.
 pub trait AgentExecutionContext {
-    type Router: ServerRouter + 'static;
+    type Router: Router + 'static;
 
     /// Create a handle to the envelope router for the agent.
     fn router_handle(&self) -> Self::Router;
@@ -231,7 +231,7 @@ pub trait AgentExecutionContext {
 
 impl<Agent, Clk, RouterInner> AgentExecutionContext for ContextImpl<Agent, Clk, RouterInner>
 where
-    RouterInner: ServerRouter + Clone + 'static,
+    RouterInner: Router + Clone + 'static,
 {
     type Router = RouterInner;
 

@@ -63,12 +63,13 @@ mod stub_router {
     use swim_common::routing::error::ResolutionError;
     use swim_common::routing::error::RouterError;
     use swim_common::routing::{
-        ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedEnvelope, TaggedSender,
+        ConnectionDropped, Route, RoutingAddr, Router, TaggedEnvelope, TaggedSender,
     };
     use tokio::sync::mpsc;
     use url::Url;
     use utilities::sync::promise;
     use utilities::uri::RelativeUri;
+    use std::net::SocketAddr;
 
     #[derive(Clone)]
     pub struct SingleChannelRouter {
@@ -92,10 +93,11 @@ mod stub_router {
         }
     }
 
-    impl ServerRouter for SingleChannelRouter {
+    impl Router for SingleChannelRouter {
         fn resolve_sender(
             &mut self,
             addr: RoutingAddr,
+            _origin: Option<SocketAddr>,
         ) -> BoxFuture<Result<Route, ResolutionError>> {
             async move {
                 let SingleChannelRouter { inner, drop_rx, .. } = self;

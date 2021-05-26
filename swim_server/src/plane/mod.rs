@@ -42,7 +42,7 @@ use swim_common::request::Request;
 use swim_common::routing::error::{ConnectionError, ProtocolError, ProtocolErrorKind};
 use swim_common::routing::error::{RouterError, Unresolvable};
 use swim_common::routing::remote::RawRoute;
-use swim_common::routing::{ConnectionDropped, RoutingAddr, ServerRouterFactory, TaggedEnvelope};
+use swim_common::routing::{ConnectionDropped, RoutingAddr, RouterFactory, TaggedEnvelope};
 use swim_runtime::time::clock::Clock;
 use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::ReceiverStream;
@@ -265,7 +265,7 @@ impl PlaneContext for ContextImpl {
 }
 /// Contains the specifications of all routes that are within a plane and maintains the map of
 /// currently active routes.
-struct RouteResolver<Clk, DelegateFac: ServerRouterFactory> {
+struct RouteResolver<Clk, DelegateFac: RouterFactory> {
     /// Clock for scheduling tasks.
     clock: Clk,
     /// The configuration for the agent routes that are opened.
@@ -282,7 +282,7 @@ struct RouteResolver<Clk, DelegateFac: ServerRouterFactory> {
     counter: u32,
 }
 
-impl<Clk: Clock, DelegateFac: ServerRouterFactory> RouteResolver<Clk, DelegateFac> {
+impl<Clk: Clock, DelegateFac: RouterFactory> RouteResolver<Clk, DelegateFac> {
     /// Attempts to open an agent at a specified route.
     fn try_open_route<S>(
         &mut self,
@@ -351,7 +351,7 @@ const PLANE_STOPPED: &str = "The plane has stopped.";
 /// * `spawner` - Spawns tasks to run the agents for the plane.
 /// * `context_channel` - Transmitter and receiver for plane requests.
 /// * `delegate_fac` - Factory for creating delegate routers.
-pub(crate) async fn run_plane<Clk, S, DelegateFac: ServerRouterFactory>(
+pub(crate) async fn run_plane<Clk, S, DelegateFac: RouterFactory>(
     execution_config: AgentExecutionConfig,
     clock: Clk,
     spec: PlaneSpec<Clk, EnvChannel, PlaneRouter<DelegateFac::Router>>,

@@ -17,7 +17,7 @@ use crate::agent::Eff;
 use futures::future::{join, ready, BoxFuture};
 use futures::FutureExt;
 use swim_common::routing::{
-    ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedEnvelope, TaggedSender,
+    ConnectionDropped, Route, RoutingAddr, Router, TaggedEnvelope, TaggedSender,
 };
 use tokio::sync::mpsc;
 
@@ -34,6 +34,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
 use utilities::sync::promise;
 use utilities::uri::RelativeUri;
+use std::net::SocketAddr;
 
 #[derive(Clone, Debug)]
 struct TestRouter {
@@ -55,8 +56,12 @@ impl TestRouter {
     }
 }
 
-impl ServerRouter for TestRouter {
-    fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>> {
+impl Router for TestRouter {
+    fn resolve_sender(
+        &mut self,
+        addr: RoutingAddr,
+        _origin: Option<SocketAddr>,
+    ) -> BoxFuture<Result<Route, ResolutionError>> {
         let TestRouter {
             sender, drop_rx, ..
         } = self;

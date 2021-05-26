@@ -18,10 +18,8 @@
 use crate::configuration::downlink::Config;
 use crate::configuration::downlink::ConfigHierarchy;
 use crate::configuration::downlink::ConfigParseError;
-use crate::connections::SwimConnPool;
 use crate::downlink::error::{DownlinkError, SubscriptionError};
 use crate::downlink::Downlinks;
-use crate::router::SwimRouter;
 use std::error::Error;
 use std::fmt;
 use std::fmt::{Display, Formatter};
@@ -48,13 +46,6 @@ use crate::downlink::typed::{
 use crate::downlink::SchemaViolations;
 use swim_common::routing::remote::ExternalConnections;
 
-#[cfg(feature = "websocket")]
-use {
-    swim_common::routing::remote::net::dns::Resolver,
-    swim_common::routing::remote::net::plain::TokioPlainTextNetworking,
-    swim_common::routing::ws::tungstenite::TungsteniteWsConnections,
-};
-
 /// Builder to create Swim client instance.
 ///
 /// The builder can be created with default or custom configuration.
@@ -72,59 +63,39 @@ impl SwimClientBuilder {
         SwimClientBuilder { config }
     }
 
-    /// Create a new client builder with configuration from a file.
-    ///
-    /// # Arguments
-    /// * `config_file` - Configuration file for the client.
-    /// * `use_defaults` - Whether or not missing values should be replaced with default ones.
-    pub fn new_from_file(
-        mut config_file: File,
-        use_defaults: bool,
-    ) -> Result<Self, ConfigParseError> {
-        let mut contents = String::new();
-        config_file
-            .read_to_string(&mut contents)
-            .map_err(ConfigParseError::FileError)?;
-
-        let config = ConfigHierarchy::try_from_value(
-            parse_single(&contents).map_err(ConfigParseError::ReconError)?,
-            use_defaults,
-        )?;
-
-        Ok(SwimClientBuilder { config })
-    }
+    //Todo dm this needs to be changed after the new client configuration is finalised.
+    // /// Create a new client builder with configuration from a file.
+    // ///
+    // /// # Arguments
+    // /// * `config_file` - Configuration file for the client.
+    // /// * `use_defaults` - Whether or not missing values should be replaced with default ones.
+    // pub fn new_from_file(
+    //     mut config_file: File,
+    //     use_defaults: bool,
+    // ) -> Result<Self, ConfigParseError> {
+    //     let mut contents = String::new();
+    //     config_file
+    //         .read_to_string(&mut contents)
+    //         .map_err(ConfigParseError::FileError)?;
+    //
+    //     let config = ConfigHierarchy::try_from_value(
+    //         parse_single(&contents).map_err(ConfigParseError::ReconError)?,
+    //         use_defaults,
+    //     )?;
+    //
+    //     Ok(SwimClientBuilder { config })
+    // }
 
     /// Build the Swim client.
-    ///
-    /// # Arguments
-    /// * `ws_factory` - Websocket factory for the client.
-    /// * `conn_factory` - Connection factory for the client.
-    pub async fn build<WSFac, ConnFac, Socket>(
-        self,
-        ws_factory: WSFac,
-        conn_factory: ConnFac,
-    ) -> SwimClient
-    where
-        WSFac: WsConnections<Socket> + Send + Sync + 'static,
-        ConnFac: ExternalConnections<Socket = Socket>,
-        Socket: Send + Sync + Unpin + 'static,
-    {
+    pub async fn build(self) -> SwimClient {
         let SwimClientBuilder {
             config: downlinks_config,
         } = self;
 
         info!("Initialising Swim Client");
 
-        let router_params = downlinks_config.client_params().router_params;
-        let pool = SwimConnPool::new(
-            router_params.connection_pool_params(),
-            conn_factory,
-            ws_factory,
-        );
-        let router = SwimRouter::new(router_params, pool);
-
         SwimClient {
-            downlinks: Downlinks::new(Arc::new(downlinks_config), router).await,
+            downlinks: Downlinks::new(Arc::new(downlinks_config)).await,
         }
     }
 
@@ -135,21 +106,8 @@ impl SwimClientBuilder {
 
         let config = ConfigHierarchy::default();
 
-        let ws_factory = TungsteniteWsConnections {
-            config: Default::default(),
-        };
-        let conn_factory = TokioPlainTextNetworking::new(Arc::new(Resolver::new().await));
-
-        let router_params = config.client_params().router_params;
-        let pool = SwimConnPool::new(
-            router_params.connection_pool_params(),
-            conn_factory,
-            ws_factory,
-        );
-        let router = SwimRouter::new(router_params, pool);
-
         SwimClient {
-            downlinks: Downlinks::new(Arc::new(config), router).await,
+            downlinks: Downlinks::new(Arc::new(config)).await,
         }
     }
 }

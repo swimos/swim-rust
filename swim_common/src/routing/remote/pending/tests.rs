@@ -15,14 +15,14 @@
 use crate::request::Request;
 use crate::routing::error::{CloseError, CloseErrorKind, ConnectionError};
 use crate::routing::remote::pending::PendingRequests;
-use crate::routing::remote::table::HostAndPort;
+use crate::routing::remote::table::SchemeHostPort;
 use crate::routing::RoutingAddr;
 use futures::future::join;
 use tokio::sync::oneshot;
 
 #[tokio::test]
 async fn add_single_and_send_err() {
-    let key = HostAndPort::new("host".to_string(), 42);
+    let key = SchemeHostPort::new("host".to_string(), 42);
     let (tx, rx) = oneshot::channel();
     let req = Request::new(tx);
 
@@ -45,7 +45,7 @@ async fn add_single_and_send_err() {
 
 #[tokio::test]
 async fn add_two_and_send_err() {
-    let key = HostAndPort::new("host".to_string(), 42);
+    let key = SchemeHostPort::new("host".to_string(), 42);
     let (tx1, rx1) = oneshot::channel();
     let (tx2, rx2) = oneshot::channel();
     let req1 = Request::new(tx1);
@@ -78,7 +78,7 @@ async fn add_two_and_send_err() {
 
 #[tokio::test]
 async fn add_single_and_send_ok() {
-    let key = HostAndPort::new("host".to_string(), 42);
+    let key = SchemeHostPort::new("host".to_string(), 42);
     let (tx, rx) = oneshot::channel();
     let req = Request::new(tx);
     let addr = RoutingAddr::remote(2);
@@ -93,7 +93,7 @@ async fn add_single_and_send_ok() {
 
 #[tokio::test]
 async fn add_two_and_send_ok() {
-    let key = HostAndPort::new("host".to_string(), 42);
+    let key = SchemeHostPort::new("host".to_string(), 42);
     let (tx1, rx1) = oneshot::channel();
     let (tx2, rx2) = oneshot::channel();
     let req1 = Request::new(tx1);
@@ -112,7 +112,7 @@ async fn add_two_and_send_ok() {
 
 #[tokio::test]
 async fn add_two_drop_one() {
-    let key = HostAndPort::new("host".to_string(), 42);
+    let key = SchemeHostPort::new("host".to_string(), 42);
     let (tx1, rx1) = oneshot::channel();
     let (tx2, rx2) = oneshot::channel();
     let req1 = Request::new(tx1);

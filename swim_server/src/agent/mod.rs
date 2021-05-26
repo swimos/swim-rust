@@ -64,7 +64,7 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use swim_common::form::Form;
-use swim_common::routing::{ServerRouter, TaggedClientEnvelope, TaggedEnvelope};
+use swim_common::routing::{Router, TaggedClientEnvelope, TaggedEnvelope};
 use swim_common::warp::path::RelativePath;
 use swim_runtime::time::clock::Clock;
 use tokio::sync::mpsc::Receiver;
@@ -174,12 +174,12 @@ impl<Config> AgentParameters<Config> {
 /// * `stop_trigger` - External trigger to cleanly stop the agent.
 /// * `parameters` - Parameters extracted from the agent node route pattern.
 /// * `incoming_envelopes` - The stream of envelopes routed to the agent.
-pub fn run_agent<Config, Clk, Agent, L, Router>(
+pub fn run_agent<Config, Clk, Agent, L, R>(
     lifecycle: L,
     clock: Clk,
     parameters: AgentParameters<Config>,
     incoming_envelopes: impl Stream<Item = TaggedEnvelope> + Send + 'static,
-    router: Router,
+    router: R,
 ) -> (
     Arc<Agent>,
     impl Future<Output = AgentResult> + Send + 'static,
@@ -188,7 +188,7 @@ where
     Clk: Clock,
     Agent: SwimAgent<Config> + Send + Sync + 'static,
     L: AgentLifecycle<Agent> + Send + Sync + 'static,
-    Router: ServerRouter + Clone + 'static,
+    R: Router + Clone + 'static,
 {
     let AgentParameters {
         agent_config,
@@ -200,7 +200,7 @@ where
     let span = span!(Level::INFO, AGENT_TASK, %uri);
     let (tripwire, stop_trigger) = trigger::trigger();
     let (agent, mut tasks, io_providers) =
-        Agent::instantiate::<ContextImpl<Agent, Clk, Router>>(&agent_config, &execution_config);
+        Agent::instantiate::<ContextImpl<Agent, Clk, R>>(&agent_config, &execution_config);
     let agent_ref = Arc::new(agent);
     let agent_cpy = agent_ref.clone();
 
@@ -218,7 +218,7 @@ where
         let task_manager: FuturesUnordered<Instrumented<Eff>> = FuturesUnordered::new();
 
         let (meta_context, mut meta_tasks, meta_io) =
-            open_meta_lanes::<Config, Agent, ContextImpl<Agent, Clk, Router>>(
+            open_meta_lanes::<Config, Agent, ContextImpl<Agent, Clk, R>>(
                 uri.clone(),
                 &execution_config,
                 lane_summary,

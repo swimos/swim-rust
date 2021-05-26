@@ -18,7 +18,6 @@ use tokio::sync::{mpsc, oneshot};
 use utilities::future::retryable::ResettableFuture;
 
 use crate::connections::ConnectionSender;
-use crate::router::ConnectionRequest;
 use futures::task::{Context, Poll};
 use futures::Future;
 use pin_project::pin_project;

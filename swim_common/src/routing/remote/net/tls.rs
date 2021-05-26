@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use std::io;
-use std::io::ErrorKind;
+use std::io::{Error, ErrorKind};
 use std::net::SocketAddr;
 use std::pin::Pin;
 use std::task::Context;
@@ -36,7 +36,8 @@ use tracing::{event, Level};
 
 use crate::routing::remote::net::dns::{DnsResolver, Resolver};
 use crate::routing::remote::net::{ExternalConnections, IoResult, Listener};
-use crate::routing::remote::table::HostAndPort;
+use crate::routing::remote::table::SchemeHostPort;
+use crate::routing::remote::{Scheme, SchemeSocketAddr};
 use im::HashMap;
 use pin_project::pin_project;
 use std::path::PathBuf;
@@ -107,7 +108,7 @@ impl ExternalConnections for TokioTlsNetworking {
         })
     }
 
-    fn lookup(&self, host: HostAndPort) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>> {
+    fn lookup(&self, host: SchemeHostPort) -> BoxFuture<'static, IoResult<Vec<SchemeSocketAddr>>> {
         self.resolver.resolve(host)
     }
 }
@@ -138,10 +139,18 @@ impl TlsListener {
 }
 
 impl Stream for TlsListener {
-    type Item = IoResult<(TlsStream, SocketAddr)>;
+    type Item = IoResult<(TlsStream, SchemeSocketAddr)>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        self.project().receiver.poll_next(cx)
+        self.project()
+            .receiver
+            .poll_next(cx)?
+            .map(|result| match result {
+                Some((stream, addr)) => {
+                    Some(Ok((stream, SchemeSocketAddr::new(Scheme::Wss, addr))))
+                }
+                None => None,
+            })
     }
 }
 

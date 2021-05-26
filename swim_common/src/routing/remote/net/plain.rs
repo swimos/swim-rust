@@ -17,13 +17,15 @@ use std::pin::Pin;
 
 use crate::routing::remote::net::dns::{DnsResolver, Resolver};
 use crate::routing::remote::net::{ExternalConnections, IoResult, Listener};
-use crate::routing::remote::table::HostAndPort;
+use crate::routing::remote::table::SchemeHostPort;
+use crate::routing::remote::{SchemeSocketAddr, Scheme};
 use futures::future::BoxFuture;
 use futures::stream::Fuse;
 use futures::task::{Context, Poll};
 use futures::FutureExt;
 use futures::{Stream, StreamExt};
 use pin_project::pin_project;
+use std::io::Error;
 use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
 
@@ -51,7 +53,7 @@ impl ExternalConnections for TokioPlainTextNetworking {
         TcpStream::connect(addr).boxed()
     }
 
-    fn lookup(&self, host: HostAndPort) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>> {
+    fn lookup(&self, host: SchemeHostPort) -> BoxFuture<'static, IoResult<Vec<SchemeSocketAddr>>> {
         self.resolver.resolve(host)
     }
 }
@@ -61,10 +63,13 @@ impl ExternalConnections for TokioPlainTextNetworking {
 pub struct WithPeer(#[pin] TcpListener);
 
 impl Stream for WithPeer {
-    type Item = IoResult<(TcpStream, SocketAddr)>;
+    type Item = IoResult<(TcpStream, SchemeSocketAddr)>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        self.project().0.poll_accept(cx).map(Some)
+        self.project()
+            .0
+            .poll_accept(cx)?
+            .map(|(stream, addr)| Some(Ok((stream, SchemeSocketAddr::new(Scheme::Ws, addr)))))
     }
 }
 

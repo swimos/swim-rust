@@ -18,12 +18,12 @@ use crate::routing::remote::config::ConnectionConfig;
 use crate::routing::remote::state::{
     DeferredResult, Event, RemoteConnectionChannels, RemoteConnections, RemoteTasksState, State,
 };
-use crate::routing::remote::table::HostAndPort;
+use crate::routing::remote::table::SchemeHostPort;
 use crate::routing::remote::test_fixture::{
     ErrorMode, FakeConnections, FakeListener, FakeSocket, FakeWebsocket, FakeWebsockets,
     LocalRoutes,
 };
-use crate::routing::remote::ConnectionDropped;
+use crate::routing::remote::{ConnectionDropped, SchemeSocketAddr};
 use crate::routing::RoutingAddr;
 use futures::future::BoxFuture;
 use futures::io::ErrorKind;
@@ -52,7 +52,7 @@ struct TestFixture<'a> {
 fn make_state(
     addr: RoutingAddr,
     ws: &FakeWebsockets,
-    incoming: mpsc::Receiver<io::Result<(FakeSocket, SocketAddr)>>,
+    incoming: mpsc::Receiver<io::Result<(FakeSocket, SchemeSocketAddr)>>,
 ) -> TestFixture<'_> {
     let buffer_size = NonZeroUsize::new(8).unwrap();
 
@@ -151,7 +151,7 @@ async fn connections_state_spawn_task() {
     let sa = sock_addr();
 
     let web_sock = FakeWebsocket::new(FakeSocket::trivial());
-    let host = HostAndPort::new("my_host".to_string(), 80);
+    let host = SchemeHostPort::new("my_host".to_string(), 80);
 
     let (req_tx, req_rx) = oneshot::channel();
 
@@ -217,7 +217,7 @@ async fn connections_state_defer_connect_good() {
         stop_trigger: _stop_trigger,
     } = make_state(addr, &ws, incoming_rx);
 
-    let target = HostAndPort::new("my_host".to_string(), 80);
+    let target = SchemeHostPort::new("my_host".to_string(), 80);
     let sa = sock_addr();
     let socket = FakeSocket::trivial();
     fake_connections.add_dns(target.to_string(), sa);
@@ -252,7 +252,7 @@ async fn connections_state_defer_connect_failed() {
         stop_trigger: _stop_trigger,
     } = make_state(addr, &ws, incoming_rx);
 
-    let target = HostAndPort::new("my_host".to_string(), 80);
+    let target = SchemeHostPort::new("my_host".to_string(), 80);
     let sa = sock_addr();
 
     fake_connections.add_dns(target.to_string(), sa);
@@ -298,7 +298,7 @@ async fn connections_state_defer_dns_good() {
         stop_trigger: _stop_trigger,
     } = make_state(addr, &ws, incoming_rx);
 
-    let target = HostAndPort::new("my_host".to_string(), 80);
+    let target = SchemeHostPort::new("my_host".to_string(), 80);
     let sa = sock_addr();
     fake_connections.add_dns(target.to_string(), sa);
 
@@ -345,7 +345,7 @@ async fn connections_state_defer_dns_failed() {
         stop_trigger: _stop_trigger,
     } = make_state(addr, &ws, incoming_rx);
 
-    let target = HostAndPort::new("my_host".to_string(), 80);
+    let target = SchemeHostPort::new("my_host".to_string(), 80);
 
     let (req_tx, req_rx) = oneshot::channel();
 
@@ -390,7 +390,7 @@ async fn connections_failure_triggers_pending() {
         stop_trigger: _stop_trigger,
     } = make_state(addr, &ws, incoming_rx);
 
-    let target = HostAndPort::new("my_host".to_string(), 80);
+    let target = SchemeHostPort::new("my_host".to_string(), 80);
     let (req_tx, req_rx) = oneshot::channel();
     connections
         .pending
@@ -418,8 +418,8 @@ async fn connections_check_in_table_clears_pending() {
         stop_trigger: _stop_trigger,
     } = make_state(addr, &ws, incoming_rx);
 
-    let host1 = HostAndPort::new("my_host".to_string(), 80);
-    let host2 = HostAndPort::new("other_host".to_string(), 80);
+    let host1 = SchemeHostPort::new("my_host".to_string(), 80);
+    let host2 = SchemeHostPort::new("other_host".to_string(), 80);
     let (req_tx, req_rx) = oneshot::channel();
     let (task_tx, _task_rx) = mpsc::channel(8);
 
@@ -457,8 +457,8 @@ async fn connections_state_shutdown_process() {
     let sa = sock_addr();
 
     let web_sock = FakeWebsocket::new(FakeSocket::new(vec![], false, None, ErrorMode::None));
-    let host1 = HostAndPort::new("my_host".to_string(), 80);
-    let host2 = HostAndPort::new("other".to_string(), 80);
+    let host1 = SchemeHostPort::new("my_host".to_string(), 80);
+    let host2 = SchemeHostPort::new("other".to_string(), 80);
 
     let (req_tx, _req_rx) = oneshot::channel();
 

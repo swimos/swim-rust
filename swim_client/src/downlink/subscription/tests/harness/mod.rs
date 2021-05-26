@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::router::{Router, RouterEvent};
+use crate::router::{OldRouter, RouterEvent};
 use futures::future::{ready, Ready};
 use swim_common::request::request_future::RequestError;
 use swim_common::warp::envelope::Envelope;
@@ -26,7 +26,7 @@ pub struct StubRouter {
     inner: Vec<mpsc::Sender<RouterEvent>>,
 }
 
-impl Router for StubRouter {
+impl OldRouter for StubRouter {
     type ConnectionFut =
         Ready<Result<(mpsc::Sender<Envelope>, mpsc::Receiver<RouterEvent>), RequestError>>;
 
