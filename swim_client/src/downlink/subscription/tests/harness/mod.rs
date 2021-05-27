@@ -26,6 +26,7 @@ pub struct StubRouter {
     inner: Vec<mpsc::Sender<RouterEvent>>,
 }
 
+//Todo dm
 // impl Router for StubRouter {
 //     type ConnectionFut =
 //         Ready<Result<(mpsc::Sender<Envelope>, mpsc::Receiver<RouterEvent>), RequestError>>;

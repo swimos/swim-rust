@@ -17,7 +17,6 @@ use std::pin::Pin;
 
 use crate::routing::remote::net::dns::{DnsResolver, Resolver};
 use crate::routing::remote::net::plain::TokioPlainTextNetworking;
-use crate::routing::remote::net::tls::{TlsListener, TlsStream, TokioTlsNetworking};
 use crate::routing::remote::table::SchemeHostPort;
 use crate::routing::remote::{ExternalConnections, IoResult, Listener, Scheme, SchemeSocketAddr};
 use either::Either;
@@ -34,106 +33,5 @@ use url::Url;
 
 pub mod dns;
 pub mod plain;
+#[cfg(feature = "tokio_native_tls")]
 pub mod tls;
-
-/// HTTP protocol over TLS/SSL
-const HTTPS_PORT: u16 = 443;
-
-pub(crate) enum MaybeTlsListener {
-    PlainText(TcpListener),
-    Tls(TlsListener),
-}
-
-impl Listener for MaybeTlsListener {
-    type Socket = Either<TcpStream, TlsStream>;
-    type AcceptStream = Fuse<EitherStream>;
-
-    fn into_stream(self) -> Self::AcceptStream {
-        EitherStream(self).fuse()
-    }
-}
-
-pub(crate) struct EitherStream(MaybeTlsListener);
-
-impl Stream for EitherStream {
-    type Item = IoResult<(Either<TcpStream, TlsStream>, SchemeSocketAddr)>;
-
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        match &mut self.0 {
-            MaybeTlsListener::PlainText(listener) => match listener.poll_accept(cx) {
-                Poll::Ready(Ok((stream, addr))) => Poll::Ready(Some(Ok((
-                    Either::Left(stream),
-                    SchemeSocketAddr::new(Scheme::Ws, addr),
-                )))),
-                Poll::Ready(Err(e)) => Poll::Ready(Some(Err(e))),
-                Poll::Pending => Poll::Pending,
-            },
-            MaybeTlsListener::Tls(ref mut listener) => match listener.poll_next_unpin(cx) {
-                Poll::Ready(Some(Ok((stream, addr)))) => {
-                    Poll::Ready(Some(Ok((Either::Right(stream), addr))))
-                }
-                Poll::Ready(None) => Poll::Ready(None),
-                Poll::Ready(Some(Err(e))) => Poll::Ready(Some(Err(e))),
-                Poll::Pending => Poll::Pending,
-            },
-        }
-    }
-}
-
-#[derive(Clone)]
-pub(crate) struct TokioNetworking {
-    resolver: Arc<Resolver>,
-    plain: TokioPlainTextNetworking,
-    tls: Arc<TokioTlsNetworking>,
-}
-
-impl TokioNetworking {
-    #[allow(dead_code)]
-    pub async fn new<I, A>(identities: I) -> Result<TokioNetworking, ()>
-    where
-        I: IntoIterator<Item = (A, Url)>,
-        A: AsRef<PathBuf>,
-    {
-        let resolver = Arc::new(Resolver::new().await);
-        let tls = TokioTlsNetworking::new(identities, resolver.clone());
-        let plain = TokioPlainTextNetworking::new(resolver.clone());
-
-        Ok(TokioNetworking {
-            resolver,
-            plain,
-            tls: Arc::new(tls),
-        })
-    }
-}
-
-impl ExternalConnections for TokioNetworking {
-    type Socket = Either<TcpStream, TlsStream>;
-    type ListenerType = MaybeTlsListener;
-
-    fn bind(&self, addr: SocketAddr) -> BoxFuture<'static, IoResult<Self::ListenerType>> {
-        let this = self.clone();
-
-        if addr.port() == HTTPS_PORT {
-            Box::pin(async move { this.tls.bind(addr).await.map(MaybeTlsListener::Tls) })
-        } else {
-            Box::pin(async move { this.plain.bind(addr).await.map(MaybeTlsListener::PlainText) })
-        }
-    }
-
-    fn try_open(&self, addr: SocketAddr) -> BoxFuture<'static, IoResult<Self::Socket>> {
-        let this = self.clone();
-
-        if addr.port() == HTTPS_PORT {
-            Box::pin(async move { this.tls.try_open(addr).await.map(Either::Right) })
-        } else {
-            Box::pin(async move { this.plain.try_open(addr).await.map(Either::Left) })
-        }
-    }
-
-    fn lookup(
-        &self,
-        host: SchemeHostPort,
-    ) -> BoxFuture<'static, io::Result<Vec<SchemeSocketAddr>>> {
-        self.resolver.resolve(host).boxed()
-    }
-}

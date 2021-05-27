@@ -33,7 +33,7 @@ use swim_common::form::Form;
 use swim_common::model::Value;
 use swim_common::routing::error::{ResolutionError, RouterError};
 use swim_common::routing::{
-    ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedEnvelope, TaggedSender,
+    ConnectionDropped, Origin, Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender,
 };
 use swim_common::warp::envelope::{Envelope, OutgoingHeader, OutgoingLinkMessage};
 use swim_common::warp::path::RelativePath;
@@ -111,8 +111,12 @@ impl MockRouter {
     }
 }
 
-impl ServerRouter for MockRouter {
-    fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>> {
+impl Router for MockRouter {
+    fn resolve_sender(
+        &mut self,
+        addr: RoutingAddr,
+        _origin: Option<Origin>,
+    ) -> BoxFuture<Result<Route, ResolutionError>> {
         async move {
             let MockRouter { inner, drop_rx, .. } = self;
             let route = Route::new(TaggedSender::new(addr, inner.clone()), drop_rx.clone());
@@ -125,6 +129,7 @@ impl ServerRouter for MockRouter {
         &mut self,
         _host: Option<Url>,
         _route: RelativeUri,
+        _origin: Option<Origin>,
     ) -> BoxFuture<Result<RoutingAddr, RouterError>> {
         panic!("Unexpected resolution attempt.")
     }

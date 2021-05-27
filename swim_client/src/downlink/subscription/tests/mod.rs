@@ -21,7 +21,7 @@ use url::Url;
 mod harness;
 
 // Configuration overridden for a specific host.
-fn per_host_config() -> ConfigHierarchy {
+fn per_host_config() -> ConfigHierarchy<AbsolutePath> {
     let timeout = Duration::from_secs(60000);
     let special_params = DownlinkParams::new(
         BackpressureMode::Propagate,
@@ -38,7 +38,7 @@ fn per_host_config() -> ConfigHierarchy {
 }
 
 // Configuration overridden for a specific lane.
-fn per_lane_config() -> ConfigHierarchy {
+fn per_lane_config() -> ConfigHierarchy<AbsolutePath> {
     let timeout = Duration::from_secs(60000);
     let special_params = DownlinkParams::new(
         BackpressureMode::Propagate,
@@ -60,7 +60,7 @@ fn per_lane_config() -> ConfigHierarchy {
     conf
 }
 
-async fn dl_manager(conf: ConfigHierarchy) -> Downlinks {
+async fn dl_manager(conf: ConfigHierarchy<AbsolutePath>) -> Downlinks<AbsolutePath> {
     let (general_tx, mut general_rx) = mpsc::channel(32);
     let (specific_tx, mut specific_rx) = mpsc::channel(32);
     let router = harness::StubRouter::new(specific_tx, general_tx);

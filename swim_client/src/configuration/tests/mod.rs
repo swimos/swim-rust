@@ -186,7 +186,7 @@ fn test_conf_from_file_retry_none() {
     assert_eq!(config, expected)
 }
 
-fn create_full_config() -> ConfigHierarchy {
+fn create_full_config() -> ConfigHierarchy<AbsolutePath> {
     let mut config = ConfigHierarchy::new(
         ClientParams::new(
             NonZeroUsize::new(5).unwrap(),

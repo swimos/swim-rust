@@ -21,7 +21,6 @@ pub mod table;
 mod task;
 
 #[cfg(not(target_arch = "wasm32"))]
-#[cfg(feature = "tokio_native_tls")]
 pub mod net;
 
 #[cfg(test)]

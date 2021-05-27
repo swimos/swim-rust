@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::connections::{Connection, ConnectionPool, ConnectionSender};
-use crate::router::{OldRouter, RouterEvent, SwimRouter};
+use crate::router::{Router, RouterEvent};
 use futures::future::{ready, BoxFuture};
 use futures::{FutureExt, StreamExt};
 use std::collections::HashMap;
