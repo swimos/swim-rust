@@ -36,10 +36,11 @@ use lazy_static::lazy_static;
 use percent_encoding::percent_decode_str;
 use regex::Regex;
 use std::collections::HashMap;
-use std::fmt::{Display, Formatter};
+use std::fmt::{Debug, Display, Formatter};
 use std::str::FromStr;
 use swim_common::model::text::Text;
 use swim_common::warp::path::RelativePath;
+
 use tracing::{span, Level};
 use tracing_futures::{Instrument, Instrumented};
 use utilities::sync::trigger;
@@ -237,7 +238,7 @@ where
 
     let (aggregator, aggregator_task) = NodeMetricAggregator::new(
         node_uri.clone(),
-        stop_rx.clone(),
+        stop_rx,
         exec_conf.metrics.clone(),
         pulse_lanes,
         node_logger.clone(),
@@ -297,4 +298,22 @@ pub(crate) fn meta_context_sink() -> MetaContext {
         node_logger: make_node_logger(RelativeUri::default()),
         metric_aggregator,
     }
+}
+
+#[cfg(test)]
+pub async fn accumulate_metrics<E>(receiver: tokio::sync::mpsc::Receiver<E>) -> E
+where
+    E: std::ops::Add<E, Output = E> + Default + PartialEq + Debug,
+{
+    use futures::StreamExt;
+    use tokio_stream::wrappers::ReceiverStream;
+
+    let mut accumulated = E::default();
+    let mut stream = ReceiverStream::new(receiver);
+
+    while let Some(item) = stream.next().await {
+        accumulated = accumulated.add(item);
+    }
+
+    accumulated
 }

@@ -28,6 +28,7 @@ use crate::agent::lane::model::command::{Command, CommandLane};
 use crate::agent::lane::model::DeferredSubscription;
 use crate::agent::model::supply::SupplyLane;
 use crate::agent::Eff;
+use crate::meta::accumulate_metrics;
 use crate::meta::log::make_node_logger;
 use crate::meta::metric::config::MetricAggregatorConfig;
 use crate::meta::metric::lane::LanePulse;
@@ -48,7 +49,6 @@ use std::collections::{HashMap, HashSet};
 use std::convert::{identity, TryFrom};
 use std::fmt::Debug;
 use std::num::NonZeroUsize;
-use std::ops::Add;
 use std::sync::Arc;
 use std::time::Duration;
 use stm::transaction::TransactionError;
@@ -63,7 +63,7 @@ use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinHandle;
-use tokio::time::timeout;
+use tokio::time::{sleep, timeout};
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
 use utilities::sync::{promise, topic, trigger};
@@ -1612,7 +1612,7 @@ async fn expect_envelopes<I>(
 }
 
 #[tokio::test]
-async fn metrics() {
+async fn stateless_lane_metrics() {
     let route = route();
 
     let (context, mut router_rx, spawn_task, metrics) = make_context();
@@ -1658,7 +1658,7 @@ async fn metrics() {
         }
 
         // sleep for long enough that the next message will force the metrics to be flushed.
-        tokio::time::sleep(METRIC_SAMPLE_RATE * 2).await;
+        sleep(METRIC_SAMPLE_RATE * 2).await;
 
         input.send_command(addr1, 6).await;
         input.send_command(addr2, 6).await;
@@ -1691,7 +1691,7 @@ async fn metrics() {
     let lane_task = accumulate_metrics(lane);
     let node_task = accumulate_metrics(node);
 
-    tokio::time::sleep(METRIC_SAMPLE_RATE).await;
+    sleep(METRIC_SAMPLE_RATE).await;
     let (uplink, lane, node) = join3(uplink_task, lane_task, node_task).await;
 
     assert_eq!(uplink.link_count, 2);
@@ -1709,16 +1709,46 @@ async fn metrics() {
     assert!(matches!(result, Ok(errs) if errs.is_empty()));
 }
 
-async fn accumulate_metrics<E>(receiver: mpsc::Receiver<E>) -> E
-where
-    E: Add<E, Output = E> + Default + PartialEq + Debug,
-{
-    let mut accumulated = E::default();
-    let mut stream = ReceiverStream::new(receiver);
+#[tokio::test]
+async fn stateful_lane_metrics() {
+    let (context, _envelope_rx, spawn_task, metrics) = make_context();
+    let config = make_config();
+    let (mut inputs, _outputs, main_task) = make_task(vec![], false, config, context.clone());
 
-    while let Some(item) = stream.next().await {
-        accumulated = accumulated.add(item);
-    }
+    let addr = RoutingAddr::remote(4);
 
-    accumulated
+    let io_task = async move {
+        inputs.send_sync(addr).await;
+        inputs.send_command(addr, 87).await;
+        inputs.send_unlink(addr).await;
+        inputs.send_command(addr, 65).await;
+
+        // sleep for long enough that the next message will force the metrics to be flushed.
+        sleep(METRIC_SAMPLE_RATE * 2).await;
+
+        inputs.send_command(addr, 6).await;
+
+        sleep(METRIC_SAMPLE_RATE * 2).await;
+
+        drop(inputs);
+        context.stop().await;
+    };
+
+    let MetricReceivers { uplink, lane, node } = metrics;
+    let uplink_task = accumulate_metrics(uplink);
+    let lane_task = accumulate_metrics(lane);
+    let node_task = accumulate_metrics(node);
+
+    let left = join3(spawn_task, main_task, io_task);
+    let right = join3(uplink_task, lane_task, node_task);
+    let (_, (uplink, lane, node)) = join(left, right).await;
+
+    assert_eq!(uplink.event_count, 2);
+    assert_eq!(uplink.command_count, 3);
+
+    assert_eq!(lane.uplink_pulse.event_count, 2);
+    assert_eq!(lane.uplink_pulse.command_count, 3);
+
+    assert_eq!(node.uplinks.event_count, 2);
+    assert_eq!(node.uplinks.command_count, 3);
 }

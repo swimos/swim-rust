@@ -471,13 +471,16 @@ where
 
     let error_handler =
         UplinkErrorHandler::collector(route.clone(), config.max_fatal_uplink_errors);
+    let error_reporter = UplinkErrorReporter {
+        err_rx,
+        err_handler: error_handler,
+    };
 
     let envelope_task = action_envelope_task_with_uplinks(
         route.clone(),
         envelopes,
         uplink_tx,
-        err_rx,
-        error_handler,
+        error_reporter,
         OnCommandStrategy::Send(OnCommandHandler::new(update_tx, route.clone())),
         yield_after,
         action_observer,
@@ -726,12 +729,16 @@ where
     let on_command_strategy = OnCommandStrategy::<Dropping>::dropping();
     let yield_after = config.yield_after.get();
 
+    let error_reporter = UplinkErrorReporter {
+        err_rx,
+        err_handler: UplinkErrorHandler::discard(),
+    };
+
     let envelope_task = action_envelope_task_with_uplinks(
         route.clone(),
         envelopes,
         uplink_tx,
-        err_rx,
-        UplinkErrorHandler::discard(),
+        error_reporter,
         on_command_strategy,
         yield_after,
         action_observer,
@@ -777,12 +784,16 @@ where
     .await
 }
 
+struct UplinkErrorReporter {
+    err_rx: mpsc::Receiver<UplinkErrorReport>,
+    err_handler: UplinkErrorHandler,
+}
+
 async fn action_envelope_task_with_uplinks<Cmd>(
     route: RelativePath,
     envelopes: impl Stream<Item = TaggedClientEnvelope>,
     mut actions: mpsc::Sender<TaggedAction>,
-    err_rx: mpsc::Receiver<UplinkErrorReport>,
-    mut err_handler: UplinkErrorHandler,
+    err_reporter: UplinkErrorReporter,
     mut on_command_handler: OnCommandStrategy<Cmd>,
     yield_mod: usize,
     action_observer: UplinkActionObserver,
@@ -790,6 +801,11 @@ async fn action_envelope_task_with_uplinks<Cmd>(
 where
     Cmd: Send + Sync + Form + Debug + 'static,
 {
+    let UplinkErrorReporter {
+        err_rx,
+        mut err_handler,
+    } = err_reporter;
+
     let envelopes = envelopes.fuse();
     pin_mut!(envelopes);
 
