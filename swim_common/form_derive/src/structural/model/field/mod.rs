@@ -256,6 +256,14 @@ pub struct HeaderFields<'a, 'b> {
     pub attributes: Vec<&'b FieldModel<'a>>,
 }
 
+impl<'a, 'b> HeaderFields<'a, 'b> {
+
+    pub fn has_tag_fields(&self) -> bool {
+        self.tag_body.is_some() || !self.header_fields.is_empty()
+    }
+
+}
+
 pub enum BodyFields<'a, 'b> {
     ReplacedBody(&'b FieldModel<'a>),
     StdBody(Vec<&'b FieldModel<'a>>),

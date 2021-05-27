@@ -28,6 +28,7 @@ pub enum ReadError {
     MissingFields(Vec<Text>),
     UnexpectedAttribute(Text),
     InconsistentState,
+    UnexpectedItem,
     UnexpectedSlot,
     DuplicateField(Text),
     UnexpectedField(Text),
@@ -57,6 +58,7 @@ impl Display for ReadError {
             ReadError::InconsistentState => {
                 write!(f, "The deserialization state became corrupted.")
             }
+            ReadError::UnexpectedItem => write!(f, "Unexpected item in record."),
             ReadError::UnexpectedSlot => write!(f, "Unexpected slot in record."),
             ReadError::DuplicateField(name) => {
                 write!(f, "Field '{}' ocurred more than once.", name)

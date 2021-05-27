@@ -38,9 +38,11 @@ impl<'a> Destructure<'a> {
 struct WriteWithFn<'a, 'b>(&'b SegregatedStructModel<'a, 'b>);
 struct WriteIntoFn<'a, 'b>(&'b SegregatedStructModel<'a, 'b>);
 
-impl<'a, 'b> ToTokens for SegregatedEnumModel<'a, 'b> {
+pub struct DeriveStructuralWritable<S>(S);
+
+impl<'a, 'b> ToTokens for DeriveStructuralWritable<SegregatedEnumModel<'a, 'b>> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        let SegregatedEnumModel { inner, variants } = self;
+        let DeriveStructuralWritable(SegregatedEnumModel { inner, variants }) = self;
         let EnumModel { name, .. } = inner;
         let writer_trait = make_writer_trait();
 
@@ -115,12 +117,13 @@ impl<'a, 'b> ToTokens for SegregatedEnumModel<'a, 'b> {
     }
 }
 
-impl<'a, 'b> ToTokens for SegregatedStructModel<'a, 'b> {
+impl<'a, 'b> ToTokens for DeriveStructuralWritable<SegregatedStructModel<'a, 'b>> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        let destructure = Destructure::assign(&self.inner);
-        let name = self.inner.name;
-        let write_with = WriteWithFn(self);
-        let write_into = WriteIntoFn(self);
+        let DeriveStructuralWritable(inner) = self;
+        let destructure = Destructure::assign(&inner.inner);
+        let name = inner.inner.name;
+        let write_with = WriteWithFn(inner);
+        let write_into = WriteIntoFn(inner);
         let writer_trait = make_writer_trait();
         let writable_impl = quote! {
 

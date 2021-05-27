@@ -12,10 +12,75 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::structural::model::field::FieldModel;
+use crate::structural::model::field::{FieldModel, SegregatedFields, BodyFields, HeaderFields};
 use crate::structural::model::record::{SegregatedStructModel, StructModel};
 use macro_helpers::CompoundTypeKind;
-use proc_macro2::Span;
+use proc_macro2::{Span, TokenStream};
+use quote::ToTokens;
+use crate::quote::TokenStreamExt;
+
+pub struct DeriveStructuralReadable<S>(S);
+
+impl<'a, 'b> ToTokens for DeriveStructuralReadable<SegregatedStructModel<'a, 'b>> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let DeriveStructuralReadable(model) = self;
+        let SegregatedStructModel { fields, inner } = model;
+        let SegregatedFields { header, body } = fields;
+        let name = inner.name;
+        let target: syn::Type = parse_quote!(#name);
+        let state = builder_state_type(inner);
+        let builder = builder_type(&target, &state);
+        let header_builder = header_builder(&target, &state);
+
+        tokens.append_all(value_readable_impl(&target));
+        tokens.append_all(structural_readable_impl(&target, &builder, inner));
+
+        match body {
+            BodyFields::StdBody(body_fields) if !body_fields.is_empty() => {
+
+                tokens.append_all(header_reader(&builder, &header_builder, model));
+
+                let (assoc, body_reader) = if inner.fields_model.body_kind == CompoundTypeKind::Struct {
+                    let assoc = builder_assoc(&builder,
+                                              syn::Ident::new("has_more", Span::call_site()),
+                                              syn::Ident::new("apply", Span::call_site()),
+                                              body_fields.as_slice());
+
+                    let body_reader = builder_body_reader(&builder, body_fields.as_slice());
+                    (assoc, body_reader)
+                } else {
+                    todo!()
+                };
+
+                tokens.append_all(assoc);
+                tokens.append_all(body_reader);
+            }
+            BodyFields::StdBody(_) => {
+                tokens.append_all(header_reader(&builder, &header_builder, model));
+                tokens.append_all(empty_body_reader(&builder));
+            }
+            BodyFields::ReplacedBody(_) => {
+                todo!()
+            }
+        }
+
+        if header.has_tag_fields() {
+            let has_header_slots = !header.header_fields.is_empty();
+
+            if has_header_slots {
+                let assoc = builder_assoc(&header_builder,
+                                          syn::Ident::new("has_more_header", Span::call_site()),
+                                          syn::Ident::new("apply_header", Span::call_site()),
+                                          header.header_fields.as_slice());
+                tokens.append_all(assoc);
+            }
+
+            tokens.append_all(header_builder_assoc(&header_builder, header.tag_body, !has_header_slots));
+            tokens.append_all(header_builder_body_reader(&header_builder, &header));
+        }
+    }
+}
+
 
 fn builder_state_type<'a, 'b>(model: &'b StructModel<'a>) -> syn::Type {
     let fields = model.fields_model.fields.iter().map(|fld| {
@@ -157,7 +222,7 @@ fn make_ccons_expr(n: usize, name: &syn::Ident) -> syn::Expr {
 fn header_reader<'a, 'b>(
     builder: &syn::Type,
     header_builder: &syn::Type,
-    model: SegregatedStructModel<'a, 'b>,
+    model: &SegregatedStructModel<'a, 'b>,
 ) -> proc_macro2::TokenStream {
     let SegregatedStructModel { inner, fields } = model;
 
@@ -260,7 +325,7 @@ fn builder_assoc<'a, 'b>(
     builder: &syn::Type,
     has_more_name: syn::Ident,
     apply_name: syn::Ident,
-    fields: Vec<&'b FieldModel<'a>>,
+    fields:  &[&'b FieldModel<'a>],
 ) -> proc_macro2::TokenStream {
     let has_more = fields.iter().map(|fld| {
         let index = syn::Index::from(fld.ordinal);
@@ -381,7 +446,7 @@ fn prim_push_methods<'a>(
 
 fn builder_body_reader<'a, 'b>(
     builder: &syn::Type,
-    fields: Vec<&'b FieldModel<'a>>,
+    fields: &[&'b FieldModel<'a>],
 ) -> proc_macro2::TokenStream {
     let wrapped_tys = fields.iter().map(|fld| {
         let ty = fld.field_ty;
@@ -485,13 +550,19 @@ fn builder_body_reader<'a, 'b>(
 fn header_builder_assoc<'a>(
     header_builder: &syn::Type,
     header_body: Option<&FieldModel<'a>>,
+    has_slots: bool,
 ) -> proc_macro2::TokenStream {
     let apply_def = if let Some(fld) = header_body {
         let index = syn::Index::from(fld.ordinal);
         let name = fld.resolve_name();
+        let after_body = if has_slots {
+            quote!(self.inner.apply_header(push))
+        } else {
+            quote!(std::result::Result::Err(swim_common::form::structural::read::error::ReadError::UnexpectedItem))
+        };
         quote! {
             if self.after_body {
-                self.inner.apply_header(push)
+                #after_body
             } else {
                 push.apply(&mut self.inner.state.#index, #name)?;
                 self.after_body = true;
@@ -513,12 +584,32 @@ fn header_builder_assoc<'a>(
     }
 }
 
+fn empty_body_reader(builder: &syn::Type) -> proc_macro2::TokenStream {
+    quote! {
+        #[automatically_derived]
+        impl swim_common::form::structural::read::BodyReader for #builder {
+
+            type Delegate = utilities::never::Never;
+
+            fn push_record(mut self) -> std::result::Result<Self::Delegate, swim_common::form::structural::read::error::ReadError> {
+                std::result::Result::Err(swim_common::form::structural::read::error::ReadError::UnexpectedSlot)
+            }
+
+            fn restore(delegate: <Self::Delegate as swim_common::form::structural::read::HeaderReader>::Body) -> std::result::Result<Self, swim_common::form::structural::read::error::ReadError> {
+                delegate.explode()
+            }
+        }
+    }
+}
+
+
 fn header_builder_body_reader<'a, 'b>(
     header_builder: &syn::Type,
-    body: Option<&'b FieldModel<'a>>,
-    slots: Vec<&'b FieldModel<'a>>,
+    fields: &HeaderFields<'a, 'b>
 ) -> proc_macro2::TokenStream {
-    let wrapped_tys = body.iter().chain(slots.iter()).map(|fld| {
+    let HeaderFields { tag_body, header_fields, .. } = fields;
+
+    let wrapped_tys = tag_body.iter().chain(header_fields.iter()).map(|fld| {
         let ty = fld.field_ty;
         parse_quote! {
             swim_common::form::structural::read::builder::Wrapped<Self, <#ty as swim_common::form::structural::read::StructuralReadable>::Reader>
@@ -539,7 +630,7 @@ fn header_builder_body_reader<'a, 'b>(
         }
     };
 
-    let start_slot_body = if body.is_some() {
+    let start_slot_body = if tag_body.is_some() {
         quote! {
             if !self.after_body {
                 std::result::Result::Err(swim_common::form::structural::read::error::ReadError::UnexpectedSlot)
@@ -551,9 +642,9 @@ fn header_builder_body_reader<'a, 'b>(
 
     let wrapper_id: syn::Ident = parse_quote!(wrapper);
 
-    let offsets = if body.is_some() { 1.. } else { 0.. };
+    let offsets = if tag_body.is_some() { 1.. } else { 0.. };
 
-    let push_record_matches = slots.iter().zip(offsets.clone()).map(|(fld, i)| {
+    let push_record_matches = header_fields.iter().zip(offsets.clone()).map(|(fld, i)| {
         let index = fld.ordinal;
         let ty = fld.field_ty;
         let ccons_expr = make_ccons_expr(i, &wrapper_id);
@@ -579,7 +670,7 @@ fn header_builder_body_reader<'a, 'b>(
         }
     };
 
-    let push_record_body = if let Some(fld) = body {
+    let push_record_body = if let Some(fld) = tag_body {
         let ty = fld.field_ty;
         quote! {
             if !self.after_body {
@@ -594,7 +685,7 @@ fn header_builder_body_reader<'a, 'b>(
         push_record_base
     };
 
-    let restore_body_case = body.map(|fld| {
+    let restore_body_case = tag_body.map(|fld| {
         let index = syn::Index::from(fld.ordinal);
         let ty = fld.field_ty;
         quote! {
@@ -620,7 +711,7 @@ fn header_builder_body_reader<'a, 'b>(
         }
     };
 
-    let restore_slot_cases = slots.iter().zip(offsets).map(|(fld, i)| {
+    let restore_slot_cases = header_fields.iter().zip(offsets).map(|(fld, i)| {
         let index = syn::Index::from(fld.ordinal);
         let name = fld.resolve_name();
         let ty = fld.field_ty;
@@ -639,10 +730,10 @@ fn header_builder_body_reader<'a, 'b>(
         }
     });
 
-    let num_options = if body.is_some() {
-        slots.len() + 1
+    let num_options = if tag_body.is_some() {
+        header_fields.len() + 1
     } else {
-        slots.len()
+        header_fields.len()
     };
 
     let nil_pat = make_ccons_nil_pat(num_options);
