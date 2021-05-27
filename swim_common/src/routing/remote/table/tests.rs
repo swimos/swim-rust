@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::routing::remote::table::{RoutingTable, SchemeHostPort};
-use crate::routing::remote::RawRoute;
+use crate::routing::remote::{RawRoute, Scheme, SchemeSocketAddr};
 use crate::routing::{ConnectionDropped, RoutingAddr, TaggedEnvelope};
 use crate::warp::envelope::Envelope;
 use std::time::Duration;
@@ -21,16 +21,16 @@ use tokio::sync::mpsc;
 
 #[test]
 fn host_and_port_display() {
-    let hp = SchemeHostPort::new("host".to_string(), 12);
-    assert_eq!(hp.to_string(), "host:12");
+    let hp = SchemeHostPort::new(Scheme::Ws, "host".to_string(), 12);
+    assert_eq!(hp.to_string(), "ws://host:12");
 }
 
 #[tokio::test]
 async fn insert_and_retrieve() {
     let mut table = RoutingTable::default();
     let addr = RoutingAddr::remote(5);
-    let hp = SchemeHostPort::new("host".to_string(), 45);
-    let sock_addr = "192.168.0.1:80".parse().unwrap();
+    let hp = SchemeHostPort::new(Scheme::Ws, "host".to_string(), 45);
+    let sock_addr = SchemeSocketAddr::new(Scheme::Ws, "192.168.0.1:80".parse().unwrap());
     let (tx, mut rx) = mpsc::channel(8);
 
     table.insert(addr, Some(hp.clone()), sock_addr, tx);
@@ -53,9 +53,9 @@ async fn insert_and_retrieve() {
 async fn add_host_to_existing() {
     let mut table = RoutingTable::default();
     let addr = RoutingAddr::remote(5);
-    let hp = SchemeHostPort::new("host".to_string(), 45);
-    let hp2 = SchemeHostPort::new("host2".to_string(), 45);
-    let sock_addr = "192.168.0.1:80".parse().unwrap();
+    let hp = SchemeHostPort::new(Scheme::Wss, "host".to_string(), 45);
+    let hp2 = SchemeHostPort::new(Scheme::Wss, "host2".to_string(), 45);
+    let sock_addr = SchemeSocketAddr::new(Scheme::Wss, "192.168.0.1:80".parse().unwrap());
     let (tx, _rx) = mpsc::channel(8);
 
     assert!(table.add_host(hp2.clone(), sock_addr).is_none());
@@ -69,8 +69,8 @@ async fn add_host_to_existing() {
 async fn remove_entry() {
     let mut table = RoutingTable::default();
     let addr = RoutingAddr::remote(5);
-    let hp = SchemeHostPort::new("host".to_string(), 45);
-    let sock_addr = "192.168.0.1:80".parse().unwrap();
+    let hp = SchemeHostPort::new(Scheme::Wss, "host".to_string(), 45);
+    let sock_addr = SchemeSocketAddr::new(Scheme::Wss, "192.168.0.1:80".parse().unwrap());
     let (tx, _rx) = mpsc::channel(8);
 
     table.insert(addr, Some(hp.clone()), sock_addr, tx);

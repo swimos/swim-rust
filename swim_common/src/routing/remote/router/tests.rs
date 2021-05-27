@@ -92,7 +92,7 @@ async fn resolve_remote_ok() {
     let fake_resolver = fake_resolution(req_rx, url.clone(), tx, stop_rx);
 
     let task = async move {
-        let result = router.lookup(Some(url), path()).await;
+        let result = router.lookup(Some(url), path(), None).await;
         assert_eq!(result, Ok(ADDR));
         let result = router.resolve_sender(ADDR, None).await;
         assert!(result.is_ok());
@@ -144,7 +144,7 @@ async fn lookup_remote_failure() {
 
     let task = async move {
         let other_url = "swim://other:80".parse().unwrap();
-        let result = router.lookup(Some(other_url), path()).await;
+        let result = router.lookup(Some(other_url), path(), None).await;
         assert_eq!(
             result,
             Err(RouterError::ConnectionFailure(ConnectionError::Io(
@@ -172,7 +172,7 @@ async fn delegate_local_ok() {
     let fake_resolver = fake_resolution(req_rx, url.clone(), tx, stop_rx);
 
     let task = async move {
-        let result = router.lookup(None, path()).await;
+        let result = router.lookup(None, path(), None).await;
         assert!(result.is_ok());
         let local_addr = result.unwrap();
 
@@ -227,7 +227,7 @@ async fn lookup_local_err() {
     let fake_resolver = fake_resolution(req_rx, url.clone(), tx, stop_rx);
 
     let task = async move {
-        let result = router.lookup(None, path()).await;
+        let result = router.lookup(None, path(), None).await;
         assert_eq!(result, Err(RouterError::NoAgentAtRoute(path())));
         drop(stop_tx);
     };

@@ -23,6 +23,7 @@ use parking_lot::Mutex;
 use tokio::sync::{mpsc, watch};
 
 use crate::model::Value;
+use crate::routing::Origin;
 use crate::warp::envelope::Envelope;
 use crate::warp::path::RelativePath;
 use swim_runtime::time::timeout;
@@ -37,6 +38,7 @@ use crate::routing::remote::config::ConnectionConfig;
 use crate::routing::remote::task::{ConnectionTask, DispatchError};
 use crate::routing::remote::test_fixture::fake_channel::TwoWayMpsc;
 use crate::routing::remote::test_fixture::LocalRoutes;
+use crate::routing::remote::{Scheme, SchemeSocketAddr};
 use crate::routing::ws::WsMessage;
 use crate::routing::RouterError;
 use crate::routing::{ConnectionDropped, Route, RoutingAddr, TaggedEnvelope, TaggedSender};
@@ -94,7 +96,17 @@ async fn try_dispatch_in_map() {
 
     let env = envelope(path, "a");
 
-    let result = super::try_dispatch_envelope(&mut router, &mut resolved, env.clone()).await;
+    let result = super::try_dispatch_envelope(
+        &mut router,
+        &mut resolved,
+        env.clone(),
+        Origin::Remote(SchemeSocketAddr::new(
+            Scheme::Ws,
+            "192.168.0.1:80".parse().unwrap(),
+        )),
+        true,
+    )
+    .await;
 
     assert!(result.is_ok());
 
@@ -113,7 +125,17 @@ async fn try_dispatch_from_router() {
 
     let env = envelope(path.clone(), "a");
 
-    let result = super::try_dispatch_envelope(&mut router, &mut resolved, env.clone()).await;
+    let result = super::try_dispatch_envelope(
+        &mut router,
+        &mut resolved,
+        env.clone(),
+        Origin::Remote(SchemeSocketAddr::new(
+            Scheme::Ws,
+            "192.168.0.1:80".parse().unwrap(),
+        )),
+        true,
+    )
+    .await;
 
     assert!(result.is_ok());
 
@@ -132,7 +154,17 @@ async fn try_dispatch_fail_on_no_route() {
 
     let env = envelope(path.clone(), "a");
 
-    let result = super::try_dispatch_envelope(&mut router, &mut resolved, env.clone()).await;
+    let result = super::try_dispatch_envelope(
+        &mut router,
+        &mut resolved,
+        env.clone(),
+        Origin::Remote(SchemeSocketAddr::new(
+            Scheme::Ws,
+            "192.168.0.1:80".parse().unwrap(),
+        )),
+        true,
+    )
+    .await;
 
     if let Err((return_env, err)) = result {
         let expected_uri: RelativeUri = "/node".parse().unwrap();
@@ -163,7 +195,17 @@ async fn try_dispatch_fail_on_dropped() {
     drop(rx);
     assert!(drop_tx.provide(ConnectionDropped::AgentFailed).is_ok());
 
-    let result = super::try_dispatch_envelope(&mut router, &mut resolved, env.clone()).await;
+    let result = super::try_dispatch_envelope(
+        &mut router,
+        &mut resolved,
+        env.clone(),
+        Origin::Remote(SchemeSocketAddr::new(
+            Scheme::Ws,
+            "192.168.0.1:80".parse().unwrap(),
+        )),
+        true,
+    )
+    .await;
 
     if let Err((return_env, err)) = result {
         assert_eq!(return_env, env);
@@ -194,7 +236,17 @@ async fn try_dispatch_fail_on_dropped_no_reason() {
     drop(rx);
     drop(drop_tx);
 
-    let result = super::try_dispatch_envelope(&mut router, &mut resolved, env.clone()).await;
+    let result = super::try_dispatch_envelope(
+        &mut router,
+        &mut resolved,
+        env.clone(),
+        Origin::Remote(SchemeSocketAddr::new(
+            Scheme::Ws,
+            "192.168.0.1:80".parse().unwrap(),
+        )),
+        true,
+    )
+    .await;
 
     if let Err((return_env, err)) = result {
         assert_eq!(return_env, env);
@@ -224,6 +276,10 @@ async fn dispatch_immediate_success() {
         &mut router,
         &mut resolved,
         env.clone(),
+        Origin::Remote(SchemeSocketAddr::new(
+            Scheme::Ws,
+            "192.168.0.1:80".parse().unwrap(),
+        )),
         RetryStrategy::none(),
         |dur| {
             let delays_cpy = delays.clone();
@@ -231,6 +287,7 @@ async fn dispatch_immediate_success() {
                 delays_cpy.lock().push(dur);
             }
         },
+        true,
     )
     .await;
 
@@ -263,6 +320,10 @@ async fn dispatch_immediate_failure() {
         &mut router,
         &mut resolved,
         env.clone(),
+        Origin::Remote(SchemeSocketAddr::new(
+            Scheme::Ws,
+            "192.168.0.1:80".parse().unwrap(),
+        )),
         RetryStrategy::interval(Duration::from_secs(1), Quantity::Finite(retries())),
         |dur| {
             let delays_cpy = delays.clone();
@@ -270,6 +331,7 @@ async fn dispatch_immediate_failure() {
                 delays_cpy.lock().push(dur);
             }
         },
+        true,
     )
     .await;
 
@@ -303,6 +365,10 @@ async fn dispatch_after_retry() {
         &mut router,
         &mut resolved,
         env.clone(),
+        Origin::Remote(SchemeSocketAddr::new(
+            Scheme::Ws,
+            "192.168.0.1:80".parse().unwrap(),
+        )),
         RetryStrategy::interval(Duration::from_secs(1), Quantity::Finite(retries())),
         |dur| {
             let delays_cpy = delays.clone();
@@ -310,6 +376,7 @@ async fn dispatch_after_retry() {
                 delays_cpy.lock().push(dur);
             }
         },
+        true,
     )
     .await;
 
@@ -340,6 +407,10 @@ async fn dispatch_after_immediate_retry() {
         &mut router,
         &mut resolved,
         env.clone(),
+        Origin::Remote(SchemeSocketAddr::new(
+            Scheme::Ws,
+            "192.168.0.1:80".parse().unwrap(),
+        )),
         RetryStrategy::immediate(retries()),
         |dur| {
             let delays_cpy = delays.clone();
@@ -347,6 +418,7 @@ async fn dispatch_after_immediate_retry() {
                 delays_cpy.lock().push(dur);
             }
         },
+        true,
     )
     .await;
 
@@ -386,10 +458,10 @@ impl TaskFixture {
         let fake_socket =
             TwoWayMpsc::new(tx_out.clone(), rx_in, move |_| failure_rx.borrow().clone());
         let task = ConnectionTask::new(
+            SchemeSocketAddr::new(Scheme::Ws, "192.168.0.1:80".parse().unwrap()),
             fake_socket,
             router.clone(),
-            env_rx,
-            env_tx.clone(),
+            (env_tx.clone(), env_rx),
             stop_rx,
             ConnectionConfig {
                 router_buffer_size: NonZeroUsize::new(10).unwrap(),
@@ -399,6 +471,7 @@ impl TaskFixture {
                 connection_retries: RetryStrategy::immediate(NonZeroUsize::new(1).unwrap()),
                 yield_after: NonZeroUsize::new(256).unwrap(),
             },
+            true,
         )
         .run()
         .boxed();

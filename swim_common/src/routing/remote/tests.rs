@@ -18,15 +18,14 @@ use crate::routing::error::{ConnectionError, IoError, ResolutionError, Resolutio
 use crate::routing::remote::state::{DeferredResult, Event, RemoteTasksState};
 use crate::routing::remote::table::{RoutingTable, SchemeHostPort};
 use crate::routing::remote::{
-    ConnectionDropped, RawRoute, RemoteRoutingRequest, ResolutionRequest, SocketAddrIt,
-    Unresolvable,
+    ConnectionDropped, RawRoute, RemoteRoutingRequest, ResolutionRequest, Scheme, SchemeSocketAddr,
+    SchemeSocketAddrIt, Unresolvable,
 };
 use crate::routing::{RoutingAddr, TaggedEnvelope};
 use crate::warp::envelope::Envelope;
 use futures::FutureExt;
 use std::cell::RefCell;
 use std::io::ErrorKind;
-use std::net::SocketAddr;
 use tokio::sync::{mpsc, oneshot};
 use utilities::sync::promise::Sender;
 
@@ -65,10 +64,15 @@ impl FakeRemoteState {
 #[derive(Debug, PartialEq, Eq)]
 enum StateMutation {
     Stop,
-    Spawn(SocketAddr, FakeWebsocket, Option<SchemeHostPort>),
-    CheckAddr(SchemeHostPort, SocketAddr),
-    DeferHandshake(FakeSocket, SocketAddr),
-    DeferConnect(SchemeHostPort, SocketAddr, Vec<SocketAddr>),
+    Spawn(
+        SchemeSocketAddr,
+        FakeWebsocket,
+        Option<SchemeHostPort>,
+        bool,
+    ),
+    CheckAddr(SchemeHostPort, SchemeSocketAddr),
+    DeferHandshake(FakeSocket, SchemeSocketAddr),
+    DeferConnect(SchemeHostPort, SchemeSocketAddr, Vec<SchemeSocketAddr>),
     DeferDns(SchemeHostPort),
     FailConnection(SchemeHostPort, ConnectionError),
     TableRemove(RoutingAddr),
@@ -84,19 +88,20 @@ impl RemoteTasksState for FakeRemoteState {
 
     fn spawn_task(
         &mut self,
-        sock_addr: SocketAddr,
+        sock_addr: SchemeSocketAddr,
         ws_stream: Self::WebSocket,
         host: Option<SchemeHostPort>,
+        server: bool,
     ) {
         self.recording
             .get_mut()
-            .push(StateMutation::Spawn(sock_addr, ws_stream, host))
+            .push(StateMutation::Spawn(sock_addr, ws_stream, host, server))
     }
 
     fn check_socket_addr(
         &mut self,
         host: SchemeHostPort,
-        sock_addr: SocketAddr,
+        sock_addr: SchemeSocketAddr,
     ) -> Result<(), SchemeHostPort> {
         let FakeRemoteState { table, recording } = self;
         recording
@@ -109,7 +114,7 @@ impl RemoteTasksState for FakeRemoteState {
         }
     }
 
-    fn defer_handshake(&self, stream: Self::Socket, peer_addr: SocketAddr) {
+    fn defer_handshake(&self, stream: Self::Socket, peer_addr: SchemeSocketAddr) {
         self.recording
             .borrow_mut()
             .push(StateMutation::DeferHandshake(stream, peer_addr));
@@ -118,8 +123,8 @@ impl RemoteTasksState for FakeRemoteState {
     fn defer_connect_and_handshake(
         &mut self,
         host: SchemeHostPort,
-        sock_addr: SocketAddr,
-        remaining: SocketAddrIt,
+        sock_addr: SchemeSocketAddr,
+        remaining: SchemeSocketAddrIt,
     ) {
         self.recording.get_mut().push(StateMutation::DeferConnect(
             host,
@@ -157,12 +162,12 @@ impl RemoteTasksState for FakeRemoteState {
     }
 }
 
-fn sock_addr() -> SocketAddr {
-    "192.168.0.1:80".parse().unwrap()
+fn sock_addr() -> SchemeSocketAddr {
+    SchemeSocketAddr::new(Scheme::Ws, "192.168.0.1:80".parse().unwrap())
 }
 
-fn sock_addr2() -> SocketAddr {
-    "192.168.0.2:80".parse().unwrap()
+fn sock_addr2() -> SchemeSocketAddr {
+    SchemeSocketAddr::new(Scheme::Wss, "192.168.0.2:80".parse().unwrap())
 }
 
 #[test]
@@ -266,7 +271,7 @@ async fn transition_request_resolve_in_table() {
     let mut state = FakeRemoteState::default();
     state.table.insert(
         addr,
-        Some(SchemeHostPort::new("my_host".to_string(), 80)),
+        Some(SchemeHostPort::new(Scheme::Ws, "my_host".to_string(), 80)),
         sa,
         route_tx,
     );
@@ -297,6 +302,7 @@ async fn transition_request_resolve_not_in_table() {
     super::update_state(&mut state, &mut result, event);
 
     state.check(vec![StateMutation::DeferDns(SchemeHostPort::new(
+        Scheme::Ws,
         "my_host".to_string(),
         80,
     ))]);
@@ -312,7 +318,7 @@ fn transition_deferred_dns_good_in_table() {
     let addr = RoutingAddr::remote(10);
     let sa1 = sock_addr();
     let sa2 = sock_addr2();
-    let host = SchemeHostPort::new("my_host".to_string(), 80);
+    let host = SchemeHostPort::new(Scheme::Wss, "my_host".to_string(), 80);
     let (route_tx, _route_rx) = mpsc::channel(8);
 
     let dns_response = Ok(vec![sa1, sa2].into_iter());
@@ -335,7 +341,7 @@ fn transition_deferred_dns_good_in_table() {
 fn transition_deferred_dns_good_not_in_table() {
     let sa1 = sock_addr();
     let sa2 = sock_addr2();
-    let host = SchemeHostPort::new("my_host".to_string(), 80);
+    let host = SchemeHostPort::new(Scheme::Wss, "my_host".to_string(), 80);
 
     let dns_response = Ok(vec![sa1, sa2].into_iter());
 
@@ -357,7 +363,7 @@ fn transition_deferred_dns_good_not_in_table() {
 
 #[test]
 fn transition_deferred_dns_empty() {
-    let host = SchemeHostPort::new("my_host".to_string(), 80);
+    let host = SchemeHostPort::new(Scheme::Wss, "my_host".to_string(), 80);
 
     let dns_response = Ok(vec![].into_iter());
     let mut state = FakeRemoteState::default();
@@ -380,7 +386,7 @@ fn transition_deferred_dns_empty() {
 
 #[test]
 fn transition_deferred_dns_failed() {
-    let host = SchemeHostPort::new("my_host".to_string(), 80);
+    let host = SchemeHostPort::new(Scheme::Ws, "my_host".to_string(), 80);
 
     let dns_response = Err(ErrorKind::NotFound.into());
     let mut state = FakeRemoteState::default();
@@ -421,6 +427,7 @@ fn transition_deferred_server_handshake_success() {
         sa,
         FakeWebsocket::new("ws"),
         None,
+        true,
     )]);
     assert!(result.is_ok());
 }
@@ -428,7 +435,7 @@ fn transition_deferred_server_handshake_success() {
 #[test]
 fn transition_deferred_client_handshake_success() {
     let sa = sock_addr();
-    let host = SchemeHostPort::new("my_host".to_string(), 80);
+    let host = SchemeHostPort::new(Scheme::Ws, "my_host".to_string(), 80);
 
     let handshake_response = Ok((FakeWebsocket::new("ws"), sa));
 
@@ -445,6 +452,7 @@ fn transition_deferred_client_handshake_success() {
         sa,
         FakeWebsocket::new("ws"),
         Some(host),
+        false,
     )]);
     assert!(result.is_ok());
 }
@@ -473,7 +481,7 @@ fn transition_deferred_server_handshake_failed() {
 
 #[test]
 fn transition_deferred_client_handshake_failed() {
-    let host = SchemeHostPort::new("my_host".to_string(), 80);
+    let host = SchemeHostPort::new(Scheme::Ws, "my_host".to_string(), 80);
 
     let handshake_response = Err(ConnectionError::Io(IoError::new(
         ErrorKind::ConnectionReset,
@@ -499,7 +507,7 @@ fn transition_deferred_client_handshake_failed() {
 #[test]
 fn transition_deferred_connection_failed_with_remaining() {
     let sa = sock_addr2();
-    let host = SchemeHostPort::new("my_host".to_string(), 80);
+    let host = SchemeHostPort::new(Scheme::Ws, "my_host".to_string(), 80);
 
     let mut state = FakeRemoteState::default();
     let mut result = Ok(());
@@ -517,7 +525,7 @@ fn transition_deferred_connection_failed_with_remaining() {
 
 #[test]
 fn transition_deferred_connection_failed_no_remaining() {
-    let host = SchemeHostPort::new("my_host".to_string(), 80);
+    let host = SchemeHostPort::new(Scheme::Ws, "my_host".to_string(), 80);
 
     let mut state = FakeRemoteState::default();
     let mut result = Ok(());

@@ -16,10 +16,10 @@ use crate::routing::error::{
     CloseError, ConnectionError, HttpError, HttpErrorKind, ResolutionError, ResolutionErrorKind,
 };
 use crate::routing::remote::table::SchemeHostPort;
-use crate::routing::remote::{ConnectionDropped, SchemeSocketAddr};
+use crate::routing::remote::{ConnectionDropped, Scheme, SchemeSocketAddr};
 use crate::routing::remote::{ExternalConnections, Listener};
 use crate::routing::ws::{CloseReason, JoinedStreamSink, WsConnections, WsMessage};
-use crate::routing::RouterError;
+use crate::routing::{Origin, RouterError};
 use crate::routing::{Route, Router, RouterFactory, RoutingAddr, TaggedEnvelope, TaggedSender};
 use futures::future::{ready, BoxFuture};
 use futures::io::ErrorKind;
@@ -67,7 +67,7 @@ impl Router for LocalRoutes {
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,
-        _origin: Option<SchemeSocketAddr>,
+        _origin: Option<Origin>,
     ) -> BoxFuture<'_, Result<Route, ResolutionError>> {
         let lock = self.1.lock();
         let result = if let Some(Entry {
@@ -89,6 +89,7 @@ impl Router for LocalRoutes {
         &mut self,
         host: Option<Url>,
         route: RelativeUri,
+        _origin: Option<Origin>,
     ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
         let mut lock = self.1.lock();
         let result = if host.is_some() {
@@ -342,7 +343,7 @@ impl FakeSocket {
 
 #[derive(Debug)]
 struct FakeConnectionsInner {
-    sockets: HashMap<SocketAddr, Result<FakeSocket, io::Error>>,
+    sockets: HashMap<SchemeSocketAddr, Result<FakeSocket, io::Error>>,
     incoming: Option<FakeListener>,
     dns: HashMap<String, Vec<SchemeSocketAddr>>,
 }
@@ -356,7 +357,7 @@ pub struct FakeConnections {
 
 impl FakeConnections {
     pub fn new(
-        sockets: HashMap<SocketAddr, Result<FakeSocket, io::Error>>,
+        sockets: HashMap<SchemeSocketAddr, Result<FakeSocket, io::Error>>,
         dns: HashMap<String, Vec<SchemeSocketAddr>>,
         incoming: Option<mpsc::Receiver<io::Result<(FakeSocket, SchemeSocketAddr)>>>,
         open_error_count: usize,
@@ -375,11 +376,11 @@ impl FakeConnections {
         self.inner.lock().dns.insert(host, vec![sock_addr]);
     }
 
-    pub fn add_socket(&self, sock_addr: SocketAddr, socket: FakeSocket) {
+    pub fn add_socket(&self, sock_addr: SchemeSocketAddr, socket: FakeSocket) {
         self.inner.lock().sockets.insert(sock_addr, Ok(socket));
     }
 
-    pub fn add_error(&self, sock_addr: SocketAddr, err: io::Error) {
+    pub fn add_error(&self, sock_addr: SchemeSocketAddr, err: io::Error) {
         self.inner.lock().sockets.insert(sock_addr, Err(err));
     }
 }
@@ -409,7 +410,7 @@ impl ExternalConnections for FakeConnections {
             .inner
             .lock()
             .sockets
-            .remove(&addr)
+            .remove(&SchemeSocketAddr::new(Scheme::Ws, addr))
             .unwrap_or_else(|| Err(ErrorKind::NotFound.into()));
         ready(result).boxed()
     }
