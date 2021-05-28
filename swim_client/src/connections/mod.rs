@@ -44,6 +44,9 @@ use tokio_tungstenite::tungstenite;
 use tracing::{instrument, trace};
 use url::Host;
 
+#[cfg(test)]
+mod tests;
+
 /// Connection pool message wraps a message from a remote host.
 #[derive(Debug)]
 pub(crate) struct ConnectionPoolMessage {

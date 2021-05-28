@@ -427,7 +427,7 @@ fn parse_elements(
                     };
                 }
                 FieldKind::Tagged => {
-                    // no-op as the field is ignored and marked as a tag 
+                    // no-op as the field is ignored and marked as a tag
                 },
                 _ => {
                     let fn_call = fn_factory(quote!(v));

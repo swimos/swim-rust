@@ -17,8 +17,9 @@
 
 pub mod router;
 
-#[cfg(test)]
-mod tests;
+// Todo dm
+// #[cfg(test)]
+// mod tests;
 
 pub mod downlink {
     use crate::configuration::downlink::ConfigParseError::UnexpectedValue;

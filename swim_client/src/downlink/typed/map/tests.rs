@@ -624,6 +624,6 @@ fn map_view_error_display() {
 
     let string = err.to_string();
 
-    assert_eq!(string, format!("A Read Only view of a map downlink (key schema {} and value schema {})) was requested with key schema {} and value schema {}. The key schemas are incompatible.", 
+    assert_eq!(string, format!("A Read Only view of a map downlink (key schema {} and value schema {})) was requested with key schema {} and value schema {}. The key schemas are incompatible.",
                                StandardSchema::Anything, StandardSchema::Nothing, StandardSchema::NonNan, StandardSchema::Finite));
 }

@@ -173,27 +173,25 @@ impl RetrySendError for MpscRetryErr {
 
 #[cfg(test)]
 mod tests {
-    use std::num::NonZeroUsize;
-
-    use utilities::future::retryable::strategy::RetryStrategy;
-    use utilities::future::retryable::RetryableFuture;
-
     use crate::router::retry::MpscRetryErr;
     use crate::router::RoutingError;
     use futures::Future;
-    use swim_common::routing::ws::WsMessage;
-    use swim_common::routing::TaggedEnvelope;
+    use std::num::NonZeroUsize;
+    use swim_common::warp::envelope::Envelope;
     use tokio::sync::mpsc;
     use utilities::future::retryable::request::{RetryableRequest, SendResult};
+    use utilities::future::retryable::strategy::RetryStrategy;
+    use utilities::future::retryable::RetryableFuture;
 
     #[tokio::test]
     async fn send_ok() {
         let (tx, mut rx) = mpsc::channel(5);
-        let payload = WsMessage::Text(String::from("Text"));
+        let payload = Envelope::make_command("/foo", "/bar", Some("Text".into()));
+
         let retryable = new_retryable(
             payload.clone(),
             tx,
-            |sender: mpsc::Sender<WsMessage>, payload, _is_retry| async move {
+            |sender: mpsc::Sender<Envelope>, payload, _is_retry| async move {
                 let _ = sender.send(payload.clone()).await;
                 Ok(((), Some(sender)))
             },
@@ -206,11 +204,12 @@ mod tests {
     #[tokio::test]
     async fn recovers() {
         let (tx, mut rx) = mpsc::channel(5);
-        let payload = WsMessage::Text(String::from("Text"));
+        let payload = Envelope::make_command("/foo", "/bar", Some("Text".into()));
+
         let retryable = new_retryable(
             payload.clone(),
             tx,
-            |sender: mpsc::Sender<WsMessage>, payload, is_retry| async move {
+            |sender: mpsc::Sender<Envelope>, payload, is_retry| async move {
                 if is_retry {
                     let _ = sender.send(payload.clone().into()).await;
                     Ok(((), Some(sender)))
@@ -234,11 +233,12 @@ mod tests {
     #[tokio::test]
     async fn errors() {
         let (tx, _rx) = mpsc::channel(5);
-        let message = WsMessage::Text(String::from("Text"));
+        let message = Envelope::make_command("/foo", "/bar", Some("Text".into()));
+
         let retryable = new_retryable(
-            message.clone(),
+            message,
             tx,
-            |sender: mpsc::Sender<WsMessage>, payload, _is_retry| async {
+            |sender: mpsc::Sender<Envelope>, payload, _is_retry| async {
                 Err((
                     MpscRetryErr {
                         kind: RoutingError::ConnectionError,
@@ -254,13 +254,13 @@ mod tests {
     }
 
     async fn new_retryable<Fac, F>(
-        payload: TaggedEnvelope,
-        tx: mpsc::Sender<TaggedEnvelope>,
+        payload: Envelope,
+        tx: mpsc::Sender<Envelope>,
         fac: Fac,
     ) -> Result<(), RoutingError>
     where
-        Fac: FnMut(mpsc::Sender<TaggedEnvelope>, TaggedEnvelope, bool) -> F,
-        F: Future<Output = SendResult<mpsc::Sender<TaggedEnvelope>, (), MpscRetryErr>>,
+        Fac: FnMut(mpsc::Sender<Envelope>, Envelope, bool) -> F,
+        F: Future<Output = SendResult<mpsc::Sender<Envelope>, (), MpscRetryErr>>,
     {
         let retryable =
             RetryableRequest::new(tx, payload, fac, |e| e.payload.expect("Missing payload"));

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-/// Creates a value from the provided items.  
+/// Creates a value from the provided items.
 ///
 /// For example:
 /// ```
