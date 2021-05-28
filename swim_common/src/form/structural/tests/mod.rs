@@ -31,6 +31,8 @@ use either::Either;
 use num_bigint::{BigInt, BigUint};
 use std::borrow::Borrow;
 use std::borrow::Cow;
+use std::prelude::v1::Result::Err;
+use utilities::never::Never;
 
 #[derive(Clone, PartialEq, Eq, Debug, Default)]
 pub struct GeneralType<S, T> {
@@ -858,5 +860,213 @@ fn one_of_each() {
             }
         ),
         Err(e) => panic!("{:?}", e),
+    }
+}
+
+struct TupleStruct<T, U>(T, U);
+
+impl<T: ValueReadable, U: ValueReadable> ValueReadable for TupleStruct<T, U> {}
+
+type TupleStructFields<T, U> = (Option<T>, Option<U>);
+
+impl<T: StructuralReadable, U: StructuralReadable> StructuralReadable for TupleStruct<T, U> {
+    type Reader = Builder<TupleStruct<T, U>, TupleStructFields<T, U>>;
+
+    fn record_reader() -> Result<Self::Reader, ReadError> {
+        Ok(Builder::default())
+    }
+
+    fn try_terminate(reader: <Self::Reader as HeaderReader>::Body) -> Result<Self, ReadError> {
+        let Builder { mut state, .. } = reader;
+
+        let mut missing = vec![];
+        if state.0.is_none() {
+            let on_missing = <T as StructuralReadable>::on_absent();
+            if on_missing.is_none() {
+                missing.push(Text::new("header"));
+            } else {
+                state.0 = on_missing;
+            }
+        }
+        if state.1.is_none() {
+            let on_missing = <U as StructuralReadable>::on_absent();
+            if on_missing.is_none() {
+                missing.push(Text::new("header_slot"));
+            } else {
+                state.1 = on_missing;
+            }
+        }
+
+        if let (Some(first), Some(second)) = state {
+            Ok(TupleStruct(first, second))
+        } else {
+            Err(ReadError::MissingFields(missing))
+        }
+    }
+}
+
+impl<T: StructuralReadable, U: StructuralReadable> HeaderReader
+    for Builder<TupleStruct<T, U>, TupleStructFields<T, U>>
+{
+    type Body = Self;
+    type Delegate = HeaderBuilder<TupleStruct<T, U>, TupleStructFields<T, U>>;
+
+    fn read_attribute(self, name: Cow<'_, str>) -> Result<Self::Delegate, ReadError> {
+        match name.borrow() {
+            "TupleStruct" => Ok(HeaderBuilder::new(self, false)),
+            ow => Err(ReadError::UnexpectedField(ow.into())),
+        }
+    }
+
+    fn restore(delegate: Self::Delegate) -> Result<Self, ReadError> {
+        let HeaderBuilder { inner, .. } = delegate;
+        Ok(inner)
+    }
+
+    fn start_body(mut self) -> Result<Self::Body, ReadError> {
+        self.current_field = Some(0);
+        Ok(self)
+    }
+}
+
+impl<T: StructuralReadable, U: StructuralReadable> BodyReader
+    for HeaderBuilder<TupleStruct<T, U>, TupleStructFields<T, U>>
+{
+    type Delegate = Never;
+
+    fn push_record(self) -> Result<Self::Delegate, ReadError> {
+        Err(ReadError::UnexpectedItem)
+    }
+
+    fn restore(delegate: <Self::Delegate as HeaderReader>::Body) -> Result<Self, ReadError> {
+        delegate.explode()
+    }
+}
+
+impl<T: StructuralReadable, U: StructuralReadable>
+    Builder<TupleStruct<T, U>, TupleStructFields<T, U>>
+{
+    fn apply<P: PushPrimValue>(&mut self, push: P) -> Result<bool, ReadError> {
+        match self
+            .current_field
+            .take()
+            .ok_or_else(|| ReadError::UnexpectedKind(push.kind()))?
+        {
+            0 => {
+                push.apply(&mut self.state.0, "part1")?;
+                self.current_field = Some(1);
+                Ok(true)
+            }
+            1 => {
+                push.apply(&mut self.state.1, "part2")?;
+                self.current_field = None;
+                Ok(false)
+            }
+            _ => Err(ReadError::UnexpectedItem),
+        }
+    }
+}
+
+impl<T: StructuralReadable, U: StructuralReadable> BodyReader
+    for Builder<TupleStruct<T, U>, TupleStructFields<T, U>>
+{
+    type Delegate = CCons<Wrapped<Self, T::Reader>, CCons<Wrapped<Self, U::Reader>, CNil>>;
+
+    fn push_extant(&mut self) -> Result<bool, ReadError> {
+        self.apply(())
+    }
+
+    fn push_i32(&mut self, value: i32) -> Result<bool, ReadError> {
+        self.apply(value)
+    }
+
+    fn push_i64(&mut self, value: i64) -> Result<bool, ReadError> {
+        self.apply(value)
+    }
+
+    fn push_u32(&mut self, value: u32) -> Result<bool, ReadError> {
+        self.apply(value)
+    }
+
+    fn push_u64(&mut self, value: u64) -> Result<bool, ReadError> {
+        self.apply(value)
+    }
+
+    fn push_f64(&mut self, value: f64) -> Result<bool, ReadError> {
+        self.apply(value)
+    }
+
+    fn push_bool(&mut self, value: bool) -> Result<bool, ReadError> {
+        self.apply(value)
+    }
+
+    fn push_big_int(&mut self, value: BigInt) -> Result<bool, ReadError> {
+        self.apply(value)
+    }
+
+    fn push_big_uint(&mut self, value: BigUint) -> Result<bool, ReadError> {
+        self.apply(value)
+    }
+
+    fn push_text(&mut self, value: Cow<'_, str>) -> Result<bool, ReadError> {
+        self.apply(value)
+    }
+
+    fn push_blob(&mut self, value: Vec<u8>) -> Result<bool, ReadError> {
+        self.apply(value)
+    }
+
+    fn start_slot(&mut self) -> Result<(), ReadError> {
+        Err(ReadError::UnexpectedSlot)
+    }
+
+    fn push_record(mut self) -> Result<Self::Delegate, ReadError> {
+        match self.current_field.take() {
+            Some(0) => {
+                let wrapper = Wrapped {
+                    payload: self,
+                    reader: <T as StructuralReadable>::record_reader()?,
+                };
+                Ok(CCons::Head(wrapper))
+            }
+            Some(1) => {
+                let wrapper = Wrapped {
+                    payload: self,
+                    reader: <U as StructuralReadable>::record_reader()?,
+                };
+                Ok(CCons::Tail(CCons::Head(wrapper)))
+            }
+            _ => Err(ReadError::InconsistentState),
+        }
+    }
+
+    fn restore(delegate: <Self::Delegate as HeaderReader>::Body) -> Result<Self, ReadError> {
+        match delegate {
+            CCons::Head(Wrapped {
+                mut payload,
+                reader,
+            }) => {
+                if payload.state.0.is_some() {
+                    return Err(ReadError::InconsistentState);
+                } else {
+                    payload.state.0 = Some(<T as StructuralReadable>::try_terminate(reader)?);
+                }
+                payload.current_field = Some(1);
+                Ok(payload)
+            }
+            CCons::Tail(CCons::Head(Wrapped {
+                mut payload,
+                reader,
+            })) => {
+                if payload.state.1.is_some() {
+                    return Err(ReadError::InconsistentState);
+                } else {
+                    payload.state.1 = Some(<U as StructuralReadable>::try_terminate(reader)?);
+                }
+                payload.current_field = None;
+                Ok(payload)
+            }
+            CCons::Tail(CCons::Tail(nil)) => nil.explode(),
+        }
     }
 }
