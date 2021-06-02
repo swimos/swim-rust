@@ -35,7 +35,9 @@ use crate::routing::remote::config::ConnectionConfig;
 use crate::routing::remote::state::{DeferredResult, Event, RemoteConnections, RemoteTasksState};
 use crate::routing::remote::table::SchemeHostPort;
 use crate::routing::ws::WsConnections;
-use crate::routing::{ConnectionDropped, RouterFactory, RoutingAddr, TaggedEnvelope};
+use crate::routing::{
+    CloseReceiver, ConnectionDropped, RouterFactory, RoutingAddr, TaggedEnvelope,
+};
 use crate::routing::{ConnectionError, ResolutionError};
 use futures::future::BoxFuture;
 use futures::stream::FusedStream;
@@ -89,14 +91,14 @@ pub enum RemoteRoutingRequest {
 pub struct RemoteConnectionChannels {
     request_tx: mpsc::Sender<RemoteRoutingRequest>,
     request_rx: mpsc::Receiver<RemoteRoutingRequest>,
-    stop_trigger: trigger::Receiver,
+    stop_trigger: CloseReceiver,
 }
 
 impl RemoteConnectionChannels {
     pub fn new(
         request_tx: mpsc::Sender<RemoteRoutingRequest>,
         request_rx: mpsc::Receiver<RemoteRoutingRequest>,
-        stop_trigger: trigger::Receiver,
+        stop_trigger: CloseReceiver,
     ) -> RemoteConnectionChannels {
         RemoteConnectionChannels {
             request_tx,
@@ -112,7 +114,7 @@ pub struct RemoteConnectionsTask<External: ExternalConnections, Ws, DelegateRout
     listener: Option<External::ListenerType>,
     websockets: Ws,
     delegate_router_fac: DelegateRouterFac,
-    stop_trigger: trigger::Receiver,
+    stop_trigger: CloseReceiver,
     spawner: Sp,
     configuration: ConnectionConfig,
     remote_tx: mpsc::Sender<RemoteRoutingRequest>,

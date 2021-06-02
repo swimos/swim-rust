@@ -50,6 +50,7 @@ use swim_common::model::schema::StandardSchema;
 use swim_common::model::Value;
 use swim_common::request::Request;
 use swim_common::routing::error::RoutingError;
+use swim_common::routing::CloseReceiver;
 use swim_common::sink::item;
 use swim_common::sink::item::either::SplitSink;
 use swim_common::sink::item::ItemSender;
@@ -99,6 +100,7 @@ impl<Path: Addressable> Downlinks<Path> {
     pub fn new<Cfg>(
         client_conn_request_tx: mpsc::Sender<ClientRequest<Path>>,
         config: Arc<Cfg>,
+        close_rx: CloseReceiver,
     ) -> (Downlinks<Path>, DownlinksHandle<Path>)
     where
         Cfg: Config<PathType = Path> + 'static,
@@ -107,17 +109,11 @@ impl<Path: Addressable> Downlinks<Path> {
 
         let client_params = config.client_params();
 
-        //Todo dm this should be used
-        let (_task_manager_close_tx, task_manager_close_rx) = promise::promise();
-
         let connection_pool =
             SwimConnPool::new(client_params.conn_pool_params, client_conn_request_tx);
 
-        let (task_manager, connection_request_tx) = TaskManager::new(
-            connection_pool,
-            task_manager_close_rx,
-            client_params.router_params,
-        );
+        let (task_manager, connection_request_tx) =
+            TaskManager::new(connection_pool, close_rx, client_params.router_params);
 
         let downlinks_task = DownlinksTask::new(config, connection_request_tx);
         let (tx, rx) = mpsc::channel(client_params.dl_req_buffer_size.get());

@@ -29,7 +29,7 @@ use swim_common::routing::error::{
     ConnectionError, ResolutionError, RouterError, RoutingError, Unresolvable,
 };
 use swim_common::routing::remote::{RawRoute, RemoteRoutingRequest};
-use swim_common::routing::{ConnectionDropped, Origin, PlaneRoutingRequest};
+use swim_common::routing::{ConnectionDropped, Origin, PlaneRoutingRequest, CloseReceiver};
 use swim_common::routing::{
     Route, Router, RouterFactory, RoutingAddr, TaggedEnvelope, TaggedSender,
 };
@@ -482,7 +482,6 @@ pub(crate) enum ConnectionRequestMode {
 pub(crate) type RouterConnRequest<Path> = (Path, ConnectionRequestMode);
 type ConnectionChannel = (mpsc::Sender<Envelope>, mpsc::Receiver<RouterEvent>);
 type CloseResponseSender = mpsc::Sender<Result<(), RoutingError>>;
-type CloseReceiver = promise::Receiver<mpsc::Sender<Result<(), RoutingError>>>;
 type SubscriptionRequest = Request<Result<(RawRoute, mpsc::Receiver<Envelope>), ConnectionError>>;
 
 /// The Router events are emitted by the connection streams of the router and indicate

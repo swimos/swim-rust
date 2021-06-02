@@ -42,6 +42,7 @@ use swim_common::routing::remote::net::dns::Resolver;
 use swim_common::routing::remote::net::plain::TokioPlainTextNetworking;
 use swim_common::routing::remote::{RemoteConnectionChannels, RemoteConnectionsTask};
 use swim_common::routing::ws::tungstenite::TungsteniteWsConnections;
+use swim_common::routing::CloseSender;
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::{AbsolutePath, Addressable, Path};
 use swim_runtime::task::spawn;
@@ -49,7 +50,7 @@ use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::info;
 use utilities::future::open_ended::OpenEndedFutures;
-use utilities::sync::trigger;
+use utilities::sync::{promise, trigger};
 
 /// Builder to create Swim client instance.
 ///
@@ -110,7 +111,8 @@ impl SwimClientBuilder {
         let (client_conn_request_tx, client_conn_request_rx) =
             mpsc::channel(client_params.connections_params.router_buffer_size.get());
         let top_level_router_fac = ClientRouterFactory::new(client_conn_request_tx.clone());
-        let (stop_trigger_tx, stop_trigger_rx) = trigger::trigger();
+
+        let (close_tx, close_rx) = promise::promise();
 
         let remote_connections_task = RemoteConnectionsTask::new_client_task(
             client_params.connections_params,
@@ -123,7 +125,7 @@ impl SwimClientBuilder {
             RemoteConnectionChannels::new(
                 remote_router_tx.clone(),
                 remote_router_rx,
-                stop_trigger_rx,
+                close_rx.clone(),
             ),
         )
         .await;
@@ -136,7 +138,7 @@ impl SwimClientBuilder {
         );
 
         let (downlinks, downlinks_handle) =
-            Downlinks::new(client_conn_request_tx, Arc::new(downlinks_config));
+            Downlinks::new(client_conn_request_tx, Arc::new(downlinks_config), close_rx);
 
         let DownlinksHandle {
             downlinks_task,
@@ -158,7 +160,7 @@ impl SwimClientBuilder {
             SwimClient { downlinks },
             ClientHandle {
                 task_handle,
-                stop_trigger: stop_trigger_tx,
+                stop_trigger: close_tx,
             },
         )
     }
@@ -177,7 +179,7 @@ impl SwimClientBuilder {
         let (client_conn_request_tx, client_conn_request_rx) =
             mpsc::channel(client_params.connections_params.router_buffer_size.get());
         let top_level_router_fac = ClientRouterFactory::new(client_conn_request_tx.clone());
-        let (stop_trigger_tx, stop_trigger_rx) = trigger::trigger();
+        let (close_tx, close_rx) = promise::promise();
 
         let remote_connections_task = RemoteConnectionsTask::new_client_task(
             client_params.connections_params,
@@ -190,7 +192,7 @@ impl SwimClientBuilder {
             RemoteConnectionChannels::new(
                 remote_router_tx.clone(),
                 remote_router_rx,
-                stop_trigger_rx,
+                close_rx.clone(),
             ),
         )
         .await;
@@ -203,7 +205,7 @@ impl SwimClientBuilder {
         );
 
         let (downlinks, downlinks_handle) =
-            Downlinks::new(client_conn_request_tx, Arc::new(config));
+            Downlinks::new(client_conn_request_tx, Arc::new(config), close_rx);
 
         let DownlinksHandle {
             downlinks_task,
@@ -225,7 +227,7 @@ impl SwimClientBuilder {
             SwimClient { downlinks },
             ClientHandle {
                 task_handle,
-                stop_trigger: stop_trigger_tx,
+                stop_trigger: close_tx,
             },
         )
     }
@@ -257,7 +259,7 @@ pub struct SwimClient<Path: Addressable> {
 
 pub struct ClientHandle<Path: Addressable> {
     task_handle: TaskHandle<RequestResult<(), Path>>,
-    stop_trigger: trigger::Sender,
+    stop_trigger: CloseSender,
 }
 
 impl<Path: Addressable> ClientHandle<Path> {
@@ -268,9 +270,10 @@ impl<Path: Addressable> ClientHandle<Path> {
             stop_trigger,
         } = self;
 
-        if !stop_trigger.trigger() {
-            return Err(ClientError::CloseError);
-        }
+        //Todo dm
+        // if !stop_trigger.trigger() {
+        //     return Err(ClientError::CloseError);
+        // }
 
         let result = task_handle.await;
 

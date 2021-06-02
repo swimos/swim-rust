@@ -48,6 +48,7 @@ use crate::plane::PlaneActiveRoutes;
 use crate::plane::RouteResolver;
 use crate::plane::{run_plane, EnvChannel};
 use crate::routing::{TopLevelRouter, TopLevelRouterFactory};
+use swim_common::routing::{CloseReceiver, CloseSender};
 use swim_common::warp::path::Path;
 
 /// Builder to create Swim server instance.
@@ -205,7 +206,7 @@ impl SwimServerBuilder {
             config,
         } = self;
 
-        let (stop_trigger_tx, stop_trigger_rx) = trigger::trigger();
+        let (close_tx, close_rx) = promise::promise();
         let (address_tx, address_rx) = promise::promise();
 
         let (client_conn_request_tx, client_conn_request_rx) =
@@ -214,6 +215,7 @@ impl SwimServerBuilder {
         let (downlinks, downlinks_handle) = Downlinks::new(
             client_conn_request_tx.clone(),
             Arc::new(ConfigHierarchy::default()),
+            close_rx.clone(),
         );
 
         let client = SwimClientBuilder::build_from_downlinks(downlinks);
@@ -222,7 +224,7 @@ impl SwimServerBuilder {
             SwimServer {
                 config,
                 planes,
-                stop_trigger_rx,
+                stop_trigger_rx: close_rx,
                 address: address.ok_or(SwimServerBuilderError::MissingAddress)?,
                 address_tx,
                 client,
@@ -232,7 +234,7 @@ impl SwimServerBuilder {
             },
             ServerHandle {
                 either_address: Either::Left(address_rx),
-                stop_trigger_tx,
+                stop_trigger_tx: close_tx,
             },
         ))
     }
@@ -245,7 +247,7 @@ pub struct SwimServer {
     address: SocketAddr,
     config: SwimServerConfig,
     planes: Vec<PlaneSpec<RuntimeClock, EnvChannel, PlaneRouter<TopLevelRouter>>>,
-    stop_trigger_rx: trigger::Receiver,
+    stop_trigger_rx: CloseReceiver,
     address_tx: promise::Sender<SocketAddr>,
     client: SwimClient<Path>,
     downlinks_handle: DownlinksHandle<Path>,
@@ -425,7 +427,7 @@ impl Default for SwimServerConfig {
 /// the server or obtaining its address.
 pub struct ServerHandle {
     either_address: Either<promise::Receiver<SocketAddr>, Option<SocketAddr>>,
-    stop_trigger_tx: trigger::Sender,
+    stop_trigger_tx: CloseSender,
 }
 
 impl ServerHandle {
@@ -467,6 +469,8 @@ impl ServerHandle {
     /// assert!(success);
     /// ```
     pub fn stop(self) -> bool {
-        self.stop_trigger_tx.trigger()
+        //Todo dm
+        // self.stop_trigger_tx.trigger()
+        true
     }
 }

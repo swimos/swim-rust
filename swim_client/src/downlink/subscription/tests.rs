@@ -62,7 +62,9 @@ fn per_lane_config() -> ConfigHierarchy<AbsolutePath> {
 
 async fn dl_manager(conf: ConfigHierarchy<AbsolutePath>) -> Downlinks<AbsolutePath> {
     let (client_conn_request_tx, mut client_conn_request_rx) = mpsc::channel(32);
-    let (downlinks, handle) = Downlinks::new(client_conn_request_tx, Arc::new(conf));
+    //Todo dm
+    let (_close_tx, close_rx) = promise::promise();
+    let (downlinks, handle) = Downlinks::new(client_conn_request_tx, Arc::new(conf), close_rx);
 
     tokio::spawn(async move {
         let DownlinksHandle {
@@ -85,13 +87,17 @@ async fn dl_manager(conf: ConfigHierarchy<AbsolutePath>) -> Downlinks<AbsolutePa
                 ClientRequest::Connect { request, .. } => {
                     let (outgoing_tx, _outgoing_rx) = mpsc::channel(8);
                     let (_on_drop_tx, on_drop_rx) = promise::promise();
-                    request.send(Ok(RawRoute::new(outgoing_tx, on_drop_rx))).unwrap();
+                    request
+                        .send(Ok(RawRoute::new(outgoing_tx, on_drop_rx)))
+                        .unwrap();
                 }
                 ClientRequest::Subscribe { request, .. } => {
                     let (outgoing_tx, _outgoing_rx) = mpsc::channel(8);
                     let (_incoming_tx, incoming_rx) = mpsc::channel(8);
                     let (_on_drop_tx, on_drop_rx) = promise::promise();
-                    request.send(Ok((RawRoute::new(outgoing_tx, on_drop_rx), incoming_rx))).unwrap();
+                    request
+                        .send(Ok((RawRoute::new(outgoing_tx, on_drop_rx), incoming_rx)))
+                        .unwrap();
                 }
             }
         }

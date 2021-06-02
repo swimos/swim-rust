@@ -22,7 +22,7 @@ use crate::routing::remote::{
     RawRoute, RemoteConnectionChannels, RemoteRoutingRequest, ResolutionRequest, SchemeSocketAddrIt,
 };
 use crate::routing::ws::WsConnections;
-use crate::routing::ConnectionError;
+use crate::routing::{CloseReceiver, ConnectionError};
 use crate::routing::{ConnectionDropped, RouterFactory, RoutingAddr};
 use futures::future::{BoxFuture, Fuse};
 use futures::StreamExt;
@@ -121,7 +121,7 @@ where
     tasks: TaskFactory<DelegateRouterFac>,
     deferred: OpenEndedFutures<BoxFuture<'a, DeferredResult<Ws::StreamSink>>>,
     state: State,
-    external_stop: Fuse<trigger::Receiver>,
+    external_stop: Fuse<CloseReceiver>,
     internal_stop: Option<trigger::Sender>,
 }
 

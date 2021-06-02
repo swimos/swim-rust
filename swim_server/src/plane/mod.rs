@@ -29,7 +29,8 @@ use swim_common::routing::error::{ConnectionError, ProtocolError, ProtocolErrorK
 use swim_common::routing::error::{RouterError, Unresolvable};
 use swim_common::routing::remote::RawRoute;
 use swim_common::routing::{
-    ConnectionDropped, PlaneRoutingRequest, RouterFactory, RoutingAddr, TaggedEnvelope,
+    CloseReceiver, ConnectionDropped, PlaneRoutingRequest, RouterFactory, RoutingAddr,
+    TaggedEnvelope,
 };
 use swim_runtime::time::clock::Clock;
 use tokio::sync::{mpsc, oneshot};
@@ -127,7 +128,7 @@ impl LocalEndpoint {
     }
 }
 
-pub(crate) type EnvChannel = TakeUntil<ReceiverStream<TaggedEnvelope>, trigger::Receiver>;
+pub(crate) type EnvChannel = TakeUntil<ReceiverStream<TaggedEnvelope>, CloseReceiver>;
 
 /// Container for the running routes within a plane.
 #[derive(Debug, Default)]
@@ -261,7 +262,7 @@ pub(crate) struct RouteResolver<Clk, DelegateFac: RouterFactory> {
     /// Factory to create handles to the plane router when an agent is opened.
     router_fac: PlaneRouterFactory<DelegateFac>,
     /// External trigger that is fired when the plane should stop.
-    stop_trigger: trigger::Receiver,
+    stop_trigger: CloseReceiver,
     /// The map of currently active routes.
     active_routes: PlaneActiveRoutes,
     /// Monotonically increasing counter for assigning local routing addresses.
@@ -275,7 +276,7 @@ impl<Clk, DelegateFac: RouterFactory> RouteResolver<Clk, DelegateFac> {
         execution_config: AgentExecutionConfig,
         routes: Vec<RouteSpec<Clk, EnvChannel, PlaneRouter<DelegateFac::Router>>>,
         router_fac: PlaneRouterFactory<DelegateFac>,
-        stop_trigger: trigger::Receiver,
+        stop_trigger: CloseReceiver,
         active_routes: PlaneActiveRoutes,
     ) -> RouteResolver<Clk, DelegateFac> {
         RouteResolver {
@@ -367,7 +368,7 @@ pub(crate) async fn run_plane<Clk, S, DelegateFac: RouterFactory>(
     mut resolver: RouteResolver<Clk, DelegateFac>,
     mut lifecycle: Option<Box<dyn PlaneLifecycle>>,
     mut context: ContextImpl,
-    stop_trigger: trigger::Receiver,
+    stop_trigger: CloseReceiver,
     spawner: S,
     context_rx: mpsc::Receiver<PlaneRoutingRequest>,
 ) where

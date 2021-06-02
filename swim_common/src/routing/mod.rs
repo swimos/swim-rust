@@ -39,6 +39,9 @@ pub mod ws;
 #[cfg(test)]
 mod tests;
 
+pub type CloseReceiver = promise::Receiver<mpsc::Sender<Result<(), RoutingError>>>;
+pub type CloseSender = promise::Sender<mpsc::Sender<Result<(), RoutingError>>>;
+
 trait RoutingRequest {}
 
 /// A key into the server routing table specifying an endpoint to which [`Envelope`]s can be sent.
