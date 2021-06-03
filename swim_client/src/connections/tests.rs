@@ -15,11 +15,8 @@
 use tokio::sync::mpsc;
 
 use super::*;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-use swim_common::routing::remote::{RawRoute, Scheme, SchemeSocketAddr};
-use swim_common::routing::ws::WsMessage;
+use swim_common::routing::remote::RawRoute;
 use swim_common::warp::path::AbsolutePath;
-use tokio::sync::mpsc::{Receiver, Sender};
 use url::Url;
 use utilities::sync::promise::promise;
 
@@ -131,7 +128,7 @@ async fn test_connection_pool_send_multiple_messages_single_connection() {
     let (_, mut writer_rx) = fake_conns.add_connection(host_url);
     let mut connection_pool = create_connection_pool(fake_conns).await;
 
-    let (mut connection_sender, connection_receiver) = connection_pool
+    let (mut connection_sender, _connection_receiver) = connection_pool
         .request_connection(path.clone(), false)
         .await
         .unwrap()
@@ -387,7 +384,7 @@ async fn test_connection_pool_connection_error() {
     let host_url = url::Url::parse("ws://127.0.0.1:9001/").unwrap();
     let path = AbsolutePath::new(host_url.clone(), "/foo", "/bar");
 
-    let mut fake_conns = FakeConnections::new();
+    let fake_conns = FakeConnections::new();
     let mut connection_pool = create_connection_pool(fake_conns).await;
 
     // When
@@ -407,7 +404,7 @@ async fn test_connection_pool_close() {
 
     let mut fake_conns = FakeConnections::new();
     let (_, mut writer_rx) = fake_conns.add_connection(host_url);
-    let mut connection_pool = create_connection_pool(fake_conns).await;
+    let connection_pool = create_connection_pool(fake_conns).await;
 
     // When
     assert!(connection_pool.close().await.is_ok());

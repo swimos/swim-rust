@@ -167,8 +167,7 @@ where
             pending,
             ..
         } = self;
-        let msg_tx =
-            tasks.spawn_connection_task(sock_addr.clone(), ws_stream, addr, spawner, server);
+        let msg_tx = tasks.spawn_connection_task(sock_addr, ws_stream, addr, spawner, server);
         table.insert(addr, host.clone(), sock_addr, msg_tx);
         if let Some(host) = host {
             pending.send_ok(&host, addr);
@@ -193,7 +192,7 @@ where
     fn defer_handshake(&self, stream: External::Socket, peer_addr: SchemeSocketAddr) {
         let websockets = self.websockets;
         self.defer(async move {
-            let result = do_handshake(true, stream, websockets, peer_addr.clone()).await;
+            let result = do_handshake(true, stream, websockets, peer_addr).await;
             DeferredResult::incoming_handshake(result, peer_addr)
         });
     }

@@ -12,36 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::any::Any;
-use std::collections::{HashMap, HashSet};
-use std::fmt::Debug;
-use std::ops::Deref;
-use std::sync::{Arc, Weak};
-
-use either::Either;
-use futures::future::{join, BoxFuture};
-use futures::{select_biased, FutureExt, StreamExt};
-use futures_util::stream::TakeUntil;
-use pin_utils::pin_mut;
-use swim_client::interface::SwimClient;
-use swim_common::request::Request;
-use swim_common::routing::error::{ConnectionError, ProtocolError, ProtocolErrorKind};
-use swim_common::routing::error::{RouterError, Unresolvable};
-use swim_common::routing::remote::RawRoute;
-use swim_common::routing::{
-    CloseReceiver, ConnectionDropped, PlaneRoutingRequest, RouterFactory, RoutingAddr,
-    TaggedEnvelope,
-};
-use swim_runtime::time::clock::Clock;
-use tokio::sync::{mpsc, oneshot};
-use tokio_stream::wrappers::ReceiverStream;
-use tracing::{event, span, Level};
-use tracing_futures::Instrument;
-use utilities::route_pattern::RoutePattern;
-use utilities::sync::{promise, trigger};
-use utilities::task::Spawner;
-use utilities::uri::RelativeUri;
-
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::AgentResult;
 use crate::meta::get_route;
@@ -49,8 +19,36 @@ use crate::plane::context::PlaneContext;
 use crate::plane::lifecycle::PlaneLifecycle;
 use crate::plane::router::{PlaneRouter, PlaneRouterFactory};
 use crate::plane::spec::RouteSpec;
+use either::Either;
+use futures::future::{join, BoxFuture};
+use futures::{select_biased, FutureExt, StreamExt};
+use futures_util::stream::TakeUntil;
+use pin_utils::pin_mut;
+use std::any::Any;
+use std::collections::{HashMap, HashSet};
+use std::fmt::Debug;
+use std::ops::Deref;
+use std::sync::{Arc, Weak};
+use swim_client::interface::SwimClient;
+use swim_common::request::Request;
 use swim_common::routing::error::NoAgentAtRoute;
+use swim_common::routing::error::{ConnectionError, ProtocolError, ProtocolErrorKind};
+use swim_common::routing::error::{RouterError, Unresolvable};
+use swim_common::routing::remote::RawRoute;
+use swim_common::routing::{
+    CloseReceiver, ConnectionDropped, PlaneRoutingRequest, RouterFactory, RoutingAddr,
+    TaggedEnvelope,
+};
 use swim_common::warp::path::Path;
+use swim_runtime::time::clock::Clock;
+use tokio::sync::{mpsc, oneshot};
+use tokio_stream::wrappers::ReceiverStream;
+use tracing::{event, span, Level};
+use tracing_futures::Instrument;
+use utilities::route_pattern::RoutePattern;
+use utilities::sync::promise;
+use utilities::task::Spawner;
+use utilities::uri::RelativeUri;
 
 pub mod context;
 pub mod error;

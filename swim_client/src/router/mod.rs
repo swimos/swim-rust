@@ -29,7 +29,7 @@ use swim_common::routing::error::{
     ConnectionError, ResolutionError, RouterError, RoutingError, Unresolvable,
 };
 use swim_common::routing::remote::{RawRoute, RemoteRoutingRequest};
-use swim_common::routing::{ConnectionDropped, Origin, PlaneRoutingRequest, CloseReceiver};
+use swim_common::routing::{CloseReceiver, ConnectionDropped, Origin, PlaneRoutingRequest};
 use swim_common::routing::{
     Route, Router, RouterFactory, RoutingAddr, TaggedEnvelope, TaggedSender,
 };

@@ -15,6 +15,14 @@
 //! Interface for creating and running Swim server instances.
 //!
 //! The module provides methods and structures for creating and running Swim server instances.
+use crate::agent::lane::channels::AgentExecutionConfig;
+use crate::plane::router::{PlaneRouter, PlaneRouterFactory};
+use crate::plane::spec::PlaneSpec;
+use crate::plane::ContextImpl;
+use crate::plane::PlaneActiveRoutes;
+use crate::plane::RouteResolver;
+use crate::plane::{run_plane, EnvChannel};
+use crate::routing::{TopLevelRouter, TopLevelRouterFactory};
 use either::Either;
 use futures::{io, join};
 use std::error::Error;
@@ -27,29 +35,21 @@ use swim_client::downlink::subscription::DownlinksHandle;
 use swim_client::downlink::Downlinks;
 use swim_client::interface::{SwimClient, SwimClientBuilder};
 use swim_client::router::{ClientConnectionsManager, ClientRequest};
+use swim_common::routing::error::RoutingError;
 use swim_common::routing::remote::config::ConnectionConfig;
 use swim_common::routing::remote::net::dns::Resolver;
 use swim_common::routing::remote::net::plain::TokioPlainTextNetworking;
 use swim_common::routing::remote::{RemoteConnectionChannels, RemoteConnectionsTask};
 use swim_common::routing::ws::tungstenite::TungsteniteWsConnections;
+use swim_common::routing::{CloseReceiver, CloseSender};
+use swim_common::warp::path::Path;
 use swim_runtime::task::TaskError;
 use swim_runtime::time::clock::RuntimeClock;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use utilities::future::open_ended::OpenEndedFutures;
-use utilities::sync::{promise, trigger};
-
-use crate::agent::lane::channels::AgentExecutionConfig;
-use crate::plane::router::{PlaneRouter, PlaneRouterFactory};
-use crate::plane::spec::PlaneSpec;
-use crate::plane::ContextImpl;
-use crate::plane::PlaneActiveRoutes;
-use crate::plane::RouteResolver;
-use crate::plane::{run_plane, EnvChannel};
-use crate::routing::{TopLevelRouter, TopLevelRouterFactory};
-use swim_common::routing::{CloseReceiver, CloseSender};
-use swim_common::warp::path::Path;
+use utilities::sync::promise;
 
 /// Builder to create Swim server instance.
 ///
@@ -385,6 +385,8 @@ impl Error for SwimServerBuilderError {}
 pub enum ServerError {
     /// An error that occurred when the server was running.
     RuntimeError(io::Error),
+    /// An error that occurred in the client router.
+    RoutingError(RoutingError),
     /// An error that occurred when closing the server.
     CloseError(TaskError),
 }
@@ -394,6 +396,7 @@ impl Display for ServerError {
         match self {
             ServerError::RuntimeError(err) => err.fmt(f),
             ServerError::CloseError(err) => err.fmt(f),
+            ServerError::RoutingError(err) => err.fmt(f),
         }
     }
 }
@@ -453,8 +456,8 @@ impl ServerHandle {
 
     /// Terminates the associated server instance.
     ///
-    /// Returns `true` if all sever tasks have been successfully notified to terminate
-    /// and `false` otherwise.
+    /// Returns `Ok` if all sever tasks have been successfully notified to terminate
+    /// and `ServerError` otherwise.
     ///
     /// # Example:
     /// ```
@@ -464,13 +467,30 @@ impl ServerHandle {
     /// let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
     /// let (mut swim_server, server_handle) = SwimServerBuilder::default().bind_to(address).build().unwrap();
     ///
-    /// let success = server_handle.stop();
+    /// let result = server_handle.stop();
     ///
-    /// assert!(success);
+    /// assert!(result.is_ok());
     /// ```
-    pub fn stop(self) -> bool {
-        //Todo dm
-        // self.stop_trigger_tx.trigger()
-        true
+    pub async fn stop(self) -> Result<(), ServerError> {
+        let ServerHandle {
+            stop_trigger_tx, ..
+        } = self;
+
+        let (tx, mut rx) = mpsc::channel(8);
+
+        if stop_trigger_tx.provide(tx).is_err() {
+            return Err(ServerError::CloseError(TaskError));
+        }
+
+        match rx.recv().await {
+            Some(close_result) => {
+                if let Err(routing_err) = close_result {
+                    return Err(ServerError::RoutingError(routing_err));
+                }
+            }
+            None => return Err(ServerError::CloseError(TaskError)),
+        }
+
+        Ok(())
     }
 }

@@ -99,7 +99,7 @@ impl RoutingTable {
         } = self;
         debug_assert!(!open_sockets.contains_key(&sock_addr));
 
-        open_sockets.insert(sock_addr.clone(), addr);
+        open_sockets.insert(sock_addr, addr);
         let mut hosts = HashSet::new();
         if let Some(host) = host {
             resolved_forward.insert(host.clone(), addr);

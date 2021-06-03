@@ -62,7 +62,6 @@ fn per_lane_config() -> ConfigHierarchy<AbsolutePath> {
 
 async fn dl_manager(conf: ConfigHierarchy<AbsolutePath>) -> Downlinks<AbsolutePath> {
     let (client_conn_request_tx, mut client_conn_request_rx) = mpsc::channel(32);
-    //Todo dm
     let (_close_tx, close_rx) = promise::promise();
     let (downlinks, handle) = Downlinks::new(client_conn_request_tx, Arc::new(conf), close_rx);
 

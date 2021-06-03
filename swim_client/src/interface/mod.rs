@@ -34,6 +34,7 @@ use futures::join;
 use std::error::Error;
 use std::fmt;
 use std::fmt::{Display, Formatter};
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 use swim_common::form::{Form, ValidatedForm};
 use swim_common::model::Value;
@@ -50,7 +51,7 @@ use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::info;
 use utilities::future::open_ended::OpenEndedFutures;
-use utilities::sync::{promise, trigger};
+use utilities::sync::promise;
 
 /// Builder to create Swim client instance.
 ///
@@ -159,6 +160,7 @@ impl SwimClientBuilder {
         (
             SwimClient { downlinks },
             ClientHandle {
+                close_buffer_size: client_params.connections_params.router_buffer_size,
                 task_handle,
                 stop_trigger: close_tx,
             },
@@ -226,6 +228,7 @@ impl SwimClientBuilder {
         (
             SwimClient { downlinks },
             ClientHandle {
+                close_buffer_size: client_params.connections_params.router_buffer_size,
                 task_handle,
                 stop_trigger: close_tx,
             },
@@ -258,6 +261,7 @@ pub struct SwimClient<Path: Addressable> {
 }
 
 pub struct ClientHandle<Path: Addressable> {
+    close_buffer_size: NonZeroUsize,
     task_handle: TaskHandle<RequestResult<(), Path>>,
     stop_trigger: CloseSender,
 }
@@ -266,14 +270,25 @@ impl<Path: Addressable> ClientHandle<Path> {
     /// Shut down the client and wait for all tasks to finish running.
     pub async fn close(self) -> Result<(), ClientError<Path>> {
         let ClientHandle {
+            close_buffer_size,
             task_handle,
             stop_trigger,
         } = self;
 
-        //Todo dm
-        // if !stop_trigger.trigger() {
-        //     return Err(ClientError::CloseError);
-        // }
+        let (tx, mut rx) = mpsc::channel(close_buffer_size.get());
+
+        if stop_trigger.provide(tx).is_err() {
+            return Err(ClientError::CloseError);
+        }
+
+        match rx.recv().await {
+            Some(close_result) => {
+                if let Err(routing_err) = close_result {
+                    return Err(ClientError::RoutingError(routing_err));
+                }
+            }
+            None => return Err(ClientError::CloseError),
+        }
 
         let result = task_handle.await;
 

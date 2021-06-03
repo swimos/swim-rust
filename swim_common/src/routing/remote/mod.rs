@@ -49,7 +49,6 @@ use tokio::sync::mpsc;
 use tracing::{event, Level};
 use url::Url;
 use utilities::sync::promise;
-use utilities::sync::trigger;
 use utilities::task::Spawner;
 
 #[cfg(test)]
@@ -343,7 +342,7 @@ fn update_state<State: RemoteTasksState>(
             host,
         }) => {
             if let Some(sock_addr) = addrs.next() {
-                if let Err(host) = state.check_socket_addr(host, sock_addr.clone()) {
+                if let Err(host) = state.check_socket_addr(host, sock_addr) {
                     state.defer_connect_and_handshake(host, sock_addr, addrs);
                 }
             } else {

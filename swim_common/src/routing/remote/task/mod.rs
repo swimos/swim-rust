@@ -195,7 +195,7 @@ where
                                         &mut router,
                                         &mut resolved,
                                         envelope,
-                                        Origin::Remote(addr.clone()),
+                                        Origin::Remote(addr),
                                         config.connection_retries,
                                         sleep,
                                         server,
