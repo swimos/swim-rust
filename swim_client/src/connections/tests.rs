@@ -47,7 +47,9 @@ impl FakeConnections {
     }
 }
 
-async fn create_connection_pool(mut fake_conns: FakeConnections) -> SwimConnPool<AbsolutePath> {
+async fn create_mock_conn_request_loop(
+    mut fake_conns: FakeConnections,
+) -> mpsc::Sender<ClientRequest<AbsolutePath>> {
     let (client_conn_request_tx, mut client_conn_request_rx) =
         mpsc::channel::<ClientRequest<AbsolutePath>>(8);
 
@@ -80,7 +82,11 @@ async fn create_connection_pool(mut fake_conns: FakeConnections) -> SwimConnPool
             }
         }
     });
+    client_conn_request_tx
+}
 
+async fn create_connection_pool(fake_conns: FakeConnections) -> SwimConnPool<AbsolutePath> {
+    let client_conn_request_tx = create_mock_conn_request_loop(fake_conns).await;
     SwimConnPool::new(ConnectionPoolParams::default(), client_conn_request_tx)
 }
 
@@ -413,180 +419,166 @@ async fn test_connection_pool_close() {
     assert!(writer_rx.recv().await.is_none());
 }
 
-//Todo dm
-// #[tokio::test]
-// async fn test_connection_send_single_message() {
-//     // Given
-//     let host = url::Url::parse("ws://127.0.0.1:9001/").unwrap();
-//     let buffer_size = 5;
-//
-//     let (writer_tx, mut writer_rx) = mpsc::channel(buffer_size);
-//     let mut sockets = HashMap::new();
-//     sockets.insert(
-//         SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 9001),
-//         Ok(FakeSocket::new(
-//             vec![],
-//             true,
-//             Some(writer_tx),
-//             ErrorMode::None,
-//         )),
-//     );
-//
-//     let mut conn_factory = FakeConnections::new(sockets, HashMap::new(), None, 0);
-//     let mut ws_factory = FakeWebsockets;
-//
-//     let connection = ClientConnection::new(host, buffer_size, &mut conn_factory, &mut ws_factory)
-//         .await
-//         .unwrap();
-//
-//     // When
-//     connection.tx.send("foo".into()).await.unwrap();
-//     // Then
-//     assert_eq!(
-//         writer_rx.recv().await.unwrap(),
-//         WsMessage::Text("foo".to_string())
-//     );
-// }
-//
-// #[tokio::test]
-// async fn test_connection_send_multiple_messages() {
-//     // Given
-//     let host = url::Url::parse("ws://127.0.0.1:9001/").unwrap();
-//     let buffer_size = 5;
-//
-//     let (writer_tx, mut writer_rx) = mpsc::channel(buffer_size);
-//     let mut sockets = HashMap::new();
-//     sockets.insert(
-//         SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 9001),
-//         Ok(FakeSocket::new(
-//             vec![],
-//             true,
-//             Some(writer_tx),
-//             ErrorMode::None,
-//         )),
-//     );
-//
-//     let mut conn_factory = FakeConnections::new(sockets, HashMap::new(), None, 0);
-//     let mut ws_factory = FakeWebsockets;
-//
-//     let mut connection =
-//         ClientConnection::new(host, buffer_size, &mut conn_factory, &mut ws_factory)
-//             .await
-//             .unwrap();
-//
-//     let connection_sender = &mut connection.tx;
-//     // When
-//     connection_sender.send("foo".into()).await.unwrap();
-//     connection_sender.send("bar".into()).await.unwrap();
-//     connection_sender.send("baz".into()).await.unwrap();
-//     // Then
-//     assert_eq!(
-//         writer_rx.recv().await.unwrap(),
-//         WsMessage::Text("foo".to_string())
-//     );
-//     assert_eq!(
-//         writer_rx.recv().await.unwrap(),
-//         WsMessage::Text("bar".to_string())
-//     );
-//     assert_eq!(
-//         writer_rx.recv().await.unwrap(),
-//         WsMessage::Text("baz".to_string())
-//     );
-// }
-//
-// #[tokio::test]
-// async fn test_connection_send_and_receive_messages() {
-//     // Given
-//     let host = url::Url::parse("ws://127.0.0.1:9001/").unwrap();
-//     let buffer_size = 5;
-//
-//     let (writer_tx, mut writer_rx) = mpsc::channel(buffer_size);
-//     let mut sockets = HashMap::new();
-//     sockets.insert(
-//         SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 9001),
-//         Ok(FakeSocket::new(
-//             vec!["message_received".into()],
-//             true,
-//             Some(writer_tx),
-//             ErrorMode::None,
-//         )),
-//     );
-//
-//     let mut conn_factory = FakeConnections::new(sockets, HashMap::new(), None, 0);
-//     let mut ws_factory = FakeWebsockets;
-//
-//     let mut connection =
-//         ClientConnection::new(host, buffer_size, &mut conn_factory, &mut ws_factory)
-//             .await
-//             .unwrap();
-//
-//     // When
-//     connection.tx.send("message_sent".into()).await.unwrap();
-//     // Then
-//     let pool_message = connection.rx.take().unwrap().recv().await.unwrap();
-//     assert_eq!(
-//         pool_message,
-//         WsMessage::Text("message_received".to_string())
-//     );
-//
-//     assert_eq!(
-//         writer_rx.recv().await.unwrap(),
-//         WsMessage::Text("message_sent".to_string())
-//     );
-// }
-//
-// #[tokio::test]
-// async fn test_connection_receive_message_error() {
-//     // Given
-//     let host = url::Url::parse("ws://127.0.0.1:9001/").unwrap();
-//     let buffer_size = 5;
-//
-//     let mut sockets = HashMap::new();
-//     sockets.insert(
-//         SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 9001),
-//         Ok(FakeSocket::new(vec![], false, None, ErrorMode::Receive)),
-//     );
-//
-//     let mut conn_factory = FakeConnections::new(sockets, HashMap::new(), None, 0);
-//     let mut ws_factory = FakeWebsockets;
-//
-//     let connection = ClientConnection::new(host, buffer_size, &mut conn_factory, &mut ws_factory)
-//         .await
-//         .unwrap();
-//     // When
-//     let result = connection._receive_handle.await.unwrap();
-//     // Then
-//     assert!(result.is_err());
-//     assert_eq!(
-//         result.err().unwrap(),
-//         ConnectionError::Closed(CloseError::unexpected())
-//     );
-// }
-//
-// #[tokio::test]
-// async fn test_new_connection_send_message_error() {
-//     // Given
-//     let host = url::Url::parse("ws://127.0.0.1:9001/").unwrap();
-//     let buffer_size = 5;
-//
-//     let mut sockets = HashMap::new();
-//     sockets.insert(
-//         SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 9001),
-//         Ok(FakeSocket::new(vec![], false, None, ErrorMode::Send)),
-//     );
-//
-//     let mut conn_factory = FakeConnections::new(sockets, HashMap::new(), None, 0);
-//     let mut ws_factory = FakeWebsockets;
-//
-//     let connection = ClientConnection::new(host, buffer_size, &mut conn_factory, &mut ws_factory)
-//         .await
-//         .unwrap();
-//     // When
-//     let result = connection._send_handle.await.unwrap();
-//     // Then
-//     assert!(result.is_err());
-//     assert_eq!(
-//         result.err().unwrap(),
-//         ConnectionError::Closed(CloseError::unexpected())
-//     );
-// }
+#[tokio::test]
+async fn test_connection_send_single_message() {
+    // Given
+    let host_url = url::Url::parse("ws://127.0.0.1:9001/").unwrap();
+    let path = AbsolutePath::new(host_url.clone(), "/foo", "/bar");
+    let buffer_size = 5;
+
+    let envelope = Envelope::make_command("/foo", "/bar", Some("Hello".into()));
+
+    let mut fake_conns = FakeConnections::new();
+    let (_, mut writer_rx) = fake_conns.add_connection(host_url);
+    let client_conn_request_tx = create_mock_conn_request_loop(fake_conns).await;
+
+    let connection = ClientConnection::new(path, buffer_size, &client_conn_request_tx)
+        .await
+        .unwrap();
+
+    // When
+    connection.tx.send(envelope.clone()).await.unwrap();
+
+    // Then
+    assert_eq!(
+        writer_rx.recv().await.unwrap(),
+        TaggedEnvelope(RoutingAddr::client(), envelope)
+    );
+}
+
+#[tokio::test]
+async fn test_connection_send_multiple_messages() {
+    // Given
+    let host_url = url::Url::parse("ws://127.0.0.1:9001/").unwrap();
+    let path = AbsolutePath::new(host_url.clone(), "/foo", "/bar");
+    let buffer_size = 5;
+
+    let first_envelope = Envelope::make_command("/foo", "/bar", Some("First message".into()));
+    let second_envelope = Envelope::make_command("/foo", "/bar", Some("Second message".into()));
+    let third_envelope = Envelope::make_command("/foo", "/bar", Some("Third message".into()));
+
+    let mut fake_conns = FakeConnections::new();
+    let (_, mut writer_rx) = fake_conns.add_connection(host_url);
+    let client_conn_request_tx = create_mock_conn_request_loop(fake_conns).await;
+
+    let mut connection = ClientConnection::new(path, buffer_size, &client_conn_request_tx)
+        .await
+        .unwrap();
+
+    let connection_sender = &mut connection.tx;
+    // When
+    connection_sender
+        .send(first_envelope.clone())
+        .await
+        .unwrap();
+    connection_sender
+        .send(second_envelope.clone())
+        .await
+        .unwrap();
+    connection_sender
+        .send(third_envelope.clone())
+        .await
+        .unwrap();
+
+    // Then
+    assert_eq!(
+        writer_rx.recv().await.unwrap(),
+        TaggedEnvelope(RoutingAddr::client(), first_envelope)
+    );
+    assert_eq!(
+        writer_rx.recv().await.unwrap(),
+        TaggedEnvelope(RoutingAddr::client(), second_envelope)
+    );
+    assert_eq!(
+        writer_rx.recv().await.unwrap(),
+        TaggedEnvelope(RoutingAddr::client(), third_envelope)
+    );
+}
+
+#[tokio::test]
+async fn test_connection_send_and_receive_messages() {
+    // Given
+    let host_url = url::Url::parse("ws://127.0.0.1:9001/").unwrap();
+    let path = AbsolutePath::new(host_url.clone(), "/foo", "/bar");
+    let buffer_size = 5;
+
+    let envelope_sent = Envelope::make_command("/foo", "/bar", Some("message_sent".into()));
+    let envelope_received = Envelope::make_command("/foo", "/bar", Some("message_received".into()));
+
+    let mut fake_conns = FakeConnections::new();
+    let (reader_tx, mut writer_rx) = fake_conns.add_connection(host_url);
+    let client_conn_request_tx = create_mock_conn_request_loop(fake_conns).await;
+
+    let mut connection = ClientConnection::new(path, buffer_size, &client_conn_request_tx)
+        .await
+        .unwrap();
+
+    // When
+    connection.tx.send(envelope_sent.clone()).await.unwrap();
+    reader_tx.send(envelope_received.clone()).await.unwrap();
+
+    // Then
+    let pool_message = connection.rx.take().unwrap().recv().await.unwrap();
+    assert_eq!(pool_message, envelope_received);
+
+    assert_eq!(
+        writer_rx.recv().await.unwrap(),
+        TaggedEnvelope(RoutingAddr::client(), envelope_sent)
+    );
+}
+
+#[tokio::test]
+async fn test_connection_receive_message_error() {
+    // Given
+    let host_url = url::Url::parse("ws://127.0.0.1:9001/").unwrap();
+    let path = AbsolutePath::new(host_url.clone(), "/foo", "/bar");
+    let buffer_size = 5;
+
+    let mut fake_conns = FakeConnections::new();
+    let (reader_tx, _writer_rx) = fake_conns.add_connection(host_url);
+    let client_conn_request_tx = create_mock_conn_request_loop(fake_conns).await;
+
+    let connection = ClientConnection::new(path, buffer_size, &client_conn_request_tx)
+        .await
+        .unwrap();
+
+    // When
+    drop(reader_tx);
+    let result = connection._receive_handle.await.unwrap();
+
+    // Then
+    assert!(result.is_err());
+    assert_eq!(
+        result.err().unwrap(),
+        ConnectionError::Closed(CloseError::unexpected())
+    );
+}
+
+#[tokio::test]
+async fn test_new_connection_send_message_error() {
+    let host_url = url::Url::parse("ws://127.0.0.1:9001/").unwrap();
+    let path = AbsolutePath::new(host_url.clone(), "/foo", "/bar");
+    let buffer_size = 5;
+
+    let mut fake_conns = FakeConnections::new();
+    let (reader_tx, writer_rx) = fake_conns.add_connection(host_url);
+    let client_conn_request_tx = create_mock_conn_request_loop(fake_conns).await;
+
+    let connection = ClientConnection::new(path, buffer_size, &client_conn_request_tx)
+        .await
+        .unwrap();
+
+    let ClientConnection {
+        tx, _send_handle, ..
+    } = connection;
+
+    drop(tx);
+
+    let result = _send_handle.await.unwrap();
+    // Then
+    assert!(result.is_err());
+    assert_eq!(
+        result.err().unwrap(),
+        ConnectionError::Closed(CloseError::unexpected())
+    );
+}
