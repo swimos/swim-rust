@@ -147,7 +147,12 @@ pub struct LogEntry {
 }
 
 impl LogEntry {
-    pub fn make<F>(message: F, level: LogLevel, node: RelativeUri, lane: String) -> LogEntry
+    pub fn make<F>(
+        message: F,
+        level: LogLevel,
+        node: RelativeUri,
+        lane: impl Into<String>,
+    ) -> LogEntry
     where
         F: Form,
     {
@@ -156,7 +161,7 @@ impl LogEntry {
             message: message.into_value(),
             level,
             node,
-            lane,
+            lane: lane.into(),
         }
     }
 }
