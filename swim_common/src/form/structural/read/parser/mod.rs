@@ -29,7 +29,7 @@ use std::convert::TryFrom;
 /// as the input is parsed.
 pub type Span<'a> = LocatedSpan<&'a str>;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum NumericLiteral {
     Int(i64),
     UInt(u64),
@@ -44,7 +44,7 @@ pub enum NumericLiteral {
 /// key and the slot value). If a string does not requires escaping it will be
 /// provided as a reference into the original input rather than an separate
 /// allocation.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum ParseEvent<'a> {
     Extant,
     TextValue(Cow<'a, str>),
