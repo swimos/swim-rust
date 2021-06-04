@@ -19,9 +19,8 @@ use swim_client::downlink::typed::map::events::TypedViewWithEvent;
 use swim_client::downlink::typed::map::MapDownlinkReceiver;
 use swim_client::downlink::Event::Remote;
 use swim_client::interface::SwimClientBuilder;
-use swim_client::runtime::time::delay::delay_for;
 use swim_common::warp::path::AbsolutePath;
-use tokio::task;
+use tokio::{task, time};
 
 const THRESHOLD: i32 = 1000;
 
@@ -67,8 +66,8 @@ async fn main() {
 
     task::spawn(did_update(map_recv, 0));
 
-    delay_for(Duration::from_secs(2)).await;
+    time::sleep(Duration::from_secs(2)).await;
 
     println!("Stopping client in 2 seconds");
-    delay_for(Duration::from_secs(2)).await;
+    time::sleep(Duration::from_secs(2)).await;
 }

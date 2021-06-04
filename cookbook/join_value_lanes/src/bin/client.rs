@@ -19,10 +19,9 @@ use swim_client::downlink::typed::map::events::TypedViewWithEvent;
 use swim_client::downlink::typed::map::MapDownlinkReceiver;
 use swim_client::downlink::Event::Remote;
 use swim_client::interface::SwimClientBuilder;
-use swim_client::runtime::time::delay::delay_for;
 use swim_common::model::Value;
 use swim_common::warp::path::AbsolutePath;
-use tokio::task;
+use tokio::{task, time};
 
 async fn did_update(map_recv: MapDownlinkReceiver<i32, bool>, default: bool) {
     map_recv
@@ -30,9 +29,9 @@ async fn did_update(map_recv: MapDownlinkReceiver<i32, bool>, default: bool) {
         .filter_map(|event| async {
             match event {
                 Remote(TypedViewWithEvent {
-                    view,
-                    event: MapEvent::Update(key),
-                }) => Some((key, view)),
+                           view,
+                           event: MapEvent::Update(key),
+                       }) => Some((key, view)),
                 _ => None,
             }
         })
@@ -68,7 +67,7 @@ async fn main() {
 
     task::spawn(did_update(map_recv, false));
 
-    delay_for(Duration::from_secs(2)).await;
+    time::sleep(Duration::from_secs(2)).await;
 
     let first_room_uri = AbsolutePath::new(host_uri.clone(), first_room_node, switch_lane);
     let second_room_uri = AbsolutePath::new(host_uri.clone(), second_room_node, switch_lane);
@@ -79,43 +78,43 @@ async fn main() {
         .await
         .expect("Failed to send command!");
 
-    delay_for(Duration::from_secs(1)).await;
+    time::sleep(Duration::from_secs(1)).await;
 
     client
         .send_command(second_room_uri.clone(), Value::Extant)
         .await
         .expect("Failed to send command!");
 
-    delay_for(Duration::from_secs(1)).await;
+    time::sleep(Duration::from_secs(1)).await;
 
     client
         .send_command(third_room_uri.clone(), Value::Extant)
         .await
         .expect("Failed to send command!");
 
-    delay_for(Duration::from_secs(1)).await;
+    time::sleep(Duration::from_secs(1)).await;
 
     client
         .send_command(second_room_uri.clone(), Value::Extant)
         .await
         .expect("Failed to send command!");
 
-    delay_for(Duration::from_secs(1)).await;
+    time::sleep(Duration::from_secs(1)).await;
 
     client
         .send_command(second_room_uri, Value::Extant)
         .await
         .expect("Failed to send command!");
 
-    delay_for(Duration::from_secs(1)).await;
+    time::sleep(Duration::from_secs(1)).await;
 
     client
         .send_command(third_room_uri, Value::Extant)
         .await
         .expect("Failed to send command!");
 
-    delay_for(Duration::from_secs(1)).await;
+    time::sleep(Duration::from_secs(1)).await;
 
     println!("Stopping client in 2 seconds");
-    delay_for(Duration::from_secs(2)).await;
+    time::sleep(Duration::from_secs(2)).await;
 }

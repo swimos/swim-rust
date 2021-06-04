@@ -1,0 +1,19 @@
+[package]
+name = "command_lanes"
+version = "0.1.0"
+authors = ["Swim.AI developers info@swim.ai"]
+edition = "2018"
+
+[dependencies]
+url = "2.1.1"
+tokio = "1.1.1"
+futures = "0.3.4"
+futures-util = "0.3.4"
+rand = "0.7.3"
+tracing = "0.1.16"
+tracing-futures = "0.2.4"
+swim_client = { path = "../../swim_client" }
+swim_common = { path = "../../swim_common" }
+swim_server = { path = "../../swim_server" }
+stm = { path = "../../stm" }
+utilities = { path = "../../utilities" }
