@@ -14,6 +14,8 @@
 
 pub mod info;
 pub mod log;
+pub mod metric;
+pub mod pulse;
 pub mod uri;
 
 #[cfg(test)]
@@ -109,6 +111,7 @@ pub enum MetaNodeAddressed {
     ///
     /// swim:meta:node/percent-encoded-nodeuri/lane/lane-uri/uplink
     /// Eg: swim:meta:node/unit%2Ffoo/lane/bar/uplink
+    // todo: replace as 'uplinks' to return all uplinks for the lane
     UplinkProfile { lane_uri: Text },
     /// Lane addressed routes: pulse/logs.
     ///
