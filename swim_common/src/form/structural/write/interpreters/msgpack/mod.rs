@@ -108,7 +108,7 @@ pub enum MsgPackWriteError {
     TooManyItems(usize),
     /// The reported number of attributes in the record did not match the number written.
     WrongNumberOfAttrs,
-    /// The reported kind of the record did not matche the items written.
+    /// The reported kind of the record did not match the items written.
     IncorrectRecordKind,
     /// The reported number of items in the record did not match the number written.
     WrongNumberOfItems,
