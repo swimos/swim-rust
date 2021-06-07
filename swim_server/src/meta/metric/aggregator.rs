@@ -224,9 +224,6 @@ where
                             Err(_) => true,
                         },
                         None => {
-                            println!("{:?}", metrics.keys());
-                            println!("{}", path);
-
                             if removed_lanes.get(&path).is_none() {
                                 event!(Level::ERROR, ?path, LANE_NOT_FOUND);
                             }

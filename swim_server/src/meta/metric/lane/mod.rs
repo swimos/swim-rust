@@ -168,9 +168,8 @@ pub struct LanePulse {
 impl Add<LanePulse> for LanePulse {
     type Output = LanePulse;
 
-    fn add(self, rhs: LanePulse) -> Self::Output {
-        LanePulse {
-            uplink_pulse: self.uplink_pulse.add(rhs.uplink_pulse),
-        }
+    fn add(mut self, rhs: LanePulse) -> Self::Output {
+        self.uplink_pulse = self.uplink_pulse.add(rhs.uplink_pulse);
+        self
     }
 }
