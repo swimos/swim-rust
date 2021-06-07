@@ -157,7 +157,7 @@ impl Display for MsgPackReadError {
                 write!(f, "Unexpected message pack marker: {:?}", marker)
             }
             MsgPackReadError::UnknownExtType(code) => {
-                write!(f, "{} is not a regognized extension code.", code)
+                write!(f, "{} is not a recognized extension code.", code)
             }
             MsgPackReadError::EmptyBigInt => {
                 write!(f, "A big integer consisted of 0 bytes.")
