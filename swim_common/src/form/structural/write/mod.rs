@@ -211,7 +211,7 @@ pub trait HeaderWriter: Sized {
     ) -> Result<Self::Body, Self::Error>;
 }
 
-/// Description of the overally format of a record body which writers may use to generate a
+/// Description of the overall format of a record body which writers may use to generate a
 /// more optimal representation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RecordBodyKind {
