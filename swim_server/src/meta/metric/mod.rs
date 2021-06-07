@@ -149,7 +149,7 @@ pub trait MetricReporter {
 /// dropped.
 #[derive(Debug, Clone)]
 pub struct NodeMetricAggregator {
-    /// The same rate at which profiles will be reported.
+    /// The sample rate at which profiles will be reported.
     sample_rate: Duration,
     /// The URI of the metric aggregator.
     node_uri: String,
