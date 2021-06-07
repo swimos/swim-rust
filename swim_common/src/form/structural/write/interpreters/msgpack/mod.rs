@@ -102,7 +102,7 @@ pub enum MsgPackWriteError {
     /// The byte representation of a big unsigned. integer could not fit into a MessagePack
     /// extension value.
     BigUIntTooLarge(BigUint),
-    /// The record has more attributes than be be reprsented by a `u32`.
+    /// The record has more attributes than can be represented by a `u32`.
     TooManyAttrs(usize),
     /// The record has more items than can be represented by a `u32`.
     TooManyItems(usize),
