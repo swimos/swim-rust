@@ -30,7 +30,7 @@ use std::convert::TryFrom;
 use std::fmt::{Display, Formatter};
 use std::io::{Error, Write};
 
-/// [`StructuralWriter`] implementation that uses the MessagePack format. Primitive value are
+/// [`StructuralWriter`] implementation that uses the MessagePack format. Primitive values are
 /// written with the corresponding MessagePack types. Big integers are written as MessagePack
 /// extensions as raw bytes in big endian order. Strings and binary blobs are written as
 /// MessagePack string and bin values. Records have the following encoding.
