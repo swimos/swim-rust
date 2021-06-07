@@ -12,6 +12,7 @@ tls = ["tokio-native-tls", "tokio-tungstenite/tls"]
 [dependencies]
 swim_runtime = { path = "../swim_runtime" }
 pin-utils = "0.1.0"
+byteorder = "1.4"
 bytes = "^1.0.0"
 either = "1.5.3"
 futures = "0.3.4"
@@ -36,6 +37,7 @@ chrono = "0.4"
 tokio-tungstenite = { version = "0.13.0", git = "https://github.com/swimos/tokio-tungstenite/", branch = "deflate-v13", features = ["deflate"], optional = true }
 nom = "6.1"
 nom_locate = "3.0"
+rmp = "0.8"
 
 [dependencies.tokio-native-tls]
 version = "0.3"

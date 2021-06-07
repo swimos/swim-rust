@@ -22,6 +22,7 @@ use crate::model::text::Text;
 use crate::model::{Attr, Item, Value};
 use num_bigint::{BigInt, BigUint};
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::convert::Infallible;
 use std::hint;
 use std::rc::Rc;
@@ -108,7 +109,7 @@ pub trait StructuralWriter: PrimitiveWriter {
     type Body: BodyWriter<Repr = Self::Repr, Error = Self::Error>;
 
     /// Describe a compound type.
-    fn record(self) -> Result<Self::Header, Self::Error>;
+    fn record(self, num_attrs: usize) -> Result<Self::Header, Self::Error>;
 }
 
 /// Convenience trait for variable string related conversions.
@@ -197,7 +198,55 @@ pub trait HeaderWriter: Sized {
         self.write_attr(name.as_cow(), &value)
     }
     /// Transform this writer into another which can be used to describe the items.
-    fn complete_header(self, num_items: usize) -> Result<Self::Body, Self::Error>;
+    ///
+    /// #Arguments
+    /// * `kind` - Description of the contents of the body. If an incorrect value is provided,
+    /// implementations may return an error but should not panic.
+    /// * `num_items` - The number of items in the record. If an incorrect number is provided,
+    /// implementations may return an error but should not panic.
+    fn complete_header(
+        self,
+        kind: RecordBodyKind,
+        num_items: usize,
+    ) -> Result<Self::Body, Self::Error>;
+}
+
+/// Description of the overall format of a record body which writers may use to generate a
+/// more optimal representation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RecordBodyKind {
+    /// The record contains only value items and no slots.
+    ArrayLike,
+    /// The record contains only slots and no value items.
+    MapLike,
+    /// The record may (or may not) contain a mixture of any items. This is valid for any record.
+    Mixed,
+}
+
+impl RecordBodyKind {
+    /// Determine the record body type by iterating a sequence of items.
+    fn of_iter<'a, It>(it: It) -> Option<RecordBodyKind>
+    where
+        It: Iterator<Item = &'a Item>,
+    {
+        let mut kind = None;
+        for item in it {
+            match (&kind, item) {
+                (Some(RecordBodyKind::ArrayLike), Item::ValueItem(_))
+                | (Some(RecordBodyKind::MapLike), Item::Slot(_, _)) => {}
+                (None, Item::ValueItem(_)) => {
+                    kind = Some(RecordBodyKind::ArrayLike);
+                }
+                (None, Item::Slot(_, _)) => {
+                    kind = Some(RecordBodyKind::MapLike);
+                }
+                _ => {
+                    return Some(RecordBodyKind::Mixed);
+                }
+            }
+        }
+        kind
+    }
 }
 
 /// Describing the structure of a record proceeds in two stages, first describing
@@ -537,11 +586,14 @@ impl StructuralWritable for Value {
             Value::Text(v) => writer.write_text(v.clone()),
             Value::Data(v) => writer.write_blob(v.as_ref()),
             Value::Record(attrs, items) => {
-                let mut header = writer.record()?;
+                let mut header = writer.record(attrs.len())?;
                 for Attr { name, value } in attrs.iter() {
                     header = header.write_attr(name.as_cow(), value)?;
                 }
-                let mut body = header.complete_header(items.len())?;
+                let mut body = header.complete_header(
+                    RecordBodyKind::of_iter(items.iter()).unwrap_or(RecordBodyKind::Mixed),
+                    items.len(),
+                )?;
                 for item in items.iter() {
                     body = match item {
                         Item::ValueItem(v) => body.write_value(v)?,
@@ -567,11 +619,14 @@ impl StructuralWritable for Value {
             Value::Text(v) => writer.write_text(v),
             Value::Data(v) => writer.write_blob_vec(v.into_vec()),
             Value::Record(attrs, items) => {
-                let mut header = writer.record()?;
+                let mut header = writer.record(attrs.len())?;
                 for Attr { name, value } in attrs.into_iter() {
                     header = header.write_attr_into(name, value)?;
                 }
-                let mut body = header.complete_header(items.len())?;
+                let mut body = header.complete_header(
+                    RecordBodyKind::of_iter(items.iter()).unwrap_or(RecordBodyKind::Mixed),
+                    items.len(),
+                )?;
                 for item in items.into_iter() {
                     body = match item {
                         Item::ValueItem(v) => body.write_value_into(v)?,
@@ -596,7 +651,9 @@ impl<T: StructuralWritable> StructuralWritable for Vec<T> {
     fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
         self.iter()
             .try_fold(
-                writer.record()?.complete_header(self.len())?,
+                writer
+                    .record(0)?
+                    .complete_header(RecordBodyKind::ArrayLike, self.len())?,
                 |record_writer, value| record_writer.write_value(value),
             )?
             .done()
@@ -606,7 +663,9 @@ impl<T: StructuralWritable> StructuralWritable for Vec<T> {
         let len = self.len();
         self.into_iter()
             .try_fold(
-                writer.record()?.complete_header(len)?,
+                writer
+                    .record(0)?
+                    .complete_header(RecordBodyKind::ArrayLike, len)?,
                 |record_writer, value| record_writer.write_value_into(value),
             )?
             .done()
@@ -632,5 +691,35 @@ impl<T: StructuralWritable> StructuralWritable for Option<T> {
 
     fn omit_as_field(&self) -> bool {
         self.is_none()
+    }
+}
+
+impl<K, V, S> StructuralWritable for HashMap<K, V, S>
+where
+    K: StructuralWritable,
+    V: StructuralWritable,
+{
+    fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
+        let len = self.len();
+        self.iter()
+            .try_fold(
+                writer
+                    .record(0)?
+                    .complete_header(RecordBodyKind::MapLike, len)?,
+                |record_writer, (key, value)| record_writer.write_slot(key, value),
+            )?
+            .done()
+    }
+
+    fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error> {
+        let len = self.len();
+        self.into_iter()
+            .try_fold(
+                writer
+                    .record(0)?
+                    .complete_header(RecordBodyKind::MapLike, len)?,
+                |record_writer, (key, value)| record_writer.write_slot_into(key, value),
+            )?
+            .done()
     }
 }

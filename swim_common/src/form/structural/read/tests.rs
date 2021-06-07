@@ -19,6 +19,7 @@ use crate::model::text::Text;
 use crate::model::ValueKind;
 use num_bigint::{BigInt, BigUint};
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 #[test]
@@ -123,6 +124,55 @@ fn read_prim_vec() {
     assert!(reader.push_i32(3).is_ok());
     let result = <Vec<i32> as StructuralReadable>::try_terminate(reader);
     assert_eq!(result, Ok(vec![1, 2, 3]));
+}
+
+#[test]
+fn read_simple_hash_map() {
+    let mut reader = <HashMap<String, i32> as StructuralReadable>::record_reader()
+        .unwrap()
+        .start_body()
+        .unwrap();
+    assert!(reader.push_text(Cow::Borrowed("first")).is_ok());
+    assert!(reader.start_slot().is_ok());
+    assert!(reader.push_i32(1).is_ok());
+    assert!(reader.push_text(Cow::Borrowed("second")).is_ok());
+    assert!(reader.start_slot().is_ok());
+    assert!(reader.push_i32(2).is_ok());
+    let result = <HashMap<String, i32> as StructuralReadable>::try_terminate(reader);
+    let mut expected = HashMap::new();
+    expected.insert("first".to_string(), 1);
+    expected.insert("second".to_string(), 2);
+    assert_eq!(result, Ok(expected));
+}
+
+#[test]
+fn read_nested_collection() {
+    type Nested = HashMap<String, Vec<i32>>;
+    type Reader = <Nested as StructuralReadable>::Reader;
+    type Body = <Reader as HeaderReader>::Body;
+
+    let mut reader = Nested::record_reader().unwrap().start_body().unwrap();
+    assert!(reader.push_text(Cow::Borrowed("first")).is_ok());
+    assert!(reader.start_slot().is_ok());
+    let mut delegate = reader.push_record().unwrap().start_body().unwrap();
+    assert!(delegate.push_i32(1).is_ok());
+    assert!(delegate.push_i32(2).is_ok());
+    assert!(delegate.push_i32(3).is_ok());
+    reader = <Body as BodyReader>::restore(delegate).unwrap();
+    assert!(reader.push_text(Cow::Borrowed("second")).is_ok());
+    assert!(reader.start_slot().is_ok());
+    let mut delegate = reader.push_record().unwrap().start_body().unwrap();
+    assert!(delegate.push_i32(4).is_ok());
+    assert!(delegate.push_i32(5).is_ok());
+    assert!(delegate.push_i32(6).is_ok());
+
+    reader = <Body as BodyReader>::restore(delegate).unwrap();
+    let result = Nested::try_terminate(reader);
+
+    let mut expected = HashMap::new();
+    expected.insert("first".to_string(), vec![1, 2, 3]);
+    expected.insert("second".to_string(), vec![4, 5, 6]);
+    assert_eq!(result, Ok(expected));
 }
 
 #[test]
