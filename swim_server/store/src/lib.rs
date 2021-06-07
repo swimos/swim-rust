@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#![allow(clippy::unnecessary_wraps)]
+
 mod engines;
 mod iterator;
 pub mod keyspaces;

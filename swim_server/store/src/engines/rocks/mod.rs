@@ -19,7 +19,7 @@ mod iterator;
 
 use crate::engines::StoreBuilder;
 use crate::iterator::{EnginePrefixIterator, EngineRefIterator};
-use crate::keyspaces::{Keyspace, KeyspaceByteEngine, KeyspaceName, KeyspaceResolver, Keyspaces};
+use crate::keyspaces::{Keyspace, KeyspaceByteEngine, KeyspaceResolver, Keyspaces};
 use crate::{serialize, EngineInfo, Store, StoreError};
 use rocksdb::{ColumnFamily, ColumnFamilyDescriptor};
 use rocksdb::{Error, Options, DB};
@@ -61,13 +61,11 @@ impl Store for RocksDatabase {
     }
 }
 
-impl Keyspace for ColumnFamily {}
-
 impl KeyspaceResolver for RocksDatabase {
     type ResolvedKeyspace = ColumnFamily;
 
-    fn resolve_keyspace<K: KeyspaceName>(&self, space: &K) -> Option<&Self::ResolvedKeyspace> {
-        self.delegate.cf_handle(space.as_ref())
+    fn resolve_keyspace<K: Keyspace>(&self, space: &K) -> Option<&Self::ResolvedKeyspace> {
+        self.delegate.cf_handle(space.name())
     }
 }
 
@@ -111,16 +109,16 @@ impl Default for RocksOpts {
 fn exec_keyspace<F, O, K>(delegate: &Arc<DB>, keyspace: K, f: F) -> Result<O, StoreError>
 where
     F: Fn(&Arc<DB>, &ColumnFamily) -> Result<O, rocksdb::Error>,
-    K: KeyspaceName,
+    K: Keyspace,
 {
-    match delegate.cf_handle(keyspace.as_ref()) {
+    match delegate.cf_handle(keyspace.name()) {
         Some(cf) => f(delegate, cf).map_err(Into::into),
         None => Err(StoreError::KeyspaceNotFound),
     }
 }
 
 impl KeyspaceByteEngine for RocksDatabase {
-    fn put_keyspace<K: KeyspaceName>(
+    fn put_keyspace<K: Keyspace>(
         &self,
         keyspace: K,
         key: &[u8],
@@ -131,7 +129,7 @@ impl KeyspaceByteEngine for RocksDatabase {
         })
     }
 
-    fn get_keyspace<K: KeyspaceName>(
+    fn get_keyspace<K: Keyspace>(
         &self,
         keyspace: K,
         key: &[u8],
@@ -141,13 +139,13 @@ impl KeyspaceByteEngine for RocksDatabase {
         })
     }
 
-    fn delete_keyspace<K: KeyspaceName>(&self, keyspace: K, key: &[u8]) -> Result<(), StoreError> {
+    fn delete_keyspace<K: Keyspace>(&self, keyspace: K, key: &[u8]) -> Result<(), StoreError> {
         exec_keyspace(&self.delegate, keyspace, |delegate, keyspace| {
             delegate.delete_cf(keyspace, key)
         })
     }
 
-    fn merge_keyspace<K: KeyspaceName>(
+    fn merge_keyspace<K: Keyspace>(
         &self,
         keyspace: K,
         key: &[u8],
@@ -167,7 +165,7 @@ impl KeyspaceByteEngine for RocksDatabase {
     ) -> Result<Option<Vec<(K, V)>>, StoreError>
     where
         F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
-        S: KeyspaceName,
+        S: Keyspace,
     {
         let resolved = self
             .resolve_keyspace(&keyspace)

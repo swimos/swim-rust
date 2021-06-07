@@ -14,9 +14,7 @@
 
 use crate::engines::StoreBuilder;
 use crate::iterator::EngineIterator;
-use crate::keyspaces::{
-    KeyspaceByteEngine, KeyspaceDef, KeyspaceName, KeyspaceResolver, Keyspaces,
-};
+use crate::keyspaces::{Keyspace, KeyspaceByteEngine, KeyspaceDef, KeyspaceResolver, Keyspaces};
 use crate::{deserialize, serialize};
 use crate::{EngineRefIterator, StoreError};
 use crate::{RocksDatabase, RocksOpts};
@@ -40,8 +38,7 @@ pub struct TransientDatabase {
 }
 
 impl TransientDatabase {
-    #[allow(dead_code)]
-    pub(crate) fn new(keyspaces: Keyspaces<RocksOpts>) -> TransientDatabase {
+    fn new(keyspaces: Keyspaces<RocksOpts>) -> TransientDatabase {
         let dir = TempDir::new("test").expect("Failed to create temporary directory");
         let delegate = RocksOpts::default()
             .build(dir.path(), &keyspaces)
@@ -66,7 +63,6 @@ fn default_lane_opts() -> Options {
     opts
 }
 
-#[allow(clippy::unnecessary_wraps)]
 pub(crate) fn incrementing_merge_operator(
     _new_key: &[u8],
     existing_value: Option<&[u8]>,
@@ -90,14 +86,11 @@ fn default_db() -> TransientDatabase {
 
     let keyspaces = vec![
         KeyspaceDef::new(
-            TestKeyspaceName::Value.as_ref(),
+            TestKeyspaceName::Value.name(),
             RocksOpts(default_lane_opts()),
         ),
-        KeyspaceDef::new(
-            TestKeyspaceName::Map.as_ref(),
-            RocksOpts(default_lane_opts()),
-        ),
-        KeyspaceDef::new(TestKeyspaceName::Lane.as_ref(), RocksOpts(lane_opts)),
+        KeyspaceDef::new(TestKeyspaceName::Map.name(), RocksOpts(default_lane_opts())),
+        KeyspaceDef::new(TestKeyspaceName::Lane.name(), RocksOpts(lane_opts)),
     ];
 
     TransientDatabase::new(Keyspaces::new(keyspaces))
@@ -118,8 +111,8 @@ enum TestKeyspaceName {
     Lane,
 }
 
-impl AsRef<str> for TestKeyspaceName {
-    fn as_ref(&self) -> &str {
+impl Keyspace for TestKeyspaceName {
+    fn name(&self) -> &str {
         match self {
             TestKeyspaceName::Value => "value",
             TestKeyspaceName::Map => "map",
@@ -127,8 +120,6 @@ impl AsRef<str> for TestKeyspaceName {
         }
     }
 }
-
-impl KeyspaceName for TestKeyspaceName {}
 
 #[test]
 fn get_keyspace() {

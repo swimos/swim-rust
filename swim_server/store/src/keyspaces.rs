@@ -14,8 +14,9 @@
 
 use crate::StoreError;
 
-pub trait KeyspaceName: AsRef<str> {}
-pub trait Keyspace {}
+pub trait Keyspace {
+    fn name(&self) -> &str;
+}
 
 /// A keyspace definition for persisting logically related data.
 ///
@@ -49,7 +50,7 @@ impl<O> Keyspaces<O> {
 /// A trait for abstracting over database engines and partitioning data by a logical keyspace.
 pub trait KeyspaceByteEngine: Send + Sync + 'static {
     /// Put a key-value pair into the specified keyspace.
-    fn put_keyspace<K: KeyspaceName>(
+    fn put_keyspace<K: Keyspace>(
         &self,
         keyspace: K,
         key: &[u8],
@@ -57,17 +58,17 @@ pub trait KeyspaceByteEngine: Send + Sync + 'static {
     ) -> Result<(), StoreError>;
 
     /// Get an entry from the specified keyspace.
-    fn get_keyspace<K: KeyspaceName>(
+    fn get_keyspace<K: Keyspace>(
         &self,
         keyspace: K,
         key: &[u8],
     ) -> Result<Option<Vec<u8>>, StoreError>;
 
     /// Delete a value from the specified keyspace.
-    fn delete_keyspace<K: KeyspaceName>(&self, keyspace: K, key: &[u8]) -> Result<(), StoreError>;
+    fn delete_keyspace<K: Keyspace>(&self, keyspace: K, key: &[u8]) -> Result<(), StoreError>;
 
     /// Perform a merge operation on the specified keyspace and key, incrementing by `step`.
-    fn merge_keyspace<K: KeyspaceName>(
+    fn merge_keyspace<K: Keyspace>(
         &self,
         keyspace: K,
         key: &[u8],
@@ -96,15 +97,15 @@ pub trait KeyspaceByteEngine: Send + Sync + 'static {
     ) -> Result<Option<Vec<(K, V)>>, StoreError>
     where
         F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
-        S: KeyspaceName;
+        S: Keyspace;
 }
 
 /// A trait for converting an abstract keyspace name to a reference to a handle of one in a delegate
 /// engine; such as RocksDB's Column Families.
 pub trait KeyspaceResolver {
     /// The concrete type of the keyspace.
-    type ResolvedKeyspace: Keyspace;
+    type ResolvedKeyspace;
 
     /// Resolve `space` in to a handle that can be used to make direct queries to a delegate engine.
-    fn resolve_keyspace<K: KeyspaceName>(&self, space: &K) -> Option<&Self::ResolvedKeyspace>;
+    fn resolve_keyspace<K: Keyspace>(&self, space: &K) -> Option<&Self::ResolvedKeyspace>;
 }

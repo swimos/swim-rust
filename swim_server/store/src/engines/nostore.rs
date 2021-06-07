@@ -16,7 +16,7 @@ use crate::engines::StoreBuilder;
 use crate::iterator::{
     EngineIterOpts, EngineIterator, EnginePrefixIterator, EngineRefIterator, IteratorKey,
 };
-use crate::keyspaces::{Keyspace, KeyspaceByteEngine, KeyspaceName, KeyspaceResolver, Keyspaces};
+use crate::keyspaces::{Keyspace, KeyspaceByteEngine, KeyspaceResolver, Keyspaces};
 use crate::{ByteEngine, EngineInfo, Store, StoreError};
 use std::borrow::Borrow;
 use std::path::{Path, PathBuf};
@@ -40,19 +40,16 @@ impl Store for NoStore {
     }
 }
 
-pub struct NoStoreKeyspace;
-impl Keyspace for NoStoreKeyspace {}
-
 impl KeyspaceResolver for NoStore {
-    type ResolvedKeyspace = NoStoreKeyspace;
+    type ResolvedKeyspace = ();
 
-    fn resolve_keyspace<K: KeyspaceName>(&self, _space: &K) -> Option<&Self::ResolvedKeyspace> {
+    fn resolve_keyspace<K: Keyspace>(&self, _space: &K) -> Option<&Self::ResolvedKeyspace> {
         None
     }
 }
 
 impl KeyspaceByteEngine for NoStore {
-    fn put_keyspace<K: KeyspaceName>(
+    fn put_keyspace<K: Keyspace>(
         &self,
         _keyspace: K,
         _key: &[u8],
@@ -61,7 +58,7 @@ impl KeyspaceByteEngine for NoStore {
         Ok(())
     }
 
-    fn get_keyspace<K: KeyspaceName>(
+    fn get_keyspace<K: Keyspace>(
         &self,
         _keyspace: K,
         _key: &[u8],
@@ -69,15 +66,11 @@ impl KeyspaceByteEngine for NoStore {
         Ok(None)
     }
 
-    fn delete_keyspace<K: KeyspaceName>(
-        &self,
-        _keyspace: K,
-        _key: &[u8],
-    ) -> Result<(), StoreError> {
+    fn delete_keyspace<K: Keyspace>(&self, _keyspace: K, _key: &[u8]) -> Result<(), StoreError> {
         Ok(())
     }
 
-    fn merge_keyspace<K: KeyspaceName>(
+    fn merge_keyspace<K: Keyspace>(
         &self,
         _keyspace: K,
         _key: &[u8],
@@ -94,7 +87,7 @@ impl KeyspaceByteEngine for NoStore {
     ) -> Result<Option<Vec<(K, V)>>, StoreError>
     where
         F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
-        S: KeyspaceName,
+        S: Keyspace,
     {
         Ok(None)
     }
