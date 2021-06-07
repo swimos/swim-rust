@@ -23,18 +23,23 @@ static INIT: Once = Once::new();
 /// # Arguments
 ///
 /// * `directives`             - The trace spans that you want to see messages from.
+/// * `level`                  - The trace level that you want to see messages from.
 #[cfg(not(tarpaulin_include))]
-pub fn init_trace(directives: Vec<&str>) {
+pub fn init_trace(directives: Vec<&str>, level: Level) {
     INIT.call_once(|| {
-        let mut filter = EnvFilter::from_default_env();
+        if directives.is_empty() {
+            tracing_subscriber::fmt().with_max_level(level).init();
+        } else {
+            let mut filter = EnvFilter::from_default_env();
 
-        for directive in directives {
-            filter = filter.add_directive(directive.parse().unwrap());
+            for directive in directives {
+                filter = filter.add_directive(directive.parse().unwrap());
+            }
+
+            tracing_subscriber::fmt()
+                .with_max_level(level)
+                .with_env_filter(filter)
+                .init();
         }
-
-        tracing_subscriber::fmt()
-            .with_max_level(Level::TRACE)
-            .with_env_filter(filter)
-            .init();
     });
 }

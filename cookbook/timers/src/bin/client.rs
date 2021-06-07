@@ -14,44 +14,28 @@
 
 use std::time::Duration;
 use swim_client::interface::SwimClientBuilder;
+use swim_common::model::Value;
 use swim_common::warp::path::AbsolutePath;
-use swim_client::runtime::time::delay::delay_for;
-use tokio::task;
-use swim_client::downlink::SchemaViolations;
+use tokio::time;
 
 #[tokio::main]
 async fn main() {
     let mut client = SwimClientBuilder::build_with_default().await;
     let host_uri = url::Url::parse(&"ws://127.0.0.1:9001".to_string()).unwrap();
-    let node_uri = "unit/foo";
+    let node_uri = "/unit/foo";
     let lane_uri = "publish";
 
-    let path = AbsolutePath::new(host_uri, node_uri, lane_uri);
+    let path = AbsolutePath::new(host_uri.clone(), node_uri, lane_uri);
 
-    let event_dl = client
-        .event_downlink::<i64>(path.clone(), SchemaViolations::Ignore)
-        .await
-        .unwrap();
+    for i in 0..10 {
+        client
+            .send_command(path.clone(), Value::Extant)
+            .await
+            .expect("Failed to send command!");
 
-    let mut rec = event_dl.subscribe().expect("Downlink closed unexpectedly.");
-
-    task::spawn(async move {
-        while let Some(event) = rec.recv().await {
-            println!("Link received event: {}", event)
-        }
-    });
-
-    // command() `msg` TO
-    // the "publish" lane OF
-    // the agent addressable by `/unit/foo` RUNNING ON
-    // the plane with hostUri "warp://localhost:9001"
-    let msg = 9035768;
-    client
-        .send_command(path, msg)
-        .await
-        .expect("Failed to send a command!");
-    delay_for(Duration::from_secs(2)).await;
+        time::sleep(Duration::from_secs(5 * i)).await;
+    }
 
     println!("Stopping client in 2 seconds");
-    delay_for(Duration::from_secs(2)).await;
+    time::sleep(Duration::from_secs(2)).await;
 }
