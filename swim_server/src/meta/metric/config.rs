@@ -16,7 +16,7 @@ use crate::agent::lane::channels::uplink::backpressure::KeyedBackpressureConfig;
 use std::num::NonZeroUsize;
 use tokio::time::Duration;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MetricAggregatorConfig {
     /// Sample report rate of events.
     pub sample_rate: Duration,

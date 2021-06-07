@@ -21,6 +21,7 @@ use crate::agent::lane::channels::uplink::{
 };
 use crate::agent::lane::channels::{AgentExecutionConfig, LaneMessageHandler, TaggedAction};
 use crate::agent::Eff;
+use crate::meta::metric::{aggregator_sink, NodeMetricAggregator};
 use crate::routing::error::RouterError;
 use crate::routing::{
     ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedEnvelope, TaggedSender,
@@ -331,6 +332,10 @@ impl AgentExecutionContext for TestContext {
     fn spawner(&self) -> Sender<Eff> {
         self.spawner.clone()
     }
+
+    fn metrics(&self) -> NodeMetricAggregator {
+        aggregator_sink()
+    }
 }
 
 /// Create a spawner connected to a complete test harness.
@@ -357,8 +362,10 @@ fn make_test_harness() -> (
     let channels = UplinkChannels::new(rx_event.subscriber(), rx_act, error_tx);
 
     let context = TestContext::new(spawn_tx, tx_router);
+    let (_event_observer, action_observer) =
+        context.metrics().uplink_observer_for_path(route().clone());
 
-    let spawner_task = factory.make_task(handler, channels, route(), &context);
+    let spawner_task = factory.make_task(handler, channels, route(), &context, action_observer);
 
     let errs = join3(spawn_task, spawner_task, error_task)
         .map(|(_, _, errs)| errs)

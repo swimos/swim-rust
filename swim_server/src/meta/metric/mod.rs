@@ -12,19 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::lane::model::supply::SupplyLane;
 use crate::meta::log::{LogEntry, LogLevel, NodeLogger};
 use crate::meta::metric::aggregator::{AggregatorTask, MetricState};
 use crate::meta::metric::config::MetricAggregatorConfig;
-use crate::meta::metric::lane::{LaneMetricReporter, LanePulse};
-use crate::meta::metric::node::{NodeAggregatorTask, NodePulse};
+use crate::meta::metric::lane::LaneMetricReporter;
+use crate::meta::metric::node::NodeAggregatorTask;
 use crate::meta::metric::uplink::{
     uplink_aggregator, uplink_observer, TaggedWarpUplinkProfile, UplinkActionObserver,
-    UplinkEventObserver, UplinkProfileSender, WarpUplinkPulse,
+    UplinkEventObserver, UplinkProfileSender,
 };
+use crate::meta::pulse::PulseLanes;
 use futures::future::try_join3;
 use futures::Future;
-use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::ops::Add;
 use swim_common::warp::path::RelativePath;
@@ -148,9 +147,23 @@ pub trait MetricReporter {
 /// sample rate which is provided at creation. In addition to this, no guarantees are made as to
 /// whether the the pulse or profiles will be delivered; if the channel is full, then the message is
 /// dropped.
+#[derive(Debug, Clone)]
 pub struct NodeMetricAggregator {
-    /// An inner observer factory for creating uplink observer pairs.
-    observer: UplinkMetricObserver,
+    /// The sample rate at which profiles will be reported.
+    sample_rate: Duration,
+    /// The URI of the metric aggregator.
+    node_uri: String,
+    /// A reporting channel for the accumulated profile.
+    metric_tx: Sender<TaggedWarpUplinkProfile>,
+}
+
+#[cfg(test)]
+pub fn aggregator_sink() -> NodeMetricAggregator {
+    NodeMetricAggregator {
+        sample_rate: Duration::default(),
+        node_uri: String::from("test"),
+        metric_tx: mpsc::channel(1).0,
+    }
 }
 
 impl NodeMetricAggregator {
@@ -163,6 +176,8 @@ impl NodeMetricAggregator {
     /// will cause all of the pending profiles and pulses to be flushed. Regardless of the last
     /// flush time.
     /// * `config` - A configuration for the aggregator and backpressure.
+    /// * `lanes`- A collection of lanes that the metrics will be sent to for: uplink, lane and node
+    /// pulses.
     /// * `uplink_pulse_lanes` - A map keyed by lane paths and that contains supply lanes for
     /// WARP uplink pulses.
     /// * `lane_pulse_lanes` - A map keyed by lane paths and that contains supply lanes for lane
@@ -173,9 +188,7 @@ impl NodeMetricAggregator {
         node_uri: RelativeUri,
         stop_rx: trigger::Receiver,
         config: MetricAggregatorConfig,
-        uplink_pulse_lanes: HashMap<RelativePath, SupplyLane<WarpUplinkPulse>>,
-        lane_pulse_lanes: HashMap<RelativePath, SupplyLane<LanePulse>>,
-        agent_pulse: SupplyLane<NodePulse>,
+        lanes: PulseLanes,
         log_context: NodeLogger,
     ) -> (
         NodeMetricAggregator,
@@ -188,16 +201,22 @@ impl NodeMetricAggregator {
             backpressure_config,
         } = config;
 
+        let PulseLanes {
+            uplinks,
+            lanes,
+            node,
+        } = lanes;
+
         let (node_tx, node_rx) = mpsc::channel(buffer_size.get());
         let node_aggregator = NodeAggregatorTask::new(
             stop_rx.clone(),
             sample_rate,
-            agent_pulse,
+            node,
             ReceiverStream::new(node_rx),
         );
 
         let (lane_tx, lane_rx) = mpsc::channel(buffer_size.get());
-        let lane_pulse_lanes = lane_pulse_lanes
+        let lane_pulse_lanes = lanes
             .into_iter()
             .map(|(k, v)| {
                 let inner = MetricState::new(LaneMetricReporter::default(), v);
@@ -219,7 +238,7 @@ impl NodeMetricAggregator {
             buffer_size,
             yield_after,
             backpressure_config,
-            uplink_pulse_lanes,
+            uplinks,
             lane_tx,
         );
 
@@ -264,56 +283,36 @@ impl NodeMetricAggregator {
         };
 
         let metrics = NodeMetricAggregator {
-            observer: UplinkMetricObserver::new(config.sample_rate, node_uri, uplink_tx),
+            sample_rate: config.sample_rate,
+            node_uri: node_uri.to_string(),
+            metric_tx: uplink_tx,
         };
         (metrics, task)
     }
 
-    pub fn observer(&self) -> UplinkMetricObserver {
-        self.observer.clone()
-    }
-}
-
-/// An uplink metric observer factory for creating new ingress channels to the metric aggregator.
-#[derive(Clone, Debug)]
-pub struct UplinkMetricObserver {
-    /// The same rate at which profiles will be reported.
-    sample_rate: Duration,
-    /// The URI of the metric aggregator.
-    node_uri: String,
-    /// A reporting channel for the accumulated profile.
-    metric_tx: Sender<TaggedWarpUplinkProfile>,
-}
-
-impl UplinkMetricObserver {
-    /// Creates a new uplink metric observer factory for `node_uri`.
-    ///
-    /// # Arguments:
-    /// `sample_rate`: The rate at which to report the accumulated profile. A profile will only be
-    /// reported if this period has elapsed *and* a metric is reported.
-    /// `node_uri`: The node URI that this uplink is attached to.
-    /// `metric_tx`: The channel to forward the profile to.
-    pub fn new(
-        sample_rate: Duration,
-        node_uri: RelativeUri,
-        metric_tx: Sender<TaggedWarpUplinkProfile>,
-    ) -> UplinkMetricObserver {
-        UplinkMetricObserver {
-            sample_rate,
-            node_uri: node_uri.to_string(),
-            metric_tx,
-        }
-    }
-
     /// Returns a new event and action observer pair for the provided `lane_uri`.
     pub fn uplink_observer(&self, lane_uri: String) -> (UplinkEventObserver, UplinkActionObserver) {
-        let UplinkMetricObserver {
+        let NodeMetricAggregator {
             sample_rate,
             node_uri,
             metric_tx,
         } = self;
         let profile_sender =
             UplinkProfileSender::new(RelativePath::new(node_uri, lane_uri), metric_tx.clone());
+
+        uplink_observer(*sample_rate, profile_sender)
+    }
+
+    pub fn uplink_observer_for_path(
+        &self,
+        uri: RelativePath,
+    ) -> (UplinkEventObserver, UplinkActionObserver) {
+        let NodeMetricAggregator {
+            sample_rate,
+            metric_tx,
+            ..
+        } = self;
+        let profile_sender = UplinkProfileSender::new(uri, metric_tx.clone());
 
         uplink_observer(*sample_rate, profile_sender)
     }

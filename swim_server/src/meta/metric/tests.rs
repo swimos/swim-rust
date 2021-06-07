@@ -23,6 +23,7 @@ use crate::meta::metric::uplink::{WarpUplinkProfile, WarpUplinkPulse};
 use crate::meta::metric::{
     AggregatorError, AggregatorErrorKind, MetricStage, NodeMetricAggregator,
 };
+use crate::meta::pulse::PulseLanes;
 use futures::future::{join, join3};
 use futures::FutureExt;
 use std::collections::HashMap;
@@ -302,13 +303,17 @@ async fn full_pipeline() {
     let (node_pulse_tx, mut node_pulse_rx) = mpsc::channel(DEFAULT_BUFFER.get());
     let node_pulse_lane = SupplyLane::new(node_pulse_tx);
 
+    let pulse_lanes = PulseLanes {
+        uplinks: uplink_tx,
+        lanes: lane_tx,
+        node: node_pulse_lane,
+    };
+
     let (aggregator, aggregator_task) = NodeMetricAggregator::new(
         node_uri.clone(),
         stop_rx,
         config,
-        uplink_tx,
-        lane_tx,
-        node_pulse_lane,
+        pulse_lanes,
         make_node_logger(node_uri),
     );
 
@@ -365,8 +370,7 @@ async fn full_pipeline() {
 
     let task_jh = tokio::spawn(join3(uplink_task, lane_task, node_task));
 
-    let (_event_observer, action_observer) =
-        aggregator.observer().uplink_observer("test".to_string());
+    let (_event_observer, action_observer) = aggregator.uplink_observer("test".to_string());
 
     let profile = WarpUplinkProfile {
         event_delta: event_count,
@@ -410,13 +414,17 @@ async fn full_pipeline_multiple_observers() {
     let (node_pulse_tx, mut node_pulse_rx) = mpsc::channel(DEFAULT_BUFFER.get());
     let node_pulse_lane = SupplyLane::new(node_pulse_tx);
 
+    let pulse_lanes = PulseLanes {
+        uplinks: uplink_tx,
+        lanes: lane_tx,
+        node: node_pulse_lane,
+    };
+
     let (aggregator, aggregator_task) = NodeMetricAggregator::new(
         node_uri.clone(),
         stop_rx,
         config,
-        uplink_tx,
-        lane_tx,
-        node_pulse_lane,
+        pulse_lanes,
         make_node_logger(node_uri),
     );
 
@@ -496,8 +504,7 @@ async fn full_pipeline_multiple_observers() {
 
     let task_jh = tokio::spawn(join3(uplink_task, lane_task, node_task));
 
-    let (_event_observer1, action_observer1) =
-        aggregator.observer().uplink_observer("test".to_string());
+    let (_event_observer1, action_observer1) = aggregator.uplink_observer("test".to_string());
 
     let first = WarpUplinkProfile {
         event_delta: 10,
@@ -510,8 +517,7 @@ async fn full_pipeline_multiple_observers() {
 
     sleep(sample_rate).await;
 
-    let (_event_observer2, action_observer2) =
-        aggregator.observer().uplink_observer("test".to_string());
+    let (_event_observer2, action_observer2) = aggregator.uplink_observer("test".to_string());
 
     let second = WarpUplinkProfile {
         event_delta: 5,
