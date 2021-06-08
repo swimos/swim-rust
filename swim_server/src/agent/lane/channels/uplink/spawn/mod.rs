@@ -366,9 +366,9 @@ impl LaneUplinks for SpawnerUplinkFactory {
             .run(
                 context.router_handle(),
                 context.spawner(),
+                context.uplinks_idle_since().clone(),
                 error_collector,
                 action_observer,
-                context.uplinks_idle_since().clone(),
             )
             .boxed()
     }
