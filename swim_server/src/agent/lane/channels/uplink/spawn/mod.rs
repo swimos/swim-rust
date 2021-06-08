@@ -37,6 +37,7 @@ use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, span, Level};
 use tracing_futures::Instrument;
+use utilities::instant::AtomicInstant;
 use utilities::sync::trigger;
 
 #[cfg(test)]
@@ -115,13 +116,14 @@ where
     /// machines.
     /// * `error_collector` - Collects errors whenever an uplink fails.
     ///
-    /// #Type Paramameters
+    /// #Type Parameters
     ///
     /// * `Router` - The type of the server router.
     pub async fn run<Router>(
         mut self,
         mut router: Router,
         mut spawn_tx: mpsc::Sender<Eff>,
+        uplinks_idle_since: Arc<AtomicInstant>,
         error_collector: mpsc::Sender<UplinkErrorReport>,
         action_observer: UplinkActionObserver,
     ) where
@@ -140,10 +142,16 @@ where
                         let span =
                             span!(Level::TRACE, NEW_UPLINK, lane = ?self.route, endpoint = ?addr);
 
-                        self.make_uplink(addr, error_collector.clone(), &mut spawn_tx, &mut router)
-                            .instrument(span)
-                            .await
-                            .map(|handle| entry.insert(handle))
+                        self.make_uplink(
+                            addr,
+                            error_collector.clone(),
+                            &mut spawn_tx,
+                            &mut router,
+                            uplinks_idle_since.clone(),
+                        )
+                        .instrument(span)
+                        .await
+                        .map(|handle| entry.insert(handle))
                     }
                 };
                 if let Some(sender) = sender {
@@ -202,6 +210,7 @@ where
         err_tx: mpsc::Sender<UplinkErrorReport>,
         spawn_tx: &mut mpsc::Sender<Eff>,
         router: &mut Router,
+        uplinks_idle_since: Arc<AtomicInstant>,
     ) -> Option<UplinkHandle>
     where
         Router: ServerRouter,
@@ -229,7 +238,10 @@ where
             return None;
         };
         let ul_task = async move {
-            if let Err(err) = uplink.run_uplink(sink.into_item_sender()).await {
+            if let Err(err) = uplink
+                .run_uplink(sink.into_item_sender(), uplinks_idle_since)
+                .await
+            {
                 let report = UplinkErrorReport::new(err, addr);
                 if let Err(mpsc::error::SendError(report)) = err_tx.send(report).await {
                     event!(Level::ERROR, message = FAILED_ERR_REPORT, ?report);
@@ -356,6 +368,7 @@ impl LaneUplinks for SpawnerUplinkFactory {
                 context.spawner(),
                 error_collector,
                 action_observer,
+                context.uplinks_idle_since().clone(),
             )
             .boxed()
     }

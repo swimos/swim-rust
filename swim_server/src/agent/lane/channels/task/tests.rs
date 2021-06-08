@@ -64,8 +64,10 @@ use tokio::sync::mpsc::Sender;
 use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinHandle;
 use tokio::time::{sleep, timeout};
+use tokio::time::{timeout, Instant};
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
+use utilities::instant::AtomicInstant;
 use utilities::sync::{promise, topic, trigger};
 use utilities::uri::RelativeUri;
 
@@ -335,6 +337,7 @@ struct TestContext {
     drop_rx: promise::Receiver<ConnectionDropped>,
     aggregator: NodeMetricAggregator,
     _metrics_jh: Arc<JoinHandle<Result<(), AggregatorError>>>,
+    uplinks_idle_since: Arc<AtomicInstant>,
 }
 
 impl TestContext {
@@ -413,6 +416,10 @@ impl AgentExecutionContext for TestContext {
     fn metrics(&self) -> NodeMetricAggregator {
         self.aggregator.clone()
     }
+
+    fn uplinks_idle_since(&self) -> &Arc<AtomicInstant> {
+        &self.uplinks_idle_since
+    }
 }
 
 fn default_buffer() -> NonZeroUsize {
@@ -420,7 +427,14 @@ fn default_buffer() -> NonZeroUsize {
 }
 
 fn make_config() -> AgentExecutionConfig {
-    AgentExecutionConfig::with(default_buffer(), 1, 1, Duration::from_secs(5), None)
+    AgentExecutionConfig::with(
+        default_buffer(),
+        1,
+        1,
+        Duration::from_secs(5),
+        None,
+        Duration::from_secs(60),
+    )
 }
 
 fn route() -> RelativePath {
@@ -607,6 +621,7 @@ fn make_context() -> (
         drop_rx,
         aggregator,
         _metrics_jh: Arc::new(tokio::spawn(aggregator_task)),
+        uplinks_idle_since: Arc::new(AtomicInstant::new(Instant::now())),
     };
     let spawn_task = ReceiverStream::new(spawn_rx)
         .take_until(stop_rx)
@@ -1354,6 +1369,7 @@ impl MultiTestContextInner {
 struct MultiTestContext(
     Arc<parking_lot::Mutex<MultiTestContextInner>>,
     mpsc::Sender<Eff>,
+    Arc<AtomicInstant>,
 );
 
 impl MultiTestContext {
@@ -1363,6 +1379,7 @@ impl MultiTestContext {
                 router_addr,
             ))),
             spawner,
+            Arc::new(AtomicInstant::new(Instant::now())),
         )
     }
 
@@ -1399,6 +1416,10 @@ impl AgentExecutionContext for MultiTestContext {
 
     fn metrics(&self) -> NodeMetricAggregator {
         aggregator_sink()
+    }
+
+    fn uplinks_idle_since(&self) -> &Arc<AtomicInstant> {
+        &self.2
     }
 }
 

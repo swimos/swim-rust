@@ -67,6 +67,8 @@ pub struct AgentExecutionConfig {
     pub node_log: LogConfig,
     /// Metric aggregator configuration
     pub metrics: MetricAggregatorConfig,
+    /// The maximum idle time before the agent is terminated.
+    pub max_idle_time: Duration,
 }
 
 const DEFAULT_YIELD_COUNT: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(2048) };
@@ -78,6 +80,7 @@ impl AgentExecutionConfig {
         error_threshold: usize,
         cleanup_timeout: Duration,
         backpressure: Option<KeyedBackpressureConfig>,
+        max_idle_time: Duration,
     ) -> Self {
         AgentExecutionConfig {
             max_pending_envelopes,
@@ -100,6 +103,7 @@ impl AgentExecutionConfig {
             }),
             map_lane_backpressure: backpressure,
             node_log: LogConfig::default(),
+            max_idle_time,
             metrics: Default::default(),
         }
     }
@@ -128,6 +132,7 @@ impl Default for AgentExecutionConfig {
             map_lane_backpressure: None,
             node_log: LogConfig::default(),
             metrics: Default::default(),
+            max_idle_time: Duration::from_secs(300),
         }
     }
 }

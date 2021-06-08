@@ -743,7 +743,14 @@ pub async fn run_agent_test<Agent, Config, Lifecycle>(
     let buffer_size = NonZeroUsize::new(10).unwrap();
     let clock = TestClock::default();
 
-    let exec_config = AgentExecutionConfig::with(buffer_size, 1, 0, Duration::from_secs(1), None);
+    let exec_config = AgentExecutionConfig::with(
+        buffer_size,
+        1,
+        0,
+        Duration::from_secs(1),
+        None,
+        Duration::from_secs(60),
+    );
 
     let (envelope_tx, envelope_rx) = mpsc::channel(buffer_size.get());
 

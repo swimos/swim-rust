@@ -45,8 +45,10 @@ use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::{mpsc, Barrier};
+use tokio::time::Instant;
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
+use utilities::instant::AtomicInstant;
 use utilities::sync::{promise, topic};
 use utilities::uri::RelativeUri;
 
@@ -294,7 +296,14 @@ impl UplinkSpawnerSplitOutputs {
 }
 
 fn make_config() -> AgentExecutionConfig {
-    AgentExecutionConfig::with(default_buffer(), 1, 1, Duration::from_secs(5), None)
+    AgentExecutionConfig::with(
+        default_buffer(),
+        1,
+        1,
+        Duration::from_secs(5),
+        None,
+        Duration::from_secs(60),
+    )
 }
 
 struct TestContext {
@@ -302,6 +311,7 @@ struct TestContext {
     messages: mpsc::Sender<TaggedEnvelope>,
     _drop_tx: promise::Sender<ConnectionDropped>,
     drop_rx: promise::Receiver<ConnectionDropped>,
+    uplinks_idle_since: Arc<AtomicInstant>,
 }
 
 impl TestContext {
@@ -312,6 +322,7 @@ impl TestContext {
             messages,
             _drop_tx: drop_tx,
             drop_rx,
+            uplinks_idle_since: Arc::new(AtomicInstant::new(Instant::now())),
         }
     }
 }
@@ -335,6 +346,10 @@ impl AgentExecutionContext for TestContext {
 
     fn metrics(&self) -> NodeMetricAggregator {
         aggregator_sink()
+    }
+
+    fn uplinks_idle_since(&self) -> &Arc<AtomicInstant> {
+        &self.uplinks_idle_since
     }
 }
 
