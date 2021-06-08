@@ -25,11 +25,12 @@ impl AtomicInstant {
     /// Loads a value from the atomic Instant.
     ///
     /// `load` takes an [`Ordering`] argument which describes the memory ordering
-    /// of this operation. Possible values are [`SeqCst`], [`Acquire`] and [`Relaxed`].
+    /// of this operation. Possible values are [`Ordering::SeqCst`], [`Ordering::Acquire`]
+    /// and [`Ordering::Relaxed`].
     ///
     /// # Panics
     ///
-    /// Panics if `order` is [`Release`] or [`AcqRel`].
+    /// Panics if `order` is [`Ordering::Release`] or [`Ordering::AcqRel`].
     pub fn load(&self, order: Ordering) -> Instant {
         let offset_millis = self.offset.load(order);
         let offset = Duration::from_millis(offset_millis);
@@ -39,11 +40,11 @@ impl AtomicInstant {
     /// Stores a value into the atomic Instant.
     ///
     /// `store` takes an [`Ordering`] argument which describes the memory ordering of this operation.
-    ///  Possible values are [`SeqCst`], [`Release`] and [`Relaxed`].
+    ///  Possible values are [`Ordering::SeqCst`], [`Ordering::Release`] and [`Ordering::Relaxed`].
     ///
     /// # Panics
     ///
-    /// Panics if `order` is [`Acquire`] or [`AcqRel`].
+    /// Panics if `order` is [`Ordering::Acquire`] or [`Ordering::AcqRel`].
     pub fn store(&self, val: Instant, order: Ordering) {
         let offset = val - self.base;
         self.offset.store(offset.as_millis() as u64, order);
