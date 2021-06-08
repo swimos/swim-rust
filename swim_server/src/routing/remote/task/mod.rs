@@ -380,17 +380,19 @@ where
 {
     if let Some(target) = envelope.header.relative_path().as_ref() {
         let Route { sender, .. } = if let Some(route) = resolved.get_mut(target) {
-            route
-        } else {
-            let route = get_route(router, target).await;
-            match route {
-                Ok(route) => match resolved.entry(target.clone()) {
-                    Entry::Occupied(_) => unreachable!(),
-                    Entry::Vacant(entry) => entry.insert(route),
-                },
-                Err(err) => {
-                    return Err((envelope, err));
+            if route.sender.inner.is_closed() {
+                resolved.remove(target);
+                match insert_new_route(router, resolved, target).await {
+                    Ok(route) => route,
+                    Err(err) => return Err((envelope, err)),
                 }
+            } else {
+                route
+            }
+        } else {
+            match insert_new_route(router, resolved, target).await {
+                Ok(route) => route,
+                Err(err) => return Err((envelope, err)),
             }
         };
         if let Err(err) = sender.send_item(envelope).await {
@@ -409,6 +411,22 @@ where
         }
     } else {
         panic!("Authentication envelopes not yet supported.");
+    }
+}
+
+#[allow(clippy::needless_lifetimes)]
+async fn insert_new_route<'a, Router>(
+    router: &mut Router,
+    resolved: &'a mut HashMap<RelativePath, Route>,
+    target: &RelativePath,
+) -> Result<&'a mut Route, DispatchError>
+where
+    Router: ServerRouter,
+{
+    let route = get_route(router, target).await?;
+    match resolved.entry(target.clone()) {
+        Entry::Occupied(_) => unreachable!(),
+        Entry::Vacant(entry) => Ok(entry.insert(route)),
     }
 }
 

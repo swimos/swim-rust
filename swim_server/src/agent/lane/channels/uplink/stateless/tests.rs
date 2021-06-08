@@ -32,6 +32,7 @@ use crate::routing::error::RouterError;
 use swim_common::routing::ResolutionError;
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
+use utilities::instant::AtomicInstant;
 use utilities::sync::promise;
 use utilities::uri::RelativeUri;
 
@@ -76,7 +77,7 @@ impl ServerRouter for TestRouter {
     }
 }
 
-struct TestContext(TestRouter, mpsc::Sender<Eff>);
+struct TestContext(TestRouter, mpsc::Sender<Eff>, Arc<AtomicInstant>);
 
 impl AgentExecutionContext for TestContext {
     type Router = TestRouter;
@@ -87,6 +88,10 @@ impl AgentExecutionContext for TestContext {
 
     fn spawner(&self) -> mpsc::Sender<Eff> {
         self.1.clone()
+    }
+
+    fn uplinks_idle_since(&self) -> &Arc<AtomicInstant> {
+        &self.2
     }
 }
 

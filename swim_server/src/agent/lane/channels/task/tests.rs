@@ -51,9 +51,10 @@ use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
 use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::{mpsc, Mutex};
-use tokio::time::timeout;
+use tokio::time::{timeout, Instant};
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
+use utilities::instant::AtomicInstant;
 use utilities::sync::{promise, topic, trigger};
 use utilities::uri::RelativeUri;
 
@@ -318,6 +319,7 @@ struct TestContext {
     trigger: Arc<Mutex<Option<trigger::Sender>>>,
     _drop_tx: Arc<promise::Sender<ConnectionDropped>>,
     drop_rx: promise::Receiver<ConnectionDropped>,
+    uplinks_idle_since: Arc<AtomicInstant>,
 }
 
 impl TestContext {
@@ -392,6 +394,10 @@ impl AgentExecutionContext for TestContext {
     fn spawner(&self) -> Sender<Eff> {
         self.scheduler.clone()
     }
+
+    fn uplinks_idle_since(&self) -> &Arc<AtomicInstant> {
+        &self.uplinks_idle_since
+    }
 }
 
 fn default_buffer() -> NonZeroUsize {
@@ -399,7 +405,14 @@ fn default_buffer() -> NonZeroUsize {
 }
 
 fn make_config() -> AgentExecutionConfig {
-    AgentExecutionConfig::with(default_buffer(), 1, 1, Duration::from_secs(5), None)
+    AgentExecutionConfig::with(
+        default_buffer(),
+        1,
+        1,
+        Duration::from_secs(5),
+        None,
+        Duration::from_secs(60),
+    )
 }
 
 fn route() -> RelativePath {
@@ -519,6 +532,7 @@ fn make_context() -> (
         trigger: Arc::new(Mutex::new(Some(stop_tx))),
         _drop_tx: Arc::new(drop_tx),
         drop_rx,
+        uplinks_idle_since: Arc::new(AtomicInstant::new(Instant::now())),
     };
     let spawn_task = ReceiverStream::new(spawn_rx)
         .take_until(stop_rx)
@@ -1266,6 +1280,7 @@ impl MultiTestContextInner {
 struct MultiTestContext(
     Arc<parking_lot::Mutex<MultiTestContextInner>>,
     mpsc::Sender<Eff>,
+    Arc<AtomicInstant>,
 );
 
 impl MultiTestContext {
@@ -1275,6 +1290,7 @@ impl MultiTestContext {
                 router_addr,
             ))),
             spawner,
+            Arc::new(AtomicInstant::new(Instant::now())),
         )
     }
 
@@ -1307,6 +1323,10 @@ impl AgentExecutionContext for MultiTestContext {
 
     fn spawner(&self) -> Sender<Eff> {
         self.1.clone()
+    }
+
+    fn uplinks_idle_since(&self) -> &Arc<AtomicInstant> {
+        &self.2
     }
 }
 
