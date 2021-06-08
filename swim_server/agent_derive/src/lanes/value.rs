@@ -33,6 +33,8 @@ struct ValueAttrs {
     on_start: Option<darling::Result<String>>,
     #[darling(default)]
     on_event: Option<darling::Result<String>>,
+    #[darling(default)]
+    gen_lifecycle: Option<bool>,
 }
 
 pub fn derive_value_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput) -> TokenStream {
@@ -40,7 +42,7 @@ pub fn derive_value_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput) 
         return TokenStream::from(quote! {#error});
     }
 
-    let args = match ValueAttrs::from_list(&attr_args) {
+    let args: ValueAttrs = match ValueAttrs::from_list(&attr_args) {
         Ok(args) => args,
         Err(e) => {
             return TokenStream::from(e.write_errors());
@@ -48,7 +50,10 @@ pub fn derive_value_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput) 
     };
 
     let lifecycle_name = input_ast.ident.clone();
-    let has_fields = has_fields(&input_ast.data);
+    let gen_lifecycle = args
+        .gen_lifecycle
+        .unwrap_or_else(|| !has_fields(&input_ast.data));
+
     let task_name = get_task_struct_name(&input_ast.ident.to_string());
     let agent_name = args.agent.clone();
     let event_type = &args.event_type;
@@ -63,7 +68,7 @@ pub fn derive_value_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput) 
     derive_lane(
         "ValueLifecycle",
         lifecycle_name,
-        has_fields,
+        gen_lifecycle,
         task_name,
         agent_name,
         input_ast,
@@ -76,6 +81,7 @@ pub fn derive_value_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput) 
             use swim_server::agent::lane::lifecycle::LaneLifecycle;
         },
         None,
+        quote!(Value),
     )
 }
 

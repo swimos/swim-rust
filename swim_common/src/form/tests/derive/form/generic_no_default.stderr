@@ -1,4 +1,4 @@
-error[E0599]: no method named `as_value` found for struct `S<Valid, Skipped>` in the current scope
+error[E0599]: the method `as_value` exists for struct `S<Valid, Skipped>`, but its trait bounds were not satisfied
   --> $DIR/generic_no_default.rs:35:15
    |
 21 |     struct Skipped;
@@ -11,8 +11,8 @@ error[E0599]: no method named `as_value` found for struct `S<Valid, Skipped>` in
    |     doesn't satisfy `S<Valid, Skipped>: Form`
 ...
 35 |     let _ = s.as_value();
-   |               ^^^^^^^^ method not found in `S<Valid, Skipped>`
+   |               ^^^^^^^^ method cannot be called on `S<Valid, Skipped>` due to unsatisfied trait bounds
    |
-   = note: the method `as_value` exists but the following trait bounds were not satisfied:
+   = note: the following trait bounds were not satisfied:
            `Skipped: Default`
            which is required by `S<Valid, Skipped>: Form`

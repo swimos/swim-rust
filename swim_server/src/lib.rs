@@ -16,7 +16,9 @@
 
 pub mod agent;
 pub mod interface;
-mod meta;
+#[macro_use]
+pub mod macros;
+pub mod meta;
 pub mod plane;
 pub mod routing;
 
@@ -26,3 +28,4 @@ pub use utilities::future::retryable::strategy::RetryStrategy;
 pub use utilities::future::SwimStreamExt;
 pub use utilities::route_pattern::RoutePattern;
 pub use utilities::uri;
+pub use utilities::{stringify_attr, stringify_attr_raw};

@@ -175,9 +175,9 @@ impl From<String> for Text {
     }
 }
 
-impl Into<String> for Text {
-    fn into(self) -> String {
-        let Text(inner) = self;
+impl From<Text> for String {
+    fn from(text: Text) -> Self {
+        let Text(inner) = text;
         match inner {
             TextInner::Small(len, arr) => small_str(len, &arr).to_string(),
             TextInner::Large(string) => string,

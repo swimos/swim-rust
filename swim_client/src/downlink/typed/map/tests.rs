@@ -105,77 +105,6 @@ async fn responder(init: OrdMap<i32, i32>, mut rx: mpsc::Receiver<MapAction>) {
                     let _ = request.send_err(DownlinkError::InvalidAction);
                 }
             }
-            MapAction::Modify {
-                key,
-                f,
-                before,
-                after,
-            } => {
-                if matches!(&key, Value::Int32Value(_)) {
-                    let old_val = state.get(&key).map(Clone::clone);
-                    let replacement = match &old_val {
-                        None => f(&None),
-                        Some(v) => f(&Some(v.as_ref())),
-                    }
-                    .map(Arc::new);
-                    match &replacement {
-                        Some(v) => state.insert(key, v.clone()),
-                        _ => state.remove(&key),
-                    };
-                    if let Some(cb) = before {
-                        let _ = cb.send_ok(old_val);
-                    }
-                    if let Some(cb) = after {
-                        let _ = cb.send_ok(replacement);
-                    }
-                } else {
-                    if let Some(cb) = before {
-                        let _ = cb.send_err(DownlinkError::InvalidAction);
-                    }
-                    if let Some(cb) = after {
-                        let _ = cb.send_err(DownlinkError::InvalidAction);
-                    }
-                }
-            }
-            MapAction::TryModify {
-                key,
-                f,
-                before,
-                after,
-            } => {
-                if matches!(&key, Value::Int32Value(_)) {
-                    let old_val = state.get(&key).map(Clone::clone);
-                    let replacement = match &old_val {
-                        None => f(&None),
-                        Some(v) => f(&Some(v.as_ref())),
-                    };
-                    let after_val = match replacement {
-                        Ok(Some(v)) => {
-                            let new_val = Arc::new(v);
-                            state.insert(key, new_val.clone());
-                            Ok(Some(new_val))
-                        }
-                        Ok(None) => {
-                            state.remove(&key);
-                            Ok(None)
-                        }
-                        Err(e) => Err(e),
-                    };
-                    if let Some(cb) = before {
-                        let _ = cb.send_ok(Ok(old_val));
-                    }
-                    if let Some(cb) = after {
-                        let _ = cb.send_ok(after_val);
-                    }
-                } else {
-                    if let Some(cb) = before {
-                        let _ = cb.send_err(DownlinkError::InvalidAction);
-                    }
-                    if let Some(cb) = after {
-                        let _ = cb.send_err(DownlinkError::InvalidAction);
-                    }
-                }
-            }
         }
     }
 }
@@ -600,7 +529,7 @@ fn make_map_downlink<K: ValidatedForm, V: ValidatedForm>() -> Components<K, V> {
     let (command_tx, command_rx) = mpsc::channel(8);
     let sender = swim_common::sink::item::for_mpsc_sender(command_tx).map_err_into();
 
-    let (dl, rx) = crate::downlink::model::map::create_downlink(
+    let (dl, rx) = crate::downlink::map_downlink(
         Some(K::schema()),
         Some(V::schema()),
         ReceiverStream::new(update_rx),

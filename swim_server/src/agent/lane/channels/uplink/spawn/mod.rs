@@ -139,21 +139,17 @@ where
                     Entry::Vacant(entry) => {
                         let span =
                             span!(Level::TRACE, NEW_UPLINK, lane = ?self.route, endpoint = ?addr);
-                        if let Some(handle) = self
-                            .make_uplink(
-                                addr,
-                                error_collector.clone(),
-                                &mut spawn_tx,
-                                &mut router,
-                                uplinks_idle_since.clone(),
-                            )
-                            .instrument(span)
-                            .await
-                        {
-                            Some(entry.insert(handle))
-                        } else {
-                            None
-                        }
+
+                        self.make_uplink(
+                            addr,
+                            error_collector.clone(),
+                            &mut spawn_tx,
+                            &mut router,
+                            uplinks_idle_since.clone(),
+                        )
+                        .instrument(span)
+                        .await
+                        .map(|handle| entry.insert(handle))
                     }
                 };
                 if let Some(sender) = sender {

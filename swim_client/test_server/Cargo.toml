@@ -4,12 +4,8 @@ version = "0.1.0"
 authors = ["Swim.AI developers info@swim.ai"]
 edition = "2018"
 
-[features]
-default = ["enabled"]
-enabled = []
-
 [dependencies]
-testcontainers = "0.9.1"
-
-[build-dependencies]
-git2 = { version = "^0.13", default-features = false, features = ["https"] }
+futures = "0.3.4"
+swim_server = { path = "../../swim_server" }
+tracing = "0.1.16"
+tracing-futures = "0.2.4"

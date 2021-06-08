@@ -29,7 +29,7 @@ pub mod value;
 pub fn derive_lane(
     trait_name: &str,
     typ: Ident,
-    has_fields: bool,
+    gen_lifecycle: bool,
     task_name: Ident,
     agent_name: Ident,
     input_ast: DeriveInput,
@@ -38,6 +38,7 @@ pub fn derive_lane(
     lane_tasks_impl: LaneTasksImpl,
     imports: TokenStream,
     field: Option<TokenStream>,
+    lane_kind: TokenStream,
 ) -> proc_macro::TokenStream {
     let public_derived = quote! {
         #input_ast
@@ -78,6 +79,10 @@ pub fn derive_lane(
             fn name(&self) -> &str {
                 &self.name
             }
+
+            fn kind(&self) -> swim_server::meta::info::LaneKind {
+                swim_server::meta::info::LaneKind::#lane_kind
+            }
         }
 
         #[automatically_derived]
@@ -91,7 +96,7 @@ pub fn derive_lane(
         }
     };
 
-    let lane_lifecycle = if !has_fields {
+    let lane_lifecycle = if gen_lifecycle {
         Some(quote! {
             #[automatically_derived]
             impl<T> swim_server::agent::lane::lifecycle::LaneLifecycle<T> for #typ {
