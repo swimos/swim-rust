@@ -31,6 +31,7 @@ pub struct F64Recognizer;
 pub struct StringRecognizer;
 pub struct TextRecognizer;
 pub struct DataRecognizer;
+pub struct BoolRecognizer;
 
 impl<'a> Iteratee<ParseEvent<'a>> for UnitRecognizer {
     type Item = Result<(), ReadError>;
@@ -238,6 +239,21 @@ impl<'a> Iteratee<ParseEvent<'a>> for DataRecognizer {
 }
 
 impl Recognizer<Vec<u8>> for DataRecognizer {
+    fn reset(&mut self) {}
+}
+
+impl<'a> Iteratee<ParseEvent<'a>> for BoolRecognizer {
+    type Item = Result<bool, ReadError>;
+
+    fn feed(&mut self, input: ParseEvent<'a>) -> Option<Self::Item> {
+        match input {
+            ParseEvent::Boolean(p) => Some(Ok(p)),
+            ow => Some(Err(super::bad_kind(&ow))),
+        }
+    }
+}
+
+impl Recognizer<bool> for BoolRecognizer {
     fn reset(&mut self) {}
 }
 

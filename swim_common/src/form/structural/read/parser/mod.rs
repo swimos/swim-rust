@@ -19,11 +19,13 @@ mod tests;
 mod tokens;
 
 pub use crate::form::structural::read::parser::error::ParseError;
-use crate::form::structural::read::{HeaderReader, StructuralReadable};
+use crate::form::structural::read::ReadError;
 use nom_locate::LocatedSpan;
 use num_bigint::{BigInt, BigUint};
 use std::borrow::Cow;
-use std::convert::TryFrom;
+use crate::form::structural::read::improved::RecognizerReadable;
+use utilities::iteratee::Iteratee;
+use crate::model::text::Text;
 
 /// Wraps a string in a strucutre that keeps track of the line and column
 /// as the input is parsed.
@@ -58,6 +60,114 @@ pub enum ParseEvent<'a> {
     EndRecord,
 }
 
+impl<'a> From<u8> for ParseEvent<'a> {
+    fn from(n: u8) -> Self {
+        ParseEvent::Number(NumericLiteral::Int(n.into()))
+    }
+}
+
+impl<'a> From<i16> for ParseEvent<'a> {
+    fn from(n: i16) -> Self {
+        ParseEvent::Number(NumericLiteral::Int(n.into()))
+    }
+}
+
+impl<'a> From<u16> for ParseEvent<'a> {
+    fn from(n: u16) -> Self {
+        ParseEvent::Number(NumericLiteral::UInt(n.into()))
+    }
+}
+
+impl<'a> From<i8> for ParseEvent<'a> {
+    fn from(n: i8) -> Self {
+        ParseEvent::Number(NumericLiteral::Int(n.into()))
+    }
+}
+
+impl<'a> From<i32> for ParseEvent<'a> {
+    fn from(n: i32) -> Self {
+        ParseEvent::Number(NumericLiteral::Int(n.into()))
+    }
+}
+
+impl<'a> From<i64> for ParseEvent<'a> {
+    fn from(n: i64) -> Self {
+        ParseEvent::Number(NumericLiteral::Int(n))
+    }
+}
+
+impl<'a> From<u32> for ParseEvent<'a> {
+    fn from(n: u32) -> Self {
+        ParseEvent::Number(NumericLiteral::UInt(n.into()))
+    }
+}
+
+impl<'a> From<u64> for ParseEvent<'a> {
+    fn from(n: u64) -> Self {
+        ParseEvent::Number(NumericLiteral::UInt(n))
+    }
+}
+
+impl<'a> From<f64> for ParseEvent<'a> {
+    fn from(x: f64) -> Self {
+        ParseEvent::Number(NumericLiteral::Float(x))
+    }
+}
+
+impl<'a> From<f32> for ParseEvent<'a> {
+    fn from(x: f32) -> Self {
+        ParseEvent::Number(NumericLiteral::Float(x.into()))
+    }
+}
+
+impl<'a> From<BigInt> for ParseEvent<'a> {
+    fn from(n: BigInt) -> Self {
+        ParseEvent::Number(NumericLiteral::BigInt(n))
+    }
+}
+
+impl<'a> From<BigUint> for ParseEvent<'a> {
+    fn from(n: BigUint) -> Self {
+        ParseEvent::Number(NumericLiteral::BigUint(n))
+    }
+}
+
+impl<'a> From<&'a str> for ParseEvent<'a> {
+    fn from(s: &'a str) -> Self {
+        ParseEvent::TextValue(Cow::Borrowed(s))
+    }
+}
+
+impl<'a> From<String> for ParseEvent<'a> {
+    fn from(s: String) -> Self {
+        ParseEvent::TextValue(Cow::Owned(s))
+    }
+}
+
+impl<'a> From<Cow<'a, str>> for ParseEvent<'a> {
+    fn from(s: Cow<'a, str>) -> Self {
+        ParseEvent::TextValue(s)
+    }
+}
+
+impl<'a> From<Text> for ParseEvent<'a> {
+    fn from(s: Text) -> Self {
+        ParseEvent::TextValue(Cow::Owned(s.to_string()))
+    }
+}
+
+impl<'a> From<bool> for ParseEvent<'a> {
+    fn from(p: bool) -> Self {
+        ParseEvent::Boolean(p)
+    }
+}
+
+impl<'a> From<Vec<u8>> for ParseEvent<'a> {
+    fn from(blob: Vec<u8>) -> Self {
+        ParseEvent::Blob(blob)
+    }
+}
+
 /// Create an itearator that will parse a sequence of events from a complete string.
 pub fn parse_iterator(
     input: Span<'_>,
@@ -65,51 +175,16 @@ pub fn parse_iterator(
     record::ParseIterator::new(input)
 }
 
-/// Drive the deserialization of a [`StrucutralReadable`] type from the sequence of
-/// events generated from a Recon parser iterator.
-pub fn parse_from_str<T: StructuralReadable>(input: Span<'_>) -> Result<T, ParseError> {
+pub fn parse_recognize<T: RecognizerReadable>(input: Span<'_>) -> Result<T, ParseError> {
+    let mut recognizer = T::make_recognizer();
     let mut iterator = record::ParseIterator::new(input);
-    let parsed = if let Some(event) = iterator.next() {
-        match event? {
-            ParseEvent::Extant => T::read_extant()?,
-            ParseEvent::TextValue(value) => T::read_text(value)?,
-            ParseEvent::Number(NumericLiteral::Int(value)) => {
-                if let Ok(n) = i32::try_from(value) {
-                    T::read_i32(n)?
-                } else {
-                    T::read_i64(value)?
-                }
+    loop {
+        if let Some(ev) = iterator.next() {
+            if let Some(r) = recognizer.feed(ev?) {
+                break r;
             }
-            ParseEvent::Number(NumericLiteral::UInt(value)) => {
-                if let Ok(n) = i32::try_from(value) {
-                    T::read_i32(n)?
-                } else if let Ok(n) = i64::try_from(value) {
-                    T::read_i64(n)?
-                } else {
-                    T::read_u64(value)?
-                }
-            }
-            ParseEvent::Number(NumericLiteral::BigInt(value)) => T::read_big_int(value)?,
-            ParseEvent::Number(NumericLiteral::BigUint(value)) => T::read_big_uint(value)?,
-            ParseEvent::Number(NumericLiteral::Float(value)) => T::read_f64(value)?,
-            ParseEvent::Boolean(value) => T::read_bool(value)?,
-            ParseEvent::Blob(data) => T::read_blob(data)?,
-            ParseEvent::StartAttribute(name) => {
-                let header_reader = T::record_reader()?;
-                let body_reader = record::read_from_header(header_reader, &mut iterator, name)?;
-                T::try_terminate(body_reader)?
-            }
-            ParseEvent::StartBody => {
-                let body_reader =
-                    record::read_body(T::record_reader()?.start_body()?, &mut iterator, false)?;
-                T::try_terminate(body_reader)?
-            }
-            _ => {
-                return Err(ParseError::InvalidEventStream);
-            }
+        } else {
+            break recognizer.flush().unwrap_or(Err(ReadError::IncompleteRecord));
         }
-    } else {
-        T::read_extant()?
-    };
-    Ok(parsed)
+    }.map_err(ParseError::Structure)
 }

@@ -11,10 +11,8 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-
-use crate::form::structural::read::{
-    BodyReader, HeaderReader, ReadError, StructuralReadable, ValueReadable,
-};
+/*
+use crate::form::structural::read::ReadError;
 use crate::model::text::Text;
 use crate::model::ValueKind;
 use num_bigint::{BigInt, BigUint};
@@ -217,3 +215,4 @@ fn read_error_display() {
     let string = ReadError::UnexpectedKind(ValueKind::Text).to_string();
     assert_eq!(string, "Unexpected value kind: Text");
 }
+*/

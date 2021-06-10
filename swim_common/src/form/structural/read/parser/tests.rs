@@ -1246,7 +1246,7 @@ fn complex_slot() {
 
 fn value_from_string(rep: &str) -> Result<Value, ParseError> {
     let span = Span::new(rep);
-    super::parse_from_str(span)
+    super::parse_recognize(span)
 }
 
 #[test]

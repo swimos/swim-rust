@@ -14,9 +14,7 @@
 
 use super::tokens::streaming::*;
 use super::tokens::*;
-use super::{NumericLiteral, ParseEvent, Span};
-use crate::form::structural::read::parser::error::ParseError;
-use crate::form::structural::read::{BodyReader, HeaderReader, ReadError};
+use super::{ParseEvent, Span};
 use either::Either;
 use nom::branch::alt;
 use nom::character::complete as char_comp;
@@ -26,7 +24,6 @@ use nom::error::ErrorKind;
 use nom::sequence::{pair, preceded};
 use nom::{Finish, IResult, Parser};
 use std::borrow::Cow;
-use std::convert::TryFrom;
 
 /// Change the state of the parser after producing an event.
 #[derive(Debug)]
@@ -301,7 +298,7 @@ impl<'a> From<ParseEvent<'a>> for ParseEvents<'a> {
         ParseEvents::SingleEvent(event)
     }
 }
-
+/*
 /// Drive a [`HeaderReader`] from an iterator of parse events.
 pub fn read_from_header<'a, H: HeaderReader>(
     mut reader: H,
@@ -402,7 +399,7 @@ pub fn read_body<B: BodyReader>(
         }
     }
 }
-
+*/
 /// A stateful, incremental Recon parser. Each call to `parse` will produce zero
 /// or more parse events which are guaranteed to be consistent.
 #[derive(Debug)]
