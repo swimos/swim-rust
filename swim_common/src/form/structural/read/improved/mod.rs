@@ -13,6 +13,8 @@
 // limitations under the License.
 
 pub mod primitive;
+#[cfg(test)]
+mod tests;
 
 use crate::form::structural::read::parser::{ParseEvent, NumericLiteral};
 use utilities::iteratee::Iteratee;
@@ -20,7 +22,6 @@ use crate::form::structural::read::ReadError;
 use crate::model::text::Text;
 use crate::model::{ValueKind, Value};
 use std::borrow::Borrow;
-use either::Either;
 use std::marker::PhantomData;
 use num_bigint::{BigInt, BigUint};
 use std::sync::Arc;
@@ -59,7 +60,9 @@ fn bad_kind(event: &ParseEvent<'_>) -> ReadError {
         ParseEvent::Extant => ReadError::UnexpectedKind(ValueKind::Extant),
         ParseEvent::Blob(_) => ReadError::UnexpectedKind(ValueKind::Data),
         ParseEvent::StartBody| ParseEvent::StartAttribute(_) => ReadError::UnexpectedKind(ValueKind::Record),
-        _ => ReadError::InconsistentState,
+        _ => {
+            ReadError::InconsistentState
+        },
     }
 }
 
@@ -155,26 +158,29 @@ impl<'a, T, R: Recognizer<T>> Iteratee<ParseEvent<'a>> for VecRecognizer<T, R> {
     }
 }
 
+impl<T, R> VecRecognizer<T, R> {
+
+    fn new(is_attr_body: bool, rec: R) -> Self {
+        VecRecognizer {
+            is_attr_body,
+            stage: BodyStage::Init,
+            vector: vec![],
+            rec,
+        }
+    }
+
+}
+
 impl<T: RecognizerReadable> RecognizerReadable for Vec<T> {
     type Rec = VecRecognizer<T, T::Rec>;
     type AttrRec = VecRecognizer<T, T::Rec>;
 
     fn make_recognizer() -> Self::Rec {
-        VecRecognizer {
-            is_attr_body: false,
-            stage: BodyStage::Init,
-            vector: vec![],
-            rec: T::make_recognizer(),
-        }
+        VecRecognizer::new(false, T::make_recognizer())
     }
 
     fn make_attr_recognizer() -> Self::AttrRec {
-        VecRecognizer {
-            is_attr_body: false,
-            stage: BodyStage::Init,
-            vector: vec![],
-            rec: T::make_recognizer(),
-        }
+        VecRecognizer::new(true, T::make_recognizer())
     }
 }
 
@@ -186,238 +192,11 @@ impl<T, R: Recognizer<T>> Recognizer<Vec<T>> for VecRecognizer<T, R> {
     }
 }
 
-impl<T: RecognizerReadable, U: RecognizerReadable> RecognizerReadable for (T, U) {
-    type Rec = PairRecognizer<T, U>;
-    type AttrRec = PairRecognizer<T, U>;
-
-    fn make_recognizer() -> Self::Rec {
-        PairRecognizer {
-            is_attr: false,
-            stage: BodyStage::Init,
-            first: None,
-            second: None,
-            left_recog: T::make_recognizer(),
-            right_recog: U::make_recognizer(),
-        }
-    }
-
-    fn make_attr_recognizer() -> Self::AttrRec {
-        PairRecognizer {
-            is_attr: true,
-            stage: BodyStage::Init,
-            first: None,
-            second: None,
-            left_recog: T::make_recognizer(),
-            right_recog: U::make_recognizer(),
-        }
-    }
-}
-
 #[derive(Clone, Copy)]
 enum BodyStage {
     Init,
     Item,
     Between,
-}
-
-pub struct PairRecognizer<T: RecognizerReadable, U: RecognizerReadable> {
-    is_attr: bool,
-    stage: BodyStage,
-    first: Option<T>,
-    second: Option<U>,
-    left_recog: T::Rec,
-    right_recog: U::Rec,
-}
-
-impl<T, U> PairRecognizer<T, U>
-    where
-        T: RecognizerReadable,
-        U: RecognizerReadable,
-{
-
-    fn delegate<'a>(&mut self, input: ParseEvent<'a>) -> Option<ReadError> {
-        let PairRecognizer { first, second, left_recog, right_recog, .. } = self;
-        match (&*first, &*second) {
-            (Some(_), Some(_)) => Some(ReadError::UnexpectedItem),
-            (Some(_), _) => {
-                match right_recog.feed(input)? {
-                    Ok(u) => {
-                        *second = Some(u);
-                        None
-                    }
-                    Err(e) => Some(e)
-                }
-            }
-            _ => {
-                match left_recog.feed(input)? {
-                    Ok(t) => {
-                        *first = Some(t);
-                        None
-                    }
-                    Err(e) => Some(e)
-                }
-            }
-        }
-    }
-
-}
-
-impl<'a, T, U> Iteratee<ParseEvent<'a>> for PairRecognizer<T, U>
-    where
-        T: RecognizerReadable,
-        U: RecognizerReadable,
-{
-    type Item = Result<(T, U), ReadError>;
-
-    fn feed(&mut self, input: ParseEvent<'a>) -> Option<Self::Item> {
-
-        match self.stage {
-            BodyStage::Init => {
-                if matches!(&input, ParseEvent::StartBody) {
-                    self.stage = BodyStage::Between;
-                    None
-                } else {
-                    Some(Err(bad_kind(&input)))
-                }
-            }
-            BodyStage::Item => {
-                let err = self.delegate(input)?;
-                Some(Err(err))
-            }
-            BodyStage::Between => {
-                if (!self.is_attr && matches!(&input, ParseEvent::EndRecord)) || (self.is_attr && matches!(&input, ParseEvent::EndAttribute)) {
-                    if let (Some(first), Some(second)) = (self.first.take(), self.second.take()) {
-                        Some(Ok((first, second)))
-                    } else {
-                        Some(Err(ReadError::IncompleteRecord))
-                    }
-                } else {
-                    self.stage = BodyStage::Item;
-                    let err = self.delegate(input)?;
-                    Some(Err(err))
-                }
-            }
-        }
-    }
-}
-
-impl<T, U> Recognizer<(T, U)> for PairRecognizer<T, U>
-    where
-        T: RecognizerReadable,
-        U: RecognizerReadable,
-{
-    fn reset(&mut self) {
-        self.stage = BodyStage::Init;
-        self.first = None;
-        self.second = None;
-        self.left_recog.reset();
-        self.right_recog.reset();
-    }
-}
-
-impl<T: RecognizerReadable, U: RecognizerReadable> RecognizerReadable for Either<T, U> {
-    type Rec = EitherRecognizer<T, U>;
-    type AttrRec = SimpleAttrBody<Either<T, U>, EitherRecognizer<T, U>>;
-
-    fn make_recognizer() -> Self::Rec {
-        EitherRecognizer {
-            stage: Some(BodyStage::Init),
-            is_left: false,
-            result: None,
-            left: T::make_recognizer(),
-            right: U::make_recognizer(),
-        }
-    }
-
-    fn make_attr_recognizer() -> Self::AttrRec {
-        SimpleAttrBody::new(Self::make_recognizer())
-    }
-}
-
-pub struct EitherRecognizer<T: RecognizerReadable, U: RecognizerReadable> {
-    stage: Option<BodyStage>,
-    is_left: bool,
-    result: Option<Either<T, U>>,
-    left: T::Rec,
-    right: U::Rec,
-}
-
-impl<'a, T: RecognizerReadable, U: RecognizerReadable> Iteratee<ParseEvent<'a>> for EitherRecognizer<T, U> {
-    type Item = Result<Either<T, U>, ReadError>;
-
-    fn feed(&mut self, input: ParseEvent<'a>) -> Option<Self::Item> {
-        match self.stage {
-            Some(BodyStage::Init) => {
-                if let ParseEvent::StartAttribute(name) = input {
-                    match name.borrow() {
-                        "left" => {
-                            self.stage = Some(BodyStage::Item);
-                            self.is_left = true;
-                            None
-                        },
-                        "right" => {
-                            self.stage = Some(BodyStage::Item);
-                            self.is_left = false;
-                            None
-                        },
-                        ow => Some(Err(ReadError::UnexpectedAttribute(Text::new(ow)))),
-                    }
-                } else {
-                    Some(Err(bad_kind(&input)))
-                }
-            }
-            Some(BodyStage::Item) => {
-                if self.is_left {
-                    let r = self.left.feed(input)?;
-                    self.stage = Some(BodyStage::Between);
-                    match r {
-                        Ok(t) => {
-                            self.result = Some(Either::Left(t));
-                            None
-                        }
-                        Err(e) => Some(Err(e)),
-                    }
-                } else {
-                    let r = self.right.feed(input)?;
-                    self.stage = Some(BodyStage::Between);
-                    match r {
-                        Ok(u) => {
-                            self.result = Some(Either::Right(u));
-                            None
-                        }
-                        Err(e) => Some(Err(e)),
-                    }
-                }
-            }
-            Some(BodyStage::Between) => {
-                if matches!(&input, ParseEvent::EndAttribute) {
-                    self.stage = None;
-                    None
-                } else {
-                    Some(Err(ReadError::UnexpectedItem))
-                }
-            }
-            _ => {
-                if matches!(&input, ParseEvent::EndRecord) {
-                    if let Some(v) = self.result.take() {
-                        Some(Ok(v))
-                    } else {
-                        Some(Err(ReadError::IncompleteRecord))
-                    }
-                } else {
-                    Some(Err(ReadError::UnexpectedItem))
-                }
-            }
-        }
-    }
-}
-
-impl<T: RecognizerReadable, U: RecognizerReadable> Recognizer<Either<T, U>> for EitherRecognizer<T, U> {
-    fn reset(&mut self) {
-        self.stage = Some(BodyStage::Init);
-        self.left.reset();
-        self.right.reset();
-    }
 }
 
 type Selector<Flds> = for<'a> fn(&mut Flds, u32, ParseEvent<'a>) -> Option<Result<(), ReadError>>;
@@ -498,7 +277,7 @@ impl<T, Flds> NamedFieldsRecognizer<T, Flds> {
                     reset: fn(&mut Flds)) -> Self {
         NamedFieldsRecognizer {
             is_attr_body: true,
-            state: BodyFieldState::Init,
+            state: BodyFieldState::Between,
             fields,
             progress: Bitset::new(num_fields),
             select_index,
@@ -537,10 +316,10 @@ impl<'a, T, Flds> Iteratee<ParseEvent<'a>> for NamedFieldsRecognizer<T, Flds> {
             }
             BodyFieldState::Between => {
                 match input {
-                    ParseEvent::EndRecord if *is_attr_body => {
+                    ParseEvent::EndRecord if !*is_attr_body => {
                         Some(on_done(fields))
                     }
-                    ParseEvent::EndAttribute if !*is_attr_body => {
+                    ParseEvent::EndAttribute if *is_attr_body => {
                         Some(on_done(fields))
                     }
                     ParseEvent::TextValue(name) => {
@@ -628,7 +407,7 @@ impl<T, Flds> OrdinalFieldsRecognizer<T, Flds> {
                     reset: fn(&mut Flds)) -> Self {
         OrdinalFieldsRecognizer {
             is_attr_body: true,
-            state: BodyStage::Init,
+            state: BodyStage::Between,
             fields,
             num_fields,
             index: 0,
@@ -1295,132 +1074,6 @@ impl<T, Flds> Recognizer<T> for OrdinalStructRecognizer<T, Flds> {
     }
 }
 
-#[cfg(test)]
-mod tests {
-
-    use super::*;
-
-    fn read<'a, It, T>(mut it: It) -> Result<T, ReadError>
-        where
-            It: Iterator<Item = ParseEvent<'a>> + 'a,
-            T: RecognizerReadable,
-    {
-
-        let mut recognizer = T::make_recognizer();
-
-        loop {
-            if let Some(event) = it.next() {
-                if let Some(r) = recognizer.feed(event) {
-                    break r;
-                }
-            } else {
-                break Err(ReadError::IncompleteRecord)
-            }
-        }
-    }
-
-    #[test]
-    fn examples() {
-        let events = vec![ParseEvent::Number(NumericLiteral::Int(1))];
-        let r: Result<i32, ReadError> = read(events.into_iter());
-        assert_eq!(r, Ok(1));
-    }
-
-    pub struct Example<S, T> {
-        pub first: S,
-        pub second: T,
-    }
-
-    fn example_select_field(name: &str) -> Option<u32> {
-        match name {
-            "first" => Some(0),
-            "second" => Some(1),
-            _ => None,
-        }
-    }
-
-    fn example_select<'a, S, RS: Recognizer<S>, T, RT: Recognizer<T>>(state: &mut (Option<S>, Option<T>, RS, RT), index: u32, input: ParseEvent<'a>) -> Option<Result<(), ReadError>> {
-        let (first, second, first_rec, second_rec) = state;
-        match index {
-            0 => {
-                if first.is_some() {
-                    Some(Err(ReadError::DuplicateField(Text::new("first"))))
-                } else {
-                    let r = first_rec.feed(input)?;
-                    match r {
-                        Ok(s) => {
-                            *first = Some(s);
-                            Some(Ok(()))
-                        }
-                        Err(e) => {
-                            Some(Err(e))
-                        }
-                    }
-                }
-            },
-            1 => {
-                if second.is_some() {
-                    Some(Err(ReadError::DuplicateField(Text::new("second"))))
-                } else {
-                    let r = second_rec.feed(input)?;
-                    match r {
-                        Ok(t) => {
-                            *second = Some(t);
-                            Some(Ok(()))
-                        }
-                        Err(e) => {
-                            Some(Err(e))
-                        }
-                    }
-                }
-            },
-            _ => Some(Err(ReadError::InconsistentState)),
-        }
-    }
-
-    fn example_construct<S: RecognizerReadable, RS: Recognizer<S>, T: RecognizerReadable, RT: Recognizer<T>>(state: &mut (Option<S>, Option<T>, RS, RT)) -> Result<Example<S, T>, ReadError> {
-        let (first, second, first_rec, second_rec) = state;
-        first_rec.reset();
-        second_rec.reset();
-        match (first.take().or_else(|| S::on_absent()), second.take().or_else(|| T::on_absent())) {
-            (Some(first), Some(second)) => Ok(Example {first, second}),
-            (Some(_), _) => Err(ReadError::MissingFields(vec![Text::new("second")])),
-            (_, Some(_)) => Err(ReadError::MissingFields(vec![Text::new("first")])),
-            _ => Err(ReadError::MissingFields(vec![Text::new("first"), Text::new("second")])),
-        }
-    }
-
-    fn example_reset<S: RecognizerReadable, RS: Recognizer<S>, T: RecognizerReadable, RT: Recognizer<T>>(state: &mut (Option<S>, Option<T>, RS, RT)) {
-        let (first, second, first_rec, second_rec) = state;
-        *first = None;
-        *second = None;
-        first_rec.reset();
-        second_rec.reset();
-    }
-
-    type ExampleFields<S, T> = (Option<S>, Option<T>, <S as RecognizerReadable>::Rec, <T as RecognizerReadable>::Rec);
-    type ExampleRec<S, T> = NamedFieldsRecognizer<Example<S, T>, ExampleFields<S, T>>;
-    type ExampleAttrRec<S, T> = FirstOf<Example<S, T>, ExampleRec<S, T>, SimpleAttrBody<Example<S, T>, ExampleRec<S, T>>>;
-
-    impl<S: RecognizerReadable, T: RecognizerReadable> RecognizerReadable for Example<S, T> {
-        type Rec = ExampleRec<S, T>;
-        type AttrRec = ExampleAttrRec<S, T>;
-
-        fn make_recognizer() -> Self::Rec {
-            NamedFieldsRecognizer::new((None, None, S::make_recognizer(), T::make_recognizer()),
-                                       example_select_field, 2, example_select, example_construct, example_reset)
-        }
-
-        fn make_attr_recognizer() -> Self::AttrRec {
-            let option1 = NamedFieldsRecognizer::new_attr((None, None, S::make_recognizer(), T::make_recognizer()),
-                                                          example_select_field, 2, example_select, example_construct, example_reset);
-
-            let option2 = SimpleAttrBody::new(Self::make_recognizer());
-            FirstOf::new(option1, option2)
-        }
-    }
-}
-
 impl<T: RecognizerReadable> RecognizerReadable for Arc<T> {
     type Rec = MappedRecognizer<T, T::Rec, fn(T) -> Arc<T>>;
     type AttrRec = MappedRecognizer<T, T::AttrRec, fn(T) -> Arc<T>>;
@@ -1607,8 +1260,6 @@ pub struct HashMapRecognizer<K, V, RK, RV> {
     val_rec: RV,
 }
 
-
-
 impl<K, V, RK, RV> HashMapRecognizer<K, V, RK, RV> {
 
     fn new(key_rec: RK,
@@ -1627,7 +1278,7 @@ impl<K, V, RK, RV> HashMapRecognizer<K, V, RK, RV> {
            val_rec: RV) -> Self {
         HashMapRecognizer {
             is_attr_body: true,
-            stage: MapStage::Init,
+            stage: MapStage::Between,
             key: None,
             map: HashMap::new(),
             key_rec,
