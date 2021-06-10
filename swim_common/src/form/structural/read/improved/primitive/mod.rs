@@ -257,3 +257,89 @@ impl Recognizer<bool> for BoolRecognizer {
     fn reset(&mut self) {}
 }
 
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+
+    #[test]
+    fn unit_recognizer() {
+        let mut rec = UnitRecognizer;
+        assert_eq!(rec.feed(ParseEvent::Extant), Some(Ok(())));
+    }
+
+    #[test]
+    fn i32_recognizer() {
+        let mut rec = I32Recognizer;
+        assert_eq!(rec.feed(ParseEvent::from(-3i32)), Some(Ok(-3i32)));
+    }
+
+    #[test]
+    fn i64_recognizer() {
+        let mut rec = I64Recognizer;
+        let n: i64 = i64::from(i32::min_value()) * 2;
+        assert_eq!(rec.feed(n.into()), Some(Ok(n)));
+    }
+
+    #[test]
+    fn u32_recognizer() {
+        let mut rec = U32Recognizer;
+        let n: u32 = 567u32;
+        assert_eq!(rec.feed(n.into()), Some(Ok(n)));
+    }
+
+    #[test]
+    fn u64_recognizer() {
+        let mut rec = U64Recognizer;
+        let n: u64 = u64::from(u32::max_value()) * 2;
+        assert_eq!(rec.feed(n.into()), Some(Ok(n)));
+    }
+
+    #[test]
+    fn f64_recognizer() {
+        let mut rec = F64Recognizer;
+        let x: f64 = 1.5;
+        assert_eq!(rec.feed(x.into()), Some(Ok(x)));
+    }
+
+    #[test]
+    fn bool_recognizer() {
+        let mut rec = BoolRecognizer;
+        assert_eq!(rec.feed(true.into()), Some(Ok(true)));
+    }
+
+    #[test]
+    fn string_recognizer() {
+        let mut rec = StringRecognizer;
+        assert_eq!(rec.feed("name".into()), Some(Ok("name".to_string())));
+    }
+
+    #[test]
+    fn text_recognizer() {
+        let mut rec = TextRecognizer;
+        assert_eq!(rec.feed("name".into()), Some(Ok(Text::new("name"))));
+    }
+
+    #[test]
+    fn blob_recognizer() {
+        let mut rec = DataRecognizer;
+        let ev = ParseEvent::Blob(vec![1, 2, 3]);
+        assert_eq!(rec.feed(ev), Some(Ok(vec![1, 2, 3])));
+    }
+
+    #[test]
+    fn big_int_recognizer() {
+        let mut rec = BigIntRecognizer;
+        let ev = ParseEvent::Number(NumericLiteral::BigInt(BigInt::from(-5)));
+        assert_eq!(rec.feed(ev), Some(Ok(BigInt::from(-5))));
+    }
+
+    #[test]
+    fn big_uint_recognizer() {
+        let mut rec = BigUintRecognizer;
+        let ev = ParseEvent::Number(NumericLiteral::BigUint(BigUint::from(5u32)));
+        assert_eq!(rec.feed(ev), Some(Ok(BigUint::from(5u32))));
+    }
+}
+
