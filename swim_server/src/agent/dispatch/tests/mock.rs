@@ -19,6 +19,7 @@ use crate::agent::lane::channels::uplink::spawn::UplinkErrorReport;
 use crate::agent::lane::channels::uplink::UplinkError;
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::{AttachError, Eff, LaneIo};
+use crate::meta::metric::{aggregator_sink, NodeMetricAggregator};
 use crate::routing::error::RouterError;
 use crate::routing::{
     ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedClientEnvelope, TaggedEnvelope,
@@ -146,6 +147,10 @@ impl AgentExecutionContext for MockExecutionContext {
 
     fn spawner(&self) -> Sender<Eff> {
         self.spawner.clone()
+    }
+
+    fn metrics(&self) -> NodeMetricAggregator {
+        aggregator_sink()
     }
 
     fn uplinks_idle_since(&self) -> &Arc<AtomicInstant> {

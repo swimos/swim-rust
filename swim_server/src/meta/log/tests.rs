@@ -223,7 +223,7 @@ async fn agent_log() {
             TEST_MSG.to_string(),
             LogLevel::Info,
             RelativeUri::from_str("/test").unwrap(),
-            "lane"
+            "lane".to_string()
         )
     );
 }
@@ -242,7 +242,7 @@ fn log_entry(level: LogLevel, message: &str) -> LogEntry {
         message.to_string(),
         level,
         RelativeUri::from_str("/node").unwrap(),
-        "lane",
+        "lane".to_string(),
     )
 }
 
