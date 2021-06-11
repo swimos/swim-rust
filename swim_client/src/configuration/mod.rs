@@ -17,7 +17,7 @@
 
 pub mod router;
 
-// Todo dm
+//Todo dm this needs to be changed after the new client configuration is finalised.
 // #[cfg(test)]
 // mod tests;
 

@@ -111,7 +111,7 @@ impl SwimClientBuilder {
             mpsc::channel(client_params.connections_params.router_buffer_size.get());
         let (client_conn_request_tx, client_conn_request_rx) =
             mpsc::channel(client_params.connections_params.router_buffer_size.get());
-        let top_level_router_fac = ClientRouterFactory::new(client_conn_request_tx.clone());
+        let delegate_router_fac = ClientRouterFactory::new(client_conn_request_tx.clone());
 
         let (close_tx, close_rx) = promise::promise();
 
@@ -121,7 +121,7 @@ impl SwimClientBuilder {
             TungsteniteWsConnections {
                 config: client_params.websocket_params,
             },
-            top_level_router_fac,
+            delegate_router_fac,
             OpenEndedFutures::new(),
             RemoteConnectionChannels::new(
                 remote_router_tx.clone(),
@@ -180,7 +180,7 @@ impl SwimClientBuilder {
             mpsc::channel(client_params.connections_params.router_buffer_size.get());
         let (client_conn_request_tx, client_conn_request_rx) =
             mpsc::channel(client_params.connections_params.router_buffer_size.get());
-        let top_level_router_fac = ClientRouterFactory::new(client_conn_request_tx.clone());
+        let delegate_router_factory = ClientRouterFactory::new(client_conn_request_tx.clone());
         let (close_tx, close_rx) = promise::promise();
 
         let remote_connections_task = RemoteConnectionsTask::new_client_task(
@@ -189,7 +189,7 @@ impl SwimClientBuilder {
             TungsteniteWsConnections {
                 config: client_params.websocket_params,
             },
-            top_level_router_fac,
+            delegate_router_factory,
             OpenEndedFutures::new(),
             RemoteConnectionChannels::new(
                 remote_router_tx.clone(),

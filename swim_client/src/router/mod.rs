@@ -25,8 +25,9 @@ use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::str::FromStr;
 use swim_common::request::Request;
+use swim_common::routing::error::ConnectionError::Http;
 use swim_common::routing::error::{
-    ConnectionError, ResolutionError, RouterError, RoutingError, Unresolvable,
+    ConnectionError, HttpError, ResolutionError, RouterError, RoutingError, Unresolvable,
 };
 use swim_common::routing::remote::{RawRoute, RemoteRoutingRequest};
 use swim_common::routing::{CloseReceiver, ConnectionDropped, Origin, PlaneRoutingRequest};
@@ -47,9 +48,8 @@ use utilities::errors::Recoverable;
 use utilities::sync::promise;
 use utilities::uri::RelativeUri;
 
-//Todo dm
-// #[cfg(test)]
-// mod tests;
+#[cfg(test)]
+mod tests;
 
 mod incoming;
 mod outgoing;
@@ -188,7 +188,7 @@ impl<Path: Addressable> ClientConnectionsManager<Path> {
             match next {
                 Some(ClientRequest::Connect { request, origin }) => {
                     let (sender, _) = outgoing_managers
-                        .entry(origin.to_string())
+                        .entry(origin.get_manager_key()?)
                         .or_insert_with(|| {
                             let (manager, sender, sub_tx) =
                                 ClientConnectionManager::new(buffer_size);

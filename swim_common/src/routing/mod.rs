@@ -14,8 +14,8 @@
 
 use crate::request::Request;
 use crate::routing::error::{
-    ConnectionError, NoAgentAtRoute, ResolutionError, RouterError, RoutingError, SendError,
-    Unresolvable,
+    ConnectionError, HttpError, NoAgentAtRoute, ResolutionError, RouterError, RoutingError,
+    SendError, Unresolvable,
 };
 use crate::routing::remote::{RawRoute, SchemeSocketAddr};
 use crate::routing::ws::WsMessage;
@@ -254,6 +254,26 @@ pub enum PlaneRoutingRequest {
 pub enum Origin {
     Local(RelativeUri),
     Remote(SchemeSocketAddr),
+}
+
+impl Origin {
+    /// Returns the part of the path used as a key for retrieving the corresponding
+    /// connection manager.
+    ///
+    /// A Url is used for remote locations, and Node for local ones.
+    pub fn get_manager_key(&self) -> Result<String, ConnectionError> {
+        match self {
+            Origin::Local(relative_uri) => Ok(relative_uri.to_string()),
+
+            Origin::Remote(scheme_socket_addr) => {
+                let addr = scheme_socket_addr.to_string();
+
+                Ok(url::Url::parse(&addr)
+                    .map_err(|_| ConnectionError::Http(HttpError::invalid_url(addr, None)))?
+                    .to_string())
+            }
+        }
+    }
 }
 
 impl Display for Origin {
