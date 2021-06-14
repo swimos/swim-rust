@@ -34,8 +34,8 @@ use crate::agent::tests::reporting_macro_agent::ReportingAgentEvent;
 use crate::agent::tests::stub_router::SingleChannelRouter;
 use crate::agent::tests::test_clock::TestClock;
 use crate::agent::{
-    ActionLifecycleTasks, AgentContext, CommandLifecycleTasks, Lane, LaneTasks, LifecycleTasks,
-    MapLifecycleTasks, SwimAgent, ValueLifecycleTasks,
+    ActionLifecycleTasks, AgentContext, AgentParameters, CommandLifecycleTasks, Lane, LaneTasks,
+    LifecycleTasks, MapLifecycleTasks, SwimAgent, ValueLifecycleTasks,
 };
 use crate::meta::info::LaneKind;
 use crate::meta::log::NodeLogger;
@@ -47,24 +47,27 @@ use std::fmt::Debug;
 use std::future::Future;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
+use swim_client::configuration::downlink::ConfigHierarchy;
+use swim_client::downlink::Downlinks;
+use swim_client::interface::{SwimClient, SwimClientBuilder};
 use swim_common::routing::RoutingAddr;
+use swim_common::warp::path::Path;
 use swim_runtime::task;
 use tokio::sync::{mpsc, Mutex};
 use tokio::time::{timeout, Duration};
 use tokio_stream::wrappers::ReceiverStream;
-use utilities::sync::trigger;
 use utilities::sync::trigger::Receiver;
+use utilities::sync::{promise, trigger};
 use utilities::uri::RelativeUri;
 
 mod stub_router {
     use futures::future::BoxFuture;
     use futures::FutureExt;
-    use std::net::SocketAddr;
     use std::sync::Arc;
     use swim_common::routing::error::ResolutionError;
     use swim_common::routing::error::RouterError;
     use swim_common::routing::{
-        ConnectionDropped, Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender,
+        ConnectionDropped, Origin, Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender,
     };
     use tokio::sync::mpsc;
     use url::Url;
@@ -97,7 +100,7 @@ mod stub_router {
         fn resolve_sender(
             &mut self,
             addr: RoutingAddr,
-            _origin: Option<SocketAddr>,
+            _origin: Option<Origin>,
         ) -> BoxFuture<Result<Route, ResolutionError>> {
             async move {
                 let SingleChannelRouter { inner, drop_rx, .. } = self;
@@ -111,6 +114,7 @@ mod stub_router {
             &mut self,
             _host: Option<Url>,
             _route: RelativeUri,
+            _origin: Option<Origin>,
         ) -> BoxFuture<Result<RoutingAddr, RouterError>> {
             panic!("Unexpected resolution attempt.")
         }
@@ -263,6 +267,10 @@ impl<Lane> AgentContext<TestAgent<Lane>> for TestContext<Lane>
 where
     Lane: LaneModel + Send + Sync + 'static,
 {
+    fn client(&self) -> SwimClient<Path> {
+        unimplemented!()
+    }
+
     fn schedule<Effect, Str, Sch>(&self, _effects: Str, _schedule: Sch) -> BoxFuture<'_, ()>
     where
         Effect: Future<Output = ()> + Send + 'static,
@@ -729,12 +737,13 @@ async fn agent_loop() {
     let config = TestAgentConfig::new(tx);
     let agent_lifecycle = config.agent_lifecycle();
 
-    let provider = AgentProvider::new(config, agent_lifecycle);
-    run_agent_test(provider, rx).await;
+    let provider = AgentProvider::new(config.clone(), agent_lifecycle);
+    run_agent_test(provider, config, rx).await;
 }
 
 pub async fn run_agent_test<Agent, Config, Lifecycle>(
     provider: AgentProvider<Agent, Config, Lifecycle>,
+    config: Config,
     mut rx: mpsc::Receiver<ReportingAgentEvent>,
 ) where
     Agent: SwimAgent<Config> + Debug,
@@ -749,14 +758,26 @@ pub async fn run_agent_test<Agent, Config, Lifecycle>(
 
     let (envelope_tx, envelope_rx) = mpsc::channel(buffer_size.get());
 
+    let parameters = AgentParameters::new(config, exec_config, uri, HashMap::new());
+
+    let (_close_tx, close_rx) = promise::promise();
+    let (client_conn_request_tx, _client_conn_request_rx) = mpsc::channel(8);
+
+    let (downlinks, _downlinks_handle) = Downlinks::new(
+        client_conn_request_tx,
+        Arc::new(ConfigHierarchy::default()),
+        close_rx,
+    );
+
+    let client = SwimClientBuilder::build_from_downlinks(downlinks);
+
     // The ReportingAgent is carefully contrived such that its lifecycle events all trigger in
     // a specific order. We can then safely expect these events in that order to verify the agent
     // loop.
     let (_, agent_proc) = provider.run(
-        uri,
-        HashMap::new(),
-        exec_config,
+        parameters,
         clock.clone(),
+        client,
         ReceiverStream::new(envelope_rx),
         SingleChannelRouter::new(RoutingAddr::local(1024)),
     );

@@ -25,9 +25,8 @@ use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::str::FromStr;
 use swim_common::request::Request;
-use swim_common::routing::error::ConnectionError::Http;
 use swim_common::routing::error::{
-    ConnectionError, HttpError, ResolutionError, RouterError, RoutingError, Unresolvable,
+    ConnectionError, ResolutionError, RouterError, RoutingError, Unresolvable,
 };
 use swim_common::routing::remote::{RawRoute, RemoteRoutingRequest};
 use swim_common::routing::{CloseReceiver, ConnectionDropped, Origin, PlaneRoutingRequest};

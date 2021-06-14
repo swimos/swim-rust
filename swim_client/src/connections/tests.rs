@@ -87,7 +87,9 @@ async fn create_mock_conn_request_loop(
 
 async fn create_connection_pool(fake_conns: FakeConnections) -> SwimConnPool<AbsolutePath> {
     let client_conn_request_tx = create_mock_conn_request_loop(fake_conns).await;
-    SwimConnPool::new(ConnectionPoolParams::default(), client_conn_request_tx)
+    let (pool, task) = SwimConnPool::new(ConnectionPoolParams::default(), client_conn_request_tx);
+    tokio::task::spawn(task.run());
+    pool
 }
 
 #[tokio::test]
@@ -561,7 +563,7 @@ async fn test_new_connection_send_message_error() {
     let buffer_size = 5;
 
     let mut fake_conns = FakeConnections::new();
-    let (reader_tx, writer_rx) = fake_conns.add_connection(host_url);
+    let (_reader_tx, _writer_rx) = fake_conns.add_connection(host_url);
     let client_conn_request_tx = create_mock_conn_request_loop(fake_conns).await;
 
     let connection = ClientConnection::new(path, buffer_size, &client_conn_request_tx)

@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use crate::configuration::downlink::{BackpressureMode, Config, DownlinkKind};
+use crate::connections::PoolTask;
 use crate::connections::SwimConnPool;
 use crate::downlink::error::SubscriptionError;
 use crate::downlink::model::map::UntypedMapModification;
@@ -78,6 +79,7 @@ pub struct DownlinksHandle<Path: Addressable> {
     pub downlinks_task: DownlinksTask<Path>,
     pub request_receiver: mpsc::Receiver<DownlinkRequest<Path>>,
     pub task_manager: TaskManager<SwimConnPool<Path>, Path>,
+    pub pool_task: PoolTask<Path>,
 }
 
 pub enum DownlinkRequest<Path: Addressable> {
@@ -109,7 +111,7 @@ impl<Path: Addressable> Downlinks<Path> {
 
         let client_params = config.client_params();
 
-        let connection_pool =
+        let (connection_pool, pool_task) =
             SwimConnPool::new(client_params.conn_pool_params, client_conn_request_tx);
 
         let (task_manager, connection_request_tx) =
@@ -124,6 +126,7 @@ impl<Path: Addressable> Downlinks<Path> {
                 downlinks_task,
                 request_receiver: rx,
                 task_manager,
+                pool_task,
             },
         )
     }

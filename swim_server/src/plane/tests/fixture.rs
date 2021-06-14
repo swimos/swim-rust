@@ -29,8 +29,10 @@ use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
+use swim_client::interface::SwimClient;
 use swim_common::routing::{Router, TaggedEnvelope};
 use swim_common::warp::envelope::Envelope;
+use swim_common::warp::path::Path;
 use swim_runtime::time::clock::Clock;
 use utilities::sync::trigger;
 use utilities::uri::RelativeUri;
@@ -105,6 +107,7 @@ impl<Clk: Clock, Delegate: Router + 'static> AgentRoute<Clk, EnvChannel, PlaneRo
         parameters: HashMap<String, String>,
         execution_config: AgentExecutionConfig,
         _clock: Clk,
+        _client: SwimClient<Path>,
         incoming_envelopes: EnvChannel,
         mut router: PlaneRouter<Delegate>,
     ) -> (Arc<dyn Any + Send + Sync>, BoxFuture<'static, AgentResult>) {
@@ -117,7 +120,10 @@ impl<Clk: Clock, Delegate: Router + 'static> AgentRoute<Clk, EnvChannel, PlaneRo
         let task = async move {
             let target_node: RelativeUri =
                 format!("/{}/{}", RECEIVER_PREFIX, target).parse().unwrap();
-            let addr = router.lookup(None, target_node.clone()).await.unwrap();
+            let addr = router
+                .lookup(None, target_node.clone(), None)
+                .await
+                .unwrap();
             let mut tx = router.resolve_sender(addr, None).await.unwrap().sender;
             assert!(tx
                 .send_item(Envelope::make_event(
@@ -149,6 +155,7 @@ impl<Clk: Clock, Delegate> AgentRoute<Clk, EnvChannel, PlaneRouter<Delegate>>
         parameters: HashMap<String, String>,
         execution_config: AgentExecutionConfig,
         _clock: Clk,
+        _client: SwimClient<Path>,
         incoming_envelopes: EnvChannel,
         _router: PlaneRouter<Delegate>,
     ) -> (Arc<dyn Any + Send + Sync>, BoxFuture<'static, AgentResult>) {

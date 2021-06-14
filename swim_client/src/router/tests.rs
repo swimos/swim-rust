@@ -12,23 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::connections::{Connection, ConnectionPool, ConnectionSender};
-use crate::router::{
-    ClientConnectionsManager, ClientRequest, ClientRouter, ClientRouterFactory, Router, RouterEvent,
-};
-use futures::future::{ready, BoxFuture};
-use futures::{FutureExt, StreamExt};
-use std::collections::HashMap;
+use crate::router::{ClientConnectionsManager, ClientRequest, ClientRouterFactory, Router};
 use std::convert::TryFrom;
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 use swim_common::model::Value;
-use swim_common::request::request_future::RequestError;
 use swim_common::request::Request;
-use swim_common::routing::error::{ConnectionError, HttpError, ResolutionError, Unresolvable};
+use swim_common::routing::error::{ResolutionError, Unresolvable};
 use swim_common::routing::remote::{RawRoute, RemoteRoutingRequest, Scheme, SchemeSocketAddr};
-use swim_common::routing::ws::WsMessage;
 use swim_common::routing::{
     Origin, PlaneRoutingRequest, RouterFactory, RoutingAddr, TaggedEnvelope,
 };
@@ -36,8 +27,6 @@ use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::{AbsolutePath, Path, RelativePath};
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::{mpsc, oneshot};
-use tokio::time::timeout;
-use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
 use utilities::sync::promise;
 use utilities::uri::RelativeUri;
@@ -128,7 +117,7 @@ async fn register_connection(
     router_request_tx: &Sender<ClientRequest<Path>>,
     origin: Origin,
 ) -> RawRoute {
-    let (tx, mut rx) = oneshot::channel();
+    let (tx, rx) = oneshot::channel();
     let request = Request::new(tx);
 
     router_request_tx

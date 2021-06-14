@@ -23,7 +23,7 @@ use crate::agent::lane::tests::ExactlyOnce;
 use crate::agent::lifecycle::AgentLifecycle;
 use crate::agent::tests::stub_router::SingleChannelRouter;
 use crate::agent::tests::test_clock::TestClock;
-use crate::agent::AgentContext;
+use crate::agent::{AgentContext, AgentParameters};
 use crate::plane::provider::AgentProvider;
 use crate::{
     action_lifecycle, agent_lifecycle, command_lifecycle, map_lifecycle, value_lifecycle, SwimAgent,
@@ -36,9 +36,13 @@ use std::sync::Arc;
 use std::time::Duration;
 use stm::stm::Stm;
 use stm::transaction::atomically;
+use swim_client::configuration::downlink::ConfigHierarchy;
+use swim_client::downlink::Downlinks;
+use swim_client::interface::SwimClientBuilder;
 use swim_common::routing::RoutingAddr;
 use tokio::sync::{mpsc, Mutex};
 use tokio_stream::wrappers::ReceiverStream;
+use utilities::sync::promise;
 use utilities::uri::RelativeUri;
 
 mod swim_server {
@@ -522,13 +526,25 @@ async fn agent_loop() {
 
     let (envelope_tx, envelope_rx) = mpsc::channel(buffer_size.get());
 
-    let provider = AgentProvider::new(config, agent_lifecycle);
+    let provider = AgentProvider::new(config.clone(), agent_lifecycle);
+
+    let parameters = AgentParameters::new(config, exec_config, uri, HashMap::new());
+
+    let (_close_tx, close_rx) = promise::promise();
+    let (client_conn_request_tx, _client_conn_request_rx) = mpsc::channel(8);
+
+    let (downlinks, _downlinks_handle) = Downlinks::new(
+        client_conn_request_tx,
+        Arc::new(ConfigHierarchy::default()),
+        close_rx,
+    );
+
+    let client = SwimClientBuilder::build_from_downlinks(downlinks);
 
     let (_, agent_proc) = provider.run(
-        uri,
-        HashMap::new(),
-        exec_config,
+        parameters,
         clock.clone(),
+        client,
         ReceiverStream::new(envelope_rx),
         SingleChannelRouter::new(RoutingAddr::local(1024)),
     );

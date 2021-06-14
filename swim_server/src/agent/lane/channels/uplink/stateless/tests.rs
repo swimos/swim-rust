@@ -17,7 +17,7 @@ use crate::agent::Eff;
 use futures::future::{join, ready, BoxFuture};
 use futures::FutureExt;
 use swim_common::routing::{
-    ConnectionDropped, Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender,
+    ConnectionDropped, Origin, Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender,
 };
 use tokio::sync::mpsc;
 
@@ -28,7 +28,6 @@ use swim_common::warp::path::RelativePath;
 use crate::agent::lane::channels::uplink::stateless::StatelessUplinks;
 use crate::agent::lane::channels::uplink::{AddressedUplinkMessage, UplinkAction, UplinkKind};
 use crate::agent::lane::channels::TaggedAction;
-use std::net::SocketAddr;
 use swim_common::routing::error::ResolutionError;
 use swim_common::routing::error::RouterError;
 use tokio_stream::wrappers::ReceiverStream;
@@ -60,7 +59,7 @@ impl Router for TestRouter {
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,
-        _origin: Option<SocketAddr>,
+        _origin: Option<Origin>,
     ) -> BoxFuture<Result<Route, ResolutionError>> {
         let TestRouter {
             sender, drop_rx, ..
@@ -76,12 +75,13 @@ impl Router for TestRouter {
         &mut self,
         _host: Option<Url>,
         _route: RelativeUri,
+        _origin: Option<Origin>,
     ) -> BoxFuture<'static, Result<RoutingAddr, RouterError>> {
         panic!("Unexpected resolution attempt.")
     }
 }
 
-struct TestContext(TestRouter, mpsc::Sender<Eff>);
+struct TestContext(TestRouter, mpsc::Sender<Eff>, RelativeUri);
 
 impl AgentExecutionContext for TestContext {
     type Router = TestRouter;
@@ -92,6 +92,10 @@ impl AgentExecutionContext for TestContext {
 
     fn spawner(&self) -> mpsc::Sender<Eff> {
         self.1.clone()
+    }
+
+    fn uri(&self) -> &RelativeUri {
+        &self.2
     }
 }
 

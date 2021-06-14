@@ -12,17 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::HashMap;
-use std::num::NonZeroUsize;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
-
 use crate::configuration::router::ConnectionPoolParams;
 use crate::router::ClientRequest;
 use futures::future::BoxFuture;
 use futures::select;
 use futures::stream;
 use futures::{FutureExt, Stream, StreamExt};
+use std::collections::HashMap;
+use std::num::NonZeroUsize;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use swim_common::request::request_future::RequestError;
 use swim_common::request::Request;
 use swim_common::routing::error::{
@@ -76,15 +75,12 @@ pub trait ConnectionPool: Clone + Send + 'static {
     fn close(self) -> BoxFuture<'static, Result<Result<(), ConnectionError>, ConnectionError>>;
 }
 
-type ConnectionPoolSharedHandle = Arc<Mutex<Option<TaskHandle<Result<(), ConnectionError>>>>>;
-
 /// The connection pool is responsible for opening new connections to remote hosts and managing
 /// them. It is possible to request a connection to be recreated or to return a cached connection
 /// for a given host if it already exists.
 #[derive(Clone)]
 pub struct SwimConnPool<Path: Addressable> {
     connection_request_tx: mpsc::Sender<ConnectionRequest<Path>>,
-    connection_requests_handle: ConnectionPoolSharedHandle,
     stop_request_tx: mpsc::Sender<()>,
 }
 
@@ -99,25 +95,26 @@ impl<Path: Addressable> SwimConnPool<Path> {
     pub fn new(
         config: ConnectionPoolParams,
         client_conn_request_tx: mpsc::Sender<ClientRequest<Path>>,
-    ) -> SwimConnPool<Path> {
+    ) -> (SwimConnPool<Path>, PoolTask<Path>) {
         let (connection_request_tx, connection_request_rx) =
             mpsc::channel(config.buffer_size().get());
         let (stop_request_tx, stop_request_rx) = mpsc::channel(config.buffer_size().get());
 
         let task = PoolTask::new(
+            config,
             connection_request_rx,
             client_conn_request_tx,
             config.buffer_size(),
             stop_request_rx,
         );
 
-        let connection_requests_handler = spawn(task.run(config));
-
-        SwimConnPool {
-            connection_request_tx,
-            connection_requests_handle: Arc::new(Mutex::new(Some(connection_requests_handler))),
-            stop_request_tx,
-        }
+        (
+            SwimConnPool {
+                connection_request_tx,
+                stop_request_tx,
+            },
+            task,
+        )
     }
 }
 
@@ -162,18 +159,12 @@ impl<Path: Addressable> ConnectionPool for SwimConnPool<Path> {
     /// Stops the pool from accepting new connection requests and closes down all existing
     /// connections.
     fn close(self) -> BoxFuture<'static, Result<Result<(), ConnectionError>, ConnectionError>> {
-        let handle = self
-            .connection_requests_handle
-            .lock()
-            .map(|mut h| h.take())
-            .map_err(|_| ConnectionError::Closed(CloseError::unexpected()));
         async move {
-            self.stop_request_tx.send(()).await?;
-            handle
-                .map_err(|_| ConnectionError::Closed(CloseError::unexpected()))?
-                .ok_or_else(|| ConnectionError::Closed(CloseError::unexpected()))?
+            Ok(self
+                .stop_request_tx
+                .send(())
                 .await
-                .map_err(|_| ConnectionError::Closed(CloseError::unexpected()))
+                .map_err(|_| ConnectionError::Closed(CloseError::unexpected())))
         }
         .boxed()
     }
@@ -185,7 +176,8 @@ enum RequestType<Path: Addressable> {
     Close,
 }
 
-struct PoolTask<Path: Addressable> {
+pub struct PoolTask<Path: Addressable> {
+    config: ConnectionPoolParams,
     connection_request_rx: mpsc::Receiver<ConnectionRequest<Path>>,
     client_conn_request_tx: mpsc::Sender<ClientRequest<Path>>,
     buffer_size: NonZeroUsize,
@@ -194,12 +186,14 @@ struct PoolTask<Path: Addressable> {
 
 impl<Path: Addressable> PoolTask<Path> {
     fn new(
+        config: ConnectionPoolParams,
         connection_request_rx: mpsc::Receiver<ConnectionRequest<Path>>,
         client_conn_request_tx: mpsc::Sender<ClientRequest<Path>>,
         buffer_size: NonZeroUsize,
         stop_request_rx: mpsc::Receiver<()>,
     ) -> Self {
         PoolTask {
+            config,
             connection_request_rx,
             client_conn_request_tx,
             buffer_size,
@@ -207,9 +201,10 @@ impl<Path: Addressable> PoolTask<Path> {
         }
     }
 
-    #[instrument(skip(self, config))]
-    async fn run(self, config: ConnectionPoolParams) -> Result<(), ConnectionError> {
+    #[instrument(skip(self))]
+    pub async fn run(self) -> Result<(), ConnectionError> {
         let PoolTask {
+            config,
             connection_request_rx,
             client_conn_request_tx,
             buffer_size,

@@ -24,7 +24,7 @@ use crate::routing::remote::test_fixture::{
     LocalRoutes,
 };
 use crate::routing::remote::{ConnectionDropped, Scheme, SchemeSocketAddr};
-use crate::routing::RoutingAddr;
+use crate::routing::{CloseSender, RoutingAddr};
 use futures::future::BoxFuture;
 use futures::io::ErrorKind;
 use std::collections::HashMap;
@@ -35,7 +35,7 @@ use swim_runtime::time::timeout::timeout;
 use tokio::sync::{mpsc, oneshot};
 use utilities::future::open_ended::OpenEndedFutures;
 use utilities::future::retryable::strategy::RetryStrategy;
-use utilities::sync::trigger;
+use utilities::sync::promise;
 
 type TestSpawner = OpenEndedFutures<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>>;
 type TestConnections<'a> =
@@ -45,7 +45,7 @@ struct TestFixture<'a> {
     connections: TestConnections<'a>,
     fake_connections: FakeConnections,
     local: LocalRoutes,
-    stop_trigger: trigger::Sender,
+    stop_trigger: CloseSender,
 }
 
 fn make_state(
@@ -67,7 +67,7 @@ fn make_state(
     let fake_connections = FakeConnections::new(HashMap::new(), HashMap::new(), None, 0);
     let router = LocalRoutes::new(addr);
 
-    let (stop_tx, stop_rx) = trigger::trigger();
+    let (stop_tx, stop_rx) = promise::promise();
     let (remote_tx, remote_rx) = mpsc::channel(8);
 
     let connections = RemoteConnections::new(
@@ -463,7 +463,9 @@ async fn connections_state_shutdown_process() {
 
     connections.spawn_task(sa, web_sock, Some(host1.clone()), true);
     connections.defer_dns_lookup(host2.clone(), Request::new(req_tx));
-    stop_trigger.trigger();
+
+    let (result_tx, _result_rx) = mpsc::channel(8);
+    stop_trigger.provide(result_tx).unwrap();
 
     let first = timeout(Duration::from_secs(5), connections.select_next()).await;
     assert!(matches!(first, Ok(Some(_))));

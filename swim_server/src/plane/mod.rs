@@ -354,14 +354,13 @@ const PLANE_STOPPED: &str = "The plane has stopped.";
 /// stopping.
 ///
 /// #Arguments
-/// * `execution_config` - The configuration for agents that belong to this plane.
-/// * `clock` - The clock to use for scheduling tasks.
-/// * `client` - The swim client for opening downlinks.
-/// * `spec` - The specification for the plane.
+///
+/// * `resolver` - The specifications of all routes that are within a plane.
+/// * `lifecycle` - The lifecycle of the plane.
+/// * `context` - The context of the plane.
 /// * `stop_trigger` - Trigger to fire externally when the plane should stop.
-/// * `spawner` - Spawns tasks to run the agents for the plane.
-/// * `context_channel` - Transmitter and receiver for plane requests.
-/// * `delegate_fac` - Factory for creating delegate routers.
+/// * `spawner` - Tasks spawner.
+/// * `context_rx` - Receiver for plane requests.
 pub(crate) async fn run_plane<Clk, S, DelegateFac: RouterFactory>(
     mut resolver: RouteResolver<Clk, DelegateFac>,
     mut lifecycle: Option<Box<dyn PlaneLifecycle>>,

@@ -17,7 +17,8 @@ use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::supply::SupplyLane;
 use crate::agent::lane::model::value::ValueLane;
 use crate::agent::{
-    agent_lifecycle, map_lifecycle, value_lifecycle, AgentContext, SwimAgent, TestClock,
+    agent_lifecycle, map_lifecycle, value_lifecycle, AgentContext, AgentParameters, SwimAgent,
+    TestClock,
 };
 use crate::meta::log::config::{FlushStrategy, LogConfig};
 use crate::meta::log::{LogBuffer, LogEntry, LogLanes, LogLevel, NodeLogger};
@@ -29,6 +30,9 @@ use std::convert::TryFrom;
 use std::num::NonZeroUsize;
 use std::str::FromStr;
 use std::sync::Arc;
+use swim_client::configuration::downlink::ConfigHierarchy;
+use swim_client::downlink::Downlinks;
+use swim_client::interface::SwimClientBuilder;
 use swim_common::form::Form;
 use swim_common::model::Value;
 use swim_common::routing::error::{ResolutionError, RouterError};
@@ -145,11 +149,23 @@ async fn agent_log() {
     let (envelope_tx, envelope_rx) = mpsc::channel(buffer_size.get());
     let provider = AgentProvider::new(MockAgentConfig, MockAgentLifecycle);
 
+    let parameters = AgentParameters::new(MockAgentConfig, exec_config, uri, HashMap::new());
+
+    let (_close_tx, close_rx) = promise::promise();
+    let (client_conn_request_tx, _client_conn_request_rx) = mpsc::channel(8);
+
+    let (downlinks, _downlinks_handle) = Downlinks::new(
+        client_conn_request_tx,
+        Arc::new(ConfigHierarchy::default()),
+        close_rx,
+    );
+
+    let client = SwimClientBuilder::build_from_downlinks(downlinks);
+
     let (_a, agent_proc) = provider.run(
-        uri,
-        HashMap::new(),
-        exec_config,
+        parameters,
         clock.clone(),
+        client,
         ReceiverStream::new(envelope_rx),
         MockRouter::new(RoutingAddr::local(1024), tx),
     );

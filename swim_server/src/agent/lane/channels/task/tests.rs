@@ -31,8 +31,7 @@ use futures::stream::{once, BoxStream, FusedStream};
 use futures::{Future, FutureExt, Stream, StreamExt};
 use pin_utils::pin_mut;
 use std::collections::{HashMap, HashSet};
-use std::convert::identity;
-use std::net::SocketAddr;
+use std::convert::{identity, TryFrom};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
@@ -44,7 +43,7 @@ use swim_common::routing::error::RouterError;
 use swim_common::routing::error::RoutingError;
 use swim_common::routing::error::SendError;
 use swim_common::routing::{
-    ConnectionDropped, Route, Router, RoutingAddr, TaggedClientEnvelope, TaggedEnvelope,
+    ConnectionDropped, Origin, Route, Router, RoutingAddr, TaggedClientEnvelope, TaggedEnvelope,
     TaggedSender,
 };
 use swim_common::sink::item::ItemSink;
@@ -237,6 +236,7 @@ impl TestHandler {
         TestHandler(Default::default())
     }
 }
+
 struct DummyUplink;
 
 impl UplinkStateMachine<i32> for DummyUplink {
@@ -319,6 +319,7 @@ struct TestContext {
     trigger: Arc<Mutex<Option<trigger::Sender>>>,
     _drop_tx: Arc<promise::Sender<ConnectionDropped>>,
     drop_rx: promise::Receiver<ConnectionDropped>,
+    uri: RelativeUri,
 }
 
 impl TestContext {
@@ -360,7 +361,7 @@ impl Router for TestRouter {
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,
-        _origin: Option<SocketAddr>,
+        _origin: Option<Origin>,
     ) -> BoxFuture<Result<Route, ResolutionError>> {
         let TestRouter {
             sender, drop_rx, ..
@@ -376,6 +377,7 @@ impl Router for TestRouter {
         &mut self,
         _host: Option<Url>,
         _route: RelativeUri,
+        _origin: Option<Origin>,
     ) -> BoxFuture<'static, Result<RoutingAddr, RouterError>> {
         panic!("Unexpected resolution attempt.")
     }
@@ -396,6 +398,10 @@ impl AgentExecutionContext for TestContext {
 
     fn spawner(&self) -> Sender<Eff> {
         self.scheduler.clone()
+    }
+
+    fn uri(&self) -> &RelativeUri {
+        &self.uri
     }
 }
 
@@ -524,6 +530,7 @@ fn make_context() -> (
         trigger: Arc::new(Mutex::new(Some(stop_tx))),
         _drop_tx: Arc::new(drop_tx),
         drop_rx,
+        uri: RelativeUri::try_from("/mock/router".to_string()).unwrap(),
     };
     let spawn_task = ReceiverStream::new(spawn_rx)
         .take_until(stop_rx)
@@ -1271,6 +1278,7 @@ impl MultiTestContextInner {
 struct MultiTestContext(
     Arc<parking_lot::Mutex<MultiTestContextInner>>,
     mpsc::Sender<Eff>,
+    RelativeUri,
 );
 
 impl MultiTestContext {
@@ -1280,6 +1288,7 @@ impl MultiTestContext {
                 router_addr,
             ))),
             spawner,
+            RelativeUri::try_from("/mock/router".to_string()).unwrap(),
         )
     }
 
@@ -1313,13 +1322,17 @@ impl AgentExecutionContext for MultiTestContext {
     fn spawner(&self) -> Sender<Eff> {
         self.1.clone()
     }
+
+    fn uri(&self) -> &RelativeUri {
+        &self.2
+    }
 }
 
 impl Router for MultiTestRouter {
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,
-        _origin: Option<SocketAddr>,
+        _origin: Option<Origin>,
     ) -> BoxFuture<Result<Route, ResolutionError>> {
         async move {
             let mut lock = self.0.lock();
@@ -1341,6 +1354,7 @@ impl Router for MultiTestRouter {
         &mut self,
         _host: Option<Url>,
         _route: RelativeUri,
+        _origin: Option<Origin>,
     ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
         panic!("Unexpected resolution attempt.")
     }

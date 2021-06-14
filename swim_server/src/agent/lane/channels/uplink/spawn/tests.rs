@@ -27,7 +27,7 @@ use futures::stream::{BoxStream, FusedStream};
 use futures::{FutureExt, Stream, StreamExt};
 use pin_utils::pin_mut;
 use std::collections::{HashMap, HashSet};
-use std::net::SocketAddr;
+use std::convert::TryFrom;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
@@ -38,7 +38,7 @@ use swim_common::routing::error::RouterError;
 use swim_common::routing::error::RoutingError;
 use swim_common::routing::error::SendError;
 use swim_common::routing::{
-    ConnectionDropped, Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender,
+    ConnectionDropped, Origin, Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender,
 };
 use swim_common::sink::item::ItemSink;
 use swim_common::warp::envelope::Envelope;
@@ -68,8 +68,11 @@ impl Form for Message {
 //A minimal suite of fake uplink and router implementations which which to test the spawner.
 
 struct TestHandler(mpsc::Sender<i32>, i32);
+
 struct TestStateMachine(i32);
+
 struct TestUpdater(mpsc::Sender<i32>);
+
 struct TestRouter {
     sender: mpsc::Sender<TaggedEnvelope>,
     drop_rx: promise::Receiver<ConnectionDropped>,
@@ -100,7 +103,7 @@ impl Router for TestRouter {
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,
-        _origin: Option<SocketAddr>,
+        _origin: Option<Origin>,
     ) -> BoxFuture<Result<Route, ResolutionError>> {
         let TestRouter {
             sender, drop_rx, ..
@@ -116,6 +119,7 @@ impl Router for TestRouter {
         &mut self,
         _host: Option<Url>,
         _route: RelativeUri,
+        _origin: Option<Origin>,
     ) -> BoxFuture<'static, Result<RoutingAddr, RouterError>> {
         panic!("Unexpected resolution attempt.")
     }
@@ -306,6 +310,7 @@ struct TestContext {
     messages: mpsc::Sender<TaggedEnvelope>,
     _drop_tx: promise::Sender<ConnectionDropped>,
     drop_rx: promise::Receiver<ConnectionDropped>,
+    uri: RelativeUri,
 }
 
 impl TestContext {
@@ -316,6 +321,7 @@ impl TestContext {
             messages,
             _drop_tx: drop_tx,
             drop_rx,
+            uri: RelativeUri::try_from("/mock/router".to_string()).unwrap(),
         }
     }
 }
@@ -335,6 +341,10 @@ impl AgentExecutionContext for TestContext {
 
     fn spawner(&self) -> Sender<Eff> {
         self.spawner.clone()
+    }
+
+    fn uri(&self) -> &RelativeUri {
+        &self.uri
     }
 }
 

@@ -41,7 +41,7 @@ mod tests;
 /// [`AgentContext`] implementation that dispatches effects to the scheduler through an MPSC
 /// channel.
 #[derive(Debug)]
-pub(super) struct ContextImpl<Agent, Clk, R: Router + Clone + 'static> {
+pub(super) struct ContextImpl<Agent, Clk, R> {
     agent_ref: Arc<Agent>,
     routing_context: RoutingContext<R>,
     schedule_context: SchedulerContext<Clk>,
@@ -93,7 +93,7 @@ where
 }
 
 #[derive(Debug)]
-pub(super) struct RoutingContext<R: Router + Clone + 'static> {
+pub(super) struct RoutingContext<R> {
     uri: RelativeUri,
     router: R,
     parameters: HashMap<String, String>,
@@ -190,14 +190,8 @@ where
     Agent: Send + Sync + 'static,
     Clk: Clock,
 {
-    type LocalRouter = R;
-
     fn client(&self) -> SwimClient<Path> {
         self.client.clone()
-    }
-
-    fn local_router(&self) -> Self::LocalRouter {
-        self.routing_context.router.clone()
     }
 
     fn schedule<Effect, Str, Sch>(&self, effects: Str, schedule: Sch) -> BoxFuture<()>

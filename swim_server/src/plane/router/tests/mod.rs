@@ -34,7 +34,8 @@ async fn plane_router_get_sender() {
     let (_drop_tx, drop_rx) = promise::promise();
 
     let (remote_tx, _remote_rx) = mpsc::channel(8);
-    let top_level_router = TopLevelRouter::new(addr, req_tx.clone(), remote_tx);
+    let (client_tx, _client_rx) = mpsc::channel(8);
+    let top_level_router = TopLevelRouter::new(addr, req_tx.clone(), client_tx, remote_tx);
 
     let mut router = PlaneRouter::new(addr, top_level_router, req_tx);
 
@@ -84,7 +85,8 @@ async fn plane_router_factory() {
     let (req_tx, _req_rx) = mpsc::channel(8);
 
     let (remote_tx, _remote_rx) = mpsc::channel(8);
-    let top_level_router_factory = TopLevelRouterFactory::new(req_tx.clone(), remote_tx);
+    let (client_tx, _client_rx) = mpsc::channel(8);
+    let top_level_router_factory = TopLevelRouterFactory::new(req_tx.clone(), client_tx, remote_tx);
 
     let fac = PlaneRouterFactory::new(req_tx, top_level_router_factory);
     let router = fac.create_for(RoutingAddr::local(56));
@@ -99,7 +101,8 @@ async fn plane_router_resolve() {
     let (req_tx, mut req_rx) = mpsc::channel(8);
 
     let (remote_tx, _remote_rx) = mpsc::channel(8);
-    let top_level_router = TopLevelRouter::new(addr, req_tx.clone(), remote_tx);
+    let (client_tx, _client_rx) = mpsc::channel(8);
+    let top_level_router = TopLevelRouter::new(addr, req_tx.clone(), client_tx, remote_tx);
 
     let mut router = PlaneRouter::new(addr, top_level_router, req_tx);
 
@@ -131,13 +134,15 @@ async fn plane_router_resolve() {
     };
 
     let send_task = async move {
-        let result1 = router.lookup(Some(host), "/node".parse().unwrap()).await;
+        let result1 = router
+            .lookup(Some(host), "/node".parse().unwrap(), None)
+            .await;
         assert!(matches!(result1, Ok(a) if a == addr));
 
         let other_host = Url::parse("warp://other").unwrap();
 
         let result2 = router
-            .lookup(Some(other_host), "/node".parse().unwrap())
+            .lookup(Some(other_host), "/node".parse().unwrap(), None)
             .await;
 
         let _expected = RouterError::ConnectionFailure(ConnectionError::Protocol(
@@ -146,7 +151,7 @@ async fn plane_router_resolve() {
 
         assert!(matches!(result2, Err(_expected)));
 
-        let result3 = router.lookup(None, "/node".parse().unwrap()).await;
+        let result3 = router.lookup(None, "/node".parse().unwrap(), None).await;
         assert!(matches!(result3, Err(RouterError::NoAgentAtRoute(name)) if name == "/node"));
     };
 

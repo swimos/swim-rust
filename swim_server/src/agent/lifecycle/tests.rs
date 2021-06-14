@@ -20,6 +20,8 @@ use futures::Stream;
 use std::collections::HashMap;
 use std::future::Future;
 use std::time::Duration;
+use swim_client::interface::SwimClient;
+use swim_common::warp::path::Path;
 use utilities::sync::trigger::Receiver;
 use utilities::uri::RelativeUri;
 
@@ -28,6 +30,10 @@ struct TestAgent;
 struct TestContext;
 
 impl AgentContext<TestAgent> for TestContext {
+    fn client(&self) -> SwimClient<Path> {
+        unimplemented!()
+    }
+
     fn schedule<Effect, Str, Sch>(&self, _effects: Str, _schedule: Sch) -> BoxFuture<'_, ()>
     where
         Effect: Future<Output = ()> + Send + 'static,

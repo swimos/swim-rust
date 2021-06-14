@@ -15,22 +15,26 @@
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lane::model::map::MapLane;
 use crate::agent::lane::model::value::ValueLane;
-use crate::agent::{agent_lifecycle, map_lifecycle, value_lifecycle, SwimAgent, TestClock};
+use crate::agent::{
+    agent_lifecycle, map_lifecycle, value_lifecycle, AgentParameters, SwimAgent, TestClock,
+};
 use crate::meta::info::{LaneInfo, LaneKind};
 use crate::plane::provider::AgentProvider;
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
-use std::net::SocketAddr;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
+use swim_client::configuration::downlink::ConfigHierarchy;
+use swim_client::downlink::Downlinks;
+use swim_client::interface::SwimClientBuilder;
 use swim_common::form::{Form, FormErr};
 use swim_common::record;
 use swim_common::routing::error::ResolutionError;
 use swim_common::routing::error::RouterError;
 use swim_common::routing::{
-    ConnectionDropped, Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender,
+    ConnectionDropped, Origin, Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender,
 };
 use swim_common::warp::envelope::Envelope;
 use swim_runtime::time::timeout;
@@ -138,7 +142,7 @@ impl Router for MockRouter {
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,
-        _origin: Option<SocketAddr>,
+        _origin: Option<Origin>,
     ) -> BoxFuture<Result<Route, ResolutionError>> {
         async move {
             let MockRouter { inner, drop_rx, .. } = self;
@@ -152,6 +156,7 @@ impl Router for MockRouter {
         &mut self,
         _host: Option<Url>,
         _route: RelativeUri,
+        _origin: Option<Origin>,
     ) -> BoxFuture<Result<RoutingAddr, RouterError>> {
         panic!("Unexpected resolution attempt.")
     }
@@ -167,11 +172,23 @@ async fn lane_info_sync() {
     let (envelope_tx, envelope_rx) = mpsc::channel(buffer_size.get());
     let provider = AgentProvider::new(MockAgentConfig, MockAgentLifecycle);
 
+    let (_close_tx, close_rx) = promise::promise();
+    let (client_conn_request_tx, _client_conn_request_rx) = mpsc::channel(8);
+
+    let (downlinks, _downlinks_handle) = Downlinks::new(
+        client_conn_request_tx,
+        Arc::new(ConfigHierarchy::default()),
+        close_rx,
+    );
+
+    let client = SwimClientBuilder::build_from_downlinks(downlinks);
+
+    let parameters = AgentParameters::new(MockAgentConfig, exec_config, uri, HashMap::new());
+
     let (_a, agent_proc) = provider.run(
-        uri,
-        HashMap::new(),
-        exec_config,
+        parameters,
         clock.clone(),
+        client,
         ReceiverStream::new(envelope_rx),
         MockRouter::new(RoutingAddr::local(1024), tx),
     );

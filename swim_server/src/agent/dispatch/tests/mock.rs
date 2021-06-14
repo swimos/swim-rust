@@ -24,14 +24,14 @@ use futures::FutureExt;
 use parking_lot::Mutex;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
-use std::net::SocketAddr;
+use std::convert::TryFrom;
 use std::sync::Arc;
 use stm::transaction::TransactionError;
 use swim_common::model::Value;
 use swim_common::routing::error::ResolutionError;
 use swim_common::routing::error::RouterError;
 use swim_common::routing::{
-    ConnectionDropped, Route, Router, RoutingAddr, TaggedClientEnvelope, TaggedEnvelope,
+    ConnectionDropped, Origin, Route, Router, RoutingAddr, TaggedClientEnvelope, TaggedEnvelope,
     TaggedSender,
 };
 use swim_common::warp::envelope::{Envelope, OutgoingHeader, OutgoingLinkMessage};
@@ -96,7 +96,7 @@ impl Router for MockRouter {
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,
-        _origin: Option<SocketAddr>,
+        _origin: Option<Origin>,
     ) -> BoxFuture<Result<Route, ResolutionError>> {
         async move {
             let mut lock = self.0.lock();
@@ -128,6 +128,7 @@ impl Router for MockRouter {
         &mut self,
         _host: Option<Url>,
         _route: RelativeUri,
+        _origin: Option<Origin>,
     ) -> BoxFuture<'static, Result<RoutingAddr, RouterError>> {
         panic!("Unexpected resolution attempt.")
     }
@@ -137,6 +138,7 @@ impl Router for MockRouter {
 pub struct MockExecutionContext {
     router: Arc<Mutex<MockRouterInner>>,
     spawner: mpsc::Sender<Eff>,
+    uri: RelativeUri,
 }
 
 impl AgentExecutionContext for MockExecutionContext {
@@ -149,6 +151,10 @@ impl AgentExecutionContext for MockExecutionContext {
     fn spawner(&self) -> Sender<Eff> {
         self.spawner.clone()
     }
+
+    fn uri(&self) -> &RelativeUri {
+        &self.uri
+    }
 }
 
 impl MockExecutionContext {
@@ -156,6 +162,7 @@ impl MockExecutionContext {
         MockExecutionContext {
             router: Arc::new(Mutex::new(MockRouterInner::new(router_addr, buffer_size))),
             spawner,
+            uri: RelativeUri::try_from("/mock/router".to_string()).unwrap(),
         }
     }
 

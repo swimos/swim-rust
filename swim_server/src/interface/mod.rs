@@ -286,6 +286,7 @@ impl SwimServer {
             downlinks_task,
             request_receiver,
             task_manager,
+            pool_task,
         } = downlinks_handle;
 
         // Todo add support for multiple planes in the future
@@ -355,7 +356,8 @@ impl SwimServer {
             plane_future,
             conn_manager.run(),
             downlinks_task.run(ReceiverStream::new(request_receiver)),
-            task_manager.run()
+            task_manager.run(),
+            pool_task.run()
         )
         .0
     }
@@ -467,9 +469,7 @@ impl ServerHandle {
     /// let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
     /// let (mut swim_server, server_handle) = SwimServerBuilder::default().bind_to(address).build().unwrap();
     ///
-    /// let result = server_handle.stop();
-    ///
-    /// assert!(result.is_ok());
+    /// let future = server_handle.stop();
     /// ```
     pub async fn stop(self) -> Result<(), ServerError> {
         let ServerHandle {

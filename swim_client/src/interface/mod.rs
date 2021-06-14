@@ -145,6 +145,7 @@ impl SwimClientBuilder {
             downlinks_task,
             request_receiver,
             task_manager,
+            pool_task,
         } = downlinks_handle;
 
         let task_handle = spawn(async {
@@ -152,7 +153,8 @@ impl SwimClientBuilder {
                 downlinks_task.run(ReceiverStream::new(request_receiver)),
                 remote_connections_task.run(),
                 remote_conn_manager.run(),
-                task_manager.run()
+                task_manager.run(),
+                pool_task.run()
             )
             .0
         });
@@ -213,6 +215,7 @@ impl SwimClientBuilder {
             downlinks_task,
             request_receiver,
             task_manager,
+            pool_task,
         } = downlinks_handle;
 
         let task_handle = spawn(async {
@@ -220,7 +223,8 @@ impl SwimClientBuilder {
                 downlinks_task.run(ReceiverStream::new(request_receiver)),
                 remote_connections_task.run(),
                 remote_conn_manager.run(),
-                task_manager.run()
+                task_manager.run(),
+                pool_task.run()
             )
             .0
         });

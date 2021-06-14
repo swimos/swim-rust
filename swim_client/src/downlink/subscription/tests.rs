@@ -70,11 +70,13 @@ async fn dl_manager(conf: ConfigHierarchy<AbsolutePath>) -> Downlinks<AbsolutePa
             downlinks_task,
             request_receiver,
             task_manager,
+            pool_task,
         } = handle;
 
         join!(
             downlinks_task.run(ReceiverStream::new(request_receiver)),
-            task_manager.run()
+            task_manager.run(),
+            pool_task.run()
         )
         .0
         .unwrap();
