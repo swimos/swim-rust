@@ -46,7 +46,7 @@ pub fn parse_struct<'a>(
         syn::Fields::Named(fields) => {
             let (fields, manifest) =
                 fields_from_ast(context, &fields.named, container_label, structure_kind);
-            (CompoundTypeKind::Struct, fields, manifest)
+            (CompoundTypeKind::Labelled, fields, manifest)
         }
         syn::Fields::Unnamed(fields) if fields.unnamed.len() == 1 => {
             let (fields, manifest) =

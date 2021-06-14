@@ -132,7 +132,7 @@ where
 impl<'a> TryValidate<&'a Fields> for FieldsModel<'a> {
     fn try_validate(definition: &'a Fields) -> SynValidation<Self> {
         let (type_kind, fields) = match definition {
-            Fields::Named(fields) => (CompoundTypeKind::Struct, Some(fields.named.iter())),
+            Fields::Named(fields) => (CompoundTypeKind::Labelled, Some(fields.named.iter())),
             Fields::Unnamed(fields) => {
                 let kind = if fields.unnamed.len() == 1 {
                     CompoundTypeKind::NewType
@@ -179,7 +179,7 @@ where
         let TaggedFieldModel { directive, .. } = field;
         if *directive == FieldKind::Slot {
             match kind {
-                CompoundTypeKind::Struct => {
+                CompoundTypeKind::Labelled => {
                     if !field.is_labelled() {
                         let err = syn::Error::new_spanned(definition, BAD_FIELDS);
                         return Validation::fail(err);
@@ -200,7 +200,7 @@ where
                 }
                 _ => {
                     kind = if field.is_labelled() {
-                        CompoundTypeKind::Struct
+                        CompoundTypeKind::Labelled
                     } else {
                         CompoundTypeKind::NewType
                     };

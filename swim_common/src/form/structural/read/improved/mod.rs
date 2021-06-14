@@ -662,7 +662,7 @@ enum OrdinalStructState {
 }
 
 #[derive(Clone, Copy)]
-enum OrdinalFieldKey<'a> {
+pub enum OrdinalFieldKey<'a> {
     HeaderBody,
     HeaderSlot(&'a str),
     Attr(&'a str),
@@ -697,6 +697,32 @@ impl<T, Flds> LabelledStructRecognizer<T, Flds> {
             has_header_body,
             state: LabelledStructState::Init,
             fields,
+            progress: Bitset::new(num_fields),
+            select_index,
+            index: 0,
+            select_recog,
+            on_done,
+            reset,
+        }
+    }
+
+}
+
+impl<T, Flds> OrdinalStructRecognizer<T, Flds> {
+
+    pub fn new(tag: &'static str,
+               has_header_body: bool,
+               fields: Flds,
+               num_fields: u32,
+               select_index: for<'a> fn(OrdinalFieldKey<'a>) -> Option<u32>,
+               select_recog: Selector<Flds>,
+               on_done: fn(&mut Flds) -> Result<T, ReadError>,
+               reset: fn(&mut Flds)) -> Self {
+        OrdinalStructRecognizer {
+            tag,
+            has_header_body,
+            state: OrdinalStructState::Init,
+            fields: fields,
             progress: Bitset::new(num_fields),
             select_index,
             index: 0,
@@ -1400,4 +1426,38 @@ impl<K, V, RK, RV> Recognizer<HashMap<K, V>> for HashMapRecognizer<K, V, RK, RV>
         self.key_rec.reset();
         self.val_rec.reset();
     }
+}
+
+pub fn feed_field<T, R>(name: &'static str,
+                        field: &mut Option<T>,
+                        recognizer: &mut R,
+                        event: ParseEvent<'_>) -> Option<Result<(), ReadError>>
+where
+    R: Recognizer<T>,
+{
+    if field.is_some() {
+        Some(Err(ReadError::DuplicateField(Text::new(name))))
+    } else {
+        match recognizer.feed(event) {
+            Some(Ok(t)) => {
+                *field = Some(t);
+                Some(Ok(()))
+            }
+            Some(Err(e)) => Some(Err(e)),
+            _ => None
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum DelegateStructState {
+    Init,
+    HeaderInit,
+    HeaderBodyItem,
+    HeaderBetween,
+    HeaderExpectingSlot,
+    HeaderItem,
+    AttrBetween,
+    AttrItem,
+    Delegated,
 }

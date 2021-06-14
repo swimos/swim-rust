@@ -44,7 +44,7 @@ pub fn from_value(
                 parse_elements(&repr.fields, field_manifest, fn_factory, into);
 
             let self_members = match &repr.compound_type {
-                CompoundTypeKind::Struct => {
+                CompoundTypeKind::Labelled => {
                     quote! {
                         Ok(#structure_name {
                             #field_assignments
@@ -91,7 +91,7 @@ pub fn from_value(
                 );
 
                 let self_members = match &variant.compound_type {
-                    CompoundTypeKind::Struct => {
+                    CompoundTypeKind::Labelled => {
                         quote! {{#field_assignments}}
                     }
                     CompoundTypeKind::Unit => quote!(),
@@ -259,7 +259,7 @@ fn parse_fields(
             match &f.kind {
                 FieldKind::Skip => {
                     match compound_type {
-                        CompoundTypeKind::Struct => {
+                        CompoundTypeKind::Labelled => {
                             (field_opts,
                              quote! {
                                 #field_assignments
@@ -283,7 +283,7 @@ fn parse_fields(
                     };
 
                     let field_assignment = match compound_type {
-                        CompoundTypeKind::Struct => {
+                        CompoundTypeKind::Labelled => {
                             let name_str = format!("Missing field: {}", name);
 
                             quote! {

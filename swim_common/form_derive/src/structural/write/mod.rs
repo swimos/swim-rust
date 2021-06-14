@@ -269,7 +269,7 @@ impl<'a, 'b> ToTokens for WriteWithFn<'a, 'b> {
             BodyFields::StdBody(fields) => {
                 let num_slots = fields.len();
 
-                let (body_kind, statements) = if fields_model.body_kind == CompoundTypeKind::Struct
+                let (body_kind, statements) = if fields_model.body_kind == CompoundTypeKind::Labelled
                 {
                     (
                         quote!(swim_common::form::structural::write::RecordBodyKind::MapLike),
@@ -374,7 +374,7 @@ impl<'a, 'b> ToTokens for WriteIntoFn<'a, 'b> {
             BodyFields::StdBody(fields) => {
                 let num_slots = fields.len();
 
-                let (body_kind, statements) = if fields_model.body_kind == CompoundTypeKind::Struct
+                let (body_kind, statements) = if fields_model.body_kind == CompoundTypeKind::Labelled
                 {
                     (
                         quote!(swim_common::form::structural::write::RecordBodyKind::MapLike),
@@ -424,7 +424,7 @@ impl<'a> ToTokens for Destructure<'a> {
                     tokens.append_all(pat.to_token_stream());
                 }
             }
-            CompoundTypeKind::Struct => {
+            CompoundTypeKind::Labelled => {
                 let statement = quote!(#name(#(#indexers),*));
                 tokens.append_all(statement);
             }

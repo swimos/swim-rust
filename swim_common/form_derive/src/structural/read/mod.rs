@@ -14,9 +14,9 @@
 
 use crate::quote::TokenStreamExt;
 use crate::structural::model::field::{BodyFields, FieldModel, HeaderFields, SegregatedFields};
-use crate::structural::model::record::{SegregatedStructModel, StructModel};
+use crate::structural::model::record::SegregatedStructModel;
 use macro_helpers::CompoundTypeKind;
-use proc_macro2::{Span, TokenStream};
+use proc_macro2::TokenStream;
 use quote::ToTokens;
 
 pub struct DeriveStructuralReadable<S>(S);
@@ -24,931 +24,488 @@ pub struct DeriveStructuralReadable<S>(S);
 impl<'a, 'b> ToTokens for DeriveStructuralReadable<SegregatedStructModel<'a, 'b>> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let DeriveStructuralReadable(model) = self;
-        let SegregatedStructModel { fields, inner } = model;
-        let SegregatedFields { header, body } = fields;
-        let name = inner.name;
-        let target: syn::Type = parse_quote!(#name);
-        let state = builder_state_type(inner);
-        let builder = builder_type(&target, &state);
-        let header_builder = header_builder(&target, &state);
+        let builder_type = RecognizerState::new(model);
 
-        tokens.append_all(value_readable_impl(&target));
-        tokens.append_all(structural_readable_impl(&target, &builder, inner));
-
-        match body {
-            BodyFields::StdBody(body_fields) if !body_fields.is_empty() => {
-                tokens.append_all(header_reader(&builder, &header_builder, model));
-
-                let (assoc, body_reader) = if inner.fields_model.body_kind
-                    == CompoundTypeKind::Struct
-                {
-                    let assoc = builder_assoc_named(
-                        &builder,
-                        syn::Ident::new("has_more", Span::call_site()),
-                        syn::Ident::new("apply", Span::call_site()),
-                        body_fields.as_slice(),
-                    );
-
-                    let body_reader = builder_body_reader_named(&builder, body_fields.as_slice());
-                    (assoc, body_reader)
+        let (select_index, select_feed, on_done, read_impl) = match &model.fields.body {
+            BodyFields::StdBody(body_fields) => {
+                let index_fn = if model.inner.fields_model.body_kind == CompoundTypeKind::Labelled {
+                    SelectIndexFnLabelled::new(model, body_fields).into_token_stream()
                 } else {
-                    let assoc = builder_assoc_tuple(&builder, body_fields.as_slice());
-                    let body_reader = builder_body_reader_tuple(&builder, body_fields.as_slice());
-                    (assoc, body_reader)
+                    SelectIndexFnOrdinal::new(model).into_token_stream()
                 };
+                let select_feed = SelectFeedFn::new(model, body_fields);
+                let on_done = OnDoneFn::new(model, body_fields);
 
-                tokens.append_all(assoc);
-                tokens.append_all(body_reader);
-            }
-            BodyFields::StdBody(_) => {
-                tokens.append_all(header_reader(&builder, &header_builder, model));
-                tokens.append_all(empty_body_reader(&builder));
+                let read_impl = ReadableImpl::new(model, body_fields);
+                (index_fn, select_feed, on_done, read_impl)
             }
             BodyFields::ReplacedBody(_) => {
                 todo!()
             }
+        };
+
+        let on_reset = ResetFn(model.inner.fields_model.fields.len());
+
+        tokens.append_all(quote! {
+            const _: () = {
+
+                #builder_type
+                #select_index
+                #select_feed
+                #on_done
+                #on_reset
+
+                #read_impl
+
+            };
+        })
+    }
+}
+
+struct RecognizerState<'a, 'b>(&'b SegregatedStructModel<'a, 'b>);
+
+impl<'a, 'b> RecognizerState<'a, 'b> {
+
+    fn new(model: &'b SegregatedStructModel<'a, 'b>) -> Self {
+        RecognizerState(model)
+    }
+
+}
+
+impl<'a, 'b> ToTokens for RecognizerState<'a, 'b> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let RecognizerState(SegregatedStructModel { fields, .. }) = self;
+        let SegregatedFields { header, body } = fields;
+        if let BodyFields::StdBody(body_fields) = body {
+            let it = enumerate_fields_discriminated(header, body_fields.as_slice());
+
+            let builder_types = it.clone().map(|(fld, _)| {
+                let ty = fld.field_ty;
+                quote!(std::option::Option<#ty>)
+            });
+
+            let recognizer_types = it.map(|(fld, is_attr)| {
+                let ty = fld.field_ty;
+                if is_attr {
+                    quote!(<#ty as swim_common::form::structural::read::improved::RecognizerReadable>::AttrRec)
+                } else {
+                    quote!(<#ty as swim_common::form::structural::read::improved::RecognizerReadable>::Rec)
+                }
+            });
+
+            tokens.append_all(quote! {
+                type Builder = ((#(#builder_types,)*), (#(#recognizer_types,)*));
+            });
+        } else {
+            todo!()
         }
+    }
+}
 
-        if header.has_tag_fields() {
-            let has_header_slots = !header.header_fields.is_empty();
+struct SelectIndexFnLabelled<'a, 'b> {
+    fields: &'b SegregatedStructModel<'a, 'b>,
+    body_fields: &'b Vec<&'b FieldModel<'a>>,
+}
 
-            if has_header_slots {
-                let assoc = builder_assoc_named(
-                    &header_builder,
-                    syn::Ident::new("has_more_header", Span::call_site()),
-                    syn::Ident::new("apply_header", Span::call_site()),
-                    header.header_fields.as_slice(),
-                );
-                tokens.append_all(assoc);
+impl<'a, 'b> SelectIndexFnLabelled<'a, 'b> {
+
+    fn new(model: &'b SegregatedStructModel<'a, 'b>, body_fields: &'b Vec<&'b FieldModel<'a>>) -> Self {
+        SelectIndexFnLabelled {
+            fields: model, body_fields
+        }
+    }
+
+}
+
+impl<'a, 'b> ToTokens for SelectIndexFnLabelled<'a, 'b> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let SelectIndexFnLabelled { fields, body_fields } = self;
+        let SegregatedStructModel { fields, .. } = fields;
+        let SegregatedFields { header, .. } = fields;
+        let HeaderFields { tag_body, header_fields, attributes, .. } = header;
+
+        let mut offset: u32 = 0;
+
+        let body_case = if tag_body.is_some() {
+            offset += 1;
+            Some(quote! {
+                swim_common::form::structural::read::improved::LabelledFieldKey::HeaderBody => std::option::Option::Some(0),
+            })
+        } else {
+            None
+        };
+
+        let header_cases = header_fields.iter().scan(offset, |off, fld| {
+            let n = *off;
+            *off += 1;
+            let name = fld.resolve_name();
+            Some(quote! {
+                swim_common::form::structural::read::improved::LabelledFieldKey::HeaderSlot(#name) => std::option::Option::Some(#n),
+            })
+        });
+
+        offset += header_fields.len() as u32;
+
+        let attr_cases = attributes.iter().scan(offset, |off, fld| {
+            let n = *off;
+            *off += 1;
+            let name = fld.resolve_name();
+            Some(quote! {
+                swim_common::form::structural::read::improved::LabelledFieldKey::Attr(#name) => std::option::Option::Some(#n),
+            })
+        });
+
+        offset += attributes.len() as u32;
+
+        let body_cases = body_fields.iter().scan(offset, |off, fld| {
+            let n = *off;
+            *off += 1;
+            let name = fld.resolve_name();
+            Some(quote! {
+                swim_common::form::structural::read::improved::LabelledFieldKey::Item(#name) => std::option::Option::Some(#n),
+            })
+        });
+
+
+        tokens.append_all(quote! {
+            fn select_index(key: swim_common::form::structural::read::improved::LabelledFieldKey<'_>) -> std::option::Option<u32> {
+                match key {
+                    #body_case
+                    #(#header_cases)*
+                    #(#attr_cases)*
+                    #(#body_cases)*
+                    _ => std::option::Option::None,
+                }
             }
+        })
+    }
+}
 
-            tokens.append_all(header_builder_assoc(
-                &header_builder,
-                header.tag_body,
-                !has_header_slots,
-            ));
-            tokens.append_all(header_builder_body_reader(&header_builder, &header));
+struct SelectIndexFnOrdinal<'a, 'b> {
+    fields: &'b SegregatedStructModel<'a, 'b>,
+}
+
+impl<'a, 'b> SelectIndexFnOrdinal<'a, 'b> {
+
+    fn new(model: &'b SegregatedStructModel<'a, 'b>) -> Self {
+        SelectIndexFnOrdinal {
+            fields: model,
         }
     }
+
 }
 
-fn builder_state_type<'a, 'b>(model: &'b StructModel<'a>) -> syn::Type {
-    let fields = model.fields_model.fields.iter().map(|fld| {
-        let ty = fld.model.field_ty;
-        quote!(std::option::Option<#ty>)
-    });
+impl<'a, 'b> ToTokens for SelectIndexFnOrdinal<'a, 'b> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let SelectIndexFnOrdinal { fields} = self;
+        let SegregatedStructModel { fields, .. } = fields;
+        let SegregatedFields { header, .. } = fields;
+        let HeaderFields { tag_body, header_fields, attributes, .. } = header;
 
-    parse_quote! {
-        (#(#fields,)*)
+        let mut offset: u32 = 0;
+
+        let body_case = if tag_body.is_some() {
+            offset += 1;
+            Some(quote! {
+                swim_common::form::structural::read::improved::OrdinalFieldKey::HeaderBody => std::option::Option::Some(0),
+            })
+        } else {
+            None
+        };
+
+        let header_cases = header_fields.iter().scan(offset, |off, fld| {
+            let n = *off;
+            *off += 1;
+            let name = fld.resolve_name();
+            Some(quote! {
+                swim_common::form::structural::read::improved::OrdinalFieldKey::HeaderSlot(#name) => std::option::Option::Some(#n),
+            })
+        });
+
+        offset += header_fields.len() as u32;
+
+        let attr_cases = attributes.iter().scan(offset, |off, fld| {
+            let n = *off;
+            *off += 1;
+            let name = fld.resolve_name();
+            Some(quote! {
+                swim_common::form::structural::read::improved::OrdinalFieldKey::Attr(#name) => std::option::Option::Some(#n),
+            })
+        });
+
+        offset += attributes.len() as u32;
+
+        tokens.append_all(quote! {
+            fn select_index(key: swim_common::form::structural::read::improved::LabelledFieldKey<'_>) -> std::option::Option<u32> {
+                match key {
+                    #body_case
+                    #(#header_cases)*
+                    #(#attr_cases)*
+                    swim_common::form::structural::read::improved::OrdinalFieldKey::FirstItem => Some(#offset),
+                    _ => std::option::Option::None,
+                }
+            }
+        })
     }
 }
 
-fn builder_type(target: &syn::Type, state: &syn::Type) -> syn::Type {
-    parse_quote!(swim_common::form::structural::read::builder::Builder<#target, #state>)
+struct SelectFeedFn<'a, 'b> {
+    fields: &'b SegregatedStructModel<'a, 'b>,
+    body_fields: &'b Vec<&'b FieldModel<'a>>,
 }
 
-fn header_builder(target: &syn::Type, state: &syn::Type) -> syn::Type {
-    parse_quote!(swim_common::form::structural::read::builder::HeaderBuilder<#target, #state>)
+impl<'a, 'b> SelectFeedFn<'a, 'b> {
+
+
+    fn new(model: &'b SegregatedStructModel<'a, 'b>, body_fields: &'b Vec<&'b FieldModel<'a>>,) -> Self {
+        SelectFeedFn {
+            fields: model,
+            body_fields,
+        }
+    }
+
 }
 
-fn value_readable_impl(target: &syn::Type) -> proc_macro2::TokenStream {
-    quote! {
-        impl swim_common::form::structural::read::ValueReadable for #target {}
+
+fn enumerate_fields<'a>(header: &'a HeaderFields<'a, 'a>, body_fields: &'a[&'a FieldModel<'a>]) -> impl Iterator<Item = &'a FieldModel<'a>> + Clone + 'a {
+    let HeaderFields { tag_body, header_fields, attributes, .. } = header;
+    tag_body.iter()
+        .chain(header_fields.iter())
+        .chain(attributes.iter())
+        .chain(body_fields.iter())
+        .map(|f| *f)
+}
+
+fn enumerate_fields_discriminated<'a>(header: &'a HeaderFields<'a, 'a>, body_fields: &'a[&'a FieldModel<'a>]) -> impl Iterator<Item = (&'a FieldModel<'a>, bool)> + Clone + 'a {
+    let HeaderFields { tag_body, header_fields, attributes, .. } = header;
+    tag_body.iter().map(|f| (*f, false))
+        .chain(header_fields.iter().map(|f| (*f, false)))
+        .chain(attributes.iter().map(|f| (*f, true)))
+        .chain(body_fields.iter().map(|f| (*f, false)))
+}
+
+
+impl<'a, 'b> ToTokens for SelectFeedFn<'a, 'b> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let SelectFeedFn { fields, body_fields } = self;
+        let SegregatedStructModel { fields, .. } = fields;
+        let SegregatedFields { header, .. } = fields;
+
+        let it = enumerate_fields(header, body_fields.as_slice());
+
+        let cases = it.zip(0..).map(|(fld, i)| {
+            let name = fld.resolve_name();
+            let idx = syn::Index::from(i);
+            let case_index = i as u32;
+            quote! {
+                #case_index => swim_common::form::structural::read::improved::feed_field(#name, &mut fields.#idx, &mut recognizers.#idx, event),
+            }
+        });
+
+        tokens.append_all(quote! {
+            fn select_feed(state: &mut Builder, index: u32, event: swim_common::form::structural::read::parser::ParseEvent<'_>)
+                -> std::option::Option<std::result::Result<(), swim_common::form::structural::read::error::ReadError>> {
+                let (fields, recognizers) = state;
+                match index {
+                    #(#cases)*
+                    _ => std::option::Option::Some(std::result::Result::Err(swim_common::form::structural::read::error::ReadError::InconsistentState)),
+                }
+            }
+        })
     }
 }
 
-fn constructor<'a, 'b>(model: &'b StructModel<'a>) -> proc_macro2::TokenStream {
-    let name = model.name;
-    let ids = model.fields_model.fields.iter().map(|fld| &fld.model.name);
+struct OnDoneFn<'a, 'b> {
+    fields: &'b SegregatedStructModel<'a, 'b>,
+    body_fields: &'b Vec<&'b FieldModel<'a>>,
+}
 
-    match model.fields_model.type_kind {
-        CompoundTypeKind::Struct => {
-            let binders = ids.map(|id| quote!(#id: #id));
+impl<'a, 'b> OnDoneFn<'a, 'b> {
+
+
+    fn new(model: &'b SegregatedStructModel<'a, 'b>, body_fields: &'b Vec<&'b FieldModel<'a>>,) -> Self {
+        OnDoneFn {
+            fields: model,
+            body_fields,
+        }
+    }
+
+}
+
+impl<'a, 'b> ToTokens for OnDoneFn<'a, 'b> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let OnDoneFn { fields, body_fields } = self;
+        let SegregatedStructModel { inner, fields } = fields;
+        let SegregatedFields { header, .. } = fields;
+
+        let it = enumerate_fields(header, body_fields);
+
+        let names = it.clone().map(|fld| &fld.name);
+
+        let validators = it.clone().zip(0..).map(|(fld, i)| {
+            let idx = syn::Index::from(i);
+            let name = fld.resolve_name();
+            let ty = fld.field_ty;
+            quote! {
+                if fields.#idx.is_none() {
+                    fields.#idx = <#ty as swim_common::form::structural::read::improved::RecognizerReadable>::on_absent();
+                    if fields.#idx.is_none() {
+                        missing.insert(#name);
+                    }
+                }
+            }
+        });
+
+        let field_dest = names.clone()
+            .map(|name| quote!(std::option::Option::Some(#name)));
+
+        let num_fields = inner.fields_model.fields.len();
+        let field_takes = (0..num_fields).map(|i| {
+            let idx = syn::Index::from(i);
+            quote!(fields.#idx.take())
+        });
+
+        let name = inner.name;
+
+        let constructor = if inner.fields_model.type_kind == CompoundTypeKind::Labelled {
             quote! {
                 #name {
-                    #(#binders,)*
+                    #(#names,)*
                 }
             }
-        }
-        CompoundTypeKind::Unit => quote!(#name),
-        _ => {
+        } else {
             quote! {
-                #name(
-                    #(#ids),*
-                )
+                #name(#(#names,)*)
             }
-        }
-    }
-}
+        };
 
-fn structural_readable_impl<'a, 'b>(
-    target: &syn::Type,
-    builder: &syn::Type,
-    model: &'b StructModel<'a>,
-) -> proc_macro2::TokenStream {
-    let checks = model.fields_model.fields.iter().zip(0..).map(|(fld, i)| {
-        let index = syn::Index::from(i);
-        let name_lit = fld.model.resolve_name();
-        let ty = fld.model.field_ty;
-        quote! {
-            if state.#index.is_none() {
-                let on_missing = <#ty as swim_common::form::structural::read::StructuralReadable>::on_absent();
-                if on_missing.is_none() {
-                    missing.push(swim_common::model::text::Text::new(#name_lit));
-                } else {
-                    state.#index = on_missing;
-                }
-            }
-        }
-    });
+        tokens.append_all(quote! {
+            fn on_done(state: &mut Builder) -> std::result::Result<#name, swim_common::form::structural::read::error::ReadError> {
+                let (fields, _ ) = state;
+                let mut missing = std::vec![];
 
-    let patterns = model.fields_model.fields.iter().map(|fld| {
-        let fld_index = &fld.model.name;
-        quote!(std::option::Option::Some(#fld_index))
-    });
+                #(#validators)*
 
-    let con = constructor(model);
-
-    quote! {
-
-        #[automatically_derived]
-        impl swim_common::form::structural::read::StructuralReadable for #target {
-            type Reader = #builder;
-
-            fn record_reader() -> std::result::Result<Self::Reader, swim_common::form::structural::read::error::ReadError> {
-                std::result::Result::Ok(std::default::Default::default())
-            }
-
-            fn try_terminate(reader: <Self::Reader as swim_common::form::structural::read::HeaderReader>::Body)
-                -> std::result::Result<Self, swim_common::form::structural::read::error::ReadError> {
-                let swim_common::form::structural::read::builder::Builder { mut state, .. } = reader;
-
-                #(#checks)*
-
-                if let (#(#patterns),*) = state {
-                    std::result::Result::Ok(#con)
+                if let (#(#field_dest),*) = (#(#field_takes),*) {
+                    std::result::Result::Ok(#constructor)
                 } else {
                     std::result::Result::Err(swim_common::form::structural::read::error::ReadError::MissingFields(missing))
                 }
             }
-        }
-
+        })
     }
 }
 
-fn wrap_ccons_ty(head: &syn::Type, tail: syn::Type) -> syn::Type {
-    parse_quote!(swim_common::form::structural::generic::coproduct::CCons<#head, #tail>)
-}
+struct ResetFn(usize);
 
-fn make_ccons_ty<It>(it: It) -> syn::Type
-where
-    It: DoubleEndedIterator<Item = syn::Type>,
-{
-    let nil = parse_quote!(swim_common::form::structural::generic::coproduct::CNil);
-    it.rev().fold(nil, |acc, ty| wrap_ccons_ty(&ty, acc))
-}
-
-fn make_ccons_pat(n: usize, sub: syn::Pat) -> syn::Pat {
-    (0..n).fold(
-        parse_quote!(swim_common::form::structural::generic::coproduct::CCons::Head(#sub)),
-        |acc, _| parse_quote!(swim_common::form::structural::generic::coproduct::CCons::Tail(#acc)),
-    )
-}
-
-fn make_ccons_nil_pat(n: usize) -> syn::Pat {
-    (0..n).fold(
-        parse_quote!(nil),
-        |acc, _| parse_quote!(swim_common::form::structural::generic::coproduct::CCons::Tail(#acc)),
-    )
-}
-
-fn make_ccons_expr(n: usize, name: &syn::Ident) -> syn::Expr {
-    (0..n).fold(
-        parse_quote!(swim_common::form::structural::generic::coproduct::CCons::Head(#name)),
-        |acc, _| parse_quote!(swim_common::form::structural::generic::coproduct::CCons::Tail(#acc)),
-    )
-}
-
-fn header_reader<'a, 'b>(
-    builder: &syn::Type,
-    header_builder: &syn::Type,
-    model: &SegregatedStructModel<'a, 'b>,
-) -> proc_macro2::TokenStream {
-    let SegregatedStructModel { inner, fields } = model;
-
-    let lit_name = inner.resolve_name();
-
-    let attr_reader_tys = fields.header.attributes.iter().map(|fld| {
-        let ty = fld.field_ty;
-        parse_quote!(swim_common::form::structural::read::builder::Wrapped<Self, swim_common::form::structural::read::builder::AttrReader<#ty>>)
-    });
-
-    let delegate_ty = wrap_ccons_ty(header_builder, make_ccons_ty(attr_reader_tys));
-
-    let has_body = fields.header.tag_body.is_some();
-
-    let wrapped_id: syn::Ident = parse_quote!(wrapped);
-
-    let attr_cases = fields.header.attributes.iter().zip(0..).map(|(fld, i)| {
-        let name = fld.resolve_name();
-        let con = make_ccons_expr(i + 1, &wrapped_id);
-        quote! {
-            #name => {
-                let #wrapped_id = swim_common::form::structural::read::builder::Wrapped {
-                    payload: self,
-                    reader: swim_common::form::structural::read::builder::AttrReader::default(),
-                };
-                std::result::Result::Ok(#con)
+impl ToTokens for ResetFn {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let ResetFn(num_fields) = self;
+        let field_resets = (0..*num_fields).map(|i| {
+            let idx = syn::Index::from(i);
+            quote! {
+                fields.#idx = std::option::Option::None;
+                recognizers.#idx.reset();
             }
-        }
-    });
+        });
 
-    let attr_restore_cases = fields.header.attributes
-        .iter()
-        .zip(0..)
-        .map(|(fld, i)| {
-            let pat = make_ccons_pat(i + 1, parse_quote! {
-                swim_common::form::structural::read::builder::Wrapped {
-                    mut payload,
-                    reader,
+        tokens.append_all(quote! {
+            fn on_reset(state: &mut Builder) {
+                let (fields, recognizers) = state;
+                #(#field_resets)*
+            }
+        })
+    }
+}
+
+struct ConstructFieldRecognizers<'a, 'b> {
+    fields: &'b SegregatedStructModel<'a, 'b>,
+    body_fields: &'b Vec<&'b FieldModel<'a>>,
+}
+
+impl<'a, 'b> ToTokens for ConstructFieldRecognizers<'a, 'b> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let ConstructFieldRecognizers { fields, body_fields } = self;
+        let SegregatedStructModel { fields, .. } = fields;
+        let SegregatedFields { header, .. } = fields;
+        let initializers = enumerate_fields_discriminated(header, body_fields.as_slice())
+            .map(|(fld, is_attr)| {
+                let ty = fld.field_ty;
+                if is_attr {
+                    quote!(<#ty as swim_common::form::structural::read::improved::RecognizerReadable>::make_attr_recognizer())
+                } else {
+                    quote!(<#ty as swim_common::form::structural::read::improved::RecognizerReadable>::make_recognizer())
                 }
             });
-            let index = syn::Index::from(fld.ordinal);
-            let name_lit = fld.resolve_name();
-            quote! {
-                #pat => {
-                    if payload.state.#index.is_some() {
-                        return std::result::Result::Err(swim_common::form::structural::read::error::ReadError::DuplicateField(
-                            swim_common::model::text::Text::new(#name_lit)));
-                    } else {
-                        payload.state.#index = std::option::Option::Some(reader.try_get_value()?);
-                    }
-                    std::result::Result::Ok(payload)
-                }
-            }
-        });
-
-    let nil_pat = make_ccons_nil_pat(fields.header.attributes.len() + 1);
-
-    let start_body_fn = if inner.fields_model.body_kind == CompoundTypeKind::Struct {
-        match &fields.body {
-            BodyFields::StdBody(fields) => {
-                let index = fields[0].ordinal;
-                quote! {
-                    fn start_body(mut self) -> srd::result::Result<Self::Body, swim_common::form::structural::read::error::ReadError> {
-                        self.current_field = std::option::Option::Some(#index);
-                        std::result::Result::Ok(self)
-                    }
-                }
-            }
-            BodyFields::ReplacedBody(_) => {
-                todo!()
-            }
-        }
-    } else {
-        quote! {
-            fn start_body(self) -> srd::result::Result<Self::Body, swim_common::form::structural::read::error::ReadError> {
-                std::result::Result::Ok(self)
-            }
-        }
-    };
-
-    quote! {
-        #[automatically_derived]
-        impl swim_common::form::structural::read::HeaderReader for #builder {
-            type Body = Self;
-            type Delegate = #delegate_ty;
-
-            fn read_attribute(self, name: std::borrow::Cow<'_, str>) -> Result<Self::Delegate, swim_common::form::structural::read::error::ReadError> {
-                if !self.read_tag {
-                    if name == #lit_name {
-                        let builder = swim_common::form::structural::read::builder::HeaderBuilder::new(self, #has_body);
-                        std::result::Result::Ok(swim_common::form::structural::generic::coproduct::CCons::Head(builder))
-                    } else {
-                        std::result::Result::Err(swim_common::form::structural::read::error::ReadError::MissingTag)
-                    }
-                } else {
-                    match name.borrow() {
-                        #(#attr_cases)*
-                        ow => std::result::Result::Err(swim_common::form::structural::read::error::ReadError::UnexpectedField(ow.into())),
-                    }
-                }
-            }
-
-            fn restore(delegate: Self::Delegate) -> std::result::Result<Self, swim_common::form::structural::read::error::ReadError> {
-                match delegate {
-                    swim_common::form::structural::generic::coproduct::CCons::Head(
-                        swim_common::form::structural::read::builder::HeaderBuilderHeaderBuilder { mut inner, .. }) => {
-                        inner.read_tag = true;
-                        std::result::Result::Ok(inner)
-                    }
-                    #(#attr_restore_cases)*
-                    #nil_pat => nil.explode(),
-                }
-            }
-
-            #start_body_fn
-        }
+        tokens.append_all(quote! {
+            (#(#initializers),*)
+        })
     }
 }
 
-fn builder_assoc_named<'a, 'b>(
-    builder: &syn::Type,
-    has_more_name: syn::Ident,
-    apply_name: syn::Ident,
-    fields: &[&'b FieldModel<'a>],
-) -> proc_macro2::TokenStream {
-    let has_more = fields.iter().map(|fld| {
-        let index = syn::Index::from(fld.ordinal);
-        quote!(self.state.#index.is_none())
-    });
+struct ReadableImpl<'a, 'b> {
+    fields: &'b SegregatedStructModel<'a, 'b>,
+    body_fields: &'b Vec<&'b FieldModel<'a>>,
+}
 
-    let field_pushes = fields.iter().map(|fld| {
-        let ord = fld.ordinal;
-        let index = syn::Index::from(fld.ordinal);
-        let name = fld.resolve_name();
-        quote!(#ord => push.apply(&mut self.state.#index, #name),)
-    });
+impl<'a, 'b> ReadableImpl<'a, 'b> {
 
-    let name_matches = fields.iter().map(|fld| {
-        let ord = fld.ordinal;
-        let name = fld.resolve_name();
-        quote! {
-            #name => {
-                self.current_field = std::option::Option::Some(#ord);
-                std::result::Result::Ok(true)
-            }
-        }
-    });
-
-    quote! {
-        impl #builder {
-
-            fn #has_more_name(&self) -> bool {
-                #(#has_more)||*
-            }
-
-            fn #apply_name<__P: swim_common::form::structural::read::builder::prim::PushPrimValue>(
-                &mut self, push: __P) -> std::result::Result<bool, swim_common::form::structural::read::error::ReadError> {
-                if self.reading_slot {
-                    self.reading_slot = false;
-                    match self
-                        .current_field
-                        .take()
-                        .ok_or_else(|| swim_common::form::structural::read::error::ReadError::UnexpectedKind(push.kind()))?
-                    {
-                        #(#field_pushes)*
-                        _ => std::result::Result::Err(swim_common::form::structural::read::error::ReadError::InconsistentState),
-                    }?;
-                    std::result::Result::Ok(self.#has_more_name())
-                } else {
-                    if let std::option::Option::Some(name) = push.text() {
-                        match name {
-                            #(#name_matches)*
-                            name => std::result::Result::Err(swim_common::form::structural::read::error::ReadError::UnexpectedField(
-                                swim_common::model::text::Text::new(name))),
-                        }
-                    } else {
-                        std::result::Result::Err(swim_common::form::structural::read::error::ReadError::UnexpectedKind(push.kind()))
-                    }
-                }
-            }
-
+    fn new(model: &'b SegregatedStructModel<'a, 'b>, body_fields: &'b Vec<&'b FieldModel<'a>>,) -> Self {
+        ReadableImpl {
+            fields: model,
+            body_fields,
         }
     }
+
 }
 
-fn with_next<'a, It: Copy + IntoIterator + 'a>(
-    it: It,
-) -> impl Iterator<Item = (It::Item, Option<It::Item>)> + 'a {
-    let next_fields = it
-        .into_iter()
-        .skip(1)
-        .map(Some)
-        .chain(std::iter::once(None));
-    it.into_iter().zip(next_fields)
-}
 
-fn next_index(fld: Option<&FieldModel>) -> proc_macro2::TokenStream {
-    fld.map(|f| {
-        let ord = f.ordinal;
-        let index = syn::Index::from(ord);
-        quote!(Some(#index))
-    })
-    .unwrap_or_else(|| quote!(None))
-}
+impl<'a, 'b> ToTokens for ReadableImpl<'a, 'b> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let ReadableImpl { fields, body_fields } = self;
+        let name = fields.inner.name;
+        let tag = fields.inner.resolve_name();
+        let has_header_body = fields.fields.header.tag_body.is_some();
 
-fn builder_assoc_tuple<'a, 'b>(
-    builder: &syn::Type,
-    fields: &[&'b FieldModel<'a>],
-) -> proc_macro2::TokenStream {
-    let field_pushes = with_next(fields).map(|(fld, next_fld)| {
-        let ord = fld.ordinal;
-        let index = syn::Index::from(ord);
-        let name = fld.resolve_name();
-        let next_expr = next_index(next_fld.map(|f| *f));
-        let has_more = next_fld.is_some();
-        quote! {
-            #ord => {
-                push.apply(&mut self.state.#index, #name)?;
-                self.current_field = #next_expr;
-                Ok(#has_more)
-            },
-        }
-    });
+        let make_fld_recog = ConstructFieldRecognizers { fields: *fields, body_fields: *body_fields };
+        let num_fields = fields.inner.fields_model.fields.len() as u32;
 
-    quote! {
-        impl #builder {
-
-            fn apply<__P: swim_common::form::structural::read::builder::prim::PushPrimValue>(
-                &mut self, push: __P) -> std::result::Result<bool, swim_common::form::structural::read::error::ReadError> {
-                match self
-                    .current_field
-                    .take()
-                    .ok_or_else(|| ReadError::UnexpectedKind(push.kind()))?
-                {
-                    #(#field_pushes)*
-                    _ => Err(swim_common::form::structural::read::error::ReadError::UnexpectedItem),
-                }
-            }
-
-        }
-    }
-}
-
-fn basic_types() -> [(syn::Ident, syn::Type); 10] {
-    [
-        (
-            syn::Ident::new("push_i32", Span::call_site()),
-            parse_quote!(i32),
-        ),
-        (
-            syn::Ident::new("push_i64", Span::call_site()),
-            parse_quote!(i64),
-        ),
-        (
-            syn::Ident::new("push_u32", Span::call_site()),
-            parse_quote!(u32),
-        ),
-        (
-            syn::Ident::new("push_u64", Span::call_site()),
-            parse_quote!(u64),
-        ),
-        (
-            syn::Ident::new("push_f64", Span::call_site()),
-            parse_quote!(f64),
-        ),
-        (
-            syn::Ident::new("push_bool", Span::call_site()),
-            parse_quote!(bool),
-        ),
-        (
-            syn::Ident::new("push_big_int", Span::call_site()),
-            parse_quote!(num_bigint::bigint::BigInt),
-        ),
-        (
-            syn::Ident::new("push_big_uint", Span::call_site()),
-            parse_quote!(num_bigint::biguint::BigUint),
-        ),
-        (
-            syn::Ident::new("push_blob", Span::call_site()),
-            parse_quote!(std::vec::Vec<u8>),
-        ),
-        (
-            syn::Ident::new("push_text", Span::call_site()),
-            parse_quote!(std::borrow::Cow<'_, str>),
-        ),
-    ]
-}
-
-fn prim_push_methods<'a>(
-    basic: &'a [(syn::Ident, syn::Type)],
-) -> impl Iterator<Item = syn::TraitItem> + 'a {
-    basic.iter().map(|(name, ty)| {
-        parse_quote! {
-            fn #name(&mut self, value: #ty) -> std::result::Result<bool, swim_common::form::structural::read::error::ReadError> {
-                self.apply(value)
-            }
-        }
-    })
-}
-
-fn builder_body_reader_named<'a, 'b>(
-    builder: &syn::Type,
-    fields: &[&'b FieldModel<'a>],
-) -> proc_macro2::TokenStream {
-    let wrapped_tys = fields.iter().map(|fld| {
-        let ty = fld.field_ty;
-        parse_quote! {
-            swim_common::form::structural::read::builder::Wrapped<Self, <#ty as swim_common::form::structural::read::StructuralReadable>::Reader>
-        }
-    });
-
-    let delegate_ty: syn::Type = make_ccons_ty(wrapped_tys);
-
-    let basic = basic_types();
-    let push_methods = prim_push_methods(&basic);
-
-    let wrapper_id: syn::Ident = parse_quote!(wrapper);
-
-    let field_matches = fields.iter().zip(0..).map(|(fld, i)| {
-        let ord = fld.ordinal;
-        let ty = fld.field_ty;
-
-        let expr = make_ccons_expr(i, &wrapper_id);
-        quote! {
-            std::option::Option::Some(#ord) => {
-                let #wrapper_id = swim_common::form::structural::read::builder::Wrapped {
-                    payload: self,
-                    reader: <#ty as swim_common::form::structural::read::StructuralReadable>::record_reader()?,
-                };
-                std::result::Result::Ok(#expr)
-            }
-        }
-    });
-
-    let field_restores = fields.iter().zip(0..).map(|(fld, i)| {
-        let pat = make_ccons_pat(i, parse_quote! {
-            swim_common::form::structural::read::builder::Wrapped {
-                mut payload,
-                reader,
-            }
-        });
-        let index = syn::Index::from(fld.ordinal);
-        let name = fld.resolve_name();
-        let ty = fld.field_ty;
-        quote! {
-            #pat => {
-                if payload.state.#index.is_some() {
-                    return std::result::Result::Err(ReadError::DuplicateField(swim_common::model::text::Text::new(#name)));
-                } else {
-                    payload.state.#index = std::option::Option::Some(<#ty as swim_common::form::structural::read::StructuralReadable>::try_terminate(reader)?);
-                }
-                payload
-            }
-        }
-    });
-
-    let nil_pat = make_ccons_nil_pat(fields.len());
-
-    quote! {
-
-        #[automatically_derived]
-        impl swim_common::form::structural::read::BodyReader for #builder {
-            type Delegate = #delegate_ty;
-
-            fn push_extant(&mut self) -> std::result::Result<bool, swim_common::form::structural::read::error::ReadError> {
-                self.apply(())
-            }
-
-            #(#push_methods)*
-
-            fn start_slot(&mut self) -> std::result::Result<(), swim_common::form::structural::read::error::ReadError> {
-                if self.reading_slot {
-                    std::result::Result::Err(swim_common::form::structural::read::error::ReadError::DoubleSlot)
-                } else {
-                    self.reading_slot = true;
-                    std::result::Result::Ok(())
-                }
-            }
-
-            fn push_record(mut self) -> std::result::Result<Self::Delegate, swim_common::form::structural::read::error::ReadError> {
-                if self.reading_slot {
-                    match self.current_field.take() {
-                        #(#field_matches)*
-                        _ => srd::result::Result::Err(swim_common::form::structural::read::error::ReadError::InconsistentState),
-                    }
-                } else {
-                    std::result::Result::Err(swim_common::form::structural::read::error::ReadError::UnexpectedKind(swim_common::model::ValueKind::Record))
-                }
-            }
-
-            fn restore(delegate: <Self::Delegate as swim_common::form::structural::read::HeaderReader>::Body) -> Result<Self, ReadError> {
-                let mut payload = match delegate {
-                    #(#field_restores)*
-                    #nil_pat => nil.explode(),
-                };
-                payload.reading_slot = false;
-                std::result::Result::Ok(payload)
-            }
-        }
-
-    }
-}
-
-fn builder_body_reader_tuple<'a, 'b>(
-    builder: &syn::Type,
-    fields: &[&'b FieldModel<'a>],
-) -> proc_macro2::TokenStream {
-    let wrapped_tys = fields.iter().map(|fld| {
-        let ty = fld.field_ty;
-        parse_quote! {
-            swim_common::form::structural::read::builder::Wrapped<Self, <#ty as swim_common::form::structural::read::StructuralReadable>::Reader>
-        }
-    });
-
-    let delegate_ty: syn::Type = make_ccons_ty(wrapped_tys);
-
-    let basic = basic_types();
-    let push_methods = prim_push_methods(&basic);
-
-    let wrapper_id: syn::Ident = parse_quote!(wrapper);
-
-    let field_matches = fields.iter().zip(0..).map(|(fld, i)| {
-        let ord = fld.ordinal;
-        let ty = fld.field_ty;
-
-        let expr = make_ccons_expr(i, &wrapper_id);
-        quote! {
-            std::option::Option::Some(#ord) => {
-                let #wrapper_id = swim_common::form::structural::read::builder::Wrapped {
-                    payload: self,
-                    reader: <#ty as swim_common::form::structural::read::StructuralReadable>::record_reader()?,
-                };
-                std::result::Result::Ok(#expr)
-            }
-        }
-    });
-
-    let field_restores = with_next(fields).zip(0..).map(|((fld, next_fld), i)| {
-        let pat = make_ccons_pat(i, parse_quote! {
-            swim_common::form::structural::read::builder::Wrapped {
-                mut payload,
-                reader,
-            }
-        });
-        let index = syn::Index::from(fld.ordinal);
-        let ty = fld.field_ty;
-        let next_idx = next_index(next_fld.map(|f| *f));
-        quote! {
-            #pat => {
-                payload.state.#index = std::option::Option::Some(<#ty as swim_common::form::structural::read::StructuralReadable>::try_terminate(reader)?);
-                payload.current_field = #next_idx;
-                payload
-            }
-        }
-    });
-
-    let nil_pat = make_ccons_nil_pat(fields.len());
-
-    quote! {
-
-        #[automatically_derived]
-        impl swim_common::form::structural::read::BodyReader for #builder {
-            type Delegate = #delegate_ty;
-
-            fn push_extant(&mut self) -> std::result::Result<bool, swim_common::form::structural::read::error::ReadError> {
-                self.apply(())
-            }
-
-            #(#push_methods)*
-
-            fn start_slot(&mut self) -> std::result::Result<(), swim_common::form::structural::read::error::ReadError> {
-                std::result::Result::Err(swim_common::form::structural::read::error::ReadError::UnexpectedSlot)
-            }
-
-            fn push_record(mut self) -> std::result::Result<Self::Delegate, swim_common::form::structural::read::error::ReadError> {
-                match self.current_field.take() {
-                    #(#field_matches)*
-                    _ => srd::result::Result::Err(swim_common::form::structural::read::error::ReadError::InconsistentState),
-                }
-            }
-
-            fn restore(delegate: <Self::Delegate as swim_common::form::structural::read::HeaderReader>::Body) -> Result<Self, ReadError> {
-                let mut payload = match delegate {
-                    #(#field_restores)*
-                    #nil_pat => nil.explode(),
-                };
-                std::result::Result::Ok(payload)
-            }
-        }
-
-    }
-}
-
-fn header_builder_assoc<'a>(
-    header_builder: &syn::Type,
-    header_body: Option<&FieldModel<'a>>,
-    has_slots: bool,
-) -> proc_macro2::TokenStream {
-    let apply_def = if let Some(fld) = header_body {
-        let index = syn::Index::from(fld.ordinal);
-        let name = fld.resolve_name();
-        let after_body = if has_slots {
-            quote!(self.inner.apply_header(push))
+        let recog: syn::Path = if fields.inner.fields_model.body_kind == CompoundTypeKind::Labelled {
+            parse_quote!(swim_common::form::structural::read::improved::LabelledStructRecognizer)
         } else {
-            quote!(std::result::Result::Err(
-                swim_common::form::structural::read::error::ReadError::UnexpectedItem
-            ))
+            parse_quote!(swim_common::form::structural::read::improved::OrdinalStructRecognizer)
         };
-        quote! {
-            if self.after_body {
-                #after_body
-            } else {
-                push.apply(&mut self.inner.state.#index, #name)?;
-                self.after_body = true;
-                std::result::Result::Ok(self.inner.has_more_header())
-            }
-        }
-    } else {
-        quote! {
-            self.inner.apply_header(push)
-        }
-    };
-    quote! {
-        impl #header_builder {
-            fn apply<__P: swim_common::form::structural::read::builder::prim::PushPrimValue>(&mut self, push: __P)
-                -> std::result::Result<bool, swim_common::form::structural::read::error::ReadError> {
-                #apply_def
-            }
-        }
-    }
-}
 
-fn empty_body_reader(builder: &syn::Type) -> proc_macro2::TokenStream {
-    quote! {
-        #[automatically_derived]
-        impl swim_common::form::structural::read::BodyReader for #builder {
+        tokens.append_all(quote! {
 
-            type Delegate = utilities::never::Never;
+            impl swim_common::form::structural::read::improved::RecognizerReadable for #name {
 
-            fn push_record(mut self) -> std::result::Result<Self::Delegate, swim_common::form::structural::read::error::ReadError> {
-                std::result::Result::Err(swim_common::form::structural::read::error::ReadError::UnexpectedSlot)
-            }
+                type Rec = #recog<#name, Builder>;
+                type AttrRec = swim_common::form::structural::read::improved::SimpleAttrBody<
+                    #name,
+                    #recog<#name, Builder>,
+                >;
 
-            fn restore(delegate: <Self::Delegate as swim_common::form::structural::read::HeaderReader>::Body) -> std::result::Result<Self, swim_common::form::structural::read::error::ReadError> {
-                delegate.explode()
-            }
-        }
-    }
-}
-
-fn header_builder_body_reader<'a, 'b>(
-    header_builder: &syn::Type,
-    fields: &HeaderFields<'a, 'b>,
-) -> proc_macro2::TokenStream {
-    let HeaderFields {
-        tag_body,
-        header_fields,
-        ..
-    } = fields;
-
-    let wrapped_tys = tag_body.iter().chain(header_fields.iter()).map(|fld| {
-        let ty = fld.field_ty;
-        parse_quote! {
-            swim_common::form::structural::read::builder::Wrapped<Self, <#ty as swim_common::form::structural::read::StructuralReadable>::Reader>
-        }
-    });
-
-    let delegate_ty: syn::Type = make_ccons_ty(wrapped_tys);
-
-    let basic = basic_types();
-    let push_methods = prim_push_methods(&basic);
-
-    let start_slot_base = quote! {
-        if self.inner.reading_slot {
-            std::result::Result::Err(swim_common::form::structural::read::error::ReadError::DoubleSlot)
-        } else {
-            self.inner.reading_slot = true;
-            std::result::Result::Ok(())
-        }
-    };
-
-    let start_slot_body = if tag_body.is_some() {
-        quote! {
-            if !self.after_body {
-                std::result::Result::Err(swim_common::form::structural::read::error::ReadError::UnexpectedSlot)
-            } else #start_slot_base
-        }
-    } else {
-        start_slot_base
-    };
-
-    let wrapper_id: syn::Ident = parse_quote!(wrapper);
-
-    let offsets = if tag_body.is_some() { 1.. } else { 0.. };
-
-    let push_record_matches = header_fields.iter().zip(offsets.clone()).map(|(fld, i)| {
-        let index = fld.ordinal;
-        let ty = fld.field_ty;
-        let ccons_expr = make_ccons_expr(i, &wrapper_id);
-        quote! {
-            std::option::Option::Some(#index) => {
-                let wrapper = swim_common::form::structural::read::builder::Wrapped {
-                    payload: self,
-                    reader: <#ty as swim_common::form::structural::read::StructuralReadable>::record_reader()?,
-                };
-                std::result::Result::Ok(#ccons_expr)
-            }
-        }
-    });
-
-    let push_record_base = quote! {
-        if self.inner.reading_slot {
-            match self.inner.current_field.take() {
-                #(#push_record_matches)*
-                _ => std::result::Result::Err(swim_common::form::structural::read::error::ReadError::InconsistentState),
-            }
-        } else {
-            std::result::Result::Err(swim_common::form::structural::read::error::ReadError::UnexpectedKind(swim_common::model::ValueKind::Record))
-        }
-    };
-
-    let push_record_body = if let Some(fld) = tag_body {
-        let ty = fld.field_ty;
-        quote! {
-            if !self.after_body {
-                let wrapper = swim_common::form::structural::read::builder::Wrapped {
-                    payload: self,
-                    reader: <#ty as swim_common::form::structural::read::StructuralReadable>::record_reader()?,
-                };
-                std::result::Result::Ok(swim_common::form::structural::generic::coproduct::CCons::Head(wrapper))
-            } else #push_record_base
-        }
-    } else {
-        push_record_base
-    };
-
-    let restore_body_case = tag_body.map(|fld| {
-        let index = syn::Index::from(fld.ordinal);
-        let ty = fld.field_ty;
-        quote! {
-            swim_common::form::structural::generic::coproduct::CCons::Head(swim_common::form::structural::read::builder::Wrapped {
-                mut payload,
-                reader,
-            }) => {
-                if payload.inner.state.#index.is_some() {
-                    return std::result::Result::Err(swim_common::form::structural::read::error::ReadError::InconsistentState);
-                } else {
-                    payload.inner.state.#index = Some(<#ty as swim_common::form::structural::read::StructuralReadable>::try_terminate(reader)?);
+                fn make_recognizer() -> Self::Rec {
+                    #recog::new(
+                        #tag,
+                        #has_header_body,
+                        (Default::default(), #make_fld_recog),
+                        #num_fields,
+                        select_index,
+                        select_feed,
+                        on_done,
+                        on_reset
+                    )
                 }
-                payload.after_body = true;
-                std::result::Result::Ok(payload)
-            }
-        }
-    });
 
-    let inner_pat: syn::Pat = parse_quote! {
-        swim_common::form::structural::read::builder::Wrapped {
-            mut payload,
-            reader,
-        }
-    };
-
-    let restore_slot_cases = header_fields.iter().zip(offsets).map(|(fld, i)| {
-        let index = syn::Index::from(fld.ordinal);
-        let name = fld.resolve_name();
-        let ty = fld.field_ty;
-        let pat = make_ccons_pat(i, inner_pat.clone());
-
-        quote! {
-            #pat => {
-                if payload.inner.state.#index.is_some() {
-                    return std::result::Result::Err(swim_common::form::structural::read::error::ReadError::DuplicateField(swim_common::model::text::Text::new(#name)));
-                } else {
-                    payload.inner.state.#index = Some(<#ty as swim_common::form::structural::read::StructuralReadable>::try_terminate(reader)?);
-                }
-                payload.inner.reading_slot = false;
-                std::result::Result::Ok(payload)
-            }
-        }
-    });
-
-    let num_options = if tag_body.is_some() {
-        header_fields.len() + 1
-    } else {
-        header_fields.len()
-    };
-
-    let nil_pat = make_ccons_nil_pat(num_options);
-
-    quote! {
-        #[automatically_derived]
-        impl swim_common::form::structural::read::BodyReader for #header_builder {
-
-            type Delegate = #delegate_ty;
-
-            fn push_extant(&mut self) -> Result<bool, ReadError> {
-                self.apply(())
-            }
-
-            #(#push_methods)*
-
-            fn start_slot(&mut self) -> std::result::Result<(), swim_common::form::structural::read::error::ReadError> {
-                #start_slot_body
-            }
-
-            fn push_record(mut self) -> std::result::Result<Self::Delegate, swim_common::form::structural::read::error::ReadError> {
-                #push_record_body
-            }
-
-            fn restore(delegate: <Self::Delegate as swim_common::form::structural::read::HeaderReader>::Body) -> std::result::Result<Self, swim_common::form::structural::read::error::ReadError> {
-                match delegate {
-                    #restore_body_case
-                    #(#restore_slot_cases)*
-                    #nil_pat => nil.explode(),
+                fn make_attr_recognizer() -> Self::AttrRec {
+                    swim_common::form::structural::read::improved::SimpleAttrBody::new(
+                        <Self as swim_common::form::structural::read::improved::RecognizerReadable>::make_recognizer()
+                    )
                 }
             }
-        }
+
+        })
     }
 }

@@ -117,7 +117,7 @@ impl From<&syn::Data> for StructureKind {
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum CompoundTypeKind {
-    Struct,
+    Labelled,
     Tuple,
     NewType,
     Unit,
