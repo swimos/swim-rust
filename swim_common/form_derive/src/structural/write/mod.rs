@@ -269,18 +269,18 @@ impl<'a, 'b> ToTokens for WriteWithFn<'a, 'b> {
             BodyFields::StdBody(fields) => {
                 let num_slots = fields.len();
 
-                let (body_kind, statements) = if fields_model.body_kind == CompoundTypeKind::Labelled
-                {
-                    (
-                        quote!(swim_common::form::structural::write::RecordBodyKind::MapLike),
-                        Either::Left(fields.iter().map(|f| write_slot_ref(*f))),
-                    )
-                } else {
-                    (
-                        quote!(swim_common::form::structural::write::RecordBodyKind::ArrayLike),
-                        Either::Right(fields.iter().map(|f| write_value_ref(*f))),
-                    )
-                };
+                let (body_kind, statements) =
+                    if fields_model.body_kind == CompoundTypeKind::Labelled {
+                        (
+                            quote!(swim_common::form::structural::write::RecordBodyKind::MapLike),
+                            Either::Left(fields.iter().map(|f| write_slot_ref(*f))),
+                        )
+                    } else {
+                        (
+                            quote!(swim_common::form::structural::write::RecordBodyKind::ArrayLike),
+                            Either::Right(fields.iter().map(|f| write_value_ref(*f))),
+                        )
+                    };
 
                 quote! {
                     let mut body_writer = rec_writer.complete_header(#body_kind, #num_slots)?;
@@ -374,18 +374,18 @@ impl<'a, 'b> ToTokens for WriteIntoFn<'a, 'b> {
             BodyFields::StdBody(fields) => {
                 let num_slots = fields.len();
 
-                let (body_kind, statements) = if fields_model.body_kind == CompoundTypeKind::Labelled
-                {
-                    (
-                        quote!(swim_common::form::structural::write::RecordBodyKind::MapLike),
-                        Either::Left(fields.iter().map(|f| write_slot_into(*f))),
-                    )
-                } else {
-                    (
-                        quote!(swim_common::form::structural::write::RecordBodyKind::ArrayLike),
-                        Either::Right(fields.iter().map(|f| write_value_into(*f))),
-                    )
-                };
+                let (body_kind, statements) =
+                    if fields_model.body_kind == CompoundTypeKind::Labelled {
+                        (
+                            quote!(swim_common::form::structural::write::RecordBodyKind::MapLike),
+                            Either::Left(fields.iter().map(|f| write_slot_into(*f))),
+                        )
+                    } else {
+                        (
+                            quote!(swim_common::form::structural::write::RecordBodyKind::ArrayLike),
+                            Either::Right(fields.iter().map(|f| write_value_into(*f))),
+                        )
+                    };
 
                 quote! {
                     let mut body_writer = rec_writer.complete_header(#body_kind, #num_slots)?;

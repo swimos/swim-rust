@@ -15,6 +15,7 @@
 use crate::quote::TokenStreamExt;
 use crate::structural::model::field::{BodyFields, FieldModel, HeaderFields, SegregatedFields};
 use crate::structural::model::record::SegregatedStructModel;
+use either::Either;
 use macro_helpers::CompoundTypeKind;
 use proc_macro2::TokenStream;
 use quote::ToTokens;
@@ -26,23 +27,18 @@ impl<'a, 'b> ToTokens for DeriveStructuralReadable<SegregatedStructModel<'a, 'b>
         let DeriveStructuralReadable(model) = self;
         let builder_type = RecognizerState::new(model);
 
-        let (select_index, select_feed, on_done, read_impl) = match &model.fields.body {
-            BodyFields::StdBody(body_fields) => {
-                let index_fn = if model.inner.fields_model.body_kind == CompoundTypeKind::Labelled {
-                    SelectIndexFnLabelled::new(model, body_fields).into_token_stream()
-                } else {
-                    SelectIndexFnOrdinal::new(model).into_token_stream()
-                };
-                let select_feed = SelectFeedFn::new(model, body_fields);
-                let on_done = OnDoneFn::new(model, body_fields);
-
-                let read_impl = ReadableImpl::new(model, body_fields);
-                (index_fn, select_feed, on_done, read_impl)
+        let select_index = match &model.fields.body {
+            BodyFields::StdBody(body_fields)
+                if model.inner.fields_model.body_kind == CompoundTypeKind::Labelled =>
+            {
+                SelectIndexFnLabelled::new(model, &body_fields).into_token_stream()
             }
-            BodyFields::ReplacedBody(_) => {
-                todo!()
-            }
+            _ => SelectIndexFnOrdinal::new(model).into_token_stream(),
         };
+
+        let select_feed = SelectFeedFn::new(model);
+        let on_done = OnDoneFn::new(model);
+        let read_impl = ReadableImpl::new(model);
 
         let on_reset = ResetFn(model.inner.fields_model.fields.len());
 
@@ -65,40 +61,33 @@ impl<'a, 'b> ToTokens for DeriveStructuralReadable<SegregatedStructModel<'a, 'b>
 struct RecognizerState<'a, 'b>(&'b SegregatedStructModel<'a, 'b>);
 
 impl<'a, 'b> RecognizerState<'a, 'b> {
-
     fn new(model: &'b SegregatedStructModel<'a, 'b>) -> Self {
         RecognizerState(model)
     }
-
 }
 
 impl<'a, 'b> ToTokens for RecognizerState<'a, 'b> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let RecognizerState(SegregatedStructModel { fields, .. }) = self;
-        let SegregatedFields { header, body } = fields;
-        if let BodyFields::StdBody(body_fields) = body {
-            let it = enumerate_fields_discriminated(header, body_fields.as_slice());
+        let it = enumerate_fields_discriminated(fields);
 
-            let builder_types = it.clone().map(|(fld, _)| {
-                let ty = fld.field_ty;
-                quote!(std::option::Option<#ty>)
-            });
+        let builder_types = it.clone().map(|(fld, _)| {
+            let ty = fld.field_ty;
+            quote!(std::option::Option<#ty>)
+        });
 
-            let recognizer_types = it.map(|(fld, is_attr)| {
-                let ty = fld.field_ty;
-                if is_attr {
-                    quote!(<#ty as swim_common::form::structural::read::improved::RecognizerReadable>::AttrRec)
-                } else {
-                    quote!(<#ty as swim_common::form::structural::read::improved::RecognizerReadable>::Rec)
-                }
-            });
+        let recognizer_types = it.map(|(fld, is_attr)| {
+            let ty = fld.field_ty;
+            if is_attr {
+                quote!(<#ty as swim_common::form::structural::read::improved::RecognizerReadable>::AttrRec)
+            } else {
+                quote!(<#ty as swim_common::form::structural::read::improved::RecognizerReadable>::Rec)
+            }
+        });
 
-            tokens.append_all(quote! {
-                type Builder = ((#(#builder_types,)*), (#(#recognizer_types,)*));
-            });
-        } else {
-            todo!()
-        }
+        tokens.append_all(quote! {
+            type Builder = ((#(#builder_types,)*), (#(#recognizer_types,)*));
+        });
     }
 }
 
@@ -108,21 +97,31 @@ struct SelectIndexFnLabelled<'a, 'b> {
 }
 
 impl<'a, 'b> SelectIndexFnLabelled<'a, 'b> {
-
-    fn new(model: &'b SegregatedStructModel<'a, 'b>, body_fields: &'b Vec<&'b FieldModel<'a>>) -> Self {
+    fn new(
+        model: &'b SegregatedStructModel<'a, 'b>,
+        body_fields: &'b Vec<&'b FieldModel<'a>>,
+    ) -> Self {
         SelectIndexFnLabelled {
-            fields: model, body_fields
+            fields: model,
+            body_fields,
         }
     }
-
 }
 
 impl<'a, 'b> ToTokens for SelectIndexFnLabelled<'a, 'b> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        let SelectIndexFnLabelled { fields, body_fields } = self;
+        let SelectIndexFnLabelled {
+            fields,
+            body_fields,
+        } = self;
         let SegregatedStructModel { fields, .. } = fields;
         let SegregatedFields { header, .. } = fields;
-        let HeaderFields { tag_body, header_fields, attributes, .. } = header;
+        let HeaderFields {
+            tag_body,
+            header_fields,
+            attributes,
+            ..
+        } = header;
 
         let mut offset: u32 = 0;
 
@@ -166,7 +165,6 @@ impl<'a, 'b> ToTokens for SelectIndexFnLabelled<'a, 'b> {
             })
         });
 
-
         tokens.append_all(quote! {
             fn select_index(key: swim_common::form::structural::read::improved::LabelledFieldKey<'_>) -> std::option::Option<u32> {
                 match key {
@@ -186,21 +184,22 @@ struct SelectIndexFnOrdinal<'a, 'b> {
 }
 
 impl<'a, 'b> SelectIndexFnOrdinal<'a, 'b> {
-
     fn new(model: &'b SegregatedStructModel<'a, 'b>) -> Self {
-        SelectIndexFnOrdinal {
-            fields: model,
-        }
+        SelectIndexFnOrdinal { fields: model }
     }
-
 }
 
 impl<'a, 'b> ToTokens for SelectIndexFnOrdinal<'a, 'b> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        let SelectIndexFnOrdinal { fields} = self;
+        let SelectIndexFnOrdinal { fields } = self;
         let SegregatedStructModel { fields, .. } = fields;
         let SegregatedFields { header, .. } = fields;
-        let HeaderFields { tag_body, header_fields, attributes, .. } = header;
+        let HeaderFields {
+            tag_body,
+            header_fields,
+            attributes,
+            ..
+        } = header;
 
         let mut offset: u32 = 0;
 
@@ -251,47 +250,68 @@ impl<'a, 'b> ToTokens for SelectIndexFnOrdinal<'a, 'b> {
 
 struct SelectFeedFn<'a, 'b> {
     fields: &'b SegregatedStructModel<'a, 'b>,
-    body_fields: &'b Vec<&'b FieldModel<'a>>,
 }
 
 impl<'a, 'b> SelectFeedFn<'a, 'b> {
-
-
-    fn new(model: &'b SegregatedStructModel<'a, 'b>, body_fields: &'b Vec<&'b FieldModel<'a>>,) -> Self {
-        SelectFeedFn {
-            fields: model,
-            body_fields,
-        }
+    fn new(model: &'b SegregatedStructModel<'a, 'b>) -> Self {
+        SelectFeedFn { fields: model }
     }
-
 }
 
+fn enumerate_fields<'a>(
+    model: &'a SegregatedFields<'a, 'a>,
+) -> impl Iterator<Item = &'a FieldModel<'a>> + Clone + 'a {
+    let SegregatedFields { header, body } = model;
+    let HeaderFields {
+        tag_body,
+        header_fields,
+        attributes,
+        ..
+    } = header;
 
-fn enumerate_fields<'a>(header: &'a HeaderFields<'a, 'a>, body_fields: &'a[&'a FieldModel<'a>]) -> impl Iterator<Item = &'a FieldModel<'a>> + Clone + 'a {
-    let HeaderFields { tag_body, header_fields, attributes, .. } = header;
-    tag_body.iter()
+    let body_fields = match body {
+        BodyFields::StdBody(vec) => Either::Left(vec.iter()),
+        BodyFields::ReplacedBody(fld) => Either::Right(std::iter::once(fld)),
+    };
+
+    tag_body
+        .iter()
         .chain(header_fields.iter())
         .chain(attributes.iter())
-        .chain(body_fields.iter())
+        .chain(body_fields.into_iter())
         .map(|f| *f)
 }
 
-fn enumerate_fields_discriminated<'a>(header: &'a HeaderFields<'a, 'a>, body_fields: &'a[&'a FieldModel<'a>]) -> impl Iterator<Item = (&'a FieldModel<'a>, bool)> + Clone + 'a {
-    let HeaderFields { tag_body, header_fields, attributes, .. } = header;
-    tag_body.iter().map(|f| (*f, false))
+fn enumerate_fields_discriminated<'a>(
+    model: &'a SegregatedFields<'a, 'a>,
+) -> impl Iterator<Item = (&'a FieldModel<'a>, bool)> + Clone + 'a {
+    let SegregatedFields { header, body } = model;
+    let HeaderFields {
+        tag_body,
+        header_fields,
+        attributes,
+        ..
+    } = header;
+
+    let body_fields = match body {
+        BodyFields::StdBody(vec) => Either::Left(vec.iter()),
+        BodyFields::ReplacedBody(fld) => Either::Right(std::iter::once(fld)),
+    };
+
+    tag_body
+        .iter()
+        .map(|f| (*f, false))
         .chain(header_fields.iter().map(|f| (*f, false)))
         .chain(attributes.iter().map(|f| (*f, true)))
-        .chain(body_fields.iter().map(|f| (*f, false)))
+        .chain(body_fields.into_iter().map(|f| (*f, false)))
 }
-
 
 impl<'a, 'b> ToTokens for SelectFeedFn<'a, 'b> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        let SelectFeedFn { fields, body_fields } = self;
+        let SelectFeedFn { fields } = self;
         let SegregatedStructModel { fields, .. } = fields;
-        let SegregatedFields { header, .. } = fields;
 
-        let it = enumerate_fields(header, body_fields.as_slice());
+        let it = enumerate_fields(fields);
 
         let cases = it.zip(0..).map(|(fld, i)| {
             let name = fld.resolve_name();
@@ -317,28 +337,20 @@ impl<'a, 'b> ToTokens for SelectFeedFn<'a, 'b> {
 
 struct OnDoneFn<'a, 'b> {
     fields: &'b SegregatedStructModel<'a, 'b>,
-    body_fields: &'b Vec<&'b FieldModel<'a>>,
 }
 
 impl<'a, 'b> OnDoneFn<'a, 'b> {
-
-
-    fn new(model: &'b SegregatedStructModel<'a, 'b>, body_fields: &'b Vec<&'b FieldModel<'a>>,) -> Self {
-        OnDoneFn {
-            fields: model,
-            body_fields,
-        }
+    fn new(model: &'b SegregatedStructModel<'a, 'b>) -> Self {
+        OnDoneFn { fields: model }
     }
-
 }
 
 impl<'a, 'b> ToTokens for OnDoneFn<'a, 'b> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        let OnDoneFn { fields, body_fields } = self;
+        let OnDoneFn { fields } = self;
         let SegregatedStructModel { inner, fields } = fields;
-        let SegregatedFields { header, .. } = fields;
 
-        let it = enumerate_fields(header, body_fields);
+        let it = enumerate_fields(fields);
 
         let names = it.clone().map(|fld| &fld.name);
 
@@ -356,7 +368,8 @@ impl<'a, 'b> ToTokens for OnDoneFn<'a, 'b> {
             }
         });
 
-        let field_dest = names.clone()
+        let field_dest = names
+            .clone()
             .map(|name| quote!(std::option::Option::Some(#name)));
 
         let num_fields = inner.fields_model.fields.len();
@@ -420,15 +433,13 @@ impl ToTokens for ResetFn {
 
 struct ConstructFieldRecognizers<'a, 'b> {
     fields: &'b SegregatedStructModel<'a, 'b>,
-    body_fields: &'b Vec<&'b FieldModel<'a>>,
 }
 
 impl<'a, 'b> ToTokens for ConstructFieldRecognizers<'a, 'b> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        let ConstructFieldRecognizers { fields, body_fields } = self;
+        let ConstructFieldRecognizers { fields } = self;
         let SegregatedStructModel { fields, .. } = fields;
-        let SegregatedFields { header, .. } = fields;
-        let initializers = enumerate_fields_discriminated(header, body_fields.as_slice())
+        let initializers = enumerate_fields_discriminated(fields)
             .map(|(fld, is_attr)| {
                 let ty = fld.field_ty;
                 if is_attr {
@@ -445,35 +456,44 @@ impl<'a, 'b> ToTokens for ConstructFieldRecognizers<'a, 'b> {
 
 struct ReadableImpl<'a, 'b> {
     fields: &'b SegregatedStructModel<'a, 'b>,
-    body_fields: &'b Vec<&'b FieldModel<'a>>,
 }
 
 impl<'a, 'b> ReadableImpl<'a, 'b> {
-
-    fn new(model: &'b SegregatedStructModel<'a, 'b>, body_fields: &'b Vec<&'b FieldModel<'a>>,) -> Self {
-        ReadableImpl {
-            fields: model,
-            body_fields,
-        }
+    fn new(model: &'b SegregatedStructModel<'a, 'b>) -> Self {
+        ReadableImpl { fields: model }
     }
-
 }
-
 
 impl<'a, 'b> ToTokens for ReadableImpl<'a, 'b> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        let ReadableImpl { fields, body_fields } = self;
+        let ReadableImpl { fields } = self;
         let name = fields.inner.name;
         let tag = fields.inner.resolve_name();
         let has_header_body = fields.fields.header.tag_body.is_some();
 
-        let make_fld_recog = ConstructFieldRecognizers { fields: *fields, body_fields: *body_fields };
+        let make_fld_recog = ConstructFieldRecognizers { fields: *fields };
         let num_fields = fields.inner.fields_model.fields.len() as u32;
 
-        let recog: syn::Path = if fields.inner.fields_model.body_kind == CompoundTypeKind::Labelled {
-            parse_quote!(swim_common::form::structural::read::improved::LabelledStructRecognizer)
+        let (recog, extra_params) = if let BodyFields::ReplacedBody(fld) = &fields.fields.body {
+            let recog: syn::Path = parse_quote!(
+                swim_common::form::structural::read::improved::DelegateStructRecognizer
+            );
+            let ty = fld.field_ty;
+            let extra = quote! {
+                <#ty as swim_common::form::structural::read::improved::RecognizerReadable>::is_simple()
+            };
+            (recog, Some(extra))
         } else {
-            parse_quote!(swim_common::form::structural::read::improved::OrdinalStructRecognizer)
+            let recog: syn::Path = if fields.inner.fields_model.body_kind
+                == CompoundTypeKind::Labelled
+            {
+                parse_quote!(
+                    swim_common::form::structural::read::improved::LabelledStructRecognizer
+                )
+            } else {
+                parse_quote!(swim_common::form::structural::read::improved::OrdinalStructRecognizer)
+            };
+            (recog, None)
         };
 
         tokens.append_all(quote! {
@@ -495,7 +515,8 @@ impl<'a, 'b> ToTokens for ReadableImpl<'a, 'b> {
                         select_index,
                         select_feed,
                         on_done,
-                        on_reset
+                        on_reset,
+                        #extra_params
                     )
                 }
 

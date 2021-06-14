@@ -18,14 +18,14 @@ mod record;
 mod tests;
 mod tokens;
 
+use crate::form::structural::read::improved::RecognizerReadable;
 pub use crate::form::structural::read::parser::error::ParseError;
 use crate::form::structural::read::ReadError;
+use crate::model::text::Text;
 use nom_locate::LocatedSpan;
 use num_bigint::{BigInt, BigUint};
 use std::borrow::Cow;
-use crate::form::structural::read::improved::RecognizerReadable;
 use utilities::iteratee::Iteratee;
-use crate::model::text::Text;
 
 /// Wraps a string in a strucutre that keeps track of the line and column
 /// as the input is parsed.
@@ -184,7 +184,10 @@ pub fn parse_recognize<T: RecognizerReadable>(input: Span<'_>) -> Result<T, Pars
                 break r;
             }
         } else {
-            break recognizer.flush().unwrap_or(Err(ReadError::IncompleteRecord));
+            break recognizer
+                .flush()
+                .unwrap_or(Err(ReadError::IncompleteRecord));
         }
-    }.map_err(ParseError::Structure)
+    }
+    .map_err(ParseError::Structure)
 }

@@ -15,9 +15,12 @@
 #[cfg(test)]
 mod tests;
 
+use crate::form::structural::read::improved::Recognizer;
+use crate::form::structural::read::parser::ParseEvent;
 use crate::form::structural::read::{ReadError, StructuralReadable};
 use crate::form::structural::write::interpreters::msgpack::{BIG_INT_EXT, BIG_UINT_EXT};
-use bytes::{Buf, BytesMut, BufMut};
+use bytes::{Buf, BufMut, BytesMut};
+use either::Either;
 use num_bigint::{BigInt, BigUint, Sign};
 use rmp::decode::{read_str_len, ValueReadError};
 use rmp::Marker;
@@ -25,22 +28,19 @@ use std::borrow::Cow;
 use std::convert::TryFrom;
 use std::fmt::{Display, Formatter};
 use std::str::Utf8Error;
-use crate::form::structural::read::improved::Recognizer;
-use crate::form::structural::read::parser::ParseEvent;
-use either::Either;
 
 macro_rules! feed {
     ($e:expr) => {
         match $e {
             Some(Ok(_)) => {
                 return Err(MsgPackReadError::UncomsumedData);
-            },
+            }
             Some(Err(e)) => {
                 return Err(e.into());
-            },
-            _ => {},
+            }
+            _ => {}
         }
-    }
+    };
 }
 
 fn feed<T, E: Into<MsgPackReadError>>(maybe: Option<Result<T, E>>) -> Result<(), MsgPackReadError> {
@@ -147,17 +147,19 @@ pub fn read_from_msg_pack<T: StructuralReadable, R: Buf>(
             let result = read_record(input, &mut str_buf, len, &mut recognizer);
             complete(result, recognizer)
         }
-        marker if is_ext(marker) => {
-            match read_ext(input, marker)? {
-                Either::Left(n) => T::read_big_int(n),
-                Either::Right(n) => T::read_big_uint(n),
-            }.map_err(Into::into)
+        marker if is_ext(marker) => match read_ext(input, marker)? {
+            Either::Left(n) => T::read_big_int(n),
+            Either::Right(n) => T::read_big_uint(n),
         }
+        .map_err(Into::into),
         ow => Err(MsgPackReadError::InvalidMarker(ow)),
     }
 }
 
-fn complete<T, R>(result: Result<Option<T>, MsgPackReadError>, recognizer: R) -> Result<T, MsgPackReadError>
+fn complete<T, R>(
+    result: Result<Option<T>, MsgPackReadError>,
+    recognizer: R,
+) -> Result<T, MsgPackReadError>
 where
     R: Recognizer<T>,
 {
@@ -168,9 +170,8 @@ where
             match recognizer.flush() {
                 Some(Ok(t)) => Ok(t),
                 Some(Err(e)) => Err(e.into()),
-                _ => Err(MsgPackReadError::Incomplete)
+                _ => Err(MsgPackReadError::Incomplete),
             }
-
         }
     })
 }
@@ -257,12 +258,9 @@ where
 }
 
 /// Read extnesion data. Curently we only use this for big integers.
-fn read_ext<R>(
-    input: &mut R,
-    marker: Marker,
-) -> Result<Either<BigInt, BigUint>, MsgPackReadError>
-    where
-        R: Buf,
+fn read_ext<R>(input: &mut R, marker: Marker) -> Result<Either<BigInt, BigUint>, MsgPackReadError>
+where
+    R: Buf,
 {
     let len = read_ext_size(input, marker)?;
     if input.remaining() < 1 {
@@ -285,7 +283,7 @@ fn read_ext<R>(
             BIG_UINT_EXT => {
                 let blob = read_blob(input, len)?;
                 Ok(Either::Right(BigUint::from_bytes_be(blob.as_slice())))
-            },
+            }
             _ => Err(MsgPackReadError::UnknownExtType(ext_type)),
         }
     }
@@ -363,11 +361,11 @@ fn compose_feed<R, F1, F2, S, T, U>(
     read: F1,
     to_value: F2,
 ) -> Result<(), MsgPackReadError>
-    where
-        R: Buf,
-        F1: Fn(&mut R) -> S,
-        S: BytesLen + Into<T>,
-        F2: FnOnce(T) -> Option<Result<U, ReadError>>,
+where
+    R: Buf,
+    F1: Fn(&mut R) -> S,
+    S: BytesLen + Into<T>,
+    F2: FnOnce(T) -> Option<Result<U, ReadError>>,
 {
     if input.remaining() < S::len() {
         Err(MsgPackReadError::Incomplete)
@@ -377,10 +375,12 @@ fn compose_feed<R, F1, F2, S, T, U>(
     }
 }
 
-fn read_string<R, F, T>(reader: &mut R,
-                        str_buf: &mut BytesMut,
-                        len: u32,
-                        to_value: F) -> Result<T, MsgPackReadError>
+fn read_string<R, F, T>(
+    reader: &mut R,
+    str_buf: &mut BytesMut,
+    len: u32,
+    to_value: F,
+) -> Result<T, MsgPackReadError>
 where
     R: Buf,
     F: FnOnce(Cow<'_, str>) -> Result<T, ReadError>,
@@ -396,11 +396,15 @@ where
     }
 }
 
-
-fn feed_string<R, F, T>(reader: &mut R, str_buf: &mut BytesMut, len: u32, to_value: F) -> Result<(), MsgPackReadError>
-    where
-        R: Buf,
-        F: FnOnce(Cow<'_, str>) -> Option<Result<T, ReadError>>,
+fn feed_string<R, F, T>(
+    reader: &mut R,
+    str_buf: &mut BytesMut,
+    len: u32,
+    to_value: F,
+) -> Result<(), MsgPackReadError>
+where
+    R: Buf,
+    F: FnOnce(Cow<'_, str>) -> Option<Result<T, ReadError>>,
 {
     let len = usize::try_from(len).expect("u32 did not fit into usize");
     str_buf.clear();
@@ -415,8 +419,8 @@ fn feed_string<R, F, T>(reader: &mut R, str_buf: &mut BytesMut, len: u32, to_val
 }
 
 fn read_blob<R>(reader: &mut R, len: u32) -> Result<Vec<u8>, MsgPackReadError>
-    where
-        R: Buf,
+where
+    R: Buf,
 {
     let len = usize::try_from(len).expect("u32 did not fit into usize");
     let bytes = reader.copy_to_bytes(len);
@@ -434,9 +438,9 @@ fn read_sub_record<T, R, Rec>(
     attrs: u32,
     recognizer: &mut Rec,
 ) -> Result<(), MsgPackReadError>
-    where
-        R: Buf,
-        Rec: Recognizer<T>,
+where
+    R: Buf,
+    Rec: Recognizer<T>,
 {
     match read_record(reader, str_buf, attrs, recognizer) {
         Ok(Some(_)) => Err(MsgPackReadError::UncomsumedData),
@@ -466,16 +470,21 @@ where
     let (body_len, is_map) = read_body_len(reader)?;
     feed!(recognizer.feed(ParseEvent::StartBody));
     if is_map {
-        read_map_body(reader, str_buf,  body_len, recognizer)?;
+        read_map_body(reader, str_buf, body_len, recognizer)?;
     } else {
         read_array_body(reader, str_buf, body_len, recognizer)?;
     }
-    recognizer.feed(ParseEvent::EndRecord).transpose().map_err(Into::into)
+    recognizer
+        .feed(ParseEvent::EndRecord)
+        .transpose()
+        .map_err(Into::into)
 }
 
-fn push_value_dynamic<T, R, Rec>(reader: &mut R,
-                                 str_buf: &mut BytesMut,
-                                 recognizer: &mut Rec) -> Result<(), MsgPackReadError>
+fn push_value_dynamic<T, R, Rec>(
+    reader: &mut R,
+    str_buf: &mut BytesMut,
+    recognizer: &mut Rec,
+) -> Result<(), MsgPackReadError>
 where
     R: Buf,
     Rec: Recognizer<T>,
@@ -575,7 +584,9 @@ where
         Marker::U64 => compose_feed(reader, Buf::get_u64, |n: u64| recognizer.feed(n.into())),
         Marker::F32 => compose_feed(reader, Buf::get_f32, |n: f32| recognizer.feed(n.into())),
         Marker::F64 => compose_feed(reader, Buf::get_f64, |n: f64| recognizer.feed(n.into())),
-        Marker::FixStr(len) => feed_string(reader, str_buf, len as u32, |t| recognizer.feed(t.into())),
+        Marker::FixStr(len) => {
+            feed_string(reader, str_buf, len as u32, |t| recognizer.feed(t.into()))
+        }
         Marker::Str8 => {
             let len = if reader.remaining() < u8::len() {
                 return Err(MsgPackReadError::Incomplete);
@@ -627,9 +638,7 @@ where
             let blob = read_blob(reader, len)?;
             feed(recognizer.feed(blob.into()))
         }
-        Marker::FixMap(n) => {
-            read_sub_record(reader, str_buf, n as u32, recognizer)
-        }
+        Marker::FixMap(n) => read_sub_record(reader, str_buf, n as u32, recognizer),
         Marker::Map16 => {
             let len = if reader.remaining() < u16::len() {
                 return Err(MsgPackReadError::Incomplete);
@@ -646,19 +655,11 @@ where
             };
             read_sub_record(reader, str_buf, len, recognizer)
         }
-        marker if is_ext(marker) => {
-            feed(match read_ext(reader, marker)? {
-                Either::Left(n) => {
-                    recognizer.feed(n.into())
-                },
-                Either::Right(n) => {
-                    recognizer.feed(n.into())
-                }
-            })
-        }
-        ow => {
-            Err(MsgPackReadError::InvalidMarker(ow))
-        }
+        marker if is_ext(marker) => feed(match read_ext(reader, marker)? {
+            Either::Left(n) => recognizer.feed(n.into()),
+            Either::Right(n) => recognizer.feed(n.into()),
+        }),
+        ow => Err(MsgPackReadError::InvalidMarker(ow)),
     }
 }
 
@@ -672,7 +673,7 @@ fn read_array_body<T, R, Rec>(
 ) -> Result<(), MsgPackReadError>
 where
     R: Buf,
-    Rec: Recognizer<T>
+    Rec: Recognizer<T>,
 {
     for _ in 0..items {
         let marker = read_marker(input)?;
@@ -681,16 +682,18 @@ where
             feed!(recognizer.feed(ParseEvent::Slot));
             push_value_dynamic(input, str_buf, recognizer)?;
         } else {
-           push_value(input, str_buf,  recognizer, marker)?;
+            push_value(input, str_buf, recognizer, marker)?;
         }
     }
     Ok(())
 }
 
-
-fn read_map_body<T, R, Rec>(input: &mut R,
-                            str_buf: &mut BytesMut,
-                            items: u32, recognizer: &mut Rec) -> Result<(), MsgPackReadError>
+fn read_map_body<T, R, Rec>(
+    input: &mut R,
+    str_buf: &mut BytesMut,
+    items: u32,
+    recognizer: &mut Rec,
+) -> Result<(), MsgPackReadError>
 where
     R: Buf,
     Rec: Recognizer<T>,

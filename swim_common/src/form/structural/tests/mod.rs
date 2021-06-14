@@ -14,14 +14,18 @@
 
 mod msgpack;
 
-use crate::form::structural::read::ReadError;
-use crate::model::text::Text;
-use std::prelude::v1::Result::Err;
-use crate::form::structural::read::improved::{RecognizerReadable, Recognizer, SimpleAttrBody, FirstOf, NamedFieldsRecognizer};
+use crate::form::structural::read::improved::{
+    FirstOf, NamedFieldsRecognizer, Recognizer, RecognizerReadable, SimpleAttrBody,
+};
 use crate::form::structural::read::parser::ParseEvent;
-use crate::form::structural::write::{RecordBodyKind, PrimitiveWriter, StructuralWritable, StructuralWriter};
+use crate::form::structural::read::ReadError;
+use crate::form::structural::write::{BodyWriter, HeaderWriter};
+use crate::form::structural::write::{
+    PrimitiveWriter, RecordBodyKind, StructuralWritable, StructuralWriter,
+};
+use crate::model::text::Text;
 use std::borrow::Cow;
-use crate::form::structural::write::{HeaderWriter, BodyWriter};
+use std::prelude::v1::Result::Err;
 
 #[derive(Clone, PartialEq, Eq, Debug, Default)]
 pub struct GeneralType<S, T> {
@@ -35,10 +39,18 @@ impl<S, T> GeneralType<S, T> {
     }
 }
 
-type GeneralFields<S, T> = (Option<S>, Option<T>, <S as RecognizerReadable>::Rec, <T as RecognizerReadable>::Rec);
+type GeneralFields<S, T> = (
+    Option<S>,
+    Option<T>,
+    <S as RecognizerReadable>::Rec,
+    <T as RecognizerReadable>::Rec,
+);
 type GeneralRec<S, T> = NamedFieldsRecognizer<GeneralType<S, T>, GeneralFields<S, T>>;
-type GeneralAttrRec<S, T> = FirstOf<GeneralType<S, T>, GeneralRec<S, T>, SimpleAttrBody<GeneralType<S, T>, GeneralRec<S, T>>>;
-
+type GeneralAttrRec<S, T> = FirstOf<
+    GeneralType<S, T>,
+    GeneralRec<S, T>,
+    SimpleAttrBody<GeneralType<S, T>, GeneralRec<S, T>>,
+>;
 
 fn general_select_field(name: &str) -> Option<u32> {
     match name {
@@ -48,7 +60,11 @@ fn general_select_field(name: &str) -> Option<u32> {
     }
 }
 
-fn general_select<'a, S, RS: Recognizer<S>, T, RT: Recognizer<T>>(state: &mut (Option<S>, Option<T>, RS, RT), index: u32, input: ParseEvent<'a>) -> Option<Result<(), ReadError>> {
+fn general_select<'a, S, RS: Recognizer<S>, T, RT: Recognizer<T>>(
+    state: &mut (Option<S>, Option<T>, RS, RT),
+    index: u32,
+    input: ParseEvent<'a>,
+) -> Option<Result<(), ReadError>> {
     let (first, second, first_rec, second_rec) = state;
     match index {
         0 => {
@@ -61,12 +77,10 @@ fn general_select<'a, S, RS: Recognizer<S>, T, RT: Recognizer<T>>(state: &mut (O
                         *first = Some(s);
                         Some(Ok(()))
                     }
-                    Err(e) => {
-                        Some(Err(e))
-                    }
+                    Err(e) => Some(Err(e)),
                 }
             }
-        },
+        }
         1 => {
             if second.is_some() {
                 Some(Err(ReadError::DuplicateField(Text::new("second"))))
@@ -77,29 +91,47 @@ fn general_select<'a, S, RS: Recognizer<S>, T, RT: Recognizer<T>>(state: &mut (O
                         *second = Some(t);
                         Some(Ok(()))
                     }
-                    Err(e) => {
-                        Some(Err(e))
-                    }
+                    Err(e) => Some(Err(e)),
                 }
             }
-        },
+        }
         _ => Some(Err(ReadError::InconsistentState)),
     }
 }
 
-fn general_construct<S: RecognizerReadable, RS: Recognizer<S>, T: RecognizerReadable, RT: Recognizer<T>>(state: &mut (Option<S>, Option<T>, RS, RT)) -> Result<GeneralType<S, T>, ReadError> {
+fn general_construct<
+    S: RecognizerReadable,
+    RS: Recognizer<S>,
+    T: RecognizerReadable,
+    RT: Recognizer<T>,
+>(
+    state: &mut (Option<S>, Option<T>, RS, RT),
+) -> Result<GeneralType<S, T>, ReadError> {
     let (first, second, first_rec, second_rec) = state;
     first_rec.reset();
     second_rec.reset();
-    match (first.take().or_else(|| S::on_absent()), second.take().or_else(|| T::on_absent())) {
-        (Some(first), Some(second)) => Ok(GeneralType {first, second}),
+    match (
+        first.take().or_else(|| S::on_absent()),
+        second.take().or_else(|| T::on_absent()),
+    ) {
+        (Some(first), Some(second)) => Ok(GeneralType { first, second }),
         (Some(_), _) => Err(ReadError::MissingFields(vec![Text::new("second")])),
         (_, Some(_)) => Err(ReadError::MissingFields(vec![Text::new("first")])),
-        _ => Err(ReadError::MissingFields(vec![Text::new("first"), Text::new("second")])),
+        _ => Err(ReadError::MissingFields(vec![
+            Text::new("first"),
+            Text::new("second"),
+        ])),
     }
 }
 
-fn general_reset<S: RecognizerReadable, RS: Recognizer<S>, T: RecognizerReadable, RT: Recognizer<T>>(state: &mut (Option<S>, Option<T>, RS, RT)) {
+fn general_reset<
+    S: RecognizerReadable,
+    RS: Recognizer<S>,
+    T: RecognizerReadable,
+    RT: Recognizer<T>,
+>(
+    state: &mut (Option<S>, Option<T>, RS, RT),
+) {
     let (first, second, first_rec, second_rec) = state;
     *first = None;
     *second = None;
@@ -112,13 +144,25 @@ impl<S: RecognizerReadable, T: RecognizerReadable> RecognizerReadable for Genera
     type AttrRec = GeneralAttrRec<S, T>;
 
     fn make_recognizer() -> Self::Rec {
-        NamedFieldsRecognizer::new((None, None, S::make_recognizer(), T::make_recognizer()),
-                                   general_select_field, 2, general_select, general_construct, general_reset)
+        NamedFieldsRecognizer::new(
+            (None, None, S::make_recognizer(), T::make_recognizer()),
+            general_select_field,
+            2,
+            general_select,
+            general_construct,
+            general_reset,
+        )
     }
 
     fn make_attr_recognizer() -> Self::AttrRec {
-        let option1 = NamedFieldsRecognizer::new_attr((None, None, S::make_recognizer(), T::make_recognizer()),
-                                                      general_select_field, 2, general_select, general_construct, general_reset);
+        let option1 = NamedFieldsRecognizer::new_attr(
+            (None, None, S::make_recognizer(), T::make_recognizer()),
+            general_select_field,
+            2,
+            general_select,
+            general_construct,
+            general_reset,
+        );
 
         let option2 = SimpleAttrBody::new(Self::make_recognizer());
         FirstOf::new(option1, option2)

@@ -15,15 +15,15 @@
 #[cfg(test)]
 mod tests;
 
+use crate::form::structural::read::improved::Recognizer;
+use crate::form::structural::read::parser::{NumericLiteral, ParseEvent};
 use crate::form::structural::read::ReadError;
 use crate::model::blob::Blob;
 use crate::model::text::Text;
 use crate::model::{Attr, Item, Value};
 use std::convert::TryFrom;
-use utilities::iteratee::Iteratee;
-use crate::form::structural::read::parser::{ParseEvent, NumericLiteral};
 use std::option::Option::None;
-use crate::form::structural::read::improved::Recognizer;
+use utilities::iteratee::Iteratee;
 
 #[derive(Debug)]
 enum RecordKey {
@@ -47,7 +47,6 @@ struct RecordBuilder {
 }
 
 impl RecordBuilder {
-
     fn new(key: RecordKey, in_body: bool) -> Self {
         RecordBuilder {
             key,
@@ -74,9 +73,7 @@ enum ItemEvent {
     Slot,
 }
 
-
 impl ValueMaterializer {
-
     fn peek_mut(&mut self) -> Result<&mut RecordBuilder, ReadError> {
         self.stack.last_mut().ok_or(ReadError::ReaderUnderflow)
     }
@@ -105,11 +102,10 @@ impl ValueMaterializer {
     fn new_attr_frame(&mut self, name: Text) {
         match self.stack.last_mut() {
             Some(top) if !top.in_body => {}
-            _ => {
-                self.new_record_frame(false)
-            }
+            _ => self.new_record_frame(false),
         }
-        self.stack.push(RecordBuilder::new(RecordKey::Attr(name), true))
+        self.stack
+            .push(RecordBuilder::new(RecordKey::Attr(name), true))
     }
 
     fn set_slot_key(&mut self) -> Result<(), ReadError> {
@@ -123,11 +119,11 @@ impl ValueMaterializer {
 
     fn pop(&mut self, is_attr_end: bool) -> Result<Option<Value>, ReadError> {
         if let Some(RecordBuilder {
-                        key,
-                        attrs,
-                        mut items,
-                        ..
-                    }) = self.stack.pop()
+            key,
+            attrs,
+            mut items,
+            ..
+        }) = self.stack.pop()
         {
             match key {
                 RecordKey::NoKey => {
@@ -157,7 +153,9 @@ impl ValueMaterializer {
                         let body = if attrs.is_empty() && items.len() <= 1 {
                             match items.pop() {
                                 Some(Item::ValueItem(value)) => value,
-                                Some(slot @ Item::Slot(_, _)) => Value::Record(Vec::new(), vec![slot]),
+                                Some(slot @ Item::Slot(_, _)) => {
+                                    Value::Record(Vec::new(), vec![slot])
+                                }
                                 _ => Value::Extant,
                             }
                         } else {
@@ -206,7 +204,6 @@ impl ValueMaterializer {
     }
 }
 
-
 fn recognize_item(input: ParseEvent<'_>) -> ItemEvent {
     match input {
         ParseEvent::Extant => ItemEvent::Primitive(Value::Extant),
@@ -228,7 +225,9 @@ fn recognize_item(input: ParseEvent<'_>) -> ItemEvent {
                 Value::UInt64Value(n)
             })
         }
-        ParseEvent::Number(NumericLiteral::Float(x)) => ItemEvent::Primitive(Value::Float64Value(x)),
+        ParseEvent::Number(NumericLiteral::Float(x)) => {
+            ItemEvent::Primitive(Value::Float64Value(x))
+        }
         ParseEvent::Number(NumericLiteral::BigInt(n)) => ItemEvent::Primitive(Value::BigInt(n)),
         ParseEvent::Number(NumericLiteral::BigUint(n)) => ItemEvent::Primitive(Value::BigUint(n)),
         ParseEvent::Boolean(p) => ItemEvent::Primitive(Value::BooleanValue(p)),
@@ -252,14 +251,12 @@ impl<'a> Iteratee<ParseEvent<'a>> for ValueMaterializer {
                 ItemEvent::RecordAtAttr(name) => {
                     self.new_attr_frame(name);
                     None
-                },
+                }
                 ItemEvent::RecordAtBody => {
                     self.new_record_frame(true);
                     None
-                },
-                _ => {
-                    Some(Err(ReadError::InconsistentState))
-                },
+                }
+                _ => Some(Err(ReadError::InconsistentState)),
             }
         } else {
             match recognize_item(input) {
@@ -269,18 +266,18 @@ impl<'a> Iteratee<ParseEvent<'a>> for ValueMaterializer {
                     } else {
                         None
                     }
-                },
+                }
                 ItemEvent::RecordAtAttr(name) => {
                     self.new_attr_frame(name);
                     None
-                },
+                }
                 ItemEvent::RecordAtBody => {
-                    if let Err(e) =  self.new_record_item() {
+                    if let Err(e) = self.new_record_item() {
                         Some(Err(e))
                     } else {
                         None
                     }
-                },
+                }
                 ItemEvent::Slot => {
                     if let Err(e) = self.set_slot_key() {
                         Some(Err(e))
@@ -295,15 +292,15 @@ impl<'a> Iteratee<ParseEvent<'a>> for ValueMaterializer {
                         None
                     }
                 }
-                ItemEvent::EndRec => {
-                    self.pop(false).transpose()
-                }
+                ItemEvent::EndRec => self.pop(false).transpose(),
             }
         }
     }
 
-    fn flush(self) -> Option<Self::Item> where
-        Self: Sized, {
+    fn flush(self) -> Option<Self::Item>
+    where
+        Self: Sized,
+    {
         let ValueMaterializer { mut stack, .. } = self;
         if stack.len() > 1 {
             None

@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::form::structural::read::parser::{ParseEvent, NumericLiteral};
-use utilities::iteratee::Iteratee;
-use crate::form::structural::read::ReadError;
 use super::Recognizer;
-use std::convert::TryFrom;
-use num_bigint::{BigInt, BigUint};
+use crate::form::structural::read::parser::{NumericLiteral, ParseEvent};
+use crate::form::structural::read::ReadError;
 use crate::model::text::Text;
+use num_bigint::{BigInt, BigUint};
+use std::convert::TryFrom;
+use utilities::iteratee::Iteratee;
 
 pub struct UnitRecognizer;
 pub struct I32Recognizer;
@@ -55,10 +55,10 @@ impl<'a> Iteratee<ParseEvent<'a>> for I32Recognizer {
         match input {
             ParseEvent::Number(NumericLiteral::Int(n)) => {
                 Some(i32::try_from(n).map_err(|_| ReadError::NumberOutOfRange))
-            },
+            }
             ParseEvent::Number(NumericLiteral::UInt(n)) => {
                 Some(i32::try_from(n).map_err(|_| ReadError::NumberOutOfRange))
-            },
+            }
             ow => Some(Err(super::bad_kind(&ow))),
         }
     }
@@ -73,12 +73,10 @@ impl<'a> Iteratee<ParseEvent<'a>> for I64Recognizer {
 
     fn feed(&mut self, input: ParseEvent<'a>) -> Option<Self::Item> {
         match input {
-            ParseEvent::Number(NumericLiteral::Int(n)) => {
-                Some(Ok(n))
-            },
+            ParseEvent::Number(NumericLiteral::Int(n)) => Some(Ok(n)),
             ParseEvent::Number(NumericLiteral::UInt(n)) => {
                 Some(i64::try_from(n).map_err(|_| ReadError::NumberOutOfRange))
-            },
+            }
             ow => Some(Err(super::bad_kind(&ow))),
         }
     }
@@ -95,10 +93,10 @@ impl<'a> Iteratee<ParseEvent<'a>> for U32Recognizer {
         match input {
             ParseEvent::Number(NumericLiteral::Int(n)) => {
                 Some(u32::try_from(n).map_err(|_| ReadError::NumberOutOfRange))
-            },
+            }
             ParseEvent::Number(NumericLiteral::UInt(n)) => {
                 Some(u32::try_from(n).map_err(|_| ReadError::NumberOutOfRange))
-            },
+            }
             ow => Some(Err(super::bad_kind(&ow))),
         }
     }
@@ -115,10 +113,8 @@ impl<'a> Iteratee<ParseEvent<'a>> for U64Recognizer {
         match input {
             ParseEvent::Number(NumericLiteral::Int(n)) => {
                 Some(u64::try_from(n).map_err(|_| ReadError::NumberOutOfRange))
-            },
-            ParseEvent::Number(NumericLiteral::UInt(n)) => {
-                Some(Ok(n))
-            },
+            }
+            ParseEvent::Number(NumericLiteral::UInt(n)) => Some(Ok(n)),
             ow => Some(Err(super::bad_kind(&ow))),
         }
     }
@@ -133,18 +129,10 @@ impl<'a> Iteratee<ParseEvent<'a>> for BigIntRecognizer {
 
     fn feed(&mut self, input: ParseEvent<'a>) -> Option<Self::Item> {
         match input {
-            ParseEvent::Number(NumericLiteral::Int(n)) => {
-                Some(Ok(BigInt::from(n)))
-            },
-            ParseEvent::Number(NumericLiteral::UInt(n)) => {
-                Some(Ok(BigInt::from(n)))
-            },
-            ParseEvent::Number(NumericLiteral::BigInt(n)) => {
-                Some(Ok(n))
-            },
-            ParseEvent::Number(NumericLiteral::BigUint(n)) => {
-                Some(Ok(BigInt::from(n)))
-            },
+            ParseEvent::Number(NumericLiteral::Int(n)) => Some(Ok(BigInt::from(n))),
+            ParseEvent::Number(NumericLiteral::UInt(n)) => Some(Ok(BigInt::from(n))),
+            ParseEvent::Number(NumericLiteral::BigInt(n)) => Some(Ok(n)),
+            ParseEvent::Number(NumericLiteral::BigUint(n)) => Some(Ok(BigInt::from(n))),
             ow => Some(Err(super::bad_kind(&ow))),
         }
     }
@@ -161,16 +149,12 @@ impl<'a> Iteratee<ParseEvent<'a>> for BigUintRecognizer {
         match input {
             ParseEvent::Number(NumericLiteral::Int(n)) => {
                 Some(BigUint::try_from(n).map_err(|_| ReadError::NumberOutOfRange))
-            },
-            ParseEvent::Number(NumericLiteral::UInt(n)) => {
-                Some(Ok(BigUint::from(n)))
-            },
+            }
+            ParseEvent::Number(NumericLiteral::UInt(n)) => Some(Ok(BigUint::from(n))),
             ParseEvent::Number(NumericLiteral::BigInt(n)) => {
                 Some(BigUint::try_from(n).map_err(|_| ReadError::NumberOutOfRange))
-            },
-            ParseEvent::Number(NumericLiteral::BigUint(n)) => {
-                Some(Ok(n))
-            },
+            }
+            ParseEvent::Number(NumericLiteral::BigUint(n)) => Some(Ok(n)),
             ow => Some(Err(super::bad_kind(&ow))),
         }
     }
@@ -185,9 +169,7 @@ impl<'a> Iteratee<ParseEvent<'a>> for F64Recognizer {
 
     fn feed(&mut self, input: ParseEvent<'a>) -> Option<Self::Item> {
         match input {
-            ParseEvent::Number(NumericLiteral::Float(x)) => {
-                Some(Ok(x))
-            },
+            ParseEvent::Number(NumericLiteral::Float(x)) => Some(Ok(x)),
             ow => Some(Err(super::bad_kind(&ow))),
         }
     }
@@ -256,7 +238,6 @@ impl<'a> Iteratee<ParseEvent<'a>> for BoolRecognizer {
 impl Recognizer<bool> for BoolRecognizer {
     fn reset(&mut self) {}
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -342,4 +323,3 @@ mod tests {
         assert_eq!(rec.feed(ev), Some(Ok(BigUint::from(5u32))));
     }
 }
-

@@ -13,12 +13,12 @@
 // limitations under the License.
 
 use crate::structural::model::record::{SegregatedStructModel, StructDef, StructModel};
-use crate::structural::model::{SynValidation, TryValidate, NameTransform};
+use crate::structural::model::{NameTransform, SynValidation, TryValidate};
 use quote::ToTokens;
-use syn::{Attribute, DataEnum, Ident};
-use utilities::validation::{validate2, Validation, ValidationItExt};
 use std::collections::HashSet;
+use syn::{Attribute, DataEnum, Ident};
 use utilities::algebra::Errors;
+use utilities::validation::{validate2, Validation, ValidationItExt};
 
 pub struct EnumModel<'a> {
     pub name: &'a Ident,
@@ -78,23 +78,27 @@ impl<'a> TryValidate<EnumDef<'a>> for EnumModel<'a> {
         let rename = super::fold_attr_meta(attributes.iter(), None, super::acc_rename);
 
         validate2(variants, rename).and_then(|(variants, transform)| {
-            let names = variants.iter().validate_fold(Validation::valid(HashSet::new()), false, |mut names, v| {
-                let name = if let Some(NameTransform::Rename(rename)) = &v.transform {
-                    rename.clone()
-                } else {
-                    v.name.to_string()
-                };
-                if names.contains(&name) {
-                    let err = syn::Error::new_spanned(
-                        top,
-                        format!("Duplicate enumeration tag: {}", name),
-                    );
-                    Validation::Validated(names, Errors::of(err))
-                } else {
-                    names.insert(name);
-                    Validation::valid(names)
-                }
-            });
+            let names = variants.iter().validate_fold(
+                Validation::valid(HashSet::new()),
+                false,
+                |mut names, v| {
+                    let name = if let Some(NameTransform::Rename(rename)) = &v.transform {
+                        rename.clone()
+                    } else {
+                        v.name.to_string()
+                    };
+                    if names.contains(&name) {
+                        let err = syn::Error::new_spanned(
+                            top,
+                            format!("Duplicate enumeration tag: {}", name),
+                        );
+                        Validation::Validated(names, Errors::of(err))
+                    } else {
+                        names.insert(name);
+                        Validation::valid(names)
+                    }
+                },
+            );
             names.and_then(move |_| {
                 let enum_model = EnumModel { name, variants };
                 if transform.is_some() {

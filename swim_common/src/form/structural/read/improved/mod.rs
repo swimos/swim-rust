@@ -16,19 +16,19 @@ pub mod primitive;
 #[cfg(test)]
 mod tests;
 
-use crate::form::structural::read::parser::{ParseEvent, NumericLiteral};
-use utilities::iteratee::Iteratee;
+use crate::form::structural::read::materializers::value::ValueMaterializer;
+use crate::form::structural::read::parser::{NumericLiteral, ParseEvent};
 use crate::form::structural::read::ReadError;
 use crate::model::text::Text;
-use crate::model::{ValueKind, Value};
-use std::borrow::Borrow;
-use std::marker::PhantomData;
+use crate::model::{Value, ValueKind};
 use num_bigint::{BigInt, BigUint};
-use std::sync::Arc;
-use std::option::Option::None;
-use crate::form::structural::read::materializers::value::ValueMaterializer;
+use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::hash::Hash;
+use std::marker::PhantomData;
+use std::option::Option::None;
+use std::sync::Arc;
+use utilities::iteratee::Iteratee;
 
 pub trait RecognizerReadable: Sized {
     type Rec: Recognizer<Self>;
@@ -47,26 +47,30 @@ pub trait RecognizerReadable: Sized {
 }
 
 pub trait Recognizer<R>: for<'a> Iteratee<ParseEvent<'a>, Item = Result<R, ReadError>> {
-
     fn reset(&mut self);
-
 }
 
 fn bad_kind(event: &ParseEvent<'_>) -> ReadError {
     match event {
         ParseEvent::Number(NumericLiteral::Int(_)) => ReadError::UnexpectedKind(ValueKind::Int64),
         ParseEvent::Number(NumericLiteral::UInt(_)) => ReadError::UnexpectedKind(ValueKind::UInt64),
-        ParseEvent::Number(NumericLiteral::BigInt(_)) => ReadError::UnexpectedKind(ValueKind::BigInt),
-        ParseEvent::Number(NumericLiteral::BigUint(_)) => ReadError::UnexpectedKind(ValueKind::BigUint),
-        ParseEvent::Number(NumericLiteral::Float(_)) => ReadError::UnexpectedKind(ValueKind::Float64),
+        ParseEvent::Number(NumericLiteral::BigInt(_)) => {
+            ReadError::UnexpectedKind(ValueKind::BigInt)
+        }
+        ParseEvent::Number(NumericLiteral::BigUint(_)) => {
+            ReadError::UnexpectedKind(ValueKind::BigUint)
+        }
+        ParseEvent::Number(NumericLiteral::Float(_)) => {
+            ReadError::UnexpectedKind(ValueKind::Float64)
+        }
         ParseEvent::Boolean(_) => ReadError::UnexpectedKind(ValueKind::Boolean),
         ParseEvent::TextValue(_) => ReadError::UnexpectedKind(ValueKind::Text),
         ParseEvent::Extant => ReadError::UnexpectedKind(ValueKind::Extant),
         ParseEvent::Blob(_) => ReadError::UnexpectedKind(ValueKind::Data),
-        ParseEvent::StartBody| ParseEvent::StartAttribute(_) => ReadError::UnexpectedKind(ValueKind::Record),
-        _ => {
-            ReadError::InconsistentState
-        },
+        ParseEvent::StartBody | ParseEvent::StartAttribute(_) => {
+            ReadError::UnexpectedKind(ValueKind::Record)
+        }
+        _ => ReadError::InconsistentState,
     }
 }
 
@@ -87,9 +91,8 @@ macro_rules! simple_readable {
             fn is_simple() -> bool {
                 true
             }
-
         }
-    }
+    };
 }
 
 simple_readable!((), UnitRecognizer);
@@ -125,49 +128,40 @@ impl<'a, T, R: Recognizer<T>> Iteratee<ParseEvent<'a>> for VecRecognizer<T, R> {
                     Some(Err(bad_kind(&input)))
                 }
             }
-            BodyStage::Between => {
-                match &input {
-                    ParseEvent::EndRecord if !self.is_attr_body => {
-                        Some(Ok(std::mem::take(&mut self.vector)))
-                    }
-                    ParseEvent::EndAttribute if self.is_attr_body => {
-                        Some(Ok(std::mem::take(&mut self.vector)))
-                    }
-                    _ => {
-                        self.stage = BodyStage::Item;
-                        match self.rec.feed(input)? {
-                            Ok(t) => {
-                                self.vector.push(t);
-                                self.rec.reset();
-                                self.stage = BodyStage::Between;
-                                None
-                            }
-                            Err(e) => {
-                                Some(Err(e))
-                            }
+            BodyStage::Between => match &input {
+                ParseEvent::EndRecord if !self.is_attr_body => {
+                    Some(Ok(std::mem::take(&mut self.vector)))
+                }
+                ParseEvent::EndAttribute if self.is_attr_body => {
+                    Some(Ok(std::mem::take(&mut self.vector)))
+                }
+                _ => {
+                    self.stage = BodyStage::Item;
+                    match self.rec.feed(input)? {
+                        Ok(t) => {
+                            self.vector.push(t);
+                            self.rec.reset();
+                            self.stage = BodyStage::Between;
+                            None
                         }
+                        Err(e) => Some(Err(e)),
                     }
                 }
-            }
-            BodyStage::Item => {
-                match self.rec.feed(input)? {
-                    Ok(t) => {
-                        self.vector.push(t);
-                        self.rec.reset();
-                        self.stage = BodyStage::Between;
-                        None
-                    }
-                    Err(e) => {
-                        Some(Err(e))
-                    }
+            },
+            BodyStage::Item => match self.rec.feed(input)? {
+                Ok(t) => {
+                    self.vector.push(t);
+                    self.rec.reset();
+                    self.stage = BodyStage::Between;
+                    None
                 }
-            }
+                Err(e) => Some(Err(e)),
+            },
         }
     }
 }
 
 impl<T, R> VecRecognizer<T, R> {
-
     fn new(is_attr_body: bool, rec: R) -> Self {
         VecRecognizer {
             is_attr_body,
@@ -176,7 +170,6 @@ impl<T, R> VecRecognizer<T, R> {
             rec,
         }
     }
-
 }
 
 impl<T: RecognizerReadable> RecognizerReadable for Vec<T> {
@@ -212,7 +205,6 @@ type Selector<Flds> = for<'a> fn(&mut Flds, u32, ParseEvent<'a>) -> Option<Resul
 struct Bitset(u32, u64);
 
 impl Bitset {
-
     fn new(cap: u32) -> Self {
         Bitset(cap, 0)
     }
@@ -236,7 +228,6 @@ impl Bitset {
     fn clear(&mut self) {
         self.1 = 0
     }
-
 }
 
 enum BodyFieldState {
@@ -259,12 +250,14 @@ pub struct NamedFieldsRecognizer<T, Flds> {
 }
 
 impl<T, Flds> NamedFieldsRecognizer<T, Flds> {
-
-    pub fn new(fields: Flds, select_index: fn(&str) -> Option<u32>,
-               num_fields: u32,
-               select_recog: Selector<Flds>,
-               on_done: fn(&mut Flds) -> Result<T, ReadError>,
-               reset: fn(&mut Flds)) -> Self {
+    pub fn new(
+        fields: Flds,
+        select_index: fn(&str) -> Option<u32>,
+        num_fields: u32,
+        select_recog: Selector<Flds>,
+        on_done: fn(&mut Flds) -> Result<T, ReadError>,
+        reset: fn(&mut Flds),
+    ) -> Self {
         NamedFieldsRecognizer {
             is_attr_body: false,
             state: BodyFieldState::Init,
@@ -278,11 +271,14 @@ impl<T, Flds> NamedFieldsRecognizer<T, Flds> {
         }
     }
 
-    pub fn new_attr(fields: Flds, select_index: fn(&str) -> Option<u32>,
-                    num_fields: u32,
-                    select_recog: Selector<Flds>,
-                    on_done: fn(&mut Flds) -> Result<T, ReadError>,
-                    reset: fn(&mut Flds)) -> Self {
+    pub fn new_attr(
+        fields: Flds,
+        select_index: fn(&str) -> Option<u32>,
+        num_fields: u32,
+        select_recog: Selector<Flds>,
+        on_done: fn(&mut Flds) -> Result<T, ReadError>,
+        reset: fn(&mut Flds),
+    ) -> Self {
         NamedFieldsRecognizer {
             is_attr_body: true,
             state: BodyFieldState::Between,
@@ -295,7 +291,6 @@ impl<T, Flds> NamedFieldsRecognizer<T, Flds> {
             reset,
         }
     }
-
 }
 
 impl<'a, T, Flds> Iteratee<ParseEvent<'a>> for NamedFieldsRecognizer<T, Flds> {
@@ -322,32 +317,24 @@ impl<'a, T, Flds> Iteratee<ParseEvent<'a>> for NamedFieldsRecognizer<T, Flds> {
                     Some(Err(bad_kind(&input)))
                 }
             }
-            BodyFieldState::Between => {
-                match input {
-                    ParseEvent::EndRecord if !*is_attr_body => {
-                        Some(on_done(fields))
-                    }
-                    ParseEvent::EndAttribute if *is_attr_body => {
-                        Some(on_done(fields))
-                    }
-                    ParseEvent::TextValue(name) => {
-                        if let Some(i) = select_index(name.borrow()) {
-                            if progress.get(i).unwrap_or(false) {
-                                Some(Err(ReadError::DuplicateField(Text::from(name))))
-                            } else {
-                                *index = i;
-                                *state = BodyFieldState::ExpectingSlot;
-                                None
-                            }
+            BodyFieldState::Between => match input {
+                ParseEvent::EndRecord if !*is_attr_body => Some(on_done(fields)),
+                ParseEvent::EndAttribute if *is_attr_body => Some(on_done(fields)),
+                ParseEvent::TextValue(name) => {
+                    if let Some(i) = select_index(name.borrow()) {
+                        if progress.get(i).unwrap_or(false) {
+                            Some(Err(ReadError::DuplicateField(Text::from(name))))
                         } else {
-                            Some(Err(ReadError::UnexpectedSlot))
+                            *index = i;
+                            *state = BodyFieldState::ExpectingSlot;
+                            None
                         }
-                    }
-                    ow => {
-                        Some(Err(bad_kind(&ow)))
+                    } else {
+                        Some(Err(ReadError::UnexpectedSlot))
                     }
                 }
-            }
+                ow => Some(Err(bad_kind(&ow))),
+            },
             BodyFieldState::ExpectingSlot => {
                 if matches!(input, ParseEvent::Slot) {
                     *state = BodyFieldState::SlotValue;
@@ -390,12 +377,13 @@ pub struct OrdinalFieldsRecognizer<T, Flds> {
 }
 
 impl<T, Flds> OrdinalFieldsRecognizer<T, Flds> {
-
-    pub fn new(fields: Flds,
-               num_fields: u32,
-               select_recog: Selector<Flds>,
-               on_done: fn(&mut Flds) -> Result<T, ReadError>,
-               reset: fn(&mut Flds)) -> Self {
+    pub fn new(
+        fields: Flds,
+        num_fields: u32,
+        select_recog: Selector<Flds>,
+        on_done: fn(&mut Flds) -> Result<T, ReadError>,
+        reset: fn(&mut Flds),
+    ) -> Self {
         OrdinalFieldsRecognizer {
             is_attr_body: false,
             state: BodyStage::Init,
@@ -408,11 +396,13 @@ impl<T, Flds> OrdinalFieldsRecognizer<T, Flds> {
         }
     }
 
-    pub fn new_attr(fields: Flds,
-                    num_fields: u32,
-                    select_recog: Selector<Flds>,
-                    on_done: fn(&mut Flds) -> Result<T, ReadError>,
-                    reset: fn(&mut Flds)) -> Self {
+    pub fn new_attr(
+        fields: Flds,
+        num_fields: u32,
+        select_recog: Selector<Flds>,
+        on_done: fn(&mut Flds) -> Result<T, ReadError>,
+        reset: fn(&mut Flds),
+    ) -> Self {
         OrdinalFieldsRecognizer {
             is_attr_body: true,
             state: BodyStage::Between,
@@ -424,9 +414,7 @@ impl<T, Flds> OrdinalFieldsRecognizer<T, Flds> {
             reset,
         }
     }
-
 }
-
 
 impl<'a, T, Flds> Iteratee<ParseEvent<'a>> for OrdinalFieldsRecognizer<T, Flds> {
     type Item = Result<T, ReadError>;
@@ -449,8 +437,10 @@ impl<'a, T, Flds> Iteratee<ParseEvent<'a>> for OrdinalFieldsRecognizer<T, Flds> 
             } else {
                 Some(Err(bad_kind(&input)))
             }
-        } else if matches!(state, BodyStage::Between) && ((!*is_attr_body && matches!(&input, ParseEvent::EndRecord)) ||
-            (*is_attr_body && matches!(&input, ParseEvent::EndAttribute))) {
+        } else if matches!(state, BodyStage::Between)
+            && ((!*is_attr_body && matches!(&input, ParseEvent::EndRecord))
+                || (*is_attr_body && matches!(&input, ParseEvent::EndAttribute)))
+        {
             Some(on_done(fields))
         } else {
             if *index == *num_fields {
@@ -466,7 +456,6 @@ impl<'a, T, Flds> Iteratee<ParseEvent<'a>> for OrdinalFieldsRecognizer<T, Flds> 
                 }
             }
         }
-
     }
 }
 
@@ -485,7 +474,6 @@ pub struct SimpleAttrBody<T, R: Recognizer<T>> {
 }
 
 impl<T, R: Recognizer<T>> SimpleAttrBody<T, R> {
-
     pub fn new(rec: R) -> Self {
         SimpleAttrBody {
             after_content: false,
@@ -493,7 +481,6 @@ impl<T, R: Recognizer<T>> SimpleAttrBody<T, R> {
             delegate: rec,
         }
     }
-
 }
 
 impl<'a, T, R: Recognizer<T>> Iteratee<ParseEvent<'a>> for SimpleAttrBody<T, R> {
@@ -518,14 +505,11 @@ impl<'a, T, R: Recognizer<T>> Iteratee<ParseEvent<'a>> for SimpleAttrBody<T, R> 
                     self.value = Some(t);
                     None
                 }
-                Err(e) => {
-                    Some(Err(e))
-                }
+                Err(e) => Some(Err(e)),
             }
         }
     }
 }
-
 
 impl<T, R: Recognizer<T>> Recognizer<T> for SimpleAttrBody<T, R> {
     fn reset(&mut self) {
@@ -534,7 +518,6 @@ impl<T, R: Recognizer<T>> Recognizer<T> for SimpleAttrBody<T, R> {
         self.delegate.reset();
     }
 }
-
 
 pub struct FirstOf<T, R1, R2> {
     _type: PhantomData<fn() -> T>,
@@ -545,11 +528,10 @@ pub struct FirstOf<T, R1, R2> {
 }
 
 impl<T, R1, R2> FirstOf<T, R1, R2>
-    where
-        R1: Recognizer<T>,
-        R2: Recognizer<T>,
+where
+    R1: Recognizer<T>,
+    R2: Recognizer<T>,
 {
-
     pub fn new(recognizer1: R1, recognizer2: R2) -> Self {
         FirstOf {
             _type: PhantomData,
@@ -559,13 +541,12 @@ impl<T, R1, R2> FirstOf<T, R1, R2>
             recognizer2,
         }
     }
-
 }
 
 impl<'a, T, R1, R2> Iteratee<ParseEvent<'a>> for FirstOf<T, R1, R2>
-    where
-        R1: Recognizer<T>,
-        R2: Recognizer<T>,
+where
+    R1: Recognizer<T>,
+    R2: Recognizer<T>,
 {
     type Item = Result<T, ReadError>;
 
@@ -579,7 +560,7 @@ impl<'a, T, R1, R2> Iteratee<ParseEvent<'a>> for FirstOf<T, R1, R2>
         } = self;
         if *first_active && *second_active {
             match recognizer1.feed(input.clone()) {
-                r@Some(Ok(_)) => {
+                r @ Some(Ok(_)) => {
                     *first_active = false;
                     *second_active = false;
                     return r;
@@ -587,15 +568,15 @@ impl<'a, T, R1, R2> Iteratee<ParseEvent<'a>> for FirstOf<T, R1, R2>
                 Some(Err(_)) => {
                     *first_active = false;
                 }
-                _ => {},
+                _ => {}
             }
             match recognizer2.feed(input) {
-                r@Some(Ok(_)) => {
+                r @ Some(Ok(_)) => {
                     *first_active = false;
                     *second_active = false;
                     r
                 }
-                r@Some(Err(_)) => {
+                r @ Some(Err(_)) => {
                     *second_active = false;
                     if *first_active {
                         None
@@ -620,9 +601,9 @@ impl<'a, T, R1, R2> Iteratee<ParseEvent<'a>> for FirstOf<T, R1, R2>
 }
 
 impl<T, R1, R2> Recognizer<T> for FirstOf<T, R1, R2>
-    where
-        R1: Recognizer<T>,
-        R2: Recognizer<T>,
+where
+    R1: Recognizer<T>,
+    R2: Recognizer<T>,
 {
     fn reset(&mut self) {
         self.first_active = true;
@@ -691,15 +672,16 @@ pub struct LabelledStructRecognizer<T, Flds> {
 }
 
 impl<T, Flds> LabelledStructRecognizer<T, Flds> {
-
-    pub fn new(tag: &'static str,
-               has_header_body: bool,
-               fields: Flds,
-               num_fields: u32,
-               select_index: for<'a> fn(LabelledFieldKey<'a>) -> Option<u32>,
-               select_recog: Selector<Flds>,
-               on_done: fn(&mut Flds) -> Result<T, ReadError>,
-               reset: fn(&mut Flds)) -> Self {
+    pub fn new(
+        tag: &'static str,
+        has_header_body: bool,
+        fields: Flds,
+        num_fields: u32,
+        select_index: for<'a> fn(LabelledFieldKey<'a>) -> Option<u32>,
+        select_recog: Selector<Flds>,
+        on_done: fn(&mut Flds) -> Result<T, ReadError>,
+        reset: fn(&mut Flds),
+    ) -> Self {
         LabelledStructRecognizer {
             tag,
             has_header_body,
@@ -713,19 +695,19 @@ impl<T, Flds> LabelledStructRecognizer<T, Flds> {
             reset,
         }
     }
-
 }
 
 impl<T, Flds> OrdinalStructRecognizer<T, Flds> {
-
-    pub fn new(tag: &'static str,
-               has_header_body: bool,
-               fields: Flds,
-               num_fields: u32,
-               select_index: for<'a> fn(OrdinalFieldKey<'a>) -> Option<u32>,
-               select_recog: Selector<Flds>,
-               on_done: fn(&mut Flds) -> Result<T, ReadError>,
-               reset: fn(&mut Flds)) -> Self {
+    pub fn new(
+        tag: &'static str,
+        has_header_body: bool,
+        fields: Flds,
+        num_fields: u32,
+        select_index: for<'a> fn(OrdinalFieldKey<'a>) -> Option<u32>,
+        select_recog: Selector<Flds>,
+        on_done: fn(&mut Flds) -> Result<T, ReadError>,
+        reset: fn(&mut Flds),
+    ) -> Self {
         OrdinalStructRecognizer {
             tag,
             has_header_body,
@@ -739,7 +721,6 @@ impl<T, Flds> OrdinalStructRecognizer<T, Flds> {
             reset,
         }
     }
-
 }
 
 impl<'a, T, Flds> Iteratee<ParseEvent<'a>> for LabelledStructRecognizer<T, Flds> {
@@ -760,20 +741,16 @@ impl<'a, T, Flds> Iteratee<ParseEvent<'a>> for LabelledStructRecognizer<T, Flds>
         } = self;
 
         match state {
-            LabelledStructState::Init => {
-                match &input {
-                    ParseEvent::StartAttribute(name) if name == *tag => {
-                        if *has_header_body {
-                            *state = LabelledStructState::HeaderInit;
-                        } else {
-                            *state = LabelledStructState::HeaderBetween;
-                        }
-                        None
+            LabelledStructState::Init => match &input {
+                ParseEvent::StartAttribute(name) if name == *tag => {
+                    if *has_header_body {
+                        *state = LabelledStructState::HeaderInit;
+                    } else {
+                        *state = LabelledStructState::HeaderBetween;
                     }
-                    _ => {
-                        Some(Err(bad_kind(&input)))
-                    }
+                    None
                 }
+                _ => Some(Err(bad_kind(&input))),
             },
             LabelledStructState::HeaderInit => {
                 if matches!(&input, ParseEvent::EndAttribute) {
@@ -784,7 +761,7 @@ impl<'a, T, Flds> Iteratee<ParseEvent<'a>> for LabelledStructRecognizer<T, Flds>
                     if let Some(i) = select_index(LabelledFieldKey::HeaderBody) {
                         *index = i;
                     } else {
-                        return Some(Err(ReadError::InconsistentState))
+                        return Some(Err(ReadError::InconsistentState));
                     }
                     if let Err(e) = select_recog(fields, *index, input)? {
                         Some(Err(e))
@@ -793,7 +770,7 @@ impl<'a, T, Flds> Iteratee<ParseEvent<'a>> for LabelledStructRecognizer<T, Flds>
                         None
                     }
                 }
-            },
+            }
             LabelledStructState::HeaderBodyItem => {
                 if let Err(e) = select_recog(fields, *index, input)? {
                     Some(Err(e))
@@ -803,27 +780,25 @@ impl<'a, T, Flds> Iteratee<ParseEvent<'a>> for LabelledStructRecognizer<T, Flds>
                     None
                 }
             }
-            LabelledStructState::HeaderBetween => {
-                match input {
-                    ParseEvent::EndAttribute => {
-                        *state = LabelledStructState::AttrBetween;
-                        None
-                    }
-                    ParseEvent::TextValue(name) => {
-                        if let Some(i) = select_index(LabelledFieldKey::HeaderSlot(name.borrow())) {
-                            if progress.get(i).unwrap_or(false) {
-                                Some(Err(ReadError::DuplicateField(Text::new(name.borrow()))))
-                            } else {
-                                *index = i;
-                                *state = LabelledStructState::HeaderExpectingSlot;
-                                None
-                            }
-                        } else {
-                            Some(Err(ReadError::UnexpectedField(name.into())))
-                        }
-                    }
-                    ow => Some(Err(bad_kind(&ow))),
+            LabelledStructState::HeaderBetween => match input {
+                ParseEvent::EndAttribute => {
+                    *state = LabelledStructState::AttrBetween;
+                    None
                 }
+                ParseEvent::TextValue(name) => {
+                    if let Some(i) = select_index(LabelledFieldKey::HeaderSlot(name.borrow())) {
+                        if progress.get(i).unwrap_or(false) {
+                            Some(Err(ReadError::DuplicateField(Text::new(name.borrow()))))
+                        } else {
+                            *index = i;
+                            *state = LabelledStructState::HeaderExpectingSlot;
+                            None
+                        }
+                    } else {
+                        Some(Err(ReadError::UnexpectedField(name.into())))
+                    }
+                }
+                ow => Some(Err(bad_kind(&ow))),
             },
             LabelledStructState::HeaderExpectingSlot => {
                 if matches!(&input, ParseEvent::Slot) {
@@ -832,7 +807,7 @@ impl<'a, T, Flds> Iteratee<ParseEvent<'a>> for LabelledStructRecognizer<T, Flds>
                 } else {
                     Some(Err(ReadError::UnexpectedItem))
                 }
-            },
+            }
             LabelledStructState::HeaderItem => {
                 if let Err(e) = select_recog(fields, *index, input)? {
                     Some(Err(e))
@@ -841,28 +816,26 @@ impl<'a, T, Flds> Iteratee<ParseEvent<'a>> for LabelledStructRecognizer<T, Flds>
                     *state = LabelledStructState::HeaderBetween;
                     None
                 }
-            },
-            LabelledStructState::AttrBetween => {
-                match input {
-                    ParseEvent::StartBody => {
-                        *state = LabelledStructState::BodyBetween;
-                        None
-                    }
-                    ParseEvent::StartAttribute(name) => {
-                        if let Some(i) = select_index(LabelledFieldKey::Attr(name.borrow())) {
-                            if progress.get(i).unwrap_or(false) {
-                                Some(Err(ReadError::DuplicateField(Text::new(name.borrow()))))
-                            } else {
-                                *index = i;
-                                *state = LabelledStructState::AttrItem;
-                                None
-                            }
-                        } else {
-                            Some(Err(ReadError::UnexpectedField(name.into())))
-                        }
-                    }
-                    ow => Some(Err(bad_kind(&ow)))
+            }
+            LabelledStructState::AttrBetween => match input {
+                ParseEvent::StartBody => {
+                    *state = LabelledStructState::BodyBetween;
+                    None
                 }
+                ParseEvent::StartAttribute(name) => {
+                    if let Some(i) = select_index(LabelledFieldKey::Attr(name.borrow())) {
+                        if progress.get(i).unwrap_or(false) {
+                            Some(Err(ReadError::DuplicateField(Text::new(name.borrow()))))
+                        } else {
+                            *index = i;
+                            *state = LabelledStructState::AttrItem;
+                            None
+                        }
+                    } else {
+                        Some(Err(ReadError::UnexpectedField(name.into())))
+                    }
+                }
+                ow => Some(Err(bad_kind(&ow))),
             },
             LabelledStructState::AttrItem => {
                 if let Err(e) = select_recog(fields, *index, input)? {
@@ -872,25 +845,23 @@ impl<'a, T, Flds> Iteratee<ParseEvent<'a>> for LabelledStructRecognizer<T, Flds>
                     *state = LabelledStructState::AttrBetween;
                     None
                 }
-            },
-            LabelledStructState::BodyBetween => {
-                match input {
-                    ParseEvent::EndRecord => Some(on_done(fields)),
-                    ParseEvent::TextValue(name) => {
-                        if let Some(i) = select_index(LabelledFieldKey::Item(name.borrow())) {
-                            if progress.get(i).unwrap_or(false) {
-                                Some(Err(ReadError::DuplicateField(Text::new(name.borrow()))))
-                            } else {
-                                *index = i;
-                                *state = LabelledStructState::BodyExpectingSlot;
-                                None
-                            }
+            }
+            LabelledStructState::BodyBetween => match input {
+                ParseEvent::EndRecord => Some(on_done(fields)),
+                ParseEvent::TextValue(name) => {
+                    if let Some(i) = select_index(LabelledFieldKey::Item(name.borrow())) {
+                        if progress.get(i).unwrap_or(false) {
+                            Some(Err(ReadError::DuplicateField(Text::new(name.borrow()))))
                         } else {
-                            Some(Err(ReadError::UnexpectedField(name.into())))
+                            *index = i;
+                            *state = LabelledStructState::BodyExpectingSlot;
+                            None
                         }
+                    } else {
+                        Some(Err(ReadError::UnexpectedField(name.into())))
                     }
-                    ow => Some(Err(bad_kind(&ow))),
                 }
+                ow => Some(Err(bad_kind(&ow))),
             },
             LabelledStructState::BodyExpectingSlot => {
                 if matches!(&input, ParseEvent::Slot) {
@@ -899,7 +870,7 @@ impl<'a, T, Flds> Iteratee<ParseEvent<'a>> for LabelledStructRecognizer<T, Flds>
                 } else {
                     Some(Err(bad_kind(&input)))
                 }
-            },
+            }
             LabelledStructState::BodyItem => {
                 if let Err(e) = select_recog(fields, *index, input)? {
                     Some(Err(e))
@@ -908,7 +879,7 @@ impl<'a, T, Flds> Iteratee<ParseEvent<'a>> for LabelledStructRecognizer<T, Flds>
                     *state = LabelledStructState::BodyBetween;
                     None
                 }
-            },
+            }
         }
     }
 }
@@ -953,20 +924,16 @@ impl<'a, T, Flds> Iteratee<ParseEvent<'a>> for OrdinalStructRecognizer<T, Flds> 
         } = self;
 
         match state {
-            OrdinalStructState::Init => {
-                match &input {
-                    ParseEvent::StartAttribute(name) if name == *tag => {
-                        if *has_header_body {
-                            *state = OrdinalStructState::HeaderInit;
-                        } else {
-                            *state = OrdinalStructState::HeaderBetween;
-                        }
-                        None
+            OrdinalStructState::Init => match &input {
+                ParseEvent::StartAttribute(name) if name == *tag => {
+                    if *has_header_body {
+                        *state = OrdinalStructState::HeaderInit;
+                    } else {
+                        *state = OrdinalStructState::HeaderBetween;
                     }
-                    _ => {
-                        Some(Err(bad_kind(&input)))
-                    }
+                    None
                 }
+                _ => Some(Err(bad_kind(&input))),
             },
             OrdinalStructState::HeaderInit => {
                 if matches!(&input, ParseEvent::EndAttribute) {
@@ -977,7 +944,7 @@ impl<'a, T, Flds> Iteratee<ParseEvent<'a>> for OrdinalStructRecognizer<T, Flds> 
                     if let Some(i) = select_index(OrdinalFieldKey::HeaderBody) {
                         *index = i;
                     } else {
-                        return Some(Err(ReadError::InconsistentState))
+                        return Some(Err(ReadError::InconsistentState));
                     }
                     if let Err(e) = select_recog(fields, *index, input)? {
                         Some(Err(e))
@@ -986,7 +953,7 @@ impl<'a, T, Flds> Iteratee<ParseEvent<'a>> for OrdinalStructRecognizer<T, Flds> 
                         None
                     }
                 }
-            },
+            }
             OrdinalStructState::HeaderBodyItem => {
                 if let Err(e) = select_recog(fields, *index, input)? {
                     Some(Err(e))
@@ -996,27 +963,25 @@ impl<'a, T, Flds> Iteratee<ParseEvent<'a>> for OrdinalStructRecognizer<T, Flds> 
                     None
                 }
             }
-            OrdinalStructState::HeaderBetween => {
-                match &input {
-                    ParseEvent::EndAttribute => {
-                        *state = OrdinalStructState::AttrBetween;
-                        None
-                    }
-                    ParseEvent::TextValue(name) => {
-                        if let Some(i) = select_index(OrdinalFieldKey::HeaderSlot(name.borrow())) {
-                            if progress.get(i).unwrap_or(false) {
-                                Some(Err(ReadError::DuplicateField(Text::new(name.borrow()))))
-                            } else {
-                                *index = i;
-                                *state = OrdinalStructState::HeaderExpectingSlot;
-                                None
-                            }
-                        } else {
-                            Some(Err(ReadError::UnexpectedField(Text::new(name.borrow()))))
-                        }
-                    }
-                    _ => Some(Err(bad_kind(&input))),
+            OrdinalStructState::HeaderBetween => match &input {
+                ParseEvent::EndAttribute => {
+                    *state = OrdinalStructState::AttrBetween;
+                    None
                 }
+                ParseEvent::TextValue(name) => {
+                    if let Some(i) = select_index(OrdinalFieldKey::HeaderSlot(name.borrow())) {
+                        if progress.get(i).unwrap_or(false) {
+                            Some(Err(ReadError::DuplicateField(Text::new(name.borrow()))))
+                        } else {
+                            *index = i;
+                            *state = OrdinalStructState::HeaderExpectingSlot;
+                            None
+                        }
+                    } else {
+                        Some(Err(ReadError::UnexpectedField(Text::new(name.borrow()))))
+                    }
+                }
+                _ => Some(Err(bad_kind(&input))),
             },
             OrdinalStructState::HeaderExpectingSlot => {
                 if matches!(&input, ParseEvent::Slot) {
@@ -1025,7 +990,7 @@ impl<'a, T, Flds> Iteratee<ParseEvent<'a>> for OrdinalStructRecognizer<T, Flds> 
                 } else {
                     Some(Err(ReadError::UnexpectedItem))
                 }
-            },
+            }
             OrdinalStructState::HeaderItem => {
                 if let Err(e) = select_recog(fields, *index, input)? {
                     Some(Err(e))
@@ -1034,31 +999,29 @@ impl<'a, T, Flds> Iteratee<ParseEvent<'a>> for OrdinalStructRecognizer<T, Flds> 
                     *state = OrdinalStructState::HeaderBetween;
                     None
                 }
-            },
-            OrdinalStructState::AttrBetween => {
-                match &input {
-                    ParseEvent::StartBody => {
-                        *state = OrdinalStructState::BodyBetween;
-                        if let Some(i) = select_index(OrdinalFieldKey::FirstItem) {
-                            *index = i;
-                        }
-                        None
+            }
+            OrdinalStructState::AttrBetween => match &input {
+                ParseEvent::StartBody => {
+                    *state = OrdinalStructState::BodyBetween;
+                    if let Some(i) = select_index(OrdinalFieldKey::FirstItem) {
+                        *index = i;
                     }
-                    ParseEvent::StartAttribute(name) => {
-                        if let Some(i) = select_index(OrdinalFieldKey::Attr(name.borrow())) {
-                            if progress.get(i).unwrap_or(false) {
-                                Some(Err(ReadError::DuplicateField(Text::new(name.borrow()))))
-                            } else {
-                                *index = i;
-                                *state = OrdinalStructState::AttrItem;
-                                None
-                            }
-                        } else {
-                            Some(Err(ReadError::UnexpectedField(Text::new(name.borrow()))))
-                        }
-                    }
-                    _ => Some(Err(bad_kind(&input)))
+                    None
                 }
+                ParseEvent::StartAttribute(name) => {
+                    if let Some(i) = select_index(OrdinalFieldKey::Attr(name.borrow())) {
+                        if progress.get(i).unwrap_or(false) {
+                            Some(Err(ReadError::DuplicateField(Text::new(name.borrow()))))
+                        } else {
+                            *index = i;
+                            *state = OrdinalStructState::AttrItem;
+                            None
+                        }
+                    } else {
+                        Some(Err(ReadError::UnexpectedField(Text::new(name.borrow()))))
+                    }
+                }
+                _ => Some(Err(bad_kind(&input))),
             },
             OrdinalStructState::AttrItem => {
                 if let Err(e) = select_recog(fields, *index, input)? {
@@ -1068,20 +1031,18 @@ impl<'a, T, Flds> Iteratee<ParseEvent<'a>> for OrdinalStructRecognizer<T, Flds> 
                     *state = OrdinalStructState::AttrBetween;
                     None
                 }
-            },
-            OrdinalStructState::BodyBetween => {
-                match &input {
-                    ParseEvent::EndRecord => Some(on_done(fields)),
-                    _ => {
-                        *state = OrdinalStructState::BodyItem;
-                        if let Err(e) = select_recog(fields, *index, input)? {
-                            Some(Err(e))
-                        } else {
-                            progress.set(*index);
-                            *index += 1;
-                            *state = OrdinalStructState::BodyBetween;
-                            None
-                        }
+            }
+            OrdinalStructState::BodyBetween => match &input {
+                ParseEvent::EndRecord => Some(on_done(fields)),
+                _ => {
+                    *state = OrdinalStructState::BodyItem;
+                    if let Err(e) = select_recog(fields, *index, input)? {
+                        Some(Err(e))
+                    } else {
+                        progress.set(*index);
+                        *index += 1;
+                        *state = OrdinalStructState::BodyBetween;
+                        None
                     }
                 }
             },
@@ -1094,7 +1055,7 @@ impl<'a, T, Flds> Iteratee<ParseEvent<'a>> for OrdinalStructRecognizer<T, Flds> 
                     *state = OrdinalStructState::BodyBetween;
                     None
                 }
-            },
+            }
         }
     }
 }
@@ -1124,11 +1085,10 @@ impl<T: RecognizerReadable> RecognizerReadable for Arc<T> {
 pub struct OptionRecognizer<T, R> {
     inner: R,
     reading_value: bool,
-    _type: PhantomData<fn() -> T>
+    _type: PhantomData<fn() -> T>,
 }
 
 impl<T, R> OptionRecognizer<T, R> {
-
     fn new(inner: R) -> Self {
         OptionRecognizer {
             inner,
@@ -1136,14 +1096,17 @@ impl<T, R> OptionRecognizer<T, R> {
             _type: PhantomData,
         }
     }
-
 }
 
 impl<'a, T, R: Recognizer<T>> Iteratee<ParseEvent<'a>> for OptionRecognizer<T, R> {
     type Item = Result<Option<T>, ReadError>;
 
     fn feed(&mut self, input: ParseEvent<'a>) -> Option<Self::Item> {
-        let OptionRecognizer { inner, reading_value, _type } = self;
+        let OptionRecognizer {
+            inner,
+            reading_value,
+            _type,
+        } = self;
         if *reading_value {
             inner.feed(input).map(|r| r.map(Option::Some))
         } else {
@@ -1174,7 +1137,7 @@ impl<'a, T, R: Recognizer<T>> Recognizer<Option<T>> for OptionRecognizer<T, R> {
 
 pub struct EmptyAttrRecognizer<T> {
     seen_extant: bool,
-    _type: PhantomData<fn() -> Option<T>>
+    _type: PhantomData<fn() -> Option<T>>,
 }
 
 impl<T> Default for EmptyAttrRecognizer<T> {
@@ -1210,11 +1173,10 @@ impl<T> Recognizer<Option<T>> for EmptyAttrRecognizer<T> {
 pub struct MappedRecognizer<T, R, F> {
     inner: R,
     f: F,
-    _type: PhantomData<fn() -> T>
+    _type: PhantomData<fn() -> T>,
 }
 
 impl<T, R, F> MappedRecognizer<T, R, F> {
-
     fn new(inner: R, f: F) -> Self {
         MappedRecognizer {
             inner,
@@ -1222,7 +1184,6 @@ impl<T, R, F> MappedRecognizer<T, R, F> {
             _type: PhantomData,
         }
     }
-
 }
 
 impl<'a, T, U, R, F> Iteratee<ParseEvent<'a>> for MappedRecognizer<T, R, F>
@@ -1239,9 +1200,9 @@ where
 }
 
 impl<T, U, R, F> Recognizer<U> for MappedRecognizer<T, R, F>
-    where
-        R: Recognizer<T>,
-        F: Fn(T) -> U,
+where
+    R: Recognizer<T>,
+    F: Fn(T) -> U,
 {
     fn reset(&mut self) {
         self.inner.reset()
@@ -1249,14 +1210,21 @@ impl<T, U, R, F> Recognizer<U> for MappedRecognizer<T, R, F>
 }
 impl<T: RecognizerReadable> RecognizerReadable for Option<T> {
     type Rec = OptionRecognizer<T, T::Rec>;
-    type AttrRec = FirstOf<Option<T>, EmptyAttrRecognizer<T>, MappedRecognizer<T, T::AttrRec, fn(T) -> Option<T>>>;
+    type AttrRec = FirstOf<
+        Option<T>,
+        EmptyAttrRecognizer<T>,
+        MappedRecognizer<T, T::AttrRec, fn(T) -> Option<T>>,
+    >;
 
     fn make_recognizer() -> Self::Rec {
         OptionRecognizer::new(T::make_recognizer())
     }
 
     fn make_attr_recognizer() -> Self::AttrRec {
-        FirstOf::new(EmptyAttrRecognizer::default(), MappedRecognizer::new(T::make_attr_recognizer(), Option::Some))
+        FirstOf::new(
+            EmptyAttrRecognizer::default(),
+            MappedRecognizer::new(T::make_attr_recognizer(), Option::Some),
+        )
     }
 
     fn on_absent() -> Option<Self> {
@@ -1286,7 +1254,7 @@ enum MapStage {
     Between,
     Key,
     Slot,
-    Value
+    Value,
 }
 
 pub struct HashMapRecognizer<K, V, RK, RV> {
@@ -1299,9 +1267,7 @@ pub struct HashMapRecognizer<K, V, RK, RV> {
 }
 
 impl<K, V, RK, RV> HashMapRecognizer<K, V, RK, RV> {
-
-    fn new(key_rec: RK,
-           val_rec: RV) -> Self {
+    fn new(key_rec: RK, val_rec: RV) -> Self {
         HashMapRecognizer {
             is_attr_body: false,
             stage: MapStage::Init,
@@ -1312,8 +1278,7 @@ impl<K, V, RK, RV> HashMapRecognizer<K, V, RK, RV> {
         }
     }
 
-    fn new_attr(key_rec: RK,
-           val_rec: RV) -> Self {
+    fn new_attr(key_rec: RK, val_rec: RV) -> Self {
         HashMapRecognizer {
             is_attr_body: true,
             stage: MapStage::Between,
@@ -1360,43 +1325,35 @@ where
                     Some(Err(bad_kind(&input)))
                 }
             }
-            MapStage::Between => {
-                match &input {
-                    ParseEvent::EndRecord if !self.is_attr_body => {
-                        Some(Ok(std::mem::take(&mut self.map)))
-                    }
-                    ParseEvent::EndAttribute if self.is_attr_body => {
-                        Some(Ok(std::mem::take(&mut self.map)))
-                    }
-                    _ => {
-                        self.stage = MapStage::Key;
-                        match self.key_rec.feed(input)? {
-                            Ok(t) => {
-                                self.key = Some(t);
-                                self.key_rec.reset();
-                                self.stage = MapStage::Slot;
-                                None
-                            }
-                            Err(e) => {
-                                Some(Err(e))
-                            }
+            MapStage::Between => match &input {
+                ParseEvent::EndRecord if !self.is_attr_body => {
+                    Some(Ok(std::mem::take(&mut self.map)))
+                }
+                ParseEvent::EndAttribute if self.is_attr_body => {
+                    Some(Ok(std::mem::take(&mut self.map)))
+                }
+                _ => {
+                    self.stage = MapStage::Key;
+                    match self.key_rec.feed(input)? {
+                        Ok(t) => {
+                            self.key = Some(t);
+                            self.key_rec.reset();
+                            self.stage = MapStage::Slot;
+                            None
                         }
+                        Err(e) => Some(Err(e)),
                     }
                 }
-            }
-            MapStage::Key => {
-                match self.key_rec.feed(input)? {
-                    Ok(t) => {
-                        self.key = Some(t);
-                        self.key_rec.reset();
-                        self.stage = MapStage::Slot;
-                        None
-                    }
-                    Err(e) => {
-                        Some(Err(e))
-                    }
+            },
+            MapStage::Key => match self.key_rec.feed(input)? {
+                Ok(t) => {
+                    self.key = Some(t);
+                    self.key_rec.reset();
+                    self.stage = MapStage::Slot;
+                    None
                 }
-            }
+                Err(e) => Some(Err(e)),
+            },
             MapStage::Slot => {
                 if matches!(&input, ParseEvent::Slot) {
                     self.stage = MapStage::Value;
@@ -1405,32 +1362,28 @@ where
                     Some(Err(bad_kind(&input)))
                 }
             }
-            MapStage::Value => {
-                match self.val_rec.feed(input)? {
-                    Ok(v) => {
-                        if let Some(k) = self.key.take() {
-                            self.map.insert(k, v);
-                            self.val_rec.reset();
-                            self.stage = MapStage::Between;
-                            None
-                        } else {
-                            Some(Err(ReadError::InconsistentState))
-                        }
-                    }
-                    Err(e) => {
-                        Some(Err(e))
+            MapStage::Value => match self.val_rec.feed(input)? {
+                Ok(v) => {
+                    if let Some(k) = self.key.take() {
+                        self.map.insert(k, v);
+                        self.val_rec.reset();
+                        self.stage = MapStage::Between;
+                        None
+                    } else {
+                        Some(Err(ReadError::InconsistentState))
                     }
                 }
-            }
+                Err(e) => Some(Err(e)),
+            },
         }
     }
 }
 
 impl<K, V, RK, RV> Recognizer<HashMap<K, V>> for HashMapRecognizer<K, V, RK, RV>
-    where
-        K: Eq + Hash,
-        RK: Recognizer<K>,
-        RV: Recognizer<V>,
+where
+    K: Eq + Hash,
+    RK: Recognizer<K>,
+    RV: Recognizer<V>,
 {
     fn reset(&mut self) {
         self.key = None;
@@ -1440,10 +1393,12 @@ impl<K, V, RK, RV> Recognizer<HashMap<K, V>> for HashMapRecognizer<K, V, RK, RV>
     }
 }
 
-pub fn feed_field<T, R>(name: &'static str,
-                        field: &mut Option<T>,
-                        recognizer: &mut R,
-                        event: ParseEvent<'_>) -> Option<Result<(), ReadError>>
+pub fn feed_field<T, R>(
+    name: &'static str,
+    field: &mut Option<T>,
+    recognizer: &mut R,
+    event: ParseEvent<'_>,
+) -> Option<Result<(), ReadError>>
 where
     R: Recognizer<T>,
 {
@@ -1456,7 +1411,7 @@ where
                 Some(Ok(()))
             }
             Some(Err(e)) => Some(Err(e)),
-            _ => None
+            _ => None,
         }
     }
 }
@@ -1491,16 +1446,17 @@ pub struct DelegateStructRecognizer<T, Flds> {
 }
 
 impl<T, Flds> DelegateStructRecognizer<T, Flds> {
-
-    pub fn new(tag: &'static str,
-               has_header_body: bool,
-               fields: Flds,
-               num_fields: u32,
-               select_index: for<'a> fn(OrdinalFieldKey<'a>) -> Option<u32>,
-               select_recog: Selector<Flds>,
-               on_done: fn(&mut Flds) -> Result<T, ReadError>,
-               reset: fn(&mut Flds),
-               simple_body: bool) -> Self {
+    pub fn new(
+        tag: &'static str,
+        has_header_body: bool,
+        fields: Flds,
+        num_fields: u32,
+        select_index: for<'a> fn(OrdinalFieldKey<'a>) -> Option<u32>,
+        select_recog: Selector<Flds>,
+        on_done: fn(&mut Flds) -> Result<T, ReadError>,
+        reset: fn(&mut Flds),
+        simple_body: bool,
+    ) -> Self {
         DelegateStructRecognizer {
             tag,
             has_header_body,
@@ -1515,7 +1471,6 @@ impl<T, Flds> DelegateStructRecognizer<T, Flds> {
             simple_body,
         }
     }
-
 }
 
 impl<'a, T, Flds> Iteratee<ParseEvent<'a>> for DelegateStructRecognizer<T, Flds> {
@@ -1537,20 +1492,16 @@ impl<'a, T, Flds> Iteratee<ParseEvent<'a>> for DelegateStructRecognizer<T, Flds>
         } = self;
 
         match state {
-            DelegateStructState::Init => {
-                match &input {
-                    ParseEvent::StartAttribute(name) if name == *tag => {
-                        if *has_header_body {
-                            *state = DelegateStructState::HeaderInit;
-                        } else {
-                            *state = DelegateStructState::HeaderBetween;
-                        }
-                        None
+            DelegateStructState::Init => match &input {
+                ParseEvent::StartAttribute(name) if name == *tag => {
+                    if *has_header_body {
+                        *state = DelegateStructState::HeaderInit;
+                    } else {
+                        *state = DelegateStructState::HeaderBetween;
                     }
-                    _ => {
-                        Some(Err(bad_kind(&input)))
-                    }
+                    None
                 }
+                _ => Some(Err(bad_kind(&input))),
             },
             DelegateStructState::HeaderInit => {
                 if matches!(&input, ParseEvent::EndAttribute) {
@@ -1561,7 +1512,7 @@ impl<'a, T, Flds> Iteratee<ParseEvent<'a>> for DelegateStructRecognizer<T, Flds>
                     if let Some(i) = select_index(OrdinalFieldKey::HeaderBody) {
                         *index = i;
                     } else {
-                        return Some(Err(ReadError::InconsistentState))
+                        return Some(Err(ReadError::InconsistentState));
                     }
                     if let Err(e) = select_recog(fields, *index, input)? {
                         Some(Err(e))
@@ -1570,7 +1521,7 @@ impl<'a, T, Flds> Iteratee<ParseEvent<'a>> for DelegateStructRecognizer<T, Flds>
                         None
                     }
                 }
-            },
+            }
             DelegateStructState::HeaderBodyItem => {
                 if let Err(e) = select_recog(fields, *index, input)? {
                     Some(Err(e))
@@ -1580,27 +1531,25 @@ impl<'a, T, Flds> Iteratee<ParseEvent<'a>> for DelegateStructRecognizer<T, Flds>
                     None
                 }
             }
-            DelegateStructState::HeaderBetween => {
-                match &input {
-                    ParseEvent::EndAttribute => {
-                        *state = DelegateStructState::AttrBetween;
-                        None
-                    }
-                    ParseEvent::TextValue(name) => {
-                        if let Some(i) = select_index(OrdinalFieldKey::HeaderSlot(name.borrow())) {
-                            if progress.get(i).unwrap_or(false) {
-                                Some(Err(ReadError::DuplicateField(Text::new(name.borrow()))))
-                            } else {
-                                *index = i;
-                                *state = DelegateStructState::HeaderExpectingSlot;
-                                None
-                            }
-                        } else {
-                            Some(Err(ReadError::UnexpectedField(Text::new(name.borrow()))))
-                        }
-                    }
-                    _ => Some(Err(bad_kind(&input))),
+            DelegateStructState::HeaderBetween => match &input {
+                ParseEvent::EndAttribute => {
+                    *state = DelegateStructState::AttrBetween;
+                    None
                 }
+                ParseEvent::TextValue(name) => {
+                    if let Some(i) = select_index(OrdinalFieldKey::HeaderSlot(name.borrow())) {
+                        if progress.get(i).unwrap_or(false) {
+                            Some(Err(ReadError::DuplicateField(Text::new(name.borrow()))))
+                        } else {
+                            *index = i;
+                            *state = DelegateStructState::HeaderExpectingSlot;
+                            None
+                        }
+                    } else {
+                        Some(Err(ReadError::UnexpectedField(Text::new(name.borrow()))))
+                    }
+                }
+                _ => Some(Err(bad_kind(&input))),
             },
             DelegateStructState::HeaderExpectingSlot => {
                 if matches!(&input, ParseEvent::Slot) {
@@ -1609,7 +1558,7 @@ impl<'a, T, Flds> Iteratee<ParseEvent<'a>> for DelegateStructRecognizer<T, Flds>
                 } else {
                     Some(Err(ReadError::UnexpectedItem))
                 }
-            },
+            }
             DelegateStructState::HeaderItem => {
                 if let Err(e) = select_recog(fields, *index, input)? {
                     Some(Err(e))
@@ -1618,18 +1567,47 @@ impl<'a, T, Flds> Iteratee<ParseEvent<'a>> for DelegateStructRecognizer<T, Flds>
                     *state = DelegateStructState::HeaderBetween;
                     None
                 }
-            },
-            DelegateStructState::AttrBetween => {
-                match input {
-                    ParseEvent::StartBody => {
+            }
+            DelegateStructState::AttrBetween => match input {
+                ParseEvent::StartBody => {
+                    if let Some(i) = select_index(OrdinalFieldKey::FirstItem) {
+                        *index = i;
+                        if *simple_body {
+                            *state = DelegateStructState::DelegatedSimple;
+                            None
+                        } else {
+                            *state = DelegateStructState::DelegatedComplex;
+                            if let Err(e) = select_recog(fields, *index, ParseEvent::StartBody)? {
+                                Some(Err(e))
+                            } else {
+                                *state = DelegateStructState::Done;
+                                None
+                            }
+                        }
+                    } else {
+                        *state = DelegateStructState::Done;
+                        None
+                    }
+                }
+                ParseEvent::StartAttribute(name) => {
+                    if let Some(i) = select_index(OrdinalFieldKey::Attr(name.borrow())) {
+                        if progress.get(i).unwrap_or(false) {
+                            Some(Err(ReadError::DuplicateField(Text::new(name.borrow()))))
+                        } else {
+                            *index = i;
+                            *state = DelegateStructState::AttrItem;
+                            None
+                        }
+                    } else {
                         if let Some(i) = select_index(OrdinalFieldKey::FirstItem) {
                             *index = i;
                             if *simple_body {
-                                *state = DelegateStructState::DelegatedSimple;
-                                None
+                                Some(Err(ReadError::UnexpectedField(name.into())))
                             } else {
                                 *state = DelegateStructState::DelegatedComplex;
-                                if let Err(e) = select_recog(fields, *index, ParseEvent::StartBody)? {
+                                if let Err(e) =
+                                    select_recog(fields, *index, ParseEvent::StartAttribute(name))?
+                                {
                                     Some(Err(e))
                                 } else {
                                     *state = DelegateStructState::Done;
@@ -1637,40 +1615,11 @@ impl<'a, T, Flds> Iteratee<ParseEvent<'a>> for DelegateStructRecognizer<T, Flds>
                                 }
                             }
                         } else {
-                            *state = DelegateStructState::Done;
-                            None
+                            Some(Err(ReadError::UnexpectedField(name.into())))
                         }
                     }
-                    ParseEvent::StartAttribute(name) => {
-                        if let Some(i) = select_index(OrdinalFieldKey::Attr(name.borrow())) {
-                            if progress.get(i).unwrap_or(false) {
-                                Some(Err(ReadError::DuplicateField(Text::new(name.borrow()))))
-                            } else {
-                                *index = i;
-                                *state = DelegateStructState::AttrItem;
-                                None
-                            }
-                        } else {
-                            if let Some(i) = select_index(OrdinalFieldKey::FirstItem) {
-                                *index = i;
-                                if *simple_body {
-                                    Some(Err(ReadError::UnexpectedField(name.into())))
-                                } else {
-                                    *state = DelegateStructState::DelegatedComplex;
-                                    if let Err(e) = select_recog(fields, *index, ParseEvent::StartAttribute(name))? {
-                                        Some(Err(e))
-                                    } else {
-                                        *state = DelegateStructState::Done;
-                                        None
-                                    }
-                                }
-                            } else {
-                                Some(Err(ReadError::UnexpectedField(name.into())))
-                            }
-                        }
-                    }
-                    ow => Some(Err(bad_kind(&ow)))
                 }
+                ow => Some(Err(bad_kind(&ow))),
             },
             DelegateStructState::AttrItem => {
                 if let Err(e) = select_recog(fields, *index, input)? {
@@ -1680,26 +1629,25 @@ impl<'a, T, Flds> Iteratee<ParseEvent<'a>> for DelegateStructRecognizer<T, Flds>
                     *state = DelegateStructState::AttrBetween;
                     None
                 }
-            },
-            DelegateStructState::DelegatedSimple => {
-                match input {
-                    ParseEvent::EndRecord => {
-                        if let Err(e) = select_recog(fields, *index, ParseEvent::Extant)? {
-                            Some(Err(e))
-                        } else {
-                            Some(on_done(fields))
-                        }
-                    },
-                    ev@ParseEvent::Slot | ev@ParseEvent::StartBody | ev@ParseEvent::StartAttribute(_) | ev@ParseEvent::EndAttribute => {
-                        Some(Err(bad_kind(&ev)))
+            }
+            DelegateStructState::DelegatedSimple => match input {
+                ParseEvent::EndRecord => {
+                    if let Err(e) = select_recog(fields, *index, ParseEvent::Extant)? {
+                        Some(Err(e))
+                    } else {
+                        Some(on_done(fields))
                     }
-                    ow => {
-                        if let Err(e) = select_recog(fields, *index, ow)? {
-                            Some(Err(e))
-                        } else {
-                            *state = DelegateStructState::Done;
-                            None
-                        }
+                }
+                ev @ ParseEvent::Slot
+                | ev @ ParseEvent::StartBody
+                | ev @ ParseEvent::StartAttribute(_)
+                | ev @ ParseEvent::EndAttribute => Some(Err(bad_kind(&ev))),
+                ow => {
+                    if let Err(e) = select_recog(fields, *index, ow)? {
+                        Some(Err(e))
+                    } else {
+                        *state = DelegateStructState::Done;
+                        None
                     }
                 }
             },
@@ -1709,7 +1657,7 @@ impl<'a, T, Flds> Iteratee<ParseEvent<'a>> for DelegateStructRecognizer<T, Flds>
                 } else {
                     Some(on_done(fields))
                 }
-            },
+            }
             DelegateStructState::Done => {
                 if matches!(&input, ParseEvent::EndRecord) {
                     Some(on_done(fields))
