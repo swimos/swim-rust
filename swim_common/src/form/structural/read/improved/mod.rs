@@ -40,6 +40,10 @@ pub trait RecognizerReadable: Sized {
     fn on_absent() -> Option<Self> {
         None
     }
+
+    fn is_simple() -> bool {
+        false
+    }
 }
 
 pub trait Recognizer<R>: for<'a> Iteratee<ParseEvent<'a>, Item = Result<R, ReadError>> {
@@ -78,6 +82,10 @@ macro_rules! simple_readable {
 
             fn make_attr_recognizer() -> Self::AttrRec {
                 SimpleAttrBody::new(primitive::$recog)
+            }
+
+            fn is_simple() -> bool {
+                true
             }
 
         }
@@ -796,7 +804,7 @@ impl<'a, T, Flds> Iteratee<ParseEvent<'a>> for LabelledStructRecognizer<T, Flds>
                 }
             }
             LabelledStructState::HeaderBetween => {
-                match &input {
+                match input {
                     ParseEvent::EndAttribute => {
                         *state = LabelledStructState::AttrBetween;
                         None
@@ -811,10 +819,10 @@ impl<'a, T, Flds> Iteratee<ParseEvent<'a>> for LabelledStructRecognizer<T, Flds>
                                 None
                             }
                         } else {
-                            Some(Err(ReadError::UnexpectedField(Text::new(name.borrow()))))
+                            Some(Err(ReadError::UnexpectedField(name.into())))
                         }
                     }
-                    _ => Some(Err(bad_kind(&input))),
+                    ow => Some(Err(bad_kind(&ow))),
                 }
             },
             LabelledStructState::HeaderExpectingSlot => {
@@ -835,7 +843,7 @@ impl<'a, T, Flds> Iteratee<ParseEvent<'a>> for LabelledStructRecognizer<T, Flds>
                 }
             },
             LabelledStructState::AttrBetween => {
-                match &input {
+                match input {
                     ParseEvent::StartBody => {
                         *state = LabelledStructState::BodyBetween;
                         None
@@ -850,10 +858,10 @@ impl<'a, T, Flds> Iteratee<ParseEvent<'a>> for LabelledStructRecognizer<T, Flds>
                                 None
                             }
                         } else {
-                            Some(Err(ReadError::UnexpectedField(Text::new(name.borrow()))))
+                            Some(Err(ReadError::UnexpectedField(name.into())))
                         }
                     }
-                    _ => Some(Err(bad_kind(&input)))
+                    ow => Some(Err(bad_kind(&ow)))
                 }
             },
             LabelledStructState::AttrItem => {
@@ -866,7 +874,7 @@ impl<'a, T, Flds> Iteratee<ParseEvent<'a>> for LabelledStructRecognizer<T, Flds>
                 }
             },
             LabelledStructState::BodyBetween => {
-                match &input {
+                match input {
                     ParseEvent::EndRecord => Some(on_done(fields)),
                     ParseEvent::TextValue(name) => {
                         if let Some(i) = select_index(LabelledFieldKey::Item(name.borrow())) {
@@ -878,10 +886,10 @@ impl<'a, T, Flds> Iteratee<ParseEvent<'a>> for LabelledStructRecognizer<T, Flds>
                                 None
                             }
                         } else {
-                            Some(Err(ReadError::UnexpectedField(Text::new(name.borrow()))))
+                            Some(Err(ReadError::UnexpectedField(name.into())))
                         }
                     }
-                    _ => Some(Err(bad_kind(&input))),
+                    ow => Some(Err(bad_kind(&ow))),
                 }
             },
             LabelledStructState::BodyExpectingSlot => {
@@ -1254,6 +1262,10 @@ impl<T: RecognizerReadable> RecognizerReadable for Option<T> {
     fn on_absent() -> Option<Self> {
         Some(None)
     }
+
+    fn is_simple() -> bool {
+        T::is_simple()
+    }
 }
 
 impl RecognizerReadable for Value {
@@ -1459,5 +1471,261 @@ enum DelegateStructState {
     HeaderItem,
     AttrBetween,
     AttrItem,
-    Delegated,
+    DelegatedSimple,
+    DelegatedComplex,
+    Done,
+}
+
+pub struct DelegateStructRecognizer<T, Flds> {
+    tag: &'static str,
+    has_header_body: bool,
+    state: DelegateStructState,
+    fields: Flds,
+    progress: Bitset,
+    select_index: for<'a> fn(OrdinalFieldKey<'a>) -> Option<u32>,
+    index: u32,
+    select_recog: Selector<Flds>,
+    on_done: fn(&mut Flds) -> Result<T, ReadError>,
+    reset: fn(&mut Flds),
+    simple_body: bool,
+}
+
+impl<T, Flds> DelegateStructRecognizer<T, Flds> {
+
+    pub fn new(tag: &'static str,
+               has_header_body: bool,
+               fields: Flds,
+               num_fields: u32,
+               select_index: for<'a> fn(OrdinalFieldKey<'a>) -> Option<u32>,
+               select_recog: Selector<Flds>,
+               on_done: fn(&mut Flds) -> Result<T, ReadError>,
+               reset: fn(&mut Flds),
+               simple_body: bool) -> Self {
+        DelegateStructRecognizer {
+            tag,
+            has_header_body,
+            state: DelegateStructState::Init,
+            fields: fields,
+            progress: Bitset::new(num_fields),
+            select_index,
+            index: 0,
+            select_recog,
+            on_done,
+            reset,
+            simple_body,
+        }
+    }
+
+}
+
+impl<'a, T, Flds> Iteratee<ParseEvent<'a>> for DelegateStructRecognizer<T, Flds> {
+    type Item = Result<T, ReadError>;
+
+    fn feed(&mut self, input: ParseEvent<'a>) -> Option<Self::Item> {
+        let DelegateStructRecognizer {
+            tag,
+            has_header_body,
+            state,
+            fields,
+            progress,
+            select_index,
+            index,
+            select_recog,
+            on_done,
+            simple_body,
+            ..
+        } = self;
+
+        match state {
+            DelegateStructState::Init => {
+                match &input {
+                    ParseEvent::StartAttribute(name) if name == *tag => {
+                        if *has_header_body {
+                            *state = DelegateStructState::HeaderInit;
+                        } else {
+                            *state = DelegateStructState::HeaderBetween;
+                        }
+                        None
+                    }
+                    _ => {
+                        Some(Err(bad_kind(&input)))
+                    }
+                }
+            },
+            DelegateStructState::HeaderInit => {
+                if matches!(&input, ParseEvent::EndAttribute) {
+                    *state = DelegateStructState::AttrBetween;
+                    None
+                } else {
+                    *state = DelegateStructState::HeaderBodyItem;
+                    if let Some(i) = select_index(OrdinalFieldKey::HeaderBody) {
+                        *index = i;
+                    } else {
+                        return Some(Err(ReadError::InconsistentState))
+                    }
+                    if let Err(e) = select_recog(fields, *index, input)? {
+                        Some(Err(e))
+                    } else {
+                        *state = DelegateStructState::HeaderBetween;
+                        None
+                    }
+                }
+            },
+            DelegateStructState::HeaderBodyItem => {
+                if let Err(e) = select_recog(fields, *index, input)? {
+                    Some(Err(e))
+                } else {
+                    progress.set(*index);
+                    *state = DelegateStructState::HeaderBetween;
+                    None
+                }
+            }
+            DelegateStructState::HeaderBetween => {
+                match &input {
+                    ParseEvent::EndAttribute => {
+                        *state = DelegateStructState::AttrBetween;
+                        None
+                    }
+                    ParseEvent::TextValue(name) => {
+                        if let Some(i) = select_index(OrdinalFieldKey::HeaderSlot(name.borrow())) {
+                            if progress.get(i).unwrap_or(false) {
+                                Some(Err(ReadError::DuplicateField(Text::new(name.borrow()))))
+                            } else {
+                                *index = i;
+                                *state = DelegateStructState::HeaderExpectingSlot;
+                                None
+                            }
+                        } else {
+                            Some(Err(ReadError::UnexpectedField(Text::new(name.borrow()))))
+                        }
+                    }
+                    _ => Some(Err(bad_kind(&input))),
+                }
+            },
+            DelegateStructState::HeaderExpectingSlot => {
+                if matches!(&input, ParseEvent::Slot) {
+                    *state = DelegateStructState::HeaderItem;
+                    None
+                } else {
+                    Some(Err(ReadError::UnexpectedItem))
+                }
+            },
+            DelegateStructState::HeaderItem => {
+                if let Err(e) = select_recog(fields, *index, input)? {
+                    Some(Err(e))
+                } else {
+                    progress.set(*index);
+                    *state = DelegateStructState::HeaderBetween;
+                    None
+                }
+            },
+            DelegateStructState::AttrBetween => {
+                match input {
+                    ParseEvent::StartBody => {
+                        if let Some(i) = select_index(OrdinalFieldKey::FirstItem) {
+                            *index = i;
+                            if *simple_body {
+                                *state = DelegateStructState::DelegatedSimple;
+                                None
+                            } else {
+                                *state = DelegateStructState::DelegatedComplex;
+                                if let Err(e) = select_recog(fields, *index, ParseEvent::StartBody)? {
+                                    Some(Err(e))
+                                } else {
+                                    *state = DelegateStructState::Done;
+                                    None
+                                }
+                            }
+                        } else {
+                            *state = DelegateStructState::Done;
+                            None
+                        }
+                    }
+                    ParseEvent::StartAttribute(name) => {
+                        if let Some(i) = select_index(OrdinalFieldKey::Attr(name.borrow())) {
+                            if progress.get(i).unwrap_or(false) {
+                                Some(Err(ReadError::DuplicateField(Text::new(name.borrow()))))
+                            } else {
+                                *index = i;
+                                *state = DelegateStructState::AttrItem;
+                                None
+                            }
+                        } else {
+                            if let Some(i) = select_index(OrdinalFieldKey::FirstItem) {
+                                *index = i;
+                                if *simple_body {
+                                    Some(Err(ReadError::UnexpectedField(name.into())))
+                                } else {
+                                    *state = DelegateStructState::DelegatedComplex;
+                                    if let Err(e) = select_recog(fields, *index, ParseEvent::StartAttribute(name))? {
+                                        Some(Err(e))
+                                    } else {
+                                        *state = DelegateStructState::Done;
+                                        None
+                                    }
+                                }
+                            } else {
+                                Some(Err(ReadError::UnexpectedField(name.into())))
+                            }
+                        }
+                    }
+                    ow => Some(Err(bad_kind(&ow)))
+                }
+            },
+            DelegateStructState::AttrItem => {
+                if let Err(e) = select_recog(fields, *index, input)? {
+                    Some(Err(e))
+                } else {
+                    progress.set(*index);
+                    *state = DelegateStructState::AttrBetween;
+                    None
+                }
+            },
+            DelegateStructState::DelegatedSimple => {
+                match input {
+                    ParseEvent::EndRecord => {
+                        if let Err(e) = select_recog(fields, *index, ParseEvent::Extant)? {
+                            Some(Err(e))
+                        } else {
+                            Some(on_done(fields))
+                        }
+                    },
+                    ev@ParseEvent::Slot | ev@ParseEvent::StartBody | ev@ParseEvent::StartAttribute(_) | ev@ParseEvent::EndAttribute => {
+                        Some(Err(bad_kind(&ev)))
+                    }
+                    ow => {
+                        if let Err(e) = select_recog(fields, *index, ow)? {
+                            Some(Err(e))
+                        } else {
+                            *state = DelegateStructState::Done;
+                            None
+                        }
+                    }
+                }
+            },
+            DelegateStructState::DelegatedComplex => {
+                if let Err(e) = select_recog(fields, *index, input)? {
+                    Some(Err(e))
+                } else {
+                    Some(on_done(fields))
+                }
+            },
+            DelegateStructState::Done => {
+                if matches!(&input, ParseEvent::EndRecord) {
+                    Some(on_done(fields))
+                } else {
+                    Some(Err(bad_kind(&input)))
+                }
+            }
+        }
+    }
+}
+
+impl<T, Flds> Recognizer<T> for DelegateStructRecognizer<T, Flds> {
+    fn reset(&mut self) {
+        self.state = DelegateStructState::Init;
+        self.progress.clear();
+        self.index = 0;
+        (self.reset)(&mut self.fields);
+    }
 }
