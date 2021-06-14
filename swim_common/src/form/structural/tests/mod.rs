@@ -46,11 +46,7 @@ type GeneralFields<S, T> = (
     <T as RecognizerReadable>::Rec,
 );
 type GeneralRec<S, T> = NamedFieldsRecognizer<GeneralType<S, T>, GeneralFields<S, T>>;
-type GeneralAttrRec<S, T> = FirstOf<
-    GeneralType<S, T>,
-    GeneralRec<S, T>,
-    SimpleAttrBody<GeneralType<S, T>, GeneralRec<S, T>>,
->;
+type GeneralAttrRec<S, T> = FirstOf<GeneralRec<S, T>, SimpleAttrBody<GeneralRec<S, T>>>;
 
 fn general_select_field(name: &str) -> Option<u32> {
     match name {
@@ -60,7 +56,7 @@ fn general_select_field(name: &str) -> Option<u32> {
     }
 }
 
-fn general_select<'a, S, RS: Recognizer<S>, T, RT: Recognizer<T>>(
+fn general_select<'a, S, RS: Recognizer<Target = S>, T, RT: Recognizer<Target = T>>(
     state: &mut (Option<S>, Option<T>, RS, RT),
     index: u32,
     input: ParseEvent<'a>,
@@ -71,7 +67,7 @@ fn general_select<'a, S, RS: Recognizer<S>, T, RT: Recognizer<T>>(
             if first.is_some() {
                 Some(Err(ReadError::DuplicateField(Text::new("first"))))
             } else {
-                let r = first_rec.feed(input)?;
+                let r = first_rec.feed_event(input)?;
                 match r {
                     Ok(s) => {
                         *first = Some(s);
@@ -85,7 +81,7 @@ fn general_select<'a, S, RS: Recognizer<S>, T, RT: Recognizer<T>>(
             if second.is_some() {
                 Some(Err(ReadError::DuplicateField(Text::new("second"))))
             } else {
-                let r = second_rec.feed(input)?;
+                let r = second_rec.feed_event(input)?;
                 match r {
                     Ok(t) => {
                         *second = Some(t);
@@ -101,9 +97,9 @@ fn general_select<'a, S, RS: Recognizer<S>, T, RT: Recognizer<T>>(
 
 fn general_construct<
     S: RecognizerReadable,
-    RS: Recognizer<S>,
+    RS: Recognizer<Target = S>,
     T: RecognizerReadable,
-    RT: Recognizer<T>,
+    RT: Recognizer<Target = T>,
 >(
     state: &mut (Option<S>, Option<T>, RS, RT),
 ) -> Result<GeneralType<S, T>, ReadError> {
@@ -126,9 +122,9 @@ fn general_construct<
 
 fn general_reset<
     S: RecognizerReadable,
-    RS: Recognizer<S>,
+    RS: Recognizer<Target = S>,
     T: RecognizerReadable,
-    RT: Recognizer<T>,
+    RT: Recognizer<Target = T>,
 >(
     state: &mut (Option<S>, Option<T>, RS, RT),
 ) {

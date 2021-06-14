@@ -17,17 +17,17 @@ use crate::form::structural::read::improved::{Recognizer, VecRecognizer};
 use crate::form::structural::read::parser::ParseEvent;
 use crate::form::structural::read::ReadError;
 
-fn run_recognizer<T, R: Recognizer<T>>(events: Vec<ParseEvent<'_>>, mut rec: R) -> T {
+fn run_recognizer<R: Recognizer>(events: Vec<ParseEvent<'_>>, mut rec: R) -> R::Target {
     let mut result = None;
     for event in events.into_iter() {
         if result.is_none() {
-            result = rec.feed(event);
+            result = rec.feed_event(event);
         } else {
             panic!("Not all input was consumed.");
         }
     }
     if result.is_none() {
-        result = rec.flush();
+        result = rec.try_flush();
     }
     match result {
         Some(Err(e)) => panic!("{}", e),
@@ -62,7 +62,7 @@ fn select_ord(
     match n {
         0 => {
             let mut rec = I32Recognizer;
-            match rec.feed(event) {
+            match rec.feed_event(event) {
                 Some(Ok(m)) => {
                     fields.0 = Some(m);
                     Some(Ok(()))
@@ -73,7 +73,7 @@ fn select_ord(
         }
         1 => {
             let mut rec = I32Recognizer;
-            match rec.feed(event) {
+            match rec.feed_event(event) {
                 Some(Ok(m)) => {
                     fields.1 = Some(m);
                     Some(Ok(()))
@@ -126,7 +126,7 @@ where
 
     loop {
         if let Some(event) = it.next() {
-            if let Some(r) = recognizer.feed(event) {
+            if let Some(r) = recognizer.feed_event(event) {
                 break r;
             }
         } else {
@@ -156,7 +156,7 @@ fn example_select_field(name: &str) -> Option<u32> {
     }
 }
 
-fn example_select<'a, S, RS: Recognizer<S>, T, RT: Recognizer<T>>(
+fn example_select<'a, S, RS: Recognizer<Target = S>, T, RT: Recognizer<Target = T>>(
     state: &mut (Option<S>, Option<T>, RS, RT),
     index: u32,
     input: ParseEvent<'a>,
@@ -167,7 +167,7 @@ fn example_select<'a, S, RS: Recognizer<S>, T, RT: Recognizer<T>>(
             if first.is_some() {
                 Some(Err(ReadError::DuplicateField(Text::new("first"))))
             } else {
-                let r = first_rec.feed(input)?;
+                let r = first_rec.feed_event(input)?;
                 match r {
                     Ok(s) => {
                         *first = Some(s);
@@ -181,7 +181,7 @@ fn example_select<'a, S, RS: Recognizer<S>, T, RT: Recognizer<T>>(
             if second.is_some() {
                 Some(Err(ReadError::DuplicateField(Text::new("second"))))
             } else {
-                let r = second_rec.feed(input)?;
+                let r = second_rec.feed_event(input)?;
                 match r {
                     Ok(t) => {
                         *second = Some(t);
@@ -197,9 +197,9 @@ fn example_select<'a, S, RS: Recognizer<S>, T, RT: Recognizer<T>>(
 
 fn example_construct<
     S: RecognizerReadable,
-    RS: Recognizer<S>,
+    RS: Recognizer<Target = S>,
     T: RecognizerReadable,
-    RT: Recognizer<T>,
+    RT: Recognizer<Target = T>,
 >(
     state: &mut (Option<S>, Option<T>, RS, RT),
 ) -> Result<Example<S, T>, ReadError> {
@@ -222,9 +222,9 @@ fn example_construct<
 
 fn example_reset<
     S: RecognizerReadable,
-    RS: Recognizer<S>,
+    RS: Recognizer<Target = S>,
     T: RecognizerReadable,
-    RT: Recognizer<T>,
+    RT: Recognizer<Target = T>,
 >(
     state: &mut (Option<S>, Option<T>, RS, RT),
 ) {
@@ -242,8 +242,7 @@ type ExampleFields<S, T> = (
     <T as RecognizerReadable>::Rec,
 );
 type ExampleRec<S, T> = NamedFieldsRecognizer<Example<S, T>, ExampleFields<S, T>>;
-type ExampleAttrRec<S, T> =
-    FirstOf<Example<S, T>, ExampleRec<S, T>, SimpleAttrBody<Example<S, T>, ExampleRec<S, T>>>;
+type ExampleAttrRec<S, T> = FirstOf<ExampleRec<S, T>, SimpleAttrBody<ExampleRec<S, T>>>;
 
 impl<S: RecognizerReadable, T: RecognizerReadable> RecognizerReadable for Example<S, T> {
     type Rec = ExampleRec<S, T>;

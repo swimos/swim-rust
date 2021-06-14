@@ -18,7 +18,6 @@ use crate::form::structural::read::ReadError;
 use crate::model::text::Text;
 use num_bigint::{BigInt, BigUint};
 use std::convert::TryFrom;
-use utilities::iteratee::Iteratee;
 
 pub struct UnitRecognizer;
 pub struct I32Recognizer;
@@ -33,25 +32,23 @@ pub struct TextRecognizer;
 pub struct DataRecognizer;
 pub struct BoolRecognizer;
 
-impl<'a> Iteratee<ParseEvent<'a>> for UnitRecognizer {
-    type Item = Result<(), ReadError>;
+impl Recognizer for UnitRecognizer {
+    type Target = ();
 
-    fn feed(&mut self, input: ParseEvent<'a>) -> Option<Self::Item> {
+    fn feed_event<'a>(&mut self, input: ParseEvent<'a>) -> Option<Result<Self::Target, ReadError>> {
         match input {
             ParseEvent::Extant => Some(Ok(())),
             ow => Some(Err(super::bad_kind(&ow))),
         }
     }
-}
 
-impl Recognizer<()> for UnitRecognizer {
     fn reset(&mut self) {}
 }
 
-impl<'a> Iteratee<ParseEvent<'a>> for I32Recognizer {
-    type Item = Result<i32, ReadError>;
+impl Recognizer for I32Recognizer {
+    type Target = i32;
 
-    fn feed(&mut self, input: ParseEvent<'a>) -> Option<Self::Item> {
+    fn feed_event<'a>(&mut self, input: ParseEvent<'a>) -> Option<Result<Self::Target, ReadError>> {
         match input {
             ParseEvent::Number(NumericLiteral::Int(n)) => {
                 Some(i32::try_from(n).map_err(|_| ReadError::NumberOutOfRange))
@@ -62,16 +59,14 @@ impl<'a> Iteratee<ParseEvent<'a>> for I32Recognizer {
             ow => Some(Err(super::bad_kind(&ow))),
         }
     }
-}
 
-impl Recognizer<i32> for I32Recognizer {
     fn reset(&mut self) {}
 }
 
-impl<'a> Iteratee<ParseEvent<'a>> for I64Recognizer {
-    type Item = Result<i64, ReadError>;
+impl Recognizer for I64Recognizer {
+    type Target = i64;
 
-    fn feed(&mut self, input: ParseEvent<'a>) -> Option<Self::Item> {
+    fn feed_event<'a>(&mut self, input: ParseEvent<'a>) -> Option<Result<Self::Target, ReadError>> {
         match input {
             ParseEvent::Number(NumericLiteral::Int(n)) => Some(Ok(n)),
             ParseEvent::Number(NumericLiteral::UInt(n)) => {
@@ -80,16 +75,14 @@ impl<'a> Iteratee<ParseEvent<'a>> for I64Recognizer {
             ow => Some(Err(super::bad_kind(&ow))),
         }
     }
-}
 
-impl Recognizer<i64> for I64Recognizer {
     fn reset(&mut self) {}
 }
 
-impl<'a> Iteratee<ParseEvent<'a>> for U32Recognizer {
-    type Item = Result<u32, ReadError>;
+impl Recognizer for U32Recognizer {
+    type Target = u32;
 
-    fn feed(&mut self, input: ParseEvent<'a>) -> Option<Self::Item> {
+    fn feed_event<'a>(&mut self, input: ParseEvent<'a>) -> Option<Result<Self::Target, ReadError>> {
         match input {
             ParseEvent::Number(NumericLiteral::Int(n)) => {
                 Some(u32::try_from(n).map_err(|_| ReadError::NumberOutOfRange))
@@ -100,16 +93,14 @@ impl<'a> Iteratee<ParseEvent<'a>> for U32Recognizer {
             ow => Some(Err(super::bad_kind(&ow))),
         }
     }
-}
 
-impl Recognizer<u32> for U32Recognizer {
     fn reset(&mut self) {}
 }
 
-impl<'a> Iteratee<ParseEvent<'a>> for U64Recognizer {
-    type Item = Result<u64, ReadError>;
+impl Recognizer for U64Recognizer {
+    type Target = u64;
 
-    fn feed(&mut self, input: ParseEvent<'a>) -> Option<Self::Item> {
+    fn feed_event<'a>(&mut self, input: ParseEvent<'a>) -> Option<Result<Self::Target, ReadError>> {
         match input {
             ParseEvent::Number(NumericLiteral::Int(n)) => {
                 Some(u64::try_from(n).map_err(|_| ReadError::NumberOutOfRange))
@@ -118,16 +109,14 @@ impl<'a> Iteratee<ParseEvent<'a>> for U64Recognizer {
             ow => Some(Err(super::bad_kind(&ow))),
         }
     }
-}
 
-impl Recognizer<u64> for U64Recognizer {
     fn reset(&mut self) {}
 }
 
-impl<'a> Iteratee<ParseEvent<'a>> for BigIntRecognizer {
-    type Item = Result<BigInt, ReadError>;
+impl Recognizer for BigIntRecognizer {
+    type Target = BigInt;
 
-    fn feed(&mut self, input: ParseEvent<'a>) -> Option<Self::Item> {
+    fn feed_event<'a>(&mut self, input: ParseEvent<'a>) -> Option<Result<Self::Target, ReadError>> {
         match input {
             ParseEvent::Number(NumericLiteral::Int(n)) => Some(Ok(BigInt::from(n))),
             ParseEvent::Number(NumericLiteral::UInt(n)) => Some(Ok(BigInt::from(n))),
@@ -136,16 +125,14 @@ impl<'a> Iteratee<ParseEvent<'a>> for BigIntRecognizer {
             ow => Some(Err(super::bad_kind(&ow))),
         }
     }
-}
 
-impl Recognizer<BigInt> for BigIntRecognizer {
     fn reset(&mut self) {}
 }
 
-impl<'a> Iteratee<ParseEvent<'a>> for BigUintRecognizer {
-    type Item = Result<BigUint, ReadError>;
+impl Recognizer for BigUintRecognizer {
+    type Target = BigUint;
 
-    fn feed(&mut self, input: ParseEvent<'a>) -> Option<Self::Item> {
+    fn feed_event<'a>(&mut self, input: ParseEvent<'a>) -> Option<Result<Self::Target, ReadError>> {
         match input {
             ParseEvent::Number(NumericLiteral::Int(n)) => {
                 Some(BigUint::try_from(n).map_err(|_| ReadError::NumberOutOfRange))
@@ -158,84 +145,72 @@ impl<'a> Iteratee<ParseEvent<'a>> for BigUintRecognizer {
             ow => Some(Err(super::bad_kind(&ow))),
         }
     }
-}
 
-impl Recognizer<BigUint> for BigUintRecognizer {
     fn reset(&mut self) {}
 }
 
-impl<'a> Iteratee<ParseEvent<'a>> for F64Recognizer {
-    type Item = Result<f64, ReadError>;
+impl Recognizer for F64Recognizer {
+    type Target = f64;
 
-    fn feed(&mut self, input: ParseEvent<'a>) -> Option<Self::Item> {
+    fn feed_event<'a>(&mut self, input: ParseEvent<'a>) -> Option<Result<Self::Target, ReadError>> {
         match input {
             ParseEvent::Number(NumericLiteral::Float(x)) => Some(Ok(x)),
             ow => Some(Err(super::bad_kind(&ow))),
         }
     }
-}
 
-impl Recognizer<f64> for F64Recognizer {
     fn reset(&mut self) {}
 }
 
-impl<'a> Iteratee<ParseEvent<'a>> for StringRecognizer {
-    type Item = Result<String, ReadError>;
+impl Recognizer for StringRecognizer {
+    type Target = String;
 
-    fn feed(&mut self, input: ParseEvent<'a>) -> Option<Self::Item> {
+    fn feed_event<'a>(&mut self, input: ParseEvent<'a>) -> Option<Result<Self::Target, ReadError>> {
         match input {
             ParseEvent::TextValue(string) => Some(Ok(string.into())),
             ow => Some(Err(super::bad_kind(&ow))),
         }
     }
-}
 
-impl Recognizer<String> for StringRecognizer {
     fn reset(&mut self) {}
 }
 
-impl<'a> Iteratee<ParseEvent<'a>> for TextRecognizer {
-    type Item = Result<Text, ReadError>;
+impl Recognizer for TextRecognizer {
+    type Target = Text;
 
-    fn feed(&mut self, input: ParseEvent<'a>) -> Option<Self::Item> {
+    fn feed_event<'a>(&mut self, input: ParseEvent<'a>) -> Option<Result<Self::Target, ReadError>> {
         match input {
             ParseEvent::TextValue(string) => Some(Ok(string.into())),
             ow => Some(Err(super::bad_kind(&ow))),
         }
     }
-}
 
-impl Recognizer<Text> for TextRecognizer {
     fn reset(&mut self) {}
 }
 
-impl<'a> Iteratee<ParseEvent<'a>> for DataRecognizer {
-    type Item = Result<Vec<u8>, ReadError>;
+impl Recognizer for DataRecognizer {
+    type Target = Vec<u8>;
 
-    fn feed(&mut self, input: ParseEvent<'a>) -> Option<Self::Item> {
+    fn feed_event<'a>(&mut self, input: ParseEvent<'a>) -> Option<Result<Self::Target, ReadError>> {
         match input {
             ParseEvent::Blob(v) => Some(Ok(v)),
             ow => Some(Err(super::bad_kind(&ow))),
         }
     }
-}
 
-impl Recognizer<Vec<u8>> for DataRecognizer {
     fn reset(&mut self) {}
 }
 
-impl<'a> Iteratee<ParseEvent<'a>> for BoolRecognizer {
-    type Item = Result<bool, ReadError>;
+impl Recognizer for BoolRecognizer {
+    type Target = bool;
 
-    fn feed(&mut self, input: ParseEvent<'a>) -> Option<Self::Item> {
+    fn feed_event<'a>(&mut self, input: ParseEvent<'a>) -> Option<Result<Self::Target, ReadError>> {
         match input {
             ParseEvent::Boolean(p) => Some(Ok(p)),
             ow => Some(Err(super::bad_kind(&ow))),
         }
     }
-}
 
-impl Recognizer<bool> for BoolRecognizer {
     fn reset(&mut self) {}
 }
 
@@ -247,79 +222,79 @@ mod tests {
     #[test]
     fn unit_recognizer() {
         let mut rec = UnitRecognizer;
-        assert_eq!(rec.feed(ParseEvent::Extant), Some(Ok(())));
+        assert_eq!(rec.feed_event(ParseEvent::Extant), Some(Ok(())));
     }
 
     #[test]
     fn i32_recognizer() {
         let mut rec = I32Recognizer;
-        assert_eq!(rec.feed(ParseEvent::from(-3i32)), Some(Ok(-3i32)));
+        assert_eq!(rec.feed_event(ParseEvent::from(-3i32)), Some(Ok(-3i32)));
     }
 
     #[test]
     fn i64_recognizer() {
         let mut rec = I64Recognizer;
         let n: i64 = i64::from(i32::min_value()) * 2;
-        assert_eq!(rec.feed(n.into()), Some(Ok(n)));
+        assert_eq!(rec.feed_event(n.into()), Some(Ok(n)));
     }
 
     #[test]
     fn u32_recognizer() {
         let mut rec = U32Recognizer;
         let n: u32 = 567u32;
-        assert_eq!(rec.feed(n.into()), Some(Ok(n)));
+        assert_eq!(rec.feed_event(n.into()), Some(Ok(n)));
     }
 
     #[test]
     fn u64_recognizer() {
         let mut rec = U64Recognizer;
         let n: u64 = u64::from(u32::max_value()) * 2;
-        assert_eq!(rec.feed(n.into()), Some(Ok(n)));
+        assert_eq!(rec.feed_event(n.into()), Some(Ok(n)));
     }
 
     #[test]
     fn f64_recognizer() {
         let mut rec = F64Recognizer;
         let x: f64 = 1.5;
-        assert_eq!(rec.feed(x.into()), Some(Ok(x)));
+        assert_eq!(rec.feed_event(x.into()), Some(Ok(x)));
     }
 
     #[test]
     fn bool_recognizer() {
         let mut rec = BoolRecognizer;
-        assert_eq!(rec.feed(true.into()), Some(Ok(true)));
+        assert_eq!(rec.feed_event(true.into()), Some(Ok(true)));
     }
 
     #[test]
     fn string_recognizer() {
         let mut rec = StringRecognizer;
-        assert_eq!(rec.feed("name".into()), Some(Ok("name".to_string())));
+        assert_eq!(rec.feed_event("name".into()), Some(Ok("name".to_string())));
     }
 
     #[test]
     fn text_recognizer() {
         let mut rec = TextRecognizer;
-        assert_eq!(rec.feed("name".into()), Some(Ok(Text::new("name"))));
+        assert_eq!(rec.feed_event("name".into()), Some(Ok(Text::new("name"))));
     }
 
     #[test]
     fn blob_recognizer() {
         let mut rec = DataRecognizer;
         let ev = ParseEvent::Blob(vec![1, 2, 3]);
-        assert_eq!(rec.feed(ev), Some(Ok(vec![1, 2, 3])));
+        assert_eq!(rec.feed_event(ev), Some(Ok(vec![1, 2, 3])));
     }
 
     #[test]
     fn big_int_recognizer() {
         let mut rec = BigIntRecognizer;
         let ev = ParseEvent::Number(NumericLiteral::BigInt(BigInt::from(-5)));
-        assert_eq!(rec.feed(ev), Some(Ok(BigInt::from(-5))));
+        assert_eq!(rec.feed_event(ev), Some(Ok(BigInt::from(-5))));
     }
 
     #[test]
     fn big_uint_recognizer() {
         let mut rec = BigUintRecognizer;
         let ev = ParseEvent::Number(NumericLiteral::BigUint(BigUint::from(5u32)));
-        assert_eq!(rec.feed(ev), Some(Ok(BigUint::from(5u32))));
+        assert_eq!(rec.feed_event(ev), Some(Ok(BigUint::from(5u32))));
     }
 }

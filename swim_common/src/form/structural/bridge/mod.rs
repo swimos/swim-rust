@@ -25,39 +25,38 @@ use crate::form::structural::write::{
 use crate::model::ValueKind;
 use num_bigint::{BigInt, BigUint};
 use std::borrow::Cow;
-use std::marker::PhantomData;
 
 /// Bridge to forward writes to a [`StructuralWriter`] instance to the builder methods
 /// on a [`StructuralReadable`] type.
-pub struct RecognizerBridge<T, R>(R, PhantomData<fn() -> T>);
+pub struct RecognizerBridge<R>(R);
 
-impl<T, R> RecognizerBridge<T, R> {
+impl<R> RecognizerBridge<R> {
     pub fn new(rec: R) -> Self {
-        RecognizerBridge(rec, PhantomData)
+        RecognizerBridge(rec)
     }
 }
 
-struct SubRecognizerBridge<'a, T, R>(&'a mut R, PhantomData<fn() -> T>);
+struct SubRecognizerBridge<'a, R>(&'a mut R);
 
-impl<'a, T, R> SubRecognizerBridge<'a, T, R> {
+impl<'a, R> SubRecognizerBridge<'a, R> {
     fn new(rec: &'a mut R) -> Self {
-        SubRecognizerBridge(rec, PhantomData)
+        SubRecognizerBridge(rec)
     }
 }
 
-impl<T, R: Recognizer<T>> RecognizerBridge<T, R> {
-    fn feed_single(self, event: ParseEvent<'_>, kind: ValueKind) -> Result<T, ReadError> {
-        let RecognizerBridge(mut rec, _) = self;
-        rec.feed(event)
-            .or_else(move || rec.flush())
+impl<R: Recognizer> RecognizerBridge<R> {
+    fn feed_single(self, event: ParseEvent<'_>, kind: ValueKind) -> Result<R::Target, ReadError> {
+        let RecognizerBridge(mut rec) = self;
+        rec.feed_event(event)
+            .or_else(move || rec.try_flush())
             .unwrap_or(Err(ReadError::UnexpectedKind(kind)))
     }
 }
 
-impl<'a, T, R: Recognizer<T>> SubRecognizerBridge<'a, T, R> {
+impl<'a, R: Recognizer> SubRecognizerBridge<'a, R> {
     fn feed_single(self, event: ParseEvent<'_>) -> Result<(), ReadError> {
-        let SubRecognizerBridge(rec, _) = self;
-        if let Some(Err(e)) = rec.feed(event) {
+        let SubRecognizerBridge(rec) = self;
+        if let Some(Err(e)) = rec.feed_event(event) {
             Err(e)
         } else {
             Ok(())
@@ -65,8 +64,8 @@ impl<'a, T, R: Recognizer<T>> SubRecognizerBridge<'a, T, R> {
     }
 }
 
-impl<T, R: Recognizer<T>> PrimitiveWriter for RecognizerBridge<T, R> {
-    type Repr = T;
+impl<R: Recognizer> PrimitiveWriter for RecognizerBridge<R> {
+    type Repr = R::Target;
     type Error = ReadError;
 
     fn write_extant(self) -> Result<Self::Repr, Self::Error> {
@@ -142,7 +141,7 @@ impl<T, R: Recognizer<T>> PrimitiveWriter for RecognizerBridge<T, R> {
     }
 }
 
-impl<'a, T, R: Recognizer<T>> PrimitiveWriter for SubRecognizerBridge<'a, T, R> {
+impl<'a, R: Recognizer> PrimitiveWriter for SubRecognizerBridge<'a, R> {
     type Repr = ();
     type Error = ReadError;
 
@@ -195,7 +194,7 @@ impl<'a, T, R: Recognizer<T>> PrimitiveWriter for SubRecognizerBridge<'a, T, R> 
     }
 }
 
-impl<T, R: Recognizer<T>> StructuralWriter for RecognizerBridge<T, R> {
+impl<R: Recognizer> StructuralWriter for RecognizerBridge<R> {
     type Header = Self;
     type Body = Self;
 
@@ -204,8 +203,8 @@ impl<T, R: Recognizer<T>> StructuralWriter for RecognizerBridge<T, R> {
     }
 }
 
-impl<T, R: Recognizer<T>> HeaderWriter for RecognizerBridge<T, R> {
-    type Repr = T;
+impl<R: Recognizer> HeaderWriter for RecognizerBridge<R> {
+    type Repr = R::Target;
     type Error = ReadError;
     type Body = Self;
 
@@ -214,8 +213,8 @@ impl<T, R: Recognizer<T>> HeaderWriter for RecognizerBridge<T, R> {
         name: Cow<'_, str>,
         value: &V,
     ) -> Result<Self, Self::Error> {
-        let RecognizerBridge(rec, _) = &mut self;
-        match rec.feed(ParseEvent::StartAttribute(name)) {
+        let RecognizerBridge(rec) = &mut self;
+        match rec.feed_event(ParseEvent::StartAttribute(name)) {
             Some(Err(e)) => {
                 return Err(e);
             }
@@ -223,7 +222,7 @@ impl<T, R: Recognizer<T>> HeaderWriter for RecognizerBridge<T, R> {
         }
         let delegate = SubRecognizerBridge::new(rec);
         value.write_with(delegate)?;
-        match rec.feed(ParseEvent::EndAttribute) {
+        match rec.feed_event(ParseEvent::EndAttribute) {
             Some(Err(e)) => Err(e),
             _ => Ok(self),
         }
@@ -238,8 +237,8 @@ impl<T, R: Recognizer<T>> HeaderWriter for RecognizerBridge<T, R> {
         name: L,
         value: V,
     ) -> Result<Self, Self::Error> {
-        let RecognizerBridge(rec, _) = &mut self;
-        match rec.feed(ParseEvent::StartAttribute(Cow::Owned(name.into()))) {
+        let RecognizerBridge(rec) = &mut self;
+        match rec.feed_event(ParseEvent::StartAttribute(Cow::Owned(name.into()))) {
             Some(Err(e)) => {
                 return Err(e);
             }
@@ -247,7 +246,7 @@ impl<T, R: Recognizer<T>> HeaderWriter for RecognizerBridge<T, R> {
         }
         let delegate = SubRecognizerBridge::new(rec);
         value.write_into(delegate)?;
-        match rec.feed(ParseEvent::EndAttribute) {
+        match rec.feed_event(ParseEvent::EndAttribute) {
             Some(Err(e)) => Err(e),
             _ => Ok(self),
         }
@@ -262,20 +261,20 @@ impl<T, R: Recognizer<T>> HeaderWriter for RecognizerBridge<T, R> {
         _kind: RecordBodyKind,
         _num_items: usize,
     ) -> Result<Self::Body, Self::Error> {
-        let RecognizerBridge(rec, _) = &mut self;
-        match rec.feed(ParseEvent::StartBody) {
+        let RecognizerBridge(rec) = &mut self;
+        match rec.feed_event(ParseEvent::StartBody) {
             Some(Err(e)) => Err(e),
             _ => Ok(self),
         }
     }
 }
 
-impl<T, R: Recognizer<T>> BodyWriter for RecognizerBridge<T, R> {
-    type Repr = T;
+impl<R: Recognizer> BodyWriter for RecognizerBridge<R> {
+    type Repr = R::Target;
     type Error = ReadError;
 
     fn write_value<V: StructuralWritable>(mut self, value: &V) -> Result<Self, Self::Error> {
-        let RecognizerBridge(rec, _) = &mut self;
+        let RecognizerBridge(rec) = &mut self;
         let delegate = SubRecognizerBridge::new(rec);
         value.write_with(delegate)?;
         Ok(self)
@@ -286,10 +285,10 @@ impl<T, R: Recognizer<T>> BodyWriter for RecognizerBridge<T, R> {
         key: &K,
         value: &V,
     ) -> Result<Self, Self::Error> {
-        let RecognizerBridge(mut rec, _) = self;
+        let RecognizerBridge(mut rec) = self;
         let delegate = SubRecognizerBridge::new(&mut rec);
         key.write_with(delegate)?;
-        match rec.feed(ParseEvent::Slot) {
+        match rec.feed_event(ParseEvent::Slot) {
             Some(Err(e)) => {
                 return Err(e);
             }
@@ -301,7 +300,7 @@ impl<T, R: Recognizer<T>> BodyWriter for RecognizerBridge<T, R> {
     }
 
     fn write_value_into<V: StructuralWritable>(mut self, value: V) -> Result<Self, Self::Error> {
-        let RecognizerBridge(rec, _) = &mut self;
+        let RecognizerBridge(rec) = &mut self;
         let delegate = SubRecognizerBridge::new(rec);
         value.write_into(delegate)?;
         Ok(self)
@@ -312,10 +311,10 @@ impl<T, R: Recognizer<T>> BodyWriter for RecognizerBridge<T, R> {
         key: K,
         value: V,
     ) -> Result<Self, Self::Error> {
-        let RecognizerBridge(mut rec, _) = self;
+        let RecognizerBridge(mut rec) = self;
         let delegate = SubRecognizerBridge::new(&mut rec);
         key.write_into(delegate)?;
-        match rec.feed(ParseEvent::Slot) {
+        match rec.feed_event(ParseEvent::Slot) {
             Some(Err(e)) => {
                 return Err(e);
             }
@@ -327,15 +326,18 @@ impl<T, R: Recognizer<T>> BodyWriter for RecognizerBridge<T, R> {
     }
 
     fn done(self) -> Result<Self::Repr, Self::Error> {
-        let RecognizerBridge(mut rec, _) = self;
-        match rec.feed(ParseEvent::EndRecord).or_else(move || rec.flush()) {
+        let RecognizerBridge(mut rec) = self;
+        match rec
+            .feed_event(ParseEvent::EndRecord)
+            .or_else(move || rec.try_flush())
+        {
             Some(r) => r,
             _ => Err(ReadError::IncompleteRecord),
         }
     }
 }
 
-impl<'a, T, R: Recognizer<T>> StructuralWriter for SubRecognizerBridge<'a, T, R> {
+impl<'a, R: Recognizer> StructuralWriter for SubRecognizerBridge<'a, R> {
     type Header = Self;
     type Body = Self;
 
@@ -344,7 +346,7 @@ impl<'a, T, R: Recognizer<T>> StructuralWriter for SubRecognizerBridge<'a, T, R>
     }
 }
 
-impl<'a, T, R: Recognizer<T>> HeaderWriter for SubRecognizerBridge<'a, T, R> {
+impl<'a, R: Recognizer> HeaderWriter for SubRecognizerBridge<'a, R> {
     type Repr = ();
     type Error = ReadError;
     type Body = Self;
@@ -354,8 +356,8 @@ impl<'a, T, R: Recognizer<T>> HeaderWriter for SubRecognizerBridge<'a, T, R> {
         name: Cow<'_, str>,
         value: &V,
     ) -> Result<Self, Self::Error> {
-        let SubRecognizerBridge(rec, _) = &mut self;
-        match rec.feed(ParseEvent::StartAttribute(name)) {
+        let SubRecognizerBridge(rec) = &mut self;
+        match rec.feed_event(ParseEvent::StartAttribute(name)) {
             Some(Err(e)) => {
                 return Err(e);
             }
@@ -363,7 +365,7 @@ impl<'a, T, R: Recognizer<T>> HeaderWriter for SubRecognizerBridge<'a, T, R> {
         }
         let delegate = SubRecognizerBridge::new(*rec);
         value.write_with(delegate)?;
-        match rec.feed(ParseEvent::EndAttribute) {
+        match rec.feed_event(ParseEvent::EndAttribute) {
             Some(Err(e)) => Err(e),
             _ => Ok(self),
         }
@@ -378,8 +380,8 @@ impl<'a, T, R: Recognizer<T>> HeaderWriter for SubRecognizerBridge<'a, T, R> {
         name: L,
         value: V,
     ) -> Result<Self, Self::Error> {
-        let SubRecognizerBridge(rec, _) = &mut self;
-        match rec.feed(ParseEvent::StartAttribute(Cow::Owned(name.into()))) {
+        let SubRecognizerBridge(rec) = &mut self;
+        match rec.feed_event(ParseEvent::StartAttribute(Cow::Owned(name.into()))) {
             Some(Err(e)) => {
                 return Err(e);
             }
@@ -387,7 +389,7 @@ impl<'a, T, R: Recognizer<T>> HeaderWriter for SubRecognizerBridge<'a, T, R> {
         }
         let delegate = SubRecognizerBridge::new(*rec);
         value.write_into(delegate)?;
-        match rec.feed(ParseEvent::EndAttribute) {
+        match rec.feed_event(ParseEvent::EndAttribute) {
             Some(Err(e)) => Err(e),
             _ => Ok(self),
         }
@@ -402,20 +404,20 @@ impl<'a, T, R: Recognizer<T>> HeaderWriter for SubRecognizerBridge<'a, T, R> {
         _kind: RecordBodyKind,
         _num_items: usize,
     ) -> Result<Self::Body, Self::Error> {
-        let SubRecognizerBridge(rec, _) = &mut self;
-        match rec.feed(ParseEvent::StartBody) {
+        let SubRecognizerBridge(rec) = &mut self;
+        match rec.feed_event(ParseEvent::StartBody) {
             Some(Err(e)) => Err(e),
             _ => Ok(self),
         }
     }
 }
 
-impl<'a, T, R: Recognizer<T>> BodyWriter for SubRecognizerBridge<'a, T, R> {
+impl<'a, R: Recognizer> BodyWriter for SubRecognizerBridge<'a, R> {
     type Repr = ();
     type Error = ReadError;
 
     fn write_value<V: StructuralWritable>(mut self, value: &V) -> Result<Self, Self::Error> {
-        let SubRecognizerBridge(rec, _) = &mut self;
+        let SubRecognizerBridge(rec) = &mut self;
         let delegate = SubRecognizerBridge::new(*rec);
         value.write_with(delegate)?;
         Ok(self)
@@ -426,10 +428,10 @@ impl<'a, T, R: Recognizer<T>> BodyWriter for SubRecognizerBridge<'a, T, R> {
         key: &K,
         value: &V,
     ) -> Result<Self, Self::Error> {
-        let SubRecognizerBridge(rec, _) = &mut self;
+        let SubRecognizerBridge(rec) = &mut self;
         let delegate = SubRecognizerBridge::new(*rec);
         key.write_with(delegate)?;
-        match rec.feed(ParseEvent::Slot) {
+        match rec.feed_event(ParseEvent::Slot) {
             Some(Err(e)) => {
                 return Err(e);
             }
@@ -441,7 +443,7 @@ impl<'a, T, R: Recognizer<T>> BodyWriter for SubRecognizerBridge<'a, T, R> {
     }
 
     fn write_value_into<V: StructuralWritable>(mut self, value: V) -> Result<Self, Self::Error> {
-        let SubRecognizerBridge(rec, _) = &mut self;
+        let SubRecognizerBridge(rec) = &mut self;
         let delegate = SubRecognizerBridge::new(*rec);
         value.write_into(delegate)?;
         Ok(self)
@@ -452,10 +454,10 @@ impl<'a, T, R: Recognizer<T>> BodyWriter for SubRecognizerBridge<'a, T, R> {
         key: K,
         value: V,
     ) -> Result<Self, Self::Error> {
-        let SubRecognizerBridge(rec, _) = &mut self;
+        let SubRecognizerBridge(rec) = &mut self;
         let delegate = SubRecognizerBridge::new(*rec);
         key.write_into(delegate)?;
-        match rec.feed(ParseEvent::Slot) {
+        match rec.feed_event(ParseEvent::Slot) {
             Some(Err(e)) => {
                 return Err(e);
             }
@@ -467,8 +469,8 @@ impl<'a, T, R: Recognizer<T>> BodyWriter for SubRecognizerBridge<'a, T, R> {
     }
 
     fn done(self) -> Result<Self::Repr, Self::Error> {
-        let SubRecognizerBridge(rec, _) = self;
-        match rec.feed(ParseEvent::EndRecord) {
+        let SubRecognizerBridge(rec) = self;
+        match rec.feed_event(ParseEvent::EndRecord) {
             Some(Err(e)) => Err(e),
             _ => Ok(()),
         }

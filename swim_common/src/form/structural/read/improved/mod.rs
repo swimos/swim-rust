@@ -16,6 +16,7 @@ pub mod primitive;
 #[cfg(test)]
 mod tests;
 
+use crate::form::structural::generic::coproduct::{CCons, CNil};
 use crate::form::structural::read::materializers::value::ValueMaterializer;
 use crate::form::structural::read::parser::{NumericLiteral, ParseEvent};
 use crate::form::structural::read::ReadError;
@@ -31,8 +32,8 @@ use std::sync::Arc;
 use utilities::iteratee::Iteratee;
 
 pub trait RecognizerReadable: Sized {
-    type Rec: Recognizer<Self>;
-    type AttrRec: Recognizer<Self>;
+    type Rec: Recognizer<Target = Self>;
+    type AttrRec: Recognizer<Target = Self>;
 
     fn make_recognizer() -> Self::Rec;
     fn make_attr_recognizer() -> Self::AttrRec;
@@ -46,8 +47,45 @@ pub trait RecognizerReadable: Sized {
     }
 }
 
-pub trait Recognizer<R>: for<'a> Iteratee<ParseEvent<'a>, Item = Result<R, ReadError>> {
+pub trait Recognizer {
+    type Target;
+
+    fn feed_event<'a>(&mut self, input: ParseEvent<'a>) -> Option<Result<Self::Target, ReadError>>;
+
+    fn try_flush(&mut self) -> Option<Result<Self::Target, ReadError>> {
+        None
+    }
+
     fn reset(&mut self);
+
+    fn as_iteratee(&mut self) -> RecognizerIteratee<'_, Self>
+    where
+        Self: Sized,
+    {
+        RecognizerIteratee(self)
+    }
+}
+
+pub struct RecognizerIteratee<'b, R>(&'b mut R);
+
+impl<'a, 'b, R> Iteratee<ParseEvent<'a>> for RecognizerIteratee<'b, R>
+where
+    R: Recognizer,
+{
+    type Item = Result<R::Target, ReadError>;
+
+    fn feed(&mut self, input: ParseEvent<'a>) -> Option<Self::Item> {
+        let RecognizerIteratee(inner) = self;
+        inner.feed_event(input)
+    }
+
+    fn flush(self) -> Option<Self::Item>
+    where
+        Self: Sized,
+    {
+        let RecognizerIteratee(inner) = self;
+        inner.try_flush()
+    }
 }
 
 fn bad_kind(event: &ParseEvent<'_>) -> ReadError {
@@ -78,7 +116,7 @@ macro_rules! simple_readable {
     ($target:ty, $recog:ident) => {
         impl RecognizerReadable for $target {
             type Rec = primitive::$recog;
-            type AttrRec = SimpleAttrBody<$target, primitive::$recog>;
+            type AttrRec = SimpleAttrBody<primitive::$recog>;
 
             fn make_recognizer() -> Self::Rec {
                 primitive::$recog
@@ -115,10 +153,10 @@ pub struct VecRecognizer<T, R> {
     rec: R,
 }
 
-impl<'a, T, R: Recognizer<T>> Iteratee<ParseEvent<'a>> for VecRecognizer<T, R> {
-    type Item = Result<Vec<T>, ReadError>;
+impl<T, R: Recognizer<Target = T>> Recognizer for VecRecognizer<T, R> {
+    type Target = Vec<T>;
 
-    fn feed(&mut self, input: ParseEvent<'a>) -> Option<Self::Item> {
+    fn feed_event<'a>(&mut self, input: ParseEvent<'a>) -> Option<Result<Self::Target, ReadError>> {
         match self.stage {
             BodyStage::Init => {
                 if matches!(&input, ParseEvent::StartBody) {
@@ -137,7 +175,7 @@ impl<'a, T, R: Recognizer<T>> Iteratee<ParseEvent<'a>> for VecRecognizer<T, R> {
                 }
                 _ => {
                     self.stage = BodyStage::Item;
-                    match self.rec.feed(input)? {
+                    match self.rec.feed_event(input)? {
                         Ok(t) => {
                             self.vector.push(t);
                             self.rec.reset();
@@ -148,7 +186,7 @@ impl<'a, T, R: Recognizer<T>> Iteratee<ParseEvent<'a>> for VecRecognizer<T, R> {
                     }
                 }
             },
-            BodyStage::Item => match self.rec.feed(input)? {
+            BodyStage::Item => match self.rec.feed_event(input)? {
                 Ok(t) => {
                     self.vector.push(t);
                     self.rec.reset();
@@ -158,6 +196,12 @@ impl<'a, T, R: Recognizer<T>> Iteratee<ParseEvent<'a>> for VecRecognizer<T, R> {
                 Err(e) => Some(Err(e)),
             },
         }
+    }
+
+    fn reset(&mut self) {
+        self.stage = BodyStage::Init;
+        self.vector.clear();
+        self.rec.reset();
     }
 }
 
@@ -182,14 +226,6 @@ impl<T: RecognizerReadable> RecognizerReadable for Vec<T> {
 
     fn make_attr_recognizer() -> Self::AttrRec {
         VecRecognizer::new(true, T::make_recognizer())
-    }
-}
-
-impl<T, R: Recognizer<T>> Recognizer<Vec<T>> for VecRecognizer<T, R> {
-    fn reset(&mut self) {
-        self.stage = BodyStage::Init;
-        self.vector.clear();
-        self.rec.reset();
     }
 }
 
@@ -293,10 +329,10 @@ impl<T, Flds> NamedFieldsRecognizer<T, Flds> {
     }
 }
 
-impl<'a, T, Flds> Iteratee<ParseEvent<'a>> for NamedFieldsRecognizer<T, Flds> {
-    type Item = Result<T, ReadError>;
+impl<T, Flds> Recognizer for NamedFieldsRecognizer<T, Flds> {
+    type Target = T;
 
-    fn feed(&mut self, input: ParseEvent<'a>) -> Option<Self::Item> {
+    fn feed_event<'a>(&mut self, input: ParseEvent<'a>) -> Option<Result<Self::Target, ReadError>> {
         let NamedFieldsRecognizer {
             is_attr_body,
             state,
@@ -355,9 +391,7 @@ impl<'a, T, Flds> Iteratee<ParseEvent<'a>> for NamedFieldsRecognizer<T, Flds> {
             }
         }
     }
-}
 
-impl<T, Flds> Recognizer<T> for NamedFieldsRecognizer<T, Flds> {
     fn reset(&mut self) {
         self.progress.clear();
         self.state = BodyFieldState::Init;
@@ -416,10 +450,10 @@ impl<T, Flds> OrdinalFieldsRecognizer<T, Flds> {
     }
 }
 
-impl<'a, T, Flds> Iteratee<ParseEvent<'a>> for OrdinalFieldsRecognizer<T, Flds> {
-    type Item = Result<T, ReadError>;
+impl<T, Flds> Recognizer for OrdinalFieldsRecognizer<T, Flds> {
+    type Target = T;
 
-    fn feed(&mut self, input: ParseEvent<'a>) -> Option<Self::Item> {
+    fn feed_event<'a>(&mut self, input: ParseEvent<'a>) -> Option<Result<Self::Target, ReadError>> {
         let OrdinalFieldsRecognizer {
             is_attr_body,
             state,
@@ -457,9 +491,7 @@ impl<'a, T, Flds> Iteratee<ParseEvent<'a>> for OrdinalFieldsRecognizer<T, Flds> 
             }
         }
     }
-}
 
-impl<T, Flds> Recognizer<T> for OrdinalFieldsRecognizer<T, Flds> {
     fn reset(&mut self) {
         self.index = 0;
         self.state = BodyStage::Init;
@@ -467,13 +499,13 @@ impl<T, Flds> Recognizer<T> for OrdinalFieldsRecognizer<T, Flds> {
     }
 }
 
-pub struct SimpleAttrBody<T, R: Recognizer<T>> {
+pub struct SimpleAttrBody<R: Recognizer> {
     after_content: bool,
-    value: Option<T>,
+    value: Option<R::Target>,
     delegate: R,
 }
 
-impl<T, R: Recognizer<T>> SimpleAttrBody<T, R> {
+impl<R: Recognizer> SimpleAttrBody<R> {
     pub fn new(rec: R) -> Self {
         SimpleAttrBody {
             after_content: false,
@@ -483,10 +515,10 @@ impl<T, R: Recognizer<T>> SimpleAttrBody<T, R> {
     }
 }
 
-impl<'a, T, R: Recognizer<T>> Iteratee<ParseEvent<'a>> for SimpleAttrBody<T, R> {
-    type Item = Result<T, ReadError>;
+impl<R: Recognizer> Recognizer for SimpleAttrBody<R> {
+    type Target = R::Target;
 
-    fn feed(&mut self, input: ParseEvent<'a>) -> Option<Self::Item> {
+    fn feed_event<'a>(&mut self, input: ParseEvent<'a>) -> Option<Result<Self::Target, ReadError>> {
         if self.after_content {
             if matches!(&input, ParseEvent::EndAttribute) {
                 if let Some(t) = self.value.take() {
@@ -498,7 +530,7 @@ impl<'a, T, R: Recognizer<T>> Iteratee<ParseEvent<'a>> for SimpleAttrBody<T, R> 
                 Some(Err(bad_kind(&input)))
             }
         } else {
-            let r = self.delegate.feed(input)?;
+            let r = self.delegate.feed_event(input)?;
             self.after_content = true;
             match r {
                 Ok(t) => {
@@ -509,9 +541,7 @@ impl<'a, T, R: Recognizer<T>> Iteratee<ParseEvent<'a>> for SimpleAttrBody<T, R> 
             }
         }
     }
-}
 
-impl<T, R: Recognizer<T>> Recognizer<T> for SimpleAttrBody<T, R> {
     fn reset(&mut self) {
         self.after_content = false;
         self.value = None;
@@ -519,22 +549,20 @@ impl<T, R: Recognizer<T>> Recognizer<T> for SimpleAttrBody<T, R> {
     }
 }
 
-pub struct FirstOf<T, R1, R2> {
-    _type: PhantomData<fn() -> T>,
+pub struct FirstOf<R1, R2> {
     first_active: bool,
     second_active: bool,
     recognizer1: R1,
     recognizer2: R2,
 }
 
-impl<T, R1, R2> FirstOf<T, R1, R2>
+impl<R1, R2> FirstOf<R1, R2>
 where
-    R1: Recognizer<T>,
-    R2: Recognizer<T>,
+    R1: Recognizer,
+    R2: Recognizer<Target = R1::Target>,
 {
     pub fn new(recognizer1: R1, recognizer2: R2) -> Self {
         FirstOf {
-            _type: PhantomData,
             first_active: true,
             second_active: true,
             recognizer1,
@@ -543,23 +571,22 @@ where
     }
 }
 
-impl<'a, T, R1, R2> Iteratee<ParseEvent<'a>> for FirstOf<T, R1, R2>
+impl<R1, R2> Recognizer for FirstOf<R1, R2>
 where
-    R1: Recognizer<T>,
-    R2: Recognizer<T>,
+    R1: Recognizer,
+    R2: Recognizer<Target = R1::Target>,
 {
-    type Item = Result<T, ReadError>;
+    type Target = R1::Target;
 
-    fn feed(&mut self, input: ParseEvent<'a>) -> Option<Self::Item> {
+    fn feed_event<'a>(&mut self, input: ParseEvent<'a>) -> Option<Result<Self::Target, ReadError>> {
         let FirstOf {
             first_active,
             second_active,
             recognizer1,
             recognizer2,
-            ..
         } = self;
         if *first_active && *second_active {
-            match recognizer1.feed(input.clone()) {
+            match recognizer1.feed_event(input.clone()) {
                 r @ Some(Ok(_)) => {
                     *first_active = false;
                     *second_active = false;
@@ -570,7 +597,7 @@ where
                 }
                 _ => {}
             }
-            match recognizer2.feed(input) {
+            match recognizer2.feed_event(input) {
                 r @ Some(Ok(_)) => {
                     *first_active = false;
                     *second_active = false;
@@ -587,29 +614,23 @@ where
                 _ => None,
             }
         } else if *first_active {
-            let r = recognizer1.feed(input.clone())?;
+            let r = recognizer1.feed_event(input.clone())?;
             *first_active = false;
             Some(r)
         } else if *second_active {
-            let r = recognizer2.feed(input.clone())?;
+            let r = recognizer2.feed_event(input.clone())?;
             *second_active = false;
             Some(r)
         } else {
             Some(Err(ReadError::InconsistentState))
         }
     }
-}
 
-impl<T, R1, R2> Recognizer<T> for FirstOf<T, R1, R2>
-where
-    R1: Recognizer<T>,
-    R2: Recognizer<T>,
-{
     fn reset(&mut self) {
         self.first_active = true;
         self.second_active = true;
         self.recognizer1.reset();
-        self.recognizer2.reset()
+        self.recognizer2.reset();
     }
 }
 
@@ -723,10 +744,10 @@ impl<T, Flds> OrdinalStructRecognizer<T, Flds> {
     }
 }
 
-impl<'a, T, Flds> Iteratee<ParseEvent<'a>> for LabelledStructRecognizer<T, Flds> {
-    type Item = Result<T, ReadError>;
+impl<T, Flds> Recognizer for LabelledStructRecognizer<T, Flds> {
+    type Target = T;
 
-    fn feed(&mut self, input: ParseEvent<'a>) -> Option<Self::Item> {
+    fn feed_event<'a>(&mut self, input: ParseEvent<'a>) -> Option<Result<Self::Target, ReadError>> {
         let LabelledStructRecognizer {
             tag,
             has_header_body,
@@ -882,9 +903,7 @@ impl<'a, T, Flds> Iteratee<ParseEvent<'a>> for LabelledStructRecognizer<T, Flds>
             }
         }
     }
-}
 
-impl<T, Flds> Recognizer<T> for LabelledStructRecognizer<T, Flds> {
     fn reset(&mut self) {
         self.state = LabelledStructState::Init;
         self.progress.clear();
@@ -906,10 +925,10 @@ pub struct OrdinalStructRecognizer<T, Flds> {
     reset: fn(&mut Flds),
 }
 
-impl<'a, T, Flds> Iteratee<ParseEvent<'a>> for OrdinalStructRecognizer<T, Flds> {
-    type Item = Result<T, ReadError>;
+impl<T, Flds> Recognizer for OrdinalStructRecognizer<T, Flds> {
+    type Target = T;
 
-    fn feed(&mut self, input: ParseEvent<'a>) -> Option<Self::Item> {
+    fn feed_event<'a>(&mut self, input: ParseEvent<'a>) -> Option<Result<Self::Target, ReadError>> {
         let OrdinalStructRecognizer {
             tag,
             has_header_body,
@@ -1058,9 +1077,7 @@ impl<'a, T, Flds> Iteratee<ParseEvent<'a>> for OrdinalStructRecognizer<T, Flds> 
             }
         }
     }
-}
 
-impl<T, Flds> Recognizer<T> for OrdinalStructRecognizer<T, Flds> {
     fn reset(&mut self) {
         self.state = OrdinalStructState::Init;
         self.progress.clear();
@@ -1070,8 +1087,8 @@ impl<T, Flds> Recognizer<T> for OrdinalStructRecognizer<T, Flds> {
 }
 
 impl<T: RecognizerReadable> RecognizerReadable for Arc<T> {
-    type Rec = MappedRecognizer<T, T::Rec, fn(T) -> Arc<T>>;
-    type AttrRec = MappedRecognizer<T, T::AttrRec, fn(T) -> Arc<T>>;
+    type Rec = MappedRecognizer<T::Rec, fn(T) -> Arc<T>>;
+    type AttrRec = MappedRecognizer<T::AttrRec, fn(T) -> Arc<T>>;
 
     fn make_recognizer() -> Self::Rec {
         MappedRecognizer::new(T::make_recognizer(), Arc::new)
@@ -1082,37 +1099,34 @@ impl<T: RecognizerReadable> RecognizerReadable for Arc<T> {
     }
 }
 
-pub struct OptionRecognizer<T, R> {
+pub struct OptionRecognizer<R> {
     inner: R,
     reading_value: bool,
-    _type: PhantomData<fn() -> T>,
 }
 
-impl<T, R> OptionRecognizer<T, R> {
+impl<R> OptionRecognizer<R> {
     fn new(inner: R) -> Self {
         OptionRecognizer {
             inner,
             reading_value: false,
-            _type: PhantomData,
         }
     }
 }
 
-impl<'a, T, R: Recognizer<T>> Iteratee<ParseEvent<'a>> for OptionRecognizer<T, R> {
-    type Item = Result<Option<T>, ReadError>;
+impl<R: Recognizer> Recognizer for OptionRecognizer<R> {
+    type Target = Option<R::Target>;
 
-    fn feed(&mut self, input: ParseEvent<'a>) -> Option<Self::Item> {
+    fn feed_event<'a>(&mut self, input: ParseEvent<'a>) -> Option<Result<Self::Target, ReadError>> {
         let OptionRecognizer {
             inner,
             reading_value,
-            _type,
         } = self;
         if *reading_value {
-            inner.feed(input).map(|r| r.map(Option::Some))
+            inner.feed_event(input).map(|r| r.map(Option::Some))
         } else {
             match &input {
                 ParseEvent::Extant => {
-                    let r = inner.feed(ParseEvent::Extant);
+                    let r = inner.feed_event(ParseEvent::Extant);
                     if matches!(&r, Some(Err(_))) {
                         Some(Ok(None))
                     } else {
@@ -1121,14 +1135,19 @@ impl<'a, T, R: Recognizer<T>> Iteratee<ParseEvent<'a>> for OptionRecognizer<T, R
                 }
                 _ => {
                     *reading_value = true;
-                    inner.feed(input).map(|r| r.map(Option::Some))
+                    inner.feed_event(input).map(|r| r.map(Option::Some))
                 }
             }
         }
     }
-}
 
-impl<'a, T, R: Recognizer<T>> Recognizer<Option<T>> for OptionRecognizer<T, R> {
+    fn try_flush(&mut self) -> Option<Result<Self::Target, ReadError>> {
+        match self.inner.try_flush() {
+            Some(Ok(r)) => Some(Ok(Some(r))),
+            _ => Some(Ok(None)),
+        }
+    }
+
     fn reset(&mut self) {
         self.reading_value = false;
         self.inner.reset();
@@ -1149,10 +1168,10 @@ impl<T> Default for EmptyAttrRecognizer<T> {
     }
 }
 
-impl<'a, T> Iteratee<ParseEvent<'a>> for EmptyAttrRecognizer<T> {
-    type Item = Result<Option<T>, ReadError>;
+impl<T> Recognizer for EmptyAttrRecognizer<T> {
+    type Target = Option<T>;
 
-    fn feed(&mut self, input: ParseEvent<'a>) -> Option<Self::Item> {
+    fn feed_event<'a>(&mut self, input: ParseEvent<'a>) -> Option<Result<Self::Target, ReadError>> {
         if self.seen_extant && matches!(&input, ParseEvent::EndAttribute) {
             Some(Ok(None))
         } else if !self.seen_extant && matches!(&input, ParseEvent::Extant) {
@@ -1162,59 +1181,49 @@ impl<'a, T> Iteratee<ParseEvent<'a>> for EmptyAttrRecognizer<T> {
             Some(Err(bad_kind(&input)))
         }
     }
-}
 
-impl<T> Recognizer<Option<T>> for EmptyAttrRecognizer<T> {
     fn reset(&mut self) {
         self.seen_extant = false;
     }
 }
 
-pub struct MappedRecognizer<T, R, F> {
+pub struct MappedRecognizer<R, F> {
     inner: R,
     f: F,
-    _type: PhantomData<fn() -> T>,
 }
 
-impl<T, R, F> MappedRecognizer<T, R, F> {
+impl<R, F> MappedRecognizer<R, F> {
     fn new(inner: R, f: F) -> Self {
-        MappedRecognizer {
-            inner,
-            f,
-            _type: PhantomData,
-        }
+        MappedRecognizer { inner, f }
     }
 }
 
-impl<'a, T, U, R, F> Iteratee<ParseEvent<'a>> for MappedRecognizer<T, R, F>
+impl<U, R, F> Recognizer for MappedRecognizer<R, F>
 where
-    R: Recognizer<T>,
-    F: Fn(T) -> U,
+    R: Recognizer,
+    F: Fn(R::Target) -> U,
 {
-    type Item = Result<U, ReadError>;
+    type Target = U;
 
-    fn feed(&mut self, input: ParseEvent<'a>) -> Option<Self::Item> {
+    fn feed_event<'a>(&mut self, input: ParseEvent<'a>) -> Option<Result<Self::Target, ReadError>> {
         let MappedRecognizer { inner, f, .. } = self;
-        inner.feed(input).map(|r| r.map(f))
+        inner.feed_event(input).map(|r| r.map(f))
     }
-}
 
-impl<T, U, R, F> Recognizer<U> for MappedRecognizer<T, R, F>
-where
-    R: Recognizer<T>,
-    F: Fn(T) -> U,
-{
+    fn try_flush(&mut self) -> Option<Result<Self::Target, ReadError>> {
+        let MappedRecognizer { inner, f } = self;
+        inner.try_flush().map(|r| r.map(f))
+    }
+
     fn reset(&mut self) {
         self.inner.reset()
     }
 }
+
 impl<T: RecognizerReadable> RecognizerReadable for Option<T> {
-    type Rec = OptionRecognizer<T, T::Rec>;
-    type AttrRec = FirstOf<
-        Option<T>,
-        EmptyAttrRecognizer<T>,
-        MappedRecognizer<T, T::AttrRec, fn(T) -> Option<T>>,
-    >;
+    type Rec = OptionRecognizer<T::Rec>;
+    type AttrRec =
+        FirstOf<EmptyAttrRecognizer<T>, MappedRecognizer<T::AttrRec, fn(T) -> Option<T>>>;
 
     fn make_recognizer() -> Self::Rec {
         OptionRecognizer::new(T::make_recognizer())
@@ -1257,16 +1266,16 @@ enum MapStage {
     Value,
 }
 
-pub struct HashMapRecognizer<K, V, RK, RV> {
+pub struct HashMapRecognizer<RK: Recognizer, RV: Recognizer> {
     is_attr_body: bool,
     stage: MapStage,
-    key: Option<K>,
-    map: HashMap<K, V>,
+    key: Option<RK::Target>,
+    map: HashMap<RK::Target, RV::Target>,
     key_rec: RK,
     val_rec: RV,
 }
 
-impl<K, V, RK, RV> HashMapRecognizer<K, V, RK, RV> {
+impl<RK: Recognizer, RV: Recognizer> HashMapRecognizer<RK, RV> {
     fn new(key_rec: RK, val_rec: RV) -> Self {
         HashMapRecognizer {
             is_attr_body: false,
@@ -1295,8 +1304,8 @@ where
     K: Eq + Hash + RecognizerReadable,
     V: RecognizerReadable,
 {
-    type Rec = HashMapRecognizer<K, V, K::Rec, V::Rec>;
-    type AttrRec = HashMapRecognizer<K, V, K::Rec, V::Rec>;
+    type Rec = HashMapRecognizer<K::Rec, V::Rec>;
+    type AttrRec = HashMapRecognizer<K::Rec, V::Rec>;
 
     fn make_recognizer() -> Self::Rec {
         HashMapRecognizer::new(K::make_recognizer(), V::make_recognizer())
@@ -1307,15 +1316,15 @@ where
     }
 }
 
-impl<'a, K, V, RK, RV> Iteratee<ParseEvent<'a>> for HashMapRecognizer<K, V, RK, RV>
+impl<RK, RV> Recognizer for HashMapRecognizer<RK, RV>
 where
-    K: Eq + Hash,
-    RK: Recognizer<K>,
-    RV: Recognizer<V>,
+    RK: Recognizer,
+    RV: Recognizer,
+    RK::Target: Eq + Hash,
 {
-    type Item = Result<HashMap<K, V>, ReadError>;
+    type Target = HashMap<RK::Target, RV::Target>;
 
-    fn feed(&mut self, input: ParseEvent<'a>) -> Option<Self::Item> {
+    fn feed_event<'a>(&mut self, input: ParseEvent<'a>) -> Option<Result<Self::Target, ReadError>> {
         match self.stage {
             MapStage::Init => {
                 if matches!(&input, ParseEvent::StartBody) {
@@ -1334,7 +1343,7 @@ where
                 }
                 _ => {
                     self.stage = MapStage::Key;
-                    match self.key_rec.feed(input)? {
+                    match self.key_rec.feed_event(input)? {
                         Ok(t) => {
                             self.key = Some(t);
                             self.key_rec.reset();
@@ -1345,7 +1354,7 @@ where
                     }
                 }
             },
-            MapStage::Key => match self.key_rec.feed(input)? {
+            MapStage::Key => match self.key_rec.feed_event(input)? {
                 Ok(t) => {
                     self.key = Some(t);
                     self.key_rec.reset();
@@ -1362,7 +1371,7 @@ where
                     Some(Err(bad_kind(&input)))
                 }
             }
-            MapStage::Value => match self.val_rec.feed(input)? {
+            MapStage::Value => match self.val_rec.feed_event(input)? {
                 Ok(v) => {
                     if let Some(k) = self.key.take() {
                         self.map.insert(k, v);
@@ -1377,14 +1386,7 @@ where
             },
         }
     }
-}
 
-impl<K, V, RK, RV> Recognizer<HashMap<K, V>> for HashMapRecognizer<K, V, RK, RV>
-where
-    K: Eq + Hash,
-    RK: Recognizer<K>,
-    RV: Recognizer<V>,
-{
     fn reset(&mut self) {
         self.key = None;
         self.stage = MapStage::Init;
@@ -1393,19 +1395,19 @@ where
     }
 }
 
-pub fn feed_field<T, R>(
+pub fn feed_field<R>(
     name: &'static str,
-    field: &mut Option<T>,
+    field: &mut Option<R::Target>,
     recognizer: &mut R,
     event: ParseEvent<'_>,
 ) -> Option<Result<(), ReadError>>
 where
-    R: Recognizer<T>,
+    R: Recognizer,
 {
     if field.is_some() {
         Some(Err(ReadError::DuplicateField(Text::new(name))))
     } else {
-        match recognizer.feed(event) {
+        match recognizer.feed_event(event) {
             Some(Ok(t)) => {
                 *field = Some(t);
                 Some(Ok(()))
@@ -1473,10 +1475,10 @@ impl<T, Flds> DelegateStructRecognizer<T, Flds> {
     }
 }
 
-impl<'a, T, Flds> Iteratee<ParseEvent<'a>> for DelegateStructRecognizer<T, Flds> {
-    type Item = Result<T, ReadError>;
+impl<T, Flds> Recognizer for DelegateStructRecognizer<T, Flds> {
+    type Target = T;
 
-    fn feed(&mut self, input: ParseEvent<'a>) -> Option<Self::Item> {
+    fn feed_event<'a>(&mut self, input: ParseEvent<'a>) -> Option<Result<Self::Target, ReadError>> {
         let DelegateStructRecognizer {
             tag,
             has_header_body,
@@ -1667,13 +1669,57 @@ impl<'a, T, Flds> Iteratee<ParseEvent<'a>> for DelegateStructRecognizer<T, Flds>
             }
         }
     }
-}
 
-impl<T, Flds> Recognizer<T> for DelegateStructRecognizer<T, Flds> {
     fn reset(&mut self) {
         self.state = DelegateStructState::Init;
         self.progress.clear();
         self.index = 0;
         (self.reset)(&mut self.fields);
+    }
+}
+
+impl Recognizer for CNil {
+    type Target = CNil;
+
+    fn feed_event<'a>(
+        &mut self,
+        _input: ParseEvent<'a>,
+    ) -> Option<Result<Self::Target, ReadError>> {
+        self.explode()
+    }
+
+    fn reset(&mut self) {}
+}
+
+impl<H, T> Recognizer for CCons<H, T>
+where
+    H: Recognizer,
+    T: Recognizer,
+{
+    type Target = CCons<H::Target, T::Target>;
+
+    fn feed_event<'a>(&mut self, input: ParseEvent<'a>) -> Option<Result<Self::Target, ReadError>> {
+        match self {
+            CCons::Head(h) => {
+                h.feed_event(input).map(|r| r.map(CCons::Head))
+            }
+            CCons::Tail(t) => {
+                t.feed_event(input).map(|r| r.map(CCons::Tail))
+            }
+        }
+    }
+
+    fn try_flush(&mut self) -> Option<Result<Self::Target, ReadError>> {
+        match self {
+            CCons::Head(h) => h.try_flush().map(|r| r.map(CCons::Head)),
+            CCons::Tail(t) => t.try_flush().map(|r| r.map(CCons::Tail)),
+        }
+    }
+
+    fn reset(&mut self) {
+        match self {
+            CCons::Head(h) => h.reset(),
+            CCons::Tail(t) => t.reset(),
+        }
     }
 }

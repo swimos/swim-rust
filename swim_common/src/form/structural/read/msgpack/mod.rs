@@ -156,18 +156,18 @@ pub fn read_from_msg_pack<T: StructuralReadable, R: Buf>(
     }
 }
 
-fn complete<T, R>(
-    result: Result<Option<T>, MsgPackReadError>,
-    recognizer: R,
-) -> Result<T, MsgPackReadError>
+fn complete<R>(
+    result: Result<Option<R::Target>, MsgPackReadError>,
+    mut recognizer: R,
+) -> Result<R::Target, MsgPackReadError>
 where
-    R: Recognizer<T>,
+    R: Recognizer,
 {
     result.and_then(move |maybe| {
         if let Some(t) = maybe {
             Ok(t)
         } else {
-            match recognizer.flush() {
+            match recognizer.try_flush() {
                 Some(Ok(t)) => Ok(t),
                 Some(Err(e)) => Err(e.into()),
                 _ => Err(MsgPackReadError::Incomplete),
@@ -432,7 +432,7 @@ where
     }
 }
 
-fn read_sub_record<T, R, Rec>(
+fn read_sub_record<R, Rec>(
     reader: &mut R,
     str_buf: &mut BytesMut,
     attrs: u32,
@@ -440,7 +440,7 @@ fn read_sub_record<T, R, Rec>(
 ) -> Result<(), MsgPackReadError>
 where
     R: Buf,
-    Rec: Recognizer<T>,
+    Rec: Recognizer,
 {
     match read_record(reader, str_buf, attrs, recognizer) {
         Ok(Some(_)) => Err(MsgPackReadError::UncomsumedData),
@@ -449,45 +449,45 @@ where
     }
 }
 
-fn read_record<T, R, Rec>(
+fn read_record<R, Rec>(
     reader: &mut R,
     str_buf: &mut BytesMut,
     attrs: u32,
     recognizer: &mut Rec,
-) -> Result<Option<T>, MsgPackReadError>
+) -> Result<Option<Rec::Target>, MsgPackReadError>
 where
     R: Buf,
-    Rec: Recognizer<T>,
+    Rec: Recognizer,
 {
     for _ in 0..attrs {
         let name_len = read_str_len(&mut reader.reader())?;
         feed_string(reader, str_buf, name_len, |name| {
-            recognizer.feed(ParseEvent::StartAttribute(name))
+            recognizer.feed_event(ParseEvent::StartAttribute(name))
         })?;
         push_value_dynamic(reader, str_buf, recognizer)?;
-        feed!(recognizer.feed(ParseEvent::EndAttribute));
+        feed!(recognizer.feed_event(ParseEvent::EndAttribute));
     }
     let (body_len, is_map) = read_body_len(reader)?;
-    feed!(recognizer.feed(ParseEvent::StartBody));
+    feed!(recognizer.feed_event(ParseEvent::StartBody));
     if is_map {
         read_map_body(reader, str_buf, body_len, recognizer)?;
     } else {
         read_array_body(reader, str_buf, body_len, recognizer)?;
     }
     recognizer
-        .feed(ParseEvent::EndRecord)
+        .feed_event(ParseEvent::EndRecord)
         .transpose()
         .map_err(Into::into)
 }
 
-fn push_value_dynamic<T, R, Rec>(
+fn push_value_dynamic<R, Rec>(
     reader: &mut R,
     str_buf: &mut BytesMut,
     recognizer: &mut Rec,
 ) -> Result<(), MsgPackReadError>
 where
     R: Buf,
-    Rec: Recognizer<T>,
+    Rec: Recognizer,
 {
     let marker = read_marker(reader)?;
     push_value(reader, str_buf, recognizer, marker)
@@ -558,7 +558,7 @@ impl BytesLen for f64 {
     }
 }
 
-fn push_value<T, R, Rec>(
+fn push_value<R, Rec>(
     reader: &mut R,
     str_buf: &mut BytesMut,
     recognizer: &mut Rec,
@@ -566,34 +566,50 @@ fn push_value<T, R, Rec>(
 ) -> Result<(), MsgPackReadError>
 where
     R: Buf,
-    Rec: Recognizer<T>,
+    Rec: Recognizer,
 {
     match marker {
-        Marker::Null => feed(recognizer.feed(ParseEvent::Extant)),
-        Marker::True => feed(recognizer.feed(true.into())),
-        Marker::False => feed(recognizer.feed(false.into())),
-        Marker::FixPos(n) => feed(recognizer.feed(n.into())),
-        Marker::FixNeg(n) => feed(recognizer.feed(n.into())),
-        Marker::I8 => compose_feed(reader, Buf::get_i8, |n: i8| recognizer.feed(n.into())),
-        Marker::I16 => compose_feed(reader, Buf::get_i16, |n: i16| recognizer.feed(n.into())),
-        Marker::I32 => compose_feed(reader, Buf::get_i32, |n: i32| recognizer.feed(n.into())),
-        Marker::I64 => compose_feed(reader, Buf::get_i64, |n: i64| recognizer.feed(n.into())),
-        Marker::U8 => compose_feed(reader, Buf::get_u8, |n: u8| recognizer.feed(n.into())),
-        Marker::U16 => compose_feed(reader, Buf::get_u16, |n: u16| recognizer.feed(n.into())),
-        Marker::U32 => compose_feed(reader, Buf::get_u32, |n: u32| recognizer.feed(n.into())),
-        Marker::U64 => compose_feed(reader, Buf::get_u64, |n: u64| recognizer.feed(n.into())),
-        Marker::F32 => compose_feed(reader, Buf::get_f32, |n: f32| recognizer.feed(n.into())),
-        Marker::F64 => compose_feed(reader, Buf::get_f64, |n: f64| recognizer.feed(n.into())),
-        Marker::FixStr(len) => {
-            feed_string(reader, str_buf, len as u32, |t| recognizer.feed(t.into()))
-        }
+        Marker::Null => feed(recognizer.feed_event(ParseEvent::Extant)),
+        Marker::True => feed(recognizer.feed_event(true.into())),
+        Marker::False => feed(recognizer.feed_event(false.into())),
+        Marker::FixPos(n) => feed(recognizer.feed_event(n.into())),
+        Marker::FixNeg(n) => feed(recognizer.feed_event(n.into())),
+        Marker::I8 => compose_feed(reader, Buf::get_i8, |n: i8| recognizer.feed_event(n.into())),
+        Marker::I16 => compose_feed(reader, Buf::get_i16, |n: i16| {
+            recognizer.feed_event(n.into())
+        }),
+        Marker::I32 => compose_feed(reader, Buf::get_i32, |n: i32| {
+            recognizer.feed_event(n.into())
+        }),
+        Marker::I64 => compose_feed(reader, Buf::get_i64, |n: i64| {
+            recognizer.feed_event(n.into())
+        }),
+        Marker::U8 => compose_feed(reader, Buf::get_u8, |n: u8| recognizer.feed_event(n.into())),
+        Marker::U16 => compose_feed(reader, Buf::get_u16, |n: u16| {
+            recognizer.feed_event(n.into())
+        }),
+        Marker::U32 => compose_feed(reader, Buf::get_u32, |n: u32| {
+            recognizer.feed_event(n.into())
+        }),
+        Marker::U64 => compose_feed(reader, Buf::get_u64, |n: u64| {
+            recognizer.feed_event(n.into())
+        }),
+        Marker::F32 => compose_feed(reader, Buf::get_f32, |n: f32| {
+            recognizer.feed_event(n.into())
+        }),
+        Marker::F64 => compose_feed(reader, Buf::get_f64, |n: f64| {
+            recognizer.feed_event(n.into())
+        }),
+        Marker::FixStr(len) => feed_string(reader, str_buf, len as u32, |t| {
+            recognizer.feed_event(t.into())
+        }),
         Marker::Str8 => {
             let len = if reader.remaining() < u8::len() {
                 return Err(MsgPackReadError::Incomplete);
             } else {
                 reader.get_u8() as u32
             };
-            feed_string(reader, str_buf, len, |t| recognizer.feed(t.into()))
+            feed_string(reader, str_buf, len, |t| recognizer.feed_event(t.into()))
         }
         Marker::Str16 => {
             let len = if reader.remaining() < u16::len() {
@@ -601,7 +617,7 @@ where
             } else {
                 reader.get_u16() as u32
             };
-            feed_string(reader, str_buf, len, |t| recognizer.feed(t.into()))
+            feed_string(reader, str_buf, len, |t| recognizer.feed_event(t.into()))
         }
         Marker::Str32 => {
             let len = if reader.remaining() < u32::len() {
@@ -609,7 +625,7 @@ where
             } else {
                 reader.get_u32()
             };
-            feed_string(reader, str_buf, len, |t| recognizer.feed(t.into()))
+            feed_string(reader, str_buf, len, |t| recognizer.feed_event(t.into()))
         }
         Marker::Bin8 => {
             let len = if reader.remaining() < u8::len() {
@@ -618,7 +634,7 @@ where
                 reader.get_u8() as u32
             };
             let blob = read_blob(reader, len)?;
-            feed(recognizer.feed(blob.into()))
+            feed(recognizer.feed_event(blob.into()))
         }
         Marker::Bin16 => {
             let len = if reader.remaining() < u16::len() {
@@ -627,7 +643,7 @@ where
                 reader.get_u16() as u32
             };
             let blob = read_blob(reader, len)?;
-            feed(recognizer.feed(blob.into()))
+            feed(recognizer.feed_event(blob.into()))
         }
         Marker::Bin32 => {
             let len = if reader.remaining() < u32::len() {
@@ -636,7 +652,7 @@ where
                 reader.get_u32() as u32
             };
             let blob = read_blob(reader, len)?;
-            feed(recognizer.feed(blob.into()))
+            feed(recognizer.feed_event(blob.into()))
         }
         Marker::FixMap(n) => read_sub_record(reader, str_buf, n as u32, recognizer),
         Marker::Map16 => {
@@ -656,8 +672,8 @@ where
             read_sub_record(reader, str_buf, len, recognizer)
         }
         marker if is_ext(marker) => feed(match read_ext(reader, marker)? {
-            Either::Left(n) => recognizer.feed(n.into()),
-            Either::Right(n) => recognizer.feed(n.into()),
+            Either::Left(n) => recognizer.feed_event(n.into()),
+            Either::Right(n) => recognizer.feed_event(n.into()),
         }),
         ow => Err(MsgPackReadError::InvalidMarker(ow)),
     }
@@ -665,7 +681,7 @@ where
 
 const SLOT_MARKER: Marker = Marker::FixArray(2);
 
-fn read_array_body<T, R, Rec>(
+fn read_array_body<R, Rec>(
     input: &mut R,
     str_buf: &mut BytesMut,
     items: u32,
@@ -673,13 +689,13 @@ fn read_array_body<T, R, Rec>(
 ) -> Result<(), MsgPackReadError>
 where
     R: Buf,
-    Rec: Recognizer<T>,
+    Rec: Recognizer,
 {
     for _ in 0..items {
         let marker = read_marker(input)?;
         if marker == SLOT_MARKER {
             push_value_dynamic(input, str_buf, recognizer)?;
-            feed!(recognizer.feed(ParseEvent::Slot));
+            feed!(recognizer.feed_event(ParseEvent::Slot));
             push_value_dynamic(input, str_buf, recognizer)?;
         } else {
             push_value(input, str_buf, recognizer, marker)?;
@@ -688,7 +704,7 @@ where
     Ok(())
 }
 
-fn read_map_body<T, R, Rec>(
+fn read_map_body<R, Rec>(
     input: &mut R,
     str_buf: &mut BytesMut,
     items: u32,
@@ -696,11 +712,11 @@ fn read_map_body<T, R, Rec>(
 ) -> Result<(), MsgPackReadError>
 where
     R: Buf,
-    Rec: Recognizer<T>,
+    Rec: Recognizer,
 {
     for _ in 0..items {
         push_value_dynamic(input, str_buf, recognizer)?;
-        feed!(recognizer.feed(ParseEvent::Slot));
+        feed!(recognizer.feed_event(ParseEvent::Slot));
         push_value_dynamic(input, str_buf, recognizer)?;
     }
     Ok(())

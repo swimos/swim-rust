@@ -23,7 +23,6 @@ use crate::model::text::Text;
 use crate::model::{Attr, Item, Value};
 use std::convert::TryFrom;
 use std::option::Option::None;
-use utilities::iteratee::Iteratee;
 
 #[derive(Debug)]
 enum RecordKey {
@@ -241,10 +240,10 @@ fn recognize_item(input: ParseEvent<'_>) -> ItemEvent {
     }
 }
 
-impl<'a> Iteratee<ParseEvent<'a>> for ValueMaterializer {
-    type Item = Result<Value, ReadError>;
+impl Recognizer for ValueMaterializer {
+    type Target = Value;
 
-    fn feed(&mut self, input: ParseEvent<'a>) -> Option<Self::Item> {
+    fn feed_event<'a>(&mut self, input: ParseEvent<'a>) -> Option<Result<Self::Target, ReadError>> {
         if self.stack.is_empty() {
             match recognize_item(input) {
                 ItemEvent::Primitive(v) => Some(Ok(v)),
@@ -297,11 +296,8 @@ impl<'a> Iteratee<ParseEvent<'a>> for ValueMaterializer {
         }
     }
 
-    fn flush(self) -> Option<Self::Item>
-    where
-        Self: Sized,
-    {
-        let ValueMaterializer { mut stack, .. } = self;
+    fn try_flush(&mut self) -> Option<Result<Self::Target, ReadError>> {
+        let ValueMaterializer { stack, .. } = self;
         if stack.len() > 1 {
             None
         } else if let Some(top) = stack.pop() {
@@ -315,9 +311,7 @@ impl<'a> Iteratee<ParseEvent<'a>> for ValueMaterializer {
             Some(Ok(Value::Extant))
         }
     }
-}
 
-impl Recognizer<Value> for ValueMaterializer {
     fn reset(&mut self) {
         self.slot_key = None;
         self.stack.clear();

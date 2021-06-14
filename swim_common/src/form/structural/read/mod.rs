@@ -26,10 +26,9 @@ use std::borrow::Cow;
 mod error;
 
 use crate::form::structural::bridge::RecognizerBridge;
-use crate::form::structural::read::improved::RecognizerReadable;
+use crate::form::structural::read::improved::{Recognizer, RecognizerReadable};
 use crate::form::structural::read::parser::ParseEvent;
 pub use error::ReadError;
-use utilities::iteratee::Iteratee;
 
 /// Trait for types that can be structurally deserialized, from the Swim data model.
 pub trait StructuralReadable: RecognizerReadable {
@@ -47,68 +46,68 @@ pub trait StructuralReadable: RecognizerReadable {
 
     fn read_extant() -> Result<Self, ReadError> {
         let mut rec = Self::make_recognizer();
-        rec.feed(ParseEvent::Extant)
-            .or_else(move || rec.flush())
+        rec.feed_event(ParseEvent::Extant)
+            .or_else(move || rec.try_flush())
             .unwrap_or(Err(ReadError::IncompleteRecord))
     }
     fn read_i32(value: i32) -> Result<Self, ReadError> {
         let mut rec = Self::make_recognizer();
-        rec.feed(value.into())
-            .or_else(move || rec.flush())
+        rec.feed_event(value.into())
+            .or_else(move || rec.try_flush())
             .unwrap_or(Err(ReadError::IncompleteRecord))
     }
     fn read_i64(value: i64) -> Result<Self, ReadError> {
         let mut rec = Self::make_recognizer();
-        rec.feed(value.into())
-            .or_else(move || rec.flush())
+        rec.feed_event(value.into())
+            .or_else(move || rec.try_flush())
             .unwrap_or(Err(ReadError::IncompleteRecord))
     }
     fn read_u32(value: u32) -> Result<Self, ReadError> {
         let mut rec = Self::make_recognizer();
-        rec.feed(value.into())
-            .or_else(move || rec.flush())
+        rec.feed_event(value.into())
+            .or_else(move || rec.try_flush())
             .unwrap_or(Err(ReadError::IncompleteRecord))
     }
     fn read_u64(value: u64) -> Result<Self, ReadError> {
         let mut rec = Self::make_recognizer();
-        rec.feed(value.into())
-            .or_else(move || rec.flush())
+        rec.feed_event(value.into())
+            .or_else(move || rec.try_flush())
             .unwrap_or(Err(ReadError::IncompleteRecord))
     }
     fn read_f64(value: f64) -> Result<Self, ReadError> {
         let mut rec = Self::make_recognizer();
-        rec.feed(value.into())
-            .or_else(move || rec.flush())
+        rec.feed_event(value.into())
+            .or_else(move || rec.try_flush())
             .unwrap_or(Err(ReadError::IncompleteRecord))
     }
     fn read_bool(value: bool) -> Result<Self, ReadError> {
         let mut rec = Self::make_recognizer();
-        rec.feed(value.into())
-            .or_else(move || rec.flush())
+        rec.feed_event(value.into())
+            .or_else(move || rec.try_flush())
             .unwrap_or(Err(ReadError::IncompleteRecord))
     }
     fn read_big_int(value: BigInt) -> Result<Self, ReadError> {
         let mut rec = Self::make_recognizer();
-        rec.feed(value.into())
-            .or_else(move || rec.flush())
+        rec.feed_event(value.into())
+            .or_else(move || rec.try_flush())
             .unwrap_or(Err(ReadError::IncompleteRecord))
     }
     fn read_big_uint(value: BigUint) -> Result<Self, ReadError> {
         let mut rec = Self::make_recognizer();
-        rec.feed(value.into())
-            .or_else(move || rec.flush())
+        rec.feed_event(value.into())
+            .or_else(move || rec.try_flush())
             .unwrap_or(Err(ReadError::IncompleteRecord))
     }
     fn read_text(value: Cow<'_, str>) -> Result<Self, ReadError> {
         let mut rec = Self::make_recognizer();
-        rec.feed(value.into())
-            .or_else(move || rec.flush())
+        rec.feed_event(value.into())
+            .or_else(move || rec.try_flush())
             .unwrap_or(Err(ReadError::IncompleteRecord))
     }
     fn read_blob(value: Vec<u8>) -> Result<Self, ReadError> {
         let mut rec = Self::make_recognizer();
-        rec.feed(value.into())
-            .or_else(move || rec.flush())
+        rec.feed_event(value.into())
+            .or_else(move || rec.try_flush())
             .unwrap_or(Err(ReadError::IncompleteRecord))
     }
 }
