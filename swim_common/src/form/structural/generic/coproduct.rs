@@ -56,3 +56,30 @@ pub enum CCons<H, T> {
 impl<H, T: Coproduct> Coproduct for CCons<H, T> {
     const NUM_OPTIONS: usize = T::NUM_OPTIONS + 1;
 }
+
+pub trait Unify {
+    type Out;
+    fn unify(self) -> Self::Out;
+}
+
+impl<T> Unify for CCons<T, CNil> {
+    type Out = T;
+
+    fn unify(self) -> Self::Out {
+        match self {
+            CCons::Head(h) => h,
+            CCons::Tail(t) => t.explode(),
+        }
+    }
+}
+
+impl<T: Unify> Unify for CCons<T::Out, T> {
+    type Out = T::Out;
+
+    fn unify(self) -> Self::Out {
+        match self {
+            CCons::Head(h) => h,
+            CCons::Tail(t) => t.unify(),
+        }
+    }
+}

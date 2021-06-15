@@ -16,7 +16,7 @@ pub mod primitive;
 #[cfg(test)]
 mod tests;
 
-use crate::form::structural::generic::coproduct::{CCons, CNil};
+use crate::form::structural::generic::coproduct::{CCons, CNil, Unify};
 use crate::form::structural::read::materializers::value::ValueMaterializer;
 use crate::form::structural::read::parser::{NumericLiteral, ParseEvent};
 use crate::form::structural::read::ReadError;
@@ -716,6 +716,29 @@ impl<T, Flds> LabelledStructRecognizer<T, Flds> {
             reset,
         }
     }
+
+    pub fn variant(
+        has_header_body: bool,
+        fields: Flds,
+        num_fields: u32,
+        select_index: for<'a> fn(LabelledFieldKey<'a>) -> Option<u32>,
+        select_recog: Selector<Flds>,
+        on_done: fn(&mut Flds) -> Result<T, ReadError>,
+        reset: fn(&mut Flds),
+    ) -> Self {
+        LabelledStructRecognizer {
+            tag: "",
+            has_header_body,
+            state: LabelledStructState::HeaderInit,
+            fields,
+            progress: Bitset::new(num_fields),
+            select_index,
+            index: 0,
+            select_recog,
+            on_done,
+            reset,
+        }
+    }
 }
 
 impl<T, Flds> OrdinalStructRecognizer<T, Flds> {
@@ -733,6 +756,29 @@ impl<T, Flds> OrdinalStructRecognizer<T, Flds> {
             tag,
             has_header_body,
             state: OrdinalStructState::Init,
+            fields: fields,
+            progress: Bitset::new(num_fields),
+            select_index,
+            index: 0,
+            select_recog,
+            on_done,
+            reset,
+        }
+    }
+
+    pub fn variant(
+        has_header_body: bool,
+        fields: Flds,
+        num_fields: u32,
+        select_index: for<'a> fn(OrdinalFieldKey<'a>) -> Option<u32>,
+        select_recog: Selector<Flds>,
+        on_done: fn(&mut Flds) -> Result<T, ReadError>,
+        reset: fn(&mut Flds),
+    ) -> Self {
+        OrdinalStructRecognizer {
+            tag: "",
+            has_header_body,
+            state: OrdinalStructState::HeaderInit,
             fields: fields,
             progress: Bitset::new(num_fields),
             select_index,
@@ -1473,6 +1519,31 @@ impl<T, Flds> DelegateStructRecognizer<T, Flds> {
             simple_body,
         }
     }
+
+    pub fn variant(
+        has_header_body: bool,
+        fields: Flds,
+        num_fields: u32,
+        select_index: for<'a> fn(OrdinalFieldKey<'a>) -> Option<u32>,
+        select_recog: Selector<Flds>,
+        on_done: fn(&mut Flds) -> Result<T, ReadError>,
+        reset: fn(&mut Flds),
+        simple_body: bool,
+    ) -> Self {
+        DelegateStructRecognizer {
+            tag: "",
+            has_header_body,
+            state: DelegateStructState::HeaderInit,
+            fields: fields,
+            progress: Bitset::new(num_fields),
+            select_index,
+            index: 0,
+            select_recog,
+            on_done,
+            reset,
+            simple_body,
+        }
+    }
 }
 
 impl<T, Flds> Recognizer for DelegateStructRecognizer<T, Flds> {
@@ -1721,5 +1792,53 @@ where
             CCons::Head(h) => h.reset(),
             CCons::Tail(t) => t.reset(),
         }
+    }
+}
+
+pub struct TaggedEnumRecognizer<Var> {
+    select_var: fn(&str) -> Option<Var>,
+    variant: Option<Var>,
+}
+
+impl<Var> TaggedEnumRecognizer<Var> {
+
+    pub fn new(select_var: fn(&str) -> Option<Var>) -> Self {
+        TaggedEnumRecognizer {
+            select_var,
+            variant: None,
+        }
+    }
+
+}
+
+impl<Var> Recognizer for TaggedEnumRecognizer<Var>
+where
+    Var: Recognizer,
+    Var::Target: Unify,
+{
+    type Target = <<Var as Recognizer>::Target as Unify>::Out;
+
+    fn feed_event<'a>(&mut self, input: ParseEvent<'a>) -> Option<Result<Self::Target, ReadError>> {
+        let TaggedEnumRecognizer { select_var, variant } = self;
+        match variant {
+            None => {
+                match input {
+                    ParseEvent::StartAttribute(name) => {
+                        *variant = select_var(name.borrow());
+                        if variant.is_some() {
+                            None
+                        } else {
+                            Some(Err(ReadError::UnexpectedAttribute(name.into())))
+                        }
+                    }
+                    ow => Some(Err(bad_kind(&ow))),
+                }
+            }
+            Some(var) => var.feed_event(input).map(|r| r.map(Unify::unify))
+        }
+    }
+
+    fn reset(&mut self) {
+        self.variant = None;
     }
 }

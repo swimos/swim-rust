@@ -341,3 +341,151 @@ fn hash_map_recognizer() {
 
     assert_eq!(map, expected);
 }
+
+pub enum ExampleEnum<S, T> {
+    First { a: S, b: S },
+    Second(T, T),
+}
+
+type FirstFlds<S> = (Option<S>, Option<S>, <S as RecognizerReadable>::Rec, <S as RecognizerReadable>::Rec);
+type SecondFlds<T> = (Option<T>, Option<T>, <T as RecognizerReadable>::Rec, <T as RecognizerReadable>::Rec);
+type FirstRecog<S, T> = LabelledStructRecognizer<ExampleEnum<S, T>, FirstFlds<S>>;
+type SecondRecog<S, T> = OrdinalStructRecognizer<ExampleEnum<S, T>, SecondFlds<T>>;
+type Variants<S, T> = CCons<FirstRecog<S, T>, CCons<SecondRecog<S, T>, CNil>>;
+
+fn enum_select_index_1(key: LabelledFieldKey<'_>) -> Option<u32> {
+    match key {
+        LabelledFieldKey::Item("a") => Some(0),
+        LabelledFieldKey::Item("b") => Some(1),
+        _ => None
+    }
+}
+
+fn enum_select_index_2(key: OrdinalFieldKey<'_>) -> Option<u32> {
+    match key {
+        OrdinalFieldKey::FirstItem => Some(0),
+        _ => None
+    }
+}
+
+fn enum_select_feed_1<'a, S, RS: Recognizer<Target = S>>(
+    state: &mut (Option<S>, Option<S>, RS, RS),
+    index: u32,
+    input: ParseEvent<'a>) -> Option<Result<(), ReadError>> {
+    let (a, b, a_rec, b_rec) = state;
+    match index {
+        0 => {
+            match a_rec.feed_event(input) {
+                Some(Ok(s)) => {
+                    *a = Some(s);
+                    Some(Ok(()))
+                }
+                Some(Err(e)) => Some(Err(e)),
+                _ => None,
+            }
+        }
+        1 => {
+            match b_rec.feed_event(input) {
+                Some(Ok(s)) => {
+                    *b = Some(s);
+                    Some(Ok(()))
+                }
+                Some(Err(e)) => Some(Err(e)),
+                _ => None,
+            }
+        }
+        _ => Some(Err(ReadError::InconsistentState)),
+    }
+}
+
+
+fn enum_select_feed_2<'a, T, RT: Recognizer<Target = T>>(
+    state: &mut (Option<T>, Option<T>, RT, RT),
+    index: u32,
+    input: ParseEvent<'a>) -> Option<Result<(), ReadError>> {
+    let (a, b, a_rec, b_rec) = state;
+    match index {
+        0 => {
+            match a_rec.feed_event(input) {
+                Some(Ok(t)) => {
+                    *a = Some(t);
+                    Some(Ok(()))
+                }
+                Some(Err(e)) => Some(Err(e)),
+                _ => None,
+            }
+        }
+        1 => {
+            match b_rec.feed_event(input) {
+                Some(Ok(t)) => {
+                    *b = Some(t);
+                    Some(Ok(()))
+                }
+                Some(Err(e)) => Some(Err(e)),
+                _ => None,
+            }
+        }
+        _ => Some(Err(ReadError::InconsistentState)),
+    }
+}
+
+fn enum_on_done_1<S, T, RS: Recognizer<Target = S>>(state: &mut (Option<S>, Option<S>, RS, RS)) -> Result<ExampleEnum<S, T>, ReadError> {
+    match (state.0.take(), state.1.take()) {
+        (Some(a), Some(b)) => Ok(ExampleEnum::First { a, b }),
+        (Some(_), _) => Err(ReadError::MissingFields(vec![Text::new("b")])),
+        (_, Some(_)) => Err(ReadError::MissingFields(vec![Text::new("a")])),
+        _ => Err(ReadError::MissingFields(vec![Text::new("a"), Text::new("b")])),
+    }
+}
+
+fn enum_on_done_2<S, T, RT: Recognizer<Target = T>>(state: &mut (Option<T>, Option<T>, RT, RT)) -> Result<ExampleEnum<S, T>, ReadError> {
+    match (state.0.take(), state.1.take()) {
+        (Some(a), Some(b)) => Ok(ExampleEnum::Second(a, b)),
+        (Some(_), _) => Err(ReadError::MissingFields(vec![Text::new("value_0")])),
+        _ => Err(ReadError::MissingFields(vec![Text::new("value_0"), Text::new("value_1")])),
+    }
+}
+
+fn enum_on_reset_1<S, RS: Recognizer<Target = S>>(state: &mut (Option<S>, Option<S>, RS, RS)) {
+    state.0 = None;
+    state.1 = None;
+    state.2.reset();
+    state.3.reset();
+}
+
+fn enum_on_reset_2<T, RT: Recognizer<Target = T>>(state: &mut (Option<T>, Option<T>, RT, RT)) {
+    state.0 = None;
+    state.1 = None;
+    state.2.reset();
+    state.3.reset();
+}
+
+fn enum_select_var<S: RecognizerReadable, T: RecognizerReadable>(name: &str) -> Option<Variants<S, T>> {
+    match name {
+        "First" => {
+            let flds = (None, None, S::make_recognizer(), S::make_recognizer());
+            let recog = LabelledStructRecognizer::variant(false, flds, 2, enum_select_index_1, enum_select_feed_1, enum_on_done_1, enum_on_reset_1);
+            Some(CCons::Head(recog))
+        }
+        "Second" => {
+            let flds = (None, None, T::make_recognizer(), T::make_recognizer());
+            let recog = OrdinalStructRecognizer::variant(false, flds, 2, enum_select_index_2, enum_select_feed_2, enum_on_done_2, enum_on_reset_2);
+            Some(CCons::Tail(CCons::Head(recog)))
+        },
+        _ => None
+    }
+}
+
+impl<S: RecognizerReadable, T: RecognizerReadable> RecognizerReadable for ExampleEnum<S, T> {
+    type Rec = TaggedEnumRecognizer<Variants<S, T>>;
+    type AttrRec = SimpleAttrBody<TaggedEnumRecognizer<Variants<S, T>>>;
+
+    fn make_recognizer() -> Self::Rec {
+        TaggedEnumRecognizer::new(enum_select_var)
+    }
+
+    fn make_attr_recognizer() -> Self::AttrRec {
+        SimpleAttrBody::new(Self::make_recognizer())
+    }
+}
+
