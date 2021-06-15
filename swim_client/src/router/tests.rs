@@ -13,9 +13,11 @@
 // limitations under the License.
 
 use crate::router::{ClientConnectionsManager, ClientRequest, ClientRouterFactory, Router};
+use crate::runtime::time::timeout::timeout;
 use std::convert::TryFrom;
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 use swim_common::model::Value;
 use swim_common::request::Request;
 use swim_common::routing::error::{ResolutionError, Unresolvable};
@@ -342,7 +344,7 @@ async fn test_route_single_local_outgoing_message_to_single_downlink() {
     let (router_request_tx, _remote_rx, mut local_rx, (_, local_requests)) =
         create_connection_manager().await;
 
-    let _local_rx =
+    let _local_tx =
         register_connection(&router_request_tx, Origin::Local(local_addr.clone())).await;
     let (sink, _stream) = open_downlink(&router_request_tx, local_path).await;
 
@@ -388,7 +390,7 @@ async fn test_route_single_local_outgoing_message_to_multiple_downlinks_same_nod
     let (router_request_tx, _remote_rx, mut local_rx, (_, local_requests)) =
         create_connection_manager().await;
 
-    let _local_rx =
+    let _local_tx =
         register_connection(&router_request_tx, Origin::Local(local_addr.clone())).await;
     let (first_sink, _stream) = open_downlink(&router_request_tx, local_path.clone()).await;
     let (second_sink, _stream) = open_downlink(&router_request_tx, local_path).await;
@@ -452,9 +454,9 @@ async fn test_route_single_local_outgoing_message_to_multiple_downlinks_differen
     let (router_request_tx, _remote_rx, mut local_rx, (_, local_requests)) =
         create_connection_manager().await;
 
-    let _local_rx =
+    let _local_tx =
         register_connection(&router_request_tx, Origin::Local(first_local_addr.clone())).await;
-    let _local_rx =
+    let _local_tx =
         register_connection(&router_request_tx, Origin::Local(second_local_addr.clone())).await;
     let (first_sink, _stream) = open_downlink(&router_request_tx, first_local_path).await;
     let (second_sink, _stream) = open_downlink(&router_request_tx, second_local_path).await;
@@ -520,7 +522,7 @@ async fn test_route_multiple_local_outgoing_messages_to_single_downlink() {
     let (router_request_tx, _remote_rx, mut local_rx, (_, local_requests)) =
         create_connection_manager().await;
 
-    let _local_rx =
+    let _local_tx =
         register_connection(&router_request_tx, Origin::Local(local_addr.clone())).await;
     let (sink, _stream) = open_downlink(&router_request_tx, local_path).await;
 
@@ -545,307 +547,329 @@ async fn test_route_multiple_local_outgoing_messages_to_single_downlink() {
     assert_eq!(local_requests, vec![local_addr])
 }
 
-// #[tokio::test]
-// async fn test_route_multiple_remote_outgoing_messages_to_multiple_downlinks_same_host() {
-//     let host_url = url::Url::parse("ws://127.0.0.1:9001/").unwrap();
-//
-//     let remote_path = Path::Remote(AbsolutePath::new(
-//         host_url,
-//         "/foo",
-//         "/bar",
-//     ));
-//     let remote_addr = SchemeSocketAddr::new(Scheme::Ws, "127.0.0.1:9001".parse().unwrap());
-//
-//     let (router_request_tx, mut remote_rx, _local_rx) = create_connection_manager().await;
-//     let _remote_tx = register_connection(&router_request_tx, Origin::Remote(remote_addr)).await;
-//     let (sink, _stream) = open_downlink(&router_request_tx, remote_path).await;
-//
-//     let first_envelope = Envelope::make_event(
-//         String::from("/foo"),
-//         String::from("/bar"),
-//         Some(Value::text("First_Downlink")),
-//     );
-//
-//     let second_envelope = Envelope::make_event(
-//         String::from("/foo"),
-//         String::from("/bar"),
-//         Some(Value::text("Second_Downlink")),
-//     );
-//     send_message(&sink, first_envelope.clone()).await;
-//     send_message(&sink, second_envelope.clone()).await;
-//
-//     assert_eq!(remote_rx.recv().await.unwrap().1, first_envelope);
-//     assert_eq!(remote_rx.recv().await.unwrap().1, second_envelope);
-//
-//
-//
-//
-//
-//     let url = url::Url::parse("ws://127.0.0.1/").unwrap();
-//
-//     let (pool, pool_handlers_rx) = TestPool::new();
-//     let mut router = SwimRouter::new(Default::default(), pool.clone());
-//
-//     let (first_sink, _) = open_connection(&mut router, &url, "foo_node", "foo_lane").await;
-//     let (second_sink, _) = open_connection(&mut router, &url, "foo_node", "foo_lane").await;
-//
-//     let first_env = Envelope::make_event(
-//         String::from("first_foo"),
-//         String::from("first_bar"),
-//         Some(Value::text("first_body")),
-//     );
-//
-//     let second_env = Envelope::make_event(
-//         String::from("second_foo"),
-//         String::from("second_bar"),
-//         Some(Value::text("second_body")),
-//     );
-//
-//     let third_env = Envelope::make_event(
-//         String::from("third_foo"),
-//         String::from("third_bar"),
-//         Some(Value::text("third_body")),
-//     );
-//
-//     let _ = first_sink.send(first_env).await.unwrap();
-//     let _ = first_sink.send(second_env).await.unwrap();
-//     let _ = second_sink.send(third_env).await.unwrap();
-//
-//     let mut pool_handlers: HashMap<_, _> = ReceiverStream::new(pool_handlers_rx)
-//         .take(1)
-//         .collect()
-//         .await;
-//
-//     assert!(router.close().await.is_ok());
-//     assert_eq!(get_request_count(&pool), 3);
-//
-//     let mut expected_requests = HashMap::new();
-//     expected_requests.insert((url.clone(), false), 3);
-//
-//     assert_eq!(get_requests(&pool), expected_requests);
-//
-//     assert_eq!(pool.connections.lock().unwrap().len(), 1);
-//     assert_eq!(
-//         get_message(&mut pool_handlers, &url).await.unwrap(),
-//         "@event(node:first_foo,lane:first_bar){first_body}".into()
-//     );
-//     assert_eq!(
-//         get_message(&mut pool_handlers, &url).await.unwrap(),
-//         "@event(node:second_foo,lane:second_bar){second_body}".into()
-//     );
-//     assert_eq!(
-//         get_message(&mut pool_handlers, &url).await.unwrap(),
-//         "@event(node:third_foo,lane:third_bar){third_body}".into()
-//     );
-// }
+#[tokio::test]
+async fn test_route_multiple_remote_outgoing_messages_to_multiple_downlinks_same_host() {
+    let host = url::Url::parse("ws://127.0.0.1:9001/").unwrap();
+
+    let remote_path = Path::Remote(AbsolutePath::new(host.clone(), "/foo", "/bar"));
+    let remote_addr = SchemeSocketAddr::new(Scheme::Ws, "127.0.0.1:9001".parse().unwrap());
+
+    let (router_request_tx, mut remote_rx, _local_rx, (remote_requests, _)) =
+        create_connection_manager().await;
+    let _remote_tx = register_connection(&router_request_tx, Origin::Remote(remote_addr)).await;
+    let (first_sink, _stream) = open_downlink(&router_request_tx, remote_path.clone()).await;
+    let (second_sink, _stream) = open_downlink(&router_request_tx, remote_path).await;
+
+    let first_envelope = Envelope::make_event(
+        String::from("/foo"),
+        String::from("/first_bar"),
+        Some(Value::text("first_body")),
+    );
+
+    let second_envelope = Envelope::make_event(
+        String::from("/foo"),
+        String::from("/second_bar"),
+        Some(Value::text("second_body")),
+    );
+
+    let third_envelope = Envelope::make_event(
+        String::from("/foo"),
+        String::from("/third_bar"),
+        Some(Value::text("third_body")),
+    );
+
+    send_message(&first_sink, first_envelope.clone()).await;
+    send_message(&first_sink, second_envelope.clone()).await;
+    send_message(&second_sink, third_envelope.clone()).await;
+
+    assert_eq!(remote_rx.recv().await.unwrap().1, first_envelope);
+    assert_eq!(remote_rx.recv().await.unwrap().1, second_envelope);
+    assert_eq!(remote_rx.recv().await.unwrap().1, third_envelope);
+
+    let remote_requests = (*remote_requests.lock().unwrap()).clone();
+    assert_eq!(remote_requests, vec![host.clone(), host])
+}
+
+#[tokio::test]
+async fn test_route_multiple_local_outgoing_messages_to_multiple_downlinks_same_node() {
+    let local_path = Path::Local(RelativePath::new("/foo", "/bar"));
+    let local_addr = RelativeUri::try_from("/foo".to_string()).unwrap();
+
+    let (router_request_tx, _remote_rx, mut local_rx, (_, local_requests)) =
+        create_connection_manager().await;
+
+    let _local_tx =
+        register_connection(&router_request_tx, Origin::Local(local_addr.clone())).await;
+    let (first_sink, _stream) = open_downlink(&router_request_tx, local_path.clone()).await;
+    let (second_sink, _stream) = open_downlink(&router_request_tx, local_path).await;
+
+    let first_envelope = Envelope::make_event(
+        String::from("/foo"),
+        String::from("/first_bar"),
+        Some(Value::text("first_body")),
+    );
+
+    let second_envelope = Envelope::make_event(
+        String::from("/foo"),
+        String::from("/second_bar"),
+        Some(Value::text("second_body")),
+    );
+
+    let third_envelope = Envelope::make_event(
+        String::from("/foo"),
+        String::from("/third_bar"),
+        Some(Value::text("third_body")),
+    );
+
+    send_message(&first_sink, first_envelope.clone()).await;
+    send_message(&first_sink, second_envelope.clone()).await;
+    send_message(&second_sink, third_envelope.clone()).await;
+
+    assert_eq!(local_rx.recv().await.unwrap().1, first_envelope);
+    assert_eq!(local_rx.recv().await.unwrap().1, second_envelope);
+    assert_eq!(local_rx.recv().await.unwrap().1, third_envelope);
+
+    let local_requests = (*local_requests.lock().unwrap()).clone();
+    assert_eq!(local_requests, vec![local_addr.clone(), local_addr])
+}
+
+#[tokio::test]
+async fn test_route_multiple_remote_outgoing_messages_to_multiple_downlinks_different_hosts() {
+    let first_host = url::Url::parse("wss://127.0.0.1:9001/").unwrap();
+    let second_host = url::Url::parse("wss://127.0.0.2:9001/").unwrap();
+
+    let first_remote_path = Path::Remote(AbsolutePath::new(first_host.clone(), "/foo", "/bar"));
+    let second_remote_path = Path::Remote(AbsolutePath::new(second_host.clone(), "/foo", "/bar"));
+
+    let first_remote_addr = SchemeSocketAddr::new(Scheme::Wss, "127.0.0.1:9001".parse().unwrap());
+    let second_remote_addr = SchemeSocketAddr::new(Scheme::Wss, "127.0.0.2:9001".parse().unwrap());
+
+    let (router_request_tx, mut remote_rx, _local_rx, (remote_requests, _)) =
+        create_connection_manager().await;
+    let _first_remote_tx =
+        register_connection(&router_request_tx, Origin::Remote(first_remote_addr)).await;
+    let _second_remote_tx =
+        register_connection(&router_request_tx, Origin::Remote(second_remote_addr)).await;
+    let (first_sink, _stream) = open_downlink(&router_request_tx, first_remote_path).await;
+    let (second_sink, _stream) = open_downlink(&router_request_tx, second_remote_path).await;
+
+    let first_envelope = Envelope::make_event(
+        String::from("/foo"),
+        String::from("/first_bar"),
+        Some(Value::text("first_body")),
+    );
+
+    let second_envelope = Envelope::make_event(
+        String::from("/foo"),
+        String::from("/second_bar"),
+        Some(Value::text("second_body")),
+    );
+
+    let third_envelope = Envelope::make_event(
+        String::from("/foo"),
+        String::from("/third_bar"),
+        Some(Value::text("third_body")),
+    );
+
+    send_message(&first_sink, first_envelope.clone()).await;
+    send_message(&first_sink, second_envelope.clone()).await;
+    send_message(&second_sink, third_envelope.clone()).await;
+
+    assert_eq!(remote_rx.recv().await.unwrap().1, first_envelope);
+    assert_eq!(remote_rx.recv().await.unwrap().1, second_envelope);
+    assert_eq!(remote_rx.recv().await.unwrap().1, third_envelope);
+
+    let remote_requests = (*remote_requests.lock().unwrap()).clone();
+    assert_eq!(remote_requests, vec![first_host, second_host])
+}
+
+#[tokio::test]
+async fn test_route_multiple_local_outgoing_messages_to_multiple_downlinks_different_nodes() {
+    let first_local_path = Path::Local(RelativePath::new("/foo", "/bar"));
+    let second_local_path = Path::Local(RelativePath::new("/baz", "/qux"));
+    let first_local_addr = RelativeUri::try_from("/foo".to_string()).unwrap();
+    let second_local_addr = RelativeUri::try_from("/baz".to_string()).unwrap();
+
+    let (router_request_tx, _remote_rx, mut local_rx, (_, local_requests)) =
+        create_connection_manager().await;
+
+    let _first_local_tx =
+        register_connection(&router_request_tx, Origin::Local(first_local_addr.clone())).await;
+    let _second_local_tx =
+        register_connection(&router_request_tx, Origin::Local(second_local_addr.clone())).await;
+    let (first_sink, _stream) = open_downlink(&router_request_tx, first_local_path).await;
+    let (second_sink, _stream) = open_downlink(&router_request_tx, second_local_path).await;
+
+    let first_envelope = Envelope::make_event(
+        String::from("/foo"),
+        String::from("/first_bar"),
+        Some(Value::text("first_body")),
+    );
+
+    let second_envelope = Envelope::make_event(
+        String::from("/foo"),
+        String::from("/second_bar"),
+        Some(Value::text("second_body")),
+    );
+
+    let third_envelope = Envelope::make_event(
+        String::from("/baz"),
+        String::from("/third_bar"),
+        Some(Value::text("third_body")),
+    );
+
+    send_message(&first_sink, first_envelope.clone()).await;
+    send_message(&first_sink, second_envelope.clone()).await;
+    send_message(&second_sink, third_envelope.clone()).await;
+
+    assert_eq!(local_rx.recv().await.unwrap().1, first_envelope);
+    assert_eq!(local_rx.recv().await.unwrap().1, second_envelope);
+    assert_eq!(local_rx.recv().await.unwrap().1, third_envelope);
+
+    let local_requests = (*local_requests.lock().unwrap()).clone();
+    assert_eq!(local_requests, vec![first_local_addr, second_local_addr]);
+}
+
+#[tokio::test]
+async fn test_route_single_remote_incoming_message_to_single_downlink() {
+    let host = url::Url::parse("wss://127.0.0.1:9001/").unwrap();
+    let remote_path = Path::Remote(AbsolutePath::new(host.clone(), "/foo", "/bar"));
+
+    let remote_addr = SchemeSocketAddr::new(Scheme::Wss, "127.0.0.1:9001".parse().unwrap());
+
+    let (router_request_tx, _remote_rx, _local_rx, (remote_requests, _)) =
+        create_connection_manager().await;
+
+    let remote_tx = register_connection(&router_request_tx, Origin::Remote(remote_addr)).await;
+    let (_sink, mut stream) = open_downlink(&router_request_tx, remote_path).await;
+
+    let envelope = Envelope::make_event(
+        String::from("/foo"),
+        String::from("/bar"),
+        Some(Value::text("Hello")),
+    );
+
+    send_message(&remote_tx, envelope.clone()).await;
+
+    assert_eq!(stream.recv().await.unwrap(), envelope);
+    let remote_requests = (*remote_requests.lock().unwrap()).clone();
+    assert_eq!(remote_requests, vec![host]);
+}
+
+#[tokio::test]
+async fn test_route_single_local_incoming_message_to_single_node() {
+    let local_path = Path::Local(RelativePath::new("/foo", "/bar"));
+    let local_addr = RelativeUri::try_from("/foo".to_string()).unwrap();
+
+    let (router_request_tx, _remote_rx, _local_rx, (_, local_requests)) =
+        create_connection_manager().await;
+
+    let local_tx = register_connection(&router_request_tx, Origin::Local(local_addr.clone())).await;
+    let (_sink, mut stream) = open_downlink(&router_request_tx, local_path).await;
+
+    let envelope = Envelope::make_event(
+        String::from("/foo"),
+        String::from("/bar"),
+        Some(Value::text("Hello")),
+    );
+    send_message(&local_tx, envelope.clone()).await;
+
+    assert_eq!(stream.recv().await.unwrap(), envelope);
+    let local_requests = (*local_requests.lock().unwrap()).clone();
+    assert_eq!(local_requests, vec![local_addr]);
+}
+
+#[tokio::test]
+async fn test_route_single_remote_incoming_message_to_multiple_downlinks_same_host_same_path() {
+    let host = url::Url::parse("wss://127.0.0.1:9001/").unwrap();
+    let remote_path = Path::Remote(AbsolutePath::new(host.clone(), "/foo", "/bar"));
+
+    let remote_addr = SchemeSocketAddr::new(Scheme::Wss, "127.0.0.1:9001".parse().unwrap());
+
+    let (router_request_tx, _remote_rx, _local_rx, (remote_requests, _)) =
+        create_connection_manager().await;
+
+    let remote_tx = register_connection(&router_request_tx, Origin::Remote(remote_addr)).await;
+    let (_sink, mut first_stream) = open_downlink(&router_request_tx, remote_path.clone()).await;
+    let (_sink, mut second_stream) = open_downlink(&router_request_tx, remote_path).await;
+
+    let envelope = Envelope::make_event(
+        String::from("/foo"),
+        String::from("/bar"),
+        Some(Value::text("Goodbye")),
+    );
+
+    send_message(&remote_tx, envelope.clone()).await;
+
+    assert_eq!(first_stream.recv().await.unwrap(), envelope);
+    assert_eq!(second_stream.recv().await.unwrap(), envelope);
+    let remote_requests = (*remote_requests.lock().unwrap()).clone();
+    assert_eq!(remote_requests, vec![host.clone(), host]);
+}
+
+#[tokio::test]
+async fn test_route_single_local_incoming_message_to_multiple_nodes_same_path() {
+    let local_path = Path::Local(RelativePath::new("/foo", "/bar"));
+    let local_addr = RelativeUri::try_from("/foo".to_string()).unwrap();
+
+    let (router_request_tx, _remote_rx, _local_rx, (_, local_requests)) =
+        create_connection_manager().await;
+
+    let local_tx = register_connection(&router_request_tx, Origin::Local(local_addr.clone())).await;
+    let (_sink, mut first_stream) = open_downlink(&router_request_tx, local_path.clone()).await;
+    let (_sink, mut second_stream) = open_downlink(&router_request_tx, local_path).await;
+
+    let envelope = Envelope::make_event(
+        String::from("/foo"),
+        String::from("/bar"),
+        Some(Value::text("Goodbye")),
+    );
+
+    send_message(&local_tx, envelope.clone()).await;
+
+    assert_eq!(first_stream.recv().await.unwrap(), envelope);
+    assert_eq!(second_stream.recv().await.unwrap(), envelope);
+    let local_requests = (*local_requests.lock().unwrap()).clone();
+    assert_eq!(local_requests, vec![local_addr.clone(), local_addr]);
+}
 
 // #[tokio::test]
-// async fn test_route_multiple_outgoing_messages_to_multiple_downlinks_different_hosts() {
-//     let first_url = url::Url::parse("ws://127.0.0.1/").unwrap();
-//     let second_url = url::Url::parse("ws://127.0.0.2/").unwrap();
+// async fn test_route_single_remote_incoming_message_to_multiple_downlinks_same_host_different_paths()
+// {
+//     let host = url::Url::parse("ws://127.0.0.1:9001/").unwrap();
+//     let first_remote_path = Path::Remote(AbsolutePath::new(host.clone(), "/foo", "/bar"));
+//     let second_remote_path = Path::Remote(AbsolutePath::new(host.clone(), "/oof", "/rab"));
 //
-//     let (pool, pool_handlers_rx) = TestPool::new();
-//     let mut router = SwimRouter::new(Default::default(), pool.clone());
+//     let remote_addr = SchemeSocketAddr::new(Scheme::Ws, "127.0.0.1:9001".parse().unwrap());
 //
-//     let (first_sink, _) = open_connection(&mut router, &first_url, "foo_node", "foo_lane").await;
-//     let (second_sink, _) = open_connection(&mut router, &second_url, "foo_node", "foo_lane").await;
+//     let (router_request_tx, _remote_rx, _local_rx, (remote_requests, _)) =
+//         create_connection_manager().await;
 //
-//     let first_env = Envelope::make_event(
-//         String::from("first_foo"),
-//         String::from("first_bar"),
-//         Some(Value::text("first_body")),
-//     );
+//     let remote_tx = register_connection(&router_request_tx, Origin::Remote(remote_addr)).await;
+//     let (_sink, mut first_stream) = open_downlink(&router_request_tx, first_remote_path).await;
+//     let (_sink, mut second_stream) = open_downlink(&router_request_tx, second_remote_path).await;
 //
-//     let second_env = Envelope::make_event(
-//         String::from("second_foo"),
-//         String::from("second_bar"),
-//         Some(Value::text("second_body")),
-//     );
-//
-//     let third_env = Envelope::make_event(
-//         String::from("third_foo"),
-//         String::from("third_bar"),
-//         Some(Value::text("third_body")),
-//     );
-//
-//     let _ = first_sink.send(first_env).await.unwrap();
-//     let _ = first_sink.send(second_env).await.unwrap();
-//     let _ = second_sink.send(third_env).await.unwrap();
-//
-//     let mut pool_handlers: HashMap<_, _> = ReceiverStream::new(pool_handlers_rx)
-//         .take(2)
-//         .collect()
-//         .await;
-//
-//     assert!(router.close().await.is_ok());
-//     assert_eq!(get_request_count(&pool), 3);
-//
-//     let mut expected_requests = HashMap::new();
-//     expected_requests.insert((first_url.clone(), false), 2);
-//     expected_requests.insert((second_url.clone(), false), 1);
-//
-//     assert_eq!(get_requests(&pool), expected_requests);
-//
-//     assert_eq!(pool.connections.lock().unwrap().len(), 2);
-//     assert_eq!(
-//         get_message(&mut pool_handlers, &first_url).await.unwrap(),
-//         "@event(node:first_foo,lane:first_bar){first_body}".into()
-//     );
-//     assert_eq!(
-//         get_message(&mut pool_handlers, &first_url).await.unwrap(),
-//         "@event(node:second_foo,lane:second_bar){second_body}".into()
-//     );
-//     assert_eq!(
-//         get_message(&mut pool_handlers, &second_url).await.unwrap(),
-//         "@event(node:third_foo,lane:third_bar){third_body}".into()
-//     );
-// }
-//
-// #[tokio::test]
-// async fn test_route_single_incoming_message_to_single_downlink() {
-//     let url = url::Url::parse("ws://127.0.0.1/").unwrap();
-//
-//     let (pool, pool_handlers_rx) = TestPool::new();
-//     let mut router = SwimRouter::new(Default::default(), pool.clone());
-//
-//     let (sink, mut stream) = open_connection(&mut router, &url, "foo", "bar").await;
-//
-//     let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
-//
-//     let _ = sink.send(envelope.clone()).await.unwrap();
-//
-//     let mut pool_handlers: HashMap<_, _> = ReceiverStream::new(pool_handlers_rx)
-//         .take(1)
-//         .collect()
-//         .await;
-//
-//     send_message(&mut pool_handlers, &url, "@event(node:foo,lane:bar){Hello}").await;
-//
-//     let expected_env = Envelope::make_event(
-//         String::from("foo"),
-//         String::from("bar"),
-//         Some(Value::text("Hello")),
-//     );
-//
-//     assert_eq!(
-//         stream.recv().await.unwrap(),
-//         RouterEvent::Message(expected_env.into_incoming().unwrap())
-//     );
-//
-//     assert!(router.close().await.is_ok());
-//     assert_eq!(get_request_count(&pool), 1);
-//
-//     let mut expected_requests = HashMap::new();
-//     expected_requests.insert((url.clone(), false), 1);
-//
-//     assert_eq!(get_requests(&pool), expected_requests);
-//     assert_eq!(pool.connections.lock().unwrap().len(), 1);
-//
-//     assert_eq!(stream.recv().await.unwrap(), RouterEvent::Stopping);
-// }
-//
-// #[tokio::test]
-// async fn test_route_single_incoming_message_to_multiple_downlinks_same_host_same_path() {
-//     let url = url::Url::parse("ws://127.0.0.1/").unwrap();
-//
-//     let (pool, pool_handlers_rx) = TestPool::new();
-//     let mut router = SwimRouter::new(Default::default(), pool.clone());
-//
-//     let (first_sink, mut first_stream) = open_connection(&mut router, &url, "foo", "bar").await;
-//     let (_, mut second_stream) = open_connection(&mut router, &url, "foo", "bar").await;
-//
-//     let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
-//     let _ = first_sink.send(envelope).await.unwrap();
-//
-//     let mut pool_handlers: HashMap<_, _> = ReceiverStream::new(pool_handlers_rx)
-//         .take(1)
-//         .collect()
-//         .await;
-//
-//     send_message(
-//         &mut pool_handlers,
-//         &url,
-//         "@event(node:foo,lane:bar){Goodbye}",
-//     )
-//     .await;
-//
-//     let expected_env = Envelope::make_event(
-//         String::from("foo"),
-//         String::from("bar"),
-//         Some(Value::text("Goodbye")),
-//     );
-//
-//     assert_eq!(
-//         first_stream.recv().await.unwrap(),
-//         RouterEvent::Message(expected_env.clone().into_incoming().unwrap())
-//     );
-//
-//     assert_eq!(
-//         second_stream.recv().await.unwrap(),
-//         RouterEvent::Message(expected_env.into_incoming().unwrap())
-//     );
-//
-//     assert!(router.close().await.is_ok());
-//     assert_eq!(get_request_count(&pool), 1);
-//
-//     let mut expected_requests = HashMap::new();
-//     expected_requests.insert((url.clone(), false), 1);
-//
-//     assert_eq!(get_requests(&pool), expected_requests);
-//     assert_eq!(pool.connections.lock().unwrap().len(), 1);
-//
-//     assert_eq!(first_stream.recv().await.unwrap(), RouterEvent::Stopping);
-//     assert_eq!(second_stream.recv().await.unwrap(), RouterEvent::Stopping);
-// }
-//
-// #[tokio::test]
-// async fn test_route_single_incoming_message_to_multiple_downlinks_same_host_different_paths() {
-//     let url = url::Url::parse("ws://127.0.0.1/").unwrap();
-//
-//     let (pool, pool_handlers_rx) = TestPool::new();
-//     let mut router = SwimRouter::new(Default::default(), pool.clone());
-//
-//     let (first_sink, mut first_stream) = open_connection(&mut router, &url, "oof", "rab").await;
-//     let (_, mut second_stream) = open_connection(&mut router, &url, "foo", "bar").await;
-//
-//     let envelope = Envelope::sync(String::from("foo"), String::from("bar"));
-//     let _ = first_sink.send(envelope.clone()).await.unwrap();
-//
-//     let mut pool_handlers: HashMap<_, _> = ReceiverStream::new(pool_handlers_rx)
-//         .take(1)
-//         .collect()
-//         .await;
-//
-//     send_message(&mut pool_handlers, &url, "@event(node:foo,lane:bar){tseT}").await;
-//
-//     let expected_env = Envelope::make_event(
-//         String::from("foo"),
-//         String::from("bar"),
+//     let envelope = Envelope::make_event(
+//         String::from("/foo"),
+//         String::from("/bar"),
 //         Some(Value::text("tseT")),
 //     );
 //
-//     assert!(timeout(Duration::from_secs(1), first_stream.recv())
-//         .await
-//         .is_err());
+//     send_message(&remote_tx, envelope.clone()).await;
 //
-//     assert_eq!(
-//         second_stream.recv().await.unwrap(),
-//         RouterEvent::Message(expected_env.into_incoming().unwrap())
-//     );
+//     assert_eq!(first_stream.recv().await.unwrap(), envelope);
+//     assert_eq!(second_stream.recv().await.unwrap(), envelope);
 //
-//     assert!(router.close().await.is_ok());
-//     assert_eq!(get_request_count(&pool), 1);
+//     // eprintln!("second_stream.recv() = {:#?}", second_stream.recv().await);
+//     //
+//     // assert!(timeout(Duration::from_secs(1), second_stream.recv())
+//     //     .await
+//     //     .is_err());
 //
-//     let mut expected_requests = HashMap::new();
-//     expected_requests.insert((url.clone(), false), 1);
-//
-//     assert_eq!(get_requests(&pool), expected_requests);
-//     assert_eq!(pool.connections.lock().unwrap().len(), 1);
-//
-//     assert_eq!(first_stream.recv().await.unwrap(), RouterEvent::Stopping);
-//     assert_eq!(second_stream.recv().await.unwrap(), RouterEvent::Stopping);
+//     let remote_requests = (*remote_requests.lock().unwrap()).clone();
+//     assert_eq!(remote_requests, vec![host.clone(), host]);
 // }
-//
+
 // #[tokio::test]
 // async fn test_route_single_incoming_message_to_multiple_downlinks_different_hosts_same_path() {
 //     let first_url = url::Url::parse("ws://127.0.0.1/").unwrap();
