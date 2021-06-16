@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "ratchet",
     "swim_client",
     "swim_wasm",
     "swim_runtime",
