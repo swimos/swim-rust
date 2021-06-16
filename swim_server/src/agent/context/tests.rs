@@ -15,7 +15,7 @@
 use crate::agent::context::{ContextImpl, RoutingContext, SchedulerContext};
 use crate::agent::tests::test_clock::TestClock;
 use crate::agent::AgentContext;
-use crate::meta::make_test_meta_context;
+use crate::meta::meta_context_sink;
 use futures::future::BoxFuture;
 use std::collections::HashMap;
 use std::convert::TryFrom;
@@ -82,7 +82,7 @@ fn simple_accessors() {
         agent.clone(),
         routing_context,
         schedule_context,
-        make_test_meta_context(),
+        meta_context_sink(),
         client,
         RelativeUri::try_from("/mock/router".to_string()).unwrap(),
     );
@@ -130,7 +130,7 @@ fn create_context(
         agent.clone(),
         routing_context,
         schedule_context,
-        make_test_meta_context(),
+        meta_context_sink(),
         client,
         RelativeUri::try_from("/mock/router".to_string()).unwrap(),
     )

@@ -21,6 +21,7 @@ use crate::agent::lane::channels::uplink::{
 };
 use crate::agent::lane::channels::{AgentExecutionConfig, LaneMessageHandler, TaggedAction};
 use crate::agent::Eff;
+use crate::meta::metric::{aggregator_sink, NodeMetricAggregator};
 use futures::future::{join, join3, ready, BoxFuture};
 use futures::stream::iter;
 use futures::stream::{BoxStream, FusedStream};
@@ -45,8 +46,10 @@ use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::{mpsc, Barrier};
+use tokio::time::Instant;
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
+use utilities::instant::AtomicInstant;
 use utilities::sync::{promise, topic};
 use utilities::uri::RelativeUri;
 
@@ -302,7 +305,14 @@ impl UplinkSpawnerSplitOutputs {
 }
 
 fn make_config() -> AgentExecutionConfig {
-    AgentExecutionConfig::with(default_buffer(), 1, 1, Duration::from_secs(5), None)
+    AgentExecutionConfig::with(
+        default_buffer(),
+        1,
+        1,
+        Duration::from_secs(5),
+        None,
+        Duration::from_secs(60),
+    )
 }
 
 struct TestContext {
@@ -311,6 +321,7 @@ struct TestContext {
     _drop_tx: promise::Sender<ConnectionDropped>,
     drop_rx: promise::Receiver<ConnectionDropped>,
     uri: RelativeUri,
+    uplinks_idle_since: Arc<AtomicInstant>,
 }
 
 impl TestContext {
@@ -322,6 +333,7 @@ impl TestContext {
             _drop_tx: drop_tx,
             drop_rx,
             uri: RelativeUri::try_from("/mock/router".to_string()).unwrap(),
+            uplinks_idle_since: Arc::new(AtomicInstant::new(Instant::now())),
         }
     }
 }
@@ -345,6 +357,14 @@ impl AgentExecutionContext for TestContext {
 
     fn uri(&self) -> &RelativeUri {
         &self.uri
+    }
+
+    fn metrics(&self) -> NodeMetricAggregator {
+        aggregator_sink()
+    }
+
+    fn uplinks_idle_since(&self) -> &Arc<AtomicInstant> {
+        &self.uplinks_idle_since
     }
 }
 
@@ -372,8 +392,10 @@ fn make_test_harness() -> (
     let channels = UplinkChannels::new(rx_event.subscriber(), rx_act, error_tx);
 
     let context = TestContext::new(spawn_tx, tx_router);
+    let (_event_observer, action_observer) =
+        context.metrics().uplink_observer_for_path(route().clone());
 
-    let spawner_task = factory.make_task(handler, channels, route(), &context);
+    let spawner_task = factory.make_task(handler, channels, route(), &context, action_observer);
 
     let errs = join3(spawn_task, spawner_task, error_task)
         .map(|(_, _, errs)| errs)

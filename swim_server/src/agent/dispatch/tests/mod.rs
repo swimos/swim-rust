@@ -27,6 +27,7 @@ use futures::{FutureExt, Stream, StreamExt};
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::num::NonZeroUsize;
+use std::sync::Arc;
 use std::time::Duration;
 use stm::transaction::TransactionError;
 use swim_common::routing::{RoutingAddr, TaggedEnvelope};
@@ -35,7 +36,10 @@ use swim_common::warp::path::RelativePath;
 use swim_runtime::time::timeout;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
+use tokio::time::Instant;
 use tokio_stream::wrappers::ReceiverStream;
+use utilities::errors::Recoverable;
+use utilities::instant::AtomicInstant;
 
 mod mock;
 
@@ -63,6 +67,7 @@ fn make_dispatcher(
         0,
         Duration::from_secs(1),
         None,
+        Duration::from_secs(60),
     );
 
     let dispatcher = AgentDispatcher::new(
@@ -74,7 +79,8 @@ fn make_dispatcher(
 
     let spawn_task = ReceiverStream::new(spawn_rx).for_each_concurrent(None, |eff| eff);
 
-    let dispatch_task = dispatcher.run(envelopes);
+    let uplinks_idle_since = Arc::new(AtomicInstant::new(Instant::now()));
+    let dispatch_task = dispatcher.run(envelopes, uplinks_idle_since);
 
     (
         join(spawn_task, dispatch_task).map(|(_, r)| r).boxed(),
@@ -625,7 +631,8 @@ async fn dispatch_meta() {
     };
 
     let (result, _) = join(task, assertion_task).await;
-    assert!(matches!(result, Ok(errs) if errs.is_empty()));
+
+    assert!(matches!(result, Ok(errs) if !errs.is_fatal()));
 }
 
 #[test]

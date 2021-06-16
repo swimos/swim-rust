@@ -16,7 +16,7 @@ use rand::seq::SliceRandom;
 use std::time::Duration;
 use swim_client::interface::SwimClientBuilder;
 use swim_common::warp::path::AbsolutePath;
-use swim_client::runtime::time::delay::delay_for;
+use tokio::time;
 
 #[tokio::main]
 async fn main() {
@@ -27,7 +27,7 @@ async fn main() {
     let path = AbsolutePath::new(
         host_uri.clone(),
         &*format!("{}{}", node_uri_prefix, "0"),
-        "shoppingCart",
+        "shopping_cart",
     );
 
     let (map_downlink, receiver) = client
@@ -40,7 +40,7 @@ async fn main() {
         .await
         .expect("Failed to send message!");
 
-    delay_for(Duration::from_secs(2)).await;
+    time::sleep(Duration::from_secs(2)).await;
 
     drop(receiver);
     drop(map_downlink);
@@ -51,7 +51,7 @@ async fn main() {
         let path = AbsolutePath::new(
             host_uri.clone(),
             &*format!("{}{}", node_uri_prefix, (i % 3).to_string()),
-            "addItem",
+            "add_item",
         );
 
         client
@@ -67,5 +67,5 @@ async fn main() {
     }
 
     println!("Stopping client in 2 seconds");
-    delay_for(Duration::from_secs(2)).await;
+    time::sleep(Duration::from_secs(2)).await;
 }

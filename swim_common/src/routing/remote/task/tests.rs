@@ -146,7 +146,7 @@ async fn try_dispatch_from_router() {
 }
 
 #[tokio::test]
-async fn try_dispatch_fail_on_no_route() {
+async fn try_dispatch_closed_sender() {
     let addr = RoutingAddr::remote(0);
     let mut router = LocalRoutes::new(addr);
     let mut resolved = HashMap::new();
@@ -183,49 +183,10 @@ async fn try_dispatch_fail_on_dropped() {
     let (drop_tx, drop_rx) = promise::promise();
     let addr = RoutingAddr::remote(0);
     let mut router = LocalRoutes::new(addr);
-    let mut resolved = HashMap::new();
+    let mut router_rx = router.add("/node".parse().unwrap());
+
     let path = RelativePath::new("/node", "/lane");
-    resolved.insert(
-        path.clone(),
-        Route::new(TaggedSender::new(addr, tx), drop_rx),
-    );
-
-    let env = envelope(path, "a");
-
-    drop(rx);
-    assert!(drop_tx.provide(ConnectionDropped::AgentFailed).is_ok());
-
-    let result = super::try_dispatch_envelope(
-        &mut router,
-        &mut resolved,
-        env.clone(),
-        Origin::Remote(SchemeSocketAddr::new(
-            Scheme::Ws,
-            "192.168.0.1:80".parse().unwrap(),
-        )),
-        true,
-    )
-    .await;
-
-    if let Err((return_env, err)) = result {
-        assert_eq!(return_env, env);
-        assert!(matches!(
-            err,
-            DispatchError::Dropped(ConnectionDropped::AgentFailed)
-        ));
-    } else {
-        panic!("Unexpected success.")
-    }
-}
-
-#[tokio::test]
-async fn try_dispatch_fail_on_dropped_no_reason() {
-    let (tx, rx) = mpsc::channel(8);
-    let (drop_tx, drop_rx) = promise::promise();
-    let addr = RoutingAddr::remote(0);
-    let mut router = LocalRoutes::new(addr);
     let mut resolved = HashMap::new();
-    let path = RelativePath::new("/node", "/lane");
     resolved.insert(
         path.clone(),
         Route::new(TaggedSender::new(addr, tx), drop_rx),
@@ -248,12 +209,39 @@ async fn try_dispatch_fail_on_dropped_no_reason() {
     )
     .await;
 
+    assert!(result.is_ok());
+
+    let received = router_rx.recv().now_or_never();
+    assert_eq!(received, Some(Some(TaggedEnvelope(addr, env))));
+}
+
+#[tokio::test]
+async fn try_dispatch_fail_on_no_route() {
+    let addr = RoutingAddr::remote(0);
+    let mut router = LocalRoutes::new(addr);
+    let mut resolved = HashMap::new();
+    let path = RelativePath::new("/node", "/lane");
+
+    let env = envelope(path.clone(), "a");
+
+    let result = super::try_dispatch_envelope(
+        &mut router,
+        &mut resolved,
+        env.clone(),
+        Origin::Remote(SchemeSocketAddr::new(
+            Scheme::Ws,
+            "192.168.0.1:80".parse().unwrap(),
+        )),
+        true,
+    )
+    .await;
+
     if let Err((return_env, err)) = result {
+        let expected_uri: RelativeUri = "/node".parse().unwrap();
         assert_eq!(return_env, env);
-        assert!(matches!(
-            err,
-            DispatchError::Dropped(ConnectionDropped::Unknown)
-        ));
+        assert!(
+            matches!(err, DispatchError::RoutingProblem(RouterError::NoAgentAtRoute(uri)) if uri == expected_uri)
+        );
     } else {
         panic!("Unexpected success.")
     }

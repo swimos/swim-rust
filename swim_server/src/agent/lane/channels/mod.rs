@@ -18,6 +18,7 @@ use crate::agent::lane::channels::uplink::backpressure::{
 };
 use crate::agent::lane::channels::uplink::{UplinkAction, UplinkStateMachine};
 use crate::meta::log::config::LogConfig;
+use crate::meta::metric::config::MetricAggregatorConfig;
 use std::num::NonZeroUsize;
 use std::time::Duration;
 use swim_common::routing::RoutingAddr;
@@ -64,6 +65,10 @@ pub struct AgentExecutionConfig {
     pub map_lane_backpressure: Option<KeyedBackpressureConfig>,
     /// Node logging configuration.
     pub node_log: LogConfig,
+    /// Metric aggregator configuration
+    pub metrics: MetricAggregatorConfig,
+    /// The maximum idle time before the agent is terminated.
+    pub max_idle_time: Duration,
 }
 
 const DEFAULT_YIELD_COUNT: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(2048) };
@@ -75,6 +80,7 @@ impl AgentExecutionConfig {
         error_threshold: usize,
         cleanup_timeout: Duration,
         backpressure: Option<KeyedBackpressureConfig>,
+        max_idle_time: Duration,
     ) -> Self {
         AgentExecutionConfig {
             max_pending_envelopes,
@@ -97,6 +103,8 @@ impl AgentExecutionConfig {
             }),
             map_lane_backpressure: backpressure,
             node_log: LogConfig::default(),
+            max_idle_time,
+            metrics: Default::default(),
         }
     }
 }
@@ -123,6 +131,8 @@ impl Default for AgentExecutionConfig {
             value_lane_backpressure: None,
             map_lane_backpressure: None,
             node_log: LogConfig::default(),
+            metrics: Default::default(),
+            max_idle_time: Duration::from_secs(300),
         }
     }
 }

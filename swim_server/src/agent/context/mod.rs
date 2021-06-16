@@ -14,6 +14,7 @@
 
 use crate::agent::{AgentContext, Eff};
 use crate::meta::log::NodeLogger;
+use crate::meta::metric::NodeMetricAggregator;
 use crate::meta::MetaContext;
 use futures::future::BoxFuture;
 use futures::sink::drain;
@@ -28,10 +29,11 @@ use swim_common::warp::path::Path;
 use swim_runtime::time::clock::Clock;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
-use tokio::time::Duration;
+use tokio::time::{Duration, Instant};
 use tracing::{event, span, Level};
 use tracing_futures::Instrument;
 use utilities::future::SwimStreamExt;
+use utilities::instant::AtomicInstant;
 use utilities::sync::trigger;
 use utilities::uri::RelativeUri;
 
@@ -48,6 +50,7 @@ pub(super) struct ContextImpl<Agent, Clk, R> {
     meta_context: Arc<MetaContext>,
     client: SwimClient<Path>,
     agent_uri: RelativeUri,
+    pub(crate) uplinks_idle_since: Arc<AtomicInstant>,
 }
 
 const SCHEDULE: &str = "Schedule";
@@ -71,6 +74,7 @@ impl<Agent, Clk, R: Router + Clone + 'static> ContextImpl<Agent, Clk, R> {
             meta_context: Arc::new(meta_context),
             client,
             agent_uri,
+            uplinks_idle_since: Arc::new(AtomicInstant::new(Instant::now())),
         }
     }
 }
@@ -88,6 +92,7 @@ where
             client: self.client.clone(),
             meta_context: self.meta_context.clone(),
             agent_uri: self.agent_uri.clone(),
+            uplinks_idle_since: self.uplinks_idle_since.clone(),
         }
     }
 }
@@ -240,6 +245,13 @@ pub trait AgentExecutionContext {
 
     /// Return the relative uri of this agent.
     fn uri(&self) -> &RelativeUri;
+
+    /// Provides an observer factory that can be used to create observers that register events that
+    /// happen on nodes, lanes, and uplinks.
+    fn metrics(&self) -> NodeMetricAggregator;
+
+    /// Return the time since the last outgoing message.
+    fn uplinks_idle_since(&self) -> &Arc<AtomicInstant>;
 }
 
 impl<Agent, Clk, RouterInner> AgentExecutionContext for ContextImpl<Agent, Clk, RouterInner>
@@ -258,5 +270,13 @@ where
 
     fn uri(&self) -> &RelativeUri {
         &self.agent_uri
+    }
+
+    fn metrics(&self) -> NodeMetricAggregator {
+        self.meta_context.metrics()
+    }
+
+    fn uplinks_idle_since(&self) -> &Arc<AtomicInstant> {
+        &self.uplinks_idle_since
     }
 }

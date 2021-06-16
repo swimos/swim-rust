@@ -64,7 +64,7 @@ where
         }
     }
 
-    pub fn run<Clk, Envelopes, R>(
+    pub(crate) fn run<Clk, Envelopes, R>(
         &self,
         agent_parameters: AgentParameters<Config>,
         clock: Clk,

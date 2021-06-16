@@ -22,6 +22,7 @@ use crate::agent::lane::channels::{
 };
 use crate::agent::lane::model::DeferredSubscription;
 use crate::agent::Eff;
+use crate::meta::metric::uplink::UplinkActionObserver;
 use futures::future::join_all;
 use futures::{FutureExt, StreamExt};
 use std::collections::hash_map::Entry;
@@ -36,6 +37,7 @@ use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, span, Level};
 use tracing_futures::Instrument;
+use utilities::instant::AtomicInstant;
 use utilities::sync::trigger;
 use utilities::uri::RelativeUri;
 
@@ -123,8 +125,10 @@ where
         mut self,
         mut router: R,
         mut spawn_tx: mpsc::Sender<Eff>,
+        uplinks_idle_since: Arc<AtomicInstant>,
         uri: RelativeUri,
         error_collector: mpsc::Sender<UplinkErrorReport>,
+        action_observer: UplinkActionObserver,
     ) where
         R: Router,
     {
@@ -146,6 +150,7 @@ where
                             error_collector.clone(),
                             &mut spawn_tx,
                             &mut router,
+                            uplinks_idle_since.clone(),
                             uri.clone(),
                         )
                         .instrument(span)
@@ -159,6 +164,7 @@ where
                             if !handle.cleanup().await {
                                 event!(Level::ERROR, message = UPLINK_TERMINATED, route = ?&self.route, ?addr);
                             }
+                            action_observer.did_close();
                         }
                         action = act;
                         attempts += 1;
@@ -175,6 +181,7 @@ where
                             break false;
                         }
                     } else {
+                        action_observer.did_open();
                         // We successfully dispatched to the uplink so can continue.
                         break false;
                     }
@@ -192,9 +199,12 @@ where
                 }
             }
         }
-        join_all(uplink_senders.into_iter().map(|(_, h)| h.cleanup()))
-            .instrument(span!(Level::DEBUG, UPLINK_CLEANUP))
-            .await;
+        join_all(uplink_senders.into_iter().map(|(_, h)| {
+            action_observer.did_close();
+            h.cleanup()
+        }))
+        .instrument(span!(Level::DEBUG, UPLINK_CLEANUP))
+        .await;
     }
 
     //Create a new uplink state machine and attach it to the router
@@ -204,6 +214,7 @@ where
         err_tx: mpsc::Sender<UplinkErrorReport>,
         spawn_tx: &mut mpsc::Sender<Eff>,
         router: &mut R,
+        uplinks_idle_since: Arc<AtomicInstant>,
         uri: RelativeUri,
     ) -> Option<UplinkHandle>
     where
@@ -232,7 +243,10 @@ where
             return None;
         };
         let ul_task = async move {
-            if let Err(err) = uplink.run_uplink(sink.into_item_sender()).await {
+            if let Err(err) = uplink
+                .run_uplink(sink.into_item_sender(), uplinks_idle_since)
+                .await
+            {
                 let report = UplinkErrorReport::new(err, addr);
                 if let Err(mpsc::error::SendError(report)) = err_tx.send(report).await {
                     event!(Level::ERROR, message = FAILED_ERR_REPORT, ?report);
@@ -322,6 +336,7 @@ impl LaneUplinks for SpawnerUplinkFactory {
         channels: UplinkChannels<Top>,
         route: RelativePath,
         context: &Context,
+        action_observer: UplinkActionObserver,
     ) -> Eff
     where
         Handler: LaneMessageHandler + 'static,
@@ -356,8 +371,10 @@ impl LaneUplinks for SpawnerUplinkFactory {
             .run(
                 context.router_handle(),
                 context.spawner(),
+                context.uplinks_idle_since().clone(),
                 context.uri().clone(),
                 error_collector,
+                action_observer,
             )
             .boxed()
     }

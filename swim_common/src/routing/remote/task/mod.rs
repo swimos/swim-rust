@@ -396,23 +396,18 @@ where
 {
     if let Some(target) = envelope.header.relative_path().as_ref() {
         let Route { sender, .. } = if let Some(route) = resolved.get_mut(target) {
-            route
-        } else {
-            let route = if server {
-                get_route(router, target, None).await
+            if route.sender.inner.is_closed() {
+                resolved.remove(target);
+                insert_new_route(router, resolved, target, origin, server)
+                    .await
+                    .map_err(|err| (envelope.clone(), err))?
             } else {
-                get_route(router, target, Some(origin)).await
-            };
-
-            match route {
-                Ok(route) => match resolved.entry(target.clone()) {
-                    Entry::Occupied(_) => unreachable!(),
-                    Entry::Vacant(entry) => entry.insert(route),
-                },
-                Err(err) => {
-                    return Err((envelope, err));
-                }
+                route
             }
+        } else {
+            insert_new_route(router, resolved, target, origin, server)
+                .await
+                .map_err(|err| (envelope.clone(), err))?
         };
         if let Err(err) = sender.send_item(envelope).await {
             if let Some(Route { on_drop, .. }) = resolved.remove(target) {
@@ -430,6 +425,34 @@ where
         }
     } else {
         panic!("Authentication envelopes not yet supported.");
+    }
+}
+
+#[allow(clippy::needless_lifetimes)]
+async fn insert_new_route<'a, R>(
+    router: &mut R,
+    resolved: &'a mut HashMap<RelativePath, Route>,
+    target: &RelativePath,
+    origin: Origin,
+    server: bool,
+) -> Result<&'a mut Route, DispatchError>
+where
+    R: Router,
+{
+    let route = if server {
+        get_route(router, target, None).await
+    } else {
+        get_route(router, target, Some(origin)).await
+    };
+
+    match route {
+        Ok(route) => match resolved.entry(target.clone()) {
+            Entry::Occupied(_) => unreachable!(),
+            Entry::Vacant(entry) => Ok(entry.insert(route)),
+        },
+        Err(err) => {
+            return Err(err);
+        }
     }
 }
 
@@ -474,6 +497,7 @@ impl<DelegateRouterFac> TaskFactory<DelegateRouterFac> {
         }
     }
 }
+
 impl<DelegateRouterFac> TaskFactory<DelegateRouterFac>
 where
     DelegateRouterFac: RouterFactory + 'static,

@@ -13,9 +13,10 @@
 // limitations under the License.
 
 pub mod context;
-pub mod dispatch;
+pub(crate) mod dispatch;
 pub mod lane;
 pub mod lifecycle;
+
 #[cfg(test)]
 mod tests;
 
@@ -175,7 +176,7 @@ impl<Config> AgentParameters<Config> {
 /// * `stop_trigger` - External trigger to cleanly stop the agent.
 /// * `parameters` - Parameters extracted from the agent node route pattern.
 /// * `incoming_envelopes` - The stream of envelopes routed to the agent.
-pub fn run_agent<Config, Clk, Agent, L, R>(
+pub(crate) fn run_agent<Config, Clk, Agent, L, R>(
     lifecycle: L,
     clock: Clk,
     client: SwimClient<Path>,
@@ -284,9 +285,11 @@ where
 
         let (result_tx, result_rx) = oneshot::channel();
 
+        let uplinks_idle_since = context.uplinks_idle_since.clone();
+
         let dispatch_task = async move {
             let tripwire = tripwire;
-            let result = dispatcher.run(incoming_envelopes).await;
+            let result = dispatcher.run(incoming_envelopes, uplinks_idle_since).await;
             tripwire.trigger();
             let _ = result_tx.send(result);
         }
