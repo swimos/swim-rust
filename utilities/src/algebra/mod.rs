@@ -176,6 +176,15 @@ impl<E> Errors<E> {
             }
         }
     }
+
+    pub fn into_vec(self) -> Vec<E> {
+        let Errors(inner) = self;
+        match inner {
+            ErrorsInner::None => vec![],
+            ErrorsInner::Single(e) => vec![e],
+            ErrorsInner::Multiple(v) => v,
+        }
+    }
 }
 
 impl<E> Default for ErrorsInner<E> {

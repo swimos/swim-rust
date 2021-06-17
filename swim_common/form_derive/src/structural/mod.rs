@@ -12,6 +12,51 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::structural::model::enumeration::{EnumDef, EnumModel, SegregatedEnumModel};
+use crate::structural::model::record::{SegregatedStructModel, StructDef, StructModel};
+use crate::structural::model::StructLike;
+use crate::structural::model::TryValidate;
+use crate::structural::write::DeriveStructuralWritable;
+use proc_macro2::TokenStream;
+use quote::ToTokens;
+use syn::{Data, DeriveInput};
+use utilities::algebra::Errors;
+
 pub mod model;
 pub mod read;
 pub mod write;
+
+pub fn build_derive_structural_writable(
+    input: DeriveInput,
+) -> Result<TokenStream, Errors<syn::Error>> {
+    match &input.data {
+        Data::Struct(ds) => {
+            let def = StructDef::new(&input.ident, &input, &input.attrs, ds);
+            struct_derive_structural_writable(def)
+        }
+        Data::Enum(de) => {
+            let def = EnumDef::new(&input.ident, &input, &input.attrs, de);
+            enum_derive_structural_writable(def)
+        }
+        _ => Err(Errors::of(syn::Error::new_spanned(
+            input,
+            "Union types are not supported.",
+        ))),
+    }
+}
+
+fn struct_derive_structural_writable<Flds: StructLike>(
+    input: StructDef<'_, Flds>,
+) -> Result<TokenStream, Errors<syn::Error>> {
+    let model = StructModel::try_validate(input).to_result()?;
+    let segregated = SegregatedStructModel::from(&model);
+    let derive = DeriveStructuralWritable(segregated);
+    Ok(derive.into_token_stream())
+}
+
+fn enum_derive_structural_writable(input: EnumDef<'_>) -> Result<TokenStream, Errors<syn::Error>> {
+    let model = EnumModel::try_validate(input).to_result()?;
+    let segregated = SegregatedEnumModel::from(&model);
+    let derive = DeriveStructuralWritable(segregated);
+    Ok(derive.into_token_stream())
+}

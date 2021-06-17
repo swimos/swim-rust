@@ -47,6 +47,7 @@ use std::io::{Error, Write};
 /// * `W` - Any type that implements [`std::io::Write`].
 pub struct MsgPackInterpreter<'a, W> {
     writer: &'a mut W,
+    started: bool,
     expecting: u32, //Keeps track of the number of attributes to write.
 }
 
@@ -61,6 +62,7 @@ impl<'a, W> MsgPackInterpreter<'a, W> {
     pub fn new(writer: &'a mut W) -> Self {
         MsgPackInterpreter {
             writer,
+            started: false,
             expecting: 0,
         }
     }
@@ -276,8 +278,11 @@ impl<'a, W: Write> StructuralWriter for MsgPackInterpreter<'a, W> {
     type Body = MsgPackBodyInterpreter<'a, W>;
 
     fn record(mut self, num_attrs: usize) -> Result<Self::Header, Self::Error> {
-        self.expecting = to_expecting(num_attrs)?;
-        write_map_len(&mut self.writer, self.expecting)?;
+        if !self.started {
+            self.started = true;
+            self.expecting = to_expecting(num_attrs)?;
+            write_map_len(&mut self.writer, self.expecting)?;
+        }
         Ok(self)
     }
 }

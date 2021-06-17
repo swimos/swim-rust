@@ -213,7 +213,6 @@ const SELECT_VAR_NAME: &str = "select_variant";
 
 const BUILDER_NAME: &str = "Builder";
 
-
 impl<'a, 'b> ToTokens for SelectIndexFnLabelled<'a, 'b> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let SelectIndexFnLabelled {
@@ -466,12 +465,12 @@ impl<'a, 'b> ToTokens for SelectFeedFn<'a, 'b> {
         let (fn_name, builder_name) = if let Some(var_ord) = variant {
             (
                 suffix_ident(SELECT_FEED_NAME, *var_ord),
-                suffixed_builder_ident(*var_ord)
+                suffixed_builder_ident(*var_ord),
             )
         } else {
             (
                 syn::Ident::new(SELECT_FEED_NAME, Span::call_site()),
-                builder_ident()
+                builder_ident(),
             )
         };
 
@@ -553,13 +552,13 @@ impl<'a, 'b> ToTokens for OnDoneFn<'a, 'b> {
             (
                 enum_path,
                 suffix_ident(ON_DONE_NAME, *var_ord),
-                suffixed_builder_ident(*var_ord)
+                suffixed_builder_ident(*var_ord),
             )
         } else {
             (
                 name.clone().into(),
                 syn::Ident::new(ON_DONE_NAME, Span::call_site()),
-                builder_ident()
+                builder_ident(),
             )
         };
 
@@ -630,12 +629,12 @@ impl ToTokens for ResetFn {
         let (fn_name, builder_name) = if let Some(var_ord) = variant {
             (
                 suffix_ident(ON_RESET_NAME, *var_ord),
-                suffixed_builder_ident(*var_ord)
+                suffixed_builder_ident(*var_ord),
             )
         } else {
             (
                 syn::Ident::new(ON_RESET_NAME, Span::call_site()),
-                builder_ident()
+                builder_ident(),
             )
         };
 
@@ -681,8 +680,11 @@ impl<'a, 'b> StructReadableImpl<'a, 'b> {
     }
 }
 
-fn compound_recognizer(model: &SegregatedStructModel<'_, '_>,
-    target: &syn::Type, builder: &syn::Type) -> syn::Type {
+fn compound_recognizer(
+    model: &SegregatedStructModel<'_, '_>,
+    target: &syn::Type,
+    builder: &syn::Type,
+) -> syn::Type {
     let recog_ty_name = if matches!(&model.fields.body, BodyFields::ReplacedBody(_)) {
         syn::Ident::new("DelegateStructRecognizer", Span::call_site())
     } else {
@@ -702,8 +704,8 @@ fn is_simple_param(body_fields: &BodyFields) -> Option<TokenStream> {
     if let BodyFields::ReplacedBody(fld) = body_fields {
         let ty = fld.field_ty;
         let extra = quote! {
-                <#ty as swim_common::form::structural::read::improved::RecognizerReadable>::is_simple()
-            };
+            <#ty as swim_common::form::structural::read::improved::RecognizerReadable>::is_simple()
+        };
         Some(extra)
     } else {
         None
@@ -774,7 +776,9 @@ impl<'a, 'b> SelectVariantFn<'a, 'b> {
 
 impl<'a, 'b> ToTokens for SelectVariantFn<'a, 'b> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        let SelectVariantFn { model: SegregatedEnumModel { inner, variants }} = self;
+        let SelectVariantFn {
+            model: SegregatedEnumModel { inner, variants },
+        } = self;
 
         let name = inner.name;
         let enum_ty = parse_quote!(#name);
@@ -823,7 +827,6 @@ impl<'a, 'b> ToTokens for SelectVariantFn<'a, 'b> {
                 }
             }
         });
-
     }
 }
 
@@ -884,18 +887,23 @@ impl<'a, 'b> EnumState<'a, 'b> {
 
 impl<'a, 'b> ToTokens for EnumState<'a, 'b> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        let EnumState { model: SegregatedEnumModel { inner, variants } } = self;
+        let EnumState {
+            model: SegregatedEnumModel { inner, variants },
+        } = self;
         let base: syn::Type = parse_quote!(swim_common::form::strucutral::generic::coproduct::CNil);
 
         let name = inner.name;
         let enum_ty = parse_quote!(#name);
 
-        let ccons_type = variants.iter().zip(0usize..variants.len()).rev().fold(base, |acc, (var, i)| {
-            let builder_name = suffixed_builder_ident(i);
-            let builder = parse_quote!(#builder_name);
-            let ty = compound_recognizer(var, &enum_ty, &builder);
-            parse_quote!(swim_common::form::strucutral::generic::coproduct::CCons<#ty, #acc>)
-        });
+        let ccons_type = variants.iter().zip(0usize..variants.len()).rev().fold(
+            base,
+            |acc, (var, i)| {
+                let builder_name = suffixed_builder_ident(i);
+                let builder = parse_quote!(#builder_name);
+                let ty = compound_recognizer(var, &enum_ty, &builder);
+                parse_quote!(swim_common::form::strucutral::generic::coproduct::CCons<#ty, #acc>)
+            },
+        );
 
         let builder_name = builder_ident();
 
@@ -906,10 +914,11 @@ impl<'a, 'b> ToTokens for EnumState<'a, 'b> {
 }
 
 fn make_ccons(n: usize, expr: syn::Expr) -> syn::Expr {
-    let mut pattern = parse_quote!(swim_common::form::strucutral::generic::coproduct::CCons::Head(#expr));
+    let mut pattern =
+        parse_quote!(swim_common::form::strucutral::generic::coproduct::CCons::Head(#expr));
     for _ in 0..n {
-        pattern = parse_quote!(swim_common::form::strucutral::generic::coproduct::CCons::Tail(#expr));
+        pattern =
+            parse_quote!(swim_common::form::strucutral::generic::coproduct::CCons::Tail(#expr));
     }
     pattern
 }
-

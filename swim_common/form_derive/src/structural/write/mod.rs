@@ -14,13 +14,14 @@
 
 use crate::quote::TokenStreamExt;
 use crate::structural::model::enumeration::{EnumModel, SegregatedEnumModel};
-use crate::structural::model::field::{BodyFields, FieldModel, HeaderFields, SegregatedFields};
+use crate::structural::model::field::{
+    BodyFields, FieldIndex, FieldModel, HeaderFields, SegregatedFields,
+};
 use crate::structural::model::record::{SegregatedStructModel, StructModel};
-use crate::structural::model::NameTransform;
 use either::Either;
 use proc_macro2::TokenStream;
 use quote::ToTokens;
-use syn::{Ident, Pat, Path};
+use syn::{Pat, Path};
 use utilities::CompoundTypeKind;
 
 struct Destructure<'a>(&'a StructModel<'a>, bool);
@@ -38,7 +39,7 @@ impl<'a> Destructure<'a> {
 struct WriteWithFn<'a, 'b>(&'b SegregatedStructModel<'a, 'b>);
 struct WriteIntoFn<'a, 'b>(&'b SegregatedStructModel<'a, 'b>);
 
-pub struct DeriveStructuralWritable<S>(S);
+pub struct DeriveStructuralWritable<S>(pub S);
 
 impl<'a, 'b> ToTokens for DeriveStructuralWritable<SegregatedEnumModel<'a, 'b>> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
@@ -52,16 +53,21 @@ impl<'a, 'b> ToTokens for DeriveStructuralWritable<SegregatedEnumModel<'a, 'b>> 
                 #[automatically_derived]
                 impl swim_common::form::structural::write::StructuralWritable for #name {
 
+                    #[inline]
+                    fn num_attributes(&self) -> usize {
+                        0
+                    }
+
                     #[allow(non_snake_case)]
                     #[inline]
                     fn write_with<__W: #writer_trait>(&self, writer: __W) -> core::result::Result<__W::Repr, __W::Error> {
-                        writer.write_extant()
+                        <__W as #writer_trait>.write_extant(writer)
                     }
 
                     #[allow(non_snake_case)]
                     #[inline]
                     fn write_into<__W: #writer_trait>(self, writer: __W) -> core::result::Result<__W::Repr, __W::Error> {
-                        writer.write_extant()
+                        <__W as #writer_trait>.write_extant(writer)
                     }
                 }
             }
@@ -95,12 +101,17 @@ impl<'a, 'b> ToTokens for DeriveStructuralWritable<SegregatedEnumModel<'a, 'b>> 
                 #[automatically_derived]
                 impl swim_common::form::structural::write::StructuralWritable for #name {
 
+                    #[inline]
+                    fn num_attributes(&self) -> usize {
+                        todo!()
+                    }
+
                     #[allow(non_snake_case, unused_variables)]
                     #[inline]
                     fn write_with<__W: #writer_trait>(&self, writer: __W) -> core::result::Result<__W::Repr, __W::Error> {
                         match self {
-                                #(#write_with_cases)*
-                            }
+                            #(#write_with_cases)*
+                        }
                     }
 
                     #[allow(non_snake_case, unused_variables)]
@@ -125,14 +136,24 @@ impl<'a, 'b> ToTokens for DeriveStructuralWritable<SegregatedStructModel<'a, 'b>
         let write_with = WriteWithFn(inner);
         let write_into = WriteIntoFn(inner);
         let writer_trait = make_writer_trait();
+        let num_attrs = num_attributes(inner);
+
         let writable_impl = quote! {
 
             #[automatically_derived]
             impl swim_common::form::structural::write::StructuralWritable for #name {
 
+                #[inline]
+                fn num_attributes(&self) -> usize {
+                    #num_attrs
+                }
+
                 #[allow(non_snake_case, unused_variables)]
                 #[inline]
                 fn write_with<__W: #writer_trait>(&self, writer: __W) -> core::result::Result<__W::Repr, __W::Error> {
+                    use swim_common::form::structural::write::HeaderWriter;
+                    use swim_common::form::structural::write::BodyWriter;
+                    let num_attrs = swim_common::form::structural::write::StructuralWritable::num_attributes(self);
                     let #destructure = self;
                     #write_with
                 }
@@ -140,6 +161,9 @@ impl<'a, 'b> ToTokens for DeriveStructuralWritable<SegregatedStructModel<'a, 'b>
                 #[allow(non_snake_case, unused_variables)]
                 #[inline]
                 fn write_into<__W: #writer_trait>(self, writer: __W) -> core::result::Result<__W::Repr, __W::Error> {
+                    use swim_common::form::structural::write::HeaderWriter;
+                    use swim_common::form::structural::write::BodyWriter;
+                    let num_attrs = swim_common::form::structural::write::StructuralWritable::num_attributes(&self);
                     let #destructure = self;
                     #write_into
                 }
@@ -166,7 +190,7 @@ fn write_attr_into(field: &FieldModel) -> TokenStream {
     let field_index = &field.name;
     let literal_name = field.resolve_name();
     quote! {
-        rec_writer = rec_writer.write_into(#literal_name, &#field_index)?;
+        rec_writer = rec_writer.write_attr_into(#literal_name, &#field_index)?;
     }
 }
 
@@ -174,7 +198,7 @@ fn write_slot_ref(field: &FieldModel) -> TokenStream {
     let field_index = &field.name;
     let literal_name = field.resolve_name();
     quote! {
-        body_writer = body_writer.write_slot(std::borrow::Cow::Borrowed(#literal_name), &#field_index)?;
+        body_writer = body_writer.write_slot(&#literal_name, &#field_index)?;
     }
 }
 
@@ -200,44 +224,27 @@ fn write_slot_into(field: &FieldModel) -> TokenStream {
     }
 }
 
-fn tag_expr(
-    name: &Ident,
-    transform: Option<&NameTransform>,
-    tag_name: &Option<&FieldModel>,
-) -> TokenStream {
-    if let Some(field) = tag_name {
-        let field_index = &field.name;
-        quote!(#field_index.as_str())
-    } else if let Some(trans) = transform {
-        match trans {
-            NameTransform::Rename(name) => proc_macro2::Literal::string(&name).into_token_stream(),
-        }
-    } else {
-        name.to_token_stream()
-    }
-}
-
 impl<'a, 'b> ToTokens for WriteWithFn<'a, 'b> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        let WriteWithFn(SegregatedStructModel {
-            inner:
-                StructModel {
-                    name,
-                    fields_model,
-                    transform,
-                },
-            fields,
-        }) = self;
+        let WriteWithFn(model) = self;
+        let SegregatedStructModel { inner, fields } = model;
+        let StructModel { fields_model, .. } = inner;
         let SegregatedFields { header, body } = fields;
         let HeaderFields {
-            tag_name,
             tag_body,
             header_fields,
             attributes,
+            ..
         } = header;
 
-        let num_attrs = attributes.len() + 1;
-        let tag = tag_expr(*name, transform.as_ref(), tag_name);
+        let tag = if let Some(fld) = header.tag_name {
+            let name = &fld.name;
+            quote! {
+                <core::convert::AsRef<str>>::as_ref(#name)
+            }
+        } else {
+            inner.resolve_name().to_token_stream()
+        };
 
         let tag_statement = if header_fields.is_empty() {
             if let Some(tag_field) = tag_body.as_ref() {
@@ -291,7 +298,7 @@ impl<'a, 'b> ToTokens for WriteWithFn<'a, 'b> {
         };
 
         let body = quote! {
-            let mut rec_writer = writer.record(#num_attrs)?;
+            let mut rec_writer = writer.record(num_attrs)?;
             #tag_statement
             #(#attr_statements)*
             #body_block
@@ -323,26 +330,22 @@ fn make_header(tag_body: &Option<&FieldModel>, header_fields: &[&FieldModel]) ->
 
 impl<'a, 'b> ToTokens for WriteIntoFn<'a, 'b> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        let WriteIntoFn(SegregatedStructModel {
-            inner:
-                StructModel {
-                    name,
-                    fields_model,
-                    transform,
-                },
-            fields,
-        }) = self;
+        let WriteIntoFn(model) = self;
+        let SegregatedStructModel { inner, fields } = model;
+        let StructModel { fields_model, .. } = inner;
         let SegregatedFields { header, body } = fields;
         let HeaderFields {
-            tag_name,
             tag_body,
             header_fields,
             attributes,
+            ..
         } = header;
 
-        let num_attrs = attributes.len() + 1;
-
-        let tag = tag_expr(*name, transform.as_ref(), tag_name);
+        let tag = if let Some(fld) = header.tag_name {
+            fld.name.to_token_stream()
+        } else {
+            inner.resolve_name().to_token_stream()
+        };
 
         let tag_statement = if header_fields.is_empty() {
             if let Some(tag_field) = tag_body.as_ref() {
@@ -396,7 +399,7 @@ impl<'a, 'b> ToTokens for WriteIntoFn<'a, 'b> {
         };
 
         let body = quote! {
-            let mut rec_writer = writer.record(#num_attrs)?;
+            let mut rec_writer = writer.record(num_attrs)?;
             #tag_statement
             #(#attr_statements)*
             #body_block
@@ -413,25 +416,40 @@ impl<'a> ToTokens for Destructure<'a> {
             },
             is_match,
         ) = self;
-        let kind = fields_model.body_kind;
         let indexers = fields_model.fields.iter().map(|f| &f.model.name);
-        match kind {
+        match fields_model.type_kind {
             CompoundTypeKind::Unit => {
                 if *is_match {
                     tokens.append_all(name.to_token_stream());
                 } else {
-                    let pat: Pat = parse_quote!("_");
+                    let pat: Pat = parse_quote!(_);
                     tokens.append_all(pat.to_token_stream());
                 }
             }
             CompoundTypeKind::Labelled => {
-                let statement = quote!(#name(#(#indexers),*));
-                tokens.append_all(statement);
-            }
-            _ => {
                 let statement = quote!(#name { #(#indexers),* });
                 tokens.append_all(statement);
             }
+            _ => {
+                let statement = quote!(#name(#(#indexers),*));
+                tokens.append_all(statement);
+            }
         }
+    }
+}
+
+fn num_attributes<'a, 'b>(model: &'b SegregatedStructModel<'a, 'b>) -> TokenStream {
+    let base_attrs = model.fields.header.attributes.len() + 1;
+    if let BodyFields::ReplacedBody(fld) = model.fields.body {
+        let body_fld = match &fld.name {
+            FieldIndex::Named(id) => quote!(&self.#id),
+            FieldIndex::Ordinal(i) => {
+                let idx = syn::Index::from(*i);
+                quote!(&self.#idx)
+            }
+        };
+        quote!(#base_attrs + swim_common::form::structural::write::StructuralWritable::num_attributes(#body_fld))
+    } else {
+        quote!(#base_attrs)
     }
 }

@@ -28,6 +28,9 @@ use std::hint;
 use std::rc::Rc;
 use std::sync::Arc;
 
+#[doc(hidden)]
+pub use form_derive::StructuralWritable;
+
 /// Trait for types that can describe their structure using a [`StructuralWriter`].
 /// Each writer is an interpreter which could, for example, realize the structure
 /// as a [`Value`] or format it is a Recon string.
@@ -38,6 +41,9 @@ pub trait StructuralWritable: Sized {
     /// Write he strucutre of this value using the provided interpreter, allowing
     /// the interpreter to consume this value if needed.
     fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error>;
+
+    /// The number of attributes that will be written by this instance.
+    fn num_attributes(&self) -> usize;
 
     /// Write the structure of this value with an interpreter that cannnot generate an error.
     fn write_with_infallible<W: StructuralWriter<Error = Infallible>>(&self, writer: W) -> W::Repr {
@@ -354,6 +360,10 @@ pub trait BodyWriter: Sized {
 }
 
 impl StructuralWritable for () {
+    fn num_attributes(&self) -> usize {
+        0
+    }
+
     fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
         writer.write_extant()
     }
@@ -364,6 +374,10 @@ impl StructuralWritable for () {
 }
 
 impl StructuralWritable for i32 {
+    fn num_attributes(&self) -> usize {
+        0
+    }
+
     fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
         writer.write_i32(*self)
     }
@@ -374,6 +388,10 @@ impl StructuralWritable for i32 {
 }
 
 impl StructuralWritable for i64 {
+    fn num_attributes(&self) -> usize {
+        0
+    }
+
     fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
         writer.write_i64(*self)
     }
@@ -384,6 +402,10 @@ impl StructuralWritable for i64 {
 }
 
 impl StructuralWritable for u32 {
+    fn num_attributes(&self) -> usize {
+        0
+    }
+
     fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
         writer.write_u32(*self)
     }
@@ -394,6 +416,10 @@ impl StructuralWritable for u32 {
 }
 
 impl StructuralWritable for u64 {
+    fn num_attributes(&self) -> usize {
+        0
+    }
+
     fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
         writer.write_u64(*self)
     }
@@ -404,6 +430,10 @@ impl StructuralWritable for u64 {
 }
 
 impl StructuralWritable for f64 {
+    fn num_attributes(&self) -> usize {
+        0
+    }
+
     fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
         writer.write_f64(*self)
     }
@@ -414,6 +444,10 @@ impl StructuralWritable for f64 {
 }
 
 impl StructuralWritable for bool {
+    fn num_attributes(&self) -> usize {
+        0
+    }
+
     fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
         writer.write_bool(*self)
     }
@@ -424,6 +458,10 @@ impl StructuralWritable for bool {
 }
 
 impl StructuralWritable for BigInt {
+    fn num_attributes(&self) -> usize {
+        0
+    }
+
     fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
         writer.write_big_int(self.clone())
     }
@@ -434,6 +472,10 @@ impl StructuralWritable for BigInt {
 }
 
 impl StructuralWritable for BigUint {
+    fn num_attributes(&self) -> usize {
+        0
+    }
+
     fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
         writer.write_big_uint(self.clone())
     }
@@ -444,6 +486,10 @@ impl StructuralWritable for BigUint {
 }
 
 impl StructuralWritable for String {
+    fn num_attributes(&self) -> usize {
+        0
+    }
+
     fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
         writer.write_text(Text::from(self))
     }
@@ -454,6 +500,10 @@ impl StructuralWritable for String {
 }
 
 impl<'a> StructuralWritable for &'a str {
+    fn num_attributes(&self) -> usize {
+        0
+    }
+
     fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
         writer.write_text(Text::from(*self))
     }
@@ -464,6 +514,10 @@ impl<'a> StructuralWritable for &'a str {
 }
 
 impl StructuralWritable for Text {
+    fn num_attributes(&self) -> usize {
+        0
+    }
+
     fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
         writer.write_text(self.clone())
     }
@@ -474,6 +528,10 @@ impl StructuralWritable for Text {
 }
 
 impl<T: StructuralWritable> StructuralWritable for &T {
+    fn num_attributes(&self) -> usize {
+        (**self).num_attributes()
+    }
+
     fn write_with<W: StructuralWriter>(
         &self,
         writer: W,
@@ -487,6 +545,10 @@ impl<T: StructuralWritable> StructuralWritable for &T {
 }
 
 impl<T: StructuralWritable> StructuralWritable for &mut T {
+    fn num_attributes(&self) -> usize {
+        0
+    }
+
     fn write_with<W: StructuralWriter>(
         &self,
         writer: W,
@@ -500,6 +562,10 @@ impl<T: StructuralWritable> StructuralWritable for &mut T {
 }
 
 impl<T: StructuralWritable> StructuralWritable for Arc<T> {
+    fn num_attributes(&self) -> usize {
+        (**self).num_attributes()
+    }
+
     fn write_with<W: StructuralWriter>(
         &self,
         writer: W,
@@ -516,6 +582,10 @@ impl<T: StructuralWritable> StructuralWritable for Arc<T> {
 }
 
 impl<T: StructuralWritable> StructuralWritable for Rc<T> {
+    fn num_attributes(&self) -> usize {
+        (**self).num_attributes()
+    }
+
     fn write_with<W: StructuralWriter>(
         &self,
         writer: W,
@@ -532,6 +602,10 @@ impl<T: StructuralWritable> StructuralWritable for Rc<T> {
 }
 
 impl StructuralWritable for Blob {
+    fn num_attributes(&self) -> usize {
+        0
+    }
+
     fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
         writer.write_blob(self.as_ref())
     }
@@ -542,6 +616,10 @@ impl StructuralWritable for Blob {
 }
 
 impl StructuralWritable for Vec<u8> {
+    fn num_attributes(&self) -> usize {
+        0
+    }
+
     fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
         writer.write_blob(self.as_ref())
     }
@@ -552,6 +630,10 @@ impl StructuralWritable for Vec<u8> {
 }
 
 impl StructuralWritable for &[u8] {
+    fn num_attributes(&self) -> usize {
+        0
+    }
+
     fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
         writer.write_blob(self)
     }
@@ -562,6 +644,10 @@ impl StructuralWritable for &[u8] {
 }
 
 impl StructuralWritable for Box<[u8]> {
+    fn num_attributes(&self) -> usize {
+        0
+    }
+
     fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
         writer.write_blob(self.as_ref())
     }
@@ -572,6 +658,13 @@ impl StructuralWritable for Box<[u8]> {
 }
 
 impl StructuralWritable for Value {
+    fn num_attributes(&self) -> usize {
+        match self {
+            Value::Record(attrs, _) => attrs.len(),
+            _ => 0,
+        }
+    }
+
     fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
         match self {
             Value::Extant => writer.write_extant(),
@@ -648,6 +741,10 @@ impl StructuralWritable for Value {
 }
 
 impl<T: StructuralWritable> StructuralWritable for Vec<T> {
+    fn num_attributes(&self) -> usize {
+        0
+    }
+
     fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
         self.iter()
             .try_fold(
@@ -673,6 +770,13 @@ impl<T: StructuralWritable> StructuralWritable for Vec<T> {
 }
 
 impl<T: StructuralWritable> StructuralWritable for Option<T> {
+    fn num_attributes(&self) -> usize {
+        match self {
+            Some(t) => t.num_attributes(),
+            _ => 0,
+        }
+    }
+
     fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
         if let Some(value) = self {
             value.write_with(writer)
@@ -699,6 +803,10 @@ where
     K: StructuralWritable,
     V: StructuralWritable,
 {
+    fn num_attributes(&self) -> usize {
+        0
+    }
+
     fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
         let len = self.len();
         self.iter()

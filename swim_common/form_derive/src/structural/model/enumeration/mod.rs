@@ -41,11 +41,27 @@ impl<'a, 'b> From<&'b EnumModel<'a>> for SegregatedEnumModel<'a, 'b> {
     }
 }
 
-struct EnumDef<'a> {
+pub struct EnumDef<'a> {
     name: &'a Ident,
     top: &'a dyn ToTokens,
     attributes: &'a Vec<Attribute>,
     definition: &'a DataEnum,
+}
+
+impl<'a> EnumDef<'a> {
+    pub fn new(
+        name: &'a Ident,
+        top: &'a dyn ToTokens,
+        attributes: &'a Vec<Attribute>,
+        definition: &'a DataEnum,
+    ) -> Self {
+        EnumDef {
+            name,
+            top,
+            attributes,
+            definition,
+        }
+    }
 }
 
 impl<'a> TryValidate<EnumDef<'a>> for EnumModel<'a> {

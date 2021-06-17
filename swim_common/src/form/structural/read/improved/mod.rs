@@ -1771,12 +1771,8 @@ where
 
     fn feed_event<'a>(&mut self, input: ParseEvent<'a>) -> Option<Result<Self::Target, ReadError>> {
         match self {
-            CCons::Head(h) => {
-                h.feed_event(input).map(|r| r.map(CCons::Head))
-            }
-            CCons::Tail(t) => {
-                t.feed_event(input).map(|r| r.map(CCons::Tail))
-            }
+            CCons::Head(h) => h.feed_event(input).map(|r| r.map(CCons::Head)),
+            CCons::Tail(t) => t.feed_event(input).map(|r| r.map(CCons::Tail)),
         }
     }
 
@@ -1801,14 +1797,12 @@ pub struct TaggedEnumRecognizer<Var> {
 }
 
 impl<Var> TaggedEnumRecognizer<Var> {
-
     pub fn new(select_var: fn(&str) -> Option<Var>) -> Self {
         TaggedEnumRecognizer {
             select_var,
             variant: None,
         }
     }
-
 }
 
 impl<Var> Recognizer for TaggedEnumRecognizer<Var>
@@ -1819,22 +1813,23 @@ where
     type Target = <<Var as Recognizer>::Target as Unify>::Out;
 
     fn feed_event<'a>(&mut self, input: ParseEvent<'a>) -> Option<Result<Self::Target, ReadError>> {
-        let TaggedEnumRecognizer { select_var, variant } = self;
+        let TaggedEnumRecognizer {
+            select_var,
+            variant,
+        } = self;
         match variant {
-            None => {
-                match input {
-                    ParseEvent::StartAttribute(name) => {
-                        *variant = select_var(name.borrow());
-                        if variant.is_some() {
-                            None
-                        } else {
-                            Some(Err(ReadError::UnexpectedAttribute(name.into())))
-                        }
+            None => match input {
+                ParseEvent::StartAttribute(name) => {
+                    *variant = select_var(name.borrow());
+                    if variant.is_some() {
+                        None
+                    } else {
+                        Some(Err(ReadError::UnexpectedAttribute(name.into())))
                     }
-                    ow => Some(Err(bad_kind(&ow))),
                 }
-            }
-            Some(var) => var.feed_event(input).map(|r| r.map(Unify::unify))
+                ow => Some(Err(bad_kind(&ow))),
+            },
+            Some(var) => var.feed_event(input).map(|r| r.map(Unify::unify)),
         }
     }
 

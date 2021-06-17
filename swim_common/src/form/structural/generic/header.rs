@@ -110,6 +110,10 @@ where
     T: StructuralWritable,
     S: AppendHeaders,
 {
+    fn num_attributes(&self) -> usize {
+        0
+    }
+
     fn write_with<W: StructuralWriter>(
         &self,
         writer: W,
@@ -147,6 +151,10 @@ impl<A> StructuralWritable for SimpleHeader<A>
 where
     A: AppendHeaders,
 {
+    fn num_attributes(&self) -> usize {
+        0
+    }
+
     fn write_with<W: StructuralWriter>(
         &self,
         writer: W,

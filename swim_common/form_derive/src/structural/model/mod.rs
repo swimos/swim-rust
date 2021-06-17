@@ -31,7 +31,7 @@ pub enum NameTransform {
     Rename(String),
 }
 
-trait TryValidate<T>: Sized {
+pub trait TryValidate<T>: Sized {
     fn try_validate(input: T) -> SynValidation<Self>;
 }
 
@@ -112,7 +112,7 @@ fn acc_rename(
     Validation::Validated(state, err.into())
 }
 
-trait StructLike {
+pub trait StructLike {
     fn fields(&self) -> &Fields;
 }
 

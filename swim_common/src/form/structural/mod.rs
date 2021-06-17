@@ -21,6 +21,7 @@ use crate::form::structural::write::StructuralWritable;
 mod bridge;
 pub mod generic;
 pub mod read;
+#[macro_use]
 pub mod write;
 
 /// A more flexible alternative to [`Form`] where readers and writers have full

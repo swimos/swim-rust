@@ -166,6 +166,10 @@ impl<S: RecognizerReadable, T: RecognizerReadable> RecognizerReadable for Genera
 }
 
 impl<S: StructuralWritable, T: StructuralWritable> StructuralWritable for GeneralType<S, T> {
+    fn num_attributes(&self) -> usize {
+        0
+    }
+
     fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
         let GeneralType { first, second } = self;
         let mut rec_writer = writer
@@ -204,8 +208,12 @@ struct WithHeaderBody<T> {
 }
 
 impl<T: StructuralWritable> StructuralWritable for WithHeaderBody<T> {
+    fn num_attributes(&self) -> usize {
+        2
+    }
+
     fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
-        let mut rec_writer = writer.record(2)?;
+        let mut rec_writer = writer.record(self.num_attributes())?;
         rec_writer = rec_writer.write_attr(Cow::Borrowed("StructuralWritable"), &self.header)?;
         rec_writer = rec_writer.write_attr(Cow::Borrowed("attr"), &self.attr)?;
         let mut body_writer = rec_writer.complete_header(RecordBodyKind::MapLike, 1)?;
@@ -214,7 +222,7 @@ impl<T: StructuralWritable> StructuralWritable for WithHeaderBody<T> {
     }
 
     fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error> {
-        let mut rec_writer = writer.record(2)?;
+        let mut rec_writer = writer.record(self.num_attributes())?;
         rec_writer = rec_writer.write_attr_into("StructuralWritable", self.header)?;
         rec_writer = rec_writer.write_attr_into("attr", self.attr)?;
         let mut body_writer = rec_writer.complete_header(RecordBodyKind::MapLike, 1)?;
@@ -230,6 +238,10 @@ struct WithHeaderField<T> {
 }
 
 impl<T: StructuralWritable> StructuralWritable for HeaderView<&WithHeaderField<T>> {
+    fn num_attributes(&self) -> usize {
+        0
+    }
+
     fn write_with<W: StructuralWriter>(
         &self,
         writer: W,
@@ -250,11 +262,15 @@ impl<T: StructuralWritable> StructuralWritable for HeaderView<&WithHeaderField<T
 }
 
 impl<T: StructuralWritable> StructuralWritable for WithHeaderField<T> {
+    fn num_attributes(&self) -> usize {
+        0
+    }
+
     fn write_with<W: StructuralWriter>(
         &self,
         writer: W,
     ) -> Result<<W as PrimitiveWriter>::Repr, <W as PrimitiveWriter>::Error> {
-        let mut rec_writer = writer.record(2)?;
+        let mut rec_writer = writer.record(self.num_attributes())?;
         rec_writer = rec_writer.write_attr_into("StructuralWritable", HeaderView(self))?;
         rec_writer = rec_writer.write_attr(Cow::Borrowed("attr"), &self.attr)?;
         let mut body_writer = rec_writer.complete_header(RecordBodyKind::MapLike, 1)?;
