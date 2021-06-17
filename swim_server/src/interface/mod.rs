@@ -307,6 +307,7 @@ impl SwimServer {
             remote_tx.clone(),
             Some(plane_tx.clone()),
             NonZeroUsize::new(conn_config.router_buffer_size.get()).unwrap(),
+            stop_trigger_rx.clone(),
         );
 
         let context = ContextImpl::new(plane_tx.clone(), spec.routes());

@@ -16,6 +16,7 @@ use super::*;
 use crate::configuration::downlink::{ConfigHierarchy, DownlinkParams, OnInvalidMessage};
 use futures::join;
 use swim_common::routing::remote::RawRoute;
+use swim_common::routing::CloseSender;
 use swim_common::warp::path::AbsolutePath;
 use tokio::time::Duration;
 use url::Url;
@@ -60,9 +61,9 @@ fn per_lane_config() -> ConfigHierarchy<AbsolutePath> {
     conf
 }
 
-async fn dl_manager(conf: ConfigHierarchy<AbsolutePath>) -> Downlinks<AbsolutePath> {
+async fn dl_manager(conf: ConfigHierarchy<AbsolutePath>) -> (Downlinks<AbsolutePath>, CloseSender) {
     let (client_conn_request_tx, mut client_conn_request_rx) = mpsc::channel(32);
-    let (_close_tx, close_rx) = promise::promise();
+    let (close_tx, close_rx) = promise::promise();
     let (downlinks, handle) = Downlinks::new(client_conn_request_tx, Arc::new(conf), close_rx);
 
     tokio::spawn(async move {
@@ -104,13 +105,13 @@ async fn dl_manager(conf: ConfigHierarchy<AbsolutePath>) -> Downlinks<AbsolutePa
         }
     });
 
-    downlinks
+    (downlinks, close_tx)
 }
 
 #[tokio::test]
 async fn subscribe_value_lane_default_config() {
     let path = AbsolutePath::new(url::Url::parse("ws://127.0.0.1/").unwrap(), "node", "lane");
-    let downlinks = dl_manager(Default::default()).await;
+    let (downlinks, _close_tx) = dl_manager(Default::default()).await;
     let result = downlinks.subscribe_value_untyped(Value::Extant, path).await;
     assert!(result.is_ok());
 }
@@ -118,7 +119,7 @@ async fn subscribe_value_lane_default_config() {
 #[tokio::test]
 async fn subscribe_value_lane_per_host_config() {
     let path = AbsolutePath::new(url::Url::parse("ws://127.0.0.2/").unwrap(), "node", "lane");
-    let downlinks = dl_manager(per_host_config()).await;
+    let (downlinks, _close_tx) = dl_manager(per_host_config()).await;
     let result = downlinks.subscribe_value_untyped(Value::Extant, path).await;
     assert!(result.is_ok());
 }
@@ -130,7 +131,7 @@ async fn subscribe_value_lane_per_lane_config() {
         "my_agent",
         "my_lane",
     );
-    let downlinks = dl_manager(per_lane_config()).await;
+    let (downlinks, _close_tx) = dl_manager(per_lane_config()).await;
     let result = downlinks.subscribe_value_untyped(Value::Extant, path).await;
     assert!(result.is_ok());
 }
@@ -138,7 +139,7 @@ async fn subscribe_value_lane_per_lane_config() {
 #[tokio::test]
 async fn subscribe_map_lane_default_config() {
     let path = AbsolutePath::new(url::Url::parse("ws://127.0.0.1/").unwrap(), "node", "lane");
-    let downlinks = dl_manager(Default::default()).await;
+    let (downlinks, _close_tx) = dl_manager(Default::default()).await;
     let result = downlinks.subscribe_map_untyped(path).await;
     assert!(result.is_ok());
 }
@@ -146,7 +147,7 @@ async fn subscribe_map_lane_default_config() {
 #[tokio::test]
 async fn subscribe_map_lane_per_host_config() {
     let path = AbsolutePath::new(url::Url::parse("ws://127.0.0.2/").unwrap(), "node", "lane");
-    let downlinks = dl_manager(per_host_config()).await;
+    let (downlinks, _close_tx) = dl_manager(per_host_config()).await;
     let result = downlinks.subscribe_map_untyped(path).await;
     assert!(result.is_ok());
 }
@@ -158,7 +159,7 @@ async fn subscribe_map_lane_per_lane_config() {
         "my_agent",
         "my_lane",
     );
-    let downlinks = dl_manager(per_lane_config()).await;
+    let (downlinks, _close_tx) = dl_manager(per_lane_config()).await;
     let result = downlinks.subscribe_map_untyped(path).await;
     assert!(result.is_ok());
 }
@@ -166,7 +167,7 @@ async fn subscribe_map_lane_per_lane_config() {
 #[tokio::test]
 async fn request_map_dl_for_running_value_dl() {
     let path = AbsolutePath::new(url::Url::parse("ws://127.0.0.1/").unwrap(), "node", "lane");
-    let downlinks = dl_manager(Default::default()).await;
+    let (downlinks, _close_tx) = dl_manager(Default::default()).await;
     let result = downlinks
         .subscribe_value_untyped(Value::Extant, path.clone())
         .await;
@@ -185,7 +186,7 @@ async fn request_map_dl_for_running_value_dl() {
 #[tokio::test]
 async fn request_value_dl_for_running_map_dl() {
     let path = AbsolutePath::new(url::Url::parse("ws://127.0.0.1/").unwrap(), "node", "lane");
-    let downlinks = dl_manager(Default::default()).await;
+    let (downlinks, _close_tx) = dl_manager(Default::default()).await;
     let result = downlinks.subscribe_map_untyped(path.clone()).await;
     assert!(result.is_ok());
     let _dl = result.unwrap();
@@ -202,7 +203,7 @@ async fn request_value_dl_for_running_map_dl() {
 #[tokio::test]
 async fn subscribe_value_twice() {
     let path = AbsolutePath::new(url::Url::parse("ws://127.0.0.1/").unwrap(), "node", "lane");
-    let downlinks = dl_manager(Default::default()).await;
+    let (downlinks, _close_tx) = dl_manager(Default::default()).await;
     let result1 = downlinks
         .subscribe_value_untyped(Value::Extant, path.clone())
         .await;
@@ -219,7 +220,7 @@ async fn subscribe_value_twice() {
 #[tokio::test]
 async fn subscribe_map_twice() {
     let path = AbsolutePath::new(url::Url::parse("ws://127.0.0.1/").unwrap(), "node", "lane");
-    let downlinks = dl_manager(Default::default()).await;
+    let (downlinks, _close_tx) = dl_manager(Default::default()).await;
     let result1 = downlinks.subscribe_map_untyped(path.clone()).await;
     assert!(result1.is_ok());
     let (dl1, _rec1) = result1.unwrap();
@@ -234,7 +235,7 @@ async fn subscribe_map_twice() {
 #[tokio::test]
 async fn subscribe_value_lane_typed() {
     let path = AbsolutePath::new(url::Url::parse("ws://127.0.0.2/").unwrap(), "node", "lane");
-    let downlinks = dl_manager(Default::default()).await;
+    let (downlinks, _close_tx) = dl_manager(Default::default()).await;
     let result = downlinks.subscribe_value::<i32>(0, path).await;
     assert!(result.is_ok());
 }
@@ -242,7 +243,7 @@ async fn subscribe_value_lane_typed() {
 #[tokio::test]
 async fn subscribe_map_lane_typed() {
     let path = AbsolutePath::new(url::Url::parse("ws://127.0.0.2/").unwrap(), "node", "lane");
-    let downlinks = dl_manager(Default::default()).await;
+    let (downlinks, _close_tx) = dl_manager(Default::default()).await;
     let result = downlinks.subscribe_map::<String, i32>(path).await;
     assert!(result.is_ok());
 }

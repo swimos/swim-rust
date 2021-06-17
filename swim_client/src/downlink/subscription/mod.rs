@@ -38,6 +38,7 @@ use crate::router::RouterEvent;
 use crate::router::TaskManager;
 use either::Either;
 use futures::stream::Fuse;
+use futures::FutureExt;
 use futures::Stream;
 use futures_util::future::TryFutureExt;
 use futures_util::select_biased;
@@ -114,10 +115,13 @@ impl<Path: Addressable> Downlinks<Path> {
         let (connection_pool, pool_task) =
             SwimConnPool::new(client_params.conn_pool_params, client_conn_request_tx);
 
-        let (task_manager, connection_request_tx) =
-            TaskManager::new(connection_pool, close_rx, client_params.router_params);
+        let (task_manager, connection_request_tx) = TaskManager::new(
+            connection_pool,
+            close_rx.clone(),
+            client_params.router_params,
+        );
 
-        let downlinks_task = DownlinksTask::new(config, connection_request_tx);
+        let downlinks_task = DownlinksTask::new(config, connection_request_tx, close_rx);
         let (tx, rx) = mpsc::channel(client_params.dl_req_buffer_size.get());
 
         (
@@ -412,6 +416,7 @@ pub struct DownlinksTask<Path: Addressable> {
     event_downlinks: HashMap<(Path, SchemaViolations), EventHandle>,
     stopped_watch: StopEvents<Path>,
     conn_request_tx: mpsc::Sender<RouterConnRequest<Path>>,
+    close_rx: CloseReceiver,
 }
 
 /// Event that is generated after a downlink stops to allow it to be cleaned up.
@@ -451,6 +456,7 @@ impl<Path: Addressable> DownlinksTask<Path> {
     pub(crate) fn new<C>(
         config: Arc<C>,
         conn_request_tx: mpsc::Sender<RouterConnRequest<Path>>,
+        close_rx: CloseReceiver,
     ) -> DownlinksTask<Path>
     where
         C: Config<PathType = Path> + 'static,
@@ -463,6 +469,7 @@ impl<Path: Addressable> DownlinksTask<Path> {
             event_downlinks: HashMap::new(),
             stopped_watch: StopEvents::new(),
             conn_request_tx,
+            close_rx,
         }
     }
 
@@ -473,6 +480,7 @@ impl<Path: Addressable> DownlinksTask<Path> {
         pin_mut!(requests);
 
         let mut pinned_requests: Fuse<Pin<&mut Req>> = requests.fuse();
+        let mut close_trigger = self.close_rx.clone().fuse();
 
         loop {
             let item: Option<Either<DownlinkRequest<Path>, DownlinkStoppedEvent<Path>>> =
@@ -482,6 +490,7 @@ impl<Path: Addressable> DownlinksTask<Path> {
                     select_biased! {
                         maybe_req = pinned_requests.next() => maybe_req.map(Either::Left),
                         maybe_closed = self.stopped_watch.next() => maybe_closed.map(Either::Right),
+                        _stop = close_trigger => None,
                     }
                 };
 
@@ -532,7 +541,9 @@ impl<Path: Addressable> DownlinksTask<Path> {
                 Some(Either::Right(stop_event)) => {
                     self.handle_stop(stop_event).await;
                 }
-                None => break Ok(()),
+                None => {
+                    break Ok(());
+                }
             }
         }
     }

@@ -136,6 +136,7 @@ impl SwimClientBuilder {
             remote_router_tx,
             None,
             client_params.dl_req_buffer_size,
+            close_rx.clone(),
         );
 
         let (downlinks, downlinks_handle) =
@@ -206,6 +207,7 @@ impl SwimClientBuilder {
             remote_router_tx,
             None,
             client_params.dl_req_buffer_size,
+            close_rx.clone(),
         );
 
         let (downlinks, downlinks_handle) =

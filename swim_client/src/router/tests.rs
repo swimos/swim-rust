@@ -21,7 +21,7 @@ use swim_common::request::Request;
 use swim_common::routing::error::{ResolutionError, Unresolvable};
 use swim_common::routing::remote::{RawRoute, RemoteRoutingRequest, Scheme, SchemeSocketAddr};
 use swim_common::routing::{
-    Origin, PlaneRoutingRequest, RouterFactory, RoutingAddr, TaggedEnvelope,
+    CloseSender, Origin, PlaneRoutingRequest, RouterFactory, RoutingAddr, TaggedEnvelope,
 };
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::{AbsolutePath, Path, RelativePath};
@@ -36,6 +36,7 @@ async fn create_connection_manager() -> (
     Receiver<TaggedEnvelope>,
     Receiver<TaggedEnvelope>,
     (Arc<Mutex<Vec<Url>>>, Arc<Mutex<Vec<RelativeUri>>>),
+    CloseSender,
 ) {
     let remote_requests: Arc<Mutex<Vec<Url>>> = Arc::new(Mutex::new(Vec::new()));
     let local_requests: Arc<Mutex<Vec<RelativeUri>>> = Arc::new(Mutex::new(Vec::new()));
@@ -50,12 +51,14 @@ async fn create_connection_manager() -> (
 
     let (remote_tx, remote_rx) = mpsc::channel(8);
     let (local_tx, local_rx) = mpsc::channel(8);
+    let (close_tx, close_rx) = promise::promise();
 
     let conns_manager = ClientConnectionsManager::new(
         router_request_rx,
         remote_router_tx,
         Some(plane_router_tx),
         buffer_size,
+        close_rx,
     );
 
     tokio::spawn(async move {
@@ -110,6 +113,7 @@ async fn create_connection_manager() -> (
         remote_rx,
         local_rx,
         (remote_requests_copy, local_requests_copy),
+        close_tx,
     )
 }
 
@@ -247,7 +251,7 @@ async fn test_route_single_remote_outgoing_message_to_single_subscriber() {
     let remote_path = Path::Remote(AbsolutePath::new(host.clone(), "/foo", "/bar"));
     let remote_addr = SchemeSocketAddr::new(Scheme::Ws, "127.0.0.1:9001".parse().unwrap());
 
-    let (router_request_tx, mut remote_rx, _local_rx, (remote_requests, _)) =
+    let (router_request_tx, mut remote_rx, _local_rx, (remote_requests, _), _close_tx) =
         create_connection_manager().await;
     let _remote_tx = register_connection(&router_request_tx, Origin::Remote(remote_addr)).await;
     let (sink, _stream) = register_subscriber(&router_request_tx, remote_path).await;
@@ -265,7 +269,7 @@ async fn test_route_single_local_outgoing_message_to_single_subscriber() {
     let local_path = Path::Local(RelativePath::new("/foo", "/bar"));
     let local_addr = RelativeUri::try_from("/foo".to_string()).unwrap();
 
-    let (router_request_tx, _remote_rx, mut local_rx, (_, local_requests)) =
+    let (router_request_tx, _remote_rx, mut local_rx, (_, local_requests), _close_tx) =
         create_connection_manager().await;
 
     let _local_tx =
@@ -286,7 +290,7 @@ async fn test_route_single_remote_outgoing_message_to_multiple_subscribers_same_
     let remote_path = Path::Remote(AbsolutePath::new(host.clone(), "/foo", "/bar"));
     let remote_addr = SchemeSocketAddr::new(Scheme::Ws, "127.0.0.1:9001".parse().unwrap());
 
-    let (router_request_tx, mut remote_rx, _local_rx, (remote_requests, _)) =
+    let (router_request_tx, mut remote_rx, _local_rx, (remote_requests, _), _close_tx) =
         create_connection_manager().await;
     let _remote_tx = register_connection(&router_request_tx, Origin::Remote(remote_addr)).await;
     let (first_sink, _stream) = register_subscriber(&router_request_tx, remote_path.clone()).await;
@@ -311,7 +315,7 @@ async fn test_route_single_local_outgoing_message_to_multiple_subscribers_same_n
     let local_path = Path::Local(RelativePath::new("/foo", "/bar"));
     let local_addr = RelativeUri::try_from("/foo".to_string()).unwrap();
 
-    let (router_request_tx, _remote_rx, mut local_rx, (_, local_requests)) =
+    let (router_request_tx, _remote_rx, mut local_rx, (_, local_requests), _close_tx) =
         create_connection_manager().await;
 
     let _local_tx =
@@ -344,7 +348,7 @@ async fn test_route_single_remote_outgoing_message_to_multiple_subscribers_diffe
     let first_remote_addr = SchemeSocketAddr::new(Scheme::Ws, "127.0.0.1:9001".parse().unwrap());
     let second_remote_addr = SchemeSocketAddr::new(Scheme::Ws, "127.0.0.1:9002".parse().unwrap());
 
-    let (router_request_tx, mut remote_rx, _local_rx, (remote_requests, _)) =
+    let (router_request_tx, mut remote_rx, _local_rx, (remote_requests, _), _close_tx) =
         create_connection_manager().await;
     let _first_remote_tx =
         register_connection(&router_request_tx, Origin::Remote(first_remote_addr)).await;
@@ -375,7 +379,7 @@ async fn test_route_single_local_outgoing_message_to_multiple_subscribers_differ
     let first_local_addr = RelativeUri::try_from("/foo".to_string()).unwrap();
     let second_local_addr = RelativeUri::try_from("/baz".to_string()).unwrap();
 
-    let (router_request_tx, _remote_rx, mut local_rx, (_, local_requests)) =
+    let (router_request_tx, _remote_rx, mut local_rx, (_, local_requests), _close_tx) =
         create_connection_manager().await;
 
     let _local_tx =
@@ -412,7 +416,7 @@ async fn test_route_multiple_remote_outgoing_messages_to_single_subscriber() {
     let remote_path = Path::Remote(AbsolutePath::new(host.clone(), "/foo", "/bar"));
     let remote_addr = SchemeSocketAddr::new(Scheme::Ws, "127.0.0.1:9001".parse().unwrap());
 
-    let (router_request_tx, mut remote_rx, _local_rx, (remote_requests, _)) =
+    let (router_request_tx, mut remote_rx, _local_rx, (remote_requests, _), _close_tx) =
         create_connection_manager().await;
     let _remote_tx = register_connection(&router_request_tx, Origin::Remote(remote_addr)).await;
     let (sink, _stream) = register_subscriber(&router_request_tx, remote_path).await;
@@ -443,7 +447,7 @@ async fn test_route_multiple_local_outgoing_messages_to_single_subscriber() {
     let local_path = Path::Local(RelativePath::new("/foo", "/bar"));
     let local_addr = RelativeUri::try_from("/foo".to_string()).unwrap();
 
-    let (router_request_tx, _remote_rx, mut local_rx, (_, local_requests)) =
+    let (router_request_tx, _remote_rx, mut local_rx, (_, local_requests), _close_tx) =
         create_connection_manager().await;
 
     let _local_tx =
@@ -478,7 +482,7 @@ async fn test_route_multiple_remote_outgoing_messages_to_multiple_subscribers_sa
     let remote_path = Path::Remote(AbsolutePath::new(host.clone(), "/foo", "/bar"));
     let remote_addr = SchemeSocketAddr::new(Scheme::Ws, "127.0.0.1:9001".parse().unwrap());
 
-    let (router_request_tx, mut remote_rx, _local_rx, (remote_requests, _)) =
+    let (router_request_tx, mut remote_rx, _local_rx, (remote_requests, _), _close_tx) =
         create_connection_manager().await;
     let _remote_tx = register_connection(&router_request_tx, Origin::Remote(remote_addr)).await;
     let (first_sink, _stream) = register_subscriber(&router_request_tx, remote_path.clone()).await;
@@ -519,7 +523,7 @@ async fn test_route_multiple_local_outgoing_messages_to_multiple_subscribers_sam
     let local_path = Path::Local(RelativePath::new("/foo", "/bar"));
     let local_addr = RelativeUri::try_from("/foo".to_string()).unwrap();
 
-    let (router_request_tx, _remote_rx, mut local_rx, (_, local_requests)) =
+    let (router_request_tx, _remote_rx, mut local_rx, (_, local_requests), _close_tx) =
         create_connection_manager().await;
 
     let _local_tx =
@@ -568,7 +572,7 @@ async fn test_route_multiple_remote_outgoing_messages_to_multiple_subscribers_di
     let first_remote_addr = SchemeSocketAddr::new(Scheme::Wss, "127.0.0.1:9001".parse().unwrap());
     let second_remote_addr = SchemeSocketAddr::new(Scheme::Wss, "127.0.0.2:9001".parse().unwrap());
 
-    let (router_request_tx, mut remote_rx, _local_rx, (remote_requests, _)) =
+    let (router_request_tx, mut remote_rx, _local_rx, (remote_requests, _), _close_tx) =
         create_connection_manager().await;
     let _first_remote_tx =
         register_connection(&router_request_tx, Origin::Remote(first_remote_addr)).await;
@@ -614,7 +618,7 @@ async fn test_route_multiple_local_outgoing_messages_to_multiple_subscribers_dif
     let first_local_addr = RelativeUri::try_from("/foo".to_string()).unwrap();
     let second_local_addr = RelativeUri::try_from("/baz".to_string()).unwrap();
 
-    let (router_request_tx, _remote_rx, mut local_rx, (_, local_requests)) =
+    let (router_request_tx, _remote_rx, mut local_rx, (_, local_requests), _close_tx) =
         create_connection_manager().await;
 
     let _first_local_tx =
@@ -661,7 +665,7 @@ async fn test_route_single_remote_incoming_message_to_single_subscriber() {
 
     let remote_addr = SchemeSocketAddr::new(Scheme::Wss, "127.0.0.1:9001".parse().unwrap());
 
-    let (router_request_tx, _remote_rx, _local_rx, (remote_requests, _)) =
+    let (router_request_tx, _remote_rx, _local_rx, (remote_requests, _), _close_tx) =
         create_connection_manager().await;
 
     let remote_tx = register_connection(&router_request_tx, Origin::Remote(remote_addr)).await;
@@ -685,7 +689,7 @@ async fn test_route_single_local_incoming_message_to_single_node() {
     let local_path = Path::Local(RelativePath::new("/foo", "/bar"));
     let local_addr = RelativeUri::try_from("/foo".to_string()).unwrap();
 
-    let (router_request_tx, _remote_rx, _local_rx, (_, local_requests)) =
+    let (router_request_tx, _remote_rx, _local_rx, (_, local_requests), _close_tx) =
         create_connection_manager().await;
 
     let local_tx = register_connection(&router_request_tx, Origin::Local(local_addr.clone())).await;
@@ -710,7 +714,7 @@ async fn test_route_single_remote_incoming_message_to_multiple_subscribers_same_
 
     let remote_addr = SchemeSocketAddr::new(Scheme::Wss, "127.0.0.1:9001".parse().unwrap());
 
-    let (router_request_tx, _remote_rx, _local_rx, (remote_requests, _)) =
+    let (router_request_tx, _remote_rx, _local_rx, (remote_requests, _), _close_tx) =
         create_connection_manager().await;
 
     let remote_tx = register_connection(&router_request_tx, Origin::Remote(remote_addr)).await;
@@ -737,7 +741,7 @@ async fn test_route_single_local_incoming_message_to_multiple_nodes_same_path() 
     let local_path = Path::Local(RelativePath::new("/foo", "/bar"));
     let local_addr = RelativeUri::try_from("/foo".to_string()).unwrap();
 
-    let (router_request_tx, _remote_rx, _local_rx, (_, local_requests)) =
+    let (router_request_tx, _remote_rx, _local_rx, (_, local_requests), _close_tx) =
         create_connection_manager().await;
 
     let local_tx = register_connection(&router_request_tx, Origin::Local(local_addr.clone())).await;
@@ -768,7 +772,7 @@ async fn test_route_single_remote_incoming_message_to_multiple_subscribers_same_
 
     let remote_addr = SchemeSocketAddr::new(Scheme::Ws, "127.0.0.1:9001".parse().unwrap());
 
-    let (router_request_tx, _remote_rx, _local_rx, (remote_requests, _)) =
+    let (router_request_tx, _remote_rx, _local_rx, (remote_requests, _), _close_tx) =
         create_connection_manager().await;
 
     let remote_tx = register_connection(&router_request_tx, Origin::Remote(remote_addr)).await;
@@ -798,7 +802,7 @@ async fn test_route_single_local_incoming_message_to_multiple_subscribers_same_n
     let second_local_path = Path::Local(RelativePath::new("/foo", "/qux"));
     let local_addr = RelativeUri::try_from("/foo".to_string()).unwrap();
 
-    let (router_request_tx, _remote_rx, _local_rx, (_, local_requests)) =
+    let (router_request_tx, _remote_rx, _local_rx, (_, local_requests), _close_tx) =
         create_connection_manager().await;
 
     let local_tx = register_connection(&router_request_tx, Origin::Local(local_addr.clone())).await;
@@ -832,7 +836,7 @@ async fn test_route_single_remote_incoming_message_to_multiple_subscribers_diffe
     let first_remote_addr = SchemeSocketAddr::new(Scheme::Ws, "127.0.0.1:9001".parse().unwrap());
     let second_remote_addr = SchemeSocketAddr::new(Scheme::Ws, "127.0.0.1:9002".parse().unwrap());
 
-    let (router_request_tx, _remote_rx, _local_rx, (remote_requests, _)) =
+    let (router_request_tx, _remote_rx, _local_rx, (remote_requests, _), _close_tx) =
         create_connection_manager().await;
 
     let first_remote_tx = register_connection(
@@ -880,7 +884,7 @@ async fn test_route_single_local_incoming_message_to_multiple_subscribers_differ
     let first_local_addr = RelativeUri::try_from("/foo".to_string()).unwrap();
     let second_local_addr = RelativeUri::try_from("/baz".to_string()).unwrap();
 
-    let (router_request_tx, _remote_rx, _local_rx, (_, local_requests)) =
+    let (router_request_tx, _remote_rx, _local_rx, (_, local_requests), _close_tx) =
         create_connection_manager().await;
 
     let first_local_tx =
@@ -927,7 +931,7 @@ async fn test_route_single_remote_incoming_message_to_multiple_subscribers_diffe
     let second_remote_addr = SchemeSocketAddr::new(Scheme::Ws, "127.0.0.2:9001".parse().unwrap());
     let third_remote_addr = SchemeSocketAddr::new(Scheme::Ws, "127.0.0.3:9001".parse().unwrap());
 
-    let (router_request_tx, _remote_rx, _local_rx, (remote_requests, _)) =
+    let (router_request_tx, _remote_rx, _local_rx, (remote_requests, _), _close_tx) =
         create_connection_manager().await;
 
     let first_remote_tx = register_connection(
@@ -993,7 +997,7 @@ async fn test_route_single_local_incoming_message_to_multiple_subscribers_differ
     let second_local_addr = RelativeUri::try_from("/oof".to_string()).unwrap();
     let third_local_addr = RelativeUri::try_from("/ofo".to_string()).unwrap();
 
-    let (router_request_tx, _remote_rx, _local_rx, (_, local_requests)) =
+    let (router_request_tx, _remote_rx, _local_rx, (_, local_requests), _close_tx) =
         create_connection_manager().await;
 
     let first_local_tx =
@@ -1048,7 +1052,7 @@ async fn test_route_multiple_remote_incoming_messages_to_single_subscriber() {
 
     let remote_addr = SchemeSocketAddr::new(Scheme::Ws, "127.0.0.1:9001".parse().unwrap());
 
-    let (router_request_tx, _remote_rx, _local_rx, (remote_requests, _)) =
+    let (router_request_tx, _remote_rx, _local_rx, (remote_requests, _), _close_tx) =
         create_connection_manager().await;
 
     let remote_tx =
@@ -1082,7 +1086,7 @@ async fn test_route_multiple_local_incoming_messages_to_single_subscriber() {
     let local_path = Path::Local(RelativePath::new("/foo", "/bar"));
     let local_addr = RelativeUri::try_from("/foo".to_string()).unwrap();
 
-    let (router_request_tx, _remote_rx, _local_rx, (_, local_requests)) =
+    let (router_request_tx, _remote_rx, _local_rx, (_, local_requests), _close_tx) =
         create_connection_manager().await;
 
     let local_tx = register_connection(&router_request_tx, Origin::Local(local_addr.clone())).await;
@@ -1118,7 +1122,7 @@ async fn test_route_multiple_remote_incoming_messages_to_multiple_subscribers_sa
     let remote_path = Path::Remote(AbsolutePath::new(host.clone(), "/room", "/five"));
     let remote_addr = SchemeSocketAddr::new(Scheme::Ws, "127.0.0.1:9001".parse().unwrap());
 
-    let (router_request_tx, _remote_rx, _local_rx, (remote_requests, _)) =
+    let (router_request_tx, _remote_rx, _local_rx, (remote_requests, _), _close_tx) =
         create_connection_manager().await;
 
     let remote_tx =
@@ -1156,7 +1160,7 @@ async fn test_route_multiple_local_incoming_messages_to_multiple_subscribers_sam
     let local_path = Path::Local(RelativePath::new("/room", "/five"));
     let local_addr = RelativeUri::try_from("/room".to_string()).unwrap();
 
-    let (router_request_tx, _remote_rx, _local_rx, (_, local_requests)) =
+    let (router_request_tx, _remote_rx, _local_rx, (_, local_requests), _close_tx) =
         create_connection_manager().await;
 
     let local_tx = register_connection(&router_request_tx, Origin::Local(local_addr.clone())).await;
@@ -1197,7 +1201,7 @@ async fn test_route_multiple_remote_incoming_messages_to_multiple_subscribers_sa
     let second_remote_path = Path::Remote(AbsolutePath::new(host.clone(), "/room", "/six"));
     let remote_addr = SchemeSocketAddr::new(Scheme::Ws, "127.0.0.1:9001".parse().unwrap());
 
-    let (router_request_tx, _remote_rx, _local_rx, (remote_requests, _)) =
+    let (router_request_tx, _remote_rx, _local_rx, (remote_requests, _), _close_tx) =
         create_connection_manager().await;
 
     let remote_tx =
@@ -1238,7 +1242,7 @@ async fn test_route_multiple_local_incoming_messages_to_multiple_subscribers_sam
     let second_local_path = Path::Local(RelativePath::new("/room", "/six"));
     let local_addr = RelativeUri::try_from("/room".to_string()).unwrap();
 
-    let (router_request_tx, _remote_rx, _local_rx, (_, local_requests)) =
+    let (router_request_tx, _remote_rx, _local_rx, (_, local_requests), _close_tx) =
         create_connection_manager().await;
 
     let local_tx = register_connection(&router_request_tx, Origin::Local(local_addr.clone())).await;
@@ -1283,7 +1287,7 @@ async fn test_route_multiple_remote_incoming_message_to_multiple_subscribers_dif
     let first_remote_addr = SchemeSocketAddr::new(Scheme::Ws, "127.0.0.1:9001".parse().unwrap());
     let second_remote_addr = SchemeSocketAddr::new(Scheme::Ws, "127.0.0.2:9001".parse().unwrap());
 
-    let (router_request_tx, _remote_rx, _local_rx, (remote_requests, _)) =
+    let (router_request_tx, _remote_rx, _local_rx, (remote_requests, _), _close_tx) =
         create_connection_manager().await;
 
     let first_remote_tx =
@@ -1343,7 +1347,7 @@ async fn test_route_multiple_local_incoming_message_to_multiple_subscribers_diff
     let first_local_addr = RelativeUri::try_from("/hotel".to_string()).unwrap();
     let second_local_addr = RelativeUri::try_from("/motel".to_string()).unwrap();
 
-    let (router_request_tx, _remote_rx, _local_rx, (_, local_requests)) =
+    let (router_request_tx, _remote_rx, _local_rx, (_, local_requests), _close_tx) =
         create_connection_manager().await;
 
     let first_local_tx =
@@ -1407,7 +1411,7 @@ async fn test_route_multiple_remote_incoming_message_to_multiple_subscribers_dif
     let second_remote_addr = SchemeSocketAddr::new(Scheme::Ws, "127.0.0.2:9001".parse().unwrap());
     let third_remote_addr = SchemeSocketAddr::new(Scheme::Ws, "127.0.0.3:9001".parse().unwrap());
 
-    let (router_request_tx, _remote_rx, _local_rx, (remote_requests, _)) =
+    let (router_request_tx, _remote_rx, _local_rx, (remote_requests, _), _close_tx) =
         create_connection_manager().await;
 
     let first_remote_tx =
@@ -1496,7 +1500,7 @@ async fn test_route_multiple_local_incoming_message_to_multiple_subscribers_diff
     let second_local_addr = RelativeUri::try_from("/motel".to_string()).unwrap();
     let third_local_addr = RelativeUri::try_from("/house".to_string()).unwrap();
 
-    let (router_request_tx, _remote_rx, _local_rx, (_, local_requests)) =
+    let (router_request_tx, _remote_rx, _local_rx, (_, local_requests), _close_tx) =
         create_connection_manager().await;
 
     let first_local_tx =

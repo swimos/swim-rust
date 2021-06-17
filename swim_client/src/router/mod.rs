@@ -145,6 +145,7 @@ pub struct ClientConnectionsManager<Path: Addressable> {
     remote_router_tx: mpsc::Sender<RemoteRoutingRequest>,
     plane_router_tx: Option<mpsc::Sender<PlaneRoutingRequest>>,
     buffer_size: NonZeroUsize,
+    close_rx: CloseReceiver,
 }
 
 type SubscriptionRequestSender = mpsc::Sender<(RawRoute, SubscriptionRequest)>;
@@ -155,12 +156,14 @@ impl<Path: Addressable> ClientConnectionsManager<Path> {
         remote_router_tx: mpsc::Sender<RemoteRoutingRequest>,
         plane_router_tx: Option<mpsc::Sender<PlaneRoutingRequest>>,
         buffer_size: NonZeroUsize,
+        close_rx: CloseReceiver,
     ) -> ClientConnectionsManager<Path> {
         ClientConnectionsManager {
             router_request_rx,
             remote_router_tx,
             plane_router_tx,
             buffer_size,
+            close_rx,
         }
     }
 
@@ -170,6 +173,7 @@ impl<Path: Addressable> ClientConnectionsManager<Path> {
             remote_router_tx,
             plane_router_tx,
             buffer_size,
+            close_rx,
         } = self;
 
         let mut outgoing_managers: HashMap<
@@ -180,9 +184,12 @@ impl<Path: Addressable> ClientConnectionsManager<Path> {
         let mut router_request_rx = ReceiverStream::new(router_request_rx).fuse();
         let futures = FuturesUnordered::new();
         let mut close_txs = Vec::new();
-
+        let mut close_trigger = close_rx.clone().fuse();
         loop {
-            let next: Option<ClientRequest<Path>> = router_request_rx.next().await;
+            let next: Option<ClientRequest<Path>> = select_biased! {
+                request = router_request_rx.next() => request,
+                _stop = close_trigger => None,
+            };
 
             match next {
                 Some(ClientRequest::Connect { request, origin }) => {
@@ -190,7 +197,7 @@ impl<Path: Addressable> ClientConnectionsManager<Path> {
                         .entry(origin.get_manager_key()?)
                         .or_insert_with(|| {
                             let (manager, sender, sub_tx) =
-                                ClientConnectionManager::new(buffer_size);
+                                ClientConnectionManager::new(buffer_size, close_rx.clone());
 
                             let handle = spawn(manager.run());
                             futures.push(handle);
@@ -243,7 +250,7 @@ impl<Path: Addressable> ClientConnectionsManager<Path> {
                             .entry(node.to_string())
                             .or_insert_with(|| {
                                 let (manager, sender, sub_tx) =
-                                    ClientConnectionManager::new(buffer_size);
+                                    ClientConnectionManager::new(buffer_size, close_rx.clone());
 
                                 let handle = spawn(manager.run());
                                 futures.push(handle);
@@ -365,7 +372,7 @@ impl<Path: Addressable> ClientConnectionsManager<Path> {
                             .entry(host.to_string())
                             .or_insert_with(|| {
                                 let (manager, sender, sub_tx) =
-                                    ClientConnectionManager::new(buffer_size);
+                                    ClientConnectionManager::new(buffer_size, close_rx.clone());
 
                                 let handle = spawn(manager.run());
                                 futures.push(handle);
@@ -410,11 +417,13 @@ pub(crate) struct ClientConnectionManager {
     envelope_rx: mpsc::Receiver<TaggedEnvelope>,
     sub_rx: mpsc::Receiver<(RawRoute, SubscriptionRequest)>,
     buffer_size: NonZeroUsize,
+    close_rx: CloseReceiver,
 }
 
 impl ClientConnectionManager {
     pub(crate) fn new(
         buffer_size: NonZeroUsize,
+        close_rx: CloseReceiver,
     ) -> (
         ClientConnectionManager,
         mpsc::Sender<TaggedEnvelope>,
@@ -427,6 +436,7 @@ impl ClientConnectionManager {
                 envelope_rx,
                 sub_rx,
                 buffer_size,
+                close_rx,
             },
             envelope_tx,
             sub_tx,
@@ -438,21 +448,24 @@ impl ClientConnectionManager {
             envelope_rx,
             sub_rx,
             buffer_size,
+            close_rx,
         } = self;
 
         let mut envelope_rx = ReceiverStream::new(envelope_rx).fuse();
         let mut sub_rx = ReceiverStream::new(sub_rx).fuse();
 
         let mut subs: Vec<mpsc::Sender<Envelope>> = Vec::new();
+        let mut close_trigger = close_rx.clone().fuse();
 
         loop {
-            let next: Either<Option<TaggedEnvelope>, Option<(RawRoute, SubscriptionRequest)>> = select_biased! {
-                envelope = envelope_rx.next() => Either::Left(envelope),
-                sub = sub_rx.next() => Either::Right(sub),
+            let next: Option<Either<TaggedEnvelope, (RawRoute, SubscriptionRequest)>> = select_biased! {
+                envelope = envelope_rx.next() => envelope.map(Either::Left),
+                sub = sub_rx.next() => sub.map(Either::Right),
+                _stop = close_trigger => None,
             };
 
             match next {
-                Either::Left(Some(envelope)) => match envelope.1.clone().into_incoming() {
+                Some(Either::Left(envelope)) => match envelope.1.clone().into_incoming() {
                     Ok(_) => {
                         broadcast(&mut subs, envelope.1).await?;
                     }
@@ -460,7 +473,7 @@ impl ClientConnectionManager {
                         warn!("Unsupported message: {:?}", env);
                     }
                 },
-                Either::Right(Some((raw_route, sub_request))) => {
+                Some(Either::Right((raw_route, sub_request))) => {
                     let (subscriber_tx, subscriber_rx) = mpsc::channel(buffer_size.get());
                     subs.push(subscriber_tx);
                     if sub_request.send(Ok((raw_route, subscriber_rx))).is_err() {
