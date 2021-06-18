@@ -81,7 +81,7 @@ impl<'a, 'b> From<&'b StructModel<'a>> for SegregatedStructModel<'a, 'b> {
 pub(crate) struct StructDef<'a, Flds> {
     name: &'a Ident,
     top: &'a dyn ToTokens,
-    attributes: &'a Vec<Attribute>,
+    attributes: &'a [Attribute],
     definition: &'a Flds,
 }
 
@@ -89,7 +89,7 @@ impl<'a, Flds> StructDef<'a, Flds> {
     pub(crate) fn new(
         name: &'a Ident,
         top: &'a dyn ToTokens,
-        attributes: &'a Vec<Attribute>,
+        attributes: &'a [Attribute],
         definition: &'a Flds,
     ) -> Self {
         StructDef {
@@ -146,8 +146,8 @@ impl<'a> TryValidate<&'a Fields> for FieldsModel<'a> {
 
         let field_models = if let Some(field_it) = fields {
             field_it
-                .zip(0..)
-                .map(|(fld, i)| FieldWithIndex(fld, i))
+                .enumerate()
+                .map(|(i, fld)| FieldWithIndex(fld, i))
                 .validate_collect(true, TaggedFieldModel::try_validate)
         } else {
             Validation::valid(vec![])

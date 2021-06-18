@@ -93,7 +93,7 @@ impl<T, E, C: Append<E> + Zero> From<Result<T, E>> for Validation<T, C> {
 }
 
 impl<T, E: Zero> Validation<T, E> {
-    pub fn to_result(self) -> Result<T, E> {
+    pub fn into_result(self) -> Result<T, E> {
         match self {
             Validation::Validated(value, err) if err.is_zero() => Ok(value),
             Validation::Validated(_, err) | Validation::Failed(err) => Err(err),

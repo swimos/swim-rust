@@ -48,14 +48,14 @@ pub fn build_derive_structural_writable(
 fn struct_derive_structural_writable<Flds: StructLike>(
     input: StructDef<'_, Flds>,
 ) -> Result<TokenStream, Errors<syn::Error>> {
-    let model = StructModel::try_validate(input).to_result()?;
+    let model = StructModel::try_validate(input).into_result()?;
     let segregated = SegregatedStructModel::from(&model);
     let derive = DeriveStructuralWritable(segregated);
     Ok(derive.into_token_stream())
 }
 
 fn enum_derive_structural_writable(input: EnumDef<'_>) -> Result<TokenStream, Errors<syn::Error>> {
-    let model = EnumModel::try_validate(input).to_result()?;
+    let model = EnumModel::try_validate(input).into_result()?;
     let segregated = SegregatedEnumModel::from(&model);
     let derive = DeriveStructuralWritable(segregated);
     Ok(derive.into_token_stream())

@@ -92,7 +92,10 @@ impl<'a> TaggedFieldModel<'a> {
     }
 
     pub fn is_valid(&self) -> bool {
-        !(matches!(self.directive, FieldKind::Header | FieldKind::Attr) && !self.is_labelled())
+        match self.directive {
+            FieldKind::Header | FieldKind::Attr => self.is_labelled(),
+            _ => true,
+        }
     }
 }
 
@@ -183,7 +186,7 @@ impl<'a> TryValidate<FieldWithIndex<'a>> for TaggedFieldModel<'a> {
     }
 }
 
-const KIND_MAPPING: [(&'static Symbol, FieldKind); 7] = [
+const KIND_MAPPING: [(&Symbol, FieldKind); 7] = [
     (&HEADER_PATH, FieldKind::Header),
     (&ATTR_PATH, FieldKind::Attr),
     (&SLOT_PATH, FieldKind::Item),
@@ -284,7 +287,7 @@ impl<'a, 'b> Add<&'b TaggedFieldModel<'a>> for SegregatedFields<'a, 'b> {
         let TaggedFieldModel { model, directive } = rhs;
         match directive {
             FieldKind::HeaderBody => {
-                if !header.tag_body.is_some() {
+                if header.tag_body.is_none() {
                     header.tag_body = Some(model);
                 }
             }
@@ -308,7 +311,7 @@ impl<'a, 'b> Add<&'b TaggedFieldModel<'a>> for SegregatedFields<'a, 'b> {
                 }
             }
             FieldKind::Tagged => {
-                if !header.tag_name.is_some() {
+                if header.tag_name.is_none() {
                     header.tag_name = Some(model);
                 }
             }

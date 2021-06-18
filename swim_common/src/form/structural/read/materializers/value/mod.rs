@@ -77,7 +77,7 @@ impl ValueMaterializer {
         self.stack.last_mut().ok_or(ReadError::ReaderUnderflow)
     }
 
-    fn new_record_frame(&mut self, in_body: bool) {
+    fn new_record_frame(&mut self, in_body: bool) -> &mut RecordBuilder {
         let frame = if let Some(key) = self.slot_key.take() {
             RecordBuilder::new(RecordKey::Slot(key), in_body)
         } else {
@@ -85,7 +85,7 @@ impl ValueMaterializer {
         };
         let len = self.stack.len();
         self.stack.push(frame);
-        &mut self.stack[len];
+        &mut self.stack[len]
     }
 
     fn new_record_item(&mut self) -> Result<(), ReadError> {
@@ -101,7 +101,9 @@ impl ValueMaterializer {
     fn new_attr_frame(&mut self, name: Text) {
         match self.stack.last_mut() {
             Some(top) if !top.in_body => {}
-            _ => self.new_record_frame(false),
+            _ => {
+                self.new_record_frame(false);
+            }
         }
         self.stack
             .push(RecordBuilder::new(RecordKey::Attr(name), true))
@@ -243,7 +245,7 @@ fn recognize_item(input: ParseEvent<'_>) -> ItemEvent {
 impl Recognizer for ValueMaterializer {
     type Target = Value;
 
-    fn feed_event<'a>(&mut self, input: ParseEvent<'a>) -> Option<Result<Self::Target, ReadError>> {
+    fn feed_event(&mut self, input: ParseEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         if self.stack.is_empty() {
             match recognize_item(input) {
                 ItemEvent::Primitive(v) => Some(Ok(v)),

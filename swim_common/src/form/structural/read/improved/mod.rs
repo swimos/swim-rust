@@ -50,7 +50,7 @@ pub trait RecognizerReadable: Sized {
 pub trait Recognizer {
     type Target;
 
-    fn feed_event<'a>(&mut self, input: ParseEvent<'a>) -> Option<Result<Self::Target, ReadError>>;
+    fn feed_event(&mut self, input: ParseEvent<'_>) -> Option<Result<Self::Target, ReadError>>;
 
     fn try_flush(&mut self) -> Option<Result<Self::Target, ReadError>> {
         None
@@ -156,7 +156,7 @@ pub struct VecRecognizer<T, R> {
 impl<T, R: Recognizer<Target = T>> Recognizer for VecRecognizer<T, R> {
     type Target = Vec<T>;
 
-    fn feed_event<'a>(&mut self, input: ParseEvent<'a>) -> Option<Result<Self::Target, ReadError>> {
+    fn feed_event(&mut self, input: ParseEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         match self.stage {
             BodyStage::Init => {
                 if matches!(&input, ParseEvent::StartBody) {
@@ -332,7 +332,7 @@ impl<T, Flds> NamedFieldsRecognizer<T, Flds> {
 impl<T, Flds> Recognizer for NamedFieldsRecognizer<T, Flds> {
     type Target = T;
 
-    fn feed_event<'a>(&mut self, input: ParseEvent<'a>) -> Option<Result<Self::Target, ReadError>> {
+    fn feed_event(&mut self, input: ParseEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         let NamedFieldsRecognizer {
             is_attr_body,
             state,
@@ -453,7 +453,7 @@ impl<T, Flds> OrdinalFieldsRecognizer<T, Flds> {
 impl<T, Flds> Recognizer for OrdinalFieldsRecognizer<T, Flds> {
     type Target = T;
 
-    fn feed_event<'a>(&mut self, input: ParseEvent<'a>) -> Option<Result<Self::Target, ReadError>> {
+    fn feed_event(&mut self, input: ParseEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         let OrdinalFieldsRecognizer {
             is_attr_body,
             state,
@@ -476,18 +476,16 @@ impl<T, Flds> Recognizer for OrdinalFieldsRecognizer<T, Flds> {
                 || (*is_attr_body && matches!(&input, ParseEvent::EndAttribute)))
         {
             Some(on_done(fields))
+        } else if *index == *num_fields {
+            Some(Err(ReadError::UnexpectedItem))
         } else {
-            if *index == *num_fields {
-                Some(Err(ReadError::UnexpectedItem))
+            let r = select_recog(fields, *index, input)?;
+            if let Err(e) = r {
+                Some(Err(e))
             } else {
-                let r = select_recog(fields, *index, input)?;
-                if let Err(e) = r {
-                    Some(Err(e))
-                } else {
-                    *index += 1;
-                    *state = BodyStage::Between;
-                    None
-                }
+                *index += 1;
+                *state = BodyStage::Between;
+                None
             }
         }
     }
@@ -518,7 +516,7 @@ impl<R: Recognizer> SimpleAttrBody<R> {
 impl<R: Recognizer> Recognizer for SimpleAttrBody<R> {
     type Target = R::Target;
 
-    fn feed_event<'a>(&mut self, input: ParseEvent<'a>) -> Option<Result<Self::Target, ReadError>> {
+    fn feed_event(&mut self, input: ParseEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         if self.after_content {
             if matches!(&input, ParseEvent::EndAttribute) {
                 if let Some(t) = self.value.take() {
@@ -578,7 +576,7 @@ where
 {
     type Target = R1::Target;
 
-    fn feed_event<'a>(&mut self, input: ParseEvent<'a>) -> Option<Result<Self::Target, ReadError>> {
+    fn feed_event(&mut self, input: ParseEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         let FirstOf {
             first_active,
             second_active,
@@ -692,16 +690,59 @@ pub struct LabelledStructRecognizer<T, Flds> {
     reset: fn(&mut Flds),
 }
 
+pub struct LabelledVTable<T, Flds> {
+    select_index: for<'a> fn(LabelledFieldKey<'a>) -> Option<u32>,
+    select_recog: Selector<Flds>,
+    on_done: fn(&mut Flds) -> Result<T, ReadError>,
+    reset: fn(&mut Flds),
+}
+
+impl<T, Flds> LabelledVTable<T, Flds> {
+    pub fn new(
+        select_index: for<'a> fn(LabelledFieldKey<'a>) -> Option<u32>,
+        select_recog: Selector<Flds>,
+        on_done: fn(&mut Flds) -> Result<T, ReadError>,
+        reset: fn(&mut Flds),
+    ) -> Self {
+        LabelledVTable {
+            select_index,
+            select_recog,
+            on_done,
+            reset,
+        }
+    }
+}
+
+pub struct OrdinalVTable<T, Flds> {
+    select_index: for<'a> fn(OrdinalFieldKey<'a>) -> Option<u32>,
+    select_recog: Selector<Flds>,
+    on_done: fn(&mut Flds) -> Result<T, ReadError>,
+    reset: fn(&mut Flds),
+}
+
+impl<T, Flds> OrdinalVTable<T, Flds> {
+    pub fn new(
+        select_index: for<'a> fn(OrdinalFieldKey<'a>) -> Option<u32>,
+        select_recog: Selector<Flds>,
+        on_done: fn(&mut Flds) -> Result<T, ReadError>,
+        reset: fn(&mut Flds),
+    ) -> Self {
+        OrdinalVTable {
+            select_index,
+            select_recog,
+            on_done,
+            reset,
+        }
+    }
+}
+
 impl<T, Flds> LabelledStructRecognizer<T, Flds> {
     pub fn new(
         tag: &'static str,
         has_header_body: bool,
         fields: Flds,
         num_fields: u32,
-        select_index: for<'a> fn(LabelledFieldKey<'a>) -> Option<u32>,
-        select_recog: Selector<Flds>,
-        on_done: fn(&mut Flds) -> Result<T, ReadError>,
-        reset: fn(&mut Flds),
+        vtable: LabelledVTable<T, Flds>,
     ) -> Self {
         LabelledStructRecognizer {
             tag,
@@ -709,11 +750,11 @@ impl<T, Flds> LabelledStructRecognizer<T, Flds> {
             state: LabelledStructState::Init,
             fields,
             progress: Bitset::new(num_fields),
-            select_index,
+            select_index: vtable.select_index,
             index: 0,
-            select_recog,
-            on_done,
-            reset,
+            select_recog: vtable.select_recog,
+            on_done: vtable.on_done,
+            reset: vtable.reset,
         }
     }
 
@@ -721,10 +762,7 @@ impl<T, Flds> LabelledStructRecognizer<T, Flds> {
         has_header_body: bool,
         fields: Flds,
         num_fields: u32,
-        select_index: for<'a> fn(LabelledFieldKey<'a>) -> Option<u32>,
-        select_recog: Selector<Flds>,
-        on_done: fn(&mut Flds) -> Result<T, ReadError>,
-        reset: fn(&mut Flds),
+        vtable: LabelledVTable<T, Flds>,
     ) -> Self {
         LabelledStructRecognizer {
             tag: "",
@@ -732,11 +770,11 @@ impl<T, Flds> LabelledStructRecognizer<T, Flds> {
             state: LabelledStructState::HeaderInit,
             fields,
             progress: Bitset::new(num_fields),
-            select_index,
+            select_index: vtable.select_index,
             index: 0,
-            select_recog,
-            on_done,
-            reset,
+            select_recog: vtable.select_recog,
+            on_done: vtable.on_done,
+            reset: vtable.reset,
         }
     }
 }
@@ -747,22 +785,19 @@ impl<T, Flds> OrdinalStructRecognizer<T, Flds> {
         has_header_body: bool,
         fields: Flds,
         num_fields: u32,
-        select_index: for<'a> fn(OrdinalFieldKey<'a>) -> Option<u32>,
-        select_recog: Selector<Flds>,
-        on_done: fn(&mut Flds) -> Result<T, ReadError>,
-        reset: fn(&mut Flds),
+        vtable: OrdinalVTable<T, Flds>,
     ) -> Self {
         OrdinalStructRecognizer {
             tag,
             has_header_body,
             state: OrdinalStructState::Init,
-            fields: fields,
+            fields,
             progress: Bitset::new(num_fields),
-            select_index,
+            select_index: vtable.select_index,
             index: 0,
-            select_recog,
-            on_done,
-            reset,
+            select_recog: vtable.select_recog,
+            on_done: vtable.on_done,
+            reset: vtable.reset,
         }
     }
 
@@ -770,22 +805,19 @@ impl<T, Flds> OrdinalStructRecognizer<T, Flds> {
         has_header_body: bool,
         fields: Flds,
         num_fields: u32,
-        select_index: for<'a> fn(OrdinalFieldKey<'a>) -> Option<u32>,
-        select_recog: Selector<Flds>,
-        on_done: fn(&mut Flds) -> Result<T, ReadError>,
-        reset: fn(&mut Flds),
+        vtable: OrdinalVTable<T, Flds>,
     ) -> Self {
         OrdinalStructRecognizer {
             tag: "",
             has_header_body,
             state: OrdinalStructState::HeaderInit,
-            fields: fields,
+            fields,
             progress: Bitset::new(num_fields),
-            select_index,
+            select_index: vtable.select_index,
             index: 0,
-            select_recog,
-            on_done,
-            reset,
+            select_recog: vtable.select_recog,
+            on_done: vtable.on_done,
+            reset: vtable.reset,
         }
     }
 }
@@ -793,7 +825,7 @@ impl<T, Flds> OrdinalStructRecognizer<T, Flds> {
 impl<T, Flds> Recognizer for LabelledStructRecognizer<T, Flds> {
     type Target = T;
 
-    fn feed_event<'a>(&mut self, input: ParseEvent<'a>) -> Option<Result<Self::Target, ReadError>> {
+    fn feed_event(&mut self, input: ParseEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         let LabelledStructRecognizer {
             tag,
             has_header_body,
@@ -974,7 +1006,7 @@ pub struct OrdinalStructRecognizer<T, Flds> {
 impl<T, Flds> Recognizer for OrdinalStructRecognizer<T, Flds> {
     type Target = T;
 
-    fn feed_event<'a>(&mut self, input: ParseEvent<'a>) -> Option<Result<Self::Target, ReadError>> {
+    fn feed_event(&mut self, input: ParseEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         let OrdinalStructRecognizer {
             tag,
             has_header_body,
@@ -1132,9 +1164,11 @@ impl<T, Flds> Recognizer for OrdinalStructRecognizer<T, Flds> {
     }
 }
 
+type MakeArc<T> = fn(T) -> Arc<T>;
+
 impl<T: RecognizerReadable> RecognizerReadable for Arc<T> {
-    type Rec = MappedRecognizer<T::Rec, fn(T) -> Arc<T>>;
-    type AttrRec = MappedRecognizer<T::AttrRec, fn(T) -> Arc<T>>;
+    type Rec = MappedRecognizer<T::Rec, MakeArc<T>>;
+    type AttrRec = MappedRecognizer<T::AttrRec, MakeArc<T>>;
 
     fn make_recognizer() -> Self::Rec {
         MappedRecognizer::new(T::make_recognizer(), Arc::new)
@@ -1162,7 +1196,7 @@ impl<R> OptionRecognizer<R> {
 impl<R: Recognizer> Recognizer for OptionRecognizer<R> {
     type Target = Option<R::Target>;
 
-    fn feed_event<'a>(&mut self, input: ParseEvent<'a>) -> Option<Result<Self::Target, ReadError>> {
+    fn feed_event(&mut self, input: ParseEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         let OptionRecognizer {
             inner,
             reading_value,
@@ -1217,7 +1251,7 @@ impl<T> Default for EmptyAttrRecognizer<T> {
 impl<T> Recognizer for EmptyAttrRecognizer<T> {
     type Target = Option<T>;
 
-    fn feed_event<'a>(&mut self, input: ParseEvent<'a>) -> Option<Result<Self::Target, ReadError>> {
+    fn feed_event(&mut self, input: ParseEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         if self.seen_extant && matches!(&input, ParseEvent::EndAttribute) {
             Some(Ok(None))
         } else if !self.seen_extant && matches!(&input, ParseEvent::Extant) {
@@ -1251,7 +1285,7 @@ where
 {
     type Target = U;
 
-    fn feed_event<'a>(&mut self, input: ParseEvent<'a>) -> Option<Result<Self::Target, ReadError>> {
+    fn feed_event(&mut self, input: ParseEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         let MappedRecognizer { inner, f, .. } = self;
         inner.feed_event(input).map(|r| r.map(f))
     }
@@ -1266,10 +1300,11 @@ where
     }
 }
 
+pub type MakeOption<T> = fn(T) -> Option<T>;
+
 impl<T: RecognizerReadable> RecognizerReadable for Option<T> {
     type Rec = OptionRecognizer<T::Rec>;
-    type AttrRec =
-        FirstOf<EmptyAttrRecognizer<T>, MappedRecognizer<T::AttrRec, fn(T) -> Option<T>>>;
+    type AttrRec = FirstOf<EmptyAttrRecognizer<T>, MappedRecognizer<T::AttrRec, MakeOption<T>>>;
 
     fn make_recognizer() -> Self::Rec {
         OptionRecognizer::new(T::make_recognizer())
@@ -1370,7 +1405,7 @@ where
 {
     type Target = HashMap<RK::Target, RV::Target>;
 
-    fn feed_event<'a>(&mut self, input: ParseEvent<'a>) -> Option<Result<Self::Target, ReadError>> {
+    fn feed_event(&mut self, input: ParseEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         match self.stage {
             MapStage::Init => {
                 if matches!(&input, ParseEvent::StartBody) {
@@ -1499,23 +1534,20 @@ impl<T, Flds> DelegateStructRecognizer<T, Flds> {
         has_header_body: bool,
         fields: Flds,
         num_fields: u32,
-        select_index: for<'a> fn(OrdinalFieldKey<'a>) -> Option<u32>,
-        select_recog: Selector<Flds>,
-        on_done: fn(&mut Flds) -> Result<T, ReadError>,
-        reset: fn(&mut Flds),
+        vtable: OrdinalVTable<T, Flds>,
         simple_body: bool,
     ) -> Self {
         DelegateStructRecognizer {
             tag,
             has_header_body,
             state: DelegateStructState::Init,
-            fields: fields,
+            fields,
             progress: Bitset::new(num_fields),
-            select_index,
+            select_index: vtable.select_index,
             index: 0,
-            select_recog,
-            on_done,
-            reset,
+            select_recog: vtable.select_recog,
+            on_done: vtable.on_done,
+            reset: vtable.reset,
             simple_body,
         }
     }
@@ -1524,23 +1556,20 @@ impl<T, Flds> DelegateStructRecognizer<T, Flds> {
         has_header_body: bool,
         fields: Flds,
         num_fields: u32,
-        select_index: for<'a> fn(OrdinalFieldKey<'a>) -> Option<u32>,
-        select_recog: Selector<Flds>,
-        on_done: fn(&mut Flds) -> Result<T, ReadError>,
-        reset: fn(&mut Flds),
+        vtable: OrdinalVTable<T, Flds>,
         simple_body: bool,
     ) -> Self {
         DelegateStructRecognizer {
             tag: "",
             has_header_body,
             state: DelegateStructState::HeaderInit,
-            fields: fields,
+            fields,
             progress: Bitset::new(num_fields),
-            select_index,
+            select_index: vtable.select_index,
             index: 0,
-            select_recog,
-            on_done,
-            reset,
+            select_recog: vtable.select_recog,
+            on_done: vtable.on_done,
+            reset: vtable.reset,
             simple_body,
         }
     }
@@ -1549,7 +1578,7 @@ impl<T, Flds> DelegateStructRecognizer<T, Flds> {
 impl<T, Flds> Recognizer for DelegateStructRecognizer<T, Flds> {
     type Target = T;
 
-    fn feed_event<'a>(&mut self, input: ParseEvent<'a>) -> Option<Result<Self::Target, ReadError>> {
+    fn feed_event(&mut self, input: ParseEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         let DelegateStructRecognizer {
             tag,
             has_header_body,
@@ -1671,25 +1700,23 @@ impl<T, Flds> Recognizer for DelegateStructRecognizer<T, Flds> {
                             *state = DelegateStructState::AttrItem;
                             None
                         }
-                    } else {
-                        if let Some(i) = select_index(OrdinalFieldKey::FirstItem) {
-                            *index = i;
-                            if *simple_body {
-                                Some(Err(ReadError::UnexpectedField(name.into())))
-                            } else {
-                                *state = DelegateStructState::DelegatedComplex;
-                                if let Err(e) =
-                                    select_recog(fields, *index, ParseEvent::StartAttribute(name))?
-                                {
-                                    Some(Err(e))
-                                } else {
-                                    *state = DelegateStructState::Done;
-                                    None
-                                }
-                            }
-                        } else {
+                    } else if let Some(i) = select_index(OrdinalFieldKey::FirstItem) {
+                        *index = i;
+                        if *simple_body {
                             Some(Err(ReadError::UnexpectedField(name.into())))
+                        } else {
+                            *state = DelegateStructState::DelegatedComplex;
+                            if let Err(e) =
+                                select_recog(fields, *index, ParseEvent::StartAttribute(name))?
+                            {
+                                Some(Err(e))
+                            } else {
+                                *state = DelegateStructState::Done;
+                                None
+                            }
                         }
+                    } else {
+                        Some(Err(ReadError::UnexpectedField(name.into())))
                     }
                 }
                 ow => Some(Err(bad_kind(&ow))),
@@ -1752,10 +1779,7 @@ impl<T, Flds> Recognizer for DelegateStructRecognizer<T, Flds> {
 impl Recognizer for CNil {
     type Target = CNil;
 
-    fn feed_event<'a>(
-        &mut self,
-        _input: ParseEvent<'a>,
-    ) -> Option<Result<Self::Target, ReadError>> {
+    fn feed_event(&mut self, _input: ParseEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         self.explode()
     }
 
@@ -1769,7 +1793,7 @@ where
 {
     type Target = CCons<H::Target, T::Target>;
 
-    fn feed_event<'a>(&mut self, input: ParseEvent<'a>) -> Option<Result<Self::Target, ReadError>> {
+    fn feed_event(&mut self, input: ParseEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         match self {
             CCons::Head(h) => h.feed_event(input).map(|r| r.map(CCons::Head)),
             CCons::Tail(t) => t.feed_event(input).map(|r| r.map(CCons::Tail)),
@@ -1812,7 +1836,7 @@ where
 {
     type Target = <<Var as Recognizer>::Target as Unify>::Out;
 
-    fn feed_event<'a>(&mut self, input: ParseEvent<'a>) -> Option<Result<Self::Target, ReadError>> {
+    fn feed_event(&mut self, input: ParseEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         let TaggedEnumRecognizer {
             select_var,
             variant,

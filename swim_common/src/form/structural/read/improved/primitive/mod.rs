@@ -35,7 +35,7 @@ pub struct BoolRecognizer;
 impl Recognizer for UnitRecognizer {
     type Target = ();
 
-    fn feed_event<'a>(&mut self, input: ParseEvent<'a>) -> Option<Result<Self::Target, ReadError>> {
+    fn feed_event(&mut self, input: ParseEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         match input {
             ParseEvent::Extant => Some(Ok(())),
             ow => Some(Err(super::bad_kind(&ow))),
@@ -48,7 +48,7 @@ impl Recognizer for UnitRecognizer {
 impl Recognizer for I32Recognizer {
     type Target = i32;
 
-    fn feed_event<'a>(&mut self, input: ParseEvent<'a>) -> Option<Result<Self::Target, ReadError>> {
+    fn feed_event(&mut self, input: ParseEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         match input {
             ParseEvent::Number(NumericLiteral::Int(n)) => {
                 Some(i32::try_from(n).map_err(|_| ReadError::NumberOutOfRange))
@@ -66,7 +66,7 @@ impl Recognizer for I32Recognizer {
 impl Recognizer for I64Recognizer {
     type Target = i64;
 
-    fn feed_event<'a>(&mut self, input: ParseEvent<'a>) -> Option<Result<Self::Target, ReadError>> {
+    fn feed_event(&mut self, input: ParseEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         match input {
             ParseEvent::Number(NumericLiteral::Int(n)) => Some(Ok(n)),
             ParseEvent::Number(NumericLiteral::UInt(n)) => {
@@ -82,7 +82,7 @@ impl Recognizer for I64Recognizer {
 impl Recognizer for U32Recognizer {
     type Target = u32;
 
-    fn feed_event<'a>(&mut self, input: ParseEvent<'a>) -> Option<Result<Self::Target, ReadError>> {
+    fn feed_event(&mut self, input: ParseEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         match input {
             ParseEvent::Number(NumericLiteral::Int(n)) => {
                 Some(u32::try_from(n).map_err(|_| ReadError::NumberOutOfRange))
@@ -100,7 +100,7 @@ impl Recognizer for U32Recognizer {
 impl Recognizer for U64Recognizer {
     type Target = u64;
 
-    fn feed_event<'a>(&mut self, input: ParseEvent<'a>) -> Option<Result<Self::Target, ReadError>> {
+    fn feed_event(&mut self, input: ParseEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         match input {
             ParseEvent::Number(NumericLiteral::Int(n)) => {
                 Some(u64::try_from(n).map_err(|_| ReadError::NumberOutOfRange))
@@ -116,7 +116,7 @@ impl Recognizer for U64Recognizer {
 impl Recognizer for BigIntRecognizer {
     type Target = BigInt;
 
-    fn feed_event<'a>(&mut self, input: ParseEvent<'a>) -> Option<Result<Self::Target, ReadError>> {
+    fn feed_event(&mut self, input: ParseEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         match input {
             ParseEvent::Number(NumericLiteral::Int(n)) => Some(Ok(BigInt::from(n))),
             ParseEvent::Number(NumericLiteral::UInt(n)) => Some(Ok(BigInt::from(n))),
@@ -132,7 +132,7 @@ impl Recognizer for BigIntRecognizer {
 impl Recognizer for BigUintRecognizer {
     type Target = BigUint;
 
-    fn feed_event<'a>(&mut self, input: ParseEvent<'a>) -> Option<Result<Self::Target, ReadError>> {
+    fn feed_event(&mut self, input: ParseEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         match input {
             ParseEvent::Number(NumericLiteral::Int(n)) => {
                 Some(BigUint::try_from(n).map_err(|_| ReadError::NumberOutOfRange))
@@ -152,7 +152,7 @@ impl Recognizer for BigUintRecognizer {
 impl Recognizer for F64Recognizer {
     type Target = f64;
 
-    fn feed_event<'a>(&mut self, input: ParseEvent<'a>) -> Option<Result<Self::Target, ReadError>> {
+    fn feed_event(&mut self, input: ParseEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         match input {
             ParseEvent::Number(NumericLiteral::Float(x)) => Some(Ok(x)),
             ow => Some(Err(super::bad_kind(&ow))),
@@ -165,7 +165,7 @@ impl Recognizer for F64Recognizer {
 impl Recognizer for StringRecognizer {
     type Target = String;
 
-    fn feed_event<'a>(&mut self, input: ParseEvent<'a>) -> Option<Result<Self::Target, ReadError>> {
+    fn feed_event(&mut self, input: ParseEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         match input {
             ParseEvent::TextValue(string) => Some(Ok(string.into())),
             ow => Some(Err(super::bad_kind(&ow))),
@@ -178,7 +178,7 @@ impl Recognizer for StringRecognizer {
 impl Recognizer for TextRecognizer {
     type Target = Text;
 
-    fn feed_event<'a>(&mut self, input: ParseEvent<'a>) -> Option<Result<Self::Target, ReadError>> {
+    fn feed_event(&mut self, input: ParseEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         match input {
             ParseEvent::TextValue(string) => Some(Ok(string.into())),
             ow => Some(Err(super::bad_kind(&ow))),
@@ -191,7 +191,7 @@ impl Recognizer for TextRecognizer {
 impl Recognizer for DataRecognizer {
     type Target = Vec<u8>;
 
-    fn feed_event<'a>(&mut self, input: ParseEvent<'a>) -> Option<Result<Self::Target, ReadError>> {
+    fn feed_event(&mut self, input: ParseEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         match input {
             ParseEvent::Blob(v) => Some(Ok(v)),
             ow => Some(Err(super::bad_kind(&ow))),
@@ -204,7 +204,7 @@ impl Recognizer for DataRecognizer {
 impl Recognizer for BoolRecognizer {
     type Target = bool;
 
-    fn feed_event<'a>(&mut self, input: ParseEvent<'a>) -> Option<Result<Self::Target, ReadError>> {
+    fn feed_event(&mut self, input: ParseEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         match input {
             ParseEvent::Boolean(p) => Some(Ok(p)),
             ow => Some(Err(super::bad_kind(&ow))),
