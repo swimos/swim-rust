@@ -73,8 +73,8 @@ impl<'a, 'b> ToTokens for DeriveStructuralWritable<SegregatedEnumModel<'a, 'b>> 
                 }
             }
         } else {
+            let name = inner.name;
             let write_with_cases = variants.iter().map(|v| {
-                let name = v.inner.name;
                 let destructure = Destructure::variant_match(v.inner);
                 let write_with = WriteWithFn(v);
                 let num_attrs= num_attributes_case(v, true);
@@ -87,7 +87,6 @@ impl<'a, 'b> ToTokens for DeriveStructuralWritable<SegregatedEnumModel<'a, 'b>> 
             });
 
             let write_into_cases = variants.iter().map(|v| {
-                let name = v.inner.name;
                 let destructure = Destructure::variant_match(v.inner);
                 let write_into = WriteIntoFn(v);
                 let num_attrs= num_attributes_case(v, false);
@@ -491,7 +490,7 @@ impl<'a, 'b> ToTokens for NumAttrsEnum<'a, 'b> {
                     FieldIndex::Named(id) =>  quote!(#enum_name::#var_name { #id, .. }),
                     FieldIndex::Ordinal(i) => {
                         let ignore = (0..*i).map(|_| quote!(_));
-                        quote!(#enum_name::#var_name(#(#ignore,)*, #fld_name, ..))
+                        quote!(#enum_name::#var_name(#(#ignore,)* #fld_name, ..))
                     }
                 };
                 quote!(#pat => #base_attrs + swim_common::form::structural::write::StructuralWritable::num_attributes(#fld_name))

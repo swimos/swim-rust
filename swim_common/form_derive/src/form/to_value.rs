@@ -140,7 +140,7 @@ fn compute_as_value(
             let manifest = &descriptor.manifest;
 
             match &f.kind {
-                FieldKind::Slot if !manifest.replaces_body => {
+                FieldKind::Item if !manifest.replaces_body => {
                     match label {
                         un @ Label::Anonymous(_) => {
                             let ident = un.as_ident();

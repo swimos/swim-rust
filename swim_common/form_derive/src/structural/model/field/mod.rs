@@ -167,7 +167,7 @@ impl<'a> TryValidate<FieldWithIndex<'a>> for TaggedFieldModel<'a> {
                         transform,
                         field_ty: ty,
                     },
-                    directive: directive.unwrap_or(FieldKind::Slot),
+                    directive: directive.unwrap_or(FieldKind::Item),
                 };
                 if model.is_valid() {
                     Validation::valid(model)
@@ -186,7 +186,7 @@ impl<'a> TryValidate<FieldWithIndex<'a>> for TaggedFieldModel<'a> {
 const KIND_MAPPING: [(&'static Symbol, FieldKind); 7] = [
     (&HEADER_PATH, FieldKind::Header),
     (&ATTR_PATH, FieldKind::Attr),
-    (&SLOT_PATH, FieldKind::Slot),
+    (&SLOT_PATH, FieldKind::Item),
     (&BODY_PATH, FieldKind::Body),
     (&HEADER_BODY_PATH, FieldKind::HeaderBody),
     (&SKIP_PATH, FieldKind::Skip),
@@ -294,7 +294,7 @@ impl<'a, 'b> Add<&'b TaggedFieldModel<'a>> for SegregatedFields<'a, 'b> {
             FieldKind::Attr => {
                 header.attributes.push(model);
             }
-            FieldKind::Slot => {
+            FieldKind::Item => {
                 if let BodyFields::StdBody(slots) = &mut body {
                     slots.push(model);
                 } else {

@@ -663,3 +663,160 @@ fn derive_struct_complex_body_replacement() {
 
     validate(instance, 2, RecordBodyKind::MapLike, 2, 2);
 }
+
+#[test]
+fn derive_unit_enum_variant() {
+    #[derive(StructuralWritable)]
+    enum UnitEnum {
+        Variant0
+    }
+
+    let unit = UnitEnum::Variant0;
+
+    let value: Value = unit.structure();
+
+    assert_eq!(value, Value::of_attr("Variant0"));
+
+    validate(unit, 1, RecordBodyKind::ArrayLike, 0, 1);
+}
+
+#[test]
+fn derive_labelled_enum_variant() {
+    #[derive(StructuralWritable)]
+    enum LabelledEnum {
+        Variant1 { first: String, second: i64 }
+    }
+
+    let instance = LabelledEnum::Variant1 { first: "hello".to_string(), second: 5 };
+
+    let value: Value = instance.structure();
+
+    assert_eq!(value, Value::Record(
+        vec![Attr::of("Variant1")],
+        vec![
+            Item::slot("first", "hello"),
+            Item::slot("second", 5i64),
+        ]
+    ));
+
+    validate(instance, 1, RecordBodyKind::MapLike, 2, 1);
+}
+
+#[test]
+fn derive_tuple_enum_variant() {
+    #[derive(StructuralWritable)]
+    enum TupleEnum {
+        Variant2(String, i64)
+    }
+
+    let instance = TupleEnum::Variant2("hello".to_string(), 5);
+
+    let value: Value = instance.structure();
+
+    assert_eq!(value, Value::Record(
+        vec![Attr::of("Variant2")],
+        vec![
+            Item::of("hello"),
+            Item::of(5i64),
+        ]
+    ));
+
+    validate(instance, 1, RecordBodyKind::ArrayLike, 2, 1);
+}
+
+#[test]
+fn derive_mixed_enum_type() {
+    #[derive(StructuralWritable)]
+    enum MixedEnum {
+        Variant0,
+        Variant1 { first: String, second: i64 },
+        Variant2(String, i64),
+    }
+
+    let unit = MixedEnum::Variant0;
+
+    let value: Value = unit.structure();
+
+    assert_eq!(value, Value::of_attr("Variant0"));
+
+    validate(unit, 1, RecordBodyKind::ArrayLike, 0, 1);
+
+    let instance = MixedEnum::Variant1 { first: "hello".to_string(), second: 5 };
+
+    let value: Value = instance.structure();
+
+    assert_eq!(value, Value::Record(
+        vec![Attr::of("Variant1")],
+        vec![
+            Item::slot("first", "hello"),
+            Item::slot("second", 5i64),
+        ]
+    ));
+
+    validate(instance, 1, RecordBodyKind::MapLike, 2, 1);
+
+    let instance = MixedEnum::Variant2("hello".to_string(), 5);
+
+    let value: Value = instance.structure();
+
+    assert_eq!(value, Value::Record(
+        vec![Attr::of("Variant2")],
+        vec![
+            Item::of("hello"),
+            Item::of(5i64),
+        ]
+    ));
+
+    validate(instance, 1, RecordBodyKind::ArrayLike, 2, 1);
+}
+
+#[test]
+fn derive_delegated_enum_type() {
+
+    #[derive(StructuralWritable)]
+    struct Inner {
+        value: i32,
+    }
+
+    #[derive(StructuralWritable)]
+    enum MixedEnum {
+        Variant1 {
+            first: String,
+            #[form(body)]
+            second: Inner
+        },
+        Variant2(#[form(name = "first")] String, #[form(body)] Inner),
+    }
+
+    let instance = MixedEnum::Variant1 { first: "hello".to_string(), second: Inner { value: 5} };
+
+    let value: Value = instance.structure();
+
+    assert_eq!(value, Value::Record(
+        vec![
+            Attr::of(("Variant1", Value::record(vec![Item::slot("first", "hello")]))),
+            Attr::of("Inner"),
+        ],
+        vec![
+            Item::slot("value", 5i32),
+        ]
+    ));
+
+    validate(instance, 2, RecordBodyKind::MapLike, 1, 2);
+
+    let instance = MixedEnum::Variant2 ("hello".to_string(), Inner { value: 6});
+
+    let value: Value = instance.structure();
+
+    assert_eq!(value, Value::Record(
+        vec![
+            Attr::of(("Variant2", Value::record(vec![Item::slot("first", "hello")]))),
+            Attr::of("Inner"),
+        ],
+        vec![
+            Item::slot("value", 6i32),
+        ]
+    ));
+
+    validate(instance, 2, RecordBodyKind::MapLike, 1, 2);
+}

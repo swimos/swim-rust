@@ -336,7 +336,7 @@ fn parse_elements(
                         }
                     };
                 }
-                FieldKind::Slot if !field_manifest.replaces_body => {
+                FieldKind::Item if !field_manifest.replaces_body => {
                     let mut build_named_ident = |name_str, ident| {
                         let fn_call = fn_factory(quote!(v));
 

@@ -107,7 +107,7 @@ pub fn fields_from_ast<'t>(
                             manifest.has_attr_fields = true;
                         }
                         NestedMeta::Meta(Meta::Path(path)) if path == SLOT_PATH => {
-                            set_kind(FieldKind::Slot, ctx, true);
+                            set_kind(FieldKind::Item, ctx, true);
 
                             if manifest.replaces_body {
                                 manifest.has_header_fields = true;
@@ -192,7 +192,7 @@ pub fn fields_from_ast<'t>(
                 None => Label::Anonymous(index.into()),
             });
 
-            let kind = kind_opt.unwrap_or(FieldKind::Slot);
+            let kind = kind_opt.unwrap_or(FieldKind::Item);
 
             if let (Label::Anonymous(_), FieldKind::Attr) = (&name, &kind) {
                 ctx.error_spanned_by(
@@ -204,7 +204,7 @@ pub fn fields_from_ast<'t>(
             FormField {
                 original,
                 label: name,
-                kind: kind_opt.unwrap_or(FieldKind::Slot),
+                kind: kind_opt.unwrap_or(FieldKind::Item),
             }
         })
         .collect();

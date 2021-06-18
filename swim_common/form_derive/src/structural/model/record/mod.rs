@@ -169,46 +169,64 @@ impl<'a> TryValidate<&'a Fields> for FieldsModel<'a> {
 }
 
 const BAD_FIELDS: &str = "Body fields cannot be a mix of labelled and unlabelled";
+const BAD_REPLACEMENT: &str = "Where a field replaces the body, all other body fields must be labelled";
 
 fn assess_kind<'a, It>(definition: &'a Fields, fields: It) -> SynValidation<CompoundTypeKind>
 where
     It: Iterator<Item = &'a TaggedFieldModel<'a>> + 'a,
 {
-    let mut kind = CompoundTypeKind::Unit;
+    let mut kind = Some(CompoundTypeKind::Unit);
     for field in fields {
         let TaggedFieldModel { directive, .. } = field;
-        if *directive == FieldKind::Slot {
-            match kind {
-                CompoundTypeKind::Labelled => {
-                    if !field.is_labelled() {
-                        let err = syn::Error::new_spanned(definition, BAD_FIELDS);
-                        return Validation::fail(err);
+        match *directive {
+            FieldKind::Item => {
+                match kind {
+                    Some(CompoundTypeKind::Labelled) => {
+                        if !field.is_labelled() {
+                            let err = syn::Error::new_spanned(definition, BAD_FIELDS);
+                            return Validation::fail(err);
+                        }
                     }
-                }
-                CompoundTypeKind::Tuple => {
-                    if field.is_labelled() {
-                        let err = syn::Error::new_spanned(definition, BAD_FIELDS);
-                        return Validation::fail(err);
+                    Some(CompoundTypeKind::Tuple) => {
+                        if field.is_labelled() {
+                            let err = syn::Error::new_spanned(definition, BAD_FIELDS);
+                            return Validation::fail(err);
+                        }
                     }
-                }
-                CompoundTypeKind::NewType => {
-                    if field.is_labelled() {
-                        let err = syn::Error::new_spanned(definition, BAD_FIELDS);
-                        return Validation::fail(err);
+                    Some(CompoundTypeKind::NewType) => {
+                        if field.is_labelled() {
+                            let err = syn::Error::new_spanned(definition, BAD_FIELDS);
+                            return Validation::fail(err);
+                        }
+                        kind = Some(CompoundTypeKind::Tuple);
                     }
-                    kind = CompoundTypeKind::Tuple;
-                }
-                _ => {
-                    kind = if field.is_labelled() {
-                        CompoundTypeKind::Labelled
-                    } else {
-                        CompoundTypeKind::NewType
-                    };
+                    Some(CompoundTypeKind::Unit) => {
+                        kind = if field.is_labelled() {
+                            Some(CompoundTypeKind::Labelled)
+                        } else {
+                            Some(CompoundTypeKind::NewType)
+                        };
+                    }
+                    _ => {
+                        if !field.is_labelled() {
+                            let err = syn::Error::new_spanned(definition, BAD_REPLACEMENT);
+                            return Validation::fail(err);
+                        }
+                    }
                 }
             }
+            FieldKind::Body => {
+                if kind != Some(CompoundTypeKind::Labelled) {
+                    let err = syn::Error::new_spanned(definition, BAD_REPLACEMENT);
+                    return Validation::fail(err);
+                }
+                kind = None;
+            }
+            _ => {}
         }
+
     }
-    Validation::valid(kind)
+    Validation::valid(kind.unwrap_or(CompoundTypeKind::Unit))
 }
 
 fn derive_manifest<'a, It>(definition: &'a Fields, fields: It) -> SynValidation<FieldManifest>
@@ -229,7 +247,7 @@ where
             } = &mut manifest;
 
             let err = match &field.directive {
-                FieldKind::Slot => {
+                FieldKind::Item => {
                     *has_slot_fields = true;
                     None
                 }
