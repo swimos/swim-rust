@@ -61,6 +61,7 @@ enum Role {
 
 pub struct WebSocket<S> {
     stream: S,
+    role: Role,
     config: WebSocketConfig,
 }
 
@@ -93,17 +94,17 @@ where
 
 pub trait WebSocketStream: AsyncRead + AsyncWrite + Unpin {}
 
-pub struct RequestError(String);
+pub struct RequestError(Box<dyn Error>);
 
 impl From<InvalidUri> for RequestError {
     fn from(e: InvalidUri) -> Self {
-        RequestError(e.to_string())
+        RequestError(Box::new(e))
     }
 }
 
 impl From<http::Error> for RequestError {
     fn from(e: http::Error) -> Self {
-        RequestError(e.to_string())
+        RequestError(Box::new(e))
     }
 }
 

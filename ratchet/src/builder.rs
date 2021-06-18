@@ -6,18 +6,18 @@ use tokio_native_tls::native_tls::TlsConnector;
 /// This gives the flexibility to build websockets in a 'friendlier' fashion as opposed to having
 /// a bunch of functions like `connect_with_config_and_stream` and `connect_with_config` etc.
 #[derive(Default)]
-pub struct WebSocketClient {
+pub struct WebSocketClientBuilder {
     config: Option<WebSocketConfig>,
     stream: Option<Box<dyn WebSocketStream>>,
     connector: Option<TlsConnector>,
 }
 
-impl WebSocketClient {
+impl WebSocketClientBuilder {
     pub async fn subscribe<I>(self, request: I) -> Result<Self, ConnectionError>
     where
         I: TryIntoRequest,
     {
-        let WebSocketClient {
+        let WebSocketClientBuilder {
             config,
             stream,
             connector,
@@ -47,17 +47,17 @@ impl WebSocketClient {
 }
 
 #[derive(Default)]
-struct WebSocketServer {
+struct WebSocketServerBuilder {
     config: Option<WebSocketConfig>,
     interceptor: Option<Box<dyn Interceptor>>,
 }
 
-impl WebSocketServer {
+impl WebSocketServerBuilder {
     pub async fn accept<S>(self, stream: S) -> Result<Self, ConnectionError>
     where
         S: WebSocketStream,
     {
-        let WebSocketServer {
+        let WebSocketServerBuilder {
             config,
             interceptor,
         } = self;
