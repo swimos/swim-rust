@@ -836,3 +836,27 @@ fn derive_delegated_enum_type() {
 
     validate(instance, 2, RecordBodyKind::MapLike, 1, 2);
 }
+
+#[test]
+fn derive_skipped_field_struct() {
+    #[derive(StructuralWritable)]
+    struct Skippy {
+        present: i32,
+        #[form(skip)]
+        skipped: String,
+    };
+
+    let skippy = Skippy {
+        present: 2,
+        skipped: "hello".to_string(),
+    };
+
+    let value: Value = skippy.structure();
+
+    assert_eq!(
+        value,
+        Value::Record(vec![Attr::of("Skippy")], vec![Item::slot("present", 2)])
+    );
+
+    validate(skippy, 1, RecordBodyKind::MapLike, 1, 1);
+}
