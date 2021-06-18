@@ -77,7 +77,7 @@ impl<'a, 'b> ToTokens for DeriveStructuralWritable<SegregatedEnumModel<'a, 'b>> 
             let write_with_cases = variants.iter().map(|v| {
                 let destructure = Destructure::variant_match(v.inner);
                 let write_with = WriteWithFn(v);
-                let num_attrs= num_attributes_case(v, true);
+                let num_attrs = num_attributes_case(v, true);
                 quote! {
                     #name::#destructure => {
                         let num_attrs = #num_attrs;
@@ -89,7 +89,7 @@ impl<'a, 'b> ToTokens for DeriveStructuralWritable<SegregatedEnumModel<'a, 'b>> 
             let write_into_cases = variants.iter().map(|v| {
                 let destructure = Destructure::variant_match(v.inner);
                 let write_into = WriteIntoFn(v);
-                let num_attrs= num_attributes_case(v, false);
+                let num_attrs = num_attributes_case(v, false);
                 quote! {
                     #name::#destructure => {
                         let num_attrs = #num_attrs;
@@ -458,7 +458,10 @@ fn num_attributes<'a, 'b>(model: &'b SegregatedStructModel<'a, 'b>) -> TokenStre
     }
 }
 
-fn num_attributes_case<'a, 'b>(model: &'b SegregatedStructModel<'a, 'b>, by_ref: bool) -> TokenStream {
+fn num_attributes_case<'a, 'b>(
+    model: &'b SegregatedStructModel<'a, 'b>,
+    by_ref: bool,
+) -> TokenStream {
     let base_attrs = model.fields.header.attributes.len() + 1;
     if let BodyFields::ReplacedBody(fld) = model.fields.body {
         let name = &fld.name;
