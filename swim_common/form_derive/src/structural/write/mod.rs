@@ -43,7 +43,8 @@ pub struct DeriveStructuralWritable<S>(pub S);
 
 impl<'a, 'b> ToTokens for DeriveStructuralWritable<SegregatedEnumModel<'a, 'b>> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        let DeriveStructuralWritable(SegregatedEnumModel { inner, variants }) = self;
+        let DeriveStructuralWritable(model) = self;
+        let SegregatedEnumModel { inner, variants } = model;
         let EnumModel { name, .. } = inner;
         let writer_trait = make_writer_trait();
 
@@ -76,9 +77,10 @@ impl<'a, 'b> ToTokens for DeriveStructuralWritable<SegregatedEnumModel<'a, 'b>> 
                 let name = v.inner.name;
                 let destructure = Destructure::variant_match(v.inner);
                 let write_with = WriteWithFn(v);
-
+                let num_attrs= num_attributes_case(v, true);
                 quote! {
                     #name::#destructure => {
+                        let num_attrs = #num_attrs;
                         #write_with
                     }
                 }
@@ -88,13 +90,16 @@ impl<'a, 'b> ToTokens for DeriveStructuralWritable<SegregatedEnumModel<'a, 'b>> 
                 let name = v.inner.name;
                 let destructure = Destructure::variant_match(v.inner);
                 let write_into = WriteIntoFn(v);
-
+                let num_attrs= num_attributes_case(v, false);
                 quote! {
                     #name::#destructure => {
+                        let num_attrs = #num_attrs;
                         #write_into
                     }
                 }
             });
+
+            let num_attrs = NumAttrsEnum(model);
 
             quote! {
 
@@ -103,7 +108,7 @@ impl<'a, 'b> ToTokens for DeriveStructuralWritable<SegregatedEnumModel<'a, 'b>> 
 
                     #[inline]
                     fn num_attributes(&self) -> usize {
-                        todo!()
+                        #num_attrs
                     }
 
                     #[allow(non_snake_case, unused_variables)]
@@ -451,5 +456,58 @@ fn num_attributes<'a, 'b>(model: &'b SegregatedStructModel<'a, 'b>) -> TokenStre
         quote!(#base_attrs + swim_common::form::structural::write::StructuralWritable::num_attributes(#body_fld))
     } else {
         quote!(#base_attrs)
+    }
+}
+
+fn num_attributes_case<'a, 'b>(model: &'b SegregatedStructModel<'a, 'b>, by_ref: bool) -> TokenStream {
+    let base_attrs = model.fields.header.attributes.len() + 1;
+    if let BodyFields::ReplacedBody(fld) = model.fields.body {
+        let name = &fld.name;
+        let body_fld = if by_ref {
+            quote!(#name)
+        } else {
+            quote!(&#name)
+        };
+        quote!(#base_attrs + swim_common::form::structural::write::StructuralWritable::num_attributes(#body_fld))
+    } else {
+        quote!(#base_attrs)
+    }
+}
+
+pub struct NumAttrsEnum<'a, 'b>(&'b SegregatedEnumModel<'a, 'b>);
+
+impl<'a, 'b> ToTokens for NumAttrsEnum<'a, 'b> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let NumAttrsEnum(SegregatedEnumModel { inner, variants }) = self;
+
+        let enum_name = inner.name;
+
+        let cases = variants.iter().map(|v| {
+            let var_name = v.inner.name;
+            let base_attrs = v.fields.header.attributes.len() + 1;
+            if let BodyFields::ReplacedBody(fld) = v.fields.body {
+                let fld_name = &fld.name;
+                let pat = match fld_name {
+                    FieldIndex::Named(id) =>  quote!(#enum_name::#var_name { #id, .. }),
+                    FieldIndex::Ordinal(i) => {
+                        let ignore = (0..*i).map(|_| quote!(_));
+                        quote!(#enum_name::#var_name(#(#ignore,)*, #fld_name, ..))
+                    }
+                };
+                quote!(#pat => #base_attrs + swim_common::form::structural::write::StructuralWritable::num_attributes(#fld_name))
+            } else {
+                let pat = match v.inner.fields_model.type_kind {
+                    CompoundTypeKind::Unit => quote!(#enum_name::#var_name),
+                    CompoundTypeKind::Labelled => quote!(#enum_name::#var_name { .. }),
+                    _ => quote!(#enum_name::#var_name(..)),
+                };
+                quote!(#pat => #base_attrs)
+            }
+        });
+        tokens.append_all(quote! {
+            match self {
+                #(#cases,)*
+            }
+        });
     }
 }
