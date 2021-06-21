@@ -1957,6 +1957,14 @@ impl<T> UnitStructRecognizer<T> {
             on_done,
         }
     }
+
+    pub fn variant(on_done: fn() -> T) -> Self {
+        UnitStructRecognizer {
+            tag: "",
+            state: UnitStructState::Tag,
+            on_done,
+        }
+    }
 }
 
 impl<T> Recognizer for UnitStructRecognizer<T> {

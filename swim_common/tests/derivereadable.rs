@@ -362,3 +362,73 @@ fn derive_struct_complex_body_replacement() {
         }
     );
 }
+
+#[test]
+fn derive_unit_enum_variant() {
+    #[derive(StructuralReadable, PartialEq, Eq, Debug)]
+    enum UnitEnum {
+        Variant0,
+    }
+
+    let instance = run_recognizer::<UnitEnum>("@Variant0");
+
+    assert_eq!(instance, UnitEnum::Variant0);
+}
+
+#[test]
+fn derive_labelled_enum_variant() {
+    #[derive(StructuralReadable, PartialEq, Eq, Debug)]
+    enum LabelledEnum {
+        Variant1 { first: String, second: i64 },
+    }
+
+    let instance = run_recognizer::<LabelledEnum>("@Variant1 { first: hello, second: 67 }");
+
+    assert_eq!(
+        instance,
+        LabelledEnum::Variant1 {
+            first: "hello".to_string(),
+            second: 67
+        }
+    );
+}
+
+#[test]
+fn derive_tuple_enum_variant() {
+    #[derive(StructuralReadable, PartialEq, Eq, Debug)]
+    enum TupleEnum {
+        Variant2(String, i64),
+    }
+
+    let instance = run_recognizer::<TupleEnum>("@Variant2 { hello, 67 }");
+
+    assert_eq!(instance, TupleEnum::Variant2("hello".to_string(), 67));
+}
+
+#[test]
+fn derive_mixed_enum_type() {
+    #[derive(StructuralReadable, PartialEq, Eq, Debug)]
+    enum MixedEnum {
+        Variant0,
+        Variant1 { first: String, second: i64 },
+        Variant2(String, i64),
+    }
+
+    let instance = run_recognizer::<MixedEnum>("@Variant0");
+
+    assert_eq!(instance, MixedEnum::Variant0);
+
+    let instance = run_recognizer::<MixedEnum>("@Variant1 { first: hello, second: 67 }");
+
+    assert_eq!(
+        instance,
+        MixedEnum::Variant1 {
+            first: "hello".to_string(),
+            second: 67
+        }
+    );
+
+    let instance = run_recognizer::<MixedEnum>("@Variant2 { hello, 67 }");
+
+    assert_eq!(instance, MixedEnum::Variant2("hello".to_string(), 67));
+}
