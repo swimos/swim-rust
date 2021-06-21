@@ -16,6 +16,7 @@ use crate::structural::model::enumeration::{EnumDef, EnumModel, SegregatedEnumMo
 use crate::structural::model::record::{SegregatedStructModel, StructDef, StructModel};
 use crate::structural::model::StructLike;
 use crate::structural::model::TryValidate;
+use crate::structural::read::DeriveStructuralReadable;
 use crate::structural::write::DeriveStructuralWritable;
 use proc_macro2::TokenStream;
 use quote::ToTokens;
@@ -58,5 +59,40 @@ fn enum_derive_structural_writable(input: EnumDef<'_>) -> Result<TokenStream, Er
     let model = EnumModel::try_validate(input).into_result()?;
     let segregated = SegregatedEnumModel::from(&model);
     let derive = DeriveStructuralWritable(segregated);
+    Ok(derive.into_token_stream())
+}
+
+pub fn build_derive_structural_readable(
+    input: DeriveInput,
+) -> Result<TokenStream, Errors<syn::Error>> {
+    match &input.data {
+        Data::Struct(ds) => {
+            let def = StructDef::new(&input.ident, &input, &input.attrs, ds);
+            struct_derive_structural_readable(def)
+        }
+        Data::Enum(de) => {
+            let def = EnumDef::new(&input.ident, &input, &input.attrs, de);
+            enum_derive_structural_readable(def)
+        }
+        _ => Err(Errors::of(syn::Error::new_spanned(
+            input,
+            "Union types are not supported.",
+        ))),
+    }
+}
+
+fn struct_derive_structural_readable<Flds: StructLike>(
+    input: StructDef<'_, Flds>,
+) -> Result<TokenStream, Errors<syn::Error>> {
+    let model = StructModel::try_validate(input).into_result()?;
+    let segregated = SegregatedStructModel::from(&model);
+    let derive = DeriveStructuralReadable(segregated);
+    Ok(derive.into_token_stream())
+}
+
+fn enum_derive_structural_readable(input: EnumDef<'_>) -> Result<TokenStream, Errors<syn::Error>> {
+    let model = EnumModel::try_validate(input).into_result()?;
+    let segregated = SegregatedEnumModel::from(&model);
+    let derive = DeriveStructuralReadable(segregated);
     Ok(derive.into_token_stream())
 }

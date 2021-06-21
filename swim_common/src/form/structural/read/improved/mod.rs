@@ -634,6 +634,7 @@ where
 
 #[derive(Clone, Copy)]
 pub enum LabelledFieldKey<'a> {
+    Tag,
     HeaderBody,
     HeaderSlot(&'a str),
     Attr(&'a str),
@@ -671,14 +672,20 @@ enum OrdinalStructState {
 
 #[derive(Clone, Copy)]
 pub enum OrdinalFieldKey<'a> {
+    Tag,
     HeaderBody,
     HeaderSlot(&'a str),
     Attr(&'a str),
     FirstItem,
 }
 
+pub enum TagSpec {
+    Fixed(&'static str),
+    Field,
+}
+
 pub struct LabelledStructRecognizer<T, Flds> {
-    tag: &'static str,
+    tag: TagSpec,
     has_header_body: bool,
     state: LabelledStructState,
     fields: Flds,
@@ -738,7 +745,7 @@ impl<T, Flds> OrdinalVTable<T, Flds> {
 
 impl<T, Flds> LabelledStructRecognizer<T, Flds> {
     pub fn new(
-        tag: &'static str,
+        tag: TagSpec,
         has_header_body: bool,
         fields: Flds,
         num_fields: u32,
@@ -765,7 +772,7 @@ impl<T, Flds> LabelledStructRecognizer<T, Flds> {
         vtable: LabelledVTable<T, Flds>,
     ) -> Self {
         LabelledStructRecognizer {
-            tag: "",
+            tag: TagSpec::Fixed(""),
             has_header_body,
             state: LabelledStructState::HeaderInit,
             fields,
@@ -781,7 +788,7 @@ impl<T, Flds> LabelledStructRecognizer<T, Flds> {
 
 impl<T, Flds> OrdinalStructRecognizer<T, Flds> {
     pub fn new(
-        tag: &'static str,
+        tag: TagSpec,
         has_header_body: bool,
         fields: Flds,
         num_fields: u32,
@@ -808,7 +815,7 @@ impl<T, Flds> OrdinalStructRecognizer<T, Flds> {
         vtable: OrdinalVTable<T, Flds>,
     ) -> Self {
         OrdinalStructRecognizer {
-            tag: "",
+            tag: TagSpec::Fixed(""),
             has_header_body,
             state: OrdinalStructState::HeaderInit,
             fields,
@@ -840,16 +847,38 @@ impl<T, Flds> Recognizer for LabelledStructRecognizer<T, Flds> {
         } = self;
 
         match state {
-            LabelledStructState::Init => match &input {
-                ParseEvent::StartAttribute(name) if name == *tag => {
-                    if *has_header_body {
-                        *state = LabelledStructState::HeaderInit;
-                    } else {
-                        *state = LabelledStructState::HeaderBetween;
+            LabelledStructState::Init => match input {
+                ParseEvent::StartAttribute(name) => match tag {
+                    TagSpec::Fixed(tag) => {
+                        if name == *tag {
+                            if *has_header_body {
+                                *state = LabelledStructState::HeaderInit;
+                            } else {
+                                *state = LabelledStructState::HeaderBetween;
+                            }
+                            None
+                        } else {
+                            Some(Err(bad_kind(&ParseEvent::StartAttribute(name))))
+                        }
                     }
-                    None
-                }
-                _ => Some(Err(bad_kind(&input))),
+                    TagSpec::Field => {
+                        if let Some(i) = select_index(LabelledFieldKey::Tag) {
+                            if let Err(e) = select_recog(fields, i, ParseEvent::TextValue(name))? {
+                                Some(Err(e))
+                            } else {
+                                if *has_header_body {
+                                    *state = LabelledStructState::HeaderInit;
+                                } else {
+                                    *state = LabelledStructState::HeaderBetween;
+                                }
+                                None
+                            }
+                        } else {
+                            Some(Err(ReadError::InconsistentState))
+                        }
+                    }
+                },
+                ow => Some(Err(bad_kind(&ow))),
             },
             LabelledStructState::HeaderInit => {
                 if matches!(&input, ParseEvent::EndAttribute) {
@@ -991,7 +1020,7 @@ impl<T, Flds> Recognizer for LabelledStructRecognizer<T, Flds> {
 }
 
 pub struct OrdinalStructRecognizer<T, Flds> {
-    tag: &'static str,
+    tag: TagSpec,
     has_header_body: bool,
     state: OrdinalStructState,
     fields: Flds,
@@ -1021,16 +1050,38 @@ impl<T, Flds> Recognizer for OrdinalStructRecognizer<T, Flds> {
         } = self;
 
         match state {
-            OrdinalStructState::Init => match &input {
-                ParseEvent::StartAttribute(name) if name == *tag => {
-                    if *has_header_body {
-                        *state = OrdinalStructState::HeaderInit;
-                    } else {
-                        *state = OrdinalStructState::HeaderBetween;
+            OrdinalStructState::Init => match input {
+                ParseEvent::StartAttribute(name) => match tag {
+                    TagSpec::Fixed(tag) => {
+                        if name == *tag {
+                            if *has_header_body {
+                                *state = OrdinalStructState::HeaderInit;
+                            } else {
+                                *state = OrdinalStructState::HeaderBetween;
+                            }
+                            None
+                        } else {
+                            Some(Err(bad_kind(&ParseEvent::StartAttribute(name))))
+                        }
                     }
-                    None
-                }
-                _ => Some(Err(bad_kind(&input))),
+                    TagSpec::Field => {
+                        if let Some(i) = select_index(OrdinalFieldKey::Tag) {
+                            if let Err(e) = select_recog(fields, i, ParseEvent::TextValue(name))? {
+                                Some(Err(e))
+                            } else {
+                                if *has_header_body {
+                                    *state = OrdinalStructState::HeaderInit;
+                                } else {
+                                    *state = OrdinalStructState::HeaderBetween;
+                                }
+                                None
+                            }
+                        } else {
+                            Some(Err(ReadError::InconsistentState))
+                        }
+                    }
+                },
+                ow => Some(Err(bad_kind(&ow))),
             },
             OrdinalStructState::HeaderInit => {
                 if matches!(&input, ParseEvent::EndAttribute) {
@@ -1515,7 +1566,7 @@ enum DelegateStructState {
 }
 
 pub struct DelegateStructRecognizer<T, Flds> {
-    tag: &'static str,
+    tag: TagSpec,
     has_header_body: bool,
     state: DelegateStructState,
     fields: Flds,
@@ -1530,7 +1581,7 @@ pub struct DelegateStructRecognizer<T, Flds> {
 
 impl<T, Flds> DelegateStructRecognizer<T, Flds> {
     pub fn new(
-        tag: &'static str,
+        tag: TagSpec,
         has_header_body: bool,
         fields: Flds,
         num_fields: u32,
@@ -1560,7 +1611,7 @@ impl<T, Flds> DelegateStructRecognizer<T, Flds> {
         simple_body: bool,
     ) -> Self {
         DelegateStructRecognizer {
-            tag: "",
+            tag: TagSpec::Fixed(""),
             has_header_body,
             state: DelegateStructState::HeaderInit,
             fields,
@@ -1594,16 +1645,38 @@ impl<T, Flds> Recognizer for DelegateStructRecognizer<T, Flds> {
         } = self;
 
         match state {
-            DelegateStructState::Init => match &input {
-                ParseEvent::StartAttribute(name) if name == *tag => {
-                    if *has_header_body {
-                        *state = DelegateStructState::HeaderInit;
-                    } else {
-                        *state = DelegateStructState::HeaderBetween;
+            DelegateStructState::Init => match input {
+                ParseEvent::StartAttribute(name) => match tag {
+                    TagSpec::Fixed(tag) => {
+                        if name == *tag {
+                            if *has_header_body {
+                                *state = DelegateStructState::HeaderInit;
+                            } else {
+                                *state = DelegateStructState::HeaderBetween;
+                            }
+                            None
+                        } else {
+                            Some(Err(bad_kind(&ParseEvent::StartAttribute(name))))
+                        }
                     }
-                    None
-                }
-                _ => Some(Err(bad_kind(&input))),
+                    TagSpec::Field => {
+                        if let Some(i) = select_index(OrdinalFieldKey::Tag) {
+                            if let Err(e) = select_recog(fields, i, ParseEvent::TextValue(name))? {
+                                Some(Err(e))
+                            } else {
+                                if *has_header_body {
+                                    *state = DelegateStructState::HeaderInit;
+                                } else {
+                                    *state = DelegateStructState::HeaderBetween;
+                                }
+                                None
+                            }
+                        } else {
+                            Some(Err(ReadError::InconsistentState))
+                        }
+                    }
+                },
+                ow => Some(Err(bad_kind(&ow))),
             },
             DelegateStructState::HeaderInit => {
                 if matches!(&input, ParseEvent::EndAttribute) {
@@ -1859,5 +1932,65 @@ where
 
     fn reset(&mut self) {
         self.variant = None;
+    }
+}
+
+#[derive(Clone, Copy)]
+enum UnitStructState {
+    Init,
+    Tag,
+    AfterTag,
+    Body,
+}
+
+pub struct UnitStructRecognizer<T> {
+    tag: &'static str,
+    state: UnitStructState,
+    on_done: fn() -> T,
+}
+
+impl<T> UnitStructRecognizer<T> {
+    pub fn new(tag: &'static str, on_done: fn() -> T) -> Self {
+        UnitStructRecognizer {
+            tag,
+            state: UnitStructState::Init,
+            on_done,
+        }
+    }
+}
+
+impl<T> Recognizer for UnitStructRecognizer<T> {
+    type Target = T;
+
+    fn feed_event(&mut self, input: ParseEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
+        let UnitStructRecognizer {
+            tag,
+            state,
+            on_done,
+        } = self;
+        match (input, *state) {
+            (ParseEvent::StartAttribute(name), UnitStructState::Init) => {
+                if name == *tag {
+                    *state = UnitStructState::Tag;
+                    None
+                } else {
+                    Some(Err(ReadError::UnexpectedAttribute(name.into())))
+                }
+            }
+            (ParseEvent::EndAttribute, UnitStructState::Tag) => {
+                *state = UnitStructState::AfterTag;
+                None
+            }
+            (ParseEvent::StartBody, UnitStructState::AfterTag) => {
+                *state = UnitStructState::Body;
+                None
+            }
+            (ParseEvent::EndRecord, UnitStructState::Body) => Some(Ok(on_done())),
+            (ow, _) => Some(Err(bad_kind(&ow))),
+        }
+    }
+
+    fn reset(&mut self) {
+        self.state = UnitStructState::Init
     }
 }

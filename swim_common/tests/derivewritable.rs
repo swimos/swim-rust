@@ -315,13 +315,13 @@ fn derive_struct_lift_header_body() {
     #[derive(StructuralWritable)]
     struct MyStruct {
         #[form(header_body)]
-        in_attr: bool,
+        in_header: bool,
         first: i32,
         second: String,
     }
 
     let instance = MyStruct {
-        in_attr: true,
+        in_header: true,
         first: 2,
         second: "hello".to_string(),
     };
@@ -344,13 +344,13 @@ fn derive_struct_lift_header_slot() {
     #[derive(StructuralWritable)]
     struct MyStruct {
         #[form(header)]
-        in_attr: bool,
+        in_header_slot: bool,
         first: i32,
         second: String,
     }
 
     let instance = MyStruct {
-        in_attr: true,
+        in_header_slot: true,
         first: 2,
         second: "hello".to_string(),
     };
@@ -362,7 +362,7 @@ fn derive_struct_lift_header_slot() {
         Value::Record(
             vec![Attr::of((
                 "MyStruct",
-                Value::record(vec![Item::slot("in_attr", true)])
+                Value::record(vec![Item::slot("in_header_slot", true)])
             ))],
             vec![Item::slot("first", 2), Item::slot("second", "hello"),]
         )

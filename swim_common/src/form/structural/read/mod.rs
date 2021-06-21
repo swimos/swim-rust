@@ -23,12 +23,15 @@ use crate::form::structural::write::StructuralWritable;
 use num_bigint::{BigInt, BigUint};
 use std::borrow::Cow;
 
-mod error;
+pub mod error;
 
 use crate::form::structural::bridge::RecognizerBridge;
 use crate::form::structural::read::improved::{Recognizer, RecognizerReadable};
 use crate::form::structural::read::parser::ParseEvent;
 pub use error::ReadError;
+
+#[doc(hidden)]
+pub use form_derive::StructuralReadable;
 
 /// Trait for types that can be structurally deserialized, from the Swim data model.
 pub trait StructuralReadable: RecognizerReadable {

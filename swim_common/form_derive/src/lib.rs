@@ -26,7 +26,7 @@ use syn::DeriveInput;
 use macro_helpers::to_compile_errors;
 
 use crate::form::build_derive_form;
-use crate::structural::build_derive_structural_writable;
+use crate::structural::{build_derive_structural_readable, build_derive_structural_writable};
 use crate::tag::build_tag;
 use crate::validated_form::build_validated_form;
 use utilities::algebra::Errors;
@@ -63,6 +63,14 @@ pub fn derive_tag(input: TokenStream) -> TokenStream {
 pub fn derive_structural_writable(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     build_derive_structural_writable(input)
+        .unwrap_or_else(errs_to_compile_errors)
+        .into()
+}
+
+#[proc_macro_derive(StructuralReadable, attributes(form))]
+pub fn derive_structural_readable(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    build_derive_structural_readable(input)
         .unwrap_or_else(errs_to_compile_errors)
         .into()
 }

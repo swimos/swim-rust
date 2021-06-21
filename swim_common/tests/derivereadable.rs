@@ -1,0 +1,364 @@
+// Copyright 2015-2021 SWIM.AI inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+use swim_common::form::structural::read::parser::{parse_recognize, Span};
+use swim_common::form::structural::read::StructuralReadable;
+
+fn run_recognizer<T: StructuralReadable>(rep: &str) -> T {
+    let span = Span::new(rep);
+    parse_recognize(span).unwrap()
+}
+
+#[test]
+fn derive_unit_struct() {
+    #[derive(StructuralReadable)]
+    struct Unit;
+
+    run_recognizer::<Unit>("@Unit");
+}
+
+#[test]
+fn derive_simple_struct() {
+    #[derive(StructuralReadable, PartialEq, Eq, Debug)]
+    struct Simple {
+        first: i32,
+    }
+
+    let instance = run_recognizer::<Simple>("@Simple { first: 12 }");
+    assert_eq!(instance, Simple { first: 12 });
+}
+
+#[test]
+fn derive_two_field_struct() {
+    #[derive(StructuralReadable, PartialEq, Eq, Debug)]
+    struct TwoFields {
+        first: i32,
+        second: String,
+    }
+
+    let instance = run_recognizer::<TwoFields>("@TwoFields { first: 12, second: hello }");
+    assert_eq!(
+        instance,
+        TwoFields {
+            first: 12,
+            second: "hello".to_string()
+        }
+    );
+
+    let instance = run_recognizer::<TwoFields>("@TwoFields { second: hello, first: 12 }");
+    assert_eq!(
+        instance,
+        TwoFields {
+            first: 12,
+            second: "hello".to_string()
+        }
+    );
+}
+
+#[test]
+fn derive_two_field_tuple_struct() {
+    #[derive(StructuralReadable, PartialEq, Eq, Debug)]
+    struct TwoFields(i32, String);
+
+    let instance = run_recognizer::<TwoFields>("@TwoFields { 12, hello }");
+    assert_eq!(instance, TwoFields(12, "hello".to_string()));
+}
+
+#[test]
+fn derive_struct_lift_attr() {
+    #[derive(StructuralReadable, PartialEq, Eq, Debug)]
+    struct MyStruct {
+        #[form(attr)]
+        in_attr: bool,
+        first: i32,
+        second: String,
+    }
+
+    let instance =
+        run_recognizer::<MyStruct>("@MyStruct @in_attr(true) { first: -34, second: \"name\" }");
+    assert_eq!(
+        instance,
+        MyStruct {
+            in_attr: true,
+            first: -34,
+            second: "name".to_string(),
+        }
+    );
+}
+
+#[test]
+fn derive_struct_lift_header_body() {
+    #[derive(StructuralReadable, PartialEq, Eq, Debug)]
+    struct MyStruct {
+        #[form(header_body)]
+        in_header: bool,
+        first: i32,
+        second: String,
+    }
+
+    let instance = run_recognizer::<MyStruct>("@MyStruct(false) { first: -34, second: \"name\" }");
+    assert_eq!(
+        instance,
+        MyStruct {
+            in_header: false,
+            first: -34,
+            second: "name".to_string(),
+        }
+    );
+}
+
+#[test]
+fn derive_struct_lift_header_slot() {
+    #[derive(StructuralReadable, PartialEq, Eq, Debug)]
+    struct MyStruct {
+        #[form(header)]
+        in_header_slot: bool,
+        first: i32,
+        second: String,
+    }
+
+    let instance = run_recognizer::<MyStruct>(
+        "@MyStruct(in_header_slot: true) { first: -34, second: \"name\" }",
+    );
+    assert_eq!(
+        instance,
+        MyStruct {
+            in_header_slot: true,
+            first: -34,
+            second: "name".to_string(),
+        }
+    );
+}
+
+#[test]
+fn derive_struct_lift_header_slots() {
+    #[derive(StructuralReadable, PartialEq, Eq, Debug)]
+    struct MyStruct {
+        #[form(header)]
+        node: String,
+        #[form(header)]
+        lane: String,
+        first: i32,
+        second: String,
+    }
+
+    let instance = run_recognizer::<MyStruct>(
+        "@MyStruct(node: node_uri, lane: lane_uri) { first: -34, second: \"name\" }",
+    );
+    assert_eq!(
+        instance,
+        MyStruct {
+            node: "node_uri".to_string(),
+            lane: "lane_uri".to_string(),
+            first: -34,
+            second: "name".to_string(),
+        }
+    );
+
+    let instance = run_recognizer::<MyStruct>(
+        "@MyStruct(lane: lane_uri, node: node_uri) { first: -34, second: \"name\" }",
+    );
+    assert_eq!(
+        instance,
+        MyStruct {
+            node: "node_uri".to_string(),
+            lane: "lane_uri".to_string(),
+            first: -34,
+            second: "name".to_string(),
+        }
+    );
+}
+
+#[test]
+fn derive_struct_lift_complex_header() {
+    #[derive(StructuralReadable, PartialEq, Eq, Debug)]
+    struct MyStruct {
+        #[form(header_body)]
+        count: i32,
+        #[form(header)]
+        node: String,
+        #[form(header)]
+        lane: String,
+        first: i32,
+        second: String,
+    }
+
+    let instance = run_recognizer::<MyStruct>(
+        "@MyStruct(6, node: node_uri, lane: lane_uri) { first: -34, second: \"name\" }",
+    );
+    assert_eq!(
+        instance,
+        MyStruct {
+            count: 6,
+            node: "node_uri".to_string(),
+            lane: "lane_uri".to_string(),
+            first: -34,
+            second: "name".to_string(),
+        }
+    );
+
+    let instance = run_recognizer::<MyStruct>(
+        "@MyStruct(6, lane: lane_uri, node: node_uri) { first: -34, second: \"name\" }",
+    );
+    assert_eq!(
+        instance,
+        MyStruct {
+            count: 6,
+            node: "node_uri".to_string(),
+            lane: "lane_uri".to_string(),
+            first: -34,
+            second: "name".to_string(),
+        }
+    );
+}
+
+#[test]
+fn derive_struct_rename_slot() {
+    #[derive(StructuralReadable, PartialEq, Eq, Debug)]
+    struct MyStruct {
+        #[form(name = "renamed")]
+        first: i32,
+        second: String,
+    }
+
+    let instance = run_recognizer::<MyStruct>("@MyStruct { renamed: -34, second: \"name\" }");
+    assert_eq!(
+        instance,
+        MyStruct {
+            first: -34,
+            second: "name".to_string(),
+        }
+    );
+}
+
+#[test]
+fn derive_struct_rename_tuple_values() {
+    #[derive(StructuralReadable, PartialEq, Eq, Debug)]
+    struct MyStruct(#[form(name = "first")] i32, #[form(name = "second")] String);
+
+    let instance = run_recognizer::<MyStruct>("@MyStruct { first: -34, second: \"name\" }");
+    assert_eq!(instance, MyStruct(-34, "name".to_string()));
+}
+
+#[test]
+fn derive_struct_rename_tag() {
+    #[derive(StructuralReadable, PartialEq, Eq, Debug)]
+    #[form(tag = "Renamed")]
+    struct MyStruct {
+        first: i32,
+        second: String,
+    }
+
+    let instance = run_recognizer::<MyStruct>("@Renamed { first: -34, second: \"name\" }");
+    assert_eq!(
+        instance,
+        MyStruct {
+            first: -34,
+            second: "name".to_string(),
+        }
+    );
+}
+
+#[test]
+fn derive_struct_tag_from_field() {
+    #[derive(StructuralReadable, PartialEq, Eq, Debug)]
+    struct MyStruct {
+        first: i32,
+        #[form(tag)]
+        second: String,
+    }
+
+    let instance = run_recognizer::<MyStruct>("@Tag { first: -34 }");
+    assert_eq!(
+        instance,
+        MyStruct {
+            first: -34,
+            second: "Tag".to_string(),
+        }
+    );
+}
+
+#[test]
+fn derive_nested_structs() {
+    #[derive(StructuralReadable, PartialEq, Eq, Debug)]
+    struct Inner {
+        first: i32,
+        second: String,
+    }
+
+    #[derive(StructuralReadable, PartialEq, Eq, Debug)]
+    struct Outer {
+        inner: Inner,
+    }
+
+    let instance =
+        run_recognizer::<Outer>("@Outer { inner: @Inner { first: 42, second: \"I'm inside!\"} }");
+    assert_eq!(
+        instance,
+        Outer {
+            inner: Inner {
+                first: 42,
+                second: "I'm inside!".to_string()
+            }
+        }
+    );
+}
+
+#[test]
+fn derive_struct_simple_body_replacement() {
+    #[derive(StructuralReadable, PartialEq, Eq, Debug)]
+    struct MyStruct {
+        first: i32,
+        #[form(body)]
+        second: String,
+    }
+
+    let instance = run_recognizer::<MyStruct>("@MyStruct(first: 10) \"content\"");
+    assert_eq!(
+        instance,
+        MyStruct {
+            first: 10,
+            second: "content".to_string(),
+        }
+    );
+}
+
+#[test]
+fn derive_struct_complex_body_replacement() {
+    #[derive(StructuralReadable, PartialEq, Eq, Debug)]
+    struct Inner {
+        first: i32,
+        second: String,
+    }
+
+    #[derive(StructuralReadable, PartialEq, Eq, Debug)]
+    struct Outer {
+        node: String,
+        #[form(body)]
+        inner: Inner,
+    }
+
+    let instance =
+        run_recognizer::<Outer>("@Outer(node: node_uri) @Inner { first: 1034, second: inside }");
+    assert_eq!(
+        instance,
+        Outer {
+            node: "node_uri".to_string(),
+            inner: Inner {
+                first: 1034,
+                second: "inside".to_string(),
+            }
+        }
+    );
+}
