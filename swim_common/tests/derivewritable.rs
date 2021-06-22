@@ -877,3 +877,29 @@ fn derive_skipped_field_tuple_struct() {
 
     validate(skippy, 1, RecordBodyKind::ArrayLike, 1, 1);
 }
+
+#[test]
+fn derive_two_field_generic_struct() {
+    #[derive(StructuralWritable)]
+    struct TwoFields<S, T> {
+        first: S,
+        second: T,
+    }
+
+    let two_fields = TwoFields {
+        first: 2,
+        second: "hello".to_string(),
+    };
+
+    let value: Value = two_fields.structure();
+
+    assert_eq!(
+        value,
+        Value::Record(
+            vec![Attr::of("TwoFields")],
+            vec![Item::slot("first", 2), Item::slot("second", "hello"),]
+        )
+    );
+
+    validate(two_fields, 1, RecordBodyKind::MapLike, 2, 1);
+}

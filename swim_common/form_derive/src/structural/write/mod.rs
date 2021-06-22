@@ -21,7 +21,7 @@ use crate::structural::model::record::{SegregatedStructModel, StructModel};
 use either::Either;
 use proc_macro2::TokenStream;
 use quote::ToTokens;
-use syn::{Pat, Path};
+use syn::{Generics, Pat, Path};
 use utilities::CompoundTypeKind;
 
 struct Destructure<'a>(&'a StructModel<'a>, bool);
@@ -39,20 +39,25 @@ impl<'a> Destructure<'a> {
 struct WriteWithFn<'a, 'b>(&'b SegregatedStructModel<'a, 'b>);
 struct WriteIntoFn<'a, 'b>(&'b SegregatedStructModel<'a, 'b>);
 
-pub struct DeriveStructuralWritable<S>(pub S);
+pub struct DeriveStructuralWritable<'a, S>(pub S, pub &'a Generics);
 
-impl<'a, 'b> ToTokens for DeriveStructuralWritable<SegregatedEnumModel<'a, 'b>> {
+impl<'a, 'b> ToTokens for DeriveStructuralWritable<'a, SegregatedEnumModel<'a, 'b>> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        let DeriveStructuralWritable(model) = self;
+        let DeriveStructuralWritable(model, generics) = self;
         let SegregatedEnumModel { inner, variants } = model;
         let EnumModel { name, .. } = inner;
         let writer_trait = make_writer_trait();
+
+        let mut new_generics = (*generics).clone();
+        add_bounds(*generics, &mut new_generics);
+
+        let (impl_lst, ty_params, where_clause) = new_generics.split_for_impl();
 
         let impl_block = if variants.is_empty() {
             quote! {
 
                 #[automatically_derived]
-                impl swim_common::form::structural::write::StructuralWritable for #name {
+                impl #impl_lst swim_common::form::structural::write::StructuralWritable for #name #ty_params #where_clause {
 
                     #[inline]
                     fn num_attributes(&self) -> usize {
@@ -132,9 +137,14 @@ impl<'a, 'b> ToTokens for DeriveStructuralWritable<SegregatedEnumModel<'a, 'b>> 
     }
 }
 
-impl<'a, 'b> ToTokens for DeriveStructuralWritable<SegregatedStructModel<'a, 'b>> {
+impl<'a, 'b> ToTokens for DeriveStructuralWritable<'a, SegregatedStructModel<'a, 'b>> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        let DeriveStructuralWritable(inner) = self;
+        let DeriveStructuralWritable(inner, generics) = self;
+        let mut new_generics = (*generics).clone();
+        add_bounds(*generics, &mut new_generics);
+
+        let (impl_lst, ty_params, where_clause) = new_generics.split_for_impl();
+
         let destructure = Destructure::assign(&inner.inner);
         let name = inner.inner.name;
         let write_with = WriteWithFn(inner);
@@ -145,7 +155,7 @@ impl<'a, 'b> ToTokens for DeriveStructuralWritable<SegregatedStructModel<'a, 'b>
         let writable_impl = quote! {
 
             #[automatically_derived]
-            impl swim_common::form::structural::write::StructuralWritable for #name {
+            impl #impl_lst swim_common::form::structural::write::StructuralWritable for #name #ty_params #where_clause {
 
                 #[inline]
                 fn num_attributes(&self) -> usize {
@@ -511,5 +521,16 @@ impl<'a, 'b> ToTokens for NumAttrsEnum<'a, 'b> {
                 #(#cases,)*
             }
         });
+    }
+}
+
+fn add_bounds(original: &Generics, generics: &mut Generics) {
+    let bounds = original.type_params().map(|param| {
+        let id = &param.ident;
+        parse_quote!(#id: swim_common::form::structural::write::StructuralWritable)
+    });
+    let where_clause = generics.make_where_clause();
+    for bound in bounds.into_iter() {
+        where_clause.predicates.push(bound);
     }
 }
