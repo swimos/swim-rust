@@ -1,41 +1,45 @@
-use crate::{ConnectionError, Interceptor, TryIntoRequest, WebSocketConfig, WebSocketStream};
+use crate::{
+    ConnectionError, Interceptor, TryIntoRequest, WebSocket, WebSocketConfig, WebSocketStream,
+};
 use futures::future::BoxFuture;
 use http::{Request, Response};
-use tokio_native_tls::native_tls::TlsConnector;
+use tokio_native_tls::TlsConnector;
 
 /// This gives the flexibility to build websockets in a 'friendlier' fashion as opposed to having
 /// a bunch of functions like `connect_with_config_and_stream` and `connect_with_config` etc.
 #[derive(Default)]
 pub struct WebSocketClientBuilder {
     config: Option<WebSocketConfig>,
-    stream: Option<Box<dyn WebSocketStream>>,
     connector: Option<TlsConnector>,
+    protocols: Option<Vec<&'static str>>,
 }
 
 impl WebSocketClientBuilder {
-    pub async fn subscribe<I>(self, request: I) -> Result<Self, ConnectionError>
+    pub async fn subscribe<S, I>(
+        self,
+        stream: S,
+        request: I,
+    ) -> Result<WebSocket<S>, ConnectionError>
     where
+        S: WebSocketStream,
         I: TryIntoRequest,
     {
         let WebSocketClientBuilder {
             config,
-            stream,
             connector,
+            protocols,
         } = self;
         let request = request.try_into_request()?;
 
-        // Then it'd be built something like...
-        // initialise defaults
-        // WebSocket::client(config, stream, connector, request).await
-        unimplemented!()
+        WebSocket::client(config.unwrap_or_default(), stream, connector, request).await
     }
 
-    pub fn config(mut self, config: WebSocketConfig) -> Self {
-        self.config = Some(config);
+    pub fn protocols(mut self, protocols: Vec<&'static str>) -> Self {
+        self.protocols = Some(protocols);
         self
     }
 
-    pub fn stream(mut self, config: WebSocketConfig) -> Self {
+    pub fn config(mut self, config: WebSocketConfig) -> Self {
         self.config = Some(config);
         self
     }
@@ -50,6 +54,7 @@ impl WebSocketClientBuilder {
 struct WebSocketServerBuilder {
     config: Option<WebSocketConfig>,
     interceptor: Option<Box<dyn Interceptor>>,
+    protocols: Option<Vec<&'static str>>,
 }
 
 impl WebSocketServerBuilder {
@@ -60,16 +65,22 @@ impl WebSocketServerBuilder {
         let WebSocketServerBuilder {
             config,
             interceptor,
+            protocols,
         } = self;
 
         // Then it'd be built something like...
         // initialise defaults
-        // WebSocket::server(config, stream, interceptor).await
+        // WebSocket::server(config, stream, interceptor, protocol).await
         unimplemented!()
     }
 
     pub fn config(mut self, config: WebSocketConfig) -> Self {
         self.config = Some(config);
+        self
+    }
+
+    pub fn protocols(mut self, protocols: Vec<&'static str>) -> Self {
+        self.protocols = Some(protocols);
         self
     }
 
