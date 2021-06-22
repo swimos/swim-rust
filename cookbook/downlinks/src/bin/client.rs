@@ -11,7 +11,6 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-
 use rand::seq::SliceRandom;
 use std::time::Duration;
 use swim_client::interface::SwimClientBuilder;
@@ -20,7 +19,7 @@ use tokio::time;
 
 #[tokio::main]
 async fn main() {
-    let mut client = SwimClientBuilder::build_with_default().await;
+    let (client, _handle) = SwimClientBuilder::build_with_default().await;
     let host_uri = url::Url::parse(&"ws://127.0.0.1:9001".to_string()).unwrap();
     let node_uri_prefix = "/unit/";
 
