@@ -232,4 +232,6 @@ pub struct FieldManifest {
     pub has_header_fields: bool,
     /// Whether one of the fields determines the tag.
     pub has_tag_field: bool,
+    /// Whehter any of the fields are skipped.
+    pub has_skipped_fields: bool,
 }

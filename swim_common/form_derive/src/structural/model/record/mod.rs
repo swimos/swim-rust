@@ -242,6 +242,7 @@ where
                 has_slot_fields,
                 has_header_fields,
                 has_tag_field,
+                has_skipped_fields,
             } = &mut manifest;
 
             let err = match &field.directive {
@@ -287,7 +288,10 @@ where
                         None
                     }
                 }
-                _ => None,
+                FieldKind::Skip => {
+                    *has_skipped_fields = true;
+                    None
+                }
             };
             Validation::Validated(manifest, err.into())
         },

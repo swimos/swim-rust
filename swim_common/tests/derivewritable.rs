@@ -860,3 +860,20 @@ fn derive_skipped_field_struct() {
 
     validate(skippy, 1, RecordBodyKind::MapLike, 1, 1);
 }
+
+#[test]
+fn derive_skipped_field_tuple_struct() {
+    #[derive(StructuralWritable)]
+    struct Skippy(i32, #[form(skip)] String);
+
+    let skippy = Skippy(2, "hello".to_string());
+
+    let value: Value = skippy.structure();
+
+    assert_eq!(
+        value,
+        Value::Record(vec![Attr::of("Skippy")], vec![Item::of(2)])
+    );
+
+    validate(skippy, 1, RecordBodyKind::ArrayLike, 1, 1);
+}

@@ -17,9 +17,10 @@ use crate::structural::model::enumeration::SegregatedEnumModel;
 use crate::structural::model::field::{BodyFields, FieldModel, HeaderFields, SegregatedFields};
 use crate::structural::model::record::SegregatedStructModel;
 use either::Either;
-use macro_helpers::CompoundTypeKind;
+use macro_helpers::{CompoundTypeKind, FieldKind};
 use proc_macro2::{Span, TokenStream};
 use quote::ToTokens;
+use std::collections::HashMap;
 
 pub struct DeriveStructuralReadable<S>(pub S);
 
@@ -68,7 +69,7 @@ impl<'a, 'b> ToTokens for DeriveStructuralReadable<SegregatedStructModel<'a, 'b>
 
             let read_impl = StructReadableImpl::new(model);
 
-            let on_reset = ResetFn::new(model.inner.fields_model.fields.len());
+            let on_reset = ResetFn::new(model.fields.not_skipped());
 
             tokens.append_all(quote! {
                 const _: () = {
@@ -124,7 +125,7 @@ impl<'a, 'b> ToTokens for DeriveStructuralReadable<SegregatedEnumModel<'a, 'b>> 
                 let select_feed = SelectFeedFn::variant(model, i);
                 let on_done = OnDoneFn::variant(model, name, i);
 
-                let on_reset = ResetFn::variant(model.inner.fields_model.fields.len(), i);
+                let on_reset = ResetFn::variant(model.fields.not_skipped(), i);
 
                 quote! {
                     #builder_type
@@ -601,8 +602,6 @@ impl<'a, 'b> ToTokens for OnDoneFn<'a, 'b> {
 
         let it = enumerate_fields(fields);
 
-        let names = it.clone().map(|fld| &fld.name);
-
         let validators = it.clone().enumerate().map(|(i, fld)| {
             let idx = syn::Index::from(i);
             let name = fld.resolve_name();
@@ -617,12 +616,14 @@ impl<'a, 'b> ToTokens for OnDoneFn<'a, 'b> {
             }
         });
 
-        let field_dest = names
+        let field_dest = it
             .clone()
+            .map(|fld| &fld.name)
             .map(|name| quote!(std::option::Option::Some(#name)));
 
         let num_fields = inner.fields_model.fields.len();
-        let field_takes = (0..num_fields).map(|i| {
+        let not_skipped = fields.not_skipped();
+        let field_takes = (0..not_skipped).map(|i| {
             let idx = syn::Index::from(i);
             quote!(fields.#idx.take())
         });
@@ -648,9 +649,17 @@ impl<'a, 'b> ToTokens for OnDoneFn<'a, 'b> {
 
         let constructor = match inner.fields_model.type_kind {
             CompoundTypeKind::Labelled => {
+                let con_params = inner.fields_model.fields.iter().map(|fld| {
+                    let name = &fld.model.name;
+                    if fld.directive == FieldKind::Skip {
+                        quote!(#name: std::default::Default::default())
+                    } else {
+                        quote!(#name)
+                    }
+                });
                 quote! {
                     #path {
-                        #(#names,)*
+                        #(#con_params,)*
                     }
                 }
             }
@@ -658,8 +667,18 @@ impl<'a, 'b> ToTokens for OnDoneFn<'a, 'b> {
                 quote!(#path)
             }
             _ => {
+                let name_map = it
+                    .map(|fld| (fld.ordinal, &fld.name))
+                    .collect::<HashMap<_, _>>();
+                let con_params = (0..num_fields).map(|i| {
+                    if let Some(name) = name_map.get(&i) {
+                        quote!(#name)
+                    } else {
+                        quote!(std::default::Default::default())
+                    }
+                });
                 quote! {
-                    #path(#(#names,)*)
+                    #path(#(#con_params,)*)
                 }
             }
         };

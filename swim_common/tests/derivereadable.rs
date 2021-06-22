@@ -432,3 +432,31 @@ fn derive_mixed_enum_type() {
 
     assert_eq!(instance, MixedEnum::Variant2("hello".to_string(), 67));
 }
+
+#[test]
+fn derive_skipped_field_struct() {
+    #[derive(StructuralReadable, PartialEq, Eq, Debug)]
+    struct Skippy {
+        present: i32,
+        #[form(skip)]
+        skipped: String,
+    };
+
+    let instance = run_recognizer::<Skippy>("@Skippy { present: 12 }");
+    assert_eq!(
+        instance,
+        Skippy {
+            present: 12,
+            skipped: "".to_string()
+        }
+    );
+}
+
+#[test]
+fn derive_skipped_field_tuple_struct() {
+    #[derive(StructuralReadable, PartialEq, Eq, Debug)]
+    struct Skippy(#[form(skip)] i32, String);
+
+    let instance = run_recognizer::<Skippy>("@Skippy { hello }");
+    assert_eq!(instance, Skippy(0, "hello".to_string()));
+}
