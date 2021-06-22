@@ -1,6 +1,5 @@
-use crate::{
-    ConnectionError, Interceptor, TryIntoRequest, WebSocket, WebSocketConfig, WebSocketStream,
-};
+use crate::error::ConnectionError;
+use crate::{Interceptor, TryIntoRequest, WebSocket, WebSocketConfig, WebSocketStream};
 use futures::future::BoxFuture;
 use http::{Request, Response};
 use tokio_native_tls::TlsConnector;
@@ -11,7 +10,6 @@ use tokio_native_tls::TlsConnector;
 pub struct WebSocketClientBuilder {
     config: Option<WebSocketConfig>,
     connector: Option<TlsConnector>,
-    protocols: Option<Vec<&'static str>>,
 }
 
 impl WebSocketClientBuilder {
@@ -24,19 +22,10 @@ impl WebSocketClientBuilder {
         S: WebSocketStream,
         I: TryIntoRequest,
     {
-        let WebSocketClientBuilder {
-            config,
-            connector,
-            protocols,
-        } = self;
+        let WebSocketClientBuilder { config, connector } = self;
         let request = request.try_into_request()?;
 
         WebSocket::client(config.unwrap_or_default(), stream, connector, request).await
-    }
-
-    pub fn protocols(mut self, protocols: Vec<&'static str>) -> Self {
-        self.protocols = Some(protocols);
-        self
     }
 
     pub fn config(mut self, config: WebSocketConfig) -> Self {

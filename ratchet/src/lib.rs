@@ -15,8 +15,12 @@
 #![allow(warnings)]
 
 mod builder;
+mod error;
+mod handshake;
 mod protocol;
 
+use crate::error::ConnectionError;
+use crate::handshake::{exec_client_handshake, RequestError};
 use futures::future::BoxFuture;
 use http::uri::InvalidUri;
 use http::{Request, Response, Uri};
@@ -24,16 +28,6 @@ use std::error::Error;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_native_tls::TlsConnector;
 use url::Url;
-
-pub enum ConnectionError {
-    BadRequest(RequestError),
-}
-
-impl From<RequestError> for ConnectionError {
-    fn from(e: RequestError) -> Self {
-        ConnectionError::BadRequest(e)
-    }
-}
 
 pub struct DeflateConfig;
 
@@ -79,12 +73,16 @@ where
 {
     pub async fn client(
         config: WebSocketConfig,
-        stream: S,
+        mut stream: S,
         connector: Option<TlsConnector>,
         request: Request<()>,
     ) -> Result<WebSocket<S>, ConnectionError> {
-        // perform handshake...
-        unimplemented!()
+        exec_client_handshake(&config, &mut stream, connector, request).await?;
+        Ok(WebSocket {
+            stream,
+            role: Role::Client,
+            config,
+        })
     }
 
     pub async fn server<I>(
@@ -101,8 +99,6 @@ where
 }
 
 pub trait WebSocketStream: AsyncRead + AsyncWrite + Unpin {}
-
-pub struct RequestError(Box<dyn Error>);
 
 impl From<InvalidUri> for RequestError {
     fn from(e: InvalidUri) -> Self {
