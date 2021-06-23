@@ -903,3 +903,43 @@ fn derive_two_field_generic_struct() {
 
     validate(two_fields, 1, RecordBodyKind::MapLike, 2, 1);
 }
+
+#[test]
+fn derive_generic_enum() {
+    #[derive(StructuralWritable)]
+    enum Mixed<S, T> {
+        Variant0,
+        Variant1 { value: S },
+        Variant2(T),
+    }
+
+    let unit: Mixed<i32, String> = Mixed::Variant0;
+
+    let value: Value = unit.structure();
+
+    assert_eq!(value, Value::of_attr("Variant0"));
+
+    validate(unit, 1, RecordBodyKind::ArrayLike, 0, 1);
+
+    let instance: Mixed<i32, String> = Mixed::Variant1 { value: 5 };
+
+    let value: Value = instance.structure();
+
+    assert_eq!(
+        value,
+        Value::Record(vec![Attr::of("Variant1")], vec![Item::slot("value", 5i32),])
+    );
+
+    validate(instance, 1, RecordBodyKind::MapLike, 1, 1);
+
+    let instance: Mixed<i32, String> = Mixed::Variant2("hello".to_string());
+
+    let value: Value = instance.structure();
+
+    assert_eq!(
+        value,
+        Value::Record(vec![Attr::of("Variant2")], vec![Item::of("hello")])
+    );
+
+    validate(instance, 1, RecordBodyKind::ArrayLike, 1, 1);
+}

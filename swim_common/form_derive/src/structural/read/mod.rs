@@ -12,21 +12,30 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::collections::HashMap;
+
+use either::Either;
+use proc_macro2::{Span, TokenStream};
+use quote::ToTokens;
+use syn::{Generics, TypeGenerics};
+
+use macro_helpers::{CompoundTypeKind, FieldKind};
+
 use crate::quote::TokenStreamExt;
 use crate::structural::model::enumeration::SegregatedEnumModel;
 use crate::structural::model::field::{BodyFields, FieldModel, HeaderFields, SegregatedFields};
 use crate::structural::model::record::SegregatedStructModel;
-use either::Either;
-use macro_helpers::{CompoundTypeKind, FieldKind};
-use proc_macro2::{Span, TokenStream};
-use quote::ToTokens;
-use std::collections::HashMap;
 
-pub struct DeriveStructuralReadable<S>(pub S);
+pub struct DeriveStructuralReadable<'a, S>(pub S, pub &'a Generics);
 
-impl<'a, 'b> ToTokens for DeriveStructuralReadable<SegregatedStructModel<'a, 'b>> {
+impl<'a, 'b> ToTokens for DeriveStructuralReadable<'b, SegregatedStructModel<'a, 'b>> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        let DeriveStructuralReadable(model) = self;
+        let DeriveStructuralReadable(model, generics) = self;
+        let mut new_generics = (*generics).clone();
+        add_bounds(*generics, &mut new_generics);
+
+        let (impl_gen, type_gen, where_clause) = new_generics.split_for_impl();
+
         if model.inner.fields_model.type_kind == CompoundTypeKind::Unit {
             let name = model.inner.name;
             let lit_name = model.inner.resolve_name();
@@ -54,10 +63,13 @@ impl<'a, 'b> ToTokens for DeriveStructuralReadable<SegregatedStructModel<'a, 'b>
                 }
             })
         } else {
-            let builder_type = RecognizerState::new(model);
+            let name = model.inner.name;
+            let target = parse_quote!(#name #type_gen);
+            let builder_type = RecognizerState::new(model, &target);
 
             let select_feed = SelectFeedFn::new(model);
-            let on_done = OnDoneFn::new(model);
+            let constructor = parse_quote!(#name);
+            let on_done = OnDoneFn::new(model, constructor);
             let select_index = match &model.fields.body {
                 BodyFields::StdBody(body_fields)
                     if model.inner.fields_model.body_kind == CompoundTypeKind::Labelled =>
@@ -67,20 +79,47 @@ impl<'a, 'b> ToTokens for DeriveStructuralReadable<SegregatedStructModel<'a, 'b>
                 _ => SelectIndexFnOrdinal::new(model).into_token_stream(),
             };
 
-            let read_impl = StructReadableImpl::new(model);
+            let read_impl = StructReadableImpl::new(model, &type_gen);
 
             let on_reset = ResetFn::new(model.fields.not_skipped());
+
+            let select_feed_name = select_feed_name();
+            let on_done_name = on_done_name();
+            let on_reset_name = on_reset_name();
+            let builder_name = builder_ident();
 
             tokens.append_all(quote! {
                 const _: () = {
 
-                    #builder_type
+                    type #builder_name #type_gen = #builder_type;
                     #select_index
-                    #select_feed
-                    #on_done
-                    #on_reset
 
-                    #read_impl
+                    #[automatically_derived]
+                    fn #select_feed_name #impl_gen(state: &mut #builder_name #type_gen, index: u32, event: swim_common::form::structural::read::parser::ParseEvent<'_>)
+                        -> std::option::Option<std::result::Result<(), swim_common::form::structural::read::error::ReadError>>
+                    #where_clause
+                    {
+                        #select_feed
+                    }
+
+                    #[automatically_derived]
+                    fn #on_done_name #impl_gen(state: &mut #builder_name #type_gen) -> std::result::Result<#target, swim_common::form::structural::read::error::ReadError>
+                    #where_clause
+                    {
+                        #on_done
+                    }
+
+                    #[automatically_derived]
+                    fn #on_reset_name #impl_gen(state: &mut #builder_name #type_gen)
+                    #where_clause
+                    {
+                         #on_reset
+                    }
+
+                    #[automatically_derived]
+                    impl #impl_gen swim_common::form::structural::read::improved::RecognizerReadable for #name #type_gen #where_clause {
+                        #read_impl
+                    }
 
                 };
             })
@@ -100,84 +139,158 @@ fn suffixed_builder_ident(suffix: usize) -> syn::Ident {
     format_ident!("{}{}", BUILDER_NAME, suffix)
 }
 
-impl<'a, 'b> ToTokens for DeriveStructuralReadable<SegregatedEnumModel<'a, 'b>> {
+impl<'a, 'b> ToTokens for DeriveStructuralReadable<'b, SegregatedEnumModel<'a, 'b>> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        let DeriveStructuralReadable(model) = self;
+        let DeriveStructuralReadable(model, generics) = self;
         let SegregatedEnumModel { inner, variants } = model;
         let name = inner.name;
 
-        let variant_functions = variants
-            .iter()
-            .enumerate()
-            .filter(|(_, model)| model.inner.fields_model.type_kind != CompoundTypeKind::Unit)
-            .map(|(i, model)| {
-                let builder_type = RecognizerState::variant(model, i);
+        let mut new_generics = (*generics).clone();
+        add_bounds(*generics, &mut new_generics);
 
-                let select_index = match &model.fields.body {
-                    BodyFields::StdBody(body_fields)
-                        if model.inner.fields_model.body_kind == CompoundTypeKind::Labelled =>
-                    {
-                        SelectIndexFnLabelled::variant(model, &body_fields, i).into_token_stream()
+        let (impl_gen, type_gen, where_clause) = new_generics.split_for_impl();
+
+        let enum_ty: syn::Type = parse_quote!(#name #type_gen);
+
+        if variants.is_empty() {
+            tokens.append_all(quote! {
+                #[automatically_derived]
+                impl #impl_gen swim_common::form::structural::read::improved::RecognizerReadable for #name #type_gen
+                #where_clause
+                {
+                    type Rec = swim_common::form::structural::read::improved::RecognizeNothing<#enum_ty>;
+                    type AttrRec = swim_common::form::structural::read::improved::RecognizeNothing<#enum_ty>;
+
+                    fn make_recognizer() -> Self::Rec {
+                        std::default::Default::default()
                     }
-                    _ => SelectIndexFnOrdinal::variant(model, i).into_token_stream(),
-                };
 
-                let select_feed = SelectFeedFn::variant(model, i);
-                let on_done = OnDoneFn::variant(model, name, i);
-
-                let on_reset = ResetFn::variant(model.fields.not_skipped(), i);
-
-                quote! {
-                    #builder_type
-                    #select_index
-                    #select_feed
-                    #on_done
-                    #on_reset
+                    fn make_attr_recognizer() -> Self::AttrRec {
+                        std::default::Default::default()
+                    }
                 }
             });
+        } else {
+            let variant_functions = variants
+                .iter()
+                .enumerate()
+                .filter(|(_, model)| model.inner.fields_model.type_kind != CompoundTypeKind::Unit)
+                .map(|(i, model)| {
+                    let builder_type = RecognizerState::new(model, &enum_ty);
 
-        let state = EnumState::new(model);
-        let select_var = SelectVariantFn::new(model);
-        let read_impl = EnumReadableImpl::new(model);
+                    let select_index = match &model.fields.body {
+                        BodyFields::StdBody(body_fields)
+                        if model.inner.fields_model.body_kind == CompoundTypeKind::Labelled =>
+                            {
+                                SelectIndexFnLabelled::variant(model, &body_fields, i).into_token_stream()
+                            }
+                        _ => SelectIndexFnOrdinal::variant(model, i).into_token_stream(),
+                    };
 
-        tokens.append_all(quote! {
+                    let select_feed_name = suffix_ident(SELECT_FEED_NAME, i);
+                    let on_done_name = suffix_ident(ON_DONE_NAME, i);
+                    let on_reset_name = suffix_ident(ON_RESET_NAME, i);
+                    let builder_name = suffixed_builder_ident(i);
+
+                    let select_feed = SelectFeedFn::new(model);
+                    let var_name = model.inner.name;
+                    let constructor = parse_quote!(#name::#var_name);
+                    let on_done = OnDoneFn::new(model, constructor);
+
+                    let on_reset = ResetFn::new(model.fields.not_skipped());
+
+                    quote! {
+                    type #builder_name #type_gen = #builder_type;
+                    #select_index
+
+                    #[automatically_derived]
+                    fn #select_feed_name #impl_gen(state: &mut #builder_name #type_gen, index: u32, event: swim_common::form::structural::read::parser::ParseEvent<'_>)
+                        -> std::option::Option<std::result::Result<(), swim_common::form::structural::read::error::ReadError>>
+                    #where_clause
+                    {
+                        #select_feed
+                    }
+
+                    #[automatically_derived]
+                    fn #on_done_name #impl_gen(state: &mut #builder_name #type_gen) -> std::result::Result<#enum_ty, swim_common::form::structural::read::error::ReadError>
+                    #where_clause
+                    {
+                        #on_done
+                    }
+
+                    #[automatically_derived]
+                    fn #on_reset_name #impl_gen(state: &mut #builder_name #type_gen)
+                    #where_clause
+                    {
+                        #on_reset
+                    }
+
+                }
+                });
+
+            let state = EnumState::new(model, &type_gen);
+            let select_var_name = select_var_name();
+            let builder_name = builder_ident();
+            let select_var = SelectVariantFn::new(model, &type_gen);
+
+            let recog_ty = quote!(swim_common::form::structural::read::improved::TaggedEnumRecognizer<#builder_name #type_gen>);
+
+            tokens.append_all(quote! {
             const _: () = {
                 #(#variant_functions)*
 
                 #state
-                #select_var
-                #read_impl
+
+                #[automatically_derived]
+                fn #select_var_name #impl_gen(name: &str) -> std::option::Option<#builder_name #type_gen>
+                #where_clause
+                {
+                     #select_var
+                }
+
+                #[automatically_derived]
+                impl #impl_gen swim_common::form::structural::read::improved::RecognizerReadable for #name #type_gen
+                #where_clause
+                {
+                    type Rec = #recog_ty;
+                    type AttrRec = swim_common::form::structural::read::improved::SimpleAttrBody<
+                        #recog_ty,
+                    >;
+
+                    fn make_recognizer() -> Self::Rec {
+                        <#recog_ty>::new(
+                            #select_var_name
+                        )
+                    }
+
+                    fn make_attr_recognizer() -> Self::AttrRec {
+                        swim_common::form::structural::read::improved::SimpleAttrBody::new(
+                            <Self as swim_common::form::structural::read::improved::RecognizerReadable>::make_recognizer()
+                        )
+                    }
+                }
             };
         });
+        }
     }
 }
 
 struct RecognizerState<'a, 'b> {
+    target: &'b syn::Type,
     model: &'b SegregatedStructModel<'a, 'b>,
-    variant: Option<usize>,
 }
 
 impl<'a, 'b> RecognizerState<'a, 'b> {
-    fn new(model: &'b SegregatedStructModel<'a, 'b>) -> Self {
-        RecognizerState {
-            model,
-            variant: None,
-        }
-    }
-
-    fn variant(model: &'b SegregatedStructModel<'a, 'b>, variant_ordinal: usize) -> Self {
-        RecognizerState {
-            model,
-            variant: Some(variant_ordinal),
-        }
+    fn new(model: &'b SegregatedStructModel<'a, 'b>, target: &'b syn::Type) -> Self {
+        RecognizerState { target, model }
     }
 }
 
 impl<'a, 'b> ToTokens for RecognizerState<'a, 'b> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let RecognizerState {
+            target,
             model: SegregatedStructModel { fields, .. },
-            variant,
         } = self;
         let it = enumerate_fields_discriminated(fields);
 
@@ -195,14 +308,8 @@ impl<'a, 'b> ToTokens for RecognizerState<'a, 'b> {
             }
         });
 
-        let builder_name = if let Some(var_ord) = variant {
-            suffixed_builder_ident(*var_ord)
-        } else {
-            builder_ident()
-        };
-
         tokens.append_all(quote! {
-            type #builder_name = ((#(#builder_types,)*), (#(#recognizer_types,)*));
+            ((#(#builder_types,)*), (#(#recognizer_types,)*), core::marker::PhantomData<fn() -> #target>)
         });
     }
 }
@@ -459,22 +566,11 @@ impl<'a, 'b> ToTokens for SelectIndexFnOrdinal<'a, 'b> {
 
 struct SelectFeedFn<'a, 'b> {
     fields: &'b SegregatedStructModel<'a, 'b>,
-    variant: Option<usize>,
 }
 
 impl<'a, 'b> SelectFeedFn<'a, 'b> {
     fn new(model: &'b SegregatedStructModel<'a, 'b>) -> Self {
-        SelectFeedFn {
-            fields: model,
-            variant: None,
-        }
-    }
-
-    fn variant(model: &'b SegregatedStructModel<'a, 'b>, variant_ordinal: usize) -> Self {
-        SelectFeedFn {
-            fields: model,
-            variant: Some(variant_ordinal),
-        }
+        SelectFeedFn { fields: model }
     }
 }
 
@@ -530,7 +626,7 @@ fn enumerate_fields_discriminated<'a>(
 
 impl<'a, 'b> ToTokens for SelectFeedFn<'a, 'b> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        let SelectFeedFn { fields, variant } = self;
+        let SelectFeedFn { fields } = self;
         let SegregatedStructModel { fields, .. } = fields;
 
         let it = enumerate_fields(fields);
@@ -544,27 +640,11 @@ impl<'a, 'b> ToTokens for SelectFeedFn<'a, 'b> {
             }
         });
 
-        let (fn_name, builder_name) = if let Some(var_ord) = variant {
-            (
-                suffix_ident(SELECT_FEED_NAME, *var_ord),
-                suffixed_builder_ident(*var_ord),
-            )
-        } else {
-            (
-                syn::Ident::new(SELECT_FEED_NAME, Span::call_site()),
-                builder_ident(),
-            )
-        };
-
         tokens.append_all(quote! {
-            #[automatically_derived]
-            fn #fn_name(state: &mut #builder_name, index: u32, event: swim_common::form::structural::read::parser::ParseEvent<'_>)
-                -> std::option::Option<std::result::Result<(), swim_common::form::structural::read::error::ReadError>> {
-                let (fields, recognizers) = state;
-                match index {
-                    #(#cases)*
-                    _ => std::option::Option::Some(std::result::Result::Err(swim_common::form::structural::read::error::ReadError::InconsistentState)),
-                }
+            let (fields, recognizers, _) = state;
+            match index {
+                #(#cases)*
+                _ => std::option::Option::Some(std::result::Result::Err(swim_common::form::structural::read::error::ReadError::InconsistentState)),
             }
         })
     }
@@ -572,32 +652,24 @@ impl<'a, 'b> ToTokens for SelectFeedFn<'a, 'b> {
 
 struct OnDoneFn<'a, 'b> {
     fields: &'b SegregatedStructModel<'a, 'b>,
-    outer_enum: Option<(&'a syn::Ident, usize)>,
+    constructor: syn::Path,
 }
 
 impl<'a, 'b> OnDoneFn<'a, 'b> {
-    fn new(model: &'b SegregatedStructModel<'a, 'b>) -> Self {
+    fn new(model: &'b SegregatedStructModel<'a, 'b>, constructor: syn::Path) -> Self {
         OnDoneFn {
             fields: model,
-            outer_enum: None,
-        }
-    }
-
-    fn variant(
-        model: &'b SegregatedStructModel<'a, 'b>,
-        enum_name: &'a syn::Ident,
-        variant_ordinal: usize,
-    ) -> Self {
-        OnDoneFn {
-            fields: model,
-            outer_enum: Some((enum_name, variant_ordinal)),
+            constructor,
         }
     }
 }
 
 impl<'a, 'b> ToTokens for OnDoneFn<'a, 'b> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        let OnDoneFn { fields, outer_enum } = self;
+        let OnDoneFn {
+            fields,
+            constructor,
+        } = self;
         let SegregatedStructModel { inner, fields } = fields;
 
         let it = enumerate_fields(fields);
@@ -628,26 +700,7 @@ impl<'a, 'b> ToTokens for OnDoneFn<'a, 'b> {
             quote!(fields.#idx.take())
         });
 
-        let name = inner.name;
-
-        let (path, fn_name, builder_name, ret_ty) = if let Some((enum_name, var_ord)) = outer_enum {
-            let enum_path: syn::Path = parse_quote!(#enum_name::#name);
-            (
-                enum_path,
-                suffix_ident(ON_DONE_NAME, *var_ord),
-                suffixed_builder_ident(*var_ord),
-                *enum_name,
-            )
-        } else {
-            (
-                name.clone().into(),
-                syn::Ident::new(ON_DONE_NAME, Span::call_site()),
-                builder_ident(),
-                name,
-            )
-        };
-
-        let constructor = match inner.fields_model.type_kind {
+        let make_result = match inner.fields_model.type_kind {
             CompoundTypeKind::Labelled => {
                 let con_params = inner.fields_model.fields.iter().map(|fld| {
                     let name = &fld.model.name;
@@ -658,13 +711,13 @@ impl<'a, 'b> ToTokens for OnDoneFn<'a, 'b> {
                     }
                 });
                 quote! {
-                    #path {
+                    #constructor {
                         #(#con_params,)*
                     }
                 }
             }
             CompoundTypeKind::Unit => {
-                quote!(#path)
+                quote!(#constructor)
             }
             _ => {
                 let name_map = it
@@ -678,24 +731,22 @@ impl<'a, 'b> ToTokens for OnDoneFn<'a, 'b> {
                     }
                 });
                 quote! {
-                    #path(#(#con_params,)*)
+                    #constructor(#(#con_params,)*)
                 }
             }
         };
 
         tokens.append_all(quote! {
-            #[automatically_derived]
-            fn #fn_name(state: &mut #builder_name) -> std::result::Result<#ret_ty, swim_common::form::structural::read::error::ReadError> {
-                let (fields, _ ) = state;
-                let mut missing = std::vec![];
 
-                #(#validators)*
+            let (fields, _, _) = state;
+            let mut missing = std::vec![];
 
-                if let (#(#field_dest,)*) = (#(#field_takes,)*) {
-                    std::result::Result::Ok(#constructor)
-                } else {
-                    std::result::Result::Err(swim_common::form::structural::read::error::ReadError::MissingFields(missing))
-                }
+            #(#validators)*
+
+            if let (#(#field_dest,)*) = (#(#field_takes,)*) {
+                std::result::Result::Ok(#make_result)
+            } else {
+                std::result::Result::Err(swim_common::form::structural::read::error::ReadError::MissingFields(missing))
             }
         })
     }
@@ -703,31 +754,18 @@ impl<'a, 'b> ToTokens for OnDoneFn<'a, 'b> {
 
 struct ResetFn {
     num_fields: usize,
-    variant: Option<usize>,
 }
 
 impl ResetFn {
     pub fn new(num_fields: usize) -> Self {
-        ResetFn {
-            num_fields,
-            variant: None,
-        }
-    }
-
-    pub fn variant(num_fields: usize, variant_ordinal: usize) -> Self {
-        ResetFn {
-            num_fields,
-            variant: Some(variant_ordinal),
-        }
+        ResetFn { num_fields }
     }
 }
 
 impl ToTokens for ResetFn {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        let ResetFn {
-            num_fields,
-            variant,
-        } = self;
+        let ResetFn { num_fields } = self;
+
         let field_resets = (0..*num_fields).map(|i| {
             let idx = syn::Index::from(i);
             quote! {
@@ -736,24 +774,9 @@ impl ToTokens for ResetFn {
             }
         });
 
-        let (fn_name, builder_name) = if let Some(var_ord) = variant {
-            (
-                suffix_ident(ON_RESET_NAME, *var_ord),
-                suffixed_builder_ident(*var_ord),
-            )
-        } else {
-            (
-                syn::Ident::new(ON_RESET_NAME, Span::call_site()),
-                builder_ident(),
-            )
-        };
-
         tokens.append_all(quote! {
-            #[automatically_derived]
-            fn #fn_name(state: &mut #builder_name) {
-                let (fields, recognizers) = state;
-                #(#field_resets)*
-            }
+            let (fields, recognizers, _) = state;
+            #(#field_resets)*
         })
     }
 }
@@ -783,11 +806,15 @@ impl<'a, 'b> ToTokens for ConstructFieldRecognizers<'a, 'b> {
 
 struct StructReadableImpl<'a, 'b> {
     fields: &'b SegregatedStructModel<'a, 'b>,
+    gen_params: &'b TypeGenerics<'b>,
 }
 
 impl<'a, 'b> StructReadableImpl<'a, 'b> {
-    fn new(model: &'b SegregatedStructModel<'a, 'b>) -> Self {
-        StructReadableImpl { fields: model }
+    fn new(model: &'b SegregatedStructModel<'a, 'b>, gen_params: &'b TypeGenerics<'b>) -> Self {
+        StructReadableImpl {
+            fields: model,
+            gen_params,
+        }
     }
 }
 
@@ -832,7 +859,7 @@ fn is_simple_param(body_fields: &BodyFields) -> Option<TokenStream> {
 
 impl<'a, 'b> ToTokens for StructReadableImpl<'a, 'b> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        let StructReadableImpl { fields } = self;
+        let StructReadableImpl { fields, gen_params } = self;
         let name = fields.inner.name;
 
         let tag = if fields.fields.header.tag_name.is_some() {
@@ -850,8 +877,8 @@ impl<'a, 'b> ToTokens for StructReadableImpl<'a, 'b> {
 
         let builder_name = builder_ident();
 
-        let target = parse_quote!(#name);
-        let builder = parse_quote!(#builder_name);
+        let target = parse_quote!(#name #gen_params);
+        let builder = parse_quote!(#builder_name #gen_params);
         let (recog_ty, vtable_ty) = compound_recognizer(*fields, &target, &builder);
 
         let select_index = select_index_name();
@@ -860,38 +887,35 @@ impl<'a, 'b> ToTokens for StructReadableImpl<'a, 'b> {
         let on_reset = on_reset_name();
 
         tokens.append_all(quote! {
-            #[automatically_derived]
-            impl swim_common::form::structural::read::improved::RecognizerReadable for #name {
-                type Rec = #recog_ty;
-                type AttrRec = swim_common::form::structural::read::improved::SimpleAttrBody<
-                    #recog_ty,
-                >;
+            type Rec = #recog_ty;
+            type AttrRec = swim_common::form::structural::read::improved::SimpleAttrBody<
+                #recog_ty,
+            >;
 
-                #[allow(non_snake_case)]
-                #[inline]
-                fn make_recognizer() -> Self::Rec {
-                    <#recog_ty>::new(
-                        #tag,
-                        #has_header_body,
-                        (std::default::Default::default(), #make_fld_recog),
-                        #num_fields,
-                        <#vtable_ty>::new(
-                            #select_index,
-                            #select_feed,
-                            #on_done,
-                            #on_reset,
-                        ),
-                        #extra_params
-                    )
-                }
+            #[allow(non_snake_case)]
+            #[inline]
+            fn make_recognizer() -> Self::Rec {
+                <#recog_ty>::new(
+                    #tag,
+                    #has_header_body,
+                    (std::default::Default::default(), #make_fld_recog, core::marker::PhantomData),
+                    #num_fields,
+                    <#vtable_ty>::new(
+                        #select_index,
+                        #select_feed,
+                        #on_done,
+                        #on_reset,
+                    ),
+                    #extra_params
+                )
+            }
 
-                #[allow(non_snake_case)]
-                #[inline]
-                fn make_attr_recognizer() -> Self::AttrRec {
-                    swim_common::form::structural::read::improved::SimpleAttrBody::new(
-                        <Self as swim_common::form::structural::read::improved::RecognizerReadable>::make_recognizer()
-                    )
-                }
+            #[allow(non_snake_case)]
+            #[inline]
+            fn make_attr_recognizer() -> Self::AttrRec {
+                swim_common::form::structural::read::improved::SimpleAttrBody::new(
+                    <Self as swim_common::form::structural::read::improved::RecognizerReadable>::make_recognizer()
+                )
             }
         })
     }
@@ -899,11 +923,12 @@ impl<'a, 'b> ToTokens for StructReadableImpl<'a, 'b> {
 
 struct SelectVariantFn<'a, 'b> {
     model: &'b SegregatedEnumModel<'a, 'b>,
+    gen_params: &'b TypeGenerics<'b>,
 }
 
 impl<'a, 'b> SelectVariantFn<'a, 'b> {
-    fn new(model: &'b SegregatedEnumModel<'a, 'b>) -> Self {
-        SelectVariantFn { model }
+    fn new(model: &'b SegregatedEnumModel<'a, 'b>, gen_params: &'b TypeGenerics<'b>) -> Self {
+        SelectVariantFn { model, gen_params }
     }
 }
 
@@ -911,19 +936,20 @@ impl<'a, 'b> ToTokens for SelectVariantFn<'a, 'b> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let SelectVariantFn {
             model: SegregatedEnumModel { inner, variants },
+            gen_params,
         } = self;
 
         let name = inner.name;
-        let enum_ty = parse_quote!(#name);
+        let enum_ty = parse_quote!(#name #gen_params);
 
         let cases = variants.iter().enumerate().map(|(i, var)| {
             let lit_name = var.inner.resolve_name();
             let constructor = if var.inner.fields_model.type_kind == CompoundTypeKind::Unit {
                 let var_name = var.inner.name;
-                parse_quote!(swim_common::form::structural::read::improved::UnitStructRecognizer::variant(|| #enum_ty::#var_name))
+                parse_quote!(swim_common::form::structural::read::improved::UnitStructRecognizer::variant(|| #name::#var_name))
             } else {
                 let builder_name = suffixed_builder_ident(i);
-                let builder_ty = parse_quote!(#builder_name);
+                let builder_ty = parse_quote!(#builder_name #gen_params);
                 let (recognizer, vtable) = compound_recognizer(var, &enum_ty, &builder_ty);
                 let make_fld_recog = ConstructFieldRecognizers { fields: var };
                 let extra_params = is_simple_param(&var.fields.body);
@@ -938,7 +964,7 @@ impl<'a, 'b> ToTokens for SelectVariantFn<'a, 'b> {
                 parse_quote! {
                     <#recognizer>::variant(
                         #has_header_body,
-                        (std::default::Default::default(), #make_fld_recog),
+                        (std::default::Default::default(), #make_fld_recog, core::marker::PhantomData),
                         #num_fields,
                         <#vtable>::new(
                             #select_index,
@@ -957,78 +983,23 @@ impl<'a, 'b> ToTokens for SelectVariantFn<'a, 'b> {
             }
         });
 
-        let builder_name = builder_ident();
-
-        let select_var_name = select_var_name();
-
         tokens.append_all(quote! {
-
-            #[automatically_derived]
-            fn #select_var_name(name: &str) -> std::option::Option<#builder_name> {
-                match name {
-                    #(#cases,)*
-                    _ => None,
-                }
+            match name {
+                #(#cases,)*
+                _ => None,
             }
         });
     }
 }
 
-struct EnumReadableImpl<'a, 'b> {
-    model: &'b SegregatedEnumModel<'a, 'b>,
-}
-
-impl<'a, 'b> EnumReadableImpl<'a, 'b> {
-    fn new(model: &'b SegregatedEnumModel<'a, 'b>) -> Self {
-        EnumReadableImpl { model }
-    }
-}
-
-impl<'a, 'b> ToTokens for EnumReadableImpl<'a, 'b> {
-    fn to_tokens(&self, tokens: &mut TokenStream) {
-        let EnumReadableImpl { model } = self;
-
-        let name = model.inner.name;
-        let builder_name = builder_ident();
-
-        let recog_ty = quote!(swim_common::form::structural::read::improved::TaggedEnumRecognizer<#builder_name>);
-
-        let select_var = select_var_name();
-
-        tokens.append_all(quote! {
-
-            #[automatically_derived]
-            impl swim_common::form::structural::read::improved::RecognizerReadable for #name {
-
-                type Rec = #recog_ty;
-                type AttrRec = swim_common::form::structural::read::improved::SimpleAttrBody<
-                    #recog_ty,
-                >;
-
-                fn make_recognizer() -> Self::Rec {
-                    <#recog_ty>::new(
-                        #select_var
-                    )
-                }
-
-                fn make_attr_recognizer() -> Self::AttrRec {
-                    swim_common::form::structural::read::improved::SimpleAttrBody::new(
-                        <Self as swim_common::form::structural::read::improved::RecognizerReadable>::make_recognizer()
-                    )
-                }
-            }
-
-        })
-    }
-}
-
 struct EnumState<'a, 'b> {
     model: &'b SegregatedEnumModel<'a, 'b>,
+    gen_params: &'b TypeGenerics<'b>,
 }
 
 impl<'a, 'b> EnumState<'a, 'b> {
-    fn new(model: &'b SegregatedEnumModel<'a, 'b>) -> Self {
-        EnumState { model }
+    fn new(model: &'b SegregatedEnumModel<'a, 'b>, gen_params: &'b TypeGenerics<'b>) -> Self {
+        EnumState { model, gen_params }
     }
 }
 
@@ -1036,11 +1007,12 @@ impl<'a, 'b> ToTokens for EnumState<'a, 'b> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let EnumState {
             model: SegregatedEnumModel { inner, variants },
+            gen_params,
         } = self;
         let base: syn::Type = parse_quote!(swim_common::form::structural::generic::coproduct::CNil);
 
         let name = inner.name;
-        let enum_ty = parse_quote!(#name);
+        let enum_ty = parse_quote!(#name #gen_params);
 
         let ccons_type = variants
             .iter()
@@ -1051,7 +1023,7 @@ impl<'a, 'b> ToTokens for EnumState<'a, 'b> {
                     parse_quote!(swim_common::form::structural::read::improved::UnitStructRecognizer<#enum_ty>)
                 } else {
                     let builder_name = suffixed_builder_ident(i);
-                    let builder = parse_quote!(#builder_name);
+                    let builder = parse_quote!(#builder_name #gen_params);
                     let (ty, _) = compound_recognizer(var, &enum_ty, &builder);
                     ty
                 };
@@ -1061,7 +1033,7 @@ impl<'a, 'b> ToTokens for EnumState<'a, 'b> {
         let builder_name = builder_ident();
 
         tokens.append_all(quote! {
-            type #builder_name = #ccons_type;
+            type #builder_name #gen_params = #ccons_type;
         })
     }
 }
@@ -1073,4 +1045,15 @@ fn make_ccons(n: usize, expr: syn::Expr) -> syn::Expr {
         acc = parse_quote!(swim_common::form::structural::generic::coproduct::CCons::Tail(#acc));
     }
     acc
+}
+
+fn add_bounds(original: &Generics, generics: &mut Generics) {
+    let bounds = original.type_params().map(|param| {
+        let id = &param.ident;
+        parse_quote!(#id: swim_common::form::structural::read::improved::RecognizerReadable)
+    });
+    let where_clause = generics.make_where_clause();
+    for bound in bounds.into_iter() {
+        where_clause.predicates.push(bound);
+    }
 }

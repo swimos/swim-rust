@@ -61,19 +61,19 @@ impl<'a, 'b> ToTokens for DeriveStructuralWritable<'a, SegregatedEnumModel<'a, '
 
                     #[inline]
                     fn num_attributes(&self) -> usize {
-                        0
+                        match *self {}
                     }
 
                     #[allow(non_snake_case)]
                     #[inline]
-                    fn write_with<__W: #writer_trait>(&self, writer: __W) -> core::result::Result<__W::Repr, __W::Error> {
-                        <__W as #writer_trait>.write_extant(writer)
+                    fn write_with<__W: #writer_trait>(&self, _writer: __W) -> core::result::Result<__W::Repr, __W::Error> {
+                        match *self {}
                     }
 
                     #[allow(non_snake_case)]
                     #[inline]
-                    fn write_into<__W: #writer_trait>(self, writer: __W) -> core::result::Result<__W::Repr, __W::Error> {
-                        <__W as #writer_trait>.write_extant(writer)
+                    fn write_into<__W: #writer_trait>(self, _writer: __W) -> core::result::Result<__W::Repr, __W::Error> {
+                        match self {}
                     }
                 }
             }
@@ -108,7 +108,7 @@ impl<'a, 'b> ToTokens for DeriveStructuralWritable<'a, SegregatedEnumModel<'a, '
             quote! {
 
                 #[automatically_derived]
-                impl swim_common::form::structural::write::StructuralWritable for #name {
+                impl #impl_lst swim_common::form::structural::write::StructuralWritable for #name #ty_params #where_clause {
 
                     #[inline]
                     fn num_attributes(&self) -> usize {

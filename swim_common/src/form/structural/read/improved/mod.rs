@@ -2002,3 +2002,21 @@ impl<T> Recognizer for UnitStructRecognizer<T> {
         self.state = UnitStructState::Init
     }
 }
+
+pub struct RecognizeNothing<T>(PhantomData<T>);
+
+impl<T> Default for RecognizeNothing<T> {
+    fn default() -> Self {
+        RecognizeNothing(PhantomData)
+    }
+}
+
+impl<T> Recognizer for RecognizeNothing<T> {
+    type Target = T;
+
+    fn feed_event(&mut self, input: ParseEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
+        Some(Err(bad_kind(&input)))
+    }
+
+    fn reset(&mut self) {}
+}

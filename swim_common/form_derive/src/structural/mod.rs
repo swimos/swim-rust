@@ -72,11 +72,11 @@ pub fn build_derive_structural_readable(
     match &input.data {
         Data::Struct(ds) => {
             let def = StructDef::new(&input.ident, &input, &input.attrs, ds);
-            struct_derive_structural_readable(def)
+            struct_derive_structural_readable(def, &input.generics)
         }
         Data::Enum(de) => {
             let def = EnumDef::new(&input.ident, &input, &input.attrs, de);
-            enum_derive_structural_readable(def)
+            enum_derive_structural_readable(def, &input.generics)
         }
         _ => Err(Errors::of(syn::Error::new_spanned(
             input,
@@ -87,16 +87,20 @@ pub fn build_derive_structural_readable(
 
 fn struct_derive_structural_readable<Flds: StructLike>(
     input: StructDef<'_, Flds>,
+    generics: &Generics,
 ) -> Result<TokenStream, Errors<syn::Error>> {
     let model = StructModel::try_validate(input).into_result()?;
     let segregated = SegregatedStructModel::from(&model);
-    let derive = DeriveStructuralReadable(segregated);
+    let derive = DeriveStructuralReadable(segregated, generics);
     Ok(derive.into_token_stream())
 }
 
-fn enum_derive_structural_readable(input: EnumDef<'_>) -> Result<TokenStream, Errors<syn::Error>> {
+fn enum_derive_structural_readable(
+    input: EnumDef<'_>,
+    generics: &Generics,
+) -> Result<TokenStream, Errors<syn::Error>> {
     let model = EnumModel::try_validate(input).into_result()?;
     let segregated = SegregatedEnumModel::from(&model);
-    let derive = DeriveStructuralReadable(segregated);
+    let derive = DeriveStructuralReadable(segregated, generics);
     Ok(derive.into_token_stream())
 }

@@ -440,7 +440,7 @@ fn derive_skipped_field_struct() {
         present: i32,
         #[form(skip)]
         skipped: String,
-    };
+    }
 
     let instance = run_recognizer::<Skippy>("@Skippy { present: 12 }");
     assert_eq!(
@@ -459,4 +459,61 @@ fn derive_skipped_field_tuple_struct() {
 
     let instance = run_recognizer::<Skippy>("@Skippy { hello }");
     assert_eq!(instance, Skippy(0, "hello".to_string()));
+}
+
+#[test]
+fn derive_generic_two_field_struct() {
+    #[derive(StructuralReadable, PartialEq, Eq, Debug)]
+    struct TwoFields<S, T> {
+        first: S,
+        second: T,
+    }
+
+    let instance =
+        run_recognizer::<TwoFields<i32, String>>("@TwoFields { first: 12, second: hello }");
+    assert_eq!(
+        instance,
+        TwoFields {
+            first: 12,
+            second: "hello".to_string()
+        }
+    );
+
+    let instance =
+        run_recognizer::<TwoFields<i32, String>>("@TwoFields { second: hello, first: 12 }");
+    assert_eq!(
+        instance,
+        TwoFields {
+            first: 12,
+            second: "hello".to_string()
+        }
+    );
+}
+
+#[test]
+fn derive_generic_enum() {
+    #[derive(StructuralReadable, PartialEq, Eq, Debug)]
+    enum Mixed<S, T> {
+        Variant0,
+        Variant1 { value: S },
+        Variant2(T),
+    }
+
+    let instance = run_recognizer::<Mixed<i32, String>>("@Variant0");
+    assert_eq!(instance, Mixed::Variant0);
+
+    let instance = run_recognizer::<Mixed<i32, String>>("@Variant1 { value: 45 }");
+    assert_eq!(instance, Mixed::Variant1 { value: 45 });
+
+    let instance = run_recognizer::<Mixed<i32, String>>("@Variant2 { content }");
+    assert_eq!(instance, Mixed::Variant2("content".to_string()));
+}
+
+#[test]
+fn derive_empty_enum() {
+    #[derive(StructuralReadable, PartialEq, Eq, Debug)]
+    enum Empty {}
+
+    let span = Span::new("");
+    assert!(parse_recognize::<Empty>(span).is_err());
 }
