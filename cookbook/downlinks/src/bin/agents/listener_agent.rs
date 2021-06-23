@@ -23,7 +23,8 @@ use swim_client::downlink::typed::map::MapDownlinkReceiver;
 use swim_client::downlink::Event;
 use swim_client::interface::SwimClient;
 use swim_client::runtime::task;
-use swim_common::model::Value;
+use swim_common::form::Form;
+use swim_common::model::{Item, Value};
 use swim_common::warp::path::{Path, RelativePath};
 use swim_server::agent::command_lifecycle;
 use swim_server::agent::lane::channels::update::StmRetryStrategy;
@@ -50,9 +51,7 @@ pub struct ListenerAgent {
     value_type = "Value",
     on_event
 )]
-struct ShoppingCartsLifecycle {
-    shopping_carts: HashMap<String, Arc<i32>>,
-}
+struct ShoppingCartsLifecycle;
 
 impl ShoppingCartsLifecycle {
     async fn on_event<Context>(
@@ -63,46 +62,21 @@ impl ShoppingCartsLifecycle {
     ) where
         Context: AgentContext<ListenerAgent> + Sized + Send + Sync + 'static,
     {
-        eprintln!("Test");
-        // match event {
-        //     MapLaneEvent::Update(key, value) => {
-        //         let previous_val = self.previous_state.insert(key.clone(), value.clone());
-        //
-        //         let message = if let Some(prev_val) = previous_val {
-        //             format!("{} count changed to {} from {}", key, value, prev_val)
-        //         } else {
-        //             format!("{} count changed to {}", key, value)
-        //         };
-        //
-        //         log_message(context.node_uri(), &message);
-        //     }
-        //     MapLaneEvent::Remove(key) => {
-        //         let previous_val = self.previous_state.remove(key);
-        //
-        //         if let Some(prev_val) = previous_val {
-        //             let message = format!("removed <{}, {}>", key, prev_val);
-        //             log_message(context.node_uri(), &message);
-        //         };
-        //     }
-        //     _ => (),
-        // }
-    }
-}
-
-impl LaneLifecycle<()> for ShoppingCartsLifecycle {
-    fn create(_config: &()) -> Self {
-        ShoppingCartsLifecycle {
-            shopping_carts: HashMap::new(),
+        if let MapLaneEvent::Update(key, value) = event {
+            let message = format!("shopping_carts updated {}: {}", key, value);
+            log_message(context.node_uri(), &message);
         }
     }
 }
 
 #[command_lifecycle(agent = "ListenerAgent", command_type = "String", on_command)]
-struct TriggerListenLifecycle;
+struct TriggerListenLifecycle {
+    shopping_cart_subscribers: HashMap<String, MapLane<String, Value>>,
+}
 
 impl TriggerListenLifecycle {
     async fn on_command<Context>(
-        &self,
+        &mut self,
         command: &String,
         _model: &CommandLane<String>,
         context: &Context,
@@ -114,42 +88,44 @@ impl TriggerListenLifecycle {
         add_subscription(
             RelativePath::new(command, "shopping_cart"),
             context.client(),
-            &context.agent().shopping_carts,
+            context.agent().shopping_carts.clone(),
         )
         .await;
+
+        self.shopping_cart_subscribers
+            .insert("a".to_string(), context.agent().shopping_carts.clone());
+    }
+}
+
+impl LaneLifecycle<()> for TriggerListenLifecycle {
+    fn create(_config: &()) -> Self {
+        TriggerListenLifecycle {
+            shopping_cart_subscribers: HashMap::new(),
+        }
     }
 }
 
 async fn add_subscription(
     path: RelativePath,
     client: SwimClient<Path>,
-    shopping_carts: &MapLane<String, Value>,
+    shopping_carts: MapLane<String, Value>,
 ) {
     let (_, map_recv) = client
         .map_downlink(Path::Local(path.clone()))
         .await
         .unwrap();
 
-    let shopping_cart = atomically(
-        &shopping_carts.get(path.to_string()),
-        StmRetryStrategy::new(RetryStrategy::default()),
-    )
-    .await
-    .unwrap()
-    .unwrap();
-
-    match &*shopping_cart {
-        Value::Record(_attr, items) => {
-            let item = items.get(0).unwrap();
-            eprintln!("item = {:#?}", item);
-        }
-        _ => unimplemented!(),
-    }
-
-    task::spawn(did_update(map_recv, 0));
+    task::spawn(did_update(map_recv, path, shopping_carts));
 }
 
-async fn did_update(map_recv: MapDownlinkReceiver<String, i32>, default: i32) {
+async fn did_update(
+    map_recv: MapDownlinkReceiver<String, i32>,
+    path: RelativePath,
+    shopping_carts: MapLane<String, Value>,
+) {
+    let shopping_carts = &shopping_carts;
+    let node = &path.node;
+
     map_recv
         .into_stream()
         .filter_map(|event| async {
@@ -157,13 +133,59 @@ async fn did_update(map_recv: MapDownlinkReceiver<String, i32>, default: i32) {
                 Event::Remote(TypedViewWithEvent {
                     view,
                     event: MapEvent::Update(key),
-                }) => Some((key, view)),
+                }) => {
+                    let value = view.get(&key);
+                    Some((key, value))
+                }
                 _ => None,
             }
         })
-        .for_each(|(key, current)| async move {
-            let shopping_cart = eprintln!("key = {:#?}", key);
-            eprintln!("current = {:#?}", current);
+        .for_each(|(cmd_key, cmd_value)| async move {
+            let cmd_value = cmd_value.unwrap().into_value();
+            let cmd_key = cmd_key.into_value();
+
+            let maybe_shopping_cart: Option<Arc<Value>> = atomically(
+                &shopping_carts.get(node.to_string()),
+                StmRetryStrategy::new(RetryStrategy::default()),
+            )
+            .await
+            .unwrap();
+
+            //Todo use `and_then()`
+
+            let shopping_cart = if let Some(shopping_cart) = maybe_shopping_cart {
+                let mut shopping_cart = (*shopping_cart).clone();
+
+                if let Value::Record(_attr, items) = &mut shopping_cart {
+                    let mut exists = false;
+
+                    for mut item in items.iter_mut() {
+                        if let Item::Slot(key, value) = item {
+                            if key == &cmd_key {
+                                *value = cmd_value.clone();
+                                exists = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    if !exists {
+                        let slot = Item::Slot(cmd_key.into(), cmd_value);
+                        items.push(slot);
+                    }
+                }
+
+                shopping_cart
+            } else {
+                Value::record(vec![Item::Slot(cmd_key.into(), cmd_value)])
+            };
+
+            atomically(
+                &shopping_carts.update(node.to_string(), Arc::new(shopping_cart)),
+                StmRetryStrategy::new(RetryStrategy::default()),
+            )
+            .await
+            .unwrap();
         })
         .await;
 }
