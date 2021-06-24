@@ -93,7 +93,7 @@ impl TriggerListenLifecycle {
         .await;
 
         self.shopping_cart_subscribers
-            .insert("a".to_string(), context.agent().shopping_carts.clone());
+            .insert(command.to_string(), context.agent().shopping_carts.clone());
     }
 }
 
@@ -144,48 +144,42 @@ async fn did_update(
             let cmd_value = cmd_value.unwrap().into_value();
             let cmd_key = cmd_key.into_value();
 
-            let maybe_shopping_cart: Option<Arc<Value>> = atomically(
-                &shopping_carts.get(node.to_string()),
-                StmRetryStrategy::new(RetryStrategy::default()),
-            )
-            .await
-            .unwrap();
+            let update = shopping_carts
+                .get(node.to_string())
+                .and_then(|maybe_shopping_cart| {
+                    let shopping_cart = if let Some(shopping_cart) = maybe_shopping_cart {
+                        let mut shopping_cart = (*shopping_cart).clone();
 
-            //Todo use `and_then()`
+                        if let Value::Record(_attr, items) = &mut shopping_cart {
+                            let mut exists = false;
 
-            let shopping_cart = if let Some(shopping_cart) = maybe_shopping_cart {
-                let mut shopping_cart = (*shopping_cart).clone();
+                            for item in items.iter_mut() {
+                                if let Item::Slot(key, value) = item {
+                                    if key == &cmd_key {
+                                        *value = cmd_value.clone();
+                                        exists = true;
+                                        break;
+                                    }
+                                }
+                            }
 
-                if let Value::Record(_attr, items) = &mut shopping_cart {
-                    let mut exists = false;
-
-                    for mut item in items.iter_mut() {
-                        if let Item::Slot(key, value) = item {
-                            if key == &cmd_key {
-                                *value = cmd_value.clone();
-                                exists = true;
-                                break;
+                            if !exists {
+                                let slot = Item::Slot(cmd_key.clone(), cmd_value.clone());
+                                items.push(slot);
                             }
                         }
-                    }
 
-                    if !exists {
-                        let slot = Item::Slot(cmd_key.into(), cmd_value);
-                        items.push(slot);
-                    }
-                }
+                        shopping_cart
+                    } else {
+                        Value::record(vec![Item::Slot(cmd_key.clone(), cmd_value.clone())])
+                    };
 
-                shopping_cart
-            } else {
-                Value::record(vec![Item::Slot(cmd_key.into(), cmd_value)])
-            };
+                    shopping_carts.update(node.to_string(), Arc::new(shopping_cart))
+                });
 
-            atomically(
-                &shopping_carts.update(node.to_string(), Arc::new(shopping_cart)),
-                StmRetryStrategy::new(RetryStrategy::default()),
-            )
-            .await
-            .unwrap();
+            atomically(&update, StmRetryStrategy::new(RetryStrategy::default()))
+                .await
+                .unwrap();
         })
         .await;
 }
