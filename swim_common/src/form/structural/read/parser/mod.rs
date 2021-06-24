@@ -18,7 +18,7 @@ mod record;
 mod tests;
 mod tokens;
 
-use crate::form::structural::read::improved::{Recognizer, RecognizerReadable};
+use crate::form::structural::read::recognizer::{Recognizer, RecognizerReadable};
 pub use crate::form::structural::read::parser::error::ParseError;
 use crate::form::structural::read::ReadError;
 use crate::model::text::Text;

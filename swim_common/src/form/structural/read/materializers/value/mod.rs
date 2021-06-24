@@ -15,7 +15,7 @@
 #[cfg(test)]
 mod tests;
 
-use crate::form::structural::read::improved::Recognizer;
+use crate::form::structural::read::recognizer::Recognizer;
 use crate::form::structural::read::parser::{NumericLiteral, ParseEvent};
 use crate::form::structural::read::ReadError;
 use crate::model::blob::Blob;

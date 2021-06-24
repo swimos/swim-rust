@@ -15,7 +15,7 @@
 #[cfg(test)]
 mod tests;
 
-use crate::form::structural::read::improved::Recognizer;
+use crate::form::structural::read::recognizer::Recognizer;
 use crate::form::structural::read::parser::ParseEvent;
 use crate::form::structural::read::{ReadError, StructuralReadable};
 use crate::form::structural::write::interpreters::msgpack::{BIG_INT_EXT, BIG_UINT_EXT};

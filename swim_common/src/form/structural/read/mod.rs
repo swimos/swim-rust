@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod improved;
+pub mod recognizer;
 pub mod materializers;
 pub mod msgpack;
 pub mod parser;
@@ -26,7 +26,7 @@ use std::borrow::Cow;
 pub mod error;
 
 use crate::form::structural::bridge::RecognizerBridge;
-use crate::form::structural::read::improved::{Recognizer, RecognizerReadable};
+use crate::form::structural::read::recognizer::{Recognizer, RecognizerReadable};
 use crate::form::structural::read::parser::ParseEvent;
 pub use error::ReadError;
 

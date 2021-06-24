@@ -14,7 +14,7 @@
 
 mod msgpack;
 
-use crate::form::structural::read::improved::{
+use crate::form::structural::read::recognizer::{
     FirstOf, NamedFieldsRecognizer, Recognizer, RecognizerReadable, SimpleAttrBody,
 };
 use crate::form::structural::read::parser::ParseEvent;
