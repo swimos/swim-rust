@@ -72,7 +72,7 @@ pub trait ConnectionPool: Clone + Send + 'static {
         recreate: bool,
     ) -> BoxFuture<Result<Result<Connection, ConnectionError>, RequestError>>;
 
-    fn close(self) -> BoxFuture<'static, Result<Result<(), ConnectionError>, ConnectionError>>;
+    fn close(&self) -> BoxFuture<'static, Result<Result<(), ConnectionError>, ConnectionError>>;
 }
 
 /// The connection pool is responsible for opening new connections to remote hosts and managing
@@ -158,10 +158,11 @@ impl<Path: Addressable> ConnectionPool for SwimConnPool<Path> {
 
     /// Stops the pool from accepting new connection requests and closes down all existing
     /// connections.
-    fn close(self) -> BoxFuture<'static, Result<Result<(), ConnectionError>, ConnectionError>> {
+    fn close(&self) -> BoxFuture<'static, Result<Result<(), ConnectionError>, ConnectionError>> {
+        let stop_request_tx = self.stop_request_tx.clone();
+
         async move {
-            Ok(self
-                .stop_request_tx
+            Ok(stop_request_tx
                 .send(())
                 .await
                 .map_err(|_| ConnectionError::Closed(CloseError::unexpected())))

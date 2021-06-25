@@ -560,7 +560,6 @@ impl<Pool: ConnectionPool<PathType = Path>, Path: Addressable> TaskManager<Pool,
 
         let mut conn_request_rx = ReceiverStream::new(conn_request_rx).fuse();
         let mut close_trigger = close_rx.clone().fuse();
-
         let mut host_managers: HashMap<String, HostManagerHandle> = HashMap::new();
 
         loop {
@@ -615,6 +614,8 @@ impl<Pool: ConnectionPool<PathType = Path>, Path: Addressable> TaskManager<Pool,
                 },
 
                 RouterTask::Close(close_rx) => {
+                    let pool_result = connection_pool.close().await;
+
                     if let Some(close_response_tx) = close_rx {
                         let futures = FuturesUnordered::new();
 
@@ -629,7 +630,16 @@ impl<Pool: ConnectionPool<PathType = Path>, Path: Addressable> TaskManager<Pool,
                                 .map_err(|_| RoutingError::CloseError)?;
                         }
 
+                        if let Err(pool_err) = pool_result.map_err(|_| RoutingError::CloseError)? {
+                            close_response_tx
+                                .send(Err(RoutingError::PoolError(pool_err)))
+                                .await
+                                .map_err(|_| RoutingError::CloseError)?;
+                        }
+
                         break Ok(());
+                    } else {
+                        break Err(RoutingError::CloseError);
                     }
                 }
             }

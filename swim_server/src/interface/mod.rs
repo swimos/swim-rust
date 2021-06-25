@@ -362,6 +362,11 @@ impl SwimServer {
         )
         .0
     }
+
+    /// Return a swim client capable of opening downlinks to other servers and to local planes.
+    pub fn client(&self) -> SwimClient<Path> {
+        self.client.clone()
+    }
 }
 
 /// Represents an error that can occur while using the server builder.

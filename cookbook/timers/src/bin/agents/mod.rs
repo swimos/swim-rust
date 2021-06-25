@@ -38,8 +38,8 @@ pub struct UnitAgentLifecycle;
 
 impl UnitAgentLifecycle {
     async fn on_start<Context>(&self, context: &Context)
-        where
-            Context: AgentContext<UnitAgent> + Sized + Send + Sync,
+    where
+        Context: AgentContext<UnitAgent> + Sized + Send + Sync,
     {
         let minutes = context.agent().minutes.clone();
 
@@ -86,7 +86,7 @@ impl PublishLifecycle {
             &context.agent().minutes.set(0),
             StmRetryStrategy::new(RetryStrategy::default()),
         )
-            .await;
+        .await;
     }
 }
 
@@ -95,13 +95,13 @@ async fn increment_time(minutes: &ValueLane<i32>) {
         &minutes.get(),
         StmRetryStrategy::new(RetryStrategy::default()),
     )
-        .await;
+    .await;
 
     if let Ok(value) = current_value {
         let _ = atomically(
             &minutes.set(*value + 1),
             StmRetryStrategy::new(RetryStrategy::default()),
         )
-            .await;
+        .await;
     }
 }
