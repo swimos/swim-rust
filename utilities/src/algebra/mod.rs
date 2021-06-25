@@ -16,12 +16,16 @@ use std::collections::{BTreeMap, HashMap};
 use std::hash::Hash;
 use std::iter::FromIterator;
 
+/// Trait for types that have a natural 0 element. Combining (in some sense) any member of the
+/// type with the zero element should result in an equal member of the type.
 pub trait Zero: Sized {
     fn zero() -> Self;
 
     fn is_zero(&self) -> bool;
 }
 
+/// Trait for types with an associative binary operator. Implementors are responsible for ensuring
+/// that the operation is associative.
 pub trait Semigroup: Sized {
     fn op(mut left: Self, right: Self) -> Self {
         left.op_in_place(right);
@@ -30,6 +34,11 @@ pub trait Semigroup: Sized {
     fn op_in_place(&mut self, right: Self);
 }
 
+/// Trait for types with an associative binary operator and a zero elemtn. Implementors are
+/// responsible for ensuring tha:
+/// * The operattion is associatve.
+/// * Applying the operator to some value `v` of the type and the zero element (in both directions)
+/// results in a value that is identical to `v`.
 pub trait Monoid: Zero + Semigroup {}
 
 impl<T: Zero + Semigroup> Monoid for T {}
@@ -153,6 +162,7 @@ enum ErrorsInner<E> {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Errors<E>(ErrorsInner<E>);
 
+/// Type holding a collection of errors. It will only allocate if there are 2 or more errors.
 impl<E> Errors<E> {
     pub fn empty() -> Self {
         Errors(ErrorsInner::None)

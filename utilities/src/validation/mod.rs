@@ -15,11 +15,16 @@
 use crate::algebra::{Errors, Monoid, Semigroup, Zero};
 use std::iter::FromIterator;
 
+/// An alternative to [`Result`] where erros are not necessarily fatal. The type `E` represents
+/// a (possibly empty) collection of errors.
 pub enum Validation<T, E> {
+    /// A value has been produced, potentially with errors.
     Validated(T, E),
+    /// A value could not be produced due to a fatal error.
     Failed(E),
 }
 
+/// Trait for error collection types that can have additional errors appended.
 pub trait Append<T> {
     fn append(&mut self, value: T);
 }
@@ -61,6 +66,7 @@ impl<T, E> Validation<T, E> {
         }
     }
 
+    /// Apply a validation over the successful case of a [`Result`].
     pub fn validate<U, F>(result: Result<T, E>, f: F) -> Validation<U, E>
     where
         F: FnOnce(T) -> Validation<U, E>,
@@ -106,6 +112,7 @@ impl<T, E: Zero> Validation<T, E> {
 }
 
 impl<T, C> Validation<T, C> {
+    /// Apply a validating transformation to a validated result appending the error.
     pub fn and_then_append<F, U, E>(self, f: F) -> Validation<U, C>
     where
         C: Append<E>,
@@ -126,6 +133,7 @@ impl<T, C> Validation<T, C> {
         }
     }
 
+    /// Combine a validated value with a [`Result`] adding the errors.
     pub fn and_then_result<F, S, U, E>(self, result: Result<S, E>, f: F) -> Validation<U, C>
     where
         C: Append<E>,
@@ -169,6 +177,7 @@ impl<T, C> Validation<T, C> {
 }
 
 impl<T, E: Semigroup> Validation<T, E> {
+    /// Apply a further validation to the result, accumulating errors.
     pub fn and_then<F, U>(self, f: F) -> Validation<U, E>
     where
         F: FnOnce(T) -> Validation<U, E>,
@@ -182,6 +191,7 @@ impl<T, E: Semigroup> Validation<T, E> {
         }
     }
 
+    /// Comnbibe two validated results together, accumulating the errors.
     pub fn join<U>(self, other: Validation<U, E>) -> Validation<(T, U), E> {
         self.and_then(|left| other.map(move |right| (left, right)))
     }
@@ -199,6 +209,7 @@ impl<T, C: Zero> Validation<T, C> {
 }
 
 impl<L, R, E> Validation<(L, R), E> {
+    /// Apply a further validation to the second part of a pair.
     pub fn and_then_second<F, U>(self, f: F) -> Validation<(L, U), E>
     where
         F: FnOnce(Validation<R, E>) -> Validation<U, E>,
@@ -209,6 +220,7 @@ impl<L, R, E> Validation<(L, R), E> {
         }
     }
 
+    /// Apply a further validation to the first part of a pair.
     pub fn and_then_first<F, U>(self, f: F) -> Validation<(U, R), E>
     where
         F: FnOnce(Validation<L, E>) -> Validation<U, E>,
@@ -234,6 +246,7 @@ impl<E> Append<Option<E>> for Errors<E> {
     }
 }
 
+/// Combined two validated values, accumulating errors.
 pub fn validate2<T1, T2, E: Semigroup>(
     first: Validation<T1, E>,
     second: Validation<T2, E>,
@@ -241,6 +254,7 @@ pub fn validate2<T1, T2, E: Semigroup>(
     first.and_then(|v1| second.map(move |v2| (v1, v2)))
 }
 
+/// Combined three validated values, accumulating errors.
 pub fn validate3<T1, T2, T3, E: Semigroup>(
     first: Validation<T1, E>,
     second: Validation<T2, E>,
@@ -250,6 +264,7 @@ pub fn validate3<T1, T2, T3, E: Semigroup>(
 }
 
 pub trait ValidationItExt: Iterator {
+    /// Apply a validating fold operation over an iterator, accumulating the errors.
     fn validate_fold<R, E, F>(
         self,
         init: Validation<R, E>,
@@ -272,6 +287,7 @@ pub trait ValidationItExt: Iterator {
         v
     }
 
+    /// Apply a validating fold operation over an iterator, appending errors at each step.
     fn append_fold<R, E, C, F>(
         self,
         init: Validation<R, C>,
@@ -294,6 +310,7 @@ pub trait ValidationItExt: Iterator {
         v
     }
 
+    /// Collect a sequence of validated results into a validated collection, accumulating the errors.
     fn validate_collect<U, E, F, B>(self, allow_failures: bool, mut f: F) -> Validation<B, E>
     where
         Self: Sized,
@@ -325,6 +342,8 @@ pub trait ValidationItExt: Iterator {
         }
     }
 
+    /// Collect a sequence of validated results into a validated collection, appending the error
+    /// at each step.
     fn append_collect<U, E, C, F, B>(self, allow_failures: bool, mut f: F) -> Validation<B, C>
     where
         Self: Sized,
