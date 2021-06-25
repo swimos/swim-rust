@@ -20,6 +20,7 @@ use std::fmt::{Display, Formatter};
 pub mod algebra;
 pub mod errors;
 pub mod future;
+pub mod instant;
 pub mod iteratee;
 pub mod lru_cache;
 pub mod never;

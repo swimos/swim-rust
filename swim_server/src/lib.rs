@@ -13,7 +13,6 @@
 // limitations under the License.
 
 #![allow(clippy::match_wild_err_arm)]
-#![allow(legacy_derive_helpers)]
 
 pub mod agent;
 pub mod interface;
@@ -25,7 +24,8 @@ pub mod routing;
 
 #[allow(unused_imports)]
 pub use agent_derive::*;
+pub use utilities::future::retryable::strategy::RetryStrategy;
 pub use utilities::future::SwimStreamExt;
 pub use utilities::route_pattern::RoutePattern;
-
+pub use utilities::uri;
 pub use utilities::{stringify_attr, stringify_attr_raw};

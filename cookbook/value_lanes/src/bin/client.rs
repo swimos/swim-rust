@@ -17,9 +17,8 @@ use std::time::Duration;
 use swim_client::downlink::typed::value::ValueDownlinkReceiver;
 use swim_client::downlink::Event::Remote;
 use swim_client::interface::SwimClientBuilder;
-use swim_client::runtime::time::delay::delay_for;
 use swim_common::warp::path::AbsolutePath;
-use tokio::task;
+use tokio::{task, time};
 
 async fn did_set(value_recv: ValueDownlinkReceiver<String>, initial_value: String) {
     value_recv
@@ -47,12 +46,13 @@ async fn did_set(value_recv: ValueDownlinkReceiver<String>, initial_value: Strin
 async fn main() {
     let mut client = SwimClientBuilder::build_with_default().await;
     let host_uri = url::Url::parse(&"ws://127.0.0.1:9001".to_string()).unwrap();
-    let node_uri = "unit/foo";
-    let lane_uri = "info";
+    let node_uri = "/unit/foo";
 
-    let path = AbsolutePath::new(host_uri, node_uri, lane_uri);
+    let info_path = AbsolutePath::new(host_uri.clone(), node_uri, "info");
+    let publish_info_path = AbsolutePath::new(host_uri, node_uri, "publish_info");
+
     let (value_downlink, value_recv) = client
-        .value_downlink(path.clone(), String::new())
+        .value_downlink(info_path, String::new())
         .await
         .expect("Failed to create value downlink!");
 
@@ -65,18 +65,26 @@ async fn main() {
 
     // Send using either the proxy command lane...
     client
-        .send_command(path, "Hello from command, world!".to_string())
+        .send_command(publish_info_path, "Hello from command, world!".to_string())
         .await
         .expect("Failed to send command!");
-    delay_for(Duration::from_secs(2)).await;
+    time::sleep(Duration::from_secs(2)).await;
 
     // ...or a downlink set()
     value_downlink
         .set("Hello from link, world!".to_string())
         .await
         .expect("Failed to send message!");
-    delay_for(Duration::from_secs(2)).await;
+    time::sleep(Duration::from_secs(2)).await;
+
+    println!(
+        "Synchronous link get: {}",
+        value_downlink
+            .get()
+            .await
+            .expect("Failed to retrieve downlink value!")
+    );
 
     println!("Stopping client in 2 seconds");
-    delay_for(Duration::from_secs(2)).await;
+    time::sleep(Duration::from_secs(2)).await;
 }
