@@ -56,7 +56,7 @@ impl RecordBuilder {
     }
 }
 
-/// [`Recognizer``] implementation for the [`Value`] type..
+/// [`Recognizer``] implementation for the [`Value`] type.
 #[derive(Default, Debug)]
 pub struct ValueMaterializer {
     stack: Vec<RecordBuilder>,
@@ -315,5 +315,70 @@ impl Recognizer for ValueMaterializer {
     fn reset(&mut self) {
         self.slot_key = None;
         self.stack.clear();
+    }
+}
+
+/// [`Recognizer``] implementation for the [`Value`] type when it ocurrs in an attribute body.
+#[derive(Debug)]
+pub struct AttrBodyMaterializer {
+    inner: ValueMaterializer,
+}
+
+impl Default for AttrBodyMaterializer {
+    fn default() -> Self {
+        AttrBodyMaterializer {
+            inner: ValueMaterializer {
+                stack: vec![RecordBuilder::new(RecordKey::NoKey, true)],
+                slot_key: None,
+            },
+        }
+    }
+}
+
+impl Recognizer for AttrBodyMaterializer {
+    type Target = Value;
+
+    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
+        let AttrBodyMaterializer { inner } = self;
+        if inner.stack.len() == 1 {
+            match input {
+                ReadEvent::EndAttribute => {
+                    let RecordBuilder { items, .. } = &mut inner.stack[0];
+                    let value = if items.len() <= 1 {
+                        if let Some(item) = items.pop() {
+                            if let Item::ValueItem(v) = item {
+                                v
+                            } else {
+                                Value::record(vec![item])
+                            }
+                        } else {
+                            Value::Extant
+                        }
+                    } else {
+                        Value::record(std::mem::take(items))
+                    };
+                    Some(Ok(value))
+                }
+                ReadEvent::EndRecord => Some(Err(ReadError::ReaderUnderflow)),
+                ow => match inner.feed_event(ow)? {
+                    Ok(_) => Some(Err(ReadError::InconsistentState)),
+                    Err(e) => Some(Err(e)),
+                },
+            }
+        } else {
+            match inner.feed_event(input)? {
+                Ok(_) => Some(Err(ReadError::InconsistentState)),
+                Err(e) => Some(Err(e)),
+            }
+        }
+    }
+
+    fn reset(&mut self) {
+        let AttrBodyMaterializer {
+            inner: ValueMaterializer { stack, slot_key },
+        } = self;
+        *slot_key = None;
+        stack.clear();
+        stack.push(RecordBuilder::new(RecordKey::NoKey, true));
     }
 }

@@ -19,7 +19,9 @@ mod tests;
 
 use crate::form::structural::generic::coproduct::{CCons, CNil, Unify};
 use crate::form::structural::read::event::{NumericValue, ReadEvent};
-use crate::form::structural::read::materializers::value::ValueMaterializer;
+use crate::form::structural::read::materializers::value::{
+    AttrBodyMaterializer, ValueMaterializer,
+};
 use crate::form::structural::read::ReadError;
 use crate::model::text::Text;
 use crate::model::{Value, ValueKind};
@@ -1509,14 +1511,14 @@ impl<T: RecognizerReadable> RecognizerReadable for Option<T> {
 
 impl RecognizerReadable for Value {
     type Rec = ValueMaterializer;
-    type AttrRec = ValueMaterializer; //TODO Not quite correct.
+    type AttrRec = AttrBodyMaterializer;
 
     fn make_recognizer() -> Self::Rec {
         ValueMaterializer::default()
     }
 
     fn make_attr_recognizer() -> Self::AttrRec {
-        ValueMaterializer::default()
+        AttrBodyMaterializer::default()
     }
 }
 

@@ -12,11 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::form::structural::read::parser::{parse_recognize, Span};
 use crate::form::structural::read::StructuralReadable;
 use crate::model::blob::Blob;
 use crate::model::text::Text;
 use crate::model::{Attr, Item, Value};
 use num_bigint::{BigInt, BigUint};
+
+mod swim_common {
+    pub use crate::*;
+}
+
+fn run_recognizer<T: StructuralReadable>(rep: &str) -> T {
+    let span = Span::new(rep);
+    parse_recognize(span).unwrap()
+}
 
 fn round_trip(value: Value) {
     let result1 = Value::try_read_from(&value);
@@ -98,4 +108,65 @@ fn nested_round_trip() {
 
     round_trip(rec1);
     round_trip(rec2);
+}
+
+#[derive(StructuralReadable, PartialEq, Eq, Debug)]
+struct AttrWrapper {
+    #[form(attr)]
+    inner: Value,
+}
+
+#[test]
+fn value_from_empty_attr_body() {
+    let wrapper = run_recognizer::<AttrWrapper>("@AttrWrapper @inner");
+    assert_eq!(
+        wrapper,
+        AttrWrapper {
+            inner: Value::Extant
+        }
+    );
+}
+
+#[test]
+fn value_from_simple_attr_body() {
+    let wrapper = run_recognizer::<AttrWrapper>("@AttrWrapper @inner(2)");
+    assert_eq!(
+        wrapper,
+        AttrWrapper {
+            inner: Value::Int32Value(2)
+        }
+    );
+}
+
+#[test]
+fn value_from_slot_attr_body() {
+    let wrapper = run_recognizer::<AttrWrapper>("@AttrWrapper @inner(a:2)");
+    assert_eq!(
+        wrapper,
+        AttrWrapper {
+            inner: Value::record(vec![Item::slot("a", 2)])
+        }
+    );
+}
+
+#[test]
+fn value_from_complex_attr_body() {
+    let wrapper = run_recognizer::<AttrWrapper>("@AttrWrapper @inner(1, 2, 3)");
+    assert_eq!(
+        wrapper,
+        AttrWrapper {
+            inner: Value::record(vec![Item::of(1), Item::of(2), Item::of(3)])
+        }
+    );
+}
+
+#[test]
+fn value_from_nested_attr_body() {
+    let wrapper = run_recognizer::<AttrWrapper>("@AttrWrapper @inner({})");
+    assert_eq!(
+        wrapper,
+        AttrWrapper {
+            inner: Value::empty_record()
+        }
+    );
 }
