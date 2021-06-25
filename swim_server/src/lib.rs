@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #![allow(clippy::match_wild_err_arm)]
+#![allow(legacy_derive_helpers)]
 
 pub mod agent;
 pub mod interface;

@@ -175,6 +175,8 @@
 //! [Serde#1636](https://github.com/serde-rs/serde/issues/1636)
 //! [Serde#1895](https://github.com/serde-rs/serde/issues/1895)
 
+#![allow(legacy_derive_helpers)]
+
 #[cfg(test)]
 mod tests;
 

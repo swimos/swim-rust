@@ -844,7 +844,7 @@ fn derive_skipped_field_struct() {
         present: i32,
         #[form(skip)]
         skipped: String,
-    };
+    }
 
     let skippy = Skippy {
         present: 2,
