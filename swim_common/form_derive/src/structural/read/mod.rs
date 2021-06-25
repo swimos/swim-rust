@@ -37,9 +37,8 @@ impl<'a, 'b> ToTokens for DeriveStructuralReadable<'b, SegregatedStructModel<'a,
         add_bounds(*generics, &mut new_generics);
 
         let (impl_gen, type_gen, where_clause) = new_generics.split_for_impl();
-
+        let name = model.inner.name;
         if model.inner.fields_model.type_kind == CompoundTypeKind::Unit {
-            let name = model.inner.name;
             let lit_name = model.inner.resolve_name();
 
             tokens.append_all(quote! {
@@ -65,7 +64,6 @@ impl<'a, 'b> ToTokens for DeriveStructuralReadable<'b, SegregatedStructModel<'a,
                 }
             })
         } else {
-            let name = model.inner.name;
             let target = parse_quote!(#name #type_gen);
             let builder_type = RecognizerState::new(model, &target);
 

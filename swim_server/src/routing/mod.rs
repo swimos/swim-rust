@@ -96,9 +96,9 @@ impl ServerRouter for TopLevelRouter {
                 addr: tag,
             } = self;
 
+            let (tx, rx) = oneshot::channel();
+            let request = Request::new(tx);
             if addr.is_remote() {
-                let (tx, rx) = oneshot::channel();
-                let request = Request::new(tx);
                 if remote_sender
                     .send(RoutingRequest::Endpoint { addr, request })
                     .await
@@ -114,23 +114,19 @@ impl ServerRouter for TopLevelRouter {
                         Err(_) => Err(ResolutionError::router_dropped()),
                     }
                 }
+            } else if plane_sender
+                .send(PlaneRequest::Endpoint { id: addr, request })
+                .await
+                .is_err()
+            {
+                Err(ResolutionError::router_dropped())
             } else {
-                let (tx, rx) = oneshot::channel();
-                let request = Request::new(tx);
-                if plane_sender
-                    .send(PlaneRequest::Endpoint { id: addr, request })
-                    .await
-                    .is_err()
-                {
-                    Err(ResolutionError::router_dropped())
-                } else {
-                    match rx.await {
-                        Ok(Ok(RawRoute { sender, on_drop })) => {
-                            Ok(Route::new(TaggedSender::new(*tag, sender), on_drop))
-                        }
-                        Ok(Err(_)) => Err(ResolutionError::unresolvable(addr.to_string())),
-                        Err(_) => Err(ResolutionError::router_dropped()),
+                match rx.await {
+                    Ok(Ok(RawRoute { sender, on_drop })) => {
+                        Ok(Route::new(TaggedSender::new(*tag, sender), on_drop))
                     }
+                    Ok(Err(_)) => Err(ResolutionError::unresolvable(addr.to_string())),
+                    Err(_) => Err(ResolutionError::router_dropped()),
                 }
             }
         }

@@ -788,9 +788,9 @@ where
         bounding_box: &Rect<B::Point>,
         label: &L,
     ) -> Option<(B, MaybeOrphans<L, B>)> {
+        let mut entry_index = None;
         if self.is_leaf() {
             //If this is leaf try to find the item
-            let mut remove_idx = None;
 
             for (idx, entry) in self.entries.iter().enumerate() {
                 match **entry {
@@ -798,14 +798,14 @@ where
                         label: ref entry_label,
                         item: ref entry,
                     } if entry.get_mbb() == bounding_box && entry_label == label => {
-                        remove_idx = Some(idx);
+                        entry_index = Some(idx);
                         break;
                     }
                     _ => (),
                 }
             }
 
-            let entry_ptr = self.entries.remove(remove_idx?);
+            let entry_ptr = self.entries.remove(entry_index?);
             let entry = if Arc::strong_count(&entry_ptr) == 1 {
                 Arc::try_unwrap(entry_ptr).unwrap()
             } else {
@@ -819,7 +819,6 @@ where
             }
         } else {
             // If this is a branch, go deeper
-            let mut entry_index = None;
             let mut maybe_removed = None;
 
             for (idx, entry) in self.entries.iter_mut().enumerate() {
