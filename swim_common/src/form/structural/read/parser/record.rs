@@ -38,7 +38,10 @@ enum StateChange {
     /// Push a new attribute body frame onto the stack.
     PushAttr,
     /// Start a new record frame, starting with an attribute.
-    PushAttrNewRec(bool),
+    PushAttrNewRec {
+        /// Whether the attribute has a body.
+        has_body: bool,
+    },
     /// Push a new frame for the items of a record body.
     PushBody,
 }
@@ -63,7 +66,7 @@ impl StateChange {
                     *top = new_state;
                 }
             }
-            StateChange::PushAttrNewRec(has_body) => {
+            StateChange::PushAttrNewRec { has_body } => {
                 if has_body {
                     state_stack.push(ParseState::Init);
                     state_stack.push(ParseState::AttrBodyStartOrNl);
@@ -113,7 +116,7 @@ pub enum ParseState {
 }
 
 impl ParseState {
-    /// Advanve the state after an item.
+    /// Advance the state after an item.
     fn after_item(&mut self) {
         let new_state = match self {
             ParseState::Init => ParseState::AfterAttr,
@@ -328,7 +331,7 @@ pub fn read_from_header<'a, H: HeaderReader>(
     }
 }
 
-/// Drive a [`BodyReader`] from an iterator of parse events.
+/// Derive a [`BodyReader`] from an iterator of parse events.
 pub fn read_body<B: BodyReader>(
     mut reader: B,
     it: &mut ParseIterator<'_>,
@@ -668,12 +671,12 @@ fn primary_attr(input: Span<'_>) -> IResult<Span<'_>, (ParseEvents<'_>, StateCha
         if has_body {
             (
                 ReadEvent::StartAttribute(name).single(),
-                StateChange::PushAttrNewRec(true),
+                StateChange::PushAttrNewRec { has_body: true },
             )
         } else {
             (
                 ReadEvent::StartAttribute(name).followed_by(ReadEvent::EndAttribute),
-                StateChange::PushAttrNewRec(false),
+                StateChange::PushAttrNewRec { has_body: false },
             )
         }
     })(input)

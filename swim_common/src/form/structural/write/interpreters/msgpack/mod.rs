@@ -30,7 +30,7 @@ use std::convert::TryFrom;
 use std::fmt::{Display, Formatter};
 use std::io::{Error, Write};
 
-/// [`StructuralWriter`] implementation that uses the MessagePack format. Primitive value are
+/// [`StructuralWriter`] implementation that uses the MessagePack format. Primitive values are
 /// written with the corresponding MessagePack types. Big integers are written as MessagePack
 /// extensions as raw bytes in big endian order. Strings and binary blobs are written as
 /// MessagePack string and bin values. Records have the following encoding.
@@ -104,13 +104,13 @@ pub enum MsgPackWriteError {
     /// The byte representation of a big unsigned. integer could not fit into a MessagePack
     /// extension value.
     BigUIntTooLarge(BigUint),
-    /// The record has more attributes than be be reprsented by a `u32`.
+    /// The record has more attributes than can be represented by a `u32`.
     TooManyAttrs(usize),
     /// The record has more items than can be represented by a `u32`.
     TooManyItems(usize),
     /// The reported number of attributes in the record did not match the number written.
     WrongNumberOfAttrs,
-    /// The reported kind of the record did not matche the items written.
+    /// The reported kind of the record did not match the items written.
     IncorrectRecordKind,
     /// The reported number of items in the record did not match the number written.
     WrongNumberOfItems,

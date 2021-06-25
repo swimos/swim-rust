@@ -76,8 +76,8 @@ pub trait StructuralWritable: Sized {
         self.write_into_infallible(ValueInterpreter::default())
     }
 
-    /// If this value ocurrs as the field of a compound object, determine whehter that field
-    /// can be omitted (for example the `None` case of [`Option`]). This is inteded to be
+    /// If this value ocurrs as the field of a compound object, determine whether that field
+    /// can be omitted (for example the `None` case of [`Option`]). This is intended to be
     /// used in the derive macro for this trait and should be generally need to be used.
     fn omit_as_field(&self) -> bool {
         false
@@ -217,7 +217,7 @@ pub trait HeaderWriter: Sized {
     ) -> Result<Self::Body, Self::Error>;
 }
 
-/// Description of the overally format of a record body which writers may use to generate a
+/// Description of the overall format of a record body which writers may use to generate a
 /// more optimal representation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RecordBodyKind {

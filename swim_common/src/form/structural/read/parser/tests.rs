@@ -309,7 +309,7 @@ fn parse_hex_int_final() {
 }
 
 #[test]
-fn parse_bin_int() {
+fn parse_big_int() {
     let input = span("0b0");
     assert!(matches!(
         streaming::numeric_literal(input),
@@ -363,7 +363,7 @@ fn parse_bin_int() {
 }
 
 #[test]
-fn parse_bin_int_final() {
+fn parse_big_int_final() {
     let input = span("0b0");
     check_output(complete::numeric_literal(input), 3, NumericValue::UInt(0));
 
@@ -552,6 +552,12 @@ fn single_int() {
         result.as_slice(),
         [ReadEvent::Number(NumericValue::UInt(1))]
     ));
+
+    let result = run_parser_iterator("\r\n1").unwrap();
+    assert!(matches!(
+        result.as_slice(),
+        [ReadEvent::Number(NumericValue::UInt(1))]
+    ));
 }
 
 #[test]
@@ -605,6 +611,11 @@ fn single_float() {
     assert!(
         matches!(result.as_slice(), [ReadEvent::Number(NumericValue::Float(x))] if x.eq(&-1.5e67))
     );
+
+    let result = run_parser_iterator("\r\n-1.5e67").unwrap();
+    assert!(
+        matches!(result.as_slice(), [ReadEvent::Number(NumericValue::Float(x))] if x.eq(&-1.5e67))
+    );
 }
 
 #[test]
@@ -638,6 +649,12 @@ fn empty_record() {
         result.as_slice(),
         [ReadEvent::StartBody, ReadEvent::EndRecord]
     ));
+
+    let result = run_parser_iterator("{\r\n}").unwrap();
+    assert!(matches!(
+        result.as_slice(),
+        [ReadEvent::StartBody, ReadEvent::EndRecord]
+    ));
 }
 
 fn uint_event<'a>(n: u64) -> ReadEvent<'a> {
@@ -659,6 +676,9 @@ fn singleton_record() {
     assert_eq!(result, expected);
 
     let result = run_parser_iterator("{\n 1 }").unwrap();
+    assert_eq!(result, expected);
+
+    let result = run_parser_iterator("{\r\n 1 }").unwrap();
     assert_eq!(result, expected);
 }
 
