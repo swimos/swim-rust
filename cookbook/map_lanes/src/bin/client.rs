@@ -19,9 +19,8 @@ use swim_client::downlink::typed::map::events::{TypedMapView, TypedViewWithEvent
 use swim_client::downlink::typed::map::MapDownlinkReceiver;
 use swim_client::downlink::Event::Remote;
 use swim_client::interface::SwimClientBuilder;
-use swim_client::runtime::time::delay::delay_for;
 use swim_common::warp::path::AbsolutePath;
-use tokio::task;
+use tokio::{task, time};
 
 async fn did_update(
     map_recv: MapDownlinkReceiver<String, i32>,
@@ -33,13 +32,13 @@ async fn did_update(
         .filter_map(|event| async {
             match event {
                 Remote(TypedViewWithEvent {
-                    view,
-                    event: MapEvent::Update(key),
-                }) => Some((key, view)),
+                           view,
+                           event: MapEvent::Update(key),
+                       }) => Some((key, view)),
                 Remote(TypedViewWithEvent {
-                    view,
-                    event: MapEvent::Remove(key),
-                }) => Some((key, view)),
+                           view,
+                           event: MapEvent::Remove(key),
+                       }) => Some((key, view)),
                 _ => None,
             }
         })
@@ -63,9 +62,9 @@ async fn did_update(
 async fn main() {
     let mut client = SwimClientBuilder::build_with_default().await;
     let host_uri = url::Url::parse(&"ws://127.0.0.1:9001".to_string()).unwrap();
-    let node_uri = "unit/foo";
-    let cart_lane = "shoppingCart";
-    let add_lane = "addItem";
+    let node_uri = "/unit/foo";
+    let cart_lane = "shopping_cart";
+    let add_lane = "add_item";
 
     let path = AbsolutePath::new(host_uri.clone(), node_uri, cart_lane);
 
@@ -87,22 +86,22 @@ async fn main() {
         .await
         .expect("Failed to send command!");
 
-    delay_for(Duration::from_secs(2)).await;
+    time::sleep(Duration::from_secs(2)).await;
 
     map_downlink
         .update("FromClientLink".to_string(), 25)
         .await
         .expect("Failed to send message!");
 
-    delay_for(Duration::from_secs(2)).await;
+    time::sleep(Duration::from_secs(2)).await;
 
     map_downlink
         .remove("FromClientLink".to_string())
         .await
         .expect("Failed to send message!");
 
-    delay_for(Duration::from_secs(2)).await;
+    time::sleep(Duration::from_secs(2)).await;
 
     println!("Stopping client in 2 seconds");
-    delay_for(Duration::from_secs(2)).await;
+    time::sleep(Duration::from_secs(2)).await;
 }

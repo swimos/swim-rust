@@ -22,6 +22,7 @@ use crate::agent::lane::channels::{
 };
 use crate::agent::lane::model::DeferredSubscription;
 use crate::agent::Eff;
+use crate::meta::metric::uplink::UplinkActionObserver;
 use crate::routing::{RoutingAddr, ServerRouter};
 use futures::future::join_all;
 use futures::{FutureExt, StreamExt};
@@ -36,6 +37,7 @@ use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, span, Level};
 use tracing_futures::Instrument;
+use utilities::instant::AtomicInstant;
 use utilities::sync::trigger;
 
 #[cfg(test)]
@@ -114,14 +116,16 @@ where
     /// machines.
     /// * `error_collector` - Collects errors whenever an uplink fails.
     ///
-    /// #Type Paramameters
+    /// #Type Parameters
     ///
     /// * `Router` - The type of the server router.
     pub async fn run<Router>(
         mut self,
         mut router: Router,
         mut spawn_tx: mpsc::Sender<Eff>,
+        uplinks_idle_since: Arc<AtomicInstant>,
         error_collector: mpsc::Sender<UplinkErrorReport>,
+        action_observer: UplinkActionObserver,
     ) where
         Router: ServerRouter,
     {
@@ -137,15 +141,17 @@ where
                     Entry::Vacant(entry) => {
                         let span =
                             span!(Level::TRACE, NEW_UPLINK, lane = ?self.route, endpoint = ?addr);
-                        if let Some(handle) = self
-                            .make_uplink(addr, error_collector.clone(), &mut spawn_tx, &mut router)
-                            .instrument(span)
-                            .await
-                        {
-                            Some(entry.insert(handle))
-                        } else {
-                            None
-                        }
+
+                        self.make_uplink(
+                            addr,
+                            error_collector.clone(),
+                            &mut spawn_tx,
+                            &mut router,
+                            uplinks_idle_since.clone(),
+                        )
+                        .instrument(span)
+                        .await
+                        .map(|handle| entry.insert(handle))
                     }
                 };
                 if let Some(sender) = sender {
@@ -154,6 +160,7 @@ where
                             if !handle.cleanup().await {
                                 event!(Level::ERROR, message = UPLINK_TERMINATED, route = ?&self.route, ?addr);
                             }
+                            action_observer.did_close();
                         }
                         action = act;
                         attempts += 1;
@@ -170,6 +177,7 @@ where
                             break false;
                         }
                     } else {
+                        action_observer.did_open();
                         // We successfully dispatched to the uplink so can continue.
                         break false;
                     }
@@ -187,9 +195,12 @@ where
                 }
             }
         }
-        join_all(uplink_senders.into_iter().map(|(_, h)| h.cleanup()))
-            .instrument(span!(Level::DEBUG, UPLINK_CLEANUP))
-            .await;
+        join_all(uplink_senders.into_iter().map(|(_, h)| {
+            action_observer.did_close();
+            h.cleanup()
+        }))
+        .instrument(span!(Level::DEBUG, UPLINK_CLEANUP))
+        .await;
     }
 
     //Create a new uplink state machine and attach it to the router
@@ -199,6 +210,7 @@ where
         err_tx: mpsc::Sender<UplinkErrorReport>,
         spawn_tx: &mut mpsc::Sender<Eff>,
         router: &mut Router,
+        uplinks_idle_since: Arc<AtomicInstant>,
     ) -> Option<UplinkHandle>
     where
         Router: ServerRouter,
@@ -226,7 +238,10 @@ where
             return None;
         };
         let ul_task = async move {
-            if let Err(err) = uplink.run_uplink(sink.into_item_sender()).await {
+            if let Err(err) = uplink
+                .run_uplink(sink.into_item_sender(), uplinks_idle_since)
+                .await
+            {
                 let report = UplinkErrorReport::new(err, addr);
                 if let Err(mpsc::error::SendError(report)) = err_tx.send(report).await {
                     event!(Level::ERROR, message = FAILED_ERR_REPORT, ?report);
@@ -316,6 +331,7 @@ impl LaneUplinks for SpawnerUplinkFactory {
         channels: UplinkChannels<Top>,
         route: RelativePath,
         context: &Context,
+        action_observer: UplinkActionObserver,
     ) -> Eff
     where
         Handler: LaneMessageHandler + 'static,
@@ -347,7 +363,13 @@ impl LaneUplinks for SpawnerUplinkFactory {
         );
 
         spawner
-            .run(context.router_handle(), context.spawner(), error_collector)
+            .run(
+                context.router_handle(),
+                context.spawner(),
+                context.uplinks_idle_since().clone(),
+                error_collector,
+                action_observer,
+            )
             .boxed()
     }
 }

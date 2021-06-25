@@ -15,7 +15,7 @@
 use crate::agent::context::{ContextImpl, RoutingContext, SchedulerContext};
 use crate::agent::tests::test_clock::TestClock;
 use crate::agent::AgentContext;
-use crate::meta::make_test_meta_context;
+use crate::meta::meta_context_sink;
 use std::collections::HashMap;
 use std::sync::Arc;
 use swim_runtime::task;
@@ -35,7 +35,7 @@ fn simple_accessors() {
         agent.clone(),
         routing_context,
         schedule_context,
-        make_test_meta_context(),
+        meta_context_sink(),
     );
 
     assert!(std::ptr::eq(context.agent(), agent.as_ref()));
@@ -70,7 +70,7 @@ fn create_context(
         agent.clone(),
         routing_context,
         schedule_context,
-        make_test_meta_context(),
+        meta_context_sink(),
     )
 }
 

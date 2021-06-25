@@ -19,7 +19,6 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use utilities::errors::Recoverable;
 
-use tokio::sync::mpsc::error::RecvError as MpscRecvError;
 use tokio::sync::mpsc::error::SendError as MpscSendError;
 use tokio::sync::mpsc::error::TrySendError as MpscTrySendError;
 
@@ -127,20 +126,8 @@ impl<T> From<MpscSendError<T>> for CloseError {
     }
 }
 
-impl From<MpscRecvError> for CloseError {
-    fn from(_: MpscRecvError) -> Self {
-        CloseError::new(CloseErrorKind::Unexpected, None)
-    }
-}
-
 impl<T> From<MpscSendError<T>> for ConnectionError {
     fn from(e: MpscSendError<T>) -> Self {
-        ConnectionError::Closed(e.into())
-    }
-}
-
-impl From<MpscRecvError> for ConnectionError {
-    fn from(e: MpscRecvError) -> Self {
         ConnectionError::Closed(e.into())
     }
 }
