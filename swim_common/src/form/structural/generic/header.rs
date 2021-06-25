@@ -16,25 +16,29 @@ use crate::form::structural::write::{
     BodyWriter, HeaderWriter, PrimitiveWriter, RecordBodyKind, StructuralWritable, StructuralWriter,
 };
 
-pub struct NoSlots;
-
-impl NoSlots {
-    pub fn prepend<U>(self, key: &'static str, value: U) -> HeaderSlots<U, Self> {
-        HeaderSlots {
-            key,
-            value,
-            tail: self,
-        }
-    }
-}
-
+/// Slots that have been lifted to the header of a record.
 pub struct HeaderSlots<T, Tail> {
     key: &'static str,
     value: T,
     tail: Tail,
 }
 
+/// Base case for the HList where there are no slots.
+pub struct NoSlots;
+
+impl NoSlots {
+    /// Prepend an additional slot to the HList.
+    pub fn prepend<U>(self, key: &'static str, value: U) -> HeaderSlots<U, Self> {
+        HeaderSlots {
+            key,
+            value,
+            tail: self,
+        }
+    }
+}
+
 impl<T, Tail> HeaderSlots<T, Tail> {
+    /// Prepend an additional slot to the HList.
     pub fn prepend<U>(self, key: &'static str, value: U) -> HeaderSlots<U, Self> {
         HeaderSlots {
             key,
@@ -43,17 +47,23 @@ impl<T, Tail> HeaderSlots<T, Tail> {
         }
     }
 
+    /// Complete the header with an initial value.
     pub fn with_body<U>(self, body: U) -> HeaderWithBody<U, Self> {
         HeaderWithBody { body, slots: self }
     }
 
+    /// Complete a header consisting only of slots.
     pub fn simple(self) -> SimpleHeader<Self> {
         SimpleHeader(self)
     }
 }
 
+/// Header consisting only of slots.
 pub struct SimpleHeader<A>(A);
 
+/// A header with an intial value followed by a number of slots. If there were no slots, the
+/// initial value could form the body of the header on its own and this structure would not be
+/// necessary.
 pub struct HeaderWithBody<T, S> {
     body: T,
     slots: S,
@@ -65,11 +75,16 @@ impl<T, S: AppendHeaders> HeaderWithBody<T, S> {
     }
 }
 
+/// This trait allows all of the types in this crate to be used with a unfied interface
+/// in the the macro-derived implementations.
 pub trait AppendHeaders {
+    /// The number of items that will be written into the attribute body.
     const LEN: usize;
 
+    /// Write the values into the attribute body.
     fn append<B: BodyWriter>(&self, writer: B) -> Result<B, B::Error>;
 
+    /// Write the values into the attribute body, potentially consuming them.
     fn append_into<B: BodyWriter>(self, writer: B) -> Result<B, B::Error>;
 }
 

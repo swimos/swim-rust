@@ -15,8 +15,8 @@
 #[cfg(test)]
 mod tests;
 
+use crate::form::structural::read::event::{NumericValue, ReadEvent};
 use crate::form::structural::read::recognizer::Recognizer;
-use crate::form::structural::read::parser::{NumericLiteral, ParseEvent};
 use crate::form::structural::read::ReadError;
 use crate::model::blob::Blob;
 use crate::model::text::Text;
@@ -205,17 +205,17 @@ impl ValueMaterializer {
     }
 }
 
-fn recognize_item(input: ParseEvent<'_>) -> ItemEvent {
+fn recognize_item(input: ReadEvent<'_>) -> ItemEvent {
     match input {
-        ParseEvent::Extant => ItemEvent::Primitive(Value::Extant),
-        ParseEvent::Number(NumericLiteral::Int(n)) => {
+        ReadEvent::Extant => ItemEvent::Primitive(Value::Extant),
+        ReadEvent::Number(NumericValue::Int(n)) => {
             ItemEvent::Primitive(if let Ok(m) = i32::try_from(n) {
                 Value::Int32Value(m)
             } else {
                 Value::Int64Value(n)
             })
         }
-        ParseEvent::Number(NumericLiteral::UInt(n)) => {
+        ReadEvent::Number(NumericValue::UInt(n)) => {
             ItemEvent::Primitive(if let Ok(m) = i32::try_from(n) {
                 Value::Int32Value(m)
             } else if let Ok(m) = i64::try_from(n) {
@@ -226,26 +226,24 @@ fn recognize_item(input: ParseEvent<'_>) -> ItemEvent {
                 Value::UInt64Value(n)
             })
         }
-        ParseEvent::Number(NumericLiteral::Float(x)) => {
-            ItemEvent::Primitive(Value::Float64Value(x))
-        }
-        ParseEvent::Number(NumericLiteral::BigInt(n)) => ItemEvent::Primitive(Value::BigInt(n)),
-        ParseEvent::Number(NumericLiteral::BigUint(n)) => ItemEvent::Primitive(Value::BigUint(n)),
-        ParseEvent::Boolean(p) => ItemEvent::Primitive(Value::BooleanValue(p)),
-        ParseEvent::TextValue(txt) => ItemEvent::Primitive(Value::Text(txt.into())),
-        ParseEvent::Blob(v) => ItemEvent::Primitive(Value::Data(Blob::from_vec(v))),
-        ParseEvent::StartAttribute(name) => ItemEvent::RecordAtAttr(name.into()),
-        ParseEvent::StartBody => ItemEvent::RecordAtBody,
-        ParseEvent::EndAttribute => ItemEvent::EndAttr,
-        ParseEvent::EndRecord => ItemEvent::EndRec,
-        ParseEvent::Slot => ItemEvent::Slot,
+        ReadEvent::Number(NumericValue::Float(x)) => ItemEvent::Primitive(Value::Float64Value(x)),
+        ReadEvent::Number(NumericValue::BigInt(n)) => ItemEvent::Primitive(Value::BigInt(n)),
+        ReadEvent::Number(NumericValue::BigUint(n)) => ItemEvent::Primitive(Value::BigUint(n)),
+        ReadEvent::Boolean(p) => ItemEvent::Primitive(Value::BooleanValue(p)),
+        ReadEvent::TextValue(txt) => ItemEvent::Primitive(Value::Text(txt.into())),
+        ReadEvent::Blob(v) => ItemEvent::Primitive(Value::Data(Blob::from_vec(v))),
+        ReadEvent::StartAttribute(name) => ItemEvent::RecordAtAttr(name.into()),
+        ReadEvent::StartBody => ItemEvent::RecordAtBody,
+        ReadEvent::EndAttribute => ItemEvent::EndAttr,
+        ReadEvent::EndRecord => ItemEvent::EndRec,
+        ReadEvent::Slot => ItemEvent::Slot,
     }
 }
 
 impl Recognizer for ValueMaterializer {
     type Target = Value;
 
-    fn feed_event(&mut self, input: ParseEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
+    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         if self.stack.is_empty() {
             match recognize_item(input) {
                 ItemEvent::Primitive(v) => Some(Ok(v)),

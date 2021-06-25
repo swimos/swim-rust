@@ -95,7 +95,7 @@ impl<'a, 'b> ToTokens for DeriveStructuralReadable<'b, SegregatedStructModel<'a,
                     #select_index
 
                     #[automatically_derived]
-                    fn #select_feed_name #impl_gen(state: &mut #builder_name #type_gen, index: u32, event: swim_common::form::structural::read::parser::ParseEvent<'_>)
+                    fn #select_feed_name #impl_gen(state: &mut #builder_name #type_gen, index: u32, event: swim_common::form::structural::read::event::ReadEvent<'_>)
                         -> core::option::Option<core::result::Result<(), swim_common::form::structural::read::error::ReadError>>
                     #where_clause
                     {
@@ -204,7 +204,7 @@ impl<'a, 'b> ToTokens for DeriveStructuralReadable<'b, SegregatedEnumModel<'a, '
                     #select_index
 
                     #[automatically_derived]
-                    fn #select_feed_name #impl_gen(state: &mut #builder_name #type_gen, index: u32, event: swim_common::form::structural::read::parser::ParseEvent<'_>)
+                    fn #select_feed_name #impl_gen(state: &mut #builder_name #type_gen, index: u32, event: swim_common::form::structural::read::event::ReadEvent<'_>)
                         -> core::option::Option<core::result::Result<(), swim_common::form::structural::read::error::ReadError>>
                     #where_clause
                     {

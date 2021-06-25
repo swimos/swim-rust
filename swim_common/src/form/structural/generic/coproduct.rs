@@ -57,6 +57,8 @@ impl<H, T: Coproduct> Coproduct for CCons<H, T> {
     const NUM_OPTIONS: usize = T::NUM_OPTIONS + 1;
 }
 
+/// At trait that is implemented for all coproducts where the types are identical allowing them to
+/// be unified to a simple value of that type.
 pub trait Unify {
     type Out;
     fn unify(self) -> Self::Out;

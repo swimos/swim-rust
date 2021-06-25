@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::form::structural::read::event::ReadEvent;
 use crate::form::structural::read::recognizer::primitive::I32Recognizer;
 use crate::form::structural::read::recognizer::{Recognizer, VecRecognizer};
-use crate::form::structural::read::parser::ParseEvent;
 use crate::form::structural::read::ReadError;
 
-fn run_recognizer<R: Recognizer>(events: Vec<ParseEvent<'_>>, mut rec: R) -> R::Target {
+fn run_recognizer<R: Recognizer>(events: Vec<ReadEvent<'_>>, mut rec: R) -> R::Target {
     let mut result = None;
     for event in events.into_iter() {
         if result.is_none() {
@@ -41,85 +41,22 @@ fn vec_recognizer() {
     let rec: VecRecognizer<i32, I32Recognizer> = VecRecognizer::new(false, I32Recognizer);
 
     let events = vec![
-        ParseEvent::StartBody,
-        ParseEvent::from(1),
-        ParseEvent::from(2),
-        ParseEvent::from(3),
-        ParseEvent::EndRecord,
+        ReadEvent::StartBody,
+        ReadEvent::from(1),
+        ReadEvent::from(2),
+        ReadEvent::from(3),
+        ReadEvent::EndRecord,
     ];
 
     let v = run_recognizer(events, rec);
     assert_eq!(v, vec![1, 2, 3]);
 }
 
-type OrdFields = (Option<i32>, Option<i32>);
-
-fn select_ord(
-    fields: &mut OrdFields,
-    n: u32,
-    event: ParseEvent<'_>,
-) -> Option<Result<(), ReadError>> {
-    match n {
-        0 => {
-            let mut rec = I32Recognizer;
-            match rec.feed_event(event) {
-                Some(Ok(m)) => {
-                    fields.0 = Some(m);
-                    Some(Ok(()))
-                }
-                Some(Err(e)) => Some(Err(e)),
-                _ => None,
-            }
-        }
-        1 => {
-            let mut rec = I32Recognizer;
-            match rec.feed_event(event) {
-                Some(Ok(m)) => {
-                    fields.1 = Some(m);
-                    Some(Ok(()))
-                }
-                Some(Err(e)) => Some(Err(e)),
-                _ => None,
-            }
-        }
-        _ => Some(Err(ReadError::UnexpectedItem)),
-    }
-}
-
-fn ord_done(fields: &mut OrdFields) -> Result<(i32, i32), ReadError> {
-    match fields {
-        (Some(a), Some(b)) => Ok((*a, *b)),
-        _ => Err(ReadError::IncompleteRecord),
-    }
-}
-
-fn ord_reset(fields: &mut OrdFields) {
-    fields.0 = None;
-    fields.1 = None;
-}
-
-#[test]
-fn ordinal_fields_recognizer() {
-    let rec: OrdinalFieldsRecognizer<(i32, i32), OrdFields> =
-        OrdinalFieldsRecognizer::new((None, None), 2, select_ord, ord_done, ord_reset);
-
-    let events = vec![
-        ParseEvent::StartBody,
-        ParseEvent::from(1),
-        ParseEvent::from(2),
-        ParseEvent::EndRecord,
-    ];
-
-    let (a, b) = run_recognizer(events, rec);
-    assert_eq!(a, 1);
-    assert_eq!(b, 2);
-}
-
 use super::*;
 
 fn read<'a, It, T>(mut it: It) -> Result<T, ReadError>
 where
-    It: Iterator<Item = ParseEvent<'a>> + 'a,
+    It: Iterator<Item = ReadEvent<'a>> + 'a,
     T: RecognizerReadable,
 {
     let mut recognizer = T::make_recognizer();
@@ -137,7 +74,7 @@ where
 
 #[test]
 fn examples() {
-    let events = vec![ParseEvent::Number(NumericLiteral::Int(1))];
+    let events = vec![ReadEvent::Number(NumericValue::Int(1))];
     let r: Result<i32, ReadError> = read(events.into_iter());
     assert_eq!(r, Ok(1));
 }
@@ -152,7 +89,7 @@ fn optional_recognizer() {
 
     let rec = <Option<i32>>::make_recognizer();
 
-    let events_none = vec![ParseEvent::Extant];
+    let events_none = vec![ReadEvent::Extant];
 
     assert_eq!(run_recognizer(events_none, rec), None);
 }
@@ -162,17 +99,17 @@ fn hash_map_recognizer() {
     let rec = <HashMap<String, i32>>::make_recognizer();
 
     let events = vec![
-        ParseEvent::StartBody,
+        ReadEvent::StartBody,
         "first".into(),
-        ParseEvent::Slot,
+        ReadEvent::Slot,
         4i32.into(),
         "second".into(),
-        ParseEvent::Slot,
+        ReadEvent::Slot,
         8i32.into(),
         "third".into(),
-        ParseEvent::Slot,
+        ReadEvent::Slot,
         (-12i32).into(),
-        ParseEvent::EndRecord,
+        ReadEvent::EndRecord,
     ];
 
     let map = run_recognizer(events, rec);

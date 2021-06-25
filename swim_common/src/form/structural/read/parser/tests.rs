@@ -14,8 +14,9 @@
 
 use super::tokens::{complete, streaming, string_literal};
 use super::Span;
+use crate::form::structural::read::event::{NumericValue, ReadEvent};
 use crate::form::structural::read::parser::record::ParseIterator;
-use crate::form::structural::read::parser::{NumericLiteral, ParseError, ParseEvent};
+use crate::form::structural::read::parser::ParseError;
 use crate::model::text::Text;
 use crate::model::{Attr, Item, Value};
 use either::Either;
@@ -128,38 +129,26 @@ fn parse_decimal_int() {
     ));
 
     let input = span("0 ");
-    check_output(
-        streaming::numeric_literal(input),
-        1,
-        NumericLiteral::UInt(0),
-    );
+    check_output(streaming::numeric_literal(input), 1, NumericValue::UInt(0));
 
     let input = span("1 ");
-    check_output(
-        streaming::numeric_literal(input),
-        1,
-        NumericLiteral::UInt(1),
-    );
+    check_output(streaming::numeric_literal(input), 1, NumericValue::UInt(1));
 
     let input = span("124 ");
     check_output(
         streaming::numeric_literal(input),
         3,
-        NumericLiteral::UInt(124),
+        NumericValue::UInt(124),
     );
 
     let input = span("-1 ");
-    check_output(
-        streaming::numeric_literal(input),
-        2,
-        NumericLiteral::Int(-1),
-    );
+    check_output(streaming::numeric_literal(input), 2, NumericValue::Int(-1));
 
     let input = span("-5677 ");
     check_output(
         streaming::numeric_literal(input),
         5,
-        NumericLiteral::Int(-5677),
+        NumericValue::Int(-5677),
     );
 
     let big = BigUint::from(u64::max_value()).add(1u64);
@@ -168,7 +157,7 @@ fn parse_decimal_int() {
     check_output(
         streaming::numeric_literal(input),
         big_str.len() - 1,
-        NumericLiteral::BigUint(big),
+        NumericValue::BigUint(big),
     );
 
     let big_neg = BigInt::from(i64::min_value()).sub(1);
@@ -177,33 +166,29 @@ fn parse_decimal_int() {
     check_output(
         streaming::numeric_literal(input),
         big_neg_str.len() - 1,
-        NumericLiteral::BigInt(big_neg),
+        NumericValue::BigInt(big_neg),
     );
 }
 
 #[test]
 fn parse_decimal_int_final() {
     let input = span("0");
-    check_output(complete::numeric_literal(input), 1, NumericLiteral::UInt(0));
+    check_output(complete::numeric_literal(input), 1, NumericValue::UInt(0));
 
     let input = span("1");
-    check_output(complete::numeric_literal(input), 1, NumericLiteral::UInt(1));
+    check_output(complete::numeric_literal(input), 1, NumericValue::UInt(1));
 
     let input = span("124");
-    check_output(
-        complete::numeric_literal(input),
-        3,
-        NumericLiteral::UInt(124),
-    );
+    check_output(complete::numeric_literal(input), 3, NumericValue::UInt(124));
 
     let input = span("-1");
-    check_output(complete::numeric_literal(input), 2, NumericLiteral::Int(-1));
+    check_output(complete::numeric_literal(input), 2, NumericValue::Int(-1));
 
     let input = span("-5677");
     check_output(
         complete::numeric_literal(input),
         5,
-        NumericLiteral::Int(-5677),
+        NumericValue::Int(-5677),
     );
 
     let big = BigUint::from(u64::max_value()).add(1u64);
@@ -212,7 +197,7 @@ fn parse_decimal_int_final() {
     check_output(
         complete::numeric_literal(input),
         big_str.len(),
-        NumericLiteral::BigUint(big),
+        NumericValue::BigUint(big),
     );
 
     let big_neg = BigInt::from(i64::min_value()).sub(1);
@@ -221,7 +206,7 @@ fn parse_decimal_int_final() {
     check_output(
         complete::numeric_literal(input),
         big_neg_str.len(),
-        NumericLiteral::BigInt(big_neg),
+        NumericValue::BigInt(big_neg),
     );
 }
 
@@ -234,38 +219,30 @@ fn parse_hex_int() {
     ));
 
     let input = span("0x0 ");
-    check_output(
-        streaming::numeric_literal(input),
-        3,
-        NumericLiteral::UInt(0),
-    );
+    check_output(streaming::numeric_literal(input), 3, NumericValue::UInt(0));
 
     let input = span("0xA ");
     check_output(
         streaming::numeric_literal(input),
         3,
-        NumericLiteral::UInt(0xA),
+        NumericValue::UInt(0xA),
     );
 
     let input = span("0x0a5c ");
     check_output(
         streaming::numeric_literal(input),
         6,
-        NumericLiteral::UInt(0x0a5c),
+        NumericValue::UInt(0x0a5c),
     );
 
     let input = span("-0x1 ");
-    check_output(
-        streaming::numeric_literal(input),
-        4,
-        NumericLiteral::Int(-1),
-    );
+    check_output(streaming::numeric_literal(input), 4, NumericValue::Int(-1));
 
     let input = span("-0xAB00 ");
     check_output(
         streaming::numeric_literal(input),
         7,
-        NumericLiteral::Int(-0xAB00),
+        NumericValue::Int(-0xAB00),
     );
 
     let big = BigUint::from(u64::max_value()).add(1u64);
@@ -274,7 +251,7 @@ fn parse_hex_int() {
     check_output(
         streaming::numeric_literal(input),
         big_str.len() - 1,
-        NumericLiteral::BigUint(big.clone()),
+        NumericValue::BigUint(big.clone()),
     );
 
     let big_neg = BigInt::from(big.clone()).neg();
@@ -283,37 +260,33 @@ fn parse_hex_int() {
     check_output(
         streaming::numeric_literal(input),
         big_neg_str.len() - 1,
-        NumericLiteral::BigInt(big_neg),
+        NumericValue::BigInt(big_neg),
     );
 }
 
 #[test]
 fn parse_hex_int_final() {
     let input = span("0x0");
-    check_output(complete::numeric_literal(input), 3, NumericLiteral::UInt(0));
+    check_output(complete::numeric_literal(input), 3, NumericValue::UInt(0));
 
     let input = span("0xA");
-    check_output(
-        complete::numeric_literal(input),
-        3,
-        NumericLiteral::UInt(0xA),
-    );
+    check_output(complete::numeric_literal(input), 3, NumericValue::UInt(0xA));
 
     let input = span("0x0a5c");
     check_output(
         complete::numeric_literal(input),
         6,
-        NumericLiteral::UInt(0x0a5c),
+        NumericValue::UInt(0x0a5c),
     );
 
     let input = span("-0x1");
-    check_output(complete::numeric_literal(input), 4, NumericLiteral::Int(-1));
+    check_output(complete::numeric_literal(input), 4, NumericValue::Int(-1));
 
     let input = span("-0xAB00");
     check_output(
         complete::numeric_literal(input),
         7,
-        NumericLiteral::Int(-0xAB00),
+        NumericValue::Int(-0xAB00),
     );
 
     let big = BigUint::from(u64::max_value()).add(1u64);
@@ -322,7 +295,7 @@ fn parse_hex_int_final() {
     check_output(
         complete::numeric_literal(input),
         big_str.len(),
-        NumericLiteral::BigUint(big.clone()),
+        NumericValue::BigUint(big.clone()),
     );
 
     let big_neg = BigInt::from(big.clone()).neg();
@@ -331,7 +304,7 @@ fn parse_hex_int_final() {
     check_output(
         complete::numeric_literal(input),
         big_neg_str.len(),
-        NumericLiteral::BigInt(big_neg),
+        NumericValue::BigInt(big_neg),
     );
 }
 
@@ -344,38 +317,30 @@ fn parse_bin_int() {
     ));
 
     let input = span("0b0 ");
-    check_output(
-        streaming::numeric_literal(input),
-        3,
-        NumericLiteral::UInt(0),
-    );
+    check_output(streaming::numeric_literal(input), 3, NumericValue::UInt(0));
 
     let input = span("0b1 ");
     check_output(
         streaming::numeric_literal(input),
         3,
-        NumericLiteral::UInt(0b1),
+        NumericValue::UInt(0b1),
     );
 
     let input = span("0b0110 ");
     check_output(
         streaming::numeric_literal(input),
         6,
-        NumericLiteral::UInt(0b0110),
+        NumericValue::UInt(0b0110),
     );
 
     let input = span("-0b1 ");
-    check_output(
-        streaming::numeric_literal(input),
-        4,
-        NumericLiteral::Int(-1),
-    );
+    check_output(streaming::numeric_literal(input), 4, NumericValue::Int(-1));
 
     let input = span("-0b1100 ");
     check_output(
         streaming::numeric_literal(input),
         7,
-        NumericLiteral::Int(-0b1100),
+        NumericValue::Int(-0b1100),
     );
 
     let big = BigUint::from(u64::max_value()).add(1u64);
@@ -384,7 +349,7 @@ fn parse_bin_int() {
     check_output(
         streaming::numeric_literal(input),
         big_str.len() - 1,
-        NumericLiteral::BigUint(big.clone()),
+        NumericValue::BigUint(big.clone()),
     );
 
     let big_neg = BigInt::from(big.clone()).neg();
@@ -393,37 +358,33 @@ fn parse_bin_int() {
     check_output(
         streaming::numeric_literal(input),
         big_neg_str.len() - 1,
-        NumericLiteral::BigInt(big_neg),
+        NumericValue::BigInt(big_neg),
     );
 }
 
 #[test]
 fn parse_bin_int_final() {
     let input = span("0b0");
-    check_output(complete::numeric_literal(input), 3, NumericLiteral::UInt(0));
+    check_output(complete::numeric_literal(input), 3, NumericValue::UInt(0));
 
     let input = span("0b1");
-    check_output(
-        complete::numeric_literal(input),
-        3,
-        NumericLiteral::UInt(0b1),
-    );
+    check_output(complete::numeric_literal(input), 3, NumericValue::UInt(0b1));
 
     let input = span("0b0110");
     check_output(
         complete::numeric_literal(input),
         6,
-        NumericLiteral::UInt(0b0110),
+        NumericValue::UInt(0b0110),
     );
 
     let input = span("-0b1");
-    check_output(complete::numeric_literal(input), 4, NumericLiteral::Int(-1));
+    check_output(complete::numeric_literal(input), 4, NumericValue::Int(-1));
 
     let input = span("-0b1100");
     check_output(
         complete::numeric_literal(input),
         7,
-        NumericLiteral::Int(-0b1100),
+        NumericValue::Int(-0b1100),
     );
 
     let big = BigUint::from(u64::max_value()).add(1u64);
@@ -432,7 +393,7 @@ fn parse_bin_int_final() {
     check_output(
         complete::numeric_literal(input),
         big_str.len(),
-        NumericLiteral::BigUint(big.clone()),
+        NumericValue::BigUint(big.clone()),
     );
 
     let big_neg = BigInt::from(big.clone()).neg();
@@ -441,7 +402,7 @@ fn parse_bin_int_final() {
     check_output(
         complete::numeric_literal(input),
         big_neg_str.len(),
-        NumericLiteral::BigInt(big_neg),
+        NumericValue::BigInt(big_neg),
     );
 }
 
@@ -457,34 +418,34 @@ fn parse_float() {
     check_output(
         streaming::numeric_literal(input),
         3,
-        NumericLiteral::Float(0.0),
+        NumericValue::Float(0.0),
     );
 
     let input = span("1.0 ");
     check_output(
         streaming::numeric_literal(input),
         3,
-        NumericLiteral::Float(1.0),
+        NumericValue::Float(1.0),
     );
 
     let input = span("-0.5 ");
     check_output(
         streaming::numeric_literal(input),
         4,
-        NumericLiteral::Float(-0.5),
+        NumericValue::Float(-0.5),
     );
 
     let input = span("3.135e12 ");
     check_output(
         streaming::numeric_literal(input),
         8,
-        NumericLiteral::Float(3.135e12),
+        NumericValue::Float(3.135e12),
     );
     let input = span("-0.135e-12 ");
     check_output(
         streaming::numeric_literal(input),
         10,
-        NumericLiteral::Float(-0.135e-12),
+        NumericValue::Float(-0.135e-12),
     );
 }
 
@@ -494,34 +455,34 @@ fn parse_float_final() {
     check_output(
         complete::numeric_literal(input),
         3,
-        NumericLiteral::Float(0.0),
+        NumericValue::Float(0.0),
     );
 
     let input = span("1.0");
     check_output(
         complete::numeric_literal(input),
         3,
-        NumericLiteral::Float(1.0),
+        NumericValue::Float(1.0),
     );
 
     let input = span("-0.5");
     check_output(
         complete::numeric_literal(input),
         4,
-        NumericLiteral::Float(-0.5),
+        NumericValue::Float(-0.5),
     );
 
     let input = span("3.135e12");
     check_output(
         complete::numeric_literal(input),
         8,
-        NumericLiteral::Float(3.135e12),
+        NumericValue::Float(3.135e12),
     );
     let input = span("-0.135e-12");
     check_output(
         complete::numeric_literal(input),
         10,
-        NumericLiteral::Float(-0.135e-12),
+        NumericValue::Float(-0.135e-12),
     );
 }
 
@@ -557,7 +518,7 @@ fn parse_blob_final() {
     assert_eq!(result.as_slice(), expected.as_bytes());
 }
 
-fn run_parser_iterator(input: &str) -> Result<Vec<ParseEvent<'_>>, nom::error::Error<Span<'_>>> {
+fn run_parser_iterator(input: &str) -> Result<Vec<ReadEvent<'_>>, nom::error::Error<Span<'_>>> {
     let it = ParseIterator::new(Span::new(input));
     let mut v = Vec::new();
     for r in it {
@@ -571,91 +532,91 @@ fn single_int() {
     let result = run_parser_iterator("1").unwrap();
     assert!(matches!(
         result.as_slice(),
-        [ParseEvent::Number(NumericLiteral::UInt(1))]
+        [ReadEvent::Number(NumericValue::UInt(1))]
     ));
 
     let result = run_parser_iterator(" 1").unwrap();
     assert!(matches!(
         result.as_slice(),
-        [ParseEvent::Number(NumericLiteral::UInt(1))]
+        [ReadEvent::Number(NumericValue::UInt(1))]
     ));
 
     let result = run_parser_iterator("1 ").unwrap();
     assert!(matches!(
         result.as_slice(),
-        [ParseEvent::Number(NumericLiteral::UInt(1))]
+        [ReadEvent::Number(NumericValue::UInt(1))]
     ));
 
     let result = run_parser_iterator("\n1").unwrap();
     assert!(matches!(
         result.as_slice(),
-        [ParseEvent::Number(NumericLiteral::UInt(1))]
+        [ReadEvent::Number(NumericValue::UInt(1))]
     ));
 }
 
 #[test]
 fn single_string() {
     let result = run_parser_iterator(r#""two words""#).unwrap();
-    assert!(matches!(result.as_slice(), [ParseEvent::TextValue(t)] if t == "two words"));
+    assert!(matches!(result.as_slice(), [ReadEvent::TextValue(t)] if t == "two words"));
 
     let result = run_parser_iterator(r#" "two words""#).unwrap();
-    assert!(matches!(result.as_slice(), [ParseEvent::TextValue(t)] if t == "two words"));
+    assert!(matches!(result.as_slice(), [ReadEvent::TextValue(t)] if t == "two words"));
 
     let result = run_parser_iterator(r#""two words" "#).unwrap();
-    assert!(matches!(result.as_slice(), [ParseEvent::TextValue(t)] if t == "two words"));
+    assert!(matches!(result.as_slice(), [ReadEvent::TextValue(t)] if t == "two words"));
 
     let result = run_parser_iterator("\n\"two words\"").unwrap();
-    assert!(matches!(result.as_slice(), [ParseEvent::TextValue(t)] if t == "two words"));
+    assert!(matches!(result.as_slice(), [ReadEvent::TextValue(t)] if t == "two words"));
 }
 
 #[test]
 fn single_identifier() {
     let result = run_parser_iterator("text").unwrap();
-    assert!(matches!(result.as_slice(), [ParseEvent::TextValue(t)] if t == "text"));
+    assert!(matches!(result.as_slice(), [ReadEvent::TextValue(t)] if t == "text"));
 
     let result = run_parser_iterator(" text").unwrap();
-    assert!(matches!(result.as_slice(), [ParseEvent::TextValue(t)] if t == "text"));
+    assert!(matches!(result.as_slice(), [ReadEvent::TextValue(t)] if t == "text"));
 
     let result = run_parser_iterator("text ").unwrap();
-    assert!(matches!(result.as_slice(), [ParseEvent::TextValue(t)] if t == "text"));
+    assert!(matches!(result.as_slice(), [ReadEvent::TextValue(t)] if t == "text"));
 
     let result = run_parser_iterator("\ntext").unwrap();
-    assert!(matches!(result.as_slice(), [ParseEvent::TextValue(t)] if t == "text"));
+    assert!(matches!(result.as_slice(), [ReadEvent::TextValue(t)] if t == "text"));
 }
 
 #[test]
 fn single_float() {
     let result = run_parser_iterator("-1.5e67").unwrap();
     assert!(
-        matches!(result.as_slice(), [ParseEvent::Number(NumericLiteral::Float(x))] if x.eq(&-1.5e67))
+        matches!(result.as_slice(), [ReadEvent::Number(NumericValue::Float(x))] if x.eq(&-1.5e67))
     );
 
     let result = run_parser_iterator(" -1.5e67").unwrap();
     assert!(
-        matches!(result.as_slice(), [ParseEvent::Number(NumericLiteral::Float(x))] if x.eq(&-1.5e67))
+        matches!(result.as_slice(), [ReadEvent::Number(NumericValue::Float(x))] if x.eq(&-1.5e67))
     );
 
     let result = run_parser_iterator("-1.5e67 ").unwrap();
     assert!(
-        matches!(result.as_slice(), [ParseEvent::Number(NumericLiteral::Float(x))] if x.eq(&-1.5e67))
+        matches!(result.as_slice(), [ReadEvent::Number(NumericValue::Float(x))] if x.eq(&-1.5e67))
     );
 
     let result = run_parser_iterator("\n-1.5e67").unwrap();
     assert!(
-        matches!(result.as_slice(), [ParseEvent::Number(NumericLiteral::Float(x))] if x.eq(&-1.5e67))
+        matches!(result.as_slice(), [ReadEvent::Number(NumericValue::Float(x))] if x.eq(&-1.5e67))
     );
 }
 
 #[test]
 fn empty() {
     let result = run_parser_iterator("").unwrap();
-    assert!(matches!(result.as_slice(), [ParseEvent::Extant]));
+    assert!(matches!(result.as_slice(), [ReadEvent::Extant]));
 
     let result = run_parser_iterator(" ").unwrap();
-    assert!(matches!(result.as_slice(), [ParseEvent::Extant]));
+    assert!(matches!(result.as_slice(), [ReadEvent::Extant]));
 
     let result = run_parser_iterator("\n").unwrap();
-    assert!(matches!(result.as_slice(), [ParseEvent::Extant]));
+    assert!(matches!(result.as_slice(), [ReadEvent::Extant]));
 }
 
 #[test]
@@ -663,33 +624,33 @@ fn empty_record() {
     let result = run_parser_iterator("{}").unwrap();
     assert!(matches!(
         result.as_slice(),
-        [ParseEvent::StartBody, ParseEvent::EndRecord]
+        [ReadEvent::StartBody, ReadEvent::EndRecord]
     ));
 
     let result = run_parser_iterator("{ }").unwrap();
     assert!(matches!(
         result.as_slice(),
-        [ParseEvent::StartBody, ParseEvent::EndRecord]
+        [ReadEvent::StartBody, ReadEvent::EndRecord]
     ));
 
     let result = run_parser_iterator("{\n}").unwrap();
     assert!(matches!(
         result.as_slice(),
-        [ParseEvent::StartBody, ParseEvent::EndRecord]
+        [ReadEvent::StartBody, ReadEvent::EndRecord]
     ));
 }
 
-fn uint_event<'a>(n: u64) -> ParseEvent<'a> {
-    ParseEvent::Number(NumericLiteral::UInt(n))
+fn uint_event<'a>(n: u64) -> ReadEvent<'a> {
+    ReadEvent::Number(NumericValue::UInt(n))
 }
 
-fn string_event(string: &str) -> ParseEvent<'_> {
-    ParseEvent::TextValue(Cow::Borrowed(string))
+fn string_event(string: &str) -> ReadEvent<'_> {
+    ReadEvent::TextValue(Cow::Borrowed(string))
 }
 
 #[test]
 fn singleton_record() {
-    let expected = vec![ParseEvent::StartBody, uint_event(1), ParseEvent::EndRecord];
+    let expected = vec![ReadEvent::StartBody, uint_event(1), ReadEvent::EndRecord];
 
     let result = run_parser_iterator("{1}").unwrap();
     assert_eq!(result, expected);
@@ -704,11 +665,11 @@ fn singleton_record() {
 #[test]
 fn simple_record() {
     let expected = vec![
-        ParseEvent::StartBody,
+        ReadEvent::StartBody,
         uint_event(1),
         string_event("two"),
         uint_event(3),
-        ParseEvent::EndRecord,
+        ReadEvent::EndRecord,
     ];
 
     let result = run_parser_iterator("{1,two,3}").unwrap();
@@ -724,11 +685,11 @@ fn missing_items() {
     assert_eq!(
         result,
         vec![
-            ParseEvent::StartBody,
-            ParseEvent::Extant,
+            ReadEvent::StartBody,
+            ReadEvent::Extant,
             string_event("two"),
             uint_event(3),
-            ParseEvent::EndRecord
+            ReadEvent::EndRecord
         ]
     );
 
@@ -736,11 +697,11 @@ fn missing_items() {
     assert_eq!(
         result,
         vec![
-            ParseEvent::StartBody,
+            ReadEvent::StartBody,
             uint_event(1),
-            ParseEvent::Extant,
+            ReadEvent::Extant,
             uint_event(3),
-            ParseEvent::EndRecord
+            ReadEvent::EndRecord
         ]
     );
 
@@ -748,11 +709,11 @@ fn missing_items() {
     assert_eq!(
         result,
         vec![
-            ParseEvent::StartBody,
+            ReadEvent::StartBody,
             uint_event(1),
             string_event("two"),
-            ParseEvent::Extant,
-            ParseEvent::EndRecord
+            ReadEvent::Extant,
+            ReadEvent::EndRecord
         ]
     );
 }
@@ -760,11 +721,11 @@ fn missing_items() {
 #[test]
 fn newline_seperators() {
     let expected = vec![
-        ParseEvent::StartBody,
+        ReadEvent::StartBody,
         uint_event(1),
         string_event("two"),
         uint_event(3),
-        ParseEvent::EndRecord,
+        ReadEvent::EndRecord,
     ];
 
     let result = run_parser_iterator(
@@ -789,11 +750,11 @@ fn newline_seperators() {
 #[test]
 fn singleton_slot() {
     let expected = vec![
-        ParseEvent::StartBody,
+        ReadEvent::StartBody,
         string_event("name"),
-        ParseEvent::Slot,
+        ReadEvent::Slot,
         uint_event(1),
-        ParseEvent::EndRecord,
+        ReadEvent::EndRecord,
     ];
 
     let result = run_parser_iterator("{name:1}").unwrap();
@@ -809,11 +770,11 @@ fn singleton_slot() {
 #[test]
 fn missing_slot_value() {
     let expected = vec![
-        ParseEvent::StartBody,
+        ReadEvent::StartBody,
         string_event("name"),
-        ParseEvent::Slot,
-        ParseEvent::Extant,
-        ParseEvent::EndRecord,
+        ReadEvent::Slot,
+        ReadEvent::Extant,
+        ReadEvent::EndRecord,
     ];
 
     let result = run_parser_iterator("{name:}").unwrap();
@@ -829,11 +790,11 @@ fn missing_slot_value() {
 #[test]
 fn missing_slot_key() {
     let expected = vec![
-        ParseEvent::StartBody,
-        ParseEvent::Extant,
-        ParseEvent::Slot,
+        ReadEvent::StartBody,
+        ReadEvent::Extant,
+        ReadEvent::Slot,
         uint_event(1),
-        ParseEvent::EndRecord,
+        ReadEvent::EndRecord,
     ];
 
     let result = run_parser_iterator("{:1}").unwrap();
@@ -849,17 +810,17 @@ fn missing_slot_key() {
 #[test]
 fn simple_slots_record() {
     let expected = vec![
-        ParseEvent::StartBody,
+        ReadEvent::StartBody,
         string_event("first"),
-        ParseEvent::Slot,
+        ReadEvent::Slot,
         uint_event(1),
         string_event("second"),
-        ParseEvent::Slot,
+        ReadEvent::Slot,
         string_event("two"),
         string_event("third"),
-        ParseEvent::Slot,
+        ReadEvent::Slot,
         uint_event(3),
-        ParseEvent::EndRecord,
+        ReadEvent::EndRecord,
     ];
 
     let result = run_parser_iterator("{first:1,second:two,third:3}").unwrap();
@@ -872,17 +833,17 @@ fn simple_slots_record() {
 #[test]
 fn missing_slot_parts() {
     let expected = vec![
-        ParseEvent::StartBody,
+        ReadEvent::StartBody,
         string_event("first"),
-        ParseEvent::Slot,
+        ReadEvent::Slot,
         uint_event(1),
         string_event("second"),
-        ParseEvent::Slot,
-        ParseEvent::Extant,
-        ParseEvent::Extant,
-        ParseEvent::Slot,
+        ReadEvent::Slot,
+        ReadEvent::Extant,
+        ReadEvent::Extant,
+        ReadEvent::Slot,
         uint_event(3),
-        ParseEvent::EndRecord,
+        ReadEvent::EndRecord,
     ];
 
     let result = run_parser_iterator("{first:1,second:,:3}").unwrap();
@@ -892,17 +853,17 @@ fn missing_slot_parts() {
     assert_eq!(result, expected);
 }
 
-fn attr_event(name: &str) -> ParseEvent<'_> {
-    ParseEvent::StartAttribute(Cow::Borrowed(name))
+fn attr_event(name: &str) -> ReadEvent<'_> {
+    ReadEvent::StartAttribute(Cow::Borrowed(name))
 }
 
 #[test]
 fn tag_attribute() {
     let expected = vec![
         attr_event("tag"),
-        ParseEvent::EndAttribute,
-        ParseEvent::StartBody,
-        ParseEvent::EndRecord,
+        ReadEvent::EndAttribute,
+        ReadEvent::StartBody,
+        ReadEvent::EndRecord,
     ];
 
     let result = run_parser_iterator("@tag").unwrap();
@@ -917,9 +878,9 @@ fn attr_simple_body() {
     let expected = vec![
         attr_event("name"),
         uint_event(2),
-        ParseEvent::EndAttribute,
-        ParseEvent::StartBody,
-        ParseEvent::EndRecord,
+        ReadEvent::EndAttribute,
+        ReadEvent::StartBody,
+        ReadEvent::EndRecord,
     ];
 
     let result = run_parser_iterator("@name(2)").unwrap();
@@ -934,11 +895,11 @@ fn attr_slot_body() {
     let expected = vec![
         attr_event("name"),
         string_event("a"),
-        ParseEvent::Slot,
-        ParseEvent::Boolean(true),
-        ParseEvent::EndAttribute,
-        ParseEvent::StartBody,
-        ParseEvent::EndRecord,
+        ReadEvent::Slot,
+        ReadEvent::Boolean(true),
+        ReadEvent::EndAttribute,
+        ReadEvent::StartBody,
+        ReadEvent::EndRecord,
     ];
 
     let result = run_parser_iterator("@name(a:true)").unwrap();
@@ -954,12 +915,12 @@ fn attr_multiple_item_body() {
         attr_event("name"),
         uint_event(1),
         string_event("a"),
-        ParseEvent::Slot,
-        ParseEvent::Boolean(true),
-        ParseEvent::Extant,
-        ParseEvent::EndAttribute,
-        ParseEvent::StartBody,
-        ParseEvent::EndRecord,
+        ReadEvent::Slot,
+        ReadEvent::Boolean(true),
+        ReadEvent::Extant,
+        ReadEvent::EndAttribute,
+        ReadEvent::StartBody,
+        ReadEvent::EndRecord,
     ];
 
     let result = run_parser_iterator("@name(1, a: true,)").unwrap();
@@ -973,11 +934,11 @@ fn attr_multiple_item_body() {
 fn multiple_attributes() {
     let expected = vec![
         attr_event("first"),
-        ParseEvent::EndAttribute,
+        ReadEvent::EndAttribute,
         attr_event("second"),
-        ParseEvent::EndAttribute,
-        ParseEvent::StartBody,
-        ParseEvent::EndRecord,
+        ReadEvent::EndAttribute,
+        ReadEvent::StartBody,
+        ReadEvent::EndRecord,
     ];
 
     let result = run_parser_iterator("@first@second").unwrap();
@@ -992,12 +953,12 @@ fn multiple_attributes_with_bodies() {
     let expected = vec![
         attr_event("first"),
         uint_event(1),
-        ParseEvent::EndAttribute,
+        ReadEvent::EndAttribute,
         attr_event("second"),
         uint_event(2),
-        ParseEvent::EndAttribute,
-        ParseEvent::StartBody,
-        ParseEvent::EndRecord,
+        ReadEvent::EndAttribute,
+        ReadEvent::StartBody,
+        ReadEvent::EndRecord,
     ];
 
     let result = run_parser_iterator("@first(1)@second(2)").unwrap();
@@ -1010,14 +971,14 @@ fn multiple_attributes_with_bodies() {
 #[test]
 fn empty_nested() {
     let expected = vec![
-        ParseEvent::StartBody,
-        ParseEvent::StartBody,
-        ParseEvent::EndRecord,
-        ParseEvent::StartBody,
-        ParseEvent::EndRecord,
-        ParseEvent::StartBody,
-        ParseEvent::EndRecord,
-        ParseEvent::EndRecord,
+        ReadEvent::StartBody,
+        ReadEvent::StartBody,
+        ReadEvent::EndRecord,
+        ReadEvent::StartBody,
+        ReadEvent::EndRecord,
+        ReadEvent::StartBody,
+        ReadEvent::EndRecord,
+        ReadEvent::EndRecord,
     ];
 
     let result = run_parser_iterator("{{},{},{}}").unwrap();
@@ -1027,15 +988,15 @@ fn empty_nested() {
 #[test]
 fn simple_nested() {
     let expected = vec![
-        ParseEvent::StartBody,
-        ParseEvent::StartBody,
+        ReadEvent::StartBody,
+        ReadEvent::StartBody,
         uint_event(4),
         string_event("slot"),
-        ParseEvent::Slot,
+        ReadEvent::Slot,
         string_event("word"),
-        ParseEvent::EndRecord,
+        ReadEvent::EndRecord,
         uint_event(1),
-        ParseEvent::EndRecord,
+        ReadEvent::EndRecord,
     ];
 
     let result = run_parser_iterator(
@@ -1051,12 +1012,12 @@ fn simple_nested() {
 #[test]
 fn nested_with_attr() {
     let expected = vec![
-        ParseEvent::StartBody,
+        ReadEvent::StartBody,
         attr_event("inner"),
-        ParseEvent::EndAttribute,
-        ParseEvent::StartBody,
-        ParseEvent::EndRecord,
-        ParseEvent::EndRecord,
+        ReadEvent::EndAttribute,
+        ReadEvent::StartBody,
+        ReadEvent::EndRecord,
+        ReadEvent::EndRecord,
     ];
 
     let result = run_parser_iterator("{ @inner }").unwrap();
@@ -1069,13 +1030,13 @@ fn nested_with_attr() {
 #[test]
 fn nested_with_attr_with_body() {
     let expected = vec![
-        ParseEvent::StartBody,
+        ReadEvent::StartBody,
         attr_event("inner"),
         uint_event(0),
-        ParseEvent::EndAttribute,
-        ParseEvent::StartBody,
-        ParseEvent::EndRecord,
-        ParseEvent::EndRecord,
+        ReadEvent::EndAttribute,
+        ReadEvent::StartBody,
+        ReadEvent::EndRecord,
+        ReadEvent::EndRecord,
     ];
 
     let result = run_parser_iterator("{ @inner(0) }").unwrap();
@@ -1088,14 +1049,14 @@ fn nested_with_attr_with_body() {
 #[test]
 fn nested_with_attr_with_body_followed() {
     let expected = vec![
-        ParseEvent::StartBody,
+        ReadEvent::StartBody,
         attr_event("inner"),
         uint_event(0),
-        ParseEvent::EndAttribute,
-        ParseEvent::StartBody,
-        ParseEvent::EndRecord,
+        ReadEvent::EndAttribute,
+        ReadEvent::StartBody,
+        ReadEvent::EndRecord,
         string_event("after"),
-        ParseEvent::EndRecord,
+        ReadEvent::EndRecord,
     ];
 
     let result = run_parser_iterator("{ @inner(0), after }").unwrap();
@@ -1109,11 +1070,11 @@ fn nested_with_attr_with_body_followed() {
 fn empty_nested_in_attr() {
     let expected = vec![
         attr_event("outer"),
-        ParseEvent::StartBody,
-        ParseEvent::EndRecord,
-        ParseEvent::EndAttribute,
-        ParseEvent::StartBody,
-        ParseEvent::EndRecord,
+        ReadEvent::StartBody,
+        ReadEvent::EndRecord,
+        ReadEvent::EndAttribute,
+        ReadEvent::StartBody,
+        ReadEvent::EndRecord,
     ];
 
     let result = run_parser_iterator("@outer({})").unwrap();
@@ -1124,15 +1085,15 @@ fn empty_nested_in_attr() {
 fn simple_nested_in_attr() {
     let expected = vec![
         attr_event("outer"),
-        ParseEvent::StartBody,
+        ReadEvent::StartBody,
         uint_event(4),
         string_event("slot"),
-        ParseEvent::Slot,
+        ReadEvent::Slot,
         string_event("word"),
-        ParseEvent::EndRecord,
-        ParseEvent::EndAttribute,
-        ParseEvent::StartBody,
-        ParseEvent::EndRecord,
+        ReadEvent::EndRecord,
+        ReadEvent::EndAttribute,
+        ReadEvent::StartBody,
+        ReadEvent::EndRecord,
     ];
 
     let result = run_parser_iterator("@outer({ 4, slot: word })").unwrap();
@@ -1144,12 +1105,12 @@ fn nested_with_attr_in_attr() {
     let expected = vec![
         attr_event("outer"),
         attr_event("inner"),
-        ParseEvent::EndAttribute,
-        ParseEvent::StartBody,
-        ParseEvent::EndRecord,
-        ParseEvent::EndAttribute,
-        ParseEvent::StartBody,
-        ParseEvent::EndRecord,
+        ReadEvent::EndAttribute,
+        ReadEvent::StartBody,
+        ReadEvent::EndRecord,
+        ReadEvent::EndAttribute,
+        ReadEvent::StartBody,
+        ReadEvent::EndRecord,
     ];
 
     let result = run_parser_iterator("@outer(@inner)").unwrap();
@@ -1165,12 +1126,12 @@ fn nested_with_attr_with_body_in_attr() {
         attr_event("outer"),
         attr_event("inner"),
         uint_event(0),
-        ParseEvent::EndAttribute,
-        ParseEvent::StartBody,
-        ParseEvent::EndRecord,
-        ParseEvent::EndAttribute,
-        ParseEvent::StartBody,
-        ParseEvent::EndRecord,
+        ReadEvent::EndAttribute,
+        ReadEvent::StartBody,
+        ReadEvent::EndRecord,
+        ReadEvent::EndAttribute,
+        ReadEvent::StartBody,
+        ReadEvent::EndRecord,
     ];
 
     let result = run_parser_iterator("@outer(@inner(0))").unwrap();
@@ -1186,13 +1147,13 @@ fn nested_with_attr_with_body_followed_in_attr() {
         attr_event("outer"),
         attr_event("inner"),
         uint_event(0),
-        ParseEvent::EndAttribute,
-        ParseEvent::StartBody,
-        ParseEvent::EndRecord,
+        ReadEvent::EndAttribute,
+        ReadEvent::StartBody,
+        ReadEvent::EndRecord,
         uint_event(3),
-        ParseEvent::EndAttribute,
-        ParseEvent::StartBody,
-        ParseEvent::EndRecord,
+        ReadEvent::EndAttribute,
+        ReadEvent::StartBody,
+        ReadEvent::EndRecord,
     ];
 
     let result = run_parser_iterator("@outer(@inner(0), 3)").unwrap();
@@ -1205,17 +1166,17 @@ fn nested_with_attr_with_body_followed_in_attr() {
 #[test]
 fn double_nested() {
     let expected = vec![
-        ParseEvent::StartBody,
+        ReadEvent::StartBody,
         uint_event(1),
-        ParseEvent::StartBody,
+        ReadEvent::StartBody,
         uint_event(2),
-        ParseEvent::StartBody,
+        ReadEvent::StartBody,
         uint_event(3),
         uint_event(4),
-        ParseEvent::EndRecord,
-        ParseEvent::EndRecord,
+        ReadEvent::EndRecord,
+        ReadEvent::EndRecord,
         uint_event(5),
-        ParseEvent::EndRecord,
+        ReadEvent::EndRecord,
     ];
 
     let result = run_parser_iterator("{1, {2, {3, 4}}, 5}").unwrap();
@@ -1225,19 +1186,19 @@ fn double_nested() {
 #[test]
 fn complex_slot() {
     let expected = vec![
-        ParseEvent::StartBody,
+        ReadEvent::StartBody,
         attr_event("key"),
-        ParseEvent::EndAttribute,
-        ParseEvent::StartBody,
+        ReadEvent::EndAttribute,
+        ReadEvent::StartBody,
         uint_event(1),
-        ParseEvent::EndRecord,
-        ParseEvent::Slot,
+        ReadEvent::EndRecord,
+        ReadEvent::Slot,
         attr_event("value"),
-        ParseEvent::EndAttribute,
-        ParseEvent::StartBody,
+        ReadEvent::EndAttribute,
+        ReadEvent::StartBody,
         uint_event(2),
-        ParseEvent::EndRecord,
-        ParseEvent::EndRecord,
+        ReadEvent::EndRecord,
+        ReadEvent::EndRecord,
     ];
 
     let result = run_parser_iterator("{@key {1}: @value {2}}").unwrap();

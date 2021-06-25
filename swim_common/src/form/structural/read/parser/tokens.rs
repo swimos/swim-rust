@@ -12,7 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::form::structural::read::parser::{NumericLiteral, Span};
+use crate::form::structural::read::event::NumericValue;
+use crate::form::structural::read::parser::Span;
 use crate::model::parser::{is_identifier_char, is_identifier_start, unescape};
 use crate::model::text::Text;
 use either::Either;
@@ -134,7 +135,7 @@ macro_rules! token_mod {
                 }
             }
 
-            pub fn numeric_literal(input: Span<'_>) -> IResult<Span<'_>, NumericLiteral> {
+            pub fn numeric_literal(input: Span<'_>) -> IResult<Span<'_>, NumericValue> {
                 alt((binary, hexadecimal, decimal_or_float))(input)
             }
 
@@ -154,7 +155,7 @@ macro_rules! token_mod {
                 natural("0x", "0123456789abcdefABCDEF")(input)
             }
 
-            fn hexadecimal(input: Span<'_>) -> IResult<Span<'_>, NumericLiteral> {
+            fn hexadecimal(input: Span<'_>) -> IResult<Span<'_>, NumericValue> {
                 map_res(signed(hexadecimal_str), |(negative, rep)| {
                     try_to_int_literal(negative, *rep, 16)
                 })(input)
@@ -164,7 +165,7 @@ macro_rules! token_mod {
                 natural("0b", "01")(input)
             }
 
-            fn binary(input: Span<'_>) -> IResult<Span<'_>, NumericLiteral> {
+            fn binary(input: Span<'_>) -> IResult<Span<'_>, NumericValue> {
                 map_res(signed(binary_str), |(negative, rep)| {
                     try_to_int_literal(negative, *rep, 2)
                 })(input)
@@ -174,7 +175,7 @@ macro_rules! token_mod {
                 recognize(many1_count(character::one_of("0123456789")))(input)
             }
 
-            fn decimal_or_float(input: Span<'_>) -> IResult<Span<'_>, NumericLiteral> {
+            fn decimal_or_float(input: Span<'_>) -> IResult<Span<'_>, NumericValue> {
                 alt((
                     map_res(
                         map_res(
@@ -189,7 +190,7 @@ macro_rules! token_mod {
                         ),
                         |(negative, rep)| try_to_int_literal(negative, *rep, 10),
                     ),
-                    map(number::double, NumericLiteral::Float),
+                    map(number::double, NumericValue::Float),
                 ))(input)
             }
 
@@ -197,23 +198,23 @@ macro_rules! token_mod {
                 negative: bool,
                 rep: &str,
                 radix: u32,
-            ) -> Result<NumericLiteral, ParseBigIntError> {
+            ) -> Result<NumericValue, ParseBigIntError> {
                 if let Ok(n) = u64::from_str_radix(rep, radix) {
                     if negative {
                         if let Ok(m) = i64::try_from(n) {
-                            Ok(NumericLiteral::Int(-m))
+                            Ok(NumericValue::Int(-m))
                         } else {
-                            Ok(NumericLiteral::BigInt(BigInt::from(n).neg()))
+                            Ok(NumericValue::BigInt(BigInt::from(n).neg()))
                         }
                     } else {
-                        Ok(NumericLiteral::UInt(n))
+                        Ok(NumericValue::UInt(n))
                     }
                 } else {
                     let n = BigUint::from_str_radix(rep, radix)?;
                     if negative {
-                        Ok(NumericLiteral::BigInt(BigInt::from_biguint(Sign::Minus, n)))
+                        Ok(NumericValue::BigInt(BigInt::from_biguint(Sign::Minus, n)))
                     } else {
-                        Ok(NumericLiteral::BigUint(n))
+                        Ok(NumericValue::BigUint(n))
                     }
                 }
             }

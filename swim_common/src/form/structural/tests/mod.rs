@@ -14,10 +14,10 @@
 
 mod msgpack;
 
+use crate::form::structural::read::event::ReadEvent;
 use crate::form::structural::read::recognizer::{
     FirstOf, NamedFieldsRecognizer, Recognizer, RecognizerReadable, SimpleAttrBody,
 };
-use crate::form::structural::read::parser::ParseEvent;
 use crate::form::structural::read::ReadError;
 use crate::form::structural::write::{BodyWriter, HeaderWriter};
 use crate::form::structural::write::{
@@ -59,7 +59,7 @@ fn general_select_field(name: &str) -> Option<u32> {
 fn general_select<'a, S, RS: Recognizer<Target = S>, T, RT: Recognizer<Target = T>>(
     state: &mut (Option<S>, Option<T>, RS, RT),
     index: u32,
-    input: ParseEvent<'a>,
+    input: ReadEvent<'a>,
 ) -> Option<Result<(), ReadError>> {
     let (first, second, first_rec, second_rec) = state;
     match index {

@@ -12,13 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+/// [`Recognizer`] implementations for basic types.
 pub mod primitive;
 #[cfg(test)]
 mod tests;
 
 use crate::form::structural::generic::coproduct::{CCons, CNil, Unify};
+use crate::form::structural::read::event::{NumericValue, ReadEvent};
 use crate::form::structural::read::materializers::value::ValueMaterializer;
-use crate::form::structural::read::parser::{NumericLiteral, ParseEvent};
 use crate::form::structural::read::ReadError;
 use crate::model::text::Text;
 use crate::model::{Value, ValueKind};
@@ -31,33 +32,56 @@ use std::option::Option::None;
 use std::sync::Arc;
 use utilities::iteratee::Iteratee;
 
+/// Trait for types that can be recognized by a [`Recognizer`] state machine.
 pub trait RecognizerReadable: Sized {
     type Rec: Recognizer<Target = Self>;
     type AttrRec: Recognizer<Target = Self>;
 
+    /// Create a state machine that will recognize the represenation of the type as a stream of
+    /// [`ReadEvent`]s.
     fn make_recognizer() -> Self::Rec;
+
+    /// Create a state machine that will recognize the represenation of the type as a stream of
+    /// [`ReadEvent`]s from the body of an attribute. (In most cases this will be indentical
+    /// to the `make_recognizer` state machine, followed by an end attribute event. However,
+    /// for types that can be reprsented as records with no attributes, this may be more complex
+    /// as it is permissible for the record to be collapsed into the body of the attribute.)
     fn make_attr_recognizer() -> Self::AttrRec;
 
+    /// If this value is expected as teh value of a record field but was not present a default
+    /// value will be used if provided here. For example, [`Option`] values are set to `None` if
+    /// not provided.
     fn on_absent() -> Option<Self> {
         None
     }
 
+    /// A value is simple if it can be represented by a single [`ReadEvent`].
     fn is_simple() -> bool {
         false
     }
 }
 
+/// Trait for state machines that can recognize a type from a stream of [`ReadEvent`]s. A
+/// recognizer maybe be used multiple times but the `reset` method must be called between each
+/// use.
 pub trait Recognizer {
+    /// The type that is produced by the state machine.
     type Target;
 
-    fn feed_event(&mut self, input: ParseEvent<'_>) -> Option<Result<Self::Target, ReadError>>;
+    /// Feed a single event into the state machine. The result will return nothing if more
+    /// events are required. Otherwise it will return the completed value or an error if the
+    /// event provided was invalid for the type.
+    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>>;
 
+    /// Attempt the produce a value based on the events that have already been provided, if possible.
     fn try_flush(&mut self) -> Option<Result<Self::Target, ReadError>> {
         None
     }
 
+    /// Reset the state machine so that it can be used again.
     fn reset(&mut self);
 
+    /// Wrap this state machine as an [`Iteratee`].
     fn as_iteratee(&mut self) -> RecognizerIteratee<'_, Self>
     where
         Self: Sized,
@@ -68,13 +92,13 @@ pub trait Recognizer {
 
 pub struct RecognizerIteratee<'b, R>(&'b mut R);
 
-impl<'a, 'b, R> Iteratee<ParseEvent<'a>> for RecognizerIteratee<'b, R>
+impl<'a, 'b, R> Iteratee<ReadEvent<'a>> for RecognizerIteratee<'b, R>
 where
     R: Recognizer,
 {
     type Item = Result<R::Target, ReadError>;
 
-    fn feed(&mut self, input: ParseEvent<'a>) -> Option<Self::Item> {
+    fn feed(&mut self, input: ReadEvent<'a>) -> Option<Self::Item> {
         let RecognizerIteratee(inner) = self;
         inner.feed_event(input)
     }
@@ -88,24 +112,20 @@ where
     }
 }
 
-fn bad_kind(event: &ParseEvent<'_>) -> ReadError {
+fn bad_kind(event: &ReadEvent<'_>) -> ReadError {
     match event {
-        ParseEvent::Number(NumericLiteral::Int(_)) => ReadError::UnexpectedKind(ValueKind::Int64),
-        ParseEvent::Number(NumericLiteral::UInt(_)) => ReadError::UnexpectedKind(ValueKind::UInt64),
-        ParseEvent::Number(NumericLiteral::BigInt(_)) => {
-            ReadError::UnexpectedKind(ValueKind::BigInt)
-        }
-        ParseEvent::Number(NumericLiteral::BigUint(_)) => {
+        ReadEvent::Number(NumericValue::Int(_)) => ReadError::UnexpectedKind(ValueKind::Int64),
+        ReadEvent::Number(NumericValue::UInt(_)) => ReadError::UnexpectedKind(ValueKind::UInt64),
+        ReadEvent::Number(NumericValue::BigInt(_)) => ReadError::UnexpectedKind(ValueKind::BigInt),
+        ReadEvent::Number(NumericValue::BigUint(_)) => {
             ReadError::UnexpectedKind(ValueKind::BigUint)
         }
-        ParseEvent::Number(NumericLiteral::Float(_)) => {
-            ReadError::UnexpectedKind(ValueKind::Float64)
-        }
-        ParseEvent::Boolean(_) => ReadError::UnexpectedKind(ValueKind::Boolean),
-        ParseEvent::TextValue(_) => ReadError::UnexpectedKind(ValueKind::Text),
-        ParseEvent::Extant => ReadError::UnexpectedKind(ValueKind::Extant),
-        ParseEvent::Blob(_) => ReadError::UnexpectedKind(ValueKind::Data),
-        ParseEvent::StartBody | ParseEvent::StartAttribute(_) => {
+        ReadEvent::Number(NumericValue::Float(_)) => ReadError::UnexpectedKind(ValueKind::Float64),
+        ReadEvent::Boolean(_) => ReadError::UnexpectedKind(ValueKind::Boolean),
+        ReadEvent::TextValue(_) => ReadError::UnexpectedKind(ValueKind::Text),
+        ReadEvent::Extant => ReadError::UnexpectedKind(ValueKind::Extant),
+        ReadEvent::Blob(_) => ReadError::UnexpectedKind(ValueKind::Data),
+        ReadEvent::StartBody | ReadEvent::StartAttribute(_) => {
             ReadError::UnexpectedKind(ValueKind::Record)
         }
         _ => ReadError::InconsistentState,
@@ -146,6 +166,7 @@ simple_readable!(Text, TextRecognizer);
 simple_readable!(Vec<u8>, DataRecognizer);
 simple_readable!(bool, BoolRecognizer);
 
+/// Recognizes a vector of values of the same type.
 pub struct VecRecognizer<T, R> {
     is_attr_body: bool,
     stage: BodyStage,
@@ -156,10 +177,10 @@ pub struct VecRecognizer<T, R> {
 impl<T, R: Recognizer<Target = T>> Recognizer for VecRecognizer<T, R> {
     type Target = Vec<T>;
 
-    fn feed_event(&mut self, input: ParseEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
+    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         match self.stage {
             BodyStage::Init => {
-                if matches!(&input, ParseEvent::StartBody) {
+                if matches!(&input, ReadEvent::StartBody) {
                     self.stage = BodyStage::Between;
                     None
                 } else {
@@ -167,10 +188,10 @@ impl<T, R: Recognizer<Target = T>> Recognizer for VecRecognizer<T, R> {
                 }
             }
             BodyStage::Between => match &input {
-                ParseEvent::EndRecord if !self.is_attr_body => {
+                ReadEvent::EndRecord if !self.is_attr_body => {
                     Some(Ok(std::mem::take(&mut self.vector)))
                 }
-                ParseEvent::EndAttribute if self.is_attr_body => {
+                ReadEvent::EndAttribute if self.is_attr_body => {
                     Some(Ok(std::mem::take(&mut self.vector)))
                 }
                 _ => {
@@ -236,7 +257,7 @@ enum BodyStage {
     Between,
 }
 
-type Selector<Flds> = for<'a> fn(&mut Flds, u32, ParseEvent<'a>) -> Option<Result<(), ReadError>>;
+type Selector<Flds> = for<'a> fn(&mut Flds, u32, ReadEvent<'a>) -> Option<Result<(), ReadError>>;
 
 struct Bitset(u32, u64);
 
@@ -273,6 +294,10 @@ enum BodyFieldState {
     SlotValue,
 }
 
+/// A [`Recognizer`] that can be configured to recognize any type that can be represented as a
+/// record consisting of named fields. The `Flds` type is the state of the state machine that
+/// stores the value for each named field as it is encouted in the output. Another function is then
+/// called to transform this state into the final result.
 pub struct NamedFieldsRecognizer<T, Flds> {
     is_attr_body: bool,
     state: BodyFieldState,
@@ -286,6 +311,16 @@ pub struct NamedFieldsRecognizer<T, Flds> {
 }
 
 impl<T, Flds> NamedFieldsRecognizer<T, Flds> {
+    /// Configure a recognizer.
+    ///
+    /// #Arguments
+    ///
+    /// * `fields` - The state for the state machine.
+    /// * `select_index` - Map the field names of the type to integer indicies.
+    /// * `num_fields` - The total number of named fields in the representation.
+    /// * `select_recog` - Attempt to update the state with the next read event.
+    /// * `on_done` - Called when the recognizer is complete to conver the state to the output type.
+    /// * `reset` - Called to reset the state to its initial value.
     pub fn new(
         fields: Flds,
         select_index: fn(&str) -> Option<u32>,
@@ -307,6 +342,16 @@ impl<T, Flds> NamedFieldsRecognizer<T, Flds> {
         }
     }
 
+    /// Configure a recognizer for the type unpacked into an attribute body.
+    ///
+    /// #Arguments
+    ///
+    /// * `fields` - The state for the state machine.
+    /// * `select_index` - Map the field names of the type to integer indicies.
+    /// * `num_fields` - The total number of named fields in the representation.
+    /// * `select_recog` - Attempt to update the state with the next read event.
+    /// * `on_done` - Called when the recognizer is complete to conver the state to the output type.
+    /// * `reset` - Called to reset the state to its initial value.
     pub fn new_attr(
         fields: Flds,
         select_index: fn(&str) -> Option<u32>,
@@ -332,7 +377,7 @@ impl<T, Flds> NamedFieldsRecognizer<T, Flds> {
 impl<T, Flds> Recognizer for NamedFieldsRecognizer<T, Flds> {
     type Target = T;
 
-    fn feed_event(&mut self, input: ParseEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
+    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         let NamedFieldsRecognizer {
             is_attr_body,
             state,
@@ -346,7 +391,7 @@ impl<T, Flds> Recognizer for NamedFieldsRecognizer<T, Flds> {
         } = self;
         match state {
             BodyFieldState::Init => {
-                if matches!(input, ParseEvent::StartBody) {
+                if matches!(input, ReadEvent::StartBody) {
                     *state = BodyFieldState::Between;
                     None
                 } else {
@@ -354,9 +399,9 @@ impl<T, Flds> Recognizer for NamedFieldsRecognizer<T, Flds> {
                 }
             }
             BodyFieldState::Between => match input {
-                ParseEvent::EndRecord if !*is_attr_body => Some(on_done(fields)),
-                ParseEvent::EndAttribute if *is_attr_body => Some(on_done(fields)),
-                ParseEvent::TextValue(name) => {
+                ReadEvent::EndRecord if !*is_attr_body => Some(on_done(fields)),
+                ReadEvent::EndAttribute if *is_attr_body => Some(on_done(fields)),
+                ReadEvent::TextValue(name) => {
                     if let Some(i) = select_index(name.borrow()) {
                         if progress.get(i).unwrap_or(false) {
                             Some(Err(ReadError::DuplicateField(Text::from(name))))
@@ -372,7 +417,7 @@ impl<T, Flds> Recognizer for NamedFieldsRecognizer<T, Flds> {
                 ow => Some(Err(bad_kind(&ow))),
             },
             BodyFieldState::ExpectingSlot => {
-                if matches!(input, ParseEvent::Slot) {
+                if matches!(input, ReadEvent::Slot) {
                     *state = BodyFieldState::SlotValue;
                     None
                 } else {
@@ -399,6 +444,10 @@ impl<T, Flds> Recognizer for NamedFieldsRecognizer<T, Flds> {
     }
 }
 
+/// A [`Recognizer`] that can be configured to recognize any type that can be represented as a
+/// record consisting of a tuple of values. The `Flds` type is the state of the state machine that
+/// stores the value for each named field as it is encouted in the output. Another function is then
+/// called to transform this state into the final result.
 pub struct OrdinalFieldsRecognizer<T, Flds> {
     is_attr_body: bool,
     state: BodyStage,
@@ -411,6 +460,15 @@ pub struct OrdinalFieldsRecognizer<T, Flds> {
 }
 
 impl<T, Flds> OrdinalFieldsRecognizer<T, Flds> {
+    /// Configure a recognizer.
+    ///
+    /// #Arguments
+    ///
+    /// * `fields` - The state for the state machine.
+    /// * `num_fields` - The total number of named fields in the representation.
+    /// * `select_recog` - Attempt to update the state with the next read event.
+    /// * `on_done` - Called when the recognizer is complete to conver the state to the output type.
+    /// * `reset` - Called to reset the state to its initial value.
     pub fn new(
         fields: Flds,
         num_fields: u32,
@@ -430,6 +488,15 @@ impl<T, Flds> OrdinalFieldsRecognizer<T, Flds> {
         }
     }
 
+    /// Configure a recognizer for the type unpacked into an attribute body.
+    ///
+    /// #Arguments
+    ///
+    /// * `fields` - The state for the state machine.
+    /// * `num_fields` - The total number of named fields in the representation.
+    /// * `select_recog` - Attempt to update the state with the next read event.
+    /// * `on_done` - Called when the recognizer is complete to conver the state to the output type.
+    /// * `reset` - Called to reset the state to its initial value.
     pub fn new_attr(
         fields: Flds,
         num_fields: u32,
@@ -453,7 +520,7 @@ impl<T, Flds> OrdinalFieldsRecognizer<T, Flds> {
 impl<T, Flds> Recognizer for OrdinalFieldsRecognizer<T, Flds> {
     type Target = T;
 
-    fn feed_event(&mut self, input: ParseEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
+    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         let OrdinalFieldsRecognizer {
             is_attr_body,
             state,
@@ -465,15 +532,15 @@ impl<T, Flds> Recognizer for OrdinalFieldsRecognizer<T, Flds> {
             ..
         } = self;
         if matches!(state, BodyStage::Init) {
-            if matches!(input, ParseEvent::StartBody) {
+            if matches!(input, ReadEvent::StartBody) {
                 *state = BodyStage::Between;
                 None
             } else {
                 Some(Err(bad_kind(&input)))
             }
         } else if matches!(state, BodyStage::Between)
-            && ((!*is_attr_body && matches!(&input, ParseEvent::EndRecord))
-                || (*is_attr_body && matches!(&input, ParseEvent::EndAttribute)))
+            && ((!*is_attr_body && matches!(&input, ReadEvent::EndRecord))
+                || (*is_attr_body && matches!(&input, ReadEvent::EndAttribute)))
         {
             Some(on_done(fields))
         } else if *index == *num_fields {
@@ -497,6 +564,8 @@ impl<T, Flds> Recognizer for OrdinalFieldsRecognizer<T, Flds> {
     }
 }
 
+/// Wraps another [`Recognizer`] to recognize the same type as an attribute body (terminated by
+/// a final end attribute event).
 pub struct SimpleAttrBody<R: Recognizer> {
     after_content: bool,
     value: Option<R::Target>,
@@ -516,9 +585,9 @@ impl<R: Recognizer> SimpleAttrBody<R> {
 impl<R: Recognizer> Recognizer for SimpleAttrBody<R> {
     type Target = R::Target;
 
-    fn feed_event(&mut self, input: ParseEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
+    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         if self.after_content {
-            if matches!(&input, ParseEvent::EndAttribute) {
+            if matches!(&input, ReadEvent::EndAttribute) {
                 if let Some(t) = self.value.take() {
                     Some(Ok(t))
                 } else {
@@ -547,6 +616,9 @@ impl<R: Recognizer> Recognizer for SimpleAttrBody<R> {
     }
 }
 
+/// Runs two [`Recognizer`]s in paralell returning the result of the first that completes
+/// successfully. If bothe complete with an error, the errof from the recognizer that failed
+/// last is returned.
 pub struct FirstOf<R1, R2> {
     first_active: bool,
     second_active: bool,
@@ -576,7 +648,7 @@ where
 {
     type Target = R1::Target;
 
-    fn feed_event(&mut self, input: ParseEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
+    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         let FirstOf {
             first_active,
             second_active,
@@ -632,12 +704,19 @@ where
     }
 }
 
+/// A key to specify the field that has been encounted in the stream of events when reading
+/// a type with labelled body fields.
 #[derive(Clone, Copy)]
 pub enum LabelledFieldKey<'a> {
+    /// The name of the tag when this is used to populate a field.
     Tag,
+    /// The first value inside the tag attribute.
     HeaderBody,
+    /// A labelled slot in the tag attribute.
     HeaderSlot(&'a str),
+    /// Another attribute after the tag.
     Attr(&'a str),
+    /// A labelled slot in the body of the record.
     Item(&'a str),
 }
 
@@ -670,33 +749,45 @@ enum OrdinalStructState {
     BodyItem,
 }
 
+/// A key to specify the field that has been encounted in the stream of events when reading
+/// a type with un-labelled body fields.
 #[derive(Clone, Copy)]
 pub enum OrdinalFieldKey<'a> {
+    /// The name of the tag when this is used to populate a field.
     Tag,
+    /// The first value inside the tag attribute.
     HeaderBody,
+    /// A labelled slot in the tag attribute.
     HeaderSlot(&'a str),
+    /// Another attribute after the tag.
     Attr(&'a str),
+    /// The first field in the body of the record. All other body fields are assumed to ocurr
+    /// sequentially after the first.
     FirstItem,
 }
 
+/// Specifies whether the tag attribute for a record is expected to be a fixed string or should
+/// be used to populate one of the fields.
 pub enum TagSpec {
     Fixed(&'static str),
     Field,
 }
 
+/// This type is used to encode the standard encoding of Rust structs, with labelled fields, as
+/// generated by the derivation macro for [`RecognizerReadable`]. It should not generally be
+/// necessary to use this type explicitly.
 pub struct LabelledStructRecognizer<T, Flds> {
     tag: TagSpec,
     has_header_body: bool,
     state: LabelledStructState,
     fields: Flds,
     progress: Bitset,
-    select_index: for<'a> fn(LabelledFieldKey<'a>) -> Option<u32>,
     index: u32,
-    select_recog: Selector<Flds>,
-    on_done: fn(&mut Flds) -> Result<T, ReadError>,
-    reset: fn(&mut Flds),
+    vtable: LabelledVTable<T, Flds>,
 }
 
+/// The derivation macro produces the functions that are used to populate this table to provide
+/// the specific parts of the implementation.
 pub struct LabelledVTable<T, Flds> {
     select_index: for<'a> fn(LabelledFieldKey<'a>) -> Option<u32>,
     select_recog: Selector<Flds>,
@@ -720,6 +811,8 @@ impl<T, Flds> LabelledVTable<T, Flds> {
     }
 }
 
+/// The derivation macro produces the functions that are used to populate this table to provide
+/// the specific parts of the implementation.
 pub struct OrdinalVTable<T, Flds> {
     select_index: for<'a> fn(OrdinalFieldKey<'a>) -> Option<u32>,
     select_recog: Selector<Flds>,
@@ -744,6 +837,15 @@ impl<T, Flds> OrdinalVTable<T, Flds> {
 }
 
 impl<T, Flds> LabelledStructRecognizer<T, Flds> {
+    /// #Arguments
+    /// * `tag` - The expected name of the first attribute or an inidcation that it should be used
+    /// to populate a field.
+    /// * `has_header_body` - Inidcates that one of the fields has been promoted to the body of the
+    /// tag attribute.
+    /// * `fields` - The state of the recognizer state machine (specified by the macro).
+    /// * `num_fields` - The total numer of (non-skipped) fields that the recognizer expects.
+    /// * `vtable` - Functions that are generated by the macro that determine how incoming events
+    /// modify the state.
     pub fn new(
         tag: TagSpec,
         has_header_body: bool,
@@ -757,14 +859,22 @@ impl<T, Flds> LabelledStructRecognizer<T, Flds> {
             state: LabelledStructState::Init,
             fields,
             progress: Bitset::new(num_fields),
-            select_index: vtable.select_index,
             index: 0,
-            select_recog: vtable.select_recog,
-            on_done: vtable.on_done,
-            reset: vtable.reset,
+            vtable,
         }
     }
 
+    /// This constructor is used for enumeration variants. The primary different is that the tag
+    /// of the record has already been read before this recognizers is called so the initial state
+    /// is skipped.
+    ///
+    /// #Arguments
+    /// * `has_header_body` - Inidcates that one of the fields has been promoted to the body of the
+    /// tag attribute.
+    /// * `fields` - The state of the recognizer state machine (specified by the macro).
+    /// * `num_fields` - The total numer of (non-skipped) fields that the recognizer expects.
+    /// * `vtable` - Functions that are generated by the macro that determine how incoming events
+    /// modify the state.
     pub fn variant(
         has_header_body: bool,
         fields: Flds,
@@ -777,16 +887,22 @@ impl<T, Flds> LabelledStructRecognizer<T, Flds> {
             state: LabelledStructState::HeaderInit,
             fields,
             progress: Bitset::new(num_fields),
-            select_index: vtable.select_index,
             index: 0,
-            select_recog: vtable.select_recog,
-            on_done: vtable.on_done,
-            reset: vtable.reset,
+            vtable,
         }
     }
 }
 
 impl<T, Flds> OrdinalStructRecognizer<T, Flds> {
+    /// #Arguments
+    /// * `tag` - The expected name of the first attribute or an inidcation that it should be used
+    /// to populate a field.
+    /// * `has_header_body` - Inidcates that one of the fields has been promoted to the body of the
+    /// tag attribute.
+    /// * `fields` - The state of the recognizer state machine (specified by the macro).
+    /// * `num_fields` - The total numer of (non-skipped) fields that the recognizer expects.
+    /// * `vtable` - Functions that are generated by the macro that determine how incoming events
+    /// modify the state.
     pub fn new(
         tag: TagSpec,
         has_header_body: bool,
@@ -800,14 +916,22 @@ impl<T, Flds> OrdinalStructRecognizer<T, Flds> {
             state: OrdinalStructState::Init,
             fields,
             progress: Bitset::new(num_fields),
-            select_index: vtable.select_index,
             index: 0,
-            select_recog: vtable.select_recog,
-            on_done: vtable.on_done,
-            reset: vtable.reset,
+            vtable,
         }
     }
 
+    /// This constructor is used for enumeration variants. The primary different is that the tag
+    /// of the record has already been read before this recognizers is called so the initial state
+    /// is skipped.
+    ///
+    /// #Arguments
+    /// * `has_header_body` - Inidcates that one of the fields has been promoted to the body of the
+    /// tag attribute.
+    /// * `fields` - The state of the recognizer state machine (specified by the macro).
+    /// * `num_fields` - The total numer of (non-skipped) fields that the recognizer expects.
+    /// * `vtable` - Functions that are generated by the macro that determine how incoming events
+    /// modify the state.
     pub fn variant(
         has_header_body: bool,
         fields: Flds,
@@ -820,11 +944,8 @@ impl<T, Flds> OrdinalStructRecognizer<T, Flds> {
             state: OrdinalStructState::HeaderInit,
             fields,
             progress: Bitset::new(num_fields),
-            select_index: vtable.select_index,
             index: 0,
-            select_recog: vtable.select_recog,
-            on_done: vtable.on_done,
-            reset: vtable.reset,
+            vtable,
         }
     }
 }
@@ -832,23 +953,27 @@ impl<T, Flds> OrdinalStructRecognizer<T, Flds> {
 impl<T, Flds> Recognizer for LabelledStructRecognizer<T, Flds> {
     type Target = T;
 
-    fn feed_event(&mut self, input: ParseEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
+    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         let LabelledStructRecognizer {
             tag,
             has_header_body,
             state,
             fields,
             progress,
-            select_index,
             index,
-            select_recog,
-            on_done,
+            vtable:
+                LabelledVTable {
+                    select_index,
+                    select_recog,
+                    on_done,
+                    ..
+                },
             ..
         } = self;
 
         match state {
             LabelledStructState::Init => match input {
-                ParseEvent::StartAttribute(name) => match tag {
+                ReadEvent::StartAttribute(name) => match tag {
                     TagSpec::Fixed(tag) => {
                         if name == *tag {
                             if *has_header_body {
@@ -858,12 +983,12 @@ impl<T, Flds> Recognizer for LabelledStructRecognizer<T, Flds> {
                             }
                             None
                         } else {
-                            Some(Err(bad_kind(&ParseEvent::StartAttribute(name))))
+                            Some(Err(bad_kind(&ReadEvent::StartAttribute(name))))
                         }
                     }
                     TagSpec::Field => {
                         if let Some(i) = select_index(LabelledFieldKey::Tag) {
-                            if let Err(e) = select_recog(fields, i, ParseEvent::TextValue(name))? {
+                            if let Err(e) = select_recog(fields, i, ReadEvent::TextValue(name))? {
                                 Some(Err(e))
                             } else {
                                 if *has_header_body {
@@ -881,7 +1006,7 @@ impl<T, Flds> Recognizer for LabelledStructRecognizer<T, Flds> {
                 ow => Some(Err(bad_kind(&ow))),
             },
             LabelledStructState::HeaderInit => {
-                if matches!(&input, ParseEvent::EndAttribute) {
+                if matches!(&input, ReadEvent::EndAttribute) {
                     *state = LabelledStructState::AttrBetween;
                     None
                 } else {
@@ -909,11 +1034,11 @@ impl<T, Flds> Recognizer for LabelledStructRecognizer<T, Flds> {
                 }
             }
             LabelledStructState::HeaderBetween => match input {
-                ParseEvent::EndAttribute => {
+                ReadEvent::EndAttribute => {
                     *state = LabelledStructState::AttrBetween;
                     None
                 }
-                ParseEvent::TextValue(name) => {
+                ReadEvent::TextValue(name) => {
                     if let Some(i) = select_index(LabelledFieldKey::HeaderSlot(name.borrow())) {
                         if progress.get(i).unwrap_or(false) {
                             Some(Err(ReadError::DuplicateField(Text::new(name.borrow()))))
@@ -929,7 +1054,7 @@ impl<T, Flds> Recognizer for LabelledStructRecognizer<T, Flds> {
                 ow => Some(Err(bad_kind(&ow))),
             },
             LabelledStructState::HeaderExpectingSlot => {
-                if matches!(&input, ParseEvent::Slot) {
+                if matches!(&input, ReadEvent::Slot) {
                     *state = LabelledStructState::HeaderItem;
                     None
                 } else {
@@ -946,11 +1071,11 @@ impl<T, Flds> Recognizer for LabelledStructRecognizer<T, Flds> {
                 }
             }
             LabelledStructState::AttrBetween => match input {
-                ParseEvent::StartBody => {
+                ReadEvent::StartBody => {
                     *state = LabelledStructState::BodyBetween;
                     None
                 }
-                ParseEvent::StartAttribute(name) => {
+                ReadEvent::StartAttribute(name) => {
                     if let Some(i) = select_index(LabelledFieldKey::Attr(name.borrow())) {
                         if progress.get(i).unwrap_or(false) {
                             Some(Err(ReadError::DuplicateField(Text::new(name.borrow()))))
@@ -975,8 +1100,8 @@ impl<T, Flds> Recognizer for LabelledStructRecognizer<T, Flds> {
                 }
             }
             LabelledStructState::BodyBetween => match input {
-                ParseEvent::EndRecord => Some(on_done(fields)),
-                ParseEvent::TextValue(name) => {
+                ReadEvent::EndRecord => Some(on_done(fields)),
+                ReadEvent::TextValue(name) => {
                     if let Some(i) = select_index(LabelledFieldKey::Item(name.borrow())) {
                         if progress.get(i).unwrap_or(false) {
                             Some(Err(ReadError::DuplicateField(Text::new(name.borrow()))))
@@ -992,7 +1117,7 @@ impl<T, Flds> Recognizer for LabelledStructRecognizer<T, Flds> {
                 ow => Some(Err(bad_kind(&ow))),
             },
             LabelledStructState::BodyExpectingSlot => {
-                if matches!(&input, ParseEvent::Slot) {
+                if matches!(&input, ReadEvent::Slot) {
                     *state = LabelledStructState::BodyItem;
                     None
                 } else {
@@ -1015,43 +1140,47 @@ impl<T, Flds> Recognizer for LabelledStructRecognizer<T, Flds> {
         self.state = LabelledStructState::Init;
         self.progress.clear();
         self.index = 0;
-        (self.reset)(&mut self.fields);
+        (self.vtable.reset)(&mut self.fields);
     }
 }
 
+/// This type is used to encode the standard encoding of Rust structs, with unlabelled fields, as
+/// generated by the derivation macro for [`RecognizerReadable`]. It should not generally be
+/// necessary to use this type explicitly.
 pub struct OrdinalStructRecognizer<T, Flds> {
     tag: TagSpec,
     has_header_body: bool,
     state: OrdinalStructState,
     fields: Flds,
     progress: Bitset,
-    select_index: for<'a> fn(OrdinalFieldKey<'a>) -> Option<u32>,
     index: u32,
-    select_recog: Selector<Flds>,
-    on_done: fn(&mut Flds) -> Result<T, ReadError>,
-    reset: fn(&mut Flds),
+    vtable: OrdinalVTable<T, Flds>,
 }
 
 impl<T, Flds> Recognizer for OrdinalStructRecognizer<T, Flds> {
     type Target = T;
 
-    fn feed_event(&mut self, input: ParseEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
+    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         let OrdinalStructRecognizer {
             tag,
             has_header_body,
             state,
             fields,
             progress,
-            select_index,
             index,
-            select_recog,
-            on_done,
+            vtable:
+                OrdinalVTable {
+                    select_index,
+                    select_recog,
+                    on_done,
+                    ..
+                },
             ..
         } = self;
 
         match state {
             OrdinalStructState::Init => match input {
-                ParseEvent::StartAttribute(name) => match tag {
+                ReadEvent::StartAttribute(name) => match tag {
                     TagSpec::Fixed(tag) => {
                         if name == *tag {
                             if *has_header_body {
@@ -1061,12 +1190,12 @@ impl<T, Flds> Recognizer for OrdinalStructRecognizer<T, Flds> {
                             }
                             None
                         } else {
-                            Some(Err(bad_kind(&ParseEvent::StartAttribute(name))))
+                            Some(Err(bad_kind(&ReadEvent::StartAttribute(name))))
                         }
                     }
                     TagSpec::Field => {
                         if let Some(i) = select_index(OrdinalFieldKey::Tag) {
-                            if let Err(e) = select_recog(fields, i, ParseEvent::TextValue(name))? {
+                            if let Err(e) = select_recog(fields, i, ReadEvent::TextValue(name))? {
                                 Some(Err(e))
                             } else {
                                 if *has_header_body {
@@ -1084,7 +1213,7 @@ impl<T, Flds> Recognizer for OrdinalStructRecognizer<T, Flds> {
                 ow => Some(Err(bad_kind(&ow))),
             },
             OrdinalStructState::HeaderInit => {
-                if matches!(&input, ParseEvent::EndAttribute) {
+                if matches!(&input, ReadEvent::EndAttribute) {
                     *state = OrdinalStructState::AttrBetween;
                     None
                 } else {
@@ -1112,11 +1241,11 @@ impl<T, Flds> Recognizer for OrdinalStructRecognizer<T, Flds> {
                 }
             }
             OrdinalStructState::HeaderBetween => match &input {
-                ParseEvent::EndAttribute => {
+                ReadEvent::EndAttribute => {
                     *state = OrdinalStructState::AttrBetween;
                     None
                 }
-                ParseEvent::TextValue(name) => {
+                ReadEvent::TextValue(name) => {
                     if let Some(i) = select_index(OrdinalFieldKey::HeaderSlot(name.borrow())) {
                         if progress.get(i).unwrap_or(false) {
                             Some(Err(ReadError::DuplicateField(Text::new(name.borrow()))))
@@ -1132,7 +1261,7 @@ impl<T, Flds> Recognizer for OrdinalStructRecognizer<T, Flds> {
                 _ => Some(Err(bad_kind(&input))),
             },
             OrdinalStructState::HeaderExpectingSlot => {
-                if matches!(&input, ParseEvent::Slot) {
+                if matches!(&input, ReadEvent::Slot) {
                     *state = OrdinalStructState::HeaderItem;
                     None
                 } else {
@@ -1149,14 +1278,14 @@ impl<T, Flds> Recognizer for OrdinalStructRecognizer<T, Flds> {
                 }
             }
             OrdinalStructState::AttrBetween => match &input {
-                ParseEvent::StartBody => {
+                ReadEvent::StartBody => {
                     *state = OrdinalStructState::BodyBetween;
                     if let Some(i) = select_index(OrdinalFieldKey::FirstItem) {
                         *index = i;
                     }
                     None
                 }
-                ParseEvent::StartAttribute(name) => {
+                ReadEvent::StartAttribute(name) => {
                     if let Some(i) = select_index(OrdinalFieldKey::Attr(name.borrow())) {
                         if progress.get(i).unwrap_or(false) {
                             Some(Err(ReadError::DuplicateField(Text::new(name.borrow()))))
@@ -1181,7 +1310,7 @@ impl<T, Flds> Recognizer for OrdinalStructRecognizer<T, Flds> {
                 }
             }
             OrdinalStructState::BodyBetween => match &input {
-                ParseEvent::EndRecord => Some(on_done(fields)),
+                ReadEvent::EndRecord => Some(on_done(fields)),
                 _ => {
                     *state = OrdinalStructState::BodyItem;
                     if let Err(e) = select_recog(fields, *index, input)? {
@@ -1211,7 +1340,7 @@ impl<T, Flds> Recognizer for OrdinalStructRecognizer<T, Flds> {
         self.state = OrdinalStructState::Init;
         self.progress.clear();
         self.index = 0;
-        (self.reset)(&mut self.fields);
+        (self.vtable.reset)(&mut self.fields);
     }
 }
 
@@ -1247,7 +1376,7 @@ impl<R> OptionRecognizer<R> {
 impl<R: Recognizer> Recognizer for OptionRecognizer<R> {
     type Target = Option<R::Target>;
 
-    fn feed_event(&mut self, input: ParseEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
+    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         let OptionRecognizer {
             inner,
             reading_value,
@@ -1256,8 +1385,8 @@ impl<R: Recognizer> Recognizer for OptionRecognizer<R> {
             inner.feed_event(input).map(|r| r.map(Option::Some))
         } else {
             match &input {
-                ParseEvent::Extant => {
-                    let r = inner.feed_event(ParseEvent::Extant);
+                ReadEvent::Extant => {
+                    let r = inner.feed_event(ReadEvent::Extant);
                     if matches!(&r, Some(Err(_))) {
                         Some(Ok(None))
                     } else {
@@ -1302,10 +1431,10 @@ impl<T> Default for EmptyAttrRecognizer<T> {
 impl<T> Recognizer for EmptyAttrRecognizer<T> {
     type Target = Option<T>;
 
-    fn feed_event(&mut self, input: ParseEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
-        if self.seen_extant && matches!(&input, ParseEvent::EndAttribute) {
+    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
+        if self.seen_extant && matches!(&input, ReadEvent::EndAttribute) {
             Some(Ok(None))
-        } else if !self.seen_extant && matches!(&input, ParseEvent::Extant) {
+        } else if !self.seen_extant && matches!(&input, ReadEvent::Extant) {
             self.seen_extant = true;
             None
         } else {
@@ -1318,6 +1447,7 @@ impl<T> Recognizer for EmptyAttrRecognizer<T> {
     }
 }
 
+/// Runs another recognizer and then transforms its result by applying a function to it.
 pub struct MappedRecognizer<R, F> {
     inner: R,
     f: F,
@@ -1336,7 +1466,7 @@ where
 {
     type Target = U;
 
-    fn feed_event(&mut self, input: ParseEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
+    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         let MappedRecognizer { inner, f, .. } = self;
         inner.feed_event(input).map(|r| r.map(f))
     }
@@ -1398,6 +1528,7 @@ enum MapStage {
     Value,
 }
 
+/// [`Recognizer`] for [`HashMap`]s encoded as key-value pairs in the slots of the record body.
 pub struct HashMapRecognizer<RK: Recognizer, RV: Recognizer> {
     is_attr_body: bool,
     stage: MapStage,
@@ -1456,10 +1587,10 @@ where
 {
     type Target = HashMap<RK::Target, RV::Target>;
 
-    fn feed_event(&mut self, input: ParseEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
+    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         match self.stage {
             MapStage::Init => {
-                if matches!(&input, ParseEvent::StartBody) {
+                if matches!(&input, ReadEvent::StartBody) {
                     self.stage = MapStage::Between;
                     None
                 } else {
@@ -1467,10 +1598,10 @@ where
                 }
             }
             MapStage::Between => match &input {
-                ParseEvent::EndRecord if !self.is_attr_body => {
+                ReadEvent::EndRecord if !self.is_attr_body => {
                     Some(Ok(std::mem::take(&mut self.map)))
                 }
-                ParseEvent::EndAttribute if self.is_attr_body => {
+                ReadEvent::EndAttribute if self.is_attr_body => {
                     Some(Ok(std::mem::take(&mut self.map)))
                 }
                 _ => {
@@ -1496,7 +1627,7 @@ where
                 Err(e) => Some(Err(e)),
             },
             MapStage::Slot => {
-                if matches!(&input, ParseEvent::Slot) {
+                if matches!(&input, ReadEvent::Slot) {
                     self.stage = MapStage::Value;
                     None
                 } else {
@@ -1531,7 +1662,7 @@ pub fn feed_field<R>(
     name: &'static str,
     field: &mut Option<R::Target>,
     recognizer: &mut R,
-    event: ParseEvent<'_>,
+    event: ReadEvent<'_>,
 ) -> Option<Result<(), ReadError>>
 where
     R: Recognizer,
@@ -1565,6 +1696,9 @@ enum DelegateStructState {
     Done,
 }
 
+/// This type is used to encode the standard encoding of Rust structs, where the body of the record
+/// is determined by one of the fields, generated by the derivation macro for
+/// [`RecognizerReadable`]. It should not generally be necessary to use this type explicitly.
 pub struct DelegateStructRecognizer<T, Flds> {
     tag: TagSpec,
     has_header_body: bool,
@@ -1580,6 +1714,17 @@ pub struct DelegateStructRecognizer<T, Flds> {
 }
 
 impl<T, Flds> DelegateStructRecognizer<T, Flds> {
+    /// #Arguments
+    /// * `tag` - The expected name of the first attribute or an inidcation that it should be used
+    /// to populate a field.
+    /// * `has_header_body` - Inidcates that one of the fields has been promoted to the body of the
+    /// tag attribute.
+    /// * `fields` - The state of the recognizer state machine (specified by the macro).
+    /// * `num_fields` - The total numer of (non-skipped) fields that the recognizer expects.
+    /// * `vtable` - Functions that are generated by the macro that determine how incoming events
+    /// modify the state.
+    /// * `simple_body` - Indicates that the delegate field is represented by a singe value which
+    /// will need to be wrapped in a record.
     pub fn new(
         tag: TagSpec,
         has_header_body: bool,
@@ -1603,6 +1748,19 @@ impl<T, Flds> DelegateStructRecognizer<T, Flds> {
         }
     }
 
+    /// This constructor is used for enumeration variants. The primary different is that the tag
+    /// of the record has already been read before this recognizers is called so the initial state
+    /// is skipped.
+    ///
+    /// #Arguments
+    /// * `has_header_body` - Inidcates that one of the fields has been promoted to the body of the
+    /// tag attribute.
+    /// * `fields` - The state of the recognizer state machine (specified by the macro).
+    /// * `num_fields` - The total numer of (non-skipped) fields that the recognizer expects.
+    /// * `vtable` - Functions that are generated by the macro that determine how incoming events
+    /// modify the state.
+    /// * `simple_body` - Indicates that the delegate field is represented by a singe value which
+    /// will need to be wrapped in a record.
     pub fn variant(
         has_header_body: bool,
         fields: Flds,
@@ -1629,7 +1787,7 @@ impl<T, Flds> DelegateStructRecognizer<T, Flds> {
 impl<T, Flds> Recognizer for DelegateStructRecognizer<T, Flds> {
     type Target = T;
 
-    fn feed_event(&mut self, input: ParseEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
+    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         let DelegateStructRecognizer {
             tag,
             has_header_body,
@@ -1646,7 +1804,7 @@ impl<T, Flds> Recognizer for DelegateStructRecognizer<T, Flds> {
 
         match state {
             DelegateStructState::Init => match input {
-                ParseEvent::StartAttribute(name) => match tag {
+                ReadEvent::StartAttribute(name) => match tag {
                     TagSpec::Fixed(tag) => {
                         if name == *tag {
                             if *has_header_body {
@@ -1656,12 +1814,12 @@ impl<T, Flds> Recognizer for DelegateStructRecognizer<T, Flds> {
                             }
                             None
                         } else {
-                            Some(Err(bad_kind(&ParseEvent::StartAttribute(name))))
+                            Some(Err(bad_kind(&ReadEvent::StartAttribute(name))))
                         }
                     }
                     TagSpec::Field => {
                         if let Some(i) = select_index(OrdinalFieldKey::Tag) {
-                            if let Err(e) = select_recog(fields, i, ParseEvent::TextValue(name))? {
+                            if let Err(e) = select_recog(fields, i, ReadEvent::TextValue(name))? {
                                 Some(Err(e))
                             } else {
                                 if *has_header_body {
@@ -1679,7 +1837,7 @@ impl<T, Flds> Recognizer for DelegateStructRecognizer<T, Flds> {
                 ow => Some(Err(bad_kind(&ow))),
             },
             DelegateStructState::HeaderInit => {
-                if matches!(&input, ParseEvent::EndAttribute) {
+                if matches!(&input, ReadEvent::EndAttribute) {
                     *state = DelegateStructState::AttrBetween;
                     None
                 } else {
@@ -1707,11 +1865,11 @@ impl<T, Flds> Recognizer for DelegateStructRecognizer<T, Flds> {
                 }
             }
             DelegateStructState::HeaderBetween => match &input {
-                ParseEvent::EndAttribute => {
+                ReadEvent::EndAttribute => {
                     *state = DelegateStructState::AttrBetween;
                     None
                 }
-                ParseEvent::TextValue(name) => {
+                ReadEvent::TextValue(name) => {
                     if let Some(i) = select_index(OrdinalFieldKey::HeaderSlot(name.borrow())) {
                         if progress.get(i).unwrap_or(false) {
                             Some(Err(ReadError::DuplicateField(Text::new(name.borrow()))))
@@ -1727,7 +1885,7 @@ impl<T, Flds> Recognizer for DelegateStructRecognizer<T, Flds> {
                 _ => Some(Err(bad_kind(&input))),
             },
             DelegateStructState::HeaderExpectingSlot => {
-                if matches!(&input, ParseEvent::Slot) {
+                if matches!(&input, ReadEvent::Slot) {
                     *state = DelegateStructState::HeaderItem;
                     None
                 } else {
@@ -1744,7 +1902,7 @@ impl<T, Flds> Recognizer for DelegateStructRecognizer<T, Flds> {
                 }
             }
             DelegateStructState::AttrBetween => match input {
-                ParseEvent::StartBody => {
+                ReadEvent::StartBody => {
                     if let Some(i) = select_index(OrdinalFieldKey::FirstItem) {
                         *index = i;
                         if *simple_body {
@@ -1752,7 +1910,7 @@ impl<T, Flds> Recognizer for DelegateStructRecognizer<T, Flds> {
                             None
                         } else {
                             *state = DelegateStructState::DelegatedComplex;
-                            if let Err(e) = select_recog(fields, *index, ParseEvent::StartBody)? {
+                            if let Err(e) = select_recog(fields, *index, ReadEvent::StartBody)? {
                                 Some(Err(e))
                             } else {
                                 *state = DelegateStructState::Done;
@@ -1764,7 +1922,7 @@ impl<T, Flds> Recognizer for DelegateStructRecognizer<T, Flds> {
                         None
                     }
                 }
-                ParseEvent::StartAttribute(name) => {
+                ReadEvent::StartAttribute(name) => {
                     if let Some(i) = select_index(OrdinalFieldKey::Attr(name.borrow())) {
                         if progress.get(i).unwrap_or(false) {
                             Some(Err(ReadError::DuplicateField(Text::new(name.borrow()))))
@@ -1780,7 +1938,7 @@ impl<T, Flds> Recognizer for DelegateStructRecognizer<T, Flds> {
                         } else {
                             *state = DelegateStructState::DelegatedComplex;
                             if let Err(e) =
-                                select_recog(fields, *index, ParseEvent::StartAttribute(name))?
+                                select_recog(fields, *index, ReadEvent::StartAttribute(name))?
                             {
                                 Some(Err(e))
                             } else {
@@ -1804,17 +1962,17 @@ impl<T, Flds> Recognizer for DelegateStructRecognizer<T, Flds> {
                 }
             }
             DelegateStructState::DelegatedSimple => match input {
-                ParseEvent::EndRecord => {
-                    if let Err(e) = select_recog(fields, *index, ParseEvent::Extant)? {
+                ReadEvent::EndRecord => {
+                    if let Err(e) = select_recog(fields, *index, ReadEvent::Extant)? {
                         Some(Err(e))
                     } else {
                         Some(on_done(fields))
                     }
                 }
-                ev @ ParseEvent::Slot
-                | ev @ ParseEvent::StartBody
-                | ev @ ParseEvent::StartAttribute(_)
-                | ev @ ParseEvent::EndAttribute => Some(Err(bad_kind(&ev))),
+                ev @ ReadEvent::Slot
+                | ev @ ReadEvent::StartBody
+                | ev @ ReadEvent::StartAttribute(_)
+                | ev @ ReadEvent::EndAttribute => Some(Err(bad_kind(&ev))),
                 ow => {
                     if let Err(e) = select_recog(fields, *index, ow)? {
                         Some(Err(e))
@@ -1832,7 +1990,7 @@ impl<T, Flds> Recognizer for DelegateStructRecognizer<T, Flds> {
                 }
             }
             DelegateStructState::Done => {
-                if matches!(&input, ParseEvent::EndRecord) {
+                if matches!(&input, ReadEvent::EndRecord) {
                     Some(on_done(fields))
                 } else {
                     Some(Err(bad_kind(&input)))
@@ -1852,7 +2010,7 @@ impl<T, Flds> Recognizer for DelegateStructRecognizer<T, Flds> {
 impl Recognizer for CNil {
     type Target = CNil;
 
-    fn feed_event(&mut self, _input: ParseEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
+    fn feed_event(&mut self, _input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         self.explode()
     }
 
@@ -1866,7 +2024,7 @@ where
 {
     type Target = CCons<H::Target, T::Target>;
 
-    fn feed_event(&mut self, input: ParseEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
+    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         match self {
             CCons::Head(h) => h.feed_event(input).map(|r| r.map(CCons::Head)),
             CCons::Tail(t) => t.feed_event(input).map(|r| r.map(CCons::Tail)),
@@ -1888,12 +2046,19 @@ where
     }
 }
 
+/// This type is used to encode the standard encoding of Rust enums, generated by the derivation
+/// macro for [`RecognizerReadable`]. It should not generally be necessary to use this type
+/// explicitly. The type parameter `Var` is the type of a recognizer that can recognizer any of
+/// the variants of the enum.
 pub struct TaggedEnumRecognizer<Var> {
     select_var: fn(&str) -> Option<Var>,
     variant: Option<Var>,
 }
 
 impl<Var> TaggedEnumRecognizer<Var> {
+    /// #Arguments
+    /// * `select_var` - A function that configures the wrapped recognizer to expect the
+    /// representation of the appropriate variant, based on the name of the tag attribute.
     pub fn new(select_var: fn(&str) -> Option<Var>) -> Self {
         TaggedEnumRecognizer {
             select_var,
@@ -1909,14 +2074,14 @@ where
 {
     type Target = <<Var as Recognizer>::Target as Unify>::Out;
 
-    fn feed_event(&mut self, input: ParseEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
+    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         let TaggedEnumRecognizer {
             select_var,
             variant,
         } = self;
         match variant {
             None => match input {
-                ParseEvent::StartAttribute(name) => {
+                ReadEvent::StartAttribute(name) => {
                     *variant = select_var(name.borrow());
                     if variant.is_some() {
                         None
@@ -1943,6 +2108,8 @@ enum UnitStructState {
     Body,
 }
 
+/// Simple [`Recognizer`] for unit structs and enum variants. This is used by the derive macros
+/// to avoid generating superfluous code in the degenerate case.
 pub struct UnitStructRecognizer<T> {
     tag: &'static str,
     state: UnitStructState,
@@ -1950,6 +2117,9 @@ pub struct UnitStructRecognizer<T> {
 }
 
 impl<T> UnitStructRecognizer<T> {
+    /// #Arguments
+    /// * `tag` - The expected name of the tag attribute.
+    /// * `on_done` - Factory to create an instance.
     pub fn new(tag: &'static str, on_done: fn() -> T) -> Self {
         UnitStructRecognizer {
             tag,
@@ -1958,6 +2128,9 @@ impl<T> UnitStructRecognizer<T> {
         }
     }
 
+    /// For an enum variant, the wrapping [`Recognizer`] will already have read the tag name.
+    /// #Arguments
+    /// * `on_done` - Factory to create an instance.
     pub fn variant(on_done: fn() -> T) -> Self {
         UnitStructRecognizer {
             tag: "",
@@ -1970,14 +2143,14 @@ impl<T> UnitStructRecognizer<T> {
 impl<T> Recognizer for UnitStructRecognizer<T> {
     type Target = T;
 
-    fn feed_event(&mut self, input: ParseEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
+    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         let UnitStructRecognizer {
             tag,
             state,
             on_done,
         } = self;
         match (input, *state) {
-            (ParseEvent::StartAttribute(name), UnitStructState::Init) => {
+            (ReadEvent::StartAttribute(name), UnitStructState::Init) => {
                 if name == *tag {
                     *state = UnitStructState::Tag;
                     None
@@ -1985,15 +2158,15 @@ impl<T> Recognizer for UnitStructRecognizer<T> {
                     Some(Err(ReadError::UnexpectedAttribute(name.into())))
                 }
             }
-            (ParseEvent::EndAttribute, UnitStructState::Tag) => {
+            (ReadEvent::EndAttribute, UnitStructState::Tag) => {
                 *state = UnitStructState::AfterTag;
                 None
             }
-            (ParseEvent::StartBody, UnitStructState::AfterTag) => {
+            (ReadEvent::StartBody, UnitStructState::AfterTag) => {
                 *state = UnitStructState::Body;
                 None
             }
-            (ParseEvent::EndRecord, UnitStructState::Body) => Some(Ok(on_done())),
+            (ReadEvent::EndRecord, UnitStructState::Body) => Some(Ok(on_done())),
             (ow, _) => Some(Err(bad_kind(&ow))),
         }
     }
@@ -2003,6 +2176,7 @@ impl<T> Recognizer for UnitStructRecognizer<T> {
     }
 }
 
+/// A recognizer that always fails (used for uninhabited types).
 pub struct RecognizeNothing<T>(PhantomData<T>);
 
 impl<T> Default for RecognizeNothing<T> {
@@ -2014,7 +2188,7 @@ impl<T> Default for RecognizeNothing<T> {
 impl<T> Recognizer for RecognizeNothing<T> {
     type Target = T;
 
-    fn feed_event(&mut self, input: ParseEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
+    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         Some(Err(bad_kind(&input)))
     }
 

@@ -15,8 +15,8 @@
 #[cfg(test)]
 mod tests;
 
+use crate::form::structural::read::event::ReadEvent;
 use crate::form::structural::read::recognizer::Recognizer;
-use crate::form::structural::read::parser::ParseEvent;
 use crate::form::structural::read::{ReadError, StructuralReadable};
 use crate::form::structural::write::interpreters::msgpack::{BIG_INT_EXT, BIG_UINT_EXT};
 use bytes::{Buf, BufMut, BytesMut};
@@ -462,20 +462,20 @@ where
     for _ in 0..attrs {
         let name_len = read_str_len(&mut reader.reader())?;
         feed_string(reader, str_buf, name_len, |name| {
-            recognizer.feed_event(ParseEvent::StartAttribute(name))
+            recognizer.feed_event(ReadEvent::StartAttribute(name))
         })?;
         push_value_dynamic(reader, str_buf, recognizer)?;
-        feed!(recognizer.feed_event(ParseEvent::EndAttribute));
+        feed!(recognizer.feed_event(ReadEvent::EndAttribute));
     }
     let (body_len, is_map) = read_body_len(reader)?;
-    feed!(recognizer.feed_event(ParseEvent::StartBody));
+    feed!(recognizer.feed_event(ReadEvent::StartBody));
     if is_map {
         read_map_body(reader, str_buf, body_len, recognizer)?;
     } else {
         read_array_body(reader, str_buf, body_len, recognizer)?;
     }
     recognizer
-        .feed_event(ParseEvent::EndRecord)
+        .feed_event(ReadEvent::EndRecord)
         .transpose()
         .map_err(Into::into)
 }
@@ -569,7 +569,7 @@ where
     Rec: Recognizer,
 {
     match marker {
-        Marker::Null => feed(recognizer.feed_event(ParseEvent::Extant)),
+        Marker::Null => feed(recognizer.feed_event(ReadEvent::Extant)),
         Marker::True => feed(recognizer.feed_event(true.into())),
         Marker::False => feed(recognizer.feed_event(false.into())),
         Marker::FixPos(n) => feed(recognizer.feed_event(n.into())),
@@ -695,7 +695,7 @@ where
         let marker = read_marker(input)?;
         if marker == SLOT_MARKER {
             push_value_dynamic(input, str_buf, recognizer)?;
-            feed!(recognizer.feed_event(ParseEvent::Slot));
+            feed!(recognizer.feed_event(ReadEvent::Slot));
             push_value_dynamic(input, str_buf, recognizer)?;
         } else {
             push_value(input, str_buf, recognizer, marker)?;
@@ -716,7 +716,7 @@ where
 {
     for _ in 0..items {
         push_value_dynamic(input, str_buf, recognizer)?;
-        feed!(recognizer.feed_event(ParseEvent::Slot));
+        feed!(recognizer.feed_event(ReadEvent::Slot));
         push_value_dynamic(input, str_buf, recognizer)?;
     }
     Ok(())

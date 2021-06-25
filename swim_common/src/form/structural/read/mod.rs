@@ -12,10 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod recognizer;
+pub mod event;
 pub mod materializers;
 pub mod msgpack;
 pub mod parser;
+pub mod recognizer;
 #[cfg(test)]
 mod tests;
 
@@ -26,8 +27,8 @@ use std::borrow::Cow;
 pub mod error;
 
 use crate::form::structural::bridge::RecognizerBridge;
+use crate::form::structural::read::event::ReadEvent;
 use crate::form::structural::read::recognizer::{Recognizer, RecognizerReadable};
-use crate::form::structural::read::parser::ParseEvent;
 pub use error::ReadError;
 
 #[doc(hidden)]
@@ -49,7 +50,7 @@ pub trait StructuralReadable: RecognizerReadable {
 
     fn read_extant() -> Result<Self, ReadError> {
         let mut rec = Self::make_recognizer();
-        rec.feed_event(ParseEvent::Extant)
+        rec.feed_event(ReadEvent::Extant)
             .or_else(move || rec.try_flush())
             .unwrap_or(Err(ReadError::IncompleteRecord))
     }
