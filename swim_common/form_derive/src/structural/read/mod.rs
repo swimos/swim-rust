@@ -26,6 +26,8 @@ use crate::structural::model::enumeration::SegregatedEnumModel;
 use crate::structural::model::field::{BodyFields, FieldModel, HeaderFields, SegregatedFields};
 use crate::structural::model::record::SegregatedStructModel;
 
+/// Implements the StructuralReadable trait for either of [`SegregatedStructModel`] or
+/// [`SegregatedEnumModel`].
 pub struct DeriveStructuralReadable<'a, S>(pub S, pub &'a Generics);
 
 impl<'a, 'b> ToTokens for DeriveStructuralReadable<'b, SegregatedStructModel<'a, 'b>> {
@@ -574,6 +576,8 @@ impl<'a, 'b> SelectFeedFn<'a, 'b> {
     }
 }
 
+/// Enumerates the fields in a descriptor in the order in which the implementation exepects to
+/// receive them.
 fn enumerate_fields<'a>(
     model: &'a SegregatedFields<'a, 'a>,
 ) -> impl Iterator<Item = &'a FieldModel<'a>> + Clone + 'a {
@@ -599,6 +603,8 @@ fn enumerate_fields<'a>(
         .copied()
 }
 
+/// Enumerates the fields in a descriptor in the order in which the implementation exepects to
+/// receive them, indicating which fields are attributes.
 fn enumerate_fields_discriminated<'a>(
     model: &'a SegregatedFields<'a, 'a>,
 ) -> impl Iterator<Item = (&'a FieldModel<'a>, bool)> + Clone + 'a {

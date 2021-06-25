@@ -24,20 +24,31 @@ use syn::{Attribute, Fields, Ident};
 use utilities::validation::{validate2, Validation, ValidationItExt};
 use utilities::FieldKind;
 
+/// Description of the fields, taken from the derive input, preprocessed with any modifcations
+/// present in attributes on the fields.
 pub struct FieldsModel<'a> {
+    /// Kind of the underlying struct.
     pub type_kind: CompoundTypeKind,
+    /// Kind of the body of generated record (after attributes and renaming have been applied).
     pub body_kind: CompoundTypeKind,
+    /// Describes which kinds of fields are present in the type.
     pub manifest: FieldManifest,
+    /// Descriptors for each field, with attributes applied.
     pub fields: Vec<TaggedFieldModel<'a>>,
 }
 
+/// Preprocessed description of a struct type.
 pub struct StructModel<'a> {
+    /// The original name of the type.
     pub name: &'a Ident,
+    /// Description of the fields of the struct.
     pub fields_model: FieldsModel<'a>,
+    /// Transformation to apply to the name for the tag attribute.
     pub transform: Option<NameTransform>,
 }
 
 impl<'a> StructModel<'a> {
+    /// Get the (possible renamed) name of the type as a string literal.
     pub fn resolve_name<'b>(&'b self) -> ResolvedName<'a, 'b> {
         ResolvedName(self)
     }
@@ -59,8 +70,11 @@ impl<'a, 'b> ToTokens for ResolvedName<'a, 'b> {
     }
 }
 
+/// Fully processed description of a struct type, used to generate the output of the derive macros.
 pub struct SegregatedStructModel<'a, 'b> {
+    /// Preprocessed model with attribute information.
     pub inner: &'b StructModel<'a>,
+    /// Description of where in the record each field should be written.
     pub fields: SegregatedFields<'a, 'b>,
 }
 

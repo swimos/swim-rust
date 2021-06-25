@@ -27,7 +27,9 @@ use syn::Lit;
 
 pub type SynValidation<T> = Validation<T, Errors<syn::Error>>;
 
+/// Description of how a type or field should be renamed in its serialized form.
 pub enum NameTransform {
+    /// Rename to a specific string.
     Rename(String),
 }
 
@@ -35,6 +37,7 @@ pub trait TryValidate<T>: Sized {
     fn try_validate(input: T) -> SynValidation<Self>;
 }
 
+/// Fold the attributes present on some syntactic element, accumulating errors.
 fn fold_attr_meta<'a, It, S, F>(attrs: It, init: S, mut f: F) -> SynValidation<S>
 where
     It: Iterator<Item = &'a Attribute> + 'a,
@@ -94,6 +97,7 @@ impl TryFrom<&NestedMeta> for NameTransform {
     }
 }
 
+/// Fold operation to extract a name transform from the attributes on a type.
 fn acc_rename(
     mut state: Option<NameTransform>,
     nested_meta: NestedMeta,

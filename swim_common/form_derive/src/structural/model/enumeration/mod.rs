@@ -20,13 +20,19 @@ use syn::{Attribute, DataEnum, Ident};
 use utilities::algebra::Errors;
 use utilities::validation::{validate2, Validation, ValidationItExt};
 
+/// Preprocessed description of an enum type.
 pub struct EnumModel<'a> {
+    /// The original name of the enum.
     pub name: &'a Ident,
+    /// Preprocessed descriptions of each variant.
     pub variants: Vec<StructModel<'a>>,
 }
 
+/// Fully processed description of an enum type, used to generate the output of the derive macros.
 pub struct SegregatedEnumModel<'a, 'b> {
+    /// Preprocessed model with attribute information.
     pub inner: &'b EnumModel<'b>,
+    /// Description of where the fields should be written, for each variant.
     pub variants: Vec<SegregatedStructModel<'a, 'b>>,
 }
 
@@ -41,7 +47,7 @@ impl<'a, 'b> From<&'b EnumModel<'a>> for SegregatedEnumModel<'a, 'b> {
     }
 }
 
-pub struct EnumDef<'a> {
+pub(crate) struct EnumDef<'a> {
     name: &'a Ident,
     top: &'a dyn ToTokens,
     attributes: &'a [Attribute],

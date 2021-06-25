@@ -24,6 +24,10 @@ use quote::ToTokens;
 use syn::{Generics, Pat, Path};
 use utilities::CompoundTypeKind;
 
+/// Implements the StructuralWritable trait for either of [`SegregatedStructModel`] or
+/// [`SegregatedEnumModel`].
+pub struct DeriveStructuralWritable<'a, S>(pub S, pub &'a Generics);
+
 struct Destructure<'a>(&'a StructModel<'a>, bool);
 
 impl<'a> Destructure<'a> {
@@ -38,8 +42,6 @@ impl<'a> Destructure<'a> {
 
 struct WriteWithFn<'a, 'b>(&'b SegregatedStructModel<'a, 'b>);
 struct WriteIntoFn<'a, 'b>(&'b SegregatedStructModel<'a, 'b>);
-
-pub struct DeriveStructuralWritable<'a, S>(pub S, pub &'a Generics);
 
 impl<'a, 'b> ToTokens for DeriveStructuralWritable<'a, SegregatedEnumModel<'a, 'b>> {
     fn to_tokens(&self, tokens: &mut TokenStream) {

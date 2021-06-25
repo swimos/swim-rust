@@ -25,11 +25,15 @@ use std::ops::Add;
 use syn::{Field, Ident, Lit, Meta, NestedMeta, Type};
 use utilities::validation::Validation;
 
+/// Describes how to extract a field from a struct.
 pub enum FieldIndex<'a> {
+    ///Field in a lablled struct (identified by name).
     Named(&'a Ident),
+    ///Field in a tuple struct (identified by its index).
     Ordinal(usize),
 }
 
+// Consistently gives the same name to a given field wherever is is referred to.
 impl<'a> ToTokens for FieldIndex<'a> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         match self {
@@ -39,14 +43,20 @@ impl<'a> ToTokens for FieldIndex<'a> {
     }
 }
 
+/// Description of a field within a struct.
 pub struct FieldModel<'a> {
+    /// Means to index the field from an instanced of the struct.
     pub name: FieldIndex<'a>,
+    /// Definition ordinal of the field within the struct.
     pub ordinal: usize,
+    /// Optional transformation for the name of the type for the tag attribute.
     pub transform: Option<NameTransform>,
+    /// The type of the field.
     pub field_ty: &'a Type,
 }
 
 impl<'a> FieldModel<'a> {
+    /// Get the (potentially renamed) name of the field as a string literal.
     pub fn resolve_name(&self) -> ResolvedName {
         ResolvedName(self)
     }
@@ -74,12 +84,14 @@ impl<'a, 'b> ToTokens for ResolvedName<'a, 'b> {
     }
 }
 
+/// A field model with a modifier describing how it should be serialized.
 pub struct TaggedFieldModel<'a> {
     pub model: FieldModel<'a>,
     pub directive: FieldKind,
 }
 
 impl<'a> TaggedFieldModel<'a> {
+    /// Determine whether the serialized from of the field should have a label.
     pub fn is_labelled(&self) -> bool {
         !matches!(
             &self.model,
@@ -91,6 +103,8 @@ impl<'a> TaggedFieldModel<'a> {
         )
     }
 
+    /// Determine if the serialization directive applied to the field is valid (header and attribute
+    /// fields must be labelled).
     pub fn is_valid(&self) -> bool {
         match self.directive {
             FieldKind::Header | FieldKind::Attr => self.is_labelled(),
@@ -99,11 +113,15 @@ impl<'a> TaggedFieldModel<'a> {
     }
 }
 
+/// Description of modifications that can be applied to a field by attributes placed upon it.
 enum FieldAttr {
+    /// Rename the field in the serialized form.
     Transform(NameTransform),
+    /// Specify where the field should occur in the serialized record.
     Kind(FieldKind),
 }
 
+/// Validated attributes for a field.
 #[derive(Default)]
 struct FieldAttributes {
     transform: Option<NameTransform>,
@@ -111,6 +129,7 @@ struct FieldAttributes {
 }
 
 impl FieldAttributes {
+    /// Attempt to apply another attribyte, failing of the combined effect is invalid.
     fn add(mut self, field: &syn::Field, attr: FieldAttr) -> SynValidation<FieldAttributes> {
         let FieldAttributes {
             transform,
@@ -186,6 +205,7 @@ impl<'a> TryValidate<FieldWithIndex<'a>> for TaggedFieldModel<'a> {
     }
 }
 
+/// Mapping from attribute values to field kind tags.
 const KIND_MAPPING: [(&Symbol, FieldKind); 7] = [
     (&HEADER_PATH, FieldKind::Header),
     (&ATTR_PATH, FieldKind::Attr),
@@ -251,16 +271,27 @@ impl TryValidate<NestedMeta> for FieldAttr {
     }
 }
 
+/// Description of how fields should be written into the attributes of the record.
 #[derive(Default)]
 pub struct HeaderFields<'a, 'b> {
+    /// A field that should be used to replaced the name of the tag attribute.
     pub tag_name: Option<&'b FieldModel<'a>>,
+    /// A field that should be promoted to the body of the tag.
     pub tag_body: Option<&'b FieldModel<'a>>,
+    /// Fields that should be promoted to the body of the tag (after the `tag_body` field, if it
+    /// exists. These must be labelled.
     pub header_fields: Vec<&'b FieldModel<'a>>,
+    /// Fields that should be promoted to an attribute.
     pub attributes: Vec<&'b FieldModel<'a>>,
 }
 
+/// The fields that should be written into the body of the record.
 pub enum BodyFields<'a, 'b> {
+    /// Simple items in the record body.
     ReplacedBody(&'b FieldModel<'a>),
+    /// A single field is used to replace the entire body (potentially adding more attributes). All
+    /// other fields must be lifted into the header. If this cannot be done (for example, some of
+    /// those fields are not labelled) it is an error.
     StdBody(Vec<&'b FieldModel<'a>>),
 }
 
@@ -270,6 +301,7 @@ impl<'a, 'b> Default for BodyFields<'a, 'b> {
     }
 }
 
+/// Description of how the fields of a type are written into a record.
 #[derive(Default)]
 pub struct SegregatedFields<'a, 'b> {
     pub header: HeaderFields<'a, 'b>,
