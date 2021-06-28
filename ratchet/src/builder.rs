@@ -1,7 +1,5 @@
-use crate::error::ConnectionError;
+use crate::errors::Error;
 use crate::{Interceptor, TryIntoRequest, WebSocket, WebSocketConfig, WebSocketStream};
-use futures::future::BoxFuture;
-use http::{Request, Response};
 use tokio_native_tls::TlsConnector;
 
 /// This gives the flexibility to build websockets in a 'friendlier' fashion as opposed to having
@@ -13,11 +11,7 @@ pub struct WebSocketClientBuilder {
 }
 
 impl WebSocketClientBuilder {
-    pub async fn subscribe<S, I>(
-        self,
-        stream: S,
-        request: I,
-    ) -> Result<WebSocket<S>, ConnectionError>
+    pub async fn subscribe<S, I>(self, stream: S, request: I) -> Result<WebSocket<S>, Error>
     where
         S: WebSocketStream,
         I: TryIntoRequest,
@@ -40,23 +34,17 @@ impl WebSocketClientBuilder {
 }
 
 #[derive(Default)]
-struct WebSocketServerBuilder {
+pub struct WebSocketServerBuilder {
     config: Option<WebSocketConfig>,
     interceptor: Option<Box<dyn Interceptor>>,
     protocols: Option<Vec<&'static str>>,
 }
 
 impl WebSocketServerBuilder {
-    pub async fn accept<S>(self, stream: S) -> Result<Self, ConnectionError>
+    pub async fn accept<S>(self, _stream: S) -> Result<Self, Error>
     where
         S: WebSocketStream,
     {
-        let WebSocketServerBuilder {
-            config,
-            interceptor,
-            protocols,
-        } = self;
-
         // Then it'd be built something like...
         // initialise defaults
         // WebSocket::server(config, stream, interceptor, protocol).await

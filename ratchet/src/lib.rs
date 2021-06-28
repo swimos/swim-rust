@@ -14,17 +14,19 @@
 
 #![allow(warnings)]
 
-mod builder;
-mod error;
+pub mod builder;
+mod errors;
+mod extensions;
+#[cfg(test)]
+mod fixture;
 mod handshake;
 mod protocol;
 
-use crate::error::ConnectionError;
+use crate::errors::{Error, HttpError};
 use crate::handshake::{exec_client_handshake, RequestError};
 use futures::future::BoxFuture;
 use http::uri::InvalidUri;
 use http::{Request, Response, Uri};
-use std::error::Error;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_native_tls::TlsConnector;
 use url::Url;
@@ -56,7 +58,8 @@ pub trait Interceptor {
     ) -> BoxFuture<'static, Response<()>>;
 }
 
-enum Role {
+#[derive(Copy, Clone, PartialEq)]
+pub enum Role {
     Client,
     Server,
 }
@@ -71,12 +74,20 @@ impl<S> WebSocket<S>
 where
     S: WebSocketStream,
 {
+    pub fn role(&self) -> Role {
+        self.role
+    }
+
+    pub fn config(&self) -> &WebSocketConfig {
+        &self.config
+    }
+
     pub async fn client(
         config: WebSocketConfig,
         mut stream: S,
         connector: Option<TlsConnector>,
         request: Request<()>,
-    ) -> Result<WebSocket<S>, ConnectionError> {
+    ) -> Result<WebSocket<S>, Error> {
         exec_client_handshake(&config, &mut stream, connector, request).await?;
         Ok(WebSocket {
             stream,
@@ -86,10 +97,10 @@ where
     }
 
     pub async fn server<I>(
-        config: WebSocketConfig,
-        stream: S,
-        interceptor: I,
-    ) -> Result<WebSocket<S>, ConnectionError>
+        _config: WebSocketConfig,
+        _stream: S,
+        _interceptor: I,
+    ) -> Result<WebSocket<S>, Error>
     where
         I: Interceptor,
     {
@@ -99,6 +110,7 @@ where
 }
 
 pub trait WebSocketStream: AsyncRead + AsyncWrite + Unpin {}
+impl<S> WebSocketStream for S where S: AsyncRead + AsyncWrite + Unpin {}
 
 impl From<InvalidUri> for RequestError {
     fn from(e: InvalidUri) -> Self {
