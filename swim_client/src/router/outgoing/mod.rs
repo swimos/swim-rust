@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::configuration::router::RouterParams;
-use crate::router::{CloseReceiver, CloseResponseSender, ConnectionRequest};
+use crate::router::{CloseReceiver, ConnectionRequest};
 use futures::{select, FutureExt, StreamExt};
 use swim_common::warp::envelope::Envelope;
 use tokio::sync::mpsc;
@@ -22,7 +22,9 @@ use tracing::{error, info, span, trace, Level};
 use crate::router::retry::new_request;
 use swim_common::routing::error::RoutingError;
 use tokio_stream::wrappers::ReceiverStream;
+use utilities::future::cancellable::{Cancellable, CancellableResult};
 use utilities::future::retryable::RetryableFuture;
+use utilities::sync::trigger::trigger;
 
 //----------------------------------Downlink to Connection Pool---------------------------------
 
@@ -30,7 +32,8 @@ use utilities::future::retryable::RetryableFuture;
 #[derive(Debug)]
 enum OutgoingRequest {
     Message(Envelope),
-    Close(Option<CloseResponseSender>),
+    ReqResult(Result<(), RoutingError>),
+    Close,
 }
 
 /// The outgoing task is responsible for routing messages coming from the
@@ -73,16 +76,15 @@ impl OutgoingHostTask {
 
         let mut close_trigger = close_rx.fuse();
         let mut envelope_rx = ReceiverStream::new(envelope_rx).fuse();
+        let (result_tx, result_rx) = mpsc::channel(config.buffer_size().get());
+        let mut result_rx = ReceiverStream::new(result_rx).fuse();
+        let mut cancel_vec = vec![];
 
         loop {
             let task = select! {
-                closed = &mut close_trigger => {
-                    match closed {
-                        Ok(tx) => Some(OutgoingRequest::Close(Some((*tx).clone()))),
-                        _ => Some(OutgoingRequest::Close(None)),
-                    }
-                },
                 maybe_env = envelope_rx.next() => maybe_env.map(OutgoingRequest::Message),
+                result = result_rx.next() => result.map(OutgoingRequest::ReqResult),
+                 _ = &mut close_trigger => Some(OutgoingRequest::Close),
             }
             .ok_or(RoutingError::ConnectionError)?;
 
@@ -91,24 +93,54 @@ impl OutgoingHostTask {
 
             trace!("Received request {:?}", task);
 
+            let res_tx = result_tx.clone();
             match task {
                 OutgoingRequest::Message(envelope) => {
                     let request = new_request(connection_request_tx.clone(), envelope);
 
-                    RetryableFuture::new(request, config.retry_strategy())
-                        .await
-                        .map_err(|e| {
-                            error!(cause = %e, "Failed to send envelope");
-                            e
-                        })?;
+                    let (cancel_tx, cancel_rx) = trigger();
+                    cancel_vec.push(cancel_tx);
+
+                    let fut = async move {
+                        let cancellable_result = Cancellable::new(
+                            RetryableFuture::new(request, config.retry_strategy()),
+                            cancel_rx,
+                        )
+                        .await;
+                        if let CancellableResult::Completed(result) = cancellable_result {
+                            let result = result.map_err(|e| {
+                                error!(cause = %e, "Failed to send envelope");
+                                e
+                            });
+
+                            let _ = res_tx.send(result).await;
+                        }
+                    };
+
+                    swim_runtime::task::spawn(fut);
 
                     trace!("Completed request");
                 }
-                OutgoingRequest::Close(close_rx) => {
-                    if close_rx.is_some() {
-                        info!("Closing");
-                        break Ok(());
+                OutgoingRequest::ReqResult(result) => match result {
+                    Ok(_) => {
+                        //Todo remove the one that has finished.
+                        // cancel_vec.remove(0);
                     }
+                    Err(error) => {
+                        for cancel_tx in cancel_vec {
+                            cancel_tx.trigger();
+                        }
+
+                        return Err(error);
+                    }
+                },
+                OutgoingRequest::Close => {
+                    for cancel_tx in cancel_vec {
+                        cancel_tx.trigger();
+                    }
+
+                    info!("Closing");
+                    break Ok(());
                 }
             }
             trace!("Completed outgoing request");

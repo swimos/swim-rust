@@ -613,10 +613,10 @@ impl<Pool: ConnectionPool<PathType = Path>, Path: Addressable> TaskManager<Pool,
                     }
                 },
 
-                RouterTask::Close(close_rx) => {
+                RouterTask::Close(close_tx) => {
                     let pool_result = connection_pool.close().await;
 
-                    if let Some(close_response_tx) = close_rx {
+                    if let Some(close_response_tx) = close_tx {
                         let futures = FuturesUnordered::new();
 
                         host_managers
@@ -878,7 +878,6 @@ impl<Pool: ConnectionPool<PathType = Path>, Path: Addressable> HostManager<Pool,
                                 .await
                                 .map_err(|_| RoutingError::CloseError)?;
                         }
-
                         break Ok(());
                     }
                 }

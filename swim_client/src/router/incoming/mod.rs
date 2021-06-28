@@ -14,7 +14,7 @@
 
 use std::collections::HashMap;
 
-use crate::router::{CloseReceiver, CloseResponseSender, RouterEvent, SubscriberRequest};
+use crate::router::{CloseReceiver, RouterEvent, SubscriberRequest};
 use futures::future::ready;
 use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
@@ -35,7 +35,7 @@ pub(crate) enum IncomingRequest {
     Message(Envelope),
     Unreachable(String),
     Disconnect,
-    Close(Option<CloseResponseSender>),
+    Close,
 }
 
 /// The incoming task is responsible for routing messages coming from remote hosts to
@@ -72,12 +72,7 @@ impl IncomingHostTask {
         loop {
             let task = if let Some(message_rx) = connection.as_mut() {
                 let result = tokio::select! {
-                    closed = &mut close_trigger => {
-                        match closed {
-                            Ok(tx) => Some(IncomingRequest::Close(Some((*tx).clone()))),
-                            _ => Some(IncomingRequest::Close(None)),
-                        }
-                    },
+                    _ = &mut close_trigger => Some(IncomingRequest::Close),
                     task = task_rx.recv() => task,
                     maybe_message = message_rx.recv() => {
                         match maybe_message{
@@ -91,12 +86,7 @@ impl IncomingHostTask {
                 result.ok_or(RoutingError::ConnectionError)?
             } else {
                 let result = tokio::select! {
-                    closed = &mut close_trigger => {
-                        match closed {
-                            Ok(tx) => Some(IncomingRequest::Close(Some((*tx).clone()))),
-                            _ => Some(IncomingRequest::Close(None)),
-                        }
-                    },
+                    _ = &mut close_trigger => Some(IncomingRequest::Close),
                     task = task_rx.recv() => task,
                 };
                 result.ok_or(RoutingError::ConnectionError)?
@@ -157,13 +147,10 @@ impl IncomingHostTask {
                     remove_unreachable(&mut subscribers, unreachable)?;
                 }
 
-                IncomingRequest::Close(close_rx) => {
-                    if close_rx.is_some() {
-                        trace!("Closing Router");
-                        broadcast_all(&mut subscribers, RouterEvent::Stopping).await?;
-
-                        break Ok(());
-                    }
+                IncomingRequest::Close => {
+                    trace!("Closing Router");
+                    broadcast_all(&mut subscribers, RouterEvent::Stopping).await?;
+                    break Ok(());
                 }
             }
             trace!("Completed incoming request")

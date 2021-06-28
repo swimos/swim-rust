@@ -482,6 +482,7 @@ impl ServerHandle {
             stop_trigger_tx, ..
         } = self;
 
+        //Todo dm change buffer size
         let (tx, mut rx) = mpsc::channel(8);
 
         if stop_trigger_tx.provide(tx).is_err() {
