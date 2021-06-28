@@ -487,13 +487,13 @@ impl<Path: Addressable> DownlinksTask<Path> {
                 if self.stopped_watch.is_empty() {
                     select_biased! {
                         maybe_req = pinned_requests.next() => maybe_req.map(Either::Left),
-                        stop = close_trigger => None,
+                        _stop = close_trigger => None,
                     }
                 } else {
                     select_biased! {
                         maybe_req = pinned_requests.next() => maybe_req.map(Either::Left),
                         maybe_closed = self.stopped_watch.next() => maybe_closed.map(Either::Right),
-                        stop = close_trigger => None,
+                        _stop = close_trigger => None,
                     }
                 };
 
