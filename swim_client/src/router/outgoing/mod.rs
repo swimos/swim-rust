@@ -22,9 +22,9 @@ use tracing::{error, info, span, trace, Level};
 use crate::router::retry::new_request;
 use swim_common::routing::error::RoutingError;
 use tokio_stream::wrappers::ReceiverStream;
-use utilities::future::cancellable::{Cancellable, CancellableResult};
+use utilities::future::cancellable::CancellableResult;
 use utilities::future::retryable::RetryableFuture;
-use utilities::sync::trigger::trigger;
+use utilities::hash_indexer::HashIndexer;
 
 //----------------------------------Downlink to Connection Pool---------------------------------
 
@@ -32,7 +32,7 @@ use utilities::sync::trigger::trigger;
 #[derive(Debug)]
 enum OutgoingRequest {
     Message(Envelope),
-    ReqResult(Result<(), RoutingError>),
+    ReqResult(Result<u32, RoutingError>),
     Close,
 }
 
@@ -78,7 +78,7 @@ impl OutgoingHostTask {
         let mut envelope_rx = ReceiverStream::new(envelope_rx).fuse();
         let (result_tx, result_rx) = mpsc::channel(config.buffer_size().get());
         let mut result_rx = ReceiverStream::new(result_rx).fuse();
-        let mut cancel_vec = vec![];
+        let mut cancel_txs = HashIndexer::new();
 
         loop {
             let task = select! {
@@ -97,37 +97,33 @@ impl OutgoingHostTask {
             match task {
                 OutgoingRequest::Message(envelope) => {
                     let request = new_request(connection_request_tx.clone(), envelope);
+                    let (future, cancel_tx) =
+                        RetryableFuture::cancellable(request, config.retry_strategy());
 
-                    let (cancel_tx, cancel_rx) = trigger();
-                    cancel_vec.push(cancel_tx);
+                    let index = cancel_txs.insert(cancel_tx);
 
-                    let fut = async move {
-                        let cancellable_result = Cancellable::new(
-                            RetryableFuture::new(request, config.retry_strategy()),
-                            cancel_rx,
-                        )
-                        .await;
-                        if let CancellableResult::Completed(result) = cancellable_result {
-                            let result = result.map_err(|e| {
-                                error!(cause = %e, "Failed to send envelope");
-                                e
-                            });
+                    swim_runtime::task::spawn(async move {
+                        if let CancellableResult::Completed(result) = future.await {
+                            let result = match result {
+                                Ok(_) => Ok(index),
+                                Err(err) => {
+                                    error!(cause = %err, "Failed to send envelope");
+                                    Err(err)
+                                }
+                            };
 
                             let _ = res_tx.send(result).await;
                         }
-                    };
-
-                    swim_runtime::task::spawn(fut);
+                    });
 
                     trace!("Completed request");
                 }
                 OutgoingRequest::ReqResult(result) => match result {
-                    Ok(_) => {
-                        //Todo remove the one that has finished.
-                        // cancel_vec.remove(0);
+                    Ok(index) => {
+                        cancel_txs.remove(index);
                     }
                     Err(error) => {
-                        for cancel_tx in cancel_vec {
+                        for (_, cancel_tx) in cancel_txs.into_items() {
                             cancel_tx.trigger();
                         }
 
@@ -135,7 +131,7 @@ impl OutgoingHostTask {
                     }
                 },
                 OutgoingRequest::Close => {
-                    for cancel_tx in cancel_vec {
+                    for (_, cancel_tx) in cancel_txs.into_items() {
                         cancel_tx.trigger();
                     }
 
