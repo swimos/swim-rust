@@ -206,11 +206,11 @@ impl SwimServerBuilder {
             config,
         } = self;
 
+        let buffer_size = config.conn_config.channel_buffer_size;
         let (close_tx, close_rx) = promise::promise();
         let (address_tx, address_rx) = promise::promise();
 
-        let (client_conn_request_tx, client_conn_request_rx) =
-            mpsc::channel(config.conn_config.channel_buffer_size.get());
+        let (client_conn_request_tx, client_conn_request_rx) = mpsc::channel(buffer_size.get());
 
         let (downlinks, downlinks_handle) = Downlinks::new(
             client_conn_request_tx.clone(),
@@ -233,6 +233,7 @@ impl SwimServerBuilder {
                 client_conn_request_rx,
             },
             ServerHandle {
+                buffer_size,
                 either_address: Either::Left(address_rx),
                 stop_trigger_tx: close_tx,
             },
@@ -437,6 +438,7 @@ impl Default for SwimServerConfig {
 /// The handle is returned when a new server instance is created and is used for terminating
 /// the server or obtaining its address.
 pub struct ServerHandle {
+    buffer_size: NonZeroUsize,
     either_address: Either<promise::Receiver<SocketAddr>, Option<SocketAddr>>,
     stop_trigger_tx: CloseSender,
 }
@@ -479,23 +481,21 @@ impl ServerHandle {
     /// ```
     pub async fn stop(self) -> Result<(), ServerError> {
         let ServerHandle {
-            stop_trigger_tx, ..
+            buffer_size,
+            stop_trigger_tx,
+            ..
         } = self;
 
-        //Todo dm change buffer size
-        let (tx, mut rx) = mpsc::channel(8);
+        let (tx, mut rx) = mpsc::channel(buffer_size.get());
 
         if stop_trigger_tx.provide(tx).is_err() {
             return Err(ServerError::CloseError(TaskError));
         }
 
-        match rx.recv().await {
-            Some(close_result) => {
-                if let Err(routing_err) = close_result {
-                    return Err(ServerError::RoutingError(routing_err));
-                }
+        if let Some(close_result) = rx.recv().await {
+            if let Err(routing_err) = close_result {
+                return Err(ServerError::RoutingError(routing_err));
             }
-            None => return Err(ServerError::CloseError(TaskError)),
         }
 
         Ok(())
