@@ -78,6 +78,10 @@ where
     fn advance(&mut self, count: usize) {
         self.buffer.advance(count);
     }
+
+    fn clear(&mut self) {
+        self.buffer.clear();
+    }
 }
 
 struct HandshakeMachine<'s, S> {
@@ -114,16 +118,18 @@ where
         Ok(())
     }
 
-    pub async fn exec(mut self, request: Request<()>) -> Result<(), Error> {
-        self.encode(request)?;
+    async fn write(&mut self) -> Result<(), Error> {
+        self.buffered.write().await
+    }
 
+    fn clear(&mut self) {
+        self.buffered.clear();
+    }
+
+    async fn read(&mut self) -> Result<(), Error> {
         let HandshakeMachine {
-            mut buffered,
-            nonce,
-            ..
+            buffered, nonce, ..
         } = self;
-
-        buffered.write().await?;
 
         loop {
             buffered.read().await?;
@@ -139,6 +145,13 @@ where
                 ParseResult::Partial => check_partial_response(&response)?,
             }
         }
+    }
+
+    // This is split up on purpose so that the individual functions can be called in unit tests.
+    pub async fn exec(mut self, request: Request<()>) -> Result<(), Error> {
+        self.encode(request)?;
+        self.write().await?;
+        self.read().await
     }
 }
 
@@ -187,7 +200,7 @@ fn try_parse_response<'l>(
             parse_response(response, expected_nonce).map(|status| ParseResult::Complete(count))
         }
         Ok(Status::Partial) => Ok(ParseResult::Partial),
-        Err(e) => return Err(e.into()),
+        Err(e) => Err(e.into()),
     }
 }
 

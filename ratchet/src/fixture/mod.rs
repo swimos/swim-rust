@@ -1,4 +1,7 @@
 use bytes::{Buf, BufMut, BytesMut};
+use http::{Request, Response};
+use std::io::{Read, Write};
+use std::ops::DerefMut;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
@@ -24,6 +27,57 @@ pub fn mock() -> (MockPeer, MockStream) {
 pub struct MockPeer {
     pub rx_buf: Arc<Mutex<BytesMut>>,
     pub tx_buf: Arc<Mutex<BytesMut>>,
+}
+
+impl MockPeer {
+    pub fn write<R>(&self, mut readable: R)
+    where
+        R: ReadBytesMut,
+    {
+        let mut guard = self.tx_buf.lock().unwrap();
+        let buf = guard.deref_mut();
+
+        readable.read(buf);
+    }
+
+    /// Write `response` in to this peer's output buffer. This will **not** write the `extensions`
+    /// field in the struct. If this is required then you will need to write it manually.
+    pub fn write_response(&self, response: Response<()>) {
+        self.write(ReadableResponse(response));
+    }
+}
+
+struct ReadableResponse(Response<()>);
+
+pub trait ReadBytesMut {
+    fn read(&self, buf: &mut BytesMut);
+}
+
+macro_rules! format_bytes {
+    ($($arg:tt)*) => {
+        format!($($arg)*).as_bytes()
+    };
+}
+
+impl ReadBytesMut for ReadableResponse {
+    fn read(&self, buf: &mut BytesMut) {
+        let ReadableResponse(response) = self;
+
+        buf.extend_from_slice(format_bytes!(
+            "{:?} {}",
+            response.version(),
+            response.status()
+        ));
+
+        for (name, value) in response.headers() {
+            buf.extend_from_slice(b"\r\n");
+            buf.extend_from_slice(name.as_str().as_bytes());
+            buf.extend_from_slice(b": ");
+            buf.extend_from_slice(value.as_bytes());
+        }
+
+        buf.extend_from_slice(b"\r\n\r\n");
+    }
 }
 
 pub struct MockStream {

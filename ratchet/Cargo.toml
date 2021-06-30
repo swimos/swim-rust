@@ -5,6 +5,7 @@ authors = ["Swim.AI developers info@swim.ai"]
 edition = "2018"
 
 [dependencies]
+utilities = { path = "../utilities" }
 url = "2.1.1"
 http = "0.2.3"
 pin-project = "1.0.5"

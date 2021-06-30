@@ -1,8 +1,14 @@
-use crate::fixture::mock;
+use crate::errors::{Error, ErrorKind, HttpError};
+use crate::fixture::{mock, MockPeer};
 use crate::handshake::client::HandshakeMachine;
+use crate::handshake::{UPGRADE_STR, WEBSOCKET_STR, WEBSOCKET_VERSION, WEBSOCKET_VERSION_STR};
 use crate::TryIntoRequest;
-use http::{header, Request};
+use futures::future::join;
+use http::{header, Request, Response, StatusCode, Version};
 use httparse::{Header, Status};
+use std::any::Any;
+use std::error::Error as StdError;
+use utilities::sync::trigger;
 
 const TEST_URL: &str = "ws://127.0.0.1:9001/test";
 
@@ -64,7 +70,7 @@ async fn handshake_invalid_requests() {
 
     test(
         Request::get(TEST_URL)
-            .header(header::SEC_WEBSOCKET_KEY, "31231321321")
+            .header(header::SEC_WEBSOCKET_KEY, "donut")
             .body(())
             .unwrap(),
     )
@@ -77,4 +83,113 @@ async fn handshake_invalid_requests() {
             .unwrap(),
     )
     .await;
+}
+
+fn expect_error<E>(actual: Result<(), Error>, expected: E)
+where
+    E: StdError + PartialEq<E> + Any,
+{
+    const ERR: &str = "Expected an error";
+
+    actual
+        .err()
+        .map(|e| {
+            let error = e.downcast_ref::<E>().expect(ERR);
+            assert!(error.eq(&expected))
+        })
+        .expect(ERR);
+}
+
+async fn expect_server_error(response: Response<()>, expected_error: HttpError) {
+    let (mut server, mut stream) = mock();
+
+    let (client_tx, client_rx) = trigger::trigger();
+    let (server_tx, server_rx) = trigger::trigger();
+
+    let client_task = async move {
+        let mut machine = HandshakeMachine::new(&mut stream, Vec::new(), Vec::new());
+        machine
+            .encode(Request::get(TEST_URL).body(()).unwrap())
+            .unwrap();
+        machine.write().await.unwrap();
+        machine.clear();
+
+        assert!(client_tx.trigger());
+        assert!(server_rx.await.is_ok());
+
+        let handshake_result = machine.read().await;
+
+        const ERR: &str = "Expected an error";
+
+        handshake_result
+            .err()
+            .map(|e| {
+                let error = e.downcast_ref::<HttpError>().expect(ERR);
+                assert_eq!(error, &expected_error);
+            })
+            .expect(ERR);
+    };
+
+    let server_task = async move {
+        assert!(client_rx.await.is_ok());
+
+        server.write_response(response);
+        assert!(server_tx.trigger());
+    };
+
+    let _result = join(client_task, server_task).await;
+}
+
+#[tokio::test]
+async fn missing_sec_websocket_accept() {
+    let response = Response::builder()
+        .version(Version::HTTP_11)
+        .status(StatusCode::SWITCHING_PROTOCOLS)
+        .header(header::UPGRADE, WEBSOCKET_STR)
+        .header(header::CONNECTION, UPGRADE_STR)
+        .body(())
+        .unwrap();
+
+    expect_server_error(
+        response,
+        HttpError::MissingHeader(header::SEC_WEBSOCKET_ACCEPT),
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn incorrect_sec_websocket_accept() {
+    let response = Response::builder()
+        .version(Version::HTTP_11)
+        .status(StatusCode::SWITCHING_PROTOCOLS)
+        .header(header::UPGRADE, WEBSOCKET_STR)
+        .header(header::CONNECTION, UPGRADE_STR)
+        .header(header::SEC_WEBSOCKET_ACCEPT, "🔥")
+        .body(())
+        .unwrap();
+
+    expect_server_error(response, HttpError::KeyMismatch).await;
+}
+
+#[tokio::test]
+async fn bad_status_code() {
+    let response = Response::builder()
+        .version(Version::HTTP_11)
+        .status(StatusCode::IM_A_TEAPOT)
+        .header(header::UPGRADE, WEBSOCKET_STR)
+        .header(header::CONNECTION, UPGRADE_STR)
+        .body(())
+        .unwrap();
+
+    expect_server_error(response, HttpError::Status(StatusCode::IM_A_TEAPOT)).await;
+}
+
+#[tokio::test]
+async fn incorrect_version() {
+    let response = Response::builder()
+        .version(Version::HTTP_10)
+        .body(())
+        .unwrap();
+
+    expect_server_error(response, HttpError::HttpVersion(Some(0))).await;
 }

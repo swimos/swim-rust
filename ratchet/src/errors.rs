@@ -4,6 +4,7 @@ use http::status::InvalidStatusCode;
 use http::StatusCode;
 use std::any::Any;
 use std::error::Error as StdError;
+use std::fmt::{Display, Formatter};
 use std::io;
 use thiserror::Error;
 
@@ -13,6 +14,14 @@ pub(crate) type BoxError = Box<dyn StdError + Send + Sync>;
 pub struct Error {
     inner: Box<Inner>,
 }
+
+impl Display for Error {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self.inner)
+    }
+}
+
+impl StdError for Error {}
 
 impl Error {
     pub(crate) fn new(kind: ErrorKind) -> Error {
@@ -85,7 +94,7 @@ impl From<RequestError> for Error {
     }
 }
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug, PartialEq)]
 pub enum HttpError {
     #[error("Redirected: `{0}`")]
     Redirected(String),
