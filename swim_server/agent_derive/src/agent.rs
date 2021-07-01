@@ -21,8 +21,6 @@ use proc_macro2::TokenStream as TokenStream2;
 use proc_macro2::{Delimiter, Group, Ident, Literal, Span};
 use quote::{quote, ToTokens};
 use std::ops::Deref;
-use syn::punctuated::Punctuated;
-use syn::Token;
 use syn::{AttributeArgs, DeriveInput, Path, PathSegment, Type, TypePath, Visibility};
 
 type AgentName = Ident;
@@ -57,14 +55,14 @@ impl LifecycleAttrs {
             Type::Path(TypePath {
                 path: Path { segments, .. },
                 ..
-            }) => Self::map_segments(segments),
+            }) => Self::map_segment(segments.last()?),
             Type::Group(group) => {
                 let last = ungroup(group.elem.deref());
                 match last.deref() {
                     Type::Path(TypePath {
                         path: Path { segments, .. },
                         ..
-                    }) => Self::map_segments(segments),
+                    }) => Self::map_segment(segments.last()?),
                     _ => None,
                 }
             }
@@ -72,23 +70,15 @@ impl LifecycleAttrs {
         }
     }
 
-    fn map_segments(segments: &Punctuated<PathSegment, Token![::]>) -> Option<LaneType> {
-        let segments = match segments.last() {
-            Some(segments) => Some(segments),
-            None => segments.first(),
-        };
-
-        match segments {
-            Some(path_segment) => match path_segment.ident.to_string().as_str() {
-                COMMAND_LANE => Some(LaneType::Command),
-                ACTION_LANE => Some(LaneType::Action),
-                VALUE_LANE => Some(LaneType::Value),
-                MAP_LANE => Some(LaneType::Map),
-                DEMAND_LANE => Some(LaneType::Demand),
-                DEMAND_MAP_LANE => Some(LaneType::DemandMap),
-                _ => None,
-            },
-            None => None,
+    fn map_segment(segment: &PathSegment) -> Option<LaneType> {
+        match segment.ident.to_string().as_str() {
+            COMMAND_LANE => Some(LaneType::Command),
+            ACTION_LANE => Some(LaneType::Action),
+            VALUE_LANE => Some(LaneType::Value),
+            MAP_LANE => Some(LaneType::Map),
+            DEMAND_LANE => Some(LaneType::Demand),
+            DEMAND_MAP_LANE => Some(LaneType::DemandMap),
+            _ => None,
         }
     }
 }
