@@ -1,5 +1,6 @@
 use bytes::{Buf, BufMut, BytesMut};
-use http::{Request, Response};
+use http::{Request, Response, Version};
+use httparse::{Error, Status};
 use std::io::{Read, Write};
 use std::ops::DerefMut;
 use std::pin::Pin;
@@ -30,7 +31,7 @@ pub struct MockPeer {
 }
 
 impl MockPeer {
-    pub fn write<R>(&self, mut readable: R)
+    pub fn write_from<R>(&self, mut readable: R)
     where
         R: ReadBytesMut,
     {
@@ -43,14 +44,73 @@ impl MockPeer {
     /// Write `response` in to this peer's output buffer. This will **not** write the `extensions`
     /// field in the struct. If this is required then you will need to write it manually.
     pub fn write_response(&self, response: Response<()>) {
-        self.write(ReadableResponse(response));
+        self.write_from(ReadableResponse(response));
     }
+
+    pub fn read_into<W>(&self, writer: W) -> Result<Option<W::Out>, W::Error>
+    where
+        W: FromBytes,
+    {
+        let mut guard = self.tx_buf.lock().unwrap();
+        let buf = guard.deref_mut();
+
+        match writer.write(buf) {
+            Ok((read, opt)) => {
+                buf.advance(read);
+                Ok(opt)
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    pub fn read_request(&self) -> Result<Option<Request<()>>, httparse::Error> {
+        self.read_into(WritableRequest)
+    }
+}
+
+pub trait ReadBytesMut {
+    fn read(&self, buf: &mut BytesMut);
+}
+
+pub trait FromBytes {
+    type Out;
+    type Error;
+
+    fn write(&self, buf: &mut BytesMut) -> Result<(usize, Option<Self::Out>), Self::Error>;
 }
 
 struct ReadableResponse(Response<()>);
 
-pub trait ReadBytesMut {
-    fn read(&self, buf: &mut BytesMut);
+struct WritableRequest;
+impl FromBytes for WritableRequest {
+    type Out = Request<()>;
+    type Error = httparse::Error;
+
+    fn write(&self, buf: &mut BytesMut) -> Result<(usize, Option<Self::Out>), httparse::Error> {
+        let mut headers = [httparse::EMPTY_HEADER; 32];
+        let mut httparse_request = httparse::Request::new(&mut headers);
+
+        match httparse_request.parse(buf.as_ref()) {
+            Ok(Status::Partial) => Ok((0, None)),
+            Ok(Status::Complete(count)) => {
+                let mut http_request = http::Request::builder();
+
+                if let Some(version) = httparse_request.version {
+                    http_request = match version {
+                        0 => http_request.version(Version::HTTP_10),
+                        1 => http_request.version(Version::HTTP_11),
+                        v => unreachable!("{}", v),
+                    };
+                }
+
+                Ok((
+                    count,
+                    Some(http_request.body(()).expect("Failed to parse HTTP request")),
+                ))
+            }
+            Err(e) => Err(e),
+        }
+    }
 }
 
 macro_rules! format_bytes {

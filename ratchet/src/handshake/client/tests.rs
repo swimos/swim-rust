@@ -112,7 +112,7 @@ async fn expect_server_error(response: Response<()>, expected_error: HttpError) 
             .encode(Request::get(TEST_URL).body(()).unwrap())
             .unwrap();
         machine.write().await.unwrap();
-        machine.clear();
+        machine.clear_buffer();
 
         assert!(client_tx.trigger());
         assert!(server_rx.await.is_ok());
@@ -132,6 +132,8 @@ async fn expect_server_error(response: Response<()>, expected_error: HttpError) 
 
     let server_task = async move {
         assert!(client_rx.await.is_ok());
+
+        let request = server.read_request();
 
         server.write_response(response);
         assert!(server_tx.trigger());

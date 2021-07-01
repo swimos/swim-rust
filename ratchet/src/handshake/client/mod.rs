@@ -122,7 +122,7 @@ where
         self.buffered.write().await
     }
 
-    fn clear(&mut self) {
+    fn clear_buffer(&mut self) {
         self.buffered.clear();
     }
 
@@ -151,6 +151,7 @@ where
     pub async fn exec(mut self, request: Request<()>) -> Result<(), Error> {
         self.encode(request)?;
         self.write().await?;
+        self.clear_buffer();
         self.read().await
     }
 }
