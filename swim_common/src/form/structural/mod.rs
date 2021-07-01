@@ -15,8 +15,8 @@
 #[cfg(test)]
 mod tests;
 
-use crate::form::structural::read::StructuralReadable;
-use crate::form::structural::write::StructuralWritable;
+use crate::form::structural::read::recognizer::RecognizerReadable;
+use crate::model::text::Text;
 
 mod bridge;
 pub mod generic;
@@ -24,9 +24,8 @@ pub mod read;
 #[macro_use]
 pub mod write;
 
-/// A more flexible alternative to [`Form`] where readers and writers have full
-/// visbility of the strucutures of the values that the work on. This will eventually
-/// replace the [`Form`] trait.
-pub trait StructuralForm: StructuralReadable + StructuralWritable {}
+pub trait StringRepresentable: AsRef<str> + RecognizerReadable {
+    fn try_from_str(txt: &str) -> Result<Self, Text>;
 
-impl<T: StructuralReadable + StructuralWritable> StructuralForm for T {}
+    fn universe() -> &'static [&'static str];
+}

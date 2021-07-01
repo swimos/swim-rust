@@ -27,6 +27,23 @@ pub mod model;
 pub mod read;
 pub mod write;
 
+pub fn build_derive_structural_form(input: DeriveInput) -> Result<TokenStream, Errors<syn::Error>> {
+    match &input.data {
+        Data::Struct(ds) => {
+            let def = StructDef::new(&input.ident, &input, &input.attrs, ds);
+            struct_derive_structural_form(def, &input.generics)
+        }
+        Data::Enum(de) => {
+            let def = EnumDef::new(&input.ident, &input, &input.attrs, de);
+            enum_derive_structural_form(def, &input.generics)
+        }
+        _ => Err(Errors::of(syn::Error::new_spanned(
+            input,
+            "Union types are not supported.",
+        ))),
+    }
+}
+
 pub fn build_derive_structural_writable(
     input: DeriveInput,
 ) -> Result<TokenStream, Errors<syn::Error>> {
@@ -54,6 +71,34 @@ fn struct_derive_structural_writable<'a, Flds: StructLike>(
     let segregated = SegregatedStructModel::from(&model);
     let derive = DeriveStructuralWritable(segregated, generics);
     Ok(derive.into_token_stream())
+}
+
+fn struct_derive_structural_form<'a, Flds: StructLike>(
+    input: StructDef<'a, Flds>,
+    generics: &'a Generics,
+) -> Result<TokenStream, Errors<syn::Error>> {
+    let model = StructModel::try_validate(input).into_result()?;
+    let segregated = SegregatedStructModel::from(&model);
+    let derive_writable = DeriveStructuralWritable(segregated.clone(), generics);
+    let derive_readable = DeriveStructuralReadable(segregated, generics);
+    Ok(quote! {
+        #derive_writable
+        #derive_readable
+    })
+}
+
+fn enum_derive_structural_form<'a>(
+    input: EnumDef<'a>,
+    generics: &'a Generics,
+) -> Result<TokenStream, Errors<syn::Error>> {
+    let model = EnumModel::try_validate(input).into_result()?;
+    let segregated = SegregatedEnumModel::from(&model);
+    let derive_writable = DeriveStructuralWritable(segregated.clone(), generics);
+    let derive_readable = DeriveStructuralReadable(segregated, generics);
+    Ok(quote! {
+        #derive_writable
+        #derive_readable
+    })
 }
 
 fn enum_derive_structural_writable<'a>(

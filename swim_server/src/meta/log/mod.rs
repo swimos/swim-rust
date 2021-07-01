@@ -33,7 +33,7 @@ use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::fmt::{Debug, Display, Formatter};
 use std::num::NonZeroUsize;
-use swim_common::form::{Form, Tag};
+use swim_common::form::Form;
 use swim_common::model::time::Timestamp;
 use swim_common::model::Value;
 use tokio::sync::mpsc;
@@ -43,6 +43,15 @@ use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, span, Level};
 use tracing_futures::{Instrument, Instrumented};
 
+use std::borrow::Borrow;
+use swim_common::form::structural::read::event::ReadEvent;
+use swim_common::form::structural::read::recognizer::{
+    Recognizer, RecognizerReadable, SimpleAttrBody,
+};
+use swim_common::form::structural::read::ReadError;
+use swim_common::form::structural::write::{PrimitiveWriter, StructuralWritable, StructuralWriter};
+use swim_common::form::structural::StringRepresentable;
+use swim_common::model::text::Text;
 use swim_runtime::time::interval::interval;
 use utilities::sync::trigger;
 use utilities::uri::RelativeUri;
@@ -58,7 +67,7 @@ const LOG_TASK: &str = "Node logger";
 const LOG_FAIL: &str = "Failed to send log message";
 
 /// A corresponding level associated with a `LogEntry`.
-#[derive(Copy, Clone, Debug, Tag, Eq, PartialEq, PartialOrd, Hash)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Hash)]
 pub enum LogLevel {
     /// Fine-grained informational events.
     Trace,
@@ -74,16 +83,89 @@ pub enum LogLevel {
     Fail,
 }
 
+impl AsRef<str> for LogLevel {
+    fn as_ref(&self) -> &str {
+        match self {
+            LogLevel::Trace => "Trace",
+            LogLevel::Debug => "Debug",
+            LogLevel::Info => "Info",
+            LogLevel::Warn => "Warn",
+            LogLevel::Error => "Error",
+            LogLevel::Fail => "Fail",
+        }
+    }
+}
+
 impl Display for LogLevel {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            LogLevel::Trace => write!(f, "Trace"),
-            LogLevel::Debug => write!(f, "Debug"),
-            LogLevel::Info => write!(f, "Info"),
-            LogLevel::Warn => write!(f, "Warn"),
-            LogLevel::Error => write!(f, "Error"),
-            LogLevel::Fail => write!(f, "Fail"),
+        let as_str: &str = self.as_ref();
+        write!(f, "{}", as_str)
+    }
+}
+
+pub struct LogLevelRecognizer;
+impl Recognizer for LogLevelRecognizer {
+    type Target = LogLevel;
+
+    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
+        match input {
+            ReadEvent::TextValue(txt) => {
+                Some(
+                    LogLevel::try_from(txt.borrow()).map_err(|_| ReadError::Malformatted {
+                        text: txt.into(),
+                        message: Text::new("Not a valid log level."),
+                    }),
+                )
+            }
+            ow => Some(Err(ow.kind_error())),
         }
+    }
+
+    fn reset(&mut self) {}
+}
+
+impl RecognizerReadable for LogLevel {
+    type Rec = LogLevelRecognizer;
+    type AttrRec = SimpleAttrBody<LogLevelRecognizer>;
+
+    fn make_recognizer() -> Self::Rec {
+        LogLevelRecognizer
+    }
+
+    fn make_attr_recognizer() -> Self::AttrRec {
+        SimpleAttrBody::new(LogLevelRecognizer)
+    }
+}
+
+const LOG_LEVELS: [&str; 6] = ["Trace", "Debug", "Info", "Warn", "Error", "Fail"];
+
+impl StringRepresentable for LogLevel {
+    fn try_from_str(txt: &str) -> Result<Self, Text> {
+        LogLevel::try_from(txt).map_err(|_| Text::new("Not a valid log level."))
+    }
+
+    fn universe() -> &'static [&'static str] {
+        &LOG_LEVELS
+    }
+}
+
+impl StructuralWritable for LogLevel {
+    fn write_with<W: StructuralWriter>(
+        &self,
+        writer: W,
+    ) -> Result<<W as PrimitiveWriter>::Repr, <W as PrimitiveWriter>::Error> {
+        writer.write_text(self.as_ref())
+    }
+
+    fn write_into<W: StructuralWriter>(
+        self,
+        writer: W,
+    ) -> Result<<W as PrimitiveWriter>::Repr, <W as PrimitiveWriter>::Error> {
+        writer.write_text(self.as_ref())
+    }
+
+    fn num_attributes(&self) -> usize {
+        0
     }
 }
 

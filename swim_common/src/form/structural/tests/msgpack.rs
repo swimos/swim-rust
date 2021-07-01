@@ -14,13 +14,13 @@
 
 use crate::form::structural::read::msgpack::{read_from_msg_pack, MsgPackReadError};
 use crate::form::structural::write::interpreters::msgpack::MsgPackInterpreter;
-use crate::form::structural::StructuralForm;
+use crate::form::Form;
 use crate::model::{Attr, Item, Value};
 use bytes::{BufMut, BytesMut};
 use std::collections::HashMap;
 use std::fmt::Debug;
 
-fn validate<T: StructuralForm + PartialEq + Debug>(value: &T) {
+fn validate<T: Form + PartialEq + Debug>(value: &T) {
     let mut buffer = BytesMut::new();
     let mut writer = (&mut buffer).writer();
 

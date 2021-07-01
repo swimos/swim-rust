@@ -119,6 +119,7 @@ enum FieldAttr {
     Transform(NameTransform),
     /// Specify where the field should occur in the serialized record.
     Kind(FieldKind),
+    Other,
 }
 
 /// Validated attributes for a field.
@@ -154,6 +155,7 @@ impl FieldAttributes {
                     Validation::valid(self)
                 }
             }
+            FieldAttr::Other => Validation::valid(self),
         }
     }
 }
@@ -227,7 +229,7 @@ impl TryFrom<NestedMeta> for FieldAttr {
                         return Ok(FieldAttr::Kind(*kind));
                     }
                 }
-                Err(syn::Error::new_spanned(input, "Unknown attribute"))
+                Ok(FieldAttr::Other) //TODO Fix validated form.
             }
             NestedMeta::Meta(Meta::NameValue(named)) if named.path == NAME_PATH => {
                 if let Lit::Str(new_name) = &named.lit {
@@ -238,41 +240,13 @@ impl TryFrom<NestedMeta> for FieldAttr {
                     Err(syn::Error::new_spanned(input, "Expected string argument"))
                 }
             }
-            _ => Err(syn::Error::new_spanned(input, "Unknown attribute")),
+            _ => Ok(FieldAttr::Other), //TODO Fix validated form.
         }
     }
 }
 
-impl TryValidate<NestedMeta> for FieldAttr {
-    fn try_validate(input: NestedMeta) -> SynValidation<Self> {
-        let result = match &input {
-            NestedMeta::Meta(Meta::Path(path)) => loop {
-                let mut it = (&KIND_MAPPING).iter();
-                if let Some((path_name, kind)) = it.next() {
-                    if path == *path_name {
-                        break Ok(FieldAttr::Kind(*kind));
-                    }
-                } else {
-                    break Err(syn::Error::new_spanned(input, "Unrecognized field kind"));
-                }
-            },
-            NestedMeta::Meta(Meta::NameValue(named)) if named.path == NAME_PATH => {
-                if let Lit::Str(new_name) = &named.lit {
-                    Ok(FieldAttr::Transform(NameTransform::Rename(
-                        new_name.value(),
-                    )))
-                } else {
-                    Err(syn::Error::new_spanned(input, "Expected string argument"))
-                }
-            }
-            _ => Err(syn::Error::new_spanned(input, "Unknown attribute")),
-        };
-        Validation::from(result)
-    }
-}
-
 /// Description of how fields should be written into the attributes of the record.
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct HeaderFields<'a, 'b> {
     /// A field that should be used to replaced the name of the tag attribute.
     pub tag_name: Option<&'b FieldModel<'a>>,
@@ -286,6 +260,7 @@ pub struct HeaderFields<'a, 'b> {
 }
 
 /// The fields that should be written into the body of the record.
+#[derive(Clone)]
 pub enum BodyFields<'a, 'b> {
     /// Simple items in the record body.
     ReplacedBody(&'b FieldModel<'a>),
@@ -302,7 +277,7 @@ impl<'a, 'b> Default for BodyFields<'a, 'b> {
 }
 
 /// Description of how the fields of a type are written into a record.
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct SegregatedFields<'a, 'b> {
     pub header: HeaderFields<'a, 'b>,
     pub body: BodyFields<'a, 'b>,

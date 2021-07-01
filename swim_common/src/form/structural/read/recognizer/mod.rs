@@ -18,11 +18,13 @@ pub mod primitive;
 mod tests;
 
 use crate::form::structural::generic::coproduct::{CCons, CNil, Unify};
-use crate::form::structural::read::event::{NumericValue, ReadEvent};
+use crate::form::structural::read::event::ReadEvent;
 use crate::form::structural::read::materializers::value::{
     AttrBodyMaterializer, ValueMaterializer,
 };
+use crate::form::structural::read::recognizer::primitive::DataRecognizer;
 use crate::form::structural::read::ReadError;
+use crate::model::blob::Blob;
 use crate::model::text::Text;
 use crate::model::{Value, ValueKind};
 use num_bigint::{BigInt, BigUint};
@@ -31,8 +33,11 @@ use std::collections::HashMap;
 use std::hash::Hash;
 use std::marker::PhantomData;
 use std::option::Option::None;
+use std::str::FromStr;
 use std::sync::Arc;
+use url::Url;
 use utilities::iteratee::Iteratee;
+use utilities::uri::RelativeUri;
 
 /// Trait for types that can be recognized by a [`Recognizer`] state machine.
 pub trait RecognizerReadable: Sized {
@@ -115,23 +120,7 @@ where
 }
 
 fn bad_kind(event: &ReadEvent<'_>) -> ReadError {
-    match event {
-        ReadEvent::Number(NumericValue::Int(_)) => ReadError::UnexpectedKind(ValueKind::Int64),
-        ReadEvent::Number(NumericValue::UInt(_)) => ReadError::UnexpectedKind(ValueKind::UInt64),
-        ReadEvent::Number(NumericValue::BigInt(_)) => ReadError::UnexpectedKind(ValueKind::BigInt),
-        ReadEvent::Number(NumericValue::BigUint(_)) => {
-            ReadError::UnexpectedKind(ValueKind::BigUint)
-        }
-        ReadEvent::Number(NumericValue::Float(_)) => ReadError::UnexpectedKind(ValueKind::Float64),
-        ReadEvent::Boolean(_) => ReadError::UnexpectedKind(ValueKind::Boolean),
-        ReadEvent::TextValue(_) => ReadError::UnexpectedKind(ValueKind::Text),
-        ReadEvent::Extant => ReadError::UnexpectedKind(ValueKind::Extant),
-        ReadEvent::Blob(_) => ReadError::UnexpectedKind(ValueKind::Data),
-        ReadEvent::StartBody | ReadEvent::StartAttribute(_) => {
-            ReadError::UnexpectedKind(ValueKind::Record)
-        }
-        _ => ReadError::InconsistentState,
-    }
+    event.kind_error()
 }
 
 macro_rules! simple_readable {
@@ -160,6 +149,7 @@ simple_readable!(i32, I32Recognizer);
 simple_readable!(i64, I64Recognizer);
 simple_readable!(u32, U32Recognizer);
 simple_readable!(u64, U64Recognizer);
+simple_readable!(usize, UsizeRecognizer);
 simple_readable!(f64, F64Recognizer);
 simple_readable!(BigInt, BigIntRecognizer);
 simple_readable!(BigUint, BigUintRecognizer);
@@ -167,6 +157,104 @@ simple_readable!(String, StringRecognizer);
 simple_readable!(Text, TextRecognizer);
 simple_readable!(Vec<u8>, DataRecognizer);
 simple_readable!(bool, BoolRecognizer);
+
+impl RecognizerReadable for Blob {
+    type Rec = MappedRecognizer<DataRecognizer, fn(Vec<u8>) -> Blob>;
+    type AttrRec = SimpleAttrBody<Self::Rec>;
+
+    fn make_recognizer() -> Self::Rec {
+        MappedRecognizer::new(DataRecognizer, Blob::from_vec)
+    }
+
+    fn make_attr_recognizer() -> Self::AttrRec {
+        SimpleAttrBody::new(Self::make_recognizer())
+    }
+}
+
+type BoxU8Vec = fn(Vec<u8>) -> Box<[u8]>;
+
+impl RecognizerReadable for Box<[u8]> {
+    type Rec = MappedRecognizer<DataRecognizer, BoxU8Vec>;
+    type AttrRec = SimpleAttrBody<Self::Rec>;
+
+    fn make_recognizer() -> Self::Rec {
+        MappedRecognizer::new(DataRecognizer, Vec::into_boxed_slice)
+    }
+
+    fn make_attr_recognizer() -> Self::AttrRec {
+        SimpleAttrBody::new(Self::make_recognizer())
+    }
+}
+
+impl RecognizerReadable for RelativeUri {
+    type Rec = RelativeUriRecognizer;
+    type AttrRec = SimpleAttrBody<RelativeUriRecognizer>;
+
+    fn make_recognizer() -> Self::Rec {
+        RelativeUriRecognizer
+    }
+
+    fn make_attr_recognizer() -> Self::AttrRec {
+        SimpleAttrBody::new(RelativeUriRecognizer)
+    }
+}
+
+pub struct RelativeUriRecognizer;
+
+impl Recognizer for RelativeUriRecognizer {
+    type Target = RelativeUri;
+
+    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
+        match input {
+            ReadEvent::TextValue(txt) => {
+                let result = RelativeUri::from_str(txt.borrow());
+                let uri = result.map_err(move |_| ReadError::Malformatted {
+                    text: Text::from(txt),
+                    message: Text::new("Not a valid relative URI."),
+                });
+                Some(uri)
+            }
+            ow => Some(Err(bad_kind(&ow))),
+        }
+    }
+
+    fn reset(&mut self) {}
+}
+
+impl RecognizerReadable for Url {
+    type Rec = UrlRecognizer;
+    type AttrRec = SimpleAttrBody<UrlRecognizer>;
+
+    fn make_recognizer() -> Self::Rec {
+        UrlRecognizer
+    }
+
+    fn make_attr_recognizer() -> Self::AttrRec {
+        SimpleAttrBody::new(UrlRecognizer)
+    }
+}
+
+pub struct UrlRecognizer;
+
+impl Recognizer for UrlRecognizer {
+    type Target = Url;
+
+    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
+        match input {
+            ReadEvent::TextValue(txt) => {
+                let result = Url::from_str(txt.borrow());
+                let url = result.map_err(move |_| ReadError::Malformatted {
+                    text: Text::from(txt),
+                    message: Text::new("Not a valid URL."),
+                });
+                Some(url)
+            }
+            ow => Some(Err(bad_kind(&ow))),
+        }
+    }
+
+    fn reset(&mut self) {}
+}
 
 /// Recognizes a vector of values of the same type.
 pub struct VecRecognizer<T, R> {
@@ -2196,3 +2284,89 @@ impl<T> Recognizer for RecognizeNothing<T> {
 
     fn reset(&mut self) {}
 }
+
+macro_rules! impl_readable_tuple {
+    ( $len:expr => ($([$idx:pat, $pname:ident, $vname:ident, $rname:ident])+)) => {
+        const _: () = {
+
+            type Builder<$($pname),+> = (($(Option<$pname>,)+), ($(<$pname as RecognizerReadable>::Rec,)+));
+
+            fn select_feed<$($pname: RecognizerReadable),+>(builder: &mut Builder<$($pname),+>, i: u32, input: ReadEvent<'_>) -> Option<Result<(), ReadError>> {
+                let (($($vname,)+), ($($rname,)+)) = builder;
+                match i {
+                    $(
+                        $idx => {
+                            let result = $rname.feed_event(input)?;
+                            match result {
+                                Ok(v) => {
+                                    *$vname = Some(v);
+                                    None
+                                },
+                                Err(e) => {
+                                    Some(Err(e))
+                                }
+                            }
+                        },
+                    )+
+                    _ => Some(Err(ReadError::InconsistentState))
+                }
+
+            }
+
+            fn on_done<$($pname: RecognizerReadable),+>(builder: &mut Builder<$($pname),+>) -> Result<($($pname,)+), ReadError> {
+                let (($($vname,)+), _) = builder;
+                if let ($(Some($vname),)+) = ($($vname.take(),)+) {
+                    Ok(($($vname,)+))
+                } else {
+                    Err(ReadError::IncompleteRecord)
+                }
+            }
+
+            fn reset<$($pname: RecognizerReadable),+>(builder: &mut Builder<$($pname),+>) {
+                let (($($vname,)+), ($($rname,)+)) = builder;
+
+                $(*$vname = None;)+
+                $($rname.reset();)+
+            }
+
+            impl<$($pname: RecognizerReadable),+> RecognizerReadable for ($($pname,)+) {
+                type Rec = OrdinalFieldsRecognizer<($($pname,)+), Builder<$($pname),+>>;
+                type AttrRec = FirstOf<SimpleAttrBody<Self::Rec>, Self::Rec>;
+
+                fn make_recognizer() -> Self::Rec {
+                    OrdinalFieldsRecognizer::new(
+                        (Default::default(), ($(<$pname as RecognizerReadable>::make_recognizer(),)+)),
+                        $len,
+                        select_feed,
+                        on_done,
+                        reset,
+                    )
+                }
+
+                fn make_attr_recognizer() -> Self::AttrRec {
+                    let attr = OrdinalFieldsRecognizer::new_attr(
+                        (Default::default(), ($(<$pname as RecognizerReadable>::make_recognizer(),)+)),
+                        $len,
+                        select_feed,
+                        on_done,
+                        reset,
+                    );
+                    FirstOf::new(SimpleAttrBody::new(Self::make_recognizer()), attr)
+                }
+            }
+        };
+    }
+}
+
+impl_readable_tuple! { 1 => ([0, T0, v0, r0]) }
+impl_readable_tuple! { 2 => ([0, T0, v0, r0] [1, T1, v1, r1]) }
+impl_readable_tuple! { 3 => ([0, T0, v0, r0] [1, T1, v1, r1] [2, T2, v2, r2]) }
+impl_readable_tuple! { 4 => ([0, T0, v0, r0] [1, T1, v1, r1] [2, T2, v2, r2] [3, T3, v3, r3]) }
+impl_readable_tuple! { 5 => ([0, T0, v0, r0] [1, T1, v1, r1] [2, T2, v2, r2] [3, T3, v3, r3] [4, T4, v4, r4]) }
+impl_readable_tuple! { 6 => ([0, T0, v0, r0] [1, T1, v1, r1] [2, T2, v2, r2] [3, T3, v3, r3] [4, T4, v4, r4] [5, T5, v5, r5]) }
+impl_readable_tuple! { 7 => ([0, T0, v0, r0] [1, T1, v1, r1] [2, T2, v2, r2] [3, T3, v3, r3] [4, T4, v4, r4] [5, T5, v5, r5] [6, T6, v6, r6]) }
+impl_readable_tuple! { 8 => ([0, T0, v0, r0] [1, T1, v1, r1] [2, T2, v2, r2] [3, T3, v3, r3] [4, T4, v4, r4] [5, T5, v5, r5] [6, T6, v6, r6] [7, T7, v7, r7]) }
+impl_readable_tuple! { 9 => ([0, T0, v0, r0] [1, T1, v1, r1] [2, T2, v2, r2] [3, T3, v3, r3] [4, T4, v4, r4] [5, T5, v5, r5] [6, T6, v6, r6] [7, T7, v7, r7] [8, T8, v8, r8]) }
+impl_readable_tuple! { 10 => ([0, T0, v0, r0] [1, T1, v1, r1] [2, T2, v2, r2] [3, T3, v3, r3] [4, T4, v4, r4] [5, T5, v5, r5] [6, T6, v6, r6] [7, T7, v7, r7] [8, T8, v8, r8] [9, T9, v9, r9]) }
+impl_readable_tuple! { 11 => ([0, T0, v0, r0] [1, T1, v1, r1] [2, T2, v2, r2] [3, T3, v3, r3] [4, T4, v4, r4] [5, T5, v5, r5] [6, T6, v6, r6] [7, T7, v7, r7] [8, T8, v8, r8] [9, T9, v9, r9] [10, T10, v10, r10]) }
+impl_readable_tuple! { 12 => ([0, T0, v0, r0] [1, T1, v1, r1] [2, T2, v2, r2] [3, T3, v3, r3] [4, T4, v4, r4] [5, T5, v5, r5] [6, T6, v6, r6] [7, T7, v7, r7] [8, T8, v8, r8] [9, T9, v9, r9] [10, T10, v10, r10] [11, T11, v11, r11]) }

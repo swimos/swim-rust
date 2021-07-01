@@ -15,18 +15,24 @@
 use num_bigint::BigInt;
 use num_traits::Float;
 
+use crate::form::structural::read::event::ReadEvent;
+use crate::form::structural::read::recognizer::{Recognizer, RecognizerReadable, SimpleAttrBody};
+use crate::form::structural::read::ReadError;
+use crate::form::structural::StringRepresentable;
+use crate::form::Form;
 use crate::form::ValidatedForm;
-use crate::form::{Form, Tag};
 use crate::model::schema::attr::AttrSchema;
 use crate::model::schema::slot::SlotSchema;
 use crate::model::schema::text::TextSchema;
 use crate::model::schema::Schema;
 use crate::model::schema::StandardSchema;
 use crate::model::schema::{FieldSpec, ItemSchema};
+use crate::model::text::Text;
 use crate::model::Item;
 use crate::model::ValueKind;
 use crate::model::{Attr, Value};
-use std::collections::BTreeMap;
+use std::borrow::Borrow;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 mod swim_common {
@@ -1680,12 +1686,12 @@ fn test_vector() {
 fn test_hash_map() {
     #[derive(Form, ValidatedForm)]
     struct S {
-        v: BTreeMap<String, i32>,
+        v: HashMap<String, i32>,
     }
 
     let value = S {
         v: {
-            let mut map = BTreeMap::new();
+            let mut map = HashMap::new();
             map.insert("a".into(), 1);
             map.insert("b".into(), 2);
             map.insert("c".into(), 3);
@@ -1704,7 +1710,7 @@ fn test_hash_map() {
             items: vec![(
                 ItemSchema::Field(SlotSchema::new(
                     StandardSchema::text("v"),
-                    <BTreeMap<String, i32> as ValidatedForm>::schema(),
+                    <HashMap<String, i32> as ValidatedForm>::schema(),
                 )),
                 true,
             )],
@@ -1811,10 +1817,70 @@ fn test_nested() {
 
 #[test]
 fn tagged() {
-    #[derive(Clone, Tag)]
+    #[derive(Clone)]
     enum Level {
         Info,
         Trace,
+    }
+
+    struct LevelRec;
+
+    impl RecognizerReadable for Level {
+        type Rec = LevelRec;
+        type AttrRec = SimpleAttrBody<LevelRec>;
+
+        fn make_recognizer() -> Self::Rec {
+            LevelRec
+        }
+
+        fn make_attr_recognizer() -> Self::AttrRec {
+            SimpleAttrBody::new(LevelRec)
+        }
+    }
+
+    impl Recognizer for LevelRec {
+        type Target = Level;
+
+        fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
+            match input {
+                ReadEvent::TextValue(txt) => match txt.borrow() {
+                    "Info" => Some(Ok(Level::Info)),
+                    "Trace" => Some(Ok(Level::Trace)),
+                    _ => Some(Err(ReadError::Malformatted {
+                        text: txt.into(),
+                        message: Text::new("Possible values are 'Info' and 'Trace'"),
+                    })),
+                },
+                ow => Some(Err(ow.kind_error())),
+            }
+        }
+
+        fn reset(&mut self) {}
+    }
+
+    impl AsRef<str> for Level {
+        fn as_ref(&self) -> &str {
+            match self {
+                Level::Info => "Info",
+                Level::Trace => "Trace",
+            }
+        }
+    }
+
+    const LEVEL_UNIVERSE: [&str; 2] = ["Info", "Trace"];
+
+    impl StringRepresentable for Level {
+        fn try_from_str(txt: &str) -> Result<Self, Text> {
+            match txt {
+                "Info" => Ok(Level::Info),
+                "Trace" => Ok(Level::Trace),
+                _ => Err(Text::new("Possible values are 'Info' and 'Trace'")),
+            }
+        }
+
+        fn universe() -> &'static [&'static str] {
+            &LEVEL_UNIVERSE
+        }
     }
 
     #[derive(Form, ValidatedForm)]

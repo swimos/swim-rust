@@ -111,7 +111,7 @@ fn acc_rename(
                 None
             }
         }
-        Err(e) => Some(e),
+        Err(_) => None, //TODO Fix validated form.
     };
     Validation::Validated(state, err.into())
 }

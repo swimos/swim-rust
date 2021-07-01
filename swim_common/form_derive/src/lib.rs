@@ -25,23 +25,23 @@ use syn::DeriveInput;
 
 use macro_helpers::to_compile_errors;
 
-use crate::form::build_derive_form;
-use crate::structural::{build_derive_structural_readable, build_derive_structural_writable};
-use crate::tag::build_tag;
+use crate::structural::{
+    build_derive_structural_form, build_derive_structural_readable,
+    build_derive_structural_writable,
+};
 use crate::validated_form::build_validated_form;
 use utilities::algebra::Errors;
 
 mod form;
 mod parser;
 mod structural;
-mod tag;
 mod validated_form;
 
 #[proc_macro_derive(Form, attributes(form))]
 pub fn derive_form(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
-    build_derive_form(input)
-        .unwrap_or_else(to_compile_errors)
+    build_derive_structural_form(input)
+        .unwrap_or_else(errs_to_compile_errors)
         .into()
 }
 
@@ -51,12 +51,6 @@ pub fn derive_validated_form(input: TokenStream) -> TokenStream {
     build_validated_form(input)
         .unwrap_or_else(to_compile_errors)
         .into()
-}
-
-#[proc_macro_derive(Tag)]
-pub fn derive_tag(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
-    build_tag(input).unwrap_or_else(to_compile_errors).into()
 }
 
 #[proc_macro_derive(StructuralWritable, attributes(form))]

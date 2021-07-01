@@ -29,6 +29,7 @@ pub struct EnumModel<'a> {
 }
 
 /// Fully processed description of an enum type, used to generate the output of the derive macros.
+#[derive(Clone)]
 pub struct SegregatedEnumModel<'a, 'b> {
     /// Preprocessed model with attribute information.
     pub inner: &'b EnumModel<'b>,

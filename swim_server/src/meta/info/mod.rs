@@ -31,14 +31,21 @@ use futures::future::BoxFuture;
 use futures::{FutureExt, Stream, StreamExt};
 use pin_utils::pin_mut;
 use std::any::Any;
+use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::fmt::{Debug, Display, Formatter};
 use std::hash::Hash;
 use std::num::NonZeroUsize;
-use swim_common::form::{Form, FormErr};
-use swim_common::model::{Item, Value};
-use swim_common::{ok, record};
+use swim_common::form::structural::read::event::ReadEvent;
+use swim_common::form::structural::read::recognizer::{
+    Recognizer, RecognizerReadable, SimpleAttrBody,
+};
+use swim_common::form::structural::read::ReadError;
+use swim_common::form::structural::write::{PrimitiveWriter, StructuralWritable, StructuralWriter};
+use swim_common::form::structural::StringRepresentable;
+use swim_common::form::Form;
+use swim_common::model::text::Text;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, Level};
@@ -46,19 +53,17 @@ use tracing::{event, Level};
 const CUE_ERR: &str = "Failed to cue message";
 const SYNC_ERR: &str = "Failed to sync";
 
-const LANE_INFO_TAG: &str = "LaneInfo";
-const FIELD_LANE_URI: &str = "laneUri";
-const FIELD_LANE_TYPE: &str = "laneType";
-
 /// Lane information metadata that can be retrieved when syncing to
 /// `/swim:meta:node/percent-encoded-nodeuri/lanes`.
 ///
 /// E.g: `swim:meta:node/unit%2Ffoo/lanes/`
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Form)]
 pub struct LaneInfo {
     /// The URI of the lane.
+    #[form(name = "laneUri")]
     lane_uri: String,
     /// The type of the lane.
+    #[form(name = "laneType")]
     lane_type: LaneKind,
 }
 
@@ -70,58 +75,6 @@ impl LaneInfo {
         LaneInfo {
             lane_uri: lane_uri.into(),
             lane_type,
-        }
-    }
-}
-
-// todo: add Form::flatten macro functionality
-impl Form for LaneInfo {
-    fn as_value(&self) -> Value {
-        let LaneInfo {
-            lane_uri,
-            lane_type,
-        } = self;
-
-        record! {
-            attrs => [LANE_INFO_TAG],
-            items => [
-                (FIELD_LANE_URI, lane_uri.as_ref()),
-                (FIELD_LANE_TYPE, lane_type.to_string())
-            ]
-        }
-    }
-
-    fn try_from_value(value: &Value) -> Result<Self, FormErr> {
-        match value {
-            Value::Record(attrs, items) => match attrs.first() {
-                Some(attr) if attr.name == LANE_INFO_TAG => {
-                    let mut lane_uri_opt = None;
-                    let mut lane_type_opt = None;
-
-                    for item in items {
-                        match item {
-                            Item::Slot(Value::Text(uri_key), Value::Text(uri_value))
-                                if uri_key == FIELD_LANE_URI =>
-                            {
-                                lane_uri_opt = Some(uri_value.to_string());
-                            }
-                            Item::Slot(Value::Text(lane_key), Value::Text(lane_type))
-                                if lane_key == FIELD_LANE_TYPE =>
-                            {
-                                lane_type_opt = Some(LaneKind::try_from(lane_type.as_str())?);
-                            }
-                            _ => return Err(FormErr::Malformatted),
-                        }
-                    }
-
-                    Ok(LaneInfo {
-                        lane_uri: ok!(lane_uri_opt),
-                        lane_type: ok!(lane_type_opt),
-                    })
-                }
-                _ => Err(FormErr::MismatchedTag),
-            },
-            v => Err(FormErr::incorrect_type("Record", v)),
         }
     }
 }
@@ -141,14 +94,103 @@ pub enum LaneKind {
     Value,
 }
 
-#[derive(Debug, PartialEq)]
-pub struct LaneKindParseErr;
-
-impl From<LaneKindParseErr> for FormErr {
-    fn from(_: LaneKindParseErr) -> Self {
-        FormErr::Malformatted
+impl AsRef<str> for LaneKind {
+    fn as_ref(&self) -> &str {
+        match self {
+            LaneKind::Action => "Action",
+            LaneKind::Command => "Command",
+            LaneKind::Demand => "Demand",
+            LaneKind::DemandMap => "DemandMap",
+            LaneKind::Map => "Map",
+            LaneKind::JoinMap => "JoinMap",
+            LaneKind::JoinValue => "JoinValue",
+            LaneKind::Supply => "Supply",
+            LaneKind::Spatial => "Spatial",
+            LaneKind::Value => "Value",
+        }
     }
 }
+
+pub struct LaneKindRecognizer;
+
+impl Recognizer for LaneKindRecognizer {
+    type Target = LaneKind;
+
+    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
+        match input {
+            ReadEvent::TextValue(txt) => {
+                Some(
+                    LaneKind::try_from(txt.borrow()).map_err(|_| ReadError::Malformatted {
+                        text: txt.into(),
+                        message: Text::new("Not a valid Lane kind."),
+                    }),
+                )
+            }
+            ow => Some(Err(ow.kind_error())),
+        }
+    }
+
+    fn reset(&mut self) {}
+}
+
+impl RecognizerReadable for LaneKind {
+    type Rec = LaneKindRecognizer;
+    type AttrRec = SimpleAttrBody<LaneKindRecognizer>;
+
+    fn make_recognizer() -> Self::Rec {
+        LaneKindRecognizer
+    }
+
+    fn make_attr_recognizer() -> Self::AttrRec {
+        SimpleAttrBody::new(LaneKindRecognizer)
+    }
+}
+
+const LANE_KINDS: [&str; 10] = [
+    "Action",
+    "Command",
+    "Demand",
+    "DemandMap",
+    "Map",
+    "JoinMap",
+    "JoinValue",
+    "Supply",
+    "Spatial",
+    "Value",
+];
+
+impl StringRepresentable for LaneKind {
+    fn try_from_str(txt: &str) -> Result<Self, Text> {
+        LaneKind::try_from(txt).map_err(|_| Text::new("Not a valid Lane kind."))
+    }
+
+    fn universe() -> &'static [&'static str] {
+        &LANE_KINDS
+    }
+}
+
+impl StructuralWritable for LaneKind {
+    fn write_with<W: StructuralWriter>(
+        &self,
+        writer: W,
+    ) -> Result<<W as PrimitiveWriter>::Repr, <W as PrimitiveWriter>::Error> {
+        writer.write_text(self.as_ref())
+    }
+
+    fn write_into<W: StructuralWriter>(
+        self,
+        writer: W,
+    ) -> Result<<W as PrimitiveWriter>::Repr, <W as PrimitiveWriter>::Error> {
+        writer.write_text(self.as_ref())
+    }
+
+    fn num_attributes(&self) -> usize {
+        0
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct LaneKindParseErr;
 
 impl<'a> TryFrom<&'a str> for LaneKind {
     type Error = LaneKindParseErr;
@@ -172,18 +214,8 @@ impl<'a> TryFrom<&'a str> for LaneKind {
 
 impl Display for LaneKind {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            LaneKind::Action => write!(f, "Action"),
-            LaneKind::Command => write!(f, "Command"),
-            LaneKind::Demand => write!(f, "Demand"),
-            LaneKind::DemandMap => write!(f, "DemandMap"),
-            LaneKind::Map => write!(f, "Map"),
-            LaneKind::JoinMap => write!(f, "JoinMap"),
-            LaneKind::JoinValue => write!(f, "JoinValue"),
-            LaneKind::Supply => write!(f, "Supply"),
-            LaneKind::Spatial => write!(f, "Spatial"),
-            LaneKind::Value => write!(f, "Value"),
-        }
+        let as_str: &str = self.as_ref();
+        write!(f, "{}", as_str)
     }
 }
 

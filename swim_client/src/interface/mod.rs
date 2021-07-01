@@ -185,7 +185,7 @@ impl SwimClient {
         initial: T,
     ) -> Result<(TypedValueDownlink<T>, ValueDownlinkReceiver<T>), ClientError>
     where
-        T: ValidatedForm + Send + 'static,
+        T: Form + ValidatedForm + Send + 'static,
     {
         self.downlinks
             .subscribe_value(initial, path)

@@ -12,9 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::form::{Form, Tag};
+use crate::form::structural::read::event::ReadEvent;
+use crate::form::structural::read::recognizer::{Recognizer, RecognizerReadable, SimpleAttrBody};
+use crate::form::structural::read::ReadError;
+use crate::form::structural::StringRepresentable;
+use crate::form::Form;
+use crate::model::text::Text;
 use crate::model::time::Timestamp;
 use crate::model::{Attr, Item, Value};
+use std::borrow::Borrow;
 
 mod swim_common {
     pub use crate::*;
@@ -470,10 +476,70 @@ fn header_body_replace() {
 
 #[test]
 fn test_enum_tag() {
-    #[derive(Clone, PartialEq, Debug, Tag)]
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     enum Level {
         Trace,
         Error,
+    }
+
+    struct LevelRec;
+
+    impl RecognizerReadable for Level {
+        type Rec = LevelRec;
+        type AttrRec = SimpleAttrBody<LevelRec>;
+
+        fn make_recognizer() -> Self::Rec {
+            LevelRec
+        }
+
+        fn make_attr_recognizer() -> Self::AttrRec {
+            SimpleAttrBody::new(LevelRec)
+        }
+    }
+
+    impl Recognizer for LevelRec {
+        type Target = Level;
+
+        fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
+            match input {
+                ReadEvent::TextValue(txt) => match txt.borrow() {
+                    "Trace" => Some(Ok(Level::Trace)),
+                    "Error" => Some(Ok(Level::Error)),
+                    _ => Some(Err(ReadError::Malformatted {
+                        text: txt.into(),
+                        message: Text::new("Possible values are 'Trace' and 'Error'"),
+                    })),
+                },
+                ow => Some(Err(ow.kind_error())),
+            }
+        }
+
+        fn reset(&mut self) {}
+    }
+
+    impl AsRef<str> for Level {
+        fn as_ref(&self) -> &str {
+            match self {
+                Level::Trace => "Trace",
+                Level::Error => "Error",
+            }
+        }
+    }
+
+    const LEVEL_UNIVERSE: [&str; 2] = ["Trace", "Error"];
+
+    impl StringRepresentable for Level {
+        fn try_from_str(txt: &str) -> Result<Self, Text> {
+            match txt {
+                "Trace" => Ok(Level::Trace),
+                "Error" => Ok(Level::Error),
+                _ => Err(Text::new("Possible values are 'Trace' and 'Error'")),
+            }
+        }
+
+        fn universe() -> &'static [&'static str] {
+            &LEVEL_UNIVERSE
+        }
     }
 
     #[derive(Form, Debug, PartialEq, Clone)]
@@ -503,39 +569,6 @@ fn test_enum_tag() {
             vec![Item::Slot(Value::text("message"), Value::text("Not good"))]
         )
     )
-}
-
-#[test]
-fn test_transmute_generic_default() {
-    #[derive(Form, Debug, PartialEq, Clone)]
-    struct Valid;
-
-    #[derive(Default, Debug, PartialEq, Clone)]
-    struct Skipped;
-
-    #[derive(Form, Debug, PartialEq, Clone)]
-    struct S<A, B> {
-        a: A,
-        #[form(skip)]
-        b: B,
-    }
-
-    let s = S {
-        a: Valid,
-        b: Skipped,
-    };
-
-    let rec = Value::Record(
-        vec![Attr::of("S")],
-        vec![Item::Slot(
-            Value::text("a"),
-            Value::Record(vec![Attr::of("Valid")], vec![]),
-        )],
-    );
-    assert_eq!(s.as_value(), rec);
-    assert_eq!(S::try_from_value(&rec), Ok(s.clone()));
-    assert_eq!(S::try_convert(rec.clone()), Ok(s.clone()));
-    assert_eq!(s.into_value(), rec);
 }
 
 #[test]

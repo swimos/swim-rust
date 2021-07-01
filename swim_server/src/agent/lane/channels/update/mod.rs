@@ -25,7 +25,7 @@ use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use std::time::Duration;
 use stm::transaction::{RetryManager, TransactionError};
-use swim_common::form::FormErr;
+use swim_common::form::structural::read::ReadError;
 use swim_runtime::time::delay::{delay_for, Delay};
 use utilities::future::retryable::strategy::RetryStrategy;
 use utilities::future::{
@@ -39,7 +39,7 @@ mod tests;
 #[derive(Debug)]
 pub enum UpdateError {
     FailedTransaction(TransactionError),
-    BadEnvelopeBody(FormErr),
+    BadEnvelopeBody(ReadError),
     FeedbackChannelDropped,
     OperationNotSupported,
 }
@@ -79,8 +79,8 @@ impl From<TransactionError> for UpdateError {
     }
 }
 
-impl From<FormErr> for UpdateError {
-    fn from(err: FormErr) -> Self {
+impl From<ReadError> for UpdateError {
+    fn from(err: ReadError) -> Self {
         UpdateError::BadEnvelopeBody(err)
     }
 }

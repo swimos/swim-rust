@@ -12,9 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::form::{Form, FormErr, ValidatedForm};
+use crate::form::structural::read::event::{NumericValue, ReadEvent};
+use crate::form::structural::read::recognizer::{Recognizer, RecognizerReadable, SimpleAttrBody};
+use crate::form::structural::read::ReadError;
+use crate::form::structural::write::{PrimitiveWriter, StructuralWritable, StructuralWriter};
+use crate::form::ValidatedForm;
 use crate::model::schema::StandardSchema;
-use crate::model::{Value, ValueKind};
+use crate::model::ValueKind;
 use chrono::{DateTime, LocalResult, TimeZone, Utc};
 use std::fmt::Display;
 
@@ -55,52 +59,82 @@ impl Timestamp {
     }
 }
 
-fn check_parse_time_result<T, V>(me: LocalResult<T>, ts: &V) -> Result<T, FormErr>
+fn check_parse_time_result<T, V>(me: LocalResult<T>, ts: &V) -> Result<T, ReadError>
 where
     V: Display,
 {
     match me {
         LocalResult::Single(val) => Ok(val),
-        _ => Err(FormErr::Message(format!(
-            "Failed to parse timestamp: {}",
-            ts
-        ))),
+        _ => Err(ReadError::Message(
+            format!("Failed to parse timestamp: {}", ts).into(),
+        )),
     }
 }
 
-impl Form for Timestamp {
-    fn as_value(&self) -> Value {
-        Value::Int64Value(self.0.timestamp_nanos())
+impl StructuralWritable for Timestamp {
+    fn write_with<W: StructuralWriter>(
+        &self,
+        writer: W,
+    ) -> Result<<W as PrimitiveWriter>::Repr, <W as PrimitiveWriter>::Error> {
+        writer.write_i64(self.as_ref().timestamp_nanos())
     }
 
-    fn into_value(self) -> Value {
-        Value::Int64Value(self.0.timestamp_nanos())
+    fn write_into<W: StructuralWriter>(
+        self,
+        writer: W,
+    ) -> Result<<W as PrimitiveWriter>::Repr, <W as PrimitiveWriter>::Error> {
+        self.write_with(writer)
     }
 
-    fn try_from_value(value: &Value) -> Result<Self, FormErr> {
-        match value {
-            Value::UInt64Value(n) => {
-                let inner = check_parse_time_result(
-                    Utc.timestamp_opt((n / 1_000_000_000) as i64, (n % 1_000_000_000) as u32),
-                    n,
-                )?;
-                Ok(Timestamp(inner))
-            }
-            Value::Int64Value(n) => {
-                let inner = check_parse_time_result(
+    fn num_attributes(&self) -> usize {
+        0
+    }
+}
+
+impl RecognizerReadable for Timestamp {
+    type Rec = TimestampRecognizer;
+    type AttrRec = SimpleAttrBody<TimestampRecognizer>;
+
+    fn make_recognizer() -> Self::Rec {
+        TimestampRecognizer
+    }
+
+    fn make_attr_recognizer() -> Self::AttrRec {
+        SimpleAttrBody::new(TimestampRecognizer)
+    }
+}
+
+pub struct TimestampRecognizer;
+
+impl Recognizer for TimestampRecognizer {
+    type Target = Timestamp;
+
+    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
+        match input {
+            ReadEvent::Number(NumericValue::Int(n)) => {
+                let result = check_parse_time_result(
                     Utc.timestamp_opt(n / 1_000_000_000, (n % 1_000_000_000) as u32),
-                    n,
-                )?;
+                    &n,
+                )
+                .map(Timestamp)
+                .map_err(|_| ReadError::NumberOutOfRange);
 
-                Ok(Timestamp(inner))
+                Some(result)
             }
-            v => Err(FormErr::incorrect_type("Value::Int64Value", v)),
+            ReadEvent::Number(NumericValue::UInt(n)) => {
+                let result = check_parse_time_result(
+                    Utc.timestamp_opt((n / 1_000_000_000) as i64, (n % 1_000_000_000) as u32),
+                    &n,
+                )
+                .map(Timestamp)
+                .map_err(|_| ReadError::NumberOutOfRange);
+                Some(result)
+            }
+            ow => Some(Err(ow.kind_error())),
         }
     }
 
-    fn try_convert(value: Value) -> Result<Self, FormErr> {
-        Form::try_from_value(&value)
-    }
+    fn reset(&mut self) {}
 }
 
 impl ValidatedForm for Timestamp {
@@ -112,11 +146,18 @@ impl ValidatedForm for Timestamp {
     }
 }
 
-#[test]
-fn test_local_time() {
-    let now = Timestamp(Utc::now());
-    let value = now.as_value();
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::form::Form;
+    use crate::model::Value;
 
-    assert_eq!(Value::Int64Value(now.nanos()), value);
-    assert_eq!(Timestamp::try_convert(value), Ok(now))
+    #[test]
+    fn test_local_time() {
+        let now = Timestamp(Utc::now());
+        let value = now.as_value();
+
+        assert_eq!(Value::Int64Value(now.nanos()), value);
+        assert_eq!(Timestamp::try_convert(value), Ok(now))
+    }
 }

@@ -120,6 +120,8 @@ impl<'a, 'b> ToTokens for DeriveStructuralWritable<'a, SegregatedEnumModel<'a, '
                     #[allow(non_snake_case, unused_variables)]
                     #[inline]
                     fn write_with<__W: #writer_trait>(&self, writer: __W) -> core::result::Result<__W::Repr, __W::Error> {
+                        use swim_common::form::structural::write::HeaderWriter;
+                        use swim_common::form::structural::write::BodyWriter;
                         match self {
                             #(#write_with_cases)*
                         }
@@ -128,9 +130,11 @@ impl<'a, 'b> ToTokens for DeriveStructuralWritable<'a, SegregatedEnumModel<'a, '
                     #[allow(non_snake_case, unused_variables)]
                     #[inline]
                     fn write_into<__W: #writer_trait>(self, writer: __W) -> core::result::Result<__W::Repr, __W::Error> {
+                        use swim_common::form::structural::write::HeaderWriter;
+                        use swim_common::form::structural::write::BodyWriter;
                         match self {
-                                #(#write_into_cases)*
-                            }
+                            #(#write_into_cases)*
+                        }
                     }
                 }
             }
@@ -358,7 +362,9 @@ impl<'a, 'b> ToTokens for WriteIntoFn<'a, 'b> {
         } = header;
 
         let tag = if let Some(fld) = header.tag_name {
-            fld.name.to_token_stream()
+            let ty = fld.field_ty;
+            let name = &fld.name;
+            quote!(<#ty as core::convert::AsRef<str>>::as_ref(&#name))
         } else {
             inner.resolve_name().to_token_stream()
         };

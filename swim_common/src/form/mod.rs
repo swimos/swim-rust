@@ -15,13 +15,14 @@
 #![allow(clippy::match_wild_err_arm)]
 
 use core::fmt::Display;
-use std::error::Error;
 use std::fmt::Formatter;
 
 #[doc(hidden)]
 #[allow(unused_imports)]
-pub use form_derive::*;
+pub use form_derive::{Form, ValidatedForm};
 
+use crate::form::structural::read::{ReadError, StructuralReadable};
+use crate::form::structural::write::StructuralWritable;
 use crate::model::schema::StandardSchema;
 use crate::model::Value;
 
@@ -31,39 +32,6 @@ pub mod structural;
 
 #[cfg(test)]
 mod tests;
-
-#[derive(Debug, Clone, PartialOrd, PartialEq, Eq)]
-pub enum FormErr {
-    MismatchedTag,
-    IncorrectType(String),
-    Malformatted,
-    Message(String),
-    DuplicateField(String),
-}
-
-impl FormErr {
-    pub fn incorrect_type(expected: &'static str, actual: &Value) -> FormErr {
-        FormErr::IncorrectType(format!("Expected: {}, found: {}", expected, actual.kind()))
-    }
-
-    pub fn message<I: Into<String>>(msg: I) -> FormErr {
-        FormErr::Message(msg.into())
-    }
-}
-
-impl Error for FormErr {}
-
-impl Display for FormErr {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            FormErr::IncorrectType(s) => write!(f, "Incorrect type: {}", s),
-            FormErr::Malformatted => write!(f, "Malformatted"),
-            FormErr::Message(msg) => write!(f, "{}", msg),
-            FormErr::MismatchedTag => write!(f, "Incorrect tag"),
-            FormErr::DuplicateField(field) => write!(f, "Duplicate field {}", field),
-        }
-    }
-}
 
 /// A `Form` transforms between a Rust object and a structurally typed `Value`. Swim forms
 /// provide a derive macro to generate an implementation of `Form` for a structure providing all
@@ -329,23 +297,29 @@ impl Display for FormErr {
 /// );
 /// assert_eq!(structure.as_value(), rec);
 /// ```
-pub trait Form: Sized {
+pub trait Form: StructuralReadable + StructuralWritable {
     /// Returns this object represented as a value.
-    fn as_value(&self) -> Value;
+    fn as_value(&self) -> Value {
+        self.structure()
+    }
 
     /// Consume this object and return it represented as a value.
     fn into_value(self) -> Value {
-        self.as_value()
+        self.into_structure()
     }
 
     /// Attempt to create a new instance of this object from the provided `Value` instance.
-    fn try_from_value(value: &Value) -> Result<Self, FormErr>;
+    fn try_from_value(value: &Value) -> Result<Self, ReadError> {
+        Self::try_read_from(value)
+    }
 
     /// Consume the `Value` and attempt to create a new instance of this object from it.
-    fn try_convert(value: Value) -> Result<Self, FormErr> {
-        Form::try_from_value(&value)
+    fn try_convert(value: Value) -> Result<Self, ReadError> {
+        Self::try_transform(value)
     }
 }
+
+impl<T: StructuralReadable + StructuralWritable> Form for T {}
 
 /// A `Form` with an associated schema that can validate `Value` instances without attempting
 /// to convert them.
@@ -758,28 +732,10 @@ pub trait Form: Sized {
 /// ```
 /// Negates the result of a schema.
 ///
-pub trait ValidatedForm: Form {
+pub trait ValidatedForm {
     /// A schema for the form. If the schema returns true for a `Value` the form should be able
     /// to create an instance of the type from the `Value` without generating an error.
     fn schema() -> StandardSchema;
-}
-
-impl Form for Value {
-    fn as_value(&self) -> Value {
-        self.clone()
-    }
-
-    fn into_value(self) -> Value {
-        self
-    }
-
-    fn try_from_value(value: &Value) -> Result<Self, FormErr> {
-        Ok(value.clone())
-    }
-
-    fn try_convert(value: Value) -> Result<Self, FormErr> {
-        Ok(value)
-    }
 }
 
 impl ValidatedForm for Value {
@@ -854,58 +810,4 @@ impl Display for TagConversionError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "TagConversionError: {}", self.0)
     }
-}
-
-/// Maps an option to a Form error variant and returns if it is an error. This is useful when
-/// manually deriving Value -> T implementations.
-///
-/// ```
-/// use swim_common::model::{Value, Item};
-/// use swim_common::form::{FormErr, Form};
-/// use swim_common::ok;
-///
-/// struct Person {
-///    name: String,
-///    age: i32
-/// }
-///
-/// impl Form for Person {
-///     fn as_value(&self) -> Value {
-///         unimplemented!()
-///     }
-///
-///     fn try_from_value(value: &Value) -> Result<Self, FormErr> {
-///         match value {
-///             Value::Record(_attrs, items) => {
-///                 let mut item_iter = items.iter();
-///                 let mut name_opt= None;
-///                 let mut age_opt = None;
-///                     
-///                 while let Some(item) = item_iter.next() {
-///                     match item {
-///                         Item::Slot(Value::Text(id), Value::Text(name))=> if id == "name" {
-///                             name_opt = Some(name.to_string());
-///                         }
-///                         Item::Slot(Value::Text(id), Value::Int32Value(age))=> if id =="age" {
-///                             age_opt = Some(*age);                     
-///                         }
-///                         _ => panic!()          
-///                     }
-///                 }       
-///                 
-///                 Ok(Person {
-///                     name: ok!(name_opt),
-///                     age: ok!(age_opt),
-///                 })
-///             }
-///             _ => panic!()
-///         }
-///     }   
-/// }
-/// ```
-#[macro_export]
-macro_rules! ok {
-    ($e:expr) => {
-        $e.ok_or(FormErr::Malformatted)?
-    };
 }

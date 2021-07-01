@@ -34,6 +34,8 @@ pub enum ReadError {
     UnexpectedField(Text),
     NumberOutOfRange,
     MissingTag,
+    Malformatted { text: Text, message: Text },
+    Message(Text),
 }
 
 impl Display for ReadError {
@@ -66,6 +68,10 @@ impl Display for ReadError {
             ReadError::UnexpectedField(name) => write!(f, "Unexpected field: '{}'", name),
             ReadError::NumberOutOfRange => write!(f, "Number out of range."),
             ReadError::MissingTag => write!(f, "Missing tag attribute for record type."),
+            ReadError::Malformatted { text, message } => {
+                write!(f, "Text value '{}' is invalud: {}", text, message)
+            }
+            ReadError::Message(text) => f.write_str(text.as_str()),
         }
     }
 }

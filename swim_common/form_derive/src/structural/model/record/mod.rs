@@ -71,6 +71,7 @@ impl<'a, 'b> ToTokens for ResolvedName<'a, 'b> {
 }
 
 /// Fully processed description of a struct type, used to generate the output of the derive macros.
+#[derive(Clone)]
 pub struct SegregatedStructModel<'a, 'b> {
     /// Preprocessed model with attribute information.
     pub inner: &'b StructModel<'a>,
@@ -229,7 +230,10 @@ where
                 }
             },
             FieldKind::Body => {
-                if kind != Some(CompoundTypeKind::Labelled) {
+                if matches!(
+                    kind,
+                    Some(CompoundTypeKind::Tuple | CompoundTypeKind::NewType)
+                ) {
                     let err = syn::Error::new_spanned(definition, BAD_REPLACEMENT);
                     return Validation::fail(err);
                 }

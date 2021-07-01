@@ -28,7 +28,8 @@ use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-use swim_common::form::{Form, FormErr};
+use swim_common::form::structural::read::ReadError;
+use swim_common::form::Form;
 use swim_common::record;
 use swim_common::routing::ResolutionError;
 use swim_common::warp::envelope::Envelope;
@@ -70,7 +71,10 @@ fn lane_info_form_err() {
             ("laneType", "Meta")
         ]
     };
-    assert_eq!(LaneInfo::try_convert(value), Err(FormErr::Malformatted));
+    assert!(matches!(
+        LaneInfo::try_convert(value),
+        Err(ReadError::Malformatted { .. })
+    ));
 
     let value = record! {
         attrs => ["LaneInfoy"],
@@ -79,7 +83,10 @@ fn lane_info_form_err() {
             ("laneType", "Meta")
         ]
     };
-    assert_eq!(LaneInfo::try_convert(value), Err(FormErr::MismatchedTag));
+    assert!(matches!(
+        LaneInfo::try_convert(value),
+        Err(ReadError::Malformatted { .. })
+    ));
 
     let value = record! {
         attrs => ["LaneInfo"],
@@ -88,7 +95,10 @@ fn lane_info_form_err() {
             ("laneType", "Meta")
         ]
     };
-    assert_eq!(LaneInfo::try_convert(value), Err(FormErr::Malformatted));
+    assert!(matches!(
+        LaneInfo::try_convert(value),
+        Err(ReadError::Malformatted { .. })
+    ));
 }
 
 #[derive(Default, Debug, Clone)]

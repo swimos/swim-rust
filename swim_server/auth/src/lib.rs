@@ -19,8 +19,8 @@ use futures::future::ready;
 use futures::Future;
 use futures_util::future::Ready;
 use std::fmt::Display;
-use swim_common::form::{Form, FormErr};
-use swim_common::model::{Attr, Value};
+use swim_common::form::Form;
+use swim_common::model::Value;
 
 pub mod googleid;
 pub mod policy;
@@ -59,7 +59,10 @@ pub trait Authenticator<'s>: Form {
 }
 
 /// An authenticator that will always allow the remote host.
+#[derive(Form)]
+#[form(name = "allow")]
 pub struct AlwaysAllowAuthenticator;
+
 impl<'s> Authenticator<'s> for AlwaysAllowAuthenticator {
     type Credentials = Value;
     type AuthenticateFuture = Ready<Result<IssuedPolicy, AuthenticationError>>;
@@ -72,23 +75,9 @@ impl<'s> Authenticator<'s> for AlwaysAllowAuthenticator {
     }
 }
 
-impl Form for AlwaysAllowAuthenticator {
-    fn as_value(&self) -> Value {
-        Value::of_attr("allow")
-    }
-
-    fn try_from_value(value: &Value) -> Result<Self, FormErr> {
-        match value {
-            Value::Record(attrs, items) if items.is_empty() => match attrs.first() {
-                Some(Attr { name, .. }) if name == "allow" => Ok(AlwaysAllowAuthenticator),
-                _ => Err(FormErr::MismatchedTag),
-            },
-            v => Err(FormErr::incorrect_type("Value::Record", v)),
-        }
-    }
-}
-
 /// An authenticator that will always deny the remote host.
+#[derive(Form)]
+#[form(name = "deny")]
 pub struct AlwaysDenyAuthenticator;
 impl<'s> Authenticator<'s> for AlwaysDenyAuthenticator {
     type Credentials = Value;
@@ -102,23 +91,9 @@ impl<'s> Authenticator<'s> for AlwaysDenyAuthenticator {
     }
 }
 
-impl Form for AlwaysDenyAuthenticator {
-    fn as_value(&self) -> Value {
-        Value::of_attr("deny")
-    }
-
-    fn try_from_value(value: &Value) -> Result<Self, FormErr> {
-        match value {
-            Value::Record(attrs, items) if items.is_empty() => match attrs.first() {
-                Some(Attr { name, .. }) if name == "deny" => Ok(AlwaysDenyAuthenticator),
-                _ => Err(FormErr::MismatchedTag),
-            },
-            v => Err(FormErr::incorrect_type("Value::Record", v)),
-        }
-    }
-}
-
 /// An authenticator that will always forbid the remote host.
+#[derive(Form)]
+#[form(name = "forbid")]
 pub struct AlwaysForbidAuthenticator;
 impl<'s> Authenticator<'s> for AlwaysForbidAuthenticator {
     type Credentials = Value;
@@ -129,21 +104,5 @@ impl<'s> Authenticator<'s> for AlwaysForbidAuthenticator {
             Token::empty(),
             PolicyDirective::forbid(credentials),
         )))
-    }
-}
-
-impl Form for AlwaysForbidAuthenticator {
-    fn as_value(&self) -> Value {
-        Value::of_attr("forbid")
-    }
-
-    fn try_from_value(value: &Value) -> Result<Self, FormErr> {
-        match value {
-            Value::Record(attrs, items) if items.is_empty() => match attrs.first() {
-                Some(Attr { name, .. }) if name == "forbid" => Ok(AlwaysForbidAuthenticator),
-                _ => Err(FormErr::MismatchedTag),
-            },
-            v => Err(FormErr::incorrect_type("Value::Record", v)),
-        }
     }
 }

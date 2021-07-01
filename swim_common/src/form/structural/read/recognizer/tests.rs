@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::form::structural::read::event::ReadEvent;
+use crate::form::structural::read::event::{NumericValue, ReadEvent};
 use crate::form::structural::read::recognizer::primitive::I32Recognizer;
 use crate::form::structural::read::recognizer::{Recognizer, VecRecognizer};
 use crate::form::structural::read::ReadError;
