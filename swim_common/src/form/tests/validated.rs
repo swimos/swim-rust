@@ -15,9 +15,6 @@
 use num_bigint::BigInt;
 use num_traits::Float;
 
-use crate::form::structural::read::event::ReadEvent;
-use crate::form::structural::read::recognizer::{Recognizer, RecognizerReadable, SimpleAttrBody};
-use crate::form::structural::read::ReadError;
 use crate::form::structural::StringRepresentable;
 use crate::form::Form;
 use crate::form::ValidatedForm;
@@ -31,7 +28,6 @@ use crate::model::text::Text;
 use crate::model::Item;
 use crate::model::ValueKind;
 use crate::model::{Attr, Value};
-use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -1821,41 +1817,6 @@ fn tagged() {
     enum Level {
         Info,
         Trace,
-    }
-
-    struct LevelRec;
-
-    impl RecognizerReadable for Level {
-        type Rec = LevelRec;
-        type AttrRec = SimpleAttrBody<LevelRec>;
-
-        fn make_recognizer() -> Self::Rec {
-            LevelRec
-        }
-
-        fn make_attr_recognizer() -> Self::AttrRec {
-            SimpleAttrBody::new(LevelRec)
-        }
-    }
-
-    impl Recognizer for LevelRec {
-        type Target = Level;
-
-        fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
-            match input {
-                ReadEvent::TextValue(txt) => match txt.borrow() {
-                    "Info" => Some(Ok(Level::Info)),
-                    "Trace" => Some(Ok(Level::Trace)),
-                    _ => Some(Err(ReadError::Malformatted {
-                        text: txt.into(),
-                        message: Text::new("Possible values are 'Info' and 'Trace'"),
-                    })),
-                },
-                ow => Some(Err(ow.kind_error())),
-            }
-        }
-
-        fn reset(&mut self) {}
     }
 
     impl AsRef<str> for Level {

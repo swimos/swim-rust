@@ -43,13 +43,6 @@ use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, span, Level};
 use tracing_futures::{Instrument, Instrumented};
 
-use std::borrow::Borrow;
-use swim_common::form::structural::read::event::ReadEvent;
-use swim_common::form::structural::read::recognizer::{
-    Recognizer, RecognizerReadable, SimpleAttrBody,
-};
-use swim_common::form::structural::read::ReadError;
-use swim_common::form::structural::write::{PrimitiveWriter, StructuralWritable, StructuralWriter};
 use swim_common::form::structural::StringRepresentable;
 use swim_common::model::text::Text;
 use swim_runtime::time::interval::interval;
@@ -103,40 +96,6 @@ impl Display for LogLevel {
     }
 }
 
-pub struct LogLevelRecognizer;
-impl Recognizer for LogLevelRecognizer {
-    type Target = LogLevel;
-
-    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
-        match input {
-            ReadEvent::TextValue(txt) => {
-                Some(
-                    LogLevel::try_from(txt.borrow()).map_err(|_| ReadError::Malformatted {
-                        text: txt.into(),
-                        message: Text::new("Not a valid log level."),
-                    }),
-                )
-            }
-            ow => Some(Err(ow.kind_error())),
-        }
-    }
-
-    fn reset(&mut self) {}
-}
-
-impl RecognizerReadable for LogLevel {
-    type Rec = LogLevelRecognizer;
-    type AttrRec = SimpleAttrBody<LogLevelRecognizer>;
-
-    fn make_recognizer() -> Self::Rec {
-        LogLevelRecognizer
-    }
-
-    fn make_attr_recognizer() -> Self::AttrRec {
-        SimpleAttrBody::new(LogLevelRecognizer)
-    }
-}
-
 const LOG_LEVELS: [&str; 6] = ["Trace", "Debug", "Info", "Warn", "Error", "Fail"];
 
 impl StringRepresentable for LogLevel {
@@ -146,26 +105,6 @@ impl StringRepresentable for LogLevel {
 
     fn universe() -> &'static [&'static str] {
         &LOG_LEVELS
-    }
-}
-
-impl StructuralWritable for LogLevel {
-    fn write_with<W: StructuralWriter>(
-        &self,
-        writer: W,
-    ) -> Result<<W as PrimitiveWriter>::Repr, <W as PrimitiveWriter>::Error> {
-        writer.write_text(self.as_ref())
-    }
-
-    fn write_into<W: StructuralWriter>(
-        self,
-        writer: W,
-    ) -> Result<<W as PrimitiveWriter>::Repr, <W as PrimitiveWriter>::Error> {
-        writer.write_text(self.as_ref())
-    }
-
-    fn num_attributes(&self) -> usize {
-        0
     }
 }
 

@@ -15,7 +15,6 @@
 #[cfg(test)]
 mod tests;
 
-use crate::form::structural::read::recognizer::RecognizerReadable;
 use crate::model::text::Text;
 
 mod bridge;
@@ -24,7 +23,7 @@ pub mod read;
 #[macro_use]
 pub mod write;
 
-pub trait StringRepresentable: AsRef<str> + RecognizerReadable {
+pub trait StringRepresentable: Sized + AsRef<str> {
     fn try_from_str(txt: &str) -> Result<Self, Text>;
 
     fn universe() -> &'static [&'static str];

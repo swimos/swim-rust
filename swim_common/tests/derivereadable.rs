@@ -14,6 +14,8 @@
 
 use swim_common::form::structural::read::parser::{parse_recognize, Span};
 use swim_common::form::structural::read::StructuralReadable;
+use swim_common::form::structural::StringRepresentable;
+use swim_common::model::text::Text;
 
 fn run_recognizer<T: StructuralReadable>(rep: &str) -> T {
     let span = Span::new(rep);
@@ -270,13 +272,44 @@ fn derive_struct_rename_tag() {
     );
 }
 
+#[derive(PartialEq, Eq, Debug)]
+enum TagType {
+    Tag,
+    Other,
+}
+
+impl AsRef<str> for TagType {
+    fn as_ref(&self) -> &str {
+        match self {
+            TagType::Tag => "Tag",
+            TagType::Other => "Other",
+        }
+    }
+}
+
+const TAG_TYPE_UNI: [&str; 2] = ["Tag", "Other"];
+
+impl StringRepresentable for TagType {
+    fn try_from_str(txt: &str) -> Result<Self, Text> {
+        match txt {
+            "Tag" => Ok(TagType::Tag),
+            "Other" => Ok(TagType::Other),
+            _ => Err(Text::new("Possible values are 'Tag' and 'Other'.")),
+        }
+    }
+
+    fn universe() -> &'static [&'static str] {
+        &TAG_TYPE_UNI
+    }
+}
+
 #[test]
 fn derive_struct_tag_from_field() {
     #[derive(StructuralReadable, PartialEq, Eq, Debug)]
     struct MyStruct {
         first: i32,
         #[form(tag)]
-        second: String,
+        second: TagType,
     }
 
     let instance = run_recognizer::<MyStruct>("@Tag { first: -34 }");
@@ -284,7 +317,7 @@ fn derive_struct_tag_from_field() {
         instance,
         MyStruct {
             first: -34,
-            second: "Tag".to_string(),
+            second: TagType::Tag,
         }
     );
 }

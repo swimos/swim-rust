@@ -299,12 +299,18 @@ impl<'a, 'b> ToTokens for RecognizerState<'a, 'b> {
             quote!(core::option::Option<#ty>)
         });
 
-        let recognizer_types = it.map(|(fld, is_attr)| {
+        let recognizer_types = it.map(|(fld, discriminator)| {
             let ty = fld.field_ty;
-            if is_attr {
-                quote!(<#ty as swim_common::form::structural::read::recognizer::RecognizerReadable>::AttrRec)
-            } else {
-                quote!(<#ty as swim_common::form::structural::read::recognizer::RecognizerReadable>::Rec)
+            match discriminator {
+                FieldDiscriminator::Tag => {
+                    quote!(swim_common::form::structural::read::recognizer::FromStringRecognizer<#ty>)
+                }
+                FieldDiscriminator::Attr => {
+                    quote!(<#ty as swim_common::form::structural::read::recognizer::RecognizerReadable>::AttrRec)
+                }
+                FieldDiscriminator::Other => {
+                    quote!(<#ty as swim_common::form::structural::read::recognizer::RecognizerReadable>::Rec)
+                }
             }
         });
 
@@ -601,11 +607,17 @@ fn enumerate_fields<'a>(
         .copied()
 }
 
+enum FieldDiscriminator {
+    Tag,
+    Attr,
+    Other,
+}
+
 /// Enumerates the fields in a descriptor in the order in which the implementation exepects to
 /// receive them, indicating which fields are attributes.
 fn enumerate_fields_discriminated<'a>(
     model: &'a SegregatedFields<'a, 'a>,
-) -> impl Iterator<Item = (&'a FieldModel<'a>, bool)> + Clone + 'a {
+) -> impl Iterator<Item = (&'a FieldModel<'a>, FieldDiscriminator)> + Clone + 'a {
     let SegregatedFields { header, body } = model;
     let HeaderFields {
         tag_name,
@@ -621,11 +633,19 @@ fn enumerate_fields_discriminated<'a>(
 
     tag_name
         .iter()
-        .map(|f| (*f, false))
-        .chain(tag_body.iter().map(|f| (*f, false)))
-        .chain(header_fields.iter().map(|f| (*f, false)))
-        .chain(attributes.iter().map(|f| (*f, true)))
-        .chain(body_fields.into_iter().map(|f| (*f, false)))
+        .map(|f| (*f, FieldDiscriminator::Tag))
+        .chain(tag_body.iter().map(|f| (*f, FieldDiscriminator::Other)))
+        .chain(
+            header_fields
+                .iter()
+                .map(|f| (*f, FieldDiscriminator::Other)),
+        )
+        .chain(attributes.iter().map(|f| (*f, FieldDiscriminator::Attr)))
+        .chain(
+            body_fields
+                .into_iter()
+                .map(|f| (*f, FieldDiscriminator::Other)),
+        )
 }
 
 impl<'a, 'b> ToTokens for SelectFeedFn<'a, 'b> {
@@ -676,25 +696,35 @@ impl<'a, 'b> ToTokens for OnDoneFn<'a, 'b> {
         } = self;
         let SegregatedStructModel { inner, fields } = fields;
 
-        let it = enumerate_fields(fields);
+        let it = enumerate_fields_discriminated(fields);
 
-        let validators = it.clone().enumerate().map(|(i, fld)| {
+        let validators = it.clone().enumerate().map(|(i, (fld, discriminator))| {
             let idx = syn::Index::from(i);
             let name = fld.resolve_name();
             let ty = fld.field_ty;
-            quote! {
-                if fields.#idx.is_none() {
-                    fields.#idx = <#ty as swim_common::form::structural::read::recognizer::RecognizerReadable>::on_absent();
+
+            if matches!(discriminator, FieldDiscriminator::Tag) {
+                quote! {
                     if fields.#idx.is_none() {
                         missing.push(swim_common::model::text::Text::new(#name));
                     }
                 }
+            } else {
+                quote! {
+                    if fields.#idx.is_none() {
+                        fields.#idx = <#ty as swim_common::form::structural::read::recognizer::RecognizerReadable>::on_absent();
+                        if fields.#idx.is_none() {
+                            missing.push(swim_common::model::text::Text::new(#name));
+                        }
+                    }
+                }
             }
+
         });
 
         let field_dest = it
             .clone()
-            .map(|fld| &fld.name)
+            .map(|(fld, _)| &fld.name)
             .map(|name| quote!(core::option::Option::Some(#name)));
 
         let num_fields = inner.fields_model.fields.len();
@@ -725,7 +755,7 @@ impl<'a, 'b> ToTokens for OnDoneFn<'a, 'b> {
             }
             _ => {
                 let name_map = it
-                    .map(|fld| (fld.ordinal, &fld.name))
+                    .map(|(fld, _)| (fld.ordinal, &fld.name))
                     .collect::<HashMap<_, _>>();
                 let con_params = (0..num_fields).map(|i| {
                     if let Some(name) = name_map.get(&i) {
@@ -794,12 +824,18 @@ impl<'a, 'b> ToTokens for ConstructFieldRecognizers<'a, 'b> {
         let ConstructFieldRecognizers { fields } = self;
         let SegregatedStructModel { fields, .. } = fields;
         let initializers = enumerate_fields_discriminated(fields)
-            .map(|(fld, is_attr)| {
+            .map(|(fld, discriminator)| {
                 let ty = fld.field_ty;
-                if is_attr {
-                    quote!(<#ty as swim_common::form::structural::read::recognizer::RecognizerReadable>::make_attr_recognizer())
-                } else {
-                    quote!(<#ty as swim_common::form::structural::read::recognizer::RecognizerReadable>::make_recognizer())
+                match discriminator {
+                    FieldDiscriminator::Tag => {
+                        quote!(<swim_common::form::structural::read::recognizer::FromStringRecognizer<#ty> as core::default::Default>::default())
+                    }
+                    FieldDiscriminator::Attr => {
+                        quote!(<#ty as swim_common::form::structural::read::recognizer::RecognizerReadable>::make_attr_recognizer())
+                    }
+                    FieldDiscriminator::Other => {
+                        quote!(<#ty as swim_common::form::structural::read::recognizer::RecognizerReadable>::make_recognizer())
+                    }
                 }
             });
         tokens.append_all(quote! {

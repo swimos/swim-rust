@@ -12,15 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::form::structural::read::event::ReadEvent;
-use crate::form::structural::read::recognizer::{Recognizer, RecognizerReadable, SimpleAttrBody};
-use crate::form::structural::read::ReadError;
 use crate::form::structural::StringRepresentable;
 use crate::form::Form;
 use crate::model::text::Text;
 use crate::model::time::Timestamp;
 use crate::model::{Attr, Item, Value};
-use std::borrow::Borrow;
 
 mod swim_common {
     pub use crate::*;
@@ -480,41 +476,6 @@ fn test_enum_tag() {
     enum Level {
         Trace,
         Error,
-    }
-
-    struct LevelRec;
-
-    impl RecognizerReadable for Level {
-        type Rec = LevelRec;
-        type AttrRec = SimpleAttrBody<LevelRec>;
-
-        fn make_recognizer() -> Self::Rec {
-            LevelRec
-        }
-
-        fn make_attr_recognizer() -> Self::AttrRec {
-            SimpleAttrBody::new(LevelRec)
-        }
-    }
-
-    impl Recognizer for LevelRec {
-        type Target = Level;
-
-        fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
-            match input {
-                ReadEvent::TextValue(txt) => match txt.borrow() {
-                    "Trace" => Some(Ok(Level::Trace)),
-                    "Error" => Some(Ok(Level::Error)),
-                    _ => Some(Err(ReadError::Malformatted {
-                        text: txt.into(),
-                        message: Text::new("Possible values are 'Trace' and 'Error'"),
-                    })),
-                },
-                ow => Some(Err(ow.kind_error())),
-            }
-        }
-
-        fn reset(&mut self) {}
     }
 
     impl AsRef<str> for Level {
