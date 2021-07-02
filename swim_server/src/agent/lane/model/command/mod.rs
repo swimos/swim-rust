@@ -89,7 +89,7 @@ impl<T> Clone for CommandLane<T> {
 ///
 /// * `T` - The type of commands that the lane can handle.
 #[derive(Clone, Debug)]
-pub struct Commander<T>(mpsc::Sender<Command<T>>);
+pub struct Commander<T>(pub(crate) mpsc::Sender<Command<T>>);
 
 const SENDING_COMMAND: &str = "Sending command";
 
@@ -126,6 +126,8 @@ impl<T: Debug> Commander<T> {
     }
 }
 
+type CommandStream<T> = ReceiverStream<Command<T>>;
+
 /// Create a new public command lane model and a stream of the received commands.
 ///
 /// # Arguments
@@ -135,9 +137,9 @@ pub fn make_public_lane_model<T>(
     buffer_size: NonZeroUsize,
 ) -> (
     CommandLane<T>,
-    ReceiverStream<Command<T>>,
+    CommandStream<T>,
     Commander<T>,
-    ReceiverStream<Command<T>>,
+    CommandStream<T>,
 )
 where
     T: Send + Sync + 'static,
