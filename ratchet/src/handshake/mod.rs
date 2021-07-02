@@ -1,4 +1,7 @@
 mod client;
+mod io;
+mod server;
+
 use crate::extensions::Extension;
 pub use client::exec_client_handshake;
 use std::error::Error;

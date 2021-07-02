@@ -1,16 +1,23 @@
 use crate::errors::{Error, ErrorKind, HttpError};
 use crate::fixture::{mock, MockPeer};
 use crate::handshake::client::HandshakeMachine;
-use crate::handshake::{UPGRADE_STR, WEBSOCKET_STR, WEBSOCKET_VERSION, WEBSOCKET_VERSION_STR};
+use crate::handshake::{
+    ACCEPT_KEY, UPGRADE_STR, WEBSOCKET_STR, WEBSOCKET_VERSION, WEBSOCKET_VERSION_STR,
+};
 use crate::TryIntoRequest;
 use futures::future::join;
-use http::{header, Request, Response, StatusCode, Version};
+use http::header::HeaderName;
+use http::{header, HeaderMap, HeaderValue, Request, Response, StatusCode, Version};
 use httparse::{Header, Status};
+use sha1::digest::DynDigest;
+use sha1::{Digest, Sha1};
 use std::any::Any;
 use std::error::Error as StdError;
 use utilities::sync::trigger;
 
 const TEST_URL: &str = "ws://127.0.0.1:9001/test";
+
+// todo: some parts in this test file can be refactored once the server handshake has been done
 
 #[tokio::test]
 async fn handshake_sends_valid_request() {
@@ -132,9 +139,6 @@ async fn expect_server_error(response: Response<()>, expected_error: HttpError) 
 
     let server_task = async move {
         assert!(client_rx.await.is_ok());
-
-        let request = server.read_request();
-
         server.write_response(response);
         assert!(server_tx.trigger());
     };
@@ -194,6 +198,68 @@ async fn incorrect_version() {
         .unwrap();
 
     expect_server_error(response, HttpError::HttpVersion(Some(0))).await;
+}
+
+#[tokio::test]
+async fn ok_nonce() {
+    let request = TEST_URL.try_into_request().unwrap();
+    let (server, mut stream) = mock();
+
+    let (client_tx, client_rx) = trigger::trigger();
+    let (server_tx, server_rx) = trigger::trigger();
+
+    let client_task = async move {
+        let mut machine = HandshakeMachine::new(&mut stream, Vec::new(), Vec::new());
+        machine
+            .encode(Request::get(TEST_URL).body(()).unwrap())
+            .unwrap();
+        machine.write().await.unwrap();
+        machine.clear_buffer();
+
+        assert!(client_tx.trigger());
+        assert!(server_rx.await.is_ok());
+
+        assert!(machine.read().await.is_ok());
+    };
+
+    let server_task = async move {
+        assert!(client_rx.await.is_ok());
+
+        let request = server
+            .read_request()
+            .expect("No server response received")
+            .unwrap();
+
+        let (parts, _body) = request.into_parts();
+
+        let key = expect_header(&parts.headers, header::SEC_WEBSOCKET_KEY);
+
+        let mut digest = Sha1::new();
+        Digest::update(&mut digest, key);
+        Digest::update(&mut digest, ACCEPT_KEY);
+
+        let sec_websocket_accept = base64::encode(&digest.finalize());
+
+        let response = Response::builder()
+            .version(Version::HTTP_11)
+            .status(StatusCode::SWITCHING_PROTOCOLS)
+            .header(header::UPGRADE, WEBSOCKET_STR)
+            .header(header::CONNECTION, UPGRADE_STR)
+            .header(header::SEC_WEBSOCKET_ACCEPT, sec_websocket_accept)
+            .body(())
+            .unwrap();
+
+        server.write_response(response);
+
+        assert!(server_tx.trigger());
+    };
+
+    let _result = join(client_task, server_task).await;
+}
+
+fn expect_header(headers: &HeaderMap, name: HeaderName) -> &HeaderValue {
+    let err = format!("Missing header: {}", name);
+    headers.get(name).expect(err.as_str())
 }
 
 #[tokio::test]

@@ -7,6 +7,7 @@ type Nonce = [u8; 24];
 use crate::errors::{Error, ErrorKind, HttpError};
 use crate::extensions::{Extension, WebsocketExtension};
 use crate::handshake::client::encoding::{build_request, encode_request};
+use crate::handshake::io::BufferedIo;
 use crate::handshake::{
     ExtensionRegistry, ProtocolRegistry, Registry, ACCEPT_KEY, BAD_STATUS_CODE, UPGRADE_STR,
     WEBSOCKET_STR,
@@ -21,8 +22,6 @@ use std::convert::TryFrom;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio_native_tls::TlsConnector;
 
-// todo error handling need to be tidied up
-
 pub async fn exec_client_handshake<S>(
     _config: &WebSocketConfig,
     stream: &mut S,
@@ -34,54 +33,6 @@ where
 {
     let machine = HandshakeMachine::new(stream, Vec::new(), Vec::new());
     machine.exec(request).await
-}
-
-struct BufferedIo<'s, S> {
-    socket: &'s mut S,
-    buffer: BytesMut,
-}
-
-impl<'s, S> AsRef<BytesMut> for BufferedIo<'s, S> {
-    fn as_ref(&self) -> &BytesMut {
-        &self.buffer
-    }
-}
-
-impl<'s, S> BufferedIo<'s, S>
-where
-    S: WebSocketStream,
-{
-    fn new(socket: &'s mut S, buffer: BytesMut) -> BufferedIo<'s, S> {
-        BufferedIo { socket, buffer }
-    }
-
-    async fn write(&mut self) -> Result<(), Error> {
-        let BufferedIo { socket, buffer } = self;
-
-        socket.write_all(&buffer).await?;
-        socket.flush().await?;
-
-        Ok(())
-    }
-
-    async fn read(&mut self) -> Result<(), Error> {
-        let BufferedIo { socket, buffer } = self;
-
-        let len = buffer.len();
-        buffer.resize(len + (8 * 1024), 0);
-        let read_count = socket.read(&mut buffer[len..]).await?;
-        buffer.truncate(len + read_count);
-
-        Ok(())
-    }
-
-    fn advance(&mut self, count: usize) {
-        self.buffer.advance(count);
-    }
-
-    fn clear(&mut self) {
-        self.buffer.clear();
-    }
 }
 
 struct HandshakeMachine<'s, S> {
@@ -137,7 +88,7 @@ where
             let mut headers = [httparse::EMPTY_HEADER; 32];
             let mut response = httparse::Response::new(&mut headers);
 
-            match try_parse_response(buffered.as_ref(), &mut response, &nonce)? {
+            match try_parse_response(&buffered.buffer, &mut response, &nonce)? {
                 ParseResult::Complete(result, count) => {
                     buffered.advance(count);
                     break Ok(result);
