@@ -20,7 +20,6 @@ use {
     crate::routing::ws::tls::build_x509_certificate, crate::routing::TlsError, std::path::Path,
     tokio_native_tls::native_tls::Certificate,
 };
-#[cfg(feature = "tungstenite")]
 use {
     tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode as TungCloseCode,
     tokio_tungstenite::tungstenite::protocol::CloseFrame, tokio_tungstenite::tungstenite::Message,
@@ -64,7 +63,6 @@ impl Debug for Protocol {
     }
 }
 
-#[cfg(feature = "tungstenite")]
 impl From<Message> for WsMessage {
     fn from(message: Message) -> Self {
         match message {
@@ -77,7 +75,6 @@ impl From<Message> for WsMessage {
     }
 }
 
-#[cfg(feature = "tungstenite")]
 impl<'t> From<CloseFrame<'t>> for CloseReason {
     fn from(frame: CloseFrame<'t>) -> Self {
         let CloseFrame { code, reason } = frame;
@@ -96,7 +93,6 @@ impl<'t> From<CloseFrame<'t>> for CloseReason {
     }
 }
 
-#[cfg(feature = "tungstenite")]
 impl<'t> From<CloseReason> for CloseFrame<'t> {
     fn from(reason: CloseReason) -> Self {
         let CloseReason { code, reason } = reason;
@@ -114,7 +110,6 @@ impl<'t> From<CloseReason> for CloseFrame<'t> {
     }
 }
 
-#[cfg(feature = "tungstenite")]
 impl From<WsMessage> for Message {
     fn from(message: WsMessage) -> Self {
         match message {

@@ -5,8 +5,6 @@ authors = ["Swim.AI developers info@swim.ai"]
 edition = "2018"
 
 [features]
-default = ["tungstenite"]
-tungstenite = ["tokio-tungstenite"]
 tls = ["tokio-native-tls", "tokio-tungstenite/tls"]
 
 [dependencies]
@@ -34,7 +32,7 @@ base64 = "0.13.0"
 form_derive = { path = "form_derive" }
 im = "15.0.0"
 chrono = "0.4"
-tokio-tungstenite = { version = "0.13.0", git = "https://github.com/swimos/tokio-tungstenite/", branch = "deflate-v13", features = ["deflate"], optional = true }
+tokio-tungstenite = { version = "0.13.0", git = "https://github.com/swimos/tokio-tungstenite/", branch = "deflate-v13", features = ["deflate"] }
 nom = "6.1"
 nom_locate = "3.0"
 rmp = "0.8"
