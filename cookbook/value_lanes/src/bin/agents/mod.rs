@@ -28,14 +28,53 @@ use swim_server::RetryStrategy;
 pub struct UnitAgent {
     #[lifecycle(name = "InfoLifecycle")]
     pub info: ValueLane<String>,
+    #[lifecycle(name = "InfoLifecycle2")]
+    pub info2: ValueLane<String>,
     #[lifecycle(name = "PublishInfoLifecycle")]
     pub publish_info: CommandLane<String>,
 }
 
-#[value_lifecycle(agent = "UnitAgent", event_type = "String", on_event)]
+#[value_lifecycle(agent = "UnitAgent", event_type = "String", on_event, on_start)]
 struct InfoLifecycle;
 
 impl InfoLifecycle {
+    async fn on_start<Context>(&self, _model: &ValueLane<String>, _context: &Context)
+    where
+        Context: AgentContext<UnitAgent> + Sized + Send + Sync,
+    {
+        eprintln!("First value lane started");
+    }
+
+    async fn on_event<Context>(
+        &self,
+        event: &ValueLaneEvent<String>,
+        _model: &ValueLane<String>,
+        context: &Context,
+    ) where
+        Context: AgentContext<UnitAgent> + Sized + Send + Sync + 'static,
+    {
+        context.agent().info2.store("Test".to_string()).await;
+        let message = if let Some(prev) = &event.previous {
+            format!("`info` set to {} from {}", event.current, prev)
+        } else {
+            format!("`info` set to {}", event.current)
+        };
+
+        log_message(context.node_uri(), &message);
+    }
+}
+
+#[value_lifecycle(agent = "UnitAgent", event_type = "String", on_event, on_start)]
+struct InfoLifecycle2;
+
+impl InfoLifecycle2 {
+    async fn on_start<Context>(&self, _model: &ValueLane<String>, _context: &Context)
+    where
+        Context: AgentContext<UnitAgent> + Sized + Send + Sync,
+    {
+        eprintln!("Second value lane started");
+    }
+
     async fn on_event<Context>(
         &self,
         event: &ValueLaneEvent<String>,
