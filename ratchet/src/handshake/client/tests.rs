@@ -195,3 +195,6 @@ async fn incorrect_version() {
 
     expect_server_error(response, HttpError::HttpVersion(Some(0))).await;
 }
+
+#[tokio::test]
+async fn redirection() {}

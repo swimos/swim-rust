@@ -88,7 +88,7 @@ where
         connector: Option<TlsConnector>,
         request: Request<()>,
     ) -> Result<WebSocket<S>, Error> {
-        exec_client_handshake(&config, &mut stream, connector, request).await?;
+        let result = exec_client_handshake(&config, &mut stream, connector, request).await?;
         Ok(WebSocket {
             stream,
             role: Role::Client,

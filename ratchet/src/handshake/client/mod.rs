@@ -5,7 +5,7 @@ mod tests;
 type Nonce = [u8; 24];
 
 use crate::errors::{Error, ErrorKind, HttpError};
-use crate::extensions::Extension;
+use crate::extensions::{Extension, WebsocketExtension};
 use crate::handshake::client::encoding::{build_request, encode_request};
 use crate::handshake::{
     ExtensionRegistry, ProtocolRegistry, Registry, ACCEPT_KEY, BAD_STATUS_CODE, UPGRADE_STR,
@@ -28,7 +28,7 @@ pub async fn exec_client_handshake<S>(
     stream: &mut S,
     _connector: Option<TlsConnector>,
     request: Request<()>,
-) -> Result<(), Error>
+) -> Result<HandshakeResult, Error>
 where
     S: WebSocketStream,
 {
@@ -126,7 +126,7 @@ where
         self.buffered.clear();
     }
 
-    async fn read(&mut self) -> Result<(), Error> {
+    async fn read(&mut self) -> Result<HandshakeResult, Error> {
         let HandshakeMachine {
             buffered, nonce, ..
         } = self;
@@ -138,9 +138,9 @@ where
             let mut response = httparse::Response::new(&mut headers);
 
             match try_parse_response(buffered.as_ref(), &mut response, &nonce)? {
-                ParseResult::Complete(count) => {
+                ParseResult::Complete(result, count) => {
                     buffered.advance(count);
-                    break Ok(());
+                    break Ok(result);
                 }
                 ParseResult::Partial => check_partial_response(&response)?,
             }
@@ -148,12 +148,22 @@ where
     }
 
     // This is split up on purpose so that the individual functions can be called in unit tests.
-    pub async fn exec(mut self, request: Request<()>) -> Result<(), Error> {
+    pub async fn exec(mut self, request: Request<()>) -> Result<HandshakeResult, Error> {
         self.encode(request)?;
         self.write().await?;
         self.clear_buffer();
         self.read().await
     }
+}
+
+pub enum HandshakeResult {
+    Upgraded {
+        protocol: &'static str,
+        extension: WebsocketExtension,
+    },
+    Redirected {
+        to: String,
+    },
 }
 
 /// Quickly checks a partial response in the order of the expected HTTP response declaration to see
@@ -187,7 +197,7 @@ fn check_partial_response(response: &Response) -> Result<(), Error> {
 }
 
 enum ParseResult {
-    Complete(usize),
+    Complete(HandshakeResult, usize),
     Partial,
 }
 
@@ -197,15 +207,14 @@ fn try_parse_response<'l>(
     expected_nonce: &Nonce,
 ) -> Result<ParseResult, Error> {
     match response.parse(buffer.as_ref()) {
-        Ok(Status::Complete(count)) => {
-            parse_response(response, expected_nonce).map(|status| ParseResult::Complete(count))
-        }
+        Ok(Status::Complete(count)) => parse_response(response, expected_nonce)
+            .map(|result| ParseResult::Complete(result, count)),
         Ok(Status::Partial) => Ok(ParseResult::Partial),
         Err(e) => Err(e.into()),
     }
 }
 
-fn parse_response(response: &Response, expected_nonce: &Nonce) -> Result<(), Error> {
+fn parse_response(response: &Response, expected_nonce: &Nonce) -> Result<HandshakeResult, Error> {
     match response.version {
         // rfc6455 § 4.2.1.1: must be HTTP/1.1 or higher
         Some(1) => {}
@@ -222,7 +231,15 @@ fn parse_response(response: &Response, expected_nonce: &Nonce) -> Result<(), Err
     match status_code {
         c if c == StatusCode::SWITCHING_PROTOCOLS => {}
         c if c.is_redirection() => {
-            unimplemented!()
+            match response.headers.iter().find(|h| h.name == header::LOCATION) {
+                Some(header) => {
+                    // the value _should_ be valid UTF-8
+                    let location = String::from_utf8(header.value.to_vec())
+                        .map_err(|_| Error::new(ErrorKind::Http))?;
+                    return Ok(HandshakeResult::Redirected { to: location });
+                }
+                None => return Err(Error::with_cause(ErrorKind::Http, HttpError::Status(c))),
+            }
         }
         status_code => {
             return Err(Error::with_cause(
@@ -253,9 +270,21 @@ fn parse_response(response: &Response, expected_nonce: &Nonce) -> Result<(), Err
     )?;
 
     // todo extensions
+    let protocols = response.headers.iter().find(|h| {
+        h.name
+            .eq_ignore_ascii_case(header::SEC_WEBSOCKET_PROTOCOL.as_str())
+    });
+
+    if let Some(protocols) = protocols {
+        println!("{:?}", protocols.value);
+    }
+
     // todo protocol
 
-    Ok(())
+    Ok(HandshakeResult::Upgraded {
+        protocol: "",
+        extension: WebsocketExtension::None,
+    })
 }
 
 fn validate_header_value(
@@ -279,7 +308,10 @@ fn validate_header<F>(headers: &[httparse::Header], name: HeaderName, f: F) -> R
 where
     F: Fn(HeaderName, &[u8]) -> Result<(), Error>,
 {
-    match headers.iter().find(|h| h.name == name) {
+    match headers
+        .iter()
+        .find(|h| h.name.eq_ignore_ascii_case(name.as_str()))
+    {
         Some(header) => f(name, header.value),
         None => Err(Error::with_cause(
             ErrorKind::Http,
