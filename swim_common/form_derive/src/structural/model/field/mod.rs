@@ -229,7 +229,7 @@ impl TryFrom<NestedMeta> for FieldAttr {
                         return Ok(FieldAttr::Kind(*kind));
                     }
                 }
-                Ok(FieldAttr::Other) //TODO Fix validated form.
+                Ok(FieldAttr::Other) //Overlap with schema macro.
             }
             NestedMeta::Meta(Meta::NameValue(named)) if named.path == NAME_PATH => {
                 if let Lit::Str(new_name) = &named.lit {
@@ -240,7 +240,7 @@ impl TryFrom<NestedMeta> for FieldAttr {
                     Err(syn::Error::new_spanned(input, "Expected string argument"))
                 }
             }
-            _ => Ok(FieldAttr::Other), //TODO Fix validated form.
+            _ => Ok(FieldAttr::Other), //Overlap with schema macro.
         }
     }
 }

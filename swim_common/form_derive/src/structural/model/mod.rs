@@ -111,7 +111,7 @@ fn acc_rename(
                 None
             }
         }
-        Err(_) => None, //TODO Fix validated form.
+        Err(_) => None, //Overlap with schema macro which we can ignore.
     };
     Validation::Validated(state, err.into())
 }
