@@ -19,6 +19,7 @@ use futures::Stream;
 use std::fmt::{Debug, Formatter};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
+use swim_common::routing::RoutingAddr;
 use tokio::sync::mpsc::error::SendError;
 use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::ReceiverStream;
@@ -34,6 +35,7 @@ mod tests;
 /// * `T` - The type of commands that the lane can handle.
 pub struct CommandLane<T> {
     sender: mpsc::Sender<Command<T>>,
+    feedback_tx: mpsc::Sender<T>,
     id: Arc<()>,
 }
 
@@ -68,9 +70,13 @@ impl<T> CommandLane<T>
 where
     T: Send + Sync + 'static,
 {
-    pub(crate) fn new(sender: mpsc::Sender<Command<T>>) -> Self {
+    pub(crate) fn new(
+        sender: mpsc::Sender<Command<T>>,
+        feedback_tx: mpsc::Sender<T>,
+    ) -> Self {
         CommandLane {
             sender,
+            feedback_tx,
             id: Default::default(),
         }
     }
@@ -80,24 +86,25 @@ impl<T> Clone for CommandLane<T> {
     fn clone(&self) -> Self {
         CommandLane {
             sender: self.sender.clone(),
+            feedback_tx: self.feedback_tx.clone(),
             id: self.id.clone(),
         }
     }
 }
 
 /// Handle to send commands to a [`CommandLane`].
-/// #Type Parameters
+/// # Type Parameters
 ///
 /// * `T` - The type of commands that the lane can handle.
 #[derive(Clone, Debug)]
-pub struct Commander<T>(mpsc::Sender<Command<T>>);
+pub struct Commander<T>(mpsc::Sender<Command<T>>, mpsc::Sender<T>);
 
 const SENDING_COMMAND: &str = "Sending command";
 
 impl<T: Debug> CommandLane<T> {
     /// Create a [`Commander`] that can send multiple commands to the lane.
     pub fn commander(&self) -> Commander<T> {
-        Commander(self.sender.clone())
+        Commander(self.sender.clone(), self.feedback_tx.clone())
     }
 }
 
@@ -105,10 +112,18 @@ impl<T: Debug> Commander<T> {
     /// Asynchronously send a command to the lane.
     pub async fn command(&mut self, cmd: T) {
         event!(Level::TRACE, SENDING_COMMAND, ?cmd);
-        let Commander(tx) = self;
-        if tx.send(Command::forget(cmd)).await.is_err() {
+
+        let (resp_tx, resp_rx) = oneshot::channel();
+        let Commander(tx, feedback_tx) = self;
+        if tx.send(Command::new(cmd, resp_tx)).await.is_err() {
             event!(Level::ERROR, COMMANDED_AFTER_STOP);
         }
+        let val = resp_rx.await.unwrap();
+        eprintln!("val = {:#?}", val);
+        feedback_tx
+            .send(val)
+            .await
+            .unwrap();
     }
 
     pub async fn command_and_await(
@@ -117,7 +132,7 @@ impl<T: Debug> Commander<T> {
     ) -> Result<oneshot::Receiver<T>, SendError<Command<T>>> {
         let (resp_tx, resp_rx) = oneshot::channel();
         event!(Level::TRACE, SENDING_COMMAND, ?cmd);
-        let Commander(tx) = self;
+        let Commander(tx, feedback_tx) = self;
         if let Err(err) = tx.send(Command::new(cmd, resp_tx)).await {
             event!(Level::ERROR, COMMANDED_AFTER_STOP);
             Err(err)
@@ -137,13 +152,15 @@ pub fn make_lane_model<T>(
 ) -> (
     CommandLane<T>,
     impl Stream<Item = Command<T>> + Send + 'static,
+    (mpsc::Sender<T>, mpsc::Receiver<T>),
 )
 where
     T: Send + Sync + 'static,
 {
     let (tx, rx) = mpsc::channel(buffer_size.get());
-    let lane = CommandLane::new(tx);
-    (lane, ReceiverStream::new(rx))
+    let (feedback_tx, feedback_rx) = mpsc::channel(buffer_size.get());
+    let lane = CommandLane::new(tx, feedback_tx.clone());
+    (lane, ReceiverStream::new(rx), (feedback_tx, feedback_rx))
 }
 
 impl<T> LaneModel for CommandLane<T> {

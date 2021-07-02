@@ -248,7 +248,7 @@ fn create_lane(
 
     let ts = match lane_type {
         LaneType::Command => {
-            let model = quote!(let (#lane_name, event_stream) = swim_server::agent::lane::model::command::make_lane_model(exec_conf.action_buffer.clone()););
+            let model = quote!(let (#lane_name, event_stream, feedback_channel) = swim_server::agent::lane::model::command::make_lane_model(exec_conf.action_buffer.clone()););
 
             build_lane_io(
                 lane_data,
@@ -257,7 +257,7 @@ fn create_lane(
 
                     io_map.insert (
                         #lane_name_lit.to_string(),
-                        Box::new(swim_server::agent::CommandLaneIo::new(#lane_name.clone()))
+                        Box::new(swim_server::agent::CommandLaneIo::new(#lane_name.clone(), feedback_channel))
                     );
                 },
                 model,

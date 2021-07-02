@@ -65,7 +65,7 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use swim_common::form::Form;
-use swim_common::routing::{Router, TaggedClientEnvelope, TaggedEnvelope};
+use swim_common::routing::{Router, RoutingAddr, TaggedClientEnvelope, TaggedEnvelope};
 use swim_common::warp::path::{Path, RelativePath};
 use swim_runtime::time::clock::Clock;
 use tokio::sync::mpsc::Receiver;
@@ -676,14 +676,24 @@ where
 
 pub struct CommandLaneIo<T> {
     lane: CommandLane<T>,
+    feedback: (
+        mpsc::Sender<T>,
+        mpsc::Receiver<T>,
+    ),
 }
 
 impl<T> CommandLaneIo<T>
 where
     T: Send + Sync + Form + Debug + 'static,
 {
-    pub fn new(lane: CommandLane<T>) -> Self {
-        CommandLaneIo { lane }
+    pub fn new(
+        lane: CommandLane<T>,
+        feedback: (
+            mpsc::Sender<T>,
+            mpsc::Receiver<T>,
+        ),
+    ) -> Self {
+        CommandLaneIo { lane, feedback }
     }
 }
 
@@ -699,10 +709,10 @@ where
         config: AgentExecutionConfig,
         context: Context,
     ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
-        let CommandLaneIo { lane } = self;
+        // let CommandLaneIo { lane, feedback } = self;
 
         Ok(lane::channels::task::run_command_lane_io(
-            lane,
+            self,
             ReceiverStream::new(envelopes),
             config,
             context,
@@ -1133,7 +1143,7 @@ where
     T: Any + Send + Sync + Form + Debug + Clone,
     L: for<'l> CommandLaneLifecycle<'l, T, Agent>,
 {
-    let (lane, event_stream) = model::command::make_lane_model(buffer_size);
+    let (lane, event_stream, feedback_channel) = model::command::make_lane_model(buffer_size);
 
     let tasks = CommandLifecycleTasks(LifecycleTasks {
         name: name.into(),
@@ -1143,7 +1153,7 @@ where
     });
 
     let lane_io = if is_public {
-        Some(CommandLaneIo::new(lane.clone()))
+        Some(CommandLaneIo::new(lane.clone(), feedback_channel))
     } else {
         None
     };

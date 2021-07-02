@@ -29,7 +29,7 @@ use tracing::{event, Level};
 
 pub struct CommandLaneUpdateTask<T> {
     lane: CommandLane<T>,
-    feedback: Option<mpsc::Sender<(RoutingAddr, T)>>,
+    feedback: Option<mpsc::Sender<T>>,
     cleanup_timeout: Duration,
 }
 
@@ -39,7 +39,7 @@ where
 {
     pub fn new(
         lane: CommandLane<T>,
-        feedback: Option<mpsc::Sender<(RoutingAddr, T)>>,
+        feedback: Option<mpsc::Sender<T>>,
         cleanup_timeout: Duration,
     ) -> Self {
         CommandLaneUpdateTask {
@@ -101,8 +101,7 @@ where
                             }
                             Some(Either::Right(Ok((addr, msg)))) => {
                                 if let Ok(rx) = commander.command_and_await(msg).await {
-                                    responses
-                                        .push(rx.map(move |r| r.map(move |resp| (addr, resp))));
+                                    responses.push(rx);
                                 } else {
                                     event!(Level::ERROR, NO_COMPLETION);
                                 }

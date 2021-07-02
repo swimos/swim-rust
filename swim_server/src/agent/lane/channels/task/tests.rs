@@ -1037,20 +1037,21 @@ fn make_command_lane_task<Context: AgentExecutionContext + Send + Sync + 'static
 
     let lane: CommandLane<i32> = CommandLane::new(feedback_tx);
 
-    let task = super::run_command_lane_io(
-        lane,
-        ReceiverStream::new(envelope_rx),
-        config,
-        context,
-        route(),
-    );
-
-    let input = TaskInput {
-        envelope_tx,
-        _event_tx: None,
-    };
-
-    (join(mock_lifecycle, task).map(|(_, r)| r), input)
+    //Todo dm
+    // let task = super::run_command_lane_io(
+    //     lane,
+    //     ReceiverStream::new(envelope_rx),
+    //     config,
+    //     context,
+    //     route(),
+    // );
+    //
+    // let input = TaskInput {
+    //     envelope_tx,
+    //     _event_tx: None,
+    // };
+    //
+    // (join(mock_lifecycle, task).map(|(_, r)| r), input)
 }
 
 async fn expect_broadcast_envelopes(
