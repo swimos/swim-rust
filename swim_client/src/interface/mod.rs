@@ -18,9 +18,19 @@
 use crate::configuration::downlink::Config;
 use crate::configuration::downlink::ConfigHierarchy;
 use crate::configuration::downlink::ConfigParseError;
+use crate::connections::factory::tungstenite::TungsteniteWsFactory;
 use crate::connections::SwimConnPool;
 use crate::downlink::error::{DownlinkError, SubscriptionError};
+use crate::downlink::typed::command::TypedCommandDownlink;
+use crate::downlink::typed::event::TypedEventDownlink;
+use crate::downlink::typed::map::{MapDownlinkReceiver, TypedMapDownlink};
+use crate::downlink::typed::value::{TypedValueDownlink, ValueDownlinkReceiver};
+use crate::downlink::typed::{
+    UntypedCommandDownlink, UntypedEventDownlink, UntypedMapDownlink, UntypedMapReceiver,
+    UntypedValueDownlink, UntypedValueReceiver,
+};
 use crate::downlink::Downlinks;
+use crate::downlink::SchemaViolations;
 use crate::router::SwimRouter;
 use std::error::Error;
 use std::fmt;
@@ -36,18 +46,6 @@ use swim_common::routing::RoutingError;
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::AbsolutePath;
 use tracing::info;
-
-#[cfg(feature = "websocket")]
-use crate::connections::factory::tungstenite::TungsteniteWsFactory;
-use crate::downlink::typed::command::TypedCommandDownlink;
-use crate::downlink::typed::event::TypedEventDownlink;
-use crate::downlink::typed::map::{MapDownlinkReceiver, TypedMapDownlink};
-use crate::downlink::typed::value::{TypedValueDownlink, ValueDownlinkReceiver};
-use crate::downlink::typed::{
-    UntypedCommandDownlink, UntypedEventDownlink, UntypedMapDownlink, UntypedMapReceiver,
-    UntypedValueDownlink, UntypedValueReceiver,
-};
-use crate::downlink::SchemaViolations;
 
 /// Builder to create Swim client instance.
 ///
@@ -109,7 +107,6 @@ impl SwimClientBuilder {
     }
 
     /// Build the Swim client with default WS factory and configuration.
-    #[cfg(feature = "websocket")]
     pub async fn build_with_default() -> SwimClient {
         info!("Initialising Swim Client");
 
