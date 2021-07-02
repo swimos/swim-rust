@@ -51,7 +51,7 @@ impl MockPeer {
     where
         W: FromBytes,
     {
-        let mut guard = self.tx_buf.lock().unwrap();
+        let mut guard = self.rx_buf.lock().unwrap();
         let buf = guard.deref_mut();
 
         match writer.write(buf) {
@@ -101,6 +101,18 @@ impl FromBytes for WritableRequest {
                         1 => http_request.version(Version::HTTP_11),
                         v => unreachable!("{}", v),
                     };
+                }
+
+                if let Some(path) = httparse_request.path {
+                    http_request = http_request.uri(path);
+                }
+
+                if let Some(method) = httparse_request.method {
+                    http_request = http_request.method(method);
+                }
+
+                for header in httparse_request.headers {
+                    http_request = http_request.header(header.name, header.value);
                 }
 
                 Ok((
