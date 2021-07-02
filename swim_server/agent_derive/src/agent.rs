@@ -248,20 +248,20 @@ fn create_lane(
 
     let ts = match lane_type {
         LaneType::Command => {
-            let model = quote!(let (#lane_name, event_stream, feedback_channel) = swim_server::agent::lane::model::command::make_lane_model(exec_conf.action_buffer.clone()););
+            let private_model = quote! {
+                let (#lane_name, event_stream) = swim_server::agent::lane::model::command::make_private_lane_model((exec_conf.action_buffer.clone()));
+            };
 
-            build_lane_io(
-                lane_data,
-                quote! {
-                    #model
+            let public_model = quote! {
+                let (#lane_name, event_stream, commander, local_commands_rx) = swim_server::agent::lane::model::command::make_public_lane_model(exec_conf.action_buffer.clone());
 
-                    io_map.insert (
+                io_map.insert (
                         #lane_name_lit.to_string(),
-                        Box::new(swim_server::agent::CommandLaneIo::new(#lane_name.clone(), feedback_channel))
-                    );
-                },
-                model,
-            )
+                        Box::new(swim_server::agent::CommandLaneIo::new(commander, local_commands_rx))
+                );
+            };
+
+            build_lane_io(lane_data, public_model, private_model)
         }
         LaneType::Action => {
             let model = quote!(let (#lane_name, event_stream) = swim_server::agent::lane::model::action::make_lane_model(exec_conf.action_buffer.clone()););

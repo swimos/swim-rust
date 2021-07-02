@@ -31,7 +31,6 @@ use crate::agent::lane::channels::{
     AgentExecutionConfig, InputMessage, LaneMessageHandler, OutputMessage, TaggedAction,
 };
 use crate::agent::lane::model::action::ActionLane;
-use crate::agent::lane::model::command::CommandLane;
 use crate::agent::lane::model::demand_map::{DemandMapLane, DemandMapLaneEvent};
 use crate::agent::lane::model::map::{MapLane, MapLaneEvent};
 use crate::agent::lane::model::value::ValueLane;
@@ -508,26 +507,30 @@ pub async fn run_command_lane_io<T>(
     route: RelativePath,
 ) -> Result<Vec<UplinkErrorReport>, LaneIoError>
 where
-    T: Send + Sync + Form + Debug + 'static,
+    T: Clone + Send + Sync + Form + Debug + 'static,
 {
     let span = span!(Level::INFO, LANE_IO_TASK, ?route);
     let _enter = span.enter();
 
     let CommandLaneIo {
-        lane,
-        feedback: (feedback_tx, feedback_rx),
+        commander,
+        local_commands_rx,
     } = lane_io;
 
     let (event_observer, action_observer) =
         context.metrics().uplink_observer_for_path(route.clone());
 
-    // let (feedback_tx, feedback_rx) = mpsc::channel(config.feedback_buffer.get());
+    let (feedback_tx, feedback_rx) = mpsc::channel(config.feedback_buffer.get());
     let feedback_rx = ReceiverStream::new(feedback_rx)
         .map(AddressedUplinkMessage::Broadcast)
         .inspect(|_| event_observer.on_event());
 
-    let updater =
-        CommandLaneUpdateTask::new(lane.clone(), Some(feedback_tx), config.cleanup_timeout);
+    let updater = CommandLaneUpdateTask::new(
+        commander,
+        local_commands_rx,
+        feedback_tx,
+        config.cleanup_timeout,
+    );
     let uplinks = StatelessUplinks::new(
         feedback_rx,
         route.clone(),

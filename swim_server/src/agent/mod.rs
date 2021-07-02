@@ -65,7 +65,7 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use swim_common::form::Form;
-use swim_common::routing::{Router, RoutingAddr, TaggedClientEnvelope, TaggedEnvelope};
+use swim_common::routing::{Router, TaggedClientEnvelope, TaggedEnvelope};
 use swim_common::warp::path::{Path, RelativePath};
 use swim_runtime::time::clock::Clock;
 use tokio::sync::mpsc::Receiver;
@@ -76,6 +76,7 @@ use utilities::future::SwimStreamExt;
 use utilities::sync::{topic, trigger};
 use utilities::uri::RelativeUri;
 
+use crate::agent::model::command::Commander;
 use crate::meta::info::{LaneInfo, LaneKind};
 use crate::meta::log::NodeLogger;
 use crate::meta::open_meta_lanes;
@@ -675,31 +676,25 @@ where
 }
 
 pub struct CommandLaneIo<T> {
-    lane: CommandLane<T>,
-    feedback: (
-        mpsc::Sender<T>,
-        mpsc::Receiver<T>,
-    ),
+    commander: Commander<T>,
+    local_commands_rx: ReceiverStream<Command<T>>,
 }
 
 impl<T> CommandLaneIo<T>
 where
     T: Send + Sync + Form + Debug + 'static,
 {
-    pub fn new(
-        lane: CommandLane<T>,
-        feedback: (
-            mpsc::Sender<T>,
-            mpsc::Receiver<T>,
-        ),
-    ) -> Self {
-        CommandLaneIo { lane, feedback }
+    pub fn new(commander: Commander<T>, local_commands_rx: ReceiverStream<Command<T>>) -> Self {
+        CommandLaneIo {
+            commander,
+            local_commands_rx,
+        }
     }
 }
 
 impl<T, Context> LaneIo<Context> for CommandLaneIo<T>
 where
-    T: Send + Sync + Form + Debug + 'static,
+    T: Clone + Send + Sync + Form + Debug + 'static,
     Context: AgentExecutionContext + Sized + Send + Sync + 'static,
 {
     fn attach(
@@ -709,8 +704,6 @@ where
         config: AgentExecutionConfig,
         context: Context,
     ) -> Result<BoxFuture<'static, Result<Vec<UplinkErrorReport>, LaneIoError>>, AttachError> {
-        // let CommandLaneIo { lane, feedback } = self;
-
         Ok(lane::channels::task::run_command_lane_io(
             self,
             ReceiverStream::new(envelopes),
@@ -1143,7 +1136,17 @@ where
     T: Any + Send + Sync + Form + Debug + Clone,
     L: for<'l> CommandLaneLifecycle<'l, T, Agent>,
 {
-    let (lane, event_stream, feedback_channel) = model::command::make_lane_model(buffer_size);
+    let (lane, lane_io, event_stream) = if is_public {
+        let (lane, event_stream, commander, local_commands_rx) =
+            model::command::make_public_lane_model(buffer_size);
+
+        let lane_io = CommandLaneIo::new(commander, local_commands_rx);
+
+        (lane, Some(lane_io), event_stream)
+    } else {
+        let (lane, event_stream) = model::command::make_private_lane_model(buffer_size);
+        (lane, None, event_stream)
+    };
 
     let tasks = CommandLifecycleTasks(LifecycleTasks {
         name: name.into(),
@@ -1151,12 +1154,6 @@ where
         event_stream,
         projection,
     });
-
-    let lane_io = if is_public {
-        Some(CommandLaneIo::new(lane.clone(), feedback_channel))
-    } else {
-        None
-    };
 
     (lane, tasks, lane_io)
 }
