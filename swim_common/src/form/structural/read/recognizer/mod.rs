@@ -618,7 +618,7 @@ impl<R: Recognizer> Recognizer for SimpleAttrBody<R> {
     }
 }
 
-/// Runs two [`Recognizer`]s in paralell returning the result of the first that completes
+/// Runs two [`Recognizer`]s in parallel returning the result of the first that completes
 /// successfully. If bothe complete with an error, the errof from the recognizer that failed
 /// last is returned.
 pub struct FirstOf<R1, R2> {
