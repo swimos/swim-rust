@@ -191,7 +191,7 @@ impl<T, E: Semigroup> Validation<T, E> {
         }
     }
 
-    /// Comnbibe two validated results together, accumulating the errors.
+    /// Combine two validated results together, accumulating the errors.
     pub fn join<U>(self, other: Validation<U, E>) -> Validation<(T, U), E> {
         self.and_then(|left| other.map(move |right| (left, right)))
     }
