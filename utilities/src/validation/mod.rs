@@ -15,7 +15,7 @@
 use crate::algebra::{Errors, Monoid, Semigroup, Zero};
 use std::iter::FromIterator;
 
-/// An alternative to [`Result`] where erros are not necessarily fatal. The type `E` represents
+/// An alternative to [`Result`] where errors are not necessarily fatal. The type `E` represents
 /// a (possibly empty) collection of errors.
 pub enum Validation<T, E> {
     /// A value has been produced, potentially with errors.
