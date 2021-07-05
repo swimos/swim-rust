@@ -45,7 +45,7 @@ impl<'a> ToTokens for FieldIndex<'a> {
 
 /// Description of a field within a struct.
 pub struct FieldModel<'a> {
-    /// Means to index the field from an instanced of the struct.
+    /// Means to index the field from an instance of the struct.
     pub name: FieldIndex<'a>,
     /// Definition ordinal of the field within the struct.
     pub ordinal: usize,
