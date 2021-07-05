@@ -171,7 +171,6 @@ impl SwimClientBuilder {
     }
 
     /// Build the Swim client with default WS factory and configuration.
-    #[cfg(feature = "websocket")]
     pub async fn build_with_default() -> (SwimClient<AbsolutePath>, ClientHandle<AbsolutePath>) {
         info!("Initialising Swim Client");
 
