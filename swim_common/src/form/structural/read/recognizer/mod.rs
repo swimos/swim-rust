@@ -50,7 +50,7 @@ pub trait RecognizerReadable: Sized {
     /// as it is permissible for the record to be collapsed into the body of the attribute.)
     fn make_attr_recognizer() -> Self::AttrRec;
 
-    /// If this value is expected as teh value of a record field but was not present a default
+    /// If this value is expected as the value of a record field but was not present a default
     /// value will be used if provided here. For example, [`Option`] values are set to `None` if
     /// not provided.
     fn on_absent() -> Option<Self> {
