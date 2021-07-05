@@ -15,12 +15,13 @@
 use crate::utils::{get_task_struct_name, validate_input_ast, Callback, InputAstType};
 use crate::utils::{parse_callback, CallbackKind};
 use darling::{ast, FromDeriveInput, FromField, FromMeta};
-use macro_helpers::{as_const, string_to_ident};
+use macro_helpers::{as_const, string_to_ident, ungroup};
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use proc_macro2::{Delimiter, Group, Ident, Literal, Span};
 use quote::{quote, ToTokens};
-use syn::{AttributeArgs, DeriveInput, Path, Type, TypePath, Visibility};
+use std::ops::Deref;
+use syn::{AttributeArgs, DeriveInput, Path, PathSegment, Type, TypePath, Visibility};
 
 type AgentName = Ident;
 
@@ -50,28 +51,39 @@ pub struct LifecycleAttrs {
 
 impl LifecycleAttrs {
     pub fn get_lane_type(&self) -> Option<LaneType> {
-        if let Type::Path(TypePath {
-            path: Path { segments, .. },
-            ..
-        }) = &self.ty
-        {
-            if let Some(path_segment) = segments.last() {
-                return match path_segment.ident.to_string().as_str() {
-                    COMMAND_LANE => Some(LaneType::Command),
-                    ACTION_LANE => Some(LaneType::Action),
-                    VALUE_LANE => Some(LaneType::Value),
-                    MAP_LANE => Some(LaneType::Map),
-                    DEMAND_LANE => Some(LaneType::Demand),
-                    DEMAND_MAP_LANE => Some(LaneType::DemandMap),
+        match &self.ty {
+            Type::Path(TypePath {
+                path: Path { segments, .. },
+                ..
+            }) => Self::map_segment(segments.last()?),
+            Type::Group(group) => {
+                let last = ungroup(group.elem.deref());
+                match last.deref() {
+                    Type::Path(TypePath {
+                        path: Path { segments, .. },
+                        ..
+                    }) => Self::map_segment(segments.last()?),
                     _ => None,
-                };
+                }
             }
+            _ => None,
         }
+    }
 
-        None
+    fn map_segment(segment: &PathSegment) -> Option<LaneType> {
+        match segment.ident.to_string().as_str() {
+            COMMAND_LANE => Some(LaneType::Command),
+            ACTION_LANE => Some(LaneType::Action),
+            VALUE_LANE => Some(LaneType::Value),
+            MAP_LANE => Some(LaneType::Map),
+            DEMAND_LANE => Some(LaneType::Demand),
+            DEMAND_MAP_LANE => Some(LaneType::DemandMap),
+            _ => None,
+        }
     }
 }
 
+#[derive(Debug)]
 pub enum LaneType {
     Command,
     Action,

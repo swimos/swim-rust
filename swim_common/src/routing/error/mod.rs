@@ -12,12 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use futures::channel::mpsc::SendError as FutSendError;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::io::ErrorKind;
 use std::time::Duration;
-
-use futures::channel::mpsc::SendError as FutSendError;
 use tokio::sync::mpsc::error::SendError as MpscSendError;
 
 pub use capacity::*;
@@ -32,7 +31,6 @@ pub use tls::*;
 use utilities::errors::Recoverable;
 use utilities::sync::circular_buffer;
 use utilities::uri::RelativeUri;
-#[cfg(feature = "tungstenite")]
 use {std::ops::Deref, tokio_tungstenite::tungstenite};
 
 use crate::request::request_future::RequestError;
@@ -181,14 +179,11 @@ impl Display for ConnectionError {
     }
 }
 
-#[cfg(feature = "tungstenite")]
 pub type TError = tungstenite::error::Error;
 
-#[cfg(feature = "tungstenite")]
 #[derive(Debug)]
 pub struct TungsteniteError(pub tungstenite::error::Error);
 
-#[cfg(feature = "tungstenite")]
 impl Deref for TungsteniteError {
     type Target = TError;
 
@@ -197,7 +192,6 @@ impl Deref for TungsteniteError {
     }
 }
 
-#[cfg(feature = "tungstenite")]
 impl From<TungsteniteError> for ConnectionError {
     fn from(e: TungsteniteError) -> Self {
         match e.0 {

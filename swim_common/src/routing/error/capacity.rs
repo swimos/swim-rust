@@ -49,7 +49,6 @@ pub enum CapacityErrorKind {
     WriteFull,
     /// A buffer is either full or has overflowed.
     Ambiguous,
-    #[cfg(feature = "tungstenite")]
     /// A Tokio Tungstenite buffer is full. Contains the message that was attempted to be written.
     Full(tokio_tungstenite::tungstenite::Message),
 }
@@ -71,7 +70,6 @@ impl Display for CapacityError {
             CapacityErrorKind::Ambiguous => {
                 write!(f, "Buffer overflow.{}", cause)
             }
-            #[cfg(feature = "tungstenite")]
             CapacityErrorKind::Full(_) => {
                 write!(
                     f,
@@ -85,14 +83,6 @@ impl Display for CapacityError {
 
 impl Recoverable for CapacityError {
     fn is_fatal(&self) -> bool {
-        #[cfg(not(feature = "tungstenite"))]
-        {
-            !matches!(
-                self.kind,
-                CapacityErrorKind::ReadFull | CapacityErrorKind::WriteFull
-            )
-        }
-        #[cfg(feature = "tungstenite")]
         {
             !matches!(
                 self.kind,
@@ -115,7 +105,6 @@ fn tests() {
     assert_eq!(CapacityError::read().to_string(), "Read buffer full.");
     assert_eq!(CapacityError::write().to_string(), "Write buffer full.");
 
-    #[cfg(feature = "tungstenite")]
     {
         use tokio_tungstenite::tungstenite::Message;
 
