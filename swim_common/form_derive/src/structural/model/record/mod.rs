@@ -134,7 +134,7 @@ where
         validate2(fields_model, rename).and_then(|(model, transform)| {
             let struct_model = StructModel { name, fields_model: model, transform };
             if struct_model.fields_model.manifest.has_tag_field && struct_model.transform.is_some() {
-                let err = syn::Error::new_spanned(top, "Cannot apply a tag using a field when one has already been applied at the container level");
+                let err = syn::Error::new_spanned(top, "Cannot apply a tag to a field when one has already been applied at the container level");
                 Validation::Validated(struct_model, err.into())
             } else {
                 Validation::valid(struct_model)
