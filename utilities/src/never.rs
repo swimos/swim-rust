@@ -16,14 +16,13 @@
 /// This is essentially the same as [`core::convert::Infallible`] but is intended to be useable
 /// for cases that are not only error types. It should be possible to replace it with `!` when it
 /// is stabilized.
+#[derive(Clone, Copy)]
 pub enum Never {}
 
 impl Never {
     /// Witnesses that an instance of [Never] cannot exist.
     #[inline]
     pub fn explode(&self) -> ! {
-        use std::hint;
-        // Safe as Never has no instances.
-        unsafe { hint::unreachable_unchecked() }
+        match *self {}
     }
 }

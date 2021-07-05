@@ -43,7 +43,7 @@ use swim_common::form::structural::read::recognizer::{
 };
 use swim_common::form::structural::read::ReadError;
 use swim_common::form::structural::write::{PrimitiveWriter, StructuralWritable, StructuralWriter};
-use swim_common::form::structural::StringRepresentable;
+use swim_common::form::structural::Tag;
 use swim_common::form::Form;
 use swim_common::model::text::Text;
 use tokio::sync::mpsc;
@@ -80,7 +80,7 @@ impl LaneInfo {
 }
 
 /// An enumeration representing the type of a lane.
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Tag, Debug, PartialEq, Eq, Clone, Copy)]
 pub enum LaneKind {
     Action,
     Command,
@@ -92,23 +92,6 @@ pub enum LaneKind {
     Supply,
     Spatial,
     Value,
-}
-
-impl AsRef<str> for LaneKind {
-    fn as_ref(&self) -> &str {
-        match self {
-            LaneKind::Action => "Action",
-            LaneKind::Command => "Command",
-            LaneKind::Demand => "Demand",
-            LaneKind::DemandMap => "DemandMap",
-            LaneKind::Map => "Map",
-            LaneKind::JoinMap => "JoinMap",
-            LaneKind::JoinValue => "JoinValue",
-            LaneKind::Supply => "Supply",
-            LaneKind::Spatial => "Spatial",
-            LaneKind::Value => "Value",
-        }
-    }
 }
 
 pub struct LaneKindRecognizer;
@@ -143,29 +126,6 @@ impl RecognizerReadable for LaneKind {
 
     fn make_attr_recognizer() -> Self::AttrRec {
         SimpleAttrBody::new(LaneKindRecognizer)
-    }
-}
-
-const LANE_KINDS: [&str; 10] = [
-    "Action",
-    "Command",
-    "Demand",
-    "DemandMap",
-    "Map",
-    "JoinMap",
-    "JoinValue",
-    "Supply",
-    "Spatial",
-    "Value",
-];
-
-impl StringRepresentable for LaneKind {
-    fn try_from_str(txt: &str) -> Result<Self, Text> {
-        LaneKind::try_from(txt).map_err(|_| Text::new("Not a valid Lane kind."))
-    }
-
-    fn universe() -> &'static [&'static str] {
-        &LANE_KINDS
     }
 }
 

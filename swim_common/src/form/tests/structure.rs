@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::form::structural::StringRepresentable;
+use crate::form::structural::Tag;
 use crate::form::Form;
 use crate::model::text::Text;
 use crate::model::time::Timestamp;
@@ -472,35 +472,10 @@ fn header_body_replace() {
 
 #[test]
 fn test_enum_tag() {
-    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    #[derive(Tag, Clone, Copy, Debug, PartialEq, Eq)]
     enum Level {
         Trace,
         Error,
-    }
-
-    impl AsRef<str> for Level {
-        fn as_ref(&self) -> &str {
-            match self {
-                Level::Trace => "Trace",
-                Level::Error => "Error",
-            }
-        }
-    }
-
-    const LEVEL_UNIVERSE: [&str; 2] = ["Trace", "Error"];
-
-    impl StringRepresentable for Level {
-        fn try_from_str(txt: &str) -> Result<Self, Text> {
-            match txt {
-                "Trace" => Ok(Level::Trace),
-                "Error" => Ok(Level::Error),
-                _ => Err(Text::new("Possible values are 'Trace' and 'Error'")),
-            }
-        }
-
-        fn universe() -> &'static [&'static str] {
-            &LEVEL_UNIVERSE
-        }
     }
 
     #[derive(Form, Debug, PartialEq, Clone)]

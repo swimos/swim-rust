@@ -43,8 +43,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, span, Level};
 use tracing_futures::{Instrument, Instrumented};
 
-use swim_common::form::structural::StringRepresentable;
-use swim_common::model::text::Text;
+use swim_common::form::structural::Tag;
 use swim_runtime::time::interval::interval;
 use utilities::sync::trigger;
 use utilities::uri::RelativeUri;
@@ -60,7 +59,7 @@ const LOG_TASK: &str = "Node logger";
 const LOG_FAIL: &str = "Failed to send log message";
 
 /// A corresponding level associated with a `LogEntry`.
-#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Hash)]
+#[derive(Tag, Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Hash)]
 pub enum LogLevel {
     /// Fine-grained informational events.
     Trace,
@@ -76,35 +75,10 @@ pub enum LogLevel {
     Fail,
 }
 
-impl AsRef<str> for LogLevel {
-    fn as_ref(&self) -> &str {
-        match self {
-            LogLevel::Trace => "Trace",
-            LogLevel::Debug => "Debug",
-            LogLevel::Info => "Info",
-            LogLevel::Warn => "Warn",
-            LogLevel::Error => "Error",
-            LogLevel::Fail => "Fail",
-        }
-    }
-}
-
 impl Display for LogLevel {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let as_str: &str = self.as_ref();
         write!(f, "{}", as_str)
-    }
-}
-
-const LOG_LEVELS: [&str; 6] = ["Trace", "Debug", "Info", "Warn", "Error", "Fail"];
-
-impl StringRepresentable for LogLevel {
-    fn try_from_str(txt: &str) -> Result<Self, Text> {
-        LogLevel::try_from(txt).map_err(|_| Text::new("Not a valid log level."))
-    }
-
-    fn universe() -> &'static [&'static str] {
-        &LOG_LEVELS
     }
 }
 

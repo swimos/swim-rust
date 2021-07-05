@@ -25,7 +25,6 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::convert::TryFrom;
-use std::hint;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -50,22 +49,18 @@ pub trait StructuralWritable: Sized {
 
     /// Write the structure of this value with an interpreter that cannnot generate an error.
     fn write_with_infallible<W: StructuralWriter<Error = Infallible>>(&self, writer: W) -> W::Repr {
-        if let Ok(repr) = self.write_with(writer) {
-            repr
-        } else {
-            // This is safe as Infallible has no instances.
-            unsafe { hint::unreachable_unchecked() }
+        match self.write_with(writer) {
+            Ok(repr) => repr,
+            Err(e) => match e {},
         }
     }
 
     /// Write the structure of this value with an interpreter that cannnot generate an error,
     /// allowing in t interpreter to consume this value if needed.
     fn write_into_infallible<W: StructuralWriter<Error = Infallible>>(self, writer: W) -> W::Repr {
-        if let Ok(repr) = self.write_into(writer) {
-            repr
-        } else {
-            // This is safe as Infallible has no instances.
-            unsafe { hint::unreachable_unchecked() }
+        match self.write_into(writer) {
+            Ok(repr) => repr,
+            Err(e) => match e {},
         }
     }
 

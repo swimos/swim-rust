@@ -303,7 +303,7 @@ impl<'a, 'b> ToTokens for RecognizerState<'a, 'b> {
             let ty = fld.field_ty;
             match discriminator {
                 FieldDiscriminator::Tag => {
-                    quote!(swim_common::form::structural::read::recognizer::FromStringRecognizer<#ty>)
+                    quote!(swim_common::form::structural::read::recognizer::TagRecognizer<#ty>)
                 }
                 FieldDiscriminator::Attr => {
                     quote!(<#ty as swim_common::form::structural::read::recognizer::RecognizerReadable>::AttrRec)
@@ -828,7 +828,7 @@ impl<'a, 'b> ToTokens for ConstructFieldRecognizers<'a, 'b> {
                 let ty = fld.field_ty;
                 match discriminator {
                     FieldDiscriminator::Tag => {
-                        quote!(<swim_common::form::structural::read::recognizer::FromStringRecognizer<#ty> as core::default::Default>::default())
+                        quote!(<swim_common::form::structural::read::recognizer::TagRecognizer<#ty> as core::default::Default>::default())
                     }
                     FieldDiscriminator::Attr => {
                         quote!(<#ty as swim_common::form::structural::read::recognizer::RecognizerReadable>::make_attr_recognizer())

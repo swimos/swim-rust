@@ -15,7 +15,7 @@
 use num_bigint::BigInt;
 use num_traits::Float;
 
-use crate::form::structural::StringRepresentable;
+use crate::form::structural::Tag;
 use crate::form::Form;
 use crate::form::ValidatedForm;
 use crate::model::schema::attr::AttrSchema;
@@ -1813,35 +1813,10 @@ fn test_nested() {
 
 #[test]
 fn tagged() {
-    #[derive(Clone)]
+    #[derive(Tag, Clone)]
     enum Level {
         Info,
         Trace,
-    }
-
-    impl AsRef<str> for Level {
-        fn as_ref(&self) -> &str {
-            match self {
-                Level::Info => "Info",
-                Level::Trace => "Trace",
-            }
-        }
-    }
-
-    const LEVEL_UNIVERSE: [&str; 2] = ["Info", "Trace"];
-
-    impl StringRepresentable for Level {
-        fn try_from_str(txt: &str) -> Result<Self, Text> {
-            match txt {
-                "Info" => Ok(Level::Info),
-                "Trace" => Ok(Level::Trace),
-                _ => Err(Text::new("Possible values are 'Info' and 'Trace'")),
-            }
-        }
-
-        fn universe() -> &'static [&'static str] {
-            &LEVEL_UNIVERSE
-        }
     }
 
     #[derive(Form, ValidatedForm)]

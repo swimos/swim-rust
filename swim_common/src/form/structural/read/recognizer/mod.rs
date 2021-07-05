@@ -24,7 +24,7 @@ use crate::form::structural::read::materializers::value::{
 };
 use crate::form::structural::read::recognizer::primitive::DataRecognizer;
 use crate::form::structural::read::ReadError;
-use crate::form::structural::StringRepresentable;
+use crate::form::structural::Tag;
 use crate::model::blob::Blob;
 use crate::model::text::Text;
 use crate::model::{Value, ValueKind};
@@ -2372,15 +2372,15 @@ impl_readable_tuple! { 10 => ([0, T0, v0, r0] [1, T1, v1, r1] [2, T2, v2, r2] [3
 impl_readable_tuple! { 11 => ([0, T0, v0, r0] [1, T1, v1, r1] [2, T2, v2, r2] [3, T3, v3, r3] [4, T4, v4, r4] [5, T5, v5, r5] [6, T6, v6, r6] [7, T7, v7, r7] [8, T8, v8, r8] [9, T9, v9, r9] [10, T10, v10, r10]) }
 impl_readable_tuple! { 12 => ([0, T0, v0, r0] [1, T1, v1, r1] [2, T2, v2, r2] [3, T3, v3, r3] [4, T4, v4, r4] [5, T5, v5, r5] [6, T6, v6, r6] [7, T7, v7, r7] [8, T8, v8, r8] [9, T9, v9, r9] [10, T10, v10, r10] [11, T11, v11, r11]) }
 
-pub struct FromStringRecognizer<T>(PhantomData<fn(&str) -> T>);
+pub struct TagRecognizer<T>(PhantomData<fn(&str) -> T>);
 
-impl<T: StringRepresentable> Default for FromStringRecognizer<T> {
+impl<T: Tag> Default for TagRecognizer<T> {
     fn default() -> Self {
-        FromStringRecognizer(PhantomData)
+        TagRecognizer(PhantomData)
     }
 }
 
-impl<T: StringRepresentable> Recognizer for FromStringRecognizer<T> {
+impl<T: Tag> Recognizer for TagRecognizer<T> {
     type Target = T;
 
     fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
