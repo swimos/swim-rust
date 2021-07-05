@@ -19,7 +19,7 @@ use std::borrow::Cow;
 /// Reading a serialized representation of a record in the Swim data model produces
 /// a stream of these events. An event is either a token, a notification that an
 /// attribute or record body has started or ended or a notifcation of a slot (this will
-/// occur between the slot key and the slot value). If a string does not requires escaping
+/// occur between the slot key and the slot value). If a string does not require escaping
 /// it will be provided as a reference into the original input rather than an separate
 /// allocation.
 #[derive(Debug, PartialEq, Clone)]
