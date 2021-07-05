@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::structural::model::record::{SegregatedStructModel, StructDef, StructModel};
-use crate::structural::model::{NameTransform, SynValidation, TryValidate};
+use crate::structural::model::{NameTransform, SynValidation, ValidateFrom};
 use quote::ToTokens;
 use std::collections::HashSet;
 use syn::{Attribute, DataEnum, Ident};
@@ -70,8 +70,8 @@ impl<'a> EnumDef<'a> {
     }
 }
 
-impl<'a> TryValidate<EnumDef<'a>> for EnumModel<'a> {
-    fn try_validate(input: EnumDef<'a>) -> SynValidation<Self> {
+impl<'a> ValidateFrom<EnumDef<'a>> for EnumModel<'a> {
+    fn validate(input: EnumDef<'a>) -> SynValidation<Self> {
         let EnumDef {
             name,
             top,
@@ -87,7 +87,7 @@ impl<'a> TryValidate<EnumDef<'a>> for EnumModel<'a> {
                 .validate_fold(init, false, |mut var_models, variant| {
                     let struct_def =
                         StructDef::new(&variant.ident, variant, &variant.attrs, variant);
-                    let model = StructModel::try_validate(struct_def);
+                    let model = StructModel::validate(struct_def);
                     match model {
                         Validation::Validated(model, errs) => {
                             var_models.push(model);

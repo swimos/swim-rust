@@ -33,8 +33,8 @@ pub enum NameTransform {
     Rename(String),
 }
 
-pub trait TryValidate<T>: Sized {
-    fn try_validate(input: T) -> SynValidation<Self>;
+pub trait ValidateFrom<T>: Sized {
+    fn validate(input: T) -> SynValidation<Self>;
 }
 
 /// Fold the attributes present on some syntactic element, accumulating errors.
@@ -91,7 +91,7 @@ impl TryFrom<&NestedMeta> for NameTransform {
             },
             _ => Err(syn::Error::new_spanned(
                 nested_meta,
-                "Unknown container artribute",
+                "Unknown container attribute",
             )),
         }
     }

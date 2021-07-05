@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use super::TryValidate;
+use super::ValidateFrom;
 use crate::parser::FieldManifest;
 use crate::structural::model::field::{FieldWithIndex, SegregatedFields, TaggedFieldModel};
 use crate::structural::model::{NameTransform, StructLike, SynValidation};
@@ -115,11 +115,11 @@ impl<'a, Flds> StructDef<'a, Flds> {
     }
 }
 
-impl<'a, Flds> TryValidate<StructDef<'a, Flds>> for StructModel<'a>
+impl<'a, Flds> ValidateFrom<StructDef<'a, Flds>> for StructModel<'a>
 where
     Flds: StructLike,
 {
-    fn try_validate(input: StructDef<'a, Flds>) -> SynValidation<Self> {
+    fn validate(input: StructDef<'a, Flds>) -> SynValidation<Self> {
         let StructDef {
             name,
             top,
@@ -127,7 +127,7 @@ where
             definition,
         } = input;
 
-        let fields_model = FieldsModel::try_validate(definition.fields());
+        let fields_model = FieldsModel::validate(definition.fields());
 
         let rename = super::fold_attr_meta(attributes.iter(), None, super::acc_rename);
 
@@ -143,8 +143,8 @@ where
     }
 }
 
-impl<'a> TryValidate<&'a Fields> for FieldsModel<'a> {
-    fn try_validate(definition: &'a Fields) -> SynValidation<Self> {
+impl<'a> ValidateFrom<&'a Fields> for FieldsModel<'a> {
+    fn validate(definition: &'a Fields) -> SynValidation<Self> {
         let (type_kind, fields) = match definition {
             Fields::Named(fields) => (CompoundTypeKind::Labelled, Some(fields.named.iter())),
             Fields::Unnamed(fields) => {
@@ -162,7 +162,7 @@ impl<'a> TryValidate<&'a Fields> for FieldsModel<'a> {
             field_it
                 .enumerate()
                 .map(|(i, fld)| FieldWithIndex(fld, i))
-                .validate_collect(true, TaggedFieldModel::try_validate)
+                .validate_collect(true, TaggedFieldModel::validate)
         } else {
             Validation::valid(vec![])
         };

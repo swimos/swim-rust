@@ -34,9 +34,9 @@ pub trait Semigroup: Sized {
     fn op_in_place(&mut self, right: Self);
 }
 
-/// Trait for types with an associative binary operator and a zero elemtn. Implementors are
-/// responsible for ensuring tha:
-/// * The operattion is associatve.
+/// Trait for types with an associative binary operator and a zero element. Implementors are
+/// responsible for ensuring that:
+/// * The operation is associatve.
 /// * Applying the operator to some value `v` of the type and the zero element (in both directions)
 /// results in a value that is identical to `v`.
 pub trait Monoid: Zero + Semigroup {}
