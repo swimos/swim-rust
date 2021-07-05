@@ -497,7 +497,7 @@ impl<T, Flds> OrdinalFieldsRecognizer<T, Flds> {
     /// * `fields` - The state for the state machine.
     /// * `num_fields` - The total number of named fields in the representation.
     /// * `select_recog` - Attempt to update the state with the next read event.
-    /// * `on_done` - Called when the recognizer is complete to conver the state to the output type.
+    /// * `on_done` - Called when the recognizer is complete to convert the state to the output type.
     /// * `reset` - Called to reset the state to its initial value.
     pub fn new_attr(
         fields: Flds,
