@@ -107,6 +107,7 @@ where
     }
 }
 
+#[derive(Debug)]
 pub enum HandshakeResult {
     Upgraded {
         protocol: &'static str,

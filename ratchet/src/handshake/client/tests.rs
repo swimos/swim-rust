@@ -1,6 +1,6 @@
 use crate::errors::{Error, ErrorKind, HttpError};
 use crate::fixture::{mock, MockPeer};
-use crate::handshake::client::HandshakeMachine;
+use crate::handshake::client::{HandshakeMachine, HandshakeResult};
 use crate::handshake::{
     ACCEPT_KEY, UPGRADE_STR, WEBSOCKET_STR, WEBSOCKET_VERSION, WEBSOCKET_VERSION_STR,
 };
@@ -263,4 +263,48 @@ fn expect_header(headers: &HeaderMap, name: HeaderName) -> &HeaderValue {
 }
 
 #[tokio::test]
-async fn redirection() {}
+async fn redirection() {
+    let redirected_to = "somewhere";
+
+    let request = TEST_URL.try_into_request().unwrap();
+    let (server, mut stream) = mock();
+
+    let (client_tx, client_rx) = trigger::trigger();
+    let (server_tx, server_rx) = trigger::trigger();
+
+    let client_task = async move {
+        let mut machine = HandshakeMachine::new(&mut stream, Vec::new(), Vec::new());
+        machine
+            .encode(Request::get(TEST_URL).body(()).unwrap())
+            .unwrap();
+        machine.write().await.unwrap();
+        machine.clear_buffer();
+
+        assert!(client_tx.trigger());
+        assert!(server_rx.await.is_ok());
+
+        match machine.read().await {
+            Ok(HandshakeResult::Redirected { to }) if to == redirected_to => {}
+            r => panic!("{:?}", r),
+        }
+
+        assert!(machine.read().await.is_ok());
+    };
+
+    let server_task = async move {
+        assert!(client_rx.await.is_ok());
+
+        let response = Response::builder()
+            .status(StatusCode::TEMPORARY_REDIRECT)
+            .version(Version::HTTP_11)
+            .header(header::LOCATION, redirected_to)
+            .body(())
+            .unwrap();
+
+        server.write_response(response);
+
+        assert!(server_tx.trigger());
+    };
+
+    let _result = join(client_task, server_task).await;
+}
