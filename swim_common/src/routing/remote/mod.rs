@@ -14,14 +14,12 @@
 
 mod addresses;
 pub mod config;
+pub mod net;
 mod pending;
 pub(crate) mod router;
 mod state;
 pub mod table;
 mod task;
-
-#[cfg(not(target_arch = "wasm32"))]
-pub mod net;
 
 #[cfg(test)]
 mod tests;
