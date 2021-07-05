@@ -5,7 +5,7 @@ mod tests;
 type Nonce = [u8; 24];
 
 use crate::errors::{Error, ErrorKind, HttpError};
-use crate::extensions::{Extension, WebsocketExtension};
+use crate::extensions::{ext::WebsocketExtension, Extension, ExtensionHandshake};
 use crate::handshake::client::encoding::{build_request, encode_request};
 use crate::handshake::io::BufferedIo;
 use crate::handshake::{
@@ -27,34 +27,32 @@ use tracing::{event, span, Level};
 use tracing_futures::Instrument;
 
 const MSG_HANDSHAKE_COMPLETED: &str = "Handshake completed";
-const MSG_REDIRECTED: &str = "Resource unavailable. Redirected.";
 const MSG_HANDSHAKE_FAILED: &str = "Handshake failed";
 const MSG_HANDSHAKE_START: &str = "Executing client handshake";
 
-pub async fn exec_client_handshake<S>(
+pub async fn exec_client_handshake<S, E>(
     _config: &WebSocketConfig,
     stream: &mut S,
     _connector: Option<TlsConnector>,
     request: Request<()>,
-) -> Result<HandshakeResult, Error>
+    extension: E,
+) -> Result<HandshakeResult<E::Extension>, Error>
 where
     S: WebSocketStream,
+    E: ExtensionHandshake,
 {
-    let machine = HandshakeMachine::new(stream, Vec::new(), Vec::new());
+    let machine = HandshakeMachine::new(stream, Vec::new(), extension);
     let uri = request.uri();
     let span = span!(Level::DEBUG, MSG_HANDSHAKE_START, ?uri);
 
     let exec = async move {
         let handshake_result = machine.exec(request).await;
         match &handshake_result {
-            Ok(HandshakeResult::Upgraded {
+            Ok(HandshakeResult {
                 protocol,
                 extension,
             }) => {
                 event!(Level::DEBUG, MSG_HANDSHAKE_COMPLETED, ?protocol, ?extension)
-            }
-            Ok(HandshakeResult::Redirected { to }) => {
-                event!(Level::DEBUG, MSG_REDIRECTED, location = ?to)
             }
             Err(e) => {
                 event!(Level::ERROR, MSG_HANDSHAKE_FAILED, error = ?e)
@@ -67,27 +65,28 @@ where
     exec.instrument(span).await
 }
 
-struct HandshakeMachine<'s, S> {
+struct HandshakeMachine<'s, S, E> {
     buffered: BufferedIo<'s, S>,
     nonce: Nonce,
     subprotocols: Vec<&'static str>,
-    extensions: Vec<&'static str>,
+    extension: E,
 }
 
-impl<'s, S> HandshakeMachine<'s, S>
+impl<'s, S, E> HandshakeMachine<'s, S, E>
 where
     S: WebSocketStream,
+    E: ExtensionHandshake,
 {
     pub fn new(
         socket: &'s mut S,
         subprotocols: Vec<&'static str>,
-        extensions: Vec<&'static str>,
-    ) -> HandshakeMachine<'s, S> {
+        extension: E,
+    ) -> HandshakeMachine<'s, S, E> {
         HandshakeMachine {
             buffered: BufferedIo::new(socket, BytesMut::new()),
             nonce: [0; 24],
             subprotocols,
-            extensions,
+            extension,
         }
     }
 
@@ -109,9 +108,12 @@ where
         self.buffered.clear();
     }
 
-    async fn read(&mut self) -> Result<HandshakeResult, Error> {
+    async fn read(&mut self) -> Result<HandshakeResult<E::Extension>, Error> {
         let HandshakeMachine {
-            buffered, nonce, ..
+            buffered,
+            nonce,
+            subprotocols,
+            extension,
         } = self;
 
         loop {
@@ -120,7 +122,7 @@ where
             let mut headers = [httparse::EMPTY_HEADER; 32];
             let mut response = httparse::Response::new(&mut headers);
 
-            match try_parse_response(&buffered.buffer, &mut response, &nonce)? {
+            match try_parse_response(&buffered.buffer, &mut response, nonce, extension)? {
                 ParseResult::Complete(result, count) => {
                     buffered.advance(count);
                     break Ok(result);
@@ -131,7 +133,10 @@ where
     }
 
     // This is split up on purpose so that the individual functions can be called in unit tests.
-    pub async fn exec(mut self, request: Request<()>) -> Result<HandshakeResult, Error> {
+    pub async fn exec(
+        mut self,
+        request: Request<()>,
+    ) -> Result<HandshakeResult<E::Extension>, Error> {
         self.encode(request)?;
         self.write().await?;
         self.clear_buffer();
@@ -140,14 +145,9 @@ where
 }
 
 #[derive(Debug, PartialEq)]
-pub enum HandshakeResult {
-    Upgraded {
-        protocol: &'static str,
-        extension: WebsocketExtension,
-    },
-    Redirected {
-        to: String,
-    },
+pub struct HandshakeResult<E> {
+    protocol: &'static str,
+    extension: E,
 }
 
 /// Quickly checks a partial response in the order of the expected HTTP response declaration to see
@@ -180,25 +180,36 @@ fn check_partial_response(response: &Response) -> Result<(), Error> {
     }
 }
 
-enum ParseResult {
-    Complete(HandshakeResult, usize),
+enum ParseResult<E> {
+    Complete(HandshakeResult<E>, usize),
     Partial,
 }
 
-fn try_parse_response<'l>(
+fn try_parse_response<'l, E>(
     buffer: &'l BytesMut,
     response: &mut Response<'_, 'l>,
     expected_nonce: &Nonce,
-) -> Result<ParseResult, Error> {
+    extension: &E,
+) -> Result<ParseResult<E::Extension>, Error>
+where
+    E: ExtensionHandshake,
+{
     match response.parse(buffer.as_ref()) {
-        Ok(Status::Complete(count)) => parse_response(response, expected_nonce)
-            .map(|result| ParseResult::Complete(result, count)),
+        Ok(Status::Complete(count)) => parse_response(response, expected_nonce, extension)
+            .map(|r| ParseResult::Complete(r, count)),
         Ok(Status::Partial) => Ok(ParseResult::Partial),
         Err(e) => Err(e.into()),
     }
 }
 
-fn parse_response(response: &Response, expected_nonce: &Nonce) -> Result<HandshakeResult, Error> {
+fn parse_response<E>(
+    response: &Response,
+    expected_nonce: &Nonce,
+    extension: &E,
+) -> Result<HandshakeResult<E::Extension>, Error>
+where
+    E: ExtensionHandshake,
+{
     match response.version {
         // rfc6455 § 4.2.1.1: must be HTTP/1.1 or higher
         Some(1) => {}
@@ -220,7 +231,10 @@ fn parse_response(response: &Response, expected_nonce: &Nonce) -> Result<Handsha
                     // the value _should_ be valid UTF-8
                     let location = String::from_utf8(header.value.to_vec())
                         .map_err(|_| Error::new(ErrorKind::Http))?;
-                    return Ok(HandshakeResult::Redirected { to: location });
+                    return Err(Error::with_cause(
+                        ErrorKind::Http,
+                        HttpError::Redirected(location),
+                    ));
                 }
                 None => return Err(Error::with_cause(ErrorKind::Http, HttpError::Status(c))),
             }
@@ -264,10 +278,10 @@ fn parse_response(response: &Response, expected_nonce: &Nonce) -> Result<Handsha
     }
 
     // todo protocol
-
-    Ok(HandshakeResult::Upgraded {
+    //
+    Ok(HandshakeResult {
         protocol: "",
-        extension: WebsocketExtension::None,
+        extension: extension.negotiate(response)?,
     })
 }
 

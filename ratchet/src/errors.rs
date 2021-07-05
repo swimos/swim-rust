@@ -1,3 +1,4 @@
+use crate::extensions::ExtHandshakeErr;
 use crate::handshake::RequestError;
 use http::header::HeaderName;
 use http::status::InvalidStatusCode;
@@ -12,7 +13,7 @@ pub(crate) type BoxError = Box<dyn StdError + Send + Sync>;
 
 #[derive(Debug)]
 pub struct Error {
-    inner: Box<Inner>,
+    inner: Inner,
 }
 
 impl Display for Error {
@@ -26,7 +27,7 @@ impl StdError for Error {}
 impl Error {
     pub(crate) fn new(kind: ErrorKind) -> Error {
         Error {
-            inner: Box::new(Inner { kind, source: None }),
+            inner: Inner { kind, source: None },
         }
     }
 
@@ -35,10 +36,10 @@ impl Error {
         E: Into<BoxError>,
     {
         Error {
-            inner: Box::new(Inner {
+            inner: Inner {
                 kind,
                 source: Some(source.into()),
-            }),
+            },
         }
     }
 
@@ -68,6 +69,7 @@ struct Inner {
 pub(crate) enum ErrorKind {
     IO,
     Http,
+    Extension,
 }
 
 impl From<io::Error> for Error {
@@ -114,4 +116,15 @@ pub enum HttpError {
     InvalidMethod,
     #[error("The provided URI was malformatted")]
     MalformattedUri,
+}
+
+impl From<ExtHandshakeErr> for Error {
+    fn from(e: ExtHandshakeErr) -> Self {
+        Error {
+            inner: Inner {
+                kind: ErrorKind::Extension,
+                source: Some(e.0),
+            },
+        }
+    }
 }

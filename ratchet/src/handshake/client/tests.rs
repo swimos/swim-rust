@@ -1,4 +1,5 @@
 use crate::errors::{Error, ErrorKind, HttpError};
+use crate::extensions::ext::NoExtProxy;
 use crate::fixture::{mock, MockPeer};
 use crate::handshake::client::{HandshakeMachine, HandshakeResult};
 use crate::handshake::{
@@ -24,7 +25,7 @@ async fn handshake_sends_valid_request() {
     let request = TEST_URL.try_into_request().unwrap();
     let (peer, mut stream) = mock();
 
-    let mut machine = HandshakeMachine::new(&mut stream, Vec::new(), Vec::new());
+    let mut machine = HandshakeMachine::new(&mut stream, Vec::new(), NoExtProxy);
     machine.encode(request).expect("");
     machine.buffered.write().await.expect("");
 
@@ -54,7 +55,7 @@ async fn handshake_invalid_requests() {
     async fn test(request: Request<()>) {
         let (peer, mut stream) = mock();
 
-        let mut machine = HandshakeMachine::new(&mut stream, Vec::new(), Vec::new());
+        let mut machine = HandshakeMachine::new(&mut stream, Vec::new(), NoExtProxy);
         machine
             .encode(request)
             .expect_err("Expected encoding to fail");
@@ -90,6 +91,14 @@ async fn handshake_invalid_requests() {
             .unwrap(),
     )
     .await;
+
+    test(
+        Request::get(TEST_URL)
+            .header(header::SEC_WEBSOCKET_EXTENSIONS, "deflate")
+            .body(())
+            .unwrap(),
+    )
+    .await;
 }
 
 fn expect_error<E>(actual: Result<(), Error>, expected: E)
@@ -114,7 +123,7 @@ async fn expect_server_error(response: Response<()>, expected_error: HttpError) 
     let (server_tx, server_rx) = trigger::trigger();
 
     let client_task = async move {
-        let mut machine = HandshakeMachine::new(&mut stream, Vec::new(), Vec::new());
+        let mut machine = HandshakeMachine::new(&mut stream, Vec::new(), NoExtProxy);
         machine
             .encode(Request::get(TEST_URL).body(()).unwrap())
             .unwrap();
@@ -209,7 +218,7 @@ async fn ok_nonce() {
     let (server_tx, server_rx) = trigger::trigger();
 
     let client_task = async move {
-        let mut machine = HandshakeMachine::new(&mut stream, Vec::new(), Vec::new());
+        let mut machine = HandshakeMachine::new(&mut stream, Vec::new(), NoExtProxy);
         machine
             .encode(Request::get(TEST_URL).body(()).unwrap())
             .unwrap();
@@ -218,7 +227,6 @@ async fn ok_nonce() {
 
         assert!(client_tx.trigger());
         assert!(server_rx.await.is_ok());
-
         assert!(machine.read().await.is_ok());
     };
 
@@ -273,7 +281,7 @@ async fn redirection() {
     let (server_tx, server_rx) = trigger::trigger();
 
     let client_task = async move {
-        let mut machine = HandshakeMachine::new(&mut stream, Vec::new(), Vec::new());
+        let mut machine = HandshakeMachine::new(&mut stream, Vec::new(), NoExtProxy);
         machine
             .encode(Request::get(TEST_URL).body(()).unwrap())
             .unwrap();
@@ -284,17 +292,16 @@ async fn redirection() {
         assert!(server_rx.await.is_ok());
 
         match machine.read().await {
-            Ok(HandshakeResult::Redirected { to }) if to == redirected_to => {}
-            r => panic!("{:?}", r),
-        }
-
-        let handshake_result = machine.read().await.expect("Handshake failure");
-        assert_eq!(
-            handshake_result,
-            HandshakeResult::Redirected {
-                to: redirected_to.to_string()
+            Ok(r) => {
+                panic!("Expected an error got: {:?}", r)
             }
-        )
+            Err(e) => {
+                let r = e
+                    .downcast_ref::<HttpError>()
+                    .expect("Expected a HTTP error");
+                assert_eq!(r, &HttpError::Redirected(redirected_to.to_string()))
+            }
+        }
     };
 
     let server_task = async move {

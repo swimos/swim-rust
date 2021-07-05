@@ -68,6 +68,13 @@ pub fn build_request(request: &mut Request<()>) -> Result<(), Error> {
         HeaderValue::from_static(WEBSOCKET_VERSION_STR),
     )?;
 
+    if let Some(_) = request.headers().get(header::SEC_WEBSOCKET_EXTENSIONS) {
+        return Err(Error::with_cause(
+            ErrorKind::Http,
+            HttpError::InvalidHeader(header::SEC_WEBSOCKET_EXTENSIONS),
+        ));
+    }
+
     let option = request
         .headers()
         .get(header::SEC_WEBSOCKET_KEY)

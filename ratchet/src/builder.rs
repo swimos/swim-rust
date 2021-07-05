@@ -1,25 +1,48 @@
 use crate::errors::Error;
+use crate::extensions::ext::{NoExt, NoExtProxy};
+use crate::extensions::{Extension, ExtensionHandshake};
 use crate::{Interceptor, TryIntoRequest, WebSocket, WebSocketConfig, WebSocketStream};
 use tokio_native_tls::TlsConnector;
 
 /// This gives the flexibility to build websockets in a 'friendlier' fashion as opposed to having
 /// a bunch of functions like `connect_with_config_and_stream` and `connect_with_config` etc.
-#[derive(Default)]
-pub struct WebSocketClientBuilder {
+pub struct WebSocketClientBuilder<E> {
     config: Option<WebSocketConfig>,
     connector: Option<TlsConnector>,
+    extension: E,
 }
 
-impl WebSocketClientBuilder {
+impl Default for WebSocketClientBuilder<NoExtProxy> {
+    fn default() -> Self {
+        WebSocketClientBuilder {
+            config: None,
+            connector: None,
+            extension: NoExtProxy,
+        }
+    }
+}
+
+impl<E: ExtensionHandshake> WebSocketClientBuilder<E> {
     pub async fn subscribe<S, I>(self, stream: S, request: I) -> Result<WebSocket<S>, Error>
     where
         S: WebSocketStream,
         I: TryIntoRequest,
     {
-        let WebSocketClientBuilder { config, connector } = self;
+        let WebSocketClientBuilder {
+            config,
+            connector,
+            extension,
+        } = self;
         let request = request.try_into_request()?;
 
-        WebSocket::client(config.unwrap_or_default(), stream, connector, request).await
+        WebSocket::client(
+            config.unwrap_or_default(),
+            stream,
+            connector,
+            request,
+            extension,
+        )
+        .await
     }
 
     pub fn config(mut self, config: WebSocketConfig) -> Self {
@@ -29,6 +52,11 @@ impl WebSocketClientBuilder {
 
     pub fn tls_connector(mut self, connector: TlsConnector) -> Self {
         self.connector = Some(connector);
+        self
+    }
+
+    pub fn extension(mut self, extension: E) -> Self {
+        self.extension = extension;
         self
     }
 }
