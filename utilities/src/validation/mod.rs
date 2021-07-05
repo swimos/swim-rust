@@ -254,7 +254,7 @@ pub fn validate2<T1, T2, E: Semigroup>(
     first.and_then(|v1| second.map(move |v2| (v1, v2)))
 }
 
-/// Combined three validated values, accumulating errors.
+/// Combine three validated values, accumulating errors.
 pub fn validate3<T1, T2, T3, E: Semigroup>(
     first: Validation<T1, E>,
     second: Validation<T2, E>,
