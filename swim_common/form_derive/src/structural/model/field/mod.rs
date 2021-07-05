@@ -33,7 +33,7 @@ pub enum FieldIndex<'a> {
     Ordinal(usize),
 }
 
-// Consistently gives the same name to a given field wherever is is referred to.
+// Consistently gives the same name to a given field wherever it is referred to.
 impl<'a> ToTokens for FieldIndex<'a> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         match self {
