@@ -129,7 +129,7 @@ struct FieldAttributes {
 }
 
 impl FieldAttributes {
-    /// Attempt to apply another attribyte, failing of the combined effect is invalid.
+    /// Attempt to apply another attribute, failing of the combined effect is invalid.
     fn add(mut self, field: &syn::Field, attr: FieldAttr) -> SynValidation<FieldAttributes> {
         let FieldAttributes {
             transform,
