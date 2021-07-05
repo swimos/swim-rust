@@ -246,7 +246,7 @@ impl<E> Append<Option<E>> for Errors<E> {
     }
 }
 
-/// Combined two validated values, accumulating errors.
+/// Combine two validated values, accumulating errors.
 pub fn validate2<T1, T2, E: Semigroup>(
     first: Validation<T1, E>,
     second: Validation<T2, E>,
