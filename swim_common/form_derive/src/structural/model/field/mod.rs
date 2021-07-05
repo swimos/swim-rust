@@ -27,7 +27,7 @@ use utilities::validation::Validation;
 
 /// Describes how to extract a field from a struct.
 pub enum FieldIndex<'a> {
-    ///Field in a lablled struct (identified by name).
+    ///Field in a labelled struct (identified by name).
     Named(&'a Ident),
     ///Field in a tuple struct (identified by its index).
     Ordinal(usize),
