@@ -35,7 +35,6 @@ pub struct CNil(Never);
 
 impl CNil {
     /// Witnesses that this type has no members.
-    #[inline]
     pub fn explode(&self) -> ! {
         self.0.explode()
     }

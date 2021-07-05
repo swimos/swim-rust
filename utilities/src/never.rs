@@ -21,7 +21,6 @@ pub enum Never {}
 
 impl Never {
     /// Witnesses that an instance of [Never] cannot exist.
-    #[inline]
     pub fn explode(&self) -> ! {
         match *self {}
     }
