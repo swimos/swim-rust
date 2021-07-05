@@ -200,32 +200,32 @@ impl<'a, 'b> ToTokens for DeriveStructuralReadable<'b, SegregatedEnumModel<'a, '
                     let on_reset = ResetFn::new(model.fields.not_skipped());
 
                     quote! {
-                    type #builder_name #type_gen = #builder_type;
-                    #select_index
+                        type #builder_name #type_gen = #builder_type;
+                        #select_index
 
-                    #[automatically_derived]
-                    fn #select_feed_name #impl_gen(state: &mut #builder_name #type_gen, index: u32, event: swim_common::form::structural::read::event::ReadEvent<'_>)
-                        -> core::option::Option<core::result::Result<(), swim_common::form::structural::read::error::ReadError>>
-                    #where_clause
-                    {
-                        #select_feed
+                        #[automatically_derived]
+                        fn #select_feed_name #impl_gen(state: &mut #builder_name #type_gen, index: u32, event: swim_common::form::structural::read::event::ReadEvent<'_>)
+                            -> core::option::Option<core::result::Result<(), swim_common::form::structural::read::error::ReadError>>
+                        #where_clause
+                        {
+                            #select_feed
+                        }
+
+                        #[automatically_derived]
+                        fn #on_done_name #impl_gen(state: &mut #builder_name #type_gen) -> core::result::Result<#enum_ty, swim_common::form::structural::read::error::ReadError>
+                        #where_clause
+                        {
+                            #on_done
+                        }
+
+                        #[automatically_derived]
+                        fn #on_reset_name #impl_gen(state: &mut #builder_name #type_gen)
+                        #where_clause
+                        {
+                            #on_reset
+                        }
+
                     }
-
-                    #[automatically_derived]
-                    fn #on_done_name #impl_gen(state: &mut #builder_name #type_gen) -> core::result::Result<#enum_ty, swim_common::form::structural::read::error::ReadError>
-                    #where_clause
-                    {
-                        #on_done
-                    }
-
-                    #[automatically_derived]
-                    fn #on_reset_name #impl_gen(state: &mut #builder_name #type_gen)
-                    #where_clause
-                    {
-                        #on_reset
-                    }
-
-                }
                 });
 
             let state = EnumState::new(model, &type_gen);

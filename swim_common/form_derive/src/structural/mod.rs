@@ -15,7 +15,7 @@
 use crate::structural::model::enumeration::{EnumDef, EnumModel, SegregatedEnumModel};
 use crate::structural::model::record::{SegregatedStructModel, StructDef, StructModel};
 use crate::structural::model::StructLike;
-use crate::structural::model::TryValidate;
+use crate::structural::model::ValidateFrom;
 use crate::structural::read::DeriveStructuralReadable;
 use crate::structural::write::DeriveStructuralWritable;
 use crate::tag::{DeriveTag, UnitEnum};
@@ -68,7 +68,7 @@ fn struct_derive_structural_writable<'a, Flds: StructLike>(
     input: StructDef<'a, Flds>,
     generics: &'a Generics,
 ) -> Result<TokenStream, Errors<syn::Error>> {
-    let model = StructModel::try_validate(input).into_result()?;
+    let model = StructModel::validate(input).into_result()?;
     let segregated = SegregatedStructModel::from(&model);
     let derive = DeriveStructuralWritable(segregated, generics);
     Ok(derive.into_token_stream())
@@ -78,7 +78,7 @@ fn struct_derive_structural_form<'a, Flds: StructLike>(
     input: StructDef<'a, Flds>,
     generics: &'a Generics,
 ) -> Result<TokenStream, Errors<syn::Error>> {
-    let model = StructModel::try_validate(input).into_result()?;
+    let model = StructModel::validate(input).into_result()?;
     let segregated = SegregatedStructModel::from(&model);
     let derive_writable = DeriveStructuralWritable(segregated.clone(), generics);
     let derive_readable = DeriveStructuralReadable(segregated, generics);
@@ -92,7 +92,7 @@ fn enum_derive_structural_form<'a>(
     input: EnumDef<'a>,
     generics: &'a Generics,
 ) -> Result<TokenStream, Errors<syn::Error>> {
-    let model = EnumModel::try_validate(input).into_result()?;
+    let model = EnumModel::validate(input).into_result()?;
     let segregated = SegregatedEnumModel::from(&model);
     let derive_writable = DeriveStructuralWritable(segregated.clone(), generics);
     let derive_readable = DeriveStructuralReadable(segregated, generics);
@@ -106,7 +106,7 @@ fn enum_derive_structural_writable<'a>(
     input: EnumDef<'a>,
     generics: &'a Generics,
 ) -> Result<TokenStream, Errors<syn::Error>> {
-    let model = EnumModel::try_validate(input).into_result()?;
+    let model = EnumModel::validate(input).into_result()?;
     let segregated = SegregatedEnumModel::from(&model);
     let derive = DeriveStructuralWritable(segregated, generics);
     Ok(derive.into_token_stream())
@@ -135,7 +135,7 @@ fn struct_derive_structural_readable<Flds: StructLike>(
     input: StructDef<'_, Flds>,
     generics: &Generics,
 ) -> Result<TokenStream, Errors<syn::Error>> {
-    let model = StructModel::try_validate(input).into_result()?;
+    let model = StructModel::validate(input).into_result()?;
     let segregated = SegregatedStructModel::from(&model);
     let derive = DeriveStructuralReadable(segregated, generics);
     Ok(derive.into_token_stream())
@@ -145,7 +145,7 @@ fn enum_derive_structural_readable(
     input: EnumDef<'_>,
     generics: &Generics,
 ) -> Result<TokenStream, Errors<syn::Error>> {
-    let model = EnumModel::try_validate(input).into_result()?;
+    let model = EnumModel::validate(input).into_result()?;
     let segregated = SegregatedEnumModel::from(&model);
     let derive = DeriveStructuralReadable(segregated, generics);
     Ok(derive.into_token_stream())

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use super::TryValidate;
+use super::ValidateFrom;
 use crate::parser::{
     ATTR_PATH, BODY_PATH, HEADER_BODY_PATH, HEADER_PATH, NAME_PATH, SKIP_PATH, SLOT_PATH, TAG_PATH,
 };
@@ -162,8 +162,8 @@ impl FieldAttributes {
 
 pub struct FieldWithIndex<'a>(pub &'a Field, pub usize);
 
-impl<'a> TryValidate<FieldWithIndex<'a>> for TaggedFieldModel<'a> {
-    fn try_validate(input: FieldWithIndex<'a>) -> SynValidation<Self> {
+impl<'a> ValidateFrom<FieldWithIndex<'a>> for TaggedFieldModel<'a> {
+    fn validate(input: FieldWithIndex<'a>) -> SynValidation<Self> {
         let FieldWithIndex(field, i) = input;
         let Field {
             attrs, ident, ty, ..
@@ -237,7 +237,7 @@ impl TryFrom<NestedMeta> for FieldAttr {
                         new_name.value(),
                     )))
                 } else {
-                    Err(syn::Error::new_spanned(input, "Expected string argument"))
+                    Err(syn::Error::new_spanned(named, "Expected string argument"))
                 }
             }
             _ => Ok(FieldAttr::Other), //Overlap with schema macro.
