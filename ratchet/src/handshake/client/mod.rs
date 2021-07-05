@@ -14,6 +14,8 @@ use crate::handshake::{
 };
 use crate::{WebSocketConfig, WebSocketStream};
 use bytes::{Buf, BytesMut};
+use futures::future::ready;
+use futures_util::FutureExt;
 use http::header::HeaderName;
 use http::{header, Request, StatusCode};
 use httparse::{Response, Status};
@@ -21,6 +23,13 @@ use sha1::{Digest, Sha1};
 use std::convert::TryFrom;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio_native_tls::TlsConnector;
+use tracing::{event, span, Level};
+use tracing_futures::Instrument;
+
+const MSG_HANDSHAKE_COMPLETED: &str = "Handshake completed";
+const MSG_REDIRECTED: &str = "Resource unavailable. Redirected.";
+const MSG_HANDSHAKE_FAILED: &str = "Handshake failed";
+const MSG_HANDSHAKE_START: &str = "Executing client handshake";
 
 pub async fn exec_client_handshake<S>(
     _config: &WebSocketConfig,
@@ -32,7 +41,30 @@ where
     S: WebSocketStream,
 {
     let machine = HandshakeMachine::new(stream, Vec::new(), Vec::new());
-    machine.exec(request).await
+    let uri = request.uri();
+    let span = span!(Level::DEBUG, MSG_HANDSHAKE_START, ?uri);
+
+    let exec = async move {
+        let handshake_result = machine.exec(request).await;
+        match &handshake_result {
+            Ok(HandshakeResult::Upgraded {
+                protocol,
+                extension,
+            }) => {
+                event!(Level::DEBUG, MSG_HANDSHAKE_COMPLETED, ?protocol, ?extension)
+            }
+            Ok(HandshakeResult::Redirected { to }) => {
+                event!(Level::DEBUG, MSG_REDIRECTED, location = ?to)
+            }
+            Err(e) => {
+                event!(Level::ERROR, MSG_HANDSHAKE_FAILED, error = ?e)
+            }
+        }
+
+        handshake_result
+    };
+
+    exec.instrument(span).await
 }
 
 struct HandshakeMachine<'s, S> {
@@ -107,7 +139,7 @@ where
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum HandshakeResult {
     Upgraded {
         protocol: &'static str,

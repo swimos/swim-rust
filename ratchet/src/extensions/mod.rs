@@ -1,6 +1,6 @@
 pub trait Extension {}
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum WebsocketExtension {
     None,
     Deflate,

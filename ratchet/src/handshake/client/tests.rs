@@ -288,7 +288,13 @@ async fn redirection() {
             r => panic!("{:?}", r),
         }
 
-        assert!(machine.read().await.is_ok());
+        let handshake_result = machine.read().await.expect("Handshake failure");
+        assert_eq!(
+            handshake_result,
+            HandshakeResult::Redirected {
+                to: redirected_to.to_string()
+            }
+        )
     };
 
     let server_task = async move {
