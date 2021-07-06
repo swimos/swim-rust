@@ -11,22 +11,13 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-use std::collections::HashMap;
 use std::fmt::{Debug, Display};
-use std::sync::Arc;
-use stm::stm::Stm;
-use stm::transaction::atomically;
-use swim_server::agent::lane::channels::update::StmRetryStrategy;
-use swim_server::agent::lane::lifecycle::LaneLifecycle;
 use swim_server::agent::lane::model::command::CommandLane;
-use swim_server::agent::lane::model::map::{MapLane, MapLaneEvent};
-use swim_server::agent::lifecycle;
 use swim_server::agent::AgentContext;
 use swim_server::agent::SwimAgent;
 use swim_server::agent_lifecycle;
 use swim_server::command_lifecycle;
 use swim_server::uri::RelativeUri;
-use swim_server::RetryStrategy;
 
 #[derive(Debug, SwimAgent)]
 pub struct UnitAgent {

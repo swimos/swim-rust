@@ -29,7 +29,7 @@ async fn did_set(value_recv: ValueDownlinkReceiver<String>, initial_value: Strin
                 _ => None,
             }
         })
-        .scan(initial_value, |state, current| {
+        .scan(initial_value, |state, current: String| {
             let previous = std::mem::replace(state, current.clone());
             async { Some((previous, current)) }
         })

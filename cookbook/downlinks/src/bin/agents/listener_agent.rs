@@ -77,7 +77,7 @@ struct TriggerListenLifecycle {
 impl TriggerListenLifecycle {
     async fn on_command<Context>(
         &mut self,
-        command: &String,
+        command: &str,
         _model: &CommandLane<String>,
         context: &Context,
     ) where
