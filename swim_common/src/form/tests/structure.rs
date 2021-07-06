@@ -14,7 +14,6 @@
 
 use crate::form::structural::Tag;
 use crate::form::Form;
-use crate::model::text::Text;
 use crate::model::time::Timestamp;
 use crate::model::{Attr, Item, Value};
 

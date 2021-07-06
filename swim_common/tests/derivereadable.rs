@@ -15,7 +15,6 @@
 use swim_common::form::structural::read::parser::{parse_recognize, Span};
 use swim_common::form::structural::read::StructuralReadable;
 use swim_common::form::structural::Tag;
-use swim_common::model::text::Text;
 
 fn run_recognizer<T: StructuralReadable>(rep: &str) -> T {
     let span = Span::new(rep);
@@ -114,6 +113,27 @@ fn derive_struct_lift_header_body() {
         instance,
         MyStruct {
             in_header: false,
+            first: -34,
+            second: "name".to_string(),
+        }
+    );
+}
+
+#[test]
+fn derive_struct_lift_header_body_complex() {
+    #[derive(StructuralReadable, PartialEq, Eq, Debug)]
+    struct MyStruct {
+        #[form(header_body)]
+        in_header: Vec<bool>,
+        first: i32,
+        second: String,
+    }
+
+    let instance = run_recognizer::<MyStruct>("@MyStruct({false, true}) { first: -34, second: \"name\" }");
+    assert_eq!(
+        instance,
+        MyStruct {
+            in_header: vec![false, true],
             first: -34,
             second: "name".to_string(),
         }

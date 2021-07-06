@@ -87,7 +87,7 @@ pub fn build_head_attribute(
         Label::Foreign(_new_ident, ty, _old_ident) => {
             quote! {
                 {
-                    let enumerated = <#ty as swim_common::form::structural::StringRepresentable>::universe();
+                    let enumerated = <#ty as swim_common::form::structural::Tag>::universe();
                     let len = enumerated.len();
 
                     let attr_schemas = enumerated.into_iter().fold(Vec::with_capacity(len), |mut vec, variant| {

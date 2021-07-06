@@ -24,7 +24,6 @@ use crate::model::schema::text::TextSchema;
 use crate::model::schema::Schema;
 use crate::model::schema::StandardSchema;
 use crate::model::schema::{FieldSpec, ItemSchema};
-use crate::model::text::Text;
 use crate::model::Item;
 use crate::model::ValueKind;
 use crate::model::{Attr, Value};

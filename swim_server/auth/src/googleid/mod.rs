@@ -274,11 +274,13 @@ impl Recognizer for GoogleIdAuthenticatorRecognizer {
             AuthRecogState::Field(AuthRecogField::TokenSkew) => match input {
                 ReadEvent::Number(NumericValue::Int(n)) => {
                     self.token_skew = Some(n);
+                    self.state = AuthRecogState::InBody;
                     None
                 }
                 ReadEvent::Number(NumericValue::UInt(n)) => {
                     if let Ok(m) = i64::try_from(n) {
                         self.token_skew = Some(m);
+                        self.state = AuthRecogState::InBody;
                         None
                     } else {
                         Some(Err(ReadError::NumberOutOfRange))
@@ -289,11 +291,13 @@ impl Recognizer for GoogleIdAuthenticatorRecognizer {
             AuthRecogState::Field(AuthRecogField::CertSkew) => match input {
                 ReadEvent::Number(NumericValue::Int(n)) => {
                     self.cert_skew = Some(n);
+                    self.state = AuthRecogState::InBody;
                     None
                 }
                 ReadEvent::Number(NumericValue::UInt(n)) => {
                     if let Ok(m) = i64::try_from(n) {
                         self.cert_skew = Some(m);
+                        self.state = AuthRecogState::InBody;
                         None
                     } else {
                         Some(Err(ReadError::NumberOutOfRange))
@@ -305,6 +309,7 @@ impl Recognizer for GoogleIdAuthenticatorRecognizer {
                 if let ReadEvent::TextValue(text) = input {
                     if let Ok(url) = Url::parse(text.borrow()) {
                         self.public_key_uri = Some(url);
+                        self.state = AuthRecogState::InBody;
                         None
                     } else {
                         Some(Err(ReadError::Malformatted {

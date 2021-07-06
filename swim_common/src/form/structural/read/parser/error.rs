@@ -19,7 +19,7 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 
 /// Error that can occur when parsing into a structurally readable type.
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum ParseError {
     /// Parsing the input text failed. At the moment this just indicates the location
     /// in the input and the `nom` rule that failed.

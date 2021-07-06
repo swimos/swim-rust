@@ -876,8 +876,8 @@ pub enum TagSpec {
     Field,
 }
 
-#[derive()]
-enum HeaderKind {
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum HeaderKind {
     BodyOnly,
     SlotsOnly,
     Both,
@@ -1106,11 +1106,7 @@ impl<T, Flds> Recognizer for LabelledStructRecognizer<T, Flds> {
                             if let Err(e) = select_recog(fields, i, ReadEvent::TextValue(name))? {
                                 Some(Err(e))
                             } else {
-                                if *has_header_body {
-                                    *state = LabelledStructState::HeaderInit;
-                                } else {
-                                    *state = LabelledStructState::HeaderBetween;
-                                }
+                                *state = LabelledStructState::HeaderInit;
                                 None
                             }
                         } else {
@@ -1126,7 +1122,7 @@ impl<T, Flds> Recognizer for LabelledStructRecognizer<T, Flds> {
                         *state = LabelledStructState::AttrBetween;
                         None
                     }
-                    ReadEvent::StartBody if header_kind != HeaderKind::BodyOnly => {
+                    ReadEvent::StartBody if *header_kind != HeaderKind::BodyOnly => {
                         *state = LabelledStructState::HeaderInitNested;
                         None
                     }
@@ -1158,7 +1154,7 @@ impl<T, Flds> Recognizer for LabelledStructRecognizer<T, Flds> {
                                     Some(Err(ReadError::UnexpectedField(name.into())))
                                 }
                             } else {
-                                Some(Err(bad_kind(&ow)))
+                                Some(Err(bad_kind(&input)))
                             }
                         }
                     }
@@ -1196,7 +1192,7 @@ impl<T, Flds> Recognizer for LabelledStructRecognizer<T, Flds> {
                                 Some(Err(ReadError::UnexpectedField(name.into())))
                             }
                         } else {
-                            Some(Err(bad_kind(&ow)))
+                            Some(Err(bad_kind(&input)))
                         }
                     }
                 }
@@ -1425,11 +1421,7 @@ impl<T, Flds> Recognizer for OrdinalStructRecognizer<T, Flds> {
                             if let Err(e) = select_recog(fields, i, ReadEvent::TextValue(name))? {
                                 Some(Err(e))
                             } else {
-                                if *has_header_body {
-                                    *state = OrdinalStructState::HeaderInit;
-                                } else {
-                                    *state = OrdinalStructState::HeaderBetween;
-                                }
+                                *state = OrdinalStructState::HeaderInit;
                                 None
                             }
                         } else {
@@ -1445,14 +1437,14 @@ impl<T, Flds> Recognizer for OrdinalStructRecognizer<T, Flds> {
                         *state = OrdinalStructState::AttrBetween;
                         None
                     }
-                    ReadEvent::StartBody if header_kind != HeaderKind::BodyOnly => {
+                    ReadEvent::StartBody if *header_kind != HeaderKind::BodyOnly => {
                         *state = OrdinalStructState::HeaderInitNested;
                         None
                     }
                     _ => {
                         if header_kind.has_body() {
-                            *state = LabelledStructState::HeaderBodyItem;
-                            if let Some(i) = select_index(LabelledFieldKey::HeaderBody) {
+                            *state = OrdinalStructState::HeaderBodyItem;
+                            if let Some(i) = select_index(OrdinalFieldKey::HeaderBody) {
                                 *index = i;
                             } else {
                                 return Some(Err(ReadError::InconsistentState));
@@ -1460,7 +1452,7 @@ impl<T, Flds> Recognizer for OrdinalStructRecognizer<T, Flds> {
                             if let Err(e) = select_recog(fields, *index, input)? {
                                 Some(Err(e))
                             } else {
-                                *state = LabelledStructState::HeaderBetween;
+                                *state = OrdinalStructState::HeaderBetween;
                                 None
                             }
                         } else {
@@ -1477,7 +1469,7 @@ impl<T, Flds> Recognizer for OrdinalStructRecognizer<T, Flds> {
                                     Some(Err(ReadError::UnexpectedField(name.into())))
                                 }
                             } else {
-                                Some(Err(bad_kind(&ow)))
+                                Some(Err(bad_kind(&input)))
                             }
                         }
                     }
@@ -1515,7 +1507,7 @@ impl<T, Flds> Recognizer for OrdinalStructRecognizer<T, Flds> {
                                 Some(Err(ReadError::UnexpectedField(name.into())))
                             }
                         } else {
-                            Some(Err(bad_kind(&ow)))
+                            Some(Err(bad_kind(&input)))
                         }
                     }
                 }
@@ -2028,10 +2020,16 @@ where
 enum DelegateStructState {
     Init,
     HeaderInit,
+    HeaderInitNested,
     HeaderBodyItem,
+    HeaderBodyItemNested,
     HeaderBetween,
+    HeaderBetweenNested,
     HeaderExpectingSlot,
+    HeaderExpectingSlotNested,
     HeaderItem,
+    HeaderItemNested,
+    HeaderEnd,
     AttrBetween,
     AttrItem,
     DelegatedSimple,
@@ -2044,7 +2042,7 @@ enum DelegateStructState {
 /// [`RecognizerReadable`]. It should not generally be necessary to use this type explicitly.
 pub struct DelegateStructRecognizer<T, Flds> {
     tag: TagSpec,
-    has_header_body: bool,
+    header_kind: HeaderKind,
     state: DelegateStructState,
     fields: Flds,
     progress: Bitset,
@@ -2060,8 +2058,8 @@ impl<T, Flds> DelegateStructRecognizer<T, Flds> {
     /// #Arguments
     /// * `tag` - The expected name of the first attribute or an inidcation that it should be used
     /// to populate a field.
-    /// * `has_header_body` - Inidcates that one of the fields has been promoted to the body of the
-    /// tag attribute.
+    /// * `header_kind` - Inidcates that one of the fields has been promoted to the body of the
+    /// tag attribute and whether there are slots in the header.
     /// * `fields` - The state of the recognizer state machine (specified by the macro).
     /// * `num_fields` - The total numer of (non-skipped) fields that the recognizer expects.
     /// * `vtable` - Functions that are generated by the macro that determine how incoming events
@@ -2070,7 +2068,7 @@ impl<T, Flds> DelegateStructRecognizer<T, Flds> {
     /// will need to be wrapped in a record.
     pub fn new(
         tag: TagSpec,
-        has_header_body: bool,
+        header_kind: HeaderKind,
         fields: Flds,
         num_fields: u32,
         vtable: OrdinalVTable<T, Flds>,
@@ -2078,7 +2076,7 @@ impl<T, Flds> DelegateStructRecognizer<T, Flds> {
     ) -> Self {
         DelegateStructRecognizer {
             tag,
-            has_header_body,
+            header_kind,
             state: DelegateStructState::Init,
             fields,
             progress: Bitset::new(num_fields),
@@ -2096,8 +2094,8 @@ impl<T, Flds> DelegateStructRecognizer<T, Flds> {
     /// is skipped.
     ///
     /// #Arguments
-    /// * `has_header_body` - Inidcates that one of the fields has been promoted to the body of the
-    /// tag attribute.
+    /// * `header_kind` - Inidcates that one of the fields has been promoted to the body of the
+    /// tag attribute and whether there are slots in the header.
     /// * `fields` - The state of the recognizer state machine (specified by the macro).
     /// * `num_fields` - The total numer of (non-skipped) fields that the recognizer expects.
     /// * `vtable` - Functions that are generated by the macro that determine how incoming events
@@ -2105,7 +2103,7 @@ impl<T, Flds> DelegateStructRecognizer<T, Flds> {
     /// * `simple_body` - Indicates that the delegate field is represented by a singe value which
     /// will need to be wrapped in a record.
     pub fn variant(
-        has_header_body: bool,
+        header_kind: HeaderKind,
         fields: Flds,
         num_fields: u32,
         vtable: OrdinalVTable<T, Flds>,
@@ -2113,7 +2111,7 @@ impl<T, Flds> DelegateStructRecognizer<T, Flds> {
     ) -> Self {
         DelegateStructRecognizer {
             tag: TagSpec::Fixed(""),
-            has_header_body,
+            header_kind,
             state: DelegateStructState::HeaderInit,
             fields,
             progress: Bitset::new(num_fields),
@@ -2133,7 +2131,7 @@ impl<T, Flds> Recognizer for DelegateStructRecognizer<T, Flds> {
     fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         let DelegateStructRecognizer {
             tag,
-            has_header_body,
+            header_kind,
             state,
             fields,
             progress,
@@ -2150,11 +2148,7 @@ impl<T, Flds> Recognizer for DelegateStructRecognizer<T, Flds> {
                 ReadEvent::StartAttribute(name) => match tag {
                     TagSpec::Fixed(tag) => {
                         if name == *tag {
-                            if *has_header_body {
-                                *state = DelegateStructState::HeaderInit;
-                            } else {
-                                *state = DelegateStructState::HeaderBetween;
-                            }
+                            *state = DelegateStructState::HeaderInit;
                             None
                         } else {
                             Some(Err(bad_kind(&ReadEvent::StartAttribute(name))))
@@ -2165,11 +2159,7 @@ impl<T, Flds> Recognizer for DelegateStructRecognizer<T, Flds> {
                             if let Err(e) = select_recog(fields, i, ReadEvent::TextValue(name))? {
                                 Some(Err(e))
                             } else {
-                                if *has_header_body {
-                                    *state = DelegateStructState::HeaderInit;
-                                } else {
-                                    *state = DelegateStructState::HeaderBetween;
-                                }
+                                *state = DelegateStructState::HeaderInit;
                                 None
                             }
                         } else {
@@ -2180,21 +2170,83 @@ impl<T, Flds> Recognizer for DelegateStructRecognizer<T, Flds> {
                 ow => Some(Err(bad_kind(&ow))),
             },
             DelegateStructState::HeaderInit => {
-                if matches!(&input, ReadEvent::EndAttribute) {
-                    *state = DelegateStructState::AttrBetween;
+                match &input {
+                    ReadEvent::EndAttribute => {
+                        *state = DelegateStructState::AttrBetween;
+                        None
+                    }
+                    ReadEvent::StartBody if *header_kind != HeaderKind::BodyOnly => {
+                        *state = DelegateStructState::HeaderInitNested;
+                        None
+                    }
+                    _ => {
+                        if header_kind.has_body() {
+                            *state = DelegateStructState::HeaderBodyItem;
+                            if let Some(i) = select_index(OrdinalFieldKey::HeaderBody) {
+                                *index = i;
+                            } else {
+                                return Some(Err(ReadError::InconsistentState));
+                            }
+                            if let Err(e) = select_recog(fields, *index, input)? {
+                                Some(Err(e))
+                            } else {
+                                *state = DelegateStructState::HeaderBetween;
+                                None
+                            }
+                        } else {
+                            if let ReadEvent::TextValue(name) = input {
+                                if let Some(i) = select_index(OrdinalFieldKey::HeaderSlot(name.borrow())) {
+                                    if progress.get(i).unwrap_or(false) {
+                                        Some(Err(ReadError::DuplicateField(Text::new(name.borrow()))))
+                                    } else {
+                                        *index = i;
+                                        *state = DelegateStructState::HeaderExpectingSlot;
+                                        None
+                                    }
+                                } else {
+                                    Some(Err(ReadError::UnexpectedField(name.into())))
+                                }
+                            } else {
+                                Some(Err(bad_kind(&input)))
+                            }
+                        }
+                    }
+                }
+            }
+            DelegateStructState::HeaderInitNested => {
+                if matches!(&input, ReadEvent::EndRecord) {
+                    *state = DelegateStructState::HeaderEnd;
                     None
                 } else {
-                    *state = DelegateStructState::HeaderBodyItem;
-                    if let Some(i) = select_index(OrdinalFieldKey::HeaderBody) {
-                        *index = i;
+                    if header_kind.has_body() {
+                        *state = DelegateStructState::HeaderBodyItemNested;
+                        if let Some(i) = select_index(OrdinalFieldKey::HeaderBody) {
+                            *index = i;
+                        } else {
+                            return Some(Err(ReadError::InconsistentState));
+                        }
+                        if let Err(e) = select_recog(fields, *index, input)? {
+                            Some(Err(e))
+                        } else {
+                            *state = DelegateStructState::HeaderBetween;
+                            None
+                        }
                     } else {
-                        return Some(Err(ReadError::InconsistentState));
-                    }
-                    if let Err(e) = select_recog(fields, *index, input)? {
-                        Some(Err(e))
-                    } else {
-                        *state = DelegateStructState::HeaderBetween;
-                        None
+                        if let ReadEvent::TextValue(name) = input {
+                            if let Some(i) = select_index(OrdinalFieldKey::HeaderSlot(name.borrow())) {
+                                if progress.get(i).unwrap_or(false) {
+                                    Some(Err(ReadError::DuplicateField(Text::new(name.borrow()))))
+                                } else {
+                                    *index = i;
+                                    *state = DelegateStructState::HeaderExpectingSlotNested;
+                                    None
+                                }
+                            } else {
+                                Some(Err(ReadError::UnexpectedField(name.into())))
+                            }
+                        } else {
+                            Some(Err(bad_kind(&input)))
+                        }
                     }
                 }
             }
@@ -2207,7 +2259,16 @@ impl<T, Flds> Recognizer for DelegateStructRecognizer<T, Flds> {
                     None
                 }
             }
-            DelegateStructState::HeaderBetween => match &input {
+            DelegateStructState::HeaderBodyItemNested => {
+                if let Err(e) = select_recog(fields, *index, input)? {
+                    Some(Err(e))
+                } else {
+                    progress.set(*index);
+                    *state = DelegateStructState::HeaderBetweenNested;
+                    None
+                }
+            }
+            DelegateStructState::HeaderBetween => match input {
                 ReadEvent::EndAttribute => {
                     *state = DelegateStructState::AttrBetween;
                     None
@@ -2222,14 +2283,42 @@ impl<T, Flds> Recognizer for DelegateStructRecognizer<T, Flds> {
                             None
                         }
                     } else {
-                        Some(Err(ReadError::UnexpectedField(Text::new(name.borrow()))))
+                        Some(Err(ReadError::UnexpectedField(name.into())))
                     }
                 }
-                _ => Some(Err(bad_kind(&input))),
+                ow => Some(Err(bad_kind(&ow))),
+            },
+            DelegateStructState::HeaderBetweenNested => match input {
+                ReadEvent::EndRecord => {
+                    *state = DelegateStructState::HeaderEnd;
+                    None
+                }
+                ReadEvent::TextValue(name) => {
+                    if let Some(i) = select_index(OrdinalFieldKey::HeaderSlot(name.borrow())) {
+                        if progress.get(i).unwrap_or(false) {
+                            Some(Err(ReadError::DuplicateField(Text::new(name.borrow()))))
+                        } else {
+                            *index = i;
+                            *state = DelegateStructState::HeaderExpectingSlotNested;
+                            None
+                        }
+                    } else {
+                        Some(Err(ReadError::UnexpectedField(name.into())))
+                    }
+                }
+                ow => Some(Err(bad_kind(&ow))),
             },
             DelegateStructState::HeaderExpectingSlot => {
                 if matches!(&input, ReadEvent::Slot) {
                     *state = DelegateStructState::HeaderItem;
+                    None
+                } else {
+                    Some(Err(ReadError::UnexpectedItem))
+                }
+            }
+            DelegateStructState::HeaderExpectingSlotNested => {
+                if matches!(&input, ReadEvent::Slot) {
+                    *state = DelegateStructState::HeaderItemNested;
                     None
                 } else {
                     Some(Err(ReadError::UnexpectedItem))
@@ -2242,6 +2331,23 @@ impl<T, Flds> Recognizer for DelegateStructRecognizer<T, Flds> {
                     progress.set(*index);
                     *state = DelegateStructState::HeaderBetween;
                     None
+                }
+            }
+            DelegateStructState::HeaderItemNested => {
+                if let Err(e) = select_recog(fields, *index, input)? {
+                    Some(Err(e))
+                } else {
+                    progress.set(*index);
+                    *state = DelegateStructState::HeaderBetweenNested;
+                    None
+                }
+            }
+            DelegateStructState::HeaderEnd => {
+                if matches!(&input, ReadEvent::EndAttribute) {
+                    *state = DelegateStructState::AttrBetween;
+                    None
+                } else {
+                    Some(Err(input.kind_error()))
                 }
             }
             DelegateStructState::AttrBetween => match input {
@@ -2447,6 +2553,7 @@ where
 enum UnitStructState {
     Init,
     Tag,
+    SeenExtant,
     AfterTag,
     Body,
 }
@@ -2501,7 +2608,15 @@ impl<T> Recognizer for UnitStructRecognizer<T> {
                     Some(Err(ReadError::UnexpectedAttribute(name.into())))
                 }
             }
+            (ReadEvent::Extant, UnitStructState::Tag) => {
+                *state = UnitStructState::SeenExtant;
+                None
+            }
             (ReadEvent::EndAttribute, UnitStructState::Tag) => {
+                *state = UnitStructState::AfterTag;
+                None
+            }
+            (ReadEvent::EndAttribute, UnitStructState::SeenExtant) => {
                 *state = UnitStructState::AfterTag;
                 None
             }

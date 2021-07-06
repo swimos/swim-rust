@@ -910,6 +910,16 @@ impl<'a, 'b> ToTokens for StructReadableImpl<'a, 'b> {
         };
 
         let has_header_body = fields.fields.header.tag_body.is_some();
+        let has_header_slots = !fields.fields.header.header_fields.is_empty();
+
+        let header_kind = if has_header_body && has_header_slots {
+            quote!(swim_common::form::structural::read::recognizer::HeaderKind::Both)
+        } else if has_header_body && !has_header_slots {
+            quote!(swim_common::form::structural::read::recognizer::HeaderKind::BodyOnly)
+        } else {
+            quote!(swim_common::form::structural::read::recognizer::HeaderKind::SlotsOnly)
+        };
+
         let make_fld_recog = ConstructFieldRecognizers { fields: *fields };
         let num_fields = fields.inner.fields_model.fields.len() as u32;
 
@@ -937,7 +947,7 @@ impl<'a, 'b> ToTokens for StructReadableImpl<'a, 'b> {
             fn make_recognizer() -> Self::Rec {
                 <#recog_ty>::new(
                     #tag,
-                    #has_header_body,
+                    #header_kind,
                     (core::default::Default::default(), #make_fld_recog, core::marker::PhantomData),
                     #num_fields,
                     <#vtable_ty>::new(
@@ -995,6 +1005,16 @@ impl<'a, 'b> ToTokens for SelectVariantFn<'a, 'b> {
                 let extra_params = is_simple_param(&var.fields.body);
 
                 let has_header_body = var.fields.header.tag_body.is_some();
+                let has_header_slots = !var.fields.header.header_fields.is_empty();
+
+                let header_kind = if has_header_body && has_header_slots {
+                    quote!(swim_common::form::structural::read::recognizer::HeaderKind::Both)
+                } else if has_header_body && !has_header_slots {
+                    quote!(swim_common::form::structural::read::recognizer::HeaderKind::BodyOnly)
+                } else {
+                    quote!(swim_common::form::structural::read::recognizer::HeaderKind::SlotsOnly)
+                };
+
                 let num_fields = var.inner.fields_model.fields.len() as u32;
                 let select_index = suffix_ident(SELECT_INDEX_NAME, i);
                 let select_feed = suffix_ident(SELECT_FEED_NAME, i);
@@ -1003,7 +1023,7 @@ impl<'a, 'b> ToTokens for SelectVariantFn<'a, 'b> {
 
                 parse_quote! {
                     <#recognizer>::variant(
-                        #has_header_body,
+                        #header_kind,
                         (core::default::Default::default(), #make_fld_recog, core::marker::PhantomData),
                         #num_fields,
                         <#vtable>::new(
