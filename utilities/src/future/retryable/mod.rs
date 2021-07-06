@@ -68,6 +68,12 @@ where
         }
     }
 
+    /// Creates a retryable future that can be cancelled using a trigger.
+    ///
+    /// # Arguments
+    ///
+    /// * `future` - Future that needs to be executed in a retryable way.
+    /// * `strategy` - Retry strategy.
     pub fn cancellable(
         future: Fut,
         strategy: RetryStrategy,
