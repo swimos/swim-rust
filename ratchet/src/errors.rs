@@ -1,7 +1,8 @@
 use crate::extensions::ExtHandshakeErr;
-use crate::handshake::RequestError;
+use crate::handshake::ProtocolError;
 use http::header::HeaderName;
 use http::status::InvalidStatusCode;
+use http::uri::InvalidUri;
 use http::StatusCode;
 use std::any::Any;
 use std::error::Error as StdError;
@@ -90,12 +91,6 @@ impl From<InvalidStatusCode> for Error {
     }
 }
 
-impl From<RequestError> for Error {
-    fn from(e: RequestError) -> Self {
-        Error::with_cause(ErrorKind::Http, e.0)
-    }
-}
-
 #[derive(Error, Debug, PartialEq)]
 pub enum HttpError {
     #[error("Redirected: `{0}`")]
@@ -126,5 +121,23 @@ impl From<ExtHandshakeErr> for Error {
                 source: Some(e.0),
             },
         }
+    }
+}
+
+impl From<InvalidUri> for Error {
+    fn from(e: InvalidUri) -> Self {
+        Error::with_cause(ErrorKind::Http, e)
+    }
+}
+
+impl From<http::Error> for Error {
+    fn from(e: http::Error) -> Self {
+        Error::with_cause(ErrorKind::Http, e)
+    }
+}
+
+impl From<ProtocolError> for Error {
+    fn from(e: ProtocolError) -> Self {
+        Error::with_cause(ErrorKind::Http, e)
     }
 }

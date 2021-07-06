@@ -8,10 +8,7 @@ use crate::errors::{Error, ErrorKind, HttpError};
 use crate::extensions::{ext::WebsocketExtension, Extension, ExtensionHandshake};
 use crate::handshake::client::encoding::{build_request, encode_request};
 use crate::handshake::io::BufferedIo;
-use crate::handshake::{
-    ExtensionRegistry, ProtocolRegistry, Registry, ACCEPT_KEY, BAD_STATUS_CODE, UPGRADE_STR,
-    WEBSOCKET_STR,
-};
+use crate::handshake::{ProtocolRegistry, ACCEPT_KEY, BAD_STATUS_CODE, UPGRADE_STR, WEBSOCKET_STR};
 use crate::{WebSocketConfig, WebSocketStream};
 use bytes::{Buf, BytesMut};
 use futures::future::ready;
@@ -41,7 +38,7 @@ where
     S: WebSocketStream,
     E: ExtensionHandshake,
 {
-    let machine = HandshakeMachine::new(stream, Vec::new(), extension);
+    let machine = HandshakeMachine::new(stream, ProtocolRegistry::default(), extension);
     let uri = request.uri();
     let span = span!(Level::DEBUG, MSG_HANDSHAKE_START, ?uri);
 
@@ -68,7 +65,7 @@ where
 struct HandshakeMachine<'s, S, E> {
     buffered: BufferedIo<'s, S>,
     nonce: Nonce,
-    subprotocols: Vec<&'static str>,
+    subprotocols: ProtocolRegistry,
     extension: E,
 }
 
@@ -79,7 +76,7 @@ where
 {
     pub fn new(
         socket: &'s mut S,
-        subprotocols: Vec<&'static str>,
+        subprotocols: ProtocolRegistry,
         extension: E,
     ) -> HandshakeMachine<'s, S, E> {
         HandshakeMachine {
@@ -122,7 +119,13 @@ where
             let mut headers = [httparse::EMPTY_HEADER; 32];
             let mut response = httparse::Response::new(&mut headers);
 
-            match try_parse_response(&buffered.buffer, &mut response, nonce, extension)? {
+            match try_parse_response(
+                &buffered.buffer,
+                &mut response,
+                nonce,
+                extension,
+                subprotocols,
+            )? {
                 ParseResult::Complete(result, count) => {
                     buffered.advance(count);
                     break Ok(result);
@@ -146,7 +149,7 @@ where
 
 #[derive(Debug, PartialEq)]
 pub struct HandshakeResult<E> {
-    protocol: &'static str,
+    protocol: Option<String>,
     extension: E,
 }
 
@@ -190,13 +193,16 @@ fn try_parse_response<'l, E>(
     response: &mut Response<'_, 'l>,
     expected_nonce: &Nonce,
     extension: &E,
+    subprotocols: &mut ProtocolRegistry,
 ) -> Result<ParseResult<E::Extension>, Error>
 where
     E: ExtensionHandshake,
 {
     match response.parse(buffer.as_ref()) {
-        Ok(Status::Complete(count)) => parse_response(response, expected_nonce, extension)
-            .map(|r| ParseResult::Complete(r, count)),
+        Ok(Status::Complete(count)) => {
+            parse_response(response, expected_nonce, extension, subprotocols)
+                .map(|r| ParseResult::Complete(r, count))
+        }
         Ok(Status::Partial) => Ok(ParseResult::Partial),
         Err(e) => Err(e.into()),
     }
@@ -206,6 +212,7 @@ fn parse_response<E>(
     response: &Response,
     expected_nonce: &Nonce,
     extension: &E,
+    subprotocols: &mut ProtocolRegistry,
 ) -> Result<HandshakeResult<E::Extension>, Error>
 where
     E: ExtensionHandshake,
@@ -267,20 +274,8 @@ where
         },
     )?;
 
-    // todo extensions
-    let protocols = response.headers.iter().find(|h| {
-        h.name
-            .eq_ignore_ascii_case(header::SEC_WEBSOCKET_PROTOCOL.as_str())
-    });
-
-    if let Some(protocols) = protocols {
-        println!("{:?}", protocols.value);
-    }
-
-    // todo protocol
-    //
     Ok(HandshakeResult {
-        protocol: "",
+        protocol: subprotocols.negotiate_response(response)?,
         extension: extension.negotiate(response)?,
     })
 }

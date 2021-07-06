@@ -75,6 +75,13 @@ pub fn build_request(request: &mut Request<()>) -> Result<(), Error> {
         ));
     }
 
+    if let Some(_) = request.headers().get(header::SEC_WEBSOCKET_PROTOCOL) {
+        return Err(Error::with_cause(
+            ErrorKind::Http,
+            HttpError::InvalidHeader(header::SEC_WEBSOCKET_PROTOCOL),
+        ));
+    }
+
     let option = request
         .headers()
         .get(header::SEC_WEBSOCKET_KEY)
@@ -94,12 +101,6 @@ pub fn build_request(request: &mut Request<()>) -> Result<(), Error> {
             ))
         }
     }
-
-    // todo ??
-    // // this is set by the library and should not have been provided
-    // if request.headers().get(header::SEC_WEBSOCKET_KEY).is_some() {
-    //     return Err(Error::with_cause(ErrorKind::Http));
-    // }
 
     request.uri().host().ok_or(Error::with_cause(
         ErrorKind::Http,

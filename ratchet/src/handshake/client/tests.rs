@@ -1,9 +1,10 @@
 use crate::errors::{Error, ErrorKind, HttpError};
-use crate::extensions::ext::NoExtProxy;
+use crate::extensions::ext::{NoExt, NoExtProxy};
 use crate::fixture::{mock, MockPeer};
 use crate::handshake::client::{HandshakeMachine, HandshakeResult};
 use crate::handshake::{
-    ACCEPT_KEY, UPGRADE_STR, WEBSOCKET_STR, WEBSOCKET_VERSION, WEBSOCKET_VERSION_STR,
+    ProtocolError, ProtocolRegistry, ACCEPT_KEY, UPGRADE_STR, WEBSOCKET_STR, WEBSOCKET_VERSION,
+    WEBSOCKET_VERSION_STR,
 };
 use crate::TryIntoRequest;
 use futures::future::join;
@@ -25,7 +26,7 @@ async fn handshake_sends_valid_request() {
     let request = TEST_URL.try_into_request().unwrap();
     let (peer, mut stream) = mock();
 
-    let mut machine = HandshakeMachine::new(&mut stream, Vec::new(), NoExtProxy);
+    let mut machine = HandshakeMachine::new(&mut stream, ProtocolRegistry::default(), NoExtProxy);
     machine.encode(request).expect("");
     machine.buffered.write().await.expect("");
 
@@ -55,7 +56,8 @@ async fn handshake_invalid_requests() {
     async fn test(request: Request<()>) {
         let (peer, mut stream) = mock();
 
-        let mut machine = HandshakeMachine::new(&mut stream, Vec::new(), NoExtProxy);
+        let mut machine =
+            HandshakeMachine::new(&mut stream, ProtocolRegistry::default(), NoExtProxy);
         machine
             .encode(request)
             .expect_err("Expected encoding to fail");
@@ -123,7 +125,8 @@ async fn expect_server_error(response: Response<()>, expected_error: HttpError) 
     let (server_tx, server_rx) = trigger::trigger();
 
     let client_task = async move {
-        let mut machine = HandshakeMachine::new(&mut stream, Vec::new(), NoExtProxy);
+        let mut machine =
+            HandshakeMachine::new(&mut stream, ProtocolRegistry::default(), NoExtProxy);
         machine
             .encode(Request::get(TEST_URL).body(()).unwrap())
             .unwrap();
@@ -211,14 +214,14 @@ async fn incorrect_version() {
 
 #[tokio::test]
 async fn ok_nonce() {
-    let request = TEST_URL.try_into_request().unwrap();
     let (server, mut stream) = mock();
 
     let (client_tx, client_rx) = trigger::trigger();
     let (server_tx, server_rx) = trigger::trigger();
 
     let client_task = async move {
-        let mut machine = HandshakeMachine::new(&mut stream, Vec::new(), NoExtProxy);
+        let mut machine =
+            HandshakeMachine::new(&mut stream, ProtocolRegistry::default(), NoExtProxy);
         machine
             .encode(Request::get(TEST_URL).body(()).unwrap())
             .unwrap();
@@ -274,14 +277,14 @@ fn expect_header(headers: &HeaderMap, name: HeaderName) -> &HeaderValue {
 async fn redirection() {
     let redirected_to = "somewhere";
 
-    let request = TEST_URL.try_into_request().unwrap();
     let (server, mut stream) = mock();
 
     let (client_tx, client_rx) = trigger::trigger();
     let (server_tx, server_rx) = trigger::trigger();
 
     let client_task = async move {
-        let mut machine = HandshakeMachine::new(&mut stream, Vec::new(), NoExtProxy);
+        let mut machine =
+            HandshakeMachine::new(&mut stream, ProtocolRegistry::default(), NoExtProxy);
         machine
             .encode(Request::get(TEST_URL).body(()).unwrap())
             .unwrap();
@@ -320,4 +323,96 @@ async fn redirection() {
     };
 
     let _result = join(client_task, server_task).await;
+}
+
+async fn subprotocol_test<I, F>(registry: I, response_protocol: Option<String>, match_fn: F)
+where
+    I: IntoIterator<Item = &'static str>,
+    F: Fn(Result<HandshakeResult<NoExt>, Error>),
+{
+    let (server, mut stream) = mock();
+
+    let (client_tx, client_rx) = trigger::trigger();
+    let (server_tx, server_rx) = trigger::trigger();
+
+    let client_task = async move {
+        let mut machine =
+            HandshakeMachine::new(&mut stream, ProtocolRegistry::new(registry), NoExtProxy);
+        machine
+            .encode(Request::get(TEST_URL).body(()).unwrap())
+            .unwrap();
+        machine.write().await.unwrap();
+        machine.clear_buffer();
+
+        assert!(client_tx.trigger());
+        assert!(server_rx.await.is_ok());
+
+        match_fn(machine.read().await);
+    };
+
+    let server_task = async move {
+        assert!(client_rx.await.is_ok());
+
+        let request = server
+            .read_request()
+            .expect("No server response received")
+            .unwrap();
+
+        let (parts, _body) = request.into_parts();
+
+        let key = expect_header(&parts.headers, header::SEC_WEBSOCKET_KEY);
+
+        let mut digest = Sha1::new();
+        Digest::update(&mut digest, key);
+        Digest::update(&mut digest, ACCEPT_KEY);
+
+        let sec_websocket_accept = base64::encode(&digest.finalize());
+
+        let mut response = Response::builder()
+            .version(Version::HTTP_11)
+            .status(StatusCode::SWITCHING_PROTOCOLS)
+            .header(header::UPGRADE, WEBSOCKET_STR)
+            .header(header::CONNECTION, UPGRADE_STR)
+            .header(header::SEC_WEBSOCKET_ACCEPT, sec_websocket_accept);
+
+        if let Some(protocol) = response_protocol {
+            response = response.header(header::SEC_WEBSOCKET_PROTOCOL, protocol);
+        };
+
+        let response = response.body(()).unwrap();
+
+        server.write_response(response);
+
+        assert!(server_tx.trigger());
+    };
+
+    let _result = join(client_task, server_task).await;
+}
+
+#[tokio::test]
+async fn selects_valid_subprotocol() {
+    subprotocol_test(vec!["warp", "warps"], Some("warp".to_string()), |r| {
+        assert_eq!(r.unwrap().protocol, Some("warp".to_string()));
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn invalid_subprotocol() {
+    subprotocol_test(vec!["warp", "warps"], Some("warpy".to_string()), |r| {
+        let err = r.unwrap_err();
+        let protocol_error = err
+            .downcast_ref::<ProtocolError>()
+            .expect("Expected a protocol error");
+        assert_eq!(protocol_error, &ProtocolError::UnknownProtocol);
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn disjoint_protocols() {
+    subprotocol_test(vec!["warp", "warps"], None, |r| {
+        assert_eq!(r.unwrap().protocol, None);
+    })
+    .await;
 }

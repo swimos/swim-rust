@@ -25,7 +25,7 @@ mod protocol;
 
 use crate::errors::{Error, HttpError};
 use crate::extensions::ExtensionHandshake;
-use crate::handshake::{exec_client_handshake, RequestError};
+use crate::handshake::exec_client_handshake;
 use futures::future::BoxFuture;
 use http::uri::InvalidUri;
 use http::Uri;
@@ -118,66 +118,54 @@ where
 pub trait WebSocketStream: AsyncRead + AsyncWrite + Unpin {}
 impl<S> WebSocketStream for S where S: AsyncRead + AsyncWrite + Unpin {}
 
-impl From<InvalidUri> for RequestError {
-    fn from(e: InvalidUri) -> Self {
-        RequestError(Box::new(e))
-    }
-}
-
-impl From<http::Error> for RequestError {
-    fn from(e: http::Error) -> Self {
-        RequestError(Box::new(e))
-    }
-}
-
 pub trait TryIntoRequest {
-    fn try_into_request(self) -> Result<Request, RequestError>;
+    fn try_into_request(self) -> Result<Request, Error>;
 }
 
 impl<'a> TryIntoRequest for &'a str {
-    fn try_into_request(self) -> Result<Request, RequestError> {
+    fn try_into_request(self) -> Result<Request, Error> {
         self.parse::<Uri>()?.try_into_request()
     }
 }
 
 impl<'a> TryIntoRequest for &'a String {
-    fn try_into_request(self) -> Result<Request, RequestError> {
+    fn try_into_request(self) -> Result<Request, Error> {
         self.as_str().try_into_request()
     }
 }
 
 impl TryIntoRequest for String {
-    fn try_into_request(self) -> Result<Request, RequestError> {
+    fn try_into_request(self) -> Result<Request, Error> {
         self.as_str().try_into_request()
     }
 }
 
 impl<'a> TryIntoRequest for &'a Uri {
-    fn try_into_request(self) -> Result<Request, RequestError> {
+    fn try_into_request(self) -> Result<Request, Error> {
         self.clone().try_into_request()
     }
 }
 
 impl TryIntoRequest for Uri {
-    fn try_into_request(self) -> Result<Request, RequestError> {
+    fn try_into_request(self) -> Result<Request, Error> {
         Ok(Request::get(self).body(())?)
     }
 }
 
 impl<'a> TryIntoRequest for &'a Url {
-    fn try_into_request(self) -> Result<Request, RequestError> {
+    fn try_into_request(self) -> Result<Request, Error> {
         self.as_str().try_into_request()
     }
 }
 
 impl TryIntoRequest for Url {
-    fn try_into_request(self) -> Result<Request, RequestError> {
+    fn try_into_request(self) -> Result<Request, Error> {
         self.as_str().try_into_request()
     }
 }
 
 impl TryIntoRequest for Request {
-    fn try_into_request(self) -> Result<Request, RequestError> {
+    fn try_into_request(self) -> Result<Request, Error> {
         Ok(self)
     }
 }
