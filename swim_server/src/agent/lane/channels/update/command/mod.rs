@@ -21,9 +21,6 @@ use futures::stream::FuturesOrdered;
 use futures::{FutureExt, Stream, StreamExt};
 use pin_utils::pin_mut;
 use std::fmt::Debug;
-use std::future::Future;
-use std::pin::Pin;
-use std::task::{Context, Poll};
 use std::time::Duration;
 use swim_common::routing::RoutingAddr;
 use swim_runtime::time::timeout;
@@ -63,29 +60,19 @@ enum CommandLaneUpdate<T, Err> {
     LocalMessage(Command<T>),
 }
 
-struct ResponseFuture<T> {
-    response_rx: oneshot::Receiver<T>,
+/// Receives a message from the command lifecycle and sends it to the requester if a transmitter
+/// has been provided.
+async fn receive_message<T: Clone + Send + Sync + Debug + 'static>(
+    receiver: oneshot::Receiver<T>,
     response_tx: Option<oneshot::Sender<T>>,
-}
+) -> Result<T, oneshot::error::RecvError> {
+    let result = receiver.await?;
 
-impl<T> Future for ResponseFuture<T>
-where
-    T: Clone + Send + Sync + Debug + 'static,
-{
-    type Output = Result<T, oneshot::error::RecvError>;
-
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        match Pin::new(&mut self.response_rx).poll(cx) {
-            Poll::Ready(Ok(msg)) => {
-                if let Some(response_tx) = self.response_tx.take() {
-                    let _ = response_tx.send(msg.clone());
-                }
-                Poll::Ready(Ok(msg))
-            }
-            Poll::Ready(Err(err)) => Poll::Ready(Err(err)),
-            Poll::Pending => Poll::Pending,
-        }
+    if let Some(response_tx) = response_tx {
+        let _ = response_tx.send(result.clone());
     }
+
+    Ok(result)
 }
 
 const NO_COMPLETION: &str = "Command did not complete.";
@@ -145,10 +132,7 @@ where
                     }
                     Some(CommandLaneUpdate::RemoteMessage(Ok(msg))) => {
                         if let Ok(rx) = commander.command_and_await(msg).await {
-                            responses.push(ResponseFuture {
-                                response_rx: rx,
-                                response_tx: None,
-                            });
+                            responses.push(receive_message(rx, None));
                         } else {
                             event!(Level::ERROR, NO_COMPLETION);
                         }
@@ -165,15 +149,9 @@ where
 
                         if let Ok(rx) = commander.command_and_await(msg).await {
                             if let Some(responder) = responder {
-                                responses.push(ResponseFuture {
-                                    response_rx: rx,
-                                    response_tx: Some(responder),
-                                });
+                                responses.push(receive_message(rx, Some(responder)));
                             } else {
-                                responses.push(ResponseFuture {
-                                    response_rx: rx,
-                                    response_tx: None,
-                                });
+                                responses.push(receive_message(rx, None));
                             }
                         } else {
                             event!(Level::ERROR, NO_COMPLETION);
@@ -212,6 +190,6 @@ where
                 }
             }
         }
-        .boxed()
+            .boxed()
     }
 }
