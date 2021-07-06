@@ -30,7 +30,7 @@ async fn main() {
 
     plane_builder
         .add_route::<UnitAgent, (), UnitAgentLifecycle>(
-            RoutePattern::parse_str("/unit/foo").unwrap(),
+            RoutePattern::parse_str("/unit/:id").unwrap(),
             (),
             UnitAgentLifecycle,
         )

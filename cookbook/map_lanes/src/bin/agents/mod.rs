@@ -88,7 +88,7 @@ struct AddItemLifecycle;
 impl AddItemLifecycle {
     async fn on_command<Context>(
         &self,
-        command: &String,
+        command: &str,
         _model: &CommandLane<String>,
         context: &Context,
     ) where
@@ -97,10 +97,10 @@ impl AddItemLifecycle {
         let shopping_cart = &context.agent().shopping_cart;
 
         let update = shopping_cart
-            .get(command.clone())
+            .get(command.to_string())
             .and_then(|maybe| match maybe {
-                Some(current) => shopping_cart.update(command.clone(), Arc::new(*current + 1)),
-                _ => shopping_cart.update(command.clone(), Arc::new(1)),
+                Some(current) => shopping_cart.update(command.to_string(), Arc::new(*current + 1)),
+                _ => shopping_cart.update(command.to_string(), Arc::new(1)),
             });
 
         let _ = atomically(&update, StmRetryStrategy::new(RetryStrategy::default())).await;
