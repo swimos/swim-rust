@@ -34,7 +34,6 @@ use crate::policy::{IssuedPolicy, PolicyDirective};
 use crate::token::Token;
 use crate::{AuthenticationError, Authenticator};
 use biscuit::jwa::SignatureAlgorithm;
-use std::ops::Deref;
 
 mod store;
 #[cfg(test)]
@@ -195,8 +194,7 @@ impl<'s> Authenticator<'s> for GoogleIdAuthenticator {
                             if expiry_time.lt(&(Utc::now() + Duration::seconds(self.token_skew))) {
                                 return Ok(IssuedPolicy::deny(Value::Extant));
                             } else {
-                                let expiry_timestamp = expiry_time.deref().clone().into();
-                                expiry_timestamp
+                                (**expiry_time).into()
                             }
                         }
                         None => return Ok(IssuedPolicy::deny(Value::Extant)),

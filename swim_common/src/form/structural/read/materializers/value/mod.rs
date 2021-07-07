@@ -15,21 +15,14 @@
 #[cfg(test)]
 mod tests;
 
-use crate::form::structural::read::{BodyReader, HeaderReader, ReadError};
+use crate::form::structural::read::event::{NumericValue, ReadEvent};
+use crate::form::structural::read::recognizer::Recognizer;
+use crate::form::structural::read::ReadError;
 use crate::model::blob::Blob;
 use crate::model::text::Text;
 use crate::model::{Attr, Item, Value};
-use num_bigint::{BigInt, BigUint};
-use std::borrow::Cow;
 use std::convert::TryFrom;
-
-/// Implements [`HeaderReader`] and [`BodyReader`] to construct a [`Value`] instance.
-#[derive(Default, Debug)]
-pub struct ValueMaterializer {
-    root: RecordBuilder,
-    stack: Vec<RecordBuilder>,
-    slot_key: Option<Value>,
-}
+use std::option::Option::None;
 
 #[derive(Debug)]
 enum RecordKey {
@@ -49,207 +42,343 @@ struct RecordBuilder {
     key: RecordKey,
     attrs: Vec<Attr>,
     items: Vec<Item>,
+    in_body: bool,
 }
 
 impl RecordBuilder {
-    fn new(key: RecordKey) -> Self {
+    fn new(key: RecordKey, in_body: bool) -> Self {
         RecordBuilder {
             key,
             attrs: Vec::new(),
             items: Vec::new(),
+            in_body,
         }
     }
 }
 
-impl TryFrom<ValueMaterializer> for Value {
-    type Error = ReadError;
+/// [`Recognizer``] implementation for the [`Value`] type.
+#[derive(Default, Debug)]
+pub struct ValueMaterializer {
+    stack: Vec<RecordBuilder>,
+    slot_key: Option<Value>,
+}
 
-    fn try_from(value: ValueMaterializer) -> Result<Self, Self::Error> {
-        let ValueMaterializer {
-            root: RecordBuilder { attrs, items, .. },
-            stack,
-            slot_key,
-        } = value;
-        if stack.is_empty() && slot_key.is_none() {
-            Ok(Value::Record(attrs, items))
-        } else {
-            Err(ReadError::IncompleteRecord)
-        }
-    }
+enum ItemEvent {
+    Primitive(Value),
+    RecordAtAttr(Text),
+    RecordAtBody,
+    EndAttr,
+    EndRec,
+    Slot,
 }
 
 impl ValueMaterializer {
-    fn peek_mut(&mut self) -> &mut RecordBuilder {
-        let ValueMaterializer { root, stack, .. } = self;
-        stack.last_mut().unwrap_or(root)
+    fn peek_mut(&mut self) -> Result<&mut RecordBuilder, ReadError> {
+        self.stack.last_mut().ok_or(ReadError::ReaderUnderflow)
     }
 
-    fn new_item_frame(&mut self) {
+    fn new_record_frame(&mut self, in_body: bool) -> &mut RecordBuilder {
         let frame = if let Some(key) = self.slot_key.take() {
-            RecordBuilder::new(RecordKey::Slot(key))
+            RecordBuilder::new(RecordKey::Slot(key), in_body)
         } else {
-            RecordBuilder::new(RecordKey::NoKey)
+            RecordBuilder::new(RecordKey::NoKey, in_body)
         };
+        let len = self.stack.len();
         self.stack.push(frame);
+        &mut self.stack[len]
+    }
+
+    fn new_record_item(&mut self) -> Result<(), ReadError> {
+        let top = self.peek_mut()?;
+        if top.in_body {
+            self.new_record_frame(true);
+        } else {
+            top.in_body = true;
+        }
+        Ok(())
     }
 
     fn new_attr_frame(&mut self, name: Text) {
-        self.stack.push(RecordBuilder::new(RecordKey::Attr(name)))
+        match self.stack.last_mut() {
+            Some(top) if !top.in_body => {}
+            _ => {
+                self.new_record_frame(false);
+            }
+        }
+        self.stack
+            .push(RecordBuilder::new(RecordKey::Attr(name), true))
     }
 
-    fn set_slot_key(&mut self) {
-        let key = match self.peek_mut().items.pop() {
+    fn set_slot_key(&mut self) -> Result<(), ReadError> {
+        let key = match self.peek_mut()?.items.pop() {
             Some(Item::ValueItem(value)) => value,
             _ => Value::Extant,
         };
         self.slot_key = Some(key);
+        Ok(())
     }
 
-    fn pop(&mut self) -> Result<(), ReadError> {
+    fn pop(&mut self, is_attr_end: bool) -> Result<Option<Value>, ReadError> {
         if let Some(RecordBuilder {
             key,
             attrs,
             mut items,
+            ..
         }) = self.stack.pop()
         {
             match key {
                 RecordKey::NoKey => {
-                    let record = Value::Record(attrs, items);
-                    self.add_value(record);
+                    if is_attr_end {
+                        Err(ReadError::InconsistentState)
+                    } else {
+                        let record = Value::Record(attrs, items);
+                        if self.stack.is_empty() {
+                            Ok(Some(record))
+                        } else {
+                            self.add_value(record)?;
+                            Ok(None)
+                        }
+                    }
                 }
                 RecordKey::Slot(key) => {
-                    let record = Value::Record(attrs, items);
-                    self.add_slot(key, record);
+                    if is_attr_end {
+                        Err(ReadError::InconsistentState)
+                    } else {
+                        let record = Value::Record(attrs, items);
+                        self.add_slot(key, record)?;
+                        Ok(None)
+                    }
                 }
                 RecordKey::Attr(name) => {
-                    let body = if attrs.is_empty() && items.len() <= 1 {
-                        match items.pop() {
-                            Some(Item::ValueItem(value)) => value,
-                            Some(slot @ Item::Slot(_, _)) => Value::Record(Vec::new(), vec![slot]),
-                            _ => Value::Extant,
-                        }
+                    if is_attr_end {
+                        let body = if attrs.is_empty() && items.len() <= 1 {
+                            match items.pop() {
+                                Some(Item::ValueItem(value)) => value,
+                                Some(slot @ Item::Slot(_, _)) => {
+                                    Value::Record(Vec::new(), vec![slot])
+                                }
+                                _ => Value::Extant,
+                            }
+                        } else {
+                            Value::Record(attrs, items)
+                        };
+                        self.add_attr(name, body)?;
+                        Ok(None)
                     } else {
-                        Value::Record(attrs, items)
-                    };
-                    self.add_attr(name, body);
+                        Err(ReadError::InconsistentState)
+                    }
                 }
             }
-            Ok(())
         } else {
             Err(ReadError::ReaderUnderflow)
         }
     }
 
-    fn add_attr(&mut self, name: Text, value: Value) {
-        self.peek_mut().attrs.push((name, value).into())
-    }
-
-    fn add_item(&mut self, value: Value) {
-        if let Some(key) = self.slot_key.take() {
-            self.add_slot(key, value);
-        } else {
-            self.add_value(value);
-        }
-    }
-
-    fn add_slot(&mut self, key: Value, value: Value) {
-        self.peek_mut().items.push((key, value).into());
-    }
-
-    fn add_value(&mut self, value: Value) {
-        self.peek_mut().items.push(value.into());
-    }
-}
-
-impl HeaderReader for ValueMaterializer {
-    type Body = Self;
-    type Delegate = Self;
-
-    fn read_attribute(mut self, name: Cow<'_, str>) -> Result<Self::Delegate, ReadError> {
-        self.new_attr_frame(name.into());
-        Ok(self)
-    }
-
-    fn restore(mut delegate: Self::Delegate) -> Result<Self, ReadError> {
-        delegate.pop()?;
-        Ok(delegate)
-    }
-
-    fn start_body(self) -> Result<Self::Body, ReadError> {
-        Ok(self)
-    }
-}
-
-impl BodyReader for ValueMaterializer {
-    type Delegate = Self;
-
-    fn push_extant(&mut self) -> Result<bool, ReadError> {
-        self.add_item(Value::Extant);
-        Ok(true)
-    }
-
-    fn push_i32(&mut self, value: i32) -> Result<bool, ReadError> {
-        self.add_item(Value::Int32Value(value));
-        Ok(true)
-    }
-
-    fn push_i64(&mut self, value: i64) -> Result<bool, ReadError> {
-        self.add_item(Value::Int64Value(value));
-        Ok(true)
-    }
-
-    fn push_u32(&mut self, value: u32) -> Result<bool, ReadError> {
-        self.add_item(Value::UInt32Value(value));
-        Ok(true)
-    }
-
-    fn push_u64(&mut self, value: u64) -> Result<bool, ReadError> {
-        self.add_item(Value::UInt64Value(value));
-        Ok(true)
-    }
-
-    fn push_f64(&mut self, value: f64) -> Result<bool, ReadError> {
-        self.add_item(Value::Float64Value(value));
-        Ok(true)
-    }
-
-    fn push_bool(&mut self, value: bool) -> Result<bool, ReadError> {
-        self.add_item(Value::BooleanValue(value));
-        Ok(true)
-    }
-
-    fn push_big_int(&mut self, value: BigInt) -> Result<bool, ReadError> {
-        self.add_item(Value::BigInt(value));
-        Ok(true)
-    }
-
-    fn push_big_uint(&mut self, value: BigUint) -> Result<bool, ReadError> {
-        self.add_item(Value::BigUint(value));
-        Ok(true)
-    }
-
-    fn push_text(&mut self, value: Cow<'_, str>) -> Result<bool, ReadError> {
-        self.add_item(Value::Text(value.into()));
-        Ok(true)
-    }
-
-    fn push_blob(&mut self, value: Vec<u8>) -> Result<bool, ReadError> {
-        self.add_item(Value::Data(Blob::from_vec(value)));
-        Ok(true)
-    }
-
-    fn start_slot(&mut self) -> Result<(), ReadError> {
-        self.set_slot_key();
+    fn add_attr(&mut self, name: Text, value: Value) -> Result<(), ReadError> {
+        self.peek_mut()?.attrs.push((name, value).into());
         Ok(())
     }
 
-    fn push_record(mut self) -> Result<Self::Delegate, ReadError> {
-        self.new_item_frame();
-        Ok(self)
+    fn add_item(&mut self, value: Value) -> Result<(), ReadError> {
+        let slot_key = self.slot_key.take();
+        let top = self.peek_mut()?;
+        if top.in_body {
+            if let Some(key) = slot_key {
+                top.items.push((key, value).into());
+            } else {
+                top.items.push(value.into());
+            }
+            Ok(())
+        } else {
+            Err(ReadError::InconsistentState)
+        }
     }
 
-    fn restore(mut delegate: Self) -> Result<Self, ReadError> {
-        delegate.pop()?;
-        Ok(delegate)
+    fn add_slot(&mut self, key: Value, value: Value) -> Result<(), ReadError> {
+        self.peek_mut()?.items.push((key, value).into());
+        Ok(())
+    }
+
+    fn add_value(&mut self, value: Value) -> Result<(), ReadError> {
+        self.peek_mut()?.items.push(value.into());
+        Ok(())
+    }
+}
+
+fn recognize_item(input: ReadEvent<'_>) -> ItemEvent {
+    match input {
+        ReadEvent::Extant => ItemEvent::Primitive(Value::Extant),
+        ReadEvent::Number(NumericValue::Int(n)) => {
+            ItemEvent::Primitive(if let Ok(m) = i32::try_from(n) {
+                Value::Int32Value(m)
+            } else {
+                Value::Int64Value(n)
+            })
+        }
+        ReadEvent::Number(NumericValue::UInt(n)) => {
+            ItemEvent::Primitive(if let Ok(m) = i32::try_from(n) {
+                Value::Int32Value(m)
+            } else if let Ok(m) = i64::try_from(n) {
+                Value::Int64Value(m)
+            } else if let Ok(m) = u32::try_from(n) {
+                Value::UInt32Value(m)
+            } else {
+                Value::UInt64Value(n)
+            })
+        }
+        ReadEvent::Number(NumericValue::Float(x)) => ItemEvent::Primitive(Value::Float64Value(x)),
+        ReadEvent::Number(NumericValue::BigInt(n)) => ItemEvent::Primitive(Value::BigInt(n)),
+        ReadEvent::Number(NumericValue::BigUint(n)) => ItemEvent::Primitive(Value::BigUint(n)),
+        ReadEvent::Boolean(p) => ItemEvent::Primitive(Value::BooleanValue(p)),
+        ReadEvent::TextValue(txt) => ItemEvent::Primitive(Value::Text(txt.into())),
+        ReadEvent::Blob(v) => ItemEvent::Primitive(Value::Data(Blob::from_vec(v))),
+        ReadEvent::StartAttribute(name) => ItemEvent::RecordAtAttr(name.into()),
+        ReadEvent::StartBody => ItemEvent::RecordAtBody,
+        ReadEvent::EndAttribute => ItemEvent::EndAttr,
+        ReadEvent::EndRecord => ItemEvent::EndRec,
+        ReadEvent::Slot => ItemEvent::Slot,
+    }
+}
+
+impl Recognizer for ValueMaterializer {
+    type Target = Value;
+
+    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
+        if self.stack.is_empty() {
+            match recognize_item(input) {
+                ItemEvent::Primitive(v) => Some(Ok(v)),
+                ItemEvent::RecordAtAttr(name) => {
+                    self.new_attr_frame(name);
+                    None
+                }
+                ItemEvent::RecordAtBody => {
+                    self.new_record_frame(true);
+                    None
+                }
+                _ => Some(Err(ReadError::InconsistentState)),
+            }
+        } else {
+            match recognize_item(input) {
+                ItemEvent::Primitive(v) => {
+                    if let Err(e) = self.add_item(v) {
+                        Some(Err(e))
+                    } else {
+                        None
+                    }
+                }
+                ItemEvent::RecordAtAttr(name) => {
+                    self.new_attr_frame(name);
+                    None
+                }
+                ItemEvent::RecordAtBody => {
+                    if let Err(e) = self.new_record_item() {
+                        Some(Err(e))
+                    } else {
+                        None
+                    }
+                }
+                ItemEvent::Slot => {
+                    if let Err(e) = self.set_slot_key() {
+                        Some(Err(e))
+                    } else {
+                        None
+                    }
+                }
+                ItemEvent::EndAttr => {
+                    if let Err(e) = self.pop(true) {
+                        Some(Err(e))
+                    } else {
+                        None
+                    }
+                }
+                ItemEvent::EndRec => self.pop(false).transpose(),
+            }
+        }
+    }
+
+    fn try_flush(&mut self) -> Option<Result<Self::Target, ReadError>> {
+        let ValueMaterializer { stack, .. } = self;
+        if stack.len() > 1 {
+            None
+        } else if let Some(top) = stack.pop() {
+            if top.in_body {
+                None
+            } else {
+                let RecordBuilder { attrs, .. } = top;
+                Some(Ok(Value::Record(attrs, vec![])))
+            }
+        } else {
+            Some(Ok(Value::Extant))
+        }
+    }
+
+    fn reset(&mut self) {
+        self.slot_key = None;
+        self.stack.clear();
+    }
+}
+
+/// [`Recognizer``] implementation for the [`Value`] type when it ocurrs in an attribute body.
+#[derive(Debug)]
+pub struct AttrBodyMaterializer {
+    inner: ValueMaterializer,
+}
+
+impl Default for AttrBodyMaterializer {
+    fn default() -> Self {
+        AttrBodyMaterializer {
+            inner: ValueMaterializer {
+                stack: vec![RecordBuilder::new(RecordKey::NoKey, true)],
+                slot_key: None,
+            },
+        }
+    }
+}
+
+impl Recognizer for AttrBodyMaterializer {
+    type Target = Value;
+
+    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
+        let AttrBodyMaterializer { inner } = self;
+        if inner.stack.len() == 1 {
+            match input {
+                ReadEvent::EndAttribute => {
+                    let RecordBuilder { items, .. } = &mut inner.stack[0];
+                    let value = if items.len() <= 1 {
+                        if let Some(item) = items.pop() {
+                            if let Item::ValueItem(v) = item {
+                                v
+                            } else {
+                                Value::record(vec![item])
+                            }
+                        } else {
+                            Value::Extant
+                        }
+                    } else {
+                        Value::record(std::mem::take(items))
+                    };
+                    Some(Ok(value))
+                }
+                ReadEvent::EndRecord => Some(Err(ReadError::ReaderUnderflow)),
+                ow => match inner.feed_event(ow)? {
+                    Ok(_) => Some(Err(ReadError::InconsistentState)),
+                    Err(e) => Some(Err(e)),
+                },
+            }
+        } else {
+            match inner.feed_event(input)? {
+                Ok(_) => Some(Err(ReadError::InconsistentState)),
+                Err(e) => Some(Err(e)),
+            }
+        }
+    }
+
+    fn reset(&mut self) {
+        let AttrBodyMaterializer {
+            inner: ValueMaterializer { stack, slot_key },
+        } = self;
+        *slot_key = None;
+        stack.clear();
+        stack.push(RecordBuilder::new(RecordKey::NoKey, true));
     }
 }

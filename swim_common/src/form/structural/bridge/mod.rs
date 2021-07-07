@@ -15,504 +15,214 @@
 #[cfg(test)]
 mod tests;
 
-use crate::form::structural::read::{BodyReader, HeaderReader, ReadError, StructuralReadable};
+use crate::form::structural::read::event::{NumericValue, ReadEvent};
+use crate::form::structural::read::recognizer::Recognizer;
+use crate::form::structural::read::ReadError;
 use crate::form::structural::write::{
     BodyWriter, HeaderWriter, Label, PrimitiveWriter, RecordBodyKind, StructuralWritable,
     StructuralWriter,
 };
+use crate::model::ValueKind;
 use num_bigint::{BigInt, BigUint};
 use std::borrow::Cow;
-use std::marker::PhantomData;
 
 /// Bridge to forward writes to a [`StructuralWriter`] instance to the builder methods
 /// on a [`StructuralReadable`] type.
-pub struct ReadWriteBridge<T>(PhantomData<fn() -> T>);
+pub struct RecognizerBridge<R>(R);
 
-impl<T> Default for ReadWriteBridge<T> {
-    fn default() -> Self {
-        ReadWriteBridge(PhantomData)
+impl<R> RecognizerBridge<R> {
+    pub fn new(rec: R) -> Self {
+        RecognizerBridge(rec)
     }
 }
 
-type BodyOf<T> = <<T as StructuralReadable>::Reader as HeaderReader>::Body;
+struct SubRecognizerBridge<'a, R>(&'a mut R);
 
-pub struct ReadWriteHeaderBridge<T: StructuralReadable>(ReadWriteBridge<T>, T::Reader);
-pub struct ReadWriteBodyBridge<T: StructuralReadable>(ReadWriteBridge<T>, BodyOf<T>);
+impl<'a, R> SubRecognizerBridge<'a, R> {
+    fn new(rec: &'a mut R) -> Self {
+        SubRecognizerBridge(rec)
+    }
+}
 
-pub struct HeaderDelegateBridge<B: BodyReader>(<B as BodyReader>::Delegate);
-pub struct BodyDelegateBridge<B: BodyReader>(<<B as BodyReader>::Delegate as HeaderReader>::Body);
+impl<R: Recognizer> RecognizerBridge<R> {
+    fn feed_single(self, event: ReadEvent<'_>, kind: ValueKind) -> Result<R::Target, ReadError> {
+        let RecognizerBridge(mut rec) = self;
+        rec.feed_event(event)
+            .or_else(move || rec.try_flush())
+            .unwrap_or(Err(ReadError::UnexpectedKind(kind)))
+    }
+}
 
-pub struct ItemDelegateBridge<B>(B);
-pub struct ValueDelegateBridge<H>(H);
+impl<'a, R: Recognizer> SubRecognizerBridge<'a, R> {
+    fn feed_single(self, event: ReadEvent<'_>) -> Result<(), ReadError> {
+        let SubRecognizerBridge(rec) = self;
+        if let Some(Err(e)) = rec.feed_event(event) {
+            Err(e)
+        } else {
+            Ok(())
+        }
+    }
+}
 
-impl<T: StructuralReadable> PrimitiveWriter for ReadWriteBridge<T> {
-    type Repr = T;
+impl<R: Recognizer> PrimitiveWriter for RecognizerBridge<R> {
+    type Repr = R::Target;
     type Error = ReadError;
 
     fn write_extant(self) -> Result<Self::Repr, Self::Error> {
-        T::read_extant()
+        self.feed_single(ReadEvent::Extant, ValueKind::Extant)
     }
 
     fn write_i32(self, value: i32) -> Result<Self::Repr, Self::Error> {
-        T::read_i32(value)
+        self.feed_single(
+            ReadEvent::Number(NumericValue::Int(value.into())),
+            ValueKind::Int32,
+        )
     }
 
     fn write_i64(self, value: i64) -> Result<Self::Repr, Self::Error> {
-        T::read_i64(value)
+        self.feed_single(
+            ReadEvent::Number(NumericValue::Int(value)),
+            ValueKind::Int64,
+        )
     }
 
     fn write_u32(self, value: u32) -> Result<Self::Repr, Self::Error> {
-        T::read_u32(value)
+        self.feed_single(
+            ReadEvent::Number(NumericValue::UInt(value.into())),
+            ValueKind::UInt32,
+        )
     }
 
     fn write_u64(self, value: u64) -> Result<Self::Repr, Self::Error> {
-        T::read_u64(value)
+        self.feed_single(
+            ReadEvent::Number(NumericValue::UInt(value)),
+            ValueKind::UInt64,
+        )
     }
 
     fn write_f64(self, value: f64) -> Result<Self::Repr, Self::Error> {
-        T::read_f64(value)
+        self.feed_single(
+            ReadEvent::Number(NumericValue::Float(value)),
+            ValueKind::Float64,
+        )
     }
 
     fn write_bool(self, value: bool) -> Result<Self::Repr, Self::Error> {
-        T::read_bool(value)
+        self.feed_single(ReadEvent::Boolean(value), ValueKind::Boolean)
     }
 
     fn write_big_int(self, value: BigInt) -> Result<Self::Repr, Self::Error> {
-        T::read_big_int(value)
+        self.feed_single(
+            ReadEvent::Number(NumericValue::BigInt(value)),
+            ValueKind::BigInt,
+        )
     }
 
     fn write_big_uint(self, value: BigUint) -> Result<Self::Repr, Self::Error> {
-        T::read_big_uint(value)
+        self.feed_single(
+            ReadEvent::Number(NumericValue::BigUint(value)),
+            ValueKind::BigUint,
+        )
     }
 
     fn write_text<L: Label>(self, value: L) -> Result<Self::Repr, Self::Error> {
-        T::read_text(value.as_cow())
+        self.feed_single(
+            ReadEvent::TextValue(Cow::Borrowed(value.as_ref())),
+            ValueKind::Text,
+        )
     }
 
     fn write_blob_vec(self, blob: Vec<u8>) -> Result<Self::Repr, Self::Error> {
-        T::read_blob(blob)
+        self.feed_single(ReadEvent::Blob(blob), ValueKind::Data)
     }
 
     fn write_blob(self, value: &[u8]) -> Result<Self::Repr, Self::Error> {
-        T::read_blob(value.to_vec())
+        self.feed_single(ReadEvent::Blob(value.to_vec()), ValueKind::Data)
     }
 }
 
-impl<T: StructuralReadable> StructuralWriter for ReadWriteBridge<T> {
-    type Header = ReadWriteHeaderBridge<T>;
-    type Body = ReadWriteBodyBridge<T>;
-
-    fn record(self, _num_attrs: usize) -> Result<Self::Header, Self::Error> {
-        Ok(ReadWriteHeaderBridge(self, T::record_reader()?))
-    }
-}
-
-impl<T: StructuralReadable> HeaderWriter for ReadWriteHeaderBridge<T> {
-    type Repr = T;
-    type Error = ReadError;
-    type Body = ReadWriteBodyBridge<T>;
-
-    fn write_attr<V: StructuralWritable>(
-        self,
-        name: Cow<'_, str>,
-        value: &V,
-    ) -> Result<Self, Self::Error> {
-        let ReadWriteHeaderBridge(root, header_reader) = self;
-        let delegate = ItemDelegateBridge(header_reader.read_attribute(name)?);
-        let delegate_reader = value.write_with(delegate)?;
-        let header_reader = T::Reader::restore(delegate_reader)?;
-        Ok(ReadWriteHeaderBridge(root, header_reader))
-    }
-
-    fn delegate<V: StructuralWritable>(self, value: &V) -> Result<Self::Repr, Self::Error> {
-        let ReadWriteHeaderBridge(_, header_reader) = self;
-        let delegate = ValueDelegateBridge(header_reader);
-        let body_reader = value.write_with(delegate)?;
-        T::try_terminate(body_reader)
-    }
-
-    fn write_attr_into<L: Label, V: StructuralWritable>(
-        self,
-        name: L,
-        value: V,
-    ) -> Result<Self, Self::Error> {
-        let ReadWriteHeaderBridge(root, header_reader) = self;
-        let delegate =
-            ItemDelegateBridge(header_reader.read_attribute(Cow::Borrowed(name.as_ref()))?);
-        let delegate_reader = value.write_with(delegate)?;
-        let header_reader = T::Reader::restore(delegate_reader)?;
-        Ok(ReadWriteHeaderBridge(root, header_reader))
-    }
-
-    fn delegate_into<V: StructuralWritable>(self, value: V) -> Result<Self::Repr, Self::Error> {
-        let ReadWriteHeaderBridge(_, header_reader) = self;
-        let delegate = ValueDelegateBridge(header_reader);
-        let body_reader = value.write_into(delegate)?;
-        T::try_terminate(body_reader)
-    }
-
-    fn complete_header(
-        self,
-        _kind: RecordBodyKind,
-        _num_items: usize,
-    ) -> Result<Self::Body, Self::Error> {
-        let ReadWriteHeaderBridge(root, header_reader) = self;
-        Ok(ReadWriteBodyBridge(root, header_reader.start_body()?))
-    }
-}
-
-impl<T: StructuralReadable> BodyWriter for ReadWriteBodyBridge<T> {
-    type Repr = T;
-    type Error = ReadError;
-
-    fn write_value<V: StructuralWritable>(self, value: &V) -> Result<Self, Self::Error> {
-        let ReadWriteBodyBridge(root, body_reader) = self;
-        let delegate = ItemDelegateBridge(body_reader);
-        let body_reader = value.write_with(delegate)?;
-        Ok(ReadWriteBodyBridge(root, body_reader))
-    }
-
-    fn write_slot<K: StructuralWritable, V: StructuralWritable>(
-        self,
-        key: &K,
-        value: &V,
-    ) -> Result<Self, Self::Error> {
-        let ReadWriteBodyBridge(root, body_reader) = self;
-        let delegate = ItemDelegateBridge(body_reader);
-        let mut body_reader = key.write_with(delegate)?;
-        body_reader.start_slot()?;
-        let delegate = ItemDelegateBridge(body_reader);
-        body_reader = value.write_with(delegate)?;
-        Ok(ReadWriteBodyBridge(root, body_reader))
-    }
-
-    fn write_value_into<V: StructuralWritable>(self, value: V) -> Result<Self, Self::Error> {
-        let ReadWriteBodyBridge(root, body_reader) = self;
-        let delegate = ItemDelegateBridge(body_reader);
-        let body_reader = value.write_into(delegate)?;
-        Ok(ReadWriteBodyBridge(root, body_reader))
-    }
-
-    fn write_slot_into<K: StructuralWritable, V: StructuralWritable>(
-        self,
-        key: K,
-        value: V,
-    ) -> Result<Self, Self::Error> {
-        let ReadWriteBodyBridge(root, body_reader) = self;
-        let delegate = ItemDelegateBridge(body_reader);
-        let mut body_reader = key.write_into(delegate)?;
-        body_reader.start_slot()?;
-        let delegate = ItemDelegateBridge(body_reader);
-        body_reader = value.write_into(delegate)?;
-        Ok(ReadWriteBodyBridge(root, body_reader))
-    }
-
-    fn done(self) -> Result<Self::Repr, Self::Error> {
-        let ReadWriteBodyBridge(_, body_reader) = self;
-        T::try_terminate(body_reader)
-    }
-}
-
-impl<B: BodyReader> HeaderWriter for HeaderDelegateBridge<B> {
-    type Repr = B;
-    type Error = ReadError;
-    type Body = BodyDelegateBridge<B>;
-
-    fn write_attr<V: StructuralWritable>(
-        self,
-        name: Cow<'_, str>,
-        value: &V,
-    ) -> Result<Self, Self::Error> {
-        let HeaderDelegateBridge(header_reader) = self;
-        let delegate = ItemDelegateBridge(header_reader.read_attribute(name)?);
-        let delegate_reader = value.write_with(delegate)?;
-        let header_reader = B::Delegate::restore(delegate_reader)?;
-        Ok(HeaderDelegateBridge(header_reader))
-    }
-
-    fn delegate<V: StructuralWritable>(self, value: &V) -> Result<Self::Repr, Self::Error> {
-        let HeaderDelegateBridge(header_reader) = self;
-        let delegate = ValueDelegateBridge(header_reader);
-        let body_reader = value.write_with(delegate)?;
-        B::restore(body_reader)
-    }
-
-    fn write_attr_into<L: Label, V: StructuralWritable>(
-        self,
-        name: L,
-        value: V,
-    ) -> Result<Self, Self::Error> {
-        let HeaderDelegateBridge(header_reader) = self;
-        let delegate =
-            ItemDelegateBridge(header_reader.read_attribute(Cow::Borrowed(name.as_ref()))?);
-        let delegate_reader = value.write_into(delegate)?;
-        let header_reader = B::Delegate::restore(delegate_reader)?;
-        Ok(HeaderDelegateBridge(header_reader))
-    }
-
-    fn delegate_into<V: StructuralWritable>(self, value: V) -> Result<Self::Repr, Self::Error> {
-        let HeaderDelegateBridge(header_reader) = self;
-        let delegate = ValueDelegateBridge(header_reader);
-        let body_reader = value.write_into(delegate)?;
-        B::restore(body_reader)
-    }
-
-    fn complete_header(
-        self,
-        _kind: RecordBodyKind,
-        _num_items: usize,
-    ) -> Result<Self::Body, Self::Error> {
-        let HeaderDelegateBridge(delegate) = self;
-        let body_reader = delegate.start_body()?;
-        Ok(BodyDelegateBridge(body_reader))
-    }
-}
-
-impl<B: BodyReader> BodyWriter for BodyDelegateBridge<B> {
-    type Repr = B;
-    type Error = ReadError;
-
-    fn write_value<V: StructuralWritable>(self, value: &V) -> Result<Self, Self::Error> {
-        let BodyDelegateBridge(body_reader) = self;
-        let delegate = ItemDelegateBridge(body_reader);
-        let body_reader = value.write_with(delegate)?;
-        Ok(BodyDelegateBridge(body_reader))
-    }
-
-    fn write_slot<K: StructuralWritable, V: StructuralWritable>(
-        self,
-        key: &K,
-        value: &V,
-    ) -> Result<Self, Self::Error> {
-        let BodyDelegateBridge(body_reader) = self;
-        let delegate = ItemDelegateBridge(body_reader);
-        let mut body_reader = key.write_with(delegate)?;
-        body_reader.start_slot()?;
-        let delegate = ItemDelegateBridge(body_reader);
-        body_reader = value.write_with(delegate)?;
-        Ok(BodyDelegateBridge(body_reader))
-    }
-
-    fn write_value_into<V: StructuralWritable>(self, value: V) -> Result<Self, Self::Error> {
-        let BodyDelegateBridge(body_reader) = self;
-        let delegate = ItemDelegateBridge(body_reader);
-        let body_reader = value.write_into(delegate)?;
-        Ok(BodyDelegateBridge(body_reader))
-    }
-
-    fn write_slot_into<K: StructuralWritable, V: StructuralWritable>(
-        self,
-        key: K,
-        value: V,
-    ) -> Result<Self, Self::Error> {
-        let BodyDelegateBridge(body_reader) = self;
-        let delegate = ItemDelegateBridge(body_reader);
-        let mut body_reader = key.write_into(delegate)?;
-        body_reader.start_slot()?;
-        let delegate = ItemDelegateBridge(body_reader);
-        body_reader = value.write_into(delegate)?;
-        Ok(BodyDelegateBridge(body_reader))
-    }
-
-    fn done(self) -> Result<Self::Repr, Self::Error> {
-        let BodyDelegateBridge(body_reader) = self;
-        B::restore(body_reader)
-    }
-}
-
-impl<B: BodyReader> PrimitiveWriter for ItemDelegateBridge<B> {
-    type Repr = B;
+impl<'a, R: Recognizer> PrimitiveWriter for SubRecognizerBridge<'a, R> {
+    type Repr = ();
     type Error = ReadError;
 
     fn write_extant(self) -> Result<Self::Repr, Self::Error> {
-        let ItemDelegateBridge(mut inner) = self;
-        inner.push_extant()?;
-        Ok(inner)
+        self.feed_single(ReadEvent::Extant)
     }
 
     fn write_i32(self, value: i32) -> Result<Self::Repr, Self::Error> {
-        let ItemDelegateBridge(mut inner) = self;
-        inner.push_i32(value)?;
-        Ok(inner)
+        self.feed_single(ReadEvent::Number(NumericValue::Int(value.into())))
     }
 
     fn write_i64(self, value: i64) -> Result<Self::Repr, Self::Error> {
-        let ItemDelegateBridge(mut inner) = self;
-        inner.push_i64(value)?;
-        Ok(inner)
+        self.feed_single(ReadEvent::Number(NumericValue::Int(value)))
     }
 
     fn write_u32(self, value: u32) -> Result<Self::Repr, Self::Error> {
-        let ItemDelegateBridge(mut inner) = self;
-        inner.push_u32(value)?;
-        Ok(inner)
+        self.feed_single(ReadEvent::Number(NumericValue::UInt(value.into())))
     }
 
     fn write_u64(self, value: u64) -> Result<Self::Repr, Self::Error> {
-        let ItemDelegateBridge(mut inner) = self;
-        inner.push_u64(value)?;
-        Ok(inner)
+        self.feed_single(ReadEvent::Number(NumericValue::UInt(value)))
     }
 
     fn write_f64(self, value: f64) -> Result<Self::Repr, Self::Error> {
-        let ItemDelegateBridge(mut inner) = self;
-        inner.push_f64(value)?;
-        Ok(inner)
+        self.feed_single(ReadEvent::Number(NumericValue::Float(value)))
     }
 
     fn write_bool(self, value: bool) -> Result<Self::Repr, Self::Error> {
-        let ItemDelegateBridge(mut inner) = self;
-        inner.push_bool(value)?;
-        Ok(inner)
+        self.feed_single(ReadEvent::Boolean(value))
     }
 
     fn write_big_int(self, value: BigInt) -> Result<Self::Repr, Self::Error> {
-        let ItemDelegateBridge(mut inner) = self;
-        inner.push_big_int(value)?;
-        Ok(inner)
+        self.feed_single(ReadEvent::Number(NumericValue::BigInt(value)))
     }
 
     fn write_big_uint(self, value: BigUint) -> Result<Self::Repr, Self::Error> {
-        let ItemDelegateBridge(mut inner) = self;
-        inner.push_big_uint(value)?;
-        Ok(inner)
+        self.feed_single(ReadEvent::Number(NumericValue::BigUint(value)))
     }
 
-    fn write_text<T: Label>(self, value: T) -> Result<Self::Repr, Self::Error> {
-        let ItemDelegateBridge(mut inner) = self;
-        inner.push_text(value.as_cow())?;
-        Ok(inner)
+    fn write_text<L: Label>(self, value: L) -> Result<Self::Repr, Self::Error> {
+        self.feed_single(ReadEvent::TextValue(Cow::Borrowed(value.as_ref())))
     }
 
-    fn write_blob_vec(self, value: Vec<u8>) -> Result<Self::Repr, Self::Error> {
-        let ItemDelegateBridge(mut inner) = self;
-        inner.push_blob(value)?;
-        Ok(inner)
+    fn write_blob_vec(self, blob: Vec<u8>) -> Result<Self::Repr, Self::Error> {
+        self.feed_single(ReadEvent::Blob(blob))
     }
 
     fn write_blob(self, value: &[u8]) -> Result<Self::Repr, Self::Error> {
-        let ItemDelegateBridge(mut inner) = self;
-        inner.push_blob(value.to_vec())?;
-        Ok(inner)
+        self.feed_single(ReadEvent::Blob(value.to_vec()))
     }
 }
 
-impl<B: BodyReader> StructuralWriter for ItemDelegateBridge<B> {
-    type Header = HeaderDelegateBridge<B>;
-    type Body = BodyDelegateBridge<B>;
+impl<R: Recognizer> StructuralWriter for RecognizerBridge<R> {
+    type Header = Self;
+    type Body = Self;
 
     fn record(self, _num_attrs: usize) -> Result<Self::Header, Self::Error> {
-        let ItemDelegateBridge(inner) = self;
-        Ok(HeaderDelegateBridge(inner.push_record()?))
+        Ok(self)
     }
 }
 
-impl<H: HeaderReader> PrimitiveWriter for ValueDelegateBridge<H> {
-    type Repr = H::Body;
+impl<R: Recognizer> HeaderWriter for RecognizerBridge<R> {
+    type Repr = R::Target;
     type Error = ReadError;
-
-    fn write_extant(self) -> Result<Self::Repr, Self::Error> {
-        let ValueDelegateBridge(header_writer) = self;
-        let mut body_writer = header_writer.start_body()?;
-        body_writer.push_extant()?;
-        Ok(body_writer)
-    }
-
-    fn write_i32(self, value: i32) -> Result<Self::Repr, Self::Error> {
-        let ValueDelegateBridge(header_writer) = self;
-        let mut body_writer = header_writer.start_body()?;
-        body_writer.push_i32(value)?;
-        Ok(body_writer)
-    }
-
-    fn write_i64(self, value: i64) -> Result<Self::Repr, Self::Error> {
-        let ValueDelegateBridge(header_writer) = self;
-        let mut body_writer = header_writer.start_body()?;
-        body_writer.push_i64(value)?;
-        Ok(body_writer)
-    }
-
-    fn write_u32(self, value: u32) -> Result<Self::Repr, Self::Error> {
-        let ValueDelegateBridge(header_writer) = self;
-        let mut body_writer = header_writer.start_body()?;
-        body_writer.push_u32(value)?;
-        Ok(body_writer)
-    }
-
-    fn write_u64(self, value: u64) -> Result<Self::Repr, Self::Error> {
-        let ValueDelegateBridge(header_writer) = self;
-        let mut body_writer = header_writer.start_body()?;
-        body_writer.push_u64(value)?;
-        Ok(body_writer)
-    }
-
-    fn write_f64(self, value: f64) -> Result<Self::Repr, Self::Error> {
-        let ValueDelegateBridge(header_writer) = self;
-        let mut body_writer = header_writer.start_body()?;
-        body_writer.push_f64(value)?;
-        Ok(body_writer)
-    }
-
-    fn write_bool(self, value: bool) -> Result<Self::Repr, Self::Error> {
-        let ValueDelegateBridge(header_writer) = self;
-        let mut body_writer = header_writer.start_body()?;
-        body_writer.push_bool(value)?;
-        Ok(body_writer)
-    }
-
-    fn write_big_int(self, value: BigInt) -> Result<Self::Repr, Self::Error> {
-        let ValueDelegateBridge(header_writer) = self;
-        let mut body_writer = header_writer.start_body()?;
-        body_writer.push_big_int(value)?;
-        Ok(body_writer)
-    }
-
-    fn write_big_uint(self, value: BigUint) -> Result<Self::Repr, Self::Error> {
-        let ValueDelegateBridge(header_writer) = self;
-        let mut body_writer = header_writer.start_body()?;
-        body_writer.push_big_uint(value)?;
-        Ok(body_writer)
-    }
-
-    fn write_text<T: Label>(self, value: T) -> Result<Self::Repr, Self::Error> {
-        let ValueDelegateBridge(header_writer) = self;
-        let mut body_writer = header_writer.start_body()?;
-        body_writer.push_text(value.as_cow())?;
-        Ok(body_writer)
-    }
-
-    fn write_blob_vec(self, value: Vec<u8>) -> Result<Self::Repr, Self::Error> {
-        let ValueDelegateBridge(header_writer) = self;
-        let mut body_writer = header_writer.start_body()?;
-        body_writer.push_blob(value)?;
-        Ok(body_writer)
-    }
-
-    fn write_blob(self, value: &[u8]) -> Result<Self::Repr, Self::Error> {
-        let ValueDelegateBridge(header_writer) = self;
-        let mut body_writer = header_writer.start_body()?;
-        body_writer.push_blob(value.to_vec())?;
-        Ok(body_writer)
-    }
-}
-
-pub struct NestedBodyBridge<B>(B);
-
-impl<H: HeaderReader> HeaderWriter for ValueDelegateBridge<H> {
-    type Repr = H::Body;
-    type Error = ReadError;
-    type Body = NestedBodyBridge<H::Body>;
+    type Body = Self;
 
     fn write_attr<V: StructuralWritable>(
-        self,
+        mut self,
         name: Cow<'_, str>,
         value: &V,
     ) -> Result<Self, Self::Error> {
-        let ValueDelegateBridge(header_reader) = self;
-        let delegate = ItemDelegateBridge(header_reader.read_attribute(name)?);
-        let delegate_reader = value.write_with(delegate)?;
-        let header_reader = H::restore(delegate_reader)?;
-        Ok(ValueDelegateBridge(header_reader))
+        let RecognizerBridge(rec) = &mut self;
+        if let Some(Err(e)) = rec.feed_event(ReadEvent::StartAttribute(name)) {
+            return Err(e);
+        }
+        let delegate = SubRecognizerBridge::new(rec);
+        value.write_with(delegate)?;
+        match rec.feed_event(ReadEvent::EndAttribute) {
+            Some(Err(e)) => Err(e),
+            _ => Ok(self),
+        }
     }
 
     fn delegate<V: StructuralWritable>(self, value: &V) -> Result<Self::Repr, Self::Error> {
@@ -520,16 +230,20 @@ impl<H: HeaderReader> HeaderWriter for ValueDelegateBridge<H> {
     }
 
     fn write_attr_into<L: Label, V: StructuralWritable>(
-        self,
+        mut self,
         name: L,
         value: V,
     ) -> Result<Self, Self::Error> {
-        let ValueDelegateBridge(header_reader) = self;
-        let delegate =
-            ItemDelegateBridge(header_reader.read_attribute(Cow::Borrowed(name.as_ref()))?);
-        let delegate_reader = value.write_into(delegate)?;
-        let header_reader = H::restore(delegate_reader)?;
-        Ok(ValueDelegateBridge(header_reader))
+        let RecognizerBridge(rec) = &mut self;
+        if let Some(Err(e)) = rec.feed_event(ReadEvent::StartAttribute(Cow::Owned(name.into()))) {
+            return Err(e);
+        }
+        let delegate = SubRecognizerBridge::new(rec);
+        value.write_into(delegate)?;
+        match rec.feed_event(ReadEvent::EndAttribute) {
+            Some(Err(e)) => Err(e),
+            _ => Ok(self),
+        }
     }
 
     fn delegate_into<V: StructuralWritable>(self, value: V) -> Result<Self::Repr, Self::Error> {
@@ -537,33 +251,27 @@ impl<H: HeaderReader> HeaderWriter for ValueDelegateBridge<H> {
     }
 
     fn complete_header(
-        self,
+        mut self,
         _kind: RecordBodyKind,
         _num_items: usize,
     ) -> Result<Self::Body, Self::Error> {
-        let ValueDelegateBridge(header_reader) = self;
-        Ok(NestedBodyBridge(header_reader.start_body()?))
+        let RecognizerBridge(rec) = &mut self;
+        match rec.feed_event(ReadEvent::StartBody) {
+            Some(Err(e)) => Err(e),
+            _ => Ok(self),
+        }
     }
 }
 
-impl<H: HeaderReader> StructuralWriter for ValueDelegateBridge<H> {
-    type Header = Self;
-    type Body = NestedBodyBridge<H::Body>;
-
-    fn record(self, _num_attrs: usize) -> Result<Self::Header, Self::Error> {
-        Ok(self)
-    }
-}
-
-impl<B: BodyReader> BodyWriter for NestedBodyBridge<B> {
-    type Repr = B;
+impl<R: Recognizer> BodyWriter for RecognizerBridge<R> {
+    type Repr = R::Target;
     type Error = ReadError;
 
-    fn write_value<V: StructuralWritable>(self, value: &V) -> Result<Self, Self::Error> {
-        let NestedBodyBridge(body_reader) = self;
-        let delegate = ItemDelegateBridge(body_reader);
-        let body_reader = value.write_with(delegate)?;
-        Ok(NestedBodyBridge(body_reader))
+    fn write_value<V: StructuralWritable>(mut self, value: &V) -> Result<Self, Self::Error> {
+        let RecognizerBridge(rec) = &mut self;
+        let delegate = SubRecognizerBridge::new(rec);
+        value.write_with(delegate)?;
+        Ok(self)
     }
 
     fn write_slot<K: StructuralWritable, V: StructuralWritable>(
@@ -571,20 +279,22 @@ impl<B: BodyReader> BodyWriter for NestedBodyBridge<B> {
         key: &K,
         value: &V,
     ) -> Result<Self, Self::Error> {
-        let NestedBodyBridge(body_reader) = self;
-        let delegate = ItemDelegateBridge(body_reader);
-        let mut body_reader = key.write_with(delegate)?;
-        body_reader.start_slot()?;
-        let delegate = ItemDelegateBridge(body_reader);
-        body_reader = value.write_with(delegate)?;
-        Ok(NestedBodyBridge(body_reader))
+        let RecognizerBridge(mut rec) = self;
+        let delegate = SubRecognizerBridge::new(&mut rec);
+        key.write_with(delegate)?;
+        if let Some(Err(e)) = rec.feed_event(ReadEvent::Slot) {
+            return Err(e);
+        }
+        let delegate = SubRecognizerBridge::new(&mut rec);
+        value.write_with(delegate)?;
+        Ok(RecognizerBridge::new(rec))
     }
 
-    fn write_value_into<V: StructuralWritable>(self, value: V) -> Result<Self, Self::Error> {
-        let NestedBodyBridge(body_reader) = self;
-        let delegate = ItemDelegateBridge(body_reader);
-        let body_reader = value.write_into(delegate)?;
-        Ok(NestedBodyBridge(body_reader))
+    fn write_value_into<V: StructuralWritable>(mut self, value: V) -> Result<Self, Self::Error> {
+        let RecognizerBridge(rec) = &mut self;
+        let delegate = SubRecognizerBridge::new(rec);
+        value.write_into(delegate)?;
+        Ok(self)
     }
 
     fn write_slot_into<K: StructuralWritable, V: StructuralWritable>(
@@ -592,17 +302,153 @@ impl<B: BodyReader> BodyWriter for NestedBodyBridge<B> {
         key: K,
         value: V,
     ) -> Result<Self, Self::Error> {
-        let NestedBodyBridge(body_reader) = self;
-        let delegate = ItemDelegateBridge(body_reader);
-        let mut body_reader = key.write_into(delegate)?;
-        body_reader.start_slot()?;
-        let delegate = ItemDelegateBridge(body_reader);
-        body_reader = value.write_into(delegate)?;
-        Ok(NestedBodyBridge(body_reader))
+        let RecognizerBridge(mut rec) = self;
+        let delegate = SubRecognizerBridge::new(&mut rec);
+        key.write_into(delegate)?;
+        if let Some(Err(e)) = rec.feed_event(ReadEvent::Slot) {
+            return Err(e);
+        }
+        let delegate = SubRecognizerBridge::new(&mut rec);
+        value.write_into(delegate)?;
+        Ok(RecognizerBridge::new(rec))
     }
 
     fn done(self) -> Result<Self::Repr, Self::Error> {
-        let NestedBodyBridge(inner) = self;
-        Ok(inner)
+        let RecognizerBridge(mut rec) = self;
+        match rec
+            .feed_event(ReadEvent::EndRecord)
+            .or_else(move || rec.try_flush())
+        {
+            Some(r) => r,
+            _ => Err(ReadError::IncompleteRecord),
+        }
+    }
+}
+
+impl<'a, R: Recognizer> StructuralWriter for SubRecognizerBridge<'a, R> {
+    type Header = Self;
+    type Body = Self;
+
+    fn record(self, _num_attrs: usize) -> Result<Self::Header, Self::Error> {
+        Ok(self)
+    }
+}
+
+impl<'a, R: Recognizer> HeaderWriter for SubRecognizerBridge<'a, R> {
+    type Repr = ();
+    type Error = ReadError;
+    type Body = Self;
+
+    fn write_attr<V: StructuralWritable>(
+        mut self,
+        name: Cow<'_, str>,
+        value: &V,
+    ) -> Result<Self, Self::Error> {
+        let SubRecognizerBridge(rec) = &mut self;
+        if let Some(Err(e)) = rec.feed_event(ReadEvent::StartAttribute(name)) {
+            return Err(e);
+        }
+        let delegate = SubRecognizerBridge::new(*rec);
+        value.write_with(delegate)?;
+        match rec.feed_event(ReadEvent::EndAttribute) {
+            Some(Err(e)) => Err(e),
+            _ => Ok(self),
+        }
+    }
+
+    fn delegate<V: StructuralWritable>(self, value: &V) -> Result<Self::Repr, Self::Error> {
+        value.write_with(self)
+    }
+
+    fn write_attr_into<L: Label, V: StructuralWritable>(
+        mut self,
+        name: L,
+        value: V,
+    ) -> Result<Self, Self::Error> {
+        let SubRecognizerBridge(rec) = &mut self;
+        if let Some(Err(e)) = rec.feed_event(ReadEvent::StartAttribute(Cow::Owned(name.into()))) {
+            return Err(e);
+        }
+        let delegate = SubRecognizerBridge::new(*rec);
+        value.write_into(delegate)?;
+        match rec.feed_event(ReadEvent::EndAttribute) {
+            Some(Err(e)) => Err(e),
+            _ => Ok(self),
+        }
+    }
+
+    fn delegate_into<V: StructuralWritable>(self, value: V) -> Result<Self::Repr, Self::Error> {
+        value.write_into(self)
+    }
+
+    fn complete_header(
+        mut self,
+        _kind: RecordBodyKind,
+        _num_items: usize,
+    ) -> Result<Self::Body, Self::Error> {
+        let SubRecognizerBridge(rec) = &mut self;
+        match rec.feed_event(ReadEvent::StartBody) {
+            Some(Err(e)) => Err(e),
+            _ => Ok(self),
+        }
+    }
+}
+
+impl<'a, R: Recognizer> BodyWriter for SubRecognizerBridge<'a, R> {
+    type Repr = ();
+    type Error = ReadError;
+
+    fn write_value<V: StructuralWritable>(mut self, value: &V) -> Result<Self, Self::Error> {
+        let SubRecognizerBridge(rec) = &mut self;
+        let delegate = SubRecognizerBridge::new(*rec);
+        value.write_with(delegate)?;
+        Ok(self)
+    }
+
+    fn write_slot<K: StructuralWritable, V: StructuralWritable>(
+        mut self,
+        key: &K,
+        value: &V,
+    ) -> Result<Self, Self::Error> {
+        let SubRecognizerBridge(rec) = &mut self;
+        let delegate = SubRecognizerBridge::new(*rec);
+        key.write_with(delegate)?;
+        if let Some(Err(e)) = rec.feed_event(ReadEvent::Slot) {
+            return Err(e);
+        }
+        let delegate = SubRecognizerBridge::new(*rec);
+        value.write_with(delegate)?;
+        Ok(self)
+    }
+
+    fn write_value_into<V: StructuralWritable>(mut self, value: V) -> Result<Self, Self::Error> {
+        let SubRecognizerBridge(rec) = &mut self;
+        let delegate = SubRecognizerBridge::new(*rec);
+        value.write_into(delegate)?;
+        Ok(self)
+    }
+
+    fn write_slot_into<K: StructuralWritable, V: StructuralWritable>(
+        mut self,
+        key: K,
+        value: V,
+    ) -> Result<Self, Self::Error> {
+        let SubRecognizerBridge(rec) = &mut self;
+        let delegate = SubRecognizerBridge::new(*rec);
+        key.write_into(delegate)?;
+        if let Some(Err(e)) = rec.feed_event(ReadEvent::Slot) {
+            return Err(e);
+        }
+        let delegate = SubRecognizerBridge::new(*rec);
+        value.write_into(delegate)?;
+        Ok(self)
+    }
+
+    fn done(self) -> Result<Self::Repr, Self::Error> {
+        let SubRecognizerBridge(rec) = self;
+        match rec.feed_event(ReadEvent::EndRecord) {
+            Some(Err(e)) => Err(e),
+            _ => Ok(()),
+        }
     }
 }

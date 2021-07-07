@@ -12,21 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#[cfg(test)]
-mod tests;
+pub mod coproduct;
 
-use crate::form::structural::read::StructuralReadable;
-use crate::form::structural::write::StructuralWritable;
-
-mod bridge;
-pub mod generic;
-pub mod read;
-#[macro_use]
-pub mod write;
-
-/// A more flexible alternative to [`Form`] where readers and writers have full
-/// visbility of the strucutures of the values that the work on. This will eventually
-/// replace the [`Form`] trait.
-pub trait StructuralForm: StructuralReadable + StructuralWritable {}
-
-impl<T: StructuralReadable + StructuralWritable> StructuralForm for T {}
+/// A representation of the header of a Recon record as a heterogeneous list. This is used in
+/// the derive macro for [`crate::form::structural::write::StructuralWritable`] and should not
+/// generally be used in hand written code.
+pub mod header;

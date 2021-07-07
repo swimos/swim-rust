@@ -12,21 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#[cfg(test)]
-mod tests;
+/// Empty type for cases that can never ocurr (reading a primitive as a record for example).
+/// This is essentially the same as [`core::convert::Infallible`] but is intended to be useable
+/// for cases that are not only error types. It should be possible to replace it with `!` when it
+/// is stabilized.
+pub enum Never {}
 
-use crate::form::structural::read::StructuralReadable;
-use crate::form::structural::write::StructuralWritable;
-
-mod bridge;
-pub mod generic;
-pub mod read;
-#[macro_use]
-pub mod write;
-
-/// A more flexible alternative to [`Form`] where readers and writers have full
-/// visbility of the strucutures of the values that the work on. This will eventually
-/// replace the [`Form`] trait.
-pub trait StructuralForm: StructuralReadable + StructuralWritable {}
-
-impl<T: StructuralReadable + StructuralWritable> StructuralForm for T {}
+impl Never {
+    /// Witnesses that an instance of [Never] cannot exist.
+    #[inline]
+    pub fn explode(&self) -> ! {
+        use std::hint;
+        // Safe as Never has no instances.
+        unsafe { hint::unreachable_unchecked() }
+    }
+}

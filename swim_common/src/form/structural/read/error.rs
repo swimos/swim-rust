@@ -28,10 +28,12 @@ pub enum ReadError {
     MissingFields(Vec<Text>),
     UnexpectedAttribute(Text),
     InconsistentState,
+    UnexpectedItem,
     UnexpectedSlot,
     DuplicateField(Text),
     UnexpectedField(Text),
     NumberOutOfRange,
+    MissingTag,
 }
 
 impl Display for ReadError {
@@ -56,12 +58,14 @@ impl Display for ReadError {
             ReadError::InconsistentState => {
                 write!(f, "The deserialization state became corrupted.")
             }
+            ReadError::UnexpectedItem => write!(f, "Unexpected item in record."),
             ReadError::UnexpectedSlot => write!(f, "Unexpected slot in record."),
             ReadError::DuplicateField(name) => {
                 write!(f, "Field '{}' ocurred more than once.", name)
             }
             ReadError::UnexpectedField(name) => write!(f, "Unexpected field: '{}'", name),
             ReadError::NumberOutOfRange => write!(f, "Number out of range."),
+            ReadError::MissingTag => write!(f, "Missing tag attribute for record type."),
         }
     }
 }

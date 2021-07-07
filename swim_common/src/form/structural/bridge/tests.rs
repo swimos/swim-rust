@@ -73,10 +73,6 @@ fn bridge_blob() {
         <Vec<u8> as StructuralReadable>::try_read_from(&rep),
         Ok(blob.clone())
     );
-    assert_eq!(
-        <Box<[u8]> as StructuralReadable>::try_read_from(&rep),
-        Ok(blob.clone().into_boxed_slice())
-    );
 }
 
 #[test]
@@ -87,10 +83,6 @@ fn bridge_transform_blob() {
     assert_eq!(
         <Vec<u8> as StructuralReadable>::try_transform(rep.clone()),
         Ok(blob.clone())
-    );
-    assert_eq!(
-        <Box<[u8]> as StructuralReadable>::try_transform(rep),
-        Ok(blob.clone().into_boxed_slice())
     );
 }
 

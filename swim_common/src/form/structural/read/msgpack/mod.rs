@@ -15,22 +15,44 @@
 #[cfg(test)]
 mod tests;
 
-use crate::form::structural::read::{BodyReader, HeaderReader, ReadError, StructuralReadable};
+use crate::form::structural::read::event::ReadEvent;
+use crate::form::structural::read::recognizer::Recognizer;
+use crate::form::structural::read::{ReadError, StructuralReadable};
 use crate::form::structural::write::interpreters::msgpack::{BIG_INT_EXT, BIG_UINT_EXT};
-use bytes::Buf;
+use bytes::{Buf, BufMut, BytesMut};
+use either::Either;
 use num_bigint::{BigInt, BigUint, Sign};
 use rmp::decode::{read_str_len, ValueReadError};
 use rmp::Marker;
 use std::borrow::Cow;
 use std::convert::TryFrom;
 use std::fmt::{Display, Formatter};
-use std::mem::size_of;
 use std::str::Utf8Error;
+
+macro_rules! feed {
+    ($e:expr) => {
+        match $e {
+            Some(Ok(_)) => {
+                return Err(MsgPackReadError::UncomsumedData);
+            }
+            Some(Err(e)) => {
+                return Err(e.into());
+            }
+            _ => {}
+        }
+    };
+}
+
+fn feed<T, E: Into<MsgPackReadError>>(maybe: Option<Result<T, E>>) -> Result<(), MsgPackReadError> {
+    feed!(maybe);
+    Ok(())
+}
 
 /// Attempt to read a [`StructuralReadable`] type from MessagePack data in a buffer.
 pub fn read_from_msg_pack<T: StructuralReadable, R: Buf>(
     input: &mut R,
 ) -> Result<T, MsgPackReadError> {
+    let mut str_buf = BytesMut::new();
     let marker = read_marker(input)?;
     match marker {
         Marker::Null => Ok(T::read_extant()?),
@@ -48,84 +70,110 @@ pub fn read_from_msg_pack<T: StructuralReadable, R: Buf>(
         Marker::U64 => compose_simple(input, Buf::get_u64, T::read_u64),
         Marker::F32 => compose_simple(input, Buf::get_f32, T::read_f64),
         Marker::F64 => compose_simple(input, Buf::get_f64, T::read_f64),
-        Marker::FixStr(len) => read_string(input, len as u32, T::read_text),
+        Marker::FixStr(len) => read_string(input, &mut str_buf, len as u32, T::read_text),
         Marker::Str8 => {
-            let len = if input.remaining() < size_of::<u8>() {
+            let len = if input.remaining() < std::mem::size_of::<u8>() {
                 return Err(MsgPackReadError::Incomplete);
             } else {
                 input.get_u8() as u32
             };
-            read_string(input, len, T::read_text)
+            read_string(input, &mut str_buf, len, T::read_text)
         }
         Marker::Str16 => {
-            let len = if input.remaining() < size_of::<u16>() {
+            let len = if input.remaining() < std::mem::size_of::<u16>() {
                 return Err(MsgPackReadError::Incomplete);
             } else {
                 input.get_u16() as u32
             };
-            read_string(input, len, T::read_text)
+            read_string(input, &mut str_buf, len, T::read_text)
         }
         Marker::Str32 => {
-            let len = if input.remaining() < size_of::<u32>() {
+            let len = if input.remaining() < std::mem::size_of::<u32>() {
                 return Err(MsgPackReadError::Incomplete);
             } else {
                 input.get_u32()
             };
-            read_string(input, len, T::read_text)
+            read_string(input, &mut str_buf, len, T::read_text)
         }
         Marker::Bin8 => {
-            let len = if input.remaining() < size_of::<u8>() {
+            let len = if input.remaining() < std::mem::size_of::<u8>() {
                 return Err(MsgPackReadError::Incomplete);
             } else {
                 input.get_u8() as u32
             };
-            read_blob(input, len, T::read_blob)
+            let blob = read_blob(input, len)?;
+            T::read_blob(blob).map_err(Into::into)
         }
         Marker::Bin16 => {
-            let len = if input.remaining() < size_of::<u16>() {
+            let len = if input.remaining() < std::mem::size_of::<u16>() {
                 return Err(MsgPackReadError::Incomplete);
             } else {
                 input.get_u16() as u32
             };
-            read_blob(input, len, T::read_blob)
+            let blob = read_blob(input, len)?;
+            T::read_blob(blob).map_err(Into::into)
         }
         Marker::Bin32 => {
-            let len = if input.remaining() < size_of::<u32>() {
+            let len = if input.remaining() < std::mem::size_of::<u32>() {
                 return Err(MsgPackReadError::Incomplete);
             } else {
                 input.get_u32()
             };
-            read_blob(input, len, T::read_blob)
+            let blob = read_blob(input, len)?;
+            T::read_blob(blob).map_err(Into::into)
         }
         Marker::FixMap(n) => {
-            let body_reader = read_record(input, n as u32, T::record_reader()?)?;
-            Ok(T::try_terminate(body_reader)?)
+            let mut recognizer = T::make_recognizer();
+            let result = read_record(input, &mut str_buf, n as u32, &mut recognizer);
+            complete(result, recognizer)
         }
         Marker::Map16 => {
-            let len = if input.remaining() < size_of::<u16>() {
+            let len = if input.remaining() < std::mem::size_of::<u16>() {
                 return Err(MsgPackReadError::Incomplete);
             } else {
                 input.get_u16() as u32
             };
-            let body_reader = read_record(input, len, T::record_reader()?)?;
-            Ok(T::try_terminate(body_reader)?)
+            let mut recognizer = T::make_recognizer();
+            let result = read_record(input, &mut str_buf, len, &mut recognizer);
+            complete(result, recognizer)
         }
         Marker::Map32 => {
-            let len = if input.remaining() < size_of::<u32>() {
+            let len = if input.remaining() < std::mem::size_of::<u32>() {
                 return Err(MsgPackReadError::Incomplete);
             } else {
                 input.get_u32()
             };
-            let body_reader = read_record(input, len, T::record_reader()?)?;
-            Ok(T::try_terminate(body_reader)?)
+            let mut recognizer = T::make_recognizer();
+            let result = read_record(input, &mut str_buf, len, &mut recognizer);
+            complete(result, recognizer)
         }
-        marker if is_ext(marker) => {
-            let read_big_int = |_: &mut (), n| T::read_big_int(n);
-            let read_big_uint = |_: &mut (), n| T::read_big_uint(n);
-            read_ext(input, marker, &mut (), read_big_int, read_big_uint)
+        marker if is_ext(marker) => match read_ext(input, marker)? {
+            Either::Left(n) => T::read_big_int(n),
+            Either::Right(n) => T::read_big_uint(n),
         }
+        .map_err(Into::into),
         ow => Err(MsgPackReadError::InvalidMarker(ow)),
     }
+}
+
+fn complete<R>(
+    result: Result<Option<R::Target>, MsgPackReadError>,
+    mut recognizer: R,
+) -> Result<R::Target, MsgPackReadError>
+where
+    R: Recognizer,
+{
+    result.and_then(move |maybe| {
+        if let Some(t) = maybe {
+            Ok(t)
+        } else {
+            match recognizer.try_flush() {
+                Some(Ok(t)) => Ok(t),
+                Some(Err(e)) => Err(e.into()),
+                _ => Err(MsgPackReadError::Incomplete),
+            }
+        }
+    })
 }
 
 #[derive(Debug, PartialEq)]
@@ -142,6 +190,8 @@ pub enum MsgPackReadError {
     EmptyBigInt,
     /// The input terminated mid-way through a record.
     Incomplete,
+    /// Not all input was consumed.
+    UncomsumedData,
 }
 
 impl Display for MsgPackReadError {
@@ -164,6 +214,9 @@ impl Display for MsgPackReadError {
             }
             MsgPackReadError::Incomplete => {
                 write!(f, "The input ended part way through a record.")
+            }
+            MsgPackReadError::UncomsumedData => {
+                write!(f, "Not all of the input was consumed.")
             }
         }
     }
@@ -205,17 +258,9 @@ where
 }
 
 /// Read extnesion data. Curently we only use this for big integers.
-fn read_ext<R, B, F, G, T>(
-    input: &mut R,
-    marker: Marker,
-    builder: &mut B,
-    on_big_int: F,
-    on_big_uint: G,
-) -> Result<T, MsgPackReadError>
+fn read_ext<R>(input: &mut R, marker: Marker) -> Result<Either<BigInt, BigUint>, MsgPackReadError>
 where
     R: Buf,
-    F: for<'a> FnOnce(&'a mut B, BigInt) -> Result<T, ReadError>,
-    G: for<'a> FnOnce(&'a mut B, BigUint) -> Result<T, ReadError>,
 {
     let len = read_ext_size(input, marker)?;
     if input.remaining() < 1 {
@@ -231,16 +276,14 @@ where
                 } else {
                     let sig = input.get_u8();
                     let sign = if sig == 0 { Sign::Minus } else { Sign::NoSign };
-                    read_blob(input, len - 1, |blob| {
-                        let n = BigInt::from_bytes_be(sign, blob.as_slice());
-                        Ok(on_big_int(builder, n)?)
-                    })
+                    let blob = read_blob(input, len - 1)?;
+                    Ok(Either::Left(BigInt::from_bytes_be(sign, blob.as_slice())))
                 }
             }
-            BIG_UINT_EXT => read_blob(input, len, |blob| {
-                let n = BigUint::from_bytes_be(blob.as_slice());
-                Ok(on_big_uint(builder, n)?)
-            }),
+            BIG_UINT_EXT => {
+                let blob = read_blob(input, len)?;
+                Ok(Either::Right(BigUint::from_bytes_be(blob.as_slice())))
+            }
             _ => Err(MsgPackReadError::UnknownExtType(ext_type)),
         }
     }
@@ -271,21 +314,21 @@ where
         Marker::FixExt8 => Ok(8),
         Marker::FixExt16 => Ok(16),
         Marker::Ext8 => {
-            if input.remaining() < size_of::<u8>() {
+            if input.remaining() < std::mem::size_of::<u8>() {
                 Err(MsgPackReadError::Incomplete)
             } else {
                 Ok(input.get_u8() as u32)
             }
         }
         Marker::Ext16 => {
-            if input.remaining() < size_of::<u16>() {
+            if input.remaining() < std::mem::size_of::<u16>() {
                 Err(MsgPackReadError::Incomplete)
             } else {
                 Ok(input.get_u16() as u32)
             }
         }
         Marker::Ext32 => {
-            if input.remaining() < size_of::<u32>() {
+            if input.remaining() < std::mem::size_of::<u32>() {
                 Err(MsgPackReadError::Incomplete)
             } else {
                 Ok(input.get_u32())
@@ -306,32 +349,78 @@ where
     S: Into<T>,
     F2: FnOnce(T) -> Result<U, ReadError>,
 {
-    if input.remaining() < size_of::<S>() {
+    if input.remaining() < std::mem::size_of::<S>() {
         Err(MsgPackReadError::Incomplete)
     } else {
         Ok(to_value(read(input).into())?)
     }
 }
 
-fn read_string<R, F, T>(reader: &mut R, len: u32, to_value: F) -> Result<T, MsgPackReadError>
+fn compose_feed<R, F1, F2, S, T, U>(
+    input: &mut R,
+    read: F1,
+    to_value: F2,
+) -> Result<(), MsgPackReadError>
+where
+    R: Buf,
+    F1: Fn(&mut R) -> S,
+    S: Into<T>,
+    F2: FnOnce(T) -> Option<Result<U, ReadError>>,
+{
+    if input.remaining() < std::mem::size_of::<S>() {
+        Err(MsgPackReadError::Incomplete)
+    } else {
+        feed!(to_value(read(input).into()));
+        Ok(())
+    }
+}
+
+fn read_string<R, F, T>(
+    reader: &mut R,
+    str_buf: &mut BytesMut,
+    len: u32,
+    to_value: F,
+) -> Result<T, MsgPackReadError>
 where
     R: Buf,
     F: FnOnce(Cow<'_, str>) -> Result<T, ReadError>,
 {
     let len = usize::try_from(len).expect("u32 did not fit into usize");
-    let string_bytes = reader.copy_to_bytes(len);
-    if string_bytes.len() < len {
+    str_buf.clear();
+    str_buf.put(reader.take(len));
+    if str_buf.len() < len {
         Err(MsgPackReadError::Incomplete)
     } else {
-        let string = std::str::from_utf8(string_bytes.as_ref())?;
+        let string = std::str::from_utf8(str_buf.as_ref())?;
         Ok(to_value(Cow::Borrowed(string))?)
     }
 }
 
-fn read_blob<R, F, T>(reader: &mut R, len: u32, to_value: F) -> Result<T, MsgPackReadError>
+fn feed_string<R, F, T>(
+    reader: &mut R,
+    str_buf: &mut BytesMut,
+    len: u32,
+    to_value: F,
+) -> Result<(), MsgPackReadError>
 where
     R: Buf,
-    F: FnOnce(Vec<u8>) -> Result<T, ReadError>,
+    F: FnOnce(Cow<'_, str>) -> Option<Result<T, ReadError>>,
+{
+    let len = usize::try_from(len).expect("u32 did not fit into usize");
+    str_buf.clear();
+    str_buf.put(reader.take(len));
+    if str_buf.len() < len {
+        Err(MsgPackReadError::Incomplete)
+    } else {
+        let string = std::str::from_utf8(str_buf.as_ref())?;
+        feed!(to_value(Cow::Borrowed(string)));
+        Ok(())
+    }
+}
+
+fn read_blob<R>(reader: &mut R, len: u32) -> Result<Vec<u8>, MsgPackReadError>
+where
+    R: Buf,
 {
     let len = usize::try_from(len).expect("u32 did not fit into usize");
     let bytes = reader.copy_to_bytes(len);
@@ -339,199 +428,233 @@ where
         Err(MsgPackReadError::Incomplete)
     } else {
         let blob = Vec::from(bytes.as_ref());
-        Ok(to_value(blob)?)
+        Ok(blob)
     }
 }
 
-fn read_record<R, H>(
+fn read_sub_record<R, Rec>(
     reader: &mut R,
+    str_buf: &mut BytesMut,
     attrs: u32,
-    mut header_reader: H,
-) -> Result<H::Body, MsgPackReadError>
+    recognizer: &mut Rec,
+) -> Result<(), MsgPackReadError>
 where
     R: Buf,
-    H: HeaderReader,
+    Rec: Recognizer,
+{
+    match read_record(reader, str_buf, attrs, recognizer) {
+        Ok(Some(_)) => Err(MsgPackReadError::UncomsumedData),
+        Err(e) => Err(e),
+        _ => Ok(()),
+    }
+}
+
+fn read_record<R, Rec>(
+    reader: &mut R,
+    str_buf: &mut BytesMut,
+    attrs: u32,
+    recognizer: &mut Rec,
+) -> Result<Option<Rec::Target>, MsgPackReadError>
+where
+    R: Buf,
+    Rec: Recognizer,
 {
     for _ in 0..attrs {
         let name_len = read_str_len(&mut reader.reader())?;
-        let mut delegate = read_string(reader, name_len, move |name| {
-            header_reader.read_attribute(name)
+        feed_string(reader, str_buf, name_len, |name| {
+            recognizer.feed_event(ReadEvent::StartAttribute(name))
         })?;
-        delegate = push_value_dynamic(reader, delegate)?;
-        header_reader = H::restore(delegate)?;
+        push_value_dynamic(reader, str_buf, recognizer)?;
+        feed!(recognizer.feed_event(ReadEvent::EndAttribute));
     }
     let (body_len, is_map) = read_body_len(reader)?;
-    let body_reader = header_reader.start_body()?;
+    feed!(recognizer.feed_event(ReadEvent::StartBody));
     if is_map {
-        read_map_body(reader, body_len, body_reader)
+        read_map_body(reader, str_buf, body_len, recognizer)?;
     } else {
-        read_array_body(reader, body_len, body_reader)
+        read_array_body(reader, str_buf, body_len, recognizer)?;
     }
+    recognizer
+        .feed_event(ReadEvent::EndRecord)
+        .transpose()
+        .map_err(Into::into)
 }
 
-fn push_value_dynamic<R, B>(reader: &mut R, body_reader: B) -> Result<B, MsgPackReadError>
+fn push_value_dynamic<R, Rec>(
+    reader: &mut R,
+    str_buf: &mut BytesMut,
+    recognizer: &mut Rec,
+) -> Result<(), MsgPackReadError>
 where
     R: Buf,
-    B: BodyReader,
+    Rec: Recognizer,
 {
     let marker = read_marker(reader)?;
-    push_value(reader, body_reader, marker)
+    push_value(reader, str_buf, recognizer, marker)
 }
 
-fn push_value<R, B>(
+fn push_value<R, Rec>(
     reader: &mut R,
-    mut body_reader: B,
+    str_buf: &mut BytesMut,
+    recognizer: &mut Rec,
     marker: Marker,
-) -> Result<B, MsgPackReadError>
+) -> Result<(), MsgPackReadError>
 where
     R: Buf,
-    B: BodyReader,
+    Rec: Recognizer,
 {
     match marker {
-        Marker::Null => body_reader.push_extant()?,
-        Marker::True => body_reader.push_bool(true)?,
-        Marker::False => body_reader.push_bool(false)?,
-        Marker::FixPos(n) => body_reader.push_i32(n as i32)?,
-        Marker::FixNeg(n) => body_reader.push_i32(n as i32)?,
-        Marker::I8 => compose_simple(reader, Buf::get_i8, |n| body_reader.push_i32(n))?,
-        Marker::I16 => compose_simple(reader, Buf::get_i16, |n| body_reader.push_i32(n))?,
-        Marker::I32 => compose_simple(reader, Buf::get_i32, |n| body_reader.push_i32(n))?,
-        Marker::I64 => compose_simple(reader, Buf::get_i64, |n| body_reader.push_i64(n))?,
-        Marker::U8 => compose_simple(reader, Buf::get_u8, |n| body_reader.push_i32(n))?,
-        Marker::U16 => compose_simple(reader, Buf::get_u16, |n| body_reader.push_i32(n))?,
-        Marker::U32 => compose_simple(reader, Buf::get_u32, |n| body_reader.push_u32(n))?,
-        Marker::U64 => compose_simple(reader, Buf::get_u64, |n| body_reader.push_u64(n))?,
-        Marker::F32 => compose_simple(reader, Buf::get_f32, |n| body_reader.push_f64(n))?,
-        Marker::F64 => compose_simple(reader, Buf::get_f64, |n| body_reader.push_f64(n))?,
-        Marker::FixStr(len) => read_string(reader, len as u32, |t| body_reader.push_text(t))?,
+        Marker::Null => feed(recognizer.feed_event(ReadEvent::Extant)),
+        Marker::True => feed(recognizer.feed_event(true.into())),
+        Marker::False => feed(recognizer.feed_event(false.into())),
+        Marker::FixPos(n) => feed(recognizer.feed_event(n.into())),
+        Marker::FixNeg(n) => feed(recognizer.feed_event(n.into())),
+        Marker::I8 => compose_feed(reader, Buf::get_i8, |n: i8| recognizer.feed_event(n.into())),
+        Marker::I16 => compose_feed(reader, Buf::get_i16, |n: i16| {
+            recognizer.feed_event(n.into())
+        }),
+        Marker::I32 => compose_feed(reader, Buf::get_i32, |n: i32| {
+            recognizer.feed_event(n.into())
+        }),
+        Marker::I64 => compose_feed(reader, Buf::get_i64, |n: i64| {
+            recognizer.feed_event(n.into())
+        }),
+        Marker::U8 => compose_feed(reader, Buf::get_u8, |n: u8| recognizer.feed_event(n.into())),
+        Marker::U16 => compose_feed(reader, Buf::get_u16, |n: u16| {
+            recognizer.feed_event(n.into())
+        }),
+        Marker::U32 => compose_feed(reader, Buf::get_u32, |n: u32| {
+            recognizer.feed_event(n.into())
+        }),
+        Marker::U64 => compose_feed(reader, Buf::get_u64, |n: u64| {
+            recognizer.feed_event(n.into())
+        }),
+        Marker::F32 => compose_feed(reader, Buf::get_f32, |n: f32| {
+            recognizer.feed_event(n.into())
+        }),
+        Marker::F64 => compose_feed(reader, Buf::get_f64, |n: f64| {
+            recognizer.feed_event(n.into())
+        }),
+        Marker::FixStr(len) => feed_string(reader, str_buf, len as u32, |t| {
+            recognizer.feed_event(t.into())
+        }),
         Marker::Str8 => {
-            let len = if reader.remaining() < size_of::<u8>() {
+            let len = if reader.remaining() < std::mem::size_of::<u8>() {
                 return Err(MsgPackReadError::Incomplete);
             } else {
                 reader.get_u8() as u32
             };
-            read_string(reader, len, |t| body_reader.push_text(t))?
+            feed_string(reader, str_buf, len, |t| recognizer.feed_event(t.into()))
         }
         Marker::Str16 => {
-            let len = if reader.remaining() < size_of::<u16>() {
+            let len = if reader.remaining() < std::mem::size_of::<u16>() {
                 return Err(MsgPackReadError::Incomplete);
             } else {
                 reader.get_u16() as u32
             };
-            read_string(reader, len, |t| body_reader.push_text(t))?
+            feed_string(reader, str_buf, len, |t| recognizer.feed_event(t.into()))
         }
         Marker::Str32 => {
-            let len = if reader.remaining() < size_of::<u32>() {
+            let len = if reader.remaining() < std::mem::size_of::<u32>() {
                 return Err(MsgPackReadError::Incomplete);
             } else {
                 reader.get_u32()
             };
-            read_string(reader, len, |t| body_reader.push_text(t))?
+            feed_string(reader, str_buf, len, |t| recognizer.feed_event(t.into()))
         }
         Marker::Bin8 => {
-            let len = if reader.remaining() < size_of::<u8>() {
+            let len = if reader.remaining() < std::mem::size_of::<u8>() {
                 return Err(MsgPackReadError::Incomplete);
             } else {
                 reader.get_u8() as u32
             };
-            read_blob(reader, len, |blob| body_reader.push_blob(blob))?
+            let blob = read_blob(reader, len)?;
+            feed(recognizer.feed_event(blob.into()))
         }
         Marker::Bin16 => {
-            let len = if reader.remaining() < size_of::<u16>() {
+            let len = if reader.remaining() < std::mem::size_of::<u16>() {
                 return Err(MsgPackReadError::Incomplete);
             } else {
                 reader.get_u16() as u32
             };
-            read_blob(reader, len, |blob| body_reader.push_blob(blob))?
+            let blob = read_blob(reader, len)?;
+            feed(recognizer.feed_event(blob.into()))
         }
         Marker::Bin32 => {
-            let len = if reader.remaining() < size_of::<u32>() {
+            let len = if reader.remaining() < std::mem::size_of::<u32>() {
                 return Err(MsgPackReadError::Incomplete);
             } else {
                 reader.get_u32() as u32
             };
-            read_blob(reader, len, |blob| body_reader.push_blob(blob))?
+            let blob = read_blob(reader, len)?;
+            feed(recognizer.feed_event(blob.into()))
         }
-        Marker::FixMap(n) => {
-            let delegate = body_reader.push_record()?;
-            let body_delegate = read_record(reader, n as u32, delegate)?;
-            body_reader = B::restore(body_delegate)?;
-            true
-        }
+        Marker::FixMap(n) => read_sub_record(reader, str_buf, n as u32, recognizer),
         Marker::Map16 => {
-            let len = if reader.remaining() < size_of::<u16>() {
+            let len = if reader.remaining() < std::mem::size_of::<u16>() {
                 return Err(MsgPackReadError::Incomplete);
             } else {
                 reader.get_u16() as u32
             };
-            let delegate = body_reader.push_record()?;
-            let body_delegate = read_record(reader, len, delegate)?;
-            body_reader = B::restore(body_delegate)?;
-            true
+            read_sub_record(reader, str_buf, len, recognizer)
         }
         Marker::Map32 => {
-            let len = if reader.remaining() < size_of::<u32>() {
+            let len = if reader.remaining() < std::mem::size_of::<u32>() {
                 return Err(MsgPackReadError::Incomplete);
             } else {
                 reader.get_u32()
             };
-            let delegate = body_reader.push_record()?;
-            let body_delegate = read_record(reader, len, delegate)?;
-            body_reader = B::restore(body_delegate)?;
-            true
+            read_sub_record(reader, str_buf, len, recognizer)
         }
-        marker if is_ext(marker) => {
-            read_ext(
-                reader,
-                marker,
-                &mut body_reader,
-                |r, n| r.push_big_int(n),
-                |r, n| r.push_big_uint(n),
-            )?;
-            true
-        }
-        ow => {
-            return Err(MsgPackReadError::InvalidMarker(ow));
-        }
-    };
-    Ok(body_reader)
+        marker if is_ext(marker) => feed(match read_ext(reader, marker)? {
+            Either::Left(n) => recognizer.feed_event(n.into()),
+            Either::Right(n) => recognizer.feed_event(n.into()),
+        }),
+        ow => Err(MsgPackReadError::InvalidMarker(ow)),
+    }
 }
 
 const SLOT_MARKER: Marker = Marker::FixArray(2);
 
-fn read_array_body<R, B>(
+fn read_array_body<R, Rec>(
     input: &mut R,
+    str_buf: &mut BytesMut,
     items: u32,
-    mut body_reader: B,
-) -> Result<B, MsgPackReadError>
+    recognizer: &mut Rec,
+) -> Result<(), MsgPackReadError>
 where
     R: Buf,
-    B: BodyReader,
+    Rec: Recognizer,
 {
     for _ in 0..items {
         let marker = read_marker(input)?;
         if marker == SLOT_MARKER {
-            body_reader = push_value_dynamic(input, body_reader)?;
-            body_reader.start_slot()?;
-            body_reader = push_value_dynamic(input, body_reader)?;
+            push_value_dynamic(input, str_buf, recognizer)?;
+            feed!(recognizer.feed_event(ReadEvent::Slot));
+            push_value_dynamic(input, str_buf, recognizer)?;
         } else {
-            body_reader = push_value(input, body_reader, marker)?;
+            push_value(input, str_buf, recognizer, marker)?;
         }
     }
-    Ok(body_reader)
+    Ok(())
 }
 
-fn read_map_body<R, B>(input: &mut R, items: u32, mut body_reader: B) -> Result<B, MsgPackReadError>
+fn read_map_body<R, Rec>(
+    input: &mut R,
+    str_buf: &mut BytesMut,
+    items: u32,
+    recognizer: &mut Rec,
+) -> Result<(), MsgPackReadError>
 where
     R: Buf,
-    B: BodyReader,
+    Rec: Recognizer,
 {
     for _ in 0..items {
-        body_reader = push_value_dynamic(input, body_reader)?;
-        body_reader.start_slot()?;
-        body_reader = push_value_dynamic(input, body_reader)?;
+        push_value_dynamic(input, str_buf, recognizer)?;
+        feed!(recognizer.feed_event(ReadEvent::Slot));
+        push_value_dynamic(input, str_buf, recognizer)?;
     }
-    Ok(body_reader)
+    Ok(())
 }
 
 fn read_body_len<R>(input: &mut R) -> Result<(u32, bool), MsgPackReadError>
@@ -543,7 +666,7 @@ where
         Marker::FixMap(n) => Ok((n as u32, true)),
         Marker::FixArray(n) => Ok((n as u32, false)),
         marker @ Marker::Map16 | marker @ Marker::Array16 => {
-            let len = if input.remaining() < size_of::<u16>() {
+            let len = if input.remaining() < std::mem::size_of::<u16>() {
                 return Err(MsgPackReadError::Incomplete);
             } else {
                 input.get_u16() as u32
@@ -551,7 +674,7 @@ where
             Ok((len, marker == Marker::Map16))
         }
         marker @ Marker::Map32 | marker @ Marker::Array32 => {
-            let len = if input.remaining() < size_of::<u32>() {
+            let len = if input.remaining() < std::mem::size_of::<u32>() {
                 return Err(MsgPackReadError::Incomplete);
             } else {
                 input.get_u32()

@@ -26,11 +26,14 @@ use syn::DeriveInput;
 use macro_helpers::to_compile_errors;
 
 use crate::form::build_derive_form;
+use crate::structural::{build_derive_structural_readable, build_derive_structural_writable};
 use crate::tag::build_tag;
 use crate::validated_form::build_validated_form;
+use utilities::algebra::Errors;
 
 mod form;
 mod parser;
+mod structural;
 mod tag;
 mod validated_form;
 
@@ -54,4 +57,28 @@ pub fn derive_validated_form(input: TokenStream) -> TokenStream {
 pub fn derive_tag(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     build_tag(input).unwrap_or_else(to_compile_errors).into()
+}
+
+#[proc_macro_derive(StructuralWritable, attributes(form))]
+pub fn derive_structural_writable(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    build_derive_structural_writable(input)
+        .unwrap_or_else(errs_to_compile_errors)
+        .into()
+}
+
+#[proc_macro_derive(StructuralReadable, attributes(form))]
+pub fn derive_structural_readable(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    build_derive_structural_readable(input)
+        .unwrap_or_else(errs_to_compile_errors)
+        .into()
+}
+
+fn errs_to_compile_errors(errors: Errors<syn::Error>) -> proc_macro2::TokenStream {
+    let compile_errors = errors
+        .into_vec()
+        .into_iter()
+        .map(|e| syn::Error::to_compile_error(&e));
+    quote!(#(#compile_errors)*)
 }
