@@ -252,8 +252,8 @@ pub struct SwimServer {
     address_tx: promise::Sender<SocketAddr>,
     client: SwimClient<Path>,
     downlinks_handle: DownlinksHandle<Path>,
-    client_conn_request_tx: mpsc::Sender<ClientRequest<Path>>,
-    client_conn_request_rx: mpsc::Receiver<ClientRequest<Path>>,
+    client_conn_request_tx: mpsc::Sender<ClientRequest>,
+    client_conn_request_rx: mpsc::Receiver<ClientRequest>,
 }
 
 impl SwimServer {

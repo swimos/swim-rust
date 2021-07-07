@@ -19,17 +19,19 @@ use futures::select;
 use futures::stream;
 use futures::{FutureExt, Stream, StreamExt};
 use std::collections::HashMap;
+use std::convert::TryFrom;
 use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use swim_common::request::request_future::RequestError;
 use swim_common::request::Request;
 use swim_common::routing::error::{
-    CloseError, ConnectionError, ResolutionError, ResolutionErrorKind,
+    CloseError, ConnectionError, ProtocolError, ResolutionError, ResolutionErrorKind,
 };
-use swim_common::routing::{RoutingAddr, TaggedEnvelope};
+use swim_common::routing::remote::table::{SchemeHostPort};
+use swim_common::routing::{Origin, RoutingAddr, TaggedEnvelope};
 use swim_common::warp::envelope::Envelope;
-use swim_common::warp::path::Addressable;
+use swim_common::warp::path::{Addressable, RelativePath};
 use swim_runtime::task::*;
 use swim_runtime::time::instant::Instant;
 use swim_runtime::time::interval::interval;
@@ -39,6 +41,7 @@ use tokio::sync::oneshot;
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{instrument, trace};
 use url::Host;
+use swim_common::routing::remote::{BadUrl, unpack_url};
 
 #[cfg(test)]
 mod tests;
@@ -91,7 +94,7 @@ impl<Path: Addressable> SwimConnPool<Path> {
     #[instrument(skip(config))]
     pub fn new(
         config: ConnectionPoolParams,
-        client_conn_request_tx: mpsc::Sender<ClientRequest<Path>>,
+        client_conn_request_tx: mpsc::Sender<ClientRequest>,
     ) -> (SwimConnPool<Path>, PoolTask<Path>) {
         let (connection_request_tx, connection_request_rx) =
             mpsc::channel(config.buffer_size().get());
@@ -150,7 +153,7 @@ impl<Path: Addressable> ConnectionPool for SwimConnPool<Path> {
                 .await?;
             Ok(rx.await?)
         }
-        .boxed()
+            .boxed()
     }
 
     /// Stops the pool from accepting new connection requests and closes down all existing
@@ -164,7 +167,7 @@ impl<Path: Addressable> ConnectionPool for SwimConnPool<Path> {
                 .await
                 .map_err(|_| ConnectionError::Closed(CloseError::unexpected())))
         }
-        .boxed()
+            .boxed()
     }
 }
 
@@ -177,7 +180,7 @@ enum RequestType<Path: Addressable> {
 pub struct PoolTask<Path: Addressable> {
     config: ConnectionPoolParams,
     connection_request_rx: mpsc::Receiver<ConnectionRequest<Path>>,
-    client_conn_request_tx: mpsc::Sender<ClientRequest<Path>>,
+    client_conn_request_tx: mpsc::Sender<ClientRequest>,
     buffer_size: NonZeroUsize,
     stop_request_rx: mpsc::Receiver<()>,
 }
@@ -186,7 +189,7 @@ impl<Path: Addressable> PoolTask<Path> {
     fn new(
         config: ConnectionPoolParams,
         connection_request_rx: mpsc::Receiver<ConnectionRequest<Path>>,
-        client_conn_request_tx: mpsc::Sender<ClientRequest<Path>>,
+        client_conn_request_tx: mpsc::Sender<ClientRequest>,
         buffer_size: NonZeroUsize,
         stop_request_rx: mpsc::Receiver<()>,
     ) -> Self {
@@ -208,7 +211,7 @@ impl<Path: Addressable> PoolTask<Path> {
             buffer_size,
             stop_request_rx,
         } = self;
-        let mut connections: HashMap<String, InnerConnection> = HashMap::new();
+        let mut connections: HashMap<ConnectionPath, InnerConnection> = HashMap::new();
 
         let mut prune_timer = interval(config.conn_reaper_frequency()).fuse();
         let mut fused_requests =
@@ -220,7 +223,7 @@ impl<Path: Addressable> PoolTask<Path> {
                 _ = prune_timer.next() => Some(RequestType::Prune),
                 req = fused_requests.next() => req,
             }
-            .ok_or_else(|| ConnectionError::Closed(CloseError::unexpected()))?;
+                .ok_or_else(|| ConnectionError::Closed(CloseError::unexpected()))?;
 
             match request {
                 RequestType::NewConnection(conn_req) => {
@@ -230,7 +233,11 @@ impl<Path: Addressable> PoolTask<Path> {
                         recreate_connection,
                     } = conn_req;
 
-                    let path = target.to_string();
+                    let path = ConnectionPath::try_from_addressable(target.clone()).map_err(|_| {
+                        ConnectionError::Protocol(ProtocolError::websocket(Some(
+                            "Invalid protocol.".to_string(),
+                        )))
+                    })?;
 
                     let recreate = match (recreate_connection, connections.get(&path)) {
                         // Connection has stopped and needs to be recreated
@@ -245,21 +252,21 @@ impl<Path: Addressable> PoolTask<Path> {
 
                     let connection_channel = if recreate {
                         ClientConnection::new(
-                            target.clone(),
+                            path.clone(),
                             buffer_size.get(),
                             &client_conn_request_tx,
                         )
-                        .await
-                        .and_then(|connection| {
-                            let (inner, sender, receiver) = InnerConnection::from(connection)?;
-                            let _ = connections.insert(path.clone(), inner);
-                            Ok((sender, Some(receiver)))
-                        })
+                            .await
+                            .and_then(|connection| {
+                                let (inner, sender, receiver) = InnerConnection::from(connection)?;
+                                let _ = connections.insert(path.clone(), inner);
+                                Ok((sender, Some(receiver)))
+                            })
                     } else {
                         let inner_connection = connections.get_mut(&path).ok_or_else(|| {
                             ConnectionError::Resolution(ResolutionError::new(
                                 ResolutionErrorKind::Unresolvable,
-                                Some(path.clone()),
+                                Some(target.to_string()),
                             ))
                         })?;
                         inner_connection.last_accessed = Instant::now();
@@ -288,10 +295,25 @@ impl<Path: Addressable> PoolTask<Path> {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ConnectionPath {
+    Local(RelativePath),
+    Remote(SchemeHostPort),
+}
+
+impl ConnectionPath {
+    pub fn try_from_addressable<T: Addressable>(addressable: T) -> Result<Self, BadUrl> {
+        match addressable.host() {
+            Some(host) => Ok(ConnectionPath::Remote(unpack_url(&host)?)),
+            None => Ok(ConnectionPath::Local(addressable.relative_path())),
+        }
+    }
+}
+
 fn combine_connection_streams<Path: Addressable>(
     connection_requests_rx: mpsc::Receiver<ConnectionRequest<Path>>,
     close_requests_rx: mpsc::Receiver<()>,
-) -> impl stream::Stream<Item = RequestType<Path>> + Send + 'static {
+) -> impl stream::Stream<Item=RequestType<Path>> + Send + 'static {
     let connection_requests =
         ReceiverStream::new(connection_requests_rx).map(RequestType::NewConnection);
     let close_request = ReceiverStream::new(close_requests_rx).map(|_| RequestType::Close);
@@ -343,8 +365,8 @@ impl SendTask {
 }
 
 struct ReceiveTask<S>
-where
-    S: Stream<Item = Envelope> + Send + Unpin + 'static,
+    where
+        S: Stream<Item=Envelope> + Send + Unpin + 'static,
 {
     stopped: Arc<AtomicBool>,
     read_stream: S,
@@ -352,8 +374,8 @@ where
 }
 
 impl<S> ReceiveTask<S>
-where
-    S: Stream<Item = Envelope> + Send + Unpin + 'static,
+    where
+        S: Stream<Item=Envelope> + Send + Unpin + 'static,
 {
     fn new(read_stream: S, tx: mpsc::Sender<Envelope>, stopped: Arc<AtomicBool>) -> Self {
         ReceiveTask {
@@ -431,10 +453,10 @@ pub struct ClientConnection {
 }
 
 impl ClientConnection {
-    async fn new<Path: Addressable>(
-        target: Path,
+    async fn new(
+        target: ConnectionPath,
         buffer_size: usize,
-        client_conn_request_tx: &mpsc::Sender<ClientRequest<Path>>,
+        client_conn_request_tx: &mpsc::Sender<ClientRequest>,
     ) -> Result<ClientConnection, ConnectionError> {
         let (sender_tx, sender_rx) = mpsc::channel(buffer_size);
         let (receiver_tx, receiver_rx) = mpsc::channel(buffer_size);

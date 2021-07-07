@@ -373,7 +373,7 @@ pub enum BadUrl {
     NoHost,
 }
 
-fn unpack_url(url: &Url) -> Result<SchemeHostPort, BadUrl> {
+pub fn unpack_url(url: &Url) -> Result<SchemeHostPort, BadUrl> {
     let scheme = Scheme::try_from(url.scheme())?;
     match (url.host_str(), url.port()) {
         (Some(host_str), Some(port)) => Ok(SchemeHostPort::new(scheme, host_str.to_owned(), port)),

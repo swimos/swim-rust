@@ -101,7 +101,7 @@ impl<Path: Addressable> Downlinks<Path> {
     /// Create tasks for opening remote connections and attaching them to downlinks.
     #[instrument(skip(client_conn_request_tx, config))]
     pub fn new<Cfg>(
-        client_conn_request_tx: mpsc::Sender<ClientRequest<Path>>,
+        client_conn_request_tx: mpsc::Sender<ClientRequest>,
         config: Arc<Cfg>,
         close_rx: CloseReceiver,
     ) -> (Downlinks<Path>, DownlinksHandle<Path>)
