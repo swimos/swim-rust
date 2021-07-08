@@ -20,7 +20,7 @@ mod tests;
 use crate::form::structural::generic::coproduct::{CCons, CNil, Unify};
 use crate::form::structural::read::event::ReadEvent;
 use crate::form::structural::read::materializers::value::{
-    AttrBodyMaterializer, ValueMaterializer,
+    AttrBodyMaterializer, DelegateBodyMaterializer, ValueMaterializer,
 };
 use crate::form::structural::read::recognizer::primitive::DataRecognizer;
 use crate::form::structural::read::ReadError;
@@ -44,6 +44,7 @@ use utilities::uri::RelativeUri;
 pub trait RecognizerReadable: Sized {
     type Rec: Recognizer<Target = Self>;
     type AttrRec: Recognizer<Target = Self>;
+    type BodyRec: Recognizer<Target = Self>;
 
     /// Create a state machine that will recognize the represenation of the type as a stream of
     /// [`ReadEvent`]s.
@@ -55,6 +56,12 @@ pub trait RecognizerReadable: Sized {
     /// for types that can be reprsented as records with no attributes, this may be more complex
     /// as it is permissible for the record to be collapsed into the body of the attribute.)
     fn make_attr_recognizer() -> Self::AttrRec;
+
+    /// Create a state machine that will recognize the represenation of the type as a stream of
+    /// [`ReadEvent`]s where the read process has been delegated to a sub-value. This will
+    /// be identicay to the `make_recognizer` state machine save where the type is simple or
+    /// is the generic model type [`Value`].
+    fn make_body_recognizer() -> Self::BodyRec;
 
     /// If this value is expected as the value of a record field but was not present a default
     /// value will be used if provided here. For example, [`Option`] values are set to `None` if
@@ -129,6 +136,7 @@ macro_rules! simple_readable {
         impl RecognizerReadable for $target {
             type Rec = primitive::$recog;
             type AttrRec = SimpleAttrBody<primitive::$recog>;
+            type BodyRec = SimpleRecBody<primitive::$recog>;
 
             fn make_recognizer() -> Self::Rec {
                 primitive::$recog
@@ -136,6 +144,10 @@ macro_rules! simple_readable {
 
             fn make_attr_recognizer() -> Self::AttrRec {
                 SimpleAttrBody::new(primitive::$recog)
+            }
+
+            fn make_body_recognizer() -> Self::BodyRec {
+                SimpleRecBody::new(primitive::$recog)
             }
 
             fn is_simple() -> bool {
@@ -162,6 +174,7 @@ simple_readable!(bool, BoolRecognizer);
 impl RecognizerReadable for Blob {
     type Rec = MappedRecognizer<DataRecognizer, fn(Vec<u8>) -> Blob>;
     type AttrRec = SimpleAttrBody<Self::Rec>;
+    type BodyRec = SimpleRecBody<Self::Rec>;
 
     fn make_recognizer() -> Self::Rec {
         MappedRecognizer::new(DataRecognizer, Blob::from_vec)
@@ -169,6 +182,10 @@ impl RecognizerReadable for Blob {
 
     fn make_attr_recognizer() -> Self::AttrRec {
         SimpleAttrBody::new(Self::make_recognizer())
+    }
+
+    fn make_body_recognizer() -> Self::BodyRec {
+        SimpleRecBody::new(Self::make_recognizer())
     }
 
     fn is_simple() -> bool {
@@ -181,6 +198,7 @@ type BoxU8Vec = fn(Vec<u8>) -> Box<[u8]>;
 impl RecognizerReadable for Box<[u8]> {
     type Rec = MappedRecognizer<DataRecognizer, BoxU8Vec>;
     type AttrRec = SimpleAttrBody<Self::Rec>;
+    type BodyRec = SimpleRecBody<Self::Rec>;
 
     fn make_recognizer() -> Self::Rec {
         MappedRecognizer::new(DataRecognizer, Vec::into_boxed_slice)
@@ -188,6 +206,10 @@ impl RecognizerReadable for Box<[u8]> {
 
     fn make_attr_recognizer() -> Self::AttrRec {
         SimpleAttrBody::new(Self::make_recognizer())
+    }
+
+    fn make_body_recognizer() -> Self::BodyRec {
+        SimpleRecBody::new(Self::make_recognizer())
     }
 
     fn is_simple() -> bool {
@@ -198,6 +220,7 @@ impl RecognizerReadable for Box<[u8]> {
 impl RecognizerReadable for RelativeUri {
     type Rec = RelativeUriRecognizer;
     type AttrRec = SimpleAttrBody<RelativeUriRecognizer>;
+    type BodyRec = SimpleRecBody<RelativeUriRecognizer>;
 
     fn make_recognizer() -> Self::Rec {
         RelativeUriRecognizer
@@ -205,6 +228,10 @@ impl RecognizerReadable for RelativeUri {
 
     fn make_attr_recognizer() -> Self::AttrRec {
         SimpleAttrBody::new(RelativeUriRecognizer)
+    }
+
+    fn make_body_recognizer() -> Self::BodyRec {
+        SimpleRecBody::new(RelativeUriRecognizer)
     }
 
     fn is_simple() -> bool {
@@ -237,6 +264,7 @@ impl Recognizer for RelativeUriRecognizer {
 impl RecognizerReadable for Url {
     type Rec = UrlRecognizer;
     type AttrRec = SimpleAttrBody<UrlRecognizer>;
+    type BodyRec = SimpleRecBody<UrlRecognizer>;
 
     fn make_recognizer() -> Self::Rec {
         UrlRecognizer
@@ -244,6 +272,10 @@ impl RecognizerReadable for Url {
 
     fn make_attr_recognizer() -> Self::AttrRec {
         SimpleAttrBody::new(UrlRecognizer)
+    }
+
+    fn make_body_recognizer() -> Self::BodyRec {
+        SimpleRecBody::new(UrlRecognizer)
     }
 
     fn is_simple() -> bool {
@@ -354,6 +386,7 @@ pub type CollaspsibleRec<R> = FirstOf<R, SimpleAttrBody<R>>;
 impl<T: RecognizerReadable> RecognizerReadable for Vec<T> {
     type Rec = VecRecognizer<T, T::Rec>;
     type AttrRec = CollaspsibleRec<VecRecognizer<T, T::Rec>>;
+    type BodyRec = VecRecognizer<T, T::Rec>;
 
     fn make_recognizer() -> Self::Rec {
         VecRecognizer::new(false, T::make_recognizer())
@@ -364,6 +397,10 @@ impl<T: RecognizerReadable> RecognizerReadable for Vec<T> {
             VecRecognizer::new(true, T::make_recognizer()),
             SimpleAttrBody::new(VecRecognizer::new(false, T::make_recognizer())),
         )
+    }
+
+    fn make_body_recognizer() -> Self::BodyRec {
+        Self::make_recognizer()
     }
 }
 
@@ -1342,6 +1379,7 @@ type MakeArc<T> = fn(T) -> Arc<T>;
 impl<T: RecognizerReadable> RecognizerReadable for Arc<T> {
     type Rec = MappedRecognizer<T::Rec, MakeArc<T>>;
     type AttrRec = MappedRecognizer<T::AttrRec, MakeArc<T>>;
+    type BodyRec = MappedRecognizer<T::BodyRec, MakeArc<T>>;
 
     fn make_recognizer() -> Self::Rec {
         MappedRecognizer::new(T::make_recognizer(), Arc::new)
@@ -1349,6 +1387,10 @@ impl<T: RecognizerReadable> RecognizerReadable for Arc<T> {
 
     fn make_attr_recognizer() -> Self::AttrRec {
         MappedRecognizer::new(T::make_attr_recognizer(), Arc::new)
+    }
+
+    fn make_body_recognizer() -> Self::BodyRec {
+        MappedRecognizer::new(T::make_body_recognizer(), Arc::new)
     }
 
     fn on_absent() -> Option<Self> {
@@ -1433,7 +1475,7 @@ impl<T> Recognizer for EmptyAttrRecognizer<T> {
     type Target = Option<T>;
 
     fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
-        if self.seen_extant && matches!(&input, ReadEvent::EndAttribute) {
+        if matches!(&input, ReadEvent::EndAttribute) {
             Some(Ok(None))
         } else if !self.seen_extant && matches!(&input, ReadEvent::Extant) {
             self.seen_extant = true;
@@ -1445,6 +1487,39 @@ impl<T> Recognizer for EmptyAttrRecognizer<T> {
 
     fn reset(&mut self) {
         self.seen_extant = false;
+    }
+}
+
+pub struct EmptyBodyRecognizer<T> {
+    seen_start: bool,
+    _type: PhantomData<fn() -> Option<T>>,
+}
+
+impl<T> Default for EmptyBodyRecognizer<T> {
+    fn default() -> Self {
+        EmptyBodyRecognizer {
+            seen_start: false,
+            _type: PhantomData,
+        }
+    }
+}
+
+impl<T> Recognizer for EmptyBodyRecognizer<T> {
+    type Target = Option<T>;
+
+    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
+        if self.seen_start && matches!(input, ReadEvent::EndRecord) {
+            Some(Ok(None))
+        } else if !self.seen_start && matches!(input, ReadEvent::StartBody) {
+            self.seen_start = true;
+            None
+        } else {
+            Some(Err(input.kind_error()))
+        }
+    }
+
+    fn reset(&mut self) {
+        self.seen_start = false;
     }
 }
 
@@ -1487,6 +1562,7 @@ pub type MakeOption<T> = fn(T) -> Option<T>;
 impl<T: RecognizerReadable> RecognizerReadable for Option<T> {
     type Rec = OptionRecognizer<T::Rec>;
     type AttrRec = FirstOf<EmptyAttrRecognizer<T>, MappedRecognizer<T::AttrRec, MakeOption<T>>>;
+    type BodyRec = FirstOf<EmptyBodyRecognizer<T>, MappedRecognizer<T::BodyRec, MakeOption<T>>>;
 
     fn make_recognizer() -> Self::Rec {
         OptionRecognizer::new(T::make_recognizer())
@@ -1496,6 +1572,13 @@ impl<T: RecognizerReadable> RecognizerReadable for Option<T> {
         FirstOf::new(
             EmptyAttrRecognizer::default(),
             MappedRecognizer::new(T::make_attr_recognizer(), Option::Some),
+        )
+    }
+
+    fn make_body_recognizer() -> Self::BodyRec {
+        FirstOf::new(
+            EmptyBodyRecognizer::default(),
+            MappedRecognizer::new(T::make_body_recognizer(), Option::Some),
         )
     }
 
@@ -1511,6 +1594,7 @@ impl<T: RecognizerReadable> RecognizerReadable for Option<T> {
 impl RecognizerReadable for Value {
     type Rec = ValueMaterializer;
     type AttrRec = AttrBodyMaterializer;
+    type BodyRec = DelegateBodyMaterializer;
 
     fn make_recognizer() -> Self::Rec {
         ValueMaterializer::default()
@@ -1518,6 +1602,10 @@ impl RecognizerReadable for Value {
 
     fn make_attr_recognizer() -> Self::AttrRec {
         AttrBodyMaterializer::default()
+    }
+
+    fn make_body_recognizer() -> Self::BodyRec {
+        DelegateBodyMaterializer::default()
     }
 }
 
@@ -1570,6 +1658,7 @@ where
 {
     type Rec = HashMapRecognizer<K::Rec, V::Rec>;
     type AttrRec = HashMapRecognizer<K::Rec, V::Rec>;
+    type BodyRec = HashMapRecognizer<K::Rec, V::Rec>;
 
     fn make_recognizer() -> Self::Rec {
         HashMapRecognizer::new(K::make_recognizer(), V::make_recognizer())
@@ -1577,6 +1666,10 @@ where
 
     fn make_attr_recognizer() -> Self::AttrRec {
         HashMapRecognizer::new_attr(K::make_recognizer(), V::make_recognizer())
+    }
+
+    fn make_body_recognizer() -> Self::BodyRec {
+        HashMapRecognizer::new(K::make_recognizer(), V::make_recognizer())
     }
 }
 
@@ -1689,9 +1782,7 @@ enum DelegateStructState {
     NoHeader,
     AttrBetween,
     AttrItem,
-    DelegatedSimple,
-    DelegatedComplex,
-    Done,
+    Delegated,
 }
 
 /// This type is used to encode the standard encoding of Rust structs, where the body of the record
@@ -1707,7 +1798,6 @@ pub struct DelegateStructRecognizer<T, Flds> {
     select_recog: Selector<Flds>,
     on_done: fn(&mut Flds) -> Result<T, ReadError>,
     reset: fn(&mut Flds),
-    simple_body: bool,
 }
 
 impl<T, Flds> DelegateStructRecognizer<T, Flds> {
@@ -1718,14 +1808,11 @@ impl<T, Flds> DelegateStructRecognizer<T, Flds> {
     /// * `num_fields` - The total numer of (non-skipped) fields that the recognizer expects.
     /// * `vtable` - Functions that are generated by the macro that determine how incoming events
     /// modify the state.
-    /// * `simple_body` - Indicates that the delegate field is represented by a singe value which
-    /// will need to be wrapped in a record.
     pub fn new(
         tag: TagSpec,
         fields: Flds,
         num_fields: u32,
         vtable: OrdinalVTable<T, Flds>,
-        simple_body: bool,
     ) -> Self {
         DelegateStructRecognizer {
             tag,
@@ -1737,7 +1824,6 @@ impl<T, Flds> DelegateStructRecognizer<T, Flds> {
             select_recog: vtable.select_recog,
             on_done: vtable.on_done,
             reset: vtable.reset,
-            simple_body,
         }
     }
 
@@ -1750,14 +1836,7 @@ impl<T, Flds> DelegateStructRecognizer<T, Flds> {
     /// * `num_fields` - The total numer of (non-skipped) fields that the recognizer expects.
     /// * `vtable` - Functions that are generated by the macro that determine how incoming events
     /// modify the state.
-    /// * `simple_body` - Indicates that the delegate field is represented by a singe value which
-    /// will need to be wrapped in a record.
-    pub fn variant(
-        fields: Flds,
-        num_fields: u32,
-        vtable: OrdinalVTable<T, Flds>,
-        simple_body: bool,
-    ) -> Self {
+    pub fn variant(fields: Flds, num_fields: u32, vtable: OrdinalVTable<T, Flds>) -> Self {
         let (state, index) = if let Some(i) = (vtable.select_index)(OrdinalFieldKey::Header) {
             (DelegateStructState::Header, i)
         } else {
@@ -1773,7 +1852,6 @@ impl<T, Flds> DelegateStructRecognizer<T, Flds> {
             select_recog: vtable.select_recog,
             on_done: vtable.on_done,
             reset: vtable.reset,
-            simple_body,
         }
     }
 }
@@ -1791,7 +1869,6 @@ impl<T, Flds> Recognizer for DelegateStructRecognizer<T, Flds> {
             index,
             select_recog,
             on_done,
-            simple_body,
             ..
         } = self;
 
@@ -1851,21 +1928,14 @@ impl<T, Flds> Recognizer for DelegateStructRecognizer<T, Flds> {
                 ReadEvent::StartBody => {
                     if let Some(i) = select_index(OrdinalFieldKey::FirstItem) {
                         *index = i;
-                        if *simple_body {
-                            *state = DelegateStructState::DelegatedSimple;
-                            None
+                        *state = DelegateStructState::Delegated;
+                        if let Err(e) = select_recog(fields, *index, ReadEvent::StartBody)? {
+                            Some(Err(e))
                         } else {
-                            *state = DelegateStructState::DelegatedComplex;
-                            if let Err(e) = select_recog(fields, *index, ReadEvent::StartBody)? {
-                                Some(Err(e))
-                            } else {
-                                *state = DelegateStructState::Done;
-                                None
-                            }
+                            Some(Err(ReadError::InconsistentState))
                         }
                     } else {
-                        *state = DelegateStructState::Done;
-                        None
+                        Some(Err(ReadError::InconsistentState))
                     }
                 }
                 ReadEvent::StartAttribute(name) => {
@@ -1879,18 +1949,13 @@ impl<T, Flds> Recognizer for DelegateStructRecognizer<T, Flds> {
                         }
                     } else if let Some(i) = select_index(OrdinalFieldKey::FirstItem) {
                         *index = i;
-                        if *simple_body {
-                            Some(Err(ReadError::UnexpectedField(name.into())))
+                        *state = DelegateStructState::Delegated;
+                        if let Err(e) =
+                            select_recog(fields, *index, ReadEvent::StartAttribute(name))?
+                        {
+                            Some(Err(e))
                         } else {
-                            *state = DelegateStructState::DelegatedComplex;
-                            if let Err(e) =
-                                select_recog(fields, *index, ReadEvent::StartAttribute(name))?
-                            {
-                                Some(Err(e))
-                            } else {
-                                *state = DelegateStructState::Done;
-                                None
-                            }
+                            Some(Err(ReadError::InconsistentState))
                         }
                     } else {
                         Some(Err(ReadError::UnexpectedField(name.into())))
@@ -1907,39 +1972,11 @@ impl<T, Flds> Recognizer for DelegateStructRecognizer<T, Flds> {
                     None
                 }
             }
-            DelegateStructState::DelegatedSimple => match input {
-                ReadEvent::EndRecord => {
-                    if let Err(e) = select_recog(fields, *index, ReadEvent::Extant)? {
-                        Some(Err(e))
-                    } else {
-                        Some(on_done(fields))
-                    }
-                }
-                ev @ ReadEvent::Slot
-                | ev @ ReadEvent::StartBody
-                | ev @ ReadEvent::StartAttribute(_)
-                | ev @ ReadEvent::EndAttribute => Some(Err(bad_kind(&ev))),
-                ow => {
-                    if let Err(e) = select_recog(fields, *index, ow)? {
-                        Some(Err(e))
-                    } else {
-                        *state = DelegateStructState::Done;
-                        None
-                    }
-                }
-            },
-            DelegateStructState::DelegatedComplex => {
+            DelegateStructState::Delegated => {
                 if let Err(e) = select_recog(fields, *index, input)? {
                     Some(Err(e))
                 } else {
                     Some(on_done(fields))
-                }
-            }
-            DelegateStructState::Done => {
-                if matches!(&input, ReadEvent::EndRecord) {
-                    Some(on_done(fields))
-                } else {
-                    Some(Err(bad_kind(&input)))
                 }
             }
         }
@@ -2197,6 +2234,7 @@ macro_rules! impl_readable_tuple {
             impl<$($pname: RecognizerReadable),+> RecognizerReadable for ($($pname,)+) {
                 type Rec = OrdinalFieldsRecognizer<($($pname,)+), Builder<$($pname),+>>;
                 type AttrRec = FirstOf<SimpleAttrBody<Self::Rec>, Self::Rec>;
+                type BodyRec = Self::Rec;
 
                 fn make_recognizer() -> Self::Rec {
                     OrdinalFieldsRecognizer::new(
@@ -2217,6 +2255,10 @@ macro_rules! impl_readable_tuple {
                         reset,
                     );
                     FirstOf::new(SimpleAttrBody::new(Self::make_recognizer()), attr)
+                }
+
+                fn make_body_recognizer() -> Self::BodyRec {
+                    Self::make_recognizer()
                 }
             }
         };
@@ -2494,4 +2536,72 @@ impl<T, Flds> Recognizer for HeaderRecognizer<T, Flds> {
 
 pub fn take_fields<T: Default, U, V>(state: &mut (T, U, V)) -> Result<T, ReadError> {
     Ok(std::mem::take(&mut state.0))
+}
+
+enum SimpleRecBodyState {
+    Init,
+    ReadingValue,
+    AfterValue,
+}
+
+/// Wraps another simple [`Recognizer`] to recognize the same type as the single item in the body
+/// of a record.
+pub struct SimpleRecBody<R: Recognizer> {
+    state: SimpleRecBodyState,
+    value: Option<R::Target>,
+    delegate: R,
+}
+
+impl<R: Recognizer> SimpleRecBody<R> {
+    pub fn new(wrapped: R) -> Self {
+        SimpleRecBody {
+            state: SimpleRecBodyState::Init,
+            value: None,
+            delegate: wrapped,
+        }
+    }
+}
+
+impl<R: Recognizer> Recognizer for SimpleRecBody<R> {
+    type Target = R::Target;
+
+    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
+        let SimpleRecBody {
+            state,
+            value,
+            delegate,
+        } = self;
+
+        match state {
+            SimpleRecBodyState::Init => {
+                if matches!(input, ReadEvent::StartBody) {
+                    *state = SimpleRecBodyState::ReadingValue;
+                    None
+                } else {
+                    Some(Err(input.kind_error()))
+                }
+            }
+            SimpleRecBodyState::ReadingValue => match delegate.feed_event(input)? {
+                Ok(v) => {
+                    *value = Some(v);
+                    *state = SimpleRecBodyState::AfterValue;
+                    None
+                }
+                Err(e) => Some(Err(e)),
+            },
+            SimpleRecBodyState::AfterValue => {
+                if matches!(input, ReadEvent::EndRecord) {
+                    value.take().map(Ok)
+                } else {
+                    Some(Err(input.kind_error()))
+                }
+            }
+        }
+    }
+
+    fn reset(&mut self) {
+        self.state = SimpleRecBodyState::Init;
+        self.value = None;
+        self.delegate.reset();
+    }
 }

@@ -47,7 +47,10 @@ impl<'a, 'b> ToTokens for DeriveStructuralReadable<'b, SegregatedStructModel<'a,
                     type AttrRec = swim_common::form::structural::read::recognizer::SimpleAttrBody<
                         swim_common::form::structural::read::recognizer::UnitStructRecognizer<#name>
                     >;
+                    type BodyRec = Self::Rec;
 
+                    #[allow(non_snake_case)]
+                    #[inline]
                     fn make_recognizer() -> Self::Rec {
                         swim_common::form::structural::read::recognizer::UnitStructRecognizer::new(
                             #lit_name,
@@ -55,10 +58,16 @@ impl<'a, 'b> ToTokens for DeriveStructuralReadable<'b, SegregatedStructModel<'a,
                         )
                     }
 
+                    #[inline]
                     fn make_attr_recognizer() -> Self::AttrRec {
                         swim_common::form::structural::read::recognizer::SimpleAttrBody::new(
                             <Self as swim_common::form::structural::read::recognizer::RecognizerReadable>::make_recognizer()
                         )
+                    }
+
+                    #[inline]
+                    fn make_body_recognizer() -> Self::BodyRec {
+                        <Self as swim_common::form::structural::read::recognizer::RecognizerReadable>::make_recognizer()
                     }
 
                 }
@@ -186,13 +195,21 @@ impl<'a, 'b> ToTokens for DeriveStructuralReadable<'b, SegregatedEnumModel<'a, '
                 {
                     type Rec = swim_common::form::structural::read::recognizer::RecognizeNothing<#enum_ty>;
                     type AttrRec = swim_common::form::structural::read::recognizer::RecognizeNothing<#enum_ty>;
+                    type BodyRec = Self::Rec;
 
+                    #[inline]
                     fn make_recognizer() -> Self::Rec {
                         core::default::Default::default()
                     }
 
+                    #[inline]
                     fn make_attr_recognizer() -> Self::AttrRec {
                         core::default::Default::default()
+                    }
+
+                    #[inline]
+                    fn make_body_recognizer() -> Self::BodyRec {
+                        <Self as swim_common::form::structural::read::recognizer::RecognizerReadable>::make_recognizer()
                     }
                 }
             });
@@ -276,41 +293,49 @@ impl<'a, 'b> ToTokens for DeriveStructuralReadable<'b, SegregatedEnumModel<'a, '
             let recog_ty = quote!(swim_common::form::structural::read::recognizer::TaggedEnumRecognizer<#builder_name #type_gen>);
 
             tokens.append_all(quote! {
-            const _: () = {
-                #(#variant_functions)*
+                const _: () = {
+                    #(#variant_functions)*
 
-                #state
+                    #state
 
-                #[automatically_derived]
-                fn #select_var_name #impl_gen(name: &str) -> core::option::Option<#builder_name #type_gen>
-                #where_clause
-                {
-                     #select_var
-                }
-
-                #[automatically_derived]
-                impl #impl_gen swim_common::form::structural::read::recognizer::RecognizerReadable for #name #type_gen
-                #where_clause
-                {
-                    type Rec = #recog_ty;
-                    type AttrRec = swim_common::form::structural::read::recognizer::SimpleAttrBody<
-                        #recog_ty,
-                    >;
-
-                    fn make_recognizer() -> Self::Rec {
-                        <#recog_ty>::new(
-                            #select_var_name
-                        )
+                    #[automatically_derived]
+                    fn #select_var_name #impl_gen(name: &str) -> core::option::Option<#builder_name #type_gen>
+                    #where_clause
+                    {
+                         #select_var
                     }
 
-                    fn make_attr_recognizer() -> Self::AttrRec {
-                        swim_common::form::structural::read::recognizer::SimpleAttrBody::new(
+                    #[automatically_derived]
+                    impl #impl_gen swim_common::form::structural::read::recognizer::RecognizerReadable for #name #type_gen
+                    #where_clause
+                    {
+                        type Rec = #recog_ty;
+                        type AttrRec = swim_common::form::structural::read::recognizer::SimpleAttrBody<
+                            #recog_ty,
+                        >;
+                        type BodyRec = Self::Rec;
+
+                        #[inline]
+                        fn make_recognizer() -> Self::Rec {
+                            <#recog_ty>::new(
+                                #select_var_name
+                            )
+                        }
+
+                        #[inline]
+                        fn make_attr_recognizer() -> Self::AttrRec {
+                            swim_common::form::structural::read::recognizer::SimpleAttrBody::new(
+                                <Self as swim_common::form::structural::read::recognizer::RecognizerReadable>::make_recognizer()
+                            )
+                        }
+
+                        #[inline]
+                        fn make_body_recognizer() -> Self::BodyRec {
                             <Self as swim_common::form::structural::read::recognizer::RecognizerReadable>::make_recognizer()
-                        )
+                        }
                     }
-                }
-            };
-        });
+                };
+            });
         }
     }
 }
@@ -335,7 +360,10 @@ impl<'a, 'b> ToTokens for RecognizerState<'a, 'b> {
         let it = enumerate_fields(fields);
 
         let builder_types = it.clone().map(|grp| match grp {
-            FieldGroup::Tag(fld) | FieldGroup::Item(fld) | FieldGroup::Attribute(fld) => {
+            FieldGroup::Tag(fld)
+            | FieldGroup::Item(fld)
+            | FieldGroup::DelegateBody(fld)
+            | FieldGroup::Attribute(fld) => {
                 let ty = fld.field_ty;
                 quote!(core::option::Option<#ty>)
             }
@@ -370,6 +398,10 @@ impl<'a, 'b> ToTokens for RecognizerState<'a, 'b> {
                 FieldGroup::Item(fld) => {
                     let ty = fld.field_ty;
                     quote!(<#ty as swim_common::form::structural::read::recognizer::RecognizerReadable>::Rec)
+                }
+                FieldGroup::DelegateBody(fld) => {
+                    let ty = fld.field_ty;
+                    quote!(<#ty as swim_common::form::structural::read::recognizer::RecognizerReadable>::BodyRec)
                 }
                 FieldGroup::Header { tag_body, header_fields } => {
                     match tag_body {
@@ -728,6 +760,7 @@ enum FieldGroup<'a> {
     },
     Attribute(&'a FieldModel<'a>),
     Item(&'a FieldModel<'a>),
+    DelegateBody(&'a FieldModel<'a>),
 }
 
 impl<'a> FieldGroup<'a> {
@@ -737,6 +770,7 @@ impl<'a> FieldGroup<'a> {
             FieldGroup::Header { .. } => None,
             FieldGroup::Attribute(fld) => Some(fld),
             FieldGroup::Item(fld) => Some(fld),
+            FieldGroup::DelegateBody(fld) => Some(fld),
         }
     }
 }
@@ -756,7 +790,9 @@ fn enumerate_fields<'a>(
 
     let body_fields = match body {
         BodyFields::StdBody(vec) => Either::Left(vec.iter().copied().map(FieldGroup::Item)),
-        BodyFields::ReplacedBody(fld) => Either::Right(std::iter::once(FieldGroup::Item(fld))),
+        BodyFields::ReplacedBody(fld) => {
+            Either::Right(std::iter::once(FieldGroup::DelegateBody(fld)))
+        }
     };
 
     let header = if tag_body.is_none() && header_fields.is_empty() {
@@ -874,7 +910,7 @@ impl<'a, 'b> ToTokens for OnDoneFn<'a, 'b> {
                         }
                     }
                 }
-                FieldGroup::Attribute(fld) | FieldGroup::Item(fld) => {
+                FieldGroup::Attribute(fld) | FieldGroup::Item(fld) | FieldGroup::DelegateBody(fld) => {
                     let name = fld.resolve_name();
                     let ty = fld.field_ty;
 
@@ -892,7 +928,10 @@ impl<'a, 'b> ToTokens for OnDoneFn<'a, 'b> {
         });
 
         let field_dest = it.clone().map(|grp| match grp {
-            FieldGroup::Item(fld) | FieldGroup::Attribute(fld) | FieldGroup::Tag(fld) => {
+            FieldGroup::Item(fld)
+            | FieldGroup::DelegateBody(fld)
+            | FieldGroup::Attribute(fld)
+            | FieldGroup::Tag(fld) => {
                 let name = &fld.name;
                 quote!(core::option::Option::Some(#name))
             }
@@ -1030,6 +1069,10 @@ impl<'a, 'b> ToTokens for ConstructFieldRecognizers<'a, 'b> {
                         let ty = fld.field_ty;
                         quote!(<#ty as swim_common::form::structural::read::recognizer::RecognizerReadable>::make_recognizer())
                     }
+                    FieldGroup::DelegateBody(fld) => {
+                        let ty = fld.field_ty;
+                        quote!(<#ty as swim_common::form::structural::read::recognizer::RecognizerReadable>::make_body_recognizer())
+                    }
                     FieldGroup::Header { tag_body, header_fields } => {
                         match tag_body {
                             Some(fld) if header_fields.is_empty() => {
@@ -1120,18 +1163,6 @@ fn compound_recognizer(
     (recog_ty, vtable_ty)
 }
 
-fn is_simple_param(body_fields: &BodyFields) -> Option<TokenStream> {
-    if let BodyFields::ReplacedBody(fld) = body_fields {
-        let ty = fld.field_ty;
-        let extra = quote! {
-            <#ty as swim_common::form::structural::read::recognizer::RecognizerReadable>::is_simple()
-        };
-        Some(extra)
-    } else {
-        None
-    }
-}
-
 impl<'a, 'b> ToTokens for StructReadableImpl<'a, 'b> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let StructReadableImpl { fields, gen_params } = self;
@@ -1150,8 +1181,6 @@ impl<'a, 'b> ToTokens for StructReadableImpl<'a, 'b> {
         };
         let num_fields = fields.inner.fields_model.fields.len() as u32;
 
-        let extra_params = is_simple_param(&fields.fields.body);
-
         let builder_name = builder_ident();
 
         let target = parse_quote!(#name #gen_params);
@@ -1168,6 +1197,7 @@ impl<'a, 'b> ToTokens for StructReadableImpl<'a, 'b> {
             type AttrRec = swim_common::form::structural::read::recognizer::SimpleAttrBody<
                 #recog_ty,
             >;
+            type BodyRec = Self::Rec;
 
             #[allow(non_snake_case)]
             #[inline]
@@ -1181,17 +1211,20 @@ impl<'a, 'b> ToTokens for StructReadableImpl<'a, 'b> {
                         #select_feed,
                         #on_done,
                         #on_reset,
-                    ),
-                    #extra_params
+                    )
                 )
             }
 
-            #[allow(non_snake_case)]
             #[inline]
             fn make_attr_recognizer() -> Self::AttrRec {
                 swim_common::form::structural::read::recognizer::SimpleAttrBody::new(
                     <Self as swim_common::form::structural::read::recognizer::RecognizerReadable>::make_recognizer()
                 )
+            }
+
+            #[inline]
+            fn make_body_recognizer() -> Self::BodyRec {
+                <Self as swim_common::form::structural::read::recognizer::RecognizerReadable>::make_recognizer()
             }
         })
     }
@@ -1228,7 +1261,6 @@ impl<'a, 'b> ToTokens for SelectVariantFn<'a, 'b> {
                 let builder_ty = parse_quote!(#builder_name #gen_params);
                 let (recognizer, vtable) = compound_recognizer(var, &enum_ty, &builder_ty);
                 let make_fld_recog = ConstructFieldRecognizers { fields: var, variant: Some(i) };
-                let extra_params = is_simple_param(&var.fields.body);
 
                 let num_fields = var.inner.fields_model.fields.len() as u32;
                 let select_index = suffix_ident(SELECT_INDEX_NAME, i);
@@ -1245,8 +1277,7 @@ impl<'a, 'b> ToTokens for SelectVariantFn<'a, 'b> {
                             #select_feed,
                             #on_done,
                             #on_reset,
-                        ),
-                        #extra_params
+                        )
                     )
                 }
             };

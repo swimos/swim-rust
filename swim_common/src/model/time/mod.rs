@@ -13,7 +13,9 @@
 // limitations under the License.
 
 use crate::form::structural::read::event::{NumericValue, ReadEvent};
-use crate::form::structural::read::recognizer::{Recognizer, RecognizerReadable, SimpleAttrBody};
+use crate::form::structural::read::recognizer::{
+    Recognizer, RecognizerReadable, SimpleAttrBody, SimpleRecBody,
+};
 use crate::form::structural::read::ReadError;
 use crate::form::structural::write::{PrimitiveWriter, StructuralWritable, StructuralWriter};
 use crate::form::ValidatedForm;
@@ -94,6 +96,7 @@ impl StructuralWritable for Timestamp {
 impl RecognizerReadable for Timestamp {
     type Rec = TimestampRecognizer;
     type AttrRec = SimpleAttrBody<TimestampRecognizer>;
+    type BodyRec = SimpleRecBody<TimestampRecognizer>;
 
     fn make_recognizer() -> Self::Rec {
         TimestampRecognizer
@@ -101,6 +104,10 @@ impl RecognizerReadable for Timestamp {
 
     fn make_attr_recognizer() -> Self::AttrRec {
         SimpleAttrBody::new(TimestampRecognizer)
+    }
+
+    fn make_body_recognizer() -> Self::BodyRec {
+        SimpleRecBody::new(TimestampRecognizer)
     }
 }
 

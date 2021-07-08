@@ -382,3 +382,35 @@ impl Recognizer for AttrBodyMaterializer {
         stack.push(RecordBuilder::new(RecordKey::NoKey, true));
     }
 }
+
+/// [`Recognizer``] implementation for the [`Value`] type when it ocurrs as a delegated field.
+#[derive(Debug, Default)]
+pub struct DelegateBodyMaterializer {
+    inner: ValueMaterializer,
+}
+
+impl Recognizer for DelegateBodyMaterializer {
+    type Target = Value;
+
+    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
+        let result = self.inner.feed_event(input)?;
+        Some(result.map(|v| match v {
+            Value::Record(attrs, mut items) if attrs.is_empty() && items.len() <= 1 => {
+                if let Some(item) = items.pop() {
+                    if let Item::ValueItem(single) = item {
+                        single
+                    } else {
+                        Value::record(vec![item])
+                    }
+                } else {
+                    Value::Extant
+                }
+            }
+            ow => ow,
+        }))
+    }
+
+    fn reset(&mut self) {
+        self.inner.reset()
+    }
+}

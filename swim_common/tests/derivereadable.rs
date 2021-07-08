@@ -401,6 +401,15 @@ fn derive_struct_simple_body_replacement() {
             second: "content".to_string(),
         }
     );
+
+    let instance = run_recognizer::<MyStruct>("@MyStruct(first: 10) { \"content\" }");
+    assert_eq!(
+        instance,
+        MyStruct {
+            first: 10,
+            second: "content".to_string(),
+        }
+    );
 }
 
 #[test]
@@ -625,7 +634,7 @@ fn derive_generic_header() {
 
 #[test]
 fn derive_map_update() {
-    // The mose complex derivation in the codebase, used here as a stress test.
+    // The most complex derivation in the codebase, used here as a stress test.
     #[derive(StructuralReadable, Debug, PartialEq, Eq)]
     enum MapUpdate<K, V> {
         #[form(tag = "update")]
@@ -637,7 +646,6 @@ fn derive_map_update() {
     }
 
     type Upd = MapUpdate<String, Value>;
-    type UpdNum = MapUpdate<String, i32>;
 
     let clear = run_recognizer::<Upd>("@clear");
     assert_eq!(clear, Upd::Clear);
@@ -647,6 +655,9 @@ fn derive_map_update() {
     let remove = run_recognizer::<Upd>("@remove({key: thing}) {}");
     assert_eq!(remove, Upd::Remove("thing".to_string()));
 
-    let update = run_recognizer::<UpdNum>("@update(key: thing) 76");
-    assert_eq!(update, UpdNum::Update("thing".to_string(), Arc::new(76)));
+    let update = run_recognizer::<Upd>("@update(key: thing) 76");
+    assert_eq!(
+        update,
+        Upd::Update("thing".to_string(), Arc::new(Value::Int32Value(76)))
+    );
 }

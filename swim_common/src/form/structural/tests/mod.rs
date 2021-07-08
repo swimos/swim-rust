@@ -138,6 +138,7 @@ fn general_reset<
 impl<S: RecognizerReadable, T: RecognizerReadable> RecognizerReadable for GeneralType<S, T> {
     type Rec = GeneralRec<S, T>;
     type AttrRec = GeneralAttrRec<S, T>;
+    type BodyRec = Self::Rec;
 
     fn make_recognizer() -> Self::Rec {
         NamedFieldsRecognizer::new(
@@ -162,6 +163,10 @@ impl<S: RecognizerReadable, T: RecognizerReadable> RecognizerReadable for Genera
 
         let option2 = SimpleAttrBody::new(Self::make_recognizer());
         FirstOf::new(option1, option2)
+    }
+
+    fn make_body_recognizer() -> Self::BodyRec {
+        Self::make_recognizer()
     }
 }
 

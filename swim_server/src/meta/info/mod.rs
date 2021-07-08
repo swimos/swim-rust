@@ -39,7 +39,7 @@ use std::hash::Hash;
 use std::num::NonZeroUsize;
 use swim_common::form::structural::read::event::ReadEvent;
 use swim_common::form::structural::read::recognizer::{
-    Recognizer, RecognizerReadable, SimpleAttrBody,
+    Recognizer, RecognizerReadable, SimpleAttrBody, SimpleRecBody,
 };
 use swim_common::form::structural::read::ReadError;
 use swim_common::form::structural::write::{PrimitiveWriter, StructuralWritable, StructuralWriter};
@@ -119,6 +119,7 @@ impl Recognizer for LaneKindRecognizer {
 impl RecognizerReadable for LaneKind {
     type Rec = LaneKindRecognizer;
     type AttrRec = SimpleAttrBody<LaneKindRecognizer>;
+    type BodyRec = SimpleRecBody<LaneKindRecognizer>;
 
     fn make_recognizer() -> Self::Rec {
         LaneKindRecognizer
@@ -126,6 +127,10 @@ impl RecognizerReadable for LaneKind {
 
     fn make_attr_recognizer() -> Self::AttrRec {
         SimpleAttrBody::new(LaneKindRecognizer)
+    }
+
+    fn make_body_recognizer() -> Self::BodyRec {
+        SimpleRecBody::new(LaneKindRecognizer)
     }
 }
 

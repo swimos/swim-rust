@@ -12,7 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::form::structural::read::parser::{parse_recognize, Span};
+use crate::form::structural::read::parser::{parse_recognize, parse_recognize_with, Span};
+use crate::form::structural::read::recognizer::Recognizer;
+use crate::form::structural::read::recognizer::RecognizerReadable;
 use crate::form::structural::read::StructuralReadable;
 use crate::model::blob::Blob;
 use crate::model::text::Text;
@@ -26,6 +28,11 @@ mod swim_common {
 fn run_recognizer<T: StructuralReadable>(rep: &str) -> T {
     let span = Span::new(rep);
     parse_recognize(span).unwrap()
+}
+
+fn run_specific_recognizer<R: Recognizer>(rep: &str, recognizer: &mut R) -> R::Target {
+    let span = Span::new(rep);
+    parse_recognize_with(span, recognizer).unwrap()
 }
 
 fn round_trip(value: Value) {
@@ -169,4 +176,23 @@ fn value_from_nested_attr_body() {
             inner: Value::empty_record()
         }
     );
+}
+
+#[test]
+fn value_delegate_body() {
+    let mut recog = Value::make_body_recognizer();
+    let value = run_specific_recognizer("{}", &mut recog);
+    assert_eq!(value, Value::Extant);
+
+    let value = run_specific_recognizer("{ 2 }", &mut recog);
+    assert_eq!(value, Value::Int32Value(2));
+
+    let value = run_specific_recognizer("{ a: 2 }", &mut recog);
+    assert_eq!(value, Value::record(vec![Item::slot("a", 2)]));
+
+    let value = run_specific_recognizer("{ {} }", &mut recog);
+    assert_eq!(value, Value::empty_record());
+
+    let value = run_specific_recognizer("{ 1, 2 }", &mut recog);
+    assert_eq!(value, Value::record(vec![Item::of(1), Item::of(2)]));
 }

@@ -369,6 +369,7 @@ impl Recognizer for GoogleIdAuthenticatorRecognizer {
 impl RecognizerReadable for GoogleIdAuthenticator {
     type Rec = GoogleIdAuthenticatorRecognizer;
     type AttrRec = SimpleAttrBody<GoogleIdAuthenticatorRecognizer>;
+    type BodyRec = Self::Rec;
 
     fn make_recognizer() -> Self::Rec {
         GoogleIdAuthenticatorRecognizer::default()
@@ -376,6 +377,10 @@ impl RecognizerReadable for GoogleIdAuthenticator {
 
     fn make_attr_recognizer() -> Self::AttrRec {
         SimpleAttrBody::new(Self::make_recognizer())
+    }
+
+    fn make_body_recognizer() -> Self::BodyRec {
+        Self::make_recognizer()
     }
 }
 
