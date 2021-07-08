@@ -13,10 +13,12 @@
 // limitations under the License.
 
 use super::ValidateFrom;
+use crate::modifiers::NameTransform;
 use crate::parser::{
-    ATTR_PATH, BODY_PATH, HEADER_BODY_PATH, HEADER_PATH, NAME_PATH, SKIP_PATH, SLOT_PATH, TAG_PATH,
+    ATTR_PATH, BODY_PATH, FORM_PATH, HEADER_BODY_PATH, HEADER_PATH, NAME_PATH, SKIP_PATH,
+    SLOT_PATH, TAG_PATH,
 };
-use crate::structural::model::{NameTransform, SynValidation};
+use crate::SynValidation;
 use macro_helpers::{FieldKind, Symbol};
 use proc_macro2::TokenStream;
 use quote::ToTokens;
@@ -168,13 +170,15 @@ impl<'a> ValidateFrom<FieldWithIndex<'a>> for TaggedFieldModel<'a> {
         let Field {
             attrs, ident, ty, ..
         } = field;
-        let field_attrs =
-            super::fold_attr_meta(attrs.iter(), FieldAttributes::default(), |attrs, nested| {
-                match FieldAttr::try_from(nested) {
-                    Ok(field_attr) => attrs.add(field, field_attr),
-                    Err(e) => Validation::Validated(attrs, e.into()),
-                }
-            });
+        let field_attrs = crate::modifiers::fold_attr_meta(
+            FORM_PATH,
+            attrs.iter(),
+            FieldAttributes::default(),
+            |attrs, nested| match FieldAttr::try_from(nested) {
+                Ok(field_attr) => attrs.add(field, field_attr),
+                Err(e) => Validation::Validated(attrs, e.into()),
+            },
+        );
 
         field_attrs.and_then(
             |FieldAttributes {

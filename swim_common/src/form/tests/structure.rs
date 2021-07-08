@@ -473,7 +473,9 @@ fn header_body_replace() {
 fn test_enum_tag() {
     #[derive(Tag, Clone, Copy, Debug, PartialEq, Eq)]
     enum Level {
+        #[form(tag = "trace")]
         Trace,
+        #[form(tag = "error")]
         Error,
     }
 
@@ -498,7 +500,7 @@ fn test_enum_tag() {
         entry.as_value(),
         Value::Record(
             vec![Attr::of((
-                "Error",
+                "error",
                 Value::from_vec(vec![Item::Slot(Value::text("time"), now.as_value())])
             ))],
             vec![Item::Slot(Value::text("message"), Value::text("Not good"))]

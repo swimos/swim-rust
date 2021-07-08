@@ -1814,7 +1814,9 @@ fn test_nested() {
 fn tagged() {
     #[derive(Tag, Clone)]
     enum Level {
+        #[form(tag = "info")]
         Info,
+        #[form(tag = "trace")]
         Trace,
     }
 
@@ -1829,7 +1831,7 @@ fn tagged() {
 
     let expected_schema = StandardSchema::HeadAttribute {
         schema: Box::new(AttrSchema::new(
-            TextSchema::Or(vec![TextSchema::exact("Info"), TextSchema::exact("Trace")]),
+            TextSchema::Or(vec![TextSchema::exact("info"), TextSchema::exact("trace")]),
             StandardSchema::OfKind(ValueKind::Extant),
         )),
         required: true,

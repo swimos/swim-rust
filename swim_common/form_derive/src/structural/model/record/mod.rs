@@ -13,9 +13,11 @@
 // limitations under the License.
 
 use super::ValidateFrom;
-use crate::parser::FieldManifest;
+use crate::modifiers::NameTransform;
+use crate::parser::{FieldManifest, FORM_PATH};
 use crate::structural::model::field::{FieldWithIndex, SegregatedFields, TaggedFieldModel};
-use crate::structural::model::{NameTransform, StructLike, SynValidation};
+use crate::structural::model::StructLike;
+use crate::SynValidation;
 use macro_helpers::CompoundTypeKind;
 use proc_macro2::TokenStream;
 use quote::ToTokens;
@@ -130,7 +132,12 @@ where
 
         let fields_model = FieldsModel::validate(definition.fields());
 
-        let rename = super::fold_attr_meta(attributes.iter(), None, super::acc_rename);
+        let rename = crate::modifiers::fold_attr_meta(
+            FORM_PATH,
+            attributes.iter(),
+            None,
+            crate::modifiers::acc_rename,
+        );
 
         validate2(fields_model, rename).and_then(|(model, transform)| {
             let struct_model = StructModel { name, fields_model: model, transform };

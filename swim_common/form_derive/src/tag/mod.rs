@@ -12,21 +12,28 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::modifiers::NameTransform;
+use crate::parser::FORM_PATH;
 use crate::quote::TokenStreamExt;
 use proc_macro2::{Span, TokenStream};
 use quote::ToTokens;
 use std::fmt::{Display, Formatter};
+use utilities::algebra::Errors;
+use utilities::validation::ValidationItExt;
 
 /// Model for an enumeration where all variants have no fields.
 pub struct UnitEnum<'a> {
     /// The name of the enumeration.
     name: &'a syn::Ident,
     /// The name of each variant, in order.
-    variants: Vec<&'a syn::Ident>,
+    variants: Vec<(&'a syn::Ident, Option<NameTransform>)>,
 }
 
 impl<'a> UnitEnum<'a> {
-    pub fn new(name: &'a syn::Ident, variants: Vec<&'a syn::Ident>) -> Self {
+    pub fn new(
+        name: &'a syn::Ident,
+        variants: Vec<(&'a syn::Ident, Option<NameTransform>)>,
+    ) -> Self {
         UnitEnum { name, variants }
     }
 }
@@ -34,21 +41,31 @@ impl<'a> UnitEnum<'a> {
 /// Derives the `Tag` trait or a type.
 pub struct DeriveTag<T>(pub T);
 
+fn lit_name(var_name: &syn::Ident, rename: &Option<NameTransform>) -> syn::LitStr {
+    if let Some(NameTransform::Rename(renamed)) = rename {
+        syn::LitStr::new(renamed.as_ref(), Span::call_site())
+    } else {
+        syn::LitStr::new(&var_name.to_string(), Span::call_site())
+    }
+}
+
 impl<'a> ToTokens for DeriveTag<UnitEnum<'a>> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let DeriveTag(UnitEnum { name, variants }) = self;
 
-        let var_as_str = variants.iter().map(|var_name| {
-            let lit = syn::LitStr::new(&var_name.to_string(), Span::call_site());
+        let var_as_str = variants.iter().map(|(var_name, rename)| {
+            let lit = lit_name(*var_name, rename);
             quote!(#name::#var_name => #lit)
         });
 
-        let str_as_var = variants.iter().map(|var_name| {
-            let lit = syn::LitStr::new(&var_name.to_string(), Span::call_site());
+        let str_as_var = variants.iter().map(|(var_name, rename)| {
+            let lit = lit_name(*var_name, rename);
             quote!(#lit => core::result::Result::Ok(#name::#var_name))
         });
 
-        let literals = variants.iter().map(|var_name| var_name.to_string());
+        let literals = variants
+            .iter()
+            .map(|(var_name, rename)| lit_name(*var_name, rename));
 
         let err_lit = format!("Possible values are: {}.", Variants(variants.as_slice()));
         let num_vars = variants.len();
@@ -95,18 +112,52 @@ impl<'a> ToTokens for DeriveTag<UnitEnum<'a>> {
 }
 
 /// Format the variants of an enumeration into a string for the failed parse error message.
-struct Variants<'a>(&'a [&'a syn::Ident]);
+struct Variants<'a>(&'a [(&'a syn::Ident, Option<NameTransform>)]);
 
 impl<'a> Display for Variants<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let Variants(names) = self;
         let mut it = names.iter();
-        if let Some(first) = it.next() {
+        if let Some((first, _)) = it.next() {
             write!(f, "'{}'", first)?;
         }
-        for name in it {
+        for (name, _) in it {
             write!(f, ", '{}'", name)?;
         }
         Ok(())
+    }
+}
+
+pub fn build_derive_tag(input: syn::DeriveInput) -> Result<TokenStream, Errors<syn::Error>> {
+    match &input.data {
+        syn::Data::Enum(enum_ty) => {
+            if enum_ty.variants.iter().any(|var| !var.fields.is_empty()) {
+                Err(Errors::of(syn::Error::new_spanned(
+                    input,
+                    "Only enumerations with no fields can be tags.",
+                )))
+            } else {
+                let validated = enum_ty
+                    .variants
+                    .iter()
+                    .validate_collect(true, |v| {
+                        let rename = crate::modifiers::fold_attr_meta(
+                            FORM_PATH,
+                            v.attrs.iter(),
+                            None,
+                            crate::modifiers::acc_rename,
+                        );
+                        rename.map(move |rename| (&v.ident, rename))
+                    })
+                    .map(|var_names| {
+                        DeriveTag(UnitEnum::new(&input.ident, var_names)).into_token_stream()
+                    });
+                validated.into_result()
+            }
+        }
+        _ => Err(Errors::of(syn::Error::new_spanned(
+            input,
+            "Only enumeration types can be tags.",
+        ))),
     }
 }

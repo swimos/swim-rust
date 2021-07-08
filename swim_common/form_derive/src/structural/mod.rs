@@ -18,7 +18,6 @@ use crate::structural::model::StructLike;
 use crate::structural::model::ValidateFrom;
 use crate::structural::read::DeriveStructuralReadable;
 use crate::structural::write::DeriveStructuralWritable;
-use crate::tag::{DeriveTag, UnitEnum};
 use proc_macro2::TokenStream;
 use quote::ToTokens;
 use syn::{Data, DeriveInput, Generics};
@@ -149,25 +148,4 @@ fn enum_derive_structural_readable(
     let segregated = SegregatedEnumModel::from(&model);
     let derive = DeriveStructuralReadable(segregated, generics);
     Ok(derive.into_token_stream())
-}
-
-pub fn build_derive_tag(input: DeriveInput) -> Result<TokenStream, Errors<syn::Error>> {
-    match &input.data {
-        Data::Enum(enum_ty) => {
-            if enum_ty.variants.iter().any(|var| !var.fields.is_empty()) {
-                Err(Errors::of(syn::Error::new_spanned(
-                    input,
-                    "Only enumerations with no fields can be tags.",
-                )))
-            } else {
-                let var_names = enum_ty.variants.iter().map(|v| &v.ident).collect();
-                let derivation = DeriveTag(UnitEnum::new(&input.ident, var_names));
-                Ok(derivation.into_token_stream())
-            }
-        }
-        _ => Err(Errors::of(syn::Error::new_spanned(
-            input,
-            "Only enumeration types can be tags.",
-        ))),
-    }
 }
