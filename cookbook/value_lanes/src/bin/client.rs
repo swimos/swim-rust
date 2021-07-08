@@ -45,7 +45,7 @@ async fn did_set(value_recv: ValueDownlinkReceiver<String>, initial_value: Strin
 #[tokio::main]
 async fn main() {
     let (client, client_handle) = SwimClientBuilder::build_with_default().await;
-    let host_uri = url::Url::parse(&"ws://127.0.0.1:9001".to_string()).unwrap();
+    let host_uri = url::Url::parse(&"warp://127.0.0.1:9001".to_string()).unwrap();
     let node_uri = "/unit/foo";
 
     let info_path = AbsolutePath::new(host_uri.clone(), node_uri, "info");

@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::configuration::router::RouterParams;
-use crate::connections::{ConnectionPool, ConnectionSender, ConnectionPath};
+use crate::connections::{ConnectionPath, ConnectionPool, ConnectionSender};
 use crate::router::incoming::broadcast;
 use crate::router::incoming::{IncomingHostTask, IncomingRequest};
 use crate::router::outgoing::OutgoingHostTask;
@@ -34,7 +34,7 @@ use swim_common::routing::{
     Route, Router, RouterFactory, RoutingAddr, TaggedEnvelope, TaggedSender,
 };
 use swim_common::warp::envelope::{Envelope, IncomingLinkMessage};
-use swim_common::warp::path::{AbsolutePath, Addressable, RelativePath};
+use swim_common::warp::path::{Addressable, RelativePath};
 use swim_runtime::task::*;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
@@ -218,42 +218,137 @@ impl ClientConnectionsManager {
                     target,
                     request: sub_req,
                 }) => match target {
-                    ConnectionPath::Local(node) => {
-                        let (tx, rx) = oneshot::channel();
-                        let plane_tx = plane_router_tx.as_ref().unwrap();
+                    ConnectionPath::Local(relative_path) => {
+                        let node = relative_path.node.to_string();
 
-                        plane_tx
+                        let (tx, rx) = oneshot::channel();
+                        let plane_tx = plane_router_tx.as_ref().ok_or_else(|| {
+                            ConnectionError::Resolution(ResolutionError::router_dropped())
+                        })?;
+
+                        let relative_uri =
+                            RelativeUri::from_str(&node.to_string()).map_err(|_| {
+                                ConnectionError::Resolution(ResolutionError::unresolvable(
+                                    node.clone(),
+                                ))
+                            })?;
+
+                        if plane_tx
                             .send(PlaneRoutingRequest::Resolve {
                                 host: None,
-                                name: RelativeUri::from_str(&node.to_string()).unwrap(),
+                                name: relative_uri,
                                 request: Request::new(tx),
                             })
                             .await
-                            .unwrap();
+                            .is_err()
+                        {
+                            if sub_req
+                                .send(Err(ConnectionError::Resolution(
+                                    ResolutionError::router_dropped(),
+                                )))
+                                .is_err()
+                            {
+                                break Err(ConnectionError::Resolution(
+                                    ResolutionError::router_dropped(),
+                                ));
+                            }
+                            continue;
+                        }
 
-                        let routing_addr = rx.await.unwrap().unwrap();
+                        let routing_addr = match rx.await {
+                            Ok(result) => match result {
+                                Ok(routing_addr) => routing_addr,
+                                Err(_) => {
+                                    if sub_req
+                                        .send(Err(ConnectionError::Resolution(
+                                            ResolutionError::router_dropped(),
+                                        )))
+                                        .is_err()
+                                    {
+                                        break Err(ConnectionError::Resolution(
+                                            ResolutionError::router_dropped(),
+                                        ));
+                                    }
+                                    continue;
+                                }
+                            },
+                            Err(_) => {
+                                if sub_req
+                                    .send(Err(ConnectionError::Resolution(
+                                        ResolutionError::router_dropped(),
+                                    )))
+                                    .is_err()
+                                {
+                                    break Err(ConnectionError::Resolution(
+                                        ResolutionError::router_dropped(),
+                                    ));
+                                }
+                                continue;
+                            }
+                        };
 
                         let (tx, rx) = oneshot::channel();
-                        plane_tx
+                        if plane_tx
                             .send(PlaneRoutingRequest::Endpoint {
                                 id: routing_addr,
                                 request: Request::new(tx),
                             })
                             .await
-                            .unwrap();
+                            .is_err()
+                        {
+                            if sub_req
+                                .send(Err(ConnectionError::Resolution(
+                                    ResolutionError::router_dropped(),
+                                )))
+                                .is_err()
+                            {
+                                break Err(ConnectionError::Resolution(
+                                    ResolutionError::router_dropped(),
+                                ));
+                            }
+                            continue;
+                        }
 
-                        let raw_route = rx.await.unwrap().unwrap();
+                        let raw_route = match rx.await {
+                            Ok(result) => match result {
+                                Ok(routing_addr) => routing_addr,
+                                Err(err) => {
+                                    if sub_req
+                                        .send(Err(ConnectionError::Resolution(
+                                            ResolutionError::unresolvable(err.0.to_string()),
+                                        )))
+                                        .is_err()
+                                    {
+                                        break Err(ConnectionError::Resolution(
+                                            ResolutionError::router_dropped(),
+                                        ));
+                                    }
+                                    continue;
+                                }
+                            },
+                            Err(_) => {
+                                if sub_req
+                                    .send(Err(ConnectionError::Resolution(
+                                        ResolutionError::router_dropped(),
+                                    )))
+                                    .is_err()
+                                {
+                                    break Err(ConnectionError::Resolution(
+                                        ResolutionError::router_dropped(),
+                                    ));
+                                }
+                                continue;
+                            }
+                        };
 
-                        let (_, sub_sender) = outgoing_managers
-                            .entry(node.to_string())
-                            .or_insert_with(|| {
-                                let (manager, sender, sub_tx) =
-                                    ClientConnectionManager::new(buffer_size, close_rx.clone());
+                        let (_, sub_sender) = outgoing_managers.entry(node).or_insert_with(|| {
+                            let (manager, sender, sub_tx) =
+                                ClientConnectionManager::new(buffer_size, close_rx.clone());
 
-                                let handle = spawn(manager.run());
-                                futures.push(handle);
-                                (sender, sub_tx)
-                            });
+                            let handle = spawn(manager.run());
+                            futures.push(handle);
+                            (sender, sub_tx)
+                        });
 
                         if sub_sender.send((raw_route, sub_req)).await.is_err() {
                             break Err(ConnectionError::Resolution(
@@ -663,7 +758,7 @@ where
     let path = ConnectionPath::try_from_addressable(target.clone())
         .map_err(|_| RoutingError::HostUnreachable)?;
 
-    Ok(host_managers.entry(path.clone()).or_insert_with(|| {
+    Ok(host_managers.entry(path).or_insert_with(|| {
         let (host_manager, sink, stream_registrator) =
             HostManager::new(target, connection_pool, close_rx, config);
         (

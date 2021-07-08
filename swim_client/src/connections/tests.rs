@@ -21,8 +21,8 @@ use url::Url;
 use utilities::sync::promise::promise;
 
 struct FakeConnections {
-    outgoing_channels: HashMap<Url, mpsc::Sender<TaggedEnvelope>>,
-    incoming_channels: HashMap<Url, mpsc::Receiver<Envelope>>,
+    outgoing_channels: HashMap<SchemeHostPort, mpsc::Sender<TaggedEnvelope>>,
+    incoming_channels: HashMap<SchemeHostPort, mpsc::Receiver<Envelope>>,
 }
 
 impl FakeConnections {
@@ -40,8 +40,12 @@ impl FakeConnections {
         let (outgoing_tx, outgoing_rx) = mpsc::channel(8);
         let (incoming_tx, incoming_rx) = mpsc::channel(8);
 
-        let _ = self.outgoing_channels.insert(url.clone(), outgoing_tx);
-        let _ = self.incoming_channels.insert(url, incoming_rx);
+        let scheme_host_port = unpack_url(&url).unwrap();
+
+        let _ = self
+            .outgoing_channels
+            .insert(scheme_host_port.clone(), outgoing_tx);
+        let _ = self.incoming_channels.insert(scheme_host_port, incoming_rx);
 
         (incoming_tx, outgoing_rx)
     }
@@ -49,9 +53,8 @@ impl FakeConnections {
 
 async fn create_mock_conn_request_loop(
     mut fake_conns: FakeConnections,
-) -> mpsc::Sender<ClientRequest<AbsolutePath>> {
-    let (client_conn_request_tx, mut client_conn_request_rx) =
-        mpsc::channel::<ClientRequest<AbsolutePath>>(8);
+) -> mpsc::Sender<ClientRequest> {
+    let (client_conn_request_tx, mut client_conn_request_rx) = mpsc::channel::<ClientRequest>(8);
 
     tokio::spawn(async move {
         while let Some(client_request) = client_conn_request_rx.recv().await {
@@ -60,23 +63,28 @@ async fn create_mock_conn_request_loop(
                     unimplemented!();
                 }
                 ClientRequest::Subscribe { request, target } => {
-                    let maybe_outgoing_tx = fake_conns.outgoing_channels.get(&target.host);
-                    let maybe_incoming_rx = fake_conns.incoming_channels.remove(&target.host);
+                    if let ConnectionPath::Remote(scheme_host_port) = target {
+                        let maybe_outgoing_tx = fake_conns.outgoing_channels.get(&scheme_host_port);
+                        let maybe_incoming_rx =
+                            fake_conns.incoming_channels.remove(&scheme_host_port);
 
-                    match (maybe_outgoing_tx, maybe_incoming_rx) {
-                        (Some(outgoing_tx), Some(incoming_rx)) => {
-                            let (_on_drop_tx, on_drop_rx) = promise();
+                        match (maybe_outgoing_tx, maybe_incoming_rx) {
+                            (Some(outgoing_tx), Some(incoming_rx)) => {
+                                let (_on_drop_tx, on_drop_rx) = promise();
 
-                            request
-                                .send(Ok((
-                                    RawRoute::new(outgoing_tx.clone(), on_drop_rx),
-                                    incoming_rx,
-                                )))
-                                .unwrap();
+                                request
+                                    .send(Ok((
+                                        RawRoute::new(outgoing_tx.clone(), on_drop_rx),
+                                        incoming_rx,
+                                    )))
+                                    .unwrap();
+                            }
+                            _ => request
+                                .send(Err(ConnectionError::Closed(CloseError::closed())))
+                                .unwrap(),
                         }
-                        _ => request
-                            .send(Err(ConnectionError::Closed(CloseError::closed())))
-                            .unwrap(),
+                    } else {
+                        unimplemented!()
                     }
                 }
             }
@@ -425,18 +433,21 @@ async fn test_connection_pool_close() {
 async fn test_connection_send_single_message() {
     // Given
     let host_url = url::Url::parse("ws://127.0.0.1:9001/").unwrap();
-    let path = AbsolutePath::new(host_url.clone(), "/foo", "/bar");
     let buffer_size = 5;
 
     let envelope = Envelope::make_command("/foo", "/bar", Some("Hello".into()));
 
     let mut fake_conns = FakeConnections::new();
-    let (_, mut writer_rx) = fake_conns.add_connection(host_url);
+    let (_, mut writer_rx) = fake_conns.add_connection(host_url.clone());
     let client_conn_request_tx = create_mock_conn_request_loop(fake_conns).await;
 
-    let connection = ClientConnection::new(path, buffer_size, &client_conn_request_tx)
-        .await
-        .unwrap();
+    let connection = ClientConnection::new(
+        ConnectionPath::Remote(unpack_url(&host_url).unwrap()),
+        buffer_size,
+        &client_conn_request_tx,
+    )
+    .await
+    .unwrap();
 
     // When
     connection.tx.send(envelope.clone()).await.unwrap();
@@ -452,7 +463,6 @@ async fn test_connection_send_single_message() {
 async fn test_connection_send_multiple_messages() {
     // Given
     let host_url = url::Url::parse("ws://127.0.0.1:9001/").unwrap();
-    let path = AbsolutePath::new(host_url.clone(), "/foo", "/bar");
     let buffer_size = 5;
 
     let first_envelope = Envelope::make_command("/foo", "/bar", Some("First message".into()));
@@ -460,12 +470,16 @@ async fn test_connection_send_multiple_messages() {
     let third_envelope = Envelope::make_command("/foo", "/bar", Some("Third message".into()));
 
     let mut fake_conns = FakeConnections::new();
-    let (_, mut writer_rx) = fake_conns.add_connection(host_url);
+    let (_, mut writer_rx) = fake_conns.add_connection(host_url.clone());
     let client_conn_request_tx = create_mock_conn_request_loop(fake_conns).await;
 
-    let mut connection = ClientConnection::new(path, buffer_size, &client_conn_request_tx)
-        .await
-        .unwrap();
+    let mut connection = ClientConnection::new(
+        ConnectionPath::Remote(unpack_url(&host_url).unwrap()),
+        buffer_size,
+        &client_conn_request_tx,
+    )
+    .await
+    .unwrap();
 
     let connection_sender = &mut connection.tx;
     // When
@@ -501,19 +515,22 @@ async fn test_connection_send_multiple_messages() {
 async fn test_connection_send_and_receive_messages() {
     // Given
     let host_url = url::Url::parse("ws://127.0.0.1:9001/").unwrap();
-    let path = AbsolutePath::new(host_url.clone(), "/foo", "/bar");
     let buffer_size = 5;
 
     let envelope_sent = Envelope::make_command("/foo", "/bar", Some("message_sent".into()));
     let envelope_received = Envelope::make_command("/foo", "/bar", Some("message_received".into()));
 
     let mut fake_conns = FakeConnections::new();
-    let (reader_tx, mut writer_rx) = fake_conns.add_connection(host_url);
+    let (reader_tx, mut writer_rx) = fake_conns.add_connection(host_url.clone());
     let client_conn_request_tx = create_mock_conn_request_loop(fake_conns).await;
 
-    let mut connection = ClientConnection::new(path, buffer_size, &client_conn_request_tx)
-        .await
-        .unwrap();
+    let mut connection = ClientConnection::new(
+        ConnectionPath::Remote(unpack_url(&host_url).unwrap()),
+        buffer_size,
+        &client_conn_request_tx,
+    )
+    .await
+    .unwrap();
 
     // When
     connection.tx.send(envelope_sent.clone()).await.unwrap();
@@ -533,16 +550,19 @@ async fn test_connection_send_and_receive_messages() {
 async fn test_connection_receive_message_error() {
     // Given
     let host_url = url::Url::parse("ws://127.0.0.1:9001/").unwrap();
-    let path = AbsolutePath::new(host_url.clone(), "/foo", "/bar");
     let buffer_size = 5;
 
     let mut fake_conns = FakeConnections::new();
-    let (reader_tx, _writer_rx) = fake_conns.add_connection(host_url);
+    let (reader_tx, _writer_rx) = fake_conns.add_connection(host_url.clone());
     let client_conn_request_tx = create_mock_conn_request_loop(fake_conns).await;
 
-    let connection = ClientConnection::new(path, buffer_size, &client_conn_request_tx)
-        .await
-        .unwrap();
+    let connection = ClientConnection::new(
+        ConnectionPath::Remote(unpack_url(&host_url).unwrap()),
+        buffer_size,
+        &client_conn_request_tx,
+    )
+    .await
+    .unwrap();
 
     // When
     drop(reader_tx);
@@ -559,16 +579,19 @@ async fn test_connection_receive_message_error() {
 #[tokio::test]
 async fn test_new_connection_send_message_error() {
     let host_url = url::Url::parse("ws://127.0.0.1:9001/").unwrap();
-    let path = AbsolutePath::new(host_url.clone(), "/foo", "/bar");
     let buffer_size = 5;
 
     let mut fake_conns = FakeConnections::new();
-    let (_reader_tx, _writer_rx) = fake_conns.add_connection(host_url);
+    let (_reader_tx, _writer_rx) = fake_conns.add_connection(host_url.clone());
     let client_conn_request_tx = create_mock_conn_request_loop(fake_conns).await;
 
-    let connection = ClientConnection::new(path, buffer_size, &client_conn_request_tx)
-        .await
-        .unwrap();
+    let connection = ClientConnection::new(
+        ConnectionPath::Remote(unpack_url(&host_url).unwrap()),
+        buffer_size,
+        &client_conn_request_tx,
+    )
+    .await
+    .unwrap();
 
     let ClientConnection {
         tx, _send_handle, ..

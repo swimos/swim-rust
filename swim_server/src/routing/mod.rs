@@ -7,7 +7,6 @@ use swim_common::routing::error::RouterError;
 use swim_common::routing::remote::{RawRoute, RemoteRoutingRequest};
 use swim_common::routing::{Origin, PlaneRoutingRequest};
 use swim_common::routing::{Route, Router, RouterFactory, RoutingAddr, TaggedSender};
-use swim_common::warp::path::Path;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use url::Url;

@@ -20,7 +20,7 @@ use tokio::time;
 #[tokio::main]
 async fn main() {
     let (client, client_handle) = SwimClientBuilder::build_with_default().await;
-    let host_uri = url::Url::parse(&"ws://127.0.0.1:9001".to_string()).unwrap();
+    let host_uri = url::Url::parse(&"warp://127.0.0.1:9001".to_string()).unwrap();
     let node_uri_prefix = "/unit/";
 
     let path = AbsolutePath::new(

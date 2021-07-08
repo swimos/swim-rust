@@ -15,14 +15,11 @@
 #[cfg(test)]
 mod tests;
 
-use crate::routing::remote::{unpack_url, BadUrl, RawRoute, Scheme, SchemeSocketAddr};
+use crate::routing::remote::{RawRoute, Scheme, SchemeSocketAddr};
 use crate::routing::{ConnectionDropped, RoutingAddr, TaggedEnvelope};
-use crate::warp::path::{Addressable, RelativePath};
 use std::collections::{HashMap, HashSet};
-use std::convert::{TryFrom, TryInto};
 use std::fmt::{Display, Formatter};
 use tokio::sync::mpsc;
-use url::Url;
 use utilities::sync::promise;
 
 /// A combination of host name and port to be used as a key into the routing table.

@@ -30,7 +30,7 @@ mod tests {
         tokio::spawn(server.run());
         let port = server_handle.address().await.unwrap().port();
 
-        let host = format!("ws://127.0.0.1:{}", port);
+        let host = format!("warp://127.0.0.1:{}", port);
         let (client, _client_handle) = SwimClientBuilder::build_with_default().await;
 
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "/unit/foo", "id");
@@ -47,7 +47,7 @@ mod tests {
         tokio::spawn(server.run());
         let port = server_handle.address().await.unwrap().port();
 
-        let host = format!("ws://127.0.0.1:{}", port);
+        let host = format!("warp://127.0.0.1:{}", port);
         let (client, _client_handle) = SwimClientBuilder::build_with_default().await;
 
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "/unit/foo", "id");
@@ -70,7 +70,7 @@ mod tests {
         tokio::spawn(server.run());
         let port = server_handle.address().await.unwrap().port();
 
-        let host = format!("ws://127.0.0.1:{}", port);
+        let host = format!("warp://127.0.0.1:{}", port);
         let (client, _client_handle) = SwimClientBuilder::build_with_default().await;
         let path = AbsolutePath::new(
             url::Url::parse(&host).unwrap(),
@@ -102,7 +102,7 @@ mod tests {
         tokio::spawn(server.run());
         let port = server_handle.address().await.unwrap().port();
 
-        let host = format!("ws://127.0.0.1:{}", port);
+        let host = format!("warp://127.0.0.1:{}", port);
         let (client, _client_handle) = SwimClientBuilder::build_with_default().await;
         let path = AbsolutePath::new(
             url::Url::parse(&host).unwrap(),
@@ -147,7 +147,7 @@ mod tests {
         tokio::spawn(server.run());
         let port = server_handle.address().await.unwrap().port();
 
-        let host = format!("ws://127.0.0.1:{}", port);
+        let host = format!("warp://127.0.0.1:{}", port);
         let (client, _client_handle) = SwimClientBuilder::build_with_default().await;
 
         let event_path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "/unit/foo", "info");
@@ -171,7 +171,7 @@ mod tests {
         tokio::spawn(server.run());
         let port = server_handle.address().await.unwrap().port();
 
-        let host = format!("ws://127.0.0.1:{}", port);
+        let host = format!("warp://127.0.0.1:{}", port);
         let (client, _client_handle) = SwimClientBuilder::build_with_default().await;
 
         let event_path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "/unit/foo", "info");
@@ -206,7 +206,7 @@ mod tests {
         tokio::spawn(server.run());
         let port = server_handle.address().await.unwrap().port();
 
-        let host = format!("ws://127.0.0.1:{}", port);
+        let host = format!("warp://127.0.0.1:{}", port);
         let (client, _client_handle) = SwimClientBuilder::build_with_default().await;
 
         let event_path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "/unit/foo", "info");
@@ -235,7 +235,7 @@ mod tests {
         tokio::spawn(server.run());
         let port = server_handle.address().await.unwrap().port();
 
-        let host = format!("ws://127.0.0.1:{}", port);
+        let host = format!("warp://127.0.0.1:{}", port);
         let (client, _client_handle) = SwimClientBuilder::build_with_default().await;
 
         let event_path = AbsolutePath::new(
@@ -282,7 +282,7 @@ mod tests {
         tokio::spawn(server.run());
         let port = server_handle.address().await.unwrap().port();
 
-        let host = format!("ws://127.0.0.1:{}", port);
+        let host = format!("warp://127.0.0.1:{}", port);
         let (client, _client_handle) = SwimClientBuilder::build_with_default().await;
 
         let event_path = AbsolutePath::new(
@@ -329,7 +329,7 @@ mod tests {
         tokio::spawn(server.run());
         let port = server_handle.address().await.unwrap().port();
 
-        let host = format!("ws://127.0.0.1:{}", port);
+        let host = format!("warp://127.0.0.1:{}", port);
         let (client, _client_handle) = SwimClientBuilder::build_with_default().await;
 
         let event_path = AbsolutePath::new(
@@ -376,7 +376,7 @@ mod tests {
         tokio::spawn(server.run());
         let port = server_handle.address().await.unwrap().port();
 
-        let host = format!("ws://127.0.0.1:{}", port);
+        let host = format!("warp://127.0.0.1:{}", port);
         let (client, _client_handle) = SwimClientBuilder::build_with_default().await;
 
         let event_path = AbsolutePath::new(
@@ -423,7 +423,7 @@ mod tests {
         tokio::spawn(server.run());
         let port = server_handle.address().await.unwrap().port();
 
-        let host = format!("ws://127.0.0.1:{}", port);
+        let host = format!("warp://127.0.0.1:{}", port);
         let (client, _client_handle) = SwimClientBuilder::build_with_default().await;
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "/unit/foo", "info");
 
@@ -470,7 +470,7 @@ mod tests {
         tokio::spawn(server.run());
         let port = server_handle.address().await.unwrap().port();
 
-        let host = format!("ws://127.0.0.1:{}", port);
+        let host = format!("warp://127.0.0.1:{}", port);
         let (client, _client_handle) = SwimClientBuilder::build_with_default().await;
 
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "/unit/foo", "id");
@@ -486,7 +486,7 @@ mod tests {
         tokio::spawn(server.run());
         let port = server_handle.address().await.unwrap().port();
 
-        let host = format!("ws://127.0.0.1:{}", port);
+        let host = format!("warp://127.0.0.1:{}", port);
         let (client, _client_handle) = SwimClientBuilder::build_with_default().await;
 
         let path = AbsolutePath::new(
@@ -572,7 +572,7 @@ mod tests {
         tokio::spawn(server.run());
         let port = server_handle.address().await.unwrap().port();
 
-        let host = format!("ws://127.0.0.1:{}", port);
+        let host = format!("warp://127.0.0.1:{}", port);
         let (client, _client_handle) = SwimClientBuilder::build_with_default().await;
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "/unit/foo", "integer_map");
 
@@ -590,7 +590,7 @@ mod tests {
         tokio::spawn(server.run());
         let port = server_handle.address().await.unwrap().port();
 
-        let host = format!("ws://127.0.0.1:{}", port);
+        let host = format!("warp://127.0.0.1:{}", port);
         let (client, _client_handle) = SwimClientBuilder::build_with_default().await;
 
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "/unit/foo", "info");
@@ -626,7 +626,7 @@ mod tests {
         tokio::spawn(server.run());
         let port = server_handle.address().await.unwrap().port();
 
-        let host = format!("ws://127.0.0.1:{}", port);
+        let host = format!("warp://127.0.0.1:{}", port);
         let (client, _client_handle) = SwimClientBuilder::build_with_default().await;
 
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "/unit/foo", "id");
@@ -642,7 +642,7 @@ mod tests {
         tokio::spawn(server.run());
         let port = server_handle.address().await.unwrap().port();
 
-        let host = format!("ws://127.0.0.1:{}", port);
+        let host = format!("warp://127.0.0.1:{}", port);
         let (client, _client_handle) = SwimClientBuilder::build_with_default().await;
 
         let path = AbsolutePath::new(
@@ -739,7 +739,7 @@ mod tests {
         tokio::spawn(server.run());
         let port = server_handle.address().await.unwrap().port();
 
-        let host = format!("ws://127.0.0.1:{}", port);
+        let host = format!("warp://127.0.0.1:{}", port);
         let (client, _client_handle) = SwimClientBuilder::build_with_default().await;
 
         let path = AbsolutePath::new(url::Url::parse(&host).unwrap(), "/unit/foo", "integer_map");
