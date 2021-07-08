@@ -498,7 +498,7 @@ fn test_enum_tag() {
         entry.as_value(),
         Value::Record(
             vec![Attr::of((
-                "error",
+                "Error",
                 Value::from_vec(vec![Item::Slot(Value::text("time"), now.as_value())])
             ))],
             vec![Item::Slot(Value::text("message"), Value::text("Not good"))]

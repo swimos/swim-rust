@@ -56,7 +56,7 @@ pub trait RecognizerReadable: Sized {
     /// as it is permissible for the record to be collapsed into the body of the attribute.)
     fn make_attr_recognizer() -> Self::AttrRec;
 
-    /// If this value is expected as teh value of a record field but was not present a default
+    /// If this value is expected as the value of a record field but was not present a default
     /// value will be used if provided here. For example, [`Option`] values are set to `None` if
     /// not provided.
     fn on_absent() -> Option<Self> {
@@ -170,6 +170,10 @@ impl RecognizerReadable for Blob {
     fn make_attr_recognizer() -> Self::AttrRec {
         SimpleAttrBody::new(Self::make_recognizer())
     }
+
+    fn is_simple() -> bool {
+        true
+    }
 }
 
 type BoxU8Vec = fn(Vec<u8>) -> Box<[u8]>;
@@ -185,6 +189,10 @@ impl RecognizerReadable for Box<[u8]> {
     fn make_attr_recognizer() -> Self::AttrRec {
         SimpleAttrBody::new(Self::make_recognizer())
     }
+
+    fn is_simple() -> bool {
+        true
+    }
 }
 
 impl RecognizerReadable for RelativeUri {
@@ -197,6 +205,10 @@ impl RecognizerReadable for RelativeUri {
 
     fn make_attr_recognizer() -> Self::AttrRec {
         SimpleAttrBody::new(RelativeUriRecognizer)
+    }
+
+    fn is_simple() -> bool {
+        true
     }
 }
 
@@ -232,6 +244,10 @@ impl RecognizerReadable for Url {
 
     fn make_attr_recognizer() -> Self::AttrRec {
         SimpleAttrBody::new(UrlRecognizer)
+    }
+
+    fn is_simple() -> bool {
+        true
     }
 }
 
@@ -319,25 +335,35 @@ impl<T, R: Recognizer<Target = T>> Recognizer for VecRecognizer<T, R> {
 
 impl<T, R> VecRecognizer<T, R> {
     fn new(is_attr_body: bool, rec: R) -> Self {
+        let stage = if is_attr_body {
+            BodyStage::Between
+        } else {
+            BodyStage::Init
+        };
         VecRecognizer {
             is_attr_body,
-            stage: BodyStage::Init,
+            stage,
             vector: vec![],
             rec,
         }
     }
 }
 
+pub type CollaspsibleRec<R> = FirstOf<R, SimpleAttrBody<R>>;
+
 impl<T: RecognizerReadable> RecognizerReadable for Vec<T> {
     type Rec = VecRecognizer<T, T::Rec>;
-    type AttrRec = VecRecognizer<T, T::Rec>;
+    type AttrRec = CollaspsibleRec<VecRecognizer<T, T::Rec>>;
 
     fn make_recognizer() -> Self::Rec {
         VecRecognizer::new(false, T::make_recognizer())
     }
 
     fn make_attr_recognizer() -> Self::AttrRec {
-        VecRecognizer::new(true, T::make_recognizer())
+        FirstOf::new(
+            VecRecognizer::new(true, T::make_recognizer()),
+            SimpleAttrBody::new(VecRecognizer::new(false, T::make_recognizer())),
+        )
     }
 }
 
@@ -775,11 +801,11 @@ where
                 _ => None,
             }
         } else if *first_active {
-            let r = recognizer1.feed_event(input.clone())?;
+            let r = recognizer1.feed_event(input)?;
             *first_active = false;
             Some(r)
         } else if *second_active {
-            let r = recognizer2.feed_event(input.clone())?;
+            let r = recognizer2.feed_event(input)?;
             *second_active = false;
             Some(r)
         } else {
@@ -801,10 +827,7 @@ where
 pub enum LabelledFieldKey<'a> {
     /// The name of the tag when this is used to populate a field.
     Tag,
-    /// The first value inside the tag attribute.
-    HeaderBody,
-    /// A labelled slot in the tag attribute.
-    HeaderSlot(&'a str),
+    Header,
     /// Another attribute after the tag.
     Attr(&'a str),
     /// A labelled slot in the body of the record.
@@ -814,17 +837,8 @@ pub enum LabelledFieldKey<'a> {
 #[derive(Clone, Copy)]
 enum LabelledStructState {
     Init,
-    HeaderInit,
-    HeaderInitNested,
-    HeaderBodyItem,
-    HeaderBodyItemNested,
-    HeaderBetween,
-    HeaderBetweenNested,
-    HeaderExpectingSlot,
-    HeaderExpectingSlotNested,
-    HeaderItem,
-    HeaderItemNested,
-    HeaderEnd,
+    Header,
+    NoHeader,
     AttrBetween,
     AttrItem,
     BodyBetween,
@@ -835,17 +849,8 @@ enum LabelledStructState {
 #[derive(Clone, Copy)]
 enum OrdinalStructState {
     Init,
-    HeaderInit,
-    HeaderInitNested,
-    HeaderBodyItem,
-    HeaderBodyItemNested,
-    HeaderBetween,
-    HeaderBetweenNested,
-    HeaderExpectingSlot,
-    HeaderExpectingSlotNested,
-    HeaderItem,
-    HeaderItemNested,
-    HeaderEnd,
+    Header,
+    NoHeader,
     AttrBetween,
     AttrItem,
     BodyBetween,
@@ -858,10 +863,7 @@ enum OrdinalStructState {
 pub enum OrdinalFieldKey<'a> {
     /// The name of the tag when this is used to populate a field.
     Tag,
-    /// The first value inside the tag attribute.
-    HeaderBody,
-    /// A labelled slot in the tag attribute.
-    HeaderSlot(&'a str),
+    Header,
     /// Another attribute after the tag.
     Attr(&'a str),
     /// The first field in the body of the record. All other body fields are assumed to ocurr
@@ -876,28 +878,11 @@ pub enum TagSpec {
     Field,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum HeaderKind {
-    BodyOnly,
-    SlotsOnly,
-    Both,
-}
-
-impl HeaderKind {
-
-    fn has_body(&self) -> bool {
-        matches!(self, HeaderKind::BodyOnly | HeaderKind::Both)
-    }
-
-}
-
-
 /// This type is used to encode the standard encoding of Rust structs, with labelled fields, as
 /// generated by the derivation macro for [`RecognizerReadable`]. It should not generally be
 /// necessary to use this type explicitly.
 pub struct LabelledStructRecognizer<T, Flds> {
     tag: TagSpec,
-    header_kind: HeaderKind,
     state: LabelledStructState,
     fields: Flds,
     progress: Bitset,
@@ -959,22 +944,18 @@ impl<T, Flds> LabelledStructRecognizer<T, Flds> {
     /// #Arguments
     /// * `tag` - The expected name of the first attribute or an inidcation that it should be used
     /// to populate a field.
-    /// * `header_kind` - Inidcates that one of the fields has been promoted to the body of the
-    /// tag attribute and if there are slots in the header.
     /// * `fields` - The state of the recognizer state machine (specified by the macro).
     /// * `num_fields` - The total numer of (non-skipped) fields that the recognizer expects.
     /// * `vtable` - Functions that are generated by the macro that determine how incoming events
     /// modify the state.
     pub fn new(
         tag: TagSpec,
-        header_kind: HeaderKind,
         fields: Flds,
         num_fields: u32,
         vtable: LabelledVTable<T, Flds>,
     ) -> Self {
         LabelledStructRecognizer {
             tag,
-            header_kind,
             state: LabelledStructState::Init,
             fields,
             progress: Bitset::new(num_fields),
@@ -988,25 +969,22 @@ impl<T, Flds> LabelledStructRecognizer<T, Flds> {
     /// is skipped.
     ///
     /// #Arguments
-    /// * `has_header_body` - Inidcates that one of the fields has been promoted to the body of the
-    /// tag attribute.
     /// * `fields` - The state of the recognizer state machine (specified by the macro).
     /// * `num_fields` - The total numer of (non-skipped) fields that the recognizer expects.
     /// * `vtable` - Functions that are generated by the macro that determine how incoming events
     /// modify the state.
-    pub fn variant(
-        header_kind: HeaderKind,
-        fields: Flds,
-        num_fields: u32,
-        vtable: LabelledVTable<T, Flds>,
-    ) -> Self {
+    pub fn variant(fields: Flds, num_fields: u32, vtable: LabelledVTable<T, Flds>) -> Self {
+        let (state, index) = if let Some(i) = (vtable.select_index)(LabelledFieldKey::Header) {
+            (LabelledStructState::Header, i)
+        } else {
+            (LabelledStructState::NoHeader, 0)
+        };
         LabelledStructRecognizer {
             tag: TagSpec::Fixed(""),
-            header_kind,
-            state: LabelledStructState::HeaderInit,
+            state,
             fields,
             progress: Bitset::new(num_fields),
-            index: 0,
+            index,
             vtable,
         }
     }
@@ -1016,22 +994,18 @@ impl<T, Flds> OrdinalStructRecognizer<T, Flds> {
     /// #Arguments
     /// * `tag` - The expected name of the first attribute or an inidcation that it should be used
     /// to populate a field.
-    /// * `header_kind` - Inidcates that one of the fields has been promoted to the body of the
-    /// tag attribute and if there are slots in the header.
     /// * `fields` - The state of the recognizer state machine (specified by the macro).
     /// * `num_fields` - The total numer of (non-skipped) fields that the recognizer expects.
     /// * `vtable` - Functions that are generated by the macro that determine how incoming events
     /// modify the state.
     pub fn new(
         tag: TagSpec,
-        header_kind: HeaderKind,
         fields: Flds,
         num_fields: u32,
         vtable: OrdinalVTable<T, Flds>,
     ) -> Self {
         OrdinalStructRecognizer {
             tag,
-            header_kind,
             state: OrdinalStructState::Init,
             fields,
             progress: Bitset::new(num_fields),
@@ -1045,25 +1019,22 @@ impl<T, Flds> OrdinalStructRecognizer<T, Flds> {
     /// is skipped.
     ///
     /// #Arguments
-    /// * `header_kind` - Inidcates that one of the fields has been promoted to the body of the
-    /// tag attribute and if there are slots in the header.
     /// * `fields` - The state of the recognizer state machine (specified by the macro).
     /// * `num_fields` - The total numer of (non-skipped) fields that the recognizer expects.
     /// * `vtable` - Functions that are generated by the macro that determine how incoming events
     /// modify the state.
-    pub fn variant(
-        header_kind: HeaderKind,
-        fields: Flds,
-        num_fields: u32,
-        vtable: OrdinalVTable<T, Flds>,
-    ) -> Self {
+    pub fn variant(fields: Flds, num_fields: u32, vtable: OrdinalVTable<T, Flds>) -> Self {
+        let (state, index) = if let Some(i) = (vtable.select_index)(OrdinalFieldKey::Header) {
+            (OrdinalStructState::Header, i)
+        } else {
+            (OrdinalStructState::NoHeader, 0)
+        };
         OrdinalStructRecognizer {
             tag: TagSpec::Fixed(""),
-            header_kind,
-            state: OrdinalStructState::HeaderInit,
+            state,
             fields,
             progress: Bitset::new(num_fields),
-            index: 0,
+            index,
             vtable,
         }
     }
@@ -1075,7 +1046,6 @@ impl<T, Flds> Recognizer for LabelledStructRecognizer<T, Flds> {
     fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         let LabelledStructRecognizer {
             tag,
-            header_kind,
             state,
             fields,
             progress,
@@ -1095,7 +1065,12 @@ impl<T, Flds> Recognizer for LabelledStructRecognizer<T, Flds> {
                 ReadEvent::StartAttribute(name) => match tag {
                     TagSpec::Fixed(tag) => {
                         if name == *tag {
-                            *state = LabelledStructState::HeaderInit;
+                            if let Some(i) = select_index(LabelledFieldKey::Header) {
+                                *index = i;
+                                *state = LabelledStructState::Header;
+                            } else {
+                                *state = LabelledStructState::NoHeader;
+                            }
                             None
                         } else {
                             Some(Err(bad_kind(&ReadEvent::StartAttribute(name))))
@@ -1106,7 +1081,12 @@ impl<T, Flds> Recognizer for LabelledStructRecognizer<T, Flds> {
                             if let Err(e) = select_recog(fields, i, ReadEvent::TextValue(name))? {
                                 Some(Err(e))
                             } else {
-                                *state = LabelledStructState::HeaderInit;
+                                if let Some(i) = select_index(LabelledFieldKey::Header) {
+                                    *index = i;
+                                    *state = LabelledStructState::Header;
+                                } else {
+                                    *state = LabelledStructState::NoHeader;
+                                }
                                 None
                             }
                         } else {
@@ -1116,187 +1096,22 @@ impl<T, Flds> Recognizer for LabelledStructRecognizer<T, Flds> {
                 },
                 ow => Some(Err(bad_kind(&ow))),
             },
-            LabelledStructState::HeaderInit => {
-                match &input {
-                    ReadEvent::EndAttribute => {
-                        *state = LabelledStructState::AttrBetween;
-                        None
-                    }
-                    ReadEvent::StartBody if *header_kind != HeaderKind::BodyOnly => {
-                        *state = LabelledStructState::HeaderInitNested;
-                        None
-                    }
-                    _ => {
-                        if header_kind.has_body() {
-                            *state = LabelledStructState::HeaderBodyItem;
-                            if let Some(i) = select_index(LabelledFieldKey::HeaderBody) {
-                                *index = i;
-                            } else {
-                                return Some(Err(ReadError::InconsistentState));
-                            }
-                            if let Err(e) = select_recog(fields, *index, input)? {
-                                Some(Err(e))
-                            } else {
-                                *state = LabelledStructState::HeaderBetween;
-                                None
-                            }
-                        } else {
-                            if let ReadEvent::TextValue(name) = input {
-                                if let Some(i) = select_index(LabelledFieldKey::HeaderSlot(name.borrow())) {
-                                    if progress.get(i).unwrap_or(false) {
-                                        Some(Err(ReadError::DuplicateField(Text::new(name.borrow()))))
-                                    } else {
-                                        *index = i;
-                                        *state = LabelledStructState::HeaderExpectingSlot;
-                                        None
-                                    }
-                                } else {
-                                    Some(Err(ReadError::UnexpectedField(name.into())))
-                                }
-                            } else {
-                                Some(Err(bad_kind(&input)))
-                            }
-                        }
-                    }
-                }
-            }
-            LabelledStructState::HeaderInitNested => {
-                if matches!(&input, ReadEvent::EndRecord) {
-                    *state = LabelledStructState::HeaderEnd;
-                    None
-                } else {
-                    if header_kind.has_body() {
-                        *state = LabelledStructState::HeaderBodyItemNested;
-                        if let Some(i) = select_index(LabelledFieldKey::HeaderBody) {
-                            *index = i;
-                        } else {
-                            return Some(Err(ReadError::InconsistentState));
-                        }
-                        if let Err(e) = select_recog(fields, *index, input)? {
-                            Some(Err(e))
-                        } else {
-                            *state = LabelledStructState::HeaderBetween;
-                            None
-                        }
-                    } else {
-                        if let ReadEvent::TextValue(name) = input {
-                            if let Some(i) = select_index(LabelledFieldKey::HeaderSlot(name.borrow())) {
-                                if progress.get(i).unwrap_or(false) {
-                                    Some(Err(ReadError::DuplicateField(Text::new(name.borrow()))))
-                                } else {
-                                    *index = i;
-                                    *state = LabelledStructState::HeaderExpectingSlotNested;
-                                    None
-                                }
-                            } else {
-                                Some(Err(ReadError::UnexpectedField(name.into())))
-                            }
-                        } else {
-                            Some(Err(bad_kind(&input)))
-                        }
-                    }
-                }
-            }
-            LabelledStructState::HeaderBodyItem => {
+            LabelledStructState::Header => {
                 if let Err(e) = select_recog(fields, *index, input)? {
                     Some(Err(e))
                 } else {
-                    progress.set(*index);
-                    *state = LabelledStructState::HeaderBetween;
+                    *state = LabelledStructState::AttrBetween;
                     None
                 }
             }
-            LabelledStructState::HeaderBodyItemNested => {
-                if let Err(e) = select_recog(fields, *index, input)? {
-                    Some(Err(e))
-                } else {
-                    progress.set(*index);
-                    *state = LabelledStructState::HeaderBetweenNested;
-                    None
-                }
-            }
-            LabelledStructState::HeaderBetween => match input {
+            LabelledStructState::NoHeader => match input {
+                ReadEvent::Extant => None,
                 ReadEvent::EndAttribute => {
                     *state = LabelledStructState::AttrBetween;
                     None
                 }
-                ReadEvent::TextValue(name) => {
-                    if let Some(i) = select_index(LabelledFieldKey::HeaderSlot(name.borrow())) {
-                        if progress.get(i).unwrap_or(false) {
-                            Some(Err(ReadError::DuplicateField(Text::new(name.borrow()))))
-                        } else {
-                            *index = i;
-                            *state = LabelledStructState::HeaderExpectingSlot;
-                            None
-                        }
-                    } else {
-                        Some(Err(ReadError::UnexpectedField(name.into())))
-                    }
-                }
-                ow => Some(Err(bad_kind(&ow))),
+                ow => Some(Err(ow.kind_error())),
             },
-            LabelledStructState::HeaderBetweenNested => match input {
-                ReadEvent::EndRecord => {
-                    *state = LabelledStructState::HeaderEnd;
-                    None
-                }
-                ReadEvent::TextValue(name) => {
-                    if let Some(i) = select_index(LabelledFieldKey::HeaderSlot(name.borrow())) {
-                        if progress.get(i).unwrap_or(false) {
-                            Some(Err(ReadError::DuplicateField(Text::new(name.borrow()))))
-                        } else {
-                            *index = i;
-                            *state = LabelledStructState::HeaderExpectingSlotNested;
-                            None
-                        }
-                    } else {
-                        Some(Err(ReadError::UnexpectedField(name.into())))
-                    }
-                }
-                ow => Some(Err(bad_kind(&ow))),
-            },
-            LabelledStructState::HeaderExpectingSlot => {
-                if matches!(&input, ReadEvent::Slot) {
-                    *state = LabelledStructState::HeaderItem;
-                    None
-                } else {
-                    Some(Err(ReadError::UnexpectedItem))
-                }
-            }
-            LabelledStructState::HeaderExpectingSlotNested => {
-                if matches!(&input, ReadEvent::Slot) {
-                    *state = LabelledStructState::HeaderItemNested;
-                    None
-                } else {
-                    Some(Err(ReadError::UnexpectedItem))
-                }
-            }
-            LabelledStructState::HeaderItem => {
-                if let Err(e) = select_recog(fields, *index, input)? {
-                    Some(Err(e))
-                } else {
-                    progress.set(*index);
-                    *state = LabelledStructState::HeaderBetween;
-                    None
-                }
-            }
-            LabelledStructState::HeaderItemNested => {
-                if let Err(e) = select_recog(fields, *index, input)? {
-                    Some(Err(e))
-                } else {
-                    progress.set(*index);
-                    *state = LabelledStructState::HeaderBetweenNested;
-                    None
-                }
-            }
-            LabelledStructState::HeaderEnd => {
-                if matches!(&input, ReadEvent::EndAttribute) {
-                    *state = LabelledStructState::AttrBetween;
-                    None
-                } else {
-                    Some(Err(input.kind_error()))
-                }
-            }
             LabelledStructState::AttrBetween => match input {
                 ReadEvent::StartBody => {
                     *state = LabelledStructState::BodyBetween;
@@ -1376,7 +1191,6 @@ impl<T, Flds> Recognizer for LabelledStructRecognizer<T, Flds> {
 /// necessary to use this type explicitly.
 pub struct OrdinalStructRecognizer<T, Flds> {
     tag: TagSpec,
-    header_kind: HeaderKind,
     state: OrdinalStructState,
     fields: Flds,
     progress: Bitset,
@@ -1390,7 +1204,6 @@ impl<T, Flds> Recognizer for OrdinalStructRecognizer<T, Flds> {
     fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         let OrdinalStructRecognizer {
             tag,
-            header_kind,
             state,
             fields,
             progress,
@@ -1410,7 +1223,12 @@ impl<T, Flds> Recognizer for OrdinalStructRecognizer<T, Flds> {
                 ReadEvent::StartAttribute(name) => match tag {
                     TagSpec::Fixed(tag) => {
                         if name == *tag {
-                            *state = OrdinalStructState::HeaderInit;
+                            if let Some(i) = select_index(OrdinalFieldKey::Header) {
+                                *index = i;
+                                *state = OrdinalStructState::Header;
+                            } else {
+                                *state = OrdinalStructState::NoHeader;
+                            }
                             None
                         } else {
                             Some(Err(bad_kind(&ReadEvent::StartAttribute(name))))
@@ -1421,7 +1239,12 @@ impl<T, Flds> Recognizer for OrdinalStructRecognizer<T, Flds> {
                             if let Err(e) = select_recog(fields, i, ReadEvent::TextValue(name))? {
                                 Some(Err(e))
                             } else {
-                                *state = OrdinalStructState::HeaderInit;
+                                if let Some(i) = select_index(OrdinalFieldKey::Header) {
+                                    *index = i;
+                                    *state = OrdinalStructState::Header;
+                                } else {
+                                    *state = OrdinalStructState::NoHeader;
+                                }
                                 None
                             }
                         } else {
@@ -1431,187 +1254,22 @@ impl<T, Flds> Recognizer for OrdinalStructRecognizer<T, Flds> {
                 },
                 ow => Some(Err(bad_kind(&ow))),
             },
-            OrdinalStructState::HeaderInit => {
-                match &input {
-                    ReadEvent::EndAttribute => {
-                        *state = OrdinalStructState::AttrBetween;
-                        None
-                    }
-                    ReadEvent::StartBody if *header_kind != HeaderKind::BodyOnly => {
-                        *state = OrdinalStructState::HeaderInitNested;
-                        None
-                    }
-                    _ => {
-                        if header_kind.has_body() {
-                            *state = OrdinalStructState::HeaderBodyItem;
-                            if let Some(i) = select_index(OrdinalFieldKey::HeaderBody) {
-                                *index = i;
-                            } else {
-                                return Some(Err(ReadError::InconsistentState));
-                            }
-                            if let Err(e) = select_recog(fields, *index, input)? {
-                                Some(Err(e))
-                            } else {
-                                *state = OrdinalStructState::HeaderBetween;
-                                None
-                            }
-                        } else {
-                            if let ReadEvent::TextValue(name) = input {
-                                if let Some(i) = select_index(OrdinalFieldKey::HeaderSlot(name.borrow())) {
-                                    if progress.get(i).unwrap_or(false) {
-                                        Some(Err(ReadError::DuplicateField(Text::new(name.borrow()))))
-                                    } else {
-                                        *index = i;
-                                        *state = OrdinalStructState::HeaderExpectingSlot;
-                                        None
-                                    }
-                                } else {
-                                    Some(Err(ReadError::UnexpectedField(name.into())))
-                                }
-                            } else {
-                                Some(Err(bad_kind(&input)))
-                            }
-                        }
-                    }
-                }
-            }
-            OrdinalStructState::HeaderInitNested => {
-                if matches!(&input, ReadEvent::EndRecord) {
-                    *state = OrdinalStructState::HeaderEnd;
-                    None
-                } else {
-                    if header_kind.has_body() {
-                        *state = OrdinalStructState::HeaderBodyItemNested;
-                        if let Some(i) = select_index(OrdinalFieldKey::HeaderBody) {
-                            *index = i;
-                        } else {
-                            return Some(Err(ReadError::InconsistentState));
-                        }
-                        if let Err(e) = select_recog(fields, *index, input)? {
-                            Some(Err(e))
-                        } else {
-                            *state = OrdinalStructState::HeaderBetween;
-                            None
-                        }
-                    } else {
-                        if let ReadEvent::TextValue(name) = input {
-                            if let Some(i) = select_index(OrdinalFieldKey::HeaderSlot(name.borrow())) {
-                                if progress.get(i).unwrap_or(false) {
-                                    Some(Err(ReadError::DuplicateField(Text::new(name.borrow()))))
-                                } else {
-                                    *index = i;
-                                    *state = OrdinalStructState::HeaderExpectingSlotNested;
-                                    None
-                                }
-                            } else {
-                                Some(Err(ReadError::UnexpectedField(name.into())))
-                            }
-                        } else {
-                            Some(Err(bad_kind(&input)))
-                        }
-                    }
-                }
-            }
-            OrdinalStructState::HeaderBodyItem => {
+            OrdinalStructState::Header => {
                 if let Err(e) = select_recog(fields, *index, input)? {
                     Some(Err(e))
                 } else {
-                    progress.set(*index);
-                    *state = OrdinalStructState::HeaderBetween;
+                    *state = OrdinalStructState::AttrBetween;
                     None
                 }
             }
-            OrdinalStructState::HeaderBodyItemNested => {
-                if let Err(e) = select_recog(fields, *index, input)? {
-                    Some(Err(e))
-                } else {
-                    progress.set(*index);
-                    *state = OrdinalStructState::HeaderBetweenNested;
-                    None
-                }
-            }
-            OrdinalStructState::HeaderBetween => match input {
+            OrdinalStructState::NoHeader => match input {
+                ReadEvent::Extant => None,
                 ReadEvent::EndAttribute => {
                     *state = OrdinalStructState::AttrBetween;
                     None
                 }
-                ReadEvent::TextValue(name) => {
-                    if let Some(i) = select_index(OrdinalFieldKey::HeaderSlot(name.borrow())) {
-                        if progress.get(i).unwrap_or(false) {
-                            Some(Err(ReadError::DuplicateField(Text::new(name.borrow()))))
-                        } else {
-                            *index = i;
-                            *state = OrdinalStructState::HeaderExpectingSlot;
-                            None
-                        }
-                    } else {
-                        Some(Err(ReadError::UnexpectedField(name.into())))
-                    }
-                }
-                ow => Some(Err(bad_kind(&ow))),
+                ow => Some(Err(ow.kind_error())),
             },
-            OrdinalStructState::HeaderBetweenNested => match input {
-                ReadEvent::EndRecord => {
-                    *state = OrdinalStructState::HeaderEnd;
-                    None
-                }
-                ReadEvent::TextValue(name) => {
-                    if let Some(i) = select_index(OrdinalFieldKey::HeaderSlot(name.borrow())) {
-                        if progress.get(i).unwrap_or(false) {
-                            Some(Err(ReadError::DuplicateField(Text::new(name.borrow()))))
-                        } else {
-                            *index = i;
-                            *state = OrdinalStructState::HeaderExpectingSlotNested;
-                            None
-                        }
-                    } else {
-                        Some(Err(ReadError::UnexpectedField(name.into())))
-                    }
-                }
-                ow => Some(Err(bad_kind(&ow))),
-            },
-            OrdinalStructState::HeaderExpectingSlot => {
-                if matches!(&input, ReadEvent::Slot) {
-                    *state = OrdinalStructState::HeaderItem;
-                    None
-                } else {
-                    Some(Err(ReadError::UnexpectedItem))
-                }
-            }
-            OrdinalStructState::HeaderExpectingSlotNested => {
-                if matches!(&input, ReadEvent::Slot) {
-                    *state = OrdinalStructState::HeaderItemNested;
-                    None
-                } else {
-                    Some(Err(ReadError::UnexpectedItem))
-                }
-            }
-            OrdinalStructState::HeaderItem => {
-                if let Err(e) = select_recog(fields, *index, input)? {
-                    Some(Err(e))
-                } else {
-                    progress.set(*index);
-                    *state = OrdinalStructState::HeaderBetween;
-                    None
-                }
-            }
-            OrdinalStructState::HeaderItemNested => {
-                if let Err(e) = select_recog(fields, *index, input)? {
-                    Some(Err(e))
-                } else {
-                    progress.set(*index);
-                    *state = OrdinalStructState::HeaderBetweenNested;
-                    None
-                }
-            }
-            OrdinalStructState::HeaderEnd => {
-                if matches!(&input, ReadEvent::EndAttribute) {
-                    *state = OrdinalStructState::AttrBetween;
-                    None
-                } else {
-                    Some(Err(input.kind_error()))
-                }
-            }
             OrdinalStructState::AttrBetween => match &input {
                 ReadEvent::StartBody => {
                     *state = OrdinalStructState::BodyBetween;
@@ -1691,6 +1349,14 @@ impl<T: RecognizerReadable> RecognizerReadable for Arc<T> {
 
     fn make_attr_recognizer() -> Self::AttrRec {
         MappedRecognizer::new(T::make_attr_recognizer(), Arc::new)
+    }
+
+    fn on_absent() -> Option<Self> {
+        T::on_absent().map(Arc::new)
+    }
+
+    fn is_simple() -> bool {
+        T::is_simple()
     }
 }
 
@@ -2019,17 +1685,8 @@ where
 #[derive(Clone, Copy)]
 enum DelegateStructState {
     Init,
-    HeaderInit,
-    HeaderInitNested,
-    HeaderBodyItem,
-    HeaderBodyItemNested,
-    HeaderBetween,
-    HeaderBetweenNested,
-    HeaderExpectingSlot,
-    HeaderExpectingSlotNested,
-    HeaderItem,
-    HeaderItemNested,
-    HeaderEnd,
+    Header,
+    NoHeader,
     AttrBetween,
     AttrItem,
     DelegatedSimple,
@@ -2042,7 +1699,6 @@ enum DelegateStructState {
 /// [`RecognizerReadable`]. It should not generally be necessary to use this type explicitly.
 pub struct DelegateStructRecognizer<T, Flds> {
     tag: TagSpec,
-    header_kind: HeaderKind,
     state: DelegateStructState,
     fields: Flds,
     progress: Bitset,
@@ -2058,8 +1714,6 @@ impl<T, Flds> DelegateStructRecognizer<T, Flds> {
     /// #Arguments
     /// * `tag` - The expected name of the first attribute or an inidcation that it should be used
     /// to populate a field.
-    /// * `header_kind` - Inidcates that one of the fields has been promoted to the body of the
-    /// tag attribute and whether there are slots in the header.
     /// * `fields` - The state of the recognizer state machine (specified by the macro).
     /// * `num_fields` - The total numer of (non-skipped) fields that the recognizer expects.
     /// * `vtable` - Functions that are generated by the macro that determine how incoming events
@@ -2068,7 +1722,6 @@ impl<T, Flds> DelegateStructRecognizer<T, Flds> {
     /// will need to be wrapped in a record.
     pub fn new(
         tag: TagSpec,
-        header_kind: HeaderKind,
         fields: Flds,
         num_fields: u32,
         vtable: OrdinalVTable<T, Flds>,
@@ -2076,7 +1729,6 @@ impl<T, Flds> DelegateStructRecognizer<T, Flds> {
     ) -> Self {
         DelegateStructRecognizer {
             tag,
-            header_kind,
             state: DelegateStructState::Init,
             fields,
             progress: Bitset::new(num_fields),
@@ -2094,8 +1746,6 @@ impl<T, Flds> DelegateStructRecognizer<T, Flds> {
     /// is skipped.
     ///
     /// #Arguments
-    /// * `header_kind` - Inidcates that one of the fields has been promoted to the body of the
-    /// tag attribute and whether there are slots in the header.
     /// * `fields` - The state of the recognizer state machine (specified by the macro).
     /// * `num_fields` - The total numer of (non-skipped) fields that the recognizer expects.
     /// * `vtable` - Functions that are generated by the macro that determine how incoming events
@@ -2103,20 +1753,23 @@ impl<T, Flds> DelegateStructRecognizer<T, Flds> {
     /// * `simple_body` - Indicates that the delegate field is represented by a singe value which
     /// will need to be wrapped in a record.
     pub fn variant(
-        header_kind: HeaderKind,
         fields: Flds,
         num_fields: u32,
         vtable: OrdinalVTable<T, Flds>,
         simple_body: bool,
     ) -> Self {
+        let (state, index) = if let Some(i) = (vtable.select_index)(OrdinalFieldKey::Header) {
+            (DelegateStructState::Header, i)
+        } else {
+            (DelegateStructState::NoHeader, 0)
+        };
         DelegateStructRecognizer {
             tag: TagSpec::Fixed(""),
-            header_kind,
-            state: DelegateStructState::HeaderInit,
+            state,
             fields,
             progress: Bitset::new(num_fields),
             select_index: vtable.select_index,
-            index: 0,
+            index,
             select_recog: vtable.select_recog,
             on_done: vtable.on_done,
             reset: vtable.reset,
@@ -2131,7 +1784,6 @@ impl<T, Flds> Recognizer for DelegateStructRecognizer<T, Flds> {
     fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         let DelegateStructRecognizer {
             tag,
-            header_kind,
             state,
             fields,
             progress,
@@ -2148,7 +1800,12 @@ impl<T, Flds> Recognizer for DelegateStructRecognizer<T, Flds> {
                 ReadEvent::StartAttribute(name) => match tag {
                     TagSpec::Fixed(tag) => {
                         if name == *tag {
-                            *state = DelegateStructState::HeaderInit;
+                            if let Some(i) = select_index(OrdinalFieldKey::Header) {
+                                *index = i;
+                                *state = DelegateStructState::Header;
+                            } else {
+                                *state = DelegateStructState::NoHeader;
+                            }
                             None
                         } else {
                             Some(Err(bad_kind(&ReadEvent::StartAttribute(name))))
@@ -2159,7 +1816,12 @@ impl<T, Flds> Recognizer for DelegateStructRecognizer<T, Flds> {
                             if let Err(e) = select_recog(fields, i, ReadEvent::TextValue(name))? {
                                 Some(Err(e))
                             } else {
-                                *state = DelegateStructState::HeaderInit;
+                                if let Some(i) = select_index(OrdinalFieldKey::Header) {
+                                    *index = i;
+                                    *state = DelegateStructState::Header;
+                                } else {
+                                    *state = DelegateStructState::NoHeader;
+                                }
                                 None
                             }
                         } else {
@@ -2169,187 +1831,22 @@ impl<T, Flds> Recognizer for DelegateStructRecognizer<T, Flds> {
                 },
                 ow => Some(Err(bad_kind(&ow))),
             },
-            DelegateStructState::HeaderInit => {
-                match &input {
-                    ReadEvent::EndAttribute => {
-                        *state = DelegateStructState::AttrBetween;
-                        None
-                    }
-                    ReadEvent::StartBody if *header_kind != HeaderKind::BodyOnly => {
-                        *state = DelegateStructState::HeaderInitNested;
-                        None
-                    }
-                    _ => {
-                        if header_kind.has_body() {
-                            *state = DelegateStructState::HeaderBodyItem;
-                            if let Some(i) = select_index(OrdinalFieldKey::HeaderBody) {
-                                *index = i;
-                            } else {
-                                return Some(Err(ReadError::InconsistentState));
-                            }
-                            if let Err(e) = select_recog(fields, *index, input)? {
-                                Some(Err(e))
-                            } else {
-                                *state = DelegateStructState::HeaderBetween;
-                                None
-                            }
-                        } else {
-                            if let ReadEvent::TextValue(name) = input {
-                                if let Some(i) = select_index(OrdinalFieldKey::HeaderSlot(name.borrow())) {
-                                    if progress.get(i).unwrap_or(false) {
-                                        Some(Err(ReadError::DuplicateField(Text::new(name.borrow()))))
-                                    } else {
-                                        *index = i;
-                                        *state = DelegateStructState::HeaderExpectingSlot;
-                                        None
-                                    }
-                                } else {
-                                    Some(Err(ReadError::UnexpectedField(name.into())))
-                                }
-                            } else {
-                                Some(Err(bad_kind(&input)))
-                            }
-                        }
-                    }
-                }
-            }
-            DelegateStructState::HeaderInitNested => {
-                if matches!(&input, ReadEvent::EndRecord) {
-                    *state = DelegateStructState::HeaderEnd;
-                    None
-                } else {
-                    if header_kind.has_body() {
-                        *state = DelegateStructState::HeaderBodyItemNested;
-                        if let Some(i) = select_index(OrdinalFieldKey::HeaderBody) {
-                            *index = i;
-                        } else {
-                            return Some(Err(ReadError::InconsistentState));
-                        }
-                        if let Err(e) = select_recog(fields, *index, input)? {
-                            Some(Err(e))
-                        } else {
-                            *state = DelegateStructState::HeaderBetween;
-                            None
-                        }
-                    } else {
-                        if let ReadEvent::TextValue(name) = input {
-                            if let Some(i) = select_index(OrdinalFieldKey::HeaderSlot(name.borrow())) {
-                                if progress.get(i).unwrap_or(false) {
-                                    Some(Err(ReadError::DuplicateField(Text::new(name.borrow()))))
-                                } else {
-                                    *index = i;
-                                    *state = DelegateStructState::HeaderExpectingSlotNested;
-                                    None
-                                }
-                            } else {
-                                Some(Err(ReadError::UnexpectedField(name.into())))
-                            }
-                        } else {
-                            Some(Err(bad_kind(&input)))
-                        }
-                    }
-                }
-            }
-            DelegateStructState::HeaderBodyItem => {
+            DelegateStructState::Header => {
                 if let Err(e) = select_recog(fields, *index, input)? {
                     Some(Err(e))
                 } else {
-                    progress.set(*index);
-                    *state = DelegateStructState::HeaderBetween;
+                    *state = DelegateStructState::AttrBetween;
                     None
                 }
             }
-            DelegateStructState::HeaderBodyItemNested => {
-                if let Err(e) = select_recog(fields, *index, input)? {
-                    Some(Err(e))
-                } else {
-                    progress.set(*index);
-                    *state = DelegateStructState::HeaderBetweenNested;
-                    None
-                }
-            }
-            DelegateStructState::HeaderBetween => match input {
+            DelegateStructState::NoHeader => match input {
+                ReadEvent::Extant => None,
                 ReadEvent::EndAttribute => {
                     *state = DelegateStructState::AttrBetween;
                     None
                 }
-                ReadEvent::TextValue(name) => {
-                    if let Some(i) = select_index(OrdinalFieldKey::HeaderSlot(name.borrow())) {
-                        if progress.get(i).unwrap_or(false) {
-                            Some(Err(ReadError::DuplicateField(Text::new(name.borrow()))))
-                        } else {
-                            *index = i;
-                            *state = DelegateStructState::HeaderExpectingSlot;
-                            None
-                        }
-                    } else {
-                        Some(Err(ReadError::UnexpectedField(name.into())))
-                    }
-                }
-                ow => Some(Err(bad_kind(&ow))),
+                ow => Some(Err(ow.kind_error())),
             },
-            DelegateStructState::HeaderBetweenNested => match input {
-                ReadEvent::EndRecord => {
-                    *state = DelegateStructState::HeaderEnd;
-                    None
-                }
-                ReadEvent::TextValue(name) => {
-                    if let Some(i) = select_index(OrdinalFieldKey::HeaderSlot(name.borrow())) {
-                        if progress.get(i).unwrap_or(false) {
-                            Some(Err(ReadError::DuplicateField(Text::new(name.borrow()))))
-                        } else {
-                            *index = i;
-                            *state = DelegateStructState::HeaderExpectingSlotNested;
-                            None
-                        }
-                    } else {
-                        Some(Err(ReadError::UnexpectedField(name.into())))
-                    }
-                }
-                ow => Some(Err(bad_kind(&ow))),
-            },
-            DelegateStructState::HeaderExpectingSlot => {
-                if matches!(&input, ReadEvent::Slot) {
-                    *state = DelegateStructState::HeaderItem;
-                    None
-                } else {
-                    Some(Err(ReadError::UnexpectedItem))
-                }
-            }
-            DelegateStructState::HeaderExpectingSlotNested => {
-                if matches!(&input, ReadEvent::Slot) {
-                    *state = DelegateStructState::HeaderItemNested;
-                    None
-                } else {
-                    Some(Err(ReadError::UnexpectedItem))
-                }
-            }
-            DelegateStructState::HeaderItem => {
-                if let Err(e) = select_recog(fields, *index, input)? {
-                    Some(Err(e))
-                } else {
-                    progress.set(*index);
-                    *state = DelegateStructState::HeaderBetween;
-                    None
-                }
-            }
-            DelegateStructState::HeaderItemNested => {
-                if let Err(e) = select_recog(fields, *index, input)? {
-                    Some(Err(e))
-                } else {
-                    progress.set(*index);
-                    *state = DelegateStructState::HeaderBetweenNested;
-                    None
-                }
-            }
-            DelegateStructState::HeaderEnd => {
-                if matches!(&input, ReadEvent::EndAttribute) {
-                    *state = DelegateStructState::AttrBetween;
-                    None
-                } else {
-                    Some(Err(input.kind_error()))
-                }
-            }
             DelegateStructState::AttrBetween => match input {
                 ReadEvent::StartBody => {
                     if let Some(i) = select_index(OrdinalFieldKey::FirstItem) {
@@ -2763,4 +2260,238 @@ impl<T: Tag> Recognizer for TagRecognizer<T> {
     }
 
     fn reset(&mut self) {}
+}
+
+enum HeaderState {
+    Init,
+    ExpectingBody,
+    BodyItem,
+    BetweenSlots,
+    ExpectingSlot,
+    SlotItem,
+    End,
+}
+
+/// A key to specify the field that has been encounted in the stream of events when reading
+/// a header.
+#[derive(Clone, Copy)]
+pub enum HeaderFieldKey<'a> {
+    /// The first value inside the tag attribute.
+    HeaderBody,
+    /// A labelled slot in the tag attribute.
+    HeaderSlot(&'a str),
+}
+
+/// The derivation macro produces the functions that are used to populate this table to provide
+/// the specific parts of the implementation.
+pub struct HeaderVTable<T, Flds> {
+    select_index: for<'a> fn(HeaderFieldKey<'a>) -> Option<u32>,
+    select_recog: Selector<Flds>,
+    on_done: fn(&mut Flds) -> Result<T, ReadError>,
+    reset: fn(&mut Flds),
+}
+
+impl<T, Flds> HeaderVTable<T, Flds> {
+    pub fn new(
+        select_index: for<'a> fn(HeaderFieldKey<'a>) -> Option<u32>,
+        select_recog: Selector<Flds>,
+        on_done: fn(&mut Flds) -> Result<T, ReadError>,
+        reset: fn(&mut Flds),
+    ) -> Self {
+        HeaderVTable {
+            select_index,
+            select_recog,
+            on_done,
+            reset,
+        }
+    }
+}
+
+impl<T, Flds> Clone for HeaderVTable<T, Flds> {
+    fn clone(&self) -> Self {
+        HeaderVTable {
+            select_index: self.select_index,
+            select_recog: self.select_recog,
+            on_done: self.on_done,
+            reset: self.reset,
+        }
+    }
+}
+
+impl<T, Flds> Copy for HeaderVTable<T, Flds> {}
+
+pub struct HeaderRecognizer<T, Flds> {
+    has_body: bool,
+    flattened: bool,
+    state: HeaderState,
+    fields: Flds,
+    progress: Bitset,
+    index: u32,
+    vtable: HeaderVTable<T, Flds>,
+}
+
+pub fn header_recognizer<T, Flds, MkFlds>(
+    has_body: bool,
+    make_fields: MkFlds,
+    num_slots: u32,
+    vtable: HeaderVTable<T, Flds>,
+) -> FirstOf<HeaderRecognizer<T, Flds>, HeaderRecognizer<T, Flds>>
+where
+    MkFlds: Fn() -> Flds,
+{
+    let simple = HeaderRecognizer::new(has_body, true, num_slots, make_fields(), vtable);
+    let flattened = HeaderRecognizer::new(has_body, false, num_slots, make_fields(), vtable);
+    FirstOf::new(simple, flattened)
+}
+
+impl<T, Flds> HeaderRecognizer<T, Flds> {
+    pub fn new(
+        has_body: bool,
+        flattened: bool,
+        num_slots: u32,
+        fields: Flds,
+        vtable: HeaderVTable<T, Flds>,
+    ) -> Self {
+        let state = if flattened {
+            if !has_body {
+                HeaderState::BetweenSlots
+            } else {
+                HeaderState::ExpectingBody
+            }
+        } else {
+            HeaderState::Init
+        };
+
+        let num_fields = if !has_body { num_slots } else { num_slots + 1 };
+
+        HeaderRecognizer {
+            has_body,
+            flattened,
+            state,
+            fields,
+            progress: Bitset::new(num_fields),
+            index: 0,
+            vtable,
+        }
+    }
+}
+
+impl<T, Flds> Recognizer for HeaderRecognizer<T, Flds> {
+    type Target = T;
+
+    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
+        let HeaderRecognizer {
+            has_body,
+            flattened,
+            state,
+            fields,
+            progress,
+            index,
+            vtable:
+                HeaderVTable {
+                    select_index,
+                    select_recog,
+                    on_done,
+                    ..
+                },
+        } = self;
+        match *state {
+            HeaderState::Init => {
+                if matches!(&input, ReadEvent::StartBody) {
+                    *state = if !*has_body {
+                        HeaderState::BetweenSlots
+                    } else {
+                        HeaderState::ExpectingBody
+                    };
+                    None
+                } else {
+                    Some(Err(input.kind_error()))
+                }
+            }
+            HeaderState::ExpectingBody => {
+                if *flattened && matches!(&input, ReadEvent::EndAttribute) {
+                    Some(on_done(fields))
+                } else if !*flattened && matches!(&input, ReadEvent::EndRecord) {
+                    *state = HeaderState::End;
+                    None
+                } else if let Some(i) = select_index(HeaderFieldKey::HeaderBody) {
+                    *index = i;
+                    *state = HeaderState::BodyItem;
+                    if let Err(e) = select_recog(fields, *index, input)? {
+                        Some(Err(e))
+                    } else {
+                        *state = HeaderState::BetweenSlots;
+                        progress.set(*index);
+                        None
+                    }
+                } else {
+                    Some(Err(ReadError::InconsistentState))
+                }
+            }
+            HeaderState::BodyItem | HeaderState::SlotItem => {
+                if let Err(e) = select_recog(fields, *index, input)? {
+                    Some(Err(e))
+                } else {
+                    *state = HeaderState::BetweenSlots;
+                    progress.set(*index);
+                    None
+                }
+            }
+            HeaderState::BetweenSlots => match input {
+                ReadEvent::EndAttribute if *flattened => Some(on_done(fields)),
+                ReadEvent::EndRecord if !*flattened => {
+                    *state = HeaderState::End;
+                    None
+                }
+                ReadEvent::TextValue(name) => {
+                    if let Some(i) = select_index(HeaderFieldKey::HeaderSlot(name.borrow())) {
+                        if progress.get(i).unwrap_or(false) {
+                            Some(Err(ReadError::DuplicateField(Text::from(name))))
+                        } else {
+                            *index = i;
+                            *state = HeaderState::ExpectingSlot;
+                            None
+                        }
+                    } else {
+                        Some(Err(ReadError::UnexpectedField(name.into())))
+                    }
+                }
+                ow => Some(Err(ow.kind_error())),
+            },
+            HeaderState::ExpectingSlot => {
+                if matches!(&input, ReadEvent::Slot) {
+                    *state = HeaderState::SlotItem;
+                    None
+                } else {
+                    Some(Err(input.kind_error()))
+                }
+            }
+            HeaderState::End => {
+                if matches!(&input, ReadEvent::EndAttribute) {
+                    Some(on_done(fields))
+                } else {
+                    Some(Err(input.kind_error()))
+                }
+            }
+        }
+    }
+
+    fn reset(&mut self) {
+        self.state = if self.flattened {
+            if !self.has_body {
+                HeaderState::BetweenSlots
+            } else {
+                HeaderState::ExpectingBody
+            }
+        } else {
+            HeaderState::Init
+        };
+        (self.vtable.reset)(&mut self.fields);
+        self.progress.clear();
+        self.index = 0;
+    }
+}
+
+pub fn take_fields<T: Default, U, V>(state: &mut (T, U, V)) -> Result<T, ReadError> {
+    Ok(std::mem::take(&mut state.0))
 }

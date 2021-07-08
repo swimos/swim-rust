@@ -12,9 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::sync::Arc;
 use swim_common::form::structural::read::parser::{parse_recognize, Span};
 use swim_common::form::structural::read::StructuralReadable;
 use swim_common::form::structural::Tag;
+use swim_common::model::Value;
 
 fn run_recognizer<T: StructuralReadable>(rep: &str) -> T {
     let span = Span::new(rep);
@@ -129,7 +131,19 @@ fn derive_struct_lift_header_body_complex() {
         second: String,
     }
 
-    let instance = run_recognizer::<MyStruct>("@MyStruct({false, true}) { first: -34, second: \"name\" }");
+    let instance =
+        run_recognizer::<MyStruct>("@MyStruct({false, true}) { first: -34, second: \"name\" }");
+    assert_eq!(
+        instance,
+        MyStruct {
+            in_header: vec![false, true],
+            first: -34,
+            second: "name".to_string(),
+        }
+    );
+
+    let instance =
+        run_recognizer::<MyStruct>("@MyStruct(false, true) { first: -34, second: \"name\" }");
     assert_eq!(
         instance,
         MyStruct {
@@ -200,6 +214,19 @@ fn derive_struct_lift_header_slots() {
             second: "name".to_string(),
         }
     );
+
+    let instance = run_recognizer::<MyStruct>(
+        "@MyStruct({lane: lane_uri, node: node_uri}) { first: -34, second: \"name\" }",
+    );
+    assert_eq!(
+        instance,
+        MyStruct {
+            node: "node_uri".to_string(),
+            lane: "lane_uri".to_string(),
+            first: -34,
+            second: "name".to_string(),
+        }
+    );
 }
 
 #[test]
@@ -232,6 +259,20 @@ fn derive_struct_lift_complex_header() {
 
     let instance = run_recognizer::<MyStruct>(
         "@MyStruct(6, lane: lane_uri, node: node_uri) { first: -34, second: \"name\" }",
+    );
+    assert_eq!(
+        instance,
+        MyStruct {
+            count: 6,
+            node: "node_uri".to_string(),
+            lane: "lane_uri".to_string(),
+            first: -34,
+            second: "name".to_string(),
+        }
+    );
+
+    let instance = run_recognizer::<MyStruct>(
+        "@MyStruct({6, lane: lane_uri, node: node_uri}) { first: -34, second: \"name\" }",
     );
     assert_eq!(
         instance,
@@ -544,4 +585,68 @@ fn derive_empty_enum() {
 
     let span = Span::new("");
     assert!(parse_recognize::<Empty>(span).is_err());
+}
+
+#[test]
+fn derive_generic_header() {
+    #[derive(StructuralReadable, PartialEq, Eq, Debug)]
+    struct GenericHeader<S, T, U> {
+        #[form(header)]
+        first: S,
+        #[form(header_body)]
+        second: T,
+        third: U,
+    }
+
+    let instance = run_recognizer::<GenericHeader<i32, String, i32>>(
+        "@GenericHeader(hello, first: 12) { third: 6 }",
+    );
+    assert_eq!(
+        instance,
+        GenericHeader {
+            first: 12,
+            second: "hello".to_string(),
+            third: 6,
+        }
+    );
+
+    let instance = run_recognizer::<GenericHeader<i32, String, i32>>(
+        "@GenericHeader({hello, first: 12}) { third: 6 }",
+    );
+    assert_eq!(
+        instance,
+        GenericHeader {
+            first: 12,
+            second: "hello".to_string(),
+            third: 6,
+        }
+    );
+}
+
+#[test]
+fn derive_map_update() {
+    // The mose complex derivation in the codebase, used here as a stress test.
+    #[derive(StructuralReadable, Debug, PartialEq, Eq)]
+    enum MapUpdate<K, V> {
+        #[form(tag = "update")]
+        Update(#[form(header, name = "key")] K, #[form(body)] Arc<V>),
+        #[form(tag = "remove")]
+        Remove(#[form(header, name = "key")] K),
+        #[form(tag = "clear")]
+        Clear,
+    }
+
+    type Upd = MapUpdate<String, Value>;
+    type UpdNum = MapUpdate<String, i32>;
+
+    let clear = run_recognizer::<Upd>("@clear");
+    assert_eq!(clear, Upd::Clear);
+
+    let remove = run_recognizer::<Upd>("@remove(key: thing)");
+    assert_eq!(remove, Upd::Remove("thing".to_string()));
+    let remove = run_recognizer::<Upd>("@remove({key: thing}) {}");
+    assert_eq!(remove, Upd::Remove("thing".to_string()));
+
+    let update = run_recognizer::<UpdNum>("@update(key: thing) 76");
+    assert_eq!(update, UpdNum::Update("thing".to_string(), Arc::new(76)));
 }

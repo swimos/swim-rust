@@ -284,7 +284,9 @@ pub struct SegregatedFields<'a, 'b> {
 }
 
 impl<'a, 'b> SegregatedFields<'a, 'b> {
-    pub fn not_skipped(&self) -> usize {
+    /// The number of field blocks in the type (most fields are a block in themself but the header,
+    /// if it exists, is a single block).
+    pub fn num_field_blocks(&self) -> usize {
         let SegregatedFields {
             header:
                 HeaderFields {
@@ -295,14 +297,14 @@ impl<'a, 'b> SegregatedFields<'a, 'b> {
                 },
             body,
         } = self;
+
         let mut n = 0;
         if tag_name.is_some() {
             n += 1;
         }
-        if tag_body.is_some() {
+        if tag_body.is_some() || !header_fields.is_empty() {
             n += 1;
         }
-        n += header_fields.len();
         n += attributes.len();
         n += if let BodyFields::StdBody(v) = body {
             v.len()

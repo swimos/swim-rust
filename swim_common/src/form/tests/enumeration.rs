@@ -297,7 +297,7 @@ fn body_replaces2() {
         },
     }
 
-    let body = vec![Item::slot("d", 4)];
+    let body = vec![Item::of(4)];
 
     let rec = Value::Record(
         vec![Attr::of((

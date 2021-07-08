@@ -1829,7 +1829,7 @@ fn tagged() {
 
     let expected_schema = StandardSchema::HeadAttribute {
         schema: Box::new(AttrSchema::new(
-            TextSchema::Or(vec![TextSchema::exact("info"), TextSchema::exact("trace")]),
+            TextSchema::Or(vec![TextSchema::exact("Info"), TextSchema::exact("Trace")]),
             StandardSchema::OfKind(ValueKind::Extant),
         )),
         required: true,

@@ -81,12 +81,28 @@ impl<'a, 'b> ToTokens for DeriveStructuralReadable<'b, SegregatedStructModel<'a,
 
             let read_impl = StructReadableImpl::new(model, &type_gen);
 
-            let on_reset = ResetFn::new(model.fields.not_skipped());
+            let on_reset = ResetFn::new(model.fields.num_field_blocks());
 
             let select_feed_name = select_feed_name();
             let on_done_name = on_done_name();
             let on_reset_name = on_reset_name();
             let builder_name = builder_ident();
+
+            let header_recog_block = if model.fields.header.header_fields.is_empty() {
+                None
+            } else {
+                let HeaderFields {
+                    tag_body,
+                    header_fields,
+                    ..
+                } = &model.fields.header;
+                Some(HeaderRecognizerFns::new(
+                    &target,
+                    *tag_body,
+                    header_fields.as_slice(),
+                    &new_generics,
+                ))
+            };
 
             tokens.append_all(quote! {
                 const _: () = {
@@ -116,6 +132,8 @@ impl<'a, 'b> ToTokens for DeriveStructuralReadable<'b, SegregatedStructModel<'a,
                          #on_reset
                     }
 
+                    #header_recog_block
+
                     #[automatically_derived]
                     impl #impl_gen swim_common::form::structural::read::recognizer::RecognizerReadable for #name #type_gen #where_clause {
                         #read_impl
@@ -135,8 +153,16 @@ fn builder_ident() -> syn::Ident {
     syn::Ident::new(BUILDER_NAME, Span::call_site())
 }
 
+fn header_builder_ident() -> syn::Ident {
+    syn::Ident::new(HEADER_BUILDER_NAME, Span::call_site())
+}
+
 fn suffixed_builder_ident(suffix: usize) -> syn::Ident {
     format_ident!("{}{}", BUILDER_NAME, suffix)
+}
+
+fn suffixed_header_builder_ident(suffix: usize) -> syn::Ident {
+    format_ident!("{}{}", HEADER_BUILDER_NAME, suffix)
 }
 
 impl<'a, 'b> ToTokens for DeriveStructuralReadable<'b, SegregatedEnumModel<'a, 'b>> {
@@ -197,8 +223,20 @@ impl<'a, 'b> ToTokens for DeriveStructuralReadable<'b, SegregatedEnumModel<'a, '
                     let constructor = parse_quote!(#name::#var_name);
                     let on_done = OnDoneFn::new(model, constructor);
 
-                    let on_reset = ResetFn::new(model.fields.not_skipped());
+                    let on_reset = ResetFn::new(model.fields.num_field_blocks());
 
+                    let header_recog_block = if model.fields.header.header_fields.is_empty() {
+                        None
+                    } else {
+                        let HeaderFields { tag_body, header_fields, ..} = &model.fields.header;
+                        Some(HeaderRecognizerFns::variant(
+                            &enum_ty,
+                            *tag_body,
+                            header_fields.as_slice(),
+                            &new_generics,
+                            i
+                        ))
+                    };
                     quote! {
                         type #builder_name #type_gen = #builder_type;
                         #select_index
@@ -224,6 +262,8 @@ impl<'a, 'b> ToTokens for DeriveStructuralReadable<'b, SegregatedEnumModel<'a, '
                         {
                             #on_reset
                         }
+
+                        #header_recog_block
 
                     }
                 });
@@ -292,30 +332,139 @@ impl<'a, 'b> ToTokens for RecognizerState<'a, 'b> {
             target,
             model: SegregatedStructModel { fields, .. },
         } = self;
-        let it = enumerate_fields_discriminated(fields);
+        let it = enumerate_fields(fields);
 
-        let builder_types = it.clone().map(|(fld, _)| {
-            let ty = fld.field_ty;
-            quote!(core::option::Option<#ty>)
+        let builder_types = it.clone().map(|grp| match grp {
+            FieldGroup::Tag(fld) | FieldGroup::Item(fld) | FieldGroup::Attribute(fld) => {
+                let ty = fld.field_ty;
+                quote!(core::option::Option<#ty>)
+            }
+            FieldGroup::Header {
+                tag_body,
+                header_fields,
+            } => match tag_body {
+                Some(fld) if header_fields.is_empty() => {
+                    let ty = fld.field_ty;
+                    quote!(core::option::Option<#ty>)
+                }
+                ow => {
+                    let header_fields = HeaderFieldsState {
+                        tag_body: ow,
+                        header_fields,
+                    };
+                    quote!(core::option::Option<#header_fields>)
+                }
+            },
         });
 
-        let recognizer_types = it.map(|(fld, discriminator)| {
-            let ty = fld.field_ty;
-            match discriminator {
-                FieldDiscriminator::Tag => {
+        let recognizer_types = it.map(|grp| {
+            match grp {
+                FieldGroup::Tag(fld) => {
+                    let ty = fld.field_ty;
                     quote!(swim_common::form::structural::read::recognizer::TagRecognizer<#ty>)
                 }
-                FieldDiscriminator::Attr => {
+                FieldGroup::Attribute(fld) => {
+                    let ty = fld.field_ty;
                     quote!(<#ty as swim_common::form::structural::read::recognizer::RecognizerReadable>::AttrRec)
                 }
-                FieldDiscriminator::Other => {
+                FieldGroup::Item(fld) => {
+                    let ty = fld.field_ty;
                     quote!(<#ty as swim_common::form::structural::read::recognizer::RecognizerReadable>::Rec)
                 }
+                FieldGroup::Header { tag_body, header_fields } => {
+                    match tag_body {
+                        Some(fld) if header_fields.is_empty() => {
+                            let ty = fld.field_ty;
+                            quote!(<#ty as swim_common::form::structural::read::recognizer::RecognizerReadable>::AttrRec)
+                        }
+                        ow => {
+                            let header_rep = HeaderFieldsState { tag_body: ow, header_fields };
+                            let recog_state = HeaderRecognizerState {
+                                target: *target,
+                                tag_body: ow,
+                                header_fields,
+                            };
+                            let header_recognizer = quote!(swim_common::form::structural::read::recognizer::HeaderRecognizer<#header_rep, #recog_state>);
+                            quote!(swim_common::form::structural::read::recognizer::FirstOf<#header_recognizer, #header_recognizer>)
+                        }
+                    }
+                }
             }
+
         });
 
         tokens.append_all(quote! {
             ((#(#builder_types,)*), (#(#recognizer_types,)*), core::marker::PhantomData<fn() -> #target>)
+        });
+    }
+}
+
+struct HeaderFieldsState<'a> {
+    tag_body: Option<&'a FieldModel<'a>>,
+    header_fields: &'a [&'a FieldModel<'a>],
+}
+
+impl<'a> ToTokens for HeaderFieldsState<'a> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let HeaderFieldsState {
+            tag_body,
+            header_fields,
+        } = self;
+        let it = tag_body.iter().chain(header_fields.iter());
+
+        let builder_types = it.clone().map(|fld| {
+            let ty = fld.field_ty;
+            quote!(core::option::Option<#ty>)
+        });
+
+        tokens.append_all(quote! {
+            (#(#builder_types,)*)
+        });
+    }
+}
+
+struct HeaderRecognizerState<'a, 'b> {
+    target: &'b syn::Type,
+    tag_body: Option<&'a FieldModel<'a>>,
+    header_fields: &'a [&'a FieldModel<'a>],
+}
+
+impl<'a, 'b> HeaderRecognizerState<'a, 'b> {
+    fn new(
+        target: &'b syn::Type,
+        tag_body: Option<&'a FieldModel<'a>>,
+        header_fields: &'a [&'a FieldModel<'a>],
+    ) -> Self {
+        HeaderRecognizerState {
+            target,
+            tag_body,
+            header_fields,
+        }
+    }
+}
+
+impl<'a, 'b> ToTokens for HeaderRecognizerState<'a, 'b> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let HeaderRecognizerState {
+            target,
+            tag_body,
+            header_fields,
+        } = self;
+
+        let it = tag_body.iter().chain(header_fields.iter());
+
+        let fields_state = HeaderFieldsState {
+            tag_body: *tag_body,
+            header_fields: *header_fields,
+        };
+
+        let recognizer_types = it.map(|fld| {
+            let ty = fld.field_ty;
+            quote!(<#ty as swim_common::form::structural::read::recognizer::RecognizerReadable>::Rec)
+        });
+
+        tokens.append_all(quote! {
+            (#fields_state, (#(#recognizer_types,)*), core::marker::PhantomData<fn() -> #target>)
         });
     }
 }
@@ -352,15 +501,24 @@ impl<'a, 'b> SelectIndexFnLabelled<'a, 'b> {
 }
 
 const SELECT_INDEX_NAME: &str = "select_index";
+const HEADER_SELECT_INDEX_NAME: &str = "select_index_header";
 
 fn select_index_name() -> syn::Ident {
     syn::Ident::new(SELECT_INDEX_NAME, Span::call_site())
 }
+fn headerselect_index_name() -> syn::Ident {
+    syn::Ident::new(HEADER_SELECT_INDEX_NAME, Span::call_site())
+}
 
 const SELECT_FEED_NAME: &str = "select_feed";
+const HEADER_SELECT_FEED_NAME: &str = "header_select_feed";
 
 fn select_feed_name() -> syn::Ident {
     syn::Ident::new(SELECT_FEED_NAME, Span::call_site())
+}
+
+fn header_select_feed_name() -> syn::Ident {
+    syn::Ident::new(HEADER_SELECT_FEED_NAME, Span::call_site())
 }
 
 const ON_DONE_NAME: &str = "on_done";
@@ -369,9 +527,13 @@ fn on_done_name() -> syn::Ident {
     syn::Ident::new(ON_DONE_NAME, Span::call_site())
 }
 const ON_RESET_NAME: &str = "on_reset";
+const HEADER_ON_RESET_NAME: &str = "header_on_reset";
 
 fn on_reset_name() -> syn::Ident {
     syn::Ident::new(ON_RESET_NAME, Span::call_site())
+}
+fn header_on_reset_name() -> syn::Ident {
+    syn::Ident::new(HEADER_ON_RESET_NAME, Span::call_site())
 }
 
 const SELECT_VAR_NAME: &str = "select_variant";
@@ -381,6 +543,7 @@ fn select_var_name() -> syn::Ident {
 }
 
 const BUILDER_NAME: &str = "Builder";
+const HEADER_BUILDER_NAME: &str = "HeaderBuilder";
 
 impl<'a, 'b> ToTokens for SelectIndexFnLabelled<'a, 'b> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
@@ -409,26 +572,15 @@ impl<'a, 'b> ToTokens for SelectIndexFnLabelled<'a, 'b> {
             None
         };
 
-        let body_case = if tag_body.is_some() {
+        let header_case = if tag_body.is_some() || !header_fields.is_empty() {
             let case = Some(quote! {
-                swim_common::form::structural::read::recognizer::LabelledFieldKey::HeaderBody => core::option::Option::Some(#offset),
+                swim_common::form::structural::read::recognizer::LabelledFieldKey::Header => core::option::Option::Some(#offset),
             });
             offset += 1;
             case
         } else {
             None
         };
-
-        let header_cases = header_fields.iter().scan(offset, |off, fld| {
-            let n = *off;
-            *off += 1;
-            let name = fld.resolve_name();
-            Some(quote! {
-                swim_common::form::structural::read::recognizer::LabelledFieldKey::HeaderSlot(#name) => core::option::Option::Some(#n),
-            })
-        });
-
-        offset += header_fields.len() as u32;
 
         let attr_cases = attributes.iter().scan(offset, |off, fld| {
             let n = *off;
@@ -461,8 +613,7 @@ impl<'a, 'b> ToTokens for SelectIndexFnLabelled<'a, 'b> {
             fn #fn_name(key: swim_common::form::structural::read::recognizer::LabelledFieldKey<'_>) -> core::option::Option<u32> {
                 match key {
                     #name_case
-                    #body_case
-                    #(#header_cases)*
+                    #header_case
                     #(#attr_cases)*
                     #(#body_cases)*
                     _ => core::option::Option::None,
@@ -516,26 +667,15 @@ impl<'a, 'b> ToTokens for SelectIndexFnOrdinal<'a, 'b> {
             None
         };
 
-        let body_case = if tag_body.is_some() {
+        let header_case = if tag_body.is_some() || !header_fields.is_empty() {
             let case = Some(quote! {
-                swim_common::form::structural::read::recognizer::OrdinalFieldKey::HeaderBody => core::option::Option::Some(#offset),
+                swim_common::form::structural::read::recognizer::OrdinalFieldKey::Header => core::option::Option::Some(#offset),
             });
             offset += 1;
             case
         } else {
             None
         };
-
-        let header_cases = header_fields.iter().scan(offset, |off, fld| {
-            let n = *off;
-            *off += 1;
-            let name = fld.resolve_name();
-            Some(quote! {
-                swim_common::form::structural::read::recognizer::OrdinalFieldKey::HeaderSlot(#name) => core::option::Option::Some(#n),
-            })
-        });
-
-        offset += header_fields.len() as u32;
 
         let attr_cases = attributes.iter().scan(offset, |off, fld| {
             let n = *off;
@@ -559,8 +699,7 @@ impl<'a, 'b> ToTokens for SelectIndexFnOrdinal<'a, 'b> {
             fn #fn_name(key: swim_common::form::structural::read::recognizer::OrdinalFieldKey<'_>) -> core::option::Option<u32> {
                 match key {
                     #name_case
-                    #body_case
-                    #(#header_cases)*
+                    #header_case
                     #(#attr_cases)*
                     swim_common::form::structural::read::recognizer::OrdinalFieldKey::FirstItem => core::option::Option::Some(#offset),
                     _ => core::option::Option::None,
@@ -580,11 +719,33 @@ impl<'a, 'b> SelectFeedFn<'a, 'b> {
     }
 }
 
+#[derive(Clone, Copy)]
+enum FieldGroup<'a> {
+    Tag(&'a FieldModel<'a>),
+    Header {
+        tag_body: Option<&'a FieldModel<'a>>,
+        header_fields: &'a [&'a FieldModel<'a>],
+    },
+    Attribute(&'a FieldModel<'a>),
+    Item(&'a FieldModel<'a>),
+}
+
+impl<'a> FieldGroup<'a> {
+    fn single_field(&self) -> Option<&FieldModel<'a>> {
+        match self {
+            FieldGroup::Tag(fld) => Some(fld),
+            FieldGroup::Header { .. } => None,
+            FieldGroup::Attribute(fld) => Some(fld),
+            FieldGroup::Item(fld) => Some(fld),
+        }
+    }
+}
+
 /// Enumerates the fields in a descriptor in the order in which the implementation exepects to
 /// receive them.
 fn enumerate_fields<'a>(
     model: &'a SegregatedFields<'a, 'a>,
-) -> impl Iterator<Item = &'a FieldModel<'a>> + Clone + 'a {
+) -> impl Iterator<Item = FieldGroup<'a>> + Clone + 'a {
     let SegregatedFields { header, body } = model;
     let HeaderFields {
         tag_name,
@@ -594,58 +755,26 @@ fn enumerate_fields<'a>(
     } = header;
 
     let body_fields = match body {
-        BodyFields::StdBody(vec) => Either::Left(vec.iter()),
-        BodyFields::ReplacedBody(fld) => Either::Right(std::iter::once(fld)),
+        BodyFields::StdBody(vec) => Either::Left(vec.iter().copied().map(FieldGroup::Item)),
+        BodyFields::ReplacedBody(fld) => Either::Right(std::iter::once(FieldGroup::Item(fld))),
+    };
+
+    let header = if tag_body.is_none() && header_fields.is_empty() {
+        None
+    } else {
+        Some(FieldGroup::Header {
+            tag_body: *tag_body,
+            header_fields: header_fields.as_slice(),
+        })
     };
 
     tag_name
         .iter()
-        .chain(tag_body.iter())
-        .chain(header_fields.iter())
-        .chain(attributes.iter())
-        .chain(body_fields.into_iter())
         .copied()
-}
-
-enum FieldDiscriminator {
-    Tag,
-    Attr,
-    Other,
-}
-
-/// Enumerates the fields in a descriptor in the order in which the implementation exepects to
-/// receive them, indicating which fields are attributes.
-fn enumerate_fields_discriminated<'a>(
-    model: &'a SegregatedFields<'a, 'a>,
-) -> impl Iterator<Item = (&'a FieldModel<'a>, FieldDiscriminator)> + Clone + 'a {
-    let SegregatedFields { header, body } = model;
-    let HeaderFields {
-        tag_name,
-        tag_body,
-        header_fields,
-        attributes,
-    } = header;
-
-    let body_fields = match body {
-        BodyFields::StdBody(vec) => Either::Left(vec.iter()),
-        BodyFields::ReplacedBody(fld) => Either::Right(std::iter::once(fld)),
-    };
-
-    tag_name
-        .iter()
-        .map(|f| (*f, FieldDiscriminator::Tag))
-        .chain(tag_body.iter().map(|f| (*f, FieldDiscriminator::Other)))
-        .chain(
-            header_fields
-                .iter()
-                .map(|f| (*f, FieldDiscriminator::Other)),
-        )
-        .chain(attributes.iter().map(|f| (*f, FieldDiscriminator::Attr)))
-        .chain(
-            body_fields
-                .into_iter()
-                .map(|f| (*f, FieldDiscriminator::Other)),
-        )
+        .map(FieldGroup::Tag)
+        .chain(header.into_iter())
+        .chain(attributes.iter().copied().map(FieldGroup::Attribute))
+        .chain(body_fields.into_iter())
 }
 
 impl<'a, 'b> ToTokens for SelectFeedFn<'a, 'b> {
@@ -655,8 +784,14 @@ impl<'a, 'b> ToTokens for SelectFeedFn<'a, 'b> {
 
         let it = enumerate_fields(fields);
 
-        let cases = it.enumerate().map(|(i, fld)| {
-            let name = fld.resolve_name();
+        let cases = it.enumerate().map(|(i, grp)| {
+            let name = if let Some(fld) = grp.single_field() {
+                let fld_name = fld.resolve_name();
+                quote!(#fld_name)
+            } else {
+                "__header".to_token_stream()
+            };
+
             let idx = syn::Index::from(i);
             let case_index = i as u32;
             quote! {
@@ -696,25 +831,59 @@ impl<'a, 'b> ToTokens for OnDoneFn<'a, 'b> {
         } = self;
         let SegregatedStructModel { inner, fields } = fields;
 
-        let it = enumerate_fields_discriminated(fields);
+        let it = enumerate_fields(fields);
 
-        let validators = it.clone().enumerate().map(|(i, (fld, discriminator))| {
+        let validators = it.clone().enumerate().map(|(i, grp)| {
             let idx = syn::Index::from(i);
-            let name = fld.resolve_name();
-            let ty = fld.field_ty;
-
-            if matches!(discriminator, FieldDiscriminator::Tag) {
-                quote! {
-                    if fields.#idx.is_none() {
-                        missing.push(swim_common::model::text::Text::new(#name));
-                    }
-                }
-            } else {
-                quote! {
-                    if fields.#idx.is_none() {
-                        fields.#idx = <#ty as swim_common::form::structural::read::recognizer::RecognizerReadable>::on_absent();
+            match grp {
+                FieldGroup::Tag(fld) => {
+                    let name = fld.resolve_name();
+                    quote! {
                         if fields.#idx.is_none() {
                             missing.push(swim_common::model::text::Text::new(#name));
+                        }
+                    }
+                }
+                FieldGroup::Header { tag_body, header_fields } => {
+                    match tag_body {
+                        Some(fld) if header_fields.is_empty() => {
+                            let name = fld.resolve_name();
+                            let ty = fld.field_ty;
+
+                            quote! {
+                                if fields.#idx.is_none() {
+                                    fields.#idx = <#ty as swim_common::form::structural::read::recognizer::RecognizerReadable>::on_absent();
+                                    if fields.#idx.is_none() {
+                                        missing.push(swim_common::model::text::Text::new(#name));
+                                    }
+                                }
+                            }
+                        }
+                        ow => {
+                            ow.iter().chain(header_fields.iter()).enumerate().fold(TokenStream::new(), |mut out, (j, fld)| {
+                                let inner_idx = syn::Index::from(j);
+                                let name = fld.resolve_name();
+
+                                out.append_all(quote! {
+                                if fields.#idx.as_ref().and_then(|f| f.#inner_idx.as_ref()).is_none() {
+                                    missing.push(swim_common::model::text::Text::new(#name));
+                                }
+                            });
+                                out
+                            })
+                        }
+                    }
+                }
+                FieldGroup::Attribute(fld) | FieldGroup::Item(fld) => {
+                    let name = fld.resolve_name();
+                    let ty = fld.field_ty;
+
+                    quote! {
+                        if fields.#idx.is_none() {
+                            fields.#idx = <#ty as swim_common::form::structural::read::recognizer::RecognizerReadable>::on_absent();
+                            if fields.#idx.is_none() {
+                                missing.push(swim_common::model::text::Text::new(#name));
+                            }
                         }
                     }
                 }
@@ -722,14 +891,32 @@ impl<'a, 'b> ToTokens for OnDoneFn<'a, 'b> {
 
         });
 
-        let field_dest = it
-            .clone()
-            .map(|(fld, _)| &fld.name)
-            .map(|name| quote!(core::option::Option::Some(#name)));
+        let field_dest = it.clone().map(|grp| match grp {
+            FieldGroup::Item(fld) | FieldGroup::Attribute(fld) | FieldGroup::Tag(fld) => {
+                let name = &fld.name;
+                quote!(core::option::Option::Some(#name))
+            }
+            FieldGroup::Header {
+                tag_body,
+                header_fields,
+            } => match tag_body {
+                Some(fld) if header_fields.is_empty() => {
+                    let name = &fld.name;
+                    quote!(core::option::Option::Some(#name))
+                }
+                ow => {
+                    let header_fields = ow.iter().chain(header_fields.iter()).map(|fld| {
+                        let name = &fld.name;
+                        quote!(core::option::Option::Some(#name))
+                    });
+                    quote!(core::option::Option::Some((#(#header_fields,)*)))
+                }
+            },
+        });
 
         let num_fields = inner.fields_model.fields.len();
-        let not_skipped = fields.not_skipped();
-        let field_takes = (0..not_skipped).map(|i| {
+        let num_blocks = fields.num_field_blocks();
+        let field_takes = (0..num_blocks).map(|i| {
             let idx = syn::Index::from(i);
             quote!(fields.#idx.take())
         });
@@ -754,8 +941,12 @@ impl<'a, 'b> ToTokens for OnDoneFn<'a, 'b> {
                 quote!(#constructor)
             }
             _ => {
-                let name_map = it
-                    .map(|(fld, _)| (fld.ordinal, &fld.name))
+                let name_map = inner
+                    .fields_model
+                    .fields
+                    .iter()
+                    .filter(|fld| fld.directive != FieldKind::Skip)
+                    .map(|fld| (fld.model.ordinal, &fld.model.name))
                     .collect::<HashMap<_, _>>();
                 let con_params = (0..num_fields).map(|i| {
                     if let Some(name) = name_map.get(&i) {
@@ -817,24 +1008,68 @@ impl ToTokens for ResetFn {
 
 struct ConstructFieldRecognizers<'a, 'b> {
     fields: &'b SegregatedStructModel<'a, 'b>,
+    variant: Option<usize>,
 }
 
 impl<'a, 'b> ToTokens for ConstructFieldRecognizers<'a, 'b> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        let ConstructFieldRecognizers { fields } = self;
+        let ConstructFieldRecognizers { fields, variant } = self;
         let SegregatedStructModel { fields, .. } = fields;
-        let initializers = enumerate_fields_discriminated(fields)
-            .map(|(fld, discriminator)| {
-                let ty = fld.field_ty;
-                match discriminator {
-                    FieldDiscriminator::Tag => {
+        let initializers = enumerate_fields(fields)
+            .map(|grp| {
+                match grp {
+                    FieldGroup::Tag(fld) => {
+                        let ty = fld.field_ty;
                         quote!(<swim_common::form::structural::read::recognizer::TagRecognizer<#ty> as core::default::Default>::default())
                     }
-                    FieldDiscriminator::Attr => {
+                    FieldGroup::Attribute(fld) => {
+                        let ty = fld.field_ty;
                         quote!(<#ty as swim_common::form::structural::read::recognizer::RecognizerReadable>::make_attr_recognizer())
                     }
-                    FieldDiscriminator::Other => {
+                    FieldGroup::Item(fld) => {
+                        let ty = fld.field_ty;
                         quote!(<#ty as swim_common::form::structural::read::recognizer::RecognizerReadable>::make_recognizer())
+                    }
+                    FieldGroup::Header { tag_body, header_fields } => {
+                        match tag_body {
+                            Some(fld) if header_fields.is_empty() => {
+                                let ty = fld.field_ty;
+                                quote!(<#ty as swim_common::form::structural::read::recognizer::RecognizerReadable>::make_attr_recognizer())
+                            }
+                            ow => {
+                                let select_index_name = if let Some(i) = variant {
+                                    suffix_ident(HEADER_SELECT_INDEX_NAME, *i)
+                                } else {
+                                    headerselect_index_name()
+                                };
+                                let (_, select_feed_name, on_reset_name) = header_identifiers(*variant);
+                                let has_body = ow.is_some();
+                                let num_slots = header_fields.len() as u32;
+
+                                let recog_inits = ow.iter().chain(header_fields.iter()).map(|fld| {
+                                    let ty = fld.field_ty;
+                                    quote!(<#ty as swim_common::form::structural::read::recognizer::RecognizerReadable>::make_recognizer())
+                                });
+
+                                let flds_constr= quote! {
+                                    (core::default::Default::default(), (#(#recog_inits,)*), core::marker::PhantomData)
+                                };
+
+                                quote! {
+                                    swim_common::form::structural::read::recognizer::header_recognizer(
+                                        #has_body,
+                                        || #flds_constr,
+                                        #num_slots,
+                                        swim_common::form::structural::read::recognizer::HeaderVTable::new(
+                                            #select_index_name,
+                                            #select_feed_name,
+                                            swim_common::form::structural::read::recognizer::take_fields,
+                                            #on_reset_name
+                                        )
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             });
@@ -909,18 +1144,10 @@ impl<'a, 'b> ToTokens for StructReadableImpl<'a, 'b> {
             quote!(swim_common::form::structural::read::recognizer::TagSpec::Fixed(#lit_name))
         };
 
-        let has_header_body = fields.fields.header.tag_body.is_some();
-        let has_header_slots = !fields.fields.header.header_fields.is_empty();
-
-        let header_kind = if has_header_body && has_header_slots {
-            quote!(swim_common::form::structural::read::recognizer::HeaderKind::Both)
-        } else if has_header_body && !has_header_slots {
-            quote!(swim_common::form::structural::read::recognizer::HeaderKind::BodyOnly)
-        } else {
-            quote!(swim_common::form::structural::read::recognizer::HeaderKind::SlotsOnly)
+        let make_fld_recog = ConstructFieldRecognizers {
+            fields: *fields,
+            variant: None,
         };
-
-        let make_fld_recog = ConstructFieldRecognizers { fields: *fields };
         let num_fields = fields.inner.fields_model.fields.len() as u32;
 
         let extra_params = is_simple_param(&fields.fields.body);
@@ -947,7 +1174,6 @@ impl<'a, 'b> ToTokens for StructReadableImpl<'a, 'b> {
             fn make_recognizer() -> Self::Rec {
                 <#recog_ty>::new(
                     #tag,
-                    #header_kind,
                     (core::default::Default::default(), #make_fld_recog, core::marker::PhantomData),
                     #num_fields,
                     <#vtable_ty>::new(
@@ -1001,19 +1227,8 @@ impl<'a, 'b> ToTokens for SelectVariantFn<'a, 'b> {
                 let builder_name = suffixed_builder_ident(i);
                 let builder_ty = parse_quote!(#builder_name #gen_params);
                 let (recognizer, vtable) = compound_recognizer(var, &enum_ty, &builder_ty);
-                let make_fld_recog = ConstructFieldRecognizers { fields: var };
+                let make_fld_recog = ConstructFieldRecognizers { fields: var, variant: Some(i) };
                 let extra_params = is_simple_param(&var.fields.body);
-
-                let has_header_body = var.fields.header.tag_body.is_some();
-                let has_header_slots = !var.fields.header.header_fields.is_empty();
-
-                let header_kind = if has_header_body && has_header_slots {
-                    quote!(swim_common::form::structural::read::recognizer::HeaderKind::Both)
-                } else if has_header_body && !has_header_slots {
-                    quote!(swim_common::form::structural::read::recognizer::HeaderKind::BodyOnly)
-                } else {
-                    quote!(swim_common::form::structural::read::recognizer::HeaderKind::SlotsOnly)
-                };
 
                 let num_fields = var.inner.fields_model.fields.len() as u32;
                 let select_index = suffix_ident(SELECT_INDEX_NAME, i);
@@ -1023,7 +1238,6 @@ impl<'a, 'b> ToTokens for SelectVariantFn<'a, 'b> {
 
                 parse_quote! {
                     <#recognizer>::variant(
-                        #header_kind,
                         (core::default::Default::default(), #make_fld_recog, core::marker::PhantomData),
                         #num_fields,
                         <#vtable>::new(
@@ -1115,5 +1329,220 @@ fn add_bounds(original: &Generics, generics: &mut Generics) {
     let where_clause = generics.make_where_clause();
     for bound in bounds.into_iter() {
         where_clause.predicates.push(bound);
+    }
+}
+
+struct HeaderSelectIndexFn<'a, 'b> {
+    tag_body: Option<&'b FieldModel<'a>>,
+    header_fields: &'b [&'b FieldModel<'a>],
+    variant: Option<usize>,
+}
+
+impl<'a, 'b> HeaderSelectIndexFn<'a, 'b> {
+    fn new(
+        tag_body: Option<&'b FieldModel<'a>>,
+        header_fields: &'b [&'b FieldModel<'a>],
+        variant: Option<usize>,
+    ) -> Self {
+        HeaderSelectIndexFn {
+            tag_body,
+            header_fields,
+            variant,
+        }
+    }
+}
+
+struct HeaderFeedFn<'a, 'b> {
+    tag_body: Option<&'b FieldModel<'a>>,
+    header_fields: &'b [&'b FieldModel<'a>],
+}
+
+impl<'a, 'b> HeaderFeedFn<'a, 'b> {
+    fn new(tag_body: Option<&'b FieldModel<'a>>, header_fields: &'b [&'b FieldModel<'a>]) -> Self {
+        HeaderFeedFn {
+            tag_body,
+            header_fields,
+        }
+    }
+}
+
+impl<'a, 'b> ToTokens for HeaderSelectIndexFn<'a, 'b> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let HeaderSelectIndexFn {
+            tag_body,
+            header_fields,
+            variant,
+        } = self;
+
+        let mut offset: u32 = 0;
+
+        let body_case = if tag_body.is_some() {
+            offset += 1;
+            Some(quote! {
+                swim_common::form::structural::read::recognizer::HeaderFieldKey::HeaderBody => core::option::Option::Some(0),
+            })
+        } else {
+            None
+        };
+
+        let header_slot_cases = header_fields.iter().scan(offset, |off, fld| {
+            let n = *off;
+            *off += 1;
+            let name = fld.resolve_name();
+            Some(quote! {
+                swim_common::form::structural::read::recognizer::HeaderFieldKey::HeaderSlot(#name) => core::option::Option::Some(#n),
+            })
+        });
+
+        let fn_name = if let Some(var_ord) = variant {
+            suffix_ident(HEADER_SELECT_INDEX_NAME, *var_ord)
+        } else {
+            headerselect_index_name()
+        };
+
+        tokens.append_all(quote! {
+            #[automatically_derived]
+            fn #fn_name(key: swim_common::form::structural::read::recognizer::HeaderFieldKey<'_>) -> core::option::Option<u32> {
+                match key {
+                    #body_case
+                    #(#header_slot_cases)*
+                    _ => core::option::Option::None,
+                }
+            }
+        })
+    }
+}
+
+impl<'a, 'b> ToTokens for HeaderFeedFn<'a, 'b> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let HeaderFeedFn {
+            tag_body,
+            header_fields,
+        } = self;
+
+        let it = tag_body.iter().chain(header_fields.iter());
+
+        let cases = it.enumerate().map(|(i, fld)| {
+            let name = fld.resolve_name();
+
+            let idx = syn::Index::from(i);
+            let case_index = i as u32;
+            quote! {
+                #case_index => swim_common::form::structural::read::recognizer::feed_field(#name, &mut fields.#idx, &mut recognizers.#idx, event),
+            }
+        });
+
+        tokens.append_all(quote! {
+            let (fields, recognizers, _) = state;
+            match index {
+                #(#cases)*
+                _ => core::option::Option::Some(core::result::Result::Err(swim_common::form::structural::read::error::ReadError::InconsistentState)),
+            }
+        })
+    }
+}
+
+struct HeaderRecognizerFns<'a, 'b> {
+    target: &'b syn::Type,
+    tag_body: Option<&'b FieldModel<'a>>,
+    header_fields: &'b [&'b FieldModel<'a>],
+    variant: Option<usize>,
+    generics: &'a Generics,
+}
+
+impl<'a, 'b> HeaderRecognizerFns<'a, 'b> {
+    fn new(
+        target: &'b syn::Type,
+        tag_body: Option<&'b FieldModel<'a>>,
+        header_fields: &'b [&'b FieldModel<'a>],
+        generics: &'a Generics,
+    ) -> Self {
+        HeaderRecognizerFns {
+            target,
+            tag_body,
+            header_fields,
+            variant: None,
+            generics,
+        }
+    }
+
+    fn variant(
+        target: &'b syn::Type,
+        tag_body: Option<&'b FieldModel<'a>>,
+        header_fields: &'b [&'b FieldModel<'a>],
+        generics: &'a Generics,
+        variant: usize,
+    ) -> Self {
+        HeaderRecognizerFns {
+            target,
+            tag_body,
+            header_fields,
+            variant: Some(variant),
+            generics,
+        }
+    }
+}
+
+fn header_identifiers(variant: Option<usize>) -> (syn::Ident, syn::Ident, syn::Ident) {
+    if let Some(i) = variant {
+        (
+            suffixed_header_builder_ident(i),
+            suffix_ident(HEADER_SELECT_FEED_NAME, i),
+            suffix_ident(HEADER_ON_RESET_NAME, i),
+        )
+    } else {
+        (
+            header_builder_ident(),
+            header_select_feed_name(),
+            header_on_reset_name(),
+        )
+    }
+}
+
+impl<'a, 'b> ToTokens for HeaderRecognizerFns<'a, 'b> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let HeaderRecognizerFns {
+            target,
+            tag_body,
+            header_fields,
+            variant,
+            generics,
+        } = self;
+
+        let (builder_name, select_feed_name, on_reset_name) = header_identifiers(*variant);
+
+        let header_builder_type = HeaderRecognizerState::new(*target, *tag_body, *header_fields);
+        let select_index = HeaderSelectIndexFn::new(*tag_body, *header_fields, *variant);
+        let select_feed = HeaderFeedFn::new(*tag_body, *header_fields);
+        let num_fields = if tag_body.is_some() {
+            header_fields.len() + 1
+        } else {
+            header_fields.len()
+        };
+        let on_reset = ResetFn::new(num_fields);
+
+        let (impl_gen, type_gen, where_clause) = generics.split_for_impl();
+
+        tokens.append_all(quote! {
+
+            type #builder_name #type_gen = #header_builder_type;
+            #select_index
+
+            #[automatically_derived]
+            fn #select_feed_name #impl_gen(state: &mut #builder_name #type_gen, index: u32, event: swim_common::form::structural::read::event::ReadEvent<'_>)
+                -> core::option::Option<core::result::Result<(), swim_common::form::structural::read::error::ReadError>>
+            #where_clause
+            {
+                #select_feed
+            }
+
+            #[automatically_derived]
+            fn #on_reset_name #impl_gen(state: &mut #builder_name #type_gen)
+            #where_clause
+            {
+                 #on_reset
+            }
+
+        });
     }
 }
