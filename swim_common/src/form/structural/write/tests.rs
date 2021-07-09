@@ -160,34 +160,6 @@ fn text_into_structure() {
 }
 
 #[test]
-fn ref_structure() {
-    let text = Text::new("hello");
-    let value = (&text).structure();
-    assert_eq!(value, Value::Text(text));
-}
-
-#[test]
-fn ref_into_structure() {
-    let text = Text::new("hello");
-    let value = (&text).into_structure();
-    assert_eq!(value, Value::Text(text));
-}
-
-#[test]
-fn mut_structure() {
-    let mut text = Text::new("hello");
-    let value = (&mut text).structure();
-    assert_eq!(value, Value::Text(text));
-}
-
-#[test]
-fn mut_into_structure() {
-    let mut text = Text::new("hello");
-    let value = (&mut text).into_structure();
-    assert_eq!(value, Value::Text(text));
-}
-
-#[test]
 fn arc_structure() {
     let text = Text::new("hello");
     let value = Arc::new(text.clone()).structure();
