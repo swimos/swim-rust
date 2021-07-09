@@ -473,7 +473,7 @@ impl<T, Flds> NamedFieldsRecognizer<T, Flds> {
     /// * `select_index` - Map the field names of the type to integer indicies.
     /// * `num_fields` - The total number of named fields in the representation.
     /// * `select_recog` - Attempt to update the state with the next read event.
-    /// * `on_done` - Called when the recognizer is complete to conver the state to the output type.
+    /// * `on_done` - Called when the recognizer is complete to convert the state to the output type.
     /// * `reset` - Called to reset the state to its initial value.
     pub fn new(
         fields: Flds,
@@ -504,7 +504,7 @@ impl<T, Flds> NamedFieldsRecognizer<T, Flds> {
     /// * `select_index` - Map the field names of the type to integer indicies.
     /// * `num_fields` - The total number of named fields in the representation.
     /// * `select_recog` - Attempt to update the state with the next read event.
-    /// * `on_done` - Called when the recognizer is complete to conver the state to the output type.
+    /// * `on_done` - Called when the recognizer is complete to convert the state to the output type.
     /// * `reset` - Called to reset the state to its initial value.
     pub fn new_attr(
         fields: Flds,
@@ -621,7 +621,7 @@ impl<T, Flds> OrdinalFieldsRecognizer<T, Flds> {
     /// * `fields` - The state for the state machine.
     /// * `num_fields` - The total number of named fields in the representation.
     /// * `select_recog` - Attempt to update the state with the next read event.
-    /// * `on_done` - Called when the recognizer is complete to conver the state to the output type.
+    /// * `on_done` - Called when the recognizer is complete to convert the state to the output type.
     /// * `reset` - Called to reset the state to its initial value.
     pub fn new(
         fields: Flds,
@@ -649,7 +649,7 @@ impl<T, Flds> OrdinalFieldsRecognizer<T, Flds> {
     /// * `fields` - The state for the state machine.
     /// * `num_fields` - The total number of named fields in the representation.
     /// * `select_recog` - Attempt to update the state with the next read event.
-    /// * `on_done` - Called when the recognizer is complete to conver the state to the output type.
+    /// * `on_done` - Called when the recognizer is complete to convert the state to the output type.
     /// * `reset` - Called to reset the state to its initial value.
     pub fn new_attr(
         fields: Flds,
@@ -770,8 +770,8 @@ impl<R: Recognizer> Recognizer for SimpleAttrBody<R> {
     }
 }
 
-/// Runs two [`Recognizer`]s in paralell returning the result of the first that completes
-/// successfully. If bothe complete with an error, the errof from the recognizer that failed
+/// Runs two [`Recognizer`]s in parallel returning the result of the first that completes
+/// successfully. If both complete with an error, the error from the recognizer that failed
 /// last is returned.
 pub struct FirstOf<R1, R2> {
     first_active: bool,

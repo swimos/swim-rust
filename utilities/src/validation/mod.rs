@@ -15,7 +15,7 @@
 use crate::algebra::{Errors, Monoid, Semigroup, Zero};
 use std::iter::FromIterator;
 
-/// An alternative to [`Result`] where erros are not necessarily fatal. The type `E` represents
+/// An alternative to [`Result`] where errors are not necessarily fatal. The type `E` represents
 /// a (possibly empty) collection of errors.
 pub enum Validation<T, E> {
     /// A value has been produced, potentially with errors.
@@ -191,7 +191,7 @@ impl<T, E: Semigroup> Validation<T, E> {
         }
     }
 
-    /// Comnbibe two validated results together, accumulating the errors.
+    /// Combine two validated results together, accumulating the errors.
     pub fn join<U>(self, other: Validation<U, E>) -> Validation<(T, U), E> {
         self.and_then(|left| other.map(move |right| (left, right)))
     }
@@ -246,7 +246,7 @@ impl<E> Append<Option<E>> for Errors<E> {
     }
 }
 
-/// Combined two validated values, accumulating errors.
+/// Combine two validated values, accumulating errors.
 pub fn validate2<T1, T2, E: Semigroup>(
     first: Validation<T1, E>,
     second: Validation<T2, E>,
@@ -254,7 +254,7 @@ pub fn validate2<T1, T2, E: Semigroup>(
     first.and_then(|v1| second.map(move |v2| (v1, v2)))
 }
 
-/// Combined three validated values, accumulating errors.
+/// Combine three validated values, accumulating errors.
 pub fn validate3<T1, T2, T3, E: Semigroup>(
     first: Validation<T1, E>,
     second: Validation<T2, E>,

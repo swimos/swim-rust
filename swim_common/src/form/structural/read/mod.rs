@@ -17,8 +17,6 @@ pub mod materializers;
 pub mod msgpack;
 pub mod parser;
 pub mod recognizer;
-#[cfg(test)]
-mod tests;
 
 use crate::form::structural::write::StructuralWritable;
 use num_bigint::{BigInt, BigUint};

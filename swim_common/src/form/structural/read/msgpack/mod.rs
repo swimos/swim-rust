@@ -184,7 +184,7 @@ pub enum MsgPackReadError {
     StringDecode(Utf8Error),
     /// An unexpected MessagePack marker was encountered.
     InvalidMarker(Marker),
-    /// An unknowen extension type ocurred in the data.
+    /// An unknown extension type occurred in the data.
     UnknownExtType(i8),
     /// A big integer contained 0 bytes (at least one is required for the sign).
     EmptyBigInt,
@@ -207,7 +207,7 @@ impl Display for MsgPackReadError {
                 write!(f, "Unexpected message pack marker: {:?}", marker)
             }
             MsgPackReadError::UnknownExtType(code) => {
-                write!(f, "{} is not a regognized extension code.", code)
+                write!(f, "{} is not a recognized extension code.", code)
             }
             MsgPackReadError::EmptyBigInt => {
                 write!(f, "A big integer consisted of 0 bytes.")

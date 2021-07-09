@@ -29,13 +29,13 @@ use utilities::validation::Validation;
 
 /// Describes how to extract a field from a struct.
 pub enum FieldIndex<'a> {
-    ///Field in a lablled struct (identified by name).
+    ///Field in a labelled struct (identified by name).
     Named(&'a Ident),
     ///Field in a tuple struct (identified by its index).
     Ordinal(usize),
 }
 
-// Consistently gives the same name to a given field wherever is is referred to.
+// Consistently gives the same name to a given field wherever it is referred to.
 impl<'a> ToTokens for FieldIndex<'a> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         match self {
@@ -47,7 +47,7 @@ impl<'a> ToTokens for FieldIndex<'a> {
 
 /// Description of a field within a struct.
 pub struct FieldModel<'a> {
-    /// Means to index the field from an instanced of the struct.
+    /// Means to index the field from an instance of the struct.
     pub name: FieldIndex<'a>,
     /// Definition ordinal of the field within the struct.
     pub ordinal: usize,
@@ -132,7 +132,7 @@ struct FieldAttributes {
 }
 
 impl FieldAttributes {
-    /// Attempt to apply another attribyte, failing of the combined effect is invalid.
+    /// Attempt to apply another attribute, failing of the combined effect is invalid.
     fn add(mut self, field: &syn::Field, attr: FieldAttr) -> SynValidation<FieldAttributes> {
         let FieldAttributes {
             transform,
