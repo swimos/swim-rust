@@ -195,7 +195,7 @@ impl<'s> Authenticator<'s> for GoogleIdAuthenticator {
                             if expiry_time.lt(&(Utc::now() + Duration::seconds(self.token_skew))) {
                                 return Ok(IssuedPolicy::deny(Value::Extant));
                             } else {
-                                let expiry_timestamp = expiry_time.deref().clone().into();
+                                let expiry_timestamp = (*expiry_time.deref()).into();
                                 expiry_timestamp
                             }
                         }
