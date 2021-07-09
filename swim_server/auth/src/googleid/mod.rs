@@ -46,7 +46,7 @@ const GOOGLE_ISS2: &str = "https://accounts.google.com";
 const DEFAULT_TOKEN_SKEW: i64 = 5;
 
 /// An authenticator for validating Google ID tokens.
-/// See https://developers.google.com/identity/sign-in/web/ for more information
+/// See <https://developers.google.com/identity/sign-in/web/> for more information
 #[derive(Debug, PartialEq)]
 pub struct GoogleIdAuthenticator {
     /// Number of seconds beyond the token's expiry time that are permitted.
