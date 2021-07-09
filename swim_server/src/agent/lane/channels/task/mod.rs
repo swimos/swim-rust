@@ -299,7 +299,6 @@ where
                         Either::Right(command) => {
                             event!(Level::TRACE, DISPATCH_COMMAND, route = ?route_cpy, ?addr, ?command);
                             action_observer.on_command();
-
                             if upd_tx
                                 .send(Form::try_convert(command).map(|cmd| (addr, cmd)))
                                 .await

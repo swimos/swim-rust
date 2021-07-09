@@ -83,9 +83,10 @@ fn lane_info_form_err() {
             ("laneType", "Meta")
         ]
     };
+
     assert!(matches!(
         LaneInfo::try_convert(value),
-        Err(ReadError::Malformatted { .. })
+        Err(ReadError::UnexpectedAttribute(name)) if name == "LaneInfoy"
     ));
 
     let value = record! {
@@ -95,9 +96,10 @@ fn lane_info_form_err() {
             ("laneType", "Meta")
         ]
     };
+
     assert!(matches!(
         LaneInfo::try_convert(value),
-        Err(ReadError::Malformatted { .. })
+        Err(ReadError::UnexpectedField(name)) if name == "laneUriy"
     ));
 }
 

@@ -16,6 +16,22 @@ use crate::form::structural::write::{
     BodyWriter, HeaderWriter, PrimitiveWriter, RecordBodyKind, StructuralWritable, StructuralWriter,
 };
 
+pub struct WritableRef<'a, T>(&'a T);
+
+impl<'a, T: StructuralWritable> StructuralWritable for WritableRef<'a, T> {
+    fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
+        self.0.write_with(writer)
+    }
+
+    fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error> {
+        self.0.write_with(writer)
+    }
+
+    fn num_attributes(&self) -> usize {
+        self.0.num_attributes()
+    }
+}
+
 /// Slots that have been lifted to the header of a record.
 pub struct HeaderSlots<T, Tail> {
     key: &'static str,
@@ -35,6 +51,19 @@ impl NoSlots {
             tail: self,
         }
     }
+
+    /// Prepend an additional slot to the HList, by reference.
+    pub fn prepend_ref<'a, U>(
+        self,
+        key: &'static str,
+        value: &'a U,
+    ) -> HeaderSlots<WritableRef<'a, U>, Self> {
+        HeaderSlots {
+            key,
+            value: WritableRef(value),
+            tail: self,
+        }
+    }
 }
 
 impl<T, Tail> HeaderSlots<T, Tail> {
@@ -47,9 +76,30 @@ impl<T, Tail> HeaderSlots<T, Tail> {
         }
     }
 
+    /// Prepend an additional slot to the HList, by reference.
+    pub fn prepend_ref<'a, U>(
+        self,
+        key: &'static str,
+        value: &'a U,
+    ) -> HeaderSlots<WritableRef<'a, U>, Self> {
+        HeaderSlots {
+            key,
+            value: WritableRef(value),
+            tail: self,
+        }
+    }
+
     /// Complete the header with an initial value.
     pub fn with_body<U>(self, body: U) -> HeaderWithBody<U, Self> {
         HeaderWithBody { body, slots: self }
+    }
+
+    /// Complete the header with an initial value, by reference.
+    pub fn with_body_ref<U>(self, body: &U) -> HeaderWithBody<WritableRef<'_, U>, Self> {
+        HeaderWithBody {
+            body: WritableRef(body),
+            slots: self,
+        }
     }
 
     /// Complete a header consisting only of slots.

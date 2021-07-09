@@ -18,8 +18,9 @@
 #[allow(unused_imports)]
 pub use form_derive::{Form, ValidatedForm};
 
+use crate::form::structural::read::recognizer::{MappedRecognizer, RecognizerReadable};
 use crate::form::structural::read::{ReadError, StructuralReadable};
-use crate::form::structural::write::StructuralWritable;
+use crate::form::structural::write::{StructuralWritable, StructuralWriter};
 use crate::model::schema::StandardSchema;
 use crate::model::Value;
 
@@ -738,5 +739,73 @@ pub trait ValidatedForm {
 impl ValidatedForm for Value {
     fn schema() -> StandardSchema {
         StandardSchema::Anything
+    }
+}
+
+/// Trait for types that simply wrap another type to allow for a trivial implementation of
+/// [`Form`].
+pub trait NewTypeForm: Sized {
+    type Inner: Form;
+
+    fn as_inner(&self) -> &Self::Inner;
+    fn into_inner(self) -> Self::Inner;
+
+    fn from_inner(inner: Self::Inner) -> Self;
+}
+
+impl<T> StructuralWritable for T
+where
+    T: NewTypeForm,
+{
+    fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
+        self.as_inner().write_with(writer)
+    }
+
+    fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error> {
+        self.into_inner().write_into(writer)
+    }
+
+    fn num_attributes(&self) -> usize {
+        self.as_inner().num_attributes()
+    }
+}
+
+pub type WrapNewType<T> = fn(<T as NewTypeForm>::Inner) -> T;
+
+impl<T> RecognizerReadable for T
+where
+    T: NewTypeForm,
+{
+    type Rec = MappedRecognizer<<T::Inner as RecognizerReadable>::Rec, WrapNewType<T>>;
+    type AttrRec = MappedRecognizer<<T::Inner as RecognizerReadable>::AttrRec, WrapNewType<T>>;
+    type BodyRec = MappedRecognizer<<T::Inner as RecognizerReadable>::BodyRec, WrapNewType<T>>;
+
+    fn make_recognizer() -> Self::Rec {
+        MappedRecognizer::new(
+            <T::Inner as RecognizerReadable>::make_recognizer(),
+            <T as NewTypeForm>::from_inner,
+        )
+    }
+
+    fn make_attr_recognizer() -> Self::AttrRec {
+        MappedRecognizer::new(
+            <T::Inner as RecognizerReadable>::make_attr_recognizer(),
+            <T as NewTypeForm>::from_inner,
+        )
+    }
+
+    fn make_body_recognizer() -> Self::BodyRec {
+        MappedRecognizer::new(
+            <T::Inner as RecognizerReadable>::make_body_recognizer(),
+            <T as NewTypeForm>::from_inner,
+        )
+    }
+
+    fn on_absent() -> Option<Self> {
+        <T::Inner as RecognizerReadable>::on_absent().map(<T as NewTypeForm>::from_inner)
+    }
+
+    fn is_simple() -> bool {
+        <T::Inner as RecognizerReadable>::is_simple()
     }
 }

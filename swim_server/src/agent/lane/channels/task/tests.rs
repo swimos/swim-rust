@@ -54,7 +54,7 @@ use std::time::Duration;
 use stm::transaction::TransactionError;
 use swim_common::form::structural::read::ReadError;
 use swim_common::form::structural::write::StructuralWritable;
-use swim_common::form::Form;
+use swim_common::form::{Form, NewTypeForm};
 use swim_common::model::Value;
 use swim_common::routing::ResolutionError;
 use swim_common::routing::RoutingError;
@@ -231,8 +231,24 @@ impl LaneUplinks for TestUplinkSpawner {
     }
 }
 
-#[derive(Debug, Form)]
+#[derive(Debug)]
 struct Message(i32);
+
+impl NewTypeForm for Message {
+    type Inner = i32;
+
+    fn as_inner(&self) -> &Self::Inner {
+        &self.0
+    }
+
+    fn into_inner(self) -> Self::Inner {
+        self.0
+    }
+
+    fn from_inner(inner: Self::Inner) -> Self {
+        Message(inner)
+    }
+}
 
 impl From<Message> for Value {
     fn from(msg: Message) -> Self {

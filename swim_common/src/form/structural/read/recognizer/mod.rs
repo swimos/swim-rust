@@ -1110,7 +1110,7 @@ impl<T, Flds> Recognizer for LabelledStructRecognizer<T, Flds> {
                             }
                             None
                         } else {
-                            Some(Err(bad_kind(&ReadEvent::StartAttribute(name))))
+                            Some(Err(ReadError::UnexpectedAttribute(name.into())))
                         }
                     }
                     TagSpec::Field => {
@@ -1268,7 +1268,7 @@ impl<T, Flds> Recognizer for OrdinalStructRecognizer<T, Flds> {
                             }
                             None
                         } else {
-                            Some(Err(bad_kind(&ReadEvent::StartAttribute(name))))
+                            Some(Err(ReadError::UnexpectedAttribute(name.into())))
                         }
                     }
                     TagSpec::Field => {
@@ -1530,7 +1530,7 @@ pub struct MappedRecognizer<R, F> {
 }
 
 impl<R, F> MappedRecognizer<R, F> {
-    fn new(inner: R, f: F) -> Self {
+    pub fn new(inner: R, f: F) -> Self {
         MappedRecognizer { inner, f }
     }
 }
@@ -1885,7 +1885,7 @@ impl<T, Flds> Recognizer for DelegateStructRecognizer<T, Flds> {
                             }
                             None
                         } else {
-                            Some(Err(bad_kind(&ReadEvent::StartAttribute(name))))
+                            Some(Err(ReadError::UnexpectedAttribute(name.into())))
                         }
                     }
                     TagSpec::Field => {

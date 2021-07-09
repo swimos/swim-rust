@@ -587,40 +587,6 @@ impl StructuralWritable for Url {
     }
 }
 
-impl<T: StructuralWritable> StructuralWritable for &T {
-    fn num_attributes(&self) -> usize {
-        (**self).num_attributes()
-    }
-
-    fn write_with<W: StructuralWriter>(
-        &self,
-        writer: W,
-    ) -> Result<<W as PrimitiveWriter>::Repr, <W as PrimitiveWriter>::Error> {
-        (*self).write_with(writer)
-    }
-
-    fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error> {
-        self.write_with(writer)
-    }
-}
-
-impl<T: StructuralWritable> StructuralWritable for &mut T {
-    fn num_attributes(&self) -> usize {
-        0
-    }
-
-    fn write_with<W: StructuralWriter>(
-        &self,
-        writer: W,
-    ) -> Result<<W as PrimitiveWriter>::Repr, <W as PrimitiveWriter>::Error> {
-        (**self).write_with(writer)
-    }
-
-    fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error> {
-        self.write_with(writer)
-    }
-}
-
 impl<T: StructuralWritable> StructuralWritable for Arc<T> {
     fn num_attributes(&self) -> usize {
         (**self).num_attributes()
