@@ -1473,6 +1473,10 @@ impl<'a, 'b> ToTokens for HeaderFeedFn<'a, 'b> {
     }
 }
 
+/// If the record has fields lifted into its header, as separate recognizer is required (reading
+/// the header is ambiguous as the items can be flattened into the attribute or not which requires
+/// two copies of the recognizer to be run in paralell). This subsidiary recognizer requires its
+/// own vtable. This generates the functions required to populate that table.
 struct HeaderRecognizerFns<'a, 'b> {
     target: &'b syn::Type,
     tag_body: Option<&'b FieldModel<'a>>,
