@@ -38,7 +38,9 @@ pub use form_derive::Tag;
 ///
 /// #[derive(Tag, Clone)]
 /// enum Level {
+///     #[form(tag = "info")]
 ///     Info,
+///     #[form(tag = "warn")]
 ///     Warn
 /// }
 ///
