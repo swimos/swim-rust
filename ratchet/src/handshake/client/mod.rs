@@ -5,21 +5,18 @@ mod tests;
 type Nonce = [u8; 24];
 
 use crate::errors::{Error, ErrorKind, HttpError};
-use crate::extensions::{ext::WebsocketExtension, Extension, ExtensionHandshake};
+use crate::extensions::ext::NoExt;
+use crate::extensions::{ExtensionHandshake, NegotiatedExtension};
 use crate::handshake::client::encoding::{build_request, encode_request};
 use crate::handshake::io::BufferedIo;
 use crate::handshake::{ProtocolRegistry, ACCEPT_KEY, BAD_STATUS_CODE, UPGRADE_STR, WEBSOCKET_STR};
-use crate::{WebSocketConfig, WebSocketStream};
-use bytes::{Buf, BytesMut};
-use futures::future::ready;
-use futures_util::FutureExt;
+use crate::WebSocketStream;
+use bytes::BytesMut;
 use http::header::HeaderName;
 use http::{header, Request, StatusCode};
 use httparse::{Response, Status};
 use sha1::{Digest, Sha1};
 use std::convert::TryFrom;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio_native_tls::TlsConnector;
 use tracing::{event, span, Level};
 use tracing_futures::Instrument;
 
@@ -28,17 +25,16 @@ const MSG_HANDSHAKE_FAILED: &str = "Handshake failed";
 const MSG_HANDSHAKE_START: &str = "Executing client handshake";
 
 pub async fn exec_client_handshake<S, E>(
-    _config: &WebSocketConfig,
     stream: &mut S,
-    _connector: Option<TlsConnector>,
     request: Request<()>,
     extension: E,
+    subprotocols: ProtocolRegistry,
 ) -> Result<HandshakeResult<E::Extension>, Error>
 where
     S: WebSocketStream,
     E: ExtensionHandshake,
 {
-    let machine = HandshakeMachine::new(stream, ProtocolRegistry::default(), extension);
+    let machine = HandshakeMachine::new(stream, subprotocols, extension);
     let uri = request.uri();
     let span = span!(Level::DEBUG, MSG_HANDSHAKE_START, ?uri);
 
@@ -89,10 +85,13 @@ where
 
     fn encode(&mut self, mut request: Request<()>) -> Result<(), Error> {
         let HandshakeMachine {
-            buffered, nonce, ..
+            buffered,
+            nonce,
+            extension,
+            subprotocols,
         } = self;
 
-        build_request(&mut request)?;
+        build_request(&mut request, extension, subprotocols)?;
         encode_request(&mut buffered.buffer, request, nonce);
         Ok(())
     }
@@ -147,10 +146,10 @@ where
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub struct HandshakeResult<E> {
-    protocol: Option<String>,
-    extension: E,
+    pub protocol: Option<String>,
+    pub extension: NegotiatedExtension<E>,
 }
 
 /// Quickly checks a partial response in the order of the expected HTTP response declaration to see
@@ -274,9 +273,15 @@ where
         },
     )?;
 
+    let extension = extension.negotiate(response)?;
+    let extension = match extension {
+        Some(ext) => NegotiatedExtension::Negotiated(ext),
+        None => NegotiatedExtension::None(NoExt::default()),
+    };
+
     Ok(HandshakeResult {
         protocol: subprotocols.negotiate_response(response)?,
-        extension: extension.negotiate(response)?,
+        extension,
     })
 }
 

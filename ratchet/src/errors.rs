@@ -105,12 +105,12 @@ pub enum HttpError {
     InvalidHeader(HeaderName),
     #[error("Sec-WebSocket-Accept mismatch")]
     KeyMismatch,
-    #[error("Malformatted HTTP request")]
-    BadRequest,
     #[error("Invalid HTTP method")]
     InvalidMethod,
     #[error("The provided URI was malformatted")]
     MalformattedUri,
+    #[error("A provided header was malformatted")]
+    MalformattedHeader,
 }
 
 impl From<ExtHandshakeErr> for Error {

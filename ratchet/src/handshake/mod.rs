@@ -1,15 +1,15 @@
 mod client;
 mod io;
+#[allow(warnings)]
 mod server;
 
-use crate::extensions::Extension;
-pub use client::exec_client_handshake;
+use crate::errors::{ErrorKind, HttpError};
+use crate::{Request, Response};
+pub use client::{exec_client_handshake, HandshakeResult};
 use fnv::FnvHashSet;
-use http::header::{HeaderName, SEC_WEBSOCKET_PROTOCOL};
+use http::header::SEC_WEBSOCKET_PROTOCOL;
+use http::{header, HeaderValue};
 use httparse::Header;
-use std::collections::HashSet;
-use std::error::Error;
-use std::str::Utf8Error;
 use thiserror::Error;
 
 const WEBSOCKET_STR: &str = "websocket";
@@ -30,7 +30,7 @@ pub enum ProtocolError {
 
 #[derive(Default)]
 pub struct ProtocolRegistry {
-    registrants: FnvHashSet<(&'static str)>,
+    registrants: FnvHashSet<&'static str>,
 }
 
 enum Bias {
@@ -60,15 +60,16 @@ impl ProtocolRegistry {
                 .map(|s| s.trim())
                 .collect::<FnvHashSet<_>>();
 
-            if !self.registrants.is_superset(&protocols) {
-                return Err(ProtocolError::UnknownProtocol);
-            }
-
             let selected = match bias {
-                Bias::Left => protocols
-                    .intersection(&self.registrants)
-                    .next()
-                    .map(|s| s.to_string()),
+                Bias::Left => {
+                    if !self.registrants.is_superset(&protocols) {
+                        return Err(ProtocolError::UnknownProtocol);
+                    }
+                    protocols
+                        .intersection(&self.registrants)
+                        .next()
+                        .map(|s| s.to_string())
+                }
                 Bias::Right => self
                     .registrants
                     .intersection(&protocols)
@@ -101,16 +102,46 @@ impl ProtocolRegistry {
         &self,
         request: &httparse::Request,
     ) -> Result<Option<String>, ProtocolError> {
-        let mut it = request
+        let it = request
             .headers
             .iter()
             .filter(|h| h.name.eq_ignore_ascii_case(SEC_WEBSOCKET_PROTOCOL.as_str()));
 
         self.negotiate(it, Bias::Right)
     }
+}
 
-    pub fn contains(&self, name: &str) -> bool {
-        self.registrants.contains(name)
+trait SubprotocolApplicator<Target> {
+    fn apply_to(&self, target: &mut Target) -> Result<(), crate::Error>;
+}
+
+impl SubprotocolApplicator<Request> for ProtocolRegistry {
+    fn apply_to(&self, target: &mut Request) -> Result<(), crate::Error> {
+        if self.registrants.is_empty() {
+            return Ok(());
+        }
+
+        let out = self
+            .registrants
+            .clone()
+            .into_iter()
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        let header_value = HeaderValue::from_str(&out).map_err(|_| {
+            crate::Error::with_cause(ErrorKind::Http, HttpError::MalformattedHeader)
+        })?;
+
+        target
+            .headers_mut()
+            .insert(header::SEC_WEBSOCKET_PROTOCOL, header_value);
+        Ok(())
+    }
+}
+
+impl SubprotocolApplicator<Response> for ProtocolRegistry {
+    fn apply_to(&self, _target: &mut Response) -> Result<(), crate::Error> {
+        todo!()
     }
 }
 
@@ -118,7 +149,6 @@ impl ProtocolRegistry {
 mod tests {
     use crate::handshake::{ProtocolError, ProtocolRegistry};
     use http::header::SEC_WEBSOCKET_PROTOCOL;
-    use httparse::Header;
 
     #[test]
     fn selects_protocol_ok() {
@@ -126,7 +156,7 @@ mod tests {
             name: SEC_WEBSOCKET_PROTOCOL.as_str(),
             value: b"warp, warps",
         }];
-        let mut request = httparse::Request::new(&mut headers);
+        let request = httparse::Request::new(&mut headers);
 
         let registry = ProtocolRegistry::new(vec!["warps", "warp"]);
         assert_eq!(
@@ -147,7 +177,7 @@ mod tests {
                 value: b"warps",
             },
         ];
-        let mut request = httparse::Request::new(&mut headers);
+        let request = httparse::Request::new(&mut headers);
 
         let registry = ProtocolRegistry::new(vec!["warps", "warp"]);
         assert_eq!(
@@ -172,7 +202,7 @@ mod tests {
                 value: b"warps4.0",
             },
         ];
-        let mut request = httparse::Request::new(&mut headers);
+        let request = httparse::Request::new(&mut headers);
 
         let registry = ProtocolRegistry::new(vec!["warps", "warp", "warps2.0"]);
         assert_eq!(
@@ -187,7 +217,7 @@ mod tests {
             name: SEC_WEBSOCKET_PROTOCOL.as_str(),
             value: &[255, 255, 255, 255],
         }];
-        let mut request = httparse::Request::new(&mut headers);
+        let request = httparse::Request::new(&mut headers);
 
         let registry = ProtocolRegistry::new(vec!["warps", "warp", "warps2.0"]);
         assert_eq!(
@@ -202,7 +232,7 @@ mod tests {
             name: SEC_WEBSOCKET_PROTOCOL.as_str(),
             value: b"a,b,c",
         }];
-        let mut request = httparse::Request::new(&mut headers);
+        let request = httparse::Request::new(&mut headers);
 
         let registry = ProtocolRegistry::new(vec!["d"]);
         assert_eq!(registry.negotiate_request(&request), Ok(None));

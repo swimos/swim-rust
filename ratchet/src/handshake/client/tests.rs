@@ -1,20 +1,15 @@
-use crate::errors::{Error, ErrorKind, HttpError};
+use crate::errors::{Error, HttpError};
 use crate::extensions::ext::{NoExt, NoExtProxy};
-use crate::fixture::{mock, MockPeer};
+use crate::extensions::{ExtHandshakeErr, Extension, ExtensionHandshake, NegotiatedExtension};
+use crate::fixture::mock;
 use crate::handshake::client::{HandshakeMachine, HandshakeResult};
-use crate::handshake::{
-    ProtocolError, ProtocolRegistry, ACCEPT_KEY, UPGRADE_STR, WEBSOCKET_STR, WEBSOCKET_VERSION,
-    WEBSOCKET_VERSION_STR,
-};
+use crate::handshake::{ProtocolError, ProtocolRegistry, ACCEPT_KEY, UPGRADE_STR, WEBSOCKET_STR};
 use crate::TryIntoRequest;
 use futures::future::join;
 use http::header::HeaderName;
 use http::{header, HeaderMap, HeaderValue, Request, Response, StatusCode, Version};
 use httparse::{Header, Status};
-use sha1::digest::DynDigest;
 use sha1::{Digest, Sha1};
-use std::any::Any;
-use std::error::Error as StdError;
 use utilities::sync::trigger;
 
 const TEST_URL: &str = "ws://127.0.0.1:9001/test";
@@ -26,7 +21,8 @@ async fn handshake_sends_valid_request() {
     let request = TEST_URL.try_into_request().unwrap();
     let (peer, mut stream) = mock();
 
-    let mut machine = HandshakeMachine::new(&mut stream, ProtocolRegistry::default(), NoExtProxy);
+    let mut machine =
+        HandshakeMachine::new(&mut stream, ProtocolRegistry::new(vec!["warp"]), NoExtProxy);
     machine.encode(request).expect("");
     machine.buffered.write().await.expect("");
 
@@ -41,6 +37,11 @@ async fn handshake_sends_valid_request() {
     assert_eq!(request.version, Some(1));
     assert_eq!(request.method, Some("GET"));
     assert_eq!(request.path, Some(TEST_URL));
+    assert_header(
+        request.headers,
+        header::SEC_WEBSOCKET_PROTOCOL.as_str(),
+        "warp",
+    );
 }
 
 fn assert_header(headers: &mut [Header<'_>], name: &str, expected: &str) {
@@ -103,23 +104,8 @@ async fn handshake_invalid_requests() {
     .await;
 }
 
-fn expect_error<E>(actual: Result<(), Error>, expected: E)
-where
-    E: StdError + PartialEq<E> + Any,
-{
-    const ERR: &str = "Expected an error";
-
-    actual
-        .err()
-        .map(|e| {
-            let error = e.downcast_ref::<E>().expect(ERR);
-            assert!(error.eq(&expected))
-        })
-        .expect(ERR);
-}
-
 async fn expect_server_error(response: Response<()>, expected_error: HttpError) {
-    let (mut server, mut stream) = mock();
+    let (server, mut stream) = mock();
 
     let (client_tx, client_rx) = trigger::trigger();
     let (server_tx, server_rx) = trigger::trigger();
@@ -414,5 +400,183 @@ async fn disjoint_protocols() {
     subprotocol_test(vec!["warp", "warps"], None, |r| {
         assert_eq!(r.unwrap().protocol, None);
     })
+    .await;
+}
+
+struct MockExtensionProxy<R>(&'static [(HeaderName, &'static str)], R)
+where
+    R: for<'h> Fn(&'h httparse::Response) -> Result<Option<MockExtension>, ExtHandshakeErr>;
+
+impl<R> ExtensionHandshake for MockExtensionProxy<R>
+where
+    R: for<'h> Fn(&'h httparse::Response) -> Result<Option<MockExtension>, ExtHandshakeErr>,
+{
+    type Extension = MockExtension;
+
+    fn apply_headers(&self, request: &mut crate::Request) {
+        let header_map = request.headers_mut();
+        for (name, value) in self.0 {
+            header_map.insert(name, HeaderValue::from_static(value));
+        }
+    }
+
+    fn negotiate(
+        &self,
+        response: &httparse::Response,
+    ) -> Result<Option<Self::Extension>, ExtHandshakeErr> {
+        (self.1)(response)
+    }
+}
+
+#[derive(Debug, PartialEq)]
+struct MockExtension;
+impl Extension for MockExtension {
+    fn encode(&mut self) {
+        panic!("Unexpected encode invocation")
+    }
+
+    fn decode(&mut self) {
+        panic!("Unexpected decode invocation")
+    }
+}
+
+async fn extension_test<E, F, R>(ext: E, response_fn: F, result_fn: R)
+where
+    E: ExtensionHandshake,
+    F: Fn(&mut Response<()>),
+    R: Fn(Result<HandshakeResult<E::Extension>, Error>),
+{
+    let (server, mut stream) = mock();
+
+    let (client_tx, client_rx) = trigger::trigger();
+    let (server_tx, server_rx) = trigger::trigger();
+
+    let client_task = async move {
+        let mut machine = HandshakeMachine::new(&mut stream, ProtocolRegistry::default(), ext);
+        machine
+            .encode(Request::get(TEST_URL).body(()).unwrap())
+            .unwrap();
+        machine.write().await.unwrap();
+        machine.clear_buffer();
+
+        assert!(client_tx.trigger());
+        assert!(server_rx.await.is_ok());
+
+        let read_result = machine.read().await;
+        result_fn(read_result);
+    };
+
+    let server_task = async move {
+        assert!(client_rx.await.is_ok());
+
+        let request = server
+            .read_request()
+            .expect("No server response received")
+            .unwrap();
+
+        let (parts, _body) = request.into_parts();
+
+        let key = expect_header(&parts.headers, header::SEC_WEBSOCKET_KEY);
+
+        let mut digest = Sha1::new();
+        Digest::update(&mut digest, key);
+        Digest::update(&mut digest, ACCEPT_KEY);
+
+        let sec_websocket_accept = base64::encode(&digest.finalize());
+
+        let mut response = Response::builder()
+            .version(Version::HTTP_11)
+            .status(StatusCode::SWITCHING_PROTOCOLS)
+            .header(header::UPGRADE, WEBSOCKET_STR)
+            .header(header::CONNECTION, UPGRADE_STR)
+            .header(header::SEC_WEBSOCKET_ACCEPT, sec_websocket_accept)
+            .body(())
+            .unwrap();
+
+        response_fn(&mut response);
+
+        server.write_response(response);
+
+        assert!(server_tx.trigger());
+    };
+
+    let _result = join(client_task, server_task).await;
+}
+
+#[tokio::test]
+async fn negotiates_extension() {
+    const EXT: &str = "test_extension; something=1, something_else=2";
+    const HEADERS: &'static [(HeaderName, &'static str)] =
+        &[(header::SEC_WEBSOCKET_EXTENSIONS, EXT)];
+
+    let extension_proxy = MockExtensionProxy(&HEADERS, |response| {
+        let ext = response
+            .headers
+            .iter()
+            .filter(|h| {
+                h.name
+                    .eq_ignore_ascii_case(header::SEC_WEBSOCKET_EXTENSIONS.as_str())
+            })
+            .next();
+        match ext {
+            Some(header) => {
+                let value = String::from_utf8(header.value.to_vec())
+                    .expect("Server returned invalid UTF-8");
+                if value == EXT {
+                    Ok(Some(MockExtension))
+                } else {
+                    panic!(
+                        "Server returned an invalid sec-websocket-extensions header: `{:?}`",
+                        value
+                    );
+                }
+            }
+            None => {
+                panic!("Server sec-websocket-extensions header missing")
+            }
+        }
+    });
+
+    extension_test(
+        extension_proxy,
+        |r| {
+            r.headers_mut().insert(
+                header::SEC_WEBSOCKET_EXTENSIONS,
+                HeaderValue::from_static(EXT),
+            );
+        },
+        |result| match result {
+            Ok(handshake_result) => {
+                if let NegotiatedExtension::None(_) = handshake_result.extension {
+                    panic!("No extension negotiated")
+                }
+            }
+            Err(e) => {
+                panic!("Expected a valid upgrade: {:?}", e)
+            }
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn negotiates_no_extension() {
+    const HEADERS: &'static [(HeaderName, &'static str)] = &[];
+    let extension_proxy = MockExtensionProxy(&HEADERS, |_| Ok(None));
+
+    extension_test(
+        extension_proxy,
+        |_| {},
+        |result| match result {
+            Ok(handshake_result) => {
+                if let NegotiatedExtension::Negotiated(_) = handshake_result.extension {
+                    panic!("Unexpected extension negotiated")
+                }
+            }
+            Err(e) => {
+                panic!("Expected a valid upgrade: {:?}", e)
+            }
+        },
+    )
     .await;
 }

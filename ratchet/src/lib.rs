@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#![allow(warnings)]
-
 pub mod builder;
 mod errors;
 mod extensions;
@@ -21,16 +19,15 @@ mod extensions;
 mod fixture;
 mod handshake;
 mod http_ext;
+#[allow(warnings)]
 mod protocol;
 
-use crate::errors::{Error, HttpError};
-use crate::extensions::ExtensionHandshake;
-use crate::handshake::exec_client_handshake;
+use crate::errors::Error;
+use crate::extensions::{Extension, ExtensionHandshake, NegotiatedExtension};
+use crate::handshake::{exec_client_handshake, HandshakeResult, ProtocolRegistry};
 use futures::future::BoxFuture;
-use http::uri::InvalidUri;
 use http::Uri;
 use tokio::io::{AsyncRead, AsyncWrite};
-use tokio_native_tls::TlsConnector;
 use url::Url;
 
 pub(crate) type Request = http::Request<()>;
@@ -65,15 +62,17 @@ pub enum Role {
     Server,
 }
 
-pub struct WebSocket<S> {
+pub struct WebSocket<S, E> {
     stream: S,
     role: Role,
+    extension: NegotiatedExtension<E>,
     config: WebSocketConfig,
 }
 
-impl<S> WebSocket<S>
+impl<S, E> WebSocket<S, E>
 where
     S: WebSocketStream,
+    E: Extension,
 {
     pub fn role(&self) -> Role {
         self.role
@@ -82,37 +81,30 @@ where
     pub fn config(&self) -> &WebSocketConfig {
         &self.config
     }
+}
 
-    pub async fn client<E>(
-        config: WebSocketConfig,
-        mut stream: S,
-        connector: Option<TlsConnector>,
-        request: Request,
-        extension: E,
-    ) -> Result<WebSocket<S>, Error>
-    where
-        E: ExtensionHandshake,
-    {
-        let result =
-            exec_client_handshake(&config, &mut stream, connector, request, extension).await?;
-        Ok(WebSocket {
-            stream,
-            role: Role::Client,
-            config,
-        })
-    }
-
-    pub async fn server<I>(
-        _config: WebSocketConfig,
-        _stream: S,
-        _interceptor: I,
-    ) -> Result<WebSocket<S>, Error>
-    where
-        I: Interceptor,
-    {
-        // perform handshake...
-        unimplemented!()
-    }
+pub async fn client<S, E>(
+    config: WebSocketConfig,
+    mut stream: S,
+    request: Request,
+    extension: E,
+    subprotocols: ProtocolRegistry,
+) -> Result<(WebSocket<S, E::Extension>, Option<String>), Error>
+where
+    S: WebSocketStream,
+    E: ExtensionHandshake,
+{
+    let HandshakeResult {
+        protocol,
+        extension,
+    } = exec_client_handshake(&mut stream, request, extension, subprotocols).await?;
+    let socket = WebSocket {
+        stream,
+        role: Role::Client,
+        extension,
+        config,
+    };
+    Ok((socket, protocol))
 }
 
 pub trait WebSocketStream: AsyncRead + AsyncWrite + Unpin {}

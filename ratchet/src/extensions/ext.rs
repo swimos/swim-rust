@@ -1,6 +1,7 @@
 use crate::extensions::{ExtHandshakeErr, Extension, ExtensionHandshake};
-use crate::{Request, Response};
+use crate::Request;
 
+#[allow(dead_code)]
 #[derive(Debug, PartialEq)]
 pub enum WebsocketExtension {
     None,
@@ -16,12 +17,12 @@ impl ExtensionHandshake for NoExtProxy {
     fn negotiate(
         &self,
         _response: &httparse::Response,
-    ) -> Result<Self::Extension, ExtHandshakeErr> {
-        Ok(NoExt)
+    ) -> Result<Option<Self::Extension>, ExtHandshakeErr> {
+        Ok(Some(NoExt))
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct NoExt;
 impl Extension for NoExt {
     fn encode(&mut self) {}

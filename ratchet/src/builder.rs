@@ -1,7 +1,8 @@
 use crate::errors::Error;
-use crate::extensions::ext::{NoExt, NoExtProxy};
-use crate::extensions::{Extension, ExtensionHandshake};
-use crate::{Interceptor, TryIntoRequest, WebSocket, WebSocketConfig, WebSocketStream};
+use crate::extensions::ext::NoExtProxy;
+use crate::extensions::ExtensionHandshake;
+use crate::handshake::ProtocolRegistry;
+use crate::{client, Interceptor, TryIntoRequest, WebSocket, WebSocketConfig, WebSocketStream};
 use tokio_native_tls::TlsConnector;
 
 /// This gives the flexibility to build websockets in a 'friendlier' fashion as opposed to having
@@ -10,6 +11,7 @@ pub struct WebSocketClientBuilder<E> {
     config: Option<WebSocketConfig>,
     connector: Option<TlsConnector>,
     extension: E,
+    subprotocols: ProtocolRegistry,
 }
 
 impl Default for WebSocketClientBuilder<NoExtProxy> {
@@ -18,29 +20,35 @@ impl Default for WebSocketClientBuilder<NoExtProxy> {
             config: None,
             connector: None,
             extension: NoExtProxy,
+            subprotocols: ProtocolRegistry::default(),
         }
     }
 }
 
 impl<E: ExtensionHandshake> WebSocketClientBuilder<E> {
-    pub async fn subscribe<S, I>(self, stream: S, request: I) -> Result<WebSocket<S>, Error>
+    pub async fn subscribe<S, I>(
+        self,
+        stream: S,
+        request: I,
+    ) -> Result<(WebSocket<S, E::Extension>, Option<String>), Error>
     where
         S: WebSocketStream,
         I: TryIntoRequest,
     {
         let WebSocketClientBuilder {
             config,
-            connector,
             extension,
+            subprotocols,
+            ..
         } = self;
         let request = request.try_into_request()?;
 
-        WebSocket::client(
+        client(
             config.unwrap_or_default(),
             stream,
-            connector,
             request,
             extension,
+            subprotocols,
         )
         .await
     }
@@ -59,6 +67,14 @@ impl<E: ExtensionHandshake> WebSocketClientBuilder<E> {
         self.extension = extension;
         self
     }
+
+    pub fn subprotocols<I>(mut self, subprotocols: I) -> Self
+    where
+        I: IntoIterator<Item = &'static str>,
+    {
+        self.subprotocols = ProtocolRegistry::new(subprotocols);
+        self
+    }
 }
 
 #[derive(Default)]
@@ -73,9 +89,6 @@ impl WebSocketServerBuilder {
     where
         S: WebSocketStream,
     {
-        // Then it'd be built something like...
-        // initialise defaults
-        // WebSocket::server(config, stream, interceptor, protocol).await
         unimplemented!()
     }
 

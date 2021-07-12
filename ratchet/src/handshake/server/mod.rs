@@ -38,7 +38,7 @@ where
         }
     }
 
-    pub async fn exec(mut self) -> Result<(), Error> {
+    pub async fn exec(self) -> Result<(), Error> {
         unimplemented!()
     }
 }

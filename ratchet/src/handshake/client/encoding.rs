@@ -1,6 +1,10 @@
 use crate::errors::{Error, ErrorKind, HttpError};
+use crate::extensions::ExtensionHandshake;
 use crate::handshake::client::Nonce;
-use crate::handshake::{UPGRADE_STR, WEBSOCKET_STR, WEBSOCKET_VERSION, WEBSOCKET_VERSION_STR};
+use crate::handshake::{
+    ProtocolRegistry, SubprotocolApplicator, UPGRADE_STR, WEBSOCKET_STR, WEBSOCKET_VERSION,
+    WEBSOCKET_VERSION_STR,
+};
 use base64::encode_config_slice;
 use bytes::BytesMut;
 use http::header::{AsHeaderName, HeaderName, IntoHeaderName};
@@ -47,7 +51,14 @@ fn write_header(dst: &mut BytesMut, headers: &HeaderMap<HeaderValue>, name: Head
 }
 
 // rfc6455 § 4.2.1
-pub fn build_request(request: &mut Request<()>) -> Result<(), Error> {
+pub fn build_request<E>(
+    request: &mut Request<()>,
+    extension: &E,
+    subprotocols: &ProtocolRegistry,
+) -> Result<(), Error>
+where
+    E: ExtensionHandshake,
+{
     if request.method() != Method::GET {
         return Err(Error::with_cause(ErrorKind::Http, HttpError::InvalidMethod));
     }
@@ -75,12 +86,16 @@ pub fn build_request(request: &mut Request<()>) -> Result<(), Error> {
         ));
     }
 
+    extension.apply_headers(request);
+
     if let Some(_) = request.headers().get(header::SEC_WEBSOCKET_PROTOCOL) {
         return Err(Error::with_cause(
             ErrorKind::Http,
             HttpError::InvalidHeader(header::SEC_WEBSOCKET_PROTOCOL),
         ));
     }
+
+    subprotocols.apply_to(request)?;
 
     let option = request
         .headers()

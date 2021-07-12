@@ -1,7 +1,6 @@
 use bytes::{Buf, BufMut, BytesMut};
 use http::{Request, Response, Version};
-use httparse::{Error, Status};
-use std::io::{Read, Write};
+use httparse::Status;
 use std::ops::DerefMut;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
@@ -31,7 +30,7 @@ pub struct MockPeer {
 }
 
 impl MockPeer {
-    pub fn write_from<R>(&self, mut readable: R)
+    pub fn write_from<R>(&self, readable: R)
     where
         R: ReadBytesMut,
     {
