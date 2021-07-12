@@ -820,6 +820,7 @@ where
         } else {
             // If this is a branch, go deeper
             let mut maybe_removed = None;
+            let mut entry_index = None;
 
             for (idx, entry) in self.entries.iter_mut().enumerate() {
                 if entry.get_mbb().is_covering(bounding_box) {
