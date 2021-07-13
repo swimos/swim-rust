@@ -13,9 +13,11 @@
 // limitations under the License.
 
 use super::Recognizer;
+use crate::form::structural::read::error::ExpectedEvent;
 use crate::form::structural::read::event::{NumericValue, ReadEvent};
 use crate::form::structural::read::ReadError;
 use crate::model::text::Text;
+use crate::model::ValueKind;
 use num_bigint::{BigInt, BigUint};
 use num_traits::ToPrimitive;
 use std::convert::TryFrom;
@@ -40,7 +42,9 @@ impl Recognizer for UnitRecognizer {
     fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         match input {
             ReadEvent::Extant => Some(Ok(())),
-            ow => Some(Err(super::bad_kind(&ow))),
+            ow => Some(Err(
+                ow.kind_error(ExpectedEvent::ValueEvent(ValueKind::Extant))
+            )),
         }
     }
 
@@ -58,7 +62,9 @@ impl Recognizer for I32Recognizer {
             ReadEvent::Number(NumericValue::UInt(n)) => {
                 Some(i32::try_from(n).map_err(|_| ReadError::NumberOutOfRange))
             }
-            ow => Some(Err(super::bad_kind(&ow))),
+            ow => Some(Err(
+                ow.kind_error(ExpectedEvent::ValueEvent(ValueKind::Int32))
+            )),
         }
     }
 
@@ -74,7 +80,9 @@ impl Recognizer for I64Recognizer {
             ReadEvent::Number(NumericValue::UInt(n)) => {
                 Some(i64::try_from(n).map_err(|_| ReadError::NumberOutOfRange))
             }
-            ow => Some(Err(super::bad_kind(&ow))),
+            ow => Some(Err(
+                ow.kind_error(ExpectedEvent::ValueEvent(ValueKind::Int64))
+            )),
         }
     }
 
@@ -92,7 +100,9 @@ impl Recognizer for U32Recognizer {
             ReadEvent::Number(NumericValue::UInt(n)) => {
                 Some(u32::try_from(n).map_err(|_| ReadError::NumberOutOfRange))
             }
-            ow => Some(Err(super::bad_kind(&ow))),
+            ow => Some(Err(
+                ow.kind_error(ExpectedEvent::ValueEvent(ValueKind::UInt32))
+            )),
         }
     }
 
@@ -108,7 +118,9 @@ impl Recognizer for U64Recognizer {
                 Some(u64::try_from(n).map_err(|_| ReadError::NumberOutOfRange))
             }
             ReadEvent::Number(NumericValue::UInt(n)) => Some(Ok(n)),
-            ow => Some(Err(super::bad_kind(&ow))),
+            ow => Some(Err(
+                ow.kind_error(ExpectedEvent::ValueEvent(ValueKind::UInt64))
+            )),
         }
     }
 
@@ -132,7 +144,11 @@ impl Recognizer for UsizeRecognizer {
             ReadEvent::Number(NumericValue::BigInt(n)) => {
                 Some(n.to_usize().ok_or(ReadError::NumberOutOfRange))
             }
-            ow => Some(Err(super::bad_kind(&ow))),
+            ow => Some(Err(ow.kind_error(ExpectedEvent::Or(vec![
+                ExpectedEvent::ValueEvent(ValueKind::UInt32),
+                ExpectedEvent::ValueEvent(ValueKind::UInt64),
+                ExpectedEvent::ValueEvent(ValueKind::BigUint),
+            ])))),
         }
     }
 
@@ -148,7 +164,9 @@ impl Recognizer for BigIntRecognizer {
             ReadEvent::Number(NumericValue::UInt(n)) => Some(Ok(BigInt::from(n))),
             ReadEvent::Number(NumericValue::BigInt(n)) => Some(Ok(n)),
             ReadEvent::Number(NumericValue::BigUint(n)) => Some(Ok(BigInt::from(n))),
-            ow => Some(Err(super::bad_kind(&ow))),
+            ow => Some(Err(
+                ow.kind_error(ExpectedEvent::ValueEvent(ValueKind::BigInt))
+            )),
         }
     }
 
@@ -168,7 +186,9 @@ impl Recognizer for BigUintRecognizer {
                 Some(BigUint::try_from(n).map_err(|_| ReadError::NumberOutOfRange))
             }
             ReadEvent::Number(NumericValue::BigUint(n)) => Some(Ok(n)),
-            ow => Some(Err(super::bad_kind(&ow))),
+            ow => Some(Err(
+                ow.kind_error(ExpectedEvent::ValueEvent(ValueKind::BigUint))
+            )),
         }
     }
 
@@ -181,7 +201,9 @@ impl Recognizer for F64Recognizer {
     fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         match input {
             ReadEvent::Number(NumericValue::Float(x)) => Some(Ok(x)),
-            ow => Some(Err(super::bad_kind(&ow))),
+            ow => Some(Err(
+                ow.kind_error(ExpectedEvent::ValueEvent(ValueKind::Float64))
+            )),
         }
     }
 
@@ -194,7 +216,9 @@ impl Recognizer for StringRecognizer {
     fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         match input {
             ReadEvent::TextValue(string) => Some(Ok(string.into())),
-            ow => Some(Err(super::bad_kind(&ow))),
+            ow => Some(Err(
+                ow.kind_error(ExpectedEvent::ValueEvent(ValueKind::Text))
+            )),
         }
     }
 
@@ -207,7 +231,9 @@ impl Recognizer for TextRecognizer {
     fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         match input {
             ReadEvent::TextValue(string) => Some(Ok(string.into())),
-            ow => Some(Err(super::bad_kind(&ow))),
+            ow => Some(Err(
+                ow.kind_error(ExpectedEvent::ValueEvent(ValueKind::Text))
+            )),
         }
     }
 
@@ -220,7 +246,9 @@ impl Recognizer for DataRecognizer {
     fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         match input {
             ReadEvent::Blob(v) => Some(Ok(v)),
-            ow => Some(Err(super::bad_kind(&ow))),
+            ow => Some(Err(
+                ow.kind_error(ExpectedEvent::ValueEvent(ValueKind::Data))
+            )),
         }
     }
 
@@ -233,7 +261,9 @@ impl Recognizer for BoolRecognizer {
     fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         match input {
             ReadEvent::Boolean(p) => Some(Ok(p)),
-            ow => Some(Err(super::bad_kind(&ow))),
+            ow => Some(Err(
+                ow.kind_error(ExpectedEvent::ValueEvent(ValueKind::Boolean))
+            )),
         }
     }
 
@@ -260,7 +290,7 @@ mod tests {
     #[test]
     fn i64_recognizer() {
         let mut rec = I64Recognizer;
-        let n: i64 = i64::from(i32::min_value()) * 2;
+        let n: i64 = i64::from(i32::MIN) * 2;
         assert_eq!(rec.feed_event(n.into()), Some(Ok(n)));
     }
 
@@ -274,7 +304,7 @@ mod tests {
     #[test]
     fn u64_recognizer() {
         let mut rec = U64Recognizer;
-        let n: u64 = u64::from(u32::max_value()) * 2;
+        let n: u64 = u64::from(u32::MAX) * 2;
         assert_eq!(rec.feed_event(n.into()), Some(Ok(n)));
     }
 

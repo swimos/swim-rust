@@ -22,7 +22,6 @@ use crate::form::structural::write::{
     BodyWriter, HeaderWriter, Label, PrimitiveWriter, RecordBodyKind, StructuralWritable,
     StructuralWriter,
 };
-use crate::model::ValueKind;
 use num_bigint::{BigInt, BigUint};
 use std::borrow::Cow;
 
@@ -45,11 +44,11 @@ impl<'a, R> SubRecognizerBridge<'a, R> {
 }
 
 impl<R: Recognizer> RecognizerBridge<R> {
-    fn feed_single(self, event: ReadEvent<'_>, kind: ValueKind) -> Result<R::Target, ReadError> {
+    fn feed_single(self, event: ReadEvent<'_>) -> Result<R::Target, ReadError> {
         let RecognizerBridge(mut rec) = self;
         rec.feed_event(event)
             .or_else(move || rec.try_flush())
-            .unwrap_or(Err(ReadError::UnexpectedKind(kind)))
+            .unwrap_or(Err(ReadError::IncompleteRecord))
     }
 }
 
@@ -69,75 +68,51 @@ impl<R: Recognizer> PrimitiveWriter for RecognizerBridge<R> {
     type Error = ReadError;
 
     fn write_extant(self) -> Result<Self::Repr, Self::Error> {
-        self.feed_single(ReadEvent::Extant, ValueKind::Extant)
+        self.feed_single(ReadEvent::Extant)
     }
 
     fn write_i32(self, value: i32) -> Result<Self::Repr, Self::Error> {
-        self.feed_single(
-            ReadEvent::Number(NumericValue::Int(value.into())),
-            ValueKind::Int32,
-        )
+        self.feed_single(ReadEvent::Number(NumericValue::Int(value.into())))
     }
 
     fn write_i64(self, value: i64) -> Result<Self::Repr, Self::Error> {
-        self.feed_single(
-            ReadEvent::Number(NumericValue::Int(value)),
-            ValueKind::Int64,
-        )
+        self.feed_single(ReadEvent::Number(NumericValue::Int(value)))
     }
 
     fn write_u32(self, value: u32) -> Result<Self::Repr, Self::Error> {
-        self.feed_single(
-            ReadEvent::Number(NumericValue::UInt(value.into())),
-            ValueKind::UInt32,
-        )
+        self.feed_single(ReadEvent::Number(NumericValue::UInt(value.into())))
     }
 
     fn write_u64(self, value: u64) -> Result<Self::Repr, Self::Error> {
-        self.feed_single(
-            ReadEvent::Number(NumericValue::UInt(value)),
-            ValueKind::UInt64,
-        )
+        self.feed_single(ReadEvent::Number(NumericValue::UInt(value)))
     }
 
     fn write_f64(self, value: f64) -> Result<Self::Repr, Self::Error> {
-        self.feed_single(
-            ReadEvent::Number(NumericValue::Float(value)),
-            ValueKind::Float64,
-        )
+        self.feed_single(ReadEvent::Number(NumericValue::Float(value)))
     }
 
     fn write_bool(self, value: bool) -> Result<Self::Repr, Self::Error> {
-        self.feed_single(ReadEvent::Boolean(value), ValueKind::Boolean)
+        self.feed_single(ReadEvent::Boolean(value))
     }
 
     fn write_big_int(self, value: BigInt) -> Result<Self::Repr, Self::Error> {
-        self.feed_single(
-            ReadEvent::Number(NumericValue::BigInt(value)),
-            ValueKind::BigInt,
-        )
+        self.feed_single(ReadEvent::Number(NumericValue::BigInt(value)))
     }
 
     fn write_big_uint(self, value: BigUint) -> Result<Self::Repr, Self::Error> {
-        self.feed_single(
-            ReadEvent::Number(NumericValue::BigUint(value)),
-            ValueKind::BigUint,
-        )
+        self.feed_single(ReadEvent::Number(NumericValue::BigUint(value)))
     }
 
     fn write_text<L: Label>(self, value: L) -> Result<Self::Repr, Self::Error> {
-        self.feed_single(
-            ReadEvent::TextValue(Cow::Borrowed(value.as_ref())),
-            ValueKind::Text,
-        )
+        self.feed_single(ReadEvent::TextValue(Cow::Borrowed(value.as_ref())))
     }
 
     fn write_blob_vec(self, blob: Vec<u8>) -> Result<Self::Repr, Self::Error> {
-        self.feed_single(ReadEvent::Blob(blob), ValueKind::Data)
+        self.feed_single(ReadEvent::Blob(blob))
     }
 
     fn write_blob(self, value: &[u8]) -> Result<Self::Repr, Self::Error> {
-        self.feed_single(ReadEvent::Blob(value.to_vec()), ValueKind::Data)
+        self.feed_single(ReadEvent::Blob(value.to_vec()))
     }
 }
 
