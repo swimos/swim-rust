@@ -53,7 +53,6 @@ impl<DelegateRouter: Router> Router for RemoteRouter<DelegateRouter> {
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,
-        origin: Option<Origin>,
     ) -> BoxFuture<'_, Result<Route, ResolutionError>> {
         async move {
             let RemoteRouter {
@@ -77,7 +76,7 @@ impl<DelegateRouter: Router> Router for RemoteRouter<DelegateRouter> {
                     }
                 }
             } else {
-                delegate_router.resolve_sender(addr, origin).await
+                delegate_router.resolve_sender(addr).await
             }
         }
         .boxed()
@@ -87,7 +86,6 @@ impl<DelegateRouter: Router> Router for RemoteRouter<DelegateRouter> {
         &mut self,
         host: Option<Url>,
         route: RelativeUri,
-        origin: Option<Origin>,
     ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
         async move {
             let RemoteRouter {
@@ -109,7 +107,7 @@ impl<DelegateRouter: Router> Router for RemoteRouter<DelegateRouter> {
                     }
                 }
             } else {
-                delegate_router.lookup(host, route, origin).await
+                delegate_router.lookup(host, route).await
             }
         }
         .boxed()

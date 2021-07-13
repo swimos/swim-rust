@@ -106,7 +106,6 @@ impl Router for TestRouter {
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,
-        _origin: Option<Origin>,
     ) -> BoxFuture<Result<Route, ResolutionError>> {
         let TestRouter {
             sender, drop_rx, ..
@@ -122,7 +121,6 @@ impl Router for TestRouter {
         &mut self,
         _host: Option<Url>,
         _route: RelativeUri,
-        _origin: Option<Origin>,
     ) -> BoxFuture<'static, Result<RoutingAddr, RouterError>> {
         panic!("Unexpected resolution attempt.")
     }

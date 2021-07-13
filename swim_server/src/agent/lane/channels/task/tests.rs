@@ -1445,7 +1445,6 @@ impl Router for MultiTestRouter {
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,
-        _origin: Option<Origin>,
     ) -> BoxFuture<Result<Route, ResolutionError>> {
         async move {
             let mut lock = self.0.lock();
@@ -1467,7 +1466,6 @@ impl Router for MultiTestRouter {
         &mut self,
         _host: Option<Url>,
         _route: RelativeUri,
-        _origin: Option<Origin>,
     ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
         panic!("Unexpected resolution attempt.")
     }

@@ -126,7 +126,6 @@ where
         mut router: R,
         mut spawn_tx: mpsc::Sender<Eff>,
         uplinks_idle_since: Arc<AtomicInstant>,
-        uri: RelativeUri,
         error_collector: mpsc::Sender<UplinkErrorReport>,
         action_observer: UplinkActionObserver,
     ) where
@@ -151,7 +150,6 @@ where
                             &mut spawn_tx,
                             &mut router,
                             uplinks_idle_since.clone(),
-                            uri.clone(),
                         )
                         .instrument(span)
                         .await
@@ -215,7 +213,6 @@ where
         spawn_tx: &mut mpsc::Sender<Eff>,
         router: &mut R,
         uplinks_idle_since: Arc<AtomicInstant>,
-        uri: RelativeUri,
     ) -> Option<UplinkHandle>
     where
         R: Router,
@@ -237,7 +234,7 @@ where
         };
         let uplink = Uplink::new(state_machine, ReceiverStream::new(rx).fuse(), updates);
 
-        let sink = if let Ok(sender) = router.resolve_sender(addr, Some(Origin::Local(uri))).await {
+        let sink = if let Ok(sender) = router.resolve_sender(addr).await {
             UplinkMessageSender::new(sender.sender, route.clone())
         } else {
             return None;
@@ -372,7 +369,6 @@ impl LaneUplinks for SpawnerUplinkFactory {
                 context.router_handle(),
                 context.spawner(),
                 context.uplinks_idle_since().clone(),
-                context.uri().clone(),
                 error_collector,
                 action_observer,
             )

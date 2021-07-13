@@ -41,7 +41,6 @@ impl Router for MockRouter {
     fn resolve_sender(
         &mut self,
         _addr: RoutingAddr,
-        _origin: Option<Origin>,
     ) -> BoxFuture<'_, Result<Route, ResolutionError>> {
         unimplemented!()
     }
@@ -50,7 +49,6 @@ impl Router for MockRouter {
         &mut self,
         _host: Option<Url>,
         _route: RelativeUri,
-        _origin: Option<Origin>,
     ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
         unimplemented!()
     }

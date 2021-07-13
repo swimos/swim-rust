@@ -139,7 +139,6 @@ pub trait Router: Send + Sync {
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,
-        origin: Option<Origin>,
     ) -> BoxFuture<Result<Route, ResolutionError>>;
 
     /// Find and return the corresponding routing address of an endpoint for a given route.
@@ -147,7 +146,6 @@ pub trait Router: Send + Sync {
         &mut self,
         host: Option<Url>,
         route: RelativeUri,
-        origin: Option<Origin>,
     ) -> BoxFuture<Result<RoutingAddr, RouterError>>;
 }
 

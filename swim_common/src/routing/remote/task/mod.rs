@@ -195,10 +195,8 @@ where
                                         &mut router,
                                         &mut resolved,
                                         envelope,
-                                        Origin::Remote(addr),
                                         config.connection_retries,
                                         sleep,
-                                        server,
                                     )
                                     .await;
                                     if let Err((env, _)) = dispatch_result {
@@ -348,10 +346,8 @@ async fn dispatch_envelope<R, F, D>(
     router: &mut R,
     resolved: &mut HashMap<RelativePath, Route>,
     mut envelope: Envelope,
-    origin: Origin,
     mut retry_strategy: RetryStrategy,
     delay_fn: F,
-    server: bool,
 ) -> Result<(), (Envelope, DispatchError)>
 where
     R: Router,
@@ -359,8 +355,7 @@ where
     D: Future<Output = ()>,
 {
     loop {
-        let result =
-            try_dispatch_envelope(router, resolved, envelope, origin.clone(), server).await;
+        let result = try_dispatch_envelope(router, resolved, envelope).await;
         match result {
             Err((env, err)) if !err.is_fatal() => {
                 match retry_strategy.next() {
@@ -388,8 +383,6 @@ async fn try_dispatch_envelope<R>(
     router: &mut R,
     resolved: &mut HashMap<RelativePath, Route>,
     envelope: Envelope,
-    origin: Origin,
-    server: bool,
 ) -> Result<(), (Envelope, DispatchError)>
 where
     R: Router,
@@ -398,14 +391,14 @@ where
         let Route { sender, .. } = if let Some(route) = resolved.get_mut(target) {
             if route.sender.inner.is_closed() {
                 resolved.remove(target);
-                insert_new_route(router, resolved, target, origin, server)
+                insert_new_route(router, resolved, target)
                     .await
                     .map_err(|err| (envelope.clone(), err))?
             } else {
                 route
             }
         } else {
-            insert_new_route(router, resolved, target, origin, server)
+            insert_new_route(router, resolved, target)
                 .await
                 .map_err(|err| (envelope.clone(), err))?
         };
@@ -433,17 +426,11 @@ async fn insert_new_route<'a, R>(
     router: &mut R,
     resolved: &'a mut HashMap<RelativePath, Route>,
     target: &RelativePath,
-    origin: Origin,
-    server: bool,
 ) -> Result<&'a mut Route, DispatchError>
 where
     R: Router,
 {
-    let route = if server {
-        get_route(router, target, None).await
-    } else {
-        get_route(router, target, Some(origin)).await
-    };
+    let route = get_route(router, target).await;
 
     match route {
         Ok(route) => match resolved.entry(target.clone()) {
@@ -456,22 +443,14 @@ where
     }
 }
 
-async fn get_route<R>(
-    router: &mut R,
-    target: &RelativePath,
-    origin: Option<Origin>,
-) -> Result<Route, DispatchError>
+async fn get_route<R>(router: &mut R, target: &RelativePath) -> Result<Route, DispatchError>
 where
     R: Router,
 {
     let target_addr = router
-        .lookup(
-            None,
-            RelativeUri::from_str(&target.node.as_str())?,
-            origin.clone(),
-        )
+        .lookup(None, RelativeUri::from_str(&target.node.as_str())?)
         .await?;
-    Ok(router.resolve_sender(target_addr, origin).await?)
+    Ok(router.resolve_sender(target_addr).await?)
 }
 
 /// Factory to create and spawn new connection tasks.

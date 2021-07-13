@@ -142,7 +142,6 @@ impl Router for MockRouter {
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,
-        _origin: Option<Origin>,
     ) -> BoxFuture<Result<Route, ResolutionError>> {
         async move {
             let MockRouter { inner, drop_rx, .. } = self;
@@ -156,7 +155,6 @@ impl Router for MockRouter {
         &mut self,
         _host: Option<Url>,
         _route: RelativeUri,
-        _origin: Option<Origin>,
     ) -> BoxFuture<Result<RoutingAddr, RouterError>> {
         panic!("Unexpected resolution attempt.")
     }

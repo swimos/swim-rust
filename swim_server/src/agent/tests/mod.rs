@@ -100,7 +100,6 @@ mod stub_router {
         fn resolve_sender(
             &mut self,
             addr: RoutingAddr,
-            _origin: Option<Origin>,
         ) -> BoxFuture<Result<Route, ResolutionError>> {
             async move {
                 let SingleChannelRouter { inner, drop_rx, .. } = self;
@@ -114,7 +113,6 @@ mod stub_router {
             &mut self,
             _host: Option<Url>,
             _route: RelativeUri,
-            _origin: Option<Origin>,
         ) -> BoxFuture<Result<RoutingAddr, RouterError>> {
             panic!("Unexpected resolution attempt.")
         }

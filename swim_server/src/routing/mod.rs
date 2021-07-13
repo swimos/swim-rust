@@ -75,7 +75,6 @@ impl Router for TopLevelRouter {
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,
-        origin: Option<Origin>,
     ) -> BoxFuture<'_, Result<Route, ResolutionError>> {
         async move {
             let TopLevelRouter {
@@ -90,27 +89,6 @@ impl Router for TopLevelRouter {
                 let request = Request::new(tx);
                 if remote_sender
                     .send(RemoteRoutingRequest::Endpoint { addr, request })
-                    .await
-                    .is_err()
-                {
-                    Err(ResolutionError::router_dropped())
-                } else {
-                    match rx.await {
-                        Ok(Ok(RawRoute { sender, on_drop })) => {
-                            Ok(Route::new(TaggedSender::new(*tag, sender), on_drop))
-                        }
-                        Ok(Err(_)) => Err(ResolutionError::unresolvable(addr.to_string())),
-                        Err(_) => Err(ResolutionError::router_dropped()),
-                    }
-                }
-            } else if origin.is_some() {
-                let (tx, rx) = oneshot::channel();
-                let request = Request::new(tx);
-                if client_sender
-                    .send(ClientRequest::Connect {
-                        request,
-                        origin: origin.unwrap(),
-                    })
                     .await
                     .is_err()
                 {
@@ -151,7 +129,6 @@ impl Router for TopLevelRouter {
         &mut self,
         host: Option<Url>,
         route: RelativeUri,
-        _origin: Option<Origin>,
     ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
         async move {
             let TopLevelRouter { plane_sender, .. } = self;
