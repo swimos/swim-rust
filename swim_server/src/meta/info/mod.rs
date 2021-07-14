@@ -37,6 +37,7 @@ use std::convert::TryFrom;
 use std::fmt::{Debug, Display, Formatter};
 use std::hash::Hash;
 use std::num::NonZeroUsize;
+use swim_common::form::structural::read::error::ExpectedEvent;
 use swim_common::form::structural::read::event::ReadEvent;
 use swim_common::form::structural::read::recognizer::{
     Recognizer, RecognizerReadable, SimpleAttrBody, SimpleRecBody,
@@ -46,6 +47,7 @@ use swim_common::form::structural::write::{PrimitiveWriter, StructuralWritable, 
 use swim_common::form::structural::Tag;
 use swim_common::form::Form;
 use swim_common::model::text::Text;
+use swim_common::model::ValueKind;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, Level};
@@ -109,7 +111,9 @@ impl Recognizer for LaneKindRecognizer {
                     }),
                 )
             }
-            ow => Some(Err(ow.kind_error())),
+            ow => Some(Err(
+                ow.kind_error(ExpectedEvent::ValueEvent(ValueKind::Text))
+            )),
         }
     }
 

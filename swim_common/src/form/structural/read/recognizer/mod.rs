@@ -1549,13 +1549,11 @@ impl<T> Recognizer for EmptyBodyRecognizer<T> {
             } else {
                 Some(Err(input.kind_error(ExpectedEvent::EndOfRecord)))
             }
+        } else if matches!(input, ReadEvent::StartBody) {
+            self.seen_start = true;
+            None
         } else {
-            if matches!(input, ReadEvent::StartBody) {
-                self.seen_start = true;
-                None
-            } else {
-                Some(Err(input.kind_error(ExpectedEvent::RecordBody)))
-            }
+            Some(Err(input.kind_error(ExpectedEvent::RecordBody)))
         }
     }
 
