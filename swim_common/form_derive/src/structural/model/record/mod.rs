@@ -51,14 +51,14 @@ pub struct StructModel<'a> {
 
 impl<'a> StructModel<'a> {
     /// Get the (possible renamed) name of the type as a string literal.
-    pub fn resolve_name<'b>(&'b self) -> ResolvedName<'a, 'b> {
+    pub fn resolve_name(&self) -> ResolvedName<'_> {
         ResolvedName(self)
     }
 }
 
-pub struct ResolvedName<'a, 'b>(&'b StructModel<'a>);
+pub struct ResolvedName<'a>(&'a StructModel<'a>);
 
-impl<'a, 'b> ToTokens for ResolvedName<'a, 'b> {
+impl<'a> ToTokens for ResolvedName<'a> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let ResolvedName(def) = self;
         if let Some(trans) = def.transform.as_ref() {
@@ -74,15 +74,15 @@ impl<'a, 'b> ToTokens for ResolvedName<'a, 'b> {
 
 /// Fully processed description of a struct type, used to generate the output of the derive macros.
 #[derive(Clone)]
-pub struct SegregatedStructModel<'a, 'b> {
+pub struct SegregatedStructModel<'a> {
     /// Preprocessed model with attribute information.
-    pub inner: &'b StructModel<'a>,
+    pub inner: &'a StructModel<'a>,
     /// Description of where in the record each field should be written.
-    pub fields: SegregatedFields<'a, 'b>,
+    pub fields: SegregatedFields<'a>,
 }
 
-impl<'a, 'b> From<&'b StructModel<'a>> for SegregatedStructModel<'a, 'b> {
-    fn from(model: &'b StructModel<'a>) -> Self {
+impl<'a> From<&'a StructModel<'a>> for SegregatedStructModel<'a> {
+    fn from(model: &'a StructModel<'a>) -> Self {
         let fields = &model.fields_model.fields;
         let mut segregated = SegregatedFields::default();
         for field in fields.iter() {

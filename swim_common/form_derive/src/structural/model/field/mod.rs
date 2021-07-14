@@ -64,9 +64,9 @@ impl<'a> FieldModel<'a> {
     }
 }
 
-pub struct ResolvedName<'a, 'b>(&'b FieldModel<'a>);
+pub struct ResolvedName<'a>(&'a FieldModel<'a>);
 
-impl<'a, 'b> ToTokens for ResolvedName<'a, 'b> {
+impl<'a> ToTokens for ResolvedName<'a> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let ResolvedName(field) = self;
         if let Some(trans) = field.transform.as_ref() {
@@ -268,30 +268,30 @@ impl TryFrom<NestedMeta> for FieldAttr {
 
 /// Description of how fields should be written into the attributes of the record.
 #[derive(Default, Clone)]
-pub struct HeaderFields<'a, 'b> {
+pub struct HeaderFields<'a> {
     /// A field that should be used to replaced the name of the tag attribute.
-    pub tag_name: Option<&'b FieldModel<'a>>,
+    pub tag_name: Option<&'a FieldModel<'a>>,
     /// A field that should be promoted to the body of the tag.
-    pub tag_body: Option<&'b FieldModel<'a>>,
+    pub tag_body: Option<&'a FieldModel<'a>>,
     /// Fields that should be promoted to the body of the tag (after the `tag_body` field, if it
     /// exists. These must be labelled.
-    pub header_fields: Vec<&'b FieldModel<'a>>,
+    pub header_fields: Vec<&'a FieldModel<'a>>,
     /// Fields that should be promoted to an attribute.
-    pub attributes: Vec<&'b FieldModel<'a>>,
+    pub attributes: Vec<&'a FieldModel<'a>>,
 }
 
 /// The fields that should be written into the body of the record.
 #[derive(Clone)]
-pub enum BodyFields<'a, 'b> {
+pub enum BodyFields<'a> {
     /// Simple items in the record body.
-    ReplacedBody(&'b FieldModel<'a>),
+    ReplacedBody(&'a FieldModel<'a>),
     /// A single field is used to replace the entire body (potentially adding more attributes). All
     /// other fields must be lifted into the header. If this cannot be done (for example, some of
     /// those fields are not labelled) it is an error.
-    StdBody(Vec<&'b FieldModel<'a>>),
+    StdBody(Vec<&'a FieldModel<'a>>),
 }
 
-impl<'a, 'b> Default for BodyFields<'a, 'b> {
+impl<'a> Default for BodyFields<'a> {
     fn default() -> Self {
         BodyFields::StdBody(vec![])
     }
@@ -299,12 +299,12 @@ impl<'a, 'b> Default for BodyFields<'a, 'b> {
 
 /// Description of how the fields of a type are written into a record.
 #[derive(Default, Clone)]
-pub struct SegregatedFields<'a, 'b> {
-    pub header: HeaderFields<'a, 'b>,
-    pub body: BodyFields<'a, 'b>,
+pub struct SegregatedFields<'a> {
+    pub header: HeaderFields<'a>,
+    pub body: BodyFields<'a>,
 }
 
-impl<'a, 'b> SegregatedFields<'a, 'b> {
+impl<'a> SegregatedFields<'a> {
     /// The number of field blocks in the type (most fields are a block in themself but the header,
     /// if it exists, is a single block).
     pub fn num_field_blocks(&self) -> usize {
@@ -336,10 +336,10 @@ impl<'a, 'b> SegregatedFields<'a, 'b> {
     }
 }
 
-impl<'a, 'b> Add<&'b TaggedFieldModel<'a>> for SegregatedFields<'a, 'b> {
+impl<'a> Add<&'a TaggedFieldModel<'a>> for SegregatedFields<'a> {
     type Output = Self;
 
-    fn add(self, rhs: &'b TaggedFieldModel<'a>) -> Self::Output {
+    fn add(self, rhs: &'a TaggedFieldModel<'a>) -> Self::Output {
         let SegregatedFields {
             mut header,
             mut body,

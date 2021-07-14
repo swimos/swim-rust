@@ -33,15 +33,15 @@ pub struct EnumModel<'a> {
 
 /// Fully processed description of an enum type, used to generate the output of the derive macros.
 #[derive(Clone)]
-pub struct SegregatedEnumModel<'a, 'b> {
+pub struct SegregatedEnumModel<'a> {
     /// Preprocessed model with attribute information.
-    pub inner: &'b EnumModel<'b>,
+    pub inner: &'a EnumModel<'a>,
     /// Description of where the fields should be written, for each variant.
-    pub variants: Vec<SegregatedStructModel<'a, 'b>>,
+    pub variants: Vec<SegregatedStructModel<'a>>,
 }
 
-impl<'a, 'b> From<&'b EnumModel<'a>> for SegregatedEnumModel<'a, 'b> {
-    fn from(model: &'b EnumModel<'a>) -> Self {
+impl<'a> From<&'a EnumModel<'a>> for SegregatedEnumModel<'a> {
+    fn from(model: &'a EnumModel<'a>) -> Self {
         let EnumModel { variants, .. } = model;
         let seg_variants = variants.iter().map(Into::into).collect();
         SegregatedEnumModel {
