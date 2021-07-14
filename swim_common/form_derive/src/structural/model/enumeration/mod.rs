@@ -91,7 +91,17 @@ impl<'a> ValidateFrom<EnumDef<'a>> for EnumModel<'a> {
                 .validate_fold(init, false, |mut var_models, variant| {
                     let struct_def =
                         StructDef::new(&variant.ident, variant, &variant.attrs, variant);
-                    let model = StructModel::validate(struct_def);
+                    let model = StructModel::validate(struct_def).and_then(|model| {
+                        if model.fields_model.manifest.has_tag_field {
+                            let err = syn::Error::new_spanned(
+                                variant,
+                                "Enum variants cannot specify a tag field",
+                            );
+                            Validation::Validated(model, err.into())
+                        } else {
+                            Validation::valid(model)
+                        }
+                    });
                     match model {
                         Validation::Validated(model, errs) => {
                             var_models.push(model);

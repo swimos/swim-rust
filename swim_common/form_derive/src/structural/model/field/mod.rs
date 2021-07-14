@@ -15,8 +15,8 @@
 use super::ValidateFrom;
 use crate::modifiers::NameTransform;
 use crate::parser::{
-    ATTR_PATH, BODY_PATH, FORM_PATH, HEADER_BODY_PATH, HEADER_PATH, NAME_PATH, SKIP_PATH,
-    SLOT_PATH, TAG_PATH,
+    ATTR_PATH, BODY_PATH, FORM_PATH, HEADER_BODY_PATH, HEADER_PATH, NAME_PATH, SCHEMA_PATH,
+    SKIP_PATH, SLOT_PATH, TAG_PATH,
 };
 use crate::SynValidation;
 use macro_helpers::{FieldKind, Symbol};
@@ -121,7 +121,8 @@ enum FieldAttr {
     Transform(NameTransform),
     /// Specify where the field should occur in the serialized record.
     Kind(FieldKind),
-    Other,
+    /// Some other form attribute.
+    Other(Option<String>),
 }
 
 /// Validated attributes for a field.
@@ -132,7 +133,7 @@ struct FieldAttributes {
 }
 
 impl FieldAttributes {
-    /// Attempt to apply another attribute, failing of the combined effect is invalid.
+    /// Attempt to apply another attribute, failing if the combined effect is invalid.
     fn add(mut self, field: &syn::Field, attr: FieldAttr) -> SynValidation<FieldAttributes> {
         let FieldAttributes {
             transform,
@@ -157,7 +158,13 @@ impl FieldAttributes {
                     Validation::valid(self)
                 }
             }
-            FieldAttr::Other => Validation::valid(self),
+            FieldAttr::Other(name) => match name {
+                Some(name) if name == SCHEMA_PATH.0 => Validation::valid(self),
+                _ => {
+                    let err = syn::Error::new_spanned(field, "Unknown container attribute");
+                    Validation::Validated(self, err.into())
+                }
+            },
         }
     }
 }
@@ -233,18 +240,28 @@ impl TryFrom<NestedMeta> for FieldAttr {
                         return Ok(FieldAttr::Kind(*kind));
                     }
                 }
-                Ok(FieldAttr::Other) //Overlap with schema macro.
+                let name = path.get_ident().map(|id| id.to_string());
+                Ok(FieldAttr::Other(name))
             }
-            NestedMeta::Meta(Meta::NameValue(named)) if named.path == NAME_PATH => {
-                if let Lit::Str(new_name) = &named.lit {
-                    Ok(FieldAttr::Transform(NameTransform::Rename(
-                        new_name.value(),
-                    )))
+            NestedMeta::Meta(Meta::NameValue(named)) => {
+                if named.path == NAME_PATH {
+                    if let Lit::Str(new_name) = &named.lit {
+                        Ok(FieldAttr::Transform(NameTransform::Rename(
+                            new_name.value(),
+                        )))
+                    } else {
+                        Err(syn::Error::new_spanned(named, "Expected string argument"))
+                    }
                 } else {
-                    Err(syn::Error::new_spanned(named, "Expected string argument"))
+                    let name = named.path.get_ident().map(|id| id.to_string());
+                    Ok(FieldAttr::Other(name))
                 }
             }
-            _ => Ok(FieldAttr::Other), //Overlap with schema macro.
+            NestedMeta::Meta(Meta::List(lst)) => {
+                let name = lst.path.get_ident().map(|id| id.to_string());
+                Ok(FieldAttr::Other(name))
+            }
+            _ => Ok(FieldAttr::Other(None)), //Overlap with schema macro.
         }
     }
 }

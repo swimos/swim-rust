@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::parser::TAG_PATH;
+use crate::parser::{SCHEMA_PATH, TAG_PATH};
 use crate::SynValidation;
 use std::convert::TryFrom;
 use utilities::validation::{Validation, ValidationItExt};
@@ -24,34 +24,60 @@ pub enum NameTransform {
     Rename(String),
 }
 
+pub enum NameTransformError {
+    NonStringName,
+    EmptyName,
+    UnknownAttribute(Option<String>),
+}
+
+impl NameTransformError {
+    pub fn into_syn_err(self, nested_meta: &syn::NestedMeta) -> syn::Error {
+        match self {
+            NameTransformError::NonStringName => {
+                syn::Error::new_spanned(nested_meta, "Expecting string argument")
+            }
+            NameTransformError::EmptyName => {
+                syn::Error::new_spanned(nested_meta, "New tag cannot be empty")
+            }
+            NameTransformError::UnknownAttribute(Some(name)) => syn::Error::new_spanned(
+                nested_meta,
+                format!("Unknown container attribute: {}", name),
+            ),
+            NameTransformError::UnknownAttribute(_) => {
+                syn::Error::new_spanned(nested_meta, "Unknown container attribute")
+            }
+        }
+    }
+}
+
 impl TryFrom<&syn::NestedMeta> for NameTransform {
-    type Error = syn::Error;
+    type Error = NameTransformError;
 
     fn try_from(nested_meta: &syn::NestedMeta) -> Result<Self, Self::Error> {
         match nested_meta {
             syn::NestedMeta::Meta(syn::Meta::NameValue(name)) if name.path == TAG_PATH => {
-                match &name.lit {
-                    syn::Lit::Str(s) => {
-                        let tag = s.value();
-                        if tag.is_empty() {
-                            Err(syn::Error::new_spanned(
-                                nested_meta,
-                                "New tag cannot be empty",
-                            ))
-                        } else {
-                            Ok(NameTransform::Rename(tag))
+                if name.path == TAG_PATH {
+                    match &name.lit {
+                        syn::Lit::Str(s) => {
+                            let tag = s.value();
+                            if tag.is_empty() {
+                                Err(NameTransformError::EmptyName)
+                            } else {
+                                Ok(NameTransform::Rename(tag))
+                            }
                         }
+                        _ => Err(NameTransformError::NonStringName),
                     }
-                    _ => Err(syn::Error::new_spanned(
-                        nested_meta,
-                        "Expecting string argument",
-                    )),
+                } else {
+                    let name = name.path.get_ident().map(|id| id.to_string());
+                    Err(NameTransformError::UnknownAttribute(name))
                 }
             }
-            _ => Err(syn::Error::new_spanned(
-                nested_meta,
-                "Unknown container attribute",
-            )),
+            syn::NestedMeta::Meta(syn::Meta::List(lst)) => {
+                let name = lst.path.get_ident().map(|id| id.to_string());
+                Err(NameTransformError::UnknownAttribute(name))
+            }
+            _ => Err(NameTransformError::UnknownAttribute(None)),
         }
     }
 }
@@ -100,7 +126,8 @@ pub fn acc_rename(
                 None
             }
         }
-        Err(_) => None, //Overlap with other macros which we can ignore.
+        Err(NameTransformError::UnknownAttribute(Some(name))) if name == SCHEMA_PATH.0 => None, //Overlap with other macros which we can ignore.
+        Err(e) => Some(e.into_syn_err(&nested_meta)),
     };
     Validation::Validated(state, err.into())
 }

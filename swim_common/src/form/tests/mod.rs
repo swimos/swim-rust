@@ -20,11 +20,10 @@ mod validated;
 use trybuild::TestCases;
 
 #[test]
-#[ignore] //TODO Update these for the new Form derivation.
 fn test_derive() {
     let t = TestCases::new();
 
     t.compile_fail("src/form/tests/derive/form/*.rs");
-    t.compile_fail("src/form/tests/derive/tag/*.rs");
-    t.compile_fail("src/form/tests/derive/validated_form/*.rs");
+    //t.compile_fail("src/form/tests/derive/tag/*.rs");
+    //t.compile_fail("src/form/tests/derive/validated_form/*.rs");
 }
