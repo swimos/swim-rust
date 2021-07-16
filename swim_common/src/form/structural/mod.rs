@@ -80,6 +80,6 @@ pub trait Tag: Sized + AsRef<str> {
     /// error case is an error message to be incorporated into other errors.
     fn try_from_str(txt: &str) -> Result<Self, Text>;
 
-    /// All possible string representatiojns for this type.
-    fn universe() -> &'static [&'static str];
+    /// All possible string representations for this type.
+    const UNIVERSE: &'static [&'static str];
 }

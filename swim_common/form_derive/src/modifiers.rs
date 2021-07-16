@@ -34,18 +34,12 @@ impl TryFrom<&syn::NestedMeta> for NameTransform {
                     syn::Lit::Str(s) => {
                         let tag = s.value();
                         if tag.is_empty() {
-                            Err(syn::Error::new_spanned(
-                                s,
-                                "New tag cannot be empty",
-                            ))
+                            Err(syn::Error::new_spanned(s, "New tag cannot be empty"))
                         } else {
                             Ok(NameTransform::Rename(tag))
                         }
                     }
-                    _ => Err(syn::Error::new_spanned(
-                        name,
-                        "Expecting string argument",
-                    )),
+                    _ => Err(syn::Error::new_spanned(name, "Expecting string argument")),
                 }
             }
             _ => Err(syn::Error::new_spanned(

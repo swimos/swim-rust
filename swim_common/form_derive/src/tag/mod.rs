@@ -101,9 +101,7 @@ impl<'a> ToTokens for DeriveTag<UnitEnum<'a>> {
                         }
                     }
 
-                    fn universe() -> &'static [&'static str] {
-                        &VARIANT_NAMES
-                    }
+                    const UNIVERSE: &'static [&'static str] = &VARIANT_NAMES;
                 }
 
             };
