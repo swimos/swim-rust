@@ -128,13 +128,16 @@ impl<'a> Display for Variants<'a> {
     }
 }
 
+const ENUM_WITH_FIELDS_ERR: &'static str = "Only enumerations with no fields can be tags.";
+const NON_ENUM_TYPE_ERR: &'static str = "Only enumeration types can be tags.";
+
 pub fn build_derive_tag(input: syn::DeriveInput) -> Result<TokenStream, Errors<syn::Error>> {
     match &input.data {
         syn::Data::Enum(enum_ty) => {
             if enum_ty.variants.iter().any(|var| !var.fields.is_empty()) {
                 Err(Errors::of(syn::Error::new_spanned(
                     input,
-                    "Only enumerations with no fields can be tags.",
+                    ENUM_WITH_FIELDS_ERR,
                 )))
             } else {
                 let validated = enum_ty
@@ -157,7 +160,7 @@ pub fn build_derive_tag(input: syn::DeriveInput) -> Result<TokenStream, Errors<s
         }
         _ => Err(Errors::of(syn::Error::new_spanned(
             input,
-            "Only enumeration types can be tags.",
+            NON_ENUM_TYPE_ERR,
         ))),
     }
 }

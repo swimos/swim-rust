@@ -35,7 +35,7 @@ impl TryFrom<&syn::NestedMeta> for NameTransform {
                         let tag = s.value();
                         if tag.is_empty() {
                             Err(syn::Error::new_spanned(
-                                nested_meta,
+                                s,
                                 "New tag cannot be empty",
                             ))
                         } else {
@@ -43,7 +43,7 @@ impl TryFrom<&syn::NestedMeta> for NameTransform {
                         }
                     }
                     _ => Err(syn::Error::new_spanned(
-                        nested_meta,
+                        name,
                         "Expecting string argument",
                     )),
                 }

@@ -299,6 +299,7 @@ impl<'a, 'b> ToTokens for DeriveStructuralReadable<'b, SegregatedEnumModel<'a, '
                     #state
 
                     #[automatically_derived]
+                    #[inline]
                     fn #select_var_name #impl_gen(name: &str) -> core::option::Option<#builder_name #type_gen>
                     #where_clause
                     {
