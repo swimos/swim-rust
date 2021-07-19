@@ -1,3 +1,4 @@
+use crate::codec::Codec;
 use crate::errors::Error;
 use crate::extensions::ext::NoExtProxy;
 use crate::extensions::ExtensionHandshake;
@@ -30,7 +31,7 @@ impl<E: ExtensionHandshake> WebSocketClientBuilder<E> {
         self,
         stream: S,
         request: I,
-    ) -> Result<(WebSocket<S, E::Extension>, Option<String>), Error>
+    ) -> Result<(WebSocket<S, Codec, E::Extension>, Option<String>), Error>
     where
         S: WebSocketStream,
         I: TryIntoRequest,
@@ -47,6 +48,7 @@ impl<E: ExtensionHandshake> WebSocketClientBuilder<E> {
             config.unwrap_or_default(),
             stream,
             request,
+            Codec,
             extension,
             subprotocols,
         )

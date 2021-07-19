@@ -3,6 +3,7 @@ use crate::extensions::ext::NoExt;
 use crate::Request;
 use std::fmt::Debug;
 
+pub mod deflate;
 pub mod ext;
 
 // todo
