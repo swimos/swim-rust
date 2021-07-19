@@ -74,6 +74,9 @@ impl<'a> EnumDef<'a> {
     }
 }
 
+const VARIANT_WITH_TAG: &str = "Enum variants cannot specify a tag field";
+const TAG_SPECIFIED_FOR_ENUM: &str = "A tag name cannot be specified for an enum type, only its variants.";
+
 impl<'a> ValidateFrom<EnumDef<'a>> for EnumModel<'a> {
     fn validate(input: EnumDef<'a>) -> SynValidation<Self> {
         let EnumDef {
@@ -95,7 +98,7 @@ impl<'a> ValidateFrom<EnumDef<'a>> for EnumModel<'a> {
                         if model.fields_model.manifest.has_tag_field {
                             let err = syn::Error::new_spanned(
                                 variant,
-                                "Enum variants cannot specify a tag field",
+                                VARIANT_WITH_TAG,
                             );
                             Validation::Validated(model, err.into())
                         } else {
@@ -145,7 +148,7 @@ impl<'a> ValidateFrom<EnumDef<'a>> for EnumModel<'a> {
                 if transform.is_some() {
                     let err = syn::Error::new_spanned(
                         top,
-                        "Tags are only supported on enumeration variants.",
+                        TAG_SPECIFIED_FOR_ENUM,
                     );
                     Validation::Validated(enum_model, err.into())
                 } else {
