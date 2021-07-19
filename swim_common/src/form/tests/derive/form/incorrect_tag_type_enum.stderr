@@ -1,5 +1,5 @@
 error: Expecting string argument
-  --> $DIR/incorrect_tag_type_enum.rs:20:16
+  --> $DIR/incorrect_tag_type_enum.rs:20:22
    |
 20 |         #[form(tag = 13)]
-   |                ^^^^^^^^
+   |                      ^^
