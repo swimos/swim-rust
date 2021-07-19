@@ -24,8 +24,7 @@ use std::path::{Path, PathBuf};
 /// A delegate store database that does nothing.
 #[derive(Debug, Clone)]
 pub struct NoStore {
-    /// A path stub that is the name of the plane that created it.
-    pub(crate) path: PathBuf,
+    path: PathBuf,
 }
 
 impl Store for NoStore {
@@ -33,9 +32,9 @@ impl Store for NoStore {
         self.path.borrow()
     }
 
-    fn store_info(&self) -> StoreInfo {
-        StoreInfo {
-            path: self.path.to_string_lossy().to_string(),
+    fn engine_info(&self) -> EngineInfo {
+        EngineInfo {
+            path: "Transient".to_string(),
             kind: "NoStore".to_string(),
         }
     }
@@ -75,19 +74,17 @@ impl KeyspaceByteEngine for NoStore {
         &self,
         _keyspace: K,
         _key: &[u8],
-        _value: KeyType,
+        _value: u64,
     ) -> Result<(), StoreError> {
         Ok(())
     }
-}
 
-impl RangedSnapshotLoad for NoStore {
-    fn load_ranged_snapshot<F, K, V, S>(
+    fn get_prefix_range<F, K, V, S>(
         &self,
         _keyspace: S,
         _prefix: &[u8],
         _map_fn: F,
-    ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
+    ) -> Result<Option<Vec<(K, V)>>, StoreError>
     where
         F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
         S: Keyspace,
@@ -98,17 +95,15 @@ impl RangedSnapshotLoad for NoStore {
 
 #[derive(Default, Clone)]
 pub struct NoStoreOpts;
+impl StoreBuilder for NoStoreOpts {
+    type Store = NoStore;
 
-impl FromKeyspaces for NoStore {
-    type Opts = NoStoreOpts;
-
-    fn from_keyspaces<I: AsRef<Path>>(
-        path: I,
-        _db_opts: &Self::Opts,
-        _keyspaces: Keyspaces<Self>,
-    ) -> Result<Self, StoreError> {
+    fn build<I>(self, _path: I, _keyspaces: &Keyspaces<Self>) -> Result<Self::Store, StoreError>
+    where
+        I: AsRef<Path>,
+    {
         Ok(NoStore {
-            path: path.as_ref().to_path_buf(),
+            path: PathBuf::from("Transient".to_string()),
         })
     }
 }

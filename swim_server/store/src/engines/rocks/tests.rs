@@ -27,13 +27,12 @@ use std::ops::Range;
 
 fn default_lane_opts() -> Options {
     let mut opts = rocksdb::Options::default();
-    opts.set_prefix_extractor(SliceTransform::create_fixed_prefix(size_of::<KeyType>()));
+    opts.set_prefix_extractor(SliceTransform::create_fixed_prefix(size_of::<u64>()));
     opts.set_memtable_prefix_bloom_ratio(0.2);
 
     opts
 }
 
-#[allow(clippy::unnecessary_wraps)]
 pub(crate) fn incrementing_merge_operator(
     _new_key: &[u8],
     existing_value: Option<&[u8]>,
@@ -56,15 +55,18 @@ fn default_db() -> TransientDatabase {
     lane_opts.set_merge_operator_associative("lane_id_counter", incrementing_merge_operator);
 
     let keyspaces = vec![
-        KeyspaceDef::new(KeyspaceName::Value.name(), RocksOpts(default_lane_opts())),
-        KeyspaceDef::new(KeyspaceName::Map.name(), RocksOpts(default_lane_opts())),
-        KeyspaceDef::new(KeyspaceName::Lane.name(), RocksOpts(lane_opts)),
+        KeyspaceDef::new(
+            TestKeyspaceName::Value.name(),
+            RocksOpts(default_lane_opts()),
+        ),
+        KeyspaceDef::new(TestKeyspaceName::Map.name(), RocksOpts(default_lane_opts())),
+        KeyspaceDef::new(TestKeyspaceName::Lane.name(), RocksOpts(lane_opts)),
     ];
 
-    TransientDatabase::new(Keyspaces::new(keyspaces)).expect("Failed to build transient database")
+    TransientDatabase::new(Keyspaces::new(keyspaces))
 }
 
-fn assert_keyspaces_empty(db: &TransientDatabase, spaces: &[KeyspaceName]) {
+fn assert_keyspaces_empty(db: &TransientDatabase, spaces: &[TestKeyspaceName]) {
     for key_space in spaces {
         let resolved = db.resolve_keyspace(key_space).unwrap();
         let iter = db.iterator(resolved).unwrap();
@@ -73,18 +75,18 @@ fn assert_keyspaces_empty(db: &TransientDatabase, spaces: &[KeyspaceName]) {
 }
 
 #[derive(Debug, Clone, Copy)]
-enum KeyspaceName {
+enum TestKeyspaceName {
     Value,
     Map,
     Lane,
 }
 
-impl Keyspace for KeyspaceName {
+impl Keyspace for TestKeyspaceName {
     fn name(&self) -> &str {
         match self {
-            KeyspaceName::Value => "value",
-            KeyspaceName::Map => "map",
-            KeyspaceName::Lane => "default",
+            TestKeyspaceName::Value => "value",
+            TestKeyspaceName::Map => "map",
+            TestKeyspaceName::Lane => "default",
         }
     }
 }
@@ -96,8 +98,8 @@ fn get_keyspace() {
     let key = b"test_key";
     let value = b"test_value";
 
-    assert!(db.put_keyspace(KeyspaceName::Value, key, value).is_ok());
-    assert_keyspaces_empty(&db, &[KeyspaceName::Lane, KeyspaceName::Map]);
+    assert!(db.put_keyspace(TestKeyspaceName::Value, key, value).is_ok());
+    assert_keyspaces_empty(&db, &[TestKeyspaceName::Lane, TestKeyspaceName::Map]);
 }
 
 fn format_key(id: i32) -> String {
@@ -106,7 +108,7 @@ fn format_key(id: i32) -> String {
 
 fn populate_keyspace(
     db: &TransientDatabase,
-    space: KeyspaceName,
+    space: TestKeyspaceName,
     range: Range<i32>,
     clone_to: &mut HashMap<String, i32>,
 ) {
@@ -125,9 +127,9 @@ fn engine_iterator() {
     let range = 0..100;
     let mut expected = HashMap::new();
 
-    populate_keyspace(&db, KeyspaceName::Value, range.clone(), &mut expected);
+    populate_keyspace(&db, TestKeyspaceName::Value, range.clone(), &mut expected);
 
-    let resolved = db.resolve_keyspace(&KeyspaceName::Value).unwrap();
+    let resolved = db.resolve_keyspace(&TestKeyspaceName::Value).unwrap();
     let mut iter = db.iterator(resolved).unwrap();
 
     assert_eq!(iter.seek_first(), Ok(true));
@@ -160,7 +162,7 @@ fn engine_iterator() {
     }
 
     assert!(expected.is_empty());
-    assert_keyspaces_empty(&db, &[KeyspaceName::Lane, KeyspaceName::Map]);
+    assert_keyspaces_empty(&db, &[TestKeyspaceName::Lane, TestKeyspaceName::Map]);
 }
 
 #[test]
@@ -171,36 +173,38 @@ pub fn crud() {
     let value_1 = b"value_a";
     let value_2 = b"value_b";
 
-    assert!(db.put_keyspace(KeyspaceName::Value, key, value_1).is_ok());
+    assert!(db
+        .put_keyspace(TestKeyspaceName::Value, key, value_1)
+        .is_ok());
 
-    let get_result = db.get_keyspace(KeyspaceName::Value, key);
+    let get_result = db.get_keyspace(TestKeyspaceName::Value, key);
     assert!(matches!(get_result, Ok(Some(_))));
     let get_value = get_result.unwrap().unwrap();
     assert_eq!(value_1, String::from_utf8(get_value).unwrap().as_bytes());
 
-    let update_result = db.put_keyspace(KeyspaceName::Value, key, value_2);
+    let update_result = db.put_keyspace(TestKeyspaceName::Value, key, value_2);
     assert!(update_result.is_ok());
 
-    let get_result = db.get_keyspace(KeyspaceName::Value, key);
+    let get_result = db.get_keyspace(TestKeyspaceName::Value, key);
     assert!(matches!(get_result, Ok(Some(_))));
     let get_value = get_result.unwrap().unwrap();
     assert_eq!(value_2, String::from_utf8(get_value).unwrap().as_bytes());
 
-    let delete_result = db.delete_keyspace(KeyspaceName::Value, key);
+    let delete_result = db.delete_keyspace(TestKeyspaceName::Value, key);
     assert!(matches!(delete_result, Ok(())));
 }
 
 #[test]
 pub fn get_missing() {
     let db = default_db();
-    let get_result = db.get_keyspace(KeyspaceName::Value, b"key_a");
+    let get_result = db.get_keyspace(TestKeyspaceName::Value, b"key_a");
     assert!(matches!(get_result, Ok(None)));
 }
 
 #[test]
 pub fn delete_missing() {
     let db = default_db();
-    let get_result = db.delete_keyspace(KeyspaceName::Value, b"key_a");
+    let get_result = db.delete_keyspace(TestKeyspaceName::Value, b"key_a");
     assert!(matches!(get_result, Ok(())));
 }
 
@@ -212,9 +216,9 @@ fn map_fn<'a>(key: &'a [u8], value: &'a [u8]) -> Result<(String, String), StoreE
 }
 
 #[test]
-pub fn empty_snapshot() {
+pub fn empty_range() {
     let db = default_db();
-    let result = db.load_ranged_snapshot(KeyspaceName::Value, b"prefix", map_fn);
+    let result = db.get_prefix_range(TestKeyspaceName::Value, b"prefix", map_fn);
     match result {
         Ok(ss) => {
             assert!(ss.is_none());
@@ -224,7 +228,7 @@ pub fn empty_snapshot() {
 }
 
 #[test]
-pub fn ranged_snapshot() {
+pub fn prefix_range() {
     let db = default_db();
     let prefix = "/foo/bar";
     let limit = 256;
@@ -237,7 +241,7 @@ pub fn ranged_snapshot() {
         let key = format(i);
         let value = i.to_string();
         let result = db.put_keyspace(
-            KeyspaceName::Value,
+            TestKeyspaceName::Value,
             key.as_bytes(),
             i.to_string().as_bytes(),
         );
@@ -251,16 +255,16 @@ pub fn ranged_snapshot() {
     for i in 0..limit {
         let key = format!("/foo/{}", i);
         let value = i.to_string();
-        let result = db.put_keyspace(KeyspaceName::Value, key.as_bytes(), value.as_bytes());
+        let result = db.put_keyspace(TestKeyspaceName::Value, key.as_bytes(), value.as_bytes());
 
         assert!(result.is_ok());
     }
 
-    let snapshot_result = db.load_ranged_snapshot(KeyspaceName::Value, prefix.as_bytes(), map_fn);
-    assert!(matches!(snapshot_result, Ok(Some(_))));
+    let result = db.get_prefix_range(TestKeyspaceName::Value, prefix.as_bytes(), map_fn);
+    assert!(matches!(result, Ok(Some(_))));
 
-    let snapshot = snapshot_result.unwrap().unwrap();
-    let mut iter = snapshot.into_iter();
+    let result = result.unwrap().unwrap();
+    let mut iter = result.into_iter();
 
     for i in 0..limit {
         match iter.next() {
