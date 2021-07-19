@@ -514,22 +514,18 @@ where
 
     let CommandLaneIo {
         commander,
-        local_commands_rx,
+        commands_rx,
     } = lane_io;
 
     let (event_observer, action_observer) =
         context.metrics().uplink_observer_for_path(route.clone());
 
-    let (feedback_tx, feedback_rx) = mpsc::channel(config.feedback_buffer.get());
-    let feedback_rx = ReceiverStream::new(feedback_rx)
+    let feedback_rx = commands_rx
         .map(AddressedUplinkMessage::Broadcast)
         .inspect(|_| event_observer.on_event());
 
     let updater = CommandLaneUpdateTask::new(
         commander,
-        local_commands_rx,
-        feedback_tx,
-        config.cleanup_timeout,
     );
     let uplinks = StatelessUplinks::new(
         feedback_rx,

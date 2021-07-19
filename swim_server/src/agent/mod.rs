@@ -18,7 +18,7 @@ pub mod lane;
 pub mod lifecycle;
 
 #[cfg(test)]
-mod tests;
+pub mod tests;
 
 #[cfg(test)]
 pub use tests::test_clock::TestClock;
@@ -73,7 +73,7 @@ use tokio::sync::{mpsc, oneshot};
 use tracing::{event, span, Level};
 use tracing_futures::{Instrument, Instrumented};
 use utilities::future::SwimStreamExt;
-use utilities::sync::{topic, trigger};
+use utilities::sync::{topic, trigger, circular_buffer};
 use utilities::uri::RelativeUri;
 
 use crate::agent::model::command::Commander;
@@ -108,6 +108,7 @@ pub type DynamicAgentIo<Context> = HashMap<String, Box<dyn LaneIo<Context>>>;
 pub const COMMANDED: &str = "Command received";
 pub const ON_COMMAND: &str = "On command handler";
 pub const RESPONSE_IGNORED: &str = "Response requested from action lane but ignored.";
+pub const COMMAND_IO_DROPPED: &str = "The command IO task has stopped.";
 pub const ON_EVENT: &str = "On event handler";
 pub const ACTION_RESULT: &str = "Action result";
 const AGENT_TASK: &str = "Agent task";
@@ -677,17 +678,17 @@ where
 
 pub struct CommandLaneIo<T> {
     commander: Commander<T>,
-    local_commands_rx: ReceiverStream<Command<T>>,
+    commands_rx: circular_buffer::Receiver<T>,
 }
 
 impl<T> CommandLaneIo<T>
 where
     T: Send + Sync + Form + Debug + 'static,
 {
-    pub fn new(commander: Commander<T>, local_commands_rx: ReceiverStream<Command<T>>) -> Self {
+    pub fn new(commander: Commander<T>, commands_rx: circular_buffer::Receiver<T>) -> Self {
         CommandLaneIo {
             commander,
-            local_commands_rx,
+            commands_rx,
         }
     }
 }
@@ -735,7 +736,7 @@ struct LifecycleTasks<L, S, P> {
 struct ValueLifecycleTasks<L, S, P>(LifecycleTasks<L, S, P>);
 struct MapLifecycleTasks<L, S, P>(LifecycleTasks<L, S, P>);
 struct ActionLifecycleTasks<L, S, P>(LifecycleTasks<L, S, P>);
-struct CommandLifecycleTasks<L, S, P>(LifecycleTasks<L, S, P>);
+struct CommandLifecycleTasks<L, S, P, T>(LifecycleTasks<L, S, P>, Option<circular_buffer::Sender<T>>);
 struct DemandMapLifecycleTasks<L, S, P>(LifecycleTasks<L, S, P>);
 
 struct DemandLifecycleTasks<L, S, P, Event> {
@@ -1013,7 +1014,7 @@ where
     }
 }
 
-impl<L, S, P> Lane for CommandLifecycleTasks<L, S, P> {
+impl<L, S, P, T> Lane for CommandLifecycleTasks<L, S, P, T> {
     fn name(&self) -> &str {
         self.0.name.as_str()
     }
@@ -1023,7 +1024,7 @@ impl<L, S, P> Lane for CommandLifecycleTasks<L, S, P> {
     }
 }
 
-impl<Agent, Context, T, L, S, P> LaneTasks<Agent, Context> for CommandLifecycleTasks<L, S, P>
+impl<Agent, Context, T, L, S, P> LaneTasks<Agent, Context> for CommandLifecycleTasks<L, S, P, T>
 where
     Agent: 'static,
     Context: AgentContext<Agent> + Send + Sync + 'static,
@@ -1043,7 +1044,7 @@ where
                 event_stream,
                 projection,
                 ..
-            }) = *self;
+            }, mut command_io) = *self;
             let model = projection(context.agent()).clone();
             let events = event_stream.take_until(context.agent_stop_event());
             pin_mut!(events);
@@ -1054,8 +1055,14 @@ where
                     .instrument(span!(Level::TRACE, ON_COMMAND))
                     .await;
                 if let Some(tx) = responder {
-                    if tx.send(command).is_err() {
+                    if !tx.trigger() {
                         event!(Level::WARN, RESPONSE_IGNORED);
+                    }
+                }
+                if let Some(tx) = command_io.as_mut() {
+                    if let Err(circular_buffer::error::SendError(command)) = tx.try_send(command) {
+                        event!(Level::ERROR, COMMAND_IO_DROPPED, ?command);
+                        command_io = None;
                     }
                 }
             }
@@ -1124,7 +1131,8 @@ pub fn make_command_lane<Agent, Context, T, L>(
     is_public: bool,
     lifecycle: L,
     projection: impl Fn(&Agent) -> &CommandLane<T> + Send + Sync + 'static,
-    buffer_size: NonZeroUsize,
+    command_queue_size: NonZeroUsize,
+    uplink_buffer_size: NonZeroUsize,
 ) -> (
     CommandLane<T>,
     impl LaneTasks<Agent, Context>,
@@ -1136,16 +1144,14 @@ where
     T: Any + Send + Sync + Form + Debug + Clone,
     L: for<'l> CommandLaneLifecycle<'l, T, Agent>,
 {
-    let (lane, lane_io, event_stream) = if is_public {
-        let (lane, event_stream, commander, local_commands_rx) =
-            model::command::make_public_lane_model(buffer_size);
+    let (lane, event_stream) = model::command::make_private_lane_model(command_queue_size);
 
-        let lane_io = CommandLaneIo::new(commander, local_commands_rx);
-
-        (lane, Some(lane_io), event_stream)
+    let (io_tx, lane_io) = if is_public {
+        let (io_tx, io_rx) = circular_buffer::channel::<T>(uplink_buffer_size);
+        let commander = lane.commander();
+        (Some(io_tx), Some(CommandLaneIo::new(commander, io_rx)))
     } else {
-        let (lane, event_stream) = model::command::make_private_lane_model(buffer_size);
-        (lane, None, event_stream)
+        (None, None)
     };
 
     let tasks = CommandLifecycleTasks(LifecycleTasks {
@@ -1153,7 +1159,7 @@ where
         lifecycle,
         event_stream,
         projection,
-    });
+    }, io_tx);
 
     (lane, tasks, lane_io)
 }

@@ -21,6 +21,17 @@ pub mod macros;
 pub mod meta;
 pub mod plane;
 pub mod routing;
+pub mod sync {
+    pub mod circular_buffer {
+        pub use utilities::sync::circular_buffer::{
+            channel,
+            watch_channel,
+            Sender,
+            Receiver,
+            error::{SendError, RecvError},
+        };
+    }
+}
 
 #[allow(unused_imports)]
 pub use agent_derive::*;

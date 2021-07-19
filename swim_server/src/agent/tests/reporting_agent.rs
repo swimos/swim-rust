@@ -387,6 +387,7 @@ impl SwimAgent<TestAgentConfig> for ReportingAgent {
             },
             |agent: &ReportingAgent| &agent.action,
             exec_conf.action_buffer.clone(),
+            exec_conf.feedback_buffer.clone(),
         );
 
         let (demand, demand_tasks, _) = agent::make_demand_lane(

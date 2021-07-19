@@ -17,7 +17,7 @@ mod declarive_macro_agent;
 mod derive;
 mod reporting_agent;
 mod reporting_macro_agent;
-pub(crate) mod test_clock;
+pub mod test_clock;
 
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::lane::lifecycle::{
@@ -57,10 +57,10 @@ use tokio::sync::{mpsc, Mutex};
 use tokio::time::{timeout, Duration};
 use tokio_stream::wrappers::ReceiverStream;
 use utilities::sync::trigger::Receiver;
-use utilities::sync::{promise, trigger};
+use utilities::sync::{promise, trigger, circular_buffer};
 use utilities::uri::RelativeUri;
 
-mod stub_router {
+pub mod stub_router {
     use futures::future::BoxFuture;
     use futures::FutureExt;
     use std::sync::Arc;
@@ -83,7 +83,7 @@ mod stub_router {
     }
 
     impl SingleChannelRouter {
-        pub(crate) fn new(router_addr: RoutingAddr) -> Self {
+        pub fn new(router_addr: RoutingAddr) -> Self {
             let (tx, rx) = promise::promise();
             let (env_tx, mut env_rx) = mpsc::channel(16);
             tokio::spawn(async move { while let Some(_) = env_rx.recv().await {} });
@@ -649,7 +649,8 @@ async fn action_lane_events_task_termination() {
 #[tokio::test]
 async fn command_lane_events_task() {
     let (tx_lane, _rx_lane) = mpsc::channel(5);
-    let (tx, rx) = mpsc::channel(5);
+    let (commander_tx, commander_rx) = mpsc::channel(5);
+    let (commands_tx, _commands_rx) = circular_buffer::channel(NonZeroUsize::new(8).unwrap());
     let (_stop, stop_sig) = trigger::trigger();
 
     let lifecycle: TestLifecycle<CommandLane<String>> = TestLifecycle::default();
@@ -657,9 +658,9 @@ async fn command_lane_events_task() {
     let tasks = Box::new(CommandLifecycleTasks(LifecycleTasks {
         name: "lane".to_string(),
         lifecycle: lifecycle.clone(),
-        event_stream: ReceiverStream::new(rx),
+        event_stream: ReceiverStream::new(commander_rx),
         projection: proj(),
-    }));
+    }, commands_tx));
 
     assert_eq!(tasks.kind(), LaneKind::Command);
 
@@ -683,9 +684,9 @@ async fn command_lane_events_task() {
 
     let send = async move {
         for x in clones.into_iter() {
-            let _ = tx.send(Command::forget(x)).await;
+            let _ = commander_tx.send(Command::forget(x)).await;
         }
-        drop(tx);
+        drop(commander_tx);
     };
 
     join(events, send).await;
@@ -703,7 +704,8 @@ async fn command_lane_events_task() {
 
 #[tokio::test]
 async fn command_lane_events_task_terminates() {
-    let (tx, rx) = mpsc::channel(5);
+    let (commander_tx, commander_rx) = mpsc::channel(5);
+    let (commands_tx, _commands_rx) = circular_buffer::channel(NonZeroUsize::new(8).unwrap());
     let (stop, stop_sig) = trigger::trigger();
 
     let lifecycle: TestLifecycle<CommandLane<String>> = TestLifecycle::default();
@@ -711,11 +713,11 @@ async fn command_lane_events_task_terminates() {
     let tasks = Box::new(CommandLifecycleTasks(LifecycleTasks {
         name: "lane".to_string(),
         lifecycle: lifecycle.clone(),
-        event_stream: ReceiverStream::new(rx),
+        event_stream: ReceiverStream::new(commander_rx),
         projection: proj(),
-    }));
+    }, commands_tx));
 
-    let lane = CommandLane::new(tx);
+    let lane = CommandLane::new(commander_tx);
 
     let agent = Arc::new(TestAgent {
         name: "agent",

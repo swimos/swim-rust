@@ -260,20 +260,25 @@ fn create_lane(
 
     let ts = match lane_type {
         LaneType::Command => {
-            let private_model = quote! {
-                let (#lane_name, event_stream) = swim_server::agent::lane::model::command::make_private_lane_model((exec_conf.action_buffer.clone()));
+            let lane_model = quote! {
+                let (#lane_name, event_stream) = swim_server::agent::lane::model::command::make_private_lane_model(exec_conf.action_buffer);
             };
 
-            let public_model = quote! {
-                let (#lane_name, event_stream, commander, local_commands_rx) = swim_server::agent::lane::model::command::make_public_lane_model(exec_conf.action_buffer.clone());
-
-                io_map.insert (
-                        #lane_name_lit.to_string(),
-                        Box::new(swim_server::agent::CommandLaneIo::new(commander, local_commands_rx))
-                );
+            let priv_make = quote! {
+                #lane_model
+                let commands_tx = None;
             };
 
-            build_lane_io(lane_data, public_model, private_model)
+            let pub_make = quote! {
+                #lane_model
+                let (commands_tx, commands_rx) = swim_server::sync::circular_buffer::channel(exec_conf.feedback_buffer);
+                let commands_tx = Some(commands_tx);
+            };
+
+            build_command_lane_io(
+                lane_data,
+                pub_make,
+                priv_make)
         }
         LaneType::Action => {
             let model = quote!(let (#lane_name, event_stream) = swim_server::agent::lane::model::action::make_lane_model(exec_conf.action_buffer.clone()););
@@ -408,6 +413,39 @@ fn build_lane_io(
             name: #lane_name_lit.into(),
             event_stream,
             projection: |agent: &#agent_name| &agent.#lane_name,
+        };
+    }
+}
+
+fn build_command_lane_io(
+    lane_data: LaneData,
+    public_ts: proc_macro2::TokenStream,
+    private_ts: proc_macro2::TokenStream,
+) -> proc_macro2::TokenStream {
+    let LaneData {
+        agent_name,
+        lifecycle,
+        lane_name,
+        task_variable,
+        task_structure,
+        lane_name_lit,
+        is_public,
+        ..
+    } = lane_data;
+
+    let lane_creation = if is_public { public_ts } else { private_ts };
+
+    quote! {
+        let lifecycle = #lifecycle::create(configuration);
+
+        #lane_creation
+
+        let #task_variable = #task_structure {
+            lifecycle,
+            name: #lane_name_lit.into(),
+            event_stream,
+            projection: |agent: &#agent_name| &agent.#lane_name,
+            commands_tx,
         };
     }
 }

@@ -62,6 +62,10 @@ pub fn derive_command_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput
         on_command: on_command_callback,
     };
 
+    let extra_field = quote! {
+        commands_tx: Option<swim_server::sync::circular_buffer::Sender<#command_type>>
+    };
+
     derive_lane(
         "CommandLifecycle",
         lifecycle_name,
@@ -77,7 +81,7 @@ pub fn derive_command_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput
             use swim_server::agent::lane::model::command::Command;
             use swim_server::agent::lane::lifecycle::LaneLifecycle;
         },
-        None,
+        Some(extra_field),
         quote!(Command),
     )
 }
@@ -88,6 +92,7 @@ pub fn derive_events_body(task_name: &Ident, on_command_func: &Ident) -> proc_ma
             mut lifecycle,
             event_stream,
             projection,
+            mut commands_tx,
             ..
         } = *self;
 
@@ -105,9 +110,15 @@ pub fn derive_events_body(task_name: &Ident, on_command_func: &Ident) -> proc_ma
                 tracing::span!(tracing::Level::TRACE, swim_server::agent::ON_COMMAND)
             ).await;
 
-            if let Some(tx) = responder {
-                if tx.send(command).is_err() {
+            if let core::option::Option::Some(tx) = responder {
+                if !tx.trigger() {
                     tracing::event!(tracing::Level::WARN, response_ingored = swim_server::agent::RESPONSE_IGNORED);
+                }
+            }
+            if let core::option::Option::Some(tx) = commands_tx.as_mut() {
+                if let core::result::Result::Err(swim_server::sync::circular_buffer::SendError(command)) = tx.try_send(command) {
+                    tracing::event!(tracing::Level::ERROR, message = swim_server::agent::COMMAND_IO_DROPPED);
+                    commands_tx = None;
                 }
             }
         }
@@ -118,6 +129,7 @@ pub fn default_events_body(task_name: &Ident) -> proc_macro2::TokenStream {
     quote!(
         let #task_name {
             event_stream,
+            mut commands_tx,
             ..
         } = *self;
 
@@ -129,9 +141,15 @@ pub fn default_events_body(task_name: &Ident) -> proc_macro2::TokenStream {
 
             tracing::event!(tracing::Level::TRACE, commanded = swim_server::agent::COMMANDED, ?command);
 
-            if let Some(tx) = responder {
-                if tx.send(command).is_err() {
+            if let core::option::Option::Some(tx) = responder {
+                if !tx.trigger() {
                     tracing::event!(tracing::Level::WARN, response_ingored = swim_server::agent::RESPONSE_IGNORED);
+                }
+            }
+            if let core::option::Option::Some(tx) = commands_tx.as_mut() {
+                if let core::result::Result::Err(swim_server::sync::circular_buffer::SendError(command)) = tx.try_send(command) {
+                    tracing::event!(tracing::Level::ERROR, message = swim_server::agent::COMMAND_IO_DROPPED);
+                    commands_tx = None;
                 }
             }
         }

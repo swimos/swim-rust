@@ -69,7 +69,7 @@ use tokio::time::{sleep, timeout};
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
 use utilities::instant::AtomicInstant;
-use utilities::sync::{promise, topic, trigger};
+use utilities::sync::{promise, topic, trigger, circular_buffer};
 use utilities::uri::RelativeUri;
 
 const METRIC_SAMPLE_RATE: Duration = Duration::from_millis(100);
@@ -1025,22 +1025,23 @@ fn make_command_lane_task<Context: AgentExecutionContext + Send + Sync + 'static
     impl Future<Output = Result<Vec<UplinkErrorReport>, LaneIoError>>,
     TaskInput,
 ) {
-    let (feedback_tx, mut feedback_rx) = mpsc::channel::<Command<i32>>(5);
-    let (local_commands_tx, local_commands_rx) = mpsc::channel(5);
+    let (commander_tx, mut commander_rx) = mpsc::channel::<Command<i32>>(5);
+    let (mut commands_tx, commands_rx) = circular_buffer::channel(NonZeroUsize::new(8).unwrap());
 
     let mock_lifecycle = async move {
-        while let Some(Command { command, responder }) = feedback_rx.recv().await {
+        while let Some(Command { command, responder }) = commander_rx.recv().await {
             if let Some(responder) = responder {
-                assert!(responder.send(command * 2).is_ok());
+                assert!(responder.trigger());
             }
+            assert!(commands_tx.try_send(command).is_ok());
         }
-        let _ = local_commands_tx;
+        let _ = commands_tx;
     };
     let (envelope_tx, envelope_rx) = mpsc::channel::<TaggedClientEnvelope>(5);
 
     let lane_io: CommandLaneIo<i32> = CommandLaneIo::new(
-        Commander(feedback_tx),
-        ReceiverStream::new(local_commands_rx),
+        Commander(commander_tx),
+        commands_rx,
     );
 
     let task = super::run_command_lane_io(

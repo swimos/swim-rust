@@ -53,7 +53,7 @@ use utilities::uri::RelativeUri;
 pub mod context;
 pub mod error;
 pub mod lifecycle;
-pub(crate) mod provider;
+pub mod provider;
 pub(crate) mod router;
 pub mod spec;
 #[cfg(test)]

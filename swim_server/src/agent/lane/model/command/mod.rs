@@ -19,9 +19,10 @@ use std::fmt::{Debug, Formatter};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use tokio::sync::mpsc::error::SendError;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, Level};
+use utilities::sync::trigger;
 
 #[cfg(test)]
 mod tests;
@@ -39,7 +40,7 @@ pub struct CommandLane<T> {
 #[derive(Debug)]
 pub struct Command<T> {
     pub(crate) command: T,
-    pub(crate) responder: Option<oneshot::Sender<T>>,
+    pub(crate) responder: Option<trigger::Sender>,
 }
 
 impl<T> Command<T> {
@@ -50,17 +51,18 @@ impl<T> Command<T> {
         }
     }
 
-    pub(crate) fn new(command: T, responder: oneshot::Sender<T>) -> Self {
+    pub(crate) fn new(command: T, responder: trigger::Sender) -> Self {
         Command {
             command,
             responder: Some(responder),
         }
     }
 
-    pub fn destruct(self) -> (T, Option<oneshot::Sender<T>>) {
+    pub fn destruct(self) -> (T, Option<trigger::Sender>) {
         let Command { command, responder } = self;
         (command, responder)
     }
+
 }
 
 impl<T> CommandLane<T>
@@ -113,8 +115,8 @@ impl<T: Debug> Commander<T> {
     pub async fn command_and_await(
         &mut self,
         cmd: T,
-    ) -> Result<oneshot::Receiver<T>, SendError<Command<T>>> {
-        let (resp_tx, resp_rx) = oneshot::channel();
+    ) -> Result<trigger::Receiver, SendError<Command<T>>> {
+        let (resp_tx, resp_rx) = trigger::trigger();
         event!(Level::TRACE, SENDING_COMMAND, ?cmd);
         let Commander(tx) = self;
         if let Err(err) = tx.send(Command::new(cmd, resp_tx)).await {
