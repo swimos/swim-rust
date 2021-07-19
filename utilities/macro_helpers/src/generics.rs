@@ -127,7 +127,7 @@ where
     generics
 }
 
-fn ungroup(mut ty: &Type) -> &Type {
+pub fn ungroup(mut ty: &Type) -> &Type {
     while let Type::Group(group) = ty {
         ty = &group.elem;
     }

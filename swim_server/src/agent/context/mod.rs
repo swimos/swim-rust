@@ -14,6 +14,7 @@
 
 use crate::agent::{AgentContext, Eff};
 use crate::meta::log::NodeLogger;
+use crate::meta::metric::NodeMetricAggregator;
 use crate::meta::MetaContext;
 use crate::routing::ServerRouter;
 use futures::future::BoxFuture;
@@ -26,10 +27,11 @@ use std::sync::Arc;
 use swim_runtime::time::clock::Clock;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
-use tokio::time::Duration;
+use tokio::time::{Duration, Instant};
 use tracing::{event, span, Level};
 use tracing_futures::Instrument;
 use utilities::future::SwimStreamExt;
+use utilities::instant::AtomicInstant;
 use utilities::sync::trigger;
 use utilities::uri::RelativeUri;
 
@@ -44,6 +46,7 @@ pub(super) struct ContextImpl<Agent, Clk, Router> {
     routing_context: RoutingContext<Router>,
     schedule_context: SchedulerContext<Clk>,
     meta_context: Arc<MetaContext>,
+    pub(crate) uplinks_idle_since: Arc<AtomicInstant>,
 }
 
 const SCHEDULE: &str = "Schedule";
@@ -63,6 +66,7 @@ impl<Agent, Clk, Router> ContextImpl<Agent, Clk, Router> {
             routing_context,
             schedule_context,
             meta_context: Arc::new(meta_context),
+            uplinks_idle_since: Arc::new(AtomicInstant::new(Instant::now())),
         }
     }
 }
@@ -78,6 +82,7 @@ where
             routing_context: self.routing_context.clone(),
             schedule_context: self.schedule_context.clone(),
             meta_context: self.meta_context.clone(),
+            uplinks_idle_since: self.uplinks_idle_since.clone(),
         }
     }
 }
@@ -227,6 +232,13 @@ pub trait AgentExecutionContext {
 
     /// Provide a channel to dispatch events to the agent scheduler.
     fn spawner(&self) -> mpsc::Sender<Eff>;
+
+    /// Provides an observer factory that can be used to create observers that register events that
+    /// happen on nodes, lanes, and uplinks.
+    fn metrics(&self) -> NodeMetricAggregator;
+
+    /// Return the time since the last outgoing message.
+    fn uplinks_idle_since(&self) -> &Arc<AtomicInstant>;
 }
 
 impl<Agent, Clk, RouterInner> AgentExecutionContext for ContextImpl<Agent, Clk, RouterInner>
@@ -241,5 +253,13 @@ where
 
     fn spawner(&self) -> Sender<Eff> {
         self.schedule_context.scheduler.clone()
+    }
+
+    fn metrics(&self) -> NodeMetricAggregator {
+        self.meta_context.metrics()
+    }
+
+    fn uplinks_idle_since(&self) -> &Arc<AtomicInstant> {
+        &self.uplinks_idle_since
     }
 }

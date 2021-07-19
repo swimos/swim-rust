@@ -46,7 +46,7 @@ const GOOGLE_ISS2: &str = "https://accounts.google.com";
 const DEFAULT_TOKEN_SKEW: i64 = 5;
 
 /// An authenticator for validating Google ID tokens.
-/// See https://developers.google.com/identity/sign-in/web/ for more information
+/// See <https://developers.google.com/identity/sign-in/web/> for more information
 #[derive(Debug, PartialEq)]
 pub struct GoogleIdAuthenticator {
     /// Number of seconds beyond the token's expiry time that are permitted.
@@ -195,7 +195,7 @@ impl<'s> Authenticator<'s> for GoogleIdAuthenticator {
                             if expiry_time.lt(&(Utc::now() + Duration::seconds(self.token_skew))) {
                                 return Ok(IssuedPolicy::deny(Value::Extant));
                             } else {
-                                let expiry_timestamp = expiry_time.deref().clone().into();
+                                let expiry_timestamp = (*expiry_time.deref()).into();
                                 expiry_timestamp
                             }
                         }
