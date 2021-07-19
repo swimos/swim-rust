@@ -21,9 +21,8 @@ use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::store::mock::MockNodeStore;
 use crate::agent::store::SwimNodeStore;
 use crate::agent::{AttachError, Eff, RoutingIo};
-use crate::plane::store::mock::MockPlaneStore;
-use crate::agent::{AttachError, Eff, LaneIo};
 use crate::meta::metric::{aggregator_sink, NodeMetricAggregator};
+use crate::plane::store::mock::MockPlaneStore;
 use crate::routing::error::RouterError;
 use crate::routing::{
     ConnectionDropped, Route, RoutingAddr, ServerRouter, TaggedClientEnvelope, TaggedEnvelope,

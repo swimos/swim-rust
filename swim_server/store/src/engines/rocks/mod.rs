@@ -84,7 +84,7 @@ impl StoreBuilder for RocksOpts {
         let Keyspaces { keyspaces } = keyspaces;
         let descriptors =
             keyspaces
-                .into_iter()
+                .iter()
                 .fold(Vec::with_capacity(keyspaces.len()), |mut vec, def| {
                     let cf_descriptor =
                         ColumnFamilyDescriptor::new(def.name.to_string(), def.opts.0.clone());

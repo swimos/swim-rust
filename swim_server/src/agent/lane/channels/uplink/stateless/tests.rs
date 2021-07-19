@@ -28,13 +28,13 @@ use swim_common::warp::path::RelativePath;
 use crate::agent::lane::channels::uplink::stateless::StatelessUplinks;
 use crate::agent::lane::channels::uplink::{AddressedUplinkMessage, UplinkAction, UplinkKind};
 use crate::agent::lane::channels::TaggedAction;
+use crate::agent::store::mock::MockNodeStore;
+use crate::agent::store::SwimNodeStore;
 use crate::meta::metric::uplink::{
     uplink_observer, TaggedWarpUplinkProfile, UplinkActionObserver, UplinkEventObserver,
     UplinkProfileSender, WarpUplinkProfile,
 };
 use crate::meta::metric::{aggregator_sink, NodeMetricAggregator};
-use crate::agent::store::mock::MockNodeStore;
-use crate::agent::store::SwimNodeStore;
 use crate::plane::store::mock::MockPlaneStore;
 use crate::routing::error::RouterError;
 use std::ops::Add;

@@ -29,7 +29,7 @@ use crate::keyspaces::{KeyspaceByteEngine, KeyspaceResolver};
 pub use engines::{RocksEngine, RocksIterator, RocksPrefixIterator, StoreBuilder};
 
 pub use crate::iterator::{
-    EngineIterOpts, EngineIterator, EnginePrefixIterator, EngineRefIterator, IteratorKey,
+    EngineIterOpts, EngineIterator, EnginePrefixIterator, EngineRefIterator, IteratorKey, KvPair,
     OwnedEngineRefIterator,
 };
 
@@ -90,6 +90,7 @@ impl PartialEq for StoreError {
             (StoreError::Encoding(l), StoreError::Encoding(r)) => l.eq(r),
             (StoreError::Decoding(l), StoreError::Decoding(r)) => l.eq(r),
             (StoreError::Delegate(l), StoreError::Delegate(r)) => l.to_string().eq(&r.to_string()),
+            (StoreError::DelegateMessage(l), StoreError::DelegateMessage(r)) => l.eq(r),
             (StoreError::Closing, StoreError::Closing) => true,
             (StoreError::KeyspaceNotFound, StoreError::KeyspaceNotFound) => true,
             _ => false,

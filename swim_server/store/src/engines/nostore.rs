@@ -17,7 +17,7 @@ use crate::iterator::{
     EngineIterOpts, EngineIterator, EnginePrefixIterator, EngineRefIterator, IteratorKey,
 };
 use crate::keyspaces::{Keyspace, KeyspaceByteEngine, KeyspaceResolver, Keyspaces};
-use crate::{EngineInfo, Store, StoreError};
+use crate::{EngineInfo, KvPair, Store, StoreError};
 use std::borrow::Borrow;
 use std::path::{Path, PathBuf};
 
@@ -148,7 +148,7 @@ impl EngineIterator for NoStoreEngineIterator {
 
 pub struct NoStoreEnginePrefixIterator;
 impl EnginePrefixIterator for NoStoreEnginePrefixIterator {
-    fn next(&mut self) -> Option<(Box<[u8]>, Box<[u8]>)> {
+    fn next(&mut self) -> KvPair {
         None
     }
 

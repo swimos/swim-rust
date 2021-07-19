@@ -20,7 +20,7 @@ use std::sync::Arc;
 use store::keyspaces::{Keyspace, KeyspaceByteEngine, KeyspaceResolver, Keyspaces};
 use store::{
     EngineInfo, EngineIterOpts, EngineIterator, EnginePrefixIterator, EngineRefIterator,
-    IteratorKey, Store, StoreBuilder, StoreError,
+    IteratorKey, KvPair, Store, StoreBuilder, StoreError,
 };
 
 /// A store which will persist no data and exists purely to uphold the minimum contract required
@@ -66,7 +66,7 @@ impl EngineIterator for NoStoreIterator {
 }
 
 impl EnginePrefixIterator for NoStoreIterator {
-    fn next(&mut self) -> Option<(Box<[u8]>, Box<[u8]>)> {
+    fn next(&mut self) -> KvPair {
         None
     }
 
