@@ -660,7 +660,7 @@ async fn command_lane_events_task() {
         lifecycle: lifecycle.clone(),
         event_stream: ReceiverStream::new(commander_rx),
         projection: proj(),
-    }, commands_tx));
+    }, Some(commands_tx)));
 
     assert_eq!(tasks.kind(), LaneKind::Command);
 
@@ -715,7 +715,7 @@ async fn command_lane_events_task_terminates() {
         lifecycle: lifecycle.clone(),
         event_stream: ReceiverStream::new(commander_rx),
         projection: proj(),
-    }, commands_tx));
+    }, Some(commands_tx)));
 
     let lane = CommandLane::new(commander_tx);
 
