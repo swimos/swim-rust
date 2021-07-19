@@ -13,9 +13,11 @@
 // limitations under the License.
 
 use super::ValidateFrom;
-use crate::parser::FieldManifest;
+use crate::modifiers::NameTransform;
+use crate::parser::{FieldManifest, FORM_PATH};
 use crate::structural::model::field::{FieldWithIndex, SegregatedFields, TaggedFieldModel};
-use crate::structural::model::{NameTransform, StructLike, SynValidation};
+use crate::structural::model::StructLike;
+use crate::SynValidation;
 use macro_helpers::CompoundTypeKind;
 use proc_macro2::TokenStream;
 use quote::ToTokens;
@@ -71,6 +73,7 @@ impl<'a, 'b> ToTokens for ResolvedName<'a, 'b> {
 }
 
 /// Fully processed description of a struct type, used to generate the output of the derive macros.
+#[derive(Clone)]
 pub struct SegregatedStructModel<'a, 'b> {
     /// Preprocessed model with attribute information.
     pub inner: &'b StructModel<'a>,
@@ -129,7 +132,12 @@ where
 
         let fields_model = FieldsModel::validate(definition.fields());
 
-        let rename = super::fold_attr_meta(attributes.iter(), None, super::acc_rename);
+        let rename = crate::modifiers::fold_attr_meta(
+            FORM_PATH,
+            attributes.iter(),
+            None,
+            crate::modifiers::acc_rename,
+        );
 
         validate2(fields_model, rename).and_then(|(model, transform)| {
             let struct_model = StructModel { name, fields_model: model, transform };
@@ -229,7 +237,10 @@ where
                 }
             },
             FieldKind::Body => {
-                if kind != Some(CompoundTypeKind::Labelled) {
+                if matches!(
+                    kind,
+                    Some(CompoundTypeKind::Tuple | CompoundTypeKind::NewType)
+                ) {
                     let err = syn::Error::new_spanned(definition, BAD_REPLACEMENT);
                     return Validation::fail(err);
                 }

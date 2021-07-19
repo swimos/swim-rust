@@ -18,11 +18,14 @@ pub mod primitive;
 mod tests;
 
 use crate::form::structural::generic::coproduct::{CCons, CNil, Unify};
-use crate::form::structural::read::event::{NumericValue, ReadEvent};
+use crate::form::structural::read::event::ReadEvent;
 use crate::form::structural::read::materializers::value::{
-    AttrBodyMaterializer, ValueMaterializer,
+    AttrBodyMaterializer, DelegateBodyMaterializer, ValueMaterializer,
 };
+use crate::form::structural::read::recognizer::primitive::DataRecognizer;
 use crate::form::structural::read::ReadError;
+use crate::form::structural::Tag;
+use crate::model::blob::Blob;
 use crate::model::text::Text;
 use crate::model::{Value, ValueKind};
 use num_bigint::{BigInt, BigUint};
@@ -31,13 +34,17 @@ use std::collections::HashMap;
 use std::hash::Hash;
 use std::marker::PhantomData;
 use std::option::Option::None;
+use std::str::FromStr;
 use std::sync::Arc;
+use url::Url;
 use utilities::iteratee::Iteratee;
+use utilities::uri::RelativeUri;
 
 /// Trait for types that can be recognized by a [`Recognizer`] state machine.
 pub trait RecognizerReadable: Sized {
     type Rec: Recognizer<Target = Self>;
     type AttrRec: Recognizer<Target = Self>;
+    type BodyRec: Recognizer<Target = Self>;
 
     /// Create a state machine that will recognize the represenation of the type as a stream of
     /// [`ReadEvent`]s.
@@ -49,6 +56,12 @@ pub trait RecognizerReadable: Sized {
     /// for types that can be reprsented as records with no attributes, this may be more complex
     /// as it is permissible for the record to be collapsed into the body of the attribute.)
     fn make_attr_recognizer() -> Self::AttrRec;
+
+    /// Create a state machine that will recognize the represenation of the type as a stream of
+    /// [`ReadEvent`]s where the read process has been delegated to a sub-value. This will
+    /// be identical to the `make_recognizer` state machine save where the type is simple or
+    /// is the generic model type [`Value`].
+    fn make_body_recognizer() -> Self::BodyRec;
 
     /// If this value is expected as the value of a record field but was not present a default
     /// value will be used if provided here. For example, [`Option`] values are set to `None` if
@@ -115,23 +128,7 @@ where
 }
 
 fn bad_kind(event: &ReadEvent<'_>) -> ReadError {
-    match event {
-        ReadEvent::Number(NumericValue::Int(_)) => ReadError::UnexpectedKind(ValueKind::Int64),
-        ReadEvent::Number(NumericValue::UInt(_)) => ReadError::UnexpectedKind(ValueKind::UInt64),
-        ReadEvent::Number(NumericValue::BigInt(_)) => ReadError::UnexpectedKind(ValueKind::BigInt),
-        ReadEvent::Number(NumericValue::BigUint(_)) => {
-            ReadError::UnexpectedKind(ValueKind::BigUint)
-        }
-        ReadEvent::Number(NumericValue::Float(_)) => ReadError::UnexpectedKind(ValueKind::Float64),
-        ReadEvent::Boolean(_) => ReadError::UnexpectedKind(ValueKind::Boolean),
-        ReadEvent::TextValue(_) => ReadError::UnexpectedKind(ValueKind::Text),
-        ReadEvent::Extant => ReadError::UnexpectedKind(ValueKind::Extant),
-        ReadEvent::Blob(_) => ReadError::UnexpectedKind(ValueKind::Data),
-        ReadEvent::StartBody | ReadEvent::StartAttribute(_) => {
-            ReadError::UnexpectedKind(ValueKind::Record)
-        }
-        _ => ReadError::InconsistentState,
-    }
+    event.kind_error()
 }
 
 macro_rules! simple_readable {
@@ -139,6 +136,7 @@ macro_rules! simple_readable {
         impl RecognizerReadable for $target {
             type Rec = primitive::$recog;
             type AttrRec = SimpleAttrBody<primitive::$recog>;
+            type BodyRec = SimpleRecBody<primitive::$recog>;
 
             fn make_recognizer() -> Self::Rec {
                 primitive::$recog
@@ -146,6 +144,10 @@ macro_rules! simple_readable {
 
             fn make_attr_recognizer() -> Self::AttrRec {
                 SimpleAttrBody::new(primitive::$recog)
+            }
+
+            fn make_body_recognizer() -> Self::BodyRec {
+                SimpleRecBody::new(primitive::$recog)
             }
 
             fn is_simple() -> bool {
@@ -160,6 +162,7 @@ simple_readable!(i32, I32Recognizer);
 simple_readable!(i64, I64Recognizer);
 simple_readable!(u32, U32Recognizer);
 simple_readable!(u64, U64Recognizer);
+simple_readable!(usize, UsizeRecognizer);
 simple_readable!(f64, F64Recognizer);
 simple_readable!(BigInt, BigIntRecognizer);
 simple_readable!(BigUint, BigUintRecognizer);
@@ -167,6 +170,140 @@ simple_readable!(String, StringRecognizer);
 simple_readable!(Text, TextRecognizer);
 simple_readable!(Vec<u8>, DataRecognizer);
 simple_readable!(bool, BoolRecognizer);
+
+impl RecognizerReadable for Blob {
+    type Rec = MappedRecognizer<DataRecognizer, fn(Vec<u8>) -> Blob>;
+    type AttrRec = SimpleAttrBody<Self::Rec>;
+    type BodyRec = SimpleRecBody<Self::Rec>;
+
+    fn make_recognizer() -> Self::Rec {
+        MappedRecognizer::new(DataRecognizer, Blob::from_vec)
+    }
+
+    fn make_attr_recognizer() -> Self::AttrRec {
+        SimpleAttrBody::new(Self::make_recognizer())
+    }
+
+    fn make_body_recognizer() -> Self::BodyRec {
+        SimpleRecBody::new(Self::make_recognizer())
+    }
+
+    fn is_simple() -> bool {
+        true
+    }
+}
+
+type BoxU8Vec = fn(Vec<u8>) -> Box<[u8]>;
+
+impl RecognizerReadable for Box<[u8]> {
+    type Rec = MappedRecognizer<DataRecognizer, BoxU8Vec>;
+    type AttrRec = SimpleAttrBody<Self::Rec>;
+    type BodyRec = SimpleRecBody<Self::Rec>;
+
+    fn make_recognizer() -> Self::Rec {
+        MappedRecognizer::new(DataRecognizer, Vec::into_boxed_slice)
+    }
+
+    fn make_attr_recognizer() -> Self::AttrRec {
+        SimpleAttrBody::new(Self::make_recognizer())
+    }
+
+    fn make_body_recognizer() -> Self::BodyRec {
+        SimpleRecBody::new(Self::make_recognizer())
+    }
+
+    fn is_simple() -> bool {
+        true
+    }
+}
+
+impl RecognizerReadable for RelativeUri {
+    type Rec = RelativeUriRecognizer;
+    type AttrRec = SimpleAttrBody<RelativeUriRecognizer>;
+    type BodyRec = SimpleRecBody<RelativeUriRecognizer>;
+
+    fn make_recognizer() -> Self::Rec {
+        RelativeUriRecognizer
+    }
+
+    fn make_attr_recognizer() -> Self::AttrRec {
+        SimpleAttrBody::new(RelativeUriRecognizer)
+    }
+
+    fn make_body_recognizer() -> Self::BodyRec {
+        SimpleRecBody::new(RelativeUriRecognizer)
+    }
+
+    fn is_simple() -> bool {
+        true
+    }
+}
+
+pub struct RelativeUriRecognizer;
+
+impl Recognizer for RelativeUriRecognizer {
+    type Target = RelativeUri;
+
+    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
+        match input {
+            ReadEvent::TextValue(txt) => {
+                let result = RelativeUri::from_str(txt.borrow());
+                let uri = result.map_err(move |_| ReadError::Malformatted {
+                    text: Text::from(txt),
+                    message: Text::new("Not a valid relative URI."),
+                });
+                Some(uri)
+            }
+            ow => Some(Err(bad_kind(&ow))),
+        }
+    }
+
+    fn reset(&mut self) {}
+}
+
+impl RecognizerReadable for Url {
+    type Rec = UrlRecognizer;
+    type AttrRec = SimpleAttrBody<UrlRecognizer>;
+    type BodyRec = SimpleRecBody<UrlRecognizer>;
+
+    fn make_recognizer() -> Self::Rec {
+        UrlRecognizer
+    }
+
+    fn make_attr_recognizer() -> Self::AttrRec {
+        SimpleAttrBody::new(UrlRecognizer)
+    }
+
+    fn make_body_recognizer() -> Self::BodyRec {
+        SimpleRecBody::new(UrlRecognizer)
+    }
+
+    fn is_simple() -> bool {
+        true
+    }
+}
+
+pub struct UrlRecognizer;
+
+impl Recognizer for UrlRecognizer {
+    type Target = Url;
+
+    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
+        match input {
+            ReadEvent::TextValue(txt) => {
+                let result = Url::from_str(txt.borrow());
+                let url = result.map_err(move |_| ReadError::Malformatted {
+                    text: Text::from(txt),
+                    message: Text::new("Not a valid URL."),
+                });
+                Some(url)
+            }
+            ow => Some(Err(bad_kind(&ow))),
+        }
+    }
+
+    fn reset(&mut self) {}
+}
 
 /// Recognizes a vector of values of the same type.
 pub struct VecRecognizer<T, R> {
@@ -230,25 +367,40 @@ impl<T, R: Recognizer<Target = T>> Recognizer for VecRecognizer<T, R> {
 
 impl<T, R> VecRecognizer<T, R> {
     fn new(is_attr_body: bool, rec: R) -> Self {
+        let stage = if is_attr_body {
+            BodyStage::Between
+        } else {
+            BodyStage::Init
+        };
         VecRecognizer {
             is_attr_body,
-            stage: BodyStage::Init,
+            stage,
             vector: vec![],
             rec,
         }
     }
 }
 
+pub type CollaspsibleRec<R> = FirstOf<R, SimpleAttrBody<R>>;
+
 impl<T: RecognizerReadable> RecognizerReadable for Vec<T> {
     type Rec = VecRecognizer<T, T::Rec>;
-    type AttrRec = VecRecognizer<T, T::Rec>;
+    type AttrRec = CollaspsibleRec<VecRecognizer<T, T::Rec>>;
+    type BodyRec = VecRecognizer<T, T::Rec>;
 
     fn make_recognizer() -> Self::Rec {
         VecRecognizer::new(false, T::make_recognizer())
     }
 
     fn make_attr_recognizer() -> Self::AttrRec {
-        VecRecognizer::new(true, T::make_recognizer())
+        FirstOf::new(
+            VecRecognizer::new(true, T::make_recognizer()),
+            SimpleAttrBody::new(VecRecognizer::new(false, T::make_recognizer())),
+        )
+    }
+
+    fn make_body_recognizer() -> Self::BodyRec {
+        Self::make_recognizer()
     }
 }
 
@@ -686,11 +838,11 @@ where
                 _ => None,
             }
         } else if *first_active {
-            let r = recognizer1.feed_event(input.clone())?;
+            let r = recognizer1.feed_event(input)?;
             *first_active = false;
             Some(r)
         } else if *second_active {
-            let r = recognizer2.feed_event(input.clone())?;
+            let r = recognizer2.feed_event(input)?;
             *second_active = false;
             Some(r)
         } else {
@@ -712,10 +864,7 @@ where
 pub enum LabelledFieldKey<'a> {
     /// The name of the tag when this is used to populate a field.
     Tag,
-    /// The first value inside the tag attribute.
-    HeaderBody,
-    /// A labelled slot in the tag attribute.
-    HeaderSlot(&'a str),
+    Header,
     /// Another attribute after the tag.
     Attr(&'a str),
     /// A labelled slot in the body of the record.
@@ -725,11 +874,8 @@ pub enum LabelledFieldKey<'a> {
 #[derive(Clone, Copy)]
 enum LabelledStructState {
     Init,
-    HeaderInit,
-    HeaderBodyItem,
-    HeaderBetween,
-    HeaderExpectingSlot,
-    HeaderItem,
+    Header,
+    NoHeader,
     AttrBetween,
     AttrItem,
     BodyBetween,
@@ -740,11 +886,8 @@ enum LabelledStructState {
 #[derive(Clone, Copy)]
 enum OrdinalStructState {
     Init,
-    HeaderInit,
-    HeaderBodyItem,
-    HeaderBetween,
-    HeaderExpectingSlot,
-    HeaderItem,
+    Header,
+    NoHeader,
     AttrBetween,
     AttrItem,
     BodyBetween,
@@ -757,10 +900,7 @@ enum OrdinalStructState {
 pub enum OrdinalFieldKey<'a> {
     /// The name of the tag when this is used to populate a field.
     Tag,
-    /// The first value inside the tag attribute.
-    HeaderBody,
-    /// A labelled slot in the tag attribute.
-    HeaderSlot(&'a str),
+    Header,
     /// Another attribute after the tag.
     Attr(&'a str),
     /// The first field in the body of the record. All other body fields are assumed to ocurr
@@ -780,7 +920,6 @@ pub enum TagSpec {
 /// necessary to use this type explicitly.
 pub struct LabelledStructRecognizer<T, Flds> {
     tag: TagSpec,
-    has_header_body: bool,
     state: LabelledStructState,
     fields: Flds,
     progress: Bitset,
@@ -842,22 +981,18 @@ impl<T, Flds> LabelledStructRecognizer<T, Flds> {
     /// #Arguments
     /// * `tag` - The expected name of the first attribute or an inidcation that it should be used
     /// to populate a field.
-    /// * `has_header_body` - Inidcates that one of the fields has been promoted to the body of the
-    /// tag attribute.
     /// * `fields` - The state of the recognizer state machine (specified by the macro).
     /// * `num_fields` - The total numer of (non-skipped) fields that the recognizer expects.
     /// * `vtable` - Functions that are generated by the macro that determine how incoming events
     /// modify the state.
     pub fn new(
         tag: TagSpec,
-        has_header_body: bool,
         fields: Flds,
         num_fields: u32,
         vtable: LabelledVTable<T, Flds>,
     ) -> Self {
         LabelledStructRecognizer {
             tag,
-            has_header_body,
             state: LabelledStructState::Init,
             fields,
             progress: Bitset::new(num_fields),
@@ -871,25 +1006,22 @@ impl<T, Flds> LabelledStructRecognizer<T, Flds> {
     /// is skipped.
     ///
     /// #Arguments
-    /// * `has_header_body` - Inidcates that one of the fields has been promoted to the body of the
-    /// tag attribute.
     /// * `fields` - The state of the recognizer state machine (specified by the macro).
     /// * `num_fields` - The total numer of (non-skipped) fields that the recognizer expects.
     /// * `vtable` - Functions that are generated by the macro that determine how incoming events
     /// modify the state.
-    pub fn variant(
-        has_header_body: bool,
-        fields: Flds,
-        num_fields: u32,
-        vtable: LabelledVTable<T, Flds>,
-    ) -> Self {
+    pub fn variant(fields: Flds, num_fields: u32, vtable: LabelledVTable<T, Flds>) -> Self {
+        let (state, index) = if let Some(i) = (vtable.select_index)(LabelledFieldKey::Header) {
+            (LabelledStructState::Header, i)
+        } else {
+            (LabelledStructState::NoHeader, 0)
+        };
         LabelledStructRecognizer {
             tag: TagSpec::Fixed(""),
-            has_header_body,
-            state: LabelledStructState::HeaderInit,
+            state,
             fields,
             progress: Bitset::new(num_fields),
-            index: 0,
+            index,
             vtable,
         }
     }
@@ -899,22 +1031,18 @@ impl<T, Flds> OrdinalStructRecognizer<T, Flds> {
     /// #Arguments
     /// * `tag` - The expected name of the first attribute or an inidcation that it should be used
     /// to populate a field.
-    /// * `has_header_body` - Inidcates that one of the fields has been promoted to the body of the
-    /// tag attribute.
     /// * `fields` - The state of the recognizer state machine (specified by the macro).
     /// * `num_fields` - The total numer of (non-skipped) fields that the recognizer expects.
     /// * `vtable` - Functions that are generated by the macro that determine how incoming events
     /// modify the state.
     pub fn new(
         tag: TagSpec,
-        has_header_body: bool,
         fields: Flds,
         num_fields: u32,
         vtable: OrdinalVTable<T, Flds>,
     ) -> Self {
         OrdinalStructRecognizer {
             tag,
-            has_header_body,
             state: OrdinalStructState::Init,
             fields,
             progress: Bitset::new(num_fields),
@@ -928,25 +1056,22 @@ impl<T, Flds> OrdinalStructRecognizer<T, Flds> {
     /// is skipped.
     ///
     /// #Arguments
-    /// * `has_header_body` - Inidcates that one of the fields has been promoted to the body of the
-    /// tag attribute.
     /// * `fields` - The state of the recognizer state machine (specified by the macro).
     /// * `num_fields` - The total numer of (non-skipped) fields that the recognizer expects.
     /// * `vtable` - Functions that are generated by the macro that determine how incoming events
     /// modify the state.
-    pub fn variant(
-        has_header_body: bool,
-        fields: Flds,
-        num_fields: u32,
-        vtable: OrdinalVTable<T, Flds>,
-    ) -> Self {
+    pub fn variant(fields: Flds, num_fields: u32, vtable: OrdinalVTable<T, Flds>) -> Self {
+        let (state, index) = if let Some(i) = (vtable.select_index)(OrdinalFieldKey::Header) {
+            (OrdinalStructState::Header, i)
+        } else {
+            (OrdinalStructState::NoHeader, 0)
+        };
         OrdinalStructRecognizer {
             tag: TagSpec::Fixed(""),
-            has_header_body,
-            state: OrdinalStructState::HeaderInit,
+            state,
             fields,
             progress: Bitset::new(num_fields),
-            index: 0,
+            index,
             vtable,
         }
     }
@@ -958,7 +1083,6 @@ impl<T, Flds> Recognizer for LabelledStructRecognizer<T, Flds> {
     fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         let LabelledStructRecognizer {
             tag,
-            has_header_body,
             state,
             fields,
             progress,
@@ -978,14 +1102,15 @@ impl<T, Flds> Recognizer for LabelledStructRecognizer<T, Flds> {
                 ReadEvent::StartAttribute(name) => match tag {
                     TagSpec::Fixed(tag) => {
                         if name == *tag {
-                            if *has_header_body {
-                                *state = LabelledStructState::HeaderInit;
+                            if let Some(i) = select_index(LabelledFieldKey::Header) {
+                                *index = i;
+                                *state = LabelledStructState::Header;
                             } else {
-                                *state = LabelledStructState::HeaderBetween;
+                                *state = LabelledStructState::NoHeader;
                             }
                             None
                         } else {
-                            Some(Err(bad_kind(&ReadEvent::StartAttribute(name))))
+                            Some(Err(ReadError::UnexpectedAttribute(name.into())))
                         }
                     }
                     TagSpec::Field => {
@@ -993,10 +1118,11 @@ impl<T, Flds> Recognizer for LabelledStructRecognizer<T, Flds> {
                             if let Err(e) = select_recog(fields, i, ReadEvent::TextValue(name))? {
                                 Some(Err(e))
                             } else {
-                                if *has_header_body {
-                                    *state = LabelledStructState::HeaderInit;
+                                if let Some(i) = select_index(LabelledFieldKey::Header) {
+                                    *index = i;
+                                    *state = LabelledStructState::Header;
                                 } else {
-                                    *state = LabelledStructState::HeaderBetween;
+                                    *state = LabelledStructState::NoHeader;
                                 }
                                 None
                             }
@@ -1007,71 +1133,22 @@ impl<T, Flds> Recognizer for LabelledStructRecognizer<T, Flds> {
                 },
                 ow => Some(Err(bad_kind(&ow))),
             },
-            LabelledStructState::HeaderInit => {
-                if matches!(&input, ReadEvent::EndAttribute) {
-                    *state = LabelledStructState::AttrBetween;
-                    None
-                } else {
-                    *state = LabelledStructState::HeaderBodyItem;
-                    if let Some(i) = select_index(LabelledFieldKey::HeaderBody) {
-                        *index = i;
-                    } else {
-                        return Some(Err(ReadError::InconsistentState));
-                    }
-                    if let Err(e) = select_recog(fields, *index, input)? {
-                        Some(Err(e))
-                    } else {
-                        *state = LabelledStructState::HeaderBetween;
-                        None
-                    }
-                }
-            }
-            LabelledStructState::HeaderBodyItem => {
+            LabelledStructState::Header => {
                 if let Err(e) = select_recog(fields, *index, input)? {
                     Some(Err(e))
                 } else {
-                    progress.set(*index);
-                    *state = LabelledStructState::HeaderBetween;
+                    *state = LabelledStructState::AttrBetween;
                     None
                 }
             }
-            LabelledStructState::HeaderBetween => match input {
+            LabelledStructState::NoHeader => match input {
+                ReadEvent::Extant => None,
                 ReadEvent::EndAttribute => {
                     *state = LabelledStructState::AttrBetween;
                     None
                 }
-                ReadEvent::TextValue(name) => {
-                    if let Some(i) = select_index(LabelledFieldKey::HeaderSlot(name.borrow())) {
-                        if progress.get(i).unwrap_or(false) {
-                            Some(Err(ReadError::DuplicateField(Text::new(name.borrow()))))
-                        } else {
-                            *index = i;
-                            *state = LabelledStructState::HeaderExpectingSlot;
-                            None
-                        }
-                    } else {
-                        Some(Err(ReadError::UnexpectedField(name.into())))
-                    }
-                }
-                ow => Some(Err(bad_kind(&ow))),
+                ow => Some(Err(ow.kind_error())),
             },
-            LabelledStructState::HeaderExpectingSlot => {
-                if matches!(&input, ReadEvent::Slot) {
-                    *state = LabelledStructState::HeaderItem;
-                    None
-                } else {
-                    Some(Err(ReadError::UnexpectedItem))
-                }
-            }
-            LabelledStructState::HeaderItem => {
-                if let Err(e) = select_recog(fields, *index, input)? {
-                    Some(Err(e))
-                } else {
-                    progress.set(*index);
-                    *state = LabelledStructState::HeaderBetween;
-                    None
-                }
-            }
             LabelledStructState::AttrBetween => match input {
                 ReadEvent::StartBody => {
                     *state = LabelledStructState::BodyBetween;
@@ -1151,7 +1228,6 @@ impl<T, Flds> Recognizer for LabelledStructRecognizer<T, Flds> {
 /// necessary to use this type explicitly.
 pub struct OrdinalStructRecognizer<T, Flds> {
     tag: TagSpec,
-    has_header_body: bool,
     state: OrdinalStructState,
     fields: Flds,
     progress: Bitset,
@@ -1165,7 +1241,6 @@ impl<T, Flds> Recognizer for OrdinalStructRecognizer<T, Flds> {
     fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         let OrdinalStructRecognizer {
             tag,
-            has_header_body,
             state,
             fields,
             progress,
@@ -1185,14 +1260,15 @@ impl<T, Flds> Recognizer for OrdinalStructRecognizer<T, Flds> {
                 ReadEvent::StartAttribute(name) => match tag {
                     TagSpec::Fixed(tag) => {
                         if name == *tag {
-                            if *has_header_body {
-                                *state = OrdinalStructState::HeaderInit;
+                            if let Some(i) = select_index(OrdinalFieldKey::Header) {
+                                *index = i;
+                                *state = OrdinalStructState::Header;
                             } else {
-                                *state = OrdinalStructState::HeaderBetween;
+                                *state = OrdinalStructState::NoHeader;
                             }
                             None
                         } else {
-                            Some(Err(bad_kind(&ReadEvent::StartAttribute(name))))
+                            Some(Err(ReadError::UnexpectedAttribute(name.into())))
                         }
                     }
                     TagSpec::Field => {
@@ -1200,10 +1276,11 @@ impl<T, Flds> Recognizer for OrdinalStructRecognizer<T, Flds> {
                             if let Err(e) = select_recog(fields, i, ReadEvent::TextValue(name))? {
                                 Some(Err(e))
                             } else {
-                                if *has_header_body {
-                                    *state = OrdinalStructState::HeaderInit;
+                                if let Some(i) = select_index(OrdinalFieldKey::Header) {
+                                    *index = i;
+                                    *state = OrdinalStructState::Header;
                                 } else {
-                                    *state = OrdinalStructState::HeaderBetween;
+                                    *state = OrdinalStructState::NoHeader;
                                 }
                                 None
                             }
@@ -1214,71 +1291,22 @@ impl<T, Flds> Recognizer for OrdinalStructRecognizer<T, Flds> {
                 },
                 ow => Some(Err(bad_kind(&ow))),
             },
-            OrdinalStructState::HeaderInit => {
-                if matches!(&input, ReadEvent::EndAttribute) {
-                    *state = OrdinalStructState::AttrBetween;
-                    None
-                } else {
-                    *state = OrdinalStructState::HeaderBodyItem;
-                    if let Some(i) = select_index(OrdinalFieldKey::HeaderBody) {
-                        *index = i;
-                    } else {
-                        return Some(Err(ReadError::InconsistentState));
-                    }
-                    if let Err(e) = select_recog(fields, *index, input)? {
-                        Some(Err(e))
-                    } else {
-                        *state = OrdinalStructState::HeaderBetween;
-                        None
-                    }
-                }
-            }
-            OrdinalStructState::HeaderBodyItem => {
+            OrdinalStructState::Header => {
                 if let Err(e) = select_recog(fields, *index, input)? {
                     Some(Err(e))
                 } else {
-                    progress.set(*index);
-                    *state = OrdinalStructState::HeaderBetween;
+                    *state = OrdinalStructState::AttrBetween;
                     None
                 }
             }
-            OrdinalStructState::HeaderBetween => match &input {
+            OrdinalStructState::NoHeader => match input {
+                ReadEvent::Extant => None,
                 ReadEvent::EndAttribute => {
                     *state = OrdinalStructState::AttrBetween;
                     None
                 }
-                ReadEvent::TextValue(name) => {
-                    if let Some(i) = select_index(OrdinalFieldKey::HeaderSlot(name.borrow())) {
-                        if progress.get(i).unwrap_or(false) {
-                            Some(Err(ReadError::DuplicateField(Text::new(name.borrow()))))
-                        } else {
-                            *index = i;
-                            *state = OrdinalStructState::HeaderExpectingSlot;
-                            None
-                        }
-                    } else {
-                        Some(Err(ReadError::UnexpectedField(Text::new(name.borrow()))))
-                    }
-                }
-                _ => Some(Err(bad_kind(&input))),
+                ow => Some(Err(ow.kind_error())),
             },
-            OrdinalStructState::HeaderExpectingSlot => {
-                if matches!(&input, ReadEvent::Slot) {
-                    *state = OrdinalStructState::HeaderItem;
-                    None
-                } else {
-                    Some(Err(ReadError::UnexpectedItem))
-                }
-            }
-            OrdinalStructState::HeaderItem => {
-                if let Err(e) = select_recog(fields, *index, input)? {
-                    Some(Err(e))
-                } else {
-                    progress.set(*index);
-                    *state = OrdinalStructState::HeaderBetween;
-                    None
-                }
-            }
             OrdinalStructState::AttrBetween => match &input {
                 ReadEvent::StartBody => {
                     *state = OrdinalStructState::BodyBetween;
@@ -1351,6 +1379,7 @@ type MakeArc<T> = fn(T) -> Arc<T>;
 impl<T: RecognizerReadable> RecognizerReadable for Arc<T> {
     type Rec = MappedRecognizer<T::Rec, MakeArc<T>>;
     type AttrRec = MappedRecognizer<T::AttrRec, MakeArc<T>>;
+    type BodyRec = MappedRecognizer<T::BodyRec, MakeArc<T>>;
 
     fn make_recognizer() -> Self::Rec {
         MappedRecognizer::new(T::make_recognizer(), Arc::new)
@@ -1358,6 +1387,18 @@ impl<T: RecognizerReadable> RecognizerReadable for Arc<T> {
 
     fn make_attr_recognizer() -> Self::AttrRec {
         MappedRecognizer::new(T::make_attr_recognizer(), Arc::new)
+    }
+
+    fn make_body_recognizer() -> Self::BodyRec {
+        MappedRecognizer::new(T::make_body_recognizer(), Arc::new)
+    }
+
+    fn on_absent() -> Option<Self> {
+        T::on_absent().map(Arc::new)
+    }
+
+    fn is_simple() -> bool {
+        T::is_simple()
     }
 }
 
@@ -1434,7 +1475,7 @@ impl<T> Recognizer for EmptyAttrRecognizer<T> {
     type Target = Option<T>;
 
     fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
-        if self.seen_extant && matches!(&input, ReadEvent::EndAttribute) {
+        if matches!(&input, ReadEvent::EndAttribute) {
             Some(Ok(None))
         } else if !self.seen_extant && matches!(&input, ReadEvent::Extant) {
             self.seen_extant = true;
@@ -1449,6 +1490,39 @@ impl<T> Recognizer for EmptyAttrRecognizer<T> {
     }
 }
 
+pub struct EmptyBodyRecognizer<T> {
+    seen_start: bool,
+    _type: PhantomData<fn() -> Option<T>>,
+}
+
+impl<T> Default for EmptyBodyRecognizer<T> {
+    fn default() -> Self {
+        EmptyBodyRecognizer {
+            seen_start: false,
+            _type: PhantomData,
+        }
+    }
+}
+
+impl<T> Recognizer for EmptyBodyRecognizer<T> {
+    type Target = Option<T>;
+
+    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
+        if self.seen_start && matches!(input, ReadEvent::EndRecord) {
+            Some(Ok(None))
+        } else if !self.seen_start && matches!(input, ReadEvent::StartBody) {
+            self.seen_start = true;
+            None
+        } else {
+            Some(Err(input.kind_error()))
+        }
+    }
+
+    fn reset(&mut self) {
+        self.seen_start = false;
+    }
+}
+
 /// Runs another recognizer and then transforms its result by applying a function to it.
 pub struct MappedRecognizer<R, F> {
     inner: R,
@@ -1456,7 +1530,7 @@ pub struct MappedRecognizer<R, F> {
 }
 
 impl<R, F> MappedRecognizer<R, F> {
-    fn new(inner: R, f: F) -> Self {
+    pub fn new(inner: R, f: F) -> Self {
         MappedRecognizer { inner, f }
     }
 }
@@ -1488,6 +1562,7 @@ pub type MakeOption<T> = fn(T) -> Option<T>;
 impl<T: RecognizerReadable> RecognizerReadable for Option<T> {
     type Rec = OptionRecognizer<T::Rec>;
     type AttrRec = FirstOf<EmptyAttrRecognizer<T>, MappedRecognizer<T::AttrRec, MakeOption<T>>>;
+    type BodyRec = FirstOf<EmptyBodyRecognizer<T>, MappedRecognizer<T::BodyRec, MakeOption<T>>>;
 
     fn make_recognizer() -> Self::Rec {
         OptionRecognizer::new(T::make_recognizer())
@@ -1497,6 +1572,13 @@ impl<T: RecognizerReadable> RecognizerReadable for Option<T> {
         FirstOf::new(
             EmptyAttrRecognizer::default(),
             MappedRecognizer::new(T::make_attr_recognizer(), Option::Some),
+        )
+    }
+
+    fn make_body_recognizer() -> Self::BodyRec {
+        FirstOf::new(
+            EmptyBodyRecognizer::default(),
+            MappedRecognizer::new(T::make_body_recognizer(), Option::Some),
         )
     }
 
@@ -1512,6 +1594,7 @@ impl<T: RecognizerReadable> RecognizerReadable for Option<T> {
 impl RecognizerReadable for Value {
     type Rec = ValueMaterializer;
     type AttrRec = AttrBodyMaterializer;
+    type BodyRec = DelegateBodyMaterializer;
 
     fn make_recognizer() -> Self::Rec {
         ValueMaterializer::default()
@@ -1519,6 +1602,10 @@ impl RecognizerReadable for Value {
 
     fn make_attr_recognizer() -> Self::AttrRec {
         AttrBodyMaterializer::default()
+    }
+
+    fn make_body_recognizer() -> Self::BodyRec {
+        DelegateBodyMaterializer::default()
     }
 }
 
@@ -1571,6 +1658,7 @@ where
 {
     type Rec = HashMapRecognizer<K::Rec, V::Rec>;
     type AttrRec = HashMapRecognizer<K::Rec, V::Rec>;
+    type BodyRec = HashMapRecognizer<K::Rec, V::Rec>;
 
     fn make_recognizer() -> Self::Rec {
         HashMapRecognizer::new(K::make_recognizer(), V::make_recognizer())
@@ -1578,6 +1666,10 @@ where
 
     fn make_attr_recognizer() -> Self::AttrRec {
         HashMapRecognizer::new_attr(K::make_recognizer(), V::make_recognizer())
+    }
+
+    fn make_body_recognizer() -> Self::BodyRec {
+        HashMapRecognizer::new(K::make_recognizer(), V::make_recognizer())
     }
 }
 
@@ -1686,16 +1778,11 @@ where
 #[derive(Clone, Copy)]
 enum DelegateStructState {
     Init,
-    HeaderInit,
-    HeaderBodyItem,
-    HeaderBetween,
-    HeaderExpectingSlot,
-    HeaderItem,
+    Header,
+    NoHeader,
     AttrBetween,
     AttrItem,
-    DelegatedSimple,
-    DelegatedComplex,
-    Done,
+    Delegated,
 }
 
 /// This type is used to encode the standard encoding of Rust structs, where the body of the record
@@ -1703,7 +1790,6 @@ enum DelegateStructState {
 /// [`RecognizerReadable`]. It should not generally be necessary to use this type explicitly.
 pub struct DelegateStructRecognizer<T, Flds> {
     tag: TagSpec,
-    has_header_body: bool,
     state: DelegateStructState,
     fields: Flds,
     progress: Bitset,
@@ -1712,32 +1798,24 @@ pub struct DelegateStructRecognizer<T, Flds> {
     select_recog: Selector<Flds>,
     on_done: fn(&mut Flds) -> Result<T, ReadError>,
     reset: fn(&mut Flds),
-    simple_body: bool,
 }
 
 impl<T, Flds> DelegateStructRecognizer<T, Flds> {
     /// #Arguments
     /// * `tag` - The expected name of the first attribute or an inidcation that it should be used
     /// to populate a field.
-    /// * `has_header_body` - Inidcates that one of the fields has been promoted to the body of the
-    /// tag attribute.
     /// * `fields` - The state of the recognizer state machine (specified by the macro).
     /// * `num_fields` - The total numer of (non-skipped) fields that the recognizer expects.
     /// * `vtable` - Functions that are generated by the macro that determine how incoming events
     /// modify the state.
-    /// * `simple_body` - Indicates that the delegate field is represented by a singe value which
-    /// will need to be wrapped in a record.
     pub fn new(
         tag: TagSpec,
-        has_header_body: bool,
         fields: Flds,
         num_fields: u32,
         vtable: OrdinalVTable<T, Flds>,
-        simple_body: bool,
     ) -> Self {
         DelegateStructRecognizer {
             tag,
-            has_header_body,
             state: DelegateStructState::Init,
             fields,
             progress: Bitset::new(num_fields),
@@ -1746,7 +1824,6 @@ impl<T, Flds> DelegateStructRecognizer<T, Flds> {
             select_recog: vtable.select_recog,
             on_done: vtable.on_done,
             reset: vtable.reset,
-            simple_body,
         }
     }
 
@@ -1755,33 +1832,26 @@ impl<T, Flds> DelegateStructRecognizer<T, Flds> {
     /// is skipped.
     ///
     /// #Arguments
-    /// * `has_header_body` - Inidcates that one of the fields has been promoted to the body of the
-    /// tag attribute.
     /// * `fields` - The state of the recognizer state machine (specified by the macro).
     /// * `num_fields` - The total numer of (non-skipped) fields that the recognizer expects.
     /// * `vtable` - Functions that are generated by the macro that determine how incoming events
     /// modify the state.
-    /// * `simple_body` - Indicates that the delegate field is represented by a singe value which
-    /// will need to be wrapped in a record.
-    pub fn variant(
-        has_header_body: bool,
-        fields: Flds,
-        num_fields: u32,
-        vtable: OrdinalVTable<T, Flds>,
-        simple_body: bool,
-    ) -> Self {
+    pub fn variant(fields: Flds, num_fields: u32, vtable: OrdinalVTable<T, Flds>) -> Self {
+        let (state, index) = if let Some(i) = (vtable.select_index)(OrdinalFieldKey::Header) {
+            (DelegateStructState::Header, i)
+        } else {
+            (DelegateStructState::NoHeader, 0)
+        };
         DelegateStructRecognizer {
             tag: TagSpec::Fixed(""),
-            has_header_body,
-            state: DelegateStructState::HeaderInit,
+            state,
             fields,
             progress: Bitset::new(num_fields),
             select_index: vtable.select_index,
-            index: 0,
+            index,
             select_recog: vtable.select_recog,
             on_done: vtable.on_done,
             reset: vtable.reset,
-            simple_body,
         }
     }
 }
@@ -1792,7 +1862,6 @@ impl<T, Flds> Recognizer for DelegateStructRecognizer<T, Flds> {
     fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         let DelegateStructRecognizer {
             tag,
-            has_header_body,
             state,
             fields,
             progress,
@@ -1800,7 +1869,6 @@ impl<T, Flds> Recognizer for DelegateStructRecognizer<T, Flds> {
             index,
             select_recog,
             on_done,
-            simple_body,
             ..
         } = self;
 
@@ -1809,14 +1877,15 @@ impl<T, Flds> Recognizer for DelegateStructRecognizer<T, Flds> {
                 ReadEvent::StartAttribute(name) => match tag {
                     TagSpec::Fixed(tag) => {
                         if name == *tag {
-                            if *has_header_body {
-                                *state = DelegateStructState::HeaderInit;
+                            if let Some(i) = select_index(OrdinalFieldKey::Header) {
+                                *index = i;
+                                *state = DelegateStructState::Header;
                             } else {
-                                *state = DelegateStructState::HeaderBetween;
+                                *state = DelegateStructState::NoHeader;
                             }
                             None
                         } else {
-                            Some(Err(bad_kind(&ReadEvent::StartAttribute(name))))
+                            Some(Err(ReadError::UnexpectedAttribute(name.into())))
                         }
                     }
                     TagSpec::Field => {
@@ -1824,10 +1893,11 @@ impl<T, Flds> Recognizer for DelegateStructRecognizer<T, Flds> {
                             if let Err(e) = select_recog(fields, i, ReadEvent::TextValue(name))? {
                                 Some(Err(e))
                             } else {
-                                if *has_header_body {
-                                    *state = DelegateStructState::HeaderInit;
+                                if let Some(i) = select_index(OrdinalFieldKey::Header) {
+                                    *index = i;
+                                    *state = DelegateStructState::Header;
                                 } else {
-                                    *state = DelegateStructState::HeaderBetween;
+                                    *state = DelegateStructState::NoHeader;
                                 }
                                 None
                             }
@@ -1838,90 +1908,34 @@ impl<T, Flds> Recognizer for DelegateStructRecognizer<T, Flds> {
                 },
                 ow => Some(Err(bad_kind(&ow))),
             },
-            DelegateStructState::HeaderInit => {
-                if matches!(&input, ReadEvent::EndAttribute) {
-                    *state = DelegateStructState::AttrBetween;
-                    None
-                } else {
-                    *state = DelegateStructState::HeaderBodyItem;
-                    if let Some(i) = select_index(OrdinalFieldKey::HeaderBody) {
-                        *index = i;
-                    } else {
-                        return Some(Err(ReadError::InconsistentState));
-                    }
-                    if let Err(e) = select_recog(fields, *index, input)? {
-                        Some(Err(e))
-                    } else {
-                        *state = DelegateStructState::HeaderBetween;
-                        None
-                    }
-                }
-            }
-            DelegateStructState::HeaderBodyItem => {
+            DelegateStructState::Header => {
                 if let Err(e) = select_recog(fields, *index, input)? {
                     Some(Err(e))
                 } else {
-                    progress.set(*index);
-                    *state = DelegateStructState::HeaderBetween;
+                    *state = DelegateStructState::AttrBetween;
                     None
                 }
             }
-            DelegateStructState::HeaderBetween => match &input {
+            DelegateStructState::NoHeader => match input {
+                ReadEvent::Extant => None,
                 ReadEvent::EndAttribute => {
                     *state = DelegateStructState::AttrBetween;
                     None
                 }
-                ReadEvent::TextValue(name) => {
-                    if let Some(i) = select_index(OrdinalFieldKey::HeaderSlot(name.borrow())) {
-                        if progress.get(i).unwrap_or(false) {
-                            Some(Err(ReadError::DuplicateField(Text::new(name.borrow()))))
-                        } else {
-                            *index = i;
-                            *state = DelegateStructState::HeaderExpectingSlot;
-                            None
-                        }
-                    } else {
-                        Some(Err(ReadError::UnexpectedField(Text::new(name.borrow()))))
-                    }
-                }
-                _ => Some(Err(bad_kind(&input))),
+                ow => Some(Err(ow.kind_error())),
             },
-            DelegateStructState::HeaderExpectingSlot => {
-                if matches!(&input, ReadEvent::Slot) {
-                    *state = DelegateStructState::HeaderItem;
-                    None
-                } else {
-                    Some(Err(ReadError::UnexpectedItem))
-                }
-            }
-            DelegateStructState::HeaderItem => {
-                if let Err(e) = select_recog(fields, *index, input)? {
-                    Some(Err(e))
-                } else {
-                    progress.set(*index);
-                    *state = DelegateStructState::HeaderBetween;
-                    None
-                }
-            }
             DelegateStructState::AttrBetween => match input {
                 ReadEvent::StartBody => {
                     if let Some(i) = select_index(OrdinalFieldKey::FirstItem) {
                         *index = i;
-                        if *simple_body {
-                            *state = DelegateStructState::DelegatedSimple;
-                            None
+                        *state = DelegateStructState::Delegated;
+                        if let Err(e) = select_recog(fields, *index, ReadEvent::StartBody)? {
+                            Some(Err(e))
                         } else {
-                            *state = DelegateStructState::DelegatedComplex;
-                            if let Err(e) = select_recog(fields, *index, ReadEvent::StartBody)? {
-                                Some(Err(e))
-                            } else {
-                                *state = DelegateStructState::Done;
-                                None
-                            }
+                            Some(Err(ReadError::InconsistentState))
                         }
                     } else {
-                        *state = DelegateStructState::Done;
-                        None
+                        Some(Err(ReadError::InconsistentState))
                     }
                 }
                 ReadEvent::StartAttribute(name) => {
@@ -1935,18 +1949,13 @@ impl<T, Flds> Recognizer for DelegateStructRecognizer<T, Flds> {
                         }
                     } else if let Some(i) = select_index(OrdinalFieldKey::FirstItem) {
                         *index = i;
-                        if *simple_body {
-                            Some(Err(ReadError::UnexpectedField(name.into())))
+                        *state = DelegateStructState::Delegated;
+                        if let Err(e) =
+                            select_recog(fields, *index, ReadEvent::StartAttribute(name))?
+                        {
+                            Some(Err(e))
                         } else {
-                            *state = DelegateStructState::DelegatedComplex;
-                            if let Err(e) =
-                                select_recog(fields, *index, ReadEvent::StartAttribute(name))?
-                            {
-                                Some(Err(e))
-                            } else {
-                                *state = DelegateStructState::Done;
-                                None
-                            }
+                            Some(Err(ReadError::InconsistentState))
                         }
                     } else {
                         Some(Err(ReadError::UnexpectedField(name.into())))
@@ -1963,39 +1972,11 @@ impl<T, Flds> Recognizer for DelegateStructRecognizer<T, Flds> {
                     None
                 }
             }
-            DelegateStructState::DelegatedSimple => match input {
-                ReadEvent::EndRecord => {
-                    if let Err(e) = select_recog(fields, *index, ReadEvent::Extant)? {
-                        Some(Err(e))
-                    } else {
-                        Some(on_done(fields))
-                    }
-                }
-                ev @ ReadEvent::Slot
-                | ev @ ReadEvent::StartBody
-                | ev @ ReadEvent::StartAttribute(_)
-                | ev @ ReadEvent::EndAttribute => Some(Err(bad_kind(&ev))),
-                ow => {
-                    if let Err(e) = select_recog(fields, *index, ow)? {
-                        Some(Err(e))
-                    } else {
-                        *state = DelegateStructState::Done;
-                        None
-                    }
-                }
-            },
-            DelegateStructState::DelegatedComplex => {
+            DelegateStructState::Delegated => {
                 if let Err(e) = select_recog(fields, *index, input)? {
                     Some(Err(e))
                 } else {
                     Some(on_done(fields))
-                }
-            }
-            DelegateStructState::Done => {
-                if matches!(&input, ReadEvent::EndRecord) {
-                    Some(on_done(fields))
-                } else {
-                    Some(Err(bad_kind(&input)))
                 }
             }
         }
@@ -2106,6 +2087,7 @@ where
 enum UnitStructState {
     Init,
     Tag,
+    SeenExtant,
     AfterTag,
     Body,
 }
@@ -2160,7 +2142,15 @@ impl<T> Recognizer for UnitStructRecognizer<T> {
                     Some(Err(ReadError::UnexpectedAttribute(name.into())))
                 }
             }
+            (ReadEvent::Extant, UnitStructState::Tag) => {
+                *state = UnitStructState::SeenExtant;
+                None
+            }
             (ReadEvent::EndAttribute, UnitStructState::Tag) => {
+                *state = UnitStructState::AfterTag;
+                None
+            }
+            (ReadEvent::EndAttribute, UnitStructState::SeenExtant) => {
                 *state = UnitStructState::AfterTag;
                 None
             }
@@ -2195,4 +2185,442 @@ impl<T> Recognizer for RecognizeNothing<T> {
     }
 
     fn reset(&mut self) {}
+}
+
+macro_rules! impl_readable_tuple {
+    ( $len:expr => ($([$idx:pat, $pname:ident, $vname:ident, $rname:ident])+)) => {
+        const _: () = {
+
+            type Builder<$($pname),+> = (($(Option<$pname>,)+), ($(<$pname as RecognizerReadable>::Rec,)+));
+
+            fn select_feed<$($pname: RecognizerReadable),+>(builder: &mut Builder<$($pname),+>, i: u32, input: ReadEvent<'_>) -> Option<Result<(), ReadError>> {
+                let (($($vname,)+), ($($rname,)+)) = builder;
+                match i {
+                    $(
+                        $idx => {
+                            let result = $rname.feed_event(input)?;
+                            match result {
+                                Ok(v) => {
+                                    *$vname = Some(v);
+                                    None
+                                },
+                                Err(e) => {
+                                    Some(Err(e))
+                                }
+                            }
+                        },
+                    )+
+                    _ => Some(Err(ReadError::InconsistentState))
+                }
+
+            }
+
+            fn on_done<$($pname: RecognizerReadable),+>(builder: &mut Builder<$($pname),+>) -> Result<($($pname,)+), ReadError> {
+                let (($($vname,)+), _) = builder;
+                if let ($(Some($vname),)+) = ($($vname.take(),)+) {
+                    Ok(($($vname,)+))
+                } else {
+                    Err(ReadError::IncompleteRecord)
+                }
+            }
+
+            fn reset<$($pname: RecognizerReadable),+>(builder: &mut Builder<$($pname),+>) {
+                let (($($vname,)+), ($($rname,)+)) = builder;
+
+                $(*$vname = None;)+
+                $($rname.reset();)+
+            }
+
+            impl<$($pname: RecognizerReadable),+> RecognizerReadable for ($($pname,)+) {
+                type Rec = OrdinalFieldsRecognizer<($($pname,)+), Builder<$($pname),+>>;
+                type AttrRec = FirstOf<SimpleAttrBody<Self::Rec>, Self::Rec>;
+                type BodyRec = Self::Rec;
+
+                fn make_recognizer() -> Self::Rec {
+                    OrdinalFieldsRecognizer::new(
+                        (Default::default(), ($(<$pname as RecognizerReadable>::make_recognizer(),)+)),
+                        $len,
+                        select_feed,
+                        on_done,
+                        reset,
+                    )
+                }
+
+                fn make_attr_recognizer() -> Self::AttrRec {
+                    let attr = OrdinalFieldsRecognizer::new_attr(
+                        (Default::default(), ($(<$pname as RecognizerReadable>::make_recognizer(),)+)),
+                        $len,
+                        select_feed,
+                        on_done,
+                        reset,
+                    );
+                    FirstOf::new(SimpleAttrBody::new(Self::make_recognizer()), attr)
+                }
+
+                fn make_body_recognizer() -> Self::BodyRec {
+                    Self::make_recognizer()
+                }
+            }
+        };
+    }
+}
+
+impl_readable_tuple! { 1 => ([0, T0, v0, r0]) }
+impl_readable_tuple! { 2 => ([0, T0, v0, r0] [1, T1, v1, r1]) }
+impl_readable_tuple! { 3 => ([0, T0, v0, r0] [1, T1, v1, r1] [2, T2, v2, r2]) }
+impl_readable_tuple! { 4 => ([0, T0, v0, r0] [1, T1, v1, r1] [2, T2, v2, r2] [3, T3, v3, r3]) }
+impl_readable_tuple! { 5 => ([0, T0, v0, r0] [1, T1, v1, r1] [2, T2, v2, r2] [3, T3, v3, r3] [4, T4, v4, r4]) }
+impl_readable_tuple! { 6 => ([0, T0, v0, r0] [1, T1, v1, r1] [2, T2, v2, r2] [3, T3, v3, r3] [4, T4, v4, r4] [5, T5, v5, r5]) }
+impl_readable_tuple! { 7 => ([0, T0, v0, r0] [1, T1, v1, r1] [2, T2, v2, r2] [3, T3, v3, r3] [4, T4, v4, r4] [5, T5, v5, r5] [6, T6, v6, r6]) }
+impl_readable_tuple! { 8 => ([0, T0, v0, r0] [1, T1, v1, r1] [2, T2, v2, r2] [3, T3, v3, r3] [4, T4, v4, r4] [5, T5, v5, r5] [6, T6, v6, r6] [7, T7, v7, r7]) }
+impl_readable_tuple! { 9 => ([0, T0, v0, r0] [1, T1, v1, r1] [2, T2, v2, r2] [3, T3, v3, r3] [4, T4, v4, r4] [5, T5, v5, r5] [6, T6, v6, r6] [7, T7, v7, r7] [8, T8, v8, r8]) }
+impl_readable_tuple! { 10 => ([0, T0, v0, r0] [1, T1, v1, r1] [2, T2, v2, r2] [3, T3, v3, r3] [4, T4, v4, r4] [5, T5, v5, r5] [6, T6, v6, r6] [7, T7, v7, r7] [8, T8, v8, r8] [9, T9, v9, r9]) }
+impl_readable_tuple! { 11 => ([0, T0, v0, r0] [1, T1, v1, r1] [2, T2, v2, r2] [3, T3, v3, r3] [4, T4, v4, r4] [5, T5, v5, r5] [6, T6, v6, r6] [7, T7, v7, r7] [8, T8, v8, r8] [9, T9, v9, r9] [10, T10, v10, r10]) }
+impl_readable_tuple! { 12 => ([0, T0, v0, r0] [1, T1, v1, r1] [2, T2, v2, r2] [3, T3, v3, r3] [4, T4, v4, r4] [5, T5, v5, r5] [6, T6, v6, r6] [7, T7, v7, r7] [8, T8, v8, r8] [9, T9, v9, r9] [10, T10, v10, r10] [11, T11, v11, r11]) }
+
+pub struct TagRecognizer<T>(PhantomData<fn(&str) -> T>);
+
+impl<T: Tag> Default for TagRecognizer<T> {
+    fn default() -> Self {
+        TagRecognizer(PhantomData)
+    }
+}
+
+impl<T: Tag> Recognizer for TagRecognizer<T> {
+    type Target = T;
+
+    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
+        let result = if let ReadEvent::TextValue(txt) = input {
+            T::try_from_str(txt.borrow()).map_err(|message| ReadError::Malformatted {
+                text: txt.into(),
+                message,
+            })
+        } else {
+            Err(bad_kind(&input))
+        };
+        Some(result)
+    }
+
+    fn reset(&mut self) {}
+}
+
+enum HeaderState {
+    Init,
+    ExpectingBody,
+    BodyItem,
+    BetweenSlots,
+    ExpectingSlot,
+    SlotItem,
+    End,
+}
+
+/// A key to specify the field that has been encounted in the stream of events when reading
+/// a header of a record.
+#[derive(Clone, Copy)]
+pub enum HeaderFieldKey<'a> {
+    /// The first value inside the tag attribute.
+    HeaderBody,
+    /// A labelled slot in the tag attribute.
+    HeaderSlot(&'a str),
+}
+
+/// The derivation macro produces the functions that are used to populate this table to provide
+/// the specific parts of the implementation.
+pub struct HeaderVTable<T, Flds> {
+    select_index: for<'a> fn(HeaderFieldKey<'a>) -> Option<u32>,
+    select_recog: Selector<Flds>,
+    on_done: fn(&mut Flds) -> Result<T, ReadError>,
+    reset: fn(&mut Flds),
+}
+
+impl<T, Flds> HeaderVTable<T, Flds> {
+    pub fn new(
+        select_index: for<'a> fn(HeaderFieldKey<'a>) -> Option<u32>,
+        select_recog: Selector<Flds>,
+        on_done: fn(&mut Flds) -> Result<T, ReadError>,
+        reset: fn(&mut Flds),
+    ) -> Self {
+        HeaderVTable {
+            select_index,
+            select_recog,
+            on_done,
+            reset,
+        }
+    }
+}
+
+impl<T, Flds> Clone for HeaderVTable<T, Flds> {
+    fn clone(&self) -> Self {
+        HeaderVTable {
+            select_index: self.select_index,
+            select_recog: self.select_recog,
+            on_done: self.on_done,
+            reset: self.reset,
+        }
+    }
+}
+
+impl<T, Flds> Copy for HeaderVTable<T, Flds> {}
+
+/// This type is used to recognize the header for types which lift fields into it. It is used
+/// by the derivation macro for [`RecognizerReadable`]. It should not generally be necessary to use
+/// this type explicitly.
+pub struct HeaderRecognizer<T, Flds> {
+    has_body: bool,
+    flattened: bool,
+    state: HeaderState,
+    fields: Flds,
+    progress: Bitset,
+    index: u32,
+    vtable: HeaderVTable<T, Flds>,
+}
+
+/// Create a recognizer for the body of the header attribute of a record.
+///
+/// #Arguments
+/// * `has_body` - Whehter there is a field lifted to be the body of the header.
+/// * `make_fields` - Factory to construct the state of the recognizer.
+/// * `num_slots` - The number of slots lifted into the header.
+/// * `vtable` - Functions that are generated by the macro that determine how incoming events
+/// modify the state.
+pub fn header_recognizer<T, Flds, MkFlds>(
+    has_body: bool,
+    make_fields: MkFlds,
+    num_slots: u32,
+    vtable: HeaderVTable<T, Flds>,
+) -> FirstOf<HeaderRecognizer<T, Flds>, HeaderRecognizer<T, Flds>>
+where
+    MkFlds: Fn() -> Flds,
+{
+    let simple = HeaderRecognizer::new(has_body, true, num_slots, make_fields(), vtable);
+    let flattened = HeaderRecognizer::new(has_body, false, num_slots, make_fields(), vtable);
+    FirstOf::new(simple, flattened)
+}
+
+/// #Arguments
+/// * `has_body` - Whehter there is a field lifted to be the body of the header.
+/// * `flattened` - Whether the record containing the fields has been flattened into the attribute
+/// body (and so does not have explicit record body delimiting).
+/// * `num_slots` - The number of slots lifted into the header.
+/// * `fields` - The state of the recognizer.
+/// * `vtable` - Functions that are generated by the macro that determine how incoming events
+/// modify the state.
+impl<T, Flds> HeaderRecognizer<T, Flds> {
+    pub fn new(
+        has_body: bool,
+        flattened: bool,
+        num_slots: u32,
+        fields: Flds,
+        vtable: HeaderVTable<T, Flds>,
+    ) -> Self {
+        let state = if flattened {
+            if !has_body {
+                HeaderState::BetweenSlots
+            } else {
+                HeaderState::ExpectingBody
+            }
+        } else {
+            HeaderState::Init
+        };
+
+        let num_fields = if !has_body { num_slots } else { num_slots + 1 };
+
+        HeaderRecognizer {
+            has_body,
+            flattened,
+            state,
+            fields,
+            progress: Bitset::new(num_fields),
+            index: 0,
+            vtable,
+        }
+    }
+}
+
+impl<T, Flds> Recognizer for HeaderRecognizer<T, Flds> {
+    type Target = T;
+
+    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
+        let HeaderRecognizer {
+            has_body,
+            flattened,
+            state,
+            fields,
+            progress,
+            index,
+            vtable:
+                HeaderVTable {
+                    select_index,
+                    select_recog,
+                    on_done,
+                    ..
+                },
+        } = self;
+        match *state {
+            HeaderState::Init => {
+                if matches!(&input, ReadEvent::StartBody) {
+                    *state = if !*has_body {
+                        HeaderState::BetweenSlots
+                    } else {
+                        HeaderState::ExpectingBody
+                    };
+                    None
+                } else {
+                    Some(Err(input.kind_error()))
+                }
+            }
+            HeaderState::ExpectingBody => {
+                if *flattened && matches!(&input, ReadEvent::EndAttribute) {
+                    Some(on_done(fields))
+                } else if !*flattened && matches!(&input, ReadEvent::EndRecord) {
+                    *state = HeaderState::End;
+                    None
+                } else if let Some(i) = select_index(HeaderFieldKey::HeaderBody) {
+                    *index = i;
+                    *state = HeaderState::BodyItem;
+                    if let Err(e) = select_recog(fields, *index, input)? {
+                        Some(Err(e))
+                    } else {
+                        *state = HeaderState::BetweenSlots;
+                        progress.set(*index);
+                        None
+                    }
+                } else {
+                    Some(Err(ReadError::InconsistentState))
+                }
+            }
+            HeaderState::BodyItem | HeaderState::SlotItem => {
+                if let Err(e) = select_recog(fields, *index, input)? {
+                    Some(Err(e))
+                } else {
+                    *state = HeaderState::BetweenSlots;
+                    progress.set(*index);
+                    None
+                }
+            }
+            HeaderState::BetweenSlots => match input {
+                ReadEvent::EndAttribute if *flattened => Some(on_done(fields)),
+                ReadEvent::EndRecord if !*flattened => {
+                    *state = HeaderState::End;
+                    None
+                }
+                ReadEvent::TextValue(name) => {
+                    if let Some(i) = select_index(HeaderFieldKey::HeaderSlot(name.borrow())) {
+                        if progress.get(i).unwrap_or(false) {
+                            Some(Err(ReadError::DuplicateField(Text::from(name))))
+                        } else {
+                            *index = i;
+                            *state = HeaderState::ExpectingSlot;
+                            None
+                        }
+                    } else {
+                        Some(Err(ReadError::UnexpectedField(name.into())))
+                    }
+                }
+                ow => Some(Err(ow.kind_error())),
+            },
+            HeaderState::ExpectingSlot => {
+                if matches!(&input, ReadEvent::Slot) {
+                    *state = HeaderState::SlotItem;
+                    None
+                } else {
+                    Some(Err(input.kind_error()))
+                }
+            }
+            HeaderState::End => {
+                if matches!(&input, ReadEvent::EndAttribute) {
+                    Some(on_done(fields))
+                } else {
+                    Some(Err(input.kind_error()))
+                }
+            }
+        }
+    }
+
+    fn reset(&mut self) {
+        self.state = if self.flattened {
+            if !self.has_body {
+                HeaderState::BetweenSlots
+            } else {
+                HeaderState::ExpectingBody
+            }
+        } else {
+            HeaderState::Init
+        };
+        (self.vtable.reset)(&mut self.fields);
+        self.progress.clear();
+        self.index = 0;
+    }
+}
+
+pub fn take_fields<T: Default, U, V>(state: &mut (T, U, V)) -> Result<T, ReadError> {
+    Ok(std::mem::take(&mut state.0))
+}
+
+enum SimpleRecBodyState {
+    Init,
+    ReadingValue,
+    AfterValue,
+}
+
+/// Wraps another simple [`Recognizer`] to recognize the same type as the single item in the body
+/// of a record.
+pub struct SimpleRecBody<R: Recognizer> {
+    state: SimpleRecBodyState,
+    value: Option<R::Target>,
+    delegate: R,
+}
+
+impl<R: Recognizer> SimpleRecBody<R> {
+    pub fn new(wrapped: R) -> Self {
+        SimpleRecBody {
+            state: SimpleRecBodyState::Init,
+            value: None,
+            delegate: wrapped,
+        }
+    }
+}
+
+impl<R: Recognizer> Recognizer for SimpleRecBody<R> {
+    type Target = R::Target;
+
+    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
+        let SimpleRecBody {
+            state,
+            value,
+            delegate,
+        } = self;
+
+        match state {
+            SimpleRecBodyState::Init => {
+                if matches!(input, ReadEvent::StartBody) {
+                    *state = SimpleRecBodyState::ReadingValue;
+                    None
+                } else {
+                    Some(Err(input.kind_error()))
+                }
+            }
+            SimpleRecBodyState::ReadingValue => match delegate.feed_event(input)? {
+                Ok(v) => {
+                    *value = Some(v);
+                    *state = SimpleRecBodyState::AfterValue;
+                    None
+                }
+                Err(e) => Some(Err(e)),
+            },
+            SimpleRecBodyState::AfterValue => {
+                if matches!(input, ReadEvent::EndRecord) {
+                    value.take().map(Ok)
+                } else {
+                    Some(Err(input.kind_error()))
+                }
+            }
+        }
+    }
+
+    fn reset(&mut self) {
+        self.state = SimpleRecBodyState::Init;
+        self.value = None;
+        self.delegate.reset();
+    }
 }

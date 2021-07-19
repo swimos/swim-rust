@@ -17,6 +17,7 @@ use crate::form::structural::read::event::{NumericValue, ReadEvent};
 use crate::form::structural::read::ReadError;
 use crate::model::text::Text;
 use num_bigint::{BigInt, BigUint};
+use num_traits::ToPrimitive;
 use std::convert::TryFrom;
 
 pub struct UnitRecognizer;
@@ -24,6 +25,7 @@ pub struct I32Recognizer;
 pub struct I64Recognizer;
 pub struct U32Recognizer;
 pub struct U64Recognizer;
+pub struct UsizeRecognizer;
 pub struct BigIntRecognizer;
 pub struct BigUintRecognizer;
 pub struct F64Recognizer;
@@ -106,6 +108,30 @@ impl Recognizer for U64Recognizer {
                 Some(u64::try_from(n).map_err(|_| ReadError::NumberOutOfRange))
             }
             ReadEvent::Number(NumericValue::UInt(n)) => Some(Ok(n)),
+            ow => Some(Err(super::bad_kind(&ow))),
+        }
+    }
+
+    fn reset(&mut self) {}
+}
+
+impl Recognizer for UsizeRecognizer {
+    type Target = usize;
+
+    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
+        match input {
+            ReadEvent::Number(NumericValue::Int(n)) => {
+                Some(usize::try_from(n).map_err(|_| ReadError::NumberOutOfRange))
+            }
+            ReadEvent::Number(NumericValue::UInt(n)) => {
+                Some(usize::try_from(n).map_err(|_| ReadError::NumberOutOfRange))
+            }
+            ReadEvent::Number(NumericValue::BigUint(n)) => {
+                Some(n.to_usize().ok_or(ReadError::NumberOutOfRange))
+            }
+            ReadEvent::Number(NumericValue::BigInt(n)) => {
+                Some(n.to_usize().ok_or(ReadError::NumberOutOfRange))
+            }
             ow => Some(Err(super::bad_kind(&ow))),
         }
     }

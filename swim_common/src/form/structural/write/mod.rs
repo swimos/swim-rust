@@ -24,12 +24,14 @@ use num_bigint::{BigInt, BigUint};
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::convert::Infallible;
-use std::hint;
+use std::convert::TryFrom;
 use std::rc::Rc;
 use std::sync::Arc;
 
 #[doc(hidden)]
 pub use form_derive::StructuralWritable;
+use url::Url;
+use utilities::uri::RelativeUri;
 
 /// Trait for types that can describe their structure using a [`StructuralWriter`].
 /// Each writer is an interpreter which could, for example, realize the structure
@@ -47,22 +49,18 @@ pub trait StructuralWritable: Sized {
 
     /// Write the structure of this value with an interpreter that cannnot generate an error.
     fn write_with_infallible<W: StructuralWriter<Error = Infallible>>(&self, writer: W) -> W::Repr {
-        if let Ok(repr) = self.write_with(writer) {
-            repr
-        } else {
-            // This is safe as Infallible has no instances.
-            unsafe { hint::unreachable_unchecked() }
+        match self.write_with(writer) {
+            Ok(repr) => repr,
+            Err(e) => match e {},
         }
     }
 
     /// Write the structure of this value with an interpreter that cannnot generate an error,
     /// allowing in t interpreter to consume this value if needed.
     fn write_into_infallible<W: StructuralWriter<Error = Infallible>>(self, writer: W) -> W::Repr {
-        if let Ok(repr) = self.write_into(writer) {
-            repr
-        } else {
-            // This is safe as Infallible has no instances.
-            unsafe { hint::unreachable_unchecked() }
+        match self.write_into(writer) {
+            Ok(repr) => repr,
+            Err(e) => match e {},
         }
     }
 
@@ -429,6 +427,28 @@ impl StructuralWritable for u64 {
     }
 }
 
+impl StructuralWritable for usize {
+    fn num_attributes(&self) -> usize {
+        0
+    }
+
+    fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
+        if let Ok(n) = u64::try_from(*self) {
+            writer.write_u64(n)
+        } else {
+            writer.write_big_uint(BigUint::from(*self))
+        }
+    }
+
+    fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error> {
+        if let Ok(n) = u64::try_from(self) {
+            writer.write_u64(n)
+        } else {
+            writer.write_big_uint(BigUint::from(self))
+        }
+    }
+}
+
 impl StructuralWritable for f64 {
     fn num_attributes(&self) -> usize {
         0
@@ -527,37 +547,43 @@ impl StructuralWritable for Text {
     }
 }
 
-impl<T: StructuralWritable> StructuralWritable for &T {
-    fn num_attributes(&self) -> usize {
-        (**self).num_attributes()
-    }
-
+impl StructuralWritable for RelativeUri {
     fn write_with<W: StructuralWriter>(
         &self,
         writer: W,
     ) -> Result<<W as PrimitiveWriter>::Repr, <W as PrimitiveWriter>::Error> {
-        (*self).write_with(writer)
+        writer.write_text(self.to_string())
     }
 
-    fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error> {
-        self.write_with(writer)
+    fn write_into<W: StructuralWriter>(
+        self,
+        writer: W,
+    ) -> Result<<W as PrimitiveWriter>::Repr, <W as PrimitiveWriter>::Error> {
+        writer.write_text(self.to_string())
     }
-}
 
-impl<T: StructuralWritable> StructuralWritable for &mut T {
     fn num_attributes(&self) -> usize {
         0
     }
+}
 
+impl StructuralWritable for Url {
     fn write_with<W: StructuralWriter>(
         &self,
         writer: W,
     ) -> Result<<W as PrimitiveWriter>::Repr, <W as PrimitiveWriter>::Error> {
-        (**self).write_with(writer)
+        writer.write_text(self.to_string())
     }
 
-    fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error> {
-        self.write_with(writer)
+    fn write_into<W: StructuralWriter>(
+        self,
+        writer: W,
+    ) -> Result<<W as PrimitiveWriter>::Repr, <W as PrimitiveWriter>::Error> {
+        writer.write_text(self.to_string())
+    }
+
+    fn num_attributes(&self) -> usize {
+        0
     }
 }
 
@@ -831,3 +857,54 @@ where
             .done()
     }
 }
+
+macro_rules! impl_writable_tuple {
+
+    ( $len:expr => ($([$pname:ident, $dname:ident] )+)) => (
+        impl<$($pname: StructuralWritable),+> StructuralWritable for ($($pname,)+) {
+
+            #[inline]
+            fn write_with<W: StructuralWriter>(
+                &self,
+                writer: W,
+            ) -> Result<<W as PrimitiveWriter>::Repr, <W as PrimitiveWriter>::Error> {
+                let ($($dname,)+) = self;
+                let mut record_writer = writer
+                    .record(0)?
+                    .complete_header(RecordBodyKind::ArrayLike, $len)?;
+                $(record_writer = record_writer.write_value($dname)?;)+
+                record_writer.done()
+            }
+
+            #[inline]
+            fn write_into<W: StructuralWriter>(
+                self,
+                writer: W,
+            ) -> Result<<W as PrimitiveWriter>::Repr, <W as PrimitiveWriter>::Error> {
+                let ($($dname,)+) = self;
+                let mut record_writer = writer
+                    .record(0)?
+                    .complete_header(RecordBodyKind::ArrayLike, $len)?;
+                $(record_writer = record_writer.write_value_into($dname)?;)+
+                record_writer.done()
+            }
+
+            fn num_attributes(&self) -> usize {
+                0
+            }
+        }
+    );
+}
+
+impl_writable_tuple! { 1 => ([T0, v0]) }
+impl_writable_tuple! { 2 => ([T0, v0] [T1, v1]) }
+impl_writable_tuple! { 3 => ([T0, v0] [T1, v1] [T2, v2]) }
+impl_writable_tuple! { 4 => ([T0, v0] [T1, v1] [T2, v2] [T3, v3]) }
+impl_writable_tuple! { 5 => ([T0, v0] [T1, v1] [T2, v2] [T3, v3] [T4, v4]) }
+impl_writable_tuple! { 6 => ([T0, v0] [T1, v1] [T2, v2] [T3, v3] [T4, v4] [T5, v5]) }
+impl_writable_tuple! { 7 => ([T0, v0] [T1, v1] [T2, v2] [T3, v3] [T4, v4] [T5, v5] [T6, v6]) }
+impl_writable_tuple! { 8 => ([T0, v0] [T1, v1] [T2, v2] [T3, v3] [T4, v4] [T5, v5] [T6, v6] [T7, v7]) }
+impl_writable_tuple! { 9 => ([T0, v0] [T1, v1] [T2, v2] [T3, v3] [T4, v4] [T5, v5] [T6, v6] [T7, v7] [T8, v8]) }
+impl_writable_tuple! { 10 => ([T0, v0] [T1, v1] [T2, v2] [T3, v3] [T4, v4] [T5, v5] [T6, v6] [T7, v7] [T8, v8] [T9, v9]) }
+impl_writable_tuple! { 11 => ([T0, v0] [T1, v1] [T2, v2] [T3, v3] [T4, v4] [T5, v5] [T6, v6] [T7, v7] [T8, v8] [T9, v9] [T10, v10]) }
+impl_writable_tuple! { 12 => ([T0, v0] [T1, v1] [T2, v2] [T3, v3] [T4, v4] [T5, v5] [T6, v6] [T7, v7] [T8, v8] [T9, v9] [T10, v10] [T11, v11]) }

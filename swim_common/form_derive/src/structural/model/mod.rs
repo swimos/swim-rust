@@ -12,108 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::parser::FORM_PATH;
-use syn::{Attribute, DataStruct, Fields, Meta, NestedMeta, Variant};
-use utilities::algebra::Errors;
-use utilities::validation::{Validation, ValidationItExt};
+use syn::{DataStruct, Fields, Variant};
 
 pub mod enumeration;
 pub mod field;
 pub mod record;
 
-use crate::parser::TAG_PATH;
-use std::convert::TryFrom;
-use syn::Lit;
-
-pub type SynValidation<T> = Validation<T, Errors<syn::Error>>;
-
-/// Description of how a type or field should be renamed in its serialized form.
-pub enum NameTransform {
-    /// Rename to a specific string.
-    Rename(String),
-}
+use crate::SynValidation;
 
 pub trait ValidateFrom<T>: Sized {
     fn validate(input: T) -> SynValidation<Self>;
-}
-
-/// Fold the attributes present on some syntactic element, accumulating errors.
-fn fold_attr_meta<'a, It, S, F>(attrs: It, init: S, mut f: F) -> SynValidation<S>
-where
-    It: Iterator<Item = &'a Attribute> + 'a,
-    F: FnMut(S, NestedMeta) -> SynValidation<S>,
-{
-    attrs.filter(|a| a.path == FORM_PATH).validate_fold(
-        Validation::valid(init),
-        false,
-        move |state, attribute| match attribute.parse_meta() {
-            Ok(Meta::List(list)) => {
-                list.nested
-                    .into_iter()
-                    .validate_fold(Validation::valid(state), false, &mut f)
-            }
-            Ok(_) => {
-                let err = syn::Error::new_spanned(
-                    attribute,
-                    &format!("Invalid attribute. Expected #[{}(...)]", FORM_PATH),
-                );
-                Validation::Validated(state, err.into())
-            }
-            Err(e) => {
-                let err = syn::Error::new_spanned(attribute, e.to_compile_error());
-                Validation::Validated(state, err.into())
-            }
-        },
-    )
-}
-
-impl TryFrom<&NestedMeta> for NameTransform {
-    type Error = syn::Error;
-
-    fn try_from(nested_meta: &NestedMeta) -> Result<Self, Self::Error> {
-        match nested_meta {
-            NestedMeta::Meta(Meta::NameValue(name)) if name.path == TAG_PATH => match &name.lit {
-                Lit::Str(s) => {
-                    let tag = s.value();
-                    if tag.is_empty() {
-                        Err(syn::Error::new_spanned(
-                            nested_meta,
-                            "New tag cannot be empty",
-                        ))
-                    } else {
-                        Ok(NameTransform::Rename(tag))
-                    }
-                }
-                _ => Err(syn::Error::new_spanned(
-                    nested_meta,
-                    "Expecting string argument",
-                )),
-            },
-            _ => Err(syn::Error::new_spanned(
-                nested_meta,
-                "Unknown container attribute",
-            )),
-        }
-    }
-}
-
-/// Fold operation to extract a name transform from the attributes on a type.
-fn acc_rename(
-    mut state: Option<NameTransform>,
-    nested_meta: NestedMeta,
-) -> SynValidation<Option<NameTransform>> {
-    let err = match NameTransform::try_from(&nested_meta) {
-        Ok(rename) => {
-            if state.is_some() {
-                Some(syn::Error::new_spanned(nested_meta, "Duplicate tag"))
-            } else {
-                state = Some(rename);
-                None
-            }
-        }
-        Err(e) => Some(e),
-    };
-    Validation::Validated(state, err.into())
 }
 
 pub trait StructLike {

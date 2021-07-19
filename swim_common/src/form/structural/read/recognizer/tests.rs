@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::form::structural::read::event::ReadEvent;
+use crate::form::structural::read::event::{NumericValue, ReadEvent};
 use crate::form::structural::read::recognizer::primitive::I32Recognizer;
 use crate::form::structural::read::recognizer::{Recognizer, VecRecognizer};
 use crate::form::structural::read::ReadError;
@@ -20,10 +20,16 @@ use crate::form::structural::read::ReadError;
 fn run_recognizer<R: Recognizer>(events: Vec<ReadEvent<'_>>, mut rec: R) -> R::Target {
     let mut result = None;
     for event in events.into_iter() {
-        if result.is_none() {
-            result = rec.feed_event(event);
-        } else {
-            panic!("Not all input was consumed.");
+        match result {
+            None => {
+                result = rec.feed_event(event);
+            }
+            Some(Err(e)) => {
+                panic!("{:?}", e);
+            }
+            _ => {
+                panic!("Not all input was consumed.");
+            }
         }
     }
     if result.is_none() {
@@ -46,6 +52,50 @@ fn vec_recognizer() {
         ReadEvent::from(2),
         ReadEvent::from(3),
         ReadEvent::EndRecord,
+    ];
+
+    let v = run_recognizer(events, rec);
+    assert_eq!(v, vec![1, 2, 3]);
+}
+
+#[test]
+fn vec_recognizer_flattened() {
+    let rec: VecRecognizer<i32, I32Recognizer> = VecRecognizer::new(true, I32Recognizer);
+
+    let events = vec![
+        ReadEvent::from(1),
+        ReadEvent::from(2),
+        ReadEvent::from(3),
+        ReadEvent::EndAttribute,
+    ];
+
+    let v = run_recognizer(events, rec);
+    assert_eq!(v, vec![1, 2, 3]);
+}
+
+#[test]
+fn vec_recognizer_attr_body() {
+    let rec = <Vec<i32> as RecognizerReadable>::make_attr_recognizer();
+
+    let events = vec![
+        ReadEvent::from(1),
+        ReadEvent::from(2),
+        ReadEvent::from(3),
+        ReadEvent::EndAttribute,
+    ];
+
+    let v = run_recognizer(events, rec);
+    assert_eq!(v, vec![1, 2, 3]);
+
+    let rec = <Vec<i32> as RecognizerReadable>::make_attr_recognizer();
+
+    let events = vec![
+        ReadEvent::StartBody,
+        ReadEvent::from(1),
+        ReadEvent::from(2),
+        ReadEvent::from(3),
+        ReadEvent::EndRecord,
+        ReadEvent::EndAttribute,
     ];
 
     let v = run_recognizer(events, rec);

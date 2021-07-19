@@ -12,8 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::modifiers::NameTransform;
+use crate::parser::FORM_PATH;
 use crate::structural::model::record::{SegregatedStructModel, StructDef, StructModel};
-use crate::structural::model::{NameTransform, SynValidation, ValidateFrom};
+use crate::structural::model::ValidateFrom;
+use crate::SynValidation;
 use quote::ToTokens;
 use std::collections::HashSet;
 use syn::{Attribute, DataEnum, Ident};
@@ -29,6 +32,7 @@ pub struct EnumModel<'a> {
 }
 
 /// Fully processed description of an enum type, used to generate the output of the derive macros.
+#[derive(Clone)]
 pub struct SegregatedEnumModel<'a, 'b> {
     /// Preprocessed model with attribute information.
     pub inner: &'b EnumModel<'b>,
@@ -97,7 +101,12 @@ impl<'a> ValidateFrom<EnumDef<'a>> for EnumModel<'a> {
                     }
                 });
 
-        let rename = super::fold_attr_meta(attributes.iter(), None, super::acc_rename);
+        let rename = crate::modifiers::fold_attr_meta(
+            FORM_PATH,
+            attributes.iter(),
+            None,
+            crate::modifiers::acc_rename,
+        );
 
         validate2(variants, rename).and_then(|(variants, transform)| {
             let names = variants.iter().validate_fold(

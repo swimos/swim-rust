@@ -13,10 +13,12 @@
 // limitations under the License.
 
 use super::ValidateFrom;
+use crate::modifiers::NameTransform;
 use crate::parser::{
-    ATTR_PATH, BODY_PATH, HEADER_BODY_PATH, HEADER_PATH, NAME_PATH, SKIP_PATH, SLOT_PATH, TAG_PATH,
+    ATTR_PATH, BODY_PATH, FORM_PATH, HEADER_BODY_PATH, HEADER_PATH, NAME_PATH, SKIP_PATH,
+    SLOT_PATH, TAG_PATH,
 };
-use crate::structural::model::{NameTransform, SynValidation};
+use crate::SynValidation;
 use macro_helpers::{FieldKind, Symbol};
 use proc_macro2::TokenStream;
 use quote::ToTokens;
@@ -119,6 +121,7 @@ enum FieldAttr {
     Transform(NameTransform),
     /// Specify where the field should occur in the serialized record.
     Kind(FieldKind),
+    Other,
 }
 
 /// Validated attributes for a field.
@@ -154,6 +157,7 @@ impl FieldAttributes {
                     Validation::valid(self)
                 }
             }
+            FieldAttr::Other => Validation::valid(self),
         }
     }
 }
@@ -166,13 +170,15 @@ impl<'a> ValidateFrom<FieldWithIndex<'a>> for TaggedFieldModel<'a> {
         let Field {
             attrs, ident, ty, ..
         } = field;
-        let field_attrs =
-            super::fold_attr_meta(attrs.iter(), FieldAttributes::default(), |attrs, nested| {
-                match FieldAttr::try_from(nested) {
-                    Ok(field_attr) => attrs.add(field, field_attr),
-                    Err(e) => Validation::Validated(attrs, e.into()),
-                }
-            });
+        let field_attrs = crate::modifiers::fold_attr_meta(
+            FORM_PATH,
+            attrs.iter(),
+            FieldAttributes::default(),
+            |attrs, nested| match FieldAttr::try_from(nested) {
+                Ok(field_attr) => attrs.add(field, field_attr),
+                Err(e) => Validation::Validated(attrs, e.into()),
+            },
+        );
 
         field_attrs.and_then(
             |FieldAttributes {
@@ -227,7 +233,7 @@ impl TryFrom<NestedMeta> for FieldAttr {
                         return Ok(FieldAttr::Kind(*kind));
                     }
                 }
-                Err(syn::Error::new_spanned(path, "Unknown attribute"))
+                Ok(FieldAttr::Other) //Overlap with schema macro.
             }
             NestedMeta::Meta(Meta::NameValue(named)) if named.path == NAME_PATH => {
                 if let Lit::Str(new_name) = &named.lit {
@@ -238,41 +244,13 @@ impl TryFrom<NestedMeta> for FieldAttr {
                     Err(syn::Error::new_spanned(named, "Expected string argument"))
                 }
             }
-            _ => Err(syn::Error::new_spanned(input, "Unknown attribute")),
+            _ => Ok(FieldAttr::Other), //Overlap with schema macro.
         }
     }
 }
 
-impl ValidateFrom<NestedMeta> for FieldAttr {
-    fn validate(input: NestedMeta) -> SynValidation<Self> {
-        let result = match &input {
-            NestedMeta::Meta(Meta::Path(path)) => loop {
-                let mut it = (&KIND_MAPPING).iter();
-                if let Some((path_name, kind)) = it.next() {
-                    if path == *path_name {
-                        break Ok(FieldAttr::Kind(*kind));
-                    }
-                } else {
-                    break Err(syn::Error::new_spanned(input, "Unrecognized field kind"));
-                }
-            },
-            NestedMeta::Meta(Meta::NameValue(named)) if named.path == NAME_PATH => {
-                if let Lit::Str(new_name) = &named.lit {
-                    Ok(FieldAttr::Transform(NameTransform::Rename(
-                        new_name.value(),
-                    )))
-                } else {
-                    Err(syn::Error::new_spanned(input, "Expected string argument"))
-                }
-            }
-            _ => Err(syn::Error::new_spanned(input, "Unknown attribute")),
-        };
-        Validation::from(result)
-    }
-}
-
 /// Description of how fields should be written into the attributes of the record.
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct HeaderFields<'a, 'b> {
     /// A field that should be used to replaced the name of the tag attribute.
     pub tag_name: Option<&'b FieldModel<'a>>,
@@ -286,6 +264,7 @@ pub struct HeaderFields<'a, 'b> {
 }
 
 /// The fields that should be written into the body of the record.
+#[derive(Clone)]
 pub enum BodyFields<'a, 'b> {
     /// Simple items in the record body.
     ReplacedBody(&'b FieldModel<'a>),
@@ -302,14 +281,16 @@ impl<'a, 'b> Default for BodyFields<'a, 'b> {
 }
 
 /// Description of how the fields of a type are written into a record.
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct SegregatedFields<'a, 'b> {
     pub header: HeaderFields<'a, 'b>,
     pub body: BodyFields<'a, 'b>,
 }
 
 impl<'a, 'b> SegregatedFields<'a, 'b> {
-    pub fn not_skipped(&self) -> usize {
+    /// The number of field blocks in the type (most fields are a block in themself but the header,
+    /// if it exists, is a single block).
+    pub fn num_field_blocks(&self) -> usize {
         let SegregatedFields {
             header:
                 HeaderFields {
@@ -320,14 +301,14 @@ impl<'a, 'b> SegregatedFields<'a, 'b> {
                 },
             body,
         } = self;
+
         let mut n = 0;
         if tag_name.is_some() {
             n += 1;
         }
-        if tag_body.is_some() {
+        if tag_body.is_some() || !header_fields.is_empty() {
             n += 1;
         }
-        n += header_fields.len();
         n += attributes.len();
         n += if let BodyFields::StdBody(v) = body {
             v.len()

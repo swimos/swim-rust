@@ -30,7 +30,7 @@ fn msgpack_read_err_display() {
 
     let err = MsgPackReadError::UnknownExtType(3);
     let string = err.to_string();
-    assert_eq!(string, "3 is not a regognized extension code.");
+    assert_eq!(string, "3 is not a recognized extension code.");
 
     let err = MsgPackReadError::InvalidMarker(Marker::Null);
     let string = err.to_string();

@@ -33,7 +33,8 @@ use std::ops::Deref;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use stm::transaction::{RetryManager, TransactionError};
-use swim_common::form::{Form, FormErr};
+use swim_common::form::structural::read::ReadError;
+use swim_common::form::Form;
 use swim_common::model::Value;
 use swim_common::routing::SendError;
 use swim_common::sink::item::{FnMutSender, ItemSender};
@@ -148,7 +149,7 @@ pub enum UplinkError {
     /// The uplink attempted to execute a transaction against its lane but failed.
     FailedTransaction(TransactionError),
     /// The form used by the lane is inconsistent.
-    InconsistentForm(FormErr),
+    InconsistentForm(ReadError),
     /// The uplink failed to start after a number of attempts.
     FailedToStart(usize),
 }

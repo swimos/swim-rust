@@ -120,6 +120,8 @@ impl<'a, 'b> ToTokens for DeriveStructuralWritable<'a, SegregatedEnumModel<'a, '
                     #[allow(non_snake_case, unused_variables)]
                     #[inline]
                     fn write_with<__W: #writer_trait>(&self, writer: __W) -> core::result::Result<__W::Repr, __W::Error> {
+                        use swim_common::form::structural::write::HeaderWriter;
+                        use swim_common::form::structural::write::BodyWriter;
                         match self {
                             #(#write_with_cases)*
                         }
@@ -128,9 +130,11 @@ impl<'a, 'b> ToTokens for DeriveStructuralWritable<'a, SegregatedEnumModel<'a, '
                     #[allow(non_snake_case, unused_variables)]
                     #[inline]
                     fn write_into<__W: #writer_trait>(self, writer: __W) -> core::result::Result<__W::Repr, __W::Error> {
+                        use swim_common::form::structural::write::HeaderWriter;
+                        use swim_common::form::structural::write::BodyWriter;
                         match self {
-                                #(#write_into_cases)*
-                            }
+                            #(#write_into_cases)*
+                        }
                     }
                 }
             }
@@ -198,7 +202,7 @@ fn write_attr_ref(field: &FieldModel) -> TokenStream {
     let field_index = &field.name;
     let literal_name = field.resolve_name();
     quote! {
-        rec_writer = rec_writer.write_attr(std::borrow::Cow::Borrowed(#literal_name), &#field_index)?;
+        rec_writer = rec_writer.write_attr(std::borrow::Cow::Borrowed(#literal_name), #field_index)?;
     }
 }
 
@@ -206,7 +210,7 @@ fn write_attr_into(field: &FieldModel) -> TokenStream {
     let field_index = &field.name;
     let literal_name = field.resolve_name();
     quote! {
-        rec_writer = rec_writer.write_attr_into(#literal_name, &#field_index)?;
+        rec_writer = rec_writer.write_attr_into(#literal_name, #field_index)?;
     }
 }
 
@@ -214,14 +218,14 @@ fn write_slot_ref(field: &FieldModel) -> TokenStream {
     let field_index = &field.name;
     let literal_name = field.resolve_name();
     quote! {
-        body_writer = body_writer.write_slot(&#literal_name, &#field_index)?;
+        body_writer = body_writer.write_slot(&#literal_name, #field_index)?;
     }
 }
 
 fn write_value_ref(field: &FieldModel) -> TokenStream {
     let field_index = &field.name;
     quote! {
-        body_writer = body_writer.write_value(&#field_index)?;
+        body_writer = body_writer.write_value(#field_index)?;
     }
 }
 
@@ -266,7 +270,7 @@ impl<'a, 'b> ToTokens for WriteWithFn<'a, 'b> {
             if let Some(tag_field) = tag_body.as_ref() {
                 let field_index = &tag_field.name;
                 quote! {
-                    rec_writer = rec_writer.write_attr(std::borrow::Cow::Borrowed(#tag), &#field_index)?;
+                    rec_writer = rec_writer.write_attr(std::borrow::Cow::Borrowed(#tag), #field_index)?;
                 }
             } else {
                 quote! {
@@ -274,7 +278,7 @@ impl<'a, 'b> ToTokens for WriteWithFn<'a, 'b> {
                 }
             }
         } else {
-            let header = make_header(tag_body, header_fields.as_slice());
+            let header = make_header(tag_body, header_fields.as_slice(), true);
             quote! {
                 rec_writer = rec_writer.write_attr_into(#tag, #header)?;
             }
@@ -286,7 +290,7 @@ impl<'a, 'b> ToTokens for WriteWithFn<'a, 'b> {
             BodyFields::ReplacedBody(field) => {
                 let field_index = &field.name;
                 quote! {
-                     rec_writer.delegate(&#field_index)
+                     rec_writer.delegate(#field_index)
                 }
             }
             BodyFields::StdBody(fields) => {
@@ -323,19 +327,34 @@ impl<'a, 'b> ToTokens for WriteWithFn<'a, 'b> {
     }
 }
 
-fn make_header(tag_body: &Option<&FieldModel>, header_fields: &[&FieldModel]) -> TokenStream {
+fn make_header(
+    tag_body: &Option<&FieldModel>,
+    header_fields: &[&FieldModel],
+    by_ref: bool,
+) -> TokenStream {
+    let prepend = if by_ref {
+        quote!(prepend_ref)
+    } else {
+        quote!(prepend)
+    };
+
     let base_expr = quote!(swim_common::form::structural::generic::header::NoSlots);
     let header_expr = header_fields.iter().rev().fold(base_expr, |expr, field| {
         let field_index = &field.name;
         let literal_name = field.resolve_name();
         quote! {
-            #expr.prepend(#literal_name, #field_index)
+            #expr.#prepend(#literal_name, #field_index)
         }
     });
     if let Some(body) = tag_body {
+        let with_body = if by_ref {
+            quote!(with_body_ref)
+        } else {
+            quote!(with_body)
+        };
         let field_index = &body.name;
         quote! {
-            #header_expr.with_body(#field_index)
+            #header_expr.#with_body(#field_index)
         }
     } else {
         quote! {
@@ -358,7 +377,9 @@ impl<'a, 'b> ToTokens for WriteIntoFn<'a, 'b> {
         } = header;
 
         let tag = if let Some(fld) = header.tag_name {
-            fld.name.to_token_stream()
+            let ty = fld.field_ty;
+            let name = &fld.name;
+            quote!(<#ty as core::convert::AsRef<str>>::as_ref(&#name))
         } else {
             inner.resolve_name().to_token_stream()
         };
@@ -375,7 +396,7 @@ impl<'a, 'b> ToTokens for WriteIntoFn<'a, 'b> {
                 }
             }
         } else {
-            let header = make_header(tag_body, header_fields.as_slice());
+            let header = make_header(tag_body, header_fields.as_slice(), false);
             quote! {
                 rec_writer = rec_writer.write_attr_into(#tag, #header)?;
             }

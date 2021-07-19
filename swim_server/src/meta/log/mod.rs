@@ -33,7 +33,7 @@ use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::fmt::{Debug, Display, Formatter};
 use std::num::NonZeroUsize;
-use swim_common::form::{Form, Tag};
+use swim_common::form::Form;
 use swim_common::model::time::Timestamp;
 use swim_common::model::Value;
 use tokio::sync::mpsc;
@@ -43,6 +43,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, span, Level};
 use tracing_futures::{Instrument, Instrumented};
 
+use swim_common::form::structural::Tag;
 use swim_runtime::time::interval::interval;
 use utilities::sync::trigger;
 use utilities::uri::RelativeUri;
@@ -58,7 +59,7 @@ const LOG_TASK: &str = "Node logger";
 const LOG_FAIL: &str = "Failed to send log message";
 
 /// A corresponding level associated with a `LogEntry`.
-#[derive(Copy, Clone, Debug, Tag, Eq, PartialEq, PartialOrd, Hash)]
+#[derive(Tag, Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Hash)]
 pub enum LogLevel {
     /// Fine-grained informational events.
     Trace,
@@ -76,14 +77,8 @@ pub enum LogLevel {
 
 impl Display for LogLevel {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            LogLevel::Trace => write!(f, "Trace"),
-            LogLevel::Debug => write!(f, "Debug"),
-            LogLevel::Info => write!(f, "Info"),
-            LogLevel::Warn => write!(f, "Warn"),
-            LogLevel::Error => write!(f, "Error"),
-            LogLevel::Fail => write!(f, "Fail"),
-        }
+        let as_str: &str = self.as_ref();
+        write!(f, "{}", as_str)
     }
 }
 

@@ -15,8 +15,7 @@
 #[cfg(test)]
 mod tests;
 
-use crate::form::structural::read::StructuralReadable;
-use crate::form::structural::write::StructuralWritable;
+use crate::model::text::Text;
 
 mod bridge;
 pub mod generic;
@@ -24,9 +23,63 @@ pub mod read;
 #[macro_use]
 pub mod write;
 
-/// A more flexible alternative to [`Form`] where readers and writers have full
-/// visbility of the strucutures of the values that the work on. This will eventually
-/// replace the [`Form`] trait.
-pub trait StructuralForm: StructuralReadable + StructuralWritable {}
+#[doc(hidden)]
+#[allow(unused_imports)]
+pub use form_derive::Tag;
 
-impl<T: StructuralReadable + StructuralWritable> StructuralForm for T {}
+/// A tag for a field in a form. When deriving the `Form` trait, a field that is annotated with
+/// `#[form(tag)]` will be converted into a string and replace the original structure's name.
+///
+/// ```
+/// use swim_common::form::Form;
+/// use swim_common::form::structural::Tag;
+/// use swim_common::model::{Value, Item, Attr};
+/// use swim_common::model::time::Timestamp;
+///
+/// #[derive(Tag, Clone)]
+/// enum Level {
+///     #[form(tag = "info")]
+///     Info,
+///     #[form(tag = "warn")]
+///     Warn
+/// }
+///
+/// #[derive(Form)]
+/// struct LogEntry {
+///     #[form(tag)]
+///     level: Level,
+///     #[form(header)]
+///     time: Timestamp,
+///     message: String,
+/// }
+///
+/// let now = Timestamp::now();
+///
+/// let entry = LogEntry {
+///     level: Level::Info,
+///     time: now,
+///     message: String::from("message"),
+/// };
+///
+/// assert_eq!(
+///     entry.as_value(),
+///     Value::Record(
+///         vec![Attr::of((
+///             "info",
+///             Value::from_vec(vec![Item::Slot(Value::text("time"), now.as_value())])
+///         ))],
+///         vec![Item::Slot(Value::text("message"), Value::text("message"))]
+///     )
+/// )
+///
+/// ```
+///
+/// Tags can only be derived for enumerations and no variants may contain fields.
+pub trait Tag: Sized + AsRef<str> {
+    /// Try to parse an instance of this type from its string representation. The
+    /// error case is an error message to be incorporated into other errors.
+    fn try_from_str(txt: &str) -> Result<Self, Text>;
+
+    /// All possible string representations for this type.
+    const UNIVERSE: &'static [&'static str];
+}

@@ -138,6 +138,7 @@ fn general_reset<
 impl<S: RecognizerReadable, T: RecognizerReadable> RecognizerReadable for GeneralType<S, T> {
     type Rec = GeneralRec<S, T>;
     type AttrRec = GeneralAttrRec<S, T>;
+    type BodyRec = Self::Rec;
 
     fn make_recognizer() -> Self::Rec {
         NamedFieldsRecognizer::new(
@@ -162,6 +163,10 @@ impl<S: RecognizerReadable, T: RecognizerReadable> RecognizerReadable for Genera
 
         let option2 = SimpleAttrBody::new(Self::make_recognizer());
         FirstOf::new(option1, option2)
+    }
+
+    fn make_body_recognizer() -> Self::BodyRec {
+        Self::make_recognizer()
     }
 }
 
@@ -274,7 +279,7 @@ impl<T: StructuralWritable> StructuralWritable for WithHeaderField<T> {
         rec_writer = rec_writer.write_attr_into("StructuralWritable", HeaderView(self))?;
         rec_writer = rec_writer.write_attr(Cow::Borrowed("attr"), &self.attr)?;
         let mut body_writer = rec_writer.complete_header(RecordBodyKind::MapLike, 1)?;
-        body_writer = body_writer.write_slot_into("slot", &self.slot)?;
+        body_writer = body_writer.write_slot(&"slot", &self.slot)?;
         body_writer.done()
     }
 

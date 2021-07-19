@@ -12,7 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::form::structural::read::ReadError;
 use crate::model::text::Text;
+use crate::model::ValueKind;
 use num_bigint::{BigInt, BigUint};
 use std::borrow::Cow;
 
@@ -34,6 +36,34 @@ pub enum ReadEvent<'a> {
     StartBody,
     Slot,
     EndRecord,
+}
+
+impl<'a> ReadEvent<'a> {
+    pub fn kind_error(&self) -> ReadError {
+        match self {
+            ReadEvent::Number(NumericValue::Int(_)) => ReadError::UnexpectedKind(ValueKind::Int64),
+            ReadEvent::Number(NumericValue::UInt(_)) => {
+                ReadError::UnexpectedKind(ValueKind::UInt64)
+            }
+            ReadEvent::Number(NumericValue::BigInt(_)) => {
+                ReadError::UnexpectedKind(ValueKind::BigInt)
+            }
+            ReadEvent::Number(NumericValue::BigUint(_)) => {
+                ReadError::UnexpectedKind(ValueKind::BigUint)
+            }
+            ReadEvent::Number(NumericValue::Float(_)) => {
+                ReadError::UnexpectedKind(ValueKind::Float64)
+            }
+            ReadEvent::Boolean(_) => ReadError::UnexpectedKind(ValueKind::Boolean),
+            ReadEvent::TextValue(_) => ReadError::UnexpectedKind(ValueKind::Text),
+            ReadEvent::Extant => ReadError::UnexpectedKind(ValueKind::Extant),
+            ReadEvent::Blob(_) => ReadError::UnexpectedKind(ValueKind::Data),
+            ReadEvent::StartBody | ReadEvent::StartAttribute(_) => {
+                ReadError::UnexpectedKind(ValueKind::Record)
+            }
+            _ => ReadError::InconsistentState,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
