@@ -86,32 +86,33 @@ impl<Path: Addressable> Router for ClientRouter<Path> {
     fn resolve_sender(
         &mut self,
         _addr: RoutingAddr,
-        origin: Option<Origin>,
     ) -> BoxFuture<'_, Result<Route, ResolutionError>> {
         async move {
-            let ClientRouter {
-                tag,
-                request_sender,
-            } = self;
-            let (tx, rx) = oneshot::channel();
-            if request_sender
-                .send(ClientRequest::Connect {
-                    request: Request::new(tx),
-                    origin: origin.ok_or_else(ResolutionError::router_dropped)?,
-                })
-                .await
-                .is_err()
-            {
-                Err(ResolutionError::router_dropped())
-            } else {
-                match rx.await {
-                    Ok(Ok(RawRoute { sender, on_drop })) => {
-                        Ok(Route::new(TaggedSender::new(*tag, sender), on_drop))
-                    }
-                    Ok(Err(err)) => Err(ResolutionError::unresolvable(err.to_string())),
-                    Err(_) => Err(ResolutionError::router_dropped()),
-                }
-            }
+            // Todo dm
+            unimplemented!()
+            // let ClientRouter {
+            //     tag,
+            //     request_sender,
+            // } = self;
+            // let (tx, rx) = oneshot::channel();
+            // if request_sender
+            //     .send(ClientRequest::Connect {
+            //         request: Request::new(tx),
+            //         origin: origin.ok_or_else(ResolutionError::router_dropped)?,
+            //     })
+            //     .await
+            //     .is_err()
+            // {
+            //     Err(ResolutionError::router_dropped())
+            // } else {
+            //     match rx.await {
+            //         Ok(Ok(RawRoute { sender, on_drop })) => {
+            //             Ok(Route::new(TaggedSender::new(*tag, sender), on_drop))
+            //         }
+            //         Ok(Err(err)) => Err(ResolutionError::unresolvable(err.to_string())),
+            //         Err(_) => Err(ResolutionError::router_dropped()),
+            //     }
+            // }
         }
         .boxed()
     }
@@ -120,9 +121,17 @@ impl<Path: Addressable> Router for ClientRouter<Path> {
         &mut self,
         _host: Option<Url>,
         _route: RelativeUri,
-        _origin: Option<Origin>,
     ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
-        async move { Ok(RoutingAddr::client()) }.boxed()
+        async move {
+            let ClientRouter {
+                tag,
+                request_sender,
+            } = self;
+
+            //Todo dm
+            Ok(RoutingAddr::client(0))
+        }
+        .boxed()
     }
 }
 
@@ -137,6 +146,12 @@ pub enum ClientRequest<Path: Addressable> {
     Subscribe {
         target: Path,
         request: Request<Result<(RawRoute, mpsc::Receiver<Envelope>), ConnectionError>>,
+    },
+    /// Resolve the routing address for a downlink.
+    Resolve {
+        host: Option<Url>,
+        name: RelativeUri,
+        request: Request<Result<RoutingAddr, RouterError>>,
     },
 }
 

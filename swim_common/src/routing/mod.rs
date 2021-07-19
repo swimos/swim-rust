@@ -53,8 +53,8 @@ enum Location {
     RemoteEndpoint(u32),
     /// Indicates that envelopes will be routed to another agent on this host.
     Local(u32),
-    /// Indicates that envelopes will be routed to the client.
-    Client,
+    /// Indicates that envelopes will be routed to a downlink on the client.
+    ClientConnection(u32),
 }
 
 /// An opaque routing address.
@@ -70,13 +70,14 @@ impl RoutingAddr {
         RoutingAddr(Location::Local(id))
     }
 
-    pub const fn client() -> Self {
-        RoutingAddr(Location::Client)
+    pub const fn client(id: u32) -> Self {
+        RoutingAddr(Location::ClientConnection(id))
     }
 
+    //Todo dm
     pub fn is_local(&self) -> bool {
         matches!(self, RoutingAddr(Location::Local(_)))
-            || matches!(self, RoutingAddr(Location::Client))
+            || matches!(self, RoutingAddr(Location::ClientConnection(_)))
     }
 
     pub fn is_remote(&self) -> bool {
@@ -89,9 +90,7 @@ impl Display for RoutingAddr {
         match self {
             RoutingAddr(Location::RemoteEndpoint(id)) => write!(f, "Remote({:X})", id),
             RoutingAddr(Location::Local(id)) => write!(f, "Local({:X})", id),
-            RoutingAddr(Location::Client) => {
-                write!(f, "Client")
-            }
+            RoutingAddr(Location::ClientConnection(id)) => write!(f, "Client({:X})", id),
         }
     }
 }
@@ -132,14 +131,29 @@ impl Route {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct Duplex {
+    // pub sender: TaggedSender,
+// pub on_drop: promise::Receiver<ConnectionDropped>,
+}
+
+impl Duplex {
+    pub fn new() -> Self {
+        Duplex {}
+    }
+}
+
 /// Interface for interacting with the server [`Envelope`] router.
 pub trait Router: Send + Sync {
     /// Given a routing address, resolve the corresponding router entry
     /// consisting of a sender that will push envelopes to the endpoint.
-    fn resolve_sender(
-        &mut self,
-        addr: RoutingAddr,
-    ) -> BoxFuture<Result<Route, ResolutionError>>;
+    fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>>;
+
+    // Todo dm
+    // fn register_duplex_connection(
+    //     &mut self,
+    //     addr: RoutingAddr,
+    // ) -> BoxFuture<Result<Duplex, ResolutionError>>;
 
     /// Find and return the corresponding routing address of an endpoint for a given route.
     fn lookup(

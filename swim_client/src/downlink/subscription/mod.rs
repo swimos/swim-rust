@@ -31,11 +31,11 @@ use crate::downlink::{
     command_downlink, event_downlink, map_downlink, value_downlink, Command, Downlink,
     DownlinkError, Message, SchemaViolations,
 };
-use crate::router::ClientRequest;
 use crate::router::ConnectionRequestMode;
 use crate::router::RouterConnRequest;
 use crate::router::RouterEvent;
 use crate::router::TaskManager;
+use crate::router::{ClientRequest, ClientRouterFactory};
 use either::Either;
 use futures::stream::Fuse;
 use futures::FutureExt;
@@ -52,7 +52,7 @@ use swim_common::model::schema::StandardSchema;
 use swim_common::model::Value;
 use swim_common::request::Request;
 use swim_common::routing::error::RoutingError;
-use swim_common::routing::CloseReceiver;
+use swim_common::routing::{CloseReceiver, RouterFactory};
 use swim_common::sink::item;
 use swim_common::sink::item::either::SplitSink;
 use swim_common::sink::item::ItemSender;
@@ -79,8 +79,6 @@ pub struct Downlinks<Path: Addressable> {
 pub struct DownlinksHandle<Path: Addressable> {
     pub downlinks_task: DownlinksTask<Path>,
     pub request_receiver: mpsc::Receiver<DownlinkRequest<Path>>,
-    pub task_manager: TaskManager<SwimConnPool<Path>, Path>,
-    pub pool_task: PoolTask<Path>,
 }
 
 pub enum DownlinkRequest<Path: Addressable> {
@@ -99,9 +97,9 @@ impl<Path: Addressable> From<mpsc::error::SendError<DownlinkRequest<Path>>>
 /// Contains all running WARP downlinks and allows requests for downlink subscriptions.
 impl<Path: Addressable> Downlinks<Path> {
     /// Create tasks for opening remote connections and attaching them to downlinks.
-    #[instrument(skip(client_conn_request_tx, config))]
+    #[instrument(skip(client_router_factory, config))]
     pub fn new<Cfg>(
-        client_conn_request_tx: mpsc::Sender<ClientRequest<Path>>,
+        client_router_factory: ClientRouterFactory<Path>,
         config: Arc<Cfg>,
         close_rx: CloseReceiver,
     ) -> (Downlinks<Path>, DownlinksHandle<Path>)
@@ -112,16 +110,18 @@ impl<Path: Addressable> Downlinks<Path> {
 
         let client_params = config.client_params();
 
-        let (connection_pool, pool_task) =
-            SwimConnPool::new(client_params.conn_pool_params, client_conn_request_tx);
+        // let (connection_pool, pool_task) =
+        //     SwimConnPool::new(client_params.conn_pool_params, client_router_tx);
+        //
+        // let (task_manager, connection_request_tx) = TaskManager::new(
+        //     connection_pool,
+        //     close_rx.clone(),
+        //     client_params.router_params,
+        // );
 
-        let (task_manager, connection_request_tx) = TaskManager::new(
-            connection_pool,
-            close_rx.clone(),
-            client_params.router_params,
-        );
+        let downlinks_task = DownlinksTask::new(config, client_router_factory, close_rx);
 
-        let downlinks_task = DownlinksTask::new(config, connection_request_tx, close_rx);
+        //Todo dm maybe move into the downlinks task directly?
         let (tx, rx) = mpsc::channel(client_params.dl_req_buffer_size.get());
 
         (
@@ -129,8 +129,6 @@ impl<Path: Addressable> Downlinks<Path> {
             DownlinksHandle {
                 downlinks_task,
                 request_receiver: rx,
-                task_manager,
-                pool_task,
             },
         )
     }
@@ -415,7 +413,7 @@ pub struct DownlinksTask<Path: Addressable> {
     command_downlinks: HashMap<Path, CommandHandle>,
     event_downlinks: HashMap<(Path, SchemaViolations), EventHandle>,
     stopped_watch: StopEvents<Path>,
-    conn_request_tx: mpsc::Sender<RouterConnRequest<Path>>,
+    client_router_factory: ClientRouterFactory<Path>,
     close_rx: CloseReceiver,
 }
 
@@ -455,7 +453,7 @@ impl<Path: Addressable> TransformOnce<Result<Arc<Result<(), DownlinkError>>, Pro
 impl<Path: Addressable> DownlinksTask<Path> {
     pub(crate) fn new<C>(
         config: Arc<C>,
-        conn_request_tx: mpsc::Sender<RouterConnRequest<Path>>,
+        client_router_factory: ClientRouterFactory<Path>,
         close_rx: CloseReceiver,
     ) -> DownlinksTask<Path>
     where
@@ -468,7 +466,7 @@ impl<Path: Addressable> DownlinksTask<Path> {
             command_downlinks: HashMap::new(),
             event_downlinks: HashMap::new(),
             stopped_watch: StopEvents::new(),
-            conn_request_tx,
+            client_router_factory,
             close_rx,
         }
     }
@@ -552,25 +550,34 @@ impl<Path: Addressable> DownlinksTask<Path> {
         &mut self,
         path: &Path,
     ) -> RequestResult<(mpsc::Sender<Envelope>, mpsc::Receiver<RouterEvent>), Path> {
-        let (tx, rx) = oneshot::channel();
+        //Todo dm this should have a channel to the client router
+        unimplemented!()
 
-        self.conn_request_tx
-            .send((path.clone(), ConnectionRequestMode::Full(tx)))
-            .await
-            .map_err(|_| SubscriptionError::ConnectionError)?;
 
-        rx.await.map_err(|_| SubscriptionError::ConnectionError)
+        connection_resolver.resolve(path)
+
+        // let (tx, rx) = oneshot::channel();
+        //
+        // self.conn_request_tx
+        //     .send((path.clone(), ConnectionRequestMode::Full(tx)))
+        //     .await
+        //     .map_err(|_| SubscriptionError::ConnectionError)?;
+        //
+        // rx.await.map_err(|_| SubscriptionError::ConnectionError)
     }
 
     pub async fn sink_for(&mut self, path: &Path) -> RequestResult<mpsc::Sender<Envelope>, Path> {
-        let (tx, rx) = oneshot::channel();
+        //Todo dm
+        unimplemented!()
 
-        self.conn_request_tx
-            .send((path.clone(), ConnectionRequestMode::Outgoing(tx)))
-            .await
-            .map_err(|_| SubscriptionError::ConnectionError)?;
-
-        rx.await.map_err(|_| SubscriptionError::ConnectionError)
+        // let (tx, rx) = oneshot::channel();
+        //
+        // self.conn_request_tx
+        //     .send((path.clone(), ConnectionRequestMode::Outgoing(tx)))
+        //     .await
+        //     .map_err(|_| SubscriptionError::ConnectionError)?;
+        //
+        // rx.await.map_err(|_| SubscriptionError::ConnectionError)
     }
 
     async fn create_new_value_downlink(

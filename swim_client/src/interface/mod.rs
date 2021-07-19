@@ -109,9 +109,9 @@ impl SwimClientBuilder {
 
         let (remote_router_tx, remote_router_rx) =
             mpsc::channel(client_params.connections_params.router_buffer_size.get());
-        let (client_conn_request_tx, client_conn_request_rx) =
+        let (client_router_tx, client_router_rx) =
             mpsc::channel(client_params.connections_params.router_buffer_size.get());
-        let delegate_router_fac = ClientRouterFactory::new(client_conn_request_tx.clone());
+        let client_router_factory = ClientRouterFactory::new(client_router_tx.clone());
 
         let (close_tx, close_rx) = promise::promise();
 
@@ -121,7 +121,7 @@ impl SwimClientBuilder {
             TungsteniteWsConnections {
                 config: client_params.websocket_params,
             },
-            delegate_router_fac,
+            client_router_factory,
             OpenEndedFutures::new(),
             RemoteConnectionChannels::new(
                 remote_router_tx.clone(),
@@ -132,7 +132,7 @@ impl SwimClientBuilder {
         .await;
 
         let remote_conn_manager = ClientConnectionsManager::new(
-            client_conn_request_rx,
+            client_router_rx,
             remote_router_tx,
             None,
             client_params.dl_req_buffer_size,
@@ -140,13 +140,11 @@ impl SwimClientBuilder {
         );
 
         let (downlinks, downlinks_handle) =
-            Downlinks::new(client_conn_request_tx, Arc::new(downlinks_config), close_rx);
+            Downlinks::new(client_router_factory, Arc::new(downlinks_config), close_rx);
 
         let DownlinksHandle {
             downlinks_task,
             request_receiver,
-            task_manager,
-            pool_task,
         } = downlinks_handle;
 
         let task_handle = spawn(async {
@@ -180,9 +178,9 @@ impl SwimClientBuilder {
 
         let (remote_router_tx, remote_router_rx) =
             mpsc::channel(client_params.connections_params.router_buffer_size.get());
-        let (client_conn_request_tx, client_conn_request_rx) =
+        let (client_router_tx, client_router_rx) =
             mpsc::channel(client_params.connections_params.router_buffer_size.get());
-        let delegate_router_factory = ClientRouterFactory::new(client_conn_request_tx.clone());
+        let delegate_router_factory = ClientRouterFactory::new(client_router_tx.clone());
         let (close_tx, close_rx) = promise::promise();
 
         let remote_connections_task = RemoteConnectionsTask::new_client_task(
@@ -202,7 +200,7 @@ impl SwimClientBuilder {
         .await;
 
         let remote_conn_manager = ClientConnectionsManager::new(
-            client_conn_request_rx,
+            client_router_rx,
             remote_router_tx,
             None,
             client_params.dl_req_buffer_size,
@@ -210,7 +208,7 @@ impl SwimClientBuilder {
         );
 
         let (downlinks, downlinks_handle) =
-            Downlinks::new(client_conn_request_tx, Arc::new(config), close_rx);
+            Downlinks::new(client_router_tx, Arc::new(config), close_rx);
 
         let DownlinksHandle {
             downlinks_task,

@@ -5,7 +5,7 @@ use swim_common::request::Request;
 use swim_common::routing::error::ResolutionError;
 use swim_common::routing::error::RouterError;
 use swim_common::routing::remote::{RawRoute, RemoteRoutingRequest};
-use swim_common::routing::{Origin, PlaneRoutingRequest};
+use swim_common::routing::{Duplex, Origin, PlaneRoutingRequest};
 use swim_common::routing::{Route, Router, RouterFactory, RoutingAddr, TaggedSender};
 use swim_common::warp::path::Path;
 use tokio::sync::mpsc;
@@ -124,6 +124,20 @@ impl Router for TopLevelRouter {
         }
         .boxed()
     }
+
+    //Todo dm
+    // fn register_duplex_connection(
+    //     &mut self,
+    //     addr: RoutingAddr,
+    // ) -> BoxFuture<'_, Result<Duplex, ResolutionError>> {
+    //     async move {
+    //         if addr.is_local(){
+    //
+    //         }else {
+    //
+    //         }
+    //     }.boxed()
+    // }
 
     fn lookup(
         &mut self,
