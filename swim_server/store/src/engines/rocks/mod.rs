@@ -19,7 +19,6 @@ mod iterator;
 
 pub use crate::engines::rocks::iterator::{RocksIterator, RocksPrefixIterator};
 use crate::engines::StoreBuilder;
-use crate::engines::{KeyedSnapshot, RangedSnapshotLoad};
 use crate::iterator::{EnginePrefixIterator, EngineRefIterator};
 use crate::keyspaces::{Keyspace, KeyspaceByteEngine, KeyspaceResolver, Keyspaces};
 use crate::{serialize, EngineInfo, Store, StoreError};
@@ -76,7 +75,7 @@ impl KeyspaceResolver for RocksEngine {
 pub struct RocksOpts(pub Options);
 
 impl StoreBuilder for RocksOpts {
-    type Store = RocksDatabase;
+    type Store = RocksEngine;
 
     fn build<I>(self, path: I, keyspaces: &Keyspaces<Self>) -> Result<Self::Store, StoreError>
     where
@@ -94,7 +93,7 @@ impl StoreBuilder for RocksOpts {
                 });
 
         let db = DB::open_cf_descriptors(&self.0, path, descriptors)?;
-        Ok(RocksDatabase::new(db))
+        Ok(RocksEngine::new(db))
     }
 }
 
@@ -119,7 +118,7 @@ where
     }
 }
 
-impl KeyspaceByteEngine for RocksDatabase {
+impl KeyspaceByteEngine for RocksEngine {
     fn put_keyspace<K: Keyspace>(
         &self,
         keyspace: K,

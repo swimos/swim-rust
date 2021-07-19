@@ -73,7 +73,7 @@ impl<Store: NodeStore> NodeStoreTask<Store> {
 
         for (lane_uri, io) in tasks {
             let store_error_handler =
-                StoreErrorHandler::new(max_store_errors, node_store.store_info());
+                StoreErrorHandler::new(max_store_errors, node_store.engine_info());
 
             let node_store = node_store.clone();
 

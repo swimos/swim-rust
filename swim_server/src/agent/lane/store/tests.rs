@@ -22,14 +22,14 @@ use futures::future::pending;
 use futures::future::BoxFuture;
 use futures::Future;
 use std::collections::HashMap;
-use store::{StoreError, StoreInfo};
+use store::{EngineInfo, StoreError};
 use swim_common::model::time::Timestamp;
 use swim_runtime::time::timeout::timeout;
 use tokio::time::{sleep, Duration};
 use utilities::sync::trigger;
 
-fn info() -> StoreInfo {
-    StoreInfo {
+fn info() -> EngineInfo {
+    EngineInfo {
         path: "/tmp/rocks".to_string(),
         kind: "Rocks DB".to_string(),
     }
@@ -77,7 +77,7 @@ fn capped_error_collector() {
         .is_ok());
     assert!(handler.on_error(StoreError::KeyNotFound).is_ok());
     assert!(handler
-        .on_error(StoreError::Snapshot("Snapshot err".to_string()))
+        .on_error(StoreError::DelegateMessage("Snapshot err".to_string()))
         .is_ok());
 
     let result = handler.on_error(StoreError::Decoding("Failed to decode".to_string()));
@@ -88,7 +88,7 @@ fn capped_error_collector() {
     let expected_errors = vec![
         StoreError::Encoding("Failed to encode".to_string()),
         StoreError::KeyNotFound,
-        StoreError::Snapshot("Snapshot err".to_string()),
+        StoreError::DelegateMessage("Snapshot err".to_string()),
         StoreError::Decoding("Failed to decode".to_string()),
     ];
 
@@ -153,8 +153,8 @@ async fn task_ok() {
     assert!(result.is_ok())
 }
 
-fn store_info() -> StoreInfo {
-    StoreInfo {
+fn store_info() -> EngineInfo {
+    EngineInfo {
         path: "Mock".to_string(),
         kind: "Mock".to_string(),
     }

@@ -19,8 +19,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use store::keyspaces::{Keyspace, KeyspaceByteEngine, KeyspaceResolver, Keyspaces};
 use store::{
-    EngineIterOpts, EngineIterator, EnginePrefixIterator, EngineRefIterator, FromKeyspaces,
-    IteratorKey, KeyedSnapshot, RangedSnapshotLoad, Store, StoreError, StoreInfo,
+    EngineInfo, EngineIterOpts, EngineIterator, EnginePrefixIterator, EngineRefIterator,
+    IteratorKey, Store, StoreBuilder, StoreError,
 };
 
 /// A store which will persist no data and exists purely to uphold the minimum contract required
@@ -36,26 +36,11 @@ impl Store for NoStore {
         &self.path
     }
 
-    fn store_info(&self) -> StoreInfo {
-        StoreInfo {
+    fn engine_info(&self) -> EngineInfo {
+        EngineInfo {
             path: "no store".to_string(),
             kind: "no store".to_string(),
         }
-    }
-}
-
-impl RangedSnapshotLoad for NoStore {
-    fn load_ranged_snapshot<F, K, V, S>(
-        &self,
-        _keyspace: S,
-        _prefix: &[u8],
-        _map_fn: F,
-    ) -> Result<Option<KeyedSnapshot<K, V>>, StoreError>
-    where
-        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
-        S: Keyspace,
-    {
-        Ok(None)
     }
 }
 
@@ -112,16 +97,17 @@ impl<'a: 'b, 'b> EngineRefIterator<'a, 'b> for NoStore {
     }
 }
 
-impl FromKeyspaces for NoStore {
-    type Opts = ();
+#[derive(Default, Clone)]
+pub struct NoStoreOpts;
+impl StoreBuilder for NoStoreOpts {
+    type Store = NoStore;
 
-    fn from_keyspaces<I: AsRef<Path>>(
-        path: I,
-        _db_opts: &Self::Opts,
-        _keyspaces: Keyspaces<Self>,
-    ) -> Result<Self, StoreError> {
+    fn build<I>(self, _path: I, _keyspaces: &Keyspaces<Self>) -> Result<Self::Store, StoreError>
+    where
+        I: AsRef<Path>,
+    {
         Ok(NoStore {
-            path: path.as_ref().to_path_buf(),
+            path: PathBuf::from("Transient".to_string()),
             ks: (),
         })
     }
@@ -156,6 +142,19 @@ impl KeyspaceByteEngine for NoStore {
         _step: u64,
     ) -> Result<(), StoreError> {
         Ok(())
+    }
+
+    fn get_prefix_range<F, K, V, S>(
+        &self,
+        _keyspace: S,
+        _prefix: &[u8],
+        _map_fn: F,
+    ) -> Result<Option<Vec<(K, V)>>, StoreError>
+    where
+        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
+        S: Keyspace,
+    {
+        Ok(None)
     }
 }
 

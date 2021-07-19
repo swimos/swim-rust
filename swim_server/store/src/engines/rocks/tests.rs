@@ -12,18 +12,44 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::engines::RangedSnapshotLoad;
+use crate::engines::{RocksOpts, StoreBuilder};
 use crate::iterator::EngineIterator;
-use crate::keyspaces::{
-    KeyType, Keyspace, KeyspaceByteEngine, KeyspaceDef, KeyspaceResolver, Keyspaces,
-};
-use crate::RocksOpts;
-use crate::{deserialize, deserialize_key, serialize, TransientDatabase};
+use crate::keyspaces::{Keyspace, KeyspaceByteEngine, KeyspaceDef, KeyspaceResolver, Keyspaces};
+use crate::RocksEngine;
+use crate::{deserialize, deserialize_key, serialize};
 use crate::{EngineRefIterator, StoreError};
 use rocksdb::{MergeOperands, Options, SliceTransform};
 use std::collections::HashMap;
 use std::mem::size_of;
-use std::ops::Range;
+use std::ops::{Deref, Range};
+use tempdir::TempDir;
+
+impl Deref for TransientDatabase {
+    type Target = RocksEngine;
+
+    fn deref(&self) -> &Self::Target {
+        &self.delegate
+    }
+}
+
+pub struct TransientDatabase {
+    _dir: TempDir,
+    delegate: RocksEngine,
+}
+
+impl TransientDatabase {
+    fn new(keyspaces: Keyspaces<RocksOpts>) -> TransientDatabase {
+        let dir = TempDir::new("test").expect("Failed to create temporary directory");
+        let delegate = RocksOpts::default()
+            .build(dir.path(), &keyspaces)
+            .expect("Failed to build delegate store");
+
+        TransientDatabase {
+            _dir: dir,
+            delegate,
+        }
+    }
+}
 
 fn default_lane_opts() -> Options {
     let mut opts = rocksdb::Options::default();

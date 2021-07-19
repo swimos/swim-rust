@@ -15,7 +15,7 @@
 use crate::agent::store::{NodeStore, SwimNodeStore};
 use crate::plane::store::mock::MockPlaneStore;
 use crate::store::{StoreEngine, StoreKey};
-use store::{StoreError, StoreInfo};
+use store::{EngineInfo, StoreError};
 
 #[derive(Clone, Debug)]
 pub struct MockNodeStore {
@@ -32,8 +32,8 @@ impl MockNodeStore {
 impl NodeStore for MockNodeStore {
     type Delegate = MockPlaneStore;
 
-    fn store_info(&self) -> StoreInfo {
-        StoreInfo {
+    fn engine_info(&self) -> EngineInfo {
+        EngineInfo {
             path: "".to_string(),
             kind: "Mock".to_string(),
         }

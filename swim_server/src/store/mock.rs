@@ -19,7 +19,7 @@ use std::sync::{Arc, Mutex};
 use crate::store::keystore::{lane_key_task, KeyRequest, KeystoreTask, STEP};
 use futures::future::BoxFuture;
 use futures::{FutureExt, Stream};
-use store::keyspaces::{KeyType, Keyspace, KeyspaceByteEngine};
+use store::keyspaces::{Keyspace, KeyspaceByteEngine};
 use store::{deserialize, serialize, StoreError};
 
 pub struct MockStore {
@@ -101,7 +101,7 @@ impl KeyspaceByteEngine for MockStore {
 
         match keyspace.entry(key.to_vec()) {
             Entry::Occupied(mut entry) => {
-                let mut value = deserialize::<KeyType>(entry.get()).unwrap();
+                let mut value = deserialize::<u64>(entry.get()).unwrap();
                 value += step;
                 *entry.get_mut() = serialize(&value).unwrap();
                 Ok(())
@@ -111,5 +111,18 @@ impl KeyspaceByteEngine for MockStore {
                 Ok(())
             }
         }
+    }
+
+    fn get_prefix_range<F, K, V, S>(
+        &self,
+        _keyspace: S,
+        _prefix: &[u8],
+        _map_fn: F,
+    ) -> Result<Option<Vec<(K, V)>>, StoreError>
+    where
+        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
+        S: Keyspace,
+    {
+        todo!()
     }
 }

@@ -25,6 +25,7 @@ use crate::routing::remote::net::dns::Resolver;
 use crate::routing::remote::net::plain::TokioPlainTextNetworking;
 use crate::routing::remote::{RemoteConnectionChannels, RemoteConnectionsTask};
 use crate::routing::{TopLevelRouter, TopLevelRouterFactory};
+use crate::store::RocksOpts;
 use crate::store::{default_keyspaces, RocksDatabase};
 use crate::store::{ServerStore, SwimStore};
 use either::Either;
@@ -55,7 +56,7 @@ pub struct SwimServerBuilder {
             SwimPlaneStore<RocksDatabase>,
         >,
     >,
-    store: ServerStore<RocksDatabase>,
+    store: ServerStore<RocksOpts>,
 }
 
 impl SwimServerBuilder {
@@ -68,7 +69,7 @@ impl SwimServerBuilder {
             address: None,
             config,
             planes: Vec::new(),
-            store: ServerStore::new(Default::default(), default_keyspaces(), "target".into())?,
+            store: ServerStore::new(RocksOpts::default(), default_keyspaces(), "target".into())?,
         })
     }
 
@@ -236,8 +237,8 @@ impl SwimServerBuilder {
     pub fn transient_store(config: SwimServerConfig, prefix: &str) -> io::Result<Self> {
         Ok(SwimServerBuilder {
             address: None,
-            store: ServerStore::<RocksDatabase>::transient(
-                Default::default(),
+            store: ServerStore::<RocksOpts>::transient(
+                RocksOpts::default(),
                 default_keyspaces(),
                 prefix,
             )?,
@@ -259,7 +260,7 @@ pub struct SwimServer {
     planes: Vec<PlaneDef>,
     stop_trigger_rx: trigger::Receiver,
     address_tx: promise::Sender<SocketAddr>,
-    _store: ServerStore<RocksDatabase>,
+    _store: ServerStore<RocksOpts>,
 }
 
 impl SwimServer {

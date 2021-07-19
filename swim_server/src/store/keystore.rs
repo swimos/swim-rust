@@ -15,16 +15,17 @@
 use crate::store::KeyspaceName;
 use futures::future::BoxFuture;
 use futures::{Stream, StreamExt};
+use rocksdb::MergeOperands;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-use store::keyspaces::{KeyType, KeyspaceByteEngine};
-use store::{serialize, MergeOperands, StoreError};
+use store::keyspaces::KeyspaceByteEngine;
+use store::{serialize, StoreError};
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, Level};
 
-pub type KeyRequest = (String, oneshot::Sender<KeyType>);
+pub type KeyRequest = (String, oneshot::Sender<u64>);
 
 /// The lane keyspace's counter key.
 pub const COUNTER_KEY: &str = "counter";
@@ -39,8 +40,8 @@ pub const LANE_PREFIX: &str = "lane";
 
 /// The initial value that the lane identifier keyspace will be initialised with if it doesn't
 /// already exist.
-pub const INITIAL: KeyType = 0;
-pub const STEP: KeyType = 1;
+pub const INITIAL: u64 = 0;
+pub const STEP: u64 = 1;
 
 pub trait KeystoreTask {
     fn run<DB, S>(db: Arc<DB>, events: S) -> BoxFuture<'static, Result<(), StoreError>>
@@ -49,8 +50,8 @@ pub trait KeystoreTask {
         S: Stream<Item = KeyRequest> + Unpin + Send + 'static;
 }
 
-fn deserialize_key<B: AsRef<[u8]>>(bytes: B) -> Result<KeyType, StoreError> {
-    bincode::deserialize::<KeyType>(bytes.as_ref()).map_err(|e| StoreError::Decoding(e.to_string()))
+fn deserialize_key<B: AsRef<[u8]>>(bytes: B) -> Result<u64, StoreError> {
+    bincode::deserialize::<u64>(bytes.as_ref()).map_err(|e| StoreError::Decoding(e.to_string()))
 }
 
 pub fn format_key<I: ToString>(uri: I) -> String {
@@ -86,7 +87,7 @@ impl KeyStore {
 
     /// Returns a unique identifier that has been assigned to the `lane_id`. This ID must be a
     /// well-formed String of `/node_uri/lane_uri` for this host.
-    pub async fn id_for<I>(&self, lane_id: I) -> KeyType
+    pub async fn id_for<I>(&self, lane_id: I) -> u64
     where
         I: Into<String>,
     {
@@ -165,7 +166,7 @@ mod tests {
     use std::num::NonZeroUsize;
     use std::sync::Arc;
     use store::deserialize;
-    use store::keyspaces::{KeyType, Keyspace, KeyspaceByteEngine};
+    use store::keyspaces::{Keyspace, KeyspaceByteEngine};
 
     fn keyspaces() -> Vec<String> {
         vec![
@@ -214,8 +215,8 @@ mod tests {
     fn assert_counters(
         store: &Arc<MockStore>,
         lane_uri: &str,
-        lane_count_at: KeyType,
-        counter_at: KeyType,
+        lane_count_at: u64,
+        counter_at: u64,
     ) {
         let key = format_key(lane_uri.to_string());
         let lane_id = store
@@ -223,7 +224,7 @@ mod tests {
             .unwrap()
             .expect("Missing key");
         assert_eq!(
-            deserialize::<KeyType>(lane_id.as_slice()).unwrap(),
+            deserialize::<u64>(lane_id.as_slice()).unwrap(),
             lane_count_at
         );
 
@@ -231,9 +232,6 @@ mod tests {
             .get_keyspace(KeyspaceName::Lane, COUNTER_KEY.as_bytes())
             .unwrap()
             .expect("Missing counter");
-        assert_eq!(
-            deserialize::<KeyType>(counter.as_slice()).unwrap(),
-            counter_at
-        );
+        assert_eq!(deserialize::<u64>(counter.as_slice()).unwrap(), counter_at);
     }
 }

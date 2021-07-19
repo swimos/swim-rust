@@ -28,9 +28,9 @@ pub trait Keyspace {
 #[derive(Debug, Clone)]
 pub struct KeyspaceDef<O> {
     /// The name of the keyspace.
-    pub(crate) name: &'static str,
+    pub name: &'static str,
     /// The configuration options that will be used to open the keyspace.
-    pub(crate) opts: O,
+    pub opts: O,
 }
 
 impl<O> KeyspaceDef<O> {
@@ -40,6 +40,7 @@ impl<O> KeyspaceDef<O> {
 }
 
 /// A list of keyspace definitions to initialise a store with.
+#[derive(Clone)]
 pub struct Keyspaces<O> {
     pub keyspaces: Vec<KeyspaceDef<O>>,
 }

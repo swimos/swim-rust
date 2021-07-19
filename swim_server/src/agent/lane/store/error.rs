@@ -13,24 +13,24 @@
 // limitations under the License.
 
 use std::fmt::{Display, Formatter};
-use store::{StoreError, StoreInfo};
+use store::{EngineInfo, StoreError};
 use swim_common::model::time::Timestamp;
 
 /// A lane store error report.
 #[derive(Debug)]
 pub struct LaneStoreErrorReport {
     /// Details about the store that generated this error report.
-    pub(crate) store_info: StoreInfo,
+    pub(crate) store_info: EngineInfo,
     /// A vector of the store errors and the time at which they were generated.
     pub(crate) errors: Vec<(Timestamp, StoreError)>,
 }
 
 impl LaneStoreErrorReport {
-    pub fn new(store_info: StoreInfo, errors: Vec<(Timestamp, StoreError)>) -> Self {
+    pub fn new(store_info: EngineInfo, errors: Vec<(Timestamp, StoreError)>) -> Self {
         LaneStoreErrorReport { store_info, errors }
     }
 
-    pub fn for_error(store_info: StoreInfo, error: StoreError) -> Self {
+    pub fn for_error(store_info: EngineInfo, error: StoreError) -> Self {
         LaneStoreErrorReport {
             store_info,
             errors: vec![(Timestamp::now(), error)],
@@ -63,7 +63,7 @@ pub struct StoreErrorHandler {
     /// The maximum number of errors to aggregate before returning a report.
     max_errors: usize,
     /// Details about the store generating the errors.
-    store_info: StoreInfo,
+    store_info: EngineInfo,
     /// A vector of the store errors and the time at which they were generated.
     errors: Vec<(Timestamp, StoreError)>,
 }
@@ -76,7 +76,7 @@ fn is_operational(error: &StoreError) -> bool {
 }
 
 impl StoreErrorHandler {
-    pub fn new(max_errors: usize, store_info: StoreInfo) -> StoreErrorHandler {
+    pub fn new(max_errors: usize, store_info: EngineInfo) -> StoreErrorHandler {
         StoreErrorHandler {
             max_errors,
             store_info,

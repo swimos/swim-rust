@@ -17,9 +17,7 @@
 mod engines;
 mod iterator;
 pub mod keyspaces;
-mod transient;
 
-use serde::{Deserialize, Serialize};
 use std::error::Error;
 use std::fmt::Debug;
 use std::path::Path;
@@ -27,24 +25,15 @@ use std::{error::Error as StdError, io};
 
 use thiserror::Error;
 
-use crate::keyspaces::{KeyType, KeyspaceByteEngine, KeyspaceResolver};
-pub use engines::{RocksDatabase, RocksOpts};
-pub use rocksdb::{MergeOperands, SliceTransform};
+use crate::keyspaces::{KeyspaceByteEngine, KeyspaceResolver};
+pub use engines::{RocksEngine, RocksIterator, RocksPrefixIterator, StoreBuilder};
 
-use crate::engines::ByteEngine;
 pub use crate::iterator::{
     EngineIterOpts, EngineIterator, EnginePrefixIterator, EngineRefIterator, IteratorKey,
     OwnedEngineRefIterator,
 };
-pub use crate::iterator::{EngineRefIterator, IteratorKey, OwnedEngineRefIterator};
-use crate::keyspaces::{KeyspaceByteEngine, KeyspaceResolver};
-pub use engines::{
-    FromKeyspaces, KeyedSnapshot, RangedSnapshotLoad, RocksEngine, RocksIterator, RocksOpts,
-    RocksPrefixIterator,
-};
-pub use rocksdb::{ColumnFamily, MergeOperands, Options, SliceTransform};
+
 use serde::{Deserialize, Serialize};
-pub use transient::TransientDatabase;
 
 /// Store errors.
 #[derive(Debug, Error)]
@@ -112,9 +101,7 @@ impl PartialEq for StoreError {
 ///
 /// This trait only serves to compose the multiple traits that are required for a store.
 pub trait Store:
-    FromKeyspaces
-    + RangedSnapshotLoad
-    + KeyspaceByteEngine
+    KeyspaceByteEngine
     + KeyspaceResolver
     + Send
     + Sync
@@ -156,6 +143,6 @@ pub fn deserialize<'de, D: Deserialize<'de>>(obj: &'de [u8]) -> Result<D, StoreE
     bincode::deserialize(obj).map_err(|e| StoreError::Decoding(e.to_string()))
 }
 
-pub fn deserialize_key<B: AsRef<[u8]>>(bytes: B) -> Result<KeyType, StoreError> {
-    bincode::deserialize::<KeyType>(bytes.as_ref()).map_err(|e| StoreError::Decoding(e.to_string()))
+pub fn deserialize_key<B: AsRef<[u8]>>(bytes: B) -> Result<u64, StoreError> {
+    bincode::deserialize::<u64>(bytes.as_ref()).map_err(|e| StoreError::Decoding(e.to_string()))
 }
