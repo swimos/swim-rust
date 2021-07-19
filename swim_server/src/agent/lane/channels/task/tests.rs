@@ -24,12 +24,13 @@ use crate::agent::lane::channels::{
     AgentExecutionConfig, LaneMessageHandler, OutputMessage, TaggedAction,
 };
 use crate::agent::lane::model::action::{Action, ActionLane};
-use crate::agent::lane::model::command::{Command, CommandLane};
+use crate::agent::lane::model::command::Command;
 use crate::agent::lane::model::DeferredSubscription;
+use crate::agent::model::command::Commander;
 use crate::agent::model::supply::SupplyLane;
 use crate::agent::store::mock::MockNodeStore;
 use crate::agent::store::SwimNodeStore;
-use crate::agent::Eff;
+use crate::agent::{CommandLaneIo, Eff};
 use crate::meta::accumulate_metrics;
 use crate::meta::log::make_node_logger;
 use crate::meta::metric::config::MetricAggregatorConfig;
@@ -75,6 +76,7 @@ use tokio::time::timeout;
 use tokio::time::Instant;
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
+use swim_utilities::sync::circular_buffer;
 
 #[test]
 fn lane_io_err_display_update() {
@@ -1027,28 +1029,34 @@ fn make_action_lane_task<Context: AgentExecutionContext + Send + Sync + 'static>
     (join(mock_lifecycle, task).map(|(_, r)| r), input)
 }
 
-fn make_command_lane_task<Context: AgentExecutionContext + Send + Sync + 'static>(
+    fn make_command_lane_task<Context: AgentExecutionContext + Send + Sync + 'static>(
     config: AgentExecutionConfig,
     context: Context,
 ) -> (
     impl Future<Output = Result<Vec<UplinkErrorReport>, LaneIoError>>,
     TaskInput,
 ) {
-    let (feedback_tx, mut feedback_rx) = mpsc::channel::<Command<i32>>(5);
+    let (commander_tx, mut commander_rx) = mpsc::channel::<Command<i32>>(5);
+    let (mut commands_tx, commands_rx) = circular_buffer::channel(NonZeroUsize::new(8).unwrap());
 
     let mock_lifecycle = async move {
-        while let Some(Command { command, responder }) = feedback_rx.recv().await {
+        while let Some(Command { command, responder }) = commander_rx.recv().await {
             if let Some(responder) = responder {
-                assert!(responder.send(command * 2).is_ok());
+                assert!(responder.trigger());
             }
+            assert!(commands_tx.try_send(command).is_ok());
         }
+        let _ = commands_tx;
     };
     let (envelope_tx, envelope_rx) = mpsc::channel::<TaggedClientEnvelope>(5);
 
-    let lane: CommandLane<i32> = CommandLane::new(feedback_tx);
+    let lane_io: CommandLaneIo<i32> = CommandLaneIo::new(
+        Commander(commander_tx),
+        commands_rx,
+    );
 
     let task = super::run_command_lane_io(
-        lane,
+        lane_io,
         ReceiverStream::new(envelope_rx),
         config,
         context,

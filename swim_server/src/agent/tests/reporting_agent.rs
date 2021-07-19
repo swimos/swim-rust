@@ -406,6 +406,7 @@ impl SwimAgent<TestAgentConfig> for ReportingAgent {
             },
             |agent: &ReportingAgent| &agent.action,
             exec_conf.action_buffer.clone(),
+            exec_conf.feedback_buffer.clone(),
         );
 
         let LaneParts {

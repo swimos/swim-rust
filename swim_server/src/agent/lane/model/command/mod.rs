@@ -15,14 +15,14 @@
 use crate::agent::lane::model::type_of;
 use crate::agent::lane::LaneModel;
 use crate::agent::model::COMMANDED_AFTER_STOP;
-use futures::Stream;
 use std::fmt::{Debug, Formatter};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use tokio::sync::mpsc::error::SendError;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, Level};
+use swim_utilities::trigger;
 
 #[cfg(test)]
 mod tests;
@@ -40,7 +40,7 @@ pub struct CommandLane<T> {
 #[derive(Debug)]
 pub struct Command<T> {
     pub(crate) command: T,
-    pub(crate) responder: Option<oneshot::Sender<T>>,
+    pub(crate) responder: Option<trigger::Sender>,
 }
 
 impl<T> Command<T> {
@@ -51,17 +51,18 @@ impl<T> Command<T> {
         }
     }
 
-    pub(crate) fn new(command: T, responder: oneshot::Sender<T>) -> Self {
+    pub(crate) fn new(command: T, responder: trigger::Sender) -> Self {
         Command {
             command,
             responder: Some(responder),
         }
     }
 
-    pub fn destruct(self) -> (T, Option<oneshot::Sender<T>>) {
+    pub fn destruct(self) -> (T, Option<trigger::Sender>) {
         let Command { command, responder } = self;
         (command, responder)
     }
+
 }
 
 impl<T> CommandLane<T>
@@ -86,11 +87,11 @@ impl<T> Clone for CommandLane<T> {
 }
 
 /// Handle to send commands to a [`CommandLane`].
-/// #Type Parameters
+/// # Type Parameters
 ///
 /// * `T` - The type of commands that the lane can handle.
 #[derive(Clone, Debug)]
-pub struct Commander<T>(mpsc::Sender<Command<T>>);
+pub struct Commander<T>(pub(crate) mpsc::Sender<Command<T>>);
 
 const SENDING_COMMAND: &str = "Sending command";
 
@@ -114,8 +115,8 @@ impl<T: Debug> Commander<T> {
     pub async fn command_and_await(
         &mut self,
         cmd: T,
-    ) -> Result<oneshot::Receiver<T>, SendError<Command<T>>> {
-        let (resp_tx, resp_rx) = oneshot::channel();
+    ) -> Result<trigger::Receiver, SendError<Command<T>>> {
+        let (resp_tx, resp_rx) = trigger::trigger();
         event!(Level::TRACE, SENDING_COMMAND, ?cmd);
         let Commander(tx) = self;
         if let Err(err) = tx.send(Command::new(cmd, resp_tx)).await {
@@ -127,17 +128,43 @@ impl<T: Debug> Commander<T> {
     }
 }
 
-/// Create a new command lane model and a stream of the received commands.
+type CommandStream<T> = ReceiverStream<Command<T>>;
+
+/// Create a new public command lane model and a stream of the received commands.
 ///
-/// #Arguments
+/// # Arguments
 ///
 /// * `buffer_size` - Buffer size for the MPSC channel that transmits the commands.
-pub fn make_lane_model<T>(
+pub fn make_public_lane_model<T>(
     buffer_size: NonZeroUsize,
 ) -> (
     CommandLane<T>,
-    impl Stream<Item = Command<T>> + Send + 'static,
+    CommandStream<T>,
+    Commander<T>,
+    CommandStream<T>,
 )
+where
+    T: Send + Sync + 'static,
+{
+    let (event_tx, event_rx) = mpsc::channel(buffer_size.get());
+    let (local_commands_tx, local_commands_rx) = mpsc::channel(buffer_size.get());
+    let lane = CommandLane::new(local_commands_tx);
+    (
+        lane,
+        ReceiverStream::new(event_rx),
+        Commander(event_tx),
+        ReceiverStream::new(local_commands_rx),
+    )
+}
+
+/// Create a new private command lane model and a stream of the received commands.
+///
+/// # Arguments
+///
+/// * `buffer_size` - Buffer size for the MPSC channel that transmits the commands.
+pub fn make_private_lane_model<T>(
+    buffer_size: NonZeroUsize,
+) -> (CommandLane<T>, ReceiverStream<Command<T>>)
 where
     T: Send + Sync + 'static,
 {

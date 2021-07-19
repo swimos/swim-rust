@@ -21,7 +21,17 @@ pub mod macros;
 pub mod meta;
 pub mod routing;
 pub mod store;
-
+pub mod sync {
+    pub mod circular_buffer {
+        pub use swim_utilities::sync::circular_buffer::{
+            channel,
+            watch_channel,
+            Sender,
+            Receiver,
+            error::{SendError, RecvError},
+        };
+    }
+}
 mod plane;
 
 #[allow(unused_imports)]
