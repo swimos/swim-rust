@@ -187,7 +187,7 @@ impl Debug for NodeLogger {
     }
 }
 
-struct LogLanes {
+pub(crate) struct LogLanes {
     /// Lane for fine-grained informational events.
     trace_lane: SupplyLane<LogEntry>,
     /// Lane for information that is useful in debugging an application.
@@ -275,6 +275,10 @@ impl NodeLogger {
 
         sender.send(entry).await
     }
+
+    pub async fn log_entry(&self, entry: LogEntry) -> Result<(), SendError<LogEntry>> {
+        self.sender.send(entry).await
+    }
 }
 
 /// An internal task for a `NodeLogger` which forwards all messages from its receive stream to the
@@ -292,7 +296,7 @@ struct LogTask {
 }
 
 /// An optional internal buffer for log entries.
-enum LogBuffer {
+pub(crate) enum LogBuffer {
     /// No entries are buffered and any entries pushed into the buffer will be returned immediately.
     None,
     /// A buffer with a fixed capacity. Once this limit has been reached all buffered entries will

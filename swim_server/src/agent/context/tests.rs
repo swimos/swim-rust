@@ -19,6 +19,7 @@ use crate::agent::tests::test_clock::TestClock;
 use crate::agent::AgentContext;
 use crate::meta::make_test_meta_context;
 use crate::plane::store::mock::MockPlaneStore;
+use crate::meta::meta_context_sink;
 use std::collections::HashMap;
 use std::sync::Arc;
 use swim_runtime::task;
@@ -38,6 +39,7 @@ fn simple_accessors() {
         agent.clone(),
         routing_context,
         schedule_context,
+        meta_context_sink(),
         make_test_meta_context(),
         MockNodeStore::mock(),
     );
@@ -74,6 +76,7 @@ fn create_context(
         agent.clone(),
         routing_context,
         schedule_context,
+        meta_context_sink(),
         make_test_meta_context(),
         MockNodeStore::mock(),
     )

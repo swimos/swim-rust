@@ -63,7 +63,7 @@ where
         }
     }
 
-    pub fn run<Clk, Envelopes, Router, Store>(
+    pub(crate) fn run<Clk, Envelopes, Router, Store>(
         &self,
         uri: RelativeUri,
         parameters: HashMap<String, String>,

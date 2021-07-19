@@ -138,7 +138,14 @@ async fn agent_log() {
     let uri = RelativeUri::try_from("/test").unwrap();
     let buffer_size = NonZeroUsize::new(10).unwrap();
     let clock = TestClock::default();
-    let exec_config = AgentExecutionConfig::with(buffer_size, 1, 0, Duration::from_secs(1), None);
+    let exec_config = AgentExecutionConfig::with(
+        buffer_size,
+        1,
+        0,
+        Duration::from_secs(1),
+        None,
+        Duration::from_secs(60),
+    );
     let (envelope_tx, envelope_rx) = mpsc::channel(buffer_size.get());
     let provider = AgentProvider::new(MockAgentConfig, MockAgentLifecycle);
 
@@ -218,7 +225,7 @@ async fn agent_log() {
             TEST_MSG.to_string(),
             LogLevel::Info,
             RelativeUri::from_str("/test").unwrap(),
-            "lane"
+            "lane".to_string()
         )
     );
 }
@@ -237,7 +244,7 @@ fn log_entry(level: LogLevel, message: &str) -> LogEntry {
         message.to_string(),
         level,
         RelativeUri::from_str("/node").unwrap(),
-        "lane",
+        "lane".to_string(),
     )
 }
 

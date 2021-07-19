@@ -168,6 +168,7 @@ impl<V> MapLaneEvent<Value, V> {
     }
 }
 
+#[allow(clippy::len_without_is_empty)]
 impl<K: Form, V: Any + Send + Sync> MapLane<K, V> {
     /// Updates (or inserts) the value of an entry in the map, in a transaction. This is more
     /// efficient than `update` but cannot be composed into a larger transaction.
