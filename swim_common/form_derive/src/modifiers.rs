@@ -17,6 +17,7 @@ use crate::SynValidation;
 use std::convert::TryFrom;
 use utilities::validation::{Validation, ValidationItExt};
 use utilities::Symbol;
+use either::Either;
 
 /// Description of how a type or field should be renamed in its serialized form.
 pub enum NameTransform {
@@ -24,36 +25,42 @@ pub enum NameTransform {
     Rename(String),
 }
 
-pub enum NameTransformError {
-    NonStringName,
-    EmptyName,
-    UnknownAttribute(Option<String>),
+/// Errors that can occur attempting to extract a name transformation from a macro attribute.
+pub enum NameTransformError<'a> {
+    NonStringName(&'a syn::Lit),
+    EmptyName(&'a syn::LitStr),
+    UnknownAttributeName(String, Either<&'a syn::MetaNameValue, &'a syn::MetaList>),
+    UnknownAttribute(&'a syn::NestedMeta),
 }
 
-impl NameTransformError {
-    pub fn into_syn_err(self, nested_meta: &syn::NestedMeta) -> syn::Error {
-        match self {
-            NameTransformError::NonStringName => {
-                syn::Error::new_spanned(nested_meta, "Expecting string argument")
+impl<'a> From<NameTransformError<'a>> for syn::Error {
+    fn from(err: NameTransformError<'a>) -> Self {
+        match err {
+            NameTransformError::NonStringName(name) => {
+                syn::Error::new_spanned(name, "Expecting string argument")
             }
-            NameTransformError::EmptyName => {
-                syn::Error::new_spanned(nested_meta, "New tag cannot be empty")
+            NameTransformError::EmptyName(name) => {
+                syn::Error::new_spanned(name, "New tag cannot be empty")
             }
-            NameTransformError::UnknownAttribute(Some(name)) => syn::Error::new_spanned(
-                nested_meta,
+            NameTransformError::UnknownAttributeName(name, Either::Left(tok)) => syn::Error::new_spanned(
+                tok,
                 format!("Unknown container attribute: {}", name),
             ),
-            NameTransformError::UnknownAttribute(_) => {
-                syn::Error::new_spanned(nested_meta, "Unknown container attribute")
+            NameTransformError::UnknownAttributeName(name, Either::Right(tok)) => syn::Error::new_spanned(
+                tok,
+                format!("Unknown container attribute: {}", name),
+            ),
+            NameTransformError::UnknownAttribute(tok) => {
+                syn::Error::new_spanned(tok, "Unknown container attribute")
             }
         }
     }
 }
 
-impl TryFrom<&syn::NestedMeta> for NameTransform {
-    type Error = NameTransformError;
+impl<'a> TryFrom<&'a syn::NestedMeta> for NameTransform {
+    type Error = NameTransformError<'a>;
 
-    fn try_from(nested_meta: &syn::NestedMeta) -> Result<Self, Self::Error> {
+    fn try_from(nested_meta: &'a syn::NestedMeta) -> Result<Self, Self::Error> {
         match nested_meta {
             syn::NestedMeta::Meta(syn::Meta::NameValue(name)) if name.path == TAG_PATH => {
                 if name.path == TAG_PATH {
@@ -61,23 +68,27 @@ impl TryFrom<&syn::NestedMeta> for NameTransform {
                         syn::Lit::Str(s) => {
                             let tag = s.value();
                             if tag.is_empty() {
-                                Err(NameTransformError::EmptyName)
+                                Err(NameTransformError::EmptyName(s))
                             } else {
                                 Ok(NameTransform::Rename(tag))
                             }
                         }
-                        _ => Err(NameTransformError::NonStringName),
+                        ow => Err(NameTransformError::NonStringName(ow)),
                     }
+                } else if let Some(name_str) = name.path.get_ident().map(|id| id.to_string()) {
+                    Err(NameTransformError::UnknownAttributeName(name_str, Either::Left(name)))
                 } else {
-                    let name = name.path.get_ident().map(|id| id.to_string());
-                    Err(NameTransformError::UnknownAttribute(name))
+                    Err(NameTransformError::UnknownAttribute(nested_meta))
                 }
             }
             syn::NestedMeta::Meta(syn::Meta::List(lst)) => {
-                let name = lst.path.get_ident().map(|id| id.to_string());
-                Err(NameTransformError::UnknownAttribute(name))
+                if let Some(name_str) = lst.path.get_ident().map(|id| id.to_string()) {
+                    Err(NameTransformError::UnknownAttributeName(name_str, Either::Right(lst)))
+                } else {
+                    Err(NameTransformError::UnknownAttribute(nested_meta))
+                }
             }
-            _ => Err(NameTransformError::UnknownAttribute(None)),
+            _ => Err(NameTransformError::UnknownAttribute(nested_meta)),
         }
     }
 }
@@ -126,8 +137,8 @@ pub fn acc_rename(
                 None
             }
         }
-        Err(NameTransformError::UnknownAttribute(Some(name))) if name == SCHEMA_PATH.0 => None, //Overlap with other macros which we can ignore.
-        Err(e) => Some(e.into_syn_err(&nested_meta)),
+        Err(NameTransformError::UnknownAttributeName(name, _)) if name == SCHEMA_PATH.0 => None, //Overlap with other macros which we can ignore.
+        Err(e) => Some(e.into()),
     };
     Validation::Validated(state, err.into())
 }

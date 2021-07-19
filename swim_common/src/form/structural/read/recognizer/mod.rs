@@ -60,7 +60,7 @@ pub trait RecognizerReadable: Sized {
 
     /// Create a state machine that will recognize the represenation of the type as a stream of
     /// [`ReadEvent`]s where the read process has been delegated to a sub-value. This will
-    /// be identicay to the `make_recognizer` state machine save where the type is simple or
+    /// be identical to the `make_recognizer` state machine save where the type is simple or
     /// is the generic model type [`Value`].
     fn make_body_recognizer() -> Self::BodyRec;
 

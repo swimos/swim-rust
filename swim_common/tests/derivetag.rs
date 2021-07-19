@@ -22,7 +22,7 @@ fn derive_enum_tag_empty() {
     #[derive(Tag, PartialEq, Eq, Debug)]
     enum TagEnum {}
 
-    assert_eq!(TagEnum::universe(), &EMPTY);
+    assert_eq!(TagEnum::UNIVERSE, &EMPTY);
 }
 
 #[test]
@@ -32,7 +32,7 @@ fn derive_enum_tag_one_option() {
         First,
     }
 
-    assert_eq!(TagEnum::universe(), &["First"]);
+    assert_eq!(TagEnum::UNIVERSE, &["First"]);
 
     let first = TagEnum::First;
     assert_eq!(first.as_ref(), "First");
@@ -52,7 +52,7 @@ fn derive_enum_tag_two_options() {
         Second,
     }
 
-    assert_eq!(TagEnum::universe(), &["First", "Second"]);
+    assert_eq!(TagEnum::UNIVERSE, &["First", "Second"]);
 
     let first = TagEnum::First;
     assert_eq!(first.as_ref(), "First");
