@@ -130,7 +130,7 @@ type DispatchTaskResult = TaskIoResult<DispatcherErrors>;
 type StoreTaskResult = TaskIoResult<NodeStoreErrors>;
 
 #[derive(Debug, Default)]
-pub struct AgentTaskResult<Err: Debug + Default> {
+pub struct AgentTaskResult<Err: Debug> {
     pub errors: Err,
     pub failed: bool,
 }
