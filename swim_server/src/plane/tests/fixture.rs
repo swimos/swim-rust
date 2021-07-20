@@ -15,7 +15,7 @@
 use crate::agent::dispatch::error::DispatcherErrors;
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::store::SwimNodeStore;
-use crate::agent::AgentResult;
+use crate::agent::{AgentResult, AgentTaskResult};
 use crate::plane::context::PlaneContext;
 use crate::plane::lifecycle::PlaneLifecycle;
 use crate::plane::router::PlaneRouter;
@@ -91,6 +91,7 @@ pub fn make_config() -> AgentExecutionConfig {
         node_log: Default::default(),
         metrics: Default::default(),
         max_idle_time: Duration::from_secs(60),
+        max_store_errors: 0,
     }
 }
 
@@ -137,8 +138,8 @@ impl<Clk: Clock, Delegate: ServerRouter + 'static>
             while incoming_envelopes.next().await.is_some() {}
             AgentResult {
                 route: uri,
-                dispatcher_errors: DispatcherErrors::default(),
-                failed: false,
+                dispatcher_task: Default::default(),
+                store_task: Default::default(),
             }
         }
         .boxed();
@@ -194,8 +195,11 @@ impl<Clk: Clock, Delegate>
             }
             AgentResult {
                 route: uri,
-                dispatcher_errors: DispatcherErrors::default(),
-                failed: times_seen != 1,
+                dispatcher_task: AgentTaskResult {
+                    errors: DispatcherErrors::default(),
+                    failed: times_seen != 1,
+                },
+                store_task: Default::default(),
             }
         }
         .boxed();

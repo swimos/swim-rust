@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::agent::lane::store::error::{LaneStoreErrorReport, StoreErrorHandler};
+use crate::agent::lane::store::error::{LaneStoreErrorReport, StoreErrorHandler, StoreTaskError};
 use crate::agent::lane::store::task::{NodeStoreErrors, NodeStoreTask};
 use crate::agent::lane::store::StoreIo;
 use crate::agent::store::mock::MockNodeStore;
@@ -35,14 +35,14 @@ fn info() -> EngineInfo {
     }
 }
 
-pub fn store_err_partial_eq(expected: Vec<StoreError>, actual: Vec<(Timestamp, StoreError)>) {
+pub fn store_err_partial_eq(expected: Vec<StoreError>, actual: Vec<StoreTaskError>) {
     let mut expected_iter = expected.into_iter();
     let mut actual_iter = actual.into_iter();
 
     while let Some(expected) = expected_iter.next() {
         match actual_iter.next() {
-            Some((_timestamp, actual)) => {
-                assert_eq!(expected, actual);
+            Some(task_error) => {
+                assert_eq!(expected, task_error.error);
             }
             None => {
                 panic!("Expected: {:?}", expected);
@@ -51,11 +51,18 @@ pub fn store_err_partial_eq(expected: Vec<StoreError>, actual: Vec<(Timestamp, S
     }
 }
 
+fn make_error(error: StoreError) -> StoreTaskError {
+    StoreTaskError {
+        timestamp: Timestamp::now(),
+        error,
+    }
+}
+
 #[test]
 fn error_collector_0() {
     let mut handler = StoreErrorHandler::new(0, info());
     let error = StoreError::KeyNotFound;
-    let result = handler.on_error(error);
+    let result = handler.on_error(make_error(error));
 
     assert!(result.is_err());
 
@@ -73,14 +80,22 @@ fn capped_error_collector() {
     let mut handler = StoreErrorHandler::new(4, info());
 
     assert!(handler
-        .on_error(StoreError::Encoding("Failed to encode".to_string()))
+        .on_error(make_error(StoreError::Encoding(
+            "Failed to encode".to_string()
+        )))
         .is_ok());
-    assert!(handler.on_error(StoreError::KeyNotFound).is_ok());
     assert!(handler
-        .on_error(StoreError::DelegateMessage("Snapshot err".to_string()))
+        .on_error(make_error(StoreError::KeyNotFound))
+        .is_ok());
+    assert!(handler
+        .on_error(make_error(StoreError::DelegateMessage(
+            "Snapshot err".to_string()
+        )))
         .is_ok());
 
-    let result = handler.on_error(StoreError::Decoding("Failed to decode".to_string()));
+    let result = handler.on_error(make_error(StoreError::Decoding(
+        "Failed to decode".to_string(),
+    )));
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert_eq!(info(), err.store_info);
@@ -99,10 +114,12 @@ fn capped_error_collector() {
 fn err_operational() {
     let mut handler = StoreErrorHandler::new(4, info());
     assert!(handler
-        .on_error(StoreError::Encoding("Failed to encode".to_string()))
+        .on_error(make_error(StoreError::Encoding(
+            "Failed to encode".to_string()
+        )))
         .is_ok());
 
-    let result = handler.on_error(StoreError::Closing);
+    let result = handler.on_error(make_error(StoreError::Closing));
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert_eq!(info(), err.store_info);
@@ -165,7 +182,7 @@ async fn task_err() {
     let test_io: Box<dyn StoreIo<SwimNodeStore<MockPlaneStore>>> = Box::new(TestStoreIo(async {
         Err(LaneStoreErrorReport::for_error(
             store_info(),
-            StoreError::KeyNotFound,
+            make_error(StoreError::KeyNotFound),
         ))
     }));
     let (_trigger_tx, trigger_rx) = trigger::trigger();
@@ -224,7 +241,7 @@ async fn multiple_ios() {
     let err_io: Box<dyn StoreIo<SwimNodeStore<MockPlaneStore>>> = Box::new(TestStoreIo(async {
         Err(LaneStoreErrorReport::for_error(
             store_info(),
-            StoreError::KeyNotFound,
+            make_error(StoreError::KeyNotFound),
         ))
     }));
     tasks.insert(failing_io_uri.clone(), err_io);

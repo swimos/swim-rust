@@ -1,14 +1,11 @@
 use crate::agent::lane::store::error::{LaneStoreErrorReport, StoreErrorHandler};
 use crate::agent::lane::store::StoreIo;
 use crate::agent::store::NodeStore;
-use futures::future::BoxFuture;
 use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use utilities::sync::trigger;
-
-type LaneIdentifiedResult = (String, Result<(), LaneStoreErrorReport>);
 
 /// Aggregated node store errors.
 #[derive(Debug, Default)]
@@ -38,8 +35,6 @@ impl Display for NodeStoreErrors {
 
 /// Node store task manager which attaches lane store IO and aggregates any lane store IO errors.
 pub struct NodeStoreTask<Store> {
-    /// Running lane store IO tasks.
-    pending: FuturesUnordered<BoxFuture<'static, LaneIdentifiedResult>>,
     /// A stop trigger to run lane IO tasks until.
     stop_rx: trigger::Receiver,
     /// The node store which lane IO will be attached to.
@@ -49,7 +44,6 @@ pub struct NodeStoreTask<Store> {
 impl<Store> NodeStoreTask<Store> {
     pub fn new(stop_rx: trigger::Receiver, node_store: Store) -> Self {
         NodeStoreTask {
-            pending: FuturesUnordered::default(),
             stop_rx,
             node_store,
         }
@@ -66,10 +60,11 @@ impl<Store: NodeStore> NodeStoreTask<Store> {
         max_store_errors: usize,
     ) -> Result<NodeStoreErrors, NodeStoreErrors> {
         let NodeStoreTask {
-            pending,
             stop_rx,
             node_store,
         } = self;
+
+        let pending = FuturesUnordered::new();
 
         for (lane_uri, io) in tasks {
             let store_error_handler =

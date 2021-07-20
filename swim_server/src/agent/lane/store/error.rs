@@ -16,24 +16,30 @@ use std::fmt::{Display, Formatter};
 use store::{EngineInfo, StoreError};
 use swim_common::model::time::Timestamp;
 
+#[derive(Debug)]
+pub struct StoreTaskError {
+    pub timestamp: Timestamp,
+    pub error: StoreError,
+}
+
 /// A lane store error report.
 #[derive(Debug)]
 pub struct LaneStoreErrorReport {
     /// Details about the store that generated this error report.
     pub(crate) store_info: EngineInfo,
     /// A vector of the store errors and the time at which they were generated.
-    pub(crate) errors: Vec<(Timestamp, StoreError)>,
+    pub(crate) errors: Vec<StoreTaskError>,
 }
 
 impl LaneStoreErrorReport {
-    pub fn new(store_info: EngineInfo, errors: Vec<(Timestamp, StoreError)>) -> Self {
+    pub fn new(store_info: EngineInfo, errors: Vec<StoreTaskError>) -> Self {
         LaneStoreErrorReport { store_info, errors }
     }
 
-    pub fn for_error(store_info: EngineInfo, error: StoreError) -> Self {
+    pub fn for_error(store_info: EngineInfo, error: StoreTaskError) -> LaneStoreErrorReport {
         LaneStoreErrorReport {
             store_info,
-            errors: vec![(Timestamp::now(), error)],
+            errors: vec![error],
         }
     }
 }
@@ -48,9 +54,10 @@ impl Display for LaneStoreErrorReport {
         writeln!(f, "\t\tKind: `{}`", store_info.kind)?;
         writeln!(f, "\t- Errors: ")?;
 
-        for (ts, error) in errors.iter() {
+        for e in errors.iter() {
+            let StoreTaskError { timestamp, error } = e;
             // todo display for store error
-            writeln!(f, "\t\t{}: `{:?}`", ts, error)?;
+            writeln!(f, "\t\t{}: `{:?}`", timestamp, error)?;
         }
 
         Ok(())
@@ -65,12 +72,12 @@ pub struct StoreErrorHandler {
     /// Details about the store generating the errors.
     store_info: EngineInfo,
     /// A vector of the store errors and the time at which they were generated.
-    errors: Vec<(Timestamp, StoreError)>,
+    errors: Vec<StoreTaskError>,
 }
 
-fn is_operational(error: &StoreError) -> bool {
+fn is_operational(task_error: &StoreTaskError) -> bool {
     matches!(
-        error,
+        task_error.error,
         StoreError::InitialisationFailure(_) | StoreError::Io(_) | StoreError::Closing
     )
 }
@@ -84,7 +91,7 @@ impl StoreErrorHandler {
         }
     }
 
-    pub fn on_error(&mut self, error: StoreError) -> Result<(), LaneStoreErrorReport> {
+    pub fn on_error(&mut self, error: StoreTaskError) -> Result<(), LaneStoreErrorReport> {
         let StoreErrorHandler {
             max_errors,
             errors,
@@ -92,22 +99,22 @@ impl StoreErrorHandler {
         } = self;
 
         if is_operational(&error) {
-            errors.push((Timestamp::now(), error));
+            errors.push(error);
 
             let len = errors.len();
-            let errors: Vec<(Timestamp, StoreError)> = errors.drain(0..len).collect();
+            let errors: Vec<StoreTaskError> = errors.drain(0..len).collect();
 
             Err(LaneStoreErrorReport {
                 errors,
                 store_info: store_info.clone(),
             })
         } else {
-            errors.push((Timestamp::now(), error));
+            errors.push(error);
 
             let len = errors.len();
 
             if len >= *max_errors {
-                let errors: Vec<(Timestamp, StoreError)> = errors.drain(0..len).collect();
+                let errors: Vec<StoreTaskError> = errors.drain(0..len).collect();
                 Err(LaneStoreErrorReport {
                     errors,
                     store_info: store_info.to_owned(),
