@@ -34,6 +34,7 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::net::SocketAddr;
 use std::sync::Arc;
+use store::StoreError;
 use swim_common::routing::ws::tungstenite::TungsteniteWsConnections;
 use swim_runtime::task::TaskError;
 use swim_runtime::time::clock::RuntimeClock;
@@ -58,6 +59,13 @@ pub struct SwimServerBuilder {
     >,
     store: ServerStore<RocksOpts>,
 }
+
+type ServerPlaneBuilder = PlaneBuilder<
+    RuntimeClock,
+    EnvChannel,
+    PlaneRouter<TopLevelRouter>,
+    SwimPlaneStore<RocksDatabase>,
+>;
 
 impl SwimServerBuilder {
     /// Create a new server builder with custom configuration.
@@ -121,7 +129,7 @@ impl SwimServerBuilder {
     /// }
     ///
     /// let mut swim_server_builder = SwimServerBuilder::transient_store(SwimServerConfig::default(), "test").unwrap();
-    /// let mut plane_builder = swim_server_builder.plane_builder("test");
+    /// let mut plane_builder = swim_server_builder.plane_builder("test").unwrap();
     ///
     /// plane_builder
     ///     .add_route(
@@ -143,17 +151,12 @@ impl SwimServerBuilder {
     pub fn plane_builder<I: Into<String>>(
         &mut self,
         name: I,
-    ) -> PlaneBuilder<
-        RuntimeClock,
-        EnvChannel,
-        PlaneRouter<TopLevelRouter>,
-        SwimPlaneStore<RocksDatabase>,
-    > {
+    ) -> Result<ServerPlaneBuilder, SwimServerBuilderError> {
         let store = self
             .store
             .plane_store(name.into())
-            .expect("Failed to build store");
-        PlaneBuilder::new(store)
+            .map_err(SwimServerBuilderError::StoreError)?;
+        Ok(PlaneBuilder::new(store))
     }
 
     /// Build the Swim Server.
@@ -192,7 +195,7 @@ impl SwimServerBuilder {
     /// }
     ///
     /// let mut swim_server_builder = SwimServerBuilder::transient_store(SwimServerConfig::default(), "test").unwrap();
-    /// let mut plane_builder = swim_server_builder.plane_builder("test");
+    /// let mut plane_builder = swim_server_builder.plane_builder("test").unwrap();
     ///
     /// plane_builder
     ///     .add_route(
@@ -342,6 +345,8 @@ impl SwimServer {
 pub enum SwimServerBuilderError {
     /// An error that occurs when trying to create a server without providing the address first.
     MissingAddress,
+    /// An error occured when attempting to build the delegate store.
+    StoreError(StoreError),
 }
 
 impl Display for SwimServerBuilderError {
@@ -349,6 +354,9 @@ impl Display for SwimServerBuilderError {
         match self {
             SwimServerBuilderError::MissingAddress => {
                 write!(f, "Cannot create a swim server without an address")
+            }
+            SwimServerBuilderError::StoreError(e) => {
+                write!(f, "{}", e)
             }
         }
     }
