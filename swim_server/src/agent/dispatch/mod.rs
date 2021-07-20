@@ -43,7 +43,7 @@ use crate::agent::dispatch::error::{DispatcherError, DispatcherErrors};
 use crate::agent::lane::channels::task::LaneIoError;
 use crate::agent::lane::channels::uplink::spawn::UplinkErrorReport;
 use crate::agent::lane::channels::AgentExecutionConfig;
-use crate::agent::{AttachError, RoutingIo};
+use crate::agent::{AttachError, LaneIo};
 use crate::meta::uri::MetaParseErr;
 use crate::meta::{LaneAddressedKind, MetaNodeAddressed, LANES_URI, PULSE_URI, UPLINK_URI};
 use crate::routing::{RoutingAddr, ServerRouter, TaggedClientEnvelope, TaggedEnvelope};
@@ -65,7 +65,7 @@ pub struct AgentDispatcher<Context> {
     agent_route: RelativeUri,
     config: AgentExecutionConfig,
     context: Context,
-    lanes: HashMap<LaneIdentifier, Box<dyn RoutingIo<Context>>>,
+    lanes: HashMap<LaneIdentifier, Box<dyn LaneIo<Context>>>,
 }
 
 //A request to attach a lane to the dispatcher.
@@ -191,7 +191,7 @@ where
         agent_route: RelativeUri,
         config: AgentExecutionConfig,
         context: Context,
-        lanes: HashMap<LaneIdentifier, Box<dyn RoutingIo<Context>>>,
+        lanes: HashMap<LaneIdentifier, Box<dyn LaneIo<Context>>>,
     ) -> Self {
         AgentDispatcher {
             agent_route,
@@ -281,7 +281,7 @@ where
 // A task that attaches the lanes to the dispatcher when the first envelope is routed to them.
 struct LaneAttachmentTask<'a, Context> {
     agent_route: RelativeUri,
-    lanes: HashMap<LaneIdentifier, Box<dyn RoutingIo<Context>>>,
+    lanes: HashMap<LaneIdentifier, Box<dyn LaneIo<Context>>>,
     config: &'a AgentExecutionConfig,
     context: Context,
 }
@@ -339,7 +339,7 @@ where
 {
     fn new(
         agent_route: RelativeUri,
-        lanes: HashMap<LaneIdentifier, Box<dyn RoutingIo<Context>>>,
+        lanes: HashMap<LaneIdentifier, Box<dyn LaneIo<Context>>>,
         config: &'a AgentExecutionConfig,
         context: Context,
     ) -> Self {

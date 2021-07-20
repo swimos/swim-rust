@@ -20,7 +20,7 @@ use crate::agent::lane::channels::uplink::UplinkError;
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::store::mock::MockNodeStore;
 use crate::agent::store::SwimNodeStore;
-use crate::agent::{AttachError, Eff, RoutingIo};
+use crate::agent::{AttachError, Eff, LaneIo};
 use crate::meta::metric::{aggregator_sink, NodeMetricAggregator};
 use crate::plane::store::mock::MockPlaneStore;
 use crate::routing::error::RouterError;
@@ -199,7 +199,7 @@ impl MockExecutionContext {
 
 pub const POISON_PILL: &str = "FAIL";
 
-impl RoutingIo<MockExecutionContext> for MockLane {
+impl LaneIo<MockExecutionContext> for MockLane {
     fn attach(
         self,
         route: RelativePath,

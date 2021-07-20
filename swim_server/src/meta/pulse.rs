@@ -16,7 +16,7 @@ use crate::agent::context::AgentExecutionContext;
 use crate::agent::dispatch::LaneIdentifier;
 use crate::agent::lane::model::supply::SupplyLane;
 use crate::agent::{
-    make_supply_lane, AgentContext, DynamicLaneTasks, LaneTasks, RoutingIo, SwimAgent,
+    make_supply_lane, AgentContext, DynamicLaneTasks, LaneIo, LaneTasks, SwimAgent,
 };
 use crate::meta::metric::lane::LanePulse;
 use crate::meta::metric::node::NodePulse;
@@ -45,7 +45,7 @@ pub struct PulseLanes {
 pub type MakePulseLaneResult<V, Agent, Context> = (
     SupplyLane<V>,
     Box<dyn LaneTasks<Agent, Context>>,
-    Box<dyn RoutingIo<Context>>,
+    Box<dyn LaneIo<Context>>,
 );
 
 /// Creates a supply lane for `lane_uri`.

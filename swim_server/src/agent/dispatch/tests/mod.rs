@@ -19,7 +19,7 @@ use crate::agent::lane::channels::task::LaneIoError;
 use crate::agent::lane::channels::update::UpdateError;
 use crate::agent::lane::channels::AgentExecutionConfig;
 use crate::agent::AttachError;
-use crate::agent::RoutingIo;
+use crate::agent::LaneIo;
 use crate::meta::log::LogLevel;
 use crate::meta::{LaneAddressedKind, MetaNodeAddressed};
 use crate::routing::{RoutingAddr, TaggedEnvelope};

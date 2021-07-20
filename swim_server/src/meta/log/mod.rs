@@ -22,7 +22,7 @@ use crate::agent::dispatch::LaneIdentifier;
 use crate::agent::lane::model::supply::SupplyLane;
 use crate::agent::LaneTasks;
 use crate::agent::{make_supply_lane, AgentContext, DynamicLaneTasks, SwimAgent};
-use crate::agent::{Eff, RoutingIo};
+use crate::agent::{Eff, LaneIo};
 use crate::meta::log::config::{FlushStrategy, LogConfig};
 use crate::meta::{IdentifiedAgentIo, MetaNodeAddressed};
 use either::Either;

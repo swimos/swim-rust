@@ -131,7 +131,7 @@ pub fn derive_swim_agent(input: DeriveInput) -> Result<TokenStream, TokenStream>
         use std::collections::HashMap;
         use std::boxed::Box;
 
-        use swim_server::agent::{LaneTasks, SwimAgent, AgentContext, LaneIo, StoreIo, RoutingIo};
+        use swim_server::agent::{LaneTasks, SwimAgent, AgentContext, IoPair, StoreIo, LaneIo};
         use swim_server::agent::lane::channels::AgentExecutionConfig;
         use swim_server::agent::context::AgentExecutionContext;
         use swim_server::agent::lane::lifecycle::LaneLifecycle;
@@ -146,13 +146,13 @@ pub fn derive_swim_agent(input: DeriveInput) -> Result<TokenStream, TokenStream>
             ) -> (
                 Self,
                 Vec<Box<dyn LaneTasks<Self, Context>>>,
-                HashMap<String, LaneIo<Box<dyn RoutingIo<Context>>, Box<dyn StoreIo<Store>>>>
+                HashMap<String, IoPair<Box<dyn LaneIo<Context>>, Box<dyn StoreIo<Store>>>>
             )
                 where
                     Context: AgentContext<Self> + AgentExecutionContext + Send + Sync + 'static,
                     Store: swim_server::agent::store::NodeStore,
             {
-                let mut io_map: HashMap<String, LaneIo<Box<dyn RoutingIo<Context>>, Box<dyn StoreIo<Store>>>> = HashMap::new();
+                let mut io_map: HashMap<String, IoPair<Box<dyn LaneIo<Context>>, Box<dyn StoreIo<Store>>>> = HashMap::new();
 
                 #(#lifecycles_ast)*
 
@@ -272,7 +272,7 @@ fn create_lane(
 
                     io_map.insert (
                         #lane_name_lit.to_string(),
-                        LaneIo::new(Some(Box::new(swim_server::agent::CommandLaneIo::new(#lane_name.clone()))), Box::new(LaneNoStore))
+                        IoPair::new(Some(Box::new(swim_server::agent::CommandLaneIo::new(#lane_name.clone()))), Some(Box::new(LaneNoStore)))
                     );
                 },
                 model,
@@ -288,7 +288,7 @@ fn create_lane(
 
                     io_map.insert (
                         #lane_name_lit.to_string(),
-                        LaneIo::new(Some(Box::new(swim_server::agent::ActionLaneIo::new(#lane_name.clone()))), Box::new(LaneNoStore))
+                        IoPair::new(Some(Box::new(swim_server::agent::ActionLaneIo::new(#lane_name.clone()))), Some(Box::new(LaneNoStore)))
                     );
                 },
                 model,
@@ -308,7 +308,7 @@ fn create_lane(
 
                     io_map.insert (
                         #lane_name_lit.to_string(),
-                        LaneIo::new(Some(Box::new(swim_server::agent::ValueLaneIo::new(#lane_name.clone(), subscriber))), Box::new(LaneNoStore))
+                        IoPair::new(Some(Box::new(swim_server::agent::ValueLaneIo::new(#lane_name.clone(), subscriber))), Some(Box::new(LaneNoStore)))
                     );
                 },
                 model,
@@ -326,7 +326,7 @@ fn create_lane(
 
                     io_map.insert (
                         #lane_name_lit.to_string(),
-                        LaneIo::new(Some(Box::new(swim_server::agent::MapLaneIo::new(#lane_name.clone(), subscriber))), Box::new(LaneNoStore))
+                        IoPair::new(Some(Box::new(swim_server::agent::MapLaneIo::new(#lane_name.clone(), subscriber))), Some(Box::new(LaneNoStore)))
                     );
                 },
                 model,
@@ -442,7 +442,7 @@ fn build_demand_lane_io(lane_data: LaneData) -> proc_macro2::TokenStream {
         };
 
         io_map.insert (
-            #lane_name_lit.to_string(), LaneIo::new(Some(Box::new(swim_server::agent::DemandLaneIo::new(response_rx))), Box::new(LaneNoStore))
+            #lane_name_lit.to_string(), IoPair::new(Some(Box::new(swim_server::agent::DemandLaneIo::new(response_rx))), Some(Box::new(LaneNoStore)))
         );
     }
 }
@@ -475,7 +475,7 @@ fn build_demand_map_lane_io(lane_data: LaneData) -> proc_macro2::TokenStream {
 
         if #is_public {
             io_map.insert (
-                #lane_name_lit.to_string(), LaneIo::new(Some(Box::new(swim_server::agent::DemandMapLaneIo::new(#lane_name.clone(), topic))), Box::new(LaneNoStore))
+                #lane_name_lit.to_string(), IoPair::new(Some(Box::new(swim_server::agent::DemandMapLaneIo::new(#lane_name.clone(), topic))), Some(Box::new(LaneNoStore)))
             );
         }
     }
