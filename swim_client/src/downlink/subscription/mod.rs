@@ -13,8 +13,8 @@
 // limitations under the License.
 
 use crate::configuration::downlink::{BackpressureMode, Config, DownlinkKind};
-use crate::connections::PoolTask;
 use crate::connections::SwimConnPool;
+use crate::connections::{ConnectionPool, PoolTask};
 use crate::downlink::error::SubscriptionError;
 use crate::downlink::model::map::UntypedMapModification;
 use crate::downlink::model::value::SharedValue;
@@ -73,7 +73,7 @@ mod watch_adapter;
 
 #[derive(Clone, Debug)]
 pub struct Downlinks<Path: Addressable> {
-    sender: mpsc::Sender<DownlinkRequest<Path>>,
+    downlink_request_tx: mpsc::Sender<DownlinkRequest<Path>>,
 }
 
 pub struct DownlinksHandle<Path: Addressable> {
@@ -97,12 +97,12 @@ impl<Path: Addressable> From<mpsc::error::SendError<DownlinkRequest<Path>>>
 /// Contains all running WARP downlinks and allows requests for downlink subscriptions.
 impl<Path: Addressable> Downlinks<Path> {
     /// Create tasks for opening remote connections and attaching them to downlinks.
-    #[instrument(skip(client_router_factory, config))]
+    #[instrument(skip(connection_pool, config))]
     pub fn new<Cfg>(
-        client_router_factory: ClientRouterFactory<Path>,
+        connection_pool: SwimConnPool<Path>,
         config: Arc<Cfg>,
         close_rx: CloseReceiver,
-    ) -> (Downlinks<Path>, DownlinksHandle<Path>)
+    ) -> (Downlinks<Path>, DownlinksTask<Path>)
     where
         Cfg: Config<PathType = Path> + 'static,
     {
@@ -110,31 +110,26 @@ impl<Path: Addressable> Downlinks<Path> {
 
         let client_params = config.client_params();
 
-        // let (connection_pool, pool_task) =
-        //     SwimConnPool::new(client_params.conn_pool_params, client_router_tx);
-        //
+        //Todo dm
         // let (task_manager, connection_request_tx) = TaskManager::new(
         //     connection_pool,
         //     close_rx.clone(),
         //     client_params.router_params,
         // );
 
-        let downlinks_task = DownlinksTask::new(config, client_router_factory, close_rx);
-
-        //Todo dm maybe move into the downlinks task directly?
-        let (tx, rx) = mpsc::channel(client_params.dl_req_buffer_size.get());
+        let (downlink_request_tx, downlink_request_rx) =
+            mpsc::channel(client_params.dl_req_buffer_size.get());
 
         (
-            Downlinks { sender: tx },
-            DownlinksHandle {
-                downlinks_task,
-                request_receiver: rx,
+            Downlinks {
+                downlink_request_tx,
             },
+            DownlinksTask::new(config, downlink_request_rx, connection_pool, close_rx),
         )
     }
 
     pub async fn send_command(&self, path: Path, envelope: Envelope) -> RequestResult<(), Path> {
-        self.sender
+        self.downlink_request_tx
             .send(DownlinkRequest::DirectCommand { path, envelope })
             .map_err(|_| SubscriptionError::ConnectionError)
             .await?;
@@ -185,7 +180,7 @@ impl<Path: Addressable> Downlinks<Path> {
         path: Path,
     ) -> RequestResult<(Arc<UntypedValueDownlink>, UntypedValueReceiver), Path> {
         let (tx, rx) = oneshot::channel();
-        self.sender
+        self.downlink_request_tx
             .send(DownlinkRequest::Subscription(DownlinkSpecifier::Value {
                 init,
                 path,
@@ -238,7 +233,7 @@ impl<Path: Addressable> Downlinks<Path> {
         path: Path,
     ) -> RequestResult<(Arc<UntypedMapDownlink>, UntypedMapReceiver), Path> {
         let (tx, rx) = oneshot::channel();
-        self.sender
+        self.downlink_request_tx
             .send(DownlinkRequest::Subscription(DownlinkSpecifier::Map {
                 path,
                 key_schema,
@@ -277,7 +272,7 @@ impl<Path: Addressable> Downlinks<Path> {
     ) -> RequestResult<Arc<UntypedCommandDownlink>, Path> {
         let (tx, rx) = oneshot::channel();
 
-        self.sender
+        self.downlink_request_tx
             .send(DownlinkRequest::Subscription(DownlinkSpecifier::Command {
                 schema,
                 path,
@@ -319,7 +314,7 @@ impl<Path: Addressable> Downlinks<Path> {
     ) -> RequestResult<Arc<UntypedEventDownlink>, Path> {
         let (tx, rx) = oneshot::channel();
 
-        self.sender
+        self.downlink_request_tx
             .send(DownlinkRequest::Subscription(DownlinkSpecifier::Event {
                 schema,
                 path,
@@ -413,7 +408,8 @@ pub struct DownlinksTask<Path: Addressable> {
     command_downlinks: HashMap<Path, CommandHandle>,
     event_downlinks: HashMap<(Path, SchemaViolations), EventHandle>,
     stopped_watch: StopEvents<Path>,
-    client_router_factory: ClientRouterFactory<Path>,
+    downlink_request_rx: Option<mpsc::Receiver<DownlinkRequest<Path>>>,
+    connection_pool: SwimConnPool<Path>,
     close_rx: CloseReceiver,
 }
 
@@ -453,7 +449,8 @@ impl<Path: Addressable> TransformOnce<Result<Arc<Result<(), DownlinkError>>, Pro
 impl<Path: Addressable> DownlinksTask<Path> {
     pub(crate) fn new<C>(
         config: Arc<C>,
-        client_router_factory: ClientRouterFactory<Path>,
+        downlink_request_rx: mpsc::Receiver<DownlinkRequest<Path>>,
+        connection_pool: SwimConnPool<Path>,
         close_rx: CloseReceiver,
     ) -> DownlinksTask<Path>
     where
@@ -466,15 +463,18 @@ impl<Path: Addressable> DownlinksTask<Path> {
             command_downlinks: HashMap::new(),
             event_downlinks: HashMap::new(),
             stopped_watch: StopEvents::new(),
-            client_router_factory,
+            downlink_request_rx: Some(downlink_request_rx),
+            connection_pool,
             close_rx,
         }
     }
 
-    pub async fn run<Req>(mut self, requests: Req) -> RequestResult<(), Path>
+    pub async fn run<Req>(mut self) -> RequestResult<(), Path>
     where
         Req: Stream<Item = DownlinkRequest<Path>>,
     {
+        //Todo dm remove unwrap
+        let requests = ReceiverStream::new(self.downlink_request_rx.unwrap());
         pin_mut!(requests);
 
         let mut pinned_requests: Fuse<Pin<&mut Req>> = requests.fuse();
@@ -550,11 +550,10 @@ impl<Path: Addressable> DownlinksTask<Path> {
         &mut self,
         path: &Path,
     ) -> RequestResult<(mpsc::Sender<Envelope>, mpsc::Receiver<RouterEvent>), Path> {
-        //Todo dm this should have a channel to the client router
+        //Todo dm change the types here
+        let a = self.connection_pool.request_connection(path).await;
+
         unimplemented!()
-
-
-        connection_resolver.resolve(path)
 
         // let (tx, rx) = oneshot::channel();
         //

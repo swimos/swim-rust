@@ -43,21 +43,6 @@ use url::Host;
 #[cfg(test)]
 mod tests;
 
-/// Connection pool message wraps a message from a remote host.
-#[derive(Debug)]
-pub(crate) struct ConnectionPoolMessage {
-    /// The URL of the remote host.
-    host: Host,
-    /// The message from the remote host.
-    message: String,
-}
-
-pub struct ConnectionRequest<Path: Addressable> {
-    target: Path,
-    tx: oneshot::Sender<Result<ConnectionChannel, ConnectionError>>,
-    recreate_connection: bool,
-}
-
 /// Connection pool is responsible for managing the opening and closing of connections
 /// to remote hosts.
 pub trait ConnectionPool: Clone + Send + 'static {
@@ -66,7 +51,6 @@ pub trait ConnectionPool: Clone + Send + 'static {
     fn request_connection(
         &mut self,
         target: Self::PathType,
-        recreate: bool,
     ) -> BoxFuture<Result<Result<Connection, ConnectionError>, RequestError>>;
 
     fn close(self) -> BoxFuture<'static, Result<Result<(), ConnectionError>, ConnectionError>>;
@@ -115,16 +99,15 @@ impl<Path: Addressable> SwimConnPool<Path> {
     }
 }
 
-pub type Connection = (ConnectionSender, Option<ConnectionReceiver>);
-
 impl<Path: Addressable> ConnectionPool for SwimConnPool<Path> {
     type PathType = Path;
+    //Todo dm maybe add a way to request only one way connections
 
-    /// Sends and asynchronous request for a connection to a specific host.
+    /// Sends and asynchronous request for a connection to a specific path.
     ///
     /// # Arguments
     ///
-    /// * `host_url`                - The URL of the remote host.
+    /// * `target`                  - The path to which we want to connect.
     /// * `recreate_connection`     - Boolean flag indicating whether the connection should be recreated.
     ///
     /// # Returns
@@ -136,17 +119,12 @@ impl<Path: Addressable> ConnectionPool for SwimConnPool<Path> {
     fn request_connection(
         &mut self,
         target: Self::PathType,
-        recreate_connection: bool,
     ) -> BoxFuture<Result<Result<Connection, ConnectionError>, RequestError>> {
         async move {
             let (tx, rx) = oneshot::channel();
 
             self.connection_request_tx
-                .send(ConnectionRequest {
-                    target,
-                    tx,
-                    recreate_connection,
-                })
+                .send(ConnectionRequest { target, tx })
                 .await?;
             Ok(rx.await?)
         }
@@ -167,10 +145,9 @@ impl<Path: Addressable> ConnectionPool for SwimConnPool<Path> {
     }
 }
 
-enum RequestType<Path: Addressable> {
-    NewConnection(ConnectionRequest<Path>),
-    Prune,
-    Close,
+pub struct ConnectionRequest<Path: Addressable> {
+    target: Path,
+    tx: oneshot::Sender<Result<ConnectionChannel, ConnectionError>>,
 }
 
 pub struct PoolTask<Path: Addressable> {
@@ -207,7 +184,14 @@ impl<Path: Addressable> PoolTask<Path> {
             buffer_size,
             stop_request_rx,
         } = self;
-        let mut connections: HashMap<String, InnerConnection> = HashMap::new();
+
+        //Todo dm this should be a state machine
+        // if conn not in connections
+        //      open
+        // else
+        //      use registrator to return connection (tx, rx)
+
+        let mut connections: HashMap<Path, ConnectionRegistrator> = HashMap::new();
 
         let mut prune_timer = interval(config.conn_reaper_frequency()).fuse();
         let mut fused_requests =
@@ -222,11 +206,10 @@ impl<Path: Addressable> PoolTask<Path> {
             .ok_or_else(|| ConnectionError::Closed(CloseError::unexpected()))?;
 
             match request {
-                RequestType::NewConnection(conn_req) => {
+                RequestType::Connect(conn_req) => {
                     let ConnectionRequest {
                         target,
                         tx: request_tx,
-                        recreate_connection,
                     } = conn_req;
 
                     let path = target.to_string();
@@ -287,12 +270,29 @@ impl<Path: Addressable> PoolTask<Path> {
     }
 }
 
+/// Connection pool message wraps a message from a remote host.
+#[derive(Debug)]
+pub(crate) struct ConnectionPoolMessage {
+    /// The URL of the remote host.
+    host: Host,
+    /// The message from the remote host.
+    message: String,
+}
+
+pub type Connection = (ConnectionSender, Option<ConnectionReceiver>);
+
+enum RequestType<Path: Addressable> {
+    Connect(ConnectionRequest<Path>),
+    Prune,
+    Close,
+}
+
 fn combine_connection_streams<Path: Addressable>(
     connection_requests_rx: mpsc::Receiver<ConnectionRequest<Path>>,
     close_requests_rx: mpsc::Receiver<()>,
 ) -> impl stream::Stream<Item = RequestType<Path>> + Send + 'static {
     let connection_requests =
-        ReceiverStream::new(connection_requests_rx).map(RequestType::NewConnection);
+        ReceiverStream::new(connection_requests_rx).map(RequestType::Connect);
     let close_request = ReceiverStream::new(close_requests_rx).map(|_| RequestType::Close);
 
     stream::select(connection_requests, close_request)
