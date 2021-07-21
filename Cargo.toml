@@ -2,7 +2,6 @@
 members = [
     "ratchet",
     "swim_client",
-    "swim_wasm",
     "swim_runtime",
     "swim_common",
     "swim_server",
