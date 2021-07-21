@@ -248,10 +248,10 @@ where
 
         event!(Level::ERROR, %error, STOP_CLOSED);
 
-        return Err(AggregatorError {
+        Err(AggregatorError {
             aggregator: M::METRIC_STAGE,
             error,
-        });
+        })
     }
 }
 

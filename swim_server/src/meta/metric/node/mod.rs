@@ -190,9 +190,9 @@ impl NodeAggregatorTask {
 
         event!(Level::ERROR, %error, STOP_CLOSED);
 
-        return Err(AggregatorError {
+        Err(AggregatorError {
             aggregator: MetricStage::Node,
             error,
-        });
+        })
     }
 }
