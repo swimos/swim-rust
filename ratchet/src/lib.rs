@@ -18,7 +18,6 @@ mod extensions;
 #[cfg(test)]
 mod fixture;
 mod handshake;
-mod http_ext;
 #[allow(warnings)]
 mod protocol;
 
