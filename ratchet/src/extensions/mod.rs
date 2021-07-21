@@ -9,7 +9,7 @@ pub mod ext;
 // todo
 pub struct ExtHandshakeErr(pub(crate) BoxError);
 
-pub trait Extension: Debug {
+pub trait Extension: Debug + Clone {
     fn encode(&mut self);
 
     fn decode(&mut self);
@@ -26,7 +26,7 @@ pub trait ExtensionHandshake {
     ) -> Result<Option<Self::Extension>, ExtHandshakeErr>;
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum NegotiatedExtension<E> {
     None(NoExt),
     Negotiated(E),

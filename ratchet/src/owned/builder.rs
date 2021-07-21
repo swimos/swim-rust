@@ -12,12 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use super::{client, WebSocket};
 use crate::codec::Codec;
 use crate::errors::Error;
 use crate::extensions::ext::NoExtProxy;
 use crate::extensions::ExtensionHandshake;
 use crate::handshake::ProtocolRegistry;
-use crate::{client, Interceptor, TryIntoRequest, WebSocket, WebSocketConfig, WebSocketStream};
+pub use crate::{Interceptor, TryIntoRequest, WebSocketConfig, WebSocketStream};
 use tokio_native_tls::TlsConnector;
 
 /// This gives the flexibility to build websockets in a 'friendlier' fashion as opposed to having
@@ -40,7 +41,10 @@ impl Default for WebSocketClientBuilder<NoExtProxy> {
     }
 }
 
-impl<E: ExtensionHandshake> WebSocketClientBuilder<E> {
+impl<E> WebSocketClientBuilder<E>
+where
+    E: ExtensionHandshake,
+{
     pub fn for_extension(extension: E) -> Self {
         WebSocketClientBuilder {
             config: None,

@@ -15,7 +15,7 @@ impl ExtensionHandshake for DeflateHandshake {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Deflate;
 impl Extension for Deflate {
     fn encode(&mut self) {

@@ -19,20 +19,19 @@ mod extensions;
 mod fixture;
 mod handshake;
 mod http_ext;
-mod owned;
+pub mod owned;
 #[allow(warnings)]
 mod protocol;
+pub mod split;
 
-pub use owned::{client, WebSocket, WebSocketClientBuilder, WebSocketServerBuilder};
+use crate::errors::Error;
+use crate::extensions::deflate::Deflate;
 
 use futures::future::BoxFuture;
 use tokio::io::{AsyncRead, AsyncWrite};
 
-pub use extensions::{deflate::*, ext::*, ExtHandshakeErr, Extension, ExtensionHandshake};
-pub use http_ext::TryIntoRequest;
-
-use crate::errors::Error;
-use crate::extensions::deflate::Deflate;
+pub use crate::extensions::{deflate::*, ext::*, ExtHandshakeErr, Extension, ExtensionHandshake};
+pub use crate::http_ext::TryIntoRequest;
 
 pub(crate) type Request = http::Request<()>;
 pub(crate) type Response = http::Response<()>;
@@ -40,8 +39,13 @@ pub(crate) type Response = http::Response<()>;
 pub trait WebSocketStream: AsyncRead + AsyncWrite + Unpin {}
 impl<S> WebSocketStream for S where S: AsyncRead + AsyncWrite + Unpin {}
 
+// pub trait BufWebSocketStream: AsyncBufRead + AsyncWrite + Unpin {}
+// impl<S> BufWebSocketStream for S where S: AsyncBufRead + AsyncWrite + Unpin {}
+
+#[derive(Clone)]
 pub struct DeflateConfig;
 
+#[derive(Clone)]
 pub enum CompressionConfig {
     None,
     Deflate(DeflateConfig),
@@ -53,7 +57,7 @@ impl Default for CompressionConfig {
     }
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct WebSocketConfig {
     // options..
     pub compression: CompressionConfig,

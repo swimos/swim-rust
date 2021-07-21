@@ -14,7 +14,7 @@
 
 #[allow(warnings)]
 use futures::SinkExt;
-use ratchet::{DeflateHandshake, WebSocketClientBuilder};
+use ratchet::{owned::WebSocketClientBuilder, DeflateHandshake};
 use tokio::net::TcpStream;
 
 #[tokio::main]

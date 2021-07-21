@@ -22,7 +22,7 @@ impl ExtensionHandshake for NoExtProxy {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct NoExt;
 impl Extension for NoExt {
     fn encode(&mut self) {}
