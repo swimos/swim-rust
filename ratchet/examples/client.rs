@@ -14,15 +14,18 @@
 
 #[allow(warnings)]
 use futures::SinkExt;
-use ratchet::{owned::WebSocketClientBuilder, DeflateHandshake};
+use ratchet::{owned::WebSocketClientBuilder, NoExtProxy};
 use tokio::net::TcpStream;
 
 #[tokio::main]
 async fn main() {
-    let builder = WebSocketClientBuilder::for_extension(DeflateHandshake);
+    let builder = WebSocketClientBuilder::for_extension(NoExtProxy);
 
-    let stream = TcpStream::connect("an ip").await.unwrap();
+    let stream = TcpStream::connect("127.0.0.1:8080").await.unwrap();
     let result = builder.subscribe(stream, "wss://echo.websocket.org").await;
 
-    println!("{}", result.is_ok());
+    match result {
+        Ok(_) => println!("Ok"),
+        Err(e) => println!("{}", e),
+    }
 }

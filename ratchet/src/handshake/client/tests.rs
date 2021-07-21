@@ -428,7 +428,7 @@ where
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 struct MockExtension;
 impl Extension for MockExtension {
     fn encode(&mut self) {

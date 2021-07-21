@@ -39,32 +39,22 @@ pub(crate) type Response = http::Response<()>;
 pub trait WebSocketStream: AsyncRead + AsyncWrite + Unpin {}
 impl<S> WebSocketStream for S where S: AsyncRead + AsyncWrite + Unpin {}
 
-// pub trait BufWebSocketStream: AsyncBufRead + AsyncWrite + Unpin {}
-// impl<S> BufWebSocketStream for S where S: AsyncBufRead + AsyncWrite + Unpin {}
-
-#[derive(Clone)]
-pub struct DeflateConfig;
-
-#[derive(Clone)]
-pub enum CompressionConfig {
-    None,
-    Deflate(DeflateConfig),
-}
-
-impl Default for CompressionConfig {
-    fn default() -> Self {
-        CompressionConfig::None
-    }
-}
-
 #[derive(Clone, Default)]
 pub struct WebSocketConfig {
     // options..
-    pub compression: CompressionConfig,
 }
 
 pub trait Interceptor {
     fn intercept(self, request: Request, response: Response) -> BoxFuture<'static, Response>;
+}
+
+impl<F> Interceptor for F
+where
+    F: Fn(Request, Response) -> BoxFuture<'static, Response>,
+{
+    fn intercept(self, request: Request, response: Response) -> BoxFuture<'static, Response> {
+        (self)(request, response)
+    }
 }
 
 #[derive(Copy, Clone, PartialEq)]

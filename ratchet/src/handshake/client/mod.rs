@@ -253,8 +253,8 @@ where
         }
     }
 
-    validate_header_value(response.headers, header::UPGRADE, WEBSOCKET_STR.as_bytes())?;
-    validate_header_value(response.headers, header::CONNECTION, UPGRADE_STR.as_bytes())?;
+    validate_header_value(response.headers, header::UPGRADE, WEBSOCKET_STR)?;
+    validate_header_value(response.headers, header::CONNECTION, UPGRADE_STR)?;
 
     validate_header(
         response.headers,
@@ -288,10 +288,13 @@ where
 fn validate_header_value(
     headers: &[httparse::Header],
     name: HeaderName,
-    expected: &[u8],
+    expected: &str,
 ) -> Result<(), Error> {
     validate_header(headers, name, |name, actual| {
-        if actual == expected {
+        let actual =
+            std::str::from_utf8(actual).map_err(|e| Error::with_cause(ErrorKind::IO, e))?;
+
+        if actual.eq_ignore_ascii_case(expected) {
             Ok(())
         } else {
             Err(Error::with_cause(
