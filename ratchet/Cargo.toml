@@ -5,3 +5,12 @@ authors = ["Swim.AI developers info@swim.ai"]
 edition = "2018"
 
 [dependencies]
+url = "2.1.1"
+http = "0.2.3"
+pin-project = "1.0.5"
+pin-utils = "0.1.0"
+tokio = { version = "1.1.1", features = ["rt", "net"] }
+tokio-stream = { version = "0.1.2", features = ["sync"] }
+tokio-native-tls = "0.3"
+futures = "0.3.4"
+futures-util = "0.3.4"
