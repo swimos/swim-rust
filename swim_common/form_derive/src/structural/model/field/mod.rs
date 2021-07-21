@@ -159,7 +159,7 @@ impl FieldAttributes {
                 }
             }
             FieldAttr::Other(name) => match name {
-                Some(name) if name == SCHEMA_PATH.0 => Validation::valid(self),
+                Some(name) if name == SCHEMA_PATH => Validation::valid(self), //Overlap with schema attribute.
                 _ => {
                     let err = syn::Error::new_spanned(field, "Unknown container attribute");
                     Validation::Validated(self, err.into())
@@ -250,7 +250,10 @@ impl TryFrom<NestedMeta> for FieldAttr {
                             new_name.value(),
                         )))
                     } else {
-                        Err(syn::Error::new_spanned(named, "Expected string argument"))
+                        Err(syn::Error::new_spanned(
+                            &named.lit,
+                            "Expected a string literal",
+                        ))
                     }
                 } else {
                     let name = named.path.get_ident().map(|id| id.to_string());
@@ -261,7 +264,7 @@ impl TryFrom<NestedMeta> for FieldAttr {
                 let name = lst.path.get_ident().map(|id| id.to_string());
                 Ok(FieldAttr::Other(name))
             }
-            _ => Ok(FieldAttr::Other(None)), //Overlap with schema macro.
+            _ => Ok(FieldAttr::Other(None)),
         }
     }
 }

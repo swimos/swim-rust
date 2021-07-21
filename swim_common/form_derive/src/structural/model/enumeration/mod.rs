@@ -75,7 +75,8 @@ impl<'a> EnumDef<'a> {
 }
 
 const VARIANT_WITH_TAG: &str = "Enum variants cannot specify a tag field";
-const TAG_SPECIFIED_FOR_ENUM: &str = "A tag name cannot be specified for an enum type, only its variants.";
+const TAG_SPECIFIED_FOR_ENUM: &str =
+    "A tag name cannot be specified for an enum type, only its variants.";
 
 impl<'a> ValidateFrom<EnumDef<'a>> for EnumModel<'a> {
     fn validate(input: EnumDef<'a>) -> SynValidation<Self> {
@@ -96,10 +97,7 @@ impl<'a> ValidateFrom<EnumDef<'a>> for EnumModel<'a> {
                         StructDef::new(&variant.ident, variant, &variant.attrs, variant);
                     let model = StructModel::validate(struct_def).and_then(|model| {
                         if model.fields_model.manifest.has_tag_field {
-                            let err = syn::Error::new_spanned(
-                                variant,
-                                VARIANT_WITH_TAG,
-                            );
+                            let err = syn::Error::new_spanned(variant, VARIANT_WITH_TAG);
                             Validation::Validated(model, err.into())
                         } else {
                             Validation::valid(model)
@@ -146,10 +144,7 @@ impl<'a> ValidateFrom<EnumDef<'a>> for EnumModel<'a> {
             names.and_then(move |_| {
                 let enum_model = EnumModel { name, variants };
                 if transform.is_some() {
-                    let err = syn::Error::new_spanned(
-                        top,
-                        TAG_SPECIFIED_FOR_ENUM,
-                    );
+                    let err = syn::Error::new_spanned(top, TAG_SPECIFIED_FOR_ENUM);
                     Validation::Validated(enum_model, err.into())
                 } else {
                     Validation::valid(enum_model)

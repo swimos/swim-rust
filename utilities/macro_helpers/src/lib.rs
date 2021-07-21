@@ -80,6 +80,18 @@ impl<'a> PartialEq<Symbol> for &'a Path {
     }
 }
 
+impl<'a> PartialEq<Symbol> for &'a str {
+    fn eq(&self, other: &Symbol) -> bool {
+        self == &other.0
+    }
+}
+
+impl<'a> PartialEq<Symbol> for String {
+    fn eq(&self, other: &Symbol) -> bool {
+        self == other.0
+    }
+}
+
 impl Display for Symbol {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         formatter.write_str(self.0)
