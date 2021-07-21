@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod builder;
 mod codec;
 mod errors;
 mod extensions;
@@ -20,26 +19,26 @@ mod extensions;
 mod fixture;
 mod handshake;
 mod http_ext;
+mod owned;
 #[allow(warnings)]
 mod protocol;
 
-use crate::codec::Codec;
+pub use owned::{client, WebSocket, WebSocketClientBuilder, WebSocketServerBuilder};
+
+use futures::future::BoxFuture;
+use tokio::io::{AsyncRead, AsyncWrite};
+
+pub use extensions::{deflate::*, ext::*, ExtHandshakeErr, Extension, ExtensionHandshake};
+pub use http_ext::TryIntoRequest;
+
 use crate::errors::Error;
 use crate::extensions::deflate::Deflate;
-use crate::extensions::{Extension, ExtensionHandshake, NegotiatedExtension};
-use crate::handshake::{exec_client_handshake, HandshakeResult, ProtocolRegistry};
-use crate::protocol::frame::Frame;
-use crate::protocol::Message;
-use futures::future::BoxFuture;
-use futures::Sink;
-pub use http_ext::TryIntoRequest;
-use std::pin::Pin;
-use std::task::{Context, Poll};
-use tokio::io::{AsyncRead, AsyncWrite};
-use tokio_util::codec::{Decoder, Encoder, Framed};
 
 pub(crate) type Request = http::Request<()>;
 pub(crate) type Response = http::Response<()>;
+
+pub trait WebSocketStream: AsyncRead + AsyncWrite + Unpin {}
+impl<S> WebSocketStream for S where S: AsyncRead + AsyncWrite + Unpin {}
 
 pub struct DeflateConfig;
 
@@ -68,106 +67,4 @@ pub trait Interceptor {
 pub enum Role {
     Client,
     Server,
-}
-
-pub struct WebSocket<S, C = Codec, E = Deflate> {
-    inner: WebSocketInner<S, C, E>,
-}
-
-pub struct WebSocketInner<S, C, E> {
-    framed: Framed<S, C>,
-    role: Role,
-    extension: NegotiatedExtension<E>,
-    config: WebSocketConfig,
-    _priv: (),
-}
-
-impl<S, C, E> WebSocket<S, C, E>
-where
-    S: WebSocketStream,
-    E: Extension,
-{
-    pub fn role(&self) -> Role {
-        self.inner.role
-    }
-
-    pub async fn config(&self) -> &WebSocketConfig {
-        &self.inner.config
-    }
-
-    pub async fn send_owned<M>(&self, _message: M) -> Result<(), Error>
-    where
-        M: Into<Message>,
-    {
-        unimplemented!()
-    }
-
-    pub fn send_borrowed(&mut self, _message: impl AsRef<[u8]>) -> Result<(), Error> {
-        unimplemented!()
-    }
-
-    pub async fn send_frame(&mut self, _frame: Frame, _data: &[u8]) -> Result<(), Error> {
-        unimplemented!()
-    }
-}
-
-pub async fn client<S, C, E>(
-    config: WebSocketConfig,
-    mut stream: S,
-    request: Request,
-    codec: C,
-    extension: E,
-    subprotocols: ProtocolRegistry,
-) -> Result<(WebSocket<S, C, E::Extension>, Option<String>), Error>
-where
-    S: WebSocketStream,
-    C: Encoder<Message, Error = Error> + Decoder,
-    E: ExtensionHandshake,
-{
-    let HandshakeResult {
-        protocol,
-        extension,
-    } = exec_client_handshake(&mut stream, request, extension, subprotocols).await?;
-    let socket = WebSocket {
-        inner: WebSocketInner {
-            framed: Framed::new(stream, codec),
-            role: Role::Client,
-            extension,
-            config,
-            _priv: (),
-        },
-    };
-    Ok((socket, protocol))
-}
-
-pub trait WebSocketStream: AsyncRead + AsyncWrite + Unpin {}
-impl<S> WebSocketStream for S where S: AsyncRead + AsyncWrite + Unpin {}
-
-impl<S, C, E> Sink<Message> for WebSocket<S, C, E>
-where
-    S: WebSocketStream,
-    C: Encoder<Message, Error = Error> + Decoder,
-    E: Extension + Unpin,
-{
-    type Error = Error;
-
-    fn poll_ready(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        Pin::new(&mut self.inner.framed).poll_ready(cx)
-    }
-
-    fn start_send(mut self: Pin<&mut Self>, item: Message) -> Result<(), Self::Error> {
-        Pin::new(&mut self.inner.framed).start_send(item)
-    }
-
-    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        Pin::new(&mut self.inner.framed)
-            .poll_flush(cx)
-            .map_err(Into::into)
-    }
-
-    fn poll_close(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        Pin::new(&mut self.inner.framed)
-            .poll_close(cx)
-            .map_err(Into::into)
-    }
 }
