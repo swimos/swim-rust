@@ -15,11 +15,13 @@
 #[cfg(test)]
 mod tests;
 
-use crate::routing::remote::{RawRoute, Scheme, SchemeSocketAddr};
+use crate::routing::remote::{BadUrl, RawRoute, Scheme, SchemeSocketAddr};
 use crate::routing::{ConnectionDropped, RoutingAddr, TaggedEnvelope};
 use std::collections::{HashMap, HashSet};
+use std::convert::TryFrom;
 use std::fmt::{Display, Formatter};
 use tokio::sync::mpsc;
+use url::Url;
 use utilities::sync::promise;
 
 /// A combination of host name and port to be used as a key into the routing table.
@@ -53,6 +55,28 @@ impl Display for SchemeHostPort {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let SchemeHostPort(scheme, host, port) = self;
         write!(f, "{}://{}:{}", scheme, host, port)
+    }
+}
+
+impl TryFrom<Url> for SchemeHostPort {
+    type Error = BadUrl;
+
+    fn try_from(url: Url) -> Result<Self, Self::Error> {
+        let scheme = Scheme::try_from(url.scheme())?;
+        match (url.host_str(), url.port()) {
+            (Some(host_str), Some(port)) => {
+                Ok(SchemeHostPort::new(scheme, host_str.to_owned(), port))
+            }
+            (Some(host_str), _) => {
+                let default_port = scheme.get_default_port();
+                Ok(SchemeHostPort::new(
+                    scheme,
+                    host_str.to_owned(),
+                    default_port,
+                ))
+            }
+            _ => Err(BadUrl::NoHost),
+        }
     }
 }
 

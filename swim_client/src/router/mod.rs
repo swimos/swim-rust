@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use crate::configuration::router::RouterParams;
+use crate::connections::ConnectionRegistrator;
 use crate::connections::{ConnectionPool, ConnectionSender};
 use crate::router::incoming::broadcast;
 use crate::router::incoming::{IncomingHostTask, IncomingRequest};
@@ -28,6 +29,7 @@ use swim_common::request::Request;
 use swim_common::routing::error::{
     ConnectionError, ResolutionError, RouterError, RoutingError, Unresolvable,
 };
+use swim_common::routing::remote::table::SchemeHostPort;
 use swim_common::routing::remote::{RawRoute, RemoteRoutingRequest};
 use swim_common::routing::{CloseReceiver, ConnectionDropped, Origin, PlaneRoutingRequest};
 use swim_common::routing::{
@@ -53,6 +55,58 @@ mod tests;
 mod incoming;
 mod outgoing;
 mod retry;
+
+pub(crate) type Node = String;
+
+pub(crate) enum RoutingPath {
+    Remote(SchemeHostPort),
+    Local(Node),
+}
+
+impl<T: Addressable> From<T> for RoutingPath {
+    fn from(path: T) {
+        match path.host() {
+            //Todo dm change this from unwrap
+            Some(host) => RoutingPath::Remote(SchemeHostPort::try_from(path.host()).unwrap()),
+            None => RoutingPath::Local(path.node().to_string()),
+        }
+    }
+}
+
+pub(crate) struct RoutingTable {
+    addresses: HashMap<RoutingPath, RoutingAddr>,
+    endpoints: HashMap<RoutingAddr, ConnectionRegistrator>,
+}
+
+impl RoutingTable {
+    pub(crate) fn new() -> Self {
+        RoutingTable {
+            addresses: HashMap::new(),
+            endpoints: HashMap::new(),
+        }
+    }
+
+    pub(crate) fn try_resolve_addr(&self, routing_path: &RoutingPath) -> Option<RoutingAddr> {
+        self.addresses.get(routing_path).copied()
+    }
+
+    pub(crate) fn try_resolve_endpoint(
+        &self,
+        routing_addr: RoutingAddr,
+    ) -> Option<ConnectionRegistrator> {
+        self.endpoints.get(routing_addr).copied()
+    }
+
+    pub(crate) fn add_connection(
+        &mut self,
+        routing_path: RoutingPath,
+        routing_addr: RoutingAddr,
+        connection_registrator: ConnectionRegistrator,
+    ) {
+        self.addresses.insert(routing_path, routing_addr.clone());
+        self.endpoints.insert(routing_addr, connection_registrator);
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct ClientRouterFactory<Path: Addressable> {
@@ -85,10 +139,18 @@ pub struct ClientRouter<Path: Addressable> {
 impl<Path: Addressable> Router for ClientRouter<Path> {
     fn resolve_sender(
         &mut self,
-        _addr: RoutingAddr,
+        addr: RoutingAddr,
     ) -> BoxFuture<'_, Result<Route, ResolutionError>> {
         async move {
             // Todo dm
+
+            if addr.is_remote() {
+                // Request a connection from the remote router
+            } else {
+                // Request a connection from the plane router
+                // Not available if it's not a server instance
+            }
+
             unimplemented!()
             // let ClientRouter {
             //     tag,
@@ -123,6 +185,9 @@ impl<Path: Addressable> Router for ClientRouter<Path> {
         _route: RelativeUri,
     ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
         async move {
+            //Todo dm try to see if a connection exists in the client for that host / node
+            //If it doesn't, send a lookup request to a deligate router.
+
             let ClientRouter {
                 tag,
                 request_sender,

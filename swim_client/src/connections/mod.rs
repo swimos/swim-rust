@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::configuration::router::ConnectionPoolParams;
-use crate::router::ClientRequest;
+use crate::router::{ClientRequest, RoutingPath, RoutingTable};
 use futures::future::BoxFuture;
 use futures::select;
 use futures::stream;
@@ -27,6 +27,7 @@ use swim_common::request::Request;
 use swim_common::routing::error::{
     CloseError, ConnectionError, ResolutionError, ResolutionErrorKind,
 };
+use swim_common::routing::remote::table::SchemeHostPort;
 use swim_common::routing::{RoutingAddr, TaggedEnvelope};
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::Addressable;
@@ -81,20 +82,18 @@ impl<Path: Addressable> SwimConnPool<Path> {
             mpsc::channel(config.buffer_size().get());
         let (stop_request_tx, stop_request_rx) = mpsc::channel(config.buffer_size().get());
 
-        let task = PoolTask::new(
-            config,
-            connection_request_rx,
-            client_conn_request_tx,
-            config.buffer_size(),
-            stop_request_rx,
-        );
-
         (
             SwimConnPool {
                 connection_request_tx,
                 stop_request_tx,
             },
-            task,
+            PoolTask::new(
+                config,
+                connection_request_rx,
+                client_conn_request_tx,
+                config.buffer_size(),
+                stop_request_rx,
+            ),
         )
     }
 }
@@ -145,6 +144,12 @@ impl<Path: Addressable> ConnectionPool for SwimConnPool<Path> {
     }
 }
 
+//Todo dm
+pub enum ConnectionPoolRequest {
+    Resolve,
+    Endpoint,
+}
+
 pub struct ConnectionRequest<Path: Addressable> {
     target: Path,
     tx: oneshot::Sender<Result<ConnectionChannel, ConnectionError>>,
@@ -175,21 +180,57 @@ impl<Path: Addressable> PoolTask<Path> {
         }
     }
 
-    #[instrument(skip(self))]
     pub async fn run(self) -> Result<(), ConnectionError> {
         let PoolTask {
             config,
-            connection_request_rx,
+            mut connection_request_rx,
             client_conn_request_tx,
             buffer_size,
             stop_request_rx,
         } = self;
+
+        let mut routing_table = RoutingTable::new();
+        let mut counter: u32 = 0;
+
+        while let Some(conn_request) = connection_request_rx.recv().await {
+            let ConnectionRequest { target, tx } = conn_request;
+
+            let routing_path = RoutingPath::from(target);
+
+            match routing_table.try_resolve_addr(&routing_path) {
+                Some(routing_addr) => match routing_table.try_resolve_endpoint(routing_addr) {
+                    Some(registrator) => {
+                        let connection = registrator.request_full_connection().map(|(tx, rx)| (tx, Some(rx)));
+                        tx.send(connection);
+                    },
+                    None => {
+                        unimplemented!()
+                    }
+                },
+                None => {
+                    let registrator = ConnectionRegistrator {};
+                    let routing_address = RoutingAddr::client(counter);
+                    counter += 1;
+                    routing_table.add_connection(
+                        routing_path,
+                        routing_address,
+                        registrator.clone(),
+                    );
+                    registrator
+                }
+            }
+        }
 
         //Todo dm this should be a state machine
         // if conn not in connections
         //      open
         // else
         //      use registrator to return connection (tx, rx)
+
+        // when a downlink is connecting, this will receive a SubscribeConnection
+        // if the connection already exists the downlink will be subscribed to it
+        // if not, a new client RoutingAddr will be created and
+        // if not a request will be made either to a remote router or to a plane router
 
         let mut connections: HashMap<Path, ConnectionRegistrator> = HashMap::new();
 
@@ -270,6 +311,24 @@ impl<Path: Addressable> PoolTask<Path> {
     }
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct ConnectionRegistrator {}
+
+// Todo dm
+impl ConnectionRegistrator {
+    fn new() -> Self {
+        ConnectionRegistrator {}
+    }
+
+    fn request_full_connection(&self) -> Result<(ConnectionSender, ConnectionReceiver), ConnectionError> {
+        unimplemented!()
+    }
+
+    fn request_outgoing_connection(&self) -> Result<ConnectionSender, ConnectionError> {
+        unimplemented!()
+    }
+}
+
 /// Connection pool message wraps a message from a remote host.
 #[derive(Debug)]
 pub(crate) struct ConnectionPoolMessage {
@@ -291,8 +350,7 @@ fn combine_connection_streams<Path: Addressable>(
     connection_requests_rx: mpsc::Receiver<ConnectionRequest<Path>>,
     close_requests_rx: mpsc::Receiver<()>,
 ) -> impl stream::Stream<Item = RequestType<Path>> + Send + 'static {
-    let connection_requests =
-        ReceiverStream::new(connection_requests_rx).map(RequestType::Connect);
+    let connection_requests = ReceiverStream::new(connection_requests_rx).map(RequestType::Connect);
     let close_request = ReceiverStream::new(close_requests_rx).map(|_| RequestType::Close);
 
     stream::select(connection_requests, close_request)

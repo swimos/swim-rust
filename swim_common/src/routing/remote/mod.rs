@@ -39,7 +39,7 @@ use crate::routing::{
 use crate::routing::{ConnectionError, ResolutionError};
 use futures::future::BoxFuture;
 use futures::stream::FusedStream;
-use std::convert::TryFrom;
+use std::convert::{TryFrom, TryInto};
 use std::fmt::{Display, Formatter};
 use std::io;
 use std::io::Error;
@@ -276,7 +276,7 @@ fn update_state<State: RemoteTasksState>(
             request.send_debug(result, REQUEST_DROPPED);
         }
         Event::Request(RemoteRoutingRequest::ResolveUrl { host, request }) => {
-            match unpack_url(&host) {
+            match SchemeHostPort::try_from(host) {
                 Ok(target) => {
                     if let Some(addr) = state.table_try_resolve(&target) {
                         request.send_ok_debug(addr, REQUEST_DROPPED);
@@ -371,22 +371,6 @@ fn update_state<State: RemoteTasksState>(
 pub enum BadUrl {
     BadScheme(String),
     NoHost,
-}
-
-fn unpack_url(url: &Url) -> Result<SchemeHostPort, BadUrl> {
-    let scheme = Scheme::try_from(url.scheme())?;
-    match (url.host_str(), url.port()) {
-        (Some(host_str), Some(port)) => Ok(SchemeHostPort::new(scheme, host_str.to_owned(), port)),
-        (Some(host_str), _) => {
-            let default_port = scheme.get_default_port();
-            Ok(SchemeHostPort::new(
-                scheme,
-                host_str.to_owned(),
-                default_port,
-            ))
-        }
-        _ => Err(BadUrl::NoHost),
-    }
 }
 
 /// Supported websocket schemes
