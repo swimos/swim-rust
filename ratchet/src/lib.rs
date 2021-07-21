@@ -19,6 +19,7 @@ mod extensions;
 #[cfg(test)]
 mod fixture;
 mod handshake;
+mod http_ext;
 #[allow(warnings)]
 mod protocol;
 
@@ -81,17 +82,17 @@ pub struct WebSocketInner<S, C, E> {
     _priv: (),
 }
 
-impl<S, C, E> WebSocketInner<S, C, E>
+impl<S, C, E> WebSocket<S, C, E>
 where
     S: WebSocketStream,
     E: Extension,
 {
     pub fn role(&self) -> Role {
-        self.role
+        self.inner.role
     }
 
     pub async fn config(&self) -> &WebSocketConfig {
-        &self.config
+        &self.inner.config
     }
 
     pub async fn send_owned<M>(&self, _message: M) -> Result<(), Error>
