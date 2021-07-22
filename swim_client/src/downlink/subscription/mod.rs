@@ -31,11 +31,11 @@ use crate::downlink::{
     command_downlink, event_downlink, map_downlink, value_downlink, Command, Downlink,
     DownlinkError, Message, SchemaViolations,
 };
-use crate::router::ConnectionRequestMode;
-use crate::router::RouterConnRequest;
-use crate::router::RouterEvent;
-use crate::router::TaskManager;
-use crate::router::{ClientRequest, ClientRouterFactory};
+// use crate::router::ConnectionRequestMode;
+// use crate::router::RouterConnRequest;
+// use crate::router::RouterEvent;
+// use crate::router::TaskManager;
+use crate::router::{ClientRouterFactory, RouterEvent};
 use either::Either;
 use futures::stream::Fuse;
 use futures::FutureExt;
@@ -469,15 +469,12 @@ impl<Path: Addressable> DownlinksTask<Path> {
         }
     }
 
-    pub async fn run<Req>(mut self) -> RequestResult<(), Path>
-    where
-        Req: Stream<Item = DownlinkRequest<Path>>,
-    {
+    pub async fn run(mut self) -> RequestResult<(), Path> {
         //Todo dm remove unwrap
-        let requests = ReceiverStream::new(self.downlink_request_rx.unwrap());
+        let requests = ReceiverStream::new(self.downlink_request_rx.take().unwrap());
         pin_mut!(requests);
 
-        let mut pinned_requests: Fuse<Pin<&mut Req>> = requests.fuse();
+        let mut pinned_requests = requests.fuse();
         let mut close_trigger = self.close_rx.clone().fuse();
 
         loop {
@@ -548,7 +545,7 @@ impl<Path: Addressable> DownlinksTask<Path> {
 
     pub async fn connection_for(
         &mut self,
-        path: &Path,
+        path: Path,
     ) -> RequestResult<(mpsc::Sender<Envelope>, mpsc::Receiver<RouterEvent>), Path> {
         //Todo dm change the types here
         let a = self.connection_pool.request_connection(path).await;
@@ -589,7 +586,7 @@ impl<Path: Addressable> DownlinksTask<Path> {
         let _g = span.enter();
 
         let config = self.config.config_for(&path);
-        let (sink, incoming) = self.connection_for(&path).await?;
+        let (sink, incoming) = self.connection_for(path.clone()).await?;
         let schema_cpy = schema.clone();
 
         let updates = ReceiverStream::new(incoming).map(map_router_events);
@@ -654,7 +651,7 @@ impl<Path: Addressable> DownlinksTask<Path> {
         let _g = span.enter();
 
         let config = self.config.config_for(&path);
-        let (sink, incoming) = self.connection_for(&path).await?;
+        let (sink, incoming) = self.connection_for(path.clone()).await?;
         let key_schema_cpy = key_schema.clone();
         let value_schema_cpy = value_schema.clone();
 
@@ -803,7 +800,7 @@ impl<Path: Addressable> DownlinksTask<Path> {
         schema: StandardSchema,
         violations: SchemaViolations,
     ) -> RequestResult<Arc<UntypedEventDownlink>, Path> {
-        let (sink, incoming) = self.connection_for(&path).await?;
+        let (sink, incoming) = self.connection_for(path.clone()).await?;
 
         let updates = ReceiverStream::new(incoming).map(map_router_events);
 

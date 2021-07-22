@@ -276,7 +276,7 @@ fn update_state<State: RemoteTasksState>(
             request.send_debug(result, REQUEST_DROPPED);
         }
         Event::Request(RemoteRoutingRequest::ResolveUrl { host, request }) => {
-            match SchemeHostPort::try_from(host) {
+            match SchemeHostPort::try_from(host.clone()) {
                 Ok(target) => {
                     if let Some(addr) = state.table_try_resolve(&target) {
                         request.send_ok_debug(addr, REQUEST_DROPPED);
