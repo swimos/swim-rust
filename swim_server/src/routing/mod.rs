@@ -84,6 +84,7 @@ impl Router for TopLevelRouter {
                 addr: tag,
             } = self;
 
+            //Todo dm add a branch for is_client()
             if addr.is_remote() {
                 let (tx, rx) = oneshot::channel();
                 let request = Request::new(tx);

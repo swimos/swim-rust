@@ -47,6 +47,8 @@ use pin_utils::pin_mut;
 use std::collections::HashMap;
 use std::pin::Pin;
 use std::sync::{Arc, Weak};
+use std::thread::sleep;
+use std::time::Duration;
 use swim_common::form::ValidatedForm;
 use swim_common::model::schema::StandardSchema;
 use swim_common::model::Value;
@@ -60,6 +62,7 @@ use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::Addressable;
 use swim_warp::backpressure;
 use tokio::sync::{mpsc, oneshot};
+use tokio::time;
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{error, info, instrument, trace_span};
 use utilities::future::{SwimFutureExt, TransformOnce, TransformedFuture};
@@ -550,6 +553,14 @@ impl<Path: Addressable> DownlinksTask<Path> {
         //Todo dm change the types here
         let a = self.connection_pool.request_connection(path).await;
 
+        let b = a
+            .unwrap()
+            .unwrap()
+            .0
+            .send(Envelope::sync("/unit/foo", "info"))
+            .await;
+
+        time::sleep(Duration::from_secs(5)).await;
         unimplemented!()
 
         // let (tx, rx) = oneshot::channel();

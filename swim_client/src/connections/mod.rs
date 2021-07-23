@@ -19,6 +19,7 @@ use futures::select;
 use futures::stream;
 use futures::{FutureExt, Stream, StreamExt};
 use std::collections::HashMap;
+use std::convert::TryFrom;
 use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -28,7 +29,7 @@ use swim_common::routing::error::{
     CloseError, ConnectionError, ResolutionError, ResolutionErrorKind,
 };
 use swim_common::routing::remote::table::SchemeHostPort;
-use swim_common::routing::{RouterFactory, RoutingAddr, TaggedEnvelope};
+use swim_common::routing::{Route, Router, RouterFactory, RoutingAddr, TaggedEnvelope};
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::Addressable;
 use swim_runtime::task::*;
@@ -40,6 +41,7 @@ use tokio::sync::oneshot;
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{instrument, trace};
 use url::Host;
+use utilities::uri::RelativeUri;
 
 #[cfg(test)]
 mod tests;
@@ -62,8 +64,19 @@ pub type Connection = (ConnectionSender, Option<ConnectionReceiver>);
 /// Wrapper for the transmitting end of a channel to an open connection.
 #[derive(Debug, Clone)]
 pub struct ConnectionSender {
-    tx: mpsc::Sender<Envelope>,
+    inner: Route,
 }
+
+impl ConnectionSender {
+    fn new(route: Route) -> Self {
+        ConnectionSender { inner: route }
+    }
+
+    pub async fn send(&mut self, envelope: Envelope) {
+        self.inner.sender.send_item(envelope).await;
+    }
+}
+
 pub(crate) type ConnectionReceiver = mpsc::Receiver<Envelope>;
 
 /// The connection pool is responsible for opening new connections to remote hosts and managing
@@ -212,7 +225,7 @@ impl<Path: Addressable> PoolTask<Path> {
         while let Some(conn_request) = connection_request_rx.recv().await {
             let ConnectionRequest { target, tx } = conn_request;
 
-            let routing_path = RoutingPath::from(target);
+            let routing_path = RoutingPath::from(target.clone());
 
             let registrator = match routing_table.try_resolve_addr(&routing_path) {
                 Some(routing_addr) => match routing_table.try_resolve_endpoint(&routing_addr) {
@@ -239,7 +252,9 @@ impl<Path: Addressable> PoolTask<Path> {
                 }
             };
 
-            let connection = registrator.request_connection(ConnectionType::Full).await;
+            let connection = registrator
+                .request_connection(target, ConnectionType::Full)
+                .await;
             tx.send(connection);
         }
 
@@ -343,24 +358,23 @@ enum ConnectionType {
 }
 
 //Todo dm change name
-struct ConnectionOpeningRequest {
+struct ConnectionOpeningRequest<Path: Addressable> {
     tx: oneshot::Sender<ConnectionResult>,
-    //Todo dm add path
-    path: (),
+    path: Path,
     conn_type: ConnectionType,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct ConnectionRegistrator {
+pub(crate) struct ConnectionRegistrator<Path: Addressable> {
     //Todo dm this needs to send the type Full / Outgoing and the target
-    conn_request_tx: mpsc::Sender<ConnectionOpeningRequest>,
+    conn_request_tx: mpsc::Sender<ConnectionOpeningRequest<Path>>,
 }
 
 // Todo dm
-impl ConnectionRegistrator {
-    fn new<Path: Addressable>(
+impl<Path: Addressable> ConnectionRegistrator<Path> {
+    fn new(
         client_router: ClientRouter<Path>,
-    ) -> (ConnectionRegistrator, ConnectionRegistratorTask<Path>) {
+    ) -> (ConnectionRegistrator<Path>, ConnectionRegistratorTask<Path>) {
         //Todo dm change buffer size
         let (conn_request_tx, conn_request_rx) = mpsc::channel(8);
 
@@ -370,12 +384,12 @@ impl ConnectionRegistrator {
         )
     }
 
-    async fn request_connection(&self, conn_type: ConnectionType) -> ConnectionResult {
+    async fn request_connection(&self, path: Path, conn_type: ConnectionType) -> ConnectionResult {
         let (tx, rx) = oneshot::channel();
         self.conn_request_tx
             .send(ConnectionOpeningRequest {
                 tx,
-                path: (),
+                path,
                 conn_type,
             })
             .await;
@@ -384,13 +398,13 @@ impl ConnectionRegistrator {
 }
 
 struct ConnectionRegistratorTask<Path: Addressable> {
-    conn_request_rx: mpsc::Receiver<ConnectionOpeningRequest>,
+    conn_request_rx: mpsc::Receiver<ConnectionOpeningRequest<Path>>,
     client_router: ClientRouter<Path>,
 }
 
 impl<Path: Addressable> ConnectionRegistratorTask<Path> {
     fn new(
-        conn_request_rx: mpsc::Receiver<ConnectionOpeningRequest>,
+        conn_request_rx: mpsc::Receiver<ConnectionOpeningRequest<Path>>,
         client_router: ClientRouter<Path>,
     ) -> Self {
         ConnectionRegistratorTask {
@@ -402,7 +416,7 @@ impl<Path: Addressable> ConnectionRegistratorTask<Path> {
     async fn run(self) {
         let ConnectionRegistratorTask {
             mut conn_request_rx,
-            client_router,
+            mut client_router,
         } = self;
 
         let conn_tx = ();
@@ -415,13 +429,27 @@ impl<Path: Addressable> ConnectionRegistratorTask<Path> {
                 conn_type,
             } = request;
 
+            //Todo dm change the relative uri conversion
+            let rel_uri = RelativeUri::try_from(format!(
+                "{}{}",
+                path.relative_path().node,
+                path.relative_path().lane
+            ))
+            .unwrap();
+
+            let routing_addr = client_router.lookup(path.host(), rel_uri).await.unwrap();
+            let connection_route = client_router.resolve_sender(routing_addr).await.unwrap();
+
+            let sender = ConnectionSender::new(connection_route);
+
+            tx.send(Ok((sender, None)));
             // Todo dm this will accept new requests and will return tx / rx
             // It will also route messages received from the subscribers to the right places.
-
-            match conn_type {
-                ConnectionType::Full => {}
-                ConnectionType::Outgoing => {}
-            }
+            // unimplemented!()
+            // match conn_type {
+            //     ConnectionType::Full => {}
+            //     ConnectionType::Outgoing => {}
+            // }
         }
     }
 }

@@ -54,7 +54,7 @@ enum Location {
     /// Indicates that envelopes will be routed to another agent on this host.
     Local(u32),
     /// Indicates that envelopes will be routed to a downlink on the client.
-    ClientConnection(u32),
+    Client(u32),
 }
 
 /// An opaque routing address.
@@ -71,17 +71,19 @@ impl RoutingAddr {
     }
 
     pub const fn client(id: u32) -> Self {
-        RoutingAddr(Location::ClientConnection(id))
+        RoutingAddr(Location::Client(id))
     }
 
-    //Todo dm
     pub fn is_local(&self) -> bool {
         matches!(self, RoutingAddr(Location::Local(_)))
-            || matches!(self, RoutingAddr(Location::ClientConnection(_)))
     }
 
     pub fn is_remote(&self) -> bool {
         matches!(self, RoutingAddr(Location::RemoteEndpoint(_)))
+    }
+
+    pub fn is_client(&self) -> bool {
+        matches!(self, RoutingAddr(Location::Client(_)))
     }
 }
 
@@ -90,7 +92,7 @@ impl Display for RoutingAddr {
         match self {
             RoutingAddr(Location::RemoteEndpoint(id)) => write!(f, "Remote({:X})", id),
             RoutingAddr(Location::Local(id)) => write!(f, "Local({:X})", id),
-            RoutingAddr(Location::ClientConnection(id)) => write!(f, "Client({:X})", id),
+            RoutingAddr(Location::Client(id)) => write!(f, "Client({:X})", id),
         }
     }
 }
@@ -132,14 +134,14 @@ impl Route {
 }
 
 #[derive(Clone, Debug)]
-pub struct Duplex {
+pub struct BidirectionalRoute {
     // pub sender: TaggedSender,
-// pub on_drop: promise::Receiver<ConnectionDropped>,
+    // pub on_drop: promise::Receiver<ConnectionDropped>,
 }
 
-impl Duplex {
+impl BidirectionalRoute {
     pub fn new() -> Self {
-        Duplex {}
+        BidirectionalRoute {}
     }
 }
 
@@ -149,11 +151,11 @@ pub trait Router: Send + Sync {
     /// consisting of a sender that will push envelopes to the endpoint.
     fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>>;
 
-    // Todo dm
-    // fn register_duplex_connection(
-    //     &mut self,
-    //     addr: RoutingAddr,
-    // ) -> BoxFuture<Result<Duplex, ResolutionError>>;
+    fn resolve_bidirectional(
+        &mut self,
+        host: Option<Url>,
+        route: RelativeUri,
+    ) -> BoxFuture<Result<BidirectionalRoute, ResolutionError>>;
 
     /// Find and return the corresponding routing address of an endpoint for a given route.
     fn lookup(

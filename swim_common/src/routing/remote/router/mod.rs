@@ -14,7 +14,7 @@
 
 use crate::request::Request;
 use crate::routing::remote::{RawRoute, RemoteRoutingRequest};
-use crate::routing::RouterError;
+use crate::routing::{BidirectionalRoute, RouterError};
 use crate::routing::{Origin, ResolutionError};
 use crate::routing::{Route, Router, RoutingAddr, TaggedSender};
 use futures::future::BoxFuture;
@@ -80,6 +80,41 @@ impl<DelegateRouter: Router> Router for RemoteRouter<DelegateRouter> {
             }
         }
         .boxed()
+    }
+
+    fn resolve_bidirectional(
+        &mut self,
+        host: Option<Url>,
+        route: RelativeUri,
+    ) -> BoxFuture<'_, Result<BidirectionalRoute, ResolutionError>> {
+        let RemoteRouter {
+            tag,
+            delegate_router,
+            request_tx,
+        } = self;
+        async move {
+            //Todo dm remove unwraps
+            let (tx, rx) = oneshot::channel();
+            let routing_req = RemoteRoutingRequest::Bidirectional {
+                host: host.unwrap(),
+                request: Request::new(tx),
+            };
+            if request_tx.send(routing_req).await.is_err() {
+                Err(ResolutionError::router_dropped())
+            } else {
+                // Todo dm
+                unimplemented!();
+                // match rx.await {
+
+                    // Ok(Ok(RawRoute { sender, on_drop })) => {
+                    //     Ok(Route::new(TaggedSender::new(*tag, sender), on_drop))
+                    // }
+                    // Ok(Err(err)) => Err(ResolutionError::unresolvable(err.to_string())),
+                    // Err(_) => Err(ResolutionError::router_dropped()),
+                // }
+            }
+        }.boxed()
+
     }
 
     fn lookup(

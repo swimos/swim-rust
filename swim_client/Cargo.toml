@@ -25,7 +25,7 @@ tracing = "0.1.16"
 utilities = { path = "../utilities" }
 swim_runtime = { path = "../swim_runtime" }
 swim_warp = { path = "../swim_warp" }
-swim_common = { path = "../swim_common" }
+swim_common = { path = "../swim_common", features = ["tls"] }
 
 http = "0.2"
 tokio-native-tls = "0.3"

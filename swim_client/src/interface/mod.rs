@@ -108,11 +108,12 @@ impl SwimClientBuilder {
 
         let client_params = downlinks_config.client_params();
 
-        let (remote_router_tx, remote_router_rx) =
+        let (remote_tx, remote_rx) =
             mpsc::channel(client_params.connections_params.router_buffer_size.get());
         let (client_conn_request_tx, client_conn_request_rx) =
             mpsc::channel(client_params.connections_params.router_buffer_size.get());
-        let client_router_factory = ClientRouterFactory::new(client_conn_request_tx.clone());
+        let client_router_factory =
+            ClientRouterFactory::new(client_conn_request_tx.clone(), remote_tx.clone());
         let (close_tx, close_rx) = promise::promise();
 
         let remote_connections_task = RemoteConnectionsTask::new_client_task(
@@ -123,11 +124,7 @@ impl SwimClientBuilder {
             },
             client_router_factory.clone(),
             OpenEndedFutures::new(),
-            RemoteConnectionChannels::new(
-                remote_router_tx.clone(),
-                remote_router_rx,
-                close_rx.clone(),
-            ),
+            RemoteConnectionChannels::new(remote_tx, remote_rx, close_rx.clone()),
         )
         .await;
 
