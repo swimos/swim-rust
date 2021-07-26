@@ -29,7 +29,9 @@ use swim_common::routing::error::{
     CloseError, ConnectionError, ResolutionError, ResolutionErrorKind,
 };
 use swim_common::routing::remote::table::SchemeHostPort;
-use swim_common::routing::{Route, Router, RouterFactory, RoutingAddr, TaggedEnvelope};
+use swim_common::routing::{
+    BidirectionalRoute, Route, Router, RouterFactory, RoutingAddr, TaggedEnvelope, TaggedSender,
+};
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::Addressable;
 use swim_runtime::task::*;
@@ -64,16 +66,16 @@ pub type Connection = (ConnectionSender, Option<ConnectionReceiver>);
 /// Wrapper for the transmitting end of a channel to an open connection.
 #[derive(Debug, Clone)]
 pub struct ConnectionSender {
-    inner: Route,
+    inner: TaggedSender,
 }
 
 impl ConnectionSender {
-    fn new(route: Route) -> Self {
-        ConnectionSender { inner: route }
+    fn new(inner: TaggedSender) -> Self {
+        ConnectionSender { inner }
     }
 
     pub async fn send(&mut self, envelope: Envelope) {
-        self.inner.sender.send_item(envelope).await;
+        self.inner.send_item(envelope).await;
     }
 }
 
@@ -437,12 +439,32 @@ impl<Path: Addressable> ConnectionRegistratorTask<Path> {
             ))
             .unwrap();
 
-            let routing_addr = client_router.lookup(path.host(), rel_uri).await.unwrap();
-            let connection_route = client_router.resolve_sender(routing_addr).await.unwrap();
+            let BidirectionalRoute {
+                mut sender,
+                mut receiver,
+            } = client_router
+                .resolve_bidirectional(path.host(), rel_uri)
+                .await
+                .unwrap();
 
-            let sender = ConnectionSender::new(connection_route);
+            // let routing_addr = client_router.lookup(path.host(), rel_uri).await.unwrap();
+            // let connection_route = client_router.resolve_sender(routing_addr).await.unwrap();
+            //
+            // let sender = ConnectionSender::new(connection_route);
 
-            tx.send(Ok((sender, None)));
+            sender
+                .send_item(Envelope::sync("/unit/foo", "info"))
+                .await
+                .unwrap();
+
+            let message = receiver.recv().await.unwrap();
+            eprintln!("message = {:#?}", message);
+
+            let message = receiver.recv().await.unwrap();
+            eprintln!("message = {:#?}", message);
+
+            unimplemented!()
+            // tx.send(Ok((ConnectionSender::new(sender), Some(receiver))));
             // Todo dm this will accept new requests and will return tx / rx
             // It will also route messages received from the subscribers to the right places.
             // unimplemented!()

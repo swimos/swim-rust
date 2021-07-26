@@ -202,7 +202,40 @@ impl<Path: Addressable> Router for ClientRouter<Path> {
         host: Option<Url>,
         route: RelativeUri,
     ) -> BoxFuture<Result<BidirectionalRoute, ResolutionError>> {
-        unimplemented!()
+        async move {
+            let ClientRouter {
+                tag,
+                request_sender,
+                remote_tx,
+            } = self;
+
+            match host {
+                Some(host) => {
+                    let (tx, rx) = oneshot::channel();
+                    if remote_tx
+                        .send(RemoteRoutingRequest::Bidirectional {
+                            host: host.clone(),
+                            request: Request::new(tx),
+                        })
+                        .await
+                        .is_err()
+                    {
+                        Err(ResolutionError::router_dropped())
+                    } else {
+                        match rx.await {
+                            Ok(Ok(addr)) => Ok(addr),
+                            Ok(Err(err)) => Err((ResolutionError::unresolvable(host.to_string()))),
+                            Err(_) => Err(ResolutionError::router_dropped()),
+                        }
+                    }
+                }
+                None => {
+                    eprintln!("route = {:#?}", route);
+                    unimplemented!()
+                }
+            }
+        }
+        .boxed()
     }
 
     fn lookup(
