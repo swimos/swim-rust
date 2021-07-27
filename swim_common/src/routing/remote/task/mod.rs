@@ -272,8 +272,8 @@ where
 pub struct BidirectionalConnectionTask<Str> {
     addr: SchemeSocketAddr,
     ws_stream: Str,
-    messages: mpsc::Receiver<TaggedEnvelope>,
-    message_injector: mpsc::Sender<TaggedEnvelope>,
+    messages: mpsc::Receiver<Envelope>,
+    message_injector: mpsc::Sender<Envelope>,
     message_sender: mpsc::Sender<Envelope>,
     stop_signal: trigger::Receiver,
     config: ConnectionConfig,
@@ -287,7 +287,7 @@ where
         addr: SchemeSocketAddr,
         ws_stream: Str,
         message_sender: mpsc::Sender<Envelope>,
-        (messages_tx, messages_rx): (mpsc::Sender<TaggedEnvelope>, mpsc::Receiver<TaggedEnvelope>),
+        (messages_tx, messages_rx): (mpsc::Sender<Envelope>, mpsc::Receiver<Envelope>),
         stop_signal: trigger::Receiver,
         config: ConnectionConfig,
     ) -> Self {
@@ -361,7 +361,8 @@ where
                                     let dispatch_result = message_sender.send(envelope).await;
 
                                     if let Err(SendError(env)) = dispatch_result {
-                                        handle_not_found(env, &message_injector).await;
+                                        //Todo dm
+                                        // handle_not_found(env, &message_injector).await;
                                     }
                                 }
                                 .then(move |_| async {
@@ -685,7 +686,7 @@ where
         ws_stream: Str,
         tag: RoutingAddr,
         spawner: &Sp,
-    ) -> (mpsc::Sender<TaggedEnvelope>, mpsc::Receiver<Envelope>)
+    ) -> (mpsc::Sender<Envelope>, mpsc::Receiver<Envelope>)
     where
         Str: JoinedStreamSink<WsMessage, ConnectionError> + Send + Unpin + 'static,
         Sp: Spawner<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>>,

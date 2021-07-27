@@ -212,7 +212,7 @@ where
         let (msg_tx, msg_rx) =
             tasks.spawn_bidirectional_connection_task(sock_addr, ws_stream, addr, spawner);
         request.send(Ok(BidirectionalRoute::new(
-            TaggedSender::new(addr, msg_tx),
+            msg_tx,
             msg_rx,
         )));
 

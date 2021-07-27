@@ -136,13 +136,13 @@ impl Route {
 //Todo dm
 #[derive(Debug)]
 pub struct BidirectionalRoute {
-    pub sender: TaggedSender,
+    pub sender: mpsc::Sender<Envelope>,
     pub receiver: mpsc::Receiver<Envelope>,
     // pub on_drop: promise::Receiver<ConnectionDropped>,
 }
 
 impl BidirectionalRoute {
-    pub fn new(sender: TaggedSender, receiver: mpsc::Receiver<Envelope>) -> Self {
+    pub fn new(sender: mpsc::Sender<Envelope>, receiver: mpsc::Receiver<Envelope>) -> Self {
         BidirectionalRoute { sender, receiver }
     }
 }

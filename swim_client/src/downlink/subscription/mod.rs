@@ -13,8 +13,8 @@
 // limitations under the License.
 
 use crate::configuration::downlink::{BackpressureMode, Config, DownlinkKind};
-use crate::connections::SwimConnPool;
 use crate::connections::{ConnectionPool, PoolTask};
+use crate::connections::{ConnectionReceiver, ConnectionSender, SwimConnPool};
 use crate::downlink::error::SubscriptionError;
 use crate::downlink::model::map::UntypedMapModification;
 use crate::downlink::model::value::SharedValue;
@@ -54,7 +54,7 @@ use swim_common::model::schema::StandardSchema;
 use swim_common::model::Value;
 use swim_common::request::Request;
 use swim_common::routing::error::RoutingError;
-use swim_common::routing::{CloseReceiver, RouterFactory};
+use swim_common::routing::{CloseReceiver, RouterFactory, RoutingAddr, TaggedEnvelope};
 use swim_common::sink::item;
 use swim_common::sink::item::either::SplitSink;
 use swim_common::sink::item::ItemSender;
@@ -549,20 +549,17 @@ impl<Path: Addressable> DownlinksTask<Path> {
     pub async fn connection_for(
         &mut self,
         path: Path,
-    ) -> RequestResult<(mpsc::Sender<Envelope>, mpsc::Receiver<RouterEvent>), Path> {
+    ) -> RequestResult<(ConnectionSender, ConnectionReceiver), Path> {
         //Todo dm change the types here
-        let a = self.connection_pool.request_connection(path).await;
-
-        let b = a
+        let (sender, receiver) = self
+            .connection_pool
+            .request_connection(path)
+            .await
             .unwrap()
-            .unwrap()
-            .0
-            .send(Envelope::sync("/unit/foo", "info"))
-            .await;
+            .unwrap();
 
-        time::sleep(Duration::from_secs(5)).await;
-        unimplemented!()
-
+        Ok((sender, receiver.unwrap()))
+        // Ok((sender, receiver.unwrap()))
         // let (tx, rx) = oneshot::channel();
         //
         // self.conn_request_tx
@@ -573,9 +570,16 @@ impl<Path: Addressable> DownlinksTask<Path> {
         // rx.await.map_err(|_| SubscriptionError::ConnectionError)
     }
 
-    pub async fn sink_for(&mut self, path: &Path) -> RequestResult<mpsc::Sender<Envelope>, Path> {
+    pub async fn sink_for(&mut self, path: Path) -> RequestResult<mpsc::Sender<Envelope>, Path> {
         //Todo dm
-        unimplemented!()
+        let (sender, _) = self
+            .connection_pool
+            .request_connection(path)
+            .await
+            .unwrap()
+            .unwrap();
+
+        Ok(sender)
 
         // let (tx, rx) = oneshot::channel();
         //
@@ -600,7 +604,7 @@ impl<Path: Addressable> DownlinksTask<Path> {
         let (sink, incoming) = self.connection_for(path.clone()).await?;
         let schema_cpy = schema.clone();
 
-        let updates = ReceiverStream::new(incoming).map(map_router_events);
+        let updates = ReceiverStream::new(incoming).map(map_envelope);
 
         let sink_path = path.clone();
         let cmd_sink =
@@ -666,12 +670,9 @@ impl<Path: Addressable> DownlinksTask<Path> {
         let key_schema_cpy = key_schema.clone();
         let value_schema_cpy = value_schema.clone();
 
-        let updates = ReceiverStream::new(incoming).map(|e| match e {
-            RouterEvent::Message(l) => Ok(envelopes::map::from_envelope(l)),
-            RouterEvent::ConnectionClosed => Err(RoutingError::ConnectionError),
-            RouterEvent::Unreachable(_) => Err(RoutingError::HostUnreachable),
-            RouterEvent::Stopping => Err(RoutingError::RouterDropped),
-        });
+        //Todo dm
+        let updates = ReceiverStream::new(incoming)
+            .map(|e| Ok(envelopes::map::from_envelope(e.into_incoming().unwrap())));
 
         let sink_path = path.clone();
 
@@ -752,7 +753,7 @@ impl<Path: Addressable> DownlinksTask<Path> {
         path: Path,
         schema: StandardSchema,
     ) -> RequestResult<Arc<UntypedCommandDownlink>, Path> {
-        let sink = self.sink_for(&path).await?;
+        let sink = self.sink_for(path.clone()).await?;
 
         let config = self.config.config_for(&path);
         let sink_path = path.clone();
@@ -813,7 +814,7 @@ impl<Path: Addressable> DownlinksTask<Path> {
     ) -> RequestResult<Arc<UntypedEventDownlink>, Path> {
         let (sink, incoming) = self.connection_for(path.clone()).await?;
 
-        let updates = ReceiverStream::new(incoming).map(map_router_events);
+        let updates = ReceiverStream::new(incoming).map(map_envelope);
 
         let config = self.config.config_for(&path);
 
@@ -1085,7 +1086,7 @@ impl<Path: Addressable> DownlinksTask<Path> {
         path: Path,
         envelope: Envelope,
     ) -> RequestResult<(), Path> {
-        let sink = self.sink_for(&path).await?;
+        let sink = self.sink_for(path).await?;
         sink.send(envelope)
             .await
             .map_err(|_| SubscriptionError::ConnectionError)?;
@@ -1100,4 +1101,10 @@ fn map_router_events(event: RouterEvent) -> Result<Message<Value>, RoutingError>
         RouterEvent::Unreachable(_) => Err(RoutingError::HostUnreachable),
         RouterEvent::Stopping => Err(RoutingError::RouterDropped),
     }
+}
+
+//Todo dm
+fn map_envelope(envelope: Envelope) -> Result<Message<Value>, RoutingError> {
+    let env = envelope.into_incoming().unwrap();
+    Ok(envelopes::value::from_envelope(env))
 }

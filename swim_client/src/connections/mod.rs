@@ -14,10 +14,12 @@
 
 use crate::configuration::router::ConnectionPoolParams;
 use crate::router::{ClientRequest, ClientRouter, ClientRouterFactory, RoutingPath, RoutingTable};
+use either::Either;
 use futures::future::BoxFuture;
 use futures::select;
 use futures::stream;
 use futures::{FutureExt, Stream, StreamExt};
+use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::num::NonZeroUsize;
@@ -39,6 +41,7 @@ use swim_runtime::time::instant::Instant;
 use swim_runtime::time::interval::interval;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::{SendError, TrySendError};
+use tokio::sync::mpsc::Sender;
 use tokio::sync::oneshot;
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{instrument, trace};
@@ -63,23 +66,8 @@ pub trait ConnectionPool: Clone + Send + 'static {
 
 pub type Connection = (ConnectionSender, Option<ConnectionReceiver>);
 
-/// Wrapper for the transmitting end of a channel to an open connection.
-#[derive(Debug, Clone)]
-pub struct ConnectionSender {
-    inner: TaggedSender,
-}
-
-impl ConnectionSender {
-    fn new(inner: TaggedSender) -> Self {
-        ConnectionSender { inner }
-    }
-
-    pub async fn send(&mut self, envelope: Envelope) {
-        self.inner.send_item(envelope).await;
-    }
-}
-
 pub(crate) type ConnectionReceiver = mpsc::Receiver<Envelope>;
+pub(crate) type ConnectionSender = mpsc::Sender<Envelope>;
 
 /// The connection pool is responsible for opening new connections to remote hosts and managing
 /// them. It is possible to request a connection to be recreated or to return a cached connection
@@ -241,7 +229,8 @@ impl<Path: Addressable> PoolTask<Path> {
                     counter += 1;
 
                     let client_router = client_router_factory.create_for(routing_address.clone());
-                    let (registrator, registrator_task) = ConnectionRegistrator::new(client_router);
+                    let (registrator, registrator_task) =
+                        ConnectionRegistrator::new(target.clone(), client_router);
                     spawn(registrator_task.run());
 
                     routing_table.add_registrator(
@@ -260,7 +249,7 @@ impl<Path: Addressable> PoolTask<Path> {
             tx.send(connection);
         }
 
-        unimplemented!()
+        Ok(())
 
         //Todo dm this should be a state machine
         // if conn not in connections
@@ -375,6 +364,7 @@ pub(crate) struct ConnectionRegistrator<Path: Addressable> {
 // Todo dm
 impl<Path: Addressable> ConnectionRegistrator<Path> {
     fn new(
+        target: Path,
         client_router: ClientRouter<Path>,
     ) -> (ConnectionRegistrator<Path>, ConnectionRegistratorTask<Path>) {
         //Todo dm change buffer size
@@ -382,7 +372,7 @@ impl<Path: Addressable> ConnectionRegistrator<Path> {
 
         (
             ConnectionRegistrator { conn_request_tx },
-            ConnectionRegistratorTask::new(conn_request_rx, client_router),
+            ConnectionRegistratorTask::new(target, conn_request_rx, client_router),
         )
     }
 
@@ -400,16 +390,19 @@ impl<Path: Addressable> ConnectionRegistrator<Path> {
 }
 
 struct ConnectionRegistratorTask<Path: Addressable> {
+    target: Path,
     conn_request_rx: mpsc::Receiver<ConnectionOpeningRequest<Path>>,
     client_router: ClientRouter<Path>,
 }
 
 impl<Path: Addressable> ConnectionRegistratorTask<Path> {
     fn new(
+        target: Path,
         conn_request_rx: mpsc::Receiver<ConnectionOpeningRequest<Path>>,
         client_router: ClientRouter<Path>,
     ) -> Self {
         ConnectionRegistratorTask {
+            target,
             conn_request_rx,
             client_router,
         }
@@ -417,62 +410,135 @@ impl<Path: Addressable> ConnectionRegistratorTask<Path> {
 
     async fn run(self) {
         let ConnectionRegistratorTask {
+            target,
             mut conn_request_rx,
             mut client_router,
         } = self;
 
-        let conn_tx = ();
-        let subs = ();
+        //Todo dm change the relative uri conversion
+        let rel_uri = RelativeUri::try_from(format!(
+            "{}{}",
+            target.relative_path().node,
+            target.relative_path().lane
+        ))
+        .unwrap();
 
-        while let Some(request) = conn_request_rx.recv().await {
-            let ConnectionOpeningRequest {
-                tx,
-                path,
-                conn_type,
-            } = request;
-
-            //Todo dm change the relative uri conversion
-            let rel_uri = RelativeUri::try_from(format!(
-                "{}{}",
-                path.relative_path().node,
-                path.relative_path().lane
-            ))
+        let BidirectionalRoute {
+            sender,
+            mut receiver,
+        } = client_router
+            .resolve_bidirectional(target.host(), rel_uri)
+            .await
             .unwrap();
 
-            let BidirectionalRoute {
-                mut sender,
-                mut receiver,
-            } = client_router
-                .resolve_bidirectional(path.host(), rel_uri)
-                .await
-                .unwrap();
+        let mut receiver = ReceiverStream::new(receiver).fuse();
+        let mut conn_request_rx = ReceiverStream::new(conn_request_rx).fuse();
 
-            // let routing_addr = client_router.lookup(path.host(), rel_uri).await.unwrap();
-            // let connection_route = client_router.resolve_sender(routing_addr).await.unwrap();
-            //
-            // let sender = ConnectionSender::new(connection_route);
+        let mut subscribers: HashMap<String, Vec<mpsc::Sender<Envelope>>> = HashMap::new();
+        loop {
+            let request: Either<Option<Envelope>, Option<ConnectionOpeningRequest<Path>>> = select! {
+                message = receiver.next() => Either::Left(message),
+                req = conn_request_rx.next() => Either::Right(req),
+            };
 
-            sender
-                .send_item(Envelope::sync("/unit/foo", "info"))
-                .await
-                .unwrap();
+            match request {
+                Either::Left(Some(envelope)) => {
+                    //Todo dm maybe send the incoming link message directly
+                    let incoming_message = envelope.clone().into_incoming().unwrap();
+                    let path = incoming_message.path.node.to_string();
 
-            let message = receiver.recv().await.unwrap();
-            eprintln!("message = {:#?}", message);
+                    let subscribers = subscribers.get(&path).unwrap();
 
-            let message = receiver.recv().await.unwrap();
-            eprintln!("message = {:#?}", message);
+                    //Todo dm use futures unordered
+                    for sub in subscribers {
+                        sub.send(envelope.clone()).await;
+                    }
+                }
+                Either::Right(Some(ConnectionOpeningRequest {
+                    tx,
+                    path,
+                    conn_type: ConnectionType::Full,
+                })) => {
+                    let receiver = match subscribers.entry(path.node().to_string()) {
+                        Entry::Occupied(mut entry) => {
+                            //Todo dm
+                            let (tx, rx) = mpsc::channel(8);
+                            entry.get_mut().push(tx);
+                            rx
+                        }
+                        Entry::Vacant(vacancy) => {
+                            //Todo dm
+                            let (tx, rx) = mpsc::channel(8);
+                            vacancy.insert(vec![tx]);
+                            rx
+                        }
+                    };
 
-            unimplemented!()
-            // tx.send(Ok((ConnectionSender::new(sender), Some(receiver))));
-            // Todo dm this will accept new requests and will return tx / rx
-            // It will also route messages received from the subscribers to the right places.
-            // unimplemented!()
-            // match conn_type {
-            //     ConnectionType::Full => {}
-            //     ConnectionType::Outgoing => {}
-            // }
+                    tx.send(Ok((sender.clone(), Some(receiver))));
+                }
+                Either::Right(Some(ConnectionOpeningRequest {
+                    tx,
+                    path,
+                    conn_type: ConnectionType::Outgoing,
+                })) => {
+                    tx.send(Ok((sender.clone(), None)));
+                }
+                _ => {
+                    //Todo dm
+                    unimplemented!()
+                }
+            }
         }
+
+        // while let Some(request) = conn_request_rx.recv().await {
+        //     let ConnectionOpeningRequest {
+        //         tx,
+        //         path,
+        //         conn_type,
+        //     } = request;
+        //
+        //     //Todo dm change the relative uri conversion
+        //     let rel_uri = RelativeUri::try_from(format!(
+        //         "{}{}",
+        //         path.relative_path().node,
+        //         path.relative_path().lane
+        //     ))
+        //     .unwrap();
+        //
+        //     let BidirectionalRoute {
+        //         mut sender,
+        //         mut receiver,
+        //     } = client_router
+        //         .resolve_bidirectional(path.host(), rel_uri)
+        //         .await
+        //         .unwrap();
+        //
+        //     // let routing_addr = client_router.lookup(path.host(), rel_uri).await.unwrap();
+        //     // let connection_route = client_router.resolve_sender(routing_addr).await.unwrap();
+        //     //
+        //     // let sender = ConnectionSender::new(connection_route);
+        //
+        //     // sender
+        //     //     .send(Envelope::sync("/unit/foo", "info"))
+        //     //     .await
+        //     //     .unwrap();
+        //     //
+        //     // let message = receiver.recv().await.unwrap();
+        //     // eprintln!("message = {:#?}", message);
+        //     //
+        //     // let message = receiver.recv().await.unwrap();
+        //     // eprintln!("message = {:#?}", message);
+        //     //
+        //     // unimplemented!()
+        //     tx.send(Ok((sender, Some(receiver))));
+        //     // Todo dm this will accept new requests and will return tx / rx
+        //     // It will also route messages received from the subscribers to the right places.
+        //     // unimplemented!()
+        //     // match conn_type {
+        //     //     ConnectionType::Full => {}
+        //     //     ConnectionType::Outgoing => {}
+        //     // }
+        // }
     }
 }
 
