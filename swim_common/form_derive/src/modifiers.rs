@@ -12,8 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::parser::TAG_PATH;
+use crate::parser::{SCHEMA_PATH, TAG_PATH};
 use crate::SynValidation;
+use quote::ToTokens;
 use std::convert::TryFrom;
 use utilities::validation::{Validation, ValidationItExt};
 use utilities::Symbol;
@@ -24,28 +25,65 @@ pub enum NameTransform {
     Rename(String),
 }
 
-impl TryFrom<&syn::NestedMeta> for NameTransform {
-    type Error = syn::Error;
+/// Errors that can occur attempting to extract a name transformation from a macro attribute.
+pub enum NameTransformError<'a> {
+    NonStringName(&'a syn::Lit),
+    EmptyName(&'a syn::LitStr),
+    UnknownAttributeName(String, &'a dyn ToTokens),
+    UnknownAttribute(&'a syn::NestedMeta),
+}
 
-    fn try_from(nested_meta: &syn::NestedMeta) -> Result<Self, Self::Error> {
+impl<'a> From<NameTransformError<'a>> for syn::Error {
+    fn from(err: NameTransformError<'a>) -> Self {
+        match err {
+            NameTransformError::NonStringName(name) => {
+                syn::Error::new_spanned(name, "Expected a string literal")
+            }
+            NameTransformError::EmptyName(name) => {
+                syn::Error::new_spanned(name, "New tag cannot be empty")
+            }
+            NameTransformError::UnknownAttributeName(name, tok) => {
+                syn::Error::new_spanned(tok, format!("Unknown container attribute: {}", name))
+            }
+            NameTransformError::UnknownAttribute(tok) => {
+                syn::Error::new_spanned(tok, "Unknown container attribute")
+            }
+        }
+    }
+}
+
+impl<'a> TryFrom<&'a syn::NestedMeta> for NameTransform {
+    type Error = NameTransformError<'a>;
+
+    fn try_from(nested_meta: &'a syn::NestedMeta) -> Result<Self, Self::Error> {
         match nested_meta {
             syn::NestedMeta::Meta(syn::Meta::NameValue(name)) if name.path == TAG_PATH => {
-                match &name.lit {
-                    syn::Lit::Str(s) => {
-                        let tag = s.value();
-                        if tag.is_empty() {
-                            Err(syn::Error::new_spanned(s, "New tag cannot be empty"))
-                        } else {
-                            Ok(NameTransform::Rename(tag))
+                if name.path == TAG_PATH {
+                    match &name.lit {
+                        syn::Lit::Str(s) => {
+                            let tag = s.value();
+                            if tag.is_empty() {
+                                Err(NameTransformError::EmptyName(s))
+                            } else {
+                                Ok(NameTransform::Rename(tag))
+                            }
                         }
+                        ow => Err(NameTransformError::NonStringName(ow)),
                     }
-                    _ => Err(syn::Error::new_spanned(name, "Expecting string argument")),
+                } else if let Some(name_str) = name.path.get_ident().map(|id| id.to_string()) {
+                    Err(NameTransformError::UnknownAttributeName(name_str, name))
+                } else {
+                    Err(NameTransformError::UnknownAttribute(nested_meta))
                 }
             }
-            _ => Err(syn::Error::new_spanned(
-                nested_meta,
-                "Unknown container attribute",
-            )),
+            syn::NestedMeta::Meta(syn::Meta::List(lst)) => {
+                if let Some(name_str) = lst.path.get_ident().map(|id| id.to_string()) {
+                    Err(NameTransformError::UnknownAttributeName(name_str, lst))
+                } else {
+                    Err(NameTransformError::UnknownAttribute(nested_meta))
+                }
+            }
+            _ => Err(NameTransformError::UnknownAttribute(nested_meta)),
         }
     }
 }
@@ -94,7 +132,8 @@ pub fn acc_rename(
                 None
             }
         }
-        Err(_) => None, //Overlap with other macros which we can ignore.
+        Err(NameTransformError::UnknownAttributeName(name, _)) if name == SCHEMA_PATH => None, //Overlap with other macros which we can ignore.
+        Err(e) => Some(e.into()),
     };
     Validation::Validated(state, err.into())
 }

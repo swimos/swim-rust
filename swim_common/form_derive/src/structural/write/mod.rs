@@ -40,10 +40,10 @@ impl<'a> Destructure<'a> {
     }
 }
 
-struct WriteWithFn<'a, 'b>(&'b SegregatedStructModel<'a, 'b>);
-struct WriteIntoFn<'a, 'b>(&'b SegregatedStructModel<'a, 'b>);
+struct WriteWithFn<'a>(&'a SegregatedStructModel<'a>);
+struct WriteIntoFn<'a>(&'a SegregatedStructModel<'a>);
 
-impl<'a, 'b> ToTokens for DeriveStructuralWritable<'a, SegregatedEnumModel<'a, 'b>> {
+impl<'a> ToTokens for DeriveStructuralWritable<'a, SegregatedEnumModel<'a>> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let DeriveStructuralWritable(model, generics) = self;
         let SegregatedEnumModel { inner, variants } = model;
@@ -143,7 +143,7 @@ impl<'a, 'b> ToTokens for DeriveStructuralWritable<'a, SegregatedEnumModel<'a, '
     }
 }
 
-impl<'a, 'b> ToTokens for DeriveStructuralWritable<'a, SegregatedStructModel<'a, 'b>> {
+impl<'a> ToTokens for DeriveStructuralWritable<'a, SegregatedStructModel<'a>> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let DeriveStructuralWritable(inner, generics) = self;
         let mut new_generics = (*generics).clone();
@@ -244,7 +244,7 @@ fn write_slot_into(field: &FieldModel) -> TokenStream {
     }
 }
 
-impl<'a, 'b> ToTokens for WriteWithFn<'a, 'b> {
+impl<'a> ToTokens for WriteWithFn<'a> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let WriteWithFn(model) = self;
         let SegregatedStructModel { inner, fields } = model;
@@ -363,7 +363,7 @@ fn make_header(
     }
 }
 
-impl<'a, 'b> ToTokens for WriteIntoFn<'a, 'b> {
+impl<'a> ToTokens for WriteIntoFn<'a> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let WriteIntoFn(model) = self;
         let SegregatedStructModel { inner, fields } = model;
@@ -475,7 +475,7 @@ impl<'a> ToTokens for Destructure<'a> {
     }
 }
 
-fn num_attributes<'a, 'b>(model: &'b SegregatedStructModel<'a, 'b>) -> TokenStream {
+fn num_attributes<'a>(model: &'a SegregatedStructModel<'a>) -> TokenStream {
     let base_attrs = model.fields.header.attributes.len() + 1;
     if let BodyFields::ReplacedBody(fld) = model.fields.body {
         let body_fld = match &fld.name {
@@ -491,10 +491,7 @@ fn num_attributes<'a, 'b>(model: &'b SegregatedStructModel<'a, 'b>) -> TokenStre
     }
 }
 
-fn num_attributes_case<'a, 'b>(
-    model: &'b SegregatedStructModel<'a, 'b>,
-    by_ref: bool,
-) -> TokenStream {
+fn num_attributes_case<'a>(model: &'a SegregatedStructModel<'a>, by_ref: bool) -> TokenStream {
     let base_attrs = model.fields.header.attributes.len() + 1;
     if let BodyFields::ReplacedBody(fld) = model.fields.body {
         let name = &fld.name;
@@ -509,9 +506,9 @@ fn num_attributes_case<'a, 'b>(
     }
 }
 
-pub struct NumAttrsEnum<'a, 'b>(&'b SegregatedEnumModel<'a, 'b>);
+pub struct NumAttrsEnum<'a>(&'a SegregatedEnumModel<'a>);
 
-impl<'a, 'b> ToTokens for NumAttrsEnum<'a, 'b> {
+impl<'a> ToTokens for NumAttrsEnum<'a> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let NumAttrsEnum(SegregatedEnumModel { inner, variants }) = self;
 

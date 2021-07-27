@@ -126,8 +126,8 @@ impl<'a> Display for Variants<'a> {
     }
 }
 
-const ENUM_WITH_FIELDS_ERR: &'static str = "Only enumerations with no fields can be tags.";
-const NON_ENUM_TYPE_ERR: &'static str = "Only enumeration types can be tags.";
+const ENUM_WITH_FIELDS_ERR: &str = "Only enumerations with no fields can be tags.";
+const NON_ENUM_TYPE_ERR: &str = "Only enumeration types can be tags.";
 
 pub fn build_derive_tag(input: syn::DeriveInput) -> Result<TokenStream, Errors<syn::Error>> {
     match &input.data {

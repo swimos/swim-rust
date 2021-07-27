@@ -15,8 +15,8 @@
 use super::ValidateFrom;
 use crate::modifiers::NameTransform;
 use crate::parser::{
-    ATTR_PATH, BODY_PATH, FORM_PATH, HEADER_BODY_PATH, HEADER_PATH, NAME_PATH, SKIP_PATH,
-    SLOT_PATH, TAG_PATH,
+    ATTR_PATH, BODY_PATH, FORM_PATH, HEADER_BODY_PATH, HEADER_PATH, NAME_PATH, SCHEMA_PATH,
+    SKIP_PATH, SLOT_PATH, TAG_PATH,
 };
 use crate::SynValidation;
 use macro_helpers::{FieldKind, Symbol};
@@ -64,9 +64,9 @@ impl<'a> FieldModel<'a> {
     }
 }
 
-pub struct ResolvedName<'a, 'b>(&'b FieldModel<'a>);
+pub struct ResolvedName<'a>(&'a FieldModel<'a>);
 
-impl<'a, 'b> ToTokens for ResolvedName<'a, 'b> {
+impl<'a> ToTokens for ResolvedName<'a> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let ResolvedName(field) = self;
         if let Some(trans) = field.transform.as_ref() {
@@ -121,7 +121,8 @@ enum FieldAttr {
     Transform(NameTransform),
     /// Specify where the field should occur in the serialized record.
     Kind(FieldKind),
-    Other,
+    /// Some other form attribute.
+    Other(Option<String>),
 }
 
 /// Validated attributes for a field.
@@ -132,7 +133,7 @@ struct FieldAttributes {
 }
 
 impl FieldAttributes {
-    /// Attempt to apply another attribute, failing of the combined effect is invalid.
+    /// Attempt to apply another attribute, failing if the combined effect is invalid.
     fn add(mut self, field: &syn::Field, attr: FieldAttr) -> SynValidation<FieldAttributes> {
         let FieldAttributes {
             transform,
@@ -157,7 +158,13 @@ impl FieldAttributes {
                     Validation::valid(self)
                 }
             }
-            FieldAttr::Other => Validation::valid(self),
+            FieldAttr::Other(name) => match name {
+                Some(name) if name == SCHEMA_PATH => Validation::valid(self), //Overlap with schema attribute.
+                _ => {
+                    let err = syn::Error::new_spanned(field, "Unknown container attribute");
+                    Validation::Validated(self, err.into())
+                }
+            },
         }
     }
 }
@@ -233,48 +240,61 @@ impl TryFrom<NestedMeta> for FieldAttr {
                         return Ok(FieldAttr::Kind(*kind));
                     }
                 }
-                Ok(FieldAttr::Other) //Overlap with schema macro.
+                let name = path.get_ident().map(|id| id.to_string());
+                Ok(FieldAttr::Other(name))
             }
-            NestedMeta::Meta(Meta::NameValue(named)) if named.path == NAME_PATH => {
-                if let Lit::Str(new_name) = &named.lit {
-                    Ok(FieldAttr::Transform(NameTransform::Rename(
-                        new_name.value(),
-                    )))
+            NestedMeta::Meta(Meta::NameValue(named)) => {
+                if named.path == NAME_PATH {
+                    if let Lit::Str(new_name) = &named.lit {
+                        Ok(FieldAttr::Transform(NameTransform::Rename(
+                            new_name.value(),
+                        )))
+                    } else {
+                        Err(syn::Error::new_spanned(
+                            &named.lit,
+                            "Expected a string literal",
+                        ))
+                    }
                 } else {
-                    Err(syn::Error::new_spanned(named, "Expected string argument"))
+                    let name = named.path.get_ident().map(|id| id.to_string());
+                    Ok(FieldAttr::Other(name))
                 }
             }
-            _ => Ok(FieldAttr::Other), //Overlap with schema macro.
+            NestedMeta::Meta(Meta::List(lst)) => {
+                let name = lst.path.get_ident().map(|id| id.to_string());
+                Ok(FieldAttr::Other(name))
+            }
+            _ => Ok(FieldAttr::Other(None)),
         }
     }
 }
 
 /// Description of how fields should be written into the attributes of the record.
 #[derive(Default, Clone)]
-pub struct HeaderFields<'a, 'b> {
+pub struct HeaderFields<'a> {
     /// A field that should be used to replaced the name of the tag attribute.
-    pub tag_name: Option<&'b FieldModel<'a>>,
+    pub tag_name: Option<&'a FieldModel<'a>>,
     /// A field that should be promoted to the body of the tag.
-    pub tag_body: Option<&'b FieldModel<'a>>,
+    pub tag_body: Option<&'a FieldModel<'a>>,
     /// Fields that should be promoted to the body of the tag (after the `tag_body` field, if it
     /// exists. These must be labelled.
-    pub header_fields: Vec<&'b FieldModel<'a>>,
+    pub header_fields: Vec<&'a FieldModel<'a>>,
     /// Fields that should be promoted to an attribute.
-    pub attributes: Vec<&'b FieldModel<'a>>,
+    pub attributes: Vec<&'a FieldModel<'a>>,
 }
 
 /// The fields that should be written into the body of the record.
 #[derive(Clone)]
-pub enum BodyFields<'a, 'b> {
+pub enum BodyFields<'a> {
     /// Simple items in the record body.
-    ReplacedBody(&'b FieldModel<'a>),
+    ReplacedBody(&'a FieldModel<'a>),
     /// A single field is used to replace the entire body (potentially adding more attributes). All
     /// other fields must be lifted into the header. If this cannot be done (for example, some of
     /// those fields are not labelled) it is an error.
-    StdBody(Vec<&'b FieldModel<'a>>),
+    StdBody(Vec<&'a FieldModel<'a>>),
 }
 
-impl<'a, 'b> Default for BodyFields<'a, 'b> {
+impl<'a> Default for BodyFields<'a> {
     fn default() -> Self {
         BodyFields::StdBody(vec![])
     }
@@ -282,12 +302,12 @@ impl<'a, 'b> Default for BodyFields<'a, 'b> {
 
 /// Description of how the fields of a type are written into a record.
 #[derive(Default, Clone)]
-pub struct SegregatedFields<'a, 'b> {
-    pub header: HeaderFields<'a, 'b>,
-    pub body: BodyFields<'a, 'b>,
+pub struct SegregatedFields<'a> {
+    pub header: HeaderFields<'a>,
+    pub body: BodyFields<'a>,
 }
 
-impl<'a, 'b> SegregatedFields<'a, 'b> {
+impl<'a> SegregatedFields<'a> {
     /// The number of field blocks in the type (most fields are a block in themself but the header,
     /// if it exists, is a single block).
     pub fn num_field_blocks(&self) -> usize {
@@ -319,10 +339,10 @@ impl<'a, 'b> SegregatedFields<'a, 'b> {
     }
 }
 
-impl<'a, 'b> Add<&'b TaggedFieldModel<'a>> for SegregatedFields<'a, 'b> {
+impl<'a> Add<&'a TaggedFieldModel<'a>> for SegregatedFields<'a> {
     type Output = Self;
 
-    fn add(self, rhs: &'b TaggedFieldModel<'a>) -> Self::Output {
+    fn add(self, rhs: &'a TaggedFieldModel<'a>) -> Self::Output {
         let SegregatedFields {
             mut header,
             mut body,

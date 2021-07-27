@@ -33,15 +33,15 @@ pub struct EnumModel<'a> {
 
 /// Fully processed description of an enum type, used to generate the output of the derive macros.
 #[derive(Clone)]
-pub struct SegregatedEnumModel<'a, 'b> {
+pub struct SegregatedEnumModel<'a> {
     /// Preprocessed model with attribute information.
-    pub inner: &'b EnumModel<'b>,
+    pub inner: &'a EnumModel<'a>,
     /// Description of where the fields should be written, for each variant.
-    pub variants: Vec<SegregatedStructModel<'a, 'b>>,
+    pub variants: Vec<SegregatedStructModel<'a>>,
 }
 
-impl<'a, 'b> From<&'b EnumModel<'a>> for SegregatedEnumModel<'a, 'b> {
-    fn from(model: &'b EnumModel<'a>) -> Self {
+impl<'a> From<&'a EnumModel<'a>> for SegregatedEnumModel<'a> {
+    fn from(model: &'a EnumModel<'a>) -> Self {
         let EnumModel { variants, .. } = model;
         let seg_variants = variants.iter().map(Into::into).collect();
         SegregatedEnumModel {
@@ -74,6 +74,10 @@ impl<'a> EnumDef<'a> {
     }
 }
 
+const VARIANT_WITH_TAG: &str = "Enum variants cannot specify a tag field";
+const TAG_SPECIFIED_FOR_ENUM: &str =
+    "A tag name cannot be specified for an enum type, only its variants.";
+
 impl<'a> ValidateFrom<EnumDef<'a>> for EnumModel<'a> {
     fn validate(input: EnumDef<'a>) -> SynValidation<Self> {
         let EnumDef {
@@ -91,7 +95,14 @@ impl<'a> ValidateFrom<EnumDef<'a>> for EnumModel<'a> {
                 .validate_fold(init, false, |mut var_models, variant| {
                     let struct_def =
                         StructDef::new(&variant.ident, variant, &variant.attrs, variant);
-                    let model = StructModel::validate(struct_def);
+                    let model = StructModel::validate(struct_def).and_then(|model| {
+                        if model.fields_model.manifest.has_tag_field {
+                            let err = syn::Error::new_spanned(variant, VARIANT_WITH_TAG);
+                            Validation::Validated(model, err.into())
+                        } else {
+                            Validation::valid(model)
+                        }
+                    });
                     match model {
                         Validation::Validated(model, errs) => {
                             var_models.push(model);
@@ -133,10 +144,7 @@ impl<'a> ValidateFrom<EnumDef<'a>> for EnumModel<'a> {
             names.and_then(move |_| {
                 let enum_model = EnumModel { name, variants };
                 if transform.is_some() {
-                    let err = syn::Error::new_spanned(
-                        top,
-                        "Tags are only supported on enumeration variants.",
-                    );
+                    let err = syn::Error::new_spanned(top, TAG_SPECIFIED_FOR_ENUM);
                     Validation::Validated(enum_model, err.into())
                 } else {
                     Validation::valid(enum_model)

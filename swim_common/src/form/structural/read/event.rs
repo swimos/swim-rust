@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::form::structural::read::error::ExpectedEvent;
 use crate::form::structural::read::ReadError;
 use crate::model::text::Text;
 use crate::model::ValueKind;
@@ -39,27 +40,30 @@ pub enum ReadEvent<'a> {
 }
 
 impl<'a> ReadEvent<'a> {
-    pub fn kind_error(&self) -> ReadError {
+    pub fn kind_error(&self, expected: ExpectedEvent) -> ReadError {
+        let expected = Some(expected);
         match self {
-            ReadEvent::Number(NumericValue::Int(_)) => ReadError::UnexpectedKind(ValueKind::Int64),
+            ReadEvent::Number(NumericValue::Int(_)) => {
+                ReadError::unexpected_kind(ValueKind::Int64, expected)
+            }
             ReadEvent::Number(NumericValue::UInt(_)) => {
-                ReadError::UnexpectedKind(ValueKind::UInt64)
+                ReadError::unexpected_kind(ValueKind::UInt64, expected)
             }
             ReadEvent::Number(NumericValue::BigInt(_)) => {
-                ReadError::UnexpectedKind(ValueKind::BigInt)
+                ReadError::unexpected_kind(ValueKind::BigInt, expected)
             }
             ReadEvent::Number(NumericValue::BigUint(_)) => {
-                ReadError::UnexpectedKind(ValueKind::BigUint)
+                ReadError::unexpected_kind(ValueKind::BigUint, expected)
             }
             ReadEvent::Number(NumericValue::Float(_)) => {
-                ReadError::UnexpectedKind(ValueKind::Float64)
+                ReadError::unexpected_kind(ValueKind::Float64, expected)
             }
-            ReadEvent::Boolean(_) => ReadError::UnexpectedKind(ValueKind::Boolean),
-            ReadEvent::TextValue(_) => ReadError::UnexpectedKind(ValueKind::Text),
-            ReadEvent::Extant => ReadError::UnexpectedKind(ValueKind::Extant),
-            ReadEvent::Blob(_) => ReadError::UnexpectedKind(ValueKind::Data),
+            ReadEvent::Boolean(_) => ReadError::unexpected_kind(ValueKind::Boolean, expected),
+            ReadEvent::TextValue(_) => ReadError::unexpected_kind(ValueKind::Text, expected),
+            ReadEvent::Extant => ReadError::unexpected_kind(ValueKind::Extant, expected),
+            ReadEvent::Blob(_) => ReadError::unexpected_kind(ValueKind::Data, expected),
             ReadEvent::StartBody | ReadEvent::StartAttribute(_) => {
-                ReadError::UnexpectedKind(ValueKind::Record)
+                ReadError::unexpected_kind(ValueKind::Record, expected)
             }
             _ => ReadError::InconsistentState,
         }

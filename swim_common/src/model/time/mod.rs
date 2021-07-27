@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::form::structural::read::error::ExpectedEvent;
 use crate::form::structural::read::event::{NumericValue, ReadEvent};
 use crate::form::structural::read::recognizer::{
     Recognizer, RecognizerReadable, SimpleAttrBody, SimpleRecBody,
@@ -137,7 +138,9 @@ impl Recognizer for TimestampRecognizer {
                 .map_err(|_| ReadError::NumberOutOfRange);
                 Some(result)
             }
-            ow => Some(Err(ow.kind_error())),
+            ow => Some(Err(
+                ow.kind_error(ExpectedEvent::ValueEvent(ValueKind::UInt64))
+            )),
         }
     }
 

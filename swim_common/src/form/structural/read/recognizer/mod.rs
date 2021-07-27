@@ -18,6 +18,7 @@ pub mod primitive;
 mod tests;
 
 use crate::form::structural::generic::coproduct::{CCons, CNil, Unify};
+use crate::form::structural::read::error::ExpectedEvent;
 use crate::form::structural::read::event::ReadEvent;
 use crate::form::structural::read::materializers::value::{
     AttrBodyMaterializer, DelegateBodyMaterializer, ValueMaterializer,
@@ -46,7 +47,7 @@ pub trait RecognizerReadable: Sized {
     type AttrRec: Recognizer<Target = Self>;
     type BodyRec: Recognizer<Target = Self>;
 
-    /// Create a state machine that will recognize the represenation of the type as a stream of
+    /// Create a state machine that will recognize the representation of the type as a stream of
     /// [`ReadEvent`]s.
     fn make_recognizer() -> Self::Rec;
 
@@ -126,11 +127,6 @@ where
         inner.try_flush()
     }
 }
-
-fn bad_kind(event: &ReadEvent<'_>) -> ReadError {
-    event.kind_error()
-}
-
 macro_rules! simple_readable {
     ($target:ty, $recog:ident) => {
         impl RecognizerReadable for $target {
@@ -254,7 +250,9 @@ impl Recognizer for RelativeUriRecognizer {
                 });
                 Some(uri)
             }
-            ow => Some(Err(bad_kind(&ow))),
+            ow => Some(Err(
+                ow.kind_error(ExpectedEvent::ValueEvent(ValueKind::Text))
+            )),
         }
     }
 
@@ -298,7 +296,9 @@ impl Recognizer for UrlRecognizer {
                 });
                 Some(url)
             }
-            ow => Some(Err(bad_kind(&ow))),
+            ow => Some(Err(
+                ow.kind_error(ExpectedEvent::ValueEvent(ValueKind::Text))
+            )),
         }
     }
 
@@ -323,7 +323,7 @@ impl<T, R: Recognizer<Target = T>> Recognizer for VecRecognizer<T, R> {
                     self.stage = BodyStage::Between;
                     None
                 } else {
-                    Some(Err(bad_kind(&input)))
+                    Some(Err(input.kind_error(ExpectedEvent::RecordBody)))
                 }
             }
             BodyStage::Between => match &input {
@@ -549,7 +549,7 @@ impl<T, Flds> Recognizer for NamedFieldsRecognizer<T, Flds> {
                     *state = BodyFieldState::Between;
                     None
                 } else {
-                    Some(Err(bad_kind(&input)))
+                    Some(Err(input.kind_error(ExpectedEvent::RecordBody)))
                 }
             }
             BodyFieldState::Between => match input {
@@ -568,14 +568,26 @@ impl<T, Flds> Recognizer for NamedFieldsRecognizer<T, Flds> {
                         Some(Err(ReadError::UnexpectedSlot))
                     }
                 }
-                ow => Some(Err(bad_kind(&ow))),
+                ow => {
+                    let mut expected = vec![];
+                    if *is_attr_body {
+                        expected.push(ExpectedEvent::EndOfAttribute);
+                    } else {
+                        expected.push(ExpectedEvent::EndOfRecord);
+                    }
+                    expected.push(ExpectedEvent::ValueEvent(ValueKind::Text));
+                    Some(Err(ow.kind_error(ExpectedEvent::Or(expected))))
+                }
             },
             BodyFieldState::ExpectingSlot => {
                 if matches!(input, ReadEvent::Slot) {
                     *state = BodyFieldState::SlotValue;
                     None
                 } else {
-                    Some(Err(ReadError::UnexpectedKind(ValueKind::Text)))
+                    Some(Err(ReadError::unexpected_kind(
+                        ValueKind::Text,
+                        Some(ExpectedEvent::Slot),
+                    )))
                 }
             }
             BodyFieldState::SlotValue => {
@@ -690,7 +702,7 @@ impl<T, Flds> Recognizer for OrdinalFieldsRecognizer<T, Flds> {
                 *state = BodyStage::Between;
                 None
             } else {
-                Some(Err(bad_kind(&input)))
+                Some(Err(input.kind_error(ExpectedEvent::RecordBody)))
             }
         } else if matches!(state, BodyStage::Between)
             && ((!*is_attr_body && matches!(&input, ReadEvent::EndRecord))
@@ -748,7 +760,7 @@ impl<R: Recognizer> Recognizer for SimpleAttrBody<R> {
                     Some(Err(ReadError::IncompleteRecord))
                 }
             } else {
-                Some(Err(bad_kind(&input)))
+                Some(Err(input.kind_error(ExpectedEvent::EndOfAttribute)))
             }
         } else {
             let r = self.delegate.feed_event(input)?;
@@ -1131,7 +1143,14 @@ impl<T, Flds> Recognizer for LabelledStructRecognizer<T, Flds> {
                         }
                     }
                 },
-                ow => Some(Err(bad_kind(&ow))),
+                ow => {
+                    let name = if let TagSpec::Fixed(name) = tag {
+                        Some(Text::new(name))
+                    } else {
+                        None
+                    };
+                    Some(Err(ow.kind_error(ExpectedEvent::Attribute(name))))
+                }
             },
             LabelledStructState::Header => {
                 if let Err(e) = select_recog(fields, *index, input)? {
@@ -1147,7 +1166,7 @@ impl<T, Flds> Recognizer for LabelledStructRecognizer<T, Flds> {
                     *state = LabelledStructState::AttrBetween;
                     None
                 }
-                ow => Some(Err(ow.kind_error())),
+                ow => Some(Err(ow.kind_error(ExpectedEvent::EndOfAttribute))),
             },
             LabelledStructState::AttrBetween => match input {
                 ReadEvent::StartBody => {
@@ -1167,7 +1186,10 @@ impl<T, Flds> Recognizer for LabelledStructRecognizer<T, Flds> {
                         Some(Err(ReadError::UnexpectedField(name.into())))
                     }
                 }
-                ow => Some(Err(bad_kind(&ow))),
+                ow => Some(Err(ow.kind_error(ExpectedEvent::Or(vec![
+                    ExpectedEvent::RecordBody,
+                    ExpectedEvent::Attribute(None),
+                ])))),
             },
             LabelledStructState::AttrItem => {
                 if let Err(e) = select_recog(fields, *index, input)? {
@@ -1193,14 +1215,17 @@ impl<T, Flds> Recognizer for LabelledStructRecognizer<T, Flds> {
                         Some(Err(ReadError::UnexpectedField(name.into())))
                     }
                 }
-                ow => Some(Err(bad_kind(&ow))),
+                ow => Some(Err(ow.kind_error(ExpectedEvent::Or(vec![
+                    ExpectedEvent::EndOfRecord,
+                    ExpectedEvent::ValueEvent(ValueKind::Text),
+                ])))),
             },
             LabelledStructState::BodyExpectingSlot => {
                 if matches!(&input, ReadEvent::Slot) {
                     *state = LabelledStructState::BodyItem;
                     None
                 } else {
-                    Some(Err(bad_kind(&input)))
+                    Some(Err(input.kind_error(ExpectedEvent::Slot)))
                 }
             }
             LabelledStructState::BodyItem => {
@@ -1289,7 +1314,14 @@ impl<T, Flds> Recognizer for OrdinalStructRecognizer<T, Flds> {
                         }
                     }
                 },
-                ow => Some(Err(bad_kind(&ow))),
+                ow => {
+                    let name = if let TagSpec::Fixed(name) = tag {
+                        Some(Text::new(name))
+                    } else {
+                        None
+                    };
+                    Some(Err(ow.kind_error(ExpectedEvent::Attribute(name))))
+                }
             },
             OrdinalStructState::Header => {
                 if let Err(e) = select_recog(fields, *index, input)? {
@@ -1305,7 +1337,7 @@ impl<T, Flds> Recognizer for OrdinalStructRecognizer<T, Flds> {
                     *state = OrdinalStructState::AttrBetween;
                     None
                 }
-                ow => Some(Err(ow.kind_error())),
+                ow => Some(Err(ow.kind_error(ExpectedEvent::EndOfAttribute))),
             },
             OrdinalStructState::AttrBetween => match &input {
                 ReadEvent::StartBody => {
@@ -1328,7 +1360,10 @@ impl<T, Flds> Recognizer for OrdinalStructRecognizer<T, Flds> {
                         Some(Err(ReadError::UnexpectedField(Text::new(name.borrow()))))
                     }
                 }
-                _ => Some(Err(bad_kind(&input))),
+                _ => Some(Err(input.kind_error(ExpectedEvent::Or(vec![
+                    ExpectedEvent::RecordBody,
+                    ExpectedEvent::Attribute(None),
+                ])))),
             },
             OrdinalStructState::AttrItem => {
                 if let Err(e) = select_recog(fields, *index, input)? {
@@ -1481,7 +1516,7 @@ impl<T> Recognizer for EmptyAttrRecognizer<T> {
             self.seen_extant = true;
             None
         } else {
-            Some(Err(bad_kind(&input)))
+            Some(Err(input.kind_error(ExpectedEvent::EndOfAttribute)))
         }
     }
 
@@ -1508,13 +1543,17 @@ impl<T> Recognizer for EmptyBodyRecognizer<T> {
     type Target = Option<T>;
 
     fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
-        if self.seen_start && matches!(input, ReadEvent::EndRecord) {
-            Some(Ok(None))
-        } else if !self.seen_start && matches!(input, ReadEvent::StartBody) {
+        if self.seen_start {
+            if matches!(input, ReadEvent::EndRecord) {
+                Some(Ok(None))
+            } else {
+                Some(Err(input.kind_error(ExpectedEvent::EndOfRecord)))
+            }
+        } else if matches!(input, ReadEvent::StartBody) {
             self.seen_start = true;
             None
         } else {
-            Some(Err(input.kind_error()))
+            Some(Err(input.kind_error(ExpectedEvent::RecordBody)))
         }
     }
 
@@ -1688,7 +1727,7 @@ where
                     self.stage = MapStage::Between;
                     None
                 } else {
-                    Some(Err(bad_kind(&input)))
+                    Some(Err(input.kind_error(ExpectedEvent::RecordBody)))
                 }
             }
             MapStage::Between => match &input {
@@ -1725,7 +1764,7 @@ where
                     self.stage = MapStage::Value;
                     None
                 } else {
-                    Some(Err(bad_kind(&input)))
+                    Some(Err(input.kind_error(ExpectedEvent::Slot)))
                 }
             }
             MapStage::Value => match self.val_rec.feed_event(input)? {
@@ -1906,7 +1945,14 @@ impl<T, Flds> Recognizer for DelegateStructRecognizer<T, Flds> {
                         }
                     }
                 },
-                ow => Some(Err(bad_kind(&ow))),
+                ow => {
+                    let name = if let TagSpec::Fixed(name) = tag {
+                        Some(Text::new(name))
+                    } else {
+                        None
+                    };
+                    Some(Err(ow.kind_error(ExpectedEvent::Attribute(name))))
+                }
             },
             DelegateStructState::Header => {
                 if let Err(e) = select_recog(fields, *index, input)? {
@@ -1922,7 +1968,7 @@ impl<T, Flds> Recognizer for DelegateStructRecognizer<T, Flds> {
                     *state = DelegateStructState::AttrBetween;
                     None
                 }
-                ow => Some(Err(ow.kind_error())),
+                ow => Some(Err(ow.kind_error(ExpectedEvent::EndOfAttribute))),
             },
             DelegateStructState::AttrBetween => match input {
                 ReadEvent::StartBody => {
@@ -1961,7 +2007,10 @@ impl<T, Flds> Recognizer for DelegateStructRecognizer<T, Flds> {
                         Some(Err(ReadError::UnexpectedField(name.into())))
                     }
                 }
-                ow => Some(Err(bad_kind(&ow))),
+                ow => Some(Err(ow.kind_error(ExpectedEvent::Or(vec![
+                    ExpectedEvent::RecordBody,
+                    ExpectedEvent::Attribute(None),
+                ])))),
             },
             DelegateStructState::AttrItem => {
                 if let Err(e) = select_recog(fields, *index, input)? {
@@ -2072,7 +2121,7 @@ where
                         Some(Err(ReadError::UnexpectedAttribute(name.into())))
                     }
                 }
-                ow => Some(Err(bad_kind(&ow))),
+                ow => Some(Err(ow.kind_error(ExpectedEvent::Attribute(None)))),
             },
             Some(var) => var.feed_event(input).map(|r| r.map(Unify::unify)),
         }
@@ -2133,33 +2182,55 @@ impl<T> Recognizer for UnitStructRecognizer<T> {
             state,
             on_done,
         } = self;
-        match (input, *state) {
-            (ReadEvent::StartAttribute(name), UnitStructState::Init) => {
-                if name == *tag {
-                    *state = UnitStructState::Tag;
-                    None
+        match *state {
+            UnitStructState::Init => {
+                if let ReadEvent::StartAttribute(name) = input {
+                    if name == *tag {
+                        *state = UnitStructState::Tag;
+                        None
+                    } else {
+                        Some(Err(ReadError::UnexpectedAttribute(name.into())))
+                    }
                 } else {
-                    Some(Err(ReadError::UnexpectedAttribute(name.into())))
+                    Some(Err(
+                        input.kind_error(ExpectedEvent::Attribute(Some(Text::new(*tag))))
+                    ))
                 }
             }
-            (ReadEvent::Extant, UnitStructState::Tag) => {
-                *state = UnitStructState::SeenExtant;
-                None
+            UnitStructState::Tag => match input {
+                ReadEvent::Extant => {
+                    *state = UnitStructState::SeenExtant;
+                    None
+                }
+                ReadEvent::EndAttribute => {
+                    *state = UnitStructState::AfterTag;
+                    None
+                }
+                ow => Some(Err(ow.kind_error(ExpectedEvent::EndOfAttribute))),
+            },
+            UnitStructState::SeenExtant => {
+                if matches!(&input, ReadEvent::EndAttribute) {
+                    *state = UnitStructState::AfterTag;
+                    None
+                } else {
+                    Some(Err(input.kind_error(ExpectedEvent::EndOfAttribute)))
+                }
             }
-            (ReadEvent::EndAttribute, UnitStructState::Tag) => {
-                *state = UnitStructState::AfterTag;
-                None
+            UnitStructState::AfterTag => {
+                if matches!(&input, ReadEvent::StartBody) {
+                    *state = UnitStructState::Body;
+                    None
+                } else {
+                    Some(Err(input.kind_error(ExpectedEvent::RecordBody)))
+                }
             }
-            (ReadEvent::EndAttribute, UnitStructState::SeenExtant) => {
-                *state = UnitStructState::AfterTag;
-                None
+            UnitStructState::Body => {
+                if matches!(&input, ReadEvent::EndRecord) {
+                    Some(Ok(on_done()))
+                } else {
+                    Some(Err(input.kind_error(ExpectedEvent::EndOfRecord)))
+                }
             }
-            (ReadEvent::StartBody, UnitStructState::AfterTag) => {
-                *state = UnitStructState::Body;
-                None
-            }
-            (ReadEvent::EndRecord, UnitStructState::Body) => Some(Ok(on_done())),
-            (ow, _) => Some(Err(bad_kind(&ow))),
         }
     }
 
@@ -2180,8 +2251,10 @@ impl<T> Default for RecognizeNothing<T> {
 impl<T> Recognizer for RecognizeNothing<T> {
     type Target = T;
 
-    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
-        Some(Err(bad_kind(&input)))
+    fn feed_event(&mut self, _input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
+        Some(Err(ReadError::Message(
+            format!("{} is uninhabited.", std::any::type_name::<T>()).into(),
+        )))
     }
 
     fn reset(&mut self) {}
@@ -2296,7 +2369,7 @@ impl<T: Tag> Recognizer for TagRecognizer<T> {
                 message,
             })
         } else {
-            Err(bad_kind(&input))
+            Err(input.kind_error(ExpectedEvent::ValueEvent(ValueKind::Text)))
         };
         Some(result)
     }
@@ -2466,7 +2539,7 @@ impl<T, Flds> Recognizer for HeaderRecognizer<T, Flds> {
                     };
                     None
                 } else {
-                    Some(Err(input.kind_error()))
+                    Some(Err(input.kind_error(ExpectedEvent::RecordBody)))
                 }
             }
             HeaderState::ExpectingBody => {
@@ -2517,21 +2590,30 @@ impl<T, Flds> Recognizer for HeaderRecognizer<T, Flds> {
                         Some(Err(ReadError::UnexpectedField(name.into())))
                     }
                 }
-                ow => Some(Err(ow.kind_error())),
+                ow => {
+                    let mut expected = vec![];
+                    if *flattened {
+                        expected.push(ExpectedEvent::EndOfAttribute);
+                    } else {
+                        expected.push(ExpectedEvent::EndOfRecord);
+                    }
+                    expected.push(ExpectedEvent::ValueEvent(ValueKind::Text));
+                    Some(Err(ow.kind_error(ExpectedEvent::Or(expected))))
+                }
             },
             HeaderState::ExpectingSlot => {
                 if matches!(&input, ReadEvent::Slot) {
                     *state = HeaderState::SlotItem;
                     None
                 } else {
-                    Some(Err(input.kind_error()))
+                    Some(Err(input.kind_error(ExpectedEvent::Slot)))
                 }
             }
             HeaderState::End => {
                 if matches!(&input, ReadEvent::EndAttribute) {
                     Some(on_done(fields))
                 } else {
-                    Some(Err(input.kind_error()))
+                    Some(Err(input.kind_error(ExpectedEvent::EndOfAttribute)))
                 }
             }
         }
@@ -2597,7 +2679,7 @@ impl<R: Recognizer> Recognizer for SimpleRecBody<R> {
                     *state = SimpleRecBodyState::ReadingValue;
                     None
                 } else {
-                    Some(Err(input.kind_error()))
+                    Some(Err(input.kind_error(ExpectedEvent::RecordBody)))
                 }
             }
             SimpleRecBodyState::ReadingValue => match delegate.feed_event(input)? {
@@ -2612,7 +2694,7 @@ impl<R: Recognizer> Recognizer for SimpleRecBody<R> {
                 if matches!(input, ReadEvent::EndRecord) {
                     value.take().map(Ok)
                 } else {
-                    Some(Err(input.kind_error()))
+                    Some(Err(input.kind_error(ExpectedEvent::EndOfRecord)))
                 }
             }
         }

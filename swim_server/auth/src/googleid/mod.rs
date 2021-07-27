@@ -24,7 +24,7 @@ use serde::{Deserialize, Serialize};
 use url::Url;
 
 use swim_common::form::Form;
-use swim_common::model::Value;
+use swim_common::model::{Value, ValueKind};
 
 use crate::googleid::store::{
     GoogleKeyStore, GoogleKeyStoreError, DEFAULT_CERT_SKEW, GOOGLE_JWK_CERTS_URL,
@@ -35,6 +35,7 @@ use crate::{AuthenticationError, Authenticator};
 use biscuit::jwa::SignatureAlgorithm;
 use std::borrow::Borrow;
 use std::convert::TryFrom;
+use swim_common::form::structural::read::error::ExpectedEvent;
 use swim_common::form::structural::read::event::{NumericValue, ReadEvent};
 use swim_common::form::structural::read::recognizer::primitive::StringRecognizer;
 use swim_common::form::structural::read::recognizer::{
@@ -217,7 +218,9 @@ impl Recognizer for GoogleIdAuthenticatorRecognizer {
                         Some(Err(ReadError::MissingTag))
                     }
                 } else {
-                    Some(Err(input.kind_error()))
+                    Some(Err(input.kind_error(ExpectedEvent::Attribute(Some(
+                        Text::new(GOOGLE_AUTH_TAG),
+                    )))))
                 }
             }
             AuthRecogState::Tag => match input {
@@ -226,14 +229,14 @@ impl Recognizer for GoogleIdAuthenticatorRecognizer {
                     self.state = AuthRecogState::AfterTag;
                     None
                 }
-                ow => Some(Err(ow.kind_error())),
+                ow => Some(Err(ow.kind_error(ExpectedEvent::EndOfAttribute))),
             },
             AuthRecogState::AfterTag => {
                 if matches!(&input, ReadEvent::StartBody) {
                     self.state = AuthRecogState::InBody;
                     None
                 } else {
-                    Some(Err(input.kind_error()))
+                    Some(Err(input.kind_error(ExpectedEvent::RecordBody)))
                 }
             }
             AuthRecogState::InBody => match input {
@@ -261,14 +264,17 @@ impl Recognizer for GoogleIdAuthenticatorRecognizer {
                     ow => Some(Err(ReadError::UnexpectedField(Text::new(ow)))),
                 },
                 ReadEvent::EndRecord => Some(self.try_done()),
-                ow => Some(Err(ow.kind_error())),
+                ow => Some(Err(ow.kind_error(ExpectedEvent::Or(vec![
+                    ExpectedEvent::ValueEvent(ValueKind::Text),
+                    ExpectedEvent::EndOfRecord,
+                ])))),
             },
             AuthRecogState::Slot(fld) => {
                 if matches!(&input, ReadEvent::Slot) {
                     self.state = AuthRecogState::Field(*fld);
                     None
                 } else {
-                    Some(Err(input.kind_error()))
+                    Some(Err(input.kind_error(ExpectedEvent::Slot)))
                 }
             }
             AuthRecogState::Field(AuthRecogField::TokenSkew) => match input {
@@ -286,7 +292,9 @@ impl Recognizer for GoogleIdAuthenticatorRecognizer {
                         Some(Err(ReadError::NumberOutOfRange))
                     }
                 }
-                ow => Some(Err(ow.kind_error())),
+                ow => Some(Err(
+                    ow.kind_error(ExpectedEvent::ValueEvent(ValueKind::UInt64))
+                )),
             },
             AuthRecogState::Field(AuthRecogField::CertSkew) => match input {
                 ReadEvent::Number(NumericValue::Int(n)) => {
@@ -303,7 +311,9 @@ impl Recognizer for GoogleIdAuthenticatorRecognizer {
                         Some(Err(ReadError::NumberOutOfRange))
                     }
                 }
-                ow => Some(Err(ow.kind_error())),
+                ow => Some(Err(
+                    ow.kind_error(ExpectedEvent::ValueEvent(ValueKind::UInt64))
+                )),
             },
             AuthRecogState::Field(AuthRecogField::PublicKeyUri) => {
                 if let ReadEvent::TextValue(text) = input {
@@ -318,7 +328,9 @@ impl Recognizer for GoogleIdAuthenticatorRecognizer {
                         }))
                     }
                 } else {
-                    Some(Err(input.kind_error()))
+                    Some(Err(
+                        input.kind_error(ExpectedEvent::ValueEvent(ValueKind::Text))
+                    ))
                 }
             }
             AuthRecogState::Field(AuthRecogField::Emails) => {

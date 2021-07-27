@@ -60,7 +60,7 @@ pub trait Authenticator<'s>: Form {
 
 /// An authenticator that will always allow the remote host.
 #[derive(Form)]
-#[form(name = "allow")]
+#[form(tag = "allow")]
 pub struct AlwaysAllowAuthenticator;
 
 impl<'s> Authenticator<'s> for AlwaysAllowAuthenticator {
@@ -77,7 +77,7 @@ impl<'s> Authenticator<'s> for AlwaysAllowAuthenticator {
 
 /// An authenticator that will always deny the remote host.
 #[derive(Form)]
-#[form(name = "deny")]
+#[form(tag = "deny")]
 pub struct AlwaysDenyAuthenticator;
 impl<'s> Authenticator<'s> for AlwaysDenyAuthenticator {
     type Credentials = Value;
@@ -93,7 +93,7 @@ impl<'s> Authenticator<'s> for AlwaysDenyAuthenticator {
 
 /// An authenticator that will always forbid the remote host.
 #[derive(Form)]
-#[form(name = "forbid")]
+#[form(tag = "forbid")]
 pub struct AlwaysForbidAuthenticator;
 impl<'s> Authenticator<'s> for AlwaysForbidAuthenticator {
     type Credentials = Value;

@@ -30,7 +30,7 @@ use crate::structural::model::record::SegregatedStructModel;
 /// [`SegregatedEnumModel`].
 pub struct DeriveStructuralReadable<'a, S>(pub S, pub &'a Generics);
 
-impl<'a, 'b> ToTokens for DeriveStructuralReadable<'b, SegregatedStructModel<'a, 'b>> {
+impl<'a> ToTokens for DeriveStructuralReadable<'a, SegregatedStructModel<'a>> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let DeriveStructuralReadable(model, generics) = self;
         let mut new_generics = (*generics).clone();
@@ -174,7 +174,7 @@ fn suffixed_header_builder_ident(suffix: usize) -> syn::Ident {
     format_ident!("{}{}", HEADER_BUILDER_NAME, suffix)
 }
 
-impl<'a, 'b> ToTokens for DeriveStructuralReadable<'b, SegregatedEnumModel<'a, 'b>> {
+impl<'a> ToTokens for DeriveStructuralReadable<'a, SegregatedEnumModel<'a>> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let DeriveStructuralReadable(model, generics) = self;
         let SegregatedEnumModel { inner, variants } = model;
@@ -341,18 +341,18 @@ impl<'a, 'b> ToTokens for DeriveStructuralReadable<'b, SegregatedEnumModel<'a, '
     }
 }
 
-struct RecognizerState<'a, 'b> {
-    target: &'b syn::Type,
-    model: &'b SegregatedStructModel<'a, 'b>,
+struct RecognizerState<'a> {
+    target: &'a syn::Type,
+    model: &'a SegregatedStructModel<'a>,
 }
 
-impl<'a, 'b> RecognizerState<'a, 'b> {
-    fn new(model: &'b SegregatedStructModel<'a, 'b>, target: &'b syn::Type) -> Self {
+impl<'a> RecognizerState<'a> {
+    fn new(model: &'a SegregatedStructModel<'a>, target: &'a syn::Type) -> Self {
         RecognizerState { target, model }
     }
 }
 
-impl<'a, 'b> ToTokens for RecognizerState<'a, 'b> {
+impl<'a> ToTokens for RecognizerState<'a> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let RecognizerState {
             target,
@@ -456,15 +456,15 @@ impl<'a> ToTokens for HeaderFieldsState<'a> {
     }
 }
 
-struct HeaderRecognizerState<'a, 'b> {
-    target: &'b syn::Type,
+struct HeaderRecognizerState<'a> {
+    target: &'a syn::Type,
     tag_body: Option<&'a FieldModel<'a>>,
     header_fields: &'a [&'a FieldModel<'a>],
 }
 
-impl<'a, 'b> HeaderRecognizerState<'a, 'b> {
+impl<'a> HeaderRecognizerState<'a> {
     fn new(
-        target: &'b syn::Type,
+        target: &'a syn::Type,
         tag_body: Option<&'a FieldModel<'a>>,
         header_fields: &'a [&'a FieldModel<'a>],
     ) -> Self {
@@ -476,7 +476,7 @@ impl<'a, 'b> HeaderRecognizerState<'a, 'b> {
     }
 }
 
-impl<'a, 'b> ToTokens for HeaderRecognizerState<'a, 'b> {
+impl<'a> ToTokens for HeaderRecognizerState<'a> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let HeaderRecognizerState {
             target,
@@ -502,17 +502,14 @@ impl<'a, 'b> ToTokens for HeaderRecognizerState<'a, 'b> {
     }
 }
 
-struct SelectIndexFnLabelled<'a, 'b> {
-    fields: &'b SegregatedStructModel<'a, 'b>,
-    body_fields: &'b [&'b FieldModel<'a>],
+struct SelectIndexFnLabelled<'a> {
+    fields: &'a SegregatedStructModel<'a>,
+    body_fields: &'a [&'a FieldModel<'a>],
     variant: Option<usize>,
 }
 
-impl<'a, 'b> SelectIndexFnLabelled<'a, 'b> {
-    fn new(
-        model: &'b SegregatedStructModel<'a, 'b>,
-        body_fields: &'b [&'b FieldModel<'a>],
-    ) -> Self {
+impl<'a> SelectIndexFnLabelled<'a> {
+    fn new(model: &'a SegregatedStructModel<'a>, body_fields: &'a [&'a FieldModel<'a>]) -> Self {
         SelectIndexFnLabelled {
             fields: model,
             body_fields,
@@ -521,8 +518,8 @@ impl<'a, 'b> SelectIndexFnLabelled<'a, 'b> {
     }
 
     fn variant(
-        model: &'b SegregatedStructModel<'a, 'b>,
-        body_fields: &'b [&'b FieldModel<'a>],
+        model: &'a SegregatedStructModel<'a>,
+        body_fields: &'a [&'a FieldModel<'a>],
         variant_ordinal: usize,
     ) -> Self {
         SelectIndexFnLabelled {
@@ -578,7 +575,7 @@ fn select_var_name() -> syn::Ident {
 const BUILDER_NAME: &str = "Builder";
 const HEADER_BUILDER_NAME: &str = "HeaderBuilder";
 
-impl<'a, 'b> ToTokens for SelectIndexFnLabelled<'a, 'b> {
+impl<'a> ToTokens for SelectIndexFnLabelled<'a> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let SelectIndexFnLabelled {
             fields,
@@ -656,20 +653,20 @@ impl<'a, 'b> ToTokens for SelectIndexFnLabelled<'a, 'b> {
     }
 }
 
-struct SelectIndexFnOrdinal<'a, 'b> {
-    fields: &'b SegregatedStructModel<'a, 'b>,
+struct SelectIndexFnOrdinal<'a> {
+    fields: &'a SegregatedStructModel<'a>,
     variant: Option<usize>,
 }
 
-impl<'a, 'b> SelectIndexFnOrdinal<'a, 'b> {
-    fn new(model: &'b SegregatedStructModel<'a, 'b>) -> Self {
+impl<'a> SelectIndexFnOrdinal<'a> {
+    fn new(model: &'a SegregatedStructModel<'a>) -> Self {
         SelectIndexFnOrdinal {
             fields: model,
             variant: None,
         }
     }
 
-    fn variant(model: &'b SegregatedStructModel<'a, 'b>, variant_ordinal: usize) -> Self {
+    fn variant(model: &'a SegregatedStructModel<'a>, variant_ordinal: usize) -> Self {
         SelectIndexFnOrdinal {
             fields: model,
             variant: Some(variant_ordinal),
@@ -677,7 +674,7 @@ impl<'a, 'b> SelectIndexFnOrdinal<'a, 'b> {
     }
 }
 
-impl<'a, 'b> ToTokens for SelectIndexFnOrdinal<'a, 'b> {
+impl<'a> ToTokens for SelectIndexFnOrdinal<'a> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let SelectIndexFnOrdinal { fields, variant } = self;
         let SegregatedStructModel { fields, .. } = fields;
@@ -742,12 +739,12 @@ impl<'a, 'b> ToTokens for SelectIndexFnOrdinal<'a, 'b> {
     }
 }
 
-struct SelectFeedFn<'a, 'b> {
-    fields: &'b SegregatedStructModel<'a, 'b>,
+struct SelectFeedFn<'a> {
+    fields: &'a SegregatedStructModel<'a>,
 }
 
-impl<'a, 'b> SelectFeedFn<'a, 'b> {
-    fn new(model: &'b SegregatedStructModel<'a, 'b>) -> Self {
+impl<'a> SelectFeedFn<'a> {
+    fn new(model: &'a SegregatedStructModel<'a>) -> Self {
         SelectFeedFn { fields: model }
     }
 }
@@ -779,7 +776,7 @@ impl<'a> FieldGroup<'a> {
 /// Enumerates the fields in a descriptor in the order in which the implementation exepects to
 /// receive them.
 fn enumerate_fields<'a>(
-    model: &'a SegregatedFields<'a, 'a>,
+    model: &'a SegregatedFields<'a>,
 ) -> impl Iterator<Item = FieldGroup<'a>> + Clone + 'a {
     let SegregatedFields { header, body } = model;
     let HeaderFields {
@@ -814,7 +811,7 @@ fn enumerate_fields<'a>(
         .chain(body_fields.into_iter())
 }
 
-impl<'a, 'b> ToTokens for SelectFeedFn<'a, 'b> {
+impl<'a> ToTokens for SelectFeedFn<'a> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let SelectFeedFn { fields } = self;
         let SegregatedStructModel { fields, .. } = fields;
@@ -846,13 +843,13 @@ impl<'a, 'b> ToTokens for SelectFeedFn<'a, 'b> {
     }
 }
 
-struct OnDoneFn<'a, 'b> {
-    fields: &'b SegregatedStructModel<'a, 'b>,
+struct OnDoneFn<'a> {
+    fields: &'a SegregatedStructModel<'a>,
     constructor: syn::Path,
 }
 
-impl<'a, 'b> OnDoneFn<'a, 'b> {
-    fn new(model: &'b SegregatedStructModel<'a, 'b>, constructor: syn::Path) -> Self {
+impl<'a> OnDoneFn<'a> {
+    fn new(model: &'a SegregatedStructModel<'a>, constructor: syn::Path) -> Self {
         OnDoneFn {
             fields: model,
             constructor,
@@ -860,7 +857,7 @@ impl<'a, 'b> OnDoneFn<'a, 'b> {
     }
 }
 
-impl<'a, 'b> ToTokens for OnDoneFn<'a, 'b> {
+impl<'a> ToTokens for OnDoneFn<'a> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let OnDoneFn {
             fields,
@@ -1046,12 +1043,12 @@ impl ToTokens for ResetFn {
     }
 }
 
-struct ConstructFieldRecognizers<'a, 'b> {
-    fields: &'b SegregatedStructModel<'a, 'b>,
+struct ConstructFieldRecognizers<'a> {
+    fields: &'a SegregatedStructModel<'a>,
     variant: Option<usize>,
 }
 
-impl<'a, 'b> ToTokens for ConstructFieldRecognizers<'a, 'b> {
+impl<'a> ToTokens for ConstructFieldRecognizers<'a> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let ConstructFieldRecognizers { fields, variant } = self;
         let SegregatedStructModel { fields, .. } = fields;
@@ -1123,13 +1120,13 @@ impl<'a, 'b> ToTokens for ConstructFieldRecognizers<'a, 'b> {
     }
 }
 
-struct StructReadableImpl<'a, 'b> {
-    fields: &'b SegregatedStructModel<'a, 'b>,
-    gen_params: &'b TypeGenerics<'b>,
+struct StructReadableImpl<'a> {
+    fields: &'a SegregatedStructModel<'a>,
+    gen_params: &'a TypeGenerics<'a>,
 }
 
-impl<'a, 'b> StructReadableImpl<'a, 'b> {
-    fn new(model: &'b SegregatedStructModel<'a, 'b>, gen_params: &'b TypeGenerics<'b>) -> Self {
+impl<'a> StructReadableImpl<'a> {
+    fn new(model: &'a SegregatedStructModel<'a>, gen_params: &'a TypeGenerics<'a>) -> Self {
         StructReadableImpl {
             fields: model,
             gen_params,
@@ -1138,7 +1135,7 @@ impl<'a, 'b> StructReadableImpl<'a, 'b> {
 }
 
 fn compound_recognizer(
-    model: &SegregatedStructModel<'_, '_>,
+    model: &SegregatedStructModel<'_>,
     target: &syn::Type,
     builder: &syn::Type,
 ) -> (syn::Type, syn::Type) {
@@ -1164,7 +1161,7 @@ fn compound_recognizer(
     (recog_ty, vtable_ty)
 }
 
-impl<'a, 'b> ToTokens for StructReadableImpl<'a, 'b> {
+impl<'a> ToTokens for StructReadableImpl<'a> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let StructReadableImpl { fields, gen_params } = self;
         let name = fields.inner.name;
@@ -1231,18 +1228,18 @@ impl<'a, 'b> ToTokens for StructReadableImpl<'a, 'b> {
     }
 }
 
-struct SelectVariantFn<'a, 'b> {
-    model: &'b SegregatedEnumModel<'a, 'b>,
-    gen_params: &'b TypeGenerics<'b>,
+struct SelectVariantFn<'a> {
+    model: &'a SegregatedEnumModel<'a>,
+    gen_params: &'a TypeGenerics<'a>,
 }
 
-impl<'a, 'b> SelectVariantFn<'a, 'b> {
-    fn new(model: &'b SegregatedEnumModel<'a, 'b>, gen_params: &'b TypeGenerics<'b>) -> Self {
+impl<'a> SelectVariantFn<'a> {
+    fn new(model: &'a SegregatedEnumModel<'a>, gen_params: &'a TypeGenerics<'a>) -> Self {
         SelectVariantFn { model, gen_params }
     }
 }
 
-impl<'a, 'b> ToTokens for SelectVariantFn<'a, 'b> {
+impl<'a> ToTokens for SelectVariantFn<'a> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let SelectVariantFn {
             model: SegregatedEnumModel { inner, variants },
@@ -1298,18 +1295,18 @@ impl<'a, 'b> ToTokens for SelectVariantFn<'a, 'b> {
     }
 }
 
-struct EnumState<'a, 'b> {
-    model: &'b SegregatedEnumModel<'a, 'b>,
-    gen_params: &'b TypeGenerics<'b>,
+struct EnumState<'a> {
+    model: &'a SegregatedEnumModel<'a>,
+    gen_params: &'a TypeGenerics<'a>,
 }
 
-impl<'a, 'b> EnumState<'a, 'b> {
-    fn new(model: &'b SegregatedEnumModel<'a, 'b>, gen_params: &'b TypeGenerics<'b>) -> Self {
+impl<'a> EnumState<'a> {
+    fn new(model: &'a SegregatedEnumModel<'a>, gen_params: &'a TypeGenerics<'a>) -> Self {
         EnumState { model, gen_params }
     }
 }
 
-impl<'a, 'b> ToTokens for EnumState<'a, 'b> {
+impl<'a> ToTokens for EnumState<'a> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let EnumState {
             model: SegregatedEnumModel { inner, variants },
@@ -1364,16 +1361,16 @@ fn add_bounds(original: &Generics, generics: &mut Generics) {
     }
 }
 
-struct HeaderSelectIndexFn<'a, 'b> {
-    tag_body: Option<&'b FieldModel<'a>>,
-    header_fields: &'b [&'b FieldModel<'a>],
+struct HeaderSelectIndexFn<'a> {
+    tag_body: Option<&'a FieldModel<'a>>,
+    header_fields: &'a [&'a FieldModel<'a>],
     variant: Option<usize>,
 }
 
-impl<'a, 'b> HeaderSelectIndexFn<'a, 'b> {
+impl<'a> HeaderSelectIndexFn<'a> {
     fn new(
-        tag_body: Option<&'b FieldModel<'a>>,
-        header_fields: &'b [&'b FieldModel<'a>],
+        tag_body: Option<&'a FieldModel<'a>>,
+        header_fields: &'a [&'a FieldModel<'a>],
         variant: Option<usize>,
     ) -> Self {
         HeaderSelectIndexFn {
@@ -1384,13 +1381,13 @@ impl<'a, 'b> HeaderSelectIndexFn<'a, 'b> {
     }
 }
 
-struct HeaderFeedFn<'a, 'b> {
-    tag_body: Option<&'b FieldModel<'a>>,
-    header_fields: &'b [&'b FieldModel<'a>],
+struct HeaderFeedFn<'a> {
+    tag_body: Option<&'a FieldModel<'a>>,
+    header_fields: &'a [&'a FieldModel<'a>],
 }
 
-impl<'a, 'b> HeaderFeedFn<'a, 'b> {
-    fn new(tag_body: Option<&'b FieldModel<'a>>, header_fields: &'b [&'b FieldModel<'a>]) -> Self {
+impl<'a> HeaderFeedFn<'a> {
+    fn new(tag_body: Option<&'a FieldModel<'a>>, header_fields: &'a [&'a FieldModel<'a>]) -> Self {
         HeaderFeedFn {
             tag_body,
             header_fields,
@@ -1398,7 +1395,7 @@ impl<'a, 'b> HeaderFeedFn<'a, 'b> {
     }
 }
 
-impl<'a, 'b> ToTokens for HeaderSelectIndexFn<'a, 'b> {
+impl<'a> ToTokens for HeaderSelectIndexFn<'a> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let HeaderSelectIndexFn {
             tag_body,
@@ -1445,7 +1442,7 @@ impl<'a, 'b> ToTokens for HeaderSelectIndexFn<'a, 'b> {
     }
 }
 
-impl<'a, 'b> ToTokens for HeaderFeedFn<'a, 'b> {
+impl<'a> ToTokens for HeaderFeedFn<'a> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let HeaderFeedFn {
             tag_body,
@@ -1478,19 +1475,19 @@ impl<'a, 'b> ToTokens for HeaderFeedFn<'a, 'b> {
 /// the header is ambiguous as the items can be flattened into the attribute or not which requires
 /// two copies of the recognizer to be run in paralell). This subsidiary recognizer requires its
 /// own vtable. This generates the functions required to populate that table.
-struct HeaderRecognizerFns<'a, 'b> {
-    target: &'b syn::Type,
-    tag_body: Option<&'b FieldModel<'a>>,
-    header_fields: &'b [&'b FieldModel<'a>],
+struct HeaderRecognizerFns<'a> {
+    target: &'a syn::Type,
+    tag_body: Option<&'a FieldModel<'a>>,
+    header_fields: &'a [&'a FieldModel<'a>],
     variant: Option<usize>,
     generics: &'a Generics,
 }
 
-impl<'a, 'b> HeaderRecognizerFns<'a, 'b> {
+impl<'a> HeaderRecognizerFns<'a> {
     fn new(
-        target: &'b syn::Type,
-        tag_body: Option<&'b FieldModel<'a>>,
-        header_fields: &'b [&'b FieldModel<'a>],
+        target: &'a syn::Type,
+        tag_body: Option<&'a FieldModel<'a>>,
+        header_fields: &'a [&'a FieldModel<'a>],
         generics: &'a Generics,
     ) -> Self {
         HeaderRecognizerFns {
@@ -1503,9 +1500,9 @@ impl<'a, 'b> HeaderRecognizerFns<'a, 'b> {
     }
 
     fn variant(
-        target: &'b syn::Type,
-        tag_body: Option<&'b FieldModel<'a>>,
-        header_fields: &'b [&'b FieldModel<'a>],
+        target: &'a syn::Type,
+        tag_body: Option<&'a FieldModel<'a>>,
+        header_fields: &'a [&'a FieldModel<'a>],
         generics: &'a Generics,
         variant: usize,
     ) -> Self {
@@ -1535,7 +1532,7 @@ fn header_identifiers(variant: Option<usize>) -> (syn::Ident, syn::Ident, syn::I
     }
 }
 
-impl<'a, 'b> ToTokens for HeaderRecognizerFns<'a, 'b> {
+impl<'a> ToTokens for HeaderRecognizerFns<'a> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let HeaderRecognizerFns {
             target,
