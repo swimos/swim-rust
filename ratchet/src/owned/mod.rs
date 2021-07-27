@@ -12,24 +12,24 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-mod builder;
-
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use futures::Sink;
 use tokio_util::codec::{Decoder, Encoder, Framed};
 
+pub use builder::{WebSocketClientBuilder, WebSocketServerBuilder};
+
 use crate::codec::Codec;
 use crate::errors::Error;
 use crate::extensions::NegotiatedExtension;
 use crate::handshake::{exec_client_handshake, HandshakeResult, ProtocolRegistry};
-use crate::protocol::Message;
+use crate::protocol::frame::Message;
 use crate::{
     Deflate, Extension, ExtensionHandshake, Request, Role, WebSocketConfig, WebSocketStream,
 };
 
-pub use builder::{WebSocketClientBuilder, WebSocketServerBuilder};
+mod builder;
 
 pub struct WebSocket<S, C = Codec, E = Deflate> {
     inner: WebSocketInner<S, C, E>,

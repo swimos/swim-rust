@@ -11,8 +11,15 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+use futures::future::BoxFuture;
+use tokio::io::{AsyncRead, AsyncWrite};
 
-mod codec;
+use crate::errors::Error;
+use crate::extensions::deflate::Deflate;
+pub use crate::extensions::{deflate::*, ext::*, ExtHandshakeErr, Extension, ExtensionHandshake};
+pub use crate::http_ext::TryIntoRequest;
+
+pub mod codec;
 mod errors;
 mod extensions;
 #[cfg(test)]
@@ -23,15 +30,6 @@ pub mod owned;
 #[allow(warnings)]
 mod protocol;
 pub mod split;
-
-use crate::errors::Error;
-use crate::extensions::deflate::Deflate;
-
-use futures::future::BoxFuture;
-use tokio::io::{AsyncRead, AsyncWrite};
-
-pub use crate::extensions::{deflate::*, ext::*, ExtHandshakeErr, Extension, ExtensionHandshake};
-pub use crate::http_ext::TryIntoRequest;
 
 pub(crate) type Request = http::Request<()>;
 pub(crate) type Response = http::Response<()>;

@@ -16,12 +16,12 @@ use crate::codec::Codec;
 use crate::errors::Error;
 use crate::extensions::NegotiatedExtension;
 use crate::handshake::{exec_client_handshake, HandshakeResult, ProtocolRegistry};
-use crate::protocol::Message;
+use crate::protocol::frame::Message;
 use crate::{
     Deflate, Extension, ExtensionHandshake, Request, Role, WebSocketConfig, WebSocketStream,
 };
 use futures::io::{ReadHalf, WriteHalf};
-use futures::{AsyncReadExt, AsyncWriteExt};
+use futures::AsyncReadExt;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio_util::codec::{Decoder, Encoder};
@@ -96,10 +96,9 @@ where
     C: Encoder<Message, Error = Error> + Decoder + Clone,
     E: Extension,
 {
-    pub async fn read_frame_contents(&mut self, bytes: &mut [u8]) -> Result<usize, Error> {
+    pub async fn read_frame_contents(&mut self, _bytes: &mut [u8]) -> Result<usize, Error> {
         let mut guard = self.writer.lock().await;
-        let contents = &mut (*guard);
-        contents.write_all(bytes).await;
+        let _contents = &mut (*guard);
         unimplemented!()
     }
 }

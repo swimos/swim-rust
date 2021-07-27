@@ -18,6 +18,7 @@ use crate::errors::Error;
 use crate::extensions::ext::NoExtProxy;
 use crate::extensions::ExtensionHandshake;
 use crate::handshake::ProtocolRegistry;
+use crate::Role;
 pub use crate::{Interceptor, TryIntoRequest, WebSocketConfig, WebSocketStream};
 use tokio_native_tls::TlsConnector;
 
@@ -70,12 +71,11 @@ where
             ..
         } = self;
         let request = request.try_into_request()?;
-
         client(
             config.unwrap_or_default(),
             stream,
             request,
-            Codec,
+            Codec::new(Role::Client, usize::MAX), // todo from config
             extension,
             subprotocols,
         )
