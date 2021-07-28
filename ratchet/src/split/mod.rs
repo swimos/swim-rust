@@ -33,6 +33,8 @@ type Writer<S> = Arc<Mutex<WriteHalf<Compat<S>>>>;
 
 type SplitSocket<S, C, E> = (WebSocketTx<S, C, E>, WebSocketRx<S, C, E>);
 
+// todo maybe split extension
+// todo owned decoder and split encoder
 pub struct WebSocketRx<S, C = Codec, E = Deflate> {
     writer: Writer<S>,
     codec: C,
@@ -42,6 +44,7 @@ pub struct WebSocketRx<S, C = Codec, E = Deflate> {
     config: WebSocketConfig,
 }
 
+// todo split encoder
 pub struct WebSocketTx<S, C = Codec, E = Deflate> {
     writer: Writer<S>,
     codec: C,
