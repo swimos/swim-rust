@@ -137,6 +137,7 @@ pub fn write_into<A>(
     let mut masked = flags.is_masked();
 
     let (second, mut offset) = if masked {
+        // this must be cleared so the OR with the opcode is correct
         flags.set(HeaderFlags::MASKED, false);
         apply_mask(mask, &mut payload);
 
