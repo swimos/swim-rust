@@ -132,6 +132,7 @@ const FAILED_SERVER_CONN: &str = "Failed to establish a server connection.";
 const FAILED_CLIENT_CONN: &str = "Failed to establish a client connection.";
 const NOT_IN_TABLE: &str = "A connection closed that was not in the routing table.";
 const CLOSED_NO_HANDLES: &str = "A connection closed with no handles remaining.";
+const DUPLICATED_BIDIRECTIONAL: &str = "A bidirectional connection already exists to this host.";
 
 /// An event loop that listens for incoming connections and routing requests and opens/accepts
 /// remote connections accordingly.
@@ -284,8 +285,19 @@ fn update_state<State: RemoteTasksState>(
         }
         Event::Request(RemoteRoutingRequest::Bidirectional { host, request }) => {
             match SchemeHostPort::try_from(host.clone()) {
-                // Todo dm return an error if the same host is requested twice
-                Ok(target) => state.defer_bidirectional_lookup(target, request),
+                // Todo dm remove hosts from the bidirectional table.
+                Ok(target) => {
+                    if state.table_bidirectional_exists(&target) {
+                        request.send_err_debug(
+                            ConnectionError::Resolution(ResolutionError::unresolvable(
+                                host.to_string(),
+                            )),
+                            DUPLICATED_BIDIRECTIONAL,
+                        );
+                    } else {
+                        state.defer_bidirectional_lookup(target, request);
+                    }
+                }
                 _ => {
                     request.send_err_debug(
                         ConnectionError::Http(HttpError::invalid_url(host.to_string(), None)),
@@ -341,7 +353,7 @@ fn update_state<State: RemoteTasksState>(
             host,
             request,
         }) => {
-            state.spawn_bidirectional_task(sock_addr, ws_stream, Some(host), request);
+            state.spawn_bidirectional_task(sock_addr, ws_stream, host, request);
         }
         Event::Deferred(DeferredResult::ClientHandshakeBidirectional {
             result: Err(err),

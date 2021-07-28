@@ -65,7 +65,7 @@ pub trait RemoteTasksState {
         &mut self,
         sock_addr: SchemeSocketAddr,
         ws_stream: Self::WebSocket,
-        host: Option<SchemeHostPort>,
+        host: SchemeHostPort,
         request: BidirectionalRequest,
     );
 
@@ -110,6 +110,9 @@ pub trait RemoteTasksState {
 
     /// Try to resolve a host in the routing table.
     fn table_try_resolve(&self, target: &SchemeHostPort) -> Option<RoutingAddr>;
+
+    /// Check if a bidirectional connection already exists for the given host.
+    fn table_bidirectional_exists(&self, target: &SchemeHostPort) -> bool;
 
     /// Remote an entry from the routing table return the promise to use to indicate why the entry
     /// was removed.
@@ -198,7 +201,7 @@ where
         &mut self,
         sock_addr: SchemeSocketAddr,
         ws_stream: Self::WebSocket,
-        host: Option<SchemeHostPort>,
+        host: SchemeHostPort,
         request: BidirectionalRequest,
     ) {
         let addr = self.next_address();
@@ -211,10 +214,9 @@ where
         } = self;
         let (msg_tx, msg_rx) =
             tasks.spawn_bidirectional_connection_task(sock_addr, ws_stream, addr, spawner);
-        request.send(Ok(BidirectionalRoute::new(
-            msg_tx,
-            msg_rx,
-        )));
+        //Todo dm maybe add addr
+        table.insert_bidirectional(host);
+        request.send(Ok(BidirectionalRoute::new(msg_tx, msg_rx)));
 
         //Todo dm
         // table.insert(addr, host.clone(), sock_addr, msg_tx);
@@ -317,6 +319,10 @@ where
 
     fn table_try_resolve(&self, target: &SchemeHostPort) -> Option<RoutingAddr> {
         self.table.try_resolve(target)
+    }
+
+    fn table_bidirectional_exists(&self, target: &SchemeHostPort) -> bool {
+        self.table.bidirectional_exists(target)
     }
 
     fn table_remove(&mut self, addr: RoutingAddr) -> Option<Sender<ConnectionDropped>> {

@@ -87,6 +87,7 @@ impl TryFrom<Url> for SchemeHostPort {
 pub struct RoutingTable {
     open_sockets: HashMap<SchemeSocketAddr, RoutingAddr>,
     resolved_forward: HashMap<SchemeHostPort, RoutingAddr>,
+    bidirectional: HashSet<SchemeHostPort>,
     endpoints: HashMap<RoutingAddr, Handle>,
 }
 
@@ -96,12 +97,16 @@ impl RoutingTable {
         self.resolved_forward.get(target).copied()
     }
 
+    pub fn bidirectional_exists(&self, target: &SchemeHostPort) -> bool {
+        self.bidirectional.contains(target)
+    }
+
     /// Try to get a routing key in the table for a resolved socket address.
     pub fn get_resolved(&self, target: &SchemeSocketAddr) -> Option<RoutingAddr> {
         self.open_sockets.get(target).copied()
     }
 
-    /// Get the entry in the table associated with a routing key, if it exsits.
+    /// Get the entry in the table associated with a routing key, if it exists.
     pub fn resolve(&self, addr: RoutingAddr) -> Option<RawRoute> {
         self.endpoints
             .get(&addr)
@@ -120,6 +125,7 @@ impl RoutingTable {
             open_sockets,
             resolved_forward,
             endpoints,
+            ..
         } = self;
         debug_assert!(!open_sockets.contains_key(&sock_addr));
 
@@ -131,6 +137,10 @@ impl RoutingTable {
         }
 
         endpoints.insert(addr, Handle::new(tx, sock_addr, hosts));
+    }
+
+    pub fn insert_bidirectional(&mut self, host: SchemeHostPort) {
+        self.bidirectional.insert(host);
     }
 
     /// Associate another hose/port combination with a socket address that already has an entry in

@@ -89,7 +89,6 @@ impl<Path: Addressable> SwimConnPool<Path> {
     pub fn new(
         config: ConnectionPoolParams,
         client_router_factory: ClientRouterFactory<Path>,
-        client_conn_request_tx: mpsc::Sender<ClientRequest<Path>>,
     ) -> (SwimConnPool<Path>, PoolTask<Path>) {
         let (connection_request_tx, connection_request_rx) =
             mpsc::channel(config.buffer_size().get());
@@ -101,10 +100,8 @@ impl<Path: Addressable> SwimConnPool<Path> {
                 stop_request_tx,
             },
             PoolTask::new(
-                config,
                 client_router_factory,
                 connection_request_rx,
-                client_conn_request_tx,
                 config.buffer_size(),
                 stop_request_rx,
             ),
@@ -158,12 +155,6 @@ impl<Path: Addressable> ConnectionPool for SwimConnPool<Path> {
     }
 }
 
-//Todo dm
-pub enum ConnectionPoolRequest {
-    Resolve,
-    Endpoint,
-}
-
 pub type ConnectionChannel = (ConnectionSender, Option<ConnectionReceiver>);
 
 pub struct ConnectionRequest<Path: Addressable> {
@@ -172,28 +163,22 @@ pub struct ConnectionRequest<Path: Addressable> {
 }
 
 pub struct PoolTask<Path: Addressable> {
-    config: ConnectionPoolParams,
     client_router_factory: ClientRouterFactory<Path>,
     connection_request_rx: mpsc::Receiver<ConnectionRequest<Path>>,
-    client_conn_request_tx: mpsc::Sender<ClientRequest<Path>>,
     buffer_size: NonZeroUsize,
     stop_request_rx: mpsc::Receiver<()>,
 }
 
 impl<Path: Addressable> PoolTask<Path> {
     fn new(
-        config: ConnectionPoolParams,
         client_router_factory: ClientRouterFactory<Path>,
         connection_request_rx: mpsc::Receiver<ConnectionRequest<Path>>,
-        client_conn_request_tx: mpsc::Sender<ClientRequest<Path>>,
         buffer_size: NonZeroUsize,
         stop_request_rx: mpsc::Receiver<()>,
     ) -> Self {
         PoolTask {
-            config,
             client_router_factory,
             connection_request_rx,
-            client_conn_request_tx,
             buffer_size,
             stop_request_rx,
         }
@@ -201,11 +186,10 @@ impl<Path: Addressable> PoolTask<Path> {
 
     pub async fn run(self) -> Result<(), ConnectionError> {
         let PoolTask {
-            config,
             client_router_factory,
             mut connection_request_rx,
-            client_conn_request_tx,
             buffer_size,
+            //Todo dm
             stop_request_rx,
         } = self;
 
@@ -230,7 +214,7 @@ impl<Path: Addressable> PoolTask<Path> {
 
                     let client_router = client_router_factory.create_for(routing_address.clone());
                     let (registrator, registrator_task) =
-                        ConnectionRegistrator::new(target.clone(), client_router);
+                        ConnectionRegistrator::new(buffer_size, target.clone(), client_router);
                     spawn(registrator_task.run());
 
                     routing_table.add_registrator(
@@ -251,16 +235,7 @@ impl<Path: Addressable> PoolTask<Path> {
 
         Ok(())
 
-        //Todo dm this should be a state machine
-        // if conn not in connections
-        //      open
-        // else
-        //      use registrator to return connection (tx, rx)
-
-        // when a downlink is connecting, this will receive a SubscribeConnection
-        // if the connection already exists the downlink will be subscribed to it
-        // if not, a new client RoutingAddr will be created and
-        // if not a request will be made either to a remote router or to a plane router
+        //Todo dm
 
         // let mut connections: HashMap<Path, ConnectionRegistrator> = HashMap::new();
         //
@@ -364,6 +339,7 @@ pub(crate) struct ConnectionRegistrator<Path: Addressable> {
 // Todo dm
 impl<Path: Addressable> ConnectionRegistrator<Path> {
     fn new(
+        buffer_size: NonZeroUsize,
         target: Path,
         client_router: ClientRouter<Path>,
     ) -> (ConnectionRegistrator<Path>, ConnectionRegistratorTask<Path>) {
@@ -372,7 +348,7 @@ impl<Path: Addressable> ConnectionRegistrator<Path> {
 
         (
             ConnectionRegistrator { conn_request_tx },
-            ConnectionRegistratorTask::new(target, conn_request_rx, client_router),
+            ConnectionRegistratorTask::new(buffer_size, target, conn_request_rx, client_router),
         )
     }
 
@@ -390,6 +366,7 @@ impl<Path: Addressable> ConnectionRegistrator<Path> {
 }
 
 struct ConnectionRegistratorTask<Path: Addressable> {
+    buffer_size: NonZeroUsize,
     target: Path,
     conn_request_rx: mpsc::Receiver<ConnectionOpeningRequest<Path>>,
     client_router: ClientRouter<Path>,
@@ -397,11 +374,13 @@ struct ConnectionRegistratorTask<Path: Addressable> {
 
 impl<Path: Addressable> ConnectionRegistratorTask<Path> {
     fn new(
+        buffer_size: NonZeroUsize,
         target: Path,
         conn_request_rx: mpsc::Receiver<ConnectionOpeningRequest<Path>>,
         client_router: ClientRouter<Path>,
     ) -> Self {
         ConnectionRegistratorTask {
+            buffer_size,
             target,
             conn_request_rx,
             client_router,
@@ -410,6 +389,7 @@ impl<Path: Addressable> ConnectionRegistratorTask<Path> {
 
     async fn run(self) {
         let ConnectionRegistratorTask {
+            buffer_size,
             target,
             mut conn_request_rx,
             mut client_router,
@@ -461,14 +441,12 @@ impl<Path: Addressable> ConnectionRegistratorTask<Path> {
                 })) => {
                     let receiver = match subscribers.entry(path.node().to_string()) {
                         Entry::Occupied(mut entry) => {
-                            //Todo dm
-                            let (tx, rx) = mpsc::channel(8);
+                            let (tx, rx) = mpsc::channel(buffer_size.get());
                             entry.get_mut().push(tx);
                             rx
                         }
                         Entry::Vacant(vacancy) => {
-                            //Todo dm
-                            let (tx, rx) = mpsc::channel(8);
+                            let (tx, rx) = mpsc::channel(buffer_size.get());
                             vacancy.insert(vec![tx]);
                             rx
                         }
@@ -484,7 +462,7 @@ impl<Path: Addressable> ConnectionRegistratorTask<Path> {
                     tx.send(Ok((sender.clone(), None)));
                 }
                 _ => {
-                    //Todo dm
+                    //Todo dm closing
                     unimplemented!()
                 }
             }
@@ -531,7 +509,6 @@ impl<Path: Addressable> ConnectionRegistratorTask<Path> {
         //     //
         //     // unimplemented!()
         //     tx.send(Ok((sender, Some(receiver))));
-        //     // Todo dm this will accept new requests and will return tx / rx
         //     // It will also route messages received from the subscribers to the right places.
         //     // unimplemented!()
         //     // match conn_type {
