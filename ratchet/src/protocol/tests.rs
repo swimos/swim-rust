@@ -14,16 +14,18 @@
 
 #[cfg(test)]
 mod encoding {
-    use crate::protocol::frame::{write_into, DataCode, OpCode};
+    use crate::protocol::frame::{DataCode, Frame, FrameHeader, OpCode};
     use crate::protocol::HeaderFlags;
     use bytes::BytesMut;
 
-    fn encode<A>(flags: HeaderFlags, opcode: OpCode, payload: A, mask: u32, expected: &[u8])
+    fn encode<A>(flags: HeaderFlags, opcode: OpCode, payload: A, mask: Option<u32>, expected: &[u8])
     where
         A: AsMut<[u8]>,
     {
         let mut bytes = BytesMut::new();
-        write_into(&mut bytes, flags, opcode, payload, mask);
+
+        let header = FrameHeader::new(opcode, flags, mask);
+        Frame::write_into(&mut bytes, header, payload);
 
         assert_eq!(bytes.as_ref(), expected);
     }
@@ -34,7 +36,7 @@ mod encoding {
             HeaderFlags::FIN,
             OpCode::DataCode(DataCode::Text),
             &mut [1, 2, 3, 4],
-            1,
+            None,
             &[129, 4, 1, 2, 3, 4],
         );
     }
@@ -49,7 +51,7 @@ mod encoding {
             HeaderFlags::FIN,
             OpCode::DataCode(DataCode::Text),
             payload.as_mut_slice(),
-            0,
+            None,
             expected.as_slice(),
         );
     }
@@ -64,7 +66,7 @@ mod encoding {
             HeaderFlags::FIN,
             OpCode::DataCode(DataCode::Text),
             payload.as_mut_slice(),
-            0,
+            None,
             expected.as_slice(),
         );
     }
@@ -76,10 +78,10 @@ mod encoding {
         expected.extend(payload.clone());
 
         encode(
-            HeaderFlags::FIN | HeaderFlags::MASKED,
+            HeaderFlags::FIN,
             OpCode::DataCode(DataCode::Text),
             payload.as_mut_slice(),
-            0,
+            Some(0),
             expected.as_slice(),
         );
     }
@@ -89,10 +91,10 @@ mod encoding {
         let mut text = "Bonsoir, Elliot".to_string().into_bytes();
 
         encode(
-            HeaderFlags::FIN | HeaderFlags::MASKED,
+            HeaderFlags::FIN,
             OpCode::DataCode(DataCode::Text),
             text,
-            0,
+            Some(0),
             &[
                 129, 143, 0, 0, 0, 0, 66, 111, 110, 115, 111, 105, 114, 44, 32, 69, 108, 108, 105,
                 111, 116,
@@ -106,7 +108,7 @@ mod encoding {
             HeaderFlags::FIN | HeaderFlags::RESERVED,
             OpCode::DataCode(DataCode::Text),
             &mut [1, 2, 3, 4],
-            1,
+            None,
             &[241, 4, 1, 2, 3, 4],
         );
     }

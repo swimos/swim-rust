@@ -30,8 +30,6 @@ bitflags::bitflags! {
         const RSV_3     = 0b0001_0000;
 
         const RESERVED  = Self::RSV_1.bits | Self::RSV_2.bits | Self::RSV_3.bits;
-
-        const MASKED    = 0b0000_1000;
     }
 }
 
@@ -51,18 +49,4 @@ impl HeaderFlags {
     pub fn is_rsv3(&self) -> bool {
         self.contains(HeaderFlags::RSV_3)
     }
-
-    pub fn reserved(&self) -> bool {
-        self.contains(HeaderFlags::RESERVED)
-    }
-
-    pub fn is_masked(&self) -> bool {
-        self.contains(HeaderFlags::MASKED)
-    }
-}
-
-pub struct Header {
-    flags: HeaderFlags,
-    opcode: OpCode,
-    payload_length: usize,
 }

@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::errors::Error;
-use crate::protocol::frame::{write_into, ControlCode, DataCode, Message, OpCode};
+use crate::protocol::frame::{ControlCode, DataCode, Frame, FrameHeader, Message, OpCode};
 use crate::protocol::HeaderFlags;
 use crate::Role;
 use bytes::BytesMut;
@@ -85,16 +85,17 @@ impl Encoder<Message> for Codec {
             Message::Pong(data) => (OpCode::ControlCode(ControlCode::Pong), data),
         };
 
-        let mask: u32 = self.rand.generate();
         // todo run bytes through extensions
 
-        let flags = if self.is_client() {
-            HeaderFlags::FIN | HeaderFlags::MASKED
+        let (flags, mask) = if self.is_client() {
+            (HeaderFlags::FIN, Some(self.rand.generate()))
         } else {
-            HeaderFlags::FIN
+            (HeaderFlags::FIN, None)
         };
 
-        write_into(dst, flags, opcode, bytes, mask);
+        let header = FrameHeader::new(opcode, flags, mask);
+        Frame::write_into(dst, header, bytes);
+
         Ok(())
     }
 }
@@ -106,14 +107,4 @@ impl Decoder for Codec {
     fn decode(&mut self, _src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
         todo!()
     }
-}
-
-#[test]
-fn t() {
-    let mut codec = Codec::new(Role::Client, 0);
-    let mut buf = BytesMut::new();
-    codec
-        .encode(Message::Text("Test".to_string()), &mut buf)
-        .unwrap();
-    println!("{:?}", buf.as_ref());
 }

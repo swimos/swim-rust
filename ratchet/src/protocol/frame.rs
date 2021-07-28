@@ -87,20 +87,6 @@ impl TryFrom<u8> for OpCode {
     }
 }
 
-pub struct Frame {
-    data: Bytes,
-    kind: FrameKind,
-}
-
-pub enum FrameKind {
-    Text,
-    Binary,
-    Continuation,
-    Ping,
-    Pong,
-    Close(Option<CloseReason>),
-}
-
 pub struct CloseReason {
     code: CloseCode,
     description: Option<String>,
@@ -123,59 +109,90 @@ impl AsMut<[u8]> for Message {
     }
 }
 
-pub fn write_into<A>(
-    dst: &mut BytesMut,
-    mut flags: HeaderFlags,
+pub struct FrameHeader {
     opcode: OpCode,
-    mut payload: A,
-    mask: u32,
-) where
-    A: AsMut<[u8]>,
-{
-    let mut payload = payload.as_mut();
-    let mut length = payload.len();
-    let mut masked = flags.is_masked();
+    flags: HeaderFlags,
+    mask: Option<u32>,
+}
 
-    let (second, mut offset) = if masked {
-        // this must be cleared so the OR with the opcode is correct
-        flags.set(HeaderFlags::MASKED, false);
-        apply_mask(mask, &mut payload);
+impl FrameHeader {
+    pub fn new(opcode: OpCode, flags: HeaderFlags, mask: Option<u32>) -> Self {
+        FrameHeader {
+            opcode,
+            flags,
+            mask,
+        }
+    }
+}
 
-        (0x80, 6)
-    } else {
-        (0x0, 2)
-    };
+pub struct Frame {
+    header: FrameHeader,
+    payload: Vec<u8>,
+}
 
-    if length >= U16_MAX {
-        offset += 8;
-    } else if length > 125 {
-        offset += 2;
+impl Frame {
+    pub fn new(header: FrameHeader, payload: Vec<u8>) -> Self {
+        Frame { header, payload }
+    }
+}
+
+impl Frame {
+    pub fn write_into<A>(dst: &mut BytesMut, header: FrameHeader, mut payload: A)
+    where
+        A: AsMut<[u8]>,
+    {
+        let FrameHeader {
+            opcode,
+            flags,
+            mask,
+        } = header;
+
+        let mut payload = payload.as_mut();
+        let mut length = payload.len();
+        let mut masked = mask.is_some();
+
+        let (second, mut offset) = if let Some(mask) = mask {
+            apply_mask(mask, &mut payload);
+            (0x80, 6)
+        } else {
+            (0x0, 2)
+        };
+
+        if length >= U16_MAX {
+            offset += 8;
+        } else if length > 125 {
+            offset += 2;
+        }
+
+        let additional = if masked {
+            payload.len() + offset
+        } else {
+            offset
+        };
+
+        dst.reserve(additional);
+        let first = flags.bits | u8::from(opcode);
+
+        if length < 126 {
+            dst.extend_from_slice(&[first, second | length as u8]);
+        } else if length <= U16_MAX {
+            dst.extend_from_slice(&[first, second | 126]);
+            dst.put_u16(length as u16);
+        } else {
+            dst.extend_from_slice(&[first, second | 127]);
+            dst.put_u64(length as u64);
+        };
+
+        if let Some(mask) = mask {
+            dst.put_u32_le(mask as u32);
+        }
+
+        dst.extend_from_slice(payload);
     }
 
-    let additional = if masked {
-        payload.len() + offset
-    } else {
-        offset
-    };
-
-    dst.reserve(additional);
-    let first = flags.bits | u8::from(opcode);
-
-    if length < 126 {
-        dst.extend_from_slice(&[first, second | length as u8]);
-    } else if length <= U16_MAX {
-        dst.extend_from_slice(&[first, second | 126]);
-        dst.put_u16(length as u16);
-    } else {
-        dst.extend_from_slice(&[first, second | 127]);
-        dst.put_u64(length as u64);
-    };
-
-    if masked {
-        dst.put_u32_le(mask as u32);
+    pub fn read_from(_from: &mut BytesMut) -> Result<Option<Frame>, ()> {
+        unimplemented!()
     }
-
-    dst.extend_from_slice(payload);
 }
 
 // todo speed up with an XOR lookup table
