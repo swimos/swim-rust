@@ -87,6 +87,7 @@ pub(crate) enum ErrorKind {
     Http,
     Extension,
     Protocol,
+    Encoding,
 }
 
 impl From<io::Error> for Error {

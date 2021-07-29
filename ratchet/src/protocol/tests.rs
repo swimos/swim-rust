@@ -29,7 +29,7 @@ mod encoding {
     {
         let mut bytes = BytesMut::new();
 
-        let header = FrameHeader::new(opcode, flags, mask, payload.as_mut().len());
+        let header = FrameHeader::new(opcode, flags, mask);
         Frame::new(header, payload.as_mut()).write_into(&mut bytes);
 
         assert_eq!(bytes.as_ref(), expected);
@@ -130,7 +130,7 @@ mod decode {
     use std::iter::FromIterator;
 
     fn expect_protocol_error(
-        result: Result<Option<(FrameHeader, usize)>, Error>,
+        result: Result<Option<(FrameHeader, usize, usize)>, Error>,
         error: ProtocolError,
     ) {
         match result {
@@ -149,13 +149,13 @@ mod decode {
     #[test]
     fn header() {
         let mut bytes = BytesMut::from_iter(&[129, 4, 1, 2, 3, 4]);
-        let (header, _header_len) =
+        let (header, _header_len, _payload_len) =
             FrameHeader::read_from(&mut bytes, &CodecFlags::empty(), usize::MAX)
                 .unwrap()
                 .unwrap();
         assert_eq!(
             header,
-            FrameHeader::new(OpCode::DataCode(DataCode::Text), HeaderFlags::FIN, None, 4)
+            FrameHeader::new(OpCode::DataCode(DataCode::Text), HeaderFlags::FIN, None)
         );
     }
 
@@ -179,9 +179,8 @@ mod decode {
             OpCode::DataCode(DataCode::Text),
             HeaderFlags::FIN | HeaderFlags::RSV_1,
             None,
-            4,
         );
-        assert!(matches!(result, Ok(Some((expected, _)))));
+        assert!(matches!(result, Ok(Some((expected, _, _)))));
     }
 
     #[test]

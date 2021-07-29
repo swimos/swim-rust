@@ -12,12 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::errors::Error;
-use crate::protocol::frame::{ControlCode, DataCode, Frame, FrameHeader, Message, OpCode};
+use crate::errors::{Error, ErrorKind};
+use crate::protocol::frame::{
+    apply_mask, ControlCode, DataCode, Frame, FrameHeader, Message, OpCode, Payload,
+};
 use crate::protocol::HeaderFlags;
 use crate::Role;
 use bytes::BytesMut;
 use nanorand::{WyRand, RNG};
+use std::borrow::BorrowMut;
 use tokio_util::codec::{Decoder, Encoder};
 
 bitflags::bitflags! {
@@ -51,10 +54,83 @@ impl CodecFlags {
     }
 }
 
+enum DataType {
+    Text,
+    Binary,
+}
+
+struct FragmentBuffer {
+    buffer: BytesMut,
+    op_code: Option<DataType>,
+    max_size: usize,
+}
+
+impl FrameBuffer for FragmentBuffer {
+    fn start_continuation(&mut self, first_code: DataType, payload: Vec<u8>) -> Result<(), Error> {
+        let FragmentBuffer {
+            buffer,
+            op_code,
+            max_size,
+        } = self;
+        match op_code {
+            Some(_) => Err(Error::new(ErrorKind::Protocol)),
+            None => {
+                *op_code = Some(first_code);
+                if payload.len() >= *max_size {
+                    Err(Error::new(ErrorKind::Protocol))
+                } else {
+                    buffer.extend_from_slice(payload.as_slice());
+                    Ok(())
+                }
+            }
+        }
+    }
+
+    fn on_frame(&mut self, _payload: Vec<u8>) -> Result<(), Error> {
+        todo!()
+    }
+
+    fn finish_continuation(&mut self) -> Result<Message, Error> {
+        let FragmentBuffer {
+            buffer,
+            op_code,
+            max_size,
+        } = self;
+
+        match op_code {
+            None => Err(Error::new(ErrorKind::Protocol)),
+            Some(op_code) => {
+                let payload = buffer.split().freeze();
+                buffer.truncate(*max_size / 2);
+
+                match op_code {
+                    DataType::Text => Message::text_from_utf8(payload.to_vec()),
+                    DataType::Binary => Ok(Message::Binary(payload.to_vec())),
+                }
+            }
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        self.buffer.is_empty()
+    }
+}
+
+impl FragmentBuffer {
+    pub fn new(max_size: usize) -> Self {
+        FragmentBuffer {
+            buffer: BytesMut::default(),
+            op_code: None,
+            max_size,
+        }
+    }
+}
+
 pub struct Codec {
     flags: CodecFlags,
     max_size: usize,
     rand: WyRand,
+    fragment_buffer: FragmentBuffer,
 }
 
 impl Codec {
@@ -69,6 +145,7 @@ impl Codec {
             flags,
             max_size,
             rand: WyRand::new(),
+            fragment_buffer: FragmentBuffer::new(max_size),
         }
     }
 
@@ -112,7 +189,7 @@ impl Encoder<Message> for Codec {
             (HeaderFlags::FIN, None)
         };
 
-        let header = FrameHeader::new(opcode, flags, mask, bytes.len());
+        let header = FrameHeader::new(opcode, flags, mask);
         Frame::new(header, bytes).write_into(dst);
 
         Ok(())
@@ -124,13 +201,109 @@ impl Decoder for Codec {
     type Error = Error;
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
-        // todo max_size from config
-        match FrameHeader::read_from(src, &self.flags, usize::MAX)? {
-            Some(_header) => {
-                // allocate enough space in `src` to handle the payload
-                unimplemented!()
+        let Codec {
+            flags,
+            max_size,
+            fragment_buffer,
+            ..
+        } = self;
+
+        match Frame::read_from(src, flags, *max_size)? {
+            Some(frame) => {
+                let Frame { header, payload } = frame;
+                let FrameHeader {
+                    opcode,
+                    flags,
+                    mask,
+                } = header;
+
+                match opcode {
+                    OpCode::DataCode(data_code) => {
+                        on_data_frame(fragment_buffer, data_code, payload, flags, mask)
+                    }
+                    OpCode::ControlCode(_control_code) => {
+                        unimplemented!()
+                    }
+                }
             }
-            None => Ok(None),
+            None => return Ok(None),
         }
+    }
+}
+
+trait FrameBuffer {
+    fn start_continuation(&mut self, op_code: DataType, payload: Vec<u8>) -> Result<(), Error>;
+
+    fn on_frame(&mut self, payload: Vec<u8>) -> Result<(), Error>;
+
+    fn finish_continuation(&mut self) -> Result<Message, Error>;
+
+    fn is_empty(&self) -> bool;
+}
+
+fn on_data_frame<B>(
+    buffer: &mut B,
+    data_code: DataCode,
+    mut payload: Payload,
+    flags: HeaderFlags,
+    frame_mask: Option<u32>,
+) -> Result<Option<Message>, Error>
+where
+    B: FrameBuffer,
+{
+    let payload: &mut [u8] = payload.borrow_mut();
+    if let Some(frame_mask) = frame_mask {
+        apply_mask(frame_mask, payload);
+    }
+    let payload = payload.to_vec();
+
+    match data_code {
+        DataCode::Continuation => {
+            buffer.on_frame(payload)?;
+            if flags.is_fin() {
+                buffer.finish_continuation().map(Some)
+            } else {
+                Ok(None)
+            }
+        }
+        DataCode::Text => {
+            if flags.is_fin() {
+                Message::text_from_utf8(payload).map(Some)
+            } else {
+                buffer
+                    .start_continuation(DataType::Text, payload)
+                    .map(|_| None)
+            }
+        }
+        DataCode::Binary => {
+            if flags.is_fin() {
+                Ok(Some(Message::Binary(payload)))
+            } else {
+                buffer
+                    .start_continuation(DataType::Binary, payload)
+                    .map(|_| None)
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::iter::FromIterator;
+
+    #[test]
+    fn t() {
+        let mut bytes = BytesMut::from_iter(&[
+            129, 143, 0, 0, 0, 0, 66, 111, 110, 115, 111, 105, 114, 44, 32, 69, 108, 108, 105, 111,
+            116,
+        ]);
+
+        let mut codec = Codec::new(Role::Server, usize::MAX);
+        let result = codec.decode(&mut bytes);
+        assert_eq!(
+            result.unwrap(),
+            Some(Message::Text("Bonsoir, Elliot".to_string()))
+        )
     }
 }

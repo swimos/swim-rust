@@ -112,11 +112,21 @@ pub enum CloseCode {
     GoingAway,
 }
 
+#[derive(Debug, PartialEq)]
 pub enum Message {
     Text(String),
     Binary(Vec<u8>),
     Ping(Vec<u8>),
     Pong(Vec<u8>),
+}
+
+impl Message {
+    pub fn text_from_utf8(bytes: Vec<u8>) -> Result<Message, Error> {
+        match String::from_utf8(bytes) {
+            Ok(string) => Ok(Message::Text(string)),
+            Err(e) => Err(Error::with_cause(ErrorKind::Encoding, e)),
+        }
+    }
 }
 
 impl AsMut<[u8]> for Message {
@@ -127,10 +137,9 @@ impl AsMut<[u8]> for Message {
 
 #[derive(Debug, PartialEq)]
 pub struct FrameHeader {
-    opcode: OpCode,
-    flags: HeaderFlags,
-    mask: Option<u32>,
-    payload_len: usize,
+    pub opcode: OpCode,
+    pub flags: HeaderFlags,
+    pub mask: Option<u32>,
 }
 
 macro_rules! try_parse_int {
@@ -148,12 +157,11 @@ macro_rules! try_parse_int {
 }
 
 impl FrameHeader {
-    pub fn new(opcode: OpCode, flags: HeaderFlags, mask: Option<u32>, payload_len: usize) -> Self {
+    pub fn new(opcode: OpCode, flags: HeaderFlags, mask: Option<u32>) -> Self {
         FrameHeader {
             opcode,
             flags,
             mask,
-            payload_len,
         }
     }
 
@@ -161,7 +169,7 @@ impl FrameHeader {
         source: &[u8],
         codec_flags: &CodecFlags,
         max_size: usize,
-    ) -> Result<Option<(FrameHeader, usize)>, Error> {
+    ) -> Result<Option<(FrameHeader, usize, usize)>, Error> {
         let source_length = source.len();
         if source_length < 2 {
             return Ok(None);
@@ -220,13 +228,14 @@ impl FrameHeader {
                 opcode,
                 flags: received_flags,
                 mask,
-                payload_len: length,
             }),
             offset,
+            length,
         )))
     }
 }
 
+// todo this needs tidying up / removing
 pub enum Payload<'p> {
     Owned(Vec<u8>),
     Unique(&'p mut [u8]),
@@ -263,8 +272,8 @@ impl<'p> BorrowMut<[u8]> for Payload<'p> {
 }
 
 pub struct Frame<'p> {
-    header: FrameHeader,
-    payload: Payload<'p>,
+    pub header: FrameHeader,
+    pub payload: Payload<'p>,
 }
 
 impl<'p> Frame<'p> {
@@ -287,10 +296,10 @@ impl<'p> Frame<'p> {
             opcode,
             flags,
             mask,
-            payload_len,
         } = header;
 
         let mut payload: &mut [u8] = payload.borrow_mut();
+        let payload_len = payload.len();
         let mut masked = mask.is_some();
 
         let (second, mut offset) = if masked { (0x80, 6) } else { (0x0, 2) };
@@ -331,21 +340,23 @@ impl<'p> Frame<'p> {
     pub fn read_from(
         from: &mut BytesMut,
         codec_flags: &CodecFlags,
+        max_size: usize,
     ) -> Result<Option<Frame<'p>>, Error> {
         // todo params
-        let (header, header_len) =
-            match FrameHeader::read_from(from.as_ref(), codec_flags, usize::MAX)? {
-                Some((header, count)) => (header, count),
+        let (header, header_len, payload_len) =
+            match FrameHeader::read_from(from.as_ref(), codec_flags, max_size)? {
+                Some(r) => r,
                 None => return Ok(None),
             };
 
-        let mut payload = from.split_to(header_len);
+        from.advance(header_len);
+        let mut payload = from.split_to(payload_len);
 
         if let Some(mask) = header.mask {
             apply_mask(mask, &mut payload);
         }
 
-        unimplemented!()
+        Ok(Some(Frame::new(header, payload.to_vec())))
     }
 }
 
