@@ -285,9 +285,8 @@ fn update_state<State: RemoteTasksState>(
         }
         Event::Request(RemoteRoutingRequest::Bidirectional { host, request }) => {
             match SchemeHostPort::try_from(host.clone()) {
-                // Todo dm remove hosts from the bidirectional table.
                 Ok(target) => {
-                    if state.table_bidirectional_exists(&target) {
+                    if let Some(addr) = state.table_try_resolve(&target) {
                         request.send_err_debug(
                             ConnectionError::Resolution(ResolutionError::unresolvable(
                                 host.to_string(),
@@ -295,7 +294,7 @@ fn update_state<State: RemoteTasksState>(
                             DUPLICATED_BIDIRECTIONAL,
                         );
                     } else {
-                        state.defer_bidirectional_lookup(target, request);
+                        state.defer_dns_lookup(target, None, Some(request));
                     }
                 }
                 _ => {
@@ -312,7 +311,7 @@ fn update_state<State: RemoteTasksState>(
                     if let Some(addr) = state.table_try_resolve(&target) {
                         request.send_ok_debug(addr, REQUEST_DROPPED);
                     } else {
-                        state.defer_dns_lookup(target, request);
+                        state.defer_dns_lookup(target, Some(request), None);
                     }
                 }
                 _ => {
@@ -327,7 +326,7 @@ fn update_state<State: RemoteTasksState>(
             result: Ok(ws_stream),
             sock_addr,
         }) => {
-            state.spawn_task(sock_addr, ws_stream, None);
+            state.spawn_task(sock_addr, ws_stream, None, None);
         }
         Event::Deferred(DeferredResult::ServerHandshake {
             result: Err(error), ..
@@ -337,8 +336,9 @@ fn update_state<State: RemoteTasksState>(
         Event::Deferred(DeferredResult::ClientHandshake {
             result: Ok((ws_stream, sock_addr)),
             host,
+            bidirectional_request,
         }) => {
-            state.spawn_task(sock_addr, ws_stream, Some(host));
+            state.spawn_task(sock_addr, ws_stream, Some(host), bidirectional_request);
         }
         Event::Deferred(DeferredResult::ClientHandshake {
             result: Err(error),
@@ -348,57 +348,21 @@ fn update_state<State: RemoteTasksState>(
             event!(Level::ERROR, FAILED_CLIENT_CONN, ?error);
             state.fail_connection(&host, error);
         }
-        Event::Deferred(DeferredResult::ClientHandshakeBidirectional {
-            result: Ok((ws_stream, sock_addr)),
-            host,
-            request,
-        }) => {
-            state.spawn_bidirectional_task(sock_addr, ws_stream, host, request);
-        }
-        Event::Deferred(DeferredResult::ClientHandshakeBidirectional {
-            result: Err(err),
-            host,
-            request,
-        }) => {
-            request.send_err_debug(err, FAILED_CLIENT_CONN);
-        }
         Event::Deferred(DeferredResult::FailedConnection {
             error,
             mut remaining,
             host,
+            bidirectional_request,
         }) => {
             if let Some(sock_addr) = remaining.next() {
-                state.defer_connect_and_handshake(host, sock_addr, remaining);
+                state.defer_connect_and_handshake(
+                    host,
+                    sock_addr,
+                    remaining,
+                    bidirectional_request,
+                );
             } else {
                 state.fail_connection(&host, error);
-            }
-        }
-        Event::Deferred(DeferredResult::DnsBidirectional {
-            result: Err(err),
-            host,
-            request,
-        }) => {
-            request.send_err_debug(ConnectionError::Io(err.into()), FAILED_CLIENT_CONN);
-        }
-        Event::Deferred(DeferredResult::DnsBidirectional {
-            result: Ok(mut addrs),
-            host,
-            request,
-        }) => {
-            if let Some(sock_addr) = addrs.next() {
-                if let Err(host) = state.check_socket_addr(host, sock_addr) {
-                    state.defer_bidirectional_connect(host, sock_addr, addrs, request);
-                }
-            } else {
-                let host_err = host.to_string();
-
-                request.send_err_debug(
-                    ConnectionError::Resolution(ResolutionError::new(
-                        ResolutionErrorKind::Unresolvable,
-                        Some(host_err),
-                    )),
-                    REQUEST_DROPPED,
-                );
             }
         }
         Event::Deferred(DeferredResult::Dns {
@@ -411,10 +375,16 @@ fn update_state<State: RemoteTasksState>(
         Event::Deferred(DeferredResult::Dns {
             result: Ok(mut addrs),
             host,
+            bidirectional_request,
         }) => {
             if let Some(sock_addr) = addrs.next() {
                 if let Err(host) = state.check_socket_addr(host, sock_addr) {
-                    state.defer_connect_and_handshake(host, sock_addr, addrs);
+                    state.defer_connect_and_handshake(
+                        host,
+                        sock_addr,
+                        addrs,
+                        bidirectional_request,
+                    );
                 }
             } else {
                 let host_err = host.to_string();

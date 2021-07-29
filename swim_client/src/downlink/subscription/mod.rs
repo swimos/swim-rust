@@ -570,7 +570,7 @@ impl<Path: Addressable> DownlinksTask<Path> {
         // rx.await.map_err(|_| SubscriptionError::ConnectionError)
     }
 
-    pub async fn sink_for(&mut self, path: Path) -> RequestResult<mpsc::Sender<Envelope>, Path> {
+    pub async fn sink_for(&mut self, path: Path) -> RequestResult<ConnectionSender, Path> {
         //Todo dm
         let (sender, _) = self
             .connection_pool
@@ -607,12 +607,9 @@ impl<Path: Addressable> DownlinksTask<Path> {
         let updates = ReceiverStream::new(incoming).map(map_envelope);
 
         let sink_path = path.clone();
-        let cmd_sink =
-            item::for_mpsc_sender(sink)
-                .map_err_into()
-                .comap(move |cmd: Command<SharedValue>| {
-                    envelopes::value_envelope(&sink_path, cmd).into()
-                });
+        let cmd_sink = sink.map_err_into().comap(move |cmd: Command<SharedValue>| {
+            envelopes::value_envelope(&sink_path, cmd).into()
+        });
 
         let (raw_dl, rec) = match config.back_pressure {
             BackpressureMode::Propagate => {
@@ -678,7 +675,7 @@ impl<Path: Addressable> DownlinksTask<Path> {
 
         let (raw_dl, rec) = match config.back_pressure {
             BackpressureMode::Propagate => {
-                let cmd_sink = item::for_mpsc_sender(sink).comap(
+                let cmd_sink = sink.comap(
                     move |cmd: Command<UntypedMapModification<Value>>| {
                         envelopes::map_envelope(&sink_path, cmd).into()
                     },
@@ -698,12 +695,12 @@ impl<Path: Addressable> DownlinksTask<Path> {
                 yield_after,
             } => {
                 let sink_path_duplicate = sink_path.clone();
-                let direct_sink = item::for_mpsc_sender(sink.clone()).map_err_into().comap(
+                let direct_sink = sink.clone().map_err_into().comap(
                     move |cmd: Command<UntypedMapModification<Value>>| {
                         envelopes::map_envelope(&sink_path_duplicate, cmd).into()
                     },
                 );
-                let action_sink = item::for_mpsc_sender(sink).map_err_into().comap(
+                let action_sink = sink.map_err_into().comap(
                     move |act: UntypedMapModification<Value>| {
                         envelopes::map_envelope(&sink_path, Command::Action(act)).into()
                     },
@@ -758,7 +755,7 @@ impl<Path: Addressable> DownlinksTask<Path> {
         let config = self.config.config_for(&path);
         let sink_path = path.clone();
 
-        let cmd_sink = item::for_mpsc_sender(sink)
+        let cmd_sink = sink
             .map_err_into()
             .comap(move |cmd: Command<Value>| envelopes::command_envelope(&sink_path, cmd).into());
 
@@ -819,7 +816,7 @@ impl<Path: Addressable> DownlinksTask<Path> {
         let config = self.config.config_for(&path);
 
         let path_cpy = path.clone();
-        let cmd_sink = item::for_mpsc_sender(sink)
+        let cmd_sink = sink
             .map_err_into()
             .comap(move |cmd: Command<()>| envelopes::dummy_envelope(&path_cpy, cmd).into());
 
@@ -1086,8 +1083,8 @@ impl<Path: Addressable> DownlinksTask<Path> {
         path: Path,
         envelope: Envelope,
     ) -> RequestResult<(), Path> {
-        let sink = self.sink_for(path).await?;
-        sink.send(envelope)
+        let mut sink = self.sink_for(path).await?;
+        sink.send_item(envelope)
             .await
             .map_err(|_| SubscriptionError::ConnectionError)?;
         Ok(())

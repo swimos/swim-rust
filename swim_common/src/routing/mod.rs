@@ -19,11 +19,14 @@ use crate::routing::error::{
 };
 use crate::routing::remote::{RawRoute, SchemeSocketAddr};
 use crate::routing::ws::WsMessage;
+use crate::sink::item::ItemSink;
 use crate::warp::envelope::{Envelope, OutgoingLinkMessage};
 use futures::future::BoxFuture;
+use futures::FutureExt;
 use std::any::Any;
 use std::collections::HashSet;
 use std::fmt::{Display, Formatter};
+use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
@@ -136,13 +139,13 @@ impl Route {
 //Todo dm
 #[derive(Debug)]
 pub struct BidirectionalRoute {
-    pub sender: mpsc::Sender<Envelope>,
+    pub sender: TaggedSender,
     pub receiver: mpsc::Receiver<Envelope>,
     // pub on_drop: promise::Receiver<ConnectionDropped>,
 }
 
 impl BidirectionalRoute {
-    pub fn new(sender: mpsc::Sender<Envelope>, receiver: mpsc::Receiver<Envelope>) -> Self {
+    pub fn new(sender: TaggedSender, receiver: mpsc::Receiver<Envelope>) -> Self {
         BidirectionalRoute { sender, receiver }
     }
 }
@@ -196,6 +199,15 @@ impl TaggedSender {
                 let TaggedEnvelope(_addr, env) = e.0;
                 SendError::new(RoutingError::CloseError, env)
             })?)
+    }
+}
+
+impl<'a> ItemSink<'a, Envelope> for TaggedSender {
+    type Error = SendError;
+    type SendFuture = BoxFuture<'a, Result<(), SendError>>;
+
+    fn send_item(&'a mut self, value: Envelope) -> Self::SendFuture {
+        self.send_item(value).boxed()
     }
 }
 

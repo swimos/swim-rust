@@ -112,6 +112,12 @@ impl<T> From<circular_buffer::error::SendError<T>> for RoutingError {
     }
 }
 
+impl From<SendError> for RoutingError {
+    fn from(err: SendError) -> Self {
+        err.split().0
+    }
+}
+
 /// An error denoting that a connection error has occurred.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ConnectionError {

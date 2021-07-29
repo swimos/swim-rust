@@ -25,11 +25,11 @@ mod tests;
 /// Keeps track of pending routing requests to ensure that two requests for the same point are not
 /// started simultaneously.
 #[derive(Debug, Default)]
-pub struct PendingRequests(HashMap<SchemeHostPort, Vec<ResolutionRequest>>);
+pub struct PendingRequests(HashMap<SchemeHostPort, Vec<Option<ResolutionRequest>>>);
 
 impl PendingRequests {
     /// Add a new pending request for a specific host/port combination.
-    pub fn add(&mut self, host: SchemeHostPort, request: ResolutionRequest) {
+    pub fn add(&mut self, host: SchemeHostPort, request: Option<ResolutionRequest>) {
         let PendingRequests(map) = self;
         match map.entry(host) {
             Entry::Occupied(mut entry) => {
@@ -46,7 +46,9 @@ impl PendingRequests {
         let PendingRequests(map) = self;
         if let Some(requests) = map.remove(host) {
             for request in requests.into_iter() {
-                request.send_ok_debug(addr, REQUEST_DROPPED);
+                if let Some(request) = request {
+                    request.send_ok_debug(addr, REQUEST_DROPPED);
+                }
             }
         }
     }
@@ -57,10 +59,14 @@ impl PendingRequests {
         if let Some(mut requests) = map.remove(host) {
             let first = requests.pop();
             for request in requests.into_iter() {
-                request.send_err_debug(err.clone(), REQUEST_DROPPED);
+                if let Some(request) = request {
+                    request.send_err_debug(err.clone(), REQUEST_DROPPED);
+                }
             }
             if let Some(first) = first {
-                first.send_err_debug(err, REQUEST_DROPPED);
+                if let Some(first) = first {
+                    first.send_err_debug(err, REQUEST_DROPPED);
+                }
             }
         }
     }

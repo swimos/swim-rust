@@ -19,8 +19,10 @@ use crate::routing::remote::{BadUrl, RawRoute, Scheme, SchemeSocketAddr};
 use crate::routing::{ConnectionDropped, RoutingAddr, TaggedEnvelope};
 use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
+use std::error::Error;
 use std::fmt::{Display, Formatter};
 use tokio::sync::mpsc;
+use tokio::sync::mpsc::Sender;
 use url::Url;
 use utilities::sync::promise;
 
@@ -43,6 +45,10 @@ impl SchemeHostPort {
 
     pub fn port(&self) -> u16 {
         self.2
+    }
+
+    pub fn origin(&self) -> String {
+        format!("{}://{}", self.scheme(), self.host())
     }
 
     pub fn split(self) -> (Scheme, String, u16) {
@@ -87,18 +93,24 @@ impl TryFrom<Url> for SchemeHostPort {
 pub struct RoutingTable {
     open_sockets: HashMap<SchemeSocketAddr, RoutingAddr>,
     resolved_forward: HashMap<SchemeHostPort, RoutingAddr>,
-    bidirectional: HashSet<SchemeHostPort>,
     endpoints: HashMap<RoutingAddr, Handle>,
+}
+
+#[derive(Debug, Clone)]
+pub struct BidirectionalError {}
+
+impl Error for BidirectionalError {}
+
+impl Display for BidirectionalError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Bidirectional connections do not support subscribers.")
+    }
 }
 
 impl RoutingTable {
     /// Try to get the routing key in the table for a given host/port combination.
     pub fn try_resolve(&self, target: &SchemeHostPort) -> Option<RoutingAddr> {
         self.resolved_forward.get(target).copied()
-    }
-
-    pub fn bidirectional_exists(&self, target: &SchemeHostPort) -> bool {
-        self.bidirectional.contains(target)
     }
 
     /// Try to get a routing key in the table for a resolved socket address.
@@ -137,10 +149,6 @@ impl RoutingTable {
         }
 
         endpoints.insert(addr, Handle::new(tx, sock_addr, hosts));
-    }
-
-    pub fn insert_bidirectional(&mut self, host: SchemeHostPort) {
-        self.bidirectional.insert(host);
     }
 
     /// Associate another hose/port combination with a socket address that already has an entry in

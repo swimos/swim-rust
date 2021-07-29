@@ -16,21 +16,24 @@
 mod tests;
 
 use crate::model::parser::{self, ParseFailure};
+use crate::request::Request;
 use crate::routing::error::{
     CloseError, CloseErrorKind, ConnectionError, ProtocolError, ProtocolErrorKind, ResolutionError,
     ResolutionErrorKind,
 };
 use crate::routing::remote::config::ConnectionConfig;
 use crate::routing::remote::router::RemoteRouter;
-use crate::routing::remote::{RemoteRoutingRequest, SchemeSocketAddr};
+use crate::routing::remote::{BidirectionalRequest, RemoteRoutingRequest, SchemeSocketAddr};
 use crate::routing::ws::selector::{SelectorResult, WsStreamSelector};
 use crate::routing::ws::{CloseCode, CloseReason, JoinedStreamSink, WsMessage};
 use crate::routing::{
-    ConnectionDropped, Route, Router, RouterFactory, RoutingAddr, TaggedEnvelope,
+    BidirectionalRoute, ConnectionDropped, Route, Router, RouterFactory, RoutingAddr,
+    TaggedEnvelope,
 };
 use crate::routing::{Origin, RouterError};
 use crate::warp::envelope::{Envelope, EnvelopeHeader, EnvelopeParseErr, OutgoingHeader};
 use crate::warp::path::RelativePath;
+use either::Either;
 use futures::future::{join, BoxFuture};
 use futures::{select_biased, stream, FutureExt, Sink, Stream, StreamExt};
 use pin_utils::pin_mut;
@@ -44,6 +47,7 @@ use std::str::FromStr;
 use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::SendError;
+use tokio::sync::mpsc::Sender;
 use tokio::time::{sleep, Instant};
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, Level};
@@ -59,7 +63,7 @@ pub struct ConnectionTask<Str, Router> {
     ws_stream: Str,
     messages: mpsc::Receiver<TaggedEnvelope>,
     message_injector: mpsc::Sender<TaggedEnvelope>,
-    router: Router,
+    router: Either<Router, mpsc::Sender<Envelope>>,
     stop_signal: trigger::Receiver,
     config: ConnectionConfig,
 }
@@ -107,6 +111,7 @@ where
     ///
     /// * `addr` - Address of the connection.
     /// * `ws_stream` - The joined sink/stream that implements the web sockets protocol.
+    /// //Todo dm
     /// * `router` - Router to route incoming messages to the appropriate destination.
     /// * `messages_tx` - Allows messages to be injected into the outgoing stream.
     /// * `messages_rx`- Stream of messages to be sent into the sink.
@@ -116,7 +121,7 @@ where
     pub fn new(
         addr: SchemeSocketAddr,
         ws_stream: Str,
-        router: R,
+        router: Either<R, mpsc::Sender<Envelope>>,
         (messages_tx, messages_rx): (mpsc::Sender<TaggedEnvelope>, mpsc::Receiver<TaggedEnvelope>),
         stop_signal: trigger::Receiver,
         config: ConnectionConfig,
@@ -186,22 +191,17 @@ where
                             Ok(envelope) => {
                                 let (done_tx, done_rx) = trigger::trigger();
 
-                                let dispatch_task = async {
-                                    let dispatch_result = dispatch_envelope(
-                                        &mut router,
-                                        &mut resolved,
-                                        envelope,
-                                        config.connection_retries,
-                                        sleep,
-                                    )
-                                    .await;
-                                    if let Err((env, _)) = dispatch_result {
-                                        handle_not_found(env, &message_injector).await;
-                                    }
-                                }
-                                .then(move |_| async {
-                                    done_tx.trigger();
-                                });
+                                // let dispatch_task = async {
+                                //     let dispatch_result = message_sender.send(envelope).await;
+                                //
+                                //     if let Err(SendError(env)) = dispatch_result {
+                                //         //Todo dm
+                                //         // handle_not_found(env, &message_injector).await;
+                                //     }
+                                // }
+                                //     .then(move |_| async {
+                                //         done_tx.trigger();
+                                //     });
 
                                 let write_task = write_to_socket_only(
                                     &mut selector,
@@ -209,7 +209,63 @@ where
                                     yield_mod,
                                     &mut iteration_count,
                                 );
-                                let (_, write_result) = join(dispatch_task, write_task).await;
+
+                                let (_, write_result) = match router.as_mut() {
+                                    Either::Left(mut router) => {
+                                        let dispatch_task = async {
+                                            let dispatch_result = dispatch_envelope(
+                                                router,
+                                                &mut resolved,
+                                                envelope,
+                                                config.connection_retries,
+                                                sleep,
+                                            )
+                                            .await;
+                                            if let Err((env, _)) = dispatch_result {
+                                                handle_not_found(env, &message_injector).await;
+                                            }
+                                        }
+                                        .then(move |_| async {
+                                            done_tx.trigger();
+                                        });
+
+                                        join(dispatch_task, write_task).await
+                                    }
+                                    Either::Right(message_sender) => {
+                                        let dispatch_task = async {
+                                            let dispatch_result =
+                                                message_sender.send(envelope).await;
+
+                                            if let Err(SendError(env)) = dispatch_result {
+                                                //Todo dm
+                                                // handle_not_found(env, &message_injector).await;
+                                            }
+                                        }
+                                        .then(move |_| async {
+                                            done_tx.trigger();
+                                        });
+
+                                        join(dispatch_task, write_task).await
+                                    }
+                                };
+
+                                // let dispatch_task = async {
+                                //     let dispatch_result = dispatch_envelope(
+                                //         &mut router,
+                                //         &mut resolved,
+                                //         envelope,
+                                //         config.connection_retries,
+                                //         sleep,
+                                //     )
+                                //     .await;
+                                //     if let Err((env, _)) = dispatch_result {
+                                //         handle_not_found(env, &message_injector).await;
+                                //     }
+                                // }
+                                // .then(move |_| async {
+                                //     done_tx.trigger();
+                                // });
+
                                 if let Err(err) = write_result {
                                     break Completion::Failed(err);
                                 }
@@ -664,7 +720,11 @@ where
         let task = ConnectionTask::new(
             addr,
             ws_stream,
-            RemoteRouter::new(tag, delegate_router_fac.create_for(tag), request_tx.clone()),
+            Either::Left(RemoteRouter::new(
+                tag,
+                delegate_router_fac.create_for(tag),
+                request_tx.clone(),
+            )),
             (msg_tx.clone(), msg_rx),
             stop_trigger.clone(),
             *configuration,
@@ -686,7 +746,7 @@ where
         ws_stream: Str,
         tag: RoutingAddr,
         spawner: &Sp,
-    ) -> (mpsc::Sender<Envelope>, mpsc::Receiver<Envelope>)
+    ) -> (mpsc::Sender<TaggedEnvelope>, mpsc::Receiver<Envelope>)
     where
         Str: JoinedStreamSink<WsMessage, ConnectionError> + Send + Unpin + 'static,
         Sp: Spawner<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>>,
@@ -696,13 +756,14 @@ where
             configuration,
             ..
         } = self;
+
         let (outgoing_tx, outgoing_rx) = mpsc::channel(configuration.channel_buffer_size.get());
         let (incoming_tx, incoming_rx) = mpsc::channel(configuration.channel_buffer_size.get());
 
-        let task = BidirectionalConnectionTask::new(
+        let task = ConnectionTask::<Str, DelegateRouterFac::Router>::new(
             addr,
             ws_stream,
-            incoming_tx,
+            Either::Right(incoming_tx),
             (outgoing_tx.clone(), outgoing_rx),
             stop_trigger.clone(),
             *configuration,

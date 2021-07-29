@@ -67,7 +67,7 @@ pub trait ConnectionPool: Clone + Send + 'static {
 pub type Connection = (ConnectionSender, Option<ConnectionReceiver>);
 
 pub(crate) type ConnectionReceiver = mpsc::Receiver<Envelope>;
-pub(crate) type ConnectionSender = mpsc::Sender<Envelope>;
+pub(crate) type ConnectionSender = TaggedSender;
 
 /// The connection pool is responsible for opening new connections to remote hosts and managing
 /// them. It is possible to request a connection to be recreated or to return a cached connection
