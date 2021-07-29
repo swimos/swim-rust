@@ -12,24 +12,40 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::codec::CodecFlags;
+use crate::errors::{Error, ErrorKind};
+use crate::handshake::ProtocolError;
 use crate::protocol::HeaderFlags;
-use bytes::BufMut;
+use crate::Role;
+use bytes::{Buf, BufMut};
 use bytes::{Bytes, BytesMut};
 use derive_more::Display;
 use nanorand::{WyRand, RNG};
+use std::borrow::{Borrow, BorrowMut};
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::convert::TryFrom;
+use std::mem::size_of;
 use thiserror::Error;
 
 const U16_MAX: usize = u16::MAX as usize;
 
-#[derive(Display)]
+#[derive(Debug, Display, PartialEq)]
 pub enum OpCode {
     #[display(fmt = "{}", _0)]
     DataCode(DataCode),
     #[display(fmt = "{}", _0)]
     ControlCode(ControlCode),
+}
+
+impl OpCode {
+    pub fn is_data(&self) -> bool {
+        matches!(self, OpCode::DataCode(_))
+    }
+
+    pub fn is_control(&self) -> bool {
+        matches!(self, OpCode::ControlCode(_))
+    }
 }
 
 impl From<OpCode> for u8 {
@@ -41,7 +57,7 @@ impl From<OpCode> for u8 {
     }
 }
 
-#[derive(Display)]
+#[derive(Debug, Display, PartialEq)]
 pub enum DataCode {
     #[display(fmt = "Continuation")]
     Continuation = 0,
@@ -51,7 +67,7 @@ pub enum DataCode {
     Binary = 2,
 }
 
-#[derive(Display)]
+#[derive(Debug, Display, PartialEq)]
 pub enum ControlCode {
     #[display(fmt = "Close")]
     Close = 8,
@@ -61,7 +77,7 @@ pub enum ControlCode {
     Pong = 10,
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, PartialEq)]
 pub enum OpCodeParseErr {
     #[error("Reserved OpCode: `{0}`")]
     Reserved(u8),
@@ -109,58 +125,179 @@ impl AsMut<[u8]> for Message {
     }
 }
 
+#[derive(Debug, PartialEq)]
 pub struct FrameHeader {
     opcode: OpCode,
     flags: HeaderFlags,
     mask: Option<u32>,
+    payload_len: usize,
+}
+
+macro_rules! try_parse_int {
+    ($source:ident, $offset:ident, $into:ty) => {{
+        const WIDTH: usize = size_of::<$into>();
+        match <[u8; WIDTH]>::try_from(&$source[$offset..$offset + WIDTH]) {
+            Ok(len) => {
+                let len = <$into>::from_be_bytes(len);
+                $offset += WIDTH;
+                len
+            }
+            Err(_) => return Ok(None),
+        }
+    }};
 }
 
 impl FrameHeader {
-    pub fn new(opcode: OpCode, flags: HeaderFlags, mask: Option<u32>) -> Self {
+    pub fn new(opcode: OpCode, flags: HeaderFlags, mask: Option<u32>, payload_len: usize) -> Self {
         FrameHeader {
             opcode,
             flags,
             mask,
+            payload_len,
+        }
+    }
+
+    pub fn read_from(
+        source: &[u8],
+        codec_flags: &CodecFlags,
+        max_size: usize,
+    ) -> Result<Option<(FrameHeader, usize)>, Error> {
+        let source_length = source.len();
+        if source_length < 2 {
+            return Ok(None);
+        }
+
+        let server = codec_flags.contains(CodecFlags::ROLE);
+
+        let first = source[0];
+        let received_flags = HeaderFlags::from_bits_truncate(first);
+        let opcode = OpCode::try_from(first & 0xF)?;
+
+        if opcode.is_control() && !received_flags.is_fin() {
+            // rfc6455 § 5.4: Control frames themselves MUST NOT be fragmented
+            return Err(ProtocolError::FragmentedControl.into());
+        }
+
+        if (received_flags.bits() & !codec_flags.bits() & 0x70) != 0 {
+            // Peer set a RSV bit high that hasn't been negotiated
+            return Err(ProtocolError::UnknownExtension.into());
+        }
+
+        let second = source[1];
+        let masked = second & 0x80 != 0;
+
+        if !masked && server {
+            // rfc6455 § 6.1: Client must send masked data
+            return Err(ProtocolError::UnmaskedFrame.into());
+        } else if masked && !server {
+            // rfc6455 § 6.2: Server must remove masking
+            return Err(ProtocolError::MaskedFrame.into());
+        }
+
+        let payload_length = second & 0x7F;
+        let mut offset = 2;
+
+        let length: usize = if payload_length == 126 {
+            try_parse_int!(source, offset, u16) as usize
+        } else if payload_length == 127 {
+            try_parse_int!(source, offset, u64) as usize
+        } else {
+            usize::from(payload_length)
+        };
+
+        if length > max_size {
+            return Err(ProtocolError::FrameOverflow.into());
+        }
+
+        let mask = if masked {
+            Some(try_parse_int!(source, offset, u32))
+        } else {
+            None
+        };
+
+        Ok(Some((
+            (FrameHeader {
+                opcode,
+                flags: received_flags,
+                mask,
+                payload_len: length,
+            }),
+            offset,
+        )))
+    }
+}
+
+pub enum Payload<'p> {
+    Owned(Vec<u8>),
+    Unique(&'p mut [u8]),
+}
+
+impl<'p> Into<Payload<'p>> for Vec<u8> {
+    fn into(self) -> Payload<'p> {
+        Payload::Owned(self)
+    }
+}
+
+impl<'p> Into<Payload<'p>> for &'p mut [u8] {
+    fn into(self) -> Payload<'p> {
+        Payload::Unique(self)
+    }
+}
+
+impl<'p> Borrow<[u8]> for Payload<'p> {
+    fn borrow(&self) -> &[u8] {
+        match self {
+            Payload::Owned(payload) => payload,
+            Payload::Unique(payload) => payload,
         }
     }
 }
 
-pub struct Frame {
-    header: FrameHeader,
-    payload: Vec<u8>,
-}
-
-impl Frame {
-    pub fn new(header: FrameHeader, payload: Vec<u8>) -> Self {
-        Frame { header, payload }
+impl<'p> BorrowMut<[u8]> for Payload<'p> {
+    fn borrow_mut(&mut self) -> &mut [u8] {
+        match self {
+            Payload::Owned(payload) => payload,
+            Payload::Unique(payload) => payload,
+        }
     }
 }
 
-impl Frame {
-    pub fn write_into<A>(dst: &mut BytesMut, header: FrameHeader, mut payload: A)
+pub struct Frame<'p> {
+    header: FrameHeader,
+    payload: Payload<'p>,
+}
+
+impl<'p> Frame<'p> {
+    pub fn new<P>(header: FrameHeader, payload: P) -> Frame<'p>
     where
-        A: AsMut<[u8]>,
+        P: Into<Payload<'p>>,
     {
+        Frame {
+            header,
+            payload: payload.into(),
+        }
+    }
+
+    pub fn write_into(self, dst: &mut BytesMut) {
+        let Frame {
+            header,
+            mut payload,
+        } = self;
         let FrameHeader {
             opcode,
             flags,
             mask,
+            payload_len,
         } = header;
 
-        let mut payload = payload.as_mut();
-        let mut length = payload.len();
+        let mut payload: &mut [u8] = payload.borrow_mut();
         let mut masked = mask.is_some();
 
-        let (second, mut offset) = if let Some(mask) = mask {
-            apply_mask(mask, &mut payload);
-            (0x80, 6)
-        } else {
-            (0x0, 2)
-        };
+        let (second, mut offset) = if masked { (0x80, 6) } else { (0x0, 2) };
 
-        if length >= U16_MAX {
+        if payload_len >= U16_MAX {
             offset += 8;
-        } else if length > 125 {
+        } else if payload_len > 125 {
             offset += 2;
         }
 
@@ -173,24 +310,41 @@ impl Frame {
         dst.reserve(additional);
         let first = flags.bits | u8::from(opcode);
 
-        if length < 126 {
-            dst.extend_from_slice(&[first, second | length as u8]);
-        } else if length <= U16_MAX {
+        if payload_len < 126 {
+            dst.extend_from_slice(&[first, second | payload_len as u8]);
+        } else if payload_len <= U16_MAX {
             dst.extend_from_slice(&[first, second | 126]);
-            dst.put_u16(length as u16);
+            dst.put_u16(payload_len as u16);
         } else {
             dst.extend_from_slice(&[first, second | 127]);
-            dst.put_u64(length as u64);
+            dst.put_u64(payload_len as u64);
         };
 
         if let Some(mask) = mask {
+            apply_mask(mask, &mut payload);
             dst.put_u32_le(mask as u32);
         }
 
         dst.extend_from_slice(payload);
     }
 
-    pub fn read_from(_from: &mut BytesMut) -> Result<Option<Frame>, ()> {
+    pub fn read_from(
+        from: &mut BytesMut,
+        codec_flags: &CodecFlags,
+    ) -> Result<Option<Frame<'p>>, Error> {
+        // todo params
+        let (header, header_len) =
+            match FrameHeader::read_from(from.as_ref(), codec_flags, usize::MAX)? {
+                Some((header, count)) => (header, count),
+                None => return Ok(None),
+            };
+
+        let mut payload = from.split_to(header_len);
+
+        if let Some(mask) = header.mask {
+            apply_mask(mask, &mut payload);
+        }
+
         unimplemented!()
     }
 }

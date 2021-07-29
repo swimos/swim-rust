@@ -30,6 +30,8 @@ bitflags::bitflags! {
         const RSV_3     = 0b0001_0000;
 
         const RESERVED  = Self::RSV_1.bits | Self::RSV_2.bits | Self::RSV_3.bits;
+
+        // no new flags should be added
     }
 }
 

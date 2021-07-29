@@ -18,6 +18,7 @@ mod io;
 mod server;
 
 use crate::errors::{ErrorKind, HttpError};
+use crate::protocol::frame::OpCodeParseErr;
 use crate::{Request, Response};
 pub use client::{exec_client_handshake, HandshakeResult};
 use fnv::FnvHashSet;
@@ -40,6 +41,18 @@ pub enum ProtocolError {
     Encoding,
     #[error("Received an unknown subprotocol")]
     UnknownProtocol,
+    #[error("Bad OpCode: `{0}`")]
+    OpCode(OpCodeParseErr),
+    #[error("Received an unexpected unmasked frame")]
+    UnmaskedFrame,
+    #[error("Received an unexpected masked frame")]
+    MaskedFrame,
+    #[error("Received a fragmented control frame")]
+    FragmentedControl,
+    #[error("A frame exceeded the maximum permitted size")]
+    FrameOverflow,
+    #[error("Attempted to use an extension that has not been negotiated")]
+    UnknownExtension,
 }
 
 #[derive(Default)]

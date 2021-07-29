@@ -14,6 +14,7 @@
 
 use crate::extensions::ExtHandshakeErr;
 use crate::handshake::ProtocolError;
+use crate::protocol::frame::OpCodeParseErr;
 use http::header::HeaderName;
 use http::status::InvalidStatusCode;
 use http::uri::InvalidUri;
@@ -85,6 +86,7 @@ pub(crate) enum ErrorKind {
     IO,
     Http,
     Extension,
+    Protocol,
 }
 
 impl From<io::Error> for Error {
@@ -153,5 +155,17 @@ impl From<http::Error> for Error {
 impl From<ProtocolError> for Error {
     fn from(e: ProtocolError) -> Self {
         Error::with_cause(ErrorKind::Http, e)
+    }
+}
+
+impl From<OpCodeParseErr> for ProtocolError {
+    fn from(e: OpCodeParseErr) -> Self {
+        ProtocolError::OpCode(e)
+    }
+}
+
+impl From<OpCodeParseErr> for Error {
+    fn from(e: OpCodeParseErr) -> Self {
+        Error::with_cause(ErrorKind::Protocol, Box::new(ProtocolError::from(e)))
     }
 }

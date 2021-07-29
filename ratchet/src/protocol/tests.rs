@@ -14,18 +14,23 @@
 
 #[cfg(test)]
 mod encoding {
-    use crate::protocol::frame::{DataCode, Frame, FrameHeader, OpCode};
+    use crate::protocol::frame::{ControlCode, DataCode, Frame, FrameHeader, OpCode};
     use crate::protocol::HeaderFlags;
     use bytes::BytesMut;
 
-    fn encode<A>(flags: HeaderFlags, opcode: OpCode, payload: A, mask: Option<u32>, expected: &[u8])
-    where
+    fn encode<A>(
+        flags: HeaderFlags,
+        opcode: OpCode,
+        mut payload: A,
+        mask: Option<u32>,
+        expected: &[u8],
+    ) where
         A: AsMut<[u8]>,
     {
         let mut bytes = BytesMut::new();
 
-        let header = FrameHeader::new(opcode, flags, mask);
-        Frame::write_into(&mut bytes, header, payload);
+        let header = FrameHeader::new(opcode, flags, mask, payload.as_mut().len());
+        Frame::new(header, payload.as_mut()).write_into(&mut bytes);
 
         assert_eq!(bytes.as_ref(), expected);
     }
@@ -111,5 +116,99 @@ mod encoding {
             None,
             &[241, 4, 1, 2, 3, 4],
         );
+    }
+}
+
+#[cfg(test)]
+mod decode {
+    use crate::codec::CodecFlags;
+    use crate::errors::Error;
+    use crate::handshake::ProtocolError;
+    use crate::protocol::frame::{DataCode, Frame, FrameHeader, OpCode};
+    use crate::protocol::HeaderFlags;
+    use bytes::BytesMut;
+    use std::iter::FromIterator;
+
+    fn expect_protocol_error(
+        result: Result<Option<(FrameHeader, usize)>, Error>,
+        error: ProtocolError,
+    ) {
+        match result {
+            Err(e) => {
+                let protocol_error = e
+                    .downcast_ref::<ProtocolError>()
+                    .expect("Expected a protocol error");
+                assert_eq!(protocol_error, &error);
+            }
+            o => {
+                panic!("Expected a protocol error. Got: `{:?}`", o)
+            }
+        }
+    }
+
+    #[test]
+    fn header() {
+        let mut bytes = BytesMut::from_iter(&[129, 4, 1, 2, 3, 4]);
+        let (header, _header_len) =
+            FrameHeader::read_from(&mut bytes, &CodecFlags::empty(), usize::MAX)
+                .unwrap()
+                .unwrap();
+        assert_eq!(
+            header,
+            FrameHeader::new(OpCode::DataCode(DataCode::Text), HeaderFlags::FIN, None, 4)
+        );
+    }
+
+    #[test]
+    fn rsv() {
+        let mut bytes = BytesMut::from_iter(&[161, 4, 1, 2, 3, 4]);
+        let r = FrameHeader::read_from(&mut bytes, &CodecFlags::RSV1, usize::MAX);
+        expect_protocol_error(r, ProtocolError::UnknownExtension);
+
+        let mut bytes = BytesMut::from_iter(&[161, 4, 1, 2, 3, 4]);
+        let r = FrameHeader::read_from(
+            &mut bytes,
+            &(CodecFlags::RSV1 | CodecFlags::RSV3),
+            usize::MAX,
+        );
+        expect_protocol_error(r, ProtocolError::UnknownExtension);
+
+        let mut bytes = BytesMut::from_iter(&[193, 4, 1, 2, 3, 4]);
+        let result = FrameHeader::read_from(&mut bytes, &CodecFlags::RSV1, usize::MAX);
+        let expected = FrameHeader::new(
+            OpCode::DataCode(DataCode::Text),
+            HeaderFlags::FIN | HeaderFlags::RSV_1,
+            None,
+            4,
+        );
+        assert!(matches!(result, Ok(Some((expected, _)))));
+    }
+
+    #[test]
+    fn overflow() {
+        let mut bytes = BytesMut::from_iter(&[129, 4, 1, 2, 3, 4]);
+        let r = FrameHeader::read_from(&mut bytes, &CodecFlags::empty(), 1);
+        expect_protocol_error(r, ProtocolError::FrameOverflow);
+    }
+
+    #[test]
+    fn fragmented_control() {
+        let mut bytes = BytesMut::from_iter(&[8, 4, 1, 2, 3, 4]);
+        let r = FrameHeader::read_from(&mut bytes, &CodecFlags::empty(), 1);
+        expect_protocol_error(r, ProtocolError::FragmentedControl);
+    }
+
+    #[test]
+    fn unmasked() {
+        let mut bytes = BytesMut::from_iter(&[1, 132, 0, 0, 0, 0, 1, 2, 3, 4]);
+        let r = FrameHeader::read_from(&mut bytes, &CodecFlags::empty(), 1);
+        expect_protocol_error(r, ProtocolError::MaskedFrame);
+    }
+
+    #[test]
+    fn masked_err() {
+        let mut bytes = BytesMut::from_iter(&[129, 4, 1, 2, 3, 4]);
+        let r = FrameHeader::read_from(&mut bytes, &CodecFlags::ROLE, 1);
+        expect_protocol_error(r, ProtocolError::UnmaskedFrame);
     }
 }

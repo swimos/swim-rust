@@ -26,9 +26,28 @@ bitflags::bitflags! {
         const W_CONT    = 0b0000_0010;
         const CONT      = Self::R_CONT.bits | Self::W_CONT.bits;
 
-        const ROLE      = 0b0000_0100;
-        const SERVER    = Self::ROLE.bits;
-        const CLIENT    = !Self::ROLE.bits;
+        // If high then `server`, else `client
+        const ROLE     = 0b0000_0100;
+
+        // Below are the reserved bits used by the negotiated extensions
+        const RSV1      = 0b0100_0000;
+        const RSV2      = 0b0010_0000;
+        const RSV3      = 0b0001_0000;
+        const RESERVED  = Self::RSV1.bits | Self::RSV2.bits | Self::RSV3.bits;
+    }
+}
+
+impl CodecFlags {
+    pub fn is_rsv1(&self) -> bool {
+        self.contains(CodecFlags::RSV1)
+    }
+
+    pub fn is_rsv2(&self) -> bool {
+        self.contains(CodecFlags::RSV2)
+    }
+
+    pub fn is_rsv3(&self) -> bool {
+        self.contains(CodecFlags::RSV3)
     }
 }
 
@@ -41,8 +60,8 @@ pub struct Codec {
 impl Codec {
     pub fn new(role: Role, max_size: usize) -> Self {
         let role_flag = match role {
-            Role::Client => CodecFlags::CLIENT,
-            Role::Server => CodecFlags::SERVER,
+            Role::Client => CodecFlags::empty(),
+            Role::Server => CodecFlags::ROLE,
         };
         let flags = CodecFlags::from(role_flag);
 
@@ -66,11 +85,11 @@ impl Codec {
     }
 
     pub fn is_client(&self) -> bool {
-        self.flags.contains(CodecFlags::CLIENT)
+        !self.flags.contains(CodecFlags::ROLE)
     }
 
     pub fn is_server(&self) -> bool {
-        self.flags.contains(CodecFlags::SERVER)
+        self.flags.contains(CodecFlags::ROLE)
     }
 }
 
@@ -93,8 +112,8 @@ impl Encoder<Message> for Codec {
             (HeaderFlags::FIN, None)
         };
 
-        let header = FrameHeader::new(opcode, flags, mask);
-        Frame::write_into(dst, header, bytes);
+        let header = FrameHeader::new(opcode, flags, mask, bytes.len());
+        Frame::new(header, bytes).write_into(dst);
 
         Ok(())
     }
@@ -104,7 +123,14 @@ impl Decoder for Codec {
     type Item = Message;
     type Error = Error;
 
-    fn decode(&mut self, _src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
-        todo!()
+    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        // todo max_size from config
+        match FrameHeader::read_from(src, &self.flags, usize::MAX)? {
+            Some(_header) => {
+                // allocate enough space in `src` to handle the payload
+                unimplemented!()
+            }
+            None => Ok(None),
+        }
     }
 }
