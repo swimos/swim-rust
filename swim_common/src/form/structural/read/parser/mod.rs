@@ -55,7 +55,7 @@ pub fn parse_recognize_with<R: Recognizer>(
     .map_err(ParseError::Structure)
 }
 
-/// Create a [`Recognizer`] state machine for a type, and feed the stream of [`ParseEvent`]s,
+/// Create a [`Recognizer`] state machine for a type, and feed the stream of [`ReadEvent`]s,
 /// produced by parsing a Recon string, into it.
 pub fn parse_recognize<T: RecognizerReadable>(input: Span<'_>) -> Result<T, ParseError> {
     let mut recognizer = T::make_recognizer();

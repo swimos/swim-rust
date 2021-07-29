@@ -23,8 +23,8 @@ mod private {
 }
 
 /// Trait for the co-product of a number of types. Coproducts are used by the derivation macro
-/// for [`crate::form::structural::StructuralReadable`] to avoid needing to generate enumeration
-/// types.
+/// for [`crate::form::structural::read::StructuralReadable`] to avoid needing to generate
+/// enumeration types.
 pub trait Coproduct: private::Sealed {
     /// The number of types in the co-product.
     const NUM_OPTIONS: usize;
