@@ -53,6 +53,10 @@ pub enum ProtocolError {
     FrameOverflow,
     #[error("Attempted to use an extension that has not been negotiated")]
     UnknownExtension,
+    #[error("Received a continuation frame before one has been started")]
+    ContinuationNotStarted,
+    #[error("Attempted to start another continuation before the previous one has completed")]
+    ContinuationAlreadyStarted,
 }
 
 #[derive(Default)]

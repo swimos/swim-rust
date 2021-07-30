@@ -73,6 +73,10 @@ impl Error {
     pub fn is_io(&self) -> bool {
         matches!(self.inner.kind, ErrorKind::IO)
     }
+
+    pub fn is_encoding(&self) -> bool {
+        matches!(self.inner.kind, ErrorKind::Encoding)
+    }
 }
 
 #[derive(Debug)]

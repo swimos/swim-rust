@@ -12,10 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::errors::{Error, ErrorKind};
-use crate::protocol::frame::{
-    apply_mask, ControlCode, DataCode, Frame, FrameHeader, Message, OpCode, Payload,
-};
+use crate::errors::Error;
+use crate::handshake::ProtocolError;
+use crate::protocol::frame::{ControlCode, DataCode, Frame, FrameHeader, Message, OpCode, Payload};
 use crate::protocol::HeaderFlags;
 use crate::Role;
 use bytes::BytesMut;
@@ -67,27 +66,34 @@ struct FragmentBuffer {
 
 impl FrameBuffer for FragmentBuffer {
     fn start_continuation(&mut self, first_code: DataType, payload: Vec<u8>) -> Result<(), Error> {
+        let FragmentBuffer { op_code, .. } = self;
+        match op_code {
+            Some(_) => Err(ProtocolError::ContinuationAlreadyStarted.into()),
+            None => {
+                *op_code = Some(first_code);
+                self.on_frame(payload)
+            }
+        }
+    }
+
+    fn on_frame(&mut self, payload: Vec<u8>) -> Result<(), Error> {
         let FragmentBuffer {
             buffer,
             op_code,
             max_size,
         } = self;
+
         match op_code {
-            Some(_) => Err(Error::new(ErrorKind::Protocol)),
-            None => {
-                *op_code = Some(first_code);
-                if payload.len() >= *max_size {
-                    Err(Error::new(ErrorKind::Protocol))
+            None => Err(ProtocolError::ContinuationNotStarted.into()),
+            Some(_) => {
+                if buffer.len() + payload.len() >= *max_size {
+                    Err(ProtocolError::FrameOverflow.into())
                 } else {
                     buffer.extend_from_slice(payload.as_slice());
                     Ok(())
                 }
             }
         }
-    }
-
-    fn on_frame(&mut self, _payload: Vec<u8>) -> Result<(), Error> {
-        todo!()
     }
 
     fn finish_continuation(&mut self) -> Result<Message, Error> {
@@ -98,7 +104,7 @@ impl FrameBuffer for FragmentBuffer {
         } = self;
 
         match op_code {
-            None => Err(Error::new(ErrorKind::Protocol)),
+            None => Err(ProtocolError::ContinuationNotStarted.into()),
             Some(op_code) => {
                 let payload = buffer.split().freeze();
                 buffer.truncate(*max_size / 2);
@@ -109,10 +115,6 @@ impl FrameBuffer for FragmentBuffer {
                 }
             }
         }
-    }
-
-    fn is_empty(&self) -> bool {
-        self.buffer.is_empty()
     }
 }
 
@@ -211,15 +213,11 @@ impl Decoder for Codec {
         match Frame::read_from(src, flags, *max_size)? {
             Some(frame) => {
                 let Frame { header, payload } = frame;
-                let FrameHeader {
-                    opcode,
-                    flags,
-                    mask,
-                } = header;
+                let FrameHeader { opcode, flags, .. } = header;
 
                 match opcode {
                     OpCode::DataCode(data_code) => {
-                        on_data_frame(fragment_buffer, data_code, payload, flags, mask)
+                        on_data_frame(fragment_buffer, data_code, payload, flags)
                     }
                     OpCode::ControlCode(_control_code) => {
                         unimplemented!()
@@ -237,8 +235,6 @@ trait FrameBuffer {
     fn on_frame(&mut self, payload: Vec<u8>) -> Result<(), Error>;
 
     fn finish_continuation(&mut self) -> Result<Message, Error>;
-
-    fn is_empty(&self) -> bool;
 }
 
 fn on_data_frame<B>(
@@ -246,15 +242,11 @@ fn on_data_frame<B>(
     data_code: DataCode,
     mut payload: Payload,
     flags: HeaderFlags,
-    frame_mask: Option<u32>,
 ) -> Result<Option<Message>, Error>
 where
     B: FrameBuffer,
 {
     let payload: &mut [u8] = payload.borrow_mut();
-    if let Some(frame_mask) = frame_mask {
-        apply_mask(frame_mask, payload);
-    }
     let payload = payload.to_vec();
 
     match data_code {
@@ -290,10 +282,11 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::fixture::expect_err;
     use std::iter::FromIterator;
 
     #[test]
-    fn t() {
+    fn frame_text() {
         let mut bytes = BytesMut::from_iter(&[
             129, 143, 0, 0, 0, 0, 66, 111, 110, 115, 111, 105, 114, 44, 32, 69, 108, 108, 105, 111,
             116,
@@ -305,5 +298,89 @@ mod tests {
             result.unwrap(),
             Some(Message::Text("Bonsoir, Elliot".to_string()))
         )
+    }
+
+    #[test]
+    fn continuation_text() {
+        let mut buffer = BytesMut::new();
+        let mut codec = Codec::new(Role::Server, usize::MAX);
+
+        let input = "a bunch of characters that form a string";
+        let mut iter = input.as_bytes().chunks(5).peekable();
+        let first_frame = Frame::new(
+            FrameHeader::new(
+                OpCode::DataCode(DataCode::Text),
+                HeaderFlags::empty(),
+                Some(0),
+            ),
+            iter.next().unwrap().to_vec(),
+        );
+
+        first_frame.write_into(&mut buffer);
+
+        while let Some(data) = iter.next() {
+            let fin = iter.peek().is_none();
+            let flags =
+                HeaderFlags::from_bits_truncate(HeaderFlags::FIN.bits() & ((fin as u8) << 7));
+            let frame = Frame::new(
+                FrameHeader::new(OpCode::DataCode(DataCode::Continuation), flags, Some(0)),
+                data.to_vec(),
+            );
+
+            frame.write_into(&mut buffer);
+        }
+
+        loop {
+            match codec.decode(&mut buffer) {
+                Ok(Some(message)) => {
+                    assert_eq!(message, Message::Text(input.to_string()));
+                    break;
+                }
+                Ok(None) => continue,
+                Err(e) => panic!("{:?}", e),
+            }
+        }
+    }
+
+    #[test]
+    fn double_cont() {
+        let mut buffer = FragmentBuffer::new(usize::MAX);
+        assert!(buffer.start_continuation(DataType::Binary, vec![1]).is_ok());
+
+        expect_err(
+            buffer.start_continuation(DataType::Binary, vec![1]),
+            ProtocolError::ContinuationAlreadyStarted,
+        )
+    }
+
+    #[test]
+    fn no_cont() {
+        let mut buffer = FragmentBuffer::new(usize::MAX);
+        expect_err(
+            buffer.on_frame(vec![]),
+            ProtocolError::ContinuationNotStarted,
+        );
+    }
+
+    #[test]
+    fn overflow_buffer() {
+        let mut buffer = FragmentBuffer::new(5);
+
+        assert!(buffer
+            .start_continuation(DataType::Binary, vec![1, 2, 3])
+            .is_ok());
+        assert!(buffer.on_frame(vec![4]).is_ok());
+        expect_err(buffer.on_frame(vec![6, 7]), ProtocolError::FrameOverflow);
+    }
+
+    #[test]
+    fn invalid_utf8() {
+        let mut buffer = FragmentBuffer::new(5);
+
+        assert!(buffer
+            .start_continuation(DataType::Text, vec![0, 159, 146, 150])
+            .is_ok());
+        let error = buffer.finish_continuation().err().unwrap();
+        assert!(error.is_encoding());
     }
 }

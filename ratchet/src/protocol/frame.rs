@@ -342,14 +342,22 @@ impl<'p> Frame<'p> {
         codec_flags: &CodecFlags,
         max_size: usize,
     ) -> Result<Option<Frame<'p>>, Error> {
-        // todo params
         let (header, header_len, payload_len) =
             match FrameHeader::read_from(from.as_ref(), codec_flags, max_size)? {
                 Some(r) => r,
                 None => return Ok(None),
             };
 
+        if from.len() < header_len + payload_len {
+            return Ok(None);
+        }
+
         from.advance(header_len);
+
+        if payload_len == 0 {
+            return Ok(Some(Frame::new(header, Vec::new())));
+        }
+
         let mut payload = from.split_to(payload_len);
 
         if let Some(mask) = header.mask {

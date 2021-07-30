@@ -12,9 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::errors::Error;
 use bytes::{Buf, BufMut, BytesMut};
 use http::{Request, Response, Version};
 use httparse::Status;
+use std::any::{type_name, Any};
+use std::error::Error as StdError;
+use std::fmt::Debug;
 use std::ops::DerefMut;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
@@ -208,4 +212,14 @@ impl AsyncWrite for MockStream {
     fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
         Poll::Ready(Ok(()))
     }
+}
+
+pub fn expect_err<O, T>(result: Result<O, Error>, expected: T)
+where
+    O: Debug,
+    T: StdError + PartialEq + Any,
+{
+    let error = result.expect_err(&format!("Expected a {}", type_name::<T>()));
+    let protocol_error = error.downcast_ref::<T>().unwrap();
+    assert_eq!(protocol_error, &expected);
 }
