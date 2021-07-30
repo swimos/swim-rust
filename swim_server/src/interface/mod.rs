@@ -31,17 +31,21 @@ use std::net::SocketAddr;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use swim_client::configuration::downlink::ConfigHierarchy;
-use swim_client::downlink::subscription::DownlinksHandle;
+use swim_client::configuration::router::ConnectionPoolParams;
+use swim_client::connections::{PoolTask, SwimConnPool};
+use swim_client::downlink::subscription::DownlinksTask;
 use swim_client::downlink::Downlinks;
 use swim_client::interface::{SwimClient, SwimClientBuilder};
-use swim_client::router::{ClientConnectionsManager, ClientRequest};
+use swim_client::router::{ClientRequest, ClientRouterFactory};
 use swim_common::routing::error::RoutingError;
 use swim_common::routing::remote::config::ConnectionConfig;
 use swim_common::routing::remote::net::dns::Resolver;
 use swim_common::routing::remote::net::plain::TokioPlainTextNetworking;
-use swim_common::routing::remote::{RemoteConnectionChannels, RemoteConnectionsTask};
+use swim_common::routing::remote::{
+    RemoteConnectionChannels, RemoteConnectionsTask, RemoteRoutingRequest,
+};
 use swim_common::routing::ws::tungstenite::TungsteniteWsConnections;
-use swim_common::routing::{CloseReceiver, CloseSender};
+use swim_common::routing::{CloseReceiver, CloseSender, PlaneRoutingRequest};
 use swim_common::warp::path::Path;
 use swim_runtime::task::TaskError;
 use swim_runtime::time::clock::RuntimeClock;
@@ -209,11 +213,19 @@ impl SwimServerBuilder {
         let (close_tx, close_rx) = promise::promise();
         let (address_tx, address_rx) = promise::promise();
 
-        let (client_conn_request_tx, client_conn_request_rx) =
-            mpsc::channel(config.conn_config.channel_buffer_size.get());
+        let (client_tx, client_rx) = mpsc::channel(config.conn_config.channel_buffer_size.get());
+        let (remote_tx, remote_rx) = mpsc::channel(config.conn_config.channel_buffer_size.get());
+        let (plane_tx, plane_rx) = mpsc::channel(config.conn_config.channel_buffer_size.get());
 
-        let (downlinks, downlinks_handle) = Downlinks::new(
-            client_conn_request_tx.clone(),
+        let client_router_factory =
+            ClientRouterFactory::new(client_tx.clone(), remote_tx.clone(), Some(plane_tx.clone()));
+
+        //Todo dm non default config
+        let (connection_pool, connection_pool_task) =
+            SwimConnPool::new(ConnectionPoolParams::default(), client_router_factory);
+
+        let (downlinks, downlinks_task) = Downlinks::new(
+            connection_pool,
             Arc::new(ConfigHierarchy::default()),
             close_rx.clone(),
         );
@@ -227,10 +239,12 @@ impl SwimServerBuilder {
                 stop_trigger_rx: close_rx,
                 address: address.ok_or(SwimServerBuilderError::MissingAddress)?,
                 address_tx,
+                remote_channel: (remote_tx, remote_rx),
+                plane_channel: (plane_tx, plane_rx),
+                client_channel: (client_tx, client_rx),
                 client,
-                downlinks_handle,
-                client_conn_request_tx,
-                client_conn_request_rx,
+                connection_pool_task,
+                downlinks_task,
             },
             ServerHandle {
                 either_address: Either::Left(address_rx),
@@ -249,10 +263,21 @@ pub struct SwimServer {
     planes: Vec<PlaneSpec<RuntimeClock, EnvChannel, PlaneRouter<TopLevelRouter>>>,
     stop_trigger_rx: CloseReceiver,
     address_tx: promise::Sender<SocketAddr>,
+    remote_channel: (
+        mpsc::Sender<RemoteRoutingRequest>,
+        mpsc::Receiver<RemoteRoutingRequest>,
+    ),
+    client_channel: (
+        mpsc::Sender<ClientRequest<Path>>,
+        mpsc::Receiver<ClientRequest<Path>>,
+    ),
+    plane_channel: (
+        mpsc::Sender<PlaneRoutingRequest>,
+        mpsc::Receiver<PlaneRoutingRequest>,
+    ),
     client: SwimClient<Path>,
-    downlinks_handle: DownlinksHandle<Path>,
-    client_conn_request_tx: mpsc::Sender<ClientRequest<Path>>,
-    client_conn_request_rx: mpsc::Receiver<ClientRequest<Path>>,
+    connection_pool_task: PoolTask<Path>,
+    downlinks_task: DownlinksTask<Path>,
 }
 
 impl SwimServer {
@@ -270,10 +295,12 @@ impl SwimServer {
             mut planes,
             stop_trigger_rx,
             address_tx,
+            remote_channel: (remote_tx, remote_rx),
+            client_channel: (client_tx, client_rx),
+            plane_channel: (plane_tx, plane_rx),
             client,
-            downlinks_handle,
-            client_conn_request_tx: client_tx,
-            client_conn_request_rx: client_rx,
+            connection_pool_task,
+            downlinks_task,
         } = self;
 
         let SwimServerConfig {
@@ -282,33 +309,15 @@ impl SwimServer {
             conn_config,
         } = config;
 
-        let DownlinksHandle {
-            downlinks_task,
-            request_receiver,
-            task_manager,
-            pool_task,
-        } = downlinks_handle;
-
         // Todo add support for multiple planes in the future
         let spec = planes
             .pop()
             .expect("The server cannot be started without a plane");
 
-        let (plane_tx, plane_rx) = mpsc::channel(agent_config.lane_attachment_buffer.get());
-        let (remote_tx, remote_rx) = mpsc::channel(conn_config.router_buffer_size.get());
-
         let top_level_router_fac =
             TopLevelRouterFactory::new(plane_tx.clone(), client_tx.clone(), remote_tx.clone());
 
         let clock = swim_runtime::time::clock::runtime_clock();
-
-        let conn_manager = ClientConnectionsManager::new(
-            client_rx,
-            remote_tx.clone(),
-            Some(plane_tx.clone()),
-            NonZeroUsize::new(conn_config.router_buffer_size.get()).unwrap(),
-            stop_trigger_rx.clone(),
-        );
 
         let context = ContextImpl::new(plane_tx.clone(), spec.routes());
         let PlaneSpec { routes, lifecycle } = spec;
@@ -351,14 +360,11 @@ impl SwimServer {
             Err(err) => panic!("Could not resolve server address: {}", err),
         };
 
-        let connections_future = connections_task.run();
         join!(
-            connections_future,
+            connections_task.run(),
             plane_future,
-            conn_manager.run(),
-            downlinks_task.run(ReceiverStream::new(request_receiver)),
-            task_manager.run(),
-            pool_task.run()
+            connection_pool_task.run(),
+            downlinks_task.run(),
         )
         .0
     }

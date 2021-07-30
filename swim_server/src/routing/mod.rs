@@ -5,7 +5,7 @@ use swim_common::request::Request;
 use swim_common::routing::error::ResolutionError;
 use swim_common::routing::error::RouterError;
 use swim_common::routing::remote::{RawRoute, RemoteRoutingRequest};
-use swim_common::routing::{Duplex, Origin, PlaneRoutingRequest};
+use swim_common::routing::{BidirectionalRoute, Origin, PlaneRoutingRequest};
 use swim_common::routing::{Route, Router, RouterFactory, RoutingAddr, TaggedSender};
 use swim_common::warp::path::Path;
 use tokio::sync::mpsc;
@@ -103,7 +103,7 @@ impl Router for TopLevelRouter {
                         Err(_) => Err(ResolutionError::router_dropped()),
                     }
                 }
-            } else {
+            } else if addr.is_local() {
                 let (tx, rx) = oneshot::channel();
                 let request = Request::new(tx);
                 if plane_sender
@@ -121,9 +121,21 @@ impl Router for TopLevelRouter {
                         Err(_) => Err(ResolutionError::router_dropped()),
                     }
                 }
+            } else {
+                //Todo
+                unimplemented!()
             }
         }
         .boxed()
+    }
+
+    fn resolve_bidirectional(
+        &mut self,
+        host: Option<Url>,
+        route: RelativeUri,
+    ) -> BoxFuture<'_, Result<BidirectionalRoute, ResolutionError>> {
+        //Todo dm
+        unimplemented!()
     }
 
     //Todo dm

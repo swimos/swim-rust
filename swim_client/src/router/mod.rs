@@ -35,7 +35,7 @@ use swim_common::routing::{
     Route, Router, RouterFactory, RoutingAddr, TaggedEnvelope, TaggedSender,
 };
 use swim_common::warp::envelope::{Envelope, IncomingLinkMessage};
-use swim_common::warp::path::{Addressable, RelativePath};
+use swim_common::warp::path::{AbsolutePath, Addressable, RelativePath};
 use swim_runtime::task::*;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
@@ -51,9 +51,195 @@ use utilities::uri::RelativeUri;
 #[cfg(test)]
 mod tests;
 
+//Todo dm
 // mod incoming;
 // mod outgoing;
 // mod retry;
+
+#[derive(Debug, Clone)]
+pub(crate) struct TopLevelRouterFactory {
+    client_sender: mpsc::Sender<ClientRequest<AbsolutePath>>,
+    remote_sender: mpsc::Sender<RemoteRoutingRequest>,
+}
+
+impl TopLevelRouterFactory {
+    pub(in crate) fn new(
+        client_sender: mpsc::Sender<ClientRequest<AbsolutePath>>,
+        remote_sender: mpsc::Sender<RemoteRoutingRequest>,
+    ) -> Self {
+        TopLevelRouterFactory {
+            client_sender,
+            remote_sender,
+        }
+    }
+}
+
+impl RouterFactory for TopLevelRouterFactory {
+    type Router = TopLevelRouter;
+
+    fn create_for(&self, addr: RoutingAddr) -> Self::Router {
+        TopLevelRouter::new(addr, self.client_sender.clone(), self.remote_sender.clone())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct TopLevelRouter {
+    addr: RoutingAddr,
+    client_sender: mpsc::Sender<ClientRequest<AbsolutePath>>,
+    remote_sender: mpsc::Sender<RemoteRoutingRequest>,
+}
+
+impl TopLevelRouter {
+    pub(crate) fn new(
+        addr: RoutingAddr,
+        client_sender: mpsc::Sender<ClientRequest<AbsolutePath>>,
+        remote_sender: mpsc::Sender<RemoteRoutingRequest>,
+    ) -> Self {
+        TopLevelRouter {
+            addr,
+            client_sender,
+            remote_sender,
+        }
+    }
+}
+
+impl Router for TopLevelRouter {
+    fn resolve_sender(
+        &mut self,
+        addr: RoutingAddr,
+    ) -> BoxFuture<'_, Result<Route, ResolutionError>> {
+        async move {
+            let TopLevelRouter {
+                remote_sender,
+                client_sender,
+                addr: tag,
+            } = self;
+
+            if addr.is_remote() {
+                let (tx, rx) = oneshot::channel();
+                let request = Request::new(tx);
+                if remote_sender
+                    .send(RemoteRoutingRequest::Endpoint { addr, request })
+                    .await
+                    .is_err()
+                {
+                    Err(ResolutionError::router_dropped())
+                } else {
+                    match rx.await {
+                        Ok(Ok(RawRoute { sender, on_drop })) => {
+                            Ok(Route::new(TaggedSender::new(*tag, sender), on_drop))
+                        }
+                        Ok(Err(_)) => Err(ResolutionError::unresolvable(addr.to_string())),
+                        Err(_) => Err(ResolutionError::router_dropped()),
+                    }
+                }
+            } else if addr.is_local() {
+                let (tx, rx) = oneshot::channel();
+                let request = Request::new(tx);
+                if client_sender
+                    .send(ClientRequest::Endpoint { addr, request })
+                    .await
+                    .is_err()
+                {
+                    Err(ResolutionError::router_dropped())
+                } else {
+                    match rx.await {
+                        Ok(Ok(RawRoute { sender, on_drop })) => {
+                            Ok(Route::new(TaggedSender::new(*tag, sender), on_drop))
+                        }
+                        Ok(Err(_)) => Err(ResolutionError::unresolvable(addr.to_string())),
+                        Err(_) => Err(ResolutionError::router_dropped()),
+                    }
+                }
+            } else {
+                //Todo dm
+                // Remote will always route through the bidirectional connection
+                unimplemented!()
+            }
+        }
+        .boxed()
+    }
+
+    fn resolve_bidirectional(
+        &mut self,
+        host: Option<Url>,
+        route: RelativeUri,
+    ) -> BoxFuture<'_, Result<BidirectionalRoute, ResolutionError>> {
+        async move {
+            let TopLevelRouter { remote_sender, .. } = self;
+
+            match host {
+                Some(host) => {
+                    let (tx, rx) = oneshot::channel();
+                    if remote_sender
+                        .send(RemoteRoutingRequest::Bidirectional {
+                            host: host.clone(),
+                            request: Request::new(tx),
+                        })
+                        .await
+                        .is_err()
+                    {
+                        Err(ResolutionError::router_dropped())
+                    } else {
+                        match rx.await {
+                            Ok(Ok(addr)) => Ok(addr),
+                            Ok(Err(err)) => Err((ResolutionError::unresolvable(host.to_string()))),
+                            Err(_) => Err(ResolutionError::router_dropped()),
+                        }
+                    }
+                }
+                None => {
+                    //Todo dm
+                    // Bidirectional connections to local are not supported
+                    unimplemented!()
+                }
+            }
+        }
+        .boxed()
+    }
+
+    fn lookup(
+        &mut self,
+        host: Option<Url>,
+        route: RelativeUri,
+    ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
+        async move {
+            let TopLevelRouter {
+                addr,
+                client_sender,
+                remote_sender,
+            } = self;
+
+            match host {
+                Some(host) => {
+                    let (tx, rx) = oneshot::channel();
+                    if remote_sender
+                        .send(RemoteRoutingRequest::ResolveUrl {
+                            host,
+                            request: Request::new(tx),
+                        })
+                        .await
+                        .is_err()
+                    {
+                        Err(RouterError::RouterDropped)
+                    } else {
+                        match rx.await {
+                            Ok(Ok(addr)) => Ok(addr),
+                            Ok(Err(err)) => Err(RouterError::ConnectionFailure(err)),
+                            Err(_) => Err(RouterError::RouterDropped),
+                        }
+                    }
+                }
+                None => {
+                    //Todo dm
+                    // Remote will always route through the bidirectional connection
+                    unimplemented!()
+                }
+            }
+        }
+        .boxed()
+    }
+}
 
 pub(crate) type Node = String;
 
@@ -111,43 +297,45 @@ impl<Path: Addressable> RoutingTable<Path> {
 }
 
 #[derive(Debug, Clone)]
-pub struct ClientRouterFactory<Path: Addressable> {
-    request_sender: mpsc::Sender<ClientRequest<Path>>,
-    remote_tx: mpsc::Sender<RemoteRoutingRequest>,
+pub struct ClientRouterFactory<Path: Addressable, DelegateFac: RouterFactory> {
+    client_request_sender: mpsc::Sender<ClientRequest<Path>>,
+    delegate_fac: DelegateFac,
 }
 
-impl<Path: Addressable> ClientRouterFactory<Path> {
+impl<Path: Addressable, DelegateFac: RouterFactory> ClientRouterFactory<Path, DelegateFac> {
     pub fn new(
         request_sender: mpsc::Sender<ClientRequest<Path>>,
-        remote_tx: mpsc::Sender<RemoteRoutingRequest>,
+        delegate_fac: DelegateFac,
     ) -> Self {
         ClientRouterFactory {
-            request_sender,
-            remote_tx,
+            client_request_sender: request_sender,
+            delegate_fac,
         }
     }
 }
 
-impl<Path: Addressable> RouterFactory for ClientRouterFactory<Path> {
-    type Router = ClientRouter<Path>;
+impl<Path: Addressable, DelegateFac: RouterFactory> RouterFactory
+    for ClientRouterFactory<Path, DelegateFac>
+{
+    type Router = ClientRouter<Path, DelegateFac::Router>;
 
     fn create_for(&self, addr: RoutingAddr) -> Self::Router {
         ClientRouter {
             tag: addr,
-            request_sender: self.request_sender.clone(),
-            remote_tx: self.remote_tx.clone(),
+            request_sender: self.client_request_sender.clone(),
+            delegate_router: self.delegate_fac.create_for(addr),
         }
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct ClientRouter<Path: Addressable> {
+pub struct ClientRouter<Path: Addressable, DelegateRouter: Router> {
     tag: RoutingAddr,
     request_sender: mpsc::Sender<ClientRequest<Path>>,
-    remote_tx: mpsc::Sender<RemoteRoutingRequest>,
+    delegate_router: DelegateRouter,
 }
 
-impl<Path: Addressable> Router for ClientRouter<Path> {
+impl<Path: Addressable, DelegateRouter: Router> Router for ClientRouter<Path, DelegateRouter> {
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,
@@ -156,42 +344,14 @@ impl<Path: Addressable> Router for ClientRouter<Path> {
             let ClientRouter {
                 tag,
                 request_sender,
-                remote_tx,
+                delegate_router,
             } = self;
 
-            // Todo dm
-
-            // if addr.is_remote() {
-            // Request a connection from the remote router
-            // } else {
-            // Request a connection from the plane router
-            // Not available if it's not a server instance
-            // }
-
-            if addr.is_remote() {
-                let (tx, rx) = oneshot::channel();
-                if remote_tx
-                    .send(RemoteRoutingRequest::Endpoint {
-                        addr,
-                        request: Request::new(tx),
-                    })
-                    .await
-                    .is_err()
-                {
-                    Err(ResolutionError::router_dropped())
-                } else {
-                    match rx.await {
-                        Ok(Ok(RawRoute { sender, on_drop })) => {
-                            Ok(Route::new(TaggedSender::new(*tag, sender), on_drop))
-                        }
-                        Ok(Err(_)) => Err(ResolutionError::unresolvable(addr.to_string())),
-                        Err(_) => Err(ResolutionError::router_dropped()),
-                    }
-                }
-            } else if addr.is_local() {
+            if addr.is_client() {
+                //Todo dm
                 unimplemented!()
             } else {
-                unimplemented!()
+                delegate_router.resolve_sender(addr).await
             }
         }
         .boxed()
@@ -206,34 +366,10 @@ impl<Path: Addressable> Router for ClientRouter<Path> {
             let ClientRouter {
                 tag,
                 request_sender,
-                remote_tx,
+                delegate_router,
             } = self;
 
-            match host {
-                Some(host) => {
-                    let (tx, rx) = oneshot::channel();
-                    if remote_tx
-                        .send(RemoteRoutingRequest::Bidirectional {
-                            host: host.clone(),
-                            request: Request::new(tx),
-                        })
-                        .await
-                        .is_err()
-                    {
-                        Err(ResolutionError::router_dropped())
-                    } else {
-                        match rx.await {
-                            Ok(Ok(addr)) => Ok(addr),
-                            Ok(Err(err)) => Err((ResolutionError::unresolvable(host.to_string()))),
-                            Err(_) => Err(ResolutionError::router_dropped()),
-                        }
-                    }
-                }
-                None => {
-                    eprintln!("route = {:#?}", route);
-                    unimplemented!()
-                }
-            }
+            delegate_router.resolve_bidirectional(host, route).await
         }
         .boxed()
     }
@@ -244,38 +380,39 @@ impl<Path: Addressable> Router for ClientRouter<Path> {
         route: RelativeUri,
     ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
         async move {
-            let ClientRouter { remote_tx, .. } = self;
+            let ClientRouter {
+                delegate_router, ..
+            } = self;
 
-            match host {
-                Some(host) => {
-                    let (tx, rx) = oneshot::channel();
-                    if remote_tx
-                        .send(RemoteRoutingRequest::ResolveUrl {
-                            host,
-                            request: Request::new(tx),
-                        })
-                        .await
-                        .is_err()
-                    {
-                        Err(RouterError::RouterDropped)
-                    } else {
-                        match rx.await {
-                            Ok(Ok(addr)) => Ok(addr),
-                            Ok(Err(err)) => Err(RouterError::ConnectionFailure(err)),
-                            Err(_) => Err(RouterError::RouterDropped),
-                        }
-                    }
-                }
-                None => {
-                    eprintln!("route = {:#?}", route);
-                    unimplemented!()
-                }
-            }
+            delegate_router.lookup(host, route).await
+
+            //Todo dm this is usefull for the server
+            // eprintln!("route client router = {:#?}", route);
+            // let mut plane_tx = plane_tx.as_ref().unwrap();
+            // let (tx, rx) = oneshot::channel();
+            // if plane_tx
+            //     .send(PlaneRoutingRequest::Resolve {
+            //         host,
+            //         name: route,
+            //         request: Request::new(tx),
+            //     })
+            //     .await
+            //     .is_err()
+            // {
+            //     Err(RouterError::RouterDropped)
+            // } else {
+            //     match rx.await {
+            //         Ok(Ok(addr)) => Ok(addr),
+            //         Ok(Err(err)) => Err(err),
+            //         Err(_) => Err(RouterError::RouterDropped),
+            //     }
+            // }
         }
         .boxed()
     }
 }
 
+//Todo dm rename to client routing request
 #[derive(Debug)]
 pub enum ClientRequest<Path: Addressable> {
     /// Obtain a connection.
@@ -293,6 +430,10 @@ pub enum ClientRequest<Path: Addressable> {
         host: Option<Url>,
         name: RelativeUri,
         request: Request<Result<RoutingAddr, RouterError>>,
+    },
+    Endpoint {
+        addr: RoutingAddr,
+        request: Request<Result<RawRoute, Unresolvable>>,
     },
 }
 

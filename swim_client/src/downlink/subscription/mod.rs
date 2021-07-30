@@ -79,11 +79,6 @@ pub struct Downlinks<Path: Addressable> {
     downlink_request_tx: mpsc::Sender<DownlinkRequest<Path>>,
 }
 
-pub struct DownlinksHandle<Path: Addressable> {
-    pub downlinks_task: DownlinksTask<Path>,
-    pub request_receiver: mpsc::Receiver<DownlinkRequest<Path>>,
-}
-
 pub enum DownlinkRequest<Path: Addressable> {
     Subscription(DownlinkSpecifier<Path>),
     DirectCommand { path: Path, envelope: Envelope },
@@ -675,11 +670,9 @@ impl<Path: Addressable> DownlinksTask<Path> {
 
         let (raw_dl, rec) = match config.back_pressure {
             BackpressureMode::Propagate => {
-                let cmd_sink = sink.comap(
-                    move |cmd: Command<UntypedMapModification<Value>>| {
-                        envelopes::map_envelope(&sink_path, cmd).into()
-                    },
-                );
+                let cmd_sink = sink.comap(move |cmd: Command<UntypedMapModification<Value>>| {
+                    envelopes::map_envelope(&sink_path, cmd).into()
+                });
                 map_downlink(
                     Some(key_schema),
                     Some(value_schema),
@@ -700,11 +693,11 @@ impl<Path: Addressable> DownlinksTask<Path> {
                         envelopes::map_envelope(&sink_path_duplicate, cmd).into()
                     },
                 );
-                let action_sink = sink.map_err_into().comap(
-                    move |act: UntypedMapModification<Value>| {
-                        envelopes::map_envelope(&sink_path, Command::Action(act)).into()
-                    },
-                );
+                let action_sink =
+                    sink.map_err_into()
+                        .comap(move |act: UntypedMapModification<Value>| {
+                            envelopes::map_envelope(&sink_path, Command::Action(act)).into()
+                        });
 
                 let pressure_release = KeyedWatch::new(
                     action_sink,

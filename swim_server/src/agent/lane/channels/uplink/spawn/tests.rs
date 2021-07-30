@@ -38,9 +38,7 @@ use swim_common::routing::error::ResolutionError;
 use swim_common::routing::error::RouterError;
 use swim_common::routing::error::RoutingError;
 use swim_common::routing::error::SendError;
-use swim_common::routing::{
-    ConnectionDropped, Origin, Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender,
-};
+use swim_common::routing::{ConnectionDropped, Origin, Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender, BidirectionalRoute};
 use swim_common::sink::item::ItemSink;
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::RelativePath;
@@ -115,6 +113,11 @@ impl Router for TestRouter {
             drop_rx.clone(),
         )))
         .boxed()
+    }
+
+    fn resolve_bidirectional(&mut self, host: Option<Url>, route: RelativeUri) -> BoxFuture<'_, Result<BidirectionalRoute, ResolutionError>> {
+        //Todo dm
+        unimplemented!()
     }
 
     fn lookup(

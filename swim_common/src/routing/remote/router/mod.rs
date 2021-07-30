@@ -55,6 +55,7 @@ impl<DelegateRouter: Router> Router for RemoteRouter<DelegateRouter> {
         addr: RoutingAddr,
     ) -> BoxFuture<'_, Result<Route, ResolutionError>> {
         async move {
+            eprintln!("addr remote resolve= {:#?}", addr);
             let RemoteRouter {
                 tag,
                 delegate_router,
@@ -123,6 +124,7 @@ impl<DelegateRouter: Router> Router for RemoteRouter<DelegateRouter> {
         route: RelativeUri,
     ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
         async move {
+            eprintln!("route remote lookup= {:#?}", route);
             let RemoteRouter {
                 request_tx,
                 delegate_router,

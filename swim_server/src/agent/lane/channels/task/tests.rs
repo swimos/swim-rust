@@ -54,8 +54,8 @@ use swim_common::routing::error::RouterError;
 use swim_common::routing::error::RoutingError;
 use swim_common::routing::error::SendError;
 use swim_common::routing::{
-    ConnectionDropped, Origin, Route, Router, RoutingAddr, TaggedClientEnvelope, TaggedEnvelope,
-    TaggedSender,
+    BidirectionalRoute, ConnectionDropped, Origin, Route, Router, RoutingAddr,
+    TaggedClientEnvelope, TaggedEnvelope, TaggedSender,
 };
 use swim_common::sink::item::ItemSink;
 use swim_common::warp::envelope::{Envelope, OutgoingLinkMessage};
@@ -378,11 +378,7 @@ impl<'a> ItemSink<'a, Envelope> for TestSender {
 }
 
 impl Router for TestRouter {
-    fn resolve_sender(
-        &mut self,
-        addr: RoutingAddr,
-        _origin: Option<Origin>,
-    ) -> BoxFuture<Result<Route, ResolutionError>> {
+    fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>> {
         let TestRouter {
             sender, drop_rx, ..
         } = self;
@@ -393,11 +389,19 @@ impl Router for TestRouter {
         .boxed()
     }
 
+    fn resolve_bidirectional(
+        &mut self,
+        host: Option<Url>,
+        route: RelativeUri,
+    ) -> BoxFuture<'_, Result<BidirectionalRoute, ResolutionError>> {
+        //Todo dm
+        unimplemented!()
+    }
+
     fn lookup(
         &mut self,
         _host: Option<Url>,
         _route: RelativeUri,
-        _origin: Option<Origin>,
     ) -> BoxFuture<'static, Result<RoutingAddr, RouterError>> {
         panic!("Unexpected resolution attempt.")
     }
@@ -1442,10 +1446,7 @@ impl AgentExecutionContext for MultiTestContext {
 }
 
 impl Router for MultiTestRouter {
-    fn resolve_sender(
-        &mut self,
-        addr: RoutingAddr,
-    ) -> BoxFuture<Result<Route, ResolutionError>> {
+    fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>> {
         async move {
             let mut lock = self.0.lock();
             if let Some(sender) = lock.senders.get(&addr) {
@@ -1460,6 +1461,15 @@ impl Router for MultiTestRouter {
             }
         }
         .boxed()
+    }
+
+    fn resolve_bidirectional(
+        &mut self,
+        host: Option<Url>,
+        route: RelativeUri,
+    ) -> BoxFuture<'_, Result<BidirectionalRoute, ResolutionError>> {
+        //Todo dm
+        unimplemented!()
     }
 
     fn lookup(

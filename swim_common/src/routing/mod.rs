@@ -172,7 +172,7 @@ pub trait Router: Send + Sync {
 
 /// Create router instances bound to particular routing addresses.
 pub trait RouterFactory: Send + Sync {
-    type Router: Router;
+    type Router: Router + 'static;
 
     /// Create a new router for a given routing address.
     fn create_for(&self, addr: RoutingAddr) -> Self::Router;
