@@ -391,8 +391,7 @@ impl Router for TestRouter {
 
     fn resolve_bidirectional(
         &mut self,
-        host: Option<Url>,
-        route: RelativeUri,
+        host: Url,
     ) -> BoxFuture<'_, Result<BidirectionalRoute, ResolutionError>> {
         //Todo dm
         unimplemented!()
@@ -1465,8 +1464,7 @@ impl Router for MultiTestRouter {
 
     fn resolve_bidirectional(
         &mut self,
-        host: Option<Url>,
-        route: RelativeUri,
+        host: Url,
     ) -> BoxFuture<'_, Result<BidirectionalRoute, ResolutionError>> {
         //Todo dm
         unimplemented!()

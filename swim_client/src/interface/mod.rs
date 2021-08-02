@@ -115,10 +115,11 @@ impl SwimClientBuilder {
         let (client_tx, client_rx) =
             mpsc::channel(client_params.connections_params.router_buffer_size.get());
 
+        //Todo dm this may be collapsed into the client router factory
         let top_level_router_fac = TopLevelRouterFactory::new(client_tx.clone(), remote_tx.clone());
 
         let client_router_factory =
-            ClientRouterFactory::new(client_tx, top_level_router_fac.clone());
+            ClientRouterFactory::new(client_tx.clone(), top_level_router_fac.clone());
         let (close_tx, close_rx) = promise::promise();
 
         let remote_connections_task = RemoteConnectionsTask::new_client_task(
@@ -134,8 +135,11 @@ impl SwimClientBuilder {
         .await;
 
         // The connection pool handles the connections behnid the downlinks
-        let (connection_pool, pool_task) =
-            SwimConnPool::new(client_params.conn_pool_params, client_router_factory);
+        let (connection_pool, pool_task) = SwimConnPool::new(
+            client_params.conn_pool_params,
+            (client_tx, client_rx),
+            client_router_factory,
+        );
 
         // The downlinks are state machines and request connections from the pool
         let (downlinks, downlinks_task) =

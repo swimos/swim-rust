@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use crate::configuration::router::RouterParams;
+use crate::connections::ConnectionChannel;
 use crate::connections::ConnectionRegistrator;
 use crate::connections::{ConnectionPool, ConnectionSender};
 use either::Either;
@@ -133,7 +134,8 @@ impl Router for TopLevelRouter {
                         Err(_) => Err(ResolutionError::router_dropped()),
                     }
                 }
-            } else if addr.is_local() {
+            } else if addr.is_client() {
+                //Todo dm this may not be needed
                 let (tx, rx) = oneshot::channel();
                 let request = Request::new(tx);
                 if client_sender
@@ -162,36 +164,26 @@ impl Router for TopLevelRouter {
 
     fn resolve_bidirectional(
         &mut self,
-        host: Option<Url>,
-        route: RelativeUri,
+        host: Url,
     ) -> BoxFuture<'_, Result<BidirectionalRoute, ResolutionError>> {
         async move {
             let TopLevelRouter { remote_sender, .. } = self;
 
-            match host {
-                Some(host) => {
-                    let (tx, rx) = oneshot::channel();
-                    if remote_sender
-                        .send(RemoteRoutingRequest::Bidirectional {
-                            host: host.clone(),
-                            request: Request::new(tx),
-                        })
-                        .await
-                        .is_err()
-                    {
-                        Err(ResolutionError::router_dropped())
-                    } else {
-                        match rx.await {
-                            Ok(Ok(addr)) => Ok(addr),
-                            Ok(Err(err)) => Err((ResolutionError::unresolvable(host.to_string()))),
-                            Err(_) => Err(ResolutionError::router_dropped()),
-                        }
-                    }
-                }
-                None => {
-                    //Todo dm
-                    // Bidirectional connections to local are not supported
-                    unimplemented!()
+            let (tx, rx) = oneshot::channel();
+            if remote_sender
+                .send(RemoteRoutingRequest::Bidirectional {
+                    host: host.clone(),
+                    request: Request::new(tx),
+                })
+                .await
+                .is_err()
+            {
+                Err(ResolutionError::router_dropped())
+            } else {
+                match rx.await {
+                    Ok(Ok(addr)) => Ok(addr),
+                    Ok(Err(err)) => Err((ResolutionError::unresolvable(host.to_string()))),
+                    Err(_) => Err(ResolutionError::router_dropped()),
                 }
             }
         }
@@ -359,8 +351,7 @@ impl<Path: Addressable, DelegateRouter: Router> Router for ClientRouter<Path, De
 
     fn resolve_bidirectional(
         &mut self,
-        host: Option<Url>,
-        route: RelativeUri,
+        host: Url,
     ) -> BoxFuture<Result<BidirectionalRoute, ResolutionError>> {
         async move {
             let ClientRouter {
@@ -369,7 +360,7 @@ impl<Path: Addressable, DelegateRouter: Router> Router for ClientRouter<Path, De
                 delegate_router,
             } = self;
 
-            delegate_router.resolve_bidirectional(host, route).await
+            delegate_router.resolve_bidirectional(host).await
         }
         .boxed()
     }
@@ -417,19 +408,8 @@ impl<Path: Addressable, DelegateRouter: Router> Router for ClientRouter<Path, De
 pub enum ClientRequest<Path: Addressable> {
     /// Obtain a connection.
     Connect {
-        request: Request<Result<RawRoute, Unresolvable>>,
-        origin: Origin,
-    },
-    /// Subscribe to a connection.
-    Subscribe {
         target: Path,
-        request: Request<Result<(RawRoute, mpsc::Receiver<Envelope>), ConnectionError>>,
-    },
-    /// Resolve the routing address for a downlink.
-    Resolve {
-        host: Option<Url>,
-        name: RelativeUri,
-        request: Request<Result<RoutingAddr, RouterError>>,
+        request: Request<Result<ConnectionChannel, ConnectionError>>,
     },
     Endpoint {
         addr: RoutingAddr,

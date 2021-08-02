@@ -85,8 +85,7 @@ impl<DelegateRouter: Router> Router for RemoteRouter<DelegateRouter> {
 
     fn resolve_bidirectional(
         &mut self,
-        host: Option<Url>,
-        route: RelativeUri,
+        host: Url,
     ) -> BoxFuture<'_, Result<BidirectionalRoute, ResolutionError>> {
         let RemoteRouter {
             tag,
@@ -97,7 +96,7 @@ impl<DelegateRouter: Router> Router for RemoteRouter<DelegateRouter> {
             //Todo dm remove unwraps
             let (tx, rx) = oneshot::channel();
             let routing_req = RemoteRoutingRequest::Bidirectional {
-                host: host.unwrap(),
+                host,
                 request: Request::new(tx),
             };
             if request_tx.send(routing_req).await.is_err() {
@@ -107,15 +106,15 @@ impl<DelegateRouter: Router> Router for RemoteRouter<DelegateRouter> {
                 unimplemented!();
                 // match rx.await {
 
-                    // Ok(Ok(RawRoute { sender, on_drop })) => {
-                    //     Ok(Route::new(TaggedSender::new(*tag, sender), on_drop))
-                    // }
-                    // Ok(Err(err)) => Err(ResolutionError::unresolvable(err.to_string())),
-                    // Err(_) => Err(ResolutionError::router_dropped()),
+                // Ok(Ok(RawRoute { sender, on_drop })) => {
+                //     Ok(Route::new(TaggedSender::new(*tag, sender), on_drop))
+                // }
+                // Ok(Err(err)) => Err(ResolutionError::unresolvable(err.to_string())),
+                // Err(_) => Err(ResolutionError::router_dropped()),
                 // }
             }
-        }.boxed()
-
+        }
+        .boxed()
     }
 
     fn lookup(

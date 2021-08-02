@@ -47,8 +47,7 @@ impl Router for MockRouter {
 
     fn resolve_bidirectional(
         &mut self,
-        _host: Option<Url>,
-        _route: RelativeUri,
+        _host: Url,
     ) -> BoxFuture<'_, Result<BidirectionalRoute, ResolutionError>> {
         unimplemented!()
     }

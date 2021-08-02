@@ -66,7 +66,10 @@ mod stub_router {
     use std::sync::Arc;
     use swim_common::routing::error::ResolutionError;
     use swim_common::routing::error::RouterError;
-    use swim_common::routing::{ConnectionDropped, Origin, Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender, BidirectionalRoute};
+    use swim_common::routing::{
+        BidirectionalRoute, ConnectionDropped, Origin, Route, Router, RoutingAddr, TaggedEnvelope,
+        TaggedSender,
+    };
     use tokio::sync::mpsc;
     use url::Url;
     use utilities::sync::promise;
@@ -107,7 +110,10 @@ mod stub_router {
             .boxed()
         }
 
-        fn resolve_bidirectional(&mut self, host: Option<Url>, route: RelativeUri) -> BoxFuture<'_, Result<BidirectionalRoute, ResolutionError>> {
+        fn resolve_bidirectional(
+            &mut self,
+            host: Url,
+        ) -> BoxFuture<'_, Result<BidirectionalRoute, ResolutionError>> {
             //Todo dm
             unimplemented!()
         }

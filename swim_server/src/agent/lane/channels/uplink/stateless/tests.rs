@@ -16,7 +16,10 @@ use crate::agent::context::AgentExecutionContext;
 use crate::agent::Eff;
 use futures::future::{join, join3, ready, BoxFuture};
 use futures::{FutureExt, StreamExt};
-use swim_common::routing::{ConnectionDropped, Origin, Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender, BidirectionalRoute};
+use swim_common::routing::{
+    BidirectionalRoute, ConnectionDropped, Origin, Route, Router, RoutingAddr, TaggedEnvelope,
+    TaggedSender,
+};
 use tokio::sync::mpsc;
 
 use std::sync::Arc;
@@ -63,10 +66,7 @@ impl TestRouter {
 }
 
 impl Router for TestRouter {
-    fn resolve_sender(
-        &mut self,
-        addr: RoutingAddr,
-    ) -> BoxFuture<Result<Route, ResolutionError>> {
+    fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>> {
         let TestRouter {
             sender, drop_rx, ..
         } = self;
@@ -77,7 +77,10 @@ impl Router for TestRouter {
         .boxed()
     }
 
-    fn resolve_bidirectional(&mut self, host: Option<Url>, route: RelativeUri) -> BoxFuture<'_, Result<BidirectionalRoute, ResolutionError>> {
+    fn resolve_bidirectional(
+        &mut self,
+        host: Url,
+    ) -> BoxFuture<'_, Result<BidirectionalRoute, ResolutionError>> {
         //Todo dm
         unimplemented!()
     }

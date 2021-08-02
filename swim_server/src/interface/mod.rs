@@ -217,12 +217,18 @@ impl SwimServerBuilder {
         let (remote_tx, remote_rx) = mpsc::channel(config.conn_config.channel_buffer_size.get());
         let (plane_tx, plane_rx) = mpsc::channel(config.conn_config.channel_buffer_size.get());
 
+        let top_level_router_fac =
+            TopLevelRouterFactory::new(plane_tx.clone(), client_tx.clone(), remote_tx.clone());
+
         let client_router_factory =
-            ClientRouterFactory::new(client_tx.clone(), remote_tx.clone(), Some(plane_tx.clone()));
+            ClientRouterFactory::new(client_tx.clone(), top_level_router_fac);
 
         //Todo dm non default config
-        let (connection_pool, connection_pool_task) =
-            SwimConnPool::new(ConnectionPoolParams::default(), client_router_factory);
+        let (connection_pool, connection_pool_task) = SwimConnPool::new(
+            ConnectionPoolParams::default(),
+            (client_tx.clone(), client_rx),
+            client_router_factory,
+        );
 
         let (downlinks, downlinks_task) = Downlinks::new(
             connection_pool,
@@ -241,7 +247,7 @@ impl SwimServerBuilder {
                 address_tx,
                 remote_channel: (remote_tx, remote_rx),
                 plane_channel: (plane_tx, plane_rx),
-                client_channel: (client_tx, client_rx),
+                client_tx,
                 client,
                 connection_pool_task,
                 downlinks_task,
@@ -267,16 +273,13 @@ pub struct SwimServer {
         mpsc::Sender<RemoteRoutingRequest>,
         mpsc::Receiver<RemoteRoutingRequest>,
     ),
-    client_channel: (
-        mpsc::Sender<ClientRequest<Path>>,
-        mpsc::Receiver<ClientRequest<Path>>,
-    ),
+    client_tx: mpsc::Sender<ClientRequest<Path>>,
     plane_channel: (
         mpsc::Sender<PlaneRoutingRequest>,
         mpsc::Receiver<PlaneRoutingRequest>,
     ),
     client: SwimClient<Path>,
-    connection_pool_task: PoolTask<Path>,
+    connection_pool_task: PoolTask<Path, TopLevelRouterFactory>,
     downlinks_task: DownlinksTask<Path>,
 }
 
@@ -296,7 +299,7 @@ impl SwimServer {
             stop_trigger_rx,
             address_tx,
             remote_channel: (remote_tx, remote_rx),
-            client_channel: (client_tx, client_rx),
+            client_tx,
             plane_channel: (plane_tx, plane_rx),
             client,
             connection_pool_task,

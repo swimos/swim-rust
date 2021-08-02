@@ -84,7 +84,6 @@ impl Router for TopLevelRouter {
                 addr: tag,
             } = self;
 
-            //Todo dm add a branch for is_client()
             if addr.is_remote() {
                 let (tx, rx) = oneshot::channel();
                 let request = Request::new(tx);
@@ -122,8 +121,23 @@ impl Router for TopLevelRouter {
                     }
                 }
             } else {
-                //Todo
-                unimplemented!()
+                let (tx, rx) = oneshot::channel();
+                let request = Request::new(tx);
+                if client_sender
+                    .send(ClientRequest::Endpoint { addr, request })
+                    .await
+                    .is_err()
+                {
+                    Err(ResolutionError::router_dropped())
+                } else {
+                    match rx.await {
+                        Ok(Ok(RawRoute { sender, on_drop })) => {
+                            Ok(Route::new(TaggedSender::new(*tag, sender), on_drop))
+                        }
+                        Ok(Err(_)) => Err(ResolutionError::unresolvable(addr.to_string())),
+                        Err(_) => Err(ResolutionError::router_dropped()),
+                    }
+                }
             }
         }
         .boxed()
@@ -131,26 +145,31 @@ impl Router for TopLevelRouter {
 
     fn resolve_bidirectional(
         &mut self,
-        host: Option<Url>,
-        route: RelativeUri,
+        host: Url,
     ) -> BoxFuture<'_, Result<BidirectionalRoute, ResolutionError>> {
-        //Todo dm
-        unimplemented!()
-    }
+        async move {
+            let TopLevelRouter { remote_sender, .. } = self;
 
-    //Todo dm
-    // fn register_duplex_connection(
-    //     &mut self,
-    //     addr: RoutingAddr,
-    // ) -> BoxFuture<'_, Result<Duplex, ResolutionError>> {
-    //     async move {
-    //         if addr.is_local(){
-    //
-    //         }else {
-    //
-    //         }
-    //     }.boxed()
-    // }
+            let (tx, rx) = oneshot::channel();
+            if remote_sender
+                .send(RemoteRoutingRequest::Bidirectional {
+                    host: host.clone(),
+                    request: Request::new(tx),
+                })
+                .await
+                .is_err()
+            {
+                Err(ResolutionError::router_dropped())
+            } else {
+                match rx.await {
+                    Ok(Ok(addr)) => Ok(addr),
+                    Ok(Err(err)) => Err((ResolutionError::unresolvable(host.to_string()))),
+                    Err(_) => Err(ResolutionError::router_dropped()),
+                }
+            }
+        }
+        .boxed()
+    }
 
     fn lookup(
         &mut self,

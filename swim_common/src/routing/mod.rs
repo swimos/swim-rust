@@ -156,10 +156,11 @@ pub trait Router: Send + Sync {
     /// consisting of a sender that will push envelopes to the endpoint.
     fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>>;
 
+    /// Resolve a bidirectional remote connection for a given host.
+    /// This is currently NOT implemented for local connections.
     fn resolve_bidirectional(
         &mut self,
-        host: Option<Url>,
-        route: RelativeUri,
+        host: Url,
     ) -> BoxFuture<Result<BidirectionalRoute, ResolutionError>>;
 
     /// Find and return the corresponding routing address of an endpoint for a given route.
