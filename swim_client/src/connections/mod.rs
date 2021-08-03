@@ -35,7 +35,8 @@ use swim_common::routing::error::{
 use swim_common::routing::remote::table::SchemeHostPort;
 use swim_common::routing::remote::RawRoute;
 use swim_common::routing::{
-    BidirectionalRoute, Route, Router, RouterFactory, RoutingAddr, TaggedEnvelope, TaggedSender,
+    BidirectionalRoute, ConnectionDropped, Route, Router, RouterFactory, RoutingAddr,
+    TaggedEnvelope, TaggedSender,
 };
 use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::Addressable;
@@ -531,14 +532,13 @@ impl<Path: Addressable, DelegateRouter: Router> ConnectionRegistratorTask<Path, 
                 let routing_addr = client_router.lookup(None, relative_uri).await.unwrap();
                 let sender = client_router.resolve_sender(routing_addr).await.unwrap();
 
+                let (on_drop_tx, on_drop_rx) = promise::promise();
                 let (envelope_sender, envelope_receiver) = mpsc::channel(buffer_size.get());
+                let raw_route = RawRoute::new(envelope_sender, on_drop_rx);
 
                 let mut receiver = ReceiverStream::new(envelope_receiver).fuse();
                 let mut registrator_rx = ReceiverStream::new(registrator_rx).fuse();
                 let mut subscribers: HashMap<String, Vec<mpsc::Sender<Envelope>>> = HashMap::new();
-
-                //Todo dm
-                let mut on_drop = vec![];
 
                 loop {
                     let request: Either<Option<TaggedEnvelope>, Option<RegistratorRequest<Path>>> = select! {
@@ -586,12 +586,11 @@ impl<Path: Addressable, DelegateRouter: Router> ConnectionRegistratorTask<Path, 
                             tx.send(Ok((sender.sender.clone(), None)));
                         }
                         Either::Right(Some(RegistratorRequest::Resolve { request })) => {
-                            let (on_drop_tx, on_drop_rx) = promise::promise();
-                            on_drop.push(on_drop_tx);
-                            request.send(Ok(RawRoute::new(envelope_sender.clone(), on_drop_rx)));
+                            request.send(Ok(raw_route.clone()));
                         }
                         _ => {
                             //Todo dm closing
+                            on_drop_tx.provide(ConnectionDropped::Closed);
                             unimplemented!()
                         }
                     }
