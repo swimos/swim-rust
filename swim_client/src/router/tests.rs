@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::router::{ClientConnectionsManager, ClientRequest, ClientRouterFactory, Router};
+use crate::router::{ClientConnectionsManager, ClientRoutingRequest, ClientRouterFactory, Router};
 use std::convert::TryFrom;
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
@@ -32,7 +32,7 @@ use utilities::sync::promise;
 use utilities::uri::RelativeUri;
 
 async fn create_connection_manager() -> (
-    Sender<ClientRequest<Path>>,
+    Sender<ClientRoutingRequest<Path>>,
     Receiver<TaggedEnvelope>,
     Receiver<TaggedEnvelope>,
     (Arc<Mutex<Vec<Url>>>, Arc<Mutex<Vec<RelativeUri>>>),
@@ -44,7 +44,7 @@ async fn create_connection_manager() -> (
     let remote_requests_copy = remote_requests.clone();
     let local_requests_copy = local_requests.clone();
 
-    let (router_request_tx, router_request_rx) = mpsc::channel::<ClientRequest<Path>>(8);
+    let (router_request_tx, router_request_rx) = mpsc::channel::<ClientRoutingRequest<Path>>(8);
     let (remote_router_tx, mut remote_router_rx) = mpsc::channel(8);
     let (plane_router_tx, mut plane_router_rx) = mpsc::channel(8);
     let buffer_size = NonZeroUsize::new(8).unwrap();
@@ -118,14 +118,14 @@ async fn create_connection_manager() -> (
 }
 
 async fn register_connection(
-    router_request_tx: &Sender<ClientRequest<Path>>,
+    router_request_tx: &Sender<ClientRoutingRequest<Path>>,
     origin: Origin,
 ) -> RawRoute {
     let (tx, rx) = oneshot::channel();
     let request = Request::new(tx);
 
     router_request_tx
-        .send(ClientRequest::Connect { request, origin })
+        .send(ClientRoutingRequest::Connect { request, origin })
         .await
         .unwrap();
 
@@ -133,14 +133,14 @@ async fn register_connection(
 }
 
 async fn register_subscriber(
-    router_request_tx: &Sender<ClientRequest<Path>>,
+    router_request_tx: &Sender<ClientRoutingRequest<Path>>,
     path: Path,
 ) -> (RawRoute, Receiver<Envelope>) {
     let (tx, rx) = oneshot::channel();
     let request = Request::new(tx);
 
     router_request_tx
-        .send(ClientRequest::Subscribe {
+        .send(ClientRoutingRequest::Subscribe {
             target: path,
             request,
         })
@@ -160,7 +160,7 @@ async fn send_message(sender: &RawRoute, message: Envelope) {
 
 #[tokio::test]
 async fn test_client_router_lookup() {
-    let (request_tx, _request_rx) = mpsc::channel::<ClientRequest<AbsolutePath>>(8);
+    let (request_tx, _request_rx) = mpsc::channel::<ClientRoutingRequest<AbsolutePath>>(8);
     let routing_addr = RoutingAddr::remote(0);
     let uri = RelativeUri::try_from("/foo/example".to_string()).unwrap();
     let mut client_router = ClientRouterFactory::new(request_tx).create_for(routing_addr);
@@ -172,20 +172,20 @@ async fn test_client_router_lookup() {
 
 #[tokio::test]
 async fn test_client_router_resolve_sender() {
-    let (request_tx, mut request_rx) = mpsc::channel::<ClientRequest<AbsolutePath>>(8);
+    let (request_tx, mut request_rx) = mpsc::channel::<ClientRoutingRequest<AbsolutePath>>(8);
     let routing_addr = RoutingAddr::remote(0);
     let addr = SchemeSocketAddr::new(Scheme::Ws, "192.168.0.1:9001".parse().unwrap());
     let mut client_router = ClientRouterFactory::new(request_tx).create_for(routing_addr);
 
     tokio::spawn(async move {
         match request_rx.recv().await.unwrap() {
-            ClientRequest::Connect { request, origin } => {
+            ClientRoutingRequest::Connect { request, origin } => {
                 assert_eq!(origin, Origin::Remote(addr));
                 let (outgoing_tx, _outgoing_rx) = mpsc::channel(8);
                 let (_on_drop_tx, on_drop_rx) = promise::promise();
                 let _ = request.send(Ok(RawRoute::new(outgoing_tx, on_drop_rx)));
             }
-            ClientRequest::Subscribe { .. } => {
+            ClientRoutingRequest::Subscribe { .. } => {
                 unreachable!()
             }
         }
@@ -200,7 +200,7 @@ async fn test_client_router_resolve_sender() {
 
 #[tokio::test]
 async fn test_client_router_resolve_sender_router_dropped() {
-    let (request_tx, mut request_rx) = mpsc::channel::<ClientRequest<AbsolutePath>>(8);
+    let (request_tx, mut request_rx) = mpsc::channel::<ClientRoutingRequest<AbsolutePath>>(8);
     let routing_addr = RoutingAddr::remote(0);
     let addr = SchemeSocketAddr::new(Scheme::Ws, "192.168.0.1:9001".parse().unwrap());
     let mut client_router = ClientRouterFactory::new(request_tx).create_for(routing_addr);
@@ -219,18 +219,18 @@ async fn test_client_router_resolve_sender_router_dropped() {
 
 #[tokio::test]
 async fn test_client_router_resolve_sender_unresolvable() {
-    let (request_tx, mut request_rx) = mpsc::channel::<ClientRequest<AbsolutePath>>(8);
+    let (request_tx, mut request_rx) = mpsc::channel::<ClientRoutingRequest<AbsolutePath>>(8);
     let routing_addr = RoutingAddr::remote(0);
     let addr = SchemeSocketAddr::new(Scheme::Ws, "192.168.0.1:9001".parse().unwrap());
     let mut client_router = ClientRouterFactory::new(request_tx).create_for(routing_addr);
 
     tokio::spawn(async move {
         match request_rx.recv().await.unwrap() {
-            ClientRequest::Connect { request, origin } => {
+            ClientRoutingRequest::Connect { request, origin } => {
                 assert_eq!(origin, Origin::Remote(addr));
                 let _ = request.send(Err(Unresolvable(RoutingAddr::remote(0))));
             }
-            ClientRequest::Subscribe { .. } => {
+            ClientRoutingRequest::Subscribe { .. } => {
                 unreachable!()
             }
         }

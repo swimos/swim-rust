@@ -49,17 +49,17 @@ impl FakeConnections {
 
 async fn create_mock_conn_request_loop(
     mut fake_conns: FakeConnections,
-) -> mpsc::Sender<ClientRequest<AbsolutePath>> {
+) -> mpsc::Sender<ClientRoutingRequest<AbsolutePath>> {
     let (client_conn_request_tx, mut client_conn_request_rx) =
-        mpsc::channel::<ClientRequest<AbsolutePath>>(8);
+        mpsc::channel::<ClientRoutingRequest<AbsolutePath>>(8);
 
     tokio::spawn(async move {
         while let Some(client_request) = client_conn_request_rx.recv().await {
             match client_request {
-                ClientRequest::Connect { .. } => {
+                ClientRoutingRequest::Connect { .. } => {
                     unimplemented!();
                 }
-                ClientRequest::Subscribe { request, target } => {
+                ClientRoutingRequest::Subscribe { request, target } => {
                     let maybe_outgoing_tx = fake_conns.outgoing_channels.get(&target.host);
                     let maybe_incoming_rx = fake_conns.incoming_channels.remove(&target.host);
 

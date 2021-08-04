@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::plane::router::{PlaneRouter, PlaneRouterFactory};
-use crate::routing::{TopLevelRouter, TopLevelRouterFactory};
+use crate::routing::{TopLevelServerRouter, TopLevelServerRouterFactory};
 use futures::future::join;
 use swim_common::routing::error::{ConnectionError, ProtocolError, ResolutionErrorKind};
 use swim_common::routing::error::{RouterError, Unresolvable};
@@ -35,7 +35,7 @@ async fn plane_router_get_sender() {
 
     let (remote_tx, _remote_rx) = mpsc::channel(8);
     let (client_tx, _client_rx) = mpsc::channel(8);
-    let top_level_router = TopLevelRouter::new(addr, req_tx.clone(), client_tx, remote_tx);
+    let top_level_router = TopLevelServerRouter::new(addr, req_tx.clone(), client_tx, remote_tx);
 
     let mut router = PlaneRouter::new(addr, top_level_router, req_tx);
 
@@ -86,7 +86,7 @@ async fn plane_router_factory() {
 
     let (remote_tx, _remote_rx) = mpsc::channel(8);
     let (client_tx, _client_rx) = mpsc::channel(8);
-    let top_level_router_factory = TopLevelRouterFactory::new(req_tx.clone(), client_tx, remote_tx);
+    let top_level_router_factory = TopLevelServerRouterFactory::new(req_tx.clone(), client_tx, remote_tx);
 
     let fac = PlaneRouterFactory::new(req_tx, top_level_router_factory);
     let router = fac.create_for(RoutingAddr::local(56));
@@ -102,7 +102,7 @@ async fn plane_router_resolve() {
 
     let (remote_tx, _remote_rx) = mpsc::channel(8);
     let (client_tx, _client_rx) = mpsc::channel(8);
-    let top_level_router = TopLevelRouter::new(addr, req_tx.clone(), client_tx, remote_tx);
+    let top_level_router = TopLevelServerRouter::new(addr, req_tx.clone(), client_tx, remote_tx);
 
     let mut router = PlaneRouter::new(addr, top_level_router, req_tx);
 

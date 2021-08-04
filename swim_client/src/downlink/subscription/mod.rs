@@ -31,11 +31,7 @@ use crate::downlink::{
     command_downlink, event_downlink, map_downlink, value_downlink, Command, Downlink,
     DownlinkError, Message, SchemaViolations,
 };
-// use crate::router::ConnectionRequestMode;
-// use crate::router::RouterConnRequest;
-// use crate::router::RouterEvent;
-// use crate::router::TaskManager;
-use crate::router::{ClientRouterFactory, RouterEvent};
+use crate::router::ClientRouterFactory;
 use either::Either;
 use futures::stream::Fuse;
 use futures::FutureExt;
@@ -107,13 +103,6 @@ impl<Path: Addressable> Downlinks<Path> {
         info!("Initialising downlink manager");
 
         let client_params = config.client_params();
-
-        //Todo dm
-        // let (task_manager, connection_request_tx) = TaskManager::new(
-        //     connection_pool,
-        //     close_rx.clone(),
-        //     client_params.router_params,
-        // );
 
         let (downlink_request_tx, downlink_request_rx) =
             mpsc::channel(client_params.dl_req_buffer_size.get());
@@ -468,7 +457,6 @@ impl<Path: Addressable> DownlinksTask<Path> {
     }
 
     pub async fn run(mut self) -> RequestResult<(), Path> {
-        //Todo dm remove unwrap
         let requests = ReceiverStream::new(self.downlink_request_rx.take().unwrap());
         pin_mut!(requests);
 
@@ -1084,14 +1072,15 @@ impl<Path: Addressable> DownlinksTask<Path> {
     }
 }
 
-fn map_router_events(event: RouterEvent) -> Result<Message<Value>, RoutingError> {
-    match event {
-        RouterEvent::Message(l) => Ok(envelopes::value::from_envelope(l)),
-        RouterEvent::ConnectionClosed => Err(RoutingError::ConnectionError),
-        RouterEvent::Unreachable(_) => Err(RoutingError::HostUnreachable),
-        RouterEvent::Stopping => Err(RoutingError::RouterDropped),
-    }
-}
+//Todo dm
+// fn map_router_events(event: RouterEvent) -> Result<Message<Value>, RoutingError> {
+//     match event {
+//         RouterEvent::Message(l) => Ok(envelopes::value::from_envelope(l)),
+//         RouterEvent::ConnectionClosed => Err(RoutingError::ConnectionError),
+//         RouterEvent::Unreachable(_) => Err(RoutingError::HostUnreachable),
+//         RouterEvent::Stopping => Err(RoutingError::RouterDropped),
+//     }
+// }
 
 //Todo dm
 fn map_envelope(envelope: Envelope) -> Result<Message<Value>, RoutingError> {

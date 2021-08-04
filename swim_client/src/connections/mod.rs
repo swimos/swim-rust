@@ -13,7 +13,9 @@
 // limitations under the License.
 
 use crate::configuration::router::ConnectionPoolParams;
-use crate::router::{ClientRequest, ClientRouter, ClientRouterFactory, RoutingPath, RoutingTable};
+use crate::router::{
+    ClientRouter, ClientRouterFactory, ClientRoutingRequest, RoutingPath, RoutingTable,
+};
 use either::Either;
 use futures::future::BoxFuture;
 use futures::select;
@@ -80,8 +82,7 @@ pub(crate) type ConnectionSender = TaggedSender;
 /// for a given host if it already exists.
 #[derive(Clone)]
 pub struct SwimConnPool<Path: Addressable> {
-    connection_request_tx: mpsc::Sender<ConnectionRequest<Path>>,
-    client_tx: mpsc::Sender<ClientRequest<Path>>,
+    client_tx: mpsc::Sender<ClientRoutingRequest<Path>>,
     stop_request_tx: mpsc::Sender<()>,
 }
 
@@ -96,28 +97,22 @@ impl<Path: Addressable> SwimConnPool<Path> {
     pub fn new<DelegateFac: RouterFactory + Debug>(
         config: ConnectionPoolParams,
         client_channel: (
-            mpsc::Sender<ClientRequest<Path>>,
-            mpsc::Receiver<ClientRequest<Path>>,
+            mpsc::Sender<ClientRoutingRequest<Path>>,
+            mpsc::Receiver<ClientRoutingRequest<Path>>,
         ),
         client_router_factory: ClientRouterFactory<Path, DelegateFac>,
     ) -> (SwimConnPool<Path>, PoolTask<Path, DelegateFac>) {
         let (client_tx, client_rx) = client_channel;
-
-        //Todo dm replace this with client_tx
-        let (connection_request_tx, connection_request_rx) =
-            mpsc::channel(config.buffer_size().get());
         let (stop_request_tx, stop_request_rx) = mpsc::channel(config.buffer_size().get());
 
         (
             SwimConnPool {
-                connection_request_tx,
                 client_tx,
                 stop_request_tx,
             },
             PoolTask::new(
                 client_rx,
                 client_router_factory,
-                connection_request_rx,
                 config.buffer_size(),
                 stop_request_rx,
             ),
@@ -149,9 +144,8 @@ impl<Path: Addressable> ConnectionPool for SwimConnPool<Path> {
         async move {
             let (tx, rx) = oneshot::channel();
 
-            //Todo dm replace with client_tx
             self.client_tx
-                .send(ClientRequest::Connect {
+                .send(ClientRoutingRequest::Connect {
                     target,
                     request: Request::new(tx),
                 })
@@ -183,25 +177,22 @@ pub struct ConnectionRequest<Path: Addressable> {
 }
 
 pub struct PoolTask<Path: Addressable, DelegateFac: RouterFactory> {
-    client_rx: mpsc::Receiver<ClientRequest<Path>>,
+    client_rx: mpsc::Receiver<ClientRoutingRequest<Path>>,
     client_router_factory: ClientRouterFactory<Path, DelegateFac>,
-    connection_request_rx: mpsc::Receiver<ConnectionRequest<Path>>,
     buffer_size: NonZeroUsize,
     stop_request_rx: mpsc::Receiver<()>,
 }
 
 impl<Path: Addressable, DelegateFac: RouterFactory> PoolTask<Path, DelegateFac> {
     fn new(
-        client_rx: mpsc::Receiver<ClientRequest<Path>>,
+        client_rx: mpsc::Receiver<ClientRoutingRequest<Path>>,
         client_router_factory: ClientRouterFactory<Path, DelegateFac>,
-        connection_request_rx: mpsc::Receiver<ConnectionRequest<Path>>,
         buffer_size: NonZeroUsize,
         stop_request_rx: mpsc::Receiver<()>,
     ) -> Self {
         PoolTask {
             client_rx,
             client_router_factory,
-            connection_request_rx,
             buffer_size,
             stop_request_rx,
         }
@@ -211,7 +202,6 @@ impl<Path: Addressable, DelegateFac: RouterFactory> PoolTask<Path, DelegateFac> 
         let PoolTask {
             mut client_rx,
             client_router_factory,
-            mut connection_request_rx,
             buffer_size,
             //Todo dm
             stop_request_rx,
@@ -222,7 +212,7 @@ impl<Path: Addressable, DelegateFac: RouterFactory> PoolTask<Path, DelegateFac> 
 
         while let Some(client_request) = client_rx.recv().await {
             match client_request {
-                ClientRequest::Connect { target, request } => {
+                ClientRoutingRequest::Connect { target, request } => {
                     let routing_path = RoutingPath::from(target.clone());
 
                     let registrator = match routing_table.try_resolve_addr(&routing_path) {
@@ -262,98 +252,23 @@ impl<Path: Addressable, DelegateFac: RouterFactory> PoolTask<Path, DelegateFac> 
                         .await;
                     request.send(connection);
                 }
-                ClientRequest::Endpoint { addr, request } => {
-                    //Todo dm remove unwrap
-                    let registrator = routing_table.try_resolve_endpoint(&addr).unwrap();
-                    //Todo dm refactor this into a method
-                    registrator
-                        .registrator_tx
-                        .send(RegistratorRequest::Resolve { request })
-                        .await;
+                ClientRoutingRequest::Endpoint { addr, request } => {
+                    match routing_table.try_resolve_endpoint(&addr) {
+                        Some(registrator) => {
+                            registrator
+                                .registrator_tx
+                                .send(RegistratorRequest::Resolve { request })
+                                .await;
+                        }
+                        None => {
+                            request.send(Err(Unresolvable(addr)));
+                        }
+                    }
                 }
             }
         }
 
         Ok(())
-
-        //Todo dm
-
-        // let mut connections: HashMap<Path, ConnectionRegistrator> = HashMap::new();
-        //
-        // let mut prune_timer = interval(config.conn_reaper_frequency()).fuse();
-        // let mut fused_requests =
-        //     combine_connection_streams(connection_request_rx, stop_request_rx).fuse();
-        // let conn_timeout = config.idle_timeout();
-        //
-        // loop {
-        //     let request: RequestType<Path> = select! {
-        //         _ = prune_timer.next() => Some(RequestType::Prune),
-        //         req = fused_requests.next() => req,
-        //     }
-        //     .ok_or_else(|| ConnectionError::Closed(CloseError::unexpected()))?;
-        //
-        //     match request {
-        //         RequestType::Connect(conn_req) => {
-        //             let ConnectionRequest {
-        //                 target,
-        //                 tx: request_tx,
-        //             } = conn_req;
-        //
-        //             let path = target.to_string();
-        //
-        //             let recreate = match (recreate_connection, connections.get(&path)) {
-        //                 // Connection has stopped and needs to be recreated
-        //                 (_, Some(inner)) if inner.stopped() => true,
-        //                 // Connection doesn't exist
-        //                 (false, None) => true,
-        //                 // Connection exists and is healthy
-        //                 (false, Some(_)) => false,
-        //                 // Connection doesn't exist
-        //                 (true, _) => true,
-        //             };
-        //
-        //             let connection_channel = if recreate {
-        //                 ClientConnection::new(
-        //                     target.clone(),
-        //                     buffer_size.get(),
-        //                     &client_conn_request_tx,
-        //                 )
-        //                 .await
-        //                 .and_then(|connection| {
-        //                     let (inner, sender, receiver) = InnerConnection::from(connection)?;
-        //                     let _ = connections.insert(path.clone(), inner);
-        //                     Ok((sender, Some(receiver)))
-        //                 })
-        //             } else {
-        //                 let inner_connection = connections.get_mut(&path).ok_or_else(|| {
-        //                     ConnectionError::Resolution(ResolutionError::new(
-        //                         ResolutionErrorKind::Unresolvable,
-        //                         Some(path.clone()),
-        //                     ))
-        //                 })?;
-        //                 inner_connection.last_accessed = Instant::now();
-        //
-        //                 Ok(((inner_connection.as_conenction_sender()), None))
-        //             };
-        //
-        //             request_tx
-        //                 .send(connection_channel)
-        //                 .map_err(|_| ConnectionError::Closed(CloseError::unexpected()))?;
-        //         }
-        //
-        //         RequestType::Prune => {
-        //             let before_size = connections.len();
-        //             connections.retain(|_, v| v.last_accessed.elapsed() < conn_timeout);
-        //             let after_size = connections.len();
-        //
-        //             trace!("Pruned {} inactive connections", (before_size - after_size));
-        //         }
-        //
-        //         RequestType::Close => {
-        //             break Ok(());
-        //         }
-        //     }
-        // }
     }
 }
 
@@ -377,7 +292,6 @@ enum RegistratorRequest<Path: Addressable> {
 
 #[derive(Debug, Clone)]
 pub(crate) struct ConnectionRegistrator<Path: Addressable> {
-    //Todo dm this needs to send the type Full / Outgoing and the target
     registrator_tx: mpsc::Sender<RegistratorRequest<Path>>,
 }
 
@@ -391,8 +305,7 @@ impl<Path: Addressable> ConnectionRegistrator<Path> {
         ConnectionRegistrator<Path>,
         ConnectionRegistratorTask<Path, DelegateRouter>,
     ) {
-        //Todo dm change buffer size
-        let (registrator_tx, registrator_rx) = mpsc::channel(8);
+        let (registrator_tx, registrator_rx) = mpsc::channel(buffer_size.get());
 
         (
             ConnectionRegistrator { registrator_tx },

@@ -29,7 +29,7 @@ use crate::downlink::typed::{
 };
 use crate::downlink::Downlinks;
 use crate::downlink::SchemaViolations;
-use crate::router::{ClientRouterFactory, TopLevelRouterFactory};
+use crate::router::{ClientRouterFactory, TopLevelClientRouterFactory};
 use crate::runtime::task::TaskHandle;
 use futures::join;
 use std::error::Error;
@@ -111,12 +111,11 @@ impl SwimClientBuilder {
         let (remote_tx, remote_rx) =
             mpsc::channel(client_params.connections_params.router_buffer_size.get());
 
-        //Todo dm client_conn_request_rx is not used
         let (client_tx, client_rx) =
             mpsc::channel(client_params.connections_params.router_buffer_size.get());
 
-        //Todo dm this may be collapsed into the client router factory
-        let top_level_router_fac = TopLevelRouterFactory::new(client_tx.clone(), remote_tx.clone());
+        let top_level_router_fac =
+            TopLevelClientRouterFactory::new(client_tx.clone(), remote_tx.clone());
 
         let client_router_factory =
             ClientRouterFactory::new(client_tx.clone(), top_level_router_fac.clone());

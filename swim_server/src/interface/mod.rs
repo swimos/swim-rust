@@ -22,7 +22,7 @@ use crate::plane::ContextImpl;
 use crate::plane::PlaneActiveRoutes;
 use crate::plane::RouteResolver;
 use crate::plane::{run_plane, EnvChannel};
-use crate::routing::{TopLevelRouter, TopLevelRouterFactory};
+use crate::routing::{TopLevelServerRouter, TopLevelServerRouterFactory};
 use either::Either;
 use futures::{io, join};
 use std::error::Error;
@@ -36,7 +36,7 @@ use swim_client::connections::{PoolTask, SwimConnPool};
 use swim_client::downlink::subscription::DownlinksTask;
 use swim_client::downlink::Downlinks;
 use swim_client::interface::{SwimClient, SwimClientBuilder};
-use swim_client::router::{ClientRequest, ClientRouterFactory};
+use swim_client::router::{ClientRoutingRequest, ClientRouterFactory};
 use swim_common::routing::error::RoutingError;
 use swim_common::routing::remote::config::ConnectionConfig;
 use swim_common::routing::remote::net::dns::Resolver;
@@ -61,7 +61,7 @@ use utilities::sync::promise;
 pub struct SwimServerBuilder {
     address: Option<SocketAddr>,
     config: SwimServerConfig,
-    planes: Vec<PlaneSpec<RuntimeClock, EnvChannel, PlaneRouter<TopLevelRouter>>>,
+    planes: Vec<PlaneSpec<RuntimeClock, EnvChannel, PlaneRouter<TopLevelServerRouter>>>,
 }
 
 impl Default for SwimServerBuilder {
@@ -147,7 +147,7 @@ impl SwimServerBuilder {
     /// ```
     pub fn add_plane(
         &mut self,
-        plane: PlaneSpec<RuntimeClock, EnvChannel, PlaneRouter<TopLevelRouter>>,
+        plane: PlaneSpec<RuntimeClock, EnvChannel, PlaneRouter<TopLevelServerRouter>>,
     ) {
         if !self.planes.is_empty() {
             panic!("Multiple planes are not supported yet")
@@ -217,13 +217,16 @@ impl SwimServerBuilder {
         let (remote_tx, remote_rx) = mpsc::channel(config.conn_config.channel_buffer_size.get());
         let (plane_tx, plane_rx) = mpsc::channel(config.conn_config.channel_buffer_size.get());
 
-        let top_level_router_fac =
-            TopLevelRouterFactory::new(plane_tx.clone(), client_tx.clone(), remote_tx.clone());
+        let top_level_router_fac = TopLevelServerRouterFactory::new(
+            plane_tx.clone(),
+            client_tx.clone(),
+            remote_tx.clone(),
+        );
 
         let client_router_factory =
-            ClientRouterFactory::new(client_tx.clone(), top_level_router_fac);
+            ClientRouterFactory::new(client_tx.clone(), top_level_router_fac.clone());
 
-        //Todo dm non default config
+        //Todo dm this needs to be changed from default after the new configuration is finalised.
         let (connection_pool, connection_pool_task) = SwimConnPool::new(
             ConnectionPoolParams::default(),
             (client_tx.clone(), client_rx),
@@ -245,9 +248,9 @@ impl SwimServerBuilder {
                 stop_trigger_rx: close_rx,
                 address: address.ok_or(SwimServerBuilderError::MissingAddress)?,
                 address_tx,
+                top_level_router_fac,
                 remote_channel: (remote_tx, remote_rx),
                 plane_channel: (plane_tx, plane_rx),
-                client_tx,
                 client,
                 connection_pool_task,
                 downlinks_task,
@@ -266,20 +269,20 @@ impl SwimServerBuilder {
 pub struct SwimServer {
     address: SocketAddr,
     config: SwimServerConfig,
-    planes: Vec<PlaneSpec<RuntimeClock, EnvChannel, PlaneRouter<TopLevelRouter>>>,
+    planes: Vec<PlaneSpec<RuntimeClock, EnvChannel, PlaneRouter<TopLevelServerRouter>>>,
     stop_trigger_rx: CloseReceiver,
     address_tx: promise::Sender<SocketAddr>,
+    top_level_router_fac: TopLevelServerRouterFactory,
     remote_channel: (
         mpsc::Sender<RemoteRoutingRequest>,
         mpsc::Receiver<RemoteRoutingRequest>,
     ),
-    client_tx: mpsc::Sender<ClientRequest<Path>>,
     plane_channel: (
         mpsc::Sender<PlaneRoutingRequest>,
         mpsc::Receiver<PlaneRoutingRequest>,
     ),
     client: SwimClient<Path>,
-    connection_pool_task: PoolTask<Path, TopLevelRouterFactory>,
+    connection_pool_task: PoolTask<Path, TopLevelServerRouterFactory>,
     downlinks_task: DownlinksTask<Path>,
 }
 
@@ -298,8 +301,8 @@ impl SwimServer {
             mut planes,
             stop_trigger_rx,
             address_tx,
+            top_level_router_fac,
             remote_channel: (remote_tx, remote_rx),
-            client_tx,
             plane_channel: (plane_tx, plane_rx),
             client,
             connection_pool_task,
@@ -316,9 +319,6 @@ impl SwimServer {
         let spec = planes
             .pop()
             .expect("The server cannot be started without a plane");
-
-        let top_level_router_fac =
-            TopLevelRouterFactory::new(plane_tx.clone(), client_tx.clone(), remote_tx.clone());
 
         let clock = swim_runtime::time::clock::runtime_clock();
 

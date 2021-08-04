@@ -87,31 +87,21 @@ impl<DelegateRouter: Router> Router for RemoteRouter<DelegateRouter> {
         &mut self,
         host: Url,
     ) -> BoxFuture<'_, Result<BidirectionalRoute, ResolutionError>> {
-        let RemoteRouter {
-            tag,
-            delegate_router,
-            request_tx,
-        } = self;
+        let RemoteRouter { request_tx, .. } = self;
         async move {
-            //Todo dm remove unwraps
             let (tx, rx) = oneshot::channel();
             let routing_req = RemoteRoutingRequest::Bidirectional {
-                host,
+                host: host.clone(),
                 request: Request::new(tx),
             };
             if request_tx.send(routing_req).await.is_err() {
                 Err(ResolutionError::router_dropped())
             } else {
-                // Todo dm
-                unimplemented!();
-                // match rx.await {
-
-                // Ok(Ok(RawRoute { sender, on_drop })) => {
-                //     Ok(Route::new(TaggedSender::new(*tag, sender), on_drop))
-                // }
-                // Ok(Err(err)) => Err(ResolutionError::unresolvable(err.to_string())),
-                // Err(_) => Err(ResolutionError::router_dropped()),
-                // }
+                match rx.await {
+                    Ok(Ok(addr)) => Ok(addr),
+                    Ok(Err(_)) => Err((ResolutionError::unresolvable(host.to_string()))),
+                    Err(_) => Err(ResolutionError::router_dropped()),
+                }
             }
         }
         .boxed()

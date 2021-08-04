@@ -58,45 +58,45 @@ mod tests;
 // mod retry;
 
 #[derive(Debug, Clone)]
-pub(crate) struct TopLevelRouterFactory {
-    client_sender: mpsc::Sender<ClientRequest<AbsolutePath>>,
+pub(crate) struct TopLevelClientRouterFactory {
+    client_sender: mpsc::Sender<ClientRoutingRequest<AbsolutePath>>,
     remote_sender: mpsc::Sender<RemoteRoutingRequest>,
 }
 
-impl TopLevelRouterFactory {
+impl TopLevelClientRouterFactory {
     pub(in crate) fn new(
-        client_sender: mpsc::Sender<ClientRequest<AbsolutePath>>,
+        client_sender: mpsc::Sender<ClientRoutingRequest<AbsolutePath>>,
         remote_sender: mpsc::Sender<RemoteRoutingRequest>,
     ) -> Self {
-        TopLevelRouterFactory {
+        TopLevelClientRouterFactory {
             client_sender,
             remote_sender,
         }
     }
 }
 
-impl RouterFactory for TopLevelRouterFactory {
-    type Router = TopLevelRouter;
+impl RouterFactory for TopLevelClientRouterFactory {
+    type Router = TopLevelClientRouter;
 
     fn create_for(&self, addr: RoutingAddr) -> Self::Router {
-        TopLevelRouter::new(addr, self.client_sender.clone(), self.remote_sender.clone())
+        TopLevelClientRouter::new(addr, self.client_sender.clone(), self.remote_sender.clone())
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct TopLevelRouter {
+pub struct TopLevelClientRouter {
     addr: RoutingAddr,
-    client_sender: mpsc::Sender<ClientRequest<AbsolutePath>>,
+    client_sender: mpsc::Sender<ClientRoutingRequest<AbsolutePath>>,
     remote_sender: mpsc::Sender<RemoteRoutingRequest>,
 }
 
-impl TopLevelRouter {
+impl TopLevelClientRouter {
     pub(crate) fn new(
         addr: RoutingAddr,
-        client_sender: mpsc::Sender<ClientRequest<AbsolutePath>>,
+        client_sender: mpsc::Sender<ClientRoutingRequest<AbsolutePath>>,
         remote_sender: mpsc::Sender<RemoteRoutingRequest>,
     ) -> Self {
-        TopLevelRouter {
+        TopLevelClientRouter {
             addr,
             client_sender,
             remote_sender,
@@ -104,13 +104,13 @@ impl TopLevelRouter {
     }
 }
 
-impl Router for TopLevelRouter {
+impl Router for TopLevelClientRouter {
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,
     ) -> BoxFuture<'_, Result<Route, ResolutionError>> {
         async move {
-            let TopLevelRouter {
+            let TopLevelClientRouter {
                 remote_sender,
                 client_sender,
                 addr: tag,
@@ -134,27 +134,7 @@ impl Router for TopLevelRouter {
                         Err(_) => Err(ResolutionError::router_dropped()),
                     }
                 }
-            } else if addr.is_client() {
-                //Todo dm this may not be needed
-                let (tx, rx) = oneshot::channel();
-                let request = Request::new(tx);
-                if client_sender
-                    .send(ClientRequest::Endpoint { addr, request })
-                    .await
-                    .is_err()
-                {
-                    Err(ResolutionError::router_dropped())
-                } else {
-                    match rx.await {
-                        Ok(Ok(RawRoute { sender, on_drop })) => {
-                            Ok(Route::new(TaggedSender::new(*tag, sender), on_drop))
-                        }
-                        Ok(Err(_)) => Err(ResolutionError::unresolvable(addr.to_string())),
-                        Err(_) => Err(ResolutionError::router_dropped()),
-                    }
-                }
             } else {
-                //Todo dm
                 // Remote will always route through the bidirectional connection
                 unimplemented!()
             }
@@ -167,7 +147,7 @@ impl Router for TopLevelRouter {
         host: Url,
     ) -> BoxFuture<'_, Result<BidirectionalRoute, ResolutionError>> {
         async move {
-            let TopLevelRouter { remote_sender, .. } = self;
+            let TopLevelClientRouter { remote_sender, .. } = self;
 
             let (tx, rx) = oneshot::channel();
             if remote_sender
@@ -196,7 +176,7 @@ impl Router for TopLevelRouter {
         route: RelativeUri,
     ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
         async move {
-            let TopLevelRouter {
+            let TopLevelClientRouter {
                 addr,
                 client_sender,
                 remote_sender,
@@ -223,7 +203,6 @@ impl Router for TopLevelRouter {
                     }
                 }
                 None => {
-                    //Todo dm
                     // Remote will always route through the bidirectional connection
                     unimplemented!()
                 }
@@ -290,13 +269,13 @@ impl<Path: Addressable> RoutingTable<Path> {
 
 #[derive(Debug, Clone)]
 pub struct ClientRouterFactory<Path: Addressable, DelegateFac: RouterFactory> {
-    client_request_sender: mpsc::Sender<ClientRequest<Path>>,
+    client_request_sender: mpsc::Sender<ClientRoutingRequest<Path>>,
     delegate_fac: DelegateFac,
 }
 
 impl<Path: Addressable, DelegateFac: RouterFactory> ClientRouterFactory<Path, DelegateFac> {
     pub fn new(
-        request_sender: mpsc::Sender<ClientRequest<Path>>,
+        request_sender: mpsc::Sender<ClientRoutingRequest<Path>>,
         delegate_fac: DelegateFac,
     ) -> Self {
         ClientRouterFactory {
@@ -323,7 +302,7 @@ impl<Path: Addressable, DelegateFac: RouterFactory> RouterFactory
 #[derive(Debug, Clone)]
 pub struct ClientRouter<Path: Addressable, DelegateRouter: Router> {
     tag: RoutingAddr,
-    request_sender: mpsc::Sender<ClientRequest<Path>>,
+    request_sender: mpsc::Sender<ClientRoutingRequest<Path>>,
     delegate_router: DelegateRouter,
 }
 
@@ -339,12 +318,7 @@ impl<Path: Addressable, DelegateRouter: Router> Router for ClientRouter<Path, De
                 delegate_router,
             } = self;
 
-            if addr.is_client() {
-                //Todo dm
-                unimplemented!()
-            } else {
-                delegate_router.resolve_sender(addr).await
-            }
+            delegate_router.resolve_sender(addr).await
         }
         .boxed()
     }
@@ -376,41 +350,19 @@ impl<Path: Addressable, DelegateRouter: Router> Router for ClientRouter<Path, De
             } = self;
 
             delegate_router.lookup(host, route).await
-
-            //Todo dm this is usefull for the server
-            // eprintln!("route client router = {:#?}", route);
-            // let mut plane_tx = plane_tx.as_ref().unwrap();
-            // let (tx, rx) = oneshot::channel();
-            // if plane_tx
-            //     .send(PlaneRoutingRequest::Resolve {
-            //         host,
-            //         name: route,
-            //         request: Request::new(tx),
-            //     })
-            //     .await
-            //     .is_err()
-            // {
-            //     Err(RouterError::RouterDropped)
-            // } else {
-            //     match rx.await {
-            //         Ok(Ok(addr)) => Ok(addr),
-            //         Ok(Err(err)) => Err(err),
-            //         Err(_) => Err(RouterError::RouterDropped),
-            //     }
-            // }
         }
         .boxed()
     }
 }
 
-//Todo dm rename to client routing request
 #[derive(Debug)]
-pub enum ClientRequest<Path: Addressable> {
+pub enum ClientRoutingRequest<Path: Addressable> {
     /// Obtain a connection.
     Connect {
         target: Path,
         request: Request<Result<ConnectionChannel, ConnectionError>>,
     },
+    /// Get channel to route messages to a specified routing address.
     Endpoint {
         addr: RoutingAddr,
         request: Request<Result<RawRoute, Unresolvable>>,
@@ -776,17 +728,17 @@ pub enum ClientRequest<Path: Addressable> {
 // /// The Router events are emitted by the connection streams of the router and indicate
 // /// messages or errors from the remote host.
 // #[derive(Debug, Clone, PartialEq)]
-pub enum RouterEvent {
-    // Incoming message from a remote host.
-    Message(IncomingLinkMessage),
-    // There was an error in the connection. If a retry strategy exists this will trigger it.
-    ConnectionClosed,
-    /// The remote host is unreachable. This will not trigger the retry system.
-    Unreachable(String),
-    // The router is stopping.
-    Stopping,
-}
-
+// pub enum RouterEvent {
+//     // Incoming message from a remote host.
+//     Message(IncomingLinkMessage),
+//     // There was an error in the connection. If a retry strategy exists this will trigger it.
+//     ConnectionClosed,
+//     /// The remote host is unreachable. This will not trigger the retry system.
+//     Unreachable(String),
+//     // The router is stopping.
+//     Stopping,
+// }
+//
 // /// Tasks that the router can handle.
 // enum RouterTask<Path: Addressable> {
 //     Connect(RouterConnRequest<Path>),
