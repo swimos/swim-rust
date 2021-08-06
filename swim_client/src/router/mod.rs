@@ -28,6 +28,7 @@ use swim_common::request::Request;
 use swim_common::routing::error::{
     ConnectionError, ResolutionError, RouterError, RoutingError, Unresolvable,
 };
+use swim_common::routing::remote::table::BidirectionalRegistrator;
 use swim_common::routing::remote::table::SchemeHostPort;
 use swim_common::routing::remote::{RawRoute, RemoteRoutingRequest};
 use swim_common::routing::BidirectionalRoute;
@@ -59,13 +60,13 @@ mod tests;
 
 #[derive(Debug, Clone)]
 pub(crate) struct TopLevelClientRouterFactory {
-    client_sender: mpsc::Sender<ClientRoutingRequest<AbsolutePath>>,
+    client_sender: mpsc::Sender<DownlinkRoutingRequest<AbsolutePath>>,
     remote_sender: mpsc::Sender<RemoteRoutingRequest>,
 }
 
 impl TopLevelClientRouterFactory {
     pub(in crate) fn new(
-        client_sender: mpsc::Sender<ClientRoutingRequest<AbsolutePath>>,
+        client_sender: mpsc::Sender<DownlinkRoutingRequest<AbsolutePath>>,
         remote_sender: mpsc::Sender<RemoteRoutingRequest>,
     ) -> Self {
         TopLevelClientRouterFactory {
@@ -86,14 +87,14 @@ impl RouterFactory for TopLevelClientRouterFactory {
 #[derive(Debug, Clone)]
 pub struct TopLevelClientRouter {
     addr: RoutingAddr,
-    client_sender: mpsc::Sender<ClientRoutingRequest<AbsolutePath>>,
+    client_sender: mpsc::Sender<DownlinkRoutingRequest<AbsolutePath>>,
     remote_sender: mpsc::Sender<RemoteRoutingRequest>,
 }
 
 impl TopLevelClientRouter {
     pub(crate) fn new(
         addr: RoutingAddr,
-        client_sender: mpsc::Sender<ClientRoutingRequest<AbsolutePath>>,
+        client_sender: mpsc::Sender<DownlinkRoutingRequest<AbsolutePath>>,
         remote_sender: mpsc::Sender<RemoteRoutingRequest>,
     ) -> Self {
         TopLevelClientRouter {
@@ -161,8 +162,8 @@ impl Router for TopLevelClientRouter {
                 Err(ResolutionError::router_dropped())
             } else {
                 match rx.await {
-                    Ok(Ok(addr)) => Ok(addr),
-                    Ok(Err(err)) => Err((ResolutionError::unresolvable(host.to_string()))),
+                    Ok(Ok(registrator)) => registrator.register().await,
+                    Ok(Err(_)) => Err((ResolutionError::unresolvable(host.to_string()))),
                     Err(_) => Err(ResolutionError::router_dropped()),
                 }
             }
@@ -269,13 +270,13 @@ impl<Path: Addressable> RoutingTable<Path> {
 
 #[derive(Debug, Clone)]
 pub struct ClientRouterFactory<Path: Addressable, DelegateFac: RouterFactory> {
-    client_request_sender: mpsc::Sender<ClientRoutingRequest<Path>>,
+    client_request_sender: mpsc::Sender<DownlinkRoutingRequest<Path>>,
     delegate_fac: DelegateFac,
 }
 
 impl<Path: Addressable, DelegateFac: RouterFactory> ClientRouterFactory<Path, DelegateFac> {
     pub fn new(
-        request_sender: mpsc::Sender<ClientRoutingRequest<Path>>,
+        request_sender: mpsc::Sender<DownlinkRoutingRequest<Path>>,
         delegate_fac: DelegateFac,
     ) -> Self {
         ClientRouterFactory {
@@ -302,7 +303,7 @@ impl<Path: Addressable, DelegateFac: RouterFactory> RouterFactory
 #[derive(Debug, Clone)]
 pub struct ClientRouter<Path: Addressable, DelegateRouter: Router> {
     tag: RoutingAddr,
-    request_sender: mpsc::Sender<ClientRoutingRequest<Path>>,
+    request_sender: mpsc::Sender<DownlinkRoutingRequest<Path>>,
     delegate_router: DelegateRouter,
 }
 
@@ -356,7 +357,7 @@ impl<Path: Addressable, DelegateRouter: Router> Router for ClientRouter<Path, De
 }
 
 #[derive(Debug)]
-pub enum ClientRoutingRequest<Path: Addressable> {
+pub enum DownlinkRoutingRequest<Path: Addressable> {
     /// Obtain a connection.
     Connect {
         target: Path,

@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use crate::request::Request;
+use crate::routing::remote::table::BidirectionalRegistrator;
 use crate::routing::remote::{RawRoute, RemoteRoutingRequest};
 use crate::routing::{BidirectionalRoute, RouterError};
 use crate::routing::{Origin, ResolutionError};
@@ -55,7 +56,6 @@ impl<DelegateRouter: Router> Router for RemoteRouter<DelegateRouter> {
         addr: RoutingAddr,
     ) -> BoxFuture<'_, Result<Route, ResolutionError>> {
         async move {
-            eprintln!("addr remote resolve= {:#?}", addr);
             let RemoteRouter {
                 tag,
                 delegate_router,
@@ -98,7 +98,7 @@ impl<DelegateRouter: Router> Router for RemoteRouter<DelegateRouter> {
                 Err(ResolutionError::router_dropped())
             } else {
                 match rx.await {
-                    Ok(Ok(addr)) => Ok(addr),
+                    Ok(Ok(registrator)) => registrator.register().await,
                     Ok(Err(_)) => Err((ResolutionError::unresolvable(host.to_string()))),
                     Err(_) => Err(ResolutionError::router_dropped()),
                 }
@@ -113,7 +113,6 @@ impl<DelegateRouter: Router> Router for RemoteRouter<DelegateRouter> {
         route: RelativeUri,
     ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
         async move {
-            eprintln!("route remote lookup= {:#?}", route);
             let RemoteRouter {
                 request_tx,
                 delegate_router,

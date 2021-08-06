@@ -553,7 +553,7 @@ async fn agent_loop() {
         clock.clone(),
         client,
         ReceiverStream::new(envelope_rx),
-        SingleChannelRouter::new(RoutingAddr::local(1024)),
+        SingleChannelRouter::new(RoutingAddr::plane(1024)),
     );
 
     let agent_task = swim_runtime::task::spawn(agent_proc);

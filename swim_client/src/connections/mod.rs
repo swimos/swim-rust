@@ -14,7 +14,7 @@
 
 use crate::configuration::router::ConnectionPoolParams;
 use crate::router::{
-    ClientRouter, ClientRouterFactory, ClientRoutingRequest, RoutingPath, RoutingTable,
+    ClientRouter, ClientRouterFactory, DownlinkRoutingRequest, RoutingPath, RoutingTable,
 };
 use either::Either;
 use futures::future::BoxFuture;
@@ -82,7 +82,7 @@ pub(crate) type ConnectionSender = TaggedSender;
 /// for a given host if it already exists.
 #[derive(Clone)]
 pub struct SwimConnPool<Path: Addressable> {
-    client_tx: mpsc::Sender<ClientRoutingRequest<Path>>,
+    client_tx: mpsc::Sender<DownlinkRoutingRequest<Path>>,
     stop_request_tx: mpsc::Sender<()>,
 }
 
@@ -97,8 +97,8 @@ impl<Path: Addressable> SwimConnPool<Path> {
     pub fn new<DelegateFac: RouterFactory + Debug>(
         config: ConnectionPoolParams,
         client_channel: (
-            mpsc::Sender<ClientRoutingRequest<Path>>,
-            mpsc::Receiver<ClientRoutingRequest<Path>>,
+            mpsc::Sender<DownlinkRoutingRequest<Path>>,
+            mpsc::Receiver<DownlinkRoutingRequest<Path>>,
         ),
         client_router_factory: ClientRouterFactory<Path, DelegateFac>,
     ) -> (SwimConnPool<Path>, PoolTask<Path, DelegateFac>) {
@@ -145,7 +145,7 @@ impl<Path: Addressable> ConnectionPool for SwimConnPool<Path> {
             let (tx, rx) = oneshot::channel();
 
             self.client_tx
-                .send(ClientRoutingRequest::Connect {
+                .send(DownlinkRoutingRequest::Connect {
                     target,
                     request: Request::new(tx),
                 })
@@ -177,7 +177,7 @@ pub struct ConnectionRequest<Path: Addressable> {
 }
 
 pub struct PoolTask<Path: Addressable, DelegateFac: RouterFactory> {
-    client_rx: mpsc::Receiver<ClientRoutingRequest<Path>>,
+    client_rx: mpsc::Receiver<DownlinkRoutingRequest<Path>>,
     client_router_factory: ClientRouterFactory<Path, DelegateFac>,
     buffer_size: NonZeroUsize,
     stop_request_rx: mpsc::Receiver<()>,
@@ -185,7 +185,7 @@ pub struct PoolTask<Path: Addressable, DelegateFac: RouterFactory> {
 
 impl<Path: Addressable, DelegateFac: RouterFactory> PoolTask<Path, DelegateFac> {
     fn new(
-        client_rx: mpsc::Receiver<ClientRoutingRequest<Path>>,
+        client_rx: mpsc::Receiver<DownlinkRoutingRequest<Path>>,
         client_router_factory: ClientRouterFactory<Path, DelegateFac>,
         buffer_size: NonZeroUsize,
         stop_request_rx: mpsc::Receiver<()>,
@@ -212,7 +212,7 @@ impl<Path: Addressable, DelegateFac: RouterFactory> PoolTask<Path, DelegateFac> 
 
         while let Some(client_request) = client_rx.recv().await {
             match client_request {
-                ClientRoutingRequest::Connect { target, request } => {
+                DownlinkRoutingRequest::Connect { target, request } => {
                     let routing_path = RoutingPath::from(target.clone());
 
                     let registrator = match routing_table.try_resolve_addr(&routing_path) {
@@ -252,7 +252,7 @@ impl<Path: Addressable, DelegateFac: RouterFactory> PoolTask<Path, DelegateFac> 
                         .await;
                     request.send(connection);
                 }
-                ClientRoutingRequest::Endpoint { addr, request } => {
+                DownlinkRoutingRequest::Endpoint { addr, request } => {
                     match routing_table.try_resolve_endpoint(&addr) {
                         Some(registrator) => {
                             registrator

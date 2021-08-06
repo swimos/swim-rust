@@ -1,9 +1,10 @@
 use futures::future::BoxFuture;
 use futures::FutureExt;
-use swim_client::router::ClientRoutingRequest;
+use swim_client::router::DownlinkRoutingRequest;
 use swim_common::request::Request;
 use swim_common::routing::error::ResolutionError;
 use swim_common::routing::error::RouterError;
+use swim_common::routing::remote::table::BidirectionalRegistrator;
 use swim_common::routing::remote::{RawRoute, RemoteRoutingRequest};
 use swim_common::routing::{BidirectionalRoute, Origin, PlaneRoutingRequest};
 use swim_common::routing::{Route, Router, RouterFactory, RoutingAddr, TaggedSender};
@@ -16,14 +17,14 @@ use utilities::uri::RelativeUri;
 #[derive(Debug, Clone)]
 pub(crate) struct TopLevelServerRouterFactory {
     plane_sender: mpsc::Sender<PlaneRoutingRequest>,
-    client_sender: mpsc::Sender<ClientRoutingRequest<Path>>,
+    client_sender: mpsc::Sender<DownlinkRoutingRequest<Path>>,
     remote_sender: mpsc::Sender<RemoteRoutingRequest>,
 }
 
 impl TopLevelServerRouterFactory {
     pub(in crate) fn new(
         plane_sender: mpsc::Sender<PlaneRoutingRequest>,
-        client_sender: mpsc::Sender<ClientRoutingRequest<Path>>,
+        client_sender: mpsc::Sender<DownlinkRoutingRequest<Path>>,
         remote_sender: mpsc::Sender<RemoteRoutingRequest>,
     ) -> Self {
         TopLevelServerRouterFactory {
@@ -51,7 +52,7 @@ impl RouterFactory for TopLevelServerRouterFactory {
 pub struct TopLevelServerRouter {
     addr: RoutingAddr,
     plane_sender: mpsc::Sender<PlaneRoutingRequest>,
-    client_sender: mpsc::Sender<ClientRoutingRequest<Path>>,
+    client_sender: mpsc::Sender<DownlinkRoutingRequest<Path>>,
     remote_sender: mpsc::Sender<RemoteRoutingRequest>,
 }
 
@@ -59,7 +60,7 @@ impl TopLevelServerRouter {
     pub(crate) fn new(
         addr: RoutingAddr,
         plane_sender: mpsc::Sender<PlaneRoutingRequest>,
-        client_sender: mpsc::Sender<ClientRoutingRequest<Path>>,
+        client_sender: mpsc::Sender<DownlinkRoutingRequest<Path>>,
         remote_sender: mpsc::Sender<RemoteRoutingRequest>,
     ) -> Self {
         TopLevelServerRouter {
@@ -124,7 +125,7 @@ impl Router for TopLevelServerRouter {
                 let (tx, rx) = oneshot::channel();
                 let request = Request::new(tx);
                 if client_sender
-                    .send(ClientRoutingRequest::Endpoint { addr, request })
+                    .send(DownlinkRoutingRequest::Endpoint { addr, request })
                     .await
                     .is_err()
                 {
@@ -162,7 +163,7 @@ impl Router for TopLevelServerRouter {
                 Err(ResolutionError::router_dropped())
             } else {
                 match rx.await {
-                    Ok(Ok(addr)) => Ok(addr),
+                    Ok(Ok(registrator)) => registrator.register().await,
                     Ok(Err(_)) => Err((ResolutionError::unresolvable(host.to_string()))),
                     Err(_) => Err(ResolutionError::router_dropped()),
                 }

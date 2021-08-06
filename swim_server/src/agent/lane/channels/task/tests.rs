@@ -1482,7 +1482,7 @@ impl Router for MultiTestRouter {
 fn make_multi_context() -> (MultiTestContext, BoxFuture<'static, ()>) {
     let (spawn_tx, spawn_rx) = mpsc::channel(5);
 
-    let context = MultiTestContext::new(RoutingAddr::local(1024), spawn_tx);
+    let context = MultiTestContext::new(RoutingAddr::plane(1024), spawn_tx);
     let spawn_task = ReceiverStream::new(spawn_rx)
         .for_each_concurrent(None, |t| t)
         .boxed();

@@ -47,7 +47,7 @@ impl FakeWebsocket {
     }
 }
 
-const RESP: RoutingAddr = RoutingAddr::local(6);
+const RESP: RoutingAddr = RoutingAddr::plane(6);
 
 #[derive(Debug, Default)]
 struct FakeRemoteState {

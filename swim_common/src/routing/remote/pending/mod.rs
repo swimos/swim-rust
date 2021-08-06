@@ -12,12 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::routing::remote::table::SchemeHostPort;
-use crate::routing::remote::{ResolutionRequest, REQUEST_DROPPED};
+use crate::request::Request;
+use crate::routing::remote::table::{BidirectionalRegistrator, SchemeHostPort};
+use crate::routing::remote::{
+    BidirectionalReceiverRequest, BidirectionalRequest, ResolutionRequest, REQUEST_DROPPED,
+};
 use crate::routing::ConnectionError;
 use crate::routing::RoutingAddr;
+use either::Either;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+use tokio::sync::mpsc;
 
 #[cfg(test)]
 mod tests;
@@ -25,11 +30,17 @@ mod tests;
 /// Keeps track of pending routing requests to ensure that two requests for the same point are not
 /// started simultaneously.
 #[derive(Debug, Default)]
-pub struct PendingRequests(HashMap<SchemeHostPort, Vec<Option<ResolutionRequest>>>);
+pub struct PendingRequests(
+    HashMap<SchemeHostPort, Vec<Either<ResolutionRequest, BidirectionalRequest>>>,
+);
 
 impl PendingRequests {
     /// Add a new pending request for a specific host/port combination.
-    pub fn add(&mut self, host: SchemeHostPort, request: Option<ResolutionRequest>) {
+    pub fn add(
+        &mut self,
+        host: SchemeHostPort,
+        request: Either<ResolutionRequest, BidirectionalRequest>,
+    ) {
         let PendingRequests(map) = self;
         match map.entry(host) {
             Entry::Occupied(mut entry) => {
@@ -42,12 +53,22 @@ impl PendingRequests {
     }
 
     /// Complete all requests for a given host/port combination with a successful result.
-    pub fn send_ok(&mut self, host: &SchemeHostPort, addr: RoutingAddr) {
+    pub fn send_ok(
+        &mut self,
+        host: &SchemeHostPort,
+        addr: RoutingAddr,
+        bidirectional_registrator: BidirectionalRegistrator,
+    ) {
         let PendingRequests(map) = self;
         if let Some(requests) = map.remove(host) {
             for request in requests.into_iter() {
-                if let Some(request) = request {
-                    request.send_ok_debug(addr, REQUEST_DROPPED);
+                match request {
+                    Either::Left(request) => {
+                        request.send_ok_debug(addr, REQUEST_DROPPED);
+                    }
+                    Either::Right(request) => {
+                        request.send_ok_debug(bidirectional_registrator.clone(), REQUEST_DROPPED)
+                    }
                 }
             }
         }
@@ -59,13 +80,23 @@ impl PendingRequests {
         if let Some(mut requests) = map.remove(host) {
             let first = requests.pop();
             for request in requests.into_iter() {
-                if let Some(request) = request {
-                    request.send_err_debug(err.clone(), REQUEST_DROPPED);
+                match request {
+                    Either::Left(request) => {
+                        request.send_err_debug(err.clone(), REQUEST_DROPPED);
+                    }
+                    Either::Right(request) => {
+                        request.send_err_debug(err.clone(), REQUEST_DROPPED);
+                    }
                 }
             }
             if let Some(first) = first {
-                if let Some(first) = first {
-                    first.send_err_debug(err, REQUEST_DROPPED);
+                match first {
+                    Either::Left(first) => {
+                        first.send_err_debug(err, REQUEST_DROPPED);
+                    }
+                    Either::Right(first) => {
+                        first.send_err_debug(err, REQUEST_DROPPED);
+                    }
                 }
             }
         }

@@ -55,9 +55,9 @@ enum Location {
     /// Indicates that envelopes will be routed to a remote host.
     RemoteEndpoint(u32),
     /// Indicates that envelopes will be routed to another agent on this host.
-    Local(u32),
+    PlaneEndpoint(u32),
     /// Indicates that envelopes will be routed to a downlink on the client.
-    Client(u32),
+    ClientEndpoint(u32),
 }
 
 /// An opaque routing address.
@@ -69,16 +69,16 @@ impl RoutingAddr {
         RoutingAddr(Location::RemoteEndpoint(id))
     }
 
-    pub const fn local(id: u32) -> Self {
-        RoutingAddr(Location::Local(id))
+    pub const fn plane(id: u32) -> Self {
+        RoutingAddr(Location::PlaneEndpoint(id))
     }
 
     pub const fn client(id: u32) -> Self {
-        RoutingAddr(Location::Client(id))
+        RoutingAddr(Location::ClientEndpoint(id))
     }
 
     pub fn is_local(&self) -> bool {
-        matches!(self, RoutingAddr(Location::Local(_)))
+        matches!(self, RoutingAddr(Location::PlaneEndpoint(_)))
     }
 
     pub fn is_remote(&self) -> bool {
@@ -86,7 +86,7 @@ impl RoutingAddr {
     }
 
     pub fn is_client(&self) -> bool {
-        matches!(self, RoutingAddr(Location::Client(_)))
+        matches!(self, RoutingAddr(Location::ClientEndpoint(_)))
     }
 }
 
@@ -94,8 +94,8 @@ impl Display for RoutingAddr {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             RoutingAddr(Location::RemoteEndpoint(id)) => write!(f, "Remote({:X})", id),
-            RoutingAddr(Location::Local(id)) => write!(f, "Local({:X})", id),
-            RoutingAddr(Location::Client(id)) => write!(f, "Client({:X})", id),
+            RoutingAddr(Location::PlaneEndpoint(id)) => write!(f, "Plane({:X})", id),
+            RoutingAddr(Location::ClientEndpoint(id)) => write!(f, "Client({:X})", id),
         }
     }
 }

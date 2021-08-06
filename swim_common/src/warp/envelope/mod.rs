@@ -122,6 +122,24 @@ impl EnvelopeHeader {
             EnvelopeHeader::Negotiation(_, _) => None,
         }
     }
+
+    pub fn is_incoming(&self) -> bool {
+        match self {
+            EnvelopeHeader::IncomingLink(_, _) => true,
+            EnvelopeHeader::OutgoingLink(_, _) => false,
+            EnvelopeHeader::Negotiation(_, Direction::Request) => false,
+            EnvelopeHeader::Negotiation(_, Direction::Response) => true,
+        }
+    }
+
+    pub fn is_outgoing(&self) -> bool {
+        match self {
+            EnvelopeHeader::IncomingLink(_, _) => false,
+            EnvelopeHeader::OutgoingLink(_, _) => true,
+            EnvelopeHeader::Negotiation(_, Direction::Request) => true,
+            EnvelopeHeader::Negotiation(_, Direction::Response) => false,
+        }
+    }
 }
 
 /// A message related to a link to or from a remote lane.

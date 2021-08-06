@@ -315,7 +315,7 @@ impl<Clk: Clock, DelegateFac: RouterFactory> RouteResolver<Clk, DelegateFac> {
         *counter = counter
             .checked_add(1)
             .expect("Local endpoint counter overflow.");
-        let addr = RoutingAddr::local(*counter);
+        let addr = RoutingAddr::plane(*counter);
         let (agent, task) = agent_route.run_agent(
             route.clone(),
             params,

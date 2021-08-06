@@ -27,7 +27,7 @@ use utilities::sync::promise;
 
 #[tokio::test]
 async fn plane_router_get_sender() {
-    let addr = RoutingAddr::local(5);
+    let addr = RoutingAddr::plane(5);
 
     let (req_tx, mut req_rx) = mpsc::channel(8);
     let (send_tx, mut send_rx) = mpsc::channel(8);
@@ -69,7 +69,7 @@ async fn plane_router_get_sender() {
             Some(TaggedEnvelope(addr, Envelope::linked("/node", "lane")))
         );
 
-        let result2 = router.resolve_sender(RoutingAddr::local(56), None).await;
+        let result2 = router.resolve_sender(RoutingAddr::plane(56), None).await;
 
         assert!(matches!(
             result2.err().unwrap().kind(),
@@ -89,8 +89,8 @@ async fn plane_router_factory() {
     let top_level_router_factory = TopLevelServerRouterFactory::new(req_tx.clone(), client_tx, remote_tx);
 
     let fac = PlaneRouterFactory::new(req_tx, top_level_router_factory);
-    let router = fac.create_for(RoutingAddr::local(56));
-    assert_eq!(router.tag, RoutingAddr::local(56));
+    let router = fac.create_for(RoutingAddr::plane(56));
+    assert_eq!(router.tag, RoutingAddr::plane(56));
 }
 
 #[tokio::test]

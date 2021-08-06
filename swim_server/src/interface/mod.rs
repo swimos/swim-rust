@@ -36,7 +36,7 @@ use swim_client::connections::{PoolTask, SwimConnPool};
 use swim_client::downlink::subscription::DownlinksTask;
 use swim_client::downlink::Downlinks;
 use swim_client::interface::{SwimClient, SwimClientBuilder};
-use swim_client::router::{ClientRoutingRequest, ClientRouterFactory};
+use swim_client::router::{DownlinkRoutingRequest, ClientRouterFactory};
 use swim_common::routing::error::RoutingError;
 use swim_common::routing::remote::config::ConnectionConfig;
 use swim_common::routing::remote::net::dns::Resolver;

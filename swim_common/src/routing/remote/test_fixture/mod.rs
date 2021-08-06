@@ -148,7 +148,7 @@ impl LocalRoutes {
                 panic!("Duplicate registration.")
             }
             hash_map::Entry::Vacant(vacant) => {
-                let id = RoutingAddr::local(*counter);
+                let id = RoutingAddr::plane(*counter);
                 *counter += 1;
                 vacant.insert((id, countdown));
                 let (drop_tx, drop_rx) = promise::promise();

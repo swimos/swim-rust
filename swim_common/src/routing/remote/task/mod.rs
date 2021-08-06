@@ -23,7 +23,9 @@ use crate::routing::error::{
 };
 use crate::routing::remote::config::ConnectionConfig;
 use crate::routing::remote::router::RemoteRouter;
-use crate::routing::remote::{BidirectionalRequest, RemoteRoutingRequest, SchemeSocketAddr};
+use crate::routing::remote::{
+    BidirectionalReceiverRequest, BidirectionalRequest, RemoteRoutingRequest, SchemeSocketAddr,
+};
 use crate::routing::ws::selector::{SelectorResult, WsStreamSelector};
 use crate::routing::ws::{CloseCode, CloseReason, JoinedStreamSink, WsMessage};
 use crate::routing::{
@@ -35,6 +37,7 @@ use crate::warp::envelope::{Envelope, EnvelopeHeader, EnvelopeParseErr, Outgoing
 use crate::warp::path::RelativePath;
 use either::Either;
 use futures::future::{join, BoxFuture};
+use futures::stream::FuturesUnordered;
 use futures::{select_biased, stream, FutureExt, Sink, Stream, StreamExt};
 use pin_utils::pin_mut;
 use std::collections::hash_map::Entry;
@@ -47,7 +50,7 @@ use std::str::FromStr;
 use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::SendError;
-use tokio::sync::mpsc::Sender;
+use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time::{sleep, Instant};
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, Level};
@@ -63,7 +66,8 @@ pub struct ConnectionTask<Str, Router> {
     ws_stream: Str,
     messages: mpsc::Receiver<TaggedEnvelope>,
     message_injector: mpsc::Sender<TaggedEnvelope>,
-    router: Either<Router, mpsc::Sender<Envelope>>,
+    router: Router,
+    bidirectional_request_rx: mpsc::Receiver<BidirectionalReceiverRequest>,
     stop_signal: trigger::Receiver,
     config: ConnectionConfig,
 }
@@ -121,8 +125,9 @@ where
     pub fn new(
         addr: SchemeSocketAddr,
         ws_stream: Str,
-        router: Either<R, mpsc::Sender<Envelope>>,
+        router: R,
         (messages_tx, messages_rx): (mpsc::Sender<TaggedEnvelope>, mpsc::Receiver<TaggedEnvelope>),
+        bidirectional_request_rx: mpsc::Receiver<BidirectionalReceiverRequest>,
         stop_signal: trigger::Receiver,
         config: ConnectionConfig,
     ) -> Self {
@@ -133,6 +138,7 @@ where
             messages: messages_rx,
             message_injector: messages_tx,
             router,
+            bidirectional_request_rx,
             stop_signal,
             config,
         }
@@ -145,11 +151,14 @@ where
             messages,
             message_injector,
             mut router,
+            mut bidirectional_request_rx,
             stop_signal,
             config,
         } = self;
 
         let outgoing_payloads = ReceiverStream::new(messages).map(Into::into);
+        let mut bidirectional_request_rx = ReceiverStream::new(bidirectional_request_rx).fuse();
+        let mut bidirectional_connections = vec![];
 
         let mut selector = WsStreamSelector::new(
             &mut ws_stream,
@@ -172,21 +181,32 @@ where
                     .checked_add(config.activity_timeout)
                     .expect("Timer overflow."),
             );
-            let next: Option<Result<SelectorResult<WsMessage>, ConnectionError>> = select_biased! {
+            let next: Option<
+                Either<
+                    BidirectionalReceiverRequest,
+                    Result<SelectorResult<WsMessage>, ConnectionError>,
+                >,
+            > = select_biased! {
                 _ = stop_fused => {
                     break Completion::StoppedLocally;
                 },
                 _ = (&mut timeout).fuse() => {
                     break Completion::TimedOut;
                 }
-                event = selector.select_rw() => event,
+                conn_request = bidirectional_request_rx.next() => conn_request.map(Either::Left),
+                event = selector.select_rw() => event.map(Either::Right),
             };
 
             if let Some(event) = next {
                 // disable the linter here as there are to-dos
                 #[allow(clippy::collapsible_if)]
                 match event {
-                    Ok(SelectorResult::Read(msg)) => match msg {
+                    Either::Left(receiver_request) => {
+                        let (tx, rx) = mpsc::channel(config.channel_buffer_size.get());
+                        bidirectional_connections.push(tx);
+                        receiver_request.send(rx);
+                    }
+                    Either::Right(Ok(SelectorResult::Read(msg))) => match msg {
                         WsMessage::Text(msg) => match read_envelope(&msg) {
                             Ok(envelope) => {
                                 let (done_tx, done_rx) = trigger::trigger();
@@ -198,43 +218,25 @@ where
                                     &mut iteration_count,
                                 );
 
-                                let (_, write_result) = match router.as_mut() {
-                                    Either::Left(mut router) => {
-                                        let dispatch_task = async {
-                                            let dispatch_result = dispatch_envelope(
-                                                router,
-                                                &mut resolved,
-                                                envelope,
-                                                config.connection_retries,
-                                                sleep,
-                                            )
-                                            .await;
-                                            if let Err((env, _)) = dispatch_result {
-                                                handle_not_found(env, &message_injector).await;
-                                            }
-                                        }
-                                        .then(move |_| async {
-                                            done_tx.trigger();
-                                        });
-
-                                        join(dispatch_task, write_task).await
+                                let dispatch_task = async {
+                                    let dispatch_result = dispatch_envelope(
+                                        &mut router,
+                                        &mut bidirectional_connections,
+                                        &mut resolved,
+                                        envelope,
+                                        config.connection_retries,
+                                        sleep,
+                                    )
+                                    .await;
+                                    if let Err((env, _)) = dispatch_result {
+                                        handle_not_found(env, &message_injector).await;
                                     }
-                                    Either::Right(message_sender) => {
-                                        let dispatch_task = async {
-                                            let dispatch_result =
-                                                message_sender.send(envelope).await;
+                                }
+                                .then(move |_| async {
+                                    done_tx.trigger();
+                                });
 
-                                            if let Err(SendError(env)) = dispatch_result {
-                                                handle_not_found(env, &message_injector).await;
-                                            }
-                                        }
-                                        .then(move |_| async {
-                                            done_tx.trigger();
-                                        });
-
-                                        join(dispatch_task, write_task).await
-                                    }
-                                };
+                                let (_, write_result) = join(dispatch_task, write_task).await;
 
                                 if let Err(err) = write_result {
                                     break Completion::Failed(err);
@@ -248,10 +250,10 @@ where
                             event!(Level::WARN, IGNORING_MESSAGE, ?message);
                         }
                     },
-                    Err(err) => {
+                    Either::Right(Err(err)) => {
                         break Completion::Failed(err);
                     }
-                    _ => {}
+                    Either::Right(Ok(SelectorResult::Written)) => {}
                 }
 
                 iteration_count += 1;
@@ -366,6 +368,7 @@ impl From<RouterError> for DispatchError {
 
 async fn dispatch_envelope<R, F, D>(
     router: &mut R,
+    bidirectional_connections: &mut Vec<mpsc::Sender<Envelope>>,
     resolved: &mut HashMap<RelativePath, Route>,
     mut envelope: Envelope,
     mut retry_strategy: RetryStrategy,
@@ -377,7 +380,8 @@ where
     D: Future<Output = ()>,
 {
     loop {
-        let result = try_dispatch_envelope(router, resolved, envelope).await;
+        let result =
+            try_dispatch_envelope(router, bidirectional_connections, resolved, envelope).await;
         match result {
             Err((env, err)) if !err.is_fatal() => {
                 match retry_strategy.next() {
@@ -403,43 +407,57 @@ where
 
 async fn try_dispatch_envelope<R>(
     router: &mut R,
+    bidirectional_connections: &mut Vec<mpsc::Sender<Envelope>>,
     resolved: &mut HashMap<RelativePath, Route>,
     envelope: Envelope,
 ) -> Result<(), (Envelope, DispatchError)>
 where
     R: Router,
 {
-    if let Some(target) = envelope.header.relative_path().as_ref() {
-        let Route { sender, .. } = if let Some(route) = resolved.get_mut(target) {
-            if route.sender.inner.is_closed() {
-                resolved.remove(target);
+    if envelope.header.is_incoming() {
+        let futures = FuturesUnordered::new();
+
+        for conn in bidirectional_connections {
+            futures.push(conn.send(envelope.clone()))
+        }
+
+        //Todo dm remove bidirectional connections that have closed
+        let results = futures.collect::<Vec<_>>().await;
+
+        Ok(())
+    } else {
+        if let Some(target) = envelope.header.relative_path().as_ref() {
+            let Route { sender, .. } = if let Some(route) = resolved.get_mut(target) {
+                if route.sender.inner.is_closed() {
+                    resolved.remove(target);
+                    insert_new_route(router, resolved, target)
+                        .await
+                        .map_err(|err| (envelope.clone(), err))?
+                } else {
+                    route
+                }
+            } else {
                 insert_new_route(router, resolved, target)
                     .await
                     .map_err(|err| (envelope.clone(), err))?
+            };
+            if let Err(err) = sender.send_item(envelope).await {
+                if let Some(Route { on_drop, .. }) = resolved.remove(target) {
+                    let reason = on_drop
+                        .await
+                        .map(|reason| (*reason).clone())
+                        .unwrap_or(ConnectionDropped::Unknown);
+                    let (_, env) = err.split();
+                    Err((env, DispatchError::Dropped(reason)))
+                } else {
+                    unreachable!();
+                }
             } else {
-                route
+                Ok(())
             }
         } else {
-            insert_new_route(router, resolved, target)
-                .await
-                .map_err(|err| (envelope.clone(), err))?
-        };
-        if let Err(err) = sender.send_item(envelope).await {
-            if let Some(Route { on_drop, .. }) = resolved.remove(target) {
-                let reason = on_drop
-                    .await
-                    .map(|reason| (*reason).clone())
-                    .unwrap_or(ConnectionDropped::Unknown);
-                let (_, env) = err.split();
-                Err((env, DispatchError::Dropped(reason)))
-            } else {
-                unreachable!();
-            }
-        } else {
-            Ok(())
+            panic!("Authentication envelopes not yet supported.");
         }
-    } else {
-        panic!("Authentication envelopes not yet supported.");
     }
 }
 
@@ -509,7 +527,10 @@ where
         ws_stream: Str,
         tag: RoutingAddr,
         spawner: &Sp,
-    ) -> mpsc::Sender<TaggedEnvelope>
+    ) -> (
+        mpsc::Sender<TaggedEnvelope>,
+        mpsc::Sender<BidirectionalReceiverRequest>,
+    )
     where
         Str: JoinedStreamSink<WsMessage, ConnectionError> + Send + Unpin + 'static,
         Sp: Spawner<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>>,
@@ -521,15 +542,15 @@ where
             delegate_router_fac,
         } = self;
         let (msg_tx, msg_rx) = mpsc::channel(configuration.channel_buffer_size.get());
+        let (bidirectional_request_tx, bidirectional_request_rx) =
+            mpsc::channel(configuration.channel_buffer_size.get());
+
         let task = ConnectionTask::new(
             addr,
             ws_stream,
-            Either::Left(RemoteRouter::new(
-                tag,
-                delegate_router_fac.create_for(tag),
-                request_tx.clone(),
-            )),
+            RemoteRouter::new(tag, delegate_router_fac.create_for(tag), request_tx.clone()),
             (msg_tx.clone(), msg_rx),
+            bidirectional_request_rx,
             stop_trigger.clone(),
             *configuration,
         );
@@ -541,46 +562,7 @@ where
             }
             .boxed(),
         );
-        msg_tx
-    }
-
-    pub fn spawn_bidirectional_connection_task<Str, Sp>(
-        &self,
-        addr: SchemeSocketAddr,
-        ws_stream: Str,
-        tag: RoutingAddr,
-        spawner: &Sp,
-    ) -> (mpsc::Sender<TaggedEnvelope>, mpsc::Receiver<Envelope>)
-    where
-        Str: JoinedStreamSink<WsMessage, ConnectionError> + Send + Unpin + 'static,
-        Sp: Spawner<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>>,
-    {
-        let TaskFactory {
-            stop_trigger,
-            configuration,
-            ..
-        } = self;
-
-        let (outgoing_tx, outgoing_rx) = mpsc::channel(configuration.channel_buffer_size.get());
-        let (incoming_tx, incoming_rx) = mpsc::channel(configuration.channel_buffer_size.get());
-
-        let task = ConnectionTask::<Str, DelegateRouterFac::Router>::new(
-            addr,
-            ws_stream,
-            Either::Right(incoming_tx),
-            (outgoing_tx.clone(), outgoing_rx),
-            stop_trigger.clone(),
-            *configuration,
-        );
-
-        spawner.add(
-            async move {
-                let result = task.run().await;
-                (tag, result)
-            }
-            .boxed(),
-        );
-        (outgoing_tx, incoming_rx)
+        (msg_tx, bidirectional_request_tx)
     }
 }
 
@@ -594,7 +576,7 @@ fn link_or_sync(env: Envelope) -> Option<RelativePath> {
 }
 
 // Dummy origing for not found messages.
-const NOT_FOUND_ADDR: RoutingAddr = RoutingAddr::local(0);
+const NOT_FOUND_ADDR: RoutingAddr = RoutingAddr::plane(0);
 
 // For a link or sync message that cannot be routed, send back a "not found" message.
 async fn handle_not_found(env: Envelope, sender: &mpsc::Sender<TaggedEnvelope>) {

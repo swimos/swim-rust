@@ -16,7 +16,9 @@ use crate::request::Request;
 use crate::routing::remote::addresses::RemoteRoutingAddresses;
 use crate::routing::remote::config::ConnectionConfig;
 use crate::routing::remote::pending::PendingRequests;
-use crate::routing::remote::table::{BidirectionalError, RoutingTable, SchemeHostPort};
+use crate::routing::remote::table::{
+    BidirectionalError, BidirectionalRegistrator, RoutingTable, SchemeHostPort,
+};
 use crate::routing::remote::task::TaskFactory;
 use crate::routing::remote::{
     BidirectionalRequest, ExternalConnections, Listener, SchemeSocketAddr,
@@ -27,6 +29,7 @@ use crate::routing::remote::{
 use crate::routing::ws::WsConnections;
 use crate::routing::{BidirectionalRoute, CloseReceiver, ConnectionError, TaggedSender};
 use crate::routing::{ConnectionDropped, RouterFactory, RoutingAddr};
+use either::Either;
 use futures::future::{BoxFuture, Fuse};
 use futures::StreamExt;
 use futures::{select_biased, FutureExt};
@@ -34,6 +37,7 @@ use futures_util::stream::TakeUntil;
 use std::future::Future;
 use std::io;
 use std::net::SocketAddr;
+use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use utilities::future::open_ended::OpenEndedFutures;
 use utilities::sync::promise::Sender;
@@ -59,7 +63,6 @@ pub trait RemoteTasksState {
         sock_addr: SchemeSocketAddr,
         ws_stream: Self::WebSocket,
         host: Option<SchemeHostPort>,
-        bidirectional_request: Option<BidirectionalRequest>,
     );
 
     /// Check a pair of host/socket address, registering the hose with the address if a connection
@@ -79,15 +82,13 @@ pub trait RemoteTasksState {
         host: SchemeHostPort,
         sock_addr: SchemeSocketAddr,
         remaining: SchemeSocketAddrIt,
-        bidirectional_request: Option<BidirectionalRequest>,
     );
 
     /// Add a deferred DNS lookup for a host.
     fn defer_dns_lookup(
         &mut self,
         target: SchemeHostPort,
-        resolution_request: Option<ResolutionRequest>,
-        bidirectional_request: Option<BidirectionalRequest>,
+        resolution_request: Either<ResolutionRequest, BidirectionalRequest>,
     );
 
     /// Flush out pending state for a failed connection.
@@ -95,6 +96,9 @@ pub trait RemoteTasksState {
 
     /// Resolve an entry in the routing table.
     fn table_resolve(&self, addr: RoutingAddr) -> Option<RawRoute>;
+
+    /// Resolve a bidirectional route in the routing table.
+    fn table_resolve_bidirectional(&self, addr: RoutingAddr) -> Option<BidirectionalRegistrator>;
 
     /// Try to resolve a host in the routing table.
     fn table_try_resolve(&self, target: &SchemeHostPort) -> Option<RoutingAddr>;
@@ -166,7 +170,6 @@ where
         sock_addr: SchemeSocketAddr,
         ws_stream: Ws::StreamSink,
         host: Option<SchemeHostPort>,
-        bidirectional_request: Option<BidirectionalRequest>,
     ) {
         let addr = self.next_address();
         let RemoteConnections {
@@ -177,22 +180,24 @@ where
             ..
         } = self;
 
-        let msg_tx = match bidirectional_request {
-            Some(request) => {
-                let (msg_tx, msg_rx) =
-                    tasks.spawn_bidirectional_connection_task(sock_addr, ws_stream, addr, spawner);
-                request.send(Ok(BidirectionalRoute::new(
-                    TaggedSender::new(addr, msg_tx.clone()),
-                    msg_rx,
-                )));
-                msg_tx
-            }
-            None => tasks.spawn_connection_task(sock_addr, ws_stream, addr, spawner),
-        };
+        let (msg_tx, bidirectional_request_tx) =
+            tasks.spawn_connection_task(sock_addr, ws_stream, addr, spawner);
 
-        table.insert(addr, host.clone(), sock_addr, msg_tx);
+        table.insert(
+            addr,
+            host.clone(),
+            sock_addr,
+            msg_tx.clone(),
+            bidirectional_request_tx.clone(),
+        );
+
+        let bidirectional_registrator = BidirectionalRegistrator::new(
+            TaggedSender::new(addr, msg_tx),
+            bidirectional_request_tx,
+        );
+
         if let Some(host) = host {
-            pending.send_ok(&host, addr);
+            pending.send_ok(&host, addr, bidirectional_registrator);
         }
     }
 
@@ -202,10 +207,15 @@ where
         sock_addr: SchemeSocketAddr,
     ) -> Result<(), SchemeHostPort> {
         let RemoteConnections { table, pending, .. } = self;
+
         if let Some(addr) = table.get_resolved(&sock_addr) {
-            pending.send_ok(&host, addr);
-            table.add_host(host, sock_addr);
-            Ok(())
+            if let Some(bidirectional_registrator) = table.resolve_bidirectional(addr) {
+                pending.send_ok(&host, addr, bidirectional_registrator);
+                table.add_host(host, sock_addr);
+                Ok(())
+            } else {
+                Err(host)
+            }
         } else {
             Err(host)
         }
@@ -224,28 +234,18 @@ where
         host: SchemeHostPort,
         sock_addr: SchemeSocketAddr,
         remaining: SchemeSocketAddrIt,
-        bidirectional_request: Option<BidirectionalRequest>,
     ) {
         let websockets = self.websockets;
         let external = self.external.clone();
         self.defer(async move {
-            connect_and_handshake(
-                external,
-                sock_addr,
-                remaining,
-                host,
-                websockets,
-                bidirectional_request,
-            )
-            .await
+            connect_and_handshake(external, sock_addr, remaining, host, websockets).await
         });
     }
 
     fn defer_dns_lookup(
         &mut self,
         target: SchemeHostPort,
-        resolution_request: Option<ResolutionRequest>,
-        bidirectional_request: Option<BidirectionalRequest>,
+        resolution_request: Either<ResolutionRequest, BidirectionalRequest>,
     ) {
         let target_cpy = target.clone();
         let external = self.external.clone();
@@ -254,7 +254,7 @@ where
                 .lookup(target_cpy.clone())
                 .await
                 .map(|v| v.into_iter());
-            DeferredResult::dns(resolved, target_cpy, bidirectional_request)
+            DeferredResult::dns(resolved, target_cpy)
         });
         self.pending.add(target, resolution_request);
     }
@@ -265,6 +265,10 @@ where
 
     fn table_resolve(&self, addr: RoutingAddr) -> Option<RawRoute> {
         self.table.resolve(addr)
+    }
+
+    fn table_resolve_bidirectional(&self, addr: RoutingAddr) -> Option<BidirectionalRegistrator> {
+        self.table.resolve_bidirectional(addr)
     }
 
     fn table_try_resolve(&self, target: &SchemeHostPort) -> Option<RoutingAddr> {
@@ -430,18 +434,15 @@ pub enum DeferredResult<Snk> {
     ClientHandshake {
         result: Result<(Snk, SchemeSocketAddr), ConnectionError>,
         host: SchemeHostPort,
-        bidirectional_request: Option<BidirectionalRequest>,
     },
     FailedConnection {
         error: ConnectionError,
         remaining: SchemeSocketAddrIt,
         host: SchemeHostPort,
-        bidirectional_request: Option<BidirectionalRequest>,
     },
     Dns {
         result: io::Result<SchemeSocketAddrIt>,
         host: SchemeHostPort,
-        bidirectional_request: Option<BidirectionalRequest>,
     },
 }
 
@@ -456,38 +457,23 @@ impl<Snk> DeferredResult<Snk> {
     fn outgoing_handshake(
         result: Result<(Snk, SchemeSocketAddr), ConnectionError>,
         host: SchemeHostPort,
-        bidirectional_request: Option<BidirectionalRequest>,
     ) -> Self {
-        DeferredResult::ClientHandshake {
-            result,
-            host,
-            bidirectional_request,
-        }
+        DeferredResult::ClientHandshake { result, host }
     }
 
-    fn dns(
-        result: io::Result<SchemeSocketAddrIt>,
-        host: SchemeHostPort,
-        bidirectional_request: Option<BidirectionalRequest>,
-    ) -> Self {
-        DeferredResult::Dns {
-            result,
-            host,
-            bidirectional_request,
-        }
+    fn dns(result: io::Result<SchemeSocketAddrIt>, host: SchemeHostPort) -> Self {
+        DeferredResult::Dns { result, host }
     }
 
     fn failed_connection(
         error: ConnectionError,
         remaining: std::vec::IntoIter<SchemeSocketAddr>,
         host: SchemeHostPort,
-        bidirectional_request: Option<BidirectionalRequest>,
     ) -> Self {
         DeferredResult::FailedConnection {
             error,
             remaining,
             host,
-            bidirectional_request,
         }
     }
 }
@@ -543,7 +529,6 @@ async fn connect_and_handshake<External: ExternalConnections, Ws>(
     remaining: SchemeSocketAddrIt,
     scheme_host_port: SchemeHostPort,
     websockets: &Ws,
-    bidirectional_request: Option<BidirectionalRequest>,
 ) -> DeferredResult<Ws::StreamSink>
 where
     Ws: WsConnections<External::Socket>,
@@ -556,17 +541,8 @@ where
     )
     .await
     {
-        Ok(str) => DeferredResult::outgoing_handshake(
-            Ok((str, sock_addr)),
-            scheme_host_port,
-            bidirectional_request,
-        ),
-        Err(err) => DeferredResult::failed_connection(
-            err,
-            remaining,
-            scheme_host_port,
-            bidirectional_request,
-        ),
+        Ok(str) => DeferredResult::outgoing_handshake(Ok((str, sock_addr)), scheme_host_port),
+        Err(err) => DeferredResult::failed_connection(err, remaining, scheme_host_port),
     }
 }
 

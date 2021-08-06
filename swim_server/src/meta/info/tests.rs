@@ -201,7 +201,7 @@ async fn lane_info_sync() {
         clock.clone(),
         client,
         ReceiverStream::new(envelope_rx),
-        MockRouter::new(RoutingAddr::local(1024), tx),
+        MockRouter::new(RoutingAddr::plane(1024), tx),
     );
 
     let _agent_task = swim_runtime::task::spawn(agent_proc);
