@@ -13,9 +13,7 @@
 // limitations under the License.
 
 use crate::configuration::router::ConnectionPoolParams;
-use crate::router::{
-    ClientRouter, ClientRouterFactory, DownlinkRoutingRequest, RoutingPath, RoutingTable,
-};
+use crate::router::{ClientRouter, ClientRouterFactory, DownlinkRoutingRequest, RoutingPath, RoutingTable, RouterEvent};
 use either::Either;
 use futures::future::BoxFuture;
 use futures::select;
@@ -40,7 +38,7 @@ use swim_common::routing::{
     BidirectionalRoute, ConnectionDropped, Route, Router, RouterFactory, RoutingAddr,
     TaggedEnvelope, TaggedSender,
 };
-use swim_common::warp::envelope::Envelope;
+use swim_common::warp::envelope::{Envelope, IncomingLinkMessage};
 use swim_common::warp::path::Addressable;
 use swim_runtime::task::*;
 use swim_runtime::time::instant::Instant;
@@ -67,6 +65,7 @@ pub trait ConnectionPool: Clone + Send + 'static {
     fn request_connection(
         &mut self,
         target: Self::PathType,
+        conn_type: ConnectionType,
     ) -> BoxFuture<Result<Result<Connection, ConnectionError>, RequestError>>;
 
     fn close(self) -> BoxFuture<'static, Result<Result<(), ConnectionError>, ConnectionError>>;
@@ -74,7 +73,7 @@ pub trait ConnectionPool: Clone + Send + 'static {
 
 pub type Connection = (ConnectionSender, Option<ConnectionReceiver>);
 
-pub(crate) type ConnectionReceiver = mpsc::Receiver<Envelope>;
+pub(crate) type ConnectionReceiver = mpsc::Receiver<RouterEvent>;
 pub(crate) type ConnectionSender = TaggedSender;
 
 /// The connection pool is responsible for opening new connections to remote hosts and managing
@@ -122,24 +121,23 @@ impl<Path: Addressable> SwimConnPool<Path> {
 
 impl<Path: Addressable> ConnectionPool for SwimConnPool<Path> {
     type PathType = Path;
-    //Todo dm maybe add a way to request only one way connections
 
     /// Sends and asynchronous request for a connection to a specific path.
     ///
     /// # Arguments
     ///
     /// * `target`                  - The path to which we want to connect.
-    /// * `recreate_connection`     - Boolean flag indicating whether the connection should be recreated.
+    /// * `conn_type`               - Whether or not the connection is full or only partial.
     ///
     /// # Returns
     ///
-    /// A `Result` containing either a `Connection` that can be used to send and receive messages
-    /// to the remote host or a `ConnectionError`. The `Connection` contains a `ConnectionSender`
-    /// and an optional `ConnectionReceiver`. The `ConnectionReceiver` is returned either the first
-    /// time a connection is opened or when it is recreated.
+    /// A `Result` containing either a `Connection` to the remote host or a `ConnectionError`.
+    /// The `Connection` contains a `ConnectionSender` and an optional `ConnectionReceiver`.
+    /// The `ConnectionReceiver` is returned when the type of the connection is `ConnectionType::Full`.
     fn request_connection(
         &mut self,
         target: Self::PathType,
+        conn_type: ConnectionType,
     ) -> BoxFuture<Result<Result<Connection, ConnectionError>, RequestError>> {
         async move {
             let (tx, rx) = oneshot::channel();
@@ -148,11 +146,12 @@ impl<Path: Addressable> ConnectionPool for SwimConnPool<Path> {
                 .send(DownlinkRoutingRequest::Connect {
                     target,
                     request: Request::new(tx),
+                    conn_type,
                 })
                 .await?;
             Ok(rx.await?)
         }
-        .boxed()
+            .boxed()
     }
 
     /// Stops the pool from accepting new connection requests and closes down all existing
@@ -165,7 +164,7 @@ impl<Path: Addressable> ConnectionPool for SwimConnPool<Path> {
                 .await
                 .map_err(|_| ConnectionError::Closed(CloseError::unexpected())))
         }
-        .boxed()
+            .boxed()
     }
 }
 
@@ -212,7 +211,11 @@ impl<Path: Addressable, DelegateFac: RouterFactory> PoolTask<Path, DelegateFac> 
 
         while let Some(client_request) = client_rx.recv().await {
             match client_request {
-                DownlinkRoutingRequest::Connect { target, request } => {
+                DownlinkRoutingRequest::Connect {
+                    target,
+                    request,
+                    conn_type,
+                } => {
                     let routing_path = RoutingPath::from(target.clone());
 
                     let registrator = match routing_table.try_resolve_addr(&routing_path) {
@@ -247,9 +250,7 @@ impl<Path: Addressable, DelegateFac: RouterFactory> PoolTask<Path, DelegateFac> 
                         }
                     };
 
-                    let connection = registrator
-                        .request_connection(target, ConnectionType::Full)
-                        .await;
+                    let connection = registrator.request_connection(target, conn_type).await;
                     request.send(connection);
                 }
                 DownlinkRoutingRequest::Endpoint { addr, request } => {
@@ -274,7 +275,8 @@ impl<Path: Addressable, DelegateFac: RouterFactory> PoolTask<Path, DelegateFac> 
 
 type ConnectionResult = Result<(ConnectionSender, Option<ConnectionReceiver>), ConnectionError>;
 
-enum ConnectionType {
+#[derive(Debug, Clone, Copy)]
+pub enum ConnectionType {
     Full,
     Outgoing,
 }
@@ -364,6 +366,7 @@ impl<Path: Addressable, DelegateRouter: Router> ConnectionRegistratorTask<Path, 
         }
     }
 
+    //Todo dm refactor this
     async fn run(self) {
         match self {
             ConnectionRegistratorTask::Remote {
@@ -380,7 +383,7 @@ impl<Path: Addressable, DelegateRouter: Router> ConnectionRegistratorTask<Path, 
                 let mut receiver = ReceiverStream::new(receiver).fuse();
                 let mut registrator_rx = ReceiverStream::new(registrator_rx).fuse();
 
-                let mut subscribers: HashMap<String, Vec<mpsc::Sender<Envelope>>> = HashMap::new();
+                let mut subscribers: HashMap<String, Vec<mpsc::Sender<RouterEvent>>> = HashMap::new();
                 loop {
                     let request: Either<Option<Envelope>, Option<RegistratorRequest<Path>>> = select! {
                         message = receiver.next() => Either::Left(message),
@@ -389,7 +392,6 @@ impl<Path: Addressable, DelegateRouter: Router> ConnectionRegistratorTask<Path, 
 
                     match request {
                         Either::Left(Some(envelope)) => {
-                            //Todo dm maybe send the incoming link message directly
                             let incoming_message = envelope.clone().into_incoming().unwrap();
                             let path = incoming_message.path.node.to_string();
 
@@ -397,14 +399,14 @@ impl<Path: Addressable, DelegateRouter: Router> ConnectionRegistratorTask<Path, 
 
                             //Todo dm use futures unordered
                             for sub in subscribers {
-                                sub.send(envelope.clone()).await;
+                                sub.send(RouterEvent::Message(incoming_message.clone())).await;
                             }
                         }
                         Either::Right(Some(RegistratorRequest::Connect {
-                            tx,
-                            path,
-                            conn_type: ConnectionType::Full,
-                        })) => {
+                                               tx,
+                                               path,
+                                               conn_type: ConnectionType::Full,
+                                           })) => {
                             let receiver = match subscribers.entry(path.node().to_string()) {
                                 Entry::Occupied(mut entry) => {
                                     let (tx, rx) = mpsc::channel(buffer_size.get());
@@ -421,10 +423,10 @@ impl<Path: Addressable, DelegateRouter: Router> ConnectionRegistratorTask<Path, 
                             tx.send(Ok((sender.clone(), Some(receiver))));
                         }
                         Either::Right(Some(RegistratorRequest::Connect {
-                            tx,
-                            path,
-                            conn_type: ConnectionType::Outgoing,
-                        })) => {
+                                               tx,
+                                               path,
+                                               conn_type: ConnectionType::Outgoing,
+                                           })) => {
                             tx.send(Ok((sender.clone(), None)));
                         }
                         _ => {
@@ -451,7 +453,7 @@ impl<Path: Addressable, DelegateRouter: Router> ConnectionRegistratorTask<Path, 
 
                 let mut receiver = ReceiverStream::new(envelope_receiver).fuse();
                 let mut registrator_rx = ReceiverStream::new(registrator_rx).fuse();
-                let mut subscribers: HashMap<String, Vec<mpsc::Sender<Envelope>>> = HashMap::new();
+                let mut subscribers: HashMap<String, Vec<mpsc::Sender<RouterEvent>>> = HashMap::new();
 
                 loop {
                     let request: Either<Option<TaggedEnvelope>, Option<RegistratorRequest<Path>>> = select! {
@@ -468,14 +470,14 @@ impl<Path: Addressable, DelegateRouter: Router> ConnectionRegistratorTask<Path, 
 
                             //Todo dm use futures unordered
                             for sub in subscribers {
-                                sub.send(envelope.1.clone()).await;
+                                sub.send(RouterEvent::Message(incoming_message.clone())).await;
                             }
                         }
                         Either::Right(Some(RegistratorRequest::Connect {
-                            tx,
-                            path,
-                            conn_type: ConnectionType::Full,
-                        })) => {
+                                               tx,
+                                               path,
+                                               conn_type: ConnectionType::Full,
+                                           })) => {
                             let receiver = match subscribers.entry(path.node().to_string()) {
                                 Entry::Occupied(mut entry) => {
                                     let (tx, rx) = mpsc::channel(buffer_size.get());
@@ -492,10 +494,10 @@ impl<Path: Addressable, DelegateRouter: Router> ConnectionRegistratorTask<Path, 
                             tx.send(Ok((sender.sender.clone(), Some(receiver))));
                         }
                         Either::Right(Some(RegistratorRequest::Connect {
-                            tx,
-                            path,
-                            conn_type: ConnectionType::Outgoing,
-                        })) => {
+                                               tx,
+                                               path,
+                                               conn_type: ConnectionType::Outgoing,
+                                           })) => {
                             tx.send(Ok((sender.sender.clone(), None)));
                         }
                         Either::Right(Some(RegistratorRequest::Resolve { request })) => {

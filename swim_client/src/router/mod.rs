@@ -15,6 +15,7 @@
 use crate::configuration::router::RouterParams;
 use crate::connections::ConnectionChannel;
 use crate::connections::ConnectionRegistrator;
+use crate::connections::ConnectionType;
 use crate::connections::{ConnectionPool, ConnectionSender};
 use either::Either;
 use futures::future::BoxFuture;
@@ -362,6 +363,7 @@ pub enum DownlinkRoutingRequest<Path: Addressable> {
     Connect {
         target: Path,
         request: Request<Result<ConnectionChannel, ConnectionError>>,
+        conn_type: ConnectionType,
     },
     /// Get channel to route messages to a specified routing address.
     Endpoint {
@@ -726,20 +728,21 @@ pub enum DownlinkRoutingRequest<Path: Addressable> {
 // type CloseResponseSender = mpsc::Sender<Result<(), RoutingError>>;
 // type SubscriptionRequest = Request<Result<(RawRoute, mpsc::Receiver<Envelope>), ConnectionError>>;
 //
-// /// The Router events are emitted by the connection streams of the router and indicate
-// /// messages or errors from the remote host.
-// #[derive(Debug, Clone, PartialEq)]
-// pub enum RouterEvent {
-//     // Incoming message from a remote host.
-//     Message(IncomingLinkMessage),
-//     // There was an error in the connection. If a retry strategy exists this will trigger it.
-//     ConnectionClosed,
-//     /// The remote host is unreachable. This will not trigger the retry system.
-//     Unreachable(String),
-//     // The router is stopping.
-//     Stopping,
-// }
-//
+
+/// The Router events are emitted by the connection streams of the router and indicate
+/// messages or errors from the remote host.
+#[derive(Debug, Clone, PartialEq)]
+pub enum RouterEvent {
+    // Incoming message from a remote host.
+    Message(IncomingLinkMessage),
+    // There was an error in the connection. If a retry strategy exists this will trigger it.
+    ConnectionClosed,
+    /// The remote host is unreachable. This will not trigger the retry system.
+    Unreachable(String),
+    // The router is stopping.
+    Stopping,
+}
+
 // /// Tasks that the router can handle.
 // enum RouterTask<Path: Addressable> {
 //     Connect(RouterConnRequest<Path>),
