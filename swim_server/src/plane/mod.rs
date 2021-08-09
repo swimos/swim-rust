@@ -429,7 +429,7 @@ pub(crate) async fn run_plane<Clk, S, DelegateFac: RouterFactory>(
                     }
                 }
                 Either::Left(Some(PlaneRoutingRequest::Endpoint { id, request })) => {
-                    if id.is_local() {
+                    if id.is_plane() {
                         event!(Level::TRACE, GETTING_LOCAL_ENDPOINT, ?id);
                         let result = if let Some(tx) = resolver
                             .active_routes

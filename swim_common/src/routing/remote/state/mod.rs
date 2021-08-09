@@ -42,6 +42,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use utilities::future::open_ended::OpenEndedFutures;
 use utilities::sync::promise::Sender;
 use utilities::sync::{promise, trigger};
+use crate::routing::remote::pending::PendingRequest;
 use utilities::task::Spawner;
 
 #[cfg(test)]
@@ -88,7 +89,7 @@ pub trait RemoteTasksState {
     fn defer_dns_lookup(
         &mut self,
         target: SchemeHostPort,
-        resolution_request: Either<ResolutionRequest, BidirectionalRequest>,
+        resolution_request: PendingRequest,
     );
 
     /// Flush out pending state for a failed connection.
@@ -119,9 +120,9 @@ pub trait RemoteTasksState {
 /// * `Sp` - Spawner to run the tasks that manage the connections opened by this state machine.
 /// * `Routerfac` - Creates router instances to be provided to the connection management tasks.
 pub struct RemoteConnections<'a, External, Ws, Sp, DelegateRouterFac>
-where
-    External: ExternalConnections,
-    Ws: WsConnections<External::Socket>,
+    where
+        External: ExternalConnections,
+        Ws: WsConnections<External::Socket>,
 {
     websockets: &'a Ws,
     spawner: Sp,
@@ -139,12 +140,12 @@ where
 }
 
 impl<'a, External, Ws, Sp, DelegateRouterFac> RemoteTasksState
-    for RemoteConnections<'a, External, Ws, Sp, DelegateRouterFac>
-where
-    External: ExternalConnections,
-    Ws: WsConnections<External::Socket> + Send + Sync + 'static,
-    Sp: Spawner<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>> + Unpin,
-    DelegateRouterFac: RouterFactory + 'static,
+for RemoteConnections<'a, External, Ws, Sp, DelegateRouterFac>
+    where
+        External: ExternalConnections,
+        Ws: WsConnections<External::Socket> + Send + Sync + 'static,
+        Sp: Spawner<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>> + Unpin,
+        DelegateRouterFac: RouterFactory + 'static,
 {
     type Socket = External::Socket;
     type WebSocket = Ws::StreamSink;
@@ -245,7 +246,7 @@ where
     fn defer_dns_lookup(
         &mut self,
         target: SchemeHostPort,
-        resolution_request: Either<ResolutionRequest, BidirectionalRequest>,
+        resolution_request: PendingRequest,
     ) {
         let target_cpy = target.clone();
         let external = self.external.clone();
@@ -281,12 +282,12 @@ where
 }
 
 impl<'a, External, Ws, Sp, DelegateRouterFac>
-    RemoteConnections<'a, External, Ws, Sp, DelegateRouterFac>
-where
-    External: ExternalConnections,
-    Ws: WsConnections<External::Socket> + Send + Sync + 'static,
-    Sp: Spawner<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>> + Unpin,
-    DelegateRouterFac: RouterFactory + 'static,
+RemoteConnections<'a, External, Ws, Sp, DelegateRouterFac>
+    where
+        External: ExternalConnections,
+        Ws: WsConnections<External::Socket> + Send + Sync + 'static,
+        Sp: Spawner<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>> + Unpin,
+        DelegateRouterFac: RouterFactory + 'static,
 {
     /// Create a new, empty state.
     ///
@@ -416,8 +417,8 @@ where
     }
 
     pub fn defer<F>(&self, fut: F)
-    where
-        F: Future<Output = DeferredResult<Ws::StreamSink>> + Send + 'a,
+        where
+            F: Future<Output=DeferredResult<Ws::StreamSink>> + Send + 'a,
     {
         self.deferred.push(fut.boxed());
     }
@@ -510,9 +511,9 @@ async fn do_handshake<Socket, Ws>(
     websockets: &Ws,
     peer_addr: SchemeSocketAddr,
 ) -> Result<Ws::StreamSink, ConnectionError>
-where
-    Socket: Send + Sync + Unpin + 'static,
-    Ws: WsConnections<Socket>,
+    where
+        Socket: Send + Sync + Unpin + 'static,
+        Ws: WsConnections<Socket>,
 {
     if server {
         websockets.accept_connection(socket).await
@@ -530,8 +531,8 @@ async fn connect_and_handshake<External: ExternalConnections, Ws>(
     scheme_host_port: SchemeHostPort,
     websockets: &Ws,
 ) -> DeferredResult<Ws::StreamSink>
-where
-    Ws: WsConnections<External::Socket>,
+    where
+        Ws: WsConnections<External::Socket>,
 {
     match connect_and_handshake_single(
         external,
@@ -539,7 +540,7 @@ where
         websockets,
         scheme_host_port.origin(),
     )
-    .await
+        .await
     {
         Ok(str) => DeferredResult::outgoing_handshake(Ok((str, sock_addr)), scheme_host_port),
         Err(err) => DeferredResult::failed_connection(err, remaining, scheme_host_port),
@@ -552,8 +553,8 @@ async fn connect_and_handshake_single<External: ExternalConnections, Ws>(
     websockets: &Ws,
     host_addr: String,
 ) -> Result<Ws::StreamSink, ConnectionError>
-where
-    Ws: WsConnections<External::Socket>,
+    where
+        Ws: WsConnections<External::Socket>,
 {
     websockets
         .open_connection(external.try_open(addr).await?, host_addr)

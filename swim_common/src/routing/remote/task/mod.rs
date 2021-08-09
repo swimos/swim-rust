@@ -28,10 +28,7 @@ use crate::routing::remote::{
 };
 use crate::routing::ws::selector::{SelectorResult, WsStreamSelector};
 use crate::routing::ws::{CloseCode, CloseReason, JoinedStreamSink, WsMessage};
-use crate::routing::{
-    BidirectionalRoute, ConnectionDropped, Route, Router, RouterFactory, RoutingAddr,
-    TaggedEnvelope,
-};
+use crate::routing::{BidirectionalRoute, ConnectionDropped, Route, Router, RouterFactory, RoutingAddr, TaggedEnvelope, TaggedSender};
 use crate::routing::{Origin, RouterError};
 use crate::warp::envelope::{Envelope, EnvelopeHeader, EnvelopeParseErr, OutgoingHeader};
 use crate::warp::path::RelativePath;
@@ -63,6 +60,7 @@ use utilities::uri::{BadRelativeUri, RelativeUri};
 /// A task that manages reading from and writing to a web-sockets channel.
 pub struct ConnectionTask<Str, Router> {
     addr: SchemeSocketAddr,
+    tag: RoutingAddr,
     ws_stream: Str,
     messages: mpsc::Receiver<TaggedEnvelope>,
     message_injector: mpsc::Sender<TaggedEnvelope>,
@@ -105,9 +103,9 @@ const IGNORING_MESSAGE: &str = "Ignoring unexpected message.";
 const ERROR_ON_CLOSE: &str = "Error whilst closing connection.";
 
 impl<Str, R> ConnectionTask<Str, R>
-where
-    Str: JoinedStreamSink<WsMessage, ConnectionError> + Unpin,
-    R: Router,
+    where
+        Str: JoinedStreamSink<WsMessage, ConnectionError> + Unpin,
+        R: Router,
 {
     /// Create a new task.
     ///
@@ -124,6 +122,7 @@ where
     /// runtime.
     pub fn new(
         addr: SchemeSocketAddr,
+        tag: RoutingAddr,
         ws_stream: Str,
         router: R,
         (messages_tx, messages_rx): (mpsc::Sender<TaggedEnvelope>, mpsc::Receiver<TaggedEnvelope>),
@@ -134,6 +133,7 @@ where
         assert!(config.activity_timeout > ZERO);
         ConnectionTask {
             addr,
+            tag,
             ws_stream,
             messages: messages_rx,
             message_injector: messages_tx,
@@ -147,6 +147,7 @@ where
     pub async fn run(self) -> ConnectionDropped {
         let ConnectionTask {
             addr,
+            tag,
             mut ws_stream,
             messages,
             message_injector,
@@ -203,7 +204,7 @@ where
                 match event {
                     Either::Left(receiver_request) => {
                         let (tx, rx) = mpsc::channel(config.channel_buffer_size.get());
-                        bidirectional_connections.push(tx);
+                        bidirectional_connections.push(TaggedSender::new(tag, tx));
                         receiver_request.send(rx);
                     }
                     Either::Right(Ok(SelectorResult::Read(msg))) => match msg {
@@ -227,14 +228,14 @@ where
                                         config.connection_retries,
                                         sleep,
                                     )
-                                    .await;
+                                        .await;
                                     if let Err((env, _)) = dispatch_result {
                                         handle_not_found(env, &message_injector).await;
                                     }
                                 }
-                                .then(move |_| async {
-                                    done_tx.trigger();
-                                });
+                                    .then(move |_| async {
+                                        done_tx.trigger();
+                                    });
 
                                 let (_, write_result) = join(dispatch_task, write_task).await;
 
@@ -271,13 +272,13 @@ where
                 "Stopped locally".to_string(),
             )),
             Completion::Failed(ConnectionError::Protocol(e))
-                if e.kind() == ProtocolErrorKind::Warp =>
-            {
-                Some(CloseReason::new(
-                    CloseCode::ProtocolError,
-                    e.cause().clone().unwrap_or_else(|| "WARP error".into()),
-                ))
-            }
+            if e.kind() == ProtocolErrorKind::Warp =>
+                {
+                    Some(CloseReason::new(
+                        CloseCode::ProtocolError,
+                        e.cause().clone().unwrap_or_else(|| "WARP error".into()),
+                    ))
+                }
             _ => None,
         } {
             if let Err(error) = ws_stream.close(Some(reason)).await {
@@ -368,16 +369,16 @@ impl From<RouterError> for DispatchError {
 
 async fn dispatch_envelope<R, F, D>(
     router: &mut R,
-    bidirectional_connections: &mut Vec<mpsc::Sender<Envelope>>,
+    bidirectional_connections: &mut Vec<TaggedSender>,
     resolved: &mut HashMap<RelativePath, Route>,
     mut envelope: Envelope,
     mut retry_strategy: RetryStrategy,
     delay_fn: F,
 ) -> Result<(), (Envelope, DispatchError)>
-where
-    R: Router,
-    F: Fn(Duration) -> D,
-    D: Future<Output = ()>,
+    where
+        R: Router,
+        F: Fn(Duration) -> D,
+        D: Future<Output=()>,
 {
     loop {
         let result =
@@ -407,18 +408,18 @@ where
 
 async fn try_dispatch_envelope<R>(
     router: &mut R,
-    bidirectional_connections: &mut Vec<mpsc::Sender<Envelope>>,
+    bidirectional_connections: &mut Vec<TaggedSender>,
     resolved: &mut HashMap<RelativePath, Route>,
     envelope: Envelope,
 ) -> Result<(), (Envelope, DispatchError)>
-where
-    R: Router,
+    where
+        R: Router,
 {
-    if envelope.header.is_incoming() {
+    if envelope.header.is_response() {
         let futures = FuturesUnordered::new();
 
         for conn in bidirectional_connections {
-            futures.push(conn.send(envelope.clone()))
+            futures.push(conn.send_item(envelope.clone()))
         }
 
         //Todo dm remove bidirectional connections that have closed
@@ -467,8 +468,8 @@ async fn insert_new_route<'a, R>(
     resolved: &'a mut HashMap<RelativePath, Route>,
     target: &RelativePath,
 ) -> Result<&'a mut Route, DispatchError>
-where
-    R: Router,
+    where
+        R: Router,
 {
     let route = get_route(router, target).await;
 
@@ -484,8 +485,8 @@ where
 }
 
 async fn get_route<R>(router: &mut R, target: &RelativePath) -> Result<Route, DispatchError>
-where
-    R: Router,
+    where
+        R: Router,
 {
     let target_addr = router
         .lookup(None, RelativeUri::from_str(&target.node.as_str())?)
@@ -518,8 +519,8 @@ impl<DelegateRouterFac> TaskFactory<DelegateRouterFac> {
 }
 
 impl<DelegateRouterFac> TaskFactory<DelegateRouterFac>
-where
-    DelegateRouterFac: RouterFactory + 'static,
+    where
+        DelegateRouterFac: RouterFactory + 'static,
 {
     pub fn spawn_connection_task<Str, Sp>(
         &self,
@@ -531,9 +532,9 @@ where
         mpsc::Sender<TaggedEnvelope>,
         mpsc::Sender<BidirectionalReceiverRequest>,
     )
-    where
-        Str: JoinedStreamSink<WsMessage, ConnectionError> + Send + Unpin + 'static,
-        Sp: Spawner<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>>,
+        where
+            Str: JoinedStreamSink<WsMessage, ConnectionError> + Send + Unpin + 'static,
+            Sp: Spawner<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>>,
     {
         let TaskFactory {
             request_tx,
@@ -547,6 +548,7 @@ where
 
         let task = ConnectionTask::new(
             addr,
+            tag,
             ws_stream,
             RemoteRouter::new(tag, delegate_router_fac.create_for(tag), request_tx.clone()),
             (msg_tx.clone(), msg_rx),
@@ -560,7 +562,7 @@ where
                 let result = task.run().await;
                 (tag, result)
             }
-            .boxed(),
+                .boxed(),
         );
         (msg_tx, bidirectional_request_tx)
     }
@@ -597,10 +599,10 @@ async fn write_to_socket_only<S, M, T, E>(
     yield_mod: usize,
     iteration_count: &mut usize,
 ) -> Result<(), E>
-where
-    M: Stream<Item = T> + Unpin,
-    S: Sink<T, Error = E>,
-    S: Stream<Item = Result<T, E>> + Unpin,
+    where
+        M: Stream<Item=T> + Unpin,
+        S: Sink<T, Error=E>,
+        S: Stream<Item=Result<T, E>> + Unpin,
 {
     let write_stream = stream::unfold(
         (selector, iteration_count),
@@ -619,7 +621,7 @@ where
             }
         },
     )
-    .take_until(done);
+        .take_until(done);
 
     pin_mut!(write_stream);
 

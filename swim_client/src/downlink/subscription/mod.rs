@@ -630,7 +630,6 @@ impl<Path: Addressable> DownlinksTask<Path> {
         let key_schema_cpy = key_schema.clone();
         let value_schema_cpy = value_schema.clone();
 
-        //Todo dm
         let updates = ReceiverStream::new(incoming).map(|e| match e {
             RouterEvent::Message(l) => Ok(envelopes::map::from_envelope(l)),
             RouterEvent::ConnectionClosed => Err(RoutingError::ConnectionError),

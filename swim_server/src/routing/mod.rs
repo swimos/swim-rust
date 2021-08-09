@@ -103,7 +103,7 @@ impl Router for TopLevelServerRouter {
                         Err(_) => Err(ResolutionError::router_dropped()),
                     }
                 }
-            } else if addr.is_local() {
+            } else if addr.is_plane() {
                 let (tx, rx) = oneshot::channel();
                 let request = Request::new(tx);
                 if plane_sender

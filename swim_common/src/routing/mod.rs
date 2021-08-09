@@ -77,7 +77,7 @@ impl RoutingAddr {
         RoutingAddr(Location::ClientEndpoint(id))
     }
 
-    pub fn is_local(&self) -> bool {
+    pub fn is_plane(&self) -> bool {
         matches!(self, RoutingAddr(Location::PlaneEndpoint(_)))
     }
 
@@ -140,12 +140,12 @@ impl Route {
 #[derive(Debug)]
 pub struct BidirectionalRoute {
     pub sender: TaggedSender,
-    pub receiver: mpsc::Receiver<Envelope>,
+    pub receiver: mpsc::Receiver<TaggedEnvelope>,
     // pub on_drop: promise::Receiver<ConnectionDropped>,
 }
 
 impl BidirectionalRoute {
-    pub fn new(sender: TaggedSender, receiver: mpsc::Receiver<Envelope>) -> Self {
+    pub fn new(sender: TaggedSender, receiver: mpsc::Receiver<TaggedEnvelope>) -> Self {
         BidirectionalRoute { sender, receiver }
     }
 }

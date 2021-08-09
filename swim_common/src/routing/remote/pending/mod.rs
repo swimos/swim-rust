@@ -22,25 +22,49 @@ use crate::routing::RoutingAddr;
 use either::Either;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+use std::fmt::Debug;
 use tokio::sync::mpsc;
 
 #[cfg(test)]
 mod tests;
 
+#[derive(Debug)]
+pub enum PendingRequest {
+    Resolution(ResolutionRequest),
+    Bidirectional(BidirectionalRequest),
+}
+
+impl PendingRequest {
+    pub fn send_ok_debug<M: tracing::Value + Debug>(
+        self,
+        addr: RoutingAddr,
+        bidirectional_registrator: &BidirectionalRegistrator,
+        message: M,
+    ) {
+        match self {
+            PendingRequest::Resolution(request) => request.send_ok_debug(addr, message),
+            PendingRequest::Bidirectional(request) => {
+                request.send_ok_debug(bidirectional_registrator.clone(), message)
+            }
+        }
+    }
+
+    pub fn send_err_debug<M: tracing::Value + Debug>(self, err: ConnectionError, message: M) {
+        match self {
+            PendingRequest::Resolution(request) => request.send_err_debug(err, message),
+            PendingRequest::Bidirectional(request) => request.send_err_debug(err, message),
+        }
+    }
+}
+
 /// Keeps track of pending routing requests to ensure that two requests for the same point are not
 /// started simultaneously.
 #[derive(Debug, Default)]
-pub struct PendingRequests(
-    HashMap<SchemeHostPort, Vec<Either<ResolutionRequest, BidirectionalRequest>>>,
-);
+pub struct PendingRequests(HashMap<SchemeHostPort, Vec<PendingRequest>>);
 
 impl PendingRequests {
     /// Add a new pending request for a specific host/port combination.
-    pub fn add(
-        &mut self,
-        host: SchemeHostPort,
-        request: Either<ResolutionRequest, BidirectionalRequest>,
-    ) {
+    pub fn add(&mut self, host: SchemeHostPort, request: PendingRequest) {
         let PendingRequests(map) = self;
         match map.entry(host) {
             Entry::Occupied(mut entry) => {
@@ -62,14 +86,7 @@ impl PendingRequests {
         let PendingRequests(map) = self;
         if let Some(requests) = map.remove(host) {
             for request in requests.into_iter() {
-                match request {
-                    Either::Left(request) => {
-                        request.send_ok_debug(addr, REQUEST_DROPPED);
-                    }
-                    Either::Right(request) => {
-                        request.send_ok_debug(bidirectional_registrator.clone(), REQUEST_DROPPED)
-                    }
-                }
+                request.send_ok_debug(addr, &bidirectional_registrator, REQUEST_DROPPED)
             }
         }
     }
@@ -80,24 +97,10 @@ impl PendingRequests {
         if let Some(mut requests) = map.remove(host) {
             let first = requests.pop();
             for request in requests.into_iter() {
-                match request {
-                    Either::Left(request) => {
-                        request.send_err_debug(err.clone(), REQUEST_DROPPED);
-                    }
-                    Either::Right(request) => {
-                        request.send_err_debug(err.clone(), REQUEST_DROPPED);
-                    }
-                }
+                request.send_err_debug(err.clone(), REQUEST_DROPPED);
             }
             if let Some(first) = first {
-                match first {
-                    Either::Left(first) => {
-                        first.send_err_debug(err, REQUEST_DROPPED);
-                    }
-                    Either::Right(first) => {
-                        first.send_err_debug(err, REQUEST_DROPPED);
-                    }
-                }
+                first.send_err_debug(err, REQUEST_DROPPED);
             }
         }
     }

@@ -39,7 +39,7 @@ use swim_common::routing::{
     TaggedEnvelope, TaggedSender,
 };
 use swim_common::warp::envelope::{Envelope, IncomingLinkMessage};
-use swim_common::warp::path::Addressable;
+use swim_common::warp::path::{Addressable, RelativePath};
 use swim_runtime::task::*;
 use swim_runtime::time::instant::Instant;
 use swim_runtime::time::interval::interval;
@@ -297,7 +297,6 @@ pub(crate) struct ConnectionRegistrator<Path: Addressable> {
     registrator_tx: mpsc::Sender<RegistratorRequest<Path>>,
 }
 
-// Todo dm
 impl<Path: Addressable> ConnectionRegistrator<Path> {
     fn new<DelegateRouter: Router>(
         buffer_size: NonZeroUsize,
@@ -328,19 +327,17 @@ impl<Path: Addressable> ConnectionRegistrator<Path> {
     }
 }
 
-enum ConnectionRegistratorTask<Path: Addressable, DelegateRouter: Router> {
-    Remote {
-        buffer_size: NonZeroUsize,
-        target: Url,
-        registrator_rx: mpsc::Receiver<RegistratorRequest<Path>>,
-        client_router: ClientRouter<Path, DelegateRouter>,
-    },
-    Local {
-        buffer_size: NonZeroUsize,
-        target: String,
-        registrator_rx: mpsc::Receiver<RegistratorRequest<Path>>,
-        client_router: ClientRouter<Path, DelegateRouter>,
-    },
+enum RegistrationTarget {
+    Remote(Url),
+    Local(String),
+}
+
+struct ConnectionRegistratorTask<Path: Addressable, DelegateRouter: Router> {
+    buffer_size: NonZeroUsize,
+    target: RegistrationTarget,
+    registrator_rx: mpsc::Receiver<RegistratorRequest<Path>>,
+    client_router: ClientRouter<Path, DelegateRouter>,
+
 }
 
 impl<Path: Addressable, DelegateRouter: Router> ConnectionRegistratorTask<Path, DelegateRouter> {
@@ -351,169 +348,115 @@ impl<Path: Addressable, DelegateRouter: Router> ConnectionRegistratorTask<Path, 
         client_router: ClientRouter<Path, DelegateRouter>,
     ) -> Self {
         match target.host() {
-            Some(url) => ConnectionRegistratorTask::Remote {
+            Some(url) => ConnectionRegistratorTask {
                 buffer_size,
-                target: url,
+                target: RegistrationTarget::Remote(url),
                 registrator_rx,
                 client_router,
             },
-            None => ConnectionRegistratorTask::Local {
+            None => ConnectionRegistratorTask {
                 buffer_size,
-                target: target.node().to_string(),
+                target: RegistrationTarget::Local(target.node().to_string()),
                 registrator_rx,
                 client_router,
             },
         }
     }
 
-    //Todo dm refactor this
+    //Todo dm remove unwraps
     async fn run(self) {
-        match self {
-            ConnectionRegistratorTask::Remote {
-                buffer_size,
-                target,
-                registrator_rx,
-                mut client_router,
-            } => {
+        let ConnectionRegistratorTask {
+            buffer_size, target, registrator_rx, mut client_router
+        } = self;
+
+        let (sender, receiver, maybe_raw_route) = match target {
+            RegistrationTarget::Remote(target) => {
                 let BidirectionalRoute {
                     sender,
-                    mut receiver,
+                    receiver,
                 } = client_router.resolve_bidirectional(target).await.unwrap();
 
-                let mut receiver = ReceiverStream::new(receiver).fuse();
-                let mut registrator_rx = ReceiverStream::new(registrator_rx).fuse();
-
-                let mut subscribers: HashMap<String, Vec<mpsc::Sender<RouterEvent>>> = HashMap::new();
-                loop {
-                    let request: Either<Option<Envelope>, Option<RegistratorRequest<Path>>> = select! {
-                        message = receiver.next() => Either::Left(message),
-                        req = registrator_rx.next() => Either::Right(req),
-                    };
-
-                    match request {
-                        Either::Left(Some(envelope)) => {
-                            let incoming_message = envelope.clone().into_incoming().unwrap();
-                            let path = incoming_message.path.node.to_string();
-
-                            let subscribers = subscribers.get(&path).unwrap();
-
-                            //Todo dm use futures unordered
-                            for sub in subscribers {
-                                sub.send(RouterEvent::Message(incoming_message.clone())).await;
-                            }
-                        }
-                        Either::Right(Some(RegistratorRequest::Connect {
-                                               tx,
-                                               path,
-                                               conn_type: ConnectionType::Full,
-                                           })) => {
-                            let receiver = match subscribers.entry(path.node().to_string()) {
-                                Entry::Occupied(mut entry) => {
-                                    let (tx, rx) = mpsc::channel(buffer_size.get());
-                                    entry.get_mut().push(tx);
-                                    rx
-                                }
-                                Entry::Vacant(vacancy) => {
-                                    let (tx, rx) = mpsc::channel(buffer_size.get());
-                                    vacancy.insert(vec![tx]);
-                                    rx
-                                }
-                            };
-
-                            tx.send(Ok((sender.clone(), Some(receiver))));
-                        }
-                        Either::Right(Some(RegistratorRequest::Connect {
-                                               tx,
-                                               path,
-                                               conn_type: ConnectionType::Outgoing,
-                                           })) => {
-                            tx.send(Ok((sender.clone(), None)));
-                        }
-                        _ => {
-                            //Todo dm closing
-                            unimplemented!()
-                        }
-                    }
-                }
+                (sender, receiver, None)
             }
-            ConnectionRegistratorTask::Local {
-                buffer_size,
-                target,
-                registrator_rx,
-                mut client_router,
-            } => {
-                //Todo dm change this
+            RegistrationTarget::Local(target) => {
                 let relative_uri = RelativeUri::try_from(format!("{}", target)).unwrap();
                 let routing_addr = client_router.lookup(None, relative_uri).await.unwrap();
-                let sender = client_router.resolve_sender(routing_addr).await.unwrap();
+                //Todo dm handle `on_drop`
+                let Route {
+                    sender, on_drop
+                } = client_router.resolve_sender(routing_addr).await.unwrap();
 
+                //Todo dm on_drop_tx not used
                 let (on_drop_tx, on_drop_rx) = promise::promise();
                 let (envelope_sender, envelope_receiver) = mpsc::channel(buffer_size.get());
                 let raw_route = RawRoute::new(envelope_sender, on_drop_rx);
 
-                let mut receiver = ReceiverStream::new(envelope_receiver).fuse();
-                let mut registrator_rx = ReceiverStream::new(registrator_rx).fuse();
-                let mut subscribers: HashMap<String, Vec<mpsc::Sender<RouterEvent>>> = HashMap::new();
+                (sender, envelope_receiver, Some(raw_route))
+            }
+        };
 
-                loop {
-                    let request: Either<Option<TaggedEnvelope>, Option<RegistratorRequest<Path>>> = select! {
+
+        let mut receiver = ReceiverStream::new(receiver).fuse();
+        let mut registrator_rx = ReceiverStream::new(registrator_rx).fuse();
+        let mut subscribers: HashMap<RelativePath, Vec<mpsc::Sender<RouterEvent>>> = HashMap::new();
+
+
+        loop {
+            let request: Either<Option<TaggedEnvelope>, Option<RegistratorRequest<Path>>> = select! {
                         message = receiver.next() => Either::Left(message),
                         req = registrator_rx.next() => Either::Right(req),
                     };
 
-                    match request {
-                        Either::Left(Some(envelope)) => {
-                            let incoming_message = envelope.1.clone().into_incoming().unwrap();
-                            let path = incoming_message.path.node.to_string();
+            match request {
+                Either::Left(Some(envelope)) => {
+                    let incoming_message = envelope.1.clone().into_incoming().unwrap();
+                    let subscribers = subscribers.get(&incoming_message.path).unwrap();
 
-                            let subscribers = subscribers.get(&path).unwrap();
-
-                            //Todo dm use futures unordered
-                            for sub in subscribers {
-                                sub.send(RouterEvent::Message(incoming_message.clone())).await;
-                            }
-                        }
-                        Either::Right(Some(RegistratorRequest::Connect {
-                                               tx,
-                                               path,
-                                               conn_type: ConnectionType::Full,
-                                           })) => {
-                            let receiver = match subscribers.entry(path.node().to_string()) {
-                                Entry::Occupied(mut entry) => {
-                                    let (tx, rx) = mpsc::channel(buffer_size.get());
-                                    entry.get_mut().push(tx);
-                                    rx
-                                }
-                                Entry::Vacant(vacancy) => {
-                                    let (tx, rx) = mpsc::channel(buffer_size.get());
-                                    vacancy.insert(vec![tx]);
-                                    rx
-                                }
-                            };
-
-                            tx.send(Ok((sender.sender.clone(), Some(receiver))));
-                        }
-                        Either::Right(Some(RegistratorRequest::Connect {
-                                               tx,
-                                               path,
-                                               conn_type: ConnectionType::Outgoing,
-                                           })) => {
-                            tx.send(Ok((sender.sender.clone(), None)));
-                        }
-                        Either::Right(Some(RegistratorRequest::Resolve { request })) => {
-                            request.send(Ok(raw_route.clone()));
-                        }
-                        _ => {
-                            //Todo dm closing
-                            on_drop_tx.provide(ConnectionDropped::Closed);
-                            unimplemented!()
-                        }
+                    //Todo dm use futures unordered
+                    for sub in subscribers {
+                        sub.send(RouterEvent::Message(incoming_message.clone())).await;
                     }
+                }
+                Either::Right(Some(RegistratorRequest::Connect {
+                                       tx,
+                                       path,
+                                       conn_type: ConnectionType::Full,
+                                   })) => {
+                    let receiver = match subscribers.entry(path.relative_path()) {
+                        Entry::Occupied(mut entry) => {
+                            let (tx, rx) = mpsc::channel(buffer_size.get());
+                            entry.get_mut().push(tx);
+                            rx
+                        }
+                        Entry::Vacant(vacancy) => {
+                            let (tx, rx) = mpsc::channel(buffer_size.get());
+                            vacancy.insert(vec![tx]);
+                            rx
+                        }
+                    };
+
+                    tx.send(Ok((sender.clone(), Some(receiver))));
+                }
+                Either::Right(Some(RegistratorRequest::Connect {
+                                       tx,
+                                       path,
+                                       conn_type: ConnectionType::Outgoing,
+                                   })) => {
+                    tx.send(Ok((sender.clone(), None)));
+                }
+                Either::Right(Some(RegistratorRequest::Resolve { request })) if maybe_raw_route.is_some() => {
+                    request.send(Ok(maybe_raw_route.as_ref().unwrap().clone()));
+                }
+                _ => {
+                    //Todo dm closing
+                    // on_drop_tx.provide(ConnectionDropped::Closed);
+                    unimplemented!()
                 }
             }
         }
     }
 }
+
 
 // /// Connection pool message wraps a message from a remote host.
 // #[derive(Debug)]
