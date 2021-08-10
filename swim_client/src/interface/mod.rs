@@ -131,7 +131,7 @@ impl SwimClientBuilder {
             OpenEndedFutures::new(),
             RemoteConnectionChannels::new(remote_tx, remote_rx, close_rx.clone()),
         )
-        .await;
+            .await;
 
         // The connection pool handles the connections behnid the downlinks
         let (connection_pool, pool_task) = SwimConnPool::new(
@@ -150,7 +150,7 @@ impl SwimClientBuilder {
                 remote_connections_task.run(),
                 pool_task.run(),
             )
-            .0
+                .0
         });
 
         (
@@ -163,74 +163,68 @@ impl SwimClientBuilder {
         )
     }
 
-    // Todo dm
-    //     /// Build the Swim client with default WS factory and configuration.
-    //     pub async fn build_with_default() -> (SwimClient<AbsolutePath>, ClientHandle<AbsolutePath>) {
-    //         info!("Initialising Swim Client");
-    //
-    //         let config: ConfigHierarchy<AbsolutePath> = ConfigHierarchy::default();
-    //
-    //         let client_params = config.client_params();
-    //
-    //         let (remote_router_tx, remote_router_rx) =
-    //             mpsc::channel(client_params.connections_params.router_buffer_size.get());
-    //         let (client_router_tx, client_router_rx) =
-    //             mpsc::channel(client_params.connections_params.router_buffer_size.get());
-    //         let delegate_router_factory = ClientRouterFactory::new(client_router_tx.clone());
-    //         let (close_tx, close_rx) = promise::promise();
-    //
-    //         let remote_connections_task = RemoteConnectionsTask::new_client_task(
-    //             client_params.connections_params,
-    //             TokioPlainTextNetworking::new(Arc::new(Resolver::new().await)),
-    //             TungsteniteWsConnections {
-    //                 config: client_params.websocket_params,
-    //             },
-    //             delegate_router_factory,
-    //             OpenEndedFutures::new(),
-    //             RemoteConnectionChannels::new(
-    //                 remote_router_tx.clone(),
-    //                 remote_router_rx,
-    //                 close_rx.clone(),
-    //             ),
-    //         )
-    //         .await;
-    //
-    //         let remote_conn_manager = ClientConnectionsManager::new(
-    //             client_router_rx,
-    //             remote_router_tx,
-    //             None,
-    //             client_params.dl_req_buffer_size,
-    //             close_rx.clone(),
-    //         );
-    //
-    //         let (downlinks, downlinks_handle) =
-    //             Downlinks::new(client_router_tx, Arc::new(config), close_rx);
-    //
-    //         let DownlinksHandle {
-    //             downlinks_task,
-    //             request_receiver,
-    //         } = downlinks_handle;
-    //
-    //         let task_handle = spawn(async {
-    //             join!(
-    //                 downlinks_task.run(ReceiverStream::new(request_receiver)),
-    //                 remote_connections_task.run(),
-    //                 remote_conn_manager.run(),
-    //                 task_manager.run(),
-    //                 pool_task.run()
-    //             )
-    //             .0
-    //         });
-    //
-    //         (
-    //             SwimClient { downlinks },
-    //             ClientHandle {
-    //                 close_buffer_size: client_params.connections_params.router_buffer_size,
-    //                 task_handle,
-    //                 stop_trigger: close_tx,
-    //             },
-    //         )
-    //     }
+    /// Build the Swim client with default WS factory and configuration.
+    pub async fn build_with_default() -> (SwimClient<AbsolutePath>, ClientHandle<AbsolutePath>) {
+        info!("Initialising Swim Client");
+
+        let downlinks_config: ConfigHierarchy<AbsolutePath> = ConfigHierarchy::default();
+
+        let client_params = downlinks_config.client_params();
+
+        let (remote_tx, remote_rx) =
+            mpsc::channel(client_params.connections_params.router_buffer_size.get());
+
+        let (client_tx, client_rx) =
+            mpsc::channel(client_params.connections_params.router_buffer_size.get());
+
+        let top_level_router_fac =
+            TopLevelClientRouterFactory::new(client_tx.clone(), remote_tx.clone());
+
+        let client_router_factory =
+            ClientRouterFactory::new(client_tx.clone(), top_level_router_fac.clone());
+        let (close_tx, close_rx) = promise::promise();
+
+        let remote_connections_task = RemoteConnectionsTask::new_client_task(
+            client_params.connections_params,
+            TokioPlainTextNetworking::new(Arc::new(Resolver::new().await)),
+            TungsteniteWsConnections {
+                config: client_params.websocket_params,
+            },
+            top_level_router_fac.clone(),
+            OpenEndedFutures::new(),
+            RemoteConnectionChannels::new(remote_tx, remote_rx, close_rx.clone()),
+        )
+            .await;
+
+        // The connection pool handles the connections behnid the downlinks
+        let (connection_pool, pool_task) = SwimConnPool::new(
+            client_params.conn_pool_params,
+            (client_tx, client_rx),
+            client_router_factory,
+        );
+
+        // The downlinks are state machines and request connections from the pool
+        let (downlinks, downlinks_task) =
+            Downlinks::new(connection_pool, Arc::new(downlinks_config), close_rx);
+
+        let task_handle = spawn(async {
+            join!(
+                downlinks_task.run(),
+                remote_connections_task.run(),
+                pool_task.run(),
+            )
+                .0
+        });
+
+        (
+            SwimClient { downlinks },
+            ClientHandle {
+                close_buffer_size: client_params.connections_params.router_buffer_size,
+                task_handle,
+                stop_trigger: close_tx,
+            },
+        )
+    }
 }
 
 /// A Swim streaming API client for linking to stateful Web Agents using WARP. The Swim client handles
@@ -318,8 +312,8 @@ impl<Path: Addressable> SwimClient<Path> {
         path: Path,
         initial: T,
     ) -> Result<(TypedValueDownlink<T>, ValueDownlinkReceiver<T>), ClientError<Path>>
-    where
-        T: ValidatedForm + Send + 'static,
+        where
+            T: ValidatedForm + Send + 'static,
     {
         self.downlinks
             .subscribe_value(initial, path)
@@ -332,9 +326,9 @@ impl<Path: Addressable> SwimClient<Path> {
         &self,
         path: Path,
     ) -> Result<(TypedMapDownlink<K, V>, MapDownlinkReceiver<K, V>), ClientError<Path>>
-    where
-        K: ValidatedForm + Send + 'static,
-        V: ValidatedForm + Send + 'static,
+        where
+            K: ValidatedForm + Send + 'static,
+            V: ValidatedForm + Send + 'static,
     {
         self.downlinks
             .subscribe_map(path)
@@ -347,8 +341,8 @@ impl<Path: Addressable> SwimClient<Path> {
         &self,
         path: Path,
     ) -> Result<TypedCommandDownlink<T>, ClientError<Path>>
-    where
-        T: ValidatedForm + Send + 'static,
+        where
+            T: ValidatedForm + Send + 'static,
     {
         self.downlinks
             .subscribe_command(path)
@@ -362,8 +356,8 @@ impl<Path: Addressable> SwimClient<Path> {
         path: Path,
         violations: SchemaViolations,
     ) -> Result<TypedEventDownlink<T>, ClientError<Path>>
-    where
-        T: ValidatedForm + Send + 'static,
+        where
+            T: ValidatedForm + Send + 'static,
     {
         self.downlinks
             .subscribe_event(path, violations)

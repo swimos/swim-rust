@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::configuration::router::ConnectionPoolParams;
-use crate::router::{ClientRouter, ClientRouterFactory, DownlinkRoutingRequest, RoutingPath, RoutingTable, RouterEvent};
+use crate::router::{ClientRouter, ClientRouterFactory, DownlinkRoutingRequest, RouterEvent, RoutingPath, RoutingTable, AddressableWrapper};
 use either::Either;
 use futures::future::BoxFuture;
 use futures::select;
@@ -151,7 +151,7 @@ impl<Path: Addressable> ConnectionPool for SwimConnPool<Path> {
                 .await?;
             Ok(rx.await?)
         }
-            .boxed()
+        .boxed()
     }
 
     /// Stops the pool from accepting new connection requests and closes down all existing
@@ -164,7 +164,7 @@ impl<Path: Addressable> ConnectionPool for SwimConnPool<Path> {
                 .await
                 .map_err(|_| ConnectionError::Closed(CloseError::unexpected())))
         }
-            .boxed()
+        .boxed()
     }
 }
 
@@ -216,7 +216,8 @@ impl<Path: Addressable, DelegateFac: RouterFactory> PoolTask<Path, DelegateFac> 
                     request,
                     conn_type,
                 } => {
-                    let routing_path = RoutingPath::from(target.clone());
+                    //Todo dm handle unwrap
+                    let routing_path = RoutingPath::try_from(AddressableWrapper(target.clone())).unwrap();
 
                     let registrator = match routing_table.try_resolve_addr(&routing_path) {
                         Some(routing_addr) => {
@@ -337,7 +338,6 @@ struct ConnectionRegistratorTask<Path: Addressable, DelegateRouter: Router> {
     target: RegistrationTarget,
     registrator_rx: mpsc::Receiver<RegistratorRequest<Path>>,
     client_router: ClientRouter<Path, DelegateRouter>,
-
 }
 
 impl<Path: Addressable, DelegateRouter: Router> ConnectionRegistratorTask<Path, DelegateRouter> {
@@ -366,15 +366,16 @@ impl<Path: Addressable, DelegateRouter: Router> ConnectionRegistratorTask<Path, 
     //Todo dm remove unwraps
     async fn run(self) {
         let ConnectionRegistratorTask {
-            buffer_size, target, registrator_rx, mut client_router
+            buffer_size,
+            target,
+            registrator_rx,
+            mut client_router,
         } = self;
 
         let (sender, receiver, maybe_raw_route) = match target {
             RegistrationTarget::Remote(target) => {
-                let BidirectionalRoute {
-                    sender,
-                    receiver,
-                } = client_router.resolve_bidirectional(target).await.unwrap();
+                let BidirectionalRoute { sender, receiver } =
+                    client_router.resolve_bidirectional(target).await.unwrap();
 
                 (sender, receiver, None)
             }
@@ -382,9 +383,8 @@ impl<Path: Addressable, DelegateRouter: Router> ConnectionRegistratorTask<Path, 
                 let relative_uri = RelativeUri::try_from(format!("{}", target)).unwrap();
                 let routing_addr = client_router.lookup(None, relative_uri).await.unwrap();
                 //Todo dm handle `on_drop`
-                let Route {
-                    sender, on_drop
-                } = client_router.resolve_sender(routing_addr).await.unwrap();
+                let Route { sender, on_drop } =
+                    client_router.resolve_sender(routing_addr).await.unwrap();
 
                 //Todo dm on_drop_tx not used
                 let (on_drop_tx, on_drop_rx) = promise::promise();
@@ -395,17 +395,15 @@ impl<Path: Addressable, DelegateRouter: Router> ConnectionRegistratorTask<Path, 
             }
         };
 
-
         let mut receiver = ReceiverStream::new(receiver).fuse();
         let mut registrator_rx = ReceiverStream::new(registrator_rx).fuse();
         let mut subscribers: HashMap<RelativePath, Vec<mpsc::Sender<RouterEvent>>> = HashMap::new();
 
-
         loop {
             let request: Either<Option<TaggedEnvelope>, Option<RegistratorRequest<Path>>> = select! {
-                        message = receiver.next() => Either::Left(message),
-                        req = registrator_rx.next() => Either::Right(req),
-                    };
+                message = receiver.next() => Either::Left(message),
+                req = registrator_rx.next() => Either::Right(req),
+            };
 
             match request {
                 Either::Left(Some(envelope)) => {
@@ -414,14 +412,15 @@ impl<Path: Addressable, DelegateRouter: Router> ConnectionRegistratorTask<Path, 
 
                     //Todo dm use futures unordered
                     for sub in subscribers {
-                        sub.send(RouterEvent::Message(incoming_message.clone())).await;
+                        sub.send(RouterEvent::Message(incoming_message.clone()))
+                            .await;
                     }
                 }
                 Either::Right(Some(RegistratorRequest::Connect {
-                                       tx,
-                                       path,
-                                       conn_type: ConnectionType::Full,
-                                   })) => {
+                    tx,
+                    path,
+                    conn_type: ConnectionType::Full,
+                })) => {
                     let receiver = match subscribers.entry(path.relative_path()) {
                         Entry::Occupied(mut entry) => {
                             let (tx, rx) = mpsc::channel(buffer_size.get());
@@ -438,13 +437,15 @@ impl<Path: Addressable, DelegateRouter: Router> ConnectionRegistratorTask<Path, 
                     tx.send(Ok((sender.clone(), Some(receiver))));
                 }
                 Either::Right(Some(RegistratorRequest::Connect {
-                                       tx,
-                                       path,
-                                       conn_type: ConnectionType::Outgoing,
-                                   })) => {
+                    tx,
+                    path,
+                    conn_type: ConnectionType::Outgoing,
+                })) => {
                     tx.send(Ok((sender.clone(), None)));
                 }
-                Either::Right(Some(RegistratorRequest::Resolve { request })) if maybe_raw_route.is_some() => {
+                Either::Right(Some(RegistratorRequest::Resolve { request }))
+                    if maybe_raw_route.is_some() =>
+                {
                     request.send(Ok(maybe_raw_route.as_ref().unwrap().clone()));
                 }
                 _ => {
@@ -456,7 +457,6 @@ impl<Path: Addressable, DelegateRouter: Router> ConnectionRegistratorTask<Path, 
         }
     }
 }
-
 
 // /// Connection pool message wraps a message from a remote host.
 // #[derive(Debug)]

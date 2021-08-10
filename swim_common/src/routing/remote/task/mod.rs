@@ -28,7 +28,10 @@ use crate::routing::remote::{
 };
 use crate::routing::ws::selector::{SelectorResult, WsStreamSelector};
 use crate::routing::ws::{CloseCode, CloseReason, JoinedStreamSink, WsMessage};
-use crate::routing::{BidirectionalRoute, ConnectionDropped, Route, Router, RouterFactory, RoutingAddr, TaggedEnvelope, TaggedSender};
+use crate::routing::{
+    BidirectionalRoute, ConnectionDropped, Route, Router, RouterFactory, RoutingAddr,
+    TaggedEnvelope, TaggedSender,
+};
 use crate::routing::{Origin, RouterError};
 use crate::warp::envelope::{Envelope, EnvelopeHeader, EnvelopeParseErr, OutgoingHeader};
 use crate::warp::path::RelativePath;
@@ -103,20 +106,21 @@ const IGNORING_MESSAGE: &str = "Ignoring unexpected message.";
 const ERROR_ON_CLOSE: &str = "Error whilst closing connection.";
 
 impl<Str, R> ConnectionTask<Str, R>
-    where
-        Str: JoinedStreamSink<WsMessage, ConnectionError> + Unpin,
-        R: Router,
+where
+    Str: JoinedStreamSink<WsMessage, ConnectionError> + Unpin,
+    R: Router,
 {
     /// Create a new task.
     ///
     /// #Arguments
     ///
     /// * `addr` - Address of the connection.
+    /// * `tag`  - The routing address of the connection.
     /// * `ws_stream` - The joined sink/stream that implements the web sockets protocol.
-    /// //Todo dm
     /// * `router` - Router to route incoming messages to the appropriate destination.
     /// * `messages_tx` - Allows messages to be injected into the outgoing stream.
     /// * `messages_rx`- Stream of messages to be sent into the sink.
+    /// * `bidirectional_request_rx` - Stream of bidirectional requests.
     /// * `stop_signal` - Signals to the task that it should stop.
     /// * `config` - Configuration for the connection task.
     /// runtime.
@@ -228,14 +232,14 @@ impl<Str, R> ConnectionTask<Str, R>
                                         config.connection_retries,
                                         sleep,
                                     )
-                                        .await;
+                                    .await;
                                     if let Err((env, _)) = dispatch_result {
                                         handle_not_found(env, &message_injector).await;
                                     }
                                 }
-                                    .then(move |_| async {
-                                        done_tx.trigger();
-                                    });
+                                .then(move |_| async {
+                                    done_tx.trigger();
+                                });
 
                                 let (_, write_result) = join(dispatch_task, write_task).await;
 
@@ -272,13 +276,13 @@ impl<Str, R> ConnectionTask<Str, R>
                 "Stopped locally".to_string(),
             )),
             Completion::Failed(ConnectionError::Protocol(e))
-            if e.kind() == ProtocolErrorKind::Warp =>
-                {
-                    Some(CloseReason::new(
-                        CloseCode::ProtocolError,
-                        e.cause().clone().unwrap_or_else(|| "WARP error".into()),
-                    ))
-                }
+                if e.kind() == ProtocolErrorKind::Warp =>
+            {
+                Some(CloseReason::new(
+                    CloseCode::ProtocolError,
+                    e.cause().clone().unwrap_or_else(|| "WARP error".into()),
+                ))
+            }
             _ => None,
         } {
             if let Err(error) = ws_stream.close(Some(reason)).await {
@@ -375,10 +379,10 @@ async fn dispatch_envelope<R, F, D>(
     mut retry_strategy: RetryStrategy,
     delay_fn: F,
 ) -> Result<(), (Envelope, DispatchError)>
-    where
-        R: Router,
-        F: Fn(Duration) -> D,
-        D: Future<Output=()>,
+where
+    R: Router,
+    F: Fn(Duration) -> D,
+    D: Future<Output = ()>,
 {
     loop {
         let result =
@@ -412,8 +416,8 @@ async fn try_dispatch_envelope<R>(
     resolved: &mut HashMap<RelativePath, Route>,
     envelope: Envelope,
 ) -> Result<(), (Envelope, DispatchError)>
-    where
-        R: Router,
+where
+    R: Router,
 {
     if envelope.header.is_response() {
         let futures = FuturesUnordered::new();
@@ -468,8 +472,8 @@ async fn insert_new_route<'a, R>(
     resolved: &'a mut HashMap<RelativePath, Route>,
     target: &RelativePath,
 ) -> Result<&'a mut Route, DispatchError>
-    where
-        R: Router,
+where
+    R: Router,
 {
     let route = get_route(router, target).await;
 
@@ -485,8 +489,8 @@ async fn insert_new_route<'a, R>(
 }
 
 async fn get_route<R>(router: &mut R, target: &RelativePath) -> Result<Route, DispatchError>
-    where
-        R: Router,
+where
+    R: Router,
 {
     let target_addr = router
         .lookup(None, RelativeUri::from_str(&target.node.as_str())?)
@@ -519,8 +523,8 @@ impl<DelegateRouterFac> TaskFactory<DelegateRouterFac> {
 }
 
 impl<DelegateRouterFac> TaskFactory<DelegateRouterFac>
-    where
-        DelegateRouterFac: RouterFactory + 'static,
+where
+    DelegateRouterFac: RouterFactory + 'static,
 {
     pub fn spawn_connection_task<Str, Sp>(
         &self,
@@ -532,9 +536,9 @@ impl<DelegateRouterFac> TaskFactory<DelegateRouterFac>
         mpsc::Sender<TaggedEnvelope>,
         mpsc::Sender<BidirectionalReceiverRequest>,
     )
-        where
-            Str: JoinedStreamSink<WsMessage, ConnectionError> + Send + Unpin + 'static,
-            Sp: Spawner<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>>,
+    where
+        Str: JoinedStreamSink<WsMessage, ConnectionError> + Send + Unpin + 'static,
+        Sp: Spawner<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>>,
     {
         let TaskFactory {
             request_tx,
@@ -562,7 +566,7 @@ impl<DelegateRouterFac> TaskFactory<DelegateRouterFac>
                 let result = task.run().await;
                 (tag, result)
             }
-                .boxed(),
+            .boxed(),
         );
         (msg_tx, bidirectional_request_tx)
     }
@@ -599,10 +603,10 @@ async fn write_to_socket_only<S, M, T, E>(
     yield_mod: usize,
     iteration_count: &mut usize,
 ) -> Result<(), E>
-    where
-        M: Stream<Item=T> + Unpin,
-        S: Sink<T, Error=E>,
-        S: Stream<Item=Result<T, E>> + Unpin,
+where
+    M: Stream<Item = T> + Unpin,
+    S: Sink<T, Error = E>,
+    S: Stream<Item = Result<T, E>> + Unpin,
 {
     let write_stream = stream::unfold(
         (selector, iteration_count),
@@ -621,7 +625,7 @@ async fn write_to_socket_only<S, M, T, E>(
             }
         },
     )
-        .take_until(done);
+    .take_until(done);
 
     pin_mut!(write_stream);
 
