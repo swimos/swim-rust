@@ -13,11 +13,15 @@
 // limitations under the License.
 
 use crate::configuration::router::ConnectionPoolParams;
-use crate::router::{ClientRouter, ClientRouterFactory, DownlinkRoutingRequest, RouterEvent, RoutingPath, RoutingTable, AddressableWrapper};
+use crate::router::{
+    AddressableWrapper, ClientRouter, ClientRouterFactory, DownlinkRoutingRequest, RouterEvent,
+    RoutingPath, RoutingTable,
+};
 use either::Either;
 use futures::future::BoxFuture;
 use futures::select;
 use futures::stream;
+use futures::stream::FuturesUnordered;
 use futures::{FutureExt, Stream, StreamExt};
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
@@ -30,13 +34,13 @@ use std::time::Duration;
 use swim_common::request::request_future::RequestError;
 use swim_common::request::Request;
 use swim_common::routing::error::{
-    CloseError, ConnectionError, ResolutionError, ResolutionErrorKind, Unresolvable,
+    CloseError, ConnectionError, ResolutionError, ResolutionErrorKind, RoutingError, Unresolvable,
 };
 use swim_common::routing::remote::table::SchemeHostPort;
 use swim_common::routing::remote::RawRoute;
 use swim_common::routing::{
-    BidirectionalRoute, ConnectionDropped, Route, Router, RouterFactory, RoutingAddr,
-    TaggedEnvelope, TaggedSender,
+    BidirectionalRoute, CloseReceiver, ConnectionDropped, Route, Router, RouterFactory,
+    RoutingAddr, TaggedEnvelope, TaggedSender,
 };
 use swim_common::warp::envelope::{Envelope, IncomingLinkMessage};
 use swim_common::warp::path::{Addressable, RelativePath};
@@ -52,6 +56,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use tracing::{instrument, trace};
 use url::{Host, Url};
 use utilities::sync::promise;
+use utilities::sync::promise::PromiseError;
 use utilities::uri::RelativeUri;
 
 #[cfg(test)]
@@ -67,8 +72,6 @@ pub trait ConnectionPool: Clone + Send + 'static {
         target: Self::PathType,
         conn_type: ConnectionType,
     ) -> BoxFuture<Result<Result<Connection, ConnectionError>, RequestError>>;
-
-    fn close(self) -> BoxFuture<'static, Result<Result<(), ConnectionError>, ConnectionError>>;
 }
 
 pub type Connection = (ConnectionSender, Option<ConnectionReceiver>);
@@ -82,7 +85,6 @@ pub(crate) type ConnectionSender = TaggedSender;
 #[derive(Clone)]
 pub struct SwimConnPool<Path: Addressable> {
     client_tx: mpsc::Sender<DownlinkRoutingRequest<Path>>,
-    stop_request_tx: mpsc::Sender<()>,
 }
 
 impl<Path: Addressable> SwimConnPool<Path> {
@@ -100,20 +102,17 @@ impl<Path: Addressable> SwimConnPool<Path> {
             mpsc::Receiver<DownlinkRoutingRequest<Path>>,
         ),
         client_router_factory: ClientRouterFactory<Path, DelegateFac>,
+        stop_trigger: CloseReceiver,
     ) -> (SwimConnPool<Path>, PoolTask<Path, DelegateFac>) {
         let (client_tx, client_rx) = client_channel;
-        let (stop_request_tx, stop_request_rx) = mpsc::channel(config.buffer_size().get());
 
         (
-            SwimConnPool {
-                client_tx,
-                stop_request_tx,
-            },
+            SwimConnPool { client_tx },
             PoolTask::new(
                 client_rx,
                 client_router_factory,
                 config.buffer_size(),
-                stop_request_rx,
+                stop_trigger,
             ),
         )
     }
@@ -153,19 +152,6 @@ impl<Path: Addressable> ConnectionPool for SwimConnPool<Path> {
         }
         .boxed()
     }
-
-    /// Stops the pool from accepting new connection requests and closes down all existing
-    /// connections.
-    fn close(self) -> BoxFuture<'static, Result<Result<(), ConnectionError>, ConnectionError>> {
-        async move {
-            Ok(self
-                .stop_request_tx
-                .send(())
-                .await
-                .map_err(|_| ConnectionError::Closed(CloseError::unexpected())))
-        }
-        .boxed()
-    }
 }
 
 pub type ConnectionChannel = (ConnectionSender, Option<ConnectionReceiver>);
@@ -179,7 +165,7 @@ pub struct PoolTask<Path: Addressable, DelegateFac: RouterFactory> {
     client_rx: mpsc::Receiver<DownlinkRoutingRequest<Path>>,
     client_router_factory: ClientRouterFactory<Path, DelegateFac>,
     buffer_size: NonZeroUsize,
-    stop_request_rx: mpsc::Receiver<()>,
+    stop_trigger: CloseReceiver,
 }
 
 impl<Path: Addressable, DelegateFac: RouterFactory> PoolTask<Path, DelegateFac> {
@@ -187,90 +173,111 @@ impl<Path: Addressable, DelegateFac: RouterFactory> PoolTask<Path, DelegateFac> 
         client_rx: mpsc::Receiver<DownlinkRoutingRequest<Path>>,
         client_router_factory: ClientRouterFactory<Path, DelegateFac>,
         buffer_size: NonZeroUsize,
-        stop_request_rx: mpsc::Receiver<()>,
+        stop_trigger: CloseReceiver,
     ) -> Self {
         PoolTask {
             client_rx,
             client_router_factory,
             buffer_size,
-            stop_request_rx,
+            stop_trigger,
         }
     }
 
     pub async fn run(self) -> Result<(), ConnectionError> {
         let PoolTask {
-            mut client_rx,
+            client_rx,
             client_router_factory,
             buffer_size,
-            //Todo dm
-            stop_request_rx,
+            stop_trigger,
         } = self;
 
         let mut routing_table = RoutingTable::new();
         let mut counter: u32 = 0;
+        let mut registrator_handles = Vec::new();
 
-        while let Some(client_request) = client_rx.recv().await {
-            match client_request {
-                DownlinkRoutingRequest::Connect {
-                    target,
-                    request,
-                    conn_type,
-                } => {
-                    //Todo dm handle unwrap
-                    let routing_path = RoutingPath::try_from(AddressableWrapper(target.clone())).unwrap();
+        let mut client_rx = ReceiverStream::new(client_rx).fuse();
+        let mut stop_rx = stop_trigger.clone().fuse();
 
-                    let registrator = match routing_table.try_resolve_addr(&routing_path) {
-                        Some(routing_addr) => {
-                            match routing_table.try_resolve_endpoint(&routing_addr) {
-                                Some(registrator) => registrator,
-                                None => {
-                                    unimplemented!()
+        loop {
+            let request: Option<DownlinkRoutingRequest<Path>> = select! {
+                client_req = client_rx.next() => client_req,
+                _ = stop_rx => None
+            };
+
+            if let Some(ss) = request {
+                match ss {
+                    DownlinkRoutingRequest::Connect {
+                        target,
+                        request,
+                        conn_type,
+                    } => {
+                        let routing_path = RoutingPath::try_from(AddressableWrapper(
+                            target.clone(),
+                        ))
+                        .map_err(|err| {
+                            ConnectionError::Resolution(ResolutionError::unresolvable(
+                                target.to_string(),
+                            ))
+                        })?;
+
+                        let registrator = match routing_table.try_resolve_addr(&routing_path) {
+                            Some(routing_addr) => {
+                                match routing_table.try_resolve_endpoint(&routing_addr) {
+                                    Some(registrator) => registrator,
+                                    None => {
+                                        unreachable!()
+                                    }
                                 }
                             }
-                        }
-                        None => {
-                            let routing_address = RoutingAddr::client(counter);
-                            counter += 1;
+                            None => {
+                                let routing_address = RoutingAddr::client(counter);
+                                counter += 1;
 
-                            let client_router =
-                                client_router_factory.create_for(routing_address.clone());
-                            let (registrator, registrator_task) = ConnectionRegistrator::new(
-                                buffer_size,
-                                target.clone(),
-                                client_router,
-                            );
-                            spawn(registrator_task.run());
+                                let client_router =
+                                    client_router_factory.create_for(routing_address.clone());
+                                let (registrator, registrator_task) = ConnectionRegistrator::new(
+                                    buffer_size,
+                                    target.clone(),
+                                    client_router,
+                                    stop_trigger.clone(),
+                                );
+                                registrator_handles.push(spawn(registrator_task.run()));
 
-                            routing_table.add_registrator(
-                                routing_path,
-                                routing_address,
-                                registrator.clone(),
-                            );
+                                routing_table.add_registrator(
+                                    routing_path,
+                                    routing_address,
+                                    registrator.clone(),
+                                );
 
-                            registrator
-                        }
-                    };
+                                registrator
+                            }
+                        };
 
-                    let connection = registrator.request_connection(target, conn_type).await;
-                    request.send(connection);
-                }
-                DownlinkRoutingRequest::Endpoint { addr, request } => {
-                    match routing_table.try_resolve_endpoint(&addr) {
-                        Some(registrator) => {
-                            registrator
-                                .registrator_tx
-                                .send(RegistratorRequest::Resolve { request })
-                                .await;
-                        }
-                        None => {
-                            request.send(Err(Unresolvable(addr)));
+                        let connection = registrator.request_connection(target, conn_type).await;
+                        request.send(connection);
+                    }
+                    DownlinkRoutingRequest::Endpoint { addr, request } => {
+                        match routing_table.try_resolve_endpoint(&addr) {
+                            Some(registrator) => {
+                                registrator
+                                    .registrator_tx
+                                    .send(RegistratorRequest::Resolve { request })
+                                    .await;
+                            }
+                            None => {
+                                request.send(Err(Unresolvable(addr)));
+                            }
                         }
                     }
                 }
+            } else {
+                for handle in registrator_handles {
+                    handle.await;
+                }
+
+                return Ok(());
             }
         }
-
-        Ok(())
     }
 }
 
@@ -303,6 +310,7 @@ impl<Path: Addressable> ConnectionRegistrator<Path> {
         buffer_size: NonZeroUsize,
         target: Path,
         client_router: ClientRouter<Path, DelegateRouter>,
+        stop_trigger: CloseReceiver,
     ) -> (
         ConnectionRegistrator<Path>,
         ConnectionRegistratorTask<Path, DelegateRouter>,
@@ -311,7 +319,13 @@ impl<Path: Addressable> ConnectionRegistrator<Path> {
 
         (
             ConnectionRegistrator { registrator_tx },
-            ConnectionRegistratorTask::new(buffer_size, target, registrator_rx, client_router),
+            ConnectionRegistratorTask::new(
+                buffer_size,
+                target,
+                registrator_rx,
+                client_router,
+                stop_trigger,
+            ),
         )
     }
 
@@ -333,11 +347,18 @@ enum RegistrationTarget {
     Local(String),
 }
 
+enum ConnectionRegistratorEvent<Path: Addressable> {
+    Message(TaggedEnvelope),
+    Request(RegistratorRequest<Path>),
+    ConnectionDropped(Arc<ConnectionDropped>),
+}
+
 struct ConnectionRegistratorTask<Path: Addressable, DelegateRouter: Router> {
     buffer_size: NonZeroUsize,
     target: RegistrationTarget,
     registrator_rx: mpsc::Receiver<RegistratorRequest<Path>>,
     client_router: ClientRouter<Path, DelegateRouter>,
+    stop_trigger: CloseReceiver,
 }
 
 impl<Path: Addressable, DelegateRouter: Router> ConnectionRegistratorTask<Path, DelegateRouter> {
@@ -346,6 +367,7 @@ impl<Path: Addressable, DelegateRouter: Router> ConnectionRegistratorTask<Path, 
         target: Path,
         registrator_rx: mpsc::Receiver<RegistratorRequest<Path>>,
         client_router: ClientRouter<Path, DelegateRouter>,
+        stop_trigger: CloseReceiver,
     ) -> Self {
         match target.host() {
             Some(url) => ConnectionRegistratorTask {
@@ -353,12 +375,14 @@ impl<Path: Addressable, DelegateRouter: Router> ConnectionRegistratorTask<Path, 
                 target: RegistrationTarget::Remote(url),
                 registrator_rx,
                 client_router,
+                stop_trigger,
             },
             None => ConnectionRegistratorTask {
                 buffer_size,
                 target: RegistrationTarget::Local(target.node().to_string()),
                 registrator_rx,
                 client_router,
+                stop_trigger,
             },
         }
     }
@@ -370,53 +394,90 @@ impl<Path: Addressable, DelegateRouter: Router> ConnectionRegistratorTask<Path, 
             target,
             registrator_rx,
             mut client_router,
+            stop_trigger,
         } = self;
 
-        let (sender, receiver, maybe_raw_route) = match target {
+        let (sender, receiver, maybe_raw_route, remote_drop_rx, local_drop_tx) = match target {
             RegistrationTarget::Remote(target) => {
-                let BidirectionalRoute { sender, receiver } =
-                    client_router.resolve_bidirectional(target).await.unwrap();
+                //Todo dm implement retry
+                let BidirectionalRoute {
+                    sender,
+                    receiver,
+                    on_drop: remote_drop_rx,
+                } = client_router.resolve_bidirectional(target).await.unwrap();
 
-                (sender, receiver, None)
+                (sender, receiver, None, remote_drop_rx, None)
             }
             RegistrationTarget::Local(target) => {
                 let relative_uri = RelativeUri::try_from(format!("{}", target)).unwrap();
                 let routing_addr = client_router.lookup(None, relative_uri).await.unwrap();
-                //Todo dm handle `on_drop`
-                let Route { sender, on_drop } =
-                    client_router.resolve_sender(routing_addr).await.unwrap();
 
-                //Todo dm on_drop_tx not used
-                let (on_drop_tx, on_drop_rx) = promise::promise();
+                //Todo dm implement retry
+                let Route {
+                    sender,
+                    on_drop: remote_drop_rx,
+                } = client_router.resolve_sender(routing_addr).await.unwrap();
+
+                let (local_drop_tx, local_drop_rx) = promise::promise();
                 let (envelope_sender, envelope_receiver) = mpsc::channel(buffer_size.get());
-                let raw_route = RawRoute::new(envelope_sender, on_drop_rx);
+                let raw_route = RawRoute::new(envelope_sender, local_drop_rx);
 
-                (sender, envelope_receiver, Some(raw_route))
+                (
+                    sender,
+                    envelope_receiver,
+                    Some(raw_route),
+                    remote_drop_rx,
+                    Some(local_drop_tx),
+                )
             }
         };
 
         let mut receiver = ReceiverStream::new(receiver).fuse();
         let mut registrator_rx = ReceiverStream::new(registrator_rx).fuse();
+        let mut remote_drop_rx = remote_drop_rx.fuse();
+        let mut stop_rx = stop_trigger.fuse();
+
+        //Todo dm swap the vector with a hashmap
         let mut subscribers: HashMap<RelativePath, Vec<mpsc::Sender<RouterEvent>>> = HashMap::new();
 
         loop {
-            let request: Either<Option<TaggedEnvelope>, Option<RegistratorRequest<Path>>> = select! {
-                message = receiver.next() => Either::Left(message),
-                req = registrator_rx.next() => Either::Right(req),
+            let request: Option<ConnectionRegistratorEvent<Path>> = select! {
+                message = receiver.next() => message.map(ConnectionRegistratorEvent::Message),
+                req = registrator_rx.next() => req.map(ConnectionRegistratorEvent::Request),
+                conn_err = remote_drop_rx => {
+                    match conn_err{
+                        Ok(conn_err) => Some(ConnectionRegistratorEvent::ConnectionDropped(conn_err)),
+                        Err(_) => None,
+                    }
+                }
+                _ = stop_rx => None,
             };
 
             match request {
-                Either::Left(Some(envelope)) => {
+                Some(ConnectionRegistratorEvent::Message(envelope)) => {
                     let incoming_message = envelope.1.clone().into_incoming().unwrap();
-                    let subscribers = subscribers.get(&incoming_message.path).unwrap();
+                    let subscribers = subscribers.get_mut(&incoming_message.path).unwrap();
 
-                    //Todo dm use futures unordered
-                    for sub in subscribers {
-                        sub.send(RouterEvent::Message(incoming_message.clone()))
-                            .await;
+                    let futures = FuturesUnordered::new();
+
+                    for (idx, sub) in subscribers.iter().enumerate() {
+                        let msg = incoming_message.clone();
+
+                        futures.push(async move {
+                            let result = sub.send(RouterEvent::Message(msg)).await;
+                            (idx, result)
+                        });
+                    }
+
+                    let results = futures.collect::<Vec<_>>().await;
+
+                    for result in results {
+                        if let (idx, Err(_)) = result {
+                            subscribers.remove(idx);
+                        }
                     }
                 }
-                Either::Right(Some(RegistratorRequest::Connect {
+                Some(ConnectionRegistratorEvent::Request(RegistratorRequest::Connect {
                     tx,
                     path,
                     conn_type: ConnectionType::Full,
@@ -436,254 +497,30 @@ impl<Path: Addressable, DelegateRouter: Router> ConnectionRegistratorTask<Path, 
 
                     tx.send(Ok((sender.clone(), Some(receiver))));
                 }
-                Either::Right(Some(RegistratorRequest::Connect {
+                Some(ConnectionRegistratorEvent::Request(RegistratorRequest::Connect {
                     tx,
                     path,
                     conn_type: ConnectionType::Outgoing,
                 })) => {
                     tx.send(Ok((sender.clone(), None)));
                 }
-                Either::Right(Some(RegistratorRequest::Resolve { request }))
-                    if maybe_raw_route.is_some() =>
-                {
+                Some(ConnectionRegistratorEvent::Request(RegistratorRequest::Resolve {
+                    request,
+                })) if maybe_raw_route.is_some() => {
                     request.send(Ok(maybe_raw_route.as_ref().unwrap().clone()));
                 }
-                _ => {
-                    //Todo dm closing
-                    // on_drop_tx.provide(ConnectionDropped::Closed);
+                Some(ConnectionRegistratorEvent::ConnectionDropped(connection_dropped)) => {
+                    //Todo dm reconnect if possible
                     unimplemented!()
+                }
+                _ => {
+                    if let Some(local_drop_tx) = local_drop_tx {
+                        local_drop_tx.provide(ConnectionDropped::Closed);
+                    }
+
+                    return;
                 }
             }
         }
     }
 }
-
-// /// Connection pool message wraps a message from a remote host.
-// #[derive(Debug)]
-// pub(crate) struct ConnectionPoolMessage {
-//     /// The URL of the remote host.
-//     host: Host,
-//     /// The message from the remote host.
-//     message: String,
-// }
-//
-//
-// enum RequestType<Path: Addressable> {
-//     Connect(ConnectionRequest<Path>),
-//     Prune,
-//     Close,
-// }
-//
-// fn combine_connection_streams<Path: Addressable>(
-//     connection_requests_rx: mpsc::Receiver<ConnectionRequest<Path>>,
-//     close_requests_rx: mpsc::Receiver<()>,
-// ) -> impl stream::Stream<Item = RequestType<Path>> + Send + 'static {
-//     let connection_requests = ReceiverStream::new(connection_requests_rx).map(RequestType::Connect);
-//     let close_request = ReceiverStream::new(close_requests_rx).map(|_| RequestType::Close);
-//
-//     stream::select(connection_requests, close_request)
-// }
-//
-// struct SendTask {
-//     stopped: Arc<AtomicBool>,
-//     write_sink: mpsc::Sender<TaggedEnvelope>,
-//     rx: mpsc::Receiver<Envelope>,
-// }
-//
-// impl SendTask {
-//     fn new(
-//         write_sink: mpsc::Sender<TaggedEnvelope>,
-//         rx: mpsc::Receiver<Envelope>,
-//         stopped: Arc<AtomicBool>,
-//     ) -> Self {
-//         SendTask {
-//             stopped,
-//             write_sink,
-//             rx,
-//         }
-//     }
-//
-//     async fn run(self) -> Result<(), ConnectionError> {
-//         let SendTask {
-//             stopped,
-//             write_sink,
-//             rx,
-//         } = self;
-//
-//         let mut recv_stream = ReceiverStream::new(rx);
-//
-//         loop {
-//             match recv_stream.next().await {
-//                 Some(env) => write_sink
-//                     .send(TaggedEnvelope(RoutingAddr::client(), env))
-//                     .await
-//                     .map_err(|_| ConnectionError::Closed(CloseError::unexpected()))?,
-//                 None => {
-//                     stopped.store(true, Ordering::Release);
-//                     return Err(ConnectionError::Closed(CloseError::unexpected()));
-//                 }
-//             }
-//         }
-//     }
-// }
-//
-// struct ReceiveTask<S>
-// where
-//     S: Stream<Item = Envelope> + Send + Unpin + 'static,
-// {
-//     stopped: Arc<AtomicBool>,
-//     read_stream: S,
-//     tx: mpsc::Sender<Envelope>,
-// }
-//
-// impl<S> ReceiveTask<S>
-// where
-//     S: Stream<Item = Envelope> + Send + Unpin + 'static,
-// {
-//     fn new(read_stream: S, tx: mpsc::Sender<Envelope>, stopped: Arc<AtomicBool>) -> Self {
-//         ReceiveTask {
-//             stopped,
-//             read_stream,
-//             tx,
-//         }
-//     }
-//
-//     async fn run(self) -> Result<(), ConnectionError> {
-//         let ReceiveTask {
-//             stopped,
-//             mut read_stream,
-//             tx,
-//         } = self;
-//
-//         loop {
-//             match read_stream.next().await {
-//                 Some(message) => {
-//                     tx.send(message)
-//                         .await
-//                         .map_err(|_| ConnectionError::Closed(CloseError::unexpected()))?;
-//                 }
-//                 None => {
-//                     stopped.store(true, Ordering::Release);
-//                     return Err(ConnectionError::Closed(CloseError::unexpected()));
-//                 }
-//             }
-//         }
-//     }
-// }
-//
-// struct InnerConnection {
-//     conn: ClientConnection,
-//     last_accessed: Instant,
-// }
-//
-// impl InnerConnection {
-//     pub fn as_conenction_sender(&self) -> ConnectionSender {
-//         ConnectionSender {
-//             tx: self.conn.tx.clone(),
-//         }
-//     }
-//
-//     pub fn from(
-//         mut conn: ClientConnection,
-//     ) -> Result<(InnerConnection, ConnectionSender, mpsc::Receiver<Envelope>), ConnectionError>
-//     {
-//         let sender = ConnectionSender {
-//             tx: conn.tx.clone(),
-//         };
-//         let receiver = conn
-//             .rx
-//             .take()
-//             .ok_or_else(|| ConnectionError::Closed(CloseError::unexpected()))?;
-//
-//         let inner = InnerConnection {
-//             conn,
-//             last_accessed: Instant::now(),
-//         };
-//         Ok((inner, sender, receiver))
-//     }
-//     pub fn stopped(&self) -> bool {
-//         self.conn.stopped.load(Ordering::Acquire)
-//     }
-// }
-//
-// /// Connection to a remote host.
-// pub struct ClientConnection {
-//     stopped: Arc<AtomicBool>,
-//     tx: mpsc::Sender<Envelope>,
-//     rx: Option<mpsc::Receiver<Envelope>>,
-//     _send_handle: TaskHandle<Result<(), ConnectionError>>,
-//     _receive_handle: TaskHandle<Result<(), ConnectionError>>,
-// }
-//
-// impl ClientConnection {
-//     async fn new<Path: Addressable>(
-//         target: Path,
-//         buffer_size: usize,
-//         client_conn_request_tx: &mpsc::Sender<ClientRequest<Path>>,
-//     ) -> Result<ClientConnection, ConnectionError> {
-//         let (sender_tx, sender_rx) = mpsc::channel(buffer_size);
-//         let (receiver_tx, receiver_rx) = mpsc::channel(buffer_size);
-//
-//         let (tx, rx) = oneshot::channel();
-//         client_conn_request_tx
-//             .send(ClientRequest::Subscribe {
-//                 target,
-//                 request: Request::new(tx),
-//             })
-//             .await
-//             .map_err(|_| ConnectionError::Resolution(ResolutionError::router_dropped()))?;
-//
-//         let (raw_route, stream) = rx
-//             .await
-//             .map_err(|_| ConnectionError::Resolution(ResolutionError::router_dropped()))??;
-//
-//         let write_sink = raw_route.sender;
-//         let read_stream = ReceiverStream::new(stream).fuse();
-//
-//         let stopped = Arc::new(AtomicBool::new(false));
-//
-//         let receive = ReceiveTask::new(read_stream, receiver_tx, stopped.clone());
-//         let send = SendTask::new(write_sink, sender_rx, stopped.clone());
-//
-//         let send_handler = spawn(send.run());
-//         let receive_handler = spawn(receive.run());
-//
-//         Ok(ClientConnection {
-//             stopped,
-//             tx: sender_tx,
-//             rx: Some(receiver_rx),
-//             _send_handle: send_handler,
-//             _receive_handle: receive_handler,
-//         })
-//     }
-// }
-//
-
-//
-// impl ConnectionSender {
-//     /// Crate-only function for creating a sender. Useful for unit testing.
-//     #[doc(hidden)]
-//     #[allow(dead_code)]
-//     pub(crate) fn new(tx: mpsc::Sender<Envelope>) -> ConnectionSender {
-//         ConnectionSender { tx }
-//     }
-//
-//     /// Sends a message asynchronously to the remote host of the connection.
-//     ///
-//     /// # Arguments
-//     ///
-//     /// * `message`         - Message to be sent to the remote host.
-//     ///
-//     /// # Returns
-//     ///
-//     /// `Ok` if the message has been sent.
-//     /// `SendError` if it failed.
-//     pub async fn send_message(&mut self, message: Envelope) -> Result<(), SendError<Envelope>> {
-//         self.tx.send(message).await
-//     }
-//
-//     pub fn try_send(&mut self, message: Envelope) -> Result<(), TrySendError<Envelope>> {
-//         self.tx.try_send(message)
-//     }
-// }
-//

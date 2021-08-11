@@ -233,7 +233,7 @@ impl<T: Addressable> TryFrom<AddressableWrapper<T>> for RoutingPath {
 
 pub(crate) struct RoutingTable<Path: Addressable> {
     addresses: HashMap<RoutingPath, RoutingAddr>,
-    endpoints: HashMap<RoutingAddr, ConnectionRegistrator<Path>>,
+    pub(crate) endpoints: HashMap<RoutingAddr, ConnectionRegistrator<Path>>,
 }
 
 impl<Path: Addressable> RoutingTable<Path> {

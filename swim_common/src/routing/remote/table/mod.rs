@@ -138,6 +138,7 @@ impl RoutingTable {
         self.endpoints.get(&addr).map(|h| BidirectionalRegistrator {
             sender: TaggedSender::new(addr, h.tx.clone()),
             receiver_request_tx: h.bidirectional_request_tx.clone(),
+            on_drop: h.drop_rx.clone(),
         })
     }
 
@@ -149,7 +150,7 @@ impl RoutingTable {
         sock_addr: SchemeSocketAddr,
         tx: mpsc::Sender<TaggedEnvelope>,
         bidirectional_request_tx: mpsc::Sender<BidirectionalReceiverRequest>,
-    ) {
+    ) -> BidirectionalRegistrator {
         let RoutingTable {
             open_sockets,
             resolved_forward,
@@ -165,10 +166,20 @@ impl RoutingTable {
             hosts.insert(host);
         }
 
+        let handle = Handle::new(tx, bidirectional_request_tx, sock_addr, hosts);
+
+        let bidirectional_registrator = BidirectionalRegistrator {
+            sender: TaggedSender::new(addr, handle.tx.clone()),
+            receiver_request_tx: handle.bidirectional_request_tx.clone(),
+            on_drop: handle.drop_rx.clone(),
+        };
+
         endpoints.insert(
             addr,
-            Handle::new(tx, bidirectional_request_tx, sock_addr, hosts),
+            handle,
         );
+
+        bidirectional_registrator
     }
 
     /// Associate another hose/port combination with a socket address that already has an entry in
@@ -228,16 +239,19 @@ impl RoutingTable {
 pub struct BidirectionalRegistrator {
     sender: TaggedSender,
     receiver_request_tx: mpsc::Sender<BidirectionalReceiverRequest>,
+    on_drop: promise::Receiver<ConnectionDropped>,
 }
 
 impl BidirectionalRegistrator {
     pub fn new(
         sender: TaggedSender,
         receiver_request_tx: mpsc::Sender<BidirectionalReceiverRequest>,
+        on_drop: promise::Receiver<ConnectionDropped>,
     ) -> Self {
         BidirectionalRegistrator {
             sender,
             receiver_request_tx,
+            on_drop,
         }
     }
 
@@ -249,7 +263,7 @@ impl BidirectionalRegistrator {
             .unwrap();
 
         match rx.await {
-            Ok(receiver) => Ok(BidirectionalRoute::new(self.sender, receiver)),
+            Ok(receiver) => Ok(BidirectionalRoute::new(self.sender, receiver, self.on_drop)),
             Err(_) => Err(ResolutionError::router_dropped()),
         }
     }

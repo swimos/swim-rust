@@ -131,13 +131,14 @@ impl SwimClientBuilder {
             OpenEndedFutures::new(),
             RemoteConnectionChannels::new(remote_tx, remote_rx, close_rx.clone()),
         )
-            .await;
+        .await;
 
         // The connection pool handles the connections behnid the downlinks
         let (connection_pool, pool_task) = SwimConnPool::new(
             client_params.conn_pool_params,
             (client_tx, client_rx),
             client_router_factory,
+            close_rx.clone(),
         );
 
         // The downlinks are state machines and request connections from the pool
@@ -150,7 +151,7 @@ impl SwimClientBuilder {
                 remote_connections_task.run(),
                 pool_task.run(),
             )
-                .0
+            .0
         });
 
         (
@@ -194,13 +195,14 @@ impl SwimClientBuilder {
             OpenEndedFutures::new(),
             RemoteConnectionChannels::new(remote_tx, remote_rx, close_rx.clone()),
         )
-            .await;
+        .await;
 
         // The connection pool handles the connections behnid the downlinks
         let (connection_pool, pool_task) = SwimConnPool::new(
             client_params.conn_pool_params,
             (client_tx, client_rx),
             client_router_factory,
+            close_rx.clone(),
         );
 
         // The downlinks are state machines and request connections from the pool
@@ -213,7 +215,7 @@ impl SwimClientBuilder {
                 remote_connections_task.run(),
                 pool_task.run(),
             )
-                .0
+            .0
         });
 
         (
@@ -312,8 +314,8 @@ impl<Path: Addressable> SwimClient<Path> {
         path: Path,
         initial: T,
     ) -> Result<(TypedValueDownlink<T>, ValueDownlinkReceiver<T>), ClientError<Path>>
-        where
-            T: ValidatedForm + Send + 'static,
+    where
+        T: ValidatedForm + Send + 'static,
     {
         self.downlinks
             .subscribe_value(initial, path)
@@ -326,9 +328,9 @@ impl<Path: Addressable> SwimClient<Path> {
         &self,
         path: Path,
     ) -> Result<(TypedMapDownlink<K, V>, MapDownlinkReceiver<K, V>), ClientError<Path>>
-        where
-            K: ValidatedForm + Send + 'static,
-            V: ValidatedForm + Send + 'static,
+    where
+        K: ValidatedForm + Send + 'static,
+        V: ValidatedForm + Send + 'static,
     {
         self.downlinks
             .subscribe_map(path)
@@ -341,8 +343,8 @@ impl<Path: Addressable> SwimClient<Path> {
         &self,
         path: Path,
     ) -> Result<TypedCommandDownlink<T>, ClientError<Path>>
-        where
-            T: ValidatedForm + Send + 'static,
+    where
+        T: ValidatedForm + Send + 'static,
     {
         self.downlinks
             .subscribe_command(path)
@@ -356,8 +358,8 @@ impl<Path: Addressable> SwimClient<Path> {
         path: Path,
         violations: SchemaViolations,
     ) -> Result<TypedEventDownlink<T>, ClientError<Path>>
-        where
-            T: ValidatedForm + Send + 'static,
+    where
+        T: ValidatedForm + Send + 'static,
     {
         self.downlinks
             .subscribe_event(path, violations)
