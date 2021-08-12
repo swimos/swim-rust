@@ -73,6 +73,10 @@ impl<T> HashIndexer<T> {
         &self.items
     }
 
+    pub fn items_mut(&mut self) -> &mut HashMap<u32, T> {
+        &mut self.items
+    }
+
     pub fn into_items(self) -> HashMap<u32, T> {
         self.items
     }

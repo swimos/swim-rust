@@ -25,7 +25,7 @@ use swim_client::downlink::Downlinks;
 use swim_client::interface::SwimClientBuilder;
 use swim_common::routing::error::ResolutionError;
 use swim_common::routing::error::RouterError;
-use swim_common::routing::{Origin, Route, Router, RoutingAddr, BidirectionalRoute};
+use swim_common::routing::{BidirectionalRoute, Origin, Route, Router, RoutingAddr};
 use swim_runtime::task;
 use swim_runtime::time::clock::Clock;
 use tokio::sync::mpsc;

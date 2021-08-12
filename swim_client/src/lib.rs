@@ -21,7 +21,6 @@
 //! - `websocket`: Provides a WebSocket connector that works on non-WASM platforms.
 
 
-//Todo dm maybe leave only the interface public
 pub mod configuration;
 pub mod connections;
 pub mod downlink;

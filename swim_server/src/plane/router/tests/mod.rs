@@ -86,7 +86,8 @@ async fn plane_router_factory() {
 
     let (remote_tx, _remote_rx) = mpsc::channel(8);
     let (client_tx, _client_rx) = mpsc::channel(8);
-    let top_level_router_factory = TopLevelServerRouterFactory::new(req_tx.clone(), client_tx, remote_tx);
+    let top_level_router_factory =
+        TopLevelServerRouterFactory::new(req_tx.clone(), client_tx, remote_tx);
 
     let fac = PlaneRouterFactory::new(req_tx, top_level_router_factory);
     let router = fac.create_for(RoutingAddr::plane(56));

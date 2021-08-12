@@ -116,10 +116,7 @@ impl MockRouter {
 }
 
 impl Router for MockRouter {
-    fn resolve_sender(
-        &mut self,
-        addr: RoutingAddr,
-    ) -> BoxFuture<Result<Route, ResolutionError>> {
+    fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>> {
         async move {
             let MockRouter { inner, drop_rx, .. } = self;
             let route = Route::new(TaggedSender::new(addr, inner.clone()), drop_rx.clone());

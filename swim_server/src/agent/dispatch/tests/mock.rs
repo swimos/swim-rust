@@ -96,10 +96,7 @@ impl MockRouterInner {
 pub struct MockRouter(Arc<Mutex<MockRouterInner>>);
 
 impl Router for MockRouter {
-    fn resolve_sender(
-        &mut self,
-        addr: RoutingAddr,
-    ) -> BoxFuture<Result<Route, ResolutionError>> {
+    fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>> {
         async move {
             let mut lock = self.0.lock();
             let MockRouterInner {

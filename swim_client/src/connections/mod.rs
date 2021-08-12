@@ -55,6 +55,7 @@ use tokio::time;
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{instrument, trace};
 use url::{Host, Url};
+use utilities::hash_indexer::HashIndexer;
 use utilities::sync::promise;
 use utilities::sync::promise::PromiseError;
 use utilities::uri::RelativeUri;
@@ -338,7 +339,8 @@ impl<Path: Addressable> ConnectionRegistrator<Path> {
                 conn_type,
             })
             .await;
-        rx.await.unwrap()
+        rx.await
+            .map_err(|_| ConnectionError::Resolution(ResolutionError::router_dropped()))?
     }
 }
 
@@ -387,8 +389,7 @@ impl<Path: Addressable, DelegateRouter: Router> ConnectionRegistratorTask<Path, 
         }
     }
 
-    //Todo dm remove unwraps
-    async fn run(self) {
+    async fn run(self) -> Result<(), ConnectionError> {
         let ConnectionRegistratorTask {
             buffer_size,
             target,
@@ -404,19 +405,34 @@ impl<Path: Addressable, DelegateRouter: Router> ConnectionRegistratorTask<Path, 
                     sender,
                     receiver,
                     on_drop: remote_drop_rx,
-                } = client_router.resolve_bidirectional(target).await.unwrap();
+                } = client_router
+                    .resolve_bidirectional(target)
+                    .await
+                    .map_err(|err| ConnectionError::Resolution(err))?;
 
                 (sender, receiver, None, remote_drop_rx, None)
             }
             RegistrationTarget::Local(target) => {
-                let relative_uri = RelativeUri::try_from(format!("{}", target)).unwrap();
-                let routing_addr = client_router.lookup(None, relative_uri).await.unwrap();
+                let relative_uri = RelativeUri::try_from(target).map_err(|e| {
+                    ConnectionError::Resolution(ResolutionError::unresolvable(e.to_string()))
+                })?;
 
                 //Todo dm implement retry
+                let routing_addr = client_router
+                    .lookup(None, relative_uri.clone())
+                    .await
+                    .map_err(|_| {
+                        ConnectionError::Resolution(ResolutionError::unresolvable(
+                            relative_uri.to_string(),
+                        ))
+                    })?;
                 let Route {
                     sender,
                     on_drop: remote_drop_rx,
-                } = client_router.resolve_sender(routing_addr).await.unwrap();
+                } = client_router
+                    .resolve_sender(routing_addr)
+                    .await
+                    .map_err(|err| ConnectionError::Resolution(err))?;
 
                 let (local_drop_tx, local_drop_rx) = promise::promise();
                 let (envelope_sender, envelope_receiver) = mpsc::channel(buffer_size.get());
@@ -437,8 +453,8 @@ impl<Path: Addressable, DelegateRouter: Router> ConnectionRegistratorTask<Path, 
         let mut remote_drop_rx = remote_drop_rx.fuse();
         let mut stop_rx = stop_trigger.fuse();
 
-        //Todo dm swap the vector with a hashmap
-        let mut subscribers: HashMap<RelativePath, Vec<mpsc::Sender<RouterEvent>>> = HashMap::new();
+        let mut subscribers: HashMap<RelativePath, HashIndexer<mpsc::Sender<RouterEvent>>> =
+            HashMap::new();
 
         loop {
             let request: Option<ConnectionRegistratorEvent<Path>> = select! {
@@ -455,25 +471,26 @@ impl<Path: Addressable, DelegateRouter: Router> ConnectionRegistratorTask<Path, 
 
             match request {
                 Some(ConnectionRegistratorEvent::Message(envelope)) => {
-                    let incoming_message = envelope.1.clone().into_incoming().unwrap();
-                    let subscribers = subscribers.get_mut(&incoming_message.path).unwrap();
+                    if let Ok(incoming_message) = envelope.1.clone().into_incoming() {
+                        if let Some(subscribers) = subscribers.get_mut(&incoming_message.path) {
+                            let futures = FuturesUnordered::new();
 
-                    let futures = FuturesUnordered::new();
+                            for (idx, sub) in subscribers.items() {
+                                let msg = incoming_message.clone();
 
-                    for (idx, sub) in subscribers.iter().enumerate() {
-                        let msg = incoming_message.clone();
+                                futures.push(async move {
+                                    let result = sub.send(RouterEvent::Message(msg)).await;
+                                    (*idx, result)
+                                });
+                            }
 
-                        futures.push(async move {
-                            let result = sub.send(RouterEvent::Message(msg)).await;
-                            (idx, result)
-                        });
-                    }
+                            let results = futures.collect::<Vec<_>>().await;
 
-                    let results = futures.collect::<Vec<_>>().await;
-
-                    for result in results {
-                        if let (idx, Err(_)) = result {
-                            subscribers.remove(idx);
+                            for result in results {
+                                if let (idx, Err(_)) = result {
+                                    subscribers.remove(idx);
+                                }
+                            }
                         }
                     }
                 }
@@ -485,12 +502,15 @@ impl<Path: Addressable, DelegateRouter: Router> ConnectionRegistratorTask<Path, 
                     let receiver = match subscribers.entry(path.relative_path()) {
                         Entry::Occupied(mut entry) => {
                             let (tx, rx) = mpsc::channel(buffer_size.get());
-                            entry.get_mut().push(tx);
+                            entry.get_mut().insert(tx);
                             rx
                         }
                         Entry::Vacant(vacancy) => {
                             let (tx, rx) = mpsc::channel(buffer_size.get());
-                            vacancy.insert(vec![tx]);
+                            let mut hash_indexer = HashIndexer::new();
+                            hash_indexer.insert(tx);
+
+                            vacancy.insert(hash_indexer);
                             rx
                         }
                     };
@@ -510,7 +530,7 @@ impl<Path: Addressable, DelegateRouter: Router> ConnectionRegistratorTask<Path, 
                     request.send(Ok(maybe_raw_route.as_ref().unwrap().clone()));
                 }
                 Some(ConnectionRegistratorEvent::ConnectionDropped(connection_dropped)) => {
-                    //Todo dm reconnect if possible
+                    //Todo dm implement retry
                     unimplemented!()
                 }
                 _ => {
@@ -518,7 +538,7 @@ impl<Path: Addressable, DelegateRouter: Router> ConnectionRegistratorTask<Path, 
                         local_drop_tx.provide(ConnectionDropped::Closed);
                     }
 
-                    return;
+                    return Ok(());
                 }
             }
         }

@@ -56,6 +56,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, Level};
 use utilities::errors::Recoverable;
 use utilities::future::retryable::strategy::RetryStrategy;
+use utilities::hash_indexer::HashIndexer;
 use utilities::sync::trigger;
 use utilities::task::Spawner;
 use utilities::uri::{BadRelativeUri, RelativeUri};
@@ -163,7 +164,7 @@ where
 
         let outgoing_payloads = ReceiverStream::new(messages).map(Into::into);
         let mut bidirectional_request_rx = ReceiverStream::new(bidirectional_request_rx).fuse();
-        let mut bidirectional_connections = vec![];
+        let mut bidirectional_connections = HashIndexer::new();
 
         let mut selector = WsStreamSelector::new(
             &mut ws_stream,
@@ -208,7 +209,7 @@ where
                 match event {
                     Either::Left(receiver_request) => {
                         let (tx, rx) = mpsc::channel(config.channel_buffer_size.get());
-                        bidirectional_connections.push(TaggedSender::new(tag, tx));
+                        bidirectional_connections.insert(TaggedSender::new(tag, tx));
                         receiver_request.send(rx);
                     }
                     Either::Right(Ok(SelectorResult::Read(msg))) => match msg {
@@ -373,7 +374,7 @@ impl From<RouterError> for DispatchError {
 
 async fn dispatch_envelope<R, F, D>(
     router: &mut R,
-    bidirectional_connections: &mut Vec<TaggedSender>,
+    bidirectional_connections: &mut HashIndexer<TaggedSender>,
     resolved: &mut HashMap<RelativePath, Route>,
     mut envelope: Envelope,
     mut retry_strategy: RetryStrategy,
@@ -412,7 +413,7 @@ where
 
 async fn try_dispatch_envelope<R>(
     router: &mut R,
-    bidirectional_connections: &mut Vec<TaggedSender>,
+    bidirectional_connections: &mut HashIndexer<TaggedSender>,
     resolved: &mut HashMap<RelativePath, Route>,
     envelope: Envelope,
 ) -> Result<(), (Envelope, DispatchError)>
@@ -422,12 +423,22 @@ where
     if envelope.header.is_response() {
         let futures = FuturesUnordered::new();
 
-        for conn in bidirectional_connections {
-            futures.push(conn.send_item(envelope.clone()))
+        for (idx, conn) in bidirectional_connections.items_mut() {
+            let envelope = envelope.clone();
+
+            futures.push(async move {
+                let result = conn.send_item(envelope).await;
+                (*idx, result)
+            });
         }
 
-        //Todo dm remove bidirectional connections that have closed
         let results = futures.collect::<Vec<_>>().await;
+
+        for result in results {
+            if let (idx, Err(_)) = result {
+                bidirectional_connections.remove(idx);
+            }
+        }
 
         Ok(())
     } else {

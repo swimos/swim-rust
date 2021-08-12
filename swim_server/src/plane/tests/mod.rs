@@ -79,7 +79,8 @@ async fn plane_event_loop() {
 
     let (remote_tx, _remote_rx) = mpsc::channel(8);
     let (client_tx, _client_rx) = mpsc::channel(8);
-    let top_level_router_fac = TopLevelServerRouterFactory::new(context_tx.clone(), client_tx, remote_tx);
+    let top_level_router_fac =
+        TopLevelServerRouterFactory::new(context_tx.clone(), client_tx, remote_tx);
 
     let context = ContextImpl::new(context_tx.clone(), spec.routes());
 
