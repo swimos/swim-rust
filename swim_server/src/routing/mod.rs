@@ -12,9 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::plane::PlaneRequest;
-use crate::routing::error::RouterError;
-use crate::routing::remote::{RawRoute, RoutingRequest};
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use swim_client::router::DownlinkRoutingRequest;
