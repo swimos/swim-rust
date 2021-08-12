@@ -12,18 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::request::Request;
 use crate::routing::remote::table::{BidirectionalRegistrator, SchemeHostPort};
-use crate::routing::remote::{
-    BidirectionalReceiverRequest, BidirectionalRequest, ResolutionRequest, REQUEST_DROPPED,
-};
+use crate::routing::remote::{BidirectionalRequest, ResolutionRequest, REQUEST_DROPPED};
 use crate::routing::ConnectionError;
 use crate::routing::RoutingAddr;
-use either::Either;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::fmt::Debug;
-use tokio::sync::mpsc;
 
 #[cfg(test)]
 mod tests;

@@ -49,7 +49,6 @@ use swim_common::warp::envelope::Envelope;
 use swim_common::warp::path::{AbsolutePath, Addressable, Path};
 use swim_runtime::task::spawn;
 use tokio::sync::mpsc;
-use tokio_stream::wrappers::ReceiverStream;
 use tracing::info;
 use utilities::future::open_ended::OpenEndedFutures;
 use utilities::sync::promise;

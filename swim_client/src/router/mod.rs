@@ -12,44 +12,25 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::configuration::router::RouterParams;
 use crate::connections::ConnectionChannel;
 use crate::connections::ConnectionRegistrator;
 use crate::connections::ConnectionType;
-use crate::connections::{ConnectionPool, ConnectionSender};
-use either::Either;
 use futures::future::BoxFuture;
-use futures::stream::FuturesUnordered;
-use futures::{select_biased, FutureExt, StreamExt};
+use futures::FutureExt;
 use std::collections::HashMap;
 use std::convert::TryFrom;
-use std::num::NonZeroUsize;
-use std::str::FromStr;
 use swim_common::request::Request;
-use swim_common::routing::error::{
-    ConnectionError, ResolutionError, RouterError, RoutingError, Unresolvable,
-};
-use swim_common::routing::remote::table::BidirectionalRegistrator;
+use swim_common::routing::error::{ConnectionError, ResolutionError, RouterError, Unresolvable};
 use swim_common::routing::remote::table::SchemeHostPort;
 use swim_common::routing::remote::BadUrl;
 use swim_common::routing::remote::{RawRoute, RemoteRoutingRequest};
 use swim_common::routing::BidirectionalRoute;
-use swim_common::routing::{CloseReceiver, ConnectionDropped, Origin, PlaneRoutingRequest};
-use swim_common::routing::{
-    Route, Router, RouterFactory, RoutingAddr, TaggedEnvelope, TaggedSender,
-};
-use swim_common::warp::envelope::{Envelope, IncomingLinkMessage};
-use swim_common::warp::path::{AbsolutePath, Addressable, RelativePath};
-use swim_runtime::task::*;
+use swim_common::routing::{Route, Router, RouterFactory, RoutingAddr, TaggedSender};
+use swim_common::warp::envelope::IncomingLinkMessage;
+use swim_common::warp::path::{AbsolutePath, Addressable};
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
-use tokio_stream::wrappers::ReceiverStream;
-use tracing::trace_span;
-use tracing::{span, warn, Level};
-use tracing_futures::Instrument;
 use url::Url;
-use utilities::errors::Recoverable;
-use utilities::sync::promise;
 use utilities::uri::RelativeUri;
 
 #[cfg(test)]
@@ -110,8 +91,8 @@ impl Router for TopLevelClientRouter {
         async move {
             let TopLevelClientRouter {
                 remote_sender,
-                client_sender,
                 addr: tag,
+                ..
             } = self;
 
             if addr.is_remote() {
@@ -160,7 +141,7 @@ impl Router for TopLevelClientRouter {
             } else {
                 match rx.await {
                     Ok(Ok(registrator)) => registrator.register().await,
-                    Ok(Err(_)) => Err((ResolutionError::unresolvable(host.to_string()))),
+                    Ok(Err(_)) => Err(ResolutionError::unresolvable(host.to_string())),
                     Err(_) => Err(ResolutionError::router_dropped()),
                 }
             }
@@ -171,14 +152,10 @@ impl Router for TopLevelClientRouter {
     fn lookup(
         &mut self,
         host: Option<Url>,
-        route: RelativeUri,
+        _route: RelativeUri,
     ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
         async move {
-            let TopLevelClientRouter {
-                addr,
-                client_sender,
-                remote_sender,
-            } = self;
+            let TopLevelClientRouter { remote_sender, .. } = self;
 
             match host {
                 Some(host) => {
@@ -261,7 +238,7 @@ impl<Path: Addressable> RoutingTable<Path> {
         routing_addr: RoutingAddr,
         connection_registrator: ConnectionRegistrator<Path>,
     ) {
-        self.addresses.insert(routing_path, routing_addr.clone());
+        self.addresses.insert(routing_path, routing_addr);
         self.endpoints.insert(routing_addr, connection_registrator);
     }
 }
@@ -312,9 +289,7 @@ impl<Path: Addressable, DelegateRouter: Router> Router for ClientRouter<Path, De
     ) -> BoxFuture<'_, Result<Route, ResolutionError>> {
         async move {
             let ClientRouter {
-                tag,
-                request_sender,
-                delegate_router,
+                delegate_router, ..
             } = self;
 
             delegate_router.resolve_sender(addr).await
@@ -328,9 +303,7 @@ impl<Path: Addressable, DelegateRouter: Router> Router for ClientRouter<Path, De
     ) -> BoxFuture<Result<BidirectionalRoute, ResolutionError>> {
         async move {
             let ClientRouter {
-                tag,
-                request_sender,
-                delegate_router,
+                delegate_router, ..
             } = self;
 
             delegate_router.resolve_bidirectional(host).await

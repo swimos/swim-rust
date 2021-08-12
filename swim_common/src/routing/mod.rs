@@ -26,7 +26,6 @@ use futures::FutureExt;
 use std::any::Any;
 use std::collections::HashSet;
 use std::fmt::{Display, Formatter};
-use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
@@ -53,11 +52,11 @@ trait RoutingRequest {}
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum Location {
     /// Indicates that envelopes will be routed to a remote host.
-    RemoteEndpoint(u32),
+    Remote(u32),
     /// Indicates that envelopes will be routed to another agent on this host.
-    PlaneEndpoint(u32),
+    Plane(u32),
     /// Indicates that envelopes will be routed to a downlink on the client.
-    ClientEndpoint(u32),
+    Client(u32),
 }
 
 /// An opaque routing address.
@@ -66,36 +65,36 @@ pub struct RoutingAddr(Location);
 
 impl RoutingAddr {
     pub const fn remote(id: u32) -> Self {
-        RoutingAddr(Location::RemoteEndpoint(id))
+        RoutingAddr(Location::Remote(id))
     }
 
     pub const fn plane(id: u32) -> Self {
-        RoutingAddr(Location::PlaneEndpoint(id))
+        RoutingAddr(Location::Plane(id))
     }
 
     pub const fn client(id: u32) -> Self {
-        RoutingAddr(Location::ClientEndpoint(id))
+        RoutingAddr(Location::Client(id))
     }
 
     pub fn is_plane(&self) -> bool {
-        matches!(self, RoutingAddr(Location::PlaneEndpoint(_)))
+        matches!(self, RoutingAddr(Location::Plane(_)))
     }
 
     pub fn is_remote(&self) -> bool {
-        matches!(self, RoutingAddr(Location::RemoteEndpoint(_)))
+        matches!(self, RoutingAddr(Location::Remote(_)))
     }
 
     pub fn is_client(&self) -> bool {
-        matches!(self, RoutingAddr(Location::ClientEndpoint(_)))
+        matches!(self, RoutingAddr(Location::Client(_)))
     }
 }
 
 impl Display for RoutingAddr {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            RoutingAddr(Location::RemoteEndpoint(id)) => write!(f, "Remote({:X})", id),
-            RoutingAddr(Location::PlaneEndpoint(id)) => write!(f, "Plane({:X})", id),
-            RoutingAddr(Location::ClientEndpoint(id)) => write!(f, "Client({:X})", id),
+            RoutingAddr(Location::Remote(id)) => write!(f, "Remote({:X})", id),
+            RoutingAddr(Location::Plane(id)) => write!(f, "Plane({:X})", id),
+            RoutingAddr(Location::Client(id)) => write!(f, "Client({:X})", id),
         }
     }
 }

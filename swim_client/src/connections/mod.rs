@@ -17,47 +17,34 @@ use crate::router::{
     AddressableWrapper, ClientRouter, ClientRouterFactory, DownlinkRoutingRequest, RouterEvent,
     RoutingPath, RoutingTable,
 };
-use either::Either;
 use futures::future::BoxFuture;
 use futures::select;
-use futures::stream;
 use futures::stream::FuturesUnordered;
-use futures::{FutureExt, Stream, StreamExt};
+use futures::{FutureExt, StreamExt};
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::fmt::Debug;
 use std::num::NonZeroUsize;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
 use swim_common::request::request_future::RequestError;
 use swim_common::request::Request;
-use swim_common::routing::error::{
-    CloseError, ConnectionError, ResolutionError, ResolutionErrorKind, RoutingError, Unresolvable,
-};
-use swim_common::routing::remote::table::SchemeHostPort;
+use swim_common::routing::error::{CloseError, ConnectionError, ResolutionError, Unresolvable};
 use swim_common::routing::remote::RawRoute;
 use swim_common::routing::{
     BidirectionalRoute, CloseReceiver, ConnectionDropped, Route, Router, RouterFactory,
     RoutingAddr, TaggedEnvelope, TaggedSender,
 };
-use swim_common::warp::envelope::{Envelope, IncomingLinkMessage};
 use swim_common::warp::path::{Addressable, RelativePath};
 use swim_runtime::task::*;
-use swim_runtime::time::instant::Instant;
-use swim_runtime::time::interval::interval;
 use tokio::sync::mpsc;
-use tokio::sync::mpsc::error::{SendError, TrySendError};
-use tokio::sync::mpsc::Sender;
 use tokio::sync::oneshot;
-use tokio::time;
 use tokio_stream::wrappers::ReceiverStream;
-use tracing::{instrument, trace};
-use url::{Host, Url};
+use tracing::instrument;
+use tracing::{event, Level};
+use url::Url;
 use utilities::hash_indexer::HashIndexer;
 use utilities::sync::promise;
-use utilities::sync::promise::PromiseError;
 use utilities::uri::RelativeUri;
 
 #[cfg(test)]
@@ -157,10 +144,7 @@ impl<Path: Addressable> ConnectionPool for SwimConnPool<Path> {
 
 pub type ConnectionChannel = (ConnectionSender, Option<ConnectionReceiver>);
 
-pub struct ConnectionRequest<Path: Addressable> {
-    target: Path,
-    tx: oneshot::Sender<Result<ConnectionChannel, ConnectionError>>,
-}
+const REQUEST_ERROR: &str = "The request channel was dropped.";
 
 pub struct PoolTask<Path: Addressable, DelegateFac: RouterFactory> {
     client_rx: mpsc::Receiver<DownlinkRoutingRequest<Path>>,
@@ -194,7 +178,7 @@ impl<Path: Addressable, DelegateFac: RouterFactory> PoolTask<Path, DelegateFac> 
 
         let mut routing_table = RoutingTable::new();
         let mut counter: u32 = 0;
-        let mut registrator_handles = Vec::new();
+        let registrator_handles = FuturesUnordered::new();
 
         let mut client_rx = ReceiverStream::new(client_rx).fuse();
         let mut stop_rx = stop_trigger.clone().fuse();
@@ -215,7 +199,7 @@ impl<Path: Addressable, DelegateFac: RouterFactory> PoolTask<Path, DelegateFac> 
                         let routing_path = RoutingPath::try_from(AddressableWrapper(
                             target.clone(),
                         ))
-                        .map_err(|err| {
+                        .map_err(|_| {
                             ConnectionError::Resolution(ResolutionError::unresolvable(
                                 target.to_string(),
                             ))
@@ -235,7 +219,7 @@ impl<Path: Addressable, DelegateFac: RouterFactory> PoolTask<Path, DelegateFac> 
                                 counter += 1;
 
                                 let client_router =
-                                    client_router_factory.create_for(routing_address.clone());
+                                    client_router_factory.create_for(routing_address);
                                 let (registrator, registrator_task) = ConnectionRegistrator::new(
                                     buffer_size,
                                     target.clone(),
@@ -255,26 +239,35 @@ impl<Path: Addressable, DelegateFac: RouterFactory> PoolTask<Path, DelegateFac> 
                         };
 
                         let connection = registrator.request_connection(target, conn_type).await;
-                        request.send(connection);
+                        if request.send(connection).is_err() {
+                            event!(Level::WARN, REQUEST_ERROR);
+                        }
                     }
                     DownlinkRoutingRequest::Endpoint { addr, request } => {
                         match routing_table.try_resolve_endpoint(&addr) {
                             Some(registrator) => {
-                                registrator
+                                if let Err(err) = registrator
                                     .registrator_tx
                                     .send(RegistratorRequest::Resolve { request })
-                                    .await;
+                                    .await
+                                {
+                                    if let RegistratorRequest::Resolve { request } = err.0 {
+                                        if request.send(Err(Unresolvable(addr))).is_err() {
+                                            event!(Level::WARN, REQUEST_ERROR);
+                                        }
+                                    }
+                                }
                             }
                             None => {
-                                request.send(Err(Unresolvable(addr)));
+                                if request.send(Err(Unresolvable(addr))).is_err() {
+                                    event!(Level::WARN, REQUEST_ERROR);
+                                }
                             }
                         }
                     }
                 }
             } else {
-                for handle in registrator_handles {
-                    handle.await;
-                }
+                registrator_handles.collect::<Vec<_>>().await;
 
                 return Ok(());
             }
@@ -338,7 +331,8 @@ impl<Path: Addressable> ConnectionRegistrator<Path> {
                 path,
                 conn_type,
             })
-            .await;
+            .await
+            .map_err(|_| ConnectionError::Resolution(ResolutionError::router_dropped()))?;
         rx.await
             .map_err(|_| ConnectionError::Resolution(ResolutionError::router_dropped()))?
     }
@@ -408,7 +402,7 @@ impl<Path: Addressable, DelegateRouter: Router> ConnectionRegistratorTask<Path, 
                 } = client_router
                     .resolve_bidirectional(target)
                     .await
-                    .map_err(|err| ConnectionError::Resolution(err))?;
+                    .map_err(ConnectionError::Resolution)?;
 
                 (sender, receiver, None, remote_drop_rx, None)
             }
@@ -432,7 +426,7 @@ impl<Path: Addressable, DelegateRouter: Router> ConnectionRegistratorTask<Path, 
                 } = client_router
                     .resolve_sender(routing_addr)
                     .await
-                    .map_err(|err| ConnectionError::Resolution(err))?;
+                    .map_err(ConnectionError::Resolution)?;
 
                 let (local_drop_tx, local_drop_rx) = promise::promise();
                 let (envelope_sender, envelope_receiver) = mpsc::channel(buffer_size.get());
@@ -515,27 +509,38 @@ impl<Path: Addressable, DelegateRouter: Router> ConnectionRegistratorTask<Path, 
                         }
                     };
 
-                    tx.send(Ok((sender.clone(), Some(receiver))));
+                    if tx.send(Ok((sender.clone(), Some(receiver)))).is_err() {
+                        event!(Level::WARN, REQUEST_ERROR);
+                    }
                 }
                 Some(ConnectionRegistratorEvent::Request(RegistratorRequest::Connect {
                     tx,
-                    path,
                     conn_type: ConnectionType::Outgoing,
+                    ..
                 })) => {
-                    tx.send(Ok((sender.clone(), None)));
+                    if let Err(Err(err)) = tx.send(Ok((sender.clone(), None))) {
+                        return Err(err);
+                    }
                 }
                 Some(ConnectionRegistratorEvent::Request(RegistratorRequest::Resolve {
                     request,
                 })) if maybe_raw_route.is_some() => {
-                    request.send(Ok(maybe_raw_route.as_ref().unwrap().clone()));
+                    if request
+                        .send(Ok(maybe_raw_route.as_ref().unwrap().clone()))
+                        .is_err()
+                    {
+                        event!(Level::WARN, REQUEST_ERROR);
+                    }
                 }
-                Some(ConnectionRegistratorEvent::ConnectionDropped(connection_dropped)) => {
+                Some(ConnectionRegistratorEvent::ConnectionDropped(_connection_dropped)) => {
                     //Todo dm implement retry
                     unimplemented!()
                 }
                 _ => {
                     if let Some(local_drop_tx) = local_drop_tx {
-                        local_drop_tx.provide(ConnectionDropped::Closed);
+                        local_drop_tx
+                            .provide(ConnectionDropped::Closed)
+                            .map_err(|_| ConnectionError::Closed(CloseError::closed()))?;
                     }
 
                     return Ok(());

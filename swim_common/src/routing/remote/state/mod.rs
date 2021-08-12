@@ -12,25 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::request::Request;
 use crate::routing::remote::addresses::RemoteRoutingAddresses;
 use crate::routing::remote::config::ConnectionConfig;
 use crate::routing::remote::pending::PendingRequest;
 use crate::routing::remote::pending::PendingRequests;
-use crate::routing::remote::table::{
-    BidirectionalError, BidirectionalRegistrator, RoutingTable, SchemeHostPort,
-};
+use crate::routing::remote::table::{BidirectionalRegistrator, RoutingTable, SchemeHostPort};
 use crate::routing::remote::task::TaskFactory;
+use crate::routing::remote::{ExternalConnections, Listener, SchemeSocketAddr};
 use crate::routing::remote::{
-    BidirectionalRequest, ExternalConnections, Listener, SchemeSocketAddr,
-};
-use crate::routing::remote::{
-    RawRoute, RemoteConnectionChannels, RemoteRoutingRequest, ResolutionRequest, SchemeSocketAddrIt,
+    RawRoute, RemoteConnectionChannels, RemoteRoutingRequest, SchemeSocketAddrIt,
 };
 use crate::routing::ws::WsConnections;
-use crate::routing::{BidirectionalRoute, CloseReceiver, ConnectionError, TaggedSender};
+use crate::routing::{CloseReceiver, ConnectionError};
 use crate::routing::{ConnectionDropped, RouterFactory, RoutingAddr};
-use either::Either;
 use futures::future::{BoxFuture, Fuse};
 use futures::StreamExt;
 use futures::{select_biased, FutureExt};
@@ -38,7 +32,6 @@ use futures_util::stream::TakeUntil;
 use std::future::Future;
 use std::io;
 use std::net::SocketAddr;
-use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use utilities::future::open_ended::OpenEndedFutures;
 use utilities::sync::promise::Sender;
@@ -178,14 +171,14 @@ where
         } = self;
 
         let (msg_tx, bidirectional_request_tx) =
-            tasks.spawn_connection_task(sock_addr, ws_stream, addr, spawner);
+            tasks.spawn_connection_task(ws_stream, addr, spawner);
 
         let bidirectional_registrator = table.insert(
             addr,
             host.clone(),
             sock_addr,
-            msg_tx.clone(),
-            bidirectional_request_tx.clone(),
+            msg_tx,
+            bidirectional_request_tx,
         );
 
         if let Some(host) = host {

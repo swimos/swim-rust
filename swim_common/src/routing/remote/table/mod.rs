@@ -16,20 +16,17 @@
 mod tests;
 
 use crate::request::Request;
-use crate::routing::error::{ResolutionError, RouterError};
+use crate::routing::error::ResolutionError;
 use crate::routing::remote::{
-    BadUrl, BidirectionalReceiverRequest, BidirectionalRequest, RawRoute, Scheme, SchemeSocketAddr,
+    BadUrl, BidirectionalReceiverRequest, RawRoute, Scheme, SchemeSocketAddr,
 };
 use crate::routing::{
     BidirectionalRoute, ConnectionDropped, RoutingAddr, TaggedEnvelope, TaggedSender,
 };
-use crate::warp::envelope::Envelope;
 use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
-use tokio::sync::mpsc::{Receiver, Sender};
-use tokio::sync::oneshot::error::RecvError;
 use tokio::sync::{mpsc, oneshot};
 use url::Url;
 use utilities::sync::promise;
@@ -174,10 +171,7 @@ impl RoutingTable {
             on_drop: handle.drop_rx.clone(),
         };
 
-        endpoints.insert(
-            addr,
-            handle,
-        );
+        endpoints.insert(addr, handle);
 
         bidirectional_registrator
     }

@@ -28,7 +28,7 @@ use futures::{io, join};
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::net::SocketAddr;
-use std::num::NonZeroUsize;
+
 use std::sync::Arc;
 use swim_client::configuration::downlink::ConfigHierarchy;
 use swim_client::configuration::router::ConnectionPoolParams;
@@ -36,7 +36,7 @@ use swim_client::connections::{PoolTask, SwimConnPool};
 use swim_client::downlink::subscription::DownlinksTask;
 use swim_client::downlink::Downlinks;
 use swim_client::interface::{SwimClient, SwimClientBuilder};
-use swim_client::router::{ClientRouterFactory, DownlinkRoutingRequest};
+use swim_client::router::ClientRouterFactory;
 use swim_common::routing::error::RoutingError;
 use swim_common::routing::remote::config::ConnectionConfig;
 use swim_common::routing::remote::net::dns::Resolver;
@@ -50,7 +50,7 @@ use swim_common::warp::path::Path;
 use swim_runtime::task::TaskError;
 use swim_runtime::time::clock::RuntimeClock;
 use tokio::sync::mpsc;
-use tokio_stream::wrappers::ReceiverStream;
+
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use utilities::future::open_ended::OpenEndedFutures;
 use utilities::sync::promise;
@@ -229,7 +229,7 @@ impl SwimServerBuilder {
         //Todo dm this needs to be changed from default after the new configuration is finalised.
         let (connection_pool, connection_pool_task) = SwimConnPool::new(
             ConnectionPoolParams::default(),
-            (client_tx.clone(), client_rx),
+            (client_tx, client_rx),
             client_router_factory,
             close_rx.clone(),
         );

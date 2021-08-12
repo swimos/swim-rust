@@ -30,19 +30,17 @@ use crate::request::Request;
 use crate::routing::error::Unresolvable;
 use crate::routing::error::{HttpError, ResolutionErrorKind};
 use crate::routing::remote::config::ConnectionConfig;
+use crate::routing::remote::pending::PendingRequest;
 use crate::routing::remote::state::{DeferredResult, Event, RemoteConnections, RemoteTasksState};
 use crate::routing::remote::table::{BidirectionalRegistrator, SchemeHostPort};
 use crate::routing::ws::WsConnections;
 use crate::routing::{
-    BidirectionalRoute, CloseReceiver, ConnectionDropped, RouterFactory, RoutingAddr,
-    TaggedEnvelope,
+    CloseReceiver, ConnectionDropped, RouterFactory, RoutingAddr, TaggedEnvelope,
 };
 use crate::routing::{ConnectionError, ResolutionError};
-use crate::warp::envelope::Envelope;
-use either::Either;
 use futures::future::BoxFuture;
 use futures::stream::FusedStream;
-use std::convert::{TryFrom, TryInto};
+use std::convert::TryFrom;
 use std::fmt::{Display, Formatter};
 use std::io;
 use std::io::Error;
@@ -51,7 +49,6 @@ use tracing::{event, Level};
 use url::Url;
 use utilities::sync::promise;
 use utilities::task::Spawner;
-use crate::routing::remote::pending::PendingRequest;
 
 #[cfg(test)]
 pub mod test_fixture;
@@ -148,11 +145,11 @@ const DUPLICATED_BIDIRECTIONAL: &str = "A bidirectional connection already exist
 /// * `Sp` - Spawner to run the tasks that manage the connections opened by this state machine.
 /// * `Routerfac` - Creates router instances to be provided to the connection management tasks.
 impl<External, Ws, DelegateRouterFac, Sp> RemoteConnectionsTask<External, Ws, DelegateRouterFac, Sp>
-    where
-        External: ExternalConnections,
-        Ws: WsConnections<External::Socket> + Send + Sync + 'static,
-        DelegateRouterFac: RouterFactory + 'static,
-        Sp: Spawner<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>> + Send + Unpin,
+where
+    External: ExternalConnections,
+    Ws: WsConnections<External::Socket> + Send + Sync + 'static,
+    DelegateRouterFac: RouterFactory + 'static,
+    Sp: Spawner<BoxFuture<'static, (RoutingAddr, ConnectionDropped)>> + Send + Unpin,
 {
     pub async fn new_client_task(
         configuration: ConnectionConfig,
@@ -331,35 +328,35 @@ fn update_state<State: RemoteTasksState>(
             }
         }
         Event::Deferred(DeferredResult::ServerHandshake {
-                            result: Ok(ws_stream),
-                            sock_addr,
-                        }) => {
+            result: Ok(ws_stream),
+            sock_addr,
+        }) => {
             state.spawn_task(sock_addr, ws_stream, None);
         }
         Event::Deferred(DeferredResult::ServerHandshake {
-                            result: Err(error), ..
-                        }) => {
+            result: Err(error), ..
+        }) => {
             event!(Level::ERROR, FAILED_SERVER_CONN, ?error);
         }
         Event::Deferred(DeferredResult::ClientHandshake {
-                            result: Ok((ws_stream, sock_addr)),
-                            host,
-                        }) => {
+            result: Ok((ws_stream, sock_addr)),
+            host,
+        }) => {
             state.spawn_task(sock_addr, ws_stream, Some(host));
         }
         Event::Deferred(DeferredResult::ClientHandshake {
-                            result: Err(error),
-                            host,
-                            ..
-                        }) => {
+            result: Err(error),
+            host,
+            ..
+        }) => {
             event!(Level::ERROR, FAILED_CLIENT_CONN, ?error);
             state.fail_connection(&host, error);
         }
         Event::Deferred(DeferredResult::FailedConnection {
-                            error,
-                            mut remaining,
-                            host,
-                        }) => {
+            error,
+            mut remaining,
+            host,
+        }) => {
             if let Some(sock_addr) = remaining.next() {
                 state.defer_connect_and_handshake(host, sock_addr, remaining);
             } else {
@@ -367,16 +364,16 @@ fn update_state<State: RemoteTasksState>(
             }
         }
         Event::Deferred(DeferredResult::Dns {
-                            result: Err(err),
-                            host,
-                            ..
-                        }) => {
+            result: Err(err),
+            host,
+            ..
+        }) => {
             state.fail_connection(&host, ConnectionError::Io(err.into()));
         }
         Event::Deferred(DeferredResult::Dns {
-                            result: Ok(mut addrs),
-                            host,
-                        }) => {
+            result: Ok(mut addrs),
+            host,
+        }) => {
             if let Some(sock_addr) = addrs.next() {
                 if let Err(host) = state.check_socket_addr(host, sock_addr) {
                     state.defer_connect_and_handshake(host, sock_addr, addrs);
@@ -486,7 +483,7 @@ impl Display for SchemeSocketAddr {
 /// abstract over [`std::net::TcpListener`] for testing purposes.
 pub trait Listener {
     type Socket: Unpin + Send + Sync + 'static;
-    type AcceptStream: FusedStream<Item=IoResult<(Self::Socket, SchemeSocketAddr)>> + Unpin;
+    type AcceptStream: FusedStream<Item = IoResult<(Self::Socket, SchemeSocketAddr)>> + Unpin;
 
     fn into_stream(self) -> Self::AcceptStream;
 }
@@ -495,7 +492,7 @@ pub trait Listener {
 /// used to abstract over [`std::net::TcpListener`] and [`std::net::TcpStream`] for testing purposes.
 pub trait ExternalConnections: Clone + Send + Sync + 'static {
     type Socket: Unpin + Send + Sync + 'static;
-    type ListenerType: Listener<Socket=Self::Socket>;
+    type ListenerType: Listener<Socket = Self::Socket>;
 
     fn bind(&self, addr: SocketAddr) -> BoxFuture<'static, IoResult<Self::ListenerType>>;
     fn try_open(&self, addr: SocketAddr) -> BoxFuture<'static, IoResult<Self::Socket>>;

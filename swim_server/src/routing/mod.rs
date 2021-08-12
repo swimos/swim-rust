@@ -18,9 +18,9 @@ use swim_client::router::DownlinkRoutingRequest;
 use swim_common::request::Request;
 use swim_common::routing::error::ResolutionError;
 use swim_common::routing::error::RouterError;
-use swim_common::routing::remote::table::BidirectionalRegistrator;
+
 use swim_common::routing::remote::{RawRoute, RemoteRoutingRequest};
-use swim_common::routing::{BidirectionalRoute, Origin, PlaneRoutingRequest};
+use swim_common::routing::{BidirectionalRoute, PlaneRoutingRequest};
 use swim_common::routing::{Route, Router, RouterFactory, RoutingAddr, TaggedSender};
 use swim_common::warp::path::Path;
 use tokio::sync::mpsc;
@@ -179,7 +179,7 @@ impl Router for TopLevelServerRouter {
             } else {
                 match rx.await {
                     Ok(Ok(registrator)) => registrator.register().await,
-                    Ok(Err(_)) => Err((ResolutionError::unresolvable(host.to_string()))),
+                    Ok(Err(_)) => Err(ResolutionError::unresolvable(host.to_string())),
                     Err(_) => Err(ResolutionError::router_dropped()),
                 }
             }

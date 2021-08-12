@@ -13,10 +13,9 @@
 // limitations under the License.
 
 use crate::request::Request;
-use crate::routing::remote::table::BidirectionalRegistrator;
 use crate::routing::remote::{RawRoute, RemoteRoutingRequest};
+use crate::routing::ResolutionError;
 use crate::routing::{BidirectionalRoute, RouterError};
-use crate::routing::{Origin, ResolutionError};
 use crate::routing::{Route, Router, RoutingAddr, TaggedSender};
 use futures::future::BoxFuture;
 use futures::FutureExt;
@@ -99,7 +98,7 @@ impl<DelegateRouter: Router> Router for RemoteRouter<DelegateRouter> {
             } else {
                 match rx.await {
                     Ok(Ok(registrator)) => registrator.register().await,
-                    Ok(Err(_)) => Err((ResolutionError::unresolvable(host.to_string()))),
+                    Ok(Err(_)) => Err(ResolutionError::unresolvable(host.to_string())),
                     Err(_) => Err(ResolutionError::router_dropped()),
                 }
             }

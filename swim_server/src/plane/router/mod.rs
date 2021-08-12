@@ -18,7 +18,7 @@ use swim_common::request::Request;
 use swim_common::routing::error::ResolutionError;
 use swim_common::routing::error::RouterError;
 use swim_common::routing::remote::RawRoute;
-use swim_common::routing::{BidirectionalRoute, Origin, PlaneRoutingRequest};
+use swim_common::routing::{BidirectionalRoute, PlaneRoutingRequest};
 use swim_common::routing::{Route, Router, RouterFactory, RoutingAddr, TaggedSender};
 use tokio::sync::{mpsc, oneshot};
 use url::Url;
