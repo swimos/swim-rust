@@ -466,7 +466,10 @@ impl<Path: Addressable> DownlinksTask<Path> {
         loop {
             let item: Option<Either<DownlinkRequest<Path>, DownlinkStoppedEvent<Path>>> =
                 if self.stopped_watch.is_empty() {
-                    pinned_requests.next().await.map(Either::Left)
+                    select_biased! {
+                        maybe_req = pinned_requests.next() => maybe_req.map(Either::Left),
+                        _stop = close_trigger => None,
+                    }
                 } else {
                     select_biased! {
                         maybe_req = pinned_requests.next() => maybe_req.map(Either::Left),

@@ -85,7 +85,7 @@ pub fn derive_command_lifecycle(attr_args: AttributeArgs, input_ast: DeriveInput
 pub fn derive_events_body(task_name: &Ident, on_command_func: &Ident) -> proc_macro2::TokenStream {
     quote!(
         let #task_name {
-            lifecycle,
+            mut lifecycle,
             event_stream,
             projection,
             ..

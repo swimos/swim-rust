@@ -29,7 +29,7 @@ async fn did_set(value_recv: ValueDownlinkReceiver<String>, initial_value: Strin
                 _ => None,
             }
         })
-        .scan(initial_value, |state, current| {
+        .scan(initial_value, |state, current: String| {
             let previous = std::mem::replace(state, current.clone());
             async { Some((previous, current)) }
         })
@@ -44,7 +44,7 @@ async fn did_set(value_recv: ValueDownlinkReceiver<String>, initial_value: Strin
 
 #[tokio::main]
 async fn main() {
-    let mut client = SwimClientBuilder::build_with_default().await;
+    let (client, client_handle) = SwimClientBuilder::build_with_default().await;
     let host_uri = url::Url::parse(&"ws://127.0.0.1:9001".to_string()).unwrap();
     let node_uri = "/unit/foo";
 
@@ -87,4 +87,5 @@ async fn main() {
 
     println!("Stopping client in 2 seconds");
     time::sleep(Duration::from_secs(2)).await;
+    client_handle.stop().await.unwrap();
 }

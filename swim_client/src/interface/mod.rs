@@ -261,7 +261,7 @@ pub struct ClientHandle<Path: Addressable> {
 
 impl<Path: Addressable> ClientHandle<Path> {
     /// Shut down the client and wait for all tasks to finish running.
-    pub async fn close(self) -> Result<(), ClientError<Path>> {
+    pub async fn stop(self) -> Result<(), ClientError<Path>> {
         let ClientHandle {
             close_buffer_size,
             task_handle,

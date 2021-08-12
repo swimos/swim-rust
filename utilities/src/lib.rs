@@ -19,6 +19,7 @@ use std::fmt::{Display, Formatter};
 
 pub mod errors;
 pub mod future;
+pub mod hash_indexer;
 pub mod instant;
 pub mod iteratee;
 pub mod lru_cache;

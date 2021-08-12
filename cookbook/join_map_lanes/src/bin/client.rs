@@ -52,7 +52,7 @@ async fn did_update(map_recv: MapDownlinkReceiver<String, i32>, default: i32) {
 
 #[tokio::main]
 async fn main() {
-    let mut client = SwimClientBuilder::build_with_default().await;
+    let (client, client_handle) = SwimClientBuilder::build_with_default().await;
     let host_uri = url::Url::parse(&"ws://127.0.0.1:53556".to_string()).unwrap();
     let node_uri = "/join/state/all";
     let lane_uri = "join";
@@ -70,4 +70,5 @@ async fn main() {
 
     println!("Stopping client in 2 seconds");
     time::sleep(Duration::from_secs(2)).await;
+    client_handle.stop().await.unwrap();
 }

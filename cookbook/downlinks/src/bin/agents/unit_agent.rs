@@ -16,6 +16,7 @@ use std::fmt::{Debug, Display};
 use std::sync::Arc;
 use stm::stm::Stm;
 use stm::transaction::atomically;
+use swim_common::warp::path::{Path, RelativePath};
 use swim_server::agent::command_lifecycle;
 use swim_server::agent::lane::channels::update::StmRetryStrategy;
 use swim_server::agent::lane::lifecycle::LaneLifecycle;
@@ -35,20 +36,32 @@ pub struct UnitAgent {
     pub add_item: CommandLane<String>,
 }
 
-#[map_lifecycle(agent = "UnitAgent", key_type = "String", value_type = "i32", on_event)]
+#[map_lifecycle(
+    agent = "UnitAgent",
+    key_type = "String",
+    value_type = "i32",
+    on_event,
+    on_start
+)]
 struct ShoppingCartLifecycle {
     previous_state: HashMap<String, Arc<i32>>,
 }
 
-impl LaneLifecycle<()> for ShoppingCartLifecycle {
-    fn create(_config: &()) -> Self {
-        ShoppingCartLifecycle {
-            previous_state: HashMap::new(),
-        }
-    }
-}
-
 impl ShoppingCartLifecycle {
+    async fn on_start<Context>(&self, _model: &MapLane<String, i32>, context: &Context)
+    where
+        Context: AgentContext<UnitAgent> + Sized + Send + Sync,
+    {
+        context
+            .client()
+            .send_command(
+                Path::Local(RelativePath::new("/listener", "trigger_listen")),
+                context.node_uri().to_string(),
+            )
+            .await
+            .unwrap();
+    }
+
     async fn on_event<Context>(
         &mut self,
         event: &MapLaneEvent<String, i32>,
@@ -78,6 +91,14 @@ impl ShoppingCartLifecycle {
                 };
             }
             _ => (),
+        }
+    }
+}
+
+impl LaneLifecycle<()> for ShoppingCartLifecycle {
+    fn create(_config: &()) -> Self {
+        ShoppingCartLifecycle {
+            previous_state: HashMap::new(),
         }
     }
 }
