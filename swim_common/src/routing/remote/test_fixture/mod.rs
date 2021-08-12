@@ -67,7 +67,6 @@ impl Router for LocalRoutes {
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,
-        _origin: Option<Origin>,
     ) -> BoxFuture<'_, Result<Route, ResolutionError>> {
         let lock = self.1.lock();
         let result = if let Some(Entry {
@@ -89,7 +88,6 @@ impl Router for LocalRoutes {
         &mut self,
         host: Option<Url>,
         route: RelativeUri,
-        _origin: Option<Origin>,
     ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
         let mut lock = self.1.lock();
         let result = if host.is_some() {
@@ -150,7 +148,7 @@ impl LocalRoutes {
                 panic!("Duplicate registration.")
             }
             hash_map::Entry::Vacant(vacant) => {
-                let id = RoutingAddr::local(*counter);
+                let id = RoutingAddr::plane(*counter);
                 *counter += 1;
                 vacant.insert((id, countdown));
                 let (drop_tx, drop_rx) = promise::promise();

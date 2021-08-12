@@ -67,7 +67,8 @@ mod stub_router {
     use swim_common::routing::error::ResolutionError;
     use swim_common::routing::error::RouterError;
     use swim_common::routing::{
-        ConnectionDropped, Origin, Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender,
+        BidirectionalRoute, ConnectionDropped, Origin, Route, Router, RoutingAddr, TaggedEnvelope,
+        TaggedSender,
     };
     use tokio::sync::mpsc;
     use url::Url;
@@ -100,7 +101,6 @@ mod stub_router {
         fn resolve_sender(
             &mut self,
             addr: RoutingAddr,
-            _origin: Option<Origin>,
         ) -> BoxFuture<Result<Route, ResolutionError>> {
             async move {
                 let SingleChannelRouter { inner, drop_rx, .. } = self;
@@ -110,11 +110,17 @@ mod stub_router {
             .boxed()
         }
 
+        fn resolve_bidirectional(
+            &mut self,
+            _host: Url,
+        ) -> BoxFuture<'_, Result<BidirectionalRoute, ResolutionError>> {
+            unimplemented!()
+        }
+
         fn lookup(
             &mut self,
             _host: Option<Url>,
             _route: RelativeUri,
-            _origin: Option<Origin>,
         ) -> BoxFuture<Result<RoutingAddr, RouterError>> {
             panic!("Unexpected resolution attempt.")
         }
@@ -786,7 +792,7 @@ pub async fn run_agent_test<Agent, Config, Lifecycle>(
         clock.clone(),
         client,
         ReceiverStream::new(envelope_rx),
-        SingleChannelRouter::new(RoutingAddr::local(1024)),
+        SingleChannelRouter::new(RoutingAddr::plane(1024)),
     );
 
     let agent_task = swim_runtime::task::spawn(agent_proc);

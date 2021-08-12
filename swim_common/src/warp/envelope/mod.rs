@@ -122,6 +122,24 @@ impl EnvelopeHeader {
             EnvelopeHeader::Negotiation(_, _) => None,
         }
     }
+
+    pub fn is_response(&self) -> bool {
+        match self {
+            EnvelopeHeader::IncomingLink(_, _) => true,
+            EnvelopeHeader::OutgoingLink(_, _) => false,
+            EnvelopeHeader::Negotiation(_, Direction::Request) => false,
+            EnvelopeHeader::Negotiation(_, Direction::Response) => true,
+        }
+    }
+
+    pub fn is_request(&self) -> bool {
+        match self {
+            EnvelopeHeader::IncomingLink(_, _) => false,
+            EnvelopeHeader::OutgoingLink(_, _) => true,
+            EnvelopeHeader::Negotiation(_, Direction::Request) => true,
+            EnvelopeHeader::Negotiation(_, Direction::Response) => false,
+        }
+    }
 }
 
 /// A message related to a link to or from a remote lane.
@@ -138,9 +156,9 @@ pub type AnyLinkMessage = LinkMessage<LinkHeader>;
 
 impl<Header> LinkMessage<Header> {
     fn make_message<N, L>(header: Header, node: N, lane: L, body: Option<Value>) -> Self
-    where
-        N: Into<Text>,
-        L: Into<Text>,
+        where
+            N: Into<Text>,
+            L: Into<Text>,
     {
         let path = RelativePath {
             node: node.into(),
@@ -158,9 +176,9 @@ impl LinkMessage<OutgoingHeader> {
         prio: Option<f64>,
         body: Option<Value>,
     ) -> Self
-    where
-        N: Into<Text>,
-        L: Into<Text>,
+        where
+            N: Into<Text>,
+            L: Into<Text>,
     {
         Self::make_message(
             OutgoingHeader::Link(LinkParams::new(rate, prio)),
@@ -171,9 +189,9 @@ impl LinkMessage<OutgoingHeader> {
     }
 
     pub fn make_unlink<N, L>(node: N, lane: L, body: Option<Value>) -> Self
-    where
-        N: Into<Text>,
-        L: Into<Text>,
+        where
+            N: Into<Text>,
+            L: Into<Text>,
     {
         Self::make_message(OutgoingHeader::Unlink, node, lane, body)
     }
@@ -185,9 +203,9 @@ impl LinkMessage<OutgoingHeader> {
         prio: Option<f64>,
         body: Option<Value>,
     ) -> Self
-    where
-        N: Into<Text>,
-        L: Into<Text>,
+        where
+            N: Into<Text>,
+            L: Into<Text>,
     {
         Self::make_message(
             OutgoingHeader::Sync(LinkParams::new(rate, prio)),
@@ -198,33 +216,33 @@ impl LinkMessage<OutgoingHeader> {
     }
 
     pub fn make_command<N, L>(node: N, lane: L, body: Option<Value>) -> Self
-    where
-        N: Into<Text>,
-        L: Into<Text>,
+        where
+            N: Into<Text>,
+            L: Into<Text>,
     {
         Self::make_message(OutgoingHeader::Command, node, lane, body)
     }
 
     pub fn link<N, L>(node: N, lane: L) -> Self
-    where
-        N: Into<Text>,
-        L: Into<Text>,
+        where
+            N: Into<Text>,
+            L: Into<Text>,
     {
         Self::make_link(node, lane, None, None, None)
     }
 
     pub fn sync<N, L>(node: N, lane: L) -> Self
-    where
-        N: Into<Text>,
-        L: Into<Text>,
+        where
+            N: Into<Text>,
+            L: Into<Text>,
     {
         Self::make_sync(node, lane, None, None, None)
     }
 
     pub fn unlink<N, L>(node: N, lane: L) -> Self
-    where
-        N: Into<Text>,
-        L: Into<Text>,
+        where
+            N: Into<Text>,
+            L: Into<Text>,
     {
         Self::make_unlink(node, lane, None)
     }
@@ -238,9 +256,9 @@ impl LinkMessage<IncomingHeader> {
         prio: Option<f64>,
         body: Option<Value>,
     ) -> Self
-    where
-        N: Into<Text>,
-        L: Into<Text>,
+        where
+            N: Into<Text>,
+            L: Into<Text>,
     {
         Self::make_message(
             IncomingHeader::Linked(LinkParams::new(rate, prio)),
@@ -251,49 +269,49 @@ impl LinkMessage<IncomingHeader> {
     }
 
     pub fn make_unlinked<N, L>(node: N, lane: L, body: Option<Value>) -> Self
-    where
-        N: Into<Text>,
-        L: Into<Text>,
+        where
+            N: Into<Text>,
+            L: Into<Text>,
     {
         Self::make_message(IncomingHeader::Unlinked, node, lane, body)
     }
 
     pub fn make_synced<N, L>(node: N, lane: L, body: Option<Value>) -> Self
-    where
-        N: Into<Text>,
-        L: Into<Text>,
+        where
+            N: Into<Text>,
+            L: Into<Text>,
     {
         Self::make_message(IncomingHeader::Synced, node, lane, body)
     }
 
     pub fn make_event<N, L>(node: N, lane: L, body: Option<Value>) -> Self
-    where
-        N: Into<Text>,
-        L: Into<Text>,
+        where
+            N: Into<Text>,
+            L: Into<Text>,
     {
         Self::make_message(IncomingHeader::Event, node, lane, body)
     }
 
     pub fn unlinked<N, L>(node: N, lane: L) -> Self
-    where
-        N: Into<Text>,
-        L: Into<Text>,
+        where
+            N: Into<Text>,
+            L: Into<Text>,
     {
         Self::make_unlinked(node, lane, None)
     }
 
     pub fn linked<N, L>(node: N, lane: L) -> Self
-    where
-        N: Into<Text>,
-        L: Into<Text>,
+        where
+            N: Into<Text>,
+            L: Into<Text>,
     {
         Self::make_linked(node, lane, None, None, None)
     }
 
     pub fn synced<N, L>(node: N, lane: L) -> Self
-    where
-        N: Into<Text>,
-        L: Into<Text>,
+        where
+            N: Into<Text>,
+            L: Into<Text>,
     {
         Self::make_synced(node, lane, None)
     }
@@ -371,9 +389,9 @@ impl Envelope {
     }
 
     fn make_incoming<N, L>(header: IncomingHeader, node: N, lane: L, body: Option<Value>) -> Self
-    where
-        N: Into<Text>,
-        L: Into<Text>,
+        where
+            N: Into<Text>,
+            L: Into<Text>,
     {
         let path = RelativePath {
             node: node.into(),
@@ -386,9 +404,9 @@ impl Envelope {
     }
 
     fn make_outgoing<N, L>(header: OutgoingHeader, node: N, lane: L, body: Option<Value>) -> Self
-    where
-        N: Into<Text>,
-        L: Into<Text>,
+        where
+            N: Into<Text>,
+            L: Into<Text>,
     {
         let path = RelativePath {
             node: node.into(),
@@ -407,9 +425,9 @@ impl Envelope {
         prio: Option<f64>,
         body: Option<Value>,
     ) -> Self
-    where
-        N: Into<Text>,
-        L: Into<Text>,
+        where
+            N: Into<Text>,
+            L: Into<Text>,
     {
         Self::make_outgoing(
             OutgoingHeader::Sync(LinkParams::new(rate, prio)),
@@ -426,9 +444,9 @@ impl Envelope {
         prio: Option<f64>,
         body: Option<Value>,
     ) -> Self
-    where
-        N: Into<Text>,
-        L: Into<Text>,
+        where
+            N: Into<Text>,
+            L: Into<Text>,
     {
         Self::make_outgoing(
             OutgoingHeader::Link(LinkParams::new(rate, prio)),
@@ -445,9 +463,9 @@ impl Envelope {
         prio: Option<f64>,
         body: Option<Value>,
     ) -> Self
-    where
-        N: Into<Text>,
-        L: Into<Text>,
+        where
+            N: Into<Text>,
+            L: Into<Text>,
     {
         Self::make_incoming(
             IncomingHeader::Linked(LinkParams::new(rate, prio)),
@@ -486,41 +504,41 @@ impl Envelope {
     }
 
     pub fn make_unlink<N, L>(node: N, lane: L, body: Option<Value>) -> Self
-    where
-        N: Into<Text>,
-        L: Into<Text>,
+        where
+            N: Into<Text>,
+            L: Into<Text>,
     {
         Self::make_outgoing(OutgoingHeader::Unlink, node, lane, body)
     }
 
     pub fn make_unlinked<N, L>(node: N, lane: L, body: Option<Value>) -> Self
-    where
-        N: Into<Text>,
-        L: Into<Text>,
+        where
+            N: Into<Text>,
+            L: Into<Text>,
     {
         Self::make_incoming(IncomingHeader::Unlinked, node, lane, body)
     }
 
     pub fn make_command<N, L>(node: N, lane: L, body: Option<Value>) -> Self
-    where
-        N: Into<Text>,
-        L: Into<Text>,
+        where
+            N: Into<Text>,
+            L: Into<Text>,
     {
         Self::make_outgoing(OutgoingHeader::Command, node, lane, body)
     }
 
     pub fn make_event<N, L>(node: N, lane: L, body: Option<Value>) -> Self
-    where
-        N: Into<Text>,
-        L: Into<Text>,
+        where
+            N: Into<Text>,
+            L: Into<Text>,
     {
         Self::make_incoming(IncomingHeader::Event, node, lane, body)
     }
 
     pub fn make_synced<N, L>(node: N, lane: L, body: Option<Value>) -> Self
-    where
-        N: Into<Text>,
-        L: Into<Text>,
+        where
+            N: Into<Text>,
+            L: Into<Text>,
     {
         Self::make_incoming(IncomingHeader::Synced, node, lane, body)
     }
@@ -608,57 +626,57 @@ impl Envelope {
     }
 
     pub fn link<N, L>(node: N, lane: L) -> Self
-    where
-        N: Into<Text>,
-        L: Into<Text>,
+        where
+            N: Into<Text>,
+            L: Into<Text>,
     {
         Self::make_link(node, lane, None, None, None)
     }
 
     pub fn sync<N, L>(node: N, lane: L) -> Self
-    where
-        N: Into<Text>,
-        L: Into<Text>,
+        where
+            N: Into<Text>,
+            L: Into<Text>,
     {
         Self::make_sync(node, lane, None, None, None)
     }
 
     pub fn unlink<N, L>(node: N, lane: L) -> Self
-    where
-        N: Into<Text>,
-        L: Into<Text>,
+        where
+            N: Into<Text>,
+            L: Into<Text>,
     {
         Self::make_unlink(node, lane, None)
     }
 
     pub fn unlinked<N, L>(node: N, lane: L) -> Self
-    where
-        N: Into<Text>,
-        L: Into<Text>,
+        where
+            N: Into<Text>,
+            L: Into<Text>,
     {
         Self::make_unlinked(node, lane, None)
     }
 
     pub fn linked<N, L>(node: N, lane: L) -> Self
-    where
-        N: Into<Text>,
-        L: Into<Text>,
+        where
+            N: Into<Text>,
+            L: Into<Text>,
     {
         Self::make_linked(node, lane, None, None, None)
     }
 
     pub fn synced<N, L>(node: N, lane: L) -> Self
-    where
-        N: Into<Text>,
-        L: Into<Text>,
+        where
+            N: Into<Text>,
+            L: Into<Text>,
     {
         Self::make_synced(node, lane, None)
     }
 
     pub fn node_not_found<N, L>(node: N, lane: L) -> Self
-    where
-        N: Into<Text>,
-        L: Into<Text>,
+        where
+            N: Into<Text>,
+            L: Into<Text>,
     {
         Self::make_unlinked(
             node,
@@ -668,9 +686,9 @@ impl Envelope {
     }
 
     pub fn lane_not_found<N, L>(node: N, lane: L) -> Self
-    where
-        N: Into<Text>,
-        L: Into<Text>,
+        where
+            N: Into<Text>,
+            L: Into<Text>,
     {
         Self::make_unlinked(
             node,

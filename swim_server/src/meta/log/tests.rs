@@ -119,7 +119,6 @@ impl Router for MockRouter {
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,
-        _origin: Option<Origin>,
     ) -> BoxFuture<Result<Route, ResolutionError>> {
         async move {
             let MockRouter { inner, drop_rx, .. } = self;
@@ -133,7 +132,6 @@ impl Router for MockRouter {
         &mut self,
         _host: Option<Url>,
         _route: RelativeUri,
-        _origin: Option<Origin>,
     ) -> BoxFuture<Result<RoutingAddr, RouterError>> {
         panic!("Unexpected resolution attempt.")
     }
@@ -174,7 +172,7 @@ async fn agent_log() {
         clock.clone(),
         client,
         ReceiverStream::new(envelope_rx),
-        MockRouter::new(RoutingAddr::local(1024), tx),
+        MockRouter::new(RoutingAddr::plane(1024), tx),
     );
 
     let _agent_task = swim_runtime::task::spawn(agent_proc);

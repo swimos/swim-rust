@@ -39,7 +39,8 @@ use swim_common::routing::error::RouterError;
 use swim_common::routing::error::RoutingError;
 use swim_common::routing::error::SendError;
 use swim_common::routing::{
-    ConnectionDropped, Origin, Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender,
+    BidirectionalRoute, ConnectionDropped, Origin, Route, Router, RoutingAddr, TaggedEnvelope,
+    TaggedSender,
 };
 use swim_common::sink::item::ItemSink;
 use swim_common::warp::envelope::Envelope;
@@ -103,11 +104,7 @@ impl<'a> ItemSink<'a, Envelope> for TestSender {
 }
 
 impl Router for TestRouter {
-    fn resolve_sender(
-        &mut self,
-        addr: RoutingAddr,
-        _origin: Option<Origin>,
-    ) -> BoxFuture<Result<Route, ResolutionError>> {
+    fn resolve_sender(&mut self, addr: RoutingAddr) -> BoxFuture<Result<Route, ResolutionError>> {
         let TestRouter {
             sender, drop_rx, ..
         } = self;
@@ -118,11 +115,18 @@ impl Router for TestRouter {
         .boxed()
     }
 
+    fn resolve_bidirectional(
+        &mut self,
+        host: Url,
+    ) -> BoxFuture<'_, Result<BidirectionalRoute, ResolutionError>> {
+        //Todo dm
+        unimplemented!()
+    }
+
     fn lookup(
         &mut self,
         _host: Option<Url>,
         _route: RelativeUri,
-        _origin: Option<Origin>,
     ) -> BoxFuture<'static, Result<RoutingAddr, RouterError>> {
         panic!("Unexpected resolution attempt.")
     }

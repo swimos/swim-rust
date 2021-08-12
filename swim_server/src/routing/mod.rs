@@ -1,11 +1,12 @@
 use futures::future::BoxFuture;
 use futures::FutureExt;
-use swim_client::router::ClientRequest;
+use swim_client::router::DownlinkRoutingRequest;
 use swim_common::request::Request;
 use swim_common::routing::error::ResolutionError;
 use swim_common::routing::error::RouterError;
+use swim_common::routing::remote::table::BidirectionalRegistrator;
 use swim_common::routing::remote::{RawRoute, RemoteRoutingRequest};
-use swim_common::routing::{Origin, PlaneRoutingRequest};
+use swim_common::routing::{BidirectionalRoute, Origin, PlaneRoutingRequest};
 use swim_common::routing::{Route, Router, RouterFactory, RoutingAddr, TaggedSender};
 use swim_common::warp::path::Path;
 use tokio::sync::mpsc;
@@ -14,19 +15,19 @@ use url::Url;
 use utilities::uri::RelativeUri;
 
 #[derive(Debug, Clone)]
-pub(crate) struct TopLevelRouterFactory {
+pub(crate) struct TopLevelServerRouterFactory {
     plane_sender: mpsc::Sender<PlaneRoutingRequest>,
-    client_sender: mpsc::Sender<ClientRequest<Path>>,
+    client_sender: mpsc::Sender<DownlinkRoutingRequest<Path>>,
     remote_sender: mpsc::Sender<RemoteRoutingRequest>,
 }
 
-impl TopLevelRouterFactory {
+impl TopLevelServerRouterFactory {
     pub(in crate) fn new(
         plane_sender: mpsc::Sender<PlaneRoutingRequest>,
-        client_sender: mpsc::Sender<ClientRequest<Path>>,
+        client_sender: mpsc::Sender<DownlinkRoutingRequest<Path>>,
         remote_sender: mpsc::Sender<RemoteRoutingRequest>,
     ) -> Self {
-        TopLevelRouterFactory {
+        TopLevelServerRouterFactory {
             plane_sender,
             client_sender,
             remote_sender,
@@ -34,11 +35,11 @@ impl TopLevelRouterFactory {
     }
 }
 
-impl RouterFactory for TopLevelRouterFactory {
-    type Router = TopLevelRouter;
+impl RouterFactory for TopLevelServerRouterFactory {
+    type Router = TopLevelServerRouter;
 
     fn create_for(&self, addr: RoutingAddr) -> Self::Router {
-        TopLevelRouter::new(
+        TopLevelServerRouter::new(
             addr,
             self.plane_sender.clone(),
             self.client_sender.clone(),
@@ -48,21 +49,21 @@ impl RouterFactory for TopLevelRouterFactory {
 }
 
 #[derive(Debug, Clone)]
-pub struct TopLevelRouter {
+pub struct TopLevelServerRouter {
     addr: RoutingAddr,
     plane_sender: mpsc::Sender<PlaneRoutingRequest>,
-    client_sender: mpsc::Sender<ClientRequest<Path>>,
+    client_sender: mpsc::Sender<DownlinkRoutingRequest<Path>>,
     remote_sender: mpsc::Sender<RemoteRoutingRequest>,
 }
 
-impl TopLevelRouter {
+impl TopLevelServerRouter {
     pub(crate) fn new(
         addr: RoutingAddr,
         plane_sender: mpsc::Sender<PlaneRoutingRequest>,
-        client_sender: mpsc::Sender<ClientRequest<Path>>,
+        client_sender: mpsc::Sender<DownlinkRoutingRequest<Path>>,
         remote_sender: mpsc::Sender<RemoteRoutingRequest>,
     ) -> Self {
-        TopLevelRouter {
+        TopLevelServerRouter {
             addr,
             plane_sender,
             client_sender,
@@ -71,14 +72,13 @@ impl TopLevelRouter {
     }
 }
 
-impl Router for TopLevelRouter {
+impl Router for TopLevelServerRouter {
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,
-        origin: Option<Origin>,
     ) -> BoxFuture<'_, Result<Route, ResolutionError>> {
         async move {
-            let TopLevelRouter {
+            let TopLevelServerRouter {
                 plane_sender,
                 remote_sender,
                 client_sender,
@@ -103,14 +103,11 @@ impl Router for TopLevelRouter {
                         Err(_) => Err(ResolutionError::router_dropped()),
                     }
                 }
-            } else if origin.is_some() {
+            } else if addr.is_plane() {
                 let (tx, rx) = oneshot::channel();
                 let request = Request::new(tx);
-                if client_sender
-                    .send(ClientRequest::Connect {
-                        request,
-                        origin: origin.unwrap(),
-                    })
+                if plane_sender
+                    .send(PlaneRoutingRequest::Endpoint { id: addr, request })
                     .await
                     .is_err()
                 {
@@ -127,8 +124,8 @@ impl Router for TopLevelRouter {
             } else {
                 let (tx, rx) = oneshot::channel();
                 let request = Request::new(tx);
-                if plane_sender
-                    .send(PlaneRoutingRequest::Endpoint { id: addr, request })
+                if client_sender
+                    .send(DownlinkRoutingRequest::Endpoint { addr, request })
                     .await
                     .is_err()
                 {
@@ -147,14 +144,41 @@ impl Router for TopLevelRouter {
         .boxed()
     }
 
+    fn resolve_bidirectional(
+        &mut self,
+        host: Url,
+    ) -> BoxFuture<'_, Result<BidirectionalRoute, ResolutionError>> {
+        async move {
+            let TopLevelServerRouter { remote_sender, .. } = self;
+
+            let (tx, rx) = oneshot::channel();
+            if remote_sender
+                .send(RemoteRoutingRequest::Bidirectional {
+                    host: host.clone(),
+                    request: Request::new(tx),
+                })
+                .await
+                .is_err()
+            {
+                Err(ResolutionError::router_dropped())
+            } else {
+                match rx.await {
+                    Ok(Ok(registrator)) => registrator.register().await,
+                    Ok(Err(_)) => Err((ResolutionError::unresolvable(host.to_string()))),
+                    Err(_) => Err(ResolutionError::router_dropped()),
+                }
+            }
+        }
+        .boxed()
+    }
+
     fn lookup(
         &mut self,
         host: Option<Url>,
         route: RelativeUri,
-        _origin: Option<Origin>,
     ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
         async move {
-            let TopLevelRouter { plane_sender, .. } = self;
+            let TopLevelServerRouter { plane_sender, .. } = self;
 
             let (tx, rx) = oneshot::channel();
             if plane_sender

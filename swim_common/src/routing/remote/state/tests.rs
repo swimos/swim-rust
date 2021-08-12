@@ -424,7 +424,7 @@ async fn connections_check_in_table_clears_pending() {
 
     connections.pending.add(host2.clone(), Request::new(req_tx));
 
-    let entry_addr = RoutingAddr::local(5);
+    let entry_addr = RoutingAddr::plane(5);
     let sa = sock_addr();
 
     connections

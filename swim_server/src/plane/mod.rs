@@ -315,7 +315,7 @@ impl<Clk: Clock, DelegateFac: RouterFactory> RouteResolver<Clk, DelegateFac> {
         *counter = counter
             .checked_add(1)
             .expect("Local endpoint counter overflow.");
-        let addr = RoutingAddr::local(*counter);
+        let addr = RoutingAddr::plane(*counter);
         let (agent, task) = agent_route.run_agent(
             route.clone(),
             params,
@@ -429,7 +429,7 @@ pub(crate) async fn run_plane<Clk, S, DelegateFac: RouterFactory>(
                     }
                 }
                 Either::Left(Some(PlaneRoutingRequest::Endpoint { id, request })) => {
-                    if id.is_local() {
+                    if id.is_plane() {
                         event!(Level::TRACE, GETTING_LOCAL_ENDPOINT, ?id);
                         let result = if let Some(tx) = resolver
                             .active_routes

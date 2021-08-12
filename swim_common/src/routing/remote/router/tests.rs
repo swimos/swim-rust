@@ -202,7 +202,7 @@ async fn resolve_local_err() {
     let fake_resolver = fake_resolution(req_rx, url.clone(), tx, stop_rx);
 
     let task = async move {
-        let local_addr = RoutingAddr::local(0);
+        let local_addr = RoutingAddr::plane(0);
         let result = router.resolve_sender(local_addr, None).await;
         let _expected = ResolutionError::unresolvable(local_addr.to_string());
 

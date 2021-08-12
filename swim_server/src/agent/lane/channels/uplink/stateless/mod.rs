@@ -268,7 +268,7 @@ where
         } = self;
         match uplinks.entry(addr) {
             Entry::Occupied(entry) => Ok((entry.into_mut(), err_tx)),
-            Entry::Vacant(vacant) => match router.resolve_sender(addr, None).await {
+            Entry::Vacant(vacant) => match router.resolve_sender(addr).await {
                 Ok(sender) => Ok((
                     vacant.insert(UplinkMessageSender::new(sender.sender, route.clone())),
                     err_tx,
@@ -308,7 +308,7 @@ where
 
         match uplinks.entry(addr) {
             Entry::Occupied(_) => Ok(()),
-            Entry::Vacant(vacant) => match router.resolve_sender(addr, None).await {
+            Entry::Vacant(vacant) => match router.resolve_sender(addr).await {
                 Ok(sender) => {
                     vacant.insert(UplinkMessageSender::new(sender.sender, route.clone()));
                     Ok(())
@@ -334,7 +334,7 @@ where
             }
             uplinks.remove(&addr);
             Ok(())
-        } else if let Ok(sender) = router.resolve_sender(addr, None).await {
+        } else if let Ok(sender) = router.resolve_sender(addr).await {
             let mut sender = UplinkMessageSender::new(sender.sender, route.clone());
             let _ = sender.send_item(msg).await;
             Ok(())

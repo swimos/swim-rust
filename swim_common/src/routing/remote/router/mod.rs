@@ -13,8 +13,9 @@
 // limitations under the License.
 
 use crate::request::Request;
+use crate::routing::remote::table::BidirectionalRegistrator;
 use crate::routing::remote::{RawRoute, RemoteRoutingRequest};
-use crate::routing::RouterError;
+use crate::routing::{BidirectionalRoute, RouterError};
 use crate::routing::{Origin, ResolutionError};
 use crate::routing::{Route, Router, RoutingAddr, TaggedSender};
 use futures::future::BoxFuture;
@@ -53,7 +54,6 @@ impl<DelegateRouter: Router> Router for RemoteRouter<DelegateRouter> {
     fn resolve_sender(
         &mut self,
         addr: RoutingAddr,
-        origin: Option<Origin>,
     ) -> BoxFuture<'_, Result<Route, ResolutionError>> {
         async move {
             let RemoteRouter {
@@ -77,7 +77,31 @@ impl<DelegateRouter: Router> Router for RemoteRouter<DelegateRouter> {
                     }
                 }
             } else {
-                delegate_router.resolve_sender(addr, origin).await
+                delegate_router.resolve_sender(addr).await
+            }
+        }
+        .boxed()
+    }
+
+    fn resolve_bidirectional(
+        &mut self,
+        host: Url,
+    ) -> BoxFuture<'_, Result<BidirectionalRoute, ResolutionError>> {
+        let RemoteRouter { request_tx, .. } = self;
+        async move {
+            let (tx, rx) = oneshot::channel();
+            let routing_req = RemoteRoutingRequest::Bidirectional {
+                host: host.clone(),
+                request: Request::new(tx),
+            };
+            if request_tx.send(routing_req).await.is_err() {
+                Err(ResolutionError::router_dropped())
+            } else {
+                match rx.await {
+                    Ok(Ok(registrator)) => registrator.register().await,
+                    Ok(Err(_)) => Err((ResolutionError::unresolvable(host.to_string()))),
+                    Err(_) => Err(ResolutionError::router_dropped()),
+                }
             }
         }
         .boxed()
@@ -87,7 +111,6 @@ impl<DelegateRouter: Router> Router for RemoteRouter<DelegateRouter> {
         &mut self,
         host: Option<Url>,
         route: RelativeUri,
-        origin: Option<Origin>,
     ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
         async move {
             let RemoteRouter {
@@ -109,7 +132,7 @@ impl<DelegateRouter: Router> Router for RemoteRouter<DelegateRouter> {
                     }
                 }
             } else {
-                delegate_router.lookup(host, route, origin).await
+                delegate_router.lookup(host, route).await
             }
         }
         .boxed()
