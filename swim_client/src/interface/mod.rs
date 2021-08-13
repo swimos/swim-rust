@@ -134,7 +134,7 @@ impl SwimClientBuilder {
 
         // The connection pool handles the connections behnid the downlinks
         let (connection_pool, pool_task) = SwimConnPool::new(
-            client_params.conn_pool_params,
+            client_params,
             (client_tx, client_rx),
             client_router_factory,
             close_rx.clone(),
@@ -198,7 +198,7 @@ impl SwimClientBuilder {
 
         // The connection pool handles the connections behnid the downlinks
         let (connection_pool, pool_task) = SwimConnPool::new(
-            client_params.conn_pool_params,
+            client_params,
             (client_tx, client_rx),
             client_router_factory,
             close_rx.clone(),

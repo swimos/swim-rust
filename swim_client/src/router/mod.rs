@@ -300,7 +300,7 @@ impl<Path: Addressable, DelegateRouter: Router> Router for ClientRouter<Path, De
     fn resolve_bidirectional(
         &mut self,
         host: Url,
-    ) -> BoxFuture<Result<BidirectionalRoute, ResolutionError>> {
+    ) -> BoxFuture<'_, Result<BidirectionalRoute, ResolutionError>> {
         async move {
             let ClientRouter {
                 delegate_router, ..
