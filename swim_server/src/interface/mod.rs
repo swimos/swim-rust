@@ -30,7 +30,7 @@ use std::fmt::{Display, Formatter};
 use std::net::SocketAddr;
 
 use std::sync::Arc;
-use swim_client::configuration::downlink::ConfigHierarchy;
+use swim_client::configuration::downlink::{ClientParams, ConfigHierarchy};
 use swim_client::configuration::router::ConnectionPoolParams;
 use swim_client::connections::{PoolTask, SwimConnPool};
 use swim_client::downlink::subscription::DownlinksTask;
@@ -228,7 +228,7 @@ impl SwimServerBuilder {
 
         //Todo dm this needs to be changed from default after the new configuration is finalised.
         let (connection_pool, connection_pool_task) = SwimConnPool::new(
-            ConnectionPoolParams::default(),
+            ClientParams::default(),
             (client_tx, client_rx),
             client_router_factory,
             close_rx.clone(),

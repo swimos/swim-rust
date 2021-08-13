@@ -28,7 +28,7 @@ mod tests;
 
 /// Router implementation that will route to running [`ConnectionTask`]s for remote addresses and
 /// will delegate to another router instance for local addresses.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct RemoteRouter<DelegateRouter> {
     tag: RoutingAddr,
     delegate_router: DelegateRouter,
