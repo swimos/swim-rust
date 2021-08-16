@@ -31,7 +31,6 @@ use std::net::SocketAddr;
 
 use std::sync::Arc;
 use swim_client::configuration::downlink::{ClientParams, ConfigHierarchy};
-use swim_client::configuration::router::ConnectionPoolParams;
 use swim_client::connections::{PoolTask, SwimConnPool};
 use swim_client::downlink::subscription::DownlinksTask;
 use swim_client::downlink::Downlinks;

@@ -13,7 +13,6 @@
 // limitations under the License.
 
 use crate::configuration::downlink::ClientParams;
-use crate::configuration::router::ConnectionPoolParams;
 use crate::router::{
     AddressableWrapper, ClientRouter, ClientRouterFactory, DownlinkRoutingRequest, RouterEvent,
     RoutingPath, RoutingTable,
@@ -27,7 +26,6 @@ use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::fmt::Debug;
 use std::future::Future;
-use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use swim_common::request::request_future::RequestError;
@@ -41,7 +39,6 @@ use swim_common::routing::{
 use swim_common::warp::path::{Addressable, RelativePath};
 use swim_runtime::task::*;
 use tokio::sync::mpsc;
-use tokio::sync::mpsc::Receiver;
 use tokio::sync::oneshot;
 use tokio::time::sleep;
 use tokio_stream::wrappers::ReceiverStream;
@@ -49,9 +46,7 @@ use tracing::instrument;
 use tracing::{event, Level};
 use url::Url;
 use utilities::errors::Recoverable;
-use utilities::future::retryable::factory::{FutureFactory, ResettableFutureFactory};
 use utilities::future::retryable::strategy::RetryStrategy;
-use utilities::future::retryable::RetryableFuture;
 use utilities::hash_indexer::HashIndexer;
 use utilities::sync::promise;
 use utilities::uri::RelativeUri;
@@ -568,6 +563,7 @@ where
     D: Future<Output = ()>,
 {
     loop {
+        //Todo dm make it cancellable
         let result = match target.clone() {
             RegistrationTarget::Remote(target) => {
                 try_open_remote_connection(client_router, target).await
