@@ -32,10 +32,11 @@ use crate::routing::{
 use crate::warp::envelope::{Envelope, EnvelopeHeader, EnvelopeParseErr, OutgoingHeader};
 use crate::warp::path::RelativePath;
 use either::Either;
+use futures::future::join_all;
 use futures::future::{join, BoxFuture};
-use futures::stream::FuturesUnordered;
 use futures::{select_biased, stream, FutureExt, Sink, Stream, StreamExt};
 use pin_utils::pin_mut;
+use slab::Slab;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::convert::TryFrom;
@@ -50,7 +51,6 @@ use tokio_stream::wrappers::ReceiverStream;
 use tracing::{event, Level};
 use utilities::errors::Recoverable;
 use utilities::future::retryable::strategy::RetryStrategy;
-use utilities::hash_indexer::HashIndexer;
 use utilities::sync::trigger;
 use utilities::task::Spawner;
 use utilities::uri::{BadRelativeUri, RelativeUri};
@@ -155,7 +155,7 @@ where
 
         let outgoing_payloads = ReceiverStream::new(messages).map(Into::into);
         let mut bidirectional_request_rx = ReceiverStream::new(bidirectional_request_rx).fuse();
-        let mut bidirectional_connections = HashIndexer::new();
+        let mut bidirectional_connections = Slab::new();
 
         let mut selector = WsStreamSelector::new(
             &mut ws_stream,
@@ -368,7 +368,7 @@ impl From<RouterError> for DispatchError {
 
 async fn dispatch_envelope<R, F, D>(
     router: &mut R,
-    bidirectional_connections: &mut HashIndexer<TaggedSender>,
+    bidirectional_connections: &mut Slab<TaggedSender>,
     resolved: &mut HashMap<RelativePath, Route>,
     mut envelope: Envelope,
     mut retry_strategy: RetryStrategy,
@@ -407,7 +407,7 @@ where
 
 async fn try_dispatch_envelope<R>(
     router: &mut R,
-    bidirectional_connections: &mut HashIndexer<TaggedSender>,
+    bidirectional_connections: &mut Slab<TaggedSender>,
     resolved: &mut HashMap<RelativePath, Route>,
     envelope: Envelope,
 ) -> Result<(), (Envelope, DispatchError)>
@@ -415,18 +415,18 @@ where
     R: Router,
 {
     if envelope.header.is_response() {
-        let futures = FuturesUnordered::new();
+        let mut futures = vec![];
 
-        for (idx, conn) in bidirectional_connections.items_mut() {
+        for (idx, conn) in bidirectional_connections.iter_mut() {
             let envelope = envelope.clone();
 
             futures.push(async move {
                 let result = conn.send_item(envelope).await;
-                (*idx, result)
+                (idx, result)
             });
         }
 
-        let results = futures.collect::<Vec<_>>().await;
+        let results = join_all(futures).await;
 
         for result in results {
             if let (idx, Err(_)) = result {

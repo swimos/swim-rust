@@ -23,7 +23,7 @@ use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
 use std::sync::Arc;
-use swim_client::interface::SwimClient;
+use swim_client::interface::InnerClient;
 use swim_common::routing::{Router, TaggedEnvelope};
 use swim_common::warp::path::Path;
 use swim_runtime::time::clock::Clock;
@@ -68,7 +68,7 @@ where
         &self,
         agent_parameters: AgentParameters<Config>,
         clock: Clk,
-        client: SwimClient<Path>,
+        client: InnerClient<Path>,
         incoming_envelopes: Envelopes,
         router: R,
     ) -> (Arc<dyn Any + Send + Sync>, BoxFuture<'static, AgentResult>)
@@ -108,7 +108,7 @@ where
         parameters: HashMap<String, String>,
         execution_config: AgentExecutionConfig,
         clock: Clk,
-        client: SwimClient<Path>,
+        client: InnerClient<Path>,
         incoming_envelopes: Envelopes,
         router: R,
     ) -> (Arc<dyn Any + Send + Sync>, BoxFuture<'static, AgentResult>) {

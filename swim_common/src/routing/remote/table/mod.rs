@@ -52,10 +52,6 @@ impl SchemeHostPort {
         self.2
     }
 
-    pub fn origin(&self) -> String {
-        format!("{}://{}", self.scheme(), self.host())
-    }
-
     pub fn split(self) -> (Scheme, String, u16) {
         let SchemeHostPort(scheme, host, port) = self;
         (scheme, host, port)
@@ -101,8 +97,8 @@ pub struct RoutingTable {
     endpoints: HashMap<RoutingAddr, Handle>,
 }
 
-#[derive(Debug, Clone)]
-pub struct BidirectionalError {}
+#[derive(Debug, Clone, Copy)]
+pub struct BidirectionalError;
 
 impl Error for BidirectionalError {}
 
@@ -237,18 +233,6 @@ pub struct BidirectionalRegistrator {
 }
 
 impl BidirectionalRegistrator {
-    pub fn new(
-        sender: TaggedSender,
-        receiver_request_tx: mpsc::Sender<BidirectionalReceiverRequest>,
-        on_drop: promise::Receiver<ConnectionDropped>,
-    ) -> Self {
-        BidirectionalRegistrator {
-            sender,
-            receiver_request_tx,
-            on_drop,
-        }
-    }
-
     pub async fn register(self) -> Result<BidirectionalRoute, ResolutionError> {
         let (tx, rx) = oneshot::channel();
         self.receiver_request_tx

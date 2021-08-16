@@ -26,8 +26,6 @@ mod tests;
 pub mod factory;
 pub mod request;
 pub mod strategy;
-use crate::future::cancellable::Cancellable;
-use crate::sync::trigger;
 use pin_project::pin_project;
 use swim_runtime::time::delay::{delay_for, Delay};
 
@@ -66,30 +64,6 @@ where
             strategy,
             state: RetryState::Polling,
         }
-    }
-
-    /// Creates a retryable future that can be cancelled using a trigger.
-    ///
-    /// # Arguments
-    ///
-    /// * `future` - Future that needs to be executed in a retryable way.
-    /// * `strategy` - Retry strategy.
-    pub fn cancellable(
-        future: Fut,
-        strategy: RetryStrategy,
-    ) -> (Cancellable<Self, trigger::Receiver>, trigger::Sender) {
-        let (cancel_tx, cancel_rx) = trigger::trigger();
-        (
-            Cancellable::new(
-                RetryableFuture {
-                    future,
-                    strategy,
-                    state: RetryState::Polling,
-                },
-                cancel_rx,
-            ),
-            cancel_tx,
-        )
     }
 }
 
