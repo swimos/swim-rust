@@ -450,9 +450,7 @@ where
             Entry::Occupied(_) => unreachable!(),
             Entry::Vacant(entry) => Ok(entry.insert(route)),
         },
-        Err(err) => {
-            return Err(err);
-        }
+        Err(err) => Err(err),
     }
 }
 
