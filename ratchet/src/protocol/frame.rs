@@ -103,13 +103,66 @@ impl TryFrom<u8> for OpCode {
     }
 }
 
+#[derive(Debug, PartialEq)]
 pub struct CloseReason {
     code: CloseCode,
     description: Option<String>,
 }
 
+/// # Additional implementation sources:
+/// https://developer.mozilla.org/en-US/docs/Web/API/CloseEvent
+/// https://mailarchive.ietf.org/arch/msg/hybi/P_1vbD9uyHl63nbIIbFxKMfSwcM/
+/// https://tools.ietf.org/id/draft-ietf-hybi-thewebsocketprotocol-09.html
+#[derive(Debug, PartialEq)]
 pub enum CloseCode {
+    Normal,
     GoingAway,
+    Protocol,
+    Unsupported,
+    Status,
+    Abnormal,
+    Invalid,
+    Policy,
+    Overflow,
+    Extension,
+    Unexpected,
+    Restarting,
+    TryAgain,
+    Tls,
+    ReservedExtension(u16),
+    Library(u16),
+    Application(u16),
+}
+
+pub struct CloseCodeParseErr(u16);
+
+impl TryFrom<u16> for CloseCode {
+    type Error = CloseCodeParseErr;
+
+    fn try_from(value: u16) -> Result<Self, Self::Error> {
+        match value {
+            n @ 0..=999 => Err(CloseCodeParseErr(n)),
+            1000 => Ok(CloseCode::Normal),
+            1001 => Ok(CloseCode::GoingAway),
+            1002 => Ok(CloseCode::Protocol),
+            1003 => Ok(CloseCode::Unexpected),
+            1005 => Ok(CloseCode::Status),
+            1006 => Ok(CloseCode::Abnormal),
+            1007 => Ok(CloseCode::Invalid),
+            1008 => Ok(CloseCode::Policy),
+            1009 => Ok(CloseCode::Overflow),
+            1010 => Ok(CloseCode::Extension),
+            1011 => Ok(CloseCode::Unexpected),
+            1012 => Ok(CloseCode::Restarting),
+            1013 => Ok(CloseCode::TryAgain),
+            1015 => Ok(CloseCode::Tls),
+            n @ 1016..=1999 => Err(CloseCodeParseErr(n)),
+            n @ 2000..=2999 => Ok(CloseCode::ReservedExtension(n)),
+            n @ 3000..=3999 => Ok(CloseCode::Library(n)),
+            n @ 4000..=4999 => Ok(CloseCode::Application(n)),
+            n => Err(CloseCodeParseErr(n)),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -118,6 +171,7 @@ pub enum Message {
     Binary(Vec<u8>),
     Ping(Vec<u8>),
     Pong(Vec<u8>),
+    Close(CloseReason),
 }
 
 impl Message {

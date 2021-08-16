@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use super::{client, WebSocket};
-use crate::codec::Codec;
+use crate::codec::{Codec, FragmentBuffer};
 use crate::errors::Error;
 use crate::extensions::ext::NoExtProxy;
 use crate::extensions::ExtensionHandshake;
@@ -59,7 +59,7 @@ where
         self,
         stream: S,
         request: I,
-    ) -> Result<(WebSocket<S, Codec, E::Extension>, Option<String>), Error>
+    ) -> Result<(WebSocket<S, E::Extension>, Option<String>), Error>
     where
         S: WebSocketStream,
         I: TryIntoRequest,
@@ -75,7 +75,7 @@ where
             config.unwrap_or_default(),
             stream,
             request,
-            Codec::new(Role::Client, usize::MAX), // todo from config
+            Codec::new(Role::Client, usize::MAX, FragmentBuffer::new(usize::MAX)), // todo from config
             extension,
             subprotocols,
         )

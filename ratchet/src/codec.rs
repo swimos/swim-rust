@@ -53,15 +53,27 @@ impl CodecFlags {
     }
 }
 
-enum DataType {
+#[derive(Clone)]
+pub enum DataType {
     Text,
     Binary,
 }
 
-struct FragmentBuffer {
+#[derive(Clone)]
+pub struct FragmentBuffer {
     buffer: BytesMut,
     op_code: Option<DataType>,
     max_size: usize,
+}
+
+impl FragmentBuffer {
+    pub fn new(max_size: usize) -> Self {
+        FragmentBuffer {
+            buffer: BytesMut::default(),
+            op_code: None,
+            max_size,
+        }
+    }
 }
 
 impl FrameBuffer for FragmentBuffer {
@@ -118,25 +130,19 @@ impl FrameBuffer for FragmentBuffer {
     }
 }
 
-impl FragmentBuffer {
-    pub fn new(max_size: usize) -> Self {
-        FragmentBuffer {
-            buffer: BytesMut::default(),
-            op_code: None,
-            max_size,
-        }
-    }
-}
-
-pub struct Codec {
+#[derive(Clone)]
+pub struct Codec<B> {
     flags: CodecFlags,
     max_size: usize,
     rand: WyRand,
-    fragment_buffer: FragmentBuffer,
+    fragment_buffer: B,
 }
 
-impl Codec {
-    pub fn new(role: Role, max_size: usize) -> Self {
+impl<B> Codec<B>
+where
+    B: FrameBuffer,
+{
+    pub fn new(role: Role, max_size: usize, fragment_buffer: B) -> Self {
         let role_flag = match role {
             Role::Client => CodecFlags::empty(),
             Role::Server => CodecFlags::ROLE,
@@ -147,7 +153,7 @@ impl Codec {
             flags,
             max_size,
             rand: WyRand::new(),
-            fragment_buffer: FragmentBuffer::new(max_size),
+            fragment_buffer,
         }
     }
 
@@ -172,7 +178,10 @@ impl Codec {
     }
 }
 
-impl Encoder<Message> for Codec {
+impl<B> Encoder<Message> for Codec<B>
+where
+    B: FrameBuffer,
+{
     type Error = Error;
 
     fn encode(&mut self, message: Message, dst: &mut BytesMut) -> Result<(), Self::Error> {
@@ -181,6 +190,9 @@ impl Encoder<Message> for Codec {
             Message::Binary(data) => (OpCode::DataCode(DataCode::Binary), data),
             Message::Ping(data) => (OpCode::ControlCode(ControlCode::Ping), data),
             Message::Pong(data) => (OpCode::ControlCode(ControlCode::Pong), data),
+            Message::Close(_reason) => {
+                unimplemented!()
+            }
         };
 
         // todo run bytes through extensions
@@ -198,7 +210,10 @@ impl Encoder<Message> for Codec {
     }
 }
 
-impl Decoder for Codec {
+impl<B> Decoder for Codec<B>
+where
+    B: FrameBuffer,
+{
     type Item = Message;
     type Error = Error;
 
@@ -229,7 +244,7 @@ impl Decoder for Codec {
     }
 }
 
-trait FrameBuffer {
+pub trait FrameBuffer {
     fn start_continuation(&mut self, op_code: DataType, payload: Vec<u8>) -> Result<(), Error>;
 
     fn on_frame(&mut self, payload: Vec<u8>) -> Result<(), Error>;
@@ -279,6 +294,24 @@ where
     }
 }
 
+fn on_control_frame<B>(
+    _buffer: &mut B,
+    control_code: ControlCode,
+    _payload: Payload,
+    _flags: HeaderFlags,
+) -> Result<Option<Message>, Error>
+where
+    B: FrameBuffer,
+{
+    match control_code {
+        ControlCode::Close => {}
+        ControlCode::Ping => {}
+        ControlCode::Pong => {}
+    }
+
+    unimplemented!()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -292,7 +325,7 @@ mod tests {
             116,
         ]);
 
-        let mut codec = Codec::new(Role::Server, usize::MAX);
+        let mut codec = Codec::new(Role::Server, usize::MAX, FragmentBuffer::new(usize::MAX));
         let result = codec.decode(&mut bytes);
         assert_eq!(
             result.unwrap(),
@@ -303,7 +336,7 @@ mod tests {
     #[test]
     fn continuation_text() {
         let mut buffer = BytesMut::new();
-        let mut codec = Codec::new(Role::Server, usize::MAX);
+        let mut codec = Codec::new(Role::Server, usize::MAX, FragmentBuffer::new(usize::MAX));
 
         let input = "a bunch of characters that form a string";
         let mut iter = input.as_bytes().chunks(5).peekable();

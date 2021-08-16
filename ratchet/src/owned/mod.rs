@@ -16,11 +16,11 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use futures::Sink;
-use tokio_util::codec::{Decoder, Encoder, Framed};
+use tokio_util::codec::Framed;
 
 pub use builder::{WebSocketClientBuilder, WebSocketServerBuilder};
 
-use crate::codec::Codec;
+use crate::codec::{Codec, FragmentBuffer};
 use crate::errors::Error;
 use crate::extensions::NegotiatedExtension;
 use crate::handshake::{exec_client_handshake, HandshakeResult, ProtocolRegistry};
@@ -31,19 +31,19 @@ use crate::{
 
 mod builder;
 
-pub struct WebSocket<S, C = Codec, E = Deflate> {
-    inner: WebSocketInner<S, C, E>,
+pub struct WebSocket<S, E = Deflate> {
+    inner: WebSocketInner<S, E>,
 }
 
-pub struct WebSocketInner<S, C, E> {
-    framed: Framed<S, C>,
+pub struct WebSocketInner<S, E> {
+    framed: Framed<S, Codec<FragmentBuffer>>,
     role: Role,
     extension: NegotiatedExtension<E>,
     config: WebSocketConfig,
     _priv: (),
 }
 
-impl<S, C, E> WebSocket<S, C, E>
+impl<S, E> WebSocket<S, E>
 where
     S: WebSocketStream,
     E: Extension,
@@ -57,17 +57,16 @@ where
     }
 }
 
-pub async fn client<S, C, E>(
+pub async fn client<S, E>(
     config: WebSocketConfig,
     mut stream: S,
     request: Request,
-    codec: C,
+    codec: Codec<FragmentBuffer>,
     extension: E,
     subprotocols: ProtocolRegistry,
-) -> Result<(WebSocket<S, C, E::Extension>, Option<String>), Error>
+) -> Result<(WebSocket<S, E::Extension>, Option<String>), Error>
 where
     S: WebSocketStream,
-    C: Encoder<Message, Error = Error> + Decoder,
     E: ExtensionHandshake,
 {
     let HandshakeResult {
@@ -86,10 +85,9 @@ where
     Ok((socket, protocol))
 }
 
-impl<S, C, E> Sink<Message> for WebSocket<S, C, E>
+impl<S, E> Sink<Message> for WebSocket<S, E>
 where
     S: WebSocketStream,
-    C: Encoder<Message, Error = Error> + Decoder,
     E: Extension + Unpin,
 {
     type Error = Error;

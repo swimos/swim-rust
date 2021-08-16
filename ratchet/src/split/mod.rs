@@ -12,11 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::codec::Codec;
+use crate::codec::{Codec, FragmentBuffer};
 use crate::errors::Error;
 use crate::extensions::NegotiatedExtension;
 use crate::handshake::{exec_client_handshake, HandshakeResult, ProtocolRegistry};
-use crate::protocol::frame::Message;
 use crate::{
     Deflate, Extension, ExtensionHandshake, Request, Role, WebSocketConfig, WebSocketStream,
 };
@@ -24,20 +23,19 @@ use futures::io::{ReadHalf, WriteHalf};
 use futures::AsyncReadExt;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tokio_util::codec::{Decoder, Encoder};
 use tokio_util::compat::{Compat, TokioAsyncReadCompatExt};
 
 // todo replace once futures::BiLock is stabilised
 //  https://github.com/rust-lang/futures-rs/issues/2289
 type Writer<S> = Arc<Mutex<WriteHalf<Compat<S>>>>;
 
-type SplitSocket<S, C, E> = (WebSocketTx<S, C, E>, WebSocketRx<S, C, E>);
+type SplitSocket<S, E> = (WebSocketTx<S, E>, WebSocketRx<S, E>);
 
 // todo maybe split extension
 // todo owned decoder and split encoder
-pub struct WebSocketRx<S, C = Codec, E = Deflate> {
+pub struct WebSocketRx<S, E = Deflate> {
     writer: Writer<S>,
-    codec: C,
+    codec: Codec<FragmentBuffer>,
     reader: ReadHalf<Compat<S>>,
     role: Role,
     extension: NegotiatedExtension<E>,
@@ -45,25 +43,24 @@ pub struct WebSocketRx<S, C = Codec, E = Deflate> {
 }
 
 // todo split encoder
-pub struct WebSocketTx<S, C = Codec, E = Deflate> {
+pub struct WebSocketTx<S, E = Deflate> {
     writer: Writer<S>,
-    codec: C,
+    codec: Codec<FragmentBuffer>,
     role: Role,
     extension: NegotiatedExtension<E>,
     config: WebSocketConfig,
 }
 
-pub async fn client<S, C, E>(
+pub async fn client<S, E>(
     config: WebSocketConfig,
     mut stream: S,
     request: Request,
-    codec: C,
+    codec: Codec<FragmentBuffer>,
     extension: E,
     subprotocols: ProtocolRegistry,
-) -> Result<(SplitSocket<S, C, E::Extension>, Option<String>), Error>
+) -> Result<(SplitSocket<S, E::Extension>, Option<String>), Error>
 where
     S: WebSocketStream,
-    C: Encoder<Message, Error = Error> + Decoder + Clone,
     E: ExtensionHandshake,
 {
     let HandshakeResult {
@@ -93,10 +90,9 @@ where
     Ok(((tx, rx), protocol))
 }
 
-impl<S, C, E> WebSocketTx<S, C, E>
+impl<S, E> WebSocketTx<S, E>
 where
     S: WebSocketStream,
-    C: Encoder<Message, Error = Error> + Decoder + Clone,
     E: Extension,
 {
     pub async fn read_frame_contents(&mut self, _bytes: &mut [u8]) -> Result<usize, Error> {
