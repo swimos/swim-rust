@@ -105,8 +105,8 @@ impl TryFrom<u8> for OpCode {
 
 #[derive(Debug, PartialEq)]
 pub struct CloseReason {
-    code: CloseCode,
-    description: Option<String>,
+    pub code: CloseCode,
+    pub description: Option<String>,
 }
 
 impl CloseReason {
@@ -169,6 +169,30 @@ impl TryFrom<u16> for CloseCode {
             n @ 3000..=3999 => Ok(CloseCode::Library(n)),
             n @ 4000..=4999 => Ok(CloseCode::Application(n)),
             n => Err(CloseCodeParseErr(n)),
+        }
+    }
+}
+
+impl From<CloseCode> for u16 {
+    fn from(code: CloseCode) -> u16 {
+        match code {
+            CloseCode::Normal => 1000,
+            CloseCode::GoingAway => 1001,
+            CloseCode::Protocol => 1002,
+            CloseCode::Unsupported => 1003,
+            CloseCode::Status => 1005,
+            CloseCode::Abnormal => 1006,
+            CloseCode::Invalid => 1007,
+            CloseCode::Policy => 1008,
+            CloseCode::Overflow => 1009,
+            CloseCode::Extension => 1010,
+            CloseCode::Unexpected => 1011,
+            CloseCode::Restarting => 1012,
+            CloseCode::TryAgain => 1013,
+            CloseCode::Tls => 1015,
+            CloseCode::ReservedExtension(n) => n,
+            CloseCode::Library(n) => n,
+            CloseCode::Application(n) => n,
         }
     }
 }

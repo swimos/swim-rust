@@ -158,24 +158,8 @@ impl Codec {
         }
     }
 
-    pub fn is_cont(&self) -> bool {
-        self.flags.contains(CodecFlags::CONT)
-    }
-
-    pub fn is_read_cont(&self) -> bool {
-        self.flags.contains(CodecFlags::R_CONT)
-    }
-
-    pub fn is_write_cont(&self) -> bool {
-        self.flags.contains(CodecFlags::W_CONT)
-    }
-
     pub fn is_client(&self) -> bool {
         !self.flags.contains(CodecFlags::ROLE)
-    }
-
-    pub fn is_server(&self) -> bool {
-        self.flags.contains(CodecFlags::ROLE)
     }
 }
 
@@ -188,8 +172,19 @@ impl Encoder<Message> for Codec {
             Message::Binary(data) => (OpCode::DataCode(DataCode::Binary), data),
             Message::Ping(data) => (OpCode::ControlCode(ControlCode::Ping), data),
             Message::Pong(data) => (OpCode::ControlCode(ControlCode::Pong), data),
-            Message::Close(_reason) => {
-                unimplemented!()
+            Message::Close(reason) => {
+                let payload = match reason {
+                    Some(reason) => {
+                        let CloseReason { code, description } = reason;
+                        let mut payload = u16::from(code).to_be_bytes().to_vec();
+                        if let Some(description) = description {
+                            payload.extend_from_slice(description.as_bytes());
+                        }
+                        payload
+                    }
+                    None => Vec::new(),
+                };
+                (OpCode::ControlCode(ControlCode::Close), payload)
             }
         };
 

@@ -113,7 +113,9 @@ fn overflow_buffer() {
     expect_err(buffer.on_frame(vec![6, 7]), ProtocolError::FrameOverflow);
 }
 
+// todo: move to decoder tests
 #[test]
+#[ignore]
 fn invalid_utf8() {
     let mut buffer = FragmentBuffer::new(5);
 
