@@ -20,7 +20,6 @@
 //! - `log_verbose`: Sets the global tracing level to the highest.
 //! - `websocket`: Provides a WebSocket connector that works on non-WASM platforms.
 
-
 pub mod configuration;
 pub mod connections;
 pub mod downlink;
