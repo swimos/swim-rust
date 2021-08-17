@@ -19,8 +19,7 @@ mod tests;
 type Nonce = [u8; 24];
 
 use crate::errors::{Error, ErrorKind, HttpError};
-use crate::extensions::ext::NoExt;
-use crate::extensions::{ExtensionHandshake, NegotiatedExtension};
+use crate::extensions::ExtensionProvider;
 use crate::handshake::client::encoding::{build_request, encode_request};
 use crate::handshake::io::BufferedIo;
 use crate::handshake::{ProtocolRegistry, ACCEPT_KEY, BAD_STATUS_CODE, UPGRADE_STR, WEBSOCKET_STR};
@@ -46,7 +45,7 @@ pub async fn exec_client_handshake<S, E>(
 ) -> Result<HandshakeResult<E::Extension>, Error>
 where
     S: WebSocketStream,
-    E: ExtensionHandshake,
+    E: ExtensionProvider,
 {
     let machine = HandshakeMachine::new(stream, subprotocols, extension);
     let uri = request.uri();
@@ -82,7 +81,7 @@ struct HandshakeMachine<'s, S, E> {
 impl<'s, S, E> HandshakeMachine<'s, S, E>
 where
     S: WebSocketStream,
-    E: ExtensionHandshake,
+    E: ExtensionProvider,
 {
     pub fn new(
         socket: &'s mut S,
@@ -163,7 +162,7 @@ where
 #[derive(Debug)]
 pub struct HandshakeResult<E> {
     pub protocol: Option<String>,
-    pub extension: NegotiatedExtension<E>,
+    pub extension: E,
 }
 
 /// Quickly checks a partial response in the order of the expected HTTP response declaration to see
@@ -209,7 +208,7 @@ fn try_parse_response<'l, E>(
     subprotocols: &mut ProtocolRegistry,
 ) -> Result<ParseResult<E::Extension>, Error>
 where
-    E: ExtensionHandshake,
+    E: ExtensionProvider,
 {
     match response.parse(buffer.as_ref()) {
         Ok(Status::Complete(count)) => {
@@ -228,7 +227,7 @@ fn parse_response<E>(
     subprotocols: &mut ProtocolRegistry,
 ) -> Result<HandshakeResult<E::Extension>, Error>
 where
-    E: ExtensionHandshake,
+    E: ExtensionProvider,
 {
     match response.version {
         // rfc6455 § 4.2.1.1: must be HTTP/1.1 or higher
@@ -287,15 +286,9 @@ where
         },
     )?;
 
-    let extension = extension.negotiate(response)?;
-    let extension = match extension {
-        Some(ext) => NegotiatedExtension::Negotiated(ext),
-        None => NegotiatedExtension::None(NoExt::default()),
-    };
-
     Ok(HandshakeResult {
         protocol: subprotocols.negotiate_response(response)?,
-        extension,
+        extension: extension.negotiate(response)?,
     })
 }
 

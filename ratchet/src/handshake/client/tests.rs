@@ -14,7 +14,7 @@
 
 use crate::errors::{Error, HttpError};
 use crate::extensions::ext::{NoExt, NoExtProxy};
-use crate::extensions::{ExtHandshakeErr, Extension, ExtensionHandshake, NegotiatedExtension};
+use crate::extensions::{ExtHandshakeErr, Extension, ExtensionProvider};
 use crate::fixture::mock;
 use crate::handshake::client::{HandshakeMachine, HandshakeResult};
 use crate::handshake::{ProtocolError, ProtocolRegistry, ACCEPT_KEY, UPGRADE_STR, WEBSOCKET_STR};
@@ -419,11 +419,11 @@ async fn disjoint_protocols() {
 
 struct MockExtensionProxy<R>(&'static [(HeaderName, &'static str)], R)
 where
-    R: for<'h> Fn(&'h httparse::Response) -> Result<Option<MockExtension>, ExtHandshakeErr>;
+    R: for<'h> Fn(&'h httparse::Response) -> Result<MockExtension, ExtHandshakeErr>;
 
-impl<R> ExtensionHandshake for MockExtensionProxy<R>
+impl<R> ExtensionProvider for MockExtensionProxy<R>
 where
-    R: for<'h> Fn(&'h httparse::Response) -> Result<Option<MockExtension>, ExtHandshakeErr>,
+    R: for<'h> Fn(&'h httparse::Response) -> Result<MockExtension, ExtHandshakeErr>,
 {
     type Extension = MockExtension;
 
@@ -434,16 +434,13 @@ where
         }
     }
 
-    fn negotiate(
-        &self,
-        response: &httparse::Response,
-    ) -> Result<Option<Self::Extension>, ExtHandshakeErr> {
+    fn negotiate(&self, response: &httparse::Response) -> Result<Self::Extension, ExtHandshakeErr> {
         (self.1)(response)
     }
 }
 
 #[derive(Clone, Debug, PartialEq)]
-struct MockExtension;
+struct MockExtension(bool);
 impl Extension for MockExtension {
     fn encode(&mut self) {
         panic!("Unexpected encode invocation")
@@ -456,7 +453,7 @@ impl Extension for MockExtension {
 
 async fn extension_test<E, F, R>(ext: E, response_fn: F, result_fn: R)
 where
-    E: ExtensionHandshake,
+    E: ExtensionProvider,
     F: Fn(&mut Response<()>),
     R: Fn(Result<HandshakeResult<E::Extension>, Error>),
 {
@@ -537,7 +534,7 @@ async fn negotiates_extension() {
                 let value = String::from_utf8(header.value.to_vec())
                     .expect("Server returned invalid UTF-8");
                 if value == EXT {
-                    Ok(Some(MockExtension))
+                    Ok(MockExtension(true))
                 } else {
                     panic!(
                         "Server returned an invalid sec-websocket-extensions header: `{:?}`",
@@ -560,11 +557,7 @@ async fn negotiates_extension() {
             );
         },
         |result| match result {
-            Ok(handshake_result) => {
-                if let NegotiatedExtension::None(_) = handshake_result.extension {
-                    panic!("No extension negotiated")
-                }
-            }
+            Ok(handshake_result) => assert!(handshake_result.extension.0),
             Err(e) => {
                 panic!("Expected a valid upgrade: {:?}", e)
             }
@@ -576,17 +569,13 @@ async fn negotiates_extension() {
 #[tokio::test]
 async fn negotiates_no_extension() {
     const HEADERS: &'static [(HeaderName, &'static str)] = &[];
-    let extension_proxy = MockExtensionProxy(&HEADERS, |_| Ok(None));
+    let extension_proxy = MockExtensionProxy(&HEADERS, |_| Ok(MockExtension(false)));
 
     extension_test(
         extension_proxy,
         |_| {},
         |result| match result {
-            Ok(handshake_result) => {
-                if let NegotiatedExtension::Negotiated(_) = handshake_result.extension {
-                    panic!("Unexpected extension negotiated")
-                }
-            }
+            Ok(handshake_result) => assert!(!handshake_result.extension.0),
             Err(e) => {
                 panic!("Expected a valid upgrade: {:?}", e)
             }

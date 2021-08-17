@@ -17,19 +17,21 @@ use tokio::io::{AsyncRead, AsyncWrite};
 
 use crate::errors::Error;
 use crate::extensions::deflate::Deflate;
-pub use crate::extensions::{deflate::*, ext::*, ExtHandshakeErr, Extension, ExtensionHandshake};
+pub use crate::extensions::{deflate::*, ext::*, ExtHandshakeErr, Extension, ExtensionProvider};
 pub use crate::http_ext::TryIntoRequest;
 
-pub mod codec;
-mod errors;
-mod extensions;
 #[cfg(test)]
 mod fixture;
+
+mod codec;
+mod errors;
+mod extensions;
 mod handshake;
 mod http_ext;
-pub mod owned;
 #[allow(warnings)]
 mod protocol;
+
+pub mod owned;
 pub mod split;
 
 pub(crate) type Request = http::Request<()>;

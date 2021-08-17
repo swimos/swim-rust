@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::extensions::{ExtHandshakeErr, Extension, ExtensionHandshake};
+use crate::extensions::{ExtHandshakeErr, Extension, ExtensionProvider};
 use crate::Request;
 
 #[allow(dead_code)]
@@ -23,7 +23,7 @@ pub enum WebsocketExtension {
 }
 
 pub struct NoExtProxy;
-impl ExtensionHandshake for NoExtProxy {
+impl ExtensionProvider for NoExtProxy {
     type Extension = NoExt;
 
     fn apply_headers(&self, _request: &mut Request) {}
@@ -31,8 +31,8 @@ impl ExtensionHandshake for NoExtProxy {
     fn negotiate(
         &self,
         _response: &httparse::Response,
-    ) -> Result<Option<Self::Extension>, ExtHandshakeErr> {
-        Ok(Some(NoExt))
+    ) -> Result<Self::Extension, ExtHandshakeErr> {
+        Ok(NoExt)
     }
 }
 

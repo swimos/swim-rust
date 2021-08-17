@@ -22,11 +22,10 @@ pub use builder::{WebSocketClientBuilder, WebSocketServerBuilder};
 
 use crate::codec::{Codec, FragmentBuffer};
 use crate::errors::Error;
-use crate::extensions::NegotiatedExtension;
 use crate::handshake::{exec_client_handshake, HandshakeResult, ProtocolRegistry};
 use crate::protocol::frame::Message;
 use crate::{
-    Deflate, Extension, ExtensionHandshake, Request, Role, WebSocketConfig, WebSocketStream,
+    Deflate, Extension, ExtensionProvider, Request, Role, WebSocketConfig, WebSocketStream,
 };
 
 mod builder;
@@ -38,7 +37,7 @@ pub struct WebSocket<S, E = Deflate> {
 pub struct WebSocketInner<S, E> {
     framed: Framed<S, Codec<FragmentBuffer>>,
     role: Role,
-    extension: NegotiatedExtension<E>,
+    extension: E,
     config: WebSocketConfig,
     _priv: (),
 }
@@ -67,7 +66,7 @@ pub async fn client<S, E>(
 ) -> Result<(WebSocket<S, E::Extension>, Option<String>), Error>
 where
     S: WebSocketStream,
-    E: ExtensionHandshake,
+    E: ExtensionProvider,
 {
     let HandshakeResult {
         protocol,

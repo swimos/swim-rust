@@ -14,10 +14,9 @@
 
 use crate::codec::{Codec, FragmentBuffer};
 use crate::errors::Error;
-use crate::extensions::NegotiatedExtension;
 use crate::handshake::{exec_client_handshake, HandshakeResult, ProtocolRegistry};
 use crate::{
-    Deflate, Extension, ExtensionHandshake, Request, Role, WebSocketConfig, WebSocketStream,
+    Deflate, Extension, ExtensionProvider, Request, Role, WebSocketConfig, WebSocketStream,
 };
 use futures::io::{ReadHalf, WriteHalf};
 use futures::AsyncReadExt;
@@ -38,7 +37,7 @@ pub struct WebSocketRx<S, E = Deflate> {
     codec: Codec<FragmentBuffer>,
     reader: ReadHalf<Compat<S>>,
     role: Role,
-    extension: NegotiatedExtension<E>,
+    extension: E,
     config: WebSocketConfig,
 }
 
@@ -47,7 +46,7 @@ pub struct WebSocketTx<S, E = Deflate> {
     writer: Writer<S>,
     codec: Codec<FragmentBuffer>,
     role: Role,
-    extension: NegotiatedExtension<E>,
+    extension: E,
     config: WebSocketConfig,
 }
 
@@ -61,7 +60,7 @@ pub async fn client<S, E>(
 ) -> Result<(SplitSocket<S, E::Extension>, Option<String>), Error>
 where
     S: WebSocketStream,
-    E: ExtensionHandshake,
+    E: ExtensionProvider,
 {
     let HandshakeResult {
         protocol,
@@ -83,7 +82,7 @@ where
         codec,
         reader: read_half,
         role: Role::Client,
-        extension: Default::default(),
+        extension,
         config,
     };
 

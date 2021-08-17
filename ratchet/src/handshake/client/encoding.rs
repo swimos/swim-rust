@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::errors::{Error, ErrorKind, HttpError};
-use crate::extensions::ExtensionHandshake;
+use crate::extensions::ExtensionProvider;
 use crate::handshake::client::Nonce;
 use crate::handshake::{
     ProtocolRegistry, SubprotocolApplicator, UPGRADE_STR, WEBSOCKET_STR, WEBSOCKET_VERSION,
@@ -71,7 +71,7 @@ pub fn build_request<E>(
     subprotocols: &ProtocolRegistry,
 ) -> Result<(), Error>
 where
-    E: ExtensionHandshake,
+    E: ExtensionProvider,
 {
     if request.method() != Method::GET {
         return Err(Error::with_cause(ErrorKind::Http, HttpError::InvalidMethod));

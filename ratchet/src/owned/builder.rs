@@ -16,7 +16,7 @@ use super::{client, WebSocket};
 use crate::codec::{Codec, FragmentBuffer};
 use crate::errors::Error;
 use crate::extensions::ext::NoExtProxy;
-use crate::extensions::ExtensionHandshake;
+use crate::extensions::ExtensionProvider;
 use crate::handshake::ProtocolRegistry;
 use crate::Role;
 pub use crate::{Interceptor, TryIntoRequest, WebSocketConfig, WebSocketStream};
@@ -44,7 +44,7 @@ impl Default for WebSocketClientBuilder<NoExtProxy> {
 
 impl<E> WebSocketClientBuilder<E>
 where
-    E: ExtensionHandshake,
+    E: ExtensionProvider,
 {
     pub fn for_extension(extension: E) -> Self {
         WebSocketClientBuilder {
