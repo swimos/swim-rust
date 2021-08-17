@@ -14,7 +14,7 @@
 
 use crate::extensions::ExtHandshakeErr;
 use crate::handshake::ProtocolError;
-use crate::protocol::frame::OpCodeParseErr;
+use crate::protocol::frame::{CloseCodeParseErr, OpCodeParseErr};
 use http::header::HeaderName;
 use http::status::InvalidStatusCode;
 use http::uri::InvalidUri;
@@ -23,9 +23,10 @@ use std::any::Any;
 use std::error::Error as StdError;
 use std::fmt::{Display, Formatter};
 use std::io;
+use std::str::Utf8Error;
 use thiserror::Error;
 
-pub(crate) type BoxError = Box<dyn StdError + Send + Sync>;
+pub(crate) type BoxError = Box<dyn StdError + Send + Sync + 'static>;
 
 #[derive(Debug)]
 pub struct Error {
@@ -38,7 +39,11 @@ impl Display for Error {
     }
 }
 
-impl StdError for Error {}
+impl StdError for Error {
+    fn source(&self) -> Option<&(dyn StdError + 'static)> {
+        self.inner.source.as_deref().map(|e| e as &dyn StdError)
+    }
+}
 
 impl Error {
     pub(crate) fn new(kind: ErrorKind) -> Error {
@@ -172,5 +177,17 @@ impl From<OpCodeParseErr> for ProtocolError {
 impl From<OpCodeParseErr> for Error {
     fn from(e: OpCodeParseErr) -> Self {
         Error::with_cause(ErrorKind::Protocol, Box::new(ProtocolError::from(e)))
+    }
+}
+
+impl From<Utf8Error> for Error {
+    fn from(e: Utf8Error) -> Self {
+        Error::with_cause(ErrorKind::Encoding, e)
+    }
+}
+
+impl From<CloseCodeParseErr> for Error {
+    fn from(e: CloseCodeParseErr) -> Self {
+        Error::with_cause(ErrorKind::Protocol, e)
     }
 }

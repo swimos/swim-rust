@@ -12,15 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::errors::Error;
+use crate::errors::{Error, ErrorKind};
 use crate::handshake::ProtocolError;
-use crate::protocol::frame::{ControlCode, DataCode, Frame, FrameHeader, Message, OpCode, Payload};
+use crate::protocol::frame::{
+    CloseCode, CloseReason, ControlCode, DataCode, Frame, FrameHeader, Message, OpCode, Payload,
+};
 use crate::protocol::HeaderFlags;
 use crate::Role;
 use bytes::BytesMut;
 use nanorand::{WyRand, RNG};
 use std::borrow::BorrowMut;
+use std::convert::TryFrom;
 use tokio_util::codec::{Decoder, Encoder};
+
+const CONTROL_FRAME_LEN: &str = "Control frame length greater than 125";
 
 bitflags::bitflags! {
     pub struct CodecFlags: u8 {
@@ -232,11 +237,10 @@ where
 
                 match opcode {
                     OpCode::DataCode(data_code) => {
+                        println!("{:?}", data_code);
                         on_data_frame(fragment_buffer, data_code, payload, flags)
                     }
-                    OpCode::ControlCode(_control_code) => {
-                        unimplemented!()
-                    }
+                    OpCode::ControlCode(control_code) => on_control_frame(control_code, payload),
                 }
             }
             None => return Ok(None),
@@ -294,28 +298,52 @@ where
     }
 }
 
-fn on_control_frame<B>(
-    _buffer: &mut B,
+fn on_control_frame(
     control_code: ControlCode,
-    _payload: Payload,
-    _flags: HeaderFlags,
-) -> Result<Option<Message>, Error>
-where
-    B: FrameBuffer,
-{
-    match control_code {
-        ControlCode::Close => {}
-        ControlCode::Ping => {}
-        ControlCode::Pong => {}
+    mut payload: Payload,
+) -> Result<Option<Message>, Error> {
+    let payload: &mut [u8] = payload.borrow_mut();
+    let payload_len = payload.len();
+    if payload_len > 125 {
+        return Err(Error::with_cause(ErrorKind::Protocol, CONTROL_FRAME_LEN));
     }
 
-    unimplemented!()
+    match control_code {
+        ControlCode::Close => {
+            if payload_len < 2 {
+                Ok(Some(Message::Close(None)))
+            } else {
+                let close_reason = std::str::from_utf8(&payload[2..])?.to_string();
+                let description = if close_reason.is_empty() {
+                    None
+                } else {
+                    Some(close_reason)
+                };
+
+                let code_no = u16::from_be_bytes([payload[0], payload[1]]);
+                let close_code = CloseCode::try_from(code_no)?;
+                let reason = CloseReason::new(close_code, description);
+
+                Ok(Some(Message::Close(Some(reason))))
+            }
+        }
+        ControlCode::Ping => {
+            let payload = payload.to_vec();
+            Ok(Some(Message::Ping(payload)))
+        }
+        ControlCode::Pong => {
+            let payload = payload.to_vec();
+            Ok(Some(Message::Pong(payload)))
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::fixture::expect_err;
+    use std::error::Error as StdError;
+    use std::fmt::Debug;
     use std::iter::FromIterator;
 
     #[test]
@@ -415,5 +443,70 @@ mod tests {
             .is_ok());
         let error = buffer.finish_continuation().err().unwrap();
         assert!(error.is_encoding());
+    }
+
+    fn ok_eq<O>(result: Result<O, Error>, eq: O)
+    where
+        O: PartialEq + Debug,
+    {
+        match result {
+            Ok(actual) => assert_eq!(actual, eq),
+            Err(e) => panic!("Expected: `{:?}`, got: `{:?}`", eq, e),
+        }
+    }
+
+    #[test]
+    fn ping() {
+        let mut buffer = BytesMut::from_iter(&[137, 4, 1, 2, 3, 4]);
+        let mut codec = Codec::new(Role::Client, usize::MAX, FragmentBuffer::new(usize::MAX));
+
+        ok_eq(
+            codec.decode(&mut buffer),
+            Some(Message::Ping(vec![1, 2, 3, 4])),
+        );
+    }
+
+    #[test]
+    fn pong() {
+        let mut buffer = BytesMut::from_iter(&[138, 4, 1, 2, 3, 4]);
+        let mut codec = Codec::new(Role::Client, usize::MAX, FragmentBuffer::new(usize::MAX));
+
+        ok_eq(
+            codec.decode(&mut buffer),
+            Some(Message::Pong(vec![1, 2, 3, 4])),
+        );
+    }
+
+    #[test]
+    fn close() {
+        let mut codec = Codec::new(Role::Client, usize::MAX, FragmentBuffer::new(usize::MAX));
+
+        ok_eq(
+            codec.decode(&mut BytesMut::from_iter(&[136, 0])),
+            Some(Message::Close(None)),
+        );
+        ok_eq(
+            codec.decode(&mut BytesMut::from_iter(&[136, 2, 3, 232])),
+            Some(Message::Close(Some(CloseReason::new(
+                CloseCode::Normal,
+                None,
+            )))),
+        );
+        ok_eq(
+            codec.decode(&mut BytesMut::from_iter(&[
+                136, 17, 3, 240, 66, 111, 110, 115, 111, 105, 114, 44, 32, 69, 108, 108, 105, 111,
+                116,
+            ])),
+            Some(Message::Close(Some(CloseReason::new(
+                CloseCode::Policy,
+                Some("Bonsoir, Elliot".to_string()),
+            )))),
+        );
+
+        let mut frame = vec![136, 126, 1, 0];
+        frame.extend_from_slice(&[0; 256]);
+        let decode_result = codec.decode(&mut BytesMut::from_iter(frame));
+        let error = decode_result.unwrap_err();
+        assert_eq!(error.source().unwrap().to_string(), CONTROL_FRAME_LEN);
     }
 }

@@ -109,6 +109,12 @@ pub struct CloseReason {
     description: Option<String>,
 }
 
+impl CloseReason {
+    pub fn new(code: CloseCode, description: Option<String>) -> Self {
+        CloseReason { code, description }
+    }
+}
+
 /// # Additional implementation sources:
 /// https://developer.mozilla.org/en-US/docs/Web/API/CloseEvent
 /// https://mailarchive.ietf.org/arch/msg/hybi/P_1vbD9uyHl63nbIIbFxKMfSwcM/
@@ -134,6 +140,8 @@ pub enum CloseCode {
     Application(u16),
 }
 
+#[derive(Error, Debug)]
+#[error("Unknown close code: `{0}`")]
 pub struct CloseCodeParseErr(u16);
 
 impl TryFrom<u16> for CloseCode {
@@ -171,7 +179,7 @@ pub enum Message {
     Binary(Vec<u8>),
     Ping(Vec<u8>),
     Pong(Vec<u8>),
-    Close(CloseReason),
+    Close(Option<CloseReason>),
 }
 
 impl Message {
