@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::codec::{Codec, DataType, FragmentBuffer, FrameBuffer, CONTROL_FRAME_LEN};
+use crate::codec::{Codec, DataType, FragmentBuffer, CONTROL_FRAME_LEN};
 use crate::errors::Error;
 use crate::fixture::expect_err;
 use crate::handshake::ProtocolError;
@@ -33,7 +33,7 @@ fn frame_text() {
         129, 143, 0, 0, 0, 0, 66, 111, 110, 115, 111, 105, 114, 44, 32, 69, 108, 108, 105, 111, 116,
     ]);
 
-    let mut codec = Codec::new(Role::Server, usize::MAX, FragmentBuffer::new(usize::MAX));
+    let mut codec = Codec::new(Role::Server, usize::MAX);
     let result = codec.decode(&mut bytes);
     assert_eq!(
         result.unwrap(),
@@ -44,7 +44,7 @@ fn frame_text() {
 #[test]
 fn continuation_text() {
     let mut buffer = BytesMut::new();
-    let mut codec = Codec::new(Role::Server, usize::MAX, FragmentBuffer::new(usize::MAX));
+    let mut codec = Codec::new(Role::Server, usize::MAX);
 
     let input = "a bunch of characters that form a string";
     let mut iter = input.as_bytes().chunks(5).peekable();
@@ -137,7 +137,7 @@ where
 #[test]
 fn ping() {
     let mut buffer = BytesMut::from_iter(&[137, 4, 1, 2, 3, 4]);
-    let mut codec = Codec::new(Role::Client, usize::MAX, FragmentBuffer::new(usize::MAX));
+    let mut codec = Codec::new(Role::Client, usize::MAX);
 
     ok_eq(
         codec.decode(&mut buffer),
@@ -148,7 +148,7 @@ fn ping() {
 #[test]
 fn pong() {
     let mut buffer = BytesMut::from_iter(&[138, 4, 1, 2, 3, 4]);
-    let mut codec = Codec::new(Role::Client, usize::MAX, FragmentBuffer::new(usize::MAX));
+    let mut codec = Codec::new(Role::Client, usize::MAX);
 
     ok_eq(
         codec.decode(&mut buffer),
@@ -158,7 +158,7 @@ fn pong() {
 
 #[test]
 fn close() {
-    let mut codec = Codec::new(Role::Client, usize::MAX, FragmentBuffer::new(usize::MAX));
+    let mut codec = Codec::new(Role::Client, usize::MAX);
 
     ok_eq(
         codec.decode(&mut BytesMut::from_iter(&[136, 0])),

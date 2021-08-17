@@ -20,7 +20,7 @@ use tokio_util::codec::Framed;
 
 pub use builder::{WebSocketClientBuilder, WebSocketServerBuilder};
 
-use crate::codec::{Codec, FragmentBuffer};
+use crate::codec::Codec;
 use crate::errors::Error;
 use crate::handshake::{exec_client_handshake, HandshakeResult, ProtocolRegistry};
 use crate::protocol::frame::Message;
@@ -35,7 +35,7 @@ pub struct WebSocket<S, E = Deflate> {
 }
 
 pub struct WebSocketInner<S, E> {
-    framed: Framed<S, Codec<FragmentBuffer>>,
+    framed: Framed<S, Codec>,
     role: Role,
     extension: E,
     config: WebSocketConfig,
@@ -60,7 +60,7 @@ pub async fn client<S, E>(
     config: WebSocketConfig,
     mut stream: S,
     request: Request,
-    codec: Codec<FragmentBuffer>,
+    codec: Codec,
     extension: E,
     subprotocols: ProtocolRegistry,
 ) -> Result<(WebSocket<S, E::Extension>, Option<String>), Error>

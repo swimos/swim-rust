@@ -61,14 +61,14 @@ impl CodecFlags {
     }
 }
 
-#[derive(Clone)]
+#[derive(Copy, Clone)]
 pub enum DataType {
     Text,
     Binary,
 }
 
 #[derive(Clone)]
-pub struct FragmentBuffer {
+struct FragmentBuffer {
     buffer: BytesMut,
     op_code: Option<DataType>,
     max_size: usize,
@@ -84,7 +84,7 @@ impl FragmentBuffer {
     }
 }
 
-impl FrameBuffer for FragmentBuffer {
+impl FragmentBuffer {
     fn start_continuation(&mut self, first_code: DataType, payload: Vec<u8>) -> Result<(), Error> {
         let FragmentBuffer { op_code, .. } = self;
         match op_code {
@@ -116,7 +116,7 @@ impl FrameBuffer for FragmentBuffer {
         }
     }
 
-    fn finish_continuation(&mut self) -> Result<Message, Error> {
+    fn finish_continuation(&mut self) -> Result<(DataType, Vec<u8>), Error> {
         let FragmentBuffer {
             buffer,
             op_code,
@@ -125,32 +125,25 @@ impl FrameBuffer for FragmentBuffer {
 
         match op_code {
             None => Err(ProtocolError::ContinuationNotStarted.into()),
-            Some(op_code) => {
+            Some(data_type) => {
                 let payload = buffer.split().freeze();
                 buffer.truncate(*max_size / 2);
-
-                match op_code {
-                    DataType::Text => Message::text_from_utf8(payload.to_vec()),
-                    DataType::Binary => Ok(Message::Binary(payload.to_vec())),
-                }
+                Ok((*data_type, payload.to_vec()))
             }
         }
     }
 }
 
 #[derive(Clone)]
-pub struct Codec<B> {
+pub struct Codec {
     flags: CodecFlags,
     max_size: usize,
     rand: WyRand,
-    fragment_buffer: B,
+    fragment_buffer: FragmentBuffer,
 }
 
-impl<B> Codec<B>
-where
-    B: FrameBuffer,
-{
-    pub fn new(role: Role, max_size: usize, fragment_buffer: B) -> Self {
+impl Codec {
+    pub fn new(role: Role, max_size: usize) -> Self {
         let role_flag = match role {
             Role::Client => CodecFlags::empty(),
             Role::Server => CodecFlags::ROLE,
@@ -161,7 +154,7 @@ where
             flags,
             max_size,
             rand: WyRand::new(),
-            fragment_buffer,
+            fragment_buffer: FragmentBuffer::new(max_size),
         }
     }
 
@@ -186,10 +179,7 @@ where
     }
 }
 
-impl<B> Encoder<Message> for Codec<B>
-where
-    B: FrameBuffer,
-{
+impl Encoder<Message> for Codec {
     type Error = Error;
 
     fn encode(&mut self, message: Message, dst: &mut BytesMut) -> Result<(), Self::Error> {
@@ -218,10 +208,7 @@ where
     }
 }
 
-impl<B> Decoder for Codec<B>
-where
-    B: FrameBuffer,
-{
+impl Decoder for Codec {
     type Item = Message;
     type Error = Error;
 
@@ -251,23 +238,12 @@ where
     }
 }
 
-pub trait FrameBuffer {
-    fn start_continuation(&mut self, op_code: DataType, payload: Vec<u8>) -> Result<(), Error>;
-
-    fn on_frame(&mut self, payload: Vec<u8>) -> Result<(), Error>;
-
-    fn finish_continuation(&mut self) -> Result<Message, Error>;
-}
-
-fn on_data_frame<B>(
-    buffer: &mut B,
+fn on_data_frame(
+    buffer: &mut FragmentBuffer,
     data_code: DataCode,
     mut payload: Payload,
     flags: HeaderFlags,
-) -> Result<Option<Message>, Error>
-where
-    B: FrameBuffer,
-{
+) -> Result<Option<Message>, Error> {
     let payload: &mut [u8] = payload.borrow_mut();
     let payload = payload.to_vec();
 
@@ -275,7 +251,12 @@ where
         DataCode::Continuation => {
             buffer.on_frame(payload)?;
             if flags.is_fin() {
-                buffer.finish_continuation().map(Some)
+                let (data_type, payload) = buffer.finish_continuation()?;
+                let message = match data_type {
+                    DataType::Text => Message::text_from_utf8(payload)?,
+                    DataType::Binary => Message::Binary(payload),
+                };
+                Ok(Some(message))
             } else {
                 Ok(None)
             }

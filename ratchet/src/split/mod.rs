@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::codec::{Codec, FragmentBuffer};
+use crate::codec::Codec;
 use crate::errors::Error;
 use crate::handshake::{exec_client_handshake, HandshakeResult, ProtocolRegistry};
 use crate::{
@@ -34,7 +34,7 @@ type SplitSocket<S, E> = (WebSocketTx<S, E>, WebSocketRx<S, E>);
 // todo owned decoder and split encoder
 pub struct WebSocketRx<S, E = Deflate> {
     writer: Writer<S>,
-    codec: Codec<FragmentBuffer>,
+    codec: Codec,
     reader: ReadHalf<Compat<S>>,
     role: Role,
     extension: E,
@@ -44,7 +44,7 @@ pub struct WebSocketRx<S, E = Deflate> {
 // todo split encoder
 pub struct WebSocketTx<S, E = Deflate> {
     writer: Writer<S>,
-    codec: Codec<FragmentBuffer>,
+    codec: Codec,
     role: Role,
     extension: E,
     config: WebSocketConfig,
@@ -54,7 +54,7 @@ pub async fn client<S, E>(
     config: WebSocketConfig,
     mut stream: S,
     request: Request,
-    codec: Codec<FragmentBuffer>,
+    codec: Codec,
     extension: E,
     subprotocols: ProtocolRegistry,
 ) -> Result<(SplitSocket<S, E::Extension>, Option<String>), Error>
