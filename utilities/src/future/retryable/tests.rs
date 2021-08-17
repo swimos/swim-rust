@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::future::cancellable::CancellableResult;
 use crate::future::retryable::strategy::RetryStrategy;
 use crate::future::retryable::{ResettableFuture, RetryableFuture};
 use futures::task::{Context, Poll};
@@ -120,42 +119,4 @@ async fn test() {
 
     let result = rx.recv().await;
     assert_eq!(p, result.unwrap())
-}
-
-#[tokio::test]
-async fn test_cancellable_completed() {
-    let p = 5;
-    let (tx, mut rx) = mpsc::channel(1);
-    let sender = MpscSender::new(tx, p, send);
-
-    let (cancellable_retry, _trigger_tx) = RetryableFuture::cancellable(
-        sender,
-        RetryStrategy::immediate(NonZeroUsize::new(2).unwrap()),
-    );
-
-    let retry = cancellable_retry.await;
-
-    assert!(matches!(retry, CancellableResult::Completed(Ok(result)) if result == p));
-    let result = rx.recv().await;
-    assert_eq!(p, result.unwrap())
-}
-
-#[tokio::test]
-async fn test_cancellable_cancelled() {
-    let p = 5;
-    let (tx, mut rx) = mpsc::channel(1);
-    let sender = MpscSender::new(tx, p, send_delayed);
-
-    let (cancellable_retry, trigger_tx) = RetryableFuture::cancellable(
-        sender,
-        RetryStrategy::immediate(NonZeroUsize::new(2).unwrap()),
-    );
-
-    trigger_tx.trigger();
-    let retry = cancellable_retry.await;
-
-    assert!(matches!(retry, CancellableResult::Cancelled(result) if result.is_ok()));
-
-    let result = rx.recv().await;
-    assert!(result.is_none())
 }
