@@ -21,6 +21,7 @@ use futures::future::BoxFuture;
 use futures::select;
 use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
+use slab::Slab;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::convert::TryFrom;
@@ -418,7 +419,7 @@ impl<Path: Addressable, DelegateRouter: Router> ConnectionRegistratorTask<Path, 
         let mut remote_drop_rx = remote_drop_rx.fuse();
         let mut stop_rx = stop_trigger.fuse();
 
-        let mut subscribers: HashMap<RelativePath, HashIndexer<mpsc::Sender<RouterEvent>>> =
+        let mut subscribers: HashMap<RelativePath, Slab<mpsc::Sender<RouterEvent>>> =
             HashMap::new();
 
         loop {
@@ -440,12 +441,12 @@ impl<Path: Addressable, DelegateRouter: Router> ConnectionRegistratorTask<Path, 
                         if let Some(subscribers) = subscribers.get_mut(&incoming_message.path) {
                             let futures = FuturesUnordered::new();
 
-                            for (idx, sub) in subscribers.items() {
+                            for (idx, sub) in subscribers.iter() {
                                 let msg = incoming_message.clone();
 
                                 futures.push(async move {
                                     let result = sub.send(RouterEvent::Message(msg)).await;
-                                    (*idx, result)
+                                    (idx, result)
                                 });
                             }
 
@@ -474,10 +475,10 @@ impl<Path: Addressable, DelegateRouter: Router> ConnectionRegistratorTask<Path, 
                         Entry::Vacant(vacancy) => {
                             let (tx, rx) =
                                 mpsc::channel(config.conn_pool_params.buffer_size().get());
-                            let mut hash_indexer = HashIndexer::new();
-                            hash_indexer.insert(tx);
+                            let mut slab = Slab::new();
+                            slab.insert(tx);
 
-                            vacancy.insert(hash_indexer);
+                            vacancy.insert(slab);
                             rx
                         }
                     };

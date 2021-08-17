@@ -34,7 +34,7 @@ use swim_client::configuration::downlink::{ClientParams, ConfigHierarchy};
 use swim_client::connections::{PoolTask, SwimConnPool};
 use swim_client::downlink::subscription::DownlinksTask;
 use swim_client::downlink::Downlinks;
-use swim_client::interface::{SwimClient, SwimClientBuilder};
+use swim_client::interface::InnerClient;
 use swim_client::router::ClientRouterFactory;
 use swim_common::routing::error::RoutingError;
 use swim_common::routing::remote::config::ConnectionConfig;
@@ -239,7 +239,7 @@ impl SwimServerBuilder {
             close_rx.clone(),
         );
 
-        let client = SwimClientBuilder::build_from_downlinks(downlinks);
+        let client = InnerClient::new(downlinks);
 
         Ok((
             SwimServer {
@@ -281,7 +281,7 @@ pub struct SwimServer {
         mpsc::Sender<PlaneRoutingRequest>,
         mpsc::Receiver<PlaneRoutingRequest>,
     ),
-    client: SwimClient<Path>,
+    client: InnerClient<Path>,
     connection_pool_task: PoolTask<Path, TopLevelServerRouterFactory>,
     downlinks_task: DownlinksTask<Path>,
 }

@@ -12,7 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::router::{ClientConnectionsManager, DownlinkRoutingRequest, ClientRouterFactory, Router};
+use crate::router::{
+    ClientConnectionsManager, ClientRouterFactory, DownlinkRoutingRequest, Router,
+};
 use std::convert::TryFrom;
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
