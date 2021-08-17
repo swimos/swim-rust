@@ -352,13 +352,8 @@ impl<Path: Addressable> SwimClient<Path> {
             return Err(ClientError::CloseError);
         }
 
-        match rx.recv().await {
-            Some(close_result) => {
-                if let Err(routing_err) = close_result {
-                    return Err(ClientError::RoutingError(routing_err));
-                }
-            }
-            None => return Err(ClientError::CloseError),
+        if let Some(Err(routing_err)) = rx.recv().await {
+            return Err(ClientError::RoutingError(routing_err));
         }
 
         let result = task_handle.await;

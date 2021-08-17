@@ -18,14 +18,14 @@ use crate::router::{
     RoutingPath, RoutingTable,
 };
 use futures::future::BoxFuture;
-use futures::select;
+use futures::select_biased;
 use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
 use slab::Slab;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::convert::TryFrom;
-use std::fmt::Debug;
+use std::fmt::{Debug, Display, Formatter};
 use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
@@ -40,6 +40,7 @@ use swim_common::routing::{
 use swim_common::warp::path::{Addressable, RelativePath};
 use swim_runtime::task::*;
 use tokio::sync::mpsc;
+use tokio::sync::mpsc::Sender;
 use tokio::sync::oneshot;
 use tokio::time::sleep;
 use tokio_stream::wrappers::ReceiverStream;
@@ -48,7 +49,6 @@ use tracing::{event, Level};
 use url::Url;
 use utilities::errors::Recoverable;
 use utilities::future::retryable::strategy::RetryStrategy;
-use utilities::hash_indexer::HashIndexer;
 use utilities::sync::promise;
 use utilities::uri::RelativeUri;
 
@@ -145,6 +145,7 @@ impl<Path: Addressable> ConnectionPool for SwimConnPool<Path> {
 pub type ConnectionChannel = (ConnectionSender, Option<ConnectionReceiver>);
 
 const REQUEST_ERROR: &str = "The request channel was dropped.";
+const SUBSCRIBER_ERROR: &str = "The subscriber channel was dropped.";
 
 pub struct PoolTask<Path: Addressable, DelegateFac: RouterFactory> {
     client_rx: mpsc::Receiver<DownlinkRoutingRequest<Path>>,
@@ -184,9 +185,9 @@ impl<Path: Addressable, DelegateFac: RouterFactory> PoolTask<Path, DelegateFac> 
         let mut stop_rx = stop_trigger.clone().fuse();
 
         loop {
-            let request: Option<DownlinkRoutingRequest<Path>> = select! {
+            let request: Option<DownlinkRoutingRequest<Path>> = select_biased! {
+                 _ = stop_rx => None,
                 client_req = client_rx.next() => client_req,
-                _ = stop_rx => None
             };
 
             if let Some(ss) = request {
@@ -345,6 +346,19 @@ enum RegistrationTarget {
     Local(String),
 }
 
+impl Display for RegistrationTarget {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RegistrationTarget::Remote(remote) => {
+                write!(f, "{}", remote)
+            }
+            RegistrationTarget::Local(local) => {
+                write!(f, "{}", local)
+            }
+        }
+    }
+}
+
 enum ConnectionRegistratorEvent<Path: Addressable> {
     Message(TaggedEnvelope),
     Request(RegistratorRequest<Path>),
@@ -399,6 +413,7 @@ impl<Path: Addressable, DelegateRouter: Router> ConnectionRegistratorTask<Path, 
             config.router_params.retry_strategy(),
             &mut client_router,
             sleep,
+            stop_trigger.clone(),
         )
         .await?;
 
@@ -417,13 +432,14 @@ impl<Path: Addressable, DelegateRouter: Router> ConnectionRegistratorTask<Path, 
         let mut receiver = ReceiverStream::new(receiver).fuse();
         let mut registrator_rx = ReceiverStream::new(registrator_rx).fuse();
         let mut remote_drop_rx = remote_drop_rx.fuse();
-        let mut stop_rx = stop_trigger.fuse();
+        let mut stop_rx = stop_trigger.clone().fuse();
 
         let mut subscribers: HashMap<RelativePath, Slab<mpsc::Sender<RouterEvent>>> =
             HashMap::new();
 
         loop {
-            let request: Option<ConnectionRegistratorEvent<Path>> = select! {
+            let request: Option<ConnectionRegistratorEvent<Path>> = select_biased! {
+                _ = stop_rx => None,
                 message = receiver.next() => message.map(ConnectionRegistratorEvent::Message),
                 req = registrator_rx.next() => req.map(ConnectionRegistratorEvent::Request),
                 conn_err = remote_drop_rx => {
@@ -432,7 +448,6 @@ impl<Path: Addressable, DelegateRouter: Router> ConnectionRegistratorTask<Path, 
                         Err(_) => None,
                     }
                 }
-                _ = stop_rx => None,
             };
 
             match request {
@@ -484,7 +499,7 @@ impl<Path: Addressable, DelegateRouter: Router> ConnectionRegistratorTask<Path, 
                     };
 
                     if tx.send(Ok((sender.clone(), Some(receiver)))).is_err() {
-                        event!(Level::WARN, REQUEST_ERROR);
+                        event!(Level::ERROR, REQUEST_ERROR);
                     }
                 }
                 Some(ConnectionRegistratorEvent::Request(RegistratorRequest::Connect {
@@ -492,8 +507,8 @@ impl<Path: Addressable, DelegateRouter: Router> ConnectionRegistratorTask<Path, 
                     conn_type: ConnectionType::Outgoing,
                     ..
                 })) => {
-                    if let Err(Err(err)) = tx.send(Ok((sender.clone(), None))) {
-                        return Err(err);
+                    if tx.send(Ok((sender.clone(), None))).is_err() {
+                        event!(Level::ERROR, REQUEST_ERROR);
                     }
                 }
                 Some(ConnectionRegistratorEvent::Request(RegistratorRequest::Resolve {
@@ -503,25 +518,52 @@ impl<Path: Addressable, DelegateRouter: Router> ConnectionRegistratorTask<Path, 
                         .send(Ok(maybe_raw_route.as_ref().unwrap().clone()))
                         .is_err()
                     {
-                        event!(Level::WARN, REQUEST_ERROR);
+                        event!(Level::ERROR, REQUEST_ERROR);
                     }
                 }
                 Some(ConnectionRegistratorEvent::ConnectionDropped(connection_dropped)) => {
+                    broadcast(&mut subscribers, RouterEvent::ConnectionClosed).await;
+
                     if connection_dropped.is_recoverable() {
-                        let (new_sender, new_receiver, new_remote_drop_rx) = open_connection(
+                        match open_connection(
                             target.clone(),
                             config.router_params.retry_strategy(),
                             &mut client_router,
                             sleep,
+                            stop_trigger.clone(),
                         )
-                        .await?;
+                        .await
+                        {
+                            Ok((new_sender, new_receiver, new_remote_drop_rx)) => {
+                                sender = new_sender;
+                                if let Some(new_receiver) = new_receiver {
+                                    receiver = ReceiverStream::new(new_receiver).fuse()
+                                }
+                                remote_drop_rx = new_remote_drop_rx.fuse();
+                            }
+                            Err(err) => {
+                                broadcast(
+                                    &mut subscribers,
+                                    RouterEvent::Unreachable(target.to_string()),
+                                )
+                                .await;
 
-                        sender = new_sender;
-                        if new_receiver.is_some() {
-                            receiver = ReceiverStream::new(new_receiver.unwrap()).fuse()
-                        }
-                        remote_drop_rx = new_remote_drop_rx.fuse();
+                                if let Some(local_drop_tx) = maybe_local_drop_tx {
+                                    local_drop_tx.provide(ConnectionDropped::Closed).map_err(
+                                        |_| ConnectionError::Closed(CloseError::closed()),
+                                    )?;
+                                }
+
+                                return Err(err);
+                            }
+                        };
                     } else {
+                        broadcast(
+                            &mut subscribers,
+                            RouterEvent::Unreachable(target.to_string()),
+                        )
+                        .await;
+
                         if let Some(local_drop_tx) = maybe_local_drop_tx {
                             local_drop_tx
                                 .provide(ConnectionDropped::Closed)
@@ -532,6 +574,18 @@ impl<Path: Addressable, DelegateRouter: Router> ConnectionRegistratorTask<Path, 
                     }
                 }
                 _ => {
+                    let mut futures = vec![];
+
+                    for (_, subs) in subscribers {
+                        for (_, sub) in subs {
+                            futures.push(async move {
+                                if sub.send(RouterEvent::Stopping).await.is_err() {
+                                    event!(Level::ERROR, SUBSCRIBER_ERROR);
+                                }
+                            })
+                        }
+                    }
+
                     if let Some(local_drop_tx) = maybe_local_drop_tx {
                         local_drop_tx
                             .provide(ConnectionDropped::Closed)
@@ -540,6 +594,33 @@ impl<Path: Addressable, DelegateRouter: Router> ConnectionRegistratorTask<Path, 
 
                     return Ok(());
                 }
+            }
+        }
+    }
+}
+
+async fn broadcast(
+    subscribers: &mut HashMap<RelativePath, Slab<Sender<RouterEvent>>>,
+    event: RouterEvent,
+) {
+    let futures = FuturesUnordered::new();
+
+    for (path, subs) in subscribers.iter() {
+        for (idx, sub) in subs {
+            let event_clone = event.clone();
+            futures.push(async move {
+                let result = sub.send(event_clone).await;
+                (path.clone(), idx, result)
+            })
+        }
+    }
+
+    let results = futures.collect::<Vec<_>>().await;
+
+    for result in results {
+        if let (path, idx, Err(_)) = result {
+            if let Some(subs) = subscribers.get_mut(&path) {
+                subs.remove(idx);
             }
         }
     }
@@ -556,6 +637,7 @@ async fn open_connection<Path, DelegateRouter, F, D>(
     mut retry_strategy: RetryStrategy,
     client_router: &mut ClientRouter<Path, DelegateRouter>,
     delay_fn: F,
+    stop_trigger: CloseReceiver,
 ) -> Result<RawConnection, ConnectionError>
 where
     Path: Addressable,
@@ -563,8 +645,8 @@ where
     F: Fn(Duration) -> D,
     D: Future<Output = ()>,
 {
+    let mut stop_rx = stop_trigger.fuse();
     loop {
-        //Todo dm make it cancellable
         let result = match target.clone() {
             RegistrationTarget::Remote(target) => {
                 try_open_remote_connection(client_router, target).await
@@ -580,7 +662,14 @@ where
             }
             Err(err) if !err.is_fatal() => match retry_strategy.next() {
                 Some(Some(dur)) => {
-                    delay_fn(dur).await;
+                    let cancelled: Option<()> = select_biased! {
+                        _ = stop_rx => Some(()),
+                        _ = delay_fn(dur).fuse() => None,
+                    };
+
+                    if cancelled.is_some() {
+                        unimplemented!()
+                    }
                 }
                 None => {
                     break Err(err);
