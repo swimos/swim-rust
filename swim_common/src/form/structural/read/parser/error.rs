@@ -97,7 +97,10 @@ mod tests {
 
         let err = ParseError::InvalidEventStream;
         let string = format!("{}", err);
-        assert_eq!(string, "Parser internal error.");
+        assert_eq!(
+            string,
+            "The stream of events did not constitute a valid record in the Swim model."
+        );
 
         let err = ParseError::Structure(ReadError::DoubleSlot);
         let string = format!("{}", err);

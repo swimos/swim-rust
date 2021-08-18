@@ -29,7 +29,7 @@ fn primitive_values() {
     assert_eq!(print_value(&Value::text("hello")), "hello");
     assert_eq!(print_value(&Value::text("two words")), "\"two words\"");
     assert_eq!(print_value(&Value::BooleanValue(true)), "true");
-    assert_eq!(print_value(&Value::Float64Value(0.0)), "0e0");
+    assert_eq!(print_value(&Value::Float64Value(0.0)), "0.0");
 }
 
 #[test]
